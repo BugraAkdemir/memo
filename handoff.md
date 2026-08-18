@@ -1,3 +1,227 @@
+# Session 15 (2026-08-18): RPi'de canlı bug avı — Incognito Mode'un takılı kalması, sohbet cevaplarının kaybolması
+
+Kullanıcı RPi'de (`192.168.1.106:8090`, `bugraa`) çalışan self-hosted Memo'yu
+elle test ederken üç "saçma" bug rapor etti: kurulum tamamlanmış olsa bile
+her girişte kurulum ekranı geri geliyor, hafıza modeli arayüzde açık
+görünüyor ama fiilen kapalı gibi davranıyor, ve bir süre sohbet ettikten
+sonra sayfa yenilenince AI'ın verdiği cevaplar sanki hiç yazılmamış gibi
+kayboluyor. Tarayıcı aracı bu LAN IP'sine erişimde onay kilidine takıldığı
+için teşhis SSH (`sshpass`, `bugraa@192.168.1.106`) + canlı `curl`/log
+incelemesiyle yapıldı, koddaki gerçek kusurlar Explore ile doğrulandı.
+
+## Bulunan kök nedenler
+
+1. **Kurulum ekranının geri gelmesi** — backend tarafı doğru
+   (`GET /api/setup/status` → `needs_setup:false`, hesap zaten var).
+   Kusur tamamen frontend'de: `setupCompleteProvider`
+   (`frontend/lib/providers/settings_provider.dart:140`) tamamen tarayıcının
+   yerel `SharedPreferences`/localStorage'ındaki `memo_setup_complete`
+   bayrağına bakıyor, backend'in gerçek durumuna hiç sormuyor. Tarayıcı
+   verisi temizlenince/farklı tarayıcıdan girilince backend zaten kurulu
+   olsa bile sihirbaz yeniden çıkıyor. **Teşhis edildi, henüz kodda
+   düzeltilmedi** (kapsam dışı bırakıldı, aşağıya not düşüldü).
+
+2. **Hafıza "açık görünüp kapalı" + AI cevaplarının kaybolması — aynı kök
+   neden:** RPi'nin backend'inde **Incognito Mode global olarak açık
+   kalmıştı** (`GET /api/incognito` → `true`, kullanıcı kendi ifadesiyle
+   test için açıp kapatmayı unutmuş). `internal/app/chat.go`'daki
+   `isIncognito` tek, süreç ömrü boyunca kalıcı bir bayrak — sohbet
+   değiştirme, sayfa yenileme, yeni sekme hiçbiri onu resetlemiyor, sadece
+   açık `ToggleIncognito` çağrısı değiştiriyor. `SendMessageStreamTo`
+   (gerçek sohbet ekranının kullandığı yol) kullanıcının mesajını
+   incognito'dan bağımsız her zaman oturuma kaydediyor
+   (`sendMessageStreamCore`, `chat.go:376`), ama asistanın cevabı
+   `finishStream` içinde incognito açıkken sessizce ayrı, session'a
+   yazılmayan bir buffer'a (`a.incognitoMessages`) yönlendiriliyor
+   (`llm.go:1096-1107`). Sonuç: kullanıcının mesajı kalıcı, AI'ın cevabı
+   sayfa yenilenince yok. Frontend tarafında asıl kusur:
+   `IncognitoNotifier` (`chat_provider.dart`) her sayfa yüklemesinde
+   backend'e sormadan sabit `false` ile başlıyordu — bu yüzden bir önceki
+   sekmede açık bırakılan incognito, yeni sekme/refresh'te arayüzde
+   "kapalı" görünüyordu, hiçbir uyarı yoktu, ve `chat_sidebar.dart`'taki
+   var olan "normal sohbete geçince incognito'yu otomatik kapat" mantığı
+   da (zaten yazılmıştı) bu yüzden hiç tetiklenmiyordu.
+
+3. **Yan bulgu, RPi'de aktif ama zaten üst akışta düzeltilmiş:** loglarda
+   tekrarlayan `"MEMORY: stats count query: ... converting NULL to int is
+   unsupported"` — hafıza boşken istatistik sorgusu patlıyor. `57524b9`
+   commit'iyle (`COALESCE` eklenerek, Session 14'ün 3. maddesi) zaten
+   düzeltilmiş ama düzeltme henüz yayınlanmış v3.5.5'e girmemiş, RPi de
+   tam o released build'i çalıştırıyor. Aksiyon gerekmiyor, bir sonraki
+   release'de otomatik gelecek.
+
+## Yapılan düzeltmeler (commit'lendi, `main`'e push edilmedi — kullanıcı
+push istemedi, sadece commit)
+
+- `6a772d2` **fix(chat): sync incognito state from backend on load** —
+  `MemoApiClient.getIncognito()` (`api_client.dart`) eklendi,
+  `IncognitoNotifier` artık `_init()` içinde gerçek durumu backend'den
+  çekiyor (`AgentAutoPermissionNotifier`'daki mevcut init-from-backend
+  deseniyle birebir aynı yaklaşım).
+- `3e4be88` **feat(chat): tint chat background red in incognito mode** —
+  kullanıcının açık isteği: gizli sohbet modundayken sohbet alanının
+  arka planı (sadece arka plan — kenar çubuğu/balonlar/input etkilenmiyor)
+  `MemoTheme.red`'in %14 saydam bir katmanıyla kırmızı tona bürünüyor
+  (`chat_screen.dart:44-58`).
+
+## Doğrulama — gerçekten canlı test edildi, iki aşamalı
+
+1. **RPi'de canlı, SSH üzerinden geçici düzeltme:** `POST /api/incognito
+   {"enabled":false}` ile takılı kalmış bayrak elle kapatıldı, aynı
+   sohbete `curl` ile mesaj gönderilip hem kullanıcı hem asistan mesajının
+   artık oturuma yazıldığı doğrulandı (önceki mesajlarda sadece kullanıcı
+   tarafı vardı). **Bu sadece çalışma-zamanı düzeltmesi — RPi'nin build'i
+   hâlâ eski/fix'siz, backend yeniden başlarsa veya incognito tekrar
+   açılırsa aynı sorun geri gelir.**
+2. **Kod düzeltmesinin gerçek doğrulaması, bu makinenin kendi yerel
+   kurulumunda (`~/.memo`, Pi değil):** `flutter build web --release` ile
+   taze frontend derlendi, `internal/webserver/webapp/`'a kopyalandı,
+   `go build -tags "sqlite_fts5"` ile backend derlendi,
+   `~/.memo/memo-backend` bu build'le değiştirildi (eski binary
+   `memo-backend.bak.<timestamp>` olarak yanında duruyor, kullanıcı verisi
+   `~/.memo/data` etkilenmedi). Tarayıcıdan canlı akış: incognito aç →
+   kırmızı arka plan doğru → **sayfayı yenile** → incognito hâlâ doğru
+   "açık" gösteriyor (eski koddaki asıl bug tam burada patlıyordu) →
+   normal bir sohbete tıkla → incognito otomatik kapandı, arka plan
+   normale döndü → `GET /api/incognito` backend'de de `false` doğruladı.
+   `flutter analyze` ve `flutter test` (260/260) temiz.
+
+## Sıradaki işler
+
+1. **Kurulum ekranı bug'ı henüz kodda düzeltilmedi** — `setupCompleteProvider`
+   backend'in `needs_setup`/`GET /api/setup/status`'una hiç bakmıyor,
+   sadece yerel `SharedPreferences`. Düzeltme: sayfa yüklendiğinde gerçek
+   durumu backend'den senkronize etmek (yukarıdaki incognito fix'iyle
+   birebir aynı desen). Kullanıcı onaylarsa yapılabilir.
+2. **RPi'nin build'i güncellenmedi** — kullanıcı "update'i boşver" dedi,
+   bu yüzden yukarıdaki iki commit RPi'ye hiç ulaşmadı. RPi'de incognito
+   şu an elle kapatıldığı için sorun yok, ama tekrar açılıp unutulursa
+   aynı bug geri gelir. İleride `update.sh` ile veya yeni bir release ile
+   RPi'ye taşınmalı.
+3. Bu oturumda `~/.memo/memo-backend` (bu makinenin **kendi** yerel
+   kurulumu) test amaçlı yeni build ile değiştirildi — fonksiyonel olarak
+   daha iyi (iki fix de içeriyor) ama resmi bir release değil, sürüm
+   numarası hâlâ V3.5.5 diyor. Karışıklığı önlemek için not düşüldü.
+
+---
+
+# Session 14 (2026-08-17/18): self-hosted chmod bug'ı, Dream özelliği, Stats sekmesi kategorili token kırılımı
+
+Dört ayrı iş parçası, hepsi küçük atomik commit'ler halinde. `web.bugradev.com`
+mirror'ına da otomatik push edildi (repo iki remote'a birden push ediyor).
+
+## 1. Self-hosted kurulum — `permission denied` bug'ı (3 commit, push'landı)
+
+**Bulgu:** `curl .../get-memo-server.sh | bash` ile self-hosted kurulumda
+`llama-server` binary'si `chmod +x` almadan geliyordu → embedding modeli
+"fork/exec ... permission denied" ile başlamıyordu. Kök sebep: R2/tar/zip
+arşivleri exec bitini garanti korumuyor; masaüstü kurulum script'i (`get-memo.sh`)
+ve self-hosted **beta** script'i (`get-memo-server-beta.sh`) bunu zaten telafi
+ediyordu, ama stabil `get-memo-server.sh`'e bu fix hiç taşınmamıştı.
+
+- `44b01e9`: `get-memo-server.sh`'e eksik `chmod +x` eklendi (asıl rapor edilen bug).
+- `84e59f2`: Aynı hata sınıfı 5 yerde daha bulundu — `get_memo_arm.sh` (ARM masaüstü),
+  `build-linux.yml`'in kendi embedded `run_memo.sh`'i (x64+arm64, **asıl kaynak** —
+  R2'den `rclone` ile inen binary'ler muhtemelen zaten izinsiz geliyor),
+  `build_releases.sh`/`build_releases_arm.sh` (local release script'leri).
+- `b3ce99d`: `macrelease.sh` (local macOS release script'i) aynı eksiği taşıyordu.
+
+Kullanıcı kendi self-hosted kurulumunda elle `chmod +x` çalıştırıp doğruladı — çalışıyor.
+
+## 2. Dream özelliği — pinned fact'lerin periyodik sıkıştırılması (6 commit, push'landı)
+
+Konu: pinned fact'ler (`GetPinnedFacts`, her promptta koşulsuz enjekte ediliyor)
+zamanla sadece büyüyor, mevcut consolidation sadece near-duplicate'leri (≥0.92
+benzerlik) birleştiriyor — ilişkili ama farklı fact'ler ("köpeğinin adı Zeytin" +
+"golden retriever'ı var" + "her sabah 7'de gezdiriyor") hiç birleşmiyordu.
+ChatGPT'nin "Dreaming"i / MemGPT'nin Core Memory yaklaşımından esinlenilip
+"Dream" adıyla inşa edildi: tüm pinned set'i tek seferde LLM'e gönderip
+konu bazlı yoğunlaştırma yaptırıyor, dedup'ın üstüne biniyor.
+
+- `943b599`: Config field'ları (`DreamEnabled`/`DreamInitialDelayMinutes`/`DreamIntervalHours`).
+- `a2695c8`: Kendi bağımsız scheduler'ı (24h'lık genel consolidation loop'undan
+  ayrı) + `RunDreamNow` manuel tetikleme (40 fact eşiğini atlıyor, sadece 2 yeterli).
+- `d440f3f`, `10a2183`, `a5647be`: App wiring, HTTP API
+  (`PUT /api/memory/dream/settings`, `POST /api/memory/dream/run`), Settings →
+  **Dream** sekmesi (aç/kapa, gecikme/aralık ayarı, "Şimdi Çalıştır" butonu).
+- `3072797`: Yan bulgu — `mergeMemoriesLLM` (mevcut near-duplicate dedup'ın
+  motoru) `a.callLLM` yerine doğrudan `providerRouter.ChatCompletion`
+  çağırıyordu → local-only kurulumlarda **hiç çalışmıyordu**, sessizce. Aynı
+  anti-pattern zaten iki kere bulunup düzeltilmişti (`ImportMemoryFromText`,
+  `extractAndPinFacts`); üçüncü kez tekrarlanmış. Düzeltildi.
+
+Fail-closed tasarım: LLM hata verirse/boş dönerse/fact sayısını küçültmezse
+eski set aynen kalıyor, hiçbir şey kaybolmuyor.
+
+## 3. Stats sekmesi — gün seçici + pinned token kartı (2 commit, push'landı)
+
+- `57524b9`: `MemoryStats.PinnedTokens` — pinned fact'lerin toplam tahmini
+  token boyutu (SQL `SUM(LENGTH(content))`, `truncate.CharsPerTokenEstimate`
+  olarak dışa açıldı). Yan bulgu: hafıza boşken `Stats()` sorgusu `SUM()`
+  NULL dönünce sessizce scan hatası logluyordu (her taze kurulumda) —
+  5 kolona `COALESCE` eklenip düzeltildi.
+- `f85c69f`: 7/30/90 gün seçici (backend zaten `?days=N` destekliyordu, arayüz
+  hiç kullanmıyordu — grafik de artık seçilen aralığa göre doluyor, önceden
+  sabit 30 güne pad/truncate ediyordu). "Pinned Fact Tokens" kartı hem Stats
+  hem Memory tab'ına eklendi.
+
+## 4. Stats sekmesi — "hangi injection en çok token yiyor" kategori kırılımı (11 commit, **PUSH'LANMADI**)
+
+Kullanıcının asıl isteği: RAG/kişilik/tools/learning gibi hangi türden
+çağrının en çok token yediğini Stats'ta kalıcı görmek. Araştırma sonucu
+büyük bir yapısal boşluk bulundu: `callLLM` (fact-extraction, Dream, mood,
+learning, title-gen, routine, proactive, insight, memory-import gibi **her**
+arka plan çağrısının ortak fonksiyonu) **hiç** usage stats kaydetmiyordu —
+sadece streaming sohbet cevabı (`finishStream`) kaydediyordu. Yani bu
+arka plan çağrıları Stats'ta tamamen görünmezdi.
+
+Kullanıcı açıkça "parça parça, gerçekten geri alınabilir commit'ler" istedi
+(AGENTS.md'nin "atomik değişikliği kırma" kuralıyla gerilimde — `callLLM`'in
+imzası değişince derleyici TÜM çağıranların aynı anda güncellenmesini
+zorunlu kılıyor). Çözüm: geçici bir "uncategorized" wrapper ile her dosya
+grubunu ayrı commit'te migrate edip en sonda wrapper'ı kaldırmak.
+
+- `f40967d`: `internal/stats`'a `category` kolonu (migration, `CategoryBreakdown`,
+  toplam token'a göre sıralı — istek sayısına göre değil).
+- `d0e4847`: Streaming path'in 5 `usageMeta` construction noktası etiketlendi (chat/agent).
+- `e63513e`: `callLLMCategorized` eklendi (gerçek kayıt: sağlayıcının döndürdüğü
+  gerçek `Usage` varsa onu kullanıyor, yoksa tahmin; incognote'ta kayıt yok),
+  `callLLM` geçici wrapper oldu.
+- `c79f442`, `77330e7`, `9231958`, `42e82f1`, `6a42fa0`, `a5ebc5d`, `f26e6e0`:
+  ~14 çağrı noktası dosya dosya migrate edildi (memory.go → fact_extraction/
+  consolidation/dream; proactive*.go → proactive; learning.go/routine.go →
+  learning/routine; insight.go → insight; memory_import.go → memory_import;
+  sessions.go → title; chat.go → chat/mood).
+- `ce7afd9`: Wrapper kaldırıldı, `callLLMCategorized` tekrar `callLLM` adına
+  alındı (saf rename, davranış değişikliği yok).
+- `f690fca`: Frontend — Stats sekmesinde yeni **"Ne İçin Kullanılıyor"**
+  bölümü, token miktarına göre sıralı çubuk grafik.
+
+**Doğrulama:** Her commit kendi başına build+test geçti (`go build`/`go vet`/
+`go test -race`, `flutter analyze`/`flutter test` — 260 test). Kullanıcının
+kendi commit'i (`43604db "bugra"`, sadece `.gitignore`'a bir satır) bunun
+üzerine binmiş durumda, dokunulmadı.
+
+## Ayrı, tesadüfen bulunan bug (dokunulmadı)
+
+Web arayüzü CanvasKit'i (Flutter'ın render motoru) local kopyası
+`internal/webserver/webapp/canvaskit/`'te varken Google CDN'den
+(`gstatic.com`) çekiyor — offline/self-hosted/LAN-only kurulumlarda web
+arayüzü hiç render olmuyor. `flutter_bootstrap.js`'e `canvasKitBaseUrl`
+patch'i denendi, bu sandbox'ta çözülemedi (nedeni netleşmedi). Ayrı bir
+oturumda ele alınmalı.
+
+## Sıradaki işler
+
+1. **11 commit'lik kategori kırılımı işi push edilmeyi bekliyor** — kullanıcıya
+   sorulmuş, henüz onay/push yok.
+2. CanvasKit CDN bağımlılığı (yukarıda) — self-hosted/offline web arayüzünü
+   etkiliyor, araştırılmadı/çözülmedi.
+3. `MinimalMode`/karakter promptu için kademeli (mesaj bazlı) bir versiyon
+   önerilmişti (Öneri 1'in bir parçası olarak tartışıldı) — koda dökülmedi.
+
+---
+
 # v3.5.5 RELEASE — Session 13 (2026-08-17): memo-release skill ile tam yayın
 
 **Yayınlanan:** Memo v3.5.5 (Open Beta, 14–17 Ağustos 2026). Kullanıcı

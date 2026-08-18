@@ -151,13 +151,7 @@ func (r *ToolRegistry) registerBuiltins() {
 		PreviewFn:   tools.DeleteLinesPreview,
 	})
 
-	r.Register(ToolDef{
-		Name:        "web_search",
-		Description: "Searches the web using DuckDuckGo and returns relevant results. Only call this for current events, recent news, prices, or specific facts that may have changed after your training cutoff. Do NOT call it for greetings, small talk, general knowledge you already know, or coding/file/project questions — answer those directly instead.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Short keyword-style search query (2-6 words) — extract the subject, do NOT pass the user's raw message verbatim"},"max_results":{"type":"integer","description":"Number of results to return (default 5, max 10)"}},"required":["query"]}`),
-		DangerLevel: Safe,
-		ExecuteFn:   tools.WebSearch,
-	})
+	r.registerWebSearchTool()
 
 	r.Register(ToolDef{
 		Name:        "self_clone",
@@ -184,6 +178,32 @@ func (r *ToolRegistry) registerBuiltins() {
 	})
 
 	r.registerWhatsAppTools()
+}
+
+// registerWebSearchTool adds the web_search tool to this registry. Split out
+// of registerBuiltins so NewWebSearchRegistry can build a registry with only
+// this one tool — used by App.routeStream's non-agent "web search mode" so
+// plain chat can let the model decide, per message via native tool-calling,
+// whether it actually needs to search, instead of the old blind-injection
+// design that ran a search on every single message regardless of content.
+func (r *ToolRegistry) registerWebSearchTool() {
+	r.Register(ToolDef{
+		Name:        "web_search",
+		Description: "Searches the web using DuckDuckGo and returns relevant results. Only call this for current events, recent news, prices, or specific facts that may have changed after your training cutoff. Do NOT call it for greetings, small talk, general knowledge you already know, or coding/file/project questions — answer those directly instead.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Short keyword-style search query (2-6 words) — extract the subject, do NOT pass the user's raw message verbatim"},"max_results":{"type":"integer","description":"Number of results to return (default 5, max 10)"}},"required":["query"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.WebSearch,
+	})
+}
+
+// NewWebSearchRegistry creates a registry with only the web_search tool. See
+// registerWebSearchTool's doc comment for why this exists.
+func NewWebSearchRegistry() *ToolRegistry {
+	r := &ToolRegistry{
+		tools: make(map[string]ToolDef),
+	}
+	r.registerWebSearchTool()
+	return r
 }
 
 // registerWhatsAppTools adds WhatsApp-specific tools to this registry.

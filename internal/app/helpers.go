@@ -15,7 +15,6 @@ import (
 	"memo/internal/api"
 	"memo/internal/memory"
 	"memo/internal/truncate"
-	"memo/internal/websearch"
 )
 
 // apiContextBudget returns the context-window token budget for the active API
@@ -78,34 +77,6 @@ func (a *App) buildMemoryQuery(userMsg string) string {
 	return strings.Join(recent, " | ") + " | " + userMsg
 }
 
-// buildWebSearchQuery distills a raw user message into a short, keyword-style
-// web search query via a quick LLM call, instead of sending the message to
-// DDG verbatim. DDG (internal/websearch/ddg.go) matches literally, not
-// semantically — a full conversational sentence ("kanka bugra akdemir kim
-// hakkında bilgi toplarısın internetten") pollutes the query with filler
-// words ("kanka", "rica edersem", "bu arada") and the request-to-search
-// framing itself, so the results come back essentially random (reported
-// live by a user: a search for "bugra akdemir kim" turned into a search for
-// the whole sentence and returned unrelated YouTube channels and forum
-// posts). Falls back to the raw message on any failure (no LLM configured,
-// provider error, empty/error-prefixed response) — a worse query is still
-// better than skipping the search entirely in a mode whose only purpose is
-// injecting web results.
-func (a *App) buildWebSearchQuery(ctx context.Context, userMsg string) string {
-	prompt := []api.Message{
-		api.NewTextMessage("user", fmt.Sprintf(
-			"Extract a short, effective web search query (2-6 words, same language as the message, no quotes, no explanation) that captures what the user actually wants to search for. Ignore greetings, names of the person you're talking to, and phrasing like \"can you look this up for me\" — keep only the subject.\n\nMessage: %s\n\nSearch query:",
-			userMsg,
-		)),
-	}
-	query := strings.TrimSpace(a.callLLM(ctx, prompt, categoryWebSearchQuery))
-	query = strings.Trim(query, "\"'")
-	if query == "" || strings.HasPrefix(query, "⚠️") {
-		return userMsg
-	}
-	return query
-}
-
 // buildMessages builds the prompt for whatever chat is active *right now*.
 // Thin wrapper around buildMessagesForSession — see PLAN_chatid_refactor.md
 // Phase 2. Kept for callers that are intentionally still tied to the global
@@ -142,11 +113,17 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	if retrievedCountOut != nil {
 		*retrievedCountOut = len(memories)
 	}
-	// Read once and reuse below (for the live-search injection) rather than
-	// calling GetWebSearchEnabled()/GetAgentEnabled() twice each — a toggle
-	// landing between reads could otherwise tell the model one thing (via
-	// buildCapabilitiesBlock) while actually doing another (inject results
-	// or not, gate the blind search below or not).
+	// Read once and reuse below rather than calling GetWebSearchEnabled()/
+	// GetAgentEnabled() twice each — a toggle landing between reads could
+	// otherwise tell the model one thing via buildCapabilitiesBlock (which
+	// only describes what's OFF) than what routeStream actually does with it
+	// moments later. Web search itself no longer happens in this function at
+	// all — see App.routeStream/callWebSearchAgentStream (chat.go/llm.go):
+	// plain (non-agent) chat now gets a scoped web_search tool via native
+	// tool-calling in the same completion request, exactly like agent mode's
+	// full toolset, instead of this function blindly running a search on
+	// every message and injecting the results into the system prompt
+	// regardless of whether the message needed one.
 	webSearchEnabled := a.GetWebSearchEnabled()
 	agentEnabled := a.GetAgentEnabled()
 	// Memory formatting is independent of mood — the mood engine must have ZERO
@@ -168,31 +145,6 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		if a.mood != nil && a.mood.Enabled() {
 			systemPrompt += a.mood.BuildDirective()
 			systemPrompt += a.mood.BuildSelfInterestDirective()
-		}
-		// Web search: two different mechanisms depending on whether agent mode
-		// is also on, not both at once.
-		//
-		// Agent mode already registers a real web_search tool (internal/
-		// agent/tools.go) whose own description tells the model to call it
-		// only for things that actually need current information — the same
-		// "the model decides, per message" shape as every other tool. Blindly
-		// injecting search results here TOO, on every single message
-		// regardless of content, was pure waste when that tool is available:
-		// an extra network round-trip on every turn (including "naber"),
-		// and — reported directly by a user — made web search look like it
-		// fires indiscriminately even though the smarter tool-based path
-		// underneath it was working fine on its own.
-		//
-		// Plain (non-agent) chat has no tool-calling at all, so blind
-		// injection is the only way it can ever see search results — that
-		// path is unchanged.
-		if webSearchEnabled && !agentEnabled {
-			query := a.buildWebSearchQuery(ctx, userMsg)
-			if results, err := websearch.Search(ctx, query, a.cfg.WebSearch.MaxResults); err == nil {
-				systemPrompt += websearch.FormatForContext(query, results)
-			} else {
-				logx.Printf("websearch: %v", err)
-			}
 		}
 	}
 

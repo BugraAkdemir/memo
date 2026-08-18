@@ -106,6 +106,33 @@ func NewWhatsAppExecutor(existing *Executor) *Executor {
 	}
 }
 
+// NewWebSearchExecutor creates a lightweight executor with only the
+// web_search tool (see NewWebSearchRegistry). Used by App.routeStream's
+// non-agent "web search mode": the model gets exactly one tool via native
+// function-calling in the same completion request that produces its answer,
+// so it decides per message — at zero extra network/LLM cost when it decides
+// not to search — instead of a separate "should I search" call or a blind
+// search run on every message regardless of content. Reuses sandbox/
+// permissions/backup/audit-log from an existing executor exactly like
+// NewWhatsAppExecutor — still the same agent, just scoped to one tool. Safe
+// to share: web_search's DangerLevel is Safe, which PermissionManager.Check
+// always auto-allows with no prompt, so this executor never touches the
+// permission-prompt flow at all.
+func NewWebSearchExecutor(existing *Executor) *Executor {
+	return &Executor{
+		basePath:       existing.basePath,
+		providerRouter: existing.providerRouter,
+		providerCfgMgr: existing.providerCfgMgr,
+		registry:       NewWebSearchRegistry(),
+		permissions:    existing.permissions,
+		sandbox:        existing.sandbox,
+		backup:         existing.backup,
+		pendingPerms:   make(map[string]*PermissionRequest),
+		logs:           make([]AgentLogEntry, 0),
+		auditLogFile:   existing.auditLogFile,
+	}
+}
+
 // Registry exposes the executor's tool registry so callers outside this
 // package (the skill system) can register/unregister additional tools
 // into the exact registry the agent pipeline executes against. The field

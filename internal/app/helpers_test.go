@@ -3,8 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +14,6 @@ import (
 	"memo/internal/identity"
 	"memo/internal/memory"
 	moodpkg "memo/internal/mood"
-	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/skill"
 )
@@ -235,96 +232,52 @@ func TestBuildMessages_MemoryEnabledNotCrash(t *testing.T) {
 	}
 }
 
-// TestBuildMessages_AgentModeSkipsBlindWebSearchInjection is a regression
-// test: buildMessagesForSession used to run websearch.Search on every
-// single message whenever the web-search toggle was on, regardless of
-// agent mode — reported directly by a user as web search firing
-// indiscriminately even for "naber" — even though agent mode already
-// registers its own web_search tool (internal/agent/tools.go) whose
-// description tells the model to call it only when actually needed. With
-// agent mode also on, the blind injection is pure redundant network traffic
-// on every turn; it must not run. context.Background() (not a cancelled
-// one) is used deliberately — a cancelled context would make
-// websearch.Search fail fast for an unrelated reason (ctx error), which
-// would let this test pass even if the actual skip-when-agentEnabled logic
-// regressed. A short wall-clock budget catches that instead: a live DDG
-// HTTP call takes far longer than this to complete or fail.
-func TestBuildMessages_AgentModeSkipsBlindWebSearchInjection(t *testing.T) {
+// TestBuildMessages_NeverBlindlyInjectsWebSearch is a regression test for
+// two superseded designs: buildMessagesForSession used to run
+// websearch.Search on every single message whenever the web-search toggle
+// was on and agent mode was off — reported by a user both as "fires
+// indiscriminately even for naber" and, separately, as sending the raw,
+// undistilled user message as the DDG query. Web search (plain chat) has
+// since moved entirely out of this function and into routeStream/
+// callWebSearchAgentStream (chat.go/llm.go): a scoped web_search tool via
+// native tool-calling, mirroring how agent mode's full toolset already
+// works, so the model decides per message instead of this function running
+// a blind, unconditional search. This asserts buildMessagesForSession
+// itself never touches the network or injects search-results text into the
+// system prompt, regardless of agentEnabled — context.Background() (not a
+// cancelled one) is deliberate, so a live DDG HTTP call — which takes far
+// longer than the wall-clock budget below — would be what makes this fail,
+// not an unrelated ctx-cancellation fast-path.
+func TestBuildMessages_NeverBlindlyInjectsWebSearch(t *testing.T) {
 	id := identity.New("Test", "Memo", "casual", "", false)
-	a := &App{
-		cfg: &config.AppConfig{
-			Memory:    config.MemoryConfig{MemoryEnabled: false},
-			Llama:     config.LlamaConfig{CtxSize: 4096},
-			WebSearch: config.WebSearchConfig{Enabled: true},
-		},
-		identity:     id,
-		agentEnabled: true,
-	}
 
-	start := time.Now()
-	messages := a.buildMessages(context.Background(), "naber", nil)
-	elapsed := time.Since(start)
+	for _, agentEnabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("agentEnabled=%v", agentEnabled), func(t *testing.T) {
+			a := &App{
+				cfg: &config.AppConfig{
+					Memory:    config.MemoryConfig{MemoryEnabled: false},
+					Llama:     config.LlamaConfig{CtxSize: 4096},
+					WebSearch: config.WebSearchConfig{Enabled: true},
+				},
+				identity:     id,
+				agentEnabled: agentEnabled,
+			}
 
-	if elapsed > 200*time.Millisecond {
-		t.Fatalf("buildMessages took %v — suggests a live web search was attempted despite agent mode being on", elapsed)
-	}
-	sys, ok := messages[0].Content.(string)
-	if !ok {
-		t.Fatal("expected system message content to be a string")
-	}
-	if strings.Contains(sys, "Web Search Results") {
-		t.Error("system prompt contains injected web search results — blind injection must be skipped when agent mode is on")
-	}
-}
+			start := time.Now()
+			messages := a.buildMessages(context.Background(), "naber", nil)
+			elapsed := time.Since(start)
 
-// TestBuildWebSearchQuery_UsesExtractedQueryNotRawMessage is the regression
-// test for the bug reported live by a user: the blind (non-agent) web search
-// path used to pass the raw user message straight to DDG (internal/
-// websearch/ddg.go), which matches literally — a full conversational
-// sentence with filler words and search-request framing ("kanka bugra
-// akdemir kim hakkında bilgi toplarısın internetten") returned essentially
-// random results instead of anything about "bugra akdemir". A fake provider
-// stands in for the extraction LLM call and returns a canned short query;
-// this asserts buildWebSearchQuery returns that extracted query, not the
-// original raw message.
-func TestBuildWebSearchQuery_UsesExtractedQueryNotRawMessage(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"choices":[{"message":{"content":"bugra akdemir kim"}}]}`)
-	}))
-	defer srv.Close()
-
-	router := provider.NewRouter([]provider.ProviderConfig{{
-		Type:    provider.ProviderCustom,
-		Name:    "test",
-		BaseURL: srv.URL,
-		Model:   "test-model",
-		Enabled: true,
-	}})
-
-	a := &App{providerRouter: router, activeProviderName: "test", cfg: &config.AppConfig{}}
-
-	raw := "kanka bugra akdemir kim hakkında bilgi toplarısın internetten"
-	query := a.buildWebSearchQuery(context.Background(), raw)
-	if query != "bugra akdemir kim" {
-		t.Fatalf("query = %q, want extracted %q (not the raw message)", query, "bugra akdemir kim")
-	}
-	if query == raw {
-		t.Fatal("buildWebSearchQuery returned the raw message verbatim")
-	}
-}
-
-// TestBuildWebSearchQuery_FallsBackToRawMessageOnLLMFailure ensures a
-// missing/failing extraction LLM degrades to the pre-fix behavior (search
-// the raw message) rather than breaking web search entirely — a worse query
-// beats no search at all in a mode whose only purpose is injecting results.
-func TestBuildWebSearchQuery_FallsBackToRawMessageOnLLMFailure(t *testing.T) {
-	a := &App{cfg: &config.AppConfig{}} // no client, no provider, no orchestra configured
-
-	raw := "bugra akdemir kim hakkında bilgi topla"
-	query := a.buildWebSearchQuery(context.Background(), raw)
-	if query != raw {
-		t.Fatalf("query = %q, want fallback to raw message %q", query, raw)
+			if elapsed > 200*time.Millisecond {
+				t.Fatalf("buildMessages took %v — suggests a live web search was attempted", elapsed)
+			}
+			sys, ok := messages[0].Content.(string)
+			if !ok {
+				t.Fatal("expected system message content to be a string")
+			}
+			if strings.Contains(sys, "Web Search Results") {
+				t.Error("system prompt contains injected web search results — buildMessagesForSession must never do this anymore")
+			}
+		})
 	}
 }
 

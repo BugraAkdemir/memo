@@ -180,20 +180,14 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 		return out
 	}
 
-	// When web-search mode is on, surface a "searching the web" status before
-	// the (blocking) search runs inside buildMessages, then splice the real
-	// LLM stream behind it. The frontend shows this like the "thinking" line.
-	if a.GetWebSearchEnabled() {
-		out := make(chan api.StreamChunk, 128)
-		go func() {
-			defer close(out)
-			defer recoverPanic("SendMessageStream/web_search")
-			trySend(ctx, out, api.StreamChunk{FinishReason: "status", Content: "web_search"})
-			forwardStream(ctx, a.sendMessageStreamInner(ctx, userMsg), out)
-		}()
-		return out
-	}
-
+	// The "searching the web" status (FinishReason:"status", Content:
+	// "web_search") used to fire here unconditionally whenever the web-search
+	// toggle was on, for every message regardless of whether a search would
+	// actually happen — the same "looks like it's searching indiscriminately"
+	// problem the routeStream/callWebSearchAgentStream redesign (see that
+	// function's doc comment) was built to fix. It now fires precisely, from
+	// inside callWebSearchAgentStream's tool-execution callback, only when
+	// the model actually decides to call web_search — so it's gone from here.
 	return a.sendMessageStreamInner(ctx, userMsg)
 }
 
@@ -289,6 +283,18 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 		}
 		a.observerRecorder.RecordAgentRun(userMsg)
 		return a.callAgentStream(ctx, messages, userMsg, sessionID)
+	}
+
+	// Non-agent "web search mode": route through the same native
+	// tool-calling machinery as agent mode, but scoped to just the
+	// web_search tool (see callWebSearchAgentStream's doc comment) instead
+	// of blindly injecting search results into every message. Excluded when
+	// orchestraEnabled — the conductor's own single-completion RunSingle
+	// path (callLLMStream's orchestra branch) has no tool-calling support to
+	// plug this into; that combination simply gets no web search, same as
+	// it would with agent mode off and web search off.
+	if a.GetWebSearchEnabled() && !orchestraEnabled && (hasProvider || localModelRunning) {
+		return a.callWebSearchAgentStream(ctx, messages, userMsg, sessionID)
 	}
 	return a.callLLMStream(ctx, messages, userMsg, imagePath, filePath, sessionID)
 }

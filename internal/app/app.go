@@ -213,6 +213,11 @@ type App struct {
 	agentEnabled  bool
 	agentMu       sync.RWMutex
 
+	// webSearchExecutor is a single-tool (web_search only) agent executor
+	// used by routeStream's non-agent "web search mode" — see
+	// agent.NewWebSearchExecutor's doc comment.
+	webSearchExecutor *agent.Executor
+
 	taskloopStore  *taskloop.Store
 	taskloopEngine *taskloop.Engine
 	// taskloopRunMu serializes taskloop worker calls: the worker needs to
@@ -580,6 +585,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.agentExecutor.SetBypassPermissions(a.cfg.Mood.SystemManagement)
 	a.agentEnabled = false
 	logx.Printf("Agent mode initialized (enabled=false)")
+	a.webSearchExecutor = agent.NewWebSearchExecutor(a.agentExecutor)
 
 	tlStore, err := taskloop.NewStore(config.DataPath("tasklists"))
 	if err != nil {

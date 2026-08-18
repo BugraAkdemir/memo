@@ -66,7 +66,7 @@ const (
 	categoryRoutine        = "routine"
 	categoryProactive      = "proactive"
 	categoryInsight        = "insight"
-	categoryWebSearchQuery = "web_search_query"
+	categoryWebSearch      = "web_search"
 )
 
 // currentProviderLabel returns the active external provider's name, or
@@ -390,6 +390,81 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		a.recordStreamError(userMsg, "⚠️ Agent boş yanıt döndürdü", sessionID)
 		trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Agent boş yanıt döndürdü", Done: true})
 	}
+}
+
+// callWebSearchAgentStream runs a single-tool (web_search only) agent
+// pipeline for plain (non-agent) chat when the web-search toggle is on —
+// see agent.NewWebSearchExecutor's doc comment for why. It replaces the old
+// design (buildMessagesForSession used to blindly run websearch.Search on
+// every single message, injecting results into the system prompt whether or
+// not the message actually needed them, and only skipped this when agent
+// mode was also on — see BUG_REPORT/handoff history for the two separate
+// user reports this caused: results built from the raw, un-distilled user
+// message, and the search running "indiscriminately" even for a bare
+// greeting). Here the model gets exactly one tool via native
+// function-calling in the SAME completion request that produces its answer
+// — it decides per message, at zero extra network/LLM cost when it decides
+// not to search, same shape full agent mode already uses for its whole
+// toolset.
+//
+// Deliberately does not forward agent_event chunks to outCh (unlike
+// callAgentStream) and does not record them into agentEvents either — full
+// agent mode's tool-badge UI (_AgentStatusBar/_AgentStatusBadge in
+// chat_message_list.dart) is intentionally not part of this mode's UX; the
+// only visible signal is the existing "Webde aranıyor..." typing-line
+// status (streamingStatusProvider), fired here exactly when the tool
+// actually starts executing — not, like the old design's pre-emptive
+// chunk in SendMessageStream, unconditionally on every message regardless
+// of whether a search happens.
+func (a *App) callWebSearchAgentStream(ctx context.Context, messages []api.Message, userMsg, sessionID string) <-chan api.StreamChunk {
+	outCh := make(chan api.StreamChunk, 128)
+
+	go func() {
+		defer close(outCh)
+		defer recoverStreamPanic(ctx, outCh, "callWebSearchAgentStream")
+
+		pMsgs := make([]provider.Message, len(messages))
+		for i, m := range messages {
+			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
+		}
+
+		agentRouter, modelName, effortLevel, err := a.resolveAgentProvider()
+		if err != nil {
+			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
+			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+			return
+		}
+
+		sm := a.getSessionManager()
+		projectPath := ""
+		if sessionID != "" && sm != nil {
+			projectPath = sm.GetProjectPath(sessionID)
+		}
+
+		a.webSearchExecutor.SyncRouter(agentRouter)
+
+		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, Category: categoryWebSearch, PromptTokens: estimateMessagesTokens(messages)}
+
+		start := time.Now()
+		agentEvents := &agentEventLog{}
+
+		streamCh, err := a.webSearchExecutor.RunStream(ctx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
+			if ev.Type == agent.EventToolExecuting && ev.ToolName == "web_search" {
+				trySend(ctx, outCh, api.StreamChunk{FinishReason: "status", Content: "web_search"})
+			}
+		}, projectPath)
+
+		if err != nil {
+			logx.Printf("Web search agent error: %v", err)
+			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
+			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+			return
+		}
+
+		a.drainAgentStream(ctx, streamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents)
+	}()
+
+	return outCh
 }
 
 // callAgentWithOrchestra runs when both agent mode and orchestra mode are enabled.

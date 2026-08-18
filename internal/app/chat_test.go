@@ -360,6 +360,8 @@ func newSendMessageTestApp(t *testing.T, reqs *capturedRequests) *App {
 		t.Fatalf("sessions.NewManager: %v", err)
 	}
 
+	agentExecutor := agent.NewExecutor(t.TempDir(), nil, nil)
+
 	return &App{
 		cfg:                &config.AppConfig{Memory: config.MemoryConfig{MemoryEnabled: false}},
 		identity:           identity.New("Test", "Memo", "casual", "", false),
@@ -367,7 +369,8 @@ func newSendMessageTestApp(t *testing.T, reqs *capturedRequests) *App {
 		providerRouter:     router,
 		providerCfgMgr:     cfgMgr,
 		activeProviderName: "test",
-		agentExecutor:      agent.NewExecutor(t.TempDir(), nil, nil),
+		agentExecutor:      agentExecutor,
+		webSearchExecutor:  agent.NewWebSearchExecutor(agentExecutor),
 		events:             &eventRing{},
 	}
 }
@@ -416,6 +419,37 @@ func TestSendMessage_AgentModeOff_NoToolDefinitions(t *testing.T) {
 
 	if reqs.containsAny(`"tools"`) {
 		t.Fatalf("agent mode off: outbound provider request unexpectedly carried tool definitions. requests=%s", reqs)
+	}
+	if reply != "fake agent reply" {
+		t.Fatalf("SendMessage() = %q, want %q", reply, "fake agent reply")
+	}
+}
+
+// TestSendMessage_WebSearchOnAgentOff_SendsOnlyWebSearchTool is the
+// regression test for the redesign that replaced blind web-search
+// injection: with agent mode off and the web-search toggle on,
+// routeStream must route through callWebSearchAgentStream — a native
+// tool-calling request carrying exactly the web_search tool definition, not
+// the full agent toolset (read_file, run_command, etc.) and not the old
+// blind-injected "Web Search Results" text in the system prompt. This is
+// what lets the model decide per message, at zero extra cost when it
+// decides not to search, instead of a separate query-extraction call or an
+// unconditional search on every message.
+func TestSendMessage_WebSearchOnAgentOff_SendsOnlyWebSearchTool(t *testing.T) {
+	reqs := &capturedRequests{}
+	a := newSendMessageTestApp(t, reqs)
+	a.cfg.WebSearch.Enabled = true
+
+	reply := a.SendMessage("naber")
+
+	if !reqs.containsAny(`"web_search"`) {
+		t.Fatalf("web search on, agent off: outbound request had no web_search tool definition. requests=%s", reqs)
+	}
+	if reqs.containsAny(`"read_file"`) || reqs.containsAny(`"run_command"`) {
+		t.Fatalf("web search on, agent off: outbound request carried the full agent toolset, not just web_search. requests=%s", reqs)
+	}
+	if reqs.containsAny("Web Search Results") {
+		t.Fatalf("web search on, agent off: request still carries the old blind-injected search-results text. requests=%s", reqs)
 	}
 	if reply != "fake agent reply" {
 		t.Fatalf("SendMessage() = %q, want %q", reply, "fake agent reply")

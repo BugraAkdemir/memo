@@ -243,6 +243,27 @@ type DevGatewayConfig struct {
 	// local processes (Claude Code, other CLI tools), a lower-stakes,
 	// same-machine-by-default threat model than remote network access.
 	Token string `yaml:"token" json:"-"`
+
+	// ClaudeCodeCLI tracks the "one-click connect" toggle in the Developer
+	// screen (see internal/app/claudecodecli.go) — whether Memo has pointed
+	// the Claude Code CLI's own ~/.claude/settings.json env block at this
+	// gateway, and what was there before, so disconnecting restores it
+	// exactly instead of just deleting the keys.
+	ClaudeCodeCLI ClaudeCodeCLIState `yaml:"claude_code_cli" json:"claude_code_cli"`
+}
+
+// ClaudeCodeCLIState is internal bookkeeping for
+// App.ConnectClaudeCodeCLI/DisconnectClaudeCodeCLI — only Connected is ever
+// exposed to the frontend (json:"-" on the rest); the Prev* fields exist
+// solely so a disconnect can restore whatever ANTHROPIC_BASE_URL/
+// ANTHROPIC_API_KEY the user already had in their settings.json (if any)
+// instead of just clearing them.
+type ClaudeCodeCLIState struct {
+	Connected      bool   `yaml:"connected" json:"connected"`
+	PrevBaseURLSet bool   `yaml:"prev_base_url_set" json:"-"`
+	PrevBaseURL    string `yaml:"prev_base_url" json:"-"`
+	PrevAPIKeySet  bool   `yaml:"prev_api_key_set" json:"-"`
+	PrevAPIKey     string `yaml:"prev_api_key" json:"-"`
 }
 
 type RemoteAccessConfig struct {

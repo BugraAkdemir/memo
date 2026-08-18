@@ -348,6 +348,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/dev-gateway/config", s.handleDevGatewayConfig)
 	route("/api/dev-gateway/models", s.handleDevGatewayModels)
 	route("/api/dev-gateway/logs", s.handleDevGatewayLogs)
+	route("/api/dev-gateway/claude-code-cli", s.handleClaudeCodeCLIConnection)
 	mux.HandleFunc("/v1/messages", s.handleAnthropicMessages)
 	mux.HandleFunc("/v1/chat/completions", s.handleOpenAIChatCompletions)
 	mux.HandleFunc("/v1/models", s.handleOpenAIModels)

@@ -72,6 +72,50 @@ func (s *Server) handleDevGatewayLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.fullBridge.GetGatewayLogs())
 }
 
+// handleClaudeCodeCLIConnection serves the Developer screen's one-click
+// "connect Claude Code CLI" toggle: GET reports the current state, POST
+// connects (body carries the base URL the frontend already displays) or
+// disconnects (writes/restores env.ANTHROPIC_BASE_URL and
+// env.ANTHROPIC_API_KEY in ~/.claude/settings.json — see
+// internal/app/claudecodecli.go for why this is CLI-only and never touches
+// any separate Claude desktop app).
+func (s *Server) handleClaudeCodeCLIConnection(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusServiceUnavailable)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]any{"connected": s.fullBridge.GetClaudeCodeCLIConnected()})
+	case http.MethodPost:
+		var body struct {
+			Connect bool   `json:"connect"`
+			BaseURL string `json:"base_url"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		var err error
+		if body.Connect {
+			if body.BaseURL == "" {
+				http.Error(w, `"base_url" is required to connect`, http.StatusBadRequest)
+				return
+			}
+			err = s.fullBridge.ConnectClaudeCodeCLI(body.BaseURL)
+		} else {
+			err = s.fullBridge.DisconnectClaudeCodeCLI()
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"connected": s.fullBridge.GetClaudeCodeCLIConnected()})
+	default:
+		http.Error(w, "GET or POST only", http.StatusMethodNotAllowed)
+	}
+}
+
 // devGatewayAuthOK reports whether an incoming /v1/messages request may
 // proceed, independent of remoteAuthMiddleware's listenAddr-gated check —
 // the dev gateway's "require API key" setting applies (or doesn't) the same

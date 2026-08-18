@@ -66,6 +66,13 @@ type ChatRequest struct {
 	// this struct's Messages field carries for HTTP providers.
 	ResumeSessionID string
 	WorkDir         string
+
+	// EffortLevel is the caller's resolved copy of the active
+	// ProviderConfig.EffortLevel for this call — see that field's doc
+	// comment. Threaded through ChatRequest (rather than each provider
+	// reading app-level config directly) so this package stays free of
+	// any dependency on internal/app/internal/config.
+	EffortLevel string
 }
 
 // Message represents a single message in a conversation.
@@ -181,6 +188,14 @@ type ProviderConfig struct {
 	Temperature float64      `json:"temperature,omitempty"`
 	TopP        float64      `json:"top_p,omitempty"`
 	MaxTokens   int          `json:"max_tokens,omitempty"`
+	// EffortLevel controls reasoning/thinking depth on models that support
+	// it — deliberately per-provider, not a single global setting like
+	// Temperature/TopP effectively are today (see effort.go's package doc
+	// comment): the valid values and even the request shape differ by
+	// vendor, so a value picked for one provider is often meaningless or
+	// invalid for another. Empty means "don't send anything, let the
+	// provider/model use its own default." See EffortLevelsForType.
+	EffortLevel string `json:"effort_level,omitempty"`
 	// ContextTokens is the model's context-window size, used to budget how much
 	// chat history is packed into each request. 0 = use a sensible default.
 	ContextTokens int `json:"context_tokens,omitempty"`

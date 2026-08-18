@@ -35,25 +35,25 @@ func newGeminiProvider(cfg ProviderConfig) (*geminiProvider, error) {
 		client: &http.Client{
 			Timeout: 120 * time.Second,
 			Transport: &http.Transport{
-				MaxIdleConns:        10,
-				MaxIdleConnsPerHost: 10,
-				IdleConnTimeout:          90 * time.Second,
-				ResponseHeaderTimeout:    30 * time.Second,
+				MaxIdleConns:          10,
+				MaxIdleConnsPerHost:   10,
+				IdleConnTimeout:       90 * time.Second,
+				ResponseHeaderTimeout: 30 * time.Second,
 			},
 		},
 		streamCl: &http.Client{
 			Transport: &http.Transport{
-				MaxIdleConns:        10,
-				MaxIdleConnsPerHost: 10,
-				IdleConnTimeout:          90 * time.Second,
-				ResponseHeaderTimeout:    30 * time.Second,
+				MaxIdleConns:          10,
+				MaxIdleConnsPerHost:   10,
+				IdleConnTimeout:       90 * time.Second,
+				ResponseHeaderTimeout: 30 * time.Second,
 			},
 		},
 	}, nil
 }
 
 func (p *geminiProvider) Name() ProviderType  { return ProviderGemini }
-func (p *geminiProvider) DisplayName() string  { return "Google Gemini" }
+func (p *geminiProvider) DisplayName() string { return "Google Gemini" }
 
 func (p *geminiProvider) ListModels(ctx context.Context) ([]string, error) {
 	u := fmt.Sprintf("%s/models", p.baseURL)
@@ -70,7 +70,7 @@ func (p *geminiProvider) ListModels(ctx context.Context) ([]string, error) {
 
 	var result struct {
 		Models []struct {
-			Name       string `json:"name"`
+			Name        string `json:"name"`
 			DisplayName string `json:"displayName"`
 		} `json:"models"`
 	}
@@ -85,9 +85,9 @@ func (p *geminiProvider) ListModels(ctx context.Context) ([]string, error) {
 }
 
 type geminiRequest struct {
-	Contents         []geminiContent `json:"contents"`
-	GenerationConfig *geminiGenConfig `json:"generationConfig,omitempty"`
-	SystemInstruction *geminiContent  `json:"system_instruction,omitempty"`
+	Contents          []geminiContent  `json:"contents"`
+	GenerationConfig  *geminiGenConfig `json:"generationConfig,omitempty"`
+	SystemInstruction *geminiContent   `json:"system_instruction,omitempty"`
 }
 
 type geminiContent struct {
@@ -100,9 +100,21 @@ type geminiPart struct {
 }
 
 type geminiGenConfig struct {
-	Temperature float64  `json:"temperature,omitempty"`
-	TopP        float64  `json:"topP,omitempty"`
-	MaxOutputTokens int `json:"maxOutputTokens,omitempty"`
+	Temperature     float64               `json:"temperature,omitempty"`
+	TopP            float64               `json:"topP,omitempty"`
+	MaxOutputTokens int                   `json:"maxOutputTokens,omitempty"`
+	ThinkingConfig  *geminiThinkingConfig `json:"thinkingConfig,omitempty"`
+}
+
+// geminiThinkingConfig is generateContent's own thinking control (verified
+// against current Gemini API docs, 2026-08-18) — a token budget, not a
+// named effort level like every other vendor in this package. See
+// GeminiThinkingBudgetForLevel (effort.go) for the label→budget mapping
+// Memo's own UI uses to keep the same low/medium/high/max vocabulary
+// consistent across providers despite Gemini's API shape being different
+// underneath.
+type geminiThinkingConfig struct {
+	ThinkingBudget int `json:"thinkingBudget"`
 }
 
 type geminiResponse struct {
@@ -290,6 +302,9 @@ func (p *geminiProvider) buildGeminiRequest(req ChatRequest) geminiRequest {
 			TopP:            req.TopP,
 			MaxOutputTokens: req.MaxTokens,
 		},
+	}
+	if budget, ok := GeminiThinkingBudgetForLevel(req.EffortLevel); ok {
+		gReq.GenerationConfig.ThinkingConfig = &geminiThinkingConfig{ThinkingBudget: budget}
 	}
 
 	var systemText string

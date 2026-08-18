@@ -36,6 +36,9 @@ class _ProviderConfigDialogState
   bool _showAdvanced = false;
   bool _obscureKey = true;
   String? _saveError;
+  String _effortLevel = '';
+  List<String> _availableEffortLevels = [];
+  bool _loadingEffortLevels = false;
 
   final _types = [
     'openai',
@@ -88,10 +91,42 @@ class _ProviderConfigDialogState
     _apiKeyCtrl.addListener(_invalidateTestResult);
     _baseUrlCtrl.addListener(_invalidateTestResult);
     _modelCtrl.addListener(_invalidateTestResult);
+
+    _effortLevel = existing?.effortLevel ?? '';
+    _loadEffortLevels();
   }
 
   void _invalidateTestResult() {
     if (_testResult != null) setState(() => _testResult = null);
+  }
+
+  /// Refetches which effort labels _type (and, for OpenRouter, the current
+  /// model field) actually accepts — see MemoApiClient.getEffortLevels's
+  /// doc comment. Called on init, on type change, and via the manual
+  /// refresh button next to the dropdown for OpenRouter (model text isn't
+  /// watched live to avoid a network call per keystroke).
+  Future<void> _loadEffortLevels() async {
+    setState(() => _loadingEffortLevels = true);
+    List<String> levels;
+    try {
+      levels = await ref.read(apiClientProvider).getEffortLevels(
+            _type,
+            model: _type == 'openrouter' ? _modelCtrl.text.trim() : null,
+          );
+    } catch (_) {
+      levels = [];
+    }
+    if (!mounted) return;
+    setState(() {
+      _availableEffortLevels = levels;
+      _loadingEffortLevels = false;
+      // A level that's no longer in the fresh list (type changed, or this
+      // OpenRouter model doesn't support what a previous model did) must
+      // not linger as a silently-invalid selection.
+      if (_effortLevel.isNotEmpty && !levels.contains(_effortLevel)) {
+        _effortLevel = '';
+      }
+    });
   }
 
   @override
@@ -123,6 +158,7 @@ class _ProviderConfigDialogState
             ProviderDefaults.defaultModels[type] ?? '';
       }
     });
+    _loadEffortLevels();
   }
 
   Future<void> _openModelBrowser() async {
@@ -328,6 +364,7 @@ class _ProviderConfigDialogState
         temperature: existing?.temperature ?? 0.7,
         topP: existing?.topP ?? 0.9,
         maxTokens: existing?.maxTokens ?? 0,
+        effortLevel: _effortLevel,
       );
 
       // Called directly (not via providerListProvider.notifier.updateProvider)
@@ -644,6 +681,60 @@ class _ProviderConfigDialogState
                           helperText: L10n.t('priority_hint'),
                         ),
                       ),
+                      // Reasoning effort — only shown when this provider
+                      // type actually has one (levels come from the
+                      // backend, per type, not a value Memo hardcodes once
+                      // for everyone; see MemoApiClient.getEffortLevels).
+                      // OpenRouter's list depends on the chosen model, so
+                      // it gets its own manual-refresh affordance instead
+                      // of a per-keystroke network call.
+                      if (_loadingEffortLevels || _availableEffortLevels.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                initialValue: _availableEffortLevels.contains(_effortLevel)
+                                    ? _effortLevel
+                                    : null,
+                                decoration: InputDecoration(
+                                  labelText: L10n.t('effort_level_label'),
+                                  border: const OutlineInputBorder(),
+                                  helperText: _type == 'claude'
+                                      ? L10n.t('effort_level_hint_claude')
+                                      : L10n.t('effort_level_hint'),
+                                  helperMaxLines: 3,
+                                ),
+                                items: [
+                                  DropdownMenuItem(
+                                    value: null,
+                                    child: Text(L10n.t('effort_level_default')),
+                                  ),
+                                  ..._availableEffortLevels.map(
+                                    (level) => DropdownMenuItem(value: level, child: Text(level)),
+                                  ),
+                                ],
+                                onChanged: (v) => setState(() => _effortLevel = v ?? ''),
+                              ),
+                            ),
+                            if (_type == 'openrouter') ...[
+                              const SizedBox(width: 8),
+                              IconButton(
+                                tooltip: L10n.t('effort_level_refresh'),
+                                icon: _loadingEffortLevels
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.refresh, size: 20),
+                                onPressed: _loadingEffortLevels ? null : _loadEffortLevels,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),

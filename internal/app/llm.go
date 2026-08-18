@@ -98,6 +98,26 @@ func (a *App) activeProviderModel(name string) string {
 	return ""
 }
 
+// activeProviderEffortLevel mirrors activeProviderModel above, for
+// provider.ProviderConfig.EffortLevel — deliberately per-provider-config,
+// not a single global setting like Temperature/TopP (a.cfg.Llama.*) are
+// today, since the valid values (and even the request shape) differ by
+// vendor. See provider/effort.go's package doc comment.
+func (a *App) activeProviderEffortLevel(name string) string {
+	a.providerMu.RLock()
+	cfgMgr := a.providerCfgMgr
+	a.providerMu.RUnlock()
+	if cfgMgr == nil {
+		return ""
+	}
+	for _, p := range cfgMgr.GetEnabled() {
+		if p.Name == name {
+			return p.EffortLevel
+		}
+	}
+	return ""
+}
+
 // localModelName returns the currently loaded local llama.cpp model's name,
 // mirroring resolveAgentProvider's own fallback (internal/app/llm.go:72-75).
 func (a *App) localModelName() string {
@@ -764,6 +784,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				TopP:        a.cfg.Llama.TopP,
 				MaxTokens:   a.cfg.Llama.MaxTokens,
 				Stream:      true,
+				EffortLevel: a.activeProviderEffortLevel(activeName),
 			}
 			a.cfgMu.RUnlock()
 
@@ -1227,6 +1248,7 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 			Temperature: a.cfg.Llama.Temperature,
 			TopP:        a.cfg.Llama.TopP,
 			MaxTokens:   a.cfg.Llama.MaxTokens,
+			EffortLevel: a.activeProviderEffortLevel(activeName),
 		}
 		a.cfgMu.RUnlock()
 

@@ -17,6 +17,14 @@ class ProviderConfig {
   final bool connected;
   final String? error;
 
+  /// Reasoning/thinking effort label — deliberately per-provider (mirrors
+  /// Go provider.ProviderConfig.EffortLevel), since the valid values (and
+  /// even the request shape) differ by vendor. Empty means "let the
+  /// provider/model use its own default." See EffortLevels
+  /// (provider_config.dart bottom) for where the UI's per-type option
+  /// lists come from.
+  final String effortLevel;
+
   const ProviderConfig({
     required this.type,
     required this.name,
@@ -31,6 +39,7 @@ class ProviderConfig {
     this.contextTokens = 0,
     this.connected = false,
     this.error,
+    this.effortLevel = '',
   });
 
   factory ProviderConfig.fromJson(Map<String, dynamic> json) {
@@ -48,6 +57,7 @@ class ProviderConfig {
       contextTokens: json['context_tokens'] as int? ?? 0,
       connected: json['connected'] as bool? ?? false,
       error: json['error'] as String?,
+      effortLevel: json['effort_level'] as String? ?? '',
     );
   }
 
@@ -64,6 +74,7 @@ class ProviderConfig {
       'top_p': topP,
       'max_tokens': maxTokens,
       'context_tokens': contextTokens,
+      'effort_level': effortLevel,
     };
   }
 
@@ -81,6 +92,7 @@ class ProviderConfig {
     int? contextTokens,
     bool? connected,
     String? error,
+    String? effortLevel,
   }) {
     return ProviderConfig(
       type: type ?? this.type,
@@ -96,6 +108,7 @@ class ProviderConfig {
       contextTokens: contextTokens ?? this.contextTokens,
       connected: connected ?? this.connected,
       error: error ?? this.error,
+      effortLevel: effortLevel ?? this.effortLevel,
     );
   }
 }

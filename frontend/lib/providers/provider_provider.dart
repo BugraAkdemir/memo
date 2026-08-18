@@ -68,6 +68,31 @@ class ProviderListNotifier extends AsyncNotifier<List<ProviderConfig>> {
   }
 }
 
+/// Which reasoning-effort labels a given (provider type, model) accepts —
+/// same lookup provider_config_dialog.dart's _loadEffortLevels does by hand,
+/// but keyed/cached by Riverpod so the chat screen's quick-select (which
+/// rebuilds far more often, on every active-provider/provider-list change)
+/// doesn't refire the network call on every rebuild. model only matters for
+/// OpenRouter (see MemoApiClient.getEffortLevels); pass '' for every other
+/// type.
+final effortLevelsProvider = FutureProvider.family<List<String>, (String type, String model)>((
+  ref,
+  key,
+) async {
+  if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
+  try {
+    return await ref
+        .read(apiClientProvider)
+        .getEffortLevels(key.$1, model: key.$2.isEmpty ? null : key.$2);
+  } catch (_) {
+    // Ambient/background lookup behind a chat-screen widget the user didn't
+    // explicitly open — same silence rationale as ActiveProviderNotifier
+    // below: surfacing a raw exception here would spam errorMessageProvider
+    // on every unreachable-backend rebuild. The widget just hides itself.
+    return const [];
+  }
+});
+
 /// Active provider provider (yes, the name).
 final activeProviderTypeProvider =
     AsyncNotifierProvider<ActiveProviderNotifier, String>(

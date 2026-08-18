@@ -35,25 +35,25 @@ func newClaudeProvider(cfg ProviderConfig) (*claudeProvider, error) {
 		client: &http.Client{
 			Timeout: 120 * time.Second,
 			Transport: &http.Transport{
-				MaxIdleConns:        10,
-				MaxIdleConnsPerHost: 10,
-				IdleConnTimeout:          90 * time.Second,
-				ResponseHeaderTimeout:    30 * time.Second,
+				MaxIdleConns:          10,
+				MaxIdleConnsPerHost:   10,
+				IdleConnTimeout:       90 * time.Second,
+				ResponseHeaderTimeout: 30 * time.Second,
 			},
 		},
 		streamCl: &http.Client{
 			Transport: &http.Transport{
-				MaxIdleConns:        10,
-				MaxIdleConnsPerHost: 10,
-				IdleConnTimeout:          90 * time.Second,
-				ResponseHeaderTimeout:    30 * time.Second,
+				MaxIdleConns:          10,
+				MaxIdleConnsPerHost:   10,
+				IdleConnTimeout:       90 * time.Second,
+				ResponseHeaderTimeout: 30 * time.Second,
 			},
 		},
 	}, nil
 }
 
 func (p *claudeProvider) Name() ProviderType  { return ProviderClaude }
-func (p *claudeProvider) DisplayName() string  { return "Anthropic Claude" }
+func (p *claudeProvider) DisplayName() string { return "Anthropic Claude" }
 
 func (p *claudeProvider) ListModels(ctx context.Context) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/models", nil)
@@ -87,13 +87,39 @@ func (p *claudeProvider) ListModels(ctx context.Context) ([]string, error) {
 }
 
 type claudeRequest struct {
-	Model       string          `json:"model"`
-	MaxTokens   int             `json:"max_tokens"`
-	Messages    []claudeMsg     `json:"messages"`
-	System      string          `json:"system,omitempty"`
-	Temperature float64         `json:"temperature,omitempty"`
-	TopP        float64         `json:"top_p,omitempty"`
-	Stream      bool            `json:"stream"`
+	Model        string              `json:"model"`
+	MaxTokens    int                 `json:"max_tokens"`
+	Messages     []claudeMsg         `json:"messages"`
+	System       string              `json:"system,omitempty"`
+	Temperature  float64             `json:"temperature,omitempty"`
+	TopP         float64             `json:"top_p,omitempty"`
+	Stream       bool                `json:"stream"`
+	Thinking     *claudeThinking     `json:"thinking,omitempty"`
+	OutputConfig *claudeOutputConfig `json:"output_config,omitempty"`
+}
+
+// claudeThinking/claudeOutputConfig implement adaptive thinking — the
+// vendor's current mechanism (thinking:{type:"adaptive"} paired with
+// output_config.effort), verified against current Anthropic docs
+// (2026-08-18). Deliberately NOT the older thinking:{type:"enabled",
+// budget_tokens:N} manual-budget mode: that mode is deprecated on Claude
+// 4.6-generation models (still works, with a warning) and rejected outright
+// (400) on 4.7 and later — adaptive mode is what Anthropic tells
+// integrators to move to. The mirror-image risk exists in the other
+// direction: adaptive mode itself 400s on Claude Sonnet 4.5, Opus 4.5,
+// Haiku 4.5 and earlier, which support only the deprecated manual mode.
+// There is no single request shape that is safe across every Claude model
+// generation without Memo tracking model-version compatibility, which it
+// doesn't do today — this is a known, accepted limitation: picking an
+// effort level on a pre-4.6 Claude model will fail with a 400 from
+// Anthropic's API, surfaced through the normal provider-error path like
+// any other rejected request, not silently swallowed.
+type claudeThinking struct {
+	Type string `json:"type"` // always "adaptive" here
+}
+
+type claudeOutputConfig struct {
+	Effort string `json:"effort,omitempty"`
 }
 
 type claudeMsg struct {
@@ -107,13 +133,13 @@ type claudeBlock struct {
 }
 
 type claudeResponse struct {
-	ID      string          `json:"id"`
-	Type    string          `json:"type"`
-	Role    string          `json:"role"`
-	Content []claudeBlock   `json:"content"`
-	Model   string          `json:"model"`
-	Usage   *claudeUsage    `json:"usage,omitempty"`
-	StopReason string       `json:"stop_reason,omitempty"`
+	ID         string        `json:"id"`
+	Type       string        `json:"type"`
+	Role       string        `json:"role"`
+	Content    []claudeBlock `json:"content"`
+	Model      string        `json:"model"`
+	Usage      *claudeUsage  `json:"usage,omitempty"`
+	StopReason string        `json:"stop_reason,omitempty"`
 }
 
 type claudeUsage struct {
@@ -342,6 +368,10 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 	}
 	if clReq.MaxTokens <= 0 {
 		clReq.MaxTokens = 4096
+	}
+	if req.EffortLevel != "" {
+		clReq.Thinking = &claudeThinking{Type: "adaptive"}
+		clReq.OutputConfig = &claudeOutputConfig{Effort: req.EffortLevel}
 	}
 
 	return clReq

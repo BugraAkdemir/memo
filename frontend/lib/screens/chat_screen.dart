@@ -683,6 +683,108 @@ class _QuickModelDropdown extends ConsumerWidget {
   }
 }
 
+/// Compact reasoning-effort quick-select shown next to _QuickModelDropdown.
+/// Hides itself entirely (SizedBox.shrink) whenever there's nothing useful
+/// to show: local mode, a CLI-backed provider (Claude Code/Codex are real
+/// agents with their own effort handling, not Memo's HTTP provider path —
+/// see ProviderDefaults.isCLIType), no matching provider config, or a
+/// provider/model combination effortLevelsProvider reports as having no
+/// effort levels at all (e.g. OpenRouter before a model is chosen, or a
+/// model that just doesn't support it).
+class _QuickEffortSelector extends ConsumerWidget {
+  const _QuickEffortSelector();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activeName = ref.watch(activeProviderTypeProvider).valueOrNull ?? '';
+    final cliType = ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '';
+    if (activeName.isEmpty || cliType.isNotEmpty) return const SizedBox.shrink();
+
+    final providers = ref.watch(providerListProvider).valueOrNull ?? const <ProviderConfig>[];
+    final match = providers.where((p) => p.name == activeName);
+    if (match.isEmpty) return const SizedBox.shrink();
+    final config = match.first;
+
+    final levelsAsync = ref.watch(
+      effortLevelsProvider((config.type, config.type == 'openrouter' ? config.model : '')),
+    );
+    final levels = levelsAsync.valueOrNull ?? const <String>[];
+    if (levels.isEmpty) return const SizedBox.shrink();
+
+    final c = MemoTheme.of(context);
+    final current = levels.contains(config.effortLevel) ? config.effortLevel : '';
+    final label = current.isEmpty ? L10n.t('effort_level_default') : current;
+
+    Future<void> pick(String value) async {
+      try {
+        await ref.read(apiClientProvider).updateProvider(config.copyWith(effortLevel: value));
+        ref.invalidate(providerListProvider);
+      } catch (e) {
+        ref.read(errorMessageProvider.notifier).state =
+            L10n.t('switch_failed', {'e': e.toString()});
+      }
+    }
+
+    return Tooltip(
+      message: L10n.t('effort_level_label'),
+      child: PopupMenuButton<String>(
+        tooltip: '',
+        onSelected: pick,
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: '',
+            child: _QuickModelMenuRow(
+              leading: Icon(Icons.psychology_outlined, size: 18, color: c.textMuted),
+              label: L10n.t('effort_level_default'),
+              isActive: current.isEmpty,
+            ),
+          ),
+          for (final level in levels)
+            PopupMenuItem(
+              value: level,
+              child: _QuickModelMenuRow(
+                leading: Icon(Icons.psychology_outlined, size: 18, color: c.textMuted),
+                label: level,
+                isActive: current == level,
+              ),
+            ),
+        ],
+        child: Container(
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          constraints: const BoxConstraints(maxWidth: 110),
+          decoration: BoxDecoration(
+            color: c.bgElement,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: c.borderSoft),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.psychology_outlined, size: 15, color: c.textMuted),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: c.textMain,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.expand_more, size: 16, color: c.textDim),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _QuickModelMenuRow extends StatelessWidget {
   final Widget leading;
   final String label;
@@ -780,6 +882,10 @@ class _ChatTopBar extends ConsumerWidget {
       // Quick model/provider switch dropdown — local model, every
       // enabled API provider, and a shortcut to add a new one.
       const _QuickModelDropdown(),
+
+      // Reasoning-effort quick-select — only renders itself when the active
+      // provider/model actually has effort levels to offer.
+      const _QuickEffortSelector(),
 
       // Undo button (only when agent mode is on)
       if (isAgentEnabled)

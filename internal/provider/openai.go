@@ -36,11 +36,11 @@ func newOpenAIProvider(cfg ProviderConfig) (*openAIProvider, error) {
 		baseURL = DefaultBaseURL(ProviderOpenAI)
 	}
 	return &openAIProvider{
-		cfg:    cfg,
+		cfg:      cfg,
 		provType: provType,
-		baseURL: strings.TrimRight(baseURL, "/"),
-		model:  cfg.Model,
-		apiKey: cfg.APIKey,
+		baseURL:  strings.TrimRight(baseURL, "/"),
+		model:    cfg.Model,
+		apiKey:   cfg.APIKey,
 		client: &http.Client{
 			Timeout: 120 * time.Second,
 			Transport: &http.Transport{
@@ -80,6 +80,22 @@ func (p *openAIProvider) DisplayName() string {
 	return "OpenAI"
 }
 
+// applyEffortLevel sets body's reasoning-effort field in whichever shape
+// p's actual configured type expects — see openAIChatRequest's
+// ReasoningEffort/Reasoning doc comments for why OpenRouter alone needs the
+// nested form. No-ops on an empty level (the "let the model use its own
+// default" case).
+func (p *openAIProvider) applyEffortLevel(body *openAIChatRequest, level string) {
+	if level == "" {
+		return
+	}
+	if p.provType == ProviderOpenRouter {
+		body.Reasoning = &openAIReasoning{Effort: level}
+		return
+	}
+	body.ReasoningEffort = level
+}
+
 func (p *openAIProvider) ListModels(ctx context.Context) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/models", nil)
 	if err != nil {
@@ -109,26 +125,45 @@ func (p *openAIProvider) ListModels(ctx context.Context) ([]string, error) {
 }
 
 type openAIChatRequest struct {
-	Model       string          `json:"model"`
-	Messages    []openAIMessage `json:"messages"`
-	Temperature float64         `json:"temperature,omitempty"`
-	TopP        float64         `json:"top_p,omitempty"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Stream      bool            `json:"stream"`
+	Model       string           `json:"model"`
+	Messages    []openAIMessage  `json:"messages"`
+	Temperature float64          `json:"temperature,omitempty"`
+	TopP        float64          `json:"top_p,omitempty"`
+	MaxTokens   int              `json:"max_tokens,omitempty"`
+	Stream      bool             `json:"stream"`
 	Tools       []ToolDefinition `json:"tools,omitempty"`
+	// ReasoningEffort is Chat Completions' flat "reasoning_effort" field
+	// (verified against current OpenAI API docs, 2026-08-18) — accepted,
+	// silently ignored by non-reasoning models. Same field name/shape also
+	// covers Grok, Groq, Ollama's OpenAI-compat endpoint, and llama-server
+	// (see grok.go/groq.go/ollama.go/llamacpp.go), and OpenCode Zen/Go for
+	// free via this struct. OpenRouter is the one wrapper that does NOT
+	// use this field — see Reasoning below.
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	// Reasoning is OpenRouter's own nested shape (verified against current
+	// OpenRouter docs, 2026-08-18) — OpenRouter's API does not accept the
+	// flat reasoning_effort field at all, only {"reasoning":{"effort":...}}.
+	// Populated instead of ReasoningEffort when provType==ProviderOpenRouter
+	// (see buildOpenAIChatRequest below); every other OpenAI-compatible
+	// wrapper leaves this nil.
+	Reasoning *openAIReasoning `json:"reasoning,omitempty"`
+}
+
+type openAIReasoning struct {
+	Effort string `json:"effort,omitempty"`
 }
 
 type openAIMessage struct {
-	Role       string           `json:"role"`
-	Content    interface{}      `json:"content"`
-	ToolCallID string           `json:"tool_call_id,omitempty"`
-	ToolCalls  []ToolCall       `json:"tool_calls,omitempty"`
+	Role       string      `json:"role"`
+	Content    interface{} `json:"content"`
+	ToolCallID string      `json:"tool_call_id,omitempty"`
+	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
 }
 
 type openAIChoice struct {
-	Index        int              `json:"index"`
+	Index        int               `json:"index"`
 	Message      openAIResponseMsg `json:"message"`
-	FinishReason string           `json:"finish_reason"`
+	FinishReason string            `json:"finish_reason"`
 }
 
 type openAIResponseMsg struct {
@@ -166,6 +201,7 @@ func (p *openAIProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 		Stream:      false,
 		Tools:       req.Tools,
 	}
+	p.applyEffortLevel(&body, req.EffortLevel)
 	body.Messages = p.toOpenAIMessages(req.Messages)
 
 	jsonBody, err := json.Marshal(body)
@@ -226,6 +262,7 @@ func (p *openAIProvider) ChatCompletionStream(ctx context.Context, req ChatReque
 		Stream:      true,
 		Tools:       req.Tools,
 	}
+	p.applyEffortLevel(&body, req.EffortLevel)
 	body.Messages = p.toOpenAIMessages(req.Messages)
 
 	jsonBody, err := json.Marshal(body)
@@ -326,9 +363,9 @@ type openAIStreamChunk struct {
 }
 
 type openAIStreamChoice struct {
-	Index        int                `json:"index"`
-	Delta        openAIStreamDelta  `json:"delta"`
-	FinishReason *string            `json:"finish_reason"`
+	Index        int               `json:"index"`
+	Delta        openAIStreamDelta `json:"delta"`
+	FinishReason *string           `json:"finish_reason"`
 }
 
 type openAIStreamDelta struct {

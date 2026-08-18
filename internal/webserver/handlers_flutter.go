@@ -1493,6 +1493,7 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			Temperature float64               `json:"temperature"`
 			TopP        float64               `json:"top_p"`
 			MaxTokens   int                   `json:"max_tokens"`
+			EffortLevel string                `json:"effort_level"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
@@ -1509,6 +1510,7 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			Temperature: req.Temperature,
 			TopP:        req.TopP,
 			MaxTokens:   req.MaxTokens,
+			EffortLevel: req.EffortLevel,
 		}
 		if err := s.fullBridge.UpdateProvider(cfg); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

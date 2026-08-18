@@ -373,6 +373,39 @@ trafiğini proxy'lemek gerekirdi; onun yerine mock provider'a giden
 API anahtarıyla gerçek bir sağlayıcıyı çağırıp 401 almaktan (payload'ı hiç
 göstermez) daha güçlü bir kanıt.
 
+## Devam — OpenCode Zen/Go için sahte reasoning effort listesi düzeltildi (`5a0cac9`)
+
+Kullanıcı canlı kullanırken yakaladı: OpenCode Zen'de `hy3-free` modeli
+hiç effort konsepti olmamasına rağmen tam bir `none..max` picker
+gösteriyordu, `deepseek-v4-flash` ise gerçekte (OpenRouter'ın aynı modele
+ait `supported_efforts` alanıyla doğrulandı) sadece `max/high/low`
+destekliyorken OpenAI'nin `xhigh` seçeneği anlamsızca çıkıyordu.
+
+**Kök neden:** `effort.go`, OpenCode Zen/Go'yu "ince OpenAI-uyumlu
+wrapper, aynı düz `reasoning_effort` alanını kullanıyor" gerekçesiyle
+OpenAI'nin statik tablosuna sokmuştu — bu, **istek şekli** için doğru ama
+proxy'lenen modelin **hangi değerleri gerçekten kabul ettiği** hakkında
+hiçbir şey söylemiyor. İkisi de OpenRouter gibi birçok farklı vendor'ın
+modelini tek endpoint arkasında toplayan aggregator'lar — ama OpenRouter'ın
+aksine OpenCode'un `/models` uç noktası (canlı kontrol edildi) sade
+`{id, object, created, owned_by}` dönüyor, hiç capability alanı yok.
+Model-bazlı hangi etiketin geçerli olduğunu bilmenin yolu yok.
+
+**Fix:** `ProviderOpenCodeZen`/`ProviderOpenCodeGo`, `effortLevelsByType`
+tablosundan tamamen çıkarıldı — artık `ProviderCustom`/CLI tipleri gibi
+"bilinen seviye yok" grubunda, picker kendini tamamen gizliyor (tahmin
+etmek yerine sessiz kalmak tercih edildi). Kullanıcının kendi gerçek
+`~/.memo/data/providers.json`'ı kontrol edildi — `opencode-zen` girdisinde
+(`model: "hy3-free"`) henüz kaydedilmiş bir `effort_level` yoktu, yani bu
+sadece bir UI/API gösterim buguydu, temizlenmesi gereken bozuk bir veri
+yoktu.
+
+**Doğrulama:** `effort_test.go`'daki iki OpenCode test case'i boş liste
+beklentisine güncellendi; canlı curl ile `GET
+/api/providers/effort-levels?type=opencode-zen` ve `type=opencode-go`
+artık `{"levels":[]}` dönüyor, `type=openai` hâlâ gerçek listesini
+veriyor. `go build`/`go vet`/`go test -race ./...` tüm repo'da yeşil.
+
 ## Sıradaki işler
 
 1. ~~**RPi'nin build'i güncellenmedi**~~ → **düzeltildi, RPi'ye gerçek

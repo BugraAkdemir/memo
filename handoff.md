@@ -1,25 +1,28 @@
-# Session 15 (2026-08-18): RPi'de canlı bug avı — Incognito Mode'un takılı kalması, sohbet cevaplarının kaybolması
+# Session 15 (2026-08-18): RPi'de canlı bug avı — Incognito takılı kalması, Cloudflare tunnel auth bypass, kurulum ekranı bug'ı
 
 Kullanıcı RPi'de (`192.168.1.106:8090`, `bugraa`) çalışan self-hosted Memo'yu
 elle test ederken üç "saçma" bug rapor etti: kurulum tamamlanmış olsa bile
 her girişte kurulum ekranı geri geliyor, hafıza modeli arayüzde açık
-görünüyor ama fiilen kapalı gibi davranıyor, ve bir süre sohbet ettikten
-sonra sayfa yenilenince AI'ın verdiği cevaplar sanki hiç yazılmamış gibi
-kayboluyor. Tarayıcı aracı bu LAN IP'sine erişimde onay kilidine takıldığı
-için teşhis SSH (`sshpass`, `bugraa@192.168.1.106`) + canlı `curl`/log
-incelemesiyle yapıldı, koddaki gerçek kusurlar Explore ile doğrulandı.
+görünüyor ama fiilen kapalı gibi davranıyor, bir süre sohbet ettikten sonra
+sayfa yenilenince AI'ın cevapları kayboluyor. Tarayıcı aracı bu LAN IP'sine
+erişimde onay kilidine takıldığı için teşhis SSH (`sshpass`,
+`bugraa@192.168.1.106`) + canlı `curl`/log incelemesiyle yapıldı. İkinci
+turda kullanıcı ayrıca "Cloudflare tunnel açtım, şifre sormadan girebiliyorum"
+dedi — bu, ayrı ve çok daha ciddi bir güvenlik açığı olarak doğrulandı.
+Toplam **4 commit** (`6a772d2`, `3e4be88`, `7ff3517`, `2d3bc5a`), hepsi
+push'landı (GitHub + `web.bugradev.com` mirror).
 
 ## Bulunan kök nedenler
 
 1. **Kurulum ekranının geri gelmesi** — backend tarafı doğru
    (`GET /api/setup/status` → `needs_setup:false`, hesap zaten var).
-   Kusur tamamen frontend'de: `setupCompleteProvider`
-   (`frontend/lib/providers/settings_provider.dart:140`) tamamen tarayıcının
+   Kusur frontend'de: `setupCompleteProvider`
+   (`frontend/lib/providers/settings_provider.dart`) tamamen tarayıcının
    yerel `SharedPreferences`/localStorage'ındaki `memo_setup_complete`
-   bayrağına bakıyor, backend'in gerçek durumuna hiç sormuyor. Tarayıcı
-   verisi temizlenince/farklı tarayıcıdan girilince backend zaten kurulu
-   olsa bile sihirbaz yeniden çıkıyor. **Teşhis edildi, henüz kodda
-   düzeltilmedi** (kapsam dışı bırakıldı, aşağıya not düşüldü).
+   bayrağına bakıyordu, backend'in gerçek durumuna hiç sormuyordu —
+   localStorage origin'e özel olduğu için aynı backend'e LAN IP'sinden ve
+   tünel domain'inden girmek iki ayrı, hiç senkron olmayan depo demekti.
+   **Düzeltildi** (bkz. aşağıdaki commit `2d3bc5a`).
 
 2. **Hafıza "açık görünüp kapalı" + AI cevaplarının kaybolması — aynı kök
    neden:** RPi'nin backend'inde **Incognito Mode global olarak açık
@@ -28,79 +31,131 @@ incelemesiyle yapıldı, koddaki gerçek kusurlar Explore ile doğrulandı.
    `isIncognito` tek, süreç ömrü boyunca kalıcı bir bayrak — sohbet
    değiştirme, sayfa yenileme, yeni sekme hiçbiri onu resetlemiyor, sadece
    açık `ToggleIncognito` çağrısı değiştiriyor. `SendMessageStreamTo`
-   (gerçek sohbet ekranının kullandığı yol) kullanıcının mesajını
-   incognito'dan bağımsız her zaman oturuma kaydediyor
-   (`sendMessageStreamCore`, `chat.go:376`), ama asistanın cevabı
-   `finishStream` içinde incognito açıkken sessizce ayrı, session'a
+   kullanıcının mesajını incognito'dan bağımsız her zaman oturuma
+   kaydediyor (`sendMessageStreamCore`, `chat.go:376`), ama asistanın
+   cevabı `finishStream` içinde incognito açıkken sessizce ayrı, session'a
    yazılmayan bir buffer'a (`a.incognitoMessages`) yönlendiriliyor
-   (`llm.go:1096-1107`). Sonuç: kullanıcının mesajı kalıcı, AI'ın cevabı
-   sayfa yenilenince yok. Frontend tarafında asıl kusur:
-   `IncognitoNotifier` (`chat_provider.dart`) her sayfa yüklemesinde
-   backend'e sormadan sabit `false` ile başlıyordu — bu yüzden bir önceki
-   sekmede açık bırakılan incognito, yeni sekme/refresh'te arayüzde
-   "kapalı" görünüyordu, hiçbir uyarı yoktu, ve `chat_sidebar.dart`'taki
-   var olan "normal sohbete geçince incognito'yu otomatik kapat" mantığı
-   da (zaten yazılmıştı) bu yüzden hiç tetiklenmiyordu.
+   (`llm.go:1096-1107`). Frontend tarafında asıl kusur: `IncognitoNotifier`
+   (`chat_provider.dart`) her sayfa yüklemesinde backend'e sormadan sabit
+   `false` ile başlıyordu — bir önceki sekmede açık bırakılan incognito,
+   yeni sekme/refresh'te arayüzde "kapalı" görünüyordu, hiçbir uyarı yoktu,
+   ve `chat_sidebar.dart`'taki var olan "normal sohbete geçince incognito'yu
+   otomatik kapat" mantığı da (zaten yazılmıştı) bu yüzden hiç
+   tetiklenmiyordu. **Düzeltildi** (`6a772d2`).
 
 3. **Yan bulgu, RPi'de aktif ama zaten üst akışta düzeltilmiş:** loglarda
    tekrarlayan `"MEMORY: stats count query: ... converting NULL to int is
    unsupported"` — hafıza boşken istatistik sorgusu patlıyor. `57524b9`
    commit'iyle (`COALESCE` eklenerek, Session 14'ün 3. maddesi) zaten
    düzeltilmiş ama düzeltme henüz yayınlanmış v3.5.5'e girmemiş, RPi de
-   tam o released build'i çalıştırıyor. Aksiyon gerekmiyor, bir sonraki
-   release'de otomatik gelecek.
+   tam o released build'i çalıştırıyor. Aksiyon gerekmiyor.
 
-## Yapılan düzeltmeler (commit'lendi, `main`'e push edilmedi — kullanıcı
-push istemedi, sadece commit)
+4. **Güvenlik açığı — Cloudflare Tunnel, loopback auth muafiyetini
+   bypass ediyordu (en ciddi bulgu).** `sudo docker inspect cloudflared`
+   → `NetworkMode: host`; tünelin kendi loglarında bugün 10:58'de
+   `{"hostname":"mm.bugradev.com","service":"http://localhost:8090"}`
+   ingress kuralının eklenip 11:01'de kaldırıldığı görüldü — kullanıcı bu
+   3 dakikalık pencerede test edip sorunu fark etmiş. `internal/webserver`'daki
+   `remoteAuthOK`, `RemoteAddr==127.0.0.1` olan her isteğe "sadece bu
+   makinedeki yazılım loopback'ten bağlanabilir" varsayımıyla kimlik
+   sorgulamadan geçiş veriyordu — ama host-network modda çalışan cloudflared
+   de tam olarak `127.0.0.1`'den bağlanıyor, gerçek masaüstü istemciden IP
+   bazında ayırt edilemiyor. Sonuç: tünel açıkken **internetteki herkes**
+   `mm.bugradev.com` üzerinden şifresiz her `/api/` endpoint'ine (sohbet,
+   hafıza, agent araç çalıştırma dahil) erişebiliyordu. **Düzeltildi**
+   (`2d3bc5a`).
+
+## Yapılan düzeltmeler (4 commit, hepsi push'landı)
 
 - `6a772d2` **fix(chat): sync incognito state from backend on load** —
-  `MemoApiClient.getIncognito()` (`api_client.dart`) eklendi,
-  `IncognitoNotifier` artık `_init()` içinde gerçek durumu backend'den
-  çekiyor (`AgentAutoPermissionNotifier`'daki mevcut init-from-backend
-  deseniyle birebir aynı yaklaşım).
+  `MemoApiClient.getIncognito()` eklendi, `IncognitoNotifier` artık
+  `_init()` içinde gerçek durumu backend'den çekiyor
+  (`AgentAutoPermissionNotifier`'daki mevcut init-from-backend deseniyle
+  birebir aynı yaklaşım).
 - `3e4be88` **feat(chat): tint chat background red in incognito mode** —
   kullanıcının açık isteği: gizli sohbet modundayken sohbet alanının
-  arka planı (sadece arka plan — kenar çubuğu/balonlar/input etkilenmiyor)
-  `MemoTheme.red`'in %14 saydam bir katmanıyla kırmızı tona bürünüyor
-  (`chat_screen.dart:44-58`).
+  arka planı (sadece arka plan) `MemoTheme.red`'in %14 saydam bir
+  katmanıyla kırmızı tona bürünüyor (`chat_screen.dart:44-58`).
+- `7ff3517` **docs(handoff):** ilk iki commit'in kaydı (bu girdinin
+  ilk hali — şimdi bu revizyonla tam oturumu kapsayacak şekilde
+  genişletildi).
+- `2d3bc5a` **fix(auth,setup): close a Cloudflare-tunnel auth bypass,
+  stop the setup wizard reappearing per-origin** — iki ayrı düzeltme:
+  - `internal/webserver/handlers_auth.go`'a `isForwardedRequest` eklendi:
+    loopback bir istekte standart proxy/tünel header'ı
+    (`X-Forwarded-For`/`X-Real-Ip`/`Cf-Connecting-Ip`/`Forwarded`) varsa
+    artık güven verilmiyor — `remoteAuthOK` ve `GET /api/setup/status`'un
+    `loopback` alanı ikisi de bunu kullanıyor. Header'ın **değeri** hiç
+    okunmuyor/güvenilmiyor (eski X-Forwarded-For rate-limiter hatasının
+    tam tersi, güvenli yönü) — sadece "bu bağlantı bir yerden yönlendirildi,
+    gerçek masaüstü istemci değil" sinyali olarak kullanılıyor, çünkü
+    cloudflared bu header'ları her zaman ekliyor, gerçek istemci hiç.
+  - `config.OnboardingConfig.Completed` (yeni alan, `GET/PUT /api/onboarding`)
+    — `SetupCompleteNotifier` artık backend'e soruyor,
+    `IncognitoNotifier`'daki fix'le birebir aynı desen.
+  - Yeni testler: `TestRemoteAuthOK_LoopbackDoesNotExemptForwardedRequest`,
+    `TestRemoteAuthOK_LoopbackForwardedRequestStillPassesWithCredential`,
+    `TestHandleSetupStatus_ForwardedLoopbackReportsFalse`.
 
-## Doğrulama — gerçekten canlı test edildi, iki aşamalı
+## Önceki bir olayla ilişkisi (çakışma yok, doğrulandı)
 
-1. **RPi'de canlı, SSH üzerinden geçici düzeltme:** `POST /api/incognito
-   {"enabled":false}` ile takılı kalmış bayrak elle kapatıldı, aynı
-   sohbete `curl` ile mesaj gönderilip hem kullanıcı hem asistan mesajının
-   artık oturuma yazıldığı doğrulandı (önceki mesajlarda sadece kullanıcı
-   tarafı vardı). **Bu sadece çalışma-zamanı düzeltmesi — RPi'nin build'i
-   hâlâ eski/fix'siz, backend yeniden başlarsa veya incognito tekrar
-   açılırsa aynı sorun geri gelir.**
-2. **Kod düzeltmesinin gerçek doğrulaması, bu makinenin kendi yerel
-   kurulumunda (`~/.memo`, Pi değil):** `flutter build web --release` ile
-   taze frontend derlendi, `internal/webserver/webapp/`'a kopyalandı,
-   `go build -tags "sqlite_fts5"` ile backend derlendi,
-   `~/.memo/memo-backend` bu build'le değiştirildi (eski binary
-   `memo-backend.bak.<timestamp>` olarak yanında duruyor, kullanıcı verisi
-   `~/.memo/data` etkilenmedi). Tarayıcıdan canlı akış: incognito aç →
-   kırmızı arka plan doğru → **sayfayı yenile** → incognito hâlâ doğru
-   "açık" gösteriyor (eski koddaki asıl bug tam burada patlıyordu) →
-   normal bir sohbete tıkla → incognito otomatik kapandı, arka plan
-   normale döndü → `GET /api/incognito` backend'de de `false` doğruladı.
-   `flutter analyze` ve `flutter test` (260/260) temiz.
+Kullanıcı "bunu daha önce yaşamıştık" dedi — haklı çıktı:
+`frontend/lib/core/local_session_state.dart`'taki `serverCoupledPrefsKeys`/
+`clearServerCoupledState`, tam olarak 2026-08-13'te yine bir RPi raporundan
+sonra eklenmiş, ve `memo_setup_complete` zaten o listede. Ama o mekanizma
+`auth_gate_provider.dart`'taki `_resetIfServerReplaced` ile **backend'in
+`install_id`'si değiştiğinde** (aynı origin, silinip yeniden kurulmuş
+backend) tetikleniyor — "eski/yanlış değeri sil" problemi. Bu oturumun
+bug'ı ise **aynı backend, farklı origin** — `install_id` hiç değişmiyor,
+dolayısıyla o mekanizma hiç tetiklenmiyor; sorun "yanlış değer" değil
+"o origin'de hiç değer yok" ve eski kod "yoksa = false" diyordu. İki
+mekanizma çakışmıyor, tamamlıyor: `_init()` her açılışta backend'den taze
+cevap çektiği için hangi mekanizma önce/sonra çalışırsa çalışsın (ör.
+`clearServerCoupledState` `memo_setup_complete`'i temizlese bile) sonuç
+her zaman backend'in o anki gerçek durumu oluyor.
+
+## Doğrulama — gerçekten canlı test edildi
+
+1. **RPi'de canlı, SSH üzerinden geçici düzeltme (incognito):**
+   `POST /api/incognito {"enabled":false}` ile takılı kalmış bayrak elle
+   kapatıldı, aynı sohbete `curl` ile mesaj gönderilip hem kullanıcı hem
+   asistan mesajının artık oturuma yazıldığı doğrulandı.
+2. **Kod düzeltmelerinin gerçek doğrulaması, bu makinenin kendi yerel
+   kurulumunda (`~/.memo`, Pi değil), iki ayrı build turu:** her ikisinde
+   de `flutter build web --release` → `internal/webserver/webapp/`'a
+   kopyala → `go build -tags "sqlite_fts5"` → `~/.memo/memo-backend`'i
+   değiştir (eski binary `memo-backend.bak.<timestamp>` olarak duruyor,
+   `~/.memo/data` hiç etkilenmedi). Tarayıcıdan canlı akış: (a) incognito
+   aç → kırmızı arka plan → **sayfayı yenile** → hâlâ "açık" doğru
+   gösteriliyor → normal sohbete tıkla → otomatik kapandı, backend'de de
+   `false` doğrulandı; (b) kurulum sihirbazını tamamla → backend
+   `completed:true` kaydetti → **localStorage'ı komple temizle** (farklı
+   origin simülasyonu) → sayfayı yenile → sihirbaz **tekrar çıkmadı**,
+   doğrudan Launchpad'e gitti.
+3. **Cloudflare tunnel bypass fix'i** gerçek bir tünel kurmadan, Go
+   testleriyle deterministik olarak doğrulandı (yukarıdaki 3 yeni test) —
+   loopback+forwarding-header kombinasyonunun artık reddedildiği,
+   loopback+geçerli kimlik bilgisinin hâlâ geçtiği ayrı ayrı kanıtlandı.
+   `go test -tags "sqlite_fts5" -race ./...` yeşil (tek istisna:
+   `internal/memory`'deki `TestRunDreamScheduler_RespectsEnabledFlag` —
+   bu oturumun değişikliğiyle alakasız, önceden var olan zamanlamaya
+   bağlı flaky test, 3 tekrarda 2 geçti 1 kaldı). `flutter analyze`/
+   `flutter test` (260/260) temiz.
 
 ## Sıradaki işler
 
-1. **Kurulum ekranı bug'ı henüz kodda düzeltilmedi** — `setupCompleteProvider`
-   backend'in `needs_setup`/`GET /api/setup/status`'una hiç bakmıyor,
-   sadece yerel `SharedPreferences`. Düzeltme: sayfa yüklendiğinde gerçek
-   durumu backend'den senkronize etmek (yukarıdaki incognito fix'iyle
-   birebir aynı desen). Kullanıcı onaylarsa yapılabilir.
-2. **RPi'nin build'i güncellenmedi** — kullanıcı "update'i boşver" dedi,
-   bu yüzden yukarıdaki iki commit RPi'ye hiç ulaşmadı. RPi'de incognito
-   şu an elle kapatıldığı için sorun yok, ama tekrar açılıp unutulursa
-   aynı bug geri gelir. İleride `update.sh` ile veya yeni bir release ile
-   RPi'ye taşınmalı.
-3. Bu oturumda `~/.memo/memo-backend` (bu makinenin **kendi** yerel
+1. **RPi'nin build'i hâlâ güncellenmedi — güvenlik açığı orada hâlâ
+   geçerli.** Kullanıcı "update'i boşver" dedi, bu yüzden 4 commit de
+   RPi'ye hiç ulaşmadı. Şu an tünel ingress kuralı kaldırılmış olduğu
+   için RPi doğrudan tehlikede değil, ama `mm.bugradev.com → localhost:8090`
+   benzeri bir kural tekrar eklenirse (kullanıcı bunu tekrar deneyebilir)
+   aynı şekilde şifresiz erişilebilir olur — çünkü çalışan binary hâlâ eski
+   kod. İleride `update.sh` ile veya yeni bir release ile RPi'ye taşınmalı;
+   kullanıcıya güvenlik açığının hâlâ canlı/deploy edilmemiş olduğu
+   tekrar hatırlatılmalı.
+2. Bu oturumda `~/.memo/memo-backend` (bu makinenin **kendi** yerel
    kurulumu) test amaçlı yeni build ile değiştirildi — fonksiyonel olarak
-   daha iyi (iki fix de içeriyor) ama resmi bir release değil, sürüm
+   daha iyi (4 fix'in tümünü içeriyor) ama resmi bir release değil, sürüm
    numarası hâlâ V3.5.5 diyor. Karışıklığı önlemek için not düşüldü.
 
 ---

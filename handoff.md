@@ -1,3 +1,106 @@
+# Session 16 (2026-08-18): Web arama tam kullanıcı mesajını sorgu olarak gönderiyordu
+
+Kullanıcı doğrudan rapor etti: web arama açıkken Memo, kullanıcının tüm ham
+mesajını ("kanka bugra akdemir kim hakkında bilgi toplarısın internetten"
+gibi selamlaşma/dolgu kelimeleriyle dolu bir cümleyi) DuckDuckGo'ya olduğu
+gibi gönderiyor, "bugra akdemir kim" gibi kısa bir sorgu çıkarmıyordu —
+sonuç olarak tamamen alakasız sonuçlar geliyordu (ekran görüntüsünde görülen
+gerçek örnek: `https://memocpp.com/ bu siteye bakarmısın rica edersem ben
+bugra bu arada` mesajı, alakasız YouTube kanalları/forum gönderileri
+döndürdü). Kök neden bulundu ve düzeltildi, tek commit'te.
+
+## Kök neden
+
+`internal/app/helpers.go`'daki `buildMessagesForSession` — agent modu
+KAPALIYKEN çalışan "kör enjeksiyon" web arama yolu (agent modu açıkken bunun
+yerine LLM'in kendi kararıyla çağırdığı gerçek `web_search` tool'u devrede,
+ayrı bir mekanizma) — `websearch.Search(ctx, userMsg, ...)` çağrısında ham
+`userMsg`'i doğrudan sorgu olarak kullanıyordu. `internal/websearch/ddg.go`
+DuckDuckGo HTML arayüzünü **birebir metin eşleştirmesiyle** kazıyor (semantik
+anlama yok), yani "kanka", "rica edersem", "bu arada" gibi dolgu kelimeler ve
+"bilgi toplarısın internetten" gibi arama-isteği çerçevelemesi sorguyu
+doğrudan kirletiyor.
+
+## Düzeltme (`internal/app/helpers.go`, `internal/app/llm.go`, `internal/agent/tools.go`)
+
+- Yeni `(a *App) buildWebSearchQuery(ctx, userMsg)` (`helpers.go`) —
+  `GenerateChatTitle`'ın zaten kullandığı desenle birebir aynı: kısa, hedefli
+  bir prompt ile `a.callLLM(ctx, prompt, categoryWebSearchQuery)` çağrılıyor
+  ("2-6 kelimelik, mesajla aynı dilde, sadece konuyu içeren bir arama sorgusu
+  çıkar"), sonuç trim'leniyor. **Herhangi bir hata/boş cevap/`⚠️` önekinde ham
+  mesaja geri dönüyor** — LLM yoksa veya başarısız olursa arama tamamen
+  atlanmıyor, eski (kusurlu ama çalışan) davranışa düşüyor.
+- `buildMessagesForSession`'daki çağrı artık `userMsg` yerine bu fonksiyonun
+  döndürdüğü `query`'i hem `websearch.Search`'e hem `FormatForContext`'e
+  veriyor.
+- Yeni kategori sabiti `categoryWebSearchQuery = "web_search_query"`
+  (`llm.go`) — Stats sekmesinin kategori kırılımında bu ekstra LLM çağrısı da
+  görünür, sessizce kayıp gitmiyor.
+- Ayrıca `internal/agent/tools.go`'daki agent-mod `web_search` tool'unun
+  `query` parametre açıklaması sıkılaştırıldı ("kısa anahtar-kelime tarzı
+  sorgu, kullanıcının ham mesajını OLDUĞU GİBİ verme") — bu ayrı bir kod yolu
+  (LLM'in kendi seçtiği tool argümanı), kod tarafından zorlanamıyor ama
+  zayıf/ucuz modellerin (örn. OpenCode Zen) düzgün sorgu üretme olasılığını
+  artıran ucuz ve risksiz bir iyileştirme.
+
+## Kapsam dışı bırakılanlar (bilinçli)
+
+- Agent modundaki `web_search` tool'unun LLM tarafından seçilen `query`
+  argümanını kod seviyesinde temizlemek/kısaltmak yapılmadı — tool sözleşmesi
+  zaten "modelin karar verdiği" bir tasarım (`internal/agent/tools.go`'daki
+  yorum), ve `ExecuteFn` imzası (`func(ctx, args, basePath, createBackup)`)
+  App/LLM'e erişimi yok — bunu eklemek daha büyük bir mimari değişiklik
+  olurdu. Açıklama sıkılaştırması (yukarıda) bunun yerine geçen, küçük ve
+  güvenli bir önlem.
+- Belirli bir URL'i "getir" isteği (ekran görüntüsündeki `memocpp.com`
+  örneği) hâlâ ayrı bir sorun: agent'ın gerçek bir `fetch_url`/sayfa-okuma
+  tool'u yok, sadece anahtar-kelime `web_search` var — model bir URL
+  verildiğinde onu "arama sorgusu" gibi göndermeye çalışıyor, bu da alakasız
+  sonuç döndürüyor. Bu, sorgu-temizleme bug'ından bağımsız bir eksik özellik
+  (yeni bir tool gerektirir), bu oturumun kapsamı dışında bırakıldı.
+- Kullanıcının ayrıca belirttiği "arama sırasında 'düşünüyor' görünüyor"
+  şikayeti araştırıldı — `internal/app/chat.go`'daki `SendMessageStream`
+  arama başlamadan önce `{FinishReason:"status", Content:"web_search"}`
+  gönderiyor, ve `frontend/lib/widgets/chat_message_list.dart`'taki
+  `_TypingIndicator` bunu `L10n.t('searching_web')` ("Webde aranıyor...") ile
+  ayrı gösteriyor — `L10n.t('thinking')`'den farklı, ikisi de hem TR hem EN
+  haritalarında doğru dolu (`l10n.dart:1439`/`3238`). Kod incelemesinde bu
+  yol zaten doğru çalışıyor gibi görünüyor; frontend'e dokunulmadı. Kullanıcı
+  bu build'i test ettikten sonra hâlâ görüyorsa (özellikle agent modu
+  açıkken — o zaman farklı bir gösterge olan `_AgentStatusBar` devrede ve
+  `web_search` tool adı için özel bir `_actionLabel` karşılığı yok, ham tool
+  adını gösteriyor) ayrı bir bug olarak ele alınmalı.
+
+## Doğrulama
+
+- Yeni testler (`internal/app/helpers_test.go`):
+  `TestBuildWebSearchQuery_UsesExtractedQueryNotRawMessage` (sahte
+  `provider.Router` + `httptest.Server`, kanıtlanmış çıkarım sonucu ham
+  mesajdan farklı ve beklenen kısa sorguya eşit), 
+  `TestBuildWebSearchQuery_FallsBackToRawMessageOnLLMFailure` (LLM/provider
+  hiç yapılandırılmamışken ham mesaja düşüyor — ağ çağrısı yok, deterministik).
+- `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...` temiz.
+- `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...` temiz.
+- `CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race` — tamamı yeşil, bu
+  turda flaky test bile çıkmadı (önceki oturumda bahsedilen
+  `TestRunDreamScheduler_RespectsEnabledFlag` de dahil).
+- `gofmt -l` değiştirilen 4 dosyada temiz.
+- Flutter tarafı değişmedi (yukarıdaki analiz nedeniyle), bu yüzden
+  `flutter analyze`/`flutter test` bu oturumda tekrar çalıştırılmadı.
+
+## Sırada ne var
+
+- Kullanıcı gerçek build'de doğrulasın: web arama açıkken rastgele bir
+  "X kim/ne" tarzı mesaj atıp sistem promptuna enjekte edilen
+  `Web Search Results (query: ...)` başlığının artık kısa/temiz bir sorgu
+  içerdiğini teyit etsin (loglardan da görülebilir: `logx.Printf("websearch:
+  %v", err)` sadece hata durumunda basıyor, başarı durumunda sorgu
+  görünmüyor — gerekirse geçici bir `logx.Printf` ile canlı doğrulanabilir).
+- Yukarıdaki "kapsam dışı" iki madde (fetch_url tool eksikliği, agent modunda
+  "düşünüyor" görünümü) kullanıcı onaylarsa ayrı işler olarak açılabilir.
+
+---
+
 # Session 15 (2026-08-18): RPi'de canlı bug avı — Incognito takılı kalması, Cloudflare tunnel auth bypass, kurulum ekranı bug'ı
 
 Kullanıcı RPi'de (`192.168.1.106:8090`, `bugraa`) çalışan self-hosted Memo'yu

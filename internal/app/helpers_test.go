@@ -397,7 +397,7 @@ func TestBuildMessagesForSession_IgnoresConcurrentActiveChatSwitch(t *testing.T)
 		sessions: sm,
 	}
 
-	messages := a.buildMessagesForSession(context.Background(), chatA, "new message", nil)
+	messages := a.buildMessagesForSession(context.Background(), chatA, "new message", nil, nil)
 
 	var foundA bool
 	for _, m := range messages {
@@ -471,7 +471,7 @@ func TestBuildMessagesForSession_IncludesActiveSkillInstructions(t *testing.T) {
 	}
 
 	chatID := sm.GetActiveID()
-	messages := a.buildMessagesForSession(context.Background(), chatID, "hello", nil)
+	messages := a.buildMessagesForSession(context.Background(), chatID, "hello", nil, nil)
 
 	var found bool
 	for _, m := range messages {

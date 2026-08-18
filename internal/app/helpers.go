@@ -91,7 +91,7 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 	if sm != nil {
 		chatID = sm.GetActiveID()
 	}
-	return a.buildMessagesForSession(ctx, chatID, userMsg, extraImageB64)
+	return a.buildMessagesForSession(ctx, chatID, userMsg, extraImageB64, nil)
 }
 
 // buildMessagesForSession is buildMessages anchored to an explicit chatID —
@@ -100,10 +100,19 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 // and (via the sessionID already threaded through routeStream/callLLMStream/
 // finishStream) writing to the *same* chat throughout, even if the user
 // switches the active chat mid-stream (BUG-H1).
-func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg string, extraImageB64 []string) []api.Message {
+//
+// retrievedCountOut, if non-nil, is set to how many memories were actually
+// retrieved for this turn — lets a caller that cares (sendMessageStreamCore,
+// for the "N anı kullanıldı" badge) learn the count without this function's
+// return type changing for its other seven call sites, which have no use
+// for it.
+func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg string, extraImageB64 []string, retrievedCountOut *int) []api.Message {
 	var memories []memory.MemoryResult
 	if a.GetMemoryEnabled() {
 		memories = a.retrieveMemory(ctx, a.buildMemoryQuery(userMsg))
+	}
+	if retrievedCountOut != nil {
+		*retrievedCountOut = len(memories)
 	}
 	// Read once and reuse below (for the live-search injection) rather than
 	// calling GetWebSearchEnabled()/GetAgentEnabled() twice each — a toggle

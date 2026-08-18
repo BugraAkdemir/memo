@@ -348,14 +348,14 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		}
 
 		if chunk.Done {
-			a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+			a.finishStream(ctx, start, 0, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 			return
 		}
 	}
 
 	if fullReply.Len() > 0 {
-		a.finishStream(start, 0, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+		a.finishStream(ctx, start, 0, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 		trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 	} else {
 		a.recordStreamError(userMsg, "⚠️ Agent boş yanıt döndürdü", sessionID)
@@ -611,7 +611,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		agentEventsMu.Lock()
 		finalEvents := agentEvents
 		agentEventsMu.Unlock()
-		a.finishStream(start, 0, "stop", finalContent, userMsg, sessionID, &usageMetaVal, finalEvents)
+		a.finishStream(ctx, start, 0, "stop", finalContent, userMsg, sessionID, &usageMetaVal, finalEvents)
 		trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 	}()
 
@@ -718,7 +718,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			fullBufStr := fullBuf.String()
 			fullBufMu.Unlock()
 			if err != nil {
-				a.finishStream(start, 0, "error", fullBufStr, userPrompt, sessionID, &usageMetaVal)
+				a.finishStream(ctx, start, 0, "error", fullBufStr, userPrompt, sessionID, &usageMetaVal)
 				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 				return
 			}
@@ -733,7 +733,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				tokenCount = len(finalContent) / 4
 			}
 
-			a.finishStream(start, tokenCount, "stop", finalContent, userPrompt, sessionID, &usageMetaVal)
+			a.finishStream(ctx, start, tokenCount, "stop", finalContent, userPrompt, sessionID, &usageMetaVal)
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		}()
 		return outCh
@@ -827,14 +827,14 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 
 				if chunk.Done {
-					a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+					a.finishStream(ctx, start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 					trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 					return
 				}
 			}
 
 			if fullReply.Len() > 0 {
-				a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				a.finishStream(ctx, start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 			} else {
 				errMsg := "⚠️ Provider returned empty response"
@@ -939,7 +939,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 			if chunk.Done {
 				logx.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
-				a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				a.finishStream(ctx, start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(streamCtx, outCh, chunk)
 				return
 			}
@@ -947,7 +947,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 		if fullReply.Len() > 0 {
 			logx.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
-			a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
+			a.finishStream(ctx, start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
 			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		} else {
 			logx.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
@@ -1075,7 +1075,15 @@ func (a *App) recordUsageEvent(meta usageMeta, completionTokens int, durationSec
 	}
 }
 
-func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply, userMsg, sessionID string, meta *usageMeta, agentEvents ...[]interface{}) {
+// memoryUsedCtxKey carries how many memories buildMessagesForSession
+// retrieved for the current turn from where it's produced
+// (sendMessageStreamCore, chat.go) to where it's consumed (finishStream,
+// below) — riding along on the ctx that already flows unchanged through
+// routeStream/callLLMStream/callAgentStream rather than adding a parameter
+// to each of them for a value only the two endpoints care about.
+type memoryUsedCtxKey struct{}
+
+func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int, finishReason, reply, userMsg, sessionID string, meta *usageMeta, agentEvents ...[]interface{}) {
 	duration := time.Since(start).Seconds()
 	tps := 0.0
 	if duration > 0 && tokenCount > 0 {
@@ -1100,6 +1108,9 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 		if sm != nil {
 			if sessionID != "" {
 				sm.AddMessageToSession(sessionID, "assistant", reply, "", "", agentEvents...)
+				if memUsed, ok := ctx.Value(memoryUsedCtxKey{}).(int); ok && memUsed > 0 {
+					sm.SetLastMessageMemoryUsed(sessionID, memUsed)
+				}
 				if len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
 					goRecover("generateChatTitleForSession", func() { a.generateChatTitleForSession(sessionID) })
 				}

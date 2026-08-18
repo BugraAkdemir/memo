@@ -532,6 +532,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       String fullReply = '';
       String fullThinking = '';
       List<AgentEvent> finalAgentEvents = [];
+      int memoryUsed = 0;
 
       final activeChatId = ref.read(activeChatIdProvider).valueOrNull;
       final cliProvider = activeChatId != null
@@ -631,6 +632,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
             } catch (e) {
               // ignore parse errors
             }
+          } else if (chunk.finishReason == 'memory_used') {
+            memoryUsed = int.tryParse(chunk.content) ?? 0;
           } else {
             // First real content — clear any pre-token status (e.g. web_search).
             if (ref.read(streamingStatusProvider).isNotEmpty) {
@@ -682,6 +685,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
             thinking: fullThinking.isNotEmpty ? fullThinking : null,
             timestamp: timestamp,
             agentEvents: finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
+            memoryUsed: memoryUsed,
           ),
         );
       }

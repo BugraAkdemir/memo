@@ -22,6 +22,16 @@ type ChatMessage struct {
 	FilePath    string        `json:"file_path,omitempty"`
 	Timestamp   string        `json:"timestamp"`
 	AgentEvents []interface{} `json:"agent_events,omitempty"`
+	// MemoryUsed is how many memories were retrieved and injected into the
+	// system prompt for the turn that produced this (assistant) message —
+	// 0/omitted means either memory was off, or nothing relevant enough was
+	// found. Set via SetLastMessageMemoryUsed right after the message is
+	// added, not passed through AddMessageToSession itself: the count is
+	// only known at buildMessagesForSession time (before the LLM call even
+	// starts), while AddMessageToSession for the assistant reply happens
+	// after it — see memoryUsedCtxKey in internal/app/llm.go for how it
+	// travels between the two.
+	MemoryUsed int `json:"memory_used,omitempty"`
 }
 
 type Session struct {
@@ -298,6 +308,29 @@ func (m *Manager) AddMessageToSession(sessionID, role, content, imagePath, fileP
 
 	if err := m.save(s); err != nil {
 		logx.Printf("sessions: save message %s: %v", s.ID, err)
+	}
+}
+
+// SetLastMessageMemoryUsed sets MemoryUsed on the most recently added
+// message in sessionID. Meant to be called immediately after
+// AddMessageToSession for the assistant reply it's annotating — see
+// ChatMessage.MemoryUsed's doc comment for why this is a separate call
+// instead of a parameter on AddMessageToSession itself. No-ops (including
+// skipping the extra disk write) when count is 0, so a turn where memory
+// contributed nothing costs nothing extra over today's behavior.
+func (m *Manager) SetLastMessageMemoryUsed(sessionID string, count int) {
+	if count <= 0 {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[sessionID]
+	if s == nil || len(s.Messages) == 0 {
+		return
+	}
+	s.Messages[len(s.Messages)-1].MemoryUsed = count
+	if err := m.save(s); err != nil {
+		logx.Printf("sessions: save memory-used %s: %v", s.ID, err)
 	}
 }
 

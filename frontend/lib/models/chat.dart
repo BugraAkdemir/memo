@@ -7,6 +7,11 @@ class ChatMessage {
   final String? filePath;
   final String timestamp;
   final List<dynamic>? agentEvents;
+  // How many memories were retrieved and injected into the prompt for the
+  // turn that produced this (assistant) message — 0 means either memory
+  // was off or nothing relevant enough came back. Mirrors Go
+  // sessions.ChatMessage.MemoryUsed.
+  final int memoryUsed;
 
   const ChatMessage({
     required this.role,
@@ -16,6 +21,7 @@ class ChatMessage {
     this.filePath,
     required this.timestamp,
     this.agentEvents,
+    this.memoryUsed = 0,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -26,6 +32,7 @@ class ChatMessage {
         filePath: json['file_path'] as String?,
         timestamp: json['timestamp'] as String? ?? '',
         agentEvents: json['agent_events'] as List<dynamic>?,
+        memoryUsed: json['memory_used'] as int? ?? 0,
       );
 
   Map<String, dynamic> toJson() => {
@@ -36,6 +43,7 @@ class ChatMessage {
         if (filePath != null) 'file_path': filePath,
         'timestamp': timestamp,
         if (agentEvents != null) 'agent_events': agentEvents,
+        if (memoryUsed > 0) 'memory_used': memoryUsed,
       };
 
   bool get isUser => role == 'user';

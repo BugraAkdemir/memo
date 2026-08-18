@@ -15,6 +15,7 @@ import (
 	"memo/internal/agent"
 	"memo/internal/config"
 	"memo/internal/identity"
+	"memo/internal/memory"
 	"memo/internal/provider"
 	"memo/internal/sessions"
 )
@@ -119,6 +120,155 @@ func TestSendMessageStreamTo_TargetsGivenChatID_NotGloballyActiveChat(t *testing
 		if m["content"] == "task loop message" {
 			t.Fatal("message sent via SendMessageStreamTo(chatA, ...) leaked into chat B's history")
 		}
+	}
+}
+
+// TestSendMessageStreamTo_MemoryUsed_AnnotatesSavedReply is the regression
+// test for the memory-usage badge: when buildMessagesForSession retrieves
+// N memories for a turn, the resulting assistant message must end up with
+// ChatMessage.MemoryUsed == N once the stream finishes — the whole point of
+// threading the count through memoryUsedCtxKey (chat.go) to finishStream
+// (llm.go) without a parameter on every function in between.
+func TestSendMessageStreamTo_MemoryUsed_AnnotatesSavedReply(t *testing.T) {
+	store, err := memory.NewStore(memory.StoreConfig{
+		Dir:       t.TempDir(),
+		Dimension: 4,
+		EmbeddingFunc: func(_ context.Context, _ string) ([]float32, error) {
+			return []float32{1, 0, 0, 0}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("memory.NewStore() error = %v", err)
+	}
+	defer store.Close()
+	if err := store.SaveExplicit(context.Background(), "kullanicinin adi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit() error = %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"merhaba Ahmet\"}}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	router := provider.NewRouter([]provider.ProviderConfig{{
+		Type:    provider.ProviderCustom,
+		Name:    "test",
+		BaseURL: srv.URL,
+		Model:   "test-model",
+		Enabled: true,
+	}})
+
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("sessions.NewManager() error = %v", err)
+	}
+	chatID := sm.NewChat()
+
+	a := &App{
+		cfg: &config.AppConfig{
+			Memory: config.MemoryConfig{MemoryEnabled: true, TopK: 5, MinSimilarity: 0},
+		},
+		identity:           identity.New("Test", "Memo", "casual", "", false),
+		sessions:           sm,
+		store:              store,
+		providerRouter:     router,
+		activeProviderName: "test",
+		events:             &eventRing{},
+	}
+
+	ch := a.SendMessageStreamTo(context.Background(), chatID, "adimi hatirliyor musun")
+	sawLiveMemoryUsedChunk := false
+	for chunk := range ch {
+		if chunk.FinishReason == "memory_used" {
+			sawLiveMemoryUsedChunk = true
+			if chunk.Content != "1" {
+				t.Errorf("live memory_used chunk Content = %q, want %q", chunk.Content, "1")
+			}
+		}
+	}
+	if !sawLiveMemoryUsedChunk {
+		t.Error("stream never carried a finishReason==\"memory_used\" chunk — the badge would only ever appear after a reload, not live like agent_event badges do")
+	}
+
+	msgs := sm.GetActiveMessagesForSession(chatID)
+	if len(msgs) != 2 {
+		t.Fatalf("got %d messages, want 2 (user + assistant)", len(msgs))
+	}
+	assistant := msgs[1]
+	if assistant.Role != "assistant" {
+		t.Fatalf("msgs[1].Role = %q, want assistant", assistant.Role)
+	}
+	if assistant.MemoryUsed != 1 {
+		t.Fatalf("assistant.MemoryUsed = %d, want 1 (the pinned fact SaveExplicit saved)", assistant.MemoryUsed)
+	}
+}
+
+// TestSendMessageStreamTo_NoMemoryRetrieved_LeavesMemoryUsedZero guards the
+// other half: a turn where memory is enabled but nothing relevant comes
+// back (empty store) must not stamp a stray MemoryUsed value on the saved
+// reply — the frontend badge is only supposed to render when it's >0.
+func TestSendMessageStreamTo_NoMemoryRetrieved_LeavesMemoryUsedZero(t *testing.T) {
+	store, err := memory.NewStore(memory.StoreConfig{
+		Dir:       t.TempDir(),
+		Dimension: 4,
+		EmbeddingFunc: func(_ context.Context, _ string) ([]float32, error) {
+			return []float32{1, 0, 0, 0}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("memory.NewStore() error = %v", err)
+	}
+	defer store.Close()
+	// Deliberately empty — no SaveExplicit/SaveInteraction calls.
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"selam\"}}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	router := provider.NewRouter([]provider.ProviderConfig{{
+		Type:    provider.ProviderCustom,
+		Name:    "test",
+		BaseURL: srv.URL,
+		Model:   "test-model",
+		Enabled: true,
+	}})
+
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("sessions.NewManager() error = %v", err)
+	}
+	chatID := sm.NewChat()
+
+	a := &App{
+		cfg: &config.AppConfig{
+			Memory: config.MemoryConfig{MemoryEnabled: true, TopK: 5, MinSimilarity: 0},
+		},
+		identity:           identity.New("Test", "Memo", "casual", "", false),
+		sessions:           sm,
+		store:              store,
+		providerRouter:     router,
+		activeProviderName: "test",
+		events:             &eventRing{},
+	}
+
+	ch := a.SendMessageStreamTo(context.Background(), chatID, "selam")
+	for chunk := range ch {
+		if chunk.FinishReason == "memory_used" {
+			t.Errorf("got a live memory_used chunk (content %q) when nothing was retrieved — should never fire for a zero count", chunk.Content)
+		}
+	}
+
+	msgs := sm.GetActiveMessagesForSession(chatID)
+	if len(msgs) != 2 {
+		t.Fatalf("got %d messages, want 2 (user + assistant)", len(msgs))
+	}
+	if got := msgs[1].MemoryUsed; got != 0 {
+		t.Fatalf("assistant.MemoryUsed = %d, want 0 (empty memory store, nothing retrieved)", got)
 	}
 }
 

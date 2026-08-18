@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../core/theme.dart';
 import '../models/chat.dart';
@@ -387,6 +388,10 @@ class _MessageBubbleState extends State<_MessageBubble> {
                                 color: MemoTheme.of(context).textDim,
                               ),
                             ),
+                            if (!isUser && widget.message.memoryUsed > 0) ...[
+                               SizedBox(width: 8),
+                              _MemoryUsedIndicator(count: widget.message.memoryUsed),
+                            ],
                             if (_hovering && !isUser) ...[
                                SizedBox(width: 8),
                               GestureDetector(
@@ -897,6 +902,47 @@ class _AgentStatusBar extends StatelessWidget {
 }
 
 /// A small badge showing a single completed or errored agent action.
+/// Tiny "N memories used" marker next to an assistant reply's timestamp.
+/// Deliberately not styled like _AgentStatusBadge's colored pills below —
+/// this rides in the same hover-only metadata row as the timestamp/copy
+/// button (never shown inline with the message text itself), plain
+/// dim-colored icon + number, no background, no border. The point is quiet
+/// confirmation that memory actually contributed to this specific reply
+/// (previously invisible — see LATENCY memory.retrieve log lines, which
+/// only ever reached a terminal, never the UI), not another attention-
+/// grabbing badge competing with the agent tool badges above it.
+class _MemoryUsedIndicator extends StatelessWidget {
+  final int count;
+
+  const _MemoryUsedIndicator({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = MemoTheme.of(context).textDim;
+    return Tooltip(
+      message: L10n.t('memory_used_tooltip', {'n': '$count'}),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 11,
+            height: 11,
+            child: SvgPicture.asset(
+              'lib/icon/slash/brain.svg',
+              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+            ),
+          ),
+          const SizedBox(width: 3),
+          Text(
+            '$count',
+            style: TextStyle(fontSize: 10, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AgentStatusBadge extends StatelessWidget {
   final AgentEvent event;
 

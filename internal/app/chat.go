@@ -7,6 +7,7 @@ import (
 	"memo/internal/logx"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -371,12 +372,39 @@ func (a *App) sendMessageStreamCore(ctx context.Context, chatID, userMsg string,
 	goRecover("processMessageIntent", func() { a.processMessageIntent(userMsg, "chat", "", time.Now()) })
 
 	sm := a.getSessionManager()
-	messages := a.buildMessagesForSession(ctx, chatID, userMsg, nil)
+	var memUsed int
+	messages := a.buildMessagesForSession(ctx, chatID, userMsg, nil, &memUsed)
 	if sm != nil {
 		sm.AddMessageToSession(chatID, "user", userMsg, "", "")
 	}
+	// Carried via ctx (rather than adding a parameter to routeStream/
+	// callLLMStream/callAgentStream, which ctx already threads through
+	// unchanged) so finishStream can pick it up and attach it to the
+	// saved assistant reply without every intermediate function needing
+	// to know or forward it — see memoryUsedCtxKey's doc comment.
+	if memUsed > 0 {
+		ctx = context.WithValue(ctx, memoryUsedCtxKey{}, memUsed)
+	}
 
-	return a.routeStream(ctx, messages, userMsg, "", "", chatID, forceAgent)
+	inner := a.routeStream(ctx, messages, userMsg, "", "", chatID, forceAgent)
+	if memUsed <= 0 {
+		return inner
+	}
+	// A live counterpart to the ctx-carried value above: that one only
+	// reaches the *persisted* session (read back on the next chat load),
+	// same as how a tool-call's agent_event chunks are what let its badge
+	// render immediately in the still-open chat rather than only after a
+	// reload — same "status chunk ahead of the real content" shape as the
+	// web_search indicator in SendMessageStream, just with
+	// finishReason=="memory_used" as the discriminator instead.
+	out := make(chan api.StreamChunk, 128)
+	go func() {
+		defer close(out)
+		defer recoverPanic("sendMessageStreamCore/memory_used")
+		trySend(ctx, out, api.StreamChunk{FinishReason: "memory_used", Content: strconv.Itoa(memUsed)})
+		forwardStream(ctx, inner, out)
+	}()
+	return out
 }
 
 // SendMessageWithImageStream sends a user message together with an image file.
@@ -428,7 +456,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 	// image messages get the same mood directive, web search context, and
 	// token-aware history truncation as plain text ones — the manual
 	// construction this replaced skipped all three (BUG-QL5).
-	msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64})
+	msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64}, nil)
 	if sm != nil {
 		sm.AddMessageToSession(chatID, "user", userMsg, imagePath, "")
 	}
@@ -496,7 +524,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		chatID = sm.GetActiveID()
 	}
 
-	messages := a.buildMessagesForSession(ctx, chatID, combined, nil)
+	messages := a.buildMessagesForSession(ctx, chatID, combined, nil, nil)
 	if sm != nil {
 		sm.AddMessageToSession(chatID, "user", userMsg, "", filePath)
 	}
@@ -559,7 +587,7 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 		chatID = sm.GetActiveID()
 	}
 
-	msgs := a.buildMessagesForSession(context.Background(), chatID, userMsg, []string{b64})
+	msgs := a.buildMessagesForSession(context.Background(), chatID, userMsg, []string{b64}, nil)
 	if sm != nil {
 		sm.AddMessageToSession(chatID, "user", userMsg, imagePath, "")
 	}
@@ -616,7 +644,7 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 		chatID = sm.GetActiveID()
 	}
 
-	messages := a.buildMessagesForSession(context.Background(), chatID, combined, nil)
+	messages := a.buildMessagesForSession(context.Background(), chatID, combined, nil, nil)
 	if sm != nil {
 		sm.AddMessageToSession(chatID, "user", userMsg, "", filePath)
 	}

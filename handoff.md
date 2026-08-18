@@ -159,6 +159,38 @@ verilmişti).
   (Session 16'da not edildi, hâlâ geçerli) — agent'ın gerçek bir
   `fetch_url`/sayfa-okuma tool'u yok.
 
+## Ek (aynı oturum): Minimal Mod gap'i + doküman güncellemesi
+
+Kullanıcı "Ajan Modu" dokümanlarının (`docs/`, `obsidian-doc/`,
+`obsidian-doc-en/`) güncel olup olmadığını sorunca, `obsidian-doc-en/Memo/
+Agent Mode.md` ve `obsidian-doc/Memo/Ajan Modu.md`'yi kontrol ederken —
+mevcut koda karşı doğruluğunu doğrulamaya çalışırken — **gerçek bir
+davranış boşluğu bulundu, kullanıcı sormadan**: yukarıdaki
+`callWebSearchAgentStream`/`routeStream` yeniden tasarımı, eski kör
+enjeksiyonun sahip olduğu `!a.identity.GetMinimalMode()` kapısını hiç
+taşımamıştı — Minimal Mod açıkken bile web arama tool tanımı her istekte
+gidiyordu, Minimal Mod'un "hafıza dışında sıfır enjeksiyon" vaadini ihlal
+ediyordu. **Düzeltildi** (`internal/app/chat.go`'daki routeStream'in yeni
+dalına `!a.identity.GetMinimalMode()` eklendi), yeni regresyon testi
+`TestSendMessage_WebSearchOnMinimalModeOn_NoToolDefinitions`
+(`chat_test.go`) ile. `go build`/`go vet`/`go test -race` tekrar yeşil.
+Canlı backend (`127.0.0.1:8090`) bu düzeltmeyle yeniden derlenip
+başlatıldı.
+
+Doküman güncellemeleri (her iki dilde `Agent Mode.md`/`Ajan Modu.md`):
+`web_search` girdisi yeni mekanizmayı (scoped executor, Orchestra/Minimal
+Mod gate'i) anlatacak şekilde yeniden yazıldı, yeni "Scoped Registries"
+bölümü eklendi (`NewWhatsAppRegistry`/`NewWebSearchRegistry` deseni). Aynı
+okuma sırasında fark edilen, konuyla doğrudan alakasız ama aynı dosyada
+duran üç ayrı eskimiş iddia da düzeltildi: "yerel llama.cpp tool-calling
+desteklemiyor" (yanlış — `resolveAgentProvider()` yerel modeli de aynı
+tool-calling isteğine sarıyor), "audit log kalıcı değil" (BUG-H10 ile
+düzeltilmişti, doküman güncellenmemişti), "20 iterasyon" (kodda gerçek
+değer 40). Türkçe dosya ayrıca `web_search`'ü hiç listelemiyordu ve hâlâ
+ilk sürümün 8 aracını gösteriyordu — tam 19 araca çıkarıldı (diğer güncel
+Türkçe dokümanlarla — Özellik Kataloğu, FEATURES.md tr — aynı sayı).
+Commit'ler: `51ad2c6` (kod düzeltmesi), `4913668` (dokümanlar).
+
 ---
 
 # Session 16 (2026-08-18): Web arama tam kullanıcı mesajını sorgu olarak gönderiyordu

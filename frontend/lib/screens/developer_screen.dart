@@ -304,6 +304,8 @@ class _NavSidebar extends StatelessWidget {
           const SizedBox(height: 10),
           _navSectionLabel(context, L10n.t('dev_gateway_reference_title')),
           _navSubItem(context, label: '/v1/messages', onTap: onTapReference, method: 'POST'),
+          _navSubItem(context, label: '/v1/chat/completions', onTap: onTapReference, method: 'POST'),
+          _navSubItem(context, label: '/v1/models', onTap: onTapReference, method: 'GET'),
           const SizedBox(height: 10),
           _navSectionLabel(context, L10n.t('dev_gateway_models_title')),
           _navSubItem(context, label: L10n.t('dev_gateway_models_title'), onTap: onTapModels),
@@ -414,49 +416,23 @@ class _ReferenceSection extends StatelessWidget {
                 decoration: BoxDecoration(border: Border(bottom: BorderSide(color: theme.borderSoft))),
                 child: Row(
                   children: [
-                    Text(
-                      L10n.t('dev_gateway_reference_title'),
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.textMain),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(color: MemoTheme.accentMuted, borderRadius: BorderRadius.circular(10)),
+                    Expanded(
                       child: Text(
-                        L10n.t('dev_gateway_reference_anthropic_badge'),
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: MemoTheme.accent),
+                        L10n.t('dev_gateway_reference_title'),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.textMain),
                       ),
                     ),
+                    _apiBadge(L10n.t('dev_gateway_reference_anthropic_badge')),
+                    const SizedBox(width: 6),
+                    _apiBadge(L10n.t('dev_gateway_reference_openai_badge')),
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const _MethodBadge(method: 'POST'),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            '/v1/messages',
-                            style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 13, color: MemoTheme.accent),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Icon(Icons.info_outline_rounded, size: 15, color: theme.textDim),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      L10n.t('dev_gateway_reference_messages_desc'),
-                      style: TextStyle(fontSize: 12, color: theme.textDim, height: 1.4),
-                    ),
-                  ],
-                ),
-              ),
+              _endpointRow(context, method: 'POST', path: '/v1/messages', desc: L10n.t('dev_gateway_reference_messages_desc')),
+              Divider(height: 1, color: theme.borderSoft),
+              _endpointRow(context, method: 'POST', path: '/v1/chat/completions', desc: L10n.t('dev_gateway_reference_completions_desc')),
+              Divider(height: 1, color: theme.borderSoft),
+              _endpointRow(context, method: 'GET', path: '/v1/models', desc: L10n.t('dev_gateway_reference_models_desc')),
             ],
           ),
         ),
@@ -467,7 +443,56 @@ class _ReferenceSection extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         copyableValueBox(context, 'ANTHROPIC_BASE_URL=$baseUrl', monospace: true),
+        const SizedBox(height: 8),
+        Text(
+          L10n.t('dev_gateway_openai_base_url_hint'),
+          style: TextStyle(color: theme.textDim, fontSize: 11),
+        ),
+        const SizedBox(height: 4),
+        copyableValueBox(context, 'OPENAI_BASE_URL=$baseUrl/v1', monospace: true),
       ],
+    );
+  }
+
+  Widget _apiBadge(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: MemoTheme.accentMuted, borderRadius: BorderRadius.circular(10)),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: MemoTheme.accent),
+      ),
+    );
+  }
+
+  Widget _endpointRow(BuildContext context, {required String method, required String path, required String desc}) {
+    final theme = MemoTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _MethodBadge(method: method),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  path,
+                  style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 13, color: MemoTheme.accent),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(Icons.info_outline_rounded, size: 15, color: theme.textDim),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            desc,
+            style: TextStyle(fontSize: 12, color: theme.textDim, height: 1.4),
+          ),
+        ],
+      ),
     );
   }
 }

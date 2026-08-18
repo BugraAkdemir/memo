@@ -386,10 +386,12 @@ class L10n {
     'copy': 'Kopyala',
     'dev_gateway_title': 'Geliştirici API Ağ Geçidi',
     'dev_gateway_subtitle':
-        'Memo\'yu Claude Code gibi sadece Anthropic uyumlu bir adres kabul eden araçlarla kullan — Memo\'daki yerel modeli veya tanımlı sağlayıcılardan birini arkada çalıştırır.',
+        'Memo\'yu Claude Code gibi Anthropic uyumlu, veya OpenAI uyumlu herhangi bir araçla kullan — Memo\'daki yerel modeli veya tanımlı sağlayıcılardan birini arkada çalıştırır.',
     'dev_gateway_base_url_label': 'Base URL',
     'dev_gateway_base_url_hint':
         'Claude Code\'da ortam değişkeni olarak ayarla:',
+    'dev_gateway_openai_base_url_hint':
+        'OpenAI uyumlu bir araçta ortam değişkeni olarak ayarla:',
     'dev_gateway_models_title': 'Model ID\'leri',
     'dev_gateway_models_hint':
         'İsteğin "model" alanına bu ID\'lerden birini yaz.',
@@ -407,8 +409,13 @@ class L10n {
     'dev_gateway_nav_gateway': 'Ağ Geçidi',
     'dev_gateway_reference_title': 'API Referansı',
     'dev_gateway_reference_anthropic_badge': 'Anthropic Uyumlu',
+    'dev_gateway_reference_openai_badge': 'OpenAI Uyumlu',
     'dev_gateway_reference_messages_desc':
         'Anthropic Messages API — Claude Code gibi ANTHROPIC_BASE_URL destekleyen her araç için. "model" alanına "tip/model-id" yaz (ör. "local/qwen2.5", "openai/gpt-4o").',
+    'dev_gateway_reference_completions_desc':
+        'OpenAI Chat Completions API — OpenAI uyumlu herhangi bir araç için. "model" alanına aynı şekilde "tip/model-id" yaz.',
+    'dev_gateway_reference_models_desc':
+        'Kullanılabilir modelleri listeler — birçok istemci bağlanınca bunu otomatik çağırıp model seçiciyi doldurur.',
     'dev_gateway_settings_title': 'Ağ Geçidi Ayarları',
     'dev_gateway_system_prompt_label': 'Ek Sistem Talimatı',
     'dev_gateway_system_prompt_desc':
@@ -2217,10 +2224,12 @@ class L10n {
     'copy': 'Copy',
     'dev_gateway_title': 'Developer API Gateway',
     'dev_gateway_subtitle':
-        'Use Memo with tools that only support an Anthropic-compatible endpoint, like Claude Code — it runs whichever local model or configured provider you pick behind the scenes.',
+        'Use Memo with an Anthropic-compatible tool like Claude Code, or any OpenAI-compatible one — it runs whichever local model or configured provider you pick behind the scenes.',
     'dev_gateway_base_url_label': 'Base URL',
     'dev_gateway_base_url_hint':
         'Set as an environment variable in Claude Code:',
+    'dev_gateway_openai_base_url_hint':
+        'Set as an environment variable in an OpenAI-compatible tool:',
     'dev_gateway_models_title': 'Model IDs',
     'dev_gateway_models_hint':
         'Use one of these IDs as the request\'s "model" field.',
@@ -2238,8 +2247,13 @@ class L10n {
     'dev_gateway_nav_gateway': 'Gateway',
     'dev_gateway_reference_title': 'API Reference',
     'dev_gateway_reference_anthropic_badge': 'Anthropic-compatible',
+    'dev_gateway_reference_openai_badge': 'OpenAI-compatible',
     'dev_gateway_reference_messages_desc':
         'Anthropic Messages API — for any tool that supports ANTHROPIC_BASE_URL, like Claude Code. Use "type/model-id" as the "model" field (e.g. "local/qwen2.5", "openai/gpt-4o").',
+    'dev_gateway_reference_completions_desc':
+        'OpenAI Chat Completions API — for any OpenAI-compatible tool. Use the same "type/model-id" shape as the "model" field.',
+    'dev_gateway_reference_models_desc':
+        'Lists the available models — many clients call this automatically on connect to populate a model picker.',
     'dev_gateway_settings_title': 'Gateway Settings',
     'dev_gateway_system_prompt_label': 'Extra System Instruction',
     'dev_gateway_system_prompt_desc':

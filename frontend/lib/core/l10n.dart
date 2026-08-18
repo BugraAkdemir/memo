@@ -648,8 +648,6 @@ class L10n {
     'effort_level_label': 'Akıl Yürütme Çabası (Reasoning Effort)',
     'effort_level_hint':
         'Modelin ne kadar "düşüneceğini" belirler. Bu sağlayıcının gerçekten desteklediği değerler — sabit bir liste değil.',
-    'effort_level_hint_claude':
-        'Sadece bazı Claude modelleri destekler (Opus 4.5+, Sonnet 4.6+). Desteklemeyen bir modelde seçmek isteği reddettirir.',
     'effort_level_default': 'Sağlayıcı varsayılanı',
     'effort_level_refresh': 'Bu model için yeniden kontrol et',
     'provider_enabled_sub': 'Sohbette kullanılabilir',
@@ -2468,8 +2466,6 @@ class L10n {
     'effort_level_label': 'Reasoning Effort',
     'effort_level_hint':
         'Controls how much the model "thinks." These are the values this provider actually supports — not a fixed list.',
-    'effort_level_hint_claude':
-        'Only some Claude models support this (Opus 4.5+, Sonnet 4.6+). Picking one on an unsupported model gets the request rejected.',
     'effort_level_default': 'Provider default',
     'effort_level_refresh': 'Re-check for this model',
     'provider_enabled_sub': 'Available in chat',

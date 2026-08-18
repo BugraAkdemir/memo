@@ -10,58 +10,27 @@ import (
 	"testing"
 )
 
+// TestEffortLevelsForType guards the "no static guessing, ever" invariant
+// (effort.go's package doc comment): every provider type either has no
+// effort concept, or is discovered live per-model in
+// internal/webserver/handlers_oauth.go — never a hand-maintained table in
+// this package. OpenAI is the sharpest regression case: verified live
+// (2026-08-18) that sending reasoning_effort to a non-reasoning OpenAI
+// model like gpt-4o gets a hard 400, so a static per-type list here would
+// be actively unsafe, not just occasionally wrong.
 func TestEffortLevelsForType(t *testing.T) {
-	tests := []struct {
-		name    string
-		pt      ProviderType
-		wantLen int // -1 means "don't check exact length, just non-empty"
-	}{
-		{"openai has levels", ProviderOpenAI, -1},
-		{"claude has levels", ProviderClaude, -1},
-		{"grok has levels", ProviderGrok, -1},
-		{"groq has levels", ProviderGroq, -1},
-		{"ollama has levels", ProviderOllama, -1},
-		{"llamacpp has levels", ProviderLlamaCPP, -1},
-		// OpenCode Zen/Go are aggregators fronting many different vendors'
-		// models with no per-model capability discovery (unlike OpenRouter)
-		// — see effort.go's package doc comment for the live-verified bug
-		// this replaced (a fixed OpenAI-shaped list shown for every model
-		// regardless of what that model actually supports).
-		{"opencode-zen has no known levels (aggregator, no discovery)", ProviderOpenCodeZen, 0},
-		{"opencode-go has no known levels (aggregator, no discovery)", ProviderOpenCodeGo, 0},
-		{"gemini is handled elsewhere, not here", ProviderGemini, 0},
-		{"openrouter is discovered live, not here", ProviderOpenRouter, 0},
-		{"custom has no effort concept", ProviderCustom, 0},
-		{"claude-code-cli has no effort concept", ProviderClaudeCodeCLI, 0},
-		{"unknown type", ProviderType("nonexistent"), 0},
+	types := []ProviderType{
+		ProviderOpenAI, ProviderClaude, ProviderGrok, ProviderGroq,
+		ProviderOllama, ProviderLlamaCPP, ProviderGemini, ProviderOpenRouter,
+		ProviderOpenCodeZen, ProviderOpenCodeGo, ProviderCustom,
+		ProviderClaudeCodeCLI, ProviderCodexCLI, ProviderType("nonexistent"),
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := EffortLevelsForType(tt.pt)
-			if tt.wantLen == 0 {
-				if len(got) != 0 {
-					t.Errorf("EffortLevelsForType(%q) = %v, want empty", tt.pt, got)
-				}
-				return
-			}
-			if len(got) == 0 {
-				t.Errorf("EffortLevelsForType(%q) = %v, want non-empty", tt.pt, got)
+	for _, pt := range types {
+		t.Run(string(pt), func(t *testing.T) {
+			if got := EffortLevelsForType(pt); len(got) != 0 {
+				t.Errorf("EffortLevelsForType(%q) = %v, want empty — no type gets a static guessed list anymore", pt, got)
 			}
 		})
-	}
-}
-
-// TestEffortLevelsForType_ReturnsCopy guards against a caller mutating the
-// package-level table through the returned slice.
-func TestEffortLevelsForType_ReturnsCopy(t *testing.T) {
-	got := EffortLevelsForType(ProviderOpenAI)
-	if len(got) == 0 {
-		t.Fatal("expected non-empty levels for openai")
-	}
-	got[0] = "mutated"
-	again := EffortLevelsForType(ProviderOpenAI)
-	if again[0] == "mutated" {
-		t.Fatal("mutating the returned slice affected the package-level table")
 	}
 }
 

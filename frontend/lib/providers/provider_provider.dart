@@ -73,8 +73,9 @@ class ProviderListNotifier extends AsyncNotifier<List<ProviderConfig>> {
 /// but keyed/cached by Riverpod so the chat screen's quick-select (which
 /// rebuilds far more often, on every active-provider/provider-list change)
 /// doesn't refire the network call on every rebuild. model only matters for
-/// OpenRouter (see MemoApiClient.getEffortLevels); pass '' for every other
-/// type.
+/// the live-discovered types (openrouter/claude/gemini/ollama — see
+/// MemoApiClient.getEffortLevels); every other type ignores it and returns
+/// empty regardless, since there's no known capability signal to check.
 final effortLevelsProvider = FutureProvider.family<List<String>, (String type, String model)>((
   ref,
   key,

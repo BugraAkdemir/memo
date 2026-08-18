@@ -1,11 +1,13 @@
 package webserver
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"memo/internal/logx"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +26,12 @@ var orState openRouterState
 // at an httptest server instead of the real OpenRouter API — see
 // fetchOpenRouterModelEffortLevels below.
 var openRouterModelsURL = "https://openrouter.ai/api/v1/models"
+
+// claudeModelsBaseURL/geminiModelsBaseURL: same test-injection pattern as
+// openRouterModelsURL, for fetchClaudeModelEffortLevels/
+// fetchGeminiModelEffortLevels below.
+var claudeModelsBaseURL = "https://api.anthropic.com/v1/models"
+var geminiModelsBaseURL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 func (s *Server) handleOpenRouterConnect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -115,15 +123,49 @@ func (s *Server) handleOpenRouterConnect(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// effortDiscoveredTypes are the provider types with a real, live,
+// per-model capability endpoint — see effort.go's package doc comment for
+// why these four and no others. All four need a model selected before
+// there's anything to discover.
+var effortDiscoveredTypes = map[provider.ProviderType]bool{
+	provider.ProviderOpenRouter: true,
+	provider.ProviderClaude:     true,
+	provider.ProviderGemini:     true,
+	provider.ProviderOllama:     true,
+}
+
+// findProviderAPIKeyFor returns the first enabled config's API key for
+// type t, or "" if none is configured — the same "first enabled match"
+// lookup this file already did inline for OpenRouter, now shared by
+// Claude/Gemini's live effort-level discovery too.
+func (s *Server) findProviderAPIKeyFor(t provider.ProviderType) string {
+	for _, p := range s.fullBridge.GetProviders() {
+		if p.Type == t && p.APIKey != "" {
+			return p.APIKey
+		}
+	}
+	return ""
+}
+
+// findProviderBaseURLFor mirrors findProviderAPIKeyFor for BaseURL —
+// Ollama's discovery needs the user's actual configured endpoint (a remote
+// Ollama host, a non-default port, ...), not a hardcoded localhost guess.
+func (s *Server) findProviderBaseURLFor(t provider.ProviderType) string {
+	for _, p := range s.fullBridge.GetProviders() {
+		if p.Type == t && p.BaseURL != "" {
+			return p.BaseURL
+		}
+	}
+	return ""
+}
+
 // handleProviderEffortLevels implements GET /api/providers/effort-levels
-// ?type=<provider type>&model=<model id, openrouter only> — the "which
-// reasoning-effort values does this provider actually accept" lookup
-// behind both UI surfaces (provider config dialog, chat screen quick-
-// select). Static, vendor-documented tables for most types
-// (provider.EffortLevelsForType/EffortLevelsForGemini — see effort.go's
-// package doc comment for why these can't be fetched at runtime for most
-// vendors); OpenRouter alone queries its own /api/v1/models live, since it
-// actually publishes this per-model.
+// ?type=<provider type>&model=<model id> — the "which reasoning-effort
+// values does this provider+model actually accept" lookup behind both UI
+// surfaces (provider config dialog, chat screen quick-select). Every type
+// in effortDiscoveredTypes is queried live, per the exact model selected;
+// every other type has no known capability signal at all (see effort.go's
+// package doc comment) and gets an empty list — never a guessed one.
 func (s *Server) handleProviderEffortLevels(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "GET only", http.StatusMethodNotAllowed)
@@ -139,38 +181,8 @@ func (s *Server) handleProviderEffortLevels(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if ptype == provider.ProviderGemini {
-		writeJSON(w, map[string]interface{}{"levels": provider.EffortLevelsForGemini()})
-		return
-	}
-
-	if ptype == provider.ProviderOpenRouter {
-		model := r.URL.Query().Get("model")
-		if model == "" {
-			// No model chosen yet — nothing to discover against. Not an
-			// error: the UI just has nothing to show its dropdown until
-			// the user picks a model, same as OpenRouter's own model
-			// picker needing a selection before showing model-specific
-			// info.
-			writeJSON(w, map[string]interface{}{"levels": []string{}})
-			return
-		}
-		apiKey := ""
-		for _, p := range s.fullBridge.GetProviders() {
-			if p.Type == provider.ProviderOpenRouter && p.APIKey != "" {
-				apiKey = p.APIKey
-				break
-			}
-		}
-		if apiKey == "" {
-			http.Error(w, "OpenRouter API key yapılandırılmamış", http.StatusBadRequest)
-			return
-		}
-		levels, err := fetchOpenRouterModelEffortLevels(apiKey, model)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	if !effortDiscoveredTypes[ptype] {
+		levels := provider.EffortLevelsForType(ptype)
 		if levels == nil {
 			levels = []string{}
 		}
@@ -178,7 +190,51 @@ func (s *Server) handleProviderEffortLevels(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	levels := provider.EffortLevelsForType(ptype)
+	model := r.URL.Query().Get("model")
+	if model == "" {
+		// No model chosen yet — nothing to discover against. Not an
+		// error: the UI just has nothing to show its dropdown until the
+		// user picks a model, same as each vendor's own model picker
+		// needing a selection before showing model-specific info.
+		writeJSON(w, map[string]interface{}{"levels": []string{}})
+		return
+	}
+
+	var levels []string
+	var err error
+	switch ptype {
+	case provider.ProviderOpenRouter:
+		apiKey := s.findProviderAPIKeyFor(provider.ProviderOpenRouter)
+		if apiKey == "" {
+			http.Error(w, "OpenRouter API key yapılandırılmamış", http.StatusBadRequest)
+			return
+		}
+		levels, err = fetchOpenRouterModelEffortLevels(apiKey, model)
+	case provider.ProviderClaude:
+		apiKey := s.findProviderAPIKeyFor(provider.ProviderClaude)
+		if apiKey == "" {
+			http.Error(w, "Claude API key yapılandırılmamış", http.StatusBadRequest)
+			return
+		}
+		levels, err = fetchClaudeModelEffortLevels(apiKey, model)
+	case provider.ProviderGemini:
+		apiKey := s.findProviderAPIKeyFor(provider.ProviderGemini)
+		if apiKey == "" {
+			http.Error(w, "Gemini API key yapılandırılmamış", http.StatusBadRequest)
+			return
+		}
+		levels, err = fetchGeminiModelEffortLevels(apiKey, model)
+	case provider.ProviderOllama:
+		baseURL := s.findProviderBaseURLFor(provider.ProviderOllama)
+		if baseURL == "" {
+			baseURL = provider.DefaultBaseURL(provider.ProviderOllama)
+		}
+		levels, err = fetchOllamaModelEffortLevels(baseURL, model)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	if levels == nil {
 		levels = []string{}
 	}
@@ -361,6 +417,169 @@ func fetchOpenRouterModelEffortLevels(apiKey, modelID string) ([]string, error) 
 		}
 	}
 	return nil, fmt.Errorf("model %q OpenRouter kataloğunda bulunamadı", modelID)
+}
+
+// fetchClaudeModelEffortLevels queries Anthropic's GET /v1/models/{id} —
+// verified live against current docs (2026-08-18) to return a real,
+// per-model capabilities object, e.g. capabilities.effort.{low,medium,
+// high,max,xhigh}.supported booleans and capabilities.thinking.supported.
+// This is what makes effort control on Claude actually safe: sending
+// adaptive-mode effort to a model whose capabilities.effort.supported is
+// false 400s (see claude.go's claudeThinking doc comment) — gating on this
+// live per-model answer instead of a hand-maintained table means Memo
+// never offers a value a specific model will reject. Returns (nil, nil) —
+// not an error — when the model has no effort capability at all.
+func fetchClaudeModelEffortLevels(apiKey, modelID string) ([]string, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", claudeModelsBaseURL+"/"+url.PathEscape(modelID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("request oluşturulamadı: %w", err)
+	}
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Claude API hatası: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Claude döndü %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	type capSupport struct {
+		Supported bool `json:"supported"`
+	}
+	var result struct {
+		Capabilities *struct {
+			Effort *struct {
+				Supported bool       `json:"supported"`
+				Low       capSupport `json:"low"`
+				Medium    capSupport `json:"medium"`
+				High      capSupport `json:"high"`
+				XHigh     capSupport `json:"xhigh"`
+				Max       capSupport `json:"max"`
+			} `json:"effort"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("parse hatası: %w", err)
+	}
+
+	if result.Capabilities == nil || result.Capabilities.Effort == nil || !result.Capabilities.Effort.Supported {
+		return nil, nil
+	}
+	eff := result.Capabilities.Effort
+	var levels []string
+	if eff.Low.Supported {
+		levels = append(levels, "low")
+	}
+	if eff.Medium.Supported {
+		levels = append(levels, "medium")
+	}
+	if eff.High.Supported {
+		levels = append(levels, "high")
+	}
+	if eff.XHigh.Supported {
+		levels = append(levels, "xhigh")
+	}
+	if eff.Max.Supported {
+		levels = append(levels, "max")
+	}
+	return levels, nil
+}
+
+// fetchGeminiModelEffortLevels queries Google's GET
+// /v1beta/models/{id} — verified live (2026-08-18) to return a per-model
+// "thinking" boolean. Gemini's classic generateContent endpoint has no
+// named effort levels of its own (see effort.go's GeminiThinkingBudgetForLevel),
+// so this only gates WHETHER to offer provider.EffortLevelsForGemini()'s
+// names at all for this specific model, not which subset — a model with
+// thinking:false has no thinking control whatsoever, and offering a
+// picker for it would be exactly the same class of mistake the OpenCode
+// Zen/Go fix (effort.go) closed.
+func fetchGeminiModelEffortLevels(apiKey, modelID string) ([]string, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", geminiModelsBaseURL+"/"+url.PathEscape(modelID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("request oluşturulamadı: %w", err)
+	}
+	req.Header.Set("x-goog-api-key", apiKey)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Gemini API hatası: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Gemini döndü %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Thinking bool `json:"thinking"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("parse hatası: %w", err)
+	}
+	if !result.Thinking {
+		return nil, nil
+	}
+	return provider.EffortLevelsForGemini(), nil
+}
+
+// fetchOllamaModelEffortLevels queries Ollama's NATIVE POST /api/show
+// (not the OpenAI-compatibility endpoint ollama.go's ChatCompletion uses —
+// that layer has no capability introspection of its own) — verified live
+// against Ollama's own source (ollama/types/model/capability.go,
+// 2026-08-18) to return a per-model capabilities array that includes
+// "thinking" when the loaded model supports it. baseURL is the
+// configured provider's OpenAI-compat URL (default ".../v1"); the trailing
+// "/v1" is stripped to reach Ollama's native API root. Returns (nil, nil)
+// — not an error — when "thinking" isn't in the model's capabilities.
+func fetchOllamaModelEffortLevels(baseURL, modelID string) ([]string, error) {
+	native := strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
+	reqBody, err := json.Marshal(map[string]string{"model": modelID})
+	if err != nil {
+		return nil, fmt.Errorf("request oluşturulamadı: %w", err)
+	}
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("POST", native+"/api/show", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("request oluşturulamadı: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Ollama API hatası: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Ollama döndü %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Capabilities []string `json:"capabilities"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("parse hatası: %w", err)
+	}
+	for _, c := range result.Capabilities {
+		if c == "thinking" {
+			// Ollama's real value set (its OpenAI-compat "think" param
+			// accepts a bool or one of these four strings) — not "none",
+			// which an earlier version of effort.go's static table wrongly
+			// included as a level name rather than what false means.
+			return []string{"low", "medium", "high", "max"}, nil
+		}
+	}
+	return nil, nil
 }
 
 func toFloat64(v interface{}) float64 {

@@ -705,9 +705,11 @@ class _QuickEffortSelector extends ConsumerWidget {
     if (match.isEmpty) return const SizedBox.shrink();
     final config = match.first;
 
-    final levelsAsync = ref.watch(
-      effortLevelsProvider((config.type, config.type == 'openrouter' ? config.model : '')),
-    );
+    // model is passed unconditionally — the backend only uses it for the
+    // types whose discovery actually depends on it (openrouter/claude/
+    // gemini/ollama) and ignores it otherwise; see effortLevelsProvider's
+    // doc comment.
+    final levelsAsync = ref.watch(effortLevelsProvider((config.type, config.model)));
     final levels = levelsAsync.valueOrNull ?? const <String>[];
     if (levels.isEmpty) return const SizedBox.shrink();
 

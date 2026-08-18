@@ -105,15 +105,15 @@ type claudeRequest struct {
 // budget_tokens:N} manual-budget mode: that mode is deprecated on Claude
 // 4.6-generation models (still works, with a warning) and rejected outright
 // (400) on 4.7 and later — adaptive mode is what Anthropic tells
-// integrators to move to. The mirror-image risk exists in the other
-// direction: adaptive mode itself 400s on Claude Sonnet 4.5, Opus 4.5,
-// Haiku 4.5 and earlier, which support only the deprecated manual mode.
-// There is no single request shape that is safe across every Claude model
-// generation without Memo tracking model-version compatibility, which it
-// doesn't do today — this is a known, accepted limitation: picking an
-// effort level on a pre-4.6 Claude model will fail with a 400 from
-// Anthropic's API, surfaced through the normal provider-error path like
-// any other rejected request, not silently swallowed.
+// integrators to move to. Adaptive mode itself 400s on Claude Sonnet 4.5,
+// Opus 4.5, Haiku 4.5 and earlier, which support only the deprecated manual
+// mode — this used to be an accepted, unguarded limitation here, but is now
+// closed at the source: the effort-level picker (GET
+// /api/providers/effort-levels, handlers_oauth.go's
+// fetchClaudeModelEffortLevels) queries GET /v1/models/{id}'s
+// capabilities.effort.supported live, per the exact model configured, so
+// EffortLevel is never set to a non-empty value on a model that would 400
+// on this request shape in the first place.
 type claudeThinking struct {
 	Type string `json:"type"` // always "adaptive" here
 }

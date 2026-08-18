@@ -1627,11 +1627,14 @@ class MemoApiClient {
     );
   }
 
-  /// Which reasoning-effort labels [type] actually accepts — a static,
-  /// vendor-documented list for most types, or (type=="openrouter" with
-  /// [model] set) OpenRouter's own live per-model answer. Empty list means
-  /// "this provider/model has no effort concept" — the caller should hide
-  /// the control entirely rather than show an empty dropdown.
+  /// Which reasoning-effort labels [type] + [model] actually accept.
+  /// openrouter/claude/gemini/ollama are queried live against that
+  /// specific model's real capabilities; every other type has no known
+  /// capability signal and always returns empty (see the backend's
+  /// effort.go package doc comment for why — no static guessed lists
+  /// exist anymore). Empty list means "this provider/model has no effort
+  /// concept" — the caller should hide the control entirely rather than
+  /// show an empty dropdown.
   Future<List<String>> getEffortLevels(String type, {String? model}) async {
     final res = await _dio.get('/api/providers/effort-levels', queryParameters: {
       'type': type,

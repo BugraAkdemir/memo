@@ -100,19 +100,27 @@ class _ProviderConfigDialogState
     if (_testResult != null) setState(() => _testResult = null);
   }
 
-  /// Refetches which effort labels _type (and, for OpenRouter, the current
-  /// model field) actually accepts — see MemoApiClient.getEffortLevels's
-  /// doc comment. Called on init, on type change, and via the manual
-  /// refresh button next to the dropdown for OpenRouter (model text isn't
-  /// watched live to avoid a network call per keystroke).
+  /// Types whose effort-level discovery depends on the chosen model, not
+  /// just the type — mirrors the backend's effortDiscoveredTypes
+  /// (handlers_oauth.go). Gates the manual refresh button, since these are
+  /// the only types where re-checking after editing the model field
+  /// matters.
+  static const _modelDependentEffortTypes = {'openrouter', 'claude', 'gemini', 'ollama'};
+  bool get _effortLevelsAreModelDependent => _modelDependentEffortTypes.contains(_type);
+
+  /// Refetches which effort labels _type + the current model field actually
+  /// accepts — see MemoApiClient.getEffortLevels's doc comment. Called on
+  /// init, on type change, and via the manual refresh button next to the
+  /// dropdown for the live-discovered types (model text isn't watched live
+  /// to avoid a network call per keystroke). Passing model unconditionally
+  /// is harmless for types that don't use it — the backend just ignores it.
   Future<void> _loadEffortLevels() async {
     setState(() => _loadingEffortLevels = true);
     List<String> levels;
     try {
-      levels = await ref.read(apiClientProvider).getEffortLevels(
-            _type,
-            model: _type == 'openrouter' ? _modelCtrl.text.trim() : null,
-          );
+      levels = await ref
+          .read(apiClientProvider)
+          .getEffortLevels(_type, model: _modelCtrl.text.trim());
     } catch (_) {
       levels = [];
     }
@@ -682,12 +690,13 @@ class _ProviderConfigDialogState
                         ),
                       ),
                       // Reasoning effort — only shown when this provider
-                      // type actually has one (levels come from the
-                      // backend, per type, not a value Memo hardcodes once
-                      // for everyone; see MemoApiClient.getEffortLevels).
-                      // OpenRouter's list depends on the chosen model, so
-                      // it gets its own manual-refresh affordance instead
-                      // of a per-keystroke network call.
+                      // type actually has one, discovered live against the
+                      // exact model configured (openrouter/claude/gemini/
+                      // ollama — see MemoApiClient.getEffortLevels; every
+                      // other type has no known capability signal at all
+                      // and never shows this section). All four depend on
+                      // the chosen model, so they share a manual-refresh
+                      // affordance instead of a per-keystroke network call.
                       if (_loadingEffortLevels || _availableEffortLevels.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         Row(
@@ -701,9 +710,7 @@ class _ProviderConfigDialogState
                                 decoration: InputDecoration(
                                   labelText: L10n.t('effort_level_label'),
                                   border: const OutlineInputBorder(),
-                                  helperText: _type == 'claude'
-                                      ? L10n.t('effort_level_hint_claude')
-                                      : L10n.t('effort_level_hint'),
+                                  helperText: L10n.t('effort_level_hint'),
                                   helperMaxLines: 3,
                                 ),
                                 items: [
@@ -718,7 +725,7 @@ class _ProviderConfigDialogState
                                 onChanged: (v) => setState(() => _effortLevel = v ?? ''),
                               ),
                             ),
-                            if (_type == 'openrouter') ...[
+                            if (_effortLevelsAreModelDependent) ...[
                               const SizedBox(width: 8),
                               IconButton(
                                 tooltip: L10n.t('effort_level_refresh'),

@@ -6,7 +6,22 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"memo/internal/provider"
 )
+
+// stubBridgeWithProviders wraps swarmStubBridge to inject specific
+// provider configs for tests that need an API key/BaseURL configured —
+// swarmStubBridge.GetProviders() always returns nil, which only exercises
+// the "nothing configured" path.
+type stubBridgeWithProviders struct {
+	*swarmStubBridge
+	providers []provider.ProviderConfig
+}
+
+func (b *stubBridgeWithProviders) GetProviders() []provider.ProviderConfig {
+	return b.providers
+}
 
 // TestFetchOpenRouterModelEffortLevels_ParsesSupportedEfforts is the
 // regression for the one vendor in provider/effort.go's design that gets
@@ -96,29 +111,82 @@ func TestFetchOpenRouterModelEffortLevels_ModelNotFound(t *testing.T) {
 	}
 }
 
-// TestHandleProviderEffortLevels_StaticType covers the vendor-table path
-// (no network call, no bridge dependency beyond fullBridge being non-nil).
-func TestHandleProviderEffortLevels_StaticType(t *testing.T) {
+// TestHandleProviderEffortLevels_UndiscoveredTypeReturnsEmpty covers every
+// provider type with no known capability signal at all (see effort.go's
+// package doc comment) — must return an empty list, never a guessed one.
+// openai is the sharpest case: verified live that a non-reasoning OpenAI
+// model 400s on reasoning_effort, so a non-empty static answer here would
+// be actively unsafe.
+func TestHandleProviderEffortLevels_UndiscoveredTypeReturnsEmpty(t *testing.T) {
+	for _, ptype := range []string{"openai", "grok", "groq", "llamacpp", "opencode-zen", "opencode-go", "custom"} {
+		t.Run(ptype, func(t *testing.T) {
+			s := New(&swarmStubBridge{})
+
+			r := httptest.NewRequest(http.MethodGet, "/api/providers/effort-levels?type="+ptype, nil)
+			w := httptest.NewRecorder()
+			s.handleProviderEffortLevels(w, r)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+			}
+			var got struct {
+				Levels []string `json:"levels"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+				t.Fatalf("unmarshal response: %v", err)
+			}
+			if len(got.Levels) != 0 {
+				t.Errorf("levels = %v, want empty — %q has no known capability signal", got.Levels, ptype)
+			}
+		})
+	}
+}
+
+// TestHandleProviderEffortLevels_GeminiNoModelYet mirrors OpenRouter's
+// "nothing chosen yet" case — Gemini's discovery is per-model now too
+// (fetchGeminiModelEffortLevels), not an unconditional static list.
+func TestHandleProviderEffortLevels_GeminiNoModelYet(t *testing.T) {
 	s := New(&swarmStubBridge{})
 
-	r := httptest.NewRequest(http.MethodGet, "/api/providers/effort-levels?type=openai", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/providers/effort-levels?type=gemini", nil)
 	w := httptest.NewRecorder()
 	s.handleProviderEffortLevels(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), `"high"`) {
-		t.Errorf("body = %s, want it to contain a known openai effort level", w.Body.String())
+	var got struct {
+		Levels []string `json:"levels"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(got.Levels) != 0 {
+		t.Errorf("levels = %v, want empty (no model selected yet)", got.Levels)
 	}
 }
 
-// TestHandleProviderEffortLevels_Gemini covers the token-budget-mapped
-// vendor, which has its own label list separate from effortLevelsByType.
-func TestHandleProviderEffortLevels_Gemini(t *testing.T) {
-	s := New(&swarmStubBridge{})
+// TestHandleProviderEffortLevels_GeminiLiveDiscovery is the end-to-end
+// path for the new Gemini discovery: a configured API key + a live
+// "thinking": true response must surface EffortLevelsForGemini()'s names.
+func TestHandleProviderEffortLevels_GeminiLiveDiscovery(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("x-goog-api-key"); got != "gem-key" {
+			t.Errorf("x-goog-api-key = %q, want %q", got, "gem-key")
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"name": "models/gemini-3-flash", "thinking": true})
+	}))
+	defer srv.Close()
+	orig := geminiModelsBaseURL
+	geminiModelsBaseURL = srv.URL
+	defer func() { geminiModelsBaseURL = orig }()
 
-	r := httptest.NewRequest(http.MethodGet, "/api/providers/effort-levels?type=gemini", nil)
+	s := New(&stubBridgeWithProviders{
+		swarmStubBridge: &swarmStubBridge{},
+		providers:       []provider.ProviderConfig{{Type: provider.ProviderGemini, APIKey: "gem-key"}},
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/providers/effort-levels?type=gemini&model=gemini-3-flash", nil)
 	w := httptest.NewRecorder()
 	s.handleProviderEffortLevels(w, r)
 
@@ -181,5 +249,239 @@ func TestHandleProviderEffortLevels_MissingType(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 for a missing type param", w.Code)
+	}
+}
+
+// TestFetchClaudeModelEffortLevels_ParsesCapabilities is the regression for
+// the new live discovery: Anthropic's GET /v1/models/{id} reports which
+// specific effort levels a model supports (verified against current docs,
+// 2026-08-18) — this must extract exactly the ones marked supported:true,
+// in ascending order, skipping the rest.
+func TestFetchClaudeModelEffortLevels_ParsesCapabilities(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("x-api-key"); got != "claude-key" {
+			t.Errorf("x-api-key = %q, want %q", got, "claude-key")
+		}
+		if got := r.Header.Get("anthropic-version"); got == "" {
+			t.Error("anthropic-version header missing")
+		}
+		if !strings.HasSuffix(r.URL.Path, "/claude-opus-4-6") {
+			t.Errorf("request path = %q, want it to end with the model id", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "claude-opus-4-6",
+			"capabilities": map[string]interface{}{
+				"effort": map[string]interface{}{
+					"supported": true,
+					"low":       map[string]bool{"supported": true},
+					"medium":    map[string]bool{"supported": true},
+					"high":      map[string]bool{"supported": true},
+					"xhigh":     map[string]bool{"supported": false},
+					"max":       map[string]bool{"supported": true},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+	orig := claudeModelsBaseURL
+	claudeModelsBaseURL = srv.URL
+	defer func() { claudeModelsBaseURL = orig }()
+
+	levels, err := fetchClaudeModelEffortLevels("claude-key", "claude-opus-4-6")
+	if err != nil {
+		t.Fatalf("fetchClaudeModelEffortLevels() error = %v", err)
+	}
+	want := []string{"low", "medium", "high", "max"}
+	if len(levels) != len(want) {
+		t.Fatalf("levels = %v, want %v", levels, want)
+	}
+	for i, l := range want {
+		if levels[i] != l {
+			t.Errorf("levels[%d] = %q, want %q", i, levels[i], l)
+		}
+	}
+}
+
+// TestFetchClaudeModelEffortLevels_EffortNotSupportedReturnsNilNoError is
+// the regression for claude.go's known-limitation gate: an older model
+// (capabilities.effort.supported: false) must resolve to an empty picker,
+// not an error — this is exactly what prevents Memo from ever sending
+// adaptive-mode thinking to a model that would 400 on it.
+func TestFetchClaudeModelEffortLevels_EffortNotSupportedReturnsNilNoError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "claude-haiku-4-5",
+			"capabilities": map[string]interface{}{
+				"effort": map[string]interface{}{"supported": false},
+			},
+		})
+	}))
+	defer srv.Close()
+	orig := claudeModelsBaseURL
+	claudeModelsBaseURL = srv.URL
+	defer func() { claudeModelsBaseURL = orig }()
+
+	levels, err := fetchClaudeModelEffortLevels("claude-key", "claude-haiku-4-5")
+	if err != nil {
+		t.Fatalf("fetchClaudeModelEffortLevels() error = %v, want nil error", err)
+	}
+	if levels != nil {
+		t.Errorf("levels = %v, want nil", levels)
+	}
+}
+
+// TestFetchGeminiModelEffortLevels_ThinkingTrue verifies the "thinking"
+// boolean gate surfaces EffortLevelsForGemini()'s static name list —
+// Gemini's classic endpoint has no per-model level granularity of its own,
+// only a yes/no for the capability.
+func TestFetchGeminiModelEffortLevels_ThinkingTrue(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("x-goog-api-key"); got != "gem-key" {
+			t.Errorf("x-goog-api-key = %q, want %q", got, "gem-key")
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"name": "models/gemini-3-flash", "thinking": true})
+	}))
+	defer srv.Close()
+	orig := geminiModelsBaseURL
+	geminiModelsBaseURL = srv.URL
+	defer func() { geminiModelsBaseURL = orig }()
+
+	levels, err := fetchGeminiModelEffortLevels("gem-key", "gemini-3-flash")
+	if err != nil {
+		t.Fatalf("fetchGeminiModelEffortLevels() error = %v", err)
+	}
+	if len(levels) == 0 {
+		t.Fatal("levels = empty, want the static Gemini name list")
+	}
+}
+
+// TestFetchGeminiModelEffortLevels_ThinkingFalse guards the opposite case
+// — a model with no thinking support must yield an empty picker, not the
+// full static list unconditionally (the exact class of bug the OpenCode
+// Zen/Go fix in effort.go closed).
+func TestFetchGeminiModelEffortLevels_ThinkingFalse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{"name": "models/gemini-3-flash-lite", "thinking": false})
+	}))
+	defer srv.Close()
+	orig := geminiModelsBaseURL
+	geminiModelsBaseURL = srv.URL
+	defer func() { geminiModelsBaseURL = orig }()
+
+	levels, err := fetchGeminiModelEffortLevels("gem-key", "gemini-3-flash-lite")
+	if err != nil {
+		t.Fatalf("fetchGeminiModelEffortLevels() error = %v", err)
+	}
+	if levels != nil {
+		t.Errorf("levels = %v, want nil", levels)
+	}
+}
+
+// TestFetchOllamaModelEffortLevels_ThinkingCapabilityPresent is the
+// regression for querying Ollama's NATIVE /api/show (not the OpenAI-compat
+// endpoint ollama.go's ChatCompletion uses, which has no capability
+// introspection) — verified against Ollama's own source
+// (types/model/capability.go) for the real "thinking" capability string
+// and the real think-level value set (low/medium/high/max, not "none").
+func TestFetchOllamaModelEffortLevels_ThinkingCapabilityPresent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/show" {
+			t.Errorf("path = %q, want /api/show", r.URL.Path)
+		}
+		var body struct {
+			Model string `json:"model"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body.Model != "deepseek-r1:latest" {
+			t.Errorf("request model = %q, want %q", body.Model, "deepseek-r1:latest")
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"capabilities": []string{"completion", "thinking"},
+		})
+	}))
+	defer srv.Close()
+
+	// baseURL mirrors the configured provider's OpenAI-compat URL
+	// (".../v1") — the function must strip that suffix to reach the
+	// native API root the httptest server here stands in for.
+	levels, err := fetchOllamaModelEffortLevels(srv.URL+"/v1", "deepseek-r1:latest")
+	if err != nil {
+		t.Fatalf("fetchOllamaModelEffortLevels() error = %v", err)
+	}
+	want := []string{"low", "medium", "high", "max"}
+	if len(levels) != len(want) {
+		t.Fatalf("levels = %v, want %v", levels, want)
+	}
+	for i, l := range want {
+		if levels[i] != l {
+			t.Errorf("levels[%d] = %q, want %q", i, levels[i], l)
+		}
+	}
+}
+
+// TestFetchOllamaModelEffortLevels_ThinkingCapabilityAbsent guards a
+// non-reasoning local model (e.g. llama3.2) yielding an empty picker.
+func TestFetchOllamaModelEffortLevels_ThinkingCapabilityAbsent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"capabilities": []string{"completion", "vision"},
+		})
+	}))
+	defer srv.Close()
+
+	levels, err := fetchOllamaModelEffortLevels(srv.URL+"/v1", "llama3.2:latest")
+	if err != nil {
+		t.Fatalf("fetchOllamaModelEffortLevels() error = %v", err)
+	}
+	if levels != nil {
+		t.Errorf("levels = %v, want nil", levels)
+	}
+}
+
+// TestHandleProviderEffortLevels_ClaudeNoAPIKeyConfigured mirrors
+// OpenRouter's equivalent — a model chosen but no Claude API key
+// configured must 400, not silently discover nothing.
+func TestHandleProviderEffortLevels_ClaudeNoAPIKeyConfigured(t *testing.T) {
+	s := New(&swarmStubBridge{})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/providers/effort-levels?type=claude&model=claude-opus-4-6", nil)
+	w := httptest.NewRecorder()
+	s.handleProviderEffortLevels(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (no Claude API key configured), body: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestHandleProviderEffortLevels_OllamaUsesConfiguredBaseURL is the
+// end-to-end path for Ollama discovery: a configured provider's own
+// BaseURL (findProviderBaseURLFor) must be the one queried, not a
+// hardcoded default — proven by pointing that BaseURL at an httptest
+// server and asserting it actually received the request. (The
+// empty-BaseURL fallback to provider.DefaultBaseURL is a one-line
+// assignment exercised by construction here having no easy way to hit
+// without a real network call to a possibly-running local Ollama, which
+// would make the test's outcome depend on the machine it runs on — not
+// worth the flakiness for what the code makes obvious.)
+func TestHandleProviderEffortLevels_OllamaUsesConfiguredBaseURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{"capabilities": []string{"completion", "thinking"}})
+	}))
+	defer srv.Close()
+
+	s := New(&stubBridgeWithProviders{
+		swarmStubBridge: &swarmStubBridge{},
+		providers:       []provider.ProviderConfig{{Type: provider.ProviderOllama, BaseURL: srv.URL + "/v1"}},
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/providers/effort-levels?type=ollama&model=deepseek-r1:latest", nil)
+	w := httptest.NewRecorder()
+	s.handleProviderEffortLevels(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"low"`) {
+		t.Errorf("body = %s, want it to contain the thinking-capable Ollama level set", w.Body.String())
 	}
 }

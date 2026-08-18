@@ -425,6 +425,31 @@ func TestSendMessage_AgentModeOff_NoToolDefinitions(t *testing.T) {
 	}
 }
 
+// TestSendMessage_WebSearchOnMinimalModeOn_NoToolDefinitions guards a gap
+// the web-search tool-calling redesign (see the test above) introduced and
+// this same session caught and fixed: the old blind-injection design lived
+// inside buildMessagesForSession, gated behind
+// `!a.identity.GetMinimalMode()` — Minimal Mode's whole promise is "zero
+// injection beyond memory". Moving the decision into routeStream
+// (callWebSearchAgentStream) initially dropped that gate entirely, so a
+// tool definition would ride along on every request even under Minimal
+// Mode. This asserts Minimal Mode still suppresses it.
+func TestSendMessage_WebSearchOnMinimalModeOn_NoToolDefinitions(t *testing.T) {
+	reqs := &capturedRequests{}
+	a := newSendMessageTestApp(t, reqs)
+	a.cfg.WebSearch.Enabled = true
+	a.identity.SetMinimalMode(true)
+
+	reply := a.SendMessage("naber")
+
+	if reqs.containsAny(`"tools"`) {
+		t.Fatalf("web search on but Minimal Mode on: outbound request unexpectedly carried tool definitions. requests=%s", reqs)
+	}
+	if reply != "fake agent reply" {
+		t.Fatalf("SendMessage() = %q, want %q", reply, "fake agent reply")
+	}
+}
+
 // TestSendMessage_WebSearchOnAgentOff_SendsOnlyWebSearchTool is the
 // regression test for the redesign that replaced blind web-search
 // injection: with agent mode off and the web-search toggle on,

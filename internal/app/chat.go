@@ -292,8 +292,15 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 	// orchestraEnabled — the conductor's own single-completion RunSingle
 	// path (callLLMStream's orchestra branch) has no tool-calling support to
 	// plug this into; that combination simply gets no web search, same as
-	// it would with agent mode off and web search off.
-	if a.GetWebSearchEnabled() && !orchestraEnabled && (hasProvider || localModelRunning) {
+	// it would with agent mode off and web search off. Also excluded under
+	// MinimalMode: buildMessagesForSession used to gate the old blind
+	// injection behind `!a.identity.GetMinimalMode()` (still does, for
+	// mood) precisely because Minimal Mode's whole promise is "zero
+	// injection beyond memory" — a tool definition riding along in the
+	// request is the same category of overhead as the old injected results
+	// text, so it must be gated the same way here now that the decision
+	// lives in routeStream instead of buildMessagesForSession.
+	if a.GetWebSearchEnabled() && !orchestraEnabled && !a.identity.GetMinimalMode() && (hasProvider || localModelRunning) {
 		return a.callWebSearchAgentStream(ctx, messages, userMsg, sessionID)
 	}
 	return a.callLLMStream(ctx, messages, userMsg, imagePath, filePath, sessionID)

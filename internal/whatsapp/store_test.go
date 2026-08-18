@@ -199,6 +199,61 @@ func TestSearchMessages(t *testing.T) {
 	}
 }
 
+// TestSearchMessages_UnderscoreIsLiteralNotWildcard is the H05 regression:
+// SQL LIKE treats "_" as a single-character wildcard, so an un-escaped
+// query like "test_" would also match "testX" — a real message containing
+// only "test1" (no literal underscore) must not show up in the results for
+// "test_".
+func TestSearchMessages_UnderscoreIsLiteralNotWildcard(t *testing.T) {
+	s := newTestStore(t)
+	msgs := []Message{
+		{ID: "m1", ChatJID: "c1", SenderJID: "s1", Text: "test_1 has a literal underscore", Timestamp: time.Unix(1000, 0)},
+		{ID: "m2", ChatJID: "c1", SenderJID: "s1", Text: "test1 has no underscore at all", Timestamp: time.Unix(2000, 0)},
+	}
+	for _, m := range msgs {
+		if err := s.SaveMessage(m); err != nil {
+			t.Fatalf("SaveMessage failed: %v", err)
+		}
+	}
+
+	results, err := s.SearchMessages("test_", 10)
+	if err != nil {
+		t.Fatalf("SearchMessages failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("got %d results for \"test_\", want 1 (only the literal-underscore message)", len(results))
+	}
+	if results[0].ID != "m1" {
+		t.Errorf("got message %s, want m1 (the one with a literal underscore)", results[0].ID)
+	}
+}
+
+// TestSearchMessages_PercentIsLiteralNotWildcard mirrors the underscore
+// case for "%", LIKE's multi-character wildcard.
+func TestSearchMessages_PercentIsLiteralNotWildcard(t *testing.T) {
+	s := newTestStore(t)
+	msgs := []Message{
+		{ID: "m1", ChatJID: "c1", SenderJID: "s1", Text: "100% done", Timestamp: time.Unix(1000, 0)},
+		{ID: "m2", ChatJID: "c1", SenderJID: "s1", Text: "100 percent done, no percent sign", Timestamp: time.Unix(2000, 0)},
+	}
+	for _, m := range msgs {
+		if err := s.SaveMessage(m); err != nil {
+			t.Fatalf("SaveMessage failed: %v", err)
+		}
+	}
+
+	results, err := s.SearchMessages("100%", 10)
+	if err != nil {
+		t.Fatalf("SearchMessages failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("got %d results for \"100%%\", want 1 (only the literal-percent message)", len(results))
+	}
+	if results[0].ID != "m1" {
+		t.Errorf("got message %s, want m1 (the one with a literal percent sign)", results[0].ID)
+	}
+}
+
 func TestSearchMessages_Limit(t *testing.T) {
 	s := newTestStore(t)
 	for i := 0; i < 10; i++ {

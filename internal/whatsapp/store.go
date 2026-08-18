@@ -118,6 +118,17 @@ func (s *Store) GetContactName(jid string) string {
 	return name
 }
 
+// escapeLikePattern escapes SQL LIKE's own wildcard characters (% and _)
+// and the escape character itself in a value that will be substring-matched
+// via "%"+value+"%" — without this, a literal "_" in the user's search text
+// silently acts as a single-character wildcard (e.g. "test_" also matches
+// "testX"), returning results the user never asked for. Must be paired with
+// `ESCAPE '\'` on the LIKE clause itself.
+func escapeLikePattern(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
 // SearchMessages searches messages by text content.
 func (s *Store) SearchMessages(query string, limit int) ([]Message, error) {
 	if limit <= 0 {
@@ -125,8 +136,8 @@ func (s *Store) SearchMessages(query string, limit int) ([]Message, error) {
 	}
 	rows, err := s.db.Query(
 		`SELECT id, chat_jid, sender_jid, sender_name, text, timestamp, from_me
-		 FROM messages WHERE text LIKE ? ORDER BY timestamp DESC LIMIT ?`,
-		"%"+query+"%", limit,
+		 FROM messages WHERE text LIKE ? ESCAPE '\' ORDER BY timestamp DESC LIMIT ?`,
+		"%"+escapeLikePattern(query)+"%", limit,
 	)
 	if err != nil {
 		return nil, err

@@ -15,14 +15,33 @@ import '../core/friendly_error.dart';
 /// top-level screen (like WhatsApp/Routines) so it can show a live-updating
 /// log without needing the Settings dialog to stay open.
 ///
-/// Layout is a 3-panel LM Studio-style arrangement (reference | models+logs
-/// | settings) above ~900px, collapsing to a single scrolling column below
-/// that — see _wide/_narrow.
-class DeveloperScreen extends ConsumerWidget {
+/// Layout mirrors LM Studio's own Developer page: a docs-tree-style nav
+/// sidebar on the left (jumps to sections rather than owning separate
+/// pages — this screen only has one real endpoint, so a full multi-page
+/// docs site would be mostly empty) and a single scrolling content column
+/// on the right. Sidebar hides below ~760px — see build().
+class DeveloperScreen extends ConsumerStatefulWidget {
   const DeveloperScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DeveloperScreen> createState() => _DeveloperScreenState();
+}
+
+class _DeveloperScreenState extends ConsumerState<DeveloperScreen> {
+  final _referenceKey = GlobalKey();
+  final _modelsKey = GlobalKey();
+  final _settingsKey = GlobalKey();
+  final _logKey = GlobalKey();
+
+  void _scrollTo(GlobalKey key) {
+    final ctx = key.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = MemoTheme.of(context);
     final configAsync = ref.watch(devGatewayConfigProvider);
     final modelsAsync = ref.watch(gatewayModelsProvider);
@@ -31,94 +50,53 @@ class DeveloperScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _TopBar(baseUrl: baseUrl),
+        _TopBar(baseUrl: baseUrl, onSettingsTap: () => _scrollTo(_settingsKey)),
         Divider(height: 1, color: theme.borderSoft),
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              if (constraints.maxWidth < 900) {
-                return _narrow(context, baseUrl, modelsAsync, configAsync);
-              }
-              return _wide(context, baseUrl, modelsAsync, configAsync);
+              final showSidebar = constraints.maxWidth >= 760;
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (showSidebar) ...[
+                    _NavSidebar(
+                      onTapReference: () => _scrollTo(_referenceKey),
+                      onTapModels: () => _scrollTo(_modelsKey),
+                      onTapSettings: () => _scrollTo(_settingsKey),
+                      onTapLog: () => _scrollTo(_logKey),
+                    ),
+                    VerticalDivider(width: 1, color: theme.borderSoft),
+                  ],
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.all(24),
+                      children: [
+                        _ReferenceSection(key: _referenceKey, baseUrl: baseUrl),
+                        const SizedBox(height: 32),
+                        _ModelsPanel(key: _modelsKey, modelsAsync: modelsAsync),
+                        const SizedBox(height: 32),
+                        KeyedSubtree(
+                          key: _settingsKey,
+                          child: configAsync.when(
+                            loading: () => const Center(child: CircularProgressIndicator()),
+                            error: (e, _) => Text(
+                              '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
+                              style: TextStyle(color: MemoTheme.red),
+                            ),
+                            data: (config) => _SettingsPanel(config: config),
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        KeyedSubtree(key: _logKey, child: const _LogSection()),
+                      ],
+                    ),
+                  ),
+                ],
+              );
             },
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _wide(
-    BuildContext context,
-    String baseUrl,
-    AsyncValue<List<GatewayModel>> modelsAsync,
-    AsyncValue<DevGatewayConfig> configAsync,
-  ) {
-    final theme = MemoTheme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          width: 280,
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [_ReferencePanel(baseUrl: baseUrl)],
-          ),
-        ),
-        VerticalDivider(width: 1, color: theme.borderSoft),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              _ModelsPanel(modelsAsync: modelsAsync),
-              const SizedBox(height: 28),
-              const _LogSection(),
-            ],
-          ),
-        ),
-        VerticalDivider(width: 1, color: theme.borderSoft),
-        SizedBox(
-          width: 320,
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              configAsync.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Text(
-                  '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
-                  style: TextStyle(color: MemoTheme.red),
-                ),
-                data: (config) => _SettingsPanel(config: config),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _narrow(
-    BuildContext context,
-    String baseUrl,
-    AsyncValue<List<GatewayModel>> modelsAsync,
-    AsyncValue<DevGatewayConfig> configAsync,
-  ) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        _ReferencePanel(baseUrl: baseUrl),
-        const SizedBox(height: 28),
-        _ModelsPanel(modelsAsync: modelsAsync),
-        const SizedBox(height: 28),
-        configAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text(
-            '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
-            style: TextStyle(color: MemoTheme.red),
-          ),
-          data: (config) => _SettingsPanel(config: config),
-        ),
-        const SizedBox(height: 28),
-        const _LogSection(),
       ],
     );
   }
@@ -181,58 +159,112 @@ Widget copyableValueBox(BuildContext context, String value, {bool monospace = fa
 /// toggle here would be misleading.
 class _TopBar extends StatelessWidget {
   final String baseUrl;
-  const _TopBar({required this.baseUrl});
+  final VoidCallback onSettingsTap;
+  const _TopBar({required this.baseUrl, required this.onSettingsTap});
 
   @override
   Widget build(BuildContext context) {
     final theme = MemoTheme.of(context);
+    // Two independently-wrapping groups laid out via spaceBetween, NOT a
+    // single Wrap with a Spacer in the middle — Spacer wraps Expanded,
+    // which requires a direct Flex (Row/Column) ancestor; Wrap isn't one,
+    // so that combination throws at runtime (RenderFlex/ParentDataWidget
+    // error) and blanks the whole screen in a release build, where the
+    // error widget renders as an empty box with no visible message.
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      child: Wrap(
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 20,
-        runSpacing: 8,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(color: MemoTheme.green, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                L10n.t('dev_gateway_status_active'),
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.textMain),
-              ),
-              const SizedBox(width: 16),
-              Text(
-                L10n.t('dev_gateway_title'),
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.textMain),
-              ),
-            ],
-          ),
-          GestureDetector(
-            onTap: () => copyToClipboard(context, baseUrl),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: theme.bgElement,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: theme.borderSoft),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    baseUrl,
-                    style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12, color: MemoTheme.accent),
+          Flexible(
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: theme.bgElement,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: theme.borderSoft),
                   ),
-                  const SizedBox(width: 6),
-                  Icon(Icons.copy_rounded, size: 14, color: theme.textDim),
-                ],
-              ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(color: MemoTheme.green, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        L10n.t('dev_gateway_status_active'),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.textMain),
+                      ),
+                    ],
+                  ),
+                ),
+                Material(
+                  color: theme.bgElement,
+                  borderRadius: BorderRadius.circular(8),
+                  child: InkWell(
+                    onTap: onSettingsTap,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: theme.borderSoft)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.tune_rounded, size: 14, color: theme.textDim),
+                          const SizedBox(width: 6),
+                          Text(
+                            L10n.t('dev_gateway_settings_title'),
+                            style: TextStyle(fontSize: 12, color: theme.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                Text(
+                  L10n.t('dev_gateway_title'),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: theme.textMain),
+                ),
+                GestureDetector(
+                  onTap: () => copyToClipboard(context, baseUrl),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.bgElement,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: theme.borderSoft),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          baseUrl,
+                          style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12, color: MemoTheme.accent),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(Icons.copy_rounded, size: 14, color: theme.textDim),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -241,13 +273,123 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-/// Left panel: a compact, always-accurate local reference for the gateway's
-/// one real endpoint (deliberately not a fetched copy of memocpp.com's
-/// docs — see handoff.md: this stays available offline, and a 1-endpoint
-/// surface doesn't need a whole docs tree).
-class _ReferencePanel extends StatelessWidget {
+/// Left docs-tree-style nav — jumps the main content list to a section
+/// rather than swapping to a separate page (this screen has one real
+/// endpoint, so separate pages would mostly be empty). Uses bgApp (the
+/// theme's deepest surface level) to read as a distinct rail from the
+/// content behind it, in both light and dark mode.
+class _NavSidebar extends StatelessWidget {
+  final VoidCallback onTapReference;
+  final VoidCallback onTapModels;
+  final VoidCallback onTapSettings;
+  final VoidCallback onTapLog;
+  const _NavSidebar({
+    required this.onTapReference,
+    required this.onTapModels,
+    required this.onTapSettings,
+    required this.onTapLog,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    return Container(
+      width: 220,
+      color: theme.bgApp,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        children: [
+          _navSectionLabel(context, L10n.t('dev_gateway_nav_section')),
+          _navItem(context, icon: Icons.dns_rounded, label: L10n.t('dev_gateway_nav_gateway'), active: true),
+          const SizedBox(height: 10),
+          _navSectionLabel(context, L10n.t('dev_gateway_reference_title')),
+          _navSubItem(context, label: '/v1/messages', onTap: onTapReference, method: 'POST'),
+          const SizedBox(height: 10),
+          _navSectionLabel(context, L10n.t('dev_gateway_models_title')),
+          _navSubItem(context, label: L10n.t('dev_gateway_models_title'), onTap: onTapModels),
+          const SizedBox(height: 10),
+          _navSectionLabel(context, L10n.t('dev_gateway_settings_title')),
+          _navSubItem(context, label: L10n.t('dev_gateway_require_key_label'), onTap: onTapSettings),
+          _navSubItem(context, label: L10n.t('dev_gateway_use_memory_label'), onTap: onTapSettings),
+          _navSubItem(context, label: L10n.t('dev_gateway_system_prompt_label'), onTap: onTapSettings),
+          const SizedBox(height: 10),
+          _navSectionLabel(context, L10n.t('dev_gateway_logs_title')),
+          _navSubItem(context, label: L10n.t('dev_gateway_logs_title'), onTap: onTapLog),
+        ],
+      ),
+    );
+  }
+
+  Widget _navSectionLabel(BuildContext context, String s) {
+    // Deliberately not .toUpperCase() — Dart's default case mapping isn't
+    // Turkish-locale-aware (lowercase "i" maps to "I", not the correct
+    // Turkish "İ"), so letter-spaced sentence case avoids a subtly wrong
+    // Turkish label instead of a fully-capitalized one.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
+      child: Text(
+        s,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: MemoTheme.of(context).textDim, letterSpacing: 0.6),
+      ),
+    );
+  }
+
+  Widget _navItem(BuildContext context, {required IconData icon, required String label, bool active = false}) {
+    final theme = MemoTheme.of(context);
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: active ? MemoTheme.accentMuted : null,
+        border: active ? const Border(left: BorderSide(color: MemoTheme.accent, width: 2)) : null,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: active ? MemoTheme.accent : theme.textSecondary),
+          const SizedBox(width: 8),
+          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: active ? MemoTheme.accent : theme.textMain)),
+        ],
+      ),
+    );
+  }
+
+  Widget _navSubItem(BuildContext context, {required String label, required VoidCallback onTap, String? method}) {
+    final theme = MemoTheme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(28, 6, 14, 6),
+          child: Row(
+            children: [
+              if (method != null) ...[
+                _MethodBadge(method: method),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: theme.textSecondary),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Reference card: a compact, always-accurate local reference for the
+/// gateway's one real endpoint (deliberately not a fetched copy of
+/// memocpp.com's docs — see handoff.md: this stays available offline, and a
+/// 1-endpoint surface doesn't need a whole fetched docs tree).
+class _ReferenceSection extends StatelessWidget {
   final String baseUrl;
-  const _ReferencePanel({required this.baseUrl});
+  const _ReferenceSection({super.key, required this.baseUrl});
 
   @override
   Widget build(BuildContext context) {
@@ -259,7 +401,6 @@ class _ReferencePanel extends StatelessWidget {
         const SizedBox(height: 12),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: theme.bgElement,
             borderRadius: BorderRadius.circular(10),
@@ -268,28 +409,58 @@ class _ReferencePanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  const _MethodBadge(method: 'POST'),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '/v1/messages',
-                      style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12, color: MemoTheme.accent),
-                      overflow: TextOverflow.ellipsis,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: theme.borderSoft))),
+                child: Row(
+                  children: [
+                    Text(
+                      L10n.t('dev_gateway_reference_title'),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.textMain),
                     ),
-                  ),
-                ],
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(color: MemoTheme.accentMuted, borderRadius: BorderRadius.circular(10)),
+                      child: Text(
+                        L10n.t('dev_gateway_reference_anthropic_badge'),
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: MemoTheme.accent),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                L10n.t('dev_gateway_reference_messages_desc'),
-                style: TextStyle(fontSize: 11, color: theme.textDim, height: 1.4),
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const _MethodBadge(method: 'POST'),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '/v1/messages',
+                            style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 13, color: MemoTheme.accent),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Icon(Icons.info_outline_rounded, size: 15, color: theme.textDim),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      L10n.t('dev_gateway_reference_messages_desc'),
+                      style: TextStyle(fontSize: 12, color: theme.textDim, height: 1.4),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         Text(
           L10n.t('dev_gateway_base_url_hint'),
           style: TextStyle(color: theme.textDim, fontSize: 11),
@@ -322,13 +493,12 @@ class _MethodBadge extends StatelessWidget {
   }
 }
 
-/// Center panel: every model currently reachable through the gateway (one
-/// entry per enabled provider + the running local model, if any) — the
-/// "Loaded Models" equivalent, except Memo has no separate load/unload step
-/// for the gateway itself, so this just reflects whatever's already active.
+/// Available models — one entry per enabled provider + the running local
+/// model, if any. Memo has no separate load/unload step for the gateway
+/// itself, so this just reflects whatever's already active.
 class _ModelsPanel extends StatelessWidget {
   final AsyncValue<List<GatewayModel>> modelsAsync;
-  const _ModelsPanel({required this.modelsAsync});
+  const _ModelsPanel({super.key, required this.modelsAsync});
 
   @override
   Widget build(BuildContext context) {
@@ -400,9 +570,8 @@ class _ModelsPanel extends StatelessWidget {
   }
 }
 
-/// Right panel: per-request-shaping settings — the LM Studio "selected
-/// model settings" equivalent, except these apply to every gateway request
-/// rather than one loaded model.
+/// Gateway settings — Require API Key, Use Memory, and an extra system
+/// instruction applied to every request through the gateway.
 class _SettingsPanel extends ConsumerStatefulWidget {
   final DevGatewayConfig config;
   const _SettingsPanel({required this.config});
@@ -464,93 +633,106 @@ class _SettingsPanelState extends ConsumerState<_SettingsPanel> {
     final theme = MemoTheme.of(context);
     final config = widget.config;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        sectionLabel(context, L10n.t('dev_gateway_settings_title')),
-        const SizedBox(height: 12),
-        SwitchListTile(
-          title: Text(
-            L10n.t('dev_gateway_require_key_label'),
-            style: TextStyle(fontSize: 13, color: theme.textMain),
-          ),
-          subtitle: Text(
-            L10n.t('dev_gateway_require_key_desc'),
-            style: TextStyle(fontSize: 11, color: theme.textDim),
-          ),
-          value: config.requireAPIKey,
-          onChanged: (v) => _update(requireAPIKey: v),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          activeThumbColor: MemoTheme.accent,
-        ),
-        if (config.requireAPIKey) ...[
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.bgElement,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          sectionLabel(context, L10n.t('dev_gateway_settings_title')),
           const SizedBox(height: 8),
-          sectionLabel(context, L10n.t('dev_gateway_token_label')),
-          const SizedBox(height: 6),
-          copyableValueBox(context, config.token, monospace: true, borderColor: MemoTheme.accent),
-        ],
-        const SizedBox(height: 16),
-        SwitchListTile(
-          title: Text(
-            L10n.t('dev_gateway_use_memory_label'),
-            style: TextStyle(fontSize: 13, color: theme.textMain),
+          SwitchListTile(
+            title: Text(
+              L10n.t('dev_gateway_require_key_label'),
+              style: TextStyle(fontSize: 13, color: theme.textMain),
+            ),
+            subtitle: Text(
+              L10n.t('dev_gateway_require_key_desc'),
+              style: TextStyle(fontSize: 11, color: theme.textDim),
+            ),
+            value: config.requireAPIKey,
+            onChanged: (v) => _update(requireAPIKey: v),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            activeThumbColor: MemoTheme.accent,
           ),
-          subtitle: Text(
-            L10n.t('dev_gateway_use_memory_desc'),
+          if (config.requireAPIKey) ...[
+            const SizedBox(height: 8),
+            sectionLabel(context, L10n.t('dev_gateway_token_label')),
+            const SizedBox(height: 6),
+            copyableValueBox(context, config.token, monospace: true, borderColor: MemoTheme.accent),
+          ],
+          const SizedBox(height: 12),
+          Divider(height: 1, color: theme.borderSoft),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            title: Text(
+              L10n.t('dev_gateway_use_memory_label'),
+              style: TextStyle(fontSize: 13, color: theme.textMain),
+            ),
+            subtitle: Text(
+              L10n.t('dev_gateway_use_memory_desc'),
+              style: TextStyle(fontSize: 11, color: theme.textDim),
+            ),
+            value: config.useMemory,
+            onChanged: (v) => _update(useMemory: v),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            activeThumbColor: MemoTheme.accent,
+          ),
+          const SizedBox(height: 12),
+          Divider(height: 1, color: theme.borderSoft),
+          const SizedBox(height: 16),
+          sectionLabel(context, L10n.t('dev_gateway_system_prompt_label')),
+          const SizedBox(height: 6),
+          Text(
+            L10n.t('dev_gateway_system_prompt_desc'),
             style: TextStyle(fontSize: 11, color: theme.textDim),
           ),
-          value: config.useMemory,
-          onChanged: (v) => _update(useMemory: v),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          activeThumbColor: MemoTheme.accent,
-        ),
-        const SizedBox(height: 20),
-        sectionLabel(context, L10n.t('dev_gateway_system_prompt_label')),
-        const SizedBox(height: 6),
-        Text(
-          L10n.t('dev_gateway_system_prompt_desc'),
-          style: TextStyle(fontSize: 11, color: theme.textDim),
-        ),
-        const SizedBox(height: 8),
-        Focus(
-          onFocusChange: (has) => _focused = has,
-          child: TextField(
-            controller: _promptController,
-            maxLines: 4,
-            minLines: 3,
-            style: TextStyle(fontSize: 13, color: theme.textMain),
-            decoration: InputDecoration(
-              hintText: L10n.t('dev_gateway_system_prompt_placeholder'),
-              hintStyle: TextStyle(fontSize: 12, color: theme.textDim),
-              filled: true,
-              fillColor: theme.bgElement,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: theme.borderSoft),
+          const SizedBox(height: 8),
+          Focus(
+            onFocusChange: (has) => _focused = has,
+            child: TextField(
+              controller: _promptController,
+              maxLines: 4,
+              minLines: 3,
+              style: TextStyle(fontSize: 13, color: theme.textMain),
+              decoration: InputDecoration(
+                hintText: L10n.t('dev_gateway_system_prompt_placeholder'),
+                hintStyle: TextStyle(fontSize: 12, color: theme.textDim),
+                filled: true,
+                fillColor: theme.bgApp,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: theme.borderSoft),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: theme.borderSoft),
+                ),
+                contentPadding: const EdgeInsets.all(12),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: theme.borderSoft),
-              ),
-              contentPadding: const EdgeInsets.all(12),
             ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: _saving ? null : () => _update(systemPrompt: _promptController.text),
-            icon: _saving
-                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.check, size: 16),
-            label: Text(L10n.t('save')),
-            style: TextButton.styleFrom(foregroundColor: MemoTheme.accent),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _saving ? null : () => _update(systemPrompt: _promptController.text),
+              icon: _saving
+                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.check, size: 16),
+              label: Text(L10n.t('save')),
+              style: TextButton.styleFrom(foregroundColor: MemoTheme.accent),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

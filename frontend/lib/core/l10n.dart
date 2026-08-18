@@ -403,7 +403,10 @@ class L10n {
     'dev_gateway_use_memory_desc':
         'Açıksa bu ağ geçidi üzerinden gelen isteklerde Memo\'nun hafızasındaki bilgiler kullanılır ve sohbet hafızaya kaydedilir — ama sohbet geçmişinde görünmez. Kapalıysa (varsayılan) istekler tamamen ayrı tutulur.',
     'dev_gateway_status_active': 'Aktif',
+    'dev_gateway_nav_section': 'Geliştirici',
+    'dev_gateway_nav_gateway': 'Ağ Geçidi',
     'dev_gateway_reference_title': 'API Referansı',
+    'dev_gateway_reference_anthropic_badge': 'Anthropic Uyumlu',
     'dev_gateway_reference_messages_desc':
         'Anthropic Messages API — Claude Code gibi ANTHROPIC_BASE_URL destekleyen her araç için. "model" alanına "tip/model-id" yaz (ör. "local/qwen2.5", "openai/gpt-4o").',
     'dev_gateway_settings_title': 'Ağ Geçidi Ayarları',
@@ -2231,7 +2234,10 @@ class L10n {
     'dev_gateway_use_memory_desc':
         'When on, requests through this gateway draw on Memo\'s memory and get saved to it — but never show up in chat history. When off (default), gateway traffic stays completely separate.',
     'dev_gateway_status_active': 'Active',
+    'dev_gateway_nav_section': 'Developer',
+    'dev_gateway_nav_gateway': 'Gateway',
     'dev_gateway_reference_title': 'API Reference',
+    'dev_gateway_reference_anthropic_badge': 'Anthropic-compatible',
     'dev_gateway_reference_messages_desc':
         'Anthropic Messages API — for any tool that supports ANTHROPIC_BASE_URL, like Claude Code. Use "type/model-id" as the "model" field (e.g. "local/qwen2.5", "openai/gpt-4o").',
     'dev_gateway_settings_title': 'Gateway Settings',

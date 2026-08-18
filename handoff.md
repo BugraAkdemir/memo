@@ -195,16 +195,47 @@ WhatsApp'tayken görünmüyordu. Yerel test kurulumunda canlı doğrulandı:
 gizli modu aç → nokta göründü → Model Store'a geç → nokta hâlâ orada →
 kapat → nokta kayboldu. `flutter analyze`/`flutter test` (260/260) temiz.
 
+## RPi'ye gerçek deploy — tam sil/kur turu, güvenlik açığı canlı doğrulandı
+
+Kullanıcı bugünkü tüm commit'leri RPi'ye taşımak için kendi yerleşik
+yöntemini istedi: `data.memocpp.com`'dan `uninstall-selfhosted.sh` (hafıza
+otomatik yedeklendi) → `get-memo-server-beta.sh` ile taze kurulum. Önce
+GitHub Actions'ın (`build-linux.yml`, her `main` push'unda otomatik tetiklenir)
+`22824e9` için hem x86_64 hem arm64 beta build'ini bitirmesi beklendi
+(`gh run watch`), sonra SSH üzerinden iki script sırayla çalıştırıldı.
+
+**Canlı doğrulama, saldırı deseninin aynısıyla:** `curl -H "X-Forwarded-For:
+203.0.113.7" http://127.0.0.1:8090/api/status` (RPi'nin kendi loopback'inden,
+tam olarak cloudflared'ın yapacağı şekilde) artık **401** dönüyor — düzeltme
+öncesi bu tam olarak açığın kendisiydi (200, şifresiz geçiş). `GET
+/api/onboarding` da `{"completed":false}` dönerek bugünkü kodun gerçekten
+çalıştığını doğruladı. Servis sağlıklı (`systemctl --user status`, log'da
+hata yok), linger zaten açıktı, eski süreçlerden hiç yetim kalmamış, tünelde
+aktif `8090` ingress kuralı yok (risk şu an sıfır).
+
+**Yan bulgu, aynı turda:** yedekleme adımı sadece `memory/`+`sessions/`'ı
+zip'liyordu, `providers.json`'ı (OpenCode Zen API anahtarı) almıyordu —
+kullanıcının kendi provider config'i bu yüzden sessizce kayboldu. Kullanıcıya
+"kullanıcı deneyimini iyileştirecek ne var" diye sorulunca bu doğrudan
+önerildi ve onaylandı: **`d2651d2`** — `uninstall.sh`/`uninstall-selfhosted.sh`/
+`uninstall-arm.sh`'ın üçünün de `zip -qr` komutuna `providers.json` eklendi
+(zaten şifreli at-rest olduğu için ek risk yok). Sahte bir data dizininde
+hem var hem yok senaryosu test edildi, ikisi de temiz çalıştı.
+
+**RPi'de kullanıcı tarafında kalan adımlar (backend/kod sorunu değil):**
+kurulum sihirbazına tekrar girmesi (`needs_setup:true`, gerçek fresh install),
+OpenCode Zen anahtarını yeniden girmesi gerekiyor — bu turun yedeği
+(`~/Documents/memo-server-data-20260818-190706.zip`, hafıza+sohbetler) RPi'de
+duruyor, geri yüklenip yüklenmeyeceği kullanıcıya soruldu, henüz cevap
+gelmedi.
+
 ## Sıradaki işler
 
-1. **RPi'nin build'i hâlâ güncellenmedi — güvenlik açığı orada hâlâ
-   geçerli.** Kullanıcı "update'i boşver" dedi, bu yüzden bu oturumun
-   commit'lerinden hiçbiri RPi'ye ulaşmadı (incognito/setup fix'leri +
-   şimdi H04/H05/H10). Şu an tünel ingress kuralı kaldırılmış olduğu
-   için RPi doğrudan tehlikede değil, ama `mm.bugradev.com → localhost:8090`
-   benzeri bir kural tekrar eklenirse aynı şekilde şifresiz erişilebilir
-   olur. İleride `update.sh` ile veya yeni bir release ile RPi'ye
-   taşınmalı.
+1. ~~**RPi'nin build'i güncellenmedi**~~ → **düzeltildi, RPi'ye gerçek
+   uninstall+reinstall ile deploy edildi (yukarıda anlatıldı).** Güvenlik
+   açığı canlı olarak kapatıldığı doğrulandı. Kalan tek şey kullanıcı
+   tarafında: kurulum sihirbazı + provider anahtarı yeniden girilecek,
+   hafıza/sohbet yedeğinin geri yüklenip yüklenmeyeceği bekleniyor.
 2. Bu oturumda `~/.memo/memo-backend` (bu makinenin **kendi** yerel
    kurulumu) test amaçlı yeni build ile değiştirildi — fonksiyonel olarak
    daha iyi ama resmi bir release değil, sürüm numarası hâlâ V3.5.5 diyor.
@@ -213,6 +244,9 @@ kapat → nokta kayboldu. `flutter analyze`/`flutter test` (260/260) temiz.
    gerçek SHA256 hash'ini pinlemek isteniyorsa (kullanıcı onaylarsa),
    internet erişimi olan bir ortamda gerçek binary indirilip hash
    hesaplanmalı; bu sandbox'tan yapılamadı.
+4. **Yedek geri yükleme bekliyor** — RPi'deki
+   `~/Documents/memo-server-data-20260818-190706.zip` (eski hafıza+sohbetler)
+   kullanıcının cevabına göre yeni kuruluma geri yüklenebilir.
 4. `docs/KNOWN_ISSUES.md`'nin Medium/Low/Info bölümleri hâlâ
    2026-07-04'ten beri yeniden doğrulanmadı — dosyanın kendi notu bunu
    "taban, tavan değil" olarak işaretliyor. İstenirse aynı yöntemle

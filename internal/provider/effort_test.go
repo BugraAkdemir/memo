@@ -22,8 +22,13 @@ func TestEffortLevelsForType(t *testing.T) {
 		{"groq has levels", ProviderGroq, -1},
 		{"ollama has levels", ProviderOllama, -1},
 		{"llamacpp has levels", ProviderLlamaCPP, -1},
-		{"opencode-zen has levels", ProviderOpenCodeZen, -1},
-		{"opencode-go has levels", ProviderOpenCodeGo, -1},
+		// OpenCode Zen/Go are aggregators fronting many different vendors'
+		// models with no per-model capability discovery (unlike OpenRouter)
+		// — see effort.go's package doc comment for the live-verified bug
+		// this replaced (a fixed OpenAI-shaped list shown for every model
+		// regardless of what that model actually supports).
+		{"opencode-zen has no known levels (aggregator, no discovery)", ProviderOpenCodeZen, 0},
+		{"opencode-go has no known levels (aggregator, no discovery)", ProviderOpenCodeGo, 0},
 		{"gemini is handled elsewhere, not here", ProviderGemini, 0},
 		{"openrouter is discovered live, not here", ProviderOpenRouter, 0},
 		{"custom has no effort concept", ProviderCustom, 0},

@@ -94,6 +94,7 @@ type AppConfig struct {
 	WebSearch      WebSearchConfig    `yaml:"web_search" json:"web_search"`
 	DevGateway     DevGatewayConfig   `yaml:"dev_gateway" json:"dev_gateway"`
 	Swarm          SwarmConfig        `yaml:"swarm" json:"swarm"`
+	Onboarding     OnboardingConfig   `yaml:"onboarding" json:"onboarding"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
 
 	// Beta gates genuinely experimental features (e.g. Memo Swarm). Off by
@@ -102,6 +103,20 @@ type AppConfig struct {
 	// on/off toggle (RemoteAccess.Enabled/TunnelMode) — it is unaffected by
 	// this flag.
 	Beta bool `yaml:"beta" json:"beta"`
+}
+
+// OnboardingConfig tracks whether the Flutter client's first-run wizard
+// (language/theme/persona/model-download steps, SetupWizardOverlay) has been
+// completed. This used to live only in the browser's own SharedPreferences/
+// localStorage (per-origin, per-browser) — a client reachable from more than
+// one origin (e.g. a LAN IP and a Cloudflare tunnel hostname pointed at the
+// same backend) has no shared storage between them, so the wizard reappeared
+// on every origin that hadn't independently completed it, even though the
+// backend was already fully configured. Completed is a durable server-side
+// fact instead, checked by every client regardless of which origin/browser
+// it's using.
+type OnboardingConfig struct {
+	Completed bool `yaml:"completed" json:"completed"`
 }
 
 // LearningConfig controls the learning system's model routing. When

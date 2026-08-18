@@ -165,6 +165,13 @@ type FullBridge interface {
 	CreateRemoteDevice(name string) (string, error)
 	RevokeRemoteDevice(id string) error
 
+	// Onboarding tracks the Flutter first-run wizard (language/theme/
+	// persona/model-download), a completely separate concept from
+	// NeedsSetup()/CreateAdminAccount below (remote-auth account
+	// bootstrap) — see config.OnboardingConfig's doc comment.
+	GetOnboardingComplete() bool
+	SetOnboardingComplete(completed bool) error
+
 	// Multi-account / role model (Faz 5.1, yapacam.md) — see
 	// internal/app/remote_auth.go's doc comments for the full design.
 	NeedsSetup() bool

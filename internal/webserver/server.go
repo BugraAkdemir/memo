@@ -140,6 +140,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/messages/delete", s.handleDeleteMessage)
 	route("/api/status", s.handleStatus)
 	route("/api/incognito", s.handleIncognito)
+	route("/api/onboarding", s.handleOnboarding)
 	route("/api/transcribe", s.handleTranscribe)
 	route("/api/send_file", s.handleSendFile)
 	route("/api/send_file/stream", s.handleSendFileStream)
@@ -884,7 +885,18 @@ func remoteAuthOK(listenAddr, mode string, r *http.Request, verifyDevice, valida
 	// as the unauthenticated local-only bind. A LAN-IP client on the same
 	// box ("192.168.1.xxx" bounced back locally) still gets gated, since
 	// RemoteAddr then carries the interface's non-loopback address.
-	if isLoopbackIP(requestIP(r)) {
+	//
+	// Except: a local reverse proxy or tunnel (cloudflared, ngrok, nginx,
+	// ssh -L) forwarding public/LAN traffic to this same loopback address
+	// produces a connection that is *also*, genuinely, RemoteAddr==127.0.0.1
+	// — indistinguishable from the real desktop client by IP alone. Found
+	// live: a Cloudflare Tunnel ingress rule of `service: http://localhost:
+	// 8090` (an ordinary, commonly-suggested way to self-host) let anyone
+	// on the public internet reach every /api/ route with zero credential,
+	// completely bypassing password/token auth. isForwardedRequest's
+	// comment explains why checking for proxy-forwarding headers here is
+	// safe to use as a "don't trust this" signal.
+	if isLoopbackIP(requestIP(r)) && !isForwardedRequest(r) {
 		return true
 	}
 	cred := remoteCredential(r)

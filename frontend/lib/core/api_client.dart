@@ -556,6 +556,20 @@ class MemoApiClient {
     await _dio.post('/api/incognito', data: {'enabled': enabled});
   }
 
+  // ─── Onboarding ─────────────────────────────────────────────────
+
+  /// Whether the first-run wizard has been completed — a durable backend
+  /// fact (see config.OnboardingConfig's doc comment), not scoped to one
+  /// browser origin/device the way the old SharedPreferences-only flag was.
+  Future<bool> getOnboardingComplete() async {
+    final res = await _dio.get('/api/onboarding');
+    return _guard<Map<String, dynamic>>(res.data)['completed'] as bool? ?? false;
+  }
+
+  Future<void> setOnboardingComplete(bool completed) async {
+    await _dio.put('/api/onboarding', data: {'completed': completed});
+  }
+
   // ─── System Prompt ──────────────────────────────────────────────
 
   Future<String> getSystemPrompt() async {

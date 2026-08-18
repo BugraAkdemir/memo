@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -140,23 +141,56 @@ class LlamaSettingsNotifier extends AsyncNotifier<LlamaSettings> {
 final setupCompleteProvider =
     StateNotifierProvider<SetupCompleteNotifier, bool>((ref) {
       final prefs = ref.read(prefsProvider);
-      return SetupCompleteNotifier(prefs);
+      return SetupCompleteNotifier(ref, prefs);
     });
 
 class SetupCompleteNotifier extends StateNotifier<bool> {
+  final Ref _ref;
   final SharedPreferences _prefs;
 
-  SetupCompleteNotifier(this._prefs)
-      : super(_prefs.getBool('memo_setup_complete') ?? false);
+  // Local SharedPreferences seeds the value instantly (survives a fully
+  // offline first paint); _init() below immediately corrects it from the
+  // durable backend flag. Local storage is scoped per browser origin/
+  // device — a backend reachable from more than one origin (e.g. a LAN IP
+  // and a Cloudflare tunnel hostname pointed at the same Memo) never
+  // shared this flag between them, so the wizard kept reappearing on
+  // every origin that hadn't independently completed it there, even
+  // though the backend itself was already fully configured. See
+  // config.OnboardingConfig's doc comment on the backend side.
+  SetupCompleteNotifier(this._ref, this._prefs)
+      : super(_prefs.getBool('memo_setup_complete') ?? false) {
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      final completed =
+          await _ref.read(apiClientProvider).getOnboardingComplete();
+      state = completed;
+      await _prefs.setBool('memo_setup_complete', completed);
+    } catch (e) {
+      debugPrint('setup: onboarding init error: ${FriendlyError.describeGeneric(e)}');
+    }
+  }
 
   Future<void> completeSetup() async {
     await _prefs.setBool('memo_setup_complete', true);
     state = true;
+    try {
+      await _ref.read(apiClientProvider).setOnboardingComplete(true);
+    } catch (e) {
+      debugPrint('setup: onboarding complete-persist error: ${FriendlyError.describeGeneric(e)}');
+    }
   }
 
   Future<void> resetSetup() async {
     await _prefs.setBool('memo_setup_complete', false);
     state = false;
+    try {
+      await _ref.read(apiClientProvider).setOnboardingComplete(false);
+    } catch (e) {
+      debugPrint('setup: onboarding reset-persist error: ${FriendlyError.describeGeneric(e)}');
+    }
   }
 }
 

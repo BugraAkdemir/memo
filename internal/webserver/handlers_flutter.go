@@ -511,6 +511,32 @@ func (s *Server) handleMemoryClear(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"ok": "true"})
 }
 
+func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]bool{"completed": s.fullBridge.GetOnboardingComplete()})
+	case http.MethodPut:
+		var req struct {
+			Completed bool `json:"completed"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetOnboardingComplete(req.Completed); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
+	}
+}
+
 func (s *Server) handleMemoryEnabled(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusNotImplemented)

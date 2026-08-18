@@ -47,6 +47,41 @@ func isLoopbackIP(ip string) bool {
 	return parsed != nil && parsed.IsLoopback()
 }
 
+// forwardedHeaders are the standard markers a reverse proxy or tunnel client
+// adds to a request it relays to a local origin. cloudflared in particular
+// always injects Cf-Connecting-Ip/X-Forwarded-For on every request it
+// proxies through a Cloudflare Tunnel — including one configured with
+// `service: http://localhost:<port>`, which is a completely ordinary,
+// commonly-suggested way to expose a self-hosted app.
+var forwardedHeaders = []string{"X-Forwarded-For", "X-Real-Ip", "Cf-Connecting-Ip", "Forwarded"}
+
+// isForwardedRequest reports whether r carries any standard proxy-forwarding
+// header. Used only as a "don't extend loopback trust here" signal (see
+// isLoopbackIP's comment above) — never to read an actual client identity
+// out of these headers. That distinction matters: this codebase already had
+// one incident from trusting X-Forwarded-For's *value* for the rate limiter
+// (an attacker-controlled header, since a request can reach this server
+// directly with no proxy in front at all) — this is the opposite,
+// conservative use. A locally-run reverse proxy/tunnel (cloudflared, ngrok,
+// nginx, ssh -L) that forwards to 127.0.0.1 makes the resulting connection's
+// RemoteAddr *genuinely* loopback at the TCP level, so it cannot be told
+// apart from the real local desktop client (also 127.0.0.1) by IP alone —
+// but the desktop app is a bare HTTP client that never sets any of these
+// headers, while every reverse proxy/tunnel does by convention, so their
+// mere presence reliably means "this loopback connection was relayed from
+// somewhere else" without the header's contents needing to be trusted for
+// anything. A remote attacker cannot forge this signal without first being
+// the loopback-sourced relay itself, at which point they'd already have to
+// run software on the machine.
+func isForwardedRequest(r *http.Request) bool {
+	for _, h := range forwardedHeaders {
+		if r.Header.Get(h) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // handleRemoteLogin implements POST /api/auth/login for "password"/
 // "token_password" auth modes — the one endpoint reachable without any
 // credential at all (see isRemoteLoginPath). On success it returns a
@@ -227,11 +262,12 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{
 		"needs_setup": s.fullBridge.NeedsSetup(),
 		"auth_mode":   s.fullBridge.GetRemoteAuthMode(),
-		// loopback mirrors remoteAuthOK's trust model: when true, the
-		// requester needs no credential at all (local app on this
-		// machine), so clients can skip their login gate entirely instead
-		// of asking for a password that the backend would never check.
-		"loopback": isLoopbackIP(requestIP(r)),
+		// loopback mirrors remoteAuthOK's trust model exactly, including
+		// the isForwardedRequest exception — a client relayed through a
+		// local reverse proxy/tunnel to 127.0.0.1 must still see false
+		// here and go through the real login gate, not just skip it
+		// because the connection happens to be loopback at the TCP level.
+		"loopback": isLoopbackIP(requestIP(r)) && !isForwardedRequest(r),
 		// install_id lets a client detect that this backend is not the one
 		// it stored its auth state against — a wipe+reinstall, or the same
 		// browser pointed at a different Memo. Opaque random value, no

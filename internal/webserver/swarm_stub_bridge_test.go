@@ -296,6 +296,8 @@ func (b *swarmStubBridge) LoginRemotePassword(remoteAddr, username, password str
 func (b *swarmStubBridge) ListRemoteDevices() interface{}                 { return nil }
 func (b *swarmStubBridge) CreateRemoteDevice(name string) (string, error) { return "", nil }
 func (b *swarmStubBridge) RevokeRemoteDevice(id string) error             { return nil }
+func (b *swarmStubBridge) GetOnboardingComplete() bool                    { return false }
+func (b *swarmStubBridge) SetOnboardingComplete(completed bool) error     { return nil }
 func (b *swarmStubBridge) NeedsSetup() bool                               { return b.needsSetup }
 func (b *swarmStubBridge) InstallID() string                              { return b.installID }
 func (b *swarmStubBridge) CreateAdminAccount(username, password string) (string, error) {

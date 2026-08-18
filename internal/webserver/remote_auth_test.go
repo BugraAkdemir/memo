@@ -97,6 +97,40 @@ func TestRemoteAuthOK_LoopbackDoesNotExemptLANSource(t *testing.T) {
 	}
 }
 
+// TestRemoteAuthOK_LoopbackDoesNotExemptForwardedRequest is the Cloudflare
+// Tunnel regression: a request relayed by a local reverse proxy/tunnel to
+// 127.0.0.1 (e.g. a Cloudflare Tunnel ingress rule of `service: http://
+// localhost:8090`, found live) has a genuinely loopback RemoteAddr — same as
+// the real desktop client — but carries a proxy-forwarding header the
+// desktop client never sends. Before this fix, isLoopbackIP alone let this
+// straight through with zero credential, from anywhere on the public
+// internet.
+func TestRemoteAuthOK_LoopbackDoesNotExemptForwardedRequest(t *testing.T) {
+	headers := []string{"X-Forwarded-For", "X-Real-Ip", "Cf-Connecting-Ip", "Forwarded"}
+	for _, h := range headers {
+		r := httptest.NewRequest(http.MethodGet, "/api/wipe", nil)
+		r.RemoteAddr = "127.0.0.1:54321"
+		r.Header.Set(h, "203.0.113.7")
+		if remoteAuthOK("0.0.0.0", "password", r, neverPasses, neverPasses) {
+			t.Errorf("header %s: expected a forwarded loopback request without credential to be rejected", h)
+		}
+	}
+}
+
+// TestRemoteAuthOK_LoopbackForwardedRequestStillPassesWithCredential guards
+// against the forwarded-request fix accidentally becoming a hard block: a
+// tunnel-relayed request presenting a genuinely valid credential must still
+// pass — the fix only removes the free pass, it doesn't add a new gate.
+func TestRemoteAuthOK_LoopbackForwardedRequestStillPassesWithCredential(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/api/wipe", nil)
+	r.RemoteAddr = "127.0.0.1:54321"
+	r.Header.Set("X-Forwarded-For", "203.0.113.7")
+	r.Header.Set("Authorization", "Bearer memo-sometoken")
+	if !remoteAuthOK("0.0.0.0", "token", r, fixedCheck("memo-sometoken"), neverPasses) {
+		t.Fatal("expected a forwarded loopback request with a valid token to pass")
+	}
+}
+
 func TestRemoteAuthOK_TokenMode(t *testing.T) {
 	verify := fixedCheck("memo-sometoken")
 
@@ -299,6 +333,24 @@ func TestHandleSetupStatus_ReportsLoopback(t *testing.T) {
 	s.handleSetupStatus(wRemote, remote)
 	if !strings.Contains(wRemote.Body.String(), `"loopback":false`) {
 		t.Errorf("expected loopback:false for a LAN source, got %s", wRemote.Body.String())
+	}
+}
+
+// TestHandleSetupStatus_ForwardedLoopbackReportsFalse is the client-facing
+// half of the Cloudflare Tunnel fix: a request relayed to 127.0.0.1 through
+// a local reverse proxy/tunnel must be told loopback:false, so the web UI
+// actually shows its login gate instead of skipping straight to the app.
+func TestHandleSetupStatus_ForwardedLoopbackReportsFalse(t *testing.T) {
+	stub := &swarmStubBridge{needsSetup: false}
+	s := New(stub)
+
+	r := httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	r.RemoteAddr = "127.0.0.1:54321"
+	r.Header.Set("Cf-Connecting-Ip", "203.0.113.7")
+	w := httptest.NewRecorder()
+	s.handleSetupStatus(w, r)
+	if !strings.Contains(w.Body.String(), `"loopback":false`) {
+		t.Errorf("expected loopback:false for a tunnel-forwarded loopback source, got %s", w.Body.String())
 	}
 }
 

@@ -111,14 +111,57 @@ tıklamaları doğru bölüme kaydırıyor, toggle'lar ve sistem promptu kaydetm
 gerçek backend'e karşı uçtan uca çalıştı, 700px'te taşma yok. `flutter
 analyze` temiz (aynı 5 pre-existing), `flutter test` 262/262.
 
+## Ek (aynı oturum): OpenAI-uyumlu endpoint eklendi
+
+Kullanıcı Developer ekranını görünce fark etti: gateway sadece Anthropic
+Messages API'yi (`POST /v1/messages`) konuşuyordu, OpenAI-uyumlu hiçbir
+şey yoktu — "buna openai da eklesek" dedi.
+
+**Yeni paket `internal/openaiapi`** — `internal/anthropicapi`'nin kardeşi,
+aynı desen: `Request`/`ParseRequest`/`ToChatRequest`/`WriteNonStream`/
+`StreamSSE`/`StreamSSEFromResponse`/`WriteError`/`EstimateTokens`/
+`CollectStream`, artı `WriteModelList` (yeni — Anthropic'te karşılığı
+yok). `provider.Message`/`ToolCall`/`ToolDefinition` zaten OpenAI
+şeklinde olduğu için çeviri Anthropic tarafındaki content-block
+yeniden-birleştirmesinden çok daha ince — neredeyse birebir alan
+kopyası.
+
+**Yeni HTTP handler'lar** (`internal/webserver/openai_handlers.go`):
+`POST /v1/chat/completions`, `GET /v1/models` — ikisi de Anthropic
+yolunun kullandığı AYNI `DevGatewayChat`/`DevGatewayChatStream`
+altyapısından geçiyor (auth, model routing, hafıza enjeksiyonu, sistem
+promptu birleştirme, gateway log'u) — sadece wire formatı farklı.
+
+**Kendi testlerinde yakalanan gerçek bug (canlıya çıkmadan önce):** İlk
+taslakta `ToolCall.Function.Arguments`'i response writer'larda
+`string(...)` ile stringleştirip map'e koymuşum — bu double-encoding
+yapıyor, çünkü Arguments'ın ham baytları zaten JSON-string-encoded
+(OpenAI'nin wire formatı böyle). `json.RawMessage`'ı doğrudan gömmek
+yerine `string()`'e çevirip `json.Marshal`'a tekrar encode ettirmek
+tırnak işaretlerini ikinci kez kaçırıyordu. `anthropicapi`'nin kendi
+`anthropicInputToOpenAIArguments`/`openAIArgumentsToJSONText`
+yardımcılarının koruduğu AYNI invariant'ı ihlal ediyordum. Test
+assertion'ım da başta bu bug'ı gizleyecek kadar zayıftı (raw obje ile
+test ediyordum, gerçek wire formatı olan JSON-string ile değil) —
+düzelttim, testler şimdi gerçek şekli kullanıyor ve bug'ı yakalıyor.
+
+**Canlı doğrulama:** `GET /v1/models` gerçek sağlayıcı listesini
+döndürdü, `POST /v1/chat/completions` hem streaming hem non-streaming
+gerçek OpenCode Zen sağlayıcısından gerçek cevap aldı, istekler aynı
+Developer ekranı "Live Log"unda göründü, `require_api_key` auth kapısı
+yeni route'larda da aynı şekilde çalıştı (tokensiz 401, tokenla 200).
+
+**Frontend:** Reference kartı artık 3 gerçek route'u da listeliyor
+(`POST /v1/messages`, `POST /v1/chat/completions`, `GET /v1/models`),
+iki rozet ("Anthropic Uyumlu"/"OpenAI Uyumlu"), ikinci bir kopyalanabilir
+`OPENAI_BASE_URL` kutusu. Açık/koyu modda tekrar canlı doğrulandı.
+
+Commit'ler: `cf961ba` (backend), `55e8b58` (frontend).
+
 ## Sırada ne var
 
-- Kullanıcı "push atma" dedi — bu 4 commit `main`'de, **push edilmedi**.
+- Kullanıcı "push atma" dedi — bu 6 commit `main`'de, **push edilmedi**.
   Push için ayrıca onay gerekiyor.
-- Reference bölümü şu an tek endpoint'i (`POST /v1/messages`) gösteriyor —
-  gateway'e ileride yeni bir endpoint eklenirse (ör. OpenAI-uyumlu
-  `/v1/chat/completions`, şu an yok) sidebar'a ve içerik kartına elle
-  eklenmesi gerekecek; otomatik değil.
 - **Web build varsayılan olarak `'light'` temada başlıyor, OS/tarayıcı
   tercihini takip etmiyor** (`memo_theme_mode` state'i `ThemeModeNotifier`
   içinde sabit `'light'` ile başlatılıyor) — bu oturumda fark edilen ama

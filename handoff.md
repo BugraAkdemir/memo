@@ -183,6 +183,18 @@ Doğrulama: her fix kendi regresyon testiyle geldi, `go vet`/
 `internal/memory`'nin flaky `TestRunDreamScheduler_RespectsEnabledFlag`'i
 de dahil tekrar çalıştı, yeşildi).
 
+## Devam — kullanıcı "değiştirirsen kullanıcı rahat eder" tarzı bir öneri istedi
+
+`210a38a` **feat(chat): show incognito status on the nav rail logo, not
+just the chat screen** — bugünkü asıl kök sorunun (kullanıcı gizli modu
+açık bıraktığını fark etmemişti) davranışsal tarafını kapatan küçük bir
+UX iyileştirmesi: NavRail'in logosuna, hangi sekmede olursan ol görünen
+küçük kırmızı bir nokta eklendi (gizli mod açıkken). Önceden tek gösterge
+sohbet ekranının kendi kırmızı arka planıydı — Ayarlar/Model Store/
+WhatsApp'tayken görünmüyordu. Yerel test kurulumunda canlı doğrulandı:
+gizli modu aç → nokta göründü → Model Store'a geç → nokta hâlâ orada →
+kapat → nokta kayboldu. `flutter analyze`/`flutter test` (260/260) temiz.
+
 ## Sıradaki işler
 
 1. **RPi'nin build'i hâlâ güncellenmedi — güvenlik açığı orada hâlâ

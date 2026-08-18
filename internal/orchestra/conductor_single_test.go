@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"memo/internal/provider"
 )
 
 // Regression test: callLLM's callers (chat title generation, routine
@@ -52,6 +54,62 @@ func TestRunSingleNoSystemPrompt(t *testing.T) {
 	}
 	if f.get("openai") == nil {
 		t.Fatal("expected the openai mock provider to have been used")
+	}
+}
+
+// TestChiefAttemptSetsEffortLevelFromProviderConfig verifies chiefAttempt
+// copies the matched provider config's EffortLevel onto the outgoing
+// ChatRequest the same way it already copies Model — covering RunSingle,
+// createPlan, and synthesize in one place since all three funnel through
+// runChiefWithFallback -> chiefAttempt.
+func TestChiefAttemptSetsEffortLevelFromProviderConfig(t *testing.T) {
+	f := newMockFactory()
+	mp := openAIMock("ok")
+	f.set("openai", mp)
+
+	getConfigs := func() []provider.ProviderConfig {
+		return []provider.ProviderConfig{
+			{Name: "test-openai", Type: "openai", Enabled: true, Model: "gpt-4o", EffortLevel: "high"},
+		}
+	}
+	cfg := defaultEnabledConfig()
+	cfg.ChiefType = "openai"
+	cfg.ChiefModel = "gpt-4o"
+	c := NewConductor(cfg, f.factory, getConfigs)
+
+	if _, err := c.RunSingle(context.Background(), "sys", "user"); err != nil {
+		t.Fatalf("RunSingle: %v", err)
+	}
+
+	if got := mp.LastRequest().EffortLevel; got != "high" {
+		t.Errorf("ChatRequest.EffortLevel = %q, want %q", got, "high")
+	}
+}
+
+// TestChiefAttemptOmitsEffortLevelWhenUnset guards the other half: a
+// provider config with no EffortLevel set must leave the ChatRequest field
+// empty too, not some stale/leftover value.
+func TestChiefAttemptOmitsEffortLevelWhenUnset(t *testing.T) {
+	f := newMockFactory()
+	mp := openAIMock("ok")
+	f.set("openai", mp)
+
+	getConfigs := func() []provider.ProviderConfig {
+		return []provider.ProviderConfig{
+			{Name: "test-openai", Type: "openai", Enabled: true, Model: "gpt-4o"},
+		}
+	}
+	cfg := defaultEnabledConfig()
+	cfg.ChiefType = "openai"
+	cfg.ChiefModel = "gpt-4o"
+	c := NewConductor(cfg, f.factory, getConfigs)
+
+	if _, err := c.RunSingle(context.Background(), "sys", "user"); err != nil {
+		t.Fatalf("RunSingle: %v", err)
+	}
+
+	if got := mp.LastRequest().EffortLevel; got != "" {
+		t.Errorf("ChatRequest.EffortLevel = %q, want empty", got)
 	}
 }
 

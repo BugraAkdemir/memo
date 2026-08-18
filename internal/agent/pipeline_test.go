@@ -47,6 +47,39 @@ func TestRunStream_RecoversPanic(t *testing.T) {
 	}
 }
 
+// capturingProvider records the last ChatRequest it received, for
+// asserting what Pipeline.RunStream actually sends upstream.
+type capturingProvider struct{ gotReq provider.ChatRequest }
+
+func (p *capturingProvider) ChatCompletion(_ context.Context, req provider.ChatRequest) (*provider.ChatResponse, error) {
+	p.gotReq = req
+	return &provider.ChatResponse{Content: "ok"}, nil
+}
+
+// TestRunStream_SetsEffortLevelOnRequest verifies the Executor->Pipeline
+// plumbing: effortLevel set on the pipeline (see executor.go's
+// pipeline.effortLevel = effortLevel) ends up on the outgoing
+// ChatRequest, the same way agent/orchestra's other request fields do.
+func TestRunStream_SetsEffortLevelOnRequest(t *testing.T) {
+	registry := NewRegistry()
+	permissions := NewPermissionManager(t.TempDir())
+	sandbox := NewSandbox(DefaultSandboxConfig(t.TempDir()))
+	prov := &capturingProvider{}
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, nil)
+	pipeline.effortLevel = "high"
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "test-model", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream() error = %v", err)
+	}
+	for range ch {
+	}
+
+	if prov.gotReq.EffortLevel != "high" {
+		t.Errorf("ChatRequest.EffortLevel = %q, want %q", prov.gotReq.EffortLevel, "high")
+	}
+}
+
 func TestStripHallucinatedToolSyntax(t *testing.T) {
 	tests := []struct {
 		name string

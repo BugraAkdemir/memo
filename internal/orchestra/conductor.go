@@ -236,6 +236,16 @@ func LoadConfig(filePath string) OrchestraConfig {
 
 // findProviderConfig looks up a provider config by name from the stored configs.
 // Falls back to type match for backward compatibility with old configs.
+// FindProviderConfig exposes findProviderConfig to callers outside this
+// package that build their own ChatRequest against an Orchestra-configured
+// provider instead of going through Run/RunSingle/RunAgentTasks — currently
+// internal/app/tasklist.go's task-loop chief review call, which needs the
+// resolved EffortLevel the same way chiefAttempt/executeSingleTask do
+// internally.
+func (c *Conductor) FindProviderConfig(providerName string) *provider.ProviderConfig {
+	return c.findProviderConfig(providerName)
+}
+
 func (c *Conductor) findProviderConfig(providerName string) *provider.ProviderConfig {
 	configs := c.getConfigs()
 	for _, cfg := range configs {
@@ -371,6 +381,7 @@ func (c *Conductor) chiefAttempt(ctx context.Context, pCfg provider.ProviderConf
 		return "", fmt.Errorf("provider (%s/%s) oluşturulamadı: %w", pCfg.Type, pCfg.Model, err)
 	}
 	req.Model = pCfg.Model
+	req.EffortLevel = pCfg.EffortLevel
 
 	if onProgress != nil {
 		streamCh, streamErr := prov.ChatCompletionStream(ctx, req)
@@ -707,6 +718,15 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 		Messages:    messages,
 		Temperature: 0.7,
 		MaxTokens:   8192,
+	}
+	// Only the exact type/name match case (mirrors CreateProviderForType's
+	// own primary branch just above) — the "any enabled provider" fallback
+	// inside CreateProviderForType doesn't report back which config it
+	// actually used, so that edge case is left without an effort level
+	// rather than guessing (same posture the BUG-H3 comment above takes on
+	// req.Model for that path).
+	if pCfg := c.findProviderConfig(task.ModelType); pCfg != nil {
+		req.EffortLevel = pCfg.EffortLevel
 	}
 
 	taskCtx, cancel := context.WithTimeout(ctx, 300*time.Second)

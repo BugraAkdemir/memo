@@ -147,6 +147,66 @@ func TestExecuteSingleTask(t *testing.T) {
 	}
 }
 
+// TestExecuteSingleTaskSetsEffortLevelFromProviderConfig verifies the
+// per-role task path resolves that role's own provider config (via
+// findProviderConfig(task.ModelType), the same exact-match lookup
+// CreateProviderForType uses) and copies its EffortLevel onto the request —
+// independent from chiefAttempt's copy, since ordinary task execution never
+// goes through the chief code path.
+func TestExecuteSingleTaskSetsEffortLevelFromProviderConfig(t *testing.T) {
+	f := newMockFactory()
+	mp := openAIMock("single task output")
+	f.set("openai", mp)
+
+	getConfigs := func() []provider.ProviderConfig {
+		return []provider.ProviderConfig{
+			{Name: "test-openai", Type: "openai", Enabled: true, Model: "gpt-4o", EffortLevel: "low"},
+		}
+	}
+	cfg := defaultEnabledConfig()
+	c := NewConductor(cfg, f.factory, getConfigs)
+
+	task := OrchestraTask{
+		Role:      RoleGeneral,
+		Context:   "test task",
+		ModelType: "openai",
+		ModelName: "gpt-4o",
+	}
+
+	result := c.executeSingleTask(context.Background(), cfg, task, 0, nil, false, nil)
+	if result.Error != "" {
+		t.Fatalf("unexpected error: %s", result.Error)
+	}
+	if got := mp.LastRequest().EffortLevel; got != "low" {
+		t.Errorf("ChatRequest.EffortLevel = %q, want %q", got, "low")
+	}
+}
+
+// TestFindProviderConfigExported verifies the public FindProviderConfig
+// wrapper (added for internal/app/tasklist.go's task-loop chief review,
+// which builds its own ChatRequest outside chiefAttempt/executeSingleTask
+// and needs the same Name-then-Type lookup those use internally) behaves
+// identically to the private findProviderConfig it wraps.
+func TestFindProviderConfigExported(t *testing.T) {
+	f := newMockFactory()
+	getConfigs := func() []provider.ProviderConfig {
+		return []provider.ProviderConfig{
+			{Name: "my-claude", Type: "claude", Enabled: true, Model: "claude-x", EffortLevel: "medium"},
+		}
+	}
+	c := NewConductor(defaultEnabledConfig(), f.factory, getConfigs)
+
+	if got := c.FindProviderConfig("my-claude"); got == nil || got.EffortLevel != "medium" {
+		t.Errorf("FindProviderConfig(name) = %+v, want EffortLevel=medium", got)
+	}
+	if got := c.FindProviderConfig("claude"); got == nil || got.EffortLevel != "medium" {
+		t.Errorf("FindProviderConfig(type) = %+v, want EffortLevel=medium", got)
+	}
+	if got := c.FindProviderConfig("nonexistent"); got != nil {
+		t.Errorf("FindProviderConfig(nonexistent) = %+v, want nil", got)
+	}
+}
+
 func TestExecuteSingleTaskStreaming(t *testing.T) {
 	f := newMockFactory()
 	ch := make(chan provider.StreamChunk, 2)

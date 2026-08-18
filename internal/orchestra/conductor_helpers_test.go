@@ -16,6 +16,9 @@ type mockProvider struct {
 	streamCh    chan provider.StreamChunk
 	streamErr   error
 	modelErr    error
+
+	mu      sync.Mutex
+	lastReq provider.ChatRequest // the last ChatRequest this mock actually received
 }
 
 func (m *mockProvider) Name() provider.ProviderType { return m.name }
@@ -24,7 +27,16 @@ func (m *mockProvider) ListModels(_ context.Context) ([]string, error) {
 	return nil, m.modelErr
 }
 
+func (m *mockProvider) LastRequest() provider.ChatRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastReq
+}
+
 func (m *mockProvider) ChatCompletion(_ context.Context, req provider.ChatRequest) (*provider.ChatResponse, error) {
+	m.mu.Lock()
+	m.lastReq = req
+	m.mu.Unlock()
 	if m.chatErr != nil {
 		return nil, m.chatErr
 	}

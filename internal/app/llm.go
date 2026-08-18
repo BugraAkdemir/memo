@@ -131,11 +131,14 @@ func (a *App) localModelName() string {
 	return provider.DefaultModels[provider.ProviderLlamaCPP]
 }
 
-// resolveAgentProvider returns the provider router and model name the agent
-// pipeline should use. The write lock is held continuously during the nil->
-// router creation window to prevent a second goroutine from racing in and
-// creating a second router (which would silently replace the first one).
-func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
+// resolveAgentProvider returns the provider router, model name, and
+// resolved EffortLevel (see activeProviderEffortLevel's doc comment; empty
+// for the local llama.cpp fallback, which has no such stored setting) the
+// agent pipeline should use. The write lock is held continuously during
+// the nil->router creation window to prevent a second goroutine from
+// racing in and creating a second router (which would silently replace the
+// first one).
+func (a *App) resolveAgentProvider() (*provider.Router, string, string, error) {
 	a.providerMu.Lock()
 	activeName := a.activeProviderName
 	providerRouter := a.providerRouter
@@ -152,25 +155,28 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
 
 	if activeName != "" {
 		if providerRouter == nil || !providerRouter.HasActiveProvider() {
-			return nil, "", fmt.Errorf("Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin veya yerel bir model başlatın.")
+			return nil, "", "", fmt.Errorf("Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin veya yerel bir model başlatın.")
 		}
 		if providerCfgMgr == nil {
-			return nil, "", fmt.Errorf("provider system not initialized")
+			return nil, "", "", fmt.Errorf("provider system not initialized")
 		}
 		modelName := ""
+		effortLevel := ""
 		for _, p := range providerCfgMgr.GetEnabled() {
 			if p.Name == activeName {
 				modelName = p.Model
+				effortLevel = p.EffortLevel
 				break
 			}
 		}
 		if modelName == "" {
 			for _, p := range providerCfgMgr.GetEnabled() {
 				modelName = p.Model
+				effortLevel = p.EffortLevel
 				break
 			}
 		}
-		return providerRouter, modelName, nil
+		return providerRouter, modelName, effortLevel, nil
 	}
 
 	if a.llamaServer != nil && a.llamaServer.IsRunning() {
@@ -186,21 +192,23 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
 			Model:   modelName,
 			Enabled: true,
 		}
-		return provider.NewRouter([]provider.ProviderConfig{cfg}), modelName, nil
+		return provider.NewRouter([]provider.ProviderConfig{cfg}), modelName, "", nil
 	}
 
-	return nil, "", fmt.Errorf("Agent modu için bir API sağlayıcısı seçin ya da yerel bir model başlatın (Modeller bölümünden).")
+	return nil, "", "", fmt.Errorf("Agent modu için bir API sağlayıcısı seçin ya da yerel bir model başlatın (Modeller bölümünden).")
 }
 
 // agentRouterFromProviderName builds a single-provider router for the given
 // provider name + model, used as the agent's fallback in combined Orchestra+Agent
-// mode when no separate active provider is configured.
-func (a *App) agentRouterFromProviderName(providerName, model string) (*provider.Router, string, error) {
+// mode when no separate active provider is configured. Also returns that
+// provider's own configured EffortLevel (pc keeps every field from the
+// matched config except Model, which the caller overrides).
+func (a *App) agentRouterFromProviderName(providerName, model string) (*provider.Router, string, string, error) {
 	a.providerMu.RLock()
 	cfgMgr := a.providerCfgMgr
 	a.providerMu.RUnlock()
 	if cfgMgr == nil {
-		return nil, "", fmt.Errorf("no provider config manager")
+		return nil, "", "", fmt.Errorf("no provider config manager")
 	}
 	enabled := cfgMgr.GetEnabled()
 	// Match on Name (the new identifier) first.
@@ -208,7 +216,7 @@ func (a *App) agentRouterFromProviderName(providerName, model string) (*provider
 		if p.Name == providerName {
 			pc := p
 			pc.Model = model
-			return provider.NewRouter([]provider.ProviderConfig{pc}), model, nil
+			return provider.NewRouter([]provider.ProviderConfig{pc}), model, pc.EffortLevel, nil
 		}
 	}
 	// Fall back to Type match for backward compatibility: the Orchestra ChiefType
@@ -218,10 +226,10 @@ func (a *App) agentRouterFromProviderName(providerName, model string) (*provider
 		if string(p.Type) == providerName {
 			pc := p
 			pc.Model = model
-			return provider.NewRouter([]provider.ProviderConfig{pc}), model, nil
+			return provider.NewRouter([]provider.ProviderConfig{pc}), model, pc.EffortLevel, nil
 		}
 	}
-	return nil, "", fmt.Errorf("orchestra chief provider %q is not enabled", providerName)
+	return nil, "", "", fmt.Errorf("orchestra chief provider %q is not enabled", providerName)
 }
 
 func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userMsg, sessionID string) <-chan api.StreamChunk {
@@ -236,7 +244,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
 		}
 
-		agentRouter, modelName, err := a.resolveAgentProvider()
+		agentRouter, modelName, effortLevel, err := a.resolveAgentProvider()
 		if err != nil {
 			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
@@ -256,7 +264,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		start := time.Now()
 		agentEvents := &agentEventLog{}
 
-		streamCh, err := a.agentExecutor.RunStream(ctx, sessionID, modelName, pMsgs, func(ev agent.AgentEvent) {
+		streamCh, err := a.agentExecutor.RunStream(ctx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
 			agentEvents.add(ev)
 			chunkData, _ := json.Marshal(ev)
 			trySend(ctx, outCh, api.StreamChunk{
@@ -472,15 +480,15 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		// chat is actually configured with — see AgentTaskRunner's and
 		// RunAgentTasks's doc comments for why tasks need this instead of a
 		// plain ChatCompletion.
-		agentRouter, modelName, err := a.resolveAgentProvider()
+		agentRouter, modelName, effortLevel, err := a.resolveAgentProvider()
 		if err != nil {
 			// Combined mode: an Orchestra-configured user often has no separate
 			// "active provider" set, so the agent half would otherwise fail here.
 			// Fall back to the Orchestra chief's provider so the two systems stay
 			// connected.
 			ocfg := a.orchestraConductor.Config()
-			if r, m, ferr := a.agentRouterFromProviderName(ocfg.ChiefType, ocfg.ChiefModel); ferr == nil {
-				agentRouter, modelName = r, m
+			if r, m, el, ferr := a.agentRouterFromProviderName(ocfg.ChiefType, ocfg.ChiefModel); ferr == nil {
+				agentRouter, modelName, effortLevel = r, m, el
 			} else {
 				a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
@@ -513,7 +521,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		// tool access" failures this replaces (see RunAgentTasks).
 		agentRunner := func(taskCtx context.Context, taskPrompt string, onEvent func(string)) (string, error) {
 			taskMsgs := append(append([]provider.Message{}, pMsgs...), provider.Message{Role: "user", Content: taskPrompt})
-			streamCh, err := a.agentExecutor.RunStream(taskCtx, sessionID, modelName, taskMsgs, func(ev agent.AgentEvent) {
+			streamCh, err := a.agentExecutor.RunStream(taskCtx, sessionID, modelName, effortLevel, taskMsgs, func(ev agent.AgentEvent) {
 				agentEventsMu.Lock()
 				agentEvents = append(agentEvents, ev)
 				agentEventsMu.Unlock()

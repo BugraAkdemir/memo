@@ -366,11 +366,13 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 		waExecutor := agent.NewWhatsAppExecutor(a.agentExecutor)
 		waExecutor.SyncRouter(router)
 
+		effortLevel := a.activeProviderEffortLevel(activeName)
+
 		start := time.Now()
 		var fullReply strings.Builder
 		var agentEvents []interface{}
 
-		streamCh, err := waExecutor.RunStream(ctx, waSessionID, modelName, allMsgs, func(ev agent.AgentEvent) {
+		streamCh, err := waExecutor.RunStream(ctx, waSessionID, modelName, effortLevel, allMsgs, func(ev agent.AgentEvent) {
 			agentEvents = append(agentEvents, ev)
 			chunkData, _ := json.Marshal(ev)
 			localTrySend(ctx, outCh, api.StreamChunk{

@@ -135,6 +135,9 @@ func (a *App) reviewChiefViaOrchestra(ctx context.Context, itemText, workerOutpu
 		Temperature: 0.2,
 		MaxTokens:   1024,
 	}
+	if pCfg := a.orchestraConductor.FindProviderConfig(cfg.ChiefType); pCfg != nil {
+		req.EffortLevel = pCfg.EffortLevel
+	}
 
 	reviewCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()

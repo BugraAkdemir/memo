@@ -137,7 +137,11 @@ func (e *Executor) getRouter() *provider.Router {
 }
 
 // RunStream starts the agent execution and streams back chunks and events.
-func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName string, messages []provider.Message, onEvent func(AgentEvent), projectPath ...string) (<-chan provider.StreamChunk, error) {
+// effortLevel is the active provider's resolved EffortLevel (empty = let
+// the provider/model use its own default) — callers resolve it the same
+// way they resolve modelName, since both come from the same active
+// provider config; see provider.ChatRequest.EffortLevel's doc comment.
+func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName string, effortLevel string, messages []provider.Message, onEvent func(AgentEvent), projectPath ...string) (<-chan provider.StreamChunk, error) {
 	router := e.getRouter()
 	if router == nil {
 		return nil, fmt.Errorf("agent mode requires an active provider (external API or local model)")
@@ -183,6 +187,7 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 	// the pre-toggle value.
 	pipeline.bypassPermissions = e.GetBypassPermissions()
 	pipeline.autoPermission = e.GetAutoPermission()
+	pipeline.effortLevel = effortLevel
 
 	wrappedOnEvent := func(ev AgentEvent) {
 		// Log the event

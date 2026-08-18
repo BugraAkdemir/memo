@@ -56,6 +56,14 @@ type Pipeline struct {
 	toolTimeout        time.Duration // max time per tool execution (0 = no limit)
 	bypassPermissions  bool          // sistem yönetimi açıkken tüm izinleri otomatik onayla
 	autoPermission     bool          // kullanıcı Shift+Tab ile açtığında tüm izinleri otomatik onayla
+
+	// effortLevel is the active provider's resolved EffortLevel for this
+	// run (see provider.ChatRequest.EffortLevel's doc comment) — set by the
+	// Executor after construction, same pattern as bypassPermissions/
+	// autoPermission above, since NewPipeline/NewPipelineWithBudget's
+	// signatures are already exercised directly by pipeline_test.go and
+	// don't need a new constructor param for this.
+	effortLevel string
 }
 
 // NewPipeline creates a new agent execution pipeline.
@@ -116,6 +124,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			Temperature: 0.2,
 			Tools:       p.registry.ToOpenAITools(),
 			Stream:      false,
+			EffortLevel: p.effortLevel,
 		}
 
 		// Call LLM

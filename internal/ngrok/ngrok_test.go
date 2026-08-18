@@ -244,6 +244,38 @@ func TestLogWriter(t *testing.T) {
 	}
 }
 
+// TestVerifyArchiveMagic_H04 guards the H04 fix: a download that returns an
+// HTML/JSON error page with a 200 status (a real, observed CDN failure
+// mode) must be rejected before it reaches the tar/zip reader, instead of
+// producing a confusing low-level parse error or a corrupt binary.
+func TestVerifyArchiveMagic_H04(t *testing.T) {
+	validGzip := []byte{0x1f, 0x8b, 0x08, 0x00}
+	validZip := []byte("PK\x03\x04rest of a real zip")
+	htmlErrorPage := []byte("<html><body>403 Forbidden</body></html>")
+
+	tests := []struct {
+		name    string
+		url     string
+		body    []byte
+		wantErr bool
+	}{
+		{"valid tgz", "https://bin.ngrok.com/x/ngrok-v3-stable-linux-amd64.tgz", validGzip, false},
+		{"valid zip", "https://bin.ngrok.com/x/ngrok-v3-stable-windows-amd64.zip", validZip, false},
+		{"html error page served as tgz", "https://bin.ngrok.com/x/ngrok-v3-stable-linux-amd64.tgz", htmlErrorPage, true},
+		{"html error page served as zip", "https://bin.ngrok.com/x/ngrok-v3-stable-windows-amd64.zip", htmlErrorPage, true},
+		{"empty body as tgz", "https://bin.ngrok.com/x/ngrok-v3-stable-linux-amd64.tgz", nil, true},
+		{"unknown extension is not checked", "https://bin.ngrok.com/x/ngrok", htmlErrorPage, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := verifyArchiveMagic(tt.url, tt.body)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("verifyArchiveMagic() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestDownloadURLs(t *testing.T) {
 	key := runtime.GOOS + "/" + runtime.GOARCH
 	url, ok := downloadURLs[key]

@@ -69,16 +69,45 @@ func Install(baseDir string) (string, error) {
 		return "", fmt.Errorf("download: HTTP %d", resp.StatusCode)
 	}
 
+	// H04: no cryptographic checksum verification is done here — ngrok
+	// does not publish SHA256 checksums for this "stable" rolling CDN
+	// shortlink (confirmed against ngrok.com/downloads), and the URL's
+	// content changes on every ngrok release, so no fixed hash could be
+	// hardcoded here without breaking every future release. Genuine
+	// tamper-resistance (surviving a compromised CDN/origin, not just a
+	// MITM — which HTTPS already covers) would require pinning this repo
+	// to one specific ngrok version with its hash computed from a
+	// download the maintainer has verified, and bumping both together by
+	// hand on every ngrok update — a deliberate trade-off against
+	// "always installs whatever ngrok currently calls stable," not made
+	// unilaterally here.
+	//
+	// What IS verified: the response actually looks like the archive
+	// format its own extension promises, not an HTML/JSON error page
+	// served with a 200 status (a real, observed CDN failure mode — a
+	// blocked/rate-limited/misconfigured edge can return an error body
+	// with a success status code, which previously would have been
+	// silently handed to the tar/zip reader and failed with a confusing
+	// "not a valid archive" error, or in principle produced a corrupt
+	// binary from partial garbage bytes).
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("download: read body: %w", err)
+	}
+	if err := verifyArchiveMagic(url, body); err != nil {
+		return "", fmt.Errorf("download: %w", err)
+	}
+
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		return "", fmt.Errorf("mkdir: %w", err)
 	}
 
 	if strings.HasSuffix(url, ".tgz") {
-		if err := extractTGZ(resp.Body, binDir); err != nil {
+		if err := extractTGZ(bytes.NewReader(body), binDir); err != nil {
 			return "", fmt.Errorf("extract: %w", err)
 		}
 	} else if strings.HasSuffix(url, ".zip") {
-		if err := extractZIP(resp.Body, binDir); err != nil {
+		if err := extractZIP(bytes.NewReader(body), binDir); err != nil {
 			return "", fmt.Errorf("extract: %w", err)
 		}
 	}
@@ -89,6 +118,23 @@ func Install(baseDir string) (string, error) {
 
 	logx.Printf("[ngrok] Installed to %s", binPath)
 	return binPath, nil
+}
+
+// verifyArchiveMagic checks that body's leading bytes match the archive
+// format implied by url's extension — see the doc comment at Install's
+// call site for what this does and does not protect against.
+func verifyArchiveMagic(url string, body []byte) error {
+	switch {
+	case strings.HasSuffix(url, ".tgz"):
+		if len(body) < 2 || body[0] != 0x1f || body[1] != 0x8b {
+			return fmt.Errorf("response is not a gzip archive (got %d bytes, wrong magic — likely an error page, not the binary)", len(body))
+		}
+	case strings.HasSuffix(url, ".zip"):
+		if len(body) < 4 || body[0] != 'P' || body[1] != 'K' {
+			return fmt.Errorf("response is not a zip archive (got %d bytes, wrong magic — likely an error page, not the binary)", len(body))
+		}
+	}
+	return nil
 }
 
 func extractTGZ(r io.Reader, destDir string) error {

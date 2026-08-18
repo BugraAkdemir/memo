@@ -78,6 +78,34 @@ func (a *App) buildMemoryQuery(userMsg string) string {
 	return strings.Join(recent, " | ") + " | " + userMsg
 }
 
+// buildWebSearchQuery distills a raw user message into a short, keyword-style
+// web search query via a quick LLM call, instead of sending the message to
+// DDG verbatim. DDG (internal/websearch/ddg.go) matches literally, not
+// semantically — a full conversational sentence ("kanka bugra akdemir kim
+// hakkında bilgi toplarısın internetten") pollutes the query with filler
+// words ("kanka", "rica edersem", "bu arada") and the request-to-search
+// framing itself, so the results come back essentially random (reported
+// live by a user: a search for "bugra akdemir kim" turned into a search for
+// the whole sentence and returned unrelated YouTube channels and forum
+// posts). Falls back to the raw message on any failure (no LLM configured,
+// provider error, empty/error-prefixed response) — a worse query is still
+// better than skipping the search entirely in a mode whose only purpose is
+// injecting web results.
+func (a *App) buildWebSearchQuery(ctx context.Context, userMsg string) string {
+	prompt := []api.Message{
+		api.NewTextMessage("user", fmt.Sprintf(
+			"Extract a short, effective web search query (2-6 words, same language as the message, no quotes, no explanation) that captures what the user actually wants to search for. Ignore greetings, names of the person you're talking to, and phrasing like \"can you look this up for me\" — keep only the subject.\n\nMessage: %s\n\nSearch query:",
+			userMsg,
+		)),
+	}
+	query := strings.TrimSpace(a.callLLM(ctx, prompt, categoryWebSearchQuery))
+	query = strings.Trim(query, "\"'")
+	if query == "" || strings.HasPrefix(query, "⚠️") {
+		return userMsg
+	}
+	return query
+}
+
 // buildMessages builds the prompt for whatever chat is active *right now*.
 // Thin wrapper around buildMessagesForSession — see PLAN_chatid_refactor.md
 // Phase 2. Kept for callers that are intentionally still tied to the global
@@ -159,8 +187,9 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		// injection is the only way it can ever see search results — that
 		// path is unchanged.
 		if webSearchEnabled && !agentEnabled {
-			if results, err := websearch.Search(ctx, userMsg, a.cfg.WebSearch.MaxResults); err == nil {
-				systemPrompt += websearch.FormatForContext(userMsg, results)
+			query := a.buildWebSearchQuery(ctx, userMsg)
+			if results, err := websearch.Search(ctx, query, a.cfg.WebSearch.MaxResults); err == nil {
+				systemPrompt += websearch.FormatForContext(query, results)
 			} else {
 				logx.Printf("websearch: %v", err)
 			}

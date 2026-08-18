@@ -66,6 +66,7 @@ const (
 	categoryRoutine        = "routine"
 	categoryProactive      = "proactive"
 	categoryInsight        = "insight"
+	categoryWebSearchQuery = "web_search_query"
 )
 
 // currentProviderLabel returns the active external provider's name, or

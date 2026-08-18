@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +16,7 @@ import (
 	"memo/internal/identity"
 	"memo/internal/memory"
 	moodpkg "memo/internal/mood"
+	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/skill"
 )
@@ -270,6 +274,57 @@ func TestBuildMessages_AgentModeSkipsBlindWebSearchInjection(t *testing.T) {
 	}
 	if strings.Contains(sys, "Web Search Results") {
 		t.Error("system prompt contains injected web search results — blind injection must be skipped when agent mode is on")
+	}
+}
+
+// TestBuildWebSearchQuery_UsesExtractedQueryNotRawMessage is the regression
+// test for the bug reported live by a user: the blind (non-agent) web search
+// path used to pass the raw user message straight to DDG (internal/
+// websearch/ddg.go), which matches literally — a full conversational
+// sentence with filler words and search-request framing ("kanka bugra
+// akdemir kim hakkında bilgi toplarısın internetten") returned essentially
+// random results instead of anything about "bugra akdemir". A fake provider
+// stands in for the extraction LLM call and returns a canned short query;
+// this asserts buildWebSearchQuery returns that extracted query, not the
+// original raw message.
+func TestBuildWebSearchQuery_UsesExtractedQueryNotRawMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"bugra akdemir kim"}}]}`)
+	}))
+	defer srv.Close()
+
+	router := provider.NewRouter([]provider.ProviderConfig{{
+		Type:    provider.ProviderCustom,
+		Name:    "test",
+		BaseURL: srv.URL,
+		Model:   "test-model",
+		Enabled: true,
+	}})
+
+	a := &App{providerRouter: router, activeProviderName: "test", cfg: &config.AppConfig{}}
+
+	raw := "kanka bugra akdemir kim hakkında bilgi toplarısın internetten"
+	query := a.buildWebSearchQuery(context.Background(), raw)
+	if query != "bugra akdemir kim" {
+		t.Fatalf("query = %q, want extracted %q (not the raw message)", query, "bugra akdemir kim")
+	}
+	if query == raw {
+		t.Fatal("buildWebSearchQuery returned the raw message verbatim")
+	}
+}
+
+// TestBuildWebSearchQuery_FallsBackToRawMessageOnLLMFailure ensures a
+// missing/failing extraction LLM degrades to the pre-fix behavior (search
+// the raw message) rather than breaking web search entirely — a worse query
+// beats no search at all in a mode whose only purpose is injecting results.
+func TestBuildWebSearchQuery_FallsBackToRawMessageOnLLMFailure(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{}} // no client, no provider, no orchestra configured
+
+	raw := "bugra akdemir kim hakkında bilgi topla"
+	query := a.buildWebSearchQuery(context.Background(), raw)
+	if query != raw {
+		t.Fatalf("query = %q, want fallback to raw message %q", query, raw)
 	}
 }
 

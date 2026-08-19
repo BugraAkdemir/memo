@@ -461,29 +461,39 @@ class DevGatewayConfigNotifier extends AsyncNotifier<DevGatewayConfig> {
 }
 
 final claudeCodeCLIConnectedProvider =
-    AsyncNotifierProvider<ClaudeCodeCLIConnectedNotifier, bool>(
+    AsyncNotifierProvider<ClaudeCodeCLIConnectedNotifier, ClaudeCodeCLIState>(
       ClaudeCodeCLIConnectedNotifier.new,
     );
 
-/// Developer screen's one-click "connect Claude Code CLI" toggle — see
-/// api_client.dart's getClaudeCodeCLIConnected/setClaudeCodeCLIConnected
-/// and internal/app/claudecodecli.go for what actually happens on connect
-/// (writes env.ANTHROPIC_BASE_URL/ANTHROPIC_API_KEY into the CLI's own
+/// Developer screen's one-click "connect Claude Code CLI" toggle plus its
+/// model-override dropdown — see api_client.dart's
+/// getClaudeCodeCLIState/setClaudeCodeCLIConnected and
+/// internal/app/claudecodecli.go for what actually happens on connect
+/// (writes env.ANTHROPIC_BASE_URL/ANTHROPIC_API_KEY and, if a model was
+/// picked, the top-level "model" field into the CLI's own
 /// ~/.claude/settings.json, CLI-only, never touches a desktop app).
-class ClaudeCodeCLIConnectedNotifier extends AsyncNotifier<bool> {
+class ClaudeCodeCLIConnectedNotifier extends AsyncNotifier<ClaudeCodeCLIState> {
   @override
-  Future<bool> build() async {
+  Future<ClaudeCodeCLIState> build() async {
     if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
-      return false;
+      return const ClaudeCodeCLIState();
     }
-    return ref.read(apiClientProvider).getClaudeCodeCLIConnected();
+    return ref.read(apiClientProvider).getClaudeCodeCLIState();
   }
 
-  Future<void> setConnected(bool connect, {required String baseUrl}) async {
-    final connected = await ref
+  Future<void> setConnected(
+    bool connect, {
+    required String baseUrl,
+    String model = '',
+  }) async {
+    final next = await ref
         .read(apiClientProvider)
-        .setClaudeCodeCLIConnected(connect: connect, baseUrl: baseUrl);
-    state = AsyncValue.data(connected);
+        .setClaudeCodeCLIConnected(
+          connect: connect,
+          baseUrl: baseUrl,
+          model: model,
+        );
+    state = AsyncValue.data(next);
   }
 }
 

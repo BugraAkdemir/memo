@@ -501,11 +501,13 @@ class _ReferenceSection extends ConsumerWidget {
   }
 }
 
-/// One-click "connect Claude Code CLI" toggle — writes/restores
-/// env.ANTHROPIC_BASE_URL and env.ANTHROPIC_API_KEY in the CLI's own
-/// ~/.claude/settings.json (see internal/app/claudecodecli.go). Deliberately
-/// CLI-only: that settings file belongs to the `claude` binary, not any
-/// separate Claude desktop app, which is untouched by this toggle.
+/// One-click "connect Claude Code CLI" toggle plus the model-override
+/// dropdown right below it — writes/restores env.ANTHROPIC_BASE_URL,
+/// env.ANTHROPIC_API_KEY and (if a model is picked) the top-level "model"
+/// field in the CLI's own ~/.claude/settings.json (see
+/// internal/app/claudecodecli.go). Deliberately CLI-only: that settings
+/// file belongs to the `claude` binary, not any separate Claude desktop
+/// app, which is untouched by this toggle.
 class _ClaudeCodeCLIConnectRow extends ConsumerWidget {
   final String baseUrl;
   const _ClaudeCodeCLIConnectRow({required this.baseUrl});
@@ -513,11 +515,16 @@ class _ClaudeCodeCLIConnectRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = MemoTheme.of(context);
-    final connectedAsync = ref.watch(claudeCodeCLIConnectedProvider);
+    final stateAsync = ref.watch(claudeCodeCLIConnectedProvider);
+    final modelsAsync = ref.watch(gatewayModelsProvider);
 
     Future<void> toggle(bool v) async {
       try {
-        await ref.read(claudeCodeCLIConnectedProvider.notifier).setConnected(v, baseUrl: baseUrl);
+        await ref.read(claudeCodeCLIConnectedProvider.notifier).setConnected(
+              v,
+              baseUrl: baseUrl,
+              model: stateAsync.valueOrNull?.model ?? '',
+            );
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -527,26 +534,94 @@ class _ClaudeCodeCLIConnectRow extends ConsumerWidget {
       }
     }
 
-    return connectedAsync.when(
+    Future<void> selectModel(String? model) async {
+      try {
+        await ref.read(claudeCodeCLIConnectedProvider.notifier).setConnected(
+              true,
+              baseUrl: baseUrl,
+              model: model ?? '',
+            );
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(L10n.t('dev_gateway_claude_cli_error', {'e': FriendlyError.describeGeneric(e)}))),
+          );
+        }
+      }
+    }
+
+    return stateAsync.when(
       loading: () => const SizedBox(height: 20, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
       error: (e, _) => Text(
         '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
         style: TextStyle(color: MemoTheme.red, fontSize: 12),
       ),
-      data: (connected) => SwitchListTile(
-        title: Text(
-          L10n.t('dev_gateway_claude_cli_connect_label'),
-          style: TextStyle(fontSize: 13, color: theme.textMain),
-        ),
-        subtitle: Text(
-          L10n.t('dev_gateway_claude_cli_connect_desc'),
-          style: TextStyle(fontSize: 11, color: theme.textDim),
-        ),
-        value: connected,
-        onChanged: toggle,
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-        activeThumbColor: MemoTheme.accent,
+      data: (st) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SwitchListTile(
+            title: Text(
+              L10n.t('dev_gateway_claude_cli_connect_label'),
+              style: TextStyle(fontSize: 13, color: theme.textMain),
+            ),
+            subtitle: Text(
+              L10n.t('dev_gateway_claude_cli_connect_desc'),
+              style: TextStyle(fontSize: 11, color: theme.textDim),
+            ),
+            value: st.connected,
+            onChanged: toggle,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            activeThumbColor: MemoTheme.accent,
+            inactiveThumbColor: theme.textDim,
+            inactiveTrackColor: theme.bgHover,
+            trackOutlineColor: WidgetStateProperty.all(theme.borderHover),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            L10n.t('dev_gateway_claude_cli_model_label'),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.textMain),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            st.connected
+                ? L10n.t('dev_gateway_claude_cli_model_hint')
+                : L10n.t('dev_gateway_claude_cli_model_disabled_hint'),
+            style: TextStyle(fontSize: 11, color: theme.textDim),
+          ),
+          const SizedBox(height: 8),
+          modelsAsync.when(
+            loading: () => const SizedBox(height: 20, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+            error: (e, _) => Text(
+              '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
+              style: TextStyle(color: MemoTheme.red, fontSize: 12),
+            ),
+            data: (models) => DropdownButtonFormField<String>(
+              // Keyed on the server-reported (connected, model) pair so a
+              // disconnect/reconnect or a model change made elsewhere resets
+              // this field's internal state — DropdownButtonFormField only
+              // reads `initialValue` once (on first build), like
+              // TextFormField, so a plain widget rebuild wouldn't otherwise
+              // pick up a value that changed out from under it.
+              key: ValueKey('${st.connected}_${st.model}'),
+              initialValue: models.any((m) => m.id == st.model) ? st.model : null,
+              isDense: true,
+              style: TextStyle(fontFamily: 'JetBrainsMono', fontSize: 13, color: theme.textMain),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              items: [
+                DropdownMenuItem(
+                  value: null,
+                  child: Text(L10n.t('dev_gateway_claude_cli_model_none'), style: TextStyle(fontSize: 13, color: theme.textDim)),
+                ),
+                for (final m in models) DropdownMenuItem(value: m.id, child: Text(m.id)),
+              ],
+              onChanged: st.connected ? selectModel : null,
+            ),
+          ),
+        ],
       ),
     );
   }

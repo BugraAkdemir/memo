@@ -420,6 +420,12 @@ class L10n {
     'dev_gateway_claude_cli_connect_desc':
         'claude komutunu her çalıştırdığında bu ağ geçidini kullanır (~/.claude/settings.json\'a yazılır). Sadece CLI — Claude\'un masaüstü uygulamasını etkilemez. Kapatınca önceki ayarların varsa geri getirilir.',
     'dev_gateway_claude_cli_error': 'Claude Code CLI bağlantısı değiştirilemedi: \${e}',
+    'dev_gateway_claude_cli_model_label': 'Claude Code\'un Göreceği Model',
+    'dev_gateway_claude_cli_model_hint':
+        'Claude Code kendi varsayılan model adını gönderir ve ağ geçidi onu tanımaz — buradan bir model seçmezsen bağlantı "model must be \'type/model-id\'" hatasıyla başarısız olur.',
+    'dev_gateway_claude_cli_model_none': 'Model seçilmedi',
+    'dev_gateway_claude_cli_model_disabled_hint':
+        'Model seçmeden önce yukarıdan bağlan.',
     'dev_gateway_settings_title': 'Ağ Geçidi Ayarları',
     'dev_gateway_system_prompt_label': 'Ek Sistem Talimatı',
     'dev_gateway_system_prompt_desc':
@@ -2262,6 +2268,12 @@ class L10n {
     'dev_gateway_claude_cli_connect_desc':
         'Every `claude` command will use this gateway (written to ~/.claude/settings.json). CLI only — doesn\'t affect Claude\'s desktop app. Turning it off restores whatever was there before, if anything.',
     'dev_gateway_claude_cli_error': 'Failed to change the Claude Code CLI connection: \${e}',
+    'dev_gateway_claude_cli_model_label': 'Model Claude Code Sees',
+    'dev_gateway_claude_cli_model_hint':
+        'Claude Code sends its own default model name and the gateway won\'t recognize it — pick one here or the connection will fail with "model must be \'type/model-id\'".',
+    'dev_gateway_claude_cli_model_none': 'No model selected',
+    'dev_gateway_claude_cli_model_disabled_hint':
+        'Connect above before picking a model.',
     'dev_gateway_settings_title': 'Gateway Settings',
     'dev_gateway_system_prompt_label': 'Extra System Instruction',
     'dev_gateway_system_prompt_desc':

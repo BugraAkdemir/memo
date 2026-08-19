@@ -26,6 +26,24 @@ class DevGatewayConfig {
   }
 }
 
+/// State of the Developer screen's one-click "connect Claude Code CLI"
+/// toggle plus the model override written alongside it — mirrors the
+/// backend's {"connected", "model"} response from
+/// GET/POST /api/dev-gateway/claude-code-cli.
+class ClaudeCodeCLIState {
+  final bool connected;
+  final String model;
+
+  const ClaudeCodeCLIState({this.connected = false, this.model = ''});
+
+  factory ClaudeCodeCLIState.fromJson(Map<String, dynamic> json) {
+    return ClaudeCodeCLIState(
+      connected: json['connected'] as bool? ?? false,
+      model: json['model'] as String? ?? '',
+    );
+  }
+}
+
 class GatewayModel {
   final String id;
   final String type;

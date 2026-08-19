@@ -7696,3 +7696,33 @@ Kullanıcı raporu: "remote access `şifre istiyor, beni hatırlamıyor" — LAN
 **Canlı smoke (port 18099, `--lan`):** 127.0.0.1 + kredisiz → 200; LAN IP + kredisiz → 401; setup/status 127.0.0.1 → `loopback:true`, LAN IP → `loopback:false`. `.gitignore`'daki `data/session.key` satırı önceki oturumdan kalma uncommitted — bu commit'e dahil edilmedi.
 
 **Kullanıcı elinde son doğrulama:** `flutter run -d linux` → Remote Access aç, kendi makinesinde login ekranı görünmemeli; telefondan LAN IP → şifre ekranı (12h TTL yerine "Beni hatırla" işaretli → 30 gün).
+
+---
+
+## Ek (2026-08-19) — Claude Code CLI model dropdown + switch'lerin karanlık/aydınlık modda görünmezlik bugu
+
+Kullanıcı raporu: "model gelmiyor, developer menüye Auto-Connect'in altına bir dropdown ekle, oradan Claude'un göreceği modeli seçelim" + "auto connect toggle kapalıyken bembeyaz görünüyor, tasarımsal bug var, light'ta da dark'ta da test et".
+
+**Kök neden 1 (model seçimi):** Claude Code CLI kendi varsayılan model adını gönderiyor, gateway sadece `"type/model-id"` (ör. `"local/qwen2.5"`) formatını tanıyor → her istek `"model must be 'type/model-id'..."` hatasıyla reddediliyordu. Canlı Live Log'da gerçek bir `claude-opus-5` hata kaydı görülerek doğrulandı: env üzerinden bağlantı çalışıyor, sadece model override eksik.
+
+**Kök neden 2 (switch bugu):** `theme.dart`'taki `ThemeData` hiç `switchTheme` set etmiyor; üç `SwitchListTile` de (`Auto-Connect`, `Require API Key`, `Use Memory`) sadece `activeThumbColor` veriyordu, inaktif durum Material 3'ün ham varsayılanına düşüyordu — açık modda soluk gri track + beyaz thumb ("bembeyaz"), koyu modda ise panelle neredeyse aynı renk (görünmez).
+
+**Backend (`internal/app/claudecodecli.go`, `internal/config/config.go`, `internal/webserver/bridge.go` + `devgateway_handlers.go`):**
+- `ClaudeCodeCLIState`'e `Model`, `PrevModelSet`, `PrevModel` eklendi — `env` alanındaki `ANTHROPIC_BASE_URL`/`API_KEY` yedekleme deseninin birebir aynısı, ama `settings.json`'ın üst seviye `"model"` alanı için (`applyConnectModel`/`applyDisconnectModel`, sadece `Connected==false` iken ilk bağlantıda yedek alır, reconnect'te yedeği ezmez — regresyon testiyle korunuyor).
+- `ConnectClaudeCodeCLI(baseURL, model string) error` imzası değişti (`FullBridge` arayüzü + `swarm_stub_bridge_test.go` güncellendi); `model == ""` ise `doc["model"]`'e dokunulmuyor (kullanıcının Memo dışında ayarladığı özel model korunur).
+- `GET/POST /api/dev-gateway/claude-code-cli` artık `{"connected":bool,"model":string}` dönüyor; POST body'ye `"model"` eklendi.
+- 8 yeni test (`applyConnectModel`/`applyDisconnectModel` — fresh connect, boş model dokunmaz, yedekleme, reconnect yedeği ezmiyor, restore, hiç yoktuysa temizleme).
+
+**Frontend (`developer_screen.dart`, `settings_provider.dart`, `api_client.dart`, `models/dev_gateway.dart`, `l10n.dart`):**
+- `claudeCodeCLIConnectedProvider` artık `bool` değil `ClaudeCodeCLIState{connected, model}` tutuyor.
+- `_ClaudeCodeCLIConnectRow` içine, switch'in hemen altına `DropdownButtonFormField<String>` eklendi — `gatewayModelsProvider`'daki model listesinden besleniyor, sadece `connected==true` iken aktif (kapalıyken gri + "önce bağlan" ipucu). Seçim değişince `setConnected(true, baseUrl:, model:)` çağrılıyor (idempotent reconnect — zaten testle doğrulanmış yedekleme davranışını kullanıyor). `DropdownButtonFormField.initialValue` sadece ilk build'de okunduğundan (`TextFormField` gibi), `key: ValueKey('${connected}_${model}')` ile dışarıdan değişen state'te widget'ın kendini sıfırlaması sağlandı.
+- Üç `SwitchListTile`'a da (`_ClaudeCodeCLIConnectRow`, `_SettingsPanel`'deki iki tanesi) `inactiveThumbColor: theme.textDim`, `inactiveTrackColor: theme.bgHover`, `trackOutlineColor: WidgetStateProperty.all(theme.borderHover)` eklendi — Memo'nun kendi tema tokenlarından, hem açık hem koyu modda görünür.
+- Yeni L10n anahtarları: `dev_gateway_claude_cli_model_label/hint/none/disabled_hint` (TR+EN).
+
+**Doğrulama (hepsi yeşil):** `go build/vet/test -race` (tüm paketler); `flutter analyze` (bilinen 5 info dışında yeni uyarı yok); `flutter test` 262/262; Rule #8 grep temiz. **Canlı test gerçek backend'e karşı yapıldı** (`/tmp/memo-test-backend`, gerçek `data/`+`config/` dizini, gerçek `~/.claude/settings.json`): dropdown açıldı, `claude-code-cli/claude-code` seçildi → `~/.claude/settings.json`'da `"model"` alanı doğru yazıldığı `grep` ile doğrulandı; toggle kapatıldı → hem `env` hem `model` tamamen silindi (önceden hiçbiri yoktu, `prev_*_set: false`); switch'ler hem açık hem koyu modda ekran görüntüsüyle karşılaştırıldı — üçü de artık görünür. Test sonunda toggle kapalı bırakıldı (gerçek dosya orijinal haline döndü).
+
+**Bilinçli olarak yapılmayan:** Dropdown'da model seçimi, toggle kapalıyken de "hazırda bekleyen seçim" olarak tutulup toggle açılınca otomatik gönderilebilirdi (yerel state) — bunun yerine bilinçli olarak basit tutuldu: dropdown sadece `connected==true` iken aktif, kapalıyken devre dışı + "önce bağlan" ipucu. Kullanıcı akışı zaten "önce bağlan, sonra modeli seç" sırasını öneriyordu.
+
+### Sıradaki oturum için
+- Commit henüz atılmadı — kullanıcı onayı bekliyor (AGENTS.md: küçük, mantıksal parçalar halinde; büyük tek commit değil). Muhtemel bölünme: (1) backend model alanı + testler, (2) frontend dropdown, (3) switch renk düzeltmesi — üçü de birbirinden bağımsız gözden geçirilebilir.
+- Push atılmadı, istenmedi.

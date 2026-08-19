@@ -101,3 +101,5 @@ data/active_skills.json
 bug*.png
 data/session.key
 data/install_id
+data/agent-audit.jsonl
+internal/agent/data/agent-audit.jsonl

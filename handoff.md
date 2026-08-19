@@ -7726,3 +7726,37 @@ Kullanıcı raporu: "model gelmiyor, developer menüye Auto-Connect'in altına b
 ### Sıradaki oturum için
 - Commit henüz atılmadı — kullanıcı onayı bekliyor (AGENTS.md: küçük, mantıksal parçalar halinde; büyük tek commit değil). Muhtemel bölünme: (1) backend model alanı + testler, (2) frontend dropdown, (3) switch renk düzeltmesi — üçü de birbirinden bağımsız gözden geçirilebilir.
 - Push atılmadı, istenmedi.
+
+---
+
+## Ek (2026-08-19, devam) — LM Studio tarzı sistem tepsisi (tray) simgesi
+
+Kullanıcı raporu: LM Studio'nun taskbar/sistem tepsisi simgesine sağ tıklayınca "Open LM Studio / Server: Not Running / No Models Loaded / Start Server / Quit" gibi bir menü açılıyor; Memo için de aynısı istendi — pencere kapatma X'i uygulamayı tamamen kapatmasın, arka planda tepside çalışmaya devam etsin, sağ tık menüsünden açılabilsin/kapatılabilsin, ve bu davranış Ayarlar'dan aç/kapa yapılabilsin.
+
+**Yeni bağımlılıklar** (`frontend/pubspec.yaml`): `window_manager: ^0.4.3` (pencere kapatma olayını yakalama, gizle/göster/yok et), `tray_manager: ^0.2.4` (tepsi simgesi + sağ tık menüsü). İkisi de sadece `linux`/`macos`/`windows` için native implementasyon sağlıyor (pubspec'lerindeki `platforms:` bloğu web/mobile içermiyor) — ama Dart tarafında `dart:io` içe aktarıyorlar, ki bu SDK sürümünde (`sdk: ^3.10.8`) `dart:io` web derlemesini bozmuyor (zaten `general_tab.dart` de aynı şeyi yapıyordu) — `flutter build web --release` ile doğrulandı, hiçbir hata yok.
+
+**Yeni dosya `frontend/lib/core/tray_controller.dart`:** `TrayController` (ConsumerStatefulWidget), `main.dart`'ta `MaterialApp`'ı sarmalıyor. `trayFeatureSupported` (`!kIsWeb && (Platform.isLinux || isMacOS || isWindows)`) false olan her platformda (web dahil) tamamen no-op — sadece `child`'ı render ediyor. Desteklenen platformlarda:
+- `windowManager.setPreventClose(true)` her zaman açık; asıl karar `onWindowClose()` içinde `minimizeToTrayProvider`'ın o anki değerine göre veriliyor (sabit bir `setPreventClose` değeri bunu ifade edemez, çünkü ayar çalışırken değişebilir).
+- Tepsi ikonu: `lib/icon/memo.png` (zaten pubspec'te bildirilmiş bir Flutter asset) — `trayManager.setIcon()` bu path'i derlenmiş paketin `data/flutter_assets/` dizinine göre kendi çözüyor, ayrıca dosya materialize etmeye gerek yok (ilk denemede `path_provider` ile temp dosyaya yazmayı düşünmüştüm, tray_manager kaynağını okuyunca gereksiz olduğu ortaya çıktı, pubspec'ten çıkarıldı).
+- Sağ tık menüsü: "Memo'yu Aç" (pencereyi `show()+focus()`), ayraç, model durumu (`modelStatusProvider`'dan — engine strip'in zaten kullandığı aynı polling, ayrı bir loop yok, `disabled: true` salt bilgi satırı), ayraç, "Çıkış" (`setPreventClose(false)` + `destroy()` — gerçekten kapatır).
+- `onWindowClose`: `minimizeToTrayProvider` açıksa `hide()`, kapalıysa gerçekten kapat.
+
+**Yeni ayar** (`settings_provider.dart`): `minimizeToTrayProvider` (`StateNotifierProvider<MinimizeToTrayNotifier, bool>`, `themeModeProvider`/`streamingEnabledProvider` ile aynı SharedPreferences deseni, key `memo_minimize_to_tray`, **varsayılan false** — mevcut "kapat = çık" davranışı kullanıcı elle açmadıkça değişmiyor). Ayarlar > Genel'e (`general_tab.dart`) `trayFeatureSupported` ile sarılı yeni bir toggle eklendi (web'de hiç görünmüyor).
+
+**Native build sorunu ve düzeltmesi** (`frontend/linux/CMakeLists.txt`): İlk `flutter build linux` denemesi **derleme hatasıyla** çöktü — `tray_manager_plugin.cc`'nin kullandığı eski `libappindicator` API'si (`app_indicator_new`) bu sistemde (rolling-release, güncel `libayatana-appindicator` başlıkları) deprecated işaretli, ve projenin `APPLY_STANDARD_SETTINGS` fonksiyonu her plugin hedefine `-Wall -Werror` uyguluyor — deprecation uyarısı hard error'a dönüşüyordu. **Fix:** aynı fonksiyona `-Wno-error=deprecated-declarations` eklendi — sadece bu uyarı sınıfı non-fatal, geri kalan her şeyde `-Werror` aynen sıkı kalıyor (Memo'nun kendi runner kodundaki gerçek hatalar hâlâ derlemeyi durduruyor).
+
+**Canlı doğrulama (gerçek masaüstünde, kullanıcının kendi Wayland/KDE oturumunda):**
+1. `flutter build linux --debug` başarılı (CMake fix'inden sonra) → gerçek binary çalıştırıldı.
+2. Kullanıcı doğruladı: tepsi simgesi görünüyor, sağ tık menüsü LM Studio'dakine benzer şekilde açılıyor (Memo'yu Aç / model durumu / Çıkış).
+3. Ayar KAPALIYKEN (varsayılan) pencere kapatıldı → uygulama tamamen kapandı, tepside kalmadı (doğru — eski davranış korunmuş).
+4. Ayar AÇILDIKTAN sonra pencere kapatıldı → tepside çalışmaya devam etti (doğru).
+5. Tepsi menüsünden "Çıkış" ile test edildi → uygulama gerçekten sonlandı (doğru — `hide()` ile karıştırılmadı).
+
+**Yanlış alarm (düzeltilmiş, koda yansımadı):** Adım 4-5 arasında log'da `FlutterEngineRemoveView`/`GTK_IS_WINDOW` assertion hataları görüp bunu `windowManager.hide()`'ın çöktüğü şeklinde yanlış yorumladım, `window_manager`/`tray_manager`'ı 0.5.x/0.5.x'e yükseltmeye kalkıştım — kullanıcı hemen düzeltti: o hatalar `hide()`'dan değil, kullanıcının bilerek tepsiden "Çıkış"a tıklayıp test etmesinden (yani `destroy()`'un kendisinden) geliyordu, ki bu zaten beklenen/istenen davranış. pubspec.yaml'daki sürüm değişikliğini geri aldım (0.4.3/0.2.4'te kal), gereksiz bir yükseltme yapılmadı. **Ders:** kapanış sırasında GTK'nin assertion/critical loglaması normal teardown gürültüsü olabilir, sadece log varlığına bakıp "çöktü" sonucuna varmadan önce süreç durumunu ve kullanıcının o anki eylemini kontrol et.
+
+**Doğrulama (hepsi yeşil):** `flutter analyze lib/` (bilinen 5 info dışında yeni uyarı yok), `flutter test` 262/262, Rule #8 grep temiz, `flutter build web --release` başarılı (tray/window_manager web'i bozmuyor), `flutter build linux --debug` başarılı (CMake fix'inden sonra).
+
+### Sıradaki oturum için
+- Commit henüz atılmadı — kullanıcı onayı bekliyor.
+- `general_tab.dart`'taki mevcut `Switch` widget'larının (Streaming, Memory) da `developer_screen.dart`'ta bulunup düzeltilen "inaktifken görünmez" bug'ının aynısını taşıdığı fark edildi (sadece `activeThumbColor` set edilmiş, `inactiveThumbColor`/`inactiveTrackColor` yok) — bu oturumda kapsam dışı bırakıldı (kullanıcı bunu rapor etmedi), ama aynı kök nedenden (theme.dart'ta global `switchTheme` yok) kaynaklanıyor. Ayrı bir görev olarak ele alınabilir.
+- Release/AppImage paketleme scriptleri (varsa) yeni `window_manager`/`tray_manager` native bağımlılıklarını (libappindicator/libayatana-appindicator paylaşımlı kütüphaneleri) doğru şekilde bundle ediyor mu kontrol edilmedi — sadece `flutter build linux --debug` ile debug bundle test edildi, release/AppImage paketleme akışı bu oturumda dokunulmadı.

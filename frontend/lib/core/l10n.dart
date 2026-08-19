@@ -471,6 +471,13 @@ class L10n {
     'streaming': 'Anlık Gösterim',
     'streaming_off_desc':
         'Kapalıyken yanıt tamamlandığında tek seferde gösterilir.',
+    'minimize_to_tray_title': 'Sistem Tepsisine Küçült',
+    'minimize_to_tray_desc':
+        'Açıkken pencereyi kapatmak Memo\'yu tamamen kapatmaz — arka planda sistem tepsisinde çalışmaya devam eder. Tepsi simgesine sağ tıklayarak yeniden açabilir ya da tamamen çıkabilirsin.',
+    'tray_open': 'Memo\'yu Aç',
+    'tray_model_running': 'Yerel Model: \${name}',
+    'tray_model_none': 'Yerel Model Yüklü Değil',
+    'tray_quit': 'Çıkış',
     'embedding_active_named': 'Embedding: \${model}',
     'embedding_active_generic': 'Embedding modeli aktif',
     'embedding_off': 'Embedding: kapalı',
@@ -2319,6 +2326,13 @@ class L10n {
     'theme_dark': 'Dark',
     'streaming': 'Streaming',
     'streaming_off_desc': 'When off, response is shown in full when complete.',
+    'minimize_to_tray_title': 'Minimize to System Tray',
+    'minimize_to_tray_desc':
+        'Closing the window won\'t quit Memo while this is on — it keeps running in the background. Right-click the tray icon to reopen it or quit entirely.',
+    'tray_open': 'Open Memo',
+    'tray_model_running': 'Local Model: \${name}',
+    'tray_model_none': 'No Local Model Loaded',
+    'tray_quit': 'Quit Memo',
     'embedding_active_named': 'Embedding: \${model}',
     'embedding_active_generic': 'Embedding model active',
     'embedding_off': 'Embedding: off',

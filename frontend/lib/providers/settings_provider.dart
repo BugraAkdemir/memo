@@ -798,6 +798,34 @@ class StreamingEnabledNotifier extends StateNotifier<bool> {
   }
 }
 
+// ─── Minimize to Tray ───────────────────────────────────────────
+
+/// Whether closing the main window hides it to the system tray instead of
+/// quitting the app — LM-Studio-style "keeps running in the background".
+/// Off by default so the app's existing close-quits behavior is unchanged
+/// unless the user opts in from Settings. Desktop-only (see
+/// core/tray_controller.dart); reading/writing this pref on web is
+/// harmless, it's just never acted on there.
+final minimizeToTrayProvider =
+    StateNotifierProvider<MinimizeToTrayNotifier, bool>(
+  (ref) {
+    final prefs = ref.read(prefsProvider);
+    return MinimizeToTrayNotifier(prefs);
+  },
+);
+
+class MinimizeToTrayNotifier extends StateNotifier<bool> {
+  final SharedPreferences _prefs;
+
+  MinimizeToTrayNotifier(this._prefs)
+      : super(_prefs.getBool('memo_minimize_to_tray') ?? false);
+
+  Future<void> setEnabled(bool enabled) async {
+    await _prefs.setBool('memo_minimize_to_tray', enabled);
+    state = enabled;
+  }
+}
+
 // ─── Beta Features ─────────────────────────────────────────────
 
 final betaFeaturesProvider = StateNotifierProvider<BetaFeaturesNotifier, bool>(

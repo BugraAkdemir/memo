@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/l10n.dart';
 import 'core/theme.dart';
+import 'core/tray_controller.dart';
 import 'providers/settings_provider.dart';
 import 'screens/app_shell.dart';
 
@@ -33,13 +34,15 @@ class MemoApp extends ConsumerWidget {
       _ => ThemeMode.system,
     };
 
-    return MaterialApp(
-      title: 'Memo',
-      debugShowCheckedModeBanner: false,
-      theme: MemoTheme.themeData,
-      darkTheme: MemoTheme.darkThemeData,
-      themeMode: themeMode,
-      home: AppShell(),
+    return TrayController(
+      child: MaterialApp(
+        title: 'Memo',
+        debugShowCheckedModeBanner: false,
+        theme: MemoTheme.themeData,
+        darkTheme: MemoTheme.darkThemeData,
+        themeMode: themeMode,
+        home: AppShell(),
+      ),
     );
   }
 }

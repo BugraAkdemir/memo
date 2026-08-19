@@ -57,6 +57,12 @@ dependencies:
   # Charts (Settings usage-stats tab)
   fl_chart: ^0.68.0
 
+  # Desktop window control (minimize-to-tray: intercept the close button
+  # instead of quitting) and the system tray icon itself — LM-Studio-style
+  # "still running in the background" behavior, off by default.
+  window_manager: ^0.4.3
+  tray_manager: ^0.2.4
+
   path: any
 # jni 1.0.1+ dropped the (void**) cast in attach_thread() (dartjni.h),
 # which clang>=16 rejects as a hard error (incompatible-pointer-types);

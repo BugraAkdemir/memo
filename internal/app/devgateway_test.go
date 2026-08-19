@@ -4,6 +4,9 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
@@ -194,6 +197,129 @@ func TestDevGatewayChat_NoProviderConfigured(t *testing.T) {
 	_, _, err := a.DevGatewayChat(context.Background(), "openai/gpt-4o", provider.ChatRequest{})
 	if err == nil {
 		t.Fatal("expected an error when providerCfgMgr is nil")
+	}
+}
+
+// capturedWireMessage mirrors just the fields of the OpenAI-wire
+// {"role", "content"} message shape the fake backend server below needs to
+// inspect — deliberately not importing internal/provider's own unexported
+// openAIMessage type, since these tests only care what actually went out on
+// the wire, not Memo's internal representation of it.
+type capturedWireMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// newInjectionCaptureServer starts a fake OpenAI-compatible backend that
+// records the "messages" array of the last /chat/completions request it
+// received (into *captured) and replies with a minimal valid completion —
+// enough for provider.openAIProvider.ChatCompletion to succeed. Used by the
+// TestDevGateway*_NoUnexpectedInjection tests below to prove exactly what
+// the dev gateway sends upstream when the caller's own messages pass
+// through it, with no test able to see the outbound HTTP request any other
+// way (DevGatewayChat/DevGatewayChatStream mutate req.Messages internally
+// and never return it).
+func newInjectionCaptureServer(t *testing.T, captured *[]capturedWireMessage) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []capturedWireMessage `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("fake backend: decode request body: %v", err)
+		}
+		*captured = body.Messages
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id": "chatcmpl-test", "object": "chat.completion", "created": 1,
+			"model": "gpt-4o",
+			"choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
+			"usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+		}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func newInjectionTestApp(t *testing.T, srv *httptest.Server) *App {
+	t.Helper()
+	cfgMgr := provider.NewConfigManager(filepath.Join(t.TempDir(), "providers.json"), make([]byte, 32))
+	cfgMgr.Set(provider.ProviderConfig{
+		Type: provider.ProviderOpenAI, Name: "fake", Model: "gpt-4o",
+		BaseURL: srv.URL, Enabled: true,
+	})
+	return &App{cfg: &config.AppConfig{}, providerCfgMgr: cfgMgr}
+}
+
+// TestDevGatewayChat_NoInjectionWhenDefaultConfig is the regression test for
+// the "zero prompt injection unless explicitly configured" guarantee: with
+// the dev gateway's SystemPrompt empty and UseMemory off (both zero values,
+// i.e. an untouched install), the messages that reach the upstream
+// provider must be byte-for-byte identical to what the caller (e.g. Claude
+// Code, via ANTHROPIC_BASE_URL) sent — no persona, no memory block, no
+// extra system message of any kind. The gateway must behave as a pure
+// passthrough in this state.
+func TestDevGatewayChat_NoInjectionWhenDefaultConfig(t *testing.T) {
+	var captured []capturedWireMessage
+	srv := newInjectionCaptureServer(t, &captured)
+	a := newInjectionTestApp(t, srv)
+
+	req := provider.ChatRequest{Messages: []provider.Message{{Role: "user", Content: "hello"}}}
+	if _, _, err := a.DevGatewayChat(context.Background(), "openai/gpt-4o", req); err != nil {
+		t.Fatalf("DevGatewayChat: %v", err)
+	}
+
+	if len(captured) != 1 || captured[0].Role != "user" || captured[0].Content != "hello" {
+		t.Errorf("wire messages = %+v, want exactly the caller's own single user message untouched", captured)
+	}
+}
+
+// TestDevGatewayChat_SystemPromptConfigured_OnlyThatIsInjected proves the
+// opt-in "Extra System Instruction" field adds exactly the user's own text
+// and nothing else (no Memo persona/capability announcements — see
+// injectGatewayMemory's doc comment for why those are deliberately
+// excluded from gateway traffic).
+func TestDevGatewayChat_SystemPromptConfigured_OnlyThatIsInjected(t *testing.T) {
+	var captured []capturedWireMessage
+	srv := newInjectionCaptureServer(t, &captured)
+	a := newInjectionTestApp(t, srv)
+	a.cfg.DevGateway.SystemPrompt = "always answer in Turkish"
+
+	req := provider.ChatRequest{Messages: []provider.Message{{Role: "user", Content: "hello"}}}
+	if _, _, err := a.DevGatewayChat(context.Background(), "openai/gpt-4o", req); err != nil {
+		t.Fatalf("DevGatewayChat: %v", err)
+	}
+
+	if len(captured) != 2 {
+		t.Fatalf("wire messages = %+v, want exactly [system, user]", captured)
+	}
+	if captured[0].Role != "system" || captured[0].Content != "always answer in Turkish" {
+		t.Errorf("system message = %+v, want exactly the configured text, nothing more", captured[0])
+	}
+	if captured[1].Role != "user" || captured[1].Content != "hello" {
+		t.Errorf("user message = %+v, want untouched", captured[1])
+	}
+}
+
+// TestDevGatewayChat_UseMemoryOnButGlobalMemoryOff_NoInjection is the
+// regression test for the double-gate in DevGatewayChat/DevGatewayChatStream
+// (`a.devGatewayMemoryEnabled() && a.GetMemoryEnabled()`): turning on the
+// gateway's own "Use Memory" toggle must NOT inject anything while Memo's
+// global memory system is itself off — both must be true, not just one.
+func TestDevGatewayChat_UseMemoryOnButGlobalMemoryOff_NoInjection(t *testing.T) {
+	var captured []capturedWireMessage
+	srv := newInjectionCaptureServer(t, &captured)
+	a := newInjectionTestApp(t, srv)
+	a.cfg.DevGateway.UseMemory = true
+	// a.cfg.Memory.MemoryEnabled left at its zero value (false).
+
+	req := provider.ChatRequest{Messages: []provider.Message{{Role: "user", Content: "hello"}}}
+	if _, _, err := a.DevGatewayChat(context.Background(), "openai/gpt-4o", req); err != nil {
+		t.Fatalf("DevGatewayChat: %v", err)
+	}
+
+	if len(captured) != 1 || captured[0].Role != "user" || captured[0].Content != "hello" {
+		t.Errorf("wire messages = %+v, want exactly the caller's own single user message untouched (global memory is off)", captured)
 	}
 }
 

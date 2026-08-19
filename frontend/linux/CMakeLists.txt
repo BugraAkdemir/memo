@@ -42,6 +42,14 @@ endif()
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_14)
   target_compile_options(${TARGET} PRIVATE -Wall -Werror)
+  # tray_manager's Linux plugin calls the older libappindicator API
+  # (app_indicator_new), which recent distros' headers mark deprecated in
+  # favor of libayatana-appindicator — a harmless warning from third-party
+  # plugin code, not a real bug, but -Werror above turns it into a hard
+  # build failure. Downgrade just this one warning class back to
+  # non-fatal; everything else Memo's own runner code does still fails the
+  # build on any other warning.
+  target_compile_options(${TARGET} PRIVATE -Wno-error=deprecated-declarations)
   target_compile_options(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:-O3>")
   target_compile_definitions(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
 endfunction()

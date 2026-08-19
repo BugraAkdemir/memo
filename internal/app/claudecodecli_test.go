@@ -228,6 +228,90 @@ func TestApplyDisconnectEnv_RemovesKeysWhenNoPriorValue(t *testing.T) {
 	}
 }
 
+func TestApplyConnectModel_FreshConnectNoPriorModel(t *testing.T) {
+	doc := map[string]any{}
+	got := applyConnectModel(doc, config.ClaudeCodeCLIState{}, "local/qwen2.5")
+
+	if doc["model"] != "local/qwen2.5" {
+		t.Errorf("doc[model] = %v", doc["model"])
+	}
+	if got.Model != "local/qwen2.5" {
+		t.Errorf("Model = %q", got.Model)
+	}
+	if got.PrevModelSet {
+		t.Errorf("got = %+v, want no prior model backed up (there was none)", got)
+	}
+}
+
+func TestApplyConnectModel_EmptyModelLeavesDocUntouched(t *testing.T) {
+	doc := map[string]any{"model": "opus"}
+	got := applyConnectModel(doc, config.ClaudeCodeCLIState{}, "")
+
+	if doc["model"] != "opus" {
+		t.Errorf("doc[model] = %v, want left untouched when no override is chosen", doc["model"])
+	}
+	if got.Model != "" {
+		t.Errorf("Model = %q, want empty", got.Model)
+	}
+	if !got.PrevModelSet || got.PrevModel != "opus" {
+		t.Errorf("got = %+v, want the pre-existing model backed up regardless of model choice", got)
+	}
+}
+
+func TestApplyConnectModel_BacksUpExistingUserValue(t *testing.T) {
+	doc := map[string]any{"model": "opus"}
+	got := applyConnectModel(doc, config.ClaudeCodeCLIState{}, "opencode-zen/hy3-free")
+
+	if !got.PrevModelSet || got.PrevModel != "opus" {
+		t.Errorf("PrevModel not backed up correctly: %+v", got)
+	}
+	if doc["model"] != "opencode-zen/hy3-free" {
+		t.Errorf("doc[model] not overwritten: %v", doc["model"])
+	}
+}
+
+// TestApplyConnectModel_ReconnectDoesNotClobberBackup mirrors
+// TestApplyConnectEnv_ReconnectDoesNotClobberBackup: picking a different
+// model from the dropdown while already connected must not treat Memo's
+// own previously-written model as "the user's original configuration".
+func TestApplyConnectModel_ReconnectDoesNotClobberBackup(t *testing.T) {
+	doc := map[string]any{"model": "opus"}
+	first := applyConnectModel(doc, config.ClaudeCodeCLIState{}, "local/qwen2.5")
+	// Second call simulates picking a different model from the dropdown —
+	// doc now holds Memo's own value from the first call, and
+	// first.Connected is still false in this pure-function test, so mirror
+	// the real caller by marking it Connected before the second call.
+	first.Connected = true
+	second := applyConnectModel(doc, first, "opencode-zen/hy3-free")
+
+	if second.PrevModel != "opus" {
+		t.Errorf("PrevModel = %q, want the ORIGINAL user value preserved across reconnect, not Memo's own", second.PrevModel)
+	}
+	if doc["model"] != "opencode-zen/hy3-free" {
+		t.Errorf("doc[model] not updated to the new selection: %v", doc["model"])
+	}
+}
+
+func TestApplyDisconnectModel_RestoresPriorValue(t *testing.T) {
+	doc := map[string]any{"model": "local/qwen2.5"}
+	st := config.ClaudeCodeCLIState{Connected: true, PrevModelSet: true, PrevModel: "opus"}
+	applyDisconnectModel(doc, st)
+
+	if doc["model"] != "opus" {
+		t.Errorf("doc[model] = %v, want restored", doc["model"])
+	}
+}
+
+func TestApplyDisconnectModel_RemovesFieldWhenNoPriorValue(t *testing.T) {
+	doc := map[string]any{"model": "local/qwen2.5"}
+	st := config.ClaudeCodeCLIState{Connected: true} // nothing was there before
+	applyDisconnectModel(doc, st)
+
+	if _, ok := doc["model"]; ok {
+		t.Errorf("model should have been removed entirely, got %v", doc["model"])
+	}
+}
+
 // TestConnectDisconnectRoundTrip_PreservesUnrelatedFileContent exercises
 // the full read -> mutate -> write cycle (without touching App/config.Save
 // — see applyConnectEnv's doc comment for why those stay separate) against

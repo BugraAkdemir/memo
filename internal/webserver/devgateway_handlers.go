@@ -86,11 +86,15 @@ func (s *Server) handleClaudeCodeCLIConnection(w http.ResponseWriter, r *http.Re
 	}
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, map[string]any{"connected": s.fullBridge.GetClaudeCodeCLIConnected()})
+		writeJSON(w, map[string]any{
+			"connected": s.fullBridge.GetClaudeCodeCLIConnected(),
+			"model":     s.fullBridge.GetClaudeCodeCLIModel(),
+		})
 	case http.MethodPost:
 		var body struct {
 			Connect bool   `json:"connect"`
 			BaseURL string `json:"base_url"`
+			Model   string `json:"model"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
@@ -102,7 +106,7 @@ func (s *Server) handleClaudeCodeCLIConnection(w http.ResponseWriter, r *http.Re
 				http.Error(w, `"base_url" is required to connect`, http.StatusBadRequest)
 				return
 			}
-			err = s.fullBridge.ConnectClaudeCodeCLI(body.BaseURL)
+			err = s.fullBridge.ConnectClaudeCodeCLI(body.BaseURL, body.Model)
 		} else {
 			err = s.fullBridge.DisconnectClaudeCodeCLI()
 		}
@@ -110,7 +114,10 @@ func (s *Server) handleClaudeCodeCLIConnection(w http.ResponseWriter, r *http.Re
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, map[string]any{"connected": s.fullBridge.GetClaudeCodeCLIConnected()})
+		writeJSON(w, map[string]any{
+			"connected": s.fullBridge.GetClaudeCodeCLIConnected(),
+			"model":     s.fullBridge.GetClaudeCodeCLIModel(),
+		})
 	default:
 		http.Error(w, "GET or POST only", http.StatusMethodNotAllowed)
 	}

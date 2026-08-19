@@ -135,6 +135,45 @@ func applyDisconnectEnv(env map[string]any, st config.ClaudeCodeCLIState) {
 	}
 }
 
+// applyConnectModel mutates doc's top-level "model" field (documented by
+// Claude Code CLI's own settings schema as "Override the default model used
+// by Claude Code" — distinct from the env block) and returns prev with its
+// model-tracking fields updated. Mirrors applyConnectEnv's backup-only-on-
+// first-connect discipline via the same prev.Connected check, so repeatedly
+// changing the model dropdown while already connected never clobbers the
+// backup of whatever model the user's settings.json had before Memo ever
+// touched it.
+//
+// model == "" means "no override chosen" — doc is left untouched (an
+// existing custom model the user configured outside Memo survives), but the
+// state still records the (now-empty) Model so the dropdown reflects it.
+func applyConnectModel(doc map[string]any, prev config.ClaudeCodeCLIState, model string) config.ClaudeCodeCLIState {
+	next := prev
+	if !prev.Connected {
+		if v, ok := doc["model"].(string); ok {
+			next.PrevModelSet, next.PrevModel = true, v
+		} else {
+			next.PrevModelSet, next.PrevModel = false, ""
+		}
+	}
+	if model != "" {
+		doc["model"] = model
+	}
+	next.Model = model
+	return next
+}
+
+// applyDisconnectModel restores whatever applyConnectModel backed up (or
+// removes the "model" key entirely if there was nothing there before).
+// Pure, for the same testability reason as applyDisconnectEnv.
+func applyDisconnectModel(doc map[string]any, st config.ClaudeCodeCLIState) {
+	if st.PrevModelSet {
+		doc["model"] = st.PrevModel
+	} else {
+		delete(doc, "model")
+	}
+}
+
 // GetClaudeCodeCLIConnected reports whether Memo currently has the Claude
 // Code CLI pointed at this gateway.
 func (a *App) GetClaudeCodeCLIConnected() bool {
@@ -143,18 +182,31 @@ func (a *App) GetClaudeCodeCLIConnected() bool {
 	return a.cfg.DevGateway.ClaudeCodeCLI.Connected
 }
 
+// GetClaudeCodeCLIModel reports the "type/model-id" string currently
+// written to the Claude Code CLI's settings.json "model" field, or "" if no
+// override is configured.
+func (a *App) GetClaudeCodeCLIModel() string {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg.DevGateway.ClaudeCodeCLI.Model
+}
+
 // ConnectClaudeCodeCLI is the Developer screen's "one-click connect": sets
 // env.ANTHROPIC_BASE_URL and env.ANTHROPIC_API_KEY in the Claude Code CLI's
 // own settings.json so every future `claude` invocation on this machine
 // talks to this gateway instead of the real Anthropic API, with no manual
-// environment-variable exporting required. Backs up whatever was already
-// in those two keys (if anything) before overwriting, so
-// DisconnectClaudeCodeCLI can restore the user's own prior configuration
-// exactly rather than just deleting the keys — important for the (rare but
-// real) case where the user had already pointed Claude Code at some other
-// custom endpoint before ever touching Memo. See applyConnectEnv for the
-// actual (unit-tested) merge logic — this is just the I/O shell around it.
-func (a *App) ConnectClaudeCodeCLI(baseURL string) error {
+// environment-variable exporting required. If model is non-empty, also
+// writes settings.json's top-level "model" field — Claude Code otherwise
+// sends its own built-in default model name, which this gateway rejects
+// (it only accepts "type/model-id" strings matching a configured Memo
+// model/provider). Backs up whatever was already in those keys (if
+// anything) before overwriting, so DisconnectClaudeCodeCLI can restore the
+// user's own prior configuration exactly rather than just deleting them —
+// important for the (rare but real) case where the user had already
+// pointed Claude Code at some other custom endpoint/model before ever
+// touching Memo. See applyConnectEnv/applyConnectModel for the actual
+// (unit-tested) merge logic — this is just the I/O shell around it.
+func (a *App) ConnectClaudeCodeCLI(baseURL, model string) error {
 	path, err := claudeCodeSettingsPath()
 	if err != nil {
 		return err
@@ -171,7 +223,11 @@ func (a *App) ConnectClaudeCodeCLI(baseURL string) error {
 	token := a.GetDevGatewayToken()
 
 	a.cfgMu.Lock()
-	a.cfg.DevGateway.ClaudeCodeCLI = applyConnectEnv(env, a.cfg.DevGateway.ClaudeCodeCLI, baseURL, token)
+	prev := a.cfg.DevGateway.ClaudeCodeCLI
+	next := applyConnectEnv(env, prev, baseURL, token)
+	modelState := applyConnectModel(doc, prev, model)
+	next.Model, next.PrevModelSet, next.PrevModel = modelState.Model, modelState.PrevModelSet, modelState.PrevModel
+	a.cfg.DevGateway.ClaudeCodeCLI = next
 	cfg := a.cfg
 	a.cfgMu.Unlock()
 
@@ -183,9 +239,10 @@ func (a *App) ConnectClaudeCodeCLI(baseURL string) error {
 }
 
 // DisconnectClaudeCodeCLI restores whatever ConnectClaudeCodeCLI backed up
-// (or removes the keys entirely if there was nothing there before) and
-// clears the connected flag. A no-op if not currently connected. See
-// applyDisconnectEnv for the actual (unit-tested) merge logic.
+// (or removes the keys/field entirely if there was nothing there before)
+// and clears the connected flag. A no-op if not currently connected. See
+// applyDisconnectEnv/applyDisconnectModel for the actual (unit-tested)
+// merge logic.
 func (a *App) DisconnectClaudeCodeCLI() error {
 	a.cfgMu.Lock()
 	st := a.cfg.DevGateway.ClaudeCodeCLI
@@ -212,9 +269,10 @@ func (a *App) DisconnectClaudeCodeCLI() error {
 		} else {
 			doc["env"] = env
 		}
-		if err := writeJSONObject(path, doc); err != nil {
-			return err
-		}
+	}
+	applyDisconnectModel(doc, st)
+	if err := writeJSONObject(path, doc); err != nil {
+		return err
 	}
 	return config.Save(cfg)
 }

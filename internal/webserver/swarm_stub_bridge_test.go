@@ -367,7 +367,8 @@ func (b *swarmStubBridge) RecordGatewayLog(modelSpec string, stream, hasTools bo
 func (b *swarmStubBridge) GetGatewayLogs() []models.GatewayLogEntry                      { return nil }
 func (b *swarmStubBridge) MaybeSaveGatewayMemory(userMsg, reply string)                  {}
 func (b *swarmStubBridge) GetClaudeCodeCLIConnected() bool                               { return false }
-func (b *swarmStubBridge) ConnectClaudeCodeCLI(baseURL string) error                     { return nil }
+func (b *swarmStubBridge) GetClaudeCodeCLIModel() string                                 { return "" }
+func (b *swarmStubBridge) ConnectClaudeCodeCLI(baseURL, model string) error              { return nil }
 func (b *swarmStubBridge) DisconnectClaudeCodeCLI() error                                { return nil }
 func (b *swarmStubBridge) GetProviders() []provider.ProviderConfig                       { return nil }
 func (b *swarmStubBridge) UpdateProvider(cfg provider.ProviderConfig) error              { return nil }

@@ -210,7 +210,8 @@ type FullBridge interface {
 	GetGatewayLogs() []models.GatewayLogEntry
 	MaybeSaveGatewayMemory(userMsg, reply string)
 	GetClaudeCodeCLIConnected() bool
-	ConnectClaudeCodeCLI(baseURL string) error
+	GetClaudeCodeCLIModel() string
+	ConnectClaudeCodeCLI(baseURL, model string) error
 	DisconnectClaudeCodeCLI() error
 
 	// Providers

@@ -264,6 +264,15 @@ type ClaudeCodeCLIState struct {
 	PrevBaseURL    string `yaml:"prev_base_url" json:"-"`
 	PrevAPIKeySet  bool   `yaml:"prev_api_key_set" json:"-"`
 	PrevAPIKey     string `yaml:"prev_api_key" json:"-"`
+	// Model is the "type/model-id" string (see gatewayModelsProvider on the
+	// frontend) written to settings.json's top-level "model" field so Claude
+	// Code sends a model name the gateway actually recognizes instead of its
+	// own built-in default (which the gateway rejects — see the
+	// "model must be 'type/model-id'" error surfaced in the Live Log).
+	// Empty means "leave the model field alone" (no override configured).
+	Model        string `yaml:"model" json:"model"`
+	PrevModelSet bool   `yaml:"prev_model_set" json:"-"`
+	PrevModel    string `yaml:"prev_model" json:"-"`
 }
 
 type RemoteAccessConfig struct {

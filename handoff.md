@@ -1,3 +1,51 @@
+# Session 19 (2026-08-20): general_tab.dart'taki görünmez switch bug'ı düzeltildi
+
+Session 18'in tray-icon eki, `general_tab.dart`'taki Streaming/Memory
+switch'lerinin de aynı "inaktifken görünmez" bug'ını taşıdığını not düşüp
+kapsam dışı bırakmıştı. Kullanıcı bu oturumda onu istedi: "bunu halledelim,
+AGENTS.md'deki kurallara uy, /codebase-memory kullan."
+
+**Kök neden (zaten bilinen):** `theme.dart`'ın `ThemeData` builder'ı hiç
+`switchTheme` set etmiyor, bu yüzden sadece `activeThumbColor` veren her
+`Switch`/`SwitchListTile` inaktif durumda Material 3'ün ham varsayılanına
+düşüyor — açık modda soluk gri, koyu modda panelle neredeyse aynı renk.
+
+**codebase-memory ile keşif:** `search_code` ile `general_tab.dart`'ı
+taradığımda kullanıcının bahsettiği ikiden fazla örnek çıktı — toplam 5
+switch aynı bug'ı taşıyordu: Streaming, Memory, **Minimal Mode** (kullanıcı
+raporunda yoktu, aynı dosyada aynı kök neden), `_OverrideRow` (Minimal
+Mode'un "yine de açık kalsın" alt satırları), ve uninstall bölümündeki
+"Keep memory" `SwitchListTile`'ı. Hepsini tek, tutarlı bir commit'te
+düzelttim (aynı dosya + aynı kök neden = mantıksal olarak tek parça).
+
+**Fix:** Developer ekranında zaten kullanılan aynı üçlü —
+`inactiveThumbColor`/`inactiveTrackColor`/`trackOutlineColor` (theme'in
+`textDim`/`bgHover`/`borderHover`'ından) — 5 switch'in hepsine eklendi.
+Yeni bir desen yok, sadece aynı dosyadaki düzeltilmemiş örneklere
+genişletildi.
+
+**Doğrulama:** `flutter analyze`/`flutter test` (262/262) temiz, Rule #8
+grep boş. **Canlı doğrulama** (`flutter build web --release` →
+`internal/webserver/webapp/`'a embed, scratch data dir'de gerçek backend,
+tarayıcıda gerçek setup wizard'dan geçilip Settings > General açıldı):
+5 switch'in hepsi tek tek kapatılıp açık/koyu temada (Theme dropdown +
+`localStorage`'daki `flutter.memo_theme_mode` ile) thumb/track'in artık
+net görünür olduğu doğrulandı — önceki soluk/görünmez hal tamamen gitti.
+
+Commit: `fb61531` (frontend, tek commit — küçük, tek kök nedenli bir fix).
+**Push edilmedi**, istenmedi.
+
+## Sırada ne var
+- Push için ayrı onay gerekiyor (AGENTS.md kuralı — hiçbir zaman otomatik).
+- Session 18'den kalan diğer açık maddeler hâlâ geçerli: `claude --bare`'ın
+  `env`'i okuyup okumadığı doğrulanmadı; web build'in tema varsayılanı
+  hâlâ sabit `'light'` (OS tercihini takip etmiyor); release/AppImage
+  paketleme scriptlerinin yeni tray bağımlılıklarını (libappindicator)
+  doğru bundle edip etmediği kontrol edilmedi; v3.9.0 henüz release
+  edilmedi (`version` dosyası hâlâ V3.5.5).
+
+---
+
 # Session 18 (2026-08-19): Developer ekranını LM Studio'ya benzer 3 panelli hale getirdik
 
 Kullanıcı LM Studio'nun kendi "Developer" ekranının bir görüntüsünü paylaşıp

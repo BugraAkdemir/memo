@@ -18,6 +18,7 @@ data/bin/
 data/agent-backups/*
 data/sync_token.json
 data/providers.json
+data/telegram.json
 data/permissions.json
 data/orchestra.json
 data/tmp_llama

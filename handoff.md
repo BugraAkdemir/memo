@@ -1,3 +1,78 @@
+# Session 19 (2026-08-20, devam) — Mobil gezinme komple yeniden tasarlandı: NavRail kaldırıldı, chat başlığı sadeleştirildi
+
+Aynı oturumun devamı: kullanıcı arka plan dikişini onaylayıp mockup'ları
+görmeden önce, gerçek bir sıkışıklık şikayetiyle döndü — "her şey üst
+üste, ben görünce daralıyorum" + kendi telefon ekran görüntüsü. Net talimat
+verdi: **masaüstüne dokunma**, mobilde NavRail'i (Chats/Ajan/Model
+Store/WhatsApp/Takvim/Rutinler/Developer/Ayarlar) hamburger menüsünün
+arkasına gizle, chat altındaki EngineStrip'i (model durumu şeridi) mobilde
+göstermeyelim, üstteki model değiştirme/web arama/dosya/ses ikonlarını
+"uygun bir yerlere" topla.
+
+**Yapılan (commit `3aff8d9`):**
+- `MemoTheme.mobileNavBreakpoint` (600px) eklendi — `chat_screen.dart`/
+  `agent_screen.dart`'ın kendi ayrı `_sidebarBreakpoint` sabitleri buna
+  taşındı.
+- `app_shell.dart`: NavRail artık `narrow` altında hiç render edilmiyor.
+  Yerine tek bir yüzen hamburger (`_buildMobileNavButton`, `Positioned` +
+  `GlobalKey<ScaffoldState>` — buton, hedeflediği Scaffold'ın kendisinin
+  ÜSTÜNDE inşa edildiği için `Scaffold.of(context)` işe yaramıyordu) ve
+  AppShell'in Scaffold'ına eklenen tek bir `drawer:` geldi — iki sekmeli:
+  "Sohbetler" (masaüstünün zaten kullandığı aynı `ChatSidebar`, yeni
+  `onChatSelected` callback'iyle — bir sohbet seçilince/oluşturulunca hem
+  Chat sekmesine geçiyor hem drawer'ı kapatıyor) ve "Menü" (NavRail'in
+  kendi hedef listesi, artık tam genişlikte tam etiketli — eski 9px kırpık
+  etiketler yerine).
+- EngineStrip mobilde tamamen gizlendi (`if (!narrow)`).
+- `ChatScreen`/`AgentScreen` artık kendi iç `Scaffold`+`Drawer`'larını
+  sarmalamıyor (bu oturumun daha önceki arka plan dikişi bug'ının asıl
+  nedeniydi, artık tamamen gereksiz) — kendi menü butonları kaldırıldı,
+  yerini tek yüzen hamburger aldı; `_AgentTopBar`'a eklenen `leadingGap`
+  başlığın onun altında kalmasını engelliyor.
+- `_ChatTopBar`'ın trailing action satırı (token sayacı, CLI rozetleri,
+  model dropdown, efor seçici, undo, agent/web-arama/WhatsApp toggle'ları,
+  export) artık dar ekranda yatay kaydırmalı ikon şeridi değil — sadece
+  model dropdown (en çok kullanılan) inline kalıyor, geri kalanı tek bir
+  taşma ikonunun açtığı, tam genişlikte etiketli satırlardan oluşan bir
+  bottom sheet'e toplandı. `handleUndo`/`handleExport` masaüstü
+  IconButton'larından çıkarılıp sheet'in satırlarıyla paylaşılıyor.
+- Yeni L10n anahtarları (`mobile_nav_chats_tab`, `mobile_nav_menu_tab`,
+  `more_actions`), TR+EN.
+
+**Doğrulama:** `flutter analyze`/`flutter test` (262/262) temiz, Rule #8
+grep boş. **Canlı, 375px'te açık VE koyu temada:** NavRail komple gitti,
+EngineStrip gitti, yüzen hamburger Chat ekranından iki sekmeli drawer'ı
+açıyor, Menü sekmesinden Developer'a geçiş hem ekranı değiştirip hem
+drawer'ı kapatıyor (canlı doğrulandı), taşma sheet'i açılıp toggle'ları
+okunaklı satırlar halinde gösteriyor (koyu temada da). **Tam doğrulanamayan
+tek şey:** aynı yüzen hamburger butonunu WhatsApp ekranında bu oturumun
+tarayıcı otomasyon aracıyla güvenilir şekilde tıklatamadım (Chat/Agent/
+Developer'da tutarlı çalışırken WhatsApp'ta tutarlı başarısız oluyordu) —
+kod incelemesi buton'un ekrandan bağımsız, Stack seviyesinde koşulsuz bir
+widget olduğunu doğruluyor ve birden fazla ekranda gerçekten çalıştığı
+kanıtlandı, ama bu belirsizliği dürüstçe not düşüyorum: WhatsApp/Takvim/
+Rutinler/Model Store/Swarm'da gerçek cihazda hızlı bir kontrol değerli
+olur.
+
+## Sırada ne var
+- Push için ayrı onay gerekiyor (AGENTS.md kuralı — hiçbir zaman otomatik).
+- Yukarıdaki WhatsApp/diğer ekranlarda hamburger'ın gerçek cihazda hızlı
+  doğrulanması iyi olur.
+- Composer'ın (resim/dosya/ses ikonları) kendisine bu oturumda dokunulmadı
+  — Session 8'in 460px altında dikey istifleme fix'i zaten var, kullanıcı
+  hâlâ sıkışık buluyorsa ayrı bir görev olarak ele alınmalı.
+- Developer ekranındaki "API Reference" kartının başlığı ile
+  "Anthropic-compatible"/"OpenAI-compatible" rozetlerinin üst üste
+  bindiği fark edildi (bu oturumda dokunulmadı, önceden var olan, kapsam
+  dışı bir bug).
+- Session 18'den kalan diğer açık maddeler hâlâ geçerli: `claude --bare`'ın
+  `env`'i okuyup okumadığı doğrulanmadı; web build'in tema varsayılanı
+  hâlâ sabit `'light'`; release/AppImage paketleme scriptlerinin tray
+  bağımlılıklarını doğru bundle edip etmediği kontrol edilmedi; v3.9.0
+  henüz release edilmedi (`version` dosyası hâlâ V3.5.5).
+
+---
+
 # Session 19 (2026-08-20): general_tab.dart'taki görünmez switch bug'ı düzeltildi
 
 Session 18'in tray-icon eki, `general_tab.dart`'taki Streaming/Memory

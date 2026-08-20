@@ -29,6 +29,7 @@ import 'settings/tabs/about_tab.dart';
 import 'settings/tabs/taskloop_tab.dart';
 import 'settings/tabs/stats_tab.dart';
 import 'settings/tabs/report_bug_tab.dart';
+import 'settings/tabs/whatsapp_tab.dart';
 
 /// Settings dialog: a searchable, grouped rail on the left, tab content on
 /// the right. Redesigned (v3.3.4) from a single flat list of 20
@@ -48,6 +49,12 @@ class SettingsDialog extends ConsumerStatefulWidget {
   /// here as a named constant so callers outside this file don't have to
   /// hardcode the position of one entry in that list.
   static const remoteAccessTabIndex = 15;
+
+  /// Index of the WhatsApp tab — used by AppShell's launchpad "Connect
+  /// WhatsApp" card, which used to jump to a dedicated nav tab that no
+  /// longer exists (folded into Settings, see whatsapp_tab.dart's doc
+  /// comment for why).
+  static const whatsAppTabIndex = 22;
 
   @override
   ConsumerState<SettingsDialog> createState() => _SettingsDialogState();
@@ -81,14 +88,15 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/wrench.svg',
     'lib/icon/slash/people.svg',
     'lib/icon/slash/brain.svg', // Dream — reuses Memory's icon, same family
+    'lib/icon/slash/chat-text.svg', // WhatsApp — reuses System Prompt's icon, same family
   ];
 
   /// Tab indices grouped under an eyebrow header, in sidebar display order.
-  /// Every index 0..21 must appear exactly once — covered by
+  /// Every index 0..22 must appear exactly once — covered by
   /// settings_dialog_test.dart's group-coverage test.
   static const _groups = [
     ('settings_group_general', [0, 1, 2]),
-    ('settings_group_providers', [5, 6, 15]),
+    ('settings_group_providers', [5, 6, 15, 22]),
     ('settings_group_memory', [3, 4, 9, 10, 21]),
     ('settings_group_agents', [7, 8, 11, 18]),
     ('settings_group_system', [12, 13, 14, 20]),
@@ -118,6 +126,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_report_bug'),
     L10n.t('tab_accounts'),
     L10n.t('tab_dream'),
+    L10n.t('tab_whatsapp'),
   ];
 
   @override
@@ -325,6 +334,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 19: return ReportBugTab();
       case 20: return AccountsTab();
       case 21: return DreamTab();
+      case 22: return const WhatsAppTab();
       default: return const SizedBox.shrink();
     }
   }

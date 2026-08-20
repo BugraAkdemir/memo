@@ -35,24 +35,27 @@ import '../widgets/agent/permission_dialog.dart';
 import 'chat_screen.dart';
 import 'agent_screen.dart';
 import 'model_store_screen.dart';
-import 'connections_screen.dart';
 import 'calendar_screen.dart';
 import 'routines_screen.dart';
 import 'developer_screen.dart';
 import 'swarm_screen.dart';
 
 /// Tracks which main tab is currently selected
-/// (0=chat 1=agent 2=models 3=connections 4=calendar 5=routines 6=developer
-/// 7=swarm). Tasks are not a top-level tab — they're opened from within the
-/// Agent screen (a task list is always bound to a specific agent chat, so
-/// it makes no sense to reach it from a global nav item that could be
-/// visited from the plain Chat tab too). Swarm (index 7) is Beta-only and
-/// additionally hidden on macOS (no rpc-server binary in the Mac release —
-/// see PLAN_memo_swarm.md). Voice Live Mode used to be a separate tab here
-/// (index 8) — moved into the normal chat input bar instead (see
-/// providers/voice_mode_provider.dart and chat_input.dart's mic-adjacent
-/// toggle button), since talking to Memo and typing to Memo are the same
-/// conversation, not two different screens.
+/// (0=chat 1=agent 2=models 3=calendar 4=routines 5=developer 6=swarm).
+/// WhatsApp used to be a top-level tab here (a "Connections" screen wrapping
+/// it) — folded into Settings instead (see settings/tabs/whatsapp_tab.dart's
+/// doc comment: the dedicated messaging UI was redundant with the agent's
+/// whatsapp_send tool + the self-chat assistant, and being a pushed/popped
+/// route caused a real mount/dispose race, reported live). Tasks are not a
+/// top-level tab either — they're opened from within the Agent screen (a
+/// task list is always bound to a specific agent chat, so it makes no sense
+/// to reach it from a global nav item that could be visited from the plain
+/// Chat tab too). Swarm (index 6) is Beta-only and additionally hidden on
+/// macOS (no rpc-server binary in the Mac release — see PLAN_memo_swarm.md).
+/// Voice Live Mode used to be a separate tab here too — moved into the
+/// normal chat input bar instead (see providers/voice_mode_provider.dart and
+/// chat_input.dart's mic-adjacent toggle button), since talking to Memo and
+/// typing to Memo are the same conversation, not two different screens.
 final activeTabProvider = StateProvider<int>((ref) => 0);
 
 /// Main app shell — NavRail + content area.
@@ -64,7 +67,7 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  // 0=chat 1=agent 2=models 3=connections 4=calendar 5=routines 6=developer 7=swarm 8=live
+  // 0=chat 1=agent 2=models 3=calendar 4=routines 5=developer 6=swarm
   int _currentIndex = 0;
   bool _showLaunchpad = false;
   bool _showTour = false;
@@ -76,7 +79,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   bool _hasEverConnectedToBackend = false;
   bool _backendDeadDialogShown = false;
 
-  final _navKeys = List.generate(8, (_) => GlobalKey());
+  final _navKeys = List.generate(7, (_) => GlobalKey());
 
   // Lets the floating mobile-nav button (see _buildMobileNavButton) open
   // this Scaffold's drawer without needing a descendant BuildContext —
@@ -287,11 +290,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                               const AgentScreen(),
                               ModelStoreScreen(
                                   key: ValueKey('models_$locale')),
-                              const ConnectionsScreen(),
                               const CalendarScreen(),
                               const RoutinesScreen(),
                               const DeveloperScreen(),
-                              // Always present in the stack so index 7 stays
+                              // Always present in the stack so index 6 stays
                               // stable; the nav button is gated separately
                               // (Beta + !macOS). IndexedStack keeps this
                               // mounted forever — polling is started/stopped
@@ -314,7 +316,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               ),
               // One floating hamburger, present on every screen regardless
               // of whether that screen has its own header — Developer/
-              // Models/Connections/Calendar/Routines/Swarm never had a menu
+              // Models/Calendar/Routines/Swarm never had a menu
               // button of their own (only Chat/Agent did, for their own
               // sidebars), so without this a mobile user navigating there
               // from _buildMobileNavDrawer had no way back. Replaces the
@@ -401,7 +403,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     // Incognito is a single global backend flag (internal/app/chat.go),
     // not scoped to the chat screen — but its only visible cue used to be
     // the chat screen's own red background/pill, invisible from every
-    // other tab. A user who switched to Settings/Model Store/Connections
+    // other tab. A user who switched to Settings/Model Store/Calendar
     // while it was on had no way to notice it was still on. This dot on
     // the logo (always present in the rail, regardless of active tab) is
     // the app-wide equivalent.
@@ -460,50 +462,41 @@ class _AppShellState extends ConsumerState<AppShell> {
 
           _NavRailButton(
             key: _navKeys[3],
-            icon: Icons.link_outlined,
-            activeIcon: Icons.link,
-            label: L10n.t('tab_connections'),
+            icon: Icons.calendar_month_outlined,
+            activeIcon: Icons.calendar_month,
+            label: 'Takvim',
             isActive: _currentIndex == 3,
             onTap: () => _handleTabChange(3),
           ),
 
           _NavRailButton(
             key: _navKeys[4],
-            icon: Icons.calendar_month_outlined,
-            activeIcon: Icons.calendar_month,
-            label: 'Takvim',
+            icon: Icons.schedule_outlined,
+            activeIcon: Icons.schedule,
+            label: L10n.t('routines_title'),
             isActive: _currentIndex == 4,
             onTap: () => _handleTabChange(4),
           ),
 
           _NavRailButton(
             key: _navKeys[5],
-            icon: Icons.schedule_outlined,
-            activeIcon: Icons.schedule,
-            label: L10n.t('routines_title'),
-            isActive: _currentIndex == 5,
-            onTap: () => _handleTabChange(5),
-          ),
-
-          _NavRailButton(
-            key: _navKeys[6],
             icon: Icons.code_outlined,
             activeIcon: Icons.code,
             label: L10n.t('tab_dev_gateway'),
-            isActive: _currentIndex == 6,
-            onTap: () => _handleTabChange(6),
+            isActive: _currentIndex == 5,
+            onTap: () => _handleTabChange(5),
           ),
 
           // Swarm: Beta-only, and macOS has no rpc-server binary in the
           // bundled release (PLAN_memo_swarm.md Stage 0 verification).
           if (_showSwarmNav())
             _NavRailButton(
-              key: _navKeys[7],
+              key: _navKeys[6],
               icon: Icons.hub_outlined,
               activeIcon: Icons.hub,
               label: L10n.t('tab_swarm'),
-              isActive: _currentIndex == 7,
-              onTap: () => _handleTabChange(7),
+              isActive: _currentIndex == 6,
+              onTap: () => _handleTabChange(6),
             ),
 
           const Spacer(),
@@ -656,40 +649,33 @@ class _AppShellState extends ConsumerState<AppShell> {
           onTap: () => _selectMobileTab(2),
         ),
         item(
-          icon: Icons.link_outlined,
-          activeIcon: Icons.link,
-          label: L10n.t('tab_connections'),
-          isActive: _currentIndex == 3,
-          onTap: () => _selectMobileTab(3),
-        ),
-        item(
           icon: Icons.calendar_month_outlined,
           activeIcon: Icons.calendar_month,
           label: 'Takvim',
-          isActive: _currentIndex == 4,
-          onTap: () => _selectMobileTab(4),
+          isActive: _currentIndex == 3,
+          onTap: () => _selectMobileTab(3),
         ),
         item(
           icon: Icons.schedule_outlined,
           activeIcon: Icons.schedule,
           label: L10n.t('routines_title'),
-          isActive: _currentIndex == 5,
-          onTap: () => _selectMobileTab(5),
+          isActive: _currentIndex == 4,
+          onTap: () => _selectMobileTab(4),
         ),
         item(
           icon: Icons.code_outlined,
           activeIcon: Icons.code,
           label: L10n.t('tab_dev_gateway'),
-          isActive: _currentIndex == 6,
-          onTap: () => _selectMobileTab(6),
+          isActive: _currentIndex == 5,
+          onTap: () => _selectMobileTab(5),
         ),
         if (_showSwarmNav())
           item(
             icon: Icons.hub_outlined,
             activeIcon: Icons.hub,
             label: L10n.t('tab_swarm'),
-            isActive: _currentIndex == 7,
-            onTap: () => _selectMobileTab(7),
+            isActive: _currentIndex == 6,
+            onTap: () => _selectMobileTab(6),
           ),
         const Divider(height: 24),
         item(
@@ -763,13 +749,20 @@ class _AppShellState extends ConsumerState<AppShell> {
           onNavigateWhatsApp: () {
             ref.read(launchpadSeenProvider.notifier).markSeen();
             setState(() => _showLaunchpad = false);
-            _handleTabChange(3);
+            // WhatsApp connection management moved into Settings (see
+            // settings/tabs/whatsapp_tab.dart's doc comment) — no more
+            // dedicated nav tab to jump to.
+            showDialog(
+              context: context,
+              builder: (context) =>
+                  SettingsDialog(initialTab: SettingsDialog.whatsAppTabIndex),
+            );
             _maybeStartTour();
           },
           onNavigateCalendar: () {
             ref.read(launchpadSeenProvider.notifier).markSeen();
             setState(() => _showLaunchpad = false);
-            _handleTabChange(4);
+            _handleTabChange(3);
             _maybeStartTour();
           },
           onNavigateModels: () {
@@ -797,7 +790,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final steps = <String>[
       L10n.t('tour_step_chat'),
       L10n.t('tour_step_agent'),
-      L10n.t('tour_step_whatsapp'),
+      L10n.t('tour_step_models'),
       L10n.t('tour_step_calendar'),
     ];
     return Positioned.fill(
@@ -819,23 +812,21 @@ class _AppShellState extends ConsumerState<AppShell> {
   void _handleTabChange(int index) {
     setState(() => _currentIndex = index);
     ref.read(activeTabProvider.notifier).state = index;
-    final waNotifier = ref.read(whatsAppStatusProvider.notifier);
-    if (index == 3) {
-      waNotifier.startPolling();
-    } else {
-      waNotifier.stopPolling();
-    }
+    // WhatsApp status polling is no longer driven from here — it moved
+    // into Settings > WhatsApp's own init/dispose lifecycle (see
+    // settings/tabs/whatsapp_tab.dart) along with the rest of the WhatsApp
+    // UI.
     final logsNotifier = ref.read(gatewayLogsProvider.notifier);
-    if (index == 6) {
+    if (index == 5) {
       logsNotifier.startPolling();
     } else {
       logsNotifier.stopPolling();
     }
-    // Swarm polling (index 7) — required because IndexedStack keeps every
+    // Swarm polling (index 6) — required because IndexedStack keeps every
     // screen mounted forever (KNOWN_ISSUES M04); without start/stop here
     // the swarm tab would poll in the background forever once first opened.
     final swarmNotifier = ref.read(swarmStatusProvider.notifier);
-    if (index == 7) {
+    if (index == 6) {
       swarmNotifier.startPolling();
     } else {
       swarmNotifier.stopPolling();

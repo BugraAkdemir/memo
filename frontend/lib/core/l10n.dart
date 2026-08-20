@@ -276,14 +276,13 @@ class L10n {
     'tab_stats': 'İstatistikler',
     'tab_dev_gateway': 'Geliştirici',
     'tab_swarm': 'Swarm',
-    'tab_connections': 'Bağlantılar',
-    'connections_title': 'Bağlantılar',
+    'tab_whatsapp': 'WhatsApp',
     'connections_status_connected': 'Bağlı',
-    'connections_status_not_connected': 'Bağlı değil',
-    'whatsapp_self_chat_assistant_on_tooltip':
-        'Memo Asistanı: Açık — kendine attığın WhatsApp mesajlarını Memo yanıtlıyor',
-    'whatsapp_self_chat_assistant_off_tooltip':
-        'Memo Asistanı: Kapalı — kendine mesaj sekmesini Memo ile konuşmak için kullanmak üzere aç',
+    'whatsapp_tab_desc':
+        'WhatsApp hesabını bağla, bağlantıyı yönet. Mesaj göndermek/okumak için normal sohbette Ajan modunu kullan, ya da kendine mesaj atarak aşağıdaki Memo Asistanı ile konuş.',
+    'whatsapp_self_chat_assistant_title': 'Memo Asistanı (kendine mesaj)',
+    'whatsapp_self_chat_assistant_desc':
+        'Açıkken, kendi numarana ("Kendine Mesaj") attığın her mesaja Memo normal bir sohbet turu gibi cevap verir.',
     'whatsapp_self_chat_assistant_toggle_failed': 'Memo Asistanı ayarı değiştirilemedi',
     'tab_report_bug': 'Hata Bildir',
     'tab_dream': 'Dream',
@@ -1383,8 +1382,8 @@ class L10n {
         'Sohbet — Memo\'nun ana ekranı. Burada AI ile konuşur, soru sorar, kod yazdırır ve dosya gönderirsin. Konuştukça seni tanır.',
     'tour_step_agent':
         'Ajan — Görev modun. Proje klasörü seç, ajan dosyalarında kod yazsın, komut çalıştırsın, hata düzeltsin. Her işlemi sen onaylarsın.',
-    'tour_step_whatsapp':
-        'WhatsApp — Buradan WhatsApp\'ına bağlan. QR kod okutarak eşleştir, gelen mesajları gör, AI ile yanıtla.',
+    'tour_step_models':
+        'Model Mağazası — Yerel modelleri indir, sohbet için hangi modelin çalışacağını buradan seç.',
     'tour_step_calendar':
         'Takvim — Sohbetlerinden planlarını otomatik yakalar. Etkinlik ekler ve zamanı gelince hatırlatma gönderir.',
 
@@ -2143,14 +2142,13 @@ class L10n {
     'tab_stats': 'Stats',
     'tab_dev_gateway': 'Developer',
     'tab_swarm': 'Swarm',
-    'tab_connections': 'Connections',
-    'connections_title': 'Connections',
+    'tab_whatsapp': 'WhatsApp',
     'connections_status_connected': 'Connected',
-    'connections_status_not_connected': 'Not connected',
-    'whatsapp_self_chat_assistant_on_tooltip':
-        'Memo Assistant: On — Memo replies to WhatsApp messages you send yourself',
-    'whatsapp_self_chat_assistant_off_tooltip':
-        'Memo Assistant: Off — turn on to use your "Message Yourself" chat to talk to Memo',
+    'whatsapp_tab_desc':
+        'Connect your WhatsApp account and manage the connection. To send/read messages, use Agent mode in normal chat, or message yourself to talk to the Memo Assistant below.',
+    'whatsapp_self_chat_assistant_title': 'Memo Assistant (message yourself)',
+    'whatsapp_self_chat_assistant_desc':
+        'When on, every message you send to your own number ("Message Yourself") gets a normal chat reply from Memo.',
     'whatsapp_self_chat_assistant_toggle_failed': 'Could not change the Memo Assistant setting',
     'tab_report_bug': 'Report Bug',
     'tab_dream': 'Dream',
@@ -3228,8 +3226,8 @@ class L10n {
         'Chat — Memo\'s main screen. Talk with AI, ask questions, generate code, send files. Memo learns about you as you go.',
     'tour_step_agent':
         'Agent — Your task mode. Pick a project folder and let the agent write code, run commands, and fix bugs. You approve every step.',
-    'tour_step_whatsapp':
-        'WhatsApp — Connect your WhatsApp account here. Scan the QR code to pair, then read and reply to messages with AI.',
+    'tour_step_models':
+        'Model Store — Download local models and pick which one runs your chats from here.',
     'tour_step_calendar':
         'Calendar — Auto-detects plans from your conversations. Creates events and sends reminders when it\'s time.',
 

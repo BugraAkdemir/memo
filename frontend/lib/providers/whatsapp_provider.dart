@@ -161,7 +161,21 @@ class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
     }
 
     _pollTimer = Timer(interval, () async {
-      await _fetch();
+      try {
+        await _fetch();
+      } catch (e) {
+        // _fetch already catches its own network/API errors — this only
+        // catches the rare case where notifying a listener throws (e.g. a
+        // widget's Element already defunct from a fast navigate-in/
+        // navigate-out, seen live: "Cannot use 'ref' after the widget was
+        // disposed" / Element.markNeedsBuild on a defunct Element). Without
+        // this, that exception propagates out of this Timer callback and
+        // permanently kills the recursive _schedule() chain below — no
+        // crash report, just polling silently stopping forever and the UI
+        // stuck wherever it last was (reported live as "Preparing QR
+        // code..." never resolving).
+        debugPrint('whatsapp: status poll listener error (ignored): $e');
+      }
       if (mounted) _schedule();
     });
   }

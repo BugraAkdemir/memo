@@ -166,11 +166,28 @@ func isSelfChatMessage(msg whatsapp.Message, ownJIDs []string) bool {
 // switching the user's active chat — see NewBackgroundChat's doc comment)
 // so it never collides with or hijacks whatever chat is open in the UI.
 //
-// Routes through SendMessageStreamTo — the same full pipeline (memory,
-// intent, mood, session recording) normal chat uses — rather than a raw
-// LLM call, so a self-chat conversation gets the same assistant behavior
-// as chatting inside Memo itself.
+// A leading slash command (/new, /agent, /status, /help — see
+// handleWhatsAppSelfChatCommand) is handled and replied to directly,
+// without ever touching the LLM pipeline. Anything else routes through
+// SendMessageStreamTo — the same full pipeline (memory, intent, mood,
+// session recording) normal chat uses — rather than a raw LLM call, so a
+// self-chat conversation gets the same assistant behavior as chatting
+// inside Memo itself.
 func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
+	text := strings.TrimSpace(msg.Text)
+
+	if reply, handled := a.handleWhatsAppSelfChatCommand(text); handled {
+		if reply == "" {
+			return
+		}
+		ctx, cancel := context.WithTimeout(a.lifecycleCtx, 15*time.Second)
+		defer cancel()
+		if _, err := a.WhatsAppSend(ctx, msg.ChatJID, reply); err != nil {
+			logx.Printf("WhatsApp self-chat: send command reply error: %v", err)
+		}
+		return
+	}
+
 	sm := a.getSessionManager()
 	if sm == nil {
 		return
@@ -198,7 +215,7 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 	stopComposing := a.startWhatsAppComposing(ctx, msg.ChatJID)
 	defer stopComposing()
 
-	reply := drainToReply(a.SendMessageStreamTo(ctx, chatID, msg.Text))
+	reply := drainToReply(a.SendMessageStreamTo(ctx, chatID, text))
 	reply = strings.TrimSpace(reply)
 	if reply == "" {
 		return
@@ -207,6 +224,145 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 	if _, err := a.WhatsAppSend(ctx, msg.ChatJID, reply); err != nil {
 		logx.Printf("WhatsApp self-chat: send reply error: %v", err)
 	}
+}
+
+// whatsAppSelfChatHelpText is the /help reply — kept as a plain constant
+// (not routed through L10n, matching every other backend-generated
+// WhatsApp/CLI-facing string in this codebase; see AGENTS.md's Code Style
+// note on the backend's own Turkish-strings seam) so /help always lists
+// exactly the commands handleWhatsAppSelfChatCommand actually implements.
+const whatsAppSelfChatHelpText = `📖 Komutlar
+
+/new — Yeni bir sohbet başlat (baştan)
+/agent on — Agent modunu aç (dosya/komut araçları)
+/agent off — Agent modunu kapat
+/agent — Agent modunun durumunu göster
+/web on — Web aramasını aç
+/web off — Web aramasını kapat
+/web — Web aramasının durumunu göster
+/status — Memo'nun anlık durumunu göster
+/help — Bu listeyi göster
+
+Komut değilse yazdığın her şey normal bir sohbet mesajı olarak Memo'ya gider.`
+
+// handleWhatsAppSelfChatCommand recognizes a leading-slash command in a
+// self-chat message and returns its reply text directly — handled reports
+// whether text was actually a command at all (false means "route this to
+// the LLM as a normal message instead", the caller's existing behavior).
+// An empty reply with handled=true is valid (nothing to say back).
+func (a *App) handleWhatsAppSelfChatCommand(text string) (reply string, handled bool) {
+	fields := strings.Fields(text)
+	if len(fields) == 0 || !strings.HasPrefix(fields[0], "/") {
+		return "", false
+	}
+	cmd := strings.ToLower(fields[0])
+	arg := ""
+	if len(fields) > 1 {
+		arg = strings.ToLower(fields[1])
+	}
+
+	switch cmd {
+	case "/new":
+		sm := a.getSessionManager()
+		if sm == nil {
+			return "⚠️ Sohbet yöneticisi hazır değil.", true
+		}
+		a.waMu.Lock()
+		a.waSelfChatSessionID = sm.NewBackgroundChat("WhatsApp Self-Chat")
+		a.waMu.Unlock()
+		return "🆕 Yeni sohbet başlatıldı, baştan başlıyoruz.", true
+
+	case "/agent":
+		switch arg {
+		case "on":
+			if err := a.SetAgentEnabled(true); err != nil {
+				return "⚠️ Agent modu açılamadı: " + err.Error(), true
+			}
+			return "🤖 Agent modu açıldı.", true
+		case "off":
+			if err := a.SetAgentEnabled(false); err != nil {
+				return "⚠️ Agent modu kapatılamadı: " + err.Error(), true
+			}
+			return "🤖 Agent modu kapatıldı.", true
+		default:
+			return "🤖 Agent modu şu an " + onOffTr(a.GetAgentEnabled()) + ". Kullanım: /agent on veya /agent off", true
+		}
+
+	case "/web":
+		switch arg {
+		case "on":
+			if err := a.UpdateWebSearchConfig(true); err != nil {
+				return "⚠️ Web araması açılamadı: " + err.Error(), true
+			}
+			return "🌐 Web araması açıldı.", true
+		case "off":
+			if err := a.UpdateWebSearchConfig(false); err != nil {
+				return "⚠️ Web araması kapatılamadı: " + err.Error(), true
+			}
+			return "🌐 Web araması kapatıldı.", true
+		default:
+			return "🌐 Web araması şu an " + onOffTr(a.GetWebSearchEnabled()) + ". Kullanım: /web on veya /web off", true
+		}
+
+	case "/status":
+		return a.whatsAppSelfChatStatusText(), true
+
+	case "/help":
+		return whatsAppSelfChatHelpText, true
+
+	default:
+		// An unrecognized "/word" — still a command attempt, not a chat
+		// message someone genuinely wants answered by the model (e.g. a
+		// typo'd command shouldn't silently turn into an LLM prompt).
+		return "❓ Bilinmeyen komut: " + fields[0] + "\n\n" + whatsAppSelfChatHelpText, true
+	}
+}
+
+// whatsAppSelfChatStatusText builds the /status reply: a snapshot of
+// exactly the state a user would otherwise have to open the app to check.
+func (a *App) whatsAppSelfChatStatusText() string {
+	a.clientMu.RLock()
+	localRunning := a.llamaServer != nil && a.llamaServer.IsRunning()
+	a.clientMu.RUnlock()
+
+	a.providerMu.RLock()
+	activeProvider := a.activeProviderName
+	a.providerMu.RUnlock()
+
+	var model string
+	switch {
+	case activeProvider != "":
+		model = activeProvider + " (bulut sağlayıcı)"
+	case localRunning:
+		model = "yerel model çalışıyor"
+	default:
+		model = "çalışan model yok"
+	}
+
+	waConnected := a.waClient != nil && a.waClient.IsConnected() && a.waClient.IsLoggedIn()
+
+	return fmt.Sprintf(
+		"📊 Memo Durumu\n\n"+
+			"🧠 Model: %s\n"+
+			"💾 Hafıza: %s\n"+
+			"🤖 Agent modu: %s\n"+
+			"🌐 Web araması: %s\n"+
+			"📱 WhatsApp: %s\n"+
+			"🏷️ Sürüm: %s",
+		model,
+		onOffTr(a.GetMemoryEnabled()),
+		onOffTr(a.GetAgentEnabled()),
+		onOffTr(a.GetWebSearchEnabled()),
+		onOffTr(waConnected),
+		a.version,
+	)
+}
+
+func onOffTr(v bool) string {
+	if v {
+		return "açık ✅"
+	}
+	return "kapalı ⛔"
 }
 
 // startWhatsAppComposing shows WhatsApp's native "typing..." chat-presence
@@ -265,10 +421,23 @@ func (a *App) GetWhatsAppSelfChatAssistant() bool {
 }
 
 // SetWhatsAppSelfChatAssistant toggles the self-chat assistant, persisting
-// to config.yaml.
+// to config.yaml. Turning it on also turns web search on — a self-chat
+// conversation has no other UI affordance to flip that on (unlike normal
+// chat's own toggle button), and "ask Memo something on WhatsApp and it
+// can't look anything up" is a worse default than having it already on.
+// Unconditional on every enable, not just a first-time default: simpler
+// and more predictable than tracking whether this is genuinely the first
+// enable ever, at the cost of nudging web search back on if the user
+// explicitly turned it off (via /web off or the app's switch) and then
+// toggles the assistant off and back on again. It's still just the
+// regular, user-visible global toggle underneath — /web on|off from the
+// self-chat itself, or the app's own switch, both work normally otherwise.
 func (a *App) SetWhatsAppSelfChatAssistant(enabled bool) error {
 	a.cfgMu.Lock()
 	a.cfg.WhatsApp.SelfChatAssistant = enabled
+	if enabled {
+		a.cfg.WebSearch.Enabled = true
+	}
 	a.cfgMu.Unlock()
 	if err := config.Save(a.cfg); err != nil {
 		return err

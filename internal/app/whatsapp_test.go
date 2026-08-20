@@ -4,10 +4,12 @@ package app
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"memo/internal/config"
+	"memo/internal/sessions"
 	"memo/internal/whatsapp"
 )
 
@@ -162,4 +164,160 @@ func TestStartWhatsAppComposing_NoClientReturnsNoOpStop(t *testing.T) {
 		t.Fatal("expected a non-nil stop function even with no WhatsApp client")
 	}
 	stop() // must not panic
+}
+
+// TestHandleWhatsAppSelfChatCommand_NonCommandNotHandled confirms ordinary
+// chat text is left alone (handled=false) so the caller routes it to the
+// LLM as normal — a command handler that's too eager would swallow real
+// messages that happen to contain a "/" somewhere.
+func TestHandleWhatsAppSelfChatCommand_NonCommandNotHandled(t *testing.T) {
+	a := &App{}
+	for _, text := range []string{"selam kanka", "bugün 3/4 oranında bitti", ""} {
+		if _, handled := a.handleWhatsAppSelfChatCommand(text); handled {
+			t.Errorf("handleWhatsAppSelfChatCommand(%q) handled = true, want false", text)
+		}
+	}
+}
+
+// TestHandleWhatsAppSelfChatCommand_New confirms /new creates a fresh
+// background session (not the globally active one — see
+// NewBackgroundChat's doc comment) and points waSelfChatSessionID at it.
+func TestHandleWhatsAppSelfChatCommand_New(t *testing.T) {
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	a := &App{sessions: sm, waSelfChatSessionID: "stale-id"}
+
+	reply, handled := a.handleWhatsAppSelfChatCommand("/new")
+	if !handled {
+		t.Fatal("expected /new to be handled")
+	}
+	if reply == "" {
+		t.Error("expected a non-empty confirmation reply")
+	}
+	if a.waSelfChatSessionID == "" || a.waSelfChatSessionID == "stale-id" {
+		t.Errorf("waSelfChatSessionID = %q, want a fresh session id", a.waSelfChatSessionID)
+	}
+	if !sm.SessionExists(a.waSelfChatSessionID) {
+		t.Error("the new session id doesn't actually exist in the session manager")
+	}
+}
+
+// TestHandleWhatsAppSelfChatCommand_Agent covers /agent on, /agent off, and
+// /agent with no argument (status query) — SetAgentEnabled/GetAgentEnabled
+// don't touch config.Save, so this is safe to exercise directly without a
+// temp config path.
+func TestHandleWhatsAppSelfChatCommand_Agent(t *testing.T) {
+	a := &App{}
+
+	if _, handled := a.handleWhatsAppSelfChatCommand("/agent on"); !handled {
+		t.Fatal("expected /agent on to be handled")
+	}
+	if !a.GetAgentEnabled() {
+		t.Error("expected agent mode enabled after /agent on")
+	}
+
+	reply, handled := a.handleWhatsAppSelfChatCommand("/agent")
+	if !handled {
+		t.Fatal("expected /agent (no arg) to be handled")
+	}
+	if !strings.Contains(reply, "açık") {
+		t.Errorf("status reply %q should mention it's currently on", reply)
+	}
+
+	if _, handled := a.handleWhatsAppSelfChatCommand("/agent off"); !handled {
+		t.Fatal("expected /agent off to be handled")
+	}
+	if a.GetAgentEnabled() {
+		t.Error("expected agent mode disabled after /agent off")
+	}
+}
+
+// TestHandleWhatsAppSelfChatCommand_Web covers /web on and /web off — unlike
+// /agent, UpdateWebSearchConfig persists via config.Save, so this needs a
+// temp config path (same pattern as remote_auth_test.go) to avoid writing
+// to the real repo's config.yaml as a test side effect.
+func TestHandleWhatsAppSelfChatCommand_Web(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := config.Load(filepath.Join(dir, "config.yaml")); err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	a := &App{cfg: config.Get()}
+
+	if _, handled := a.handleWhatsAppSelfChatCommand("/web on"); !handled {
+		t.Fatal("expected /web on to be handled")
+	}
+	if !a.GetWebSearchEnabled() {
+		t.Error("expected web search enabled after /web on")
+	}
+
+	if _, handled := a.handleWhatsAppSelfChatCommand("/web off"); !handled {
+		t.Fatal("expected /web off to be handled")
+	}
+	if a.GetWebSearchEnabled() {
+		t.Error("expected web search disabled after /web off")
+	}
+}
+
+// TestSetWhatsAppSelfChatAssistant_TurnsOnWebSearch confirms enabling the
+// self-chat assistant also turns web search on — a self-chat conversation
+// has no other UI affordance to flip it on (unlike normal chat's toggle
+// button) — and that disabling the assistant leaves web search untouched
+// (only the "on" direction is coupled; turning the assistant off isn't a
+// reason to also turn web search off, since the user might still want it
+// on for normal chat).
+func TestSetWhatsAppSelfChatAssistant_TurnsOnWebSearch(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := config.Load(filepath.Join(dir, "config.yaml")); err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	a := &App{cfg: config.Get()}
+
+	if a.GetWebSearchEnabled() {
+		t.Fatal("test assumption violated: web search should start off")
+	}
+	if err := a.SetWhatsAppSelfChatAssistant(true); err != nil {
+		t.Fatalf("SetWhatsAppSelfChatAssistant: %v", err)
+	}
+	if !a.GetWebSearchEnabled() {
+		t.Error("expected web search on after enabling the self-chat assistant")
+	}
+
+	if err := a.SetWhatsAppSelfChatAssistant(false); err != nil {
+		t.Fatalf("SetWhatsAppSelfChatAssistant(false): %v", err)
+	}
+	if !a.GetWebSearchEnabled() {
+		t.Error("disabling the self-chat assistant should not also turn web search back off")
+	}
+}
+
+// TestHandleWhatsAppSelfChatCommand_StatusAndHelp confirms /status and
+// /help are recognized and reply with non-empty text — the exact content
+// is free to change, so this only locks in that they're wired up and don't
+// panic against a minimally-populated App.
+func TestHandleWhatsAppSelfChatCommand_StatusAndHelp(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{}}
+
+	if reply, handled := a.handleWhatsAppSelfChatCommand("/status"); !handled || reply == "" {
+		t.Errorf("/status: handled=%v reply=%q, want handled=true and non-empty", handled, reply)
+	}
+	if reply, handled := a.handleWhatsAppSelfChatCommand("/help"); !handled || reply != whatsAppSelfChatHelpText {
+		t.Errorf("/help: handled=%v reply=%q, want handled=true and reply == whatsAppSelfChatHelpText", handled, reply)
+	}
+}
+
+// TestHandleWhatsAppSelfChatCommand_UnknownCommand confirms a typo'd or
+// unrecognized "/word" is still treated as a command attempt (handled=true,
+// with guidance back to the user) rather than silently falling through to
+// the LLM as if it were a genuine chat message.
+func TestHandleWhatsAppSelfChatCommand_UnknownCommand(t *testing.T) {
+	a := &App{}
+	reply, handled := a.handleWhatsAppSelfChatCommand("/statuss")
+	if !handled {
+		t.Fatal("expected an unrecognized slash command to still be handled")
+	}
+	if !strings.Contains(reply, "/statuss") {
+		t.Errorf("reply %q should echo back the unrecognized command", reply)
+	}
 }

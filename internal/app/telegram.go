@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"memo/internal/agent"
 	"memo/internal/config"
 	"memo/internal/telegram"
 )
@@ -66,6 +67,9 @@ func (a *App) runTelegramIntentLoop(ctx context.Context) {
 		case msg, ok := <-ch:
 			if !ok {
 				return
+			}
+			if a.routeTelegramPermissionAnswer(msg) {
+				continue
 			}
 			if !a.shouldReplyToTelegram(msg) {
 				continue
@@ -143,13 +147,25 @@ func (a *App) handleTelegramMessage(msg telegram.Message) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(a.lifecycleCtx, 120*time.Second)
+	// 300s to match llm.go's own generation-budget contract, not the 120s
+	// this used to be — a turn that also has to ask a permission question
+	// and wait up to 45s for a y/n reply (see selfchat_permission.go) needs
+	// real headroom beyond just the LLM call itself.
+	ctx, cancel := context.WithTimeout(a.lifecycleCtx, 300*time.Second)
 	defer cancel()
 
 	stopComposing := a.startTelegramComposing(ctx, msg.ChatID)
 	defer stopComposing()
 
-	reply := drainToReply(a.SendMessageStreamTo(ctx, chatID, text))
+	reply := a.drainSelfChatReply(
+		a.SendMessageStreamTo(ctx, chatID, text),
+		a.GetTelegramAutoApprovePermissions(),
+		a.telegramPermissionQuestion,
+		func(q string) error { return a.TelegramSend(ctx, msg.ChatID, q) },
+		func(waitCtx context.Context) (string, bool) {
+			return a.awaitTelegramPermissionAnswer(waitCtx, msg.ChatID)
+		},
+	)
 	reply = strings.TrimSpace(reply)
 	if reply == "" {
 		return
@@ -219,6 +235,22 @@ func (a *App) handleTelegramCommand(text string) (reply string, handled bool) {
 			return fmt.Sprintf(tgT(lang, "tg_web_status"), tgOnOff(lang, a.GetWebSearchEnabled())), true
 		}
 
+	case "/auto-perm":
+		switch arg {
+		case "on":
+			if err := a.SetTelegramAutoApprovePermissions(true); err != nil {
+				return fmt.Sprintf(tgT(lang, "tg_autoperm_on_err"), err), true
+			}
+			return tgT(lang, "tg_autoperm_on"), true
+		case "off":
+			if err := a.SetTelegramAutoApprovePermissions(false); err != nil {
+				return fmt.Sprintf(tgT(lang, "tg_autoperm_off_err"), err), true
+			}
+			return tgT(lang, "tg_autoperm_off"), true
+		default:
+			return fmt.Sprintf(tgT(lang, "tg_autoperm_status"), tgOnOff(lang, a.GetTelegramAutoApprovePermissions())), true
+		}
+
 	case "/status":
 		return a.telegramStatusText(lang), true
 
@@ -262,6 +294,7 @@ func (a *App) telegramStatusText(lang string) string {
 		tgOnOff(lang, a.GetMemoryEnabled()),
 		tgOnOff(lang, a.GetAgentEnabled()),
 		tgOnOff(lang, a.GetWebSearchEnabled()),
+		tgOnOff(lang, a.GetTelegramAutoApprovePermissions()),
 		tgOnOff(lang, tgConnected),
 		a.version,
 	)
@@ -432,4 +465,86 @@ func (a *App) TelegramSend(ctx context.Context, chatID int64, text string) error
 		return fmt.Errorf("Telegram not initialized")
 	}
 	return client.SendMessage(ctx, chatID, text)
+}
+
+// GetTelegramAutoApprovePermissions reports whether the Telegram bot skips
+// agent tool-call permission prompts (AllowOnce every request) instead of
+// asking a y/n question in the chat.
+func (a *App) GetTelegramAutoApprovePermissions() bool {
+	a.tgMu.Lock()
+	defer a.tgMu.Unlock()
+	if a.tgStore == nil {
+		return false
+	}
+	return a.tgStore.Get().AutoApprovePermissions
+}
+
+// SetTelegramAutoApprovePermissions toggles it, persisting via tgStore.
+func (a *App) SetTelegramAutoApprovePermissions(enabled bool) error {
+	a.tgMu.Lock()
+	defer a.tgMu.Unlock()
+	if a.tgStore == nil {
+		return fmt.Errorf("Telegram not initialized")
+	}
+	st := a.tgStore.Get()
+	st.AutoApprovePermissions = enabled
+	a.tgStore.Set(st)
+	logx.Printf("Telegram auto-approve permissions: enabled=%v", enabled)
+	return nil
+}
+
+// telegramPermissionQuestion formats the y/n prompt sent to the bot's owner
+// when a tool call needs approval — see selfchat_permission.go.
+func (a *App) telegramPermissionQuestion(ev agent.AgentEvent) string {
+	lang := tgLang(a.GetUILanguage())
+	preview := ev.Preview
+	if preview == "" {
+		preview = ev.ToolName
+	}
+	return fmt.Sprintf(tgT(lang, "tg_perm_question"), ev.ToolName, preview)
+}
+
+// awaitTelegramPermissionAnswer blocks until routeTelegramPermissionAnswer
+// delivers the next message on chatID, or ctx is done. See the
+// tgPendingPermAnswerCh/tgPendingPermChatID fields' doc comment (app.go).
+func (a *App) awaitTelegramPermissionAnswer(ctx context.Context, chatID int64) (string, bool) {
+	answerCh := make(chan string, 1)
+	a.tgMu.Lock()
+	a.tgPendingPermAnswerCh = answerCh
+	a.tgPendingPermChatID = chatID
+	a.tgMu.Unlock()
+	defer func() {
+		a.tgMu.Lock()
+		if a.tgPendingPermAnswerCh == answerCh {
+			a.tgPendingPermAnswerCh = nil
+			a.tgPendingPermChatID = 0
+		}
+		a.tgMu.Unlock()
+	}()
+
+	select {
+	case ans := <-answerCh:
+		return ans, true
+	case <-ctx.Done():
+		return "", false
+	}
+}
+
+// routeTelegramPermissionAnswer delivers msg to an outstanding permission
+// question instead of letting runTelegramIntentLoop treat it as a new chat
+// turn, if one is currently pending for this exact chat. Reports whether it
+// consumed the message.
+func (a *App) routeTelegramPermissionAnswer(msg telegram.Message) bool {
+	a.tgMu.Lock()
+	answerCh := a.tgPendingPermAnswerCh
+	pendingID := a.tgPendingPermChatID
+	a.tgMu.Unlock()
+	if answerCh == nil || msg.ChatID != pendingID {
+		return false
+	}
+	select {
+	case answerCh <- strings.TrimSpace(msg.Text):
+	default:
+	}
+	return true
 }

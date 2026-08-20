@@ -30,6 +30,12 @@ type State struct {
 	BotUsername string `json:"bot_username"`
 	OwnerChatID int64  `json:"owner_chat_id"` // 0 = not yet linked
 	OwnerName   string `json:"owner_name"`
+	// AutoApprovePermissions, when true, skips the agent's tool-call
+	// permission prompt entirely for the Telegram bot (AllowOnce on every
+	// request) instead of asking a y/n question in the chat itself — see
+	// the matching field on config.WhatsAppConfig for the WhatsApp side.
+	// Opt-in (default false).
+	AutoApprovePermissions bool `json:"auto_approve_permissions"`
 }
 
 // Linked reports whether a chat has been locked in as the owner.
@@ -89,11 +95,12 @@ func (s *Store) load() {
 		token = ""
 	}
 	s.state = State{
-		Enabled:     stored.Enabled,
-		BotToken:    token,
-		BotUsername: stored.BotUsername,
-		OwnerChatID: stored.OwnerChatID,
-		OwnerName:   stored.OwnerName,
+		Enabled:                stored.Enabled,
+		BotToken:               token,
+		BotUsername:            stored.BotUsername,
+		OwnerChatID:            stored.OwnerChatID,
+		OwnerName:              stored.OwnerName,
+		AutoApprovePermissions: stored.AutoApprovePermissions,
 	}
 }
 
@@ -143,11 +150,12 @@ func (s *Store) save() {
 		return
 	}
 	stored := storedState{
-		Enabled:           st.Enabled,
-		BotTokenEncrypted: encrypted,
-		BotUsername:       st.BotUsername,
-		OwnerChatID:       st.OwnerChatID,
-		OwnerName:         st.OwnerName,
+		Enabled:                st.Enabled,
+		BotTokenEncrypted:      encrypted,
+		BotUsername:            st.BotUsername,
+		OwnerChatID:            st.OwnerChatID,
+		OwnerName:              st.OwnerName,
+		AutoApprovePermissions: st.AutoApprovePermissions,
 	}
 
 	data, err := json.MarshalIndent(stored, "", "  ")
@@ -167,11 +175,12 @@ func (s *Store) save() {
 }
 
 type storedState struct {
-	Enabled           bool   `json:"enabled"`
-	BotTokenEncrypted string `json:"bot_token_encrypted"`
-	BotUsername       string `json:"bot_username"`
-	OwnerChatID       int64  `json:"owner_chat_id"`
-	OwnerName         string `json:"owner_name"`
+	Enabled                bool   `json:"enabled"`
+	BotTokenEncrypted      string `json:"bot_token_encrypted"`
+	BotUsername            string `json:"bot_username"`
+	OwnerChatID            int64  `json:"owner_chat_id"`
+	OwnerName              string `json:"owner_name"`
+	AutoApprovePermissions bool   `json:"auto_approve_permissions"`
 }
 
 // encrypt/decrypt: identical AES-256-GCM scheme to

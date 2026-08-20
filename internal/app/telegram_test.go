@@ -158,6 +158,39 @@ func TestHandleTelegramCommand_Web(t *testing.T) {
 	}
 }
 
+// TestHandleTelegramCommand_AutoPerm mirrors
+// TestHandleWhatsAppSelfChatCommand_AutoPerm — same bug, same fix, same
+// default-off. Telegram's auto-approve flag lives in tgStore rather than
+// config.yaml (see State.AutoApprovePermissions), so this needs a real
+// *telegram.Store instead of a loaded config.
+func TestHandleTelegramCommand_AutoPerm(t *testing.T) {
+	store := telegram.NewStore(filepath.Join(t.TempDir(), "telegram.json"), testMasterKey)
+	a := &App{cfg: &config.AppConfig{}, tgStore: store}
+
+	if a.GetTelegramAutoApprovePermissions() {
+		t.Fatal("test assumption violated: auto-approve should default to false")
+	}
+
+	if _, handled := a.handleTelegramCommand("/auto-perm on"); !handled {
+		t.Fatal("expected /auto-perm on to be handled")
+	}
+	if !a.GetTelegramAutoApprovePermissions() {
+		t.Error("expected auto-approve enabled after /auto-perm on")
+	}
+
+	reply, handled := a.handleTelegramCommand("/auto-perm")
+	if !handled || reply == "" {
+		t.Errorf("/auto-perm (no arg): handled=%v reply=%q, want handled=true and non-empty", handled, reply)
+	}
+
+	if _, handled := a.handleTelegramCommand("/auto-perm off"); !handled {
+		t.Fatal("expected /auto-perm off to be handled")
+	}
+	if a.GetTelegramAutoApprovePermissions() {
+		t.Error("expected auto-approve disabled after /auto-perm off")
+	}
+}
+
 // TestHandleTelegramCommand_StatusAndHelp mirrors
 // TestHandleWhatsAppSelfChatCommand_StatusAndHelp.
 func TestHandleTelegramCommand_StatusAndHelp(t *testing.T) {

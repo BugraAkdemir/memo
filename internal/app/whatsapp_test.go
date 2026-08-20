@@ -264,6 +264,43 @@ func TestHandleWhatsAppSelfChatCommand_Web(t *testing.T) {
 	}
 }
 
+// TestHandleWhatsAppSelfChatCommand_AutoPerm covers /auto-perm on, off, and
+// the no-arg status query — the actual bug this exists for: without it,
+// agent mode was silently broken for any Medium/Dangerous tool call from
+// WhatsApp self-chat (the permission prompt had nowhere to go), and default
+// off means it stays broken-as-in-safely-asks unless explicitly opted into
+// auto-approve.
+func TestHandleWhatsAppSelfChatCommand_AutoPerm(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := config.Load(filepath.Join(dir, "config.yaml")); err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	a := &App{cfg: config.Get()}
+
+	if a.GetWhatsAppAutoApprovePermissions() {
+		t.Fatal("test assumption violated: auto-approve should default to false")
+	}
+
+	if _, handled := a.handleWhatsAppSelfChatCommand("/auto-perm on"); !handled {
+		t.Fatal("expected /auto-perm on to be handled")
+	}
+	if !a.GetWhatsAppAutoApprovePermissions() {
+		t.Error("expected auto-approve enabled after /auto-perm on")
+	}
+
+	reply, handled := a.handleWhatsAppSelfChatCommand("/auto-perm")
+	if !handled || reply == "" {
+		t.Errorf("/auto-perm (no arg): handled=%v reply=%q, want handled=true and non-empty", handled, reply)
+	}
+
+	if _, handled := a.handleWhatsAppSelfChatCommand("/auto-perm off"); !handled {
+		t.Fatal("expected /auto-perm off to be handled")
+	}
+	if a.GetWhatsAppAutoApprovePermissions() {
+		t.Error("expected auto-approve disabled after /auto-perm off")
+	}
+}
+
 // TestSetWhatsAppSelfChatAssistant_TurnsOnWebSearch confirms enabling the
 // self-chat assistant also turns web search on — a self-chat conversation
 // has no other UI affordance to flip it on (unlike normal chat's toggle

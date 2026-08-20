@@ -213,6 +213,13 @@ type WhatsAppConfig struct {
 	// sends WhatsApp messages on every self-chat turn, so an existing user
 	// upgrading must not have it silently switched on underneath them.
 	SelfChatAssistant bool `yaml:"self_chat_assistant" json:"self_chat_assistant"`
+	// AutoApprovePermissions, when true, skips the agent's tool-call
+	// permission prompt entirely for the WhatsApp self-chat assistant
+	// (AllowOnce on every request) instead of asking a y/n question in the
+	// chat itself — see the matching field on telegram.State for the
+	// Telegram side. Opt-in (default false): the safe default is asking,
+	// same reasoning as SelfChatAssistant itself.
+	AutoApprovePermissions bool `yaml:"auto_approve_permissions" json:"auto_approve_permissions"`
 }
 
 // DevGatewayConfig controls the OpenAI/Anthropic-compatible local API

@@ -92,6 +92,9 @@ func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
 			if !ok {
 				return
 			}
+			if a.routeWhatsAppPermissionAnswer(msg) {
+				continue
+			}
 			// Recovered per-message: a panic while recording one WhatsApp
 			// message must not permanently kill this loop for the rest of
 			// the process's life — every future WhatsApp message would
@@ -204,7 +207,11 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(a.lifecycleCtx, 120*time.Second)
+	// 300s to match llm.go's own generation-budget contract, not the 120s
+	// this used to be — a turn that also has to ask a permission question
+	// and wait up to 45s for a y/n reply (see selfchat_permission.go) needs
+	// real headroom beyond just the LLM call itself.
+	ctx, cancel := context.WithTimeout(a.lifecycleCtx, 300*time.Second)
 	defer cancel()
 
 	// Shows WhatsApp's native "typing..." indicator for as long as the
@@ -215,7 +222,18 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 	stopComposing := a.startWhatsAppComposing(ctx, msg.ChatJID)
 	defer stopComposing()
 
-	reply := drainToReply(a.SendMessageStreamTo(ctx, chatID, text))
+	reply := a.drainSelfChatReply(
+		a.SendMessageStreamTo(ctx, chatID, text),
+		a.GetWhatsAppAutoApprovePermissions(),
+		a.whatsAppPermissionQuestion,
+		func(q string) error {
+			_, err := a.WhatsAppSend(ctx, msg.ChatJID, q)
+			return err
+		},
+		func(waitCtx context.Context) (string, bool) {
+			return a.awaitWhatsAppPermissionAnswer(waitCtx, msg.ChatJID)
+		},
+	)
 	reply = strings.TrimSpace(reply)
 	if reply == "" {
 		return
@@ -295,6 +313,22 @@ func (a *App) handleWhatsAppSelfChatCommand(text string) (reply string, handled 
 			return fmt.Sprintf(waT(lang, "wa_web_status"), waOnOff(lang, a.GetWebSearchEnabled())), true
 		}
 
+	case "/auto-perm":
+		switch arg {
+		case "on":
+			if err := a.SetWhatsAppAutoApprovePermissions(true); err != nil {
+				return fmt.Sprintf(waT(lang, "wa_autoperm_on_err"), err), true
+			}
+			return waT(lang, "wa_autoperm_on"), true
+		case "off":
+			if err := a.SetWhatsAppAutoApprovePermissions(false); err != nil {
+				return fmt.Sprintf(waT(lang, "wa_autoperm_off_err"), err), true
+			}
+			return waT(lang, "wa_autoperm_off"), true
+		default:
+			return fmt.Sprintf(waT(lang, "wa_autoperm_status"), waOnOff(lang, a.GetWhatsAppAutoApprovePermissions())), true
+		}
+
 	case "/status":
 		return a.whatsAppSelfChatStatusText(lang), true
 
@@ -338,6 +372,7 @@ func (a *App) whatsAppSelfChatStatusText(lang string) string {
 		waOnOff(lang, a.GetMemoryEnabled()),
 		waOnOff(lang, a.GetAgentEnabled()),
 		waOnOff(lang, a.GetWebSearchEnabled()),
+		waOnOff(lang, a.GetWhatsAppAutoApprovePermissions()),
 		waOnOff(lang, waConnected),
 		a.version,
 	)
@@ -429,6 +464,83 @@ func (a *App) SetWhatsAppSelfChatAssistant(enabled bool) error {
 	}
 	logx.Printf("WhatsApp self-chat assistant: enabled=%v", enabled)
 	return nil
+}
+
+// GetWhatsAppAutoApprovePermissions reports whether the WhatsApp self-chat
+// assistant skips agent tool-call permission prompts (AllowOnce every
+// request) instead of asking a y/n question in the chat.
+func (a *App) GetWhatsAppAutoApprovePermissions() bool {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg.WhatsApp.AutoApprovePermissions
+}
+
+// SetWhatsAppAutoApprovePermissions toggles it, persisting to config.yaml.
+func (a *App) SetWhatsAppAutoApprovePermissions(enabled bool) error {
+	a.cfgMu.Lock()
+	a.cfg.WhatsApp.AutoApprovePermissions = enabled
+	a.cfgMu.Unlock()
+	if err := config.Save(a.cfg); err != nil {
+		return err
+	}
+	logx.Printf("WhatsApp self-chat auto-approve permissions: enabled=%v", enabled)
+	return nil
+}
+
+// whatsAppPermissionQuestion formats the y/n prompt sent to the self-chat
+// when a tool call needs approval — see selfchat_permission.go.
+func (a *App) whatsAppPermissionQuestion(ev agent.AgentEvent) string {
+	lang := waLang(a.GetUILanguage())
+	preview := ev.Preview
+	if preview == "" {
+		preview = ev.ToolName
+	}
+	return fmt.Sprintf(waT(lang, "wa_perm_question"), ev.ToolName, preview)
+}
+
+// awaitWhatsAppPermissionAnswer blocks until routeWhatsAppPermissionAnswer
+// delivers the next message on chatJID, or ctx is done. See the
+// waPendingPermAnswerCh/waPendingPermChatJID fields' doc comment (app.go).
+func (a *App) awaitWhatsAppPermissionAnswer(ctx context.Context, chatJID string) (string, bool) {
+	answerCh := make(chan string, 1)
+	a.waMu.Lock()
+	a.waPendingPermAnswerCh = answerCh
+	a.waPendingPermChatJID = chatJID
+	a.waMu.Unlock()
+	defer func() {
+		a.waMu.Lock()
+		if a.waPendingPermAnswerCh == answerCh {
+			a.waPendingPermAnswerCh = nil
+			a.waPendingPermChatJID = ""
+		}
+		a.waMu.Unlock()
+	}()
+
+	select {
+	case ans := <-answerCh:
+		return ans, true
+	case <-ctx.Done():
+		return "", false
+	}
+}
+
+// routeWhatsAppPermissionAnswer delivers msg to an outstanding permission
+// question instead of letting runWhatsAppIntentLoop treat it as a new chat
+// turn, if one is currently pending for this exact chat. Reports whether it
+// consumed the message.
+func (a *App) routeWhatsAppPermissionAnswer(msg whatsapp.Message) bool {
+	a.waMu.Lock()
+	answerCh := a.waPendingPermAnswerCh
+	pendingJID := a.waPendingPermChatJID
+	a.waMu.Unlock()
+	if answerCh == nil || msg.ChatJID != pendingJID {
+		return false
+	}
+	select {
+	case answerCh <- strings.TrimSpace(msg.Text):
+	default:
+	}
+	return true
 }
 
 // StartWhatsApp connects to WhatsApp Web.

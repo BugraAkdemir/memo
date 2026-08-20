@@ -243,9 +243,21 @@ type App struct {
 	whatsAppSessionID   string     // dedicated session for WhatsApp chat context
 	waSelfChatSessionID string     // dedicated session for the WhatsApp self-chat assistant (see runWhatsAppIntentLoop)
 	waMu                sync.Mutex // protects waClient, waMsgStore initialization
-	tgSelfChatSessionID string     // dedicated session for the Telegram bot assistant (see runTelegramIntentLoop)
-	tgMu                sync.Mutex // protects tgClient, tgStore initialization
-	streamMu            sync.Mutex // prevents concurrent stream goroutines (double-send)
+	// waPendingPermAnswerCh/waPendingPermChatJID: while non-nil, the next
+	// incoming message on that exact chat JID is a y/n answer to an
+	// outstanding agent permission question (see selfchat_permission.go),
+	// not a new chat turn — set by awaitWhatsAppPermissionAnswer, read by
+	// routeWhatsAppPermissionAnswer in runWhatsAppIntentLoop. Both guarded
+	// by waMu, same as the rest of this block.
+	waPendingPermAnswerCh chan string
+	waPendingPermChatJID  string
+	tgSelfChatSessionID   string     // dedicated session for the Telegram bot assistant (see runTelegramIntentLoop)
+	tgMu                  sync.Mutex // protects tgClient, tgStore initialization
+	// tgPendingPermAnswerCh/tgPendingPermChatID: Telegram's counterpart to
+	// waPendingPermAnswerCh/waPendingPermChatJID above, guarded by tgMu.
+	tgPendingPermAnswerCh chan string
+	tgPendingPermChatID   int64
+	streamMu              sync.Mutex // prevents concurrent stream goroutines (double-send)
 
 	// cliJobs tracks in-flight CLI-backed background streams (see
 	// cli_stream.go), keyed by chat id. Deliberately separate from streamMu

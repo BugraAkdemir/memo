@@ -39,25 +39,32 @@ func waLang(uiLanguage string) string {
 }
 
 var waTr = map[string]string{
-	"wa_new_ok":          "🆕 Yeni sohbet başlatıldı, baştan başlıyoruz.",
-	"wa_new_no_sessions": "⚠️ Sohbet yöneticisi hazır değil.",
-	"wa_agent_on":        "🤖 Agent modu açıldı.",
-	"wa_agent_on_err":    "⚠️ Agent modu açılamadı: %s",
-	"wa_agent_off":       "🤖 Agent modu kapatıldı.",
-	"wa_agent_off_err":   "⚠️ Agent modu kapatılamadı: %s",
-	"wa_agent_status":    "🤖 Agent modu şu an %s. Kullanım: /agent on veya /agent off",
-	"wa_web_on":          "🌐 Web araması açıldı.",
-	"wa_web_on_err":      "⚠️ Web araması açılamadı: %s",
-	"wa_web_off":         "🌐 Web araması kapatıldı.",
-	"wa_web_off_err":     "⚠️ Web araması kapatılamadı: %s",
-	"wa_web_status":      "🌐 Web araması şu an %s. Kullanım: /web on veya /web off",
-	"wa_on":              "açık ✅",
-	"wa_off":             "kapalı ⛔",
+	"wa_new_ok":           "🆕 Yeni sohbet başlatıldı, baştan başlıyoruz.",
+	"wa_new_no_sessions":  "⚠️ Sohbet yöneticisi hazır değil.",
+	"wa_agent_on":         "🤖 Agent modu açıldı.",
+	"wa_agent_on_err":     "⚠️ Agent modu açılamadı: %s",
+	"wa_agent_off":        "🤖 Agent modu kapatıldı.",
+	"wa_agent_off_err":    "⚠️ Agent modu kapatılamadı: %s",
+	"wa_agent_status":     "🤖 Agent modu şu an %s. Kullanım: /agent on veya /agent off",
+	"wa_web_on":           "🌐 Web araması açıldı.",
+	"wa_web_on_err":       "⚠️ Web araması açılamadı: %s",
+	"wa_web_off":          "🌐 Web araması kapatıldı.",
+	"wa_web_off_err":      "⚠️ Web araması kapatılamadı: %s",
+	"wa_web_status":       "🌐 Web araması şu an %s. Kullanım: /web on veya /web off",
+	"wa_on":               "açık ✅",
+	"wa_off":              "kapalı ⛔",
+	"wa_autoperm_on":      "🔓 Otomatik izin açıldı — agent araçları artık sormadan çalışır.",
+	"wa_autoperm_on_err":  "⚠️ Otomatik izin açılamadı: %s",
+	"wa_autoperm_off":     "🔐 Otomatik izin kapatıldı — agent araçları için onay sorulacak.",
+	"wa_autoperm_off_err": "⚠️ Otomatik izin kapatılamadı: %s",
+	"wa_autoperm_status":  "🔐 Otomatik izin şu an %s. Kullanım: /auto-perm on veya /auto-perm off",
+	"wa_perm_question":    "🔐 İzin gerekiyor: \"%s\" aracını çalıştırmak istiyorum.\n%s\n\nOnaylıyor musun? (y/n)",
 	"wa_status_template": "📊 Memo Durumu\n\n" +
 		"🧠 Model: %s\n" +
 		"💾 Hafıza: %s\n" +
 		"🤖 Agent modu: %s\n" +
 		"🌐 Web araması: %s\n" +
+		"🔐 Otomatik izin: %s\n" +
 		"📱 WhatsApp: %s\n" +
 		"🏷️ Sürüm: %s",
 	"wa_model_cloud":     "%s (bulut sağlayıcı)",
@@ -73,6 +80,9 @@ var waTr = map[string]string{
 /web on — Web aramasını aç
 /web off — Web aramasını kapat
 /web — Web aramasının durumunu göster
+/auto-perm on — Agent araçlarını sormadan onayla
+/auto-perm off — Agent araçları için onay sor (varsayılan)
+/auto-perm — Otomatik izin durumunu göster
 /status — Memo'nun anlık durumunu göster
 /help — Bu listeyi göster
 
@@ -80,25 +90,32 @@ Komut değilse yazdığın her şey normal bir sohbet mesajı olarak Memo'ya gid
 }
 
 var waEn = map[string]string{
-	"wa_new_ok":          "🆕 Started a new chat, starting fresh.",
-	"wa_new_no_sessions": "⚠️ Session manager isn't ready.",
-	"wa_agent_on":        "🤖 Agent mode turned on.",
-	"wa_agent_on_err":    "⚠️ Couldn't turn agent mode on: %s",
-	"wa_agent_off":       "🤖 Agent mode turned off.",
-	"wa_agent_off_err":   "⚠️ Couldn't turn agent mode off: %s",
-	"wa_agent_status":    "🤖 Agent mode is currently %s. Usage: /agent on or /agent off",
-	"wa_web_on":          "🌐 Web search turned on.",
-	"wa_web_on_err":      "⚠️ Couldn't turn web search on: %s",
-	"wa_web_off":         "🌐 Web search turned off.",
-	"wa_web_off_err":     "⚠️ Couldn't turn web search off: %s",
-	"wa_web_status":      "🌐 Web search is currently %s. Usage: /web on or /web off",
-	"wa_on":              "on ✅",
-	"wa_off":             "off ⛔",
+	"wa_new_ok":           "🆕 Started a new chat, starting fresh.",
+	"wa_new_no_sessions":  "⚠️ Session manager isn't ready.",
+	"wa_agent_on":         "🤖 Agent mode turned on.",
+	"wa_agent_on_err":     "⚠️ Couldn't turn agent mode on: %s",
+	"wa_agent_off":        "🤖 Agent mode turned off.",
+	"wa_agent_off_err":    "⚠️ Couldn't turn agent mode off: %s",
+	"wa_agent_status":     "🤖 Agent mode is currently %s. Usage: /agent on or /agent off",
+	"wa_web_on":           "🌐 Web search turned on.",
+	"wa_web_on_err":       "⚠️ Couldn't turn web search on: %s",
+	"wa_web_off":          "🌐 Web search turned off.",
+	"wa_web_off_err":      "⚠️ Couldn't turn web search off: %s",
+	"wa_web_status":       "🌐 Web search is currently %s. Usage: /web on or /web off",
+	"wa_on":               "on ✅",
+	"wa_off":              "off ⛔",
+	"wa_autoperm_on":      "🔓 Auto-approve turned on — agent tools now run without asking.",
+	"wa_autoperm_on_err":  "⚠️ Couldn't turn auto-approve on: %s",
+	"wa_autoperm_off":     "🔐 Auto-approve turned off — agent tools will ask for confirmation.",
+	"wa_autoperm_off_err": "⚠️ Couldn't turn auto-approve off: %s",
+	"wa_autoperm_status":  "🔐 Auto-approve is currently %s. Usage: /auto-perm on or /auto-perm off",
+	"wa_perm_question":    "🔐 Permission needed: I want to run the \"%s\" tool.\n%s\n\nApprove? (y/n)",
 	"wa_status_template": "📊 Memo Status\n\n" +
 		"🧠 Model: %s\n" +
 		"💾 Memory: %s\n" +
 		"🤖 Agent mode: %s\n" +
 		"🌐 Web search: %s\n" +
+		"🔐 Auto-approve: %s\n" +
 		"📱 WhatsApp: %s\n" +
 		"🏷️ Version: %s",
 	"wa_model_cloud":     "%s (cloud provider)",
@@ -114,6 +131,9 @@ var waEn = map[string]string{
 /web on — Turn web search on
 /web off — Turn web search off
 /web — Show web search's status
+/auto-perm on — Approve agent tools without asking
+/auto-perm off — Ask for confirmation before agent tools (default)
+/auto-perm — Show auto-approve's status
 /status — Show Memo's current status
 /help — Show this list
 

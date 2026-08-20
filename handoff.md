@@ -1,3 +1,70 @@
+# Ek (2026-08-21) — WhatsApp/Telegram self-chat'te agent izin sorusu artık gerçekten soruluyor
+
+Kullanıcı kendi Pi'sinde WhatsApp ve Telegram'ı gerçek bir bot/hesapla
+bağlayıp test ederken bir bug buldu: agent modu bu iki yüzeyde
+çalışmıyordu. Kök neden — `drainToReply` (chat.go), agent'ın
+`permission_request` event'ini (Medium/Dangerous bir araç çağrısı öncesi
+izin isteği) diğer tüm `agent_event` chunk'larıyla birlikte sessizce
+atıyordu. Flutter tarafında bu event bir izin diyaloğu açıyor,
+kullanıcının cevabı `POST /api/agent/permission`'a gidiyor — ama
+WhatsApp/Telegram self-chat'in düz metin arayüzünde bu diyaloğa
+ulaşabilecek hiçbir yol yoktu. Sonuç: izin gerektiren her araç çağrısı,
+pipeline'ın kendi 60 saniyelik zaman aşımı dolana kadar sessizce takılıp,
+sonra "Agent execution cancelled (permission timeout)" hatasını asistanın
+"cevabı" olarak gösteriyordu.
+
+**Fix, kullanıcının tarif ettiği tasarımla birebir:** her iki yüzeye de
+`/auto-perm on|off` komutu eklendi (varsayılan **off** — güvenli taraf).
+Açıkken agent araçları sormadan çalışıyor (`AllowOnce` her istekte);
+kapalıyken artık gerçekten soruluyor — Memo self-chat'e "🔐 İzin
+gerekiyor: ... Onaylıyor musun? (y/n)" diye bir mesaj atıyor, kullanıcının
+bir sonraki mesajını (y/yes/evet/e/onay/tamam → onay, başka her şey →
+red) cevap olarak alıp `HandleAgentPermission`'a iletiyor.
+
+**Mimari:** yeni paylaşılan `internal/app/selfchat_permission.go` —
+`drainSelfChatReply` (drainToReply'nin izin-farkında hali:
+`permission_request` event'ini yakalayıp autoApprove'a göre ya direkt
+onaylıyor ya da soru sorup cevap bekliyor) + `resolveSelfChatPermission` +
+`isAffirmativeAnswer`. Her yüzeyin kendi "bekleyen soru" state'i var
+(`waPendingPermAnswerCh`/`waPendingPermChatJID`,
+`tgPendingPermAnswerCh`/`tgPendingPermChatID`, App struct'ında, ilgili
+`waMu`/`tgMu` ile korunuyor) — `runWhatsAppIntentLoop`/
+`runTelegramIntentLoop` artık her gelen mesajı önce
+`routeWhatsAppPermissionAnswer`/`routeTelegramPermissionAnswer`'a
+soruyor: bekleyen bir soru varsa ve mesaj doğru chat'ten geldiyse, yeni
+bir sohbet turu olarak değil, o sorunun cevabı olarak yönlendiriliyor.
+Cevap bekleme süresi 45s (pipeline'ın kendi 60s'lik sert limitinden kasıtlı
+daha kısa — soru gönderiminin kendi round-trip'i de o 60s'nin içinden
+gidiyor, 45s güvenli pay bırakıyor). Self-chat turlarının kendi context
+timeout'u da 120s'ten 300s'ye çıkarıldı (llm.go'nun genel 300s üretim
+bütçesi kontratıyla eşleşsin, bir izin sorusu+cevabı turu ekstra zaman
+gerektirebilir diye).
+
+Ayarlar: `config.WhatsAppConfig.AutoApprovePermissions` (config.yaml,
+WhatsApp için) ve `telegram.State.AutoApprovePermissions`
+(`data/telegram.json`, Telegram için) — iki farklı depolama şekli
+olduğu için (biri yaml config, diğeri kendi şifreli store'u) tek bir ortak
+alan yerine ikisi ayrı ayrı. `/status` komutuna da "🔐 Otomatik izin: %s"
+satırı eklendi, `/help` güncellendi.
+
+**Bilinçli olarak yapılmayan:** Settings UI'da bir toggle eklenmedi —
+kullanıcı özellikle komut istedi, mevcut haliyle sadece `/auto-perm`
+üzerinden kontrol ediliyor. `GetX`/`SetX` App metodları zaten var, ileride
+bir UI toggle eklemek gerekirse küçük bir iş.
+
+**Doğrulama:** `go build/vet/test -race ./...` tüm repo yeşil. Yeni
+testler: `selfchat_permission_test.go` (drain loop'un auto-approve/soru-
+sorma/gönderme-hatası/zaman-aşımı dallarının hepsi, `isAffirmativeAnswer`,
+her iki yüzeyin await+route round-trip'i), `whatsapp_test.go`/
+`telegram_test.go`'ya `/auto-perm on|off|status` komut testleri eklendi.
+**Gerçek bir WhatsApp/Telegram izin akışı bu ortamda canlı test
+edilemedi** (ne gerçek bot ne telefon var) — kullanıcı kendi Pi'sinde
+deneyecek.
+
+Henüz commit edilmedi.
+
+---
+
 # Session 21 (2026-08-20) — Telegram bot desteği: WhatsApp self-chat asistanının Telegram karşılığı baştan sona kuruldu
 
 Kullanıcının isteği: "WhatsApp güzel oldu, buna bir de Telegram desteği

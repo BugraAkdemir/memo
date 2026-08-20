@@ -238,6 +238,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         // Drives whether the Swarm tab is shown at all — a stale answer
         // here silently hands that decision to the local mirror pref.
         ref.invalidate(remoteAccessProvider);
+        ref.invalidate(whatsAppSelfChatAssistantProvider);
       }
     });
 

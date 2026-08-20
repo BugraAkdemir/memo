@@ -59,6 +59,15 @@ type Client struct {
 	startMu      sync.Mutex
 	stopCh       chan struct{}
 	stopOnce     sync.Once
+
+	// selfSentIDs remembers message IDs this client itself just sent via
+	// SendMessage, so a caller reacting to incoming self-chat messages (see
+	// OwnJID's doc comment) can recognize and skip its own outgoing replies
+	// instead of treating them as a new incoming command — regardless of
+	// whether the multi-device sync protocol ever actually echoes a send
+	// back through the event stream, this is a correct guard either way.
+	selfSentMu  sync.Mutex
+	selfSentIDs map[string]time.Time
 }
 
 // HasRegisteredDevice reports whether a paired WhatsApp session already exists
@@ -313,6 +322,8 @@ func (c *Client) SendMessage(ctx context.Context, jid, text string) (string, err
 		return "", fmt.Errorf("whatsapp: send: %w", err)
 	}
 
+	c.markSelfSent(resp.ID)
+
 	if store != nil {
 		myJID := ""
 		if wa.Store != nil {
@@ -439,6 +450,55 @@ func (c *Client) GetProfilePicture(ctx context.Context, jid string, preview bool
 		logx.Printf("WhatsApp: cache avatar write error: %v", err)
 	}
 	return data, nil
+}
+
+// OwnJID returns the connected account's own JID in bare (non-AD) form —
+// the form a message's ChatJID carries for the "Message Yourself" self-chat.
+// wa.Store.ID itself is this device's own AD-form JID (carries this
+// device's own :N suffix, e.g. "9055...:42@s.whatsapp.net") and never
+// equals any Chat JID, self-chat included — callers wanting to recognize
+// the self-chat must compare against this, not Store.ID directly. Returns
+// "" if not connected/logged in yet.
+func (c *Client) OwnJID() string {
+	c.startMu.Lock()
+	wa := c.waClient
+	c.startMu.Unlock()
+	if wa == nil || wa.Store == nil || wa.Store.ID == nil {
+		return ""
+	}
+	return wa.Store.ID.ToNonAD().String()
+}
+
+// markSelfSent records a just-sent message's ID so IsSelfSentRecently can
+// recognize it later. Bounded opportunistically rather than via a separate
+// sweep goroutine — this map only ever holds a handful of short-lived IDs.
+func (c *Client) markSelfSent(id string) {
+	if id == "" {
+		return
+	}
+	c.selfSentMu.Lock()
+	defer c.selfSentMu.Unlock()
+	if c.selfSentIDs == nil {
+		c.selfSentIDs = make(map[string]time.Time)
+	}
+	c.selfSentIDs[id] = time.Now()
+	if len(c.selfSentIDs) > 64 {
+		cutoff := time.Now().Add(-5 * time.Minute)
+		for k, t := range c.selfSentIDs {
+			if t.Before(cutoff) {
+				delete(c.selfSentIDs, k)
+			}
+		}
+	}
+}
+
+// IsSelfSentRecently reports whether id was sent by this client itself via
+// SendMessage within roughly the last 5 minutes.
+func (c *Client) IsSelfSentRecently(id string) bool {
+	c.selfSentMu.Lock()
+	defer c.selfSentMu.Unlock()
+	_, ok := c.selfSentIDs[id]
+	return ok
 }
 
 // sanitizeJID turns a JID into a filesystem-safe cache filename.

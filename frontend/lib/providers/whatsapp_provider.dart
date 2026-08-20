@@ -63,6 +63,54 @@ class WhatsAppChatModeNotifier extends StateNotifier<bool> {
   }
 }
 
+// ─── Self-Chat Assistant ───────────────────────────────────────
+//
+// Whether Memo auto-replies to messages in the user's own WhatsApp
+// "Message Yourself" chat — a persisted (config.yaml) setting, distinct
+// from WhatsAppChatModeNotifier above (that one is ephemeral and means
+// "chat with Memo about your WhatsApp from inside Memo's own UI"; this one
+// means "your WhatsApp self-chat becomes another way to talk to Memo").
+// Follows the same AsyncNotifierProvider + auth-gate-guard + optimistic-
+// toggle shape as memoryEnabledProvider (settings_provider.dart), since
+// it's the same kind of thing: a real config value that must be fetched on
+// load, not just an in-memory flag that always starts at a known default.
+
+final whatsAppSelfChatAssistantProvider =
+    AsyncNotifierProvider<WhatsAppSelfChatAssistantNotifier, bool>(
+      WhatsAppSelfChatAssistantNotifier.new,
+    );
+
+class WhatsAppSelfChatAssistantNotifier extends AsyncNotifier<bool> {
+  // See MemoryEnabledNotifier's identical guard for why this exists: without
+  // it, two toggle() calls fired before the first resolves both negate the
+  // same stale starting value and land on the same end state instead of
+  // toggling twice.
+  bool _toggling = false;
+
+  @override
+  Future<bool> build() async {
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return false;
+    return ref.read(apiClientProvider).getWhatsAppSelfChatAssistant();
+  }
+
+  Future<void> toggle() async {
+    if (_toggling) return;
+    _toggling = true;
+    final current = state.valueOrNull ?? false;
+    final next = !current;
+    state = AsyncData(next);
+    try {
+      await ref.read(apiClientProvider).setWhatsAppSelfChatAssistant(next);
+    } catch (e) {
+      state = AsyncData(current);
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: ${L10n.t('whatsapp_self_chat_assistant_toggle_failed')} (${FriendlyError.describeGeneric(e)})';
+    } finally {
+      _toggling = false;
+    }
+  }
+}
+
 class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
   final MemoApiClient _api;
   final Ref _ref;

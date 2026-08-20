@@ -236,10 +236,11 @@ type App struct {
 	ngrokServer         *ngrok.Manager
 	tailscaleTunnel     *tunnel.Tailscale
 
-	whatsappChatMode  atomic.Bool
-	whatsAppSessionID string     // dedicated session for WhatsApp chat context
-	waMu              sync.Mutex // protects waClient, waMsgStore initialization
-	streamMu          sync.Mutex // prevents concurrent stream goroutines (double-send)
+	whatsappChatMode    atomic.Bool
+	whatsAppSessionID   string     // dedicated session for WhatsApp chat context
+	waSelfChatSessionID string     // dedicated session for the WhatsApp self-chat assistant (see runWhatsAppIntentLoop)
+	waMu                sync.Mutex // protects waClient, waMsgStore initialization
+	streamMu            sync.Mutex // prevents concurrent stream goroutines (double-send)
 
 	// cliJobs tracks in-flight CLI-backed background streams (see
 	// cli_stream.go), keyed by chat id. Deliberately separate from streamMu

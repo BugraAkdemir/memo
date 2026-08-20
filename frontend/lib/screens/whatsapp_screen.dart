@@ -348,6 +348,8 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
   }
 
   Widget _buildChatListHeader(ThemeColors c, WhatsAppStatus status) {
+    final selfChatAssistantEnabled =
+        ref.watch(whatsAppSelfChatAssistantProvider).valueOrNull ?? false;
     return Container(
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -394,6 +396,26 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                 constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
               ),
             ),
+          // Self-chat assistant toggle — see whatsapp_provider.dart's
+          // whatsAppSelfChatAssistantProvider doc comment for what this
+          // actually does (Memo auto-replies to the user's own "Message
+          // Yourself" WhatsApp chat as another way to talk to it).
+          Tooltip(
+            message: selfChatAssistantEnabled
+                ? L10n.t('whatsapp_self_chat_assistant_on_tooltip')
+                : L10n.t('whatsapp_self_chat_assistant_off_tooltip'),
+            child: IconButton(
+              icon: Icon(
+                Icons.smart_toy_outlined,
+                size: 16,
+                color: selfChatAssistantEnabled ? MemoTheme.accent : c.textDim,
+              ),
+              onPressed: () =>
+                  ref.read(whatsAppSelfChatAssistantProvider.notifier).toggle(),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            ),
+          ),
           // Logout button
           Tooltip(
             message: L10n.t('logout'),

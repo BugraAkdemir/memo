@@ -131,6 +131,18 @@ func (m *Manager) NewChat() string {
 	return s.ID
 }
 
+// NewBackgroundChat creates a new session without switching the active
+// chat — for sessions a background process needs (like the WhatsApp
+// self-chat bridge), where hijacking whatever chat the user currently has
+// open in the UI would be a jarring, unrelated side effect of a message
+// arriving on a completely different surface.
+func (m *Manager) NewBackgroundChat(title string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.newSession(title)
+	return s.ID
+}
+
 func (m *Manager) NewAgentChat(projectPath string) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()

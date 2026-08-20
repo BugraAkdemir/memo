@@ -206,6 +206,13 @@ type WhatsAppConfig struct {
 	DataDir        string `yaml:"data_dir" json:"data_dir"`
 	AutoIndex      bool   `yaml:"auto_index" json:"auto_index"`
 	MaxHistoryDays int    `yaml:"max_history_days" json:"max_history_days"`
+	// SelfChatAssistant makes Memo auto-reply, as a normal chat turn, to
+	// messages arriving in the user's own WhatsApp "Message Yourself" chat
+	// — turning that chat into another interface to talk to Memo. Opt-in
+	// (default false): unlike read-only features, this one autonomously
+	// sends WhatsApp messages on every self-chat turn, so an existing user
+	// upgrading must not have it silently switched on underneath them.
+	SelfChatAssistant bool `yaml:"self_chat_assistant" json:"self_chat_assistant"`
 }
 
 // DevGatewayConfig controls the OpenAI/Anthropic-compatible local API
@@ -632,10 +639,11 @@ func Default() *AppConfig {
 			IntervalMessages: 50,
 		},
 		WhatsApp: WhatsAppConfig{
-			Enabled:        true,
-			DataDir:        "./data/whatsapp",
-			AutoIndex:      true,
-			MaxHistoryDays: 7,
+			Enabled:           true,
+			DataDir:           "./data/whatsapp",
+			AutoIndex:         true,
+			MaxHistoryDays:    7,
+			SelfChatAssistant: false,
 		},
 		Proactive: ProactiveConfig{
 			Enabled: true,

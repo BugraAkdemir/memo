@@ -2008,6 +2008,18 @@ class MemoApiClient {
     await _dio.post('/api/whatsapp/chat-mode', data: {'enabled': enabled});
   }
 
+  /// Get whether the WhatsApp self-chat assistant is enabled — Memo
+  /// auto-replying to messages in the user's own "Message Yourself" chat.
+  Future<bool> getWhatsAppSelfChatAssistant() async {
+    final res = await _dio.get('/api/whatsapp/self-chat-assistant');
+    return _guard<Map<String, dynamic>>(res.data)['enabled'] == true;
+  }
+
+  /// Set whether the WhatsApp self-chat assistant is enabled.
+  Future<void> setWhatsAppSelfChatAssistant(bool enabled) async {
+    await _dio.put('/api/whatsapp/self-chat-assistant', data: {'enabled': enabled});
+  }
+
   /// Send a message in WhatsApp chat mode (streaming SSE).
   /// Yields parsed [StreamChunk]s — agent tool events arrive with
   /// finishReason == 'agent_event' (their content is JSON), real reply text

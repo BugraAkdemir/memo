@@ -280,6 +280,11 @@ class L10n {
     'connections_title': 'Bağlantılar',
     'connections_status_connected': 'Bağlı',
     'connections_status_not_connected': 'Bağlı değil',
+    'whatsapp_self_chat_assistant_on_tooltip':
+        'Memo Asistanı: Açık — kendine attığın WhatsApp mesajlarını Memo yanıtlıyor',
+    'whatsapp_self_chat_assistant_off_tooltip':
+        'Memo Asistanı: Kapalı — kendine mesaj sekmesini Memo ile konuşmak için kullanmak üzere aç',
+    'whatsapp_self_chat_assistant_toggle_failed': 'Memo Asistanı ayarı değiştirilemedi',
     'tab_report_bug': 'Hata Bildir',
     'tab_dream': 'Dream',
     'dream_subtitle':
@@ -2142,6 +2147,11 @@ class L10n {
     'connections_title': 'Connections',
     'connections_status_connected': 'Connected',
     'connections_status_not_connected': 'Not connected',
+    'whatsapp_self_chat_assistant_on_tooltip':
+        'Memo Assistant: On — Memo replies to WhatsApp messages you send yourself',
+    'whatsapp_self_chat_assistant_off_tooltip':
+        'Memo Assistant: Off — turn on to use your "Message Yourself" chat to talk to Memo',
+    'whatsapp_self_chat_assistant_toggle_failed': 'Could not change the Memo Assistant setting',
     'tab_report_bug': 'Report Bug',
     'tab_dream': 'Dream',
     'dream_subtitle':

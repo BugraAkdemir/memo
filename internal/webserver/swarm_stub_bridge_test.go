@@ -433,6 +433,8 @@ func (b *swarmStubBridge) SetWhatsAppChatMode(enabled bool)                     
 func (b *swarmStubBridge) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api.StreamChunk {
 	return b.SendMessageStream(ctx, userMsg)
 }
+func (b *swarmStubBridge) GetWhatsAppSelfChatAssistant() bool                       { return false }
+func (b *swarmStubBridge) SetWhatsAppSelfChatAssistant(enabled bool) error          { return nil }
 func (b *swarmStubBridge) ExportData(includeModels bool) ([]byte, error)            { return nil, nil }
 func (b *swarmStubBridge) ImportData(data []byte) error                             { return nil }
 func (b *swarmStubBridge) WipeAllData() error                                       { return nil }

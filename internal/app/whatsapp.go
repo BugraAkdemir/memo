@@ -13,6 +13,7 @@ import (
 	"memo/internal/agent"
 	"memo/internal/agent/tools"
 	"memo/internal/api"
+	"memo/internal/config"
 	"memo/internal/provider"
 	"memo/internal/whatsapp"
 )
@@ -106,8 +107,105 @@ func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
 			goRecover("processMessageIntent", func() {
 				a.processMessageIntent(msg.Text, "whatsapp", msg.SenderName, msg.Timestamp)
 			})
+			if a.shouldAutoReplyToWhatsApp(msg) {
+				goRecover("whatsAppSelfChatReply", func() {
+					a.handleWhatsAppSelfChatMessage(msg)
+				})
+			}
 		}
 	}
+}
+
+// shouldAutoReplyToWhatsApp reports whether msg is a genuine incoming turn
+// in the user's own "Message Yourself" WhatsApp chat that the self-chat
+// assistant (config.WhatsApp.SelfChatAssistant) should reply to.
+//
+// A self-chat message is always FromMe (only the account owner can write
+// there), so FromMe alone can't distinguish it from "I sent someone else a
+// message" — the real signal is ChatJID matching the account's own bare
+// JID (see Client.OwnJID's doc comment on why that's not wa.Store.ID
+// directly). IsSelfSentRecently additionally guards against treating
+// Memo's own just-sent reply as a new incoming command, regardless of
+// whether the underlying protocol ever actually echoes a send back through
+// the event stream.
+func (a *App) shouldAutoReplyToWhatsApp(msg whatsapp.Message) bool {
+	if !a.GetWhatsAppSelfChatAssistant() {
+		return false
+	}
+	if !msg.FromMe || strings.TrimSpace(msg.Text) == "" {
+		return false
+	}
+	if a.waClient == nil {
+		return false
+	}
+	ownJID := a.waClient.OwnJID()
+	if ownJID == "" || msg.ChatJID != ownJID {
+		return false
+	}
+	return !a.waClient.IsSelfSentRecently(msg.ID)
+}
+
+// handleWhatsAppSelfChatMessage generates a normal chat reply to a
+// self-chat message and sends it back to the same chat, so the user's own
+// "Message Yourself" WhatsApp conversation works as another way to talk to
+// Memo. Runs in its own dedicated, background session (created without
+// switching the user's active chat — see NewBackgroundChat's doc comment)
+// so it never collides with or hijacks whatever chat is open in the UI.
+//
+// Routes through SendMessageStreamTo — the same full pipeline (memory,
+// intent, mood, session recording) normal chat uses — rather than a raw
+// LLM call, so a self-chat conversation gets the same assistant behavior
+// as chatting inside Memo itself.
+func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return
+	}
+
+	a.waMu.Lock()
+	if a.waSelfChatSessionID == "" || !sm.SessionExists(a.waSelfChatSessionID) {
+		a.waSelfChatSessionID = sm.NewBackgroundChat("WhatsApp Self-Chat")
+	}
+	chatID := a.waSelfChatSessionID
+	a.waMu.Unlock()
+	if chatID == "" {
+		logx.Printf("WhatsApp self-chat: could not create session, dropping message")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(a.lifecycleCtx, 120*time.Second)
+	defer cancel()
+
+	reply := drainToReply(a.SendMessageStreamTo(ctx, chatID, msg.Text))
+	reply = strings.TrimSpace(reply)
+	if reply == "" {
+		return
+	}
+
+	if _, err := a.WhatsAppSend(ctx, msg.ChatJID, reply); err != nil {
+		logx.Printf("WhatsApp self-chat: send reply error: %v", err)
+	}
+}
+
+// GetWhatsAppSelfChatAssistant reports whether Memo auto-replies to
+// messages in the user's own WhatsApp "Message Yourself" chat.
+func (a *App) GetWhatsAppSelfChatAssistant() bool {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg.WhatsApp.SelfChatAssistant
+}
+
+// SetWhatsAppSelfChatAssistant toggles the self-chat assistant, persisting
+// to config.yaml.
+func (a *App) SetWhatsAppSelfChatAssistant(enabled bool) error {
+	a.cfgMu.Lock()
+	a.cfg.WhatsApp.SelfChatAssistant = enabled
+	a.cfgMu.Unlock()
+	if err := config.Save(a.cfg); err != nil {
+		return err
+	}
+	logx.Printf("WhatsApp self-chat assistant: enabled=%v", enabled)
+	return nil
 }
 
 // StartWhatsApp connects to WhatsApp Web.
@@ -128,9 +226,13 @@ func (a *App) StartWhatsApp(ctx context.Context) error {
 func (a *App) StopWhatsApp() {
 	a.waMu.Lock()
 	defer a.waMu.Unlock()
-	// Reset the dedicated WhatsApp chat session so the next connect starts a
-	// fresh session instead of silently reusing (or leaking) the old one.
-	defer func() { a.whatsAppSessionID = "" }()
+	// Reset the dedicated WhatsApp chat/self-chat sessions so the next
+	// connect starts fresh instead of silently reusing (or leaking) the old
+	// ones.
+	defer func() {
+		a.whatsAppSessionID = ""
+		a.waSelfChatSessionID = ""
+	}()
 	if a.waClient != nil {
 		a.waClient.Stop()
 	}
@@ -141,8 +243,12 @@ func (a *App) LogoutWhatsApp() error {
 	a.waMu.Lock()
 	defer a.waMu.Unlock()
 	// A logout pairs a (possibly different) account next time, so the
-	// dedicated WhatsApp chat session must not be reused across accounts.
-	defer func() { a.whatsAppSessionID = "" }()
+	// dedicated WhatsApp chat/self-chat sessions must not be reused across
+	// accounts.
+	defer func() {
+		a.whatsAppSessionID = ""
+		a.waSelfChatSessionID = ""
+	}()
 	if a.waClient == nil {
 		return nil
 	}

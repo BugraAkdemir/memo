@@ -278,6 +278,8 @@ type FullBridge interface {
 	GetWhatsAppChatMode() bool
 	SetWhatsAppChatMode(enabled bool)
 	WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api.StreamChunk
+	GetWhatsAppSelfChatAssistant() bool
+	SetWhatsAppSelfChatAssistant(enabled bool) error
 
 	// Backup
 	ExportData(includeModels bool) ([]byte, error)

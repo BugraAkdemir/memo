@@ -310,6 +310,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/whatsapp/stats", s.handleWhatsAppStats)
 	route("/api/whatsapp/chat-mode", s.handleWhatsAppChatMode)
 	route("/api/whatsapp/chat-stream", s.handleWhatsAppChatStream)
+	route("/api/whatsapp/self-chat-assistant", s.handleWhatsAppSelfChatAssistant)
 	route("/api/export", s.handleExport)
 
 	// Skills

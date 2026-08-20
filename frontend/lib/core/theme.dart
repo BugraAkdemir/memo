@@ -185,6 +185,12 @@ class MemoTheme {
   static const double radiusMd = 14;
   static const double radiusLg = 20;
 
+  // Below this width, screens with a fixed-width sidebar (ChatSidebar,
+  // _AgentSidebar) move it into a Drawer instead of showing it inline, and
+  // AppShell hides its own NavRail in favor of a hamburger-triggered
+  // drawer — see app_shell.dart/chat_screen.dart/agent_screen.dart.
+  static const double mobileNavBreakpoint = 600;
+
   // ─── Shadows (deep, for a dark mid-tone surface) ──────────────
   static List<BoxShadow> get shadowSm => [
         const BoxShadow(

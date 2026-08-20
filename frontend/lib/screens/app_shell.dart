@@ -30,6 +30,7 @@ import '../widgets/engine_strip.dart';
 import '../widgets/launchpad_view.dart';
 import '../widgets/spotlight_tour.dart';
 import '../widgets/glass_surface.dart';
+import '../widgets/chat_sidebar.dart';
 import '../widgets/agent/permission_dialog.dart';
 import 'chat_screen.dart';
 import 'agent_screen.dart';
@@ -77,6 +78,12 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   final _navKeys = List.generate(8, (_) => GlobalKey());
 
+  // Lets the floating mobile-nav button (see _buildMobileNavButton) open
+  // this Scaffold's drawer without needing a descendant BuildContext —
+  // it's built directly inside this same build() call, above the Scaffold
+  // itself, so Scaffold.of(context) isn't reachable from there.
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
   @override
   void initState() {
     super.initState();
@@ -109,6 +116,12 @@ class _AppShellState extends ConsumerState<AppShell> {
   Widget build(BuildContext context) {
     final locale = ref.watch(localeProvider);
     L10n.setLocale(locale);
+    // Below this width NavRail hides entirely (it never got a mobile
+    // breakpoint of its own — confirmed live to permanently eat ~19% of a
+    // 375px screen, labels truncating) in favor of a single hamburger
+    // opening _buildMobileNavDrawer(), reached from each screen's own menu
+    // button via the ancestor Scaffold this build() returns below.
+    final narrow = MediaQuery.sizeOf(context).width < MemoTheme.mobileNavBreakpoint;
 
     // Global error toast: any provider can report a user-facing error here and
     // it will be shown regardless of which screen is currently active.
@@ -243,7 +256,9 @@ class _AppShellState extends ConsumerState<AppShell> {
           ),
         },
         child: Scaffold(
+          key: _scaffoldKey,
           backgroundColor: MemoTheme.of(context).bgApp,
+          drawer: narrow ? _buildMobileNavDrawer() : null,
           body: Stack(
             children: [
               // Glass Light paints a soft gradient behind everything so the
@@ -259,7 +274,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                 ),
               Row(
                 children: [
-                  _buildNavRail(),
+                  if (!narrow) _buildNavRail(),
                   Expanded(
                     child: Column(
                       children: [
@@ -284,14 +299,26 @@ class _AppShellState extends ConsumerState<AppShell> {
                             ],
                           ),
                         ),
-                        EngineStrip(
-                          onOpenModels: () => _handleTabChange(2),
-                        ),
+                        // Hidden on mobile — the model/memory status strip
+                        // reads as clutter at phone width and its info is
+                        // secondary to the actual conversation there.
+                        if (!narrow)
+                          EngineStrip(
+                            onOpenModels: () => _handleTabChange(2),
+                          ),
                       ],
                     ),
                   ),
                 ],
               ),
+              // One floating hamburger, present on every screen regardless
+              // of whether that screen has its own header — Developer/
+              // Models/WhatsApp/Calendar/Routines/Swarm never had a menu
+              // button of their own (only Chat/Agent did, for their own
+              // sidebars), so without this a mobile user navigating there
+              // from _buildMobileNavDrawer had no way back. Replaces the
+              // per-screen menu buttons Chat/Agent used to render.
+              if (narrow) _buildMobileNavButton(),
               SetupWizardOverlay(),
               if (_showLaunchpad) _buildLaunchpadOverlay(),
               if (_showTour) _buildTourOverlay(),
@@ -496,6 +523,185 @@ class _AppShellState extends ConsumerState<AppShell> {
         ),
         ),
       ),
+    );
+  }
+
+  // Mobile replacement for the always-inline NavRail above: one hamburger
+  // (opened from whichever screen's own menu button — Scaffold.of(context)
+  // finds this Scaffold's drawer since narrow-mode screens no longer wrap
+  // themselves in their own Scaffold) with two tabs. "Sohbetler" reuses the
+  // exact same ChatSidebar the desktop Chat tab shows inline — picking or
+  // creating a chat there also switches to the Chat tab and closes the
+  // drawer, since ChatSidebar only ever sets the globally-shared active
+  // chat and has no idea which tab is currently visible. "Menü" is
+  // NavRail's own destination list, laid out as a full-width, fully-labeled
+  // list instead of 9px icon labels — the thing that actually needed
+  // fixing (NavRail was never given a mobile breakpoint at all).
+  Widget _buildMobileNavDrawer() {
+    final onChatsTab = _currentIndex == 0 || _currentIndex == 1;
+    return Drawer(
+      width: 300,
+      child: SafeArea(
+        child: DefaultTabController(
+          length: 2,
+          initialIndex: onChatsTab ? 0 : 1,
+          child: Column(
+            children: [
+              TabBar(
+                labelColor: MemoTheme.accent,
+                unselectedLabelColor: MemoTheme.of(context).textDim,
+                indicatorColor: MemoTheme.accent,
+                tabs: [
+                  Tab(text: L10n.t('mobile_nav_chats_tab')),
+                  Tab(text: L10n.t('mobile_nav_menu_tab')),
+                ],
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    ChatSidebar(
+                      onChatSelected: () {
+                        _handleTabChange(0);
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                    _buildMobileNavMenu(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileNavButton() {
+    final c = MemoTheme.of(context);
+    return Positioned(
+      top: 12,
+      left: 12,
+      child: SafeArea(
+        bottom: false,
+        child: Material(
+          color: c.bgPanel,
+          shape: const CircleBorder(),
+          elevation: 2,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => _scaffoldKey.currentState?.openDrawer(),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Icon(Icons.menu, size: 20, color: c.textMain),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _selectMobileTab(int index) {
+    _handleTabChange(index);
+    Navigator.of(context).pop();
+  }
+
+  Widget _buildMobileNavMenu() {
+    final c = MemoTheme.of(context);
+
+    Widget item({
+      required IconData icon,
+      required IconData activeIcon,
+      required String label,
+      required bool isActive,
+      required VoidCallback onTap,
+    }) {
+      return ListTile(
+        leading: Icon(isActive ? activeIcon : icon, color: isActive ? MemoTheme.accent : c.textDim),
+        title: Text(
+          label,
+          style: TextStyle(
+            color: isActive ? MemoTheme.accent : c.textMain,
+            fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+        selected: isActive,
+        selectedTileColor: MemoTheme.accentMuted,
+        onTap: onTap,
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        item(
+          icon: Icons.chat_bubble_outline,
+          activeIcon: Icons.chat_bubble,
+          label: L10n.t('chats'),
+          isActive: _currentIndex == 0,
+          onTap: () => _selectMobileTab(0),
+        ),
+        item(
+          icon: Icons.smart_toy_outlined,
+          activeIcon: Icons.smart_toy,
+          label: 'Ajan',
+          isActive: _currentIndex == 1,
+          onTap: () => _selectMobileTab(1),
+        ),
+        item(
+          icon: Icons.memory_outlined,
+          activeIcon: Icons.memory,
+          label: L10n.t('model_store'),
+          isActive: _currentIndex == 2,
+          onTap: () => _selectMobileTab(2),
+        ),
+        item(
+          icon: Icons.message_outlined,
+          activeIcon: Icons.message,
+          label: 'WhatsApp',
+          isActive: _currentIndex == 3,
+          onTap: () => _selectMobileTab(3),
+        ),
+        item(
+          icon: Icons.calendar_month_outlined,
+          activeIcon: Icons.calendar_month,
+          label: 'Takvim',
+          isActive: _currentIndex == 4,
+          onTap: () => _selectMobileTab(4),
+        ),
+        item(
+          icon: Icons.schedule_outlined,
+          activeIcon: Icons.schedule,
+          label: L10n.t('routines_title'),
+          isActive: _currentIndex == 5,
+          onTap: () => _selectMobileTab(5),
+        ),
+        item(
+          icon: Icons.code_outlined,
+          activeIcon: Icons.code,
+          label: L10n.t('tab_dev_gateway'),
+          isActive: _currentIndex == 6,
+          onTap: () => _selectMobileTab(6),
+        ),
+        if (_showSwarmNav())
+          item(
+            icon: Icons.hub_outlined,
+            activeIcon: Icons.hub,
+            label: L10n.t('tab_swarm'),
+            isActive: _currentIndex == 7,
+            onTap: () => _selectMobileTab(7),
+          ),
+        const Divider(height: 24),
+        item(
+          icon: Icons.settings_outlined,
+          activeIcon: Icons.settings,
+          label: L10n.t('settings'),
+          isActive: false,
+          onTap: () {
+            Navigator.of(context).pop();
+            showDialog(context: context, builder: (context) => SettingsDialog());
+          },
+        ),
+      ],
     );
   }
 

@@ -8,7 +8,13 @@ import '../providers/chat_provider.dart';
 
 /// Chat sidebar — chat list, new chat, incognito toggle.
 class ChatSidebar extends ConsumerWidget {
-   const ChatSidebar({super.key});
+  const ChatSidebar({super.key, this.onChatSelected});
+
+  /// Called after a chat is opened or created — used by AppShell's mobile
+  /// drawer to also switch to the Chat tab and close itself, since this
+  /// widget only ever sets the globally-shared active chat and has no idea
+  /// which tab (if any) is currently showing it.
+  final VoidCallback? onChatSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -52,6 +58,7 @@ class ChatSidebar extends ConsumerWidget {
                       final notifier = ref.read(chatListProvider.notifier);
                       final id = await notifier.createNew();
                       ref.read(activeChatIdProvider.notifier).switchTo(id);
+                      onChatSelected?.call();
                     },
                   ),
                 ),
@@ -134,6 +141,7 @@ class ChatSidebar extends ConsumerWidget {
                             .read(activeChatIdProvider.notifier)
                             .switchTo(id);
                         ref.read(cliJustFinishedChatsProvider.notifier).markSeen(id);
+                        onChatSelected?.call();
                       },
                       onDelete: (id) async {
                         ref

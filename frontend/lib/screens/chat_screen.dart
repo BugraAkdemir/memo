@@ -30,16 +30,14 @@ class ChatScreen extends ConsumerWidget {
   // leaves too little room for a usable chat area — confirmed live at a
   // 375px phone width, where it squeezed _ChatContent's available width down
   // to ~15px and threw a 189px RenderFlex overflow. Below the breakpoint the
-  // sidebar moves into a Drawer (opened via a menu button in _ChatTopBar)
-  // instead of sitting inline; NavRail (app_shell.dart, ~72px, icon-only) is
-  // left as-is since it's already narrow enough not to need this.
-  static const double _sidebarBreakpoint = 600;
+  // sidebar moves into AppShell's shared mobile drawer (opened via a menu
+  // button in _ChatTopBar) instead of sitting inline.
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final narrow = constraints.maxWidth < _sidebarBreakpoint;
+        final narrow = constraints.maxWidth < MemoTheme.mobileNavBreakpoint;
         final isIncognito = ref.watch(incognitoProvider);
 
         final content = Container(
@@ -58,23 +56,16 @@ class ChatScreen extends ConsumerWidget {
           child: _ChatContent(showMenuButton: narrow),
         );
 
+        // Narrow mode used to wrap content in its own Scaffold+Drawer here
+        // for ChatSidebar — removed in favor of AppShell's single shared
+        // mobile drawer (Sohbetler/Menü tabs), which also sidesteps a
+        // Scaffold-always-paints-its-own-opaque-background seam bug a
+        // second nested Scaffold used to cause against the Glass Light
+        // gradient (see the Session 19 fix this replaced). _ChatTopBar's
+        // menu button still opens a drawer via Scaffold.of(context) — it
+        // now finds AppShell's ancestor Scaffold instead of a local one.
         if (narrow) {
-          return Scaffold(
-            // Scaffold always paints its own opaque scaffoldBackgroundColor
-            // (bgApp, a flat solid) beneath its body regardless of the
-            // ancestor AppShell Stack's diagonal Glass Light gradient — the
-            // wide-mode Row branch below never wraps content in a Scaffold
-            // at all, so it shows the true gradient through content's own
-            // Colors.transparent. Narrow mode needs a Scaffold for the
-            // Drawer, which reintroduces that opaque layer and creates a
-            // visible flat-color-vs-gradient seam exactly at this screen's
-            // bounds — reported live as "two different backgrounds" on a
-            // phone. Matching content's own isGlass check here removes it.
-            backgroundColor:
-                MemoTheme.of(context).isGlass ? Colors.transparent : null,
-            drawer: Drawer(child: SafeArea(child: ChatSidebar())),
-            body: content,
-          );
+          return content;
         }
 
         return Row(
@@ -880,6 +871,54 @@ class _ChatTopBar extends ConsumerWidget {
     // live) once the sidebar fix (above) gave _ChatContent enough width for
     // the topbar's own overflow to surface on its own instead of being
     // swallowed by the sidebar's much larger one.
+    // Extracted out of the desktop IconButtons below so the mobile
+    // overflow sheet's ListTiles can call the exact same logic instead of
+    // duplicating the try/catch + SnackBar handling.
+    Future<void> handleUndo() async {
+      try {
+        await ref.read(apiClientProvider).undoAgentEdit();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(L10n.t('agent_undone'))),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(L10n.t('agent_undo_failed', {'e': e.toString()})), backgroundColor: MemoTheme.red),
+          );
+        }
+      }
+    }
+
+    Future<void> handleExport() async {
+      try {
+        final api = ref.read(apiClientProvider);
+        final md = await api.exportChat();
+        if (md.isEmpty || !context.mounted) return;
+        final path = await FilePicker.platform.saveFile(
+          dialogTitle: L10n.t('export_chat'),
+          fileName: 'chat_export.md',
+          type: FileType.custom,
+          allowedExtensions: ['md'],
+        );
+        if (path != null) {
+          await File(path).writeAsString(md);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(L10n.t('chat_exported', {'path': path}))),
+            );
+          }
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(L10n.t('export_failed', {'e': e.toString()}))),
+          );
+        }
+      }
+    }
+
     final trailingActions = <Widget>[
       // Live token counter (Claude-Code style)
       const _TokenCounter(),
@@ -907,22 +946,7 @@ class _ChatTopBar extends ConsumerWidget {
           icon: Icon(Icons.undo, size: 20),
           color: MemoTheme.of(context).textDim,
           tooltip: L10n.t('agent_undo'),
-          onPressed: () async {
-            try {
-              await ref.read(apiClientProvider).undoAgentEdit();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(L10n.t('agent_undone'))),
-                );
-              }
-            } catch (e) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(L10n.t('agent_undo_failed', {'e': e.toString()})), backgroundColor: MemoTheme.red),
-                );
-              }
-            }
-          },
+          onPressed: handleUndo,
         ),
 
       // Agent mode toggle — was previously only reachable from the
@@ -980,35 +1004,104 @@ class _ChatTopBar extends ConsumerWidget {
         icon: Icon(Icons.file_download_outlined, size: 20),
         color: MemoTheme.of(context).textDim,
         tooltip: L10n.t('export_chat'),
-        onPressed: () async {
-          try {
-            final api = ref.read(apiClientProvider);
-            final md = await api.exportChat();
-            if (md.isEmpty || !context.mounted) return;
-            final path = await FilePicker.platform.saveFile(
-              dialogTitle: L10n.t('export_chat'),
-              fileName: 'chat_export.md',
-              type: FileType.custom,
-              allowedExtensions: ['md'],
-            );
-            if (path != null) {
-              await File(path).writeAsString(md);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(L10n.t('chat_exported', {'path': path}))),
-                );
-              }
-            }
-          } catch (e) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(L10n.t('export_failed', {'e': e.toString()}))),
-              );
-            }
-          }
-        },
+        onPressed: handleExport,
       ),
     ];
+
+    // Mobile overflow sheet: everything from trailingActions except the
+    // model dropdown (kept directly visible — the single most-used action)
+    // collapses here as full-width, fully-labeled rows instead of a
+    // horizontally-scrolling icon strip. Rebuilds handleUndo/handleExport's
+    // sibling toggles as ListTiles rather than reusing the IconButtons
+    // above verbatim, since a tap here must also close the sheet first.
+    void openMobileActionsSheet() {
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: c.bgPanel,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(MemoTheme.radiusLg)),
+        ),
+        builder: (sheetContext) {
+          Widget row({
+            required IconData icon,
+            required String label,
+            required bool isActive,
+            required VoidCallback onTap,
+          }) {
+            return ListTile(
+              leading: Icon(icon, color: isActive ? MemoTheme.green : c.textDim),
+              title: Text(
+                label,
+                style: TextStyle(color: isActive ? MemoTheme.green : c.textMain),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                onTap();
+              },
+            );
+          }
+
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 8),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Align(alignment: Alignment.centerLeft, child: _TokenCounter()),
+                ),
+                if (isCLIChat) ...[
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(children: [_CLIWorkdirBadge(), _CLIModelBadge()]),
+                  ),
+                  const SizedBox(height: 4),
+                ],
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Align(alignment: Alignment.centerLeft, child: _QuickEffortSelector()),
+                ),
+                if (isAgentEnabled)
+                  row(
+                    icon: Icons.undo,
+                    label: L10n.t('agent_undo'),
+                    isActive: false,
+                    onTap: handleUndo,
+                  ),
+                if (!isCLIChat)
+                  row(
+                    icon: Icons.smart_toy,
+                    label: isAgentEnabled ? L10n.t('agent_mode_on') : L10n.t('agent_mode_off'),
+                    isActive: isAgentEnabled,
+                    onTap: () => ref.read(agentEnabledProvider.notifier).setEnabled(!isAgentEnabled),
+                  ),
+                if (!isCLIChat)
+                  row(
+                    icon: Icons.travel_explore,
+                    label: webSearchOn ? L10n.t('web_search_on') : L10n.t('web_search_off'),
+                    isActive: webSearchOn,
+                    onTap: () => ref.read(webSearchModeProvider.notifier).toggle(),
+                  ),
+                if (!isCLIChat && waStatus.asData?.value.connected == true)
+                  row(
+                    icon: Icons.chat,
+                    label: isWhatsAppMode ? L10n.t('whatsapp_mode_on') : L10n.t('whatsapp_mode_off'),
+                    isActive: isWhatsAppMode,
+                    onTap: () => ref.read(whatsAppChatModeProvider.notifier).toggle(),
+                  ),
+                row(
+                  icon: Icons.file_download_outlined,
+                  label: L10n.t('export_chat'),
+                  isActive: false,
+                  onTap: handleExport,
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
+    }
 
     return Container(
       height: 56,
@@ -1029,16 +1122,11 @@ class _ChatTopBar extends ConsumerWidget {
             ),
       child: Row(
         children: [
-          if (showMenuButton) ...[
-            IconButton(
-              icon: Icon(Icons.menu, color: c.textMain),
-              tooltip: L10n.t('chat_open_sidebar'),
-              onPressed: () => Scaffold.of(context).openDrawer(),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-            ),
-            SizedBox(width: 12),
-          ],
+          // AppShell's own floating hamburger (present on every screen, not
+          // just this one) sits on top of this corner — reserve the same
+          // space its predecessor here used to occupy so the title doesn't
+          // render underneath it.
+          if (showMenuButton) const SizedBox(width: 36),
           // Title
           Expanded(
             child: Row(
@@ -1197,21 +1285,21 @@ class _ChatTopBar extends ConsumerWidget {
           ),
 
           // Wide layout: natural width, exactly as before. Narrow layout
-          // (see showMenuButton/ChatScreen's breakpoint): the same actions
-          // wrapped in a horizontally-scrollable Flexible instead of
-          // unbounded Row children, so a full badge/toggle set can't
-          // overflow the topbar the way it did at 375px (confirmed live).
-          if (showMenuButton)
-            Flexible(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: trailingActions,
-                ),
-              ),
-            )
-          else
+          // (see showMenuButton/ChatScreen's breakpoint): a full badge/
+          // toggle set overflowed by 70px at 375px (confirmed live) even
+          // as a horizontal scroller — readable but still a cramped strip
+          // of unlabeled icons. Only the model dropdown (single most-used
+          // action) stays directly visible; everything else collapses
+          // behind one overflow icon opening openMobileActionsSheet's
+          // full-width, fully-labeled rows.
+          if (showMenuButton) ...[
+            const _QuickModelDropdown(),
+            IconButton(
+              icon: Icon(Icons.more_vert, color: c.textDim),
+              tooltip: L10n.t('more_actions'),
+              onPressed: openMobileActionsSheet,
+            ),
+          ] else
             ...trailingActions,
         ],
       ),

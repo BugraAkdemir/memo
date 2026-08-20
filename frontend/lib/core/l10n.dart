@@ -117,6 +117,8 @@ class L10n {
 
     // Sidebar / Chats
     'chat_open_sidebar': 'Sohbet listesini aç',
+    'mobile_nav_chats_tab': 'Sohbetler',
+    'mobile_nav_menu_tab': 'Menü',
     'new_chat': 'Yeni Sohbet',
     'chats': 'Sohbetler',
     'no_chats': 'Henüz sohbet yok',
@@ -137,6 +139,7 @@ class L10n {
     'welcome_title': 'Merhaba! 👋',
     'welcome_subtitle': 'Size nasıl yardımcı olabilirim?',
     'export_chat': 'Sohbeti Dışa Aktar',
+    'more_actions': 'Diğer İşlemler',
     'chat_exported': 'Chat kaydedildi: \${path}',
     'export_failed': 'Export failed: \${e}',
     'incognito_mode': 'Gizli Mod',
@@ -1983,6 +1986,8 @@ class L10n {
         'This model may be too large for your computer\'s memory — it could run slowly or fail to start at all. Consider a smaller model instead.',
 
     'chat_open_sidebar': 'Open chat list',
+    'mobile_nav_chats_tab': 'Chats',
+    'mobile_nav_menu_tab': 'Menu',
     'new_chat': 'New Chat',
     'chats': 'Chats',
     'no_chats': 'No chats yet',
@@ -2002,6 +2007,7 @@ class L10n {
     'welcome_title': 'Hello! 👋',
     'welcome_subtitle': 'How can I help you?',
     'export_chat': 'Export Chat',
+    'more_actions': 'More Actions',
     'chat_exported': 'Chat saved: \${path}',
     'export_failed': 'Export failed: \${e}',
     'incognito_mode': 'Incognito Mode',

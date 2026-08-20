@@ -16,45 +16,34 @@ import '../core/friendly_error.dart';
 class AgentScreen extends ConsumerWidget {
   const AgentScreen({super.key});
 
-  // Same reasoning (and the same 600px cut) as ChatScreen: _AgentSidebar is
-  // a fixed 260px, which together with AppShell's NavRail leaves the agent
-  // conversation almost nothing at a phone width.
-  static const double _sidebarBreakpoint = 600;
+  // Same reasoning (and the same breakpoint) as ChatScreen: _AgentSidebar
+  // is a fixed 260px, which together with AppShell's NavRail leaves the
+  // agent conversation almost nothing at a phone width. Below the
+  // breakpoint, chat selection moves into AppShell's shared mobile drawer
+  // (Sohbetler tab, same ChatSidebar the plain Chat tab uses) instead of
+  // this screen's own agent-only sidebar — one unified chat list reachable
+  // the same way regardless of which tab is active.
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Matches ChatScreen's content/Scaffold background handling: opaque
-        // bgApp in dark, transparent in Glass Light so the ancestor
-        // AppShell Stack's gradient shows through instead of a flat color
-        // that visibly seams against the gradient at this screen's edges.
+        // Matches ChatScreen's content background handling: opaque bgApp
+        // in dark, transparent in Glass Light so the ancestor AppShell
+        // Stack's gradient shows through instead of a flat color that
+        // visibly seams against the gradient at this screen's edges.
         final isGlass = MemoTheme.of(context).isGlass;
+        final narrow = constraints.maxWidth < MemoTheme.mobileNavBreakpoint;
         final content = Container(
           color: isGlass ? Colors.transparent : MemoTheme.of(context).bgApp,
-          child: _AgentContent(),
+          child: _AgentContent(narrow: narrow),
         );
 
-        if (constraints.maxWidth < _sidebarBreakpoint) {
-          return Scaffold(
-            backgroundColor: isGlass ? Colors.transparent : null,
-            drawer: Drawer(child: SafeArea(child: _AgentSidebar())),
-            body: Column(
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Builder(
-                    builder: (ctx) => IconButton(
-                      icon: const Icon(Icons.menu),
-                      tooltip: L10n.t('agent_open_chats'),
-                      onPressed: () => Scaffold.of(ctx).openDrawer(),
-                    ),
-                  ),
-                ),
-                Expanded(child: content),
-              ],
-            ),
-          );
+        // No local Scaffold/Drawer/menu button here anymore — AppShell's
+        // single floating hamburger (present on every screen) replaces it;
+        // _AgentTopBar's leadingGap above reserves the space it overlaps.
+        if (narrow) {
+          return content;
         }
 
         return Row(
@@ -220,6 +209,9 @@ class _AgentChatItem extends StatelessWidget {
 }
 
 class _AgentContent extends ConsumerWidget {
+  final bool narrow;
+  const _AgentContent({this.narrow = false});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final messagesAsync = ref.watch(messagesProvider);
@@ -284,7 +276,7 @@ class _AgentContent extends ConsumerWidget {
 
     return Column(
       children: [
-        _AgentTopBar(activeChat: activeChat!),
+        _AgentTopBar(activeChat: activeChat!, leadingGap: narrow),
         Expanded(
           child: messagesAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -330,7 +322,11 @@ class _AgentContent extends ConsumerWidget {
 
 class _AgentTopBar extends ConsumerWidget {
   final ChatSession activeChat;
-  const _AgentTopBar({required this.activeChat});
+  // Reserves room for AppShell's floating mobile hamburger (top:12,
+  // left:12), which sits on top of this bar's own top-left corner at
+  // narrow widths and would otherwise overlap the badge/title below.
+  final bool leadingGap;
+  const _AgentTopBar({required this.activeChat, this.leadingGap = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -343,6 +339,7 @@ class _AgentTopBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
+          if (leadingGap) const SizedBox(width: 36),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(

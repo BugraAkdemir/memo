@@ -284,6 +284,31 @@ class L10n {
     'whatsapp_self_chat_assistant_desc':
         'Açıkken, kendi numarana ("Kendine Mesaj") attığın her mesaja Memo normal bir sohbet turu gibi cevap verir.',
     'whatsapp_self_chat_assistant_toggle_failed': 'Memo Asistanı ayarı değiştirilemedi',
+    'tab_telegram': 'Telegram',
+    'telegram_tab_desc':
+        'Bir Telegram botu bağla, botuna attığın ilk mesaj seni sahibi olarak kilitler — ondan sonra bota yazdığın her şey Memo\'ya gider.',
+    'telegram_empty_title': 'Telegram',
+    'telegram_empty_desc':
+        '@BotFather üzerinden bir bot oluştur, aldığın token\'ı buraya yapıştır.',
+    'telegram_setup_step_1':
+        'Telegram\'da @BotFather\'ı aç, /newbot yaz — botuna bir isim ve "bot" ile biten bir kullanıcı adı ver (ör. memo_bugra_bot).',
+    'telegram_setup_step_2':
+        'BotFather\'ın sana verdiği token\'ı aşağıya yapıştır ve Bağlan\'a tıkla.',
+    'telegram_setup_step_3':
+        'Telegram\'da botunu bul ve ona ilk mesajı sen at — bu mesaj seni kalıcı sahibi yapar, başkası bulup yazsa bile cevap alamaz.',
+    'telegram_open_botfather': '@BotFather\'ı Telegram\'da aç',
+    'telegram_token_hint': 'Bot token (ör. 123456789:AAExample-Token)',
+    'telegram_connect_failed': 'Telegram botu bağlanamadı',
+    'telegram_stop_failed': 'Telegram botu durdurulamadı',
+    'telegram_disconnect_failed': 'Telegram bağlantısı kesilemedi',
+    'telegram_pause': 'Duraklat',
+    'telegram_owner_linked': 'Bağlı sahip',
+    'telegram_owner_waiting': 'Sahip bekleniyor',
+    'telegram_owner_waiting_desc':
+        'Botuna Telegram\'dan bir mesaj gönder — ilk mesajı atan kişi kalıcı olarak sahibi olur, başka kimse cevap alamaz.',
+    'telegram_disconnect_title': 'Telegram bağlantısını kes',
+    'telegram_disconnect_desc':
+        'Bot token\'ı ve bağlı sahip bilgisi silinir. Yeniden bağlanmak için token\'ı tekrar girmen gerekir.',
     'tab_report_bug': 'Hata Bildir',
     'tab_dream': 'Dream',
     'dream_subtitle':
@@ -1751,6 +1776,7 @@ class L10n {
     'failed_to_send_e': 'Gönderilemedi: \${e}',
     'preparing_qr_code': 'QR kodu hazırlanıyor...',
     'link_whatsapp': 'WhatsApp\'ı Bağla',
+    'connect': 'Bağlan',
     'open_whatsapp_linked_devices_link_a_device_scan_qr':
         'WhatsApp\'ı aç  →  Bağlı cihazlar  →  Cihaz ekle  →  QR\'ı okut',
     'waiting_for_qr_scan': 'QR taranıyor bekleniyor...',
@@ -2150,6 +2176,31 @@ class L10n {
     'whatsapp_self_chat_assistant_desc':
         'When on, every message you send to your own number ("Message Yourself") gets a normal chat reply from Memo.',
     'whatsapp_self_chat_assistant_toggle_failed': 'Could not change the Memo Assistant setting',
+    'tab_telegram': 'Telegram',
+    'telegram_tab_desc':
+        'Connect a Telegram bot — the first message you send it locks you in as its owner, and everything you send after that goes straight to Memo.',
+    'telegram_empty_title': 'Telegram',
+    'telegram_empty_desc':
+        'Create a bot via @BotFather, then paste the token you get back here.',
+    'telegram_setup_step_1':
+        'Open @BotFather in Telegram, send /newbot — give your bot a name and a username ending in "bot" (e.g. memo_bugra_bot).',
+    'telegram_setup_step_2':
+        'Paste the token BotFather gives you below and hit Connect.',
+    'telegram_setup_step_3':
+        'Find your bot in Telegram and send it the first message yourself — that message locks you in as its permanent owner; no one else who finds it gets a reply.',
+    'telegram_open_botfather': 'Open @BotFather in Telegram',
+    'telegram_token_hint': 'Bot token (e.g. 123456789:AAExample-Token)',
+    'telegram_connect_failed': 'Could not connect the Telegram bot',
+    'telegram_stop_failed': 'Could not pause the Telegram bot',
+    'telegram_disconnect_failed': 'Could not disconnect Telegram',
+    'telegram_pause': 'Pause',
+    'telegram_owner_linked': 'Linked owner',
+    'telegram_owner_waiting': 'Waiting for an owner',
+    'telegram_owner_waiting_desc':
+        'Send your bot a message on Telegram — whoever messages it first becomes its permanent owner, and no one else gets a reply.',
+    'telegram_disconnect_title': 'Disconnect Telegram',
+    'telegram_disconnect_desc':
+        'This removes the bot token and the linked owner. You\'ll need to paste the token again to reconnect.',
     'tab_report_bug': 'Report Bug',
     'tab_dream': 'Dream',
     'dream_subtitle':
@@ -3590,6 +3641,7 @@ class L10n {
     'failed_to_send_e': 'Failed to send: \${e}',
     'preparing_qr_code': 'Preparing QR code...',
     'link_whatsapp': 'Link WhatsApp',
+    'connect': 'Connect',
     'open_whatsapp_linked_devices_link_a_device_scan_qr':
         'Open WhatsApp  →  Linked Devices  →  Link a Device  →  Scan QR',
     'waiting_for_qr_scan': 'Waiting for QR scan...',

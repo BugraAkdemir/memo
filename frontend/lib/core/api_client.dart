@@ -2068,6 +2068,33 @@ class MemoApiClient {
     }
   }
 
+  // ─── Telegram ──────────────────────────────────────────────────
+
+  /// Get Telegram bot connection status.
+  Future<Map<String, dynamic>> getTelegramStatus() async {
+    final res = await _dio.get('/api/telegram/status');
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
+  /// Connect (or reconnect) the Telegram bot with a token from @BotFather.
+  Future<Map<String, dynamic>> connectTelegram(String botToken) async {
+    final res = await _dio.post(
+      '/api/telegram/connect',
+      data: {'bot_token': botToken},
+    );
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
+  /// Pause the Telegram bot (keeps the token and linked owner chat).
+  Future<void> stopTelegram() async {
+    await _dio.post('/api/telegram/stop');
+  }
+
+  /// Disconnect the Telegram bot entirely (wipes the token and owner link).
+  Future<void> disconnectTelegram() async {
+    await _dio.post('/api/telegram/disconnect');
+  }
+
   // ─── Swarm ──────────────────────────────────────────────────────
 
   /// Combined host + worker swarm status (Beta feature).

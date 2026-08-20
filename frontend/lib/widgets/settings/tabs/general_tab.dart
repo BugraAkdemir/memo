@@ -165,6 +165,9 @@ class GeneralTab extends ConsumerWidget {
               Switch(
                 value: ref.watch(streamingEnabledProvider),
                 activeThumbColor: MemoTheme.accent,
+                inactiveThumbColor: MemoTheme.of(context).textDim,
+                inactiveTrackColor: MemoTheme.of(context).bgHover,
+                trackOutlineColor: WidgetStateProperty.all(MemoTheme.of(context).borderHover),
                 onChanged: (_) {
                   ref.read(streamingEnabledProvider.notifier).toggle();
                 },
@@ -289,6 +292,9 @@ class GeneralTab extends ConsumerWidget {
                     Switch(
                       value: enabled,
                       activeThumbColor: MemoTheme.accent,
+                      inactiveThumbColor: MemoTheme.of(context).textDim,
+                      inactiveTrackColor: MemoTheme.of(context).bgHover,
+                      trackOutlineColor: WidgetStateProperty.all(MemoTheme.of(context).borderHover),
                       onChanged: (_) async {
                         try {
                           await ref.read(memoryEnabledProvider.notifier).toggle();
@@ -367,6 +373,9 @@ class GeneralTab extends ConsumerWidget {
                 Switch(
                   value: enabled,
                   activeThumbColor: MemoTheme.accent,
+                  inactiveThumbColor: MemoTheme.of(context).textDim,
+                  inactiveTrackColor: MemoTheme.of(context).bgHover,
+                  trackOutlineColor: WidgetStateProperty.all(MemoTheme.of(context).borderHover),
                   onChanged: (_) async {
                     try {
                       await ref.read(minimalModeProvider.notifier).toggle();
@@ -614,6 +623,9 @@ class _OverrideRow extends StatelessWidget {
             child: Switch(
               value: value,
               activeThumbColor: MemoTheme.accent,
+              inactiveThumbColor: theme.textDim,
+              inactiveTrackColor: theme.bgHover,
+              trackOutlineColor: WidgetStateProperty.all(theme.borderHover),
               onChanged: (v) => onChanged(v),
             ),
           ),
@@ -882,6 +894,10 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
             value: _keepMemory,
             onChanged: (v) => setState(() => _keepMemory = v),
             secondary: Icon(Icons.memory_rounded, color: MemoTheme.accent),
+            activeThumbColor: MemoTheme.accent,
+            inactiveThumbColor: theme.textDim,
+            inactiveTrackColor: theme.bgHover,
+            trackOutlineColor: WidgetStateProperty.all(theme.borderHover),
           ),
         ),
         SizedBox(height: 12),

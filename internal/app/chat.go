@@ -85,14 +85,30 @@ func (a *App) handleIncognito(userMsg string, b64 string) string {
 // drainToReply collapses a stream started via a.streamMu-guarded routing
 // (sendMessageStreamCore/routeStream) into a single display-ready reply
 // string, for the non-streaming Send* API surface (SendMessage,
-// SendMessageWithImage, SendMessageWithFile — used by POST /api/send and
-// friends). Agent-event chunks (FinishReason=="agent_event") carry
-// JSON-encoded tool-execution metadata meant for an SSE consumer to render
-// as badges (see chat_provider.dart) — they are not reply text and are
-// skipped here, same as the streaming consumers never inline them into the
-// message body either. The first Error chunk wins and is returned as-is
-// (already a display-ready "⚠️ ..." string, matching every other error path
-// in this file) without draining further, mirroring how callLLM/callLLMStream
+// SendMessageWithImage, SendMessageWithFile, WhatsApp self-chat — used by
+// POST /api/send and friends).
+//
+// Only a chunk with an empty FinishReason carries real reply text — every
+// other FinishReason ("agent_event", "status", "activity", "usage",
+// "memory_used", "stop", and any future one) is a status/metadata marker
+// whose Content an SSE consumer renders separately (a badge, a memory-used
+// pill, a "searching the web" line — see chat_provider.dart) and is never
+// meant to land inside the message body itself.
+//
+// BUG (found live): this used to allowlist only "agent_event" instead of
+// denylisting every non-content marker, so anything added afterwards —
+// "status" (web-search indicator, Content: "web_search") and "memory_used"
+// (Content: the memory count as a bare number, e.g. "9") in particular —
+// silently leaked straight into the reply text. Invisible in the normal
+// Flutter chat UI (it reads each chunk's FinishReason itself over SSE and
+// never concatenates raw chunks into one string), but the WhatsApp
+// self-chat assistant drains through exactly this function — every one of
+// its replies was arriving with a stray leading "9", "10", or
+// "web_searchweb_search" glued onto the front, reported live.
+//
+// The first Error chunk wins and is returned as-is (already a
+// display-ready "⚠️ ..." string, matching every other error path in this
+// file) without draining further, mirroring how callLLM/callLLMStream
 // treat a stream error as terminal.
 func drainToReply(ch <-chan api.StreamChunk) string {
 	var reply strings.Builder
@@ -100,7 +116,7 @@ func drainToReply(ch <-chan api.StreamChunk) string {
 		if chunk.Error != "" {
 			return chunk.Error
 		}
-		if chunk.FinishReason == "agent_event" {
+		if chunk.FinishReason != "" {
 			continue
 		}
 		reply.WriteString(chunk.Content)

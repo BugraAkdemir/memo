@@ -13,12 +13,43 @@ import (
 	"time"
 
 	"memo/internal/agent"
+	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/identity"
 	"memo/internal/memory"
 	"memo/internal/provider"
 	"memo/internal/sessions"
 )
+
+// TestDrainToReply_SkipsStatusMarkerChunks is the regression test for a bug
+// found live via the WhatsApp self-chat assistant: every reply arrived with
+// a stray leading "9", "10", or "web_searchweb_search" glued onto the real
+// text. drainToReply used to allowlist only FinishReason=="agent_event" as
+// "not real content" — but "status" (web-search indicator, Content:
+// "web_search") and "memory_used" (Content: the memory count as a bare
+// number) chunks aren't agent_event either, so their Content leaked
+// straight into the concatenated reply. Only a chunk with an empty
+// FinishReason is real reply text; everything else is a status/metadata
+// marker meant for an SSE consumer to render separately, not to appear in
+// the message body.
+func TestDrainToReply_SkipsStatusMarkerChunks(t *testing.T) {
+	ch := make(chan api.StreamChunk, 8)
+	ch <- api.StreamChunk{FinishReason: "memory_used", Content: "9"}
+	ch <- api.StreamChunk{FinishReason: "status", Content: "web_search"}
+	ch <- api.StreamChunk{Content: "Selam kanka, "}
+	ch <- api.StreamChunk{Content: "naber?"}
+	ch <- api.StreamChunk{FinishReason: "agent_event", Content: `{"type":"tool_call"}`}
+	ch <- api.StreamChunk{FinishReason: "activity", Content: `{"foo":"bar"}`}
+	ch <- api.StreamChunk{FinishReason: "usage", Content: `{"tokens":42}`}
+	ch <- api.StreamChunk{Done: true, FinishReason: "stop"}
+	close(ch)
+
+	got := drainToReply(ch)
+	want := "Selam kanka, naber?"
+	if got != want {
+		t.Errorf("drainToReply() = %q, want %q", got, want)
+	}
+}
 
 // TestSendMessageStreamTo_UnknownChatID_ReturnsError verifies SendMessageStreamTo
 // rejects a chat ID that doesn't exist instead of silently operating on

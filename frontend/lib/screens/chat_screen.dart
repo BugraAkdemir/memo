@@ -60,6 +60,18 @@ class ChatScreen extends ConsumerWidget {
 
         if (narrow) {
           return Scaffold(
+            // Scaffold always paints its own opaque scaffoldBackgroundColor
+            // (bgApp, a flat solid) beneath its body regardless of the
+            // ancestor AppShell Stack's diagonal Glass Light gradient — the
+            // wide-mode Row branch below never wraps content in a Scaffold
+            // at all, so it shows the true gradient through content's own
+            // Colors.transparent. Narrow mode needs a Scaffold for the
+            // Drawer, which reintroduces that opaque layer and creates a
+            // visible flat-color-vs-gradient seam exactly at this screen's
+            // bounds — reported live as "two different backgrounds" on a
+            // phone. Matching content's own isGlass check here removes it.
+            backgroundColor:
+                MemoTheme.of(context).isGlass ? Colors.transparent : null,
             drawer: Drawer(child: SafeArea(child: ChatSidebar())),
             body: content,
           );

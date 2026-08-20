@@ -25,13 +25,19 @@ class AgentScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Matches ChatScreen's content/Scaffold background handling: opaque
+        // bgApp in dark, transparent in Glass Light so the ancestor
+        // AppShell Stack's gradient shows through instead of a flat color
+        // that visibly seams against the gradient at this screen's edges.
+        final isGlass = MemoTheme.of(context).isGlass;
         final content = Container(
-          color: MemoTheme.of(context).bgApp,
+          color: isGlass ? Colors.transparent : MemoTheme.of(context).bgApp,
           child: _AgentContent(),
         );
 
         if (constraints.maxWidth < _sidebarBreakpoint) {
           return Scaffold(
+            backgroundColor: isGlass ? Colors.transparent : null,
             drawer: Drawer(child: SafeArea(child: _AgentSidebar())),
             body: Column(
               children: [

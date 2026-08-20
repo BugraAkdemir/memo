@@ -1,3 +1,153 @@
+# Session 20 (2026-08-20) — WhatsApp self-chat asistanı: kendine mesaj atarak Memo ile konuşma özelliği baştan sona kuruldu
+
+Kullanıcının isteği: "kendime WhatsApp'tan mesaj attığımda Memo bunu okuyup
+bana WhatsApp'tan cevap versin" — WhatsApp zaten okunuyordu (agent'ın
+`whatsapp_send` aracı, mevcut "WhatsApp Chat" modu) ama gelen mesajlara
+otomatik cevap veren bir mekanizma yoktu. Oturum boyunca kullanıcı canlı
+test etti, gerçek bug'lar buldu, ben de canlı düzelttim — klasik
+"kullanıcı dener → gerçek log yapıştırır → kök neden bulunur → düzeltilir"
+döngüsü, beş ayrı tur.
+
+## İş 1 — Connections sekmesi (sonradan geri alındı)
+
+Önce WhatsApp'ı "Bağlantılar" adında yeni bir üst-seviye nav sekmesine
+taşıdım (`connections_screen.dart`, `whatsapp_screen.dart`'ı `_WhatsAppRoute`
+olarak push/pop route'a çevirdim). Bu, oturumun ilerleyen turlarında gerçek
+bir bug'a yol açtı (aşağıda İş 4) ve kullanıcı ayrıca arayüzden WhatsApp'ı
+kaldırmamı istedi — bu yüzden **İş 4'te tamamen geri alındı**, aşağıya bakın.
+
+## İş 2 — Self-chat asistanı: temel mekanizma (commit `06d1fec`)
+
+- `internal/whatsapp/client.go`: `OwnJID()` — kendi hesabın "bare" JID'i
+  (cihaz sonekiz, `wa.Store.ID.ToNonAD()`), `markSelfSent`/
+  `IsSelfSentRecently` — Memo'nun kendi gönderdiği cevabı tekrar "gelen
+  mesaj" sanıp sonsuz döngüye girmesini engelleyen dedup.
+- `internal/app/whatsapp.go`: `runWhatsAppIntentLoop` artık
+  `shouldAutoReplyToWhatsApp` ile self-chat mesajlarını yakalayıp
+  `handleWhatsAppSelfChatMessage`'a yönlendiriyor — `SendMessageStreamTo` ile
+  ayrı, arka planda oluşturulan bir session'da (aktif sohbeti çalmadan)
+  normal chat pipeline'ından (hafıza, mood, intent) geçiyor.
+- `config.WhatsApp.SelfChatAssistant` (varsayılan **false**, opt-in) +
+  `GET/PUT /api/whatsapp/self-chat-assistant`.
+- Flutter tarafında toggle (o an hâlâ `whatsapp_screen.dart`'ın header'ında).
+
+## İş 3 — Bulunan/düzeltilen ilk canlı bug'lar (commit `9e1853a`)
+
+Bağlanma sonrası "Preparing QR code"da sonsuza kadar takılı kalma + genel
+bir "bug" raporu. Kök neden: WhatsAppScreen artık push/pop route (İş 1),
+hızlı gir-çık `WhatsAppStatusNotifier`'ın `initState` mikro-task'ını disposed
+bir widget'ta çalıştırıyordu ("Cannot use 'ref' after the widget was
+disposed") — bu da polling Timer'ının recursive `_schedule()` zincirini
+sessizce öldürüyordu. `initState`'e `mounted` guard, Timer callback'ine
+try/catch eklendi.
+
+## İş 4 — Kritik bug: self-chat asistanı hiç cevap vermiyordu (commit `fe2b703`)
+
+Kullanıcı gerçek hesabından kendine mesaj attı, cevap gelmedi. WhatsApp REST
+API'siyle gerçek mesaj geçmişine bakınca kök neden bulundu: self-chat'in
+`ChatJID`'i telefon numarası formatında değil, WhatsApp'ın yeni **Linked-ID
+(`@lid`)** adresleme şemasıyla geliyor (`110874714980365@lid`) — benim
+`OwnJID()`'im sadece `wa.Store.ID` (telefon no formu) kontrol ediyordu, hiç
+eşleşmiyordu, hata da vermiyordu. `OwnJID()` → `OwnJIDs()` oldu,
+`wa.Store.LID`'i de döndürüyor artık. Canlı, gerçek hesapta doğrulandı
+(geçici debug log ile): `["905373154237@s.whatsapp.net",
+"110874714980365@lid"]` — ikincisi gerçek self-chat JID'iyle birebir
+eşleşiyor. Eşleştirme mantığı `isSelfChatMessage(msg, ownJIDs)` olarak saf
+fonksiyona ayrıldı (artık unit test edilebilir).
+
+Aynı turda, kullanıcı ayrıca **WhatsApp'ı arayüzden tamamen kaldırmamı**
+istedi (İş 1'in Connections sekmesi dahil) ama normal sohbetteki
+"mesaj gönder" yeteneği kalsın dedi. Yapılan:
+- `connections_screen.dart` + `whatsapp_screen.dart` **silindi**.
+- Bağlan/QR/reconnect/logout + self-chat toggle → yeni
+  `widgets/settings/tabs/whatsapp_tab.dart` (Ayarlar > Sağlayıcılar &
+  Bağlantı grubu, index 22). NavRail 8'den 7 öğeye indi, tüm index'ler
+  (Takvim/Rutinler/Geliştirici/Swarm) kaydı, tour/launchpad güncellendi.
+- Normal sohbetteki "WhatsApp Chat" toggle'ı (agent `whatsapp_send`
+  aracı) hiç dokunulmadı, canlı doğrulandı hâlâ çalışıyor.
+
+## İş 5 — "Yazıyor..." animasyonu (commit `984d096`)
+
+Kullanıcı: cevap üretilirken WhatsApp'ta bir "düşünüyor" göstergesi olsun,
+cevap gelince kaybolsun. Sahte mesaj yazıp silmek yerine WhatsApp'ın kendi
+native `chatstate`/composing protokolünü kullandım (`Client.SetComposing` →
+whatsmeow'un `SendChatPresence`). Cevap üretilirken 8 saniyede bir tazeleniyor
+(WhatsApp durumu bir süre tazelenmezse kendiliğinden temizliyor), cevap
+gönderilince kapatılıyor. Gerçek cihazda görsel olarak doğrulanamadı (bu
+ortamda telefon yok) — whatsmeow'un standart, dokümante API'si.
+
+## İş 6 — Cevapların başına sayı/kelime karışması (commit `7fe3b2a`)
+
+Kullanıcı: cevapların başında "9", "10", "web_searchweb_search" gibi
+anlamsız önekler çıkıyor. Kök neden: `drainToReply` (self-chat'in kullandığı
+non-streaming chunk-birleştirici) sadece `FinishReason=="agent_event"`
+chunk'ları atlıyordu — ama `"status"` (web arama göstergesi, Content:
+"web_search") ve `"memory_used"` (Content: hafıza sayısı, örn. "9") gibi
+diğer durum işaretleri hiç filtrelenmiyordu, düz metne yapışıyordu. Normal
+Flutter sohbetinde görünmüyordu çünkü orada her chunk SSE üzerinden ayrı
+işleniyor; self-chat hepsini tek string'de birleştirdiği için ortaya çıktı.
+Mantık tersine çevrildi: sadece `FinishReason==""` olan chunk'lar gerçek
+metin sayılıyor, geri kalan her şey (mevcut + gelecekte eklenecek herhangi
+biri) atlanıyor. Bu ayrıca `POST /api/send`'i de aynı şekilde etkiliyordu
+(sadece self-chat'te fark edildi, düzeltme genel).
+
+## İş 7 — Slash komutları (commit `9abd912`)
+
+Kullanıcı isteği: `/new`, `/agent on`/`off`, `/web on`/`off` (+ self-chat
+asistanı ilk açıldığında web araması varsayılan açık), `/status`, `/help`.
+`handleWhatsAppSelfChatCommand` mesaj LLM'e gitmeden önce komutu yakalıyor;
+tanınmayan `/kelime` de LLM'e gitmiyor, kullanım rehberiyle cevaplanıyor.
+Testler yazılırken **iki gerçek bug** kod hiç çalışmadan yakalandı: nil
+`cfg`'de `/status`'un panik atması (production'da asla nil olmuyor ama test
+kurulumu gerçekçi değildi, düzeltildi) ve web-arama-varsayılan-açma
+mantığının "sadece ilk kez" yerine her `/agent`... pardon her
+`SetWhatsAppSelfChatAssistant(true)` çağrısında zorla açması (kasıtlı olarak
+basitleştirildi: her açılışta web araması da açılıyor, kapatma yönü
+etkilenmiyor).
+
+## İş 8 — Komut cevapları hardcode Türkçe'ydi (commit `37ec09b`)
+
+Kullanıcı direkt sordu: "bu hardcode değil demi, uygulama dilim en ise en,
+tr ise tr çıkacak demi". Cevap: hayırdı, düz Türkçe string'lerdi.
+`internal/replcli/l10n.go`'nun aynısı desenle yeni `whatsapp_l10n.go`
+(TR/EN tablo, `waT(lang, key)`) eklendi — `App.GetUILanguage()`'dan
+(`Identity.UILanguage`, Flutter'ın dil toggle'ıyla aynı kaynak) her
+çağrıda taze okunuyor (CLI'nin process başında bir kere okuyup
+snapshot'lamasından farklı — backend GUI'ye ve WhatsApp'a aynı anda
+hizmet veriyor). Boş/hiç ayarlanmamışsa **İngilizce**'ye düşüyor (CLI'nin
+"tr" varsayılanından kasıtlı farklı — o eski kullanıcılar için geriye
+dönük uyumluluk, bu sıfırdan yeni bir yüzey). Testler her iki dili ayrı
+ayrı + boş-ayar durumunu doğruluyor.
+
+## Doğrulama (tüm oturum boyunca)
+
+- `go build`/`go vet`/`go test ./...` — her commit'te yeşil, repo geneli.
+- `flutter analyze`/`flutter test` (262/262) — her frontend değişikliğinde
+  yeşil, Rule #8 grep temiz.
+- Canlı doğrulama: kullanıcının kendi `run_memo.sh` oturumundan gelen gerçek
+  loglar + WhatsApp REST API'siyle gerçek `messages.db` sorgulandı (İş 4'ün
+  `@lid` kök nedeni ve İş 6'nın "9"/"10" öneki böyle kesin olarak doğrulandı,
+  varsayımla değil).
+- Doğrulanamayan tek şey: "yazıyor..." animasyonunun gerçek telefon
+  ekranında görünüşü (İş 5) — bu ortamda telefon yok.
+
+## Sıradaki oturum için
+
+- Kullanıcı `run_memo.sh`'ı yeniden başlatıp İş 6/7/8'i (sayı/kelime
+  karışmasının düzeldiğini, slash komutlarını, TR/EN cevapları) henüz canlı
+  doğrulamadı — bu oturumun son turu doğrudan bu commit'lerin üzerine geldi.
+- "Yazıyor..." göstergesinin gerçek cihazda görünüp görünmediği hâlâ açık.
+- Session 19'dan kalan açık maddeler hâlâ geçerli: `claude --bare`'ın
+  `env`'i okuyup okumadığı doğrulanmadı; web build'in tema varsayılanı hâlâ
+  sabit `'light'`; v3.9.0 henüz release edilmedi (`version` dosyası hâlâ
+  v3.5.5).
+
+Commit'ler (bu oturum, sırayla): `1988187`, `06d1fec`, `9e1853a`,
+`fe2b703`, `984d096`, `7fe3b2a`, `9abd912`, `37ec09b`. **Push edildi**
+(kullanıcı isteği üzerine).
+
+---
+
 # Session 19 (2026-08-20, devam) — Mobil gezinme komple yeniden tasarlandı: NavRail kaldırıldı, chat başlığı sadeleştirildi
 
 Aynı oturumun devamı: kullanıcı arka plan dikişini onaylayıp mockup'ları

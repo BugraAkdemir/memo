@@ -226,30 +226,20 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 	}
 }
 
-// whatsAppSelfChatHelpText is the /help reply — kept as a plain constant
-// (not routed through L10n, matching every other backend-generated
-// WhatsApp/CLI-facing string in this codebase; see AGENTS.md's Code Style
-// note on the backend's own Turkish-strings seam) so /help always lists
-// exactly the commands handleWhatsAppSelfChatCommand actually implements.
-const whatsAppSelfChatHelpText = `📖 Komutlar
-
-/new — Yeni bir sohbet başlat (baştan)
-/agent on — Agent modunu aç (dosya/komut araçları)
-/agent off — Agent modunu kapat
-/agent — Agent modunun durumunu göster
-/web on — Web aramasını aç
-/web off — Web aramasını kapat
-/web — Web aramasının durumunu göster
-/status — Memo'nun anlık durumunu göster
-/help — Bu listeyi göster
-
-Komut değilse yazdığın her şey normal bir sohbet mesajı olarak Memo'ya gider.`
-
 // handleWhatsAppSelfChatCommand recognizes a leading-slash command in a
 // self-chat message and returns its reply text directly — handled reports
 // whether text was actually a command at all (false means "route this to
 // the LLM as a normal message instead", the caller's existing behavior).
 // An empty reply with handled=true is valid (nothing to say back).
+//
+// Replies follow a.GetUILanguage() — the same source of truth the Flutter
+// GUI's own language toggle writes to (Identity.UILanguage), read fresh on
+// every call rather than snapshotted once, since a headless backend serves
+// the GUI and WhatsApp self-chat concurrently and the self-chat surface has
+// no startup moment of its own to snapshot a language at (see
+// internal/replcli/l10n.go for the CLI's version of this same idea, which
+// *does* snapshot once — appropriate there since a CLI session is a single
+// short-lived process). See waT's doc comment for the TR/EN table itself.
 func (a *App) handleWhatsAppSelfChatCommand(text string) (reply string, handled bool) {
 	fields := strings.Fields(text)
 	if len(fields) == 0 || !strings.HasPrefix(fields[0], "/") {
@@ -260,67 +250,68 @@ func (a *App) handleWhatsAppSelfChatCommand(text string) (reply string, handled 
 	if len(fields) > 1 {
 		arg = strings.ToLower(fields[1])
 	}
+	lang := waLang(a.GetUILanguage())
 
 	switch cmd {
 	case "/new":
 		sm := a.getSessionManager()
 		if sm == nil {
-			return "⚠️ Sohbet yöneticisi hazır değil.", true
+			return waT(lang, "wa_new_no_sessions"), true
 		}
 		a.waMu.Lock()
 		a.waSelfChatSessionID = sm.NewBackgroundChat("WhatsApp Self-Chat")
 		a.waMu.Unlock()
-		return "🆕 Yeni sohbet başlatıldı, baştan başlıyoruz.", true
+		return waT(lang, "wa_new_ok"), true
 
 	case "/agent":
 		switch arg {
 		case "on":
 			if err := a.SetAgentEnabled(true); err != nil {
-				return "⚠️ Agent modu açılamadı: " + err.Error(), true
+				return fmt.Sprintf(waT(lang, "wa_agent_on_err"), err), true
 			}
-			return "🤖 Agent modu açıldı.", true
+			return waT(lang, "wa_agent_on"), true
 		case "off":
 			if err := a.SetAgentEnabled(false); err != nil {
-				return "⚠️ Agent modu kapatılamadı: " + err.Error(), true
+				return fmt.Sprintf(waT(lang, "wa_agent_off_err"), err), true
 			}
-			return "🤖 Agent modu kapatıldı.", true
+			return waT(lang, "wa_agent_off"), true
 		default:
-			return "🤖 Agent modu şu an " + onOffTr(a.GetAgentEnabled()) + ". Kullanım: /agent on veya /agent off", true
+			return fmt.Sprintf(waT(lang, "wa_agent_status"), waOnOff(lang, a.GetAgentEnabled())), true
 		}
 
 	case "/web":
 		switch arg {
 		case "on":
 			if err := a.UpdateWebSearchConfig(true); err != nil {
-				return "⚠️ Web araması açılamadı: " + err.Error(), true
+				return fmt.Sprintf(waT(lang, "wa_web_on_err"), err), true
 			}
-			return "🌐 Web araması açıldı.", true
+			return waT(lang, "wa_web_on"), true
 		case "off":
 			if err := a.UpdateWebSearchConfig(false); err != nil {
-				return "⚠️ Web araması kapatılamadı: " + err.Error(), true
+				return fmt.Sprintf(waT(lang, "wa_web_off_err"), err), true
 			}
-			return "🌐 Web araması kapatıldı.", true
+			return waT(lang, "wa_web_off"), true
 		default:
-			return "🌐 Web araması şu an " + onOffTr(a.GetWebSearchEnabled()) + ". Kullanım: /web on veya /web off", true
+			return fmt.Sprintf(waT(lang, "wa_web_status"), waOnOff(lang, a.GetWebSearchEnabled())), true
 		}
 
 	case "/status":
-		return a.whatsAppSelfChatStatusText(), true
+		return a.whatsAppSelfChatStatusText(lang), true
 
 	case "/help":
-		return whatsAppSelfChatHelpText, true
+		return waT(lang, "wa_help"), true
 
 	default:
 		// An unrecognized "/word" — still a command attempt, not a chat
 		// message someone genuinely wants answered by the model (e.g. a
 		// typo'd command shouldn't silently turn into an LLM prompt).
-		return "❓ Bilinmeyen komut: " + fields[0] + "\n\n" + whatsAppSelfChatHelpText, true
+		return fmt.Sprintf(waT(lang, "wa_unknown_command"), fields[0], waT(lang, "wa_help")), true
 	}
 }
 
 // whatsAppSelfChatStatusText builds the /status reply: a snapshot of
 // exactly the state a user would otherwise have to open the app to check.
-func (a *App) whatsAppSelfChatStatusText() string {
+func (a *App) whatsAppSelfChatStatusText(lang string) string {
 	a.clientMu.RLock()
 	localRunning := a.llamaServer != nil && a.llamaServer.IsRunning()
 	a.clientMu.RUnlock()
@@ -332,37 +323,31 @@ func (a *App) whatsAppSelfChatStatusText() string {
 	var model string
 	switch {
 	case activeProvider != "":
-		model = activeProvider + " (bulut sağlayıcı)"
+		model = fmt.Sprintf(waT(lang, "wa_model_cloud"), activeProvider)
 	case localRunning:
-		model = "yerel model çalışıyor"
+		model = waT(lang, "wa_model_local")
 	default:
-		model = "çalışan model yok"
+		model = waT(lang, "wa_model_none")
 	}
 
 	waConnected := a.waClient != nil && a.waClient.IsConnected() && a.waClient.IsLoggedIn()
 
 	return fmt.Sprintf(
-		"📊 Memo Durumu\n\n"+
-			"🧠 Model: %s\n"+
-			"💾 Hafıza: %s\n"+
-			"🤖 Agent modu: %s\n"+
-			"🌐 Web araması: %s\n"+
-			"📱 WhatsApp: %s\n"+
-			"🏷️ Sürüm: %s",
+		waT(lang, "wa_status_template"),
 		model,
-		onOffTr(a.GetMemoryEnabled()),
-		onOffTr(a.GetAgentEnabled()),
-		onOffTr(a.GetWebSearchEnabled()),
-		onOffTr(waConnected),
+		waOnOff(lang, a.GetMemoryEnabled()),
+		waOnOff(lang, a.GetAgentEnabled()),
+		waOnOff(lang, a.GetWebSearchEnabled()),
+		waOnOff(lang, waConnected),
 		a.version,
 	)
 }
 
-func onOffTr(v bool) string {
+func waOnOff(lang string, v bool) string {
 	if v {
-		return "açık ✅"
+		return waT(lang, "wa_on")
 	}
-	return "kapalı ⛔"
+	return waT(lang, "wa_off")
 }
 
 // startWhatsAppComposing shows WhatsApp's native "typing..." chat-presence

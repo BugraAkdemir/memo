@@ -187,7 +187,7 @@ func TestHandleWhatsAppSelfChatCommand_New(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewManager() error = %v", err)
 	}
-	a := &App{sessions: sm, waSelfChatSessionID: "stale-id"}
+	a := &App{cfg: &config.AppConfig{}, sessions: sm, waSelfChatSessionID: "stale-id"}
 
 	reply, handled := a.handleWhatsAppSelfChatCommand("/new")
 	if !handled {
@@ -209,7 +209,7 @@ func TestHandleWhatsAppSelfChatCommand_New(t *testing.T) {
 // don't touch config.Save, so this is safe to exercise directly without a
 // temp config path.
 func TestHandleWhatsAppSelfChatCommand_Agent(t *testing.T) {
-	a := &App{}
+	a := &App{cfg: &config.AppConfig{}}
 
 	if _, handled := a.handleWhatsAppSelfChatCommand("/agent on"); !handled {
 		t.Fatal("expected /agent on to be handled")
@@ -222,8 +222,12 @@ func TestHandleWhatsAppSelfChatCommand_Agent(t *testing.T) {
 	if !handled {
 		t.Fatal("expected /agent (no arg) to be handled")
 	}
-	if !strings.Contains(reply, "açık") {
-		t.Errorf("status reply %q should mention it's currently on", reply)
+	// Language-agnostic: the reply's wording differs by UILanguage (see
+	// TestHandleWhatsAppSelfChatCommand_FollowsUILanguage), so this only
+	// checks it's non-empty and reflects the real state via GetAgentEnabled
+	// above, not by matching a specific language's word for "on".
+	if reply == "" {
+		t.Error("expected a non-empty status reply")
 	}
 
 	if _, handled := a.handleWhatsAppSelfChatCommand("/agent off"); !handled {
@@ -302,8 +306,8 @@ func TestHandleWhatsAppSelfChatCommand_StatusAndHelp(t *testing.T) {
 	if reply, handled := a.handleWhatsAppSelfChatCommand("/status"); !handled || reply == "" {
 		t.Errorf("/status: handled=%v reply=%q, want handled=true and non-empty", handled, reply)
 	}
-	if reply, handled := a.handleWhatsAppSelfChatCommand("/help"); !handled || reply != whatsAppSelfChatHelpText {
-		t.Errorf("/help: handled=%v reply=%q, want handled=true and reply == whatsAppSelfChatHelpText", handled, reply)
+	if reply, handled := a.handleWhatsAppSelfChatCommand("/help"); !handled || reply != waT("en", "wa_help") {
+		t.Errorf("/help: handled=%v reply=%q, want handled=true and reply == waT(\"en\", \"wa_help\")", handled, reply)
 	}
 }
 
@@ -312,7 +316,7 @@ func TestHandleWhatsAppSelfChatCommand_StatusAndHelp(t *testing.T) {
 // with guidance back to the user) rather than silently falling through to
 // the LLM as if it were a genuine chat message.
 func TestHandleWhatsAppSelfChatCommand_UnknownCommand(t *testing.T) {
-	a := &App{}
+	a := &App{cfg: &config.AppConfig{}}
 	reply, handled := a.handleWhatsAppSelfChatCommand("/statuss")
 	if !handled {
 		t.Fatal("expected an unrecognized slash command to still be handled")
@@ -320,4 +324,44 @@ func TestHandleWhatsAppSelfChatCommand_UnknownCommand(t *testing.T) {
 	if !strings.Contains(reply, "/statuss") {
 		t.Errorf("reply %q should echo back the unrecognized command", reply)
 	}
+}
+
+// TestHandleWhatsAppSelfChatCommand_FollowsUILanguage is the direct answer
+// to a user question: are these replies actually following the app's
+// language setting (Identity.UILanguage, same as the Flutter GUI's own
+// toggle), or hardcoded Turkish regardless? They must not be hardcoded —
+// /help's reply in particular must differ by language, and an unset
+// UILanguage (GetUILanguage()'s documented "" when the GUI's toggle was
+// never touched) must default to English, matching the Flutter GUI's own
+// 2026-08-13 default.
+func TestHandleWhatsAppSelfChatCommand_FollowsUILanguage(t *testing.T) {
+	t.Run("turkish", func(t *testing.T) {
+		a := &App{cfg: &config.AppConfig{Identity: config.IdentityConfig{UILanguage: "tr"}}}
+		reply, _ := a.handleWhatsAppSelfChatCommand("/help")
+		if !strings.Contains(reply, "Komutlar") {
+			t.Errorf("expected the Turkish help text (contains \"Komutlar\"), got %q", reply)
+		}
+		if strings.Contains(reply, "Commands") {
+			t.Errorf("got English text back for UILanguage=\"tr\": %q", reply)
+		}
+	})
+
+	t.Run("english", func(t *testing.T) {
+		a := &App{cfg: &config.AppConfig{Identity: config.IdentityConfig{UILanguage: "en"}}}
+		reply, _ := a.handleWhatsAppSelfChatCommand("/help")
+		if !strings.Contains(reply, "Commands") {
+			t.Errorf("expected the English help text (contains \"Commands\"), got %q", reply)
+		}
+		if strings.Contains(reply, "Komutlar") {
+			t.Errorf("got Turkish text back for UILanguage=\"en\": %q", reply)
+		}
+	})
+
+	t.Run("unset_defaults_to_english", func(t *testing.T) {
+		a := &App{cfg: &config.AppConfig{}}
+		reply, _ := a.handleWhatsAppSelfChatCommand("/help")
+		if !strings.Contains(reply, "Commands") {
+			t.Errorf("expected an unset UILanguage to default to English, got %q", reply)
+		}
+	})
 }

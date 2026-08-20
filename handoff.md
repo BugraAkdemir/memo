@@ -1,3 +1,120 @@
+# Session 21 (2026-08-20) — Telegram bot desteği: WhatsApp self-chat asistanının Telegram karşılığı baştan sona kuruldu
+
+Kullanıcının isteği: "WhatsApp güzel oldu, buna bir de Telegram desteği
+getirsek" → tasarım kararı birlikte netleştirildi: bot token'ı @BotFather'dan
+alınıp bağlanacak, **botu ilk mesajlayan kişi kalıcı olarak "sahip" olarak
+kilitlenecek**, başka kimse cevap alamayacak (WhatsApp self-chat'in aksine
+bir bot token'ı herkese açık — bu yüzden asıl güvenlik sınırı burada).
+
+**Kapsam bilinçli olarak dar tutuldu:** Telegram Bot API sadece bota
+doğrudan atılan mesajları görebiliyor — whatsmeow'un yaptığı gibi kullanıcının
+TÜM Telegram sohbetlerini okumak, MTProto user API (telefon numarasıyla
+login, çok daha ağır bir entegrasyon) gerektirirdi. Bu yüzden Telegram
+tarafı WhatsApp'ın "contact/group/history" genişliğini değil, sadece
+self-chat asistanının kendisini mirror'lıyor — Memo'yla konuşmak için başka
+bir yüzey, WhatsApp'ın tam kapsamlı entegrasyonu değil.
+
+## Yapılanlar
+
+**Backend — yeni paket `internal/telegram/`:**
+- `client.go`: `net/http` ile minimal Bot API client — long-poll
+  (`getUpdates`), `SendMessage` (4096 karakter sınırını rune-safe parçalara
+  bölüyor — Türkçe karakterlerde byte-split rune'u bozardı), `SetTyping`
+  (`sendChatAction`), `GetMe` (token doğrulama). Yeni harici bağımlılık YOK
+  — WhatsApp'ın whatsmeow'u gibi ağır bir kütüphane yerine ham HTTP.
+- `store.go`: bot token'ı diskte AES-256-GCM ile şifreli tutan `Store` —
+  `internal/tts/config.go`'nun tek-kayıtlık küçültülmüş hali, aynı
+  `provider.DefaultMachineKey()`'i paylaşıyor (providers.json'la aynı
+  makine anahtarı). `data/telegram.json`.
+- Testler: `client_test.go` (displayName, JSON unmarshal, rune-safe chunking),
+  `store_test.go` (round-trip, Clear, yanlış anahtarla decrypt).
+
+**Backend — `internal/app/telegram.go` + `telegram_l10n.go`:**
+- WhatsApp self-chat'in (`whatsapp.go`) neredeyse birebir aynısı: aynı
+  `/new /agent /web /status /help` komut seti, aynı arka plan session
+  deseni (`SendMessageStreamTo` + `NewBackgroundChat`), aynı "typing..."
+  göstergesi deseni. `tgT`/`tgLang` ayrı bir TR/EN tablosu (waT'yi paylaşmak
+  yerine) — çünkü `/status` metni platforma özel ("Telegram: bağlı" vs
+  "WhatsApp: bağlı").
+- `shouldReplyToTelegram`/`isTelegramOwnerMessage`: sahiplik kilidinin asıl
+  mantığı — ilk gelen mesajın `chat_id`'sini kalıcı sahibi olarak kaydediyor
+  (`tgStore.SetOwner`), sonraki her mesajı o id'yle karşılaştırıyor.
+- `StartTelegram`/`StopTelegram`/`DisconnectTelegram`/`GetTelegramStatus`:
+  WhatsApp'ın Start/Stop/Logout/Status'üyle aynı dörtlü — Stop token+sahibi
+  korur (sadece `Enabled=false`, restart'ta otomatik dönmez), Disconnect
+  ikisini de siler (WhatsApp'ın Logout'u gibi).
+- `app.go`: `tgClient`/`tgStore`/`tgSelfChatSessionID`/`tgMu` alanları,
+  `Startup()`'a WhatsApp'ınkiyle simetrik bir auto-reconnect bloğu
+  (`cfg.WhatsApp.Enabled || whatsAppHasStoredSession()` yerine burada
+  `tgStore.Get().Enabled` — kasıtlı fark: durdurulmuş bir bot restart'ta
+  sessizce geri gelmemeli).
+- Testler: `telegram_test.go`, WhatsApp'ın `whatsapp_test.go`'sundaki her
+  test grubunun birebir Telegram karşılığı (owner-lock, komutlar, dil takibi,
+  composing no-op, status/disconnect).
+
+**Backend — REST + bridge:**
+- `internal/webserver/bridge.go`: `FullBridge`'e `StartTelegram(ctx, token)`,
+  `StopTelegram()`, `DisconnectTelegram()`, `GetTelegramStatus()` eklendi.
+- `handlers_flutter.go` + `server.go`: `/api/telegram/{status,connect,stop,disconnect}`.
+- `swarm_stub_bridge_test.go`: stub implementasyonlar eklendi (derleme
+  yeşil kalsın diye).
+
+**Frontend:**
+- `models/telegram.dart`, `providers/telegram_provider.dart` (WhatsApp'ın
+  adaptive-polling deseninin aynısı, QR yerine token-input state'i),
+  `widgets/settings/tabs/telegram_tab.dart` (QR kod yerine bot token
+  input'u + @BotFather'ı açan link + "sahip bekleniyor" durumu).
+- `settings_dialog.dart`: tab 23 olarak WhatsApp'ın hemen yanına
+  (`settings_group_providers`) eklendi.
+- `api_client.dart` + `l10n.dart` (TR+EN, `tab_telegram`/`telegram_*` +
+  eksik olan genel `connect` anahtarı da eklendi).
+
+## Doğrulama
+
+- `go build/vet/test -race ./...` — tüm paketler yeşil (yeni
+  `internal/telegram` dahil).
+- `flutter analyze lib/` — önceden bilinen 5 info dışında yeni uyarı yok.
+- `flutter test` — 262/262 (yeni dart testi eklenmedi, sadece regresyon
+  yok kontrolü — widget testleri elle yazılmadı, bilinçli kapsam kararı,
+  aşağıya bakın).
+- Rule #8 grep (`Text(`/`AlertDialog(` + hardcoded literal) `telegram_tab.dart`
+  üzerinde temiz — tüm string'ler `L10n.t()` üzerinden.
+- Test çalıştırırken `internal/app/data/` ve `internal/telegram/data/`
+  altında istenmeyen `machine.key` dosyaları oluştuğu fark edildi
+  (`telegram.NewStore(path, nil)` → `provider.DefaultMachineKey()` →
+  `config.DataDir()`'ın cwd-relative fallback'ı) — temizlendi, testler
+  sabit bir `testMasterKey`/`key` kullanacak şekilde güncellendi ki bir
+  daha oluşmasın.
+
+**Doğrulanamayan (bu ortamda gerçek bir Telegram botu/telefonu yok):**
+gerçek bir @BotFather token'ıyla uçtan uca bağlanma, ilk mesajla
+sahiplik kilitlenmesi, `/status` `/help` gibi komutların gerçek Telegram
+istemcisinde görünüşü, "typing..." göstergesinin gerçek cihazda
+görünüşü — hepsi WhatsApp self-chat'in ilk turunda da aynı şekilde
+doğrulanamamıştı, aynı sebep.
+
+**Bilinçli olarak yapılmayanlar:**
+- `backup.go`/cloud sync'e `data/telegram.json` eklenmedi — providers.json
+  gibi export/import ve Google Drive yedeklemesine dahil değil. Kullanıcı
+  isterse ayrı, küçük bir iş olarak eklenebilir.
+- Flutter tarafı için `telegram_tab.dart`'a widget testi yazılmadı
+  (WhatsApp'ın kendi tab'ı da `whatsapp_tab.dart` için ayrı bir widget
+  testine sahip değil — aynı kapsam kararı tekrarlandı, tutarlılık için).
+- Agent'ın `whatsapp_send` aracına benzer bir `telegram_send` aracı
+  eklenmedi — bu oturumun kapsamı sadece self-chat-benzeri asistan
+  arayüzüydü, ajanın rastgele bir Telegram sohbetine mesaj atabilmesi
+  ayrı bir istek olarak gelirse eklenebilir.
+
+### Sıradaki oturum için
+- Commit henüz atılmadı — kullanıcı onayı bekliyor.
+- Kullanıcı gerçek bir @BotFather token'ıyla canlı test etmeli: bot bağlanıyor
+  mu, ilk mesaj sahibi doğru kilitliyor mu, komutlar çalışıyor mu, TR/EN
+  takip ediyor mu.
+- `data/telegram.json` yedekleme/senkronizasyona dahil edilsin mi — açık
+  soru, kullanıcıya bırakıldı.
+
+---
+
 # Session 20 (2026-08-20) — WhatsApp self-chat asistanı: kendine mesaj atarak Memo ile konuşma özelliği baştan sona kuruldu
 
 Kullanıcının isteği: "kendime WhatsApp'tan mesaj attığımda Memo bunu okuyup

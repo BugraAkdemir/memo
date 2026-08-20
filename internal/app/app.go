@@ -40,6 +40,7 @@ import (
 	"memo/internal/stats"
 	"memo/internal/swarm"
 	"memo/internal/taskloop"
+	"memo/internal/telegram"
 	"memo/internal/tts"
 	"memo/internal/tunnel"
 	"memo/internal/webserver"
@@ -151,6 +152,8 @@ type App struct {
 
 	waClient         *whatsapp.Client
 	waMsgStore       *whatsapp.Store
+	tgClient         *telegram.Client
+	tgStore          *telegram.Store
 	llamaServer      *llama.Server
 	llamaEmbedServer *llama.Server // dedicated embedding model server
 	// swarmServer is a separate llama-server used only as the Memo Swarm
@@ -240,6 +243,8 @@ type App struct {
 	whatsAppSessionID   string     // dedicated session for WhatsApp chat context
 	waSelfChatSessionID string     // dedicated session for the WhatsApp self-chat assistant (see runWhatsAppIntentLoop)
 	waMu                sync.Mutex // protects waClient, waMsgStore initialization
+	tgSelfChatSessionID string     // dedicated session for the Telegram bot assistant (see runTelegramIntentLoop)
+	tgMu                sync.Mutex // protects tgClient, tgStore initialization
 	streamMu            sync.Mutex // prevents concurrent stream goroutines (double-send)
 
 	// cliJobs tracks in-flight CLI-backed background streams (see
@@ -574,6 +579,16 @@ func (a *App) Startup(ctx context.Context) {
 		a.initWhatsApp()
 		a.waMu.Unlock()
 	}
+
+	// Auto-reconnect Telegram only when the user had it explicitly enabled
+	// (unlike WhatsApp, a saved-but-paused bot token must NOT silently
+	// resume polling on every restart — see StopTelegram's doc comment).
+	a.tgMu.Lock()
+	a.tgStore = telegram.NewStore(config.DataPath("telegram.json"), nil)
+	if a.telegramHasStoredToken() {
+		a.initTelegram()
+	}
+	a.tgMu.Unlock()
 
 	// Shared with reinitProviderAndOrchestra (providers.go), which ImportData
 	// and cloud restore call after replacing providers.json/orchestra.json on

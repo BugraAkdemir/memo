@@ -2100,6 +2100,56 @@ func (s *Server) handleWhatsAppAvatar(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
+// ─── Telegram Handlers ────────────────────────────────────────────
+
+func (s *Server) handleTelegramStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, s.fullBridge.GetTelegramStatus())
+}
+
+func (s *Server) handleTelegramConnect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		BotToken string `json:"bot_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := s.fullBridge.StartTelegram(r.Context(), req.BotToken); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, s.fullBridge.GetTelegramStatus())
+}
+
+func (s *Server) handleTelegramStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	s.fullBridge.StopTelegram()
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleTelegramDisconnect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := s.fullBridge.DisconnectTelegram(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
 func (s *Server) handleWebSearchSettings(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusServiceUnavailable)

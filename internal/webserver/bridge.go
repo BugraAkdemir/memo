@@ -281,6 +281,12 @@ type FullBridge interface {
 	GetWhatsAppSelfChatAssistant() bool
 	SetWhatsAppSelfChatAssistant(enabled bool) error
 
+	// Telegram
+	StartTelegram(ctx context.Context, botToken string) error
+	StopTelegram()
+	DisconnectTelegram() error
+	GetTelegramStatus() map[string]interface{}
+
 	// Backup
 	ExportData(includeModels bool) ([]byte, error)
 	ImportData(data []byte) error

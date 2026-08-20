@@ -311,6 +311,13 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/whatsapp/chat-mode", s.handleWhatsAppChatMode)
 	route("/api/whatsapp/chat-stream", s.handleWhatsAppChatStream)
 	route("/api/whatsapp/self-chat-assistant", s.handleWhatsAppSelfChatAssistant)
+
+	// Telegram
+	route("/api/telegram/status", s.handleTelegramStatus)
+	route("/api/telegram/connect", s.handleTelegramConnect)
+	route("/api/telegram/stop", s.handleTelegramStop)
+	route("/api/telegram/disconnect", s.handleTelegramDisconnect)
+
 	route("/api/export", s.handleExport)
 
 	// Skills

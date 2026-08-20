@@ -275,8 +275,19 @@ func TestRunDreamScheduler_RespectsEnabledFlag(t *testing.T) {
 
 		store, err := NewStore(StoreConfig{
 			Dir: dir, Dimension: 3, EmbeddingFunc: testEmbedding,
+			// initialDelay must comfortably outlast seedPinnedFacts+SetDreamFunc
+			// below, not just be "short": runDreamScheduler's first tick reads
+			// s.dreamFn once and, finding it nil, skips silently and sleeps for
+			// the full interval (an hour here) before checking again — so if
+			// the scheduler's first tick beats SetDreamFunc's assignment, this
+			// test can never observe a call inside its 3s window regardless of
+			// how long that window is. 10ms flaked exactly this way in CI
+			// (reproduced twice: 2026-08-19 and 2026-08-20), where
+			// seedPinnedFacts' real DB writes occasionally took longer than
+			// 10ms under a loaded/shared runner; 150ms gives enough headroom
+			// while still exercising a "fires quickly" scheduler.
 			DreamSettings: func() (time.Duration, time.Duration, bool) {
-				return 10 * time.Millisecond, time.Hour, true
+				return 150 * time.Millisecond, time.Hour, true
 			},
 		})
 		if err != nil {

@@ -452,21 +452,35 @@ func (c *Client) GetProfilePicture(ctx context.Context, jid string, preview bool
 	return data, nil
 }
 
-// OwnJID returns the connected account's own JID in bare (non-AD) form —
-// the form a message's ChatJID carries for the "Message Yourself" self-chat.
-// wa.Store.ID itself is this device's own AD-form JID (carries this
-// device's own :N suffix, e.g. "9055...:42@s.whatsapp.net") and never
-// equals any Chat JID, self-chat included — callers wanting to recognize
-// the self-chat must compare against this, not Store.ID directly. Returns
-// "" if not connected/logged in yet.
-func (c *Client) OwnJID() string {
+// OwnJIDs returns every bare (non-AD) JID form the connected account's
+// self-chat ("Message Yourself") might carry as its ChatJID.
+//
+// wa.Store.ID alone is not enough: confirmed live against a real account,
+// a genuine self-chat message's ChatJID came back as "<n>@lid" — WhatsApp's
+// newer privacy-preserving Linked-ID addressing — not
+// "<phone>@s.whatsapp.net" like Store.ID (itself also in AD form, carrying
+// this device's own :N suffix, e.g. "9055...:42@s.whatsapp.net", which
+// never equals any Chat JID either way). whatsmeow's store.Device exposes
+// both identities (ID = phone-number JID, LID = Linked-ID JID) — a caller
+// recognizing the self-chat must check the incoming ChatJID against both
+// non-AD forms, not just one. Returns nil if not connected/logged in yet.
+func (c *Client) OwnJIDs() []string {
 	c.startMu.Lock()
 	wa := c.waClient
 	c.startMu.Unlock()
-	if wa == nil || wa.Store == nil || wa.Store.ID == nil {
-		return ""
+	if wa == nil || wa.Store == nil {
+		return nil
 	}
-	return wa.Store.ID.ToNonAD().String()
+	var out []string
+	if wa.Store.ID != nil {
+		if s := wa.Store.ID.ToNonAD().String(); s != "" {
+			out = append(out, s)
+		}
+	}
+	if s := wa.Store.LID.ToNonAD().String(); s != "" {
+		out = append(out, s)
+	}
+	return out
 }
 
 // markSelfSent records a just-sent message's ID so IsSelfSentRecently can

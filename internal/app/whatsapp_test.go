@@ -30,14 +30,50 @@ func TestWhatsAppAssistantSystemPrompt_InstructsAcceptingExplicitSendRequests(t 
 	}
 }
 
+// TestIsSelfChatMessage_MatchesEitherOwnJIDForm is the regression test for
+// the actual reported bug: the self-chat assistant was enabled and
+// connected but never replied to anything. Root cause, confirmed live
+// against a real account: a genuine "Message Yourself" message's ChatJID
+// arrived as "<n>@lid" (WhatsApp's Linked-ID form), not
+// "<phone>@s.whatsapp.net" — the only form the original, pre-fix code
+// compared against (Client.OwnJID, singular). isSelfChatMessage must match
+// against every JID Client.OwnJIDs returns, phone-number and @lid alike.
+// Real values from that live account (client.go's OwnJIDs doc comment /
+// TestOwnJIDs_IncludesLID has the same shape).
+func TestIsSelfChatMessage_MatchesEitherOwnJIDForm(t *testing.T) {
+	ownJIDs := []string{"905373154237@s.whatsapp.net", "110874714980365@lid"}
+
+	t.Run("matches_lid_form", func(t *testing.T) {
+		msg := whatsapp.Message{ChatJID: "110874714980365@lid", Text: "selam", FromMe: true}
+		if !isSelfChatMessage(msg, ownJIDs) {
+			t.Error("expected true for a ChatJID matching the @lid form — this is the exact case that silently never fired before the fix")
+		}
+	})
+
+	t.Run("matches_phone_form", func(t *testing.T) {
+		msg := whatsapp.Message{ChatJID: "905373154237@s.whatsapp.net", Text: "selam", FromMe: true}
+		if !isSelfChatMessage(msg, ownJIDs) {
+			t.Error("expected true for a ChatJID matching the phone-number form")
+		}
+	})
+
+	t.Run("rejects_someone_elses_chat", func(t *testing.T) {
+		msg := whatsapp.Message{ChatJID: "905555555555@s.whatsapp.net", Text: "selam", FromMe: true}
+		if isSelfChatMessage(msg, ownJIDs) {
+			t.Error("expected false for a ChatJID that matches neither own JID form")
+		}
+	})
+}
+
 // TestShouldAutoReplyToWhatsApp_Guards locks in the safe-default behavior
 // of the self-chat auto-reply gate: it must stay false unless every
 // condition genuinely holds, so a future refactor can't accidentally make
 // Memo reply to someone else's message, or reply while the feature is
-// still off. The "genuine self-chat match" true case isn't covered here —
-// it needs a live OwnJID(), which requires a connected whatsmeow.Client
-// that internal/app has no way to construct (see client.go's OwnJID and
-// its own TestOwnJID_StripsDeviceSuffix in internal/whatsapp for that half).
+// still off. The "genuine self-chat match" true case is covered by
+// TestIsSelfChatMessage_MatchesEitherOwnJIDForm above (the pure matching
+// logic) rather than here — this function still needs a live OwnJIDs(),
+// which requires a connected whatsmeow.Client that internal/app has no way
+// to construct.
 func TestShouldAutoReplyToWhatsApp_Guards(t *testing.T) {
 	baseMsg := whatsapp.Message{
 		ID:      "msg-1",

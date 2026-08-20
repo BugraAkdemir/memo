@@ -9,34 +9,54 @@ import (
 	"go.mau.fi/whatsmeow/types"
 )
 
-// TestOwnJID_StripsDeviceSuffix is the regression test for the AD-vs-non-AD
+// TestOwnJIDs_StripsDeviceSuffix is the regression test for the AD-vs-non-AD
 // JID mixup this whole feature hinges on: wa.Store.ID is this device's own
 // JID *with* its device suffix (e.g. "9055...:5@s.whatsapp.net"), but a
 // message's ChatJID for the "Message Yourself" self-chat never carries one
 // — comparing against Store.ID.String() directly would never match, so
-// self-chat detection would silently never fire. OwnJID must return the
+// self-chat detection would silently never fire. OwnJIDs must return the
 // stripped (non-AD) form.
-func TestOwnJID_StripsDeviceSuffix(t *testing.T) {
+func TestOwnJIDs_StripsDeviceSuffix(t *testing.T) {
 	jid := types.JID{User: "905555555555", Device: 5, Server: types.DefaultUserServer}
 	c := &Client{waClient: &whatsmeow.Client{Store: &store.Device{ID: &jid}}}
 
-	got := c.OwnJID()
+	got := c.OwnJIDs()
 	want := "905555555555@s.whatsapp.net"
-	if got != want {
-		t.Errorf("OwnJID() = %q, want %q (device suffix must be stripped)", got, want)
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("OwnJIDs() = %v, want [%q] (device suffix must be stripped)", got, want)
 	}
 }
 
-// TestOwnJID_NotConnectedReturnsEmpty guards the pre-pairing/pre-connect
-// state (nil waClient, or a waClient with no Store yet) — must return "",
+// TestOwnJIDs_IncludesLID is the regression test for the actual reported
+// bug: confirmed live against a real WhatsApp account, a genuine self-chat
+// message's ChatJID arrived as "<n>@lid" — WhatsApp's Linked-ID form — not
+// "<phone>@s.whatsapp.net" like Store.ID. Checking only Store.ID (the
+// original, pre-fix behavior) meant self-chat was silently never
+// recognized: the self-chat assistant just never replied to anything, with
+// no error anywhere. OwnJIDs must include both forms.
+func TestOwnJIDs_IncludesLID(t *testing.T) {
+	id := types.JID{User: "905555555555", Device: 5, Server: types.DefaultUserServer}
+	lid := types.JID{User: "110874714980365", Server: types.HiddenUserServer}
+	c := &Client{waClient: &whatsmeow.Client{Store: &store.Device{ID: &id, LID: lid}}}
+
+	got := c.OwnJIDs()
+	wantPhone := "905555555555@s.whatsapp.net"
+	wantLID := "110874714980365@lid"
+	if len(got) != 2 || got[0] != wantPhone || got[1] != wantLID {
+		t.Errorf("OwnJIDs() = %v, want [%q, %q]", got, wantPhone, wantLID)
+	}
+}
+
+// TestOwnJIDs_NotConnectedReturnsEmpty guards the pre-pairing/pre-connect
+// state (nil waClient, or a waClient with no Store yet) — must return nil,
 // not panic, so callers checking self-chat before WhatsApp is even
 // connected fail safe.
-func TestOwnJID_NotConnectedReturnsEmpty(t *testing.T) {
-	if got := (&Client{}).OwnJID(); got != "" {
-		t.Errorf("OwnJID() on a nil waClient = %q, want empty", got)
+func TestOwnJIDs_NotConnectedReturnsEmpty(t *testing.T) {
+	if got := (&Client{}).OwnJIDs(); len(got) != 0 {
+		t.Errorf("OwnJIDs() on a nil waClient = %v, want empty", got)
 	}
-	if got := (&Client{waClient: &whatsmeow.Client{}}).OwnJID(); got != "" {
-		t.Errorf("OwnJID() with a nil Store = %q, want empty", got)
+	if got := (&Client{waClient: &whatsmeow.Client{}}).OwnJIDs(); len(got) != 0 {
+		t.Errorf("OwnJIDs() with a nil Store = %v, want empty", got)
 	}
 }
 

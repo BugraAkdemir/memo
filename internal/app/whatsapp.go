@@ -122,27 +122,41 @@ func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
 //
 // A self-chat message is always FromMe (only the account owner can write
 // there), so FromMe alone can't distinguish it from "I sent someone else a
-// message" — the real signal is ChatJID matching the account's own bare
-// JID (see Client.OwnJID's doc comment on why that's not wa.Store.ID
-// directly). IsSelfSentRecently additionally guards against treating
-// Memo's own just-sent reply as a new incoming command, regardless of
-// whether the underlying protocol ever actually echoes a send back through
-// the event stream.
+// message" — the real signal is ChatJID matching one of the account's own
+// bare JIDs (see Client.OwnJIDs' doc comment on why that's a list, not a
+// single value — a self-chat's ChatJID can legitimately be either the
+// account's phone-number JID or its newer @lid form). IsSelfSentRecently
+// additionally guards against treating Memo's own just-sent reply as a new
+// incoming command, regardless of whether the underlying protocol ever
+// actually echoes a send back through the event stream.
 func (a *App) shouldAutoReplyToWhatsApp(msg whatsapp.Message) bool {
 	if !a.GetWhatsAppSelfChatAssistant() {
-		return false
-	}
-	if !msg.FromMe || strings.TrimSpace(msg.Text) == "" {
 		return false
 	}
 	if a.waClient == nil {
 		return false
 	}
-	ownJID := a.waClient.OwnJID()
-	if ownJID == "" || msg.ChatJID != ownJID {
+	if !isSelfChatMessage(msg, a.waClient.OwnJIDs()) {
 		return false
 	}
 	return !a.waClient.IsSelfSentRecently(msg.ID)
+}
+
+// isSelfChatMessage is shouldAutoReplyToWhatsApp's pure matching logic,
+// split out so it's unit-testable without a live, connected whatsmeow
+// client (internal/app has no way to construct one with a working
+// Client.OwnJIDs — see whatsapp_test.go's TestShouldAutoReplyToWhatsApp_Guards
+// doc comment). ownJIDs is exactly what Client.OwnJIDs returns.
+func isSelfChatMessage(msg whatsapp.Message, ownJIDs []string) bool {
+	if !msg.FromMe || strings.TrimSpace(msg.Text) == "" {
+		return false
+	}
+	for _, jid := range ownJIDs {
+		if msg.ChatJID == jid {
+			return true
+		}
+	}
+	return false
 }
 
 // handleWhatsAppSelfChatMessage generates a normal chat reply to a

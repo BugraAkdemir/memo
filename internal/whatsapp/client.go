@@ -353,6 +353,33 @@ func (c *Client) SendMessage(ctx context.Context, jid, text string) (string, err
 	return resp.ID, nil
 }
 
+// SetComposing shows or clears WhatsApp's native "typing..." indicator in
+// jid's chat — the real chat-presence signal (the three animated dots),
+// not a placeholder message. WhatsApp clears an active "composing" state on
+// its own once an actual message arrives in that chat, so callers don't
+// strictly need to clear it before sending the real reply, but doing so
+// anyway (composing=false) avoids leaving a stale indicator showing if the
+// caller errors out before ever sending one. Best-effort: presence isn't
+// critical enough to fail a reply over, so errors are returned for the
+// caller to log, not to treat as fatal.
+func (c *Client) SetComposing(ctx context.Context, jid string, composing bool) error {
+	c.startMu.Lock()
+	wa := c.waClient
+	c.startMu.Unlock()
+	if wa == nil || !wa.IsConnected() || !wa.IsLoggedIn() {
+		return fmt.Errorf("whatsapp: not connected")
+	}
+	parsedJID, err := types.ParseJID(jid)
+	if err != nil {
+		return fmt.Errorf("whatsapp: invalid JID: %w", err)
+	}
+	state := types.ChatPresencePaused
+	if composing {
+		state = types.ChatPresenceComposing
+	}
+	return wa.SendChatPresence(ctx, parsedJID, state, "")
+}
+
 // SearchMessages searches WhatsApp messages via the store.
 func (c *Client) SearchMessages(query string, limit int) ([]Message, error) {
 	if c.store == nil {

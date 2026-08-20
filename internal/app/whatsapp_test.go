@@ -3,6 +3,7 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -149,4 +150,16 @@ func TestGetWhatsAppSelfChatAssistant(t *testing.T) {
 			t.Error("expected true when config has it enabled")
 		}
 	})
+}
+
+// TestStartWhatsAppComposing_NoClientReturnsNoOpStop guards the pre-connect
+// state: must return a harmless no-op stop function rather than panic when
+// there's no WhatsApp client to send a presence update through.
+func TestStartWhatsAppComposing_NoClientReturnsNoOpStop(t *testing.T) {
+	a := &App{}
+	stop := a.startWhatsAppComposing(context.Background(), "905555555555@s.whatsapp.net")
+	if stop == nil {
+		t.Fatal("expected a non-nil stop function even with no WhatsApp client")
+	}
+	stop() // must not panic
 }

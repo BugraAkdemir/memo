@@ -190,6 +190,14 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 	ctx, cancel := context.WithTimeout(a.lifecycleCtx, 120*time.Second)
 	defer cancel()
 
+	// Shows WhatsApp's native "typing..." indicator for as long as the
+	// reply is being generated, so a self-chat turn doesn't just sit there
+	// with no feedback until the answer suddenly appears — cleared as soon
+	// as generation finishes, deferred so it's cleared on every exit path
+	// (including the empty-reply early return below).
+	stopComposing := a.startWhatsAppComposing(ctx, msg.ChatJID)
+	defer stopComposing()
+
 	reply := drainToReply(a.SendMessageStreamTo(ctx, chatID, msg.Text))
 	reply = strings.TrimSpace(reply)
 	if reply == "" {
@@ -198,6 +206,53 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 
 	if _, err := a.WhatsAppSend(ctx, msg.ChatJID, reply); err != nil {
 		logx.Printf("WhatsApp self-chat: send reply error: %v", err)
+	}
+}
+
+// startWhatsAppComposing shows WhatsApp's native "typing..." chat-presence
+// indicator in jid's chat and keeps refreshing it every few seconds for as
+// long as a reply is being generated — WhatsApp clears a composing state
+// client-side if it isn't renewed for a while, the same reason the real app
+// keeps resending it while you're actually typing, and a reply can
+// realistically take much longer than that single-shot window. Returns a
+// stop function that clears the indicator; callers must defer it
+// immediately so it fires on every return path, including an early one.
+func (a *App) startWhatsAppComposing(ctx context.Context, jid string) (stop func()) {
+	if a.waClient == nil {
+		return func() {}
+	}
+	stopCh := make(chan struct{})
+	goRecover("whatsAppComposingLoop", func() {
+		if err := a.waClient.SetComposing(ctx, jid, true); err != nil {
+			logx.Printf("WhatsApp self-chat: set composing error: %v", err)
+			return
+		}
+		ticker := time.NewTicker(8 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := a.waClient.SetComposing(ctx, jid, true); err != nil {
+					return
+				}
+			}
+		}
+	})
+	return func() {
+		close(stopCh)
+		// A short, detached context: by the time the reply is ready to
+		// send, the caller's own ctx may already be at (or very close to)
+		// its deadline, and clearing the indicator matters more than
+		// honoring that same deadline here.
+		clearCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := a.waClient.SetComposing(clearCtx, jid, false); err != nil {
+			logx.Printf("WhatsApp self-chat: clear composing error: %v", err)
+		}
 	}
 }
 

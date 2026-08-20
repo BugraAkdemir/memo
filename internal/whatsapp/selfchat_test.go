@@ -1,6 +1,7 @@
 package whatsapp
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -105,5 +106,16 @@ func TestMarkSelfSent_CleansUpStaleEntriesPastCap(t *testing.T) {
 	}
 	if !c.IsSelfSentRecently("trigger-cleanup") {
 		t.Error("the entry that triggered cleanup should itself still be recorded")
+	}
+}
+
+// TestSetComposing_NotConnectedReturnsError guards the pre-connect state:
+// must fail cleanly rather than panic, since the composing indicator is
+// best-effort and callers are expected to log-and-continue on error, not
+// treat it as fatal.
+func TestSetComposing_NotConnectedReturnsError(t *testing.T) {
+	c := &Client{}
+	if err := c.SetComposing(context.Background(), "905555555555@s.whatsapp.net", true); err == nil {
+		t.Error("expected an error when not connected, got nil")
 	}
 }

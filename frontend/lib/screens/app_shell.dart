@@ -35,14 +35,14 @@ import '../widgets/agent/permission_dialog.dart';
 import 'chat_screen.dart';
 import 'agent_screen.dart';
 import 'model_store_screen.dart';
-import 'whatsapp_screen.dart';
+import 'connections_screen.dart';
 import 'calendar_screen.dart';
 import 'routines_screen.dart';
 import 'developer_screen.dart';
 import 'swarm_screen.dart';
 
 /// Tracks which main tab is currently selected
-/// (0=chat 1=agent 2=models 3=whatsapp 4=calendar 5=routines 6=developer
+/// (0=chat 1=agent 2=models 3=connections 4=calendar 5=routines 6=developer
 /// 7=swarm). Tasks are not a top-level tab — they're opened from within the
 /// Agent screen (a task list is always bound to a specific agent chat, so
 /// it makes no sense to reach it from a global nav item that could be
@@ -64,7 +64,7 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  // 0=chat 1=agent 2=models 3=whatsapp 4=calendar 5=routines 6=developer 7=swarm 8=live
+  // 0=chat 1=agent 2=models 3=connections 4=calendar 5=routines 6=developer 7=swarm 8=live
   int _currentIndex = 0;
   bool _showLaunchpad = false;
   bool _showTour = false;
@@ -286,7 +286,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                               const AgentScreen(),
                               ModelStoreScreen(
                                   key: ValueKey('models_$locale')),
-                              const WhatsAppScreen(),
+                              const ConnectionsScreen(),
                               const CalendarScreen(),
                               const RoutinesScreen(),
                               const DeveloperScreen(),
@@ -313,7 +313,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               ),
               // One floating hamburger, present on every screen regardless
               // of whether that screen has its own header — Developer/
-              // Models/WhatsApp/Calendar/Routines/Swarm never had a menu
+              // Models/Connections/Calendar/Routines/Swarm never had a menu
               // button of their own (only Chat/Agent did, for their own
               // sidebars), so without this a mobile user navigating there
               // from _buildMobileNavDrawer had no way back. Replaces the
@@ -400,7 +400,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     // Incognito is a single global backend flag (internal/app/chat.go),
     // not scoped to the chat screen — but its only visible cue used to be
     // the chat screen's own red background/pill, invisible from every
-    // other tab. A user who switched to Settings/Model Store/WhatsApp
+    // other tab. A user who switched to Settings/Model Store/Connections
     // while it was on had no way to notice it was still on. This dot on
     // the logo (always present in the rail, regardless of active tab) is
     // the app-wide equivalent.
@@ -459,9 +459,9 @@ class _AppShellState extends ConsumerState<AppShell> {
 
           _NavRailButton(
             key: _navKeys[3],
-            icon: Icons.message_outlined,
-            activeIcon: Icons.message,
-            label: 'WhatsApp',
+            icon: Icons.link_outlined,
+            activeIcon: Icons.link,
+            label: L10n.t('tab_connections'),
             isActive: _currentIndex == 3,
             onTap: () => _handleTabChange(3),
           ),
@@ -655,9 +655,9 @@ class _AppShellState extends ConsumerState<AppShell> {
           onTap: () => _selectMobileTab(2),
         ),
         item(
-          icon: Icons.message_outlined,
-          activeIcon: Icons.message,
-          label: 'WhatsApp',
+          icon: Icons.link_outlined,
+          activeIcon: Icons.link,
+          label: L10n.t('tab_connections'),
           isActive: _currentIndex == 3,
           onTap: () => _selectMobileTab(3),
         ),

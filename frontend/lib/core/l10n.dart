@@ -276,6 +276,10 @@ class L10n {
     'tab_stats': 'İstatistikler',
     'tab_dev_gateway': 'Geliştirici',
     'tab_swarm': 'Swarm',
+    'tab_connections': 'Bağlantılar',
+    'connections_title': 'Bağlantılar',
+    'connections_status_connected': 'Bağlı',
+    'connections_status_not_connected': 'Bağlı değil',
     'tab_report_bug': 'Hata Bildir',
     'tab_dream': 'Dream',
     'dream_subtitle':
@@ -2134,6 +2138,10 @@ class L10n {
     'tab_stats': 'Stats',
     'tab_dev_gateway': 'Developer',
     'tab_swarm': 'Swarm',
+    'tab_connections': 'Connections',
+    'connections_title': 'Connections',
+    'connections_status_connected': 'Connected',
+    'connections_status_not_connected': 'Not connected',
     'tab_report_bug': 'Report Bug',
     'tab_dream': 'Dream',
     'dream_subtitle':

@@ -35,8 +35,61 @@ net görünür olduğu doğrulandı — önceki soluk/görünmez hal tamamen git
 Commit: `fb61531` (frontend, tek commit — küçük, tek kök nedenli bir fix).
 **Push edilmedi**, istenmedi.
 
+## Ek (aynı oturum) — mobil görünüm: NavRail sıkışıklığı teşhis edildi, arka plan "2 farklı background" bug'ı bulunup düzeltildi
+
+Kullanıcı: "masaüstünde sorun yok ama mobil görünümü hâlâ kötü, her şey
+birbirine yapışık/sıkışık" dedi, sonra kendi telefonundan gerçek bir ekran
+görüntüsü paylaşıp "renk geçişine bak, 2 farklı background varmış gibi"
+diye ekledi.
+
+**Teşhis 1 — sıkışıklık (henüz düzeltilmedi, kullanıcı kararı bekleniyor):**
+`app_shell.dart`'ın ana `NavRail`'i (Chats/Ajan/Model Store/WhatsApp/
+Takvim/Rutinler/Developer/Settings) hiçbir mobil breakpoint'e sahip değil
+— sabit 72px, her zaman inline, ikon + 9px etiket. `chat_screen.dart`'ın
+kendi yorumu bunu "ikon-only, zaten dar" diye bilinçli kapsam dışı
+bırakmış (Session 8) ama `_NavRailButton`'ı okuyunca gerçekte etiket de
+var ve 72px'te kırpılıyor ("Model St..."). 375px'te ekranın ~%19'unu
+kalıcı yiyor — diğer her sidebar (Chat/Ajan/Settings/Model Store) zaten
+600-640px altında Drawer'a çevrilmişken, bu tek kalan tutarsız parça.
+Üç çözüm önerisi (alt sekme çubuğu / tek hamburger+2-sekmeli drawer / ayrı
+ikinci buton) `mcp__visualize` ile mockup'landı, kullanıcıya gösterildi —
+kullanıcı henüz seçim yapmadan arka plan bug'ına yöneldi, **karar hâlâ
+açık**.
+
+**Teşhis 2 ve fix — arka plan "2 farklı background" (düzeltildi,
+`d6cdbbb`):** Kod okuyarak kesin kök neden bulundu. `ChatScreen`'in dar
+(<600px) dalı, `Drawer`'ı barındırmak için gövdeyi bir `Scaffold`'a
+sarıyor — ama Flutter'da bir `Scaffold` her zaman kendi opak
+`scaffoldBackgroundColor`'ını (`bgApp`, düz bir renk) gövdesinin ALTINA
+boyar, üst `AppShell` Stack'inin diyagonal Glass Light gradyanı ne olursa
+olsun. Geniş moddaki `Row` dalı hiçbir zaman `Scaffold`'a sarmıyor, o
+yüzden masaüstünde hiç görünmüyordu ("masaüstünde sorun yok" tam olarak
+buradan) — sadece dar/mobil genişlik bu ekstra opak katmanı devreye
+sokuyor, NavRail'in hâlâ gerçek gradyanı gösterdiği yerin hemen yanında
+görünür bir düz-renk-vs-gradyan dikişi yaratıyor. `AgentScreen`'de birebir
+aynı desen vardı (kendi yorumu "ChatScreen'le aynı gerekçe" diyor) ama
+onun içerik rengi hiç `isGlass` kontrolü yapmadan her zaman opak `bgApp`
+idi — ikisi de aynı anda düzeltildi, tutarlı olsun diye.
+
+**Fix:** Her iki ekranın da dar-mod `Scaffold`'una `isGlass` iken
+`backgroundColor: Colors.transparent` eklendi (content'in kendi mevcut
+`isGlass` kontrolüyle eşleşen desen). `AgentScreen`'in content rengi de
+`ChatScreen`'inkiyle birebir aynı `isGlass ? transparent : bgApp` deseni
+kazandı.
+
+**Doğrulama:** `flutter analyze`/`flutter test` (262/262) temiz. **Canlı**
+(`flutter build web --release` → embed → scratch backend → 375px
+viewport, Glass Light): fix öncesi/sonrası karşılaştırıldı, Chat ve Ajan
+sekmelerinin ikisinde de NavRail ile içerik arasındaki dikiş tamamen
+gitti, tek bir kesintisiz gradyan görünüyor artık.
+
+Commit: `d6cdbbb` (frontend). **Push edilmedi**, istenmedi.
+
 ## Sırada ne var
 - Push için ayrı onay gerekiyor (AGENTS.md kuralı — hiçbir zaman otomatik).
+- **NavRail'in mobilde nasıl gösterileceği kullanıcı kararı bekliyor** (alt
+  sekme çubuğu / tek hamburger+2-sekmeli drawer / ayrı ikinci buton — üçü
+  de mockup'landı, gösterildi). Sıradaki oturum buradan devam etmeli.
 - Session 18'den kalan diğer açık maddeler hâlâ geçerli: `claude --bare`'ın
   `env`'i okuyup okumadığı doğrulanmadı; web build'in tema varsayılanı
   hâlâ sabit `'light'` (OS tercihini takip etmiyor); release/AppImage

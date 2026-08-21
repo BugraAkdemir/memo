@@ -188,10 +188,24 @@ func (r *ToolRegistry) registerBuiltins() {
 func (r *ToolRegistry) registerRoutineTool() {
 	r.Register(ToolDef{
 		Name:        "create_routine",
-		Description: "Kullanıcının serbest metinle tarif ettiği zamanlanmış bir görev (rutin) oluşturur — örn. \"her gün saat 9'da yapay zeka haberlerini getir\" veya \"her pazartesi takvimimi özetle\". text: kullanıcının isteğini olduğu gibi (kendi cümleleriyle) aktar; zaman, gün, içerik ve hangi kanaldan (WhatsApp/Telegram) gönderileceği otomatik çıkarılır — teslimat hedefi hiçbir zaman burada belirtilmez, her zaman bu konuşmanın kendisine gönderilir.",
+		Description: "Kullanıcının serbest metinle tarif ettiği zamanlanmış bir görev (rutin) oluşturur — örn. \"her gün saat 9'da yapay zeka haberlerini getir\" veya \"her pazartesi takvimimi özetle\". text: kullanıcının isteğini olduğu gibi (kendi cümleleriyle) aktar; zaman, gün, içerik ve hangi kanaldan (WhatsApp/Telegram) gönderileceği otomatik çıkarılır — teslimat hedefi hiçbir zaman burada belirtilmez, her zaman bu konuşmanın kendisine (ve o konuşmada açıkça istenen diğer bağlı kanallara) gönderilir.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"text":{"type":"string","description":"Kullanıcının rutin isteğinin serbest metin hali"}},"required":["text"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.CreateRoutine,
+	})
+	r.Register(ToolDef{
+		Name:        "list_routines",
+		Description: "Kullanıcının tüm zamanlanmış rutinlerini listeler (id, prompt, saat, günler, hangi kanal(lar)dan gönderildiği, aktif olup olmadığı). Kullanıcı \"rutinlerimi göster\", \"hangi rutinlerim var\" gibi bir şey sorduğunda, ya da bir rutini iptal etmeden önce gerçek id'sini öğrenmek için bunu çağır.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.ListRoutines,
+	})
+	r.Register(ToolDef{
+		Name:        "cancel_routine",
+		Description: "Bir rutini kalıcı olarak siler. id: silinecek rutinin gerçek id'si — bunu tahmin etme, önce list_routines çağırıp oradaki gerçek id'yi kullan.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","description":"list_routines'ten alınan gerçek rutin id'si"}},"required":["id"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.DeleteRoutine,
 	})
 }
 

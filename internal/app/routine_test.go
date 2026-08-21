@@ -109,21 +109,101 @@ func TestCreateRoutineFromDraft_PersistsLanguage(t *testing.T) {
 	}
 }
 
+// TestListRoutinesForChat_FormatsEveryRoutineWithItsRealID confirms the
+// list_routines tool's actual purpose: cancel_routine can never guess an
+// ID, so the listing must expose the real one for every routine, alongside
+// enough detail (time, days, channels, prompt) for the model to tell them
+// apart when the user refers to "the news one" or similar.
+func TestListRoutinesForChat_FormatsEveryRoutineWithItsRealID(t *testing.T) {
+	a := newRoutineTestApp(t)
+	st, err := routine.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("routine.NewStore: %v", err)
+	}
+	a.routineStore = st
+
+	t.Run("empty_store", func(t *testing.T) {
+		out, err := a.ListRoutinesForChat(context.Background())
+		if err != nil {
+			t.Fatalf("ListRoutinesForChat: %v", err)
+		}
+		if out == "" {
+			t.Error("expected a non-empty 'no routines' message for an empty store")
+		}
+	})
+
+	created, err := a.CreateRoutineFromDraft("haberleri getir", routine.Draft{
+		TimeOfDay:        "09:00",
+		Prompt:           "yapay zeka haberlerini getir",
+		DeliveryWhatsApp: true,
+	}, "905551234567@s.whatsapp.net", false, "tr", nil)
+	if err != nil {
+		t.Fatalf("CreateRoutineFromDraft: %v", err)
+	}
+
+	out, err := a.ListRoutinesForChat(context.Background())
+	if err != nil {
+		t.Fatalf("ListRoutinesForChat: %v", err)
+	}
+	if !strings.Contains(out, created.ID) {
+		t.Errorf("listing = %q, want it to contain the real id %q", out, created.ID)
+	}
+	if !strings.Contains(out, "09:00") || !strings.Contains(out, "yapay zeka haberlerini getir") || !strings.Contains(out, "WhatsApp") {
+		t.Errorf("listing = %q, missing expected detail (time/prompt/channel)", out)
+	}
+}
+
+// TestDeleteRoutineForChat_ActuallyDeletesAndRejectsUnknownID is the
+// cancellation regression test — "bu rutinimi iptal et" must actually
+// remove it from the store, not just claim to, and a made-up/stale id must
+// fail loudly rather than silently no-op.
+func TestDeleteRoutineForChat_ActuallyDeletesAndRejectsUnknownID(t *testing.T) {
+	a := newRoutineTestApp(t)
+	st, err := routine.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("routine.NewStore: %v", err)
+	}
+	a.routineStore = st
+
+	created, err := a.CreateRoutineFromDraft("haberleri getir", routine.Draft{TimeOfDay: "09:00", Prompt: "x"}, "", false, "tr", nil)
+	if err != nil {
+		t.Fatalf("CreateRoutineFromDraft: %v", err)
+	}
+
+	if _, err := a.DeleteRoutineForChat(context.Background(), "does-not-exist"); err == nil {
+		t.Error("expected an error for an unknown id")
+	}
+	if got := a.ListRoutines(); len(got) != 1 {
+		t.Fatalf("expected the real routine to be untouched by the failed delete, got %d routines", len(got))
+	}
+
+	summary, err := a.DeleteRoutineForChat(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("DeleteRoutineForChat: %v", err)
+	}
+	if summary == "" {
+		t.Error("expected a non-empty confirmation summary")
+	}
+	if got := a.ListRoutines(); len(got) != 0 {
+		t.Errorf("expected the routine to actually be gone, got %d routines still present", len(got))
+	}
+}
+
 // TestResolveRoutineDeliveryTarget_SelfChatSourceIsAlwaysForced is the
 // actual security-boundary test for create_routine (the user's own
 // reported concern: they must never be able to pick an arbitrary WhatsApp
 // contact via the conversational tool the way the Routines-tab UI's human
 // picker can). A WhatsApp/Telegram self-chat source on ctx must force that
-// exact target, completely independent of whatever connectivity state
+// exact target on, completely independent of whatever connectivity state
 // waClient/tgStore happen to be in — confirmed here with both left nil
-// entirely, which would panic if the function ever fell through to reading
-// them in this branch.
+// entirely (draftWants*=false), which would panic if the function ever
+// fell through to reading them in this branch.
 func TestResolveRoutineDeliveryTarget_SelfChatSourceIsAlwaysForced(t *testing.T) {
 	a := &App{} // waClient, tgStore both nil — must never be touched below
 
 	t.Run("whatsapp_source_forces_that_exact_jid", func(t *testing.T) {
 		ctx := withSelfChatSource(context.Background(), SelfChatSource{WhatsApp: true, WhatsAppJID: "905551234567@s.whatsapp.net"})
-		jid, wa, tg := a.resolveRoutineDeliveryTarget(ctx)
+		jid, wa, tg := a.resolveRoutineDeliveryTarget(ctx, false, false)
 		if jid != "905551234567@s.whatsapp.net" || !wa || tg {
 			t.Errorf("resolveRoutineDeliveryTarget() = (%q, %v, %v), want (the self-chat JID, true, false)", jid, wa, tg)
 		}
@@ -131,9 +211,56 @@ func TestResolveRoutineDeliveryTarget_SelfChatSourceIsAlwaysForced(t *testing.T)
 
 	t.Run("telegram_source_forces_telegram_only", func(t *testing.T) {
 		ctx := withSelfChatSource(context.Background(), SelfChatSource{Telegram: true, TelegramChatID: 555})
-		jid, wa, tg := a.resolveRoutineDeliveryTarget(ctx)
+		jid, wa, tg := a.resolveRoutineDeliveryTarget(ctx, false, false)
 		if jid != "" || wa || !tg {
 			t.Errorf("resolveRoutineDeliveryTarget() = (%q, %v, %v), want (\"\", false, true)", jid, wa, tg)
+		}
+	})
+}
+
+// TestResolveRoutineDeliveryTarget_ExplicitlyRequestedOtherChannelIsAdded
+// is the regression test for the user's own live test scenario: "buradan
+// (WhatsApp self-chat) hem Telegram hem WhatsApp'a gönder" must actually
+// enable both, not silently drop the one that isn't the current surface —
+// as long as the added channel still only ever resolves to the user's own
+// already-connected surface, never anything the model could have invented.
+func TestResolveRoutineDeliveryTarget_ExplicitlyRequestedOtherChannelIsAdded(t *testing.T) {
+	t.Run("whatsapp_self_chat_also_wants_telegram", func(t *testing.T) {
+		store := telegram.NewStore(filepath.Join(t.TempDir(), "telegram.json"), testMasterKey)
+		store.SetOwner(999, "Bugra")
+		a := &App{tgStore: store}
+
+		ctx := withSelfChatSource(context.Background(), SelfChatSource{WhatsApp: true, WhatsAppJID: "x@s.whatsapp.net"})
+		jid, wa, tg := a.resolveRoutineDeliveryTarget(ctx, false, true)
+		if jid != "x@s.whatsapp.net" || !wa {
+			t.Errorf("WhatsApp side = (%q, %v), want the forced self-chat JID still on", jid, wa)
+		}
+		if !tg {
+			t.Error("expected Telegram to be added on top since the text explicitly asked for it and a bot is linked")
+		}
+	})
+
+	t.Run("whatsapp_self_chat_wants_telegram_but_none_linked_stays_whatsapp_only", func(t *testing.T) {
+		a := &App{} // no tgStore at all — nothing linked to add
+		ctx := withSelfChatSource(context.Background(), SelfChatSource{WhatsApp: true, WhatsAppJID: "x@s.whatsapp.net"})
+		_, wa, tg := a.resolveRoutineDeliveryTarget(ctx, false, true)
+		if !wa {
+			t.Error("expected WhatsApp to stay on")
+		}
+		if tg {
+			t.Error("expected Telegram to stay off — asking for it doesn't conjure a link that doesn't exist")
+		}
+	})
+
+	t.Run("not_requesting_the_other_channel_leaves_it_off", func(t *testing.T) {
+		store := telegram.NewStore(filepath.Join(t.TempDir(), "telegram.json"), testMasterKey)
+		store.SetOwner(999, "Bugra")
+		a := &App{tgStore: store}
+
+		ctx := withSelfChatSource(context.Background(), SelfChatSource{WhatsApp: true, WhatsAppJID: "x@s.whatsapp.net"})
+		_, _, tg := a.resolveRoutineDeliveryTarget(ctx, false, false)
+		if tg {
+			t.Error("expected Telegram to stay off when the text never asked for it, even though a bot is linked")
 		}
 	})
 }
@@ -146,7 +273,7 @@ func TestResolveRoutineDeliveryTarget_SelfChatSourceIsAlwaysForced(t *testing.T)
 func TestResolveRoutineDeliveryTarget_NormalChatDefaultsToConnectedSurfaces(t *testing.T) {
 	t.Run("nothing_connected_enables_nothing", func(t *testing.T) {
 		a := &App{}
-		jid, wa, tg := a.resolveRoutineDeliveryTarget(context.Background())
+		jid, wa, tg := a.resolveRoutineDeliveryTarget(context.Background(), false, false)
 		if jid != "" || wa || tg {
 			t.Errorf("resolveRoutineDeliveryTarget() = (%q, %v, %v), want all zero/false with nothing connected", jid, wa, tg)
 		}
@@ -157,7 +284,7 @@ func TestResolveRoutineDeliveryTarget_NormalChatDefaultsToConnectedSurfaces(t *t
 		store.SetOwner(999, "Bugra")
 		a := &App{tgStore: store}
 
-		jid, wa, tg := a.resolveRoutineDeliveryTarget(context.Background())
+		jid, wa, tg := a.resolveRoutineDeliveryTarget(context.Background(), false, false)
 		if jid != "" || wa {
 			t.Errorf("resolveRoutineDeliveryTarget() WhatsApp side = (%q, %v), want (\"\", false) — no WhatsApp client at all", jid, wa)
 		}

@@ -149,8 +149,15 @@ func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whats
 // free-text description; the delivery target is deliberately NEVER taken
 // from the model — see selfChatSourceFromContext's doc comment for why:
 //
-//   - Called from WhatsApp/Telegram self-chat: delivery is forced to that
-//     exact surface/chat, ignoring whatever the extractor guessed from text.
+//   - Called from WhatsApp/Telegram self-chat: delivery to that exact
+//     surface/chat is always forced on, regardless of what the extractor
+//     parsed — the one thing that's never in question. If the user's own
+//     text *also* explicitly asked for the other channel too ("...Telegram
+//     ve WhatsApp'tan gönder", said from inside WhatsApp self-chat), that
+//     channel is added as well — but only ever pointed at that user's own
+//     already-connected surface (connectedWhatsAppSelfChatJID/
+//     linkedTelegramOwnerChatID), the same as the normal-chat case below —
+//     never at a target the extractor merely mentioned in text.
 //   - Called from normal chat (no self-chat source on ctx): delivery
 //     defaults to whichever self-chat surfaces are actually connected right
 //     now (WhatsApp if logged in, Telegram if a bot is linked) — "smart"
@@ -187,7 +194,7 @@ func (a *App) CreateRoutineFromChat(ctx context.Context, text string) (string, e
 		return "", fmt.Errorf("rutin ayrıştırılamadı: %w", err)
 	}
 
-	whatsAppTargetJID, deliveryWhatsApp, deliveryTelegram := a.resolveRoutineDeliveryTarget(ctx)
+	whatsAppTargetJID, deliveryWhatsApp, deliveryTelegram := a.resolveRoutineDeliveryTarget(ctx, draft.DeliveryWhatsApp, draft.DeliveryTelegram)
 	draft.DeliveryWhatsApp = deliveryWhatsApp
 	draft.DeliveryTelegram = deliveryTelegram
 
@@ -210,17 +217,41 @@ func (a *App) CreateRoutineFromChat(ctx context.Context, text string) (string, e
 // chat ID itself whenever DeliveryTelegram is set (see its own doc
 // comment), since — unlike WhatsApp — there is only ever one legitimate
 // value to resolve to.
-func (a *App) resolveRoutineDeliveryTarget(ctx context.Context) (whatsAppTargetJID string, deliveryWhatsApp, deliveryTelegram bool) {
-	if src, ok := selfChatSourceFromContext(ctx); ok {
-		if src.WhatsApp {
-			return src.WhatsAppJID, true, false
-		}
-		if src.Telegram {
-			return "", false, true
+//
+// draftWantsWhatsApp/draftWantsTelegram are the extractor's own read of the
+// user's text (e.g. "...Telegram ve WhatsApp'tan gönder") — consulted only
+// to decide whether to ADD the other channel on top of the current
+// self-chat surface's forced one, never to pick what that channel's target
+// actually is (always the user's own connectedWhatsAppSelfChatJID /
+// linkedTelegramOwnerChatID, exactly like the no-source/normal-chat case).
+func (a *App) resolveRoutineDeliveryTarget(ctx context.Context, draftWantsWhatsApp, draftWantsTelegram bool) (whatsAppTargetJID string, deliveryWhatsApp, deliveryTelegram bool) {
+	src, hasSource := selfChatSourceFromContext(ctx)
+
+	if hasSource && src.WhatsApp {
+		whatsAppTargetJID = src.WhatsAppJID
+		deliveryWhatsApp = true
+	}
+	if hasSource && src.Telegram {
+		deliveryTelegram = true
+	}
+
+	// Add the other channel(s) on top: unconditionally when there's no
+	// self-chat surface to begin with (normal chat's existing "smart
+	// default to whatever's connected" behavior), or on top of the forced
+	// surface above when the user's own text explicitly asked for it too.
+	if !hasSource || draftWantsWhatsApp {
+		if jid := a.connectedWhatsAppSelfChatJID(); jid != "" {
+			whatsAppTargetJID = jid
+			deliveryWhatsApp = true
 		}
 	}
-	whatsAppTargetJID = a.connectedWhatsAppSelfChatJID()
-	return whatsAppTargetJID, whatsAppTargetJID != "", a.linkedTelegramOwnerChatID() != 0
+	if !hasSource || draftWantsTelegram {
+		if a.linkedTelegramOwnerChatID() != 0 {
+			deliveryTelegram = true
+		}
+	}
+
+	return whatsAppTargetJID, deliveryWhatsApp, deliveryTelegram
 }
 
 // connectedWhatsAppSelfChatJID returns the account's own self-chat JID if
@@ -249,20 +280,83 @@ func (a *App) linkedTelegramOwnerChatID() int64 {
 	return st.OwnerChatID
 }
 
+// ListRoutinesForChat is the list_routines agent tool's backing
+// implementation — every routine, one per line, with its real ID (the only
+// way cancel_routine can ever learn one: there is nothing about an ID that
+// a model could guess or derive, so a cancellation always has to start
+// here).
+func (a *App) ListRoutinesForChat(ctx context.Context) (string, error) {
+	if a.routineStore == nil {
+		return "", fmt.Errorf("rutin sistemi hazır değil")
+	}
+	routines := a.ListRoutines()
+	if len(routines) == 0 {
+		return "Hiç rutin yok.", nil
+	}
+	var b strings.Builder
+	for _, r := range routines {
+		state := "aktif"
+		if !r.Enabled {
+			state = "pasif"
+		}
+		channelStr := routineChannelSummary(r)
+		if channelStr == "" {
+			channelStr = "kanal yok"
+		}
+		fmt.Fprintf(&b, "id=%s | %s | saat %s (%s) | %s | %q\n",
+			r.ID, state, r.Schedule.TimeOfDay, routineScheduleDays(r), channelStr, r.Prompt)
+	}
+	return strings.TrimRight(b.String(), "\n"), nil
+}
+
+// DeleteRoutineForChat is the cancel_routine agent tool's backing
+// implementation.
+func (a *App) DeleteRoutineForChat(ctx context.Context, id string) (string, error) {
+	if a.routineStore == nil {
+		return "", fmt.Errorf("rutin sistemi hazır değil")
+	}
+	existing, err := a.GetRoutine(id)
+	if err != nil {
+		return "", fmt.Errorf("id=%q ile bir rutin bulunamadı — önce list_routines ile gerçek id'yi kontrol et", id)
+	}
+	if err := a.DeleteRoutine(id); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Rutin silindi: saat %s, %q", existing.Schedule.TimeOfDay, existing.Prompt), nil
+}
+
 // summarizeCreatedRoutine is the create_routine tool's return value — a
 // short, model-readable confirmation (not user-facing chat text by itself;
 // the LLM turns this into its own reply) of what actually got created,
 // since the tool's caller only supplies free text and can't otherwise see
 // how it was interpreted (time/weekdays/delivery channel).
 func summarizeCreatedRoutine(r *routine.Routine) string {
-	days := "her gün"
-	if len(r.Schedule.Weekdays) > 0 {
-		names := make([]string, len(r.Schedule.Weekdays))
-		for i, w := range r.Schedule.Weekdays {
-			names[i] = w.String()
-		}
-		days = strings.Join(names, ", ")
+	channelStr := routineChannelSummary(*r)
+	if channelStr == "" {
+		channelStr = "hiçbir kanal bağlı değil, bildirim gidemeyecek"
 	}
+	return fmt.Sprintf("Rutin oluşturuldu: %s saat %s, %s üzerinden gönderilecek. Prompt: %q",
+		routineScheduleDays(*r), r.Schedule.TimeOfDay, channelStr, r.Prompt)
+}
+
+// routineScheduleDays formats a routine's weekdays for chat-facing text —
+// shared by summarizeCreatedRoutine and ListRoutinesForChat.
+func routineScheduleDays(r routine.Routine) string {
+	if len(r.Schedule.Weekdays) == 0 {
+		return "her gün"
+	}
+	names := make([]string, len(r.Schedule.Weekdays))
+	for i, w := range r.Schedule.Weekdays {
+		names[i] = w.String()
+	}
+	return strings.Join(names, ", ")
+}
+
+// routineChannelSummary formats a routine's enabled delivery channels for
+// chat-facing text, or "" if none are enabled — shared by
+// summarizeCreatedRoutine and ListRoutinesForChat, which each pick their
+// own wording for the empty case.
+func routineChannelSummary(r routine.Routine) string {
 	channels := make([]string, 0, 2)
 	if r.DeliveryWhatsApp {
 		channels = append(channels, "WhatsApp")
@@ -270,21 +364,25 @@ func summarizeCreatedRoutine(r *routine.Routine) string {
 	if r.DeliveryTelegram {
 		channels = append(channels, "Telegram")
 	}
-	channelStr := "hiçbir kanal bağlı değil, bildirim gidemeyecek"
-	if len(channels) > 0 {
-		channelStr = strings.Join(channels, " + ")
-	}
-	return fmt.Sprintf("Rutin oluşturuldu: %s saat %s, %s üzerinden gönderilecek. Prompt: %q",
-		days, r.Schedule.TimeOfDay, channelStr, r.Prompt)
+	return strings.Join(channels, " + ")
 }
 
 // routineToolAdapter wraps *App to satisfy tools.Routines (name mismatch
-// only — CreateRoutineFromChat vs. the interface's CreateRoutine — same
+// only — CreateRoutineFromChat/ListRoutinesForChat/DeleteRoutineForChat vs.
+// the interface's CreateRoutine/ListRoutines/DeleteRoutine — same
 // adapter-for-naming pattern as waToolAdapter in whatsapp.go).
 type routineToolAdapter struct{ a *App }
 
 func (r routineToolAdapter) CreateRoutine(ctx context.Context, text string) (string, error) {
 	return r.a.CreateRoutineFromChat(ctx, text)
+}
+
+func (r routineToolAdapter) ListRoutines(ctx context.Context) (string, error) {
+	return r.a.ListRoutinesForChat(ctx)
+}
+
+func (r routineToolAdapter) DeleteRoutine(ctx context.Context, id string) (string, error) {
+	return r.a.DeleteRoutineForChat(ctx, id)
 }
 
 // GetRoutine returns a single routine by ID.

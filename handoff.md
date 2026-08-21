@@ -1,3 +1,41 @@
+# Ek (2026-08-21, devam) — create_routine'in AutoApproveTools'u artık live /auto-perm'e bağlı değil, hep true
+
+Bir önceki turda `AutoApproveTools`'u rutini oluşturan yüzeyin **o anki**
+`/auto-perm` ayarından türetmiştim. Kullanıcı canlı kullanınca bunun yanlış
+tasarım olduğunu söyledi: "yeni chat açınca ya da kapalı unutunca gider" —
+yani live bir toggle'a bağlı olmak, rutinin agent/tool erişimini kırılgan ve
+öngörülemez hale getiriyordu. İstediği: rutinler için **ayrı bir sistem** —
+agent ve web her zaman hazır (gerektiğinde kullanılabilir), rutinin kendisi
+zaten oluşturulurken (insan ne yapmasını istediğini yazarak) onaylanmış
+sayılsın.
+
+**Fix:** `CreateRoutineFromChat`'te `autoApproveTools` artık koşulsuz
+`true` — `resolveRoutineAutoApprove`/live-surface-takip mekanizması komple
+kaldırıldı. Bu sadece `NeedsAgentMode` de true olan rutinlerde bir şey
+ifade ediyor (`CreateRoutineFromDraft`'ın zaten var olan
+`d.NeedsAgentMode && autoApproveTools` kapısı sayesinde) — yani sohbetten
+oluşturulan agent-modlu bir rutin artık ateşlendiğinde hiç sormadan
+çalışıyor. Önceki turda eklenen canlı-izin-sorma mekanizması
+(`runAgentRoutine`'deki `routinePermissionCallbacks`) **silinmedi** — hâlâ
+işe yarıyor, ama artık sadece Rutinler-sekmesi UI'ından elle oluşturulan ve
+kendi `routines_auto_approve` toggle'ı bilerek kapalı bırakılan rutinler
+için devrede.
+
+**Ek soru, cevaplandı:** "/auto-perm WhatsApp'ta var mı" — evet, bu
+oturumun başında (commit `6e7b349`) hem WhatsApp hem Telegram self-chat'e
+eklenmişti, `/agent`/`/web` ile aynı yerde. Asıl sorun onun eksikliği değil,
+rutinlerin ona bağımlı olmasıydı — o bağımlılık şimdi tamamen koptu.
+
+**Doğrulama:** `go build/vet/test -race ./...` tüm repo yeşil. Eski
+`resolveRoutineAutoApprove` testi kaldırıldı (fonksiyon gitti), yerine
+`CreateRoutineFromDraft`'ın mevcut `NeedsAgentMode` kapısının
+`autoApproveTools=true` geçilse bile agent-modu olmayan bir rutinde hiçbir
+şey ifade etmediğini doğrulayan bir test eklendi.
+
+Henüz commit edilmedi.
+
+---
+
 # Ek (2026-08-21, devam) — create_routine artık AgentMode'u da kullanabiliyor, ateşlenince gerçekten izin soruyor
 
 Kullanıcının hemen ardından gelen sorusu: "her gün saat 2'de sistemimin

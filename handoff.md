@@ -1,3 +1,67 @@
+# Ek (2026-08-21, devam) — KÖK NEDEN: self-chat'te agent modu hiç aktif olmuyormuş, web arama varsayılanı değişti
+
+Kullanıcı gerçek WhatsApp self-chat'inden canlı test etti — "her gün saat
+10'da yapay zeka haberlerini gönder" dedi, Memo genel bir "bunu henüz
+yapamıyorum, birlikte tasarlayalım" cevabı verdi, sanki `create_routine`
+diye bir araç hiç yokmuş gibi. `/codebase-memory` ile koda gerçekten indim.
+
+## Kök neden bulundu
+
+`SendMessageStreamTo` (self-chat'in kullandığı tek yol) agent araçlarını
+şuna göre açıyor: `forceAgent = sm.IsAgentChat(chatID)`. `IsAgentChat` ise
+sadece `session.ProjectPath != ""` kontrolü — yani sadece `NewAgentChat`
+(proje bazlı "Agent Chat"lar) ile oluşturulan sohbetlerde true. Ama
+WhatsApp/Telegram self-chat'in kendi arka plan sohbeti `NewBackgroundChat`
+ile oluşturuluyor (bilerek — kullanıcının aktif Flutter sohbetini çalmasın
+diye), ve bu **hiçbir zaman** `ProjectPath` set etmiyor. Sonuç:
+`IsAgentChat` her zaman false → `forceAgent` false → agent araçlarına
+erişim sadece **global** `agentEnabled` bayrağına bağlı kalıyor — ki o da
+varsayılan olarak kapalı, ve self-chat'in kendi arayüzünde onu açmanın tek
+yolu `/agent on` yazmak (kullanıcı bunu hiç yapmamıştı). Yani
+`create_routine`/`list_routines`/`cancel_routine`/`whatsapp_send`/agent'ın
+`web_search`'ü — hiçbiri o turda gerçekten erişilebilir değildi, model
+sadece genel bilgisiyle uydurdu.
+
+## Fix
+
+Yeni `App.SendMessageStreamToAsAgent` (`internal/app/chat.go`) —
+`SendMessageStreamTo`'nun birebir aynısı ama `forceAgent`'ı koşulsuz
+`true` geçiyor (`runAgentRoutine`'in `sendMessageStreamCore`'a zaten
+yaptığı gibi). `handleWhatsAppSelfChatMessage`/`handleTelegramMessage`
+artık bunu çağırıyor. Artık self-chat'te agent modu **her zaman** aktif —
+`/agent on` yazmaya ya da global bayrağı hatırlamaya gerek yok. Asıl
+güvenlik sınırı zaten `/auto-perm`'in izin akışı, "agent modu nominal
+olarak açık mı" diye ikinci bir unutulabilir kapı değil.
+
+## Ayrı mesele: web arama varsayılanı
+
+Kullanıcının ayrı belirttiği nokta: web arama genel olarak (sadece
+rutinlerde değil) varsayılan açık gelmeli. `config.Default()`'taki
+`WebSearch.Enabled` eskiden `false`'du, gerekçesi "her mesajda ağa çıkar"
+idi — ama bu gerekçe artık geçersiz: web arama gerçek tool-calling'e
+geçileli (bu oturumun release notes'unda da yazdığım üzere), model sadece
+gerçekten gerektiğinde çağırıyor, aramayacağı turlarda sıfır maliyet.
+`Enabled: true` yapıldı. **Mevcut kurulumlar etkilenmiyor** — `Load()`
+zaten kendi `config.yaml`'ındaki açık değeri kullanıyor, sadece taze
+kurulumlar yeni varsayılanı görüyor.
+
+**Doğrulama:** `go build/vet/test -race ./...` tüm repo yeşil. Bir mevcut
+test (`TestSetWhatsAppSelfChatAssistant_TurnsOnWebSearch`) varsayılanın
+değişmesiyle bozuldu, düzeltildi (artık web aramayı testte açıkça kapatıp
+sonra "gerçekten açıyor mu" diye test ediyor, "zaten açık" değil). Yeni
+testler: `SendMessageStreamToAsAgent`'ın bilinmeyen chat id'de aynı hatayı
+verdiği, `NewBackgroundChat`ile oluşturulan (IsAgentChat=false) bir
+sohbette reddedilmediği (sağlayıcı olmadan tam uçtan uca doğrulanamadı —
+gerçek bir LLM/tool-calling mock gerekir, kapsam dışı bırakıldı).
+
+**Doğrulanamayan:** gerçek bir WhatsApp self-chat mesajının artık gerçekten
+`create_routine`'i çağırdığı bu ortamda canlı test edilemedi — kullanıcı
+kendi WhatsApp'ından deneyecek.
+
+Henüz commit edilmedi.
+
+---
+
 # Ek (2026-08-21, devam) — çoklu kanal teslimatı düzeltildi, list_routines + cancel_routine eklendi
 
 Kullanıcı canlı bir test senaryosu sordu: "her gün saat 9'da sistem

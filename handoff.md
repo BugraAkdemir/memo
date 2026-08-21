@@ -54,11 +54,12 @@ verdiği, `NewBackgroundChat`ile oluşturulan (IsAgentChat=false) bir
 sohbette reddedilmediği (sağlayıcı olmadan tam uçtan uca doğrulanamadı —
 gerçek bir LLM/tool-calling mock gerekir, kapsam dışı bırakıldı).
 
-**Doğrulanamayan:** gerçek bir WhatsApp self-chat mesajının artık gerçekten
-`create_routine`'i çağırdığı bu ortamda canlı test edilemedi — kullanıcı
-kendi WhatsApp'ından deneyecek.
+**Canlı doğrulandı (2026-08-21):** kullanıcı kendi gerçek WhatsApp/Telegram
+hesabından tekrar denedi — Memo artık isteği gerçekten anlıyor, web
+araştırmasını yapıp haberleri getiriyor, saati doğru şekilde işliyor.
+Kök neden fix'i canlıda çalışıyor.
 
-Henüz commit edilmedi.
+Commit: `24ca243` (fix) + `ebc7b79` (docs), push edildi.
 
 ---
 

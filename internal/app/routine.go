@@ -124,9 +124,16 @@ func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whats
 			Weekdays:         weekdays,
 			UTCOffsetMinutes: utcOffsetMinutes,
 		},
-		Prompt:           d.Prompt,
-		AgentMode:        d.NeedsAgentMode,
-		AutoApproveTools: d.NeedsAgentMode && autoApproveTools,
+		Prompt: d.Prompt,
+		// AgentMode is always true now (BUG-M6): every routine runs through
+		// the agent pipeline regardless of what the extractor's
+		// NeedsAgentMode guess was, so agent tools and web_search are always
+		// available to a routine if it turns out to need them, not just the
+		// ones the extractor happened to classify as needing "real" actions.
+		// See runRoutineGenerate's doc comment for the execution side of
+		// this.
+		AgentMode:        true,
+		AutoApproveTools: autoApproveTools,
 		ContextSource: routine.ContextSource{
 			Type:           contextType,
 			WhatsAppJID:    whatsAppTargetJID,
@@ -164,12 +171,15 @@ func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whats
 //     defaulting instead of asking the model to pick a target, since it has
 //     no legitimate target to pick from in the first place.
 //
-// AgentMode is whatever the extractor itself inferred from text (e.g. "her
-// gün saat 14'te sistemimin durumunu kontrol et" needs real command
-// execution, "AI haberlerini getir" doesn't) — no longer forced off.
+// AgentMode is always true (see CreateRoutineFromDraft) regardless of what
+// the extractor inferred — a routine's own Prompt is the actual scope
+// review (the human already read and approved what it says at creation
+// time), so whether the extractor happened to classify it as needing "real"
+// actions no longer gates tool access at all; it only still gates the
+// (now cosmetic-only) NeedsAgentMode field surfaced to the create-routine
+// UI's own auto-approve-toggle visibility.
 //
-// AutoApproveTools is unconditionally true (only takes effect when
-// AgentMode is also true, per CreateRoutineFromDraft's own gating).
+// AutoApproveTools is unconditionally true.
 // Deliberately NOT tied to the live per-surface /auto-perm setting, despite
 // that being the first, more "obviously safe" design tried here — direct
 // user feedback after using it: a routine's agent/tool access being at the
@@ -420,13 +430,31 @@ func (a *App) SyncRoutineUTCOffsets(minutes int) (int, error) {
 	return a.routineStore.SyncUTCOffset(minutes)
 }
 
-// runRoutineGenerate is the routine.GenerateFn wired into the RoutineLoop: it
-// picks the execution path based on Routine.AgentMode.
+// runRoutineGenerate is the routine.GenerateFn wired into the RoutineLoop.
+//
+// BUG-M6: every routine now runs through runAgentRoutine's full agent/tool
+// pipeline unconditionally — this used to branch on Routine.AgentMode,
+// running a plain, tool-less LLM call whenever the extractor's
+// NeedsAgentMode guess came back false (the common case for routines like
+// "her gün AI haberlerini getir", which only *reads*, doesn't act). Direct
+// user feedback: a routine's agent/web access silently depending on a
+// one-shot text classification made at creation time meant a routine could
+// find itself needing a tool mid-run (a search, a status check) that its
+// own classification never granted it, with no way to recover short of
+// deleting and recreating it. Every Routine, including ones already
+// persisted from before this change (Routine.AgentMode is now ignored here
+// entirely, not just at creation), gets the same treatment: deterministic
+// ContextSource pre-fetch (still guaranteed, doesn't depend on the model
+// choosing to fetch it) merged into the prompt exactly as before, PLUS the
+// full agent tool registry (including web_search, Safe-DangerLevel so it
+// never needs a permission prompt) available on top, for anything the
+// pre-fetch didn't cover. Medium/Dangerous tools still respect
+// Routine.AutoApproveTools/the live permission-ask flow exactly as they did
+// for already-agent-mode routines — this change only ever widens tool
+// *availability*, never bypasses the danger-level gate itself.
 func (a *App) runRoutineGenerate(ctx context.Context, r routine.Routine) (string, error) {
-	if r.AgentMode {
-		return a.runAgentRoutine(ctx, r)
-	}
-	return a.runSimplePromptRoutine(ctx, r)
+	r.Prompt = a.buildRoutinePrompt(ctx, r)
+	return a.runAgentRoutine(ctx, r)
 }
 
 // routineLanguageIsEnglish reports whether lang (Routine.Language) selects
@@ -455,12 +483,21 @@ func routineSystemPrompt(lang string) string {
 		"Kısa, doğal, mesaj gibi okunan bir cevap ver — bir sohbetin ortasındaymış gibi değil, kendi başına bir bildirim gibi."
 }
 
-// runSimplePromptRoutine handles the non-agent path: deterministically
-// pre-fetch any requested context (calendar agenda / a specific WhatsApp
-// chat's recent messages) in Go, then make a single plain LLM call. No tool
-// access at all — safe by construction, and doesn't depend on an unattended
-// model correctly deciding to call a tool.
-func (a *App) runSimplePromptRoutine(ctx context.Context, r routine.Routine) (string, error) {
+// buildRoutinePrompt assembles the single user-turn text runAgentRoutine
+// sends into the routine's own fresh agent chat: the routine's
+// deterministically pre-fetched ContextSource data (calendar agenda /
+// a specific WhatsApp chat's recent messages / self-insight / a web
+// search — see runRoutineGenerate's doc comment for why this pre-fetch is
+// kept even though the agent pipeline could now fetch equivalent data
+// itself via tools: a guaranteed baseline that doesn't depend on an
+// unattended model remembering to call the right tool), followed by
+// routineSystemPrompt's "this is a standalone scheduled notification, not
+// mid-conversation" framing — carried over from the old non-agent path's
+// dedicated system message (runAgentRoutine's chat gets its own regular
+// system prompt from buildMessagesForSession, which knows nothing about a
+// routine being scheduled vs. a live user turn, so this still needs to be
+// said explicitly) — and finally the routine's own user-authored Prompt.
+func (a *App) buildRoutinePrompt(ctx context.Context, r routine.Routine) string {
 	var extraContext string
 	switch r.ContextSource.Type {
 	case routine.ContextCalendar:
@@ -484,8 +521,8 @@ func (a *App) runSimplePromptRoutine(ctx context.Context, r routine.Routine) (st
 		// Reuses GenerateSelfInsight's own context-building (memory.RecentSince +
 		// mood.HistorySince) rather than duplicating it here — the routine's
 		// user-authored Prompt becomes the *framing* around that pre-synthesized
-		// insight, same "deterministic context, one plain LLM call" shape as the
-		// calendar/whatsapp cases above, just with the insight already summarized.
+		// insight, same "deterministic context" shape as the calendar/whatsapp
+		// cases above, just with the insight already summarized.
 		insight, err := a.GenerateSelfInsight(ctx, 0, r.Language)
 		if err == nil {
 			extraContext = insight
@@ -513,16 +550,7 @@ func (a *App) runSimplePromptRoutine(ctx context.Context, r routine.Routine) (st
 		}
 		prompt += "\n\n" + contextLabel + "\n" + extraContext
 	}
-
-	msgs := []api.Message{
-		api.NewTextMessage("system", routineSystemPrompt(r.Language)),
-		api.NewTextMessage("user", prompt),
-	}
-	reply := a.callLLM(ctx, msgs, categoryRoutine)
-	if isLLMErrorReply(reply) {
-		return "", fmt.Errorf("routine: llm call failed: %s", reply)
-	}
-	return reply, nil
+	return routineSystemPrompt(r.Language) + "\n\n" + prompt
 }
 
 // runAgentRoutine handles the agent-mode path (e.g. "git pull and report

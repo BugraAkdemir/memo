@@ -1,3 +1,70 @@
+# Ek (2026-08-22) — BUG-M6: rutinlerde agent+web artık hep açık, extractor'ın tahminine bağlı değil
+
+Kullanıcı: "rutinlerde halen agent özelliği bir süre sonra off oluyo, agent
+hep açık olsun rutinlerde, agent ve web rutinlerde açık gerekirse
+kullanabilecek". Koda baktım.
+
+## Kök neden
+
+`Routine.AgentMode` sadece `create_routine`/Rutinler-sekmesi'nin metni
+ayrıştırdığı `Draft.NeedsAgentMode` alanına eşitti — o da extractor LLM'in
+metinden tek seferlik, statik bir tahmini ("komut çalıştırma/dosya
+işlemi/proje güncelleme istiyor mu, yoksa sadece özet/hatırlatma mı").
+`runRoutineGenerate` bu bayrağa göre iki tamamen ayrı yola dallanıyordu:
+`AgentMode=true` → tam agent/tool pipeline'ı (`runAgentRoutine`);
+`AgentMode=false` → `runSimplePromptRoutine`, **sıfır** araç erişimi olan
+düz bir LLM çağrısı — `web_search` dahil hiçbir araca asla erişemiyordu,
+sadece `ContextSource.Type` ne ise (calendar/whatsapp/insight/websearch) onu
+Go tarafında tek seferlik deterministik olarak çekip prompt'a ekliyordu.
+"Her gün AI haberlerini getir" gibi çoğu rutin extractor tarafından
+`needs_agent_mode:false` sınıflandırılıyordu (doğru bir okuma — "sadece özet
+istiyor") ama bu, o rutinin **hiçbir zaman**, ihtiyaç duysa bile, gerçek bir
+araç çağıramayacağı anlamına geliyordu — kullanıcının "bir süre sonra off
+oluyo" dediği şey büyük olasılıkla buydu: rutin oluşturulduğu anki statik
+sınıflandırma neyse erişim sonsuza kadar ona kilitleniyordu, sonradan
+düzeltilemiyordu.
+
+## Fix
+
+`internal/app/routine.go`:
+- `CreateRoutineFromDraft`: `AgentMode` artık `d.NeedsAgentMode`'dan değil,
+  koşulsuz `true`'dan geliyor. `AutoApproveTools` de artık çağıranın
+  verdiği değeri doğrudan taşıyor (eskiden `d.NeedsAgentMode && ...` ile
+  kapatılıyordu).
+- `runRoutineGenerate`: artık `r.AgentMode`'a göre dallanmıyor — **her**
+  rutin (halihazırda store'da `AgentMode:false` olarak duran eski
+  rutinler dahil, çünkü kontrol tamamen kaldırıldı, sadece oluşturma anında
+  değil) `runAgentRoutine`'in tam agent pipeline'ından geçiyor. Eski
+  `runSimplePromptRoutine` silindi, context-çekme mantığı yeni
+  `buildRoutinePrompt`'a taşındı — `ContextSource`'un deterministik
+  pre-fetch'i (takvim/whatsapp/insight/websearch) hâlâ garanti, modelin
+  kendi kendine eşdeğer bir araç çağırmayı hatırlamasına bağlı değil; artık
+  bunun **üzerine** tam araç seti (özellikle `web_search`, `DangerLevel:
+  Safe` olduğu için hiçbir zaman izin sorusu gerektirmiyor) de ekleniyor.
+  Eski `routineSystemPrompt`'un "bu bir bildirim, sohbetin ortası değil"
+  çerçevelemesi de korundu — artık ayrı bir system mesajı değil,
+  `buildRoutinePrompt`'un birleştirdiği tek user-turn metninin başına
+  ekleniyor (agent chat'in kendi system prompt'u rutin olduğundan habersiz).
+
+Medium/Dangerous araçlar (örn. `run_command`) hâlâ `AutoApproveTools`/canlı
+izin-sorma akışına tabi — bu değişiklik sadece araç *erişimini* genişletiyor,
+tehlike seviyesi kapısını hiçbir şekilde atlamıyor.
+
+**Doğrulama:** `go build/vet/test -race ./...` tüm repo yeşil.
+`TestCreateRoutineFromDraft_AutoApproveOnlyTakesEffectWithAgentMode` eski
+davranışı kilitlediği için yeniden yazıldı
+(`_AgentModeAlwaysOnAutoApprovePassesThrough`). Yeni testler:
+`TestBuildRoutinePrompt_NoContextStillAddsNotificationFraming`,
+`TestBuildRoutinePrompt_MergesCalendarContext` (gerçek bir
+`calendar.Store`'a olay ekleyip merge'lendiğini doğruluyor),
+`TestRunRoutineGenerate_IgnoresStaleAgentModeFalse` (eski, `AgentMode:
+false` olarak persist edilmiş bir rutinin bile artık agent yolundan geçtiğini
+— `NewAgentChat`'in active-chat yan etkisi üzerinden — doğruluyor).
+
+Henüz commit edilmedi.
+
+---
+
 # Ek (2026-08-21, devam) — KÖK NEDEN: self-chat'te agent modu hiç aktif olmuyormuş, web arama varsayılanı değişti
 
 Kullanıcı gerçek WhatsApp self-chat'inden canlı test etti — "her gün saat

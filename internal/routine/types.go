@@ -25,11 +25,11 @@ const (
 	// ContextWebSearch deterministically runs a web search (internal/websearch,
 	// the same DuckDuckGo-backed search plain chat's web_search tool uses) and
 	// hands the results to the LLM as read-only context — for routines like
-	// "her gün 9'da yapay zeka haberlerini getir". Deliberately a Go-side
-	// deterministic fetch, not AgentMode's full tool pipeline: an unattended
-	// routine calling a real tool loop is a materially bigger risk surface
-	// (arbitrary tool selection, no human present for a permission prompt)
-	// than one hardcoded, read-only search call.
+	// "her gün 9'da yapay zeka haberlerini getir". This guaranteed, Go-side
+	// fetch is kept even now that every routine also gets the full agent/tool
+	// pipeline on top (BUG-M6, see internal/app/routine.go's
+	// runRoutineGenerate): it's a floor, not a substitute — a baseline that
+	// doesn't depend on the model remembering to call web_search itself.
 	ContextWebSearch ContextSourceType = "websearch"
 )
 
@@ -91,12 +91,22 @@ type Routine struct {
 	Schedule        Schedule `json:"schedule"`
 	Prompt          string   `json:"prompt"`
 
-	// AgentMode selects the execution path: false runs a plain LLM call with
-	// deterministically pre-fetched ContextSource data (safe by construction,
-	// no tool access); true runs the full agent/tool pipeline for tasks like
-	// "git pull and report status". AutoApproveTools only matters when
-	// AgentMode is true — no human is present to answer a permission prompt,
-	// so it must be granted explicitly at creation time or the run fails.
+	// AgentMode is always true for any routine created since BUG-M6 (see
+	// internal/app/routine.go's CreateRoutineFromDraft) — every routine runs
+	// the full agent/tool pipeline (ContextSource's deterministic pre-fetch
+	// still happens on top, unconditionally). The field is kept, rather than
+	// removed, for two reasons: routines persisted before BUG-M6 may still
+	// have it false, and runRoutineGenerate now deliberately ignores it
+	// either way (ignoring stale false values there is what makes the fix
+	// retroactive for already-existing routines too); and the create-routine
+	// UI (frontend/lib/screens/routines_screen.dart) still reads the
+	// extractor's own NeedsAgentMode guess (a separate, draft-only signal,
+	// not this field) to decide whether to surface the auto-approve-tools
+	// toggle during creation. AutoApproveTools only matters for
+	// Medium/Dangerous-DangerLevel tools — no human is present to answer a
+	// permission prompt, so those must be granted explicitly at creation time
+	// or the run asks over the routine's own delivery channel instead; Safe
+	// tools (including web_search) never needed this and always run.
 	AgentMode        bool          `json:"agent_mode"`
 	AutoApproveTools bool          `json:"auto_approve_tools"`
 	ContextSource    ContextSource `json:"context_source"`

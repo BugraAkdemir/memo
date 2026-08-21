@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"memo/internal/agent"
+	"memo/internal/calendar"
 	"memo/internal/config"
 	"memo/internal/identity"
 	"memo/internal/observer"
@@ -294,14 +295,13 @@ func TestResolveRoutineDeliveryTarget_NormalChatDefaultsToConnectedSurfaces(t *t
 	})
 }
 
-// TestCreateRoutineFromDraft_AutoApproveOnlyTakesEffectWithAgentMode locks
-// in CreateRoutineFromDraft's existing (unchanged) gate — AutoApproveTools
-// is force-false whenever the draft doesn't need agent mode — which is what
-// makes CreateRoutineFromChat's unconditional `autoApproveTools = true`
-// safe to pass through unconditionally: it's a no-op for the (common,
-// non-agent) case, and only actually grants anything when the routine
-// genuinely runs tools.
-func TestCreateRoutineFromDraft_AutoApproveOnlyTakesEffectWithAgentMode(t *testing.T) {
+// TestCreateRoutineFromDraft_AgentModeAlwaysOnAutoApprovePassesThrough is the
+// BUG-M6 regression test: AgentMode used to come straight from the
+// extractor's NeedsAgentMode guess (and AutoApproveTools was force-false
+// whenever that guess was false) — now every routine gets AgentMode=true
+// unconditionally, regardless of what the draft says, and AutoApproveTools
+// passes straight through from the caller with no gate at all.
+func TestCreateRoutineFromDraft_AgentModeAlwaysOnAutoApprovePassesThrough(t *testing.T) {
 	a := newRoutineTestApp(t)
 	st, err := routine.NewStore(t.TempDir())
 	if err != nil {
@@ -309,20 +309,26 @@ func TestCreateRoutineFromDraft_AutoApproveOnlyTakesEffectWithAgentMode(t *testi
 	}
 	a.routineStore = st
 
-	nonAgent, err := a.CreateRoutineFromDraft("x", routine.Draft{TimeOfDay: "09:00", NeedsAgentMode: false}, "", true, "tr", nil)
+	notNeeded, err := a.CreateRoutineFromDraft("x", routine.Draft{TimeOfDay: "09:00", NeedsAgentMode: false}, "", true, "tr", nil)
 	if err != nil {
 		t.Fatalf("CreateRoutineFromDraft: %v", err)
 	}
-	if nonAgent.AutoApproveTools {
-		t.Error("AutoApproveTools should stay false when the routine doesn't need agent mode, even if the caller passed true")
+	if !notNeeded.AgentMode {
+		t.Error("AgentMode should be true even when the draft's NeedsAgentMode guess was false")
+	}
+	if !notNeeded.AutoApproveTools {
+		t.Error("AutoApproveTools should pass through true from the caller regardless of NeedsAgentMode")
 	}
 
-	agentMode, err := a.CreateRoutineFromDraft("x", routine.Draft{TimeOfDay: "09:00", NeedsAgentMode: true}, "", true, "tr", nil)
+	needed, err := a.CreateRoutineFromDraft("x", routine.Draft{TimeOfDay: "09:00", NeedsAgentMode: true}, "", false, "tr", nil)
 	if err != nil {
 		t.Fatalf("CreateRoutineFromDraft: %v", err)
 	}
-	if !agentMode.AutoApproveTools {
-		t.Error("AutoApproveTools should be true for an agent-mode routine when the caller passed true")
+	if !needed.AgentMode {
+		t.Error("AgentMode should be true when the draft's NeedsAgentMode guess was true")
+	}
+	if needed.AutoApproveTools {
+		t.Error("AutoApproveTools should pass through false from the caller")
 	}
 }
 
@@ -444,6 +450,100 @@ func newRoutineTestApp(t *testing.T) *App {
 		agentExecutor:    agent.NewExecutor(dir, nil, nil),
 	}
 	return a
+}
+
+// TestBuildRoutinePrompt_NoContextStillAddsNotificationFraming covers the
+// ContextNone case: no deterministic context to merge, but the
+// "standalone scheduled notification" framing (previously only sent via the
+// now-removed non-agent path's dedicated system message) must still be
+// present, since runAgentRoutine's own agent chat has no idea this is a
+// routine rather than a live user turn.
+func TestBuildRoutinePrompt_NoContextStillAddsNotificationFraming(t *testing.T) {
+	a := newRoutineTestApp(t)
+	r := routine.Routine{Prompt: "sistem durumunu özetle", Language: "tr"}
+
+	got := a.buildRoutinePrompt(context.Background(), r)
+
+	if !strings.Contains(got, routineSystemPrompt("tr")) {
+		t.Errorf("buildRoutinePrompt = %q, want it to contain the notification framing", got)
+	}
+	if !strings.Contains(got, "sistem durumunu özetle") {
+		t.Errorf("buildRoutinePrompt = %q, want it to contain the routine's own prompt", got)
+	}
+	if strings.Contains(got, "Bağlam:") {
+		t.Errorf("buildRoutinePrompt = %q, should not add a context block when there is no context to merge", got)
+	}
+}
+
+// TestBuildRoutinePrompt_MergesCalendarContext is the BUG-M6 regression test
+// for the actual merge behavior: a routine's deterministic ContextSource
+// pre-fetch (calendar agenda here) must still end up in the final prompt
+// runAgentRoutine sends, exactly as it did via the old, now-removed
+// runSimplePromptRoutine — this is what keeps a routine's guaranteed context
+// from becoming dependent on the agent model deciding to fetch the
+// equivalent data itself via a tool call.
+func TestBuildRoutinePrompt_MergesCalendarContext(t *testing.T) {
+	a := newRoutineTestApp(t)
+	store, err := calendar.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("calendar.NewStore: %v", err)
+	}
+	defer store.Close()
+	a.calendarStore = store
+
+	ctx := context.Background()
+	now := time.Now()
+	if _, err := store.Add(ctx, calendar.Event{Title: "Diş randevusu", StartTime: now.Add(2 * time.Hour)}); err != nil {
+		t.Fatalf("calendar.Add: %v", err)
+	}
+
+	r := routine.Routine{
+		Prompt:        "günün ajandasını gönder",
+		Language:      "tr",
+		ContextSource: routine.ContextSource{Type: routine.ContextCalendar},
+	}
+	got := a.buildRoutinePrompt(ctx, r)
+
+	if !strings.Contains(got, "Diş randevusu") {
+		t.Errorf("buildRoutinePrompt = %q, want the pre-fetched calendar event merged in", got)
+	}
+	if !strings.Contains(got, "Bağlam:") {
+		t.Errorf("buildRoutinePrompt = %q, want a context label when context was actually fetched", got)
+	}
+	if !strings.Contains(got, "günün ajandasını gönder") {
+		t.Errorf("buildRoutinePrompt = %q, want the routine's own prompt still present", got)
+	}
+}
+
+// TestRunRoutineGenerate_IgnoresStaleAgentModeFalse is the BUG-M6 regression
+// test for legacy data: a routine persisted before this fix (AgentMode:
+// false, from the old extractor-gated behavior) must still run through the
+// full agent pipeline today, not the removed tool-less path — runRoutineGenerate
+// no longer branches on Routine.AgentMode at all. Verified the same way
+// TestRunAgentRoutine_DoesNotMutateGlobalAgentModeOrActiveChat verifies
+// runAgentRoutine ran: NewAgentChat's active-chat side effect happens (and is
+// then restored), which only happens on the agent path.
+func TestRunRoutineGenerate_IgnoresStaleAgentModeFalse(t *testing.T) {
+	a := newRoutineTestApp(t)
+
+	userChatID := a.NewChat()
+	if err := a.SwitchChat(userChatID); err != nil {
+		t.Fatalf("SwitchChat: %v", err)
+	}
+
+	r := routine.Routine{Prompt: "test prompt", AgentMode: false}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// The stream itself will fail (no LLM client/provider configured in this
+	// test) — that's fine, we only care that it went through the agent path
+	// (active chat restored to the pre-existing one afterward) rather than
+	// erroring immediately from some other, tool-less code path.
+	_, _ = a.runRoutineGenerate(ctx, r)
+
+	if got := a.GetActiveChatID(); got != userChatID {
+		t.Errorf("active chat = %q, want restored to %q — runRoutineGenerate should still go through the agent path even with AgentMode=false", got, userChatID)
+	}
 }
 
 // TestRunAgentRoutine_DoesNotMutateGlobalAgentModeOrActiveChat is a

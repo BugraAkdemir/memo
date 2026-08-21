@@ -4,11 +4,13 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"memo/internal/agent"
 	"memo/internal/agent/tools"
 	"memo/internal/api"
 	"memo/internal/calendar"
@@ -155,11 +157,16 @@ func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whats
 //     defaulting instead of asking the model to pick a target, since it has
 //     no legitimate target to pick from in the first place.
 //
-// AgentMode/AutoApproveTools are always forced off: this tool only ever
-// creates the safe, deterministic-context "simple prompt" kind of routine
-// (see Routine.AgentMode's doc comment) — an unattended routine with real
-// tool access and no human present to answer a permission prompt is a
-// materially bigger risk than this tool is meant to open up.
+// AgentMode is whatever the extractor itself inferred from text (e.g. "her
+// gün saat 14'te sistemimin durumunu kontrol et" needs real command
+// execution, "AI haberlerini getir" doesn't) — no longer forced off.
+// AutoApproveTools instead inherits the creating surface's own /auto-perm
+// setting (resolveRoutineAutoApprove): if the user already told that
+// surface to auto-approve tool calls, a routine created there gets the same
+// standing decision; otherwise a fired agent-mode routine asks a live y/n
+// permission question the same way self-chat itself does (see
+// runAgentRoutine), just triggered by the scheduler instead of an incoming
+// message.
 func (a *App) CreateRoutineFromChat(ctx context.Context, text string) (string, error) {
 	if a.routineStore == nil {
 		return "", fmt.Errorf("rutin sistemi hazır değil")
@@ -169,18 +176,42 @@ func (a *App) CreateRoutineFromChat(ctx context.Context, text string) (string, e
 	if err != nil {
 		return "", fmt.Errorf("rutin ayrıştırılamadı: %w", err)
 	}
-	draft.NeedsAgentMode = false
 
 	whatsAppTargetJID, deliveryWhatsApp, deliveryTelegram := a.resolveRoutineDeliveryTarget(ctx)
 	draft.DeliveryWhatsApp = deliveryWhatsApp
 	draft.DeliveryTelegram = deliveryTelegram
 
+	autoApproveTools := a.resolveRoutineAutoApprove(ctx)
+
 	lang := a.GetUILanguage()
-	r, err := a.CreateRoutineFromDraft(text, draft, whatsAppTargetJID, false, lang, nil)
+	r, err := a.CreateRoutineFromDraft(text, draft, whatsAppTargetJID, autoApproveTools, lang, nil)
 	if err != nil {
 		return "", err
 	}
 	return summarizeCreatedRoutine(r), nil
+}
+
+// resolveRoutineAutoApprove mirrors resolveRoutineDeliveryTarget's
+// context-source-first logic, for the AutoApproveTools decision instead of
+// the delivery target: a routine created from a self-chat surface inherits
+// that surface's own /auto-perm setting as its stored AutoApproveTools —
+// the conversational equivalent of the Routines tab's own explicit human
+// toggle for the same field (routines_auto_approve). Normal chat (no
+// self-chat source on ctx) has no live surface setting to inherit, so it
+// defaults to false, same as every other safety-relevant default in this
+// codebase.
+func (a *App) resolveRoutineAutoApprove(ctx context.Context) bool {
+	src, ok := selfChatSourceFromContext(ctx)
+	if !ok {
+		return false
+	}
+	if src.WhatsApp {
+		return a.GetWhatsAppAutoApprovePermissions()
+	}
+	if src.Telegram {
+		return a.GetTelegramAutoApprovePermissions()
+	}
+	return false
 }
 
 // resolveRoutineDeliveryTarget decides which channel(s)
@@ -464,14 +495,79 @@ func (a *App) runAgentRoutine(ctx context.Context, r routine.Routine) (string, e
 	}
 
 	ch := a.sendMessageStreamCore(ctx, chatID, r.Prompt, true)
+
+	// If r.AutoApproveTools was true, SetAgentAutoPermission(true) above
+	// already made the pipeline bypass every permission check silently —
+	// no permission_request event is ever emitted in that case. Any event
+	// actually seen in this loop therefore genuinely needs a live answer;
+	// autoApprove is always false here on purpose (the "auto" branch is
+	// already handled upstream, not by this loop).
+	sendQuestion, awaitAnswer := a.routinePermissionCallbacks(ctx, r)
+	buildQuestion := routinePermissionQuestion(r.Language, r.DeliveryWhatsApp)
+
 	var out strings.Builder
 	for chunk := range ch {
+		if chunk.FinishReason == "agent_event" {
+			var ev agent.AgentEvent
+			if err := json.Unmarshal([]byte(chunk.Content), &ev); err == nil && ev.Type == agent.EventPermissionRequest {
+				a.resolveSelfChatPermission(ev, false, buildQuestion, sendQuestion, awaitAnswer)
+			}
+			continue
+		}
 		out.WriteString(chunk.Content)
 		if chunk.Error != "" {
 			return "", fmt.Errorf("routine: agent stream: %s", chunk.Error)
 		}
 	}
 	return out.String(), nil
+}
+
+// routinePermissionCallbacks wires resolveSelfChatPermission's
+// sendQuestion/awaitAnswer to whichever chat surface this routine actually
+// delivers to — the scheduled-routine equivalent of
+// handleWhatsAppSelfChatMessage/handleTelegramMessage's own callbacks, and
+// deliberately reusing the exact same pending-answer plumbing
+// (awaitWhatsAppPermissionAnswer/routeWhatsAppPermissionAnswer and their
+// Telegram counterparts): both are keyed purely by chat JID/chat ID, with
+// no notion of "this call came from an incoming message specifically", so
+// the owner's next WhatsApp/Telegram reply routes here exactly the same way
+// it would for a live self-chat permission question. If the routine has no
+// live delivery channel to ask through at all, sendQuestion fails
+// immediately, which resolveSelfChatPermission already treats as a safe
+// default: deny.
+func (a *App) routinePermissionCallbacks(ctx context.Context, r routine.Routine) (sendQuestion func(string) error, awaitAnswer func(context.Context) (string, bool)) {
+	if r.DeliveryWhatsApp && r.WhatsAppTargetJID != "" {
+		return func(q string) error {
+				_, err := a.WhatsAppSend(ctx, r.WhatsAppTargetJID, q)
+				return err
+			}, func(waitCtx context.Context) (string, bool) {
+				return a.awaitWhatsAppPermissionAnswer(waitCtx, r.WhatsAppTargetJID)
+			}
+	}
+	if r.DeliveryTelegram && r.TelegramTargetChatID != 0 {
+		return func(q string) error { return a.TelegramSend(ctx, r.TelegramTargetChatID, q) },
+			func(waitCtx context.Context) (string, bool) {
+				return a.awaitTelegramPermissionAnswer(waitCtx, r.TelegramTargetChatID)
+			}
+	}
+	return func(string) error { return fmt.Errorf("routine: no chat surface to ask for permission through") },
+		func(context.Context) (string, bool) { return "", false }
+}
+
+// routinePermissionQuestion builds resolveSelfChatPermission's y/n prompt
+// for a routine-triggered permission request, phrased for whichever channel
+// it's actually being asked through — see wa_perm_question/tg_perm_question.
+func routinePermissionQuestion(lang string, viaWhatsApp bool) func(ev agent.AgentEvent) string {
+	return func(ev agent.AgentEvent) string {
+		preview := ev.Preview
+		if preview == "" {
+			preview = ev.ToolName
+		}
+		if viaWhatsApp {
+			return fmt.Sprintf(waT(waLang(lang), "wa_perm_question"), ev.ToolName, preview)
+		}
+		return fmt.Sprintf(tgT(tgLang(lang), "tg_perm_question"), ev.ToolName, preview)
+	}
 }
 
 // runRoutineDeliver is the routine.DeliverFn wired into the RoutineLoop —

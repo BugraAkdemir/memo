@@ -167,6 +167,109 @@ func TestResolveRoutineDeliveryTarget_NormalChatDefaultsToConnectedSurfaces(t *t
 	})
 }
 
+// TestResolveRoutineAutoApprove_InheritsCreatingSurfacesAutoPermSetting
+// verifies AutoApproveTools for a chat-created routine tracks the exact
+// same /auto-perm setting the creating surface already has — the user's own
+// framing: "auto-perm on ise sormadan yapsın, off ise sorsun" should extend
+// to routines created from that surface, not just live self-chat turns.
+func TestResolveRoutineAutoApprove_InheritsCreatingSurfacesAutoPermSetting(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := config.Load(filepath.Join(dir, "config.yaml")); err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	a := &App{cfg: config.Get()}
+
+	t.Run("normal_chat_defaults_false", func(t *testing.T) {
+		if got := a.resolveRoutineAutoApprove(context.Background()); got {
+			t.Error("expected false with no self-chat source at all")
+		}
+	})
+
+	t.Run("whatsapp_source_follows_whatsapp_autoperm", func(t *testing.T) {
+		ctx := withSelfChatSource(context.Background(), SelfChatSource{WhatsApp: true, WhatsAppJID: "x@s.whatsapp.net"})
+		if got := a.resolveRoutineAutoApprove(ctx); got {
+			t.Error("expected false while WhatsApp auto-perm is off")
+		}
+		if err := a.SetWhatsAppAutoApprovePermissions(true); err != nil {
+			t.Fatalf("SetWhatsAppAutoApprovePermissions: %v", err)
+		}
+		if got := a.resolveRoutineAutoApprove(ctx); !got {
+			t.Error("expected true once WhatsApp auto-perm is turned on")
+		}
+	})
+
+	t.Run("telegram_source_follows_telegram_autoperm_independently", func(t *testing.T) {
+		store := telegram.NewStore(filepath.Join(t.TempDir(), "telegram.json"), testMasterKey)
+		a := &App{cfg: config.Get(), tgStore: store}
+		ctx := withSelfChatSource(context.Background(), SelfChatSource{Telegram: true, TelegramChatID: 1})
+
+		if got := a.resolveRoutineAutoApprove(ctx); got {
+			t.Error("expected false while Telegram auto-perm is off")
+		}
+		if err := a.SetTelegramAutoApprovePermissions(true); err != nil {
+			t.Fatalf("SetTelegramAutoApprovePermissions: %v", err)
+		}
+		if got := a.resolveRoutineAutoApprove(ctx); !got {
+			t.Error("expected true once Telegram auto-perm is turned on")
+		}
+	})
+}
+
+// TestRoutinePermissionCallbacks_WiresToWhicheverChannelIsConfigured
+// confirms a routine-triggered permission question actually gets sent
+// through the routine's own delivery target, and that a routine with no
+// live delivery channel fails safe (sendQuestion errors immediately, which
+// resolveSelfChatPermission treats as deny) rather than hanging forever
+// with nowhere to ask.
+func TestRoutinePermissionCallbacks_WiresToWhicheverChannelIsConfigured(t *testing.T) {
+	a := newRoutineTestApp(t)
+
+	t.Run("no_channel_configured_sendQuestion_fails_fast", func(t *testing.T) {
+		send, await := a.routinePermissionCallbacks(context.Background(), routine.Routine{})
+		if err := send("soru"); err == nil {
+			t.Error("expected sendQuestion to fail when the routine has no delivery channel")
+		}
+		if _, ok := await(context.Background()); ok {
+			t.Error("expected awaitAnswer to report no answer when there's no channel to ask through")
+		}
+	})
+
+	t.Run("whatsapp_channel_attempts_a_real_send", func(t *testing.T) {
+		r := routine.Routine{DeliveryWhatsApp: true, WhatsAppTargetJID: "905551234567@s.whatsapp.net"}
+		send, _ := a.routinePermissionCallbacks(context.Background(), r)
+		// a.waClient is nil in this test app, so the send itself fails —
+		// what's under test is that it actually TRIES WhatsApp (the right
+		// error), not that it silently no-ops or picks the wrong channel.
+		err := send("soru")
+		if err == nil || !strings.Contains(err.Error(), "not initialized") {
+			t.Errorf("expected a WhatsApp-not-initialized error (proving it tried WhatsApp), got %v", err)
+		}
+	})
+
+	t.Run("telegram_channel_attempts_a_real_send", func(t *testing.T) {
+		r := routine.Routine{DeliveryTelegram: true, TelegramTargetChatID: 555}
+		send, _ := a.routinePermissionCallbacks(context.Background(), r)
+		err := send("soru")
+		if err == nil || !strings.Contains(err.Error(), "not initialized") {
+			t.Errorf("expected a Telegram-not-initialized error (proving it tried Telegram), got %v", err)
+		}
+	})
+}
+
+func TestRoutinePermissionQuestion_PicksChannelAppropriatePhrasing(t *testing.T) {
+	ev := agent.AgentEvent{ToolName: "run_command", Preview: "ls -la"}
+
+	wa := routinePermissionQuestion("tr", true)(ev)
+	if !strings.Contains(wa, "run_command") || !strings.Contains(wa, "ls -la") {
+		t.Errorf("WhatsApp question missing tool/preview: %q", wa)
+	}
+
+	tg := routinePermissionQuestion("tr", false)(ev)
+	if !strings.Contains(tg, "run_command") || !strings.Contains(tg, "ls -la") {
+		t.Errorf("Telegram question missing tool/preview: %q", tg)
+	}
+}
+
 // TestRunRoutineDeliver_FiresEachChannelIndependently confirms both
 // channels are attempted even if one is missing its target/fails, and a
 // failure on one doesn't prevent (or hide) delivery on the other — see

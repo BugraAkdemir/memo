@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"memo/internal/routine"
@@ -22,7 +21,6 @@ type RoutineBridge interface {
 	CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool, language string, utcOffsetMinutes *int) (*routine.Routine, error)
 	UpdateRoutine(r routine.Routine) (*routine.Routine, error)
 	DeleteRoutine(id string) error
-	GetRoutinesReadyForMobile(sinceUnix int64) ([]routine.MobilePayload, error)
 	SyncRoutineUTCOffsets(minutes int) (int, error)
 }
 
@@ -162,39 +160,6 @@ func (s *Server) handleRoutine(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
-}
-
-// handleRoutinesMobileReady handles GET /api/routines/mobile-ready?since=<unix> —
-// the phone polls this to learn about newly generated content it should
-// pre-schedule as a local notification (see routine.MobilePayload).
-func (s *Server) handleRoutinesMobileReady(w http.ResponseWriter, r *http.Request) {
-	bridge, ok := s.bridge.(RoutineBridge)
-	if !ok {
-		http.Error(w, "routines not available", http.StatusNotImplemented)
-		return
-	}
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var since int64
-	if s := r.URL.Query().Get("since"); s != "" {
-		if v, err := strconv.ParseInt(s, 10, 64); err == nil {
-			since = v
-		}
-	}
-
-	items, err := bridge.GetRoutinesReadyForMobile(since)
-	if err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if items == nil {
-		items = []routine.MobilePayload{}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(items)
 }
 
 // handleRoutinesSyncOffset handles POST /api/routines/sync-offset — a client

@@ -607,6 +607,7 @@ func (a *App) Startup(ctx context.Context) {
 	// disk — keeping this as one code path means the two can't drift apart.
 	a.reinitProviderAndOrchestra()
 	tools.Configurator = a
+	tools.Routines = routineToolAdapter{a}
 
 	basePath, _ := filepath.Abs(".")
 	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr)

@@ -15,6 +15,7 @@ import (
 	"memo/internal/observer"
 	"memo/internal/routine"
 	"memo/internal/sessions"
+	"memo/internal/telegram"
 	"memo/internal/whatsapp"
 )
 
@@ -79,23 +80,6 @@ func TestFormatWhatsAppMessagesForRoutine_LocalizesEmptyFallback(t *testing.T) {
 	}
 }
 
-// TestRoutineNotificationTitle_Localized is the regression test for the
-// GetRoutinesReadyForMobile half of BUG-M1: mobile push notifications used
-// to always title themselves "Rutin" regardless of the routine's language,
-// even though both clients already carry a `routine_fallback` L10n key
-// ("Rutin"/"Routine") that this must stay in sync with.
-func TestRoutineNotificationTitle_Localized(t *testing.T) {
-	if got := routineNotificationTitle("en"); got != "Routine" {
-		t.Errorf("routineNotificationTitle(%q) = %q, want %q", "en", got, "Routine")
-	}
-	if got := routineNotificationTitle("tr"); got != "Rutin" {
-		t.Errorf("routineNotificationTitle(%q) = %q, want %q", "tr", got, "Rutin")
-	}
-	if got := routineNotificationTitle(""); got != "Rutin" {
-		t.Errorf("routineNotificationTitle(%q) = %q, want the Turkish default %q", "", got, "Rutin")
-	}
-}
-
 // TestCreateRoutineFromDraft_PersistsLanguage verifies the create path
 // actually stores the client-supplied language on the routine, so it's
 // available at every later read site (system prompt, context fillers,
@@ -123,6 +107,106 @@ func TestCreateRoutineFromDraft_PersistsLanguage(t *testing.T) {
 	if created.Schedule.UTCOffsetMinutes == nil || *created.Schedule.UTCOffsetMinutes != 180 {
 		t.Errorf("created.Schedule.UTCOffsetMinutes = %v, want pointer to 180", created.Schedule.UTCOffsetMinutes)
 	}
+}
+
+// TestResolveRoutineDeliveryTarget_SelfChatSourceIsAlwaysForced is the
+// actual security-boundary test for create_routine (the user's own
+// reported concern: they must never be able to pick an arbitrary WhatsApp
+// contact via the conversational tool the way the Routines-tab UI's human
+// picker can). A WhatsApp/Telegram self-chat source on ctx must force that
+// exact target, completely independent of whatever connectivity state
+// waClient/tgStore happen to be in — confirmed here with both left nil
+// entirely, which would panic if the function ever fell through to reading
+// them in this branch.
+func TestResolveRoutineDeliveryTarget_SelfChatSourceIsAlwaysForced(t *testing.T) {
+	a := &App{} // waClient, tgStore both nil — must never be touched below
+
+	t.Run("whatsapp_source_forces_that_exact_jid", func(t *testing.T) {
+		ctx := withSelfChatSource(context.Background(), SelfChatSource{WhatsApp: true, WhatsAppJID: "905551234567@s.whatsapp.net"})
+		jid, wa, tg := a.resolveRoutineDeliveryTarget(ctx)
+		if jid != "905551234567@s.whatsapp.net" || !wa || tg {
+			t.Errorf("resolveRoutineDeliveryTarget() = (%q, %v, %v), want (the self-chat JID, true, false)", jid, wa, tg)
+		}
+	})
+
+	t.Run("telegram_source_forces_telegram_only", func(t *testing.T) {
+		ctx := withSelfChatSource(context.Background(), SelfChatSource{Telegram: true, TelegramChatID: 555})
+		jid, wa, tg := a.resolveRoutineDeliveryTarget(ctx)
+		if jid != "" || wa || !tg {
+			t.Errorf("resolveRoutineDeliveryTarget() = (%q, %v, %v), want (\"\", false, true)", jid, wa, tg)
+		}
+	})
+}
+
+// TestResolveRoutineDeliveryTarget_NormalChatDefaultsToConnectedSurfaces
+// covers the "no self-chat source at all" case (a normal, non-self-chat
+// agent conversation calling create_routine) — delivery should default to
+// whichever surfaces are actually connected, never require the model to
+// supply a target.
+func TestResolveRoutineDeliveryTarget_NormalChatDefaultsToConnectedSurfaces(t *testing.T) {
+	t.Run("nothing_connected_enables_nothing", func(t *testing.T) {
+		a := &App{}
+		jid, wa, tg := a.resolveRoutineDeliveryTarget(context.Background())
+		if jid != "" || wa || tg {
+			t.Errorf("resolveRoutineDeliveryTarget() = (%q, %v, %v), want all zero/false with nothing connected", jid, wa, tg)
+		}
+	})
+
+	t.Run("linked_telegram_bot_is_enabled", func(t *testing.T) {
+		store := telegram.NewStore(filepath.Join(t.TempDir(), "telegram.json"), testMasterKey)
+		store.SetOwner(999, "Bugra")
+		a := &App{tgStore: store}
+
+		jid, wa, tg := a.resolveRoutineDeliveryTarget(context.Background())
+		if jid != "" || wa {
+			t.Errorf("resolveRoutineDeliveryTarget() WhatsApp side = (%q, %v), want (\"\", false) — no WhatsApp client at all", jid, wa)
+		}
+		if !tg {
+			t.Error("expected Telegram delivery to default on when a bot is linked")
+		}
+	})
+}
+
+// TestRunRoutineDeliver_FiresEachChannelIndependently confirms both
+// channels are attempted even if one is missing its target/fails, and a
+// failure on one doesn't prevent (or hide) delivery on the other — see
+// runRoutineDeliver's own doc comment.
+func TestRunRoutineDeliver_FiresEachChannelIndependently(t *testing.T) {
+	a := newRoutineTestApp(t)
+
+	t.Run("whatsapp_only_no_target_configured", func(t *testing.T) {
+		r := routine.Routine{DeliveryWhatsApp: true, WhatsAppTargetJID: ""}
+		err := a.runRoutineDeliver(context.Background(), r, "content")
+		if err == nil {
+			t.Error("expected an error when DeliveryWhatsApp is set but WhatsAppTargetJID is empty")
+		}
+	})
+
+	t.Run("neither_channel_enabled_is_a_no_op", func(t *testing.T) {
+		r := routine.Routine{}
+		if err := a.runRoutineDeliver(context.Background(), r, "content"); err != nil {
+			t.Errorf("expected no error when neither channel is enabled, got %v", err)
+		}
+	})
+
+	t.Run("telegram_only_no_target_configured", func(t *testing.T) {
+		r := routine.Routine{DeliveryTelegram: true, TelegramTargetChatID: 0}
+		err := a.runRoutineDeliver(context.Background(), r, "content")
+		if err == nil {
+			t.Error("expected an error when DeliveryTelegram is set but TelegramTargetChatID is 0")
+		}
+	})
+
+	t.Run("both_missing_targets_reports_both_errors", func(t *testing.T) {
+		r := routine.Routine{DeliveryWhatsApp: true, DeliveryTelegram: true}
+		err := a.runRoutineDeliver(context.Background(), r, "content")
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+		if !strings.Contains(err.Error(), "whatsapp") || !strings.Contains(err.Error(), "no telegram target") {
+			t.Errorf("expected errors.Join to report both failures, got: %v", err)
+		}
+	})
 }
 
 func newRoutineTestApp(t *testing.T) *App {

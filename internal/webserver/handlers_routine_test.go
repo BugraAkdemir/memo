@@ -64,10 +64,6 @@ func (b *routineTestBridge) DeleteRoutine(id string) error {
 	return nil
 }
 
-func (b *routineTestBridge) GetRoutinesReadyForMobile(sinceUnix int64) ([]routine.MobilePayload, error) {
-	return nil, nil
-}
-
 func (b *routineTestBridge) SyncRoutineUTCOffsets(minutes int) (int, error) {
 	b.syncOffsetCalledWith = minutes
 	return b.syncOffsetReturn, b.syncOffsetErr

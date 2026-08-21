@@ -213,6 +213,7 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 	// real headroom beyond just the LLM call itself.
 	ctx, cancel := context.WithTimeout(a.lifecycleCtx, 300*time.Second)
 	defer cancel()
+	ctx = withSelfChatSource(ctx, SelfChatSource{WhatsApp: true, WhatsAppJID: msg.ChatJID})
 
 	// Shows WhatsApp's native "typing..." indicator for as long as the
 	// reply is being generated, so a self-chat turn doesn't just sit there

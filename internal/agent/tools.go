@@ -178,6 +178,21 @@ func (r *ToolRegistry) registerBuiltins() {
 	})
 
 	r.registerWhatsAppTools()
+	r.registerRoutineTool()
+}
+
+// registerRoutineTool adds create_routine to this registry — only to the
+// main/full registry (not the scoped WhatsApp-only or web-search-only ones
+// below), so it's reachable from any agent-enabled chat: normal chat,
+// WhatsApp self-chat, Telegram.
+func (r *ToolRegistry) registerRoutineTool() {
+	r.Register(ToolDef{
+		Name:        "create_routine",
+		Description: "Kullanıcının serbest metinle tarif ettiği zamanlanmış bir görev (rutin) oluşturur — örn. \"her gün saat 9'da yapay zeka haberlerini getir\" veya \"her pazartesi takvimimi özetle\". text: kullanıcının isteğini olduğu gibi (kendi cümleleriyle) aktar; zaman, gün, içerik ve hangi kanaldan (WhatsApp/Telegram) gönderileceği otomatik çıkarılır — teslimat hedefi hiçbir zaman burada belirtilmez, her zaman bu konuşmanın kendisine gönderilir.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"text":{"type":"string","description":"Kullanıcının rutin isteğinin serbest metin hali"}},"required":["text"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.CreateRoutine,
+	})
 }
 
 // registerWebSearchTool adds the web_search tool to this registry. Split out

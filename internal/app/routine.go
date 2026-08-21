@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"memo/internal/config"
 	"memo/internal/logx"
 	"memo/internal/routine"
+	"memo/internal/websearch"
 	"memo/internal/whatsapp"
 )
 
@@ -28,9 +30,7 @@ func (a *App) initRoutines(ctx context.Context) {
 		return
 	}
 	a.routineStore = st
-	a.routineLoop = routine.NewRoutineLoop(st, a.runRoutineGenerate, a.runRoutineDeliver, func(name, data string) {
-		a.emitEvent(name, data)
-	})
+	a.routineLoop = routine.NewRoutineLoop(st, a.runRoutineGenerate, a.runRoutineDeliver)
 	loop := a.routineLoop
 	goRecover("routineLoop.Start", func() { loop.Start(ctx) })
 	logx.Info("Routine system initialized")
@@ -84,6 +84,13 @@ func (a *App) ParseRoutineText(ctx context.Context, text string) (routine.Draft,
 // locale or timezone of its own and this is the only point in the routine
 // lifecycle where a client is actually asking to have something created, so
 // it's the only place that needs to capture either.
+//
+// Telegram's target is NOT a parameter here, unlike WhatsApp's: a Telegram
+// bot only ever has one legitimate delivery target (its linked owner, see
+// Routine.TelegramTargetChatID's doc comment) — resolved internally via
+// linkedTelegramOwnerChatID whenever d.DeliveryTelegram is set, so callers
+// (both the human-driven Routines-tab flow and CreateRoutineFromChat) never
+// need to look it up themselves.
 func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool, language string, utcOffsetMinutes *int) (*routine.Routine, error) {
 	if a.routineStore == nil {
 		return nil, fmt.Errorf("routine: store not initialized")
@@ -96,9 +103,16 @@ func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whats
 
 	contextType := routine.ContextSourceType(d.ContextSourceType)
 	switch contextType {
-	case routine.ContextCalendar, routine.ContextWhatsApp, routine.ContextInsight:
+	case routine.ContextCalendar, routine.ContextWhatsApp, routine.ContextInsight, routine.ContextWebSearch:
 	default:
 		contextType = routine.ContextNone
+	}
+
+	telegramTargetChatID := int64(0)
+	deliveryTelegram := false
+	if d.DeliveryTelegram {
+		telegramTargetChatID = a.linkedTelegramOwnerChatID()
+		deliveryTelegram = telegramTargetChatID != 0
 	}
 
 	r := routine.Routine{
@@ -112,16 +126,147 @@ func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whats
 		AgentMode:        d.NeedsAgentMode,
 		AutoApproveTools: d.NeedsAgentMode && autoApproveTools,
 		ContextSource: routine.ContextSource{
-			Type:        contextType,
-			WhatsAppJID: whatsAppTargetJID,
+			Type:           contextType,
+			WhatsAppJID:    whatsAppTargetJID,
+			WebSearchQuery: d.WebSearchQuery,
 		},
-		DeliveryWhatsApp:  d.DeliveryWhatsApp,
-		DeliveryMobile:    d.DeliveryMobile,
-		WhatsAppTargetJID: whatsAppTargetJID,
-		Language:          language,
-		Enabled:           true,
+		DeliveryWhatsApp:     d.DeliveryWhatsApp,
+		WhatsAppTargetJID:    whatsAppTargetJID,
+		DeliveryTelegram:     deliveryTelegram,
+		TelegramTargetChatID: telegramTargetChatID,
+		Language:             language,
+		Enabled:              true,
 	}
 	return a.routineStore.Create(r)
+}
+
+// CreateRoutineFromChat is the create_routine agent tool's backing
+// implementation (internal/agent/tools/routine.go) — the conversational
+// counterpart to CreateRoutineFromDraft, reachable from any agent-enabled
+// chat (normal chat, WhatsApp self-chat, Telegram). text is the routine's
+// free-text description; the delivery target is deliberately NEVER taken
+// from the model — see selfChatSourceFromContext's doc comment for why:
+//
+//   - Called from WhatsApp/Telegram self-chat: delivery is forced to that
+//     exact surface/chat, ignoring whatever the extractor guessed from text.
+//   - Called from normal chat (no self-chat source on ctx): delivery
+//     defaults to whichever self-chat surfaces are actually connected right
+//     now (WhatsApp if logged in, Telegram if a bot is linked) — "smart"
+//     defaulting instead of asking the model to pick a target, since it has
+//     no legitimate target to pick from in the first place.
+//
+// AgentMode/AutoApproveTools are always forced off: this tool only ever
+// creates the safe, deterministic-context "simple prompt" kind of routine
+// (see Routine.AgentMode's doc comment) — an unattended routine with real
+// tool access and no human present to answer a permission prompt is a
+// materially bigger risk than this tool is meant to open up.
+func (a *App) CreateRoutineFromChat(ctx context.Context, text string) (string, error) {
+	if a.routineStore == nil {
+		return "", fmt.Errorf("rutin sistemi hazır değil")
+	}
+
+	draft, err := a.ParseRoutineText(ctx, text)
+	if err != nil {
+		return "", fmt.Errorf("rutin ayrıştırılamadı: %w", err)
+	}
+	draft.NeedsAgentMode = false
+
+	whatsAppTargetJID, deliveryWhatsApp, deliveryTelegram := a.resolveRoutineDeliveryTarget(ctx)
+	draft.DeliveryWhatsApp = deliveryWhatsApp
+	draft.DeliveryTelegram = deliveryTelegram
+
+	lang := a.GetUILanguage()
+	r, err := a.CreateRoutineFromDraft(text, draft, whatsAppTargetJID, false, lang, nil)
+	if err != nil {
+		return "", err
+	}
+	return summarizeCreatedRoutine(r), nil
+}
+
+// resolveRoutineDeliveryTarget decides which channel(s)
+// CreateRoutineFromChat should enable and, for WhatsApp, which JID — this
+// is the actual security boundary described in CreateRoutineFromChat's doc
+// comment, split into its own function so it's testable independent of the
+// LLM-dependent draft parsing around it. Telegram never needs a returned
+// target value: CreateRoutineFromDraft resolves the bot's linked owner
+// chat ID itself whenever DeliveryTelegram is set (see its own doc
+// comment), since — unlike WhatsApp — there is only ever one legitimate
+// value to resolve to.
+func (a *App) resolveRoutineDeliveryTarget(ctx context.Context) (whatsAppTargetJID string, deliveryWhatsApp, deliveryTelegram bool) {
+	if src, ok := selfChatSourceFromContext(ctx); ok {
+		if src.WhatsApp {
+			return src.WhatsAppJID, true, false
+		}
+		if src.Telegram {
+			return "", false, true
+		}
+	}
+	whatsAppTargetJID = a.connectedWhatsAppSelfChatJID()
+	return whatsAppTargetJID, whatsAppTargetJID != "", a.linkedTelegramOwnerChatID() != 0
+}
+
+// connectedWhatsAppSelfChatJID returns the account's own self-chat JID if
+// WhatsApp is currently connected and logged in, or "" otherwise.
+func (a *App) connectedWhatsAppSelfChatJID() string {
+	if a.waClient == nil || !a.waClient.IsConnected() || !a.waClient.IsLoggedIn() {
+		return ""
+	}
+	own := a.waClient.OwnJIDs()
+	if len(own) == 0 {
+		return ""
+	}
+	return own[0]
+}
+
+// linkedTelegramOwnerChatID returns the Telegram bot's linked owner chat ID
+// if one exists, or 0 otherwise.
+func (a *App) linkedTelegramOwnerChatID() int64 {
+	if a.tgStore == nil {
+		return 0
+	}
+	st := a.tgStore.Get()
+	if !st.Linked() {
+		return 0
+	}
+	return st.OwnerChatID
+}
+
+// summarizeCreatedRoutine is the create_routine tool's return value — a
+// short, model-readable confirmation (not user-facing chat text by itself;
+// the LLM turns this into its own reply) of what actually got created,
+// since the tool's caller only supplies free text and can't otherwise see
+// how it was interpreted (time/weekdays/delivery channel).
+func summarizeCreatedRoutine(r *routine.Routine) string {
+	days := "her gün"
+	if len(r.Schedule.Weekdays) > 0 {
+		names := make([]string, len(r.Schedule.Weekdays))
+		for i, w := range r.Schedule.Weekdays {
+			names[i] = w.String()
+		}
+		days = strings.Join(names, ", ")
+	}
+	channels := make([]string, 0, 2)
+	if r.DeliveryWhatsApp {
+		channels = append(channels, "WhatsApp")
+	}
+	if r.DeliveryTelegram {
+		channels = append(channels, "Telegram")
+	}
+	channelStr := "hiçbir kanal bağlı değil, bildirim gidemeyecek"
+	if len(channels) > 0 {
+		channelStr = strings.Join(channels, " + ")
+	}
+	return fmt.Sprintf("Rutin oluşturuldu: %s saat %s, %s üzerinden gönderilecek. Prompt: %q",
+		days, r.Schedule.TimeOfDay, channelStr, r.Prompt)
+}
+
+// routineToolAdapter wraps *App to satisfy tools.Routines (name mismatch
+// only — CreateRoutineFromChat vs. the interface's CreateRoutine — same
+// adapter-for-naming pattern as waToolAdapter in whatsapp.go).
+type routineToolAdapter struct{ a *App }
+
+func (r routineToolAdapter) CreateRoutine(ctx context.Context, text string) (string, error) {
+	return r.a.CreateRoutineFromChat(ctx, text)
 }
 
 // GetRoutine returns a single routine by ID.
@@ -159,41 +304,6 @@ func (a *App) SyncRoutineUTCOffsets(minutes int) (int, error) {
 	return a.routineStore.SyncUTCOffset(minutes)
 }
 
-// RoutineMobilePayload is what the mobile app polls for to pre-schedule a
-// GetRoutinesReadyForMobile returns mobile-delivered routines whose content
-// was generated after sinceUnix (seconds), for the phone's poll-driven
-// refresh — mirrors the calendar-reminder "poll, refetch, reschedule
-// locally" pattern already established in mobile/lib. routine.MobilePayload
-// lives in internal/routine (not here) so internal/webserver can reference
-// it without importing internal/app.
-func (a *App) GetRoutinesReadyForMobile(sinceUnix int64) ([]routine.MobilePayload, error) {
-	if a.routineStore == nil {
-		return nil, nil
-	}
-	since := time.Unix(sinceUnix, 0)
-	now := time.Now()
-	out := make([]routine.MobilePayload, 0)
-	for _, r := range a.routineStore.List() {
-		if !r.Enabled || !r.DeliveryMobile || r.LastGeneratedContent == "" {
-			continue
-		}
-		if !r.LastGeneratedAt.After(since) {
-			continue
-		}
-		fireTime, err := routine.ParseFireTime(r.Schedule.TimeOfDay, r.Schedule.UTCOffsetMinutes, now)
-		if err != nil || fireTime.Before(now) {
-			continue
-		}
-		out = append(out, routine.MobilePayload{
-			ID:        r.ID,
-			Title:     routineNotificationTitle(r.Language),
-			Body:      r.LastGeneratedContent,
-			FireAtUTC: fireTime.UTC(),
-		})
-	}
-	return out, nil
-}
-
 // runRoutineGenerate is the routine.GenerateFn wired into the RoutineLoop: it
 // picks the execution path based on Routine.AgentMode.
 func (a *App) runRoutineGenerate(ctx context.Context, r routine.Routine) (string, error) {
@@ -212,17 +322,6 @@ func (a *App) runRoutineGenerate(ctx context.Context, r routine.Routine) (string
 // than requiring a migration for old routines.
 func routineLanguageIsEnglish(lang string) bool {
 	return lang == "en"
-}
-
-// routineNotificationTitle is the mobile push-notification title for a
-// routine's generated content (BUG-M1) — kept in sync with the
-// `routine_fallback` L10n key both clients already carry
-// (frontend/lib/core/l10n.dart, mobile/lib/core/l10n.dart).
-func routineNotificationTitle(lang string) string {
-	if routineLanguageIsEnglish(lang) {
-		return "Routine"
-	}
-	return "Rutin"
 }
 
 // routineSystemPrompt is the system message a non-agent routine run sends
@@ -276,6 +375,17 @@ func (a *App) runSimplePromptRoutine(ctx context.Context, r routine.Routine) (st
 			extraContext = insight
 		} else {
 			logx.Printf("routine: GenerateSelfInsight: %v", err)
+		}
+	case routine.ContextWebSearch:
+		query := r.ContextSource.WebSearchQuery
+		if query == "" {
+			query = r.Prompt
+		}
+		results, err := websearch.Search(ctx, query, 5)
+		if err == nil {
+			extraContext = websearch.FormatForContext(query, results)
+		} else {
+			logx.Printf("routine: web search: %v", err)
 		}
 	}
 
@@ -365,17 +475,26 @@ func (a *App) runAgentRoutine(ctx context.Context, r routine.Routine) (string, e
 }
 
 // runRoutineDeliver is the routine.DeliverFn wired into the RoutineLoop —
-// mobile delivery has no explicit step here (see RoutineMobilePayload's doc
-// comment), only WhatsApp send.
+// fires whichever of WhatsApp/Telegram are enabled, independently: a
+// failure on one channel doesn't skip the other, and both failures (if any)
+// are reported together via errors.Join rather than one masking the other.
 func (a *App) runRoutineDeliver(ctx context.Context, r routine.Routine, content string) error {
-	if !r.DeliveryWhatsApp {
-		return nil
+	var errs []error
+	if r.DeliveryWhatsApp {
+		if r.WhatsAppTargetJID == "" {
+			errs = append(errs, fmt.Errorf("routine: no whatsapp target configured"))
+		} else if _, err := a.WhatsAppSend(ctx, r.WhatsAppTargetJID, content); err != nil {
+			errs = append(errs, fmt.Errorf("whatsapp: %w", err))
+		}
 	}
-	if r.WhatsAppTargetJID == "" {
-		return fmt.Errorf("routine: no whatsapp target configured")
+	if r.DeliveryTelegram {
+		if r.TelegramTargetChatID == 0 {
+			errs = append(errs, fmt.Errorf("routine: no telegram target configured"))
+		} else if err := a.TelegramSend(ctx, r.TelegramTargetChatID, content); err != nil {
+			errs = append(errs, fmt.Errorf("telegram: %w", err))
+		}
 	}
-	_, err := a.WhatsAppSend(ctx, r.WhatsAppTargetJID, content)
-	return err
+	return errors.Join(errs...)
 }
 
 func formatEventsForRoutine(events []calendar.Event, lang string) string {

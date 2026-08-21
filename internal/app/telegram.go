@@ -153,6 +153,7 @@ func (a *App) handleTelegramMessage(msg telegram.Message) {
 	// real headroom beyond just the LLM call itself.
 	ctx, cancel := context.WithTimeout(a.lifecycleCtx, 300*time.Second)
 	defer cancel()
+	ctx = withSelfChatSource(ctx, SelfChatSource{Telegram: true, TelegramChatID: msg.ChatID})
 
 	stopComposing := a.startTelegramComposing(ctx, msg.ChatID)
 	defer stopComposing()

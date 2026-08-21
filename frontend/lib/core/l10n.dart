@@ -1809,10 +1809,9 @@ class L10n {
     'routines_auto_approve':
         'Bu görev bilgisayarında komut çalıştırmak isteyecek gibi görünüyor (örn. dosya/proje işlemi). Her çalıştığında senden onay istemesin, otomatik izin verilsin mi?',
     'routines_discard': 'Vazgeç',
-    'routines_mobile_notify': 'Telefon bildirimi',
     'routines_time': 'Saat \${time}',
     'routines_via_whatsapp': ' · WhatsApp',
-    'routines_via_mobile': ' · Telefon',
+    'routines_via_telegram': ' · Telegram',
     'routines_can_run_commands': ' · Komut çalıştırabilir',
 
     // Agent tool display names
@@ -3674,10 +3673,9 @@ class L10n {
     'routines_auto_approve':
         'This task looks like it will run commands on your computer (e.g. file/project work). Auto-approve tools each run so it does not ask every time?',
     'routines_discard': 'Discard',
-    'routines_mobile_notify': 'Phone notification',
     'routines_time': 'At \${time}',
     'routines_via_whatsapp': ' · WhatsApp',
-    'routines_via_mobile': ' · Phone',
+    'routines_via_telegram': ' · Telegram',
     'routines_can_run_commands': ' · Can run commands',
 
     // Agent tool display names

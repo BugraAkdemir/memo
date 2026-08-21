@@ -29,7 +29,7 @@ class _Routine {
   final String contextSourceType;
   final String contextWhatsAppJid;
   final bool deliveryWhatsApp;
-  final bool deliveryMobile;
+  final bool deliveryTelegram;
   final String whatsAppTargetJid;
   final bool enabled;
   final String language;
@@ -46,7 +46,7 @@ class _Routine {
     required this.contextSourceType,
     required this.contextWhatsAppJid,
     required this.deliveryWhatsApp,
-    required this.deliveryMobile,
+    required this.deliveryTelegram,
     required this.whatsAppTargetJid,
     required this.enabled,
     required this.language,
@@ -67,7 +67,7 @@ class _Routine {
       contextSourceType: contextSource['type'] as String? ?? 'none',
       contextWhatsAppJid: contextSource['whatsapp_jid'] as String? ?? '',
       deliveryWhatsApp: j['delivery_whatsapp'] as bool? ?? false,
-      deliveryMobile: j['delivery_mobile'] as bool? ?? false,
+      deliveryTelegram: j['delivery_telegram'] as bool? ?? false,
       whatsAppTargetJid: j['whatsapp_target_jid'] as String? ?? '',
       enabled: j['enabled'] as bool? ?? false,
       language: j['language'] as String? ?? 'tr',
@@ -88,7 +88,7 @@ class _Routine {
         'auto_approve_tools': autoApproveTools,
         'context_source': {'type': contextSourceType, 'whatsapp_jid': contextWhatsAppJid},
         'delivery_whatsapp': deliveryWhatsApp,
-        'delivery_mobile': deliveryMobile,
+        'delivery_telegram': deliveryTelegram,
         'whatsapp_target_jid': whatsAppTargetJid,
         'enabled': enabled,
         'language': language,
@@ -384,10 +384,10 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
               },
             ),
             FilterChip(
-              label: Text(L10n.t('routines_mobile_notify')),
-              selected: draft['delivery_mobile'] == true,
+              label: const Text('Telegram'),
+              selected: draft['delivery_telegram'] == true,
               onSelected: (selected) {
-                setState(() => _draft = {..._draft!, 'delivery_mobile': selected});
+                setState(() => _draft = {..._draft!, 'delivery_telegram': selected});
               },
             ),
           ]),
@@ -456,7 +456,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
         subtitle: Text(
           L10n.t('routines_time', {'time': r.timeOfDay}) +
               (r.deliveryWhatsApp ? L10n.t('routines_via_whatsapp') : '') +
-              (r.deliveryMobile ? L10n.t('routines_via_mobile') : '') +
+              (r.deliveryTelegram ? L10n.t('routines_via_telegram') : '') +
               (r.agentMode ? L10n.t('routines_can_run_commands') : ''),
         ),
         trailing: Row(

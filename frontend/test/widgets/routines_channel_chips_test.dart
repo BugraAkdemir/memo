@@ -38,7 +38,7 @@ class _FakeRoutinesAdapter implements HttpClientAdapter {
       return json(<Map<String, dynamic>>[]);
     }
     if (options.method == 'POST' && options.path == '/api/routines/parse') {
-      // The LLM picked mobile-only delivery — the user must be able to
+      // The LLM picked Telegram-only delivery — the user must be able to
       // switch WhatsApp on from the confirmation card without discarding
       // and re-typing the request (BUG-L2).
       return json({
@@ -49,7 +49,7 @@ class _FakeRoutinesAdapter implements HttpClientAdapter {
         'context_source_type': 'none',
         'whatsapp_chat_hint': '',
         'delivery_whatsapp': false,
-        'delivery_mobile': true,
+        'delivery_telegram': true,
       });
     }
     if (options.method == 'GET' && options.path == '/api/whatsapp/chats') {
@@ -92,7 +92,7 @@ Future<ProviderContainer> _pumpRoutines(WidgetTester tester, _FakeRoutinesAdapte
   return container;
 }
 
-// Regression test for BUG-L2: the WhatsApp/Phone delivery chips in the
+// Regression test for BUG-L2: the WhatsApp/Telegram delivery chips in the
 // routine confirmation card used to be plain, non-interactive Chip widgets
 // showing only whichever channel(s) the LLM happened to parse from the free
 // text — with no onTap/onSelected at all, so a wrong guess (or one the user
@@ -109,18 +109,15 @@ void main() {
     await tester.tap(find.text(L10n.t('send')));
     await tester.pumpAndSettle();
 
-    // Parsed draft: WhatsApp chip unselected, Phone chip selected.
+    // Parsed draft: WhatsApp chip unselected, Telegram chip selected.
     final whatsappChip = tester.widget<FilterChip>(
       find.ancestor(of: find.text('WhatsApp'), matching: find.byType(FilterChip)),
     );
     expect(whatsappChip.selected, false);
-    final mobileChip = tester.widget<FilterChip>(
-      find.ancestor(
-        of: find.text(L10n.t('routines_mobile_notify')),
-        matching: find.byType(FilterChip),
-      ),
+    final telegramChip = tester.widget<FilterChip>(
+      find.ancestor(of: find.text('Telegram'), matching: find.byType(FilterChip)),
     );
-    expect(mobileChip.selected, true);
+    expect(telegramChip.selected, true);
 
     // Turning WhatsApp on must actually flip the draft (not just repaint a
     // static Chip) and lazily fetch the chat list, same as if the LLM had
@@ -133,11 +130,8 @@ void main() {
     expect(find.byType(DropdownButton<String>), findsOneWidget,
         reason: 'the WhatsApp chat picker should appear once the chip is on and chats are loaded');
 
-    // Turning Phone back off must also reach the draft that gets saved.
-    await tester.tap(find.ancestor(
-      of: find.text(L10n.t('routines_mobile_notify')),
-      matching: find.byType(FilterChip),
-    ));
+    // Turning Telegram back off must also reach the draft that gets saved.
+    await tester.tap(find.ancestor(of: find.text('Telegram'), matching: find.byType(FilterChip)));
     await tester.pumpAndSettle();
 
     // Pick the WhatsApp chat (required before saving with delivery_whatsapp
@@ -153,7 +147,7 @@ void main() {
     expect(adapter.lastCreatedDraft, isNotNull);
     expect(adapter.lastCreatedDraft!['delivery_whatsapp'], true,
         reason: 'toggling the WhatsApp chip on must be reflected in the saved routine');
-    expect(adapter.lastCreatedDraft!['delivery_mobile'], false,
-        reason: 'toggling the Phone chip off must be reflected in the saved routine');
+    expect(adapter.lastCreatedDraft!['delivery_telegram'], false,
+        reason: 'toggling the Telegram chip off must be reflected in the saved routine');
   });
 }

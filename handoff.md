@@ -61,7 +61,7 @@ davranışı kilitlediği için yeniden yazıldı
 false` olarak persist edilmiş bir rutinin bile artık agent yolundan geçtiğini
 — `NewAgentChat`'in active-chat yan etkisi üzerinden — doğruluyor).
 
-Henüz commit edilmedi.
+Commit: `8a8614e`. Henüz push edilmedi.
 
 ---
 

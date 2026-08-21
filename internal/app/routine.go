@@ -160,13 +160,23 @@ func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whats
 // AgentMode is whatever the extractor itself inferred from text (e.g. "her
 // gün saat 14'te sistemimin durumunu kontrol et" needs real command
 // execution, "AI haberlerini getir" doesn't) — no longer forced off.
-// AutoApproveTools instead inherits the creating surface's own /auto-perm
-// setting (resolveRoutineAutoApprove): if the user already told that
-// surface to auto-approve tool calls, a routine created there gets the same
-// standing decision; otherwise a fired agent-mode routine asks a live y/n
-// permission question the same way self-chat itself does (see
-// runAgentRoutine), just triggered by the scheduler instead of an incoming
-// message.
+//
+// AutoApproveTools is unconditionally true (only takes effect when
+// AgentMode is also true, per CreateRoutineFromDraft's own gating).
+// Deliberately NOT tied to the live per-surface /auto-perm setting, despite
+// that being the first, more "obviously safe" design tried here — direct
+// user feedback after using it: a routine's agent/tool access being at the
+// mercy of a live toggle that can silently reset (a fresh self-chat
+// session, a forgotten manual flip) is worse than just trusting the
+// routine, since the human already reviewed and approved *what the routine
+// does* at the moment they asked for it to be created — that's the actual
+// approval, not a separate live flag that has to happen to still be on
+// whenever the scheduler fires it later. runAgentRoutine's live y/n
+// permission-asking machinery (routinePermissionCallbacks) is kept, not
+// deleted — it still fires for agent-mode routines created via the
+// Routines tab's own UI, which has its own independent, per-routine
+// AutoApproveTools toggle (routines_auto_approve) that a human may leave
+// off on purpose.
 func (a *App) CreateRoutineFromChat(ctx context.Context, text string) (string, error) {
 	if a.routineStore == nil {
 		return "", fmt.Errorf("rutin sistemi hazır değil")
@@ -181,7 +191,7 @@ func (a *App) CreateRoutineFromChat(ctx context.Context, text string) (string, e
 	draft.DeliveryWhatsApp = deliveryWhatsApp
 	draft.DeliveryTelegram = deliveryTelegram
 
-	autoApproveTools := a.resolveRoutineAutoApprove(ctx)
+	const autoApproveTools = true
 
 	lang := a.GetUILanguage()
 	r, err := a.CreateRoutineFromDraft(text, draft, whatsAppTargetJID, autoApproveTools, lang, nil)
@@ -189,29 +199,6 @@ func (a *App) CreateRoutineFromChat(ctx context.Context, text string) (string, e
 		return "", err
 	}
 	return summarizeCreatedRoutine(r), nil
-}
-
-// resolveRoutineAutoApprove mirrors resolveRoutineDeliveryTarget's
-// context-source-first logic, for the AutoApproveTools decision instead of
-// the delivery target: a routine created from a self-chat surface inherits
-// that surface's own /auto-perm setting as its stored AutoApproveTools —
-// the conversational equivalent of the Routines tab's own explicit human
-// toggle for the same field (routines_auto_approve). Normal chat (no
-// self-chat source on ctx) has no live surface setting to inherit, so it
-// defaults to false, same as every other safety-relevant default in this
-// codebase.
-func (a *App) resolveRoutineAutoApprove(ctx context.Context) bool {
-	src, ok := selfChatSourceFromContext(ctx)
-	if !ok {
-		return false
-	}
-	if src.WhatsApp {
-		return a.GetWhatsAppAutoApprovePermissions()
-	}
-	if src.Telegram {
-		return a.GetTelegramAutoApprovePermissions()
-	}
-	return false
 }
 
 // resolveRoutineDeliveryTarget decides which channel(s)

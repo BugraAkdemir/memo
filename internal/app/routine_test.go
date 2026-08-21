@@ -167,52 +167,36 @@ func TestResolveRoutineDeliveryTarget_NormalChatDefaultsToConnectedSurfaces(t *t
 	})
 }
 
-// TestResolveRoutineAutoApprove_InheritsCreatingSurfacesAutoPermSetting
-// verifies AutoApproveTools for a chat-created routine tracks the exact
-// same /auto-perm setting the creating surface already has — the user's own
-// framing: "auto-perm on ise sormadan yapsın, off ise sorsun" should extend
-// to routines created from that surface, not just live self-chat turns.
-func TestResolveRoutineAutoApprove_InheritsCreatingSurfacesAutoPermSetting(t *testing.T) {
-	dir := t.TempDir()
-	if _, err := config.Load(filepath.Join(dir, "config.yaml")); err != nil {
-		t.Fatalf("config.Load: %v", err)
+// TestCreateRoutineFromDraft_AutoApproveOnlyTakesEffectWithAgentMode locks
+// in CreateRoutineFromDraft's existing (unchanged) gate — AutoApproveTools
+// is force-false whenever the draft doesn't need agent mode — which is what
+// makes CreateRoutineFromChat's unconditional `autoApproveTools = true`
+// safe to pass through unconditionally: it's a no-op for the (common,
+// non-agent) case, and only actually grants anything when the routine
+// genuinely runs tools.
+func TestCreateRoutineFromDraft_AutoApproveOnlyTakesEffectWithAgentMode(t *testing.T) {
+	a := newRoutineTestApp(t)
+	st, err := routine.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("routine.NewStore: %v", err)
 	}
-	a := &App{cfg: config.Get()}
+	a.routineStore = st
 
-	t.Run("normal_chat_defaults_false", func(t *testing.T) {
-		if got := a.resolveRoutineAutoApprove(context.Background()); got {
-			t.Error("expected false with no self-chat source at all")
-		}
-	})
+	nonAgent, err := a.CreateRoutineFromDraft("x", routine.Draft{TimeOfDay: "09:00", NeedsAgentMode: false}, "", true, "tr", nil)
+	if err != nil {
+		t.Fatalf("CreateRoutineFromDraft: %v", err)
+	}
+	if nonAgent.AutoApproveTools {
+		t.Error("AutoApproveTools should stay false when the routine doesn't need agent mode, even if the caller passed true")
+	}
 
-	t.Run("whatsapp_source_follows_whatsapp_autoperm", func(t *testing.T) {
-		ctx := withSelfChatSource(context.Background(), SelfChatSource{WhatsApp: true, WhatsAppJID: "x@s.whatsapp.net"})
-		if got := a.resolveRoutineAutoApprove(ctx); got {
-			t.Error("expected false while WhatsApp auto-perm is off")
-		}
-		if err := a.SetWhatsAppAutoApprovePermissions(true); err != nil {
-			t.Fatalf("SetWhatsAppAutoApprovePermissions: %v", err)
-		}
-		if got := a.resolveRoutineAutoApprove(ctx); !got {
-			t.Error("expected true once WhatsApp auto-perm is turned on")
-		}
-	})
-
-	t.Run("telegram_source_follows_telegram_autoperm_independently", func(t *testing.T) {
-		store := telegram.NewStore(filepath.Join(t.TempDir(), "telegram.json"), testMasterKey)
-		a := &App{cfg: config.Get(), tgStore: store}
-		ctx := withSelfChatSource(context.Background(), SelfChatSource{Telegram: true, TelegramChatID: 1})
-
-		if got := a.resolveRoutineAutoApprove(ctx); got {
-			t.Error("expected false while Telegram auto-perm is off")
-		}
-		if err := a.SetTelegramAutoApprovePermissions(true); err != nil {
-			t.Fatalf("SetTelegramAutoApprovePermissions: %v", err)
-		}
-		if got := a.resolveRoutineAutoApprove(ctx); !got {
-			t.Error("expected true once Telegram auto-perm is turned on")
-		}
-	})
+	agentMode, err := a.CreateRoutineFromDraft("x", routine.Draft{TimeOfDay: "09:00", NeedsAgentMode: true}, "", true, "tr", nil)
+	if err != nil {
+		t.Fatalf("CreateRoutineFromDraft: %v", err)
+	}
+	if !agentMode.AutoApproveTools {
+		t.Error("AutoApproveTools should be true for an agent-mode routine when the caller passed true")
+	}
 }
 
 // TestRoutinePermissionCallbacks_WiresToWhicheverChannelIsConfigured

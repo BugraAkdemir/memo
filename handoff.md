@@ -1,3 +1,53 @@
+# Ek (2026-08-21, devam) — çoklu kanal teslimatı düzeltildi, list_routines + cancel_routine eklendi
+
+Kullanıcı canlı bir test senaryosu sordu: "her gün saat 9'da sistem
+bilgileri göster ve en güncel kritik AI haberlerini Telegram ve WhatsApp'tan
+gönder desem çalışır mı? İptal edebilir miyim — 'rutinlerimi söyle...bu
+rutini iptal et' dediğimde iptal olur mu?" Koddan gerçekten iz sürdüm, iki
+gerçek eksik buldum, ikisini de düzelttim.
+
+## Eksik 1 — self-chat'in içinden yazınca diğer kanal isteği görmezden geliniyordu
+
+`resolveRoutineDeliveryTarget`, WhatsApp self-chat'ten çağrıldığında hedefi
+**sadece** o WhatsApp'a kilitliyordu — kullanıcı metninde açıkça "Telegram'a
+da gönder" dese bile. Güvenlik amacı doğruydu (model rastgele bir kişiyi
+hedef seçemesin) ama fazla katıydı — kullanıcının **kendi zaten bağlı
+kanalını** ek olarak istemesi bir güvenlik riski değil.
+
+**Fix:** fonksiyon artık `draftWantsWhatsApp`/`draftWantsTelegram` (extractor'ın
+kullanıcı metninden okuduğu) parametrelerini de alıyor. Mevcut self-chat
+yüzeyi hâlâ **her zaman** zorla açık; kullanıcının metni AÇIKÇA diğer kanalı
+da istediyse VE o kanal gerçekten bağlıysa (kendi WhatsApp'ı / kendi
+Telegram botu — asla üçüncü bir kişi), o da ekleniyor. Normal sohbetten
+(self-chat kaynağı yokken) davranış aynı kaldı — bağlı olan her şey otomatik
+açılıyor.
+
+## Eksik 2 — iptal etme hiç çalışmıyordu
+
+Sadece `create_routine` vardı — listeleyen veya silen bir araç yoktu.
+`list_routines` (Safe, argümansız, her rutini id'siyle birlikte listeler)
+ve `cancel_routine` (Medium — `/auto-perm` akışından geçer, id: sadece
+`list_routines`'ten öğrenilebilir, tahmin edilemez) eklendi.
+`internal/app/routine.go`'ya `ListRoutinesForChat`/`DeleteRoutineForChat`,
+`internal/agent/tools/routine.go`'nun `Routines` arayüzüne
+`ListRoutines`/`DeleteRoutine` eklendi.
+
+**Doğal akış:** kullanıcı "rutinlerimi göster" der → model `list_routines`
+çağırır, gerçek id'leriyle listeyi görür → "haberler rutinini iptal et" der
+→ model doğru id'yi eşleştirip `cancel_routine`'i çağırır. Model id'yi asla
+uydurmuyor, önce görmesi gerekiyor.
+
+**Doğrulama:** `go build/vet/test -race ./...` tüm repo yeşil. Yeni
+testler: çoklu-kanal senaryosunun üç hali (istenen kanal bağlıysa eklenir,
+bağlı değilse eklenmez, hiç istenmezse hep kapalı kalır),
+`ListRoutinesForChat`'in gerçek id'yi içerdiği, `DeleteRoutineForChat`'in
+bilinmeyen id'de hata verip gerçek id'de gerçekten sildiği (store'dan
+doğrudan doğrulandı).
+
+Henüz commit edilmedi.
+
+---
+
 # Ek (2026-08-21, devam) — create_routine'in AutoApproveTools'u artık live /auto-perm'e bağlı değil, hep true
 
 Bir önceki turda `AutoApproveTools`'u rutini oluşturan yüzeyin **o anki**

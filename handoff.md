@@ -1,3 +1,60 @@
+# Ek (2026-08-21, devam) — create_routine artık AgentMode'u da kullanabiliyor, ateşlenince gerçekten izin soruyor
+
+Kullanıcının hemen ardından gelen sorusu: "her gün saat 2'de sistemimin
+durumunu kontrol et" ya da "internetten şu haberi kontrol et" dediğimde ne
+olacak — bence agent ve web rutinlerde hep açık olsun, agent izin istesin.
+
+Bir önceki turda `create_routine`'i kasıtlı olarak `AgentMode: false`'a
+zorlamıştım ("gözetimsiz komut çalıştırma riski" gerekçesiyle) — ama bu artık
+gereksiz kısıtlayıcıydı, çünkü bu oturumun başında tam olarak bu sorunu çözen
+bir mekanizma zaten kurulmuştu: `/auto-perm` ile self-chat'in gerçek bir y/n
+izin sorusu sorabilmesi. Aynı mekanizmayı **ateşlenen rutinlere** de bağladım:
+
+- `CreateRoutineFromChat` artık `NeedsAgentMode`'u zorla kapatmıyor —
+  extractor'ın kendi çıkarımına güveniyor ("sistemimin durumunu kontrol et"
+  gibi bir istek zaten agent modu gerektirdiğini işaretliyor).
+- `AutoApproveTools` artık rutini oluşturan yüzeyin **o anki** `/auto-perm`
+  ayarını miras alıyor (`resolveRoutineAutoApprove`) — WhatsApp self-chat'ten
+  oluşturulan bir rutin WhatsApp'ın auto-perm'ini, Telegram'dan oluşturulan
+  Telegram'ınkini alıyor. Normal sohbetten oluşturulanlar güvenli tarafta
+  kalıp `false`'a düşüyor (canlı bir yüzey yok, miras alınacak bir ayar yok).
+- **Asıl eksik parça:** `runAgentRoutine` (zamanlanmış rutinin agent modunda
+  çalıştığı yer) `permission_request` event'ini hiç ele almıyordu — self-chat
+  mesajlarındaki orijinal bug'ın birebir aynısı, ama bu sefer canlı bir
+  sohbet turu için değil, **zamanlayıcının kendi tetiklediği** bir çalıştırma
+  için. Düzeltildi: `runAgentRoutine` artık `resolveSelfChatPermission`'ı
+  kullanıyor (aynı paylaşılan `selfchat_permission.go` mekanizması), soruyu
+  rutinin **kendi teslimat kanalına** (`WhatsAppTargetJID`/
+  `TelegramTargetChatID`) gönderip aynı bekleyen-cevap kanalıyla (
+  `awaitWhatsAppPermissionAnswer`/`awaitTelegramPermissionAnswer`) cevabı
+  bekliyor — kullanıcının o sohbete atacağı bir sonraki mesaj otomatik
+  olarak cevap olarak yönlendiriliyor (`routeWhatsAppPermissionAnswer`/
+  `routeTelegramPermissionAnswer` zaten her iki kaynaktan gelen mesajı da
+  aynı şekilde ele alıyor, "bu bir self-chat mesajından mı yoksa bir
+  rutinden mi geldi" ayrımı yapmıyor — ikisi de aynı chat JID/ID'ye bakıyor).
+
+**Bilinçli, kullanıcıya açık kalan bir gerçek:** `AutoApproveTools=false`
+olan bir rutin gece yarısı gibi kullanıcının muhtemelen uyuduğu bir saatte
+ateşlenirse, izin sorusu 45 saniye içinde cevap bulamaz ve pipeline'ın kendi
+60 saniyelik zaman aşımı devreye girip reddeder — rutin o gün başarısız olur.
+Bu, "her gün saat 2'de" gibi örneklerde saat gece 2 mi öğlen 2 mi olduğuna
+göre gerçek bir risk. Çözüm basit ama kullanıcının kendi kararı: ya o rutin
+için `/auto-perm on`, ya da genellikle uyanık olunan bir saatte kur.
+
+**Doğrulama:** `go build/vet/test -race ./...` tüm repo yeşil. Yeni testler:
+`resolveRoutineAutoApprove`'ın her iki yüzeyin kendi `/auto-perm` ayarını
+bağımsız takip ettiği (birini açmak diğerini etkilemiyor), normal sohbetin
+güvenli `false`'a düştüğü; `routinePermissionCallbacks`'ın kanalsız bir
+rutinde hemen "sor(ama)" diye başarısız olduğu (sonsuza kadar beklemiyor) ve
+doğru kanalı gerçekten denediği (WhatsApp/Telegram "not initialized"
+hatasıyla — yani doğru istemciye gitmeye çalıştığı kanıtlanmış oluyor).
+**Doğrulanamayan:** gerçek bir rutinin gece ateşlenip gerçek bir izin
+sorusu gönderip cevap beklemesi — bu ortamda canlı test edilemedi.
+
+Henüz commit edilmedi.
+
+---
+
 # Ek (2026-08-21, devam) — Rutinler WhatsApp/Telegram'a taşındı, sohbetten oluşturulabiliyor, Mobil kaldırıldı
 
 Kullanıcının isteği: rutinleri WhatsApp ve Telegram ile kullanılabilir hale

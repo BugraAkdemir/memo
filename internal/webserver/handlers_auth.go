@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"memo/internal/config"
 )
 
 // isRemoteLoginPath reports whether path is the password-login endpoint
@@ -119,7 +121,16 @@ func (s *Server) handleRemoteLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
-	writeJSON(w, map[string]string{"session_token": token, "role": role})
+	// permissions lets the client gate its own UI (hide tabs/nav entries)
+	// immediately, without a second round-trip — resolved fresh right here
+	// rather than trusted from anywhere else, same "live account list,
+	// not the JWT claim" principle SessionRole already follows. Best-effort:
+	// if resolution somehow fails right after a successful login, the
+	// client just falls back to showing everything (fail open, matching
+	// this whole permission system's philosophy) rather than the login
+	// itself failing.
+	perms, _ := s.fullBridge.SessionPermissions(token)
+	writeJSON(w, map[string]interface{}{"session_token": token, "role": role, "permissions": perms})
 }
 
 // asLockedError extracts a lockout duration (in seconds) from err if it
@@ -229,6 +240,77 @@ func (s *Server) callerIsAdmin(r *http.Request) bool {
 	}
 	return role == "admin"
 }
+
+// callerHasPermission reports whether r's caller may proceed on an action
+// gated by one of AccountPermissions' checkboxes (Faz 5.1.1, yapacam.md).
+// check picks which field matters for this call site. Same fail-open shape
+// as callerIsAdmin, deliberately: no credential, an unrecognized/expired
+// session, or a plain device token (SessionPermissions returns ok=false
+// for all three) is allowed, not denied — this is what keeps every
+// pre-Faz-5.1.1 install (no Accounts at all) and every admin session
+// completely unaffected; only a recognized "user"-role session whose
+// account has this specific box unchecked is ever turned away.
+func (s *Server) callerHasPermission(r *http.Request, check func(config.AccountPermissions) bool) bool {
+	if s.fullBridge == nil {
+		return true
+	}
+	cred := remoteCredential(r)
+	if cred == "" {
+		return true
+	}
+	perms, ok := s.fullBridge.SessionPermissions(cred)
+	if !ok {
+		return true
+	}
+	return check(perms)
+}
+
+// requirePermission wraps handler so a caller lacking the checked
+// permission gets 403 instead of reaching it — but only for
+// state-changing requests (anything but GET/HEAD). Read-only requests
+// always pass through ungated: several of these endpoint groups (models/
+// providers status, agent-enabled state, whatsapp/telegram/calendar/
+// routine listings) are polled ambiently by screens the restricted account
+// can still see even without the matching permission (e.g. the chat
+// header's active-model badge) — blocking those reads would break
+// ordinary chat for a restricted account, not just the specific
+// tab/screen this permission is actually meant to gate. The real UI-level
+// restriction (not being able to open that tab/screen at all) lives on
+// the client; this is the server-side backstop against a client bypassing
+// its own UI. See requirePermissionStrict for the one group (memory) that
+// needs reads gated too.
+func (s *Server) requirePermission(handler http.HandlerFunc, check func(config.AccountPermissions) bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && !s.callerHasPermission(r, check) {
+			http.Error(w, "forbidden: missing permission", http.StatusForbidden)
+			return
+		}
+		handler(w, r)
+	}
+}
+
+// requirePermissionStrict is requirePermission without the GET/HEAD
+// exemption — used only for the memory permission, where the point of
+// denying it is that the account can't see the shared memory contents at
+// all, not merely that it can't edit them (see AccountPermissions.Memory's
+// doc comment).
+func (s *Server) requirePermissionStrict(handler http.HandlerFunc, check func(config.AccountPermissions) bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.callerHasPermission(r, check) {
+			http.Error(w, "forbidden: missing permission", http.StatusForbidden)
+			return
+		}
+		handler(w, r)
+	}
+}
+
+func hasModelsPerm(p config.AccountPermissions) bool   { return p.Models }
+func hasMemoryPerm(p config.AccountPermissions) bool   { return p.Memory }
+func hasAgentPerm(p config.AccountPermissions) bool    { return p.Agent }
+func hasCalendarPerm(p config.AccountPermissions) bool { return p.Calendar }
+func hasWhatsAppPerm(p config.AccountPermissions) bool { return p.WhatsApp }
+func hasTelegramPerm(p config.AccountPermissions) bool { return p.Telegram }
+func hasRoutinesPerm(p config.AccountPermissions) bool { return p.Routines }
 
 // isSetupBootstrapPath reports whether path is one of the unauthenticated
 // first-run setup endpoints (Faz 5.1, yapacam.md) — all three must be
@@ -363,15 +445,16 @@ func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var req struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
-			Role     string `json:"role"`
+			Username    string                    `json:"username"`
+			Password    string                    `json:"password"`
+			Role        string                    `json:"role"`
+			Permissions config.AccountPermissions `json:"permissions"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
-		if err := s.fullBridge.CreateAccount(req.Username, req.Password, req.Role); err != nil {
+		if err := s.fullBridge.CreateAccount(req.Username, req.Password, req.Role, req.Permissions); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -422,6 +505,40 @@ func (s *Server) handleAccountByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "DELETE or POST", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleAccountPermissions implements PUT /api/accounts/{id}/permissions
+// (admin-only) — editing an existing account's checkbox state (Faz 5.1.1)
+// after creation, e.g. turning Memory access on for an account that didn't
+// have it checked initially.
+func (s *Server) handleAccountPermissions(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodPut {
+		http.Error(w, "PUT only", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.callerIsAdmin(r) {
+		http.Error(w, "forbidden: admin only", http.StatusForbidden)
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "missing account id", http.StatusBadRequest)
+		return
+	}
+	var perms config.AccountPermissions
+	if err := json.NewDecoder(r.Body).Decode(&perms); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := s.fullBridge.UpdateAccountPermissions(id, perms); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
 }
 
 // changePasswordStatus maps ChangeAccountPassword's error strings to HTTP

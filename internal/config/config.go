@@ -391,6 +391,57 @@ type Account struct {
 	PasswordHash string    `yaml:"password_hash" json:"-"`
 	Role         string    `yaml:"role" json:"role"`
 	CreatedAt    time.Time `yaml:"created_at" json:"created_at"`
+	// Permissions is the granular, per-capability allow-list (Faz 5.1.1)
+	// layered on top of Role — only ever consulted for Role "user" (an
+	// "admin" account always has every capability regardless of what this
+	// struct holds; see internal/app/remote_auth.go's EffectivePermissions).
+	// Every field defaults to zero value (false) when omitted, so a freshly
+	// created "user" account with no boxes checked is maximally
+	// restricted — chat only — rather than maximally permissive; an admin
+	// has to deliberately opt a capability in, not opt it out.
+	Permissions AccountPermissions `yaml:"permissions" json:"permissions"`
+}
+
+// AccountPermissions is the checkbox list an admin fills in when creating
+// or editing a "user"-role Account (Faz 5.1.1, yapacam.md — "bol
+// checkboxlu bir yetki sistemi"). Each field gates one feature area's
+// mutating/management actions (internal/webserver's requirePermission) —
+// plain chat itself is never gated by any of these, so an account with
+// every box left unchecked can still talk to Memo, just nothing else.
+// Memory is the one exception that also gates *reads*, not just writes
+// (internal/webserver's requirePermissionStrict) — the point of denying it
+// is that the account can't see the shared memory contents at all, not
+// merely that it can't edit them.
+type AccountPermissions struct {
+	// Models gates switching/testing external providers and
+	// searching/downloading/importing/starting/stopping local models —
+	// in practice, entering the Providers Settings tab or the Model Store
+	// screen in any way that changes something.
+	Models bool `yaml:"models" json:"models"`
+	// Memory gates the entire /api/memory/* surface, reads included — see
+	// this type's own doc comment for why this one differs from the rest.
+	Memory bool `yaml:"memory" json:"memory"`
+	// Agent gates entering/using agent (tool-execution) chats and changing
+	// agent-mode/auto-permission settings. Known limitation: agent-mode
+	// itself is still a single global flag shared by the whole backend
+	// process (Faz 5.2 in yapacam.md is what eventually gives each account
+	// its own isolated state) — denying this stops the account from
+	// turning agent mode on itself or opening an agent chat, but if agent
+	// mode already happens to be on globally (left on by another session),
+	// a plain chat message from this account still routes through it. Not
+	// a silent gap: flagged here and in the yapacam.md/handoff entry that
+	// shipped this.
+	Agent bool `yaml:"agent" json:"agent"`
+	// Calendar gates creating/editing/deleting calendar events and
+	// changing calendar settings.
+	Calendar bool `yaml:"calendar" json:"calendar"`
+	// WhatsApp gates connecting/disconnecting the WhatsApp bridge, sending
+	// messages, and the self-chat assistant toggle.
+	WhatsApp bool `yaml:"whatsapp" json:"whatsapp"`
+	// Telegram mirrors WhatsApp for the Telegram bot bridge.
+	Telegram bool `yaml:"telegram" json:"telegram"`
+	// Routines gates creating/editing/deleting scheduled routines.
+	Routines bool `yaml:"routines" json:"routines"`
 }
 
 type APIConfig struct {

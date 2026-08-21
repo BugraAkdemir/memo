@@ -1948,6 +1948,19 @@ class L10n {
     'accounts_sign_out_confirm_body': 'Kayıtlı oturum silinir; bir sonraki açılışta tekrar giriş istenir.',
     'accounts_empty': 'Henüz hesap yok. Backend kurulmamış görünüyor.',
     'accounts_loaded_error': 'Hesaplar yüklenemedi: {err}',
+    'accounts_edit_permissions': 'Yetkileri düzenle',
+    'accounts_permissions_dialog_title': 'Yetkiler — {name}',
+    'accounts_permissions_hint': 'Hiçbir kutu işaretlenmezse hesap yalnızca sohbet edebilir. Gerektiğinde işaretle.',
+    'accounts_permissions_save': 'Kaydet',
+    'accounts_permissions_updated': 'Yetkiler güncellendi',
+    'accounts_permissions_failed': 'Yetkiler güncellenemedi: {err}',
+    'accounts_perm_models': 'Model / sağlayıcı değiştirme (Sağlayıcılar ve Model Mağazası sekmeleri)',
+    'accounts_perm_memory': 'Hafızaya erişim',
+    'accounts_perm_agent': 'Agent (araç/komut çalıştırma)',
+    'accounts_perm_calendar': 'Takvim',
+    'accounts_perm_whatsapp': 'WhatsApp',
+    'accounts_perm_telegram': 'Telegram',
+    'accounts_perm_routines': 'Rutinler',
   };
 
   static const _en = <String, String>{
@@ -3812,5 +3825,18 @@ class L10n {
     'accounts_sign_out_confirm_body': 'Your saved session will be cleared; you\'ll be asked to sign in again next launch.',
     'accounts_empty': 'No accounts yet. The backend appears to not be set up.',
     'accounts_loaded_error': 'Could not load accounts: {err}',
+    'accounts_edit_permissions': 'Edit permissions',
+    'accounts_permissions_dialog_title': 'Permissions — {name}',
+    'accounts_permissions_hint': 'With nothing checked, the account can only chat. Check whatever it should also be able to use.',
+    'accounts_permissions_save': 'Save',
+    'accounts_permissions_updated': 'Permissions updated',
+    'accounts_permissions_failed': 'Could not update permissions: {err}',
+    'accounts_perm_models': 'Change model / provider (Providers and Model Store tabs)',
+    'accounts_perm_memory': 'Memory access',
+    'accounts_perm_agent': 'Agent (tool/command execution)',
+    'accounts_perm_calendar': 'Calendar',
+    'accounts_perm_whatsapp': 'WhatsApp',
+    'accounts_perm_telegram': 'Telegram',
+    'accounts_perm_routines': 'Routines',
   };
 }

@@ -186,8 +186,14 @@ type FullBridge interface {
 	// token-only first-run path needs a bootstrap call of its own.
 	BootstrapTokenAuth(deviceName string) (token string, err error)
 	SessionRole(token string) (role string, ok bool)
+	// SessionPermissions is the granular counterpart to SessionRole (Faz
+	// 5.1.1, yapacam.md) — see internal/app/remote_auth.go's doc comment.
+	SessionPermissions(token string) (config.AccountPermissions, bool)
 	ListAccounts() interface{}
-	CreateAccount(username, password, role string) error
+	CreateAccount(username, password, role string, perms config.AccountPermissions) error
+	// UpdateAccountPermissions edits an existing account's checkbox state —
+	// a no-op for an "admin"-role account, see its own doc comment.
+	UpdateAccountPermissions(id string, perms config.AccountPermissions) error
 	DeleteAccount(id string) error
 	ChangeAccountPassword(sessionToken, id, currentPassword, newPassword string) error
 

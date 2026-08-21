@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:memo_flutter/core/api_client.dart';
 import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/models/gpu_info.dart';
+import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/models_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
@@ -20,8 +21,12 @@ import 'package:memo_flutter/widgets/settings_dialog.dart';
 final _railList = find.byKey(const Key('settingsRailList'));
 final _railScrollable = find.descendant(of: _railList, matching: find.byType(Scrollable));
 
-Future<void> _pumpSettingsDialog(WidgetTester tester, {Size size = const Size(1200, 800)}) async {
-  SharedPreferences.setMockInitialValues({});
+Future<void> _pumpSettingsDialog(
+  WidgetTester tester, {
+  Size size = const Size(1200, 800),
+  Map<String, Object> initialPrefs = const {},
+}) async {
+  SharedPreferences.setMockInitialValues(initialPrefs);
   final prefs = await SharedPreferences.getInstance();
   L10n.setLocale(MemoLocale.tr);
 
@@ -48,6 +53,16 @@ Future<void> _pumpSettingsDialog(WidgetTester tester, {Size size = const Size(12
         // a leaked pending timer once the test ends. A single fixed value
         // is all this suite needs.
         embeddingStatusProvider.overrideWith((ref) => Stream.value(const ServerStatus())),
+        // Several settings_provider.dart providers gate themselves on
+        // authGateBlocked(ref.read(authGateProvider)) — a real (unmocked)
+        // instantiation of that StreamProvider makes a genuine network
+        // call via the unreachable 127.0.0.1:1 client and leaves a pending
+        // Dio/retry timer behind once the test tears down. Only actually
+        // observed once a test sets initialPrefs with a saved session role
+        // (the permission-gating tests below) — overridden unconditionally
+        // here so every test in this file stays isolated from real sockets.
+        authGateProvider.overrideWith(
+            (ref) => Stream.value(const AuthGateInfo(AuthGateState.ok))),
       ],
       child: const MaterialApp(home: Scaffold(body: SettingsDialog())),
     ),
@@ -159,6 +174,44 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.byKey(const Key('settingsRailList')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  // Faz 5.1.1 (yapacam.md): a "user"-role account with a permission box
+  // unchecked never even sees the corresponding Settings tab — the actual
+  // client-side gate on top of the backend's own requirePermission checks.
+  testWidgets(
+      'a restricted user session hides the Providers tab but keeps General',
+      (tester) async {
+    await _pumpSettingsDialog(tester, initialPrefs: {
+      'memo_session_role': 'user',
+      'memo_session_permissions': '{"models":false}',
+    });
+
+    expect(find.text(L10n.t('tab_providers')), findsNothing);
+    // findsWidgets, not findsOneWidget: "General" is both the tab row's own
+    // label and (in English) the group header text above it — this only
+    // needs to confirm the row/section is still there at all, not count it.
+    expect(
+      find.descendant(of: _railList, matching: find.text(L10n.t('general'))),
+      findsWidgets,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'an admin session (or no session at all) always sees every tab',
+      (tester) async {
+    await _pumpSettingsDialog(tester, initialPrefs: {
+      'memo_session_role': 'admin',
+      'memo_session_permissions': '{"models":false,"memory":false}',
+    });
+
+    expect(
+      find.descendant(
+          of: _railList, matching: find.text(L10n.t('tab_providers'))),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }

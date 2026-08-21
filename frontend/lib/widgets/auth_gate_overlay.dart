@@ -8,6 +8,7 @@ import '../core/theme.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
+import '../providers/permissions_provider.dart';
 import '../providers/settings_provider.dart';
 import 'backend_unreachable_view.dart';
 import 'clear_saved_sign_in_button.dart';
@@ -570,6 +571,7 @@ class _LoginGateViewState extends ConsumerState<_LoginGateView> {
       await prefs.setString('memo_session_role', res.role);
       await prefs.setString(
           'memo_session_username', _username.text.trim());
+      await saveMyPermissions(prefs, res.permissions);
       ref.invalidate(authGateProvider);
       // BUG-ONB5: see gpuInfoProvider's own comment — a one-shot
       // FutureProvider that may have cached a blocked-gate default earlier.

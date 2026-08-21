@@ -454,7 +454,7 @@ func TestLoginRemotePassword_UsesAccountsAndReturnsRole(t *testing.T) {
 	if _, err := a.CreateAdminAccount("alice", "adminpass"); err != nil {
 		t.Fatalf("CreateAdminAccount: %v", err)
 	}
-	if err := a.CreateAccount("bob", "userpass", "user"); err != nil {
+	if err := a.CreateAccount("bob", "userpass", "user", config.AccountPermissions{}); err != nil {
 		t.Fatalf("CreateAccount: %v", err)
 	}
 
@@ -483,7 +483,7 @@ func TestSessionRole_DeletedAccountInvalidatesSession(t *testing.T) {
 	if _, err := a.CreateAdminAccount("alice", "adminpass"); err != nil {
 		t.Fatalf("CreateAdminAccount: %v", err)
 	}
-	if err := a.CreateAccount("bob", "userpass", "user"); err != nil {
+	if err := a.CreateAccount("bob", "userpass", "user", config.AccountPermissions{}); err != nil {
 		t.Fatalf("CreateAccount: %v", err)
 	}
 	token, role, err := a.LoginRemotePassword("1.2.3.4", "bob", "userpass", false)
@@ -511,17 +511,17 @@ func TestSessionRole_DeletedAccountInvalidatesSession(t *testing.T) {
 
 func TestCreateAccount_DuplicateUsernameRejected(t *testing.T) {
 	a := newAccountsApp(t)
-	if err := a.CreateAccount("bob", "pass1", "user"); err != nil {
+	if err := a.CreateAccount("bob", "pass1", "user", config.AccountPermissions{}); err != nil {
 		t.Fatalf("first CreateAccount: %v", err)
 	}
-	if err := a.CreateAccount("bob", "pass2", "admin"); err == nil {
+	if err := a.CreateAccount("bob", "pass2", "admin", config.AccountPermissions{}); err == nil {
 		t.Error("expected a duplicate username to be rejected")
 	}
 }
 
 func TestCreateAccount_InvalidRoleRejected(t *testing.T) {
 	a := newAccountsApp(t)
-	if err := a.CreateAccount("bob", "pass1", "superuser"); err == nil {
+	if err := a.CreateAccount("bob", "pass1", "superuser", config.AccountPermissions{}); err == nil {
 		t.Error("expected an unrecognized role to be rejected")
 	}
 }
@@ -550,7 +550,7 @@ func TestDeleteAccount_AllowsRemovingNonLastAdmin(t *testing.T) {
 	if _, err := a.CreateAdminAccount("alice", "adminpass"); err != nil {
 		t.Fatalf("CreateAdminAccount: %v", err)
 	}
-	if err := a.CreateAccount("carol", "carolpass", "admin"); err != nil {
+	if err := a.CreateAccount("carol", "carolpass", "admin", config.AccountPermissions{}); err != nil {
 		t.Fatalf("CreateAccount: %v", err)
 	}
 	accounts := a.ListAccounts().([]AccountInfo)
@@ -573,7 +573,7 @@ func TestDeleteAccount_RemovingUserAccountNeverBlocked(t *testing.T) {
 	if _, err := a.CreateAdminAccount("alice", "adminpass"); err != nil {
 		t.Fatalf("CreateAdminAccount: %v", err)
 	}
-	if err := a.CreateAccount("bob", "userpass", "user"); err != nil {
+	if err := a.CreateAccount("bob", "userpass", "user", config.AccountPermissions{}); err != nil {
 		t.Fatalf("CreateAccount: %v", err)
 	}
 	accounts := a.ListAccounts().([]AccountInfo)
@@ -704,5 +704,187 @@ func TestChangeAccountPassword_LegacyOnlyFails(t *testing.T) {
 	err := a.ChangeAccountPassword(tok, "a-admin", "", "x")
 	if err == nil || err.Error() != "password change requires accounts" {
 		t.Fatalf("err = %v, want 'password change requires accounts'", err)
+	}
+}
+
+// ─── Faz 5.1.1 (yapacam.md): granular per-account permissions ───
+
+// TestEffectivePermissions_AdminAlwaysGetsEverything locks in
+// AccountPermissions' own doc comment: it's a "user"-only concept, an
+// admin account's own (possibly all-false) stored value is never what
+// callers should check.
+func TestEffectivePermissions_AdminAlwaysGetsEverything(t *testing.T) {
+	got := EffectivePermissions("admin", config.AccountPermissions{})
+	if got != allPermissions {
+		t.Errorf("EffectivePermissions(admin, {}) = %+v, want everything true", got)
+	}
+}
+
+// TestEffectivePermissions_UnknownRoleFailsOpen matches callerIsAdmin's
+// existing fail-open philosophy: a role that isn't exactly "user" (no
+// session, a device token, a legacy pre-Faz-5.1 login) must never be
+// treated as restricted.
+func TestEffectivePermissions_UnknownRoleFailsOpen(t *testing.T) {
+	got := EffectivePermissions("", config.AccountPermissions{})
+	if got != allPermissions {
+		t.Errorf("EffectivePermissions('', {}) = %+v, want everything true", got)
+	}
+}
+
+// TestEffectivePermissions_UserGetsExactlyItsOwnCheckboxes is the actual
+// restriction: a "user" role's own stored (possibly partial) permissions
+// pass through unchanged, not widened.
+func TestEffectivePermissions_UserGetsExactlyItsOwnCheckboxes(t *testing.T) {
+	perms := config.AccountPermissions{Models: true, Memory: false}
+	got := EffectivePermissions("user", perms)
+	if got != perms {
+		t.Errorf("EffectivePermissions(user, %+v) = %+v, want unchanged", perms, got)
+	}
+}
+
+// TestSessionPermissions_AdminAccountGetsAllTrueRegardlessOfStoredValue
+// covers the live-account-list path end to end: even if an admin
+// account's Permissions field happens to hold some true/false mix on disk
+// (never supposed to be edited, but nothing stops a hand-edited
+// config.yaml), a session for it must still resolve to full access.
+func TestSessionPermissions_AdminAccountGetsAllTrueRegardlessOfStoredValue(t *testing.T) {
+	a := accountsApp(t)
+	for i := range a.cfg.RemoteAccess.Accounts {
+		if a.cfg.RemoteAccess.Accounts[i].Role == "admin" {
+			a.cfg.RemoteAccess.Accounts[i].Permissions = config.AccountPermissions{Memory: false}
+		}
+	}
+	tok := sessionTokenFor(t, a, "admin", "admin")
+
+	got, ok := a.SessionPermissions(tok)
+	if !ok {
+		t.Fatal("SessionPermissions: ok = false, want true for a valid admin session")
+	}
+	if got != allPermissions {
+		t.Errorf("SessionPermissions(admin) = %+v, want everything true", got)
+	}
+}
+
+// TestSessionPermissions_UserAccountGetsItsOwnStoredCheckboxes is the
+// counterpart for a "user" role — its actual, possibly restricted,
+// checkbox state is what a caller must see.
+func TestSessionPermissions_UserAccountGetsItsOwnStoredCheckboxes(t *testing.T) {
+	a := accountsApp(t)
+	want := config.AccountPermissions{Models: true, WhatsApp: true}
+	for i := range a.cfg.RemoteAccess.Accounts {
+		if a.cfg.RemoteAccess.Accounts[i].Role == "user" {
+			a.cfg.RemoteAccess.Accounts[i].Permissions = want
+		}
+	}
+	tok := sessionTokenFor(t, a, "kaya", "user")
+
+	got, ok := a.SessionPermissions(tok)
+	if !ok {
+		t.Fatal("SessionPermissions: ok = false, want true for a valid user session")
+	}
+	if got != want {
+		t.Errorf("SessionPermissions(user) = %+v, want %+v", got, want)
+	}
+}
+
+// TestSessionPermissions_InvalidTokenReturnsNotOK mirrors SessionRole's own
+// existing garbage-token behavior — ok=false, no permissions leaked.
+func TestSessionPermissions_InvalidTokenReturnsNotOK(t *testing.T) {
+	a := accountsApp(t)
+	_, ok := a.SessionPermissions("not-a-real-token")
+	if ok {
+		t.Fatal("SessionPermissions: ok = true for a garbage token, want false")
+	}
+}
+
+// TestUpdateAccountPermissions_ChangesUserAccountAndPersists is the write
+// side: an admin editing an existing "user" account's checkboxes after
+// creation (not just at creation time).
+func TestUpdateAccountPermissions_ChangesUserAccountAndPersists(t *testing.T) {
+	a := accountsApp(t)
+	newPerms := config.AccountPermissions{Memory: true, Calendar: true}
+
+	if err := a.UpdateAccountPermissions("a-user", newPerms); err != nil {
+		t.Fatalf("UpdateAccountPermissions: %v", err)
+	}
+
+	acc := a.findAccount("kaya")
+	if acc == nil {
+		t.Fatal("account kaya not found after update")
+	}
+	if acc.Permissions != newPerms {
+		t.Errorf("stored permissions = %+v, want %+v", acc.Permissions, newPerms)
+	}
+}
+
+// TestUpdateAccountPermissions_NoOpForAdminAccount matches
+// AccountPermissions' own doc comment: an admin's Permissions field is
+// never supposed to be meaningfully edited, since it's never consulted.
+func TestUpdateAccountPermissions_NoOpForAdminAccount(t *testing.T) {
+	a := accountsApp(t)
+	if err := a.UpdateAccountPermissions("a-admin", config.AccountPermissions{Memory: true}); err != nil {
+		t.Fatalf("UpdateAccountPermissions: %v", err)
+	}
+
+	acc := a.findAccount("admin")
+	if acc == nil {
+		t.Fatal("account admin not found after update")
+	}
+	if acc.Permissions != (config.AccountPermissions{}) {
+		t.Errorf("admin account's permissions changed to %+v, want left untouched (zero value)", acc.Permissions)
+	}
+}
+
+// TestUpdateAccountPermissions_UnknownIDFails guards against silently
+// no-oping a typo'd/stale account id.
+func TestUpdateAccountPermissions_UnknownIDFails(t *testing.T) {
+	a := accountsApp(t)
+	if err := a.UpdateAccountPermissions("does-not-exist", config.AccountPermissions{}); err == nil {
+		t.Fatal("expected an error for an unknown account id")
+	}
+}
+
+// TestCreateAccount_AdminRoleIgnoresPermissionsInput guards the
+// role != "user" => perms discarded branch — an admin account created
+// with some checkboxes accidentally set in the request body must still
+// end up with a zero-value Permissions on disk (harmless either way since
+// EffectivePermissions ignores it for admin, but keeps config.yaml honest
+// about what's actually consulted).
+func TestCreateAccount_AdminRoleIgnoresPermissionsInput(t *testing.T) {
+	a := newAccountsApp(t)
+	if _, err := a.CreateAdminAccount("root", "rootpass"); err != nil {
+		t.Fatalf("CreateAdminAccount: %v", err)
+	}
+	if err := a.CreateAccount("carol", "carolpass", "admin", config.AccountPermissions{Memory: true, Agent: true}); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+
+	acc := a.findAccount("carol")
+	if acc == nil {
+		t.Fatal("account carol not found")
+	}
+	if acc.Permissions != (config.AccountPermissions{}) {
+		t.Errorf("admin account's stored permissions = %+v, want zero value", acc.Permissions)
+	}
+}
+
+// TestCreateAccount_UserRoleStoresPermissions is the positive counterpart:
+// a "user"-role account's requested checkboxes are actually persisted.
+func TestCreateAccount_UserRoleStoresPermissions(t *testing.T) {
+	a := newAccountsApp(t)
+	if _, err := a.CreateAdminAccount("root", "rootpass"); err != nil {
+		t.Fatalf("CreateAdminAccount: %v", err)
+	}
+	want := config.AccountPermissions{Models: true, Routines: true}
+	if err := a.CreateAccount("dave", "davepass", "user", want); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+
+	acc := a.findAccount("dave")
+	if acc == nil {
+		t.Fatal("account dave not found")
+	}
+	if acc.Permissions != want {
+		t.Errorf("stored permissions = %+v, want %+v", acc.Permissions, want)
 	}
 }

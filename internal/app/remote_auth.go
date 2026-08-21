@@ -26,12 +26,41 @@ type RemoteDeviceInfo struct {
 
 // AccountInfo is the account list DTO exposed to clients (Faz 5.1,
 // yapacam.md) — deliberately excludes PasswordHash, same reasoning as
-// RemoteDeviceInfo excluding TokenHash.
+// RemoteDeviceInfo excluding TokenHash. Permissions is the account's raw
+// stored checkbox state (Faz 5.1.1) — for an "admin" account this is
+// whatever happens to be on disk (usually all-false, never consulted) and
+// callers must not read it as "what an admin can do"; use
+// EffectivePermissions for that.
 type AccountInfo struct {
-	ID        string    `json:"id"`
-	Username  string    `json:"username"`
-	Role      string    `json:"role"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string                    `json:"id"`
+	Username    string                    `json:"username"`
+	Role        string                    `json:"role"`
+	CreatedAt   time.Time                 `json:"created_at"`
+	Permissions config.AccountPermissions `json:"permissions"`
+}
+
+// allPermissions is every AccountPermissions field set to true — what an
+// "admin" account effectively has regardless of its own stored (and
+// unused) Permissions value.
+var allPermissions = config.AccountPermissions{
+	Models: true, Memory: true, Agent: true, Calendar: true,
+	WhatsApp: true, Telegram: true, Routines: true,
+}
+
+// EffectivePermissions resolves what role/perms actually grants: an
+// "admin" role always gets everything (AccountPermissions is only ever a
+// "user" concept — see the type's own doc comment), a "user" role gets
+// exactly its stored checkboxes, and any other/unknown role (a
+// credential-less caller, a plain device token, a legacy pre-Faz-5.1
+// single-credential login — none of which carry a role at all) also gets
+// everything, matching callerIsAdmin's existing fail-open philosophy: this
+// permission system only ever restricts a *recognized* "user"-role
+// session, never anything else.
+func EffectivePermissions(role string, perms config.AccountPermissions) config.AccountPermissions {
+	if role == "user" {
+		return perms
+	}
+	return allPermissions
 }
 
 // validAccountRoles lists every value Account.Role may hold.
@@ -379,6 +408,32 @@ func (a *App) SessionRole(token string) (string, bool) {
 	return role, ok
 }
 
+// SessionPermissions returns the effective AccountPermissions (Faz 5.1.1)
+// for token's currently-valid session, re-checked against the live
+// account list exactly like SessionRole, and whether the token validated
+// at all. Used by internal/webserver's requirePermission/
+// requirePermissionStrict; ok=false (no session/unrecognized credential)
+// is treated by callers as "no permission information available" — same
+// fail-open shape as SessionRole/callerIsAdmin, not "forbidden".
+func (a *App) SessionPermissions(token string) (config.AccountPermissions, bool) {
+	subject, role, ok := a.sessionSubjectRole(token)
+	if !ok {
+		return config.AccountPermissions{}, false
+	}
+	if role != "user" {
+		return allPermissions, true
+	}
+	a.remoteAccountsMu.Lock()
+	defer a.remoteAccountsMu.Unlock()
+	if acc := a.findAccount(subject); acc != nil {
+		return acc.Permissions, true
+	}
+	// Account was deleted between sessionSubjectRole's own lookup above and
+	// this one (a real, if narrow, race) — treat exactly like an
+	// unrecognized credential rather than panicking on a nil deref.
+	return config.AccountPermissions{}, false
+}
+
 // sessionSubjectRole is the shared implementation behind
 // ValidateRemoteSession/SessionRole/SessionSubject.
 func (a *App) sessionSubjectRole(token string) (subject, role string, ok bool) {
@@ -542,7 +597,7 @@ func (a *App) ListAccounts() interface{} {
 	accounts := a.cfg.RemoteAccess.Accounts
 	out := make([]AccountInfo, 0, len(accounts))
 	for _, acc := range accounts {
-		out = append(out, AccountInfo{ID: acc.ID, Username: acc.Username, Role: acc.Role, CreatedAt: acc.CreatedAt})
+		out = append(out, AccountInfo{ID: acc.ID, Username: acc.Username, Role: acc.Role, CreatedAt: acc.CreatedAt, Permissions: acc.Permissions})
 	}
 	return out
 }
@@ -550,8 +605,10 @@ func (a *App) ListAccounts() interface{} {
 // CreateAccount adds a new account. Callers (internal/webserver's
 // admin-only handlers) are responsible for verifying the caller is
 // actually an admin — this method itself performs no authorization check,
-// matching CreateRemoteDevice's existing convention in this file.
-func (a *App) CreateAccount(username, password, role string) error {
+// matching CreateRemoteDevice's existing convention in this file. perms is
+// ignored (stored as the zero value) for Role "admin" — see
+// AccountPermissions' own doc comment for why it's a "user"-only concept.
+func (a *App) CreateAccount(username, password, role string, perms config.AccountPermissions) error {
 	if username == "" {
 		return fmt.Errorf("username is required")
 	}
@@ -565,6 +622,9 @@ func (a *App) CreateAccount(username, password, role string) error {
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}
+	if role != "user" {
+		perms = config.AccountPermissions{}
+	}
 
 	a.remoteAccountsMu.Lock()
 	if a.findAccount(username) != nil {
@@ -577,6 +637,7 @@ func (a *App) CreateAccount(username, password, role string) error {
 		PasswordHash: hash,
 		Role:         role,
 		CreatedAt:    time.Now(),
+		Permissions:  perms,
 	})
 	err = config.Save(a.cfg)
 	a.remoteAccountsMu.Unlock()
@@ -584,6 +645,40 @@ func (a *App) CreateAccount(username, password, role string) error {
 		return fmt.Errorf("save config: %w", err)
 	}
 	a.emitEvent("remote_auth:account_created", username)
+	return nil
+}
+
+// UpdateAccountPermissions replaces an existing "user"-role account's
+// Permissions checkbox state (Faz 5.1.1) — e.g. an admin turning Memory
+// access on for an account created before that box was checked. A no-op,
+// not an error, for an "admin"-role account (its Permissions are never
+// consulted — see AccountPermissions' doc comment) so a caller doesn't
+// need to special-case role before calling this. Callers (internal/
+// webserver's admin-only handlers) are responsible for verifying the
+// caller is actually an admin, matching CreateAccount's own convention.
+func (a *App) UpdateAccountPermissions(id string, perms config.AccountPermissions) error {
+	a.remoteAccountsMu.Lock()
+	var acc *config.Account
+	for i := range a.cfg.RemoteAccess.Accounts {
+		if a.cfg.RemoteAccess.Accounts[i].ID == id {
+			acc = &a.cfg.RemoteAccess.Accounts[i]
+			break
+		}
+	}
+	if acc == nil {
+		a.remoteAccountsMu.Unlock()
+		return fmt.Errorf("account not found: %s", id)
+	}
+	if acc.Role == "user" {
+		acc.Permissions = perms
+	}
+	name := acc.Username
+	err := config.Save(a.cfg)
+	a.remoteAccountsMu.Unlock()
+	if err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	a.emitEvent("remote_auth:permissions_updated", name)
 	return nil
 }
 

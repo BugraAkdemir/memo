@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_client.dart';
 import '../../../core/friendly_error.dart';
 import '../../../core/l10n.dart';
 import '../../../core/theme.dart';
 import '../../../providers/auth_gate_provider.dart';
 import '../../../providers/chat_provider.dart';
+import '../../../providers/permissions_provider.dart';
 import '../../../providers/settings_provider.dart';
 
 /// Settings tab: account list + add/delete + password change + sign out.
@@ -123,6 +125,20 @@ class _AccountsTabState extends ConsumerState<AccountsTab> {
     );
   }
 
+  Future<void> _editPermissions(Map<String, dynamic> acc) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => _EditPermissionsDialog(
+        accountId: acc['id'] as String? ?? '',
+        accountName: acc['username'] as String? ?? '',
+        initial: AccountPermissions.fromJson(
+          acc['permissions'] as Map<String, dynamic>?,
+        ),
+        onDone: _load,
+      ),
+    );
+  }
+
   Future<void> _signOut() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -146,6 +162,7 @@ class _AccountsTabState extends ConsumerState<AccountsTab> {
     await prefs.remove('memo_remote_access_token');
     await prefs.remove('memo_session_role');
     await prefs.remove('memo_session_username');
+    await prefs.remove(memoSessionPermissionsKey);
     if (mounted) {
       setState(() {}); // _hasSession/_selfUsername rebuild from cleared prefs
       ref.invalidate(authGateProvider);
@@ -232,6 +249,12 @@ class _AccountsTabState extends ConsumerState<AccountsTab> {
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if ((acc['role'] ?? 'user') == 'user')
+                          IconButton(
+                            icon: const Icon(Icons.tune, size: 18),
+                            tooltip: L10n.t('accounts_edit_permissions'),
+                            onPressed: () => _editPermissions(acc),
+                          ),
                         IconButton(
                           icon: const Icon(Icons.lock_outline, size: 18),
                           tooltip: L10n.t('accounts_change_password'),
@@ -288,6 +311,7 @@ class _AddAccountDialogState extends ConsumerState<_AddAccountDialog> {
   final _username = TextEditingController();
   final _password = TextEditingController();
   String _role = 'user';
+  AccountPermissions _permissions = const AccountPermissions();
   String? _error;
 
   @override
@@ -299,49 +323,69 @@ class _AddAccountDialogState extends ConsumerState<_AddAccountDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
     return AlertDialog(
       title: Text(L10n.t('accounts_add_dialog_title')),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                _error!,
-                style: TextStyle(color: MemoTheme.red, fontSize: 13),
+      content: SizedBox(
+        width: 360,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(color: MemoTheme.red, fontSize: 13),
+                  ),
+                ),
+              TextField(
+                controller: _username,
+                autofocus: true,
+                decoration: InputDecoration(
+                    labelText: L10n.t('accounts_add_username')),
               ),
-            ),
-          TextField(
-            controller: _username,
-            autofocus: true,
-            decoration:
-                InputDecoration(labelText: L10n.t('accounts_add_username')),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _password,
-            obscureText: true,
-            decoration:
-                InputDecoration(labelText: L10n.t('accounts_add_password')),
-          ),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            initialValue: _role,
-            decoration: InputDecoration(labelText: L10n.t('accounts_add_role')),
-            items: [
-              DropdownMenuItem(
-                value: 'admin',
-                child: Text(L10n.t('accounts_role_admin')),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _password,
+                obscureText: true,
+                decoration: InputDecoration(
+                    labelText: L10n.t('accounts_add_password')),
               ),
-              DropdownMenuItem(
-                value: 'user',
-                child: Text(L10n.t('accounts_role_user')),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _role,
+                decoration:
+                    InputDecoration(labelText: L10n.t('accounts_add_role')),
+                items: [
+                  DropdownMenuItem(
+                    value: 'admin',
+                    child: Text(L10n.t('accounts_role_admin')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'user',
+                    child: Text(L10n.t('accounts_role_user')),
+                  ),
+                ],
+                onChanged: (v) => setState(() => _role = v ?? 'user'),
               ),
+              if (_role == 'user') ...[
+                const SizedBox(height: 16),
+                Text(
+                  L10n.t('accounts_permissions_hint'),
+                  style: TextStyle(color: theme.textDim, fontSize: 12),
+                ),
+                const SizedBox(height: 4),
+                _PermissionCheckboxesEditor(
+                  initial: _permissions,
+                  onChanged: (p) => _permissions = p,
+                ),
+              ],
             ],
-            onChanged: (v) => setState(() => _role = v ?? 'user'),
           ),
-        ],
+        ),
       ),
       actions: [
         TextButton(
@@ -352,7 +396,11 @@ class _AddAccountDialogState extends ConsumerState<_AddAccountDialog> {
           onPressed: () async {
             try {
               await ref.read(apiClientProvider).createAccount(
-                  _username.text.trim(), _password.text, _role);
+                    _username.text.trim(),
+                    _password.text,
+                    _role,
+                    permissions: _permissions,
+                  );
               if (!context.mounted) return;
               Navigator.of(context).pop();
               await widget.onDone();
@@ -365,6 +413,178 @@ class _AddAccountDialogState extends ConsumerState<_AddAccountDialog> {
           },
           child: Text(L10n.t('accounts_add_submit')),
         ),
+      ],
+    );
+  }
+}
+
+/// Modal "edit permissions" form for an existing "user"-role account
+/// (Faz 5.1.1, yapacam.md) — the create dialog above covers setting these
+/// at creation time, this covers changing them afterward.
+class _EditPermissionsDialog extends ConsumerStatefulWidget {
+  const _EditPermissionsDialog({
+    required this.accountId,
+    required this.accountName,
+    required this.initial,
+    required this.onDone,
+  });
+
+  final String accountId;
+  final String accountName;
+  final AccountPermissions initial;
+  final Future<void> Function() onDone;
+
+  @override
+  ConsumerState<_EditPermissionsDialog> createState() =>
+      _EditPermissionsDialogState();
+}
+
+class _EditPermissionsDialogState
+    extends ConsumerState<_EditPermissionsDialog> {
+  late AccountPermissions _permissions = widget.initial;
+  String? _error;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(
+        L10n.t('accounts_permissions_dialog_title',
+            {'name': widget.accountName}),
+      ),
+      content: SizedBox(
+        width: 360,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(color: MemoTheme.red, fontSize: 13),
+                  ),
+                ),
+              _PermissionCheckboxesEditor(
+                initial: _permissions,
+                onChanged: (p) => _permissions = p,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(L10n.t('cancel')),
+        ),
+        TextButton(
+          onPressed: () async {
+            try {
+              await ref
+                  .read(apiClientProvider)
+                  .updateAccountPermissions(widget.accountId, _permissions);
+              if (!context.mounted) return;
+              Navigator.of(context).pop();
+              await widget.onDone();
+            } catch (e) {
+              if (!mounted) return;
+              setState(() => _error = L10n.t('accounts_permissions_failed', {
+                    'err': FriendlyError.describeGeneric(e),
+                  }));
+            }
+          },
+          child: Text(L10n.t('accounts_permissions_save')),
+        ),
+      ],
+    );
+  }
+}
+
+/// The seven-checkbox editor shared by the add-account and edit-permissions
+/// dialogs above. Owns its own state so parent dialogs don't have to
+/// individually setState() per checkbox — reports the whole
+/// [AccountPermissions] back via [onChanged] on every toggle.
+class _PermissionCheckboxesEditor extends StatefulWidget {
+  const _PermissionCheckboxesEditor({
+    required this.initial,
+    required this.onChanged,
+  });
+
+  final AccountPermissions initial;
+  final ValueChanged<AccountPermissions> onChanged;
+
+  @override
+  State<_PermissionCheckboxesEditor> createState() =>
+      _PermissionCheckboxesEditorState();
+}
+
+class _PermissionCheckboxesEditorState
+    extends State<_PermissionCheckboxesEditor> {
+  late bool _models = widget.initial.models;
+  late bool _memory = widget.initial.memory;
+  late bool _agent = widget.initial.agent;
+  late bool _calendar = widget.initial.calendar;
+  late bool _whatsapp = widget.initial.whatsapp;
+  late bool _telegram = widget.initial.telegram;
+  late bool _routines = widget.initial.routines;
+
+  void _emit() => widget.onChanged(AccountPermissions(
+        models: _models,
+        memory: _memory,
+        agent: _agent,
+        calendar: _calendar,
+        whatsapp: _whatsapp,
+        telegram: _telegram,
+        routines: _routines,
+      ));
+
+  Widget _row(String label, bool value, ValueChanged<bool?> onChanged) {
+    return CheckboxListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      controlAffinity: ListTileControlAffinity.leading,
+      visualDensity: VisualDensity.compact,
+      title: Text(label, style: const TextStyle(fontSize: 13)),
+      value: value,
+      onChanged: onChanged,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _row(L10n.t('accounts_perm_models'), _models, (v) {
+          setState(() => _models = v ?? false);
+          _emit();
+        }),
+        _row(L10n.t('accounts_perm_memory'), _memory, (v) {
+          setState(() => _memory = v ?? false);
+          _emit();
+        }),
+        _row(L10n.t('accounts_perm_agent'), _agent, (v) {
+          setState(() => _agent = v ?? false);
+          _emit();
+        }),
+        _row(L10n.t('accounts_perm_calendar'), _calendar, (v) {
+          setState(() => _calendar = v ?? false);
+          _emit();
+        }),
+        _row(L10n.t('accounts_perm_whatsapp'), _whatsapp, (v) {
+          setState(() => _whatsapp = v ?? false);
+          _emit();
+        }),
+        _row(L10n.t('accounts_perm_telegram'), _telegram, (v) {
+          setState(() => _telegram = v ?? false);
+          _emit();
+        }),
+        _row(L10n.t('accounts_perm_routines'), _routines, (v) {
+          setState(() => _routines = v ?? false);
+          _emit();
+        }),
       ],
     );
   }

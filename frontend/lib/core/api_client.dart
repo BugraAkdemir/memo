@@ -64,7 +64,71 @@ enum ApiAuthStatus { ok, unauthorized, down }
 class LoginResult {
   final String sessionToken;
   final String role;
-  LoginResult({required this.sessionToken, required this.role});
+  final AccountPermissions permissions;
+  LoginResult({
+    required this.sessionToken,
+    required this.role,
+    required this.permissions,
+  });
+}
+
+/// The granular per-account checkbox list (Faz 5.1.1, yapacam.md) — mirrors
+/// backend's config.AccountPermissions field-for-field. Only ever meaningful
+/// for a "user"-role account; an "admin" session's effective permissions are
+/// always [AccountPermissions.allTrue] regardless of what's stored, so
+/// client code gating UI on this should check role == 'user' first (see
+/// myPermissionsProvider) rather than relying on this alone.
+class AccountPermissions {
+  final bool models;
+  final bool memory;
+  final bool agent;
+  final bool calendar;
+  final bool whatsapp;
+  final bool telegram;
+  final bool routines;
+
+  const AccountPermissions({
+    this.models = false,
+    this.memory = false,
+    this.agent = false,
+    this.calendar = false,
+    this.whatsapp = false,
+    this.telegram = false,
+    this.routines = false,
+  });
+
+  static const allTrue = AccountPermissions(
+    models: true,
+    memory: true,
+    agent: true,
+    calendar: true,
+    whatsapp: true,
+    telegram: true,
+    routines: true,
+  );
+
+  factory AccountPermissions.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const AccountPermissions();
+    return AccountPermissions(
+      models: json['models'] as bool? ?? false,
+      memory: json['memory'] as bool? ?? false,
+      agent: json['agent'] as bool? ?? false,
+      calendar: json['calendar'] as bool? ?? false,
+      whatsapp: json['whatsapp'] as bool? ?? false,
+      telegram: json['telegram'] as bool? ?? false,
+      routines: json['routines'] as bool? ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'models': models,
+        'memory': memory,
+        'agent': agent,
+        'calendar': calendar,
+        'whatsapp': whatsapp,
+        'telegram': telegram,
+        'routines': routines,
+      };
 }
 
 /// Memo Go backend REST API client.
@@ -1511,6 +1575,9 @@ class MemoApiClient {
     return LoginResult(
       sessionToken: data['session_token'] as String? ?? '',
       role: data['role'] as String? ?? 'user',
+      permissions: AccountPermissions.fromJson(
+        data['permissions'] as Map<String, dynamic>?,
+      ),
     );
   }
 
@@ -1533,9 +1600,30 @@ class MemoApiClient {
     return _guardList<Map<String, dynamic>>(res.data);
   }
 
-  /// Creates an account with the given role ("admin"|"user").
-  Future<void> createAccount(String username, String password, String role) async {
-    await _dio.post('/api/accounts', data: {'username': username, 'password': password, 'role': role});
+  /// Creates an account with the given role ("admin"|"user"). [permissions]
+  /// is only meaningful for role "user" — the backend discards it for
+  /// "admin" (see config.AccountPermissions' doc comment).
+  Future<void> createAccount(
+    String username,
+    String password,
+    String role, {
+    AccountPermissions permissions = const AccountPermissions(),
+  }) async {
+    await _dio.post('/api/accounts', data: {
+      'username': username,
+      'password': password,
+      'role': role,
+      'permissions': permissions.toJson(),
+    });
+  }
+
+  /// Updates an existing "user"-role account's permission checkboxes
+  /// (Faz 5.1.1) — admin-only, no-op backend-side for an "admin" account.
+  Future<void> updateAccountPermissions(
+    String id,
+    AccountPermissions permissions,
+  ) async {
+    await _dio.put('/api/accounts/$id/permissions', data: permissions.toJson());
   }
 
   /// Deletes an account (refuses the last admin — backend-enforced).

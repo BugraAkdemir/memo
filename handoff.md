@@ -1,3 +1,106 @@
+# Ek (2026-08-22, devam) — Faz 5.1.1: hesaplara bol checkbox'lu granüler yetki sistemi
+
+Kullanıcı Faz 5.1'in kalan işini ("hesap açarken admin/normal kullanıcı rol
+sistemi, admin normal kullanıcıyı kısıtlayabilsin — model değiştirme,
+hafızaya erişim vs. tek tek checkbox'larla açılıp kapanabilsin, örn. model
+değiştirmeye izin verilmezse Ayarlar'daki API Sağlayıcılar ve Model Mağazası
+sekmelerine giremesin") istedi. Önce masaüstü Settings'te bir "Hesaplar"
+sekmesinin eksik olduğunu (bir önceki oturumun/`handoff.md`'nin iddiası)
+kontrol ettim — **yanlış çıktı**: `accounts_tab.dart` zaten vardı (commit
+`e6d6931`, 2026-08-09'dan beri), sadece o handoff girdisi/hafıza kaydı
+bayatlamış. Gerçek eksik kalan sadece CLI'daki `memo remote add-account`
+komutuydu — bu oturumda o da yapılmadı (kapsam kullanıcının yeni isteğine
+kaydı), hâlâ açık.
+
+## Veri modeli ve yetkilendirme (backend)
+
+`internal/config/config.go`: `Account`'a yeni `Permissions
+AccountPermissions` alanı — 7 bool: `Models` (Sağlayıcılar+Model Mağazası),
+`Memory`, `Agent`, `Calendar`, `WhatsApp`, `Telegram`, `Routines`. Sadece
+`Role:"user"` için anlamlı — `admin` her zaman hepsine sahip
+(`EffectivePermissions`, `internal/app/remote_auth.go`), hiçbir kutu
+işaretlenmezse hesap sadece sohbet edebilir (fail-closed varsayılan, ama
+admin/rolsüz/tanınmayan credential için fail-open — `callerIsAdmin`'in var
+olan felsefesiyle birebir aynı).
+
+`internal/app/remote_auth.go`: `CreateAccount` artık `perms` parametresi
+alıyor (admin rolünde sessizce atılıyor), yeni `UpdateAccountPermissions`
+(var olan hesabı sonradan düzenlemek için), yeni `SessionPermissions`
+(canlı hesap listesinden, `SessionRole` ile birebir aynı desen).
+
+`internal/webserver`: yeni `callerHasPermission`/`requirePermission`
+(GET/HEAD hariç — sağlayıcı/model durumunu ambient olarak izleyen sohbet
+ekranları kırılmasın diye) / `requirePermissionStrict` (GET dahil — sadece
+Memory için: erişimi engellemenin amacı içeriği görememesi, sadece
+düzenleyememesi değil). `server.go`'daki ~25 route tek tek bu wrapper'larla
+sarıldı: models/providers/openrouter → Models (lenient), memory/* → Memory
+(strict, `/api/memory/enabled` hariç — o `EngineStrip`'in ambient poll'u),
+agent/* → Agent, calendar/whatsapp/telegram/routines → kendi izinleri
+(lenient). Yeni endpoint: `PUT /api/accounts/{id}/permissions` (admin-only).
+
+## Frontend
+
+`api_client.dart`: yeni `AccountPermissions` sınıfı (7 bool,
+`fromJson`/`toJson`), `LoginResult.permissions`, `createAccount(...,
+permissions:)`, yeni `updateAccountPermissions`. `login()`'in dönüşü artık
+`permissions`'ı da taşıyor (`handleRemoteLogin` login anında canlı
+`SessionPermissions` ile çözüyor).
+
+Yeni `providers/permissions_provider.dart`: `readMyPermissions`/
+`saveMyPermissions` — `memo_session_role`/`memo_session_username` ile aynı
+konvansiyon (ayrı bir Riverpod provider değil, düz prefs okuma/yazma).
+Fail-open: rol tam olarak `"user"` değilse (yerel masaüstü, admin, ya da bu
+özellik var olmadan önce açılmış eski bir oturum) her zaman
+`AccountPermissions.allTrue`.
+
+`accounts_tab.dart`: yeni hesap ekleme dialog'unda rol `"user"` seçilince
+yedi checkbox'lık `_PermissionCheckboxesEditor` çıkıyor; her hesap satırında
+(sadece `user` rolü için) bir "yetkileri düzenle" (tune ikonu) butonu →
+`_EditPermissionsDialog`.
+
+`settings_dialog.dart`: `_hiddenTabIndices` — `Models` izni yoksa Providers
+sekmesi (5), `Memory` izni yoksa Memory+Memory Import+Dream (3,4,21),
+`WhatsApp`/`Telegram` izni yoksa kendi sekmeleri (22,23) rail'den tamamen
+kayboluyor (aktif sekme gizliyse General'e düşüyor). `_groups`/`_tabs`
+sabit dizileri dokunulmadı — filtre sadece render anında.
+
+**"Minimal web UI" ayrı bir kaynak değilmiş** — `internal/webserver/webapp/`
+(gitignore'da) `flutter build web`'in derlenmiş çıktısı, yani bu oturumdaki
+Flutter değişiklikleri (checkbox'lar, sekme gizleme) bir sonraki web build'de
+otomatik oraya da yansıyacak; ayrı bir dosya düzenlemeye gerek yoktu (bir
+önceki plan adımındaki varsayım yanlıştı, koda bakınca düzeltildi).
+
+## Bilinçli kapsam dışı / açık kalanlar
+
+- Sadece Settings dialog'undaki sekmeler gizleniyor — `AppShell`'in üst
+  seviye nav'ı (Model Mağazası/Takvim/Rutinler ekranları) hâlâ görünür;
+  backend yine de mutasyon uçlarını 403'lüyor (savunma katmanı), ama ekranın
+  kendisi (okuma/gezinme) hâlâ açılabiliyor.
+- `Agent` izni bilinen bir mimari sınırla geliyor: agent modu hâlâ tüm
+  backend sürecinin paylaştığı **tek global** bir bayrak (Faz 5.2 gerçek
+  izolasyonu getirecek) — bu izni kapatmak hesabın kendi agent modunu
+  açmasını/agent sohbeti başlatmasını engelliyor, ama modu zaten başka bir
+  oturum global olarak açık bıraktıysa düz bir sohbet mesajı yine de o moddan
+  geçebilir. Koda yorum olarak da yazıldı.
+- `memo remote add-account` CLI komutu hâlâ yok (Faz 5.1'in orijinal, hâlâ
+  kapanmamış maddesi).
+
+**Doğrulama:** `go build/vet/test -race ./...` tüm repo yeşil. `flutter
+analyze` temiz (yeni dosyalarda sıfır uyarı), `flutter test` 275/275 (yeni
+testler: `permissions_provider_test.dart` 6 test, `api_client_test.dart`'a
+5 yeni test, `settings_dialog_test.dart`'a 2 yeni test — kısıtlı/admin
+oturum senaryoları). Backend tarafında yeni testler: `remote_auth_test.go`
+(webserver, 9 test — `requirePermission`/`requirePermissionStrict`'in
+fail-open/lenient/strict davranışları) ve `remote_auth_test.go` (app, 11
+test — `EffectivePermissions`/`SessionPermissions`/
+`UpdateAccountPermissions`/`CreateAccount`'ın perms davranışı).
+
+**Canlı test edilmedi** — gerçek bir self-hosted RPi'de gerçek bir "user"
+hesabıyla giriş yapıp sekmelerin gerçekten kaybolduğunu, backend'in
+gerçekten 403 döndüğünü doğrulamak kullanıcının kendi elini gerektiriyor.
+
+---
+
 # Ek (2026-08-22) — BUG-M6: rutinlerde agent+web artık hep açık, extractor'ın tahminine bağlı değil
 
 Kullanıcı: "rutinlerde halen agent özelliği bir süre sonra off oluyo, agent

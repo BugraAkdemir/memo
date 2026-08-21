@@ -341,6 +341,104 @@ void main() {
       await client.deleteAccount('a1');
     expect(paths, containsAll(['/api/accounts', '/api/accounts', '/api/accounts/a1']));
   });
+
+  // ─── Faz 5.1.1 (yapacam.md): granular per-account permissions ───
+
+  test('login parses permissions alongside session_token and role', () async {
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    client.dio.httpClientAdapter = _FakeAuthAdapter({
+      '/api/auth/login': (200, {
+        'session_token': 's-tok',
+        'role': 'user',
+        'permissions': {'models': true, 'memory': false, 'agent': true},
+      }),
+    });
+    final res = await client.login('kaya', 'pw');
+    expect(res.permissions.models, isTrue);
+    expect(res.permissions.memory, isFalse);
+    expect(res.permissions.agent, isTrue);
+    // Fields absent from the response body default to false, not a crash.
+    expect(res.permissions.calendar, isFalse);
+  });
+
+  test('login with no permissions key in the response defaults to all-false',
+      () async {
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    client.dio.httpClientAdapter = _FakeAuthAdapter({
+      '/api/auth/login': (200, {'session_token': 's-tok', 'role': 'admin'}),
+    });
+    final res = await client.login('admin', 'pw');
+    expect(res.permissions.models, isFalse);
+    expect(res.permissions.memory, isFalse);
+  });
+
+  test('createAccount sends the permissions object in the request body',
+      () async {
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    Map<String, dynamic>? sentBody;
+    client.dio.httpClientAdapter = _FakeAuthAdapter(
+      {'/api/accounts': (200, {'ok': true})},
+      onRequest: (options) => sentBody = Map<String, dynamic>.from(options.data as Map),
+    );
+    await client.createAccount(
+      'dave',
+      'pw',
+      'user',
+      permissions: const AccountPermissions(models: true, routines: true),
+    );
+    expect(sentBody?['username'], 'dave');
+    expect(sentBody?['role'], 'user');
+    expect(sentBody?['permissions'], {
+      'models': true,
+      'memory': false,
+      'agent': false,
+      'calendar': false,
+      'whatsapp': false,
+      'telegram': false,
+      'routines': true,
+    });
+  });
+
+  test('createAccount with no permissions argument sends an all-false object',
+      () async {
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    Map<String, dynamic>? sentBody;
+    client.dio.httpClientAdapter = _FakeAuthAdapter(
+      {'/api/accounts': (200, {'ok': true})},
+      onRequest: (options) => sentBody = Map<String, dynamic>.from(options.data as Map),
+    );
+    await client.createAccount('eve', 'pw', 'admin');
+    expect(sentBody?['permissions'], {
+      'models': false,
+      'memory': false,
+      'agent': false,
+      'calendar': false,
+      'whatsapp': false,
+      'telegram': false,
+      'routines': false,
+    });
+  });
+
+  test('updateAccountPermissions PUTs the permissions object to the right path',
+      () async {
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    Map<String, dynamic>? sentBody;
+    String? sentPath;
+    client.dio.httpClientAdapter = _FakeAuthAdapter(
+      {'/api/accounts/a1/permissions': (200, {'ok': true})},
+      onRequest: (options) {
+        sentPath = options.path;
+        sentBody = Map<String, dynamic>.from(options.data as Map);
+      },
+    );
+    await client.updateAccountPermissions(
+      'a1',
+      const AccountPermissions(memory: true),
+    );
+    expect(sentPath, '/api/accounts/a1/permissions');
+    expect(sentBody?['memory'], true);
+    expect(sentBody?['models'], false);
+  });
   });
 
   group('isAlive', () {

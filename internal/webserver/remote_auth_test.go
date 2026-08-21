@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"memo/internal/config"
 )
 
 // fixedCheck returns a verify/validate closure that accepts exactly one
@@ -534,5 +536,173 @@ func TestHandleAccounts_PostForbiddenForNonAdmin(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("got status %d, want 403, body: %s", w.Code, w.Body.String())
+	}
+}
+
+// ─── Faz 5.1.1 (yapacam.md): granular per-account permissions ───
+
+// permOK is a no-op 200 handler for requirePermission/requirePermissionStrict
+// tests below — they only care whether the wrapper let the call through.
+func permOK(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+
+// TestRequirePermission_NoSessionAlwaysPasses is callerHasPermission's own
+// fail-open guarantee: a request with no credential at all (local desktop,
+// or auth mode "none") must never be blocked by a permission it has no way
+// to be evaluated against.
+func TestRequirePermission_NoSessionAlwaysPasses(t *testing.T) {
+	stub := &swarmStubBridge{
+		sessionPermissions: func(token string) (config.AccountPermissions, bool) {
+			t.Fatal("SessionPermissions should not even be called with no credential")
+			return config.AccountPermissions{}, false
+		},
+	}
+	s := New(stub)
+	handler := s.requirePermission(permOK, hasModelsPerm)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/models/download", nil)
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 for a credential-less request", w.Code)
+	}
+}
+
+// TestRequirePermission_UnrecognizedCredentialPasses mirrors
+// TestHandleRemoteAccess_PutAllowedWithNoRoleInformation — a device token
+// or expired/garbage session (SessionPermissions ok=false) is "no
+// information available," not "forbidden."
+func TestRequirePermission_UnrecognizedCredentialPasses(t *testing.T) {
+	stub := &swarmStubBridge{
+		sessionPermissions: func(token string) (config.AccountPermissions, bool) {
+			return config.AccountPermissions{}, false
+		},
+	}
+	s := New(stub)
+	handler := s.requirePermission(permOK, hasModelsPerm)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/models/download", nil)
+	req.Header.Set("X-Memo-Token", "some-legacy-device-token")
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 for an unrecognized credential", w.Code)
+	}
+}
+
+// TestRequirePermission_UserWithoutPermissionBlockedOnPost is the actual
+// restriction: a recognized "user"-role session whose account has this
+// specific box unchecked gets 403 on a mutating request.
+func TestRequirePermission_UserWithoutPermissionBlockedOnPost(t *testing.T) {
+	stub := &swarmStubBridge{
+		sessionPermissions: func(token string) (config.AccountPermissions, bool) {
+			return config.AccountPermissions{Models: false}, true
+		},
+	}
+	s := New(stub)
+	handler := s.requirePermission(permOK, hasModelsPerm)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/models/download", nil)
+	req.Header.Set("X-Memo-Token", "user-session")
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("got status %d, want 403 for a user session missing the permission", w.Code)
+	}
+}
+
+// TestRequirePermission_UserWithoutPermissionStillReadsViaGet is the
+// lenient gate's whole point: a restricted account's GET still passes so
+// ambiently-polled status (e.g. the chat header's active-model badge)
+// doesn't break just because that account can't change the model.
+func TestRequirePermission_UserWithoutPermissionStillReadsViaGet(t *testing.T) {
+	stub := &swarmStubBridge{
+		sessionPermissions: func(token string) (config.AccountPermissions, bool) {
+			return config.AccountPermissions{Models: false}, true
+		},
+	}
+	s := New(stub)
+	handler := s.requirePermission(permOK, hasModelsPerm)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/providers/active", nil)
+	req.Header.Set("X-Memo-Token", "user-session")
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 — GET must bypass the lenient gate", w.Code)
+	}
+}
+
+// TestRequirePermission_UserWithPermissionAllowed is the mirror positive
+// case: the box being checked actually lets the mutating request through.
+func TestRequirePermission_UserWithPermissionAllowed(t *testing.T) {
+	stub := &swarmStubBridge{
+		sessionPermissions: func(token string) (config.AccountPermissions, bool) {
+			return config.AccountPermissions{Models: true}, true
+		},
+	}
+	s := New(stub)
+	handler := s.requirePermission(permOK, hasModelsPerm)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/models/download", nil)
+	req.Header.Set("X-Memo-Token", "user-session")
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 for a user session that has the permission", w.Code)
+	}
+}
+
+// TestRequirePermissionStrict_UserWithoutPermissionBlockedOnGetToo is
+// Memory's whole reason for a separate strict wrapper: unlike the lenient
+// gate, a GET must NOT bypass it — the point of denying memory access is
+// that the account can't see the content at all, not just that it can't
+// edit it.
+func TestRequirePermissionStrict_UserWithoutPermissionBlockedOnGetToo(t *testing.T) {
+	stub := &swarmStubBridge{
+		sessionPermissions: func(token string) (config.AccountPermissions, bool) {
+			return config.AccountPermissions{Memory: false}, true
+		},
+	}
+	s := New(stub)
+	handler := s.requirePermissionStrict(permOK, hasMemoryPerm)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/memory/files", nil)
+	req.Header.Set("X-Memo-Token", "user-session")
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("got status %d, want 403 — the strict gate must block GET too", w.Code)
+	}
+}
+
+// TestRequirePermissionStrict_AdminSessionAlwaysAllowed confirms an admin
+// session (SessionPermissions returning the all-true sentinel, exactly
+// what App.SessionPermissions resolves to for a non-"user" role) is never
+// blocked by any permission, strict or lenient.
+func TestRequirePermissionStrict_AdminSessionAlwaysAllowed(t *testing.T) {
+	stub := &swarmStubBridge{
+		sessionPermissions: func(token string) (config.AccountPermissions, bool) {
+			return config.AccountPermissions{
+				Models: true, Memory: true, Agent: true, Calendar: true,
+				WhatsApp: true, Telegram: true, Routines: true,
+			}, true
+		},
+	}
+	s := New(stub)
+	handler := s.requirePermissionStrict(permOK, hasMemoryPerm)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/memory/clear", nil)
+	req.Header.Set("X-Memo-Token", "admin-session")
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 for an admin session", w.Code)
 	}
 }

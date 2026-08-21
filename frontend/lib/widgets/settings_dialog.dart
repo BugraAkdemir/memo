@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../providers/permissions_provider.dart';
 import '../providers/settings_provider.dart';
 import 'settings/tabs/general_tab.dart';
 import 'settings/tabs/system_prompt_tab.dart';
@@ -136,6 +137,22 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_telegram'),
   ];
 
+  /// Tab indices hidden for the current session's account permissions
+  /// (Faz 5.1.1, yapacam.md) — e.g. a "user" account without the Models
+  /// permission never sees the Providers tab. Empty (nothing hidden) for
+  /// local desktop use and any admin session, since readMyPermissions
+  /// fails open to everything true whenever the saved role isn't exactly
+  /// "user" — see that function's own doc comment.
+  Set<int> get _hiddenTabIndices {
+    final perms = readMyPermissions(ref.read(prefsProvider));
+    final hidden = <int>{};
+    if (!perms.models) hidden.add(5); // Providers
+    if (!perms.memory) hidden.addAll([3, 4, 21]); // Memory, Memory Import, Dream
+    if (!perms.whatsapp) hidden.add(22);
+    if (!perms.telegram) hidden.add(23);
+    return hidden;
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -146,7 +163,11 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   Widget build(BuildContext context) {
     ref.watch(localeProvider);
     final tabs = _tabs;
-    final tabIndex = _activeTab.clamp(0, tabs.length - 1);
+    final hidden = _hiddenTabIndices;
+    var tabIndex = _activeTab.clamp(0, tabs.length - 1);
+    // Land somewhere visible if the requested/previously-active tab is one
+    // this account's permissions hide — General (0) is never gated.
+    if (hidden.contains(tabIndex)) tabIndex = 0;
     final theme = MemoTheme.of(context);
 
     final screenSize = MediaQuery.of(context).size;
@@ -206,6 +227,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   tabs: tabs,
                   tabIcons: _tabIcons,
                   groups: _groups,
+                  hidden: hidden,
                   query: _searchQuery,
                   activeIndex: tabIndex,
                   onSelect: (i) {
@@ -401,6 +423,7 @@ class _SettingsRail extends StatelessWidget {
   final List<String> tabs;
   final List<String> tabIcons;
   final List<(String, List<int>)> groups;
+  final Set<int> hidden;
   final String query;
   final int activeIndex;
   final ValueChanged<int> onSelect;
@@ -409,6 +432,7 @@ class _SettingsRail extends StatelessWidget {
     required this.tabs,
     required this.tabIcons,
     required this.groups,
+    required this.hidden,
     required this.query,
     required this.activeIndex,
     required this.onSelect,
@@ -421,9 +445,10 @@ class _SettingsRail extends StatelessWidget {
 
     final children = <Widget>[];
     for (final (titleKey, indices) in groups) {
+      final candidates = indices.where((i) => !hidden.contains(i));
       final visible = needle.isEmpty
-          ? indices
-          : indices.where((i) => tabs[i].toLowerCase().contains(needle)).toList();
+          ? candidates.toList()
+          : candidates.where((i) => tabs[i].toLowerCase().contains(needle)).toList();
       if (visible.isEmpty) continue;
       children.add(_GroupHeader(L10n.t(titleKey)));
       for (final i in visible) {

@@ -51,16 +51,18 @@ type swarmStubBridge struct {
 
 	// Faz 5.1 (yapacam.md) multi-account / role model — see
 	// remote_auth_test.go's handler-level tests.
-	needsSetup            bool
-	installID             string
-	createAdminAccount    func(username, password string) (string, error)
-	bootstrapTokenAuth    func(deviceName string) (string, error)
-	sessionRole           func(token string) (string, bool)
-	listAccounts          func() interface{}
-	createAccount         func(username, password, role string) error
-	deleteAccount         func(id string) error
-	changeAccountPassword func(sessionToken, id, currentPassword, newPassword string) error
-	browseServerPath      func(path string) (interface{}, error)
+	needsSetup               bool
+	installID                string
+	createAdminAccount       func(username, password string) (string, error)
+	bootstrapTokenAuth       func(deviceName string) (string, error)
+	sessionRole              func(token string) (string, bool)
+	sessionPermissions       func(token string) (config.AccountPermissions, bool)
+	listAccounts             func() interface{}
+	createAccount            func(username, password, role string, perms config.AccountPermissions) error
+	updateAccountPermissions func(id string, perms config.AccountPermissions) error
+	deleteAccount            func(id string) error
+	changeAccountPassword    func(sessionToken, id, currentPassword, newPassword string) error
+	browseServerPath         func(path string) (interface{}, error)
 }
 
 func (b *swarmStubBridge) GetRemoteAccessToken() string { return b.token }
@@ -318,15 +320,27 @@ func (b *swarmStubBridge) SessionRole(token string) (string, bool) {
 	}
 	return "", false
 }
+func (b *swarmStubBridge) SessionPermissions(token string) (config.AccountPermissions, bool) {
+	if b.sessionPermissions != nil {
+		return b.sessionPermissions(token)
+	}
+	return config.AccountPermissions{}, false
+}
 func (b *swarmStubBridge) ListAccounts() interface{} {
 	if b.listAccounts != nil {
 		return b.listAccounts()
 	}
 	return nil
 }
-func (b *swarmStubBridge) CreateAccount(username, password, role string) error {
+func (b *swarmStubBridge) CreateAccount(username, password, role string, perms config.AccountPermissions) error {
 	if b.createAccount != nil {
-		return b.createAccount(username, password, role)
+		return b.createAccount(username, password, role, perms)
+	}
+	return nil
+}
+func (b *swarmStubBridge) UpdateAccountPermissions(id string, perms config.AccountPermissions) error {
+	if b.updateAccountPermissions != nil {
+		return b.updateAccountPermissions(id, perms)
 	}
 	return nil
 }

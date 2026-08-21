@@ -153,19 +153,30 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/system-prompt/minimal-mode", s.handleMinimalMode)
 	route("/api/system-prompt/minimal-mode/overrides", s.handleMinimalModeOverrides)
 	route("/api/incognito-prompt", s.handleIncognitoPrompt)
-	route("/api/memory/files", s.handleMemoryFiles)
-	route("/api/memory/clear", s.handleMemoryClear)
-	route("/api/memory/settings", s.handleMemorySettings)
+	// Memory permission (Faz 5.1.1, yapacam.md): strict-gated (reads
+	// included, not just writes — the point of denying it is that a
+	// restricted account can't see memory *content* at all) on every
+	// content-bearing endpoint below. /api/memory/enabled deliberately
+	// stays ungated — it's polled ambiently by EngineStrip on every chat
+	// screen (app_shell.dart), not something specific to the Memory
+	// Settings tab, so gating it would break plain chat for a restricted
+	// account instead of just the tab this permission is meant to hide.
+	// /api/memory/settings and /api/memory/dream/settings are feature
+	// toggles/config, not content, so they only get the lenient
+	// (mutations-only) gate.
+	route("/api/memory/files", s.requirePermissionStrict(s.handleMemoryFiles, hasMemoryPerm))
+	route("/api/memory/clear", s.requirePermissionStrict(s.handleMemoryClear, hasMemoryPerm))
+	route("/api/memory/settings", s.requirePermission(s.handleMemorySettings, hasMemoryPerm))
 	route("/api/memory/enabled", s.handleMemoryEnabled)
-	route("/api/memory/dream/settings", s.handleMemoryDreamSettings)
-	route("/api/memory/dream/run", s.handleMemoryDreamRun)
-	route("/api/memory/debug-search", s.handleMemoryDebugSearch)
-	route("/api/memory/explicit/save", s.handleMemoryExplicitSave)
-	route("/api/memory/explicit/delete", s.handleMemoryExplicitDelete)
-	route("/api/memory/import-text", s.handleMemoryImportText)
+	route("/api/memory/dream/settings", s.requirePermission(s.handleMemoryDreamSettings, hasMemoryPerm))
+	route("/api/memory/dream/run", s.requirePermissionStrict(s.handleMemoryDreamRun, hasMemoryPerm))
+	route("/api/memory/debug-search", s.requirePermissionStrict(s.handleMemoryDebugSearch, hasMemoryPerm))
+	route("/api/memory/explicit/save", s.requirePermissionStrict(s.handleMemoryExplicitSave, hasMemoryPerm))
+	route("/api/memory/explicit/delete", s.requirePermissionStrict(s.handleMemoryExplicitDelete, hasMemoryPerm))
+	route("/api/memory/import-text", s.requirePermissionStrict(s.handleMemoryImportText, hasMemoryPerm))
 	route("/api/tts/synthesize", s.handleTTSSynthesize)
 	route("/api/tts/filler", s.handleTTSFiller)
-	route("/api/memory/insight", s.handleMemoryInsight)
+	route("/api/memory/insight", s.requirePermissionStrict(s.handleMemoryInsight, hasMemoryPerm))
 	// Swarm (Memo Swarm — multi-machine llama.cpp RPC; Beta-gated in App)
 	route("/api/swarm/status", s.handleSwarmStatus)
 	route("/api/swarm/host/create", s.handleSwarmHostCreate)
@@ -178,34 +189,41 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/swarm/host/close", s.handleSwarmClose)
 	route("/api/swarm/join", s.handleSwarmJoin)
 	route("/api/swarm/leave", s.handleSwarmLeave)
-	route("/api/memory/export", s.handleMemoryExport)
-	route("/api/memory/import", s.handleMemoryImport)
-	route("/api/memory/stats", s.handleMemoryStats)
-	route("/api/memory/search", s.handleMemoryFilteredSearch)
+	route("/api/memory/export", s.requirePermissionStrict(s.handleMemoryExport, hasMemoryPerm))
+	route("/api/memory/import", s.requirePermissionStrict(s.handleMemoryImport, hasMemoryPerm))
+	route("/api/memory/stats", s.requirePermissionStrict(s.handleMemoryStats, hasMemoryPerm))
+	route("/api/memory/search", s.requirePermissionStrict(s.handleMemoryFilteredSearch, hasMemoryPerm))
 	route("/api/stats/usage", s.handleUsageStats)
 	route("/api/version", s.handleVersion)
 	route("/api/version/check", s.handleVersionCheck)
 	route("/api/image", s.handleImage)
 	route("/api/chat/export", s.handleExportChat)
 	route("/api/chat/title", s.handleGenerateTitle)
+	// Models permission (Faz 5.1.1, yapacam.md): lenient-gated (GET/HEAD
+	// always pass — see requirePermission's own doc comment) on every
+	// action that actually changes something. Pure status/browse endpoints
+	// (local/status/embedding-status/gpu/search/files/download-progress)
+	// are left ungated even for POST-shaped browsing like search, since
+	// they don't change server state and are also the kind of thing an
+	// ambient status strip can poll.
 	route("/api/models/local", s.handleLocalModels)
-	route("/api/models/import", s.handleModelImport)
-	route("/api/models/start", s.handleModelStart)
-	route("/api/models/stop", s.handleModelStop)
+	route("/api/models/import", s.requirePermission(s.handleModelImport, hasModelsPerm))
+	route("/api/models/start", s.requirePermission(s.handleModelStart, hasModelsPerm))
+	route("/api/models/stop", s.requirePermission(s.handleModelStop, hasModelsPerm))
 	route("/api/models/status", s.handleModelStatus)
-	route("/api/models/embedding/start", s.handleEmbeddingStart)
-	route("/api/models/embedding/stop", s.handleEmbeddingStop)
+	route("/api/models/embedding/start", s.requirePermission(s.handleEmbeddingStart, hasModelsPerm))
+	route("/api/models/embedding/stop", s.requirePermission(s.handleEmbeddingStop, hasModelsPerm))
 	route("/api/models/embedding/status", s.handleEmbeddingStatus)
 	route("/api/gpu", s.handleGPU)
 	route("/api/models/search", s.handleModelSearch)
 	route("/api/models/files", s.handleModelFiles)
-	route("/api/models/download", s.handleModelDownload)
+	route("/api/models/download", s.requirePermission(s.handleModelDownload, hasModelsPerm))
 	route("/api/models/download/progress", s.handleDownloadProgress)
-	route("/api/models/download/cancel", s.handleDownloadCancel)
+	route("/api/models/download/cancel", s.requirePermission(s.handleDownloadCancel, hasModelsPerm))
 	route("/api/models/llama/check", s.handleLlamaCheck)
-	route("/api/models/llama/install", s.handleLlamaInstall)
-	route("/api/models/llama/skip", s.handleLlamaSkip)
-	route("/api/models/config", func(w http.ResponseWriter, r *http.Request) {
+	route("/api/models/llama/install", s.requirePermission(s.handleLlamaInstall, hasModelsPerm))
+	route("/api/models/llama/skip", s.requirePermission(s.handleLlamaSkip, hasModelsPerm))
+	route("/api/models/config", s.requirePermission(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			s.handleLlamaConfigGet(w, r)
 		} else if r.Method == http.MethodPut {
@@ -213,7 +231,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	})
+	}, hasModelsPerm))
 	route("/api/remote-access", s.handleRemoteAccess)
 	route("/api/remote-access/devices", s.handleRemoteDevices)
 	route("/api/remote-access/devices/{id}", s.handleRemoteDeviceByID)
@@ -226,6 +244,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/accounts", s.handleAccounts)
 	route("/api/accounts/{id}", s.handleAccountByID)
 	route("/api/accounts/{id}/password", s.handleAccountByID)
+	route("/api/accounts/{id}/permissions", s.handleAccountPermissions)
 	route("/api/cli/status", s.handleCLIStatus)
 	route("/api/cli/running", s.handleCLIRunning)
 	route("/api/cli/commands", s.handleCLICommands)
@@ -253,12 +272,14 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/clients/heartbeat", s.handleClientHeartbeat)
 	route("/api/clients/unregister", s.handleClientUnregister)
 
-	// Provider management
-	route("/api/providers", s.handleProviders)
-	route("/api/providers/test", s.handleProviderTest)
+	// Provider management — Models permission (Faz 5.1.1, yapacam.md),
+	// lenient-gated (GET, e.g. reading the active provider for the chat
+	// header, always passes).
+	route("/api/providers", s.requirePermission(s.handleProviders, hasModelsPerm))
+	route("/api/providers/test", s.requirePermission(s.handleProviderTest, hasModelsPerm))
 	route("/api/providers/models", s.handleProviderModels)
-	route("/api/providers/active", s.handleActiveProvider)
-	route("/api/providers/effort-levels", s.handleProviderEffortLevels)
+	route("/api/providers/active", s.requirePermission(s.handleActiveProvider, hasModelsPerm))
+	route("/api/providers/effort-levels", s.requirePermission(s.handleProviderEffortLevels, hasModelsPerm))
 
 	// TTS provider management (Faz 2)
 	route("/api/tts/providers", s.handleTTSProviders)
@@ -270,7 +291,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/tts/voices/select", s.handleTTSVoiceSelect)
 
 	// OpenRouter
-	route("/api/openrouter/connect", s.handleOpenRouterConnect)
+	route("/api/openrouter/connect", s.requirePermission(s.handleOpenRouterConnect, hasModelsPerm))
 	route("/api/openrouter/models", s.handleOpenRouterModels)
 
 	// Orchestra mode
@@ -285,38 +306,45 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/proactive/clear", s.handleProactiveClear)
 
 	// Agent mode
-	route("/api/agent/chat", s.handleAgentChat)
-	route("/api/agent/enabled", s.handleAgentEnabled)
+	// Agent permission (Faz 5.1.1, yapacam.md), lenient-gated. /api/agent/
+	// permission (singular — answering an in-flight tool-call permission
+	// prompt) is deliberately left ungated: it never grants new capability
+	// by itself, and gating it risks soft-locking a prompt an account was
+	// legitimately already mid-way through answering.
+	route("/api/agent/chat", s.requirePermission(s.handleAgentChat, hasAgentPerm))
+	route("/api/agent/enabled", s.requirePermission(s.handleAgentEnabled, hasAgentPerm))
 	route("/api/agent/permission", s.handleAgentPermission)
-	route("/api/agent/permissions", s.handleAgentPermissions)
-	route("/api/agent/auto-permission", s.handleAgentAutoPermission)
-	route("/api/agent/undo", s.handleAgentUndo)
+	route("/api/agent/permissions", s.requirePermission(s.handleAgentPermissions, hasAgentPerm))
+	route("/api/agent/auto-permission", s.requirePermission(s.handleAgentAutoPermission, hasAgentPerm))
+	route("/api/agent/undo", s.requirePermission(s.handleAgentUndo, hasAgentPerm))
 
 	// Task lists
 	route("/api/tasklists", s.handleTaskLists)
 	route("/api/tasklists/", s.handleTaskListByID)
 
 	// WhatsApp
+	// WhatsApp permission (Faz 5.1.1, yapacam.md), lenient-gated.
 	route("/api/whatsapp/status", s.handleWhatsAppStatus)
-	route("/api/whatsapp/start", s.handleWhatsAppStart)
-	route("/api/whatsapp/stop", s.handleWhatsAppStop)
-	route("/api/whatsapp/logout", s.handleWhatsAppLogout)
-	route("/api/whatsapp/send", s.handleWhatsAppSend)
+	route("/api/whatsapp/start", s.requirePermission(s.handleWhatsAppStart, hasWhatsAppPerm))
+	route("/api/whatsapp/stop", s.requirePermission(s.handleWhatsAppStop, hasWhatsAppPerm))
+	route("/api/whatsapp/logout", s.requirePermission(s.handleWhatsAppLogout, hasWhatsAppPerm))
+	route("/api/whatsapp/send", s.requirePermission(s.handleWhatsAppSend, hasWhatsAppPerm))
 	route("/api/whatsapp/search", s.handleWhatsAppSearch)
 	route("/api/whatsapp/chats", s.handleWhatsAppChats)
 	route("/api/whatsapp/messages", s.handleWhatsAppMessages)
 	route("/api/whatsapp/avatar", s.handleWhatsAppAvatar)
 	route("/api/websearch", s.handleWebSearchSettings)
 	route("/api/whatsapp/stats", s.handleWhatsAppStats)
-	route("/api/whatsapp/chat-mode", s.handleWhatsAppChatMode)
-	route("/api/whatsapp/chat-stream", s.handleWhatsAppChatStream)
-	route("/api/whatsapp/self-chat-assistant", s.handleWhatsAppSelfChatAssistant)
+	route("/api/whatsapp/chat-mode", s.requirePermission(s.handleWhatsAppChatMode, hasWhatsAppPerm))
+	route("/api/whatsapp/chat-stream", s.requirePermission(s.handleWhatsAppChatStream, hasWhatsAppPerm))
+	route("/api/whatsapp/self-chat-assistant", s.requirePermission(s.handleWhatsAppSelfChatAssistant, hasWhatsAppPerm))
 
 	// Telegram
+	// Telegram permission (Faz 5.1.1, yapacam.md), lenient-gated.
 	route("/api/telegram/status", s.handleTelegramStatus)
-	route("/api/telegram/connect", s.handleTelegramConnect)
-	route("/api/telegram/stop", s.handleTelegramStop)
-	route("/api/telegram/disconnect", s.handleTelegramDisconnect)
+	route("/api/telegram/connect", s.requirePermission(s.handleTelegramConnect, hasTelegramPerm))
+	route("/api/telegram/stop", s.requirePermission(s.handleTelegramStop, hasTelegramPerm))
+	route("/api/telegram/disconnect", s.requirePermission(s.handleTelegramDisconnect, hasTelegramPerm))
 
 	route("/api/export", s.handleExport)
 
@@ -334,18 +362,20 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/uninstall", s.handleUninstall)
 
 	// Calendar
-	route("/api/calendar/events", s.handleCalendarEvents)
-	route("/api/calendar/events/", s.handleCalendarEvent)
-	route("/api/calendar/settings", s.handleCalendarSettings)
+	// Calendar permission (Faz 5.1.1, yapacam.md), lenient-gated.
+	route("/api/calendar/events", s.requirePermission(s.handleCalendarEvents, hasCalendarPerm))
+	route("/api/calendar/events/", s.requirePermission(s.handleCalendarEvent, hasCalendarPerm))
+	route("/api/calendar/settings", s.requirePermission(s.handleCalendarSettings, hasCalendarPerm))
 
 	// Learning settings
 	route("/api/learning/settings", s.handleLearningSettings)
 
 	// Routines (scheduled automations)
-	route("/api/routines", s.handleRoutines)
-	route("/api/routines/parse", s.handleParseRoutine)
-	route("/api/routines/", s.handleRoutine)
-	route("/api/routines/sync-offset", s.handleRoutinesSyncOffset)
+	// Routines permission (Faz 5.1.1, yapacam.md), lenient-gated.
+	route("/api/routines", s.requirePermission(s.handleRoutines, hasRoutinesPerm))
+	route("/api/routines/parse", s.requirePermission(s.handleParseRoutine, hasRoutinesPerm))
+	route("/api/routines/", s.requirePermission(s.handleRoutine, hasRoutinesPerm))
+	route("/api/routines/sync-offset", s.requirePermission(s.handleRoutinesSyncOffset, hasRoutinesPerm))
 
 	// Dev gateway (Settings > Developer): local Anthropic/OpenAI-compatible
 	// API surface. /v1/messages and /v1/chat/completions (and /v1/models) are

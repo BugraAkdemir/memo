@@ -224,7 +224,7 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 	defer stopComposing()
 
 	reply := a.drainSelfChatReply(
-		a.SendMessageStreamTo(ctx, chatID, text),
+		a.SendMessageStreamToAsAgent(ctx, chatID, text),
 		a.GetWhatsAppAutoApprovePermissions(),
 		a.whatsAppPermissionQuestion,
 		func(q string) error {

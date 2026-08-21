@@ -360,6 +360,39 @@ func (a *App) SendMessageStreamTo(ctx context.Context, chatID, userMsg string) <
 	return a.sendMessageStreamInnerTo(ctx, chatID, userMsg, sm.IsAgentChat(chatID))
 }
 
+// SendMessageStreamToAsAgent mirrors SendMessageStreamTo but always forces
+// agent-tool access for this one call, independent of chatID's own
+// IsAgentChat status and the global agent-mode toggle (a.agentEnabled).
+//
+// Used by WhatsApp/Telegram self-chat (handleWhatsAppSelfChatMessage/
+// handleTelegramMessage) — those sessions are created via
+// sessions.Manager.NewBackgroundChat specifically so they never hijack the
+// user's actual active chat (see that method's own doc comment), but
+// NewBackgroundChat never sets ProjectPath, so IsAgentChat is always false
+// for them and plain SendMessageStreamTo falls back to the *global*
+// agentEnabled flag — off by default, and self-chat has no UI toggle for it
+// at all short of the /agent on command. Found live: a user asked their
+// WhatsApp self-chat to create a recurring routine and got a generic "I
+// can't do that yet" reply — the create_routine/list_routines/
+// cancel_routine/whatsapp_send/web_search tools all genuinely were not on
+// the table for that turn, since agentActive was false in routeStream. The
+// intended safety boundary for self-chat's tool access is /auto-perm's
+// permission-asking flow (see selfchat_permission.go), not a second,
+// easy-to-forget "is agent mode nominally on" gate on top of it — matching
+// runAgentRoutine's own forceAgent=true call into sendMessageStreamCore for
+// the same underlying reason.
+func (a *App) SendMessageStreamToAsAgent(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk {
+	logx.Printf(">> SendMessageStreamToAsAgent(%s): %q", chatID, userMsg)
+	sm := a.getSessionManager()
+	if sm == nil || !sm.SessionExists(chatID) {
+		errCh := make(chan api.StreamChunk, 1)
+		errCh <- api.StreamChunk{Error: fmt.Sprintf("sohbet bulunamadı: %s", chatID), Done: true}
+		close(errCh)
+		return errCh
+	}
+	return a.sendMessageStreamInnerTo(ctx, chatID, userMsg, true)
+}
+
 // sendMessageStreamInnerTo is the shared core behind sendMessageStreamInner
 // and SendMessageStreamTo. forceAgent activates tool execution for this
 // call regardless of the global agent-mode toggle — see SendMessageStreamTo's

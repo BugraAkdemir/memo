@@ -159,7 +159,7 @@ func (a *App) handleTelegramMessage(msg telegram.Message) {
 	defer stopComposing()
 
 	reply := a.drainSelfChatReply(
-		a.SendMessageStreamTo(ctx, chatID, text),
+		a.SendMessageStreamToAsAgent(ctx, chatID, text),
 		a.GetTelegramAutoApprovePermissions(),
 		a.telegramPermissionQuestion,
 		func(q string) error { return a.TelegramSend(ctx, msg.ChatID, q) },

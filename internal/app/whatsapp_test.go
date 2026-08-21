@@ -315,8 +315,16 @@ func TestSetWhatsAppSelfChatAssistant_TurnsOnWebSearch(t *testing.T) {
 	}
 	a := &App{cfg: config.Get()}
 
+	// Web search now defaults to on (see WebSearchConfig's own comment in
+	// config.go) — explicitly turn it off first so this test still proves
+	// what it's meant to: enabling the self-chat assistant forces web
+	// search on regardless of its prior state, not just "happens to
+	// already be on by default".
+	if err := a.UpdateWebSearchConfig(false); err != nil {
+		t.Fatalf("UpdateWebSearchConfig(false): %v", err)
+	}
 	if a.GetWebSearchEnabled() {
-		t.Fatal("test assumption violated: web search should start off")
+		t.Fatal("test setup: web search should be off after explicitly disabling it")
 	}
 	if err := a.SetWhatsAppSelfChatAssistant(true); err != nil {
 		t.Fatalf("SetWhatsAppSelfChatAssistant: %v", err)

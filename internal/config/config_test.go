@@ -187,8 +187,12 @@ func TestTTSDefaults(t *testing.T) {
 
 // TestMoodDefaultsOff: the mood engine rewrites the assistant's tone on
 // every message, so finding it already running on a brand-new install is a
-// surprise, not a feature — same reasoning WebSearch is off by default.
-// Reported by a user who kept meeting it enabled after a fresh install.
+// surprise, not a feature. Reported by a user who kept meeting it enabled
+// after a fresh install. Unlike WebSearch (also once off by default for a
+// similar-sounding reason, since flipped to on — see WebSearchConfig's own
+// comment in config.go for why that reasoning no longer applies to it),
+// Mood's surprise factor is about tone changing invisibly, which a
+// tool-calling redesign wouldn't change.
 func TestMoodDefaultsOff(t *testing.T) {
 	if Default().Mood.Enabled {
 		t.Error("Default().Mood.Enabled = true, want false on a fresh install")

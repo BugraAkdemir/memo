@@ -84,6 +84,82 @@ func TestSendMessageStreamTo_UnknownChatID_ReturnsError(t *testing.T) {
 	}
 }
 
+// TestSendMessageStreamToAsAgent_UnknownChatID_ReturnsError mirrors
+// TestSendMessageStreamTo_UnknownChatID_ReturnsError for the
+// agent-forcing variant — same guard, just reached via a different entry
+// point.
+func TestSendMessageStreamToAsAgent_UnknownChatID_ReturnsError(t *testing.T) {
+	id := identity.New("Test", "Memo", "casual", "", false)
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	a := &App{
+		cfg: &config.AppConfig{
+			Memory: config.MemoryConfig{MemoryEnabled: false},
+			Llama:  config.LlamaConfig{CtxSize: 4096},
+		},
+		identity: id,
+		sessions: sm,
+	}
+
+	ch := a.SendMessageStreamToAsAgent(context.Background(), "does-not-exist", "hello")
+	chunk, ok := <-ch
+	if !ok {
+		t.Fatal("expected an error chunk, channel closed with nothing")
+	}
+	if chunk.Error == "" || !chunk.Done {
+		t.Fatalf("expected a Done error chunk for an unknown chat ID, got %+v", chunk)
+	}
+}
+
+// TestSendMessageStreamToAsAgent_WorksOnANonAgentBackgroundChat is the
+// actual regression test for the reported bug: a session created via
+// sessions.Manager.NewBackgroundChat (WhatsApp/Telegram self-chat's own
+// session, see initWhatsApp/handleWhatsAppSelfChatMessage) is never an
+// "agent chat" per IsAgentChat (NewBackgroundChat never sets ProjectPath) —
+// plain SendMessageStreamTo would fall back to the global agentEnabled flag
+// for such a session, which defaults to false. This only proves
+// SendMessageStreamToAsAgent doesn't reject/short-circuit a background
+// chat any differently than SendMessageStreamTo would (both reach the same
+// "session exists, proceed" point) — the actual forceAgent=true threading
+// into routeStream's agentActive decision is a straight-line, one-argument
+// change verified by reading sendMessageStreamInnerTo's call site, not
+// independently re-provable here without a live provider/tool-calling mock.
+func TestSendMessageStreamToAsAgent_WorksOnANonAgentBackgroundChat(t *testing.T) {
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	chatID := sm.NewBackgroundChat("Self-Chat")
+	if sm.IsAgentChat(chatID) {
+		t.Fatal("test assumption violated: NewBackgroundChat should never produce an agent chat")
+	}
+
+	a := &App{
+		cfg: &config.AppConfig{
+			Memory: config.MemoryConfig{MemoryEnabled: false},
+			Llama:  config.LlamaConfig{CtxSize: 4096},
+		},
+		identity: identity.New("Test", "Memo", "casual", "", false),
+		sessions: sm,
+	}
+
+	ch := a.SendMessageStreamToAsAgent(context.Background(), chatID, "hello")
+	chunk, ok := <-ch
+	if !ok {
+		t.Fatal("channel closed with no chunk at all")
+	}
+	// No provider/local model is configured in this test, so generation
+	// itself fails downstream either way — what matters is that failure is
+	// NOT the "sohbet bulunamadı" (session not found) error the unknown-ID
+	// test above produces, proving the valid background chat was accepted.
+	if chunk.Error == "sohbet bulunamadı: "+chatID {
+		t.Error("a valid background chat was incorrectly rejected as if it didn't exist")
+	}
+}
+
 // TestSendMessageStreamTo_TargetsGivenChatID_NotGloballyActiveChat is the
 // regression test for BUG_REPORT.md's TD-1 / PLAN_chatid_refactor.md Faz 3:
 // the task loop used to SwitchChat(chatID) before every call so

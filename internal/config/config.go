@@ -678,10 +678,18 @@ func Default() *AppConfig {
 			SigmaMax: 0.60,
 		},
 		WebSearch: WebSearchConfig{
-			// Off by default: web search is now an explicit on/off mode (every
-			// message searches when on), so it must be opted into rather than
-			// hitting the network on every message out of the box.
-			Enabled:    false,
+			// On by default (changed from off, direct user request): the
+			// "hits the network on every message" reasoning this default
+			// once had is stale — web search was later redesigned around
+			// real tool-calling (see routeStream), so the model itself
+			// decides per-message whether a search is actually needed,
+			// at zero cost on every turn it doesn't. There's no longer a
+			// meaningful privacy/network cost to defaulting this on, and
+			// an assistant that can't look anything up unless a user finds
+			// a settings toggle first is a worse default experience.
+			// Existing installs are unaffected: Load() overlays their
+			// config.yaml, which already carries an explicit value.
+			Enabled:    true,
 			MaxResults: 5,
 		},
 		Swarm: SwarmConfig{

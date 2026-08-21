@@ -1,3 +1,109 @@
+# Ek (2026-08-21, devam) — Rutinler WhatsApp/Telegram'a taşındı, sohbetten oluşturulabiliyor, Mobil kaldırıldı
+
+Kullanıcının isteği: rutinleri WhatsApp ve Telegram ile kullanılabilir hale
+getirmek, ve **Rutinler sekmesine hiç girmeden** normal sohbette ("her gün
+saat 9'da şu sitelerden yapay zeka haberlerini getir" gibi) rutin
+oluşturabilmek. İki ek, kesin talimat: agent aracı üzerinden **rehberdeki
+başka birini hedef olarak seçemesin** (Rutinler sekmesindeki insan-kontrollü
+kişi seçicisinden farklı olarak), ve **Mobil bildirim seçeneğini komple
+kaldır** — şu an aktif bir mobil uygulama yok.
+
+## Güvenlik tasarımı — hedefi asla model seçmiyor
+
+Yeni `create_routine` agent aracının şeması sadece `text` alıyor — hiçbir
+JID/chat-ID/kişi parametresi yok. Teslimat hedefi backend'de
+`resolveRoutineDeliveryTarget` tarafından ctx üzerinden çözülüyor:
+
+- WhatsApp self-chat'ten çağrıldıysa → hedef **her zaman** o self-chat JID'i,
+  metinde başka bir isim geçse bile.
+- Telegram'dan çağrıldıysa → hedef her zaman botun bağlı sahibi.
+- Normal sohbetten çağrıldıysa (self-chat kaynağı yok) → hangi yüzeyler
+  bağlıysa (WhatsApp giriş yapmış / Telegram bot bağlı) otomatik onlara
+  gönderiliyor, model'e sorulmuyor.
+
+Bu, `internal/app/selfchat_context.go`'daki yeni bir context-value
+mekanizmasıyla oluyor: `handleWhatsAppSelfChatMessage`/`handleTelegramMessage`
+ctx'e `SelfChatSource{WhatsApp: true, WhatsAppJID: ...}` gibi bir değer
+ekliyor, agent pipeline'ı bunu tool'un `ExecuteFn`'ine kadar değiştirmeden
+taşıyor (doğrulandı: `Executor.RunStream(ctx,...)` → `Pipeline.RunStream(ctx,...)`
+→ `toolCtx := ctx` → `registry.Execute(toolCtx,...)` → `ExecuteFn(ctx,...)`,
+hiçbir ara katman `context.Background()`'a düşmüyor). Rutinler sekmesinin
+kendi insan-kontrollü WhatsApp kişi seçicisine hiç dokunulmadı — o zaten
+güvenli (insan seçiyor), sorun sadece modelin kendi başına seçebileceği bir
+parametre olmasıydı.
+
+## Mobil tamamen kaldırıldı
+
+`Routine.DeliveryMobile`, `routine.MobilePayload`, `mobileLeadDuration`
+(2 saatlik erken-üretim penceresi), `GET /api/routines/mobile-ready`,
+`GetRoutinesReadyForMobile`, `routineNotificationTitle` — hepsi silindi.
+Bunun yan etkisi: `loop.go`'nun generate/deliver'ı iki aşamaya bölen mantığı
+(mobil için erken üret, gerçek saatte teslim et) artık anlamsızdı, sadeleştirildi
+— artık hem WhatsApp hem Telegram tam ateşleme saatinde üretip teslim ediyor.
+`Emitter`/`emit` mekanizması da tamamen kaldırıldı (tek kullanım yeri
+`"routine:ready"` idi, o da sadece mobil uygulamanın kendi `main.dart`'ında
+dinleniyordu — artık hiçbir şey onu ne üretiyor ne dinliyor).
+
+**Bilinçli sonuç, kullanıcıya açıkça bildiriliyor:** `mobile/` Flutter
+uygulamasının kendi rutin-bildirim özelliği artık tamamen ölü — `GET
+/api/routines/mobile-ready`'ye attığı istek artık 404 dönecek. `mobile/`
+projesinin kendi koduna dokunulmadı (kapsam dışı bırakıldı, kullanıcının
+"şu an aktif mobil uygulama yok" ifadesine güvenildi).
+
+## Telegram teslimatı
+
+WhatsApp'ın aksine Telegram'ın **tek bir geçerli hedefi var** (botun bağlı
+sahibi) — bu yüzden Routines-tab UI'ında bir seçici gerekmedi, sadece basit
+bir toggle (`FilterChip`, WhatsApp'ınkiyle aynı satırda). Backend
+`CreateRoutineFromDraft` çağrıldığında `DeliveryTelegram` true ise hedefi
+kendi içinde `linkedTelegramOwnerChatID()` ile çözüyor — frontend hiçbir
+zaman bir chat ID göndermek zorunda değil.
+
+## Yeni: `ContextWebSearch` — "AI haberlerini getir" gerçekten çalışsın diye
+
+Araştırma sırasında bulundu: agent-modu olmayan (`AgentMode: false`)
+rutinlerin **hiç canlı web erişimi yoktu** — sadece takvim/WhatsApp/insight
+gibi Go-tarafında deterministik olarak önceden çekilen context'i LLM'e
+veriyorlardı. Kullanıcının kendi örneği ("her gün 9'da AI haberlerini
+getir") tam olarak bunu gerektiriyordu, ama `create_routine` aracının
+`AgentMode: true` ayarlamasına kasıtlı olarak izin vermedim (habersiz/gözetimsiz
+bir rutinin gerçek araç erişimi olması — dosya/komut — çok daha büyük bir
+risk, izin isteyecek kimse yok). Çözüm: `internal/websearch.Search`'ü
+`ContextCalendar`/`ContextWhatsApp` ile aynı desende yeni bir
+`ContextWebSearch` kaynağı olarak ekledim — deterministik, salt-okunur,
+tool-loop'a hiç girmiyor.
+
+## Diğer değişiklikler
+
+- `runRoutineDeliver` artık her iki kanalı da **bağımsız** deniyor —
+  WhatsApp başarısız olsa bile Telegram denenir (ve tersi), `errors.Join`
+  ile ikisinin hatası da kayboluyor değil birlikte raporlanıyor (eskiden
+  sadece WhatsApp vardı, tek hata yeterliydi).
+- Extractor'ın "hiçbiri belirtilmemişse ikisini de aç" varsayımı
+  "belirtilmemişse sadece WhatsApp aç"a değişti (Mobil gidince "ikisi"
+  kavramı da anlamsızlaştı).
+
+**Doğrulama:** `go build/vet/test -race ./...` tüm repo yeşil,
+`flutter analyze`/`flutter test` (262/262) temiz, Rule #8 grep temiz
+(Telegram/WhatsApp chip'leri marka adı istisnası). Yeni testler:
+`resolveRoutineDeliveryTarget`'ın self-chat-kaynağını her zaman zorladığını
+(nil waClient/tgStore ile bile) ve normal sohbette bağlı yüzeylere akıllıca
+varsayılan yaptığını doğrulayan testler — bu, kullanıcının asıl endişe
+ettiği güvenlik garantisinin doğrudan testi. `runRoutineDeliver`'ın
+bağımsız kanal ateşlemesi, `create_routine` aracının ctx'i değiştirmeden
+ilettiği ve hiçbir hedef parametresi kabul etmediği, loop.go'nun
+WhatsApp-only/Telegram-only/kanalsız üç durumu.
+
+**Doğrulanamayan:** gerçek bir WhatsApp/Telegram self-chat'ten
+"create_routine" aracını gerçekten tetikleyip uçtan uca (LLM'in aracı
+gerçekten çağırması dahil) test etmek bu ortamda mümkün değildi — kullanıcı
+kendi Pi'sinde deneyecek. `ContextWebSearch`'ün gerçek DuckDuckGo sonucuyla
+denenmesi de aynı şekilde canlı test bekliyor.
+
+Henüz commit edilmedi.
+
+---
+
 # Ek (2026-08-21) — WhatsApp/Telegram self-chat'te agent izin sorusu artık gerçekten soruluyor
 
 Kullanıcı kendi Pi'sinde WhatsApp ve Telegram'ı gerçek bir bot/hesapla

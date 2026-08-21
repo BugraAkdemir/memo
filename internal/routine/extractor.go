@@ -23,10 +23,11 @@ type Draft struct {
 	Weekdays          []int  `json:"weekdays"` // 0=Sunday..6=Saturday; empty = every day
 	Prompt            string `json:"prompt"`
 	NeedsAgentMode    bool   `json:"needs_agent_mode"`
-	ContextSourceType string `json:"context_source_type"` // "none" | "calendar" | "whatsapp" | "insight"
+	ContextSourceType string `json:"context_source_type"` // "none" | "calendar" | "whatsapp" | "insight" | "websearch"
 	WhatsAppChatHint  string `json:"whatsapp_chat_hint,omitempty"`
+	WebSearchQuery    string `json:"web_search_query,omitempty"`
 	DeliveryWhatsApp  bool   `json:"delivery_whatsapp"`
-	DeliveryMobile    bool   `json:"delivery_mobile"`
+	DeliveryTelegram  bool   `json:"delivery_telegram"`
 }
 
 // Extractor turns a free-text routine description into a Draft, mirroring
@@ -48,13 +49,14 @@ SADECE aşağıdaki şemaya uyan bir JSON nesnesi döndür, başka hiçbir metin
   "weekdays": [0-6 arası tam sayılardan oluşan dizi; 0=Pazar...6=Cumartesi; her gün ise boş dizi []],
   "prompt": "modele verilecek, ne yapılması istendiğini anlatan kısa bir cümle, kullanıcının dilinde",
   "needs_agent_mode": true veya false — kullanıcı bir komut çalıştırma, dosya işlemi veya proje güncelleme gibi bilgisayarda gerçek bir işlem yapılmasını istiyorsa true; sadece bir metin/özet/hatırlatma istiyorsa false,
-  "context_source_type": "none", "calendar", "whatsapp" veya "insight" — rutin takvim ajandasına mı, belirli bir whatsapp sohbetine mi, kullanıcının kendi geçmiş sohbet hafızası + duygu durumu trendine mi (örn. "kendimle ilgili ne fark ettim" tarzı bir öz-içgörü özeti) ihtiyaç duyuyor, yoksa hiçbirine mi,
+  "context_source_type": "none", "calendar", "whatsapp", "insight" veya "websearch" — rutin takvim ajandasına mı, belirli bir whatsapp sohbetine mi, kullanıcının kendi geçmiş sohbet hafızası + duygu durumu trendine mi (örn. "kendimle ilgili ne fark ettim" tarzı bir öz-içgörü özeti), yoksa güncel bir web araması sonucuna mı (örn. "yapay zeka haberlerini getir" gibi güncel bilgi istekleri) ihtiyaç duyuyor, yoksa hiçbirine mi,
   "whatsapp_chat_hint": kullanıcının bahsettiği whatsapp sohbeti/grubunun adı (varsa), yoksa boş string,
+  "web_search_query": context_source_type "websearch" ise aranacak kısa arama sorgusu (örn. "yapay zeka haberleri"), değilse boş string,
   "delivery_whatsapp": true veya false — whatsapp'tan gönderilsin mi,
-  "delivery_mobile": true veya false — telefon bildirimi olarak gönderilsin mi
+  "delivery_telegram": true veya false — telegram'dan gönderilsin mi
 }
 
-Kullanıcı teslimat kanalını hiç belirtmediyse delivery_whatsapp:true ve delivery_mobile:true varsay.`
+Kullanıcı teslimat kanalını hiç belirtmediyse delivery_whatsapp:true varsay.`
 
 func buildUserPrompt(text string, now time.Time) string {
 	return fmt.Sprintf("Şu an: %s, %s\nKullanıcının isteği: %q", now.Format("2006-01-02 15:04"), now.Weekday(), text)
@@ -76,9 +78,8 @@ func (e *Extractor) Extract(ctx context.Context, text string, now time.Time) (Dr
 	if err := json.Unmarshal([]byte(jsonStr), &d); err != nil {
 		return Draft{}, fmt.Errorf("routine: parse draft: %w", err)
 	}
-	if !d.DeliveryWhatsApp && !d.DeliveryMobile {
+	if !d.DeliveryWhatsApp && !d.DeliveryTelegram {
 		d.DeliveryWhatsApp = true
-		d.DeliveryMobile = true
 	}
 	return d, nil
 }

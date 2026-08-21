@@ -11,15 +11,6 @@ import (
 	"memo/internal/logx"
 )
 
-// mobileLeadDuration is how far ahead of the scheduled fire time a
-// mobile-delivered routine's content is generated. The mobile app has no
-// push channel (see project docs) — it can only pick up ready content on its
-// own poll cycle and schedule a local OS notification for the exact fire
-// instant, so that content must already exist somewhat before the moment it
-// needs to fire. WhatsApp-only routines need no lead — the backend delivers
-// directly, so content is generated exactly at fire time.
-const mobileLeadDuration = 2 * time.Hour
-
 // generateTimeout bounds a single routine's GenerateFn call (an LLM call, or
 // a full multi-step agent turn for agent-mode routines) so a stuck provider
 // or a runaway tool loop can't starve every other routine forever — see
@@ -27,17 +18,14 @@ const mobileLeadDuration = 2 * time.Hour
 // own goroutine rather than blocking the tick itself.
 const generateTimeout = 5 * time.Minute
 
-// Emitter publishes an AppEvent, mirroring calendar.Emitter/proactive.Emitter.
-type Emitter func(name, data string)
-
 // GenerateFn produces a routine's content (running either a plain LLM call or
 // a full agent turn, decided by the caller based on Routine.AgentMode).
 type GenerateFn func(ctx context.Context, r Routine) (string, error)
 
 // DeliverFn sends already-generated content through the routine's requested
-// channels that the loop itself can act on directly (currently: WhatsApp).
-// Mobile delivery has no explicit deliver step — the phone picks up ready
-// content on its own poll and schedules its own local notification.
+// channels (WhatsApp and/or Telegram) — the caller (internal/app) branches
+// on Routine.DeliveryWhatsApp/DeliveryTelegram internally; loop.go itself
+// stays channel-agnostic.
 type DeliverFn func(ctx context.Context, r Routine, content string) error
 
 // RoutineLoop fires due routines on a one-minute tick, mirroring
@@ -46,16 +34,15 @@ type RoutineLoop struct {
 	store    *Store
 	generate GenerateFn
 	deliver  DeliverFn
-	emit     Emitter
 
 	runningMu sync.Mutex
 	running   map[string]bool
 	wg        sync.WaitGroup // lets tests wait for a tick's launched goroutines to finish
 }
 
-// NewRoutineLoop creates a RoutineLoop. generate, deliver and emit must not be nil.
-func NewRoutineLoop(store *Store, generate GenerateFn, deliver DeliverFn, emit Emitter) *RoutineLoop {
-	return &RoutineLoop{store: store, generate: generate, deliver: deliver, emit: emit, running: make(map[string]bool)}
+// NewRoutineLoop creates a RoutineLoop. generate and deliver must not be nil.
+func NewRoutineLoop(store *Store, generate GenerateFn, deliver DeliverFn) *RoutineLoop {
+	return &RoutineLoop{store: store, generate: generate, deliver: deliver, running: make(map[string]bool)}
 }
 
 // Start runs the tick loop until ctx is done. Meant to be run in its own
@@ -89,8 +76,8 @@ func (r *RoutineLoop) Start(ctx context.Context) {
 // can be an arbitrarily long agent turn (tool calls, LLM latency) — running
 // it inline used to block tick() itself for that whole duration, which in
 // turn blocked Start's ticker select from ever reaching the next minute:
-// every other routine due in the meantime (including zero-lead WhatsApp-only
-// ones) sat starved until the slow routine finished, and a truly hung call
+// every other routine due in the meantime sat starved until the slow routine
+// finished, and a truly hung call
 // stopped the entire routine system permanently. generateTimeout bounds the
 // worst case per routine; the running map prevents the same routine from
 // being launched twice concurrently if it's still mid-flight on the next
@@ -112,12 +99,8 @@ func (r *RoutineLoop) tick(ctx context.Context, now time.Time) {
 			continue
 		}
 
-		lead := time.Duration(0)
-		if rt.DeliveryMobile {
-			lead = mobileLeadDuration
-		}
-		if now.Before(fireTime.Add(-lead)) {
-			continue // not time to generate yet
+		if now.Before(fireTime) {
+			continue // not time yet
 		}
 
 		if !r.tryMarkRunning(rt.ID) {
@@ -177,16 +160,9 @@ func (r *RoutineLoop) processDueRoutine(ctx context.Context, rt Routine, now tim
 			return
 		}
 		rt = *updated
-		if rt.DeliveryMobile {
-			r.emit("routine:ready", rt.ID)
-		}
 	}
 
-	if now.Before(fireTime) {
-		return // mobile content pre-generated; wait for the real fire time
-	}
-
-	if rt.DeliveryWhatsApp {
+	if rt.DeliveryWhatsApp || rt.DeliveryTelegram {
 		deliverCtx, cancel := context.WithTimeout(ctx, generateTimeout)
 		err := r.deliver(deliverCtx, rt, rt.LastGeneratedContent)
 		cancel()

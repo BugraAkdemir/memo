@@ -22,6 +22,15 @@ const (
 	// of calendar/WhatsApp data — for routines like a weekly self-insight
 	// digest ("geçen hafta kendimle ilgili ne fark ettim").
 	ContextInsight ContextSourceType = "insight"
+	// ContextWebSearch deterministically runs a web search (internal/websearch,
+	// the same DuckDuckGo-backed search plain chat's web_search tool uses) and
+	// hands the results to the LLM as read-only context — for routines like
+	// "her gün 9'da yapay zeka haberlerini getir". Deliberately a Go-side
+	// deterministic fetch, not AgentMode's full tool pipeline: an unattended
+	// routine calling a real tool loop is a materially bigger risk surface
+	// (arbitrary tool selection, no human present for a permission prompt)
+	// than one hardcoded, read-only search call.
+	ContextWebSearch ContextSourceType = "websearch"
 )
 
 // Schedule describes when a routine fires. Weekdays is empty for "every day".
@@ -59,12 +68,20 @@ func (s Schedule) FiresOn(day time.Weekday) bool {
 }
 
 // ContextSource optionally attaches deterministic context to a routine's
-// prompt (today's calendar agenda, or a specific WhatsApp chat's recent
-// messages) without requiring the LLM to call a tool for it unattended.
+// prompt (today's calendar agenda, a specific WhatsApp chat's recent
+// messages, or a web search) without requiring the LLM to call a tool for it
+// unattended.
 type ContextSource struct {
 	Type         ContextSourceType `json:"type"`
 	WhatsAppJID  string            `json:"whatsapp_jid,omitempty"`
 	WhatsAppName string            `json:"whatsapp_name,omitempty"` // display only
+	// WebSearchQuery is the query internal/websearch.Search runs when Type is
+	// ContextWebSearch — extracted from the routine's own free-text
+	// description (e.g. "yapay zeka haberleri" from "her gün yapay zeka
+	// haberlerini getir"), not the full Prompt itself, since Prompt is the
+	// instruction handed to the LLM alongside the results, not a search
+	// query.
+	WebSearchQuery string `json:"web_search_query,omitempty"`
 }
 
 // Routine is a single user-defined scheduled automation.
@@ -85,16 +102,24 @@ type Routine struct {
 	ContextSource    ContextSource `json:"context_source"`
 
 	DeliveryWhatsApp  bool   `json:"delivery_whatsapp"`
-	DeliveryMobile    bool   `json:"delivery_mobile"`
 	WhatsAppTargetJID string `json:"whatsapp_target_jid,omitempty"`
+	// DeliveryTelegram/TelegramTargetChatID mirror the WhatsApp pair above.
+	// Unlike WhatsApp (any contact, human-picked from a chat list),
+	// TelegramTargetChatID only ever has one legitimate value — the bot's
+	// linked owner (telegram.State.OwnerChatID) — since a Telegram bot has no
+	// concept of "other contacts" to pick from; it's still stored explicitly
+	// rather than always re-read from telegram.State at delivery time so a
+	// routine keeps working (or fails loudly) even if the bot is later
+	// disconnected and reconnected to a different owner.
+	DeliveryTelegram     bool  `json:"delivery_telegram"`
+	TelegramTargetChatID int64 `json:"telegram_target_chat_id,omitempty"`
 
 	// Language is the UI locale ("tr" or "en") active on the client at the
-	// moment this routine was created (frontend's MemoLocale/mobile's
-	// MemoLocale, both client-side-only today — the backend otherwise has no
-	// notion of language at all). Drives which language the backend uses for
-	// its own generated text: the notification title, the "no events/no
-	// messages" context filler, and the system prompt handed to the LLM for
-	// the non-agent execution path (see internal/app/routine.go). Empty for
+	// moment this routine was created (frontend's MemoLocale, client-side-only
+	// today — the backend otherwise has no notion of language at all). Drives
+	// which language the backend uses for its own generated text: the "no
+	// events/no messages" context filler and the system prompt handed to the
+	// LLM for the non-agent execution path (see internal/app/routine.go). Empty for
 	// any routine created before this field existed; callers must treat
 	// empty (and any value other than "en") as "tr" — this codebase's
 	// default target audience (see AGENTS.md's "Turkish + English mixed
@@ -109,9 +134,6 @@ type Routine struct {
 	// LastRunDate ("2026-07-17") guards against firing more than once per day.
 	LastRunDate string `json:"last_run_date,omitempty"`
 
-	// Content is generated ahead of the fire time when DeliveryMobile is set,
-	// since the mobile app has no push channel and must poll+pre-schedule a
-	// local notification (see RoutineLoop's doc comment).
 	LastGeneratedContent string    `json:"last_generated_content,omitempty"`
 	LastGeneratedAt      time.Time `json:"last_generated_at"`
 }
@@ -128,15 +150,4 @@ func (r Routine) LastGeneratedDate() string {
 		return ""
 	}
 	return r.LastGeneratedAt.Format("2006-01-02")
-}
-
-// MobilePayload is what the mobile app polls for to pre-schedule a local
-// notification ahead of a routine's fire time (see mobileLeadDuration's doc
-// comment) — lives here rather than internal/app so internal/webserver can
-// reference it without importing internal/app.
-type MobilePayload struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Body      string    `json:"body"`
-	FireAtUTC time.Time `json:"fire_at_utc"`
 }

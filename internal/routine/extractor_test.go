@@ -17,7 +17,7 @@ func TestExtractor_ParsesCleanJSON(t *testing.T) {
 		"context_source_type": "calendar",
 		"whatsapp_chat_hint": "",
 		"delivery_whatsapp": true,
-		"delivery_mobile": true
+		"delivery_telegram": false
 	}`
 	e := NewExtractor(func(ctx context.Context, system, user string) (string, error) {
 		return canned, nil
@@ -47,7 +47,7 @@ func TestExtractor_ParsesJSONWrappedInProseAndFences(t *testing.T) {
 		"context_source_type": "none",
 		"whatsapp_chat_hint": "",
 		"delivery_whatsapp": true,
-		"delivery_mobile": false
+		"delivery_telegram": false
 	}` + "\n```\nUmarım işine yarar!"
 
 	e := NewExtractor(func(ctx context.Context, system, user string) (string, error) {
@@ -66,8 +66,8 @@ func TestExtractor_ParsesJSONWrappedInProseAndFences(t *testing.T) {
 	}
 }
 
-func TestExtractor_DefaultsDeliveryToBothWhenUnspecified(t *testing.T) {
-	canned := `{"time_of_day":"09:00","weekdays":[],"prompt":"x","needs_agent_mode":false,"context_source_type":"none","delivery_whatsapp":false,"delivery_mobile":false}`
+func TestExtractor_DefaultsToWhatsAppWhenUnspecified(t *testing.T) {
+	canned := `{"time_of_day":"09:00","weekdays":[],"prompt":"x","needs_agent_mode":false,"context_source_type":"none","delivery_whatsapp":false,"delivery_telegram":false}`
 	e := NewExtractor(func(ctx context.Context, system, user string) (string, error) {
 		return canned, nil
 	})
@@ -76,8 +76,33 @@ func TestExtractor_DefaultsDeliveryToBothWhenUnspecified(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
-	if !d.DeliveryWhatsApp || !d.DeliveryMobile {
-		t.Errorf("expected both delivery channels to default true, got whatsapp=%v mobile=%v", d.DeliveryWhatsApp, d.DeliveryMobile)
+	if !d.DeliveryWhatsApp {
+		t.Errorf("expected WhatsApp delivery to default true when nothing was specified, got whatsapp=%v telegram=%v", d.DeliveryWhatsApp, d.DeliveryTelegram)
+	}
+	if d.DeliveryTelegram {
+		t.Error("expected Telegram delivery to stay false when nothing was specified — only WhatsApp is the safe/simple default")
+	}
+}
+
+// TestExtractor_RespectsExplicitTelegramOnly confirms an explicit
+// delivery_telegram:true, delivery_whatsapp:false is NOT overridden by the
+// "default to WhatsApp" fallback — that fallback only applies when the LLM
+// picked neither channel.
+func TestExtractor_RespectsExplicitTelegramOnly(t *testing.T) {
+	canned := `{"time_of_day":"09:00","weekdays":[],"prompt":"x","needs_agent_mode":false,"context_source_type":"none","delivery_whatsapp":false,"delivery_telegram":true}`
+	e := NewExtractor(func(ctx context.Context, system, user string) (string, error) {
+		return canned, nil
+	})
+
+	d, err := e.Extract(context.Background(), "telegram'dan söyle", time.Now())
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if d.DeliveryWhatsApp {
+		t.Error("expected WhatsApp delivery to stay false when Telegram was explicitly requested")
+	}
+	if !d.DeliveryTelegram {
+		t.Error("expected Telegram delivery to stay true")
 	}
 }
 

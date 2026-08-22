@@ -605,6 +605,15 @@ class MemoApiClient {
     return _guard<Map<String, dynamic>>(res.data);
   }
 
+  /// Fetch available models from OpenCode Zen — same rich shape as
+  /// [fetchKiloModels] (is_free is derived server-side from a "-free" id
+  /// suffix rather than a pricing field, which this endpoint doesn't
+  /// carry at all), and likewise needs no API key.
+  Future<Map<String, dynamic>> fetchOpenCodeZenModels() async {
+    final res = await _dio.post('/api/opencode-zen/models');
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
   // ─── Status ─────────────────────────────────────────────────────
 
   /// Check backend connection status.

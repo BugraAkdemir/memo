@@ -180,14 +180,18 @@ class _ProviderConfigDialogState
     }
   }
 
+  /// Provider types whose /models catalog needs no API key at all —
+  /// verified live against each real endpoint (kilo.ai/docs/gateway/
+  /// models-and-providers for Kilo; opencode.ai/zen/v1/models answers
+  /// with no Authorization header for OpenCode Zen) — so these are the
+  /// ones that can browse before a key is ever entered. Every other type
+  /// still requires one first since their /models calls actually forward
+  /// it upstream.
+  static const _keylessBrowserTypes = {'kilo', 'opencode-zen'};
+
   Future<void> _openModelBrowser() async {
-    // Kilo's /models endpoint needs no API key at all (kilo.ai/docs/
-    // gateway/models-and-providers — public catalog), so it's the one type
-    // that can browse before a key is even entered; every other type here
-    // still requires one first since their /models calls actually forward
-    // it upstream.
     final apiKey = _apiKeyCtrl.text.trim();
-    if (apiKey.isEmpty && _type != 'kilo') {
+    if (apiKey.isEmpty && !_keylessBrowserTypes.contains(_type)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(L10n.t('enter_api_key_first'))),
       );
@@ -197,6 +201,7 @@ class _ProviderConfigDialogState
     final selected = switch (_type) {
       'openrouter' => await _browseOpenRouterModels(apiKey),
       'kilo' => await _browseKiloModels(),
+      'opencode-zen' => await _browseOpenCodeZenModels(),
       _ => await _browseGenericModels(apiKey),
     };
 
@@ -282,6 +287,49 @@ class _ProviderConfigDialogState
       builder: (_) => _ModelBrowserDialog(
         models: models,
         title: L10n.t('kilo_models'),
+      ),
+    );
+  }
+
+  /// OpenCode Zen's rich, free-aware model browser — same pattern as
+  /// [_browseKiloModels]. Deliberately not built for OpenCode Go: its
+  /// catalog has essentially no free models worth sorting to the top, so
+  /// Go keeps using [_browseGenericModels] (see handleOpenCodeZenModels'
+  /// own doc comment, internal/webserver/handlers_oauth.go, for the exact
+  /// numbers behind that call).
+  Future<String?> _browseOpenCodeZenModels() async {
+    final api = ref.read(apiClientProvider);
+
+    Map<String, dynamic> result;
+    try {
+      result = await api.fetchOpenCodeZenModels();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('models_fetch_error', {'e': FriendlyError.describeGeneric(e)}))),
+        );
+      }
+      return null;
+    }
+
+    if (result['status'] != 'ok') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ ${result['error'] ?? L10n.t('models_fetch_error_short')}')),
+        );
+      }
+      return null;
+    }
+
+    final rawModels = result['models'];
+    final models = (rawModels is List) ? rawModels.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
+    if (!mounted) return null;
+
+    return showDialog<String>(
+      context: context,
+      builder: (_) => _ModelBrowserDialog(
+        models: models,
+        title: L10n.t('opencode_zen_models'),
       ),
     );
   }

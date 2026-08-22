@@ -469,6 +469,92 @@ func fetchKiloModels() ([]ProviderModelInfo, error) {
 	return models, nil
 }
 
+// openCodeZenModelsURL is a var for the same test-injection reason as
+// openRouterModelsURL/kiloModelsURL above.
+var openCodeZenModelsURL = "https://opencode.ai/zen/v1/models"
+
+// handleOpenCodeZenModels implements POST /api/opencode-zen/models — the
+// rich, free-aware model browser for OpenCode Zen, same reasoning as
+// handleKiloModels: no API key required (verified live against the real
+// endpoint), so it's reachable before a key is ever entered.
+//
+// Deliberately NOT built for OpenCode Go (opencode.ai/zen/go/v1/models) —
+// user's own call after being shown that Go's catalog has essentially no
+// free models (one out of 29, "ox-alpha-free", found while researching
+// this) worth sorting to the top; Go keeps using the plain generic model
+// browser (fetchProviderModels/ListModels, api_client.dart's
+// _browseGenericModels) like every other non-OpenRouter-shaped provider.
+func (s *Server) handleOpenCodeZenModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+
+	models, err := fetchOpenCodeZenModels()
+	if err != nil {
+		writeJSON(w, map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"status": "ok",
+		"models": models,
+	})
+}
+
+// fetchOpenCodeZenModels fetches OpenCode Zen's model catalog. Unlike
+// Kilo/OpenRouter, this endpoint's response carries no pricing or
+// free/paid metadata at all — just {id, object, created, owned_by}
+// (verified live, 2026-08-22: 78 models). OpenCode Zen instead marks its
+// free models directly in the id itself, a "-free" suffix (e.g.
+// "deepseek-v4-flash-free", "laguna-s-2.1-free" — confirmed against the
+// real, live catalog, 8 of 78 ids matched), so IsFree is derived from that
+// rather than any numeric price field.
+func fetchOpenCodeZenModels() ([]ProviderModelInfo, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", openCodeZenModelsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("request oluşturulamadı: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("OpenCode Zen API hatası: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("OpenCode Zen döndü %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("parse hatası: %w", err)
+	}
+
+	models := make([]ProviderModelInfo, 0, len(result.Data))
+	for _, m := range result.Data {
+		if m.ID == "" {
+			continue
+		}
+		models = append(models, ProviderModelInfo{
+			ID:     m.ID,
+			Name:   m.ID,
+			IsFree: strings.HasSuffix(strings.ToLower(m.ID), "-free"),
+		})
+	}
+
+	return models, nil
+}
+
 // fetchOpenRouterModelEffortLevels is OpenRouter's one real point of
 // runtime capability discovery (see provider/effort.go's package doc
 // comment) — its /api/v1/models response includes a per-model "reasoning"

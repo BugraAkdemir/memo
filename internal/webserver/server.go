@@ -300,6 +300,10 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// /api/openrouter/models doesn't — a read-only catalog browse, and
 	// Kilo's own endpoint needs no credential at all to answer it.
 	route("/api/kilo/models", s.handleKiloModels)
+	// OpenCode Zen's own rich (free-aware) model browser — same reasoning
+	// as Kilo's above. Deliberately no OpenCode Go equivalent, see
+	// handleOpenCodeZenModels' own doc comment for why.
+	route("/api/opencode-zen/models", s.handleOpenCodeZenModels)
 
 	// Orchestra mode
 	route("/api/orchestra/config", s.handleOrchestraConfig)

@@ -1,3 +1,60 @@
+# Ek (2026-08-22, devam) — Kilo model select hatası (eski backend) + OpenCode Zen'e de Kilo tarzı free-model tarayıcısı
+
+## Kilo "Select" tıklayınca hiçbir şey açılmıyordu
+
+Bir önceki değişiklikten sonra kullanıcı canlı test etti — Kilo Code
+provider'ında "Select" butonuna tıklayınca hiçbir pencere açılmadığını
+bildirdi. Kod tarafında (frontend + backend, tekrar tekrar) gerçek bir hata
+bulamadım; gerçek backend'e karşı elle test ettiğimde `/api/kilo/models`
+boş body'yle bile doğru çalışıyordu. Kullanıcıya frontend'i yeniden build
+edip etmediğini sordum, cevap vermeden bir ekran görüntüsüyle devam etti:
+alt kısımda gerçek bir hata mesajı görünüyordu ("Could not load models:
+Something went wrong") — yani kod aslında çalışıyordu, sorun "hiçbir şey
+olmuyor" değil, gerçek bir istek başarısız oluyordu.
+
+**Kök neden:** Memo, bir backend zaten bir portta çalışıyorsa yeni bir
+backend süreci başlatmak yerine ona bağlanıyor. Kullanıcı frontend'i
+yeniden build etmişti ama arka planda hâlâ **eski backend süreci**
+çalışıyordu — yani `/api/kilo/models` route'unu hiç içermeyen, bu
+oturumdan önceki bir binary. `memo --kill` (tüm Memo süreçlerini durdurup
+portları serbest bırakıyor) + yeniden başlatma önerdim — kullanıcı doğruladı,
+tam da buymuş. **Ders:** frontend + backend ayrı süreçler, sadece
+`flutter build` frontend'i günceller — backend'in de gerçekten yeniden
+başlaması (eski süreç öldürülmeden "attach" davranışı yüzünden) gerekiyor.
+
+## OpenCode Zen'e de Kilo/OpenRouter tarzı free-model tarayıcısı
+
+Kullanıcı bunu görünce: "OpenRouter'da ve Kilo'da free modeller en üstte
+yeşil — aynısını OpenCode Zen için de yap, Go'ya yapma, Go'da free model
+yok" dedi. OpenCode Zen'in gerçek `/models` endpoint'ini (`opencode.ai/zen/
+v1/models`) inceledim: **hiç fiyat/free alanı yok**, sadece `{id, object,
+created, owned_by}` — ama free modeller id'nin sonunda `-free` suffix'i
+taşıyor (`deepseek-v4-flash-free`, `laguna-s-2.1-free` gibi — canlı API'ye
+karşı doğrulandı: 64 model, 8'i `-free`). OpenCode Go'yu da kontrol ettim —
+kullanıcının önermesinin aksine **tam sıfır değil**, 29 modelden 1 tanesi
+(`ox-alpha-free`) var, ama kullanıcının "buna değmez" kararına saygı
+gösterip Go'ya dokunmadım (kendisine bu tek modeli de söyledim, isterse
+ayrıca ekleyebilirim).
+
+Kilo ile birebir aynı desen: yeni `fetchOpenCodeZenModels`/
+`handleOpenCodeZenModels` (`POST /api/opencode-zen/models`, API key
+gerektirmiyor — canlı doğrulandı), `IsFree` id suffix'inden türetiliyor
+(fiyat alanı olmadığı için). Frontend'de `_browseOpenCodeZenModels()` aynı
+`_ModelBrowserDialog`'u (zaten Kilo için title parametreli hale
+getirilmişti) yeniden kullanıyor. `_keylessBrowserTypes` seti artık
+`{'kilo', 'opencode-zen'}` — ikisi de API key girilmeden gözat'lanabiliyor.
+
+**Doğrulama:** `go build/vet/test -race ./...` ve `flutter analyze`/
+`flutter test` (283/283) yeşil. Gerçek backend'i sıfırdan başlatıp
+`POST /api/opencode-zen/models`'ın gerçek OpenCode Zen API'sine karşı 64
+model + doğru 8 free döndürdüğünü doğrudan doğruladım. Yeni testler:
+`TestFetchOpenCodeZenModels_DerivesIsFreeFromIDSuffix`/
+`_SkipsEntriesWithNoID`, `TestHandleOpenCodeZenModels_NoAPIKeyRequired`/
+`_RejectsNonPost` (Go), `fetchOpenCodeZenModels` route testi (Flutter).
+**GUI'de elle tıklanmadı** — kullanıcının kendi testini bekliyor.
+
+---
+
 # Ek (2026-08-22, devam) — API Providers ekranı: gerçek logo'lar, taşan dropdown yerine kendi picker'ımız, varsayılan çöp liste kaldırıldı
 
 Kullanıcı Kilo Code eklendikten sonra gerçek uygulamada canlı test etti,

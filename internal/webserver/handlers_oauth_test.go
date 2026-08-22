@@ -625,3 +625,105 @@ func TestHandleKiloModels_RejectsNonPost(t *testing.T) {
 		t.Errorf("status = %d, want 405", w.Code)
 	}
 }
+
+// ─── OpenCode Zen's rich (free-aware) model browser ───
+
+// TestFetchOpenCodeZenModels_DerivesIsFreeFromIDSuffix is the actual point
+// of this fetcher over the generic ListModels path: OpenCode Zen's /models
+// response carries no pricing/free field at all, only a "-free" suffix on
+// the id itself for genuinely free models (verified against the real,
+// live catalog).
+func TestFetchOpenCodeZenModels_DerivesIsFreeFromIDSuffix(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]interface{}{
+				{"id": "claude-sonnet-5", "object": "model", "owned_by": "opencode"},
+				{"id": "deepseek-v4-flash-free", "object": "model", "owned_by": "opencode"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	orig := openCodeZenModelsURL
+	openCodeZenModelsURL = srv.URL
+	defer func() { openCodeZenModelsURL = orig }()
+
+	models, err := fetchOpenCodeZenModels()
+	if err != nil {
+		t.Fatalf("fetchOpenCodeZenModels() error = %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("got %d models, want 2", len(models))
+	}
+	if models[0].IsFree {
+		t.Errorf("claude-sonnet-5 (no -free suffix) reported as free")
+	}
+	if !models[1].IsFree {
+		t.Errorf("deepseek-v4-flash-free (-free suffix) not reported as free")
+	}
+}
+
+func TestFetchOpenCodeZenModels_SkipsEntriesWithNoID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]interface{}{
+				{"id": ""},
+				{"id": "gpt-5.6-sol"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	orig := openCodeZenModelsURL
+	openCodeZenModelsURL = srv.URL
+	defer func() { openCodeZenModelsURL = orig }()
+
+	models, err := fetchOpenCodeZenModels()
+	if err != nil {
+		t.Fatalf("fetchOpenCodeZenModels() error = %v", err)
+	}
+	if len(models) != 1 || models[0].ID != "gpt-5.6-sol" {
+		t.Errorf("models = %+v, want exactly the one entry with a real id", models)
+	}
+}
+
+func TestHandleOpenCodeZenModels_NoAPIKeyRequired(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]interface{}{
+				{"id": "claude-sonnet-5"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	orig := openCodeZenModelsURL
+	openCodeZenModelsURL = srv.URL
+	defer func() { openCodeZenModelsURL = orig }()
+
+	s := New(&swarmStubBridge{})
+	r := httptest.NewRequest(http.MethodPost, "/api/opencode-zen/models", nil)
+	w := httptest.NewRecorder()
+	s.handleOpenCodeZenModels(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"status":"ok"`) {
+		t.Errorf("body = %s, want status ok", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "claude-sonnet-5") {
+		t.Errorf("body = %s, want the fetched model id present", w.Body.String())
+	}
+}
+
+func TestHandleOpenCodeZenModels_RejectsNonPost(t *testing.T) {
+	s := New(&swarmStubBridge{})
+	r := httptest.NewRequest(http.MethodGet, "/api/opencode-zen/models", nil)
+	w := httptest.NewRecorder()
+	s.handleOpenCodeZenModels(w, r)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want 405", w.Code)
+	}
+}

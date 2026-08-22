@@ -460,6 +460,28 @@ void main() {
     expect(result['status'], 'ok');
     expect((result['models'] as List).first['id'], 'kilo-auto/free');
   });
+
+  test(
+      'fetchOpenCodeZenModels posts to /api/opencode-zen/models with no body required',
+      () async {
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    String? sentPath;
+    client.dio.httpClientAdapter = _FakeAuthAdapter(
+      {
+        '/api/opencode-zen/models': (200, {
+          'status': 'ok',
+          'models': [
+            {'id': 'deepseek-v4-flash-free', 'name': 'deepseek-v4-flash-free', 'is_free': true},
+          ],
+        }),
+      },
+      onRequest: (options) => sentPath = options.path,
+    );
+    final result = await client.fetchOpenCodeZenModels();
+    expect(sentPath, '/api/opencode-zen/models');
+    expect(result['status'], 'ok');
+    expect((result['models'] as List).first['id'], 'deepseek-v4-flash-free');
+  });
   });
 
   group('isAlive', () {

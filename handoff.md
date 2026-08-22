@@ -1,3 +1,23 @@
+# Ek (2026-08-22, devam) — v3.9.0 gerçekten release edildi (`/memo-release` skill)
+
+Kullanıcı "v3.9.0'ı çıkaralım, CI'dan gelen build'leri unutma, release notu yazmayı unutma" dedi — `/memo-release` skill'i uçtan uca çalıştırıldı, tag'e kadar.
+
+**Phase 1 — versiyon bump (`1fab95f`):** `version` dosyası (V3.5.5→V3.9.0, trailing newline olmadan — `//go:embed` ile gömülüyor), `installer.iss`'teki `MyAppVersion`, `README.md`/`READmeTR.md`'deki rozet + changelog linki. Grep ile eski sürüm hiçbir yerde kalmadığı doğrulandı.
+
+**Phase 2 — release notları (`53f9906`):** `versinNote/v3.9.0.md` + `tr/v3.9.0.md` bu oturumun başında zaten yazılmıştı (WIP taslak) — başlığı "(Work in Progress)"tan çıkarıp gerçek tarih/indirme linkiyle finalize ettim, alt notu "geliştirme devam ediyor" yerine "teşekkürler" ile değiştirdim.
+
+**Phase 3 — tag & push:** Kullanıcıya `AskUserQuestion` ile açıkça sorup onay aldıktan sonra (AGENTS.md'nin sabit kuralı — her tag push'ta yeniden sorulur) `git push origin main` + `git tag v3.9.0` + `git push origin v3.9.0`. Dört CI workflow'u da (Linux, macOS, Windows, Docker) yeşil bitti (~16 dakika, en yavaşı Windows). `download.bugradev.com/memo.tar.gz` sanity-check'i gerçek içerik döndürdü.
+
+**Yan bulunan gerçek bug — GitHub "Contributors: Botfather":** Release sayfası yayınlandıktan hemen sonra kullanıcı ekran görüntüsünde "Contributors: Botfather" diye tuhaf bir isim gördü. Kök neden: release notlarında (Telegram entegrasyonu anlatılırken) düz metin olarak geçen `@BotFather` (Telegram'ın gerçek, resmi bot-oluşturma botu), GitHub'ın markdown render'ında otomatik olarak bir kullanıcı mention'ı sanılıp linklendi — ve tesadüfen gerçekten "Botfather" adında alakasız bir GitHub hesabına denk geldiği için, GitHub'ın release sayfası bunu o hesabı "katkıda bulunan" (contributor) olarak listeledi. Düzeltme: repodaki her yerde (`versinNote/v3.9.0.md`+`tr/`, `docs/FEATURES.md`+`OZELLIKLER.md`, iki dildeki Obsidian Telegram/Özellik Kataloğu sayfaları, `handoff.md`'nin kendisi) düz metin `@BotFather` geçen yerler backtick'e alındı (`` `@BotFather` ``) — zaten markdown link formunda olanlar (`[@BotFather](https://t.me/BotFather)`) zaten güvenliydi, dokunulmadı. Commit `a15934f`, push edildi, `gh release edit v3.9.0 --notes-file` ile yayınlanmış release body'si de güncellendi — canlı sayfada "Contributors" bölümünün kaybolduğu doğrulandı.
+
+**Phase 4 — version.json beacon (`version-zeta.vercel.app`):** BİLEREK YAPILMADI. Önceki bir oturumda (bkz. bu dosyada ~6301. satır civarı) kullanıcı bunun kendi işi olduğunu, karışılmamasını açıkça belirtmişti — ayrıca bu ortamda `vercel` CLI/token da yok. Kullanıcıya hatırlatıldı, kendisi yapacak.
+
+**Phase 5 — bu giriş.**
+
+**Ayrıca bu oturumda (release'den önce):** `memo-web` (tanıtım sitesi) reposunda kapsamlı bir v3.9.0 güncelleme turu yapıldı — dil-sıfırlanması bug'ı (Nav/Footer/MarkdownRenderer'daki hardcoded `/tr` prefix eksikliği), emoji-yerine-lucide-ikon düzeltmesi, yeni Telegram sayfası + WhatsApp self-chat/rutin içerikleri, ve versiyon/araç-sayısı/sağlayıcı-sayısı tutarsızlıklarının tam bir taraması (`f50bd1c`). Detaylar bu dosyanın hemen altındaki önceki girişte.
+
+---
+
 # Ek (2026-08-22, devam) — memo-web sitesi v3.9.0'a güncellendi (commit `f3a579e`, push edilmedi)
 
 Kullanıcı `/home/bugra/Documents/memo-web/`'i (Memo'nun tanıtım sitesi,

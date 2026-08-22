@@ -28,5 +28,5 @@ Download `Memo-Setup-v$VERSION.exe` and run the installer. The setup wizard will
 - **Storage**: 500MB + model files (GGUF files are 2-15GB)
 
 ## Links
-- [GitHub](https://github.com/bugrakaptan/memo)
+- [GitHub](https://github.com/BugraAkdemir/memo)
 - [Documentation](docs/)

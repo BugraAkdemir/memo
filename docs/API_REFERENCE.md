@@ -5,10 +5,12 @@ Memo Backend runs a REST API on `localhost:8090` (default). Every `/api/*` route
 ## Authentication
 Local (`localhost`) connections are open, no token required. **Remote access (LAN, ngrok, or Tailscale) requires the access token** shown in Settings on every request — this was previously optional and is now enforced (v3.3.3 security fix). The mobile app already sends it; a custom tool talking to the remote API directly needs to add it too.
 
+For a self-hosted server, this token model sits alongside a full **account system**: `token`, `password`, `token+password`, or (opt-in, loudly warned about) `none` auth mode, selectable per-server. A server can host more than one account — an admin plus any number of user accounts — each with its own password and its own set of seven granular permissions (Models, Memory, Agent, Calendar, WhatsApp, Telegram, Routines). Permission checks are enforced per-request: `requirePermission` (GET/HEAD-exempt) or `requirePermissionStrict` (no exemption, used for Memory) wrap the relevant handlers below. See the **Accounts & Permissions** section and [Self-Hosting](SELF_HOSTED.md).
+
 ## Developer API Gateway (Anthropic-compatible)
 `POST /v1/messages` implements the server side of Anthropic's Messages API wire format (`internal/anthropicapi/`), so tools that only know how to talk to Anthropic — most notably **Claude Code** via `ANTHROPIC_BASE_URL` — can point at Memo instead. Model selection uses a `type/model-id` format (`local/qwen2.5`, `openai/gpt-4o`, ...). See Sidebar → Developer for the base URL/token/live request log.
 
-This list below is not exhaustive — there are ~118 registered endpoints as of v3.3.4. It groups the major ones by area; see `internal/webserver/server.go`'s `route(...)` calls for the full, current list.
+This list below is not exhaustive — there are 180+ registered endpoints as of v3.9.0. It groups the major ones by area; see `internal/webserver/server.go`'s `route(...)` calls for the full, current list.
 
 ## Endpoints
 
@@ -57,6 +59,21 @@ This list below is not exhaustive — there are ~118 registered endpoints as of 
 | `POST` | `/api/providers/test` | Test provider connection |
 | `GET` | `/api/providers/active` | Get active provider type |
 | `PUT` | `/api/providers/active` | Set active provider |
+| `GET` | `/api/providers/effort-levels` | Reasoning-effort levels for the active model, if supported |
+| `POST` | `/api/openrouter/connect` | OAuth connect flow for OpenRouter |
+| `GET` | `/api/kilo/models` | Live model list from Kilo Code (app.kilo.ai), free models flagged |
+| `GET` | `/api/opencode-zen/models` | Live model list from OpenCode Zen, free models flagged (`-free` id suffix) |
+
+### 👤 Accounts & Permissions (self-hosted)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/setup/status` | Whether a self-hosted server has an admin account yet |
+| `POST` | `/api/setup/create-admin` | First-run: create the admin account |
+| `POST` | `/api/setup/create-device` | Pair a new device/token under an account |
+| `GET`/`POST` | `/api/accounts` | List accounts / create a new account |
+| `GET`/`PUT`/`DELETE` | `/api/accounts/{id}` | Get/update/delete one account |
+| `PUT` | `/api/accounts/{id}/password` | Change an account's password |
+| `GET`/`PUT` | `/api/accounts/{id}/permissions` | Get/update an account's 7 granular permissions |
 
 ### 🤖 Agent Mode
 | Method | Endpoint | Description |
@@ -66,6 +83,31 @@ This list below is not exhaustive — there are ~118 registered endpoints as of 
 | `POST` | `/api/agent/permission` | Respond to a permission request |
 | `GET` | `/api/agent/permissions` | List permanent permissions |
 | `DELETE` | `/api/agent/permissions` | Revoke (with `?id=`) or clear all permissions |
+
+### 💚 WhatsApp
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/whatsapp/status` | Pairing/connection status |
+| `POST` | `/api/whatsapp/start` | Start the client, generate a QR pairing code |
+| `POST` | `/api/whatsapp/stop` | Stop the client |
+| `POST` | `/api/whatsapp/logout` | Log out and clear the paired session |
+| `POST` | `/api/whatsapp/send` | Send a message |
+| `GET` | `/api/whatsapp/search` | Search WhatsApp message history |
+| `GET` | `/api/whatsapp/chats` | List recent chats |
+| `GET` | `/api/whatsapp/messages` | Get messages for a chat |
+| `GET` | `/api/whatsapp/avatar` | Fetch a contact's avatar |
+| `GET` | `/api/whatsapp/stats` | Message/contact counters |
+| `PUT` | `/api/whatsapp/chat-mode` | Configure the dedicated WhatsApp-only chat executor |
+| `POST` | `/api/whatsapp/chat-stream` | SSE stream for the WhatsApp-only chat mode |
+| `POST` | `/api/whatsapp/self-chat-assistant` | Enable/configure the self-chat assistant (message your own number, get a full Memo assistant back) |
+
+### ✈️ Telegram
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/telegram/status` | Bot connection/owner-link status |
+| `POST` | `/api/telegram/connect` | Connect with a bot token, start long-polling |
+| `POST` | `/api/telegram/stop` | Stop the client without clearing the token |
+| `POST` | `/api/telegram/disconnect` | Disconnect and clear the stored token/owner link |
 
 ### 🎵 Orchestra Mode
 | Method | Endpoint | Description |
@@ -138,6 +180,14 @@ This list below is not exhaustive — there are ~118 registered endpoints as of 
 | `GET` | `/api/cli/commands` | The CLI's own `/` commands (project/personal/skill/built-in) |
 | `GET`/`PUT` | `/api/chats/cli-provider`, `/api/chats/cli-workdir`, `/api/chats/cli-model` | Per-chat CLI provider/working-dir/model |
 | `POST` | `/api/send/cli-stream` | Send a message to a CLI-provider chat (SSE) |
+
+### 🛠️ Developer API Gateway
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET`/`PUT` | `/api/dev-gateway/config` | Get/update the Anthropic-compatible gateway's config (API key requirement, memory integration) |
+| `GET` | `/api/dev-gateway/models` | List `type/model-id` selectable models across local + configured providers |
+| `GET` | `/api/dev-gateway/logs` | Live request log |
+| `GET` | `/api/dev-gateway/claude-code-cli` | Claude Code CLI connection helper/status |
 
 ### 🗂️ Skills
 | Method | Endpoint | Description |

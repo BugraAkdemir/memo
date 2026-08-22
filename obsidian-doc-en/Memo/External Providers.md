@@ -60,9 +60,9 @@ type Provider interface {
 
 ---
 
-## Supported Providers (13 registered `ProviderType` values)
+## Supported Providers (14 registered `ProviderType` values)
 
-7 detailed below (OpenAI, Gemini, Claude, Grok, Groq, OpenRouter, Ollama), plus: **Custom** (any OpenAI-compatible endpoint — LM Studio, vLLM, etc., wraps `openAIProvider`), **OpenCode Zen** and **OpenCode Go** (v3.3.3 — OpenCode's two gateways; like OpenRouter, pick a model from the live list instead of typing one by hand — Zen is pay-as-you-go with some free models, Go is subscription-based), the two CLI-based providers (#8-9 below, v3.3.4), and `llama.cpp` — an enum placeholder only, **not actually implemented** as a provider (see the note below).
+7 detailed below (OpenAI, Gemini, Claude, Grok, Groq, OpenRouter, Ollama), plus: **Custom** (any OpenAI-compatible endpoint — LM Studio, vLLM, etc., wraps `openAIProvider`), **OpenCode Zen**, **OpenCode Go**, and **Kilo Code** (app.kilo.ai, added v3.9.0 — three live-model-list gateways; Zen and Kilo are pay-as-you-go with some free models sorted to the top and marked with a green checkmark, Go is subscription-based), the two CLI-based providers (#8-9 below, v3.3.4), and `llama.cpp` — an enum placeholder only, **not actually implemented** as a provider (see the note below).
 
 ### 1. OpenAI (`openai.go`, 353 lines)
 - **Compatible APIs:** OpenAI, any OpenAI-compatible endpoint
@@ -211,16 +211,11 @@ Provider configs are stored in `data/providers.json`. API keys are encrypted wit
 
 ```go
 func defaultConfigs() []ProviderConfig {
-    // Returns 7 disabled configs with sensible defaults:
-    // - openai:    gpt-4o
-    // - gemini:    gemini-2.0-flash
-    // - grok:      grok-2
-    // - groq:      mixtral-8x7b-32768
-    // - claude:    claude-sonnet-4-20250514
-    // - openrouter: openai/gpt-4o
-    // - ollama:    llama3
+    return []ProviderConfig{}
 }
 ```
+
+Used to return 7 disabled placeholder configs (one per built-in provider type) so a fresh install's Providers tab showed every known provider as "Disabled" before the user added anything. Changed in the v3.9.0 UI-fix round: that made the tab cluttered with providers the user would never use, so it now returns empty — only providers the user actually adds appear. A non-destructive frontend filter hides any leftover placeholder rows already on disk for installs from before this change.
 
 ---
 
@@ -284,7 +279,7 @@ If no provider is configured and no local model is running, an error is returned
 |-------|--------|
 | **No llama.cpp provider** | Local engine handled separately, not through provider interface |
 | **Priority field unused** | `Priority` field exists in config but router ignores it |
-| **No test files** | Zero tests in `internal/provider/` |
+| **~~No test files~~ (fixed)** | `config_test.go` and `factory_test.go` now cover config storage and provider construction — was accurate through v3.8.x, no longer true as of v3.9.0 |
 | **Orchestra bypasses router** | Orchestra creates providers directly, no fallback chain |
 | **Machine-bound encryption** | `providers.json` not portable across machines |
 | **CLI job cancellation is partial** | `App.streamMu`'s global "one stream at a time" protection doesn't apply to CLI jobs — a separate `cliJobs` lock prevents two messages racing into the same chat, but there's deliberately no cross-chat blocking |

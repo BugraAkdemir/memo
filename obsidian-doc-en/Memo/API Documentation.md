@@ -44,6 +44,44 @@ The Memo Backend provides a comprehensive REST API for the Flutter Frontend or t
 | `GET`/`PUT`/`DELETE` | `/api/providers` | List/update/delete provider configs |
 | `POST` | `/api/providers/test` | Test provider connection |
 | `GET`/`PUT` | `/api/providers/active` | Get/set active provider |
+| `GET` | `/api/kilo/models` | Live model list from Kilo Code, free models flagged (v3.9.0) |
+| `GET` | `/api/opencode-zen/models` | Live model list from OpenCode Zen, free models flagged by `-free` id suffix (v3.9.0) |
+
+### Accounts & Permissions (self-hosted, v3.5.5 + v3.9.0)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/setup/status` | Whether a self-hosted server has an admin account yet |
+| `POST` | `/api/setup/create-admin` | First-run: create the admin account |
+| `POST` | `/api/setup/create-device` | Pair a new device/token under an account |
+| `GET`/`POST` | `/api/accounts` | List accounts / create a new account |
+| `GET`/`PUT`/`DELETE` | `/api/accounts/{id}` | Get/update/delete one account |
+| `PUT` | `/api/accounts/{id}/password` | Change an account's password |
+| `GET`/`PUT` | `/api/accounts/{id}/permissions` | Get/update an account's 7 granular permissions (Faz 5.1.1) |
+
+Details: [[Remote Access & Self-Hosting]]
+
+### WhatsApp
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/whatsapp/status` | Pairing/connection status |
+| `POST` | `/api/whatsapp/start` / `/api/whatsapp/stop` / `/api/whatsapp/logout` | Client lifecycle |
+| `POST` | `/api/whatsapp/send` | Send a message |
+| `GET` | `/api/whatsapp/search` / `/api/whatsapp/chats` / `/api/whatsapp/messages` | Search/browse message history |
+| `GET` | `/api/whatsapp/avatar` / `/api/whatsapp/stats` | Contact avatar / counters |
+| `PUT` | `/api/whatsapp/chat-mode` | Configure the dedicated WhatsApp-only chat executor |
+| `POST` | `/api/whatsapp/chat-stream` | SSE stream for the WhatsApp-only chat mode |
+| `POST` | `/api/whatsapp/self-chat-assistant` | Enable/configure the self-chat assistant (v3.9.0) |
+
+Details: [[WhatsApp Integration]]
+
+### Telegram (v3.9.0)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/telegram/status` | Bot connection/owner-link status |
+| `POST` | `/api/telegram/connect` | Connect with a bot token, start long-polling |
+| `POST` | `/api/telegram/stop` / `/api/telegram/disconnect` | Stop, or stop and clear the stored token/owner link |
+
+Details: [[Telegram Integration]]
 
 ### Agent Mode (NEW)
 | Method | Endpoint | Description |
@@ -122,6 +160,8 @@ Details: [[Features Catalog]]
 | `GET` | `/api/dev-gateway/models` | Lists every available `"type/model-id"` |
 | `GET` | `/api/dev-gateway/logs` | Live request/response log (Developer screen, 200 entries, not persisted) |
 | `POST` | `/v1/messages` | Anthropic Messages API-compatible endpoint — deliberately NOT under `/api/`, matching the real Anthropic path exactly so Claude Code's `ANTHROPIC_BASE_URL` can point straight at Memo |
+| `POST` | `/v1/chat/completions` | OpenAI-compatible endpoint (v3.9.0) — same auth/routing/memory/system-prompt pipeline as `/v1/messages`, for tools that only support an OpenAI-shaped base URL |
+| `GET` | `/v1/models` | OpenAI-compatible model list (v3.9.0) |
 
 Details: [[Developer API Gateway]]
 

@@ -154,15 +154,17 @@ Her araç çağrısı önce sorar. **Bir kereliğine, oturum boyunca ya da kalı
 
 ---
 
-### 📱 Derin WhatsApp Entegrasyonu
+### 📱 Derin WhatsApp ve Telegram Entegrasyonu
 
 <table>
 <tr>
 <td width="58%">
 
-QR kod ile bağlan — WhatsApp Web ile aynı protokol, **Business API ücreti yok.** Mesajları oku, ara ve yanıtla — hepsi Memo'nun bronz temasına uyan arayüzünde.
+QR kod ile bağlan — WhatsApp Web ile aynı protokol, **Business API ücreti yok.** Mesajları oku, ara ve yanıtla — hepsi Memo'nun bronz temasına uyan arayüzünde. İstersen bir Telegram bot token'ı ile de bağlanabilirsin — aynı yetenek, farklı uygulama.
 
 Ajan mesaj gönderebilir ve kişileri isimle çözer — sadece *"Berra'ya mesaj at"* de, JID gerekmez. Ve her WhatsApp konuşması, normal sohbetle aynı hafıza, gözlemci ve takvim hatlarını besler.
+
+**Kendine mesaj at, Memo cevap versin.** Kendi WhatsApp numarana (ya da Telegram bot'una) yaz ve tam bir asistan al — sohbet, hafıza, agent araçları — uygulamayı açmana bile gerek kalmadan. Düz dille iste, o da konuşmadan doğrudan bir **rutin** oluştursun, listelesin ya da iptal etsin.
 
 </td>
 <td align="center" width="42%">

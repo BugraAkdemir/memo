@@ -49,8 +49,9 @@ Complete feature-by-feature listing of Memo. Full detail: `docs/FEATURES.md`.
 | Groq | ✅ | API key |
 | Ollama | ✅ | URL |
 | Custom (OpenAI-compatible) | ✅ | Base URL |
-| OpenCode Zen | ✅ (v3.3.3) | API key — pay-as-you-go, some models free |
+| OpenCode Zen | ✅ (v3.3.3) | API key — pay-as-you-go, some models free; free-sorted model browser (v3.9.0) |
 | OpenCode Go | ✅ (v3.3.3) | API key — subscription-based |
+| Kilo Code | ✅ (v3.9.0) | API key — app.kilo.ai, pay-as-you-go, some models free, live model browser with free models sorted to the top |
 | Claude Code (CLI) | ✅ Beta (v3.3.4) | Shells out to the locally installed `claude` CLI, per-chat, real background job |
 | Codex (CLI) | ✅ Beta (v3.3.4) | Shells out to the locally installed `codex` CLI, per-chat, real background job |
 
@@ -79,7 +80,8 @@ Plain-language guide: [[Memo Swarm]].
 
 | Feature | Status |
 |---------|--------|
-| 19 built-in tools (file/edit/command/search/calendar/WhatsApp/web-search/provider-config/self-clone) | ✅ |
+| 22 built-in tools (file/edit/command/search/calendar/routines/WhatsApp/web-search/provider-config/self-clone) | ✅ |
+| `create_routine`/`list_routines`/`cancel_routine` | ✅ (v3.9.0) — usable from normal chat or the WhatsApp/Telegram self-chat assistant |
 | Skill tools actually executable | ✅ (v3.3.3) — a skill's `SKILL.md` `command:` field now runs through the same tool pipeline and permission UI |
 | 3-tier danger level | ✅ |
 | 6 permission policies | ✅ |
@@ -112,6 +114,22 @@ See [[Agent Mode]] for the full tool list.
 | Whitelist file transfer | ✅ |
 | 4 agent tools | ✅ |
 | Local SQLite storage | ✅ |
+| Self-chat assistant (message yourself, get a full assistant back) | ✅ (v3.9.0) |
+| Routines via chat (`create_routine`/`list_routines`/`cancel_routine`) | ✅ (v3.9.0) |
+| `/auto-perm` slash command | ✅ (v3.9.0) |
+
+## ✈️ Telegram Integration (v3.9.0)
+
+| Feature | Status |
+|---------|--------|
+| Bot token pairing (@BotFather) | ✅ |
+| Owner lock (first sender becomes permanent owner) | ✅ |
+| Self-chat assistant | ✅ |
+| Routines via chat | ✅ |
+| Local SQLite storage, isolated from WhatsApp's | ✅ |
+| `telegram_send` agent tool | ❌ — no equivalent to WhatsApp's send/search/latest/messages tools yet |
+
+See [[Telegram Integration]].
 
 ## 🔐 Remote Access & Backup
 
@@ -120,6 +138,8 @@ See [[Agent Mode]] for the full tool list.
 | ngrok tunnel | ✅ |
 | Tailscale tunnel | ✅ — graduated out of Beta (v3.3.4): one-click login (no auth key needed), Funnel on by default, auto-reconnect |
 | Token auth (`X-Memo-Token`) — now required on remote access | ✅ (v3.3.3 security fix) |
+| Multi-account, admin/user roles | ✅ (v3.5.5, Faz 5.1) — Settings → Accounts or `memo remote add-account` |
+| Granular per-account permissions (7 checkboxes) | ✅ (v3.9.0, Faz 5.1.1) — enforced server-side, not just hidden in the UI |
 | `.memo` export/import — now actually complete | ✅ (v3.3.3) — calendar, habits, routines, task lists, agent permissions, skills, and `machine.key` are all included; see [[Backup & Restore]] |
 | Full wipe (Delete All Data, fixed on Windows) | ✅ (v3.3.4 fix) |
 | Google Drive E2E sync | ✅ |

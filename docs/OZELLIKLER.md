@@ -47,6 +47,8 @@ Memo sadece bir sohbet aracı değil, bir "İkinci Beyin"dir.
 - **Yerel Ağ Köprüsü**: Ayarlardan "Uzaktan Erişim"i etkinleştirerek, aynı Wi-Fi üzerindeki diğer cihazlardan (telefon, tablet vb.) yerel Memo'nuzla sohbet edebilirsiniz.
 - **Tailscale artık Beta değil**: Tek tıkla giriş (auth key yapıştırmaya gerek yok), Funnel varsayılan açık, kopan bağlantıdan sonra otomatik yeniden bağlanma — Settings → Remote Access'te doğrudan, masaüstü ve mobilde.
 - **Token zorunlu**: LAN/ngrok/Tailscale üzerinden yapılan her uzak istek artık Settings'te gösterilen erişim token'ını gerektiriyor — önceden isteğe bağlıydı, bu da aynı ağdaki herkesin API anahtarlarını okuyabilmesi gibi gerçek bir açıktı. Sadece yerel kullanım (varsayılan) etkilenmiyor.
+- **Çoklu Hesap, Admin/Kullanıcı Rolleri**: Paylaşımlı bir self-hosted sunucu artık birden fazla girişi barındırabiliyor — bir admin ve istediğin kadar kullanıcı hesabı, her biri kendi şifresiyle. Settings → Accounts'tan veya SSH üzerinden `memo remote list-accounts`/`add-account`/`delete-account` ile yönetilir.
+- **Hesap Bazlı Ayrıntılı İzinler**: Her hesap için 7 bağımsız izin anahtarı (Models, Memory, Agent, Calendar, WhatsApp, Telegram, Routines) — bir admin, mesela bir kullanıcının sohbet edip Agent araçlarını kullanmasına izin verirken Model Store/API Providers sekmelerini gizleyip hafıza yazmasını tamamen engelleyebilir. Sadece arayüzde gizlemekle kalmaz, backend'de de zorlanır; Settings → Accounts'ta checkbox arayüzü var.
 
 ---
 
@@ -102,13 +104,34 @@ Memo sadece bir sohbet aracı değil, bir "İkinci Beyin"dir.
 
 - Herhangi bir sohbette `@` yazmak dosya adına göre arayıp referans gösterebileceğin bir liste açar — agent modunu tam yol yazmadan belirli bir dosyaya yönlendirmek için kullanışlı.
 
+### WhatsApp Entegrasyonu
+
+- **QR ile Eşleştirme**: Uygulama içinde gösterilen QR kod ile tam WhatsApp Web çoklu cihaz eşleştirmesi.
+- **Çift Yönlü Mesajlaşma**: Kişi bilgisiyle birlikte mesaj gönderme ve alma.
+- **Kişi Çözümleme**: Rehber senkronizasyonu, push name, yoksa telefon numarasına düşer.
+- **Whitelist Dosya Transferi**: Güvenilir kişiler whitelist'teki dizinlerden dosya isteyebilir.
+- **Agent Araçları**: `SendWhatsApp`, `SearchWhatsApp`, `LatestWhatsAppChats`, `GetWhatsAppMessages`.
+- **Ayrı Sohbet Modu**: WhatsApp'a özel izole executor ve tool registry.
+- **Kendine-Sohbet Asistanı**: QR girişinde eşleştirdiğin kendi WhatsApp numarana mesaj at, Memo tam bir asistan olarak yanıtlasın — sohbet, hafıza ve agent araçları hepsi Memo'yu açmadan telefonundaki WhatsApp'tan erişilebilir.
+- **Sohbetten Rutin Oluşturma**: Düz dille iste ("her sabah 8'de bana hava durumunu hatırlat") ve Memo, uygulama içindeki aynı `create_routine`/`list_routines`/`cancel_routine` agent araçlarını kullanarak sohbetten doğrudan bir rutin oluşturur, listeler ya da iptal eder.
+- **`/auto-perm`**: Kendine-sohbette araç çağrısı izin sorularını o konuşma için otomatik-izinli hale getiren bir slash komutu — sohbetten tetiklenen rutin/agent eylemleri, gelmeyecek bir masaüstü tıklamasını beklemek zorunda kalmasın diye.
+- **Yerel Depolama**: Tüm WhatsApp mesajları izole bir SQLite veritabanında saklanır.
+
+### Telegram Entegrasyonu
+
+- **Bot Eşleştirme**: Settings → Telegram'da bir Telegram bot token'ı (@BotFather'dan) bağla; Memo yapılandırıldıktan sonra Bot API'yi long-polling ile dinlemeye başlar.
+- **Sahip Kilidi**: Bir bot'un kullanıcı adını bulan herkes ona mesaj atabildiği için, Memo ilk mesaj atan kişiyi bot'un kalıcı sahibi olarak kilitler ve sonrasında herkesi sessizce yok sayar — bu entegrasyonun tüm erişim kontrolü bu kilide dayanır.
+- **Asistan Sohbeti**: Bağlandıktan sonra sahip, WhatsApp kendine-sohbet ile aynı yeteneklere sahip tam bir asistan alır — sohbet, hafıza, agent araçları — bu sefer Telegram üzerinden.
+- **Sohbetten Rutin Oluşturma**: Aynı `create_routine`/`list_routines`/`cancel_routine` araç akışı Telegram konuşmasından da çalışır.
+- **Yerel Depolama**: Telegram mesajları, WhatsApp'tan bağımsız kendi izole SQLite veritabanında saklanır.
+
 ---
 
 ## 5. 🔌 Harici Sağlayıcı Desteği (External Providers)
 
 ### Çoklu Sağlayıcı Mimarisi
 Memo, yerel modellerin yanında harici LLM API'lerine de bağlanır:
-- **Desteklenen Sağlayıcılar:** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, artı **OpenCode Zen** (kullandıkça öde, bazı modeller ücretsiz) ve **OpenCode Go** (abonelik) — ikisi de gerçek, canlı model listesinden seçim yaptırır.
+- **Desteklenen Sağlayıcılar:** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, artı **OpenCode Zen** (kullandıkça öde, bazı modeller ücretsiz), **OpenCode Go** (abonelik) ve **Kilo Code** (app.kilo.ai — kullandıkça öde, bazı modeller ücretsiz) — üçü de gerçek, canlı model listesinden seçim yaptırır; ücretsiz modeller en üste sıralanır ve yeşil onay işaretiyle gösterilir.
 - **Sohbet Sağlayıcısı Olarak Claude Code / Codex CLI (beta):** API çağrısı yerine Memo, kurulu `claude`/`codex` CLI'ını arka planda çalıştırır. Sohbet-bazlı (uygulama geneli değil), sabit zaman aşımı olmadan gerçek bir arka plan görevi olarak çalışır, CLI'ın kendi `/` komutları Memo'nun komut penceresinde görünür. Hafıza/kimlik bağlamı gönderilmez — CLI kendi oturumunu kendi yönetir.
 - **Sağlayıcı Arayüzü:** Ortak `Provider` interface ile `ChatCompletion`, `ChatCompletionStream`, `ListModels`
 - **Fallback Zinciri:** Router sağlayıcıları sırayla dener; 3 başarısızlıkta auto-disable; iyileşince health check ile tekrar aktifleştirme
@@ -129,7 +152,7 @@ Memo, yerel modellerin yanında harici LLM API'lerine de bağlanır:
 
 ### Araç Çalıştırma Motoru
 Memo, bilgisayarınızda işlem yapabilen bir AI ajanı olarak çalışır:
-- **19 Yerleşik Araç:** dosya G/Ç (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`), `run_command`, `read_env`, `web_search`, `self_clone`, `configure_provider`, `get_calendar_events`, WhatsApp (`whatsapp_send`/`search`/`latest`/`messages`)
+- **22 Yerleşik Araç:** dosya G/Ç (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`), `run_command`, `read_env`, `web_search`, `self_clone`, `configure_provider`, `get_calendar_events`, rutinler (`create_routine`, `list_routines`, `cancel_routine`), WhatsApp (`whatsapp_send`/`search`/`latest`/`messages`)
 - **Skill tool'ları artık gerçekten çalışıyor.** Bir skill'in `SKILL.md`'sinde tanımlanan `command:` alanı, yerleşik araçlarla aynı tool pipeline'ına ve izin-sorma arayüzüne bağlanıyor — önceden sadece deklaratifti, hiçbir şey çalıştırmıyordu.
 - **Araç Kaydı:** JSON Schema parametre tanımlarıyla thread-safe kayıt sistemi
 - **Tehlike Seviyesi:** `safe` (otomatik izin), `medium` (kullanıcıya sor), `dangerous` (kullanıcıya sor + 2sn gecikme)
@@ -209,6 +232,8 @@ Birden çok AI modeli bir ekip olarak çalışır:
 ### Rutinler (Zamanlanmış Otomasyonlar)
 
 - Ne istediğini ve ne sıklıkla istediğini düz dille anlat; Memo bunu arka planda zamanında tetiklenen, basit bir prompt ya da tam bir agent görevi olabilen bir rutine çevirir.
+- **Sadece Rutinler sekmesinden değil, sohbetten de oluştur**: normal bir sohbette ya da WhatsApp/Telegram kendine-sohbet asistanında düz dille bir rutin iste — `create_routine`/`list_routines`/`cancel_routine` agent araçları hallediyor, ayrı Rutinler ekranını açmana gerek yok.
+- Bir rutin tetiklendiğinde nasıl oluşturulduğundan bağımsız olarak her zaman tam agent + web-arama araç erişimine sahiptir — eski bir hata bu erişimi oluşturma anındaki tek seferlik bir sınıflandırmaya bağlıyordu, bu yüzden zamanla sessizce "kapanabiliyordu"; artık koşulsuz.
 - **Masaüstü ve mobilde** çalışır — mobil, uygulama açık olmasa bile gelen gerçek, önceden zamanlanmış yerel bildirimler kullanır.
 - **Kendi cihazının saat diliminde** tetiklenir (oluşturulduğunda yakalanır, her yeniden bağlanmada güncellenir) — seyahat/DST değişikliği kendini düzeltir.
 

@@ -75,9 +75,22 @@ Since there's no desktop app installed on the server, whenever you need to chang
 memo remote status                    # who can access it right now, which mode is active?
 memo remote add-device "My Phone"     # generate a code for a new device
 memo service status                   # is the background service running?
+memo remote add-account "friend"      # give someone else their own login (see below)
 ```
 
 You'll rarely need these — everything already works once setup finishes. They're only there for later, if you want to add a new device or cut off one that's been lost.
+
+### Sharing the server with someone else
+
+If you're on `password` or `token+password` mode, your server can host more than one login — you as the admin, plus separate accounts for anyone else you want to give access to. Each account gets its own password and its own set of switches for what it's allowed to touch: chat/models, memory, agent tools, calendar, WhatsApp, Telegram, routines. Grant only what makes sense — a roommate might get chat + agent but not memory or your WhatsApp.
+
+```bash
+memo remote add-account "friend" --role user --perm models,agent
+memo remote list-accounts
+memo remote delete-account <id>
+```
+
+This is shared access to one server, not separate private data — everyone with an account is still talking to the same memory and chat history underneath, just with different permission gates.
 
 There's also a simple backup web page for emergencies — if your desktop app somehow won't open but you have internet access, typing the server's address into a browser (`http://server-address:8090`) gives you a basic chat interface and status view.
 

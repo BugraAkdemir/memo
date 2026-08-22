@@ -35,8 +35,9 @@ Memo'nun özellik-özellik tam listesi. Tam detay: `docs/tr/FEATURES.md`.
 | OpenRouter | ✅ | API anahtarı |
 | Groq | ✅ | API anahtarı |
 | Ollama | ✅ | URL |
-| OpenCode Zen (v3.3.3) | ✅ | API anahtarı — pay-as-you-go, bazı modeller ücretsiz |
+| OpenCode Zen (v3.3.3) | ✅ | API anahtarı — pay-as-you-go, bazı modeller ücretsiz; ücretsiz-sıralı model tarayıcı (v3.9.0) |
 | OpenCode Go (v3.3.3) | ✅ | API anahtarı — abonelik tabanlı |
+| Kilo Code (v3.9.0) | ✅ | API anahtarı — app.kilo.ai, pay-as-you-go, bazı modeller ücretsiz, ücretsiz modeller en üstte canlı model tarayıcı |
 | Claude Code CLI (Beta, v3.3.4) | ✅ | Yok — kurulu `claude` CLI'ını subprocess olarak çalıştırır |
 | Codex CLI (Beta, v3.3.4) | ✅ | Yok — kurulu `codex` CLI'ını subprocess olarak çalıştırır |
 
@@ -115,14 +116,15 @@ Sade dil + kurulum: [[Memo Swarm]].
 
 | Özellik                       | Durum      |
 | ----------------------------- | ---------- |
-| 8 yerleşik araç               | ✅          |
+| 22 yerleşik araç              | ✅          |
+| `create_routine`/`list_routines`/`cancel_routine` | ✅ (v3.9.0) — normal sohbetten ya da WhatsApp/Telegram kendine-sohbet asistanından kullanılabilir |
 | 3 seviyeli tehlike            | ✅          |
 | 6 izin politikası             | ✅          |
 | Yürütme sandbox'ı             | ✅          |
 | Hız sınırlaması (30 çağrı/dk) | ✅          |
 | Komut kara listesi (23 desen) | ✅          |
 | Denetim izi (1000 kayıt)      | ✅          |
-| Ajan frontend UI              | ❌ (v3.2.0) |
+| Ajan frontend UI (izin dialog'u, sohbet üst çubuğunda toggle) | ✅ |
 
 ## 🎵 Orkestra Modu (Multi-Model)
 
@@ -145,6 +147,22 @@ Sade dil + kurulum: [[Memo Swarm]].
 | Beyaz liste dosya transferi | ✅ |
 | 4 agent aracı | ✅ |
 | Yerel SQLite depolama | ✅ |
+| Kendine-sohbet asistanı (kendine yaz, tam asistan al) | ✅ (v3.9.0) |
+| Sohbetten rutin oluşturma (`create_routine`/`list_routines`/`cancel_routine`) | ✅ (v3.9.0) |
+| `/auto-perm` slash komutu | ✅ (v3.9.0) |
+
+## ✈️ Telegram Entegrasyonu (v3.9.0)
+
+| Özellik | Durum |
+|---------|-------|
+| Bot token eşleştirme (@BotFather) | ✅ |
+| Sahip kilidi (ilk mesajı atan kalıcı sahip olur) | ✅ |
+| Kendine-sohbet asistanı | ✅ |
+| Sohbetten rutin oluşturma | ✅ |
+| Yerel SQLite depolama, WhatsApp'tan izole | ✅ |
+| `telegram_send` agent aracı | ❌ — WhatsApp'ın send/search/latest/messages araçlarının eşdeğeri henüz yok |
+
+Detay: [[Telegram Entegrasyonu]]
 
 ## 🔐 Uzaktan Erişim ve Yedekleme
 
@@ -153,6 +171,8 @@ Sade dil + kurulum: [[Memo Swarm]].
 | ngrok tüneli | ✅ |
 | Tailscale tüneli | ✅ (v3.3.4: artık Beta değil — tek tıkla giriş, Funnel varsayılan açık, otomatik yeniden bağlanma) |
 | Token kimlik doğrulama (zorunlu) | ✅ (v3.3.3 güvenlik düzeltmesi — önceden token olmadan da erişilebiliyordu) |
+| Çoklu hesap, admin/kullanıcı rolleri | ✅ (v3.5.5, Faz 5.1) — Settings → Accounts ya da `memo remote add-account` |
+| Hesap bazlı ayrıntılı izinler (7 checkbox) | ✅ (v3.9.0, Faz 5.1.1) — backend'de zorlanır, sadece arayüzde gizlenmez |
 | `.memo` dışa/içe aktarma (eksiksiz) | ✅ (v3.3.3: takvim/rutin/görev/izin/skill + `machine.key` artık dahil) |
 | Tam silme (wipe) | ✅ (v3.3.4: Windows'ta dosya kilidi nedeniyle başarısız olma sorunu düzeltildi) |
 | Google Drive E2E senkronizasyon | ✅ |

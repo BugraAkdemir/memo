@@ -1,12 +1,12 @@
-# Memo v3.3.3 (+ v3.3.4 geliştirme aşamasında)
+# Memo v3.5.5 (+ v3.9.0 geliştirme aşamasında)
 
 **Alışkanlıklarını öğrenen ve sen sormadan harekete geçen yapay zeka asistanı.**
 
 Yerel-öncelikli · Gizlilik-öncelikli · Sıfır bulut bağımlısı · Tamamen çevrimdışı
 
-> **v3.3.3** (23 Temmuz 2026, açık beta — en son yayınlanan sürüm) **Routines** (zamanlanmış otomasyonlar, masaüstü+mobil), Proaktif Öğrenme/ambient nudge'lar, Self-Insight (`/insight`), Memo'nun kendi kimliğini tanıması, Minimal Mod, terminal CLI güvenilirlik düzeltmeleri + tam görsel yeniden tasarım, [[Özellik Kataloğu|Kullanım İstatistikleri]] sekmesi, eksiksiz `.memo` yedekleme (`machine.key` dahil) ve Claude Code'u Memo'ya bağlayan [[Geliştirici API Ağ Geçidi]] (tam agentic araç çağırma desteğiyle), [[Memo Swarm]] (beta) dahil. Değişiklik günlüğü: `versinNote/tr/v3.3.3.md`.
+> **v3.5.5** (17 Ağustos 2026, açık beta — en son yayınlanan sürüm) self-hosting hikayesini tamamladı: 4 modlu tam bir auth sistemi (token/şifre/ikisi birden/hiçbiri), cihaz başına token, admin/kullanıcı rollü çoklu hesap desteği (Faz 5.1), eski el-yapımı HTML/JS istemcinin yerine geçen gerçek bir Flutter-web arayüzü, Docker/CasaOS imajları, sadece-sunucu kurulum script'leri — hepsi `memo config/remote/service` ile uçtan uca SSH üzerinden yönetilebiliyor. Değişiklik günlüğü: `versinNote/tr/v3.5.5.md`.
 >
-> **v3.3.4** (geliştirme aşamasında, henüz yayınlanmadı) — arka ucun tamamına panic recovery (bir arka plan işinin çökmesi artık tüm uygulamayı götürmüyor), (beta) **Sesli Mod / Live Mode** (eller serbest sesli sohbet, yerel Piper TTS), sohbet sağlayıcısı olarak (beta) **Claude Code CLI / Codex CLI**, **Uzaktan Erişim (Tailscale) artık Beta değil** (tek tıkla giriş), Settings'in aranabilir bir rafa dönüşmesi, hafıza açıkken yerel üretim hızının 4-5 kat düşmesi sorununun düzeltilmesi, ve bir dizi gerçek bug düzeltmesi. Değişiklik günlüğü (taslak): `versinNote/tr/v3.3.4.md`.
+> **v3.9.0** (geliştirme aşamasında, henüz tag açılmadı) — bu sürümün ana teması "sadece var olmak değil, gerçekten doğru olmak": web araması artık her mesajda ham metni enjekte etmek yerine gerçek tool-calling ile mesaj bazında karar veriyor; reasoning-effort kontrolü statik, bazen yanlış vendor tablolarından canlı model-bazlı yetenek keşfine geçti; gerçek bir self-hosted kurulumun güvenlik incelemesinde bir tünelin dış trafiği loopback'e yönlendirmesinden kaynaklanan gerçek bir auth bypass bulunup kapatıldı, artı önceden açık üç High-severity sorun. Ayrıca yeni: **WhatsApp ve Telegram kendine-sohbet asistanları** (kendine yaz, Memo cevap versin — sohbetten doğrudan rutin oluşturma dahil), self-hosted çoklu hesaplar için **hesap bazlı ayrıntılı izinler** (Faz 5.1.1), ücretsiz/ücretli model tarayıcılı **Kilo Code** provider'ı, sistem tepsisi ikonu, Dream'in kendi zamanlaması, İstatistikler'de token harcaması dökümü, ve yeniden tasarlanmış mobil navigasyon. Değişiklik günlüğü (taslak): `versinNote/tr/v3.9.0.md`.
 
 ---
 
@@ -42,37 +42,33 @@ Bu büyük bir sürüm — proje başladığından beri en büyük güncelleme. 
 - **Yapılandırılmış loglama** — `logx` slog wrapper
 - **settings_dialog bölünmesi** — 5013 → 15 dosya
 
-## v3.3.3 Öne Çıkanlar
+## v3.5.5 Öne Çıkanlar (en son yayınlanan)
 
-- **Routines (Rutinler)** — yan menü/mobil → Rutinler: "her sabah 8'de günü özetle" gibi doğal dilde zamanlanmış otomasyonlar; masaüstü + mobilde çalışır, cihaz saat dilimine göre tetiklenir
-- **Proaktif Öğrenme & ambient nudge'lar** — Memo artık kullanım örüntülerini fark edip kendiliğinden gündeme getirebiliyor (varsayılan açık, ince seviye); gerçek bir öneri banner'ı (Evet/Şimdi değil/Sorma) ile
-- **Self-Insight (`/insight`)** — Memo'ya kendi ruh hali/hafıza geçmişindeki gerçek örüntüleri sor
-- **Kendi kimliğini tanıma** — Memo artık kim tarafından, neden yapıldığını soranlara gerçek bir cevap veriyor
-- **Minimal Mod** — kişilik/ruh hali/web arama talimatlarını tamamen atlayan, parça parça açılabilir düşük-overhead mod
-- **CLI güvenilirlik düzeltmeleri + tam yeniden tasarım** — model indirme artık takılmıyor, çok satırlı yapıştırma düzgün çalışıyor, terminal artık bozuk kalmıyor
-- **CLI/masaüstü bağımsızlığı** — CLI'ı kapatmak artık masaüstü uygulamasının backend'ini götürmüyor
-- **Hafıza geri getirme düzeltmeleri** — anahtar kelime araması gerçekten aktif, çok konulu sorular artık eksik cevap dönmüyor
-- **İki yeni provider (OpenCode Zen/Go)**, **başka bir yapay zekadan hafıza içe aktarma**, **skill araçlarının gerçekten çalışması**
-- **[[Özellik Kataloğu|Kullanım İstatistikleri]]** — Ayarlar → İstatistikler: token/hız/model dağılımı grafiği
-- **Eksiksiz `.memo` yedekleme** — takvim, rutinler, izinler, skill'ler ve (en kritik) `machine.key` artık yedeğe dahil
-- **[[Geliştirici API Ağ Geçidi]]** — Claude Code'u (`ANTHROPIC_BASE_URL`) ya da OpenAI-uyumlu bir aracı Memo'ya bağla, tam agentic araç çağırma dahil
-- **[[Memo Swarm]] (Beta)** — tek PC'ye sığmayan modeli birkaç bilgisayarın gücünü birleştirerek çalıştır (yan menü → Swarm; Ayarlar → Beta Özellikler)
+- **Gerçek 4 modlu auth sistemi** — kimlik yok/sadece token/şifre/token+şifre, argon2id hashleme, brute-force kilitleme, cihaz başına token (hash'li saklanır, tek tek iptal edilebilir)
+- **Çoklu hesap desteği (Faz 5.1)** — self-hosted Memo için admin/kullanıcı rolleri, Settings → Accounts'tan yönetilir
+- **Gerçek bir web arayüzü** — headless/CasaOS/tarayıcı sayfası artık gerçek bir Flutter web derlemesi, el-yapımı HTML/JS istemci değil
+- **Docker/CasaOS imajı**, **sadece-sunucu kurulum script'leri** (`get-memo-server.sh`), tamamen SSH üzerinden `memo config/remote/service` ile yönetim
+- **Tam mobil-duyarlı geçiş** her ekranda
+- Düzeltildi: agent modu non-streaming sohbet isteklerinde sessizce görmezden geliniyordu, Task Loop başlangıçta hiçbir şey yapmıyordu, Orkestra'nın yardımcı çağrıları (başlıklar, rutin ayrıştırma) yanlış pipeline'dan geçiyordu
 
-Tam liste: `versinNote/tr/v3.3.3.md`
+Tam liste: `versinNote/tr/v3.5.5.md`
 
-## v3.3.4 Öne Çıkanlar (geliştirme aşamasında)
+## v3.9.0 Öne Çıkanlar (geliştirme aşamasında)
 
-- **Büyük kararlılık düzeltmesi** — arka ucun neredeyse tüm arka plan işleri (hafıza, routine, WhatsApp, bulut senk., STT, bildirimler, tüneller...) artık panic recovery ile korunuyor; bir işteki beklenmedik hata artık tüm Memo'yu çökertmiyor
-- **Hafıza açıkken yerel üretim hızının 4-5 kat düşmesi düzeltildi** — embedding sunucusu artık varsayılan CPU-only, hafıza context bütçesi 4096 token'a sabitlendi
-- **(Beta) Sesli Mod / Live Mode** — sohbet kutusunun yanındaki ikonla eller serbest, sesli sohbet; varsayılan yerel Piper TTS, opsiyonel harici OpenAI TTS
-- **(Beta) Sohbet sağlayıcısı olarak Claude Code CLI / Codex CLI** — kurulu `claude`/`codex` aracını sohbet içinden gerçek bir arka plan agent'ı olarak çalıştır
-- **Uzaktan Erişim (Tailscale) artık Beta değil** — tek tıkla giriş, Funnel varsayılan açık, otomatik yeniden bağlanma
-- **Settings aranabilir bir rafa dönüştü** — 20 düz sekme yerine üstte arama kutusu olan gruplanmış bir liste
-- Küçük context'li yerel modellerde agent modunun kısa mesajlarda başarısız olması düzeltildi (varsayılan yerel context 4096→8192)
-- Windows'ta "Tüm Verileri Sil" artık çalışıyor, Windows installer artık VC++ Redistributable'ı gömüyor
-- Sohbette `@` dosya bahsetme, terminal CLI'de yeni varsayılan görünüm (`/theme` ile değiştirilebilir) + Shift+Tab otomatik onay
+- **[[WhatsApp Entegrasyonu|WhatsApp]] ve [[Telegram Entegrasyonu|Telegram]] kendine-sohbet asistanları** — kendine (ya da bot'una) yaz, Memo tam bir asistan olarak cevap versin: sohbet, hafıza, agent araçları, uygulamayı açmadan
+- **Sohbetten rutin oluşturma** — sadece isteyerek bir rutin oluştur, listele ya da iptal et — WhatsApp/Telegram kendine-sohbetten ya da normal sohbetten, Rutinler sekmesini açmaya gerek yok
+- **Hesap bazlı ayrıntılı izinler (Faz 5.1.1)** — self-hosted hesap başına 7 bağımsız checkbox (Models, Memory, Agent, Calendar, WhatsApp, Telegram, Routines), backend'de zorlanır, sadece arayüzde gizlenmez
+- **[[Harici Sağlayıcılar|Kilo Code]] provider'ı** — canlı model listesi, ücretsiz modeller yeşil onay işaretiyle en üstte; aynı davranış OpenCode Zen'e de eklendi
+- **Web araması yeniden tasarlandı** — her mesajda ham metni enjekte etmek yerine, gerçek mesaj-bazlı tool-calling arama yapılıp yapılmayacağına karar veriyor
+- **Reasoning-effort kontrolü yeniden inşa edildi** — statik, bazen yanlış tablolar yerine canlı model-bazlı yetenek keşfi (Claude/Gemini/Ollama/OpenRouter)
+- **[[Geliştirici API Ağ Geçidi]] yeniden tasarlandı** — LM-Studio tarzı navigasyon, yeni OpenAI-uyumlu endpoint (`/v1/chat/completions`), tek tıkla Claude Code CLI bağlantısı, yapılandırılabilir system prompt
+- **Sistem tepsisi ikonu**, **Dream'in kendi zamanlaması**, **İstatistikler'de kategori bazlı token harcaması dökümü**, yanıtlarda görünür **"N hafıza kullanıldı" rozeti**
+- **Mobil navigasyon yeniden tasarlandı** — 600px altında masaüstü NavRail'in yerini hamburger menü alıyor
+- **Güvenlik düzeltmeleri** — bir tünelin dış trafiği loopback'e yönlendirmesinden kaynaklanan auth bypass, kurulum sihirbazının origin başına tekrar tekrar çıkması, artı önceden açık üç High-severity sorun (ngrok indirme bütünlüğü, WhatsApp aramasında wildcard hatası, agent audit log'unun kalıcı olmaması)
+- **Düzeltildi: kendine-sohbetin agent araçları hiçbir zaman gerçekten erişilebilir değildi** — bu sürümün en önemli hatası; `SendMessageStreamTo`'nun agent-mode kapısı kendine-sohbetin kendi arka plan oturumlarına hiç uygulanmıyordu, bu yüzden her rutin aracı ve `web_search`, bulunup düzeltilene kadar WhatsApp/Telegram açısından sessizce yok gibiydi
+- CLI son self-hosting boşluğunu kapattı (`memo remote list-accounts/add-account/delete-account`) ve mevcut bir sohbeti incelemek için `-chat <id> -list`/`-memory usage` kazandı
 
-Taslak: `versinNote/tr/v3.3.4.md`
+Tam liste: `versinNote/tr/v3.9.0.md` (taslak, henüz kesinleşmedi)
 
 ---
 
@@ -81,23 +77,24 @@ Taslak: `versinNote/tr/v3.3.4.md`
 - [[Mimari Yapı]] — Paket haritası ve modül sorumlulukları
 - [[Sistem Genel Bakış]] — Tüm alt sistemlerin nasıl bir araya geldiği
 - [[Bilinen Sorunlar]] — Bilinen sorunların güncel durumu
-- Değişiklik günlüğü: `versinNote/tr/v3.3.3.md`
+- Değişiklik günlüğü: `versinNote/tr/v3.9.0.md`
 - [[v3.1.1 Özellikleri]] — v3.1.1'in tam özellik kataloğu (tarihsel kayıt)
 - [[Özellik Kataloğu]] — Güncel özellik listesi (istatistikler ve geliştirici ağ geçidi dahil)
 - [[Ajan Modu]] — Ajan pipeline'ı, araçlar, izinler
 - [[WhatsApp Entegrasyonu]] — Kurulum ve özellikler
+- [[Telegram Entegrasyonu]] — Bot kurulumu, sahip kilidi, kendine-sohbet asistanı
 - [[Orkestra Modu]] — Çoklu model iş akışı
 - [[RAG ve Semantik Hafıza]] — Vektör deposu ve geri getirme
 - [[Proaktif Öğrenme ve Takvim]] — Gözlemci + niyet çıkarımı
-- [[Harici Sağlayıcılar]] — 8 sağlayıcı tipi + yedek zincir
+- [[Harici Sağlayıcılar]] — 14 sağlayıcı tipi + yedek zincir
 - [[Geliştirici API Ağ Geçidi]] — Claude Code'u (ya da Anthropic-uyumlu herhangi bir aracı) Memo'ya bağla
 - [[Memo Swarm]] — Birkaç PC ile büyük model (Beta)
-- [[Uzaktan Erişim ve Self-Hosting]] — Sadece sunucuyu bir Pi/ev sunucusuna kur, dört auth modu, tamamen SSH üzerinden yönetim
+- [[Uzaktan Erişim ve Self-Hosting]] — Sadece sunucuyu bir Pi/ev sunucusuna kur, dört auth modu, hesap bazlı izinler, tamamen SSH üzerinden yönetim
 - [[Bulut Senkronizasyonu]] — Uçtan uca şifreli Google Drive yedekleme
-- [[API Dokümantasyonu]] — ~90 REST endpoint'inin tamamı
+- [[API Dökümantasyonu]] — 180+ REST endpoint'inin tamamı
 - [[Geliştirici Kurulum Rehberi]] — Kaynaktan derleme
 - [[Katkıda Bulunma]] — Nasıl katkıda bulunulur
 
 ---
 
-**Sürüm**: v3.3.3 (Açık Beta, en son yayınlanan) · v3.3.4 geliştirme aşamasında · **Lisans**: AGPL v3 · **Teknoloji**: Go 1.26 + Flutter 3.10
+**Sürüm**: v3.5.5 (Açık Beta, en son yayınlanan) · v3.9.0 geliştirme aşamasında · **Lisans**: AGPL v3 · **Teknoloji**: Go 1.26 + Flutter 3.10

@@ -93,9 +93,25 @@ memo remote add-device "My Phone"      # prints its token once — copy it now
 memo remote revoke-device <id>
 ```
 
-There is deliberately no multi-user model here — this is one person's own
-choice of *how* to authenticate to *their own* server, not separate
-accounts with separate memory/data.
+On top of that, `password`/`token_password` modes support a real **multi-account
+model**: an admin account plus any number of user accounts, each with its
+own password and its own set of seven granular permissions (Models, Memory,
+Agent, Calendar, WhatsApp, Telegram, Routines) an admin can grant or deny.
+This is still access control to one shared backend, not per-account
+separate memory/data (see [§5](#5-known-limitations)) — but it's no longer
+just "how one person authenticates to their own server." Manage accounts
+from Settings → Accounts on desktop, or over SSH:
+
+```bash
+memo remote list-accounts
+memo remote add-account "friend" --role user --perm models,agent,routines
+memo remote delete-account <id>
+```
+
+`add-account` defaults `--role` to the most restrictive `user` role with no
+permissions granted; pass `--perm` to turn specific ones on. Omit
+`--password` to be prompted for it interactively (hidden input) instead of
+putting it in shell history.
 
 > **Bootstrapping the very first token:** once bound to `0.0.0.0`
 > (`--lan`), the API requires a credential on *every* request — including
@@ -175,6 +191,15 @@ static page would otherwise have to duplicate.
 - **No tunnel management from the CLI yet** — Tailscale/ngrok start/stop is
   still Settings-only; `memo remote`/`memo config`/`memo service` cover
   auth, config, and process lifecycle, not tunnels.
+- **Accounts share one backend, not isolated data.** Multiple accounts on
+  one server get their own login and their own permission toggles, but
+  memory/chat history/models are still one shared store — this is
+  permission-gating, not per-user data isolation. Real per-user isolation
+  is a separate, not-yet-started roadmap item.
+- **Agent permission is a single global flag.** Denying the `agent`
+  permission on a user account turns off Agent mode entirely for that
+  account; it can't yet scope down to individual tools (e.g. allow
+  `web_search` but not `run_command`).
 
 ---
 

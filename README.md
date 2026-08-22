@@ -154,15 +154,17 @@ Every tool call asks first. Allow or deny **once, for the session, or forever.**
 
 ---
 
-### 📱 Deep WhatsApp Integration
+### 📱 Deep WhatsApp & Telegram Integration
 
 <table>
 <tr>
 <td width="58%">
 
-Connect with a QR code — same protocol as WhatsApp Web, **no Business API fees.** Read, search, and reply to messages right inside Memo, in a UI that matches its bronze theme.
+Connect WhatsApp with a QR code — same protocol as WhatsApp Web, **no Business API fees.** Read, search, and reply to messages right inside Memo, in a UI that matches its bronze theme. Or connect a Telegram bot token instead — same capability, different app.
 
 The agent can send messages and resolve contacts by name — just say *"message Berra"*, no JID needed. And every WhatsApp conversation feeds the same memory, observer, and calendar pipelines as normal chat.
+
+**Message yourself and Memo answers.** Text your own WhatsApp number (or your Telegram bot) and get a full assistant back — chat, memory, and agent tools, no need to open the app. Ask in plain language and it'll create, list, or cancel a **routine** right from the conversation.
 
 </td>
 <td align="center" width="42%">

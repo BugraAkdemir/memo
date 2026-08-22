@@ -50,7 +50,7 @@ type Provider interface {
 
 ---
 
-## Desteklenen Sağlayıcılar (9 tür + 2 CLI provider)
+## Desteklenen Sağlayıcılar (10 tür + 2 CLI provider)
 
 ### 1. OpenAI (`openai.go`, 353 satır)
 - **Uyumlu API'ler:** OpenAI, OpenAI uyumlu tüm endpoint'ler
@@ -98,9 +98,15 @@ type Provider interface {
 - **Model seçimi:** OpenCode Zen ile aynı — canlı liste, elle yazım yok
 - **Fiyatlandırma:** Abonelik tabanlı
 
+### 10. Kilo Code (v3.9.0)
+- **API Stili:** OpenAI uyumlu
+- **Base URL:** app.kilo.ai
+- **Model seçimi:** OpenCode Zen/Go ile aynı desen — canlı model listesinden seçim, elle yazım yok; ücretsiz modeller listenin başında yeşil onay işaretiyle
+- **Fiyatlandırma:** Pay-as-you-go, bazı modeller ücretsiz
+
 > **Not:** llama.cpp bir provider olarak uygulanmamıştır. Yerel modeller `api.Client` ile ayrıca yönetilir.
 
-### 10-11. Claude Code CLI ve Codex CLI (`internal/agentcli/`, CLI tabanlı — v3.3.4)
+### 11-12. Claude Code CLI ve Codex CLI (`internal/agentcli/`, CLI tabanlı — v3.3.4)
 
 Diğer sağlayıcılardan mimari olarak tamamen farklı: bir HTTP API'ye istek atmak yerine bilgisayarda kurulu bir komut satırı aracını subprocess olarak çalıştırır — Claude Code için `claude -p --output-format stream-json --dangerously-skip-permissions [--resume <id>]`, Codex için `codex exec --json --dangerously-bypass-approvals-and-sandbox [-C <dir>] [resume <thread-id>]`. Import cycle'a girmeden `provider.Provider` arayüzünü uygular — `internal/provider`, `internal/agentcli`'yi doğrudan import etmez; `provider.RegisterConstructor` ile `agentcli`'nin kendi `init()`'i (her iki dosya, `claude_code.go` ve `codex.go`, ayrı ayrı) kendini kaydeder (`database/sql` driver deseni). Codex'in stream-json çıktısı Claude Code'unkinden farklı: metin delta'lar halinde değil, her `item.completed` (`type:"agent_message"`) olayında turun tam metnini tek parça olarak verir; oturum kimliği `session_id` değil `thread_id` alanında gelir, ve `resume` alt-komutu (fresh-run'ın aksine) `-C` bayrağını kabul etmez — orijinal oturumun çalışma dizinini kendisi hatırlar.
 
@@ -210,16 +216,11 @@ func deriveKey() []byte {
 
 ```go
 func defaultConfigs() []ProviderConfig {
-    // 7 disabled sağlayıcı döndürür:
-    // - openai:    gpt-4o
-    // - gemini:    gemini-2.0-flash
-    // - grok:      grok-2
-    // - groq:      mixtral-8x7b-32768
-    // - claude:    claude-sonnet-4-20250514
-    // - openrouter: openai/gpt-4o
-    // - ollama:    llama3
+    return []ProviderConfig{}
 }
 ```
+
+Önceden 7 disabled placeholder config döndürüyordu (her yerleşik provider türü için biri), böylece yeni bir kurulumda Providers sekmesi kullanıcı hiçbir şey eklemeden önce her provider'ı "Disabled" olarak gösteriyordu. v3.9.0'daki UI düzeltme turunda değiştirildi: bu, kullanıcının hiç kullanmayacağı provider'larla sekmeyi kalabalıklaştırıyordu — artık boş dönüyor, sadece kullanıcının gerçekten eklediği provider'lar görünüyor. Bu değişiklikten önceki kurulumlarda diskte kalmış placeholder satırları, yıkıcı olmayan bir frontend filtresiyle gizleniyor.
 
 ---
 

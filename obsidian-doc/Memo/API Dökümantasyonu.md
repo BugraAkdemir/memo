@@ -44,6 +44,44 @@ Memo Backend, Flutter Frontend veya üçüncü parti istemciler için kapsamlı 
 | `GET`/`PUT`/`DELETE` | `/api/providers` | Sağlayıcı ayarlarını listele/güncelle/sil |
 | `POST` | `/api/providers/test` | Sağlayıcı bağlantısını test et |
 | `GET`/`PUT` | `/api/providers/active` | Aktif sağlayıcıyı getir/ayarla |
+| `GET` | `/api/kilo/models` | Kilo Code'dan canlı model listesi, ücretsiz modeller işaretli (v3.9.0) |
+| `GET` | `/api/opencode-zen/models` | OpenCode Zen'den canlı model listesi, ücretsiz modeller `-free` id son ekiyle işaretli (v3.9.0) |
+
+### Hesaplar ve İzinler (self-hosted, v3.5.5 + v3.9.0)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `GET` | `/api/setup/status` | Self-hosted sunucunun henüz admin hesabı var mı |
+| `POST` | `/api/setup/create-admin` | İlk kurulum: admin hesabı oluştur |
+| `POST` | `/api/setup/create-device` | Bir hesaba yeni cihaz/token eşle |
+| `GET`/`POST` | `/api/accounts` | Hesapları listele / yeni hesap oluştur |
+| `GET`/`PUT`/`DELETE` | `/api/accounts/{id}` | Tek bir hesabı getir/güncelle/sil |
+| `PUT` | `/api/accounts/{id}/password` | Hesap şifresini değiştir |
+| `GET`/`PUT` | `/api/accounts/{id}/permissions` | Hesabın 7 ayrıntılı iznini getir/güncelle (Faz 5.1.1) |
+
+Detay: [[Uzaktan Erişim ve Self-Hosting]]
+
+### WhatsApp
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `GET` | `/api/whatsapp/status` | Eşleştirme/bağlantı durumu |
+| `POST` | `/api/whatsapp/start` / `/api/whatsapp/stop` / `/api/whatsapp/logout` | İstemci yaşam döngüsü |
+| `POST` | `/api/whatsapp/send` | Mesaj gönder |
+| `GET` | `/api/whatsapp/search` / `/api/whatsapp/chats` / `/api/whatsapp/messages` | Mesaj geçmişinde ara/gözat |
+| `GET` | `/api/whatsapp/avatar` / `/api/whatsapp/stats` | Kişi avatarı / sayaçlar |
+| `PUT` | `/api/whatsapp/chat-mode` | WhatsApp'a özel sohbet executor'ını yapılandır |
+| `POST` | `/api/whatsapp/chat-stream` | WhatsApp-özel sohbet modu için SSE akışı |
+| `POST` | `/api/whatsapp/self-chat-assistant` | Kendine-sohbet asistanını aç/yapılandır (v3.9.0) |
+
+Detay: [[WhatsApp Entegrasyonu]]
+
+### Telegram (v3.9.0)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `GET` | `/api/telegram/status` | Bot bağlantı/sahip-kilidi durumu |
+| `POST` | `/api/telegram/connect` | Bot token ile bağlan, long-polling'i başlat |
+| `POST` | `/api/telegram/stop` / `/api/telegram/disconnect` | Durdur, ya da durdurup saklanan token/sahip bağını sil |
+
+Detay: [[Telegram Entegrasyonu]]
 
 ### Ajan Modu (YENİ)
 | Metot | Endpoint | Açıklama |
@@ -143,6 +181,8 @@ Detay: [[Multimodal Yetenekler (Görsel ve Ses)]]
 | `GET` | `/api/dev-gateway/models` | Kullanılabilir `"type/model-id"` listesini döner |
 | `GET` | `/api/dev-gateway/logs` | Canlı istek/yanıt günlüğü (Geliştirici ekranı, 200 kayıt, kalıcı değil) |
 | `POST` | `/v1/messages` | Anthropic Messages API uyumlu endpoint — `/api/` altında DEĞİL, Claude Code'un `ANTHROPIC_BASE_URL`'i doğrudan Memo'ya işaret edebilmesi için gerçek Anthropic path'iyle birebir aynı |
+| `POST` | `/v1/chat/completions` | OpenAI uyumlu endpoint (v3.9.0) — `/v1/messages` ile aynı auth/routing/hafıza/system-prompt pipeline'ı, sadece OpenAI-şekilli base URL destekleyen araçlar için |
+| `GET` | `/v1/models` | OpenAI uyumlu model listesi (v3.9.0) |
 
 Detay: [[Geliştirici API Ağ Geçidi]]
 

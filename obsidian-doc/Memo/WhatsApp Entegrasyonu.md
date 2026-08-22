@@ -27,6 +27,14 @@ Memo, WhatsApp hesabına çoklu cihaz Web API'si (whatsmeow) üzerinden bağlan�
 | Mesaj sıralaması | Düzeltildi: en yeni altta, en eski üstte |
 | Caption'lı medya mesajları | Düzeltildi (v3.3.3): görsel/video/belge içeren canlı mesajlar, üzerlerinde bir caption varsa sessizce kaybolmuyor artık — önceden sadece düz metin mesajları okunuyordu |
 
+## Kendine-Sohbet Asistanı (v3.9.0)
+
+QR ile eşleştirdiğin kendi WhatsApp numarana mesaj at, Memo tam bir asistan olarak yanıtlasın — sohbet, hafıza ve agent araçları, hepsi Memo'yu açmadan telefonundaki normal WhatsApp uygulamasından erişilebilir. `POST /api/whatsapp/self-chat-assistant` ile beslenir, `internal/app/whatsapp.go` içindeki `handleWhatsAppSelfChatMessage` / `isSelfChatMessage`.
+
+- **Sohbetten rutin oluşturma**: düz dille iste, Memo uygulama içindeki aynı `create_routine`/`list_routines`/`cancel_routine` agent araçlarını kullanarak bir rutin oluşturur, listeler ya da iptal eder — Rutinler sekmesini açmana gerek yok.
+- **`/auto-perm`**: o konuşma için araç çağrısı izin sorularını otomatik-izinli yapan bir kendine-sohbet slash komutu — sohbetten tetiklenen rutin/agent eylemi geldiğinde tıklanacak bir masaüstü penceresi olmadığı için gerekli.
+- **Yerelleştirilmiş yanıtlar**: kendine-sohbet komut yüzeyinin kendi küçük TR/EN metin tablosu var (`internal/app/whatsapp_l10n.go`) — dil, gelen mesajdan tespit edilir.
+
 ## Teknik
 
 - **Kütüphane**: whatsmeow (Go, çoklu cihaz Web API)

@@ -26,6 +26,14 @@ Memo connects to your WhatsApp account through the multi-device Web API (whatsme
 | Logout timeout | 5s cap — local session cleared regardless |
 | Message ordering | Fixed: newest at bottom, oldest at top |
 
+## Self-Chat Assistant (v3.9.0)
+
+Message your own WhatsApp number (the one paired via QR) and Memo replies as a full assistant — chat, memory, and agent tools, all reachable from your phone's normal WhatsApp app without opening Memo. Backed by `POST /api/whatsapp/self-chat-assistant`, `handleWhatsAppSelfChatMessage` / `isSelfChatMessage` in `internal/app/whatsapp.go`.
+
+- **Routines via chat**: ask in plain language and Memo creates, lists, or cancels a routine using the same `create_routine`/`list_routines`/`cancel_routine` agent tools available in-app — no need to open the Routines tab.
+- **`/auto-perm`**: a self-chat slash command that auto-allows tool-call permission prompts for that conversation, since there's no desktop window to click "Allow" on when the routine/agent action fires from chat.
+- **Localized replies**: the self-chat command surface has its own small TR/EN string table (`internal/app/whatsapp_l10n.go`) — language detected from the incoming message.
+
 ## Technical
 
 - **Library**: whatsmeow (Go, multi-device Web API)

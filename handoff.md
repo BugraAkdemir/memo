@@ -1,3 +1,81 @@
+# Ek (2026-08-22, devam) — v3.9.0 öncesi dokümantasyon turu (docs/, obsidian-doc/-en, versinNote, README)
+
+Kullanıcı "yeni release hazırlığı başlayalım ama tag açma, dökümanları
+güncelle" dedi — tag/versiyon dosyası dokunulmadı, sadece içerik. Önce
+`versinNote/v3.9.0.md` + `tr/v3.9.0.md`'yi bu oturumun 7 işini (BUG-M6,
+Faz 5.1.1, add-account CLI, `-chat -list/-memory`, Kilo+OpenCode Zen,
+provider-picker UI düzeltmeleri) anlatan yeni bölümlerle genişlettim
+(152→201 satır her ikisi de).
+
+Sonra `docs/` içinde tek tek okuyup somut eksik/yanlışları buldum ve
+düzelttim:
+- `RELEASE_NOTES.md`: yanlış GitHub URL'i (`bugrakaptan` → `BugraAkdemir`).
+- `FEATURES.md`/`OZELLIKLER.md`: WhatsApp bölümüne kendine-sohbet asistanı
+  + sohbetten rutin + `/auto-perm` eklendi; yepyeni bir Telegram bölümü
+  eklendi (**TR sürümünde WhatsApp bölümü baştan hiç yoktu** — gerçek bir
+  boşluktu, sadece eski değildi); Kilo Code'u sağlayıcı listesine ekledim;
+  Remote Access'e Faz 5.1/5.1.1 hesap+izin sistemini ekledim; Agent Mode'un
+  "19 araç" sayısını 22'ye düzelttim (`internal/agent/tools.go`'dan
+  gerçek sayıyı saydım — create_routine/list_routines/cancel_routine
+  eksikti).
+- `API_REFERENCE.md`: Accounts&Permissions, WhatsApp (hiç yoktu), Telegram
+  (hiç yoktu), Kilo/OpenCode Zen model endpoint'leri, Dev Gateway
+  bölümlerini `server.go`'daki gerçek `route()` çağrılarından doğrulayarak
+  ekledim; "~118 endpoint" iddiasını güncel `route()` sayısına (184,
+  "180+") göre düzelttim.
+- `SELF_HOSTED.md`: "kasıtlı olarak çoklu-kullanıcı modeli yok" diye
+  yazan, artık **doğrudan yanlış** olan iddiayı düzelttim (Faz 5.1/5.1.1
+  bunu tam olarak ekledi) — `add-account` CLI kullanımını ve iki yeni
+  Known Limitation'ı (paylaşımlı veri, agent izninin tek global flag
+  olması) ekledim.
+- `README.md`/`READmeTR.md`: WhatsApp bölümüne Telegram + kendine-sohbet +
+  sohbetten-rutin cümleleri eklendi, versiyon rozetine dokunmadım
+  (hâlâ doğru şekilde v3.5.5).
+
+Sonra Obsidian vault'larını (`obsidian-doc/Memo/`, `obsidian-doc-en/Memo/`)
+taradım — ikisinde de **hiç Telegram sayfası yoktu**, ikisini de sıfırdan
+yazdım (`Telegram Entegrasyonu.md`/`Telegram Integration.md`,
+`internal/telegram/`+`internal/app/telegram.go`'dan gerçek fonksiyon
+adlarını doğrulayarak: `shouldReplyToTelegram`, `routeTelegramPermissionAnswer`
+vb.). Ayrıca:
+- `Harici Sağlayıcılar.md`/`External Providers.md`: Kilo eklendi, provider
+  tipi sayısı 13→14 düzeltildi, `defaultConfigs()`'in artık boş dönmesi
+  (v3.9.0 UI-fix turunun kendisi) ve "test dosyası yok" iddiasının artık
+  yanlış olması (config_test.go/factory_test.go var) not edildi.
+- `Uzaktan Erişim ve Self-Hosting.md`/`Remote Access & Self-Hosting.md`:
+  hesap paylaşımı bölümü + `add-account` CLI kullanımı eklendi.
+- `WhatsApp Entegrasyonu.md`/`WhatsApp Integration.md`: kendine-sohbet
+  asistanı + sohbetten-rutin bölümü eklendi (`isSelfChatMessage`/
+  `handleWhatsAppSelfChatMessage`'dan doğrulandı).
+- `00 Ana Sayfa.md`/`00 Home.md`: en üstteki "hangi sürüm neredeyse hâlâ
+  v3.3.3/v3.3.4 diyordu — v3.5.5 (yayınlanan) / v3.9.0 (geliştirmede)
+  olacak şekilde baştan yazdım, Quick Links'teki sağlayıcı/endpoint
+  sayılarını düzelttim, **TR sayfasındaki `[[API Dokümantasyonu]]` linkinin
+  gerçek dökümana değil kasıtlı boş bırakılmış bir yazım-varyasyonu stub
+  sayfasına işaret ettiğini** buldum ve `[[API Dökümantasyonu]]`'na
+  düzelttim (gerçek bug, sadece eskimişlik değil).
+- `Özellik Kataloğu.md`/`Features Catalog.md`: Kilo, Telegram, hesap
+  izinleri, agent araç sayısı (8→22) ve "Ajan frontend UI ❌ (v3.2.0)"
+  gibi TR tarafında ciddi şekilde eskimiş bir satırı (aslında ✅, uzun
+  süredir canlı) düzelttim.
+- `API Dökümantasyonu.md`/`API Documentation.md`: aynı yeni endpoint
+  bölümlerini (Accounts, WhatsApp, Telegram, Kilo/Zen, yeni
+  `/v1/chat/completions`+`/v1/models` OpenAI-uyumlu Dev Gateway
+  endpoint'leri — `server.go`'dan doğrulandı) ekledim.
+
+`docs/KNOWN_ISSUES.md`/`RESOLVED_ISSUES.md` ve Obsidian'daki
+`Bilinen Sorunlar.md`/`Known Issues.md`/`Çözülen Sorunlar.md`/
+`Resolved Issues.md`'ye kasıtlı dokunmadım — hepsi kendi başlıklarında
+"X tarihli dondurulmuş kayıt" diye açıkça belirtiyor, güncel bug listesi
+değil (`BUG_REPORT.md` o iş için var).
+
+**Kullanıcının açık talimatı:** tag açma, `memo-release` skill'ini
+kullanma — sadece içerik güncellemesi. Versiyon dosyası (`version`,
+hâlâ `V3.5.5`) ve `README.md`/`READmeTR.md`'nin rozeti bilerek
+dokunulmadan bırakıldı.
+
+---
+
 # Ek (2026-08-22, devam) — Kilo model select hatası (eski backend) + OpenCode Zen'e de Kilo tarzı free-model tarayıcısı
 
 ## Kilo "Select" tıklayınca hiçbir şey açılmıyordu

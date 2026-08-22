@@ -28,6 +28,8 @@ Memo isn't just a chat; it's a "Second Brain."
 - **ngrok Tunnel**: Built-in ngrok integration for accessing your Memo backend from anywhere. Auto-download, tunnel management, configurable domain and region.
 - **Tailscale (out of Beta)**: One-click login (no auth key to paste), Funnel on by default, auto-reconnect after a dropped connection — available directly in Settings → Remote Access, desktop and mobile.
 - **Self-Hosted Server Mode**: Run just the headless backend — no desktop app — on a Raspberry Pi, home server, or VPS, managed entirely over SSH via the `memo` CLI (`memo service install` for a systemd --user service, `memo config get/set` for config.yaml, `memo remote` for auth/devices). Native installer (`get-memo-server.sh`) or a multi-arch (amd64+arm64) Docker/CasaOS image. See [Self-Hosting](SELF_HOSTED.md).
+- **Multi-Account, Admin/User Roles**: A shared self-hosted server can host more than one login — an admin plus any number of user accounts, each with their own password. Managed from Settings → Accounts or `memo remote list-accounts`/`add-account`/`delete-account` over SSH.
+- **Granular Per-Account Permissions**: Seven independent toggles per account (Models, Memory, Agent, Calendar, WhatsApp, Telegram, Routines) — an admin can, say, let a user chat and use Agent tools while hiding the Model Store/API Providers tabs and blocking memory writes entirely. Enforced on the backend (not just hidden in the UI), checkbox UI in Settings → Accounts.
 
 ---
 
@@ -109,7 +111,17 @@ Memo isn't just a chat; it's a "Second Brain."
 - **Whitelist File Transfer**: Trusted contacts can request files from whitelisted directories.
 - **Agent Tools**: `SendWhatsApp`, `SearchWhatsApp`, `LatestWhatsAppChats`, `GetWhatsAppMessages`.
 - **Dedicated Chat Mode**: Isolated executor and tool registry for WhatsApp-only interactions.
+- **Self-Chat Assistant**: Message your own WhatsApp number (the number paired for QR login) and Memo replies as a full assistant — chat, memory, and agent tools all reachable from your phone's WhatsApp app without opening Memo itself.
+- **Routines via Chat**: Ask in plain language ("her sabah 8'de bana hava durumunu hatırlat") and Memo creates, lists, or cancels a routine directly from the conversation, using the same `create_routine`/`list_routines`/`cancel_routine` agent tools available in-app.
+- **`/auto-perm`**: A self-chat slash command that flips tool-call permission prompts to auto-allow for that conversation, so routine/agent actions triggered from chat don't stall waiting for a desktop click that isn't coming.
 - **Local Storage**: All WhatsApp messages stored in an isolated SQLite database.
+
+### Telegram Integration
+- **Bot Pairing**: Connect a Telegram bot token (from @BotFather) in Settings → Telegram; Memo long-polls the Bot API for messages once configured.
+- **Owner Lock**: Since anyone who finds a bot's username can message it, Memo locks in whoever messages first as the bot's permanent owner and silently ignores everyone else afterward — the entire access-control boundary for this integration.
+- **Assistant Chat**: Once linked, the owner gets a full assistant — chat, memory, and agent tools — the same capability as the WhatsApp self-chat path, on Telegram instead.
+- **Routines via Chat**: The same `create_routine`/`list_routines`/`cancel_routine` tool flow works from a Telegram conversation.
+- **Local Storage**: Telegram messages stored in their own isolated SQLite database, independent of WhatsApp's.
 
 ---
 
@@ -117,7 +129,7 @@ Memo isn't just a chat; it's a "Second Brain."
 
 ### Multi-Provider Architecture
 Memo connects to external LLM APIs alongside local models:
-- **Supported Providers:** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, plus **OpenCode Zen** (pay-as-you-go, some models free) and **OpenCode Go** (subscription) — both let you pick from a live model list instead of typing a model name by hand.
+- **Supported Providers:** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, plus **OpenCode Zen** (pay-as-you-go, some models free), **OpenCode Go** (subscription), and **Kilo Code** (app.kilo.ai — pay-as-you-go, some models free) — all three let you pick from a live model list instead of typing a model name by hand, with free models sorted to the top and marked with a green checkmark.
 - **Claude Code / Codex CLI as chat providers (beta):** instead of an API call, Memo shells out to a locally installed `claude`/`codex` CLI. Per-chat (not app-wide), runs as a real untimed background job, uses the CLI's own no-prompt permission mode, and its own `/` slash commands surface in Memo's command popup. No memory/identity context is sent — the CLI manages its own session.
 - **Provider Interface:** Common `Provider` interface with `ChatCompletion`, `ChatCompletionStream`, `ListModels`
 - **Fallback Chain:** Router tries providers in order; auto-disables after 3 consecutive failures; health-check re-enables on recovery
@@ -138,7 +150,7 @@ Memo connects to external LLM APIs alongside local models:
 
 ### Tool Execution Engine
 Memo acts as an AI agent with full computer control:
-- **19 Built-in Tools:** file I/O (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`), `run_command`, `read_env`, `web_search`, `self_clone`, `configure_provider`, `get_calendar_events`, WhatsApp (`whatsapp_send`/`search`/`latest`/`messages`)
+- **22 Built-in Tools:** file I/O (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`), `run_command`, `read_env`, `web_search`, `self_clone`, `configure_provider`, `get_calendar_events`, routines (`create_routine`, `list_routines`, `cancel_routine`), WhatsApp (`whatsapp_send`/`search`/`latest`/`messages`)
 - **Skill tools now actually execute.** A skill's `SKILL.md` can define a `command:` field, wired into the exact same tool pipeline and permission-prompt UI as built-in tools — previously this was declaration-only and never ran anything.
 - **Tool Registry:** Thread-safe registry with JSON Schema parameter definitions
 - **Danger Level System:** `safe` (auto-allowed), `medium` (prompt user), `dangerous` (prompt + delay)
@@ -214,6 +226,8 @@ Multiple AI models collaborate as a team:
 
 ### Routines (Scheduled Automations)
 - Describe a task and a schedule in plain language; Memo turns it into a routine that fires on schedule as a simple prompt or a full tool-using agent run.
+- **Create from chat, not just the Routines tab**: ask for a routine in plain language from a normal chat, or from the WhatsApp/Telegram self-chat assistant, and the `create_routine`/`list_routines`/`cancel_routine` agent tools handle it — no need to open the dedicated Routines screen.
+- A routine always has full agent + web-search tool access when it fires, regardless of how it was created — an earlier bug tied that access to a one-shot classification made at creation time, so it could silently "turn off" later; fixed to be unconditional.
 - Works on **desktop and mobile** — mobile delivers real, pre-scheduled local notifications so reminders arrive even if the app isn't open.
 - Fires in **your own device's timezone** (captured at creation, resynced on every reconnect), so travel/DST corrects itself instead of staying frozen.
 

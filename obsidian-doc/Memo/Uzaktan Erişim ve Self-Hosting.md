@@ -75,9 +75,22 @@ Sunucuya masaüstü uygulaması kurmadığın için, ayarları değiştirmek ger
 memo remote status              # Şu an kim erişebilir, hangi mod aktif?
 memo remote add-device "Telefonum"   # Yeni bir cihaz için kod oluştur
 memo service status             # Arka plan servisi çalışıyor mu?
+memo remote add-account "arkadaşım"  # Başka birine kendi girişini ver (aşağıda)
 ```
 
 Bunları hiç kullanmak zorunda değilsin — kurulum bittiğinde her şey zaten çalışır durumda olacak. Bu komutlar sadece ileride bir şey değiştirmek istersen (yeni bir cihaz eklemek, bir cihazın erişimini kesmek gibi) lazım.
+
+### Sunucunu başkasıyla paylaşmak
+
+`Şifre` ya da `Token + Şifre` modundaysan, sunucun birden fazla girişi barındırabilir — sen admin olarak, artı erişim vermek istediğin herkes için ayrı hesaplar. Her hesabın kendi şifresi ve nelere dokunabileceğini belirleyen kendi anahtarları var: sohbet/modeller, hafıza, agent araçları, takvim, WhatsApp, Telegram, rutinler. Sadece mantıklı olanı ver — bir ev arkadaşına sohbet + agent verip hafızana veya WhatsApp'ına erişim vermeyebilirsin.
+
+```bash
+memo remote add-account "arkadaşım" --role user --perm models,agent
+memo remote list-accounts
+memo remote delete-account <id>
+```
+
+Bu, tek bir sunucuya paylaşımlı erişimdir, ayrı özel veri değil — hesabı olan herkes altta hâlâ aynı hafıza ve sohbet geçmişiyle konuşuyor, sadece farklı izin kapılarından geçiyor.
 
 Ayrıca, hiçbir şeye erişemediğin acil bir durumda (masaüstü uygulaman açılmıyor ama internete bağlısın), sunucunun adresini tarayıcına yazarak (`http://sunucu-adresi:8090`) basit bir yedek arayüzden de sohbet edebilir ve durumu görebilirsin.
 

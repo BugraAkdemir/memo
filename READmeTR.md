@@ -14,7 +14,7 @@
   <a href="https://memocpp.com/tr/guide"><img src="https://img.shields.io/badge/📖_Kılavuzu_Oku-memocpp.com-1b1916?style=for-the-badge&logoColor=white" alt="Kılavuz"/></a>
   <a href="https://github.com/BugraAkdemir/memo/stargazers"><img src="https://img.shields.io/github/stars/BugraAkdemir/memo?style=for-the-badge&color=B08D57&logo=github&logoColor=white" alt="Yıldız"/></a>
   <img src="https://img.shields.io/badge/Lisans-AGPL_v3-0a0a0a?style=for-the-badge" alt="Lisans"/>
-  <img src="https://img.shields.io/badge/Sürüm-v3.5.5-B08D57?style=for-the-badge" alt="Sürüm"/>
+  <img src="https://img.shields.io/badge/Sürüm-v3.9.0-B08D57?style=for-the-badge" alt="Sürüm"/>
 
   <br/><br/>
 
@@ -408,7 +408,7 @@ Sürüm paketleri:
 | **State** Riverpod 2.4 | **HTTP** Dio 5.4 / SSE | **Ses** whisper.cpp | **WhatsApp** whatsmeow |
 | **Bulut** Drive + AES-256 | **GPU** nvidia/rocm/sysfs | **Lisans** AGPL v3 | **CI** GitHub Actions |
 
-📚 **Derin dalış:** [Mimari](docs/architecture.md) · [API Referansı](docs/API_REFERENCE.md) · [Tasarım Sistemi](frontend/DESIGN.md) · [Yol Haritası](docs/ROADMAP.md) · [Değişiklik Günlüğü](versinNote/tr/v3.5.5.md) · [Tam dokümantasyon ve kılavuz (memocpp.com)](https://memocpp.com/tr/guide)
+📚 **Derin dalış:** [Mimari](docs/architecture.md) · [API Referansı](docs/API_REFERENCE.md) · [Tasarım Sistemi](frontend/DESIGN.md) · [Yol Haritası](docs/ROADMAP.md) · [Değişiklik Günlüğü](versinNote/tr/v3.9.0.md) · [Tam dokümantasyon ve kılavuz (memocpp.com)](https://memocpp.com/tr/guide)
 
 ---
 

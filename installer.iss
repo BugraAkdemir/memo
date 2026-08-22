@@ -5,7 +5,7 @@
 ;   C:\Program Files (x86)\Inno Setup 6\ISCC.exe installer.iss
 
 #define MyAppName "Memo"
-#define MyAppVersion "3.5.5"
+#define MyAppVersion "3.9.0"
 #define MyAppPublisher "Bugra Akdemir"
 #define MyAppURL "https://github.com/bugraakdemir/memo"
 #define MyAppExeName "memo_flutter.exe"

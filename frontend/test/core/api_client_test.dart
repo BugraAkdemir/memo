@@ -439,6 +439,27 @@ void main() {
     expect(sentBody?['memory'], true);
     expect(sentBody?['models'], false);
   });
+
+  test('fetchKiloModels posts to /api/kilo/models with no body required',
+      () async {
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    String? sentPath;
+    client.dio.httpClientAdapter = _FakeAuthAdapter(
+      {
+        '/api/kilo/models': (200, {
+          'status': 'ok',
+          'models': [
+            {'id': 'kilo-auto/free', 'name': 'Auto Free', 'is_free': true},
+          ],
+        }),
+      },
+      onRequest: (options) => sentPath = options.path,
+    );
+    final result = await client.fetchKiloModels();
+    expect(sentPath, '/api/kilo/models');
+    expect(result['status'], 'ok');
+    expect((result['models'] as List).first['id'], 'kilo-auto/free');
+  });
   });
 
   group('isAlive', () {

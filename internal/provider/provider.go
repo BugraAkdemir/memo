@@ -25,6 +25,14 @@ const (
 	// via ListModels rather than typed in by hand.
 	ProviderOpenCodeZen ProviderType = "opencode-zen"
 	ProviderOpenCodeGo  ProviderType = "opencode-go"
+	// ProviderKilo is Kilo Code's AI Gateway (api.kilo.ai) — an OpenAI-
+	// compatible, OpenRouter-shaped catalog of hundreds of models across
+	// vendors, several genuinely free (id suffixed ":free", or the
+	// isFree:true field the dedicated /api/kilo/models fetch surfaces to
+	// the UI — see internal/webserver/handlers_oauth.go's fetchKiloModels).
+	// Models are listed dynamically, never hand-typed, same reasoning as
+	// OpenCode Zen/Go above.
+	ProviderKilo ProviderType = "kilo"
 	// ProviderClaudeCodeCLI shells out to the user's locally installed Claude
 	// Code CLI (`claude`) instead of making an HTTP call — implemented in
 	// internal/agentcli, not this package (see RegisterConstructor below for
@@ -287,6 +295,8 @@ func DefaultBaseURL(p ProviderType) string {
 		return "https://opencode.ai/zen/v1"
 	case ProviderOpenCodeGo:
 		return "https://opencode.ai/zen/go/v1"
+	case ProviderKilo:
+		return "https://api.kilo.ai/api/gateway"
 	default:
 		return ""
 	}
@@ -303,11 +313,15 @@ var DefaultModels = map[ProviderType]string{
 	ProviderLlamaCPP:      "local-model",
 	ProviderClaudeCodeCLI: "claude-code",
 	ProviderCodexCLI:      "codex",
+	// kilo-auto/balanced auto-routes to a capable model per request — a
+	// reasonable default that works immediately without the user having to
+	// already know a specific Kilo model id (see kilo.ai/docs/gateway).
+	ProviderKilo: "kilo-auto/balanced",
 }
 
 func init() {
 	// Validate that DefaultBaseURL returns a value for all known types
-	for _, pt := range []ProviderType{ProviderOpenAI, ProviderGemini, ProviderGrok, ProviderGroq, ProviderClaude, ProviderOpenRouter, ProviderOllama, ProviderLlamaCPP, ProviderOpenCodeZen, ProviderOpenCodeGo} {
+	for _, pt := range []ProviderType{ProviderOpenAI, ProviderGemini, ProviderGrok, ProviderGroq, ProviderClaude, ProviderOpenRouter, ProviderOllama, ProviderLlamaCPP, ProviderOpenCodeZen, ProviderOpenCodeGo, ProviderKilo} {
 		if DefaultBaseURL(pt) == "" {
 			panic(fmt.Sprintf("missing default base URL for %s", pt))
 		}
@@ -356,6 +370,8 @@ func NewProvider(cfg ProviderConfig) (Provider, error) {
 		return newOpenCodeZenProvider(cfg)
 	case ProviderOpenCodeGo:
 		return newOpenCodeGoProvider(cfg)
+	case ProviderKilo:
+		return newKiloProvider(cfg)
 	default:
 		if fn, ok := externalConstructors[cfg.Type]; ok {
 			return fn(cfg)

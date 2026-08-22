@@ -297,8 +297,13 @@ func (s *Server) handleOpenRouterModels(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// OpenRouterModel represents a model from the OpenRouter API.
-type OpenRouterModel struct {
+// ProviderModelInfo represents a model from an OpenRouter-shaped model
+// catalog — shared by fetchOpenRouterModels (OpenRouter itself) and
+// fetchKiloModels (Kilo Code's AI Gateway, which mirrors OpenRouter's
+// /models response shape closely enough to reuse this same struct and the
+// same rich, pricing/free-aware frontend model browser — see
+// _ModelBrowserDialog in provider_config_dialog.dart).
+type ProviderModelInfo struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
 	Description string  `json:"description,omitempty"`
@@ -308,7 +313,7 @@ type OpenRouterModel struct {
 	IsFree      bool    `json:"is_free"`
 }
 
-func fetchOpenRouterModels(apiKey string) ([]OpenRouterModel, error) {
+func fetchOpenRouterModels(apiKey string) ([]ProviderModelInfo, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequest("GET", "https://openrouter.ai/api/v1/models", nil)
 	if err != nil {
@@ -346,7 +351,7 @@ func fetchOpenRouterModels(apiKey string) ([]OpenRouterModel, error) {
 		return nil, fmt.Errorf("parse hatası: %w", err)
 	}
 
-	models := make([]OpenRouterModel, 0, len(result.Data))
+	models := make([]ProviderModelInfo, 0, len(result.Data))
 	for _, m := range result.Data {
 		promptPrice := toFloat64(m.Pricing.Prompt)
 		compPrice := toFloat64(m.Pricing.Completion)
@@ -354,7 +359,7 @@ func fetchOpenRouterModels(apiKey string) ([]OpenRouterModel, error) {
 		if m.ID == "" {
 			continue
 		}
-		models = append(models, OpenRouterModel{
+		models = append(models, ProviderModelInfo{
 			ID:          m.ID,
 			Name:        m.Name,
 			Description: m.Description,
@@ -362,6 +367,102 @@ func fetchOpenRouterModels(apiKey string) ([]OpenRouterModel, error) {
 			PromptPrice: promptPrice,
 			CompPrice:   compPrice,
 			IsFree:      isFree,
+		})
+	}
+
+	return models, nil
+}
+
+// kiloModelsURL is a var (not a const) for the same test-injection reason
+// as openRouterModelsURL above.
+var kiloModelsURL = "https://api.kilo.ai/api/gateway/models"
+
+// handleKiloModels implements POST /api/kilo/models — the rich,
+// pricing/free-aware model browser behind Kilo Code's "Sağlayıcılardan
+// modelleri gözat" button, same shape as handleOpenRouterModels but no API
+// key requirement: unlike OpenRouter, Kilo's /models endpoint is public
+// (kilo.ai/docs/gateway/models-and-providers — "No authentication is
+// required"), so a user can browse and pick a model before ever entering a
+// key. A key posted in the body is accepted but genuinely unused, kept only
+// so the request shape matches every other provider's /models call for the
+// frontend's sake.
+func (s *Server) handleKiloModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+
+	models, err := fetchKiloModels()
+	if err != nil {
+		writeJSON(w, map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"status": "ok",
+		"models": models,
+	})
+}
+
+// fetchKiloModels fetches Kilo's model catalog. Its /models response
+// already carries a direct isFree boolean per model (verified live,
+// 2026-08-22: 368 models, 18 free) — used as-is rather than re-derived from
+// pricing like fetchOpenRouterModels does, since several of Kilo's own
+// "auto-routing" models (e.g. kilo-auto/frontier) report pricing "-1"
+// (routes through to whatever underlying model actually gets picked, not a
+// fixed price) which a prompt==0-and-completion==0 heuristic would
+// misclassify as free.
+func fetchKiloModels() ([]ProviderModelInfo, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", kiloModelsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("request oluşturulamadı: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Kilo API hatası: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Kilo döndü %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Data []struct {
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			ContextLen  int    `json:"context_length"`
+			Pricing     struct {
+				Prompt     interface{} `json:"prompt"`
+				Completion interface{} `json:"completion"`
+			} `json:"pricing"`
+			IsFree bool `json:"isFree"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("parse hatası: %w", err)
+	}
+
+	models := make([]ProviderModelInfo, 0, len(result.Data))
+	for _, m := range result.Data {
+		if m.ID == "" {
+			continue
+		}
+		models = append(models, ProviderModelInfo{
+			ID:          m.ID,
+			Name:        m.Name,
+			Description: m.Description,
+			ContextLen:  m.ContextLen,
+			PromptPrice: toFloat64(m.Pricing.Prompt),
+			CompPrice:   toFloat64(m.Pricing.Completion),
+			IsFree:      m.IsFree,
 		})
 	}
 

@@ -596,6 +596,15 @@ class MemoApiClient {
     return _guard<Map<String, dynamic>>(res.data);
   }
 
+  /// Fetch available models from Kilo Code's AI Gateway — same rich
+  /// (pricing/context/is_free) shape as [fetchOpenRouterModels], but the
+  /// endpoint itself needs no API key (Kilo's /models catalog is public),
+  /// so this takes none either.
+  Future<Map<String, dynamic>> fetchKiloModels() async {
+    final res = await _dio.post('/api/kilo/models');
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
   // ─── Status ─────────────────────────────────────────────────────
 
   /// Check backend connection status.

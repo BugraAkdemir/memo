@@ -49,6 +49,7 @@ class _ProviderConfigDialogState
     'openrouter',
     'opencode-zen',
     'opencode-go',
+    'kilo',
     'claude-code-cli',
     'codex-cli',
     'ollama',
@@ -170,17 +171,24 @@ class _ProviderConfigDialogState
   }
 
   Future<void> _openModelBrowser() async {
+    // Kilo's /models endpoint needs no API key at all (kilo.ai/docs/
+    // gateway/models-and-providers — public catalog), so it's the one type
+    // that can browse before a key is even entered; every other type here
+    // still requires one first since their /models calls actually forward
+    // it upstream.
     final apiKey = _apiKeyCtrl.text.trim();
-    if (apiKey.isEmpty) {
+    if (apiKey.isEmpty && _type != 'kilo') {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(L10n.t('enter_api_key_first'))),
       );
       return;
     }
 
-    final selected = _type == 'openrouter'
-        ? await _browseOpenRouterModels(apiKey)
-        : await _browseGenericModels(apiKey);
+    final selected = switch (_type) {
+      'openrouter' => await _browseOpenRouterModels(apiKey),
+      'kilo' => await _browseKiloModels(),
+      _ => await _browseGenericModels(apiKey),
+    };
 
     if (selected != null) {
       _modelCtrl.text = selected;
@@ -217,7 +225,54 @@ class _ProviderConfigDialogState
 
     return showDialog<String>(
       context: context,
-      builder: (_) => _ModelBrowserDialog(models: models),
+      builder: (_) => _ModelBrowserDialog(
+        models: models,
+        title: L10n.t('openrouter_models'),
+      ),
+    );
+  }
+
+  /// Kilo Code AI Gateway's model browser — same rich pricing/free-aware
+  /// dialog as OpenRouter's (their /models response shapes match closely
+  /// enough to reuse _ModelBrowserDialog verbatim), fed by the dedicated
+  /// /api/kilo/models endpoint (internal/webserver's handleKiloModels)
+  /// rather than the generic plain-string one _browseGenericModels uses,
+  /// since Kilo's real endpoint carries pricing/context/isFree metadata the
+  /// generic ListModels interface (Provider.ListModels: []string) can't.
+  Future<String?> _browseKiloModels() async {
+    final api = ref.read(apiClientProvider);
+
+    Map<String, dynamic> result;
+    try {
+      result = await api.fetchKiloModels();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('models_fetch_error', {'e': FriendlyError.describeGeneric(e)}))),
+        );
+      }
+      return null;
+    }
+
+    if (result['status'] != 'ok') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ ${result['error'] ?? L10n.t('models_fetch_error_short')}')),
+        );
+      }
+      return null;
+    }
+
+    final rawModels = result['models'];
+    final models = (rawModels is List) ? rawModels.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
+    if (!mounted) return null;
+
+    return showDialog<String>(
+      context: context,
+      builder: (_) => _ModelBrowserDialog(
+        models: models,
+        title: L10n.t('kilo_models'),
+      ),
     );
   }
 
@@ -813,11 +868,15 @@ class _ProviderConfigDialogState
   }
 }
 
-// ─── OpenRouter Model Browser Dialog ───────────────────────────
+// ─── Rich (pricing/free-aware) Model Browser Dialog ────────────
+// Shared by OpenRouter and Kilo Code — both APIs shape their /models
+// response closely enough (id/name/context_length/pricing/is_free) to
+// reuse this one dialog rather than duplicating it per provider.
 
 class _ModelBrowserDialog extends StatefulWidget {
   final List<Map<String, dynamic>> models;
-  const _ModelBrowserDialog({required this.models});
+  final String title;
+  const _ModelBrowserDialog({required this.models, required this.title});
 
   @override
   State<_ModelBrowserDialog> createState() => _ModelBrowserDialogState();
@@ -894,7 +953,7 @@ class _ModelBrowserDialogState extends State<_ModelBrowserDialog> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    L10n.t('openrouter_models'),
+                    widget.title,
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),

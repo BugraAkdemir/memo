@@ -293,6 +293,13 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// OpenRouter
 	route("/api/openrouter/connect", s.requirePermission(s.handleOpenRouterConnect, hasModelsPerm))
 	route("/api/openrouter/models", s.handleOpenRouterModels)
+	// Kilo Code AI Gateway (kilo.ai) model browser — no /connect endpoint
+	// (Kilo is added/edited through the generic provider config form like
+	// OpenCode Zen/Go, not OpenRouter's dedicated validate-and-save flow);
+	// /models needs no permission gate for the same reason
+	// /api/openrouter/models doesn't — a read-only catalog browse, and
+	// Kilo's own endpoint needs no credential at all to answer it.
+	route("/api/kilo/models", s.handleKiloModels)
 
 	// Orchestra mode
 	route("/api/orchestra/config", s.handleOrchestraConfig)

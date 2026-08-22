@@ -1,3 +1,70 @@
+# Ek (2026-08-22, devam) — Kilo Code AI Gateway provider'ı eklendi
+
+Kullanıcı `app.kilo.ai`'yi Ayarlar → API Sağlayıcılar'a OpenCode Zen gibi
+eklemek istedi — modeller **hardcoded olmasın**, API'den çekilsin,
+OpenRouter'daki gibi ücretsiz modeller en üstte yeşil görünsün. Kilo'nun
+dokümanlarını (kilo.ai/docs/gateway) ve gerçek API'sini inceledim.
+
+## Araştırma sonucu
+
+Kilo AI Gateway tamamen OpenAI-uyumlu ve OpenRouter'ın `/models` şemasını
+neredeyse birebir taklit ediyor:
+- Base URL: `https://api.kilo.ai/api/gateway`
+- Chat: `POST .../chat/completions` (standart OpenAI şeması, Bearer auth)
+- Modeller: `GET .../models` — **kimlik doğrulama gerektirmiyor**, 368
+  model, her birinde doğrudan bir `isFree: bool` alanı var (fiyat
+  hesaplamaya gerek yok — bazı "auto-routing" modeller `pricing.prompt:
+  "-1"` dönüyor, yani "fiyat sabit değil, hangi modele yönlendirilirse
+  ona göre", bunu `prompt==0` sanıp yanlışlıkla ücretsiz saymak gerçek bir
+  tuzaktı, canlı veriyle doğrulayıp fark ettim). Gerçek endpoint'e curl
+  attım: 368 model, 18 tanesi `isFree:true`.
+
+## Ne yapıldı (backend)
+
+`internal/provider/provider.go`: yeni `ProviderKilo` tipi, varsayılan base
+URL, varsayılan model (`kilo-auto/balanced` — otomatik yönlendirmeli,
+dengeli bir model, anahtar girmeden önce bile makul bir varsayılan).
+Yeni `internal/provider/kilo.go` — OpenCode Zen/OpenRouter ile birebir
+aynı ince `openAIProvider` sarmalayıcı deseni.
+
+`internal/webserver/handlers_oauth.go`: `OpenRouterModel` struct'ı
+`ProviderModelInfo` olarak yeniden adlandırıldı (artık iki sağlayıcı
+paylaşıyor — OpenRouter ve Kilo, ikisinin de `/models` şekli neredeyse
+aynı). Yeni `fetchKiloModels()`/`handleKiloModels` — OpenRouter'ın
+aksine **API key gerektirmiyor** (Kilo'nun kendi endpoint'i public), ve
+`isFree` alanını doğrudan kullanıyor (fiyattan yeniden hesaplamıyor —
+yukarıdaki tuzak yüzünden). Yeni route: `POST /api/kilo/models`.
+
+## Ne yapıldı (frontend)
+
+`provider_config.dart`: `'kilo'` tipi eklendi (varsayılan model/URL/görünen
+ad/API-key-al linki `app.kilo.ai/profile`/açıklama), `hasModelBrowser`'a
+eklendi. `provider_config_dialog.dart`: `_ModelBrowserDialog` (OpenRouter'ın
+zengin, fiyat/ücretsiz farkındalıklı model tarayıcısı) artık bir `title`
+parametresi alıyor ve Kilo tarafından da yeniden kullanılıyor — **ücretsiz
+modeller otomatik en üstte, yeşil ✓ ikonuyla** (bu sıralama/renklendirme
+mantığı zaten `_ModelBrowserDialog`'da vardı, sadece `is_free` alanına
+bakıyor — Kilo'nun verisi aynı alanı taşıdığı için sıfır ek kod gerekti).
+Kilo'nun model tarayıcısı API key girilmeden de açılabiliyor (tek
+farklılaştırılan davranış — Kilo'nun endpoint'i gerçekten anahtar
+istemiyor).
+
+**Doğrulama:** `go build/vet/test -race ./...` ve `flutter analyze`/
+`flutter test` (276/276) tamamen yeşil. Gerçek backend build edilip
+gerçek Kilo API'sine karşı uçtan uca test edildi: `POST /api/kilo/models`
+368 model + 18 ücretsiz döndürdü, `PUT /api/providers` ile tip `kilo` olan
+bir sağlayıcı gerçekten oluşturulup listelendi. Yeni testler: Go tarafında
+`fetchKiloModels`'ın `isFree` alanını doğrudan kullandığı (auto-routing
+modelin yanlış sınıflandırılmadığı), boş id'li kayıtları atladığı,
+upstream hatasını yaydığı, `handleKiloModels`'ın API key gerektirmediği
+ve sadece POST kabul ettiği; `factory_test.go`'nun dört tablosuna
+`ProviderKilo` eklendi. Flutter tarafında `fetchKiloModels`'ın doğru
+path'e POST attığı. **Gerçek uygulamada (Flutter GUI) elle denenmedi** —
+backend/API seviyesinde uçtan uca doğrulandı, ama Ayarlar diyaloğunda
+gerçek tıklama/görsel doğrulama yapılmadı.
+
+---
+
 # Ek (2026-08-22, devam) — `memo -chat <id> -list`/`-memory usage|saved`
 
 Kullanıcı `memo -p "mesaj"`'ın çıktısındaki `[chat:<id>]`'yi gösterip

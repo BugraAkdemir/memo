@@ -125,6 +125,7 @@ class ProviderDefaults {
     'ollama': 'llama3',
     'opencode-zen': '',
     'opencode-go': '',
+    'kilo': 'kilo-auto/balanced',
     'claude-code-cli': 'claude-code',
     'codex-cli': 'codex',
   };
@@ -139,6 +140,7 @@ class ProviderDefaults {
     'ollama': 'http://127.0.0.1:11434/v1',
     'opencode-zen': 'https://opencode.ai/zen/v1',
     'opencode-go': 'https://opencode.ai/zen/go/v1',
+    'kilo': 'https://api.kilo.ai/api/gateway',
   };
 
   static const Map<String, String> displayNames = {
@@ -151,6 +153,7 @@ class ProviderDefaults {
     'ollama': 'Ollama',
     'opencode-zen': 'OpenCode Zen',
     'opencode-go': 'OpenCode Go',
+    'kilo': 'Kilo Code',
     'claude-code-cli': 'Claude Code (CLI)',
     'codex-cli': 'Codex (CLI)',
     'custom': 'Özel (OpenAI uyumlu)',
@@ -167,6 +170,7 @@ class ProviderDefaults {
     'openrouter': 'https://openrouter.ai/keys',
     'opencode-zen': 'https://opencode.ai/zen',
     'opencode-go': 'https://opencode.ai/zen',
+    'kilo': 'https://app.kilo.ai/profile',
   };
 
   /// One-line, plain-language hint about each provider shown under the picker.
@@ -180,6 +184,7 @@ class ProviderDefaults {
     'ollama': 'Bilgisayarında yerel model çalıştır — anahtar gerekmez.',
     'opencode-zen': 'OpenCode\'un kullandığın kadar öde modeli — bazı modeller ücretsiz.',
     'opencode-go': 'OpenCode\'un abonelik modeli.',
+    'kilo': 'Kilo Code\'un yüzlerce modele tek anahtarla erişim sağlayan gateway\'i — bazı modeller ücretsiz.',
     'claude-code-cli':
         'Bilgisayarında kurulu Claude Code CLI\'ı kullanır — dosya/komut çalıştırma yetkisi olan gerçek bir ajan, sadece bir sohbet API\'si değil. API anahtarı gerekmez.',
     'codex-cli':
@@ -195,9 +200,14 @@ class ProviderDefaults {
   static bool isCLIType(String type) => cliTypes.contains(type);
 
   /// Providers whose available models are fetched dynamically from the API
-  /// (via /api/providers/models) instead of the user typing one by hand.
+  /// (via /api/providers/models, or — for openrouter/kilo — their own
+  /// dedicated pricing/free-aware endpoint) instead of the user typing one
+  /// by hand.
   static bool hasModelBrowser(String type) =>
-      type == 'openrouter' || type == 'opencode-zen' || type == 'opencode-go';
+      type == 'openrouter' ||
+      type == 'opencode-zen' ||
+      type == 'opencode-go' ||
+      type == 'kilo';
 
   /// Providers that need no API key (local). Custom endpoints often need one,
   /// but not always (local proxies), so it's treated as optional there.

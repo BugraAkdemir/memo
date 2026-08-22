@@ -485,3 +485,143 @@ func TestHandleProviderEffortLevels_OllamaUsesConfiguredBaseURL(t *testing.T) {
 		t.Errorf("body = %s, want it to contain the thinking-capable Ollama level set", w.Body.String())
 	}
 }
+
+// ─── Kilo Code AI Gateway model browser ───
+
+// TestFetchKiloModels_UsesIsFreeFieldDirectly is the actual point of not
+// re-deriving IsFree from pricing like fetchOpenRouterModels does: an
+// auto-routing model (pricing "-1", meaning "depends on whatever gets
+// picked") must not be misclassified as free just because it isn't a
+// positive number, and a real free model must come through as free.
+func TestFetchKiloModels_UsesIsFreeFieldDirectly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]interface{}{
+				{
+					"id":             "kilo-auto/frontier",
+					"name":           "Auto Frontier",
+					"context_length": 1000000,
+					"pricing":        map[string]interface{}{"prompt": "-1", "completion": "-1"},
+					"isFree":         false,
+				},
+				{
+					"id":             "kilo-auto/free",
+					"name":           "Auto Free",
+					"context_length": 256000,
+					"pricing":        map[string]interface{}{"prompt": "0", "completion": "0"},
+					"isFree":         true,
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	orig := kiloModelsURL
+	kiloModelsURL = srv.URL
+	defer func() { kiloModelsURL = orig }()
+
+	models, err := fetchKiloModels()
+	if err != nil {
+		t.Fatalf("fetchKiloModels() error = %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("got %d models, want 2", len(models))
+	}
+	if models[0].IsFree {
+		t.Errorf("kilo-auto/frontier (pricing -1, isFree:false) reported as free")
+	}
+	if !models[1].IsFree {
+		t.Errorf("kilo-auto/free (isFree:true) not reported as free")
+	}
+}
+
+// TestFetchKiloModels_SkipsEntriesWithNoID mirrors fetchOpenRouterModels'
+// own defensive skip — a malformed entry with no id can't be selected as a
+// model anyway, so it shouldn't clutter the browser.
+func TestFetchKiloModels_SkipsEntriesWithNoID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]interface{}{
+				{"id": "", "name": "broken"},
+				{"id": "openai/gpt-5.6-sol", "name": "GPT-5.6 Sol"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	orig := kiloModelsURL
+	kiloModelsURL = srv.URL
+	defer func() { kiloModelsURL = orig }()
+
+	models, err := fetchKiloModels()
+	if err != nil {
+		t.Fatalf("fetchKiloModels() error = %v", err)
+	}
+	if len(models) != 1 || models[0].ID != "openai/gpt-5.6-sol" {
+		t.Errorf("models = %+v, want exactly the one entry with a real id", models)
+	}
+}
+
+// TestFetchKiloModels_PropagatesUpstreamError guards against silently
+// returning an empty list when Kilo's API itself is down/erroring — the
+// caller (handleKiloModels) needs to tell the difference between "no
+// models" and "couldn't fetch models" to show the right thing to the user.
+func TestFetchKiloModels_PropagatesUpstreamError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	orig := kiloModelsURL
+	kiloModelsURL = srv.URL
+	defer func() { kiloModelsURL = orig }()
+
+	if _, err := fetchKiloModels(); err == nil {
+		t.Fatal("expected an error when Kilo's API returns 500")
+	}
+}
+
+// TestHandleKiloModels_NoAPIKeyRequired is the actual behavioral
+// difference from handleOpenRouterModels: Kilo's /models endpoint needs no
+// credential at all (kilo.ai/docs/gateway/models-and-providers), so a POST
+// with a genuinely empty body must still succeed.
+func TestHandleKiloModels_NoAPIKeyRequired(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]interface{}{
+				{"id": "kilo-auto/balanced", "name": "Auto Balanced", "isFree": false},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	orig := kiloModelsURL
+	kiloModelsURL = srv.URL
+	defer func() { kiloModelsURL = orig }()
+
+	s := New(&swarmStubBridge{})
+	r := httptest.NewRequest(http.MethodPost, "/api/kilo/models", nil)
+	w := httptest.NewRecorder()
+	s.handleKiloModels(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"status":"ok"`) {
+		t.Errorf("body = %s, want status ok", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "kilo-auto/balanced") {
+		t.Errorf("body = %s, want the fetched model id present", w.Body.String())
+	}
+}
+
+func TestHandleKiloModels_RejectsNonPost(t *testing.T) {
+	s := New(&swarmStubBridge{})
+	r := httptest.NewRequest(http.MethodGet, "/api/kilo/models", nil)
+	w := httptest.NewRecorder()
+	s.handleKiloModels(w, r)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want 405", w.Code)
+	}
+}

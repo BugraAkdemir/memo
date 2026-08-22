@@ -2604,25 +2604,6 @@ func cosineSimilarityFast(a []float32, aNorm float64, b []float32, bNorm float64
 	return float32(dot / (aNorm * bNorm))
 }
 
-func normalizeVector(v []float32) []float32 {
-	if len(v) == 0 {
-		return v
-	}
-	var norm float64
-	for _, val := range v {
-		norm += float64(val * val)
-	}
-	if norm == 0 {
-		return v
-	}
-	scale := float32(1 / math.Sqrt(norm))
-	out := make([]float32, len(v))
-	for i, val := range v {
-		out[i] = val * scale
-	}
-	return out
-}
-
 func floatsToBlob(v []float32) []byte {
 	b := make([]byte, len(v)*4)
 	for i, f := range v {

@@ -47,10 +47,6 @@ func LogStatus() {
 	logx.Info(statusMsg)
 }
 
-func VecAvailable() bool {
-	return vecAvailable
-}
-
 func DriverName() string {
 	if vecAvailable {
 		return driverName

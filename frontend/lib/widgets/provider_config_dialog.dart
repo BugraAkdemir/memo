@@ -170,6 +170,16 @@ class _ProviderConfigDialogState
     _loadEffortLevels();
   }
 
+  Future<void> _pickProviderType(BuildContext context) async {
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (_) => _ProviderTypePickerDialog(types: _types, current: _type),
+    );
+    if (selected != null && selected != _type) {
+      _onTypeChanged(selected);
+    }
+  }
+
   Future<void> _openModelBrowser() async {
     // Kilo's /models endpoint needs no API key at all (kilo.ai/docs/
     // gateway/models-and-providers — public catalog), so it's the one type
@@ -513,23 +523,46 @@ class _ProviderConfigDialogState
                 const SizedBox(height: 24),
 
                 // ── Step 1: provider picker ──
-                DropdownButtonFormField<String>(
-                  initialValue: _type,
+                // A custom rounded, height-constrained, scrollable dialog
+                // (_ProviderTypePickerDialog) instead of a native
+                // DropdownButtonFormField: with 13 real-logo entries, the
+                // stock dropdown menu (a) rendered in the app-level Overlay
+                // rather than clipped to this modal, visibly spilling past
+                // this dialog's own rounded card when opened near the
+                // bottom of a shorter window; (b) used Material's default
+                // small/sharp popup corner radius instead of Memo's
+                // consistently-rounded shape; (c) prefixed each row with a
+                // plain Unicode glyph (○ ◆ ✕ ...) instead of the provider's
+                // real logo (providerLogoWidget, already used in this same
+                // dialog's own header avatar just above). InputDecorator
+                // keeps the identical label/helper-text field look while
+                // being tappable instead of a native dropdown.
+                InputDecorator(
                   decoration: InputDecoration(
                     labelText: L10n.t('provider_step1'),
                     border: const OutlineInputBorder(),
                     helperText: hint,
                     helperMaxLines: 2,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   ),
-                  items: _types.map((t) {
-                    return DropdownMenuItem(
-                      value: t,
-                      child: Text(
-                        '${providerIcon(t)} ${ProviderDefaults.displayNames[t] ?? t}',
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: isEditing ? null : _onTypeChanged,
+                  child: InkWell(
+                    onTap: isEditing ? null : () => _pickProviderType(context),
+                    child: Row(
+                      children: [
+                        providerLogoWidget(_type, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            ProviderDefaults.displayNames[_type] ?? _type,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        if (!isEditing)
+                          Icon(Icons.unfold_more, size: 18, color: c.textDim),
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
 
@@ -1174,6 +1207,96 @@ class _SimpleModelBrowserDialogState extends State<_SimpleModelBrowserDialog> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Provider Type Picker Dialog ────────────────────────────────
+// Replaces the old DropdownButtonFormField provider picker — see Step 1's
+// own comment above (in _ProviderConfigDialogState.build) for exactly why:
+// overflow past this app's modal bounds, mismatched corner radius, and
+// plain-glyph rows instead of real logos. Height-capped and internally
+// scrollable so it can never grow past the screen regardless of how many
+// provider types exist, and shares this app's own rounded Dialog shape
+// (MemoTheme.radiusLg) instead of Material's small default popup radius.
+
+class _ProviderTypePickerDialog extends StatelessWidget {
+  final List<String> types;
+  final String current;
+  const _ProviderTypePickerDialog({required this.types, required this.current});
+
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
+      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+      child: ConstrainedBox(
+        // Capped relative to the actual viewport, not a fixed pixel count —
+        // this is exactly what a native dropdown menu should have done and
+        // didn't: guaranteed to always fit on screen, scrolling internally
+        // once the list is taller than the cap, never spilling past the
+        // window like the widget this replaces did.
+        constraints: BoxConstraints(
+          maxWidth: 360,
+          maxHeight: (screenHeight * 0.6).clamp(280.0, 480.0),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      L10n.t('provider_step1'),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => Navigator.of(context).pop(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: types.length,
+                itemBuilder: (ctx, i) {
+                  final t = types[i];
+                  final isSelected = t == current;
+                  return ListTile(
+                    dense: true,
+                    leading: providerLogoWidget(t, size: 22),
+                    title: Text(
+                      ProviderDefaults.displayNames[t] ?? t,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                    trailing: isSelected
+                        ? Icon(Icons.check, size: 18, color: MemoTheme.accent)
+                        : null,
+                    selected: isSelected,
+                    selectedTileColor: MemoTheme.accentMuted,
+                    onTap: () => Navigator.of(context).pop(t),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

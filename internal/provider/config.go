@@ -331,63 +331,20 @@ type providerConfigStored struct {
 	MaxTokens        int          `json:"max_tokens,omitempty"`
 }
 
+// defaultConfigs is what a fresh install's providers.json starts as. Used
+// to seed every known provider type as a disabled placeholder entry — the
+// Settings > API Providers list showed OpenAI/Gemini/Grok/Claude/
+// OpenRouter/Groq/Ollama/OpenCode Zen/OpenCode Go as "Disabled" cards
+// before the user had ever touched any of them, which only grew more
+// cluttered as new provider types (Kilo, ...) were added. Direct user
+// feedback: this list should show only what was actually added via "Add
+// Provider," nothing pre-populated. Existing installs whose providers.json
+// already has these seeded entries aren't touched here (Load() only calls
+// this when the file doesn't exist yet or fails to parse) — see
+// providers_tab.dart's own filter for how an already-cluttered existing
+// list is handled without a destructive migration.
 func defaultConfigs() []ProviderConfig {
-	return []ProviderConfig{
-		{
-			Type:    ProviderOpenAI,
-			Name:    "OpenAI",
-			Model:   DefaultModels[ProviderOpenAI],
-			Enabled: false,
-		},
-		{
-			Type:    ProviderGemini,
-			Name:    "Google Gemini",
-			Model:   DefaultModels[ProviderGemini],
-			Enabled: false,
-		},
-		{
-			Type:    ProviderGrok,
-			Name:    "xAI Grok",
-			Model:   DefaultModels[ProviderGrok],
-			Enabled: false,
-		},
-		{
-			Type:    ProviderClaude,
-			Name:    "Anthropic Claude",
-			Model:   DefaultModels[ProviderClaude],
-			Enabled: false,
-		},
-		{
-			Type:    ProviderOpenRouter,
-			Name:    "OpenRouter",
-			Model:   DefaultModels[ProviderOpenRouter],
-			Enabled: false,
-		},
-		{
-			Type:    ProviderGroq,
-			Name:    "Groq",
-			Model:   DefaultModels[ProviderGroq],
-			Enabled: false,
-		},
-		{
-			Type:    ProviderOllama,
-			Name:    "Ollama",
-			Model:   DefaultModels[ProviderOllama],
-			Enabled: false,
-		},
-		{
-			Type:    ProviderOpenCodeZen,
-			Name:    "OpenCode Zen",
-			Model:   DefaultModels[ProviderOpenCodeZen],
-			Enabled: false,
-		},
-		{
-			Type:    ProviderOpenCodeGo,
-			Name:    "OpenCode Go",
-			Model:   DefaultModels[ProviderOpenCodeGo],
-			Enabled: false,
-		},
-	}
+	return []ProviderConfig{}
 }
 
 // defaultMachineKey derives a machine-specific key from hardware info.

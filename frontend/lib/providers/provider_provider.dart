@@ -157,17 +157,39 @@ String? _providerAssetPath(String type) {
       return 'lib/icon/ollama.png';
     case 'groq':
       return 'lib/icon/groq.png';
+    case 'opencode-zen':
+    case 'opencode-go':
+      // Same OpenCode brand mark for both — they're the same product's two
+      // billing tiers (pay-as-you-go vs. subscription), not different
+      // services. Source: Simple Icons (cdn.simpleicons.org/opencode).
+      return 'lib/icon/opencode.svg';
+    case 'kilo':
+      // Source: kilo.ai's own favicon (kilo.ai/favicon/favicon.svg).
+      return 'lib/icon/kilo.svg';
     default:
       return null;
   }
 }
 
-/// Widget that renders the provider's actual logo image.
-/// Falls back to a generic cloud icon if no logo is registered.
+/// Widget that renders the provider's actual logo image. Falls back to a
+/// fitting generic icon (not a brand logo, since these three types aren't
+/// external branded services) for local CLI-backed providers and the
+/// user-supplied custom endpoint; any other unregistered type gets a plain
+/// cloud icon.
 Widget providerLogoWidget(String type, {double size = 18}) {
   final path = _providerAssetPath(type);
   if (path == null) {
-    return const Icon(Icons.cloud_outlined, size: 18);
+    final fallback = switch (type) {
+      'claude-code-cli' || 'codex-cli' => Icons.terminal,
+      'custom' => Icons.settings_ethernet,
+      _ => Icons.cloud_outlined,
+    };
+    // BUG fix: this used to hardcode size: 18 regardless of the caller's
+    // requested size, so every fallback-icon provider (previously every
+    // type without a registered asset) rendered at a fixed 18px even where
+    // callers asked for 24-28px — visibly smaller/inconsistent next to a
+    // real logo in the same row.
+    return Icon(fallback, size: size);
   }
   if (path.endsWith('.svg')) {
     return SvgPicture.asset(path, width: size, height: size);

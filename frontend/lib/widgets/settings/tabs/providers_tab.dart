@@ -7,6 +7,25 @@ import '../../../providers/provider_provider.dart';
 import '../../provider_config_dialog.dart';
 import '../../../core/friendly_error.dart';
 
+/// Filters out untouched placeholder entries — installs from before
+/// defaultConfigs() stopped pre-seeding every known provider type
+/// (internal/provider/config.go) still have these sitting in their
+/// providers.json (no migration deletes existing data out from under a
+/// user), and the API Providers list is exactly where that clutter was
+/// reported: disabled cards for providers nobody ever actually added. A
+/// provider counts as "actually added" if it's enabled, or has a real API
+/// key, or a custom base URL — any one of those means a human configured
+/// it, however briefly. Extracted as its own top-level function so this
+/// filtering logic is unit-testable without pumping the whole widget tree.
+List<ProviderConfig> visibleProviders(List<ProviderConfig> all) {
+  return all
+      .where((p) =>
+          p.enabled ||
+          (p.apiKey != null && p.apiKey!.isNotEmpty) ||
+          (p.baseUrl != null && p.baseUrl!.isNotEmpty))
+      .toList();
+}
+
 class ProvidersTab extends ConsumerWidget {
   const ProvidersTab({super.key});
 
@@ -51,7 +70,8 @@ class ProvidersTab extends ConsumerWidget {
         const SizedBox(height: 24),
 
         providersAsync.when(
-          data: (providers) {
+          data: (allProviders) {
+            final providers = visibleProviders(allProviders);
             if (providers.isEmpty) {
               return Container(
                 padding: const EdgeInsets.all(32),

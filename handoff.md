@@ -1,3 +1,87 @@
+# Ek (2026-08-22, devam) — API Providers ekranı: gerçek logo'lar, taşan dropdown yerine kendi picker'ımız, varsayılan çöp liste kaldırıldı
+
+Kullanıcı Kilo Code eklendikten sonra gerçek uygulamada canlı test etti,
+ekran görüntüsü attı — üç somut şikayet: (1) "Add API provider" listesinde
+her satırın başında rastgele Unicode sembolleri var (○◆✕⚡■↔△▸☁),
+gerçek logo değil — internetten SVG/PNG bulup koymamı istedi; (2) bu
+dropdown açılınca pencere/dialog sınırlarının dışına taşıyor, köşeleri de
+Memo'nun genel yuvarlak tasarımına uymuyor; (3) API Providers sekmesi hiç
+eklenmemiş provider'ları bile "Disabled" kart olarak gösteriyor, kalabalık
+— sadece "Add Provider"dan gerçekten eklenenler görünsün istedi.
+
+## 1 — Gerçek logo'lar
+
+`providers_tab.dart`/header'daki avatar zaten gerçek logo kullanıyordu
+(`providerLogoWidget`, `lib/icon/*.svg|png`) ama dropdown satırları ayrı bir
+`providerIcon()` fonksiyonundan düz Unicode metin sembolü çekiyordu — asıl
+kök neden buydu. `opencode-zen`/`opencode-go`/`kilo` için hiç logo asset'i
+yoktu (jenerik bulut ikonuna düşüyordu). İnternetten gerçek marka
+varlıklarını buldum: OpenCode → Simple Icons (`cdn.simpleicons.org/
+opencode`), Kilo Code → kendi favicon'u (`kilo.ai/favicon/favicon.svg`).
+İkisi de `frontend/lib/icon/`'a eklendi (`opencode.svg`, `kilo.svg`),
+`provider_provider.dart`'ın `_providerAssetPath`'ine kaydedildi.
+
+Aynı yerde gerçek bir bug da buldum ve düzelttim: `providerLogoWidget`'ın
+fallback dalı `size` parametresini yok sayıp sabit `18` kullanıyordu — yani
+logosu olmayan her provider (`custom`, `claude-code-cli`, `codex-cli` ve
+düzeltmeden önce opencode/kilo de) çağıranın istediği boyuttan (ör. 24-28px)
+bağımsız hep 18px'te render oluyordu, yanındaki gerçek logoyla tutarsız
+görünüyordu. Ayrıca fallback ikonu artık tipe göre anlamlı: CLI tipleri
+(`claude-code-cli`/`codex-cli`) → `Icons.terminal`, `custom` →
+`Icons.settings_ethernet`, geri kalan bilinmeyenler → jenerik bulut.
+
+## 2 — Taşan/köşeli dropdown → kendi picker'ımız
+
+`provider_config_dialog.dart`'taki `DropdownButtonFormField<String>`
+(provider tipi seçici) tamamen kaldırıldı, yerine yeni
+`_ProviderTypePickerDialog` geldi — `_ModelBrowserDialog`/
+`_SimpleModelBrowserDialog` ile aynı ailede: Memo'nun kendi
+`MemoTheme.radiusLg` köşe yarıçapını kullanan bir `Dialog`, yüksekliği
+`screenHeight * 0.6` (280-480px arası clamp'lenmiş) ile sabitlenmiş ve
+gerektiğinde kendi içinde scroll eden bir liste — asıl taşma sebebi buydu:
+native dropdown menüsü app-level Overlay'de render oluyor, iç dialog'un
+sınırlarına klip'lenmiyordu, 13 gerçek-logolu satırla (artık ikon metni
+değil) pencere küçükken dialog'un dışına taşıyordu. Her satır artık
+`providerLogoWidget` + isim + seçiliyse ✓ ikonu gösteriyor. Alan görünümü
+(`InputDecorator` + `InkWell`) eski dropdown'ın label/helper-text
+davranışını birebir koruyor, sadece tıklayınca native dropdown yerine bu
+dialog'u açıyor.
+
+## 3 — Varsayılan "çöp" provider listesi kaldırıldı
+
+`internal/provider/config.go`'daki `defaultConfigs()` — hiç
+`providers.json` yokken (taze kurulum) OpenAI/Gemini/Grok/Claude/
+OpenRouter/Groq/Ollama/OpenCode Zen/OpenCode Go'yu **hepsini** `Enabled:
+false` disabled placeholder olarak önceden dolduruyordu. Artık boş dizi
+dönüyor — taze bir kurulum artık **hiç** provider'sız başlıyor, sadece "Add
+Provider"dan eklenenler görünüyor. Gerçek backend'i sıfır data dizinle
+başlatıp doğruladım: `GET /api/providers` artık `[]` dönüyor.
+
+**Kullanıcının kendi, zaten kirlenmiş mevcut kurulumu için** (bu değişiklik
+sadece taze kurulumları düzeltiyor, var olan `providers.json`'a
+dokunmuyor — kullanıcı verisini sessizce silen bir migration yazmadım,
+riskli buldum) ayrı bir **frontend filtresi** ekledim:
+`providers_tab.dart`'ın yeni `visibleProviders()` fonksiyonu, listeden
+"hiç dokunulmamış" placeholder'ları (disabled + boş API key + boş base URL)
+gizliyor — enabled olan, gerçek bir API key'i olan veya özel bir base URL'i
+olan HERHANGİ biri (yani insan eliyle bir şekilde ayarlanmış olan) hâlâ
+gösteriliyor. Bu, kullanıcının şu anki ekranındaki kalabalığı da hemen
+çözüyor, hiçbir veri silinmeden.
+
+**Doğrulama:** `go build/vet/test -race ./...` ve `flutter analyze`/
+`flutter test` (282/282) yeşil. Gerçek backend'i sıfırdan başlatıp
+`GET /api/providers`'ın boş dizi döndüğünü doğrudan doğruladım. Yeni
+testler: Go tarafında `TestNewConfigManager_FreshInstallStartsWithNoProviders`/
+`_AddedProviderPersistsAndIsTheOnlyOne`; Flutter tarafında
+`providers_tab_test.dart` (6 test — `visibleProviders`'ın enabled/API
+key/base URL kombinasyonlarını doğru filtrelediği). **Yeni
+`_ProviderTypePickerDialog`'un kendisi için widget testi yazılmadı** —
+`flutter analyze` temiz ve mantığı `_ModelBrowserDialog` ile aynı
+(zaten test edilmiş desen) ama gerçek GUI'de tıklanıp taşma/köşe
+sorununun görsel olarak düzeldiği elle doğrulanmadı.
+
+---
+
 # Ek (2026-08-22, devam) — Kilo Code AI Gateway provider'ı eklendi
 
 Kullanıcı `app.kilo.ai`'yi Ayarlar → API Sağlayıcılar'a OpenCode Zen gibi

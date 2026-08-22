@@ -130,7 +130,9 @@ The mobile app has a calendar tab. It shows:
 - Long-press an event to delete it
 - Change the reminder lead time
 
-## ⏰ Routines on Mobile (v3.3.3)
+## ⏰ Routines on Mobile (v3.3.3) — REMOVED in v3.9.0
+
+> **⚠️ Out of date as of v3.9.0:** routine delivery to the phone was removed entirely. The mobile app no longer polls `/api/routines/mobile-ready` — the endpoint was deleted from the backend because there is no actively used mobile app to receive it, and it now returns 404. Routines are now created, managed, and delivered through **WhatsApp or Telegram self-chat** instead (see [[WhatsApp Entegrasyonu]] / the Telegram page). Calendar reminders are unaffected — they come from the calendar system and still arrive as locally pre-scheduled notifications.
 
 Routines work on mobile too, not just desktop. Since the mobile app has no push channel, it polls `/api/routines/mobile-ready` to pre-schedule a **real, pre-scheduled local notification** ahead of a routine's fire time — it still arrives even if the app isn't open. Notification text follows the language the routine was created in (fixed in v3.3.3 — it previously always came out in Turkish regardless of the app's own language setting). See [[Proactive Learning and Calendar]].
 

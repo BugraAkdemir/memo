@@ -1,3 +1,42 @@
+# Ek (2026-08-22, devam) — Yapısal inceleme (codebase-memory + code-review) ve ilk temizlik commit'i (`c48cb89`)
+
+Kullanıcı "skill'lerini göster, AGENTS.md kurallarına harfiyen uy" dedi. Önce skill'ler taşındı
+(opencode'un `codebase-memory`+`llm-council`'i, Grok'un `code-review`'u, Claude Code'un
+`frontend-design`+`ui-ux-pro-max`'ı → `~/.cline/skills/`), sonra proje graph üzerinden
+denetlendi. **Bu oturumun işi: ölü kod temizliği — commit `c48cb89`, push edilmedi.**
+
+## Yapısal inceleme bulguları (detaylı rapor sohbette)
+
+- **Sağlıklı:** test dosyası olmayan sadece 2 paket (`browseropen`, `models`); `internal/`'da 0
+  TODO/FIXME, 0 `context.TODO()`, 2 meşru fail-fast `panic`; SSE non-blocking-first kuralı
+  örneklenen her yerde uyulmuş.
+- **Silinen ölü kod (commit `c48cb89`):** `normalizeVector` (`store.go`, 0 çağırıcı —
+  `cosineSimilarityFast`'ın öncül) ve `VecAvailable` (`vec_register.go`, production+test'te 0
+  çağırıcı; `DriverName` aynı state'i taşıyor). Doğrulama: repo-geneli grep + graph'ta 0 inbound
+  edge; `go build/vet/test -race` (sqlite_fts5) tamamen yeşil.
+- **Giant files (>1k, kural ihlali — henüz dokunulmadı):** `handlers_flutter.go` 2720,
+  `memory/store.go` 2643, `llm.go` 1511, `server.go` 1215, `conductor.go` 1176; Dart'ta
+  `api_client.dart` 2566 ↔ `mobile/api_client.dart` 1928 (iki neredeyse-aynı client — drift
+  riski, birleştirme adayı #1).
+- **Graph döngüleri (8):** 2 tanesi doğrulamada false positive çıktı — `database→fileutil→telegram`
+  döngüsü `url.Values.Set`'in `telegram.Set`'e yanlış eşlenmesi (resolver isim çakışması);
+  `ListRoutines↔ListRoutinesForChat` çifti `routineToolAdapter` metodlarının receiver'sız
+  key'lenmesinden. Gerçek olanlar benign/by-design: tunnel self-heal, ngrok lock wrapper,
+  gguf recursive parser, replcli dispatch.
+- **Not:** Grafiğin `complexity/cognitive` property'leri bu üretimde boş — indexer sürümü eski
+  görünüyor; sıcak-path analizi bir sonraki re-index'te tekrar denenebilir.
+
+## Sıradaki oturum için
+
+1. Önerilen sıradaki büyük işler (4.0.0 "yapısal temizlik" ayağı olarak): (a) `handlers_flutter.go`
+   alan-bazlı split, (b) `memory/store.go` split, (c) frontend/mobile `api_client` birleştirme.
+   Kural #5 gereği oturum başına 1-2 madde, her biri kendi commit'inde.
+2. `obsidian-doc-en/Memo/Mobile App.md` working tree'de commitlenmemiş duruyor — bana ait değil
+   (muhtemelen önceki oturumdan), bilinçli olarak dokunulmadı; kullanıcı karar vermeli.
+3. Push yapılmadı (istenmedi).
+
+---
+
 # Ek (2026-08-22, devam) — v3.9.0 gerçekten release edildi (`/memo-release` skill)
 
 Kullanıcı "v3.9.0'ı çıkaralım, CI'dan gelen build'leri unutma, release notu yazmayı unutma" dedi — `/memo-release` skill'i uçtan uca çalıştırıldı, tag'e kadar.

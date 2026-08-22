@@ -16,11 +16,18 @@ type SessionInfo struct {
 	ProjectPath string `json:"project_path,omitempty"`
 }
 
-// ChatMessage mirrors the fields of sessions.ChatMessage the REPL needs to
-// replay a resumed chat's history in the terminal.
+// ChatMessage mirrors the fields of sessions.ChatMessage the REPL (and the
+// `-chat <id> -list`/`-memory` scripting flags, cli_chat.go) need. Timestamp/
+// MemoryUsed weren't needed until -memory added a per-message memory-usage
+// view — see sessions.ChatMessage's own doc comment for what MemoryUsed
+// actually counts (retrieved-and-injected memories for that turn, not the
+// specific memories themselves — no per-message record of *which* memories
+// were used is persisted anywhere).
 type ChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string `json:"role"`
+	Content    string `json:"content"`
+	Timestamp  string `json:"timestamp"`
+	MemoryUsed int    `json:"memory_used,omitempty"`
 }
 
 // ListChats returns every chat session the backend knows about, most

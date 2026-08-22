@@ -68,6 +68,17 @@ KULLANIM / USAGE
   memo                        Terminal sohbetini başlat / start the terminal chat
   memo -p "mesaj"             Tek mesaj gönder, cevabı yazdır, çık
                               send one message, print the reply, exit
+  memo -chat <id> -p "mesaj"  Var olan bir sohbete aynı şekilde devam et
+                              continue an existing chat the same way
+  memo -chat <id> -list       O sohbetin mesajlarını listele, mesaj gönderme
+                              list that chat's messages, sends nothing
+  memo -chat <id> -memory usage
+                              O sohbette her mesajda kaç hafıza kullanıldığını göster
+                              show how many memories each message in that chat used
+                              (-list/-memory yalnızca -chat ile birlikte çalışır — tek
+                              başına "memo -list" diye bir şey yok.
+                              -list/-memory only work together with -chat — there is
+                              no standalone "memo -list".)
 
 KOMUTLAR / COMMANDS
   --help, -h                  Bu yardımı göster / show this help

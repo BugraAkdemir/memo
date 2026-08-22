@@ -59,8 +59,10 @@ func main() {
 	headless := flag.Bool("headless", false, "Force headless mode (no terminal REPL) even from an interactive terminal")
 	autoShutdown := flag.Bool("auto-shutdown", false, "internal: set by memo itself when it spawns a detached backend for a terminal session — shuts down once no CLI/GUI client is attached (see internal/app/clients.go). Do not set this for a standalone/service backend.")
 	prompt := flag.String("p", "", "Send a single message non-interactively, print the reply plus [chat:<id>] and a [memory:...] status line, then exit — no terminal REPL. Scripting/testing only, mirrors what the interactive REPL does for one turn.")
-	chatID := flag.String("chat", "", "Existing chat ID to continue with -p (see [chat:<id>] from a previous -p run). Omitted: -p starts a brand-new agent chat, same as an interactive session would.")
+	chatID := flag.String("chat", "", "Existing chat ID to continue with -p (see [chat:<id>] from a previous -p run), or to target with -list/-memory. Omitted with -p: starts a brand-new agent chat, same as an interactive session would. -list/-memory require -chat — there is no bare, chat-less form of either.")
 	autoAllow := flag.Bool("auto-allow", false, "With -p: automatically allow any tool permission request instead of denying it, so a scripted turn can actually run agent tools (file edit, command, web search) instead of being blocked. DANGEROUS outside a disposable test environment — the agent gets to act on the filesystem/shell with zero human review.")
+	listMessages := flag.Bool("list", false, "Requires -chat <id>: print that chat's message history and exit — no message sent. Cannot be combined with -p or -memory.")
+	memoryQuery := flag.String("memory", "", "Requires -chat <id>: usage|saved — show memory info for that chat and exit instead of sending a message. \"usage\" prints each message's memory_used count (real, persisted data). \"saved\" is refused with an explanation: memory entries don't record which chat produced them, so it can't be answered honestly. Cannot be combined with -p or -list.")
 	lanMode := flag.Bool("lan", false, "Headless mode only: bind 0.0.0.0 instead of 127.0.0.1 and require the X-Memo-Token/Authorization Bearer header on every request (same auth remote access uses), instead of a 127.0.0.1-only bind that nothing outside the host — including Docker's own port-forwarding — can reach. For running the backend as a LAN-reachable service (Docker/CasaOS, a home server), not for the interactive REPL/GUI path. A token is generated on first use and persisted to config.yaml; it is printed to the log on every boot.")
 
 	// Standalone commands: each prints or does one thing and exits, without
@@ -135,6 +137,32 @@ func main() {
 			promptFlagPassed = true
 		}
 	})
+
+	// -list/-memory are chat-scoped scripting flags, never standalone —
+	// there is deliberately no `memo -list`/`memo -memory` that means
+	// anything on its own, only `memo -chat <id> -list`/`-memory`. Checked
+	// before the -p branch below since -p also accepts -chat, but for a
+	// different purpose (continue that chat with a new message) — the two
+	// are mutually exclusive per run, not stackable.
+	if *listMessages || *memoryQuery != "" {
+		if *chatID == "" {
+			fmt.Fprintln(os.Stderr, "FATAL: -list ve -memory yalnızca -chat \"<id>\" ile birlikte kullanılabilir / -list and -memory require -chat \"<id>\"")
+			os.Exit(1)
+		}
+		if *listMessages && *memoryQuery != "" {
+			fmt.Fprintln(os.Stderr, "FATAL: -list ve -memory aynı çalıştırmada birlikte kullanılamaz / -list and -memory cannot be combined in the same run")
+			os.Exit(1)
+		}
+		if promptFlagPassed {
+			fmt.Fprintln(os.Stderr, "FATAL: -p, -list veya -memory ile aynı çalıştırmada kullanılamaz / -p cannot be combined with -list or -memory")
+			os.Exit(1)
+		}
+		if *listMessages {
+			os.Exit(runChatListMode(*port, *chatID))
+		}
+		os.Exit(runChatMemoryMode(*port, *chatID, *memoryQuery))
+	}
+
 	if promptFlagPassed {
 		runPrintMode(*port, *prompt, *chatID, *autoAllow)
 		return
@@ -444,22 +472,10 @@ func runPrintMode(port int, prompt, chatID string, autoAllow bool) {
 	}
 
 	ctx := context.Background()
-	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
-	client := replcli.NewClient(baseURL)
-
-	statusCtx, statusCancel := context.WithTimeout(ctx, 500*time.Millisecond)
-	alreadyRunning := client.Status(statusCtx) == nil
-	statusCancel()
-
-	if !alreadyRunning {
-		if err := spawnDetachedBackend(port); err != nil {
-			fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
-			os.Exit(1)
-		}
-		if !waitForBackend(client, 10*time.Second) {
-			fmt.Fprintf(os.Stderr, "FATAL: backend %d portunda ayağa kalkmadı (bkz. %s)\n", port, config.DataPath("backend.log"))
-			os.Exit(1)
-		}
+	client, err := ensureBackendRunning(port)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
+		os.Exit(1)
 	}
 
 	if chatID == "" {

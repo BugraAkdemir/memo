@@ -1,3 +1,61 @@
+# Ek (2026-08-22, devam) — `memo -chat <id> -list`/`-memory usage|saved`
+
+Kullanıcı `memo -p "mesaj"`'ın çıktısındaki `[chat:<id>]`'yi gösterip
+("burada chat diye bir kısım var yani sessions") o id'yi kullanarak aynı
+sohbete devam edebilen ve o sohbetle ilgili başka şeyler de yapabilen bir
+sistem istedi — kendi örneği: `-chat "id" -p "..."`, `-chat "id" -list`,
+`-chat "id" -memory "usage"`, `-chat "id" -memory "saved"` — **ama** bu alt
+komutlar sadece `-chat` ile birlikte anlamlı olsun, tek başına `memo -list`
+diye bir şey olmasın.
+
+**Sürpriz:** `-chat` zaten vardı (`memo -chat <id> -p "..."`, önceki bir
+oturumdan) — kullanıcı muhtemelen bilmiyordu. Asıl eksik `-list`/`-memory`
+idi.
+
+## Ne yapıldı
+
+`main.go`: yeni `-list` (bool) ve `-memory` (string: `usage`/`saved`)
+flag'leri. Doğrulama mantığı: `-list`/`-memory` **sadece** `-chat` ile
+birlikte kabul ediliyor (`-chat` verilmemişse FATAL), ikisi aynı anda
+kullanılamıyor, `-p` ile de aynı çalıştırmada kullanılamıyor — hepsi bare
+`memo -list` gibi anlamsız bir çağrıyı komut satırında hemen reddediyor.
+
+Yeni `cli_chat.go`: `ensureBackendRunning` (spawn/attach mantığı,
+`runPrintMode`'un kendi kopyasından çıkarıldı — artık üç çağrı noktası aynı
+şeyi yapıyordu), `runChatListMode`/`chatListCmd` (sohbete geç,
+`GET /api/messages`, her mesajı `sıra. [zaman] rol [memory:N]` + tek satır
+önizleme olarak yazdır), `runChatMemoryMode`/`chatMemoryUsageCmd` (aynı
+mesaj listesinden `memory_used` alanlarını toplayıp mesaj başına + toplam
+olarak yazdırır).
+
+**`-memory saved` bilinçli olarak desteklenmiyor, sahte bir cevap
+üretmek yerine.** Kod tabanına baktım: `internal/memory.Store`'daki hiçbir
+kayıt hangi sohbetten geldiğini tutmuyor (`SaveInteraction` chat ID bile
+almıyor). Yani "bu sohbetten hangi hafızalar kaydedildi" sorusu bugünkü veri
+modeliyle **gerçekten cevaplanamıyor** — sessizce boş dönmek ya da tüm
+son-kaydedilen hafızaları göstermek (sohbetle ilgisi olsun olmasın) çalışıyor
+gibi görünüp yalan söylerdi. Bunun yerine `-memory saved` net bir açıklamayla
+(neden desteklenmediği) hata veriyor. `-memory usage` gerçek, zaten var olan
+veriyle çalışıyor: her mesajın `MemoryUsed` sayacı (`sessions.ChatMessage`,
+`buildMessagesForSession` zamanında set ediliyor) — hangi mesajda kaç hafıza
+enjekte edildiği, ama hangi hafızalar olduğu değil (o da hiç tutulmuyor).
+
+`--help`: yeni kullanım satırları eklendi, `-list`/`-memory`'nin `-chat`
+gerektirdiği açıkça yazıldı.
+
+**Doğrulama:** `go build/vet/test -race ./...` tüm repo yeşil. Gerçek
+binary build edilip elle denendi: `-list` (chat'siz) ve `-list -memory`
+(birlikte) beklenen FATAL mesajlarını veriyor, `--help` yeni satırları
+gösteriyor. Yeni testler (`cli_chat_test.go`): `chatListCmd`'nin sohbete
+geçip mesajları yazdırması / boş sohbette başarılı olması / switch
+başarısız olunca hata vermesi, `chatMemoryUsageCmd`'nin `memory_used`
+toplamını doğru hesaplaması / hiç kullanılmadığında doğru mesajı vermesi,
+`validateMemoryQuery`'nin usage/saved/bilinmeyen değer davranışları,
+`oneLine`'ın whitespace birleştirme + kırpma davranışı. Gerçek bir
+backend'e karşı (canlı sohbet + hafıza ile) denenmedi.
+
+---
+
 # Ek (2026-08-22, devam) — Faz 5.1'in son açık maddesi: `memo remote add-account` CLI
 
 Faz 5.1.1'in kendi handoff girdisinde "hâlâ açık" diye işaretlenen tek

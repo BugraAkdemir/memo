@@ -1,3 +1,35 @@
+# Ek (2026-08-22, devam) — Faz 5.1'in son açık maddesi: `memo remote add-account` CLI
+
+Faz 5.1.1'in kendi handoff girdisinde "hâlâ açık" diye işaretlenen tek
+Faz 5.1 kalıntısı kapatıldı: `memo remote list-accounts` / `add-account` /
+`delete-account`, aynen `list-devices`/`add-device`/`revoke-device`
+üçlüsünün deseni — `internal/replcli/remote_auth_client.go`'ya
+`Account`/`AccountPermissions` (backend'in `AccountInfo`/
+`config.AccountPermissions`'ının düz DTO kopyaları) + `ListAccounts`/
+`CreateAccount`/`DeleteAccount`, `cli_remote.go`'ya üç yeni verb.
+
+`add-account <kullanıcı adı> [--role admin|user] [--password P] [--perm
+a,b,c]` — `--role` varsayılan `user` (Faz 5.1.1'in "hiçbir kutu
+işaretlenmemiş = sadece sohbet" felsefesiyle aynı, en kısıtlı varsayılan);
+`--password` verilmezse `set-mode`/`login` ile aynı desende gizli sorulur;
+`--perm` virgülle ayrılmış yedi isim (`models,memory,agent,calendar,
+whatsapp,telegram,routines`) — bilinmeyen bir isim (yazım hatası) komutu
+sessizce eksik yetkiyle çalıştırmak yerine hata verip durduruyor
+(`parsePermissions`). `list-accounts` her hesabı id/kullanıcı adı/rol +
+`permissionsSummary` ile (admin için "hepsi/all", user+hiçbir kutu için
+"yok/none", aksi halde verilen isimler) tek satırda listeliyor.
+
+**Doğrulama:** `go build/vet/test -race ./...` tüm repo yeşil. Yeni testler
+(`cli_remote_test.go`): `parsePermissions`'ın boş/geçerli/geçersiz
+girdilerde davranışı, `remoteAddAccountCmd`'nin gönderdiği JSON gövdesi
+(permissions dahil) ve sunucu hatasında başarısız olması,
+`remoteListAccountsCmd`'nin boş listede başarılı olması,
+`remoteDeleteAccountCmd`'nin doğru path'e DELETE atması,
+`permissionsSummary`'nin admin/boş-user/kısmi-user durumlarını doğru
+metne çevirmesi. Canlı bir backend'e karşı denenmedi.
+
+---
+
 # Ek (2026-08-22, devam) — Faz 5.1.1: hesaplara bol checkbox'lu granüler yetki sistemi
 
 Kullanıcı Faz 5.1'in kalan işini ("hesap açarken admin/normal kullanıcı rol

@@ -77,3 +77,54 @@ func (c *Client) LoginRemote(ctx context.Context, username, password string) (st
 	err := c.doJSON(ctx, http.MethodPost, "/api/auth/login", map[string]string{"username": username, "password": password}, &resp)
 	return resp.SessionToken, err
 }
+
+// AccountPermissions mirrors config.AccountPermissions (Faz 5.1.1,
+// yapacam.md) — a plain field-for-field copy rather than importing
+// internal/config, matching this file's existing convention of local DTOs
+// (RemoteDevice/RemoteFullStatus) for every backend type the CLI touches.
+// Only ever meaningful for Role "user" — see that type's own doc comment.
+type AccountPermissions struct {
+	Models   bool `json:"models"`
+	Memory   bool `json:"memory"`
+	Agent    bool `json:"agent"`
+	Calendar bool `json:"calendar"`
+	WhatsApp bool `json:"whatsapp"`
+	Telegram bool `json:"telegram"`
+	Routines bool `json:"routines"`
+}
+
+// Account mirrors app.AccountInfo — one entry from GET /api/accounts.
+type Account struct {
+	ID          string             `json:"id"`
+	Username    string             `json:"username"`
+	Role        string             `json:"role"`
+	CreatedAt   time.Time          `json:"created_at"`
+	Permissions AccountPermissions `json:"permissions"`
+}
+
+// ListAccounts returns every account (never the password hash).
+func (c *Client) ListAccounts(ctx context.Context) ([]Account, error) {
+	var accounts []Account
+	err := c.doJSON(ctx, http.MethodGet, "/api/accounts", nil, &accounts)
+	return accounts, err
+}
+
+// CreateAccount adds a new account with the given role ("admin"|"user") and,
+// for "user", the given permission checkboxes (Faz 5.1.1) — the backend
+// itself discards perms for "admin" (see config.Account.Permissions' doc
+// comment), so passing the zero value there is always correct.
+func (c *Client) CreateAccount(ctx context.Context, username, password, role string, perms AccountPermissions) error {
+	req := map[string]interface{}{
+		"username":    username,
+		"password":    password,
+		"role":        role,
+		"permissions": perms,
+	}
+	return c.doJSON(ctx, http.MethodPost, "/api/accounts", req, nil)
+}
+
+// DeleteAccount removes an account permanently (refuses the last admin —
+// backend-enforced).
+func (c *Client) DeleteAccount(ctx context.Context, id string) error {
+	return c.doJSON(ctx, http.MethodDelete, "/api/accounts/"+id, nil, nil)
+}

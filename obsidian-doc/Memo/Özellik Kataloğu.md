@@ -155,7 +155,7 @@ Sade dil + kurulum: [[Memo Swarm]].
 
 | Özellik | Durum |
 |---------|-------|
-| Bot token eşleştirme (@BotFather) | ✅ |
+| Bot token eşleştirme (`@BotFather`) | ✅ |
 | Sahip kilidi (ilk mesajı atan kalıcı sahip olur) | ✅ |
 | Kendine-sohbet asistanı | ✅ |
 | Sohbetten rutin oluşturma | ✅ |

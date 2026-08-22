@@ -1,3 +1,56 @@
+# Ek (2026-08-22, devam) — memo-web sitesi v3.9.0'a güncellendi (commit `f3a579e`, push edilmedi)
+
+Kullanıcı `/home/bugra/Documents/memo-web/`'i (Memo'nun tanıtım sitesi,
+React+Vite+Tailwind, "Pewter Study" tasarım sistemi: bronz vurgu + grafit)
+`versinNote/v3.9.0.md`'ye göre güncellememi istedi — siteyi yayına hazır
+hale getir, guide'ı güncelle, WhatsApp ve Telegram özelliklerini vurgula;
+iskelet ve renk şeması korunacak.
+
+**Önemli bulgu:** sitede önceki bir oturumdan yarım kalmış kırık bir build
+vardı — `App.jsx` `TelegramPage`'i import ediyordu ama component dosyası
+hiç yazılmamıştı, `features/telegram.md` dokümanları da yoktu.
+
+Yapılanlar:
+- **TelegramPage.jsx** sıfırdan yazıldı: hero + animasyonlu sohbet mockup'ı
+  ("her gün saat 9'da AI haberlerini gönder" → create_routine aracı rozeti →
+  onay cevabı), 3 adımlı BotFather kurulum akışı, özellik grid'i
+  (owner lock, slash komutları, sohbetten rutinler), komut referansı,
+  teknik şerit + kasıtlı-kapsam notu.
+- **WhatsAppPage.jsx** aynı aile tasarımıyla yeniden yazıldı: self-chat
+  asistanını vurgulayan hero mockup'ı, özellikler artık asistan +
+  sohbetten-rutinlerle başlıyor.
+- **WhatsNew.jsx** (yeni): ana sayfada Hero'nun hemen altında "new in
+  v3.9.0" bandı — sürüm pill'i + 4 kart (WhatsApp self-chat, Telegram bot,
+  sohbetten rutinler, hesap bazlı izinler) + release notes CTA'sı.
+- **versionNoteEN/TR.md** tamamen v3.9.0 içerikli yeniden yazıldı
+  (`versinNote/v3.9.0.md`'den site-dili uyarlaması).
+- **guideEN/TR.md**: yeni Telegram bölümü; WhatsApp bölümüne self-chat +
+  rutin paragrafları; rutinlerin sınıflandırma-kapısı kaldırıldı anlatımı;
+  providers'a Kilo Code + canlı model tarayıcıları + reasoning-effort;
+  CLI'ya `-chat -list/-memory`; self-hosting'e yetki-bazlı izinler +
+  `remote add-account`; gateway'e OpenAI-uyumlu uç nokta.
+- **Dokümanlar:** features/telegram.md (EN+TR) oluşturuldu;
+  features/whatsapp.md'ye self-chat/komut/rutin bölümleri; providers.md'ye
+  Kilo + tarayıcılar; release-notes.md'ye v3.9.0 girdisi; cli-reference.md'ye
+  `remote add-account` + `-chat` bayrakları; developer-gateway.md'ye yeni
+  endpoint'ler.
+- **scripts/site-routes.js**'e `/telegram` + `/docs/features/telegram`
+  eklendi (sitemap + prerender kapsıyor).
+
+Tasarım bilinçli olarak mevcut Pewter Study sisteminin içinde kaldı — aynı
+bronz vurgu, card-lit/card-glow/statline/lamp motifleri; palet ve sayfa
+iskeleti değişmedi, frontend-design skill'iyle "sıkıcı okuma sitesi olmasın"
+hedefine mockup'lar/kurulum akışıyla çekicilik kazandırıldı.
+
+**Doğrulama:** vite build temiz; tam build 126/126 route'u prerender etti
+(`/telegram`, `/tr/telegram`, doküman varyantları dahil, title'lar
+doğrulandı); sitemap'te 4 telegram URL'i var; lint'teki 15 hata stash
+testiyle temiz HEAD'de de var olan pre-existing'ler (yeni dosyalarda sıfır).
+**Push edilmedi, deploy edilmedi** — kullanıcı kendi testini yapmalı
+(özellikle TelegramPage/WhatsNew'in gerçek tarayıcıdaki görünümü).
+
+---
+
 # Ek (2026-08-22, devam) — v3.9.0 öncesi dokümantasyon turu (docs/, obsidian-doc/-en, versinNote, README)
 
 Kullanıcı "yeni release hazırlığı başlayalım ama tag açma, dökümanları
@@ -930,7 +983,7 @@ Henüz commit edilmedi.
 # Session 21 (2026-08-20) — Telegram bot desteği: WhatsApp self-chat asistanının Telegram karşılığı baştan sona kuruldu
 
 Kullanıcının isteği: "WhatsApp güzel oldu, buna bir de Telegram desteği
-getirsek" → tasarım kararı birlikte netleştirildi: bot token'ı @BotFather'dan
+getirsek" → tasarım kararı birlikte netleştirildi: bot token'ı `@BotFather`'dan
 alınıp bağlanacak, **botu ilk mesajlayan kişi kalıcı olarak "sahip" olarak
 kilitlenecek**, başka kimse cevap alamayacak (WhatsApp self-chat'in aksine
 bir bot token'ı herkese açık — bu yüzden asıl güvenlik sınırı burada).
@@ -992,7 +1045,7 @@ bir yüzey, WhatsApp'ın tam kapsamlı entegrasyonu değil.
 - `models/telegram.dart`, `providers/telegram_provider.dart` (WhatsApp'ın
   adaptive-polling deseninin aynısı, QR yerine token-input state'i),
   `widgets/settings/tabs/telegram_tab.dart` (QR kod yerine bot token
-  input'u + @BotFather'ı açan link + "sahip bekleniyor" durumu).
+  input'u + `@BotFather`'ı açan link + "sahip bekleniyor" durumu).
 - `settings_dialog.dart`: tab 23 olarak WhatsApp'ın hemen yanına
   (`settings_group_providers`) eklendi.
 - `api_client.dart` + `l10n.dart` (TR+EN, `tab_telegram`/`telegram_*` +
@@ -1016,7 +1069,7 @@ bir yüzey, WhatsApp'ın tam kapsamlı entegrasyonu değil.
   daha oluşmasın.
 
 **Doğrulanamayan (bu ortamda gerçek bir Telegram botu/telefonu yok):**
-gerçek bir @BotFather token'ıyla uçtan uca bağlanma, ilk mesajla
+gerçek bir `@BotFather` token'ıyla uçtan uca bağlanma, ilk mesajla
 sahiplik kilitlenmesi, `/status` `/help` gibi komutların gerçek Telegram
 istemcisinde görünüşü, "typing..." göstergesinin gerçek cihazda
 görünüşü — hepsi WhatsApp self-chat'in ilk turunda da aynı şekilde
@@ -1036,7 +1089,7 @@ doğrulanamamıştı, aynı sebep.
 
 ### Sıradaki oturum için
 - Commit henüz atılmadı — kullanıcı onayı bekliyor.
-- Kullanıcı gerçek bir @BotFather token'ıyla canlı test etmeli: bot bağlanıyor
+- Kullanıcı gerçek bir `@BotFather` token'ıyla canlı test etmeli: bot bağlanıyor
   mu, ilk mesaj sahibi doğru kilitliyor mu, komutlar çalışıyor mu, TR/EN
   takip ediyor mu.
 - `data/telegram.json` yedekleme/senkronizasyona dahil edilsin mi — açık

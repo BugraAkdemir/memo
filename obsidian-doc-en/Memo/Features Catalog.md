@@ -122,7 +122,7 @@ See [[Agent Mode]] for the full tool list.
 
 | Feature | Status |
 |---------|--------|
-| Bot token pairing (@BotFather) | ✅ |
+| Bot token pairing (`@BotFather`) | ✅ |
 | Owner lock (first sender becomes permanent owner) | ✅ |
 | Self-chat assistant | ✅ |
 | Routines via chat | ✅ |

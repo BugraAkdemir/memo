@@ -4,7 +4,7 @@
 > **API endpoint'leri:** `/api/telegram/status`, `/api/telegram/connect`, `/api/telegram/stop`, `/api/telegram/disconnect`
 > **Eklendi:** v3.9.0
 
-Memo, WhatsApp'ın yanında ikinci bir sohbet yüzeyi olarak bir Telegram bot'una bağlanabilir. WhatsApp'ın whatsmeow entegrasyonundan farklı olarak (o, tüm mevcut WhatsApp hesabına görünürlüğü olan tam bir WhatsApp Web istemcisini taklit eder), bir Telegram bot'u sadece kendisine doğrudan gönderilen mesajları görebilir — çok daha ağır olan MTProto kullanıcı API'si (telefon numarasıyla giriş, bot token değil) olmadan "diğer sohbetlerimi oku" gibi bir şey yoktur. Bu kapsam farkı bilinçli: bu paket, @BotFather'dan alınan bir bot token'ının Memo ile konuşmasına bir yol açmak için var, WhatsApp'ın kişi/grup/geçmiş genişliğini taklit etmek için değil.
+Memo, WhatsApp'ın yanında ikinci bir sohbet yüzeyi olarak bir Telegram bot'una bağlanabilir. WhatsApp'ın whatsmeow entegrasyonundan farklı olarak (o, tüm mevcut WhatsApp hesabına görünürlüğü olan tam bir WhatsApp Web istemcisini taklit eder), bir Telegram bot'u sadece kendisine doğrudan gönderilen mesajları görebilir — çok daha ağır olan MTProto kullanıcı API'si (telefon numarasıyla giriş, bot token değil) olmadan "diğer sohbetlerimi oku" gibi bir şey yoktur. Bu kapsam farkı bilinçli: bu paket, `@BotFather`'dan alınan bir bot token'ının Memo ile konuşmasına bir yol açmak için var, WhatsApp'ın kişi/grup/geçmiş genişliğini taklit etmek için değil.
 
 ## Kurulum
 

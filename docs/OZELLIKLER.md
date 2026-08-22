@@ -119,7 +119,7 @@ Memo sadece bir sohbet aracı değil, bir "İkinci Beyin"dir.
 
 ### Telegram Entegrasyonu
 
-- **Bot Eşleştirme**: Settings → Telegram'da bir Telegram bot token'ı (@BotFather'dan) bağla; Memo yapılandırıldıktan sonra Bot API'yi long-polling ile dinlemeye başlar.
+- **Bot Eşleştirme**: Settings → Telegram'da bir Telegram bot token'ı (`@BotFather`'dan) bağla; Memo yapılandırıldıktan sonra Bot API'yi long-polling ile dinlemeye başlar.
 - **Sahip Kilidi**: Bir bot'un kullanıcı adını bulan herkes ona mesaj atabildiği için, Memo ilk mesaj atan kişiyi bot'un kalıcı sahibi olarak kilitler ve sonrasında herkesi sessizce yok sayar — bu entegrasyonun tüm erişim kontrolü bu kilide dayanır.
 - **Asistan Sohbeti**: Bağlandıktan sonra sahip, WhatsApp kendine-sohbet ile aynı yeteneklere sahip tam bir asistan alır — sohbet, hafıza, agent araçları — bu sefer Telegram üzerinden.
 - **Sohbetten Rutin Oluşturma**: Aynı `create_routine`/`list_routines`/`cancel_routine` araç akışı Telegram konuşmasından da çalışır.

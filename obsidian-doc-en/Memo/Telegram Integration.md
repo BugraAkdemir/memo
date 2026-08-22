@@ -4,7 +4,7 @@
 > **API endpoints:** `/api/telegram/status`, `/api/telegram/connect`, `/api/telegram/stop`, `/api/telegram/disconnect`
 > **Added:** v3.9.0
 
-Memo can connect to a Telegram bot as a second chat surface, alongside WhatsApp. Unlike WhatsApp's whatsmeow integration (which emulates a full WhatsApp Web client with visibility into your entire existing account), a Telegram bot can only ever see messages sent directly to it — there's no equivalent of "read my other chats" without the much heavier MTProto user API (phone-number login, not a bot token). That scope difference is deliberate: this package exists to give a bot token from @BotFather a way to talk to Memo, not to mirror WhatsApp's contact/group/history breadth.
+Memo can connect to a Telegram bot as a second chat surface, alongside WhatsApp. Unlike WhatsApp's whatsmeow integration (which emulates a full WhatsApp Web client with visibility into your entire existing account), a Telegram bot can only ever see messages sent directly to it — there's no equivalent of "read my other chats" without the much heavier MTProto user API (phone-number login, not a bot token). That scope difference is deliberate: this package exists to give a bot token from `@BotFather` a way to talk to Memo, not to mirror WhatsApp's contact/group/history breadth.
 
 ## Setup
 

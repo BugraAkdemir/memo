@@ -117,7 +117,7 @@ Memo isn't just a chat; it's a "Second Brain."
 - **Local Storage**: All WhatsApp messages stored in an isolated SQLite database.
 
 ### Telegram Integration
-- **Bot Pairing**: Connect a Telegram bot token (from @BotFather) in Settings → Telegram; Memo long-polls the Bot API for messages once configured.
+- **Bot Pairing**: Connect a Telegram bot token (from `@BotFather`) in Settings → Telegram; Memo long-polls the Bot API for messages once configured.
 - **Owner Lock**: Since anyone who finds a bot's username can message it, Memo locks in whoever messages first as the bot's permanent owner and silently ignores everyone else afterward — the entire access-control boundary for this integration.
 - **Assistant Chat**: Once linked, the owner gets a full assistant — chat, memory, and agent tools — the same capability as the WhatsApp self-chat path, on Telegram instead.
 - **Routines via Chat**: The same `create_routine`/`list_routines`/`cancel_routine` tool flow works from a Telegram conversation.

@@ -196,12 +196,12 @@ func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whats
 // off on purpose.
 func (a *App) CreateRoutineFromChat(ctx context.Context, text string) (string, error) {
 	if a.routineStore == nil {
-		return "", fmt.Errorf("rutin sistemi hazır değil")
+		return "", errors.New(a.t("rutin sistemi hazır değil", "routine system not ready"))
 	}
 
 	draft, err := a.ParseRoutineText(ctx, text)
 	if err != nil {
-		return "", fmt.Errorf("rutin ayrıştırılamadı: %w", err)
+		return "", fmt.Errorf(a.t("rutin ayrıştırılamadı: ", "could not parse routine: ")+"%w", err)
 	}
 
 	whatsAppTargetJID, deliveryWhatsApp, deliveryTelegram := a.resolveRoutineDeliveryTarget(ctx, draft.DeliveryWhatsApp, draft.DeliveryTelegram)
@@ -215,7 +215,7 @@ func (a *App) CreateRoutineFromChat(ctx context.Context, text string) (string, e
 	if err != nil {
 		return "", err
 	}
-	return summarizeCreatedRoutine(r), nil
+	return a.summarizeCreatedRoutine(r), nil
 }
 
 // resolveRoutineDeliveryTarget decides which channel(s)
@@ -297,11 +297,11 @@ func (a *App) linkedTelegramOwnerChatID() int64 {
 // here).
 func (a *App) ListRoutinesForChat(ctx context.Context) (string, error) {
 	if a.routineStore == nil {
-		return "", fmt.Errorf("rutin sistemi hazır değil")
+		return "", errors.New(a.t("rutin sistemi hazır değil", "routine system not ready"))
 	}
 	routines := a.ListRoutines()
 	if len(routines) == 0 {
-		return "Hiç rutin yok.", nil
+		return a.t("Hiç rutin yok.", "No routines."), nil
 	}
 	var b strings.Builder
 	for _, r := range routines {
@@ -314,7 +314,7 @@ func (a *App) ListRoutinesForChat(ctx context.Context) (string, error) {
 			channelStr = "kanal yok"
 		}
 		fmt.Fprintf(&b, "id=%s | %s | saat %s (%s) | %s | %q\n",
-			r.ID, state, r.Schedule.TimeOfDay, routineScheduleDays(r), channelStr, r.Prompt)
+			r.ID, state, r.Schedule.TimeOfDay, a.routineScheduleDays(r), channelStr, r.Prompt)
 	}
 	return strings.TrimRight(b.String(), "\n"), nil
 }
@@ -323,11 +323,11 @@ func (a *App) ListRoutinesForChat(ctx context.Context) (string, error) {
 // implementation.
 func (a *App) DeleteRoutineForChat(ctx context.Context, id string) (string, error) {
 	if a.routineStore == nil {
-		return "", fmt.Errorf("rutin sistemi hazır değil")
+		return "", errors.New(a.t("rutin sistemi hazır değil", "routine system not ready"))
 	}
 	existing, err := a.GetRoutine(id)
 	if err != nil {
-		return "", fmt.Errorf("id=%q ile bir rutin bulunamadı — önce list_routines ile gerçek id'yi kontrol et", id)
+		return "", fmt.Errorf(a.t("id=%q ile bir rutin bulunamadı — önce list_routines ile gerçek id'yi kontrol et", "no routine found with id=%q — first check the real id via list_routines"), id)
 	}
 	if err := a.DeleteRoutine(id); err != nil {
 		return "", err
@@ -340,20 +340,21 @@ func (a *App) DeleteRoutineForChat(ctx context.Context, id string) (string, erro
 // the LLM turns this into its own reply) of what actually got created,
 // since the tool's caller only supplies free text and can't otherwise see
 // how it was interpreted (time/weekdays/delivery channel).
-func summarizeCreatedRoutine(r *routine.Routine) string {
+func (a *App) summarizeCreatedRoutine(r *routine.Routine) string {
 	channelStr := routineChannelSummary(*r)
 	if channelStr == "" {
-		channelStr = "hiçbir kanal bağlı değil, bildirim gidemeyecek"
+		channelStr = a.t("hiçbir kanal bağlı değil, bildirim gidemeyecek", "no channel connected, no notification can be sent")
 	}
-	return fmt.Sprintf("Rutin oluşturuldu: %s saat %s, %s üzerinden gönderilecek. Prompt: %q",
-		routineScheduleDays(*r), r.Schedule.TimeOfDay, channelStr, r.Prompt)
+	return fmt.Sprintf(a.t("Rutin oluşturuldu: %s saat %s, %s üzerinden gönderilecek. Prompt: %q",
+		"Routine created: will be sent via %s at %s, %s. Prompt: %q"),
+		a.routineScheduleDays(*r), r.Schedule.TimeOfDay, channelStr, r.Prompt)
 }
 
 // routineScheduleDays formats a routine's weekdays for chat-facing text —
 // shared by summarizeCreatedRoutine and ListRoutinesForChat.
-func routineScheduleDays(r routine.Routine) string {
+func (a *App) routineScheduleDays(r routine.Routine) string {
 	if len(r.Schedule.Weekdays) == 0 {
-		return "her gün"
+		return a.t("her gün", "every day")
 	}
 	names := make([]string, len(r.Schedule.Weekdays))
 	for i, w := range r.Schedule.Weekdays {

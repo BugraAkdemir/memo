@@ -636,6 +636,10 @@ func (a *App) Startup(ctx context.Context) {
 		logx.Printf("skill: discover error: %v", err)
 	}
 	a.skillManager.SetToolRegistrar(newSkillToolRegistrar(a.agentExecutor.Registry(), a.skillManager))
+	// Tool result strings (internal/agent/tools) read the UI language from
+	// their own process-wide setting — seed it from config at startup;
+	// SetUILanguage keeps it in sync on later changes.
+	tools.SetUILanguage(a.cfg.Identity.UILanguage)
 	if err := a.skillManager.LoadActiveSkills(); err != nil {
 		logx.Printf("skill: load active skills error: %v", err)
 	}

@@ -50,7 +50,7 @@ func GetCalendarEvents(ctx context.Context, argsJSON json.RawMessage, basePath s
 		}
 	}
 	if CalendarClient == nil {
-		return "Takvim başlatılmamış", nil
+		return T("Takvim başlatılmamış", "Calendar not initialized"), nil
 	}
 
 	from, to := defaultCalendarRange()
@@ -63,15 +63,15 @@ func GetCalendarEvents(ctx context.Context, argsJSON json.RawMessage, basePath s
 
 	events, err := CalendarClient.ListEvents(ctx, from, to)
 	if err != nil {
-		return "", fmt.Errorf("takvim okunamadı: %w", err)
+		return "", fmt.Errorf(T("takvim okunamadı: ", "could not read calendar: ")+"%w", err)
 	}
 	if len(events) == 0 {
-		return "Bu tarih aralığında kayıtlı hiçbir etkinlik yok", nil
+		return T("Bu tarih aralığında kayıtlı hiçbir etkinlik yok", "No events recorded in this date range"), nil
 	}
 
 	lines := make([]string, 0, len(events))
 	for _, e := range events {
-		lines = append(lines, fmt.Sprintf("%s — %s (kaynak: %s)", e.StartTime.Format("2006-01-02 15:04"), e.Title, e.Source))
+		lines = append(lines, fmt.Sprintf("%s — %s ("+T("kaynak: ", "source: ")+"%s)", e.StartTime.Format("2006-01-02 15:04"), e.Title, e.Source))
 	}
 	return strings.Join(lines, "\n"), nil
 }

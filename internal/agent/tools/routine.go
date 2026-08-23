@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -44,14 +45,14 @@ func CreateRoutine(ctx context.Context, argsJSON json.RawMessage, basePath strin
 		return "", fmt.Errorf("invalid arguments: %w", err)
 	}
 	if strings.TrimSpace(args.Text) == "" {
-		return "", fmt.Errorf("text boş olamaz")
+		return "", errors.New(T("text boş olamaz", "text cannot be empty"))
 	}
 	if Routines == nil {
-		return "Rutin sistemi hazır değil.", nil
+		return T("Rutin sistemi hazır değil.", "Routine system not ready."), nil
 	}
 	summary, err := Routines.CreateRoutine(ctx, args.Text)
 	if err != nil {
-		return "", fmt.Errorf("rutin oluşturulamadı: %w", err)
+		return "", fmt.Errorf(T("rutin oluşturulamadı: ", "could not create routine: ")+"%w", err)
 	}
 	return summary, nil
 }
@@ -60,11 +61,11 @@ func CreateRoutine(ctx context.Context, argsJSON json.RawMessage, basePath strin
 // nothing for the model to filter by that would need a parameter.
 func ListRoutines(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	if Routines == nil {
-		return "Rutin sistemi hazır değil.", nil
+		return T("Rutin sistemi hazır değil.", "Routine system not ready."), nil
 	}
 	out, err := Routines.ListRoutines(ctx)
 	if err != nil {
-		return "", fmt.Errorf("rutinler listelenemedi: %w", err)
+		return "", fmt.Errorf(T("rutinler listelenemedi: ", "could not list routines: ")+"%w", err)
 	}
 	return out, nil
 }
@@ -83,14 +84,14 @@ func DeleteRoutine(ctx context.Context, argsJSON json.RawMessage, basePath strin
 		return "", fmt.Errorf("invalid arguments: %w", err)
 	}
 	if strings.TrimSpace(args.ID) == "" {
-		return "", fmt.Errorf("id boş olamaz — önce list_routines ile gerçek id'yi öğren")
+		return "", errors.New(T("id boş olamaz — önce list_routines ile gerçek id'yi öğren", "id cannot be empty — first learn the real id via list_routines"))
 	}
 	if Routines == nil {
-		return "Rutin sistemi hazır değil.", nil
+		return T("Rutin sistemi hazır değil.", "Routine system not ready."), nil
 	}
 	out, err := Routines.DeleteRoutine(ctx, args.ID)
 	if err != nil {
-		return "", fmt.Errorf("rutin silinemedi: %w", err)
+		return "", fmt.Errorf(T("rutin silinemedi: ", "could not delete routine: ")+"%w", err)
 	}
 	return out, nil
 }

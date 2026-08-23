@@ -26,7 +26,10 @@ func TestGetCalendarEvents_NotInitialized(t *testing.T) {
 	old := CalendarClient
 	CalendarClient = nil
 	defer func() { CalendarClient = old }()
-
+	// The assertion below matches the Turkish wording; pin the language so
+	// the default-English unset state doesn't flip the message.
+	SetUILanguage("tr")
+	defer SetUILanguage("")
 	got, err := GetCalendarEvents(context.Background(), nil, "", nil)
 	if err != nil {
 		t.Fatalf("GetCalendarEvents() error = %v", err)

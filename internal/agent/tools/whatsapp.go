@@ -63,14 +63,14 @@ func SendWhatsApp(ctx context.Context, argsJSON json.RawMessage, basePath string
 		return "", fmt.Errorf("invalid arguments: %w", err)
 	}
 	if WhatsAppClient == nil {
-		return "WhatsApp bağlı değil (config.yaml'de whatsapp.enabled: true olmalı)", nil
+		return T("WhatsApp bağlı değil (config.yaml'de whatsapp.enabled: true olmalı)", "WhatsApp not connected (whatsapp.enabled: true required in config.yaml)"), nil
 	}
 	jid := resolveWhatsAppJID(args.JID)
 	msgID, err := WhatsAppClient.SendMessage(context.Background(), jid, args.Text)
 	if err != nil {
-		return "", fmt.Errorf("WhatsApp gönderilemedi: %w", err)
+		return "", fmt.Errorf(T("WhatsApp gönderilemedi: ", "could not send WhatsApp message: ")+"%w", err)
 	}
-	return fmt.Sprintf("Mesaj gönderildi (ID: %s)", msgID), nil
+	return fmt.Sprintf(T("Mesaj gönderildi (ID: %s)", "Message sent (ID: %s)"), msgID), nil
 }
 
 func SearchWhatsApp(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
@@ -82,14 +82,14 @@ func SearchWhatsApp(ctx context.Context, argsJSON json.RawMessage, basePath stri
 		args.Limit = 10
 	}
 	if WhatsAppClient == nil {
-		return "WhatsApp bağlı değil", nil
+		return T("WhatsApp bağlı değil", "WhatsApp not connected"), nil
 	}
 	msgs, err := WhatsAppClient.SearchMessages(args.Query, args.Limit)
 	if err != nil {
-		return "", fmt.Errorf("WhatsApp arama hatası: %w", err)
+		return "", fmt.Errorf(T("WhatsApp arama hatası: ", "WhatsApp search error: ")+"%w", err)
 	}
 	if len(msgs) == 0 {
-		return "Mesaj bulunamadı", nil
+		return T("Mesaj bulunamadı", "No messages found"), nil
 	}
 	var lines []string
 	for _, m := range msgs {
@@ -112,14 +112,14 @@ func LatestWhatsAppChats(ctx context.Context, argsJSON json.RawMessage, basePath
 		args.Limit = 10
 	}
 	if WhatsAppClient == nil {
-		return "WhatsApp bağlı değil", nil
+		return T("WhatsApp bağlı değil", "WhatsApp not connected"), nil
 	}
 	chats, err := WhatsAppClient.GetChatList()
 	if err != nil {
-		return "", fmt.Errorf("WhatsApp sohbet listesi hatası: %w", err)
+		return "", fmt.Errorf(T("WhatsApp sohbet listesi hatası: ", "WhatsApp chat list error: ")+"%w", err)
 	}
 	if len(chats) == 0 {
-		return "Henüz hiçbir sohbet yok", nil
+		return T("Henüz hiçbir sohbet yok", "No chats yet"), nil
 	}
 	if args.Limit > len(chats) {
 		args.Limit = len(chats)
@@ -148,15 +148,15 @@ func GetWhatsAppMessages(ctx context.Context, argsJSON json.RawMessage, basePath
 		args.Limit = 20
 	}
 	if WhatsAppClient == nil {
-		return "WhatsApp bağlı değil", nil
+		return T("WhatsApp bağlı değil", "WhatsApp not connected"), nil
 	}
 	jid := resolveWhatsAppJID(args.JID)
 	msgs, err := WhatsAppClient.GetChatMessages(jid, args.Limit)
 	if err != nil {
-		return "", fmt.Errorf("WhatsApp mesaj hatası: %w", err)
+		return "", fmt.Errorf(T("WhatsApp mesaj hatası: ", "WhatsApp messages error: ")+"%w", err)
 	}
 	if len(msgs) == 0 {
-		return "Bu sohbette henüz mesaj yok", nil
+		return T("Bu sohbette henüz mesaj yok", "No messages in this chat yet"), nil
 	}
 	var lines []string
 	for _, m := range msgs {

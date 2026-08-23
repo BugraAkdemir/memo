@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"memo/internal/agent/tools"
 	"memo/internal/logx"
 	"os"
 	"path/filepath"
@@ -196,6 +197,9 @@ func (a *App) SetUILanguage(lang string) error {
 	a.cfgMu.Lock()
 	a.cfg.Identity.UILanguage = lang
 	a.cfgMu.Unlock()
+	// Tool result strings live in internal/agent/tools, which has no App
+	// access — keep their process-wide language in sync (see tools/l10n.go).
+	tools.SetUILanguage(lang)
 	return config.Save(a.cfg)
 }
 

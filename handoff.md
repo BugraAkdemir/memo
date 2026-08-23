@@ -1,3 +1,21 @@
+# Ek (2026-08-23, devam) — UILanguage dikişi kapatıldı: backend sohbet metinleri artık dil duyarlı (`8c4fd60`)
+
+AGENTS.md'deki "known open seam" kapatıldı: İngilizce arayüzde `⏹️ Cevap durduruldu.` gibi Türkçe backend mesajları görünüyordu.
+
+**Envanter:** iki scout tüm backend'i taradı (~350 Türkçe literal / 25 dosya). Sınıflandırma: chat-sse ~48, http-response ~37, tool-result ~37, ui-status ~27, model-prompt ~41 (bilinçli), gerisi log/fonksiyonel veri. Tam listeler sohbet kaydında.
+
+**Bu oturumun dilimi:** `App.t(tr, en)` yardımcısı (settings.go) + internal/app'in chat-sse/response literal'leri (llm.go, chat.go, cli_stream.go, whatsapp.go — insight.go hariç). Semantik: yalnız `"tr"` → Türkçe; unset/""/bilinmeyen → EN (waLang konvansiyonu, GUI'nin 2026-08-13 EN default'u). Nil-cfg guard'lı.
+
+**Bilinçli kapsam dışı:** model-yüzlü Türkçe prompt/tool açıklamaları (davranış değiştirir), replcli/wa/tg tabloları (zaten var), rutin ÇIKTI-dili metinleri (insight fallback'i sonic yanlışlıkla sarmalamıştı — geri alındı; o dal `routineLanguageIsEnglish` parametresine göre çalışıyor).
+
+**Sapma notu:** llm.go'nun paket-seviyesi `const modelSwappedMidStreamMsg`'i receiver gerektirdiği için metoda çevrildi (BUG-L4 semantiği aynı, 6 çağrı noktası güncellendi).
+
+**Testler:** `TestT_SelectsLanguageVariants`/`TestT_ReturnsTemplateForFormatting` yeni; no-model regression testleri (memory/memory_import) artık `UILanguage:"tr"` pinleyip Türkçe iddiayı koruyor. Gate: build/vet/test -race tüm repo yeşil (44 paket ok).
+
+**Sıradaki dilimler:** webserver http-response (handlers_oauth 17 + swarm 9) → tool-result'lar (agent/tools* 22, app/routine 10) → ui-status (installer 21). Push edilmedi.
+
+**Kullanıcı haberleri:** v4.0.0 yayınlandı (önceki giriş); RPi sızma denemesi kullanıcı tarafından yapıldı ve yapacam.md'ye "Tamamlanan" olarak işlendi; beacon kullanıcı tarafından halledildi.
+
 # Ek (2026-08-23, devam) — v4.0.0 yayınlandı (/memo-release skill, mevcut içerikle)
 
 Kullanıcı "4.0.0'ı şimdi yayımlayalım" dedi. Önemli bağlam: yapacam.md'de 4.0.0'ın planlı

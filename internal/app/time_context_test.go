@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -113,5 +116,87 @@ func TestBuildMessagesForSession_IncludesTimeContextEvenInMinimalMode(t *testing
 	}
 	if !found {
 		t.Fatal("buildMessagesForSession() did not include the [Time context] block; MinimalMode strips persona, not temporal grounding")
+	}
+}
+
+// seedStaleChat writes a session file whose UpdatedAt is ~3 days in the
+// past, through the exact on-disk format save() produces (<id>.json,
+// "updated_at": "2006-01-02 15:04"), and loads it back via NewManager —
+// Manager's own API can only stamp UpdatedAt with "now", and backdating is
+// precisely the scenario this feature exists for (a user returning after
+// days).
+func seedStaleChat(t *testing.T) (*sessions.Manager, string) {
+	t.Helper()
+	dir := t.TempDir()
+	const id = "stale-chat-seed"
+	stale := time.Now().Add(-72 * time.Hour)
+	body := fmt.Sprintf(`{
+  "id": %q,
+  "title": "old chat",
+  "created_at": %q,
+  "updated_at": %q,
+  "messages": [
+    {"role": "user", "content": "merhaba", "timestamp": "10:00"},
+    {"role": "assistant", "content": "selam", "timestamp": "10:00"}
+  ]
+}`, id, stale.Add(-time.Hour).Format("2006-01-02 15:04"), stale.Format("2006-01-02 15:04"))
+	if err := os.WriteFile(filepath.Join(dir, id+".json"), []byte(body), 0644); err != nil {
+		t.Fatalf("seed session file: %v", err)
+	}
+	sm, err := sessions.NewManager(dir)
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	return sm, id
+}
+
+// The gap sentence must survive the real prompt builder, not only the pure
+// function: what the model actually sees comes out of
+// buildMessagesForSession, and until now that path was only ever exercised
+// with a fresh chat, where the threshold correctly suppresses the clause.
+func TestBuildMessagesForSession_MentionsStaleConversationGap(t *testing.T) {
+	sm, chatID := seedStaleChat(t)
+	id := identity.New("Test", "Memo", "casual", "", false)
+	a := &App{
+		cfg: &config.AppConfig{
+			Memory: config.MemoryConfig{MemoryEnabled: false},
+			Llama:  config.LlamaConfig{CtxSize: 4096},
+		},
+		identity: id,
+		sessions: sm,
+	}
+
+	messages := a.buildMessagesForSession(context.Background(), chatID, "yeni mesaj", nil, nil)
+
+	var all []string
+	found := false
+	for _, m := range messages {
+		if content, ok := m.Content.(string); ok {
+			all = append(all, content)
+			if strings.Contains(content, "Last message in this conversation was 3 days ago.") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("buildMessagesForSession() did not mention the 3-day gap for a stale chat; prompt contents: %q", all)
+	}
+}
+
+// LastActivity's design leans on one contract: AddMessageToSession refreshes
+// UpdatedAt, so a once-stale chat reads as fresh again after a new turn —
+// without this, every subsequent message in an old chat would keep claiming
+// "last message was N days ago".
+func TestLastActivity_RefreshesAfterNewMessage(t *testing.T) {
+	sm, chatID := seedStaleChat(t)
+
+	if age := time.Since(sm.LastActivity(chatID)); age < 71*time.Hour {
+		t.Fatalf("seeded chat should read ~3 days stale, got age %v", age)
+	}
+
+	sm.AddMessageToSession(chatID, "user", "geri döndüm", "", "")
+
+	if age := time.Since(sm.LastActivity(chatID)); age < -time.Second || age > time.Minute {
+		t.Errorf("LastActivity() after AddMessageToSession should be ~now, got age %v", age)
 	}
 }

@@ -367,6 +367,30 @@ func (m *Manager) SessionExists(id string) bool {
 	return ok
 }
 
+// LastActivity returns the session's last-activity wall-clock time —
+// Session.UpdatedAt ("2006-01-02 15:04", local), which newSession seeds and
+// AddMessageToSession refreshes on every message — parsed as time.Time.
+// Zero time when the session doesn't exist or UpdatedAt is empty or
+// unparseable; callers treat that as "no signal", not an error (sole
+// consumer today: timeContextBlockForChat in internal/app/helpers.go).
+//
+// ChatMessage.Timestamp can't serve this purpose: it stores only "15:04"
+// (hour:minute, no date) for display rendering, so it cannot express
+// "the last message was 3 days ago".
+func (m *Manager) LastActivity(sessionID string) time.Time {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s := m.sessions[sessionID]
+	if s == nil || s.UpdatedAt == "" {
+		return time.Time{}
+	}
+	t, err := time.ParseInLocation("2006-01-02 15:04", s.UpdatedAt, time.Local)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
 type SessionInfo struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`

@@ -169,6 +169,19 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		systemPrompt += skillPrompt
 	}
 
+	// Time awareness (yapacam.md 4.0.0): the model has no clock of its own —
+	// without this, a "sabah merhaba" arriving at 23:00 got answered as if it
+	// were morning, and a user returning after days got a reply with zero
+	// sense of the gap. Injected here, into systemPrompt itself like the
+	// skill block above, rather than appended onto a role:"system" message
+	// later by routeStream — same reason as the skill block: the local-model
+	// branch below never emits a system message, so a later append finds
+	// nothing to attach to.
+	// Deliberately OUTSIDE the MinimalMode check above: like memory context,
+	// this is factual grounding about reality, not persona/mood decoration —
+	// minimal mode strips personality, it doesn't make the model time-blind.
+	systemPrompt += a.timeContextBlockForChat(chatID)
+
 	var tokenBudget int
 	if a.llamaServer != nil && a.llamaServer.IsRunning() {
 		a.cfgMu.RLock()
@@ -255,6 +268,59 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	logx.Printf("CONTEXT: budget=%d system=%d user=%d history=%d history_msgs=%d total_msgs=%d",
 		tokenBudget, systemTokens, userTokens, historyBudget, len(history), len(msgs))
 	return msgs
+}
+
+// timeGapMentionThreshold is the minimum conversation silence before the
+// time-context block mentions the gap at all. Below this, "last message was
+// 4 minutes ago" is pure noise — ordinary same-session back-and-forth, and
+// every WhatsApp/Telegram self-chat turn (whose user message is persisted
+// seconds before buildMessagesForSession runs on some paths), would all read
+// as "just now" and teach the model nothing while spending tokens.
+const timeGapMentionThreshold = 15 * time.Minute
+
+// timeContextBlock renders the temporal-grounding block injected into every
+// system prompt: the current local time always, plus — only when the chat
+// has actually been silent for a while — how long ago its last activity was.
+// A pure function of its two arguments so threshold/format behavior is
+// unit-testable without an App; timeContextBlockForChat is the thin wiring.
+func timeContextBlock(now, lastActivity time.Time) string {
+	block := "\n\n[Time context] Current local time: " + now.Format("Monday, 2 January 2006, 15:04") + "."
+	if !lastActivity.IsZero() {
+		if gap := now.Sub(lastActivity); gap >= timeGapMentionThreshold {
+			block += " Last message in this conversation was " + humanizeGap(gap) + " ago."
+		}
+	}
+	return block
+}
+
+// humanizeGap renders a silence duration roughly the way a person would say
+// it. Callers guarantee d >= timeGapMentionThreshold, so minutes is the
+// smallest unit it ever emits.
+func humanizeGap(d time.Duration) string {
+	switch {
+	case d >= 48*time.Hour:
+		return fmt.Sprintf("%d days", int(d.Hours()/24))
+	case d >= 24*time.Hour:
+		return "a day"
+	case d >= 2*time.Hour:
+		return fmt.Sprintf("%d hours", int(d.Hours()))
+	case d >= time.Hour:
+		return "an hour"
+	default:
+		return fmt.Sprintf("%d minutes", int(d.Minutes()))
+	}
+}
+
+// timeContextBlockForChat is timeContextBlock wired to chatID's real last
+// activity. A missing session manager or unknown chatID degrades gracefully
+// to current-time-only — a first message in a brand-new chat has no gap to
+// mention anyway.
+func (a *App) timeContextBlockForChat(chatID string) string {
+	var last time.Time
+	if sm := a.getSessionManager(); sm != nil && chatID != "" {
+		last = sm.LastActivity(chatID)
+	}
+	return timeContextBlock(time.Now(), last)
 }
 
 // buildConversationContext extracts conversation history from messages for orchestra chief.

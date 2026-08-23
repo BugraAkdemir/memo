@@ -520,7 +520,7 @@ func TestFetchKiloModels_UsesIsFreeFieldDirectly(t *testing.T) {
 	kiloModelsURL = srv.URL
 	defer func() { kiloModelsURL = orig }()
 
-	models, err := fetchKiloModels()
+	models, err := (&Server{}).fetchKiloModels()
 	if err != nil {
 		t.Fatalf("fetchKiloModels() error = %v", err)
 	}
@@ -553,7 +553,7 @@ func TestFetchKiloModels_SkipsEntriesWithNoID(t *testing.T) {
 	kiloModelsURL = srv.URL
 	defer func() { kiloModelsURL = orig }()
 
-	models, err := fetchKiloModels()
+	models, err := (&Server{}).fetchKiloModels()
 	if err != nil {
 		t.Fatalf("fetchKiloModels() error = %v", err)
 	}
@@ -576,7 +576,7 @@ func TestFetchKiloModels_PropagatesUpstreamError(t *testing.T) {
 	kiloModelsURL = srv.URL
 	defer func() { kiloModelsURL = orig }()
 
-	if _, err := fetchKiloModels(); err == nil {
+	if _, err := (&Server{}).fetchKiloModels(); err == nil {
 		t.Fatal("expected an error when Kilo's API returns 500")
 	}
 }
@@ -648,7 +648,7 @@ func TestFetchOpenCodeZenModels_DerivesIsFreeFromIDSuffix(t *testing.T) {
 	openCodeZenModelsURL = srv.URL
 	defer func() { openCodeZenModelsURL = orig }()
 
-	models, err := fetchOpenCodeZenModels()
+	models, err := (&Server{}).fetchOpenCodeZenModels()
 	if err != nil {
 		t.Fatalf("fetchOpenCodeZenModels() error = %v", err)
 	}
@@ -678,7 +678,7 @@ func TestFetchOpenCodeZenModels_SkipsEntriesWithNoID(t *testing.T) {
 	openCodeZenModelsURL = srv.URL
 	defer func() { openCodeZenModelsURL = orig }()
 
-	models, err := fetchOpenCodeZenModels()
+	models, err := (&Server{}).fetchOpenCodeZenModels()
 	if err != nil {
 		t.Fatalf("fetchOpenCodeZenModels() error = %v", err)
 	}

@@ -65,14 +65,14 @@ func (s *Server) handleOpenRouterConnect(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		writeJSON(w, map[string]interface{}{
 			"status": "error",
-			"error":  "Doğrulama hatası: " + err.Error(),
+			"error":  s.t("Doğrulama hatası: ", "Validation error: ") + err.Error(),
 		})
 		return
 	}
 	if !valid {
 		writeJSON(w, map[string]interface{}{
 			"status": "error",
-			"error":  "API Key geçersiz. openrouter.ai/keys adresinden kontrol et.",
+			"error":  s.t("API Key geçersiz. openrouter.ai/keys adresinden kontrol et.", "Invalid API key. Verify it at openrouter.ai/keys."),
 		})
 		return
 	}
@@ -95,7 +95,7 @@ func (s *Server) handleOpenRouterConnect(w http.ResponseWriter, r *http.Request)
 			logx.Printf("OpenRouter save error: %v", err)
 			writeJSON(w, map[string]interface{}{
 				"status": "error",
-				"error":  "Kayıt hatası: " + err.Error(),
+				"error":  s.t("Kayıt hatası: ", "Save error: ") + err.Error(),
 			})
 			return
 		}
@@ -206,21 +206,21 @@ func (s *Server) handleProviderEffortLevels(w http.ResponseWriter, r *http.Reque
 	case provider.ProviderOpenRouter:
 		apiKey := s.findProviderAPIKeyFor(provider.ProviderOpenRouter)
 		if apiKey == "" {
-			http.Error(w, "OpenRouter API key yapılandırılmamış", http.StatusBadRequest)
+			http.Error(w, s.t("OpenRouter API key yapılandırılmamış", "OpenRouter API key not configured"), http.StatusBadRequest)
 			return
 		}
 		levels, err = fetchOpenRouterModelEffortLevels(apiKey, model)
 	case provider.ProviderClaude:
 		apiKey := s.findProviderAPIKeyFor(provider.ProviderClaude)
 		if apiKey == "" {
-			http.Error(w, "Claude API key yapılandırılmamış", http.StatusBadRequest)
+			http.Error(w, s.t("Claude API key yapılandırılmamış", "Claude API key not configured"), http.StatusBadRequest)
 			return
 		}
 		levels, err = fetchClaudeModelEffortLevels(apiKey, model)
 	case provider.ProviderGemini:
 		apiKey := s.findProviderAPIKeyFor(provider.ProviderGemini)
 		if apiKey == "" {
-			http.Error(w, "Gemini API key yapılandırılmamış", http.StatusBadRequest)
+			http.Error(w, s.t("Gemini API key yapılandırılmamış", "Gemini API key not configured"), http.StatusBadRequest)
 			return
 		}
 		levels, err = fetchGeminiModelEffortLevels(apiKey, model)
@@ -277,12 +277,12 @@ func (s *Server) handleOpenRouterModels(w http.ResponseWriter, r *http.Request) 
 	if apiKey == "" {
 		writeJSON(w, map[string]interface{}{
 			"status": "error",
-			"error":  "API Key gerekli. Önce OpenRouter'ı API Provider'dan yapılandır.",
+			"error":  s.t("API Key gerekli. Önce OpenRouter'ı API Provider'dan yapılandır.", "API key required. Configure OpenRouter under API Providers first."),
 		})
 		return
 	}
 
-	models, err := fetchOpenRouterModels(apiKey)
+	models, err := s.fetchOpenRouterModels(apiKey)
 	if err != nil {
 		writeJSON(w, map[string]interface{}{
 			"status": "error",
@@ -313,23 +313,23 @@ type ProviderModelInfo struct {
 	IsFree      bool    `json:"is_free"`
 }
 
-func fetchOpenRouterModels(apiKey string) ([]ProviderModelInfo, error) {
+func (s *Server) fetchOpenRouterModels(apiKey string) ([]ProviderModelInfo, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequest("GET", "https://openrouter.ai/api/v1/models", nil)
 	if err != nil {
-		return nil, fmt.Errorf("request oluşturulamadı: %w", err)
+		return nil, fmt.Errorf(s.t("request oluşturulamadı: ", "could not create request: ")+"%w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("OpenRouter API hatası: %w", err)
+		return nil, fmt.Errorf(s.t("OpenRouter API hatası: ", "OpenRouter API error: ")+"%w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OpenRouter döndü %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf(s.t("OpenRouter döndü %d: %s", "OpenRouter returned %d: %s"), resp.StatusCode, string(respBody))
 	}
 
 	var result struct {
@@ -348,7 +348,7 @@ func fetchOpenRouterModels(apiKey string) ([]ProviderModelInfo, error) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("parse hatası: %w", err)
+		return nil, fmt.Errorf(s.t("parse hatası: ", "parse error: ")+"%w", err)
 	}
 
 	models := make([]ProviderModelInfo, 0, len(result.Data))
@@ -392,7 +392,7 @@ func (s *Server) handleKiloModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	models, err := fetchKiloModels()
+	models, err := s.fetchKiloModels()
 	if err != nil {
 		writeJSON(w, map[string]interface{}{
 			"status": "error",
@@ -415,22 +415,22 @@ func (s *Server) handleKiloModels(w http.ResponseWriter, r *http.Request) {
 // (routes through to whatever underlying model actually gets picked, not a
 // fixed price) which a prompt==0-and-completion==0 heuristic would
 // misclassify as free.
-func fetchKiloModels() ([]ProviderModelInfo, error) {
+func (s *Server) fetchKiloModels() ([]ProviderModelInfo, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequest("GET", kiloModelsURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("request oluşturulamadı: %w", err)
+		return nil, fmt.Errorf(s.t("request oluşturulamadı: ", "could not create request: ")+"%w", err)
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Kilo API hatası: %w", err)
+		return nil, fmt.Errorf(s.t("Kilo API hatası: ", "Kilo API error: ")+"%w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Kilo döndü %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf(s.t("Kilo döndü %d: %s", "Kilo returned %d: %s"), resp.StatusCode, string(respBody))
 	}
 
 	var result struct {
@@ -447,7 +447,7 @@ func fetchKiloModels() ([]ProviderModelInfo, error) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("parse hatası: %w", err)
+		return nil, fmt.Errorf(s.t("parse hatası: ", "parse error: ")+"%w", err)
 	}
 
 	models := make([]ProviderModelInfo, 0, len(result.Data))
@@ -490,7 +490,7 @@ func (s *Server) handleOpenCodeZenModels(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	models, err := fetchOpenCodeZenModels()
+	models, err := s.fetchOpenCodeZenModels()
 	if err != nil {
 		writeJSON(w, map[string]interface{}{
 			"status": "error",
@@ -513,22 +513,22 @@ func (s *Server) handleOpenCodeZenModels(w http.ResponseWriter, r *http.Request)
 // "deepseek-v4-flash-free", "laguna-s-2.1-free" — confirmed against the
 // real, live catalog, 8 of 78 ids matched), so IsFree is derived from that
 // rather than any numeric price field.
-func fetchOpenCodeZenModels() ([]ProviderModelInfo, error) {
+func (s *Server) fetchOpenCodeZenModels() ([]ProviderModelInfo, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequest("GET", openCodeZenModelsURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("request oluşturulamadı: %w", err)
+		return nil, fmt.Errorf(s.t("request oluşturulamadı: ", "could not create request: ")+"%w", err)
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("OpenCode Zen API hatası: %w", err)
+		return nil, fmt.Errorf(s.t("OpenCode Zen API hatası: ", "OpenCode Zen API error: ")+"%w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OpenCode Zen döndü %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf(s.t("OpenCode Zen döndü %d: %s", "OpenCode Zen returned %d: %s"), resp.StatusCode, string(respBody))
 	}
 
 	var result struct {

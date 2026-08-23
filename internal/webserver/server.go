@@ -806,6 +806,19 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 	}
 }
 
+// t picks the user-facing message variant for the active UI language —
+// the webserver-side twin of App.t (internal/app/settings.go), with the
+// same semantics: exactly "tr" yields Turkish, everything else (unset,
+// unknown, or no fullBridge to ask at all) yields English. Handlers use it
+// for error strings that the Flutter/mobile clients surface directly, so
+// an English-default GUI no longer sees Turkish provider/API errors.
+func (s *Server) t(tr, en string) string {
+	if s.fullBridge != nil && s.fullBridge.GetUILanguage() == "tr" {
+		return tr
+	}
+	return en
+}
+
 // isLoopbackOrigin reports whether origin is exactly http://localhost,
 // http://127.0.0.1, or http://[::1] (any port) — parsed and compared by
 // exact hostname, never a substring/prefix match. A prefix check

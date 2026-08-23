@@ -5,6 +5,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -22,7 +23,6 @@ import (
 
 // errSwarmBeta is returned by every swarm method when Beta is off — same
 // tone as SetTailscaleMode's beta gate.
-const errSwarmBeta = "Swarm beta özelliğidir; Ayarlar'dan Beta'yı açın"
 
 // swarmStartTimeout budgets multi-machine model load (weights go over the
 // network to each rpc-server). Single-host chat load uses 180s; swarm needs more.
@@ -72,7 +72,7 @@ func (a *App) initSwarm() {
 
 func (a *App) requireSwarmBeta() error {
 	if a.cfg == nil || !a.cfg.Beta {
-		return fmt.Errorf(errSwarmBeta)
+		return errors.New(a.t("Swarm beta özelliğidir; Ayarlar'dan Beta'yı açın", "Swarm is a beta feature; enable Beta in Settings"))
 	}
 	return nil
 }
@@ -92,7 +92,7 @@ func (a *App) HostSwarmCreate(modelPath string) (roomCode string, err error) {
 	// Creating again silently wiped workers/secret — require explicit close.
 	if a.swarmCoordinator.RoomCode() != "" {
 		a.swarmMu.Unlock()
-		return "", fmt.Errorf("swarm: zaten bir oda açık — önce odayı kapatın")
+		return "", errors.New(a.t("swarm: zaten bir oda açık — önce odayı kapatın", "swarm: a room is already open — close it first"))
 	}
 	// Can't host while already joined as a worker on this machine.
 	if a.swarmWorker != nil && a.swarmWorker.IsRunning() {
@@ -132,7 +132,7 @@ func (a *App) HostSwarmCreate(modelPath string) (roomCode string, err error) {
 	}
 	// Re-check after Stat/rebind — another create could have raced.
 	if a.swarmCoordinator.RoomCode() != "" {
-		return "", fmt.Errorf("swarm: zaten bir oda açık — önce odayı kapatın")
+		return "", errors.New(a.t("swarm: zaten bir oda açık — önce odayı kapatın", "swarm: a room is already open — close it first"))
 	}
 	if a.swarmWorker != nil && a.swarmWorker.IsRunning() {
 		return "", fmt.Errorf("swarm: already joined as a worker — leave first")
@@ -262,7 +262,7 @@ func (a *App) HostSwarmStart(ctxSize int) error {
 		a.swarmMu.Unlock()
 		return fmt.Errorf("swarm: no workers registered yet")
 	}
-	if err := validateWorkerShares(workers); err != nil {
+	if err := a.validateWorkerShares(workers); err != nil {
 		a.swarmMu.Unlock()
 		return err
 	}
@@ -298,7 +298,7 @@ func (a *App) HostSwarmStart(ctxSize int) error {
 	a.swarmMu.Unlock()
 
 	// Probe outside the lock (up to 2s per worker).
-	if err := probeWorkerRPC(workers); err != nil {
+	if err := a.probeWorkerRPC(workers); err != nil {
 		return err
 	}
 
@@ -330,7 +330,7 @@ func (a *App) HostSwarmStart(ctxSize int) error {
 		a.swarmCoordinator.RoomCode() != roomCodeSnap || a.swarmServer != srv {
 		a.swarmMu.Unlock()
 		_ = srv.Stop()
-		return fmt.Errorf("swarm: oda yükleme sırasında kapatıldı")
+		return errors.New(a.t("swarm: oda yükleme sırasında kapatıldı", "swarm: room was closed during model load"))
 	}
 	if !srv.IsRunning() {
 		a.swarmMu.Unlock()
@@ -354,26 +354,26 @@ func (a *App) HostSwarmStart(ctxSize int) error {
 
 // validateWorkerShares requires at least one worker with SharePercent > 0 so
 // Start does not launch a useless --tensor-split 100,0,...,0 pool.
-func validateWorkerShares(workers []swarm.WorkerSlot) error {
+func (a *App) validateWorkerShares(workers []swarm.WorkerSlot) error {
 	sum := 0.0
 	for _, w := range workers {
 		sum += w.SharePercent
 	}
 	if sum <= 0 {
-		return fmt.Errorf("swarm: yardımcı pay yüzdesi ayarlayın (hepsi 0 — pooling yok)")
+		return errors.New(a.t("swarm: yardımcı pay yüzdesi ayarlayın (hepsi 0 — pooling yok)", "swarm: set a worker share percentage (all zero — no pooling)"))
 	}
 	return nil
 }
 
 // probeWorkerRPC dials each worker's rpc-server address with a short timeout.
-func probeWorkerRPC(workers []swarm.WorkerSlot) error {
+func (a *App) probeWorkerRPC(workers []swarm.WorkerSlot) error {
 	for _, w := range workers {
 		if strings.TrimSpace(w.Address) == "" {
 			return fmt.Errorf("swarm: worker %q has empty address", w.ID)
 		}
 		conn, err := net.DialTimeout("tcp", w.Address, 2*time.Second)
 		if err != nil {
-			return fmt.Errorf("swarm: worker %q (%s) ulaşılamıyor — rpc-server kapalı mı?: %w", w.Label, w.Address, err)
+			return fmt.Errorf(a.t("swarm: worker %q (%s) ulaşılamıyor — rpc-server kapalı mı?: ", "swarm: worker %q (%s) unreachable — is rpc-server down?: ")+"%w", w.Label, w.Address, err)
 		}
 		_ = conn.Close()
 	}
@@ -663,7 +663,7 @@ func (a *App) SwarmStatusSnapshot() interface{} {
 func (a *App) ensureSwarmLANListen() error {
 	ws := a.getWebServer()
 	if ws == nil {
-		return fmt.Errorf("swarm: web sunucusu çalışmıyor — önce backend'i başlatın")
+		return errors.New(a.t("swarm: web sunucusu çalışmıyor — önce backend'i başlatın", "swarm: web server is not running — start the backend first"))
 	}
 	if ws.GetListenAddr() == "0.0.0.0" {
 		return nil
@@ -680,7 +680,7 @@ func (a *App) ensureSwarmLANListen() error {
 	// Token-gated LAN is correct: workers/add is already exempt from that
 	// middleware; other routes stay protected.
 	if err := a.SetRemoteAccess(true, port); err != nil {
-		return fmt.Errorf("swarm: LAN erişimi açılamadı (diğer PC'ler odaya katılamaz): %w", err)
+		return fmt.Errorf(a.t("swarm: LAN erişimi açılamadı (diğer PC'ler odaya katılamaz): ", "swarm: LAN access could not be enabled (other PCs cannot join the room): ")+"%w", err)
 	}
 	return nil
 }
@@ -733,7 +733,7 @@ func (a *App) swarmLocalRPCAddress(mode string, rpcPort int) (string, error) {
 	if mode == "ts" {
 		ip, err := firstLocalIPv4WithPrefix("100.")
 		if err != nil {
-			return "", fmt.Errorf("swarm: Tailscale odası için sistem seviyesinde Tailscale gerekli (100.x adresi yok — sadece Memo gömülü tünel yetmez): %w", err)
+			return "", fmt.Errorf(a.t("swarm: Tailscale odası için sistem seviyesinde Tailscale gerekli (100.x adresi yok — sadece Memo gömülü tünel yetmez): ", "swarm: a system-level Tailscale is required for a Tailscale room (no 100.x address — the embedded tunnel alone is not enough): ")+"%w", err)
 		}
 		return fmt.Sprintf("%s:%d", ip, rpcPort), nil
 	}

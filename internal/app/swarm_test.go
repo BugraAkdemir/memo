@@ -108,7 +108,7 @@ func TestRedirectChatToSwarm_NoopWhenNoServer(t *testing.T) {
 }
 
 func TestValidateWorkerShares_RejectsAllZero(t *testing.T) {
-	err := validateWorkerShares([]swarm.WorkerSlot{
+	err := (&App{}).validateWorkerShares([]swarm.WorkerSlot{
 		{ID: "a", SharePercent: 0},
 		{ID: "b", SharePercent: 0},
 	})
@@ -118,7 +118,7 @@ func TestValidateWorkerShares_RejectsAllZero(t *testing.T) {
 }
 
 func TestValidateWorkerShares_AllowsPositive(t *testing.T) {
-	if err := validateWorkerShares([]swarm.WorkerSlot{
+	if err := (&App{}).validateWorkerShares([]swarm.WorkerSlot{
 		{ID: "a", SharePercent: 30},
 		{ID: "b", SharePercent: 0},
 	}); err != nil {

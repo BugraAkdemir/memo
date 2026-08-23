@@ -1,3 +1,29 @@
+# Ek (2026-08-23, devam) — v4.0.0 yayınlandı (/memo-release skill, mevcut içerikle)
+
+Kullanıcı "4.0.0'ı şimdi yayımlayalım" dedi. Önemli bağlam: yapacam.md'de 4.0.0'ın planlı
+içeriği üç maddedeydi (zaman farkındalığı ✅ / UILanguage ❌ / WhatsApp devralma ❌).
+Üç seçenek soruldu; kullanıcı **"şimdi mevcut haliyle 4.0.0"** seçti — devralma ve UILanguage
+sıradaki minor'a kaydı (yapacam.md'deki 4.0.0 başlığı bu kararla artık bayat; kullanıcı
+güncelleyebilir). Tag push'u öncesinde skill'in gerektirdiği açık onay ayrıca alındı.
+
+**Phase 1 — bump (`130db8c`):** `version`→V4.0.0 (6 byte, newline yok), `installer.iss`
+MyAppVersion "4.0.0", iki README'nin rozet + changelog linkleri. Eski sürüm grep'i: 0 hit.
+
+**Phase 2 — notlar (`192a217`):** `versinNote/v4.0.0.md` + `tr/v4.0.0.md`. Başlık zaman
+farkındalığı; kalan gerçek içerik (ölü kod temizliği, flaky test fix, @BotFather escape)
+dürüstçe "also in this release" olarak yazıldı — sessiz bir major şişirilmedi.
+
+**Phase 3 — tag & push:** `v4.0.0` push edildi (her iki remote). Dört workflow yeşil:
+Docker 2m38s, Linux 9m31s, macOS 9m46s, Windows 16m27s. Sanity-check: `memo.tar.gz` gerçek
+ağaç döndürüyor, GitHub Release v4.0.0 prerelease=false, 5 asset (`Memo-Setup-v4.0.0.exe`
+dahil — installer.iss bump'ı canlıda doğrulandı), `memo.exe` ~615MB servis ediliyor.
+
+**Phase 4 — version.json beacon:** BİLEREK YAPILMADI — kullanıcının kendi işi (vercel CLI/
+token bu ortamda yok; önceki oturum kararıyla). Kullanıcıya hatırlatıldı: beacon güncellenene
+kurulu uygulamalar update banner'ı görmez.
+
+**Phase 5:** bu giriş. main + tag push edildi; local temiz.
+
 # Ek (2026-08-23) — 4.0.0 ilk madde: system prompt'a zaman farkındalığı (+ flaky test düzeltmesi)
 
 yapacam.md Bölüm 2'nin ilk işi bitti: model artık saati ve sohbet arasındaki sessizliği biliyor.

@@ -1,3 +1,15 @@
+# Ek (2026-08-23, devam) — tool-result l10n dilimi tamamlandı (`4f729a2`)
+
+UILanguage dikişinin araç katmanı kapandı: agent tool sonuçları ('Takvim başlatılmamış', 'rutin oluşturulamadı', WhatsApp gönderim hataları) artık UI dilini takip ediyor.
+
+- **Yeni `internal/agent/tools/l10n.go`:** process-wide `SetUILanguage` + `T(tr,en)` — araç paketleri App'e erişmediği için dil, her imzaya lang parametresi geçmek yerine paket-seviyesi ayardan geliyor (CalendarClient deseninin ta kendisi); T her çağrıda taze okur. app Startup'ta seed ediyor, SetUILanguage senkron tutuyor.
+- **33 sarım:** calendar ×4, tools/routine ×8 (satır listesi +2 content-match), whatsapp ×12, app/routine ×9.
+- **Bilinçli istisna:** app/routine.go:714 'Bugün için takvimde etkinlik yok.' sarılmadı — formatEventsForRoutine per-routine ÇIKTI dili seçiyor (routineLanguageIsEnglish); global UI ayarına bağlamak TR rutinlerini EN arayüzde bozar. Sonic sorarak doğru kararı aldı (A).
+- **Adaptasyonlar:** summarizeCreatedRoutine/routineScheduleDays → App metodu; argsız fmt.Errorf(T()) → errors.New; TestGetCalendarEvents_NotInitialized SetUILanguage("tr") pinledi.
+- **Gate:** vet temiz, tüm repo -race yeşil (44 paket). Pre-existing gofmt kiri (edit.go/search.go/selfclone_test.go/handlers_calendar_mood_test.go) bu işleve ait değil, dokunulmadı.
+
+**L10n'den tek dilim kaldı:** installer ui-status progress (×21). Push: 4f729a2 dahil edilmek üzere sonraki push'ta.
+
 # Ek (2026-08-23, devam) — webserver+swarm l10n dilimi tamamlandı (`32c2edb`) — önceki "DURAKLATILDI" girişinin devamı
 
 Önceki giriş "DURAKLATILDI" diye başlıyordu; kullanıcı "devam" deyince dilim tamamlandı:

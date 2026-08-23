@@ -180,12 +180,12 @@ func (a *App) CancelCLIJob(chatID string) bool {
 func (a *App) SendCLIMessageStream(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk {
 	sm := a.getSessionManager()
 	if sm == nil || !sm.SessionExists(chatID) {
-		return errStreamChunk(fmt.Sprintf("sohbet bulunamadı: %s", chatID))
+		return errStreamChunk(fmt.Sprintf(a.t("sohbet bulunamadı: %s", "chat not found: %s"), chatID))
 	}
 
 	cliType := sm.GetCLIProvider(chatID)
 	if cliType == "" {
-		return errStreamChunk("bu sohbette bir CLI sağlayıcı seçili değil")
+		return errStreamChunk(a.t("bu sohbette bir CLI sağlayıcı seçili değil", "no CLI provider selected for this chat"))
 	}
 
 	jobBase := a.lifecycleCtx
@@ -198,7 +198,7 @@ func (a *App) SendCLIMessageStream(ctx context.Context, chatID, userMsg string) 
 	cliCtx, cancel := context.WithCancel(jobBase)
 	if !a.startCLIJob(chatID, cancel) {
 		cancel()
-		return errStreamChunk("⏳ Bu sohbette zaten bir CLI görevi çalışıyor.")
+		return errStreamChunk(a.t("⏳ Bu sohbette zaten bir CLI görevi çalışıyor.", "⏳ A CLI job is already running in this chat."))
 	}
 
 	// Saved synchronously, before the goroutine even starts — the normal

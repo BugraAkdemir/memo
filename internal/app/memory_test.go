@@ -477,7 +477,11 @@ func TestDebugMemorySearch_IncludesPinnedFacts(t *testing.T) {
 // other LLM call in this package, which fails immediately via its
 // local.client nil-check with a clear, actionable message instead.
 func TestMergeMemoriesLLMNoModelFailsFastWithClearMessage(t *testing.T) {
-	a := &App{}
+	// UILanguage pinned to "tr": the assertion below matches the Turkish
+	// wording of callLLM's no-model message, which since the a.t() l10n
+	// change is only produced when the UI language is Turkish (unset now
+	// defaults to English, like the GUI).
+	a := &App{cfg: &config.AppConfig{Identity: config.IdentityConfig{UILanguage: "tr"}}}
 	_, err := a.mergeMemoriesLLM(context.Background(), "memory one", "memory two")
 	if err == nil {
 		t.Fatal("expected error when no model/provider is connected, got nil")

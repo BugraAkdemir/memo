@@ -51,7 +51,9 @@ func TestImportMemoryFromTextEmptyInput(t *testing.T) {
 // immediately via its local.client nil-check and returns a clear, actionable
 // message instead of attempting a network call at all.
 func TestImportMemoryFromTextNoModelFailsFastWithClearMessage(t *testing.T) {
-	a := &App{}
+	// UILanguage pinned to "tr" — see the twin test in memory_test.go: the
+	// Turkish assertion below now requires the Turkish UI-language branch.
+	a := &App{cfg: &config.AppConfig{Identity: config.IdentityConfig{UILanguage: "tr"}}}
 	_, _, err := a.ImportMemoryFromText(context.Background(), "some pasted AI answer about me")
 	if err == nil {
 		t.Fatal("expected error when no model/provider is connected, got nil")

@@ -199,6 +199,34 @@ func (a *App) SetUILanguage(lang string) error {
 	return config.Save(a.cfg)
 }
 
+// t picks the user-facing message variant for the active UI language:
+// Turkish when Identity.UILanguage is exactly "tr", English otherwise —
+// including unset, matching waLang's convention (the GUI's own default has
+// been English since 2026-08-13, and "" means the toggle was never
+// touched). This closes the long-standing seam where backend-generated
+// strings that reach the chat window or API responses ("⏹️ Cevap
+// durduruldu.", model-load errors, memory confirmations) were Turkish
+// regardless of what language the rest of the UI spoke.
+//
+// Scope: internal/app's own chat-SSE/response strings. The dedicated
+// surfaces already have their own tables driven by the same setting —
+// replcli/l10n.go (CLI, TR-default carve-out) and whatsapp_l10n.go /
+// telegram_l10n.go — and strings aimed at the *model* (Turkish system
+// prompts, tool descriptions) are deliberately not routed through here:
+// changing those changes model behavior, not UI language.
+//
+// Nil-cfg guard: tests construct bare &App{} values that now flow through
+// converted strings; production Apps always have cfg, and a nil cfg has no
+// persisted preference — the English default is right there too.
+//
+// fmt verbs survive intact: t returns the template; callers Sprintf it.
+func (a *App) t(tr, en string) string {
+	if a.cfg != nil && a.GetUILanguage() == "tr" {
+		return tr
+	}
+	return en
+}
+
 // GetMinimalMode reports whether identity/persona/mood/web-search prompt
 // injection is disabled — only memory context (if separately enabled)
 // still reaches the model. This reads the persisted config copy (status

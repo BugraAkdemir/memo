@@ -689,7 +689,7 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 	// main chat stream (they share the same session manager via AddMessageToSession).
 	if !a.streamMu.TryLock() {
 		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", Done: true}
+		errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
 		close(errCh)
 		return errCh
 	}
@@ -787,10 +787,10 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 
 		if router == nil || !router.HasActiveProvider() {
 			if sm != nil && waSessionID != "" {
-				sm.AddMessageToSession(waSessionID, "assistant", "⚠️ WhatsApp sohbeti için bir sağlayıcı yapılandırmadınız.", "", "")
+				sm.AddMessageToSession(waSessionID, "assistant", a.t("⚠️ WhatsApp sohbeti için bir sağlayıcı yapılandırmadınız.", "⚠️ No provider configured for WhatsApp chat."), "", "")
 			}
 			localTrySend(ctx, outCh, api.StreamChunk{
-				Error: "WhatsApp sohbeti için bir sağlayıcı yapılandırmadınız.",
+				Error: a.t("WhatsApp sohbeti için bir sağlayıcı yapılandırmadınız.", "No provider configured for WhatsApp chat."),
 				Done:  true,
 			})
 			return

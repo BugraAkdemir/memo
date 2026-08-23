@@ -152,7 +152,7 @@ func (a *App) SendMessage(userMsg string) string {
 	}
 
 	if !a.streamMu.TryLock() {
-		return "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin."
+		return a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes.")
 	}
 	defer a.streamMu.Unlock()
 
@@ -181,7 +181,7 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 	if incog {
 		if !a.streamMu.TryLock() {
 			errCh := make(chan api.StreamChunk, 1)
-			errCh <- api.StreamChunk{Error: "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", Done: true}
+			errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
 			close(errCh)
 			return errCh
 		}
@@ -353,7 +353,7 @@ func (a *App) SendMessageStreamTo(ctx context.Context, chatID, userMsg string) <
 	sm := a.getSessionManager()
 	if sm == nil || !sm.SessionExists(chatID) {
 		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: fmt.Sprintf("sohbet bulunamadı: %s", chatID), Done: true}
+		errCh <- api.StreamChunk{Error: fmt.Sprintf(a.t("sohbet bulunamadı: %s", "chat not found: %s"), chatID), Done: true}
 		close(errCh)
 		return errCh
 	}
@@ -386,7 +386,7 @@ func (a *App) SendMessageStreamToAsAgent(ctx context.Context, chatID, userMsg st
 	sm := a.getSessionManager()
 	if sm == nil || !sm.SessionExists(chatID) {
 		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: fmt.Sprintf("sohbet bulunamadı: %s", chatID), Done: true}
+		errCh <- api.StreamChunk{Error: fmt.Sprintf(a.t("sohbet bulunamadı: %s", "chat not found: %s"), chatID), Done: true}
 		close(errCh)
 		return errCh
 	}
@@ -403,7 +403,7 @@ func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg stri
 	// would interleave user/user/assistant/assistant into the session history.
 	if !a.streamMu.TryLock() {
 		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", Done: true}
+		errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
 		close(errCh)
 		return errCh
 	}
@@ -475,7 +475,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 
 	if !a.streamMu.TryLock() {
 		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", Done: true}
+		errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
 		close(errCh)
 		return errCh
 	}
@@ -541,7 +541,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 
 	if !a.streamMu.TryLock() {
 		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", Done: true}
+		errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
 		close(errCh)
 		return errCh
 	}
@@ -639,7 +639,7 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	}
 
 	if !a.streamMu.TryLock() {
-		return "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin."
+		return a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes.")
 	}
 	defer a.streamMu.Unlock()
 
@@ -662,7 +662,7 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	// same trade-off the streaming vision path (SendMessageWithImageStream)
 	// already has — it never had this substitution at all.
 	if strings.Contains(reply, "image input is not supported") || strings.Contains(reply, "mmproj") {
-		reply = "⚠️ Bu model görsel/resim desteklemiyor. Resim gönderebilmek için vision destekli bir model kullanmalısınız (örn: LLaVA, BakLLaVA, Llama Vision gibi)."
+		reply = a.t("⚠️ Bu model görsel/resim desteklemiyor. Resim gönderebilmek için vision destekli bir model kullanmalısınız (örn: LLaVA, BakLLaVA, Llama Vision gibi).", "⚠️ This model does not support image input. Use a vision-capable model to send images (e.g. LLaVA, BakLLaVA, Llama Vision).")
 	}
 	return reply
 }
@@ -696,7 +696,7 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 	}
 
 	if !a.streamMu.TryLock() {
-		return "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin."
+		return a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes.")
 	}
 	defer a.streamMu.Unlock()
 

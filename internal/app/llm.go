@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"memo/internal/logx"
 	"runtime/debug"
@@ -156,7 +157,7 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, string, error) {
 
 	if activeName != "" {
 		if providerRouter == nil || !providerRouter.HasActiveProvider() {
-			return nil, "", "", fmt.Errorf("Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin veya yerel bir model başlatın.")
+			return nil, "", "", errors.New(a.t("Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin veya yerel bir model başlatın.", "No provider configured for Agent mode. Add an API provider under Settings > Providers or start a local model."))
 		}
 		if providerCfgMgr == nil {
 			return nil, "", "", fmt.Errorf("provider system not initialized")
@@ -196,7 +197,7 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, string, error) {
 		return provider.NewRouter([]provider.ProviderConfig{cfg}), modelName, "", nil
 	}
 
-	return nil, "", "", fmt.Errorf("Agent modu için bir API sağlayıcısı seçin ya da yerel bir model başlatın (Modeller bölümünden).")
+	return nil, "", "", errors.New(a.t("Agent modu için bir API sağlayıcısı seçin ya da yerel bir model başlatın (Modeller bölümünden).", "Select an API provider for Agent mode or start a local model (from the Models section)."))
 }
 
 // agentRouterFromProviderName builds a single-provider router for the given
@@ -387,8 +388,8 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		a.finishStream(ctx, start, 0, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 		trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 	} else {
-		a.recordStreamError(userMsg, "⚠️ Agent boş yanıt döndürdü", sessionID)
-		trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Agent boş yanıt döndürdü", Done: true})
+		a.recordStreamError(userMsg, a.t("⚠️ Agent boş yanıt döndürdü", "⚠️ Agent returned an empty response"), sessionID)
+		trySend(ctx, outCh, api.StreamChunk{Error: a.t("⚠️ Agent boş yanıt döndürdü", "⚠️ Agent returned an empty response"), Done: true})
 	}
 }
 
@@ -694,8 +695,8 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			}
 		}, agentRunner)
 		if err != nil {
-			a.recordStreamError(userMsg, "⚠️ Orchestra hatası: "+err.Error(), sessionID)
-			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Orchestra hatası: " + err.Error(), Done: true})
+			a.recordStreamError(userMsg, a.t("⚠️ Orchestra hatası: ", "⚠️ Orchestra error: ")+err.Error(), sessionID)
+			trySend(ctx, outCh, api.StreamChunk{Error: a.t("⚠️ Orchestra hatası: ", "⚠️ Orchestra error: ") + err.Error(), Done: true})
 			return
 		}
 
@@ -773,7 +774,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			usageMetaVal := usageMeta{Provider: "orchestra", Model: ocfg.ChiefModel, Category: categoryChat, PromptTokens: estimateContentTokens(conversationCtx)}
 
 			trySend(ctx, outCh, api.StreamChunk{Content: "🎵 **Orchestra Mode Active**\n"})
-			trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("🧙 Şef: %s/%s\n\n", ocfg.ChiefType, ocfg.ChiefModel)})
+			trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf(a.t("🧙 Şef: %s/%s\n\n", "🧙 Chief: %s/%s\n\n"), ocfg.ChiefType, ocfg.ChiefModel)})
 
 			var fullBuf strings.Builder
 			var fullBufMu sync.Mutex
@@ -786,7 +787,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 				switch up.Type {
 				case orchestra.ProgressPlan:
-					trySend(ctx, outCh, api.StreamChunk{Content: "🧠 **Şef planlıyor...**\n\n"})
+					trySend(ctx, outCh, api.StreamChunk{Content: a.t("🧠 **Şef planlıyor...**\n\n", "🧠 **Chief is planning...**\n\n")})
 				case orchestra.ProgressPlanChunk:
 					fullBufMu.Lock()
 					fullBuf.WriteString(up.Content)
@@ -877,7 +878,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				logx.Printf("Provider stream error: %v", err)
 				var errMsg string
 				if a.providerSwapped(providerRouter) {
-					errMsg = modelSwappedMidStreamMsg
+					errMsg = a.modelSwappedMidStreamMsg()
 				} else {
 					errMsg = "⚠️ " + err.Error()
 					if hint := a.localModelHint(); hint != "" {
@@ -909,7 +910,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				if chunk.Error != "" {
 					var errMsg string
 					if a.providerSwapped(providerRouter) {
-						errMsg = modelSwappedMidStreamMsg
+						errMsg = a.modelSwappedMidStreamMsg()
 					} else {
 						errMsg = "⚠️ " + chunk.Error
 						if hint := a.localModelHint(); hint != "" {
@@ -965,7 +966,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		// does `for chunk := range innerCh` and would leak + deadlock streamMu
 		// on a never-closed channel.
 		select {
-		case outCh <- api.StreamChunk{Error: "⚠️ Yerel model yüklenmemiş. Lütfen bir model başlatın veya API sağlayıcı seçin.", Done: true}:
+		case outCh <- api.StreamChunk{Error: a.t("⚠️ Yerel model yüklenmemiş. Lütfen bir model başlatın veya API sağlayıcı seçin.", "⚠️ Local model not loaded. Start a model or select an API provider."), Done: true}:
 		default:
 		}
 		close(outCh)
@@ -995,7 +996,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			logx.Printf("LLM stream error: %v", err)
 			errMsg := "⚠️ " + err.Error()
 			if a.clientSwapped(streamClient) {
-				errMsg = modelSwappedMidStreamMsg
+				errMsg = a.modelSwappedMidStreamMsg()
 			}
 			a.recordStreamError(userMsg, errMsg, sessionID)
 			trySend(streamCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
@@ -1025,7 +1026,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				logx.Printf("Stream chunk error: %s", chunk.Error)
 				errMsg := "⚠️ " + chunk.Error
 				if a.clientSwapped(streamClient) {
-					errMsg = modelSwappedMidStreamMsg
+					errMsg = a.modelSwappedMidStreamMsg()
 				}
 				a.recordStreamError(userMsg, errMsg, sessionID)
 				trySend(streamCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
@@ -1056,8 +1057,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		} else {
 			logx.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
-			a.recordStreamError(userMsg, "⚠️ Model boş yanıt döndürdü", sessionID)
-			trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ Model boş yanıt döndürdü", Done: true})
+			a.recordStreamError(userMsg, a.t("⚠️ Model boş yanıt döndürdü", "⚠️ Model returned an empty response"), sessionID)
+			trySend(streamCtx, outCh, api.StreamChunk{Error: a.t("⚠️ Model boş yanıt döndürdü", "⚠️ Model returned an empty response"), Done: true})
 		}
 	}()
 
@@ -1340,7 +1341,7 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 		if err != nil {
 			logx.Printf("Provider error: %v", err)
 			if a.providerSwapped(providerRouter) {
-				return modelSwappedMidStreamMsg
+				return a.modelSwappedMidStreamMsg()
 			}
 			errMsg := "⚠️ " + err.Error()
 			if hint := a.localModelHint(); hint != "" {
@@ -1369,7 +1370,7 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 	a.clientMu.RUnlock()
 
 	if llmClient == nil {
-		return "⚠️ Yerel model yüklenmemiş. Lütfen bir model başlatın veya API sağlayıcı seçin."
+		return a.t("⚠️ Yerel model yüklenmemiş. Lütfen bir model başlatın veya API sağlayıcı seçin.", "⚠️ Local model not loaded. Start a model or select an API provider.")
 	}
 
 	a.cfgMu.RLock()
@@ -1380,7 +1381,7 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 		logx.Printf("LATENCY llm.complete total_ms=%d status=error messages=%d", time.Since(start).Milliseconds(), len(messages))
 		logx.Printf("LLM error: %v", err)
 		if a.clientSwapped(llmClient) {
-			return modelSwappedMidStreamMsg
+			return a.modelSwappedMidStreamMsg()
 		}
 		return "⚠️ " + err.Error()
 	}
@@ -1428,7 +1429,9 @@ func (a *App) recordCallLLMUsage(start time.Time, provider, model, category stri
 // (typically "connection refused") with a clear explanation when a request
 // fails specifically because the client/provider it started with was
 // swapped out from under it — see clientSwapped/providerSwapped.
-const modelSwappedMidStreamMsg = "⚠️ Model veya sağlayıcı bu mesaj akarken değiştirildi, bu yüzden tamamlanamadı. Lütfen tekrar deneyin."
+func (a *App) modelSwappedMidStreamMsg() string {
+	return a.t("⚠️ Model veya sağlayıcı bu mesaj akarken değiştirildi, bu yüzden tamamlanamadı. Lütfen tekrar deneyin.", "⚠️ The model or provider changed while this message was streaming, so it could not finish. Please try again.")
+}
 
 // clientSwapped reports whether a.client has changed since streamClient was
 // captured under clientMu at the start of a call — i.e. the local model was
@@ -1507,5 +1510,5 @@ func (a *App) localModelHint() string {
 	if modelName == "" {
 		modelName = "local"
 	}
-	return fmt.Sprintf("💡 Yerel modeliniz (%s) çalışıyor. API sağlayıcı yerine yerel modeli kullanmak için /model yazıp Local'i seçin.", modelName)
+	return fmt.Sprintf(a.t("💡 Yerel modeliniz (%s) çalışıyor. API sağlayıcı yerine yerel modeli kullanmak için /model yazıp Local'i seçin.", "💡 Your local model (%s) is running. To use the local model instead of an API provider, type /model and select Local."), modelName)
 }

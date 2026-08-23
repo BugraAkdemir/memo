@@ -1,3 +1,29 @@
+# Ek (2026-08-23, devam) — webserver+swarm l10n dilimi tamamlandı (`32c2edb`) — önceki "DURAKLATILDI" girişinin devamı
+
+Önceki giriş "DURAKLATILDI" diye başlıyordu; kullanıcı "devam" deyince dilim tamamlandı:
+
+- **Kısmi sarmalar gözden geçirilip tamamlandı:** sonic'in yarım bıraktığı handlers_oauth.go satırlarının kalanları (280, 320, 326, 332, 351) + swarm.go'nun kalan üçü (669, 686, 739) sarıldı. Sonic'in contract-dışı ama gerekli adaptasyonları onaylandı: `fetchKiloModels`/`fetchOpenRouterModels` → `*Server` metodu (t() erişimi için), testler `(&Server{}).fetch...` formuna güncellenmişti.
+- **Sonic'in bıraktığı kırıklar düzeltildi:** swarm.go'da mükerrer import bloğu; receiver'sız `validateWorkerShares`/`probeWorkerRPC` içinde `a.t` kullanımı → her ikisi `(a *App)` metoduna çevrildi (çağrı noktaları + swarm_test.go güncellendi).
+- **Vet uyumu:** argsız `fmt.Errorf(nonConstant)` → `errors.New`; `%w`'li formatlar `a.t(...)+"%w"` birleştirme deseniyle korundu.
+- **Gate:** build/vet -race tüm repo yeşil (44 paket ok). Not: `internal/webserver/handlers_calendar_mood_test.go` gofmt-kirli AMA pre-existing ve bu dilimce dokunulmadı.
+
+**L10n'den kalan:** tool-result mesajları (agent/tools* ×22, app/routine ×10) → installer ui-status (×21). Bunlar bitince UILanguage minor'ı tamamen kapanır; ardından kullanıcı kararı: WhatsApp devralma / 4.1.0 mobil birleşme / Faz 5.2.
+
+
+Kullanıcı durdurdu ("sadece handoff'u güncelle, başka bir şey yapma"). Kaldığımız yerin kaydı:
+
+- **Tamam ve commitli:** UILanguage dikişinin internal/app dilimi (`8c4fd60`, aşağıdaki giriş).
+- **Bu dilimde yapıldı:** `(s *Server) t(tr, en)` yardımcısı `server.go`'ya eklendi — `App.t`'nin webserver ikizi (nil fullBridge → EN).
+- **YARIDA KALAN:** sonic agent (`L10nWeb`) `handlers_oauth.go` (18 hedef satır) + `app/swarm.go` (9 hedef satır) sarmalamasının ortasında iptal edildi. **Kısmi ve DOĞRULANMAMIŞ** değişiklikler working tree'de duruyor: `swarm.go`, `handlers_oauth.go`, `handlers_oauth_test.go` (test iddialarını da değiştirmiş görünüyor), `server.go` — 4 dosya modified, commit yok, build/vet/test koşulmadı.
+
+## Devam eden oturumun yapacakları (sırayla)
+
+1. `git diff` ile kısmi sarmaları gözden geçir → eksik/yanlış olanları tamamla (hedef: oauth ×18 + swarm ×9 tamamen `s.t`/`a.t` ile sarılmış olmalı).
+2. Test kırılmalarını yeni sözleşmeye göre düzelt (muhtemelen Türkçe mesaj assert eden testler var — App dilimindeki desenle: ya `UILanguage:"tr"` pinle ya EN beklediğine geç).
+3. Gate: `CGO_ENABLED=1 go build/vet/test -race -tags "sqlite_fts5"` yeşil → tek commit (`feat(webserver): ...`).
+4. Sonraki dilimler: tool-result'lar (agent/tools* ×22, app/routine ×10) → installer ui-status (×21). Bunlar bitince UILanguage minor kapanır.
+5. Ardından kullanıcı kararı bekleyen büyükler: WhatsApp devralma planı / 4.1.0 mobil birleşme / Faz 5.2 izolasyonu.
+
 # Ek (2026-08-23, devam) — UILanguage dikişi kapatıldı: backend sohbet metinleri artık dil duyarlı (`8c4fd60`)
 
 AGENTS.md'deki "known open seam" kapatıldı: İngilizce arayüzde `⏹️ Cevap durduruldu.` gibi Türkçe backend mesajları görünüyordu.

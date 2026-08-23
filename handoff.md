@@ -1,3 +1,23 @@
+# Ek (2026-08-23) — 4.0.0 ilk madde: system prompt'a zaman farkındalığı (+ flaky test düzeltmesi)
+
+yapacam.md Bölüm 2'nin ilk işi bitti: model artık saati ve sohbet arasındaki sessizliği biliyor.
+
+**Ne yapıldı (commit `852c7b0`):**
+- Her system prompt'a `[Time context]` bloğu: her zaman yerel saat+tarih ("Sunday, 23 August 2026, 22:09"), artı sohbetteki sessizlik 15 dakikayı aşmışsa "Last message in this conversation was X ago" cümlesi (minutes / an hour / a day / N days).
+- Veri kaynağı: yeni `sessions.Manager.LastActivity(id)` — `Session.UpdatedAt`'ı ("2006-01-02 15:04") parse eder. Kritik keşif: `ChatMessage.Timestamp` sadece görüntülük "15:04" (tarihsiz); mesaj bazlı geçen süre mevcut veriyle imkânsız, UpdatedAt tek güvenilir sinyal.
+- Enjeksiyon noktası bilinçli seçildi: `buildMessagesForSession`'ın `systemPrompt`'una, active-skill bloğuyla aynı gerekçeyle — lokal-model branch'i `role:"system"` mesajı hiç üretmediğinden sonradan append eden her yol sessizce boşa düşüyor.
+- MinimalMode'dan bilinçli olarak bağımsız tutuldu: zaman, memory gibi fonksiyonel grounding; minimal mod kişiliği soyar, modeli zaman-körü bırakmaz.
+- Testler: `internal/app/time_context_test.go` — eşik/format tablosu, gelecek-timestamp (saat kayması) yok sayma, `LastActivity` parse/bilinmeyen-id, ve bloğun MinimalMode'da da prompt'a girdiğini kanıtlayan wiring testi.
+
+**Yan ürün — flaky test düzeltildi (commit `7e2ec73`):** `TestBuildRoutinePrompt_MergesCalendarContext` ~22:00'dan sonra koşan suite'te kırılıyordu: `now.Add(2*time.Hour)` gece yarısını aşınca etkinlik yarına düşüyor, `buildRoutinePrompt`'un [bugün 00:00, +24h) takvim penceresine girmiyordu. Temiz HEAD'de (tüm değişiklikler stash'li) aynı failure yeniden üretildi — benim değişikliklerimle ilgisi yok, önceden var olan günün-saati flake'i. Etkinlik artık bugün 12:00'ye sabit.
+
+**Doğrulama:** `CGO_ENABLED=1 go build/vet/test -race -tags "sqlite_fts5"` tüm repo yeşil. Smoke: gerçek render alındı (taze sohbet → sadece saat satırı; 2 saatlik sessizlikte → "...was an hour ago").
+
+**Notlar / sıradaki:**
+- Push edilmedi (istenmedi); main origin'den 5 commit ileride.
+- Gözlem: test koşuları `internal/app/data/` (agent-audit.jsonl, agent-backups/) diye paket dizinine göreli-path artifact yazıyor — commitlenme riski düşük ama ayrı temizlik adayı; yerelde elle silindi.
+- yapacam.md 4.0.0'da sıradaki: backend'in Türkçe sistem mesajlarını `Identity.UILanguage`'e bağlamak (önce Türkçe literal envanteri önerilir), ardından WhatsApp üçüncü kişi devralma.
+
 # Ek (2026-08-22, devam) — Yapısal inceleme (codebase-memory + code-review) ve ilk temizlik commit'i (`c48cb89`)
 
 Kullanıcı "skill'lerini göster, AGENTS.md kurallarına harfiyen uy" dedi. Önce skill'ler taşındı

@@ -492,8 +492,16 @@ func TestBuildRoutinePrompt_MergesCalendarContext(t *testing.T) {
 	a.calendarStore = store
 
 	ctx := context.Background()
-	now := time.Now()
-	if _, err := store.Add(ctx, calendar.Event{Title: "Diş randevusu", StartTime: now.Add(2 * time.Hour)}); err != nil {
+	// Anchor the event inside today's agenda window regardless of when the
+	// suite runs. The original now.Add(2*time.Hour) crossed midnight whenever
+	// the test ran after ~22:00 local: the event landed *tomorrow*, outside
+	// buildRoutinePrompt's [today 00:00, today+24h) fetch window, and the test
+	// failed with "Bugün için takvimde etkinlik yok" — a time-of-day flake,
+	// not a behavior change. Noon today is inside the window at any hour and
+	// List(start,end) applies no past-event filter.
+	n := time.Now()
+	eventTime := time.Date(n.Year(), n.Month(), n.Day(), 12, 0, 0, 0, n.Location())
+	if _, err := store.Add(ctx, calendar.Event{Title: "Diş randevusu", StartTime: eventTime}); err != nil {
 		t.Fatalf("calendar.Add: %v", err)
 	}
 

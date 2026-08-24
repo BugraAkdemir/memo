@@ -1511,6 +1511,7 @@ class L10n {
 
     // Chat message list
     'searching_web': 'Webde aranıyor...',
+    'reading_page': 'Sayfa okunuyor...',
 
     // Backup tab
     'backup_creds_saved': 'Kimlik bilgileri kaydedildi',
@@ -3397,6 +3398,7 @@ class L10n {
 
     // Chat message list
     'searching_web': 'Searching the web...',
+    'reading_page': 'Reading page...',
 
     // Backup tab
     'backup_creds_saved': 'Credentials saved',

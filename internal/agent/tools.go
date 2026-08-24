@@ -226,14 +226,15 @@ func (r *ToolRegistry) registerRoutineTool() {
 
 // registerWebSearchTool adds the web_search tool to this registry. Split out
 // of registerBuiltins so NewWebSearchRegistry can build a registry with only
-// this one tool — used by App.routeStream's non-agent "web search mode" so
-// plain chat can let the model decide, per message via native tool-calling,
-// whether it actually needs to search, instead of the old blind-injection
-// design that ran a search on every single message regardless of content.
+// web_search + fetch_page — used by App.routeStream's non-agent "web search
+// mode" so plain chat can let the model decide, per message via native
+// tool-calling, whether it actually needs to search, instead of the old
+// blind-injection design that ran a search on every single message
+// regardless of content.
 func (r *ToolRegistry) registerWebSearchTool() {
 	r.Register(ToolDef{
 		Name:        "web_search",
-		Description: "Searches the web using DuckDuckGo and returns relevant results. Only call this for current events, recent news, prices, or specific facts that may have changed after your training cutoff. Do NOT call it for greetings, small talk, general knowledge you already know, or coding/file/project questions — answer those directly instead.",
+		Description: "Searches the web (Bing, falling back to DuckDuckGo if blocked) and returns relevant results. Only call this for current events, recent news, prices, or specific facts that may have changed after your training cutoff. Do NOT call it for greetings, small talk, general knowledge you already know, or coding/file/project questions — answer those directly instead.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Short keyword-style search query (2-6 words) — extract the subject, do NOT pass the user's raw message verbatim"},"max_results":{"type":"integer","description":"Number of results to return (default 5, max 10)"}},"required":["query"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.WebSearch,
@@ -253,13 +254,21 @@ func (r *ToolRegistry) registerFetchPageTool() {
 	})
 }
 
-// NewWebSearchRegistry creates a registry with only the web_search tool. See
-// registerWebSearchTool's doc comment for why this exists.
+// NewWebSearchRegistry creates a registry with only web_search + fetch_page.
+// See registerWebSearchTool's doc comment for why this exists. The
+// underlying pipeline (NewPipelineWithBudget, maxIters 40 — same as full
+// agent mode) already supports many tool-call iterations per turn; scoping
+// the registry to just these two tools is what keeps this mode "search
+// mode" rather than "full agent mode with everything else disabled" — the
+// model can search, read a result, decide it's irrelevant, and try another
+// one, exactly like full agent mode, just without file/command/WhatsApp
+// access.
 func NewWebSearchRegistry() *ToolRegistry {
 	r := &ToolRegistry{
 		tools: make(map[string]ToolDef),
 	}
 	r.registerWebSearchTool()
+	r.registerFetchPageTool()
 	return r
 }
 

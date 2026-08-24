@@ -784,7 +784,9 @@ class _TypingIndicator extends StatelessWidget {
                 Text(
                   statusText == 'web_search'
                       ? L10n.t('searching_web')
-                      : (L10n.t('thinking')),
+                      : (statusText == 'fetch_page'
+                          ? L10n.t('reading_page')
+                          : L10n.t('thinking')),
                   style: TextStyle(
                     fontSize: 13,
                     fontStyle: FontStyle.italic,

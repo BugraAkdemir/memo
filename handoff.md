@@ -1,3 +1,42 @@
+# Ek (2026-08-25) — gosearch entegrasyonu: web_search + fetch_page + domain bütçesi (branch: `experiment/gosearch-integration`, henüz main'e alınmadı)
+
+Kullanıcı kendi yazdığı bir Go kütüphanesini (`github.com/BugraAkdemir/gosearch` —
+çoklu-motor arama + sayfa-içeriği-çekme, API key gerektirmiyor) buldu ve Memo'ya
+uyar mı diye sordu. Değerlendirme sonrası onay alındı, ayrı bir deneysel branch'te
+uçtan uca implement edildi. Kurallar: AGENTS.md harfiyen, modele giden tool
+açıklamaları İngilizce, kullanıcıya görünen her metin `T()`/l10n üzerinden, bu
+branch'te serbestçe commit/push (main'e push/merge ederken sor), codebase-memory
+kullanılarak dokunulan yerlerin çağıranları önceden kontrol edildi.
+
+**Neden:** Mevcut `internal/websearch`, elle yazılmış tek-motor (sadece DuckDuckGo)
+bir HTML scraper'dı — kendi `canary_test.go`'su bile "DDG HTML değişirse kırılır"
+riskini kabul ediyordu — ve sadece başlık/URL/snippet döndürüyordu, agent'ın
+bulduğu sayfanın gerçek içeriğini okuyacağı bir yol hiç yoktu.
+
+## Yapılanlar (commit sırasıyla)
+
+| Commit | Değişiklik |
+|---|---|
+| `chore(deps)` | `github.com/BugraAkdemir/gosearch` eklendi (`go get`, gerçek public repo, `replace` yok). |
+| `feat(websearch)` | `internal/websearch` tamamen gosearch'e geçti: `Search` artık Bing öncelikli, engellenirse (`ErrBlocked`/`ErrChallenge`) DuckDuckGo'ya düşüyor. Yeni `Fetch(ctx, url) (*Page, error)` — sayfayı Markdown olarak çekiyor, `truncate.Text` ile 8000 rune'da (UTF-8 güvenli) kırpılıyor. Public API (`Result`, `Search`, `FormatForContext`) bilinçli olarak aynı bırakıldı — `internal/agent/tools/websearch.go` **ve** `internal/app/routine.go`'daki `buildRoutinePrompt` (rutinlerin `ContextWebSearch` kaynağı) ikisi de bu paketi doğrudan çağırıyordu, codebase-memory ile önceden bulundu, hiçbirine dokunmaya gerek kalmadı. `gosearchSearch`/`gosearchFetch` paket değişkenleri testlerin gerçek ağa çıkmadan sahte fonksiyon koyabilmesi için (gosearch'ün kendi `dispatch` deseniyle aynı). Eski DDG-only `ddg.go`/`ddg_test.go`/eski `canary_test.go` silindi, yerine `search.go`/`fetch.go` + testleri + yeni gosearch-tabanlı `canary_test.go` geldi. |
+| `feat(agent)` | Yeni `fetch_page` tool'u (`internal/agent/tools/fetchpage.go`) — modele search sonucunun gerçek içeriğini okutuyor. Alaka kararı **modele bırakıldı** (içeriği okuyup kendi karar veriyor, gizli ekstra LLM çağrısı yok) ama **kaç FARKLI domain'e denendiği kod ile garanti ediliyor**: `fetchbudget.go`, `context.Value` üzerinden tur-başına bir sayaç taşıyor (`WithFetchBudget`, `Pipeline.RunStream`'in başında bir kez seed ediliyor), limit 5. Aynı domain'de farklı sayfaya (pagination, docs'un başka sayfası) geçiş bedava — sayılmıyor. `registerBuiltins`'e eklendi, yani tam agent modu toggle'dan bağımsız her zaman alıyor (koddan doğrulandı: `routeStream` zaten agent açıkken web-search toggle'ına hiç bakmıyormuş, `web_search` da aynı davranışı miras alıyordu — yeni bir şey yapmaya gerek kalmadı). `web_search`'ün iki hardcoded İngilizce sonuç string'i de bu sırada `T()`'ye taşındı (önceki bir l10n turunun atladığı bir şeydi). |
+| `feat(app)` | `callWebSearchAgentStream` (agent kapalıyken kullanılan hafif "web arama modu") için beklenenden çok daha küçük bir iş çıktı: altındaki `NewPipelineWithBudget` zaten `maxIters: 40` ile tam agent moduyla **aynı** çok-adımlı döngüyü kullanıyormuş — "tek tool" demek koddaki doc yorumunda "registry'de sadece bir tool var" anlamına geliyormuş, "tek çağrı" değil. Tek gerçek değişiklik: `NewWebSearchRegistry`'ye `fetch_page`'in de eklenmesi. Frontend: "Webde aranıyor..." durum satırı artık `fetch_page` için de "Sayfa okunuyor..." (`reading_page`, yeni TR/EN l10n anahtarı) gösteriyor. |
+| `test(agent)` | Bütçe mantığının kendisi zaten hızlı/deterministik sahte-testlerle kaplı (`fetchbudget_test.go`, `fetchpage_test.go`) — buna ek olarak gerçek ağa çıkan bir canary test (`fetchpage_canary_test.go`, `//go:build canary`) eklendi: scripted bir sahte LLM, gerçek `Pipeline.RunStream` döngüsünü 5 farklı gerçek siteye `fetch_page` ile gezdiriyor (hepsi başarılı), aynı domain'e bedava bir retry yapıyor, 6. farklı domain'i deniyor (bütçe tarafından reddediliyor) — canlı ağda iki kez çalıştırılıp doğrulandı, kararlı. Domain seçimi birkaç denemede oturdu: gosearch JS çalıştırmıyor, github.com/MDN/python.org gibi SPA'lar ve postgresql.org'un link-ağırlıklı index sayfası gerçekten boş/az içerik döndürüyor (bug değil, gosearch'ün belgelenmiş sınırı) — sonunda düz sunucu-render'lı doc siteleri (go.dev, wikipedia, docs.python.org, click'in readthedocs'u, httpd.apache.org) kullanıldı. CI'daki `canary.yml`'a da yeni bir adım eklendi.
+
+## Doğrulama
+
+- `go build/vet/test -race -tags "sqlite_fts5"` — tüm repo (44 paket) yeşil, birkaç kez tekrarlandı.
+- `flutter analyze lib/` — önceden var olan 5 info dışında yeni uyarı yok. `flutter test` — 283/283 yeşil.
+- Canary testler (gerçek ağ, `-tags canary`): `internal/websearch` (Search + Fetch, gerçek Bing sonuçları + go.dev'den 8005 karakter) ve `internal/agent` (tam pipeline döngüsü, 5 domain + retry + 6.reddedilen) — hepsi canlıda doğrulandı.
+- `gofmt -l` — kendi yazdığım/değiştirdiğim her dosya temiz (repoda önceden var olan iki gofmt-kirli dosya — `pipeline.go`, `executor.go` — struct/import hizalaması, benim değişikliklerimle alakasız, dokunulmadı).
+
+## Sıradaki oturum için
+
+1. **Bu branch henüz main'e alınmadı, PR da açılmadı** — kullanıcı onaylarsa merge edilecek (kural: main'e push/merge ederken sormak zorundayım). PR açmak da ayrı bir onay gerektiren bir adım, henüz yapılmadı.
+2. Gerçek bir LLM ile uçtan uca (REPL/Flutter üzerinden canlı bir model, web_search→fetch_page akışını gerçekten nasıl kullanıyor) hiç denenmedi — bu makinede aktif bir provider/local model yoktu, o yüzden doğrulama scripted-fake-provider ile pipeline seviyesinde yapıldı (yukarıdaki canary test). Bir provider bağlanınca gerçek bir sohbette denenmeli.
+3. `web_search`'ün tool açıklaması artık "Bing, engellenirse DuckDuckGo" diyor — kullanıcı orijinal isteğinde "ana olarak Bing, fallback DDG" demişti, bu doğru yansıtıldı; ama gosearch'ün kendi belgesi DDG'yi "gerçek capture'a karşı doğrulanmış tek motor", Bing'i "best-effort" olarak işaretliyor — canlıda Bing parser'ı kırılırsa sıra `internal/websearch/search.go`'da tek satır (`gosearch.Bing`/`gosearch.DuckDuckGo` yer değiştirmesi).
+4. Google/Yandex motorları hiç kullanılmadı (kullanıcıyla konuşulduğu gibi, gosearch'ün kendi belgesi ikisini de "gerçek capture'a kadar heuristic" diye işaretliyor) — ileride eklenmek istenirse `search.go`'daki `WithFallback` zincirine eklemek yeterli.
+
 # Ek (2026-08-24, devam) — share_file'da 3 gerçek mantık hatası bulundu ve düzeltildi
 
 Kullanıcı "kendi değişikliklerini incele, codebase-memory kullan, mantıksal hataları bul" dedi.

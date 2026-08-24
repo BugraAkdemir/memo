@@ -25,13 +25,22 @@ const maxShareFileBytes = 45 * 1024 * 1024
 // Routines (see routine.go's doc comment for the full reasoning), the
 // delivery target is resolved internally from ctx — which self-chat
 // surface, if any, originated this call — never supplied by the model.
-// consumed reports whether fullPath has been fully read/handed off and may
-// be deleted by the caller if it was a temp file share_file created (a
-// zip); false means the implementation is still holding onto fullPath for
-// later (the frontend download link case) and the caller must leave it
-// alone.
+//
+// isTempFile tells the implementation whether fullPath is a temp file
+// share_file created (a zip it's fine to delete once nobody needs it
+// anymore) or the user's own real file (must never be deleted, even much
+// later — e.g. once an outbox download link expires).
+//
+// consumed reports whether the caller (ShareFile) may delete fullPath
+// immediately once DeliverFile returns — true whenever DeliverFile is done
+// touching the path right now, whether the send succeeded or failed (there
+// is no retry path, so a failed WhatsApp/Telegram attempt has no more use
+// for the file either); false only when the implementation is still
+// holding onto fullPath for later (the frontend download-link case), where
+// the caller must leave it alone and rely on the implementation's own
+// later cleanup instead.
 var FileSender interface {
-	DeliverFile(ctx context.Context, fullPath, displayName string) (message string, consumed bool, err error)
+	DeliverFile(ctx context.Context, fullPath, displayName string, isTempFile bool) (message string, consumed bool, err error)
 }
 
 // ShareFileArgs is share_file's only argument — see the FileSender doc
@@ -41,9 +50,10 @@ type ShareFileArgs struct {
 }
 
 // ShareFile is the share_file agent tool. A single file is sent as-is; a
-// directory is zipped first (the whole directory, flattened into one
-// archive) since none of the three delivery channels have a concept of
-// sending a folder. Where the result actually goes is never this
+// directory is zipped first (the whole directory tree, into one archive —
+// see zipDirectory's doc comment) since none of the three delivery
+// channels have a concept of sending a folder. Where the result actually
+// goes is never this
 // function's decision — see FileSender's doc comment.
 func ShareFile(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args ShareFileArgs
@@ -68,6 +78,7 @@ func ShareFile(ctx context.Context, argsJSON json.RawMessage, basePath string, c
 
 	sendPath := fullPath
 	displayName := info.Name()
+	sendSize := info.Size()
 	isTempZip := false
 
 	if info.IsDir() {
@@ -82,16 +93,22 @@ func ShareFile(ctx context.Context, argsJSON json.RawMessage, basePath string, c
 		// the file was consumed (WhatsApp/Telegram already read it in
 		// full); the frontend download-link path still needs sendPath to
 		// exist on disk for the eventual browser request.
+		zipInfo, err := os.Stat(sendPath)
+		if err != nil {
+			os.Remove(sendPath)
+			return "", fmt.Errorf(T("zip boyutu okunamadı: %w", "could not read zip size: %w"), err)
+		}
+		sendSize = zipInfo.Size()
 	}
 
-	if zipInfo, err := os.Stat(sendPath); err == nil && zipInfo.Size() > maxShareFileBytes {
+	if sendSize > maxShareFileBytes {
 		if isTempZip {
 			os.Remove(sendPath)
 		}
-		return "", fmt.Errorf(T("dosya çok büyük (%.1f MB, limit %.0f MB)", "file too large (%.1f MB, limit %.0f MB)"), float64(zipInfo.Size())/1024/1024, float64(maxShareFileBytes)/1024/1024)
+		return "", fmt.Errorf(T("dosya çok büyük (%.1f MB, limit %.0f MB)", "file too large (%.1f MB, limit %.0f MB)"), float64(sendSize)/1024/1024, float64(maxShareFileBytes)/1024/1024)
 	}
 
-	message, consumed, err := FileSender.DeliverFile(ctx, sendPath, displayName)
+	message, consumed, err := FileSender.DeliverFile(ctx, sendPath, displayName, isTempZip)
 	if isTempZip && consumed {
 		os.Remove(sendPath)
 	}
@@ -101,9 +118,20 @@ func ShareFile(ctx context.Context, argsJSON json.RawMessage, basePath string, c
 	return message, nil
 }
 
-// zipDirectory archives every file under dirPath (recursively, flattened
-// into a single zip whose internal paths are relative to dirPath) into a
-// new temp file, returned by path. The caller owns cleanup.
+// zipDirectory archives every regular file under dirPath (recursively,
+// preserving subdirectory structure relative to dirPath) into a new temp
+// file, returned by path. The caller owns cleanup.
+//
+// Symlinks are skipped entirely, not followed: filepath.Walk itself never
+// descends into a symlinked directory, but a symlinked *file* entry would
+// still be silently followed by the plain os.Open below, letting a
+// directory shared via share_file exfiltrate whatever the backend process
+// can read anywhere on disk (e.g. a symlink planted inside an
+// agent-writable folder pointing at ~/.ssh/id_rsa) — validatePath's own
+// sandbox check (file.go) only ever validates the one top-level path
+// share_file was given, not every entry found while recursing through it.
+// Same class of escape file.go's own BUG-C1 fix closed for read/write, just
+// reached through a different tool.
 func zipDirectory(dirPath string) (string, error) {
 	tmp, err := os.CreateTemp("", "memo-share-*.zip")
 	if err != nil {
@@ -117,6 +145,9 @@ func zipDirectory(dirPath string) (string, error) {
 			return err
 		}
 		if fi.IsDir() {
+			return nil
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
 			return nil
 		}
 		rel, err := filepath.Rel(dirPath, path)

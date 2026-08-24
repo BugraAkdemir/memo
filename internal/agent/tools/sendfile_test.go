@@ -13,16 +13,18 @@ type mockFileSender struct {
 	gotCtx         context.Context
 	gotFullPath    string
 	gotDisplayName string
+	gotIsTempFile  bool
 	gotZipNames    map[string]bool // entries read from fullPath here, before ShareFile can delete it post-return
 	ret            string
 	retConsumed    bool
 	err            error
 }
 
-func (m *mockFileSender) DeliverFile(ctx context.Context, fullPath, displayName string) (string, bool, error) {
+func (m *mockFileSender) DeliverFile(ctx context.Context, fullPath, displayName string, isTempFile bool) (string, bool, error) {
 	m.gotCtx = ctx
 	m.gotFullPath = fullPath
 	m.gotDisplayName = displayName
+	m.gotIsTempFile = isTempFile
 	if zr, err := zip.OpenReader(fullPath); err == nil {
 		m.gotZipNames = map[string]bool{}
 		for _, f := range zr.File {
@@ -92,6 +94,9 @@ func TestShareFile_SingleFile_SentAsIs(t *testing.T) {
 	if mock.gotFullPath != filePath {
 		t.Errorf("DeliverFile() fullPath = %q, want %q", mock.gotFullPath, filePath)
 	}
+	if mock.gotIsTempFile {
+		t.Error("isTempFile should be false for the user's own real file, not a temp zip")
+	}
 	// The real user file must still exist — ShareFile must never delete it.
 	if _, err := os.Stat(filePath); err != nil {
 		t.Errorf("original file should still exist after ShareFile(): %v", err)
@@ -132,10 +137,62 @@ func TestShareFile_Directory_ZipsFirst(t *testing.T) {
 	if !mock.gotZipNames["a.txt"] || !mock.gotZipNames["b.txt"] {
 		t.Errorf("zip entries = %v, want a.txt and b.txt at the root", mock.gotZipNames)
 	}
+	if !mock.gotIsTempFile {
+		t.Error("isTempFile should be true for a zip share_file created itself")
+	}
 
 	// consumed=true → the temp zip must be cleaned up after ShareFile returns.
 	if _, err := os.Stat(mock.gotFullPath); !os.IsNotExist(err) {
 		t.Errorf("temp zip should be deleted once FileSender reports consumed=true, stat err = %v", err)
+	}
+}
+
+// TestZipDirectory_SkipsSymlinks is the regression test for a real sandbox
+// escape: filepath.Walk itself never descends into a symlinked directory,
+// but a symlinked *file* entry was still being silently followed by a
+// plain os.Open, so a directory shared via share_file could exfiltrate
+// anything the backend process can read on disk — e.g. a symlink planted
+// inside an agent-writable folder pointing at a file well outside the
+// agent sandbox. validatePath's own check only ever covers the one
+// top-level path share_file was given, never entries found while
+// recursing through it, so this had to be closed in zipDirectory itself.
+func TestZipDirectory_SkipsSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	folder := filepath.Join(dir, "notes")
+	if err := os.MkdirAll(folder, 0755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, "real.txt"), []byte("real"), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	secretPath := filepath.Join(dir, "outside-sandbox-secret.txt")
+	if err := os.WriteFile(secretPath, []byte("do not leak me"), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.Symlink(secretPath, filepath.Join(folder, "sneaky-link.txt")); err != nil {
+		t.Skipf("symlinks not supported in this environment: %v", err)
+	}
+
+	zipPath, err := zipDirectory(folder)
+	if err != nil {
+		t.Fatalf("zipDirectory() error = %v", err)
+	}
+	defer os.Remove(zipPath)
+
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatalf("resulting archive is not a valid zip: %v", err)
+	}
+	defer zr.Close()
+	names := map[string]bool{}
+	for _, f := range zr.File {
+		names[f.Name] = true
+	}
+	if !names["real.txt"] {
+		t.Errorf("zip entries = %v, want the real file included", names)
+	}
+	if names["sneaky-link.txt"] {
+		t.Error("zip should never include a symlink entry — this is a sandbox escape if it does")
 	}
 }
 

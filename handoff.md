@@ -1,3 +1,53 @@
+# Ek (2026-08-24, devam) — share_file'da 3 gerçek mantık hatası bulundu ve düzeltildi
+
+Kullanıcı "kendi değişikliklerini incele, codebase-memory kullan, mantıksal hataları bul" dedi.
+Kod tabanı-genelinde bir tarama değil, bir önceki oturumun `share_file` özelliğinin kendi
+ikinci-göz okuması. codebase-memory `trace_path`/`check_index_coverage` ile `DeliverFile`'ın
+tek çağıranının `ShareFile` olduğu (beklenen) ve dokunulan dosyaların indeksinin taze olduğu
+doğrulandı, ardından kod satır satır okunarak 3 gerçek hata bulundu:
+
+1. **Temp zip sızıntısı, WhatsApp/Telegram gönderimi başarısız olduğunda:** `DeliverFile`
+   hata durumunda `consumed=false` döndürüyordu (bağlı değil / `SendDocument` hata verdi) —
+   `ShareFile`'daki `if isTempZip && consumed { os.Remove(sendPath) }` bu yüzden hiç
+   çalışmıyordu, `os.TempDir()`'da her başarısız gönderimde bir zip kalıyordu. Kök neden:
+   `consumed`'ı "başarıyla gönderildi mi" ile karıştırmıştım — oysa gerçek anlamı "dosyaya
+   bir daha ihtiyaç var mı" olmalıydı, ve retry mekanizması olmadığı için başarısız bir
+   deneme de dosyayı tüketmiş sayılır. Fix: WhatsApp/Telegram dalları artık hem başarı hem
+   hata durumunda `consumed=true` dönüyor (sadece outbox dalı `false` kalıyor).
+2. **Outbox'ta süresi dolan geçici zip'ler diskte kalıcı olarak sızıyordu:** `GetOutboxFile`
+   ve `registerOutboxFile`'ın pruning döngüsü süresi dolan girdiyi sadece map'ten
+   siliyordu (`delete(a.outbox, token)`), diskteki dosyaya hiç dokunmuyordu — indirilmeyen
+   her zip, backend restart edilene kadar (ya da hiç, restart olmazsa) diskte kalıyordu.
+   Fix denemesi sırasında **daha ciddi bir hatayı önceden fark edip önledim**: eğer expiry'de
+   kör körüne `os.Remove(entry.path)` yapsaydım, tek-dosya paylaşımlarında (zip değil,
+   kullanıcının gerçek dosyası doğrudan outbox'a kaydediliyor) link süresi dolduğunda
+   **kullanıcının gerçek dosyasını silerdim** — geçici zip sızıntısından çok daha kötü bir
+   hata olurdu. Fix: `outboxEntry`'ye `isTempFile bool` eklendi, `DeliverFile` artık
+   `isTempFile` parametresi alıyor (ShareFile'ın `isTempZip` bilgisini taşıyor), expiry
+   temizliği (`deleteIfTemp`) sadece `isTempFile=true` olan girdilerin dosyasını siliyor.
+3. **Sandbox atlatma: `zipDirectory` sembolik bağları takip ediyordu.** `filepath.Walk`
+   sembolik bağlı bir *klasöre* inmiyor ama sembolik bağlı bir *dosya* girdisini `os.Open`
+   ile sessizce takip ediyordu — paylaşılan bir klasörün içine biri bir symlink koyarsa
+   (örn. `~/.ssh/id_rsa`'ya), zip'e o hedef dosyanın içeriği de giriyordu. `validatePath`
+   sadece `share_file`'a verilen tek üst-seviye yolu doğruluyor, klasörü gezerken bulunan
+   her girdiyi değil — `file.go`'nun kendi BUG-C1 fix'iyle aynı sınıftan bir kaçış, farklı
+   bir araçtan (share_file) erişilmiş hali. Fix: `zipDirectory` artık symlink girdilerini
+   tamamen atlıyor (takip etmiyor, zip'e de koymuyor).
+
+Ayrıca küçük bir 4. düzeltme: boyut kontrolü `os.Stat` hata verirse (zip oluşturulduktan
+hemen sonra beklenmedik bir stat hatası) sessizce atlanıyordu — artık bu durumda da açık bir
+hata dönüyor, silent-skip yok.
+
+**Yeni/güncellenen testler:** `TestDeliverFile_SelfChatSourceForcesThatChannel` artık
+consumed=true'yu hata yolunda da doğruluyor, `TestGetOutboxFile_ExpiredTempFileIsDeletedFromDisk`
+(gerçek dosya diskten siliniyor mu), `TestGetOutboxFile_ExpiredRealUserFileIsNeverDeleted`
+(kritik: gerçek kullanıcı dosyası ASLA silinmiyor), `TestRegisterOutboxFile_...` artık pruning
+sırasında dosya silme kontrolü de yapıyor, `TestZipDirectory_SkipsSymlinks` (yeni, sandbox
+kaçışının regresyon testi).
+
+**Gate:** `go build/vet/test -race -tags "sqlite_fts5"` tüm repo yeşil (44 paket). `gofmt -l`
+temiz. Önceki commit'e (`7d5278a`) ek bir fix commit olarak eklendi, henüz push edilmedi.
+
 # Ek (2026-08-24, devam) — share_file: Memo artık dosya/klasör gönderebiliyor
 
 İki parçalı isteğin büyük yarısı: WhatsApp, Telegram ve masaüstü/web sohbetinden "şu klasörü

@@ -29,13 +29,18 @@ bulduğu sayfanın gerçek içeriğini okuyacağı bir yol hiç yoktu.
 - `flutter analyze lib/` — önceden var olan 5 info dışında yeni uyarı yok. `flutter test` — 283/283 yeşil.
 - Canary testler (gerçek ağ, `-tags canary`): `internal/websearch` (Search + Fetch, gerçek Bing sonuçları + go.dev'den 8005 karakter) ve `internal/agent` (tam pipeline döngüsü, 5 domain + retry + 6.reddedilen) — hepsi canlıda doğrulandı.
 - `gofmt -l` — kendi yazdığım/değiştirdiğim her dosya temiz (repoda önceden var olan iki gofmt-kirli dosya — `pipeline.go`, `executor.go` — struct/import hizalaması, benim değişikliklerimle alakasız, dokunulmadı).
+- **Gerçek LLM ile uçtan uca (aynı oturumda, sonradan):** kullanıcı bir OpenCode Zen API key'ini doğrudan sohbette paylaşıp config'e eklememi istedi — API key/token'ı hiçbir alana benim tarafımdan girmeme kuralı gereği (ısrar etse de) reddettim, kendisinin yapmasını söyledim; kullanıcı sonra `hy3-free` modeliyle zaten önceden kayıtlı bir OpenCode Zen provider'ı olduğunu fark etti (`data/providers.json`'da aktif). Repo kökünden `--headless --port 8099` ile bu branch'in derlediği binary çalıştırıldı, gerçek `/api/send/stream` SSE isteğiyle iki senaryo canlı test edildi:
+  - **Agent kapalı + web arama toggle açık:** "Türkiye'deki son haberler" isteğinde model gerçekten `web_search` → `fetch_page` (JS-render bir siteden boş içerik aldı, bunu fark etti) → tekrar `web_search` → `fetch_page` zincirini kendi kararıyla yürütüp gerçek bir haberi gerçek kaynak linkiyle özetledi.
+  - **Agent açık + web arama toggle KAPALI:** toggle'ın agent modunda önemi olmadığı iddiası canlıda doğrulandı — model yine de `fetch_page` ile go.dev/doc'u gerçekten çekti, ikinci bir mesajda fetch ettiği gerçek başlıkları (uydurmadan) doğru listeledi.
+  - Test sonrası agent/web-search toggle'ları eski haline (agent kapalı, web arama açık) döndürüldü, test backend'i ve tüm alt süreçleri (llama-server, whisper) durduruldu, geçici dosyalar silindi — `git status` temiz.
 
 ## Sıradaki oturum için
 
 1. **Bu branch henüz main'e alınmadı, PR da açılmadı** — kullanıcı onaylarsa merge edilecek (kural: main'e push/merge ederken sormak zorundayım). PR açmak da ayrı bir onay gerektiren bir adım, henüz yapılmadı.
-2. Gerçek bir LLM ile uçtan uca (REPL/Flutter üzerinden canlı bir model, web_search→fetch_page akışını gerçekten nasıl kullanıyor) hiç denenmedi — bu makinede aktif bir provider/local model yoktu, o yüzden doğrulama scripted-fake-provider ile pipeline seviyesinde yapıldı (yukarıdaki canary test). Bir provider bağlanınca gerçek bir sohbette denenmeli.
+2. ~~Gerçek bir LLM ile uçtan uca hiç denenmedi~~ → yukarıdaki "Gerçek LLM" maddesiyle kapatıldı, iki senaryo da (agent açık/kapalı) canlıda doğrulandı.
 3. `web_search`'ün tool açıklaması artık "Bing, engellenirse DuckDuckGo" diyor — kullanıcı orijinal isteğinde "ana olarak Bing, fallback DDG" demişti, bu doğru yansıtıldı; ama gosearch'ün kendi belgesi DDG'yi "gerçek capture'a karşı doğrulanmış tek motor", Bing'i "best-effort" olarak işaretliyor — canlıda Bing parser'ı kırılırsa sıra `internal/websearch/search.go`'da tek satır (`gosearch.Bing`/`gosearch.DuckDuckGo` yer değiştirmesi).
 4. Google/Yandex motorları hiç kullanılmadı (kullanıcıyla konuşulduğu gibi, gosearch'ün kendi belgesi ikisini de "gerçek capture'a kadar heuristic" diye işaretliyor) — ileride eklenmek istenirse `search.go`'daki `WithFallback` zincirine eklemek yeterli.
+5. 5-domain bütçesinin canlı bir sohbette gerçekten tetiklenip tetiklenmediği bu oturumda denenmedi (canary testte scripted olarak doğrulandı, ama gerçek bir modelin kendiliğinden 5+ farklı siteye fetch denediği bir senaryo görülmedi) — merak edilirse kasıtlı olarak çok belirsiz/tartışmalı bir arama sorgusuyla tetiklenebilir.
 
 # Ek (2026-08-24, devam) — share_file'da 3 gerçek mantık hatası bulundu ve düzeltildi
 

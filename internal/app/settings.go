@@ -13,6 +13,7 @@ import (
 
 	"memo/internal/config"
 	"memo/internal/identity"
+	"memo/internal/llama"
 )
 
 // GetConfig returns the full application configuration.
@@ -200,6 +201,8 @@ func (a *App) SetUILanguage(lang string) error {
 	// Tool result strings live in internal/agent/tools, which has no App
 	// access — keep their process-wide language in sync (see tools/l10n.go).
 	tools.SetUILanguage(lang)
+	// Same story for the llama.cpp installer's progress/error strings.
+	llama.SetUILanguage(lang)
 	return config.Save(a.cfg)
 }
 

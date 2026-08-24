@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"memo/internal/logx"
@@ -131,7 +132,7 @@ func (i *Installer) Install(ctx context.Context, logger func(string)) (string, e
 	if err == nil {
 		return path, nil
 	}
-	logger(fmt.Sprintf("GitHub'dan indirme başarısız (%v), kaynak kodu derlemeye geçiliyor...", err))
+	logger(fmt.Sprintf(T("GitHub'dan indirme başarısız (%v), kaynak kodu derlemeye geçiliyor...", "Download from GitHub failed (%v), falling back to source build..."), err))
 	return i.installFromSource(ctx, logger)
 }
 
@@ -168,14 +169,14 @@ var assetPrefs = map[string]map[GPUType][]string{
 }
 
 func (i *Installer) installFromRelease(ctx context.Context, logger func(string)) (string, error) {
-	logger("--- Memo AI Engine Kurulumu ---")
-	logger("1/3 GitHub'dan en son sürüm bilgisi alınıyor...")
+	logger(T("--- Memo AI Engine Kurulumu ---", "--- Memo AI Engine Installation ---"))
+	logger(T("1/3 GitHub'dan en son sürüm bilgisi alınıyor...", "1/3 Fetching latest release info from GitHub..."))
 
 	rel, err := fetchLatestRelease(ctx)
 	if err != nil {
-		return "", fmt.Errorf("sürüm bilgisi alınamadı: %w", err)
+		return "", fmt.Errorf(T("sürüm bilgisi alınamadı: %w", "failed to fetch release info: %w"), err)
 	}
-	logger(fmt.Sprintf("Sürüm: %s (%d paket bulundu)", rel.TagName, len(rel.Assets)))
+	logger(fmt.Sprintf(T("Sürüm: %s (%d paket bulundu)", "Release: %s (%d assets found)"), rel.TagName, len(rel.Assets)))
 
 	gpu := DetectGPU()
 	logger(fmt.Sprintf("GPU: %s", gpu.Description))
@@ -184,7 +185,7 @@ func (i *Installer) installFromRelease(ctx context.Context, logger func(string))
 	if err != nil {
 		return "", err
 	}
-	logger(fmt.Sprintf("Seçilen paket: %s", asset.Name))
+	logger(fmt.Sprintf(T("Seçilen paket: %s", "Selected package: %s"), asset.Name))
 
 	// Determine archive type and temp path
 	isTarGz := strings.HasSuffix(strings.ToLower(asset.Name), ".tar.gz")
@@ -195,15 +196,15 @@ func (i *Installer) installFromRelease(ctx context.Context, logger func(string))
 	tempPath := filepath.Join(os.TempDir(), "memo-llama-release"+tempExt)
 	defer os.Remove(tempPath)
 
-	logger(fmt.Sprintf("2/3 İndiriliyor: %s", asset.Name))
+	logger(fmt.Sprintf(T("2/3 İndiriliyor: %s", "2/3 Downloading: %s"), asset.Name))
 	if err := downloadFileProgress(ctx, asset.BrowserDownloadURL, tempPath, func(pct int) {
-		logger(fmt.Sprintf("  İndirme: %d%%", pct))
+		logger(fmt.Sprintf(T("  İndirme: %d%%", "  Download: %d%%"), pct))
 	}); err != nil {
-		return "", fmt.Errorf("indirme başarısız: %w", err)
+		return "", fmt.Errorf(T("indirme başarısız: %w", "download failed: %w"), err)
 	}
 
 	// Extract
-	logger("3/3 Dosyalar çıkarılıyor...")
+	logger(T("3/3 Dosyalar çıkarılıyor...", "3/3 Extracting files..."))
 	binDir := filepath.Join(i.BaseDir, "bin")
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		return "", err
@@ -212,22 +213,22 @@ func (i *Installer) installFromRelease(ctx context.Context, logger func(string))
 	if isTarGz {
 		if err := extractTarGzToBin(tempPath, binDir, logger); err != nil {
 			os.RemoveAll(binDir) // partial extraction leaves broken binaries; clean up so next install isn't blocked
-			return "", fmt.Errorf("çıkarma başarısız: %w", err)
+			return "", fmt.Errorf(T("çıkarma başarısız: %w", "extraction failed: %w"), err)
 		}
 	} else {
 		if err := extractZipToBin(tempPath, binDir, logger); err != nil {
 			os.RemoveAll(binDir)
-			return "", fmt.Errorf("çıkarma başarısız: %w", err)
+			return "", fmt.Errorf(T("çıkarma başarısız: %w", "extraction failed: %w"), err)
 		}
 	}
 
 	targetBin := filepath.Join(binDir, llamaServerBinary())
 	if _, err := os.Stat(targetBin); err != nil {
-		return "", fmt.Errorf("%s kurulum sonrası bulunamadı", llamaServerBinary())
+		return "", fmt.Errorf(T("%s kurulum sonrası bulunamadı", "%s not found after installation"), llamaServerBinary())
 	}
 
-	logger("=== Kurulum Başarılı! ===")
-	logger(fmt.Sprintf("Konum: %s", targetBin))
+	logger(T("=== Kurulum Başarılı! ===", "=== Installation Successful! ==="))
+	logger(fmt.Sprintf(T("Konum: %s", "Location: %s"), targetBin))
 	return targetBin, nil
 }
 
@@ -248,7 +249,7 @@ func fetchLatestRelease(ctx context.Context) (*githubRelease, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API yanıtı: %s", resp.Status)
+		return nil, fmt.Errorf(T("GitHub API yanıtı: %s", "GitHub API response: %s"), resp.Status)
 	}
 
 	var rel githubRelease
@@ -262,7 +263,7 @@ func pickBestAsset(assets []githubAsset, gpu GPUInfo) (githubAsset, error) {
 	currentOS := goruntime.GOOS
 	platformPrefs := assetPrefs[currentOS]
 	if platformPrefs == nil {
-		return githubAsset{}, fmt.Errorf("desteklenmeyen platform: %s", currentOS)
+		return githubAsset{}, fmt.Errorf(T("desteklenmeyen platform: %s", "unsupported platform: %s"), currentOS)
 	}
 
 	prefs := platformPrefs[gpu.Type]
@@ -320,7 +321,7 @@ func pickBestAsset(assets []githubAsset, gpu GPUInfo) (githubAsset, error) {
 			return a, nil
 		}
 	}
-	return githubAsset{}, fmt.Errorf("uygun %s paketi bulunamadı", currentOS)
+	return githubAsset{}, fmt.Errorf(T("uygun %s paketi bulunamadı", "no suitable %s package found"), currentOS)
 }
 
 func downloadFileProgress(ctx context.Context, url, dest string, progress func(int)) error {
@@ -387,7 +388,7 @@ func extractTarGzToBin(archivePath, destDir string, logger func(string)) error {
 
 	gr, err := gzip.NewReader(f)
 	if err != nil {
-		return fmt.Errorf("gzip okuma hatası: %w", err)
+		return fmt.Errorf(T("gzip okuma hatası: %w", "gzip read error: %w"), err)
 	}
 	defer gr.Close()
 
@@ -400,7 +401,7 @@ func extractTarGzToBin(archivePath, destDir string, logger func(string)) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("tar okuma hatası: %w", err)
+			return fmt.Errorf(T("tar okuma hatası: %w", "tar read error: %w"), err)
 		}
 
 		if hdr.Typeflag == tar.TypeDir {
@@ -421,36 +422,36 @@ func extractTarGzToBin(archivePath, destDir string, logger func(string)) error {
 
 		if hdr.Typeflag == tar.TypeSymlink {
 			if err := os.Remove(destPath); err != nil && !os.IsNotExist(err) {
-				logger(fmt.Sprintf("Uyarı: Eski sembolik bağ silinemedi %s: %v", name, err))
+				logger(fmt.Sprintf(T("Uyarı: Eski sembolik bağ silinemedi %s: %v", "Warning: failed to remove old symlink %s: %v"), name, err))
 			}
 			if err := os.Symlink(hdr.Linkname, destPath); err != nil {
 				// Windows: copy instead of symlink (requires admin/Developer Mode)
 				if goruntime.GOOS == "windows" {
 					srcPath := filepath.Join(filepath.Dir(destPath), hdr.Linkname)
 					if copyErr := copyFile(srcPath, destPath, 0755); copyErr == nil {
-						logger(fmt.Sprintf("  Kopyalandı (symlink yerine): %s -> %s", name, hdr.Linkname))
+						logger(fmt.Sprintf(T("  Kopyalandı (symlink yerine): %s -> %s", "  Copied (instead of symlink): %s -> %s"), name, hdr.Linkname))
 						extracted++
 						continue
 					}
 				}
-				logger(fmt.Sprintf("Uyarı: Sembolik bağ oluşturulamadı %s -> %s: %v", name, hdr.Linkname, err))
+				logger(fmt.Sprintf(T("Uyarı: Sembolik bağ oluşturulamadı %s -> %s: %v", "Warning: failed to create symlink %s -> %s: %v"), name, hdr.Linkname, err))
 			} else {
-				logger(fmt.Sprintf("  Bağlandı: %s -> %s", name, hdr.Linkname))
+				logger(fmt.Sprintf(T("  Bağlandı: %s -> %s", "  Linked: %s -> %s"), name, hdr.Linkname))
 				extracted++
 			}
 			continue
 		}
 
 		if err := extractFile(tr, destPath, name, logger); err != nil {
-			logger(fmt.Sprintf("Uyarı: %s çıkarılamadı: %v", name, err))
+			logger(fmt.Sprintf(T("Uyarı: %s çıkarılamadı: %v", "Warning: failed to extract %s: %v"), name, err))
 			continue
 		}
-		logger(fmt.Sprintf("  Çıkarıldı: %s", name))
+		logger(fmt.Sprintf(T("  Çıkarıldı: %s", "  Extracted: %s"), name))
 		extracted++
 	}
 
 	if extracted == 0 {
-		return fmt.Errorf("tar.gz içinde hiçbir binary bulunamadı")
+		return errors.New(T("tar.gz içinde hiçbir binary bulunamadı", "no binary found inside the tar.gz"))
 	}
 	return nil
 }
@@ -458,12 +459,12 @@ func extractTarGzToBin(archivePath, destDir string, logger func(string)) error {
 func extractFile(tr *tar.Reader, destPath, name string, logger func(string)) error {
 	out, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
 	if err != nil {
-		return fmt.Errorf("dosya oluşturulamadı: %w", err)
+		return fmt.Errorf(T("dosya oluşturulamadı: %w", "failed to create file: %w"), err)
 	}
 	defer out.Close()
 
 	if _, err := io.Copy(out, tr); err != nil {
-		return fmt.Errorf("kopyalanamadı: %w", err)
+		return fmt.Errorf(T("kopyalanamadı: %w", "copy failed: %w"), err)
 	}
 	return nil
 }
@@ -488,15 +489,15 @@ func extractZipToBin(zipPath, destDir string, logger func(string)) error {
 
 		destPath := filepath.Join(destDir, name)
 		if err := extractZipEntry(f, destPath); err != nil {
-			logger(fmt.Sprintf("Uyarı: %s çıkarılamadı: %v", name, err))
+			logger(fmt.Sprintf(T("Uyarı: %s çıkarılamadı: %v", "Warning: failed to extract %s: %v"), name, err))
 			continue
 		}
-		logger(fmt.Sprintf("  Çıkarıldı: %s", name))
+		logger(fmt.Sprintf(T("  Çıkarıldı: %s", "  Extracted: %s"), name))
 		extracted++
 	}
 
 	if extracted == 0 {
-		return fmt.Errorf("zip içinde hiçbir binary bulunamadı")
+		return errors.New(T("zip içinde hiçbir binary bulunamadı", "no binary found inside the zip"))
 	}
 	return nil
 }
@@ -522,68 +523,68 @@ func extractZipEntry(f *zip.File, dest string) error {
 
 func (i *Installer) installFromSource(ctx context.Context, logger func(string)) (string, error) {
 	if err := i.CheckPrerequisites(); err != nil {
-		return "", fmt.Errorf("gereksinimler eksik: %v. Lütfen çalıştırın: sudo apt install build-essential git cmake", err)
+		return "", fmt.Errorf(T("gereksinimler eksik: %v. Lütfen çalıştırın: sudo apt install build-essential git cmake", "missing prerequisites: %v. Please run: sudo apt install build-essential git cmake"), err)
 	}
 
 	binDir := filepath.Join(i.BaseDir, "bin")
 	if err := os.MkdirAll(binDir, 0755); err != nil {
-		return "", fmt.Errorf("bin dizini oluşturulamadı: %w", err)
+		return "", fmt.Errorf(T("bin dizini oluşturulamadı: %w", "failed to create bin directory: %w"), err)
 	}
 
 	workDir := filepath.Join(i.BaseDir, "tmp_llama")
 	_ = os.RemoveAll(workDir)
 	defer os.RemoveAll(workDir)
 
-	logger("--- llama.cpp Kurulumu Başlatılıyor ---")
+	logger(T("--- llama.cpp Kurulumu Başlatılıyor ---", "--- Starting llama.cpp Installation ---"))
 
 	// 1. Clone
-	logger("1/4 Depo klonlanıyor...")
+	logger(T("1/4 Depo klonlanıyor...", "1/4 Cloning repository..."))
 	cloneCmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1",
 		"https://github.com/ggerganov/llama.cpp.git", workDir)
 	if err := i.runCmdStream(cloneCmd, logger); err != nil {
-		return "", fmt.Errorf("klonlama başarısız: %w", err)
+		return "", fmt.Errorf(T("klonlama başarısız: %w", "clone failed: %w"), err)
 	}
 
 	// 2. Detect GPU & Configure CMake Flags
-	logger("2/4 GPU algılanıyor...")
+	logger(T("2/4 GPU algılanıyor...", "2/4 Detecting GPU..."))
 	cmakeArgs := []string{"-B", "build"}
 	gpuInfo := DetectGPU()
 	if gpuInfo.Type == GPUTypeNVIDIA {
 		if _, err := exec.LookPath("nvcc"); err == nil {
-			logger("NVIDIA GPU + CUDA bulundu, CUDA etkinleştiriliyor...")
+			logger(T("NVIDIA GPU + CUDA bulundu, CUDA etkinleştiriliyor...", "NVIDIA GPU + CUDA found, enabling CUDA..."))
 			cmakeArgs = append(cmakeArgs, "-DGGML_CUDA=ON")
 		} else {
-			logger("NVIDIA GPU var ama nvcc yok — CPU sürümü derleniyor.")
+			logger(T("NVIDIA GPU var ama nvcc yok — CPU sürümü derleniyor.", "NVIDIA GPU present but nvcc missing — building CPU version."))
 		}
 	} else if gpuInfo.Type == GPUTypeAMD {
 		if _, err := exec.LookPath("hipcc"); err == nil {
-			logger("AMD GPU + ROCm bulundu, HIP etkinleştiriliyor...")
+			logger(T("AMD GPU + ROCm bulundu, HIP etkinleştiriliyor...", "AMD GPU + ROCm found, enabling HIP..."))
 			cmakeArgs = append(cmakeArgs, "-DGGML_HIP=ON", "-DAMDGPU_TARGETS=gfx1030;gfx1100;gfx1101;gfx1102")
 		} else {
-			logger("AMD GPU var ama hipcc yok — CPU sürümü derleniyor.")
+			logger(T("AMD GPU var ama hipcc yok — CPU sürümü derleniyor.", "AMD GPU present but hipcc missing — building CPU version."))
 		}
 	} else {
-		logger("Özel GPU bulunamadı — CPU sürümü derleniyor.")
+		logger(T("Özel GPU bulunamadı — CPU sürümü derleniyor.", "No dedicated GPU found — building CPU version."))
 	}
 
 	// 3. CMake generate
-	logger(fmt.Sprintf("3/4 Build dosyaları oluşturuluyor (cmake %s)...", strings.Join(cmakeArgs, " ")))
+	logger(fmt.Sprintf(T("3/4 Build dosyaları oluşturuluyor (cmake %s)...", "3/4 Generating build files (cmake %s)..."), strings.Join(cmakeArgs, " ")))
 	cmakeGenCmd := exec.CommandContext(ctx, "cmake", cmakeArgs...)
 	cmakeGenCmd.Dir = workDir
 	if err := i.runCmdStream(cmakeGenCmd, logger); err != nil {
-		return "", fmt.Errorf("cmake generate başarısız: %w", err)
+		return "", fmt.Errorf(T("cmake generate başarısız: %w", "cmake generate failed: %w"), err)
 	}
 
-	logger("Derleniyor (2-10 dakika sürebilir)...")
+	logger(T("Derleniyor (2-10 dakika sürebilir)...", "Compiling (may take 2-10 minutes)..."))
 	cmakeBuildCmd := exec.CommandContext(ctx, "cmake", "--build", "build",
 		"--config", "Release", "-j", "4", "--target", "llama-server")
 	cmakeBuildCmd.Dir = workDir
 	if err := i.runCmdStream(cmakeBuildCmd, logger); err != nil {
-		return "", fmt.Errorf("cmake build başarısız: %w", err)
+		return "", fmt.Errorf(T("cmake build başarısız: %w", "cmake build failed: %w"), err)
 	}
 
 	// 4. Copy binary and shared libraries
-	logger("4/4 Kurulum tamamlanıyor...")
+	logger(T("4/4 Kurulum tamamlanıyor...", "4/4 Finishing installation..."))
 	binName := llamaServerBinary()
 	compiledBin := filepath.Join(workDir, "build", "bin", binName)
 	compiledLibDir := filepath.Join(workDir, "build", "bin")
@@ -593,10 +594,10 @@ func (i *Installer) installFromSource(ctx context.Context, logger func(string)) 
 	}
 	targetBin := filepath.Join(binDir, binName)
 	if _, err := os.Stat(compiledBin); err != nil {
-		return "", fmt.Errorf("derlenen binary bulunamadı: %s", compiledBin)
+		return "", fmt.Errorf(T("derlenen binary bulunamadı: %s", "compiled binary not found: %s"), compiledBin)
 	}
 	if err := copyFile(compiledBin, targetBin, 0755); err != nil {
-		return "", fmt.Errorf("binary kopyalanamadı: %w", err)
+		return "", fmt.Errorf(T("binary kopyalanamadı: %w", "failed to copy binary: %w"), err)
 	}
 
 	// Copy shared libraries
@@ -624,14 +625,14 @@ func (i *Installer) installFromSource(ctx context.Context, logger func(string)) 
 		}
 		dest := filepath.Join(binDir, filepath.Base(soFile))
 		if err := copyFile(soFile, dest, 0755); err != nil {
-			logger(fmt.Sprintf("Uyarı: %s kopyalanamadı: %v", filepath.Base(soFile), err))
+			logger(fmt.Sprintf(T("Uyarı: %s kopyalanamadı: %v", "Warning: failed to copy %s: %v"), filepath.Base(soFile), err))
 		} else {
-			logger(fmt.Sprintf("Kütüphane kopyalandı: %s", filepath.Base(soFile)))
+			logger(fmt.Sprintf(T("Kütüphane kopyalandı: %s", "Library copied: %s"), filepath.Base(soFile)))
 		}
 	}
 
-	logger("=== Kurulum Başarılı! ===")
-	logger(fmt.Sprintf("Konum: %s", targetBin))
+	logger(T("=== Kurulum Başarılı! ===", "=== Installation Successful! ==="))
+	logger(fmt.Sprintf(T("Konum: %s", "Location: %s"), targetBin))
 	return targetBin, nil
 }
 

@@ -1,3 +1,33 @@
+# Ek (2026-08-24) — l10n serisinin son dilimi: installer ui-status kapandı
+
+UILanguage dikişinin son açık dilimi (`internal/llama/installer.go`'nun kurulum ilerleme/hata
+metinleri) kapandı — bununla birlikte "backend İngilizce arayüzde Türkçe basıyor" tutarlılık
+sorunu tamamen çözüldü.
+
+- **Yeni `internal/llama/l10n.go`:** `tools/l10n.go`'nun (agent tool sonuçları) birebir aynısı —
+  process-wide `SetUILanguage`/`T(tr, en)`. `internal/llama` de App'e erişemiyor, aynı gerekçe.
+  `App.Startup()` ve `App.SetUILanguage` artık `llama.SetUILanguage(...)`'ı da `tools.SetUILanguage`
+  ile birlikte çağırıyor.
+- **Kapsam:** başlangıç taramasının tahmini "~21" idi; gerçek sayı hem `logger(...)` ilerleme
+  satırları (28) hem de `Install`/`installFromRelease`/`installFromSource`'un döndürdüğü hata
+  metinleri (22) — ikisi de kapsandı, çünkü `handleLlamaInstall` (`webserver/handlers_flutter.go`)
+  bu hataları `"install failed: %v"` ile ham haliyle HTTP yanıtına basıyor, yani onlar da gerçekten
+  kullanıcı yüzlü.
+- **Vet uyumu:** iki argümansız `fmt.Errorf(T(...))` (tar.gz/zip içinde binary bulunamadı) →
+  `errors.New(T(...))`, aynı önceki dilimlerin deseni.
+- **Bilinçli dokunulmayan:** `internal/ngrok/installer.go` tarandı, Türkçe literal yok. `GPU: %s`
+  logger satırı ("GPU" etiketi zaten aynı) ve `runCmdStream`'in ham `scanner.Text()` çıktısı
+  (git/cmake'in kendi konsol metni, Memo'nun stringi değil) elleşilmedi.
+- **Gate:** `go build/vet/test -race -tags "sqlite_fts5"` tüm repo yeşil (44 paket). Mevcut
+  `installer_test.go` hiçbir Türkçe metne assert etmiyor, sessizce kırılan test yok.
+  `gofmt -l` installer.go'yu kirli gösteriyor ama tek fark satır 112'deki pre-existing trailing
+  whitespace (benim dokunmadığım bir satır) — önceki oturumların "pre-existing gofmt kiri,
+  dokunulmadı" emsaline uyularak bırakıldı.
+
+**UILanguage minor'ı artık tamamen kapandı.** Sıradaki büyükler (kullanıcı kararı bekliyor,
+`yapacam.md`): WhatsApp üçüncü kişi devralma (4.0.0'ın kalan maddesi) / 4.1.0 mobile→frontend
+birleşmesi / Faz 5.2 hesap izolasyonu / `handlers_flutter.go`+`memory/store.go` bölünmesi backlog'u.
+
 # Ek (2026-08-23, devam) — tool-result l10n dilimi tamamlandı (`4f729a2`)
 
 UILanguage dikişinin araç katmanı kapandı: agent tool sonuçları ('Takvim başlatılmamış', 'rutin oluşturulamadı', WhatsApp gönderim hataları) artık UI dilini takip ediyor.

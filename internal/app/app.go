@@ -640,6 +640,8 @@ func (a *App) Startup(ctx context.Context) {
 	// their own process-wide setting — seed it from config at startup;
 	// SetUILanguage keeps it in sync on later changes.
 	tools.SetUILanguage(a.cfg.Identity.UILanguage)
+	// Same seeding for the llama.cpp installer's progress/error strings.
+	llama.SetUILanguage(a.cfg.Identity.UILanguage)
 	if err := a.skillManager.LoadActiveSkills(); err != nil {
 		logx.Printf("skill: load active skills error: %v", err)
 	}

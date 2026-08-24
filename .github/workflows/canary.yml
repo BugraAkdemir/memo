@@ -1,5 +1,6 @@
-# Canaries for external dependencies (DuckDuckGo HTML scrape, WhatsApp Noise
-# handshake via whatsmeow). Two trigger modes:
+# Canaries for external dependencies (gosearch's Bing/DuckDuckGo HTML scrape
+# + page-fetch extractor, WhatsApp Noise handshake via whatsmeow). Two
+# trigger modes:
 #   - push to main: every commit (catch breakage soon after it ships)
 #   - weekly cron: still runs when a week has no commits (catch silent
 #     upstream breakage with zero local activity)
@@ -38,7 +39,7 @@ jobs:
           key: go-canary-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
           restore-keys: go-canary-${{ runner.os }}-
 
-      - name: Web search canary (DuckDuckGo)
+      - name: Web search canary (Bing/DuckDuckGo + fetch)
         run: go test -tags "sqlite_fts5 canary" -count=1 -run TestCanary ./internal/websearch/...
 
       - name: WhatsApp handshake canary

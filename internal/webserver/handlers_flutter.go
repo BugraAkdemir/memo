@@ -941,6 +941,30 @@ func (s *Server) handleFileBrowse(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result)
 }
 
+// handleOutboxDownload implements GET /api/files/outbox/{token} — serves a
+// file staged by the share_file agent tool's frontend delivery path (see
+// App.DeliverFile's doc comment). The token is the only credential: it's a
+// random 16-byte value, not guessable, and expires after outboxTTL, so no
+// separate permission check is layered on top here beyond what every route
+// already goes through (remoteAuthMiddleware).
+func (s *Server) handleOutboxDownload(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	path, filename, ok := s.fullBridge.GetOutboxFile(r.PathValue("token"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	http.ServeFile(w, r, path)
+}
+
 // handleCLICommands serves the slash commands a CLI-backed chat can use, for
 // the composer's "/" dropdown. chat_id is optional — without it only
 // user-level and built-in commands are found, since project-level ones live

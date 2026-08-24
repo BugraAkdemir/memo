@@ -179,6 +179,20 @@ func (r *ToolRegistry) registerBuiltins() {
 
 	r.registerWhatsAppTools()
 	r.registerRoutineTool()
+	r.registerFileSenderTool()
+}
+
+// registerFileSenderTool adds share_file to this registry — same
+// availability as create_routine (any agent-enabled chat: normal chat,
+// WhatsApp self-chat, Telegram).
+func (r *ToolRegistry) registerFileSenderTool() {
+	r.Register(ToolDef{
+		Name:        "share_file",
+		Description: "Bir dosyayı veya klasörü kullanıcıya gönderir. path: gönderilecek dosya/klasör yolu (agent'ın erişebildiği yerlerden biri olmalı). Klasör verilirse otomatik zip'lenir, tek dosya ise olduğu gibi gönderilir. Nereye gönderileceği (WhatsApp, Telegram, ya da bu masaüstü/web sohbeti) hiçbir zaman burada belirtilmez — her zaman bu konuşmanın kendisine gönderilir.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Gönderilecek dosya veya klasörün yolu"}},"required":["path"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.ShareFile,
+	})
 }
 
 // registerRoutineTool adds create_routine to this registry — only to the

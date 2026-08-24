@@ -204,6 +204,11 @@ type FullBridge interface {
 	// silently wrong against a remote self-hosted backend.
 	BrowseServerPath(path string) (interface{}, error)
 
+	// GetOutboxFile resolves a share_file download token (see
+	// App.registerOutboxFile's doc comment, internal/app/sendfile.go) to
+	// the staged file's real path and display filename.
+	GetOutboxFile(token string) (path, filename string, ok bool)
+
 	// Dev gateway (Settings > Developer): local OpenAI/Anthropic-compatible
 	// API surface that routes to whichever model/provider is configured.
 	GetDevGatewayConfig() (requireAPIKey, useMemory bool, systemPrompt string)

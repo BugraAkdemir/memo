@@ -326,6 +326,15 @@ type App struct {
 	// every client tick.
 	installIDMu  sync.Mutex
 	installIDVal string
+
+	// In-memory, process-lifetime registry of files staged for the
+	// share_file agent tool's frontend/normal-chat delivery path (a
+	// download link) — see sendfile.go. Deliberately not persisted: a
+	// backend restart simply invalidates any outstanding links, which is
+	// an acceptable cost for what's meant to be a short-lived handoff, not
+	// a durable file store.
+	outboxMu sync.Mutex
+	outbox   map[string]outboxEntry
 }
 
 // NewApp creates a new App instance. The binaries embed.FS and version string
@@ -608,6 +617,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.reinitProviderAndOrchestra()
 	tools.Configurator = a
 	tools.Routines = routineToolAdapter{a}
+	tools.FileSender = fileToolAdapter{a}
 
 	basePath, _ := filepath.Abs(".")
 	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr)

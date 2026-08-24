@@ -1,3 +1,69 @@
+# Ek (2026-08-24, devam) — share_file: Memo artık dosya/klasör gönderebiliyor
+
+İki parçalı isteğin büyük yarısı: WhatsApp, Telegram ve masaüstü/web sohbetinden "şu klasörü
+zip'leyip gönder" diyebilme. Küçük yarısı (kanal farkındalığı) bir önceki girişte bitmişti.
+
+**Güvenlik tasarımı, `create_routine`'in aynısı:** `share_file` tool'unun şeması hiçbir zaman
+hedef/kanal parametresi almıyor — nereye gönderileceği her zaman `internal/app/
+selfchat_context.go`'daki `selfChatSourceFromContext(ctx)`'ten çözülüyor (bu konuşma WhatsApp
+self-chat'ten mi, Telegram'dan mı, yoksa normal/frontend sohbetten mi geliyor). Model asla
+"şu numaraya gönder" diyemez — prompt injection/model hatasıyla rastgele bir WhatsApp
+kişisine dosya sızdırma riski böylece tasarım gereği kapalı, sonradan eklenen bir kontrol
+değil.
+
+**Yeni parçalar:**
+- `internal/whatsapp/client.go`: `SendDocument` — whatsmeow `Upload`+`DocumentMessage`.
+- `internal/telegram/client.go`: `SendDocument` — Telegram Bot API gerçek dosya baytı
+  istiyor, `call()`'ın düz JSON POST'u yetmiyor, ayrı bir multipart/form-data yolu yazıldı.
+- `internal/agent/tools/sendfile.go`: `FileSender` interface (App tarafından set edilir,
+  `Routines`/`WhatsAppClient` ile aynı desen) + `ShareFile` tool fonksiyonu. Klasör verilirse
+  `zipDirectory` ile (stdlib `archive/zip`, düzleştirilmiş) tek zip'e sarılıyor, tek dosyaysa
+  dokunulmadan gönderiliyor. `maxShareFileBytes` (45MB, Telegram Bot API'nin 50MB sınırının
+  altında, üç kanala da tek limit) aşan her şey `FileSender.DeliverFile` çağrılmadan reddediliyor.
+- `internal/app/sendfile.go`: `App.DeliverFile(ctx, fullPath, displayName) (msg string,
+  consumed bool, err error)` — asıl yönlendirme mantığı. `consumed`: WhatsApp/Telegram'a
+  gönderildiyse true (geçici zip caller tarafından silinebilir), outbox'a (frontend indirme
+  linki) kaydedildiyse false (dosya diskte kalmalı). Outbox: process-ömürlü in-memory
+  `map[token]{path,filename,expiresAt}` (24s TTL, `crypto/rand` 16 byte token, restart'ta
+  sıfırlanır — kalıcı bir dosya deposu değil, kısa ömürlü bir teslim mekanizması).
+- `internal/webserver/handlers_flutter.go` + `bridge.go` + `server.go`: `GET
+  /api/files/outbox/{token}` — token tek kimlik doğrulama, ayrıca bir izin katmanı yok (zaten
+  her route `remoteAuthMiddleware`'den geçiyor).
+- **Frontend (`chat_message_list.dart`):** iki `MarkdownBody`'ye (`_MessageBubble` ve
+  `_StreamingBubble`) `onTapLink` eklendi — önceden linkler tıklanamıyordu. Backend göreli bir
+  yol döndürüyor (`/api/files/outbox/...`) çünkü uzak (LAN/ngrok/Tailscale) bir istemcinin
+  hangi host'tan bağlandığını backend bilemez; `apiBaseUrl` (yeni, `ChatMessageList`'ten
+  `_MessageBubble`/`_StreamingBubble`'a kadar prop-drilling ile taşınıyor,
+  `ref.watch(apiClientProvider).baseUrl`'den geliyor) bunu istemci tarafında çözüyor. Sade
+  tıklanabilir link — ayrı bir "kart" widget'ı yapılmadı (kapsam kararı, gerekirse sonra
+  eklenir).
+
+**Testler:** `internal/agent/tools/sendfile_test.go` (boş path, FileSender yok, tek dosya
+olduğu gibi gönderiliyor + orijinal silinmiyor, klasör zip'leniyor + içerik doğru + consumed
+true/false'a göre temp temizleniyor, boyut limiti), `internal/app/sendfile_test.go`
+(self-chat kaynağı zorluyor + bağlı değilken hata, outbox link üretimi + round-trip,
+expired/unknown token, prune-on-register), `internal/webserver/handlers_outbox_test.go`
+(gerçek HTTP handler: doğru bayt+Content-Disposition, bilinmeyen token 404, POST reddi) +
+nil-fullbridge tablosuna satır eklendi. **Bilinçli test edilmeyen:** WhatsApp/Telegram
+`SendDocument`'ın gerçek ağ çağrısı — `SendMessage`'ın da hiç testi yok (whatsmeow/Telegram
+Bot API'yi mock'lamak için mevcut kodda hiçbir seam yok), aynı emsale uyuldu.
+
+**Gate:** `go build/vet/test -race -tags "sqlite_fts5"` tüm repo yeşil (44 paket + 3 yeni test
+dosyası). `flutter analyze` bilinen 5 info dışında temiz, `flutter test` 283/283. Gerçek
+binary build edilip headless çalıştırıldı (`/tmp` scratch data dir), `/api/version` ve yeni
+`/api/files/outbox/{token}` route'u (404 unknown-token) canlı süreçte doğrulandı — panik yok,
+route gerçekten kayıtlı. codebase-memory `detect_changes` ile blast radius kontrol edildi;
+geniş görünen liste `app.go`'nun `Startup()` merkezi fonksiyonundan kaynaklanıyor (iki satırlık
+ekleme), gerçek yeni mantık zaten yukarıdaki testlerle kapsanıyor.
+
+**Doğrulanamayan (bu ortamda imkansız):** gerçek bir LLM'in sohbet içinde `share_file`'ı
+gerçekten çağırması (API key/local model yok, agent tool-call akışı uçtan uca tetiklenemedi),
+ve gerçek WhatsApp/Telegram hesaplarına gerçek dosya gönderimi. Kod seviyesinde doğrulandı,
+kullanıcının kendi canlı testi hâlâ gerçek zemin (önceki oturumlardaki Kilo/OpenCode Zen
+bug'larında olduğu gibi).
+
+**Push edilmedi** — kullanıcı "pushları bana bırak" dedi, commit'ler lokalde bekliyor.
+
 # Ek (2026-08-24, devam) — Memo artık WhatsApp/Telegram'da da erişilebilir olduğunu biliyor
 
 Kullanıcının yeni istediği iki parçalı özelliğin küçük/hızlı yarısı: kanal farkındalığı.

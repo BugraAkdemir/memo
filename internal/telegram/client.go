@@ -16,7 +16,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -278,6 +281,65 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string) err
 		if !resp.OK {
 			return fmt.Errorf("telegram sendMessage: %s", resp.Description)
 		}
+	}
+	return nil
+}
+
+// SendDocument uploads the file at filePath to chatID via Telegram's
+// sendDocument endpoint, under the given filename (independent of the
+// file's actual on-disk name — see whatsapp.Client.SendDocument's doc
+// comment for why). Unlike SendMessage/call, this needs a real
+// multipart/form-data request (Telegram's Bot API requires it for actual
+// file bytes, as opposed to a file_id/URL reference), so it can't reuse
+// call's plain JSON POST.
+func (c *Client) SendDocument(ctx context.Context, chatID int64, filePath, filename string) error {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("telegram: open file: %w", err)
+	}
+	defer f.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("chat_id", strconv.FormatInt(chatID, 10)); err != nil {
+		return fmt.Errorf("telegram: write chat_id field: %w", err)
+	}
+	part, err := writer.CreateFormFile("document", filename)
+	if err != nil {
+		return fmt.Errorf("telegram: create form file: %w", err)
+	}
+	if _, err := io.Copy(part, f); err != nil {
+		return fmt.Errorf("telegram: copy file into request: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("telegram: close multipart writer: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiBase+c.token+"/sendDocument", &body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	var out struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return fmt.Errorf("telegram: decode sendDocument response: %w", err)
+	}
+	if !out.OK {
+		return fmt.Errorf("telegram sendDocument: %s", out.Description)
 	}
 	return nil
 }

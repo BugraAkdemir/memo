@@ -18,6 +18,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: ChatMessageList(
+              apiBaseUrl: 'http://localhost:8090',
               messages: const [
                 ChatMessage(
                   role: 'user',
@@ -49,6 +50,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: ChatMessageList(
+              apiBaseUrl: 'http://localhost:8090',
               messages: [
                 ChatMessage(
                   role: 'assistant',

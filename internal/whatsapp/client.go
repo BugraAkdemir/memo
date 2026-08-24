@@ -353,6 +353,55 @@ func (c *Client) SendMessage(ctx context.Context, jid, text string) (string, err
 	return resp.ID, nil
 }
 
+// SendDocument uploads the file at filePath to WhatsApp's media servers and
+// sends it to jid as a document message, sent under the given filename
+// (independent of the file's actual on-disk name — the zip Memo builds for
+// a shared folder lives under a random temp name, but the recipient should
+// see something readable). Returns the sent message's ID, same as
+// SendMessage.
+func (c *Client) SendDocument(ctx context.Context, jid, filePath, filename string) (string, error) {
+	c.startMu.Lock()
+	wa := c.waClient
+	c.startMu.Unlock()
+	if wa == nil || !wa.IsConnected() || !wa.IsLoggedIn() {
+		return "", fmt.Errorf("whatsapp: not connected")
+	}
+	parsedJID, err := types.ParseJID(jid)
+	if err != nil {
+		return "", fmt.Errorf("whatsapp: invalid JID: %w", err)
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("whatsapp: read file: %w", err)
+	}
+	mimeType := http.DetectContentType(data)
+
+	uploaded, err := wa.Upload(ctx, data, whatsmeow.MediaDocument)
+	if err != nil {
+		return "", fmt.Errorf("whatsapp: upload: %w", err)
+	}
+
+	resp, err := wa.SendMessage(ctx, parsedJID, &waE2E.Message{
+		DocumentMessage: &waE2E.DocumentMessage{
+			URL:           proto.String(uploaded.URL),
+			DirectPath:    proto.String(uploaded.DirectPath),
+			MediaKey:      uploaded.MediaKey,
+			FileEncSHA256: uploaded.FileEncSHA256,
+			FileSHA256:    uploaded.FileSHA256,
+			FileLength:    proto.Uint64(uploaded.FileLength),
+			FileName:      proto.String(filename),
+			Mimetype:      proto.String(mimeType),
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("whatsapp: send document: %w", err)
+	}
+
+	c.markSelfSent(resp.ID)
+	return resp.ID, nil
+}
+
 // SetComposing shows or clears WhatsApp's native "typing..." indicator in
 // jid's chat — the real chat-presence signal (the three animated dots),
 // not a placeholder message. WhatsApp clears an active "composing" state on

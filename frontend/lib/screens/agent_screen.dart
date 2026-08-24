@@ -308,6 +308,7 @@ class _AgentContent extends ConsumerWidget {
                 streamingThinking: streamingThinking,
                 streamingAgentEvents: streamingAgentEvents,
                 statusText: streamingStatus,
+                apiBaseUrl: ref.watch(apiClientProvider).baseUrl,
                 onEdit: (index, newContent) => ref.read(messagesProvider.notifier).updateMessage(index, newContent),
                 onDelete: (index) => ref.read(messagesProvider.notifier).deleteMessage(index),
               );

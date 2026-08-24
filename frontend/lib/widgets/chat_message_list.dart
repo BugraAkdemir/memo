@@ -4,11 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/theme.dart';
 import '../models/chat.dart';
 import '../models/agent.dart';
 import '../core/l10n.dart';
+
+// Opens a markdown link tapped in a chat message. A share_file download
+// link (internal/app/sendfile.go's App.DeliverFile) comes back as a
+// relative path — the backend has no reliable way to know which
+// host/port a remote (LAN/ngrok/Tailscale) client used to reach it, so it
+// leaves that to whoever already knows: the client itself, via apiBaseUrl.
+// Anything not starting with "/" is treated as already-absolute (a normal
+// external link) and launched as-is.
+Future<void> _openChatLink(String apiBaseUrl, String href) async {
+  final uri = href.startsWith('/') ? Uri.parse('$apiBaseUrl$href') : Uri.parse(href);
+  await launchUrl(uri, mode: LaunchMode.externalApplication);
+}
 
 final Map<int, MarkdownStyleSheet> _styleCache = {};
 
@@ -57,6 +70,7 @@ class ChatMessageList extends StatefulWidget {
   final List<AgentEvent>? streamingAgentEvents;
   final String statusText;
   final bool isCLIChat;
+  final String apiBaseUrl;
   final void Function(int index, String newContent)? onEdit;
   final void Function(int index)? onDelete;
 
@@ -69,6 +83,7 @@ class ChatMessageList extends StatefulWidget {
     this.streamingAgentEvents,
     this.statusText = '',
     this.isCLIChat = false,
+    required this.apiBaseUrl,
     this.onEdit,
     this.onDelete,
   });
@@ -137,6 +152,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
               key: ValueKey('msg_${msg.timestamp}_$index'),
               message: msg,
               index: index,
+              apiBaseUrl: widget.apiBaseUrl,
               onEdit: widget.onEdit,
               onDelete: widget.onDelete,
             ),
@@ -149,6 +165,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
             thinking: widget.streamingThinking,
             agentEvents: widget.streamingAgentEvents,
             keepWorkingCue: widget.isCLIChat,
+            apiBaseUrl: widget.apiBaseUrl,
           );
         }
         // Typing indicator — shown before first token arrives
@@ -161,6 +178,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
 class _MessageBubble extends StatefulWidget {
   final ChatMessage message;
   final int index;
+  final String apiBaseUrl;
   final void Function(int index, String newContent)? onEdit;
   final void Function(int index)? onDelete;
 
@@ -168,6 +186,7 @@ class _MessageBubble extends StatefulWidget {
     super.key,
     required this.message,
     required this.index,
+    required this.apiBaseUrl,
     this.onEdit,
     this.onDelete,
   });
@@ -375,6 +394,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                           data: widget.message.content,
                           selectable: true,
                           styleSheet: _buildMarkdownStyleSheet(context),
+                          onTapLink: (text, href, title) {
+                            if (href != null) _openChatLink(widget.apiBaseUrl, href);
+                          },
                         ),
                       if (_hovering || isUser) ...[
                          SizedBox(height: 6),
@@ -445,12 +467,14 @@ class _StreamingBubble extends StatefulWidget {
   // being the send button still showing stop. Keep the cue visible
   // alongside content for CLI turns instead of hiding it after first token.
   final bool keepWorkingCue;
+  final String apiBaseUrl;
 
    const _StreamingBubble({
     required this.content,
     this.thinking = '',
     this.agentEvents,
     this.keepWorkingCue = false,
+    required this.apiBaseUrl,
   });
 
   @override
@@ -517,6 +541,9 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                       data: widget.content,
                       selectable: true,
                       styleSheet: _buildMarkdownStyleSheet(context),
+                      onTapLink: (text, href, title) {
+                        if (href != null) _openChatLink(widget.apiBaseUrl, href);
+                      },
                     ),
                   if (widget.agentEvents != null && widget.agentEvents!.isNotEmpty)
                     _AgentStatusBar(events: widget.agentEvents!)

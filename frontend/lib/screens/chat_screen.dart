@@ -176,6 +176,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
                 streamingAgentEvents: streamingAgentEvents,
                 statusText: streamingStatus,
                 isCLIChat: isCLIChat,
+                apiBaseUrl: ref.watch(apiClientProvider).baseUrl,
                 onEdit: (index, newContent) {
                   ref.read(messagesProvider.notifier).updateMessage(index, newContent);
                 },

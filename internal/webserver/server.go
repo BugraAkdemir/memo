@@ -250,6 +250,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/cli/commands", s.handleCLICommands)
 	route("/api/files/mentions", s.handleFileMentions)
 	route("/api/files/browse", s.handleFileBrowse)
+	route("/api/files/outbox/{token}", s.handleOutboxDownload)
 	route("/api/chats/cli-provider", s.handleChatCLIProvider)
 	route("/api/chats/cli-workdir", s.handleChatCLIWorkdir)
 	route("/api/chats/cli-model", s.handleChatCLIModel)

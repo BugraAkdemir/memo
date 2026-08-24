@@ -29,7 +29,7 @@ func TestNewWithCustomRole(t *testing.T) {
 
 func TestBuildSystemPromptWithCustomRole(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "You are a helpful coding assistant.", false)
-	prompt := id.BuildSystemPrompt(nil, false, true, true)
+	prompt := id.BuildSystemPrompt(nil, false, true, true, false, false)
 	if !strings.Contains(prompt, "coding assistant") {
 		t.Error("custom role should appear in system prompt")
 	}
@@ -45,7 +45,7 @@ func TestBuildSystemPromptWithCustomRole(t *testing.T) {
 // live inside it.
 func TestBuildSystemPromptWithCustomRole_StillHasOriginBlock(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "You are a formal, professional assistant.", false)
-	prompt := id.BuildSystemPrompt(nil, false, true, true)
+	prompt := id.BuildSystemPrompt(nil, false, true, true, false, false)
 	if !strings.Contains(prompt, "Buğra Akdemir") {
 		t.Error("origin block (who built Memo) should be present even when a custom role/persona is set")
 	}
@@ -53,7 +53,7 @@ func TestBuildSystemPromptWithCustomRole_StillHasOriginBlock(t *testing.T) {
 
 func TestBuildSystemPrompt_MinimalMode_StripsIdentityAndOrigin(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", true)
-	prompt := id.BuildSystemPrompt(nil, false, true, true)
+	prompt := id.BuildSystemPrompt(nil, false, true, true, false, false)
 	if prompt != "" {
 		t.Errorf("MinimalMode with no memories should produce an empty prompt, got %q", prompt)
 	}
@@ -63,7 +63,7 @@ func TestBuildSystemPrompt_MinimalMode_IgnoresCustomRoleToo(t *testing.T) {
 	// MinimalMode is a stronger override than CustomRole — even a
 	// wizard-picked persona or hand-written prompt is stripped.
 	id := New("Alice", "Memo", "casual", "You are a pirate.", true)
-	prompt := id.BuildSystemPrompt(nil, false, true, true)
+	prompt := id.BuildSystemPrompt(nil, false, true, true, false, false)
 	if strings.Contains(prompt, "pirate") {
 		t.Error("MinimalMode should strip CustomRole too, not just the default identity block")
 	}
@@ -72,7 +72,7 @@ func TestBuildSystemPrompt_MinimalMode_IgnoresCustomRoleToo(t *testing.T) {
 func TestLearnedStyleNotesAppearsInSystemPrompt(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", false)
 	id.SetLearnedStyleNotes("Alice prefers short, blunt answers with no filler.")
-	prompt := id.BuildSystemPrompt(nil, false, true, true)
+	prompt := id.BuildSystemPrompt(nil, false, true, true, false, false)
 	if !strings.Contains(prompt, "Alice prefers short, blunt answers with no filler.") {
 		t.Error("learned style notes should be injected into the system prompt")
 	}
@@ -91,7 +91,7 @@ func TestLearnedStyleNotesAppliesUnderCustomRoleToo(t *testing.T) {
 	// block above.
 	id := New("Alice", "Memo", "casual", "You are a pirate.", false)
 	id.SetLearnedStyleNotes("Alice likes emoji.")
-	prompt := id.BuildSystemPrompt(nil, false, true, true)
+	prompt := id.BuildSystemPrompt(nil, false, true, true, false, false)
 	if !strings.Contains(prompt, "Alice likes emoji.") {
 		t.Error("learned style notes should still be injected even when CustomRole is set")
 	}
@@ -100,7 +100,7 @@ func TestLearnedStyleNotesAppliesUnderCustomRoleToo(t *testing.T) {
 func TestLearnedStyleNotesStrippedByMinimalMode(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", true)
 	id.SetLearnedStyleNotes("Alice likes emoji.")
-	prompt := id.BuildSystemPrompt(nil, false, true, true)
+	prompt := id.BuildSystemPrompt(nil, false, true, true, false, false)
 	if strings.Contains(prompt, "Alice likes emoji.") {
 		t.Error("MinimalMode should strip learned style notes too")
 	}
@@ -109,7 +109,7 @@ func TestLearnedStyleNotesStrippedByMinimalMode(t *testing.T) {
 func TestBuildSystemPrompt_MinimalMode_StillIncludesMemory(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", true)
 	memories := []memory.MemoryResult{{Content: "User likes coffee", Similarity: 0.95}}
-	prompt := id.BuildSystemPrompt(memories, false, true, true)
+	prompt := id.BuildSystemPrompt(memories, false, true, true, false, false)
 	if !strings.Contains(prompt, "coffee") {
 		t.Error("MinimalMode should still include memory context — it only strips identity/persona injection")
 	}
@@ -120,7 +120,7 @@ func TestBuildSystemPrompt_MinimalMode_StillIncludesMemory(t *testing.T) {
 
 func TestBuildSystemPromptWithoutCustomRole(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", false)
-	prompt := id.BuildSystemPrompt(nil, false, true, true)
+	prompt := id.BuildSystemPrompt(nil, false, true, true, false, false)
 	if prompt == "" {
 		t.Fatal("BuildSystemPrompt() returned empty")
 	}
@@ -137,7 +137,7 @@ func TestBuildSystemPromptWithMemories(t *testing.T) {
 	memories := []memory.MemoryResult{
 		{Content: "User likes coffee", Similarity: 0.95},
 	}
-	prompt := id.BuildSystemPrompt(memories, false, true, true)
+	prompt := id.BuildSystemPrompt(memories, false, true, true, false, false)
 	if !strings.Contains(prompt, "coffee") {
 		t.Error("system prompt should contain memory content")
 	}
@@ -157,7 +157,7 @@ func TestBuildSystemPromptWithMemories_WarnsAgainstVerbatimReuse(t *testing.T) {
 	memories := []memory.MemoryResult{
 		{Content: "User: selam\nAssistant: Selam! Ne var ne yok?", Similarity: 0.5},
 	}
-	prompt := id.BuildSystemPrompt(memories, false, true, true)
+	prompt := id.BuildSystemPrompt(memories, false, true, true, false, false)
 	if !strings.Contains(prompt, "never a template to copy") {
 		t.Error("system prompt should warn the model not to reuse a past reply verbatim when memories include its own prior replies")
 	}
@@ -165,7 +165,7 @@ func TestBuildSystemPromptWithMemories_WarnsAgainstVerbatimReuse(t *testing.T) {
 
 func TestBuildSystemPromptEmptyMemories(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", false)
-	prompt := id.BuildSystemPrompt([]memory.MemoryResult{}, false, true, true)
+	prompt := id.BuildSystemPrompt([]memory.MemoryResult{}, false, true, true, false, false)
 	if prompt == "" {
 		t.Fatal("BuildSystemPrompt() with empty memories returned empty")
 	}
@@ -179,7 +179,7 @@ func TestBuildSystemPromptEmptyMemories(t *testing.T) {
 // features off must each be named as a toggle, not silently absent.
 func TestBuildSystemPrompt_MentionsOffCapabilities(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", false)
-	prompt := id.BuildSystemPrompt(nil, false, false, false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false, false, false)
 	if !strings.Contains(prompt, "Agent mode") {
 		t.Error("prompt should mention agent mode is off and toggleable when agentEnabled=false")
 	}
@@ -195,7 +195,7 @@ func TestBuildSystemPrompt_MentionsOffCapabilities(t *testing.T) {
 // redundant token spend.
 func TestBuildSystemPrompt_OmitsOnCapabilities(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", false)
-	prompt := id.BuildSystemPrompt(nil, false, true, true)
+	prompt := id.BuildSystemPrompt(nil, false, true, true, false, false)
 	if strings.Contains(prompt, "Agent mode") {
 		t.Error("prompt should not mention agent mode at all when it's already on")
 	}
@@ -210,7 +210,7 @@ func TestBuildSystemPrompt_OmitsOnCapabilities(t *testing.T) {
 // break MinimalMode's "zero extra tokens beyond memory" contract.
 func TestBuildSystemPrompt_MinimalMode_OmitsCapabilitiesBlock(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", true)
-	prompt := id.BuildSystemPrompt(nil, false, false, false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false, false, false)
 	if strings.Contains(prompt, "Agent mode") || strings.Contains(prompt, "Web search") {
 		t.Error("MinimalMode should strip the capabilities block too, not just identity/origin/style")
 	}
@@ -226,7 +226,7 @@ func TestBuildSystemPrompt_MinimalMode_OmitsCapabilitiesBlock(t *testing.T) {
 // mentions what's currently off).
 func TestBuildSystemPrompt_MentionsPassiveReminderFeature(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", false)
-	prompt := id.BuildSystemPrompt(nil, false, false, false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false, false, false)
 	if !strings.Contains(prompt, "calendar-worthy plans") {
 		t.Error("prompt should mention the always-on passive calendar/reminder feature")
 	}
@@ -237,9 +237,60 @@ func TestBuildSystemPrompt_MentionsPassiveReminderFeature(t *testing.T) {
 // MinimalMode strips, same as the capabilities block above.
 func TestBuildSystemPrompt_MinimalMode_OmitsPassiveFeaturesBlock(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", true)
-	prompt := id.BuildSystemPrompt(nil, false, false, false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false, false, false)
 	if strings.Contains(prompt, "calendar-worthy plans") {
 		t.Error("MinimalMode should strip the passive-features block too, not just identity/origin/style")
+	}
+}
+
+// TestBuildSystemPrompt_MentionsReachableChannels is the fix for a user
+// complaint: Memo assumed it could only be talked to through its own
+// desktop/web app, even when the WhatsApp and/or Telegram bridges were
+// actually connected and already relaying messages to this same
+// identity/memory — same affirm-instead-of-deny reasoning as the passive
+// calendar feature above, but conditional on what's genuinely live rather
+// than always-on.
+func TestBuildSystemPrompt_MentionsReachableChannels(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false, true, true)
+	if !strings.Contains(prompt, "WhatsApp") || !strings.Contains(prompt, "Telegram") {
+		t.Error("prompt should name both channels when both are reachable")
+	}
+}
+
+// TestBuildSystemPrompt_OmitsUnreachableChannels confirms the block never
+// claims a channel that isn't actually connected right now — a fresh
+// install with neither bridge set up must not have the model tell the user
+// it's reachable somewhere it isn't.
+func TestBuildSystemPrompt_OmitsUnreachableChannels(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false, false, false)
+	if strings.Contains(prompt, "WhatsApp") || strings.Contains(prompt, "Telegram") {
+		t.Error("prompt should not mention WhatsApp/Telegram when neither is reachable")
+	}
+}
+
+// TestBuildSystemPrompt_MentionsOnlyTheReachableChannel confirms only the
+// live channel is named, not both, when just one bridge is connected.
+func TestBuildSystemPrompt_MentionsOnlyTheReachableChannel(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false, true, false)
+	if !strings.Contains(prompt, "WhatsApp") {
+		t.Error("prompt should mention WhatsApp when it's the reachable channel")
+	}
+	if strings.Contains(prompt, "Telegram") {
+		t.Error("prompt should not mention Telegram when it isn't reachable")
+	}
+}
+
+// TestBuildSystemPrompt_MinimalMode_OmitsChannelAwarenessBlock confirms the
+// channel-awareness sentence is treated like the rest of the passive
+// features block MinimalMode strips.
+func TestBuildSystemPrompt_MinimalMode_OmitsChannelAwarenessBlock(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", true)
+	prompt := id.BuildSystemPrompt(nil, false, false, false, true, true)
+	if strings.Contains(prompt, "WhatsApp") || strings.Contains(prompt, "Telegram") {
+		t.Error("MinimalMode should strip the channel-awareness block too, not just identity/origin/style")
 	}
 }
 
@@ -251,7 +302,7 @@ func TestBuildSystemPrompt_MinimalMode_OmitsPassiveFeaturesBlock(t *testing.T) {
 func TestBuildSystemPrompt_MinimalMode_KeepPersona_OnlyRestoresPersona(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", true)
 	id.SetMinimalModeOverrides(true, false, false, false)
-	prompt := id.BuildSystemPrompt(nil, false, false, false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false, false, false)
 
 	if !strings.Contains(prompt, "Buğra Akdemir") {
 		t.Error("KeepPersona=true should restore the origin block")
@@ -269,7 +320,7 @@ func TestBuildSystemPrompt_MinimalMode_KeepPersona_OnlyRestoresPersona(t *testin
 func TestBuildSystemPrompt_MinimalMode_KeepCapabilitiesOnly(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", true)
 	id.SetMinimalModeOverrides(false, true, false, false)
-	prompt := id.BuildSystemPrompt(nil, false, false, false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false, false, false)
 
 	if !strings.Contains(prompt, "Agent mode") {
 		t.Error("KeepCapabilities=true should restore the capabilities block")
@@ -287,7 +338,7 @@ func TestBuildSystemPrompt_MinimalMode_KeepCapabilitiesOnly(t *testing.T) {
 func TestBuildSystemPrompt_MinimalMode_KeepPassiveOnly(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", true)
 	id.SetMinimalModeOverrides(false, false, true, false)
-	prompt := id.BuildSystemPrompt(nil, false, false, false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false, false, false)
 
 	if !strings.Contains(prompt, "calendar-worthy plans") {
 		t.Error("KeepPassive=true should restore the passive-features block")
@@ -306,7 +357,7 @@ func TestBuildSystemPrompt_MinimalMode_KeepPassiveOnly(t *testing.T) {
 func TestBuildSystemPrompt_MinimalMode_OverridesAreNoOpWhenNotMinimal(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", false)
 	id.SetMinimalModeOverrides(false, false, false, false)
-	prompt := id.BuildSystemPrompt(nil, false, false, false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false, false, false)
 
 	if !strings.Contains(prompt, "Buğra Akdemir") || !strings.Contains(prompt, "Agent mode") || !strings.Contains(prompt, "calendar-worthy plans") {
 		t.Error("overrides should have no effect when MinimalMode is off — everything should already be present")

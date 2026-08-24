@@ -128,7 +128,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	agentEnabled := a.GetAgentEnabled()
 	// Memory formatting is independent of mood — the mood engine must have ZERO
 	// influence when disabled.
-	systemPrompt := a.identity.BuildSystemPrompt(memories, false, agentEnabled, webSearchEnabled)
+	systemPrompt := a.identity.BuildSystemPrompt(memories, false, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
 	// MinimalMode means zero injection beyond memory — mood and web search
 	// context are both prompt injection just like identity/persona is, so
 	// they're skipped here too rather than only in BuildSystemPrompt. Read

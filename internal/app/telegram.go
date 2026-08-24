@@ -12,6 +12,17 @@ import (
 	"memo/internal/telegram"
 )
 
+// telegramReachable reports whether the Telegram bot bridge is live right
+// now (same check GetTelegramStatus's "connected" field uses) — so the
+// system prompt (identity.BuildSystemPrompt) can tell the model it's
+// actually reachable there.
+func (a *App) telegramReachable() bool {
+	a.tgMu.Lock()
+	client := a.tgClient
+	a.tgMu.Unlock()
+	return client != nil && client.IsRunning()
+}
+
 // telegramHasStoredToken reports whether a bot has previously been
 // connected (token saved, previously left enabled) — so Startup can
 // auto-reconnect without the user re-pasting the token after every restart,

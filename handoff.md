@@ -1,3 +1,47 @@
+# Ek (2026-08-24, devam) — Memo artık WhatsApp/Telegram'da da erişilebilir olduğunu biliyor
+
+Kullanıcının yeni istediği iki parçalı özelliğin küçük/hızlı yarısı: kanal farkındalığı.
+Kod taramasıyla doğrulandı — `internal/identity/identity.go`'da WhatsApp/Telegram'dan hiç
+bahsedilmiyordu, `buildCapabilitiesBlock`/`buildPassiveFeaturesBlock` bile sessizdi. Tam olarak
+aynı dosyadaki takvim-hatırlatıcı örüntüsünün (model bilmediği bir yeteneği reddediyor) bir
+benzeri: kullanıcı masaüstü uygulamasından "WhatsApp'tan da yazabilir miyim" diye sorunca,
+WhatsApp bağlıyken bile "hayır sadece burada çalışırım" diyordu.
+
+- **`buildChannelAwarenessBlock(whatsappReachable, telegramReachable bool)`** (yeni,
+  `identity.go`) — sadece **gerçekten şu an bağlı** olan kanalı adlandırıyor (WhatsApp:
+  connected+logged-in, Telegram: running), ikisi de kapalıysa hiçbir şey eklemiyor (sessiz
+  varsayılan, `buildCapabilitiesBlock`'un "sadece OFF olanı say" deseninin ayna simetriği).
+  `buildPassiveFeaturesBlock`'a eklendi (aynı MinimalMode/`keepPassive` kapısı altında).
+- **`BuildSystemPrompt` imzasına iki yeni bool eklendi** (`whatsappReachable,
+  telegramReachable`) — tek çağıran (`internal/app/helpers.go`'daki
+  `buildMessagesForSession`, codebase-memory `trace_path` ile doğrulandı, 2. hop'takiler
+  hep bunun üzerinden geçiyor) `a.whatsappReachable()`/`a.telegramReachable()` yeni App
+  metodlarını çağırıyor — sırasıyla `internal/app/whatsapp.go` (`GetWhatsAppStatus`'un zaten
+  kullandığı `IsConnected()+IsLoggedIn()` kontrolüyle aynı) ve `internal/app/telegram.go`
+  (`GetTelegramStatus`'un `connected` alanıyla aynı, `tgMu` ile korunuyor).
+  `identity_test.go`'daki 21 mevcut çağrı noktası Python'la tek geçişte güncellendi (ilk
+  denemede iki ayrı sed compound olup bazı satırlara fazladan `, false, false` ekledi —
+  `git checkout` ile geri alınıp regex tabanlı tek-geçiş script'iyle düzeltildi).
+- **4 yeni test:** hem kanal adlandırılıyor mu, hem sadece bağlı olan mı adlandırılıyor
+  (ikisi değil), hem hiçbiri bağlı değilken sessiz mi, hem MinimalMode'un bunu da temizleyip
+  temizlemediği.
+- **Bilinçli kapsam dışı:** dosya/klasör gönderme aracı (aynı isteğin ikinci, büyük parçası)
+  — kullanıcı önce bunu bitirmemi istedi, dosya gönderme ayrı bir oturumda/adımda ele
+  alınacak. Kullanıcıyla üç tasarım kararı netleşti: frontend'de "indirme linki/kartı"
+  (yeni attachment UI gerektirir), yol kapsamı mevcut agent sandbox'ıyla aynı, danger-level
+  Medium (kullanıcı "0 da olabilir" dedi ama whatsapp_send ile tutarlılık için Medium'da
+  karar kılındı — WhatsApp/Telegram'ın kendi hesap güvenliği + frontend'in şifreli girişi
+  nedeniyle High gerekmiyor).
+- **Gate:** `go build/vet/test -race -tags "sqlite_fts5"` tüm repo yeşil (44 paket), codebase-
+  memory `detect_changes` ile blast radius doğrulandı (sadece `internal/app` içinde 18 sembol,
+  hepsi zaten geçen test koşusunda kapsanıyor). `gofmt -l` temiz.
+
+**Sıradaki oturum için:** dosya/klasör gönderme agent tool'u — WhatsApp'a (`internal/whatsapp/
+client.go`, whatsmeow media upload) ve Telegram'a (`internal/telegram/client.go`, Bot API
+sendDocument) gerçek dosya gönderme desteği eklemek gerekiyor (ikisinde de şu an sadece metin
+`SendMessage` var), klasör verilirse zip'leme mantığı, ve frontend'de indirme linki/kartı için
+yeni bir attachment UI. Danger-level Medium, yol kapsamı mevcut sandbox.
+
 # Ek (2026-08-24) — l10n serisinin son dilimi: installer ui-status kapandı
 
 UILanguage dikişinin son açık dilimi (`internal/llama/installer.go`'nun kurulum ilerleme/hata

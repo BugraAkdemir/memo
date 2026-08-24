@@ -18,6 +18,14 @@ import (
 	"memo/internal/whatsapp"
 )
 
+// whatsappReachable reports whether the WhatsApp bridge is live right now
+// (connected + logged in) — same check GetWhatsAppStatus's status text
+// already uses — so the system prompt (identity.BuildSystemPrompt) can tell
+// the model it's actually reachable there.
+func (a *App) whatsappReachable() bool {
+	return a.waClient != nil && a.waClient.IsConnected() && a.waClient.IsLoggedIn()
+}
+
 // whatsAppHasStoredSession reports whether a paired WhatsApp session already
 // exists on disk, so startup can auto-reconnect without a user click.
 func (a *App) whatsAppHasStoredSession() bool {

@@ -147,7 +147,7 @@ func (id *Identity) GetLearnedStyleNotes() string {
 // much closer ceiling instead of a practically-unbounded ~49K-char one.
 const maxMemoryContextTokens = 4096
 
-func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool, agentEnabled, webSearchEnabled bool) string {
+func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool, agentEnabled, webSearchEnabled, whatsappReachable, telegramReachable bool) string {
 	var sb strings.Builder
 
 	minimal := id.GetMinimalMode()
@@ -194,7 +194,7 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		if sb.Len() > 0 {
 			sb.WriteString("\n\n")
 		}
-		sb.WriteString(buildPassiveFeaturesBlock())
+		sb.WriteString(buildPassiveFeaturesBlock(whatsappReachable, telegramReachable))
 	}
 
 	// Which off-by-default features exist but aren't on right now — see
@@ -299,8 +299,35 @@ func (id *Identity) buildOriginBlock() string {
 // scanning that very message and about to create exactly such a reminder
 // in the background. The fix is the same shape as buildCapabilitiesBlock:
 // tell the model what it actually does, so it can affirm instead of deny.
-func buildPassiveFeaturesBlock() string {
-	return "You also passively watch every message for calendar-worthy plans (\"yarın saat 1'de toplantım var\", \"tomorrow at 3pm I have a dentist appointment\") and automatically create a reminder for it in the background, with no need for the user to ask — if asked whether you can do this, say yes, don't deny it."
+func buildPassiveFeaturesBlock(whatsappReachable, telegramReachable bool) string {
+	block := "You also passively watch every message for calendar-worthy plans (\"yarın saat 1'de toplantım var\", \"tomorrow at 3pm I have a dentist appointment\") and automatically create a reminder for it in the background, with no need for the user to ask — if asked whether you can do this, say yes, don't deny it."
+	if channelText := buildChannelAwarenessBlock(whatsappReachable, telegramReachable); channelText != "" {
+		block += " " + channelText
+	}
+	return block
+}
+
+// buildChannelAwarenessBlock tells the model which messaging channels it's
+// currently live on, beyond the Memo desktop/web app itself — same
+// affirm-instead-of-deny reasoning as the calendar sentence above. Without
+// this, a user asking "can I message you on WhatsApp?" while chatting in
+// the app got a flat "no, I only work here" even when the WhatsApp bridge
+// was connected and already relaying messages to this same identity/memory.
+// Only names a channel that's genuinely live right now (connected + logged
+// in for WhatsApp, running for Telegram) — never claims one that isn't set
+// up, and returns "" (no block at all) when neither is.
+func buildChannelAwarenessBlock(whatsappReachable, telegramReachable bool) string {
+	var channels []string
+	if whatsappReachable {
+		channels = append(channels, "WhatsApp")
+	}
+	if telegramReachable {
+		channels = append(channels, "Telegram")
+	}
+	if len(channels) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("You're also reachable outside the Memo app itself — the user can message you directly on %s right now and you'll reply there too, same identity and memory as here. If asked whether you're available there, say yes, don't deny it.", strings.Join(channels, " and "))
 }
 
 // buildCapabilitiesBlock names the optional, user-toggleable features that

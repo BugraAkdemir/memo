@@ -152,6 +152,7 @@ func (r *ToolRegistry) registerBuiltins() {
 	})
 
 	r.registerWebSearchTool()
+	r.registerFetchPageTool()
 
 	r.Register(ToolDef{
 		Name:        "self_clone",
@@ -236,6 +237,19 @@ func (r *ToolRegistry) registerWebSearchTool() {
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Short keyword-style search query (2-6 words) — extract the subject, do NOT pass the user's raw message verbatim"},"max_results":{"type":"integer","description":"Number of results to return (default 5, max 10)"}},"required":["query"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.WebSearch,
+	})
+}
+
+// registerFetchPageTool adds the fetch_page tool to this registry. Split out
+// of registerBuiltins for the same reason as registerWebSearchTool — see its
+// doc comment.
+func (r *ToolRegistry) registerFetchPageTool() {
+	r.Register(ToolDef{
+		Name:        "fetch_page",
+		Description: "Fetches the full readable content of a URL as Markdown (headings, lists, code blocks, links preserved) — a search result's snippet is a short teaser, not the actual page. Use this after web_search to actually read a promising result, or directly when the user already gave you a URL. Judge relevance yourself from what comes back: if the content doesn't actually match what you're looking for, call this again with a different search result's URL instead of answering from an irrelevant page. You get up to 5 attempts at DIFFERENT domains per request — fetching another page on a domain you already tried (pagination, a different page of the same docs site) is free and does not count against that limit. If the budget runs out, tell the user you could not find a relevant source instead of guessing.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"url":{"type":"string","description":"The exact URL to fetch — from a web_search result, or given directly by the user"}},"required":["url"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.FetchPage,
 	})
 }
 

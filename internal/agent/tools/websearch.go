@@ -27,10 +27,10 @@ func WebSearch(ctx context.Context, argsJSON json.RawMessage, _ string, _ func(s
 
 	results, err := websearch.Search(ctx, args.Query, args.MaxResults)
 	if err != nil {
-		return "", fmt.Errorf("web search failed: %w", err)
+		return "", fmt.Errorf(T("arama başarısız: %w", "web search failed: %w"), err)
 	}
 	if len(results) == 0 {
-		return "No results found for: " + args.Query, nil
+		return T("Şunun için sonuç bulunamadı: ", "No results found for: ") + args.Query, nil
 	}
 
 	return websearch.FormatForContext(args.Query, results), nil

@@ -365,7 +365,7 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 	}
 	rel, relErr := filepath.Rel(basePath, realCWD)
 	if relErr != nil || strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("cwd %q is outside the project directory — only %s is accessible", workingDir, basePath)
+		return "", fmt.Errorf("cwd %q is outside the project directory — only %s is accessible.%s", workingDir, basePath, OutsideSandboxHint)
 	}
 	workingDir = realCWD
 
@@ -381,7 +381,7 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 	// was validated but nothing stopped e.g. "cat /etc/shadow" or
 	// "cat ~/.ssh/id_rsa" from reading straight through it (BUG-M7).
 	if target, blocked := commandTargetsProtectedPath(args.Command, workingDir, basePath); blocked {
-		return "", fmt.Errorf("access denied: command references %q, outside the project directory — only %s is accessible", target, basePath)
+		return "", fmt.Errorf("access denied: command references %q, outside the project directory — only %s is accessible.%s", target, basePath, OutsideSandboxHint)
 	}
 
 	// PrepareCommand honors the caller's own deadline (e.g. the pipeline's

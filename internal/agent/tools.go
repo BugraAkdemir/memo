@@ -94,7 +94,7 @@ func (r *ToolRegistry) registerBuiltins() {
 
 	r.Register(ToolDef{
 		Name:        "change_directory",
-		Description: "Changes the agent's working-directory sandbox to a different existing directory for the rest of this conversation. Use this only when the user explicitly asks you to work somewhere else (e.g. a temp directory, or another project/repo). Every other file tool (read_file, write_file, run_command, etc.) is scoped to this directory afterward. Requires an existing directory — relative paths resolve against the current working directory, and '~' resolves to the user's home.",
+		Description: "Changes the agent's working-directory sandbox to a different existing directory for the rest of this conversation. Every other file tool (read_file, write_file, run_command, etc.) is scoped to this directory afterward. Call this when the user explicitly asks you to work somewhere else, AND proactively when a file/command tool call fails with an 'outside the project directory' error and the user's request implies they want you working at that other location (e.g. they asked for a file on their Desktop) — in that case, tell them where you'd switch to and call this once they confirm, rather than telling them to move the file into your current directory instead. Requires an existing directory — relative paths resolve against the current working directory, and '~' resolves to the user's home.",
 		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Path to the directory to switch to"}}, "required": ["path"]}`),
 		DangerLevel: Dangerous,
 		ExecuteFn:   tools.ChangeDirectory,

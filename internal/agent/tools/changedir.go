@@ -15,6 +15,16 @@ type ChangeDirectoryArgs struct {
 	Path string `json:"path"`
 }
 
+// OutsideSandboxHint is appended to every "path is outside the working
+// directory" denial (validatePath in file.go, RunCommand's cwd/command
+// checks in command.go) so the model learns about change_directory at the
+// exact moment it would actually be useful, instead of only when the user
+// happens to already know the tool exists and asks for it by name. Without
+// this, the model's only fallback was telling the user to manually move the
+// file into basePath — technically correct, but not what change_directory
+// was built to replace.
+const OutsideSandboxHint = " If it looks like the user wants you working in that location, offer to switch your working directory there with change_directory instead of asking them to move the file — describe what you'd switch to and let them confirm."
+
 // hardDenylistedRoots are bare system directories change_directory refuses
 // to adopt as the new sandbox root, even with explicit user permission —
 // defense in depth, the same posture as run_command's destructive-pattern

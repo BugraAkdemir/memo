@@ -82,6 +82,48 @@ func (a *App) GetWebSearchEnabled() bool {
 	return a.cfg.WebSearch.Enabled
 }
 
+// GetBrowserKeepAlive tarayıcı motorunun sürekli açık mı yoksa her
+// kullanımdan sonra kapanıyor mu olduğunu döner.
+func (a *App) GetBrowserKeepAlive() bool {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg.Browser.KeepAlive
+}
+
+// SetBrowserKeepAlive tarayıcı motorunun modunu değiştirir ve config.yaml'a
+// kaydeder. Değişiklik anında etkili olur — bkz. Manager.SetKeepAlive.
+func (a *App) SetBrowserKeepAlive(keepAlive bool) error {
+	a.cfgMu.Lock()
+	a.cfg.Browser.KeepAlive = keepAlive
+	cfg := a.cfg
+	a.cfgMu.Unlock()
+	if a.browserMgr != nil {
+		if err := a.browserMgr.SetKeepAlive(keepAlive); err != nil {
+			logx.Printf("browser engine: SetKeepAlive(%v): %v", keepAlive, err)
+		}
+	}
+	return config.Save(cfg)
+}
+
+// GetBrowserInstalled tarayıcı motorunun (Chromium ailesi) sistemde
+// kurulu/kullanılabilir olup olmadığını döner — hiçbir şey indirmez ya da
+// başlatmaz.
+func (a *App) GetBrowserInstalled(ctx context.Context) bool {
+	if a.browserMgr == nil {
+		return false
+	}
+	return a.browserMgr.IsInstalled(ctx)
+}
+
+// InstallBrowser tarayıcı motorunu indirir (kurulu değilse). Engelleyici —
+// gosearch'ün Install fonksiyonunun ilerleme geri çağrısı yok.
+func (a *App) InstallBrowser(ctx context.Context) error {
+	if a.browserMgr == nil {
+		return fmt.Errorf("browser engine not initialized")
+	}
+	return a.browserMgr.Install(ctx)
+}
+
 // UpdateSystemManagementConfig sistem yönetimi modunu günceller.
 func (a *App) UpdateSystemManagementConfig(enabled bool) error {
 	a.cfg.Mood.SystemManagement = enabled

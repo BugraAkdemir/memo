@@ -92,6 +92,7 @@ type AppConfig struct {
 	Calendar       CalendarConfig     `yaml:"calendar" json:"calendar"`
 	Mood           MoodConfig         `yaml:"mood" json:"mood"`
 	WebSearch      WebSearchConfig    `yaml:"web_search" json:"web_search"`
+	Browser        BrowserConfig      `yaml:"browser" json:"browser"`
 	DevGateway     DevGatewayConfig   `yaml:"dev_gateway" json:"dev_gateway"`
 	Swarm          SwarmConfig        `yaml:"swarm" json:"swarm"`
 	Onboarding     OnboardingConfig   `yaml:"onboarding" json:"onboarding"`
@@ -144,6 +145,17 @@ type CalendarConfig struct {
 type WebSearchConfig struct {
 	Enabled    bool `yaml:"enabled" json:"enabled"`
 	MaxResults int  `yaml:"max_results" json:"max_results"`
+}
+
+// BrowserConfig controls the optional headless-browser fallback
+// (internal/browserengine) fetch_page uses for JavaScript-rendered pages
+// gosearch.Fetch alone can't read.
+type BrowserConfig struct {
+	// KeepAlive: false (default) launches a fresh browser per fetch and
+	// closes it immediately after — zero idle memory. true keeps one
+	// browser process alive across fetches instead, trading steady-state
+	// RAM (~150-250MB) for lower per-fetch latency.
+	KeepAlive bool `yaml:"keep_alive" json:"keep_alive"`
 }
 
 // MoodConfig Stokastik Duygu Motorunu kontrol eder.
@@ -742,6 +754,12 @@ func Default() *AppConfig {
 			// config.yaml, which already carries an explicit value.
 			Enabled:    true,
 			MaxResults: 5,
+		},
+		Browser: BrowserConfig{
+			// Off by default — a fresh browser per fetch, closed
+			// immediately after, matches Memo's own positioning of being
+			// lighter than competitors that keep one resident.
+			KeepAlive: false,
 		},
 		Swarm: SwarmConfig{
 			RPCPort: 50052,

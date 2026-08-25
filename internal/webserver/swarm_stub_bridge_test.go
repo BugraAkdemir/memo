@@ -190,6 +190,10 @@ func (b *swarmStubBridge) GetMemorySettings() config.MemoryConfig               
 func (b *swarmStubBridge) UpdateMemorySettings(topK int, minSimilarity float32) error { return nil }
 func (b *swarmStubBridge) GetWebSearchEnabled() bool                                  { return false }
 func (b *swarmStubBridge) UpdateWebSearchConfig(enabled bool) error                   { return nil }
+func (b *swarmStubBridge) GetBrowserKeepAlive() bool                                  { return false }
+func (b *swarmStubBridge) SetBrowserKeepAlive(keepAlive bool) error                   { return nil }
+func (b *swarmStubBridge) GetBrowserInstalled(ctx context.Context) bool               { return false }
+func (b *swarmStubBridge) InstallBrowser(ctx context.Context) error                   { return nil }
 func (b *swarmStubBridge) GetMemoryEnabled() bool                                     { return false }
 func (b *swarmStubBridge) SetMemoryEnabled(enabled bool) error                        { return nil }
 func (b *swarmStubBridge) SetMemoryDreamSettings(enabled bool, initialDelayMinutes, intervalHours int) error {

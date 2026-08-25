@@ -18,6 +18,7 @@ import (
 	"memo/internal/agent"
 	"memo/internal/agent/tools"
 	"memo/internal/api"
+	"memo/internal/browserengine"
 	"memo/internal/calendar"
 	"memo/internal/cloudsync"
 	"memo/internal/config"
@@ -43,6 +44,7 @@ import (
 	"memo/internal/telegram"
 	"memo/internal/tts"
 	"memo/internal/tunnel"
+	"memo/internal/websearch"
 	"memo/internal/webserver"
 	"memo/internal/whatsapp"
 	"memo/internal/whisper"
@@ -220,6 +222,11 @@ type App struct {
 	// used by routeStream's non-agent "web search mode" — see
 	// agent.NewWebSearchExecutor's doc comment.
 	webSearchExecutor *agent.Executor
+
+	// browserMgr manages the optional headless-browser fallback fetch_page
+	// uses for JavaScript-rendered pages (see internal/browserengine's doc
+	// comment). Wired into internal/websearch.Browser in Startup().
+	browserMgr *browserengine.Manager
 
 	taskloopStore  *taskloop.Store
 	taskloopEngine *taskloop.Engine
@@ -626,6 +633,9 @@ func (a *App) Startup(ctx context.Context) {
 	logx.Printf("Agent mode initialized (enabled=false)")
 	a.webSearchExecutor = agent.NewWebSearchExecutor(a.agentExecutor)
 
+	a.browserMgr = browserengine.New(a.cfg.Browser.KeepAlive)
+	websearch.Browser = a.browserMgr
+
 	tlStore, err := taskloop.NewStore(config.DataPath("tasklists"))
 	if err != nil {
 		logx.Printf("WARN: taskloop store: %v", err)
@@ -829,6 +839,9 @@ func (a *App) shutdownSync(ctx context.Context) {
 	}
 	if a.llamaEmbedServer != nil {
 		stop("llama embedding", a.llamaEmbedServer.Stop)
+	}
+	if a.browserMgr != nil {
+		stop("browser engine", a.browserMgr.Stop)
 	}
 	if a.swarmServer != nil {
 		stop("swarm coordinator", a.swarmServer.Stop)

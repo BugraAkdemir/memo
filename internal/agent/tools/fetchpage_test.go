@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/BugraAkdemir/gosearch"
 	"memo/internal/websearch"
 )
 
@@ -63,6 +65,57 @@ func TestFetchPage_EmptyContentReturnsHint(t *testing.T) {
 	}
 	if out == "" {
 		t.Fatal("expected a non-empty hint message for empty page content")
+	}
+}
+
+// fakeBrowserChecker satisfies both websearch.BrowserFetcher and this
+// package's browserInstallChecker, so tests can control IsInstalled's
+// answer independently of Fetch (which is never actually called here —
+// FetchPage only consults websearch.Browser's install status, it never
+// calls Fetch on it directly; that happens inside websearch.Fetch itself,
+// mocked out via websearchFetch in these tests).
+type fakeBrowserChecker struct{ installed bool }
+
+func (f fakeBrowserChecker) Fetch(ctx context.Context, url string) (*gosearch.Page, error) {
+	return nil, errors.New("not used in these tests")
+}
+func (f fakeBrowserChecker) IsInstalled(ctx context.Context) bool { return f.installed }
+
+func TestFetchPage_EmptyContent_BrowserNotInstalled_MentionsInstall(t *testing.T) {
+	origFetch, origBrowser := websearchFetch, websearch.Browser
+	defer func() { websearchFetch, websearch.Browser = origFetch, origBrowser }()
+
+	websearchFetch = func(ctx context.Context, url string) (*websearch.Page, error) {
+		return &websearch.Page{URL: url, Content: ""}, nil
+	}
+	websearch.Browser = fakeBrowserChecker{installed: false}
+
+	args, _ := json.Marshal(FetchPageArgs{URL: "https://example.com"})
+	out, err := FetchPage(context.Background(), args, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(out), "install") && !strings.Contains(out, "kur") {
+		t.Errorf("expected the not-installed hint to mention installing, got: %q", out)
+	}
+}
+
+func TestFetchPage_EmptyContent_BrowserInstalled_GenericMessage(t *testing.T) {
+	origFetch, origBrowser := websearchFetch, websearch.Browser
+	defer func() { websearchFetch, websearch.Browser = origFetch, origBrowser }()
+
+	websearchFetch = func(ctx context.Context, url string) (*websearch.Page, error) {
+		return &websearch.Page{URL: url, Content: ""}, nil
+	}
+	websearch.Browser = fakeBrowserChecker{installed: true}
+
+	args, _ := json.Marshal(FetchPageArgs{URL: "https://example.com"})
+	out, err := FetchPage(context.Background(), args, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(strings.ToLower(out), "install") || strings.Contains(out, "kur") {
+		t.Errorf("browser IS installed — should not suggest installing it, got: %q", out)
 	}
 }
 

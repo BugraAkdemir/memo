@@ -25,29 +25,29 @@ type Result struct {
 // değişkeninde de var).
 var gosearchSearch = gosearch.Search
 
-// Search, Bing'i birincil motor olarak kullanır; Bing engellenir/challenge
-// döndürürse (ErrBlocked/ErrChallenge) DuckDuckGo'ya düşer — DuckDuckGo'nun
-// resmi bir JavaScript'siz HTML endpoint'i olduğu için gosearch'ün en
-// güvenilir motoru olması nedeniyle son çare olarak seçildi. API key
-// gerektirmez.
+// Search uses DuckDuckGo as the sole engine — gosearch's own docs mark it
+// "the most reliable" (the only engine with an official no-JavaScript HTML
+// endpoint), and live testing this same session confirmed it: for identical
+// queries Bing (previously primary, with DuckDuckGo only as an
+// ErrBlocked/ErrChallenge fallback) consistently returned confident-looking
+// but completely unrelated results (see handoff.md for the "Süper Loto"/
+// "Süper FM"/Russian-language-Windows-help/random-language-results
+// episodes) — and never actually errored, so the fallback never triggered
+// in the first place. Deliberately no fallback engine configured: per
+// gosearch's own docs, Google/Yandex are heuristic-at-best and Bing has
+// proven actively misleading here, so an honest error beats a
+// confidently-wrong result. API key not required.
 func Search(ctx context.Context, query string, maxResults int) ([]Result, error) {
 	if maxResults <= 0 {
 		maxResults = 5
 	}
 
-	logx.Info("WEBSEARCH: query", "query", query, "max_results", maxResults, "engine", "bing", "fallback", "duckduckgo")
+	logx.Info("WEBSEARCH: query", "query", query, "max_results", maxResults, "engine", "duckduckgo")
 
-	results, err := gosearchSearch(ctx, query, gosearch.Bing,
-		gosearch.WithFallback(gosearch.DuckDuckGo),
+	results, err := gosearchSearch(ctx, query, gosearch.DuckDuckGo,
 		gosearch.WithMaxResults(maxResults),
 	)
 	if err != nil {
-		// gosearch's public Search() doesn't expose which engine actually
-		// answered (or whether the fallback triggered) — only the query and
-		// the final outcome are observable from here. A block/challenge
-		// error usually means Bing rejected it and DuckDuckGo's own fallback
-		// attempt then also failed (or was never reached, if the error isn't
-		// ErrBlocked/ErrChallenge in the first place).
 		logx.Info("WEBSEARCH: query failed", "query", query, "error", err)
 		return nil, fmt.Errorf("websearch: search: %w", err)
 	}

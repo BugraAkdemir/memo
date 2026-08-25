@@ -8,13 +8,15 @@ import (
 	"github.com/BugraAkdemir/gosearch"
 )
 
-func TestSearch_MapsResultsAndUsesBingPrimary(t *testing.T) {
+func TestSearch_MapsResultsAndUsesDuckDuckGoOnly(t *testing.T) {
 	orig := gosearchSearch
 	defer func() { gosearchSearch = orig }()
 
 	var gotEngine gosearch.Engine
+	var gotOptCount int
 	gosearchSearch = func(ctx context.Context, query string, engine gosearch.Engine, opts ...gosearch.Option) ([]gosearch.Result, error) {
 		gotEngine = engine
+		gotOptCount = len(opts)
 		return []gosearch.Result{
 			{Title: "t1", URL: "u1", Snippet: "s1", Date: "2026-08-24"},
 		}, nil
@@ -28,8 +30,14 @@ func TestSearch_MapsResultsAndUsesBingPrimary(t *testing.T) {
 	if len(results) != 1 || results[0] != want {
 		t.Errorf("unexpected mapped result: %+v, want [%+v]", results, want)
 	}
-	if gotEngine != gosearch.Bing {
-		t.Errorf("expected Bing as primary engine, got %v", gotEngine)
+	if gotEngine != gosearch.DuckDuckGo {
+		t.Errorf("expected DuckDuckGo as the (sole) engine, got %v", gotEngine)
+	}
+	// Only WithMaxResults, deliberately no WithFallback — see Search's doc
+	// comment: Bing proved actively misleading rather than erroring cleanly,
+	// so no fallback engine is configured at all.
+	if gotOptCount != 1 {
+		t.Errorf("expected exactly 1 option (WithMaxResults, no fallback), got %d", gotOptCount)
 	}
 }
 

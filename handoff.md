@@ -1,3 +1,64 @@
+# Ek (2026-08-26) — whisper varsayılan kapalı + Settings'ten aç/kapat (main)
+
+Kullanıcı System Monitor'da `whisper-server`'ın 559.7 MiB RAM tükettiğini
+fark etti, hiç sesli özellik kullanmadığı halde her açılışta otomatik
+başladığını sordu. Önce doğrulandı: `get-memo.sh`/`get-memo-server.sh` ve
+Windows installer'ı `binaries/<platform>/` klasörünü toptan kopyalıyor —
+whisper-server + `ggml-small.bin` (~487MB) llama.cpp/vec0 ile aynı yerde,
+hiçbir platformda ayıklanmıyor, yani her kurulumda gömülü geliyor. Kullanıcı
+kararı: "ekle, default olarak kapalı gelsin, ama main'de yap" — bu iş
+`experiment/gosearch-integration`'dan bağımsız, doğrudan `main` üzerinde
+yapıldı (commit `934f1e3`).
+
+## Yapılanlar
+
+- `internal/config/config.go`: `WhisperConfig.Enabled` default `true` →
+  `false`.
+- `internal/app/stt.go`: `GetWhisperEnabled`/`SetWhisperEnabled` eklendi.
+  `SetWhisperEnabled`, `memory.go`'daki `SetMemoryEnabled`'ın aksine sadece
+  bayrak çevirmiyor — açılınca `startSTTServer()`'ı (varsa) başlatıyor,
+  kapanınca `a.whisperServer.Stop()` ile süreci gerçekten öldürüyor; toggle'ın
+  amacı zaten ~500MB RAM'i geri vermek olduğu için bu fark bilinçli.
+- Backend bridge/route/handler: `internal/webserver/bridge.go` (`FullBridge`'e
+  iki metot), `server.go` (`/api/whisper/enabled` route'u, `/api/transcribe`
+  yanına), `handlers_flutter.go` (`handleWhisperEnabled`, GET/PUT) —
+  `handleMemoryEnabled`'ın birebir aynı deseni. `swarm_stub_bridge_test.go`'a
+  iki stub eklendi.
+- Frontend: `general_tab.dart`'a Memory Toggle bölümüyle aynı görünümde yeni
+  "Sesli Komut (STT)" bölümü + switch; `settings_provider.dart`'a
+  `whisperEnabledProvider`/`WhisperEnabledNotifier` (`MemoryEnabledNotifier`
+  ile aynı optimistic-update + `_toggling` deseni, `authGateBlocked` guard'ı
+  dahil — BUG-ONB6); `app_shell.dart`'ın gate-transition invalidation
+  listesine eklendi; `l10n.dart`'a TR+EN dört anahtar çifti.
+
+## Doğrulama
+
+- `go build/vet ./...` ve `go test ./internal/app/... ./internal/webserver/...
+  ./internal/config/... ./internal/whisper/...` — hepsi yeşil, tek istisna
+  `internal/whisper`'daki `TestGetStatus_NewServer`: bu makinede 9877 portunda
+  önceki oturumdan kalma **gerçek** bir `whisper-server` süreci (pid
+  `1525355`) hâlâ çalıştığı için başarısız oluyor. `git stash` ile temiz
+  `main`'de de aynı şekilde patladığı doğrulandı — benim değişikliğimle
+  ilgisi yok, ortam kaynaklı, dokunulmadı.
+- `flutter analyze` — sıfır yeni uyarı (6 mevcut uyarı, hepsi bu değişiklikten
+  önce de vardı, dokunulmayan dosyalarda).
+- `flutter test` — 283/283 geçti (BUG-ONB6 guard'ı sayesinde
+  `settings_dialog_test.dart`'ta sızan-timer regresyonu tekrarlanmadı).
+
+## Sıradaki oturum için
+
+1. Kullanıcı isterse pid `1525355`'i (`kill 1525355`) kapatıp bu makinede
+   9877 portunu boşaltabilir — hem `whisper` testini hem gerçek RAM
+   tüketimini düzeltir.
+2. Kapsam dışı bırakıldı (önerildi, istenmedi): browser engine'in
+   `experiment/gosearch-integration`'daki Settings toggle'ına benzer bir
+   "install" adımı whisper'a gerekmiyor (zaten gömülü geliyor) — sadece
+   aç/kapat yeterliydi.
+3. `experiment/gosearch-integration` hâlâ main'e alınmadı, bu işten
+   bağımsız — kullanıcı hâlâ o branch'i test ediyor.
+
+---
+
 # Ek (2026-08-25, devam) — v4.1.0 yayımlandı
 
 `change_directory` + WhatsApp/Telegram projectPath fix + UILanguage/share_file

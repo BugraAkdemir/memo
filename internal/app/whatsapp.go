@@ -818,6 +818,16 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 
 		effortLevel := a.activeProviderEffortLevel(activeName)
 
+		// Same projectPath lookup as the Flutter agent chat path
+		// (llm.go's callAgentStream) — without this, a change_directory call
+		// from a previous WhatsApp turn would silently be ignored on every
+		// later turn, since RunStream falls back to the executor's fixed
+		// basePath whenever projectPath is empty.
+		waProjectPath := ""
+		if sm != nil && waSessionID != "" {
+			waProjectPath = sm.GetProjectPath(waSessionID)
+		}
+
 		start := time.Now()
 		var fullReply strings.Builder
 		var agentEvents []interface{}
@@ -829,7 +839,7 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 				Content:      string(chunkData),
 				FinishReason: "agent_event",
 			})
-		})
+		}, waProjectPath)
 
 		if err != nil {
 			if sm != nil && waSessionID != "" {

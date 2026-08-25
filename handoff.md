@@ -29,9 +29,40 @@ Flutter'ın üçünde de tutarlı olsun.
 
 ## Sıradaki oturum için
 
-1. **Canlı doğrulama henüz yapılmadı** — gerçek bir agent sohbetinde "önce /tmp'e geç, sonra içindekileri listele" gibi bir istekle tek turn'de iki tool çağrısını (izin promptu dahil, autopermission açık/kapalı iki senaryo) test etmek gerekiyor. `scripts/run_memo.sh` ile kullanıcı kendi test edebilir, ya da headless backend + gerçek SSE isteğiyle canlı doğrulanabilir.
-2. WhatsApp/Telegram'daki y/n metin akışının `change_directory`'nin `Preview`'ini ("Change working directory to: ...") gerçekten okunabilir şekilde gösterip göstermediği canlı denenmedi — mekanizma kanal-agnostik olduğu için çalışması beklenir, ama gerçek bir WhatsApp/Telegram mesajıyla doğrulanmadı.
+1. ~~Canlı doğrulama henüz yapılmadı~~ → kullanıcı gerçekten Telegram'dan canlı denedi (aşağıdaki ek), ama beklenenden farklı bir sonuçla — bkz. "Ek (aynı gün, devam)".
+2. WhatsApp/Telegram'daki y/n metin akışının `change_directory`'nin `Preview`'ini ("Change working directory to: ...") gerçekten okunabilir şekilde gösterip göstermediği hâlâ canlı denenmedi (bu ek de dahil — model tool'u hiç çağırmadı, dolayısıyla izin promptu/preview'ı tetiklenmedi).
 3. `experiment/gosearch-integration` branch'i hâlâ main'e alınmadı, ayrı duruyor — bu oturumun işi ondan bağımsız, `main` üzerinde yapıldı.
+
+## Ek (aynı gün, devam) — `change_directory` var ama model bilmiyordu: proaktif öneri eksikti
+
+Kullanıcı özelliği gerçekten Telegram'dan denedi (bir sohbet dökümü paylaşarak):
+Desktop'taki bir dosyayı istedi, model sandbox sınırına doğru şekilde çarptı,
+ama **`change_directory`'yi hiç önermedi** — sadece "dosyayı elle memo
+klasörüne taşı" ya da "bana tam erişim ver" seçeneklerini sundu. Kullanıcının
+isteği net: "illa 'şuraya geç' dememem gerekmesin, akıllı olsun" — yani model
+kendiliğinden "şu an masaüstünde değilim, geçeyim mi?" gibi bir öneride
+bulunabilmeli, kullanıcının tool'u ismen bilip istemesine gerek kalmadan.
+
+**Kök neden, iki parçalı:** (1) `change_directory`'nin tool açıklaması
+"Use this only when the user explicitly asks" diyordu — modeli proaktif
+önermekten caydırıyordu; (2) modelin gerçekte çarptığı ret mesajları
+(`validatePath` `file.go`, `RunCommand`'ın cwd/command kontrolleri
+`command.go`) `change_directory`'den hiç bahsetmiyordu — modelin bağlamında
+"bu hatayı çözecek bir tool var" bilgisi yoktu.
+
+**Fix:** yeni `internal/agent/tools/changedir.go`'daki `OutsideSandboxHint`
+sabiti, `file.go`+`command.go`'daki dört "outside the project directory" ret
+mesajının hepsine ekleniyor; `change_directory`'nin açıklaması artık modele
+açıkça "bir tool çağrısı bu sebeple başarısız olursa ve kullanıcının isteği
+o konumda çalışmanı ima ediyorsa, dosyayı taşımasını istemek yerine hedefi
+söyleyip onay iste, sonra tool'u çağır" diyor. İzin kapısı (`Dangerous`)
+değişmedi — bu sadece modelin kendi cevabında ne önereceğini değiştiriyor,
+tool'un çalışması için gereken izin akışını değil.
+
+**Doğrulama:** `go build/vet/test -tags "sqlite_fts5" ./...` tüm repo yeşil;
+hiçbir test ret mesajlarının tam metnini assert etmiyordu, güncelleme
+gerekmedi. **Canlı yeniden test edilmedi** — kullanıcının bir sonraki
+Telegram denemesinde modelin gerçekten önerip önermediği görülecek.
 
 
 

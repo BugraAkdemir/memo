@@ -48,6 +48,7 @@ Memo is a local-first, privacy-focused LLM chat application with RAG memory, ext
 | `internal/proactive/` | Proactive suggestion engine | `engine.go`, `decision.go`, `matcher.go`, `pending.go`, `prompt.go`, `feedback.go` |
 | `internal/observer/` | Usage pattern analyzer | `analyzer.go`, `recorder.go`, `store.go`, `pattern.go` |
 | `internal/whatsapp/` | WhatsApp bridge (whatsmeow) | `client.go`, `store.go` |
+| `internal/telegram/` | Telegram bridge (Bot API polling) — mirrors `internal/whatsapp/`'s shape | `client.go`, `store.go` |
 | `internal/whisper/` | Speech-to-text (whisper.cpp) | `whisper.go`, platform-specific files |
 | `internal/skill/` | Skill system (plugin-like) | `manager.go`, `loader.go`, `types.go`, `executor.go` |
 | `internal/ngrok/` | ngrok tunnel integration | `installer.go`, `manager.go` |

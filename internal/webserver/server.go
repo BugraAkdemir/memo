@@ -142,6 +142,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/incognito", s.handleIncognito)
 	route("/api/onboarding", s.handleOnboarding)
 	route("/api/transcribe", s.handleTranscribe)
+	route("/api/whisper/enabled", s.handleWhisperEnabled)
 	route("/api/send_file", s.handleSendFile)
 	route("/api/send_file/stream", s.handleSendFileStream)
 

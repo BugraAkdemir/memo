@@ -1,3 +1,58 @@
+# Ek (2026-08-26, devam) — DuckDuckGo'ya geçiş + canlı uçtan uca doğrulama (branch: `experiment/gosearch-integration`)
+
+Önceki ek'te bırakılan iki açık madde bu oturumda kapatıldı: motor önceliği kararı
+uygulandı, ve gerçek bir kullanıcı sohbetinde (birden fazla tekrar) tüm zincir
+(arama → fetch → gerekirse browser fallback → model sentezi) satır satır doğrulandı.
+
+## 1. Bing tamamen kaldırıldı, DuckDuckGo tek motor (`3c93765`)
+
+Kullanıcının onayıyla: `internal/websearch/search.go` artık `gosearch.DuckDuckGo`'yu
+tek motor olarak kullanıyor, **hiç fallback yok** (Bing dahil) — gerekçe: Bing hiçbir
+zaman hata vermeden (`ErrBlocked` fırlatmadan) sessizce alakasız sonuç döndürdüğü için
+fallback zaten hiç tetiklenmiyordu; dürüst bir hata, güvenle-yanlış bir sonuçtan daha
+iyi. Canlı doğrulandı (`-tags canary`): "golang" ve daha önce çöp sonuç veren tam
+sorgu ("Süper Lig 2026 2027 2. hafta maç sonuçları skorları") ikisi de artık %100
+alakalı sonuç veriyor (flashscore, fotmob, sahadan, beinsports...).
+
+## 2. Gerçek sohbette uçtan uca doğrulama — sonuç tamamen doğru, uydurma yok
+
+Kullanıcı gerçek uygulamada ("kanka süperlikte oynana son maçlar ne kaç kaç") sorguyu
+tekrar denedi, bu sefer DuckDuckGo ile. Log satır satır incelendi:
+
+- **4 arama sorgusu**, hepsi %100 alakalı sonuç (euronews, TFF, hürriyet, sahadan,
+  beinsports, sabah.com.tr, futbol24...) — önceki Bing çöplüğüyle tam kontrast.
+- **5 `fetch_page` çağrısı**: 4'ü teknik olarak boş olmayan ama işe yaramaz içerik
+  döndürdü (genel açıklama metni, tek cümle, hatta bir tanesi **sadece çerez uyarısı**
+  — `matchcalendar.football`), model bunları aynı URL'i tekrar denemeden fark edip
+  farklı arama sorgularına geçti; 5. deneme (`sabah.com.tr`) gerçek skorları ve puan
+  tablosunu döndürdü.
+- **Doğruluk doğrulaması:** modelin verdiği 9 maç skoru ve 18 satırlık puan durumu
+  tablosunun **tamamı**, `sabah.com.tr` fetch içeriğiyle birebir eşleşiyor — hiçbir
+  uydurma/hata yok.
+- **Browser engine bu turda hiç tetiklenmedi** (`used_browser=false` her satırda) —
+  çünkü hiçbir statik fetch gerçekten boş string döndürmedi (çerez banner'ı bile
+  "boş değil" sayılıyor). Bu, motorun tasarlandığı gibi **sadece gerçekten gerektiğinde**
+  çalıştığını, her aramada RAM/süre harcamadığını doğruluyor.
+
+**Bilinen, kasıtlı olarak bırakılan bir sınır:** `browserFallbackFetch`'in tetikleme
+koşulu tam olarak `content == ""` — `matchcalendar.football` gibi "teknik olarak dolu
+ama işe yaramaz" (sadece çerez uyarısı) sayfalar bu eşiği hiç görmüyor, oysa JS ile
+render edilen asıl veri muhtemelen orada. İleride bu eşiği gevşetmek (örn. çok kısa
+içerikte de dene) bir seçenek — kullanıcıya soruldu, henüz karar verilmedi.
+
+## Sıradaki oturum için
+
+1. Yukarıdaki "çok kısa içerik eşiği" kararı bekliyor.
+2. Ayrı bir doğrulama daha planlandı: bilinen bir JS-render'lı site linkiyle
+   (`beinsports.com.tr/lig/super-lig/puan-durumu` — bu oturumda daha önce browser
+   fallback'i tetiklediği zaten doğrulanmıştı) kullanıcı tekrar deneyip log'u
+   paylaşacak, browser engine'in doğru tetiklendiği bir kez daha teyit edilecek.
+3. `experiment/gosearch-integration` hâlâ main'e alınmadı — artık hem arama hem
+   tarayıcı motoru tarafı gerçek kullanımda doğrulanmış durumda, merge kararı
+   kullanıcının.
+
+---
+
 # Ek (2026-08-25/26) — headless browser lifecycle: keep-alive toggle + kurulum + Settings (branch: `experiment/gosearch-integration`)
 
 Kullanıcı canlı test sırasında ("Süper Lig maç sonuçları" sorgusu) gerçek bir arama

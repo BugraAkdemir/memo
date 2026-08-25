@@ -24,6 +24,7 @@ import (
 
 	"github.com/BugraAkdemir/gosearch"
 	"github.com/BugraAkdemir/gosearch/browser"
+	"memo/internal/logx"
 )
 
 // engineHandle is the subset of *browser.Engine this package uses — kept as
@@ -65,9 +66,11 @@ func (m *Manager) Fetch(ctx context.Context, url string) (*gosearch.Page, error)
 			e, err := newEngine(ctx)
 			if err != nil {
 				m.mu.Unlock()
+				logx.Info("BROWSERENGINE: start failed", "mode", "keep-alive", "error", err)
 				return nil, err
 			}
 			m.engine = e
+			logx.Info("BROWSERENGINE: engine started", "mode", "keep-alive")
 		}
 		engine := m.engine
 		m.mu.Unlock()
@@ -77,9 +80,17 @@ func (m *Manager) Fetch(ctx context.Context, url string) (*gosearch.Page, error)
 
 	e, err := newEngine(ctx)
 	if err != nil {
+		logx.Info("BROWSERENGINE: start failed", "mode", "one-shot", "error", err)
 		return nil, err
 	}
-	defer e.Close()
+	logx.Info("BROWSERENGINE: engine started", "mode", "one-shot")
+	defer func() {
+		if err := e.Close(); err != nil {
+			logx.Info("BROWSERENGINE: engine close failed", "mode", "one-shot", "error", err)
+		} else {
+			logx.Info("BROWSERENGINE: engine closed", "mode", "one-shot")
+		}
+	}()
 	return e.Fetch(ctx, url)
 }
 
@@ -93,6 +104,11 @@ func (m *Manager) SetKeepAlive(v bool) error {
 	if !v && m.engine != nil {
 		err := m.engine.Close()
 		m.engine = nil
+		if err != nil {
+			logx.Info("BROWSERENGINE: engine close failed", "reason", "keep-alive turned off", "error", err)
+		} else {
+			logx.Info("BROWSERENGINE: engine closed", "reason", "keep-alive turned off")
+		}
 		return err
 	}
 	return nil
@@ -133,5 +149,10 @@ func (m *Manager) Stop() error {
 	}
 	err := m.engine.Close()
 	m.engine = nil
+	if err != nil {
+		logx.Info("BROWSERENGINE: engine close failed", "reason", "stop", "error", err)
+	} else {
+		logx.Info("BROWSERENGINE: engine closed", "reason", "stop")
+	}
 	return err
 }

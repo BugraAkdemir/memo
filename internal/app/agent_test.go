@@ -66,7 +66,7 @@ func TestAgentWrappers_NilExecutor(t *testing.T) {
 // delegate to it instead of short-circuiting.
 func TestAgentWrappers_WithExecutor(t *testing.T) {
 	t.Setenv("MEMO_DATA_DIR", t.TempDir())
-	exec := agent.NewExecutor(t.TempDir(), nil, nil)
+	exec := agent.NewExecutor(t.TempDir(), nil, nil, nil)
 	a := &App{agentExecutor: exec}
 
 	if err := a.SetAgentAutoPermission(true); err != nil {

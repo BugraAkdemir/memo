@@ -620,7 +620,7 @@ func (a *App) Startup(ctx context.Context) {
 	tools.FileSender = fileToolAdapter{a}
 
 	basePath, _ := filepath.Abs(".")
-	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr)
+	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr, a.getSessionManager())
 	a.agentExecutor.SetBypassPermissions(a.cfg.Mood.SystemManagement)
 	a.agentEnabled = false
 	logx.Printf("Agent mode initialized (enabled=false)")

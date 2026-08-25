@@ -467,7 +467,7 @@ func newSendMessageTestApp(t *testing.T, reqs *capturedRequests) *App {
 		t.Fatalf("sessions.NewManager: %v", err)
 	}
 
-	agentExecutor := agent.NewExecutor(t.TempDir(), nil, nil)
+	agentExecutor := agent.NewExecutor(t.TempDir(), nil, nil, nil)
 
 	return &App{
 		cfg:                &config.AppConfig{Memory: config.MemoryConfig{MemoryEnabled: false}},

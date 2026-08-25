@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"memo/internal/agent/tools"
 	"memo/internal/logx"
 	"memo/internal/provider"
 	"memo/internal/truncate"
@@ -100,6 +101,12 @@ func NewPipelineWithBudget(registry *ToolRegistry, permissions *PermissionManage
 // permissionWaitFn blocks until the user approves or denies a tool call.
 func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, modelName string, onEvent func(AgentEvent), permissionWaitFn func(requestID string, event AgentEvent) (PermissionPolicy, error)) (<-chan provider.StreamChunk, error) {
 	outCh := make(chan provider.StreamChunk, 128)
+
+	// Let change_directory (internal/agent/tools/changedir.go) widen this
+	// turn's sandbox root — Pipeline.sandbox is the per-call sandbox
+	// Executor.RunStream just built, so this is safe to mutate mid-turn: no
+	// other concurrent RunStream call shares it.
+	ctx = tools.WithSandboxSetter(ctx, p.sandbox)
 
 	go func() {
 		defer close(outCh)

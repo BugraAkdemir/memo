@@ -2,6 +2,9 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -77,6 +80,89 @@ func TestRunStream_SetsEffortLevelOnRequest(t *testing.T) {
 
 	if prov.gotReq.EffortLevel != "high" {
 		t.Errorf("ChatRequest.EffortLevel = %q, want %q", prov.gotReq.EffortLevel, "high")
+	}
+}
+
+// scriptedProvider returns one canned ChatResponse per call, in order —
+// lets a test drive a specific sequence of tool calls without a real LLM.
+type scriptedProvider struct {
+	responses []provider.ChatResponse
+	calls     int
+}
+
+func (p *scriptedProvider) ChatCompletion(_ context.Context, _ provider.ChatRequest) (*provider.ChatResponse, error) {
+	resp := p.responses[p.calls]
+	p.calls++
+	return &resp, nil
+}
+
+func mustToolCall(t *testing.T, id, name string, args any) provider.ToolCall {
+	t.Helper()
+	raw, err := json.Marshal(args)
+	if err != nil {
+		t.Fatalf("marshal tool args: %v", err)
+	}
+	return provider.ToolCall{ID: id, Type: "function", Function: provider.ToolCallFunction{Name: name, Arguments: raw}}
+}
+
+// TestRunStream_ChangeDirectoryTakesEffectSameTurn is the "look then act in
+// one message" guarantee change_directory (internal/agent/tools/changedir.go)
+// depends on: Pipeline.RunStream re-reads the sandbox's base path fresh at
+// the top of every iteration (see the "Snapshot basePath once per
+// iteration" comment below), so a change_directory call in iteration N must
+// already be visible to a read_file call in iteration N+1 of the *same*
+// RunStream call — not just on the next turn.
+func TestRunStream_ChangeDirectoryTakesEffectSameTurn(t *testing.T) {
+	oldDir := t.TempDir()
+	newDir := t.TempDir()
+	marker := filepath.Join(newDir, "marker.txt")
+	if err := os.WriteFile(marker, []byte("hello-from-new-dir"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	registry := NewRegistry() // includes change_directory and read_file
+	permissions := NewPermissionManager(t.TempDir())
+	sandbox := NewSandbox(DefaultSandboxConfig(oldDir))
+	backup := NewBackupManager(t.TempDir())
+
+	prov := &scriptedProvider{responses: []provider.ChatResponse{
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "call-1", "change_directory", map[string]string{"path": newDir})}},
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "call-2", "read_file", map[string]string{"path": "marker.txt"})}},
+		{Content: "done"},
+	}}
+
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, backup)
+	// Dangerous-level tools (change_directory included) would otherwise
+	// block on a permission prompt — same bypass a real Shift+Tab session
+	// uses (executor.go's autoPermission), so this test can run unattended.
+	pipeline.autoPermission = true
+
+	var toolResults []string
+	onEvent := func(ev AgentEvent) {
+		if ev.Type == EventToolResult {
+			toolResults = append(toolResults, ev.Result)
+		}
+	}
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "test-model", onEvent, nil)
+	if err != nil {
+		t.Fatalf("RunStream() error = %v", err)
+	}
+	var gotErrorChunk string
+	for chunk := range ch {
+		if chunk.Error != "" {
+			gotErrorChunk = chunk.Error
+		}
+	}
+	if gotErrorChunk != "" {
+		t.Fatalf("unexpected error chunk: %s", gotErrorChunk)
+	}
+
+	if len(toolResults) != 2 {
+		t.Fatalf("got %d tool results, want 2 (change_directory, read_file): %v", len(toolResults), toolResults)
+	}
+	if !strings.Contains(toolResults[1], "hello-from-new-dir") {
+		t.Errorf("read_file's result (run right after change_directory, same turn) = %q, want it to contain the new directory's marker content — the sandbox root did not move in time", toolResults[1])
 	}
 }
 

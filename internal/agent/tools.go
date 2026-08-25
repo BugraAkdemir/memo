@@ -93,6 +93,15 @@ func (r *ToolRegistry) registerBuiltins() {
 	})
 
 	r.Register(ToolDef{
+		Name:        "change_directory",
+		Description: "Changes the agent's working-directory sandbox to a different existing directory for the rest of this conversation. Use this only when the user explicitly asks you to work somewhere else (e.g. a temp directory, or another project/repo). Every other file tool (read_file, write_file, run_command, etc.) is scoped to this directory afterward. Requires an existing directory — relative paths resolve against the current working directory, and '~' resolves to the user's home.",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Path to the directory to switch to"}}, "required": ["path"]}`),
+		DangerLevel: Dangerous,
+		ExecuteFn:   tools.ChangeDirectory,
+		PreviewFn:   tools.ChangeDirectoryPreview,
+	})
+
+	r.Register(ToolDef{
 		Name:        "run_command",
 		Description: "Executes a terminal command using bash -c",
 		Parameters:  json.RawMessage(`{"type": "object", "properties": {"command": {"type": "string", "description": "The command to run"}, "cwd": {"type": "string", "description": "Optional working directory"}}, "required": ["command"]}`),

@@ -28,6 +28,40 @@ func TestFetchPage_ReturnsFormattedContent(t *testing.T) {
 	}
 }
 
+func TestFetchPage_UsedBrowser_AddsNote(t *testing.T) {
+	orig := websearchFetch
+	defer func() { websearchFetch = orig }()
+	websearchFetch = func(ctx context.Context, url string) (*websearch.Page, error) {
+		return &websearch.Page{URL: url, Title: "Live Scores", Content: "table data", UsedBrowser: true}, nil
+	}
+
+	args, _ := json.Marshal(FetchPageArgs{URL: "https://example.com/js-app"})
+	out, err := FetchPage(context.Background(), args, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(out), "chromium") && !strings.Contains(out, "tarayıcı") {
+		t.Errorf("expected a browser-render note when UsedBrowser=true, got: %q", out)
+	}
+}
+
+func TestFetchPage_StaticFetch_NoNote(t *testing.T) {
+	orig := websearchFetch
+	defer func() { websearchFetch = orig }()
+	websearchFetch = func(ctx context.Context, url string) (*websearch.Page, error) {
+		return &websearch.Page{URL: url, Title: "Docs", Content: "static content", UsedBrowser: false}, nil
+	}
+
+	args, _ := json.Marshal(FetchPageArgs{URL: "https://example.com"})
+	out, err := FetchPage(context.Background(), args, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(strings.ToLower(out), "chromium") || strings.Contains(out, "tarayıcı motoruyla") {
+		t.Errorf("did not expect a browser-render note when UsedBrowser=false, got: %q", out)
+	}
+}
+
 func TestFetchPage_RequiresURL(t *testing.T) {
 	args, _ := json.Marshal(FetchPageArgs{URL: ""})
 	_, err := FetchPage(context.Background(), args, "", nil)

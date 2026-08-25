@@ -73,5 +73,12 @@ func FetchPage(ctx context.Context, argsJSON json.RawMessage, _ string, _ func(s
 		), nil
 	}
 
+	if page.UsedBrowser {
+		note := T(
+			"(Not: bu içerik gerçek bir tarayıcı motoruyla (headless Chromium) JavaScript çalıştırılarak render edildi — hızlı statik istek bu sayfada boş dönmüştü.)",
+			"(Note: this content was rendered by an actual browser engine (headless Chromium) executing JavaScript — the fast static request came back empty for this page.)",
+		)
+		return fmt.Sprintf("# %s\n%s\n%s\n\n%s", page.Title, page.URL, note, page.Content), nil
+	}
 	return fmt.Sprintf("# %s\n%s\n\n%s", page.Title, page.URL, page.Content), nil
 }

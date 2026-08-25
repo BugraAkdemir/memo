@@ -19,6 +19,11 @@ type Page struct {
 	URL     string
 	Title   string
 	Content string
+	// UsedBrowser, bu içeriğin hızlı statik istekle mi yoksa headless
+	// tarayıcı fallback'iyle mi geldiğini belirtir — çağıran taraf (örn.
+	// fetchpage.go) bunu modele iletip modelin "SSR mi JS mi" diye tahmin
+	// yürütmesi yerine kesin konuşmasını sağlayabilir.
+	UsedBrowser bool
 }
 
 // gosearchFetch, gosearch.Fetch çağrısını bir paket değişkeni arkasına
@@ -93,5 +98,5 @@ func Fetch(ctx context.Context, url string) (*Page, error) {
 	// this verbose in normal use.
 	logx.Info("WEBSEARCH: fetch content", "url", url, "content", content)
 
-	return &Page{URL: page.URL, Title: page.Title, Content: content}, nil
+	return &Page{URL: page.URL, Title: page.Title, Content: content, UsedBrowser: usedBrowser}, nil
 }

@@ -82,6 +82,9 @@ func TestFetch_EmptyStaticContentFallsBackToBrowser(t *testing.T) {
 	if page.Content != "rendered content" || page.Title != "rendered title" {
 		t.Errorf("expected the browser-rendered page to win, got %+v", page)
 	}
+	if !page.UsedBrowser {
+		t.Error("expected UsedBrowser=true when the browser fallback supplied the content")
+	}
 }
 
 func TestFetch_BrowserFallbackUnavailable_KeepsEmptyResult(t *testing.T) {
@@ -122,5 +125,22 @@ func TestFetch_NonEmptyStaticContentSkipsBrowser(t *testing.T) {
 	}
 	if called {
 		t.Error("browser fallback should not run when the static fetch already returned content")
+	}
+}
+
+func TestFetch_StaticContentReportsUsedBrowserFalse(t *testing.T) {
+	orig := gosearchFetch
+	defer func() { gosearchFetch = orig }()
+
+	gosearchFetch = func(ctx context.Context, url string, opts ...gosearch.Option) (*gosearch.Page, error) {
+		return &gosearch.Page{URL: url, Title: "T", Content: "already has content"}, nil
+	}
+
+	page, err := Fetch(context.Background(), "https://example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if page.UsedBrowser {
+		t.Error("expected UsedBrowser=false when the static fetch already returned content")
 	}
 }

@@ -1,3 +1,60 @@
+# Ek (2026-08-25/26) — headless browser lifecycle: keep-alive toggle + kurulum + Settings (branch: `experiment/gosearch-integration`)
+
+Kullanıcı canlı test sırasında ("Süper Lig maç sonuçları" sorgusu) gerçek bir arama
+kalite sorunu buldu — bu, `fetch_page`'in gerçek bir JS-render sorununu ortaya çıkardı
+ve sonunda tam bir tarayıcı-motoru yaşam döngüsü özelliğine dönüştü.
+
+## Zincir
+
+1. **Debug log eklendi** (`internal/websearch/search.go`/`fetch.go`, `logx.Info`) —
+   kullanıcının isteğiyle, hiçbir düzeltme yapmadan sadece gözlemlenebilirlik.
+2. **Log ile bulunan gerçek sorun:** "Süper Lig 24 Ağustos 2026 maç sonuçları" gibi
+   birbirinden çok farklı sorguların hepsi Bing'den **birebir aynı 5 alakasız sonucu**
+   (Süper Loto, Süper FM...) döndürüyordu — hiçbir zaman hata (`ErrBlocked`) fırlatmadan,
+   yani mevcut DDG fallback'i hiç tetiklenmiyordu. Memo'dan tamamen bağımsız, izole bir
+   test programıyla (`/home/bugra/Documents/gosearch`'te) doğrulandı: aynı sorgu Bing'den
+   yine aynı çöp sonuçları, DuckDuckGo'dan ise doğru/alakalı sonuçları veriyordu.
+3. Ama kullanıcı log'u daha dikkatli okuyunca gerçek nüansı yakaladı: Bing'in
+   **URL'leri** çoğunlukla doğruydu (gerçek TFF/beIN Sports sayfaları) — sadece
+   snippet'ler bayattı, ve **asıl kırılma noktası** o doğru URL'lerin `fetch_page` ile
+   çekilince **boş** dönmesiydi (`content_runes=0`) — çünkü o sayfalar JavaScript ile
+   render ediliyor ve gosearch'ün statik `Fetch`'i JS çalıştırmıyor.
+4. **Çözüm (option 2, kullanıcının seçimi):** `github.com/BugraAkdemir/gosearch/browser`
+   (ayrı Go modülü, chromedp tabanlı, zaten mevcuttu ama Memo hiç kullanmıyordu) —
+   statik fetch boş dönerse, sistemde kurulu bir Chromium varsa **o tek sayfa için**
+   tarayıcı açılıp kapatılıyor. Canlı doğrulandı: `beinsports.com.tr/lig/super-lig/
+   puan-durumu` gerçek 2026/2027 puan durumu tablosunu (Gençlerbirliği 1., Galatasaray
+   2.) döndürdü.
+5. Kullanıcı bunun üzerine tam bir **yaşam döngüsü yönetimi** istedi: Settings'te
+   sürekli-açık/her-kullanımdan-sonra-kapat toggle'ı, kurulu değilse indirme butonu,
+   modelin kurulu olmadığını fark edip kullanıcıya önermesi, ve **kullanıcının kendi
+   Chromium'unu asla etkilememe** garantisi.
+
+## Yapılanlar (main'den ayrı, bu branch'te, main'in `change_directory`/
+`OutsideSandboxHint`'i bu branch'te yok — main'e merge olunca ikisi birlikte yaşayacak)
+
+| Commit | Değişiklik |
+|---|---|
+| `feat(websearch)` debug log | `search.go`/`fetch.go`'ya `WEBSEARCH:` log satırları. |
+| `feat(browserengine)` | Yeni `internal/browserengine.Manager` — `KeepAlive` false (varsayılan, her fetch'te aç-kapat) / true (bir kez açılır, tekrar kullanılır) modları; `IsInstalled`/`Install` (`browser.Install` sarmalayıcı, `AllowDownload` sadece gerçek kurulumda); `Stop` (idempotent). Canlı doğrulandı: 1. çağrı ~4.3sn (açılış), keep-alive'lı 2. çağrı ~1.25sn (paylaşılan motor), `Stop()` sonrası 3. çağrı tekrar ~4.1sn (gerçekten kapanıp yeniden açılıyor). `chromedp` her zaman kendi ayrı process'ini kendi profil dizinizle açtığı için (`gosearch/browser/engine.go`) kullanıcının kendi Chrome'una hiç dokunmuyor — bunun için ekstra kod yazmaya gerek kalmadı, sadece doğrulandı. `internal/llama`'nın `KillByPort`'u **kasıtlı olarak kullanılmadı** (sahiplik kontrolü yok, bulduğu her process'i öldürür) — `Manager.Stop()` sadece kendi açtığı `*browser.Engine`'e dokunuyor. |
+| `feat(browserengine)` (devam) | `config.go`: `BrowserConfig{KeepAlive bool}` (varsayılan false). `app.go`: `App.browserMgr`, `Startup()`'ta kuruluyor, `websearch.Browser` adaptörüne bağlanıyor (`tools.FileSender` ile aynı desen), `shutdownSync`'e eklendi (bu `memo --kill`'in graceful-shutdown adımını da otomatik kapsıyor, `main.go`'ya dokunmadan). `settings.go`/`bridge.go`/`server.go`/`handlers_flutter.go`: `GET/PUT /api/browser`, `POST /api/browser/install` (engelleyici — gosearch'ün `Install`'ında ilerleme callback'i yok). `fetchpage.go`: boş içerik mesajı artık "tarayıcı kurulu değil" ile "sayfa gerçekten boş" durumlarını ayırt ediyor (`browserInstallChecker` type assertion), modele Ayarlar'dan kurmayı önermesini söylüyor. |
+| `feat(frontend)` | Genel sekmesine yeni bölüm: kurulum durumu + indirme butonu (spinner, yüzde yok — gosearch'te ilerleme hook'u yok), keep-alive toggle'ı (`MemoryEnabledNotifier` ile birebir aynı optimistic-update deseni). `authGateBlocked` guard'ı eksikti, `settings_dialog_test.dart`'ın 2 testi leaked-timer ile patladı — BUG-ONB6 deseniyle düzeltildi (her yeni bir-seferlik provider bu guard'ı almalı), `app_shell.dart`'ın gate-transition invalidate listesine eklendi. |
+
+## Doğrulama
+
+- `go build/vet/test -race -tags "sqlite_fts5" ./...` — tüm repo, birkaç kez, hepsi yeşil.
+- `flutter analyze` temiz, Rule #8 grep temiz, `flutter test` — 283/283 yeşil (settings_dialog_test.dart'ın 2 testi dahil, düzeltmeden önce kırmızıydı).
+- Canlı doğrulama (gerçek ağ, bu makinedeki `/usr/bin/chromium` ile): keep-alive aç/kapat, Stop sonrası yeniden açılış — hepsi yukarıdaki zamanlamalarla doğrulandı.
+
+## Sıradaki oturum için
+
+1. Settings UI'ı gerçek uygulamada (Flutter desktop) görsel olarak hiç kontrol edilmedi — sadece `flutter analyze`/`flutter test` ile doğrulandı, kullanıcının kendi `scripts/run_memo.sh` oturumunda gözden geçirmesi gerekiyor.
+2. İndirme akışı bu makinede hiç gerçek bir indirme tetiklemedi (zaten `/usr/bin/chromium` kurulu) — kurulu olmayan bir sistemde `POST /api/browser/install`'ın gerçekten indirip kurduğu doğrulanmadı.
+3. Bing arama kalitesi sorunu (bu oturumun başlangıç noktası) hâlâ çözülmedi — sadece etkisi (`fetch_page` boş dönmesi) bertaraf edildi. Motor önceliğini DuckDuckGo'ya çevirme kararı (kullanıcı onayladı) bu oturumda **uygulanmadı**, gosearch tarafında bir değişiklik gerekip gerekmediği de netleşmedi — sıradaki oturumun işi.
+4. `experiment/gosearch-integration` hâlâ main'e alınmadı — kullanıcı önce test edip sonuçlar istediği gibiyse merge edecek.
+
+---
+
 # Ek (2026-08-25) — gosearch entegrasyonu: web_search + fetch_page + domain bütçesi (branch: `experiment/gosearch-integration`, henüz main'e alınmadı)
 
 Kullanıcı kendi yazdığı bir Go kütüphanesini (`github.com/BugraAkdemir/gosearch` —

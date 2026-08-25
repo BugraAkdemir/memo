@@ -99,3 +99,52 @@ jobs:
 
       - name: Run govulncheck
         run: govulncheck ./...
+
+  l10n-guard:
+    name: L10n Guard (Rule #8)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # AGENTS.md Rule #8: every user-visible string must go through L10n.t()
+      # with BOTH tr+en entries. Same heuristic as AGENTS.md's Verification
+      # Commands — flags Text(/Tooltip(/SnackBar(/AlertDialog( calls whose
+      # argument starts with a quoted literal, in Dart files touched by this
+      # push/PR. l10n.dart itself is excluded (it owns the string maps).
+      - name: Check changed .dart files for hardcoded UI literals
+        run: |
+          set -euo pipefail
+          EVENT="${{ github.event_name }}"
+          if [ "$EVENT" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --no-tags 2>/dev/null || true
+            BASE="origin/${{ github.base_ref }}"
+          else
+            BASE="${{ github.event.before }}"
+            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              BASE="${{ github.sha }}~1"
+            fi
+          fi
+          echo "Diffing ${BASE}..${{ github.sha }}"
+
+          mapfile -t FILES < <(git diff --name-only "${BASE}".."${{ github.sha }}" -- '*.dart' | grep -v '^frontend/lib/core/l10n\.dart$' || true)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "No Dart files changed — nothing to check."
+            exit 0
+          fi
+
+          EXISTING=()
+          for f in "${FILES[@]}"; do [ -f "$f" ] && EXISTING+=("$f"); done
+          if [ "${#EXISTING[@]}" -eq 0 ]; then
+            echo "All changed Dart files were deletions — nothing to check."
+            exit 0
+          fi
+
+          VIOLATIONS=$(grep -nE "(Text|Tooltip|SnackBar|AlertDialog)\(\s*['\"][A-Za-zÇĞİÖŞÜçğıöşü]" "${EXISTING[@]}" || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "$VIOLATIONS"
+            echo "::error title=L10n Guard::Hardcoded user-facing string(s) found. Route through L10n.t('key') and add BOTH Turkish and English entries in frontend/lib/core/l10n.dart (AGENTS.md Rule #8)."
+            exit 1
+          fi
+          echo "OK — no hardcoded UI literals in changed Dart files."

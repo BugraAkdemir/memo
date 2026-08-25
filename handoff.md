@@ -1,4 +1,39 @@
-# Ek (2026-08-24, devam) — share_file'da 3 gerçek mantık hatası bulundu ve düzeltildi
+# Ek (2026-08-25) — `change_directory` agent tool'u: izinli çalışma dizini değişimi (main)
+
+Kullanıcı bir Telegram sohbet dökümü paylaştı: Memo, Desktop'taki bir dosyayı
+okuyamamıştı ("sadece proje klasörüne erişebiliyorum" demiş). Önce
+`codebase-memory` + doğrudan kod okuma ile kök neden araştırıldı (ayrı bir
+plan turunda, kod yazılmadan): `Executor.basePath` (`internal/app/app.go`)
+process başlangıcında `filepath.Abs(".")` ile bir kere sabitleniyor — dev
+script'iyle proje köküne, kurulu haliyle `~/.memo`'ya, ama her iki durumda da
+Desktop gibi kardeş klasörlere hiç erişilemiyor. Kullanıcı analiz sonrası
+somut bir çözüm istedi: `share_file` gibi yeni bir tool/izin — kullanıcı
+sohbette "çalışma dizinini şuraya değiştir" dediğinde, mevcut izin sistemiyle
+(autopermission açıksa direkt, kapalıysa y/n) çalışsın; WhatsApp, Telegram ve
+Flutter'ın üçünde de tutarlı olsun.
+
+## Yapılanlar (main branch, commit sırasıyla)
+
+| Commit | Değişiklik |
+|---|---|
+| `feat(agent)` | Yeni `change_directory` tool'u (`internal/agent/tools/changedir.go`), `DangerLevel: Dangerous` — `share_file`'ın `Medium`'undan yüksek, çünkü bu tool tek bir dosyayı değil o andan itibaren **her** tool'un erişebileceği yeri değiştiriyor. `~` ve göreli yol çözümlemesi (mevcut `basePath`'e göre — "projenin kardeş `lib/` klasörü" gibi istekler doğal çalışır), sembolik link çözümlemesi (`file.go`'nun BUG-C1 deseniyle aynı), hedefin gerçekten var olan bir dizin olması zorunluluğu. Ayrı bir güvenlik katmanı: `hardDenylistedRoots()` — `/`, `/etc`, `/usr`, `/boot`, `/dev`, `/sys`, `/proc`, `/var`, `/root`, `/run` gibi çıplak sistem köklerini **kullanıcı onaylasa bile** reddediyor (run_command'ın `rm -rf` blacklist'iyle aynı defense-in-depth mantığı) — çünkü `defaultProtectedPaths()` sadece `basePath` **dışına çıkışı** koruyor, `basePath`'in kendisine hiç uygulanmıyor. `/tmp` ve kullanıcının home dizini bilinçli olarak izinli — özelliğin amacı zaten bu. İki parçalı etki: (1) aynı turn içinde canlı sandbox — `Pipeline.RunStream` zaten `basePath`'i her iterasyonda sandbox'tan yeniden okuyor ("Snapshot basePath once per iteration"), yeni `internal/agent/tools/sandboxctx.go`'daki `SandboxSetter` context.Value'suyla (`fetchbudget.go` ile aynı desen — o dosya sadece `experiment/gosearch-integration`'da var, main'e henüz gelmedi, o yüzden desen buraya taşındı) `sandbox.SetBasePath` çağrılıyor; (2) kalıcılık — `sessions.Manager`'a yeni `SetProjectPath` setter'ı (mevcut `GetProjectPath`'in yazma karşılığı), `Executor` artık bir `*sessions.Manager` alıyor (yeni `NewExecutor` parametresi, nil-safe) ve `Executor.RunStream`'de ikinci bir context.Value (`ProjectPathSetter`) seed ediliyor. Yeni izin altyapısına hiç gerek kalmadı — `DangerLevel: Dangerous` tek başına mevcut `PermissionManager`/`autoPermission`/`bypassPermissions` akışına giriyor, WhatsApp/Telegram'ın kendi y/n metin akışı (`selfchat_permission.go`) zaten kanal-agnostik. |
+| `fix(app)` | WhatsApp'ın **ayrı** "WhatsApp Chat" yolu (`whatsapp.go`'daki doğrudan `waExecutor.RunStream` çağrısı — self-chat'ten farklı, o zaten `callAgentStream` üzerinden `projectPath` alıyordu) hiç `projectPath` geçmiyordu; `llm.go` ile aynı üç satır eklendi. Telegram'ın buna eşdeğer ayrı bir yolu yok (sadece self-chat), yani zaten etkilenmiyordu. |
+| `docs(agents)` | `AGENTS.md`'nin modül tablosuna eksik olan `internal/telegram/` satırı eklendi (araştırma sırasında fark edildi — `internal/whatsapp/`'ın birebir muadili, ama tabloda hiç yoktu). |
+
+## Doğrulama
+
+- `go build/vet/test -race -tags "sqlite_fts5" ./...` — tüm repo (44 paket) yeşil.
+- Yeni testler: `internal/agent/tools/changedir_test.go` (geçerli değişim + canlı sandbox etkisi, sahte `ProjectPathSetter` ile kalıcılık, sandbox context'te yokken hata, var olmayan/dizin olmayan hedef reddi, sabit köklerin reddi, `/tmp` ve `~`'nin kabulü); `internal/sessions/sessions_test.go`'a `SetProjectPath` round-trip (disk'ten yeniden yükleme dahil); `internal/agent/pipeline_test.go`'a script'li sahte provider ile **aynı turn içinde** `change_directory` → `read_file` sırasını doğrulayan `TestRunStream_ChangeDirectoryTakesEffectSameTurn`.
+- `gofmt -l` yeni/değiştirdiğim dosyalarda temiz — `pipeline.go`/`executor.go`'daki önceden var olan iki gofmt-kirli alan (struct/import hizalaması, `experiment/gosearch-integration` oturumunun notunda da işaretlenmiş) benim eklediğim satırları kapsamıyor, dokunulmadı.
+- Flutter'a hiç dokunulmadı (genel `permission_dialog.dart` zaten her tool'u `ToolName`/`Args`/`Preview` ile gösteriyor) — `flutter analyze`/`flutter test` bu oturumda çalıştırılmadı, gerek yoktu.
+
+## Sıradaki oturum için
+
+1. **Canlı doğrulama henüz yapılmadı** — gerçek bir agent sohbetinde "önce /tmp'e geç, sonra içindekileri listele" gibi bir istekle tek turn'de iki tool çağrısını (izin promptu dahil, autopermission açık/kapalı iki senaryo) test etmek gerekiyor. `scripts/run_memo.sh` ile kullanıcı kendi test edebilir, ya da headless backend + gerçek SSE isteğiyle canlı doğrulanabilir.
+2. WhatsApp/Telegram'daki y/n metin akışının `change_directory`'nin `Preview`'ini ("Change working directory to: ...") gerçekten okunabilir şekilde gösterip göstermediği canlı denenmedi — mekanizma kanal-agnostik olduğu için çalışması beklenir, ama gerçek bir WhatsApp/Telegram mesajıyla doğrulanmadı.
+3. `experiment/gosearch-integration` branch'i hâlâ main'e alınmadı, ayrı duruyor — bu oturumun işi ondan bağımsız, `main` üzerinde yapıldı.
+
+
 
 Kullanıcı "kendi değişikliklerini incele, codebase-memory kullan, mantıksal hataları bul" dedi.
 Kod tabanı-genelinde bir tarama değil, bir önceki oturumun `share_file` özelliğinin kendi

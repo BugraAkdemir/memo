@@ -320,6 +320,20 @@ class GeneralTab extends ConsumerWidget {
 
         SizedBox(height: 32),
 
+        // Browser Engine
+        Text(
+          L10n.t('browser_engine_section'),
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: MemoTheme.of(context).textMain,
+          ),
+        ),
+        SizedBox(height: 12),
+        const _BrowserEngineSection(),
+
+        SizedBox(height: 32),
+
         // Minimal Mode Toggle
         Text(
           L10n.t('minimal_mode_section'),
@@ -683,6 +697,153 @@ class _EmbeddingStatusRow extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BrowserEngineSection extends ConsumerStatefulWidget {
+  const _BrowserEngineSection();
+
+  @override
+  ConsumerState<_BrowserEngineSection> createState() => _BrowserEngineSectionState();
+}
+
+class _BrowserEngineSectionState extends ConsumerState<_BrowserEngineSection> {
+  bool _installing = false;
+  String _installError = '';
+
+  Future<void> _install() async {
+    setState(() {
+      _installing = true;
+      _installError = '';
+    });
+    try {
+      await ref.read(apiClientProvider).installBrowserEngine();
+      ref.invalidate(browserInstalledProvider);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _installError = L10n.t('browser_install_failed', {'e': FriendlyError.describeGeneric(e)}));
+    } finally {
+      if (mounted) setState(() => _installing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    final installedAsync = ref.watch(browserInstalledProvider);
+    final keepAliveAsync = ref.watch(browserKeepAliveProvider);
+    final installed = installedAsync.valueOrNull ?? false;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.bgPanel,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                installed ? Icons.check_circle_outline : Icons.info_outline,
+                size: 16,
+                color: installed ? MemoTheme.accent : theme.textDim,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      installedAsync.isLoading
+                          ? '…'
+                          : (installed
+                                ? L10n.t('browser_engine_installed')
+                                : L10n.t('browser_engine_not_installed')),
+                      style: TextStyle(fontSize: 14, color: theme.textMain),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      L10n.t('browser_engine_desc'),
+                      style: TextStyle(fontSize: 12, color: theme.textDim),
+                    ),
+                  ],
+                ),
+              ),
+              if (!installedAsync.isLoading && !installed) ...[
+                const SizedBox(width: 12),
+                SizedBox(
+                  height: 32,
+                  child: ElevatedButton(
+                    onPressed: _installing ? null : _install,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: MemoTheme.accent,
+                      foregroundColor: theme.textInverse,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                      ),
+                    ),
+                    child: _installing
+                        ? SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: theme.textInverse),
+                          )
+                        : Text(L10n.t('browser_install_button'), style: const TextStyle(fontSize: 12)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (_installError.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(_installError, style: TextStyle(fontSize: 12, color: MemoTheme.red)),
+          ],
+          const SizedBox(height: 14),
+          Divider(height: 1, color: theme.borderSoft),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(L10n.t('browser_keep_alive'), style: TextStyle(fontSize: 14, color: theme.textMain)),
+                    const SizedBox(height: 4),
+                    Text(L10n.t('browser_keep_alive_desc'), style: TextStyle(fontSize: 12, color: theme.textDim)),
+                  ],
+                ),
+              ),
+              Switch(
+                value: keepAliveAsync.valueOrNull ?? false,
+                activeThumbColor: MemoTheme.accent,
+                inactiveThumbColor: theme.textDim,
+                inactiveTrackColor: theme.bgHover,
+                trackOutlineColor: WidgetStateProperty.all(theme.borderHover),
+                onChanged: keepAliveAsync.isLoading
+                    ? null
+                    : (_) async {
+                        try {
+                          await ref.read(browserKeepAliveProvider.notifier).toggle();
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}')),
+                            );
+                          }
+                        }
+                      },
+              ),
+            ],
+          ),
         ],
       ),
     );

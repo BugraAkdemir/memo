@@ -220,6 +220,8 @@ class _AppShellState extends ConsumerState<AppShell> {
         ref.invalidate(usageStatsProvider);
         ref.invalidate(devGatewayConfigProvider);
         ref.invalidate(memoryEnabledProvider);
+        ref.invalidate(browserInstalledProvider);
+        ref.invalidate(browserKeepAliveProvider);
         ref.invalidate(minimalModeProvider);
         ref.invalidate(minimalModeOverridesProvider);
         ref.invalidate(agentPermissionsProvider);

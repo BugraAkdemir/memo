@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/BugraAkdemir/gosearch"
+	"memo/internal/logx"
 )
 
 // Result tek bir arama sonucunu temsil eder.
@@ -34,18 +35,33 @@ func Search(ctx context.Context, query string, maxResults int) ([]Result, error)
 		maxResults = 5
 	}
 
+	logx.Info("WEBSEARCH: query", "query", query, "max_results", maxResults, "engine", "bing", "fallback", "duckduckgo")
+
 	results, err := gosearchSearch(ctx, query, gosearch.Bing,
 		gosearch.WithFallback(gosearch.DuckDuckGo),
 		gosearch.WithMaxResults(maxResults),
 	)
 	if err != nil {
+		// gosearch's public Search() doesn't expose which engine actually
+		// answered (or whether the fallback triggered) — only the query and
+		// the final outcome are observable from here. A block/challenge
+		// error usually means Bing rejected it and DuckDuckGo's own fallback
+		// attempt then also failed (or was never reached, if the error isn't
+		// ErrBlocked/ErrChallenge in the first place).
+		logx.Info("WEBSEARCH: query failed", "query", query, "error", err)
 		return nil, fmt.Errorf("websearch: search: %w", err)
 	}
 
 	out := make([]Result, len(results))
 	for i, r := range results {
 		out[i] = Result{Title: r.Title, URL: r.URL, Snippet: r.Snippet}
+		snippet := r.Snippet
+		if len(snippet) > 200 {
+			snippet = snippet[:200] + "…"
+		}
+		logx.Info("WEBSEARCH: result", "query", query, "rank", i+1, "title", r.Title, "url", r.URL, "snippet", snippet)
 	}
+	logx.Info("WEBSEARCH: query done", "query", query, "result_count", len(out))
 	return out, nil
 }
 

@@ -1,3 +1,59 @@
+# Ek (2026-08-25, devam) — v4.1.0 yayımlandı
+
+`change_directory` + WhatsApp/Telegram projectPath fix + UILanguage/share_file
+işini kapsayan v4.1.0, `/memo-release` skill'iyle uçtan uca yayımlandı.
+
+## Yapılanlar
+
+- Phase 1-2: version 4 yerde (`version`, `installer.iss`, `README.md`,
+  `READmeTR.md`) + `versinNote/v4.1.0.md` + `versinNote/tr/v4.1.0.md` — ayrı
+  commit'ler (`8c8f7df`, `14d77bb`).
+- Phase 3: `main` push'landı (10 commit), `v4.1.0` tag'i kullanıcı onayıyla
+  push'landı. CI'ın 4 platformu da (`Build Windows/Linux/macOS/Docker`,
+  run id'leri `32888985{739,733,720,714}`) yeşil. Sanity-check: eski
+  `tar tz` kontrolünün stale-cache'i yakalayamayacağı fark edildi (750MB
+  tarball'ı indirip içinden `version` çekmeye çalışan ilk deneme scratchpad'e
+  yazarken hata verip takıldı) — bunun yerine `curl -sI` ile
+  `Last-Modified`'ın CI bitiş zamanına yakın olduğu doğrulandı (19:29 GMT,
+  CI'ın bitişiyle eşleşiyor). Bu daha güvenilir kontrol `.claude/skills/
+  memo-release/SKILL.md`'ye eklendi — **ama `.claude/` bu repoda
+  gitignore'lu, yani bu düzeltme diskte var, git history'de yok** (kullanıcı
+  isterse ayrıca `git add -f` ile takibe alınabilir, kendim tek taraflı
+  yapmadım).
+- Phase 4: beacon (`/home/bugra/Documents/version/version.json`, ayrı repo,
+  `version-zeta.vercel.app`'a deploy oluyor) `V4.1.0`'a bump'landı, canlı
+  doğrulandı.
+
+## Ayrıca aynı oturumda: memo-web'e versiyon otomasyonu (henüz main'e push'lanmadı)
+
+`/home/bugra/Documents/memo-web/`'de `SITE.version` (data.js) +
+`Hero.jsx`/`Stats.jsx`'in kendi ayrı hardcoded versiyon literalleri +
+`/versionnote` sayfasının içeriği (`versionNoteEN.md`/`TR.md`, v3.9.0'da
+donmuş kalmıştı) artık `scripts/sync-release.js` ile her build'de memo
+repo'sundaki en yeni `vX.Y.Z` tag'inden otomatik senkronize oluyor
+(`git ls-remote` + `raw.githubusercontent.com`, `package.json`'ın
+`prebuild` zincirine eklendi, `generate-seo.js`'in Supabase fetch'iyle aynı
+desende). `npm run build` ile uçtan uca doğrulandı (126/126 route,
+statik HTML'de de v4.1.0 görünüyor). Kapsam dışı bırakıldı (bilinçli):
+i18n.js/guide.md'lerdeki "vX.Y.Y'de ne var" tarzı anlatı metinleri,
+`ROADMAP_ITEMS`, `docs/index.md`'nin "Current version" satırı — bunlar
+gerçek sürüm-özel içerik, mekanik senkronize edilmemeli. **Yerel commit
+(`af319b7`) atıldı, push için kullanıcı onayı bekleniyor** — bu repo'da
+memo'nun AGENTS.md'si gibi bir auto-commit/push kuralı yok.
+
+## Sıradaki oturum için
+
+1. memo-web commit'i push'lanıp Vercel'e deploy edilmeli mi, kullanıcıya
+   sorulmuş, cevap bekleniyor.
+2. `.claude/skills/memo-release/SKILL.md`'deki sanity-check düzeltmesi
+   git'e hiç girmedi (yukarıda açıklandığı gibi) — kullanıcı isterse
+   `.gitignore`'dan `.claude` satırını çıkarıp takibe almak isteyebilir,
+   ya da bilinçli bir tercih olduğu için öyle kalabilir.
+3. Kullanıcı şimdi `experiment/gosearch-integration` branch'ine geçip onu
+   test edecek; sonuçlar istediği gibiyse main'e merge edilecek.
+
+---
+
 # Ek (2026-08-25) — `change_directory` agent tool'u: izinli çalışma dizini değişimi (main)
 
 Kullanıcı bir Telegram sohbet dökümü paylaştı: Memo, Desktop'taki bir dosyayı

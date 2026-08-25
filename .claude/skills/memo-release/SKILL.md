@@ -101,11 +101,28 @@ Then watch CI go green on all three platform workflows
 the release is out — a red run here means `download.bugradev.com` did NOT
 get updated, only whichever platforms did finish did.
 
-Sanity-check after CI succeeds:
+Sanity-check after CI succeeds — two checks, not one:
 
 ```bash
 curl -fsSL https://download.bugradev.com/memo.tar.gz | tar tz | head -3
 ```
+
+That alone only proves *a* tarball is being served — it does not prove
+it's the one CI *just* published (R2/CDN could be serving a stale cached
+copy under the same fixed filename). Confirm freshness directly with a
+`HEAD` request and check `Last-Modified` against the actual time the tag
+push's CI runs finished — it should be within a couple of minutes, not
+hours or days old:
+
+```bash
+curl -sI https://download.bugradev.com/memo.tar.gz | grep -i last-modified
+```
+
+Downloading the full ~750MB tarball just to peek inside it (`tar tz` on a
+piped-and-cut download, or re-downloading to extract the embedded
+`version`) is slow and has actually hung/failed mid-transfer before —
+the `HEAD`-only freshness check above is enough and doesn't need to know
+the tarball's internal layout, which isn't guaranteed stable anyway.
 
 ## Phase 4 — Update beacon
 

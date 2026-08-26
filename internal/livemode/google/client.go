@@ -349,18 +349,32 @@ func (c *Client) readLoop() {
 				return
 			}
 		}
+		// Diagnostic: the model's own spoken reply, as text — added after a
+		// real test showed hasOutputTranscription=true repeatedly with no
+		// corresponding EventAudioOut ever confirmed, to check whether
+		// Google is genuinely replying (content-wise) even if audio
+		// extraction below turns out to be the broken half.
+		if msg.ServerContent.OutputTranscription != nil && msg.ServerContent.OutputTranscription.Text != "" {
+			logx.Printf("livemode google: model said (text): %q", msg.ServerContent.OutputTranscription.Text)
+		}
 
 		if msg.ServerContent.ModelTurn == nil {
 			continue
 		}
 		for _, part := range msg.ServerContent.ModelTurn.Parts {
 			if part.InlineData == nil {
+				// Diagnostic: a modelTurn part that isn't audio at all (e.g.
+				// a text-only part) — confirms whether ModelTurn.Parts is
+				// arriving with a shape this struct doesn't expect.
+				logx.Printf("livemode google: modelTurn part with no inlineData")
 				continue
 			}
 			audio, err := base64.StdEncoding.DecodeString(part.InlineData.Data)
 			if err != nil {
+				logx.Printf("livemode google: failed to decode inlineData (mimeType=%q, len=%d): %v", part.InlineData.MimeType, len(part.InlineData.Data), err)
 				continue
 			}
+			logx.Printf("livemode google: emitting EventAudioOut (mimeType=%q, %d bytes)", part.InlineData.MimeType, len(audio))
 			select {
 			case c.events <- livemode.SessionEvent{Type: livemode.EventAudioOut, Audio: audio}:
 			case <-c.ctx.Done():

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -154,7 +155,13 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
       _channel = channel;
 
       final player = LiveModePcmPlayer();
+      // Diagnostic: confirms whether the playback subprocess actually
+      // started (vs. e.g. neither paplay nor aplay being installed, which
+      // would otherwise fail silently from the user's point of view since
+      // there's no visible UI for "playback backend ready").
+      debugPrint('live realtime: starting playback at ${audioConfig.playbackSampleRate}Hz');
       await player.start(audioConfig.playbackSampleRate);
+      debugPrint('live realtime: playback started');
       if (myGeneration != _generation) {
         await player.stop();
         unawaited(channel.sink.close());
@@ -188,8 +195,10 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
         (message) {
           if (myGeneration != _generation) return;
           if (message is Uint8List) {
+            debugPrint('live realtime: received ${message.length}-byte audio frame, player=${_player?.isPlaying}');
             _player?.write(message);
           } else if (message is List<int>) {
+            debugPrint('live realtime: received ${message.length}-byte audio frame (List<int>), player=${_player?.isPlaying}');
             _player?.write(Uint8List.fromList(message));
           } else if (message is String) {
             _handleControlFrame(message);

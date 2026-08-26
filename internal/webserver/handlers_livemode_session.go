@@ -76,6 +76,7 @@ func pumpLiveModeSessionEvents(ctx context.Context, c *websocket.Conn, session l
 			}
 			if ev.Type == livemode.EventAudioOut {
 				if err := c.Write(ctx, websocket.MessageBinary, ev.Audio); err != nil {
+					logx.Printf("livemode session: failed to forward %d-byte audio_out frame to client: %v", len(ev.Audio), err)
 					return
 				}
 				continue

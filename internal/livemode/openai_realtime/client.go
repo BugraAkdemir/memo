@@ -90,6 +90,28 @@ type responseCreateEvent struct {
 	Type string `json:"type"` // "response.create"
 }
 
+// conversationItemCreateMessageEvent + messageItem inject an out-of-turn
+// text aside (InjectContext) — a second, distinct conversation.item.create
+// shape from conversationItemCreateEvent above (that one's Item is always a
+// function_call_output; this one's is always a system-role message). Kept
+// as separate types rather than a shared polymorphic Item field so each
+// stays a plain, directly-marshalable struct.
+type conversationItemCreateMessageEvent struct {
+	Type string      `json:"type"` // "conversation.item.create"
+	Item messageItem `json:"item"`
+}
+
+type messageItem struct {
+	Type    string               `json:"type"` // "message"
+	Role    string               `json:"role"` // "system"
+	Content []messageContentPart `json:"content"`
+}
+
+type messageContentPart struct {
+	Type string `json:"type"` // "input_text"
+	Text string `json:"text"`
+}
+
 // serverEvent covers only the fields this phase's client reads —
 // response.output_audio.delta's "delta" field, and
 // response.function_call_arguments.done's call_id/name/arguments. Every
@@ -201,6 +223,24 @@ func (c *Client) SendAudio(pcm []byte) error {
 	return c.writeJSON(inputAudioBufferAppendEvent{
 		Type:  "input_audio_buffer.append",
 		Audio: base64.StdEncoding.EncodeToString(pcm),
+	})
+}
+
+// InjectContext sends text as a conversation.item.create system-role
+// message item — confirmed (current API docs, 2026-08-26) as the standard
+// way to inject context dynamically into an open Realtime session without
+// a full instructions rewrite. See Phase 11, docs/plans/PLAN_live_mode_v2.md
+// §5.2.
+func (c *Client) InjectContext(text string) error {
+	return c.writeJSON(conversationItemCreateMessageEvent{
+		Type: "conversation.item.create",
+		Item: messageItem{
+			Type: "message",
+			Role: "system",
+			Content: []messageContentPart{
+				{Type: "input_text", Text: text},
+			},
+		},
 	})
 }
 

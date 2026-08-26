@@ -426,3 +426,54 @@ func TestClient_ToolCallWithNilHandlerReportsNotAvailable(t *testing.T) {
 		t.Fatal("timed out waiting for function_call_output")
 	}
 }
+
+func TestClient_InjectContextSendsSystemMessageItem(t *testing.T) {
+	gotItem := make(chan messageItem, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil { // consume session.update
+			return
+		}
+		_, data, err := c.Read(ctx)
+		if err != nil {
+			return
+		}
+		var msg conversationItemCreateMessageEvent
+		if err := json.Unmarshal(data, &msg); err == nil && msg.Type == "conversation.item.create" {
+			gotItem <- msg.Item
+		}
+		<-ctx.Done()
+	}))
+	defer srv.Close()
+
+	original := SessionBaseURL
+	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	if err := c.InjectContext("relevant memory: the user prefers dark mode"); err != nil {
+		t.Fatalf("InjectContext: %v", err)
+	}
+
+	select {
+	case item := <-gotItem:
+		if item.Type != "message" || item.Role != "system" {
+			t.Errorf("unexpected item identity: %+v", item)
+		}
+		if len(item.Content) != 1 || item.Content[0].Text != "relevant memory: the user prefers dark mode" {
+			t.Errorf("unexpected item content: %+v", item.Content)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the injected conversation.item.create message")
+	}
+}

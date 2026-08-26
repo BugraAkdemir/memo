@@ -60,7 +60,11 @@ type messagePart struct {
 }
 
 type realtimeInputMessage struct {
-	Audio *audioChunk `json:"audio"`
+	Audio *audioChunk `json:"audio,omitempty"`
+	// Text injects an out-of-turn aside into the open session — confirmed
+	// shape (current API docs, 2026-08-26): {"realtimeInput":{"text":"..."}}.
+	// See InjectContext.
+	Text string `json:"text,omitempty"`
 }
 
 type audioChunk struct {
@@ -196,6 +200,14 @@ func (c *Client) SendAudio(pcm []byte) error {
 		MimeType: fmt.Sprintf("audio/pcm;rate=%d", inputSampleRateHz),
 	}}}
 	return c.writeJSON(msg)
+}
+
+// InjectContext sends text as a realtimeInput.text message — confirmed
+// (current API docs, 2026-08-26) as the standard way to inject an
+// out-of-turn text aside into an open Live session. See Phase 11,
+// docs/plans/PLAN_live_mode_v2.md §5.2.
+func (c *Client) InjectContext(text string) error {
+	return c.writeJSON(clientMessage{RealtimeInput: &realtimeInputMessage{Text: text}})
 }
 
 func (c *Client) Events() <-chan livemode.SessionEvent { return c.events }

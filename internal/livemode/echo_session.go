@@ -45,6 +45,10 @@ func (s *EchoSession) SendAudio(pcm []byte) error {
 
 func (s *EchoSession) Events() <-chan SessionEvent { return s.events }
 
+// InjectContext is a no-op — EchoSession has no real conversation to inject
+// text into.
+func (s *EchoSession) InjectContext(text string) error { return nil }
+
 func (s *EchoSession) Close() error {
 	s.closeOnce.Do(func() {
 		close(s.closed)

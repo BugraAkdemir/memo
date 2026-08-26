@@ -54,6 +54,15 @@ type Session interface {
 	// SendAudio forwards one raw PCM chunk from the user's microphone into
 	// the session.
 	SendAudio(pcm []byte) error
+	// InjectContext sends a short, out-of-turn text aside into the open
+	// session — both providers document this as a standard mechanism
+	// (Google's realtimeInput.text, OpenAI's conversation.item.create with
+	// a system-role message item), confirmed against current API docs,
+	// 2026-08-26. Used for mid-session memory refresh (see
+	// docs/plans/PLAN_live_mode_v2.md §5.2) and, in a later phase once
+	// live-verified, delegated-task progress narration. EchoSession's
+	// implementation is a no-op.
+	InjectContext(text string) error
 	// Events is the channel of everything the session produces — closed
 	// once the session is done (after an EventClosed event, or immediately
 	// on an unrecoverable error).

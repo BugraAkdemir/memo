@@ -348,3 +348,51 @@ func TestClient_ToolCallWithNilHandlerReportsNotAvailable(t *testing.T) {
 		t.Fatal("timed out waiting for the toolResponse")
 	}
 }
+
+func TestClient_InjectContextSendsRealtimeInputText(t *testing.T) {
+	gotText := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil { // consume setup
+			return
+		}
+		_, data, err := c.Read(ctx)
+		if err != nil {
+			return
+		}
+		var msg clientMessage
+		if err := json.Unmarshal(data, &msg); err == nil && msg.RealtimeInput != nil {
+			gotText <- msg.RealtimeInput.Text
+		}
+		<-ctx.Done()
+	}))
+	defer srv.Close()
+
+	original := SessionBaseURL
+	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("g-key", "models/gemini-3.1-flash-live-preview", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	if err := c.InjectContext("relevant memory: the user prefers dark mode"); err != nil {
+		t.Fatalf("InjectContext: %v", err)
+	}
+
+	select {
+	case text := <-gotText:
+		if text != "relevant memory: the user prefers dark mode" {
+			t.Errorf("unexpected injected text: %q", text)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the injected realtimeInput.text message")
+	}
+}

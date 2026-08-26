@@ -56,3 +56,11 @@ func TestEchoSession_EventsChannelClosesAfterClose(t *testing.T) {
 		t.Error("expected Events() channel to be closed")
 	}
 }
+
+func TestEchoSession_InjectContextIsANoOp(t *testing.T) {
+	s := NewEchoSession()
+	defer s.Close()
+	if err := s.InjectContext("anything"); err != nil {
+		t.Errorf("expected InjectContext to be a no-op, got: %v", err)
+	}
+}

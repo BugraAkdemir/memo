@@ -1,3 +1,102 @@
+# Ek (2026-08-26, devam 16) — Live Mode v2 Faz 10/11/12 (tool-wiring, InjectContext, sesli izin isteme)
+
+**Not:** Faz 10 (`66be542`) ve Faz 11 (`3de8514`) bu oturumda daha önce
+tamamlanıp commit'lenmişti ama handoff girdileri hiç eklenmemiş — bu
+girdi üçünü birden kapatıyor (kural ihlali fark edildiğinde düzeltildi,
+sessizce atlanmadı).
+
+**Faz 10 tamamlandı** (`66be542`) — Faz 7/8'in ses-taşıyan client'ları ve
+Faz 9'un delegasyon/standalone primitifleri artık tek çalışan bütün:
+- Yeni `livemode.ToolSpec`/`ToolCallHandler` (`internal/livemode/
+  delegate_tool.go`) — delegasyon semantiğini de provider wire formatını
+  da bilen tek dikiş yeri, `internal/livemode`'da yaşıyor ki
+  google/openai_realtime agent-spesifik hiçbir şey bilmesin,
+  `internal/app` da hiçbir provider'ın wire formatını bilmesin.
+- `google.Client`/`openai_realtime.Client` artık `NewClient`'ta
+  `tools`+`handleToolCall` alıyor; `readLoop`'ları kendi provider'ının
+  tool-call olayını tanıyor (Google `toolCall`, OpenAI
+  `response.function_call_arguments.done`), `handleToolCall`'ı kendi
+  goroutine'inde çağırıp (yavaş bir delege görev read loop'u
+  bloklamasın) sonucu native formatla geri gönderiyor.
+- Yeni `App.NewLiveModeSession` (`internal/app/livemode_session.go`) artık
+  gerçek client/`EchoSession` kararının TEK yeri — `internal/webserver`
+  artık sadece WS transport'u sahipleniyor (`FullBridge.NewLiveModeSession`
+  üzerinden erişiliyor).
+
+**Faz 11 tamamlandı** (`3de8514`) — `livemode.Session.InjectContext(text)
+error`: açık oturuma kısa, tur-dışı bir metin ekliyor (Google
+`realtimeInput.text`, OpenAI `conversation.item.create` sistem-rollü
+mesaj). **Bilinçli kapsam daraltması**: hafıza tazeleme ve delege-görev
+ilerleme anlatımı (planın öngördüğü iki tüketici) bu fazda uygulanmadı —
+ikisi de canlı API doğrulaması istiyordu ve Google'ın transkript
+alanlarının nerede yuvalandığı güncel dokümanlarda bile belirsizdi;
+tahminle koda geçirmek yerine dürüstçe ertelendi.
+
+**Faz 12 tamamlandı** (`e27b87f`) — `AgentPermissionPolicy`'nin
+varsayılanı `"voice_prompt"` artık gerçekten çalışıyor:
+- Faz 11'in ertelediği transkript ayrıştırma bu fazın sert ön koşulu
+  oldu: her iki client artık transkripsiyonu setup'ta/session.update'te
+  her zaman açıyor ve kendi tamamlanma olayını `EventTranscript`'e
+  çeviriyor (Google'ın yuvalanma belirsizliği koda yorum olarak not
+  düşüldü, transkripsiyona özel dokümantasyon örnekleri tercih edildi).
+- `internal/app`'te `livePermMu`/`livePendingPermAnswerCh` +
+  `awaitLivePermissionAnswer`/`routeLiveTranscriptToPermissionAnswer` —
+  WhatsApp self-chat'in bekleyen-cevap desenini chatJID eşleştirmesi
+  olmadan yansıtıyor (Live Mode'da aynı anda tek aktif oturum var).
+- Yeni `livemode_session_wrapper.go`: `livePermissionRoutingSession`
+  gerçek client'ı sarmalayıp her `EventTranscript`'i hem bekleyen izin
+  sorusuna yönlendiriyor hem de değişmeden dış `Events()` kanalına
+  iletiyor (Flutter'daki normal gösterim bozulmuyor).
+- `NewLiveModeSession`'da bir ileri-referans closure (`injectFn`) —
+  tool-call handler'ın `InjectContext`'e ihtiyacı var ama onu sahiplenen
+  client henüz inşa edilmemişken handler kurulmak zorunda; closure bu
+  döngüyü güvenle kırıyor (handler gerçek bir tool call'dan önce asla
+  çağrılmıyor, o noktada `injectFn` çoktan atanmış oluyor).
+
+**Bu fazda gerçek bir hata bulundu ve düzeltildi**: `ExecuteToolCall`
+`onEvent`'i `permission_request` olayıyla SENKRON çağırıyor —
+`e.pendingPerms`'e kaydetmesinden (kendinden bir sonraki satır) ÖNCE.
+Standalone modun `onEvent`'i izinleri aynı goroutine'de satır içinde
+çözüyordu: autoApprove için bu her seferinde cevabı kaybediyordu
+(zamanlamaya bağlı değil, deterministik), voice_prompt için ise kaydı
+tamamen kilitlerdi (`onEvent` saniyelerce soru sorup cevap bekleyerek
+`ExecuteToolCall`'ın kayıt satırına hiç ulaşmasını engellediği için).
+**Düzeltme:** çözümleme kendi goroutine'ine taşındı
+(`resolveLivePermission`), autoApprove için kısa/sınırlı bir yeniden
+deneme ile artakalan zamanlama yarışı kapatıldı — WhatsApp/Telegram
+self-chat yolunun kendi SSE-kanal teslimiyle zaten tolere ettiği aynı
+türden bir yarış, burada açıkça ele alındı (standalone modun aynı doğal
+gecikmeyi sağlayacak bir kanal teslimi yok). Düzeltmeden önce 60 saniye
+asılı kalıp başarısız olacak bir regresyon testi eklendi
+(`TestBuildLiveModeToolCallHandler_StandaloneMode_AutoApprovePermission`).
+
+**Doğrulama (yapıştırıldı, Faz 12 için):**
+```
+$ gofmt -l <dokunulan dosyalar>          → temiz
+$ CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...   → temiz
+$ CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...     → temiz
+$ CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (internal/app 11.847s, internal/livemode 1.029s,
+  internal/livemode/google 1.046s, internal/livemode/openai_realtime
+  1.649s dahil) — transkript ayrıştırma (her iki provider, boş-transkript
+  olay-üretmeme dahil), bekleyen-cevap primitifi round-trip'i (+ context
+  timeout), wrapper'ın çift-tüketim davranışı (transkript hem yönlendirici
+  hem dış kanala aynı anda), standalone modun autoApprove/voice_prompt
+  onay/red/sor-başarısız yollarının tümü gerçek write_file aracıyla uçtan
+  uca — hepsi yeşil.
+```
+`internal/agent/data/` test kirliliği (bilinen kök neden, önceki
+görevle aynı) commit öncesi temizlendi.
+
+**Sıradaki:** Faz 13 (temizlik) — `beta_features_tab.dart`'ın akıbeti
+(muhtemelen Faz 1'in çıkarımından sonra neredeyse boş — öyleyse
+kaldırılacak, sekme index'leri yeniden numaralandırılacak,
+`settings_dialog_test.dart`'ın kapsama testi güncellenecek), planın
+kapanış durumu + son handoff girdisi. Kullanıcı onayı beklemeden devam
+ediliyor.
+
+---
+
 # Ek (2026-08-26, devam 15) — Live Mode v2 Faz 9 (delegasyon primitifi)
 
 **Faz 9 tamamlandı** (`a07be2e`) — planın en mimari-yoğun bölümü. İki

@@ -18,6 +18,9 @@ data/bin/
 data/agent-backups/*
 data/sync_token.json
 data/providers.json
+data/tts_providers.json
+data/stt_providers.json
+data/livemode_engines.json
 data/telegram.json
 data/permissions.json
 data/orchestra.json

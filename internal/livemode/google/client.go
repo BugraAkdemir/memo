@@ -35,10 +35,19 @@ type clientMessage struct {
 }
 
 type setupMessage struct {
-	Model              string             `json:"model"`
-	ResponseModalities []string           `json:"responseModalities"`
-	SystemInstruction  *systemInstruction `json:"systemInstruction,omitempty"`
-	Tools              []setupTool        `json:"tools,omitempty"`
+	Model string `json:"model"`
+	// GenerationConfig.ResponseModalities: NOT a direct field of setup —
+	// found the hard way via a real live connection (the server closed
+	// with "Invalid JSON payload received. Unknown name \"responseModalities\"
+	// at 'setup': Cannot find field."). Confirmed against the official
+	// reference (ai.google.dev/api/live, fetched 2026-08-26):
+	// responseModalities nests inside generationConfig; model/
+	// systemInstruction/tools/inputAudioTranscription/
+	// outputAudioTranscription are all direct setup fields (those were
+	// already right).
+	GenerationConfig  *generationConfig  `json:"generationConfig,omitempty"`
+	SystemInstruction *systemInstruction `json:"systemInstruction,omitempty"`
+	Tools             []setupTool        `json:"tools,omitempty"`
 	// InputAudioTranscription/OutputAudioTranscription: an empty object
 	// enables ASR transcripts for that direction (confirmed shape, current
 	// API docs, 2026-08-26) — always enabled by this package so
@@ -46,6 +55,10 @@ type setupMessage struct {
 	// prompting (Phase 12) and future mid-session memory refresh.
 	InputAudioTranscription  *struct{} `json:"inputAudioTranscription,omitempty"`
 	OutputAudioTranscription *struct{} `json:"outputAudioTranscription,omitempty"`
+}
+
+type generationConfig struct {
+	ResponseModalities []string `json:"responseModalities"`
 }
 
 type setupTool struct {
@@ -191,7 +204,7 @@ func (c *Client) Start(ctx context.Context) error {
 
 	setup := clientMessage{Setup: &setupMessage{
 		Model:                    c.model,
-		ResponseModalities:       []string{"AUDIO"},
+		GenerationConfig:         &generationConfig{ResponseModalities: []string{"AUDIO"}},
 		InputAudioTranscription:  &struct{}{},
 		OutputAudioTranscription: &struct{}{},
 	}}

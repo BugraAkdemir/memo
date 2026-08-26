@@ -90,8 +90,8 @@ func TestClient_SendsSetupMessageOnStart(t *testing.T) {
 		if setup.Model != "models/gemini-3.1-flash-live-preview" {
 			t.Errorf("unexpected model in setup: %q", setup.Model)
 		}
-		if len(setup.ResponseModalities) != 1 || setup.ResponseModalities[0] != "AUDIO" {
-			t.Errorf("expected responseModalities=[AUDIO], got %v", setup.ResponseModalities)
+		if setup.GenerationConfig == nil || len(setup.GenerationConfig.ResponseModalities) != 1 || setup.GenerationConfig.ResponseModalities[0] != "AUDIO" {
+			t.Errorf("expected generationConfig.responseModalities=[AUDIO], got %+v", setup.GenerationConfig)
 		}
 		if setup.SystemInstruction == nil || setup.SystemInstruction.Parts[0].Text != "You are Memo's live voice." {
 			t.Errorf("expected systemInstruction to carry the given text, got %+v", setup.SystemInstruction)

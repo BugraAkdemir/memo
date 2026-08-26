@@ -1,3 +1,55 @@
+# Ek (2026-08-26, devam 12) — Live Mode v2 Faz 6 (WS transport iskeleti)
+
+**Faz 6 tamamlandı** (`4bc046d`): yeni `internal/livemode.Session`
+arayüzü (`Start`/`SendAudio`/`Events`/`Close`) — Google Live/OpenAI
+Realtime client'larının Faz 7/8'de implemente edeceği ortak sözleşme —
+artı `EchoSession` stub'ı (aldığı sesi aynen geri oynatıyor). Bu fazın
+tek amacı: gerçek bir sağlayıcı client'ı yokken Flutter↔backend duplex
+taşımanın uçtan uca çalıştığını kanıtlamak.
+
+Yeni `GET /api/livemode/session` WS endpoint'i — ikili mesajlar ham PCM
+(her iki yönde), metin mesajlar küçük bir JSON kontrol çerçevesi
+(transkript/function-call/hata) taşıyor, sohbet SSE'sinin zaten kullandığı
+`FinishReason`-discriminator kalıbının aynısı. Bu fazda motor ne
+seçiliyse seçilsin her zaman `EchoSession` kullanılıyor — gerçek motora
+yönlendirme Faz 7/8'de. `coder/websocket` (Tailscale/gosearch üzerinden
+zaten indirect bağımlılıktı) `go mod tidy` ile direct'e terfi etti,
+go.mod/go.sum diff'i temiz doğrulandı (ikinci bir WS kütüphanesi
+eklenmedi).
+
+Frontend: yeni `LiveRealtimeSessionNotifier` (StateNotifierProvider) WS
+bağlantı yaşam döngüsünü yönetiyor — connecting/connected/error/closed
+durumları, bilinçli olarak `VoiceModeNotifier`'ın idle/listening/
+thinking/speaking şeklinden FARKLI (native motorlar tam-duplex/sürekli-akış,
+turn-taking sağlayıcı tarafında — raporlanacak anlamlı bir "düşünüyor"
+anı yok). Generation-counter, eski bir `connect()`'in ya da mesajın daha
+yeni state'i ezmesini önlüyor — `VoiceModeNotifier`'ın kendi barge-in
+korumasıyla aynı genel savunma pratiği (Riverpod'un Notifier-instance-reuse
+gotcha'sı değil — `StateNotifierProvider` o sorunu göstermiyor, bu sadece
+standart async-race hijyeni). Yeni `web_socket_channel` bağımlılığı,
+`pubspec.lock` diff'i temiz.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (httptest+coder/websocket ile gerçek WS round-trip testi
+  dahil: istemcinin gönderdiği ikili frame değişmeden geri dönüyor)
+$ flutter analyze lib/ test/ → 6 sorun (5 önceden kabul edilmiş + 1
+  ilgisiz önceden var olan info)
+$ flutter test → 287/287 yeşil (4 yeni test: URL builder + varsayılan state)
+$ Rule #8 grep → temiz
+```
+
+**Eksik/doğrulanamayan:** Gerçek cihaz seviyesinde Flutter↔Go duplex ses
+testi bu ortamda mümkün değil (böyle bir harness yok) — yukarıdaki
+httptest seviyesi taşıma kanıtı Faz 6'nın gerçekten doğrulayabildiği şey.
+
+**Sıradaki:** Faz 7 — Google Live client'ı (`internal/livemode/google/
+client.go`, sadece setup/audio, henüz function-calling yok), Faz 6'nın
+gerçek köprüsüne bağlanacak. Kullanıcı onayı beklemeden devam ediliyor.
+
+---
+
 # Ek (2026-08-26, devam 11) — Live Mode v2 Faz 5 (ses döngüsü bağlantısı, Part A tamam)
 
 **Faz 5 tamamlandı** (`911d347`): `SynthesizeSpeech`/`TranscribeAudio`

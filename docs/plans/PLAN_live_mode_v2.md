@@ -496,3 +496,13 @@ her ilgili fazda "doğrulanmadı" olarak açıkça belirtilecek, sessizce
   config'inden provider kurup çağırmak hem daha basit hem yapısal olarak
   bu riske kapalı. Part A artık 5 motordan 3'ü (Local/ElevenLabs/Custom)
   için sıfır delegasyon karmaşıklığıyla tamamlandı.
+- 2026-08-26: Faz 6 tamam (`4bc046d`) — `internal/livemode.Session`
+  arayüzü + `EchoSession` stub'ı, yeni `GET /api/livemode/session` WS
+  endpoint'i (ikili mesaj = ham PCM, metin mesaj = JSON kontrol çerçevesi).
+  `coder/websocket` `go mod tidy` ile direct bağımlılığa terfi etti
+  (go.mod/go.sum diff'i temiz doğrulandı). Flutter'da
+  `LiveRealtimeSessionNotifier` (connecting/connected/error/closed,
+  generation-counter korumalı) + `web_socket_channel` bağımlılığı
+  (`pubspec.lock` diff'i temiz). httptest+coder/websocket ile ikili
+  frame round-trip'i uçtan uca kanıtlandı — gerçek cihaz seviyesinde
+  Flutter↔Go duplex ses testi bu ortamda mümkün değil.

@@ -1,3 +1,78 @@
+# Ek (2026-08-26, devam 7) — Live Mode v2 planı + Faz 0/1 (config mezuniyeti)
+
+Kullanıcının büyük yeni isteği: Live Mode beta'dan çıkıp kendi Ayarlar
+sekmesine kavuşacak (Local + Google Live + OpenAI Realtime + ElevenLabs +
+Custom motor seçenekleri, hiçbir model hardcode edilmeyecek, hepsi API'dan
+çekilecek) ve agent-mode için iki modelli bir mimari kurulacak (ana model +
+"live model", live model gerekince ana modele iş devredecek). Birkaç turluk
+netleştirme sonucu kilitlenen kararlar: Google Live/OpenAI Realtime kendi
+native ses-ses modelleriyle "live model" rolünü kendileri üstleniyor (ayrı
+beyin yok); Local/ElevenLabs/Custom saf STT/TTS, ayrı beyin yok, direkt
+mevcut ana modele gidiyor; Custom = OpenAI-uyumlu STT/TTS REST endpoint;
+yeni bir `WorkMode: delegate|standalone` anahtarı eklendi (native motorlarda
+live model isterse tüm agent tool-set'ini kendi de kullanabilsin diye).
+Kullanıcı ayrıca RAG/system-prompt enjeksiyonunun native live oturumlarında
+nasıl çalışacağını sordu — bu da plana ayrı bir bölüm olarak eklendi
+(oturum-başı statik + oturum-içi dinamik hafıza tazeleme, ikisi de
+`identity.BuildSystemPrompt`'u tekrar yazmadan).
+
+**Araştırma:** 2 paralel Explore agent'ı (mevcut beta Live Mode
+implementasyonu tam haritası + agent/orchestra/streamMu concurrency mimarisi),
+Google Live/OpenAI Realtime/ElevenLabs API dokümanlarının canlı taraması
+(WebSocket endpoint'leri, auth, model keşif mekanizmaları doğrulandı — Google
+`models.list` + `bidiGenerateContent` filtresi, OpenAI `GET /v1/models`,
+ElevenLabs `GET /v1/models` + `GET /v1/voices` + `POST /v1/speech-to-text`),
+1 Plan agent'ı (tam mimari tasarım). Detaylı plan onaylandı ve
+`docs/plans/PLAN_live_mode_v2.md`'ye yazıldı (Türkçe, faz1/faz2 formatı) —
+tüm gerekçe/dosya/satır referansları orada.
+
+**Branch:** `feature/live-mode-v2` açıldı (kritik/riskli iş main'e değil).
+
+**Faz 0 (kurulum):** branch + plan dosyası — `d442281`.
+
+**Faz 1 (config mezuniyeti) — TAMAMLANDI, doğrulandı, commit'lendi:**
+- Backend (`bb1d7fe`): `config.LiveModeConfig{Enabled, ActiveEngine,
+  WorkMode, AgentPermissionPolicy}` — `Beta`'dan bağımsız,
+  `RemoteAccessConfig`'in izlediği aynı mezuniyet deseni. `App.GetLiveModeConfig`/
+  `UpdateLiveModeConfig` (`internal/app/livemode.go`, `SetBeta`'nın
+  sadeliğinde: validate + `config.Save`), yeni `GET/PUT /api/livemode/active`,
+  `FullBridge` arayüzüne eklendi (+ `swarmStubBridge` test double'ı).
+- Frontend (`d311d34`): yeni `LiveModeTab` (settings_dialog.dart index 24,
+  `settings_group_providers` grubu, Remote Access'in yanı), `liveModeConfigProvider`
+  (backend-truth-only, local mirror YOK — BUG-ONB ders alındı), `chat_input.dart`'taki
+  `betaFeaturesProvider` kapısı Live Mode'un kendi `enabled` anahtarıyla
+  değiştirildi, `_LiveModeVoiceTest`/`TTSVoiceSection`/`TTSProviderSection`
+  `beta_features_tab.dart`'tan yeni sekmeye taşındı (Beta Features artık
+  sadece Swarm'ı içeriyor). Yeni TR+EN L10n key'leri (kural #8).
+- Henüz yeni motor desteği YOK (Google Live/OpenAI/ElevenLabs/Custom) —
+  bu faz sadece mezuniyet mekaniğini kanıtladı, hâlâ mevcut yerel
+  whisper+Piper motorunu kullanıyor.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (memo, internal/app, internal/config, internal/webserver, ...)
+$ flutter analyze lib/
+→ 5 sorun (hepsi önceden var olan kabul edilebilir use_build_context_synchronously info)
+$ flutter test
+→ 283/283 yeşil (All tests passed!)
+$ Rule #8 grep (dokunulan + yeni .dart dosyaları)
+→ temiz
+```
+
+**Eksik/doğrulanamayan:** Bu ortamda hiçbir gerçek Google/OpenAI/ElevenLabs
+API key'i yok — ilerideki her faz `httptest`-only doğrulanacak, gerçek
+API asla. Live Mode tab'ı gerçek uygulamada (flutter run -d linux) manuel
+görsel olarak denenmedi — bu bir masaüstü Flutter uygulaması, browser
+preview araçlarıyla test edilemiyor.
+
+**Sıradaki oturum:** `docs/plans/PLAN_live_mode_v2.md`'nin Faz 2'si —
+`internal/stt` paketi + `internal/tts`'in ElevenLabs/Custom stub'larının
+tamamlanması + model/ses keşif endpoint'leri. Kullanıcıya durum raporu
+verildi, devam onayı bekleniyor.
+
+---
+
 # Ek (2026-08-26, devam 6) — v4.2.0 release'i çıkarıldı
 
 `/memo-release` skill'i ile, kullanıcının açık isteğiyle. Phase 1 (`a727a56`

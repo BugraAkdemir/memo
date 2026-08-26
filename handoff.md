@@ -1,3 +1,82 @@
+# Ek (2026-08-26, devam 4) — Raspberry Pi Chromium kurulum fix'i (memo + gosearch), v4.2.0 sürüm notları, gosearch dual-module tartışması (henüz uygulanmadı)
+
+## 1. v4.2.0 sürüm notları
+
+`versinNote/v4.2.0.md` + `versinNote/tr/v4.2.0.md` yazıldı (v4.1.0'dan bu yana:
+gosearch tabanlı web arama yeniden yapılanması, Bing'in kaldırılması, whisper
+default-off). Kullanıcı isteğiyle "What's next"/"Sırada ne var" bölümü ikisinden
+de kaldırıldı (`2954434`, `d1e5b78`). Bu sadece dokümantasyon — gerçek release
+süreci (7 versiyon lokasyonu, build'ler) çalıştırılmadı, istenmedi.
+
+## 2. Raspberry Pi "Chromium'u İndir" hatası — kök neden bulundu ve düzeltildi
+
+Kullanıcı kendi Pi'sinde Settings → Tarayıcı Motoru → "Chromium'u İndir"in
+generic "Bir şeyler ters gitti" hatası verdiğini bildirdi (ekran görüntüsüyle).
+`/codebase-memory` + 3 paralel Explore agent'ıyla tam zincir izlendi, **iki ayrı
+gerçek sorun** bulundu:
+
+1. **Asıl arıza:** harici `github.com/BugraAkdemir/gosearch/browser` paketi
+   `linux/arm64`'ü hiç desteklemiyordu — Google'ın Chrome-for-Testing servisi
+   resmi arm64 Linux build'i yayınlamıyor. **gosearch repo'sunda** düzeltildi
+   (ayrı repo, aynı kullanıcıya ait, `/home/bugra/Documents/gosearch`): yeni
+   branch, Playwright CDN'inden `linux/arm64` için `chromium-headless-shell`
+   indirme yolu eklendi (`cfd.go`), `ErrUnsupportedPlatform` sentinel'i eklendi.
+   PR [#1](https://github.com/BugraAkdemir/gosearch/pull/1) açıldı, CI yeşil,
+   kullanıcı onayıyla merge edildi, `browser/v0.2.0` tag'lendi ve push edildi.
+   Detaylı teknik not (bir de ilginç bir Go gotcha'sı — test dosyasını
+   `cfd_arm64_test.go` diye adlandırınca Go'nun implicit GOARCH build-constraint
+   kuralı yüzünden dosyanın sessizce build'den düştüğü) **gosearch'ün kendi
+   handoff.md'sinde** (Session 5).
+2. **Bağımsız bir bug:** [handlers_flutter.go](internal/webserver/handlers_flutter.go)'daki
+   `handleBrowserInstall`, hatayı düz metin (`http.Error`) dönüyordu; Flutter
+   tarafı (`friendly_error.dart`) sadece JSON `{"error": ...}` şeklini
+   çözebiliyordu — bu yüzden gerçek neden ne olursa olsun (platformdan bağımsız)
+   generic mesaja düşülüyordu. Dosyadaki 4 kardeş handler'la aynı JSON-hata
+   kalıbına geçirildi (`e3ef549`).
+
+memo tarafında: `gosearch/browser` pin'i `v0.2.0`'a bump edildi, `Manager.Install`
+artık `errors.Is(err, browser.ErrUnsupportedPlatform)` durumunda "sistem
+Chromium'u paket yöneticinle kur" diye yönlendirici bir ipucu ekliyor (`7f7d1f3`).
+Yeni testler eklendi (`TestManager_Install_UnsupportedPlatformGetsActionableHint`,
+`TestManager_Install_OtherErrorsPassThroughWithoutHint`).
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...   → temiz
+$ CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...     → temiz
+$ CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race
+ok tüm paketler (memo, internal/browserengine, internal/webserver, ...)
+```
+Dart tarafına dokunulmadı, `flutter analyze`/`flutter test` bu değişiklik için
+gerekmedi. Hem memo hem gosearch'te commit/push tamam, local'de bekleyen hiçbir
+şey kalmadı (kullanıcı özellikle "localde bişey kalmasın" dedi, ikisi de
+kontrol edildi).
+
+**Eksik kalan:** gerçek Pi donanımı bende yok — "buton artık gerçekten çalışıyor
+mu" doğrulaması kullanıcının Pi'de backend'i güncelleyip denemesini bekliyor.
+
+## 3. gosearch dual-module tartışması — karar verildi, uygulama başlamadı
+
+Kullanıcı fark etti: `gosearch/browser`'ın kendi Fetch'i, root modülün
+Go/DOM-tabanlı `internal/readability`'sinden bağımsız, kendi JS-tabanlı bir
+extraction sezgiseli kullanıyor — yani markdown gibi bir özelliği browser'a da
+eklemek istersen iki kere yazman gerekiyor. İki seçenek karşılaştırıldı (2
+modül + paylaşılan internal/readability vs. tek go.mod + build tag);
+kullanıcı **2 modülün ayrı kalmasını, ama extraction/markdown kodunun
+paylaşılmasını** seçti. Bu iş **gosearch repo'sunu ilgilendiriyor**, memo'da
+hiçbir değişiklik gerektirmiyor — plan mode'da araştırma bitmeden kullanıcı
+handoff.md güncellemesini öne aldı, tam teknik detay (hangi dosyalar, hangi
+fonksiyon imzaları, chromedp.OuterHTML geçişi, 8 MiB cap ihtiyacı) **gosearch'ün
+kendi handoff.md'sinde (Session 5, "Open thread" bölümü)** kayıtlı.
+
+**Sıradaki oturum:**
+1. Kullanıcı Pi'de "Chromium'u İndir"i tekrar deneyip sonucu bildirecek.
+2. gosearch tarafında dual-module dedup planı hâlâ açık — bir sonraki oturum
+   doğrudan gosearch repo'sunda, gosearch/handoff.md'nin Session 5 "Open
+   thread" notundan devam edebilir (yeniden araştırmaya gerek yok).
+
+---
+
 # Ek (2026-08-26, devam 3) — PR #16 merge edildi, branch silindi, `experiment/gosearch-integration` kapandı
 
 Önceki ek'in "sıradaki oturum" maddeleri kapatıldı: merge commit push'landıktan

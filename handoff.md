@@ -1,3 +1,81 @@
+# Ek (2026-08-26, devam 2) — usedBrowser modele iletildi, web search denetimi, PR + main merge (branch: `experiment/gosearch-integration`)
+
+Kullanıcı canlı bir Telegram/Flutter sohbetinde ("beinsports.com.tr'nin puan
+durumu tablosunu çek") log'un "browser render'a düştüm" dediğini ama modelin
+kendi cevabında bunu bilmeden "ya SSR ya JS çalıştı" diye tahmin yürüttüğünü
+fark etti — log mu yalan söylüyor, model mi diye sordu.
+
+## 1. Kök neden + fix
+
+Kök neden kod okuyarak bulundu (spekülasyon değil): `fetch.go`'nun
+`usedBrowser` değişkeni zaten hesaplanıyordu ama sadece loglanıp atılıyordu —
+`fetchpage.go`'nun modele döndürdüğü metin hiç bu bilgiyi taşımıyordu, yani
+model gerçekten bilmiyordu (uydurmuyordu). Canlı doğrulama: düz `curl` ile
+ham HTML'de takım isimleri zaten vardı (site SSR) ama `gosearch.Fetch`'in
+içerik-çıkarma heuristiği bu sayfada boş dönmüş, bu yüzden browser fallback
+tetiklenmiş — hem log hem model "doğru" ama model'e eksik bilgi gidiyordu.
+
+**Fix (`f82d09e`):** `websearch.Page`'e `UsedBrowser bool` eklendi,
+`fetchpage.go` artık `true` olduğunda modele "(gerçek tarayıcı motoruyla
+render edildi)" notu ekliyor. Testler eklendi (`fetch_test.go`,
+`fetchpage_test.go`). Ayrıca (`3b81127`): `tools.go`'daki `web_search` tool
+açıklaması hâlâ "Bing, falling back to DuckDuckGo" diyordu — DuckDuckGo tek
+motor olalı (`3c93765`) bayattı, tek satır düzeltildi.
+
+## 2. `/codebase-memory` ile web search denetimi
+
+Kullanıcı "bu bilgilerle web search sağlam mı" diye sordu, codebase-memory
+kullanılarak (`search_graph`/`get_code_snippet` + kaynak okuma) denetlendi.
+**Verdict: merge edilebilir, tek gerçek risk kritik değil.**
+`browserengine.Manager.Fetch`'in keep-alive modunda (default `false`, ama
+Settings'ten açılabilir) paylaşılan chromedp tab context'i kilitsiz
+kullanılıyor — `gosearch/browser/engine.go`'nun `run()`'ı tek bir `e.ctx`
+üzerinde çalışıyor, eşzamanlı iki `fetch_page` (örn. WhatsApp + Flutter aynı
+anda) birbirinin navigate/extract adımına karışabilir. Şu an dormant (default
+kapalı), test kapsamı da yok — sıradaki oturumda ayrı bir küçük fix olarak
+ele alınabilir, merge'ü bloklamıyor. `fetchTimeout` de caller ctx'inden değil
+engine'in kendi 45s'lik sabitinden geliyor — "durdur" bir browser-render
+fetch'i erken kesmiyor (kilitlenme değil, ama tam ctx-iptal sözleşmesine
+uymuyor).
+
+## 3. PR + main merge
+
+Kullanıcıyla "merge mi PR mi" konuşuldu — bu branch yeni bir dış bağımlılık
+(chromedp) + platform-duyarlı kurulum mantığı taşıdığı için PR (CI'ın 4
+platformu) önerildi, kabul edildi. [`#16`](https://github.com/BugraAkdemir/memo/pull/16)
+açıldı, ama GitHub `CONFLICTING` işaretledi. Yerel izole bir worktree'de
+test-merge ile 6 gerçek çakışma doğrulandı (`pipeline.go`,
+`l10n.dart`×2-blok, `settings_provider.dart`, `app_shell.dart`,
+`general_tab.dart`, `handoff.md`) — hepsi aynı desen: main'in
+`change_directory`/whisper işi ile bu branch'in `fetch_page`/browser-engine
+işi aynı dosyaların aynı bölgesine bağımsızca dokunmuş, gerçek bir mantık
+çatışması yok. `main` bu branch'e merge edildi (`9c7d8e6`) — kullanıcının
+"main'deki değişiklikler silinir mi" endişesi üzerine hiçbir satırın
+kaybolmadığı, sadece iki tarafın da tutulduğu netleştirildi.
+`settings_provider.dart`'ta git'in satır-bazlı diff'i iki ayrı Notifier
+class'ını (`BrowserKeepAliveNotifier`/`WhisperEnabledNotifier`) birbirine
+kesiştirmişti — elle iki eksiksiz class olarak yeniden kuruldu.
+
+## Doğrulama
+
+- Merge sonrası `go build/vet/test -race -tags "sqlite_fts5" ./...` — tüm
+  repo yeşil.
+- `flutter analyze` — sadece bilinen 5 pre-existing info bulgusu, yeni yok.
+  `flutter test` — 283/283 yeşil.
+- Rule #8 grep (merge'de değişen `.dart` dosyaları) — temiz.
+
+## Sıradaki oturum için
+
+1. Merge commit'i push'lanmadı — sıradaki adım. Push sonrası PR #16'nın
+   `CONFLICTING` durumunun düzelip düzelmediği ve CI'ın (4 platform) tetiklenip
+   tetiklenmediği kontrol edilmeli.
+2. Yukarıdaki keep-alive race fix'i (birinci maddedeki #2) hâlâ yapılmadı —
+   `Manager.Fetch`'in kilidini `engine.Fetch` çağrısını da kapsayacak şekilde
+   genişletmek gerekiyor.
+3. CI yeşil olunca PR merge edilecek.
+
+---
+
 # Ek (2026-08-26) — whisper varsayılan kapalı + Settings'ten aç/kapat (main)
 
 Kullanıcı System Monitor'da `whisper-server`'ın 559.7 MiB RAM tükettiğini

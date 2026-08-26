@@ -484,3 +484,15 @@ her ilgili fazda "doğrulanmadı" olarak açıkça belirtilecek, sessizce
   Faz 2'nin keşif fonksiyonu yeniden kullanıldı. Yeni `POST
   /api/livemode/engines/models`. Flutter'da "Modelleri Getir" butonu →
   serbest metin alanı gerçek dropdown'a dönüşüyor.
+- 2026-08-26: Faz 5 tamam (`911d347`) — `SynthesizeSpeech`/`TranscribeAudio`
+  artık aktif Live Mode motoru ElevenLabs/Custom ise önce onun kendi
+  config'inden kurduğu provider'ı deniyor, başarısız olursa eski
+  davranışa (external Router → yerel Piper/whisper) düşüyor. **Bilinçli
+  tasarım kararı: `internal/tts`/`internal/stt`'nin kendi provider
+  sistemleriyle senkronizasyon yapılmadı** — planın §4.2 taslağının aksine,
+  aynı API key'in iki ayrı config store'da (data/livemode_engines.json VE
+  data/tts_providers.json) durup drift edebilmesi riski, AGENTS.md'nin
+  BUG-ONB derslerinin tam örneği olurdu; direkt Live Mode'un kendi
+  config'inden provider kurup çağırmak hem daha basit hem yapısal olarak
+  bu riske kapalı. Part A artık 5 motordan 3'ü (Local/ElevenLabs/Custom)
+  için sıfır delegasyon karmaşıklığıyla tamamlandı.

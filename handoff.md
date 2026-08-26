@@ -1,3 +1,55 @@
+# Ek (2026-08-26, devam 11) — Live Mode v2 Faz 5 (ses döngüsü bağlantısı, Part A tamam)
+
+**Faz 5 tamamlandı** (`911d347`): `SynthesizeSpeech`/`TranscribeAudio`
+artık aktif Live Mode motoru ElevenLabs/Custom ise, önce o motorun kendi
+kayıtlı config'inden (`internal/livemode.EngineConfig`) doğrudan bir
+`tts.TTSProvider`/`stt.STTProvider` kurup çağırıyor; başarısız olursa
+eski davranışa (external `tts.Router` → yerel Piper/whisper.cpp) düşüyor
+— tıpkı önceden var olan "her zaman eninde sonunda çalışır" güvenlik ağı
+gibi. "local" değişmedi, "google_live"/"openai_realtime" bu discrete-turn
+çağrıyı hiç kullanmıyor (native oturum client'ları sonraki fazlarda).
+
+**Bilinçli sapma:** Plan dosyasının §4.2 taslağı `internal/tts`/
+`internal/stt`'nin kendi provider sistemleriyle senkronizasyon
+öneriyordu; bunun yerine **hiç senkronizasyon yapılmadı** — aynı API
+key'in iki ayrı config store'da (`data/livemode_engines.json` VE
+`data/tts_providers.json`/`data/stt_providers.json`) durup drift
+edebilmesi, AGENTS.md'nin BUG-ONB derslerinin (local pref backend'den
+sapıyor) tam bir örneği olurdu. Direkt Live Mode'un kendi config'inden
+provider kurup çağırmak hem daha basit hem yapısal olarak bu riske kapalı.
+Mevcut `/api/tts/providers` sistemi tamamen bağımsız kalıyor, "local"
+motorun opsiyonel external TTS fallback'ini eskisi gibi besliyor.
+
+**Part A artık 5 motordan 3'ü (Local/ElevenLabs/Custom) için sıfır
+delegasyon karmaşıklığıyla tamamen teslim edildi** (Faz 1-5).
+
+**Yan not — repo hijyeni bulgusu:** Bu paketin testlerini repo kökünden
+çalıştırmak, önceden var olan `TestSelectTTSVoice_
+ConfiguresSynthesizerFromDownloadedVoice` testinin gerçek `config.Save`
+yolunu tetiklediğini ve `internal/app/config/config.yaml`'ı (git'te
+takip edilen bir dosya) kirlettiğini + `internal/app/data/machine.key`
+(gerçek şifreleme anahtarı) diye izlenmeyen bir dosya oluşturduğunu
+ortaya çıkardı — `go test`'in çalışma dizini repo kökü değil, paket
+dizini olduğu için `config.DataPath()`'in göreli çözümlemesi yanlış yere
+düşüyor. Bu oturumda kirlenme geri alındı (`git restore`/`rm`), kök
+neden ayrı bir arka plan görevi olarak flag'lendi (`task_3d494e5a`) —
+Faz 5'in kendisiyle ilgisi yok, önceden var olan bir sorun.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (yeni httptest'li başarı/fallback testleri + "local
+  motor etkilenmiyor" regresyon testi yeşil)
+```
+
+**Sıradaki:** Faz 6 — WS köprü iskeleti (`internal/livemode/session.go`,
+`coder/websocket` direct bağımlılığa terfi, `/api/livemode/session` stub/
+echo session ile) + Flutter `LiveRealtimeSessionNotifier`/
+`web_socket_channel` — gerçek sağlayıcılara dokunmadan duplex taşımayı
+kanıtlayacak. Kullanıcı onayı beklemeden devam ediliyor.
+
+---
+
 # Ek (2026-08-26, devam 10) — Live Mode v2 Faz 4 (canlı model keşfi)
 
 **Faz 4 tamamlandı** (`3abbe19`): `internal/livemode/google.ListLiveModels`

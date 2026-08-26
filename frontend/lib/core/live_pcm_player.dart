@@ -75,15 +75,25 @@ class LiveModePcmPlayer {
         process.stdout.drain<void>().ignore();
 
         final stderrBuffer = StringBuffer();
-        process.stderr.transform(const SystemEncoding().decoder).listen(stderrBuffer.write);
+        // The Future from forEach() -- not just a fire-and-forget listen()
+        // -- so it can be awaited below. Found necessary via real-world
+        // testing: process.exitCode resolving does NOT guarantee the
+        // separate stderr stream has already delivered its pending data to
+        // a plain listen() callback (they're independent async pipelines
+        // over the same process), so the very first version of this
+        // reported "exited unexpectedly (code 1)" with no detail at all —
+        // paplay's actual reason (e.g. no reachable PulseAudio/PipeWire-pulse
+        // socket) was still in flight on the stderr stream at that instant.
+        final stderrDone = process.stderr.transform(const SystemEncoding().decoder).forEach(stderrBuffer.write);
 
         // Only reports if this is still the active process by the time it
         // exits -- stop()/dispose() both null out _process before killing,
         // so a deliberate stop never looks like an unexpected failure here.
-        process.exitCode.then((code) {
+        process.exitCode.then((code) async {
           if (!identical(_process, process)) return;
           _process = null;
           if (_errorController.isClosed) return;
+          await stderrDone; // guarantees stderrBuffer is fully populated
           final detail = stderrBuffer.toString().trim();
           _errorController.add(
             'Playback process ($cmd) exited unexpectedly (code $code)'

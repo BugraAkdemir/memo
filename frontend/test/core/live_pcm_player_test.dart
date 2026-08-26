@@ -68,6 +68,25 @@ void main() {
       expect(player.isPlaying, isFalse);
     });
 
+    // Regression test for a second bug found in the same real live test:
+    // the first fix reported "exited unexpectedly (code 1)" with the
+    // stderr detail always empty, because process.exitCode resolving
+    // doesn't guarantee the separate stderr stream has already delivered
+    // its data to a plain listen() callback. `cat` reliably refuses the
+    // paplay-shaped `--raw`-style flags rawArgsFor generates (GNU
+    // coreutils treats unrecognized `--xxx` arguments as invalid options,
+    // not filenames) and writes a real message to stderr before exiting
+    // nonzero -- exactly the shape of failure this needs to survive.
+    test('onError includes the actual stderr detail, not just the exit code', () async {
+      final player = LiveModePcmPlayer(linuxPlayerCommands: ['cat']);
+      final errorFuture = player.onError.first;
+      await player.start(24000);
+      final message = await errorFuture.timeout(const Duration(seconds: 5));
+      expect(message, contains('cat'));
+      expect(message, contains('exited unexpectedly'));
+      expect(message, contains(':'), reason: 'expected a ": <stderr detail>" suffix, got: $message');
+    });
+
     test('a deliberate stop() does not fire onError', () async {
       // `yes` treats every argument (including the "--raw"-shaped flags
       // rawArgsFor generates) as a literal string to repeat forever rather

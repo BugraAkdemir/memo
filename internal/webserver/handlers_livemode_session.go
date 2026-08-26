@@ -7,6 +7,7 @@ import (
 
 	"github.com/coder/websocket"
 	"memo/internal/livemode"
+	"memo/internal/livemode/google"
 )
 
 // liveModeSessionControlFrame is the JSON shape a text WS message carries —
@@ -24,12 +25,13 @@ type liveModeSessionControlFrame struct {
 }
 
 // handleLiveModeSession bridges the Flutter client's WebSocket to a
-// livemode.Session — Phase 6 always uses livemode.EchoSession regardless of
-// the configured active engine, to prove the transport (binary PCM
-// audio both directions, JSON control frames for everything else) works
-// end-to-end before either real provider client exists. Wiring this up to
-// the actual active engine (Google Live/OpenAI Realtime) is Phase 7/8. See
-// docs/plans/PLAN_live_mode_v2.md.
+// livemode.Session. When the active engine is "google_live" and a saved
+// engine config with both an API key and a (live-discovered, see
+// ListLiveModeEngineModels) model exists, a real google.Client is used
+// (Phase 7); otherwise this falls back to livemode.EchoSession — still the
+// only option for OpenAI Realtime (Phase 8, not yet wired) and for an
+// unconfigured/misconfigured google_live selection, so a session always
+// opens rather than failing outright. See docs/plans/PLAN_live_mode_v2.md.
 func (s *Server) handleLiveModeSession(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusNotImplemented)
@@ -43,7 +45,7 @@ func (s *Server) handleLiveModeSession(w http.ResponseWriter, r *http.Request) {
 	defer c.CloseNow()
 
 	ctx := r.Context()
-	session := livemode.NewEchoSession()
+	session := s.newLiveModeSession()
 	if err := session.Start(ctx); err != nil {
 		c.Close(websocket.StatusInternalError, err.Error())
 		return
@@ -56,6 +58,24 @@ func (s *Server) handleLiveModeSession(w http.ResponseWriter, r *http.Request) {
 	pumpLiveModeSessionAudio(ctx, c, session)
 	session.Close()
 	<-writeDone
+}
+
+// newLiveModeSession picks which livemode.Session implementation this WS
+// connection gets, based on the currently active engine and whatever
+// config is saved for it — see handleLiveModeSession's own doc comment for
+// the fallback rule. No system instruction is passed yet (that's Phase 10,
+// alongside the delegate_to_main_model tool wiring); this phase is
+// transport + basic session lifecycle only.
+func (s *Server) newLiveModeSession() livemode.Session {
+	cfg := s.fullBridge.GetLiveModeConfig()
+	if livemode.EngineType(cfg.ActiveEngine) == livemode.EngineGoogleLive {
+		for _, e := range s.fullBridge.GetLiveModeEngines() {
+			if e.Type == livemode.EngineGoogleLive && e.APIKey != "" && e.Model != "" {
+				return google.NewClient(e.APIKey, e.Model, "")
+			}
+		}
+	}
+	return livemode.NewEchoSession()
 }
 
 // pumpLiveModeSessionEvents forwards every SessionEvent to the client:

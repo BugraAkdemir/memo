@@ -67,6 +67,12 @@ type swarmStubBridge struct {
 	changeAccountPassword    func(sessionToken, id, currentPassword, newPassword string) error
 	browseServerPath         func(path string) (interface{}, error)
 	getOutboxFile            func(token string) (string, string, bool)
+
+	// Live Mode v2 (see PLAN_live_mode_v2.md) — overridable so
+	// handlers_livemode_session_test.go can exercise newLiveModeSession's
+	// active-engine dispatch without a real App.
+	getLiveModeConfig  func() config.LiveModeConfig
+	getLiveModeEngines func() []livemode.EngineConfig
 }
 
 func (b *swarmStubBridge) GetRemoteAccessToken() string { return b.token }
@@ -429,11 +435,21 @@ func (b *swarmStubBridge) ListTTSProviderVoices(ctx context.Context, pt tts.Prov
 func (b *swarmStubBridge) GetSTTProviders() []stt.ProviderConfig                       { return nil }
 func (b *swarmStubBridge) UpdateSTTProvider(cfg stt.ProviderConfig) error              { return nil }
 func (b *swarmStubBridge) DeleteSTTProvider(pt stt.ProviderType, name ...string) error { return nil }
-func (b *swarmStubBridge) GetLiveModeConfig() config.LiveModeConfig                    { return config.LiveModeConfig{} }
-func (b *swarmStubBridge) UpdateLiveModeConfig(cfg config.LiveModeConfig) error        { return nil }
-func (b *swarmStubBridge) GetLiveModeEngines() []livemode.EngineConfig                 { return nil }
-func (b *swarmStubBridge) UpdateLiveModeEngine(cfg livemode.EngineConfig) error        { return nil }
-func (b *swarmStubBridge) DeleteLiveModeEngine(t livemode.EngineType) error            { return nil }
+func (b *swarmStubBridge) GetLiveModeConfig() config.LiveModeConfig {
+	if b.getLiveModeConfig != nil {
+		return b.getLiveModeConfig()
+	}
+	return config.LiveModeConfig{}
+}
+func (b *swarmStubBridge) UpdateLiveModeConfig(cfg config.LiveModeConfig) error { return nil }
+func (b *swarmStubBridge) GetLiveModeEngines() []livemode.EngineConfig {
+	if b.getLiveModeEngines != nil {
+		return b.getLiveModeEngines()
+	}
+	return nil
+}
+func (b *swarmStubBridge) UpdateLiveModeEngine(cfg livemode.EngineConfig) error { return nil }
+func (b *swarmStubBridge) DeleteLiveModeEngine(t livemode.EngineType) error     { return nil }
 func (b *swarmStubBridge) ListLiveModeEngineModels(ctx context.Context, t livemode.EngineType, apiKey string) ([]livemode.ModelInfo, error) {
 	return nil, nil
 }

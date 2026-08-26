@@ -1,3 +1,24 @@
+# Ek (2026-08-26, devam 6) — v4.2.0 release'i çıkarıldı
+
+`/memo-release` skill'i ile, kullanıcının açık isteğiyle. Phase 1 (`a727a56`
+— version/installer.iss/README/READmeTR bump), Phase 2 (`958c037` —
+v4.2.0 sürüm notlarına Pi/arm64 fix + progress bar eklendi, devam 4/5'te
+zaten yazılmıştı), Phase 3 (`git tag v4.2.0` + push — kullanıcı zaten açıkça
+istemişti, ayrıca teyit gerekmedi). 4 platform CI'ı da yeşil (Linux, macOS,
+Windows ~19dk, Docker), GitHub Release gerçek (prerelease değil) ve 5 asset
+ile yayında, `download.bugradev.com/memo.tar.gz` tazeliği `Last-Modified`
+ile doğrulandı (~11 dk önce, CI penceresiyle uyumlu).
+
+**Phase 4 (update beacon) bilerek atlandı** — kullanıcı özellikle
+"@version güncellemiyi unutma falan beaconu dokunma ben yapacam onu" dedi.
+`version-zeta.vercel.app/version.json` hâlâ eski sürümü gösteriyor,
+kullanıcı kendisi bump edecek.
+
+**Sıradaki oturum:** gosearch dual-module dedup planı hâlâ açık
+(gosearch/handoff.md Session 5/6 "Open thread"), bu release'den etkilenmedi.
+
+---
+
 # Ek (2026-08-26, devam 5) — Pi'de canlı doğrulama + IsInstalled cache bug fix + download progress bar
 
 Önceki ek'in "Eksik kalan: gerçek Pi donanımı bende yok" maddesi kapandı —

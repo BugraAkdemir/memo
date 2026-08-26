@@ -33,16 +33,19 @@ func (a *App) NewLiveModeSession(ctx context.Context) livemode.Session {
 	cfg := a.GetLiveModeConfig()
 	engineType := livemode.EngineType(cfg.ActiveEngine)
 	if engineType != livemode.EngineGoogleLive && engineType != livemode.EngineOpenAIRealtime {
+		logx.Printf("livemode: active engine %q is not a native realtime engine, using EchoSession", cfg.ActiveEngine)
 		return livemode.NewEchoSession()
 	}
 
 	engineCfg, ok := a.findLiveModeEngineConfig(engineType)
 	if !ok || engineCfg.APIKey == "" || engineCfg.Model == "" {
+		logx.Printf("livemode: engine %q not configured (found=%v, apiKey set=%v, model set=%v), using EchoSession", engineType, ok, engineCfg.APIKey != "", engineCfg.Model != "")
 		return livemode.NewEchoSession()
 	}
 
 	sessionID, err := a.getOrCreateLiveModeChat()
 	if err != nil {
+		logx.Printf("livemode: getOrCreateLiveModeChat failed: %v, using EchoSession", err)
 		return livemode.NewEchoSession()
 	}
 
@@ -79,6 +82,7 @@ func (a *App) NewLiveModeSession(ctx context.Context) livemode.Session {
 	default:
 		return livemode.NewEchoSession()
 	}
+	logx.Printf("livemode: built a real %s session (model=%q, workMode=%q, tools=%d)", engineType, engineCfg.Model, cfg.WorkMode, len(tools))
 
 	// Wraps the real session so a spoken transcript can also resolve a
 	// pending voice_prompt permission question, in addition to reaching the

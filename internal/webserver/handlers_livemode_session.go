@@ -7,6 +7,7 @@ import (
 
 	"github.com/coder/websocket"
 	"memo/internal/livemode"
+	"memo/internal/logx"
 )
 
 // liveModeSessionControlFrame is the JSON shape a text WS message carries —
@@ -45,17 +46,20 @@ func (s *Server) handleLiveModeSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	session := s.fullBridge.NewLiveModeSession(ctx)
 	if err := session.Start(ctx); err != nil {
+		logx.Printf("livemode session: Start failed: %v", err)
 		c.Close(websocket.StatusInternalError, err.Error())
 		return
 	}
+	logx.Printf("livemode session: started")
 	defer session.Close()
 
 	writeDone := make(chan struct{})
 	go pumpLiveModeSessionEvents(ctx, c, session, writeDone)
 
-	pumpLiveModeSessionAudio(ctx, c, session)
+	framesIn := pumpLiveModeSessionAudio(ctx, c, session)
 	session.Close()
 	<-writeDone
+	logx.Printf("livemode session: closed (%d audio frames received from client)", framesIn)
 }
 
 // pumpLiveModeSessionEvents forwards every SessionEvent to the client:
@@ -85,6 +89,9 @@ func pumpLiveModeSessionEvents(ctx context.Context, c *websocket.Conn, session l
 			if ev.Err != nil {
 				frame.Error = ev.Err.Error()
 			}
+			if ev.Type == livemode.EventError {
+				logx.Printf("livemode session: EventError: %v", ev.Err)
+			}
 			payload, err := json.Marshal(frame)
 			if err != nil {
 				return
@@ -101,18 +108,28 @@ func pumpLiveModeSessionEvents(ctx context.Context, c *websocket.Conn, session l
 // pumpLiveModeSessionAudio reads client->server frames until the
 // connection closes: binary messages are forwarded to the session as
 // microphone audio, text messages are ignored (no client->server control
-// frames exist yet in this phase).
-func pumpLiveModeSessionAudio(ctx context.Context, c *websocket.Conn, session livemode.Session) {
+// frames exist yet in this phase). Returns the number of audio frames
+// successfully forwarded — logged by the caller so a session that
+// connects but never actually receives mic audio (a silent capture-side
+// failure, as opposed to a session/protocol failure) is distinguishable
+// from the terminal output alone.
+func pumpLiveModeSessionAudio(ctx context.Context, c *websocket.Conn, session livemode.Session) int {
+	frames := 0
 	for {
 		msgType, data, err := c.Read(ctx)
 		if err != nil {
-			return
+			if frames == 0 {
+				logx.Printf("livemode session: read loop ended before any audio frame arrived: %v", err)
+			}
+			return frames
 		}
 		if msgType != websocket.MessageBinary {
 			continue
 		}
 		if err := session.SendAudio(data); err != nil {
-			return
+			logx.Printf("livemode session: SendAudio failed after %d frame(s): %v", frames, err)
+			return frames
 		}
+		frames++
 	}
 }

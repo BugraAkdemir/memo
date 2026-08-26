@@ -285,6 +285,65 @@ func TestClient_EmptyInputTranscriptionEmitsNoEvent(t *testing.T) {
 	}
 }
 
+// TestClient_ReadsMessagesLargerThan32KB is a regression test for a real
+// bug found via a real live connection: coder/websocket's default 32768-
+// byte read limit silently closed the connection (StatusMessageTooBig) the
+// first time a serverContent audio chunk's base64-encoded inlineData
+// exceeded it — well within reach of a fraction of a second of 24kHz PCM.
+// Sends a >40KB audio payload (comfortably over the old default) and
+// confirms it round-trips whole, proving Start()'s SetReadLimit call is
+// actually in effect rather than just present in the source.
+func TestClient_ReadsMessagesLargerThan32KB(t *testing.T) {
+	rawAudio := make([]byte, 40000)
+	for i := range rawAudio {
+		rawAudio[i] = byte(i % 256)
+	}
+	audioB64 := base64.StdEncoding.EncodeToString(rawAudio)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil { // consume setup
+			return
+		}
+		serverMsg := serverMessage{ServerContent: &serverContent{
+			ModelTurn: &modelTurn{Parts: []serverPart{{InlineData: &inlineData{
+				MimeType: "audio/pcm;rate=24000",
+				Data:     audioB64,
+			}}}},
+		}}
+		payload, _ := json.Marshal(serverMsg)
+		c.Write(ctx, websocket.MessageText, payload)
+		<-ctx.Done()
+	}))
+	defer srv.Close()
+	original := SessionBaseURL
+	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("g-key", "models/gemini-3.1-flash-live-preview", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case ev := <-c.Events():
+		if ev.Type != livemode.EventAudioOut {
+			t.Fatalf("expected an audio_out event, got %s (err=%v) -- the old 32KB default read limit would surface this as EventError", ev.Type, ev.Err)
+		}
+		if len(ev.Audio) != len(rawAudio) {
+			t.Errorf("expected %d bytes of audio, got %d", len(rawAudio), len(ev.Audio))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the audio_out event")
+	}
+}
+
 func TestClient_SendsFunctionDeclarationsInSetup(t *testing.T) {
 	f := newFakeLiveServer(t)
 	original := SessionBaseURL

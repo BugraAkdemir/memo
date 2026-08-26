@@ -25,6 +25,20 @@ const (
 	outputSampleRateHz = 24000
 )
 
+// wsReadLimitBytes overrides coder/websocket's 32768-byte default read
+// limit — found via a real live connection: a serverContent audio chunk's
+// base64-encoded inlineData routinely exceeds 32KB (24kHz 16-bit PCM ~=
+// 48000 bytes/sec pre-base64, ~64000 bytes/sec after base64's ~33%
+// inflation — well under a second of audio already blows the default
+// limit), and the default silently closes the connection with
+// StatusMessageTooBig instead of erroring cleanly. 10MB is a generous
+// safety margin for any single message (audio chunk, tool-call args, or
+// otherwise) without being unbounded — this is an outbound connection to a
+// trusted first-party API, not a server accepting arbitrary client input,
+// so the usual "don't trust a huge advertised size" concern doesn't apply
+// the same way here.
+const wsReadLimitBytes = 10 * 1024 * 1024
+
 // ─── Wire message shapes (BidiGenerateContent, confirmed against current
 // API docs 2026-08-26) ───────────────────────────────────────────────
 
@@ -200,6 +214,7 @@ func (c *Client) Start(ctx context.Context) error {
 		cancel()
 		return fmt.Errorf("livemode google: dial: %w", err)
 	}
+	conn.SetReadLimit(wsReadLimitBytes)
 	c.conn = conn
 
 	setup := clientMessage{Setup: &setupMessage{

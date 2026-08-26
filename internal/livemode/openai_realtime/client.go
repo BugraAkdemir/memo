@@ -21,6 +21,17 @@ var SessionBaseURL = "wss://api.openai.com/v1/realtime"
 // so there is no separate output constant.
 const inputSampleRateHz = 24000
 
+// wsReadLimitBytes overrides coder/websocket's 32768-byte default read
+// limit — the same fix google.Client needed after a real live connection
+// showed the default silently closes the socket (StatusMessageTooBig) on
+// any base64-encoded audio chunk over ~24KB pre-encoding; OpenAI's
+// response.output_audio.delta faces the identical size math (24kHz 16-bit
+// PCM, base64-inflated) even though this package hasn't been live-tested
+// yet — applying the fix here too rather than waiting to rediscover the
+// same bug independently. See google/client.go's wsReadLimitBytes for the
+// full sizing rationale.
+const wsReadLimitBytes = 10 * 1024 * 1024
+
 // ─── Wire message shapes (confirmed against current API docs 2026-08-26)
 // ───────────────────────────────────────────────────────────────────
 
@@ -196,6 +207,7 @@ func (c *Client) Start(ctx context.Context) error {
 		cancel()
 		return fmt.Errorf("livemode openai: dial: %w", err)
 	}
+	conn.SetReadLimit(wsReadLimitBytes)
 	c.conn = conn
 
 	update := sessionUpdateEvent{

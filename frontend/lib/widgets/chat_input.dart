@@ -1179,12 +1179,12 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               // Voice mode toggle: continuous listen → send → speak-reply,
               // cross-modal with typing (either way still works while this
               // is on). Separate from the mic button above, which is a
-              // single push-to-talk-into-the-text-field capture. Beta-gated
-              // the same way the old standalone Live Mode tab was — still
-              // prototype-stage (see voice_mode_provider.dart's doc comment
-              // on the unbundled VAD model) — so it must stay invisible
-              // with Beta off, not just unreachable via a removed nav item.
-              if (ref.watch(betaFeaturesProvider)) ...[
+              // single push-to-talk-into-the-text-field capture. Gated by
+              // Live Mode's own Enabled toggle (see docs/plans/
+              // PLAN_live_mode_v2.md) — graduated out of Beta, so this no
+              // longer depends on betaFeaturesProvider.
+              if (ref.watch(liveModeConfigProvider).valueOrNull?.enabled ??
+                  false) ...[
                 const SizedBox(width: 4),
                 () {
                   final voiceState = ref.watch(voiceModeProvider);

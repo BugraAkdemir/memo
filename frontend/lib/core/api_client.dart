@@ -9,6 +9,7 @@ import '../models/browser_install_progress.dart';
 import '../models/chat.dart';
 import '../models/cli_command.dart';
 import '../models/gpu_info.dart';
+import '../models/live_mode_config.dart';
 import '../models/local_model.dart';
 import '../models/minimal_mode_overrides.dart';
 import '../models/orchestra_config.dart';
@@ -1884,6 +1885,19 @@ class MemoApiClient {
   /// Point the local Piper synthesizer at a downloaded voice.
   Future<void> selectTTSVoice(String id) async {
     await _dio.post('/api/tts/voices/select', data: {'id': id});
+  }
+
+  // ─── Live Mode v2 (Phase 1: top-level selector only) ───────────────
+  // See docs/plans/PLAN_live_mode_v2.md. Per-engine config (API keys,
+  // model/voice choice) is a later phase's own endpoint(s).
+
+  Future<LiveModeConfig> getLiveModeConfig() async {
+    final res = await _dio.get('/api/livemode/active');
+    return LiveModeConfig.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  Future<void> updateLiveModeConfig(LiveModeConfig cfg) async {
+    await _dio.put('/api/livemode/active', data: cfg.toJson());
   }
 
   // ─── Orchestra Mode ───────────────────────────────────────────────

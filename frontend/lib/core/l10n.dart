@@ -879,9 +879,13 @@ class L10n {
     'beta_item_swarm_title': 'Memo Swarm',
     'beta_item_swarm_desc':
         'Birden fazla makineyi birleştirip tek büyük model çalıştır (yan menü → Swarm). macOS’ta henüz yok.',
-    'beta_item_live_mode_title': 'Sesli Sohbet',
-    'beta_item_live_mode_desc':
-        'Geliştirme aşamasında — sohbet ekranındaki yazma kutusunun yanında bir ikonla açılıyor (konuş → Memo dinler, cevabını da sesli verir). Aşağıdan sadece yerel Piper motoruyla seslendirmeyi tek başına test edebilirsin.',
+    'tab_live_mode': 'Sesli Mod',
+    'live_mode_tab_title': 'Sesli Mod',
+    'live_mode_tab_desc':
+        'Sohbet ekranındaki yazma kutusunun yanındaki ikonla açılır (konuş → Memo dinler, cevabını da sesli verir). Beta\'dan bağımsız kendi anahtarına sahiptir.',
+    'live_mode_enabled_title': 'Sesli Modu Etkinleştir',
+    'live_mode_enabled_desc':
+        'Kapalıyken sohbet ekranındaki mikrofon ikonu görünmez. Motor seçimi (Google Live, OpenAI, ElevenLabs, Custom…) ileride bu sekmeye eklenecek — şimdilik yalnızca yerel Piper/whisper.cpp motoru kullanılabilir.',
     'live_mode_test_tts_title': 'Sesli Mod — Ses Testi',
     'live_mode_test_tts_desc':
         'Piper motorunun kurulu ve yapılandırılmış olması gerekir (Ayarlar dosyasında tts.enabled + tts.model_path).',
@@ -2799,9 +2803,13 @@ class L10n {
     'beta_item_swarm_title': 'Memo Swarm',
     'beta_item_swarm_desc':
         'Pool machines to run one large model (sidebar → Swarm). Not available on macOS yet.',
-    'beta_item_live_mode_title': 'Voice Chat',
-    'beta_item_live_mode_desc':
-        'Still in development — opens from an icon next to the chat input (speak → Memo listens, and speaks its reply back too). Below, you can test speech synthesis on its own with the local Piper engine.',
+    'tab_live_mode': 'Live Mode',
+    'live_mode_tab_title': 'Live Mode',
+    'live_mode_tab_desc':
+        'Opens from an icon next to the chat input (speak → Memo listens, and speaks its reply back too). Has its own toggle, independent of Beta.',
+    'live_mode_enabled_title': 'Enable Live Mode',
+    'live_mode_enabled_desc':
+        'When off, the microphone icon next to the chat input is hidden. Engine choice (Google Live, OpenAI, ElevenLabs, Custom…) is coming to this tab in a later update — only the local Piper/whisper.cpp engine is available for now.',
     'live_mode_test_tts_title': 'Live Mode — Voice Test',
     'live_mode_test_tts_desc':
         'Requires Piper to be installed and configured (tts.enabled + tts.model_path in the config file).',

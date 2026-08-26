@@ -32,6 +32,7 @@ import 'settings/tabs/stats_tab.dart';
 import 'settings/tabs/report_bug_tab.dart';
 import 'settings/tabs/whatsapp_tab.dart';
 import 'settings/tabs/telegram_tab.dart';
+import 'settings/tabs/live_mode_tab.dart';
 
 /// Settings dialog: a searchable, grouped rail on the left, tab content on
 /// the right. Redesigned (v3.3.4) from a single flat list of 20
@@ -61,6 +62,10 @@ class SettingsDialog extends ConsumerStatefulWidget {
   /// Index of the Telegram tab — same group as WhatsApp's, for the same
   /// "chat with Memo through another app" purpose.
   static const telegramTabIndex = 23;
+
+  /// Index of the Live Mode tab — graduated out of Beta Features (16) into
+  /// its own standalone tab, see docs/plans/PLAN_live_mode_v2.md.
+  static const liveModeTabIndex = 24;
 
   @override
   ConsumerState<SettingsDialog> createState() => _SettingsDialogState();
@@ -96,14 +101,15 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/brain.svg', // Dream — reuses Memory's icon, same family
     'lib/icon/slash/chat-text.svg', // WhatsApp — reuses System Prompt's icon, same family
     'lib/icon/slash/chat-text.svg', // Telegram — same family, same reason as WhatsApp above
+    'lib/icon/slash/music-notes.svg', // Live Mode — reuses Orchestra's icon, same "audio" family
   ];
 
   /// Tab indices grouped under an eyebrow header, in sidebar display order.
-  /// Every index 0..23 must appear exactly once — covered by
+  /// Every index 0..24 must appear exactly once — covered by
   /// settings_dialog_test.dart's group-coverage test.
   static const _groups = [
     ('settings_group_general', [0, 1, 2]),
-    ('settings_group_providers', [5, 6, 15, 22, 23]),
+    ('settings_group_providers', [5, 6, 15, 22, 23, 24]),
     ('settings_group_memory', [3, 4, 9, 10, 21]),
     ('settings_group_agents', [7, 8, 11, 18]),
     ('settings_group_system', [12, 13, 14, 20]),
@@ -135,6 +141,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_dream'),
     L10n.t('tab_whatsapp'),
     L10n.t('tab_telegram'),
+    L10n.t('tab_live_mode'),
   ];
 
   /// Tab indices hidden for the current session's account permissions
@@ -365,6 +372,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 21: return DreamTab();
       case 22: return const WhatsAppTab();
       case 23: return const TelegramTab();
+      case 24: return const LiveModeTab();
       default: return const SizedBox.shrink();
     }
   }

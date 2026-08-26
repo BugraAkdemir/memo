@@ -155,6 +155,17 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
       _channel = channel;
 
       final player = LiveModePcmPlayer();
+      // Listen before start(): the subprocess can die (and this fire)
+      // within milliseconds of launching, so subscribing after start()
+      // returns would risk missing it. See LiveModePcmPlayer.onError's doc
+      // comment — this is the real bug a real test surfaced: the process
+      // launched fine (isPlaying=true) but exited almost immediately with
+      // no PulseAudio/PipeWire-pulse socket reachable, and that failure
+      // was previously discarded entirely.
+      player.onError.listen((message) {
+        if (myGeneration != _generation) return;
+        _setError(message);
+      });
       // Diagnostic: confirms whether the playback subprocess actually
       // started (vs. e.g. neither paplay nor aplay being installed, which
       // would otherwise fail silently from the user's point of view since

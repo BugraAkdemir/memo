@@ -37,8 +37,20 @@ class LiveModePcmPlayer {
   LiveModePcmPlayer({this.linuxPlayerCommands = const ['paplay', 'aplay']});
 
   Process? _process;
+  final _errorController = StreamController<String>.broadcast();
 
   bool get isPlaying => _process != null;
+
+  /// Fires when the playback subprocess dies on its own (not via [stop]/
+  /// [dispose]) — found necessary via real-world testing: `start()`
+  /// succeeding only proves the executable launched, not that it actually
+  /// produced sound. A process that starts but then fails to reach the
+  /// audio backend (no PulseAudio/PipeWire-pulse socket, wrong device,
+  /// etc.) exits shortly after with a stderr message that, before this,
+  /// was drained and silently discarded — real audio frames were being
+  /// written to a stdin nobody was reading, with no visible failure
+  /// anywhere in the app.
+  Stream<String> get onError => _errorController.stream;
 
   /// Starts the persistent player subprocess for [sampleRate] Hz mono
   /// 16-bit PCM. Must be called once before [write]; call [stop] before a
@@ -60,11 +72,24 @@ class LiveModePcmPlayer {
         final args = rawArgsFor(cmd, sampleRate);
         final process = await Process.start(cmd, args);
         _process = process;
-        // Drain stdout/stderr so the subprocess never blocks on a full
-        // pipe buffer; errors here don't fail start() itself since the
-        // process already launched successfully.
         process.stdout.drain<void>().ignore();
-        process.stderr.drain<void>().ignore();
+
+        final stderrBuffer = StringBuffer();
+        process.stderr.transform(const SystemEncoding().decoder).listen(stderrBuffer.write);
+
+        // Only reports if this is still the active process by the time it
+        // exits -- stop()/dispose() both null out _process before killing,
+        // so a deliberate stop never looks like an unexpected failure here.
+        process.exitCode.then((code) {
+          if (!identical(_process, process)) return;
+          _process = null;
+          if (_errorController.isClosed) return;
+          final detail = stderrBuffer.toString().trim();
+          _errorController.add(
+            'Playback process ($cmd) exited unexpectedly (code $code)'
+            '${detail.isEmpty ? '' : ': $detail'}',
+          );
+        });
         return;
       } on ProcessException catch (e) {
         lastError = e; // command not found -- try the next one
@@ -115,5 +140,6 @@ class LiveModePcmPlayer {
     final process = _process;
     _process = null;
     process?.kill();
+    _errorController.close();
   }
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/coder/websocket"
 	"memo/internal/livemode"
 	"memo/internal/livemode/google"
+	"memo/internal/livemode/openai_realtime"
 )
 
 // liveModeSessionControlFrame is the JSON shape a text WS message carries —
@@ -25,13 +26,15 @@ type liveModeSessionControlFrame struct {
 }
 
 // handleLiveModeSession bridges the Flutter client's WebSocket to a
-// livemode.Session. When the active engine is "google_live" and a saved
-// engine config with both an API key and a (live-discovered, see
-// ListLiveModeEngineModels) model exists, a real google.Client is used
-// (Phase 7); otherwise this falls back to livemode.EchoSession — still the
-// only option for OpenAI Realtime (Phase 8, not yet wired) and for an
-// unconfigured/misconfigured google_live selection, so a session always
-// opens rather than failing outright. See docs/plans/PLAN_live_mode_v2.md.
+// livemode.Session. When the active engine is "google_live" or
+// "openai_realtime" and a saved engine config with both an API key and a
+// (live-discovered, see ListLiveModeEngineModels) model exists, a real
+// google.Client/openai_realtime.Client is used (Phase 7/8); otherwise this
+// falls back to livemode.EchoSession — still the only option for
+// "local"/"elevenlabs"/"custom" (which never use this endpoint at all in
+// practice, per the locked-in design) and for an unconfigured/
+// misconfigured native-engine selection, so a session always opens rather
+// than failing outright. See docs/plans/PLAN_live_mode_v2.md.
 func (s *Server) handleLiveModeSession(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusNotImplemented)
@@ -68,10 +71,17 @@ func (s *Server) handleLiveModeSession(w http.ResponseWriter, r *http.Request) {
 // transport + basic session lifecycle only.
 func (s *Server) newLiveModeSession() livemode.Session {
 	cfg := s.fullBridge.GetLiveModeConfig()
-	if livemode.EngineType(cfg.ActiveEngine) == livemode.EngineGoogleLive {
+	engine := livemode.EngineType(cfg.ActiveEngine)
+	if engine == livemode.EngineGoogleLive || engine == livemode.EngineOpenAIRealtime {
 		for _, e := range s.fullBridge.GetLiveModeEngines() {
-			if e.Type == livemode.EngineGoogleLive && e.APIKey != "" && e.Model != "" {
+			if e.Type != engine || e.APIKey == "" || e.Model == "" {
+				continue
+			}
+			switch engine {
+			case livemode.EngineGoogleLive:
 				return google.NewClient(e.APIKey, e.Model, "")
+			case livemode.EngineOpenAIRealtime:
+				return openai_realtime.NewClient(e.APIKey, e.Model, "")
 			}
 		}
 	}

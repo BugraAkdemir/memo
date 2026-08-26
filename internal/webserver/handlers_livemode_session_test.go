@@ -14,6 +14,7 @@ import (
 	"memo/internal/config"
 	"memo/internal/livemode"
 	"memo/internal/livemode/google"
+	"memo/internal/livemode/openai_realtime"
 )
 
 // TestHandleLiveModeSession_EchoesBinaryAudio proves the Phase 6 transport
@@ -128,6 +129,73 @@ func TestHandleLiveModeSession_DispatchesToGoogleClientWhenConfigured(t *testing
 	}
 	if string(data) != "gemini-reply-pcm" {
 		t.Errorf("expected the fake Gemini server's audio to reach the Flutter-side client unchanged, got %q", data)
+	}
+
+	c.Close(websocket.StatusNormalClosure, "")
+}
+
+// TestHandleLiveModeSession_DispatchesToOpenAIRealtimeClientWhenConfigured
+// mirrors TestHandleLiveModeSession_DispatchesToGoogleClientWhenConfigured
+// exactly, against OpenAI Realtime's own message shape
+// (response.output_audio.delta) — same full-chain proof for Phase 8.
+func TestHandleLiveModeSession_DispatchesToOpenAIRealtimeClientWhenConfigured(t *testing.T) {
+	replyB64 := base64.StdEncoding.EncodeToString([]byte("openai-reply-pcm"))
+	fakeOpenAI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil { // consume session.update
+			return
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"type":  "response.output_audio.delta",
+			"delta": replyB64,
+		})
+		c.Write(ctx, websocket.MessageText, payload)
+		<-ctx.Done()
+	}))
+	defer fakeOpenAI.Close()
+
+	originalBase := openai_realtime.SessionBaseURL
+	openai_realtime.SessionBaseURL = "ws" + strings.TrimPrefix(fakeOpenAI.URL, "http")
+	defer func() { openai_realtime.SessionBaseURL = originalBase }()
+
+	srv := &Server{fullBridge: &swarmStubBridge{
+		getLiveModeConfig: func() config.LiveModeConfig {
+			return config.LiveModeConfig{ActiveEngine: "openai_realtime"}
+		},
+		getLiveModeEngines: func() []livemode.EngineConfig {
+			return []livemode.EngineConfig{{
+				Type:    livemode.EngineOpenAIRealtime,
+				APIKey:  "oa-key",
+				Model:   "gpt-realtime-2.1",
+				Enabled: true,
+			}}
+		},
+	}}
+	httpSrv := httptest.NewServer(http.HandlerFunc(srv.handleLiveModeSession))
+	defer httpSrv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(httpSrv.URL, "http"), nil)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer c.CloseNow()
+
+	msgType, data, err := c.Read(ctx)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if msgType != websocket.MessageBinary {
+		t.Fatalf("expected a binary audio message, got %v", msgType)
+	}
+	if string(data) != "openai-reply-pcm" {
+		t.Errorf("expected the fake OpenAI server's audio to reach the Flutter-side client unchanged, got %q", data)
 	}
 
 	c.Close(websocket.StatusNormalClosure, "")

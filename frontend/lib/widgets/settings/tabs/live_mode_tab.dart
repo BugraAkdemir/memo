@@ -7,21 +7,45 @@ import '../../../core/theme.dart';
 import '../../../core/tts_playback_error.dart';
 import '../../../core/wav_player.dart';
 import '../../../models/live_mode_config.dart';
+import '../../../models/live_mode_engine_config.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../tts_provider_section.dart';
 import '../tts_voice_section.dart';
+
+/// The four non-local engines, in picker display order. "local" is handled
+/// separately (no EngineConfig entry, see LiveModeEngineConfig's doc
+/// comment) so it isn't in this list.
+const _nonLocalEngines = [
+  'google_live',
+  'openai_realtime',
+  'elevenlabs',
+  'custom',
+];
+
+/// Engines with a genuine native audio-to-audio reasoning model, where
+/// WorkMode/AgentPermissionPolicy are meaningful — mirrors
+/// LiveModeEngineDefaults.nativeReasoningEngines.
+const _nativeReasoningEngines = ['google_live', 'openai_realtime'];
+
+String _engineLabel(String engine) => switch (engine) {
+      'local' => L10n.t('live_mode_engine_local'),
+      'google_live' => L10n.t('live_mode_engine_google_live'),
+      'openai_realtime' => L10n.t('live_mode_engine_openai_realtime'),
+      'elevenlabs' => L10n.t('live_mode_engine_elevenlabs'),
+      'custom' => L10n.t('live_mode_engine_custom'),
+      _ => engine,
+    };
 
 /// Settings → Live Mode.
 ///
 /// Graduated out of Beta Features (see docs/plans/PLAN_live_mode_v2.md,
 /// Phase 1) — same precedent RemoteAccess/Tailscale already set: its own
 /// config (config.LiveModeConfig), its own on/off toggle, no longer piggy-
-/// backed on the experimental-features flag. This phase only wires the
-/// top-level Enabled switch and keeps today's local-engine (Whisper+Piper)
-/// configuration widgets working under it — the full engine picker (Google
-/// Live/OpenAI/ElevenLabs/Custom) and live-fetched model dropdowns land in
-/// later phases of the same plan.
+/// backed on the experimental-features flag. Phase 3 adds the full engine
+/// picker and per-engine config forms (API key/model/voice/base_url) — the
+/// Model field is still free text here; live-fetched model dropdowns land
+/// in Phase 4.
 class LiveModeTab extends ConsumerStatefulWidget {
   const LiveModeTab({super.key});
 
@@ -32,13 +56,11 @@ class LiveModeTab extends ConsumerStatefulWidget {
 class _LiveModeTabState extends ConsumerState<LiveModeTab> {
   bool _busy = false;
 
-  Future<void> _setEnabled(LiveModeConfig current, bool enabled) async {
+  Future<void> _updateConfig(LiveModeConfig next) async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await ref
-          .read(apiClientProvider)
-          .updateLiveModeConfig(current.copyWith(enabled: enabled));
+      await ref.read(apiClientProvider).updateLiveModeConfig(next);
       ref.invalidate(liveModeConfigProvider);
     } catch (e) {
       if (mounted) {
@@ -54,6 +76,18 @@ class _LiveModeTabState extends ConsumerState<LiveModeTab> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  Future<void> _setEnabled(LiveModeConfig current, bool enabled) =>
+      _updateConfig(current.copyWith(enabled: enabled));
+
+  Future<void> _setActiveEngine(LiveModeConfig current, String engine) =>
+      _updateConfig(current.copyWith(activeEngine: engine));
+
+  Future<void> _setWorkMode(LiveModeConfig current, String mode) =>
+      _updateConfig(current.copyWith(workMode: mode));
+
+  Future<void> _setPermissionPolicy(LiveModeConfig current, String policy) =>
+      _updateConfig(current.copyWith(agentPermissionPolicy: policy));
 
   @override
   Widget build(BuildContext context) {
@@ -72,11 +106,8 @@ class _LiveModeTabState extends ConsumerState<LiveModeTab> {
         ),
       ),
       data: (cfg) {
-        // Phase 1: only the "local" engine (today's Whisper+Piper pipeline)
-        // is implemented, so its config widgets are always relevant while
-        // ActiveEngine stays at its "local" default. Later phases replace
-        // this unconditional block with a real engine picker.
-        final showLocalEngineConfig = cfg.activeEngine == 'local';
+        final isLocal = cfg.activeEngine == 'local';
+        final isNativeReasoning = _nativeReasoningEngines.contains(cfg.activeEngine);
         return ListView(
           padding: const EdgeInsets.all(32),
           children: [
@@ -113,17 +144,370 @@ class _LiveModeTabState extends ConsumerState<LiveModeTab> {
               const SizedBox(height: 8),
               const LinearProgressIndicator(minHeight: 2),
             ],
-            if (cfg.enabled && showLocalEngineConfig) ...[
-              const SizedBox(height: 16),
-              const _LiveModeVoiceTest(),
-              const SizedBox(height: 16),
-              const TTSVoiceSection(),
-              const SizedBox(height: 16),
-              const TTSProviderSection(),
+            if (cfg.enabled) ...[
+              const SizedBox(height: 24),
+              Text(
+                L10n.t('live_mode_engine_label'),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: theme.textMain,
+                ),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: cfg.activeEngine,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  'local',
+                  ..._nonLocalEngines,
+                ]
+                    .map((e) => DropdownMenuItem(
+                          value: e,
+                          child: Text(_engineLabel(e)),
+                        ))
+                    .toList(),
+                onChanged: _busy
+                    ? null
+                    : (v) {
+                        if (v != null) _setActiveEngine(cfg, v);
+                      },
+              ),
+              if (isLocal) ...[
+                const SizedBox(height: 16),
+                const _LiveModeVoiceTest(),
+                const SizedBox(height: 16),
+                const TTSVoiceSection(),
+                const SizedBox(height: 16),
+                const TTSProviderSection(),
+              ] else ...[
+                const SizedBox(height: 16),
+                _EngineConfigForm(
+                  key: ValueKey(cfg.activeEngine),
+                  engineType: cfg.activeEngine,
+                ),
+                if (isNativeReasoning) ...[
+                  const SizedBox(height: 16),
+                  _WorkModeAndPermissionSection(
+                    cfg: cfg,
+                    busy: _busy,
+                    onWorkModeChanged: (v) => _setWorkMode(cfg, v),
+                    onPermissionPolicyChanged: (v) =>
+                        _setPermissionPolicy(cfg, v),
+                  ),
+                ],
+              ],
             ],
           ],
         );
       },
+    );
+  }
+}
+
+/// Config form for one non-local engine (API key/model/voice/base_url,
+/// varying by engine type). Keyed by engineType in the parent's build
+/// (`ValueKey(cfg.activeEngine)`) so switching engines gets a fresh State
+/// with fresh TextEditingControllers instead of stale text from the
+/// previously-selected engine. Model is still a free-text field — Phase 4
+/// replaces it with a live-fetched dropdown (docs/plans/PLAN_live_mode_v2.md).
+class _EngineConfigForm extends ConsumerStatefulWidget {
+  const _EngineConfigForm({super.key, required this.engineType});
+
+  final String engineType;
+
+  @override
+  ConsumerState<_EngineConfigForm> createState() => _EngineConfigFormState();
+}
+
+class _EngineConfigFormState extends ConsumerState<_EngineConfigForm> {
+  final _apiKeyController = TextEditingController();
+  final _modelController = TextEditingController();
+  final _voiceController = TextEditingController();
+  final _baseUrlController = TextEditingController();
+  bool _saving = false;
+  bool _initializedFromExisting = false;
+
+  @override
+  void dispose() {
+    _apiKeyController.dispose();
+    _modelController.dispose();
+    _voiceController.dispose();
+    _baseUrlController.dispose();
+    super.dispose();
+  }
+
+  void _initFrom(LiveModeEngineConfig cfg) {
+    if (_initializedFromExisting) return;
+    _initializedFromExisting = true;
+    _apiKeyController.text = cfg.apiKey ?? '';
+    _modelController.text = cfg.model;
+    _voiceController.text = cfg.voice;
+    _baseUrlController.text = cfg.baseURL;
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(apiClientProvider).updateLiveModeEngine(
+            LiveModeEngineConfig(
+              type: widget.engineType,
+              apiKey: _apiKeyController.text.trim(),
+              model: _modelController.text.trim(),
+              voice: _voiceController.text.trim(),
+              baseURL: _baseUrlController.text.trim(),
+              enabled: true,
+            ),
+          );
+      ref.invalidate(liveModeEnginesProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('live_mode_save_success'))),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    final isCustom = widget.engineType == 'custom';
+    final isElevenLabs = widget.engineType == 'elevenlabs';
+
+    final enginesAsync = ref.watch(liveModeEnginesProvider);
+    enginesAsync.whenData((engines) {
+      final existing = engines.where((e) => e.type == widget.engineType);
+      if (existing.isNotEmpty) {
+        _initFrom(existing.first);
+      } else {
+        _initializedFromExisting = true;
+      }
+    });
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.bgPanel,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            L10n.t('live_mode_engine_config_title'),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: theme.textMain,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (!isCustom) ...[
+            TextField(
+              controller: _apiKeyController,
+              obscureText: true,
+              style: TextStyle(fontSize: 13, color: theme.textMain),
+              decoration: InputDecoration(
+                labelText: L10n.t('live_mode_api_key_label'),
+                hintText: L10n.t('live_mode_api_key_hint'),
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (isCustom) ...[
+            TextField(
+              controller: _baseUrlController,
+              style: TextStyle(fontSize: 13, color: theme.textMain),
+              decoration: InputDecoration(
+                labelText: L10n.t('live_mode_base_url_label'),
+                hintText: L10n.t('live_mode_base_url_hint'),
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _apiKeyController,
+              obscureText: true,
+              style: TextStyle(fontSize: 13, color: theme.textMain),
+              decoration: InputDecoration(
+                labelText: L10n.t('live_mode_api_key_label'),
+                hintText: L10n.t('live_mode_api_key_hint'),
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          TextField(
+            controller: _modelController,
+            style: TextStyle(fontSize: 13, color: theme.textMain),
+            decoration: InputDecoration(
+              labelText: L10n.t('live_mode_model_label'),
+              helperText: L10n.t('live_mode_model_hint_manual'),
+              isDense: true,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          if (isElevenLabs) ...[
+            const SizedBox(height: 10),
+            TextField(
+              controller: _voiceController,
+              style: TextStyle(fontSize: 13, color: theme.textMain),
+              decoration: InputDecoration(
+                labelText: L10n.t('live_mode_voice_label'),
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                child: Text(L10n.t('live_mode_save_button')),
+              ),
+              if (_saving) ...[
+                const SizedBox(width: 12),
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// WorkMode (delegate/standalone) + AgentPermissionPolicy pickers — only
+/// meaningful for the two native-reasoning engines (see
+/// LiveModeConfig.workMode's doc comment).
+class _WorkModeAndPermissionSection extends StatelessWidget {
+  const _WorkModeAndPermissionSection({
+    required this.cfg,
+    required this.busy,
+    required this.onWorkModeChanged,
+    required this.onPermissionPolicyChanged,
+  });
+
+  final LiveModeConfig cfg;
+  final bool busy;
+  final ValueChanged<String> onWorkModeChanged;
+  final ValueChanged<String> onPermissionPolicyChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.bgPanel,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            L10n.t('live_mode_work_mode_label'),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: theme.textMain,
+            ),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: cfg.workMode,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem(
+                value: 'delegate',
+                child: Text(L10n.t('live_mode_work_mode_delegate')),
+              ),
+              DropdownMenuItem(
+                value: 'standalone',
+                child: Text(L10n.t('live_mode_work_mode_standalone')),
+              ),
+            ],
+            onChanged: busy
+                ? null
+                : (v) {
+                    if (v != null) onWorkModeChanged(v);
+                  },
+          ),
+          if (cfg.workMode == 'standalone') ...[
+            const SizedBox(height: 8),
+            Text(
+              L10n.t('live_mode_work_mode_standalone_warning'),
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                color: MemoTheme.warningOrange,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          Text(
+            L10n.t('live_mode_permission_policy_label'),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: theme.textMain,
+            ),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: cfg.agentPermissionPolicy,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem(
+                value: 'voice_prompt',
+                child: Text(L10n.t('live_mode_permission_policy_voice_prompt')),
+              ),
+              DropdownMenuItem(
+                value: 'auto_allow_once',
+                child: Text(L10n.t('live_mode_permission_policy_auto_allow')),
+              ),
+            ],
+            onChanged: busy
+                ? null
+                : (v) {
+                    if (v != null) onPermissionPolicyChanged(v);
+                  },
+          ),
+        ],
+      ),
     );
   }
 }

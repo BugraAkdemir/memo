@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"memo/internal/config"
+	"memo/internal/livemode"
 )
 
 // liveModeValidEngines/liveModeValidWorkModes/liveModeValidPermissionPolicies
@@ -50,5 +51,60 @@ func (a *App) UpdateLiveModeConfig(cfg config.LiveModeConfig) error {
 	if err := config.Save(a.cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
+	return nil
+}
+
+// initLiveModeEngines loads data/livemode_engines.json — Phase 3 of
+// docs/plans/PLAN_live_mode_v2.md. Called once from Startup, alongside
+// initTTSProviders/initSTTProviders. Unlike those two, there is no
+// router to (re)build here — see internal/livemode's package doc comment
+// on why engine selection isn't a priority-fallback router.
+func (a *App) initLiveModeEngines() {
+	cfgMgr := livemode.NewConfigManager(config.DataPath("livemode_engines.json"), nil)
+
+	a.liveModeMu.Lock()
+	a.liveModeEngineCfgMgr = cfgMgr
+	a.liveModeMu.Unlock()
+}
+
+// GetLiveModeEngines returns every saved non-local engine config.
+func (a *App) GetLiveModeEngines() []livemode.EngineConfig {
+	a.liveModeMu.RLock()
+	cfgMgr := a.liveModeEngineCfgMgr
+	a.liveModeMu.RUnlock()
+	if cfgMgr == nil {
+		return nil
+	}
+	return cfgMgr.GetAll()
+}
+
+// UpdateLiveModeEngine saves one engine's config (add or update, keyed by
+// Type). Does not touch internal/tts/internal/stt's own provider systems —
+// that sync lands in a later phase, once TranscribeAudio/SynthesizeSpeech
+// actually dispatch through the active Live Mode engine (see
+// docs/plans/PLAN_live_mode_v2.md's Phase 5).
+func (a *App) UpdateLiveModeEngine(cfg livemode.EngineConfig) error {
+	a.liveModeMu.RLock()
+	cfgMgr := a.liveModeEngineCfgMgr
+	a.liveModeMu.RUnlock()
+	if cfgMgr == nil {
+		return fmt.Errorf("Live Mode engine system not initialized")
+	}
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	cfgMgr.Set(cfg)
+	return nil
+}
+
+// DeleteLiveModeEngine removes one engine's saved config.
+func (a *App) DeleteLiveModeEngine(t livemode.EngineType) error {
+	a.liveModeMu.RLock()
+	cfgMgr := a.liveModeEngineCfgMgr
+	a.liveModeMu.RUnlock()
+	if cfgMgr == nil {
+		return fmt.Errorf("Live Mode engine system not initialized")
+	}
+	cfgMgr.Delete(t)
 	return nil
 }

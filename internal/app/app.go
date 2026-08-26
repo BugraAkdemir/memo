@@ -25,6 +25,7 @@ import (
 	"memo/internal/database"
 	"memo/internal/identity"
 	"memo/internal/intent"
+	"memo/internal/livemode"
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/modelstore"
@@ -125,36 +126,38 @@ func (r *eventRing) snapshot() []AppEvent {
 
 // App is the central application object.
 type App struct {
-	shutdownOnce      sync.Once          // guards Shutdown() against double-call
-	lifecycleCtx      context.Context    // goroutine lifecycle only — NOT for request-scoped operations
-	lifecycleCancel   context.CancelFunc // cancels lifecycleCtx on shutdown
-	client            *api.Client
-	clientMu          sync.RWMutex // protects client and embeddingClient reassignment
-	store             *memory.Store
-	storeMu           sync.RWMutex
-	identity          *identity.Identity
-	mood              *moodpkg.Engine
-	cfg               *config.AppConfig
-	cfgMu             sync.RWMutex // protects a.cfg.Llama field reassignment (UpdateLlamaConfig writes vs concurrent reads)
-	sessions          *sessions.Manager
-	incognitoMu       sync.RWMutex
-	isIncognito       bool
-	incognitoMessages []api.Message
-	whisperServer     *whisper.Server
-	whisperMu         sync.RWMutex
-	ttsSynthesizer    *tts.Synthesizer
-	ttsFillerCache    *tts.FillerCache
-	ttsMu             sync.RWMutex
-	ttsProviderCfgMgr *tts.ConfigManager
-	ttsRouter         *tts.Router
-	ttsRouterMu       sync.RWMutex
-	ttsVoiceStore     *tts.VoiceStore
-	sttProviderCfgMgr *stt.ConfigManager
-	sttRouter         *stt.Router
-	sttRouterMu       sync.RWMutex
-	webServer         *webserver.Server
-	webMu             sync.RWMutex
-	modelStore        *modelstore.Store
+	shutdownOnce         sync.Once          // guards Shutdown() against double-call
+	lifecycleCtx         context.Context    // goroutine lifecycle only — NOT for request-scoped operations
+	lifecycleCancel      context.CancelFunc // cancels lifecycleCtx on shutdown
+	client               *api.Client
+	clientMu             sync.RWMutex // protects client and embeddingClient reassignment
+	store                *memory.Store
+	storeMu              sync.RWMutex
+	identity             *identity.Identity
+	mood                 *moodpkg.Engine
+	cfg                  *config.AppConfig
+	cfgMu                sync.RWMutex // protects a.cfg.Llama field reassignment (UpdateLlamaConfig writes vs concurrent reads)
+	sessions             *sessions.Manager
+	incognitoMu          sync.RWMutex
+	isIncognito          bool
+	incognitoMessages    []api.Message
+	whisperServer        *whisper.Server
+	whisperMu            sync.RWMutex
+	ttsSynthesizer       *tts.Synthesizer
+	ttsFillerCache       *tts.FillerCache
+	ttsMu                sync.RWMutex
+	ttsProviderCfgMgr    *tts.ConfigManager
+	ttsRouter            *tts.Router
+	ttsRouterMu          sync.RWMutex
+	ttsVoiceStore        *tts.VoiceStore
+	sttProviderCfgMgr    *stt.ConfigManager
+	sttRouter            *stt.Router
+	sttRouterMu          sync.RWMutex
+	liveModeEngineCfgMgr *livemode.ConfigManager
+	liveModeMu           sync.RWMutex
+	webServer            *webserver.Server
+	webMu                sync.RWMutex
+	modelStore           *modelstore.Store
 
 	waClient         *whatsapp.Client
 	waMsgStore       *whatsapp.Store
@@ -575,6 +578,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.initTTS()
 	a.initTTSProviders()
 	a.initSTTProviders()
+	a.initLiveModeEngines()
 	a.ttsVoiceStore = tts.NewVoiceStore(config.DataPath("tts_voices"))
 
 	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {

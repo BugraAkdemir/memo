@@ -9,6 +9,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/browserengine"
 	"memo/internal/config"
+	"memo/internal/livemode"
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/models"
@@ -272,6 +273,12 @@ type FullBridge interface {
 	// GetLiveModeEngines/UpdateLiveModeEngine-shaped addition here.
 	GetLiveModeConfig() config.LiveModeConfig
 	UpdateLiveModeConfig(cfg config.LiveModeConfig) error
+
+	// Live Mode engine configs (Phase 3 — per-engine API keys/model/voice
+	// for the four non-local engines, see PLAN_live_mode_v2.md §3)
+	GetLiveModeEngines() []livemode.EngineConfig
+	UpdateLiveModeEngine(cfg livemode.EngineConfig) error
+	DeleteLiveModeEngine(t livemode.EngineType) error
 
 	// Orchestra mode
 	GetOrchestraConfig() orchestra.OrchestraConfig

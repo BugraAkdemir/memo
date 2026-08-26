@@ -10,6 +10,7 @@ import '../models/chat.dart';
 import '../models/cli_command.dart';
 import '../models/gpu_info.dart';
 import '../models/live_mode_config.dart';
+import '../models/live_mode_engine_config.dart';
 import '../models/local_model.dart';
 import '../models/minimal_mode_overrides.dart';
 import '../models/orchestra_config.dart';
@@ -1898,6 +1899,26 @@ class MemoApiClient {
 
   Future<void> updateLiveModeConfig(LiveModeConfig cfg) async {
     await _dio.put('/api/livemode/active', data: cfg.toJson());
+  }
+
+  // ─── Live Mode v2 (Phase 3: per-engine config CRUD) ─────────────────
+
+  Future<List<LiveModeEngineConfig>> getLiveModeEngines() async {
+    final res = await _dio.get('/api/livemode/engines');
+    if (res.data is List) {
+      return (_guard<List>(res.data))
+          .map((e) => LiveModeEngineConfig.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<void> updateLiveModeEngine(LiveModeEngineConfig cfg) async {
+    await _dio.put('/api/livemode/engines', data: cfg.toJson());
+  }
+
+  Future<void> deleteLiveModeEngine(String type) async {
+    await _dio.delete('/api/livemode/engines', data: {'type': type});
   }
 
   // ─── Orchestra Mode ───────────────────────────────────────────────

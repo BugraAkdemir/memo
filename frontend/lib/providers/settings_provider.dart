@@ -12,6 +12,7 @@ import '../models/browser_install_progress.dart';
 import '../models/dev_gateway.dart';
 import '../models/gpu_info.dart';
 import '../models/live_mode_config.dart';
+import '../models/live_mode_engine_config.dart';
 import '../models/minimal_mode_overrides.dart';
 import '../models/usage_stats.dart';
 import 'auth_gate_provider.dart';
@@ -634,6 +635,19 @@ final liveModeConfigProvider = FutureProvider<LiveModeConfig>((ref) async {
     return await ref.read(apiClientProvider).getLiveModeConfig();
   } catch (e) {
     return const LiveModeConfig();
+  }
+});
+
+// Per-engine config (API keys, model/voice/base_url) for the four non-local
+// engines — Phase 3, see docs/plans/PLAN_live_mode_v2.md §3.
+final liveModeEnginesProvider = FutureProvider<List<LiveModeEngineConfig>>((ref) async {
+  if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+    return const [];
+  }
+  try {
+    return await ref.read(apiClientProvider).getLiveModeEngines();
+  } catch (e) {
+    return const [];
   }
 });
 

@@ -9,6 +9,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/browserengine"
 	"memo/internal/config"
+	"memo/internal/livemode"
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/models"
@@ -430,6 +431,9 @@ func (b *swarmStubBridge) UpdateSTTProvider(cfg stt.ProviderConfig) error       
 func (b *swarmStubBridge) DeleteSTTProvider(pt stt.ProviderType, name ...string) error { return nil }
 func (b *swarmStubBridge) GetLiveModeConfig() config.LiveModeConfig                    { return config.LiveModeConfig{} }
 func (b *swarmStubBridge) UpdateLiveModeConfig(cfg config.LiveModeConfig) error        { return nil }
+func (b *swarmStubBridge) GetLiveModeEngines() []livemode.EngineConfig                 { return nil }
+func (b *swarmStubBridge) UpdateLiveModeEngine(cfg livemode.EngineConfig) error        { return nil }
+func (b *swarmStubBridge) DeleteLiveModeEngine(t livemode.EngineType) error            { return nil }
 func (b *swarmStubBridge) GetOrchestraConfig() orchestra.OrchestraConfig {
 	return orchestra.OrchestraConfig{}
 }

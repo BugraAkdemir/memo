@@ -9,6 +9,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/browserengine"
 	"memo/internal/config"
+	"memo/internal/livemode"
 	"memo/internal/logx"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
@@ -2372,6 +2373,46 @@ func (s *Server) handleBrowserSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]bool{"keep_alive": req.KeepAlive})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleLiveModeEngines: GET lists every saved non-local engine config, PUT
+// upserts one (keyed by type), DELETE removes one. Mirrors
+// handleTTSProviders' shape. Phase 3 — see docs/plans/PLAN_live_mode_v2.md §3.
+func (s *Server) handleLiveModeEngines(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, s.fullBridge.GetLiveModeEngines())
+	case http.MethodPut:
+		var req livemode.EngineConfig
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.UpdateLiveModeEngine(req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	case http.MethodDelete:
+		var req struct {
+			Type livemode.EngineType `json:"type"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.DeleteLiveModeEngine(req.Type); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET, PUT, DELETE", http.StatusMethodNotAllowed)
 	}
 }
 

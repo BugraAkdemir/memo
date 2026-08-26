@@ -1,3 +1,73 @@
+# Ek (2026-08-26, devam 15) — Live Mode v2 Faz 9 (delegasyon primitifi)
+
+**Faz 9 tamamlandı** (`a07be2e`) — planın en mimari-yoğun bölümü. İki
+primitif eklendi:
+
+1. **`App.SendLiveDelegatedMessageStream`** (`internal/app/
+   livemode_delegate.go`): `SendMessageStreamToAsAgent`'ın tool-execution
+   davranışını (`forceAgent=true`, `sendMessageStreamCore`'u DOĞRUDAN
+   çağırıyor — `sendMessageStreamInnerTo`/`SendCLIMessageStream`/
+   `runAgentRoutine`'in hepsinin paylaştığı aynı çekirdek) `SendCLIMessageStream`'in
+   concurrency modeliyle (`a.liveJobsMu`/`a.liveJobs`, `a.streamMu` DEĞİL)
+   birleştiriyor. `a.streamMu`'yu kilitleyip tutan bir testle doğrulandı —
+   delegasyon akışı yine de tamamlanıyor, gerçekten global kilidi
+   atladığını kanıtlıyor. Özel arka plan sohbetinde çalışıyor
+   (`getOrCreateLiveModeChat`, `sessions.Manager.NewBackgroundChat` ile —
+   WhatsApp/Telegram self-chat'in kullandığı aynı mekanizma), v1 için tek
+   bir scalar (map değil — plan dosyasında ileride çok-cihazlı eşzamanlı
+   Live Mode gerekirse ilk gözden geçirilecek yer olarak işaretli).
+   Çağıranın `sessionCtx`'ine bağlı (live oturumun kendi context'i),
+   **bilerek** `a.lifecycleCtx` DEĞİL — CLI job'larından bilinçli bir
+   sapma, kodda not düşüldü ki ileride "düzeltilmesin".
+
+2. **`App.drainLiveDelegatedReply`**: mevcut `drainSelfChatReply`'nin
+   (WhatsApp/Telegram self-chat) ince, dürüst isimli bir sarmalayıcısı —
+   o fonksiyonun callback tabanlı imzası (autoApprove/buildQuestion/
+   sendQuestion/awaitAnswer) zaten tamamen provider-agnostic olduğu için
+   aynı döngü ikinci bir isimle tekrar yazılmadı. Faz 12 gerçek "sesli
+   sor" callback'lerini "voice_prompt" politikası için ekleyecek;
+   "auto_allow_once" zaten `autoApprove=true` ile tam çalışıyor.
+
+3. **`agent.Executor.ExecuteToolCall`** (`internal/agent/
+   execute_tool_call.go`): standalone mod primitifi — tek bir tool call'ı
+   izole çalıştırıyor (rate limit, izin kontrolü, execute), etrafında
+   ChatCompletion döngüsü yok (döngü dış tarafta — native motorun kendi
+   muhakemesi). `RunStream`'in aynı async izin-bekleme mekanizmasını
+   (`e.mu`/`pendingPerms`, 60s auto-deny) yeniden kullanıyor, böylece
+   bekleyen bir istek aynı `Executor.HandlePermissionResponse`/
+   `App.HandleAgentPermission` yoluyla çözülüyor — yeni bir izin-yönlendirme
+   altyapısına gerek yok. Her çağrı aynı audit log'a yazılıyor.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok — per-job exclusivity, arka plan sohbeti oluşturma/
+  yeniden kullanma, streamMu bağımsızlığı, session-context iptalinin
+  gerçekten işi bitirmesi, drainLiveDelegatedReply'nin auto-approve/hata
+  davranışı + ExecuteToolCall'ın Safe-tool no-prompt yolu, bypassPermissions,
+  ve HandlePermissionResponse üzerinden tam async onay/red round-trip'i
+  (gerçek write_file/read_file araçlarıyla, mock değil) — hepsi yeşil
+```
+
+**Yan bulgular (temizlendi/flag'lendi, Faz 9'un kendisiyle ilgisi yok):**
+- `internal/agent/{pipeline,executor,backup,backup_test}.go` main'de
+  gofmt-temiz değil (muhtemelen bir merge'den kalma) — ayrı bir arka plan
+  görevi olarak flag'lendi, bu commit'e bundle edilmedi.
+- Bu paketin testlerini çalıştırmak `internal/agent/data/` (audit log +
+  backup history) diye izlenmeyen bir dizin yaratıyor — aynı
+  `config.DataPath()`-göreli-yol-paket-dizinine-çözümleniyor kök nedeni,
+  daha önce flag'lenen görevle aynı — bu oturumda temizlendi.
+
+**Sıradaki:** Faz 10 — her iki `WorkMode`'un gerçek client'lara
+bağlanması: tool-set builder (`delegate_to_main_model` vs tam agent
+registry, provider-native formata çeviri) + tool-call routing + sadece
+final-result anlatımı (henüz ilerleme enjeksiyonu yok) + oturum başlangıcı
+system prompt'u (`identity.BuildSystemPrompt`'un live-mode varyantı) +
+Flutter'da `WorkMode` seçici zaten Faz 3'te vardı. Kullanıcı onayı
+beklemeden devam ediliyor.
+
+---
+
 # Ek (2026-08-26, devam 14) — Live Mode v2 Faz 8 (OpenAI Realtime client)
 
 **Faz 8 tamamlandı** (`9e143fa`): `internal/livemode/openai_realtime.Client`,

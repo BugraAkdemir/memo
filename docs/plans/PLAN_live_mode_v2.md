@@ -523,3 +523,15 @@ her ilgili fazda "doğrulanmadı" olarak açıkça belirtilecek, sessizce
   Bearer header, URL'de key yok). `handleLiveModeSession` artık her iki
   native motoru da kapsıyor. Aynı iki katmanlı test deseni (paket-seviyesi
   + Flutter↔Go-köprü↔sahte-OpenAI tam zincir) yeşil.
+- 2026-08-26: Faz 9 tamam (`a07be2e`) — `App.SendLiveDelegatedMessageStream`
+  (per-job concurrency `a.liveJobsMu`/`a.liveJobs`, `a.streamMu` DEĞİL;
+  özel arka plan sohbeti; `sessionCtx`'e bağlı, `a.lifecycleCtx`'e değil),
+  `App.drainLiveDelegatedReply` (mevcut `drainSelfChatReply`'nin ince bir
+  sarmalayıcısı — zaten tamamen provider-agnostic olduğu için tekrar
+  yazılmadı), `agent.Executor.ExecuteToolCall` (standalone mod için tek-araç
+  primitifi, `RunStream`'in async izin-bekleme mekanizmasını yeniden
+  kullanıyor — yeni bir izin-yönlendirme altyapısı yok). Hepsi gerçek
+  provider olmadan test edildi (write_file/read_file gerçek araçlarıyla,
+  mock değil). İki ilgisiz önceden var olan sorun bulundu ve düzeltildi/
+  flag'lendi (internal/agent'ta gofmt drift'i, ayrı görev olarak flag'lendi;
+  test'lerin yarattığı internal/agent/data/ artığı temizlendi).

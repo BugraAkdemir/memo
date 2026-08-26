@@ -516,3 +516,10 @@ her ilgili fazda "doğrulanmadı" olarak açıkça belirtilecek, sessizce
   Flutter-istemci→Go-köprü→sahte-Google zincirinin tamamını kanıtlayan
   webserver-seviyesi testler yeşil. Gerçek Google API key yok, sadece
   belgelenen wire protokolüne karşı sahte sunucularla doğrulandı.
+- 2026-08-26: Faz 8 tamam (`9e143fa`) — `internal/livemode/
+  openai_realtime.Client`, Faz 7'nin aynası, OpenAI'nin kendi wire
+  protokolüne göre (`session.update` → `input_audio_buffer.append`
+  (24kHz PCM) ↔ `response.output_audio.delta` (24kHz PCM), Authorization:
+  Bearer header, URL'de key yok). `handleLiveModeSession` artık her iki
+  native motoru da kapsıyor. Aynı iki katmanlı test deseni (paket-seviyesi
+  + Flutter↔Go-köprü↔sahte-OpenAI tam zincir) yeşil.

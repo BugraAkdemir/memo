@@ -1,3 +1,40 @@
+# Ek (2026-08-26, devam 14) — Live Mode v2 Faz 8 (OpenAI Realtime client)
+
+**Faz 8 tamamlandı** (`9e143fa`): `internal/livemode/openai_realtime.Client`,
+Faz 7'nin (Google) birebir aynası, OpenAI Realtime'ın kendi wire
+protokolüne göre: `wss://api.openai.com/v1/realtime?model=...` +
+`Authorization: Bearer` header (key URL'de değil), önce `session.update`
+(session.type="realtime", model, output_modalities:[audio], instructions,
+audio.input/output.format — her iki yönde de 24kHz PCM, Google'ın
+asimetrik 16kHz-giriş/24kHz-çıkışının aksine), sonra
+`input_audio_buffer.append` ↔ `response.output_audio.delta`. Diğer tüm
+server event tipleri (session.created, speech_started/stopped vb.)
+sessizce yok sayılıyor — bunu doğrulayan ayrı bir test de var.
+`handleLiveModeSession` artık her iki native motoru kapsıyor.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok — paket-seviyesi testler (auth header, model query
+  param, session.update şekli, SendAudio encode, delta→EventAudioOut,
+  ilgisiz event'lerin yok sayılması) + Flutter-istemci→gerçek handler→
+  sahte-OpenAI tam zincir testi hepsi yeşil
+```
+
+**Eksik/doğrulanamayan:** Bu ortamda gerçek OpenAI API key'i yok — sadece
+belgelenen wire protokolüne karşı sahte sunucularla doğrulandı.
+
+**Sıradaki:** Faz 9 — Part B delegasyon primitifi (backend-only,
+provider-agnostic): `SendLiveDelegatedMessageStream`, per-job concurrency
+map, özel arka plan sohbeti, `drainLiveDelegatedReply`/izin çözümlemesi;
+aynı fazda `"standalone"` modu için `agent.Executor.ExecuteToolCall`
+tek-araç sarmalayıcısı. Bu, planın en mimari-yoğun kalan bölümü —
+`internal/app/chat.go`'nun `streamMu`/`sendMessageStreamCore`'unu ve
+`cli_stream.go`/`selfchat_permission.go`'nun emsallerini dikkatle
+inceleyerek ilerlenecek. Kullanıcı onayı beklemeden devam ediliyor.
+
+---
+
 # Ek (2026-08-26, devam 13) — Live Mode v2 Faz 7 (Google Live client)
 
 **Faz 7 tamamlandı** (`0ecee0f`): `internal/livemode/google.Client`,

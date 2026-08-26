@@ -175,7 +175,7 @@ type WhisperConfig struct {
 	ModelPath  string `yaml:"model_path" json:"model_path"`
 	Language   string `yaml:"language" json:"language"` // "auto", "tr", "en"
 	Port       int    `yaml:"port" json:"port"`         // default 9877
-	Enabled    bool   `yaml:"enabled" json:"enabled"`   // default true
+	Enabled    bool   `yaml:"enabled" json:"enabled"`   // default false — whisper-server + its ~500MB model ship with every install but sit idle until a user opts in from Settings
 }
 
 // TTSConfig holds text-to-speech settings for Piper (internal/tts). Unlike
@@ -696,7 +696,7 @@ func Default() *AppConfig {
 			EmbeddingGPULayers: 0, // CPU by default — see field doc comment
 		},
 		Whisper: WhisperConfig{
-			Enabled:  true,
+			Enabled:  false,
 			Language: "auto",
 			Port:     9877,
 		},

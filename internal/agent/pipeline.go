@@ -107,6 +107,12 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 	// RunStream is called (once per agent turn). See tools.WithFetchBudget.
 	ctx = tools.WithFetchBudget(ctx)
 
+	// Let change_directory (internal/agent/tools/changedir.go) widen this
+	// turn's sandbox root — Pipeline.sandbox is the per-call sandbox
+	// Executor.RunStream just built, so this is safe to mutate mid-turn: no
+	// other concurrent RunStream call shares it.
+	ctx = tools.WithSandboxSetter(ctx, p.sandbox)
+
 	go func() {
 		defer close(outCh)
 		defer recoverStreamPanic(ctx, outCh, "Pipeline.RunStream")

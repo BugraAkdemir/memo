@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"memo/internal/logx"
+	"memo/internal/agent/tools"
 	"memo/internal/config"
+	"memo/internal/logx"
 	"memo/internal/provider"
+	"memo/internal/sessions"
 	"os"
 	"sync"
 	"time"
@@ -40,6 +42,12 @@ type Executor struct {
 	permissions    *PermissionManager
 	sandbox        *Sandbox
 	backup         *BackupManager
+	// sessionManager lets change_directory (internal/agent/tools/changedir.go)
+	// persist a directory switch past the current turn — see
+	// tools.WithProjectPathSetter in RunStream below. May be nil (background/
+	// test executors that never construct one); persistence is then simply
+	// skipped, not an error.
+	sessionManager *sessions.Manager
 
 	mu                sync.Mutex
 	pendingPerms      map[string]*PermissionRequest
@@ -70,8 +78,11 @@ func openAuditLogFile() *os.File {
 	return f
 }
 
-// NewExecutor creates a new agent executor.
-func NewExecutor(basePath string, providerRouter *provider.Router, providerCfgMgr *provider.ConfigManager) *Executor {
+// NewExecutor creates a new agent executor. sessionManager may be nil (e.g.
+// in tests) — change_directory then simply can't persist a switch past the
+// current turn, but the turn-local switch (the more important half) still
+// works via the sandbox alone.
+func NewExecutor(basePath string, providerRouter *provider.Router, providerCfgMgr *provider.ConfigManager, sessionManager *sessions.Manager) *Executor {
 	return &Executor{
 		basePath:       basePath,
 		providerRouter: providerRouter,
@@ -80,6 +91,7 @@ func NewExecutor(basePath string, providerRouter *provider.Router, providerCfgMg
 		permissions:    NewPermissionManager(config.DataDir()),
 		sandbox:        NewSandbox(DefaultSandboxConfig(basePath)),
 		backup:         NewBackupManager(config.DataDir()),
+		sessionManager: sessionManager,
 		pendingPerms:   make(map[string]*PermissionRequest),
 		logs:           make([]AgentLogEntry, 0),
 		auditLogFile:   openAuditLogFile(),
@@ -100,6 +112,7 @@ func NewWhatsAppExecutor(existing *Executor) *Executor {
 		permissions:    existing.permissions,
 		sandbox:        existing.sandbox,
 		backup:         existing.backup,
+		sessionManager: existing.sessionManager,
 		pendingPerms:   make(map[string]*PermissionRequest),
 		logs:           make([]AgentLogEntry, 0),
 		auditLogFile:   existing.auditLogFile,
@@ -130,6 +143,7 @@ func NewWebSearchExecutor(existing *Executor) *Executor {
 		permissions:    existing.permissions,
 		sandbox:        existing.sandbox,
 		backup:         existing.backup,
+		sessionManager: existing.sessionManager,
 		pendingPerms:   make(map[string]*PermissionRequest),
 		logs:           make([]AgentLogEntry, 0),
 		auditLogFile:   existing.auditLogFile,
@@ -256,6 +270,14 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 		case policy := <-resCh:
 			return policy, nil
 		}
+	}
+
+	// Let change_directory persist a directory switch past this turn (see
+	// tools.WithSandboxSetter in Pipeline.RunStream for the turn-local half).
+	// Every RunStream caller reaches this — Flutter chat, WhatsApp, Telegram
+	// — so persistence isn't a per-channel concern.
+	if e.sessionManager != nil {
+		ctx = tools.WithProjectPathSetter(ctx, e.sessionManager, sessionID)
 	}
 
 	return pipeline.RunStream(ctx, messages, modelName, wrappedOnEvent, waitFn)

@@ -89,6 +89,41 @@ func TestNewChat(t *testing.T) {
 	}
 }
 
+func TestSetProjectPath(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	id := m.NewChat()
+
+	if got := m.GetProjectPath(id); got != "" {
+		t.Errorf("GetProjectPath() before SetProjectPath = %q, want empty", got)
+	}
+
+	if err := m.SetProjectPath(id, "/tmp/some-project"); err != nil {
+		t.Fatalf("SetProjectPath() error = %v", err)
+	}
+	if got := m.GetProjectPath(id); got != "/tmp/some-project" {
+		t.Errorf("GetProjectPath() after SetProjectPath = %q, want %q", got, "/tmp/some-project")
+	}
+
+	// Persisted, not just in-memory: reload from disk and confirm it stuck.
+	m2, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("NewManager() reload error = %v", err)
+	}
+	if got := m2.GetProjectPath(id); got != "/tmp/some-project" {
+		t.Errorf("GetProjectPath() after reload = %q, want %q", got, "/tmp/some-project")
+	}
+}
+
+func TestSetProjectPathNotFound(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+
+	if err := m.SetProjectPath("no-such-session", "/tmp/x"); err == nil {
+		t.Error("SetProjectPath() with an unknown session id should error")
+	}
+}
+
 func TestSwitchChat(t *testing.T) {
 	dir := t.TempDir()
 	m, _ := NewManager(dir)

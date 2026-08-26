@@ -17,7 +17,7 @@ import (
 // unsynchronized read elsewhere has no happens-before guarantee and can
 // observe a stale value. Run with -race to catch a regression.
 func TestExecutor_PermissionFlagsConcurrentAccess(t *testing.T) {
-	e := NewExecutor(t.TempDir(), nil, nil)
+	e := NewExecutor(t.TempDir(), nil, nil, nil)
 
 	var wg sync.WaitGroup
 	for i := range 100 {
@@ -58,7 +58,7 @@ func TestExecutor_LogEventPersistsToAuditFile(t *testing.T) {
 		startSize = fi.Size()
 	}
 
-	e := NewExecutor(t.TempDir(), nil, nil)
+	e := NewExecutor(t.TempDir(), nil, nil, nil)
 	if e.auditLogFile == nil {
 		t.Fatal("auditLogFile is nil — could not open the audit log")
 	}

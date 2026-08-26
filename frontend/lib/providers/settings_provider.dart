@@ -704,6 +704,47 @@ class BrowserKeepAliveNotifier extends AsyncNotifier<bool> {
   }
 }
 
+// ─── Whisper (STT) Enabled ─────────────────────────────────────
+//
+// whisper-server ships with every install but defaults off (see
+// WhisperConfig.Enabled's doc comment on the Go side) — this toggle is the
+// only way to turn it on, so unlike most Settings toggles it directly
+// starts/stops a ~500MB-RAM process rather than just flipping a flag.
+
+final whisperEnabledProvider =
+    AsyncNotifierProvider<WhisperEnabledNotifier, bool>(
+      WhisperEnabledNotifier.new,
+    );
+
+class WhisperEnabledNotifier extends AsyncNotifier<bool> {
+  // See MemoryEnabledNotifier._toggling above — same fast-double-tap race.
+  bool _toggling = false;
+
+  @override
+  Future<bool> build() async {
+    // BUG-ONB6: see LlamaSettingsNotifier's comment above.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return false;
+    return ref.read(apiClientProvider).getWhisperEnabled();
+  }
+
+  Future<void> toggle() async {
+    if (_toggling) return;
+    _toggling = true;
+    final current = state.valueOrNull ?? false;
+    final next = !current;
+    state = AsyncData(next);
+    try {
+      await ref.read(apiClientProvider).setWhisperEnabled(next);
+    } catch (e) {
+      state = AsyncData(current);
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Sesli komut durumu değiştirilemedi (${FriendlyError.describeGeneric(e)})';
+    } finally {
+      _toggling = false;
+    }
+  }
+}
+
 // ─── Minimal Mode ──────────────────────────────────────────────
 //
 // When on, identity/persona/mood/web-search prompt injection is disabled

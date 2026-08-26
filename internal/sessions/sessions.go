@@ -162,6 +162,22 @@ func (m *Manager) GetProjectPath(id string) string {
 	return s.ProjectPath
 }
 
+// SetProjectPath updates a session's persisted working-directory override —
+// the write-side counterpart to GetProjectPath. Used by the change_directory
+// agent tool so a directory switch survives past the turn that made it,
+// across every surface (Flutter chat, WhatsApp, Telegram) that later reads
+// GetProjectPath before calling Executor.RunStream.
+func (m *Manager) SetProjectPath(id, path string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	s.ProjectPath = path
+	return m.save(s)
+}
+
 func (m *Manager) SwitchChat(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

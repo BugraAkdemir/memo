@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"memo/internal/config"
 	"memo/internal/logx"
 	"net/http"
 	"os"
@@ -58,6 +59,44 @@ func (a *App) startSTTServer() {
 	a.whisperServer = ws
 	a.whisperMu.Unlock()
 	logx.Printf("STT: whisper server ready on :%d", port)
+}
+
+// GetWhisperEnabled reports whether speech-to-text is enabled.
+func (a *App) GetWhisperEnabled() bool {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg.Whisper.Enabled
+}
+
+// SetWhisperEnabled turns speech-to-text on or off. whisper-server ships
+// with every install (see WhisperConfig.Enabled's doc comment) but its
+// ~500MB model sits idle in RAM once started, so — unlike SetMemoryEnabled,
+// which only flips a flag downstream code checks — this must actually start
+// or stop the process to make the toggle worth having.
+func (a *App) SetWhisperEnabled(enabled bool) error {
+	a.cfgMu.Lock()
+	a.cfg.Whisper.Enabled = enabled
+	a.cfgMu.Unlock()
+	if err := config.Save(a.cfg); err != nil {
+		return err
+	}
+	if enabled {
+		a.whisperMu.RLock()
+		running := a.whisperServer != nil && a.whisperServer.IsRunning()
+		a.whisperMu.RUnlock()
+		if !running {
+			goRecover("startSTTServer", a.startSTTServer)
+		}
+	} else {
+		a.whisperMu.Lock()
+		ws := a.whisperServer
+		a.whisperServer = nil
+		a.whisperMu.Unlock()
+		if ws != nil {
+			ws.Stop()
+		}
+	}
+	return nil
 }
 
 // stopRecordingProcess kills an in-flight microphone recording (arecord/sox/ffmpeg)

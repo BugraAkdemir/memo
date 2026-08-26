@@ -371,10 +371,10 @@ func validatePath(targetPath, basePath string) (string, error) {
 				needle = strings.ToLower(protected)
 			}
 			if strings.HasPrefix(cmpPath, needle) {
-				return "", fmt.Errorf("access denied: %q is within a protected system directory (%s) — only files inside %s are accessible", targetPath, protected, basePath)
+				return "", fmt.Errorf("access denied: %q is within a protected system directory (%s) — only files inside %s are accessible.%s", targetPath, protected, basePath, OutsideSandboxHint)
 			}
 		}
-		return "", fmt.Errorf("%q is outside the project directory — only files inside %s are accessible", targetPath, basePath)
+		return "", fmt.Errorf("%q is outside the project directory — only files inside %s are accessible.%s", targetPath, basePath, OutsideSandboxHint)
 	}
 
 	return realPath, nil

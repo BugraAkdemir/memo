@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# AGENTS.md Agent Working Rules #6: commit messages must NEVER carry AI
+# attribution (Co-Authored-By / "Generated with ..." trailers).
+# Active via: git config core.hooksPath .githooks
+#
+# Deliberately SUBSTRING match (case-insensitive): AGENTS.md rule #6 says
+# "under any circumstance", so anything resembling attribution phrasing is
+# rejected even mid-sentence. Rare prose quoting these phrases gets this
+# rejection too - reword the message rather than loosening this hook.
+msg_file="$1"
+pat='co-authored-by:[[:space:]]*|generated[[:space:]]+(with|by)\b'
+if sed 's/^[^A-Za-z]*//' "$msg_file" | grep -iqE "$pat"; then
+  {
+    echo ""
+    echo "COMMIT REJECTED - AI attribution found in the message (AGENTS.md rule #6)."
+    echo "Offending line(s):"
+    sed 's/^[^A-Za-z]*//' "$msg_file" | grep -inE "$pat" | sed 's/^/    /'
+    echo "Fix: strip the trailer, then re-commit or 'git commit --amend'."
+  } >&2
+  exit 1
+fi
+exit 0

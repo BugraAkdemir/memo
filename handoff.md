@@ -1,3 +1,188 @@
+# Ek (2026-08-26) — whisper varsayılan kapalı + Settings'ten aç/kapat (main)
+
+Kullanıcı System Monitor'da `whisper-server`'ın 559.7 MiB RAM tükettiğini
+fark etti, hiç sesli özellik kullanmadığı halde her açılışta otomatik
+başladığını sordu. Önce doğrulandı: `get-memo.sh`/`get-memo-server.sh` ve
+Windows installer'ı `binaries/<platform>/` klasörünü toptan kopyalıyor —
+whisper-server + `ggml-small.bin` (~487MB) llama.cpp/vec0 ile aynı yerde,
+hiçbir platformda ayıklanmıyor, yani her kurulumda gömülü geliyor. Kullanıcı
+kararı: "ekle, default olarak kapalı gelsin, ama main'de yap" — bu iş
+`experiment/gosearch-integration`'dan bağımsız, doğrudan `main` üzerinde
+yapıldı (commit `934f1e3`).
+
+## Yapılanlar
+
+- `internal/config/config.go`: `WhisperConfig.Enabled` default `true` →
+  `false`.
+- `internal/app/stt.go`: `GetWhisperEnabled`/`SetWhisperEnabled` eklendi.
+  `SetWhisperEnabled`, `memory.go`'daki `SetMemoryEnabled`'ın aksine sadece
+  bayrak çevirmiyor — açılınca `startSTTServer()`'ı (varsa) başlatıyor,
+  kapanınca `a.whisperServer.Stop()` ile süreci gerçekten öldürüyor; toggle'ın
+  amacı zaten ~500MB RAM'i geri vermek olduğu için bu fark bilinçli.
+- Backend bridge/route/handler: `internal/webserver/bridge.go` (`FullBridge`'e
+  iki metot), `server.go` (`/api/whisper/enabled` route'u, `/api/transcribe`
+  yanına), `handlers_flutter.go` (`handleWhisperEnabled`, GET/PUT) —
+  `handleMemoryEnabled`'ın birebir aynı deseni. `swarm_stub_bridge_test.go`'a
+  iki stub eklendi.
+- Frontend: `general_tab.dart`'a Memory Toggle bölümüyle aynı görünümde yeni
+  "Sesli Komut (STT)" bölümü + switch; `settings_provider.dart`'a
+  `whisperEnabledProvider`/`WhisperEnabledNotifier` (`MemoryEnabledNotifier`
+  ile aynı optimistic-update + `_toggling` deseni, `authGateBlocked` guard'ı
+  dahil — BUG-ONB6); `app_shell.dart`'ın gate-transition invalidation
+  listesine eklendi; `l10n.dart`'a TR+EN dört anahtar çifti.
+
+## Doğrulama
+
+- `go build/vet ./...` ve `go test ./internal/app/... ./internal/webserver/...
+  ./internal/config/... ./internal/whisper/...` — hepsi yeşil, tek istisna
+  `internal/whisper`'daki `TestGetStatus_NewServer`: bu makinede 9877 portunda
+  önceki oturumdan kalma **gerçek** bir `whisper-server` süreci (pid
+  `1525355`) hâlâ çalıştığı için başarısız oluyor. `git stash` ile temiz
+  `main`'de de aynı şekilde patladığı doğrulandı — benim değişikliğimle
+  ilgisi yok, ortam kaynaklı, dokunulmadı.
+- `flutter analyze` — sıfır yeni uyarı (6 mevcut uyarı, hepsi bu değişiklikten
+  önce de vardı, dokunulmayan dosyalarda).
+- `flutter test` — 283/283 geçti (BUG-ONB6 guard'ı sayesinde
+  `settings_dialog_test.dart`'ta sızan-timer regresyonu tekrarlanmadı).
+
+## Sıradaki oturum için
+
+1. Kullanıcı isterse pid `1525355`'i (`kill 1525355`) kapatıp bu makinede
+   9877 portunu boşaltabilir — hem `whisper` testini hem gerçek RAM
+   tüketimini düzeltir.
+2. Kapsam dışı bırakıldı (önerildi, istenmedi): browser engine'in
+   `experiment/gosearch-integration`'daki Settings toggle'ına benzer bir
+   "install" adımı whisper'a gerekmiyor (zaten gömülü geliyor) — sadece
+   aç/kapat yeterliydi.
+3. `experiment/gosearch-integration` hâlâ main'e alınmadı, bu işten
+   bağımsız — kullanıcı hâlâ o branch'i test ediyor.
+
+---
+
+# Ek (2026-08-25, devam) — v4.1.0 yayımlandı
+
+`change_directory` + WhatsApp/Telegram projectPath fix + UILanguage/share_file
+işini kapsayan v4.1.0, `/memo-release` skill'iyle uçtan uca yayımlandı.
+
+## Yapılanlar
+
+- Phase 1-2: version 4 yerde (`version`, `installer.iss`, `README.md`,
+  `READmeTR.md`) + `versinNote/v4.1.0.md` + `versinNote/tr/v4.1.0.md` — ayrı
+  commit'ler (`8c8f7df`, `14d77bb`).
+- Phase 3: `main` push'landı (10 commit), `v4.1.0` tag'i kullanıcı onayıyla
+  push'landı. CI'ın 4 platformu da (`Build Windows/Linux/macOS/Docker`,
+  run id'leri `32888985{739,733,720,714}`) yeşil. Sanity-check: eski
+  `tar tz` kontrolünün stale-cache'i yakalayamayacağı fark edildi (750MB
+  tarball'ı indirip içinden `version` çekmeye çalışan ilk deneme scratchpad'e
+  yazarken hata verip takıldı) — bunun yerine `curl -sI` ile
+  `Last-Modified`'ın CI bitiş zamanına yakın olduğu doğrulandı (19:29 GMT,
+  CI'ın bitişiyle eşleşiyor). Bu daha güvenilir kontrol `.claude/skills/
+  memo-release/SKILL.md`'ye eklendi — **ama `.claude/` bu repoda
+  gitignore'lu, yani bu düzeltme diskte var, git history'de yok** (kullanıcı
+  isterse ayrıca `git add -f` ile takibe alınabilir, kendim tek taraflı
+  yapmadım).
+- Phase 4: beacon (`/home/bugra/Documents/version/version.json`, ayrı repo,
+  `version-zeta.vercel.app`'a deploy oluyor) `V4.1.0`'a bump'landı, canlı
+  doğrulandı.
+
+## Ayrıca aynı oturumda: memo-web'e versiyon otomasyonu (henüz main'e push'lanmadı)
+
+`/home/bugra/Documents/memo-web/`'de `SITE.version` (data.js) +
+`Hero.jsx`/`Stats.jsx`'in kendi ayrı hardcoded versiyon literalleri +
+`/versionnote` sayfasının içeriği (`versionNoteEN.md`/`TR.md`, v3.9.0'da
+donmuş kalmıştı) artık `scripts/sync-release.js` ile her build'de memo
+repo'sundaki en yeni `vX.Y.Z` tag'inden otomatik senkronize oluyor
+(`git ls-remote` + `raw.githubusercontent.com`, `package.json`'ın
+`prebuild` zincirine eklendi, `generate-seo.js`'in Supabase fetch'iyle aynı
+desende). `npm run build` ile uçtan uca doğrulandı (126/126 route,
+statik HTML'de de v4.1.0 görünüyor). Kapsam dışı bırakıldı (bilinçli):
+i18n.js/guide.md'lerdeki "vX.Y.Y'de ne var" tarzı anlatı metinleri,
+`ROADMAP_ITEMS`, `docs/index.md`'nin "Current version" satırı — bunlar
+gerçek sürüm-özel içerik, mekanik senkronize edilmemeli. **Yerel commit
+(`af319b7`) atıldı, push için kullanıcı onayı bekleniyor** — bu repo'da
+memo'nun AGENTS.md'si gibi bir auto-commit/push kuralı yok.
+
+## Sıradaki oturum için
+
+1. memo-web commit'i push'lanıp Vercel'e deploy edilmeli mi, kullanıcıya
+   sorulmuş, cevap bekleniyor.
+2. `.claude/skills/memo-release/SKILL.md`'deki sanity-check düzeltmesi
+   git'e hiç girmedi (yukarıda açıklandığı gibi) — kullanıcı isterse
+   `.gitignore`'dan `.claude` satırını çıkarıp takibe almak isteyebilir,
+   ya da bilinçli bir tercih olduğu için öyle kalabilir.
+3. Kullanıcı şimdi `experiment/gosearch-integration` branch'ine geçip onu
+   test edecek; sonuçlar istediği gibiyse main'e merge edilecek.
+
+---
+
+# Ek (2026-08-25) — `change_directory` agent tool'u: izinli çalışma dizini değişimi (main)
+
+Kullanıcı bir Telegram sohbet dökümü paylaştı: Memo, Desktop'taki bir dosyayı
+okuyamamıştı ("sadece proje klasörüne erişebiliyorum" demiş). Önce
+`codebase-memory` + doğrudan kod okuma ile kök neden araştırıldı (ayrı bir
+plan turunda, kod yazılmadan): `Executor.basePath` (`internal/app/app.go`)
+process başlangıcında `filepath.Abs(".")` ile bir kere sabitleniyor — dev
+script'iyle proje köküne, kurulu haliyle `~/.memo`'ya, ama her iki durumda da
+Desktop gibi kardeş klasörlere hiç erişilemiyor. Kullanıcı analiz sonrası
+somut bir çözüm istedi: `share_file` gibi yeni bir tool/izin — kullanıcı
+sohbette "çalışma dizinini şuraya değiştir" dediğinde, mevcut izin sistemiyle
+(autopermission açıksa direkt, kapalıysa y/n) çalışsın; WhatsApp, Telegram ve
+Flutter'ın üçünde de tutarlı olsun.
+
+## Yapılanlar (main branch, commit sırasıyla)
+
+| Commit | Değişiklik |
+|---|---|
+| `feat(agent)` | Yeni `change_directory` tool'u (`internal/agent/tools/changedir.go`), `DangerLevel: Dangerous` — `share_file`'ın `Medium`'undan yüksek, çünkü bu tool tek bir dosyayı değil o andan itibaren **her** tool'un erişebileceği yeri değiştiriyor. `~` ve göreli yol çözümlemesi (mevcut `basePath`'e göre — "projenin kardeş `lib/` klasörü" gibi istekler doğal çalışır), sembolik link çözümlemesi (`file.go`'nun BUG-C1 deseniyle aynı), hedefin gerçekten var olan bir dizin olması zorunluluğu. Ayrı bir güvenlik katmanı: `hardDenylistedRoots()` — `/`, `/etc`, `/usr`, `/boot`, `/dev`, `/sys`, `/proc`, `/var`, `/root`, `/run` gibi çıplak sistem köklerini **kullanıcı onaylasa bile** reddediyor (run_command'ın `rm -rf` blacklist'iyle aynı defense-in-depth mantığı) — çünkü `defaultProtectedPaths()` sadece `basePath` **dışına çıkışı** koruyor, `basePath`'in kendisine hiç uygulanmıyor. `/tmp` ve kullanıcının home dizini bilinçli olarak izinli — özelliğin amacı zaten bu. İki parçalı etki: (1) aynı turn içinde canlı sandbox — `Pipeline.RunStream` zaten `basePath`'i her iterasyonda sandbox'tan yeniden okuyor ("Snapshot basePath once per iteration"), yeni `internal/agent/tools/sandboxctx.go`'daki `SandboxSetter` context.Value'suyla (`fetchbudget.go` ile aynı desen — o dosya sadece `experiment/gosearch-integration`'da var, main'e henüz gelmedi, o yüzden desen buraya taşındı) `sandbox.SetBasePath` çağrılıyor; (2) kalıcılık — `sessions.Manager`'a yeni `SetProjectPath` setter'ı (mevcut `GetProjectPath`'in yazma karşılığı), `Executor` artık bir `*sessions.Manager` alıyor (yeni `NewExecutor` parametresi, nil-safe) ve `Executor.RunStream`'de ikinci bir context.Value (`ProjectPathSetter`) seed ediliyor. Yeni izin altyapısına hiç gerek kalmadı — `DangerLevel: Dangerous` tek başına mevcut `PermissionManager`/`autoPermission`/`bypassPermissions` akışına giriyor, WhatsApp/Telegram'ın kendi y/n metin akışı (`selfchat_permission.go`) zaten kanal-agnostik. |
+| `fix(app)` | WhatsApp'ın **ayrı** "WhatsApp Chat" yolu (`whatsapp.go`'daki doğrudan `waExecutor.RunStream` çağrısı — self-chat'ten farklı, o zaten `callAgentStream` üzerinden `projectPath` alıyordu) hiç `projectPath` geçmiyordu; `llm.go` ile aynı üç satır eklendi. Telegram'ın buna eşdeğer ayrı bir yolu yok (sadece self-chat), yani zaten etkilenmiyordu. |
+| `docs(agents)` | `AGENTS.md`'nin modül tablosuna eksik olan `internal/telegram/` satırı eklendi (araştırma sırasında fark edildi — `internal/whatsapp/`'ın birebir muadili, ama tabloda hiç yoktu). |
+
+## Doğrulama
+
+- `go build/vet/test -race -tags "sqlite_fts5" ./...` — tüm repo (44 paket) yeşil.
+- Yeni testler: `internal/agent/tools/changedir_test.go` (geçerli değişim + canlı sandbox etkisi, sahte `ProjectPathSetter` ile kalıcılık, sandbox context'te yokken hata, var olmayan/dizin olmayan hedef reddi, sabit köklerin reddi, `/tmp` ve `~`'nin kabulü); `internal/sessions/sessions_test.go`'a `SetProjectPath` round-trip (disk'ten yeniden yükleme dahil); `internal/agent/pipeline_test.go`'a script'li sahte provider ile **aynı turn içinde** `change_directory` → `read_file` sırasını doğrulayan `TestRunStream_ChangeDirectoryTakesEffectSameTurn`.
+- `gofmt -l` yeni/değiştirdiğim dosyalarda temiz — `pipeline.go`/`executor.go`'daki önceden var olan iki gofmt-kirli alan (struct/import hizalaması, `experiment/gosearch-integration` oturumunun notunda da işaretlenmiş) benim eklediğim satırları kapsamıyor, dokunulmadı.
+- Flutter'a hiç dokunulmadı (genel `permission_dialog.dart` zaten her tool'u `ToolName`/`Args`/`Preview` ile gösteriyor) — `flutter analyze`/`flutter test` bu oturumda çalıştırılmadı, gerek yoktu.
+
+## Sıradaki oturum için
+
+1. ~~Canlı doğrulama henüz yapılmadı~~ → kullanıcı gerçekten Telegram'dan canlı denedi (aşağıdaki ek), ama beklenenden farklı bir sonuçla — bkz. "Ek (aynı gün, devam)".
+2. WhatsApp/Telegram'daki y/n metin akışının `change_directory`'nin `Preview`'ini ("Change working directory to: ...") gerçekten okunabilir şekilde gösterip göstermediği hâlâ canlı denenmedi (bu ek de dahil — model tool'u hiç çağırmadı, dolayısıyla izin promptu/preview'ı tetiklenmedi).
+3. `experiment/gosearch-integration` branch'i hâlâ main'e alınmadı, ayrı duruyor — bu oturumun işi ondan bağımsız, `main` üzerinde yapıldı.
+
+## Ek (aynı gün, devam) — `change_directory` var ama model bilmiyordu: proaktif öneri eksikti
+
+Kullanıcı özelliği gerçekten Telegram'dan denedi (bir sohbet dökümü paylaşarak):
+Desktop'taki bir dosyayı istedi, model sandbox sınırına doğru şekilde çarptı,
+ama **`change_directory`'yi hiç önermedi** — sadece "dosyayı elle memo
+klasörüne taşı" ya da "bana tam erişim ver" seçeneklerini sundu. Kullanıcının
+isteği net: "illa 'şuraya geç' dememem gerekmesin, akıllı olsun" — yani model
+kendiliğinden "şu an masaüstünde değilim, geçeyim mi?" gibi bir öneride
+bulunabilmeli, kullanıcının tool'u ismen bilip istemesine gerek kalmadan.
+
+**Kök neden, iki parçalı:** (1) `change_directory`'nin tool açıklaması
+"Use this only when the user explicitly asks" diyordu — modeli proaktif
+önermekten caydırıyordu; (2) modelin gerçekte çarptığı ret mesajları
+(`validatePath` `file.go`, `RunCommand`'ın cwd/command kontrolleri
+`command.go`) `change_directory`'den hiç bahsetmiyordu — modelin bağlamında
+"bu hatayı çözecek bir tool var" bilgisi yoktu.
+
+**Fix:** yeni `internal/agent/tools/changedir.go`'daki `OutsideSandboxHint`
+sabiti, `file.go`+`command.go`'daki dört "outside the project directory" ret
+mesajının hepsine ekleniyor; `change_directory`'nin açıklaması artık modele
+açıkça "bir tool çağrısı bu sebeple başarısız olursa ve kullanıcının isteği
+o konumda çalışmanı ima ediyorsa, dosyayı taşımasını istemek yerine hedefi
+söyleyip onay iste, sonra tool'u çağır" diyor. İzin kapısı (`Dangerous`)
+değişmedi — bu sadece modelin kendi cevabında ne önereceğini değiştiriyor,
+tool'un çalışması için gereken izin akışını değil.
+
+**Doğrulama:** `go build/vet/test -tags "sqlite_fts5" ./...` tüm repo yeşil;
+hiçbir test ret mesajlarının tam metnini assert etmiyordu, güncelleme
+gerekmedi. **Canlı yeniden test edilmedi** — kullanıcının bir sonraki
+Telegram denemesinde modelin gerçekten önerip önermediği görülecek.
+
+---
+
 # Ek (2026-08-26, devam) — DuckDuckGo'ya geçiş + canlı uçtan uca doğrulama (branch: `experiment/gosearch-integration`)
 
 Önceki ek'te bırakılan iki açık madde bu oturumda kapatıldı: motor önceliği kararı

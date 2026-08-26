@@ -61,7 +61,7 @@ func TestSkillToolRegistrar_ActivationWiresRealAgentTool(t *testing.T) {
 		t.Fatalf("Discover() error: %v", err)
 	}
 
-	exec := agent.NewExecutor(t.TempDir(), nil, nil)
+	exec := agent.NewExecutor(t.TempDir(), nil, nil, nil)
 	skillMgr.SetToolRegistrar(newSkillToolRegistrar(exec.Registry(), skillMgr))
 
 	if err := skillMgr.SetActive([]string{"greeter"}); err != nil {
@@ -118,7 +118,7 @@ func TestSkillToolRegistrar_DeclarativeOnlyToolNotRegistered(t *testing.T) {
 		t.Fatalf("Discover() error: %v", err)
 	}
 
-	exec := agent.NewExecutor(t.TempDir(), nil, nil)
+	exec := agent.NewExecutor(t.TempDir(), nil, nil, nil)
 	skillMgr.SetToolRegistrar(newSkillToolRegistrar(exec.Registry(), skillMgr))
 
 	if err := skillMgr.SetActive([]string{"docs-only"}); err != nil {
@@ -131,7 +131,7 @@ func TestSkillToolRegistrar_DeclarativeOnlyToolNotRegistered(t *testing.T) {
 }
 
 func TestSkillToolRegistrar_RejectsWrongType(t *testing.T) {
-	exec := agent.NewExecutor(t.TempDir(), nil, nil)
+	exec := agent.NewExecutor(t.TempDir(), nil, nil, nil)
 	skillMgr := skill.NewManager(t.TempDir())
 	r := newSkillToolRegistrar(exec.Registry(), skillMgr)
 

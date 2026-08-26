@@ -761,6 +761,15 @@ class MemoApiClient {
     await _dio.put('/api/memory/enabled', data: {'enabled': enabled});
   }
 
+  Future<bool> getWhisperEnabled() async {
+    final res = await _dio.get('/api/whisper/enabled');
+    return res.data['enabled'] as bool? ?? false;
+  }
+
+  Future<void> setWhisperEnabled(bool enabled) async {
+    await _dio.put('/api/whisper/enabled', data: {'enabled': enabled});
+  }
+
   // Dream (pinned-facts periodic compression) — reads go through
   // getMemorySettings() above, dream_enabled/dream_initial_delay_minutes/
   // dream_interval_hours are just more fields on the same response.

@@ -590,6 +590,11 @@ class L10n {
     'browser_keep_alive': 'Sürekli açık tut',
     'browser_keep_alive_desc':
         'Kapalıyken her kullanımdan sonra tarayıcı kapanır (RAM tasarrufu). Açıkken bir kez başlar ve sürekli çalışır (daha hızlı, ~150-250MB ek RAM).',
+    'whisper_section': 'Sesli Komut (STT)',
+    'whisper_active': 'Sesli Komut Aktif',
+    'whisper_disabled': 'Sesli Komut Kapalı',
+    'whisper_toggle_desc':
+        'Mikrofon düğmesiyle konuşarak yazma özelliğini açar/kapatır. Açıkken whisper-server arka planda ~500MB RAM kullanır.',
     'refresh': 'Yenile',
     'skills_title': 'Skills',
     'skill_management_btn': 'Skill Yönetimi',
@@ -2507,6 +2512,11 @@ class L10n {
     'browser_keep_alive': 'Keep it running',
     'browser_keep_alive_desc':
         'Off: the browser closes after every use (saves RAM). On: it starts once and stays open (faster, ~150-250MB extra RAM).',
+    'whisper_section': 'Voice Input (STT)',
+    'whisper_active': 'Voice Input Active',
+    'whisper_disabled': 'Voice Input Disabled',
+    'whisper_toggle_desc':
+        'Turns speech-to-text on the microphone button on/off. When on, whisper-server uses ~500MB RAM in the background.',
     'refresh': 'Refresh',
     'skills_title': 'Skills',
     'skill_management_btn': 'Skill Management',

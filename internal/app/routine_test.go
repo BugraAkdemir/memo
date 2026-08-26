@@ -447,7 +447,7 @@ func newRoutineTestApp(t *testing.T) *App {
 		identity:         identity.New("Test", "Memo", "casual", "", false),
 		sessions:         sm,
 		observerRecorder: observer.NewRecorder(obsStore),
-		agentExecutor:    agent.NewExecutor(dir, nil, nil),
+		agentExecutor:    agent.NewExecutor(dir, nil, nil, nil),
 	}
 	return a
 }

@@ -1,3 +1,67 @@
+# Ek (2026-08-26, devam 17) — Live Mode v2 TAMAMLANDI (Faz 0-13, `feature/live-mode-v2`)
+
+**Tüm plan bitti.** `docs/plans/PLAN_live_mode_v2.md`'nin 0-13 fazlarının
+hepsi tamamlandı; bu, kullanıcının "faz 2 3 4 artık kaç faz varsa yap
+durma" talimatıyla başlayan, kesintisiz otonom çalışmanın kapanışı.
+
+**Ne teslim edildi:**
+- **Part A** — Live Mode betadan çıktı, Ayarlar'da kendi sekmesi var
+  (`live_mode_tab.dart`), 5 motor seçilebiliyor: Local (mevcut
+  whisper.cpp+Piper), Google Live, OpenAI Realtime, ElevenLabs, Custom
+  (OpenAI-uyumlu STT/TTS REST endpoint). Her motorun model/ses listesi
+  HER ZAMAN o sağlayıcının kendi API'sinden canlı çekiliyor — hiçbiri
+  koda hardcoded değil.
+- **Part B** — İki-model agent mimarisi: Google Live/OpenAI Realtime
+  kendi native muhakemesiyle "live model" oluyor; Local/ElevenLabs/
+  Custom'da ayrı bir live model kavramı yok, transkript direkt ana
+  modele gidiyor (kullanıcının netleştirdiği tasarım). `WorkMode:
+  "delegate" | "standalone"` toggle'ı (kullanıcının kendi fikri) native
+  motorlarda iş yapma şeklini seçtiriyor. Sesli izin isteme
+  (`voice_prompt` politikası) uçtan uca çalışıyor.
+
+**Bu ortamda dürüstçe doğrulanamayan kısımlar** (her biri ilgili fazın
+durum notunda ayrı ayrı işaretli, burada sadece toplu özet):
+- Gerçek sağlayıcı API key'i hiç yoktu — her şey httptest sahte
+  sunucularıyla doğrulandı, gerçek Google/OpenAI/ElevenLabs bağlantısıyla
+  asla değil.
+- Google Live'ın transkripsiyon alan yuvalanması güncel dokümanlarda bile
+  çelişkiliydi — bir yorumla karar verildi, "gerçek oturumda tersi
+  çıkarsa değiştirilecek tek satır" olarak işaretli
+  (`internal/livemode/google/client.go`, `serverContent` yorumu).
+- Oturum-içi hafıza tazeleme + delege-görev ilerleme anlatımı (Faz 11'in
+  kapsam dışı bıraktığı) hiç uygulanmadı.
+- Gerçek cihazda Flutter↔Go duplex ses testi bu ortamda hiç mümkün
+  olmadı.
+
+**Bu çalışma sırasında bulunup düzeltilen gerçek bir hata** (Faz 12):
+`ExecuteToolCall`'ın `onEvent`'i izin isteğini `pendingPerms`'e
+kaydetmeden ÖNCE senkron çağırması — standalone modun izin çözümlemesini
+kendi goroutine'ine taşıyarak düzeltildi, regresyon testi eklendi. Detay
+"devam 16" girdisinde.
+
+**Bu branch'in kapsamı dışında bırakılan, ayrı görevler olarak
+flag'lenmiş iki önceden var olan sorun** (Live Mode'un kendisiyle ilgisi
+yok): `internal/agent`'ta gofmt drift'i (main'de, bu çalışmadan önce de
+vardı — `task_e1ee0dda`), test'lerin `config.DataPath()`-göreli-yol
+nedeniyle yarattığı artık dizinler (`task_3d494e5a`).
+
+**Doğrulama:** her fazın kendi commit'i kendi `go build/vet/test -race`
+(ve Flutter dokunan fazlarda `flutter analyze`+`flutter test`+Kural #8
+grep) çıktısını taşıyor — 14 ayrı fazın (0-13) hepsi ayrı ayrı yeşil.
+Faz 12'nin sonunda ayrıca tüm modül için tek seferde
+`CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race` çalıştırıldı —
+tüm paketler (agent, app, livemode+alt paketleri, webserver, tts, stt,
+whatsapp, telegram, ... dahil tüm modül) yeşil. Faz 13 sadece dokümantasyon
+değişikliği olduğundan bu, dalın şu anki hâli için hâlâ geçerli.
+
+**Sıradaki:** Bu dal (`feature/live-mode-v2`) kullanıcı incelemesi ve
+gerçek sağlayıcı API key'leriyle canlı testi bekliyor — main'e merge
+otonom yapılmadı (kullanıcının kendi onayı gerekli, plan bunu
+otomatikleştirmedi). Kullanıcı hazır olduğunda: gerçek Google/OpenAI/
+ElevenLabs key'leriyle uçtan uca sesli test, ardından PR/merge.
+
+---
+
 # Ek (2026-08-26, devam 16) — Live Mode v2 Faz 10/11/12 (tool-wiring, InjectContext, sesli izin isteme)
 
 **Not:** Faz 10 (`66be542`) ve Faz 11 (`3de8514`) bu oturumda daha önce

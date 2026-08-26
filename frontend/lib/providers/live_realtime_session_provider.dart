@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../core/friendly_error.dart';
 import 'chat_provider.dart';
 
 /// Connection lifecycle for a Google Live/OpenAI Realtime session — see
@@ -91,12 +92,18 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
         },
         onError: (Object e) {
           if (myGeneration != _generation) return;
-          state = LiveRealtimeSessionState(status: LiveRealtimeSessionStatus.error, error: '$e');
+          state = LiveRealtimeSessionState(
+            status: LiveRealtimeSessionStatus.error,
+            error: FriendlyError.describeGeneric(e),
+          );
         },
       );
     } catch (e) {
       if (myGeneration != _generation) return;
-      state = LiveRealtimeSessionState(status: LiveRealtimeSessionStatus.error, error: '$e');
+      state = LiveRealtimeSessionState(
+        status: LiveRealtimeSessionStatus.error,
+        error: FriendlyError.describeGeneric(e),
+      );
     }
   }
 

@@ -1,3 +1,33 @@
+# Ek (2026-08-26, devam 3) — PR #16 merge edildi, branch silindi, `experiment/gosearch-integration` kapandı
+
+Önceki ek'in "sıradaki oturum" maddeleri kapatıldı: merge commit push'landıktan
+sonra PR #16 `CONFLICTING`'den `MERGEABLE`'a döndü, CI'ın 9 kontrolü de
+(Windows/Linux/macOS/Docker build, Go test, Flutter analyze/test, Security
+Scan, L10n Guard) yeşil oldu. Kullanıcı onayıyla `gh pr merge 16 --merge
+--delete-branch` ile merge edildi (fast-forward, `main` artık `d4a5ec8`) —
+`--delete-branch` hem remote hem local `experiment/gosearch-integration`'ı
+tek seferde temizledi.
+
+**Bu oturumda ayrıca:** kullanıcının "5 ayda 442K satır" diye paylaştığım
+rakama haklı olarak itiraz etmesi üzerine hata düzeltildi — `git ls-files |
+wc -l`, repodaki her tracked dosyayı (video, `.dylib`/`.exe`/`.onnx` binary'ler
+dahil) text sanıp saymıştı. Gerçek rakam: Go ~65.6K (+ ~42.8K test), Dart
+~49K (+ ~6.4K test) — toplam ~164K satır gerçek kod. Ders: dosya-türü
+filtrelemeden `wc -l` ile "toplam kod satırı" iddiası kurmamak, binary'lerin
+repoda az sayıda ama devasa "satır" sayısı üretebileceğini unutmamak.
+
+`experiment/gosearch-integration` branch'i artık yok — bu, o branch'in
+tüm handoff geçmişinin (bu ek dahil, altta) kapanışı. Yeni oturumlar
+doğrudan `main`'den devam eder.
+
+**Branching stratejisi kararı (kalıcı, memory'e de kaydedildi):** kullanıcı
+bu branch deneyiminden sonra "kritik/riskli güncellemeleri bundan sonra
+yeni branch'te yapacağım" dedi — yeni dış bağımlılık taşıyan ya da main'i
+geçici kararsız hale getirebilecek işler artık branch'te, küçük/rutin işler
+gene direkt `main`'de.
+
+---
+
 # Ek (2026-08-26, devam 2) — usedBrowser modele iletildi, web search denetimi, PR + main merge (branch: `experiment/gosearch-integration`)
 
 Kullanıcı canlı bir Telegram/Flutter sohbetinde ("beinsports.com.tr'nin puan

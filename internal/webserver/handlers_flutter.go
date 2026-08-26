@@ -13,6 +13,7 @@ import (
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/shutdown"
+	"memo/internal/stt"
 	"memo/internal/tts"
 	"net/http"
 	"net/url"
@@ -1653,6 +1654,7 @@ func (s *Server) handleTTSProviders(w http.ResponseWriter, r *http.Request) {
 			Name     string           `json:"name"`
 			APIKey   string           `json:"api_key"`
 			Voice    string           `json:"voice"`
+			BaseURL  string           `json:"base_url"`
 			Enabled  bool             `json:"enabled"`
 			Priority int              `json:"priority"`
 		}
@@ -1665,6 +1667,7 @@ func (s *Server) handleTTSProviders(w http.ResponseWriter, r *http.Request) {
 			Name:     req.Name,
 			APIKey:   req.APIKey,
 			Voice:    req.Voice,
+			BaseURL:  req.BaseURL,
 			Enabled:  req.Enabled,
 			Priority: req.Priority,
 		}
@@ -1705,20 +1708,22 @@ func (s *Server) handleTTSProviderTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Type   tts.ProviderType `json:"type"`
-		Name   string           `json:"name"`
-		APIKey string           `json:"api_key"`
-		Voice  string           `json:"voice"`
+		Type    tts.ProviderType `json:"type"`
+		Name    string           `json:"name"`
+		APIKey  string           `json:"api_key"`
+		Voice   string           `json:"voice"`
+		BaseURL string           `json:"base_url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
 	cfg := tts.ProviderConfig{
-		Type:   req.Type,
-		Name:   req.Name,
-		APIKey: req.APIKey,
-		Voice:  req.Voice,
+		Type:    req.Type,
+		Name:    req.Name,
+		APIKey:  req.APIKey,
+		Voice:   req.Voice,
+		BaseURL: req.BaseURL,
 	}
 	if err := s.fullBridge.TestTTSProviderConnection(cfg); err != nil {
 		writeJSON(w, map[string]interface{}{
@@ -1731,6 +1736,118 @@ func (s *Server) handleTTSProviderTest(w http.ResponseWriter, r *http.Request) {
 		"connected": true,
 		"error":     "",
 	})
+}
+
+// handleTTSProviderModels: POST {type, api_key} -> {"models": [...]} —
+// live-fetched, TTS-capable models for the given provider (see
+// docs/plans/PLAN_live_mode_v2.md's "never hardcode a model list"
+// requirement). api_key is accepted in the POST body rather than a query
+// param specifically so it never lands in server access logs.
+func (s *Server) handleTTSProviderModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Type   tts.ProviderType `json:"type"`
+		APIKey string           `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	models, err := s.fullBridge.ListTTSProviderModels(r.Context(), req.Type, req.APIKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string][]tts.ElevenLabsModel{"models": models})
+}
+
+// handleTTSProviderVoices: POST {type, api_key} -> {"voices": [...]} —
+// live-fetched voice list, same reasoning as handleTTSProviderModels.
+func (s *Server) handleTTSProviderVoices(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Type   tts.ProviderType `json:"type"`
+		APIKey string           `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	voices, err := s.fullBridge.ListTTSProviderVoices(r.Context(), req.Type, req.APIKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string][]tts.ElevenLabsVoice{"voices": voices})
+}
+
+// handleSTTProviders mirrors handleTTSProviders exactly, for
+// internal/stt's provider system (see docs/plans/PLAN_live_mode_v2.md §2).
+func (s *Server) handleSTTProviders(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		providers := s.fullBridge.GetSTTProviders()
+		writeJSON(w, providers)
+	case http.MethodPut:
+		var req struct {
+			Type     stt.ProviderType `json:"type"`
+			Name     string           `json:"name"`
+			APIKey   string           `json:"api_key"`
+			BaseURL  string           `json:"base_url"`
+			Enabled  bool             `json:"enabled"`
+			Priority int              `json:"priority"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		cfg := stt.ProviderConfig{
+			Type:     req.Type,
+			Name:     req.Name,
+			APIKey:   req.APIKey,
+			BaseURL:  req.BaseURL,
+			Enabled:  req.Enabled,
+			Priority: req.Priority,
+		}
+		if err := s.fullBridge.UpdateSTTProvider(cfg); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	case http.MethodDelete:
+		var req struct {
+			Type stt.ProviderType `json:"type"`
+			Name string           `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if req.Name != "" {
+			if err := s.fullBridge.DeleteSTTProvider(req.Type, req.Name); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			if err := s.fullBridge.DeleteSTTProvider(req.Type); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET, PUT, DELETE", http.StatusMethodNotAllowed)
+	}
 }
 
 // ─── TTS Voice Store (Faz 2.6 — local, offline Piper voices) ─────

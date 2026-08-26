@@ -20,6 +20,7 @@ import (
 	"memo/internal/sessions"
 	"memo/internal/skill"
 	"memo/internal/stats"
+	"memo/internal/stt"
 	"memo/internal/taskloop"
 	"memo/internal/tts"
 	"memo/internal/whatsapp"
@@ -198,8 +199,8 @@ func (b *swarmStubBridge) InstallBrowser(ctx context.Context) error             
 func (b *swarmStubBridge) GetBrowserInstallProgress() browserengine.InstallProgress {
 	return browserengine.InstallProgress{}
 }
-func (b *swarmStubBridge) GetMemoryEnabled() bool                                     { return false }
-func (b *swarmStubBridge) SetMemoryEnabled(enabled bool) error                        { return nil }
+func (b *swarmStubBridge) GetMemoryEnabled() bool              { return false }
+func (b *swarmStubBridge) SetMemoryEnabled(enabled bool) error { return nil }
 func (b *swarmStubBridge) SetMemoryDreamSettings(enabled bool, initialDelayMinutes, intervalHours int) error {
 	return nil
 }
@@ -418,8 +419,17 @@ func (b *swarmStubBridge) GetTTSVoiceDownloadProgress() []*tts.VoiceDownloadProg
 func (b *swarmStubBridge) DownloadTTSVoice(locale, name, quality string) error           { return nil }
 func (b *swarmStubBridge) DeleteTTSVoice(id string) error                                { return nil }
 func (b *swarmStubBridge) SelectTTSVoice(id string) error                                { return nil }
-func (b *swarmStubBridge) GetLiveModeConfig() config.LiveModeConfig                       { return config.LiveModeConfig{} }
-func (b *swarmStubBridge) UpdateLiveModeConfig(cfg config.LiveModeConfig) error           { return nil }
+func (b *swarmStubBridge) ListTTSProviderModels(ctx context.Context, pt tts.ProviderType, apiKey string) ([]tts.ElevenLabsModel, error) {
+	return nil, nil
+}
+func (b *swarmStubBridge) ListTTSProviderVoices(ctx context.Context, pt tts.ProviderType, apiKey string) ([]tts.ElevenLabsVoice, error) {
+	return nil, nil
+}
+func (b *swarmStubBridge) GetSTTProviders() []stt.ProviderConfig                       { return nil }
+func (b *swarmStubBridge) UpdateSTTProvider(cfg stt.ProviderConfig) error              { return nil }
+func (b *swarmStubBridge) DeleteSTTProvider(pt stt.ProviderType, name ...string) error { return nil }
+func (b *swarmStubBridge) GetLiveModeConfig() config.LiveModeConfig                    { return config.LiveModeConfig{} }
+func (b *swarmStubBridge) UpdateLiveModeConfig(cfg config.LiveModeConfig) error        { return nil }
 func (b *swarmStubBridge) GetOrchestraConfig() orchestra.OrchestraConfig {
 	return orchestra.OrchestraConfig{}
 }

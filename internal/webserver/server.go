@@ -286,6 +286,11 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// TTS provider management (Faz 2)
 	route("/api/tts/providers", s.handleTTSProviders)
 	route("/api/tts/providers/test", s.handleTTSProviderTest)
+	route("/api/tts/providers/models", s.handleTTSProviderModels)
+	route("/api/tts/providers/voices", s.handleTTSProviderVoices)
+
+	// STT provider management (Live Mode v2, see PLAN_live_mode_v2.md §2)
+	route("/api/stt/providers", s.handleSTTProviders)
 
 	// TTS local voice store (Faz 2.6)
 	route("/api/tts/voices", s.handleTTSVoices)

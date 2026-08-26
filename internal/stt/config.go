@@ -1,7 +1,6 @@
-package tts
+package stt
 
 import (
-	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -15,15 +14,16 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 )
 
-// ConfigManager manages external TTS provider configurations with encrypted
-// API keys. Mirrors internal/provider.ConfigManager's shape and behavior
-// (same file-persist-with-encrypted-keys pattern), but keyed by provider.
-// DefaultMachineKey() rather than deriving/persisting its own machine key —
-// TTS provider secrets are encrypted with the exact same machine-bound key
-// providers.json already uses, not a second independent one.
+// ConfigManager manages external STT provider configurations with encrypted
+// API keys. Mirrors internal/tts.ConfigManager one-for-one — same
+// file-persist-with-encrypted-keys pattern, same shared machine key
+// (provider.DefaultMachineKey()), just a different JSON file
+// (data/stt_providers.json vs. data/tts_providers.json) and no TestConnection
+// (STT's equivalent would need a real audio sample rather than TTS's
+// "synthesize the word 'test'" trick — deferred to whichever later phase
+// actually wires the Settings UI's test button for STT specifically).
 type ConfigManager struct {
 	mu        sync.RWMutex
 	filePath  string
@@ -31,7 +31,7 @@ type ConfigManager struct {
 	masterKey []byte
 }
 
-// NewConfigManager creates a new TTS provider config manager. masterKey is
+// NewConfigManager creates a new STT provider config manager. masterKey is
 // used to encrypt/decrypt API keys (32 bytes for AES-256); pass nil to use
 // the shared machine key (provider.DefaultMachineKey()).
 func NewConfigManager(filePath string, masterKey []byte) *ConfigManager {
@@ -50,10 +50,8 @@ func NewConfigManager(filePath string, masterKey []byte) *ConfigManager {
 	return cm
 }
 
-// Load reads TTS provider configs from the JSON file. Unlike
-// provider.ConfigManager.Load, a missing file seeds an empty list, not a
-// curated set of disabled defaults — Faz 2 only ships one provider type
-// (OpenAI) and there's no sensible default API key/voice to pre-fill.
+// Load reads STT provider configs from the JSON file. A missing file seeds
+// an empty list.
 func (cm *ConfigManager) Load() {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -61,7 +59,7 @@ func (cm *ConfigManager) Load() {
 	data, err := os.ReadFile(cm.filePath)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			logx.Printf("TTS: failed to load provider config: %v", err)
+			logx.Printf("STT: failed to load provider config: %v", err)
 		}
 		cm.configs = []ProviderConfig{}
 		return
@@ -71,7 +69,7 @@ func (cm *ConfigManager) Load() {
 		Configs []providerConfigStored `json:"providers"`
 	}
 	if err := json.Unmarshal(data, &stored); err != nil {
-		logx.Printf("TTS: failed to parse provider config: %v", err)
+		logx.Printf("STT: failed to parse provider config: %v", err)
 		cm.configs = []ProviderConfig{}
 		return
 	}
@@ -80,14 +78,13 @@ func (cm *ConfigManager) Load() {
 	for _, s := range stored.Configs {
 		apiKey, err := cm.decrypt(s.APIKeyEncrypted)
 		if err != nil {
-			logx.Printf("TTS: failed to decrypt key for %s: %v", s.Type, err)
+			logx.Printf("STT: failed to decrypt key for %s: %v", s.Type, err)
 			apiKey = ""
 		}
 		cm.configs = append(cm.configs, ProviderConfig{
 			Type:     s.Type,
 			Name:     s.Name,
 			APIKey:   apiKey,
-			Voice:    s.Voice,
 			BaseURL:  s.BaseURL,
 			Enabled:  s.Enabled,
 			Priority: s.Priority,
@@ -95,7 +92,7 @@ func (cm *ConfigManager) Load() {
 	}
 }
 
-// Save persists TTS provider configs to the JSON file with encrypted API keys.
+// Save persists STT provider configs to the JSON file with encrypted API keys.
 func (cm *ConfigManager) Save() {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -112,14 +109,13 @@ func (cm *ConfigManager) saveLocked() {
 	for _, cfg := range cm.configs {
 		encrypted, err := cm.encrypt(cfg.APIKey)
 		if err != nil {
-			logx.Printf("TTS: failed to encrypt key for %s: %v", cfg.Type, err)
+			logx.Printf("STT: failed to encrypt key for %s: %v", cfg.Type, err)
 			continue
 		}
 		stored.Configs = append(stored.Configs, providerConfigStored{
 			Type:            cfg.Type,
 			Name:            cfg.Name,
 			APIKeyEncrypted: encrypted,
-			Voice:           cfg.Voice,
 			BaseURL:         cfg.BaseURL,
 			Enabled:         cfg.Enabled,
 			Priority:        cfg.Priority,
@@ -128,22 +124,22 @@ func (cm *ConfigManager) saveLocked() {
 
 	data, err := json.MarshalIndent(stored, "", "  ")
 	if err != nil {
-		logx.Printf("TTS: failed to marshal provider config: %v", err)
+		logx.Printf("STT: failed to marshal provider config: %v", err)
 		return
 	}
 
 	dir := filepath.Dir(cm.filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		logx.Printf("TTS: failed to create provider config dir: %v", err)
+		logx.Printf("STT: failed to create provider config dir: %v", err)
 		return
 	}
 
 	if err := fileutil.AtomicWrite(cm.filePath, data, 0600); err != nil {
-		logx.Printf("TTS: failed to write provider config: %v", err)
+		logx.Printf("STT: failed to write provider config: %v", err)
 	}
 }
 
-// GetAll returns a copy of all TTS provider configs (API keys in plaintext).
+// GetAll returns a copy of all STT provider configs (API keys in plaintext).
 func (cm *ConfigManager) GetAll() []ProviderConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -167,9 +163,8 @@ func (cm *ConfigManager) GetEnabled() []ProviderConfig {
 	return enabled
 }
 
-// Set sets a TTS provider config (add or update), matched by Name (falling
-// back to Type if Name is empty) — same convention as
-// internal/provider.ConfigManager.Set.
+// Set sets an STT provider config (add or update), matched by Name (falling
+// back to Type if Name is empty).
 func (cm *ConfigManager) Set(cfg ProviderConfig) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -193,7 +188,7 @@ func (cm *ConfigManager) Set(cfg ProviderConfig) {
 	cm.saveLocked()
 }
 
-// Delete removes a TTS provider config by type or name.
+// Delete removes an STT provider config by type or name.
 func (cm *ConfigManager) Delete(pt ProviderType, name ...string) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -218,27 +213,11 @@ func (cm *ConfigManager) Delete(pt ProviderType, name ...string) {
 	}
 }
 
-// TestConnection constructs a provider from cfg and tries a short real
-// synthesis call — the most reliable way to confirm an API key/voice combo
-// actually works, mirroring provider.ConfigManager.TestConnection.
-func (cm *ConfigManager) TestConnection(cfg *ProviderConfig) error {
-	p, err := NewProvider(*cfg)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	_, err = p.Synthesize(ctx, "test", cfg.Voice)
-	return err
-}
-
 // encrypt encrypts plaintext with AES-256-GCM. Duplicated from
-// internal/provider.ConfigManager.encrypt (same algorithm, same key
-// source via provider.DefaultMachineKey) rather than sharing a type across
-// packages — small enough (AES-GCM boilerplate) that a cross-package
-// dependency here isn't worth it, and provider.ConfigManager's fields are
-// unexported so there's no existing seam to reuse instead.
+// internal/tts.ConfigManager.encrypt (same algorithm, same key source) —
+// same reasoning as that copy's own doc comment: small enough that a
+// cross-package dependency isn't worth it, and the source's fields are
+// unexported so there's no existing seam to share instead.
 func (cm *ConfigManager) encrypt(plaintext string) (string, error) {
 	if plaintext == "" {
 		return "", nil
@@ -292,7 +271,6 @@ type providerConfigStored struct {
 	Type            ProviderType `json:"type"`
 	Name            string       `json:"name"`
 	APIKeyEncrypted string       `json:"api_key_encrypted"`
-	Voice           string       `json:"voice"`
 	BaseURL         string       `json:"base_url,omitempty"`
 	Enabled         bool         `json:"enabled"`
 	Priority        int          `json:"priority"`

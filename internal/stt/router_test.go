@@ -1,4 +1,4 @@
-package tts
+package stt
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// mockProvider implements TTSProvider for testing.
+// mockProvider implements STTProvider for testing.
 type mockProvider struct {
 	name    ProviderType
 	display string
@@ -15,56 +15,56 @@ type mockProvider struct {
 
 func (m *mockProvider) Name() ProviderType  { return m.name }
 func (m *mockProvider) DisplayName() string { return m.display }
-func (m *mockProvider) Synthesize(_ context.Context, _, _ string) ([]byte, error) {
+func (m *mockProvider) Transcribe(_ context.Context, _ []byte) (string, error) {
 	if m.err != nil {
-		return nil, m.err
+		return "", m.err
 	}
-	return []byte("wav-bytes"), nil
+	return "merhaba", nil
 }
 
 func TestRouterFallbackChain(t *testing.T) {
 	t.Run("falls back when first provider fails", func(t *testing.T) {
-		failProv := &mockProvider{name: "openai", display: "OpenAI", err: errors.New("rate limited")}
-		okProv := &mockProvider{name: "elevenlabs", display: "ElevenLabs"}
+		failProv := &mockProvider{name: "elevenlabs", display: "ElevenLabs", err: errors.New("rate limited")}
+		okProv := &mockProvider{name: "custom", display: "Custom"}
 
 		r := NewRouter(nil)
 		r.providers = []*providerEntry{
-			{TTSProvider: failProv, cfg: ProviderConfig{Type: "openai", Enabled: true}},
-			{TTSProvider: okProv, cfg: ProviderConfig{Type: "elevenlabs", Enabled: true}},
+			{STTProvider: failProv, cfg: ProviderConfig{Type: "elevenlabs", Enabled: true}},
+			{STTProvider: okProv, cfg: ProviderConfig{Type: "custom", Enabled: true}},
 		}
 
-		_, err := r.Synthesize(context.Background(), "merhaba")
+		_, err := r.Transcribe(context.Background(), []byte("audio"))
 		if err != nil {
 			t.Errorf("expected fallback to succeed, got error: %v", err)
 		}
 	})
 
 	t.Run("returns error when all providers fail", func(t *testing.T) {
-		fail1 := &mockProvider{name: "openai", display: "OpenAI", err: errors.New("down")}
-		fail2 := &mockProvider{name: "elevenlabs", display: "ElevenLabs", err: errors.New("down")}
+		fail1 := &mockProvider{name: "elevenlabs", display: "ElevenLabs", err: errors.New("down")}
+		fail2 := &mockProvider{name: "custom", display: "Custom", err: errors.New("down")}
 
 		r := NewRouter(nil)
 		r.providers = []*providerEntry{
-			{TTSProvider: fail1, cfg: ProviderConfig{Type: "openai", Enabled: true}},
-			{TTSProvider: fail2, cfg: ProviderConfig{Type: "elevenlabs", Enabled: true}},
+			{STTProvider: fail1, cfg: ProviderConfig{Type: "elevenlabs", Enabled: true}},
+			{STTProvider: fail2, cfg: ProviderConfig{Type: "custom", Enabled: true}},
 		}
 
-		_, err := r.Synthesize(context.Background(), "merhaba")
+		_, err := r.Transcribe(context.Background(), []byte("audio"))
 		if err == nil {
 			t.Error("expected error when all providers fail")
 		}
 	})
 
 	t.Run("skips disabled providers", func(t *testing.T) {
-		okProv := &mockProvider{name: "elevenlabs", display: "ElevenLabs"}
+		okProv := &mockProvider{name: "custom", display: "Custom"}
 
 		r := NewRouter(nil)
 		r.providers = []*providerEntry{
-			{TTSProvider: &mockProvider{name: "openai"}, cfg: ProviderConfig{Type: "openai", Enabled: false}},
-			{TTSProvider: okProv, cfg: ProviderConfig{Type: "elevenlabs", Enabled: true}},
+			{STTProvider: &mockProvider{name: "elevenlabs"}, cfg: ProviderConfig{Type: "elevenlabs", Enabled: false}},
+			{STTProvider: okProv, cfg: ProviderConfig{Type: "custom", Enabled: true}},
 		}
 
-		_, err := r.Synthesize(context.Background(), "merhaba")
+		_, err := r.Transcribe(context.Background(), []byte("audio"))
 		if err != nil {
 			t.Errorf("expected success with disabled provider skipped, got: %v", err)
 		}
@@ -77,11 +77,11 @@ func TestRouterFallbackChain(t *testing.T) {
 
 		r := NewRouter(nil)
 		r.providers = []*providerEntry{
-			{TTSProvider: low, cfg: ProviderConfig{Type: "low", Enabled: true, Priority: 1}},
-			{TTSProvider: high, cfg: ProviderConfig{Type: "high", Enabled: true, Priority: 10}},
+			{STTProvider: low, cfg: ProviderConfig{Type: "low", Enabled: true, Priority: 1}},
+			{STTProvider: high, cfg: ProviderConfig{Type: "high", Enabled: true, Priority: 10}},
 		}
 
-		if _, err := r.Synthesize(context.Background(), "merhaba"); err != nil {
+		if _, err := r.Transcribe(context.Background(), []byte("audio")); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(called) != 1 || called[0] != "high" {
@@ -99,23 +99,23 @@ type recordingProvider struct {
 
 func (p *recordingProvider) Name() ProviderType  { return p.ProviderType }
 func (p *recordingProvider) DisplayName() string { return string(p.ProviderType) }
-func (p *recordingProvider) Synthesize(_ context.Context, _, _ string) ([]byte, error) {
+func (p *recordingProvider) Transcribe(_ context.Context, _ []byte) (string, error) {
 	*p.calls = append(*p.calls, p.ProviderType)
-	return []byte("wav-bytes"), nil
+	return "merhaba", nil
 }
 
 func TestRouterContextCancellationNotRecordedAsFailure(t *testing.T) {
-	prov := &mockProvider{name: "openai", display: "OpenAI", err: errors.New("connection timeout")}
+	prov := &mockProvider{name: "elevenlabs", display: "ElevenLabs", err: errors.New("connection timeout")}
 	r := NewRouter(nil)
 	r.providers = []*providerEntry{{
-		TTSProvider: prov,
-		cfg:         ProviderConfig{Type: "openai", Enabled: true},
+		STTProvider: prov,
+		cfg:         ProviderConfig{Type: "elevenlabs", Enabled: true},
 	}}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := r.Synthesize(ctx, "merhaba")
+	_, err := r.Transcribe(ctx, []byte("audio"))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -129,30 +129,11 @@ func TestRouterContextCancellationNotRecordedAsFailure(t *testing.T) {
 }
 
 func TestRouterAutoDisable(t *testing.T) {
-	t.Run("records failures incrementally", func(t *testing.T) {
-		r := NewRouter(nil)
-		entry := &providerEntry{
-			TTSProvider: &mockProvider{name: "openai", display: "OpenAI"},
-			cfg:         ProviderConfig{Type: "openai", Enabled: true},
-		}
-		r.providers = []*providerEntry{entry}
-
-		r.recordFailure(entry)
-		if entry.failCount != 1 {
-			t.Errorf("expected failCount 1, got %d", entry.failCount)
-		}
-
-		r.recordFailure(entry)
-		if entry.failCount != 2 {
-			t.Errorf("expected failCount 2, got %d", entry.failCount)
-		}
-	})
-
 	t.Run("disables after 3 consecutive failures", func(t *testing.T) {
 		r := NewRouter(nil)
 		entry := &providerEntry{
-			TTSProvider: &mockProvider{name: "openai", display: "OpenAI"},
-			cfg:         ProviderConfig{Type: "openai", Enabled: true},
+			STTProvider: &mockProvider{name: "elevenlabs", display: "ElevenLabs"},
+			cfg:         ProviderConfig{Type: "elevenlabs", Enabled: true},
 		}
 		r.providers = []*providerEntry{entry}
 
@@ -168,8 +149,8 @@ func TestRouterAutoDisable(t *testing.T) {
 	t.Run("reset on success", func(t *testing.T) {
 		r := NewRouter(nil)
 		entry := &providerEntry{
-			TTSProvider: &mockProvider{name: "openai", display: "OpenAI"},
-			cfg:         ProviderConfig{Type: "openai", Enabled: true},
+			STTProvider: &mockProvider{name: "elevenlabs", display: "ElevenLabs"},
+			cfg:         ProviderConfig{Type: "elevenlabs", Enabled: true},
 		}
 		r.providers = []*providerEntry{entry}
 
@@ -194,8 +175,8 @@ func TestRouterHasActiveProvider(t *testing.T) {
 	t.Run("auto-disabled provider with no fallback", func(t *testing.T) {
 		r := NewRouter(nil)
 		entry := &providerEntry{
-			TTSProvider: &mockProvider{name: "openai"},
-			cfg:         ProviderConfig{Type: "openai", Enabled: true},
+			STTProvider: &mockProvider{name: "elevenlabs"},
+			cfg:         ProviderConfig{Type: "elevenlabs", Enabled: true},
 			disabled:    true,
 			failCount:   3,
 		}
@@ -208,26 +189,15 @@ func TestRouterHasActiveProvider(t *testing.T) {
 
 func TestRouterUpdateConfigsSkipsInvalid(t *testing.T) {
 	r := NewRouter([]ProviderConfig{
-		{Type: ProviderOpenAI, Name: "oa", Voice: "alloy", APIKey: "sk-x", Enabled: true},
-		{Type: ProviderElevenLabs, Name: "el", Voice: "rachel", APIKey: "sk-y", Enabled: true},
-		{Type: ProviderCustom, Name: "cu", Voice: "v1", BaseURL: "http://localhost:9999", Enabled: true},
+		{Type: ProviderElevenLabs, Name: "el", APIKey: "sk-y", Enabled: true},
+		{Type: ProviderCustom, Name: "cu", BaseURL: "http://localhost:9999", Enabled: true},
 		{Type: "", Name: "bad", Enabled: true},
 	})
-	// OpenAI, ElevenLabs, and Custom are all implemented (Faz 2 / Live Mode
-	// v2 §2) and construct successfully. Only the empty-Type entry fails
-	// Validate — UpdateConfigs must skip it gracefully, not panic or leave a
-	// broken entry in r.providers.
-	if len(r.providers) != 3 {
-		t.Fatalf("expected exactly 3 constructible providers, got %d", len(r.providers))
-	}
-	seen := map[ProviderType]bool{}
-	for _, p := range r.providers {
-		seen[p.cfg.Type] = true
-	}
-	for _, want := range []ProviderType{ProviderOpenAI, ProviderElevenLabs, ProviderCustom} {
-		if !seen[want] {
-			t.Errorf("expected a surviving %s entry, got types %v", want, seen)
-		}
+	// ElevenLabs and Custom both construct successfully; the empty-Type
+	// entry fails Validate — UpdateConfigs must skip it gracefully, not
+	// panic or leave a broken entry in r.providers.
+	if len(r.providers) != 2 {
+		t.Fatalf("expected exactly 2 constructible providers, got %d", len(r.providers))
 	}
 }
 
@@ -237,12 +207,11 @@ func TestProviderConfigValidate(t *testing.T) {
 		cfg     ProviderConfig
 		wantErr bool
 	}{
-		{"missing type", ProviderConfig{Voice: "alloy", APIKey: "sk-x"}, true},
-		{"missing voice", ProviderConfig{Type: ProviderOpenAI, APIKey: "sk-x"}, true},
-		{"missing api key", ProviderConfig{Type: ProviderOpenAI, Voice: "alloy"}, true},
-		{"valid", ProviderConfig{Type: ProviderOpenAI, Voice: "alloy", APIKey: "sk-x"}, false},
-		{"custom missing base_url", ProviderConfig{Type: ProviderCustom, Voice: "v1"}, true},
-		{"custom without api key is valid", ProviderConfig{Type: ProviderCustom, Voice: "v1", BaseURL: "http://localhost:9999"}, false},
+		{"missing type", ProviderConfig{APIKey: "sk-x"}, true},
+		{"missing api key", ProviderConfig{Type: ProviderElevenLabs}, true},
+		{"valid elevenlabs", ProviderConfig{Type: ProviderElevenLabs, APIKey: "sk-x"}, false},
+		{"custom missing base_url", ProviderConfig{Type: ProviderCustom}, true},
+		{"custom without api key is valid", ProviderConfig{Type: ProviderCustom, BaseURL: "http://localhost:9999"}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -39,6 +39,7 @@ import (
 	"memo/internal/sessions"
 	"memo/internal/skill"
 	"memo/internal/stats"
+	"memo/internal/stt"
 	"memo/internal/swarm"
 	"memo/internal/taskloop"
 	"memo/internal/telegram"
@@ -148,6 +149,9 @@ type App struct {
 	ttsRouter         *tts.Router
 	ttsRouterMu       sync.RWMutex
 	ttsVoiceStore     *tts.VoiceStore
+	sttProviderCfgMgr *stt.ConfigManager
+	sttRouter         *stt.Router
+	sttRouterMu       sync.RWMutex
 	webServer         *webserver.Server
 	webMu             sync.RWMutex
 	modelStore        *modelstore.Store
@@ -570,6 +574,7 @@ func (a *App) Startup(ctx context.Context) {
 	goRecover("startSTTServer", a.startSTTServer)
 	a.initTTS()
 	a.initTTSProviders()
+	a.initSTTProviders()
 	a.ttsVoiceStore = tts.NewVoiceStore(config.DataPath("tts_voices"))
 
 	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {

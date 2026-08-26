@@ -20,6 +20,7 @@ import (
 	"memo/internal/sessions"
 	"memo/internal/skill"
 	"memo/internal/stats"
+	"memo/internal/stt"
 	"memo/internal/taskloop"
 	"memo/internal/tts"
 	"memo/internal/whatsapp"
@@ -246,6 +247,14 @@ type FullBridge interface {
 	UpdateTTSProvider(cfg tts.ProviderConfig) error
 	DeleteTTSProvider(pt tts.ProviderType, name ...string) error
 	TestTTSProviderConnection(cfg tts.ProviderConfig) error
+	ListTTSProviderModels(ctx context.Context, pt tts.ProviderType, apiKey string) ([]tts.ElevenLabsModel, error)
+	ListTTSProviderVoices(ctx context.Context, pt tts.ProviderType, apiKey string) ([]tts.ElevenLabsVoice, error)
+
+	// STT providers (Live Mode v2 — external providers, fall back to local
+	// whisper.cpp; see docs/plans/PLAN_live_mode_v2.md §2)
+	GetSTTProviders() []stt.ProviderConfig
+	UpdateSTTProvider(cfg stt.ProviderConfig) error
+	DeleteSTTProvider(pt stt.ProviderType, name ...string) error
 
 	// TTS voice store (Faz 2.6 — local, offline Piper voice models)
 	GetTTSVoiceCatalog() []tts.Voice

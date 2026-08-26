@@ -2258,6 +2258,35 @@ func (s *Server) handleBrowserSettings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleLiveModeActive: GET reports the current Live Mode selector
+// (Enabled/ActiveEngine/WorkMode/AgentPermissionPolicy), PUT replaces it.
+// Mirrors handleBrowserSettings/handleWebSearchSettings's shape. Phase 1
+// only — per-engine config (API keys, model/voice) is a later phase's own
+// endpoint(s), see docs/plans/PLAN_live_mode_v2.md.
+func (s *Server) handleLiveModeActive(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusServiceUnavailable)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, s.fullBridge.GetLiveModeConfig())
+	case http.MethodPut:
+		var req config.LiveModeConfig
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.UpdateLiveModeConfig(req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, req)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 // handleBrowserInstall starts the browser-engine download in the background
 // and returns right away — poll handleBrowserInstallProgress for status.
 func (s *Server) handleBrowserInstall(w http.ResponseWriter, r *http.Request) {

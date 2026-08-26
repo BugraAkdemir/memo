@@ -418,6 +418,8 @@ func (b *swarmStubBridge) GetTTSVoiceDownloadProgress() []*tts.VoiceDownloadProg
 func (b *swarmStubBridge) DownloadTTSVoice(locale, name, quality string) error           { return nil }
 func (b *swarmStubBridge) DeleteTTSVoice(id string) error                                { return nil }
 func (b *swarmStubBridge) SelectTTSVoice(id string) error                                { return nil }
+func (b *swarmStubBridge) GetLiveModeConfig() config.LiveModeConfig                       { return config.LiveModeConfig{} }
+func (b *swarmStubBridge) UpdateLiveModeConfig(cfg config.LiveModeConfig) error           { return nil }
 func (b *swarmStubBridge) GetOrchestraConfig() orchestra.OrchestraConfig {
 	return orchestra.OrchestraConfig{}
 }

@@ -292,6 +292,9 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/tts/voices/download", s.handleTTSVoiceDownload)
 	route("/api/tts/voices/select", s.handleTTSVoiceSelect)
 
+	// Live Mode v2 (Phase 1: top-level selector only, see PLAN_live_mode_v2.md)
+	route("/api/livemode/active", s.handleLiveModeActive)
+
 	// OpenRouter
 	route("/api/openrouter/connect", s.requirePermission(s.handleOpenRouterConnect, hasModelsPerm))
 	route("/api/openrouter/models", s.handleOpenRouterModels)

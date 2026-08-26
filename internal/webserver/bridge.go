@@ -256,6 +256,14 @@ type FullBridge interface {
 	DeleteTTSVoice(id string) error
 	SelectTTSVoice(id string) error
 
+	// Live Mode (v2 — graduated out of Beta, own config independent of it;
+	// see docs/plans/PLAN_live_mode_v2.md). Phase 1 only: the top-level
+	// Enabled/ActiveEngine/WorkMode/AgentPermissionPolicy selector. Per-engine
+	// config (API keys, model/voice choice) is a later phase's own
+	// GetLiveModeEngines/UpdateLiveModeEngine-shaped addition here.
+	GetLiveModeConfig() config.LiveModeConfig
+	UpdateLiveModeConfig(cfg config.LiveModeConfig) error
+
 	// Orchestra mode
 	GetOrchestraConfig() orchestra.OrchestraConfig
 	UpdateOrchestraConfig(cfg orchestra.OrchestraConfig) error

@@ -623,3 +623,50 @@ her ilgili fazda "doğrulanmadı" olarak açıkça belirtilecek, sessizce
   kaldırılacak, sekme index'leri yeniden numaralandırılacak, kapsama
   testi güncellenecek), planın kapanış durumu + son `handoff.md` girdisi.
   Kullanıcı onayı beklemeden devam ediliyor.
+- 2026-08-26: Faz 13 tamam — kapanış.
+  **`beta_features_tab.dart` incelendi, kaldırılmadı**: plan bunun Faz
+  1'in Live Mode'u çıkarmasından sonra "muhtemelen neredeyse boş"
+  olacağını varsaymıştı, ama gerçekte 222 satır, hâlâ gerçek işlev
+  görüyor — genel `cfg.Beta` anahtarı + Swarm'ın beta kapısı (Live
+  Mode'un mezuniyetinden önce de Swarm zaten oradaydı, sadece Live Mode
+  çıkarıldı). Tahmin yanlış çıktı, plan bunu zorla doğru çıkarmaya
+  çalışmak yerine burada düzeltiliyor: sekme kalıyor, index'ler
+  (`settings_dialog.dart`'ta 16=BetaFeaturesTab, 24=LiveModeTab)
+  değişmedi, kapsama testi zaten doğruydu — yapılacak bir değişiklik yok.
+  `internal/livemode`, `internal/app/livemode*.go`,
+  `internal/agent/execute_tool_call.go` içinde kalan TODO/FIXME/"not
+  implemented" taraması temiz.
+
+  **Planın 0-13 tüm fazları tamamlandı.** Özet — Part A (5 motor: Local/
+  Google Live/OpenAI/ElevenLabs/Custom, hepsi canlı API'den model/ses
+  keşfi ile, hiçbiri hardcoded değil) ve Part B (delegate/standalone
+  `WorkMode`, sesli izin isteme dahil) planlandığı gibi teslim edildi.
+  **Bu ortamda doğrulanamayan/ertelenen kısımlar, dürüstçe:**
+  - Gerçek sağlayıcı API key'i hiç yoktu — Google Live/OpenAI Realtime/
+    ElevenLabs'e dokunan her faz sadece httptest sahte sunucularıyla
+    doğrulandı, gerçek canlı bağlantıyla asla değil (Faz 6-12'nin her
+    birinin durum notunda ayrı ayrı işaretlendi).
+  - Google Live'ın transkripsiyon alanlarının `serverContent` içine mi
+    yoksa üst seviyeye mi ait olduğu (Faz 12) — güncel dokümanlardaki
+    çelişkiye rağmen bir yorumla karar verildi, kodda "gerçek oturumda
+    tersi çıkarsa değiştirilecek tek satır" olarak işaretli.
+  - Oturum-içi hafıza tazeleme ve delege-görev ilerleme anlatımı (Faz
+    11'in bilinçli kapsam dışı bıraktığı iki `InjectContext` tüketicisi)
+    hiç uygulanmadı — canlı API doğrulaması gerektiriyorlardı, tahminle
+    koda geçirilmedi.
+  - Gerçek cihazda uçtan uca Flutter↔Go duplex ses testi bu ortamda hiç
+    mümkün olmadı — her faz sadece paket/entegrasyon seviyesinde (fake
+    WS sunucuları, httptest) doğrulandı.
+  - İki ilgisiz, önceden var olan sorun flag'lendi ama bu branch'in
+    kapsamı dışında bırakıldı (ayrı görevler): `internal/agent`'ta
+    gofmt drift'i (main'de, bu çalışmadan önce de vardı), test'lerin
+    `config.DataPath()`-göreli-yol nedeniyle yarattığı artık dizinler
+    (`internal/*/data/`, her fazda tekrar tekrar bulunup temizlendi —
+    kök neden hâlâ düzeltilmedi).
+
+  **Doğrulama (özet, tüm fazlar boyunca tutarlı biçimde):** her fazın
+  kendi commit'i `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5"
+  ./... -race` çıktısını taşıyor; Flutter dokunan fazlar
+  `flutter analyze lib/`+`flutter test`+Kural #8 grep'ini taşıyor. Bu
+  dosyanın "Durum" bölümündeki her madde kendi doğrulama kanıtını
+  içeriyor — bkz. yukarısı.

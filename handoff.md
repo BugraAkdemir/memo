@@ -1,3 +1,50 @@
+# Ek (2026-08-26, devam 9) — Live Mode v2 Faz 3 (internal/livemode + motor seçici UI)
+
+**Faz 3 tamamlandı** (`22f41f8`): yeni `internal/livemode` paketi —
+`EngineType` (local/google_live/openai_realtime/elevenlabs/custom) +
+`EngineConfig` (api_key/model/voice/base_url) + `ConfigManager`
+(`internal/tts`'in şifreli-config deseninin aynısı ama `EngineType`'a göre
+key'lenmiş bir map, öncelik sıralı liste değil — Live Mode'da her an tek
+bir aktif motor var, fallback zinciri yok). `data/livemode_engines.json`'a
+persist ediyor. App wiring `tts_providers.go`/`stt_providers.go` ile aynı
+şekilde (`initLiveModeEngines`, Startup'ta çağrılıyor), yeni
+`GET/PUT/DELETE /api/livemode/engines` endpoint'i.
+
+Frontend: Sesli Mod sekmesine gerçek motor dropdown'ı (5 tip) + motor
+başına config formu eklendi (API key, Model — hâlâ serbest metin alanı,
+canlı keşif Faz 4'te; ElevenLabs için Voice, Custom için Base URL), motor
+tipine göre key'lenmiş (`ValueKey(cfg.activeEngine)`) ki motor değişince
+eski motorun metni kalmasın. Google Live/OpenAI Realtime seçiliyken
+WorkMode (delegate/standalone, standalone'da uyarı metniyle) ve
+AgentPermissionPolicy seçicileri de gösteriliyor — ikisinin de backend
+config'i Faz 1'den beri vardı, şimdi UI'ları da var. Yeni TR+EN L10n
+key'leri (kural #8).
+
+`internal/tts`/`internal/stt` senkronizasyonu (motor config'i kaydedince
+otomatik olarak ilgili TTS/STT provider'ını da güncelleme) **bilerek
+yapılmadı** — plan dosyasının kendi faz sınırına göre bu Faz 5'e ait
+(TranscribeAudio/SynthesizeSpeech gerçekten aktif motora yönlendirilmeye
+başladığında).
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (internal/livemode yeni: config/engine-validation testleri yeşil)
+$ flutter analyze lib/
+→ 5 sorun (önceden kabul edilmiş info'lar)
+$ flutter test
+→ 283/283 yeşil
+$ Rule #8 grep → temiz
+```
+
+**Sıradaki:** Faz 4 — canlı model keşfi (Google `ListLiveModels`
+`bidiGenerateContent` filtresi, OpenAI `ListRealtimeModels`), yeni
+`/api/livemode/engines/models` endpoint'i, Flutter'da placeholder metin
+kutuları gerçek dropdown'lara dönüşüyor. Kullanıcı onayı beklemeden
+devam ediliyor.
+
+---
+
 # Ek (2026-08-26, devam 8) — Live Mode v2 Faz 2 (internal/stt + TTS ElevenLabs/Custom)
 
 Kullanıcı "sorma, faz 2 3 4 kaç faz varsa yap, durma, AGENTS.md kurallarına

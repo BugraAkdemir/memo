@@ -471,3 +471,9 @@ her ilgili fazda "doğrulanmadı" olarak açıkça belirtilecek, sessizce
   models`/`voices` endpoint'leri, `/api/stt/providers` CRUD. Tüm yeni HTTP
   çağrı noktaları httptest ile doğrulandı (gerçek API key yok). Frontend
   tarafına henüz dokunulmadı — model/ses dropdown'ları Faz 3/4'te.
+- 2026-08-26: Faz 3 tamam (`22f41f8`) — `internal/livemode` paketi
+  (EngineType/EngineConfig/ConfigManager, `data/livemode_engines.json`),
+  `/api/livemode/engines` CRUD, Flutter'da tam motor seçici + motor başı
+  config formu (Model hâlâ serbest metin, WorkMode/AgentPermissionPolicy
+  seçicileri native motorlar için görünür). `internal/tts`/`internal/stt`
+  senkronizasyonu henüz yok — Faz 5'te.

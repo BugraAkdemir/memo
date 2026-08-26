@@ -1,3 +1,58 @@
+# Ek (2026-08-26, devam 5) — Pi'de canlı doğrulama + IsInstalled cache bug fix + download progress bar
+
+Önceki ek'in "Eksik kalan: gerçek Pi donanımı bende yok" maddesi kapandı —
+kullanıcı SSH erişimi verdi (`bugraa@192.168.1.106`), gerçek donanımda uçtan
+uca test edildi.
+
+**1. arm64 fix canlı doğrulandı:** `get-memo-server-beta.sh` ile (her main
+push'unda `memo_arm_beta.zip`'i güncelleyen CI'dan) Pi güncellendi — Pi'de
+kendi başına Go build almaya hiç gerek yok, bu yol çok daha hızlı. Install
+gerçekten indirdi (`playwright-1241/chrome-linux/chrome-headless-shell`,
+310MB, diskte doğrulandı).
+
+**2. Canlı testte yeni bir gerçek bug bulundu ve düzeltildi:** install
+başarılı olsa bile `IsInstalled`/`/api/browser` hep `installed:false`
+diyordu — `resolveExecutable`, `AllowDownload` kapalıyken cache'e hiç
+bakmıyordu, sadece sistem yollarına bakıyordu. gosearch'te `findCachedBinary`
+eklendi (`browser/v0.2.1`), memo'ya bump edildi (`2746fed`). Pi'de tekrar
+doğrulandı: restart sonrası yeniden indirmeden `installed:true`.
+
+**3. Download progress bar eklendi** (kullanıcı iki şey istedi: hatayı
+düzelt + varsa olmayan bir indirme progress'i ekle): gosearch'e
+`WithProgress(fn)` opsiyonu eklendi (`browser/v0.3.0`, hem CFT hem Playwright
+indirme yollarını kapsıyor). memo tarafında `handleBrowserInstall` artık
+arka planda goroutine başlatıp hemen dönüyor (`Manager.StartInstall`,
+request context'inden bilerek kopuk — Settings kapatmak artık indirmeyi
+öldürmüyor), yeni `GET /api/browser/install/progress`
+`modelstore.DownloadProgress`'in aynı şeklini/polling kalıbını taşıyor.
+Flutter tarafı `my_models_tab.dart`'ın aynı render kalıbıyla gerçek
+yüzde+hız gösteren bir `LinearProgressIndicator` kullanıyor
+(`browserInstallProgressProvider`, `downloadProgressProvider`'la aynı
+adaptif polling). Pi'de uçtan uca doğrulandı: `%0→21→45→64→77→97→100`,
+`4.2-5.0 MB/s`, indirme bitince otomatik `installed:true`.
+
+**Değişen dosyalar:** gosearch `browser/cfd.go`, `engine_resolve.go`,
+`playwright_download_test.go` (+`browser_test.go`'ya
+`TestFindCachedBinaryFindsAPriorDownloadWithoutNetwork`); memo
+`internal/browserengine/*`, `internal/webserver/{bridge,handlers_flutter,
+server,swarm_stub_bridge_test}.go`, `internal/app/settings.go`,
+`frontend/lib/{core/api_client,providers/settings_provider,
+widgets/settings/tabs/general_tab,models/browser_install_progress}.dart`,
+`frontend/test/widgets/settings_dialog_test.dart` (yeni polling provider'ı
+override etmesi gerekti — `embeddingStatusProvider` için zaten var olan
+kalıbın aynısı, "pending timer" test hatasını önlüyor).
+
+**Doğrulama:** memo backend build/vet/test -race yeşil (tüm paketler);
+gosearch/browser build/vet/test/lint yeşil; `flutter analyze` temiz (5 eski
+info-seviye bulgu dışında), `flutter test` 283/283 yeşil; Rule #8 grep temiz.
+Tüm commit'ler push edildi (gosearch: `d0f9917`, `2581048` + tag'ler
+`browser/v0.2.1`, `browser/v0.3.0`; memo: `2746fed`, `0c92915`).
+
+**Sıradaki oturum:** gosearch dual-module dedup planı hâlâ açık
+(gosearch/handoff.md Session 5 "Open thread"), hiç dokunulmadı.
+
+---
+
 # Ek (2026-08-26, devam 4) — Raspberry Pi Chromium kurulum fix'i (memo + gosearch), v4.2.0 sürüm notları, gosearch dual-module tartışması (henüz uygulanmadı)
 
 ## 1. v4.2.0 sürüm notları

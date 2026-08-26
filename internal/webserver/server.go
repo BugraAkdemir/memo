@@ -301,6 +301,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/livemode/active", s.handleLiveModeActive)
 	route("/api/livemode/engines", s.handleLiveModeEngines)
 	route("/api/livemode/engines/models", s.handleLiveModeEngineModels)
+	route("/api/livemode/session", s.handleLiveModeSession)
 
 	// OpenRouter
 	route("/api/openrouter/connect", s.requirePermission(s.handleOpenRouterConnect, hasModelsPerm))

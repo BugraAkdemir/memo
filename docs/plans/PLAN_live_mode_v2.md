@@ -506,3 +506,13 @@ her ilgili fazda "doğrulanmadı" olarak açıkça belirtilecek, sessizce
   (`pubspec.lock` diff'i temiz). httptest+coder/websocket ile ikili
   frame round-trip'i uçtan uca kanıtlandı — gerçek cihaz seviyesinde
   Flutter↔Go duplex ses testi bu ortamda mümkün değil.
+- 2026-08-26: Faz 7 tamam (`0ecee0f`) — `internal/livemode/google.Client`,
+  gerçek Gemini Live wire protokolüne göre (`setup` → `realtimeInput`
+  (16kHz PCM) ↔ `serverContent.modelTurn.inlineData` (24kHz PCM)), henüz
+  tool-calling yok. `handleLiveModeSession`'ın dispatch'i artık aktif
+  motor google_live VE kayıtlı config (api_key+model) varsa gerçek
+  `google.Client`'ı kullanıyor, yoksa `EchoSession`'a düşüyor. Sahte bir
+  Gemini-Live-şekilli WS sunucusuna karşı hem paket-seviyesi hem de
+  Flutter-istemci→Go-köprü→sahte-Google zincirinin tamamını kanıtlayan
+  webserver-seviyesi testler yeşil. Gerçek Google API key yok, sadece
+  belgelenen wire protokolüne karşı sahte sunucularla doğrulandı.

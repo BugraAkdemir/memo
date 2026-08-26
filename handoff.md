@@ -1,3 +1,45 @@
+# Ek (2026-08-26, devam 13) — Live Mode v2 Faz 7 (Google Live client)
+
+**Faz 7 tamamlandı** (`0ecee0f`): `internal/livemode/google.Client`,
+gerçek Gemini Live API wire protokolüne karşı doğrulanmış şekilde
+(`livemode.Session` arayüzünü implemente ediyor):
+`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=...`
+dial ediyor, önce zorunlu `setup` mesajını gönderiyor (model +
+`responseModalities: ["AUDIO"]` + opsiyonel `systemInstruction` — model
+string'i her zaman Faz 4'ün keşif çağrısından geliyor, burada hiç
+uydurulmuyor), sonra `realtimeInput` (istemci sesi, base64 16kHz PCM) ↔
+`serverContent.modelTurn.inlineData` (sunucu sesi, base64 24kHz PCM)
+mesajlarıyla devam ediyor. Henüz tool-calling/function-call yok (Faz 10).
+
+`handleLiveModeSession`'ın dispatch mantığı (`newLiveModeSession`) artık:
+aktif motor "google_live" VE kayıtlı bir engine config'i (api_key + model
+ikisi de dolu) varsa gerçek `google.Client`'ı kullanıyor; yoksa (henüz
+bağlanmamış "openai_realtime" dahil, ya da yanlış yapılandırılmış
+google_live) Faz 6'nın `EchoSession`'ına düşüyor — böylece bir oturum
+her zaman açılıyor, hiç başarısız olmuyor.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok — internal/livemode/google'ın kendi testleri sahte bir
+  Gemini-Live-şekilli WS sunucusuna karşı setup mesaj şeklini, SendAudio'nun
+  base64 encode+mimeType'ını, serverContent→EventAudioOut dönüşümünü
+  doğruluyor; yeni bir webserver-seviyesi test daha da ileri gidip
+  Flutter-istemci→gerçek handler→sahte-Google zincirinin TAMAMINI uçtan
+  uca kanıtlıyor (sahte sunucunun gönderdiği ses, Flutter tarafındaki
+  istemciye byte-byte aynen ulaşıyor)
+```
+
+**Eksik/doğrulanamayan:** Bu ortamda gerçek Google API key'i yok — sadece
+belgelenen wire protokolüne karşı sahte sunucularla doğrulandı, gerçek
+API'ye karşı asla.
+
+**Sıradaki:** Faz 8 — OpenAI Realtime client'ı (Faz 7'nin aynası, kendi
+mesaj şekilleriyle: `session.update`, `input_audio_buffer.append`,
+`response.output_audio.delta`). Kullanıcı onayı beklemeden devam ediliyor.
+
+---
+
 # Ek (2026-08-26, devam 12) — Live Mode v2 Faz 6 (WS transport iskeleti)
 
 **Faz 6 tamamlandı** (`4bc046d`): yeni `internal/livemode.Session`

@@ -32,4 +32,32 @@ void main() {
       expect(state.error, isNull);
     });
   });
+
+  group('LiveModeSessionControlFrame.fromJson', () {
+    test('parses a transcript frame', () {
+      final frame = LiveModeSessionControlFrame.fromJson({
+        'type': 'transcript',
+        'transcript': 'kapıyı kilitle',
+      });
+      expect(frame.type, 'transcript');
+      expect(frame.transcript, 'kapıyı kilitle');
+      expect(frame.error, isNull);
+    });
+
+    test('parses an error frame', () {
+      final frame = LiveModeSessionControlFrame.fromJson({
+        'type': 'error',
+        'error': 'connection reset',
+      });
+      expect(frame.type, 'error');
+      expect(frame.error, 'connection reset');
+    });
+
+    test('defaults type to empty string when missing', () {
+      final frame = LiveModeSessionControlFrame.fromJson({});
+      expect(frame.type, '');
+      expect(frame.transcript, isNull);
+      expect(frame.error, isNull);
+    });
+  });
 }

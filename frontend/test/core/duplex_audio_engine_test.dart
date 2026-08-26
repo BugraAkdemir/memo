@@ -47,4 +47,13 @@ void main() {
     final engine = NoAecDuplexAudioEngine();
     engine.dispose(); // must not throw
   });
+
+  test('accepts a custom sample rate without throwing at construction', () {
+    // Live Mode v2's native engines need 24 kHz (OpenAI Realtime) instead
+    // of the 16 kHz default (Google Live, and Voice Live Mode's original
+    // contract) -- start() itself isn't exercised here (see the file doc
+    // comment), so this only proves the constructor accepts the override.
+    final engine = NoAecDuplexAudioEngine(sampleRate: 24000);
+    expect(engine.isActive, isFalse);
+  });
 }

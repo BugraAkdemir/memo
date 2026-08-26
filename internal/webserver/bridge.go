@@ -7,6 +7,7 @@ import (
 	"memo/internal/agent"
 	"memo/internal/agentcli"
 	"memo/internal/api"
+	"memo/internal/browserengine"
 	"memo/internal/config"
 	"memo/internal/llama"
 	"memo/internal/memory"
@@ -67,6 +68,7 @@ type FullBridge interface {
 	SetBrowserKeepAlive(keepAlive bool) error
 	GetBrowserInstalled(ctx context.Context) bool
 	InstallBrowser(ctx context.Context) error
+	GetBrowserInstallProgress() browserengine.InstallProgress
 	GetMemoryEnabled() bool
 	SetMemoryEnabled(enabled bool) error
 	// Dream settings are read via the existing GetMemorySettings()

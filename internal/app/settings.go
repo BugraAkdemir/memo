@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"memo/internal/agent/tools"
+	"memo/internal/browserengine"
 	"memo/internal/logx"
 	"os"
 	"path/filepath"
@@ -115,13 +116,23 @@ func (a *App) GetBrowserInstalled(ctx context.Context) bool {
 	return a.browserMgr.IsInstalled(ctx)
 }
 
-// InstallBrowser tarayıcı motorunu indirir (kurulu değilse). Engelleyici —
-// gosearch'ün Install fonksiyonunun ilerleme geri çağrısı yok.
+// InstallBrowser tarayıcı motoru indirmeyi arka planda başlatır ve hemen
+// döner — ilerleme için GetBrowserInstallProgress'i poll'la.
 func (a *App) InstallBrowser(ctx context.Context) error {
 	if a.browserMgr == nil {
 		return fmt.Errorf("browser engine not initialized")
 	}
-	return a.browserMgr.Install(ctx)
+	a.browserMgr.StartInstall(ctx)
+	return nil
+}
+
+// GetBrowserInstallProgress mevcut (ya da en son biten) kurulum denemesinin
+// anlık durumunu döner.
+func (a *App) GetBrowserInstallProgress() browserengine.InstallProgress {
+	if a.browserMgr == nil {
+		return browserengine.InstallProgress{}
+	}
+	return a.browserMgr.InstallProgress()
 }
 
 // UpdateSystemManagementConfig sistem yönetimi modunu günceller.

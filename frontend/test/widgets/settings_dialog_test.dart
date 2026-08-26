@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:memo_flutter/core/api_client.dart';
 import 'package:memo_flutter/core/l10n.dart';
+import 'package:memo_flutter/models/browser_install_progress.dart';
 import 'package:memo_flutter/models/gpu_info.dart';
 import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
@@ -63,6 +64,11 @@ Future<void> _pumpSettingsDialog(
         // here so every test in this file stays isolated from real sockets.
         authGateProvider.overrideWith(
             (ref) => Stream.value(const AuthGateInfo(AuthGateState.ok))),
+        // Same reasoning as embeddingStatusProvider above — GeneralTab's
+        // browser-engine section watches this real polling StreamProvider
+        // too.
+        browserInstallProgressProvider.overrideWith(
+            (ref) => Stream.value(const BrowserInstallProgress())),
       ],
       child: const MaterialApp(home: Scaffold(body: SettingsDialog())),
     ),

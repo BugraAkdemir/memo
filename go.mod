@@ -5,7 +5,7 @@ go 1.26.6
 
 require (
 	github.com/BugraAkdemir/gosearch v0.2.0
-	github.com/BugraAkdemir/gosearch/browser v0.2.1
+	github.com/BugraAkdemir/gosearch/browser v0.3.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-isatty v0.0.20

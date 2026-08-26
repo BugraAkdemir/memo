@@ -7,6 +7,7 @@ import (
 	"memo/internal/agent"
 	"memo/internal/agentcli"
 	"memo/internal/api"
+	"memo/internal/browserengine"
 	"memo/internal/config"
 	"memo/internal/llama"
 	"memo/internal/memory"
@@ -194,6 +195,9 @@ func (b *swarmStubBridge) GetBrowserKeepAlive() bool                            
 func (b *swarmStubBridge) SetBrowserKeepAlive(keepAlive bool) error                   { return nil }
 func (b *swarmStubBridge) GetBrowserInstalled(ctx context.Context) bool               { return false }
 func (b *swarmStubBridge) InstallBrowser(ctx context.Context) error                   { return nil }
+func (b *swarmStubBridge) GetBrowserInstallProgress() browserengine.InstallProgress {
+	return browserengine.InstallProgress{}
+}
 func (b *swarmStubBridge) GetMemoryEnabled() bool                                     { return false }
 func (b *swarmStubBridge) SetMemoryEnabled(enabled bool) error                        { return nil }
 func (b *swarmStubBridge) SetMemoryDreamSettings(enabled bool, initialDelayMinutes, intervalHours int) error {

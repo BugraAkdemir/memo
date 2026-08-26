@@ -7,6 +7,7 @@ import (
 	"io"
 	"memo/internal/agentcli"
 	"memo/internal/api"
+	"memo/internal/browserengine"
 	"memo/internal/config"
 	"memo/internal/logx"
 	"memo/internal/orchestra"
@@ -2257,11 +2258,8 @@ func (s *Server) handleBrowserSettings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleBrowserInstall downloads the browser engine if one isn't already
-// available. Blocking — gosearch's browser.Install has no progress-callback
-// hook to stream percentages through, so the response only arrives once the
-// download (or an already-installed short-circuit) finishes. Generous
-// server-side timeout since the download can be 100+MB.
+// handleBrowserInstall starts the browser-engine download in the background
+// and returns right away — poll handleBrowserInstallProgress for status.
 func (s *Server) handleBrowserInstall(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusServiceUnavailable)
@@ -2271,15 +2269,24 @@ func (s *Server) handleBrowserInstall(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
-	defer cancel()
-	if err := s.fullBridge.InstallBrowser(ctx); err != nil {
+	if err := s.fullBridge.InstallBrowser(r.Context()); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, map[string]bool{"installed": true})
+	writeJSON(w, s.fullBridge.GetBrowserInstallProgress())
+}
+
+// handleBrowserInstallProgress reports the current (or most recently
+// finished) install attempt — polled by the frontend while a download is
+// active, matching handleDownloadProgress's model-download pattern.
+func (s *Server) handleBrowserInstallProgress(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		writeJSON(w, browserengine.InstallProgress{})
+		return
+	}
+	writeJSON(w, s.fullBridge.GetBrowserInstallProgress())
 }
 
 func (s *Server) handleWhatsAppStats(w http.ResponseWriter, r *http.Request) {

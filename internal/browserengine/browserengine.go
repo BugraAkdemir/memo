@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/BugraAkdemir/gosearch"
 	"github.com/BugraAkdemir/gosearch/browser"
@@ -45,11 +46,31 @@ var newEngine = func(ctx context.Context) (engineHandle, error) {
 }
 var installFn = browser.Install
 
+// InstallProgress reports the state of a browser-engine download. Shape and
+// JSON tags mirror modelstore.DownloadProgress on purpose — Flutter reuses
+// the exact same rendering conventions (percent, speed, active/error) for
+// both, just without modelstore's per-repo/filename keying since there is
+// only ever one browser engine to install.
+type InstallProgress struct {
+	Active     bool    `json:"active"`
+	TotalBytes int64   `json:"total_bytes"`
+	Downloaded int64   `json:"downloaded"`
+	Percent    float64 `json:"percent"`
+	Speed      string  `json:"speed"`
+	Error      string  `json:"error,omitempty"`
+}
+
 // Manager owns at most one live browser process at a time.
 type Manager struct {
 	mu        sync.Mutex
 	keepAlive bool
 	engine    engineHandle // non-nil only when keepAlive and already started
+
+	// progressMu guards progress independently of mu — StartInstall's
+	// background goroutine updates it continuously and must never contend
+	// with (or risk deadlocking against) the engine-lifecycle lock above.
+	progressMu sync.Mutex
+	progress   InstallProgress
 }
 
 // New creates a Manager. keepAlive seeds the initial mode (normally
@@ -130,22 +151,102 @@ func (m *Manager) IsInstalled(ctx context.Context) bool {
 	return installFn(ctx) == nil
 }
 
-// Install downloads a browser engine (chrome-headless-shell — from Google's
-// chrome-for-testing CDN on most platforms, from Microsoft's Playwright CDN
-// on linux/arm64, which chrome-for-testing doesn't build for at all) if none
-// is already available. Blocking — gosearch's browser.Install has no
-// progress-callback hook, unlike internal/llama/installer.go's
-// downloadFileProgress. A no-op (returns nil quickly) if a browser is
-// already installed.
-func (m *Manager) Install(ctx context.Context) error {
-	err := installFn(ctx, browser.AllowDownload(true))
-	if err != nil && errors.Is(err, browser.ErrUnsupportedPlatform) {
-		return fmt.Errorf("%w: no automatic download is available for this platform — "+
-			"install a system Chromium/Chrome yourself (e.g. \"sudo apt install chromium\" "+
-			"on Debian/Raspberry Pi OS, \"brew install --cask chromium\" on macOS) and retry; "+
-			"Memo will detect it automatically", err)
+// StartInstall kicks off a browser-engine download in the background and
+// returns immediately — callers poll InstallProgress for status instead of
+// blocking on this call. Deliberately detached from ctx's cancellation (only
+// its values, via context.WithoutCancel, survive): ctx is normally an HTTP
+// request context, and the request ending — the user closing the Settings
+// dialog, navigating to chat, the app losing focus — must not abort an
+// in-flight download. That exact bug (a client-side navigation silently
+// killing a server-side install) was reported live before this existed.
+//
+// A no-op if a download is already in progress (idempotent — a second
+// button press or a second poll-triggered call does nothing new) or if a
+// browser is already installed (IsInstalled's cache-aware check short-
+// circuits instantly, no network, so re-opening Settings after a completed
+// install reports done right away rather than starting a redundant "check").
+func (m *Manager) StartInstall(ctx context.Context) {
+	m.progressMu.Lock()
+	if m.progress.Active {
+		m.progressMu.Unlock()
+		return
 	}
-	return err
+	if m.IsInstalled(ctx) {
+		m.progress = InstallProgress{Percent: 100}
+		m.progressMu.Unlock()
+		return
+	}
+	m.progress = InstallProgress{Active: true}
+	m.progressMu.Unlock()
+
+	installCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Minute)
+	logx.GoRecover("browserengine: install", func() {
+		defer cancel()
+		start := time.Now()
+		err := installFn(installCtx, browser.AllowDownload(true), browser.WithProgress(func(downloaded, total int64) {
+			var percent float64
+			if total > 0 {
+				percent = float64(downloaded) / float64(total) * 100
+			}
+			var speed string
+			if elapsed := time.Since(start).Seconds(); elapsed > 0 {
+				speed = formatSpeed(float64(downloaded) / elapsed)
+			}
+			m.progressMu.Lock()
+			m.progress.Downloaded = downloaded
+			m.progress.TotalBytes = total
+			m.progress.Percent = percent
+			m.progress.Speed = speed
+			m.progressMu.Unlock()
+		}))
+
+		m.progressMu.Lock()
+		defer m.progressMu.Unlock()
+		if err != nil {
+			if errors.Is(err, browser.ErrUnsupportedPlatform) {
+				err = fmt.Errorf("%w: no automatic download is available for this platform — "+
+					"install a system Chromium/Chrome yourself (e.g. \"sudo apt install chromium\" "+
+					"on Debian/Raspberry Pi OS, \"brew install --cask chromium\" on macOS) and retry; "+
+					"Memo will detect it automatically", err)
+			}
+			m.progress.Active = false
+			m.progress.Error = err.Error()
+			logx.Info("BROWSERENGINE: install failed", "error", err)
+			return
+		}
+		m.progress.Active = false
+		m.progress.Percent = 100
+		m.progress.Error = ""
+		logx.Info("BROWSERENGINE: install complete")
+	})
+}
+
+// InstallProgress returns a snapshot of the current (or most recently
+// finished) install attempt. Safe to call whether or not StartInstall was
+// ever called — the zero value (Active: false, Percent: 0) is a fine answer
+// for "nothing has been attempted yet."
+func (m *Manager) InstallProgress() InstallProgress {
+	m.progressMu.Lock()
+	defer m.progressMu.Unlock()
+	return m.progress
+}
+
+// formatSpeed renders bytesPerSec as a human-readable rate. Mirrors
+// modelstore.formatSpeed's exact output format (memo's model-download
+// progress bar already uses this convention — matching it keeps the two
+// progress UIs visually consistent) without importing that package for one
+// function.
+func formatSpeed(bytesPerSec float64) string {
+	switch {
+	case bytesPerSec >= 1024*1024*1024:
+		return fmt.Sprintf("%.1f GB/s", bytesPerSec/(1024*1024*1024))
+	case bytesPerSec >= 1024*1024:
+		return fmt.Sprintf("%.1f MB/s", bytesPerSec/(1024*1024))
+	case bytesPerSec >= 1024:
+		return fmt.Sprintf("%.1f KB/s", bytesPerSec/1024)
+	default:
+		return fmt.Sprintf("%.0f B/s", bytesPerSec)
+	}
 }
 
 // Stop closes the persistent engine, if one is running. Safe to call

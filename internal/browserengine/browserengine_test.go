@@ -6,10 +6,26 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/BugraAkdemir/gosearch"
 	"github.com/BugraAkdemir/gosearch/browser"
 )
+
+// waitForInstallDone polls until a StartInstall goroutine finishes (or the
+// timeout fires) — StartInstall is fire-and-forget, so tests need this
+// instead of asserting on it directly.
+func waitForInstallDone(t *testing.T, m *Manager) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !m.InstallProgress().Active {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("StartInstall did not finish within 2s")
+}
 
 type fakeEngine struct {
 	closed     bool
@@ -192,25 +208,33 @@ func TestManager_IsInstalled_NeverPassesAllowDownload(t *testing.T) {
 	}
 }
 
-func TestManager_Install_PassesAllowDownload(t *testing.T) {
+func TestManager_StartInstall_PassesAllowDownload(t *testing.T) {
 	orig := installFn
 	defer func() { installFn = orig }()
 
-	var gotOptCount int
+	var calls, gotOptCount int
 	installFn = func(ctx context.Context, opts ...browser.Option) error {
+		calls++
+		if calls == 1 {
+			// StartInstall's own IsInstalled pre-check (0 opts) — must
+			// report "not installed" so the real install path below runs.
+			return browser.ErrNoBrowserFound
+		}
 		gotOptCount = len(opts)
 		return nil
 	}
 	m := New(false)
-	if err := m.Install(context.Background()); err != nil {
-		t.Fatalf("Install: %v", err)
-	}
+	m.StartInstall(context.Background())
+	waitForInstallDone(t, m)
 	if gotOptCount == 0 {
-		t.Error("Install() should pass AllowDownload(true) through to installFn")
+		t.Error("StartInstall() should pass AllowDownload(true) (and WithProgress) through to installFn")
+	}
+	if p := m.InstallProgress(); p.Percent != 100 || p.Error != "" {
+		t.Errorf("InstallProgress() after success = %+v, want Percent 100 and no Error", p)
 	}
 }
 
-func TestManager_Install_UnsupportedPlatformGetsActionableHint(t *testing.T) {
+func TestManager_StartInstall_UnsupportedPlatformGetsActionableHint(t *testing.T) {
 	orig := installFn
 	defer func() { installFn = orig }()
 
@@ -218,19 +242,18 @@ func TestManager_Install_UnsupportedPlatformGetsActionableHint(t *testing.T) {
 		return fmt.Errorf("browser: download engine: %w: linux/arm64", browser.ErrUnsupportedPlatform)
 	}
 	m := New(false)
-	err := m.Install(context.Background())
-	if err == nil {
-		t.Fatal("Install() = nil, want an error")
+	m.StartInstall(context.Background())
+	waitForInstallDone(t, m)
+	errMsg := m.InstallProgress().Error
+	if errMsg == "" {
+		t.Fatal("InstallProgress().Error is empty, want an error")
 	}
-	if !errors.Is(err, browser.ErrUnsupportedPlatform) {
-		t.Errorf("Install() error = %v, want errors.Is match against browser.ErrUnsupportedPlatform", err)
-	}
-	if !strings.Contains(err.Error(), "install a system Chromium") {
-		t.Errorf("Install() error = %q, want an actionable install hint", err.Error())
+	if !strings.Contains(errMsg, "install a system Chromium") {
+		t.Errorf("InstallProgress().Error = %q, want an actionable install hint", errMsg)
 	}
 }
 
-func TestManager_Install_OtherErrorsPassThroughWithoutHint(t *testing.T) {
+func TestManager_StartInstall_OtherErrorsPassThroughWithoutHint(t *testing.T) {
 	orig := installFn
 	defer func() { installFn = orig }()
 
@@ -238,11 +261,63 @@ func TestManager_Install_OtherErrorsPassThroughWithoutHint(t *testing.T) {
 		return browser.ErrNoBrowserFound
 	}
 	m := New(false)
-	err := m.Install(context.Background())
-	if !errors.Is(err, browser.ErrNoBrowserFound) {
-		t.Errorf("Install() error = %v, want errors.Is match against browser.ErrNoBrowserFound", err)
+	m.StartInstall(context.Background())
+	waitForInstallDone(t, m)
+	errMsg := m.InstallProgress().Error
+	if errMsg == "" {
+		t.Fatal("InstallProgress().Error is empty, want an error")
 	}
-	if strings.Contains(err.Error(), "install a system Chromium") {
-		t.Error("Install() should only add the platform hint for ErrUnsupportedPlatform, not every error")
+	if strings.Contains(errMsg, "install a system Chromium") {
+		t.Error("hint should only be added for ErrUnsupportedPlatform, not every error")
+	}
+}
+
+func TestManager_StartInstall_AlreadyInstalledShortCircuitsWithoutDownload(t *testing.T) {
+	orig := installFn
+	defer func() { installFn = orig }()
+
+	var calls int
+	installFn = func(ctx context.Context, opts ...browser.Option) error {
+		calls++
+		if len(opts) > 0 {
+			t.Error("StartInstall should never reach the download step when already installed")
+		}
+		return nil // always "installed"
+	}
+	m := New(false)
+	m.StartInstall(context.Background())
+	if p := m.InstallProgress(); p.Active || p.Percent != 100 {
+		t.Errorf("InstallProgress() = %+v, want an instant Percent:100 short-circuit", p)
+	}
+	if calls != 1 {
+		t.Errorf("installFn called %d times, want exactly 1 (the IsInstalled pre-check)", calls)
+	}
+}
+
+func TestManager_StartInstall_AlreadyActiveIsANoOp(t *testing.T) {
+	orig := installFn
+	defer func() { installFn = orig }()
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls int
+	installFn = func(ctx context.Context, opts ...browser.Option) error {
+		calls++
+		if len(opts) == 0 {
+			return browser.ErrNoBrowserFound // pre-check: not installed
+		}
+		close(started)
+		<-release
+		return nil
+	}
+	m := New(false)
+	m.StartInstall(context.Background())
+	<-started // first call is now blocked inside the "download"
+
+	m.StartInstall(context.Background()) // must be a no-op, not a second download
+	close(release)
+	waitForInstallDone(t, m)
+	if calls != 2 {
+		t.Errorf("installFn called %d times, want exactly 2 (one pre-check + one real download, second StartInstall call added nothing)", calls)
 	}
 }

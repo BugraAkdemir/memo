@@ -7,6 +7,7 @@ import '../../../core/l10n.dart';
 import '../../../core/tray_controller.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/models_provider.dart';
+import '../../../models/browser_install_progress.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../core/friendly_error.dart';
 
@@ -785,22 +786,20 @@ class _BrowserEngineSection extends ConsumerStatefulWidget {
 }
 
 class _BrowserEngineSectionState extends ConsumerState<_BrowserEngineSection> {
-  bool _installing = false;
   String _installError = '';
 
   Future<void> _install() async {
-    setState(() {
-      _installing = true;
-      _installError = '';
-    });
+    setState(() => _installError = '');
     try {
+      // Fire-and-forget: the backend starts the download in its own
+      // goroutine, detached from this request, and returns right away —
+      // browserInstallProgressProvider's polling picks up from here. This
+      // means closing Settings (or the whole dialog) no longer aborts an
+      // in-flight download the way the old blocking call did.
       await ref.read(apiClientProvider).installBrowserEngine();
-      ref.invalidate(browserInstalledProvider);
     } catch (e) {
       if (!mounted) return;
       setState(() => _installError = L10n.t('browser_install_failed', {'e': FriendlyError.describeGeneric(e)}));
-    } finally {
-      if (mounted) setState(() => _installing = false);
     }
   }
 
@@ -810,6 +809,8 @@ class _BrowserEngineSectionState extends ConsumerState<_BrowserEngineSection> {
     final installedAsync = ref.watch(browserInstalledProvider);
     final keepAliveAsync = ref.watch(browserKeepAliveProvider);
     final installed = installedAsync.valueOrNull ?? false;
+    final progress = ref.watch(browserInstallProgressProvider).valueOrNull ?? const BrowserInstallProgress();
+    final installing = progress.active;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -850,12 +851,12 @@ class _BrowserEngineSectionState extends ConsumerState<_BrowserEngineSection> {
                   ],
                 ),
               ),
-              if (!installedAsync.isLoading && !installed) ...[
+              if (!installedAsync.isLoading && !installed && !installing) ...[
                 const SizedBox(width: 12),
                 SizedBox(
                   height: 32,
                   child: ElevatedButton(
-                    onPressed: _installing ? null : _install,
+                    onPressed: _install,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: MemoTheme.accent,
                       foregroundColor: theme.textInverse,
@@ -864,21 +865,45 @@ class _BrowserEngineSectionState extends ConsumerState<_BrowserEngineSection> {
                         borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
                       ),
                     ),
-                    child: _installing
-                        ? SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: theme.textInverse),
-                          )
-                        : Text(L10n.t('browser_install_button'), style: const TextStyle(fontSize: 12)),
+                    child: Text(L10n.t('browser_install_button'), style: const TextStyle(fontSize: 12)),
                   ),
                 ),
               ],
             ],
           ),
-          if (_installError.isNotEmpty) ...[
+          if (installing) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress.totalBytes > 0 ? progress.percent / 100.0 : null,
+                      minHeight: 4,
+                      backgroundColor: theme.bgHover,
+                      valueColor: AlwaysStoppedAnimation(MemoTheme.accent),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  progress.totalBytes > 0
+                      ? '${progress.percent.toStringAsFixed(0)}%${progress.speed.isNotEmpty ? ' · ${progress.speed}' : ''}'
+                      : L10n.t('browser_installing'),
+                  style: TextStyle(fontSize: 11, color: theme.textDim),
+                ),
+              ],
+            ),
+          ],
+          if (_installError.isNotEmpty || progress.error != null && progress.error!.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(_installError, style: TextStyle(fontSize: 12, color: MemoTheme.red)),
+            Text(
+              _installError.isNotEmpty
+                  ? _installError
+                  : L10n.t('browser_install_failed', {'e': progress.error!}),
+              style: TextStyle(fontSize: 12, color: MemoTheme.red),
+            ),
           ],
           const SizedBox(height: 14),
           Divider(height: 1, color: theme.borderSoft),

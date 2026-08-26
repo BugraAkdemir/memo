@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import 'l10n.dart';
+import '../models/browser_install_progress.dart';
 import '../models/chat.dart';
 import '../models/cli_command.dart';
 import '../models/gpu_info.dart';
@@ -2131,14 +2132,17 @@ class MemoApiClient {
     await _dio.put('/api/browser', data: {'keep_alive': keepAlive});
   }
 
-  /// Downloads the browser engine if not already installed. Can take a
-  /// couple of minutes (~100-300MB); override the default receive timeout
-  /// for this call only, same pattern as installLlamaServer above.
+  /// Starts downloading the browser engine (if not already installed) in
+  /// the background and returns right away — poll getBrowserInstallProgress
+  /// for status, same pattern as downloadModel/getDownloadProgress.
   Future<void> installBrowserEngine() async {
-    await _dio.post(
-      '/api/browser/install',
-      options: Options(receiveTimeout: const Duration(minutes: 6)),
-    );
+    await _dio.post('/api/browser/install');
+  }
+
+  /// Current (or most recently finished) browser-engine install attempt.
+  Future<BrowserInstallProgress> getBrowserInstallProgress() async {
+    final res = await _dio.get('/api/browser/install/progress');
+    return BrowserInstallProgress.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   /// Get WhatsApp chat mode state.

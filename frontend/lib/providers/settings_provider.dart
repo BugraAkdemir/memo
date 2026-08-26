@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../core/backend_url.dart';
 import '../core/l10n.dart';
+import '../models/browser_install_progress.dart';
 import '../models/dev_gateway.dart';
 import '../models/gpu_info.dart';
 import '../models/minimal_mode_overrides.dart';
@@ -668,6 +669,41 @@ final browserInstalledProvider = FutureProvider<bool>((ref) async {
   // BUG-ONB6: see LlamaSettingsNotifier's comment above.
   if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return false;
   return ref.read(apiClientProvider).getBrowserInstalled();
+});
+
+// Adaptive polling, same shape as models_provider.dart's
+// downloadProgressProvider: 1s while a download is active, 4s while idle.
+// autoDispose so it stops when Settings closes. On the exact false-edge
+// transition (was active, now finished with no error) it invalidates
+// browserInstalledProvider once so the "Kurulu" checkmark updates without
+// polling that endpoint forever afterward.
+final browserInstallProgressProvider =
+    StreamProvider.autoDispose<BrowserInstallProgress>((ref) async* {
+  var alive = true;
+  ref.onDispose(() => alive = false);
+  final api = ref.read(apiClientProvider);
+  var wasActive = false;
+
+  while (alive) {
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      yield const BrowserInstallProgress();
+      await cancellablePause(ref, const Duration(seconds: 5));
+      continue;
+    }
+    try {
+      final progress = await api.getBrowserInstallProgress();
+      if (wasActive && !progress.active && progress.error == null) {
+        ref.invalidate(browserInstalledProvider);
+      }
+      wasActive = progress.active;
+      yield progress;
+      await cancellablePause(ref, Duration(seconds: progress.active ? 1 : 4));
+    } catch (e) {
+      debugPrint('settings: browserInstallProgress error: ${FriendlyError.describeGeneric(e)}');
+      yield const BrowserInstallProgress();
+      await cancellablePause(ref, const Duration(seconds: 4));
+    }
+  }
 });
 
 final browserKeepAliveProvider =

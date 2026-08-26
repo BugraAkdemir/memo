@@ -4,13 +4,14 @@ module memo
 go 1.26.6
 
 require (
+	github.com/BugraAkdemir/gosearch v0.2.0
+	github.com/BugraAkdemir/gosearch/browser v0.2.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mattn/go-sqlite3 v1.14.45
 	go.mau.fi/whatsmeow v0.0.0-20260604205742-c6a4b703e48f
 	golang.org/x/crypto v0.54.0
-	golang.org/x/net v0.57.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/term v0.45.0
 	google.golang.org/api v0.275.0
@@ -24,8 +25,6 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/BugraAkdemir/gosearch v0.2.0 // indirect
-	github.com/BugraAkdemir/gosearch/browser v0.1.1-0.20260824225144-88801a3db2c1 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa // indirect
 	github.com/beeper/argo-go v1.1.2 // indirect
@@ -83,6 +82,7 @@ require (
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
+	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect

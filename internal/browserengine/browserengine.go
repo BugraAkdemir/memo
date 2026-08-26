@@ -20,6 +20,8 @@ package browserengine
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/BugraAkdemir/gosearch"
@@ -128,13 +130,22 @@ func (m *Manager) IsInstalled(ctx context.Context) bool {
 	return installFn(ctx) == nil
 }
 
-// Install downloads a browser engine (chrome-headless-shell, from Google's
-// official chrome-for-testing CDN) if none is already available. Blocking —
-// gosearch's browser.Install has no progress-callback hook, unlike
-// internal/llama/installer.go's downloadFileProgress. A no-op (returns nil
-// quickly) if a browser is already installed.
+// Install downloads a browser engine (chrome-headless-shell — from Google's
+// chrome-for-testing CDN on most platforms, from Microsoft's Playwright CDN
+// on linux/arm64, which chrome-for-testing doesn't build for at all) if none
+// is already available. Blocking — gosearch's browser.Install has no
+// progress-callback hook, unlike internal/llama/installer.go's
+// downloadFileProgress. A no-op (returns nil quickly) if a browser is
+// already installed.
 func (m *Manager) Install(ctx context.Context) error {
-	return installFn(ctx, browser.AllowDownload(true))
+	err := installFn(ctx, browser.AllowDownload(true))
+	if err != nil && errors.Is(err, browser.ErrUnsupportedPlatform) {
+		return fmt.Errorf("%w: no automatic download is available for this platform — "+
+			"install a system Chromium/Chrome yourself (e.g. \"sudo apt install chromium\" "+
+			"on Debian/Raspberry Pi OS, \"brew install --cask chromium\" on macOS) and retry; "+
+			"Memo will detect it automatically", err)
+	}
+	return err
 }
 
 // Stop closes the persistent engine, if one is running. Safe to call

@@ -3,6 +3,8 @@ package browserengine
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/BugraAkdemir/gosearch"
@@ -205,5 +207,42 @@ func TestManager_Install_PassesAllowDownload(t *testing.T) {
 	}
 	if gotOptCount == 0 {
 		t.Error("Install() should pass AllowDownload(true) through to installFn")
+	}
+}
+
+func TestManager_Install_UnsupportedPlatformGetsActionableHint(t *testing.T) {
+	orig := installFn
+	defer func() { installFn = orig }()
+
+	installFn = func(ctx context.Context, opts ...browser.Option) error {
+		return fmt.Errorf("browser: download engine: %w: linux/arm64", browser.ErrUnsupportedPlatform)
+	}
+	m := New(false)
+	err := m.Install(context.Background())
+	if err == nil {
+		t.Fatal("Install() = nil, want an error")
+	}
+	if !errors.Is(err, browser.ErrUnsupportedPlatform) {
+		t.Errorf("Install() error = %v, want errors.Is match against browser.ErrUnsupportedPlatform", err)
+	}
+	if !strings.Contains(err.Error(), "install a system Chromium") {
+		t.Errorf("Install() error = %q, want an actionable install hint", err.Error())
+	}
+}
+
+func TestManager_Install_OtherErrorsPassThroughWithoutHint(t *testing.T) {
+	orig := installFn
+	defer func() { installFn = orig }()
+
+	installFn = func(ctx context.Context, opts ...browser.Option) error {
+		return browser.ErrNoBrowserFound
+	}
+	m := New(false)
+	err := m.Install(context.Background())
+	if !errors.Is(err, browser.ErrNoBrowserFound) {
+		t.Errorf("Install() error = %v, want errors.Is match against browser.ErrNoBrowserFound", err)
+	}
+	if strings.Contains(err.Error(), "install a system Chromium") {
+		t.Error("Install() should only add the platform hint for ErrUnsupportedPlatform, not every error")
 	}
 }

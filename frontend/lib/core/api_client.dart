@@ -2112,6 +2112,35 @@ class MemoApiClient {
     await _dio.post('/api/websearch', data: {'enabled': enabled});
   }
 
+  // ─── Browser Engine ──────────────────────────────────────────────
+
+  /// Whether a Chromium-family browser engine is installed/available.
+  Future<bool> getBrowserInstalled() async {
+    final res = await _dio.get('/api/browser');
+    return _guard<Map<String, dynamic>>(res.data)['installed'] == true;
+  }
+
+  /// Whether the browser engine stays running between fetches (true) or is
+  /// launched fresh and closed after each one (false, the RAM-light default).
+  Future<bool> getBrowserKeepAlive() async {
+    final res = await _dio.get('/api/browser');
+    return _guard<Map<String, dynamic>>(res.data)['keep_alive'] == true;
+  }
+
+  Future<void> setBrowserKeepAlive(bool keepAlive) async {
+    await _dio.put('/api/browser', data: {'keep_alive': keepAlive});
+  }
+
+  /// Downloads the browser engine if not already installed. Can take a
+  /// couple of minutes (~100-300MB); override the default receive timeout
+  /// for this call only, same pattern as installLlamaServer above.
+  Future<void> installBrowserEngine() async {
+    await _dio.post(
+      '/api/browser/install',
+      options: Options(receiveTimeout: const Duration(minutes: 6)),
+    );
+  }
+
   /// Get WhatsApp chat mode state.
   Future<bool> getWhatsAppChatMode() async {
     final res = await _dio.get('/api/whatsapp/chat-mode');

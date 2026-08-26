@@ -63,6 +63,10 @@ type FullBridge interface {
 	UpdateMemorySettings(topK int, minSimilarity float32) error
 	GetWebSearchEnabled() bool
 	UpdateWebSearchConfig(enabled bool) error
+	GetBrowserKeepAlive() bool
+	SetBrowserKeepAlive(keepAlive bool) error
+	GetBrowserInstalled(ctx context.Context) bool
+	InstallBrowser(ctx context.Context) error
 	GetMemoryEnabled() bool
 	SetMemoryEnabled(enabled bool) error
 	// Dream settings are read via the existing GetMemorySettings()

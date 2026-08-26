@@ -658,6 +658,52 @@ class MemoryEnabledNotifier extends AsyncNotifier<bool> {
   }
 }
 
+// ─── Browser Engine ────────────────────────────────────────────
+
+/// Whether a Chromium-family browser engine is installed. No try/catch on
+/// purpose, same reasoning as llamaInstalledProvider: a thrown DioException
+/// (backend unreachable) must surface as AsyncError, not get coerced into
+/// `false` (which would look identical to "genuinely not installed").
+final browserInstalledProvider = FutureProvider<bool>((ref) async {
+  // BUG-ONB6: see LlamaSettingsNotifier's comment above.
+  if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return false;
+  return ref.read(apiClientProvider).getBrowserInstalled();
+});
+
+final browserKeepAliveProvider =
+    AsyncNotifierProvider<BrowserKeepAliveNotifier, bool>(
+      BrowserKeepAliveNotifier.new,
+    );
+
+class BrowserKeepAliveNotifier extends AsyncNotifier<bool> {
+  // Same double-tap guard as MemoryEnabledNotifier above, same reason.
+  bool _toggling = false;
+
+  @override
+  Future<bool> build() async {
+    // BUG-ONB6: see LlamaSettingsNotifier's comment above.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return false;
+    return ref.read(apiClientProvider).getBrowserKeepAlive();
+  }
+
+  Future<void> toggle() async {
+    if (_toggling) return;
+    _toggling = true;
+    final current = state.valueOrNull ?? false;
+    final next = !current;
+    state = AsyncData(next);
+    try {
+      await ref.read(apiClientProvider).setBrowserKeepAlive(next);
+    } catch (e) {
+      state = AsyncData(current);
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}';
+    } finally {
+      _toggling = false;
+    }
+  }
+}
+
 // ─── Whisper (STT) Enabled ─────────────────────────────────────
 //
 // whisper-server ships with every install but defaults off (see

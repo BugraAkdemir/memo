@@ -102,6 +102,11 @@ func NewPipelineWithBudget(registry *ToolRegistry, permissions *PermissionManage
 func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, modelName string, onEvent func(AgentEvent), permissionWaitFn func(requestID string, event AgentEvent) (PermissionPolicy, error)) (<-chan provider.StreamChunk, error) {
 	outCh := make(chan provider.StreamChunk, 128)
 
+	// Fresh per-run fetch_page domain budget — shared by every tool call
+	// this run makes (toolCtx below derives from this ctx), reset each time
+	// RunStream is called (once per agent turn). See tools.WithFetchBudget.
+	ctx = tools.WithFetchBudget(ctx)
+
 	// Let change_directory (internal/agent/tools/changedir.go) widen this
 	// turn's sandbox root — Pipeline.sandbox is the per-call sandbox
 	// Executor.RunStream just built, so this is safe to mutate mid-turn: no

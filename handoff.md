@@ -1,3 +1,81 @@
+# Ek (2026-08-26, devam 2) — usedBrowser modele iletildi, web search denetimi, PR + main merge (branch: `experiment/gosearch-integration`)
+
+Kullanıcı canlı bir Telegram/Flutter sohbetinde ("beinsports.com.tr'nin puan
+durumu tablosunu çek") log'un "browser render'a düştüm" dediğini ama modelin
+kendi cevabında bunu bilmeden "ya SSR ya JS çalıştı" diye tahmin yürüttüğünü
+fark etti — log mu yalan söylüyor, model mi diye sordu.
+
+## 1. Kök neden + fix
+
+Kök neden kod okuyarak bulundu (spekülasyon değil): `fetch.go`'nun
+`usedBrowser` değişkeni zaten hesaplanıyordu ama sadece loglanıp atılıyordu —
+`fetchpage.go`'nun modele döndürdüğü metin hiç bu bilgiyi taşımıyordu, yani
+model gerçekten bilmiyordu (uydurmuyordu). Canlı doğrulama: düz `curl` ile
+ham HTML'de takım isimleri zaten vardı (site SSR) ama `gosearch.Fetch`'in
+içerik-çıkarma heuristiği bu sayfada boş dönmüş, bu yüzden browser fallback
+tetiklenmiş — hem log hem model "doğru" ama model'e eksik bilgi gidiyordu.
+
+**Fix (`f82d09e`):** `websearch.Page`'e `UsedBrowser bool` eklendi,
+`fetchpage.go` artık `true` olduğunda modele "(gerçek tarayıcı motoruyla
+render edildi)" notu ekliyor. Testler eklendi (`fetch_test.go`,
+`fetchpage_test.go`). Ayrıca (`3b81127`): `tools.go`'daki `web_search` tool
+açıklaması hâlâ "Bing, falling back to DuckDuckGo" diyordu — DuckDuckGo tek
+motor olalı (`3c93765`) bayattı, tek satır düzeltildi.
+
+## 2. `/codebase-memory` ile web search denetimi
+
+Kullanıcı "bu bilgilerle web search sağlam mı" diye sordu, codebase-memory
+kullanılarak (`search_graph`/`get_code_snippet` + kaynak okuma) denetlendi.
+**Verdict: merge edilebilir, tek gerçek risk kritik değil.**
+`browserengine.Manager.Fetch`'in keep-alive modunda (default `false`, ama
+Settings'ten açılabilir) paylaşılan chromedp tab context'i kilitsiz
+kullanılıyor — `gosearch/browser/engine.go`'nun `run()`'ı tek bir `e.ctx`
+üzerinde çalışıyor, eşzamanlı iki `fetch_page` (örn. WhatsApp + Flutter aynı
+anda) birbirinin navigate/extract adımına karışabilir. Şu an dormant (default
+kapalı), test kapsamı da yok — sıradaki oturumda ayrı bir küçük fix olarak
+ele alınabilir, merge'ü bloklamıyor. `fetchTimeout` de caller ctx'inden değil
+engine'in kendi 45s'lik sabitinden geliyor — "durdur" bir browser-render
+fetch'i erken kesmiyor (kilitlenme değil, ama tam ctx-iptal sözleşmesine
+uymuyor).
+
+## 3. PR + main merge
+
+Kullanıcıyla "merge mi PR mi" konuşuldu — bu branch yeni bir dış bağımlılık
+(chromedp) + platform-duyarlı kurulum mantığı taşıdığı için PR (CI'ın 4
+platformu) önerildi, kabul edildi. [`#16`](https://github.com/BugraAkdemir/memo/pull/16)
+açıldı, ama GitHub `CONFLICTING` işaretledi. Yerel izole bir worktree'de
+test-merge ile 6 gerçek çakışma doğrulandı (`pipeline.go`,
+`l10n.dart`×2-blok, `settings_provider.dart`, `app_shell.dart`,
+`general_tab.dart`, `handoff.md`) — hepsi aynı desen: main'in
+`change_directory`/whisper işi ile bu branch'in `fetch_page`/browser-engine
+işi aynı dosyaların aynı bölgesine bağımsızca dokunmuş, gerçek bir mantık
+çatışması yok. `main` bu branch'e merge edildi (`9c7d8e6`) — kullanıcının
+"main'deki değişiklikler silinir mi" endişesi üzerine hiçbir satırın
+kaybolmadığı, sadece iki tarafın da tutulduğu netleştirildi.
+`settings_provider.dart`'ta git'in satır-bazlı diff'i iki ayrı Notifier
+class'ını (`BrowserKeepAliveNotifier`/`WhisperEnabledNotifier`) birbirine
+kesiştirmişti — elle iki eksiksiz class olarak yeniden kuruldu.
+
+## Doğrulama
+
+- Merge sonrası `go build/vet/test -race -tags "sqlite_fts5" ./...` — tüm
+  repo yeşil.
+- `flutter analyze` — sadece bilinen 5 pre-existing info bulgusu, yeni yok.
+  `flutter test` — 283/283 yeşil.
+- Rule #8 grep (merge'de değişen `.dart` dosyaları) — temiz.
+
+## Sıradaki oturum için
+
+1. Merge commit'i push'lanmadı — sıradaki adım. Push sonrası PR #16'nın
+   `CONFLICTING` durumunun düzelip düzelmediği ve CI'ın (4 platform) tetiklenip
+   tetiklenmediği kontrol edilmeli.
+2. Yukarıdaki keep-alive race fix'i (birinci maddedeki #2) hâlâ yapılmadı —
+   `Manager.Fetch`'in kilidini `engine.Fetch` çağrısını da kapsayacak şekilde
+   genişletmek gerekiyor.
+3. CI yeşil olunca PR merge edilecek.
+
+---
+
 # Ek (2026-08-26) — whisper varsayılan kapalı + Settings'ten aç/kapat (main)
 
 Kullanıcı System Monitor'da `whisper-server`'ın 559.7 MiB RAM tükettiğini
@@ -181,7 +259,165 @@ hiçbir test ret mesajlarının tam metnini assert etmiyordu, güncelleme
 gerekmedi. **Canlı yeniden test edilmedi** — kullanıcının bir sonraki
 Telegram denemesinde modelin gerçekten önerip önermediği görülecek.
 
+---
 
+# Ek (2026-08-26, devam) — DuckDuckGo'ya geçiş + canlı uçtan uca doğrulama (branch: `experiment/gosearch-integration`)
+
+Önceki ek'te bırakılan iki açık madde bu oturumda kapatıldı: motor önceliği kararı
+uygulandı, ve gerçek bir kullanıcı sohbetinde (birden fazla tekrar) tüm zincir
+(arama → fetch → gerekirse browser fallback → model sentezi) satır satır doğrulandı.
+
+## 1. Bing tamamen kaldırıldı, DuckDuckGo tek motor (`3c93765`)
+
+Kullanıcının onayıyla: `internal/websearch/search.go` artık `gosearch.DuckDuckGo`'yu
+tek motor olarak kullanıyor, **hiç fallback yok** (Bing dahil) — gerekçe: Bing hiçbir
+zaman hata vermeden (`ErrBlocked` fırlatmadan) sessizce alakasız sonuç döndürdüğü için
+fallback zaten hiç tetiklenmiyordu; dürüst bir hata, güvenle-yanlış bir sonuçtan daha
+iyi. Canlı doğrulandı (`-tags canary`): "golang" ve daha önce çöp sonuç veren tam
+sorgu ("Süper Lig 2026 2027 2. hafta maç sonuçları skorları") ikisi de artık %100
+alakalı sonuç veriyor (flashscore, fotmob, sahadan, beinsports...).
+
+## 2. Gerçek sohbette uçtan uca doğrulama — sonuç tamamen doğru, uydurma yok
+
+Kullanıcı gerçek uygulamada ("kanka süperlikte oynana son maçlar ne kaç kaç") sorguyu
+tekrar denedi, bu sefer DuckDuckGo ile. Log satır satır incelendi:
+
+- **4 arama sorgusu**, hepsi %100 alakalı sonuç (euronews, TFF, hürriyet, sahadan,
+  beinsports, sabah.com.tr, futbol24...) — önceki Bing çöplüğüyle tam kontrast.
+- **5 `fetch_page` çağrısı**: 4'ü teknik olarak boş olmayan ama işe yaramaz içerik
+  döndürdü (genel açıklama metni, tek cümle, hatta bir tanesi **sadece çerez uyarısı**
+  — `matchcalendar.football`), model bunları aynı URL'i tekrar denemeden fark edip
+  farklı arama sorgularına geçti; 5. deneme (`sabah.com.tr`) gerçek skorları ve puan
+  tablosunu döndürdü.
+- **Doğruluk doğrulaması:** modelin verdiği 9 maç skoru ve 18 satırlık puan durumu
+  tablosunun **tamamı**, `sabah.com.tr` fetch içeriğiyle birebir eşleşiyor — hiçbir
+  uydurma/hata yok.
+- **Browser engine bu turda hiç tetiklenmedi** (`used_browser=false` her satırda) —
+  çünkü hiçbir statik fetch gerçekten boş string döndürmedi (çerez banner'ı bile
+  "boş değil" sayılıyor). Bu, motorun tasarlandığı gibi **sadece gerçekten gerektiğinde**
+  çalıştığını, her aramada RAM/süre harcamadığını doğruluyor.
+
+**Bilinen, kasıtlı olarak bırakılan bir sınır:** `browserFallbackFetch`'in tetikleme
+koşulu tam olarak `content == ""` — `matchcalendar.football` gibi "teknik olarak dolu
+ama işe yaramaz" (sadece çerez uyarısı) sayfalar bu eşiği hiç görmüyor, oysa JS ile
+render edilen asıl veri muhtemelen orada. İleride bu eşiği gevşetmek (örn. çok kısa
+içerikte de dene) bir seçenek — kullanıcıya soruldu, henüz karar verilmedi.
+
+## Sıradaki oturum için
+
+1. Yukarıdaki "çok kısa içerik eşiği" kararı bekliyor.
+2. Ayrı bir doğrulama daha planlandı: bilinen bir JS-render'lı site linkiyle
+   (`beinsports.com.tr/lig/super-lig/puan-durumu` — bu oturumda daha önce browser
+   fallback'i tetiklediği zaten doğrulanmıştı) kullanıcı tekrar deneyip log'u
+   paylaşacak, browser engine'in doğru tetiklendiği bir kez daha teyit edilecek.
+3. `experiment/gosearch-integration` hâlâ main'e alınmadı — artık hem arama hem
+   tarayıcı motoru tarafı gerçek kullanımda doğrulanmış durumda, merge kararı
+   kullanıcının.
+
+---
+
+# Ek (2026-08-25/26) — headless browser lifecycle: keep-alive toggle + kurulum + Settings (branch: `experiment/gosearch-integration`)
+
+Kullanıcı canlı test sırasında ("Süper Lig maç sonuçları" sorgusu) gerçek bir arama
+kalite sorunu buldu — bu, `fetch_page`'in gerçek bir JS-render sorununu ortaya çıkardı
+ve sonunda tam bir tarayıcı-motoru yaşam döngüsü özelliğine dönüştü.
+
+## Zincir
+
+1. **Debug log eklendi** (`internal/websearch/search.go`/`fetch.go`, `logx.Info`) —
+   kullanıcının isteğiyle, hiçbir düzeltme yapmadan sadece gözlemlenebilirlik.
+2. **Log ile bulunan gerçek sorun:** "Süper Lig 24 Ağustos 2026 maç sonuçları" gibi
+   birbirinden çok farklı sorguların hepsi Bing'den **birebir aynı 5 alakasız sonucu**
+   (Süper Loto, Süper FM...) döndürüyordu — hiçbir zaman hata (`ErrBlocked`) fırlatmadan,
+   yani mevcut DDG fallback'i hiç tetiklenmiyordu. Memo'dan tamamen bağımsız, izole bir
+   test programıyla (`/home/bugra/Documents/gosearch`'te) doğrulandı: aynı sorgu Bing'den
+   yine aynı çöp sonuçları, DuckDuckGo'dan ise doğru/alakalı sonuçları veriyordu.
+3. Ama kullanıcı log'u daha dikkatli okuyunca gerçek nüansı yakaladı: Bing'in
+   **URL'leri** çoğunlukla doğruydu (gerçek TFF/beIN Sports sayfaları) — sadece
+   snippet'ler bayattı, ve **asıl kırılma noktası** o doğru URL'lerin `fetch_page` ile
+   çekilince **boş** dönmesiydi (`content_runes=0`) — çünkü o sayfalar JavaScript ile
+   render ediliyor ve gosearch'ün statik `Fetch`'i JS çalıştırmıyor.
+4. **Çözüm (option 2, kullanıcının seçimi):** `github.com/BugraAkdemir/gosearch/browser`
+   (ayrı Go modülü, chromedp tabanlı, zaten mevcuttu ama Memo hiç kullanmıyordu) —
+   statik fetch boş dönerse, sistemde kurulu bir Chromium varsa **o tek sayfa için**
+   tarayıcı açılıp kapatılıyor. Canlı doğrulandı: `beinsports.com.tr/lig/super-lig/
+   puan-durumu` gerçek 2026/2027 puan durumu tablosunu (Gençlerbirliği 1., Galatasaray
+   2.) döndürdü.
+5. Kullanıcı bunun üzerine tam bir **yaşam döngüsü yönetimi** istedi: Settings'te
+   sürekli-açık/her-kullanımdan-sonra-kapat toggle'ı, kurulu değilse indirme butonu,
+   modelin kurulu olmadığını fark edip kullanıcıya önermesi, ve **kullanıcının kendi
+   Chromium'unu asla etkilememe** garantisi.
+
+## Yapılanlar (main'den ayrı, bu branch'te, main'in `change_directory`/
+`OutsideSandboxHint`'i bu branch'te yok — main'e merge olunca ikisi birlikte yaşayacak)
+
+| Commit | Değişiklik |
+|---|---|
+| `feat(websearch)` debug log | `search.go`/`fetch.go`'ya `WEBSEARCH:` log satırları. |
+| `feat(browserengine)` | Yeni `internal/browserengine.Manager` — `KeepAlive` false (varsayılan, her fetch'te aç-kapat) / true (bir kez açılır, tekrar kullanılır) modları; `IsInstalled`/`Install` (`browser.Install` sarmalayıcı, `AllowDownload` sadece gerçek kurulumda); `Stop` (idempotent). Canlı doğrulandı: 1. çağrı ~4.3sn (açılış), keep-alive'lı 2. çağrı ~1.25sn (paylaşılan motor), `Stop()` sonrası 3. çağrı tekrar ~4.1sn (gerçekten kapanıp yeniden açılıyor). `chromedp` her zaman kendi ayrı process'ini kendi profil dizinizle açtığı için (`gosearch/browser/engine.go`) kullanıcının kendi Chrome'una hiç dokunmuyor — bunun için ekstra kod yazmaya gerek kalmadı, sadece doğrulandı. `internal/llama`'nın `KillByPort`'u **kasıtlı olarak kullanılmadı** (sahiplik kontrolü yok, bulduğu her process'i öldürür) — `Manager.Stop()` sadece kendi açtığı `*browser.Engine`'e dokunuyor. |
+| `feat(browserengine)` (devam) | `config.go`: `BrowserConfig{KeepAlive bool}` (varsayılan false). `app.go`: `App.browserMgr`, `Startup()`'ta kuruluyor, `websearch.Browser` adaptörüne bağlanıyor (`tools.FileSender` ile aynı desen), `shutdownSync`'e eklendi (bu `memo --kill`'in graceful-shutdown adımını da otomatik kapsıyor, `main.go`'ya dokunmadan). `settings.go`/`bridge.go`/`server.go`/`handlers_flutter.go`: `GET/PUT /api/browser`, `POST /api/browser/install` (engelleyici — gosearch'ün `Install`'ında ilerleme callback'i yok). `fetchpage.go`: boş içerik mesajı artık "tarayıcı kurulu değil" ile "sayfa gerçekten boş" durumlarını ayırt ediyor (`browserInstallChecker` type assertion), modele Ayarlar'dan kurmayı önermesini söylüyor. |
+| `feat(frontend)` | Genel sekmesine yeni bölüm: kurulum durumu + indirme butonu (spinner, yüzde yok — gosearch'te ilerleme hook'u yok), keep-alive toggle'ı (`MemoryEnabledNotifier` ile birebir aynı optimistic-update deseni). `authGateBlocked` guard'ı eksikti, `settings_dialog_test.dart`'ın 2 testi leaked-timer ile patladı — BUG-ONB6 deseniyle düzeltildi (her yeni bir-seferlik provider bu guard'ı almalı), `app_shell.dart`'ın gate-transition invalidate listesine eklendi. |
+
+## Doğrulama
+
+- `go build/vet/test -race -tags "sqlite_fts5" ./...` — tüm repo, birkaç kez, hepsi yeşil.
+- `flutter analyze` temiz, Rule #8 grep temiz, `flutter test` — 283/283 yeşil (settings_dialog_test.dart'ın 2 testi dahil, düzeltmeden önce kırmızıydı).
+- Canlı doğrulama (gerçek ağ, bu makinedeki `/usr/bin/chromium` ile): keep-alive aç/kapat, Stop sonrası yeniden açılış — hepsi yukarıdaki zamanlamalarla doğrulandı.
+
+## Sıradaki oturum için
+
+1. Settings UI'ı gerçek uygulamada (Flutter desktop) görsel olarak hiç kontrol edilmedi — sadece `flutter analyze`/`flutter test` ile doğrulandı, kullanıcının kendi `scripts/run_memo.sh` oturumunda gözden geçirmesi gerekiyor.
+2. İndirme akışı bu makinede hiç gerçek bir indirme tetiklemedi (zaten `/usr/bin/chromium` kurulu) — kurulu olmayan bir sistemde `POST /api/browser/install`'ın gerçekten indirip kurduğu doğrulanmadı.
+3. Bing arama kalitesi sorunu (bu oturumun başlangıç noktası) hâlâ çözülmedi — sadece etkisi (`fetch_page` boş dönmesi) bertaraf edildi. Motor önceliğini DuckDuckGo'ya çevirme kararı (kullanıcı onayladı) bu oturumda **uygulanmadı**, gosearch tarafında bir değişiklik gerekip gerekmediği de netleşmedi — sıradaki oturumun işi.
+4. `experiment/gosearch-integration` hâlâ main'e alınmadı — kullanıcı önce test edip sonuçlar istediği gibiyse merge edecek.
+
+---
+
+# Ek (2026-08-25) — gosearch entegrasyonu: web_search + fetch_page + domain bütçesi (branch: `experiment/gosearch-integration`, henüz main'e alınmadı)
+
+Kullanıcı kendi yazdığı bir Go kütüphanesini (`github.com/BugraAkdemir/gosearch` —
+çoklu-motor arama + sayfa-içeriği-çekme, API key gerektirmiyor) buldu ve Memo'ya
+uyar mı diye sordu. Değerlendirme sonrası onay alındı, ayrı bir deneysel branch'te
+uçtan uca implement edildi. Kurallar: AGENTS.md harfiyen, modele giden tool
+açıklamaları İngilizce, kullanıcıya görünen her metin `T()`/l10n üzerinden, bu
+branch'te serbestçe commit/push (main'e push/merge ederken sor), codebase-memory
+kullanılarak dokunulan yerlerin çağıranları önceden kontrol edildi.
+
+**Neden:** Mevcut `internal/websearch`, elle yazılmış tek-motor (sadece DuckDuckGo)
+bir HTML scraper'dı — kendi `canary_test.go`'su bile "DDG HTML değişirse kırılır"
+riskini kabul ediyordu — ve sadece başlık/URL/snippet döndürüyordu, agent'ın
+bulduğu sayfanın gerçek içeriğini okuyacağı bir yol hiç yoktu.
+
+## Yapılanlar (commit sırasıyla)
+
+| Commit | Değişiklik |
+|---|---|
+| `chore(deps)` | `github.com/BugraAkdemir/gosearch` eklendi (`go get`, gerçek public repo, `replace` yok). |
+| `feat(websearch)` | `internal/websearch` tamamen gosearch'e geçti: `Search` artık Bing öncelikli, engellenirse (`ErrBlocked`/`ErrChallenge`) DuckDuckGo'ya düşüyor. Yeni `Fetch(ctx, url) (*Page, error)` — sayfayı Markdown olarak çekiyor, `truncate.Text` ile 8000 rune'da (UTF-8 güvenli) kırpılıyor. Public API (`Result`, `Search`, `FormatForContext`) bilinçli olarak aynı bırakıldı — `internal/agent/tools/websearch.go` **ve** `internal/app/routine.go`'daki `buildRoutinePrompt` (rutinlerin `ContextWebSearch` kaynağı) ikisi de bu paketi doğrudan çağırıyordu, codebase-memory ile önceden bulundu, hiçbirine dokunmaya gerek kalmadı. `gosearchSearch`/`gosearchFetch` paket değişkenleri testlerin gerçek ağa çıkmadan sahte fonksiyon koyabilmesi için (gosearch'ün kendi `dispatch` deseniyle aynı). Eski DDG-only `ddg.go`/`ddg_test.go`/eski `canary_test.go` silindi, yerine `search.go`/`fetch.go` + testleri + yeni gosearch-tabanlı `canary_test.go` geldi. |
+| `feat(agent)` | Yeni `fetch_page` tool'u (`internal/agent/tools/fetchpage.go`) — modele search sonucunun gerçek içeriğini okutuyor. Alaka kararı **modele bırakıldı** (içeriği okuyup kendi karar veriyor, gizli ekstra LLM çağrısı yok) ama **kaç FARKLI domain'e denendiği kod ile garanti ediliyor**: `fetchbudget.go`, `context.Value` üzerinden tur-başına bir sayaç taşıyor (`WithFetchBudget`, `Pipeline.RunStream`'in başında bir kez seed ediliyor), limit 5. Aynı domain'de farklı sayfaya (pagination, docs'un başka sayfası) geçiş bedava — sayılmıyor. `registerBuiltins`'e eklendi, yani tam agent modu toggle'dan bağımsız her zaman alıyor (koddan doğrulandı: `routeStream` zaten agent açıkken web-search toggle'ına hiç bakmıyormuş, `web_search` da aynı davranışı miras alıyordu — yeni bir şey yapmaya gerek kalmadı). `web_search`'ün iki hardcoded İngilizce sonuç string'i de bu sırada `T()`'ye taşındı (önceki bir l10n turunun atladığı bir şeydi). |
+| `feat(app)` | `callWebSearchAgentStream` (agent kapalıyken kullanılan hafif "web arama modu") için beklenenden çok daha küçük bir iş çıktı: altındaki `NewPipelineWithBudget` zaten `maxIters: 40` ile tam agent moduyla **aynı** çok-adımlı döngüyü kullanıyormuş — "tek tool" demek koddaki doc yorumunda "registry'de sadece bir tool var" anlamına geliyormuş, "tek çağrı" değil. Tek gerçek değişiklik: `NewWebSearchRegistry`'ye `fetch_page`'in de eklenmesi. Frontend: "Webde aranıyor..." durum satırı artık `fetch_page` için de "Sayfa okunuyor..." (`reading_page`, yeni TR/EN l10n anahtarı) gösteriyor. |
+| `test(agent)` | Bütçe mantığının kendisi zaten hızlı/deterministik sahte-testlerle kaplı (`fetchbudget_test.go`, `fetchpage_test.go`) — buna ek olarak gerçek ağa çıkan bir canary test (`fetchpage_canary_test.go`, `//go:build canary`) eklendi: scripted bir sahte LLM, gerçek `Pipeline.RunStream` döngüsünü 5 farklı gerçek siteye `fetch_page` ile gezdiriyor (hepsi başarılı), aynı domain'e bedava bir retry yapıyor, 6. farklı domain'i deniyor (bütçe tarafından reddediliyor) — canlı ağda iki kez çalıştırılıp doğrulandı, kararlı. Domain seçimi birkaç denemede oturdu: gosearch JS çalıştırmıyor, github.com/MDN/python.org gibi SPA'lar ve postgresql.org'un link-ağırlıklı index sayfası gerçekten boş/az içerik döndürüyor (bug değil, gosearch'ün belgelenmiş sınırı) — sonunda düz sunucu-render'lı doc siteleri (go.dev, wikipedia, docs.python.org, click'in readthedocs'u, httpd.apache.org) kullanıldı. CI'daki `canary.yml`'a da yeni bir adım eklendi.
+
+## Doğrulama
+
+- `go build/vet/test -race -tags "sqlite_fts5"` — tüm repo (44 paket) yeşil, birkaç kez tekrarlandı.
+- `flutter analyze lib/` — önceden var olan 5 info dışında yeni uyarı yok. `flutter test` — 283/283 yeşil.
+- Canary testler (gerçek ağ, `-tags canary`): `internal/websearch` (Search + Fetch, gerçek Bing sonuçları + go.dev'den 8005 karakter) ve `internal/agent` (tam pipeline döngüsü, 5 domain + retry + 6.reddedilen) — hepsi canlıda doğrulandı.
+- `gofmt -l` — kendi yazdığım/değiştirdiğim her dosya temiz (repoda önceden var olan iki gofmt-kirli dosya — `pipeline.go`, `executor.go` — struct/import hizalaması, benim değişikliklerimle alakasız, dokunulmadı).
+- **Gerçek LLM ile uçtan uca (aynı oturumda, sonradan):** kullanıcı bir OpenCode Zen API key'ini doğrudan sohbette paylaşıp config'e eklememi istedi — API key/token'ı hiçbir alana benim tarafımdan girmeme kuralı gereği (ısrar etse de) reddettim, kendisinin yapmasını söyledim; kullanıcı sonra `hy3-free` modeliyle zaten önceden kayıtlı bir OpenCode Zen provider'ı olduğunu fark etti (`data/providers.json`'da aktif). Repo kökünden `--headless --port 8099` ile bu branch'in derlediği binary çalıştırıldı, gerçek `/api/send/stream` SSE isteğiyle iki senaryo canlı test edildi:
+  - **Agent kapalı + web arama toggle açık:** "Türkiye'deki son haberler" isteğinde model gerçekten `web_search` → `fetch_page` (JS-render bir siteden boş içerik aldı, bunu fark etti) → tekrar `web_search` → `fetch_page` zincirini kendi kararıyla yürütüp gerçek bir haberi gerçek kaynak linkiyle özetledi.
+  - **Agent açık + web arama toggle KAPALI:** toggle'ın agent modunda önemi olmadığı iddiası canlıda doğrulandı — model yine de `fetch_page` ile go.dev/doc'u gerçekten çekti, ikinci bir mesajda fetch ettiği gerçek başlıkları (uydurmadan) doğru listeledi.
+  - Test sonrası agent/web-search toggle'ları eski haline (agent kapalı, web arama açık) döndürüldü, test backend'i ve tüm alt süreçleri (llama-server, whisper) durduruldu, geçici dosyalar silindi — `git status` temiz.
+
+## Sıradaki oturum için
+
+1. **Bu branch henüz main'e alınmadı, PR da açılmadı** — kullanıcı onaylarsa merge edilecek (kural: main'e push/merge ederken sormak zorundayım). PR açmak da ayrı bir onay gerektiren bir adım, henüz yapılmadı.
+2. ~~Gerçek bir LLM ile uçtan uca hiç denenmedi~~ → yukarıdaki "Gerçek LLM" maddesiyle kapatıldı, iki senaryo da (agent açık/kapalı) canlıda doğrulandı.
+3. `web_search`'ün tool açıklaması artık "Bing, engellenirse DuckDuckGo" diyor — kullanıcı orijinal isteğinde "ana olarak Bing, fallback DDG" demişti, bu doğru yansıtıldı; ama gosearch'ün kendi belgesi DDG'yi "gerçek capture'a karşı doğrulanmış tek motor", Bing'i "best-effort" olarak işaretliyor — canlıda Bing parser'ı kırılırsa sıra `internal/websearch/search.go`'da tek satır (`gosearch.Bing`/`gosearch.DuckDuckGo` yer değiştirmesi).
+4. Google/Yandex motorları hiç kullanılmadı (kullanıcıyla konuşulduğu gibi, gosearch'ün kendi belgesi ikisini de "gerçek capture'a kadar heuristic" diye işaretliyor) — ileride eklenmek istenirse `search.go`'daki `WithFallback` zincirine eklemek yeterli.
+5. 5-domain bütçesinin canlı bir sohbette gerçekten tetiklenip tetiklenmediği bu oturumda denenmedi (canary testte scripted olarak doğrulandı, ama gerçek bir modelin kendiliğinden 5+ farklı siteye fetch denediği bir senaryo görülmedi) — merak edilirse kasıtlı olarak çok belirsiz/tartışmalı bir arama sorgusuyla tetiklenebilir.
+
+# Ek (2026-08-24, devam) — share_file'da 3 gerçek mantık hatası bulundu ve düzeltildi
 
 Kullanıcı "kendi değişikliklerini incele, codebase-memory kullan, mantıksal hataları bul" dedi.
 Kod tabanı-genelinde bir tarama değil, bir önceki oturumun `share_file` özelliğinin kendi

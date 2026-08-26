@@ -347,6 +347,8 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/whatsapp/messages", s.handleWhatsAppMessages)
 	route("/api/whatsapp/avatar", s.handleWhatsAppAvatar)
 	route("/api/websearch", s.handleWebSearchSettings)
+	route("/api/browser", s.handleBrowserSettings)
+	route("/api/browser/install", s.handleBrowserInstall)
 	route("/api/whatsapp/stats", s.handleWhatsAppStats)
 	route("/api/whatsapp/chat-mode", s.requirePermission(s.handleWhatsAppChatMode, hasWhatsAppPerm))
 	route("/api/whatsapp/chat-stream", s.requirePermission(s.handleWhatsAppChatStream, hasWhatsAppPerm))

@@ -579,6 +579,17 @@ class L10n {
     'memory_toggle_desc':
         'Kapalıyken hafıza sorgulanmaz ve yeni anı kaydedilmez. Model %100 ham performansla çalışır.',
     'memory_stats_unavailable': 'Hafıza istatistikleri alınamadı: \${e}',
+    'browser_engine_section': 'Tarayıcı Motoru',
+    'browser_engine_installed': 'Kurulu',
+    'browser_engine_not_installed': 'Kurulu Değil',
+    'browser_engine_desc':
+        'JavaScript ile render edilen sayfaları okuyabilmek için agent bazen bir tarayıcı motoru (Chromium) kullanır. Sadece gerektiğinde, arka planda çalışır.',
+    'browser_install_button': 'Chromium\'u İndir',
+    'browser_installing': 'İndiriliyor…',
+    'browser_install_failed': 'Kurulum başarısız: \${e}',
+    'browser_keep_alive': 'Sürekli açık tut',
+    'browser_keep_alive_desc':
+        'Kapalıyken her kullanımdan sonra tarayıcı kapanır (RAM tasarrufu). Açıkken bir kez başlar ve sürekli çalışır (daha hızlı, ~150-250MB ek RAM).',
     'whisper_section': 'Sesli Komut (STT)',
     'whisper_active': 'Sesli Komut Aktif',
     'whisper_disabled': 'Sesli Komut Kapalı',
@@ -1516,6 +1527,7 @@ class L10n {
 
     // Chat message list
     'searching_web': 'Webde aranıyor...',
+    'reading_page': 'Sayfa okunuyor...',
 
     // Backup tab
     'backup_creds_saved': 'Kimlik bilgileri kaydedildi',
@@ -2489,6 +2501,17 @@ class L10n {
     'memory_toggle_desc':
         'When off, memory is not queried and no new memories are saved. The model runs at 100% raw performance.',
     'memory_stats_unavailable': 'Memory stats unavailable: \${e}',
+    'browser_engine_section': 'Browser Engine',
+    'browser_engine_installed': 'Installed',
+    'browser_engine_not_installed': 'Not Installed',
+    'browser_engine_desc':
+        'The agent sometimes uses a browser engine (Chromium) to read JavaScript-rendered pages. Runs in the background, only when actually needed.',
+    'browser_install_button': 'Download Chromium',
+    'browser_installing': 'Downloading…',
+    'browser_install_failed': 'Install failed: \${e}',
+    'browser_keep_alive': 'Keep it running',
+    'browser_keep_alive_desc':
+        'Off: the browser closes after every use (saves RAM). On: it starts once and stays open (faster, ~150-250MB extra RAM).',
     'whisper_section': 'Voice Input (STT)',
     'whisper_active': 'Voice Input Active',
     'whisper_disabled': 'Voice Input Disabled',
@@ -3407,6 +3430,7 @@ class L10n {
 
     // Chat message list
     'searching_web': 'Searching the web...',
+    'reading_page': 'Reading page...',
 
     // Backup tab
     'backup_creds_saved': 'Credentials saved',

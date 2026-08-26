@@ -119,17 +119,20 @@ func NewWhatsAppExecutor(existing *Executor) *Executor {
 	}
 }
 
-// NewWebSearchExecutor creates a lightweight executor with only the
-// web_search tool (see NewWebSearchRegistry). Used by App.routeStream's
-// non-agent "web search mode": the model gets exactly one tool via native
-// function-calling in the same completion request that produces its answer,
-// so it decides per message — at zero extra network/LLM cost when it decides
-// not to search — instead of a separate "should I search" call or a blind
-// search run on every message regardless of content. Reuses sandbox/
-// permissions/backup/audit-log from an existing executor exactly like
-// NewWhatsAppExecutor — still the same agent, just scoped to one tool. Safe
-// to share: web_search's DangerLevel is Safe, which PermissionManager.Check
-// always auto-allows with no prompt, so this executor never touches the
+// NewWebSearchExecutor creates a lightweight executor scoped to web_search +
+// fetch_page (see NewWebSearchRegistry). Used by App.routeStream's non-agent
+// "web search mode": the model decides per message, via native
+// function-calling, whether it needs to search at all — at zero extra
+// network/LLM cost when it decides not to — instead of a separate "should I
+// search" call or a blind search run on every message regardless of
+// content. Once it does search, the normal tool-call loop (same
+// maxIters-40 pipeline full agent mode uses) lets it read a result with
+// fetch_page, judge relevance, and try another one if needed — same
+// search-then-verify flow as full agent mode, just without file/command/
+// WhatsApp access. Reuses sandbox/permissions/backup/audit-log from an
+// existing executor exactly like NewWhatsAppExecutor. Safe to share: both
+// tools' DangerLevel is Safe, which PermissionManager.Check always
+// auto-allows with no prompt, so this executor never touches the
 // permission-prompt flow at all.
 func NewWebSearchExecutor(existing *Executor) *Executor {
 	return &Executor{

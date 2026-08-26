@@ -2226,6 +2226,60 @@ func (s *Server) handleWebSearchSettings(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// handleBrowserSettings: GET reports install status + current keep-alive
+// mode; PUT changes the keep-alive mode. Mirrors handleWebSearchSettings.
+func (s *Server) handleBrowserSettings(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusServiceUnavailable)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]bool{
+			"installed":  s.fullBridge.GetBrowserInstalled(r.Context()),
+			"keep_alive": s.fullBridge.GetBrowserKeepAlive(),
+		})
+	case http.MethodPut:
+		var req struct {
+			KeepAlive bool `json:"keep_alive"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetBrowserKeepAlive(req.KeepAlive); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]bool{"keep_alive": req.KeepAlive})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleBrowserInstall downloads the browser engine if one isn't already
+// available. Blocking — gosearch's browser.Install has no progress-callback
+// hook to stream percentages through, so the response only arrives once the
+// download (or an already-installed short-circuit) finishes. Generous
+// server-side timeout since the download can be 100+MB.
+func (s *Server) handleBrowserInstall(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusServiceUnavailable)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	if err := s.fullBridge.InstallBrowser(ctx); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"installed": true})
+}
+
 func (s *Server) handleWhatsAppStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet || s.fullBridge == nil {
 		http.Error(w, "GET only", http.StatusMethodNotAllowed)

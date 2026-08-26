@@ -393,28 +393,27 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 	}
 }
 
-// callWebSearchAgentStream runs a single-tool (web_search only) agent
-// pipeline for plain (non-agent) chat when the web-search toggle is on —
-// see agent.NewWebSearchExecutor's doc comment for why. It replaces the old
-// design (buildMessagesForSession used to blindly run websearch.Search on
-// every single message, injecting results into the system prompt whether or
-// not the message actually needed them, and only skipped this when agent
-// mode was also on — see BUG_REPORT/handoff history for the two separate
-// user reports this caused: results built from the raw, un-distilled user
-// message, and the search running "indiscriminately" even for a bare
-// greeting). Here the model gets exactly one tool via native
-// function-calling in the SAME completion request that produces its answer
-// — it decides per message, at zero extra network/LLM cost when it decides
-// not to search, same shape full agent mode already uses for its whole
-// toolset.
+// callWebSearchAgentStream runs a scoped (web_search + fetch_page only)
+// agent pipeline for plain (non-agent) chat when the web-search toggle is
+// on — see agent.NewWebSearchExecutor's doc comment for why. It replaces
+// the old design (buildMessagesForSession used to blindly run
+// websearch.Search on every single message, injecting results into the
+// system prompt whether or not the message actually needed them, and only
+// skipped this when agent mode was also on — see BUG_REPORT/handoff history
+// for the two separate user reports this caused: results built from the
+// raw, un-distilled user message, and the search running "indiscriminately"
+// even for a bare greeting). The model decides per message, via native
+// function-calling, whether it needs either tool at all — at zero extra
+// network/LLM cost when it decides not to — same shape full agent mode
+// already uses for its whole toolset, just scoped to these two.
 //
 // Deliberately does not forward agent_event chunks to outCh (unlike
 // callAgentStream) and does not record them into agentEvents either — full
 // agent mode's tool-badge UI (_AgentStatusBar/_AgentStatusBadge in
 // chat_message_list.dart) is intentionally not part of this mode's UX; the
-// only visible signal is the existing "Webde aranıyor..." typing-line
-// status (streamingStatusProvider), fired here exactly when the tool
-// actually starts executing — not, like the old design's pre-emptive
+// only visible signal is the existing "Webde aranıyor.../Sayfa okunuyor..."
+// typing-line status (streamingStatusProvider), fired here exactly when a
+// tool actually starts executing — not, like the old design's pre-emptive
 // chunk in SendMessageStream, unconditionally on every message regardless
 // of whether a search happens.
 func (a *App) callWebSearchAgentStream(ctx context.Context, messages []api.Message, userMsg, sessionID string) <-chan api.StreamChunk {
@@ -450,8 +449,8 @@ func (a *App) callWebSearchAgentStream(ctx context.Context, messages []api.Messa
 		agentEvents := &agentEventLog{}
 
 		streamCh, err := a.webSearchExecutor.RunStream(ctx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
-			if ev.Type == agent.EventToolExecuting && ev.ToolName == "web_search" {
-				trySend(ctx, outCh, api.StreamChunk{FinishReason: "status", Content: "web_search"})
+			if ev.Type == agent.EventToolExecuting && (ev.ToolName == "web_search" || ev.ToolName == "fetch_page") {
+				trySend(ctx, outCh, api.StreamChunk{FinishReason: "status", Content: ev.ToolName})
 			}
 		}, projectPath)
 

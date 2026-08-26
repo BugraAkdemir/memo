@@ -161,6 +161,7 @@ func (r *ToolRegistry) registerBuiltins() {
 	})
 
 	r.registerWebSearchTool()
+	r.registerFetchPageTool()
 
 	r.Register(ToolDef{
 		Name:        "self_clone",
@@ -234,27 +235,49 @@ func (r *ToolRegistry) registerRoutineTool() {
 
 // registerWebSearchTool adds the web_search tool to this registry. Split out
 // of registerBuiltins so NewWebSearchRegistry can build a registry with only
-// this one tool — used by App.routeStream's non-agent "web search mode" so
-// plain chat can let the model decide, per message via native tool-calling,
-// whether it actually needs to search, instead of the old blind-injection
-// design that ran a search on every single message regardless of content.
+// web_search + fetch_page — used by App.routeStream's non-agent "web search
+// mode" so plain chat can let the model decide, per message via native
+// tool-calling, whether it actually needs to search, instead of the old
+// blind-injection design that ran a search on every single message
+// regardless of content.
 func (r *ToolRegistry) registerWebSearchTool() {
 	r.Register(ToolDef{
 		Name:        "web_search",
-		Description: "Searches the web using DuckDuckGo and returns relevant results. Only call this for current events, recent news, prices, or specific facts that may have changed after your training cutoff. Do NOT call it for greetings, small talk, general knowledge you already know, or coding/file/project questions — answer those directly instead.",
+		Description: "Searches the web (DuckDuckGo) and returns relevant results. Only call this for current events, recent news, prices, or specific facts that may have changed after your training cutoff. Do NOT call it for greetings, small talk, general knowledge you already know, or coding/file/project questions — answer those directly instead.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Short keyword-style search query (2-6 words) — extract the subject, do NOT pass the user's raw message verbatim"},"max_results":{"type":"integer","description":"Number of results to return (default 5, max 10)"}},"required":["query"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.WebSearch,
 	})
 }
 
-// NewWebSearchRegistry creates a registry with only the web_search tool. See
-// registerWebSearchTool's doc comment for why this exists.
+// registerFetchPageTool adds the fetch_page tool to this registry. Split out
+// of registerBuiltins for the same reason as registerWebSearchTool — see its
+// doc comment.
+func (r *ToolRegistry) registerFetchPageTool() {
+	r.Register(ToolDef{
+		Name:        "fetch_page",
+		Description: "Fetches the full readable content of a URL as Markdown (headings, lists, code blocks, links preserved) — a search result's snippet is a short teaser, not the actual page. Use this after web_search to actually read a promising result, or directly when the user already gave you a URL. Judge relevance yourself from what comes back: if the content doesn't actually match what you're looking for, call this again with a different search result's URL instead of answering from an irrelevant page. You get up to 5 attempts at DIFFERENT domains per request — fetching another page on a domain you already tried (pagination, a different page of the same docs site) is free and does not count against that limit. If the budget runs out, tell the user you could not find a relevant source instead of guessing.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"url":{"type":"string","description":"The exact URL to fetch — from a web_search result, or given directly by the user"}},"required":["url"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.FetchPage,
+	})
+}
+
+// NewWebSearchRegistry creates a registry with only web_search + fetch_page.
+// See registerWebSearchTool's doc comment for why this exists. The
+// underlying pipeline (NewPipelineWithBudget, maxIters 40 — same as full
+// agent mode) already supports many tool-call iterations per turn; scoping
+// the registry to just these two tools is what keeps this mode "search
+// mode" rather than "full agent mode with everything else disabled" — the
+// model can search, read a result, decide it's irrelevant, and try another
+// one, exactly like full agent mode, just without file/command/WhatsApp
+// access.
 func NewWebSearchRegistry() *ToolRegistry {
 	r := &ToolRegistry{
 		tools: make(map[string]ToolDef),
 	}
 	r.registerWebSearchTool()
+	r.registerFetchPageTool()
 	return r
 }
 

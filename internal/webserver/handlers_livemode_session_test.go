@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"memo/internal/config"
 	"memo/internal/livemode"
 	"memo/internal/livemode/google"
 	"memo/internal/livemode/openai_realtime"
@@ -57,16 +56,17 @@ func TestHandleLiveModeSession_EchoesBinaryAudio(t *testing.T) {
 	c.Close(websocket.StatusNormalClosure, "")
 }
 
-// TestHandleLiveModeSession_DispatchesToGoogleClientWhenConfigured proves
-// Phase 7's dispatch end-to-end: a Flutter-side WS client connects to
-// handleLiveModeSession, whose bridge reports ActiveEngine="google_live"
-// with a saved API key/model — newLiveModeSession must construct a real
-// google.Client (not EchoSession) for it, which then talks to a fake
-// Gemini Live server standing in for the real one. Audio pushed by that
-// fake server must arrive back at the Flutter-side client unchanged,
-// proving the whole chain (Flutter WS <-> Go bridge <-> Google WS) works,
-// not just the bridge's local echo path already covered above.
-func TestHandleLiveModeSession_DispatchesToGoogleClientWhenConfigured(t *testing.T) {
+// TestHandleLiveModeSession_UsesWhateverBridgeSessionReturns proves the
+// handler's whole job end-to-end: whatever livemode.Session
+// FullBridge.NewLiveModeSession hands back (a real google.Client here,
+// standing in for App.NewLiveModeSession's own dispatch — see
+// internal/app/livemode_session_test.go for that dispatch logic itself) is
+// what the Flutter-side WS client actually talks to. A fake Gemini Live
+// server's pushed audio must arrive back at the Flutter-side client
+// unchanged, proving the whole chain (Flutter WS <-> Go bridge <-> Google
+// WS) works, not just the local echo path TestHandleLiveModeSession_
+// EchoesBinaryAudio already covers.
+func TestHandleLiveModeSession_UsesWhateverBridgeSessionReturns(t *testing.T) {
 	replyB64 := base64.StdEncoding.EncodeToString([]byte("gemini-reply-pcm"))
 	fakeGoogle := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, nil)
@@ -97,16 +97,8 @@ func TestHandleLiveModeSession_DispatchesToGoogleClientWhenConfigured(t *testing
 	defer func() { google.SessionBaseURL = originalBase }()
 
 	srv := &Server{fullBridge: &swarmStubBridge{
-		getLiveModeConfig: func() config.LiveModeConfig {
-			return config.LiveModeConfig{ActiveEngine: "google_live"}
-		},
-		getLiveModeEngines: func() []livemode.EngineConfig {
-			return []livemode.EngineConfig{{
-				Type:    livemode.EngineGoogleLive,
-				APIKey:  "g-key",
-				Model:   "models/gemini-3.1-flash-live-preview",
-				Enabled: true,
-			}}
+		newLiveModeSession: func(ctx context.Context) livemode.Session {
+			return google.NewClient("g-key", "models/gemini-3.1-flash-live-preview", "", nil, nil)
 		},
 	}}
 	httpSrv := httptest.NewServer(http.HandlerFunc(srv.handleLiveModeSession))
@@ -134,11 +126,10 @@ func TestHandleLiveModeSession_DispatchesToGoogleClientWhenConfigured(t *testing
 	c.Close(websocket.StatusNormalClosure, "")
 }
 
-// TestHandleLiveModeSession_DispatchesToOpenAIRealtimeClientWhenConfigured
-// mirrors TestHandleLiveModeSession_DispatchesToGoogleClientWhenConfigured
-// exactly, against OpenAI Realtime's own message shape
-// (response.output_audio.delta) — same full-chain proof for Phase 8.
-func TestHandleLiveModeSession_DispatchesToOpenAIRealtimeClientWhenConfigured(t *testing.T) {
+// TestHandleLiveModeSession_UsesWhateverBridgeSessionReturns_OpenAI mirrors
+// the Google test above against OpenAI Realtime's own message shape
+// (response.output_audio.delta).
+func TestHandleLiveModeSession_UsesWhateverBridgeSessionReturns_OpenAI(t *testing.T) {
 	replyB64 := base64.StdEncoding.EncodeToString([]byte("openai-reply-pcm"))
 	fakeOpenAI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, nil)
@@ -164,16 +155,8 @@ func TestHandleLiveModeSession_DispatchesToOpenAIRealtimeClientWhenConfigured(t 
 	defer func() { openai_realtime.SessionBaseURL = originalBase }()
 
 	srv := &Server{fullBridge: &swarmStubBridge{
-		getLiveModeConfig: func() config.LiveModeConfig {
-			return config.LiveModeConfig{ActiveEngine: "openai_realtime"}
-		},
-		getLiveModeEngines: func() []livemode.EngineConfig {
-			return []livemode.EngineConfig{{
-				Type:    livemode.EngineOpenAIRealtime,
-				APIKey:  "oa-key",
-				Model:   "gpt-realtime-2.1",
-				Enabled: true,
-			}}
+		newLiveModeSession: func(ctx context.Context) livemode.Session {
+			return openai_realtime.NewClient("oa-key", "gpt-realtime-2.1", "", nil, nil)
 		},
 	}}
 	httpSrv := httptest.NewServer(http.HandlerFunc(srv.handleLiveModeSession))

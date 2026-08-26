@@ -73,6 +73,7 @@ type swarmStubBridge struct {
 	// active-engine dispatch without a real App.
 	getLiveModeConfig  func() config.LiveModeConfig
 	getLiveModeEngines func() []livemode.EngineConfig
+	newLiveModeSession func(ctx context.Context) livemode.Session
 }
 
 func (b *swarmStubBridge) GetRemoteAccessToken() string { return b.token }
@@ -452,6 +453,12 @@ func (b *swarmStubBridge) UpdateLiveModeEngine(cfg livemode.EngineConfig) error 
 func (b *swarmStubBridge) DeleteLiveModeEngine(t livemode.EngineType) error     { return nil }
 func (b *swarmStubBridge) ListLiveModeEngineModels(ctx context.Context, t livemode.EngineType, apiKey string) ([]livemode.ModelInfo, error) {
 	return nil, nil
+}
+func (b *swarmStubBridge) NewLiveModeSession(ctx context.Context) livemode.Session {
+	if b.newLiveModeSession != nil {
+		return b.newLiveModeSession(ctx)
+	}
+	return livemode.NewEchoSession()
 }
 func (b *swarmStubBridge) GetOrchestraConfig() orchestra.OrchestraConfig {
 	return orchestra.OrchestraConfig{}

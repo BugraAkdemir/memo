@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"memo/internal/livemode"
 )
 
 type fakeRealtimeServer struct {
@@ -82,7 +83,7 @@ func TestClient_SendsAuthHeaderAndModelQueryParam(t *testing.T) {
 	SessionBaseURL = f.wsURL()
 	defer func() { SessionBaseURL = original }()
 
-	c := NewClient("oa-key", "gpt-realtime-2.1", "")
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", nil, nil)
 	if err := c.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -112,7 +113,7 @@ func TestClient_SendsSessionUpdateOnStart(t *testing.T) {
 	SessionBaseURL = f.wsURL()
 	defer func() { SessionBaseURL = original }()
 
-	c := NewClient("oa-key", "gpt-realtime-2.1", "You are Memo's live voice.")
+	c := NewClient("oa-key", "gpt-realtime-2.1", "You are Memo's live voice.", nil, nil)
 	if err := c.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -143,7 +144,7 @@ func TestClient_SendAudioForwardsBase64EncodedPCM(t *testing.T) {
 	SessionBaseURL = f.wsURL()
 	defer func() { SessionBaseURL = original }()
 
-	c := NewClient("oa-key", "gpt-realtime-2.1", "")
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", nil, nil)
 	if err := c.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -190,7 +191,7 @@ func TestClient_EmitsAudioOutFromResponseOutputAudioDelta(t *testing.T) {
 	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
 	defer func() { SessionBaseURL = original }()
 
-	c := NewClient("oa-key", "gpt-realtime-2.1", "")
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", nil, nil)
 	if err := c.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -232,7 +233,7 @@ func TestClient_IgnoresUnrelatedServerEventTypes(t *testing.T) {
 	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
 	defer func() { SessionBaseURL = original }()
 
-	c := NewClient("oa-key", "gpt-realtime-2.1", "")
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", nil, nil)
 	if err := c.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -243,5 +244,185 @@ func TestClient_IgnoresUnrelatedServerEventTypes(t *testing.T) {
 		t.Fatalf("expected no event for an unrelated server event type, got %+v", ev)
 	case <-time.After(300 * time.Millisecond):
 		// expected: nothing arrives
+	}
+}
+
+func TestClient_SendsToolsInSessionUpdate(t *testing.T) {
+	f := newFakeRealtimeServer(t)
+	original := SessionBaseURL
+	SessionBaseURL = f.wsURL()
+	defer func() { SessionBaseURL = original }()
+
+	tools := []livemode.ToolSpec{livemode.DelegateToolSpec()}
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", tools, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case update := <-f.gotUpdate:
+		if len(update.Session.Tools) != 1 {
+			t.Fatalf("expected exactly 1 tool, got %+v", update.Session.Tools)
+		}
+		if update.Session.Tools[0].Name != livemode.DelegateToolName || update.Session.Tools[0].Type != "function" {
+			t.Errorf("unexpected tool entry: %+v", update.Session.Tools[0])
+		}
+		if update.Session.ToolChoice != "auto" {
+			t.Errorf("expected tool_choice=auto, got %q", update.Session.ToolChoice)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for session.update")
+	}
+}
+
+// TestClient_ToolCallInvokesHandlerAndSendsFunctionCallOutput proves the
+// full tool-call round trip: a fake server sends
+// response.function_call_arguments.done, the client's handleToolCall is
+// invoked with the right name/args, and its result is sent back as
+// conversation.item.create (function_call_output) followed by
+// response.create.
+func TestClient_ToolCallInvokesHandlerAndSendsFunctionCallOutput(t *testing.T) {
+	gotOutput := make(chan functionCallOutputItem, 1)
+	gotResponseCreate := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil { // consume session.update
+			return
+		}
+
+		payload, _ := json.Marshal(serverEvent{
+			Type:      serverEventFunctionCallArgsDone,
+			CallID:    "call-1",
+			Name:      "delegate_to_main_model",
+			Arguments: `{"instruction":"fix the bug"}`,
+		})
+		c.Write(ctx, websocket.MessageText, payload)
+
+		for {
+			_, data, err := c.Read(ctx)
+			if err != nil {
+				return
+			}
+			var itemEv conversationItemCreateEvent
+			if err := json.Unmarshal(data, &itemEv); err == nil && itemEv.Type == "conversation.item.create" {
+				select {
+				case gotOutput <- itemEv.Item:
+				default:
+				}
+				continue
+			}
+			var rc responseCreateEvent
+			if err := json.Unmarshal(data, &rc); err == nil && rc.Type == "response.create" {
+				select {
+				case gotResponseCreate <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}))
+	defer srv.Close()
+
+	original := SessionBaseURL
+	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
+	defer func() { SessionBaseURL = original }()
+
+	var gotName string
+	var gotArgs json.RawMessage
+	handler := func(ctx context.Context, name string, args json.RawMessage) (string, error) {
+		gotName = name
+		gotArgs = args
+		return "bug fixed", nil
+	}
+
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", []livemode.ToolSpec{livemode.DelegateToolSpec()}, handler)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case item := <-gotOutput:
+		if item.CallID != "call-1" || item.Type != "function_call_output" {
+			t.Errorf("unexpected function_call_output identity: %+v", item)
+		}
+		if item.Output != "bug fixed" {
+			t.Errorf("expected output=%q, got %q", "bug fixed", item.Output)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for function_call_output")
+	}
+	select {
+	case <-gotResponseCreate:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for response.create")
+	}
+
+	if gotName != "delegate_to_main_model" {
+		t.Errorf("handler called with wrong name: %q", gotName)
+	}
+	if string(gotArgs) != `{"instruction":"fix the bug"}` {
+		t.Errorf("handler called with wrong args: %s", gotArgs)
+	}
+}
+
+func TestClient_ToolCallWithNilHandlerReportsNotAvailable(t *testing.T) {
+	gotOutput := make(chan functionCallOutputItem, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil {
+			return
+		}
+		payload, _ := json.Marshal(serverEvent{
+			Type:      serverEventFunctionCallArgsDone,
+			CallID:    "call-1",
+			Name:      "delegate_to_main_model",
+			Arguments: `{}`,
+		})
+		c.Write(ctx, websocket.MessageText, payload)
+
+		for {
+			_, data, err := c.Read(ctx)
+			if err != nil {
+				return
+			}
+			var itemEv conversationItemCreateEvent
+			if err := json.Unmarshal(data, &itemEv); err == nil && itemEv.Type == "conversation.item.create" {
+				select {
+				case gotOutput <- itemEv.Item:
+				default:
+				}
+			}
+		}
+	}))
+	defer srv.Close()
+
+	original := SessionBaseURL
+	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case item := <-gotOutput:
+		if !strings.Contains(item.Output, "not available") {
+			t.Errorf("expected a 'not available' error output, got %q", item.Output)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for function_call_output")
 	}
 }

@@ -31,12 +31,24 @@ const (
 type clientMessage struct {
 	Setup         *setupMessage         `json:"setup,omitempty"`
 	RealtimeInput *realtimeInputMessage `json:"realtimeInput,omitempty"`
+	ToolResponse  *toolResponseMessage  `json:"toolResponse,omitempty"`
 }
 
 type setupMessage struct {
 	Model              string             `json:"model"`
 	ResponseModalities []string           `json:"responseModalities"`
 	SystemInstruction  *systemInstruction `json:"systemInstruction,omitempty"`
+	Tools              []setupTool        `json:"tools,omitempty"`
+}
+
+type setupTool struct {
+	FunctionDeclarations []functionDeclaration `json:"functionDeclarations"`
+}
+
+type functionDeclaration struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
 }
 
 type systemInstruction struct {
@@ -59,6 +71,27 @@ type audioChunk struct {
 type serverMessage struct {
 	SetupComplete *struct{}      `json:"setupComplete,omitempty"`
 	ServerContent *serverContent `json:"serverContent,omitempty"`
+	ToolCall      *toolCall      `json:"toolCall,omitempty"`
+}
+
+type toolCall struct {
+	FunctionCalls []functionCall `json:"functionCalls"`
+}
+
+type functionCall struct {
+	ID   string          `json:"id"`
+	Name string          `json:"name"`
+	Args json.RawMessage `json:"args"`
+}
+
+type toolResponseMessage struct {
+	FunctionResponses []functionResponse `json:"functionResponses"`
+}
+
+type functionResponse struct {
+	ID       string                 `json:"id"`
+	Name     string                 `json:"name"`
+	Response map[string]interface{} `json:"response"`
 }
 
 type serverContent struct {
@@ -83,12 +116,14 @@ type inlineData struct {
 // ─── Client ───────────────────────────────────────────────────────────
 
 // Client is a Google Live (Gemini Live API) realtime session — implements
-// livemode.Session. This phase (7) only handles setup + audio in/out; tool
-// declarations and function-call handling for delegation land in Phase 10.
+// livemode.Session, including tool declarations and function-call handling
+// for delegation (see runToolCall).
 type Client struct {
 	apiKey            string
 	model             string // e.g. "models/gemini-3.1-flash-live-preview" — the exact Name a discovery call (google.ListLiveModels) returned, never hardcoded by this package.
 	systemInstruction string
+	tools             []livemode.ToolSpec
+	handleToolCall    livemode.ToolCallHandler
 
 	conn   *websocket.Conn
 	ctx    context.Context
@@ -102,11 +137,15 @@ var _ livemode.Session = (*Client)(nil)
 
 // NewClient constructs a Client. model must be a Live-capable model's full
 // resource name (see ListLiveModels) — this package never guesses one.
-func NewClient(apiKey, model, systemInstruction string) *Client {
+// tools/handleToolCall may both be nil (a session with no delegation
+// capability at all — not a normal configuration, but not an error either).
+func NewClient(apiKey, model, systemInstruction string, tools []livemode.ToolSpec, handleToolCall livemode.ToolCallHandler) *Client {
 	return &Client{
 		apiKey:            apiKey,
 		model:             model,
 		systemInstruction: systemInstruction,
+		tools:             tools,
+		handleToolCall:    handleToolCall,
 		events:            make(chan livemode.SessionEvent, 16),
 	}
 }
@@ -130,6 +169,13 @@ func (c *Client) Start(ctx context.Context) error {
 	}}
 	if c.systemInstruction != "" {
 		setup.Setup.SystemInstruction = &systemInstruction{Parts: []messagePart{{Text: c.systemInstruction}}}
+	}
+	if len(c.tools) > 0 {
+		decls := make([]functionDeclaration, 0, len(c.tools))
+		for _, t := range c.tools {
+			decls = append(decls, functionDeclaration{Name: t.Name, Description: t.Description, Parameters: t.Parameters})
+		}
+		setup.Setup.Tools = []setupTool{{FunctionDeclarations: decls}}
 	}
 	if err := c.writeJSON(setup); err != nil {
 		cancel()
@@ -198,6 +244,14 @@ func (c *Client) readLoop() {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			continue
 		}
+
+		if msg.ToolCall != nil {
+			for _, fc := range msg.ToolCall.FunctionCalls {
+				go c.runToolCall(fc)
+			}
+			continue
+		}
+
 		if msg.ServerContent == nil || msg.ServerContent.ModelTurn == nil {
 			continue
 		}
@@ -214,6 +268,34 @@ func (c *Client) readLoop() {
 			case <-c.ctx.Done():
 				return
 			}
+		}
+	}
+}
+
+// runToolCall resolves one function call via handleToolCall and sends the
+// result back as a toolResponse message — run in its own goroutine (from
+// readLoop) so a slow delegated task never blocks the read loop from
+// processing further server messages (audio, other tool calls) in the
+// meantime. A nil handleToolCall (a session with no delegation capability
+// configured) reports back "not supported" rather than silently hanging
+// the model waiting for a response that will never come.
+func (c *Client) runToolCall(fc functionCall) {
+	var result string
+	if c.handleToolCall == nil {
+		result = "Error: tool calling is not available in this session"
+	} else if r, err := c.handleToolCall(c.ctx, fc.Name, fc.Args); err != nil {
+		result = "Error: " + err.Error()
+	} else {
+		result = r
+	}
+
+	resp := clientMessage{ToolResponse: &toolResponseMessage{
+		FunctionResponses: []functionResponse{{ID: fc.ID, Name: fc.Name, Response: map[string]interface{}{"result": result}}},
+	}}
+	if err := c.writeJSON(resp); err != nil {
+		select {
+		case c.events <- livemode.SessionEvent{Type: livemode.EventError, Err: err}:
+		case <-c.ctx.Done():
 		}
 	}
 }

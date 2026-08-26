@@ -30,11 +30,20 @@ type sessionUpdateEvent struct {
 }
 
 type sessionConfig struct {
-	Type             string        `json:"type"` // "realtime" — the session object's own type marker, distinct from the outer event's "type"
-	Model            string        `json:"model"`
-	OutputModalities []string      `json:"output_modalities,omitempty"`
-	Instructions     string        `json:"instructions,omitempty"`
-	Audio            *sessionAudio `json:"audio,omitempty"`
+	Type             string         `json:"type"` // "realtime" — the session object's own type marker, distinct from the outer event's "type"
+	Model            string         `json:"model"`
+	OutputModalities []string       `json:"output_modalities,omitempty"`
+	Instructions     string         `json:"instructions,omitempty"`
+	Audio            *sessionAudio  `json:"audio,omitempty"`
+	Tools            []realtimeTool `json:"tools,omitempty"`
+	ToolChoice       string         `json:"tool_choice,omitempty"`
+}
+
+type realtimeTool struct {
+	Type        string          `json:"type"` // "function"
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
 }
 
 type sessionAudio struct {
@@ -60,29 +69,59 @@ type inputAudioBufferAppendEvent struct {
 	Audio string `json:"audio"` // base64
 }
 
-// serverEvent covers only the fields this phase's client reads —
-// response.output_audio.delta's "delta" field. Every other event type
-// (session.created, session.updated, input_audio_buffer.speech_started/
-// stopped, etc.) is read and silently ignored by Type not matching, the
-// same defensive "unknown/irrelevant message is not fatal" stance
-// google.Client's readLoop takes.
-type serverEvent struct {
-	Type  string `json:"type"`
-	Delta string `json:"delta,omitempty"`
+// conversationItemCreateEvent + functionCallOutputItem send a tool call's
+// result back — confirmed shape (current API docs, 2026-08-26):
+// {"type":"conversation.item.create","item":{"type":"function_call_output",
+// "call_id":"...","output":"..."}}. responseCreateEvent
+// ({"type":"response.create"}) must follow immediately so the model
+// actually continues speaking with the result, per the same docs.
+type conversationItemCreateEvent struct {
+	Type string                 `json:"type"` // "conversation.item.create"
+	Item functionCallOutputItem `json:"item"`
 }
 
-const serverEventAudioDelta = "response.output_audio.delta"
+type functionCallOutputItem struct {
+	Type   string `json:"type"` // "function_call_output"
+	CallID string `json:"call_id"`
+	Output string `json:"output"`
+}
+
+type responseCreateEvent struct {
+	Type string `json:"type"` // "response.create"
+}
+
+// serverEvent covers only the fields this phase's client reads —
+// response.output_audio.delta's "delta" field, and
+// response.function_call_arguments.done's call_id/name/arguments. Every
+// other event type (session.created, session.updated, input_audio_buffer.
+// speech_started/stopped, etc.) is read and silently ignored by Type not
+// matching, the same defensive "unknown/irrelevant message is not fatal"
+// stance google.Client's readLoop takes.
+type serverEvent struct {
+	Type      string `json:"type"`
+	Delta     string `json:"delta,omitempty"`
+	CallID    string `json:"call_id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+const (
+	serverEventAudioDelta           = "response.output_audio.delta"
+	serverEventFunctionCallArgsDone = "response.function_call_arguments.done"
+)
 
 // ─── Client ───────────────────────────────────────────────────────────
 
 // Client is an OpenAI Realtime session — implements livemode.Session.
-// Mirrors internal/livemode/google.Client's shape and phase scope exactly
-// (setup + audio in/out only; tool declarations/function-call handling for
-// delegation land in Phase 10), against OpenAI's own message names.
+// Mirrors internal/livemode/google.Client's shape exactly (setup/audio +
+// tool declarations/function-call handling, see runToolCall), against
+// OpenAI's own message names.
 type Client struct {
-	apiKey       string
-	model        string // realtime-family model ID a discovery call (ListRealtimeModels) returned — never guessed here
-	instructions string
+	apiKey         string
+	model          string // realtime-family model ID a discovery call (ListRealtimeModels) returned — never guessed here
+	instructions   string
+	tools          []livemode.ToolSpec
+	handleToolCall livemode.ToolCallHandler
 
 	conn   *websocket.Conn
 	ctx    context.Context
@@ -96,12 +135,16 @@ var _ livemode.Session = (*Client)(nil)
 
 // NewClient constructs a Client. model must be a realtime-capable model ID
 // (see ListRealtimeModels) — this package never guesses one.
-func NewClient(apiKey, model, instructions string) *Client {
+// tools/handleToolCall may both be nil (a session with no delegation
+// capability at all — not a normal configuration, but not an error either).
+func NewClient(apiKey, model, instructions string, tools []livemode.ToolSpec, handleToolCall livemode.ToolCallHandler) *Client {
 	return &Client{
-		apiKey:       apiKey,
-		model:        model,
-		instructions: instructions,
-		events:       make(chan livemode.SessionEvent, 16),
+		apiKey:         apiKey,
+		model:          model,
+		instructions:   instructions,
+		tools:          tools,
+		handleToolCall: handleToolCall,
+		events:         make(chan livemode.SessionEvent, 16),
 	}
 }
 
@@ -132,6 +175,14 @@ func (c *Client) Start(ctx context.Context) error {
 				Output: &sessionAudioOutput{Format: &audioFormat{Type: "audio/pcm"}},
 			},
 		},
+	}
+	if len(c.tools) > 0 {
+		tools := make([]realtimeTool, 0, len(c.tools))
+		for _, t := range c.tools {
+			tools = append(tools, realtimeTool{Type: "function", Name: t.Name, Description: t.Description, Parameters: t.Parameters})
+		}
+		update.Session.Tools = tools
+		update.Session.ToolChoice = "auto"
 	}
 	if err := c.writeJSON(update); err != nil {
 		cancel()
@@ -195,17 +246,58 @@ func (c *Client) readLoop() {
 		if err := json.Unmarshal(data, &ev); err != nil {
 			continue
 		}
-		if ev.Type != serverEventAudioDelta || ev.Delta == "" {
+
+		switch ev.Type {
+		case serverEventFunctionCallArgsDone:
+			go c.runToolCall(ev)
 			continue
+		case serverEventAudioDelta:
+			if ev.Delta == "" {
+				continue
+			}
+			audio, err := base64.StdEncoding.DecodeString(ev.Delta)
+			if err != nil {
+				continue
+			}
+			select {
+			case c.events <- livemode.SessionEvent{Type: livemode.EventAudioOut, Audio: audio}:
+			case <-c.ctx.Done():
+				return
+			}
 		}
-		audio, err := base64.StdEncoding.DecodeString(ev.Delta)
-		if err != nil {
-			continue
-		}
+	}
+}
+
+// runToolCall resolves one function call via handleToolCall and sends the
+// result back as conversation.item.create + response.create — run in its
+// own goroutine (from readLoop) so a slow delegated task never blocks the
+// read loop from processing further server messages in the meantime. A
+// nil handleToolCall reports back "not supported" rather than silently
+// hanging the model waiting for a response that will never come.
+func (c *Client) runToolCall(ev serverEvent) {
+	var result string
+	if c.handleToolCall == nil {
+		result = "Error: tool calling is not available in this session"
+	} else if r, err := c.handleToolCall(c.ctx, ev.Name, json.RawMessage(ev.Arguments)); err != nil {
+		result = "Error: " + err.Error()
+	} else {
+		result = r
+	}
+
+	if err := c.writeJSON(conversationItemCreateEvent{
+		Type: "conversation.item.create",
+		Item: functionCallOutputItem{Type: "function_call_output", CallID: ev.CallID, Output: result},
+	}); err != nil {
 		select {
-		case c.events <- livemode.SessionEvent{Type: livemode.EventAudioOut, Audio: audio}:
+		case c.events <- livemode.SessionEvent{Type: livemode.EventError, Err: err}:
 		case <-c.ctx.Done():
-			return
+		}
+		return
+	}
+	if err := c.writeJSON(responseCreateEvent{Type: "response.create"}); err != nil {
+		select {
+		case c.events <- livemode.SessionEvent{Type: livemode.EventError, Err: err}:
+		case <-c.ctx.Done():
 		}
 	}
 }

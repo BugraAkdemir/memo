@@ -281,6 +281,11 @@ type FullBridge interface {
 	DeleteLiveModeEngine(t livemode.EngineType) error
 	ListLiveModeEngineModels(ctx context.Context, t livemode.EngineType, apiKey string) ([]livemode.ModelInfo, error)
 
+	// NewLiveModeSession builds the realtime session (real client or
+	// EchoSession fallback) for the WS bridge handler — see
+	// internal/app/livemode_session.go's doc comment. Phase 10.
+	NewLiveModeSession(ctx context.Context) livemode.Session
+
 	// Orchestra mode
 	GetOrchestraConfig() orchestra.OrchestraConfig
 	UpdateOrchestraConfig(cfg orchestra.OrchestraConfig) error

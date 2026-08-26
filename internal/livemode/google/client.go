@@ -10,6 +10,7 @@ import (
 
 	"github.com/coder/websocket"
 	"memo/internal/livemode"
+	"memo/internal/logx"
 )
 
 // SessionBaseURL is a var (not const) so tests can point it at an
@@ -308,6 +309,24 @@ func (c *Client) readLoop() {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			continue
 		}
+
+		// Diagnostic: confirms whether Google is sending anything at all
+		// during a session where nothing actionable ever arrives — added
+		// after a real test where the server accepted setup and 139 audio
+		// frames but the client (this readLoop) never observed anything
+		// worth turning into a SessionEvent, leaving no way to tell "the
+		// server is truly silent" apart from "the server is acking but we
+		// don't forward acks". Summary only, never the raw inlineData
+		// payload (base64 audio would flood the log).
+		logx.Printf(
+			"livemode google: server message: setupComplete=%v toolCall=%v serverContent=%v turnComplete=%v interrupted=%v hasModelTurn=%v hasInputTranscription=%v hasOutputTranscription=%v",
+			msg.SetupComplete != nil, msg.ToolCall != nil, msg.ServerContent != nil,
+			msg.ServerContent != nil && msg.ServerContent.TurnComplete,
+			msg.ServerContent != nil && msg.ServerContent.Interrupted,
+			msg.ServerContent != nil && msg.ServerContent.ModelTurn != nil,
+			msg.ServerContent != nil && msg.ServerContent.InputTranscription != nil,
+			msg.ServerContent != nil && msg.ServerContent.OutputTranscription != nil,
+		)
 
 		if msg.ToolCall != nil {
 			for _, fc := range msg.ToolCall.FunctionCalls {

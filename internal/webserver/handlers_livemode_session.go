@@ -126,6 +126,14 @@ func pumpLiveModeSessionAudio(ctx context.Context, c *websocket.Conn, session li
 		if msgType != websocket.MessageBinary {
 			continue
 		}
+		if frames == 0 {
+			// Confirms real-sized audio is actually flowing (not silently
+			// empty/near-empty frames) without logging every single frame
+			// — see readLoop's own per-message diagnostic (google/client.go)
+			// for the matching "is Google saying anything back" half of
+			// this question.
+			logx.Printf("livemode session: first audio frame from client: %d bytes", len(data))
+		}
 		if err := session.SendAudio(data); err != nil {
 			logx.Printf("livemode session: SendAudio failed after %d frame(s): %v", frames, err)
 			return frames

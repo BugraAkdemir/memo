@@ -535,3 +535,91 @@ her ilgili fazda "doğrulanmadı" olarak açıkça belirtilecek, sessizce
   mock değil). İki ilgisiz önceden var olan sorun bulundu ve düzeltildi/
   flag'lendi (internal/agent'ta gofmt drift'i, ayrı görev olarak flag'lendi;
   test'lerin yarattığı internal/agent/data/ artığı temizlendi).
+- 2026-08-26: Faz 10 tamam (`66be542`) — Faz 7/8'in sadece ses taşıyan
+  client'ları ve Faz 9'un delegasyon/standalone primitifleri artık tek bir
+  çalışan bütün. Yeni `livemode.ToolSpec`/`ToolCallHandler` (delegasyon
+  semantiğini de provider wire formatını da bilen tek dikiş yeri,
+  `internal/livemode`'da yaşıyor ki google/openai_realtime agent'tan,
+  `internal/app` da provider'ların wire formatından habersiz kalsın).
+  `google.Client`/`openai_realtime.Client` artık `NewClient`'ta
+  tools+handleToolCall alıyor; her ikisinin `readLoop`'u da kendi
+  provider'ının tool-call olayını tanıyor (Google: `toolCall`, OpenAI:
+  `response.function_call_arguments.done`), `handleToolCall`'ı kendi
+  goroutine'inde çağırıyor (yavaş bir delege görev read loop'u bloklamasın
+  diye) ve sonucu provider'ın kendi native formatıyla geri gönderiyor
+  (`nil` handler'da "not available" — model asla cevapsız kalmasın).
+  Yeni `App.NewLiveModeSession` (`internal/app/livemode_session.go`) artık
+  gerçek client ile `EchoSession` arasına karar veren TEK yer —
+  `internal/webserver`'dan buraya taşındı (webserver artık sadece WS
+  transport'u sahipleniyor, yeni `FullBridge.NewLiveModeSession` üzerinden
+  erişiliyor). Her katmanda yeni testler yeşil (araç bildirimleri gerçekten
+  setup/session.update'te görünüyor, tam tool-call round-trip, nil-handler
+  fallback'i, `NewLiveModeSession`'ın EchoSession/gerçek-client dallanması,
+  her iki `WorkMode` şekli, sistem promptunun `WorkMode`'a göre gerçekten
+  farklılaştığı).
+- 2026-08-26: Faz 11 tamam (`3de8514`) — Yeni
+  `livemode.Session.InjectContext(text string) error`, açık bir oturuma
+  kısa, tur-dışı bir metin ekler (Google: `realtimeInput.text`, OpenAI:
+  `conversation.item.create` sistem-rollü mesaj öğesi — ikisi de güncel
+  API dokümanlarına göre standart, iyi belgelenmiş bir genişletme noktası,
+  spekülatif değil). **Bilinçli kapsam daraltması**: planın öngördüğü iki
+  InjectContext tüketicisinden (oturum-içi hafıza tazeleme, delege-görev
+  ilerleme anlatımı) hiçbiri bu fazda uygulanmadı — ikisi de canlı API
+  doğrulaması gerektiriyordu ve bu ortamda gerçek API key yok. Özellikle
+  Google'ın transkript alanlarının `serverContent` içine mi yoksa
+  mesajın üst seviyesine mi ait olduğu güncel dokümanlarda bile
+  belirsizdi — tahminle koda geçirilecek türden bir risk değil, dürüstçe
+  ertelendi (bkz. Faz 12'nin bunu nasıl çözdüğü). `InjectContext`'in
+  kendisi boşa gitmedi: Faz 12'nin sesli izin isteme özelliği tam olarak
+  bu yeteneğe ihtiyaç duyuyor.
+- 2026-08-26: Faz 12 tamam (`e27b87f`) — `AgentPermissionPolicy`'nin
+  varsayılanı olan `"voice_prompt"` artık gerçekten çalışıyor, her iki
+  `WorkMode` için de. Faz 11'de ertelenen transkript ayrıştırma bu fazın
+  sert ön koşulu oldu: `google.Client` artık setup'ta
+  `inputAudioTranscription`/`outputAudioTranscription`'ı her zaman açıyor
+  ve `serverContent.inputTranscription`'ı `EventTranscript`'e çeviriyor
+  (yuvalanma belirsizliği koda yorum olarak not düşüldü — transkripsiyona
+  özel örnekler `serverContent` içini gösterdiği için o yorum tercih
+  edildi); `openai_realtime.Client` `session.audio.input.transcription`
+  (`{"model":"whisper-1"}`) açıyor ve
+  `conversation.item.input_audio_transcription.completed`'i aynı şekilde
+  çeviriyor. `internal/app`'te yeni `livePermMu`/`livePendingPermAnswerCh`
+  + `awaitLivePermissionAnswer`/`routeLiveTranscriptToPermissionAnswer`
+  (WhatsApp self-chat'in bekleyen-cevap desenini chatJID eşleştirmesi
+  olmadan yansıtıyor — Live Mode'da aynı anda tek aktif oturum var). Yeni
+  `livemode_session_wrapper.go`: `livePermissionRoutingSession` gerçek
+  client'ı sarmalayıp her `EventTranscript`'i hem
+  `routeLiveTranscriptToPermissionAnswer`'a yönlendiriyor hem de
+  değişmeden dış `Events()` kanalına iletiyor (Flutter'daki normal
+  gösterim için). `NewLiveModeSession` artık bir ileri-referans closure
+  kullanıyor (`injectFn`, gerçek client kurulduktan hemen sonra atanıyor)
+  — tool-call handler'ın `InjectContext`'e ihtiyacı var ama onu sahiplenen
+  client henüz yokken handler'ın inşa edilmesi gerekiyordu, bu döngüyü
+  güvenle kırıyor.
+
+  **Bu fazda gerçek bir hata bulundu ve düzeltildi**: `ExecuteToolCall`,
+  `permission_request` olayıyla `onEvent`'i SENKRON çağırıyor — isteği
+  `e.pendingPerms`'e kaydetmesinden (bir sonraki satırı) ÖNCE. Standalone
+  modun `onEvent`'i izinleri aynı goroutine'de, satır içinde çözüyordu; bu
+  autoApprove için her seferinde cevabı kaybediyordu (deterministik,
+  şansa bağlı değil), voice_prompt için ise kaydı tamamen kilitlerdi
+  (saniyelerce soru sorup cevap bekleyerek `onEvent`'in dönüşünü
+  engellediği için). Düzeltme: çözümleme kendi goroutine'ine taşındı
+  (`resolveLivePermission`), autoApprove için kısa, sınırlı bir yeniden
+  deneme ile artakalan zamanlama yarışını kapatarak — WhatsApp/Telegram
+  self-chat yolunun kendi SSE-kanalı teslimiyle zaten tolere ettiği aynı
+  türden bir yarış, burada açıkça ele alındı çünkü standalone modun
+  aynı doğal gecikmeyi sağlayacak bir kanal teslimi yok. Düzeltmeden önce
+  60 saniye asılı kalıp başarısız olacak bir regresyon testi eklendi.
+
+  Doğrulama: `gofmt` temiz (dokunulan dosyalar); `CGO_ENABLED=1 go
+  build/vet -tags sqlite_fts5 ./...` temiz; `go test -tags sqlite_fts5
+  ./... -race` tamamı yeşil (internal/app 11.847s, internal/livemode +
+  alt paketleri ~3.7s). Test kirliliği (`internal/agent/data/`) her
+  zamanki gibi bulunup commit'ten önce temizlendi.
+
+  **Sıradaki:** Faz 13 (temizlik) — `beta_features_tab.dart`'ın akıbeti
+  (muhtemelen Faz 1'in çıkarımından sonra neredeyse boş — öyleyse
+  kaldırılacak, sekme index'leri yeniden numaralandırılacak, kapsama
+  testi güncellenecek), planın kapanış durumu + son `handoff.md` girdisi.
+  Kullanıcı onayı beklemeden devam ediliyor.

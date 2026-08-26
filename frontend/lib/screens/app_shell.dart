@@ -245,6 +245,13 @@ class _AppShellState extends ConsumerState<AppShell> {
         // here silently hands that decision to the local mirror pref.
         ref.invalidate(remoteAccessProvider);
         ref.invalidate(whatsAppSelfChatAssistantProvider);
+        // BUG-ONB13: Live Mode providers were missing from the invalidation list.
+        // When the app starts, auth gate is briefly blocked (even on localhost),
+        // these providers run, return default config (enabled=false, local engine),
+        // auth gate opens, but they were never invalidated — so UI never sees
+        // the real backend config (e.g. google_live with API key).
+        ref.invalidate(liveModeConfigProvider);
+        ref.invalidate(liveModeEnginesProvider);
       }
     });
 

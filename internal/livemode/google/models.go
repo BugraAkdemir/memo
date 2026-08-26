@@ -10,6 +10,7 @@ import (
 	"io"
 	"memo/internal/provider"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -40,39 +41,65 @@ type LiveModel struct {
 // returns only the ones advertising bidiGenerateContent support (i.e.
 // actually usable with the Live API) — callers must not assume every
 // returned Gemini model works with a realtime session.
+//
+// models.list paginates (a nextPageToken is returned whenever more results
+// exist beyond the current page) — this follows it to completion rather
+// than reading only the first page, otherwise any live-capable model that
+// happens to sort past page one is silently dropped with no error (found
+// via real-world testing: the Google Live model dropdown was missing
+// models that do exist).
 func ListLiveModels(ctx context.Context, apiKey string) ([]LiveModel, error) {
-	url := fmt.Sprintf("%s/models?key=%s", DiscoveryBaseURL, apiKey)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("livemode google: models request: %w", err)
-	}
+	var live []LiveModel
+	pageToken := ""
 
-	resp, err := discoveryClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("livemode google: models: %w", err)
-	}
-	defer resp.Body.Close()
+	for {
+		reqURL := fmt.Sprintf("%s/models?key=%s", DiscoveryBaseURL, apiKey)
+		if pageToken != "" {
+			reqURL += "&pageToken=" + url.QueryEscape(pageToken)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("livemode google: models request: %w", err)
+		}
 
-	if resp.StatusCode != http.StatusOK {
-		errBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("livemode google: models status %d: %s", resp.StatusCode, provider.ExtractErrorMessage(errBody))
-	}
+		resp, err := discoveryClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("livemode google: models: %w", err)
+		}
 
-	var result struct {
-		Models []LiveModel `json:"models"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("livemode google: decode models: %w", err)
-	}
+		if resp.StatusCode != http.StatusOK {
+			errBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("livemode google: models status %d: %s", resp.StatusCode, provider.ExtractErrorMessage(errBody))
+		}
 
-	live := make([]LiveModel, 0, len(result.Models))
-	for _, m := range result.Models {
-		for _, method := range m.SupportedGenerationMethods {
-			if method == bidiGenerateContentMethod {
-				live = append(live, m)
-				break
+		var result struct {
+			Models        []LiveModel `json:"models"`
+			NextPageToken string      `json:"nextPageToken"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&result)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("livemode google: decode models: %w", err)
+		}
+
+		for _, m := range result.Models {
+			for _, method := range m.SupportedGenerationMethods {
+				if method == bidiGenerateContentMethod {
+					live = append(live, m)
+					break
+				}
 			}
 		}
+
+		if result.NextPageToken == "" {
+			break
+		}
+		pageToken = result.NextPageToken
+	}
+
+	if live == nil {
+		live = []LiveModel{}
 	}
 	return live, nil
 }

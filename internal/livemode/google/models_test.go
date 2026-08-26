@@ -53,6 +53,50 @@ func TestListLiveModels_ErrorStatus(t *testing.T) {
 	}
 }
 
+// TestListLiveModels_FollowsPagination is a regression test for a real bug
+// found via live testing: models.list paginates (nextPageToken), and the
+// original implementation only ever read the first page, silently dropping
+// any live-capable model that sorted past it.
+func TestListLiveModels_FollowsPagination(t *testing.T) {
+	var gotPageTokens []string
+	withDiscoveryServer(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPageTokens = append(gotPageTokens, r.URL.Query().Get("pageToken"))
+		switch r.URL.Query().Get("pageToken") {
+		case "":
+			w.Write([]byte(`{
+				"models": [
+					{"name":"models/gemini-page1-live","supportedGenerationMethods":["bidiGenerateContent"]},
+					{"name":"models/gemini-page1-pro","supportedGenerationMethods":["generateContent"]}
+				],
+				"nextPageToken": "page-2"
+			}`))
+		case "page-2":
+			w.Write([]byte(`{
+				"models": [
+					{"name":"models/gemini-page2-live","supportedGenerationMethods":["bidiGenerateContent"]}
+				]
+			}`))
+		default:
+			t.Errorf("unexpected pageToken: %q", r.URL.Query().Get("pageToken"))
+		}
+	})
+
+	models, err := ListLiveModels(context.Background(), "g-key")
+	if err != nil {
+		t.Fatalf("ListLiveModels: %v", err)
+	}
+	if len(gotPageTokens) != 2 {
+		t.Fatalf("expected 2 requests (one per page), got %d: %v", len(gotPageTokens), gotPageTokens)
+	}
+	if len(models) != 2 {
+		t.Fatalf("expected models from both pages, got %d: %+v", len(models), models)
+	}
+	names := map[string]bool{models[0].Name: true, models[1].Name: true}
+	if !names["models/gemini-page1-live"] || !names["models/gemini-page2-live"] {
+		t.Errorf("expected live models from both page 1 and page 2, got %+v", models)
+	}
+}
+
 func TestListLiveModels_EmptyResultWhenNoneAreLiveCapable(t *testing.T) {
 	withDiscoveryServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"models":[{"name":"models/gemini-3.1-pro","supportedGenerationMethods":["generateContent"]}]}`))

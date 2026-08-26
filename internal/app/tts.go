@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"memo/internal/livemode"
 	"memo/internal/logx"
 	"memo/internal/tts"
 	"time"
@@ -62,15 +63,32 @@ func (a *App) GetTTSFillerSound() ([]byte, error) {
 	return fillers.Random(ctx)
 }
 
-// SynthesizeSpeech renders text to WAV-encoded audio bytes. Tries any
-// configured/enabled external TTS provider first (tts.Router, Faz 2), then
-// falls back to the local Piper synthesizer (Faz 1) — mirrors
+// SynthesizeSpeech renders text to WAV-encoded audio bytes.
+//
+// If Live Mode's active engine is "elevenlabs" or "custom", that engine's
+// own saved config is tried first (synthesizeViaLiveModeEngine) — see
+// docs/plans/PLAN_live_mode_v2.md's Phase 5. Any other active engine
+// (including "local", and "google_live"/"openai_realtime", which don't use
+// this discrete-turn call at all — see their own realtime session clients
+// in later phases) falls through to the pre-existing behavior unchanged:
+// try any configured/enabled external TTS provider (tts.Router, Faz 2),
+// then fall back to the local Piper synthesizer (Faz 1) — mirrors
 // callLLMStream's external-provider-then-local-model priority order
 // (internal/app/llm.go), simplified to two tiers since TTS has no Orchestra
-// equivalent. If no external provider is configured at all (Faz 1's only
-// state, and still the default), behavior is unchanged from before this
-// tier was added: straight to Piper.
+// equivalent.
 func (a *App) SynthesizeSpeech(text string) ([]byte, error) {
+	engine := livemode.EngineType(a.GetLiveModeConfig().ActiveEngine)
+	switch engine {
+	case livemode.EngineElevenLabs, livemode.EngineCustom:
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		audio, err := a.synthesizeViaLiveModeEngine(ctx, engine, text)
+		cancel()
+		if err == nil {
+			return audio, nil
+		}
+		logx.Printf("TTS: Live Mode engine failed, falling back to external provider(s)/local Piper: %v", err)
+	}
+
 	a.ttsRouterMu.RLock()
 	router := a.ttsRouter
 	a.ttsRouterMu.RUnlock()

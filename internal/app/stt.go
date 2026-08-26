@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"memo/internal/config"
+	"memo/internal/livemode"
 	"memo/internal/logx"
 	"net/http"
 	"os"
@@ -280,8 +281,26 @@ func (a *App) StopRecordingAndTranscribe() (string, error) {
 	return result.Text, nil
 }
 
-// TranscribeAudio sends raw audio bytes to the whisper server for transcription.
+// TranscribeAudio sends raw audio bytes to the whisper server for
+// transcription — unless Live Mode's active engine is "elevenlabs" or
+// "custom", in which case that engine's own saved config is tried first
+// (transcribeViaLiveModeEngine), falling back to whisper.cpp on failure.
+// See docs/plans/PLAN_live_mode_v2.md's Phase 5. Any other active engine
+// (including "local", and "google_live"/"openai_realtime", which don't use
+// this discrete-turn call at all) behaves exactly as before.
 func (a *App) TranscribeAudio(audioData []byte) (string, error) {
+	engine := livemode.EngineType(a.GetLiveModeConfig().ActiveEngine)
+	switch engine {
+	case livemode.EngineElevenLabs, livemode.EngineCustom:
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		text, err := a.transcribeViaLiveModeEngine(ctx, engine, audioData)
+		cancel()
+		if err == nil {
+			return text, nil
+		}
+		logx.Printf("STT: Live Mode engine failed, falling back to whisper.cpp: %v", err)
+	}
+
 	a.whisperMu.RLock()
 	ws := a.whisperServer
 	a.whisperMu.RUnlock()

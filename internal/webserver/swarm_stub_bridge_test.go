@@ -434,6 +434,9 @@ func (b *swarmStubBridge) UpdateLiveModeConfig(cfg config.LiveModeConfig) error 
 func (b *swarmStubBridge) GetLiveModeEngines() []livemode.EngineConfig                 { return nil }
 func (b *swarmStubBridge) UpdateLiveModeEngine(cfg livemode.EngineConfig) error        { return nil }
 func (b *swarmStubBridge) DeleteLiveModeEngine(t livemode.EngineType) error            { return nil }
+func (b *swarmStubBridge) ListLiveModeEngineModels(ctx context.Context, t livemode.EngineType, apiKey string) ([]livemode.ModelInfo, error) {
+	return nil, nil
+}
 func (b *swarmStubBridge) GetOrchestraConfig() orchestra.OrchestraConfig {
 	return orchestra.OrchestraConfig{}
 }

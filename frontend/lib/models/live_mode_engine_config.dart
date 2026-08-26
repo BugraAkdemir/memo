@@ -58,3 +58,21 @@ class LiveModeEngineConfig {
     );
   }
 }
+
+/// One live-discovered model — mirrors Go `livemode.ModelInfo`
+/// (internal/livemode/models.go). Provider-agnostic: Google Live's
+/// "models/…" resource name, OpenAI's plain model ID, or ElevenLabs'
+/// model_id, all normalized to id+displayName by the backend.
+class LiveModeModelInfo {
+  final String id;
+  final String displayName;
+
+  const LiveModeModelInfo({required this.id, required this.displayName});
+
+  factory LiveModeModelInfo.fromJson(Map<String, dynamic> json) {
+    return LiveModeModelInfo(
+      id: json['id'] as String? ?? '',
+      displayName: json['display_name'] as String? ?? '',
+    );
+  }
+}

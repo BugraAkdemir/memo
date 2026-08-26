@@ -897,7 +897,12 @@ class L10n {
     'live_mode_api_key_hint': 'sk-…',
     'live_mode_model_label': 'Model',
     'live_mode_model_hint_manual':
-        'Model ID\'sini şimdilik elle gir — otomatik listeleme yakında eklenecek.',
+        'Model ID\'sini elle gir, ya da API anahtarını girip "Modelleri Getir"e bas.',
+    'live_mode_fetch_models_button': 'Modelleri Getir',
+    'live_mode_fetching_models': 'Modeller getiriliyor…',
+    'live_mode_no_models_found':
+        'Bu API anahtarıyla hiç model bulunamadı — anahtarı kontrol et.',
+    'live_mode_model_dropdown_placeholder': 'Bir model seç',
     'live_mode_voice_label': 'Ses (voice_id)',
     'live_mode_base_url_label': 'Base URL',
     'live_mode_base_url_hint': 'http://localhost:8000/v1',
@@ -2846,7 +2851,12 @@ class L10n {
     'live_mode_api_key_hint': 'sk-…',
     'live_mode_model_label': 'Model',
     'live_mode_model_hint_manual':
-        'Enter the model ID manually for now — auto-discovery is coming soon.',
+        'Enter the model ID manually, or enter your API key and tap "Fetch Models".',
+    'live_mode_fetch_models_button': 'Fetch Models',
+    'live_mode_fetching_models': 'Fetching models…',
+    'live_mode_no_models_found':
+        'No models found with this API key — check the key.',
+    'live_mode_model_dropdown_placeholder': 'Select a model',
     'live_mode_voice_label': 'Voice (voice_id)',
     'live_mode_base_url_label': 'Base URL',
     'live_mode_base_url_hint': 'http://localhost:8000/v1',

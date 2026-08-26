@@ -300,6 +300,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Live Mode v2 (see PLAN_live_mode_v2.md)
 	route("/api/livemode/active", s.handleLiveModeActive)
 	route("/api/livemode/engines", s.handleLiveModeEngines)
+	route("/api/livemode/engines/models", s.handleLiveModeEngineModels)
 
 	// OpenRouter
 	route("/api/openrouter/connect", s.requirePermission(s.handleOpenRouterConnect, hasModelsPerm))

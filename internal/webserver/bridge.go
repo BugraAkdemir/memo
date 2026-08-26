@@ -279,6 +279,7 @@ type FullBridge interface {
 	GetLiveModeEngines() []livemode.EngineConfig
 	UpdateLiveModeEngine(cfg livemode.EngineConfig) error
 	DeleteLiveModeEngine(t livemode.EngineType) error
+	ListLiveModeEngineModels(ctx context.Context, t livemode.EngineType, apiKey string) ([]livemode.ModelInfo, error)
 
 	// Orchestra mode
 	GetOrchestraConfig() orchestra.OrchestraConfig

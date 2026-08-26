@@ -1921,6 +1921,27 @@ class MemoApiClient {
     await _dio.delete('/api/livemode/engines', data: {'type': type});
   }
 
+  // ─── Live Mode v2 (Phase 4: live model discovery) ───────────────────
+
+  /// Fetches the live-discovered model list for one engine, straight from
+  /// that provider's own API (server-side — the Flutter client never talks
+  /// to Google/OpenAI/ElevenLabs directly, see PLAN_live_mode_v2.md §3/§5.1).
+  /// Throws if the engine has no discovery endpoint (e.g. "custom").
+  Future<List<LiveModeModelInfo>> listLiveModeEngineModels(
+    String type,
+    String apiKey,
+  ) async {
+    final res = await _dio.post(
+      '/api/livemode/engines/models',
+      data: {'type': type, 'api_key': apiKey},
+    );
+    final body = _guard<Map<String, dynamic>>(res.data);
+    final list = (body['models'] as List<dynamic>?) ?? const [];
+    return list
+        .map((e) => LiveModeModelInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   // ─── Orchestra Mode ───────────────────────────────────────────────
 
   /// Get orchestra config.

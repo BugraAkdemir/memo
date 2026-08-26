@@ -2416,6 +2416,31 @@ func (s *Server) handleLiveModeEngines(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleLiveModeEngineModels: POST {type, api_key} -> {"models": [...]} —
+// live-fetched models for one engine, called from that provider's own API
+// server-side. api_key in the body, not a query param, so it never lands
+// in server access logs. Phase 4 — see docs/plans/PLAN_live_mode_v2.md §5.1.
+func (s *Server) handleLiveModeEngineModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Type   livemode.EngineType `json:"type"`
+		APIKey string              `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	models, err := s.fullBridge.ListLiveModeEngineModels(r.Context(), req.Type, req.APIKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string][]livemode.ModelInfo{"models": models})
+}
+
 // handleLiveModeActive: GET reports the current Live Mode selector
 // (Enabled/ActiveEngine/WorkMode/AgentPermissionPolicy), PUT replaces it.
 // Mirrors handleBrowserSettings/handleWebSearchSettings's shape. Phase 1

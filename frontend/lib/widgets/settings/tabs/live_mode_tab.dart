@@ -212,8 +212,17 @@ class _LiveModeTabState extends ConsumerState<LiveModeTab> {
 /// varying by engine type). Keyed by engineType in the parent's build
 /// (`ValueKey(cfg.activeEngine)`) so switching engines gets a fresh State
 /// with fresh TextEditingControllers instead of stale text from the
-/// previously-selected engine. Model is still a free-text field — Phase 4
-/// replaces it with a live-fetched dropdown (docs/plans/PLAN_live_mode_v2.md).
+/// previously-selected engine.
+///
+/// The Model field starts as free text and becomes a dropdown once
+/// "Fetch Models" successfully returns a live list from that provider's own
+/// API (Phase 4, docs/plans/PLAN_live_mode_v2.md §5.1 — never a hardcoded
+/// list). This is a plain user-triggered one-shot fetch rather than an
+/// ambiently-watched Riverpod provider, so it doesn't need the
+/// authGateBlocked guard pattern other FutureProviders in this file follow
+/// — that pattern exists for state read automatically at screen-open/app-
+/// start time, not a button the user presses well after the auth gate has
+/// resolved.
 class _EngineConfigForm extends ConsumerStatefulWidget {
   const _EngineConfigForm({super.key, required this.engineType});
 
@@ -231,6 +240,10 @@ class _EngineConfigFormState extends ConsumerState<_EngineConfigForm> {
   bool _saving = false;
   bool _initializedFromExisting = false;
 
+  bool _fetchingModels = false;
+  List<LiveModeModelInfo>? _fetchedModels;
+  String? _fetchError;
+
   @override
   void dispose() {
     _apiKeyController.dispose();
@@ -238,6 +251,36 @@ class _EngineConfigFormState extends ConsumerState<_EngineConfigForm> {
     _voiceController.dispose();
     _baseUrlController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchModels() async {
+    if (_fetchingModels) return;
+    setState(() {
+      _fetchingModels = true;
+      _fetchError = null;
+    });
+    try {
+      final models = await ref
+          .read(apiClientProvider)
+          .listLiveModeEngineModels(widget.engineType, _apiKeyController.text.trim());
+      if (!mounted) return;
+      setState(() {
+        _fetchedModels = models;
+        // Keep the current Model value if it's one of the fetched IDs;
+        // otherwise default to the first result so the dropdown always
+        // shows a valid selection rather than an empty one.
+        if (models.isNotEmpty &&
+            !models.any((m) => m.id == _modelController.text)) {
+          _modelController.text = models.first.id;
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _fetchError = FriendlyError.describeGeneric(e));
+      }
+    } finally {
+      if (mounted) setState(() => _fetchingModels = false);
+    }
   }
 
   void _initFrom(LiveModeEngineConfig cfg) {
@@ -358,16 +401,77 @@ class _EngineConfigFormState extends ConsumerState<_EngineConfigForm> {
             ),
             const SizedBox(height: 10),
           ],
-          TextField(
-            controller: _modelController,
-            style: TextStyle(fontSize: 13, color: theme.textMain),
-            decoration: InputDecoration(
-              labelText: L10n.t('live_mode_model_label'),
-              helperText: L10n.t('live_mode_model_hint_manual'),
-              isDense: true,
-              border: const OutlineInputBorder(),
+          if (_fetchedModels != null && _fetchedModels!.isNotEmpty) ...[
+            DropdownButtonFormField<String>(
+              initialValue: _fetchedModels!.any((m) => m.id == _modelController.text)
+                  ? _modelController.text
+                  : _fetchedModels!.first.id,
+              decoration: InputDecoration(
+                labelText: L10n.t('live_mode_model_label'),
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+              items: _fetchedModels!
+                  .map((m) => DropdownMenuItem(
+                        value: m.id,
+                        child: Text(m.displayName.isNotEmpty ? m.displayName : m.id),
+                      ))
+                  .toList(),
+              onChanged: (v) {
+                if (v != null) setState(() => _modelController.text = v);
+              },
             ),
-          ),
+          ] else ...[
+            TextField(
+              controller: _modelController,
+              style: TextStyle(fontSize: 13, color: theme.textMain),
+              decoration: InputDecoration(
+                labelText: L10n.t('live_mode_model_label'),
+                helperText: L10n.t('live_mode_model_hint_manual'),
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+          if (!isCustom) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                OutlinedButton(
+                  onPressed: _fetchingModels ? null : _fetchModels,
+                  child: Text(
+                    _fetchingModels
+                        ? L10n.t('live_mode_fetching_models')
+                        : L10n.t('live_mode_fetch_models_button'),
+                  ),
+                ),
+                if (_fetchingModels) ...[
+                  const SizedBox(width: 12),
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ],
+              ],
+            ),
+            if (!_fetchingModels &&
+                _fetchedModels != null &&
+                _fetchedModels!.isEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                L10n.t('live_mode_no_models_found'),
+                style: TextStyle(fontSize: 12, color: MemoTheme.warningOrange),
+              ),
+            ],
+            if (_fetchError != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                '${L10n.t('error')}: $_fetchError',
+                style: TextStyle(fontSize: 12, color: MemoTheme.red),
+              ),
+            ],
+          ],
           if (isElevenLabs) ...[
             const SizedBox(height: 10),
             TextField(

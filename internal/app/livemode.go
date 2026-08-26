@@ -1,10 +1,14 @@
 package app
 
 import (
+	"context"
 	"fmt"
 
 	"memo/internal/config"
 	"memo/internal/livemode"
+	"memo/internal/livemode/google"
+	"memo/internal/livemode/openai_realtime"
+	"memo/internal/tts"
 )
 
 // liveModeValidEngines/liveModeValidWorkModes/liveModeValidPermissionPolicies
@@ -107,4 +111,51 @@ func (a *App) DeleteLiveModeEngine(t livemode.EngineType) error {
 	}
 	cfgMgr.Delete(t)
 	return nil
+}
+
+// ListLiveModeEngineModels fetches the live model list for one engine type
+// directly from that provider's own API — per docs/plans/PLAN_live_mode_v2.md
+// §5.1's "never hardcode a model list" requirement. "local" and "custom"
+// have no discovery endpoint (custom is an opaque, arbitrary
+// OpenAI-compatible server) and return a clear "not supported" error rather
+// than a fabricated list.
+func (a *App) ListLiveModeEngineModels(ctx context.Context, t livemode.EngineType, apiKey string) ([]livemode.ModelInfo, error) {
+	switch t {
+	case livemode.EngineGoogleLive:
+		models, err := google.ListLiveModels(ctx, apiKey)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]livemode.ModelInfo, 0, len(models))
+		for _, m := range models {
+			out = append(out, livemode.ModelInfo{ID: m.Name, DisplayName: m.DisplayName})
+		}
+		return out, nil
+	case livemode.EngineOpenAIRealtime:
+		models, err := openai_realtime.ListRealtimeModels(ctx, apiKey)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]livemode.ModelInfo, 0, len(models))
+		for _, m := range models {
+			out = append(out, livemode.ModelInfo{ID: m.ID, DisplayName: m.ID})
+		}
+		return out, nil
+	case livemode.EngineElevenLabs:
+		// Reuses internal/tts's existing ElevenLabs discovery (Phase 2) —
+		// same TTS-capable filter ListTTSProviderModels already applies.
+		models, err := tts.ListElevenLabsModels(ctx, apiKey)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]livemode.ModelInfo, 0, len(models))
+		for _, m := range models {
+			if m.CanDoTextToSpeech {
+				out = append(out, livemode.ModelInfo{ID: m.ModelID, DisplayName: m.Name})
+			}
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("model discovery not supported for %q", t)
+	}
 }

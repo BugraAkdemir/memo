@@ -1,3 +1,45 @@
+# Ek (2026-08-26, devam 10) — Live Mode v2 Faz 4 (canlı model keşfi)
+
+**Faz 4 tamamlandı** (`3abbe19`): `internal/livemode/google.ListLiveModels`
+(Google'ın `models.list`'i, `supportedGenerationMethods` içinde
+`bidiGenerateContent` geçenleri filtreliyor) + `internal/livemode/
+openai_realtime.ListRealtimeModels` (OpenAI'nin kendi capability flag'i
+yok, ID'de "realtime" geçenleri filtreliyor — model ID'sini hardcode
+etmeden OpenAI yeni realtime-ailesi modeller çıkardıkça çalışmaya devam
+ediyor). İkisinin de base URL'i test edilebilirlik için `var` (const değil).
+Ortak `livemode.ModelInfo{id, display_name}` şekli — Google'ın "models/…"
+kaynak adı, OpenAI'nin düz ID'si, ElevenLabs'ın model_id'si (Faz 2'nin
+`tts.ListElevenLabsModels`'i buradan da yeniden kullanıldı) hepsi buna
+normalize ediliyor. Yeni `POST /api/livemode/engines/models` (api_key
+body'de). Local/Custom'ın keşif endpoint'i yok, net hata dönüyor.
+
+Frontend: motor config formundaki Model alanı artık "Modelleri Getir"
+butonuyla gerçek bir dropdown'a dönüşüyor (google_live/openai_realtime/
+elevenlabs); keşif başarısız olursa ya da boş dönerse serbest metin
+alanına geri düşüyor. Bilinçli tasarım kararı: bu, ambient olarak
+izlenen bir Riverpod provider'ı değil, kullanıcının tetiklediği tek
+seferlik bir fetch — bu yüzden dosyadaki diğer FutureProvider'ların
+izlediği `authGateBlocked` koruma desenine ihtiyacı yok (o desen
+ekran-açılışında/app-başlangıcında otomatik okunan state için var).
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (yeni google/openai_realtime paketleri httptest ile
+  filtre mantığı + hata durumları test edildi)
+$ flutter analyze lib/ → 5 sorun (önceden kabul edilmiş)
+$ flutter test → 283/283 yeşil
+$ Rule #8 grep → temiz
+```
+
+**Sıradaki:** Faz 5 — Local/ElevenLabs/Custom'ın gerçek ses döngüsüne
+bağlanması (`TranscribeAudio`/`SynthesizeSpeech` aktif motorun
+provider'ı üzerinden dispatch edecek). Bu, Faz 1-5'in tamamıyla Part A'yı
+5 motordan 3'ü için sıfır delegasyon karmaşıklığıyla tam teslim edecek.
+Kullanıcı onayı beklemeden devam ediliyor.
+
+---
+
 # Ek (2026-08-26, devam 9) — Live Mode v2 Faz 3 (internal/livemode + motor seçici UI)
 
 **Faz 3 tamamlandı** (`22f41f8`): yeni `internal/livemode` paketi —

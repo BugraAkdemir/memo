@@ -477,3 +477,10 @@ her ilgili fazda "doğrulanmadı" olarak açıkça belirtilecek, sessizce
   config formu (Model hâlâ serbest metin, WorkMode/AgentPermissionPolicy
   seçicileri native motorlar için görünür). `internal/tts`/`internal/stt`
   senkronizasyonu henüz yok — Faz 5'te.
+- 2026-08-26: Faz 4 tamam (`3abbe19`) — `internal/livemode/google`
+  (`ListLiveModels`, `bidiGenerateContent` filtresi) +
+  `internal/livemode/openai_realtime` (`ListRealtimeModels`, ID'de
+  "realtime" filtresi), `livemode.ModelInfo` ortak şekli, ElevenLabs için
+  Faz 2'nin keşif fonksiyonu yeniden kullanıldı. Yeni `POST
+  /api/livemode/engines/models`. Flutter'da "Modelleri Getir" butonu →
+  serbest metin alanı gerçek dropdown'a dönüşüyor.

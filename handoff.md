@@ -1,3 +1,57 @@
+# Ek (2026-08-26, devam 8) — Live Mode v2 Faz 2 (internal/stt + TTS ElevenLabs/Custom)
+
+Kullanıcı "sorma, faz 2 3 4 kaç faz varsa yap, durma, AGENTS.md kurallarına
+uy, faz bitişlerinde handoff.md'yi güncelle" dedi — bu oturumdan itibaren
+onay beklemeden fazlar art arda ilerletiliyor.
+
+**Faz 2 tamamlandı** (`69a9dfe`, `docs/plans/PLAN_live_mode_v2.md`'nin Faz
+2'si): yeni `internal/stt` paketi (`internal/tts`'in birebir eşleniği —
+STT'nin ilk kez bir provider-soyutlama katmanına kavuşması; whisper.cpp'ye
+hiç dokunulmadı, aynen dışarıda kaldı), ElevenLabs (`POST
+/v1/speech-to-text`, multipart, `model_id=scribe_v1`) + Custom (`POST
+{base_url}/audio/transcriptions`, OpenAI Whisper-API uyumlu) STT
+provider'ları. `internal/tts`'in önceden stub olan ElevenLabs'i tamamlandı
+(`POST /v1/text-to-speech/{voice_id}?output_format=wav_24000` — ElevenLabs'ın
+doğrudan wav çıktısı desteklediği bu oturumda doğrulandı, manuel PCM→WAV
+sarmalamaya gerek kalmadı) + yeni Custom TTS provider'ı; ikisi de
+`tts.ProviderConfig`'e yeni `BaseURL` alanı gerektirdi.
+
+Canlı model/ses keşfi eklendi (`GET /v1/models` `can_do_text_to_speech`
+filtreli, `GET /v1/voices`) — `App.ListTTSProviderModels`/
+`ListTTSProviderVoices` + yeni `POST /api/tts/providers/models`/`voices`
+endpoint'leri (api_key body'de, query param'da değil — sunucu loglarına
+düşmesin diye). OpenAI/Custom'ın kendi keşif endpoint'i yok, net "not
+supported" hatası dönüyor, uydurma liste yok. `/api/stt/providers` CRUD
+eklendi, `FullBridge` + `swarmStubBridge` test double'ı genişletildi.
+
+Önceden "ElevenLabs implement edilmemiş, atlanmalı" varsayımıyla yazılmış
+`TestRouterUpdateConfigsSkipsInvalidAndUnimplemented` testi artık yanlış
+öncülden hareket ediyordu (ElevenLabs şimdi gerçekten inşa ediliyor) —
+yeniden yazıldı. Her yeni HTTP çağrı noktası için httptest kapsamı eklendi
+(request şekli, header'lar, hata durumları) + keşif fonksiyonlarının
+JSON parse/filtre mantığı.
+
+Frontend'e henüz dokunulmadı — model/ses dropdown'ları Faz 3/4'te.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (internal/stt yeni: router/config/provider testleri yeşil,
+  internal/tts: yeni elevenlabs/custom/discovery testleri + güncellenen
+  router testi yeşil)
+```
+
+**Eksik/doğrulanamayan:** Bu ortamda gerçek ElevenLabs/OpenAI API key'i
+yok — her yeni HTTP çağrı noktası sadece httptest ile doğrulandı, gerçek
+API'ye karşı asla.
+
+**Sıradaki:** Faz 3 — `internal/livemode` iskeleti + motor config CRUD
+(henüz realtime oturum yok), Flutter'da tam motor seçici + config
+formları (model/ses alanları için şimdilik placeholder). Kullanıcı onayı
+beklemeden devam ediliyor.
+
+---
+
 # Ek (2026-08-26, devam 7) — Live Mode v2 planı + Faz 0/1 (config mezuniyeti)
 
 Kullanıcının büyük yeni isteği: Live Mode beta'dan çıkıp kendi Ayarlar

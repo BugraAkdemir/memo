@@ -462,4 +462,12 @@ her ilgili fazda "doğrulanmadı" olarak açıkça belirtilecek, sessizce
 ## Durum
 
 - 2026-08-26: Plan onaylandı, `feature/live-mode-v2` branch'i açıldı, bu
-  dosya yazıldı. Faz 0 tamam. Faz 1'e başlanacak.
+  dosya yazıldı. Faz 0 tamam.
+- 2026-08-26: Faz 1 tamam (backend `bb1d7fe`, frontend `d311d34`) — config
+  mezuniyeti, yeni "Sesli Mod" sekmesi, beta kapısı kaldırıldı.
+- 2026-08-26: Faz 2 tamam (`69a9dfe`) — `internal/stt` paketi (ElevenLabs +
+  Custom STT), `internal/tts`'in ElevenLabs/Custom stub'ları tamamlandı,
+  `GET /v1/models`+`GET /v1/voices` canlı keşif + `/api/tts/providers/
+  models`/`voices` endpoint'leri, `/api/stt/providers` CRUD. Tüm yeni HTTP
+  çağrı noktaları httptest ile doğrulandı (gerçek API key yok). Frontend
+  tarafına henüz dokunulmadı — model/ses dropdown'ları Faz 3/4'te.

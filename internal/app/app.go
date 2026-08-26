@@ -155,9 +155,16 @@ type App struct {
 	sttRouterMu          sync.RWMutex
 	liveModeEngineCfgMgr *livemode.ConfigManager
 	liveModeMu           sync.RWMutex
-	webServer            *webserver.Server
-	webMu                sync.RWMutex
-	modelStore           *modelstore.Store
+	// Live Mode delegation (Phase 9, PLAN_live_mode_v2.md §4) — deliberately
+	// separate locks from liveModeMu (config) and a.streamMu (interactive
+	// chat streaming): see livemode_delegate.go's doc comments.
+	liveModeChatID string
+	liveModeChatMu sync.Mutex
+	liveJobsMu     sync.Mutex
+	liveJobs       map[string]context.CancelFunc
+	webServer      *webserver.Server
+	webMu          sync.RWMutex
+	modelStore     *modelstore.Store
 
 	waClient         *whatsapp.Client
 	waMsgStore       *whatsapp.Store

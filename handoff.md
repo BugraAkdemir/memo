@@ -1,3 +1,94 @@
+# Ek (2026-08-26, devam 18) — Live Mode v2: gerçek testte bulunan 4 hata düzeltildi ("Faz 14")
+
+Kullanıcı branch'i `scripts/run_memo.sh` ile gerçek uygulamada test etti
+(Google Live seçip konuşmayı denedi) ve dört gerçek hata buldu. Hepsi
+düzeltildi, doğrulandı, commit'lendi (`c757a80`, `bc2d0b2`, `f4d74b0`,
+`cabfd1a`).
+
+**En önemlisi — asıl özelliğin kendisi hiç çalışmıyordu:**
+`chat_input.dart`'taki ses butonu, Ayarlar'da hangi motor seçilirse
+seçilsin HEP eski `voiceModeProvider` (yerel VAD → `transcribeAudio()` →
+sohbet → `synthesizeSpeech()`) döngüsünü kullanıyordu. Google Live/OpenAI
+Realtime için inşa edilen tüm native WebSocket oturumu
+(`liveRealtimeSessionProvider`, Faz 6-12) **hiçbir yerden çağrılmıyordu** —
+UI'dan tamamen erişilemez, ölü koddu. Kullanıcı Google Live seçip
+konuştuğunda aslında hâlâ local whisper.cpp'nin sesi anlamaya çalıştığını
+gördük (log'da `lang = auto`, `auto-detected language: es` — Türkçe kısa
+cümleyi İspanyolca sanıp saçma çeviriyordu, kullanıcının ekranda gördüğü
+Devanagari/anlamsız çıktının gerçek sebebi buydu). Sebep: Faz 6'nın kendi
+yorum satırı "mikrofon/oynatma bağlama Faz 7/8'de gelecek" diye açıkça not
+düşmüştü ama Faz 7/8 sadece backend client'larını genişletti, Flutter
+tarafına hiç dönülmedi.
+
+**Düzeltme** (`cabfd1a`, en büyük commit):
+- `chat_input.dart` artık aktif motora göre dallanıyor:
+  google_live/openai_realtime → yeni native-oturum butonu
+  (`liveRealtimeSessionProvider`); geri kalanı (local/elevenlabs/custom)
+  eski akışta değişmeden kalıyor.
+- `LiveRealtimeSessionNotifier` artık gerçek sesi iki yönde de sahipleniyor:
+  `DuplexAudioEngine` ile mikrofon yakalama (örnekleme hızı artık
+  yapılandırılabilir — Google Live 16kHz, OpenAI Realtime 24kHz, eskiden
+  16000'e sabitliydi), yakalanan sesi WS'ye sürekli akıtıyor; gelen sesi
+  yeni `LiveModePcmPlayer` ile çalıyor.
+- `LiveModePcmPlayer` (yeni dosya): `WavPlayer`'ın aksine (her klip için
+  ayrı dosya + ayrı subprocess) kalıcı bir `paplay --raw`/`aplay -t raw`
+  subprocess'i, stdin'e sürekli PCM akıtarak — küçük gerçek-zamanlı ses
+  parçaları için process-başına-spawn yaklaşımı kopukluk yaratırdı.
+  **Şimdilik sadece Linux** — `afplay`/PowerShell `SoundPlayer`'ın stdin'den
+  akış modu belgeli değil, tahmin etmek yerine macOS/Windows'ta açık bir
+  `UnsupportedError` fırlatıyor (FriendlyError üzerinden kullanıcıya
+  görünür).
+- WS metin çerçevelerini ayrıştıran `LiveModeSessionControlFrame.fromJson`
+  eklendi; hata çerçeveleri artık genel hata toast'ına ulaşıyor (`_setError`
+  — eskiden `state.error`'ı hiçbir UI okumuyordu).
+- Yeni L10n anahtarları (TR+EN, kural #8): `live_realtime_start/stop/
+  state_connecting/state_connected`.
+
+**Diğer üç düzeltme:**
+1. **Google Live model listesi sayfalama** (`c757a80`,
+   `internal/livemode/google/models.go`): `models.list` sayfalıyor
+   (`nextPageToken`), eski kod sadece ilk sayfayı okuyordu — bazı live
+   modeller listeden düşüyordu. Artık `nextPageToken` boşalana kadar
+   döngüyle takip ediliyor, token URL-escape'leniyor. Regresyon testi
+   eklendi (iki sayfalı sahte sunucu).
+2. **Ham hata metni kullanıcıya dökülüyordu** (`bc2d0b2`): kullanıcının
+   gördüğü "DioException [bad response]: This exception was thrown..."
+   duvarı — `live_mode_controller.dart` ve `live_realtime_session_provider.dart`
+   commit `d26ad80`'in ~170 site'lık denetiminden kaçmış iki nokta. İkisi
+   de artık `FriendlyError.describeGeneric` üzerinden geçiyor.
+3. **`.gitignore` eksikliği** (`f4d74b0`): `data/tts_providers.json`,
+   `data/stt_providers.json`, `data/livemode_engines.json` — üçü de
+   şifreli API key'leri tutuyor (`data/providers.json` gibi) ama hiçbiri
+   `.gitignore`'da değildi. Kullanıcının kendi test config'i
+   (`data/livemode_engines.json`) untracked dosya olarak ortaya çıkınca
+   fark edildi. Düzeltildi, dosya commit'e girmedi (silinmedi de —
+   kullanıcının kendi gerçek local config'i, sadece artık doğru şekilde
+   git'in dışında).
+
+**Doğrulama:**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race   → yeşil
+$ flutter analyze lib/ test/   → temiz (5 önceden var olan, ilgisiz info)
+$ flutter test   → 298 test, hepsi yeşil
+```
+
+**Hâlâ dürüstçe doğrulanamayan/bilinen sınırlar:**
+- Gerçek Google Live bağlantısıyla uçtan uca hâlâ test edilmedi bu
+  oturumda — kullanıcının şimdi tekrar denemesi lazım, artık gerçek
+  native oturum açılacak (önceki gibi sessizce local whisper'a
+  düşmeyecek).
+- Sesli oynatma sadece Linux'ta çalışıyor — macOS/Windows için ayrı bir
+  iş kalemi.
+- Google Live'ın transkripsiyon dili için özel bir dil kodu hâlâ
+  gönderilmiyor — ama artık gerçek sorunun (whisper.cpp yanlış motor
+  kullanımı) düzeltilmiş olması bunu gereksiz kılmış olabilir; kullanıcı
+  tekrar test edip hâlâ garip çıktı görürse o zaman bakılacak.
+
+**Sıradaki:** Kullanıcının branch'i tekrar test etmesi — özellikle Google
+Live ile gerçek bir konuşma denemesi. Sorun çıkarsa devam edilecek.
+
+---
+
 # Ek (2026-08-26, devam 17) — Live Mode v2 TAMAMLANDI (Faz 0-13, `feature/live-mode-v2`)
 
 **Tüm plan bitti.** `docs/plans/PLAN_live_mode_v2.md`'nin 0-13 fazlarının

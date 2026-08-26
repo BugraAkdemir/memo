@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
 	"memo/internal/agent"
 	"memo/internal/livemode"
 	"memo/internal/livemode/google"
 	"memo/internal/livemode/openai_realtime"
+	"memo/internal/logx"
 	"memo/internal/memory"
 )
 
@@ -43,18 +46,44 @@ func (a *App) NewLiveModeSession(ctx context.Context) livemode.Session {
 		return livemode.NewEchoSession()
 	}
 
+	// injectFn is set below, once the real client exists. The tool-call
+	// handler (built now, since NewClient needs it) must be able to call
+	// InjectContext for voice-based permission questions, but the client
+	// that owns InjectContext doesn't exist yet — a chicken-and-egg cycle.
+	// This forward-reference closure breaks it safely: injectContext is
+	// only ever invoked from a tool call the live model itself makes, which
+	// can't happen until well after Start() returns and injectFn is set
+	// below.
+	var injectFn func(string) error
+	injectContext := func(text string) error {
+		if injectFn == nil {
+			return fmt.Errorf("live mode: session not ready yet")
+		}
+		return injectFn(text)
+	}
+
 	tools := a.buildLiveModeToolList(cfg.WorkMode)
-	handler := a.buildLiveModeToolCallHandler(cfg.WorkMode, sessionID)
+	handler := a.buildLiveModeToolCallHandler(cfg.WorkMode, sessionID, injectContext)
 	systemPrompt := a.buildLiveModeSystemPrompt(ctx, cfg.WorkMode)
 
+	var session livemode.Session
 	switch engineType {
 	case livemode.EngineGoogleLive:
-		return google.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler)
+		client := google.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler)
+		injectFn = client.InjectContext
+		session = client
 	case livemode.EngineOpenAIRealtime:
-		return openai_realtime.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler)
+		client := openai_realtime.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler)
+		injectFn = client.InjectContext
+		session = client
 	default:
 		return livemode.NewEchoSession()
 	}
+
+	// Wraps the real session so a spoken transcript can also resolve a
+	// pending voice_prompt permission question, in addition to reaching the
+	// Flutter client for normal display — see livemode_session_wrapper.go.
+	return a.wrapLiveModeSessionForPermissionRouting(session)
 }
 
 func (a *App) findLiveModeEngineConfig(t livemode.EngineType) (livemode.EngineConfig, bool) {
@@ -97,8 +126,12 @@ func (a *App) buildLiveModeToolList(workMode string) []livemode.ToolSpec {
 // agent.Executor.ExecuteToolCall for "standalone". sessionID (the Live
 // Mode background chat) is used for standalone's audit-log entries, the
 // same sessionID RunStream would pass for a normal agent-mode turn.
-func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string) livemode.ToolCallHandler {
+// injectContext is the (possibly not-yet-ready, see NewLiveModeSession's
+// forward-reference closure) session InjectContext used to ask a
+// voice_prompt permission question out loud.
+func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectContext func(string) error) livemode.ToolCallHandler {
 	autoApprove := a.GetLiveModeConfig().AgentPermissionPolicy == "auto_allow_once"
+	buildQuestion, sendQuestion, awaitAnswer := a.liveModeVoicePermissionCallbacks(injectContext)
 
 	if workMode == "standalone" {
 		return func(ctx context.Context, name string, args json.RawMessage) (string, error) {
@@ -106,15 +139,19 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string) livemode.
 				return "", fmt.Errorf("agent executor not initialized")
 			}
 			onEvent := func(ev agent.AgentEvent) {
-				// autoApprove mirrors "auto_allow_once": resolve the
-				// request synchronously, in the same callback ExecuteToolCall
-				// invokes it from, rather than touching the shared
-				// a.agentExecutor.bypassPermissions/autoPermission fields
-				// (see SendLiveDelegatedMessageStream's doc comment for why
-				// that shared state must never be touched here).
-				if ev.Type == agent.EventPermissionRequest && autoApprove {
-					_ = a.HandleAgentPermission(ev.RequestID, string(agent.AllowOnce))
+				if ev.Type != agent.EventPermissionRequest {
+					return
 				}
+				// Must run in its own goroutine, never resolved inline
+				// here: ExecuteToolCall calls onEvent synchronously,
+				// strictly before it registers this request in
+				// e.pendingPerms (its very next statement) — resolving on
+				// this same goroutine would either lose an immediate
+				// autoApprove answer to that ordering, or (for
+				// voice_prompt, which blocks for seconds asking and
+				// awaiting a spoken answer) deadlock the registration
+				// entirely. See resolveLivePermission's doc comment.
+				go a.resolveLivePermission(ev, autoApprove, buildQuestion, sendQuestion, awaitAnswer)
 			}
 			return a.agentExecutor.ExecuteToolCall(ctx, sessionID, name, args, onEvent)
 		}
@@ -131,22 +168,79 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string) livemode.
 			return "", fmt.Errorf("delegate_to_main_model: missing instruction")
 		}
 		ch := a.SendLiveDelegatedMessageStream(ctx, parsed.Instruction)
-		buildQuestion, sendQuestion, awaitAnswer := a.liveModeVoicePermissionCallbacks()
 		return a.drainLiveDelegatedReply(ch, autoApprove, buildQuestion, sendQuestion, awaitAnswer), nil
 	}
 }
 
+// resolveLivePermission resolves one EventPermissionRequest — shared by
+// standalone mode's onEvent (see buildLiveModeToolCallHandler; always
+// called in its own goroutine there, for the ordering reason documented at
+// that call site). autoApprove mirrors "auto_allow_once": resolved directly
+// via HandleAgentPermission rather than touching the shared
+// a.agentExecutor.bypassPermissions/autoPermission fields (see
+// SendLiveDelegatedMessageStream's doc comment for why that shared state
+// must never be touched here). The short retry loop closes the residual
+// race between "this goroutine got scheduled" and "ExecuteToolCall's own
+// goroutine finished registering the request" — the same shape of race the
+// WhatsApp/Telegram self-chat path already tolerates via its SSE-channel
+// handoff (selfchat_permission.go), made explicit here since standalone
+// mode has no channel handoff to lean on for the same natural delay.
+// Otherwise (voice_prompt, the default), mirrors resolveSelfChatPermission
+// exactly: ask out loud via sendQuestion, wait up to 45s for a transcribed
+// answer, resolve Allow/Deny by isAffirmativeAnswer.
+func (a *App) resolveLivePermission(
+	ev agent.AgentEvent,
+	autoApprove bool,
+	buildQuestion func(ev agent.AgentEvent) string,
+	sendQuestion func(text string) error,
+	awaitAnswer func(ctx context.Context) (string, bool),
+) {
+	if autoApprove {
+		for i := 0; i < 20; i++ {
+			if err := a.HandleAgentPermission(ev.RequestID, string(agent.AllowOnce)); err == nil {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		return
+	}
+
+	if err := sendQuestion(buildQuestion(ev)); err != nil {
+		logx.Printf("live mode permission: send question error: %v", err)
+		_ = a.HandleAgentPermission(ev.RequestID, string(agent.DenyOnce))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	answer, ok := awaitAnswer(ctx)
+	if !ok {
+		return
+	}
+
+	policy := agent.DenyOnce
+	if isAffirmativeAnswer(answer) {
+		policy = agent.AllowOnce
+	}
+	_ = a.HandleAgentPermission(ev.RequestID, string(policy))
+}
+
 // liveModeVoicePermissionCallbacks are the buildQuestion/sendQuestion/
-// awaitAnswer callbacks drainLiveDelegatedReply uses when
-// AgentPermissionPolicy is "voice_prompt" (the default) rather than
-// "auto_allow_once". The real "ask out loud through the open realtime
-// session, transcribe the spoken answer" implementation is Phase 12 —
-// until then, sendQuestion fails on purpose, which drainSelfChatReply
-// (what drainLiveDelegatedReply wraps) already treats as "deny safely, do
-// not hang waiting for an answer that has no way to arrive" — exactly the
-// same fail-safe behavior TestDrainSelfChatReply_SendQuestionFailure
-// documents.
-func (a *App) liveModeVoicePermissionCallbacks() (
+// awaitAnswer callbacks drainLiveDelegatedReply/resolveLivePermission use
+// when AgentPermissionPolicy is "voice_prompt" (the default) rather than
+// "auto_allow_once": ask out loud by injecting the question as a text aside
+// into the open realtime session (injectContext — see NewLiveModeSession's
+// forward-reference closure, which is what makes this safe to call even
+// though the client that ultimately serves it doesn't exist yet at the
+// point this function is called), then block on awaitLivePermissionAnswer
+// for whatever transcript arrives next (routed there by
+// routeLiveTranscriptToPermissionAnswer — see livemode_session_wrapper.go).
+// If injectContext is still unready (session genuinely never started, or
+// this is called before Start() completes), sendQuestion fails, which
+// drainSelfChatReply/resolveLivePermission already treat as "deny safely,
+// do not hang waiting for an answer that has no way to arrive" — the same
+// fail-safe behavior TestDrainSelfChatReply_SendQuestionFailure documents.
+func (a *App) liveModeVoicePermissionCallbacks(injectContext func(text string) error) (
 	buildQuestion func(ev agent.AgentEvent) string,
 	sendQuestion func(text string) error,
 	awaitAnswer func(ctx context.Context) (string, bool),
@@ -157,11 +251,61 @@ func (a *App) liveModeVoicePermissionCallbacks() (
 			fmt.Sprintf("Permission needed: I'd like to run the %q tool. Do you approve?", ev.ToolName),
 		)
 	}
-	sendQuestion = func(string) error {
-		return fmt.Errorf("voice-based permission prompting is not implemented yet")
+	sendQuestion = func(text string) error {
+		if injectContext == nil {
+			return fmt.Errorf("live mode: no active session to ask permission through")
+		}
+		return injectContext(text)
 	}
-	awaitAnswer = func(context.Context) (string, bool) { return "", false }
+	awaitAnswer = a.awaitLivePermissionAnswer
 	return
+}
+
+// awaitLivePermissionAnswer blocks until routeLiveTranscriptToPermissionAnswer
+// delivers the next transcript, or ctx is done. See livePermMu/
+// livePendingPermAnswerCh's doc comment (app.go) and
+// awaitWhatsAppPermissionAnswer, which this mirrors minus the chatJID match
+// (Live Mode only ever has one active session at a time).
+func (a *App) awaitLivePermissionAnswer(ctx context.Context) (string, bool) {
+	answerCh := make(chan string, 1)
+	a.livePermMu.Lock()
+	a.livePendingPermAnswerCh = answerCh
+	a.livePermMu.Unlock()
+	defer func() {
+		a.livePermMu.Lock()
+		if a.livePendingPermAnswerCh == answerCh {
+			a.livePendingPermAnswerCh = nil
+		}
+		a.livePermMu.Unlock()
+	}()
+
+	select {
+	case ans := <-answerCh:
+		return ans, true
+	case <-ctx.Done():
+		return "", false
+	}
+}
+
+// routeLiveTranscriptToPermissionAnswer delivers text to an outstanding
+// voice_prompt permission question, if one is currently pending — called
+// from the session wrapper's event pump for every EventTranscript (see
+// livemode_session_wrapper.go). Reports whether a question was pending, for
+// symmetry with routeWhatsAppPermissionAnswer's contract; the wrapper
+// forwards the transcript event to the outward channel either way; the
+// caller's boolean return isn't currently used to suppress display.
+func (a *App) routeLiveTranscriptToPermissionAnswer(text string) bool {
+	a.livePermMu.Lock()
+	answerCh := a.livePendingPermAnswerCh
+	a.livePermMu.Unlock()
+	if answerCh == nil {
+		return false
+	}
+	select {
+	case answerCh <- strings.TrimSpace(text):
+	default:
+	}
+	return true
 }
 
 // buildLiveModeSystemPrompt builds a native realtime session's one-time,

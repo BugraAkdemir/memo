@@ -96,6 +96,9 @@ func TestClient_SendsSetupMessageOnStart(t *testing.T) {
 		if setup.SystemInstruction == nil || setup.SystemInstruction.Parts[0].Text != "You are Memo's live voice." {
 			t.Errorf("expected systemInstruction to carry the given text, got %+v", setup.SystemInstruction)
 		}
+		if setup.InputAudioTranscription == nil || setup.OutputAudioTranscription == nil {
+			t.Error("expected input/output audio transcription to always be enabled in setup")
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for setup message on the server side")
 	}
@@ -182,6 +185,100 @@ func TestClient_EmitsAudioOutFromServerContent(t *testing.T) {
 		}
 		if string(ev.Audio) != "reply-pcm-bytes" {
 			t.Errorf("expected decoded reply audio, got %q", ev.Audio)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the audio_out event")
+	}
+}
+
+// TestClient_EmitsTranscriptFromInputTranscription confirms readLoop parses
+// serverContent.inputTranscription (the user-speech transcript — see
+// serverContent's doc comment on the nesting-location ambiguity this
+// package took a stance on) into an EventTranscript, independent of
+// whether that same server message also carries a modelTurn audio part.
+func TestClient_EmitsTranscriptFromInputTranscription(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil { // consume setup
+			return
+		}
+		serverMsg := serverMessage{ServerContent: &serverContent{
+			InputTranscription: &transcriptionText{Text: "kapıyı kilitle"},
+		}}
+		payload, _ := json.Marshal(serverMsg)
+		c.Write(ctx, websocket.MessageText, payload)
+		<-ctx.Done()
+	}))
+	defer srv.Close()
+	original := SessionBaseURL
+	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("g-key", "models/gemini-3.1-flash-live-preview", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case ev := <-c.Events():
+		if ev.Type != livemode.EventTranscript {
+			t.Fatalf("expected a transcript event, got %s (err=%v)", ev.Type, ev.Err)
+		}
+		if ev.Transcript != "kapıyı kilitle" {
+			t.Errorf("expected the transcript text to round-trip, got %q", ev.Transcript)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the transcript event")
+	}
+}
+
+// TestClient_EmptyInputTranscriptionEmitsNoEvent confirms an empty (but
+// present) InputTranscription doesn't produce a spurious empty-string
+// EventTranscript.
+func TestClient_EmptyInputTranscriptionEmitsNoEvent(t *testing.T) {
+	audioB64 := base64.StdEncoding.EncodeToString([]byte("reply-pcm-bytes"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil { // consume setup
+			return
+		}
+		serverMsg := serverMessage{ServerContent: &serverContent{
+			InputTranscription: &transcriptionText{Text: ""},
+			ModelTurn: &modelTurn{Parts: []serverPart{{InlineData: &inlineData{
+				MimeType: "audio/pcm;rate=24000",
+				Data:     audioB64,
+			}}}},
+		}}
+		payload, _ := json.Marshal(serverMsg)
+		c.Write(ctx, websocket.MessageText, payload)
+		<-ctx.Done()
+	}))
+	defer srv.Close()
+	original := SessionBaseURL
+	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("g-key", "models/gemini-3.1-flash-live-preview", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case ev := <-c.Events():
+		if ev.Type != livemode.EventAudioOut {
+			t.Errorf("expected the first (only) event to be audio_out, not a spurious empty transcript; got %s", ev.Type)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for the audio_out event")

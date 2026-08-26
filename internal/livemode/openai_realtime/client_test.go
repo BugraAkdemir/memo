@@ -133,6 +133,9 @@ func TestClient_SendsSessionUpdateOnStart(t *testing.T) {
 		if update.Session.Audio == nil || update.Session.Audio.Input == nil || update.Session.Audio.Input.Format.Rate != inputSampleRateHz {
 			t.Errorf("expected audio.input.format.rate=%d, got %+v", inputSampleRateHz, update.Session.Audio)
 		}
+		if update.Session.Audio.Input.Transcription == nil || update.Session.Audio.Input.Transcription.Model != "whisper-1" {
+			t.Errorf("expected audio.input.transcription={model:whisper-1} to always be enabled, got %+v", update.Session.Audio.Input.Transcription)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for session.update on the server side")
 	}
@@ -242,6 +245,89 @@ func TestClient_IgnoresUnrelatedServerEventTypes(t *testing.T) {
 	select {
 	case ev := <-c.Events():
 		t.Fatalf("expected no event for an unrelated server event type, got %+v", ev)
+	case <-time.After(300 * time.Millisecond):
+		// expected: nothing arrives
+	}
+}
+
+// TestClient_EmitsTranscriptFromInputTranscriptionCompleted confirms
+// readLoop parses conversation.item.input_audio_transcription.completed
+// (the user-speech transcript) into an EventTranscript.
+func TestClient_EmitsTranscriptFromInputTranscriptionCompleted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil { // consume session.update
+			return
+		}
+		payload, _ := json.Marshal(serverEvent{
+			Type:       serverEventInputTranscriptionComplete,
+			Transcript: "kapıyı kilitle",
+		})
+		c.Write(ctx, websocket.MessageText, payload)
+		<-ctx.Done()
+	}))
+	defer srv.Close()
+
+	original := SessionBaseURL
+	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case ev := <-c.Events():
+		if ev.Type != livemode.EventTranscript {
+			t.Fatalf("expected a transcript event, got %s (err=%v)", ev.Type, ev.Err)
+		}
+		if ev.Transcript != "kapıyı kilitle" {
+			t.Errorf("expected the transcript text to round-trip, got %q", ev.Transcript)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the transcript event")
+	}
+}
+
+// TestClient_EmptyTranscriptionCompletedEmitsNoEvent confirms an empty
+// transcript field doesn't produce a spurious empty-string EventTranscript.
+func TestClient_EmptyTranscriptionCompletedEmitsNoEvent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil {
+			return
+		}
+		payload, _ := json.Marshal(serverEvent{Type: serverEventInputTranscriptionComplete, Transcript: ""})
+		c.Write(ctx, websocket.MessageText, payload)
+		<-ctx.Done()
+	}))
+	defer srv.Close()
+
+	original := SessionBaseURL
+	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case ev := <-c.Events():
+		t.Fatalf("expected no event for an empty transcript, got %+v", ev)
 	case <-time.After(300 * time.Millisecond):
 		// expected: nothing arrives
 	}

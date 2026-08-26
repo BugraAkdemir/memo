@@ -162,9 +162,17 @@ type App struct {
 	liveModeChatMu sync.Mutex
 	liveJobsMu     sync.Mutex
 	liveJobs       map[string]context.CancelFunc
-	webServer      *webserver.Server
-	webMu          sync.RWMutex
-	modelStore     *modelstore.Store
+	// livePermMu/livePendingPermAnswerCh: while non-nil, the next transcript
+	// routed via routeLiveTranscriptToPermissionAnswer is treated as the
+	// spoken answer to an outstanding voice_prompt permission question
+	// rather than ordinary conversation — mirrors waPendingPermAnswerCh/
+	// waPendingPermChatJID, minus the chatJID match since Live Mode only
+	// ever has one active session at a time. See livemode_session_wrapper.go.
+	livePermMu              sync.Mutex
+	livePendingPermAnswerCh chan string
+	webServer               *webserver.Server
+	webMu                   sync.RWMutex
+	modelStore              *modelstore.Store
 
 	waClient         *whatsapp.Client
 	waMsgStore       *whatsapp.Store

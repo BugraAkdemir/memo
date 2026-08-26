@@ -53,6 +53,17 @@ type sessionAudio struct {
 
 type sessionAudioInput struct {
 	Format *audioFormat `json:"format,omitempty"`
+	// Transcription: confirmed shape (current API docs, 2026-08-26) —
+	// {"model":"whisper-1"} enables ASR transcripts of the user's speech via
+	// conversation.item.input_audio_transcription.completed events, so
+	// EventTranscript is available for Live Mode's voice-based permission
+	// prompting (Phase 12) and future mid-session memory refresh. Always
+	// enabled by this package, mirroring google.Client's InputAudioTranscription.
+	Transcription *audioTranscriptionConfig `json:"transcription,omitempty"`
+}
+
+type audioTranscriptionConfig struct {
+	Model string `json:"model"`
 }
 
 type sessionAudioOutput struct {
@@ -120,16 +131,18 @@ type messageContentPart struct {
 // matching, the same defensive "unknown/irrelevant message is not fatal"
 // stance google.Client's readLoop takes.
 type serverEvent struct {
-	Type      string `json:"type"`
-	Delta     string `json:"delta,omitempty"`
-	CallID    string `json:"call_id,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Arguments string `json:"arguments,omitempty"`
+	Type       string `json:"type"`
+	Delta      string `json:"delta,omitempty"`
+	CallID     string `json:"call_id,omitempty"`
+	Name       string `json:"name,omitempty"`
+	Arguments  string `json:"arguments,omitempty"`
+	Transcript string `json:"transcript,omitempty"`
 }
 
 const (
-	serverEventAudioDelta           = "response.output_audio.delta"
-	serverEventFunctionCallArgsDone = "response.function_call_arguments.done"
+	serverEventAudioDelta                 = "response.output_audio.delta"
+	serverEventFunctionCallArgsDone       = "response.function_call_arguments.done"
+	serverEventInputTranscriptionComplete = "conversation.item.input_audio_transcription.completed"
 )
 
 // ─── Client ───────────────────────────────────────────────────────────
@@ -193,7 +206,7 @@ func (c *Client) Start(ctx context.Context) error {
 			OutputModalities: []string{"audio"},
 			Instructions:     c.instructions,
 			Audio: &sessionAudio{
-				Input:  &sessionAudioInput{Format: &audioFormat{Type: "audio/pcm", Rate: inputSampleRateHz}},
+				Input:  &sessionAudioInput{Format: &audioFormat{Type: "audio/pcm", Rate: inputSampleRateHz}, Transcription: &audioTranscriptionConfig{Model: "whisper-1"}},
 				Output: &sessionAudioOutput{Format: &audioFormat{Type: "audio/pcm"}},
 			},
 		},
@@ -291,6 +304,15 @@ func (c *Client) readLoop() {
 		case serverEventFunctionCallArgsDone:
 			go c.runToolCall(ev)
 			continue
+		case serverEventInputTranscriptionComplete:
+			if ev.Transcript == "" {
+				continue
+			}
+			select {
+			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Transcript: ev.Transcript}:
+			case <-c.ctx.Done():
+				return
+			}
 		case serverEventAudioDelta:
 			if ev.Delta == "" {
 				continue

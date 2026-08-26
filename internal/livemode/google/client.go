@@ -39,6 +39,13 @@ type setupMessage struct {
 	ResponseModalities []string           `json:"responseModalities"`
 	SystemInstruction  *systemInstruction `json:"systemInstruction,omitempty"`
 	Tools              []setupTool        `json:"tools,omitempty"`
+	// InputAudioTranscription/OutputAudioTranscription: an empty object
+	// enables ASR transcripts for that direction (confirmed shape, current
+	// API docs, 2026-08-26) — always enabled by this package so
+	// EventTranscript is available for Live Mode's voice-based permission
+	// prompting (Phase 12) and future mid-session memory refresh.
+	InputAudioTranscription  *struct{} `json:"inputAudioTranscription,omitempty"`
+	OutputAudioTranscription *struct{} `json:"outputAudioTranscription,omitempty"`
 }
 
 type setupTool struct {
@@ -98,10 +105,25 @@ type functionResponse struct {
 	Response map[string]interface{} `json:"response"`
 }
 
+// serverContent.InputTranscription/OutputTranscription: nested here rather
+// than as top-level serverMessage fields — the current docs handed
+// genuinely inconsistent signals on this point (a general BidiGenerateContent
+// message-shape overview suggested top-level, but transcription-specific
+// examples showed response.server_content.input_transcription nested).
+// Went with nesting inside serverContent since that's what the
+// transcription-specific sources actually demonstrated; if a live session
+// shows otherwise, this is the one line to fix (see runToolCall's sibling
+// note on the same kind of ambiguity risk).
 type serverContent struct {
-	ModelTurn    *modelTurn `json:"modelTurn,omitempty"`
-	TurnComplete bool       `json:"turnComplete,omitempty"`
-	Interrupted  bool       `json:"interrupted,omitempty"`
+	ModelTurn           *modelTurn         `json:"modelTurn,omitempty"`
+	TurnComplete        bool               `json:"turnComplete,omitempty"`
+	Interrupted         bool               `json:"interrupted,omitempty"`
+	InputTranscription  *transcriptionText `json:"inputTranscription,omitempty"`
+	OutputTranscription *transcriptionText `json:"outputTranscription,omitempty"`
+}
+
+type transcriptionText struct {
+	Text string `json:"text"`
 }
 
 type modelTurn struct {
@@ -168,8 +190,10 @@ func (c *Client) Start(ctx context.Context) error {
 	c.conn = conn
 
 	setup := clientMessage{Setup: &setupMessage{
-		Model:              c.model,
-		ResponseModalities: []string{"AUDIO"},
+		Model:                    c.model,
+		ResponseModalities:       []string{"AUDIO"},
+		InputAudioTranscription:  &struct{}{},
+		OutputAudioTranscription: &struct{}{},
 	}}
 	if c.systemInstruction != "" {
 		setup.Setup.SystemInstruction = &systemInstruction{Parts: []messagePart{{Text: c.systemInstruction}}}
@@ -264,7 +288,22 @@ func (c *Client) readLoop() {
 			continue
 		}
 
-		if msg.ServerContent == nil || msg.ServerContent.ModelTurn == nil {
+		if msg.ServerContent == nil {
+			continue
+		}
+
+		// User speech transcript (only — output/model-speech transcripts are
+		// enabled for symmetry/future use but this package doesn't have a
+		// consumer for them yet, so they're not emitted as events).
+		if msg.ServerContent.InputTranscription != nil && msg.ServerContent.InputTranscription.Text != "" {
+			select {
+			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Transcript: msg.ServerContent.InputTranscription.Text}:
+			case <-c.ctx.Done():
+				return
+			}
+		}
+
+		if msg.ServerContent.ModelTurn == nil {
 			continue
 		}
 		for _, part := range msg.ServerContent.ModelTurn.Parts {

@@ -42,9 +42,13 @@ func DelegateToolSpec() ToolSpec {
 	return ToolSpec{
 		Name: DelegateToolName,
 		Description: "Hand off a real work request (coding, file/command access, research) " +
-			"to Memo's main model. Use this whenever the user asks you to actually do " +
-			"something, not just chat. You will receive a result to narrate back to the " +
-			"user naturally — you do not do the work yourself.",
-		Parameters: json.RawMessage(`{"type":"object","properties":{"instruction":{"type":"string","description":"The task, phrased as if speaking to a capable engineer."}},"required":["instruction"]}`),
+			"OR anything requiring real memory/context lookup (something discussed before, " +
+			"a preference, a reminder, a fact about the user you don't already have in your " +
+			"current context) to Memo's main model. Use this whenever the user asks for " +
+			"something you can't honestly answer from your own current context — never " +
+			"fabricate an answer instead of delegating. You will receive a result to " +
+			"narrate back to the user naturally — you do not do the work (or the memory " +
+			"search) yourself.",
+		Parameters: json.RawMessage(`{"type":"object","properties":{"instruction":{"type":"string","description":"The task or question, phrased as if speaking to a capable engineer/assistant who has full access to the user's memory and tools."}},"required":["instruction"]}`),
 	}
 }

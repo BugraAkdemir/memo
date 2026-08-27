@@ -342,9 +342,20 @@ func (a *App) buildLiveModeSystemPrompt(ctx context.Context, workMode string) st
 			"You are in live voice mode. You can use your available tools (including file/command access) directly, yourself.",
 		)
 	} else {
+		// Broadened after real-world testing showed the live model doing
+		// nothing — not even recalling something from the user's memory —
+		// when the original wording only mentioned coding/file/command
+		// access as delegation triggers. The memory context above is a
+		// one-time snapshot from session start (a generic, non-specific
+		// pull — there is no per-turn memory refresh in delegate mode, see
+		// docs/plans/PLAN_live_mode_v2.md's Phase 11 note on the deferred
+		// mid-session refresh consumer), so anything the user asks that
+		// needs real recall — not just "real work" in the coding sense —
+		// genuinely requires delegation; the live model has no other way
+		// to reach it.
 		capability = a.t(
-			"Sesli canlı sohbet modundasın. Kod yazma veya dosya/komut gerektiren gerçek işleri kendin yapamazsın — kullanıcı senden böyle bir şey istediğinde delegate_to_main_model aracını kullanarak ana modele devret, sonucu doğal bir şekilde kullanıcıya anlat.",
-			"You are in live voice mode. You cannot do real work yourself (coding, file/command access) — when the user asks for that, use the delegate_to_main_model tool to hand it off to the main model, then narrate the result back naturally.",
+			"Sesli canlı sohbet modundasın. Yukarıdaki bağlam sadece oturum başında alınmış tek seferlik bir hafıza özeti — kullanıcı sana özel bir şey (geçmişte konuştuğunuz bir konu, bir tercih, bir hatırlatma, bir dosya/kod, bir komut) sorduğunda ve yukarıdaki bağlamda gerçek cevabı yoksa, kafandan uydurma — delegate_to_main_model aracını kullanarak ana modele devret (ana model gerçek hafıza aramasını kendisi yapar), sonucu doğal bir şekilde kullanıcıya anlat. Sadece sohbet/görüş sorularında (hava nasıl, nasılsın gibi) kendi başına cevap ver.",
+			"You are in live voice mode. The context above is only a one-time memory snapshot taken at session start — when the user asks about something specific (something you discussed before, a preference, a reminder, a file/code, a command) and the answer isn't actually in that context, don't make it up — use the delegate_to_main_model tool to hand it off to the main model (which does a real memory search itself), then narrate the result back naturally. Only answer directly for genuinely casual/conversational questions (how's the weather, how are you, etc.).",
 		)
 	}
 	return base + "\n\n" + capability

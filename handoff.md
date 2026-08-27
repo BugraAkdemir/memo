@@ -1,8 +1,20 @@
-# Ek (2026-08-27, devam 23) — Live Mode delegate çalışma dizini + uydurma, "araçlar kapalı" nag bug'ı, agent chat routing, Google Live transkript parçalanması, Live Mode → hafıza, agent-mode kalıcılığı
+# Ek (2026-08-27, devam 23) — Live Mode: geçmiş devamlılığı, delegate çalışma dizini + uydurma, "araçlar kapalı" nag bug'ı; agent chat routing, Google Live transkript parçalanması, Live Mode → hafıza, agent-mode kalıcılığı
 
 Kullanıcı üç şey bildirdi (GitHub katkı grafiği sorusuyla başladı — cevap:
 commit'ler `feature/live-mode-v2` dalında, grafik sadece `main`'i sayar;
 `~/.config` değil, dal meselesi). Sonra bug'lar:
+
+**0000. (5. tur) Live Mode aç/kapat/tekrar aç → sohbet sıfırdan başlıyor —
+düzeltildi (`037b4d5`).** Kullanıcı: aynı sohbette Live Mode'u kapatıp
+tekrar açınca model az önce konuşulanı hatırlamıyor, "sıfırdan başlıyor".
+Sebep: native realtime oturumun kendi geçmişi yok, tek seferlik sistem
+talimatı alıyor — `buildLiveModeSystemPrompt` kimlik + genel hafıza özeti
++ capability paragrafı veriyordu ama devam eden sohbetten hiçbir şey.
+`buildLiveModeHistoryBlock` artık aktif sohbetin son 24 mesajını (~1.5k
+token cap, "<isim>: <metin>" satırları) "kaldığın yerden devam et"
+notuyla sistem talimatına katıyor. Transkript kalıcılığı zaten iki tarafı
+da o sohbete yazıyor (`AppendMessage`), yeniden açılan oturum artık onları
+görüyor. Test: `TestBuildLiveModeSystemPrompt_IncludesRecentHistory`.
 
 **000. (4. tur — delegate modu hâlâ bozuktu) Live Mode delegate'te agent
 çalışma dizini yok + başarısızlıkta uydurma — düzeltildi (`26c79a1`).**
@@ -141,7 +153,7 @@ temizlik konusu (ya .gitignore'a eklenmeli ya testin yolu düzeltilmeli).
   Google Live'da konuş — transkript tek balon gelmeli, (d) Live Mode'da
   geçmişte konuşulanı sor, sonra normal chat'te ara — hatırlamalı (embedder
   çalışıyorsa), (e) normal chat agent + web zaten çalışıyor (kullanıcı
-  doğruladı).
+  doğruladı), (f) Live Mode'u kapat/aç → az önce konuşulanı hatırlamalı.
 - PipeWire echo-cancel (devam 21-22'den, hâlâ kullanıcıda).
 
 ---

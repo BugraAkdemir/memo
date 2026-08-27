@@ -1,8 +1,29 @@
-# Ek (2026-08-27, devam 23) — Agent chat düz-LLM'e düşme bug'ı, Google Live transkript parçalanması, Live Mode → uzun süreli hafıza
+# Ek (2026-08-27, devam 23) — Agent chat düz-LLM'e düşme bug'ı, Google Live transkript parçalanması, Live Mode → uzun süreli hafıza, agent-mode kalıcılığı
 
 Kullanıcı üç şey bildirdi (GitHub katkı grafiği sorusuyla başladı — cevap:
 commit'ler `feature/live-mode-v2` dalında, grafik sadece `main`'i sayar;
 `~/.config` değil, dal meselesi). Sonra bug'lar:
+
+**0. (En önemli, 2. turda netleşti) Agent mode "açık görünüyor ama kapalı
+davranıyor" — düzeltildi (`0ae07b4`).** Ekran görüntüsü: normal chat,
+toolbar'da agent açık, ama model "agent modu kapalı, robot simgesinden aç"
+diyor + backend'in kendi dizinini listeliyor. Web'de de aynı. Kök sebep:
+agent-mode SADECE bellek-içi bir bayraktı, her App init'te `false`'a
+sıfırlanıyordu; Flutter StateNotifier (ve CLI) son değeri cache'liyor,
+yeniden senkron etmiyor. Masaüstü uygulaması güncellemede / `--kill`
+sonrası bundled backend'i yeniden başlatınca backend "kapalı"ya dönüyor
+ama her istemci "açık" gösteriyor — `routeStream` + `buildCapabilitiesBlock`
+ikisi de o bayat bayrağı okuyor. Fix: `config.AgentModeConfig{Enabled}`
+(yaml: `agent_mode.enabled`, default kapalı) — `WebSearchConfig.Enabled`
+zaten aynı sebeple kalıcıydı; `SetAgentEnabled` artık config.yaml'a
+yazıyor, App init `a.cfg.AgentMode.Enabled`'dan geri yüklüyor;
+`app_shell.dart`'ın merkezi auth-gate listener'ı artık
+`agentEnabledProvider` + `webSearchModeProvider`'ı da invalidate ediyor
+(ikisi de construct-once StateNotifier, init GET'i gate açıkken 401 yeyip
+`false`'ta kalıyordu — ~25 provider için zaten yapılan BUG-ONB düzeltmesi).
+Test: `TestSetAgentEnabled_PersistsAcrossReload`. **Kullanıcı bir kez
+backend'i yeniden başlatıp toggle'ı bir kez açmalı — o an config'e yazılır,
+sonra kalıcı.**
 
 **1. Agent chat düz LLM'e düşüyordu — düzeltildi (`670ce27`).** Belirti:
 "memo buraya yapamam, iznim yok" / "agent aç yapayım" (agent açıkken) +
@@ -55,16 +76,25 @@ untracked, .gitignore'da değil, commit'lere DAHİL EDİLMEDİ. Ayrı bir
 temizlik konusu (ya .gitignore'a eklenmeli ya testin yolu düzeltilmeli).
 
 **Bekliyor / sıradaki:**
-- **Bug 2 (Q2'den) hâlâ açık**: kullanıcı "normal chatte agent'ı açınca Live
-  Mod'da sanki açılmamış gibi davranıyor" dedi. Netleştirilecek: hangi
-  butona basıldı (chat'teki mikrofon mu, Live Mode sekmesi mi), ne söylendi,
-  ne cevap verdi. Muhtemelen delegate'in gerçek isteklerde
-  `delegate_to_main_model`'i çağırmaması (handoff devam 20-22'deki devam eden
-  konu) — bu 3 fix gerçek oturumda test edilince daha net olur.
-- Kullanıcının bu 3 fix'i gerçek oturumda denemesi: (a) mevcut agent chat'e
-  geçip klasör dışı bir iş iste — artık repo değil o klasörde çalışmalı, (b)
-  Google Live'da konuş — transkript tek balon gelmeli, (c) Live Mode'da
-  geçmişte konuşulan bir şeyi sor, sonra normal chat'te ara — hatırlamalı.
+- **"web search kapalı diyo"** — `config.yaml`'da `web_search.enabled: true`.
+  Çalışan instance farklı bir data dir kullanıyor olabilir (`~/.memo/`?).
+  Gate-transition invalidate'i (`0ae07b4`) `webSearchModeProvider`'ı da
+  yeniden senkronluyor; yine de backend gerçekten kapalıysa config meselesi.
+- **"hafıza kaydetme çalışmıyor"** — `memory_enabled: true`. Muhtemelen
+  embedding backend'i (yerel embedding modeli/sunucusu) çalışmıyor:
+  `store.SaveInteraction` → `s.embed()` bağlantı reddi alınca
+  `saveMemorySync` "MEMORY SAVE FAILED" logluyor ama `isEmbeddingBackendDown`
+  true olduğu için toast BASTIRIYOR (sessiz). Kullanıcı OpenCode Zen 2
+  (harici provider) kullanıyor, yerel embedding sunucusu yoksa hafıza
+  hiç yazılamaz. Kod değil, kurulum. Backend log'unda "MEMORY SAVE FAILED" /
+  "embedding" aranmalı; bir embedding modeli başlatılmalı.
+- Kullanıcının bu 4 fix'i gerçek oturumda denemesi (önce backend'i bir kez
+  yeniden başlat + agent toggle'ı bir kez aç → config'e yazılsın): (a) normal
+  chat'te agent açıkken dosya işi iste — artık "agent kapalı" dememeli, (b)
+  mevcut agent chat'e geçip klasör dışı iş iste — o klasörde çalışmalı, (c)
+  Google Live'da konuş — transkript tek balon gelmeli, (d) Live Mode'da
+  geçmişte konuşulanı sor, sonra normal chat'te ara — hatırlamalı (embedder
+  çalışıyorsa).
 - PipeWire echo-cancel (devam 21-22'den, hâlâ kullanıcıda).
 
 ---

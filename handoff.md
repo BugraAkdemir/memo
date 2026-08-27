@@ -4,6 +4,15 @@ Kullanıcı üç şey bildirdi (GitHub katkı grafiği sorusuyla başladı — c
 commit'ler `feature/live-mode-v2` dalında, grafik sadece `main`'i sayar;
 `~/.config` değil, dal meselesi). Sonra bug'lar:
 
+**00000. (6. tur — özellik isteği) Live Mode'a mikrofon aç/kapat butonu
+eklendi (`2358f89`).** Kullanıcı: sesi kapatmak için her seferinde
+sohbetten çıkmak istemiyor. `LiveRealtimeSessionNotifier.toggleMicMuted` —
+capture engine + WS ayakta kalıyor, muted iken yakalanan PCM sunucuya
+gönderilmiyor (yeniden bağlanma yok). `micMuted` state'te, `LiveRealtimeView`'de
+orb'un altında bir mikrofon pill'i (Icons.mic/mic_off), muted iken durum
+yazısı "Mikrofon kapalı". Her `connect()` mic açık başlıyor. L10n TR+EN.
+Test: "mic toggle button flips label + state text when tapped".
+
 **0000. (5. tur) Live Mode aç/kapat/tekrar aç → sohbet sıfırdan başlıyor —
 düzeltildi (`037b4d5`).** Kullanıcı: aynı sohbette Live Mode'u kapatıp
 tekrar açınca model az önce konuşulanı hatırlamıyor, "sıfırdan başlıyor".

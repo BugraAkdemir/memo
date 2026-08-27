@@ -290,6 +290,9 @@ func timeContextBlock(now, lastActivity time.Time) string {
 			block += " Last message in this conversation was " + humanizeGap(gap) + " ago."
 		}
 	}
+	// A recalled memory may contain a time/date value from a past turn — it
+	// is history, not the current time. This line is always authoritative.
+	block += " This is the current time now — if a memory or earlier message mentions a different time or date, that one is stale; use this."
 	return block
 }
 

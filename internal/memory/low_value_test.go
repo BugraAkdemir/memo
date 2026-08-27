@@ -79,6 +79,40 @@ func TestIsLowValueTurn_RealContentSaves(t *testing.T) {
 	}
 }
 
+func TestIsLowValueTurn_TimeDateQuestionsSkip(t *testing.T) {
+	// "What time is it?" answers are a live clock reading — no durable
+	// value, and they poison future time answers when RAG later surfaces
+	// the stale value. Skipped regardless of the (often long) reply.
+	skip := []struct{ user, reply string }{
+		{"saat kaç?", "Şu an saat 14:32."},
+		{"saat kaç acaba kanka", "Saat 14:32, 27 Ağustos 2026 Çarşamba günündeyiz."},
+		{"şu an saat kaç", "14:32"},
+		{"bugün günlerden ne?", "Bugün Çarşamba."},
+		{"bugün ayın kaçı", "27 Ağustos."},
+		{"what time is it?", "It's 2:32 PM."},
+		{"what time is it now", "It is 14:32 on Wednesday, 27 August 2026."},
+		{"whats the date", "August 27, 2026."},
+		{"what day is it today", "Wednesday."},
+	}
+	for _, tc := range skip {
+		if !IsLowValueTurn(tc.user, tc.reply) {
+			t.Errorf("IsLowValueTurn(%q,%q)=false, want true (ephemeral time/date reading)", tc.user, tc.reply)
+		}
+	}
+
+	// A time value inside a real, durable statement must still be saved.
+	keep := []struct{ user, reply string }{
+		{"toplantı saat 3'te", "tamam not aldım"},
+		{"her gün saat 7'de kalkıyorum", "güzel alışkanlık"},
+		{"what time do you open on saturdays", "we open at 9am"},
+	}
+	for _, tc := range keep {
+		if IsLowValueTurn(tc.user, tc.reply) {
+			t.Errorf("IsLowValueTurn(%q,%q)=true, want false (durable content that happens to mention a time)", tc.user, tc.reply)
+		}
+	}
+}
+
 func TestIsLowValueTurn_LongSidesNeverSkip(t *testing.T) {
 	// Even if user is "ok", a long assistant reply means the turn has content.
 	longReply := "Bu konuda birkaç önemli nokta var: birincisi performans, ikincisi bellek kullanımı ve üçüncüsü kullanıcı deneyimi."

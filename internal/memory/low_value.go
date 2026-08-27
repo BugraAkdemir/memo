@@ -63,6 +63,19 @@ func IsLowValueTurn(userMsg, assistantMsg string) bool {
 	if runeLen(user) > maxLowValueRunes {
 		return false
 	}
+
+	// "What time is it?" / "saat kaç?" and friends. The answer is a live
+	// clock/calendar reading — zero durable value, and actively harmful:
+	// once "it's 14:32 on Wednesday" is in RAG, a later time question can
+	// retrieve that stale line and the model reports the old time instead
+	// of reading the fresh [Time context] block from its system prompt.
+	// Checked before the reply-length gate on purpose — a full spoken
+	// answer ("it's 14:32 on Wednesday, 27 August 2026") easily exceeds
+	// maxLowValueRunes.
+	if isTimeOrDateQuestion(user) {
+		return true
+	}
+
 	if reply != "" && runeLen(reply) > maxLowValueRunes {
 		return false
 	}
@@ -79,6 +92,59 @@ func IsLowValueTurn(userMsg, assistantMsg string) bool {
 		// and is longer path — still under 12 runes though. Require either a
 		// single token (no space) or exact ack-like form.
 		if !strings.Contains(user, " ") {
+			return true
+		}
+	}
+	return false
+}
+
+// timeOrDateQuestions is a bilingual set of normalized whole-message forms
+// (lower, trimmed, punctuation stripped — same shape as lowValueAcks) that
+// are pure "tell me the current time/date" questions.
+// Both the real diacritic forms (what normalizeLowValue actually produces
+// for Turkish input — it lowercases but does NOT ASCII-fold) and the
+// diacritic-free forms people often type. Same both-forms approach
+// lowValueAcks already takes ("hayir"/"hayır").
+var timeOrDateQuestions = map[string]struct{}{
+	// Turkish — diacritic
+	"saat kaç": {}, "saat kaçta": {}, "saat kaçı": {}, "saat kaç oldu": {},
+	"şu an saat kaç": {}, "şimdi saat kaç": {}, "saat kaç şimdi": {},
+	"saati söyler misin": {}, "saat kaç acaba": {}, "saat": {},
+	"bugün günlerden ne": {}, "günlerden ne": {}, "bugün hangi gün": {},
+	"hangi gün": {}, "hangi gündeyiz": {}, "bugün ayın kaçı": {},
+	"ayın kaçı": {}, "tarih ne": {}, "bugünün tarihi ne": {}, "bugün ne": {},
+	"hafta günü ne": {}, "gün ne": {},
+	// Turkish — diacritic-free
+	"saat kac": {}, "saat kacta": {}, "saat kaci": {}, "saat kac oldu": {},
+	"su an saat kac": {}, "simdi saat kac": {}, "saat kac simdi": {},
+	"saati soyler misin": {}, "saat kac acaba": {},
+	"bugun gunlerden ne": {}, "gunlerden ne": {}, "bugun hangi gun": {},
+	"hangi gun": {}, "hangi gundeyiz": {}, "bugun ayin kaci": {},
+	"ayin kaci": {}, "bugunun tarihi ne": {}, "bugun ne": {},
+	"hafta gunu ne": {}, "gun ne": {},
+	// English
+	"what time is it": {}, "what time is it now": {}, "whats the time": {},
+	"what is the time": {}, "whats the time now": {}, "time now": {},
+	"current time": {}, "the time": {}, "got the time": {},
+	"whats the date": {}, "what is the date": {}, "current date": {},
+	"whats todays date": {}, "what is todays date": {}, "todays date": {},
+	"what day is it": {}, "what day is it today": {}, "whats today": {},
+	"what is today": {}, "what is todays day": {},
+}
+
+// isTimeOrDateQuestion reports whether user (already normalized) is asking
+// only for the current time or date. Exact-match against timeOrDateQuestions
+// plus a couple of unambiguous substrings so a small amount of trailing
+// politeness ("saat kaç acaba kanka") still counts.
+func isTimeOrDateQuestion(user string) bool {
+	if _, ok := timeOrDateQuestions[user]; ok {
+		return true
+	}
+	for _, frag := range []string{
+		"saat kaç", "saat kac", "what time is it", "whats the time",
+		"whats the date", "what day is it",
+	} {
+		if strings.Contains(user, frag) {
 			return true
 		}
 	}

@@ -410,6 +410,20 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       return;
     }
 
+    // A native Live Mode session (Google Live/OpenAI Realtime) is
+    // connected — route typed text into the open session instead of the
+    // normal sendMessage() path. Requested by the user: something they'd
+    // rather not say out loud (a code snippet, a long piece of text)
+    // during a live conversation should still reach the live model.
+    final liveStatus = ref.read(liveRealtimeSessionProvider).status;
+    if (imagePath == null &&
+        (liveStatus == LiveRealtimeSessionStatus.connecting || liveStatus == LiveRealtimeSessionStatus.connected)) {
+      _controller.clear();
+      _dismissPopup();
+      _sendToLiveMode(text);
+      return;
+    }
+
     // Neither a local model nor an API provider is active — sending would
     // just come back as a raw backend error ("⚠️ Yerel model yüklenmemiş...")
     // that used to surface as a generic, unfriendly snackbar (BUG: the actual
@@ -442,6 +456,26 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
     if (!mounted) return;
     _focusNode.requestFocus();
+  }
+
+  /// Routes typed [text] into an open native Live Mode session
+  /// (liveRealtimeSessionProvider.injectText) instead of the normal
+  /// sendMessage() path — see _send()'s branch above. Mirrors a spoken
+  /// utterance's own display+persistence exactly (ChatMessage via
+  /// messagesProvider.addMessage(), then apiClientProvider.appendMessage()
+  /// to actually survive a chat switch/app restart — see
+  /// live_realtime_session_provider.dart's _handleControlFrame, the same
+  /// two calls in the same order) so a typed aside looks and behaves
+  /// identically to something the user said out loud.
+  void _sendToLiveMode(String text) {
+    final timestamp = DateTime.now().toIso8601String();
+    ref.read(messagesProvider.notifier).addMessage(ChatMessage(role: 'user', content: text, timestamp: timestamp));
+    unawaited(
+      ref.read(apiClientProvider).appendMessage('user', text).catchError((Object e) {
+        debugPrint('live mode text: failed to persist message: $e');
+      }),
+    );
+    ref.read(liveRealtimeSessionProvider.notifier).injectText(text);
   }
 
   Future<void> _sendWhatsApp(String text) async {

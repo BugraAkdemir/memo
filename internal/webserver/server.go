@@ -38,6 +38,7 @@ type AppBridge interface {
 	RenameChat(id, title string) error
 	UpdateMessage(index int, content string) error
 	DeleteMessage(index int) error
+	AppendMessage(role, content string) error
 	WebGetActiveMessages() interface{}
 	GetActiveChatID() string
 	WebCheckConnection() interface{}
@@ -138,6 +139,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/messages", s.handleMessages)
 	route("/api/messages/update", s.handleUpdateMessage)
 	route("/api/messages/delete", s.handleDeleteMessage)
+	route("/api/messages/append", s.handleAppendMessage)
 	route("/api/status", s.handleStatus)
 	route("/api/incognito", s.handleIncognito)
 	route("/api/onboarding", s.handleOnboarding)
@@ -740,6 +742,36 @@ func (s *Server) handleUpdateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.bridge.UpdateMessage(req.Index, req.Content); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
+// handleAppendMessage persists a message into the active session's history
+// with no LLM turn involved — see App.AppendMessage's doc comment. Its one
+// caller today is Live Mode's transcript display (POST /api/messages/
+// append), added alongside messagesProvider.addMessage() so a live
+// conversation's bubbles actually survive a chat switch or app restart,
+// not just the current in-memory client state.
+func (s *Server) handleAppendMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if req.Role != "user" && req.Role != "assistant" {
+		http.Error(w, "role must be \"user\" or \"assistant\"", http.StatusBadRequest)
+		return
+	}
+	if err := s.bridge.AppendMessage(req.Role, req.Content); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

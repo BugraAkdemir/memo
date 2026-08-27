@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -203,11 +204,24 @@ func TestHandleLiveModeSession_NotAvailableWithoutBridge(t *testing.T) {
 // the JSON the Flutter client parses.
 type fakeRoleSession struct {
 	events chan livemode.SessionEvent
+
+	mu       sync.Mutex
+	injected []string
 }
 
-func (f *fakeRoleSession) Start(context.Context) error          { return nil }
-func (f *fakeRoleSession) SendAudio([]byte) error               { return nil }
-func (f *fakeRoleSession) InjectContext(string) error           { return nil }
+func (f *fakeRoleSession) Start(context.Context) error { return nil }
+func (f *fakeRoleSession) SendAudio([]byte) error      { return nil }
+func (f *fakeRoleSession) InjectContext(text string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.injected = append(f.injected, text)
+	return nil
+}
+func (f *fakeRoleSession) injectedTexts() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.injected...)
+}
 func (f *fakeRoleSession) Events() <-chan livemode.SessionEvent { return f.events }
 func (f *fakeRoleSession) Close() error                         { return nil }
 
@@ -254,4 +268,51 @@ func TestPumpLiveModeSessionEvents_ForwardsTranscriptRole(t *testing.T) {
 		}
 	}
 	c.Close(websocket.StatusNormalClosure, "")
+}
+
+// TestPumpLiveModeSessionAudio_ForwardsInjectText confirms a client-sent
+// {"type":"inject_text","text":"..."} text frame reaches the session's
+// InjectContext — the server-side half of letting the user type into the
+// normal chat input while a native session is active and have the live
+// model actually receive it (requested by the user alongside the rest of
+// this session's Live Mode work).
+func TestPumpLiveModeSessionAudio_ForwardsInjectText(t *testing.T) {
+	session := &fakeRoleSession{events: make(chan livemode.SessionEvent)}
+
+	done := make(chan int, 1)
+	httpSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		done <- pumpLiveModeSessionAudio(r.Context(), c, session)
+	}))
+	defer httpSrv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(httpSrv.URL, "http")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer c.CloseNow()
+
+	payload, _ := json.Marshal(clientControlFrame{Type: "inject_text", Text: "buraya bir kod parçası koyuyorum"})
+	if err := c.Write(ctx, websocket.MessageText, payload); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	c.Close(websocket.StatusNormalClosure, "")
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("pumpLiveModeSessionAudio never returned after the client closed")
+	}
+
+	got := session.injectedTexts()
+	if len(got) != 1 || got[0] != "buraya bir kod parçası koyuyorum" {
+		t.Errorf("expected exactly one InjectContext call with the client's text, got %v", got)
+	}
 }

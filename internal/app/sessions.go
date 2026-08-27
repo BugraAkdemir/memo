@@ -89,6 +89,26 @@ func (a *App) DeleteMessage(index int) error {
 	return sm.DeleteMessage(index)
 }
 
+// AppendMessage appends role/content to the active session's history and
+// persists it, without triggering any LLM turn — the raw primitive Live
+// Mode's transcript display needs (frontend/lib/providers/
+// live_realtime_session_provider.dart's _handleControlFrame): reported
+// live, transcript bubbles added via the Flutter-only
+// messagesProvider.addMessage() looked permanent but actually lived only
+// in that session's in-memory client state — switching chats and back, or
+// restarting the app, re-fetched from the backend and the transcript was
+// simply gone, since nothing had ever told the backend about it. role
+// should be "user" or "assistant" (mirrors sessions.ChatMessage.Role,
+// same as every other message).
+func (a *App) AppendMessage(role, content string) error {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return fmt.Errorf("no session manager")
+	}
+	sm.AddMessage(role, content, "", "")
+	return nil
+}
+
 // GetActiveMessages returns messages in the current session.
 func (a *App) GetActiveMessages() []sessions.ChatMessage {
 	sm := a.getSessionManager()

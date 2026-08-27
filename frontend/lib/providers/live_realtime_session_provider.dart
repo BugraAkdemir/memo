@@ -244,20 +244,32 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
         return;
       }
       if (frame.type == 'transcript' && frame.transcript != null && frame.transcript!.isNotEmpty) {
-        // Displays the live conversation as a normal chat — purely local,
-        // never routed through sendMessage()/the real send-to-LLM path (the
-        // actual "ana model" routing for Live Mode happens server-side via
-        // delegate/standalone tool calls, entirely independent of this).
-        // Confirmed with the user: these bubbles stay in the chat's history
-        // permanently once added, not cleared when the session ends — see
-        // docs/plans/PLAN_live_mode_v2.md's follow-up plan.
+        // Displays the live conversation as a normal chat — purely local
+        // display in the sense that it's never routed through sendMessage()/
+        // the real send-to-LLM path (the actual "ana model" routing for
+        // Live Mode happens server-side via delegate/standalone tool calls,
+        // entirely independent of this). Confirmed with the user: these
+        // bubbles stay in the chat's history permanently once added, not
+        // cleared when the session ends — see docs/plans/PLAN_live_mode_v2.md's
+        // follow-up plan.
+        final role = frame.role == 'model' ? 'assistant' : 'user';
         _ref.read(messagesProvider.notifier).addMessage(
-              ChatMessage(
-                role: frame.role == 'model' ? 'assistant' : 'user',
-                content: frame.transcript!,
-                timestamp: DateTime.now().toIso8601String(),
-              ),
+              ChatMessage(role: role, content: frame.transcript!, timestamp: DateTime.now().toIso8601String()),
             );
+        // The addMessage() above alone only updates in-memory client state
+        // — found live: it looked permanent but vanished on a chat switch
+        // or app restart, since nothing had ever told the backend about it
+        // (unlike e.g. chat_input.dart's WhatsApp bubbles, whose real
+        // persistence comes from the actual network call to the backend,
+        // not the optimistic local echo). This is the real persistence
+        // half. Best-effort/fire-and-forget: a transient network hiccup
+        // here shouldn't interrupt the live conversation the user is in
+        // the middle of.
+        unawaited(
+          _ref.read(apiClientProvider).appendMessage(role, frame.transcript!).catchError((Object e) {
+            debugPrint('live realtime: failed to persist transcript message: $e');
+          }),
+        );
       }
       // function_call frames: no UI consumer (the backend resolves
       // function calls and voice-based permission prompting itself — see
@@ -273,6 +285,21 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
   /// for tests; normal operation feeds this from [_captureSub] instead.
   void sendAudio(Uint8List pcm) {
     _channel?.sink.add(pcm);
+  }
+
+  /// Sends [text] into the open session as an out-of-turn aside (the
+  /// backend forwards it straight to the session's own InjectContext —
+  /// see handlers_livemode_session.go's pumpLiveModeSessionAudio, which
+  /// now also reads text control frames, not just binary audio). Lets the
+  /// user type something they'd rather not say out loud (a snippet of
+  /// code, a long piece of text) while a native session is active and have
+  /// the live model actually receive it — requested by the user alongside
+  /// the rest of this session's Live Mode work. chat_input.dart is the one
+  /// caller: it also mirrors the text into the chat as a normal user
+  /// bubble via messagesProvider.addMessage()/appendMessage(), the same
+  /// display+persistence path a spoken transcript goes through.
+  void injectText(String text) {
+    _channel?.sink.add(jsonEncode({'type': 'inject_text', 'text': text}));
   }
 
   Future<void> disconnect() async {

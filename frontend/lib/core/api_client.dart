@@ -564,6 +564,16 @@ class MemoApiClient {
     await _dio.post('/api/messages/delete', data: {'index': index});
   }
 
+  /// Appends role/content to the active session's history and persists it
+  /// — no LLM turn involved. Live Mode's transcript display is the one
+  /// caller today (live_realtime_session_provider.dart): messagesProvider.
+  /// addMessage() alone only updates in-memory client state, which looked
+  /// permanent but vanished on a chat switch or app restart since nothing
+  /// had told the backend about it — this is the real persistence half.
+  Future<void> appendMessage(String role, String content) async {
+    await _dio.post('/api/messages/append', data: {'role': role, 'content': content});
+  }
+
   /// Export current chat as markdown.
   Future<String> exportChat() async {
     final res = await _dio.post('/api/chat/export');

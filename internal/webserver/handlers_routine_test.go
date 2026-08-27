@@ -81,6 +81,7 @@ func (b *routineTestBridge) DeleteChat(id string) error                         
 func (b *routineTestBridge) RenameChat(id, title string) error                     { return nil }
 func (b *routineTestBridge) UpdateMessage(index int, content string) error         { return nil }
 func (b *routineTestBridge) DeleteMessage(index int) error                         { return nil }
+func (b *routineTestBridge) AppendMessage(role, content string) error              { return nil }
 func (b *routineTestBridge) WebGetActiveMessages() any                             { return nil }
 func (b *routineTestBridge) GetActiveChatID() string                               { return "" }
 func (b *routineTestBridge) WebCheckConnection() any                               { return nil }

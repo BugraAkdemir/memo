@@ -107,14 +107,27 @@ func pumpLiveModeSessionEvents(ctx context.Context, c *websocket.Conn, session l
 	}
 }
 
+// clientControlFrame is the one client->server text frame shape today:
+// {"type":"inject_text","text":"..."} — lets the user type something into
+// the normal chat input while a native session is active and have the
+// live model actually receive it (requested by the user alongside the
+// rest of this session's Live Mode work), forwarded straight to the
+// session's own InjectContext (the same mechanism buildLiveModeToolCallHandler
+// already uses server-side for permission questions/the delegation
+// wait-quietly hint — this is just a second, client-driven source for it).
+type clientControlFrame struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
 // pumpLiveModeSessionAudio reads client->server frames until the
 // connection closes: binary messages are forwarded to the session as
-// microphone audio, text messages are ignored (no client->server control
-// frames exist yet in this phase). Returns the number of audio frames
-// successfully forwarded — logged by the caller so a session that
-// connects but never actually receives mic audio (a silent capture-side
-// failure, as opposed to a session/protocol failure) is distinguishable
-// from the terminal output alone.
+// microphone audio, "inject_text" text frames are forwarded to
+// InjectContext, any other/malformed text message is ignored. Returns the
+// number of audio frames successfully forwarded — logged by the caller so
+// a session that connects but never actually receives mic audio (a silent
+// capture-side failure, as opposed to a session/protocol failure) is
+// distinguishable from the terminal output alone.
 func pumpLiveModeSessionAudio(ctx context.Context, c *websocket.Conn, session livemode.Session) int {
 	frames := 0
 	for {
@@ -124,6 +137,15 @@ func pumpLiveModeSessionAudio(ctx context.Context, c *websocket.Conn, session li
 				logx.Printf("livemode session: read loop ended before any audio frame arrived: %v", err)
 			}
 			return frames
+		}
+		if msgType == websocket.MessageText {
+			var frame clientControlFrame
+			if err := json.Unmarshal(data, &frame); err == nil && frame.Type == "inject_text" && frame.Text != "" {
+				if err := session.InjectContext(frame.Text); err != nil {
+					logx.Printf("livemode session: InjectContext (client text) failed: %v", err)
+				}
+			}
+			continue
 		}
 		if msgType != websocket.MessageBinary {
 			continue

@@ -27,9 +27,17 @@ class LiveRealtimeSessionState {
   final LiveRealtimeSessionStatus status;
   final String? error;
 
+  /// Mic muted: the capture pipeline stays up (no engine restart, no
+  /// reconnect) but captured PCM is dropped instead of streamed to the
+  /// server — lets the user stop the session hearing them without leaving
+  /// the chat / tearing the session down. Only meaningful while connected;
+  /// every fresh connect() starts unmuted.
+  final bool micMuted;
+
   const LiveRealtimeSessionState({
     this.status = LiveRealtimeSessionStatus.idle,
     this.error,
+    this.micMuted = false,
   });
 }
 
@@ -117,6 +125,7 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
   StreamSubscription? _captureSub;
   LiveModePcmPlayer? _player;
   int _generation = 0;
+  bool _micMuted = false;
 
   bool get isActive =>
       state.status == LiveRealtimeSessionStatus.connecting || state.status == LiveRealtimeSessionStatus.connected;
@@ -144,6 +153,7 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
     }
 
     final myGeneration = ++_generation;
+    _micMuted = false; // every fresh session starts with the mic live
     state = const LiveRealtimeSessionState(status: LiveRealtimeSessionStatus.connecting);
     try {
       final baseUrl = _ref.read(apiClientProvider).baseUrl;
@@ -196,6 +206,7 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
       _captureSub = captureEngine.captureStream.listen(
         (chunk) {
           if (myGeneration != _generation) return;
+          if (_micMuted) return; // capture stays running; just don't forward it
           _channel?.sink.add(chunk);
         },
         onError: (Object e) {
@@ -302,8 +313,26 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
     _channel?.sink.add(jsonEncode({'type': 'inject_text', 'text': text}));
   }
 
+  /// Mute/unmute the mic without touching the session: the capture engine
+  /// and WS stay up, captured audio is simply dropped while muted. No-op
+  /// unless a session is actually connected.
+  void setMicMuted(bool muted) {
+    if (_micMuted == muted) return;
+    _micMuted = muted;
+    if (state.status == LiveRealtimeSessionStatus.connected) {
+      state = LiveRealtimeSessionState(
+        status: state.status,
+        error: state.error,
+        micMuted: muted,
+      );
+    }
+  }
+
+  void toggleMicMuted() => setMicMuted(!_micMuted);
+
   Future<void> disconnect() async {
     _generation++;
+    _micMuted = false;
     await _sub?.cancel();
     _sub = null;
     await _channel?.sink.close();

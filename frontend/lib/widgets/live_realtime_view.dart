@@ -51,6 +51,16 @@ class LiveRealtimeView extends ConsumerWidget {
     final c = MemoTheme.of(context);
     final session = ref.watch(liveRealtimeSessionProvider);
     final connecting = session.status == LiveRealtimeSessionStatus.connecting;
+    final muted = session.micMuted;
+
+    final String stateLabel;
+    if (connecting) {
+      stateLabel = L10n.t('live_realtime_state_connecting');
+    } else if (muted) {
+      stateLabel = L10n.t('live_realtime_state_mic_muted');
+    } else {
+      stateLabel = L10n.t('live_realtime_state_listening');
+    }
 
     return Column(
       children: [
@@ -62,10 +72,14 @@ class LiveRealtimeView extends ConsumerWidget {
         _FadeIn(
           delayMs: 120,
           child: Text(
-            connecting ? L10n.t('live_realtime_state_connecting') : L10n.t('live_realtime_state_listening'),
+            stateLabel,
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: c.textDim),
           ),
         ),
+        if (!connecting) ...[
+          const SizedBox(height: 14),
+          _FadeIn(delayMs: 160, child: _MicToggleButton(muted: muted)),
+        ],
         const SizedBox(height: 18),
         Expanded(
           child: messages.isEmpty
@@ -93,6 +107,55 @@ class LiveRealtimeView extends ConsumerWidget {
                 ),
         ),
       ],
+    );
+  }
+}
+
+/// Mic mute/unmute pill — lets the user stop the session hearing them
+/// without ending it or leaving the chat. The session stays fully
+/// connected; only the outbound audio is gated (see
+/// [LiveRealtimeSessionNotifier.setMicMuted]).
+class _MicToggleButton extends ConsumerWidget {
+  final bool muted;
+  const _MicToggleButton({required this.muted});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = MemoTheme.of(context);
+    final color = muted ? MemoTheme.red : MemoTheme.accent;
+    return Semantics(
+      button: true,
+      label: muted ? L10n.t('live_realtime_unmute_mic') : L10n.t('live_realtime_mute_mic'),
+      child: Tooltip(
+        message: muted ? L10n.t('live_realtime_unmute_mic') : L10n.t('live_realtime_mute_mic'),
+        child: Material(
+          color: Colors.transparent,
+          shape: const StadiumBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => ref.read(liveRealtimeSessionProvider.notifier).toggleMicMuted(),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: c.bgPanel,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: muted ? color.withValues(alpha: 0.5) : c.borderSoft),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(muted ? Icons.mic_off : Icons.mic, size: 16, color: color),
+                  const SizedBox(width: 7),
+                  Text(
+                    muted ? L10n.t('live_realtime_unmute_mic') : L10n.t('live_realtime_mute_mic'),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

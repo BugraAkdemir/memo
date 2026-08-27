@@ -53,6 +53,40 @@ void main() {
     expect(find.text('Start talking — Memo is listening'), findsNothing);
   });
 
+  testWidgets('mic toggle button flips label + state text when tapped', (tester) async {
+    late LiveRealtimeSessionNotifier notifier;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          liveRealtimeSessionProvider.overrideWith((ref) {
+            notifier = LiveRealtimeSessionNotifier(ref)
+              ..state = const LiveRealtimeSessionState(status: LiveRealtimeSessionStatus.connected);
+            return notifier;
+          }),
+        ],
+        child: MaterialApp(
+          theme: MemoTheme.themeData,
+          home: const Scaffold(body: LiveRealtimeView(messages: [], apiBaseUrl: 'http://127.0.0.1:8090')),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // Connected + unmuted: the button offers to mute, the state line says "Listening…".
+    expect(find.text('Mute microphone'), findsOneWidget);
+    expect(find.text('Listening…'), findsOneWidget);
+
+    notifier.toggleMicMuted();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // Muted: button offers to unmute, state line reflects the mute.
+    expect(find.text('Unmute microphone'), findsOneWidget);
+    expect(find.text('Microphone off'), findsOneWidget);
+    expect(find.text('Listening…'), findsNothing);
+  });
+
   testWidgets('shows the connecting label while the session is connecting', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

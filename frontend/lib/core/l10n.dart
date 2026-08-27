@@ -922,6 +922,9 @@ class L10n {
     'live_realtime_state_connecting': 'Bağlanıyor…',
     'live_realtime_state_connected': 'Canlı',
     'live_realtime_state_listening': 'Dinliyor…',
+    'live_realtime_state_mic_muted': 'Mikrofon kapalı',
+    'live_realtime_mute_mic': 'Mikrofonu kapat',
+    'live_realtime_unmute_mic': 'Mikrofonu aç',
     'live_realtime_empty_hint': 'Konuşmaya başla — Memo dinliyor',
     'live_mode_test_tts_title': 'Sesli Mod — Ses Testi',
     'live_mode_test_tts_desc':
@@ -2883,6 +2886,9 @@ class L10n {
     'live_realtime_state_connecting': 'Connecting…',
     'live_realtime_state_connected': 'Live',
     'live_realtime_state_listening': 'Listening…',
+    'live_realtime_state_mic_muted': 'Microphone off',
+    'live_realtime_mute_mic': 'Mute microphone',
+    'live_realtime_unmute_mic': 'Unmute microphone',
     'live_realtime_empty_hint': 'Start talking — Memo is listening',
     'live_mode_test_tts_title': 'Live Mode — Voice Test',
     'live_mode_test_tts_desc':

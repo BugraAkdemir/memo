@@ -79,6 +79,13 @@ type audioTranscriptionConfig struct {
 
 type sessionAudioOutput struct {
 	Format *audioFormat `json:"format,omitempty"`
+	// Voice selects a named voice (confirmed against current API docs,
+	// 2026-08-27: alloy, ash, ballad, coral, echo, sage, shimmer, verse,
+	// marin, cedar — marin/cedar recommended by OpenAI for best quality;
+	// OpenAI documents that the voice cannot change once the model has
+	// already emitted audio in a session). Empty means the provider's own
+	// default.
+	Voice string `json:"voice,omitempty"`
 }
 
 type audioFormat struct {
@@ -176,6 +183,7 @@ type Client struct {
 	apiKey         string
 	model          string // realtime-family model ID a discovery call (ListRealtimeModels) returned — never guessed here
 	instructions   string
+	voice          string // e.g. "marin" — empty means the provider's own default
 	tools          []livemode.ToolSpec
 	handleToolCall livemode.ToolCallHandler
 
@@ -193,11 +201,20 @@ var _ livemode.Session = (*Client)(nil)
 // (see ListRealtimeModels) — this package never guesses one.
 // tools/handleToolCall may both be nil (a session with no delegation
 // capability at all — not a normal configuration, but not an error either).
-func NewClient(apiKey, model, instructions string, tools []livemode.ToolSpec, handleToolCall livemode.ToolCallHandler) *Client {
+// voice is optional (variadic so every existing call site — mostly tests —
+// keeps compiling unchanged): pass a voice name (e.g. "marin", "alloy" —
+// confirmed against current API docs, 2026-08-27) to override the
+// provider's own default voice.
+func NewClient(apiKey, model, instructions string, tools []livemode.ToolSpec, handleToolCall livemode.ToolCallHandler, voice ...string) *Client {
+	v := ""
+	if len(voice) > 0 {
+		v = voice[0]
+	}
 	return &Client{
 		apiKey:         apiKey,
 		model:          model,
 		instructions:   instructions,
+		voice:          v,
 		tools:          tools,
 		handleToolCall: handleToolCall,
 		events:         make(chan livemode.SessionEvent, 16),
@@ -229,7 +246,7 @@ func (c *Client) Start(ctx context.Context) error {
 			Instructions:     c.instructions,
 			Audio: &sessionAudio{
 				Input:  &sessionAudioInput{Format: &audioFormat{Type: "audio/pcm", Rate: inputSampleRateHz}, Transcription: &audioTranscriptionConfig{Model: "whisper-1"}},
-				Output: &sessionAudioOutput{Format: &audioFormat{Type: "audio/pcm"}},
+				Output: &sessionAudioOutput{Format: &audioFormat{Type: "audio/pcm"}, Voice: c.voice},
 			},
 		},
 	}

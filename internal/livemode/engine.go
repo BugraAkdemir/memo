@@ -65,7 +65,12 @@ type EngineConfig struct {
 	// Realtime's realtime model, or ElevenLabs' TTS model) — populated via
 	// a later phase's discovery endpoint, never hardcoded here.
 	Model string `json:"model,omitempty"`
-	// Voice is only meaningful for EngineElevenLabs (ElevenLabs' voice_id).
+	// Voice is a provider-specific voice selector: ElevenLabs' voice_id,
+	// or (added after the user asked for it, both providers document
+	// multiple named voices) Google Live's prebuilt voice name (e.g.
+	// "Puck") / OpenAI Realtime's voice name (e.g. "marin"). Not
+	// meaningful for EngineLocal/EngineCustom. Empty means the provider's
+	// own default voice.
 	Voice string `json:"voice,omitempty"`
 	// BaseURL is only meaningful for EngineCustom — the user-supplied
 	// OpenAI-compatible endpoint's base URL.

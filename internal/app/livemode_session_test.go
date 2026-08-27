@@ -169,6 +169,38 @@ func TestBuildLiveModeToolCallHandler_DelegateMode_RoutesThroughDelegation(t *te
 	}
 }
 
+// TestBuildLiveModeToolCallHandler_DelegateMode_InjectsWaitQuietlyHint is a
+// regression test for a real bug found via real-world testing: while a
+// delegated task was still running, the live model kept trying to generate
+// more speech (it has no natural sense of "I'm waiting on something"),
+// producing choppy, repeatedly-interrupted-sounding audio. Confirms the
+// handler now injects a "say one thing, then wait quietly" hint through
+// injectContext right when delegation starts, before the reply comes back.
+func TestBuildLiveModeToolCallHandler_DelegateMode_InjectsWaitQuietlyHint(t *testing.T) {
+	a := newTestAppForLiveModeSession(t)
+	sessionID, err := a.getOrCreateLiveModeChat()
+	if err != nil {
+		t.Fatalf("getOrCreateLiveModeChat: %v", err)
+	}
+
+	var injected []string
+	injectContext := func(text string) error {
+		injected = append(injected, text)
+		return nil
+	}
+	handler := a.buildLiveModeToolCallHandler("delegate", sessionID, injectContext)
+
+	if _, err := handler(context.Background(), livemode.DelegateToolName, json.RawMessage(`{"instruction":"fix the bug"}`)); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if len(injected) != 1 {
+		t.Fatalf("expected exactly one injectContext call before the delegated reply, got %d: %v", len(injected), injected)
+	}
+	if !strings.Contains(injected[0], "delegate_to_main_model") {
+		t.Errorf("expected the injected hint to reference delegate_to_main_model, got %q", injected[0])
+	}
+}
+
 func TestBuildLiveModeToolCallHandler_StandaloneMode_ExecutesRealTool(t *testing.T) {
 	a := newTestAppForLiveModeSession(t)
 	dir := t.TempDir()

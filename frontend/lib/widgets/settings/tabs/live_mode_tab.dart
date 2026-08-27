@@ -28,6 +28,20 @@ const _nonLocalEngines = [
 /// LiveModeEngineDefaults.nativeReasoningEngines.
 const _nativeReasoningEngines = ['google_live', 'openai_realtime'];
 
+/// Google Live's documented prebuilt voice names (confirmed against
+/// current API docs, 2026-08-27) — a fixed, provider-documented catalog
+/// (listenable in full in Google AI Studio), not a "model list" this
+/// codebase's own never-hardcode-models rule is about; this is the same
+/// class of fixed enum ElevenLabs' own voice_id free-text field already
+/// assumes exists on the provider's side, just presented as a dropdown
+/// here since the whole set is small and named.
+const _googleLiveVoices = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'];
+
+/// OpenAI Realtime's documented voice names (confirmed against current API
+/// docs, 2026-08-27) — marin/cedar are OpenAI's own recommended picks for
+/// best quality.
+const _openaiRealtimeVoices = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse', 'marin', 'cedar'];
+
 String _engineLabel(String engine) => switch (engine) {
       'local' => L10n.t('live_mode_engine_local'),
       'google_live' => L10n.t('live_mode_engine_google_live'),
@@ -483,6 +497,24 @@ class _EngineConfigFormState extends ConsumerState<_EngineConfigForm> {
                 border: const OutlineInputBorder(),
               ),
             ),
+          ] else if (_nativeReasoningEngines.contains(widget.engineType)) ...[
+            const SizedBox(height: 10),
+            () {
+              final voices = widget.engineType == 'google_live' ? _googleLiveVoices : _openaiRealtimeVoices;
+              return DropdownButtonFormField<String>(
+                initialValue: voices.contains(_voiceController.text) ? _voiceController.text : '',
+                decoration: InputDecoration(
+                  labelText: L10n.t('live_mode_voice_label'),
+                  isDense: true,
+                  border: const OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem(value: '', child: Text(L10n.t('live_mode_voice_default_option'))),
+                  ...voices.map((v) => DropdownMenuItem(value: v, child: Text(v))),
+                ],
+                onChanged: (v) => setState(() => _voiceController.text = v ?? ''),
+              );
+            }(),
           ],
           const SizedBox(height: 12),
           Row(

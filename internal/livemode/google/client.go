@@ -86,7 +86,26 @@ type setupMessage struct {
 }
 
 type generationConfig struct {
-	ResponseModalities []string `json:"responseModalities"`
+	ResponseModalities []string      `json:"responseModalities"`
+	SpeechConfig       *speechConfig `json:"speechConfig,omitempty"`
+}
+
+// speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName selects a named
+// prebuilt voice (confirmed against current API docs, 2026-08-27 — e.g.
+// "Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr";
+// Google documents a larger catalog reachable by name, listenable in AI
+// Studio — this package never hardcodes an exhaustive list, it only
+// passes through whatever name the caller/Settings UI provides).
+type speechConfig struct {
+	VoiceConfig *voiceConfig `json:"voiceConfig,omitempty"`
+}
+
+type voiceConfig struct {
+	PrebuiltVoiceConfig *prebuiltVoiceConfig `json:"prebuiltVoiceConfig,omitempty"`
+}
+
+type prebuiltVoiceConfig struct {
+	VoiceName string `json:"voiceName"`
 }
 
 type realtimeInputConfig struct {
@@ -202,6 +221,7 @@ type Client struct {
 	apiKey            string
 	model             string // e.g. "models/gemini-3.1-flash-live-preview" — the exact Name a discovery call (google.ListLiveModels) returned, never hardcoded by this package.
 	systemInstruction string
+	voice             string // prebuiltVoiceConfig.voiceName (e.g. "Puck") — empty means the provider's own default
 	tools             []livemode.ToolSpec
 	handleToolCall    livemode.ToolCallHandler
 
@@ -219,11 +239,22 @@ var _ livemode.Session = (*Client)(nil)
 // resource name (see ListLiveModels) — this package never guesses one.
 // tools/handleToolCall may both be nil (a session with no delegation
 // capability at all — not a normal configuration, but not an error either).
-func NewClient(apiKey, model, systemInstruction string, tools []livemode.ToolSpec, handleToolCall livemode.ToolCallHandler) *Client {
+// voice is optional (variadic so every existing call site — mostly tests —
+// keeps compiling unchanged): pass a prebuilt voice name (e.g. "Puck",
+// "Kore" — confirmed against current API docs, 2026-08-27) to override the
+// provider's own default voice, added after the user asked for voice
+// selection alongside Google Live/OpenAI Realtime's own multi-voice
+// support.
+func NewClient(apiKey, model, systemInstruction string, tools []livemode.ToolSpec, handleToolCall livemode.ToolCallHandler, voice ...string) *Client {
+	v := ""
+	if len(voice) > 0 {
+		v = voice[0]
+	}
 	return &Client{
 		apiKey:            apiKey,
 		model:             model,
 		systemInstruction: systemInstruction,
+		voice:             v,
 		tools:             tools,
 		handleToolCall:    handleToolCall,
 		events:            make(chan livemode.SessionEvent, 16),
@@ -255,6 +286,11 @@ func (c *Client) Start(ctx context.Context) error {
 	}}
 	if c.systemInstruction != "" {
 		setup.Setup.SystemInstruction = &systemInstruction{Parts: []messagePart{{Text: c.systemInstruction}}}
+	}
+	if c.voice != "" {
+		setup.Setup.GenerationConfig.SpeechConfig = &speechConfig{
+			VoiceConfig: &voiceConfig{PrebuiltVoiceConfig: &prebuiltVoiceConfig{VoiceName: c.voice}},
+		}
 	}
 	if len(c.tools) > 0 {
 		decls := make([]functionDeclaration, 0, len(c.tools))

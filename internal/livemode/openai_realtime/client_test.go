@@ -388,6 +388,57 @@ func TestClient_EmptyTranscriptionCompletedEmitsNoEvent(t *testing.T) {
 	}
 }
 
+// TestClient_SendsVoiceInSessionUpdate confirms the optional voice argument
+// (requested by the user alongside the full-screen UI work — "let us
+// change the voice") reaches session.audio.output.voice.
+func TestClient_SendsVoiceInSessionUpdate(t *testing.T) {
+	f := newFakeRealtimeServer(t)
+	original := SessionBaseURL
+	SessionBaseURL = f.wsURL()
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", nil, nil, "marin")
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case update := <-f.gotUpdate:
+		if update.Session.Audio == nil || update.Session.Audio.Output == nil || update.Session.Audio.Output.Voice != "marin" {
+			t.Errorf("expected audio.output.voice=%q, got %+v", "marin", update.Session.Audio)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for session.update on the server side")
+	}
+}
+
+// TestClient_OmitsVoiceWhenNoneGiven confirms the default (no-voice-
+// argument) call shape — every other test in this file — leaves
+// audio.output.voice entirely unset rather than sending an empty string,
+// so the provider's own default voice is used unmodified.
+func TestClient_OmitsVoiceWhenNoneGiven(t *testing.T) {
+	f := newFakeRealtimeServer(t)
+	original := SessionBaseURL
+	SessionBaseURL = f.wsURL()
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case update := <-f.gotUpdate:
+		if update.Session.Audio != nil && update.Session.Audio.Output != nil && update.Session.Audio.Output.Voice != "" {
+			t.Errorf("expected no voice override when none was given, got %q", update.Session.Audio.Output.Voice)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for session.update on the server side")
+	}
+}
+
 func TestClient_SendsToolsInSessionUpdate(t *testing.T) {
 	f := newFakeRealtimeServer(t)
 	original := SessionBaseURL

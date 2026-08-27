@@ -403,6 +403,61 @@ func TestClient_ReadsMessagesLargerThan32KB(t *testing.T) {
 	}
 }
 
+// TestClient_SendsVoiceNameInSetup confirms the optional voice argument
+// (requested by the user alongside the full-screen UI work — "let us
+// change the voice") reaches setup.generationConfig.speechConfig.
+// voiceConfig.prebuiltVoiceConfig.voiceName.
+func TestClient_SendsVoiceNameInSetup(t *testing.T) {
+	f := newFakeLiveServer(t)
+	original := SessionBaseURL
+	SessionBaseURL = f.wsURL()
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("g-key", "models/gemini-3.1-flash-live-preview", "", nil, nil, "Kore")
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case setup := <-f.gotSetup:
+		if setup.GenerationConfig == nil || setup.GenerationConfig.SpeechConfig == nil ||
+			setup.GenerationConfig.SpeechConfig.VoiceConfig == nil ||
+			setup.GenerationConfig.SpeechConfig.VoiceConfig.PrebuiltVoiceConfig == nil ||
+			setup.GenerationConfig.SpeechConfig.VoiceConfig.PrebuiltVoiceConfig.VoiceName != "Kore" {
+			t.Errorf("expected speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName=%q, got %+v", "Kore", setup.GenerationConfig)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for setup message")
+	}
+}
+
+// TestClient_OmitsSpeechConfigWhenNoVoiceGiven confirms the default
+// (no-voice-argument) call shape — every other test in this file — leaves
+// speechConfig entirely unset rather than sending an empty/zero-value
+// voiceName, so the provider's own default voice is used unmodified.
+func TestClient_OmitsSpeechConfigWhenNoVoiceGiven(t *testing.T) {
+	f := newFakeLiveServer(t)
+	original := SessionBaseURL
+	SessionBaseURL = f.wsURL()
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("g-key", "models/gemini-3.1-flash-live-preview", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case setup := <-f.gotSetup:
+		if setup.GenerationConfig != nil && setup.GenerationConfig.SpeechConfig != nil {
+			t.Errorf("expected no speechConfig when no voice was given, got %+v", setup.GenerationConfig.SpeechConfig)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for setup message")
+	}
+}
+
 func TestClient_SendsFunctionDeclarationsInSetup(t *testing.T) {
 	f := newFakeLiveServer(t)
 	original := SessionBaseURL

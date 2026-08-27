@@ -72,11 +72,11 @@ func (a *App) NewLiveModeSession(ctx context.Context) livemode.Session {
 	var session livemode.Session
 	switch engineType {
 	case livemode.EngineGoogleLive:
-		client := google.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler)
+		client := google.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler, engineCfg.Voice)
 		injectFn = client.InjectContext
 		session = client
 	case livemode.EngineOpenAIRealtime:
-		client := openai_realtime.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler)
+		client := openai_realtime.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler, engineCfg.Voice)
 		injectFn = client.InjectContext
 		session = client
 	default:
@@ -170,6 +170,24 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 		}
 		if err := json.Unmarshal(args, &parsed); err != nil || parsed.Instruction == "" {
 			return "", fmt.Errorf("delegate_to_main_model: missing instruction")
+		}
+		// Reported live: without this, the model kept trying to generate
+		// more speech while the delegated task was still running (a real
+		// task can take real seconds) — it has no natural sense of "I'm
+		// waiting on something", producing choppy/repeatedly-interrupted-
+		// sounding audio. Tell it explicitly, mirroring the filler-audio
+		// trick VoiceModeNotifier already uses for the discrete engines
+		// (_playFillerBestEffort, voice_mode_provider.dart) but as a text
+		// instruction rather than a pre-recorded clip, since this model
+		// generates its own voice rather than playing ours. Best-effort:
+		// injectContext can still be unready this early (see
+		// NewLiveModeSession's forward-reference closure) without blocking
+		// delegation itself.
+		if injectContext != nil {
+			_ = injectContext(a.t(
+				"Az önce delegate_to_main_model'i çağırdın, sonucu bekleniyor. Şimdi TEK kısa bir şey söyle (\"bir saniye, hallediyorum\" gibi) ve gerçek sonuç gelene kadar tekrar konuşmaya çalışma — sessizce bekle.",
+				"You just called delegate_to_main_model and the result is pending. Say ONE short acknowledgment now (\"one sec, working on it\") and then stay quiet — don't try to speak again until the real result comes back.",
+			))
 		}
 		ch := a.SendLiveDelegatedMessageStream(ctx, parsed.Instruction)
 		return a.drainLiveDelegatedReply(ch, autoApprove, buildQuestion, sendQuestion, awaitAnswer), nil
@@ -354,8 +372,8 @@ func (a *App) buildLiveModeSystemPrompt(ctx context.Context, workMode string) st
 		// genuinely requires delegation; the live model has no other way
 		// to reach it.
 		capability = a.t(
-			"Sesli canlı sohbet modundasın. Yukarıdaki bağlam sadece oturum başında alınmış tek seferlik bir hafıza özeti — kullanıcı sana özel bir şey (geçmişte konuştuğunuz bir konu, bir tercih, bir hatırlatma, bir dosya/kod, bir komut) sorduğunda ve yukarıdaki bağlamda gerçek cevabı yoksa, kafandan uydurma — delegate_to_main_model aracını kullanarak ana modele devret (ana model gerçek hafıza aramasını kendisi yapar), sonucu doğal bir şekilde kullanıcıya anlat. Sadece sohbet/görüş sorularında (hava nasıl, nasılsın gibi) kendi başına cevap ver.",
-			"You are in live voice mode. The context above is only a one-time memory snapshot taken at session start — when the user asks about something specific (something you discussed before, a preference, a reminder, a file/code, a command) and the answer isn't actually in that context, don't make it up — use the delegate_to_main_model tool to hand it off to the main model (which does a real memory search itself), then narrate the result back naturally. Only answer directly for genuinely casual/conversational questions (how's the weather, how are you, etc.).",
+			"Sesli canlı sohbet modundasın. Yukarıdaki bağlam sadece oturum başında alınmış tek seferlik bir hafıza özeti — kullanıcı sana özel bir şey (geçmişte konuştuğunuz bir konu, bir tercih, bir hatırlatma, bir dosya/kod, bir komut) sorduğunda ve yukarıdaki bağlamda gerçek cevabı yoksa, kafandan uydurma — delegate_to_main_model aracını kullanarak ana modele devret (ana model gerçek hafıza aramasını kendisi yapar), sonucu doğal bir şekilde kullanıcıya anlat. Sadece sohbet/görüş sorularında (hava nasıl, nasılsın gibi) kendi başına cevap ver. ÇOK ÖNEMLİ: bir işi 'yaptım', 'hallettim', 'tamamladım' gibi ifadelerle asla söyleme — bunu ancak delegate_to_main_model aracını GERÇEKTEN çağırıp gerçek bir sonuç aldıktan SONRA söyleyebilirsin. Aracı çağırmadan başarı iddia etmek bir yalandır, asla yapma.",
+			"You are in live voice mode. The context above is only a one-time memory snapshot taken at session start — when the user asks about something specific (something you discussed before, a preference, a reminder, a file/code, a command) and the answer isn't actually in that context, don't make it up — use the delegate_to_main_model tool to hand it off to the main model (which does a real memory search itself), then narrate the result back naturally. Only answer directly for genuinely casual/conversational questions (how's the weather, how are you, etc.). CRITICAL: never say you 'did it', 'took care of it', or 'finished' unless you actually called delegate_to_main_model and got a real result back first. Claiming success without actually calling the tool is a lie — never do it.",
 		)
 	}
 	return base + "\n\n" + capability

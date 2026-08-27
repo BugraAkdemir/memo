@@ -4,6 +4,21 @@ Kullanıcı üç şey bildirdi (GitHub katkı grafiği sorusuyla başladı — c
 commit'ler `feature/live-mode-v2` dalında, grafik sadece `main`'i sayar;
 `~/.config` değil, dal meselesi). Sonra bug'lar:
 
+**000000. (7. tur) Memo eski/rastgele bir saat söylüyor — düzeltildi
+(`c581f3a`).** Sistem prompt'unda `[Time context]` güncel saati veriyor
+ama bazen eski bir saat söylüyordu: geçmiş bir "saat kaç?" → "14:32"
+turu RAG'a kaydedilmiş, sonraki saat sorusunda o bayat satır geri
+geliyor. İki koruma: (1) `IsLowValueTurn` artık düz saat/tarih sorularını
+low-value sayıyor (otomatik `SaveInteraction` atlıyor) — iki dilli
+normalize edilmiş tam-mesaj seti (hem gerçek Türkçe diacritic hem
+diacritic-free, `lowValueAcks` gibi) + birkaç net substring ("saat kaç",
+"what time is it"). Reply-uzunluk kapısından ÖNCE bakılıyor (tam sözlü
+cevap `maxLowValueRunes`'u aşıyor). Kalıcı ifade içindeki saat ("saat 3'te
+toplantı", "her gün 7'de kalkıyorum") etkilenmiyor. (2) `timeContextBlock`
+sonuna "bu güncel saat; hafıza/eski mesaj farklı diyorsa o bayat, bunu
+kullan" satırı eklendi (fix'ten önce RAG'a girmiş bayat saat için).
+Test: `TestIsLowValueTurn_TimeDateQuestionsSkip`.
+
 **00000. (6. tur — özellik isteği) Live Mode'a mikrofon aç/kapat butonu
 eklendi (`2358f89`).** Kullanıcı: sesi kapatmak için her seferinde
 sohbetten çıkmak istemiyor. `LiveRealtimeSessionNotifier.toggleMicMuted` —

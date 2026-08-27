@@ -315,6 +315,25 @@ func validatePath(targetPath, basePath string) (string, error) {
 		basePath = absBase
 	}
 
+	// Expand a leading "~" to the real home directory before the
+	// IsAbs check below — Go's filepath package (unlike a shell) never
+	// does this on its own, so "~" was falling through to the relative-
+	// path branch and landing under basePath as a literal "~" directory
+	// instead of the user's actual home. Found live: the model wrote
+	// "~/Desktop/hello.py" while working in this very repo, and it
+	// created a literal "~/Desktop/" folder at the repo root rather than
+	// reaching the real ~/Desktop. Mirrors resolveChangeDirectoryTarget's
+	// identical expansion (changedir.go) — that tool already got this
+	// right, this shared helper (write_file/read_file/edit_file/... all
+	// go through it) hadn't.
+	if targetPath == "~" || strings.HasPrefix(targetPath, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("could not resolve home directory: %w", err)
+		}
+		targetPath = filepath.Join(home, strings.TrimPrefix(targetPath, "~"))
+	}
+
 	var fullPath string
 	if filepath.IsAbs(targetPath) {
 		fullPath = filepath.Clean(targetPath)

@@ -157,7 +157,21 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 				// entirely. See resolveLivePermission's doc comment.
 				go a.resolveLivePermission(ev, autoApprove, buildQuestion, sendQuestion, awaitAnswer)
 			}
-			return a.agentExecutor.ExecuteToolCall(ctx, sessionID, name, args, onEvent)
+			// Reads back whatever change_directory may have persisted on an
+			// earlier standalone tool call in this same Live Mode session —
+			// mirrors llm.go's identical sm.GetProjectPath(sessionID) read
+			// before every RunStream call. Without this, ExecuteToolCall's
+			// own effectiveBase always resets to a.agentExecutor's original
+			// basePath on every single call (see ExecuteToolCall's doc
+			// comment on its projectPath parameter) — a directory switch
+			// would persist to the session but never actually get read
+			// back, so the very next tool call would silently act on the
+			// old directory again.
+			projectPath := ""
+			if sm := a.getSessionManager(); sm != nil {
+				projectPath = sm.GetProjectPath(sessionID)
+			}
+			return a.agentExecutor.ExecuteToolCall(ctx, sessionID, name, args, onEvent, projectPath)
 		}
 	}
 

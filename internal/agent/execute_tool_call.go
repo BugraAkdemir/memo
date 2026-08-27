@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"memo/internal/agent/tools"
 )
 
 // ExecuteToolCall runs a single tool call in isolation — permission-check
@@ -45,6 +47,28 @@ func (e *Executor) ExecuteToolCall(ctx context.Context, sessionID, toolName stri
 	// concurrent calls (e.g. this one racing a normal agent-mode RunStream)
 	// must not overwrite each other's basePath on a shared sandbox.
 	sandbox := NewSandbox(DefaultSandboxConfig(effectiveBase))
+
+	// Mirrors RunStream's own context wiring (executor.go) — without this,
+	// change_directory has nothing to widen (SandboxSetterFromContext
+	// returns ok=false, it errors "internal error: no sandbox available")
+	// and nothing to persist a switch into for the caller's next call
+	// (ProjectPathSetterFromContext likewise finds nothing). Found live:
+	// this was simply never wired up, so change_directory has never worked
+	// through this entry point at all — the tool was offered to standalone-
+	// mode Live Mode sessions but silently couldn't do the one thing it's
+	// for. The turn-local half (WithSandboxSetter) only matters within
+	// this one call; the persist-for-next-call half
+	// (WithProjectPathSetter) is what the caller (buildLiveModeToolCallHandler)
+	// must also read back via sessionManager.GetProjectPath before its next
+	// ExecuteToolCall, the same way llm.go already does for RunStream —
+	// this alone only makes the switch stick for later tool calls *within*
+	// this call's own registry.Execute, which is a no-op for change_directory
+	// itself (SetBasePath) but is what makes SetProjectPath actually get
+	// called at all.
+	ctx = tools.WithSandboxSetter(ctx, sandbox)
+	if e.sessionManager != nil {
+		ctx = tools.WithProjectPathSetter(ctx, e.sessionManager, sessionID)
+	}
 
 	if err := sandbox.RateLimit(toolName, hashArgs(args)); err != nil {
 		e.emitToolCallEvent(sessionID, onEvent, AgentEvent{Type: EventToolError, ToolName: toolName, Error: err.Error()})

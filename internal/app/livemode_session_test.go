@@ -317,6 +317,31 @@ func TestBuildLiveModeSystemPrompt_NoFeatureOffNag(t *testing.T) {
 	}
 }
 
+// TestBuildLiveModeSystemPrompt_IncludesRecentHistory is the regression
+// test for "toggle Live Mode off and back on in the same chat and it acts
+// like the conversation just started": a realtime session gets a one-shot
+// system instruction only, so the tail of the active chat's history is
+// folded into it for continuity.
+func TestBuildLiveModeSystemPrompt_IncludesRecentHistory(t *testing.T) {
+	a := newTestAppForLiveModeSession(t)
+	sm := a.getSessionManager()
+	sm.NewChat()
+	sm.AddMessage("user", "en sevdiğim şehir Trabzon", "", "")
+	sm.AddMessage("assistant", "tamam, Trabzon aklımda", "", "")
+
+	p := a.buildLiveModeSystemPrompt(context.Background(), "delegate")
+	if !strings.Contains(p, "en sevdiğim şehir Trabzon") || !strings.Contains(p, "tamam, Trabzon aklımda") {
+		t.Errorf("live-mode system prompt did not carry the recent conversation:\n%s", p)
+	}
+}
+
+func TestBuildLiveModeHistoryBlock_EmptyWithNoMessages(t *testing.T) {
+	a := newTestAppForLiveModeSession(t)
+	if got := a.buildLiveModeHistoryBlock(); got != "" {
+		t.Errorf("expected an empty history block when there are no messages, got %q", got)
+	}
+}
+
 func TestBuildLiveModeSystemPrompt_NoIdentityReturnsEmpty(t *testing.T) {
 	a := &App{}
 	if got := a.buildLiveModeSystemPrompt(context.Background(), "delegate"); got != "" {

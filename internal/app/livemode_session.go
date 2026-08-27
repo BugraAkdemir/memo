@@ -13,6 +13,7 @@ import (
 	"memo/internal/livemode/openai_realtime"
 	"memo/internal/logx"
 	"memo/internal/memory"
+	"memo/internal/truncate"
 )
 
 // NewLiveModeSession builds the livemode.Session for whatever engine is
@@ -415,6 +416,16 @@ func (a *App) buildLiveModeSystemPrompt(ctx context.Context, workMode string) st
 	}
 	base := a.identity.BuildSystemPrompt(memories, false, true, true, a.whatsappReachable(), a.telegramReachable())
 
+	// Recent conversation from the chat the user is looking at, folded in as
+	// text. A native realtime session has no history of its own — reported
+	// live: toggling Live Mode off and back on inside the same chat made the
+	// model behave as if the conversation had just started ("sıfırdan
+	// başlıyor"). The realtime engines take a one-shot system instruction
+	// only, so this is where continuity has to come from.
+	if hist := a.buildLiveModeHistoryBlock(); hist != "" {
+		base += "\n\n" + hist
+	}
+
 	var capability string
 	if workMode == "standalone" {
 		capability = a.t(
@@ -439,4 +450,62 @@ func (a *App) buildLiveModeSystemPrompt(ctx context.Context, workMode string) st
 		)
 	}
 	return base + "\n\n" + capability
+}
+
+// buildLiveModeHistoryBlock formats the tail of the currently-active chat's
+// message history as a plain-text transcript, so a realtime session that
+// starts (or restarts) mid-conversation picks up where things left off
+// instead of behaving like a fresh chat. Bounded to the last few exchanges
+// and a token cap — the whole system instruction is sent once at session
+// start and shouldn't balloon. Returns "" when there's nothing to carry
+// over (no session manager, no active chat, empty history).
+func (a *App) buildLiveModeHistoryBlock() string {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return ""
+	}
+	msgs := sm.GetActiveMessages()
+	if len(msgs) == 0 {
+		return ""
+	}
+	const maxMsgs = 24
+	if len(msgs) > maxMsgs {
+		msgs = msgs[len(msgs)-maxMsgs:]
+	}
+
+	userLabel := "User"
+	assistantLabel := "Memo"
+	if a.identity != nil {
+		if a.identity.UserName != "" {
+			userLabel = a.identity.UserName
+		}
+		if a.identity.AssistantName != "" {
+			assistantLabel = a.identity.AssistantName
+		}
+	}
+
+	var sb strings.Builder
+	for _, m := range msgs {
+		c := strings.TrimSpace(m.Content)
+		if c == "" || m.Role == "system" {
+			continue
+		}
+		label := userLabel
+		if m.Role == "assistant" {
+			label = assistantLabel
+		}
+		fmt.Fprintf(&sb, "%s: %s\n", label, c)
+	}
+	body := strings.TrimSpace(sb.String())
+	if body == "" {
+		return ""
+	}
+	// ~1.5k tokens of history is plenty for continuity without crowding the
+	// rest of the instruction; truncate.Text keeps the most recent tail.
+	body = truncate.Text(body, 6000)
+
+	return a.t(
+		"Bu sohbette şu ana kadar geçen konuşma (devamlılık için — kaldığın yerden devam et, baştan başlıyormuş gibi davranma):\n",
+		"The conversation so far in this chat (for continuity — pick up where it left off, don't act like it's a fresh start):\n",
+	) + body
 }

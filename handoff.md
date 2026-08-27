@@ -1,8 +1,33 @@
-# Ek (2026-08-27, devam 23) — Live Mode "araçlar kapalı" nag bug'ı (ASIL), agent chat routing, Google Live transkript parçalanması, Live Mode → hafıza, agent-mode kalıcılığı
+# Ek (2026-08-27, devam 23) — Live Mode delegate çalışma dizini + uydurma, "araçlar kapalı" nag bug'ı, agent chat routing, Google Live transkript parçalanması, Live Mode → hafıza, agent-mode kalıcılığı
 
 Kullanıcı üç şey bildirdi (GitHub katkı grafiği sorusuyla başladı — cevap:
 commit'ler `feature/live-mode-v2` dalında, grafik sadece `main`'i sayar;
 `~/.config` değil, dal meselesi). Sonra bug'lar:
+
+**000. (4. tur — delegate modu hâlâ bozuktu) Live Mode delegate'te agent
+çalışma dizini yok + başarısızlıkta uydurma — düzeltildi (`26c79a1`).**
+Gerçek oturum testi (`~/Desktop/devret-modetest.md`): "masaüstündeki
+dosyaları say, çalışma alanını değiştirebilirsin" → model "bir saniye
+bakıyorum" / "hâlâ uğraşıyorum" deyip sonra OLMAYAN dosya listesi +
+uzantılar uydurdu. Standalone (`~/Desktop/bağımıszModeTest.md`) dosya
+işini doğru yapıyor; delegate hiç çalışmıyor. İki sebep: (1)
+`getOrCreateLiveModeChat`'in oluşturduğu arka plan sohbetinin `ProjectPath`'i
+yoktu → agent (delegate ya da standalone) backend'in kendi cwd'sinde
+(kaynaktan çalışınca repo) başlıyordu; `~/Desktop` istekleri ya yanlış
+yere düşüyor ya `change_directory` (Dangerous → sesli izin akışı güvenilir
+sesli sormuyor) gerektiriyordu. Artık `os.UserHomeDir()`'e kök salıyor —
+`~/Desktop`, `~/Documents` düz relative path'le erişilebilir,
+`change_directory` gerekmez. (2) Delegate çağrısı boş ya da `⚠️ ...` hata
+string'i dönünce `drainSelfChatReply` bunu olduğu gibi live modele tool
+sonucu olarak veriyordu, model de aktarmak yerine cevap uyduruyordu.
+`runDelegate` artık bu iki durumu açık "DELEGASYON BAŞARISIZ — kullanıcıya
+söyle, UYDURMA" talimatıyla sarıyor. Ayrıca `SendLiveDelegatedMessageStream`'e
+START/DONE log'u eklendi. Test: `TestGetOrCreateLiveModeChat_RootsAtHome`,
+`liveModeChatRootedAt` helper'ı + 5 standalone testi çalışma dizinini
+kendi sandbox'ına sabitliyor. **Not: delegate sonucu Google Live'a çok geç
+dönüyorsa (20-30sn'lik agent turu, realtime turdan çok sonra) hâlâ
+sorun olabilir — home kökü basit dosya sorgularını hızlandırdığı için
+bu büyük ölçüde hafifledi ama tamamen çözülmedi.**
 
 **00. (ASIL BUG — 3. turda netleşti) Live Mode'da model araçları/web'i
 "kapalı" sanıyor — düzeltildi (`bcf0def`).** Kullanıcı net söyledi: normal
@@ -107,13 +132,16 @@ temizlik konusu (ya .gitignore'a eklenmeli ya testin yolu düzeltilmeli).
   (harici provider) kullanıyor, yerel embedding sunucusu yoksa hafıza
   hiç yazılamaz. Kod değil, kurulum. Backend log'unda "MEMORY SAVE FAILED" /
   "embedding" aranmalı; bir embedding modeli başlatılmalı.
-- Kullanıcının bu 4 fix'i gerçek oturumda denemesi (önce backend'i bir kez
-  yeniden başlat + agent toggle'ı bir kez aç → config'e yazılsın): (a) normal
-  chat'te agent açıkken dosya işi iste — artık "agent kapalı" dememeli, (b)
-  mevcut agent chat'e geçip klasör dışı iş iste — o klasörde çalışmalı, (c)
+- Kullanıcının fix'leri gerçek oturumda denemesi (önce backend'i bir kez
+  yeniden başlat): (a) **delegate modda** "masaüstümdeki dosyaları say" —
+  artık uydurmamalı, gerçekten `~/Desktop`'a bakmalı (log'da
+  `livemode delegate: START ... instruction=...` + `DONE` görünmeli;
+  görünmüyorsa delegate hiç tetiklenmiyor demektir), (b) Live Mode'da
+  "şu an hava durumu ne" — web araması yapmalı, "kapalı" dememeli, (c)
   Google Live'da konuş — transkript tek balon gelmeli, (d) Live Mode'da
   geçmişte konuşulanı sor, sonra normal chat'te ara — hatırlamalı (embedder
-  çalışıyorsa).
+  çalışıyorsa), (e) normal chat agent + web zaten çalışıyor (kullanıcı
+  doğruladı).
 - PipeWire echo-cancel (devam 21-22'den, hâlâ kullanıcıda).
 
 ---

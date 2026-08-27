@@ -1,9 +1,11 @@
 package app
 
 import (
+	"path/filepath"
 	"testing"
 
 	"memo/internal/agent"
+	"memo/internal/config"
 )
 
 func TestGetSetAgentEnabled(t *testing.T) {
@@ -25,6 +27,38 @@ func TestGetSetAgentEnabled(t *testing.T) {
 	}
 	if a.GetAgentEnabled() {
 		t.Fatal("expected agent mode to be false after SetAgentEnabled(false)")
+	}
+}
+
+// TestSetAgentEnabled_PersistsAcrossReload is the regression test for
+// "agent mode looks on in the UI but the backend acts as if it's off":
+// SetAgentEnabled was an in-memory-only flag reset to false on every App
+// init, so a backend restart (desktop app relaunch, --kill) silently
+// dropped it while clients kept showing it on. It now writes through to
+// config.yaml, and App init restores a.agentEnabled from there.
+func TestSetAgentEnabled_PersistsAcrossReload(t *testing.T) {
+	t.Setenv("MEMO_DATA_DIR", t.TempDir())
+	cfgFile := filepath.Join(t.TempDir(), "config.yaml")
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if cfg.AgentMode.Enabled {
+		t.Fatal("precondition: agent mode should default to off")
+	}
+
+	a := &App{cfg: cfg}
+	if err := a.SetAgentEnabled(true); err != nil {
+		t.Fatalf("SetAgentEnabled(true): %v", err)
+	}
+
+	reloaded, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("config.Load (reload): %v", err)
+	}
+	if !reloaded.AgentMode.Enabled {
+		t.Fatal("agent mode did not persist to config.yaml — a backend restart would silently lose it")
 	}
 }
 

@@ -92,6 +92,7 @@ type AppConfig struct {
 	Calendar       CalendarConfig     `yaml:"calendar" json:"calendar"`
 	Mood           MoodConfig         `yaml:"mood" json:"mood"`
 	WebSearch      WebSearchConfig    `yaml:"web_search" json:"web_search"`
+	AgentMode      AgentModeConfig    `yaml:"agent_mode" json:"agent_mode"`
 	Browser        BrowserConfig      `yaml:"browser" json:"browser"`
 	DevGateway     DevGatewayConfig   `yaml:"dev_gateway" json:"dev_gateway"`
 	Swarm          SwarmConfig        `yaml:"swarm" json:"swarm"`
@@ -191,6 +192,18 @@ type CalendarConfig struct {
 type WebSearchConfig struct {
 	Enabled    bool `yaml:"enabled" json:"enabled"`
 	MaxResults int  `yaml:"max_results" json:"max_results"`
+}
+
+// AgentModeConfig persists the agent-mode (tool-execution) toggle so it
+// survives a backend restart. Agent mode used to be an in-memory-only flag
+// reset to false on every App init, while the Flutter/CLI clients cached
+// their last value — so after the desktop app relaunched its bundled
+// backend (an update, a --kill/relaunch) the UI still showed agent mode
+// "on" while the backend had silently reverted to off, and every message
+// routed as a plain toolless reply ("agent mode is off, turn it on...").
+// Mirrors WebSearchConfig.Enabled, which is persisted for the same reason.
+type AgentModeConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
 }
 
 // BrowserConfig controls the optional headless-browser fallback
@@ -806,6 +819,14 @@ func Default() *AppConfig {
 			// config.yaml, which already carries an explicit value.
 			Enabled:    true,
 			MaxResults: 5,
+		},
+		AgentMode: AgentModeConfig{
+			// Off by default — a fresh install shouldn't start with
+			// file/command tool access live. Existing installs that had
+			// agent mode on when they last shut down now keep it on, since
+			// SetAgentEnabled persists it and Load() overlays their
+			// config.yaml.
+			Enabled: false,
 		},
 		Browser: BrowserConfig{
 			// Off by default — a fresh browser per fetch, closed

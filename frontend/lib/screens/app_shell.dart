@@ -252,6 +252,16 @@ class _AppShellState extends ConsumerState<AppShell> {
         // the real backend config (e.g. google_live with API key).
         ref.invalidate(liveModeConfigProvider);
         ref.invalidate(liveModeEnginesProvider);
+        // Same shape as BUG-ONB13: both are StateNotifiers that GET their
+        // value from the backend exactly once at construction. If that GET
+        // ran while the gate was up it 401'd and left them stuck at the
+        // false default, so the chat toolbar showed agent mode / web search
+        // off even when the backend had them on — and, worse, after the
+        // backend persisted agent mode (config.AgentModeConfig) a client
+        // that started before the gate opened kept showing it off forever.
+        // Invalidating recreates the notifier and re-runs its init GET.
+        ref.invalidate(agentEnabledProvider);
+        ref.invalidate(webSearchModeProvider);
       }
     });
 

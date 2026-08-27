@@ -653,8 +653,12 @@ func (a *App) Startup(ctx context.Context) {
 	basePath, _ := filepath.Abs(".")
 	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr, a.getSessionManager())
 	a.agentExecutor.SetBypassPermissions(a.cfg.Mood.SystemManagement)
-	a.agentEnabled = false
-	logx.Printf("Agent mode initialized (enabled=false)")
+	// Restored from config rather than hardcoded off: the toggle is
+	// persisted by SetAgentEnabled now (see config.AgentModeConfig), so a
+	// backend restart no longer silently drops agent mode while every
+	// client still shows it on.
+	a.agentEnabled = a.cfg.AgentMode.Enabled
+	logx.Printf("Agent mode initialized (enabled=%v)", a.agentEnabled)
 	a.webSearchExecutor = agent.NewWebSearchExecutor(a.agentExecutor)
 
 	a.browserMgr = browserengine.New(a.cfg.Browser.KeepAlive)

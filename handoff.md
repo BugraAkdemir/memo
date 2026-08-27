@@ -1,3 +1,90 @@
+# Ek (2026-08-27, devam 19) — Live Mode v2: setup/read-limit düzeltmeleri, PCM oynatma (pacat), tam ekran UI + transkript sohbeti
+
+Önceki "Faz 14" girdisinden sonra kullanıcı Google Live ile gerçek bir
+konuşma denemeye devam etti; her denemede yeni, somut bir hata bulundu ve
+anında düzeltildi — bu girdi o dizinin tamamını topluyor.
+
+**Setup/protokol düzeltmeleri (sırasıyla bulunan gerçek hatalar):**
+1. `5c6301a` — `responseModalities` yanlış yerdeydi: `setup`'ın direkt
+   altında değil, `setup.generationConfig` içinde olmalıymış. Google'ın
+   kendi hata mesajı ("Unknown name responseModalities... Cannot find
+   field") ile bulundu, resmi referansla (`ai.google.dev/api/live`)
+   doğrulandı.
+2. `022e155` — `coder/websocket`'in varsayılan 32KB mesaj okuma limiti,
+   Google'ın gerçek ses yanıtlarını (32KB'ı kolayca aşan base64 PCM
+   parçaları) okumadan önce bağlantıyı kapatıyordu. `SetReadLimit(10MB)`
+   eklendi (her iki motor için).
+3. `4cf31ef`, `535ab26` — bu iki hatayı bulmayı mümkün kılan tanı
+   loglaması eklendi (oturum yaşam döngüsü, her sunucu mesajının özeti,
+   ilk ses paketinin boyutu, EventAudioOut'un gerçekten üretilip
+   üretilmediği).
+
+**Ses çalma (playback) — üç ayrı hata, hepsi gerçek testte bulundu:**
+4. `e066839` — `LiveModePcmPlayer`'ın subprocess hatalarını (stdout/stderr)
+   sessizce çöpe atması: process başlıyordu ama sessizce ölüyordu, hiçbir
+   hata görünmüyordu. Artık `onError` stream'i var, gerçek hata toast'ına
+   ulaşıyor.
+5. `9e0063d` — stderr'i okurken bir yarış durumu: `process.exitCode`
+   tamamlandığında stderr akışı henüz tam gelmemiş olabiliyordu, "code 1"
+   yazıp gerçek sebebi hiç göstermiyordu. `forEach()`'in Future'ını
+   `await` ederek düzeltildi.
+6. `ade6c12` — **asıl kök sebep**: `paplay`'e `-` (stdin) argümanı
+   veriyorduk ama `paplay` bunu desteklemiyor — `open("-")` diye
+   literal bir dosya açmaya çalışıp `ENOENT` ile patlıyordu (kullanıcının
+   gerçek hata mesajından bulundu: "open(): No such file or directory").
+   Doğru araç `pacat` (PulseAudio/PipeWire'ın stdin'den ham PCM akıtma
+   aracı) — geçildi, elle doğrulandı (`pacat --playback ...` ile gerçek
+   pipe testi, `pactl info` ile soket erişimi).
+
+**Sonuç: kullanıcı Google Live ile gerçek bir sesli konuşma yaptı ve
+Memo'nun sesini duydu — bu branch'te ilk kez.**
+
+**İki yeni özellik isteği, HTML mockup onayından sonra uygulandı:**
+- `385a6fc` — `SessionEvent`/WS control frame'e `role` alanı eklendi
+  ("user"/"model") — Google'ın `outputTranscription`'ı (öncesinde sadece
+  log'a yazılıyordu) ve OpenAI'nin `response.output_audio_transcript.done`'ı
+  (güncel dokümana göre doğrulanan yeni event, hiç işlenmiyordu) artık
+  gerçek transkript event'i olarak gönderiliyor.
+- `34cd235` — kullanıcının 3 HTML mockup'tan seçtiği "Canlı Orb" tasarımı
+  gerçek Flutter widget'ı olarak yazıldı (`live_realtime_view.dart`) —
+  nefes alan bronz küre, pulsing "canlı" rozeti, altında mevcut
+  `ChatMessageList` aynen kullanılıyor (bubble render mantığı tekrar
+  yazılmadı). `chat_screen.dart` artık native oturum aktifken bu view'ı
+  gösteriyor. Transkriptler `messagesProvider.addMessage()` ile normal
+  sohbet balonu gibi ekleniyor — `chat_input.dart`'ın `_sendWhatsApp()`
+  metodunun zaten kullandığı "gerçek gönderim yolunun dışında elle
+  ChatMessage ekle" deseninin aynısı. Kullanıcıyla teyit edildi: bu
+  balonlar kalıcı (oturum bitince silinmiyor), ana modele hiç
+  gönderilmiyor.
+  **Basitleştirme (şeffafça not edildi)**: "gönder oku alta taşınsın"
+  isteği tam olarak uygulanmadı — mesaj input satırı zaten ekranın en
+  altında (yapısal olarak), o yüzden ayrı bir dock'a çıkarmadım; kullanıcı
+  gerçek sonucu görüp isterse bir sonraki turda düzeltilecek.
+
+**Doğrulama:**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race   → yeşil
+$ flutter analyze lib/ test/   → temiz (5 önceden var olan, ilgisiz info)
+$ flutter test   → 304 test, hepsi yeşil
+```
+
+**Kullanıcının bu turda bildirdiği, henüz çözülmemiş iki yeni bug:**
+- **Ses bazen kesiliyor** — muhtemelen Google'ın kendi VAD'i klavye/arka
+  plan sesini kullanıcının tekrar konuşmaya başladığı sanıp modeli
+  kesiyor (loglarda `interrupted=true` zaten görülmüştü). Google Live'ın
+  `realtimeInputConfig.automaticActivityDetection` hassasiyet ayarları
+  araştırılacak.
+- **`WorkMode: delegate` gerçek oturumda hiçbir şey yapmıyor** (hafıza
+  dahil) — standalone modda "çalışıyor gibi ama yine buglu". Faz 9-10'da
+  sadece unit test'lerle doğrulanmıştı, hiç gerçek Google Live oturumuyla
+  test edilmemişti. Canlı log'larla incelenmesi lazım.
+
+**Sıradaki:** Kullanıcının bu son push'u tekrar test etmesi (tam ekran
+orb + transkript balonları), paralelde delegate-mode bug'ının kod
+incelemesiyle başlanacak.
+
+---
+
 # Ek (2026-08-26, devam 18) — Live Mode v2: gerçek testte bulunan 4 hata düzeltildi ("Faz 14")
 
 Kullanıcı branch'i `scripts/run_memo.sh` ile gerçek uygulamada test etti

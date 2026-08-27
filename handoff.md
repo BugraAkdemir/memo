@@ -1,3 +1,70 @@
+# Ek (2026-08-27, devam 22) — Live Mode v2: `~` genişletme + change_directory bugları, transkript kalıcılığı, live moda yazılı metin gönderme
+
+Kullanıcı `~/Desktop` klasörünü silmemi istedi (yaptım, onaylandı) ve üç
+şey daha bildirdi:
+
+**1. `~` genişletme bug'ı bulundu ve düzeltildi (`c357b0f`).** Kök sebep:
+`validatePath` (write_file/read_file/edit_file'ın hepsinin kullandığı
+paylaşılan yol çözücü) `~`'yi hiç genişletmiyordu — `change_directory`'nin
+kendi çözücüsü (`resolveChangeDirectoryTarget`) zaten doğru yapıyordu ama
+bu paylaşılan fonksiyon yapmıyordu. Model `"~/Desktop/hello.py"` yazdığında
+repo kökünde literal bir `"~"` klasörü oluşuyordu. Artık `~` gerçek home
+dizinine genişletiliyor — basePath dışına çıkarsa (`~` genelde çıkar) artık
+doğru bir "proje dizini dışında" hatası veriyor, sessizce yanlış yere
+yazmıyor.
+
+**2. `change_directory` standalone modda hiç çalışmıyordu — düzeltildi
+(`c357b0f`).** "Workspace'ini değiştir" dediğinde model "internal error: no
+sandbox available" hatası alıyordu. `ExecuteToolCall` (Live Mode'un
+standalone modunun araç çağırma girişi), `RunStream`'in zaten yaptığı
+`tools.WithSandboxSetter`/`WithProjectPathSetter` context bağlamasını hiç
+yapmıyordu — araç registry'de vardı ama bu yoldan asla çalışamıyordu.
+Ayrıca `buildLiveModeToolCallHandler`'ın standalone dalı artık her çağrıdan
+önce `sessionManager.GetProjectPath`'i okuyup geri veriyor (llm.go'nun
+`RunStream`'den önce yaptığı aynı okuma) — yoksa bir önceki çağrıda
+kalıcı hale getirilen dizin değişikliği bir sonraki araç çağrısında hiç
+okunmuyordu.
+
+**3. Live Mode transkript geçmişi gerçekten kalıcı hale getirildi
+(`aabf619`).** Kullanıcı: "chat geçmişi durmuyor." Önceki implementasyon
+(`messagesProvider.addMessage()`) sadece Flutter'ın bellek-içi durumunu
+güncelliyordu — backend'e hiçbir şey söylenmiyordu, sohbet değiştirip
+geri dönünce veya uygulama yeniden başlayınca transkript kayboluyordu.
+Yeni `App.AppendMessage`/`POST /api/messages/append` — LLM turu tetiklemeden
+aktif oturuma gerçekten kaydediyor, her transkript balonu için
+`addMessage()`'ın yanında çağrılıyor.
+
+**4. Live modda yazılı metin gönderme eklendi (`aabf619`).** Kullanıcı:
+"bir metin söyleyemiyorsam (kod parçası vs.) chatten manuel yazıp
+gönderdiğimde live mod bunu alsın." Yeni istemci→sunucu WS metin çerçevesi
+(`{"type":"inject_text","text":"..."}`), sunucu tarafında doğrudan
+oturumun `InjectContext`'ine yönlendiriliyor (izin soruları/bekleme
+ipucu için zaten kullandığımız aynı mekanizma). `chat_input.dart`'ın
+gönder butonu artık native oturum aktifken normal `sendMessage()` yerine
+buna yönleniyor — yazılan metin de sesli söylenen bir şey gibi hem
+görünüyor hem kalıcı oluyor (aynı `addMessage()`+`appendMessage()` sırası).
+
+**Doğrulama:**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race   → yeşil
+$ flutter analyze lib/   → temiz (5 önceden var olan, ilgisiz info)
+$ flutter test   → 304 test, hepsi yeşil
+```
+
+**Echo/AEC**: kullanıcıya PipeWire `module-echo-cancel` komutlarını verdim
+(sistem ayarı olduğu için ben çalıştıramıyorum), henüz sonucu bilinmiyor.
+
+**Bekliyor**: repo kökünde iki dosya daha bulundu (`Classroom memo
+buradaydı.txt`, `benim_adım_memo.txt`) — `~/Desktop` gibi net bir bug
+belirtisi değil (basePath repo kökü olabilir), kullanıcıya sorulacak,
+dokunulmadı.
+
+**Sıradaki:** Kullanıcının PipeWire echo-cancel komutlarını denemesi,
+sonra tüm yeni özellikleri (kalıcı transkript, yazılı metin gönderme,
+`change_directory`/`~` düzeltmeleri) gerçek oturumda test etmesi.
+
+---
+
 # Ek (2026-08-27, devam 21) — Live Mode v2: halüsinasyon + bekleme sessizliği düzeltmeleri, ses seçimi, echo/AEC bulgusu
 
 Kullanıcının aynı testte bildirdiği dört şey daha vardı:

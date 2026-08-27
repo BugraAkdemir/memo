@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/coder/websocket"
@@ -231,6 +232,18 @@ type Client struct {
 
 	events    chan livemode.SessionEvent
 	closeOnce sync.Once
+
+	// Google's Live API streams transcription as many small incremental
+	// chunks (a few characters each) and only marks the end of an utterance
+	// with serverContent.turnComplete — unlike OpenAI Realtime, whose
+	// *.transcript.done / *.transcription.completed events already carry a
+	// whole utterance. Forwarding each chunk as its own EventTranscript
+	// produced one chat bubble (and one persisted history row) per word.
+	// These buffers accumulate a turn's chunks; readLoop flushes them as a
+	// single EventTranscript per role at the turn boundary. Only readLoop
+	// touches them, so no lock is needed.
+	userTranscriptBuf  strings.Builder
+	modelTranscriptBuf strings.Builder
 }
 
 var _ livemode.Session = (*Client)(nil)
@@ -404,22 +417,32 @@ func (c *Client) readLoop() {
 			continue
 		}
 
-		// User speech transcript.
-		if msg.ServerContent.InputTranscription != nil && msg.ServerContent.InputTranscription.Text != "" {
-			select {
-			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleUser, Transcript: msg.ServerContent.InputTranscription.Text}:
-			case <-c.ctx.Done():
+		// User + model speech transcripts arrive as many small incremental
+		// chunks; accumulate here and flush one EventTranscript per role at
+		// the turn boundary (turnComplete / interrupted) — see the buffer
+		// fields' doc comment. The model's own spoken reply as text is
+		// needed because the Live Mode UI displays a live conversation as a
+		// normal chat (docs/plans/PLAN_live_mode_v2.md's follow-up plan).
+		if msg.ServerContent.InputTranscription != nil {
+			c.userTranscriptBuf.WriteString(msg.ServerContent.InputTranscription.Text)
+		}
+		if msg.ServerContent.OutputTranscription != nil {
+			// The user has stopped and the model has started replying —
+			// close out the user's utterance first so the two bubbles land
+			// in the right order.
+			if c.userTranscriptBuf.Len() > 0 {
+				if !c.emitTranscript(livemode.RoleUser, &c.userTranscriptBuf) {
+					return
+				}
+			}
+			c.modelTranscriptBuf.WriteString(msg.ServerContent.OutputTranscription.Text)
+		}
+
+		if msg.ServerContent.TurnComplete || msg.ServerContent.Interrupted {
+			if !c.emitTranscript(livemode.RoleUser, &c.userTranscriptBuf) {
 				return
 			}
-		}
-		// The model's own spoken reply, as text — the Live Mode UI displays
-		// a live conversation as a normal chat (see
-		// docs/plans/PLAN_live_mode_v2.md's follow-up plan), which needs
-		// this alongside the user's own transcript above.
-		if msg.ServerContent.OutputTranscription != nil && msg.ServerContent.OutputTranscription.Text != "" {
-			select {
-			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleModel, Transcript: msg.ServerContent.OutputTranscription.Text}:
-			case <-c.ctx.Done():
+			if !c.emitTranscript(livemode.RoleModel, &c.modelTranscriptBuf) {
 				return
 			}
 		}
@@ -447,6 +470,26 @@ func (c *Client) readLoop() {
 				return
 			}
 		}
+	}
+}
+
+// emitTranscript flushes an accumulated transcript buffer as a single
+// EventTranscript for role and resets it. Returns false if the session
+// context was cancelled mid-send (readLoop should then return); an empty
+// buffer is a no-op that returns true. Whitespace-only content is dropped
+// — Google occasionally emits a lone " " chunk at a turn boundary that
+// would otherwise persist as an empty chat bubble.
+func (c *Client) emitTranscript(role string, buf *strings.Builder) bool {
+	text := buf.String()
+	buf.Reset()
+	if strings.TrimSpace(text) == "" {
+		return true
+	}
+	select {
+	case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: role, Transcript: text}:
+		return true
+	case <-c.ctx.Done():
+		return false
 	}
 }
 

@@ -196,11 +196,12 @@ func TestClient_EmitsAudioOutFromServerContent(t *testing.T) {
 	}
 }
 
-// TestClient_EmitsTranscriptFromInputTranscription confirms readLoop parses
-// serverContent.inputTranscription (the user-speech transcript — see
-// serverContent's doc comment on the nesting-location ambiguity this
-// package took a stance on) into an EventTranscript, independent of
-// whether that same server message also carries a modelTurn audio part.
+// TestClient_EmitsTranscriptFromInputTranscription confirms readLoop
+// accumulates serverContent.inputTranscription chunks (the user-speech
+// transcript — see serverContent's doc comment on the nesting-location
+// ambiguity this package took a stance on) and flushes them as a single
+// EventTranscript at the turn boundary (turnComplete), rather than one
+// event per incremental chunk.
 func TestClient_EmitsTranscriptFromInputTranscription(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, nil)
@@ -212,11 +213,14 @@ func TestClient_EmitsTranscriptFromInputTranscription(t *testing.T) {
 		if _, _, err := c.Read(ctx); err != nil { // consume setup
 			return
 		}
-		serverMsg := serverMessage{ServerContent: &serverContent{
-			InputTranscription: &transcriptionText{Text: "kapıyı kilitle"},
-		}}
-		payload, _ := json.Marshal(serverMsg)
-		c.Write(ctx, websocket.MessageText, payload)
+		for _, chunk := range []string{"kapıyı ", "kilitle"} {
+			payload, _ := json.Marshal(serverMessage{ServerContent: &serverContent{
+				InputTranscription: &transcriptionText{Text: chunk},
+			}})
+			c.Write(ctx, websocket.MessageText, payload)
+		}
+		done, _ := json.Marshal(serverMessage{ServerContent: &serverContent{TurnComplete: true}})
+		c.Write(ctx, websocket.MessageText, done)
 		<-ctx.Done()
 	}))
 	defer srv.Close()
@@ -251,7 +255,8 @@ func TestClient_EmitsTranscriptFromInputTranscription(t *testing.T) {
 // with Role=model — added for the Live Mode UI's "show the live
 // conversation as a normal chat" follow-up (see
 // docs/plans/PLAN_live_mode_v2.md), distinct from the user's own
-// Role=user transcript above.
+// Role=user transcript above. Like the input side, incremental chunks are
+// accumulated and flushed once at turnComplete.
 func TestClient_EmitsTranscriptFromOutputTranscription(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, nil)
@@ -263,11 +268,14 @@ func TestClient_EmitsTranscriptFromOutputTranscription(t *testing.T) {
 		if _, _, err := c.Read(ctx); err != nil { // consume setup
 			return
 		}
-		serverMsg := serverMessage{ServerContent: &serverContent{
-			OutputTranscription: &transcriptionText{Text: "Merhaba, nasıl yardımcı olabilirim?"},
-		}}
-		payload, _ := json.Marshal(serverMsg)
-		c.Write(ctx, websocket.MessageText, payload)
+		for _, chunk := range []string{"Merhaba, ", "nasıl yardımcı ", "olabilirim?"} {
+			payload, _ := json.Marshal(serverMessage{ServerContent: &serverContent{
+				OutputTranscription: &transcriptionText{Text: chunk},
+			}})
+			c.Write(ctx, websocket.MessageText, payload)
+		}
+		done, _ := json.Marshal(serverMessage{ServerContent: &serverContent{TurnComplete: true}})
+		c.Write(ctx, websocket.MessageText, done)
 		<-ctx.Done()
 	}))
 	defer srv.Close()

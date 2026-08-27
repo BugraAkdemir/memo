@@ -1,13 +1,31 @@
-# Ek (2026-08-27, devam 23) — Agent chat düz-LLM'e düşme bug'ı, Google Live transkript parçalanması, Live Mode → uzun süreli hafıza, agent-mode kalıcılığı
+# Ek (2026-08-27, devam 23) — Live Mode "araçlar kapalı" nag bug'ı (ASIL), agent chat routing, Google Live transkript parçalanması, Live Mode → hafıza, agent-mode kalıcılığı
 
 Kullanıcı üç şey bildirdi (GitHub katkı grafiği sorusuyla başladı — cevap:
 commit'ler `feature/live-mode-v2` dalında, grafik sadece `main`'i sayar;
 `~/.config` değil, dal meselesi). Sonra bug'lar:
 
-**0. (En önemli, 2. turda netleşti) Agent mode "açık görünüyor ama kapalı
-davranıyor" — düzeltildi (`0ae07b4`).** Ekran görüntüsü: normal chat,
-toolbar'da agent açık, ama model "agent modu kapalı, robot simgesinden aç"
-diyor + backend'in kendi dizinini listeliyor. Web'de de aynı. Kök sebep:
+**00. (ASIL BUG — 3. turda netleşti) Live Mode'da model araçları/web'i
+"kapalı" sanıyor — düzeltildi (`bcf0def`).** Kullanıcı net söyledi: normal
+text sohbette agent + web KUSURSUZ çalışıyor; "agent açıkken kapalı gibi
+davranma / web açıkken kapalı gibi davranma" SADECE Live Mode'da oluyor.
+Kök sebep: `buildLiveModeSystemPrompt`, `identity.BuildSystemPrompt`'u
+`agentEnabled=false, webSearchEnabled=false` ile çağırıyordu. O parametrelerin
+TEK kullanımı `buildCapabilitiesBlock` — ve o, `false` verilen her özellik
+için "bu özellik KAPALI, kullanıcıya toolbar'daki toggle'ı aç de" nag'ı
+enjekte ediyor. Eski yorum "tool-capability metnini bastırıyor" diyordu ama
+`BuildSystemPrompt`'ta bastırılacak öyle bir metin yok — `false` vermek
+sadece yanlış nag'ı EKLİYORDU. Sonuç: standalone oturum elinde
+read_file/run_command/web_search/fetch_page tutarken, delegate oturum bunlara
+delegate_to_main_model'le ulaşabilirken, ikisi de "yapamam, agent modunu aç"
+diyordu. Fix: `true, true` geç (nag hiç çıkmasın) + her iki capability
+paragrafını yeniden yaz (standalone: web_search/fetch_page'i açıkça say,
+"yapamam deme"; delegate: web/dosya/komut/hafıza HEPSİ delegate'ten geçer,
+"agent aç deme, devret"). Test: `TestBuildLiveModeSystemPrompt_NoFeatureOffNag`.
+
+**0. Agent mode "açık görünüyor ama kapalı davranıyor" (normal chat) —
+düzeltildi (`0ae07b4`).** İlk ekran görüntüsünde normal chat'te de bu
+görünmüştü; kullanıcı sonra "normal chat düzeldi/iyi" dedi. Yine de geçerli
+bir düzeltme (toggle restart'ı geçsin). Kök sebep:
 agent-mode SADECE bellek-içi bir bayraktı, her App init'te `false`'a
 sıfırlanıyordu; Flutter StateNotifier (ve CLI) son değeri cache'liyor,
 yeniden senkron etmiyor. Masaüstü uygulaması güncellemede / `--kill`
@@ -76,10 +94,11 @@ untracked, .gitignore'da değil, commit'lere DAHİL EDİLMEDİ. Ayrı bir
 temizlik konusu (ya .gitignore'a eklenmeli ya testin yolu düzeltilmeli).
 
 **Bekliyor / sıradaki:**
-- **"web search kapalı diyo"** — `config.yaml`'da `web_search.enabled: true`.
-  Çalışan instance farklı bir data dir kullanıyor olabilir (`~/.memo/`?).
-  Gate-transition invalidate'i (`0ae07b4`) `webSearchModeProvider`'ı da
-  yeniden senkronluyor; yine de backend gerçekten kapalıysa config meselesi.
+- **"web search kapalı diyo"** — Live Mode bağlamında `bcf0def` çözdü (nag
+  kalktı, capability paragrafına web eklendi). Normal chat'te de görülürse:
+  `config.yaml`'da `web_search.enabled: true`, çalışan instance farklı data
+  dir (`~/.memo/`?) kullanıyor olabilir; gate-transition invalidate'i
+  (`0ae07b4`) `webSearchModeProvider`'ı yeniden senkronluyor.
 - **"hafıza kaydetme çalışmıyor"** — `memory_enabled: true`. Muhtemelen
   embedding backend'i (yerel embedding modeli/sunucusu) çalışmıyor:
   `store.SaveInteraction` → `s.embed()` bağlantı reddi alınca

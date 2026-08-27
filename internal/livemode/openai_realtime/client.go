@@ -154,6 +154,16 @@ const (
 	serverEventAudioDelta                 = "response.output_audio.delta"
 	serverEventFunctionCallArgsDone       = "response.function_call_arguments.done"
 	serverEventInputTranscriptionComplete = "conversation.item.input_audio_transcription.completed"
+	// serverEventOutputTranscriptDone carries the model's own spoken
+	// reply, transcribed, as one complete string (as opposed to
+	// response.output_audio_transcript.delta's incremental chunks, which
+	// this package doesn't need — the Live Mode UI displays one chat
+	// bubble per utterance, not a live-typing effect). Confirmed against
+	// current API docs, 2026-08-26 (GA interface event naming, matching
+	// this package's own output_modalities/OutputAudio naming already in
+	// use — the field itself is named "transcript", the same name
+	// conversation.item.input_audio_transcription.completed already uses).
+	serverEventOutputTranscriptDone = "response.output_audio_transcript.done"
 )
 
 // ─── Client ───────────────────────────────────────────────────────────
@@ -293,8 +303,9 @@ func (c *Client) writeJSON(v any) error {
 }
 
 // readLoop decodes server events until the connection closes, emitting
-// EventAudioOut for each response.output_audio.delta. Every other event
-// type is skipped — see serverEvent's doc comment.
+// EventAudioOut for each response.output_audio.delta and EventTranscript
+// for both directions (user speech, model's own spoken reply). Every other
+// event type is skipped — see serverEvent's doc comment.
 func (c *Client) readLoop() {
 	defer close(c.events)
 	for {
@@ -321,7 +332,26 @@ func (c *Client) readLoop() {
 				continue
 			}
 			select {
-			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Transcript: ev.Transcript}:
+			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleUser, Transcript: ev.Transcript}:
+			case <-c.ctx.Done():
+				return
+			}
+		case serverEventOutputTranscriptDone:
+			// No explicit "enable output transcription" session field was
+			// found in current docs the way input's audio.input.transcription
+			// exists — the model generates the text it's speaking directly,
+			// unlike input (a separate ASR pass over raw user audio), so
+			// this is expected to arrive automatically once
+			// output_modalities includes "audio" (already the case, see
+			// Start()). Unverified against a real session yet (only
+			// google.Client's equivalent has been live-tested so far) — if
+			// this never fires in practice, that's the one thing to
+			// revisit here.
+			if ev.Transcript == "" {
+				continue
+			}
+			select {
+			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleModel, Transcript: ev.Transcript}:
 			case <-c.ctx.Done():
 				return
 			}

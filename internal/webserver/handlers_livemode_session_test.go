@@ -193,3 +193,65 @@ func TestHandleLiveModeSession_NotAvailableWithoutBridge(t *testing.T) {
 		t.Errorf("expected 501 Not Implemented without a bridge, got %d", rr.Code)
 	}
 }
+
+// fakeRoleSession is a minimal livemode.Session whose Events() channel the
+// test controls directly, for exercising pumpLiveModeSessionEvents in
+// isolation from any real provider client — used to prove the "role"
+// control-frame field (added alongside google.Client/openai_realtime.Client
+// now emitting Role: RoleModel for the model's own spoken-reply transcript,
+// see docs/plans/PLAN_live_mode_v2.md's follow-up plan) actually reaches
+// the JSON the Flutter client parses.
+type fakeRoleSession struct {
+	events chan livemode.SessionEvent
+}
+
+func (f *fakeRoleSession) Start(context.Context) error          { return nil }
+func (f *fakeRoleSession) SendAudio([]byte) error               { return nil }
+func (f *fakeRoleSession) InjectContext(string) error           { return nil }
+func (f *fakeRoleSession) Events() <-chan livemode.SessionEvent { return f.events }
+func (f *fakeRoleSession) Close() error                         { return nil }
+
+func TestPumpLiveModeSessionEvents_ForwardsTranscriptRole(t *testing.T) {
+	events := make(chan livemode.SessionEvent, 2)
+	events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleUser, Transcript: "Merhaba!"}
+	events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleModel, Transcript: "Merhaba, nasıl yardımcı olabilirim?"}
+	close(events)
+	session := &fakeRoleSession{events: events}
+
+	httpSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		writeDone := make(chan struct{})
+		pumpLiveModeSessionEvents(r.Context(), c, session, writeDone)
+		<-writeDone
+	}))
+	defer httpSrv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(httpSrv.URL, "http")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer c.CloseNow()
+
+	wantRoles := []string{livemode.RoleUser, livemode.RoleModel}
+	for i, want := range wantRoles {
+		_, data, err := c.Read(ctx)
+		if err != nil {
+			t.Fatalf("Read frame %d: %v", i, err)
+		}
+		var frame liveModeSessionControlFrame
+		if err := json.Unmarshal(data, &frame); err != nil {
+			t.Fatalf("unmarshal frame %d: %v", i, err)
+		}
+		if frame.Role != want {
+			t.Errorf("frame %d: expected role %q, got %q", i, want, frame.Role)
+		}
+	}
+	c.Close(websocket.StatusNormalClosure, "")
+}

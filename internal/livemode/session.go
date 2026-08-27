@@ -12,9 +12,10 @@ const (
 	// EventAudioOut carries a raw PCM chunk the engine wants played back to
 	// the user.
 	EventAudioOut SessionEventType = "audio_out"
-	// EventTranscript carries a partial or final transcript of what the
-	// user said (both providers surface this even while using native audio
-	// — see docs/plans/PLAN_live_mode_v2.md §5.2).
+	// EventTranscript carries a partial or final transcript of what was
+	// said — see SessionEvent.Role for who (both providers surface this
+	// even while using native audio — see
+	// docs/plans/PLAN_live_mode_v2.md §5.2).
 	EventTranscript SessionEventType = "transcript"
 	// EventFunctionCall carries a tool-call request from the engine — the
 	// delegate_to_main_model tool (or, in "standalone" WorkMode, any real
@@ -25,6 +26,18 @@ const (
 	EventClosed       SessionEventType = "closed"
 )
 
+// RoleUser/RoleModel identify who a SessionEvent.Transcript belongs to —
+// the user's own speech vs. the model's spoken reply, transcribed by the
+// provider itself. Added after real-world testing surfaced that the Live
+// Mode UI needs to display a live conversation as a normal chat (see
+// docs/plans/PLAN_live_mode_v2.md's follow-up plan), which requires
+// telling the two apart; before this, EventTranscript only ever carried
+// the user's side.
+const (
+	RoleUser  = "user"
+	RoleModel = "model"
+)
+
 // SessionEvent is the typed union of everything a Session can emit.
 type SessionEvent struct {
 	Type SessionEventType
@@ -32,6 +45,7 @@ type SessionEvent struct {
 	Audio []byte // EventAudioOut
 
 	Transcript string // EventTranscript
+	Role       string // EventTranscript only — RoleUser or RoleModel
 
 	FunctionCallID   string // EventFunctionCall
 	FunctionCallName string

@@ -233,6 +233,60 @@ func TestClient_EmitsTranscriptFromInputTranscription(t *testing.T) {
 		if ev.Transcript != "kapıyı kilitle" {
 			t.Errorf("expected the transcript text to round-trip, got %q", ev.Transcript)
 		}
+		if ev.Role != livemode.RoleUser {
+			t.Errorf("expected Role=user for an input transcript, got %q", ev.Role)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the transcript event")
+	}
+}
+
+// TestClient_EmitsTranscriptFromOutputTranscription confirms readLoop also
+// surfaces the model's own spoken reply (as text) as an EventTranscript
+// with Role=model — added for the Live Mode UI's "show the live
+// conversation as a normal chat" follow-up (see
+// docs/plans/PLAN_live_mode_v2.md), distinct from the user's own
+// Role=user transcript above.
+func TestClient_EmitsTranscriptFromOutputTranscription(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil { // consume setup
+			return
+		}
+		serverMsg := serverMessage{ServerContent: &serverContent{
+			OutputTranscription: &transcriptionText{Text: "Merhaba, nasıl yardımcı olabilirim?"},
+		}}
+		payload, _ := json.Marshal(serverMsg)
+		c.Write(ctx, websocket.MessageText, payload)
+		<-ctx.Done()
+	}))
+	defer srv.Close()
+	original := SessionBaseURL
+	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("g-key", "models/gemini-3.1-flash-live-preview", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case ev := <-c.Events():
+		if ev.Type != livemode.EventTranscript {
+			t.Fatalf("expected a transcript event, got %s (err=%v)", ev.Type, ev.Err)
+		}
+		if ev.Transcript != "Merhaba, nasıl yardımcı olabilirim?" {
+			t.Errorf("expected the transcript text to round-trip, got %q", ev.Transcript)
+		}
+		if ev.Role != livemode.RoleModel {
+			t.Errorf("expected Role=model for an output transcript, got %q", ev.Role)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for the transcript event")
 	}

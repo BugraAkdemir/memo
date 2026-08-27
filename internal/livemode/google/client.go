@@ -339,23 +339,24 @@ func (c *Client) readLoop() {
 			continue
 		}
 
-		// User speech transcript (only — output/model-speech transcripts are
-		// enabled for symmetry/future use but this package doesn't have a
-		// consumer for them yet, so they're not emitted as events).
+		// User speech transcript.
 		if msg.ServerContent.InputTranscription != nil && msg.ServerContent.InputTranscription.Text != "" {
 			select {
-			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Transcript: msg.ServerContent.InputTranscription.Text}:
+			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleUser, Transcript: msg.ServerContent.InputTranscription.Text}:
 			case <-c.ctx.Done():
 				return
 			}
 		}
-		// Diagnostic: the model's own spoken reply, as text — added after a
-		// real test showed hasOutputTranscription=true repeatedly with no
-		// corresponding EventAudioOut ever confirmed, to check whether
-		// Google is genuinely replying (content-wise) even if audio
-		// extraction below turns out to be the broken half.
+		// The model's own spoken reply, as text — the Live Mode UI displays
+		// a live conversation as a normal chat (see
+		// docs/plans/PLAN_live_mode_v2.md's follow-up plan), which needs
+		// this alongside the user's own transcript above.
 		if msg.ServerContent.OutputTranscription != nil && msg.ServerContent.OutputTranscription.Text != "" {
-			logx.Printf("livemode google: model said (text): %q", msg.ServerContent.OutputTranscription.Text)
+			select {
+			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleModel, Transcript: msg.ServerContent.OutputTranscription.Text}:
+			case <-c.ctx.Done():
+				return
+			}
 		}
 
 		if msg.ServerContent.ModelTurn == nil {

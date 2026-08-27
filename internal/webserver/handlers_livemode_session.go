@@ -18,6 +18,7 @@ import (
 type liveModeSessionControlFrame struct {
 	Type             string `json:"type"`
 	Transcript       string `json:"transcript,omitempty"`
+	Role             string `json:"role,omitempty"` // "transcript" frames only — "user" or "model"
 	FunctionCallID   string `json:"function_call_id,omitempty"`
 	FunctionCallName string `json:"function_call_name,omitempty"`
 	FunctionCallArgs string `json:"function_call_args,omitempty"`
@@ -81,7 +82,7 @@ func pumpLiveModeSessionEvents(ctx context.Context, c *websocket.Conn, session l
 				}
 				continue
 			}
-			frame := liveModeSessionControlFrame{Type: string(ev.Type), Transcript: ev.Transcript}
+			frame := liveModeSessionControlFrame{Type: string(ev.Type), Transcript: ev.Transcript, Role: ev.Role}
 			if ev.Type == livemode.EventFunctionCall {
 				frame.FunctionCallID = ev.FunctionCallID
 				frame.FunctionCallName = ev.FunctionCallName

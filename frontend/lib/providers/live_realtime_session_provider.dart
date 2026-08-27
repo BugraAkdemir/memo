@@ -9,6 +9,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../core/duplex_audio_engine.dart';
 import '../core/friendly_error.dart';
 import '../core/live_pcm_player.dart';
+import '../models/chat.dart';
 import 'chat_provider.dart';
 
 /// Connection lifecycle for a Google Live/OpenAI Realtime session — see
@@ -65,14 +66,16 @@ const _engineAudioConfigs = <String, LiveRealtimeEngineAudioConfig>{
 class LiveModeSessionControlFrame {
   final String type;
   final String? transcript;
+  final String? role; // "transcript" frames only — "user" or "model"
   final String? error;
 
-  const LiveModeSessionControlFrame({required this.type, this.transcript, this.error});
+  const LiveModeSessionControlFrame({required this.type, this.transcript, this.role, this.error});
 
   factory LiveModeSessionControlFrame.fromJson(Map<String, dynamic> json) {
     return LiveModeSessionControlFrame(
       type: json['type'] as String? ?? '',
       transcript: json['transcript'] as String?,
+      role: json['role'] as String?,
       error: json['error'] as String?,
     );
   }
@@ -238,11 +241,28 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
       final frame = LiveModeSessionControlFrame.fromJson(jsonDecode(raw) as Map<String, dynamic>);
       if (frame.type == 'error' && frame.error != null && frame.error!.isNotEmpty) {
         _setError(FriendlyError.describeGeneric(frame.error!));
+        return;
       }
-      // transcript/function_call frames: no UI consumer yet (the backend
-      // resolves function calls and voice-based permission prompting
-      // itself — see docs/plans/PLAN_live_mode_v2.md Phase 12). Nothing
-      // further to do with them client-side at this point.
+      if (frame.type == 'transcript' && frame.transcript != null && frame.transcript!.isNotEmpty) {
+        // Displays the live conversation as a normal chat — purely local,
+        // never routed through sendMessage()/the real send-to-LLM path (the
+        // actual "ana model" routing for Live Mode happens server-side via
+        // delegate/standalone tool calls, entirely independent of this).
+        // Confirmed with the user: these bubbles stay in the chat's history
+        // permanently once added, not cleared when the session ends — see
+        // docs/plans/PLAN_live_mode_v2.md's follow-up plan.
+        _ref.read(messagesProvider.notifier).addMessage(
+              ChatMessage(
+                role: frame.role == 'model' ? 'assistant' : 'user',
+                content: frame.transcript!,
+                timestamp: DateTime.now().toIso8601String(),
+              ),
+            );
+      }
+      // function_call frames: no UI consumer (the backend resolves
+      // function calls and voice-based permission prompting itself — see
+      // docs/plans/PLAN_live_mode_v2.md Phase 12). Nothing further to do
+      // with them client-side.
     } catch (_) {
       // Malformed control frame -- ignore rather than tear down a working
       // audio session over a display-only parse failure.

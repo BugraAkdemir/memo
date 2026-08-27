@@ -920,6 +920,8 @@ class L10n {
     'live_realtime_stop': 'Canlı sesli sohbeti durdur',
     'live_realtime_state_connecting': 'Bağlanıyor…',
     'live_realtime_state_connected': 'Canlı',
+    'live_realtime_state_listening': 'Dinliyor…',
+    'live_realtime_empty_hint': 'Konuşmaya başla — Memo dinliyor',
     'live_mode_test_tts_title': 'Sesli Mod — Ses Testi',
     'live_mode_test_tts_desc':
         'Piper motorunun kurulu ve yapılandırılmış olması gerekir (Ayarlar dosyasında tts.enabled + tts.model_path).',
@@ -2878,6 +2880,8 @@ class L10n {
     'live_realtime_stop': 'Stop live voice chat',
     'live_realtime_state_connecting': 'Connecting…',
     'live_realtime_state_connected': 'Live',
+    'live_realtime_state_listening': 'Listening…',
+    'live_realtime_empty_hint': 'Start talking — Memo is listening',
     'live_mode_test_tts_title': 'Live Mode — Voice Test',
     'live_mode_test_tts_desc':
         'Requires Piper to be installed and configured (tts.enabled + tts.model_path in the config file).',

@@ -1,3 +1,50 @@
+# Ek (2026-08-27, devam 20) — Live Mode v2: delegate-mode hafıza + VAD barge-in hassasiyeti düzeltmeleri
+
+Bir önceki girdide kullanıcının bildirdiği iki yeni bug'a bakıldı:
+
+**1. `WorkMode: delegate` hafıza dahil hiçbir şey yapmıyordu — düzeltildi
+(`6b33273`).** Kök sebep: `buildLiveModeSystemPrompt`'un delegate-mode
+yeteneği metni ve `DelegateToolSpec`'in kendi açıklaması sadece "kod
+yazma, dosya/komut" işlerini devretme sebebi olarak gösteriyordu. Oturum
+başındaki hafıza bağlamı tek seferlik, genel bir özet (`"güncel bağlam"`
+diye genel bir sorguyla çekiliyor) — Faz 11 oturum-içi hafıza tazelemeyi
+bilinçli olarak ertelemişti. Yani konuşma sırasında hafıza gerektiren bir
+soru sorulduğunda, model bunu "devretme sebebi" olarak görmüyordu, hiçbir
+yere gitmiyordu. Hem system prompt hem tool açıklaması genişletildi:
+artık "kendi bağlamından dürüstçe cevaplayamadığın her şey" (hafıza dahil)
+devretme sebebi, modele kafadan uydurmaması söylendi. Devretme zaten ana
+modelin normal hafıza aramasına (`sendMessageStreamCore` →
+`buildMessagesForSession`) ulaşıyor, o yüzden bu değişiklik teoride
+yeterli olmalı — gerçek oturumda henüz doğrulanmadı.
+
+**Ayrı, düzeltilmemiş bulgu**: standalone modda da hafıza çalışmıyor,
+çünkü agent tool registry'sinde (search_files/web_search/whatsapp_search
+var) hiç hafıza arama aracı yok — hafıza normalde görünmez, otomatik
+per-turn bir mekanizma (`buildMessagesForSession`), modelin çağırdığı bir
+araç değil. Bu, tüm agent registry'sini etkileyecek ayrı, daha büyük bir
+özellik (sadece Live Mode değil, normal agent-mode sohbeti de etkiler) —
+şimdilik yapılmadı, kullanıcıya bildirildi.
+
+**2. Ses bazen kesiliyordu (VAD barge-in) — muhtemel düzeltme,
+`289dc2b`.** `startOfSpeechSensitivity: START_SENSITIVITY_LOW` eklendi
+(resmi referansla doğrulandı: varsayılan HIGH, "konuşma başlangıcını daha
+sık algılar" — LOW daha kesin bir sinyal istiyor). Klavye/arka plan
+sesinin modelin kendi konuşmasını kesmesini azaltmalı. `prefixPaddingMs`/
+`silenceDurationMs` (aynı yapıdaki diğer ince ayar alanları) belgelenmiş
+bir önerilen değer olmadığı için dokunulmadı. **Henüz gerçek oturumda
+doğrulanmadı.**
+
+**Doğrulama:**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race   → yeşil
+```
+
+**Sıradaki:** Kullanıcının üç şeyi birden test etmesi — tam ekran orb UI,
+delegate-mode hafıza devretmesi (örn. "geçen konuştuğumuz X neydi" gibi
+bir soru), ve ses kesilmesinin azalıp azalmadığı.
+
+---
+
 # Ek (2026-08-27, devam 19) — Live Mode v2: setup/read-limit düzeltmeleri, PCM oynatma (pacat), tam ekran UI + transkript sohbeti
 
 Önceki "Faz 14" girdisinden sonra kullanıcı Google Live ile gerçek bir

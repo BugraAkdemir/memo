@@ -107,3 +107,7 @@ data/session.key
 data/install_id
 data/agent-audit.jsonl
 internal/agent/data/agent-audit.jsonl
+internal/app/data/agent-backups/history.json
+internal/app/data/machine.key
+internal/app/data/agent-audit.jsonl
+internal/agent/data/agent-backups/history.json

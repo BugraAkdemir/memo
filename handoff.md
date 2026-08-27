@@ -1,3 +1,66 @@
+# Ek (2026-08-27, devam 21) — Live Mode v2: halüsinasyon + bekleme sessizliği düzeltmeleri, ses seçimi, echo/AEC bulgusu
+
+Kullanıcının aynı testte bildirdiği dört şey daha vardı:
+
+**1. Model "yaptım" diyor ama yapmamış (halüsinasyon) — düzeltildi
+(`054d692`).** Delegate-mode system prompt'una açık bir kural eklendi:
+`delegate_to_main_model`'i GERÇEKTEN çağırıp gerçek bir sonuç almadan
+"yaptım/hallettim/tamamladım" gibi ifadeler asla kullanma, bunu yapmak
+yalan.
+
+**2. Görev çalışırken ses "git gel" yapıyor, sürekli konuşmaya çalışıyor
+— düzeltildi (`054d692`).** Kullanıcının kendi fikri: bekleme sırasında
+"hmm, bir saniye" gibi bir dolgu sesi/ifadesi. Discrete motorlardaki
+`_playFillerBestEffort`'un (önceden kaydedilmiş ses dosyası çalan) aynı
+fikri, ama bu model kendi sesini kendi ürettiği için ön-kayıtlı klip
+çalamıyoruz — bunun yerine `delegate_to_main_model` çağrıldığı an
+`InjectContext` ile "tek kısa bir şey söyle, sonra gerçek sonuç gelene
+kadar sessizce bekle" talimatı gönderiliyor.
+
+**3. Ses seçimi eklendi (`054d692`).** Kullanıcı: "Google ve ChatGPT
+tarafında modelin birden fazla ses seçeneği var, bunu da yapalım."
+`google.Client`/`openai_realtime.Client`'a opsiyonel (variadic, mevcut
+~26 test call site'ını hiç etkilemeyen) bir `voice` parametresi eklendi.
+Google: `speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName` (Puck,
+Charon, Kore, Fenrir, Aoede, Leda, Orus, Zephyr — resmi dokümanla
+doğrulandı, sabit bir katalog, "model listesi" değil). OpenAI:
+`session.audio.output.voice` (alloy, ash, ballad, coral, echo, sage,
+shimmer, verse, marin, cedar — marin/cedar OpenAI'nin kendi önerdiği en
+kaliteli sesler). Zaten var olan `EngineConfig.Voice` alanı (önceden
+sadece ElevenLabs için) yeniden kullanıldı. Ayarlar'daki Live Mode
+sekmesine bu iki motor için ses açılır menüsü eklendi.
+
+**4. "Kendi sesini geri alıyor" — echo/AEC sorunu, KOD İLE
+DÜZELTİLMEDİ, kullanıcıya açıklandı.** Kullanıcı laptop hoparlörü +
+mikrofonla test ediyor, kulaklık yok — Memo'nun kendi TTS sesi hoparlörden
+çıkıp mikrofona geri giriyor, Google bunu "kullanıcı konuşuyor" sanıyor.
+Bu muhtemelen "ses kesiliyor" bug'ının asıl kök sebebi (VAD hassasiyeti
+düşürmek yardımcı olur ama sorunu tam çözmez). `NoAecDuplexAudioEngine`
+zaten `echoCancel: true` gönderiyor (PipeWire'ın kendi echo-cancel'ı) ama
+yeterli değil — gerçek özel bir AEC pipeline'ı hiç yapılmadı (plan bunu
+başından beri gelecek iş olarak işaretlemişti). En pratik çözüm:
+kulaklık kullanmak. Kod tarafında gerçek bir çözüm, ayrı ve büyük bir ses
+mühendisliği işi olurdu — şimdilik yapılmadı.
+
+**Yan bulgu, dokunulmadı**: repo kökünde `~/Desktop/` diye literal bir
+dizin belirdi (hello.py, selam_dunya.py, bir txt dosyası) — kullanıcının
+standalone-mode testinde modelin kendisinin oluşturduğu dosyalar, ama
+`~` gerçek home dizinine genişletilmemiş. Untracked, commit'e girmedi,
+kullanıcıya bildirildi, ayrı bir konu olarak bırakıldı.
+
+**Doğrulama:**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race   → yeşil
+$ flutter analyze lib/ test/   → temiz (6 önceden var olan, ilgisiz info)
+$ flutter test   → 304 test, hepsi yeşil
+```
+
+**Sıradaki:** Kullanıcının kulaklıkla tekrar test etmesi (echo'yu
+elemek için), delegate-mode'un artık gerçekten iş yapıp yapmadığını
+görmek, ses seçiminin çalışıp çalışmadığını denemek.
+
+---
+
 # Ek (2026-08-27, devam 20) — Live Mode v2: delegate-mode hafıza + VAD barge-in hassasiyeti düzeltmeleri
 
 Bir önceki girdide kullanıcının bildirdiği iki yeni bug'a bakıldı:

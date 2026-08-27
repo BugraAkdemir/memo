@@ -18,23 +18,28 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 /// piping raw PCM straight to its stdin as chunks arrive from the server —
 /// no temp files, no per-chunk process-spawn latency.
 ///
-/// **Linux-only for now.** `paplay --raw` (PulseAudio/PipeWire) is the only
-/// platform tool in WavPlayer's existing "no third-party audio library"
-/// set that accepts a continuous raw PCM stream over stdin; `afplay`
-/// (macOS) and PowerShell's `SoundPlayer` (Windows) are both file-oriented,
-/// with no documented stdin-streaming mode. Rather than guess at an
-/// undocumented streaming path for either, [start] throws
+/// **Linux-only for now.** `pacat` (PulseAudio/PipeWire's raw-PCM-over-
+/// stdin/stdout utility — *not* `paplay`, which plays encoded audio files
+/// and, verified the hard way via a real test, does not accept a `-`
+/// stdin argument the way most CLI tools do: it tries to literally
+/// `open("-")` as a filename and fails with ENOENT) is the streaming
+/// counterpart to [WavPlayer]'s `paplay`/`aplay` one-shot-file players.
+/// `afplay` (macOS) and PowerShell's `SoundPlayer` (Windows) are both
+/// file-oriented, with no documented stdin-streaming mode. Rather than
+/// guess at an undocumented streaming path for either, [start] throws
 /// [UnsupportedError] on non-Linux platforms — an honest, visible failure
 /// (surfaced through FriendlyError like any other) instead of silent
 /// non-playback. Real cross-platform streaming playback is follow-up work.
 class LiveModePcmPlayer {
-  /// Candidate commands tried in order — mirrors [WavPlayer]'s own
-  /// fallback list, but only `paplay` actually supports `--raw` stdin
-  /// streaming; `aplay` is included as a same-family fallback (ALSA's
-  /// `aplay` also supports raw/stdin playback via `-t raw`).
+  /// Candidate commands tried in order. `pacat --playback` reads raw PCM
+  /// from stdin by default when given no FILE argument (confirmed against
+  /// the pulseaudio-utils man page); `aplay` (ALSA, same-family fallback)
+  /// documents the identical "no filename given -> stdin" behavior — both
+  /// deliberately get NO trailing filename argument in [rawArgsFor], not
+  /// even `-`, after `paplay -` turned out to fail exactly that way.
   final List<String> linuxPlayerCommands;
 
-  LiveModePcmPlayer({this.linuxPlayerCommands = const ['paplay', 'aplay']});
+  LiveModePcmPlayer({this.linuxPlayerCommands = const ['pacat', 'aplay']});
 
   Process? _process;
   final _errorController = StreamController<String>.broadcast();
@@ -113,14 +118,18 @@ class LiveModePcmPlayer {
 
   /// The raw-PCM CLI arguments for [cmd] at [sampleRate] — a pure, public
   /// static function (mirroring WavPlayer.paplayVolumeArg's own reason for
-  /// being public: unit-testable without spawning a real process).
+  /// being public: unit-testable without spawning a real process). No
+  /// trailing filename/`-` argument for either command — both read stdin
+  /// automatically when none is given; passing `-` to `pacat`'s sibling
+  /// `paplay` was the real bug this fixes (verified via a real test: it
+  /// tried to `open("-")` as a literal filename and failed).
   static List<String> rawArgsFor(String cmd, int sampleRate) {
     final base = cmd.split('/').last;
     if (base == 'aplay') {
-      return ['-t', 'raw', '-f', 'S16_LE', '-c', '1', '-r', '$sampleRate', '-'];
+      return ['-t', 'raw', '-f', 'S16_LE', '-c', '1', '-r', '$sampleRate'];
     }
-    // paplay --raw
-    return ['--raw', '--format=s16le', '--channels=1', '--rate=$sampleRate', '-'];
+    // pacat --playback
+    return ['--playback', '--format=s16le', '--channels=1', '--rate=$sampleRate'];
   }
 
   /// Feeds one PCM16 chunk to the playing subprocess's stdin. A no-op if

@@ -5,24 +5,29 @@ import 'package:memo_flutter/core/live_pcm_player.dart';
 
 void main() {
   group('LiveModePcmPlayer.rawArgsFor', () {
-    test('paplay: raw s16le mono at the given rate, reading stdin', () {
+    // No trailing filename/"-" argument for either command: both read
+    // stdin automatically when none is given (confirmed against the
+    // pulseaudio-utils/alsa-utils man pages) -- passing "-" to pacat's
+    // sibling `paplay` was the real bug a real live test surfaced (it
+    // tried to open("-") as a literal filename and failed with ENOENT).
+    test('pacat: playback mode, s16le mono at the given rate, reading stdin', () {
       expect(
-        LiveModePcmPlayer.rawArgsFor('paplay', 24000),
-        ['--raw', '--format=s16le', '--channels=1', '--rate=24000', '-'],
+        LiveModePcmPlayer.rawArgsFor('pacat', 24000),
+        ['--playback', '--format=s16le', '--channels=1', '--rate=24000'],
       );
     });
 
-    test('aplay: raw s16le mono at the given rate', () {
+    test('aplay: raw s16le mono at the given rate, reading stdin', () {
       expect(
         LiveModePcmPlayer.rawArgsFor('aplay', 16000),
-        ['-t', 'raw', '-f', 'S16_LE', '-c', '1', '-r', '16000', '-'],
+        ['-t', 'raw', '-f', 'S16_LE', '-c', '1', '-r', '16000'],
       );
     });
 
     test('matches by basename, not full path', () {
       expect(
-        LiveModePcmPlayer.rawArgsFor('/usr/bin/paplay', 24000),
-        ['--raw', '--format=s16le', '--channels=1', '--rate=24000', '-'],
+        LiveModePcmPlayer.rawArgsFor('/usr/bin/pacat', 24000),
+        ['--playback', '--format=s16le', '--channels=1', '--rate=24000'],
       );
     });
   });
@@ -73,7 +78,7 @@ void main() {
     // stderr detail always empty, because process.exitCode resolving
     // doesn't guarantee the separate stderr stream has already delivered
     // its data to a plain listen() callback. `cat` reliably refuses the
-    // paplay-shaped `--raw`-style flags rawArgsFor generates (GNU
+    // pacat-shaped `--xxx`-style flags rawArgsFor generates (GNU
     // coreutils treats unrecognized `--xxx` arguments as invalid options,
     // not filenames) and writes a real message to stderr before exiting
     // nonzero -- exactly the shape of failure this needs to survive.
@@ -88,7 +93,7 @@ void main() {
     });
 
     test('a deliberate stop() does not fire onError', () async {
-      // `yes` treats every argument (including the "--raw"-shaped flags
+      // `yes` treats every argument (including the pacat-shaped flags
       // rawArgsFor generates) as a literal string to repeat forever rather
       // than an option it tries to parse -- unlike most coreutils, so it
       // survives start() and just sits there (never touching stdin) until

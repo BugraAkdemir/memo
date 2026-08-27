@@ -129,7 +129,17 @@ class _AgentSidebar extends ConsumerWidget {
                     return _AgentChatItem(
                       chat: chat,
                       isActive: isActive,
-                      onTap: (id) => ref.read(activeChatIdProvider.notifier).switchTo(id),
+                      onTap: (id) {
+                        ref.read(activeChatIdProvider.notifier).switchTo(id);
+                        // Switching into an existing agent chat must turn agent
+                        // mode on, exactly like creating one does — otherwise a
+                        // send that races activeChatIdProvider's resolution can
+                        // reach the backend without a chat_id and fall through
+                        // to a plain toolless reply ("turn on agent mode...").
+                        if (!ref.read(agentEnabledProvider)) {
+                          ref.read(agentEnabledProvider.notifier).setEnabled(true);
+                        }
+                      },
                       onDelete: (id) => ref.read(chatListProvider.notifier).delete(id),
                     );
                   },

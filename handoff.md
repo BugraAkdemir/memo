@@ -1,3 +1,74 @@
+# Ek (2026-08-27, devam 23) — Agent chat düz-LLM'e düşme bug'ı, Google Live transkript parçalanması, Live Mode → uzun süreli hafıza
+
+Kullanıcı üç şey bildirdi (GitHub katkı grafiği sorusuyla başladı — cevap:
+commit'ler `feature/live-mode-v2` dalında, grafik sadece `main`'i sayar;
+`~/.config` değil, dal meselesi). Sonra bug'lar:
+
+**1. Agent chat düz LLM'e düşüyordu — düzeltildi (`670ce27`).** Belirti:
+"memo buraya yapamam, iznim yok" / "agent aç yapayım" (agent açıkken) +
+her zaman repo dizinini gösteriyor, seçilen klasörü değil. Kök sebep: iki
+yönlendirme yolu, biri asimetrik. `SendMessageStreamTo` (Flutter'ın normalde
+kullandığı `chat_id`'li yol) `forceAgent`'i `sm.IsAgentChat(chatID)`'den
+türetiyor. `SendMessage` + `sendMessageStreamInner` (implicit-active-chat
+yolu) `forceAgent=false` sabitliyordu — `chat_id` olmadan backend'e ulaşan
+her istek (`activeChatIdProvider` daha `null`'ken) global `agentEnabled`
+kapalıysa düz, araçsız cevaba düşüyordu. O bayrak kenar çubuğundan mevcut
+agent chat'e geçince açılmıyordu (sadece chat *oluştururken*). Fix:
+`chat.go`'da iki yer `sm.IsAgentChat(chatID)` kullanıyor + `agent_screen.dart`
+mevcut agent chat'e geçişte agent modunu açıyor. Regresyon:
+`TestSendMessage_ActiveAgentChat_GlobalToggleOff_StillSendsToolDefinitions`.
+
+**2. Google Live transkript kelime kelime parçalanıyordu — düzeltildi
+(`6373bea`).** Ekran görüntüsünde her kelime ayrı sohbet balonu ("bir" /
+"sürü" / "dosya" ...). Google Live API transkripti minik artışlarla
+gönderiyor, sonu `turnComplete` ile işaretliyor; `readLoop` her parçayı
+ayrı `EventTranscript` yapıyordu (ve transkript-kalıcılık değişikliğinden
+beri her parça ayrı kalıcı mesaj satırı). OpenAI Realtime'da yok (onun
+`*.done` event'leri zaten tam cümle taşıyor) — sadece Google client fix'i.
+`readLoop` artık `strings.Builder`'da biriktirip tur sınırında (turnComplete
+/ interrupted) rol başına tek `EventTranscript` flush ediyor.
+
+**3. Live Mode konuşmaları uzun süreli hafızaya (RAG) girmiyordu —
+düzeltildi (`748fd51`).** İki boşluk: (a) `AppendMessage`
+(`POST /api/messages/append`) sadece transkripti oturuma yazıyordu,
+`saveMemoryAsync`'e hiç uğramıyordu — artık model transkriptini önceki
+kullanıcı sözüyle eşleyip tura kaydediyor (o yol zaten boş/hatalı cevabı,
+BUG-L1 düşük-değer filtresini, near-dup'ı hallediyor; tek ek kapı
+incognito). Hem delegate hem standalone bunu kullanıyor. (b) Standalone'un
+per-tur hafıza *okuma* yolu yoktu (registry tool'ları vector store'a
+dokunmuyor, sistem prompt'undaki hafıza tek seferlik snapshot) — standalone
+artık tam registry'nin yanında `delegate_to_main_model`'i de taşıyor,
+capability prompt'u snapshot'ta olmayan şeyler için devretmeyi söylüyor.
+Delegate mantığı ortak `runDelegate` closure'ına çıkarıldı.
+
+**Doğrulama:**
+```
+$ CGO_ENABLED=1 go build/vet -tags "sqlite_fts5" ./...        → yeşil
+$ CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race       → yeşil (app, livemode,
+  livemode/google, livemode/openai_realtime, sessions, webserver, whatsapp hepsi ok)
+$ flutter analyze lib/screens/agent_screen.dart              → temiz
+```
+
+**Yan not**: `internal/agent/data/` (agent-audit.jsonl + agent-backups) —
+bir agent testinin göreli `data/` yoluna yazdığı çöp, oturum başından beri
+untracked, .gitignore'da değil, commit'lere DAHİL EDİLMEDİ. Ayrı bir
+temizlik konusu (ya .gitignore'a eklenmeli ya testin yolu düzeltilmeli).
+
+**Bekliyor / sıradaki:**
+- **Bug 2 (Q2'den) hâlâ açık**: kullanıcı "normal chatte agent'ı açınca Live
+  Mod'da sanki açılmamış gibi davranıyor" dedi. Netleştirilecek: hangi
+  butona basıldı (chat'teki mikrofon mu, Live Mode sekmesi mi), ne söylendi,
+  ne cevap verdi. Muhtemelen delegate'in gerçek isteklerde
+  `delegate_to_main_model`'i çağırmaması (handoff devam 20-22'deki devam eden
+  konu) — bu 3 fix gerçek oturumda test edilince daha net olur.
+- Kullanıcının bu 3 fix'i gerçek oturumda denemesi: (a) mevcut agent chat'e
+  geçip klasör dışı bir iş iste — artık repo değil o klasörde çalışmalı, (b)
+  Google Live'da konuş — transkript tek balon gelmeli, (c) Live Mode'da
+  geçmişte konuşulan bir şeyi sor, sonra normal chat'te ara — hatırlamalı.
+- PipeWire echo-cancel (devam 21-22'den, hâlâ kullanıcıda).
+
+---
+
 # Ek (2026-08-27, devam 22) — Live Mode v2: `~` genişletme + change_directory bugları, transkript kalıcılığı, live moda yazılı metin gönderme
 
 Kullanıcı `~/Desktop` klasörünü silmemi istedi (yaptım, onaylandı) ve üç

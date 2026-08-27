@@ -97,17 +97,23 @@ func TestBuildLiveModeToolList_StandaloneModeHasFullRegistry(t *testing.T) {
 	if len(tools) == 0 {
 		t.Fatal("expected a non-empty tool list for standalone mode")
 	}
-	found := false
+	var foundReadFile, foundDelegate bool
 	for _, tl := range tools {
 		if tl.Name == "read_file" {
-			found = true
+			foundReadFile = true
 		}
 		if tl.Name == livemode.DelegateToolName {
-			t.Error("standalone mode should not include delegate_to_main_model — it has direct tool access instead")
+			foundDelegate = true
 		}
 	}
-	if !found {
+	if !foundReadFile {
 		t.Error("expected the standalone tool list to include the registry's real tools (e.g. read_file)")
+	}
+	// Standalone also carries delegate_to_main_model: its own tools never
+	// touch long-term memory and the session's memory context is a one-time
+	// snapshot, so delegation is the only route to a real per-turn recall.
+	if !foundDelegate {
+		t.Error("expected standalone mode to also include delegate_to_main_model for memory recall")
 	}
 }
 
@@ -229,6 +235,39 @@ func TestBuildLiveModeToolCallHandler_StandaloneMode_NoExecutorErrors(t *testing
 	handler := a.buildLiveModeToolCallHandler("standalone", "sess-1", nil)
 	if _, err := handler(context.Background(), "read_file", json.RawMessage(`{}`)); err == nil {
 		t.Fatal("expected an error when agentExecutor is not initialized")
+	}
+}
+
+// TestBuildLiveModeToolCallHandler_StandaloneMode_DelegateToolRoutesToDelegation
+// confirms standalone mode also honors delegate_to_main_model (added so it
+// has a route to real per-turn memory recall — its own tools never touch
+// the vector store), routing it through the same delegation path delegate
+// WorkMode uses rather than trying to run it as a registry tool.
+func TestBuildLiveModeToolCallHandler_StandaloneMode_DelegateToolRoutesToDelegation(t *testing.T) {
+	a := newTestAppForLiveModeSession(t)
+	a.agentExecutor = agent.NewExecutor(t.TempDir(), nil, nil, nil)
+	sessionID, err := a.getOrCreateLiveModeChat()
+	if err != nil {
+		t.Fatalf("getOrCreateLiveModeChat: %v", err)
+	}
+
+	var injected []string
+	handler := a.buildLiveModeToolCallHandler("standalone", sessionID, func(text string) error {
+		injected = append(injected, text)
+		return nil
+	})
+
+	result, err := handler(context.Background(), livemode.DelegateToolName, json.RawMessage(`{"instruction":"adimi hatirliyor musun"}`))
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if result == "" {
+		t.Error("expected a non-empty reply from the delegation path (even an error-shaped one from the unconfigured model)")
+	}
+	// The "say one thing, then wait quietly" hint is the delegation path's
+	// tell — an ExecuteToolCall path would never inject it.
+	if len(injected) != 1 || !strings.Contains(injected[0], "delegate_to_main_model") {
+		t.Errorf("expected the delegation wait-hint to be injected once, got %v", injected)
 	}
 }
 

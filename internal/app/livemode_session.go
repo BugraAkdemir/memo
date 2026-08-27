@@ -116,10 +116,16 @@ func (a *App) buildLiveModeToolList(workMode string) []livemode.ToolSpec {
 		return nil
 	}
 	defs := a.agentExecutor.Registry().ToOpenAITools()
-	specs := make([]livemode.ToolSpec, 0, len(defs))
+	specs := make([]livemode.ToolSpec, 0, len(defs)+1)
 	for _, d := range defs {
 		specs = append(specs, livemode.ToolSpec{Name: d.Function.Name, Description: d.Function.Description, Parameters: d.Function.Parameters})
 	}
+	// Standalone runs tools itself, but none of the agent registry's tools
+	// touch long-term (RAG) memory, and the session's memory context is only
+	// a one-time snapshot from session start. delegate_to_main_model is the
+	// one way to reach a real per-turn memory search (the main model does it
+	// itself) — so standalone carries it too, not just delegate WorkMode.
+	specs = append(specs, livemode.DelegateToolSpec())
 	return specs
 }
 
@@ -137,8 +143,46 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 	autoApprove := a.GetLiveModeConfig().AgentPermissionPolicy == "auto_allow_once"
 	buildQuestion, sendQuestion, awaitAnswer := a.liveModeVoicePermissionCallbacks(injectContext)
 
+	// runDelegate is the "hand this off to the main model" path — shared by
+	// delegate WorkMode (its only tool) and standalone WorkMode (which also
+	// carries delegate_to_main_model alongside its full tool registry, so it
+	// has a way to reach real per-turn memory recall: standalone's own tools
+	// never touch the vector store, and its system-prompt memory context is
+	// just a one-time session-start snapshot).
+	runDelegate := func(ctx context.Context, args json.RawMessage) (string, error) {
+		var parsed struct {
+			Instruction string `json:"instruction"`
+		}
+		if err := json.Unmarshal(args, &parsed); err != nil || parsed.Instruction == "" {
+			return "", fmt.Errorf("delegate_to_main_model: missing instruction")
+		}
+		// Reported live: without this, the model kept trying to generate
+		// more speech while the delegated task was still running (a real
+		// task can take real seconds) — it has no natural sense of "I'm
+		// waiting on something", producing choppy/repeatedly-interrupted-
+		// sounding audio. Tell it explicitly, mirroring the filler-audio
+		// trick VoiceModeNotifier already uses for the discrete engines
+		// (_playFillerBestEffort, voice_mode_provider.dart) but as a text
+		// instruction rather than a pre-recorded clip, since this model
+		// generates its own voice rather than playing ours. Best-effort:
+		// injectContext can still be unready this early (see
+		// NewLiveModeSession's forward-reference closure) without blocking
+		// delegation itself.
+		if injectContext != nil {
+			_ = injectContext(a.t(
+				"Az önce delegate_to_main_model'i çağırdın, sonucu bekleniyor. Şimdi TEK kısa bir şey söyle (\"bir saniye, hallediyorum\" gibi) ve gerçek sonuç gelene kadar tekrar konuşmaya çalışma — sessizce bekle.",
+				"You just called delegate_to_main_model and the result is pending. Say ONE short acknowledgment now (\"one sec, working on it\") and then stay quiet — don't try to speak again until the real result comes back.",
+			))
+		}
+		ch := a.SendLiveDelegatedMessageStream(ctx, parsed.Instruction)
+		return a.drainLiveDelegatedReply(ch, autoApprove, buildQuestion, sendQuestion, awaitAnswer), nil
+	}
+
 	if workMode == "standalone" {
 		return func(ctx context.Context, name string, args json.RawMessage) (string, error) {
+			if name == livemode.DelegateToolName {
+				return runDelegate(ctx, args)
+			}
 			if a.agentExecutor == nil {
 				return "", fmt.Errorf("agent executor not initialized")
 			}
@@ -179,32 +223,7 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 		if name != livemode.DelegateToolName {
 			return "", fmt.Errorf("unknown tool: %s", name)
 		}
-		var parsed struct {
-			Instruction string `json:"instruction"`
-		}
-		if err := json.Unmarshal(args, &parsed); err != nil || parsed.Instruction == "" {
-			return "", fmt.Errorf("delegate_to_main_model: missing instruction")
-		}
-		// Reported live: without this, the model kept trying to generate
-		// more speech while the delegated task was still running (a real
-		// task can take real seconds) — it has no natural sense of "I'm
-		// waiting on something", producing choppy/repeatedly-interrupted-
-		// sounding audio. Tell it explicitly, mirroring the filler-audio
-		// trick VoiceModeNotifier already uses for the discrete engines
-		// (_playFillerBestEffort, voice_mode_provider.dart) but as a text
-		// instruction rather than a pre-recorded clip, since this model
-		// generates its own voice rather than playing ours. Best-effort:
-		// injectContext can still be unready this early (see
-		// NewLiveModeSession's forward-reference closure) without blocking
-		// delegation itself.
-		if injectContext != nil {
-			_ = injectContext(a.t(
-				"Az önce delegate_to_main_model'i çağırdın, sonucu bekleniyor. Şimdi TEK kısa bir şey söyle (\"bir saniye, hallediyorum\" gibi) ve gerçek sonuç gelene kadar tekrar konuşmaya çalışma — sessizce bekle.",
-				"You just called delegate_to_main_model and the result is pending. Say ONE short acknowledgment now (\"one sec, working on it\") and then stay quiet — don't try to speak again until the real result comes back.",
-			))
-		}
-		ch := a.SendLiveDelegatedMessageStream(ctx, parsed.Instruction)
-		return a.drainLiveDelegatedReply(ch, autoApprove, buildQuestion, sendQuestion, awaitAnswer), nil
+		return runDelegate(ctx, args)
 	}
 }
 
@@ -370,8 +389,8 @@ func (a *App) buildLiveModeSystemPrompt(ctx context.Context, workMode string) st
 	var capability string
 	if workMode == "standalone" {
 		capability = a.t(
-			"Sesli canlı sohbet modundasın. Elindeki araçları (dosya/komut erişimi dahil) doğrudan kendin kullanabilirsin.",
-			"You are in live voice mode. You can use your available tools (including file/command access) directly, yourself.",
+			"Sesli canlı sohbet modundasın. Elindeki araçları (dosya/komut erişimi dahil) doğrudan kendin kullanabilirsin. Yukarıdaki bağlam sadece oturum başında alınmış tek seferlik bir hafıza özeti — kullanıcı geçmişte konuştuğunuz bir şeyi, bir tercihi, bir hatırlatmayı sorduğunda ve cevabı yukarıda yoksa kafandan uydurma; delegate_to_main_model aracıyla ana modele devret (gerçek hafıza aramasını o yapar), sonucu doğal şekilde anlat.",
+			"You are in live voice mode. You can use your available tools (including file/command access) directly, yourself. The context above is only a one-time memory snapshot from session start — when the user asks about something you discussed before, a preference, or a reminder and the answer isn't above, don't make it up; hand it to the main model via delegate_to_main_model (it runs a real memory search), then narrate the result naturally.",
 		)
 	} else {
 		// Broadened after real-world testing showed the live model doing

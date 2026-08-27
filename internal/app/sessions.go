@@ -106,7 +106,34 @@ func (a *App) AppendMessage(role, content string) error {
 		return fmt.Errorf("no session manager")
 	}
 	sm.AddMessage(role, content, "", "")
+
+	// A Live Mode conversation is a real conversation — it should feed
+	// long-term (RAG) memory the same way a typed chat turn does, not just
+	// sit in the session transcript. The frontend appends the user's
+	// transcript bubble and then the model's; on the model's, pair it with
+	// the most recent user utterance and hand the turn to saveMemoryAsync.
+	// That path already drops empty/error replies, respects MemoryEnabled,
+	// filters pure acks/greetings (BUG-L1 IsLowValueTurn), and skips
+	// near-duplicates — so no extra gating is needed here beyond Incognito,
+	// whose whole contract is "nothing persisted, nothing recalled".
+	if role == "assistant" && content != "" && !a.GetIncognito() {
+		if userMsg := lastUserMessage(sm.GetActiveMessages()); userMsg != "" {
+			a.saveMemoryAsync(userMsg, content)
+		}
+	}
 	return nil
+}
+
+// lastUserMessage returns the content of the most recent "user" message in
+// msgs, or "" if there is none. Used to pair a just-appended assistant
+// transcript with the user utterance it answered.
+func lastUserMessage(msgs []sessions.ChatMessage) string {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "user" {
+			return msgs[i].Content
+		}
+	}
+	return ""
 }
 
 // GetActiveMessages returns messages in the current session.

@@ -70,11 +70,37 @@ type setupMessage struct {
 	// prompting (Phase 12) and future mid-session memory refresh.
 	InputAudioTranscription  *struct{} `json:"inputAudioTranscription,omitempty"`
 	OutputAudioTranscription *struct{} `json:"outputAudioTranscription,omitempty"`
+	// RealtimeInputConfig.automaticActivityDetection.startOfSpeechSensitivity:
+	// reported live — the model's own speech kept getting cut off
+	// mid-sentence (serverContent.interrupted=true), the user suspected
+	// keyboard/background noise falsely triggering Google's server-side
+	// barge-in VAD. Confirmed shape and semantics against the official
+	// reference (ai.google.dev/api/live, fetched 2026-08-27):
+	// startOfSpeechSensitivity defaults to HIGH ("detect the start of
+	// speech more often") when unspecified — LOW requires a more
+	// confident signal before treating it as the user interrupting.
+	// prefixPaddingMs/silenceDurationMs also exist for finer tuning but
+	// are left at Google's own defaults rather than guessing a specific
+	// millisecond value with no documented recommendation to anchor on.
+	RealtimeInputConfig *realtimeInputConfig `json:"realtimeInputConfig,omitempty"`
 }
 
 type generationConfig struct {
 	ResponseModalities []string `json:"responseModalities"`
 }
+
+type realtimeInputConfig struct {
+	AutomaticActivityDetection *automaticActivityDetection `json:"automaticActivityDetection,omitempty"`
+}
+
+type automaticActivityDetection struct {
+	StartOfSpeechSensitivity string `json:"startOfSpeechSensitivity,omitempty"`
+}
+
+// startSensitivityLow is the one enum value this package sets — confirmed
+// against the official reference: START_SENSITIVITY_LOW vs. the
+// START_SENSITIVITY_HIGH default.
+const startSensitivityLow = "START_SENSITIVITY_LOW"
 
 type setupTool struct {
 	FunctionDeclarations []functionDeclaration `json:"functionDeclarations"`
@@ -223,6 +249,9 @@ func (c *Client) Start(ctx context.Context) error {
 		GenerationConfig:         &generationConfig{ResponseModalities: []string{"AUDIO"}},
 		InputAudioTranscription:  &struct{}{},
 		OutputAudioTranscription: &struct{}{},
+		RealtimeInputConfig: &realtimeInputConfig{
+			AutomaticActivityDetection: &automaticActivityDetection{StartOfSpeechSensitivity: startSensitivityLow},
+		},
 	}}
 	if c.systemInstruction != "" {
 		setup.Setup.SystemInstruction = &systemInstruction{Parts: []messagePart{{Text: c.systemInstruction}}}

@@ -99,6 +99,11 @@ func TestClient_SendsSetupMessageOnStart(t *testing.T) {
 		if setup.InputAudioTranscription == nil || setup.OutputAudioTranscription == nil {
 			t.Error("expected input/output audio transcription to always be enabled in setup")
 		}
+		if setup.RealtimeInputConfig == nil ||
+			setup.RealtimeInputConfig.AutomaticActivityDetection == nil ||
+			setup.RealtimeInputConfig.AutomaticActivityDetection.StartOfSpeechSensitivity != startSensitivityLow {
+			t.Errorf("expected realtimeInputConfig.automaticActivityDetection.startOfSpeechSensitivity=%q to lower false-positive barge-in triggers, got %+v", startSensitivityLow, setup.RealtimeInputConfig)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for setup message on the server side")
 	}

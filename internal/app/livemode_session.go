@@ -367,15 +367,24 @@ func (a *App) routeLiveTranscriptToPermissionAnswer(text string) bool {
 // session-start system instruction — see docs/plans/PLAN_live_mode_v2.md
 // §5.1. Reuses identity.BuildSystemPrompt (the same persona/mood/memory
 // logic every normal chat turn's system prompt goes through) rather than
-// duplicating it, called with agentEnabled=false/webSearchEnabled=false so
-// its own tool-capability text (written for the ana model's direct
-// tool-calling shape) is suppressed, then appends a live-mode-specific
-// capability paragraph describing this session's *actual* tools honestly:
-// standalone has full tool access, delegate has exactly one
-// (delegate_to_main_model). Memory retrieval uses a broad, recency-biased
-// query rather than a specific user message — there isn't one yet at
-// session start, the same gap a fresh chat's very first turn has to
-// tolerate.
+// duplicating it, then appends a live-mode-specific capability paragraph
+// describing this session's *actual* tools honestly: standalone has full
+// tool access (file/command + web_search/fetch_page), delegate has exactly
+// one (delegate_to_main_model, which reaches everything the main model can
+// do). Memory retrieval uses a broad, recency-biased query rather than a
+// specific user message — there isn't one yet at session start, the same
+// gap a fresh chat's very first turn has to tolerate.
+//
+// BuildSystemPrompt is called with agentEnabled=true/webSearchEnabled=true
+// on purpose: its only use of those params is buildCapabilitiesBlock, which
+// injects a "that feature is OFF, tell the user to flip the chat-toolbar
+// toggle" nag for anything not passed as true. In a live session that nag
+// is simply false — a standalone session is holding read_file/run_command/
+// web_search right now, and a delegate session can reach them through
+// delegate_to_main_model — and it was making the live model refuse tool
+// and web requests ("agent mode is off, turn it on...") even though the
+// capability was right there. The live-mode paragraph below is the
+// authoritative capability description for this session.
 func (a *App) buildLiveModeSystemPrompt(ctx context.Context, workMode string) string {
 	if a.identity == nil {
 		return ""
@@ -384,13 +393,13 @@ func (a *App) buildLiveModeSystemPrompt(ctx context.Context, workMode string) st
 	if a.GetMemoryEnabled() {
 		memories = a.retrieveMemory(ctx, a.t("güncel bağlam", "current context"))
 	}
-	base := a.identity.BuildSystemPrompt(memories, false, false, false, a.whatsappReachable(), a.telegramReachable())
+	base := a.identity.BuildSystemPrompt(memories, false, true, true, a.whatsappReachable(), a.telegramReachable())
 
 	var capability string
 	if workMode == "standalone" {
 		capability = a.t(
-			"Sesli canlı sohbet modundasın. Elindeki araçları (dosya/komut erişimi dahil) doğrudan kendin kullanabilirsin. Yukarıdaki bağlam sadece oturum başında alınmış tek seferlik bir hafıza özeti — kullanıcı geçmişte konuştuğunuz bir şeyi, bir tercihi, bir hatırlatmayı sorduğunda ve cevabı yukarıda yoksa kafandan uydurma; delegate_to_main_model aracıyla ana modele devret (gerçek hafıza aramasını o yapar), sonucu doğal şekilde anlat.",
-			"You are in live voice mode. You can use your available tools (including file/command access) directly, yourself. The context above is only a one-time memory snapshot from session start — when the user asks about something you discussed before, a preference, or a reminder and the answer isn't above, don't make it up; hand it to the main model via delegate_to_main_model (it runs a real memory search), then narrate the result naturally.",
+			"Sesli canlı sohbet modundasın. Elindeki araçları doğrudan kendin kullanabilirsin: dosya okuma/yazma, komut çalıştırma, ve web araması (web_search) / sayfa getirme (fetch_page). Kullanıcı güncel/canlı bir bilgi ya da bir dosya/komut işi istediğinde \"yapamam / bu özellik kapalı\" DEME — araçların şu an açık, kullan. Yukarıdaki bağlam sadece oturum başında alınmış tek seferlik bir hafıza özeti — kullanıcı geçmişte konuştuğunuz bir şeyi, bir tercihi, bir hatırlatmayı sorduğunda ve cevabı yukarıda yoksa kafandan uydurma; delegate_to_main_model aracıyla ana modele devret (gerçek hafıza aramasını o yapar), sonucu doğal şekilde anlat.",
+			"You are in live voice mode. You can use your tools directly, yourself: reading/writing files, running commands, and web search (web_search) / page fetch (fetch_page). When the user wants current/live information or a file/command task, do NOT say \"I can't / that feature is off\" — your tools are on right now, use them. The context above is only a one-time memory snapshot from session start — when the user asks about something you discussed before, a preference, or a reminder and the answer isn't above, don't make it up; hand it to the main model via delegate_to_main_model (it runs a real memory search), then narrate the result naturally.",
 		)
 	} else {
 		// Broadened after real-world testing showed the live model doing
@@ -405,8 +414,8 @@ func (a *App) buildLiveModeSystemPrompt(ctx context.Context, workMode string) st
 		// genuinely requires delegation; the live model has no other way
 		// to reach it.
 		capability = a.t(
-			"Sesli canlı sohbet modundasın. Yukarıdaki bağlam sadece oturum başında alınmış tek seferlik bir hafıza özeti — kullanıcı sana özel bir şey (geçmişte konuştuğunuz bir konu, bir tercih, bir hatırlatma, bir dosya/kod, bir komut) sorduğunda ve yukarıdaki bağlamda gerçek cevabı yoksa, kafandan uydurma — delegate_to_main_model aracını kullanarak ana modele devret (ana model gerçek hafıza aramasını kendisi yapar), sonucu doğal bir şekilde kullanıcıya anlat. Sadece sohbet/görüş sorularında (hava nasıl, nasılsın gibi) kendi başına cevap ver. ÇOK ÖNEMLİ: bir işi 'yaptım', 'hallettim', 'tamamladım' gibi ifadelerle asla söyleme — bunu ancak delegate_to_main_model aracını GERÇEKTEN çağırıp gerçek bir sonuç aldıktan SONRA söyleyebilirsin. Aracı çağırmadan başarı iddia etmek bir yalandır, asla yapma.",
-			"You are in live voice mode. The context above is only a one-time memory snapshot taken at session start — when the user asks about something specific (something you discussed before, a preference, a reminder, a file/code, a command) and the answer isn't actually in that context, don't make it up — use the delegate_to_main_model tool to hand it off to the main model (which does a real memory search itself), then narrate the result back naturally. Only answer directly for genuinely casual/conversational questions (how's the weather, how are you, etc.). CRITICAL: never say you 'did it', 'took care of it', or 'finished' unless you actually called delegate_to_main_model and got a real result back first. Claiming success without actually calling the tool is a lie — never do it.",
+			"Sesli canlı sohbet modundasın. Kendin dosya/komut çalıştıramaz, web'de arama yapamazsın — ama bunların HEPSİNE delegate_to_main_model aracıyla ulaşırsın (ana model senin adına dosya işi yapar, komut çalıştırır, web'de arar, gerçek hafıza araması yapar). Kullanıcı böyle bir şey istediğinde \"yapamam / bu özellik kapalı / agent modunu aç\" DEME — bunun yerine delegate_to_main_model'i çağır, sonucu doğal bir şekilde anlat. Yukarıdaki bağlam sadece oturum başında alınmış tek seferlik bir hafıza özeti; kullanıcı sana özel bir şey (geçmişte konuştuğunuz bir konu, bir tercih, bir hatırlatma, bir dosya/kod, bir komut, güncel bir bilgi) sorduğunda ve yukarıdaki bağlamda gerçek cevabı yoksa kafandan uydurma — devret. Sadece sohbet/görüş sorularında (hava nasıl, nasılsın gibi) kendi başına cevap ver. ÇOK ÖNEMLİ: bir işi 'yaptım', 'hallettim', 'tamamladım' gibi ifadelerle asla söyleme — bunu ancak delegate_to_main_model aracını GERÇEKTEN çağırıp gerçek bir sonuç aldıktan SONRA söyleyebilirsin. Aracı çağırmadan başarı iddia etmek bir yalandır, asla yapma.",
+			"You are in live voice mode. You can't run files/commands or search the web yourself — but you reach ALL of that through the delegate_to_main_model tool (the main model does file work, runs commands, searches the web, and runs a real memory search on your behalf). When the user asks for any of that, do NOT say \"I can't / that feature is off / turn on agent mode\" — call delegate_to_main_model instead, then narrate the result naturally. The context above is only a one-time memory snapshot taken at session start; when the user asks about something specific (something you discussed before, a preference, a reminder, a file/code, a command, some current info) and the answer isn't actually in that context, don't make it up — delegate. Only answer directly for genuinely casual/conversational questions (how's the weather, how are you, etc.). CRITICAL: never say you 'did it', 'took care of it', or 'finished' unless you actually called delegate_to_main_model and got a real result back first. Claiming success without actually calling the tool is a lie — never do it.",
 		)
 	}
 	return base + "\n\n" + capability

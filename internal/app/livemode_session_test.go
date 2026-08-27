@@ -285,6 +285,23 @@ func TestBuildLiveModeSystemPrompt_DiffersByWorkMode(t *testing.T) {
 	}
 }
 
+// TestBuildLiveModeSystemPrompt_NoFeatureOffNag is the regression test for
+// "in Live Mode the model acts as if agent mode / web search are off even
+// when they're on": buildLiveModeSystemPrompt called BuildSystemPrompt with
+// agentEnabled=false/webSearchEnabled=false, which made buildCapabilitiesBlock
+// inject a "that feature is off, tell the user to flip the toolbar toggle"
+// nag — so a standalone session holding real tools, and a delegate session
+// that can reach them, both refused tool/web requests. Now passed true/true.
+func TestBuildLiveModeSystemPrompt_NoFeatureOffNag(t *testing.T) {
+	a := newTestAppForLiveModeSession(t)
+	for _, wm := range []string{"delegate", "standalone"} {
+		p := a.buildLiveModeSystemPrompt(context.Background(), wm)
+		if strings.Contains(p, "is off in this conversation") {
+			t.Errorf("%s: live-mode system prompt still carries the 'feature is off' nag:\n%s", wm, p)
+		}
+	}
+}
+
 func TestBuildLiveModeSystemPrompt_NoIdentityReturnsEmpty(t *testing.T) {
 	a := &App{}
 	if got := a.buildLiveModeSystemPrompt(context.Background(), "delegate"); got != "" {

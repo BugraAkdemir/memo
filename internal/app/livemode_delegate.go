@@ -3,9 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"memo/internal/agent"
 	"memo/internal/api"
+	"memo/internal/logx"
+	"memo/internal/truncate"
 )
 
 // getOrCreateLiveModeChat returns the dedicated background chat Live Mode
@@ -36,6 +39,22 @@ func (a *App) getOrCreateLiveModeChat() (string, error) {
 	a.liveModeChatID = sm.NewBackgroundChat("Live Mode")
 	if a.liveModeChatID == "" {
 		return "", fmt.Errorf("could not create Live Mode background chat")
+	}
+	// Give the Live Mode chat a real working directory: the user's home.
+	// Without this the agent (delegated or standalone) starts in the
+	// backend's own cwd (the repo when run from source), so a hands-free
+	// voice request like "list the files on my Desktop" or "create a note
+	// on my Desktop" either lands in the wrong place or forces a
+	// change_directory dance mid-conversation. Rooted at home so anything
+	// under it — ~/Desktop, ~/Documents, … — is reachable with a plain
+	// relative path and no change_directory at all; change_directory still
+	// works to step outside it. A normal agent chat gets its ProjectPath
+	// from the folder the user explicitly picked; Live Mode has no such
+	// picker, and home is the least-surprising default.
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if err := sm.SetProjectPath(a.liveModeChatID, home); err != nil {
+			logx.Printf("livemode: could not set Live Mode chat working dir to %q: %v", home, err)
+		}
 	}
 	return a.liveModeChatID, nil
 }
@@ -112,6 +131,7 @@ func (a *App) SendLiveDelegatedMessageStream(sessionCtx context.Context, instruc
 		return errStreamChunk(a.t("⏳ Live Mode için zaten bir görev çalışıyor.", "⏳ A Live Mode task is already running."))
 	}
 
+	logx.Printf("livemode delegate: START chat=%s instruction=%q", chatID, truncate.Text(instruction, 200))
 	outCh := make(chan api.StreamChunk, 128)
 	go func() {
 		defer close(outCh)
@@ -121,6 +141,7 @@ func (a *App) SendLiveDelegatedMessageStream(sessionCtx context.Context, instruc
 
 		inner := a.sendMessageStreamCore(jobCtx, chatID, instruction, true /* forceAgent */)
 		forwardStream(jobCtx, inner, outCh)
+		logx.Printf("livemode delegate: DONE chat=%s", chatID)
 	}()
 	return outCh
 }

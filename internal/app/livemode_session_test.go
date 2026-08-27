@@ -37,6 +37,24 @@ func newTestAppForLiveModeSession(t *testing.T) *App {
 	}
 }
 
+// liveModeChatRootedAt creates (or reuses) the Live Mode background chat and
+// pins its working directory to dir. getOrCreateLiveModeChat now defaults
+// that directory to the user's real $HOME (so a hands-free "list the files
+// on my Desktop" resolves without a change_directory dance) — a test that
+// asserts against its own t.TempDir() sandbox must override it, or the
+// tool's file ops land in the real home directory.
+func liveModeChatRootedAt(t *testing.T, a *App, dir string) string {
+	t.Helper()
+	id, err := a.getOrCreateLiveModeChat()
+	if err != nil {
+		t.Fatalf("getOrCreateLiveModeChat: %v", err)
+	}
+	if err := a.getSessionManager().SetProjectPath(id, dir); err != nil {
+		t.Fatalf("SetProjectPath: %v", err)
+	}
+	return id
+}
+
 func TestNewLiveModeSession_FallsBackToEchoForLocalEngine(t *testing.T) {
 	a := newTestAppForLiveModeSession(t)
 	s := a.NewLiveModeSession(context.Background())
@@ -215,10 +233,7 @@ func TestBuildLiveModeToolCallHandler_StandaloneMode_ExecutesRealTool(t *testing
 	}
 	a.agentExecutor = agent.NewExecutor(dir, nil, nil, nil)
 
-	sessionID, err := a.getOrCreateLiveModeChat()
-	if err != nil {
-		t.Fatalf("getOrCreateLiveModeChat: %v", err)
-	}
+	sessionID := liveModeChatRootedAt(t, a, dir)
 	handler := a.buildLiveModeToolCallHandler("standalone", sessionID, nil)
 
 	result, err := handler(context.Background(), "read_file", json.RawMessage(`{"path":"hello.txt"}`))
@@ -394,10 +409,7 @@ func TestBuildLiveModeToolCallHandler_StandaloneMode_AutoApprovePermission(t *te
 	dir := t.TempDir()
 	a.agentExecutor = agent.NewExecutor(dir, nil, nil, nil)
 
-	sessionID, err := a.getOrCreateLiveModeChat()
-	if err != nil {
-		t.Fatalf("getOrCreateLiveModeChat: %v", err)
-	}
+	sessionID := liveModeChatRootedAt(t, a, dir)
 	handler := a.buildLiveModeToolCallHandler("standalone", sessionID, nil)
 
 	args := json.RawMessage(`{"path":"gated.txt","content":"approved"}`)
@@ -414,10 +426,7 @@ func TestBuildLiveModeToolCallHandler_StandaloneMode_VoicePromptApproved(t *test
 	dir := t.TempDir()
 	a.agentExecutor = agent.NewExecutor(dir, nil, nil, nil)
 
-	sessionID, err := a.getOrCreateLiveModeChat()
-	if err != nil {
-		t.Fatalf("getOrCreateLiveModeChat: %v", err)
-	}
+	sessionID := liveModeChatRootedAt(t, a, dir)
 
 	var injectedQuestion string
 	injectContext := func(text string) error {
@@ -450,10 +459,7 @@ func TestBuildLiveModeToolCallHandler_StandaloneMode_VoicePromptDenied(t *testin
 	dir := t.TempDir()
 	a.agentExecutor = agent.NewExecutor(dir, nil, nil, nil)
 
-	sessionID, err := a.getOrCreateLiveModeChat()
-	if err != nil {
-		t.Fatalf("getOrCreateLiveModeChat: %v", err)
-	}
+	sessionID := liveModeChatRootedAt(t, a, dir)
 
 	injectContext := func(string) error {
 		go func() {
@@ -479,10 +485,7 @@ func TestBuildLiveModeToolCallHandler_StandaloneMode_VoicePromptSendQuestionFail
 	dir := t.TempDir()
 	a.agentExecutor = agent.NewExecutor(dir, nil, nil, nil)
 
-	sessionID, err := a.getOrCreateLiveModeChat()
-	if err != nil {
-		t.Fatalf("getOrCreateLiveModeChat: %v", err)
-	}
+	sessionID := liveModeChatRootedAt(t, a, dir)
 	// nil injectContext: liveModeVoicePermissionCallbacks' sendQuestion
 	// always fails, mirroring "the session isn't actually ready yet".
 	handler := a.buildLiveModeToolCallHandler("standalone", sessionID, nil)

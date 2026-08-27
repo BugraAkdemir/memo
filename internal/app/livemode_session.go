@@ -175,7 +175,27 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 			))
 		}
 		ch := a.SendLiveDelegatedMessageStream(ctx, parsed.Instruction)
-		return a.drainLiveDelegatedReply(ch, autoApprove, buildQuestion, sendQuestion, awaitAnswer), nil
+		reply := a.drainLiveDelegatedReply(ch, autoApprove, buildQuestion, sendQuestion, awaitAnswer)
+
+		// The live model has been observed fabricating a plausible-sounding
+		// answer (a made-up file listing, invented file extensions) when the
+		// delegated call comes back empty or as one of llm.go's "⚠️ ..."
+		// error strings — instead of telling the user it failed. Wrap those
+		// two cases in an explicit instruction so it relays the truth. A
+		// normal successful reply is passed straight through.
+		if reply == "" {
+			return a.t(
+				"DELEGASYON SONUÇSUZ: ana model boş yanıt döndürdü. Kullanıcıya bu isteği şu an yapamadığını söyle — kesinlikle bir cevap UYDURMA (dosya adı, liste, uzantı vs. sallama).",
+				"DELEGATION RETURNED NOTHING: the main model gave an empty reply. Tell the user you couldn't do this right now — absolutely do NOT fabricate an answer (no made-up file names, lists, or extensions).",
+			), nil
+		}
+		if isLLMErrorReply(reply) {
+			return a.t(
+				"DELEGASYON BAŞARISIZ. Bu hatayı kullanıcıya olduğu gibi, kısaca aktar — kendin bir cevap uydurma: ",
+				"DELEGATION FAILED. Relay this error to the user as-is, briefly — do not fabricate an answer: ",
+			) + reply, nil
+		}
+		return reply, nil
 	}
 
 	if workMode == "standalone" {

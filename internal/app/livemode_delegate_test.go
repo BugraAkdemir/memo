@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
@@ -73,6 +74,27 @@ func TestGetOrCreateLiveModeChat_NoSessionsInitialized(t *testing.T) {
 	a := &App{}
 	if _, err := a.getOrCreateLiveModeChat(); err == nil {
 		t.Fatal("expected an error when sessions aren't initialized")
+	}
+}
+
+// TestGetOrCreateLiveModeChat_RootsAtHome is the regression test for
+// hands-free "list the files on my Desktop" / "make a note on my Desktop"
+// failing: the Live Mode background chat used to have no ProjectPath, so
+// the delegated (or standalone) agent ran from the backend's own cwd and
+// couldn't reach the user's Desktop without a mid-conversation
+// change_directory. It now defaults to the user's home directory.
+func TestGetOrCreateLiveModeChat_RootsAtHome(t *testing.T) {
+	a := newTestAppForLiveModeDelegate(t)
+	id, err := a.getOrCreateLiveModeChat()
+	if err != nil {
+		t.Fatalf("getOrCreateLiveModeChat: %v", err)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skipf("no home dir on this platform: %v", err)
+	}
+	if got := a.getSessionManager().GetProjectPath(id); got != home {
+		t.Errorf("Live Mode chat ProjectPath = %q, want home %q", got, home)
 	}
 }
 

@@ -1,3 +1,64 @@
+# Ek (2026-08-28, devam 32) — Telegram/WhatsApp reboot sonrası bağlanmıyor: başlangıç connect'i artık retry ediyor + Telegram token'sız "yeniden bağlan"
+
+Kullanıcı bug listesi #1: self-hosted sistem yeniden başlatılınca (veya Memo
+açılıp kapanınca) Telegram & WhatsApp **auto bağlanmıyor**; WhatsApp QR ne
+geliyor ne bağlanıyor; Telegram'da "restart" diyoruz sonuç yok.
+
+**Teşhis (codebase-memory + kaynak):** her iki köprü de başlangıçta **tek
+sefer** connect deneyip başarısızlıkta loglayıp pes ediyordu. Reboot'tan
+hemen sonra ağ/DNS genelde hazır değil:
+- Telegram: `initTelegram` → `client.Start(ctx)` 15sn deadline; `Start`'ın
+  `getMe` kapısı timeout'a düşüyor (`context deadline exceeded`, yanıltıcı
+  şekilde "invalid bot token" olarak görünüyor), `Start` hata dönüyor,
+  `a.tgClient` nil kalıyor, retry yok. Poll loop (sonsuz backoff'u VAR) hiç
+  başlamıyor çünkü `getMe`'nin arkasında.
+- WhatsApp: `initWhatsApp` goroutine'i `waClient.Start`'ı bir kez çağırıyor;
+  `Connect()` hatasında "auto-connect error" loglayıp duruyor. `autoReconnect`
+  yalnızca `started` iken gelen `Disconnected` event'inde tetikleniyor →
+  başlangıç başarısızsa hiç. Üstelik `autoReconnect` 4 denemeden sonra
+  (~105sn) "reconnect manually" deyip **kalıcı pes ediyordu**.
+
+**Fix 1 — başlangıç connect retry'ı (`109e0b9`):**
+- Yeni `retryWithBackoff(ctx, initial, max, fn)` helper (`internal/app/retry.go`),
+  unit-testli.
+- `initTelegram` artık arka plan goroutine'inde `client.Start`'ı retry ediyor
+  (5sn→2dk backoff, `lifecycleCtx`'e bağlı), bağlanınca `a.tgClient`'i tgMu
+  altında set ediyor, kullanıcı Settings'ten bağlanır/duraklatırsa çıkıyor.
+- `initWhatsApp` aynı şekilde `waClient.Start`'ı retry ediyor. `Client.Start`
+  artık başarısızlıkta açtığı sqlstore handle'ını kapatıyor → tekrar
+  çağrılabilir (önce her retry bir handle sızdırırdı); post-connect login
+  bekleme sırasında ctx iptali artık `Start()` hatası sayılmıyor.
+- whatsapp `autoReconnect` 4-ve-bitti yerine **sonsuz** (2dk cap) retry;
+  `handleEvent` `Disconnected`'te `reconnecting`'i startMu altında sahipleniyor
+  → event patlaması birden fazla (artık sonsuz) loop başlatamaz.
+- Test: `TestRetryWithBackoff_*` (3), `TestDisconnectedGuardsReconnectLoop`.
+
+**Fix 2 — Telegram token'sız "yeniden bağlan" (`414c3b6`):**
+- Settings > Telegram'da "token var ama bağlı değil" durumunda tek buton
+  "retry" vardı → sadece `refresh()` (status poll). Hiçbir şey bağlantıyı
+  yeniden denemiyordu → "restart sonuç yok". (WhatsApp'ın aynı butonu zaten
+  `/api/whatsapp/start`'ı çağırıyor, o çalışıyor.)
+- `App.ReconnectTelegram(ctx)` — diskteki token'la bağlanıyor
+  (`connectTelegramLocked` ortak). `POST /api/telegram/reconnect` (body yok).
+  `FullBridge`'e eklendi, swarm stub güncellendi.
+- Flutter: `reconnectTelegram()` / `telegramStatusProvider.reconnect()`,
+  dead-state butonu artık `reconnect()` çağırıyor, "reconnect" etiketli
+  (mevcut l10n key, TR+EN).
+
+**Doğrulama:** `go build/vet/test -tags sqlite_fts5 ./... -race` yeşil;
+`flutter analyze` dokunulan dosyalarda temiz; `flutter test` 306 pass.
+
+**Hâlâ açık / kullanıcı doğrulamalı:** WhatsApp QR "gelmiyor" — retry fix'i
+**ağ-yoktu** senaryosunu tam çözüyor (kayıtlı session ile QR'sız bağlanır).
+Ama session GERÇEKTEN ölmüşse (uzaktan logout / bozuk session), whatsmeow
+device var sanıp QR event'i emit etmeyebilir → kullanıcı Logout+yeniden
+eşleştirme yapmalı. Kullanıcı bu durumu net tarif ederse ("remote logout mı,
+yoksa sadece ağ mı yoktu") ona göre bir sonraki adım: N saniye
+"connected ama logged-in değil" → session temizle + reconnect (riskli, yavaş
+ağda geçerli session'ı silebilir).
+
+---
+
 # Ek (2026-08-28, devam 31) — transkript temizleyici: seslendirilmiş fonksiyon çağrılarını da siliyor
 
 Kullanıcı: barge-in / söz kesme **düzgün çalışıyor** (devam 30 onaylandı). Ama

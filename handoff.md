@@ -1,3 +1,30 @@
+# Ek (2026-08-28, devam 35) — v4.3.0 sürüm notları yazıldı (release ÇIKARILMADI)
+
+Kullanıcı isteği: v4.2.0'dan beri yapılanlar için sürüm notu, EN + TR, v4.3.0.
+**Release çıkarılmadı** — sadece not dosyaları:
+- `versinNote/v4.3.0.md` (EN)
+- `versinNote/tr/v4.3.0.md` (TR)
+
+Mevcut `versinNote/v4.2.0.md` formatı izlendi (başlık + tarih/İndir + tek
+satır tagline + "Big Feature" + "Getting it call-ready" + "Also in this
+release" + kapanış). Anlatı tarzı, ham commit listesi değil.
+
+**Kapsam (`16e98f4..HEAD`, ~57 kod commit'i):** ezici çoğunluk **Live Mode
+v2** — native realtime ses (Google Live + OpenAI Realtime), engine config
+CRUD + picker, model discovery, ses seçimi, LiveModeConfig'in Beta'dan
+çıkması, delegate/standalone WorkMode'lar, sesli izin sorma, tam ekran UI,
+transkript-balon + kalıcılık, yazılı metin enjeksiyonu, mic mute, Live
+Mode→hafıza. + bu oturumun delegate sağlamlaştırması (deadline, arka plan
+enjekti, "araçlar kapalı" nag'ı, home dizini, uydurma), barge-in ayarı,
+SIGKILL, transkript temizleyici. Live Mode dışı: Telegram/WhatsApp reconnect
+retry, agent-mode kalıcılığı, RAG'daki bayat saat, `run_memo.sh` bekleme.
+
+**Sürüm numarası bump'ı YAPILMADI** — `main` hâlâ v4.2.0 embedded. Gerçek
+release için `memo-release` skill (7 versiyon yeri, per-platform build,
+versiyonlu→generic artifact rename, `version.json` beacon en son).
+
+---
+
 # Ek (2026-08-28, devam 34) — PR #17 `main`'e MERGE edildi; CI flake'i düzeltildi; feature branch silindi
 
 **Live Mode v2 + bu oturumun tüm fix'leri `main`'de.** `feature/live-mode-v2`

@@ -77,6 +77,15 @@ func IsLowValueTurn(userMsg, assistantMsg string) bool {
 		return true
 	}
 
+	// "Who are you / what's your name / what model are you / what's running
+	// under you" — the user probing the assistant's identity. Zero durable
+	// value as a memory *about the user*, and once "User: model adın ne" is
+	// in RAG it gets retrieved on unrelated future turns. Same class as the
+	// time question above.
+	if isIdentityMetaQuestion(user) {
+		return true
+	}
+
 	// Language-agnostic backstop for the same bug: a short question (in ANY
 	// language — the phrase lists above only cover TR/EN) whose answer is
 	// essentially just a clock reading ("14:32", "Es ist 14:32", "saat
@@ -156,6 +165,60 @@ func isTimeOrDateQuestion(user string) bool {
 		"saat kaç", "saat kac", "what time is it", "whats the time",
 		"whats the date", "what day is it",
 	} {
+		if strings.Contains(user, frag) {
+			return true
+		}
+	}
+	return false
+}
+
+// identityMetaQuestions: normalized whole-message forms (same shape as
+// timeOrDateQuestions) of the user asking who/what the assistant is, its
+// name, its underlying model, or who made it. TR diacritic + diacritic-free
+// + EN. These never carry a durable fact about the user.
+var identityMetaQuestions = map[string]struct{}{
+	// Turkish — diacritic
+	"sen kimsin": {}, "kimsin": {}, "kimsin sen": {}, "sen nesin": {}, "nesin sen": {},
+	"adın ne": {}, "adin ne": {}, "ismin ne": {}, "senin adın ne": {}, "adın ne senin": {},
+	"sen kimsin adın ne": {}, "selam sen kimsin adın ne": {}, "kimsin adın ne": {},
+	"model adın ne": {}, "modelin ne": {}, "hangi modelsin": {}, "hangi model": {},
+	"altta çalışan ne": {}, "altta ne çalışıyor": {}, "altta ne var": {}, "altında ne var": {},
+	"altta çalışan model ne": {}, "seni kim yaptı": {}, "seni kim yarattı": {},
+	"kim yaptı seni": {}, "yapay zeka mısın": {}, "sen yapay zeka mısın": {},
+	"hangi yapay zekasın": {}, "chatgpt misin": {}, "claude musun": {},
+	// Turkish — diacritic-free
+	"sen kimsin adin ne": {}, "selam sen kimsin adin ne": {}, "kimsin adin ne": {},
+	"model adin ne": {}, "hangi modelsin sen": {},
+	"altta calisan ne": {}, "altta ne calisiyor": {}, "altinda ne var": {},
+	"altta calisan model ne": {}, "seni kim yapti": {}, "seni kim yaratti": {},
+	"kim yapti seni": {}, "yapay zeka misin": {}, "hangi yapay zekasin": {},
+	// English
+	"who are you": {}, "what are you": {}, "whats your name": {}, "what is your name": {},
+	"your name": {}, "what model are you": {}, "which model are you": {}, "what model is this": {},
+	"whats running under you": {}, "what is running under you": {}, "whats under the hood": {},
+	"who made you": {}, "who created you": {}, "who built you": {},
+	"are you an ai": {}, "are you a robot": {}, "are you chatgpt": {}, "are you claude": {},
+	"are you gpt": {}, "what llm are you": {}, "which llm are you": {},
+}
+
+// identityMetaFragments are unambiguous substrings so a little trailing
+// politeness ("sen kimsin kanka") or a leading greet still counts. Kept
+// tight to avoid eating real facts ("what model of car…" must NOT match, so
+// "what model are you" is a fragment, bare "what model" is not).
+var identityMetaFragments = []string{
+	"sen kimsin", "adın ne", "adin ne", "ismin ne", "model adın", "model adin",
+	"hangi modelsin", "seni kim yaptı", "seni kim yapti", "seni kim yarattı", "seni kim yaratti",
+	"who are you", "what are you", "your name", "what model are you", "which model are you",
+	"who made you", "who created you", "who built you",
+}
+
+// isIdentityMetaQuestion reports whether user (already normalized) is asking
+// about the assistant's identity/name/model rather than stating a fact.
+func isIdentityMetaQuestion(user string) bool {
+	if _, ok := identityMetaQuestions[user]; ok {
+		return true
+	}
+	for _, frag := range identityMetaFragments {
 		if strings.Contains(user, frag) {
 			return true
 		}

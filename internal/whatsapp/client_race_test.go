@@ -94,3 +94,33 @@ func TestStopChRecreatedAfterStop(t *testing.T) {
 		t.Fatal("second Stop() should have closed the recreated stopCh")
 	}
 }
+
+// TestDisconnectedGuardsReconnectLoop covers the handleEvent guard added
+// when autoReconnect became an indefinite retry: a Disconnected event on a
+// started client claims `reconnecting` under startMu, and a second one
+// while it's still claimed must not clear it (or start a competing loop
+// that would then run forever). Start() can't be driven here (real
+// whatsmeow session) so waClient stays nil — the spawned autoReconnect
+// goroutine sees alive==false and exits; what's under test is the guard.
+func TestDisconnectedGuardsReconnectLoop(t *testing.T) {
+	c := NewClient(Config{})
+	c.startMu.Lock()
+	c.started = true
+	c.startMu.Unlock()
+	t.Cleanup(func() {
+		c.startMu.Lock()
+		c.started = false
+		close(c.stopCh) // let any spawned autoReconnect goroutine exit now
+		c.startMu.Unlock()
+	})
+
+	c.handleEvent(&waEvent.Disconnected{})
+	if !c.IsReconnecting() {
+		t.Fatal("first Disconnected on a started client should claim reconnecting")
+	}
+
+	c.handleEvent(&waEvent.Disconnected{})
+	if !c.IsReconnecting() {
+		t.Error("a second Disconnected must not clear the reconnecting flag")
+	}
+}

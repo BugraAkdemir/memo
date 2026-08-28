@@ -74,8 +74,20 @@ func (a *App) initWhatsApp() {
 
 	go func() {
 		defer recoverPanic("waClient.Start")
-		if err := a.waClient.Start(a.lifecycleCtx); err != nil {
-			logx.Printf("WhatsApp: auto-connect error: %v", err)
+		// Retry the initial connect instead of giving up on the first
+		// failure. Right after a reboot the network/DNS often isn't ready
+		// when Memo starts, so a one-shot Start() left the bridge dead until
+		// a manual reconnect. Client.Start cleans up its own sqlstore handle
+		// on failure, so it is safe to call again.
+		ok := retryWithBackoff(a.lifecycleCtx, 5*time.Second, 2*time.Minute, func() bool {
+			err := a.waClient.Start(a.lifecycleCtx)
+			if err != nil {
+				logx.Printf("WhatsApp: startup connect failed (%v); will retry", err)
+			}
+			return err == nil
+		})
+		if ok {
+			logx.Info("WhatsApp client connected")
 		}
 	}()
 

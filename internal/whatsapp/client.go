@@ -180,6 +180,7 @@ func (c *Client) Start(ctx context.Context) error {
 
 	deviceStore, err := storeDB.GetFirstDevice(ctx)
 	if err != nil {
+		_ = storeDB.Close()
 		return fmt.Errorf("whatsapp: get device: %w", err)
 	}
 	c.storeDB = storeDB
@@ -188,13 +189,23 @@ func (c *Client) Start(ctx context.Context) error {
 	c.waClient.AddEventHandler(c.handleEvent)
 
 	if err := c.waClient.Connect(); err != nil {
+		// This Start() failed before c.started, so nothing else tracks
+		// storeDB/waClient yet — a caller retrying Start() (the startup
+		// auto-connect loop does) would otherwise leak an sqlstore handle
+		// per attempt. Undo everything this call set up.
+		_ = storeDB.Close()
+		c.storeDB = nil
+		c.waClient = nil
 		return fmt.Errorf("whatsapp: connect: %w", err)
 	}
 
 	c.started = true
 
-	// If we have a stored session, wait for the Connected event so
-	// IsLoggedIn() is accurate before the first status poll hits.
+	// If we have a stored session, wait briefly for the Connected event so
+	// IsLoggedIn() is accurate before the first status poll hits. The
+	// connection itself already succeeded above, so a ctx cancellation here
+	// (app shutting down) is not a Start() failure — return nil and let
+	// Stop() tear the client down.
 	if deviceStore != nil {
 		deadline := time.Now().Add(5 * time.Second)
 		for time.Now().Before(deadline) {
@@ -203,7 +214,7 @@ func (c *Client) Start(ctx context.Context) error {
 			}
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return nil
 			default:
 			}
 			time.Sleep(250 * time.Millisecond)
@@ -637,13 +648,21 @@ func (c *Client) handleEvent(evt interface{}) {
 		logx.Printf("WhatsApp: disconnected")
 		c.startMu.Lock()
 		c.lastError = "connection lost"
-		wasStarted := c.started
+		// Spawn autoReconnect only if the client is up and no reconnect
+		// loop is already running — claim `reconnecting` here, under the
+		// same lock as the check, so a burst of Disconnected events can't
+		// start several competing loops (autoReconnect now retries
+		// indefinitely, so a duplicate would run forever).
+		spawn := c.started && !c.reconnecting
+		if spawn {
+			c.reconnecting = true
+		}
 		c.startMu.Unlock()
 		select {
 		case c.errCh <- fmt.Errorf("disconnected"):
 		default:
 		}
-		if wasStarted {
+		if spawn {
 			logx.GoRecover("whatsapp.Client.autoReconnect", c.autoReconnect)
 		}
 	case *waEvent.LoggedOut:
@@ -662,8 +681,15 @@ func (c *Client) handleEvent(evt interface{}) {
 	}
 }
 
-// autoReconnect attempts to reconnect with exponential backoff, aborting
-// immediately when stopCh is closed (e.g. during Shutdown).
+// autoReconnect reconnects with exponential backoff (capped), retrying
+// indefinitely until it succeeds, the client is stopped, or stopCh is
+// closed (Shutdown). The caller sets c.reconnecting=true before spawning
+// this (see handleEvent) so only one loop ever runs.
+//
+// It used to give up after 4 tries (~105s) and set lastError to "reconnect
+// manually" — so any outage longer than that (VPN reconnect, ISP blip,
+// laptop resume, boot before the network is up) left the bridge dead until
+// the user noticed and reconnected by hand.
 func (c *Client) autoReconnect() {
 	c.startMu.Lock()
 	c.reconnecting = true
@@ -672,13 +698,13 @@ func (c *Client) autoReconnect() {
 	// unsynchronized read here would race that write.
 	stopCh := c.stopCh
 	c.startMu.Unlock()
-	backoff := []time.Duration{5 * time.Second, 10 * time.Second, 30 * time.Second, 60 * time.Second}
-	for attempt, delay := range backoff {
+
+	delay := 5 * time.Second
+	const maxDelay = 2 * time.Minute
+	for {
 		select {
 		case <-stopCh:
-			c.startMu.Lock()
-			c.reconnecting = false
-			c.startMu.Unlock()
+			c.setReconnecting(false)
 			return
 		case <-time.After(delay):
 		}
@@ -686,35 +712,48 @@ func (c *Client) autoReconnect() {
 		c.startMu.Lock()
 		wa := c.waClient
 		alive := c.started && wa != nil
+		connected := alive && wa.IsConnected()
 		c.startMu.Unlock()
 
-		if !alive || wa.IsConnected() {
+		if !alive {
+			c.setReconnecting(false)
+			return
+		}
+		if connected {
 			c.startMu.Lock()
 			c.reconnecting = false
+			c.lastError = ""
 			c.startMu.Unlock()
 			return
 		}
 
-		logx.Printf("WhatsApp: reconnect attempt %d...", attempt+1)
+		logx.Printf("WhatsApp: reconnecting...")
 		if err := wa.Connect(); err != nil {
 			logx.Printf("WhatsApp: reconnect error: %v", err)
-			errMsg := fmt.Sprintf("reconnect failed (%d/%d)", attempt+1, len(backoff))
 			c.startMu.Lock()
-			c.lastError = errMsg
+			c.lastError = "reconnecting…"
 			c.startMu.Unlock()
+			if delay < maxDelay {
+				delay *= 2
+				if delay > maxDelay {
+					delay = maxDelay
+				}
+			}
 			continue
 		}
 		logx.Printf("WhatsApp: reconnected")
 		c.startMu.Lock()
 		c.reconnecting = false
+		c.lastError = ""
 		c.startMu.Unlock()
 		return
 	}
+}
+
+func (c *Client) setReconnecting(v bool) {
 	c.startMu.Lock()
-	c.reconnecting = false
-	c.lastError = "reconnect failed — please reconnect manually"
+	c.reconnecting = v
 	c.startMu.Unlock()
-	logx.Printf("WhatsApp: auto-reconnect exhausted")
 }
 
 // handleHistorySync imports historical messages after first pairing.

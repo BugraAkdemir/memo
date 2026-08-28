@@ -198,8 +198,10 @@ func TestBuildLiveModeToolCallHandler_DelegateMode_RoutesThroughDelegation(t *te
 // delegated task was still running, the live model kept trying to generate
 // more speech (it has no natural sense of "I'm waiting on something"),
 // producing choppy, repeatedly-interrupted-sounding audio. Confirms the
-// handler now injects a "say one thing, then wait quietly" hint through
-// injectContext right when delegation starts, before the reply comes back.
+// handler injects a "say one thing, then wait quietly" hint through
+// injectContext right when delegation starts — and, since Gemini Live does
+// not verbalize a tool response that lands after its turn ended, a SECOND
+// injectContext call carrying the finished outcome (see injectDelegateOutcome).
 func TestBuildLiveModeToolCallHandler_DelegateMode_InjectsWaitQuietlyHint(t *testing.T) {
 	a := newTestAppForLiveModeSession(t)
 	sessionID, err := a.getOrCreateLiveModeChat()
@@ -217,11 +219,14 @@ func TestBuildLiveModeToolCallHandler_DelegateMode_InjectsWaitQuietlyHint(t *tes
 	if _, err := handler(context.Background(), livemode.DelegateToolName, json.RawMessage(`{"instruction":"fix the bug"}`)); err != nil {
 		t.Fatalf("handler: %v", err)
 	}
-	if len(injected) != 1 {
-		t.Fatalf("expected exactly one injectContext call before the delegated reply, got %d: %v", len(injected), injected)
+	if len(injected) != 2 {
+		t.Fatalf("expected two injectContext calls (wait-quietly hint, then the outcome), got %d: %v", len(injected), injected)
 	}
 	if !strings.Contains(injected[0], "delegate_to_main_model") {
-		t.Errorf("expected the injected hint to reference delegate_to_main_model, got %q", injected[0])
+		t.Errorf("expected injected[0] to be the wait-quietly hint referencing delegate_to_main_model, got %q", injected[0])
+	}
+	if injected[1] == "" || injected[1] == injected[0] {
+		t.Errorf("expected injected[1] to be the delegated outcome delivery, got %q", injected[1])
 	}
 }
 
@@ -280,9 +285,10 @@ func TestBuildLiveModeToolCallHandler_StandaloneMode_DelegateToolRoutesToDelegat
 		t.Error("expected a non-empty reply from the delegation path (even an error-shaped one from the unconfigured model)")
 	}
 	// The "say one thing, then wait quietly" hint is the delegation path's
-	// tell — an ExecuteToolCall path would never inject it.
-	if len(injected) != 1 || !strings.Contains(injected[0], "delegate_to_main_model") {
-		t.Errorf("expected the delegation wait-hint to be injected once, got %v", injected)
+	// tell — an ExecuteToolCall path would never inject it. A second inject
+	// carries the finished outcome (injectDelegateOutcome).
+	if len(injected) != 2 || !strings.Contains(injected[0], "delegate_to_main_model") {
+		t.Errorf("expected the delegation wait-hint then the outcome to be injected, got %v", injected)
 	}
 }
 

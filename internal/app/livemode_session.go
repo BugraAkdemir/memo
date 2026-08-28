@@ -192,25 +192,9 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 			go func() {
 				defer logx.Recover("livemode delegate background inject")
 				rest := a.drainLiveDelegatedReply(restCh, autoApprove, buildQuestion, sendQuestion, awaitAnswer)
-				if injectContext == nil {
+				if !a.injectDelegateOutcome(injectContext, strings.TrimSpace(textSoFar+rest)) {
 					logx.Printf("livemode delegate: background result ready but no injectContext, dropped")
-					return
 				}
-				full := strings.TrimSpace(textSoFar + rest)
-				if full == "" || isLLMErrorReply(full) {
-					// Still tell the user something — the model already said
-					// "still working", so silence here strands them.
-					logx.Printf("livemode delegate: background result empty/error, injecting a failure note")
-					_ = injectContext(a.t(
-						"Az önce devrettiğin iş sonuçsuz bitti. Kullanıcıya bunu şu an tamamlayamadığını söyle — cevap UYDURMA.",
-						"The task you delegated a moment ago finished with no result. Tell the user you couldn't complete it right now — do NOT fabricate an answer.",
-					))
-					return
-				}
-				_ = injectContext(a.t(
-					"Az önce devrettiğin işin sonucu geldi. Kullanıcı hâlâ bekliyor — bunu şimdi ona doğal bir şekilde anlat, kendi cümlelerinle:\n\n",
-					"The task you delegated a moment ago has finished. The user is still waiting — relay this to them now, naturally, in your own words:\n\n",
-				) + full)
 			}()
 			return a.t(
 				"Devrettiğin iş beklenenden uzun sürüyor ama İPTAL OLMADI, arka planda devam ediyor. Kullanıcıya kısa bir şey söyle (\"biraz daha sürüyor, araştırmaya devam ediyorum\" gibi) — sonucu 'yaptım/bulamadım' deme, hazır olunca sana ayrıca iletilecek.",
@@ -218,12 +202,27 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 			), nil
 		}
 
-		// The live model has been observed fabricating a plausible-sounding
-		// answer (a made-up file listing, invented file extensions) when the
-		// delegated call comes back empty or as one of llm.go's "⚠️ ..."
-		// error strings — instead of telling the user it failed. Wrap those
-		// two cases in an explicit instruction so it relays the truth. A
-		// normal successful reply is passed straight through.
+		// Fast path — the delegated turn finished within liveDelegateTimeout.
+		// Deliver the result via injectContext, NOT by returning it as the
+		// tool response: Gemini Live silently does not verbalize a tool
+		// response that lands after it already ended its turn (said "one sec"
+		// and stopped), which is exactly when a ~6s delegation's result
+		// arrives — observed repeatedly as "DONE logged, folder/file actually
+		// created, then 10-30s of dead air until the user gives up".
+		// realtimeInput.text (injectContext) starts a fresh turn and IS
+		// spoken. The tool response then only needs to be a silent ack.
+		if a.injectDelegateOutcome(injectContext, reply) {
+			return a.t(
+				"(İç durum: sonuç injectContext ile canlı oturuma iletildi — bu satırı seslendirme, tekrar etme.)",
+				"(Internal: the result was delivered to the live session via injectContext — do not voice this line, do not repeat it.)",
+			), nil
+		}
+
+		// injectContext not ready yet (session still starting). Fall back to
+		// returning the outcome as the tool response and hope it's spoken.
+		// The live model has been observed fabricating a plausible answer
+		// when a delegation comes back empty or as an llm.go "⚠️" error, so
+		// wrap those in an explicit "relay the truth, don't fabricate".
 		if reply == "" {
 			return a.t(
 				"DELEGASYON SONUÇSUZ: ana model boş yanıt döndürdü. Kullanıcıya bu isteği şu an yapamadığını söyle — kesinlikle bir cevap UYDURMA (dosya adı, liste, uzantı vs. sallama).",
@@ -286,6 +285,46 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 		}
 		return runDelegate(ctx, args)
 	}
+}
+
+// injectDelegateOutcome pushes a finished delegation's outcome into the
+// live session as an out-of-turn text aside (injectContext /
+// realtimeInput.text), wrapped in a "relay this now" instruction. This is
+// the only reliable way to get Gemini Live to actually speak a delegated
+// result: a plain tool response that lands after the model already ended
+// its turn ("bir saniye" then turnComplete) is silently never verbalized —
+// which is exactly when a normal ~6s delegation's result arrives, seen
+// repeatedly as "DONE logged, the folder/file really created, then dead
+// air". An out-of-turn text starts a fresh turn and is spoken. An empty
+// reply or an llm.go "⚠️" error string becomes an honest "couldn't do it"
+// rather than a fabricated answer. Returns false when there is no
+// injectContext yet (session still starting) so the caller can fall back to
+// returning the outcome as the tool response. Shared by runDelegate's fast
+// path and its slow-path background goroutine.
+func (a *App) injectDelegateOutcome(injectContext func(string) error, reply string) bool {
+	if injectContext == nil {
+		return false
+	}
+	var msg string
+	switch {
+	case strings.TrimSpace(reply) == "":
+		msg = a.t(
+			"Az önce devrettiğin iş sonuçsuz döndü. Kullanıcıya şu an yapamadığını söyle — kesinlikle bir cevap UYDURMA.",
+			"The task you delegated a moment ago returned nothing. Tell the user you couldn't do it right now — absolutely do NOT fabricate an answer.",
+		)
+	case isLLMErrorReply(reply):
+		msg = a.t(
+			"Az önce devrettiğin iş hata verdi. Hatayı kullanıcıya kısaca aktar, kendin bir cevap uydurma: ",
+			"The task you delegated a moment ago errored. Relay the error to the user briefly; do not fabricate an answer: ",
+		) + reply
+	default:
+		msg = a.t(
+			"Az önce devrettiğin işin sonucu geldi. Kullanıcıya şimdi kendi cümlelerinle, doğal bir şekilde anlat:\n\n",
+			"The task you delegated a moment ago has finished. Relay it to the user now, naturally, in your own words:\n\n",
+		) + reply
+	}
+	_ = injectContext(msg)
+	return true
 }
 
 // resolveLivePermission resolves one EventPermissionRequest — shared by

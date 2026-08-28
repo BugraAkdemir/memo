@@ -176,16 +176,46 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 			))
 		}
 		ch := a.SendLiveDelegatedMessageStream(ctx, parsed.Instruction, liveDelegateTimeout)
-		reply := a.drainLiveDelegatedReply(ch, autoApprove, buildQuestion, sendQuestion, awaitAnswer)
+		reply, slow := a.drainLiveDelegatedReplyUntilMarker(ch, autoApprove, buildQuestion, sendQuestion, awaitAnswer)
 
-		// SendLiveDelegatedMessageStream appends liveDelegateTimeoutMarker
-		// when it gave up waiting on an over-running agent turn rather than
-		// leaving the realtime turn silent for tens of seconds. Turn it into
-		// an honest instruction: hand back the partial text if there is any,
-		// otherwise say plainly that it overran — never let the model paper
-		// over it with a fabricated answer.
-		if out, ok := a.resolveDelegateTimeout(reply); ok {
-			return out, nil
+		// The agent turn outran liveDelegateTimeout but is still running.
+		// Don't kill it and don't keep the live model waiting: hand back a
+		// stall now, finish draining the real result in the background, and
+		// inject it into the open session when it lands so the model speaks
+		// it a few seconds late instead of the work being thrown away. The
+		// "one sec, wait quietly" hint went out at delegation start; this
+		// tells it the wait is longer than that and a separate delivery is
+		// coming.
+		if slow {
+			restCh := ch
+			textSoFar := reply
+			go func() {
+				defer logx.Recover("livemode delegate background inject")
+				rest := a.drainLiveDelegatedReply(restCh, autoApprove, buildQuestion, sendQuestion, awaitAnswer)
+				if injectContext == nil {
+					logx.Printf("livemode delegate: background result ready but no injectContext, dropped")
+					return
+				}
+				full := strings.TrimSpace(textSoFar + rest)
+				if full == "" || isLLMErrorReply(full) {
+					// Still tell the user something — the model already said
+					// "still working", so silence here strands them.
+					logx.Printf("livemode delegate: background result empty/error, injecting a failure note")
+					_ = injectContext(a.t(
+						"Az önce devrettiğin iş sonuçsuz bitti. Kullanıcıya bunu şu an tamamlayamadığını söyle — cevap UYDURMA.",
+						"The task you delegated a moment ago finished with no result. Tell the user you couldn't complete it right now — do NOT fabricate an answer.",
+					))
+					return
+				}
+				_ = injectContext(a.t(
+					"Az önce devrettiğin işin sonucu geldi. Kullanıcı hâlâ bekliyor — bunu şimdi ona doğal bir şekilde anlat, kendi cümlelerinle:\n\n",
+					"The task you delegated a moment ago has finished. The user is still waiting — relay this to them now, naturally, in your own words:\n\n",
+				) + full)
+			}()
+			return a.t(
+				"Devrettiğin iş beklenenden uzun sürüyor ama İPTAL OLMADI, arka planda devam ediyor. Kullanıcıya kısa bir şey söyle (\"biraz daha sürüyor, araştırmaya devam ediyorum\" gibi) — sonucu 'yaptım/bulamadım' deme, hazır olunca sana ayrıca iletilecek.",
+				"The delegated task is taking longer than expected but was NOT cancelled — it's still running in the background. Say one short thing to the user (\"taking a bit longer, still digging into it\") — do NOT say you did it or couldn't find it; the result will be delivered to you separately when it's ready.",
+			), nil
 		}
 
 		// The live model has been observed fabricating a plausible-sounding
@@ -256,30 +286,6 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 		}
 		return runDelegate(ctx, args)
 	}
-}
-
-// resolveDelegateTimeout inspects a drained delegated reply for
-// liveDelegateTimeoutMarker (appended by SendLiveDelegatedMessageStream
-// when it stopped waiting on an over-running turn). ok=false means "no
-// marker — caller continues with its normal empty / error handling".
-// Otherwise it returns the text to hand the live model: the partial reply
-// wrapped in a "may be incomplete" note when the agent got far enough to
-// produce some, or an honest "it took too long" instruction when it didn't.
-func (a *App) resolveDelegateTimeout(reply string) (string, bool) {
-	if !strings.Contains(reply, liveDelegateTimeoutMarker) {
-		return "", false
-	}
-	partial := strings.TrimSpace(strings.ReplaceAll(reply, liveDelegateTimeoutMarker, ""))
-	if partial == "" {
-		return a.t(
-			"DELEGASYON ZAMAN AŞIMINA UĞRADI: ana model işi verilen sürede bitiremedi (büyük ihtimalle yavaş bir web sayfası ya da uzun süren bir işlem). Kullanıcıya işlemin beklenenden uzun sürdüğünü, isterse tekrar deneyebileceğini söyle — kesinlikle bir cevap UYDURMA (dosya adı, liste, rakam vs. sallama).",
-			"DELEGATION TIMED OUT: the main model couldn't finish within the allotted time (most likely a slow web page or a long-running operation). Tell the user it's taking longer than expected and you can retry if they want — absolutely do NOT fabricate an answer (no made-up file names, lists, or numbers).",
-		), true
-	}
-	return a.t(
-		"KISMİ SONUÇ (delegasyon zaman aşımına uğradı, iş yarıda kaldı). Aşağıdakini kullanıcıya aktar ama eksik olabileceğini belirt; kalan kısmı uydurma:\n\n",
-		"PARTIAL RESULT (delegation timed out, the task was left unfinished). Relay the below to the user but note it may be incomplete; do not fabricate the rest:\n\n",
-	) + partial, true
 }
 
 // resolveLivePermission resolves one EventPermissionRequest — shared by

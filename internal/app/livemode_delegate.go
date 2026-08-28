@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"memo/internal/agent"
@@ -13,23 +15,24 @@ import (
 )
 
 const (
-	// liveDelegateTimeout bounds a single delegated agent turn against the
-	// realtime voice turn that is blocked waiting on its result. A live
-	// session has already said "one sec" (see runDelegate) and then sits
-	// silent until the tool result comes back — so an agent turn that runs
-	// 20-40s (a fetch_page that falls through to a headless browser render
-	// of a scraper-hostile page — reddit was measured at ~23s+) leaves the
-	// user hearing nothing, then an answer that no longer matches what they
-	// went on to say. 15s sits just past a normal web_search + short
-	// synthesis (~3-8s observed) while cutting the pathological case off.
-	liveDelegateTimeout = 15 * time.Second
+	// liveDelegateTimeout is how long runDelegate blocks the realtime voice
+	// turn on a delegated agent turn before it stops waiting and hands the
+	// live model a stall ("still working…"). It does NOT cancel the agent
+	// turn — that keeps running and its result is injected into the session
+	// when it lands (see runDelegate's background goroutine). 20s clears a
+	// normal web_search + a fetch or two + synthesis (~14-18s observed) so
+	// the common case never even hits the stall, while still capping how
+	// long the user waits in silence if a turn genuinely drags (a
+	// fetch_page falling through to a headless browser render of a
+	// scraper-hostile page — reddit was measured at ~23s+).
+	liveDelegateTimeout = 20 * time.Second
 
-	// liveDelegateTimeoutMarker is appended to a delegated reply by
-	// SendLiveDelegatedMessageStream when it stopped waiting on an
-	// over-running turn. runDelegate (livemode_session.go) strips it back
-	// out and turns it into an honest "it overran" instruction for the live
-	// model. NUL-wrapped so it can never collide with real reply text, and
-	// so it is obviously wrong (not speakable) if a strip is ever missed.
+	// liveDelegateTimeoutMarker is a sentinel chunk SendLiveDelegatedMessage
+	// Stream forwards into the stream when liveDelegateTimeout elapses while
+	// the agent turn is still running. runDelegate (livemode_session.go)
+	// treats it as "stop blocking on me, pick the finished result up in the
+	// background". NUL-wrapped so it can never collide with real reply text,
+	// and so it is obviously wrong (not speakable) if it ever leaks.
 	liveDelegateTimeoutMarker = "\x00livemode-delegate-timeout\x00"
 )
 
@@ -142,13 +145,16 @@ func (a *App) finishLiveJob(chatID string) {
 // a.lifecycleCtx by analogy with the CLI precedent — it is a deliberate
 // difference, not an oversight.
 //
-// timeout bounds the delegated turn against the realtime turn waiting on it
-// (see liveDelegateTimeout). When it elapses first, the stream is closed
-// with a liveDelegateTimeoutMarker chunk appended after whatever partial
-// text was produced, and the abandoned agent turn is left to unwind in the
-// background (the deferred cancel tears its context down). A non-positive
-// timeout waits indefinitely — used by tests that drive the inner stream
-// directly.
+// timeout is how long the caller (runDelegate) will block a realtime voice
+// turn on this before it gets a "still working" signal. When it elapses
+// while the agent turn is still running, a single liveDelegateTimeoutMarker
+// chunk is forwarded into the stream and forwarding then CONTINUES to
+// completion — the agent turn is never cancelled here, so its real result
+// still arrives on this channel for runDelegate's background goroutine to
+// pick up and inject into the session. A non-positive timeout never emits
+// the marker (used by tests that drive the inner stream directly). The
+// deferred cancel still fires when the turn finishes on its own or the
+// session context dies.
 func (a *App) SendLiveDelegatedMessageStream(sessionCtx context.Context, instruction string, timeout time.Duration) <-chan api.StreamChunk {
 	chatID, err := a.getOrCreateLiveModeChat()
 	if err != nil {
@@ -170,28 +176,25 @@ func (a *App) SendLiveDelegatedMessageStream(sessionCtx context.Context, instruc
 		defer recoverStreamPanic(jobCtx, outCh, "SendLiveDelegatedMessageStream")
 
 		inner := a.sendMessageStreamCore(jobCtx, chatID, instruction, true /* forceAgent */)
-		if drainWithDeadline(jobCtx, inner, outCh, timeout) {
-			logx.Printf("livemode delegate: TIMEOUT chat=%s after=%s", chatID, timeout)
-			select {
-			case outCh <- api.StreamChunk{Content: liveDelegateTimeoutMarker}:
-			default:
-			}
-			return
+		slow := forwardWithSlowMarker(jobCtx, inner, outCh, timeout)
+		if slow {
+			logx.Printf("livemode delegate: DONE (ran past %s, result went to background inject) chat=%s", timeout, chatID)
+		} else {
+			logx.Printf("livemode delegate: DONE chat=%s", chatID)
 		}
-		logx.Printf("livemode delegate: DONE chat=%s", chatID)
 	}()
 	return outCh
 }
 
-// drainWithDeadline forwards inner→out until inner closes (returns false) or
-// timeout elapses first (returns true — the caller should then append the
-// timeout marker and stop). ctx cancellation also ends it with false. A
-// non-positive timeout disables the deadline. The forwarding runs on its
-// own goroutine writing to an internal relay channel so that, on timeout,
-// out has exactly one writer (this function) and can be closed safely by
-// the caller without racing a still-running forwardStream; the abandoned
-// forwarder unwinds once ctx is cancelled.
-func drainWithDeadline(ctx context.Context, inner <-chan api.StreamChunk, out chan<- api.StreamChunk, timeout time.Duration) (timedOut bool) {
+// forwardWithSlowMarker forwards inner→out to completion. If timeout elapses
+// before inner closes, it forwards one liveDelegateTimeoutMarker chunk into
+// out and keeps forwarding the rest — it does not stop or cancel anything.
+// Returns whether the marker was emitted. ctx cancellation ends it early.
+// The forwarding runs on its own goroutine writing to an internal relay so
+// out has exactly one writer (this function), letting the caller close out
+// safely; the relay forwarder unwinds once ctx is cancelled or inner ends.
+// A non-positive timeout never emits the marker.
+func forwardWithSlowMarker(ctx context.Context, inner <-chan api.StreamChunk, out chan<- api.StreamChunk, timeout time.Duration) (markerSent bool) {
 	relay := make(chan api.StreamChunk, 128)
 	go func() {
 		forwardStream(ctx, inner, relay)
@@ -208,18 +211,24 @@ func drainWithDeadline(ctx context.Context, inner <-chan api.StreamChunk, out ch
 	for {
 		select {
 		case <-ctx.Done():
-			return false
+			return markerSent
 		case chunk, ok := <-relay:
 			if !ok {
-				return false
+				return markerSent
 			}
 			select {
 			case out <- chunk:
 			case <-ctx.Done():
-				return false
+				return markerSent
 			}
 		case <-timer:
-			return true
+			timer = nil // one-shot
+			select {
+			case out <- api.StreamChunk{Content: liveDelegateTimeoutMarker}:
+				markerSent = true
+			case <-ctx.Done():
+				return markerSent
+			}
 		}
 	}
 }
@@ -248,4 +257,42 @@ func (a *App) drainLiveDelegatedReply(
 	awaitAnswer func(ctx context.Context) (string, bool),
 ) string {
 	return a.drainSelfChatReply(ch, autoApprove, buildQuestion, sendQuestion, awaitAnswer)
+}
+
+// drainLiveDelegatedReplyUntilMarker drains ch like drainLiveDelegatedReply
+// but stops the moment a liveDelegateTimeoutMarker chunk arrives, returning
+// markerHit=true with whatever text preceded it and leaving the rest of ch
+// unread — runDelegate then hands the live model a stall and finishes the
+// drain (for the real result) on a background goroutine. Text and
+// permission events that arrive before the marker are handled exactly as in
+// the full drain. An Error chunk still short-circuits (markerHit=false).
+func (a *App) drainLiveDelegatedReplyUntilMarker(
+	ch <-chan api.StreamChunk,
+	autoApprove bool,
+	buildQuestion func(ev agent.AgentEvent) string,
+	sendQuestion func(text string) error,
+	awaitAnswer func(ctx context.Context) (string, bool),
+) (reply string, markerHit bool) {
+	var b strings.Builder
+	for chunk := range ch {
+		if chunk.Error != "" {
+			return chunk.Error, false
+		}
+		if chunk.FinishReason == "agent_event" {
+			var ev agent.AgentEvent
+			if err := json.Unmarshal([]byte(chunk.Content), &ev); err == nil && ev.Type == agent.EventPermissionRequest {
+				a.resolveSelfChatPermission(ev, autoApprove, buildQuestion, sendQuestion, awaitAnswer)
+			}
+			continue
+		}
+		if chunk.FinishReason != "" {
+			continue
+		}
+		if i := strings.Index(chunk.Content, liveDelegateTimeoutMarker); i >= 0 {
+			b.WriteString(chunk.Content[:i])
+			return b.String(), true
+		}
+		b.WriteString(chunk.Content)
+	}
+	return b.String(), false
 }

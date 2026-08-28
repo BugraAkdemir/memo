@@ -215,18 +215,18 @@ func TestDrainLiveDelegatedReply_AccumulatesTextAndStopsOnError(t *testing.T) {
 	}
 }
 
-// TestDrainWithDeadline_ForwardsEverythingWhenInnerFinishesFirst is the
-// happy path: the delegated turn completes before the deadline, so every
-// chunk is forwarded and timedOut is false.
-func TestDrainWithDeadline_ForwardsEverythingWhenInnerFinishesFirst(t *testing.T) {
+// TestForwardWithSlowMarker_NoMarkerWhenInnerFinishesFirst is the happy
+// path: the delegated turn completes before the timeout, so every chunk is
+// forwarded and no marker is emitted.
+func TestForwardWithSlowMarker_NoMarkerWhenInnerFinishesFirst(t *testing.T) {
 	inner := make(chan api.StreamChunk, 3)
 	inner <- api.StreamChunk{Content: "a"}
 	inner <- api.StreamChunk{Content: "b"}
 	close(inner)
 
 	out := make(chan api.StreamChunk, 8)
-	if drainWithDeadline(context.Background(), inner, out, time.Second) {
-		t.Fatal("timedOut=true though inner closed well before the deadline")
+	if forwardWithSlowMarker(context.Background(), inner, out, time.Second) {
+		t.Fatal("markerSent=true though inner closed well before the timeout")
 	}
 	close(out)
 
@@ -239,82 +239,104 @@ func TestDrainWithDeadline_ForwardsEverythingWhenInnerFinishesFirst(t *testing.T
 	}
 }
 
-// TestDrainWithDeadline_ReportsTimeoutWhenInnerOverruns is the regression
-// test for the Live Mode "asked it to search the web, 30-40s of silence"
-// symptom: an agent turn that outlasts the deadline must hand control back
-// promptly with timedOut=true rather than blocking the realtime turn until
-// the agent eventually finishes.
-func TestDrainWithDeadline_ReportsTimeoutWhenInnerOverruns(t *testing.T) {
-	inner := make(chan api.StreamChunk) // never sends, never closes
-	out := make(chan api.StreamChunk, 8)
+// TestForwardWithSlowMarker_EmitsMarkerThenKeepsForwarding is the core of
+// the "background finish + late inject" behavior: when the agent turn
+// outruns the timeout, the marker is forwarded mid-stream AND the real
+// result that lands afterward is still forwarded (not dropped, not
+// cancelled) so runDelegate's background goroutine can inject it.
+func TestForwardWithSlowMarker_EmitsMarkerThenKeepsForwarding(t *testing.T) {
+	inner := make(chan api.StreamChunk)
+	out := make(chan api.StreamChunk, 16)
 
-	start := time.Now()
-	if !drainWithDeadline(context.Background(), inner, out, 40*time.Millisecond) {
-		t.Fatal("expected timedOut=true when inner overran the deadline")
+	go func() {
+		inner <- api.StreamChunk{Content: "A"}
+		time.Sleep(80 * time.Millisecond) // let the 40ms timer fire
+		inner <- api.StreamChunk{Content: "B"}
+		close(inner)
+	}()
+
+	if !forwardWithSlowMarker(context.Background(), inner, out, 40*time.Millisecond) {
+		t.Fatal("expected markerSent=true when inner overran the timeout")
 	}
-	if elapsed := time.Since(start); elapsed > time.Second {
-		t.Errorf("returned after %s — expected it to fire at the ~40ms deadline", elapsed)
+	close(out)
+
+	var seq []string
+	for c := range out {
+		seq = append(seq, c.Content)
+	}
+	want := []string{"A", liveDelegateTimeoutMarker, "B"}
+	if len(seq) != len(want) {
+		t.Fatalf("forwarded %d chunks %q, want %q", len(seq), seq, want)
+	}
+	for i := range want {
+		if seq[i] != want[i] {
+			t.Errorf("chunk %d = %q, want %q", i, seq[i], want[i])
+		}
 	}
 }
 
-// TestDrainWithDeadline_CtxCancelEndsItWithoutTimeout confirms a cancelled
-// session context ends the drain as a non-timeout (the caller then just
-// closes its stream) — it is not misreported as an overrun.
-func TestDrainWithDeadline_CtxCancelEndsItWithoutTimeout(t *testing.T) {
+// TestForwardWithSlowMarker_CtxCancelStops confirms a cancelled session
+// context ends forwarding promptly.
+func TestForwardWithSlowMarker_CtxCancelStops(t *testing.T) {
 	inner := make(chan api.StreamChunk)
 	out := make(chan api.StreamChunk, 8)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan bool, 1)
-	go func() { done <- drainWithDeadline(ctx, inner, out, 5*time.Second) }()
+	go func() { done <- forwardWithSlowMarker(ctx, inner, out, 5*time.Second) }()
 
 	cancel()
 	close(inner) // the real pipeline closes its stream when its ctx is cancelled
 
 	select {
-	case timedOut := <-done:
-		if timedOut {
-			t.Error("ctx cancellation must end drainWithDeadline with timedOut=false")
-		}
+	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("drainWithDeadline did not return after ctx cancellation")
+		t.Fatal("forwardWithSlowMarker did not return after ctx cancellation")
 	}
 }
 
-func TestResolveDelegateTimeout_NoMarkerLeavesReplyToNormalHandling(t *testing.T) {
-	a := &App{identity: identity.New("Test", "Memo", "casual", "", false)}
-	if _, ok := a.resolveDelegateTimeout("a perfectly normal reply"); ok {
-		t.Error("resolveDelegateTimeout claimed a timeout on an unmarked reply")
+func TestDrainLiveDelegatedReplyUntilMarker_NoMarkerReturnsFullReply(t *testing.T) {
+	a := &App{}
+	ch := make(chan api.StreamChunk, 4)
+	ch <- api.StreamChunk{Content: "hello "}
+	ch <- api.StreamChunk{Content: "world"}
+	close(ch)
+
+	reply, markerHit := a.drainLiveDelegatedReplyUntilMarker(ch, false, nil, nil, nil)
+	if markerHit {
+		t.Error("markerHit=true on a stream with no marker")
+	}
+	if reply != "hello world" {
+		t.Errorf("reply = %q, want %q", reply, "hello world")
 	}
 }
 
-func TestResolveDelegateTimeout_MarkerWithNoPartialTextGivesHonestOverrunNote(t *testing.T) {
-	a := &App{identity: identity.New("Test", "Memo", "casual", "", false)}
-	out, ok := a.resolveDelegateTimeout(liveDelegateTimeoutMarker)
-	if !ok {
-		t.Fatal("expected resolveDelegateTimeout to handle a marked reply")
-	}
-	if strings.Contains(out, liveDelegateTimeoutMarker) {
-		t.Error("the raw marker leaked into the text handed to the live model")
-	}
-	if !strings.Contains(strings.ToUpper(out), "TIMED OUT") && !strings.Contains(strings.ToUpper(out), "ZAMAN AŞIMINA") {
-		t.Errorf("expected an explicit timeout instruction, got %q", out)
-	}
-}
+// TestDrainLiveDelegatedReplyUntilMarker_StopsAtMarkerLeavingRest is the
+// regression test for the Live Mode "it fetched the news but produced no
+// output" symptom: the first drain must stop at the marker with the text so
+// far, and a second drain of the same channel must still yield the real
+// result that arrives afterward (what the background goroutine injects).
+func TestDrainLiveDelegatedReplyUntilMarker_StopsAtMarkerLeavingRest(t *testing.T) {
+	a := &App{}
+	ch := make(chan api.StreamChunk, 8)
+	ch <- api.StreamChunk{Content: "partial "}
+	ch <- api.StreamChunk{Content: liveDelegateTimeoutMarker}
+	ch <- api.StreamChunk{Content: "the real full answer"}
+	close(ch)
 
-func TestResolveDelegateTimeout_MarkerWithPartialTextRelaysItAsIncomplete(t *testing.T) {
-	a := &App{identity: identity.New("Test", "Memo", "casual", "", false)}
-	out, ok := a.resolveDelegateTimeout("here are the first three results" + liveDelegateTimeoutMarker)
-	if !ok {
-		t.Fatal("expected resolveDelegateTimeout to handle a marked reply")
+	reply, markerHit := a.drainLiveDelegatedReplyUntilMarker(ch, false, nil, nil, nil)
+	if !markerHit {
+		t.Fatal("expected markerHit=true")
 	}
-	if strings.Contains(out, liveDelegateTimeoutMarker) {
-		t.Error("the raw marker leaked into the text handed to the live model")
+	if reply != "partial " {
+		t.Errorf("text before marker = %q, want %q", reply, "partial ")
 	}
-	if !strings.Contains(out, "here are the first three results") {
-		t.Errorf("partial text was dropped: %q", out)
+	if strings.Contains(reply, liveDelegateTimeoutMarker) {
+		t.Error("the raw marker leaked into the returned text")
 	}
-	if !strings.Contains(strings.ToUpper(out), "PARTIAL") && !strings.Contains(strings.ToUpper(out), "KISMİ") {
-		t.Errorf("expected a 'may be incomplete' framing around the partial text, got %q", out)
+
+	rest := a.drainLiveDelegatedReply(ch, false, nil, nil, nil)
+	if rest != "the real full answer" {
+		t.Errorf("background drain of the rest = %q, want %q", rest, "the real full answer")
 	}
 }

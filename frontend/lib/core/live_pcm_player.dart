@@ -142,6 +142,13 @@ class LiveModePcmPlayer {
 
   /// Stops playback and releases the subprocess. Safe to call when not
   /// playing.
+  ///
+  /// Uses SIGKILL, not the default SIGTERM: `pacat` handles SIGTERM
+  /// gracefully by draining whatever PCM is still buffered in PipeWire/
+  /// PulseAudio before exiting, so on a graceful stop the model keeps
+  /// talking for a second or more after the user has closed Live Mode.
+  /// SIGKILL cuts it dead immediately — which is the whole point of a
+  /// "stop" / barge-in.
   Future<void> stop() async {
     final process = _process;
     _process = null;
@@ -152,13 +159,13 @@ class LiveModePcmPlayer {
       // stdin may already be broken if the process exited on its own —
       // kill() below is the real cleanup guarantee either way.
     }
-    process.kill();
+    process.kill(ProcessSignal.sigkill);
   }
 
   void dispose() {
     final process = _process;
     _process = null;
-    process?.kill();
+    process?.kill(ProcessSignal.sigkill);
     _errorController.close();
   }
 }

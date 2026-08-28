@@ -95,9 +95,19 @@ func (e *Executor) ExecuteToolCall(ctx context.Context, sessionID, toolName stri
 			DangerLevel: toolDef.DangerLevel,
 			Preview:     preview,
 		}
+
+		// Register the pending request BEFORE emitting the event: a caller's
+		// onEvent handler can answer synchronously (HandleAgentPermission /
+		// HandlePermissionResponse), and that answer must find reqID already
+		// in pendingPerms. Emitting first left a window where a fast
+		// responder got "permission request not found" — flaky under -race
+		// in CI (TestExecuteToolCall_WaitsForHandlePermissionResponse).
+		resCh := e.registerPending(reqID, ev)
+		defer e.unregisterPending(reqID)
+
 		e.emitToolCallEvent(sessionID, onEvent, ev)
 
-		policy, err := e.awaitPermission(ctx, reqID, ev)
+		policy, err := e.awaitPermission(ctx, resCh)
 		if err != nil {
 			e.emitToolCallEvent(sessionID, onEvent, AgentEvent{Type: EventToolError, ToolName: toolName, Error: err.Error()})
 			return "", err
@@ -138,24 +148,27 @@ func (e *Executor) emitToolCallEvent(sessionID string, onEvent func(AgentEvent),
 	}
 }
 
-// awaitPermission blocks until the given permission request is answered
-// (via HandlePermissionResponse) or auto-denies after 60s — the exact same
-// registration/timeout shape RunStream's own inline waitFn uses
-// (executor.go), factored out here so ExecuteToolCall doesn't duplicate it
-// verbatim.
-func (e *Executor) awaitPermission(ctx context.Context, requestID string, ev AgentEvent) (PermissionPolicy, error) {
+// registerPending records a pending permission request and returns the
+// channel HandlePermissionResponse will deliver the answer on. Must be
+// called (and its unregisterPending deferred) before the caller emits the
+// permission_request event — see the call site in ExecuteToolCall.
+func (e *Executor) registerPending(requestID string, ev AgentEvent) <-chan PermissionPolicy {
 	resCh := make(chan PermissionPolicy, 1)
-
 	e.mu.Lock()
 	e.pendingPerms[requestID] = &PermissionRequest{ID: requestID, Event: ev, ResCh: resCh}
 	e.mu.Unlock()
+	return resCh
+}
 
-	defer func() {
-		e.mu.Lock()
-		delete(e.pendingPerms, requestID)
-		e.mu.Unlock()
-	}()
+func (e *Executor) unregisterPending(requestID string) {
+	e.mu.Lock()
+	delete(e.pendingPerms, requestID)
+	e.mu.Unlock()
+}
 
+// awaitPermission blocks until resCh (from registerPending) receives an
+// answer, or auto-denies after 60s.
+func (e *Executor) awaitPermission(ctx context.Context, resCh <-chan PermissionPolicy) (PermissionPolicy, error) {
 	permTimer := time.NewTimer(60 * time.Second)
 	defer permTimer.Stop()
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -355,68 +354,5 @@ func TestDrainLiveDelegatedReplyUntilMarker_StopsAtMarkerLeavingRest(t *testing.
 	rest := a.drainLiveDelegatedReply(ch, false, nil, nil, nil)
 	if rest != "the real full answer" {
 		t.Errorf("background drain of the rest = %q, want %q", rest, "the real full answer")
-	}
-}
-
-// TestNudgeLiveModeCompany_RepeatsThenStops confirms the mid-delegation
-// "make a small sound" nudger fires on its interval and stops promptly when
-// the drain signals done — the mechanism that keeps a realtime voice
-// session from decaying into dead silence during a multi-second delegation.
-func TestNudgeLiveModeCompany_RepeatsThenStops(t *testing.T) {
-	a := &App{}
-	var mu sync.Mutex
-	var calls []string
-	inject := func(s string) error {
-		mu.Lock()
-		calls = append(calls, s)
-		mu.Unlock()
-		return nil
-	}
-
-	stop := make(chan struct{})
-	done := make(chan struct{})
-	go func() {
-		a.nudgeLiveModeCompany(context.Background(), inject, 15*time.Millisecond, stop)
-		close(done)
-	}()
-
-	time.Sleep(90 * time.Millisecond)
-	close(stop)
-
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("nudgeLiveModeCompany did not return after stop was closed")
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(calls) < 2 {
-		t.Fatalf("expected several nudges over ~90ms at a 15ms interval, got %d", len(calls))
-	}
-	for _, c := range calls {
-		if !strings.Contains(strings.ToLower(c), "waiting") && !strings.Contains(c, "bekleniyor") {
-			t.Errorf("unexpected nudge text: %q", c)
-		}
-	}
-}
-
-// TestNudgeLiveModeCompany_StopsOnCtxCancel confirms a closed session
-// context ends the nudger even if the drain never gets to close its stop
-// channel.
-func TestNudgeLiveModeCompany_StopsOnCtxCancel(t *testing.T) {
-	a := &App{}
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		a.nudgeLiveModeCompany(ctx, func(string) error { return nil }, 10*time.Millisecond, nil)
-		close(done)
-	}()
-
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("nudgeLiveModeCompany did not return on ctx cancel")
 	}
 }

@@ -34,14 +34,6 @@ const (
 	// background". NUL-wrapped so it can never collide with real reply text,
 	// and so it is obviously wrong (not speakable) if it ever leaks.
 	liveDelegateTimeoutMarker = "\x00livemode-delegate-timeout\x00"
-
-	// liveDelegateNudgeInterval is how often runDelegate re-reminds the
-	// realtime model, mid-delegation, to make a brief natural sound instead
-	// of going silent (see nudgeLiveModeCompany). The single instruction
-	// injected at delegation start fades from the model's attention over a
-	// 10-20s wait. Kept sparse on purpose so the model doesn't start
-	// launching full replies over the top of itself.
-	liveDelegateNudgeInterval = 7 * time.Second
 )
 
 // getOrCreateLiveModeChat returns the dedicated background chat Live Mode

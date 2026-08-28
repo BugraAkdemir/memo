@@ -157,37 +157,26 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 		if err := json.Unmarshal(args, &parsed); err != nil || parsed.Instruction == "" {
 			return "", fmt.Errorf("delegate_to_main_model: missing instruction")
 		}
-		// The delegated turn can take real seconds. A realtime voice model
-		// has no natural sense of "I'm waiting on a background task", so left
-		// alone it either goes dead silent (feels broken to the user) or
-		// keeps launching full replies (choppy, self-interrupting). Steer it:
-		// a tiny sound now, then keep the user *quiet* company — brief
-		// thinking noises a few seconds apart — until the real result is
-		// handed back. This is the realtime-voice analogue of the discrete
-		// engines' pre-recorded filler clip (_playFillerBestEffort,
-		// voice_mode_provider.dart); here the model makes the sound itself,
-		// in its own voice, so there's no voice mismatch. injectContext can
-		// still be unready this early (see NewLiveModeSession's
-		// forward-reference closure); that's fine, delegation proceeds.
+		// Reported live: without this, the model kept trying to generate
+		// more speech while the delegated task was still running (a real
+		// task can take real seconds) — it has no natural sense of "I'm
+		// waiting on something", producing choppy/repeatedly-interrupted-
+		// sounding audio. Tell it explicitly, mirroring the filler-audio
+		// trick VoiceModeNotifier already uses for the discrete engines
+		// (_playFillerBestEffort, voice_mode_provider.dart) but as a text
+		// instruction rather than a pre-recorded clip, since this model
+		// generates its own voice rather than playing ours. Best-effort:
+		// injectContext can still be unready this early (see
+		// NewLiveModeSession's forward-reference closure) without blocking
+		// delegation itself.
 		if injectContext != nil {
 			_ = injectContext(a.t(
-				"Az önce delegate_to_main_model'i çağırdın, sonuç birazdan gelecek. Önce kısacık bir şey söyle (\"bir saniye\" gibi). Sonra sonucu beklerken TAMAMEN SUSMA — gerçek bir insan gibi ara ara ufak sesler çıkar: \"mmm\", \"hı-hı\", \"bir saniye daha\", hafif bir nefes gibi; birkaç saniyede bir, kısa ve sakin. Ne yaptığını anlatma, \"bitirdim/yaptım\" DEME, uzun cümle kurma. Sonuç geldiğinde sana ayrıca söylenecek.",
-				"You just called delegate_to_main_model; the result is coming. First say something tiny (\"one sec\"). Then, while you wait, do NOT go fully silent — like a real person, make small sounds every few seconds: \"mmm\", \"mm-hmm\", \"just a moment\", a soft breath; short and calm. Don't narrate what you're doing, don't say you finished, don't make long sentences. You'll be told separately when the result arrives.",
+				"Az önce delegate_to_main_model'i çağırdın, sonucu bekleniyor. Şimdi TEK kısa bir şey söyle (\"bir saniye, hallediyorum\" gibi) ve gerçek sonuç gelene kadar tekrar konuşmaya çalışma — sessizce bekle.",
+				"You just called delegate_to_main_model and the result is pending. Say ONE short acknowledgment now (\"one sec, working on it\") and then stay quiet — don't try to speak again until the real result comes back.",
 			))
 		}
 		ch := a.SendLiveDelegatedMessageStream(ctx, parsed.Instruction, liveDelegateTimeout)
-
-		// The instruction above fades from the model's attention over a
-		// 10-20s wait — keep re-reminding it to make a small sound so the
-		// gap doesn't decay into silence. Stopped the moment the drain
-		// returns (timeout marker or full reply).
-		nudgeStop := make(chan struct{})
-		if injectContext != nil {
-			go a.nudgeLiveModeCompany(ctx, injectContext, liveDelegateNudgeInterval, nudgeStop)
-		}
-
 		reply, slow := a.drainLiveDelegatedReplyUntilMarker(ch, autoApprove, buildQuestion, sendQuestion, awaitAnswer)
-		close(nudgeStop)
 
 		// The agent turn outran liveDelegateTimeout but is still running.
 		// Don't kill it and don't keep the live model waiting: hand back a
@@ -295,32 +284,6 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 			return "", fmt.Errorf("unknown tool: %s", name)
 		}
 		return runDelegate(ctx, args)
-	}
-}
-
-// nudgeLiveModeCompany re-reminds the realtime model, every
-// liveDelegateNudgeInterval while a delegation is in flight, to make a
-// brief natural sound instead of falling silent — the one instruction
-// injected at delegation start loses the model's attention over a 10-20s
-// wait. Best-effort text asides; returns on stop (drain finished) or
-// ctx.Done (session closed). Worded as "tiny, don't answer" so the model
-// keeps the user quiet company rather than launching a reply mid-wait.
-func (a *App) nudgeLiveModeCompany(ctx context.Context, injectContext func(string) error, interval time.Duration, stop <-chan struct{}) {
-	defer logx.Recover("livemode delegate nudge")
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			_ = injectContext(a.t(
-				"(hâlâ bekleniyor — kısacık bir ses çıkar: \"mmm\" / \"bir saniye daha\" gibi, sonra yine bekle; cevap verme, uzun konuşma)",
-				"(still waiting — make a tiny sound like \"mmm\" / \"just a moment\", then keep waiting; don't answer, don't talk long)",
-			))
-		}
 	}
 }
 

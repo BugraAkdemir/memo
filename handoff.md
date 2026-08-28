@@ -1,3 +1,70 @@
+# Ek (2026-08-28, devam 24) — Live Mode delegate turuna deadline (30-40sn sessizlik bug'ı)
+
+Kullanıcı gerçek oturum log'u getirdi: Live Mode **devret (delegate)** modda
+"web'de ara" dedi, 30-40 saniye yanıt yok. Log okundu:
+
+- `06:12:36.391` Google Live `toolCall` → delegate başlıyor.
+- `06:12:40.18` `web_search` **1016ms'de 10 iyi sonuç** döndürdü — burada cevap
+  verebilirdi.
+- `06:12:44.17` agent ayrıca `fetch_page` → `reddit.com/r/ArtificialInteligence/`.
+- `06:12:44.64` `static fetch empty, trying browser render` → `BROWSERENGINE
+  engine started mode=one-shot`.
+- `06:12:44.9 → 06:13:07+` **~23 sn tam sessizlik** — her mesaj
+  `serverContent=false hasModelTurn=false`. Google Live boşta, tool cevabını
+  bekliyor. Reddit headless render asılı kaldı.
+- `06:13:09` kullanıcı tekrar konuşuyor → yeni toolCall, model ancak o zaman
+  cevap üretiyor.
+
+**Kök sebep:** `runToolCall` yalnızca session context'i geçiyor,
+`SendLiveDelegatedMessageStream`'in kendi deadline'ı yoktu → delegate agent
+turu llm.go'nun 300s bütçesine kadar sürebiliyor, realtime tur o kadar
+sessiz bekliyor.
+
+**Fix (`48a3a9e`):**
+- `SendLiveDelegatedMessageStream(sessionCtx, instruction, timeout)` — yeni
+  `drainWithDeadline` helper'ı inner agent stream'i kapanana **veya** timeout
+  dolana kadar forward ediyor; timeout'ta beklemeyi bırakıp üretilmiş kısmi
+  metnin ardına NUL-sarmalı `liveDelegateTimeoutMarker` chunk'ı ekliyor,
+  terk edilmiş agent turu arka planda çözülüyor (deferred `cancel()`).
+  Forward kendi goroutine'inde iç `relay` kanalına yazıyor → timeout'ta
+  `outCh`'un tek yazarı kalıyor, yarışsız kapatılıyor.
+- `runDelegate` `liveDelegateTimeout` (**15s**) geçiyor + yeni
+  `resolveDelegateTimeout` marker'ı dürüst talimata çeviriyor: kısmi metin
+  varsa "eksik olabilir" notuyla aktar, yoksa "işlem uzadı" de — **uydurma
+  yok** (mevcut boş/hata handling'iyle aynı duruş). START log'una timeout
+  eklendi, TIMEOUT log satırı eklendi.
+- Test: `TestDrainWithDeadline_{ForwardsEverythingWhenInnerFinishesFirst,
+  ReportsTimeoutWhenInnerOverruns,CtxCancelEndsItWithoutTimeout}`,
+  `TestResolveDelegateTimeout_{NoMarker...,MarkerWithNoPartialText...,
+  MarkerWithPartialText...}`. Eski delegate çağrı yerleri `0` (deadline
+  kapalı) geçiyor.
+
+**Doğrulama:**
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...        → yeşil
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...          → yeşil
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./internal/app/ ./internal/livemode/... -race → ok (13.5s / 1.0s)
+```
+Flutter dokunulmadı (backend-only).
+
+**Tam çözüm DEĞİL:** gerçekten 20-40sn süren delegate turu hâlâ sonucunu
+onu isteyen realtime tura yetiştiremiyor — artık **hızlı ve dürüst
+başarısız oluyor**, asılı kalmıyor. Ayrı takipler: (a) agent'ın aşırı hevesli
+`fetch_page` kullanımını azaltmak, (b) browser render fallback'ine per-call
+kısa timeout / scraper-hostile domain listesi.
+
+**Bekliyor / sıradaki:**
+- **Backend restart doğrulanmadı:** kullanıcının log'unda `livemode delegate:
+  START` satırı yoktu — o satır `26c79a1`'de (2026-08-27 20:22) eklendi,
+  `logx.Printf` diğer INFO satırlarıyla aynı stream'e yazıyor. Çalışan binary
+  büyük ihtimalle `26c79a1` öncesi (home-dir köklendirme fix'i de aktif
+  değil). Kullanıcı `memo --kill` + taze build ile yeniden başlatmalı, sonra
+  devam 23'teki gerçek oturum testlerini + bu deadline'ı ölçmeli.
+- devam 23'ün tüm "Bekliyor" maddeleri hâlâ geçerli (hafıza kaydetme =
+  embedder kurulumu, PipeWire echo-cancel, vs.) — aşağıya bak.
+
+---
+
 # Ek (2026-08-27, devam 23) — Live Mode sağlamlaştırma turu (7 alt-tur): "araçlar kapalı" nag, delegate çalışma dizini + uydurma, geçmiş devamlılığı, mikrofon mute; + agent chat routing, Google Live transkript, Live Mode→hafıza, agent-mode kalıcılığı, RAG'daki bayat saat
 
 Uzun bir oturum. GitHub katkı grafiği sorusuyla başladı (cevap: commit'ler

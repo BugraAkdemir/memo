@@ -52,8 +52,10 @@ All Memory".
 ./internal/{agent,memory,app}/ -race` yeşil; `flutter analyze` dokunulan
 dosyalarda temiz; `flutter test` 306 pass.
 
-**Sırada:** branch push + PR (`fix/toolcall-leak-and-config-banner`, 3 fix +
-handoff). Kalan bug listesi kullanıcıda.
+**Durum:** 3 fix + handoff PR #18 ile `main`'e merge edildi (`dd9a41c`), branch
+silindi. **Kullanıcı net talimat verdi (sinirli): bundan sonra ondan habersiz
+branch/PR AÇMA — küçük fix'ler doğrulanınca direkt `main`'e commit + push.**
+Sadece "branch aç" / "PR" derse branch. Kalan bug listesi kullanıcıda.
 
 ---
 

@@ -28,10 +28,32 @@ turuncu strip; ikisi de default → `SizedBox.shrink()`. İlk mesaj gönderilinc
 (empty-state dalı çizilmeyi bırakınca) kayboluyor. L10n TR+EN
 (`chat_notice_minimal_mode_on`, `chat_notice_memory_off`).
 
-**Doğrulama:** `go build/vet ./...` + `go test ./internal/agent/ -race` yeşil;
-`flutter analyze` dokunulan dosyalarda temiz; `flutter test` 306 pass.
+**Fix 3 — kimlik/meta sorularını hafızaya yazma (`6b256ed`).** Kullanıcı
+Memory Analytics'te gösterdi: "User: selam sen kimsin adın ne" ve "User: model
+adın ne" uzun süreli hafızaya kaydedilmiş, "most accessed" listesinde. Bunlar
+kullanıcı hakkında değil, asistanın kimliğini yoklayan sorular — "saat kaç"
+filtresiyle aynı sınıf. `IsLowValueTurn` artık kimlik/meta sorularını da
+atlıyor: iki dilli whole-message set (TR diacritic + diacritic-free + EN) +
+dar substring'ler. "what model of laptop should I buy", "köpeğimin adı ne
+demiştim", "benim adım bugra" gibi gerçek fact/sorular hâlâ kaydediliyor.
+Sadece mevcut ≤40 rune kapısı içinde. Test:
+`TestIsLowValueTurn_IdentityMetaQuestionsSkip` (10 skip + 5 keep).
 
-**Sırada:** branch push + PR. Kalan bug listesi kullanıcıda.
+**Not (bug değil):** Screenshot'taki "1 Pinned / 6 Pinned tokens" — pinned =
+`source='explicit', importance=5` (explicit fact'ler, her sistem prompt'una
+tam giriyor). ~6 token ≈ kullanıcının adı gibi meşru bir pinned fact,
+pinning'de bir hata yok. "Memory Files: No memory files yet" ile "4 Total"
+çelişkisi de iki AYRI özellik — "Memory Files" dosya-tabanlı (MEMORY.md tarzı,
+boş), Analytics vektör-store sayıyor. Kafa karıştıran etiket, bug değil.
+Kullanıcı `~/.memo/` test verisi dedi, temiz başlangıç için Settings > "Clear
+All Memory".
+
+**Doğrulama:** `go build -tags sqlite_fts5 ./...` + `go vet` + `go test
+./internal/{agent,memory,app}/ -race` yeşil; `flutter analyze` dokunulan
+dosyalarda temiz; `flutter test` 306 pass.
+
+**Sırada:** branch push + PR (`fix/toolcall-leak-and-config-banner`, 3 fix +
+handoff). Kalan bug listesi kullanıcıda.
 
 ---
 

@@ -1,3 +1,39 @@
+# Ek (2026-08-28, devam 34) — PR #17 `main`'e MERGE edildi; CI flake'i düzeltildi; feature branch silindi
+
+**Live Mode v2 + bu oturumun tüm fix'leri `main`'de.** `feature/live-mode-v2`
+→ `main` PR #17 ile birleştirildi (`6cc11d0`), `main` her iki remote'ta
+güncel (github.com + web.bugradev.com). `feature/live-mode-v2` local + iki
+remote'tan da silindi — commit'ler `main` geçmişinde güvende.
+
+**CI flake fix (`21d57e7`, merge'den önce).** PR'ın ilk CI koşusunda tek job
+patladı: `Test (Go)` → `TestExecuteToolCall_WaitsForHandlePermissionResponse`
+("permission request ... not found or already answered"), lokalde geçip
+CI'da `-race` altında patlayan flaky. Kök sebep: `ExecuteToolCall` (bu
+branch'te `a07be2e` ile eklendi) izin isteği event'ini önce fırlatıp
+`reqID`'yi `pendingPerms`'e sonra kaydediyordu — senkron cevap veren bir
+`onEvent` (Live Mode standalone `resolveLivePermission` + test) kayıttan
+önce çalışıp "not found" alıyordu. Fix: `awaitPermission` ikiye bölündü —
+`registerPending` (event fırlatılmadan ÖNCE çağrılıp defer'le temizleniyor)
++ sadece bekleyen ince `awaitPermission`. 60sn auto-deny aynı. Lokalde
+flaky test 20× `-race` temiz; yeni CI koşusunda `Test (Go)` **pass** (5m38s).
+_(Not: `Pipeline.RunStream`'in inline `waitFn`'inde aynı sıralama var ama o
+`main`'de zaten böyleydi, app-katmanı retry loop'larıyla (`resolveLivePermission`
+/ `resolveSelfChatPermission`) maskeleniyor — bu PR'ın kapsamı dışı.)_
+
+**Merge anındaki CI:** anlamlı gate'ler yeşildi — `Test (Go)`, `Analyze &
+Test (Flutter)`, `Security Scan` (gosec), `L10n Guard`, `Docker amd64/arm64`,
+`Linux arm64`. Kalan 3 slow build (`Linux x86_64`, `Windows`, `macOS`) hâlâ
+koşuyordu; ilk koşuda geçmişlerdi, tek-dosyalık agent test-sıralama fix'i
+onları etkilemez. Kullanıcı bekleme istemedi, merge yapıldı.
+
+**Sırada:**
+- Kalan bug listesi (kullanıcıda) → `main`'den taze kısa branch.
+- v4.3.0 release ayrı karar — `memo-release` skill (7 versiyon yeri, EN+TR
+  notlar, platform build'leri, `version.json` beacon en son). `main` şu an
+  v4.2.0 embedded.
+
+---
+
 # Ek (2026-08-28, devam 33) — merge hazırlığı: build_releases.sh köke taşındı, PR #17 açıldı
 
 **`build_releases.sh` repo köküne taşındı (`519ffed`).** Oturum başından beri

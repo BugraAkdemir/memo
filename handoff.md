@@ -1,3 +1,31 @@
+# Ek (2026-08-28, devam 33) — merge hazırlığı: build_releases.sh köke taşındı, PR #17 açıldı
+
+**`build_releases.sh` repo köküne taşındı (`519ffed`).** Oturum başından beri
+working tree'de takipsiz duruyordu. Kullanıcıya sorduğumda "bilerek taşıdım"
+dedi; ama repo'da bulduğum çelişkiyi yüzeye çıkardım: 2026-08-09'da TÜM
+script'ler bilerek `scripts/` altına toplanmış ("root'u temiz tut"), CI de bu
+dosyayı çağırmıyor (`.github/` sıfır ref), yani işlevsel sebep yok — sadece
+organizasyonel bir geri alma. Kullanıcı bilgilendirilmiş şekilde "evet
+gerçekten kökte istiyorum, tam taşı" dedi. Yapıldı: `git mv` +
+`scripts/README.md` (artık istisnayı not ediyor) + `AGENTS.md` + `README.md`/
+`READmeTR.md` + `docs/DOCS.md` + `docs/tr/README.md` + `docs/PROJECT_MAP.md` +
+`skills/memo-project/SKILL.md` + `obsidian-doc/...` güncellendi. Hiçbir script
+onu `source`/exec etmiyor, CWD zaten repo kökü varsayılıyor → davranış
+değişmedi. (Geçmiş doc'lara — handoff eski girişleri, `versinNote/*`,
+`docs/history.md`, superpowers spec/plan'ları — dokunulmadı, onlar tarihsel
+kayıt.)
+
+**Merge durumu:** `feature/live-mode-v2` `origin/main`'e göre **99 commit
+ilerde**, `main`'de bu branch'te olmayan commit YOK → temiz fast-forward.
+Tüm suite yeşil (`go build/vet/test -tags sqlite_fts5 ./... -race` tüm
+paketler; `flutter analyze` temiz; `flutter test` 306). Kullanıcı direkt
+merge yerine PR istedi → **PR #17 açıldı:**
+https://github.com/BugraAkdemir/memo/pull/17 (base `main`, head
+`feature/live-mode-v2`). Merge kullanıcının kararı; sonrası v4.3.0 release
+ayrı karar (memo-release skill).
+
+---
+
 # Ek (2026-08-28, devam 32) — Telegram/WhatsApp reboot sonrası bağlanmıyor: başlangıç connect'i artık retry ediyor + Telegram token'sız "yeniden bağlan"
 
 Kullanıcı bug listesi #1: self-hosted sistem yeniden başlatılınca (veya Memo

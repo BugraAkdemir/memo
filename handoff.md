@@ -1,3 +1,53 @@
+# Ek (2026-08-28, devam 28) — Live Mode "hiç susma" (ChatGPT gibi bekleme sesleri): realtime model kendi sesiyle + discrete filler döngüsü
+
+Kullanıcı isteği: ChatGPT'nin advanced voice mode'u gibi Live Mode beklerken
+hiç tamamen susmasın — "hmm", "bir saniye", nefes gibi sesler çıkarsın.
+Kullanıcı seçimi: realtime tarafında **modelin kendisi** yapsın (aynı ses,
+uyum sorunu yok), yerel/discrete tarafında **mevcut filler zenginleştirilsin**.
+
+**1. Realtime (Gemini Live + OpenAI Realtime) — model kendi sesiyle (`924b15c`).**
+- Devir başı enjeksiyon "tek şey söyle sonra sus" → "kısacık bir şey söyle,
+  sonra TAMAMEN SUSMA — birkaç saniyede bir ufak sesler ('mmm', 'hı-hı',
+  'bir saniye daha', nefes), kısa/sakin, anlatma, 'bitirdim' deme".
+- Yeni `nudgeLiveModeCompany` goroutine: devir boyunca her
+  `liveDelegateNudgeInterval` (7sn) "(hâlâ bekleniyor — kısacık ses çıkar,
+  sonra bekle)" hatırlatması enjekte ediyor (tek seferlik başlangıç talimatı
+  10-20sn'lik beklemede modelin dikkatinden düşüyor). Drain bitince (timeout
+  marker ya da tam cevap) veya session ctx iptalinde duruyor.
+  `buildLiveModeToolCallHandler` engine-agnostic → iki realtime engine de kapsanıyor.
+- Test: `TestNudgeLiveModeCompany_{RepeatsThenStops,StopsOnCtxCancel}`. İki
+  handler testi hâlâ 2 injectContext görüyor (7sn ticker hızlı unit testte
+  ateşlenmiyor).
+- **Takip (yapılmadı):** nudger timeout marker'da duruyor → slow-path'in
+  20sn+ arka plan beklemesi kapsanmıyor.
+
+**2. Yerel/discrete ses yolu — filler döngüsü + geniş set (`ccdcb79`).**
+Yerel Live Mode bu yolu kullanıyor (llama.cpp'nin native realtime engine'i yok).
+- `_playFillerBestEffort` artık cycle generation alıyor ve **döngüde**: rastgele
+  klip → ~1.2sn insan-vari duraklama → tekrar; cycle bayatlayınca (barge-in
+  `_generation` bump) ya da gerçek cevap başlayınca (`state` != thinking)
+  duruyor. Speaking dalı `_fillerPlayer.stop()` de çağırıyor (mid-subprocess
+  klip cevapla çakışmasın).
+- `FillerPhrases` 3 → 8, hepsi hâlâ non-lexical hum/nefes ("Mm-hm", "Hm-mm",
+  "Hmmm", "Ahh", "Mmh") — dile bağımsız kalsın (yanlış Piper sesiyle okunan
+  TR/EN kelime kötü duyuluyor). Dile özel ifadeler ("bir saniye") cache'in UI
+  dilini bilmesini gerektiriyor → ayrı değişiklik olarak bırakıldı.
+- `VoiceModeNotifier` döngü değişikliğinin unit testi yok (repo'da bu provider
+  için harness yok, eklemek kapsam dışı); staleness guard'ları aynı dosyadaki
+  mevcut `_generation` desenini birebir izliyor.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` yeşil; `internal/tts` +
+`internal/app` `-race` yeşil; `flutter analyze lib/` dokunulan dosyada temiz
+(5 önceden var olan info-level `use_build_context_synchronously` başka
+dosyalarda); `flutter test` 305 pass.
+
+**Doğrulanmalı (gerçek oturum):** (a) devret modda uzun iş → model 20sn
+boyunca ara ara "mmm/bir saniye" desin, tamamen susmasın, araya girip uzun
+konuşmasın. Fazla konuşursa `liveDelegateNudgeInterval`'i büyüt / talimatı
+sıkılaştır. (b) yerel ses modunda uzun cevap → filler klipleri döngüde çalsın.
+
+---
+
 # Ek (2026-08-28, devam 27) — delegate: eşzamanlı çağrı reddi "arka planda işlem var" diye seslendiriliyordu + commit author düzeltmesi
 
 **1. "Arka planda başka bir işlem yürüyor" bug'ı (`e4564f0`).** Gerçek

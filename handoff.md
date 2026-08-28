@@ -1,3 +1,47 @@
+# Ek (2026-08-28, devam 30) — barge-in (araya girme) AYARI eklendi + interrupt'ta buffer boşaltma
+
+devam 29'un "sıradaki iş" maddesi tamamlandı (`383183d`).
+
+**Kök sebep (devam 29'da bulunmuştu):** `google/client.go`'da
+`START_SENSITIVITY_LOW` hardcoded'du (devam ~21'de "model klavye/gürültüyle
+kesiliyor" şikayeti üzerine). LOW → kullanıcı bilerek de araya giremiyor.
+
+**Backend:**
+- `config.LiveModeConfig.BargeInSensitivity` ("high"|"low", default "high";
+  "" → "high" normalize). `UpdateLiveModeConfig`'te valide ediliyor.
+- `google.Client.SetBargeInSensitivity(level)` — setter (NewClient param'ı
+  DEĞİL, ~14 çağrı yerini bozmamak için, `voice`'un variadic olması gibi).
+  `bargeInEnum` HIGH/LOW enum'una çeviriyor. `NewLiveModeSession`
+  `cfg.BargeInSensitivity`'yi geçiriyor.
+- Yeni `livemode.EventInterrupted` — google client `serverContent.interrupted`
+  görünce emit ediyor, `{"type":"interrupted"}` control frame olarak
+  Flutter'a gidiyor (`pumpLiveModeSessionEvents` değişmedi, zaten tüm
+  non-audio event'leri forward ediyor).
+
+**Frontend:**
+- `LiveModeConfig.bargeInSensitivity` alanı (JSON round-trip, "" → "high").
+- `interrupted` frame'inde `_flushPlayback()`: PCM player'ı SIGKILL edip
+  (PipeWire buffer'ı anında düşer) aynı rate'te yeniden başlatıyor → barge-in'de
+  model buffer kuyruğunu çalmayı bırakıp anında susuyor.
+- Settings > Live Mode: native-reasoning bölümüne "high/low" dropdown +
+  açıklama. L10n TR+EN (`live_mode_barge_in_*`).
+
+**Testler:** google client — default HIGH (setup-message testi güncellendi),
+`SetBargeInSensitivity("low")` → LOW, `EmitsInterruptedEvent`. Flutter —
+`fromJson` bare "interrupted" frame'i parse ediyor. `go build/vet/test -race`
+yeşil; `flutter analyze` dokunulan dosyalarda temiz; `flutter test` 306 pass.
+
+**Doğrulanmalı (gerçek oturum):** (a) default'ta (high) Live Mode'da Memo
+konuşurken sen konuşunca SUSSUN; (b) ayardan "Sadece net konuşmada"ya alınca
+klavye/gürültü kesmesin; (c) kesince/kapatınca ses anında bitsin (SIGKILL +
+flush). Gürültü hâlâ yanlış tetikliyorsa `prefixPaddingMs`/`silenceDurationMs`
+ince ayarı bir sonraki adım (şu an Google default'unda).
+
+**Hatırlatma:** devam 29'un revert sonrası doğrulamaları da bekliyor
+(`text-to-speech:...` chat'e yazmıyor mu, native barge-in geri geldi mi).
+
+---
+
 # Ek (2026-08-28, devam 29) — devam 28'in nudger'ı geri alındı (chat kirletiyor + kesilemiyor); SIGKILL + transkript temizliği; barge-in AYARI sıradaki iş
 
 devam 28'in realtime "hiç susma" nudger'ı (`924b15c`) gerçek oturumda geri

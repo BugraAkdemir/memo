@@ -1,3 +1,57 @@
+# Ek (2026-08-28, devam 27) — delegate: eşzamanlı çağrı reddi "arka planda işlem var" diye seslendiriliyordu + commit author düzeltmesi
+
+**1. "Arka planda başka bir işlem yürüyor" bug'ı (`e4564f0`).** Gerçek
+devret-modu oturumu (chat export + backend log). Kullanıcı sesli olarak
+"çalışma alanını masaüstü yap" dedi. Gemini Live `delegate_to_main_model`'i
+çağırıp, **ilki daha bitmeden tekrar çağırıyor** (araç çağrılarını
+retry/paralel yapıyor). İkinci çağrı `startLiveJob`'ın "zaten çalışıyor"
+kapısına takılıyor, o da `errStreamChunk("⏳ Live Mode için zaten bir görev
+çalışıyor.")` dönüyordu — `runDelegate` bunu olduğu gibi modele iletiyor,
+model kullanıcıya "kanka şu an arka planda başka bir işlem yürüyor, bitsin
+bekle / durdurmaya çalışıyorum" diye seslendiriyordu. Kullanıcı hiçbir işlem
+başlatmadı; her `change_directory` devri aslında BAŞARILI oluyordu ama
+deneyim kilitli hissettiriyordu.
+
+Fix: eşzamanlı-devir dalı artık hata değil düz talimat dönüyor: "zaten bir
+devir sürüyor, yenisini başlatma, en fazla kısacık 'hallediyorum' de,
+'arka planda işlem/görev var' gibi şeyleri ASLA söyleme — iç detay". Süren
+çağrı gerçek cevabı yine veriyor (doğrudan ya da `runDelegate`'in arka plan
+enjekti). Test: `TestSendLiveDelegatedMessageStream_RejectsConcurrentDelegation`
+güncellendi (Error+Done chunk yerine hata-olmayan talimat chunk'ı bekliyor).
+
+**Hâlâ açık (ayrı, kendi araştırmasını istiyor):** aynı oturumda ~5sn'de
+biten bir devir 147 karakterlik sonucu döndürdü, Gemini Live bunu
+`functionResponse` olarak aldı ama **hiç seslendirmedi** — kullanıcı tekrar
+sorana kadar 10sn sessizlik. Devret modunda sonuçların da (slow-path arka
+plan enjekti gibi) `injectContext` ile metin olarak enjekte edilmesi
+gerekebilir; Gemini'nin tool response'u seslendirmesine güvenilmiyor.
+
+**2. Commit author düzeltmesi.** 3 commit yanlış kimlikle atılmıştı
+(`bugra <bugra@bugradev.com>`, paralel oturum farklı git config'iyle):
+`docs(spec)`, `docs(plan)`, `docs(handoff): devam 26`. `git filter-branch
+--env-filter` ile `c1ee9f8..HEAD` aralığında author+committer düzeltildi →
+hepsi `BugraAkdemir <bugrakaptan5@gmail.com>`. 7 commit'in hiçbiri
+push edilmemişti. Yedek: `backup-before-author-fix` dalı +
+`refs/original/refs/heads/feature/live-mode-v2`. Ağaç birebir korundu
+(`git diff` boş). Yan etki: devam 22-27 handoff commit mesajlarındaki kısa
+hash'ler (`48a3a9e`, `f5ab112` vb.) rewrite sonrası bayat.
+
+**3. handoff devam 25 başlığı geri eklendi.** `74a1503` (devam 26)
+paralel oturum çakışmasıyla devam 25 başlık satırını silmiş, gövdesini
+başlıksız bırakmıştı — düzeltildi.
+
+**Doğrulama (`e4564f0`):**
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...   → yeşil
+CGO_ENABLED=1 go vet  -tags "sqlite_fts5" ./internal/app/   → yeşil
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./internal/app/ ./internal/livemode/... -race   → ok
+```
+
+**Bekliyor:** (a) devam 25/26'nın açık maddeleri, (b) yukarıdaki "sonuç
+seslendirilmiyor" bug'ı — bir sonraki oturum log'la ele almalı.
+
+---
+
 # Ek (2026-08-28, devam 26) — Go test coverage: spec + plan, uygulama bekliyor
 
 Test analiz görevi. Kullanıcı talebi: Go ve Flutter tarafındaki mevcut
@@ -68,6 +122,13 @@ alt-agent dispatch eder; her biri tek bir `*_test.go` dosyasına 1-2
 yeni test ekler, çalıştırır, coverage'ı doğrular, commit'ler. Gözden
 geçiren yalnızca commit mesajlarını ve coverage çıktılarını kontrol
 eder — her alt-agent'ın tam bağlamını okumak zorunda değil.
+
+---
+
+# Ek (2026-08-28, devam 25) — delegate deadline'ı: iptal etmek yerine arka planda bitir + geç enjekte
+
+_(Not: bu başlık `74a1503` (devam 26 handoff) tarafından yanlışlıkla silinmişti,
+paralel oturum çakışması; devam 27'de geri eklendi.)_
 
 devam 24'ün deadline'ı (`48a3a9e`) gerçek oturumda test edildi ve yeni bir
 sorun çıkardı: taze build'de kullanıcı devret modda "web'de haber ara" dedi.

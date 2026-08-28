@@ -29,10 +29,10 @@ type calendarMoodStubBridge struct {
 	lastAddDesc  string
 	lastDeleteID string
 
-	calSettings    config.CalendarConfig
-	updateCalErr   error
-	lastLeadMin    int
-	lastDisableTG  bool
+	calSettings   config.CalendarConfig
+	updateCalErr  error
+	lastLeadMin   int
+	lastDisableTG bool
 
 	learnSettings  config.LearningConfig
 	updateLearnErr error

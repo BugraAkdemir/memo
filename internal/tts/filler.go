@@ -7,17 +7,21 @@ import (
 	"sync"
 )
 
-// FillerPhrases are short, mostly non-linguistic interjections synthesized
-// once per voice and cached, then played back during the "thinking" gap
+// FillerPhrases are short, non-linguistic interjections synthesized once
+// per voice and cached, then played back (one picked at random per gap,
+// and — since the discrete voice loop now replays them until the reply is
+// ready — several times across a longer wait) during the "thinking" gap
 // between a user's utterance and Memo's reply (Faz 3 of the parent plan,
 // docs/plans/PLAN_voice_live_mode.md — "gecikme anlarında ... kısa .wav
-// klipleri ... çalınıyor"). Deliberately short and phonetically simple
-// rather than full sentences, so they render tolerably regardless of
-// which language the configured Piper voice actually speaks (a Turkish
-// sentence read by an English voice, or vice versa, would sound wrong) —
-// an actual word like "hmm" is close enough to a hum in most languages'
-// phoneme sets to pass as a listening sound either way.
-var FillerPhrases = []string{"Hmm", "Mm", "Ah"}
+// klipleri ... çalınıyor"). Deliberately short, phonetically simple, and
+// NOT real words in any single language, so they render tolerably
+// regardless of which language the configured Piper voice speaks (a
+// Turkish sentence read by an English voice, or vice versa, would sound
+// wrong) — a hum/breath like "hmm" or "mm-hm" passes as a listening sound
+// in most languages' phoneme sets either way. Kept to this safe set on
+// purpose; language-specific phrases ("bir saniye", "one sec") would need
+// the cache to know the UI language and are a separate change.
+var FillerPhrases = []string{"Hmm", "Mm", "Ah", "Mm-hm", "Hm-mm", "Hmmm", "Ahh", "Mmh"}
 
 // FillerCache synthesizes FillerPhrases through the local Piper Synthesizer
 // once each and keeps the resulting WAV bytes in memory, so a caller never

@@ -9,6 +9,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/browserengine"
 	"memo/internal/config"
+	"memo/internal/livemode"
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/models"
@@ -20,6 +21,7 @@ import (
 	"memo/internal/sessions"
 	"memo/internal/skill"
 	"memo/internal/stats"
+	"memo/internal/stt"
 	"memo/internal/taskloop"
 	"memo/internal/tts"
 	"memo/internal/whatsapp"
@@ -246,6 +248,14 @@ type FullBridge interface {
 	UpdateTTSProvider(cfg tts.ProviderConfig) error
 	DeleteTTSProvider(pt tts.ProviderType, name ...string) error
 	TestTTSProviderConnection(cfg tts.ProviderConfig) error
+	ListTTSProviderModels(ctx context.Context, pt tts.ProviderType, apiKey string) ([]tts.ElevenLabsModel, error)
+	ListTTSProviderVoices(ctx context.Context, pt tts.ProviderType, apiKey string) ([]tts.ElevenLabsVoice, error)
+
+	// STT providers (Live Mode v2 — external providers, fall back to local
+	// whisper.cpp; see docs/plans/PLAN_live_mode_v2.md §2)
+	GetSTTProviders() []stt.ProviderConfig
+	UpdateSTTProvider(cfg stt.ProviderConfig) error
+	DeleteSTTProvider(pt stt.ProviderType, name ...string) error
 
 	// TTS voice store (Faz 2.6 — local, offline Piper voice models)
 	GetTTSVoiceCatalog() []tts.Voice
@@ -255,6 +265,26 @@ type FullBridge interface {
 	DownloadTTSVoice(locale, name, quality string) error
 	DeleteTTSVoice(id string) error
 	SelectTTSVoice(id string) error
+
+	// Live Mode (v2 — graduated out of Beta, own config independent of it;
+	// see docs/plans/PLAN_live_mode_v2.md). Phase 1 only: the top-level
+	// Enabled/ActiveEngine/WorkMode/AgentPermissionPolicy selector. Per-engine
+	// config (API keys, model/voice choice) is a later phase's own
+	// GetLiveModeEngines/UpdateLiveModeEngine-shaped addition here.
+	GetLiveModeConfig() config.LiveModeConfig
+	UpdateLiveModeConfig(cfg config.LiveModeConfig) error
+
+	// Live Mode engine configs (Phase 3 — per-engine API keys/model/voice
+	// for the four non-local engines, see PLAN_live_mode_v2.md §3)
+	GetLiveModeEngines() []livemode.EngineConfig
+	UpdateLiveModeEngine(cfg livemode.EngineConfig) error
+	DeleteLiveModeEngine(t livemode.EngineType) error
+	ListLiveModeEngineModels(ctx context.Context, t livemode.EngineType, apiKey string) ([]livemode.ModelInfo, error)
+
+	// NewLiveModeSession builds the realtime session (real client or
+	// EchoSession fallback) for the WS bridge handler — see
+	// internal/app/livemode_session.go's doc comment. Phase 10.
+	NewLiveModeSession(ctx context.Context) livemode.Session
 
 	// Orchestra mode
 	GetOrchestraConfig() orchestra.OrchestraConfig
@@ -302,6 +332,7 @@ type FullBridge interface {
 
 	// Telegram
 	StartTelegram(ctx context.Context, botToken string) error
+	ReconnectTelegram(ctx context.Context) error
 	StopTelegram()
 	DisconnectTelegram() error
 	GetTelegramStatus() map[string]interface{}

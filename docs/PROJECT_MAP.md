@@ -629,13 +629,14 @@ mobile/lib/widgets/
 
 ## 4. Paketleme / Build / Kurulum Script'leri (`scripts/`)
 
-Root'un kalabalıklaşmaması için tüm `.sh`/`.ps1`/`.bat` script'leri
+Root'un kalabalıklaşmaması için `.sh`/`.ps1`/`.bat` script'lerinin çoğu
 `scripts/` altında toplandı (2026-08-09) — hiçbiri kendi dosya konumuna
-göre `cd` yapmıyor, hepsi repo kökünden (`./scripts/<isim>`) çalıştırılmayı
-varsayıyor. Ayrıntı ve kullanım örnekleri için `scripts/README.md`.
+göre `cd` yapmıyor, hepsi repo kökünden çalıştırılmayı varsayıyor. İstisna:
+ana release betiği `build_releases.sh` repo **kökünde** (`./build_releases.sh`).
+Ayrıntı ve kullanım örnekleri için `scripts/README.md`.
 
 ```
-build_releases.sh    — Linux release paketleme (.deb/.AppImage/.tar.gz) — Go backend + Flutter frontend
+build_releases.sh    — (repo KÖKÜNDE) Linux release paketleme (.deb/.AppImage/.tar.gz) — Go backend + Flutter frontend
 build_releases.bat   — build_releases.sh'in Windows karşılığı
 build_releases_arm.sh — build_releases.sh'in arm64 (Raspberry Pi) karşılığı
 package_linux.sh      — Go backend + Flutter frontend derler, bir Linux release paketi hazırlar

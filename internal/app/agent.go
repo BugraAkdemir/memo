@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"memo/internal/agent"
+	"memo/internal/config"
 )
 
 // GetAgentEnabled reports whether agent mode is active.
@@ -13,12 +14,26 @@ func (a *App) GetAgentEnabled() bool {
 	return a.agentEnabled
 }
 
-// SetAgentEnabled enables or disables agent mode.
+// SetAgentEnabled enables or disables agent mode and persists the choice to
+// config.yaml so it survives a backend restart — mirrors
+// UpdateWebSearchConfig. Without persistence, a restart silently reverted
+// agent mode to off while every client still showed it on, and messages
+// routed as plain toolless replies ("agent mode is off, turn it on...").
 func (a *App) SetAgentEnabled(enabled bool) error {
 	a.agentMu.Lock()
 	a.agentEnabled = enabled
 	a.agentMu.Unlock()
-	return nil
+
+	a.cfgMu.Lock()
+	cfg := a.cfg
+	if cfg != nil {
+		cfg.AgentMode.Enabled = enabled
+	}
+	a.cfgMu.Unlock()
+	if cfg == nil {
+		return nil
+	}
+	return config.Save(cfg)
 }
 
 // HandleAgentPermission records the user's policy decision for a pending permission request.

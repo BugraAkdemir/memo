@@ -25,6 +25,7 @@ import (
 	"memo/internal/database"
 	"memo/internal/identity"
 	"memo/internal/intent"
+	"memo/internal/livemode"
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/modelstore"
@@ -39,6 +40,7 @@ import (
 	"memo/internal/sessions"
 	"memo/internal/skill"
 	"memo/internal/stats"
+	"memo/internal/stt"
 	"memo/internal/swarm"
 	"memo/internal/taskloop"
 	"memo/internal/telegram"
@@ -124,33 +126,53 @@ func (r *eventRing) snapshot() []AppEvent {
 
 // App is the central application object.
 type App struct {
-	shutdownOnce      sync.Once          // guards Shutdown() against double-call
-	lifecycleCtx      context.Context    // goroutine lifecycle only — NOT for request-scoped operations
-	lifecycleCancel   context.CancelFunc // cancels lifecycleCtx on shutdown
-	client            *api.Client
-	clientMu          sync.RWMutex // protects client and embeddingClient reassignment
-	store             *memory.Store
-	storeMu           sync.RWMutex
-	identity          *identity.Identity
-	mood              *moodpkg.Engine
-	cfg               *config.AppConfig
-	cfgMu             sync.RWMutex // protects a.cfg.Llama field reassignment (UpdateLlamaConfig writes vs concurrent reads)
-	sessions          *sessions.Manager
-	incognitoMu       sync.RWMutex
-	isIncognito       bool
-	incognitoMessages []api.Message
-	whisperServer     *whisper.Server
-	whisperMu         sync.RWMutex
-	ttsSynthesizer    *tts.Synthesizer
-	ttsFillerCache    *tts.FillerCache
-	ttsMu             sync.RWMutex
-	ttsProviderCfgMgr *tts.ConfigManager
-	ttsRouter         *tts.Router
-	ttsRouterMu       sync.RWMutex
-	ttsVoiceStore     *tts.VoiceStore
-	webServer         *webserver.Server
-	webMu             sync.RWMutex
-	modelStore        *modelstore.Store
+	shutdownOnce         sync.Once          // guards Shutdown() against double-call
+	lifecycleCtx         context.Context    // goroutine lifecycle only — NOT for request-scoped operations
+	lifecycleCancel      context.CancelFunc // cancels lifecycleCtx on shutdown
+	client               *api.Client
+	clientMu             sync.RWMutex // protects client and embeddingClient reassignment
+	store                *memory.Store
+	storeMu              sync.RWMutex
+	identity             *identity.Identity
+	mood                 *moodpkg.Engine
+	cfg                  *config.AppConfig
+	cfgMu                sync.RWMutex // protects a.cfg.Llama field reassignment (UpdateLlamaConfig writes vs concurrent reads)
+	sessions             *sessions.Manager
+	incognitoMu          sync.RWMutex
+	isIncognito          bool
+	incognitoMessages    []api.Message
+	whisperServer        *whisper.Server
+	whisperMu            sync.RWMutex
+	ttsSynthesizer       *tts.Synthesizer
+	ttsFillerCache       *tts.FillerCache
+	ttsMu                sync.RWMutex
+	ttsProviderCfgMgr    *tts.ConfigManager
+	ttsRouter            *tts.Router
+	ttsRouterMu          sync.RWMutex
+	ttsVoiceStore        *tts.VoiceStore
+	sttProviderCfgMgr    *stt.ConfigManager
+	sttRouter            *stt.Router
+	sttRouterMu          sync.RWMutex
+	liveModeEngineCfgMgr *livemode.ConfigManager
+	liveModeMu           sync.RWMutex
+	// Live Mode delegation (Phase 9, PLAN_live_mode_v2.md §4) — deliberately
+	// separate locks from liveModeMu (config) and a.streamMu (interactive
+	// chat streaming): see livemode_delegate.go's doc comments.
+	liveModeChatID string
+	liveModeChatMu sync.Mutex
+	liveJobsMu     sync.Mutex
+	liveJobs       map[string]context.CancelFunc
+	// livePermMu/livePendingPermAnswerCh: while non-nil, the next transcript
+	// routed via routeLiveTranscriptToPermissionAnswer is treated as the
+	// spoken answer to an outstanding voice_prompt permission question
+	// rather than ordinary conversation — mirrors waPendingPermAnswerCh/
+	// waPendingPermChatJID, minus the chatJID match since Live Mode only
+	// ever has one active session at a time. See livemode_session_wrapper.go.
+	livePermMu              sync.Mutex
+	livePendingPermAnswerCh chan string
+	webServer               *webserver.Server
+	webMu                   sync.RWMutex
+	modelStore              *modelstore.Store
 
 	waClient         *whatsapp.Client
 	waMsgStore       *whatsapp.Store
@@ -570,6 +592,8 @@ func (a *App) Startup(ctx context.Context) {
 	goRecover("startSTTServer", a.startSTTServer)
 	a.initTTS()
 	a.initTTSProviders()
+	a.initSTTProviders()
+	a.initLiveModeEngines()
 	a.ttsVoiceStore = tts.NewVoiceStore(config.DataPath("tts_voices"))
 
 	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
@@ -629,8 +653,12 @@ func (a *App) Startup(ctx context.Context) {
 	basePath, _ := filepath.Abs(".")
 	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr, a.getSessionManager())
 	a.agentExecutor.SetBypassPermissions(a.cfg.Mood.SystemManagement)
-	a.agentEnabled = false
-	logx.Printf("Agent mode initialized (enabled=false)")
+	// Restored from config rather than hardcoded off: the toggle is
+	// persisted by SetAgentEnabled now (see config.AgentModeConfig), so a
+	// backend restart no longer silently drops agent mode while every
+	// client still shows it on.
+	a.agentEnabled = a.cfg.AgentMode.Enabled
+	logx.Printf("Agent mode initialized (enabled=%v)", a.agentEnabled)
 	a.webSearchExecutor = agent.NewWebSearchExecutor(a.agentExecutor)
 
 	a.browserMgr = browserengine.New(a.cfg.Browser.KeepAlive)

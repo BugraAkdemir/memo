@@ -12,7 +12,12 @@ dependencies:
   
   # HTTP & Networking
   dio: ^5.4.0
-  
+
+  # WebSocket transport for Live Mode's realtime session bridge
+  # (docs/plans/PLAN_live_mode_v2.md, Phase 6) — duplex audio to
+  # /api/livemode/session, separate from Dio's request/response HTTP calls.
+  web_socket_channel: ^2.4.0
+
   # State Management
   flutter_riverpod: ^2.4.9
   

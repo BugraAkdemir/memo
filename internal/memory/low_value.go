@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -63,6 +64,30 @@ func IsLowValueTurn(userMsg, assistantMsg string) bool {
 	if runeLen(user) > maxLowValueRunes {
 		return false
 	}
+
+	// "What time is it?" / "saat kaç?" and friends. The answer is a live
+	// clock/calendar reading — zero durable value, and actively harmful:
+	// once "it's 14:32 on Wednesday" is in RAG, a later time question can
+	// retrieve that stale line and the model reports the old time instead
+	// of reading the fresh [Time context] block from its system prompt.
+	// Checked before the reply-length gate on purpose — a full spoken
+	// answer ("it's 14:32 on Wednesday, 27 August 2026") easily exceeds
+	// maxLowValueRunes.
+	if isTimeOrDateQuestion(user) {
+		return true
+	}
+
+	// Language-agnostic backstop for the same bug: a short question (in ANY
+	// language — the phrase lists above only cover TR/EN) whose answer is
+	// essentially just a clock reading ("14:32", "Es ist 14:32", "saat
+	// 14:32 civarı"). Gated hard to avoid eating durable facts: the user
+	// message must be an actual question and must not be asking to set a
+	// reminder/alarm/timer, and the answer must be short and contain an
+	// HH:MM token. Uses the raw strings — normalizeLowValue strips the ":".
+	if isQuestion(userMsg) && !hasSchedulingIntent(user) && looksLikeBareClockReading(assistantMsg) {
+		return true
+	}
+
 	if reply != "" && runeLen(reply) > maxLowValueRunes {
 		return false
 	}
@@ -83,6 +108,95 @@ func IsLowValueTurn(userMsg, assistantMsg string) bool {
 		}
 	}
 	return false
+}
+
+// timeOrDateQuestions is a bilingual set of normalized whole-message forms
+// (lower, trimmed, punctuation stripped — same shape as lowValueAcks) that
+// are pure "tell me the current time/date" questions.
+// Both the real diacritic forms (what normalizeLowValue actually produces
+// for Turkish input — it lowercases but does NOT ASCII-fold) and the
+// diacritic-free forms people often type. Same both-forms approach
+// lowValueAcks already takes ("hayir"/"hayır").
+var timeOrDateQuestions = map[string]struct{}{
+	// Turkish — diacritic
+	"saat kaç": {}, "saat kaçta": {}, "saat kaçı": {}, "saat kaç oldu": {},
+	"şu an saat kaç": {}, "şimdi saat kaç": {}, "saat kaç şimdi": {},
+	"saati söyler misin": {}, "saat kaç acaba": {}, "saat": {},
+	"bugün günlerden ne": {}, "günlerden ne": {}, "bugün hangi gün": {},
+	"hangi gün": {}, "hangi gündeyiz": {}, "bugün ayın kaçı": {},
+	"ayın kaçı": {}, "tarih ne": {}, "bugünün tarihi ne": {}, "bugün ne": {},
+	"hafta günü ne": {}, "gün ne": {},
+	// Turkish — diacritic-free
+	"saat kac": {}, "saat kacta": {}, "saat kaci": {}, "saat kac oldu": {},
+	"su an saat kac": {}, "simdi saat kac": {}, "saat kac simdi": {},
+	"saati soyler misin": {}, "saat kac acaba": {},
+	"bugun gunlerden ne": {}, "gunlerden ne": {}, "bugun hangi gun": {},
+	"hangi gun": {}, "hangi gundeyiz": {}, "bugun ayin kaci": {},
+	"ayin kaci": {}, "bugunun tarihi ne": {}, "bugun ne": {},
+	"hafta gunu ne": {}, "gun ne": {},
+	// English
+	"what time is it": {}, "what time is it now": {}, "whats the time": {},
+	"what is the time": {}, "whats the time now": {}, "time now": {},
+	"current time": {}, "the time": {}, "got the time": {},
+	"whats the date": {}, "what is the date": {}, "current date": {},
+	"whats todays date": {}, "what is todays date": {}, "todays date": {},
+	"what day is it": {}, "what day is it today": {}, "whats today": {},
+	"what is today": {}, "what is todays day": {},
+}
+
+// isTimeOrDateQuestion reports whether user (already normalized) is asking
+// only for the current time or date. Exact-match against timeOrDateQuestions
+// plus a couple of unambiguous substrings so a small amount of trailing
+// politeness ("saat kaç acaba kanka") still counts.
+func isTimeOrDateQuestion(user string) bool {
+	if _, ok := timeOrDateQuestions[user]; ok {
+		return true
+	}
+	for _, frag := range []string{
+		"saat kaç", "saat kac", "what time is it", "whats the time",
+		"whats the date", "what day is it",
+	} {
+		if strings.Contains(user, frag) {
+			return true
+		}
+	}
+	return false
+}
+
+// clockToken matches an HH:MM / HH.MM wall-clock value.
+var clockToken = regexp.MustCompile(`\b\d{1,2}[:.]\d{2}\b`)
+
+// schedulingWords mark a "set a reminder/alarm/timer at X" turn — durable,
+// must never be dropped by the clock-reading backstop. Diacritic + plain.
+var schedulingWords = []string{
+	"hatirlat", "hatırlat", "alarm", "zamanlayici", "zamanlayıcı", "kur ",
+	"remind", "reminder", "set a", "set an", "schedule", "timer", "wake me", "alert me",
+}
+
+func hasSchedulingIntent(user string) bool {
+	for _, w := range schedulingWords {
+		if strings.Contains(user, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// isQuestion reports whether raw looks like a question (any script's
+// question mark). normalizeLowValue drops "?", so this checks the raw text.
+func isQuestion(raw string) bool {
+	return strings.ContainsAny(raw, "?？؟")
+}
+
+// looksLikeBareClockReading: a short raw reply that is essentially just a
+// wall-clock value. Length-capped so "it's 14:32, and your 15:00 meeting
+// is still on" (real content) doesn't match.
+func looksLikeBareClockReading(rawReply string) bool {
+	r := strings.TrimSpace(rawReply)
+	if r == "" || runeLen(r) > 48 {
+		return false
+	}
+	return clockToken.MatchString(r)
 }
 
 // normalizeLowValue lowercases, trims, and strips punctuation/symbols so

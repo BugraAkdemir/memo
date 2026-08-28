@@ -29,6 +29,7 @@ type mockBridge struct {
 	messages    func() interface{}
 	updateMsg   func(index int, content string) error
 	deleteMsg   func(index int) error
+	appendMsg   func(role, content string) error
 	status      func() interface{}
 	toggleIncog func(enabled bool)
 	incog       bool
@@ -70,6 +71,12 @@ func (m *mockBridge) UpdateMessage(index int, content string) error {
 	return m.updateMsg(index, content)
 }
 func (m *mockBridge) DeleteMessage(index int) error { return m.deleteMsg(index) }
+func (m *mockBridge) AppendMessage(role, content string) error {
+	if m.appendMsg != nil {
+		return m.appendMsg(role, content)
+	}
+	return nil
+}
 func (m *mockBridge) RegisterClient() string {
 	if m.registerClient != nil {
 		return m.registerClient()
@@ -356,6 +363,43 @@ func TestHandleDeleteMessage(t *testing.T) {
 	}
 	if deletedIdx != 3 {
 		t.Errorf("got index %d, want %d", deletedIdx, 3)
+	}
+}
+
+func TestHandleAppendMessage(t *testing.T) {
+	var gotRole, gotContent string
+	m := &mockBridge{appendMsg: func(role, content string) error {
+		gotRole = role
+		gotContent = content
+		return nil
+	}}
+	s := newMockServer(m)
+
+	body := `{"role":"user","content":"Merhaba!"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/messages/append", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.handleAppendMessage(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusOK)
+	}
+	if gotRole != "user" || gotContent != "Merhaba!" {
+		t.Errorf("got (%q, %q), want (user, Merhaba!)", gotRole, gotContent)
+	}
+}
+
+func TestHandleAppendMessage_RejectsInvalidRole(t *testing.T) {
+	s := newMockServer(&mockBridge{})
+
+	body := `{"role":"system","content":"whatever"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/messages/append", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.handleAppendMessage(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("got status %d, want %d for an invalid role", w.Code, http.StatusBadRequest)
 	}
 }
 

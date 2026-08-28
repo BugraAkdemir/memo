@@ -162,7 +162,15 @@ func (a *App) SendMessage(userMsg string) string {
 		chatID = sm.GetActiveID()
 	}
 
-	ch := a.sendMessageStreamCore(context.Background(), chatID, userMsg, false)
+	// An agent chat (one with a ProjectPath) must keep its tool access and
+	// bound working directory even when reached via the implicit-active-chat
+	// path — same rule SendMessageStreamTo applies for the explicit-chatID
+	// path. Without this, the only thing standing between an agent chat and a
+	// plain toolless LLM reply is the global agentEnabled toggle, which the
+	// Flutter agent screen does not force on when you switch back into an
+	// existing agent chat.
+	forceAgent := sm != nil && sm.IsAgentChat(chatID)
+	ch := a.sendMessageStreamCore(context.Background(), chatID, userMsg, forceAgent)
 	return drainToReply(ch)
 }
 
@@ -332,7 +340,15 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 	if sm != nil {
 		chatID = sm.GetActiveID()
 	}
-	return a.sendMessageStreamInnerTo(ctx, chatID, userMsg, false)
+	// Mirror SendMessageStreamTo: an agent chat (ProjectPath set) keeps tool
+	// access + its bound working directory here too, not just on the
+	// explicit-chatID path. Flutter normally sends chat_id (so the request
+	// lands on SendMessageStreamTo), but any send that reaches here without
+	// one — activeChatIdProvider still resolving to null, an older client —
+	// used to silently drop to a plain toolless reply unless the global
+	// agentEnabled flag happened to be on.
+	forceAgent := sm != nil && sm.IsAgentChat(chatID)
+	return a.sendMessageStreamInnerTo(ctx, chatID, userMsg, forceAgent)
 }
 
 // SendMessageStreamTo is the explicit-chatID counterpart to

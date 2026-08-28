@@ -1,3 +1,1696 @@
+# Ek (2026-08-28, devam 33) — merge hazırlığı: build_releases.sh köke taşındı, PR #17 açıldı
+
+**`build_releases.sh` repo köküne taşındı (`519ffed`).** Oturum başından beri
+working tree'de takipsiz duruyordu. Kullanıcıya sorduğumda "bilerek taşıdım"
+dedi; ama repo'da bulduğum çelişkiyi yüzeye çıkardım: 2026-08-09'da TÜM
+script'ler bilerek `scripts/` altına toplanmış ("root'u temiz tut"), CI de bu
+dosyayı çağırmıyor (`.github/` sıfır ref), yani işlevsel sebep yok — sadece
+organizasyonel bir geri alma. Kullanıcı bilgilendirilmiş şekilde "evet
+gerçekten kökte istiyorum, tam taşı" dedi. Yapıldı: `git mv` +
+`scripts/README.md` (artık istisnayı not ediyor) + `AGENTS.md` + `README.md`/
+`READmeTR.md` + `docs/DOCS.md` + `docs/tr/README.md` + `docs/PROJECT_MAP.md` +
+`skills/memo-project/SKILL.md` + `obsidian-doc/...` güncellendi. Hiçbir script
+onu `source`/exec etmiyor, CWD zaten repo kökü varsayılıyor → davranış
+değişmedi. (Geçmiş doc'lara — handoff eski girişleri, `versinNote/*`,
+`docs/history.md`, superpowers spec/plan'ları — dokunulmadı, onlar tarihsel
+kayıt.)
+
+**Merge durumu:** `feature/live-mode-v2` `origin/main`'e göre **99 commit
+ilerde**, `main`'de bu branch'te olmayan commit YOK → temiz fast-forward.
+Tüm suite yeşil (`go build/vet/test -tags sqlite_fts5 ./... -race` tüm
+paketler; `flutter analyze` temiz; `flutter test` 306). Kullanıcı direkt
+merge yerine PR istedi → **PR #17 açıldı:**
+https://github.com/BugraAkdemir/memo/pull/17 (base `main`, head
+`feature/live-mode-v2`). Merge kullanıcının kararı; sonrası v4.3.0 release
+ayrı karar (memo-release skill).
+
+---
+
+# Ek (2026-08-28, devam 32) — Telegram/WhatsApp reboot sonrası bağlanmıyor: başlangıç connect'i artık retry ediyor + Telegram token'sız "yeniden bağlan"
+
+Kullanıcı bug listesi #1: self-hosted sistem yeniden başlatılınca (veya Memo
+açılıp kapanınca) Telegram & WhatsApp **auto bağlanmıyor**; WhatsApp QR ne
+geliyor ne bağlanıyor; Telegram'da "restart" diyoruz sonuç yok.
+
+**Teşhis (codebase-memory + kaynak):** her iki köprü de başlangıçta **tek
+sefer** connect deneyip başarısızlıkta loglayıp pes ediyordu. Reboot'tan
+hemen sonra ağ/DNS genelde hazır değil:
+- Telegram: `initTelegram` → `client.Start(ctx)` 15sn deadline; `Start`'ın
+  `getMe` kapısı timeout'a düşüyor (`context deadline exceeded`, yanıltıcı
+  şekilde "invalid bot token" olarak görünüyor), `Start` hata dönüyor,
+  `a.tgClient` nil kalıyor, retry yok. Poll loop (sonsuz backoff'u VAR) hiç
+  başlamıyor çünkü `getMe`'nin arkasında.
+- WhatsApp: `initWhatsApp` goroutine'i `waClient.Start`'ı bir kez çağırıyor;
+  `Connect()` hatasında "auto-connect error" loglayıp duruyor. `autoReconnect`
+  yalnızca `started` iken gelen `Disconnected` event'inde tetikleniyor →
+  başlangıç başarısızsa hiç. Üstelik `autoReconnect` 4 denemeden sonra
+  (~105sn) "reconnect manually" deyip **kalıcı pes ediyordu**.
+
+**Fix 1 — başlangıç connect retry'ı (`109e0b9`):**
+- Yeni `retryWithBackoff(ctx, initial, max, fn)` helper (`internal/app/retry.go`),
+  unit-testli.
+- `initTelegram` artık arka plan goroutine'inde `client.Start`'ı retry ediyor
+  (5sn→2dk backoff, `lifecycleCtx`'e bağlı), bağlanınca `a.tgClient`'i tgMu
+  altında set ediyor, kullanıcı Settings'ten bağlanır/duraklatırsa çıkıyor.
+- `initWhatsApp` aynı şekilde `waClient.Start`'ı retry ediyor. `Client.Start`
+  artık başarısızlıkta açtığı sqlstore handle'ını kapatıyor → tekrar
+  çağrılabilir (önce her retry bir handle sızdırırdı); post-connect login
+  bekleme sırasında ctx iptali artık `Start()` hatası sayılmıyor.
+- whatsapp `autoReconnect` 4-ve-bitti yerine **sonsuz** (2dk cap) retry;
+  `handleEvent` `Disconnected`'te `reconnecting`'i startMu altında sahipleniyor
+  → event patlaması birden fazla (artık sonsuz) loop başlatamaz.
+- Test: `TestRetryWithBackoff_*` (3), `TestDisconnectedGuardsReconnectLoop`.
+
+**Fix 2 — Telegram token'sız "yeniden bağlan" (`414c3b6`):**
+- Settings > Telegram'da "token var ama bağlı değil" durumunda tek buton
+  "retry" vardı → sadece `refresh()` (status poll). Hiçbir şey bağlantıyı
+  yeniden denemiyordu → "restart sonuç yok". (WhatsApp'ın aynı butonu zaten
+  `/api/whatsapp/start`'ı çağırıyor, o çalışıyor.)
+- `App.ReconnectTelegram(ctx)` — diskteki token'la bağlanıyor
+  (`connectTelegramLocked` ortak). `POST /api/telegram/reconnect` (body yok).
+  `FullBridge`'e eklendi, swarm stub güncellendi.
+- Flutter: `reconnectTelegram()` / `telegramStatusProvider.reconnect()`,
+  dead-state butonu artık `reconnect()` çağırıyor, "reconnect" etiketli
+  (mevcut l10n key, TR+EN).
+
+**Doğrulama:** `go build/vet/test -tags sqlite_fts5 ./... -race` yeşil;
+`flutter analyze` dokunulan dosyalarda temiz; `flutter test` 306 pass.
+
+**Hâlâ açık / kullanıcı doğrulamalı:** WhatsApp QR "gelmiyor" — retry fix'i
+**ağ-yoktu** senaryosunu tam çözüyor (kayıtlı session ile QR'sız bağlanır).
+Ama session GERÇEKTEN ölmüşse (uzaktan logout / bozuk session), whatsmeow
+device var sanıp QR event'i emit etmeyebilir → kullanıcı Logout+yeniden
+eşleştirme yapmalı. Kullanıcı bu durumu net tarif ederse ("remote logout mı,
+yoksa sadece ağ mı yoktu") ona göre bir sonraki adım: N saniye
+"connected ama logged-in değil" → session temizle + reconnect (riskli, yavaş
+ağda geçerli session'ı silebilir).
+
+---
+
+# Ek (2026-08-28, devam 31) — transkript temizleyici: seslendirilmiş fonksiyon çağrılarını da siliyor
+
+Kullanıcı: barge-in / söz kesme **düzgün çalışıyor** (devam 30 onaylandı). Ama
+chat'e hâlâ çöp basıyor — yeni örnek (`~/Desktop/sss.md`):
+```
+response:delegate_to_main_model{instruction:User wants to hear a long poem.
+Pick a long, beautiful, classic Turkish poem (...) Present it casually
+```
+Model kendi fonksiyon çağrısını konuşma metni olarak transkribe ediyor;
+gerçek çağrı zaten ayrı `toolCall` mesajıyla geliyor, bu kopya tamamen gürültü.
+
+**Fix (`0f7f073`):** `SanitizeModelTranscript` artık şunları da siliyor:
+- `response:<tool>{...}` ve çıplak `<isim>_to_main_model{...}` — kapalı form
+  (brace'in etrafındaki gerçek konuşma korunuyor)
+- aynısının, `{` açık kalıp flush'ın sonuna kadar giden hâli (leak genelde
+  gerçek konuşmanın başladığı yerde ayraçsız kesiliyor → JSON göstermektense
+  sondaki filler'ı kaybetmeyi kabul ediyoruz; örnekteki string "" oluyor,
+  balon hiç oluşmuyor)
+- Brace tool adının hemen ardında olmalı (boşluksuz) → "in response: yes {"
+  veya kod snippet'i etkilenmiyor.
+- Test: `TestSanitizeModelTranscript`'e 5 yeni case (birebir gözlenen leak +
+  "braceli düz metin dokunulmuyor" koruması). `go test ./internal/livemode/...
+  -race` yeşil.
+
+**Kullanıcının ikinci isteği (yapılmadı, kanıt yok):** "[laughs]/[thinking]
+gibi şeyler olursa gizle ya da L10n'lı 'gülüyor'/'düşünüyor' göster". Şu ana
+kadarki loglarda Gemini böyle köşeli-parantez cue'su üretmedi — üretirse
+sanitizer'a dar bir `\[[a-z ]{1,20}\]` silme (ya da frontend'de token→L10n)
+eklemek 5 dakikalık iş. Şimdilik spekülatif pattern eklemedim (false-positive
+riski).
+
+---
+
+# Ek (2026-08-28, devam 30) — barge-in (araya girme) AYARI eklendi + interrupt'ta buffer boşaltma
+
+devam 29'un "sıradaki iş" maddesi tamamlandı (`383183d`).
+
+**Kök sebep (devam 29'da bulunmuştu):** `google/client.go`'da
+`START_SENSITIVITY_LOW` hardcoded'du (devam ~21'de "model klavye/gürültüyle
+kesiliyor" şikayeti üzerine). LOW → kullanıcı bilerek de araya giremiyor.
+
+**Backend:**
+- `config.LiveModeConfig.BargeInSensitivity` ("high"|"low", default "high";
+  "" → "high" normalize). `UpdateLiveModeConfig`'te valide ediliyor.
+- `google.Client.SetBargeInSensitivity(level)` — setter (NewClient param'ı
+  DEĞİL, ~14 çağrı yerini bozmamak için, `voice`'un variadic olması gibi).
+  `bargeInEnum` HIGH/LOW enum'una çeviriyor. `NewLiveModeSession`
+  `cfg.BargeInSensitivity`'yi geçiriyor.
+- Yeni `livemode.EventInterrupted` — google client `serverContent.interrupted`
+  görünce emit ediyor, `{"type":"interrupted"}` control frame olarak
+  Flutter'a gidiyor (`pumpLiveModeSessionEvents` değişmedi, zaten tüm
+  non-audio event'leri forward ediyor).
+
+**Frontend:**
+- `LiveModeConfig.bargeInSensitivity` alanı (JSON round-trip, "" → "high").
+- `interrupted` frame'inde `_flushPlayback()`: PCM player'ı SIGKILL edip
+  (PipeWire buffer'ı anında düşer) aynı rate'te yeniden başlatıyor → barge-in'de
+  model buffer kuyruğunu çalmayı bırakıp anında susuyor.
+- Settings > Live Mode: native-reasoning bölümüne "high/low" dropdown +
+  açıklama. L10n TR+EN (`live_mode_barge_in_*`).
+
+**Testler:** google client — default HIGH (setup-message testi güncellendi),
+`SetBargeInSensitivity("low")` → LOW, `EmitsInterruptedEvent`. Flutter —
+`fromJson` bare "interrupted" frame'i parse ediyor. `go build/vet/test -race`
+yeşil; `flutter analyze` dokunulan dosyalarda temiz; `flutter test` 306 pass.
+
+**Doğrulanmalı (gerçek oturum):** (a) default'ta (high) Live Mode'da Memo
+konuşurken sen konuşunca SUSSUN; (b) ayardan "Sadece net konuşmada"ya alınca
+klavye/gürültü kesmesin; (c) kesince/kapatınca ses anında bitsin (SIGKILL +
+flush). Gürültü hâlâ yanlış tetikliyorsa `prefixPaddingMs`/`silenceDurationMs`
+ince ayarı bir sonraki adım (şu an Google default'unda).
+
+**Hatırlatma:** devam 29'un revert sonrası doğrulamaları da bekliyor
+(`text-to-speech:...` chat'e yazmıyor mu, native barge-in geri geldi mi).
+
+---
+
+# Ek (2026-08-28, devam 29) — devam 28'in nudger'ı geri alındı (chat kirletiyor + kesilemiyor); SIGKILL + transkript temizliği; barge-in AYARI sıradaki iş
+
+devam 28'in realtime "hiç susma" nudger'ı (`924b15c`) gerçek oturumda geri
+tepti — kullanıcı bildirdi:
+1. Chat'e `text-to-speech:one_second_pause` gibi satırlar yazılıyor (Gemini
+   "ses" olarak kontrol token'ı üretiyor, transkripte düşüyor).
+2. Memo'nun sözü kesilemiyor / susturulamıyor (nudger her 7sn "ses çıkar"
+   diye Gemini'yi zorluyor → aşırı üretim, araya girilemiyor).
+3. Live Mode kapatılınca model konuşmaya devam ediyor.
+
+**Yapılanlar:**
+- **`d8db153` — `924b15c` REVERT.** nudger + yeniden yazılan "sessizce bekle"
+  talimatı geri alındı. Orijinal "tek şey söyle sonra sus" davranışı döndü.
+  (devam 28'in DİĞER commit'i `ccdcb79` — discrete/yerel filler döngüsü —
+  DURUYOR, o ayrı yol, Gemini/transkripte dokunmuyor.)
+- **`961ae3d` — PCM player SIGKILL.** `LiveModePcmPlayer.stop()/dispose()`
+  default SIGTERM yerine SIGKILL kullanıyor. `pacat` SIGTERM'de PipeWire
+  buffer'ını boşaltıp öyle çıkıyordu → kapatınca/kesince 1+ sn ses devam
+  ediyordu. SIGKILL anında kesiyor.
+- **`ecf383d` — transkript temizleyici.** `livemode.SanitizeModelTranscript`:
+  `text-to-speech:<token>` şeklini (case-insensitive, dar kapsam) + kaçak
+  NUL-sarmalı marker'ları siliyor, boşluk topluyor; sadece çöp kalırsa ""
+  (mevcut "boş transkripti atla" korumaları eliyor). `google.Client.
+  emitTranscript` (sadece model rolü) + openai_realtime'ın
+  `response.output_audio_transcript.done` handler'ına bağlandı. Test:
+  `TestSanitizeModelTranscript` (8 case).
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` yeşil; `internal/livemode/...`
+`-race` yeşil; `flutter analyze` dokunulan dosyalarda temiz; `flutter test` 305 pass.
+
+## SIRADAKI İŞ — barge-in (araya girme) AYARI
+
+Kullanıcı isteği: "ben konuşunca dursun" default olsun ama **ayardan
+değiştirilebilsin**.
+
+**Kök bulgu:** `internal/livemode/google/client.go:297` — setup'ta
+`StartOfSpeechSensitivity: startSensitivityLow` (`START_SENSITIVITY_LOW`)
+HARDCODED. Bu, devam ~21'de kullanıcının "modelin sözü klavye/gürültüyle
+kesiliyor" şikayeti üzerine bilerek LOW'a çekilmişti. Şimdi tam tersi
+isteniyor: LOW olduğu için Gemini kullanıcının araya girmesini "yeterince
+kendinden emin sinyal değil" diye yok sayıyor → kesilemiyor. HIGH = kolay
+kesilir ama gürültü false-trigger yapar. Çözüm: **ayar yap.**
+
+**Plan (~6 dosya):**
+1. `internal/config/config.go` + `internal/livemode/config.go` —
+   `LiveModeConfig`'e `BargeInSensitivity string` ("high"|"low", default
+   "high"). `liveModeValidPermissionPolicies` yanındaki validasyona ekle.
+2. `internal/livemode/google/client.go` — `NewClient`/setup bunu alıp
+   `START_SENSITIVITY_HIGH`/`_LOW`'a maplesin (`startSensitivityLow` const'un
+   yanına `startSensitivityHigh`).
+3. `internal/app/livemode_session.go` `NewLiveModeSession` — cfg'den
+   `BargeInSensitivity`'yi client'a geçir.
+4. **`interrupted=true` → player'ı durdur:** `google/client.go:369` "interrupted
+   carry no event ... nothing downstream consumes it" — yeni bir
+   `EventInterrupted` (veya mevcut bir sinyal) emit et, Flutter tarafı
+   `_player.stop()` çağırsın. Barge-in'in "anında sussun" hissi bunsuz olmuyor
+   (buffer'daki PCM çalmaya devam ediyor). openai_realtime'da karşılığı
+   `response` iptal/`speech_started` — kontrol et.
+5. Flutter: Settings > Live Mode sekmesine toggle/segmented ("Ben konuşunca
+   dursun" ↔ "Sadece net konuşmada"). **L10n TR+EN ZORUNLU (AGENTS.md #8).**
+6. `frontend/lib/providers/live_mode_config_provider.dart` (veya benzeri) —
+   alanı taşı, `live_realtime_session_provider` connect'te kullan.
+
+**Not:** default'u HIGH yapmadan ayarı da eklemek şart — yoksa devam 21'deki
+"gürültüyle kesiliyor" şikayeti geri gelir, geri dönüş yolu olmaz.
+
+**Ayrıca doğrulanmalı:** revert sonrası (a) `text-to-speech:...` chat'e artık
+yazmıyor, (b) nudger gitince Gemini'nin native barge-in'i geri geldi mi (LOW
+hâlâ hardcoded ama nudger flood'u yoktu artık), (c) SIGKILL ile kapatınca ses
+anında kesiliyor.
+
+---
+
+# Ek (2026-08-28, devam 28) — Live Mode "hiç susma" (ChatGPT gibi bekleme sesleri): realtime model kendi sesiyle + discrete filler döngüsü
+
+Kullanıcı isteği: ChatGPT'nin advanced voice mode'u gibi Live Mode beklerken
+hiç tamamen susmasın — "hmm", "bir saniye", nefes gibi sesler çıkarsın.
+Kullanıcı seçimi: realtime tarafında **modelin kendisi** yapsın (aynı ses,
+uyum sorunu yok), yerel/discrete tarafında **mevcut filler zenginleştirilsin**.
+
+**1. Realtime (Gemini Live + OpenAI Realtime) — model kendi sesiyle (`924b15c`).**
+- Devir başı enjeksiyon "tek şey söyle sonra sus" → "kısacık bir şey söyle,
+  sonra TAMAMEN SUSMA — birkaç saniyede bir ufak sesler ('mmm', 'hı-hı',
+  'bir saniye daha', nefes), kısa/sakin, anlatma, 'bitirdim' deme".
+- Yeni `nudgeLiveModeCompany` goroutine: devir boyunca her
+  `liveDelegateNudgeInterval` (7sn) "(hâlâ bekleniyor — kısacık ses çıkar,
+  sonra bekle)" hatırlatması enjekte ediyor (tek seferlik başlangıç talimatı
+  10-20sn'lik beklemede modelin dikkatinden düşüyor). Drain bitince (timeout
+  marker ya da tam cevap) veya session ctx iptalinde duruyor.
+  `buildLiveModeToolCallHandler` engine-agnostic → iki realtime engine de kapsanıyor.
+- Test: `TestNudgeLiveModeCompany_{RepeatsThenStops,StopsOnCtxCancel}`. İki
+  handler testi hâlâ 2 injectContext görüyor (7sn ticker hızlı unit testte
+  ateşlenmiyor).
+- **Takip (yapılmadı):** nudger timeout marker'da duruyor → slow-path'in
+  20sn+ arka plan beklemesi kapsanmıyor.
+
+**2. Yerel/discrete ses yolu — filler döngüsü + geniş set (`ccdcb79`).**
+Yerel Live Mode bu yolu kullanıyor (llama.cpp'nin native realtime engine'i yok).
+- `_playFillerBestEffort` artık cycle generation alıyor ve **döngüde**: rastgele
+  klip → ~1.2sn insan-vari duraklama → tekrar; cycle bayatlayınca (barge-in
+  `_generation` bump) ya da gerçek cevap başlayınca (`state` != thinking)
+  duruyor. Speaking dalı `_fillerPlayer.stop()` de çağırıyor (mid-subprocess
+  klip cevapla çakışmasın).
+- `FillerPhrases` 3 → 8, hepsi hâlâ non-lexical hum/nefes ("Mm-hm", "Hm-mm",
+  "Hmmm", "Ahh", "Mmh") — dile bağımsız kalsın (yanlış Piper sesiyle okunan
+  TR/EN kelime kötü duyuluyor). Dile özel ifadeler ("bir saniye") cache'in UI
+  dilini bilmesini gerektiriyor → ayrı değişiklik olarak bırakıldı.
+- `VoiceModeNotifier` döngü değişikliğinin unit testi yok (repo'da bu provider
+  için harness yok, eklemek kapsam dışı); staleness guard'ları aynı dosyadaki
+  mevcut `_generation` desenini birebir izliyor.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` yeşil; `internal/tts` +
+`internal/app` `-race` yeşil; `flutter analyze lib/` dokunulan dosyada temiz
+(5 önceden var olan info-level `use_build_context_synchronously` başka
+dosyalarda); `flutter test` 305 pass.
+
+**Doğrulanmalı (gerçek oturum):** (a) devret modda uzun iş → model 20sn
+boyunca ara ara "mmm/bir saniye" desin, tamamen susmasın, araya girip uzun
+konuşmasın. Fazla konuşursa `liveDelegateNudgeInterval`'i büyüt / talimatı
+sıkılaştır. (b) yerel ses modunda uzun cevap → filler klipleri döngüde çalsın.
+
+---
+
+# Ek (2026-08-28, devam 27) — delegate: eşzamanlı çağrı reddi "arka planda işlem var" diye seslendiriliyordu + commit author düzeltmesi
+
+**1. "Arka planda başka bir işlem yürüyor" bug'ı (`e4564f0`).** Gerçek
+devret-modu oturumu (chat export + backend log). Kullanıcı sesli olarak
+"çalışma alanını masaüstü yap" dedi. Gemini Live `delegate_to_main_model`'i
+çağırıp, **ilki daha bitmeden tekrar çağırıyor** (araç çağrılarını
+retry/paralel yapıyor). İkinci çağrı `startLiveJob`'ın "zaten çalışıyor"
+kapısına takılıyor, o da `errStreamChunk("⏳ Live Mode için zaten bir görev
+çalışıyor.")` dönüyordu — `runDelegate` bunu olduğu gibi modele iletiyor,
+model kullanıcıya "kanka şu an arka planda başka bir işlem yürüyor, bitsin
+bekle / durdurmaya çalışıyorum" diye seslendiriyordu. Kullanıcı hiçbir işlem
+başlatmadı; her `change_directory` devri aslında BAŞARILI oluyordu ama
+deneyim kilitli hissettiriyordu.
+
+Fix: eşzamanlı-devir dalı artık hata değil düz talimat dönüyor: "zaten bir
+devir sürüyor, yenisini başlatma, en fazla kısacık 'hallediyorum' de,
+'arka planda işlem/görev var' gibi şeyleri ASLA söyleme — iç detay". Süren
+çağrı gerçek cevabı yine veriyor (doğrudan ya da `runDelegate`'in arka plan
+enjekti). Test: `TestSendLiveDelegatedMessageStream_RejectsConcurrentDelegation`
+güncellendi (Error+Done chunk yerine hata-olmayan talimat chunk'ı bekliyor).
+
+**1b. Sonuç hiç seslendirilmiyor → ÇÖZÜLDÜ (`a20b2d1`).** `e4564f0`'dan sonra
+alttaki asıl bug açığa çıktı: taze build'de kullanıcı devret modda "masaüstüne
+klasör/dosya yap" dedi. Her seferinde: devir çalıştı, klasör/dosya **gerçekten
+oluştu** (diskte doğrulandı — `ls`, `cat merhaba merhaba.txt` → "Memo"),
+`livemode delegate: DONE` 100-250 karakterlik gerçek cevapla loglandı — sonra
+10-30sn **tam sessizlik**, kullanıcı vazgeçene kadar. Kök sebep: ~6sn'lik bir
+devrin sonucu `runToolCall`'a dönüp `functionResponse` olarak yazılıyor ama
+Gemini "bir saniye" deyip `turnComplete`'e geçtikten SONRA — Gemini Live
+tur bittikten sonra gelen bir tool response'u **seslendirmiyor**. Tur-dışı
+`realtimeInput.text` (injectContext) ise taze tur başlatıyor, seslendiriliyor
+(slow-path arka plan enjektinin ve devir-başı "sessizce bekle" ipucunun hep
+duyulmasının sebebi bu). Fix: yeni `injectDelegateOutcome` helper'ı —
+`runDelegate` fast path artık sonucu (boş/`⚠️` hata → dürüst "yapamadım")
+`injectContext` ile itiyor, tool response olarak sadece sessiz iç-ack
+dönüyor. Slow-path arka plan goroutine'i de aynı helper'ı kullanıyor.
+`injectContext` henüz hazır değilse (oturum başlıyor) eskisi gibi tool
+response'a düşüyor. Test: iki handler testi tek injectContext yerine iki
+bekliyor (ipucu + sonuç).
+
+**✓ DOĞRULANDI (gerçek oturum, 2026-08-28):** kullanıcı devret modda dosya
+oluşturma testi yaptı — sonuç seslendirildi, model "oluşturdum" dedi, başarılı.
+Sessizlik yok. `e4564f0` + `a20b2d1` birlikte devret-modu deneyimini kapattı.
+
+**2. Commit author düzeltmesi.** 3 commit yanlış kimlikle atılmıştı
+(`bugra <bugra@bugradev.com>`, paralel oturum farklı git config'iyle):
+`docs(spec)`, `docs(plan)`, `docs(handoff): devam 26`. `git filter-branch
+--env-filter` ile `c1ee9f8..HEAD` aralığında author+committer düzeltildi →
+hepsi `BugraAkdemir <bugrakaptan5@gmail.com>`. 7 commit'in hiçbiri
+push edilmemişti. Yedek: `backup-before-author-fix` dalı +
+`refs/original/refs/heads/feature/live-mode-v2`. Ağaç birebir korundu
+(`git diff` boş). Yan etki: devam 22-27 handoff commit mesajlarındaki kısa
+hash'ler (`48a3a9e`, `f5ab112` vb.) rewrite sonrası bayat.
+
+**3. handoff devam 25 başlığı geri eklendi.** `74a1503` (devam 26)
+paralel oturum çakışmasıyla devam 25 başlık satırını silmiş, gövdesini
+başlıksız bırakmıştı — düzeltildi.
+
+**Doğrulama (`e4564f0`):**
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...   → yeşil
+CGO_ENABLED=1 go vet  -tags "sqlite_fts5" ./internal/app/   → yeşil
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./internal/app/ ./internal/livemode/... -race   → ok
+```
+
+**Bekliyor:** (a) devam 25/26'nın açık maddeleri. ~~(b) "sonuç seslendirilmiyor"
+bug'ı~~ → çözüldü ve doğrulandı (`a20b2d1`, yukarı bak).
+
+**Push durumu:** devam 25→27'nin tüm commit'leri (`9fe458d`..`da9c439`, 11 commit)
+`feature/live-mode-v2` dalına push'landı — main'e merge YOK, dalda kalıyor,
+üstünde daha düzeltmeler var.
+
+---
+
+# Ek (2026-08-28, devam 26) — Go test coverage: spec + plan, uygulama bekliyor
+
+Test analiz görevi. Kullanıcı talebi: Go ve Flutter tarafındaki mevcut
+testleri analiz et, kapsam alanlarını incele, yetersiz olanlarda
+değişiklik yap — ama ana kod (production source) yasak, sadece
+`*_test.go` ve test altyapısı serbest, codebase-memory zorunlu,
+AGENTS.md kuralları tam. Bu oturum iki commit üretti: spec + plan.
+**Uygulama henüz başlamadı** — kullanıcı execution modunu seçecek.
+
+**Üretilenler:**
+- Spec: `docs/superpowers/specs/2026-08-28-go-test-coverage-design.md` (`9d61f68`)
+- Plan: `docs/superpowers/plans/2026-08-28-go-test-coverage.md` (`61d1a6b`)
+
+**Kapsam kararı:** `internal/livemode/...` (3 paket: `livemode`,
+`livemode/google`, `livemode/openai_realtime`). Flutter ve diğer
+`internal/*` paketleri (provider clients, `internal/api`, `cloudsync`,
+`intent/*`, `proactive/*` — hepsi 0% coverage) bu oturumun dışında,
+gelecek oturumlara bırakıldı.
+
+**Mevcut coverage baseline (kanıtlanmış, gerçek ölçüm):**
+```
+memo/internal/livemode                  73.2% of statements
+memo/internal/livemode/google           82.8% of statements
+memo/internal/livemode/openai_realtime  79.6% of statements
+total: 78.6%
+```
+
+En kötü fonksiyonlar (her biri hedef):
+- `ConfigManager.Save` → 0.0% (Task 2)
+- `ConfigManager.Load` → 35.0% (Task 3)
+- `ConfigManager.decrypt` → 68.4% (Task 4)
+- `ConfigManager.saveLocked` → 64.7% (Task 3)
+- `Client.runToolCall` (openai) → 63.6% (Task 11)
+- `Client.readLoop` (google) → 73.2% (Task 8)
+- `Client.readLoop` (openai) → 74.1% (Task 12)
+- `Client.Start` (her ikisi) → 80.8% / 78.3% (Task 6, 10)
+- `Client.runToolCall` (google) → 77.8% (Task 7)
+- `ListLiveModels` → 90.6% (Task 9)
+- `ListRealtimeModels` → 84.2% (Task 13)
+
+**Plan özeti (14 task):**
+1. `scripts/coverage-livemode.sh` — tek komutla baseline + gap raporu
+2-4. `internal/livemode/config_test.go` — Save/Load/encrypt/decrypt hata yolları (8 yeni test)
+5. `internal/livemode/echo_session_test.go` — sadece yorum (Start context kullanmıyor, test edilemez)
+6-9. `internal/livemode/google/{client,models}_test.go` — 6 yeni test
+10-13. `internal/livemode/openai_realtime/{client,models}_test.go` — 6 yeni test
+14. Final verification + bu handoff girdisi
+
+**WIP koruması:** Kullanıcı bu oturumda paralelde
+`internal/app/livemode_delegate.go`, `internal/app/livemode_session.go`
+ve `scripts/build_releases.sh` taşıması üzerinde çalıştı
+(`f5ab112` commit'lendi). Bu oturumda bunlara hiç dokunulmadı;
+plan'da "Global Constraints" bölümünde dokunulmazlar listelendi.
+
+**Beklenen sonuç (Task 14 doğrulaması):** toplam 78.6% → ~%90+,
+her fonksiyon ≥85% (bir istisna: `saveLocked`'ın encrypt-failure dalı,
+üretim kodu değişmeden erişilemez, spec §6 kabul etti).
+
+**Sıradaki:** Kullanıcı execution modunu seçecek:
+- (a) **subagent-driven**: her task için taze alt-agent, iki aşamalı review
+  arasında — yüksek izolasyon, hızlı iterasyon, ama her task sınırında
+  context kaybı
+- (b) **inline (executing-plans)**: bu session içinde batch, checkpoint'ler
+  arasında review — düşük overhead, ama bu session zaten çok uzadı
+
+Eğer herhangi bir noktada (a) seçilirse, plan 14 task için 14 ayrı
+alt-agent dispatch eder; her biri tek bir `*_test.go` dosyasına 1-2
+yeni test ekler, çalıştırır, coverage'ı doğrular, commit'ler. Gözden
+geçiren yalnızca commit mesajlarını ve coverage çıktılarını kontrol
+eder — her alt-agent'ın tam bağlamını okumak zorunda değil.
+
+---
+
+# Ek (2026-08-28, devam 25) — delegate deadline'ı: iptal etmek yerine arka planda bitir + geç enjekte
+
+_(Not: bu başlık `74a1503` (devam 26 handoff) tarafından yanlışlıkla silinmişti,
+paralel oturum çakışması; devam 27'de geri eklendi.)_
+
+devam 24'ün deadline'ı (`48a3a9e`) gerçek oturumda test edildi ve yeni bir
+sorun çıkardı: taze build'de kullanıcı devret modda "web'de haber ara" dedi.
+Log:
+- web_search + 2× fetch_page (biri browser render, 3.7sn) → `06:29:09.0`'da
+  **8003 karakter gerçek haber içeriği** geldi.
+- `06:29:09.5` — 15sn doldu → `48a3a9e` agent'ı **iptal etti**
+  (`AGENT: ChatCompletion error: context canceled`) — sentez LLM çağrısına
+  yarım saniye kala.
+- Model "DELEGASYON ZAMAN AŞIMI, uydurma" talimatını aldı → "bulamadım" dedi.
+- Tüm tool işi çöpe gitti; 15sn meşru 2-fetch turundan (~14.5sn) kıl payı
+  kısaydı.
+
+**Fix (`f5ab112`):**
+- `SendLiveDelegatedMessageStream` artık deadline'da agent'ı **İPTAL ETMİYOR**.
+  `forwardWithSlowMarker` (`drainWithDeadline` yerine): timeout dolunca
+  stream'e bir `liveDelegateTimeoutMarker` chunk'ı bırakıp **forward etmeye
+  devam ediyor** — agent turu tamamlanana (ya da session context ölene) kadar
+  çalışıyor, gerçek sonuç kanaldan geliyor.
+- `runDelegate` → `drainLiveDelegatedReplyUntilMarker` ile sadece marker'a
+  kadar drain ediyor, sonra live modele **hemen** "hâlâ çalışıyorum, 'yaptım'
+  ya da 'bulamadım' deme" stall'ı dönüyor, kanalın kalanını arka plan
+  goroutine'ine bırakıyor. Gerçek sonuç gelince `injectContext` ile canlı
+  oturuma enjekte ediliyor → model birkaç saniye geç ama gerçek cevabı
+  söylüyor. Boş/hata sonuç → kısa dürüst "tamamlayamadım" notu enjekte
+  ediliyor (sessizlik değil).
+- `liveDelegateTimeout` 15sn → **20sn** (ortak durum stall'a hiç girmesin).
+- `resolveDelegateTimeout` silindi (marker artık incremental tüketiliyor,
+  drain edilmiş cevapta hiç kalmıyor — o kod yolu erişilemez).
+- Test: `TestForwardWithSlowMarker_{NoMarkerWhenInnerFinishesFirst,
+  EmitsMarkerThenKeepsForwarding,CtxCancelStops}`,
+  `TestDrainLiveDelegatedReplyUntilMarker_{NoMarkerReturnsFullReply,
+  StopsAtMarkerLeavingRest}`.
+
+**Doğrulama:**
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...     → yeşil
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...       → yeşil
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./internal/app/ ./internal/livemode/... -race → ok (12.2s / 1.0s)
+```
+
+**Bilinen kenar durumlar:**
+- Arka plan delegate turu sürerken ikinci bir delegate çağrısı hâlâ
+  reddediliyor (tek Live Mode chat, tek job). Şimdilik kabul.
+- Kullanıcı tur ortasında Live Mode'u kapatırsa geç sonuç düşürülüyor
+  (session context gitti) — doğru davranış.
+- devam 24'ten kalan: kullanıcı hâlâ `livemode delegate: START` satırını ilk
+  log'unda görmemişti; ikinci log'da göründü → o an taze build'e geçmişti.
+
+**Bekliyor / sıradaki:** devam 24'ün listesi + gerçek oturumda bu geç-enjekte
+akışını doğrula (20sn'yi aşan bir tur → model önce "biraz daha sürüyor" desin,
+sonra gerçek cevabı söylesin). Ayrı takip: agent'ın aşırı hevesli fetch_page
+kullanımı, browser render fallback'ine per-call cap.
+
+---
+
+# Ek (2026-08-28, devam 24) — Live Mode delegate turuna deadline (30-40sn sessizlik bug'ı)
+
+Kullanıcı gerçek oturum log'u getirdi: Live Mode **devret (delegate)** modda
+"web'de ara" dedi, 30-40 saniye yanıt yok. Log okundu:
+
+- `06:12:36.391` Google Live `toolCall` → delegate başlıyor.
+- `06:12:40.18` `web_search` **1016ms'de 10 iyi sonuç** döndürdü — burada cevap
+  verebilirdi.
+- `06:12:44.17` agent ayrıca `fetch_page` → `reddit.com/r/ArtificialInteligence/`.
+- `06:12:44.64` `static fetch empty, trying browser render` → `BROWSERENGINE
+  engine started mode=one-shot`.
+- `06:12:44.9 → 06:13:07+` **~23 sn tam sessizlik** — her mesaj
+  `serverContent=false hasModelTurn=false`. Google Live boşta, tool cevabını
+  bekliyor. Reddit headless render asılı kaldı.
+- `06:13:09` kullanıcı tekrar konuşuyor → yeni toolCall, model ancak o zaman
+  cevap üretiyor.
+
+**Kök sebep:** `runToolCall` yalnızca session context'i geçiyor,
+`SendLiveDelegatedMessageStream`'in kendi deadline'ı yoktu → delegate agent
+turu llm.go'nun 300s bütçesine kadar sürebiliyor, realtime tur o kadar
+sessiz bekliyor.
+
+**Fix (`48a3a9e`):**
+- `SendLiveDelegatedMessageStream(sessionCtx, instruction, timeout)` — yeni
+  `drainWithDeadline` helper'ı inner agent stream'i kapanana **veya** timeout
+  dolana kadar forward ediyor; timeout'ta beklemeyi bırakıp üretilmiş kısmi
+  metnin ardına NUL-sarmalı `liveDelegateTimeoutMarker` chunk'ı ekliyor,
+  terk edilmiş agent turu arka planda çözülüyor (deferred `cancel()`).
+  Forward kendi goroutine'inde iç `relay` kanalına yazıyor → timeout'ta
+  `outCh`'un tek yazarı kalıyor, yarışsız kapatılıyor.
+- `runDelegate` `liveDelegateTimeout` (**15s**) geçiyor + yeni
+  `resolveDelegateTimeout` marker'ı dürüst talimata çeviriyor: kısmi metin
+  varsa "eksik olabilir" notuyla aktar, yoksa "işlem uzadı" de — **uydurma
+  yok** (mevcut boş/hata handling'iyle aynı duruş). START log'una timeout
+  eklendi, TIMEOUT log satırı eklendi.
+- Test: `TestDrainWithDeadline_{ForwardsEverythingWhenInnerFinishesFirst,
+  ReportsTimeoutWhenInnerOverruns,CtxCancelEndsItWithoutTimeout}`,
+  `TestResolveDelegateTimeout_{NoMarker...,MarkerWithNoPartialText...,
+  MarkerWithPartialText...}`. Eski delegate çağrı yerleri `0` (deadline
+  kapalı) geçiyor.
+
+**Doğrulama:**
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...        → yeşil
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...          → yeşil
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./internal/app/ ./internal/livemode/... -race → ok (13.5s / 1.0s)
+```
+Flutter dokunulmadı (backend-only).
+
+**Tam çözüm DEĞİL:** gerçekten 20-40sn süren delegate turu hâlâ sonucunu
+onu isteyen realtime tura yetiştiremiyor — artık **hızlı ve dürüst
+başarısız oluyor**, asılı kalmıyor. Ayrı takipler: (a) agent'ın aşırı hevesli
+`fetch_page` kullanımını azaltmak, (b) browser render fallback'ine per-call
+kısa timeout / scraper-hostile domain listesi.
+
+**Bekliyor / sıradaki:**
+- **Backend restart doğrulanmadı:** kullanıcının log'unda `livemode delegate:
+  START` satırı yoktu — o satır `26c79a1`'de (2026-08-27 20:22) eklendi,
+  `logx.Printf` diğer INFO satırlarıyla aynı stream'e yazıyor. Çalışan binary
+  büyük ihtimalle `26c79a1` öncesi (home-dir köklendirme fix'i de aktif
+  değil). Kullanıcı `memo --kill` + taze build ile yeniden başlatmalı, sonra
+  devam 23'teki gerçek oturum testlerini + bu deadline'ı ölçmeli.
+- devam 23'ün tüm "Bekliyor" maddeleri hâlâ geçerli (hafıza kaydetme =
+  embedder kurulumu, PipeWire echo-cancel, vs.) — aşağıya bak.
+
+---
+
+# Ek (2026-08-27, devam 23) — Live Mode sağlamlaştırma turu (7 alt-tur): "araçlar kapalı" nag, delegate çalışma dizini + uydurma, geçmiş devamlılığı, mikrofon mute; + agent chat routing, Google Live transkript, Live Mode→hafıza, agent-mode kalıcılığı, RAG'daki bayat saat
+
+Uzun bir oturum. GitHub katkı grafiği sorusuyla başladı (cevap: commit'ler
+`feature/live-mode-v2` dalında, grafik sadece `main`'i sayar — dal
+meselesi, `~/.config` değil). Sonra kullanıcı sırayla bug bildirdi, her
+biri gerçek oturum testinden. Commit sırasına göre:
+
+**1. Agent chat düz LLM'e düşüyordu (`670ce27`).** Belirti: "memo buraya
+yapamam, iznim yok" / "agent aç yapayım" (agent açıkken) + hep repo
+dizinini gösteriyor. Kök sebep: `SendMessageStreamTo` (`chat_id`'li yol)
+`forceAgent`'i `sm.IsAgentChat(chatID)`'den türetiyor ama `SendMessage` +
+`sendMessageStreamInner` (implicit-active yol) `forceAgent=false`
+sabitliyordu — `chat_id` olmadan gelen istek global `agentEnabled` kapalıysa
+araçsız cevaba düşüyordu. Fix: `chat.go`'da iki yer `sm.IsAgentChat`
+kullanıyor + `agent_screen.dart` mevcut agent chat'e geçişte agent modunu
+açıyor. Test: `TestSendMessage_ActiveAgentChat_GlobalToggleOff_StillSendsToolDefinitions`.
+_(Not: kullanıcı sonradan "normal chat zaten çalışıyor" dedi — asıl Live
+Mode bug'ı #5. Bu yine de geçerli bir düzeltme.)_
+
+**2. Google Live transkripti kelime kelime parçalanıyordu (`6373bea`).**
+Her kelime ayrı sohbet balonu. Google Live API transkripti minik artışlarla
+yolluyor, sonu `turnComplete`; `readLoop` her parçayı ayrı `EventTranscript`
+yapıyordu. OpenAI Realtime'da yok (`*.done` zaten tam cümle). Fix: `readLoop`
+`strings.Builder`'da biriktirip tur sınırında rol başına tek flush.
+
+**3. Live Mode konuşmaları RAG'a girmiyordu (`748fd51`).** (a) `AppendMessage`
+(`POST /api/messages/append`) sadece oturuma yazıyordu, `saveMemoryAsync`'e
+uğramıyordu — artık model transkriptini önceki kullanıcı sözüyle eşleyip
+tura kaydediyor (boş/hata cevabı, BUG-L1, near-dup zaten filtreleniyor; ek
+kapı sadece incognito). Delegate + standalone ikisi de. (b) Standalone'un
+per-tur hafıza *okuma* yolu yoktu — artık tam registry'nin yanında
+`delegate_to_main_model`'i de taşıyor. Delegate mantığı ortak `runDelegate`
+closure'ına çıkarıldı.
+
+**4. Agent-mode "açık görünüyor kapalı davranıyor" — kalıcılık (`0ae07b4`).**
+Kök sebep: agent-mode SADECE bellek-içi bayraktı, her App init `false`'a
+sıfırlıyordu; Flutter StateNotifier son değeri cache'liyor. Masaüstü uygulaması
+bundled backend'i yeniden başlatınca backend "kapalı", istemci "açık".
+Fix: `config.AgentModeConfig{Enabled}` (`agent_mode.enabled`, default kapalı;
+`WebSearchConfig.Enabled` zaten kalıcıydı), `SetAgentEnabled` config'e yazıyor,
+init geri yüklüyor; `app_shell.dart` gate listener'ı `agentEnabledProvider` +
+`webSearchModeProvider`'ı invalidate ediyor. Test:
+`TestSetAgentEnabled_PersistsAcrossReload`. **Kullanıcı bir kez backend'i
+yeniden başlatıp toggle'ı bir kez açmalı → o an config'e yazılır.**
+
+**5. ★ ASIL LIVE MODE BUG'I: model araçları/web'i "kapalı" sanıyor
+(`bcf0def`).** Kullanıcı net: normal text sohbette agent + web KUSURSUZ,
+"kapalı gibi davranma" SADECE Live Mode'da. Kök sebep:
+`buildLiveModeSystemPrompt`, `identity.BuildSystemPrompt`'u
+`agentEnabled=false, webSearchEnabled=false` ile çağırıyordu. O
+parametrelerin TEK kullanımı `buildCapabilitiesBlock` — `false` verilen
+her özellik için "bu KAPALI, toolbar'daki toggle'ı aç de" nag'ı ekliyor.
+Eski yorum "tool metnini bastırıyor" diyordu ama bastırılacak metin yok.
+Sonuç: standalone elinde araç tutarken, delegate onlara ulaşabilirken,
+ikisi de "yapamam, agent aç" diyordu. Fix: `true, true` geç + iki
+capability paragrafı yeniden yazıldı (standalone: web_search/fetch_page'i
+açıkça say; delegate: web/dosya/komut/hafıza HEPSİ delegate'ten geçer).
+Test: `TestBuildLiveModeSystemPrompt_NoFeatureOffNag`.
+
+**6. Delegate hâlâ bozuktu: çalışma dizini yok + başarısızlıkta uydurma
+(`26c79a1`).** Gerçek test (`~/Desktop/devret-modetest.md`): "masaüstündeki
+dosyaları say" → "bir saniye bakıyorum" / "hâlâ uğraşıyorum" → OLMAYAN
+dosya/uzantı listesi uydurdu. Standalone doğru çalışıyor. İki sebep:
+(1) `getOrCreateLiveModeChat`'in arka plan sohbetinin `ProjectPath`'i yoktu
+→ agent backend cwd'sinde (repo) başlıyordu; `~/Desktop` erişilemiyor,
+`change_directory` (Dangerous, sesli izin akışı güvenilir sormuyor)
+gerekiyordu. Artık `os.UserHomeDir()`'e kök salıyor. (2) Delegate boş/hata
+dönünce `drainSelfChatReply` onu olduğu gibi live modele veriyordu, model
+uyduruyordu. `runDelegate` artık boş/`⚠️` cevabı "DELEGASYON BAŞARISIZ —
+söyle, UYDURMA" talimatıyla sarıyor. `SendLiveDelegatedMessageStream`'e
+START/DONE log'u eklendi. Test: `TestGetOrCreateLiveModeChat_RootsAtHome`,
+`liveModeChatRootedAt` helper'ı. **Kalan risk: delegate agent turu 20-30sn
+sürerse sonuç Google Live'ın turundan çok geç dönebilir — home kökü basit
+sorguları hızlandırdı ama uzun görevler için tam çözüm değil.**
+
+**7. Live Mode kapat/aç → sohbet sıfırdan başlıyor (`037b4d5`).** Native
+realtime oturumun kendi geçmişi yok, tek seferlik sistem talimatı alıyor.
+`buildLiveModeHistoryBlock` artık aktif sohbetin son 24 mesajını (~1.5k
+token cap, "<isim>: <metin>") "kaldığın yerden devam et" notuyla sistem
+talimatına katıyor. `AppendMessage` zaten iki tarafı da o sohbete yazıyor.
+Test: `TestBuildLiveModeSystemPrompt_IncludesRecentHistory`.
+
+**8. Mikrofon aç/kapat butonu (`2358f89`, özellik isteği).**
+`LiveRealtimeSessionNotifier.toggleMicMuted` — capture engine + WS ayakta,
+muted iken yakalanan PCM sunucuya gönderilmiyor (yeniden bağlanma yok).
+`LiveRealtimeView`'de orb'un altında mikrofon pill'i (`Icons.mic/mic_off`),
+muted iken durum yazısı "Mikrofon kapalı". Her `connect()` mic açık.
+L10n TR+EN. Test: "mic toggle button flips label + state text when tapped".
+
+**9. Memo eski/rastgele bir saat söylüyor (`c581f3a` + `1dbc775`).** Sistem
+prompt'undaki `[Time context]` güncel saati veriyor ama geçmiş bir
+"saat kaç?" → "14:32" turu RAG'a kaydedilmiş, sonraki saat sorusunda o
+bayat satır geri geliyor. Korumalar: (a) `IsLowValueTurn` düz saat/tarih
+sorularını low-value sayıyor (TR diacritic + diacritic-free + EN tam-mesaj
+seti + substring'ler); (b) **dilden bağımsız backstop** (`1dbc775`): raw
+kullanıcı mesajı soru işareti taşıyor + scheduling niyeti yok (hatırlat/
+remind/alarm/timer) + raw cevap kısa (≤48) ve `HH:MM` token içeriyorsa
+atla — "wie spät ist es?"→"Es ist 14:32" gibi; (c) `timeContextBlock`
+sonuna "bu güncel saat; hafıza farklı diyorsa o bayat, bunu kullan" satırı
+(fix'ten önce RAG'a girmiş bayat saat için, dilden bağımsız backstop).
+Kalıcı ifade içindeki saat ("saat 3'te toplantı", "her gün 7'de kalkıyorum",
+"remind me at 14:30") etkilenmiyor. Test:
+`TestIsLowValueTurn_TimeDateQuestionsSkip`,
+`TestIsLowValueTurn_ClockReadingBackstopLanguageAgnostic`.
+
+**Kullanıcının kendi commit'i (`0db8dc9`)**: `.gitignore`'a
+`internal/agent/data/` + AGENTS.md güncellemesi.
+
+**Doğrulama (her commit'te):**
+```
+CGO_ENABLED=1 go build/vet -tags "sqlite_fts5" ./...        → yeşil
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race       → dokunulan paketler yeşil
+  (internal/whisper TestGetStatus_NewServer temiz ağaçta da patlıyor — makinede
+   takılı whisper-server, ilgisiz)
+flutter analyze lib/ + flutter test                         → temiz / 305 pass
+```
+
+**Bekliyor / sıradaki:**
+- **"hafıza kaydetme çalışmıyor"** (kullanıcı bildirdi) — `memory_enabled: true`
+  ama muhtemelen yerel embedding sunucusu çalışmıyor: `store.SaveInteraction`
+  → `s.embed()` bağlantı reddi alınca `saveMemorySync` "MEMORY SAVE FAILED"
+  logluyor, `isEmbeddingBackendDown` true olduğu için toast BASTIRIYOR
+  (sessiz). OpenCode Zen 2 harici provider, yerel embedder yoksa hafıza hiç
+  yazılamaz. Kod değil kurulum — backend log'unda "MEMORY SAVE FAILED" ara,
+  bir embedding modeli başlat.
+- Gerçek oturum testleri (önce backend'i bir kez yeniden başlat): (a) delegate
+  modda "masaüstümdeki dosyaları say" — uydurmamalı, `~/Desktop`'a bakmalı;
+  log'da `livemode delegate: START/DONE` görünmeli (görünmüyorsa delegate hiç
+  tetiklenmiyor). (b) Live Mode "şu an hava durumu ne" — web araması, "kapalı"
+  dememeli. (c) Google Live'da konuş — transkript tek balon. (d) Live Mode'da
+  geçmişte konuşulanı sor → normal chat'te ara — hatırlamalı (embedder varsa).
+  (e) Live Mode kapat/aç — az önce konuşulanı hatırlamalı. (f) "saat kaç" birkaç
+  kez sor — hep taze saat gelmeli.
+- PipeWire echo-cancel (devam 21-22'den, hâlâ kullanıcıda).
+- `internal/agent/data/` artık `.gitignore`'da (`0db8dc9`) — çözüldü.
+
+**Faz 1 belirtisi hâlâ açık olabilir:** delegate sonucu realtime tura çok
+geç dönme sorunu (bkz. #6 kalan risk) — gerçek oturum testinde ölçülmeli.
+
+---
+
+# Ek (2026-08-27, devam 22) — Live Mode v2: `~` genişletme + change_directory bugları, transkript kalıcılığı, live moda yazılı metin gönderme
+
+Kullanıcı `~/Desktop` klasörünü silmemi istedi (yaptım, onaylandı) ve üç
+şey daha bildirdi:
+
+**1. `~` genişletme bug'ı bulundu ve düzeltildi (`c357b0f`).** Kök sebep:
+`validatePath` (write_file/read_file/edit_file'ın hepsinin kullandığı
+paylaşılan yol çözücü) `~`'yi hiç genişletmiyordu — `change_directory`'nin
+kendi çözücüsü (`resolveChangeDirectoryTarget`) zaten doğru yapıyordu ama
+bu paylaşılan fonksiyon yapmıyordu. Model `"~/Desktop/hello.py"` yazdığında
+repo kökünde literal bir `"~"` klasörü oluşuyordu. Artık `~` gerçek home
+dizinine genişletiliyor — basePath dışına çıkarsa (`~` genelde çıkar) artık
+doğru bir "proje dizini dışında" hatası veriyor, sessizce yanlış yere
+yazmıyor.
+
+**2. `change_directory` standalone modda hiç çalışmıyordu — düzeltildi
+(`c357b0f`).** "Workspace'ini değiştir" dediğinde model "internal error: no
+sandbox available" hatası alıyordu. `ExecuteToolCall` (Live Mode'un
+standalone modunun araç çağırma girişi), `RunStream`'in zaten yaptığı
+`tools.WithSandboxSetter`/`WithProjectPathSetter` context bağlamasını hiç
+yapmıyordu — araç registry'de vardı ama bu yoldan asla çalışamıyordu.
+Ayrıca `buildLiveModeToolCallHandler`'ın standalone dalı artık her çağrıdan
+önce `sessionManager.GetProjectPath`'i okuyup geri veriyor (llm.go'nun
+`RunStream`'den önce yaptığı aynı okuma) — yoksa bir önceki çağrıda
+kalıcı hale getirilen dizin değişikliği bir sonraki araç çağrısında hiç
+okunmuyordu.
+
+**3. Live Mode transkript geçmişi gerçekten kalıcı hale getirildi
+(`aabf619`).** Kullanıcı: "chat geçmişi durmuyor." Önceki implementasyon
+(`messagesProvider.addMessage()`) sadece Flutter'ın bellek-içi durumunu
+güncelliyordu — backend'e hiçbir şey söylenmiyordu, sohbet değiştirip
+geri dönünce veya uygulama yeniden başlayınca transkript kayboluyordu.
+Yeni `App.AppendMessage`/`POST /api/messages/append` — LLM turu tetiklemeden
+aktif oturuma gerçekten kaydediyor, her transkript balonu için
+`addMessage()`'ın yanında çağrılıyor.
+
+**4. Live modda yazılı metin gönderme eklendi (`aabf619`).** Kullanıcı:
+"bir metin söyleyemiyorsam (kod parçası vs.) chatten manuel yazıp
+gönderdiğimde live mod bunu alsın." Yeni istemci→sunucu WS metin çerçevesi
+(`{"type":"inject_text","text":"..."}`), sunucu tarafında doğrudan
+oturumun `InjectContext`'ine yönlendiriliyor (izin soruları/bekleme
+ipucu için zaten kullandığımız aynı mekanizma). `chat_input.dart`'ın
+gönder butonu artık native oturum aktifken normal `sendMessage()` yerine
+buna yönleniyor — yazılan metin de sesli söylenen bir şey gibi hem
+görünüyor hem kalıcı oluyor (aynı `addMessage()`+`appendMessage()` sırası).
+
+**Doğrulama:**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race   → yeşil
+$ flutter analyze lib/   → temiz (5 önceden var olan, ilgisiz info)
+$ flutter test   → 304 test, hepsi yeşil
+```
+
+**Echo/AEC**: kullanıcıya PipeWire `module-echo-cancel` komutlarını verdim
+(sistem ayarı olduğu için ben çalıştıramıyorum), henüz sonucu bilinmiyor.
+
+**Bekliyor**: repo kökünde iki dosya daha bulundu (`Classroom memo
+buradaydı.txt`, `benim_adım_memo.txt`) — `~/Desktop` gibi net bir bug
+belirtisi değil (basePath repo kökü olabilir), kullanıcıya sorulacak,
+dokunulmadı.
+
+**Sıradaki:** Kullanıcının PipeWire echo-cancel komutlarını denemesi,
+sonra tüm yeni özellikleri (kalıcı transkript, yazılı metin gönderme,
+`change_directory`/`~` düzeltmeleri) gerçek oturumda test etmesi.
+
+---
+
+# Ek (2026-08-27, devam 21) — Live Mode v2: halüsinasyon + bekleme sessizliği düzeltmeleri, ses seçimi, echo/AEC bulgusu
+
+Kullanıcının aynı testte bildirdiği dört şey daha vardı:
+
+**1. Model "yaptım" diyor ama yapmamış (halüsinasyon) — düzeltildi
+(`054d692`).** Delegate-mode system prompt'una açık bir kural eklendi:
+`delegate_to_main_model`'i GERÇEKTEN çağırıp gerçek bir sonuç almadan
+"yaptım/hallettim/tamamladım" gibi ifadeler asla kullanma, bunu yapmak
+yalan.
+
+**2. Görev çalışırken ses "git gel" yapıyor, sürekli konuşmaya çalışıyor
+— düzeltildi (`054d692`).** Kullanıcının kendi fikri: bekleme sırasında
+"hmm, bir saniye" gibi bir dolgu sesi/ifadesi. Discrete motorlardaki
+`_playFillerBestEffort`'un (önceden kaydedilmiş ses dosyası çalan) aynı
+fikri, ama bu model kendi sesini kendi ürettiği için ön-kayıtlı klip
+çalamıyoruz — bunun yerine `delegate_to_main_model` çağrıldığı an
+`InjectContext` ile "tek kısa bir şey söyle, sonra gerçek sonuç gelene
+kadar sessizce bekle" talimatı gönderiliyor.
+
+**3. Ses seçimi eklendi (`054d692`).** Kullanıcı: "Google ve ChatGPT
+tarafında modelin birden fazla ses seçeneği var, bunu da yapalım."
+`google.Client`/`openai_realtime.Client`'a opsiyonel (variadic, mevcut
+~26 test call site'ını hiç etkilemeyen) bir `voice` parametresi eklendi.
+Google: `speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName` (Puck,
+Charon, Kore, Fenrir, Aoede, Leda, Orus, Zephyr — resmi dokümanla
+doğrulandı, sabit bir katalog, "model listesi" değil). OpenAI:
+`session.audio.output.voice` (alloy, ash, ballad, coral, echo, sage,
+shimmer, verse, marin, cedar — marin/cedar OpenAI'nin kendi önerdiği en
+kaliteli sesler). Zaten var olan `EngineConfig.Voice` alanı (önceden
+sadece ElevenLabs için) yeniden kullanıldı. Ayarlar'daki Live Mode
+sekmesine bu iki motor için ses açılır menüsü eklendi.
+
+**4. "Kendi sesini geri alıyor" — echo/AEC sorunu, KOD İLE
+DÜZELTİLMEDİ, kullanıcıya açıklandı.** Kullanıcı laptop hoparlörü +
+mikrofonla test ediyor, kulaklık yok — Memo'nun kendi TTS sesi hoparlörden
+çıkıp mikrofona geri giriyor, Google bunu "kullanıcı konuşuyor" sanıyor.
+Bu muhtemelen "ses kesiliyor" bug'ının asıl kök sebebi (VAD hassasiyeti
+düşürmek yardımcı olur ama sorunu tam çözmez). `NoAecDuplexAudioEngine`
+zaten `echoCancel: true` gönderiyor (PipeWire'ın kendi echo-cancel'ı) ama
+yeterli değil — gerçek özel bir AEC pipeline'ı hiç yapılmadı (plan bunu
+başından beri gelecek iş olarak işaretlemişti). En pratik çözüm:
+kulaklık kullanmak. Kod tarafında gerçek bir çözüm, ayrı ve büyük bir ses
+mühendisliği işi olurdu — şimdilik yapılmadı.
+
+**Yan bulgu, dokunulmadı**: repo kökünde `~/Desktop/` diye literal bir
+dizin belirdi (hello.py, selam_dunya.py, bir txt dosyası) — kullanıcının
+standalone-mode testinde modelin kendisinin oluşturduğu dosyalar, ama
+`~` gerçek home dizinine genişletilmemiş. Untracked, commit'e girmedi,
+kullanıcıya bildirildi, ayrı bir konu olarak bırakıldı.
+
+**Doğrulama:**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race   → yeşil
+$ flutter analyze lib/ test/   → temiz (6 önceden var olan, ilgisiz info)
+$ flutter test   → 304 test, hepsi yeşil
+```
+
+**Sıradaki:** Kullanıcının kulaklıkla tekrar test etmesi (echo'yu
+elemek için), delegate-mode'un artık gerçekten iş yapıp yapmadığını
+görmek, ses seçiminin çalışıp çalışmadığını denemek.
+
+---
+
+# Ek (2026-08-27, devam 20) — Live Mode v2: delegate-mode hafıza + VAD barge-in hassasiyeti düzeltmeleri
+
+Bir önceki girdide kullanıcının bildirdiği iki yeni bug'a bakıldı:
+
+**1. `WorkMode: delegate` hafıza dahil hiçbir şey yapmıyordu — düzeltildi
+(`6b33273`).** Kök sebep: `buildLiveModeSystemPrompt`'un delegate-mode
+yeteneği metni ve `DelegateToolSpec`'in kendi açıklaması sadece "kod
+yazma, dosya/komut" işlerini devretme sebebi olarak gösteriyordu. Oturum
+başındaki hafıza bağlamı tek seferlik, genel bir özet (`"güncel bağlam"`
+diye genel bir sorguyla çekiliyor) — Faz 11 oturum-içi hafıza tazelemeyi
+bilinçli olarak ertelemişti. Yani konuşma sırasında hafıza gerektiren bir
+soru sorulduğunda, model bunu "devretme sebebi" olarak görmüyordu, hiçbir
+yere gitmiyordu. Hem system prompt hem tool açıklaması genişletildi:
+artık "kendi bağlamından dürüstçe cevaplayamadığın her şey" (hafıza dahil)
+devretme sebebi, modele kafadan uydurmaması söylendi. Devretme zaten ana
+modelin normal hafıza aramasına (`sendMessageStreamCore` →
+`buildMessagesForSession`) ulaşıyor, o yüzden bu değişiklik teoride
+yeterli olmalı — gerçek oturumda henüz doğrulanmadı.
+
+**Ayrı, düzeltilmemiş bulgu**: standalone modda da hafıza çalışmıyor,
+çünkü agent tool registry'sinde (search_files/web_search/whatsapp_search
+var) hiç hafıza arama aracı yok — hafıza normalde görünmez, otomatik
+per-turn bir mekanizma (`buildMessagesForSession`), modelin çağırdığı bir
+araç değil. Bu, tüm agent registry'sini etkileyecek ayrı, daha büyük bir
+özellik (sadece Live Mode değil, normal agent-mode sohbeti de etkiler) —
+şimdilik yapılmadı, kullanıcıya bildirildi.
+
+**2. Ses bazen kesiliyordu (VAD barge-in) — muhtemel düzeltme,
+`289dc2b`.** `startOfSpeechSensitivity: START_SENSITIVITY_LOW` eklendi
+(resmi referansla doğrulandı: varsayılan HIGH, "konuşma başlangıcını daha
+sık algılar" — LOW daha kesin bir sinyal istiyor). Klavye/arka plan
+sesinin modelin kendi konuşmasını kesmesini azaltmalı. `prefixPaddingMs`/
+`silenceDurationMs` (aynı yapıdaki diğer ince ayar alanları) belgelenmiş
+bir önerilen değer olmadığı için dokunulmadı. **Henüz gerçek oturumda
+doğrulanmadı.**
+
+**Doğrulama:**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race   → yeşil
+```
+
+**Sıradaki:** Kullanıcının üç şeyi birden test etmesi — tam ekran orb UI,
+delegate-mode hafıza devretmesi (örn. "geçen konuştuğumuz X neydi" gibi
+bir soru), ve ses kesilmesinin azalıp azalmadığı.
+
+---
+
+# Ek (2026-08-27, devam 19) — Live Mode v2: setup/read-limit düzeltmeleri, PCM oynatma (pacat), tam ekran UI + transkript sohbeti
+
+Önceki "Faz 14" girdisinden sonra kullanıcı Google Live ile gerçek bir
+konuşma denemeye devam etti; her denemede yeni, somut bir hata bulundu ve
+anında düzeltildi — bu girdi o dizinin tamamını topluyor.
+
+**Setup/protokol düzeltmeleri (sırasıyla bulunan gerçek hatalar):**
+1. `5c6301a` — `responseModalities` yanlış yerdeydi: `setup`'ın direkt
+   altında değil, `setup.generationConfig` içinde olmalıymış. Google'ın
+   kendi hata mesajı ("Unknown name responseModalities... Cannot find
+   field") ile bulundu, resmi referansla (`ai.google.dev/api/live`)
+   doğrulandı.
+2. `022e155` — `coder/websocket`'in varsayılan 32KB mesaj okuma limiti,
+   Google'ın gerçek ses yanıtlarını (32KB'ı kolayca aşan base64 PCM
+   parçaları) okumadan önce bağlantıyı kapatıyordu. `SetReadLimit(10MB)`
+   eklendi (her iki motor için).
+3. `4cf31ef`, `535ab26` — bu iki hatayı bulmayı mümkün kılan tanı
+   loglaması eklendi (oturum yaşam döngüsü, her sunucu mesajının özeti,
+   ilk ses paketinin boyutu, EventAudioOut'un gerçekten üretilip
+   üretilmediği).
+
+**Ses çalma (playback) — üç ayrı hata, hepsi gerçek testte bulundu:**
+4. `e066839` — `LiveModePcmPlayer`'ın subprocess hatalarını (stdout/stderr)
+   sessizce çöpe atması: process başlıyordu ama sessizce ölüyordu, hiçbir
+   hata görünmüyordu. Artık `onError` stream'i var, gerçek hata toast'ına
+   ulaşıyor.
+5. `9e0063d` — stderr'i okurken bir yarış durumu: `process.exitCode`
+   tamamlandığında stderr akışı henüz tam gelmemiş olabiliyordu, "code 1"
+   yazıp gerçek sebebi hiç göstermiyordu. `forEach()`'in Future'ını
+   `await` ederek düzeltildi.
+6. `ade6c12` — **asıl kök sebep**: `paplay`'e `-` (stdin) argümanı
+   veriyorduk ama `paplay` bunu desteklemiyor — `open("-")` diye
+   literal bir dosya açmaya çalışıp `ENOENT` ile patlıyordu (kullanıcının
+   gerçek hata mesajından bulundu: "open(): No such file or directory").
+   Doğru araç `pacat` (PulseAudio/PipeWire'ın stdin'den ham PCM akıtma
+   aracı) — geçildi, elle doğrulandı (`pacat --playback ...` ile gerçek
+   pipe testi, `pactl info` ile soket erişimi).
+
+**Sonuç: kullanıcı Google Live ile gerçek bir sesli konuşma yaptı ve
+Memo'nun sesini duydu — bu branch'te ilk kez.**
+
+**İki yeni özellik isteği, HTML mockup onayından sonra uygulandı:**
+- `385a6fc` — `SessionEvent`/WS control frame'e `role` alanı eklendi
+  ("user"/"model") — Google'ın `outputTranscription`'ı (öncesinde sadece
+  log'a yazılıyordu) ve OpenAI'nin `response.output_audio_transcript.done`'ı
+  (güncel dokümana göre doğrulanan yeni event, hiç işlenmiyordu) artık
+  gerçek transkript event'i olarak gönderiliyor.
+- `34cd235` — kullanıcının 3 HTML mockup'tan seçtiği "Canlı Orb" tasarımı
+  gerçek Flutter widget'ı olarak yazıldı (`live_realtime_view.dart`) —
+  nefes alan bronz küre, pulsing "canlı" rozeti, altında mevcut
+  `ChatMessageList` aynen kullanılıyor (bubble render mantığı tekrar
+  yazılmadı). `chat_screen.dart` artık native oturum aktifken bu view'ı
+  gösteriyor. Transkriptler `messagesProvider.addMessage()` ile normal
+  sohbet balonu gibi ekleniyor — `chat_input.dart`'ın `_sendWhatsApp()`
+  metodunun zaten kullandığı "gerçek gönderim yolunun dışında elle
+  ChatMessage ekle" deseninin aynısı. Kullanıcıyla teyit edildi: bu
+  balonlar kalıcı (oturum bitince silinmiyor), ana modele hiç
+  gönderilmiyor.
+  **Basitleştirme (şeffafça not edildi)**: "gönder oku alta taşınsın"
+  isteği tam olarak uygulanmadı — mesaj input satırı zaten ekranın en
+  altında (yapısal olarak), o yüzden ayrı bir dock'a çıkarmadım; kullanıcı
+  gerçek sonucu görüp isterse bir sonraki turda düzeltilecek.
+
+**Doğrulama:**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race   → yeşil
+$ flutter analyze lib/ test/   → temiz (5 önceden var olan, ilgisiz info)
+$ flutter test   → 304 test, hepsi yeşil
+```
+
+**Kullanıcının bu turda bildirdiği, henüz çözülmemiş iki yeni bug:**
+- **Ses bazen kesiliyor** — muhtemelen Google'ın kendi VAD'i klavye/arka
+  plan sesini kullanıcının tekrar konuşmaya başladığı sanıp modeli
+  kesiyor (loglarda `interrupted=true` zaten görülmüştü). Google Live'ın
+  `realtimeInputConfig.automaticActivityDetection` hassasiyet ayarları
+  araştırılacak.
+- **`WorkMode: delegate` gerçek oturumda hiçbir şey yapmıyor** (hafıza
+  dahil) — standalone modda "çalışıyor gibi ama yine buglu". Faz 9-10'da
+  sadece unit test'lerle doğrulanmıştı, hiç gerçek Google Live oturumuyla
+  test edilmemişti. Canlı log'larla incelenmesi lazım.
+
+**Sıradaki:** Kullanıcının bu son push'u tekrar test etmesi (tam ekran
+orb + transkript balonları), paralelde delegate-mode bug'ının kod
+incelemesiyle başlanacak.
+
+---
+
+# Ek (2026-08-26, devam 18) — Live Mode v2: gerçek testte bulunan 4 hata düzeltildi ("Faz 14")
+
+Kullanıcı branch'i `scripts/run_memo.sh` ile gerçek uygulamada test etti
+(Google Live seçip konuşmayı denedi) ve dört gerçek hata buldu. Hepsi
+düzeltildi, doğrulandı, commit'lendi (`c757a80`, `bc2d0b2`, `f4d74b0`,
+`cabfd1a`).
+
+**En önemlisi — asıl özelliğin kendisi hiç çalışmıyordu:**
+`chat_input.dart`'taki ses butonu, Ayarlar'da hangi motor seçilirse
+seçilsin HEP eski `voiceModeProvider` (yerel VAD → `transcribeAudio()` →
+sohbet → `synthesizeSpeech()`) döngüsünü kullanıyordu. Google Live/OpenAI
+Realtime için inşa edilen tüm native WebSocket oturumu
+(`liveRealtimeSessionProvider`, Faz 6-12) **hiçbir yerden çağrılmıyordu** —
+UI'dan tamamen erişilemez, ölü koddu. Kullanıcı Google Live seçip
+konuştuğunda aslında hâlâ local whisper.cpp'nin sesi anlamaya çalıştığını
+gördük (log'da `lang = auto`, `auto-detected language: es` — Türkçe kısa
+cümleyi İspanyolca sanıp saçma çeviriyordu, kullanıcının ekranda gördüğü
+Devanagari/anlamsız çıktının gerçek sebebi buydu). Sebep: Faz 6'nın kendi
+yorum satırı "mikrofon/oynatma bağlama Faz 7/8'de gelecek" diye açıkça not
+düşmüştü ama Faz 7/8 sadece backend client'larını genişletti, Flutter
+tarafına hiç dönülmedi.
+
+**Düzeltme** (`cabfd1a`, en büyük commit):
+- `chat_input.dart` artık aktif motora göre dallanıyor:
+  google_live/openai_realtime → yeni native-oturum butonu
+  (`liveRealtimeSessionProvider`); geri kalanı (local/elevenlabs/custom)
+  eski akışta değişmeden kalıyor.
+- `LiveRealtimeSessionNotifier` artık gerçek sesi iki yönde de sahipleniyor:
+  `DuplexAudioEngine` ile mikrofon yakalama (örnekleme hızı artık
+  yapılandırılabilir — Google Live 16kHz, OpenAI Realtime 24kHz, eskiden
+  16000'e sabitliydi), yakalanan sesi WS'ye sürekli akıtıyor; gelen sesi
+  yeni `LiveModePcmPlayer` ile çalıyor.
+- `LiveModePcmPlayer` (yeni dosya): `WavPlayer`'ın aksine (her klip için
+  ayrı dosya + ayrı subprocess) kalıcı bir `paplay --raw`/`aplay -t raw`
+  subprocess'i, stdin'e sürekli PCM akıtarak — küçük gerçek-zamanlı ses
+  parçaları için process-başına-spawn yaklaşımı kopukluk yaratırdı.
+  **Şimdilik sadece Linux** — `afplay`/PowerShell `SoundPlayer`'ın stdin'den
+  akış modu belgeli değil, tahmin etmek yerine macOS/Windows'ta açık bir
+  `UnsupportedError` fırlatıyor (FriendlyError üzerinden kullanıcıya
+  görünür).
+- WS metin çerçevelerini ayrıştıran `LiveModeSessionControlFrame.fromJson`
+  eklendi; hata çerçeveleri artık genel hata toast'ına ulaşıyor (`_setError`
+  — eskiden `state.error`'ı hiçbir UI okumuyordu).
+- Yeni L10n anahtarları (TR+EN, kural #8): `live_realtime_start/stop/
+  state_connecting/state_connected`.
+
+**Diğer üç düzeltme:**
+1. **Google Live model listesi sayfalama** (`c757a80`,
+   `internal/livemode/google/models.go`): `models.list` sayfalıyor
+   (`nextPageToken`), eski kod sadece ilk sayfayı okuyordu — bazı live
+   modeller listeden düşüyordu. Artık `nextPageToken` boşalana kadar
+   döngüyle takip ediliyor, token URL-escape'leniyor. Regresyon testi
+   eklendi (iki sayfalı sahte sunucu).
+2. **Ham hata metni kullanıcıya dökülüyordu** (`bc2d0b2`): kullanıcının
+   gördüğü "DioException [bad response]: This exception was thrown..."
+   duvarı — `live_mode_controller.dart` ve `live_realtime_session_provider.dart`
+   commit `d26ad80`'in ~170 site'lık denetiminden kaçmış iki nokta. İkisi
+   de artık `FriendlyError.describeGeneric` üzerinden geçiyor.
+3. **`.gitignore` eksikliği** (`f4d74b0`): `data/tts_providers.json`,
+   `data/stt_providers.json`, `data/livemode_engines.json` — üçü de
+   şifreli API key'leri tutuyor (`data/providers.json` gibi) ama hiçbiri
+   `.gitignore`'da değildi. Kullanıcının kendi test config'i
+   (`data/livemode_engines.json`) untracked dosya olarak ortaya çıkınca
+   fark edildi. Düzeltildi, dosya commit'e girmedi (silinmedi de —
+   kullanıcının kendi gerçek local config'i, sadece artık doğru şekilde
+   git'in dışında).
+
+**Doğrulama:**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race   → yeşil
+$ flutter analyze lib/ test/   → temiz (5 önceden var olan, ilgisiz info)
+$ flutter test   → 298 test, hepsi yeşil
+```
+
+**Hâlâ dürüstçe doğrulanamayan/bilinen sınırlar:**
+- Gerçek Google Live bağlantısıyla uçtan uca hâlâ test edilmedi bu
+  oturumda — kullanıcının şimdi tekrar denemesi lazım, artık gerçek
+  native oturum açılacak (önceki gibi sessizce local whisper'a
+  düşmeyecek).
+- Sesli oynatma sadece Linux'ta çalışıyor — macOS/Windows için ayrı bir
+  iş kalemi.
+- Google Live'ın transkripsiyon dili için özel bir dil kodu hâlâ
+  gönderilmiyor — ama artık gerçek sorunun (whisper.cpp yanlış motor
+  kullanımı) düzeltilmiş olması bunu gereksiz kılmış olabilir; kullanıcı
+  tekrar test edip hâlâ garip çıktı görürse o zaman bakılacak.
+
+**Sıradaki:** Kullanıcının branch'i tekrar test etmesi — özellikle Google
+Live ile gerçek bir konuşma denemesi. Sorun çıkarsa devam edilecek.
+
+---
+
+# Ek (2026-08-26, devam 17) — Live Mode v2 TAMAMLANDI (Faz 0-13, `feature/live-mode-v2`)
+
+**Tüm plan bitti.** `docs/plans/PLAN_live_mode_v2.md`'nin 0-13 fazlarının
+hepsi tamamlandı; bu, kullanıcının "faz 2 3 4 artık kaç faz varsa yap
+durma" talimatıyla başlayan, kesintisiz otonom çalışmanın kapanışı.
+
+**Ne teslim edildi:**
+- **Part A** — Live Mode betadan çıktı, Ayarlar'da kendi sekmesi var
+  (`live_mode_tab.dart`), 5 motor seçilebiliyor: Local (mevcut
+  whisper.cpp+Piper), Google Live, OpenAI Realtime, ElevenLabs, Custom
+  (OpenAI-uyumlu STT/TTS REST endpoint). Her motorun model/ses listesi
+  HER ZAMAN o sağlayıcının kendi API'sinden canlı çekiliyor — hiçbiri
+  koda hardcoded değil.
+- **Part B** — İki-model agent mimarisi: Google Live/OpenAI Realtime
+  kendi native muhakemesiyle "live model" oluyor; Local/ElevenLabs/
+  Custom'da ayrı bir live model kavramı yok, transkript direkt ana
+  modele gidiyor (kullanıcının netleştirdiği tasarım). `WorkMode:
+  "delegate" | "standalone"` toggle'ı (kullanıcının kendi fikri) native
+  motorlarda iş yapma şeklini seçtiriyor. Sesli izin isteme
+  (`voice_prompt` politikası) uçtan uca çalışıyor.
+
+**Bu ortamda dürüstçe doğrulanamayan kısımlar** (her biri ilgili fazın
+durum notunda ayrı ayrı işaretli, burada sadece toplu özet):
+- Gerçek sağlayıcı API key'i hiç yoktu — her şey httptest sahte
+  sunucularıyla doğrulandı, gerçek Google/OpenAI/ElevenLabs bağlantısıyla
+  asla değil.
+- Google Live'ın transkripsiyon alan yuvalanması güncel dokümanlarda bile
+  çelişkiliydi — bir yorumla karar verildi, "gerçek oturumda tersi
+  çıkarsa değiştirilecek tek satır" olarak işaretli
+  (`internal/livemode/google/client.go`, `serverContent` yorumu).
+- Oturum-içi hafıza tazeleme + delege-görev ilerleme anlatımı (Faz 11'in
+  kapsam dışı bıraktığı) hiç uygulanmadı.
+- Gerçek cihazda Flutter↔Go duplex ses testi bu ortamda hiç mümkün
+  olmadı.
+
+**Bu çalışma sırasında bulunup düzeltilen gerçek bir hata** (Faz 12):
+`ExecuteToolCall`'ın `onEvent`'i izin isteğini `pendingPerms`'e
+kaydetmeden ÖNCE senkron çağırması — standalone modun izin çözümlemesini
+kendi goroutine'ine taşıyarak düzeltildi, regresyon testi eklendi. Detay
+"devam 16" girdisinde.
+
+**Bu branch'in kapsamı dışında bırakılan, ayrı görevler olarak
+flag'lenmiş iki önceden var olan sorun** (Live Mode'un kendisiyle ilgisi
+yok): `internal/agent`'ta gofmt drift'i (main'de, bu çalışmadan önce de
+vardı — `task_e1ee0dda`), test'lerin `config.DataPath()`-göreli-yol
+nedeniyle yarattığı artık dizinler (`task_3d494e5a`).
+
+**Doğrulama:** her fazın kendi commit'i kendi `go build/vet/test -race`
+(ve Flutter dokunan fazlarda `flutter analyze`+`flutter test`+Kural #8
+grep) çıktısını taşıyor — 14 ayrı fazın (0-13) hepsi ayrı ayrı yeşil.
+Faz 12'nin sonunda ayrıca tüm modül için tek seferde
+`CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race` çalıştırıldı —
+tüm paketler (agent, app, livemode+alt paketleri, webserver, tts, stt,
+whatsapp, telegram, ... dahil tüm modül) yeşil. Faz 13 sadece dokümantasyon
+değişikliği olduğundan bu, dalın şu anki hâli için hâlâ geçerli.
+
+**Sıradaki:** Bu dal (`feature/live-mode-v2`) kullanıcı incelemesi ve
+gerçek sağlayıcı API key'leriyle canlı testi bekliyor — main'e merge
+otonom yapılmadı (kullanıcının kendi onayı gerekli, plan bunu
+otomatikleştirmedi). Kullanıcı hazır olduğunda: gerçek Google/OpenAI/
+ElevenLabs key'leriyle uçtan uca sesli test, ardından PR/merge.
+
+---
+
+# Ek (2026-08-26, devam 16) — Live Mode v2 Faz 10/11/12 (tool-wiring, InjectContext, sesli izin isteme)
+
+**Not:** Faz 10 (`66be542`) ve Faz 11 (`3de8514`) bu oturumda daha önce
+tamamlanıp commit'lenmişti ama handoff girdileri hiç eklenmemiş — bu
+girdi üçünü birden kapatıyor (kural ihlali fark edildiğinde düzeltildi,
+sessizce atlanmadı).
+
+**Faz 10 tamamlandı** (`66be542`) — Faz 7/8'in ses-taşıyan client'ları ve
+Faz 9'un delegasyon/standalone primitifleri artık tek çalışan bütün:
+- Yeni `livemode.ToolSpec`/`ToolCallHandler` (`internal/livemode/
+  delegate_tool.go`) — delegasyon semantiğini de provider wire formatını
+  da bilen tek dikiş yeri, `internal/livemode`'da yaşıyor ki
+  google/openai_realtime agent-spesifik hiçbir şey bilmesin,
+  `internal/app` da hiçbir provider'ın wire formatını bilmesin.
+- `google.Client`/`openai_realtime.Client` artık `NewClient`'ta
+  `tools`+`handleToolCall` alıyor; `readLoop`'ları kendi provider'ının
+  tool-call olayını tanıyor (Google `toolCall`, OpenAI
+  `response.function_call_arguments.done`), `handleToolCall`'ı kendi
+  goroutine'inde çağırıp (yavaş bir delege görev read loop'u
+  bloklamasın) sonucu native formatla geri gönderiyor.
+- Yeni `App.NewLiveModeSession` (`internal/app/livemode_session.go`) artık
+  gerçek client/`EchoSession` kararının TEK yeri — `internal/webserver`
+  artık sadece WS transport'u sahipleniyor (`FullBridge.NewLiveModeSession`
+  üzerinden erişiliyor).
+
+**Faz 11 tamamlandı** (`3de8514`) — `livemode.Session.InjectContext(text)
+error`: açık oturuma kısa, tur-dışı bir metin ekliyor (Google
+`realtimeInput.text`, OpenAI `conversation.item.create` sistem-rollü
+mesaj). **Bilinçli kapsam daraltması**: hafıza tazeleme ve delege-görev
+ilerleme anlatımı (planın öngördüğü iki tüketici) bu fazda uygulanmadı —
+ikisi de canlı API doğrulaması istiyordu ve Google'ın transkript
+alanlarının nerede yuvalandığı güncel dokümanlarda bile belirsizdi;
+tahminle koda geçirmek yerine dürüstçe ertelendi.
+
+**Faz 12 tamamlandı** (`e27b87f`) — `AgentPermissionPolicy`'nin
+varsayılanı `"voice_prompt"` artık gerçekten çalışıyor:
+- Faz 11'in ertelediği transkript ayrıştırma bu fazın sert ön koşulu
+  oldu: her iki client artık transkripsiyonu setup'ta/session.update'te
+  her zaman açıyor ve kendi tamamlanma olayını `EventTranscript`'e
+  çeviriyor (Google'ın yuvalanma belirsizliği koda yorum olarak not
+  düşüldü, transkripsiyona özel dokümantasyon örnekleri tercih edildi).
+- `internal/app`'te `livePermMu`/`livePendingPermAnswerCh` +
+  `awaitLivePermissionAnswer`/`routeLiveTranscriptToPermissionAnswer` —
+  WhatsApp self-chat'in bekleyen-cevap desenini chatJID eşleştirmesi
+  olmadan yansıtıyor (Live Mode'da aynı anda tek aktif oturum var).
+- Yeni `livemode_session_wrapper.go`: `livePermissionRoutingSession`
+  gerçek client'ı sarmalayıp her `EventTranscript`'i hem bekleyen izin
+  sorusuna yönlendiriyor hem de değişmeden dış `Events()` kanalına
+  iletiyor (Flutter'daki normal gösterim bozulmuyor).
+- `NewLiveModeSession`'da bir ileri-referans closure (`injectFn`) —
+  tool-call handler'ın `InjectContext`'e ihtiyacı var ama onu sahiplenen
+  client henüz inşa edilmemişken handler kurulmak zorunda; closure bu
+  döngüyü güvenle kırıyor (handler gerçek bir tool call'dan önce asla
+  çağrılmıyor, o noktada `injectFn` çoktan atanmış oluyor).
+
+**Bu fazda gerçek bir hata bulundu ve düzeltildi**: `ExecuteToolCall`
+`onEvent`'i `permission_request` olayıyla SENKRON çağırıyor —
+`e.pendingPerms`'e kaydetmesinden (kendinden bir sonraki satır) ÖNCE.
+Standalone modun `onEvent`'i izinleri aynı goroutine'de satır içinde
+çözüyordu: autoApprove için bu her seferinde cevabı kaybediyordu
+(zamanlamaya bağlı değil, deterministik), voice_prompt için ise kaydı
+tamamen kilitlerdi (`onEvent` saniyelerce soru sorup cevap bekleyerek
+`ExecuteToolCall`'ın kayıt satırına hiç ulaşmasını engellediği için).
+**Düzeltme:** çözümleme kendi goroutine'ine taşındı
+(`resolveLivePermission`), autoApprove için kısa/sınırlı bir yeniden
+deneme ile artakalan zamanlama yarışı kapatıldı — WhatsApp/Telegram
+self-chat yolunun kendi SSE-kanal teslimiyle zaten tolere ettiği aynı
+türden bir yarış, burada açıkça ele alındı (standalone modun aynı doğal
+gecikmeyi sağlayacak bir kanal teslimi yok). Düzeltmeden önce 60 saniye
+asılı kalıp başarısız olacak bir regresyon testi eklendi
+(`TestBuildLiveModeToolCallHandler_StandaloneMode_AutoApprovePermission`).
+
+**Doğrulama (yapıştırıldı, Faz 12 için):**
+```
+$ gofmt -l <dokunulan dosyalar>          → temiz
+$ CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...   → temiz
+$ CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...     → temiz
+$ CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (internal/app 11.847s, internal/livemode 1.029s,
+  internal/livemode/google 1.046s, internal/livemode/openai_realtime
+  1.649s dahil) — transkript ayrıştırma (her iki provider, boş-transkript
+  olay-üretmeme dahil), bekleyen-cevap primitifi round-trip'i (+ context
+  timeout), wrapper'ın çift-tüketim davranışı (transkript hem yönlendirici
+  hem dış kanala aynı anda), standalone modun autoApprove/voice_prompt
+  onay/red/sor-başarısız yollarının tümü gerçek write_file aracıyla uçtan
+  uca — hepsi yeşil.
+```
+`internal/agent/data/` test kirliliği (bilinen kök neden, önceki
+görevle aynı) commit öncesi temizlendi.
+
+**Sıradaki:** Faz 13 (temizlik) — `beta_features_tab.dart`'ın akıbeti
+(muhtemelen Faz 1'in çıkarımından sonra neredeyse boş — öyleyse
+kaldırılacak, sekme index'leri yeniden numaralandırılacak,
+`settings_dialog_test.dart`'ın kapsama testi güncellenecek), planın
+kapanış durumu + son handoff girdisi. Kullanıcı onayı beklemeden devam
+ediliyor.
+
+---
+
+# Ek (2026-08-26, devam 15) — Live Mode v2 Faz 9 (delegasyon primitifi)
+
+**Faz 9 tamamlandı** (`a07be2e`) — planın en mimari-yoğun bölümü. İki
+primitif eklendi:
+
+1. **`App.SendLiveDelegatedMessageStream`** (`internal/app/
+   livemode_delegate.go`): `SendMessageStreamToAsAgent`'ın tool-execution
+   davranışını (`forceAgent=true`, `sendMessageStreamCore`'u DOĞRUDAN
+   çağırıyor — `sendMessageStreamInnerTo`/`SendCLIMessageStream`/
+   `runAgentRoutine`'in hepsinin paylaştığı aynı çekirdek) `SendCLIMessageStream`'in
+   concurrency modeliyle (`a.liveJobsMu`/`a.liveJobs`, `a.streamMu` DEĞİL)
+   birleştiriyor. `a.streamMu`'yu kilitleyip tutan bir testle doğrulandı —
+   delegasyon akışı yine de tamamlanıyor, gerçekten global kilidi
+   atladığını kanıtlıyor. Özel arka plan sohbetinde çalışıyor
+   (`getOrCreateLiveModeChat`, `sessions.Manager.NewBackgroundChat` ile —
+   WhatsApp/Telegram self-chat'in kullandığı aynı mekanizma), v1 için tek
+   bir scalar (map değil — plan dosyasında ileride çok-cihazlı eşzamanlı
+   Live Mode gerekirse ilk gözden geçirilecek yer olarak işaretli).
+   Çağıranın `sessionCtx`'ine bağlı (live oturumun kendi context'i),
+   **bilerek** `a.lifecycleCtx` DEĞİL — CLI job'larından bilinçli bir
+   sapma, kodda not düşüldü ki ileride "düzeltilmesin".
+
+2. **`App.drainLiveDelegatedReply`**: mevcut `drainSelfChatReply`'nin
+   (WhatsApp/Telegram self-chat) ince, dürüst isimli bir sarmalayıcısı —
+   o fonksiyonun callback tabanlı imzası (autoApprove/buildQuestion/
+   sendQuestion/awaitAnswer) zaten tamamen provider-agnostic olduğu için
+   aynı döngü ikinci bir isimle tekrar yazılmadı. Faz 12 gerçek "sesli
+   sor" callback'lerini "voice_prompt" politikası için ekleyecek;
+   "auto_allow_once" zaten `autoApprove=true` ile tam çalışıyor.
+
+3. **`agent.Executor.ExecuteToolCall`** (`internal/agent/
+   execute_tool_call.go`): standalone mod primitifi — tek bir tool call'ı
+   izole çalıştırıyor (rate limit, izin kontrolü, execute), etrafında
+   ChatCompletion döngüsü yok (döngü dış tarafta — native motorun kendi
+   muhakemesi). `RunStream`'in aynı async izin-bekleme mekanizmasını
+   (`e.mu`/`pendingPerms`, 60s auto-deny) yeniden kullanıyor, böylece
+   bekleyen bir istek aynı `Executor.HandlePermissionResponse`/
+   `App.HandleAgentPermission` yoluyla çözülüyor — yeni bir izin-yönlendirme
+   altyapısına gerek yok. Her çağrı aynı audit log'a yazılıyor.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok — per-job exclusivity, arka plan sohbeti oluşturma/
+  yeniden kullanma, streamMu bağımsızlığı, session-context iptalinin
+  gerçekten işi bitirmesi, drainLiveDelegatedReply'nin auto-approve/hata
+  davranışı + ExecuteToolCall'ın Safe-tool no-prompt yolu, bypassPermissions,
+  ve HandlePermissionResponse üzerinden tam async onay/red round-trip'i
+  (gerçek write_file/read_file araçlarıyla, mock değil) — hepsi yeşil
+```
+
+**Yan bulgular (temizlendi/flag'lendi, Faz 9'un kendisiyle ilgisi yok):**
+- `internal/agent/{pipeline,executor,backup,backup_test}.go` main'de
+  gofmt-temiz değil (muhtemelen bir merge'den kalma) — ayrı bir arka plan
+  görevi olarak flag'lendi, bu commit'e bundle edilmedi.
+- Bu paketin testlerini çalıştırmak `internal/agent/data/` (audit log +
+  backup history) diye izlenmeyen bir dizin yaratıyor — aynı
+  `config.DataPath()`-göreli-yol-paket-dizinine-çözümleniyor kök nedeni,
+  daha önce flag'lenen görevle aynı — bu oturumda temizlendi.
+
+**Sıradaki:** Faz 10 — her iki `WorkMode`'un gerçek client'lara
+bağlanması: tool-set builder (`delegate_to_main_model` vs tam agent
+registry, provider-native formata çeviri) + tool-call routing + sadece
+final-result anlatımı (henüz ilerleme enjeksiyonu yok) + oturum başlangıcı
+system prompt'u (`identity.BuildSystemPrompt`'un live-mode varyantı) +
+Flutter'da `WorkMode` seçici zaten Faz 3'te vardı. Kullanıcı onayı
+beklemeden devam ediliyor.
+
+---
+
+# Ek (2026-08-26, devam 14) — Live Mode v2 Faz 8 (OpenAI Realtime client)
+
+**Faz 8 tamamlandı** (`9e143fa`): `internal/livemode/openai_realtime.Client`,
+Faz 7'nin (Google) birebir aynası, OpenAI Realtime'ın kendi wire
+protokolüne göre: `wss://api.openai.com/v1/realtime?model=...` +
+`Authorization: Bearer` header (key URL'de değil), önce `session.update`
+(session.type="realtime", model, output_modalities:[audio], instructions,
+audio.input/output.format — her iki yönde de 24kHz PCM, Google'ın
+asimetrik 16kHz-giriş/24kHz-çıkışının aksine), sonra
+`input_audio_buffer.append` ↔ `response.output_audio.delta`. Diğer tüm
+server event tipleri (session.created, speech_started/stopped vb.)
+sessizce yok sayılıyor — bunu doğrulayan ayrı bir test de var.
+`handleLiveModeSession` artık her iki native motoru kapsıyor.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok — paket-seviyesi testler (auth header, model query
+  param, session.update şekli, SendAudio encode, delta→EventAudioOut,
+  ilgisiz event'lerin yok sayılması) + Flutter-istemci→gerçek handler→
+  sahte-OpenAI tam zincir testi hepsi yeşil
+```
+
+**Eksik/doğrulanamayan:** Bu ortamda gerçek OpenAI API key'i yok — sadece
+belgelenen wire protokolüne karşı sahte sunucularla doğrulandı.
+
+**Sıradaki:** Faz 9 — Part B delegasyon primitifi (backend-only,
+provider-agnostic): `SendLiveDelegatedMessageStream`, per-job concurrency
+map, özel arka plan sohbeti, `drainLiveDelegatedReply`/izin çözümlemesi;
+aynı fazda `"standalone"` modu için `agent.Executor.ExecuteToolCall`
+tek-araç sarmalayıcısı. Bu, planın en mimari-yoğun kalan bölümü —
+`internal/app/chat.go`'nun `streamMu`/`sendMessageStreamCore`'unu ve
+`cli_stream.go`/`selfchat_permission.go`'nun emsallerini dikkatle
+inceleyerek ilerlenecek. Kullanıcı onayı beklemeden devam ediliyor.
+
+---
+
+# Ek (2026-08-26, devam 13) — Live Mode v2 Faz 7 (Google Live client)
+
+**Faz 7 tamamlandı** (`0ecee0f`): `internal/livemode/google.Client`,
+gerçek Gemini Live API wire protokolüne karşı doğrulanmış şekilde
+(`livemode.Session` arayüzünü implemente ediyor):
+`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=...`
+dial ediyor, önce zorunlu `setup` mesajını gönderiyor (model +
+`responseModalities: ["AUDIO"]` + opsiyonel `systemInstruction` — model
+string'i her zaman Faz 4'ün keşif çağrısından geliyor, burada hiç
+uydurulmuyor), sonra `realtimeInput` (istemci sesi, base64 16kHz PCM) ↔
+`serverContent.modelTurn.inlineData` (sunucu sesi, base64 24kHz PCM)
+mesajlarıyla devam ediyor. Henüz tool-calling/function-call yok (Faz 10).
+
+`handleLiveModeSession`'ın dispatch mantığı (`newLiveModeSession`) artık:
+aktif motor "google_live" VE kayıtlı bir engine config'i (api_key + model
+ikisi de dolu) varsa gerçek `google.Client`'ı kullanıyor; yoksa (henüz
+bağlanmamış "openai_realtime" dahil, ya da yanlış yapılandırılmış
+google_live) Faz 6'nın `EchoSession`'ına düşüyor — böylece bir oturum
+her zaman açılıyor, hiç başarısız olmuyor.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok — internal/livemode/google'ın kendi testleri sahte bir
+  Gemini-Live-şekilli WS sunucusuna karşı setup mesaj şeklini, SendAudio'nun
+  base64 encode+mimeType'ını, serverContent→EventAudioOut dönüşümünü
+  doğruluyor; yeni bir webserver-seviyesi test daha da ileri gidip
+  Flutter-istemci→gerçek handler→sahte-Google zincirinin TAMAMINI uçtan
+  uca kanıtlıyor (sahte sunucunun gönderdiği ses, Flutter tarafındaki
+  istemciye byte-byte aynen ulaşıyor)
+```
+
+**Eksik/doğrulanamayan:** Bu ortamda gerçek Google API key'i yok — sadece
+belgelenen wire protokolüne karşı sahte sunucularla doğrulandı, gerçek
+API'ye karşı asla.
+
+**Sıradaki:** Faz 8 — OpenAI Realtime client'ı (Faz 7'nin aynası, kendi
+mesaj şekilleriyle: `session.update`, `input_audio_buffer.append`,
+`response.output_audio.delta`). Kullanıcı onayı beklemeden devam ediliyor.
+
+---
+
+# Ek (2026-08-26, devam 12) — Live Mode v2 Faz 6 (WS transport iskeleti)
+
+**Faz 6 tamamlandı** (`4bc046d`): yeni `internal/livemode.Session`
+arayüzü (`Start`/`SendAudio`/`Events`/`Close`) — Google Live/OpenAI
+Realtime client'larının Faz 7/8'de implemente edeceği ortak sözleşme —
+artı `EchoSession` stub'ı (aldığı sesi aynen geri oynatıyor). Bu fazın
+tek amacı: gerçek bir sağlayıcı client'ı yokken Flutter↔backend duplex
+taşımanın uçtan uca çalıştığını kanıtlamak.
+
+Yeni `GET /api/livemode/session` WS endpoint'i — ikili mesajlar ham PCM
+(her iki yönde), metin mesajlar küçük bir JSON kontrol çerçevesi
+(transkript/function-call/hata) taşıyor, sohbet SSE'sinin zaten kullandığı
+`FinishReason`-discriminator kalıbının aynısı. Bu fazda motor ne
+seçiliyse seçilsin her zaman `EchoSession` kullanılıyor — gerçek motora
+yönlendirme Faz 7/8'de. `coder/websocket` (Tailscale/gosearch üzerinden
+zaten indirect bağımlılıktı) `go mod tidy` ile direct'e terfi etti,
+go.mod/go.sum diff'i temiz doğrulandı (ikinci bir WS kütüphanesi
+eklenmedi).
+
+Frontend: yeni `LiveRealtimeSessionNotifier` (StateNotifierProvider) WS
+bağlantı yaşam döngüsünü yönetiyor — connecting/connected/error/closed
+durumları, bilinçli olarak `VoiceModeNotifier`'ın idle/listening/
+thinking/speaking şeklinden FARKLI (native motorlar tam-duplex/sürekli-akış,
+turn-taking sağlayıcı tarafında — raporlanacak anlamlı bir "düşünüyor"
+anı yok). Generation-counter, eski bir `connect()`'in ya da mesajın daha
+yeni state'i ezmesini önlüyor — `VoiceModeNotifier`'ın kendi barge-in
+korumasıyla aynı genel savunma pratiği (Riverpod'un Notifier-instance-reuse
+gotcha'sı değil — `StateNotifierProvider` o sorunu göstermiyor, bu sadece
+standart async-race hijyeni). Yeni `web_socket_channel` bağımlılığı,
+`pubspec.lock` diff'i temiz.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (httptest+coder/websocket ile gerçek WS round-trip testi
+  dahil: istemcinin gönderdiği ikili frame değişmeden geri dönüyor)
+$ flutter analyze lib/ test/ → 6 sorun (5 önceden kabul edilmiş + 1
+  ilgisiz önceden var olan info)
+$ flutter test → 287/287 yeşil (4 yeni test: URL builder + varsayılan state)
+$ Rule #8 grep → temiz
+```
+
+**Eksik/doğrulanamayan:** Gerçek cihaz seviyesinde Flutter↔Go duplex ses
+testi bu ortamda mümkün değil (böyle bir harness yok) — yukarıdaki
+httptest seviyesi taşıma kanıtı Faz 6'nın gerçekten doğrulayabildiği şey.
+
+**Sıradaki:** Faz 7 — Google Live client'ı (`internal/livemode/google/
+client.go`, sadece setup/audio, henüz function-calling yok), Faz 6'nın
+gerçek köprüsüne bağlanacak. Kullanıcı onayı beklemeden devam ediliyor.
+
+---
+
+# Ek (2026-08-26, devam 11) — Live Mode v2 Faz 5 (ses döngüsü bağlantısı, Part A tamam)
+
+**Faz 5 tamamlandı** (`911d347`): `SynthesizeSpeech`/`TranscribeAudio`
+artık aktif Live Mode motoru ElevenLabs/Custom ise, önce o motorun kendi
+kayıtlı config'inden (`internal/livemode.EngineConfig`) doğrudan bir
+`tts.TTSProvider`/`stt.STTProvider` kurup çağırıyor; başarısız olursa
+eski davranışa (external `tts.Router` → yerel Piper/whisper.cpp) düşüyor
+— tıpkı önceden var olan "her zaman eninde sonunda çalışır" güvenlik ağı
+gibi. "local" değişmedi, "google_live"/"openai_realtime" bu discrete-turn
+çağrıyı hiç kullanmıyor (native oturum client'ları sonraki fazlarda).
+
+**Bilinçli sapma:** Plan dosyasının §4.2 taslağı `internal/tts`/
+`internal/stt`'nin kendi provider sistemleriyle senkronizasyon
+öneriyordu; bunun yerine **hiç senkronizasyon yapılmadı** — aynı API
+key'in iki ayrı config store'da (`data/livemode_engines.json` VE
+`data/tts_providers.json`/`data/stt_providers.json`) durup drift
+edebilmesi, AGENTS.md'nin BUG-ONB derslerinin (local pref backend'den
+sapıyor) tam bir örneği olurdu. Direkt Live Mode'un kendi config'inden
+provider kurup çağırmak hem daha basit hem yapısal olarak bu riske kapalı.
+Mevcut `/api/tts/providers` sistemi tamamen bağımsız kalıyor, "local"
+motorun opsiyonel external TTS fallback'ini eskisi gibi besliyor.
+
+**Part A artık 5 motordan 3'ü (Local/ElevenLabs/Custom) için sıfır
+delegasyon karmaşıklığıyla tamamen teslim edildi** (Faz 1-5).
+
+**Yan not — repo hijyeni bulgusu:** Bu paketin testlerini repo kökünden
+çalıştırmak, önceden var olan `TestSelectTTSVoice_
+ConfiguresSynthesizerFromDownloadedVoice` testinin gerçek `config.Save`
+yolunu tetiklediğini ve `internal/app/config/config.yaml`'ı (git'te
+takip edilen bir dosya) kirlettiğini + `internal/app/data/machine.key`
+(gerçek şifreleme anahtarı) diye izlenmeyen bir dosya oluşturduğunu
+ortaya çıkardı — `go test`'in çalışma dizini repo kökü değil, paket
+dizini olduğu için `config.DataPath()`'in göreli çözümlemesi yanlış yere
+düşüyor. Bu oturumda kirlenme geri alındı (`git restore`/`rm`), kök
+neden ayrı bir arka plan görevi olarak flag'lendi (`task_3d494e5a`) —
+Faz 5'in kendisiyle ilgisi yok, önceden var olan bir sorun.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (yeni httptest'li başarı/fallback testleri + "local
+  motor etkilenmiyor" regresyon testi yeşil)
+```
+
+**Sıradaki:** Faz 6 — WS köprü iskeleti (`internal/livemode/session.go`,
+`coder/websocket` direct bağımlılığa terfi, `/api/livemode/session` stub/
+echo session ile) + Flutter `LiveRealtimeSessionNotifier`/
+`web_socket_channel` — gerçek sağlayıcılara dokunmadan duplex taşımayı
+kanıtlayacak. Kullanıcı onayı beklemeden devam ediliyor.
+
+---
+
+# Ek (2026-08-26, devam 10) — Live Mode v2 Faz 4 (canlı model keşfi)
+
+**Faz 4 tamamlandı** (`3abbe19`): `internal/livemode/google.ListLiveModels`
+(Google'ın `models.list`'i, `supportedGenerationMethods` içinde
+`bidiGenerateContent` geçenleri filtreliyor) + `internal/livemode/
+openai_realtime.ListRealtimeModels` (OpenAI'nin kendi capability flag'i
+yok, ID'de "realtime" geçenleri filtreliyor — model ID'sini hardcode
+etmeden OpenAI yeni realtime-ailesi modeller çıkardıkça çalışmaya devam
+ediyor). İkisinin de base URL'i test edilebilirlik için `var` (const değil).
+Ortak `livemode.ModelInfo{id, display_name}` şekli — Google'ın "models/…"
+kaynak adı, OpenAI'nin düz ID'si, ElevenLabs'ın model_id'si (Faz 2'nin
+`tts.ListElevenLabsModels`'i buradan da yeniden kullanıldı) hepsi buna
+normalize ediliyor. Yeni `POST /api/livemode/engines/models` (api_key
+body'de). Local/Custom'ın keşif endpoint'i yok, net hata dönüyor.
+
+Frontend: motor config formundaki Model alanı artık "Modelleri Getir"
+butonuyla gerçek bir dropdown'a dönüşüyor (google_live/openai_realtime/
+elevenlabs); keşif başarısız olursa ya da boş dönerse serbest metin
+alanına geri düşüyor. Bilinçli tasarım kararı: bu, ambient olarak
+izlenen bir Riverpod provider'ı değil, kullanıcının tetiklediği tek
+seferlik bir fetch — bu yüzden dosyadaki diğer FutureProvider'ların
+izlediği `authGateBlocked` koruma desenine ihtiyacı yok (o desen
+ekran-açılışında/app-başlangıcında otomatik okunan state için var).
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (yeni google/openai_realtime paketleri httptest ile
+  filtre mantığı + hata durumları test edildi)
+$ flutter analyze lib/ → 5 sorun (önceden kabul edilmiş)
+$ flutter test → 283/283 yeşil
+$ Rule #8 grep → temiz
+```
+
+**Sıradaki:** Faz 5 — Local/ElevenLabs/Custom'ın gerçek ses döngüsüne
+bağlanması (`TranscribeAudio`/`SynthesizeSpeech` aktif motorun
+provider'ı üzerinden dispatch edecek). Bu, Faz 1-5'in tamamıyla Part A'yı
+5 motordan 3'ü için sıfır delegasyon karmaşıklığıyla tam teslim edecek.
+Kullanıcı onayı beklemeden devam ediliyor.
+
+---
+
+# Ek (2026-08-26, devam 9) — Live Mode v2 Faz 3 (internal/livemode + motor seçici UI)
+
+**Faz 3 tamamlandı** (`22f41f8`): yeni `internal/livemode` paketi —
+`EngineType` (local/google_live/openai_realtime/elevenlabs/custom) +
+`EngineConfig` (api_key/model/voice/base_url) + `ConfigManager`
+(`internal/tts`'in şifreli-config deseninin aynısı ama `EngineType`'a göre
+key'lenmiş bir map, öncelik sıralı liste değil — Live Mode'da her an tek
+bir aktif motor var, fallback zinciri yok). `data/livemode_engines.json`'a
+persist ediyor. App wiring `tts_providers.go`/`stt_providers.go` ile aynı
+şekilde (`initLiveModeEngines`, Startup'ta çağrılıyor), yeni
+`GET/PUT/DELETE /api/livemode/engines` endpoint'i.
+
+Frontend: Sesli Mod sekmesine gerçek motor dropdown'ı (5 tip) + motor
+başına config formu eklendi (API key, Model — hâlâ serbest metin alanı,
+canlı keşif Faz 4'te; ElevenLabs için Voice, Custom için Base URL), motor
+tipine göre key'lenmiş (`ValueKey(cfg.activeEngine)`) ki motor değişince
+eski motorun metni kalmasın. Google Live/OpenAI Realtime seçiliyken
+WorkMode (delegate/standalone, standalone'da uyarı metniyle) ve
+AgentPermissionPolicy seçicileri de gösteriliyor — ikisinin de backend
+config'i Faz 1'den beri vardı, şimdi UI'ları da var. Yeni TR+EN L10n
+key'leri (kural #8).
+
+`internal/tts`/`internal/stt` senkronizasyonu (motor config'i kaydedince
+otomatik olarak ilgili TTS/STT provider'ını da güncelleme) **bilerek
+yapılmadı** — plan dosyasının kendi faz sınırına göre bu Faz 5'e ait
+(TranscribeAudio/SynthesizeSpeech gerçekten aktif motora yönlendirilmeye
+başladığında).
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (internal/livemode yeni: config/engine-validation testleri yeşil)
+$ flutter analyze lib/
+→ 5 sorun (önceden kabul edilmiş info'lar)
+$ flutter test
+→ 283/283 yeşil
+$ Rule #8 grep → temiz
+```
+
+**Sıradaki:** Faz 4 — canlı model keşfi (Google `ListLiveModels`
+`bidiGenerateContent` filtresi, OpenAI `ListRealtimeModels`), yeni
+`/api/livemode/engines/models` endpoint'i, Flutter'da placeholder metin
+kutuları gerçek dropdown'lara dönüşüyor. Kullanıcı onayı beklemeden
+devam ediliyor.
+
+---
+
+# Ek (2026-08-26, devam 8) — Live Mode v2 Faz 2 (internal/stt + TTS ElevenLabs/Custom)
+
+Kullanıcı "sorma, faz 2 3 4 kaç faz varsa yap, durma, AGENTS.md kurallarına
+uy, faz bitişlerinde handoff.md'yi güncelle" dedi — bu oturumdan itibaren
+onay beklemeden fazlar art arda ilerletiliyor.
+
+**Faz 2 tamamlandı** (`69a9dfe`, `docs/plans/PLAN_live_mode_v2.md`'nin Faz
+2'si): yeni `internal/stt` paketi (`internal/tts`'in birebir eşleniği —
+STT'nin ilk kez bir provider-soyutlama katmanına kavuşması; whisper.cpp'ye
+hiç dokunulmadı, aynen dışarıda kaldı), ElevenLabs (`POST
+/v1/speech-to-text`, multipart, `model_id=scribe_v1`) + Custom (`POST
+{base_url}/audio/transcriptions`, OpenAI Whisper-API uyumlu) STT
+provider'ları. `internal/tts`'in önceden stub olan ElevenLabs'i tamamlandı
+(`POST /v1/text-to-speech/{voice_id}?output_format=wav_24000` — ElevenLabs'ın
+doğrudan wav çıktısı desteklediği bu oturumda doğrulandı, manuel PCM→WAV
+sarmalamaya gerek kalmadı) + yeni Custom TTS provider'ı; ikisi de
+`tts.ProviderConfig`'e yeni `BaseURL` alanı gerektirdi.
+
+Canlı model/ses keşfi eklendi (`GET /v1/models` `can_do_text_to_speech`
+filtreli, `GET /v1/voices`) — `App.ListTTSProviderModels`/
+`ListTTSProviderVoices` + yeni `POST /api/tts/providers/models`/`voices`
+endpoint'leri (api_key body'de, query param'da değil — sunucu loglarına
+düşmesin diye). OpenAI/Custom'ın kendi keşif endpoint'i yok, net "not
+supported" hatası dönüyor, uydurma liste yok. `/api/stt/providers` CRUD
+eklendi, `FullBridge` + `swarmStubBridge` test double'ı genişletildi.
+
+Önceden "ElevenLabs implement edilmemiş, atlanmalı" varsayımıyla yazılmış
+`TestRouterUpdateConfigsSkipsInvalidAndUnimplemented` testi artık yanlış
+öncülden hareket ediyordu (ElevenLabs şimdi gerçekten inşa ediliyor) —
+yeniden yazıldı. Her yeni HTTP çağrı noktası için httptest kapsamı eklendi
+(request şekli, header'lar, hata durumları) + keşif fonksiyonlarının
+JSON parse/filtre mantığı.
+
+Frontend'e henüz dokunulmadı — model/ses dropdown'ları Faz 3/4'te.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (internal/stt yeni: router/config/provider testleri yeşil,
+  internal/tts: yeni elevenlabs/custom/discovery testleri + güncellenen
+  router testi yeşil)
+```
+
+**Eksik/doğrulanamayan:** Bu ortamda gerçek ElevenLabs/OpenAI API key'i
+yok — her yeni HTTP çağrı noktası sadece httptest ile doğrulandı, gerçek
+API'ye karşı asla.
+
+**Sıradaki:** Faz 3 — `internal/livemode` iskeleti + motor config CRUD
+(henüz realtime oturum yok), Flutter'da tam motor seçici + config
+formları (model/ses alanları için şimdilik placeholder). Kullanıcı onayı
+beklemeden devam ediliyor.
+
+---
+
+# Ek (2026-08-26, devam 7) — Live Mode v2 planı + Faz 0/1 (config mezuniyeti)
+
+Kullanıcının büyük yeni isteği: Live Mode beta'dan çıkıp kendi Ayarlar
+sekmesine kavuşacak (Local + Google Live + OpenAI Realtime + ElevenLabs +
+Custom motor seçenekleri, hiçbir model hardcode edilmeyecek, hepsi API'dan
+çekilecek) ve agent-mode için iki modelli bir mimari kurulacak (ana model +
+"live model", live model gerekince ana modele iş devredecek). Birkaç turluk
+netleştirme sonucu kilitlenen kararlar: Google Live/OpenAI Realtime kendi
+native ses-ses modelleriyle "live model" rolünü kendileri üstleniyor (ayrı
+beyin yok); Local/ElevenLabs/Custom saf STT/TTS, ayrı beyin yok, direkt
+mevcut ana modele gidiyor; Custom = OpenAI-uyumlu STT/TTS REST endpoint;
+yeni bir `WorkMode: delegate|standalone` anahtarı eklendi (native motorlarda
+live model isterse tüm agent tool-set'ini kendi de kullanabilsin diye).
+Kullanıcı ayrıca RAG/system-prompt enjeksiyonunun native live oturumlarında
+nasıl çalışacağını sordu — bu da plana ayrı bir bölüm olarak eklendi
+(oturum-başı statik + oturum-içi dinamik hafıza tazeleme, ikisi de
+`identity.BuildSystemPrompt`'u tekrar yazmadan).
+
+**Araştırma:** 2 paralel Explore agent'ı (mevcut beta Live Mode
+implementasyonu tam haritası + agent/orchestra/streamMu concurrency mimarisi),
+Google Live/OpenAI Realtime/ElevenLabs API dokümanlarının canlı taraması
+(WebSocket endpoint'leri, auth, model keşif mekanizmaları doğrulandı — Google
+`models.list` + `bidiGenerateContent` filtresi, OpenAI `GET /v1/models`,
+ElevenLabs `GET /v1/models` + `GET /v1/voices` + `POST /v1/speech-to-text`),
+1 Plan agent'ı (tam mimari tasarım). Detaylı plan onaylandı ve
+`docs/plans/PLAN_live_mode_v2.md`'ye yazıldı (Türkçe, faz1/faz2 formatı) —
+tüm gerekçe/dosya/satır referansları orada.
+
+**Branch:** `feature/live-mode-v2` açıldı (kritik/riskli iş main'e değil).
+
+**Faz 0 (kurulum):** branch + plan dosyası — `d442281`.
+
+**Faz 1 (config mezuniyeti) — TAMAMLANDI, doğrulandı, commit'lendi:**
+- Backend (`bb1d7fe`): `config.LiveModeConfig{Enabled, ActiveEngine,
+  WorkMode, AgentPermissionPolicy}` — `Beta`'dan bağımsız,
+  `RemoteAccessConfig`'in izlediği aynı mezuniyet deseni. `App.GetLiveModeConfig`/
+  `UpdateLiveModeConfig` (`internal/app/livemode.go`, `SetBeta`'nın
+  sadeliğinde: validate + `config.Save`), yeni `GET/PUT /api/livemode/active`,
+  `FullBridge` arayüzüne eklendi (+ `swarmStubBridge` test double'ı).
+- Frontend (`d311d34`): yeni `LiveModeTab` (settings_dialog.dart index 24,
+  `settings_group_providers` grubu, Remote Access'in yanı), `liveModeConfigProvider`
+  (backend-truth-only, local mirror YOK — BUG-ONB ders alındı), `chat_input.dart`'taki
+  `betaFeaturesProvider` kapısı Live Mode'un kendi `enabled` anahtarıyla
+  değiştirildi, `_LiveModeVoiceTest`/`TTSVoiceSection`/`TTSProviderSection`
+  `beta_features_tab.dart`'tan yeni sekmeye taşındı (Beta Features artık
+  sadece Swarm'ı içeriyor). Yeni TR+EN L10n key'leri (kural #8).
+- Henüz yeni motor desteği YOK (Google Live/OpenAI/ElevenLabs/Custom) —
+  bu faz sadece mezuniyet mekaniğini kanıtladı, hâlâ mevcut yerel
+  whisper+Piper motorunu kullanıyor.
+
+**Doğrulama (yapıştırıldı):**
+```
+$ CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race
+→ tüm paketler ok (memo, internal/app, internal/config, internal/webserver, ...)
+$ flutter analyze lib/
+→ 5 sorun (hepsi önceden var olan kabul edilebilir use_build_context_synchronously info)
+$ flutter test
+→ 283/283 yeşil (All tests passed!)
+$ Rule #8 grep (dokunulan + yeni .dart dosyaları)
+→ temiz
+```
+
+**Eksik/doğrulanamayan:** Bu ortamda hiçbir gerçek Google/OpenAI/ElevenLabs
+API key'i yok — ilerideki her faz `httptest`-only doğrulanacak, gerçek
+API asla. Live Mode tab'ı gerçek uygulamada (flutter run -d linux) manuel
+görsel olarak denenmedi — bu bir masaüstü Flutter uygulaması, browser
+preview araçlarıyla test edilemiyor.
+
+**Sıradaki oturum:** `docs/plans/PLAN_live_mode_v2.md`'nin Faz 2'si —
+`internal/stt` paketi + `internal/tts`'in ElevenLabs/Custom stub'larının
+tamamlanması + model/ses keşif endpoint'leri. Kullanıcıya durum raporu
+verildi, devam onayı bekleniyor.
+
+---
+
 # Ek (2026-08-26, devam 6) — v4.2.0 release'i çıkarıldı
 
 `/memo-release` skill'i ile, kullanıcının açık isteğiyle. Phase 1 (`a727a56`

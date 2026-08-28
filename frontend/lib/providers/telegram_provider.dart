@@ -94,6 +94,22 @@ class TelegramStatusNotifier extends StateNotifier<AsyncValue<TelegramStatus>> {
     }
   }
 
+  /// Re-establish the connection with the token already on the backend —
+  /// for the dead-state "reconnect" button (the plain "retry" only re-polls
+  /// status).
+  Future<void> reconnect() async {
+    try {
+      final data = await _api.reconnectTelegram();
+      if (mounted) {
+        state = AsyncValue.data(TelegramStatus.fromJson(data));
+        startPolling();
+      }
+    } catch (e) {
+      _ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: ${L10n.t('telegram_connect_failed')} (${FriendlyError.describeGeneric(e)})';
+    }
+  }
+
   Future<void> stop() async {
     try {
       await _api.stopTelegram();

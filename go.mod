@@ -6,6 +6,7 @@ go 1.26.6
 require (
 	github.com/BugraAkdemir/gosearch v0.2.0
 	github.com/BugraAkdemir/gosearch/browser v0.3.0
+	github.com/coder/websocket v1.8.14
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-isatty v0.0.20
@@ -32,7 +33,6 @@ require (
 	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc // indirect
 	github.com/chromedp/chromedp v0.15.1 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/creachadair/msync v0.7.1 // indirect
 	github.com/dblohm7/wingoes v0.0.0-20240119213807-a09d6be7affa // indirect
 	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect

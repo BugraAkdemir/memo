@@ -101,7 +101,7 @@ cd frontend && flutter run -d linux
 
 ### Taşınabilir Sürüm Derleme
 ```bash
-./scripts/build_releases.sh
+./build_releases.sh
 # Çıktı: build_output/dist/
 #   Memo-linux-x64-v3.5.0.tar.gz
 #   Memo-linux-x64-v3.5.0.AppImage

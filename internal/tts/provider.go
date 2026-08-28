@@ -14,12 +14,14 @@ import (
 type ProviderType string
 
 const (
-	ProviderOpenAI ProviderType = "openai"
-	// ProviderElevenLabs is declared for Validate/NewProvider completeness
-	// but has no implementation yet — Faz 2.2 only builds OpenAI. Selecting
-	// it fails at NewProvider with a clear "not yet supported" error rather
-	// than silently doing nothing.
+	ProviderOpenAI     ProviderType = "openai"
 	ProviderElevenLabs ProviderType = "elevenlabs"
+	// ProviderCustom is a user-defined OpenAI-compatible TTS REST endpoint
+	// (POST {base_url}/audio/speech, same request/response shape as
+	// openAIProvider) — see docs/plans/PLAN_live_mode_v2.md's "Custom"
+	// engine decision. BaseURL is required for this type; APIKey is
+	// optional (a self-hosted endpoint may not need one).
+	ProviderCustom ProviderType = "custom"
 )
 
 // TTSProvider is the common interface all external TTS providers implement.
@@ -37,18 +39,23 @@ type TTSProvider interface {
 // Priority/Connected/Error), replacing Model/BaseURL/Temperature/TopP/
 // MaxTokens/ContextTokens (all chat-specific, no TTS meaning) with Voice.
 type ProviderConfig struct {
-	Type      ProviderType `json:"type"`
-	Name      string       `json:"name"`
-	APIKey    string       `json:"api_key,omitempty"`
-	Voice     string       `json:"voice"`
-	Enabled   bool         `json:"enabled"`
-	Priority  int          `json:"priority"`
-	Connected bool         `json:"connected,omitempty"`
-	Error     string       `json:"error,omitempty"`
+	Type   ProviderType `json:"type"`
+	Name   string       `json:"name"`
+	APIKey string       `json:"api_key,omitempty"`
+	Voice  string       `json:"voice"`
+	// BaseURL is only meaningful for ProviderCustom — a user-supplied
+	// OpenAI-compatible TTS endpoint's base URL.
+	BaseURL   string `json:"base_url,omitempty"`
+	Enabled   bool   `json:"enabled"`
+	Priority  int    `json:"priority"`
+	Connected bool   `json:"connected,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 // Validate reports whether cfg has enough information to construct a
-// provider. Mirrors internal/provider.ProviderConfig.Validate.
+// provider. Mirrors internal/provider.ProviderConfig.Validate. ProviderCustom
+// requires BaseURL instead of APIKey (a self-hosted endpoint may not need a
+// key at all) — every other type requires APIKey, same as before.
 func (c ProviderConfig) Validate() error {
 	if c.Type == "" {
 		return fmt.Errorf("tts provider type is required")
@@ -56,22 +63,27 @@ func (c ProviderConfig) Validate() error {
 	if c.Voice == "" {
 		return fmt.Errorf("voice is required for %s", c.Type)
 	}
+	if c.Type == ProviderCustom {
+		if c.BaseURL == "" {
+			return fmt.Errorf("base_url is required for custom")
+		}
+		return nil
+	}
 	if c.APIKey == "" {
 		return fmt.Errorf("API key is required for %s", c.Type)
 	}
 	return nil
 }
 
-// NewProvider constructs a TTSProvider from cfg. Only ProviderOpenAI has a
-// real implementation (Faz 2.2); other declared types fail with a clear
-// "not yet supported" error rather than being silently accepted and then
-// failing opaquely at Synthesize time.
+// NewProvider constructs a TTSProvider from cfg.
 func NewProvider(cfg ProviderConfig) (TTSProvider, error) {
 	switch cfg.Type {
 	case ProviderOpenAI:
 		return newOpenAIProvider(cfg)
 	case ProviderElevenLabs:
-		return nil, fmt.Errorf("tts: ElevenLabs provider not yet supported")
+		return newElevenLabsProvider(cfg)
+	case ProviderCustom:
+		return newCustomProvider(cfg)
 	default:
 		return nil, fmt.Errorf("tts: unknown provider type %q", cfg.Type)
 	}

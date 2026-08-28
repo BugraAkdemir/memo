@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:vad/vad.dart';
 
 import 'api_client.dart';
+import 'friendly_error.dart';
 import 'vad_assets.dart';
 import 'wav_encoder.dart';
 
@@ -56,7 +57,9 @@ class LiveModeController {
           _transcriptController.add(text);
         }
       } catch (e) {
-        if (!_errorController.isClosed) _errorController.add('$e');
+        if (!_errorController.isClosed) {
+          _errorController.add(FriendlyError.describeGeneric(e));
+        }
       }
     });
     handler.onError.listen((message) {

@@ -3,6 +3,7 @@ package tools
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -55,6 +56,46 @@ func TestValidatePath_RejectsRelativeTraversal(t *testing.T) {
 	base := t.TempDir()
 	if _, err := validatePath("../../etc/passwd", base); err == nil {
 		t.Fatal("validatePath(\"../../etc/passwd\", base) = nil error, want rejection")
+	}
+}
+
+// TestValidatePath_ExpandsTildeInsteadOfCreatingALiteralDirectory is a
+// regression test for a real bug found live: the model wrote
+// "~/Desktop/hello.py" while its sandbox basePath was this very repo, and
+// validatePath — unlike resolveChangeDirectoryTarget (changedir.go), which
+// already expanded "~" correctly — treated "~" as an ordinary relative-path
+// character and joined it straight onto basePath, creating a literal
+// directory named "~" inside the repo instead of reaching the real home
+// directory. Confirms "~/notes.txt" now resolves to the real home
+// directory and (since that's outside this test's tempdir basePath) is
+// correctly rejected as outside the project — not silently redirected to a
+// wrong location inside it.
+func TestValidatePath_ExpandsTildeInsteadOfCreatingALiteralDirectory(t *testing.T) {
+	base := t.TempDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skipf("no home directory available in this environment: %v", err)
+	}
+
+	_, err = validatePath("~/notes.txt", base)
+	if err == nil {
+		t.Fatal("expected rejection: the real home directory is outside this test's basePath")
+	}
+	if strings.Contains(err.Error(), filepath.Join(base, "~")) {
+		t.Errorf("expected the error to reference the real home directory, not a literal \"~\" under basePath — got: %v", err)
+	}
+
+	// Sanity-check the expansion target itself, independent of the
+	// outside-basePath rejection above: when basePath legitimately *is*
+	// (an ancestor of) the home directory, "~" must resolve to the real
+	// home directory, not a "~" subdirectory of it.
+	got, err := validatePath("~", filepath.Dir(home))
+	if err != nil {
+		t.Fatalf("validatePath(\"~\", parent-of-home) error = %v", err)
+	}
+	realHome, _ := filepath.EvalSymlinks(home)
+	if got != realHome {
+		t.Errorf("validatePath(\"~\", ...) = %q, want the real home directory %q", got, realHome)
 	}
 }
 

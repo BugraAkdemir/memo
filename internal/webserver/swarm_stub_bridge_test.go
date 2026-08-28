@@ -9,6 +9,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/browserengine"
 	"memo/internal/config"
+	"memo/internal/livemode"
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/models"
@@ -20,6 +21,7 @@ import (
 	"memo/internal/sessions"
 	"memo/internal/skill"
 	"memo/internal/stats"
+	"memo/internal/stt"
 	"memo/internal/taskloop"
 	"memo/internal/tts"
 	"memo/internal/whatsapp"
@@ -65,6 +67,13 @@ type swarmStubBridge struct {
 	changeAccountPassword    func(sessionToken, id, currentPassword, newPassword string) error
 	browseServerPath         func(path string) (interface{}, error)
 	getOutboxFile            func(token string) (string, string, bool)
+
+	// Live Mode v2 (see PLAN_live_mode_v2.md) — overridable so
+	// handlers_livemode_session_test.go can exercise newLiveModeSession's
+	// active-engine dispatch without a real App.
+	getLiveModeConfig  func() config.LiveModeConfig
+	getLiveModeEngines func() []livemode.EngineConfig
+	newLiveModeSession func(ctx context.Context) livemode.Session
 }
 
 func (b *swarmStubBridge) GetRemoteAccessToken() string { return b.token }
@@ -198,8 +207,8 @@ func (b *swarmStubBridge) InstallBrowser(ctx context.Context) error             
 func (b *swarmStubBridge) GetBrowserInstallProgress() browserengine.InstallProgress {
 	return browserengine.InstallProgress{}
 }
-func (b *swarmStubBridge) GetMemoryEnabled() bool                                     { return false }
-func (b *swarmStubBridge) SetMemoryEnabled(enabled bool) error                        { return nil }
+func (b *swarmStubBridge) GetMemoryEnabled() bool              { return false }
+func (b *swarmStubBridge) SetMemoryEnabled(enabled bool) error { return nil }
 func (b *swarmStubBridge) SetMemoryDreamSettings(enabled bool, initialDelayMinutes, intervalHours int) error {
 	return nil
 }
@@ -418,6 +427,39 @@ func (b *swarmStubBridge) GetTTSVoiceDownloadProgress() []*tts.VoiceDownloadProg
 func (b *swarmStubBridge) DownloadTTSVoice(locale, name, quality string) error           { return nil }
 func (b *swarmStubBridge) DeleteTTSVoice(id string) error                                { return nil }
 func (b *swarmStubBridge) SelectTTSVoice(id string) error                                { return nil }
+func (b *swarmStubBridge) ListTTSProviderModels(ctx context.Context, pt tts.ProviderType, apiKey string) ([]tts.ElevenLabsModel, error) {
+	return nil, nil
+}
+func (b *swarmStubBridge) ListTTSProviderVoices(ctx context.Context, pt tts.ProviderType, apiKey string) ([]tts.ElevenLabsVoice, error) {
+	return nil, nil
+}
+func (b *swarmStubBridge) GetSTTProviders() []stt.ProviderConfig                       { return nil }
+func (b *swarmStubBridge) UpdateSTTProvider(cfg stt.ProviderConfig) error              { return nil }
+func (b *swarmStubBridge) DeleteSTTProvider(pt stt.ProviderType, name ...string) error { return nil }
+func (b *swarmStubBridge) GetLiveModeConfig() config.LiveModeConfig {
+	if b.getLiveModeConfig != nil {
+		return b.getLiveModeConfig()
+	}
+	return config.LiveModeConfig{}
+}
+func (b *swarmStubBridge) UpdateLiveModeConfig(cfg config.LiveModeConfig) error { return nil }
+func (b *swarmStubBridge) GetLiveModeEngines() []livemode.EngineConfig {
+	if b.getLiveModeEngines != nil {
+		return b.getLiveModeEngines()
+	}
+	return nil
+}
+func (b *swarmStubBridge) UpdateLiveModeEngine(cfg livemode.EngineConfig) error { return nil }
+func (b *swarmStubBridge) DeleteLiveModeEngine(t livemode.EngineType) error     { return nil }
+func (b *swarmStubBridge) ListLiveModeEngineModels(ctx context.Context, t livemode.EngineType, apiKey string) ([]livemode.ModelInfo, error) {
+	return nil, nil
+}
+func (b *swarmStubBridge) NewLiveModeSession(ctx context.Context) livemode.Session {
+	if b.newLiveModeSession != nil {
+		return b.newLiveModeSession(ctx)
+	}
+	return livemode.NewEchoSession()
+}
 func (b *swarmStubBridge) GetOrchestraConfig() orchestra.OrchestraConfig {
 	return orchestra.OrchestraConfig{}
 }
@@ -467,6 +509,7 @@ func (b *swarmStubBridge) WhatsAppChatStream(ctx context.Context, userMsg string
 func (b *swarmStubBridge) GetWhatsAppSelfChatAssistant() bool                       { return false }
 func (b *swarmStubBridge) SetWhatsAppSelfChatAssistant(enabled bool) error          { return nil }
 func (b *swarmStubBridge) StartTelegram(ctx context.Context, botToken string) error { return nil }
+func (b *swarmStubBridge) ReconnectTelegram(ctx context.Context) error              { return nil }
 func (b *swarmStubBridge) StopTelegram()                                            {}
 func (b *swarmStubBridge) DisconnectTelegram() error                                { return nil }
 func (b *swarmStubBridge) GetTelegramStatus() map[string]interface{}                { return map[string]interface{}{} }

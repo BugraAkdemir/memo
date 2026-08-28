@@ -35,9 +35,12 @@ func (a *App) telegramHasStoredToken() bool {
 	return st.Enabled && st.BotToken != ""
 }
 
-// initTelegram starts polling with the token already on disk. Assumes the
-// caller holds tgMu and that a.tgStore is already set — mirrors
-// initWhatsApp's contract with StartWhatsApp/Startup.
+// initTelegram reconnects the bot with the token already on disk. The
+// caller holds tgMu when this returns; the actual connect happens on a
+// background goroutine that retries with backoff (a.tgClient is set under
+// tgMu once it succeeds), so a transient network failure at boot no longer
+// leaves the bot dead until a manual reconnect. a.tgStore must already be
+// set — mirrors initWhatsApp's contract with StartWhatsApp/Startup.
 func (a *App) initTelegram() {
 	if a.tgStore == nil {
 		a.tgStore = telegram.NewStore(config.DataPath("telegram.json"), nil)
@@ -46,18 +49,46 @@ func (a *App) initTelegram() {
 	if st.BotToken == "" {
 		return
 	}
+	token := st.BotToken
+	store := a.tgStore
 
-	client := telegram.NewClient(st.BotToken)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	if err := client.Start(ctx); err != nil {
-		logx.Printf("Telegram: auto-connect error: %v", err)
-		return
-	}
-	a.tgClient = client
+	goRecover("initTelegram.retry", func() {
+		retryWithBackoff(a.lifecycleCtx, 5*time.Second, 2*time.Minute, func() bool {
+			// Give up quietly if the user acted via Settings while we were
+			// backing off (connected with a fresh token, or paused the bot).
+			a.tgMu.Lock()
+			taken := a.tgClient != nil
+			a.tgMu.Unlock()
+			if taken {
+				return true
+			}
+			if s := store.Get(); s.BotToken == "" || !s.Enabled {
+				return true
+			}
 
-	goRecover("runTelegramIntentLoop", func() { a.runTelegramIntentLoop(a.lifecycleCtx) })
-	logx.Info("Telegram client initialized and connecting...")
+			ctx, cancel := context.WithTimeout(a.lifecycleCtx, 30*time.Second)
+			client := telegram.NewClient(token)
+			err := client.Start(ctx)
+			cancel()
+			if err != nil {
+				logx.Printf("Telegram: startup connect failed (%v); will retry", err)
+				return false
+			}
+
+			a.tgMu.Lock()
+			if a.tgClient != nil { // StartTelegram won the race
+				a.tgMu.Unlock()
+				client.Stop()
+				return true
+			}
+			a.tgClient = client
+			a.tgMu.Unlock()
+			goRecover("runTelegramIntentLoop", func() { a.runTelegramIntentLoop(a.lifecycleCtx) })
+			logx.Info("Telegram client connected")
+			return true
+		})
+	})
+	logx.Info("Telegram client initializing (retrying until connected)...")
 }
 
 // runTelegramIntentLoop drains the Telegram message channel, locking in the
@@ -360,19 +391,45 @@ func (a *App) startTelegramComposing(ctx context.Context, chatID int64) (stop fu
 // (encrypted, via tgStore) and begins polling. Reconnecting with a new
 // token first stops any existing connection.
 func (a *App) StartTelegram(ctx context.Context, botToken string) error {
-	a.tgMu.Lock()
-	defer a.tgMu.Unlock()
-
 	botToken = strings.TrimSpace(botToken)
 	if botToken == "" {
 		return fmt.Errorf("bot token boş olamaz")
 	}
+	a.tgMu.Lock()
+	defer a.tgMu.Unlock()
+	return a.connectTelegramLocked(ctx, botToken)
+}
+
+// ReconnectTelegram re-establishes the bot connection using the token
+// already on disk — no token needs to travel from the client. This is what
+// the Settings "reconnect" action calls when a previously-working bot has
+// gone dead (e.g. the network was down at boot before the startup retry
+// loop got it, or a long outage). No-op-ish error if nothing was ever
+// configured.
+func (a *App) ReconnectTelegram(ctx context.Context) error {
+	a.tgMu.Lock()
+	defer a.tgMu.Unlock()
+	if a.tgStore == nil {
+		a.tgStore = telegram.NewStore(config.DataPath("telegram.json"), nil)
+	}
+	token := strings.TrimSpace(a.tgStore.Get().BotToken)
+	if token == "" {
+		return fmt.Errorf("kayıtlı bot token yok — önce bağlan")
+	}
+	return a.connectTelegramLocked(ctx, token)
+}
+
+// connectTelegramLocked does the actual validate→start→persist→wire work
+// shared by StartTelegram (token from the user) and ReconnectTelegram
+// (token from disk). Caller must hold a.tgMu.
+func (a *App) connectTelegramLocked(ctx context.Context, botToken string) error {
 	if a.tgStore == nil {
 		a.tgStore = telegram.NewStore(config.DataPath("telegram.json"), nil)
 	}
 
 	if a.tgClient != nil {
 		a.tgClient.Stop()
+		a.tgClient = nil
 	}
 
 	client := telegram.NewClient(botToken)

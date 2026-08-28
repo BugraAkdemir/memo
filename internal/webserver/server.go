@@ -38,6 +38,7 @@ type AppBridge interface {
 	RenameChat(id, title string) error
 	UpdateMessage(index int, content string) error
 	DeleteMessage(index int) error
+	AppendMessage(role, content string) error
 	WebGetActiveMessages() interface{}
 	GetActiveChatID() string
 	WebCheckConnection() interface{}
@@ -138,6 +139,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/messages", s.handleMessages)
 	route("/api/messages/update", s.handleUpdateMessage)
 	route("/api/messages/delete", s.handleDeleteMessage)
+	route("/api/messages/append", s.handleAppendMessage)
 	route("/api/status", s.handleStatus)
 	route("/api/incognito", s.handleIncognito)
 	route("/api/onboarding", s.handleOnboarding)
@@ -286,11 +288,22 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// TTS provider management (Faz 2)
 	route("/api/tts/providers", s.handleTTSProviders)
 	route("/api/tts/providers/test", s.handleTTSProviderTest)
+	route("/api/tts/providers/models", s.handleTTSProviderModels)
+	route("/api/tts/providers/voices", s.handleTTSProviderVoices)
+
+	// STT provider management (Live Mode v2, see PLAN_live_mode_v2.md §2)
+	route("/api/stt/providers", s.handleSTTProviders)
 
 	// TTS local voice store (Faz 2.6)
 	route("/api/tts/voices", s.handleTTSVoices)
 	route("/api/tts/voices/download", s.handleTTSVoiceDownload)
 	route("/api/tts/voices/select", s.handleTTSVoiceSelect)
+
+	// Live Mode v2 (see PLAN_live_mode_v2.md)
+	route("/api/livemode/active", s.handleLiveModeActive)
+	route("/api/livemode/engines", s.handleLiveModeEngines)
+	route("/api/livemode/engines/models", s.handleLiveModeEngineModels)
+	route("/api/livemode/session", s.handleLiveModeSession)
 
 	// OpenRouter
 	route("/api/openrouter/connect", s.requirePermission(s.handleOpenRouterConnect, hasModelsPerm))
@@ -359,6 +372,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Telegram permission (Faz 5.1.1, yapacam.md), lenient-gated.
 	route("/api/telegram/status", s.handleTelegramStatus)
 	route("/api/telegram/connect", s.requirePermission(s.handleTelegramConnect, hasTelegramPerm))
+	route("/api/telegram/reconnect", s.requirePermission(s.handleTelegramReconnect, hasTelegramPerm))
 	route("/api/telegram/stop", s.requirePermission(s.handleTelegramStop, hasTelegramPerm))
 	route("/api/telegram/disconnect", s.requirePermission(s.handleTelegramDisconnect, hasTelegramPerm))
 
@@ -729,6 +743,36 @@ func (s *Server) handleUpdateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.bridge.UpdateMessage(req.Index, req.Content); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
+// handleAppendMessage persists a message into the active session's history
+// with no LLM turn involved — see App.AppendMessage's doc comment. Its one
+// caller today is Live Mode's transcript display (POST /api/messages/
+// append), added alongside messagesProvider.addMessage() so a live
+// conversation's bubbles actually survive a chat switch or app restart,
+// not just the current in-memory client state.
+func (s *Server) handleAppendMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if req.Role != "user" && req.Role != "assistant" {
+		http.Error(w, "role must be \"user\" or \"assistant\"", http.StatusBadRequest)
+		return
+	}
+	if err := s.bridge.AppendMessage(req.Role, req.Content); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

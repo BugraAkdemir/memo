@@ -20,6 +20,7 @@ import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
+import '../providers/live_realtime_session_provider.dart';
 import '../providers/recording_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/skill_provider.dart';
@@ -409,6 +410,20 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       return;
     }
 
+    // A native Live Mode session (Google Live/OpenAI Realtime) is
+    // connected — route typed text into the open session instead of the
+    // normal sendMessage() path. Requested by the user: something they'd
+    // rather not say out loud (a code snippet, a long piece of text)
+    // during a live conversation should still reach the live model.
+    final liveStatus = ref.read(liveRealtimeSessionProvider).status;
+    if (imagePath == null &&
+        (liveStatus == LiveRealtimeSessionStatus.connecting || liveStatus == LiveRealtimeSessionStatus.connected)) {
+      _controller.clear();
+      _dismissPopup();
+      _sendToLiveMode(text);
+      return;
+    }
+
     // Neither a local model nor an API provider is active — sending would
     // just come back as a raw backend error ("⚠️ Yerel model yüklenmemiş...")
     // that used to surface as a generic, unfriendly snackbar (BUG: the actual
@@ -441,6 +456,26 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
     if (!mounted) return;
     _focusNode.requestFocus();
+  }
+
+  /// Routes typed [text] into an open native Live Mode session
+  /// (liveRealtimeSessionProvider.injectText) instead of the normal
+  /// sendMessage() path — see _send()'s branch above. Mirrors a spoken
+  /// utterance's own display+persistence exactly (ChatMessage via
+  /// messagesProvider.addMessage(), then apiClientProvider.appendMessage()
+  /// to actually survive a chat switch/app restart — see
+  /// live_realtime_session_provider.dart's _handleControlFrame, the same
+  /// two calls in the same order) so a typed aside looks and behaves
+  /// identically to something the user said out loud.
+  void _sendToLiveMode(String text) {
+    final timestamp = DateTime.now().toIso8601String();
+    ref.read(messagesProvider.notifier).addMessage(ChatMessage(role: 'user', content: text, timestamp: timestamp));
+    unawaited(
+      ref.read(apiClientProvider).appendMessage('user', text).catchError((Object e) {
+        debugPrint('live mode text: failed to persist message: $e');
+      }),
+    );
+    ref.read(liveRealtimeSessionProvider.notifier).injectText(text);
   }
 
   Future<void> _sendWhatsApp(String text) async {
@@ -1179,45 +1214,31 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               // Voice mode toggle: continuous listen → send → speak-reply,
               // cross-modal with typing (either way still works while this
               // is on). Separate from the mic button above, which is a
-              // single push-to-talk-into-the-text-field capture. Beta-gated
-              // the same way the old standalone Live Mode tab was — still
-              // prototype-stage (see voice_mode_provider.dart's doc comment
-              // on the unbundled VAD model) — so it must stay invisible
-              // with Beta off, not just unreachable via a removed nav item.
-              if (ref.watch(betaFeaturesProvider)) ...[
+              // single push-to-talk-into-the-text-field capture. Gated by
+              // Live Mode's own Enabled toggle (see docs/plans/
+              // PLAN_live_mode_v2.md) — graduated out of Beta, so this no
+              // longer depends on betaFeaturesProvider.
+              if (ref.watch(liveModeConfigProvider).valueOrNull?.enabled ??
+                  false) ...[
                 const SizedBox(width: 4),
-                () {
-                  final voiceState = ref.watch(voiceModeProvider);
-                  final active = voiceState != VoiceModeState.idle;
-                  return _InputIconButton(
-                    icon: active ? Icons.record_voice_over : Icons.record_voice_over_outlined,
-                    tooltip: active
-                        ? L10n.t('voice_mode_stop')
-                        : L10n.t('voice_mode_start'),
-                    disabled: false,
-                    iconColor: switch (voiceState) {
-                      VoiceModeState.idle => null,
-                      VoiceModeState.listening => MemoTheme.accent,
-                      VoiceModeState.thinking => MemoTheme.warningOrange,
-                      VoiceModeState.speaking => MemoTheme.accent,
-                    },
-                    onTap: () => ref.read(voiceModeProvider.notifier).toggle(),
-                  );
-                }(),
-                // Status label while voice mode is on
-                if (ref.watch(voiceModeProvider) != VoiceModeState.idle)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: Text(
-                      switch (ref.watch(voiceModeProvider)) {
-                        VoiceModeState.idle => '',
-                        VoiceModeState.listening => L10n.t('live_screen_state_listening'),
-                        VoiceModeState.thinking => L10n.t('live_screen_state_thinking'),
-                        VoiceModeState.speaking => L10n.t('live_screen_state_speaking'),
-                      },
-                      style: TextStyle(fontSize: 12, color: MemoTheme.accent),
-                    ),
-                  ),
+                // Which engine is active decides which voice loop the
+                // toggle button drives: google_live/openai_realtime are
+                // full-duplex native sessions (liveRealtimeSessionProvider,
+                // real mic streaming + playback — see
+                // live_realtime_session_provider.dart); everything else
+                // (local/elevenlabs/custom) stays on the discrete
+                // VAD -> transcribe -> chat -> synthesize loop
+                // (voiceModeProvider) unchanged. Found via real-world
+                // testing that this branch was missing entirely — the
+                // button always used voiceModeProvider regardless of the
+                // selected engine, so native engines silently fell back to
+                // local whisper.cpp transcription instead of ever opening
+                // their own session.
+                if (const {'google_live', 'openai_realtime'}
+                    .contains(ref.watch(liveModeConfigProvider).valueOrNull?.activeEngine))
+                  ..._buildRealtimeVoiceControls(ref)
+                else
+                  ..._buildDiscreteVoiceControls(ref),
               ],
               // Status label when recording/transcribing
               if (ref.watch(recordingProvider) != RecordingState.idle)
@@ -1424,6 +1445,86 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         ),
       ],
     );
+  }
+
+  /// Local/ElevenLabs/Custom's discrete VAD -> transcribe -> chat ->
+  /// synthesize loop — unchanged behavior, just extracted out of build() so
+  /// it sits alongside its native-engine sibling below.
+  List<Widget> _buildDiscreteVoiceControls(WidgetRef ref) {
+    final voiceState = ref.watch(voiceModeProvider);
+    final active = voiceState != VoiceModeState.idle;
+    return [
+      _InputIconButton(
+        icon: active ? Icons.record_voice_over : Icons.record_voice_over_outlined,
+        tooltip: active ? L10n.t('voice_mode_stop') : L10n.t('voice_mode_start'),
+        disabled: false,
+        iconColor: switch (voiceState) {
+          VoiceModeState.idle => null,
+          VoiceModeState.listening => MemoTheme.accent,
+          VoiceModeState.thinking => MemoTheme.warningOrange,
+          VoiceModeState.speaking => MemoTheme.accent,
+        },
+        onTap: () => ref.read(voiceModeProvider.notifier).toggle(),
+      ),
+      if (voiceState != VoiceModeState.idle)
+        Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: Text(
+            switch (voiceState) {
+              VoiceModeState.idle => '',
+              VoiceModeState.listening => L10n.t('live_screen_state_listening'),
+              VoiceModeState.thinking => L10n.t('live_screen_state_thinking'),
+              VoiceModeState.speaking => L10n.t('live_screen_state_speaking'),
+            },
+            style: TextStyle(fontSize: 12, color: MemoTheme.accent),
+          ),
+        ),
+    ];
+  }
+
+  /// Google Live/OpenAI Realtime's full-duplex native session — real mic
+  /// capture streamed continuously to the backend, real playback of
+  /// whatever audio comes back (see live_realtime_session_provider.dart).
+  /// Errors already reach the app-wide toast via the notifier's own
+  /// _setError, so the label here only reflects connecting/connected —
+  /// error/closed collapse back to the idle-looking start button rather
+  /// than getting stuck showing a stale error label forever.
+  List<Widget> _buildRealtimeVoiceControls(WidgetRef ref) {
+    final session = ref.watch(liveRealtimeSessionProvider);
+    final active = session.status == LiveRealtimeSessionStatus.connecting ||
+        session.status == LiveRealtimeSessionStatus.connected;
+    return [
+      _InputIconButton(
+        icon: active ? Icons.record_voice_over : Icons.record_voice_over_outlined,
+        tooltip: active ? L10n.t('live_realtime_stop') : L10n.t('live_realtime_start'),
+        disabled: session.status == LiveRealtimeSessionStatus.connecting,
+        iconColor: switch (session.status) {
+          LiveRealtimeSessionStatus.connected => MemoTheme.accent,
+          LiveRealtimeSessionStatus.connecting => MemoTheme.warningOrange,
+          _ => null,
+        },
+        onTap: () {
+          final notifier = ref.read(liveRealtimeSessionProvider.notifier);
+          if (active) {
+            notifier.disconnect();
+          } else {
+            final engine = ref.read(liveModeConfigProvider).valueOrNull?.activeEngine ?? 'google_live';
+            notifier.connect(engine);
+          }
+        },
+      ),
+      if (session.status == LiveRealtimeSessionStatus.connecting ||
+          session.status == LiveRealtimeSessionStatus.connected)
+        Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: Text(
+            session.status == LiveRealtimeSessionStatus.connecting
+                ? L10n.t('live_realtime_state_connecting')
+                : L10n.t('live_realtime_state_connected'),
+            style: TextStyle(fontSize: 12, color: MemoTheme.accent),
+          ),
+        ),
+    ];
   }
 }
 

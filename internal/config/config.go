@@ -92,18 +92,79 @@ type AppConfig struct {
 	Calendar       CalendarConfig     `yaml:"calendar" json:"calendar"`
 	Mood           MoodConfig         `yaml:"mood" json:"mood"`
 	WebSearch      WebSearchConfig    `yaml:"web_search" json:"web_search"`
+	AgentMode      AgentModeConfig    `yaml:"agent_mode" json:"agent_mode"`
 	Browser        BrowserConfig      `yaml:"browser" json:"browser"`
 	DevGateway     DevGatewayConfig   `yaml:"dev_gateway" json:"dev_gateway"`
 	Swarm          SwarmConfig        `yaml:"swarm" json:"swarm"`
 	Onboarding     OnboardingConfig   `yaml:"onboarding" json:"onboarding"`
+	LiveMode       LiveModeConfig     `yaml:"live_mode" json:"live_mode"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
 
 	// Beta gates genuinely experimental features (e.g. Memo Swarm). Off by
 	// default: beta features are hidden and never run. The embedded
 	// Tailscale tunnel graduated out of Beta and has its own independent
 	// on/off toggle (RemoteAccess.Enabled/TunnelMode) — it is unaffected by
-	// this flag.
+	// this flag. Live Mode graduated the same way (see LiveModeConfig) —
+	// its own Enabled toggle, no longer gated by Beta.
 	Beta bool `yaml:"beta" json:"beta"`
+}
+
+// LiveModeConfig controls voice Live Mode independently of Beta — it
+// graduated out of Beta the same way RemoteAccess (embedded Tailscale) did:
+// its own on/off toggle instead of piggybacking on the experimental-features
+// flag. See docs/plans/PLAN_live_mode_v2.md for the full design.
+type LiveModeConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// ActiveEngine selects which voice engine powers Live Mode:
+	// "local" (existing Whisper+Piper pipeline, config.Whisper/config.TTS),
+	// "google_live", "openai_realtime", "elevenlabs", or "custom". Per-engine
+	// API keys/model/voice choices live in data/livemode_engines.json
+	// (internal/livemode.ConfigManager), not here — this field only says
+	// which one is active.
+	ActiveEngine string `yaml:"active_engine" json:"active_engine"`
+	// WorkMode is meaningful only when ActiveEngine is "google_live" or
+	// "openai_realtime" — the two engines with a genuine native
+	// audio-to-audio reasoning model that can itself act as the "live
+	// model" in Memo's two-model design (see PLAN_live_mode_v2.md §4/§4b):
+	//   "delegate"   (default) — the live model's only tool is
+	//                 delegate_to_main_model; real work is handed off to
+	//                 Memo's existing main chat/agent model and narrated
+	//                 back once done.
+	//   "standalone" — the live model instead gets the same full tool
+	//                 registry agent mode gives the main model, and
+	//                 executes tool calls itself, with no second model
+	//                 involved at all. A deliberate, user-opted-into
+	//                 tradeoff (faster/simpler, but the smaller live model
+	//                 gets direct file/command access) — AgentPermissionPolicy
+	//                 below is the safety net for it.
+	// Ignored (no meaning) for "local"/"elevenlabs"/"custom": those engines
+	// have no separate live-model brain at all — transcribed text always
+	// goes straight to Memo's existing main model routing.
+	WorkMode string `yaml:"work_mode" json:"work_mode"`
+	// AgentPermissionPolicy controls how a delegated/standalone tool call's
+	// permission prompt (danger level Medium/Dangerous) is resolved during a
+	// live voice session:
+	//   "voice_prompt"    (default) — Safe tools auto-allow (same as
+	//                      PermissionManager's normal behavior); Medium/
+	//                      Dangerous tools are asked out loud and resolved
+	//                      from the user's spoken answer.
+	//   "auto_allow_once" — every request is resolved as AllowOnce
+	//                      immediately, still fully audited.
+	AgentPermissionPolicy string `yaml:"agent_permission_policy" json:"agent_permission_policy"`
+	// BargeInSensitivity controls how eagerly the native realtime engine
+	// (google_live; also passed to openai_realtime) treats incoming user
+	// audio as an interruption of the model's own speech —
+	// Gemini Live's realtimeInputConfig.automaticActivityDetection
+	// .startOfSpeechSensitivity:
+	//   "high" (default) — interrupt readily; the user can talk over Memo
+	//                      and it stops. Best for a quiet room.
+	//   "low"            — needs a more confident speech signal before
+	//                      interrupting; keyboard/background noise won't cut
+	//                      the model off mid-sentence, but a soft or distant
+	//                      "stop" may be missed.
+	// An empty value is treated as "high". Ignored for local/elevenlabs/
+	// custom (no server-side barge-in VAD to configure).
+	BargeInSensitivity string `yaml:"barge_in_sensitivity" json:"barge_in_sensitivity"`
 }
 
 // OnboardingConfig tracks whether the Flutter client's first-run wizard
@@ -145,6 +206,18 @@ type CalendarConfig struct {
 type WebSearchConfig struct {
 	Enabled    bool `yaml:"enabled" json:"enabled"`
 	MaxResults int  `yaml:"max_results" json:"max_results"`
+}
+
+// AgentModeConfig persists the agent-mode (tool-execution) toggle so it
+// survives a backend restart. Agent mode used to be an in-memory-only flag
+// reset to false on every App init, while the Flutter/CLI clients cached
+// their last value — so after the desktop app relaunched its bundled
+// backend (an update, a --kill/relaunch) the UI still showed agent mode
+// "on" while the backend had silently reverted to off, and every message
+// routed as a plain toolless reply ("agent mode is off, turn it on...").
+// Mirrors WebSearchConfig.Enabled, which is persisted for the same reason.
+type AgentModeConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
 }
 
 // BrowserConfig controls the optional headless-browser fallback
@@ -703,6 +776,13 @@ func Default() *AppConfig {
 		TTS: TTSConfig{
 			Enabled: false,
 		},
+		LiveMode: LiveModeConfig{
+			Enabled:               false,
+			ActiveEngine:          "local",
+			WorkMode:              "delegate",
+			AgentPermissionPolicy: "voice_prompt",
+			BargeInSensitivity:    "high",
+		},
 		Sync: SyncConfig{
 			Enabled:          false,
 			TokenPath:        "./data/sync_token.json",
@@ -754,6 +834,14 @@ func Default() *AppConfig {
 			// config.yaml, which already carries an explicit value.
 			Enabled:    true,
 			MaxResults: 5,
+		},
+		AgentMode: AgentModeConfig{
+			// Off by default — a fresh install shouldn't start with
+			// file/command tool access live. Existing installs that had
+			// agent mode on when they last shut down now keep it on, since
+			// SetAgentEnabled persists it and Load() overlays their
+			// config.yaml.
+			Enabled: false,
 		},
 		Browser: BrowserConfig{
 			// Off by default — a fresh browser per fetch, closed

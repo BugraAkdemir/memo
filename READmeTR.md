@@ -367,7 +367,7 @@ cd frontend && flutter run -d linux
 
 Sürüm paketleri:
 ```bash
-./scripts/build_releases.sh     # Linux  → AppImage / deb / tar.gz
+./build_releases.sh     # Linux  → AppImage / deb / tar.gz
 .\scripts\build_releases.bat    # Windows → Inno Setup kurulumu / zip
 ```
 </details>

@@ -532,6 +532,37 @@ func TestSendMessage_AgentModeOff_NoToolDefinitions(t *testing.T) {
 	}
 }
 
+// TestSendMessage_ActiveAgentChat_GlobalToggleOff_StillSendsToolDefinitions
+// is the regression test for the agent-chat-degrades-to-plain-LLM bug:
+// SendMessage / sendMessageStreamInner route the *implicitly active* chat and
+// used to pass forceAgent=false unconditionally, so an agent chat (one with a
+// ProjectPath) reached without an explicit chat_id — activeChatIdProvider
+// still null on the Flutter side, an older client — silently dropped to a
+// tool-less reply unless the global agentEnabled flag happened to be on. The
+// Flutter agent screen does not force that flag on when you switch back into
+// an existing agent chat, so this was hit routinely ("turn on agent mode,
+// let me do it" while agent mode looked on). forceAgent is now derived from
+// sm.IsAgentChat(chatID) here, mirroring SendMessageStreamTo.
+func TestSendMessage_ActiveAgentChat_GlobalToggleOff_StillSendsToolDefinitions(t *testing.T) {
+	reqs := &capturedRequests{}
+	a := newSendMessageTestApp(t, reqs)
+
+	// Agent chat active, but the global agent-mode toggle deliberately left off.
+	a.sessions.NewAgentChat(t.TempDir())
+	if a.GetAgentEnabled() {
+		t.Fatal("precondition: global agent mode must be off for this test")
+	}
+
+	reply := a.SendMessage("list the files in the current directory")
+
+	if !reqs.containsAny(`"tools"`) {
+		t.Fatalf("active agent chat, global toggle off: outbound provider request had no tool definitions — the agent chat degraded to a plain LLM reply (the bug this test guards against). requests=%s", reqs)
+	}
+	if reply != "fake agent reply" {
+		t.Fatalf("SendMessage() = %q, want %q", reply, "fake agent reply")
+	}
+}
+
 // TestSendMessage_WebSearchOnMinimalModeOn_NoToolDefinitions guards a gap
 // the web-search tool-calling redesign (see the test above) introduced and
 // this same session caught and fixed: the old blind-injection design lived

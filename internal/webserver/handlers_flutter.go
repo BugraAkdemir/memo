@@ -9,10 +9,12 @@ import (
 	"memo/internal/api"
 	"memo/internal/browserengine"
 	"memo/internal/config"
+	"memo/internal/livemode"
 	"memo/internal/logx"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/shutdown"
+	"memo/internal/stt"
 	"memo/internal/tts"
 	"net/http"
 	"net/url"
@@ -1653,6 +1655,7 @@ func (s *Server) handleTTSProviders(w http.ResponseWriter, r *http.Request) {
 			Name     string           `json:"name"`
 			APIKey   string           `json:"api_key"`
 			Voice    string           `json:"voice"`
+			BaseURL  string           `json:"base_url"`
 			Enabled  bool             `json:"enabled"`
 			Priority int              `json:"priority"`
 		}
@@ -1665,6 +1668,7 @@ func (s *Server) handleTTSProviders(w http.ResponseWriter, r *http.Request) {
 			Name:     req.Name,
 			APIKey:   req.APIKey,
 			Voice:    req.Voice,
+			BaseURL:  req.BaseURL,
 			Enabled:  req.Enabled,
 			Priority: req.Priority,
 		}
@@ -1705,20 +1709,22 @@ func (s *Server) handleTTSProviderTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Type   tts.ProviderType `json:"type"`
-		Name   string           `json:"name"`
-		APIKey string           `json:"api_key"`
-		Voice  string           `json:"voice"`
+		Type    tts.ProviderType `json:"type"`
+		Name    string           `json:"name"`
+		APIKey  string           `json:"api_key"`
+		Voice   string           `json:"voice"`
+		BaseURL string           `json:"base_url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
 	cfg := tts.ProviderConfig{
-		Type:   req.Type,
-		Name:   req.Name,
-		APIKey: req.APIKey,
-		Voice:  req.Voice,
+		Type:    req.Type,
+		Name:    req.Name,
+		APIKey:  req.APIKey,
+		Voice:   req.Voice,
+		BaseURL: req.BaseURL,
 	}
 	if err := s.fullBridge.TestTTSProviderConnection(cfg); err != nil {
 		writeJSON(w, map[string]interface{}{
@@ -1731,6 +1737,118 @@ func (s *Server) handleTTSProviderTest(w http.ResponseWriter, r *http.Request) {
 		"connected": true,
 		"error":     "",
 	})
+}
+
+// handleTTSProviderModels: POST {type, api_key} -> {"models": [...]} —
+// live-fetched, TTS-capable models for the given provider (see
+// docs/plans/PLAN_live_mode_v2.md's "never hardcode a model list"
+// requirement). api_key is accepted in the POST body rather than a query
+// param specifically so it never lands in server access logs.
+func (s *Server) handleTTSProviderModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Type   tts.ProviderType `json:"type"`
+		APIKey string           `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	models, err := s.fullBridge.ListTTSProviderModels(r.Context(), req.Type, req.APIKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string][]tts.ElevenLabsModel{"models": models})
+}
+
+// handleTTSProviderVoices: POST {type, api_key} -> {"voices": [...]} —
+// live-fetched voice list, same reasoning as handleTTSProviderModels.
+func (s *Server) handleTTSProviderVoices(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Type   tts.ProviderType `json:"type"`
+		APIKey string           `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	voices, err := s.fullBridge.ListTTSProviderVoices(r.Context(), req.Type, req.APIKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string][]tts.ElevenLabsVoice{"voices": voices})
+}
+
+// handleSTTProviders mirrors handleTTSProviders exactly, for
+// internal/stt's provider system (see docs/plans/PLAN_live_mode_v2.md §2).
+func (s *Server) handleSTTProviders(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		providers := s.fullBridge.GetSTTProviders()
+		writeJSON(w, providers)
+	case http.MethodPut:
+		var req struct {
+			Type     stt.ProviderType `json:"type"`
+			Name     string           `json:"name"`
+			APIKey   string           `json:"api_key"`
+			BaseURL  string           `json:"base_url"`
+			Enabled  bool             `json:"enabled"`
+			Priority int              `json:"priority"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		cfg := stt.ProviderConfig{
+			Type:     req.Type,
+			Name:     req.Name,
+			APIKey:   req.APIKey,
+			BaseURL:  req.BaseURL,
+			Enabled:  req.Enabled,
+			Priority: req.Priority,
+		}
+		if err := s.fullBridge.UpdateSTTProvider(cfg); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	case http.MethodDelete:
+		var req struct {
+			Type stt.ProviderType `json:"type"`
+			Name string           `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if req.Name != "" {
+			if err := s.fullBridge.DeleteSTTProvider(req.Type, req.Name); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			if err := s.fullBridge.DeleteSTTProvider(req.Type); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET, PUT, DELETE", http.StatusMethodNotAllowed)
+	}
 }
 
 // ─── TTS Voice Store (Faz 2.6 — local, offline Piper voices) ─────
@@ -2180,6 +2298,21 @@ func (s *Server) handleTelegramConnect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.fullBridge.GetTelegramStatus())
 }
 
+// handleTelegramReconnect re-establishes the bot connection with the token
+// already on disk — no body needed. Used by the Settings "reconnect" action
+// when a previously-working bot has gone dead.
+func (s *Server) handleTelegramReconnect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := s.fullBridge.ReconnectTelegram(r.Context()); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, s.fullBridge.GetTelegramStatus())
+}
+
 func (s *Server) handleTelegramStop(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || s.fullBridge == nil {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -2253,6 +2386,100 @@ func (s *Server) handleBrowserSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, map[string]bool{"keep_alive": req.KeepAlive})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleLiveModeEngines: GET lists every saved non-local engine config, PUT
+// upserts one (keyed by type), DELETE removes one. Mirrors
+// handleTTSProviders' shape. Phase 3 — see docs/plans/PLAN_live_mode_v2.md §3.
+func (s *Server) handleLiveModeEngines(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, s.fullBridge.GetLiveModeEngines())
+	case http.MethodPut:
+		var req livemode.EngineConfig
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.UpdateLiveModeEngine(req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	case http.MethodDelete:
+		var req struct {
+			Type livemode.EngineType `json:"type"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.DeleteLiveModeEngine(req.Type); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET, PUT, DELETE", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleLiveModeEngineModels: POST {type, api_key} -> {"models": [...]} —
+// live-fetched models for one engine, called from that provider's own API
+// server-side. api_key in the body, not a query param, so it never lands
+// in server access logs. Phase 4 — see docs/plans/PLAN_live_mode_v2.md §5.1.
+func (s *Server) handleLiveModeEngineModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Type   livemode.EngineType `json:"type"`
+		APIKey string              `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	models, err := s.fullBridge.ListLiveModeEngineModels(r.Context(), req.Type, req.APIKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string][]livemode.ModelInfo{"models": models})
+}
+
+// handleLiveModeActive: GET reports the current Live Mode selector
+// (Enabled/ActiveEngine/WorkMode/AgentPermissionPolicy), PUT replaces it.
+// Mirrors handleBrowserSettings/handleWebSearchSettings's shape. Phase 1
+// only — per-engine config (API keys, model/voice) is a later phase's own
+// endpoint(s), see docs/plans/PLAN_live_mode_v2.md.
+func (s *Server) handleLiveModeActive(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusServiceUnavailable)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, s.fullBridge.GetLiveModeConfig())
+	case http.MethodPut:
+		var req config.LiveModeConfig
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.UpdateLiveModeConfig(req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, req)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}

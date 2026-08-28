@@ -15,6 +15,8 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/provider_config_dialog.dart';
 import '../widgets/welcome_view.dart';
+import '../widgets/live_realtime_view.dart';
+import '../providers/live_realtime_session_provider.dart';
 import '../widgets/backend_unreachable_view.dart';
 import '../widgets/server_file_browser_dialog.dart';
 import '../providers/agent_provider.dart';
@@ -164,10 +166,39 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
               final streamingThinking = ref.watch(streamingThinkingProvider);
               final streamingAgentEvents = ref.watch(streamingAgentEventsProvider);
               final streamingStatus = ref.watch(streamingStatusProvider);
+              final isCLIChat = (ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '').isNotEmpty;
+
+              // Google Live/OpenAI Realtime session active: takes over this
+              // whole area (in place of both WelcomeView and the normal
+              // ChatMessageList) with a dedicated full-screen UI — requested
+              // by the user after real-world testing (see
+              // docs/plans/PLAN_live_mode_v2.md's follow-up plan). Checked
+              // before the messages.isEmpty branch below since a live
+              // session can start on an empty chat.
+              final liveSessionStatus = ref.watch(liveRealtimeSessionProvider).status;
+              if (liveSessionStatus == LiveRealtimeSessionStatus.connecting ||
+                  liveSessionStatus == LiveRealtimeSessionStatus.connected) {
+                return LiveRealtimeView(
+                  messages: messages,
+                  isTyping: isSending,
+                  streamingContent: streamingContent,
+                  streamingThinking: streamingThinking,
+                  streamingAgentEvents: streamingAgentEvents,
+                  statusText: streamingStatus,
+                  isCLIChat: isCLIChat,
+                  apiBaseUrl: ref.watch(apiClientProvider).baseUrl,
+                  onEdit: (index, newContent) {
+                    ref.read(messagesProvider.notifier).updateMessage(index, newContent);
+                  },
+                  onDelete: (index) {
+                    ref.read(messagesProvider.notifier).deleteMessage(index);
+                  },
+                );
+              }
+
               if (messages.isEmpty && !isSending && streamingContent.isEmpty && streamingAgentEvents.isEmpty) {
                 return  WelcomeView();
               }
-              final isCLIChat = (ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '').isNotEmpty;
               return ChatMessageList(
                 messages: messages,
                 isTyping: isSending,

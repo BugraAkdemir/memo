@@ -13,7 +13,7 @@ type mockProvider struct {
 	err     error
 }
 
-func (m *mockProvider) Name() ProviderType { return m.name }
+func (m *mockProvider) Name() ProviderType  { return m.name }
 func (m *mockProvider) DisplayName() string { return m.display }
 func (m *mockProvider) Synthesize(_ context.Context, _, _ string) ([]byte, error) {
 	if m.err != nil {
@@ -206,21 +206,28 @@ func TestRouterHasActiveProvider(t *testing.T) {
 	})
 }
 
-func TestRouterUpdateConfigsSkipsInvalidAndUnimplemented(t *testing.T) {
+func TestRouterUpdateConfigsSkipsInvalid(t *testing.T) {
 	r := NewRouter([]ProviderConfig{
 		{Type: ProviderOpenAI, Name: "oa", Voice: "alloy", APIKey: "sk-x", Enabled: true},
 		{Type: ProviderElevenLabs, Name: "el", Voice: "rachel", APIKey: "sk-y", Enabled: true},
+		{Type: ProviderCustom, Name: "cu", Voice: "v1", BaseURL: "http://localhost:9999", Enabled: true},
 		{Type: "", Name: "bad", Enabled: true},
 	})
-	// OpenAI is implemented (Faz 2.2) and constructs successfully. ElevenLabs
-	// is declared but not implemented, and the empty-Type entry fails
-	// Validate — UpdateConfigs must skip both gracefully, not panic or leave
-	// a broken entry in r.providers.
-	if len(r.providers) != 1 {
-		t.Fatalf("expected exactly 1 constructible provider (openai), got %d", len(r.providers))
+	// OpenAI, ElevenLabs, and Custom are all implemented (Faz 2 / Live Mode
+	// v2 §2) and construct successfully. Only the empty-Type entry fails
+	// Validate — UpdateConfigs must skip it gracefully, not panic or leave a
+	// broken entry in r.providers.
+	if len(r.providers) != 3 {
+		t.Fatalf("expected exactly 3 constructible providers, got %d", len(r.providers))
 	}
-	if r.providers[0].cfg.Type != ProviderOpenAI {
-		t.Errorf("expected the surviving entry to be openai, got %s", r.providers[0].cfg.Type)
+	seen := map[ProviderType]bool{}
+	for _, p := range r.providers {
+		seen[p.cfg.Type] = true
+	}
+	for _, want := range []ProviderType{ProviderOpenAI, ProviderElevenLabs, ProviderCustom} {
+		if !seen[want] {
+			t.Errorf("expected a surviving %s entry, got types %v", want, seen)
+		}
 	}
 }
 
@@ -234,6 +241,8 @@ func TestProviderConfigValidate(t *testing.T) {
 		{"missing voice", ProviderConfig{Type: ProviderOpenAI, APIKey: "sk-x"}, true},
 		{"missing api key", ProviderConfig{Type: ProviderOpenAI, Voice: "alloy"}, true},
 		{"valid", ProviderConfig{Type: ProviderOpenAI, Voice: "alloy", APIKey: "sk-x"}, false},
+		{"custom missing base_url", ProviderConfig{Type: ProviderCustom, Voice: "v1"}, true},
+		{"custom without api key is valid", ProviderConfig{Type: ProviderCustom, Voice: "v1", BaseURL: "http://localhost:9999"}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

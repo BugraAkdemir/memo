@@ -3,17 +3,26 @@ api:
     embedding_model: ""
     timeout_seconds: 120
 identity:
-    user_name: ""
+    user_name: Test
     assistant_name: Memo
     style: casual
-    system_role: ""
+    system_role: |-
+        The user's name is Test. You are Memo, a highly capable, privacy-first AI assistant running entirely locally on the user's device.
+
+        CORE DIRECTIVES:
+        1. Identity: You are always Memo, regardless of the underlying LLM. Act as a smart, reliable, and direct partner.
+        2. Anti-Hallucination: Never invent, guess, or fabricate information. If you are unsure or do not know the answer, explicitly state that you do not know.
+        3. Conciseness & Structure: Keep your answers clear, well-structured, and strictly to the point. Avoid long, rambling introductions or unnecessary filler words.
+        4. Seamless Memory: You have access to the user's personal context. Use this information naturally to inform your answers. STRICTLY FORBIDDEN: Do not use phrases like "I remember," "As we discussed," "Based on your data," or "I recall." Simply present the information as shared context.
+        5. Language Mirroring: Always respond in the exact language the user communicates in (e.g., if the user asks in Turkish, your entire response must be in Turkish).
     incognito_prompt: ""
     minimal_mode: false
-    minimal_mode_keep_persona: true
+    minimal_mode_keep_persona: false
     minimal_mode_keep_capabilities: false
-    minimal_mode_keep_passive: true
+    minimal_mode_keep_passive: false
     minimal_mode_keep_proactive: false
     learned_style_notes: ""
+    ui_language: ""
 memory:
     persist_dir: data/memory
     top_k: 8
@@ -24,10 +33,12 @@ memory:
     embedding_model_file: ""
     embedding_auto_start: false
     auto_fact_extraction: false
+    dream_enabled: false
+    dream_initial_delay_minutes: 5
+    dream_interval_hours: 24
 remote_access:
     enabled: false
     port: 8080
-    token: ""
     ngrok_mode: false
     ngrok_token: ""
     ngrok_auto_start: false
@@ -35,23 +46,36 @@ remote_access:
     tailscale_key: ""
     tailscale_hostname: memo
     tailscale_funnel: false
+    tailscale_connected_once: false
+    auth_mode: token
+    username: ""
+    password_hash: ""
+    devices: []
+    token: ""
+    accounts: []
+    setup_bootstrapped: false
 llama:
     engine_mode: ""
     binary_path: ""
     port: 8081
     embedding_port: 8082
-    ctx_size: 4096
+    ctx_size: 8192
     max_history: 20
     max_context_tokens: 0
     models_dir: data/models
     temperature: 0
     top_p: 0
     max_tokens: 0
+    embedding_gpu_layers: 0
 whisper:
     binary_path: ""
     model_path: ""
     language: auto
     port: 9877
+    enabled: false
+tts:
+    binary_path: ""
+    model_path: ""
     enabled: false
 sync:
     enabled: false
@@ -65,6 +89,8 @@ whatsapp:
     data_dir: ""
     auto_index: false
     max_history_days: 0
+    self_chat_assistant: false
+    auto_approve_permissions: false
 proactive:
     enabled: false
     level: ""
@@ -85,5 +111,35 @@ mood:
 web_search:
     enabled: false
     max_results: 0
+agent_mode:
+    enabled: false
+browser:
+    keep_alive: false
+dev_gateway:
+    require_api_key: false
+    use_memory: false
+    system_prompt: ""
+    token: ""
+    claude_code_cli:
+        connected: false
+        prev_base_url_set: false
+        prev_base_url: ""
+        prev_api_key_set: false
+        prev_api_key: ""
+        model: ""
+        prev_model_set: false
+        prev_model: ""
+swarm:
+    rpc_port: 50052
+    last_room_code: ""
+    role: none
+    workers: []
+onboarding:
+    completed: false
+live_mode:
+    enabled: false
+    active_engine: ""
+    work_mode: ""
+    agent_permission_policy: ""
 active_provider: ""
 beta: false

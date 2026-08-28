@@ -9,6 +9,8 @@ import '../models/browser_install_progress.dart';
 import '../models/chat.dart';
 import '../models/cli_command.dart';
 import '../models/gpu_info.dart';
+import '../models/live_mode_config.dart';
+import '../models/live_mode_engine_config.dart';
 import '../models/local_model.dart';
 import '../models/minimal_mode_overrides.dart';
 import '../models/orchestra_config.dart';
@@ -560,6 +562,16 @@ class MemoApiClient {
   /// Delete a message by index.
   Future<void> deleteMessage(int index) async {
     await _dio.post('/api/messages/delete', data: {'index': index});
+  }
+
+  /// Appends role/content to the active session's history and persists it
+  /// — no LLM turn involved. Live Mode's transcript display is the one
+  /// caller today (live_realtime_session_provider.dart): messagesProvider.
+  /// addMessage() alone only updates in-memory client state, which looked
+  /// permanent but vanished on a chat switch or app restart since nothing
+  /// had told the backend about it — this is the real persistence half.
+  Future<void> appendMessage(String role, String content) async {
+    await _dio.post('/api/messages/append', data: {'role': role, 'content': content});
   }
 
   /// Export current chat as markdown.
@@ -1886,6 +1898,60 @@ class MemoApiClient {
     await _dio.post('/api/tts/voices/select', data: {'id': id});
   }
 
+  // ─── Live Mode v2 (Phase 1: top-level selector only) ───────────────
+  // See docs/plans/PLAN_live_mode_v2.md. Per-engine config (API keys,
+  // model/voice choice) is a later phase's own endpoint(s).
+
+  Future<LiveModeConfig> getLiveModeConfig() async {
+    final res = await _dio.get('/api/livemode/active');
+    return LiveModeConfig.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  Future<void> updateLiveModeConfig(LiveModeConfig cfg) async {
+    await _dio.put('/api/livemode/active', data: cfg.toJson());
+  }
+
+  // ─── Live Mode v2 (Phase 3: per-engine config CRUD) ─────────────────
+
+  Future<List<LiveModeEngineConfig>> getLiveModeEngines() async {
+    final res = await _dio.get('/api/livemode/engines');
+    if (res.data is List) {
+      return (_guard<List>(res.data))
+          .map((e) => LiveModeEngineConfig.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<void> updateLiveModeEngine(LiveModeEngineConfig cfg) async {
+    await _dio.put('/api/livemode/engines', data: cfg.toJson());
+  }
+
+  Future<void> deleteLiveModeEngine(String type) async {
+    await _dio.delete('/api/livemode/engines', data: {'type': type});
+  }
+
+  // ─── Live Mode v2 (Phase 4: live model discovery) ───────────────────
+
+  /// Fetches the live-discovered model list for one engine, straight from
+  /// that provider's own API (server-side — the Flutter client never talks
+  /// to Google/OpenAI/ElevenLabs directly, see PLAN_live_mode_v2.md §3/§5.1).
+  /// Throws if the engine has no discovery endpoint (e.g. "custom").
+  Future<List<LiveModeModelInfo>> listLiveModeEngineModels(
+    String type,
+    String apiKey,
+  ) async {
+    final res = await _dio.post(
+      '/api/livemode/engines/models',
+      data: {'type': type, 'api_key': apiKey},
+    );
+    final body = _guard<Map<String, dynamic>>(res.data);
+    final list = (body['models'] as List<dynamic>?) ?? const [];
+    return list
+        .map((e) => LiveModeModelInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   // ─── Orchestra Mode ───────────────────────────────────────────────
 
   /// Get orchestra config.
@@ -2230,6 +2296,14 @@ class MemoApiClient {
       '/api/telegram/connect',
       data: {'bot_token': botToken},
     );
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
+  /// Re-establish the Telegram bot connection using the token already saved
+  /// on the backend — no token travels from the client. For the "reconnect"
+  /// action when a previously-working bot has gone dead.
+  Future<Map<String, dynamic>> reconnectTelegram() async {
+    final res = await _dio.post('/api/telegram/reconnect');
     return _guard<Map<String, dynamic>>(res.data);
   }
 

@@ -6,7 +6,8 @@ import 'package:record/record.dart';
 /// The duplex audio contract Faz 4 (`docs/plans/PLAN_voice_live_mode_faz4.md`)
 /// is built around: one owner for both microphone capture and TTS/filler
 /// render, so a real AEC engine can see both signals and cancel the speaker
-/// bleeding into the mic. [captureStream] always yields 16 kHz mono PCM16 --
+/// bleeding into the mic. [captureStream] yields mono PCM16 at whatever
+/// sample rate the engine was constructed with (16 kHz by default) --
 /// AEC-processed when [aecAvailable] is true, raw microphone otherwise.
 ///
 /// [start]/[stop]/[dispose] intentionally mirror `VadHandler`'s own
@@ -46,9 +47,16 @@ abstract class DuplexAudioEngine {
 /// to consume it silently would.
 class NoAecDuplexAudioEngine implements DuplexAudioEngine {
   final AudioRecorder _recorder;
+  final int _sampleRate;
 
-  NoAecDuplexAudioEngine({AudioRecorder? recorder})
-    : _recorder = recorder ?? AudioRecorder();
+  /// [sampleRate] defaults to 16 kHz (Voice Live Mode's original contract,
+  /// and Google Live's fixed input rate). Live Mode v2's native engines
+  /// need it configurable: OpenAI Realtime requires 24 kHz capture, not
+  /// 16 kHz (see docs/plans/PLAN_live_mode_v2.md's provider research) —
+  /// see live_realtime_session_provider.dart's per-engine wiring.
+  NoAecDuplexAudioEngine({AudioRecorder? recorder, int sampleRate = 16000})
+    : _recorder = recorder ?? AudioRecorder(),
+      _sampleRate = sampleRate;
 
   bool _isActive = false;
   StreamController<Uint8List>? _captureController;
@@ -71,9 +79,9 @@ class NoAecDuplexAudioEngine implements DuplexAudioEngine {
     _captureController = controller;
 
     final stream = await _recorder.startStream(
-      const RecordConfig(
+      RecordConfig(
         encoder: AudioEncoder.pcm16bits,
-        sampleRate: 16000,
+        sampleRate: _sampleRate,
         numChannels: 1,
         autoGain: true,
         echoCancel: true,

@@ -18,6 +18,9 @@ data/bin/
 data/agent-backups/*
 data/sync_token.json
 data/providers.json
+data/tts_providers.json
+data/stt_providers.json
+data/livemode_engines.json
 data/telegram.json
 data/permissions.json
 data/orchestra.json
@@ -104,3 +107,7 @@ data/session.key
 data/install_id
 data/agent-audit.jsonl
 internal/agent/data/agent-audit.jsonl
+internal/app/data/agent-backups/history.json
+internal/app/data/machine.key
+internal/app/data/agent-audit.jsonl
+internal/agent/data/agent-backups/history.json

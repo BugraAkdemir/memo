@@ -2298,6 +2298,21 @@ func (s *Server) handleTelegramConnect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.fullBridge.GetTelegramStatus())
 }
 
+// handleTelegramReconnect re-establishes the bot connection with the token
+// already on disk — no body needed. Used by the Settings "reconnect" action
+// when a previously-working bot has gone dead.
+func (s *Server) handleTelegramReconnect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := s.fullBridge.ReconnectTelegram(r.Context()); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, s.fullBridge.GetTelegramStatus())
+}
+
 func (s *Server) handleTelegramStop(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || s.fullBridge == nil {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)

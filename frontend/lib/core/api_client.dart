@@ -2299,6 +2299,14 @@ class MemoApiClient {
     return _guard<Map<String, dynamic>>(res.data);
   }
 
+  /// Re-establish the Telegram bot connection using the token already saved
+  /// on the backend — no token travels from the client. For the "reconnect"
+  /// action when a previously-working bot has gone dead.
+  Future<Map<String, dynamic>> reconnectTelegram() async {
+    final res = await _dio.post('/api/telegram/reconnect');
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
   /// Pause the Telegram bot (keeps the token and linked owner chat).
   Future<void> stopTelegram() async {
     await _dio.post('/api/telegram/stop');

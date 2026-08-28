@@ -372,6 +372,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Telegram permission (Faz 5.1.1, yapacam.md), lenient-gated.
 	route("/api/telegram/status", s.handleTelegramStatus)
 	route("/api/telegram/connect", s.requirePermission(s.handleTelegramConnect, hasTelegramPerm))
+	route("/api/telegram/reconnect", s.requirePermission(s.handleTelegramReconnect, hasTelegramPerm))
 	route("/api/telegram/stop", s.requirePermission(s.handleTelegramStop, hasTelegramPerm))
 	route("/api/telegram/disconnect", s.requirePermission(s.handleTelegramDisconnect, hasTelegramPerm))
 

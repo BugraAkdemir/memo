@@ -227,9 +227,9 @@ class _TelegramTabState extends ConsumerState<TelegramTab> {
               ),
               if (!status.connected && !status.reconnecting)
                 TextButton.icon(
-                  onPressed: () => ref.read(telegramStatusProvider.notifier).refresh(),
+                  onPressed: () => ref.read(telegramStatusProvider.notifier).reconnect(),
                   icon: const Icon(Icons.refresh, size: 16),
-                  label: Text(L10n.t('retry')),
+                  label: Text(L10n.t('reconnect')),
                 ),
               TextButton.icon(
                 onPressed: () => ref.read(telegramStatusProvider.notifier).stop(),

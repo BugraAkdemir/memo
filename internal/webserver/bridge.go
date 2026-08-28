@@ -332,6 +332,7 @@ type FullBridge interface {
 
 	// Telegram
 	StartTelegram(ctx context.Context, botToken string) error
+	ReconnectTelegram(ctx context.Context) error
 	StopTelegram()
 	DisconnectTelegram() error
 	GetTelegramStatus() map[string]interface{}

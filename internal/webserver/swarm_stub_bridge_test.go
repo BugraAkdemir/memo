@@ -509,6 +509,7 @@ func (b *swarmStubBridge) WhatsAppChatStream(ctx context.Context, userMsg string
 func (b *swarmStubBridge) GetWhatsAppSelfChatAssistant() bool                       { return false }
 func (b *swarmStubBridge) SetWhatsAppSelfChatAssistant(enabled bool) error          { return nil }
 func (b *swarmStubBridge) StartTelegram(ctx context.Context, botToken string) error { return nil }
+func (b *swarmStubBridge) ReconnectTelegram(ctx context.Context) error              { return nil }
 func (b *swarmStubBridge) StopTelegram()                                            {}
 func (b *swarmStubBridge) DisconnectTelegram() error                                { return nil }
 func (b *swarmStubBridge) GetTelegramStatus() map[string]interface{}                { return map[string]interface{}{} }

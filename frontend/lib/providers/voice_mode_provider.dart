@@ -144,7 +144,7 @@ class VoiceModeNotifier extends StateNotifier<VoiceModeState> {
     final myGeneration = ++_generation;
     _busy = true;
     state = VoiceModeState.thinking;
-    _playFillerBestEffort();
+    _playFillerBestEffort(myGeneration);
 
     try {
       String reply = '';
@@ -179,6 +179,11 @@ class VoiceModeNotifier extends StateNotifier<VoiceModeState> {
         state = VoiceModeState.speaking;
         final audio = await _ref.read(apiClientProvider).synthesizeSpeech(reply);
         if (myGeneration != _generation) return; // barged in during synthesis
+        // Cut any filler still playing/queued so it doesn't overlap the
+        // real reply — the loop in _playFillerBestEffort also exits on its
+        // own now that state != thinking, but a clip already mid-subprocess
+        // needs an explicit stop.
+        _fillerPlayer.stop();
         await _player.play(audio);
       } catch (e) {
         if (myGeneration != _generation) return;
@@ -195,18 +200,29 @@ class VoiceModeNotifier extends StateNotifier<VoiceModeState> {
     }
   }
 
-  /// Plays one cached local filler sound (Faz 3, GET /api/tts/filler) while
-  /// sendMessage() is in flight, to mask the reply's latency. Deliberately
-  /// fire-and-forget: a missing/unconfigured local Piper voice (filler
-  /// sounds are local-only, never routed through an external TTS
-  /// provider — see internal/tts/filler.go's own doc comment) just means
-  /// no filler plays, silently — this is a nice-to-have, not something
-  /// worth surfacing an error toast for on every single turn.
-  void _playFillerBestEffort() {
+  /// Plays cached local filler sounds (Faz 3, GET /api/tts/filler) on a loop
+  /// while sendMessage() is in flight, to mask the reply's latency —
+  /// replaying with a short human-ish pause between clips instead of playing
+  /// exactly one and then sitting silent for the rest of a multi-second
+  /// (delegated / agentic) reply. Stops the instant this cycle goes stale
+  /// (barge-in bumped [_generation]) or the real reply has started
+  /// ([state] left `thinking`). Deliberately fire-and-forget: a
+  /// missing/unconfigured local Piper voice (filler sounds are local-only,
+  /// never routed through an external TTS provider — see
+  /// internal/tts/filler.go's own doc comment) just means no filler plays,
+  /// silently — a nice-to-have, not something worth an error toast every turn.
+  void _playFillerBestEffort(int myGeneration) {
     () async {
       try {
-        final audio = await _ref.read(apiClientProvider).getTTSFiller();
-        await _fillerPlayer.play(audio);
+        while (myGeneration == _generation && state == VoiceModeState.thinking) {
+          final audio = await _ref.read(apiClientProvider).getTTSFiller();
+          if (myGeneration != _generation || state != VoiceModeState.thinking) {
+            return;
+          }
+          await _fillerPlayer.play(audio);
+          // A brief, human-ish pause before the next thinking sound.
+          await Future<void>.delayed(const Duration(milliseconds: 1200));
+        }
       } catch (_) {
         // best-effort, see doc comment above
       }

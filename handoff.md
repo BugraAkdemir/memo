@@ -1,184 +1,141 @@
-# Ek (2026-08-27, devam 23) — Live Mode: geçmiş devamlılığı, delegate çalışma dizini + uydurma, "araçlar kapalı" nag bug'ı; agent chat routing, Google Live transkript parçalanması, Live Mode → hafıza, agent-mode kalıcılığı
+# Ek (2026-08-27, devam 23) — Live Mode sağlamlaştırma turu (7 alt-tur): "araçlar kapalı" nag, delegate çalışma dizini + uydurma, geçmiş devamlılığı, mikrofon mute; + agent chat routing, Google Live transkript, Live Mode→hafıza, agent-mode kalıcılığı, RAG'daki bayat saat
 
-Kullanıcı üç şey bildirdi (GitHub katkı grafiği sorusuyla başladı — cevap:
-commit'ler `feature/live-mode-v2` dalında, grafik sadece `main`'i sayar;
-`~/.config` değil, dal meselesi). Sonra bug'lar:
+Uzun bir oturum. GitHub katkı grafiği sorusuyla başladı (cevap: commit'ler
+`feature/live-mode-v2` dalında, grafik sadece `main`'i sayar — dal
+meselesi, `~/.config` değil). Sonra kullanıcı sırayla bug bildirdi, her
+biri gerçek oturum testinden. Commit sırasına göre:
 
-**000000. (7. tur) Memo eski/rastgele bir saat söylüyor — düzeltildi
-(`c581f3a`).** Sistem prompt'unda `[Time context]` güncel saati veriyor
-ama bazen eski bir saat söylüyordu: geçmiş bir "saat kaç?" → "14:32"
-turu RAG'a kaydedilmiş, sonraki saat sorusunda o bayat satır geri
-geliyor. İki koruma: (1) `IsLowValueTurn` artık düz saat/tarih sorularını
-low-value sayıyor (otomatik `SaveInteraction` atlıyor) — iki dilli
-normalize edilmiş tam-mesaj seti (hem gerçek Türkçe diacritic hem
-diacritic-free, `lowValueAcks` gibi) + birkaç net substring ("saat kaç",
-"what time is it"). Reply-uzunluk kapısından ÖNCE bakılıyor (tam sözlü
-cevap `maxLowValueRunes`'u aşıyor). Kalıcı ifade içindeki saat ("saat 3'te
-toplantı", "her gün 7'de kalkıyorum") etkilenmiyor. (2) `timeContextBlock`
-sonuna "bu güncel saat; hafıza/eski mesaj farklı diyorsa o bayat, bunu
-kullan" satırı eklendi (fix'ten önce RAG'a girmiş bayat saat için).
-Test: `TestIsLowValueTurn_TimeDateQuestionsSkip`.
+**1. Agent chat düz LLM'e düşüyordu (`670ce27`).** Belirti: "memo buraya
+yapamam, iznim yok" / "agent aç yapayım" (agent açıkken) + hep repo
+dizinini gösteriyor. Kök sebep: `SendMessageStreamTo` (`chat_id`'li yol)
+`forceAgent`'i `sm.IsAgentChat(chatID)`'den türetiyor ama `SendMessage` +
+`sendMessageStreamInner` (implicit-active yol) `forceAgent=false`
+sabitliyordu — `chat_id` olmadan gelen istek global `agentEnabled` kapalıysa
+araçsız cevaba düşüyordu. Fix: `chat.go`'da iki yer `sm.IsAgentChat`
+kullanıyor + `agent_screen.dart` mevcut agent chat'e geçişte agent modunu
+açıyor. Test: `TestSendMessage_ActiveAgentChat_GlobalToggleOff_StillSendsToolDefinitions`.
+_(Not: kullanıcı sonradan "normal chat zaten çalışıyor" dedi — asıl Live
+Mode bug'ı #5. Bu yine de geçerli bir düzeltme.)_
 
-**00000. (6. tur — özellik isteği) Live Mode'a mikrofon aç/kapat butonu
-eklendi (`2358f89`).** Kullanıcı: sesi kapatmak için her seferinde
-sohbetten çıkmak istemiyor. `LiveRealtimeSessionNotifier.toggleMicMuted` —
-capture engine + WS ayakta kalıyor, muted iken yakalanan PCM sunucuya
-gönderilmiyor (yeniden bağlanma yok). `micMuted` state'te, `LiveRealtimeView`'de
-orb'un altında bir mikrofon pill'i (Icons.mic/mic_off), muted iken durum
-yazısı "Mikrofon kapalı". Her `connect()` mic açık başlıyor. L10n TR+EN.
-Test: "mic toggle button flips label + state text when tapped".
+**2. Google Live transkripti kelime kelime parçalanıyordu (`6373bea`).**
+Her kelime ayrı sohbet balonu. Google Live API transkripti minik artışlarla
+yolluyor, sonu `turnComplete`; `readLoop` her parçayı ayrı `EventTranscript`
+yapıyordu. OpenAI Realtime'da yok (`*.done` zaten tam cümle). Fix: `readLoop`
+`strings.Builder`'da biriktirip tur sınırında rol başına tek flush.
 
-**0000. (5. tur) Live Mode aç/kapat/tekrar aç → sohbet sıfırdan başlıyor —
-düzeltildi (`037b4d5`).** Kullanıcı: aynı sohbette Live Mode'u kapatıp
-tekrar açınca model az önce konuşulanı hatırlamıyor, "sıfırdan başlıyor".
-Sebep: native realtime oturumun kendi geçmişi yok, tek seferlik sistem
-talimatı alıyor — `buildLiveModeSystemPrompt` kimlik + genel hafıza özeti
-+ capability paragrafı veriyordu ama devam eden sohbetten hiçbir şey.
-`buildLiveModeHistoryBlock` artık aktif sohbetin son 24 mesajını (~1.5k
-token cap, "<isim>: <metin>" satırları) "kaldığın yerden devam et"
-notuyla sistem talimatına katıyor. Transkript kalıcılığı zaten iki tarafı
-da o sohbete yazıyor (`AppendMessage`), yeniden açılan oturum artık onları
-görüyor. Test: `TestBuildLiveModeSystemPrompt_IncludesRecentHistory`.
+**3. Live Mode konuşmaları RAG'a girmiyordu (`748fd51`).** (a) `AppendMessage`
+(`POST /api/messages/append`) sadece oturuma yazıyordu, `saveMemoryAsync`'e
+uğramıyordu — artık model transkriptini önceki kullanıcı sözüyle eşleyip
+tura kaydediyor (boş/hata cevabı, BUG-L1, near-dup zaten filtreleniyor; ek
+kapı sadece incognito). Delegate + standalone ikisi de. (b) Standalone'un
+per-tur hafıza *okuma* yolu yoktu — artık tam registry'nin yanında
+`delegate_to_main_model`'i de taşıyor. Delegate mantığı ortak `runDelegate`
+closure'ına çıkarıldı.
 
-**000. (4. tur — delegate modu hâlâ bozuktu) Live Mode delegate'te agent
-çalışma dizini yok + başarısızlıkta uydurma — düzeltildi (`26c79a1`).**
-Gerçek oturum testi (`~/Desktop/devret-modetest.md`): "masaüstündeki
-dosyaları say, çalışma alanını değiştirebilirsin" → model "bir saniye
-bakıyorum" / "hâlâ uğraşıyorum" deyip sonra OLMAYAN dosya listesi +
-uzantılar uydurdu. Standalone (`~/Desktop/bağımıszModeTest.md`) dosya
-işini doğru yapıyor; delegate hiç çalışmıyor. İki sebep: (1)
-`getOrCreateLiveModeChat`'in oluşturduğu arka plan sohbetinin `ProjectPath`'i
-yoktu → agent (delegate ya da standalone) backend'in kendi cwd'sinde
-(kaynaktan çalışınca repo) başlıyordu; `~/Desktop` istekleri ya yanlış
-yere düşüyor ya `change_directory` (Dangerous → sesli izin akışı güvenilir
-sesli sormuyor) gerektiriyordu. Artık `os.UserHomeDir()`'e kök salıyor —
-`~/Desktop`, `~/Documents` düz relative path'le erişilebilir,
-`change_directory` gerekmez. (2) Delegate çağrısı boş ya da `⚠️ ...` hata
-string'i dönünce `drainSelfChatReply` bunu olduğu gibi live modele tool
-sonucu olarak veriyordu, model de aktarmak yerine cevap uyduruyordu.
-`runDelegate` artık bu iki durumu açık "DELEGASYON BAŞARISIZ — kullanıcıya
-söyle, UYDURMA" talimatıyla sarıyor. Ayrıca `SendLiveDelegatedMessageStream`'e
+**4. Agent-mode "açık görünüyor kapalı davranıyor" — kalıcılık (`0ae07b4`).**
+Kök sebep: agent-mode SADECE bellek-içi bayraktı, her App init `false`'a
+sıfırlıyordu; Flutter StateNotifier son değeri cache'liyor. Masaüstü uygulaması
+bundled backend'i yeniden başlatınca backend "kapalı", istemci "açık".
+Fix: `config.AgentModeConfig{Enabled}` (`agent_mode.enabled`, default kapalı;
+`WebSearchConfig.Enabled` zaten kalıcıydı), `SetAgentEnabled` config'e yazıyor,
+init geri yüklüyor; `app_shell.dart` gate listener'ı `agentEnabledProvider` +
+`webSearchModeProvider`'ı invalidate ediyor. Test:
+`TestSetAgentEnabled_PersistsAcrossReload`. **Kullanıcı bir kez backend'i
+yeniden başlatıp toggle'ı bir kez açmalı → o an config'e yazılır.**
+
+**5. ★ ASIL LIVE MODE BUG'I: model araçları/web'i "kapalı" sanıyor
+(`bcf0def`).** Kullanıcı net: normal text sohbette agent + web KUSURSUZ,
+"kapalı gibi davranma" SADECE Live Mode'da. Kök sebep:
+`buildLiveModeSystemPrompt`, `identity.BuildSystemPrompt`'u
+`agentEnabled=false, webSearchEnabled=false` ile çağırıyordu. O
+parametrelerin TEK kullanımı `buildCapabilitiesBlock` — `false` verilen
+her özellik için "bu KAPALI, toolbar'daki toggle'ı aç de" nag'ı ekliyor.
+Eski yorum "tool metnini bastırıyor" diyordu ama bastırılacak metin yok.
+Sonuç: standalone elinde araç tutarken, delegate onlara ulaşabilirken,
+ikisi de "yapamam, agent aç" diyordu. Fix: `true, true` geç + iki
+capability paragrafı yeniden yazıldı (standalone: web_search/fetch_page'i
+açıkça say; delegate: web/dosya/komut/hafıza HEPSİ delegate'ten geçer).
+Test: `TestBuildLiveModeSystemPrompt_NoFeatureOffNag`.
+
+**6. Delegate hâlâ bozuktu: çalışma dizini yok + başarısızlıkta uydurma
+(`26c79a1`).** Gerçek test (`~/Desktop/devret-modetest.md`): "masaüstündeki
+dosyaları say" → "bir saniye bakıyorum" / "hâlâ uğraşıyorum" → OLMAYAN
+dosya/uzantı listesi uydurdu. Standalone doğru çalışıyor. İki sebep:
+(1) `getOrCreateLiveModeChat`'in arka plan sohbetinin `ProjectPath`'i yoktu
+→ agent backend cwd'sinde (repo) başlıyordu; `~/Desktop` erişilemiyor,
+`change_directory` (Dangerous, sesli izin akışı güvenilir sormuyor)
+gerekiyordu. Artık `os.UserHomeDir()`'e kök salıyor. (2) Delegate boş/hata
+dönünce `drainSelfChatReply` onu olduğu gibi live modele veriyordu, model
+uyduruyordu. `runDelegate` artık boş/`⚠️` cevabı "DELEGASYON BAŞARISIZ —
+söyle, UYDURMA" talimatıyla sarıyor. `SendLiveDelegatedMessageStream`'e
 START/DONE log'u eklendi. Test: `TestGetOrCreateLiveModeChat_RootsAtHome`,
-`liveModeChatRootedAt` helper'ı + 5 standalone testi çalışma dizinini
-kendi sandbox'ına sabitliyor. **Not: delegate sonucu Google Live'a çok geç
-dönüyorsa (20-30sn'lik agent turu, realtime turdan çok sonra) hâlâ
-sorun olabilir — home kökü basit dosya sorgularını hızlandırdığı için
-bu büyük ölçüde hafifledi ama tamamen çözülmedi.**
+`liveModeChatRootedAt` helper'ı. **Kalan risk: delegate agent turu 20-30sn
+sürerse sonuç Google Live'ın turundan çok geç dönebilir — home kökü basit
+sorguları hızlandırdı ama uzun görevler için tam çözüm değil.**
 
-**00. (ASIL BUG — 3. turda netleşti) Live Mode'da model araçları/web'i
-"kapalı" sanıyor — düzeltildi (`bcf0def`).** Kullanıcı net söyledi: normal
-text sohbette agent + web KUSURSUZ çalışıyor; "agent açıkken kapalı gibi
-davranma / web açıkken kapalı gibi davranma" SADECE Live Mode'da oluyor.
-Kök sebep: `buildLiveModeSystemPrompt`, `identity.BuildSystemPrompt`'u
-`agentEnabled=false, webSearchEnabled=false` ile çağırıyordu. O parametrelerin
-TEK kullanımı `buildCapabilitiesBlock` — ve o, `false` verilen her özellik
-için "bu özellik KAPALI, kullanıcıya toolbar'daki toggle'ı aç de" nag'ı
-enjekte ediyor. Eski yorum "tool-capability metnini bastırıyor" diyordu ama
-`BuildSystemPrompt`'ta bastırılacak öyle bir metin yok — `false` vermek
-sadece yanlış nag'ı EKLİYORDU. Sonuç: standalone oturum elinde
-read_file/run_command/web_search/fetch_page tutarken, delegate oturum bunlara
-delegate_to_main_model'le ulaşabilirken, ikisi de "yapamam, agent modunu aç"
-diyordu. Fix: `true, true` geç (nag hiç çıkmasın) + her iki capability
-paragrafını yeniden yaz (standalone: web_search/fetch_page'i açıkça say,
-"yapamam deme"; delegate: web/dosya/komut/hafıza HEPSİ delegate'ten geçer,
-"agent aç deme, devret"). Test: `TestBuildLiveModeSystemPrompt_NoFeatureOffNag`.
+**7. Live Mode kapat/aç → sohbet sıfırdan başlıyor (`037b4d5`).** Native
+realtime oturumun kendi geçmişi yok, tek seferlik sistem talimatı alıyor.
+`buildLiveModeHistoryBlock` artık aktif sohbetin son 24 mesajını (~1.5k
+token cap, "<isim>: <metin>") "kaldığın yerden devam et" notuyla sistem
+talimatına katıyor. `AppendMessage` zaten iki tarafı da o sohbete yazıyor.
+Test: `TestBuildLiveModeSystemPrompt_IncludesRecentHistory`.
 
-**0. Agent mode "açık görünüyor ama kapalı davranıyor" (normal chat) —
-düzeltildi (`0ae07b4`).** İlk ekran görüntüsünde normal chat'te de bu
-görünmüştü; kullanıcı sonra "normal chat düzeldi/iyi" dedi. Yine de geçerli
-bir düzeltme (toggle restart'ı geçsin). Kök sebep:
-agent-mode SADECE bellek-içi bir bayraktı, her App init'te `false`'a
-sıfırlanıyordu; Flutter StateNotifier (ve CLI) son değeri cache'liyor,
-yeniden senkron etmiyor. Masaüstü uygulaması güncellemede / `--kill`
-sonrası bundled backend'i yeniden başlatınca backend "kapalı"ya dönüyor
-ama her istemci "açık" gösteriyor — `routeStream` + `buildCapabilitiesBlock`
-ikisi de o bayat bayrağı okuyor. Fix: `config.AgentModeConfig{Enabled}`
-(yaml: `agent_mode.enabled`, default kapalı) — `WebSearchConfig.Enabled`
-zaten aynı sebeple kalıcıydı; `SetAgentEnabled` artık config.yaml'a
-yazıyor, App init `a.cfg.AgentMode.Enabled`'dan geri yüklüyor;
-`app_shell.dart`'ın merkezi auth-gate listener'ı artık
-`agentEnabledProvider` + `webSearchModeProvider`'ı da invalidate ediyor
-(ikisi de construct-once StateNotifier, init GET'i gate açıkken 401 yeyip
-`false`'ta kalıyordu — ~25 provider için zaten yapılan BUG-ONB düzeltmesi).
-Test: `TestSetAgentEnabled_PersistsAcrossReload`. **Kullanıcı bir kez
-backend'i yeniden başlatıp toggle'ı bir kez açmalı — o an config'e yazılır,
-sonra kalıcı.**
+**8. Mikrofon aç/kapat butonu (`2358f89`, özellik isteği).**
+`LiveRealtimeSessionNotifier.toggleMicMuted` — capture engine + WS ayakta,
+muted iken yakalanan PCM sunucuya gönderilmiyor (yeniden bağlanma yok).
+`LiveRealtimeView`'de orb'un altında mikrofon pill'i (`Icons.mic/mic_off`),
+muted iken durum yazısı "Mikrofon kapalı". Her `connect()` mic açık.
+L10n TR+EN. Test: "mic toggle button flips label + state text when tapped".
 
-**1. Agent chat düz LLM'e düşüyordu — düzeltildi (`670ce27`).** Belirti:
-"memo buraya yapamam, iznim yok" / "agent aç yapayım" (agent açıkken) +
-her zaman repo dizinini gösteriyor, seçilen klasörü değil. Kök sebep: iki
-yönlendirme yolu, biri asimetrik. `SendMessageStreamTo` (Flutter'ın normalde
-kullandığı `chat_id`'li yol) `forceAgent`'i `sm.IsAgentChat(chatID)`'den
-türetiyor. `SendMessage` + `sendMessageStreamInner` (implicit-active-chat
-yolu) `forceAgent=false` sabitliyordu — `chat_id` olmadan backend'e ulaşan
-her istek (`activeChatIdProvider` daha `null`'ken) global `agentEnabled`
-kapalıysa düz, araçsız cevaba düşüyordu. O bayrak kenar çubuğundan mevcut
-agent chat'e geçince açılmıyordu (sadece chat *oluştururken*). Fix:
-`chat.go`'da iki yer `sm.IsAgentChat(chatID)` kullanıyor + `agent_screen.dart`
-mevcut agent chat'e geçişte agent modunu açıyor. Regresyon:
-`TestSendMessage_ActiveAgentChat_GlobalToggleOff_StillSendsToolDefinitions`.
+**9. Memo eski/rastgele bir saat söylüyor (`c581f3a` + `1dbc775`).** Sistem
+prompt'undaki `[Time context]` güncel saati veriyor ama geçmiş bir
+"saat kaç?" → "14:32" turu RAG'a kaydedilmiş, sonraki saat sorusunda o
+bayat satır geri geliyor. Korumalar: (a) `IsLowValueTurn` düz saat/tarih
+sorularını low-value sayıyor (TR diacritic + diacritic-free + EN tam-mesaj
+seti + substring'ler); (b) **dilden bağımsız backstop** (`1dbc775`): raw
+kullanıcı mesajı soru işareti taşıyor + scheduling niyeti yok (hatırlat/
+remind/alarm/timer) + raw cevap kısa (≤48) ve `HH:MM` token içeriyorsa
+atla — "wie spät ist es?"→"Es ist 14:32" gibi; (c) `timeContextBlock`
+sonuna "bu güncel saat; hafıza farklı diyorsa o bayat, bunu kullan" satırı
+(fix'ten önce RAG'a girmiş bayat saat için, dilden bağımsız backstop).
+Kalıcı ifade içindeki saat ("saat 3'te toplantı", "her gün 7'de kalkıyorum",
+"remind me at 14:30") etkilenmiyor. Test:
+`TestIsLowValueTurn_TimeDateQuestionsSkip`,
+`TestIsLowValueTurn_ClockReadingBackstopLanguageAgnostic`.
 
-**2. Google Live transkript kelime kelime parçalanıyordu — düzeltildi
-(`6373bea`).** Ekran görüntüsünde her kelime ayrı sohbet balonu ("bir" /
-"sürü" / "dosya" ...). Google Live API transkripti minik artışlarla
-gönderiyor, sonu `turnComplete` ile işaretliyor; `readLoop` her parçayı
-ayrı `EventTranscript` yapıyordu (ve transkript-kalıcılık değişikliğinden
-beri her parça ayrı kalıcı mesaj satırı). OpenAI Realtime'da yok (onun
-`*.done` event'leri zaten tam cümle taşıyor) — sadece Google client fix'i.
-`readLoop` artık `strings.Builder`'da biriktirip tur sınırında (turnComplete
-/ interrupted) rol başına tek `EventTranscript` flush ediyor.
+**Kullanıcının kendi commit'i (`0db8dc9`)**: `.gitignore`'a
+`internal/agent/data/` + AGENTS.md güncellemesi.
 
-**3. Live Mode konuşmaları uzun süreli hafızaya (RAG) girmiyordu —
-düzeltildi (`748fd51`).** İki boşluk: (a) `AppendMessage`
-(`POST /api/messages/append`) sadece transkripti oturuma yazıyordu,
-`saveMemoryAsync`'e hiç uğramıyordu — artık model transkriptini önceki
-kullanıcı sözüyle eşleyip tura kaydediyor (o yol zaten boş/hatalı cevabı,
-BUG-L1 düşük-değer filtresini, near-dup'ı hallediyor; tek ek kapı
-incognito). Hem delegate hem standalone bunu kullanıyor. (b) Standalone'un
-per-tur hafıza *okuma* yolu yoktu (registry tool'ları vector store'a
-dokunmuyor, sistem prompt'undaki hafıza tek seferlik snapshot) — standalone
-artık tam registry'nin yanında `delegate_to_main_model`'i de taşıyor,
-capability prompt'u snapshot'ta olmayan şeyler için devretmeyi söylüyor.
-Delegate mantığı ortak `runDelegate` closure'ına çıkarıldı.
-
-**Doğrulama:**
+**Doğrulama (her commit'te):**
 ```
-$ CGO_ENABLED=1 go build/vet -tags "sqlite_fts5" ./...        → yeşil
-$ CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race       → yeşil (app, livemode,
-  livemode/google, livemode/openai_realtime, sessions, webserver, whatsapp hepsi ok)
-$ flutter analyze lib/screens/agent_screen.dart              → temiz
+CGO_ENABLED=1 go build/vet -tags "sqlite_fts5" ./...        → yeşil
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race       → dokunulan paketler yeşil
+  (internal/whisper TestGetStatus_NewServer temiz ağaçta da patlıyor — makinede
+   takılı whisper-server, ilgisiz)
+flutter analyze lib/ + flutter test                         → temiz / 305 pass
 ```
-
-**Yan not**: `internal/agent/data/` (agent-audit.jsonl + agent-backups) —
-bir agent testinin göreli `data/` yoluna yazdığı çöp, oturum başından beri
-untracked, .gitignore'da değil, commit'lere DAHİL EDİLMEDİ. Ayrı bir
-temizlik konusu (ya .gitignore'a eklenmeli ya testin yolu düzeltilmeli).
 
 **Bekliyor / sıradaki:**
-- **"web search kapalı diyo"** — Live Mode bağlamında `bcf0def` çözdü (nag
-  kalktı, capability paragrafına web eklendi). Normal chat'te de görülürse:
-  `config.yaml`'da `web_search.enabled: true`, çalışan instance farklı data
-  dir (`~/.memo/`?) kullanıyor olabilir; gate-transition invalidate'i
-  (`0ae07b4`) `webSearchModeProvider`'ı yeniden senkronluyor.
-- **"hafıza kaydetme çalışmıyor"** — `memory_enabled: true`. Muhtemelen
-  embedding backend'i (yerel embedding modeli/sunucusu) çalışmıyor:
-  `store.SaveInteraction` → `s.embed()` bağlantı reddi alınca
-  `saveMemorySync` "MEMORY SAVE FAILED" logluyor ama `isEmbeddingBackendDown`
-  true olduğu için toast BASTIRIYOR (sessiz). Kullanıcı OpenCode Zen 2
-  (harici provider) kullanıyor, yerel embedding sunucusu yoksa hafıza
-  hiç yazılamaz. Kod değil, kurulum. Backend log'unda "MEMORY SAVE FAILED" /
-  "embedding" aranmalı; bir embedding modeli başlatılmalı.
-- Kullanıcının fix'leri gerçek oturumda denemesi (önce backend'i bir kez
-  yeniden başlat): (a) **delegate modda** "masaüstümdeki dosyaları say" —
-  artık uydurmamalı, gerçekten `~/Desktop`'a bakmalı (log'da
-  `livemode delegate: START ... instruction=...` + `DONE` görünmeli;
-  görünmüyorsa delegate hiç tetiklenmiyor demektir), (b) Live Mode'da
-  "şu an hava durumu ne" — web araması yapmalı, "kapalı" dememeli, (c)
-  Google Live'da konuş — transkript tek balon gelmeli, (d) Live Mode'da
-  geçmişte konuşulanı sor, sonra normal chat'te ara — hatırlamalı (embedder
-  çalışıyorsa), (e) normal chat agent + web zaten çalışıyor (kullanıcı
-  doğruladı), (f) Live Mode'u kapat/aç → az önce konuşulanı hatırlamalı.
+- **"hafıza kaydetme çalışmıyor"** (kullanıcı bildirdi) — `memory_enabled: true`
+  ama muhtemelen yerel embedding sunucusu çalışmıyor: `store.SaveInteraction`
+  → `s.embed()` bağlantı reddi alınca `saveMemorySync` "MEMORY SAVE FAILED"
+  logluyor, `isEmbeddingBackendDown` true olduğu için toast BASTIRIYOR
+  (sessiz). OpenCode Zen 2 harici provider, yerel embedder yoksa hafıza hiç
+  yazılamaz. Kod değil kurulum — backend log'unda "MEMORY SAVE FAILED" ara,
+  bir embedding modeli başlat.
+- Gerçek oturum testleri (önce backend'i bir kez yeniden başlat): (a) delegate
+  modda "masaüstümdeki dosyaları say" — uydurmamalı, `~/Desktop`'a bakmalı;
+  log'da `livemode delegate: START/DONE` görünmeli (görünmüyorsa delegate hiç
+  tetiklenmiyor). (b) Live Mode "şu an hava durumu ne" — web araması, "kapalı"
+  dememeli. (c) Google Live'da konuş — transkript tek balon. (d) Live Mode'da
+  geçmişte konuşulanı sor → normal chat'te ara — hatırlamalı (embedder varsa).
+  (e) Live Mode kapat/aç — az önce konuşulanı hatırlamalı. (f) "saat kaç" birkaç
+  kez sor — hep taze saat gelmeli.
 - PipeWire echo-cancel (devam 21-22'den, hâlâ kullanıcıda).
+- `internal/agent/data/` artık `.gitignore`'da (`0db8dc9`) — çözüldü.
+
+**Faz 1 belirtisi hâlâ açık olabilir:** delegate sonucu realtime tura çok
+geç dönme sorunu (bkz. #6 kalan risk) — gerçek oturum testinde ölçülmeli.
 
 ---
 

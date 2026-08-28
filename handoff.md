@@ -38,8 +38,9 @@ dönüyor. Slow-path arka plan goroutine'i de aynı helper'ı kullanıyor.
 response'a düşüyor. Test: iki handler testi tek injectContext yerine iki
 bekliyor (ipucu + sonuç).
 
-**Doğrulanmalı (gerçek oturum):** devret modda klasör/dosya işi → "hallediyorum"
-sonrası birkaç sn içinde model gerçekten "oluşturdum" desin, sessiz kalmasın.
+**✓ DOĞRULANDI (gerçek oturum, 2026-08-28):** kullanıcı devret modda dosya
+oluşturma testi yaptı — sonuç seslendirildi, model "oluşturdum" dedi, başarılı.
+Sessizlik yok. `e4564f0` + `a20b2d1` birlikte devret-modu deneyimini kapattı.
 
 **2. Commit author düzeltmesi.** 3 commit yanlış kimlikle atılmıştı
 (`bugra <bugra@bugradev.com>`, paralel oturum farklı git config'iyle):
@@ -62,8 +63,12 @@ CGO_ENABLED=1 go vet  -tags "sqlite_fts5" ./internal/app/   → yeşil
 CGO_ENABLED=1 go test -tags "sqlite_fts5" ./internal/app/ ./internal/livemode/... -race   → ok
 ```
 
-**Bekliyor:** (a) devam 25/26'nın açık maddeleri, (b) yukarıdaki "sonuç
-seslendirilmiyor" bug'ı — bir sonraki oturum log'la ele almalı.
+**Bekliyor:** (a) devam 25/26'nın açık maddeleri. ~~(b) "sonuç seslendirilmiyor"
+bug'ı~~ → çözüldü ve doğrulandı (`a20b2d1`, yukarı bak).
+
+**Push durumu:** devam 25→27'nin tüm commit'leri (`9fe458d`..`da9c439`, 11 commit)
+`feature/live-mode-v2` dalına push'landı — main'e merge YOK, dalda kalıyor,
+üstünde daha düzeltmeler var.
 
 ---
 

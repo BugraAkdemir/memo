@@ -19,12 +19,27 @@ devir sürüyor, yenisini başlatma, en fazla kısacık 'hallediyorum' de,
 enjekti). Test: `TestSendLiveDelegatedMessageStream_RejectsConcurrentDelegation`
 güncellendi (Error+Done chunk yerine hata-olmayan talimat chunk'ı bekliyor).
 
-**Hâlâ açık (ayrı, kendi araştırmasını istiyor):** aynı oturumda ~5sn'de
-biten bir devir 147 karakterlik sonucu döndürdü, Gemini Live bunu
-`functionResponse` olarak aldı ama **hiç seslendirmedi** — kullanıcı tekrar
-sorana kadar 10sn sessizlik. Devret modunda sonuçların da (slow-path arka
-plan enjekti gibi) `injectContext` ile metin olarak enjekte edilmesi
-gerekebilir; Gemini'nin tool response'u seslendirmesine güvenilmiyor.
+**1b. Sonuç hiç seslendirilmiyor → ÇÖZÜLDÜ (`a20b2d1`).** `e4564f0`'dan sonra
+alttaki asıl bug açığa çıktı: taze build'de kullanıcı devret modda "masaüstüne
+klasör/dosya yap" dedi. Her seferinde: devir çalıştı, klasör/dosya **gerçekten
+oluştu** (diskte doğrulandı — `ls`, `cat merhaba merhaba.txt` → "Memo"),
+`livemode delegate: DONE` 100-250 karakterlik gerçek cevapla loglandı — sonra
+10-30sn **tam sessizlik**, kullanıcı vazgeçene kadar. Kök sebep: ~6sn'lik bir
+devrin sonucu `runToolCall`'a dönüp `functionResponse` olarak yazılıyor ama
+Gemini "bir saniye" deyip `turnComplete`'e geçtikten SONRA — Gemini Live
+tur bittikten sonra gelen bir tool response'u **seslendirmiyor**. Tur-dışı
+`realtimeInput.text` (injectContext) ise taze tur başlatıyor, seslendiriliyor
+(slow-path arka plan enjektinin ve devir-başı "sessizce bekle" ipucunun hep
+duyulmasının sebebi bu). Fix: yeni `injectDelegateOutcome` helper'ı —
+`runDelegate` fast path artık sonucu (boş/`⚠️` hata → dürüst "yapamadım")
+`injectContext` ile itiyor, tool response olarak sadece sessiz iç-ack
+dönüyor. Slow-path arka plan goroutine'i de aynı helper'ı kullanıyor.
+`injectContext` henüz hazır değilse (oturum başlıyor) eskisi gibi tool
+response'a düşüyor. Test: iki handler testi tek injectContext yerine iki
+bekliyor (ipucu + sonuç).
+
+**Doğrulanmalı (gerçek oturum):** devret modda klasör/dosya işi → "hallediyorum"
+sonrası birkaç sn içinde model gerçekten "oluşturdum" desin, sessiz kalmasın.
 
 **2. Commit author düzeltmesi.** 3 commit yanlış kimlikle atılmıştı
 (`bugra <bugra@bugradev.com>`, paralel oturum farklı git config'iyle):

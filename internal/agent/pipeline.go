@@ -417,31 +417,42 @@ func fixJSONArgs(raw json.RawMessage) json.RawMessage {
 	return raw
 }
 
-// hallucinatedToolCallPattern matches a model imitating Claude's
-// <function_calls><invoke name="...">...</invoke></function_calls> XML
-// convention as literal reply text, instead of using the real structured
+// hallucinatedToolCallPatterns match a model imitating some tool-invocation
+// syntax as literal reply text, instead of using the real structured
 // tool_calls field this pipeline actually reads (see the len(resp.ToolCalls)
-// == 0 branch above). Weaker/free models that don't reliably honor
-// OpenAI-style function calling can fall back to whatever tool-invocation
-// syntax they saw most in pretraining — since resp.ToolCalls is empty, this
-// text was never a real call, it's dead prose that would otherwise leak
-// straight into the user-visible reply verbatim (reported bug: raw
-// "<function_calls><invoke name=\"read_env\">" appearing in a chat reply).
-// Matches greedily but non-catastrophically (bounded, no nested quantifiers)
-// across an opening <function_calls> tag through its closing tag, or a bare
-// unclosed one through end-of-string as a fallback for a truncated response.
-var hallucinatedToolCallPattern = regexp.MustCompile(`(?is)<function_calls>.*?(</function_calls>|$)`)
+// == 0 branch above). Weaker/free models — or a passthrough provider like
+// OpenCode Zen that doesn't wire native function calling — fall back to
+// whatever tool syntax they saw most in pretraining. Since resp.ToolCalls
+// is empty, this text was never a real call; it's dead prose that would
+// otherwise leak straight into the user-visible reply.
+//
+// Two shapes seen in the wild:
+//  1. Claude's <function_calls><invoke name="...">...</invoke></function_calls> XML.
+//  2. OpenCode / opencode-zen: <tool_calls:HEXID> ... <tool_call:HEXID>Bash
+//     command`> ... description`> ... </tool_calls:HEXID>  (per-call hex id,
+//     both singular and plural tags, often several openers and one closer).
+//
+// Each matches from the opening tag through its matching closing tag, or —
+// as a fallback for a truncated response — a bare unclosed one through
+// end-of-string. Bounded, no nested quantifiers.
+var hallucinatedToolCallPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?is)<function_calls>.*?(</function_calls>|$)`),
+	regexp.MustCompile(`(?is)<tool_calls?(:[0-9a-z]+)?>.*?(</tool_calls?(:[0-9a-z]+)?>|$)`),
+}
 
-// stripHallucinatedToolSyntax removes hallucinated pseudo-tool-call XML from
-// content that the model produced as its final answer (no real tool call was
-// parsed for this turn). Only touches content matching the specific pattern
-// above — ordinary text mentioning unrelated tags or code samples is left
-// untouched.
+// stripHallucinatedToolSyntax removes hallucinated pseudo-tool-call syntax
+// from content the model produced as its final answer (no real tool call
+// was parsed for this turn). Only touches content matching the specific
+// patterns above — ordinary text mentioning unrelated tags or code samples
+// is left untouched.
 func stripHallucinatedToolSyntax(content string) string {
-	if !strings.Contains(content, "<function_calls>") {
+	if !strings.Contains(content, "<function_calls>") && !strings.Contains(content, "<tool_call") {
 		return content
 	}
-	cleaned := hallucinatedToolCallPattern.ReplaceAllString(content, "")
+	cleaned := content
+	for _, re := range hallucinatedToolCallPatterns {
+		cleaned = re.ReplaceAllString(cleaned, "")
+	}
 	cleaned = strings.TrimSpace(cleaned)
 	if cleaned == "" {
 		logx.Printf("AGENT: model emitted only hallucinated tool-call syntax with no real content, nothing to show")

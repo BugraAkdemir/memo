@@ -617,6 +617,9 @@ class L10n {
     'minimal_mode_section': 'Minimal Mod',
     'minimal_mode_active': 'Minimal Mod Açık',
     'minimal_mode_disabled': 'Minimal Mod Kapalı',
+    'chat_notice_minimal_mode_on':
+        'Minimal mod açık — kimlik, kişilik ve web araması modele eklenmiyor',
+    'chat_notice_memory_off': 'Hafıza kapalı — bu sohbet hatırlanmayacak',
     'minimal_mode_toggle_desc':
         'Açıkken kimlik, kişilik, üslup, mood ve web arama modele hiç eklenmez — sadece hafıza (ayrıca açıksa) gönderilir. İkisi de kapalıyken modele sıfır ekstra token gider.',
     'minimal_mode_overrides_title': 'Minimal Modda Yine de Açık Kalsın',
@@ -2588,6 +2591,9 @@ class L10n {
     'minimal_mode_section': 'Minimal Mode',
     'minimal_mode_active': 'Minimal Mode On',
     'minimal_mode_disabled': 'Minimal Mode Off',
+    'chat_notice_minimal_mode_on':
+        'Minimal mode on — identity, persona and web search are not added to the prompt',
+    'chat_notice_memory_off': "Memory off — this chat won't be remembered",
     'minimal_mode_toggle_desc':
         'When on, identity, personality, style, mood, and web search are never added to the model — only memory (if also enabled) is sent. With both off, zero extra tokens go to the model.',
     'minimal_mode_overrides_title': 'Keep These On Anyway',

@@ -113,6 +113,45 @@ func TestIsLowValueTurn_TimeDateQuestionsSkip(t *testing.T) {
 	}
 }
 
+func TestIsLowValueTurn_IdentityMetaQuestionsSkip(t *testing.T) {
+	// The user probing the assistant's identity/name/model — nothing durable
+	// about the user. Reported: "User: selam sen kimsin adın ne" and
+	// "User: model adın ne" were being indexed and showing up as "most
+	// accessed memories".
+	skip := []struct{ user, reply string }{
+		{"selam sen kimsin adın ne", "Ben Memo'yum, senin yapay zeka asistanın."},
+		{"model adın ne", "Adım Memo, model adı falan değil."},
+		{"sen kimsin?", "Memo."},
+		{"adın ne", "Memo."},
+		{"altta çalışan ne", "Senin kurulumuna bağlı."},
+		{"seni kim yaptı", "Buğra Akdemir."},
+		{"who are you", "I'm Memo."},
+		{"what model are you?", "I'm Memo, an assistant layer."},
+		{"whats your name", "Memo."},
+		{"are you chatgpt", "No, I'm Memo."},
+	}
+	for _, tc := range skip {
+		if !IsLowValueTurn(tc.user, tc.reply) {
+			t.Errorf("IsLowValueTurn(%q,%q)=false, want true (assistant-identity probe)", tc.user, tc.reply)
+		}
+	}
+
+	// Real facts / questions that merely contain a name or "model" word must
+	// still be saved.
+	keep := []struct{ user, reply string }{
+		{"benim adım bugra", "tamam not aldım"},
+		{"köpeğimin adı ne demiştim sana", "Zeytin demiştin"},
+		{"what model of laptop should I buy", "depends on your budget"},
+		{"how does your memory work", "vector store + FTS hybrid retrieval"},
+		{"kardeşimin adı Ali", "not aldım"},
+	}
+	for _, tc := range keep {
+		if IsLowValueTurn(tc.user, tc.reply) {
+			t.Errorf("IsLowValueTurn(%q,%q)=true, want false (durable content that mentions a name/model)", tc.user, tc.reply)
+		}
+	}
+}
+
 func TestIsLowValueTurn_ClockReadingBackstopLanguageAgnostic(t *testing.T) {
 	// A short question in a language the phrase lists don't cover, answered
 	// with a bare clock value, is still ephemeral and must be skipped.

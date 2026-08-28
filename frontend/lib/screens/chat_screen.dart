@@ -20,6 +20,7 @@ import '../providers/live_realtime_session_provider.dart';
 import '../widgets/backend_unreachable_view.dart';
 import '../widgets/server_file_browser_dialog.dart';
 import '../providers/agent_provider.dart';
+import '../providers/settings_provider.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/gate_guard.dart';
 import '../core/friendly_error.dart';
@@ -197,7 +198,12 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
               }
 
               if (messages.isEmpty && !isSending && streamingContent.isEmpty && streamingAgentEvents.isEmpty) {
-                return  WelcomeView();
+                return const Column(
+                  children: [
+                    _ChatConfigNoticeBanner(),
+                    Expanded(child: WelcomeView()),
+                  ],
+                );
               }
               return ChatMessageList(
                 messages: messages,
@@ -285,6 +291,48 @@ class _TokenCounter extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Thin strip shown above an empty chat (before the first message is sent)
+/// when a setting that quietly changes how replies behave is in a
+/// non-default state — Minimal Mode ON (identity/persona/web-search prompt
+/// injection off) or Memory OFF (this chat won't be remembered). Both
+/// default states → renders nothing. It disappears the moment the first
+/// message is sent (the empty-state branch in ChatScreen stops rendering).
+class _ChatConfigNoticeBanner extends ConsumerWidget {
+  const _ChatConfigNoticeBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final minimalOn = ref.watch(minimalModeProvider).valueOrNull ?? false;
+    final memoryOn = ref.watch(memoryEnabledProvider).valueOrNull ?? true;
+
+    final notices = <String>[
+      if (minimalOn) L10n.t('chat_notice_minimal_mode_on'),
+      if (!memoryOn) L10n.t('chat_notice_memory_off'),
+    ];
+    if (notices.isEmpty) return const SizedBox.shrink();
+
+    final c = MemoTheme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      color: MemoTheme.warningOrange.withValues(alpha: 0.12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline, size: 15, color: MemoTheme.warningOrange),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              notices.join('  ·  '),
+              style: TextStyle(fontSize: 12, height: 1.35, color: c.textSecondary),
+            ),
+          ),
+        ],
       ),
     );
   }

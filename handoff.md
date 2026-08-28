@@ -1,3 +1,40 @@
+# Ek (2026-08-28, devam 36) — OpenCode Zen tool-call leak'i + boş sohbette config uyarı banner'ı (branch `fix/toolcall-leak-and-config-banner`)
+
+Kullanıcı iki screenshot gösterdi: (1) Memo "Ben Claude'um" diyor, (2) chat'e
+ham `<tool_calls:6124c78e> ... </tool_calls:6124c78e>` bloğu dökülmüş. Provider
+= **OpenCode Zen**. Kullanıcı (1)'i kendi çözdü: **Minimal Mode açık + Hafıza
+kapalıydı** → kimlik prompt'u bastırılmış, model kendini Claude sanıyor.
+
+`main`'den taze branch açıldı (`fix/toolcall-leak-and-config-banner`).
+
+**Fix 1 — `<tool_call:id>` leak'i (`8ecc2e2`).** OpenCode Zen native
+function-calling wire etmediği için model text tool-call formatına düşüyor
+(`<tool_calls:HEXID>…<tool_call:HEXID>Bash command\`>…</tool_calls:HEXID>`),
+`resp.ToolCalls` boş → `stripHallucinatedToolSyntax` (pipeline.go) çalışıyor
+ama sadece Claude'un `<function_calls>` XML'ini yakalıyordu. Artık
+`<tool_call(s)[:hexid]>…</tool_call(s)[:hexid]>` ailesini de siliyor
+(tekil/çoğul tag, opsiyonel per-call id, kapanışsız→EOF fallback, çoklu
+opener). Test: `TestStripHallucinatedToolSyntax`'e 4 yeni case.
+_(Not: sadece agent pipeline'da (`Stream:false`, `len(resp.ToolCalls)==0`
+dalı); non-agent `callLLMStream` strip etmiyor — kullanıcının vakası
+muhtemelen agent'tı, gerekirse oraya da eklenir.)_
+
+**Fix 2 — boş sohbette config uyarı banner'ı (`fa598f0`).** Kullanıcı isteği:
+sohbet açılınca ilk mesaja kadar üstte "Memory off / Minimal Mode on" uyarısı.
+`chat_screen.dart` empty-state dalı artık `Column(_ChatConfigNoticeBanner,
+Expanded(WelcomeView))` dönüyor. Banner (yeni `ConsumerWidget`): `minimalModeProvider`
++ `memoryEnabledProvider` izliyor, minimal ON ve/veya memory OFF için ince
+turuncu strip; ikisi de default → `SizedBox.shrink()`. İlk mesaj gönderilince
+(empty-state dalı çizilmeyi bırakınca) kayboluyor. L10n TR+EN
+(`chat_notice_minimal_mode_on`, `chat_notice_memory_off`).
+
+**Doğrulama:** `go build/vet ./...` + `go test ./internal/agent/ -race` yeşil;
+`flutter analyze` dokunulan dosyalarda temiz; `flutter test` 306 pass.
+
+**Sırada:** branch push + PR. Kalan bug listesi kullanıcıda.
+
+---
+
 # Ek (2026-08-28, devam 35) — v4.3.0 sürüm notları yazıldı (release ÇIKARILMADI)
 
 Kullanıcı isteği: v4.2.0'dan beri yapılanlar için sürüm notu, EN + TR, v4.3.0.

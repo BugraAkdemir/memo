@@ -1,4 +1,73 @@
-# Ek (2026-08-28, devam 25) — delegate deadline'ı: iptal etmek yerine arka planda bitir + geç enjekte
+# Ek (2026-08-28, devam 26) — Go test coverage: spec + plan, uygulama bekliyor
+
+Test analiz görevi. Kullanıcı talebi: Go ve Flutter tarafındaki mevcut
+testleri analiz et, kapsam alanlarını incele, yetersiz olanlarda
+değişiklik yap — ama ana kod (production source) yasak, sadece
+`*_test.go` ve test altyapısı serbest, codebase-memory zorunlu,
+AGENTS.md kuralları tam. Bu oturum iki commit üretti: spec + plan.
+**Uygulama henüz başlamadı** — kullanıcı execution modunu seçecek.
+
+**Üretilenler:**
+- Spec: `docs/superpowers/specs/2026-08-28-go-test-coverage-design.md` (`9d61f68`)
+- Plan: `docs/superpowers/plans/2026-08-28-go-test-coverage.md` (`61d1a6b`)
+
+**Kapsam kararı:** `internal/livemode/...` (3 paket: `livemode`,
+`livemode/google`, `livemode/openai_realtime`). Flutter ve diğer
+`internal/*` paketleri (provider clients, `internal/api`, `cloudsync`,
+`intent/*`, `proactive/*` — hepsi 0% coverage) bu oturumun dışında,
+gelecek oturumlara bırakıldı.
+
+**Mevcut coverage baseline (kanıtlanmış, gerçek ölçüm):**
+```
+memo/internal/livemode                  73.2% of statements
+memo/internal/livemode/google           82.8% of statements
+memo/internal/livemode/openai_realtime  79.6% of statements
+total: 78.6%
+```
+
+En kötü fonksiyonlar (her biri hedef):
+- `ConfigManager.Save` → 0.0% (Task 2)
+- `ConfigManager.Load` → 35.0% (Task 3)
+- `ConfigManager.decrypt` → 68.4% (Task 4)
+- `ConfigManager.saveLocked` → 64.7% (Task 3)
+- `Client.runToolCall` (openai) → 63.6% (Task 11)
+- `Client.readLoop` (google) → 73.2% (Task 8)
+- `Client.readLoop` (openai) → 74.1% (Task 12)
+- `Client.Start` (her ikisi) → 80.8% / 78.3% (Task 6, 10)
+- `Client.runToolCall` (google) → 77.8% (Task 7)
+- `ListLiveModels` → 90.6% (Task 9)
+- `ListRealtimeModels` → 84.2% (Task 13)
+
+**Plan özeti (14 task):**
+1. `scripts/coverage-livemode.sh` — tek komutla baseline + gap raporu
+2-4. `internal/livemode/config_test.go` — Save/Load/encrypt/decrypt hata yolları (8 yeni test)
+5. `internal/livemode/echo_session_test.go` — sadece yorum (Start context kullanmıyor, test edilemez)
+6-9. `internal/livemode/google/{client,models}_test.go` — 6 yeni test
+10-13. `internal/livemode/openai_realtime/{client,models}_test.go` — 6 yeni test
+14. Final verification + bu handoff girdisi
+
+**WIP koruması:** Kullanıcı bu oturumda paralelde
+`internal/app/livemode_delegate.go`, `internal/app/livemode_session.go`
+ve `scripts/build_releases.sh` taşıması üzerinde çalıştı
+(`f5ab112` commit'lendi). Bu oturumda bunlara hiç dokunulmadı;
+plan'da "Global Constraints" bölümünde dokunulmazlar listelendi.
+
+**Beklenen sonuç (Task 14 doğrulaması):** toplam 78.6% → ~%90+,
+her fonksiyon ≥85% (bir istisna: `saveLocked`'ın encrypt-failure dalı,
+üretim kodu değişmeden erişilemez, spec §6 kabul etti).
+
+**Sıradaki:** Kullanıcı execution modunu seçecek:
+- (a) **subagent-driven**: her task için taze alt-agent, iki aşamalı review
+  arasında — yüksek izolasyon, hızlı iterasyon, ama her task sınırında
+  context kaybı
+- (b) **inline (executing-plans)**: bu session içinde batch, checkpoint'ler
+  arasında review — düşük overhead, ama bu session zaten çok uzadı
+
+Eğer herhangi bir noktada (a) seçilirse, plan 14 task için 14 ayrı
+alt-agent dispatch eder; her biri tek bir `*_test.go` dosyasına 1-2
+yeni test ekler, çalıştırır, coverage'ı doğrular, commit'ler. Gözden
+geçiren yalnızca commit mesajlarını ve coverage çıktılarını kontrol
+eder — her alt-agent'ın tam bağlamını okumak zorunda değil.
 
 devam 24'ün deadline'ı (`48a3a9e`) gerçek oturumda test edildi ve yeni bir
 sorun çıkardı: taze build'de kullanıcı devret modda "web'de haber ara" dedi.

@@ -1,18 +1,20 @@
 /// Live Mode's top-level engine selector — mirrors Go `config.LiveModeConfig`
-/// (internal/config/config.go). Deliberately just the four scalar fields
-/// this phase needs; per-engine credentials/model/voice choices are a later
-/// phase's own model (see docs/plans/PLAN_live_mode_v2.md, Phase 3+).
+/// (internal/config/config.go). Deliberately just the scalar fields the
+/// Flutter side needs; per-engine credentials/model/voice choices are a
+/// separate model (see docs/plans/PLAN_live_mode_v2.md, Phase 3+).
 class LiveModeConfig {
   final bool enabled;
   final String activeEngine; // "local" | "google_live" | "openai_realtime" | "elevenlabs" | "custom"
   final String workMode; // "delegate" | "standalone" — meaningful only for google_live/openai_realtime
   final String agentPermissionPolicy; // "voice_prompt" | "auto_allow_once"
+  final String bargeInSensitivity; // "high" | "low" — realtime engines only; "high" = user can talk over the model
 
   const LiveModeConfig({
     this.enabled = false,
     this.activeEngine = 'local',
     this.workMode = 'delegate',
     this.agentPermissionPolicy = 'voice_prompt',
+    this.bargeInSensitivity = 'high',
   });
 
   factory LiveModeConfig.fromJson(Map<String, dynamic> json) {
@@ -22,6 +24,10 @@ class LiveModeConfig {
       workMode: json['work_mode'] as String? ?? 'delegate',
       agentPermissionPolicy:
           json['agent_permission_policy'] as String? ?? 'voice_prompt',
+      bargeInSensitivity: () {
+        final v = json['barge_in_sensitivity'] as String? ?? '';
+        return v.isEmpty ? 'high' : v;
+      }(),
     );
   }
 
@@ -31,6 +37,7 @@ class LiveModeConfig {
       'active_engine': activeEngine,
       'work_mode': workMode,
       'agent_permission_policy': agentPermissionPolicy,
+      'barge_in_sensitivity': bargeInSensitivity,
     };
   }
 
@@ -39,6 +46,7 @@ class LiveModeConfig {
     String? activeEngine,
     String? workMode,
     String? agentPermissionPolicy,
+    String? bargeInSensitivity,
   }) {
     return LiveModeConfig(
       enabled: enabled ?? this.enabled,
@@ -46,6 +54,7 @@ class LiveModeConfig {
       workMode: workMode ?? this.workMode,
       agentPermissionPolicy:
           agentPermissionPolicy ?? this.agentPermissionPolicy,
+      bargeInSensitivity: bargeInSensitivity ?? this.bargeInSensitivity,
     );
   }
 }

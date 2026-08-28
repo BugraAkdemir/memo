@@ -59,5 +59,12 @@ void main() {
       expect(frame.transcript, isNull);
       expect(frame.error, isNull);
     });
+
+    test('parses a bare interrupted frame (barge-in)', () {
+      final frame = LiveModeSessionControlFrame.fromJson({'type': 'interrupted'});
+      expect(frame.type, 'interrupted');
+      expect(frame.transcript, isNull);
+      expect(frame.error, isNull);
+    });
   });
 }

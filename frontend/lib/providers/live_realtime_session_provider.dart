@@ -124,6 +124,7 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
   DuplexAudioEngine? _captureEngine;
   StreamSubscription? _captureSub;
   LiveModePcmPlayer? _player;
+  int _playbackSampleRate = 0; // remembered so an interrupt can restart the player
   int _generation = 0;
   bool _micMuted = false;
 
@@ -184,6 +185,7 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
       // would otherwise fail silently from the user's point of view since
       // there's no visible UI for "playback backend ready").
       debugPrint('live realtime: starting playback at ${audioConfig.playbackSampleRate}Hz');
+      _playbackSampleRate = audioConfig.playbackSampleRate;
       await player.start(audioConfig.playbackSampleRate);
       debugPrint('live realtime: playback started');
       if (myGeneration != _generation) {
@@ -254,6 +256,14 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
         _setError(FriendlyError.describeGeneric(frame.error!));
         return;
       }
+      if (frame.type == 'interrupted') {
+        // Server-side barge-in: the user talked over the model. Drop
+        // whatever PCM is still buffered so the model goes quiet at once
+        // instead of finishing the tail of that buffer, then bring the
+        // player straight back for the next turn.
+        unawaited(_flushPlayback());
+        return;
+      }
       if (frame.type == 'transcript' && frame.transcript != null && frame.transcript!.isNotEmpty) {
         // Displays the live conversation as a normal chat — purely local
         // display in the sense that it's never routed through sendMessage()/
@@ -289,6 +299,25 @@ class LiveRealtimeSessionNotifier extends StateNotifier<LiveRealtimeSessionState
     } catch (_) {
       // Malformed control frame -- ignore rather than tear down a working
       // audio session over a display-only parse failure.
+    }
+  }
+
+  /// Kills the playback subprocess (SIGKILL, so PipeWire drops its buffer
+  /// immediately) and restarts it at the same rate, ready for the next
+  /// turn. Called on a server-side barge-in ('interrupted' control frame).
+  /// Fire-and-forget; a restart failure is logged, not surfaced — the next
+  /// audio frame simply won't play, which is a far smaller problem than
+  /// tearing down a live session.
+  Future<void> _flushPlayback() async {
+    final player = _player;
+    final rate = _playbackSampleRate;
+    if (player == null || rate <= 0) return;
+    await player.stop();
+    if (!identical(_player, player)) return; // torn down while we awaited
+    try {
+      await player.start(rate);
+    } catch (e) {
+      debugPrint('live realtime: playback restart after interrupt failed: $e');
     }
   }
 

@@ -151,6 +151,20 @@ type LiveModeConfig struct {
 	//   "auto_allow_once" — every request is resolved as AllowOnce
 	//                      immediately, still fully audited.
 	AgentPermissionPolicy string `yaml:"agent_permission_policy" json:"agent_permission_policy"`
+	// BargeInSensitivity controls how eagerly the native realtime engine
+	// (google_live; also passed to openai_realtime) treats incoming user
+	// audio as an interruption of the model's own speech —
+	// Gemini Live's realtimeInputConfig.automaticActivityDetection
+	// .startOfSpeechSensitivity:
+	//   "high" (default) — interrupt readily; the user can talk over Memo
+	//                      and it stops. Best for a quiet room.
+	//   "low"            — needs a more confident speech signal before
+	//                      interrupting; keyboard/background noise won't cut
+	//                      the model off mid-sentence, but a soft or distant
+	//                      "stop" may be missed.
+	// An empty value is treated as "high". Ignored for local/elevenlabs/
+	// custom (no server-side barge-in VAD to configure).
+	BargeInSensitivity string `yaml:"barge_in_sensitivity" json:"barge_in_sensitivity"`
 }
 
 // OnboardingConfig tracks whether the Flutter client's first-run wizard
@@ -767,6 +781,7 @@ func Default() *AppConfig {
 			ActiveEngine:          "local",
 			WorkMode:              "delegate",
 			AgentPermissionPolicy: "voice_prompt",
+			BargeInSensitivity:    "high",
 		},
 		Sync: SyncConfig{
 			Enabled:          false,

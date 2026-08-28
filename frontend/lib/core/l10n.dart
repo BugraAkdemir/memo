@@ -917,6 +917,11 @@ class L10n {
     'live_mode_permission_policy_label': 'İzin Politikası',
     'live_mode_permission_policy_voice_prompt': 'Sesli sor',
     'live_mode_permission_policy_auto_allow': 'Otomatik onayla',
+    'live_mode_barge_in_label': 'Sözünü kesme',
+    'live_mode_barge_in_high': 'Ben konuşunca dursun',
+    'live_mode_barge_in_low': 'Sadece net konuşmada dursun',
+    'live_mode_barge_in_desc':
+        '“Ben konuşunca dursun”: araya girip Memo’nun sözünü kesebilirsin (sessiz ortam için ideal). “Sadece net konuşmada”: klavye/arka plan gürültüsü modelin sözünü kesmez, ama alçak sesli bir “dur” kaçabilir.',
     'live_realtime_start': 'Canlı sesli sohbeti başlat (Google/OpenAI)',
     'live_realtime_stop': 'Canlı sesli sohbeti durdur',
     'live_realtime_state_connecting': 'Bağlanıyor…',
@@ -2881,6 +2886,11 @@ class L10n {
     'live_mode_permission_policy_label': 'Permission Policy',
     'live_mode_permission_policy_voice_prompt': 'Ask by voice',
     'live_mode_permission_policy_auto_allow': 'Auto-allow',
+    'live_mode_barge_in_label': 'Interrupting',
+    'live_mode_barge_in_high': 'Stop when I start talking',
+    'live_mode_barge_in_low': 'Only stop for clear speech',
+    'live_mode_barge_in_desc':
+        '“Stop when I start talking”: you can talk over Memo and it stops (best for a quiet room). “Only stop for clear speech”: keyboard/background noise won\'t cut the model off, but a soft or distant “stop” may be missed.',
     'live_realtime_start': 'Start live voice chat (Google/OpenAI)',
     'live_realtime_stop': 'Stop live voice chat',
     'live_realtime_state_connecting': 'Connecting…',

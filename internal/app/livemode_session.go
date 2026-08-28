@@ -74,6 +74,7 @@ func (a *App) NewLiveModeSession(ctx context.Context) livemode.Session {
 	switch engineType {
 	case livemode.EngineGoogleLive:
 		client := google.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler, engineCfg.Voice)
+		client.SetBargeInSensitivity(cfg.BargeInSensitivity)
 		injectFn = client.InjectContext
 		session = client
 	case livemode.EngineOpenAIRealtime:

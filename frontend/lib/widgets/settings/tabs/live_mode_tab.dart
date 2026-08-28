@@ -103,6 +103,9 @@ class _LiveModeTabState extends ConsumerState<LiveModeTab> {
   Future<void> _setPermissionPolicy(LiveModeConfig current, String policy) =>
       _updateConfig(current.copyWith(agentPermissionPolicy: policy));
 
+  Future<void> _setBargeInSensitivity(LiveModeConfig current, String level) =>
+      _updateConfig(current.copyWith(bargeInSensitivity: level));
+
   @override
   Widget build(BuildContext context) {
     final theme = MemoTheme.of(context);
@@ -211,6 +214,8 @@ class _LiveModeTabState extends ConsumerState<LiveModeTab> {
                     onWorkModeChanged: (v) => _setWorkMode(cfg, v),
                     onPermissionPolicyChanged: (v) =>
                         _setPermissionPolicy(cfg, v),
+                    onBargeInSensitivityChanged: (v) =>
+                        _setBargeInSensitivity(cfg, v),
                   ),
                 ],
               ],
@@ -548,12 +553,14 @@ class _WorkModeAndPermissionSection extends StatelessWidget {
     required this.busy,
     required this.onWorkModeChanged,
     required this.onPermissionPolicyChanged,
+    required this.onBargeInSensitivityChanged,
   });
 
   final LiveModeConfig cfg;
   final bool busy;
   final ValueChanged<String> onWorkModeChanged;
   final ValueChanged<String> onPermissionPolicyChanged;
+  final ValueChanged<String> onBargeInSensitivityChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -641,6 +648,43 @@ class _WorkModeAndPermissionSection extends StatelessWidget {
                 : (v) {
                     if (v != null) onPermissionPolicyChanged(v);
                   },
+          ),
+          const SizedBox(height: 16),
+          Text(
+            L10n.t('live_mode_barge_in_label'),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: theme.textMain,
+            ),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: cfg.bargeInSensitivity == 'low' ? 'low' : 'high',
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem(
+                value: 'high',
+                child: Text(L10n.t('live_mode_barge_in_high')),
+              ),
+              DropdownMenuItem(
+                value: 'low',
+                child: Text(L10n.t('live_mode_barge_in_low')),
+              ),
+            ],
+            onChanged: busy
+                ? null
+                : (v) {
+                    if (v != null) onBargeInSensitivityChanged(v);
+                  },
+          ),
+          const SizedBox(height: 6),
+          Text(
+            L10n.t('live_mode_barge_in_desc'),
+            style: TextStyle(fontSize: 12, height: 1.4, color: theme.textDim),
           ),
         ],
       ),

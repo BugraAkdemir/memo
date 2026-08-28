@@ -72,17 +72,16 @@ type setupMessage struct {
 	InputAudioTranscription  *struct{} `json:"inputAudioTranscription,omitempty"`
 	OutputAudioTranscription *struct{} `json:"outputAudioTranscription,omitempty"`
 	// RealtimeInputConfig.automaticActivityDetection.startOfSpeechSensitivity:
-	// reported live — the model's own speech kept getting cut off
-	// mid-sentence (serverContent.interrupted=true), the user suspected
-	// keyboard/background noise falsely triggering Google's server-side
-	// barge-in VAD. Confirmed shape and semantics against the official
-	// reference (ai.google.dev/api/live, fetched 2026-08-27):
-	// startOfSpeechSensitivity defaults to HIGH ("detect the start of
-	// speech more often") when unspecified — LOW requires a more
-	// confident signal before treating it as the user interrupting.
-	// prefixPaddingMs/silenceDurationMs also exist for finer tuning but
-	// are left at Google's own defaults rather than guessing a specific
-	// millisecond value with no documented recommendation to anchor on.
+	// HIGH ("detect the start of speech more often") vs LOW (needs a more
+	// confident signal before treating incoming audio as the user
+	// interrupting). This started life hardcoded LOW after a live report
+	// that keyboard/background noise was cutting the model off mid-sentence
+	// — but that also made it hard to interrupt on purpose, so it's now a
+	// user setting: config.LiveModeConfig.BargeInSensitivity, mapped by
+	// bargeInEnum, default HIGH. Confirmed shape/semantics against the
+	// official reference (ai.google.dev/api/live). prefixPaddingMs/
+	// silenceDurationMs also exist for finer tuning but are left at
+	// Google's defaults — no documented recommendation to anchor a guess.
 	RealtimeInputConfig *realtimeInputConfig `json:"realtimeInputConfig,omitempty"`
 }
 
@@ -117,10 +116,25 @@ type automaticActivityDetection struct {
 	StartOfSpeechSensitivity string `json:"startOfSpeechSensitivity,omitempty"`
 }
 
-// startSensitivityLow is the one enum value this package sets — confirmed
-// against the official reference: START_SENSITIVITY_LOW vs. the
-// START_SENSITIVITY_HIGH default.
-const startSensitivityLow = "START_SENSITIVITY_LOW"
+// startSensitivity{High,Low} are the two enum values for
+// automaticActivityDetection.startOfSpeechSensitivity — confirmed against
+// the official reference (ai.google.dev/api/live). Which one a session
+// uses is now a user setting (config.LiveModeConfig.BargeInSensitivity),
+// mapped by bargeInEnum; before that it was hardcoded LOW.
+const (
+	startSensitivityHigh = "START_SENSITIVITY_HIGH"
+	startSensitivityLow  = "START_SENSITIVITY_LOW"
+)
+
+// bargeInEnum maps config.LiveModeConfig.BargeInSensitivity ("high"/"low",
+// or "" for an older config) to the API enum. Default (and anything
+// unrecognized) is HIGH — "the user can talk over Memo and it stops".
+func bargeInEnum(level string) string {
+	if strings.EqualFold(strings.TrimSpace(level), "low") {
+		return startSensitivityLow
+	}
+	return startSensitivityHigh
+}
 
 type setupTool struct {
 	FunctionDeclarations []functionDeclaration `json:"functionDeclarations"`
@@ -223,6 +237,7 @@ type Client struct {
 	model             string // e.g. "models/gemini-3.1-flash-live-preview" — the exact Name a discovery call (google.ListLiveModels) returned, never hardcoded by this package.
 	systemInstruction string
 	voice             string // prebuiltVoiceConfig.voiceName (e.g. "Puck") — empty means the provider's own default
+	bargeInLevel      string // "high"/"low"/"" — see bargeInEnum; set via SetBargeInSensitivity before Start
 	tools             []livemode.ToolSpec
 	handleToolCall    livemode.ToolCallHandler
 
@@ -274,6 +289,13 @@ func NewClient(apiKey, model, systemInstruction string, tools []livemode.ToolSpe
 	}
 }
 
+// SetBargeInSensitivity sets how eagerly the session treats user audio as
+// an interruption ("high"/"low"; "" = high). Must be called before Start —
+// it's baked into the one-shot setup message. A setter rather than a
+// NewClient parameter to keep every existing call site (mostly tests)
+// compiling unchanged, the same reason `voice` is variadic.
+func (c *Client) SetBargeInSensitivity(level string) { c.bargeInLevel = level }
+
 func (c *Client) Start(ctx context.Context) error {
 	sessionCtx, cancel := context.WithCancel(ctx)
 	c.ctx = sessionCtx
@@ -294,7 +316,7 @@ func (c *Client) Start(ctx context.Context) error {
 		InputAudioTranscription:  &struct{}{},
 		OutputAudioTranscription: &struct{}{},
 		RealtimeInputConfig: &realtimeInputConfig{
-			AutomaticActivityDetection: &automaticActivityDetection{StartOfSpeechSensitivity: startSensitivityLow},
+			AutomaticActivityDetection: &automaticActivityDetection{StartOfSpeechSensitivity: bargeInEnum(c.bargeInLevel)},
 		},
 	}}
 	if c.systemInstruction != "" {
@@ -415,6 +437,18 @@ func (c *Client) readLoop() {
 
 		if msg.ServerContent == nil {
 			continue
+		}
+
+		// Server-side barge-in: the user talked over the model and Google
+		// stopped generating. Tell the client so it drops whatever audio it
+		// still has buffered — otherwise the model keeps talking for the
+		// tail of that buffer after a clear interruption.
+		if msg.ServerContent.Interrupted {
+			select {
+			case c.events <- livemode.SessionEvent{Type: livemode.EventInterrupted}:
+			case <-c.ctx.Done():
+				return
+			}
 		}
 
 		// User + model speech transcripts arrive as many small incremental

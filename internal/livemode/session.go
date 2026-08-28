@@ -24,6 +24,12 @@ const (
 	EventFunctionCall SessionEventType = "function_call"
 	EventError        SessionEventType = "error"
 	EventClosed       SessionEventType = "closed"
+	// EventInterrupted signals the engine detected the user speaking over
+	// the model (server-side barge-in VAD) and has stopped generating —
+	// the client should immediately drop any audio it still has buffered so
+	// the model doesn't keep talking for the tail of that buffer after the
+	// user has clearly interrupted. Carries no payload.
+	EventInterrupted SessionEventType = "interrupted"
 )
 
 // RoleUser/RoleModel identify who a SessionEvent.Transcript belongs to —

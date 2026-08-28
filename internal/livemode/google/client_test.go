@@ -101,8 +101,8 @@ func TestClient_SendsSetupMessageOnStart(t *testing.T) {
 		}
 		if setup.RealtimeInputConfig == nil ||
 			setup.RealtimeInputConfig.AutomaticActivityDetection == nil ||
-			setup.RealtimeInputConfig.AutomaticActivityDetection.StartOfSpeechSensitivity != startSensitivityLow {
-			t.Errorf("expected realtimeInputConfig.automaticActivityDetection.startOfSpeechSensitivity=%q to lower false-positive barge-in triggers, got %+v", startSensitivityLow, setup.RealtimeInputConfig)
+			setup.RealtimeInputConfig.AutomaticActivityDetection.StartOfSpeechSensitivity != startSensitivityHigh {
+			t.Errorf("expected the default startOfSpeechSensitivity=%q (user can talk over the model), got %+v", startSensitivityHigh, setup.RealtimeInputConfig)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for setup message on the server side")
@@ -672,5 +672,74 @@ func TestClient_InjectContextSendsRealtimeInputText(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for the injected realtimeInput.text message")
+	}
+}
+
+// TestClient_SetBargeInSensitivityLow_SendsLowInSetup confirms the barge-in
+// setting reaches the setup message. The default (no setter call) is
+// covered by TestClient_SendsSetupMessageOnStart (asserts HIGH).
+func TestClient_SetBargeInSensitivityLow_SendsLowInSetup(t *testing.T) {
+	f := newFakeLiveServer(t)
+	original := SessionBaseURL
+	SessionBaseURL = f.wsURL()
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("g-key", "models/gemini-3.1-flash-live-preview", "", nil, nil)
+	c.SetBargeInSensitivity("low")
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case setup := <-f.gotSetup:
+		got := ""
+		if setup.RealtimeInputConfig != nil && setup.RealtimeInputConfig.AutomaticActivityDetection != nil {
+			got = setup.RealtimeInputConfig.AutomaticActivityDetection.StartOfSpeechSensitivity
+		}
+		if got != startSensitivityLow {
+			t.Errorf("startOfSpeechSensitivity = %q, want %q", got, startSensitivityLow)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for setup message")
+	}
+}
+
+// TestClient_EmitsInterruptedEvent confirms a server-side barge-in
+// (serverContent.interrupted) surfaces as EventInterrupted so the client
+// can drop its buffered audio.
+func TestClient_EmitsInterruptedEvent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil { // consume setup
+			return
+		}
+		payload, _ := json.Marshal(serverMessage{ServerContent: &serverContent{Interrupted: true}})
+		c.Write(ctx, websocket.MessageText, payload)
+		<-ctx.Done()
+	}))
+	defer srv.Close()
+	original := SessionBaseURL
+	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("g-key", "models/gemini-3.1-flash-live-preview", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case ev := <-c.Events():
+		if ev.Type != livemode.EventInterrupted {
+			t.Fatalf("expected EventInterrupted, got %s", ev.Type)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the interrupted event")
 	}
 }

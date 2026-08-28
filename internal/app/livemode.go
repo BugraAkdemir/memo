@@ -20,6 +20,7 @@ var (
 	liveModeValidEngines            = map[string]bool{"local": true, "google_live": true, "openai_realtime": true, "elevenlabs": true, "custom": true}
 	liveModeValidWorkModes          = map[string]bool{"delegate": true, "standalone": true}
 	liveModeValidPermissionPolicies = map[string]bool{"voice_prompt": true, "auto_allow_once": true}
+	liveModeValidBargeInLevels      = map[string]bool{"high": true, "low": true}
 )
 
 // GetLiveModeConfig returns the current top-level Live Mode selector
@@ -50,6 +51,14 @@ func (a *App) UpdateLiveModeConfig(cfg config.LiveModeConfig) error {
 	}
 	if !liveModeValidPermissionPolicies[cfg.AgentPermissionPolicy] {
 		return fmt.Errorf("invalid agent_permission_policy: %q", cfg.AgentPermissionPolicy)
+	}
+	// Empty = the "high" default (a config written before this field existed,
+	// or a client that doesn't send it yet) — normalize rather than reject.
+	if cfg.BargeInSensitivity == "" {
+		cfg.BargeInSensitivity = "high"
+	}
+	if !liveModeValidBargeInLevels[cfg.BargeInSensitivity] {
+		return fmt.Errorf("invalid barge_in_sensitivity: %q", cfg.BargeInSensitivity)
 	}
 	a.cfg.LiveMode = cfg
 	if err := config.Save(a.cfg); err != nil {

@@ -1,3 +1,60 @@
+# Ek (2026-08-28, devam 25) — delegate deadline'ı: iptal etmek yerine arka planda bitir + geç enjekte
+
+devam 24'ün deadline'ı (`48a3a9e`) gerçek oturumda test edildi ve yeni bir
+sorun çıkardı: taze build'de kullanıcı devret modda "web'de haber ara" dedi.
+Log:
+- web_search + 2× fetch_page (biri browser render, 3.7sn) → `06:29:09.0`'da
+  **8003 karakter gerçek haber içeriği** geldi.
+- `06:29:09.5` — 15sn doldu → `48a3a9e` agent'ı **iptal etti**
+  (`AGENT: ChatCompletion error: context canceled`) — sentez LLM çağrısına
+  yarım saniye kala.
+- Model "DELEGASYON ZAMAN AŞIMI, uydurma" talimatını aldı → "bulamadım" dedi.
+- Tüm tool işi çöpe gitti; 15sn meşru 2-fetch turundan (~14.5sn) kıl payı
+  kısaydı.
+
+**Fix (`f5ab112`):**
+- `SendLiveDelegatedMessageStream` artık deadline'da agent'ı **İPTAL ETMİYOR**.
+  `forwardWithSlowMarker` (`drainWithDeadline` yerine): timeout dolunca
+  stream'e bir `liveDelegateTimeoutMarker` chunk'ı bırakıp **forward etmeye
+  devam ediyor** — agent turu tamamlanana (ya da session context ölene) kadar
+  çalışıyor, gerçek sonuç kanaldan geliyor.
+- `runDelegate` → `drainLiveDelegatedReplyUntilMarker` ile sadece marker'a
+  kadar drain ediyor, sonra live modele **hemen** "hâlâ çalışıyorum, 'yaptım'
+  ya da 'bulamadım' deme" stall'ı dönüyor, kanalın kalanını arka plan
+  goroutine'ine bırakıyor. Gerçek sonuç gelince `injectContext` ile canlı
+  oturuma enjekte ediliyor → model birkaç saniye geç ama gerçek cevabı
+  söylüyor. Boş/hata sonuç → kısa dürüst "tamamlayamadım" notu enjekte
+  ediliyor (sessizlik değil).
+- `liveDelegateTimeout` 15sn → **20sn** (ortak durum stall'a hiç girmesin).
+- `resolveDelegateTimeout` silindi (marker artık incremental tüketiliyor,
+  drain edilmiş cevapta hiç kalmıyor — o kod yolu erişilemez).
+- Test: `TestForwardWithSlowMarker_{NoMarkerWhenInnerFinishesFirst,
+  EmitsMarkerThenKeepsForwarding,CtxCancelStops}`,
+  `TestDrainLiveDelegatedReplyUntilMarker_{NoMarkerReturnsFullReply,
+  StopsAtMarkerLeavingRest}`.
+
+**Doğrulama:**
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...     → yeşil
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...       → yeşil
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./internal/app/ ./internal/livemode/... -race → ok (12.2s / 1.0s)
+```
+
+**Bilinen kenar durumlar:**
+- Arka plan delegate turu sürerken ikinci bir delegate çağrısı hâlâ
+  reddediliyor (tek Live Mode chat, tek job). Şimdilik kabul.
+- Kullanıcı tur ortasında Live Mode'u kapatırsa geç sonuç düşürülüyor
+  (session context gitti) — doğru davranış.
+- devam 24'ten kalan: kullanıcı hâlâ `livemode delegate: START` satırını ilk
+  log'unda görmemişti; ikinci log'da göründü → o an taze build'e geçmişti.
+
+**Bekliyor / sıradaki:** devam 24'ün listesi + gerçek oturumda bu geç-enjekte
+akışını doğrula (20sn'yi aşan bir tur → model önce "biraz daha sürüyor" desin,
+sonra gerçek cevabı söylesin). Ayrı takip: agent'ın aşırı hevesli fetch_page
+kullanımı, browser render fallback'ine per-call cap.
+
+---
+
 # Ek (2026-08-28, devam 24) — Live Mode delegate turuna deadline (30-40sn sessizlik bug'ı)
 
 Kullanıcı gerçek oturum log'u getirdi: Live Mode **devret (delegate)** modda

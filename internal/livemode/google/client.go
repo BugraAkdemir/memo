@@ -482,6 +482,12 @@ func (c *Client) readLoop() {
 func (c *Client) emitTranscript(role string, buf *strings.Builder) bool {
 	text := buf.String()
 	buf.Reset()
+	if role == livemode.RoleModel {
+		// Strip pseudo control tokens the model sometimes emits as "speech"
+		// (e.g. "text-to-speech:one_second_pause") so they never reach the
+		// chat transcript. See livemode.SanitizeModelTranscript.
+		text = livemode.SanitizeModelTranscript(text)
+	}
 	if strings.TrimSpace(text) == "" {
 		return true
 	}

@@ -364,11 +364,12 @@ func (c *Client) readLoop() {
 			// google.Client's equivalent has been live-tested so far) — if
 			// this never fires in practice, that's the one thing to
 			// revisit here.
-			if ev.Transcript == "" {
+			transcript := livemode.SanitizeModelTranscript(ev.Transcript)
+			if transcript == "" {
 				continue
 			}
 			select {
-			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleModel, Transcript: ev.Transcript}:
+			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleModel, Transcript: transcript}:
 			case <-c.ctx.Done():
 				return
 			}

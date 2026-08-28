@@ -164,7 +164,22 @@ func (a *App) SendLiveDelegatedMessageStream(sessionCtx context.Context, instruc
 	jobCtx, cancel := context.WithCancel(sessionCtx)
 	if !a.startLiveJob(chatID, cancel) {
 		cancel()
-		return errStreamChunk(a.t("⏳ Live Mode için zaten bir görev çalışıyor.", "⏳ A Live Mode task is already running."))
+		// A delegation is already in flight for the Live Mode chat — the
+		// realtime model (Gemini Live especially) fires delegate_to_main_model
+		// again while the first call is still running. Do NOT surface this as
+		// an error the model reads out loud: it was paraphrasing the old
+		// "⏳ bir görev çalışıyor" string to the user as "there's a background
+		// process, please wait / I'm trying to stop it", which is confusing
+		// (the user started nothing) and makes the feature feel stuck. Return
+		// a plain instruction instead — the in-flight call will deliver the
+		// real answer (directly or via runDelegate's background inject).
+		ch := make(chan api.StreamChunk, 1)
+		ch <- api.StreamChunk{Content: a.t(
+			"Bu istek için ana modele zaten bir devir işlemi sürüyor ve birazdan yanıtlayacak. Yeni bir devir BAŞLATMA. Kullanıcıya en fazla kısacık \"hallediyorum\" de ve sonucu bekle. \"arka planda bir işlem/görev var\", \"başka bir şey çalışıyor\", \"beklemedeyim\", \"durdurmaya çalışıyorum\" gibi ifadeleri ASLA kullanma — bunlar iç detay, kullanıcının başlattığı bir işlem yok.",
+			"A delegation to the main model for this is already in progress and will answer shortly. Do NOT start another one. Tell the user at most a tiny \"on it\" and wait for the result. NEVER say things like \"a background task/process is running\", \"something else is working\", \"please hold\", or \"trying to stop it\" — those are internal details; the user started no such process.",
+		)}
+		close(ch)
+		return ch
 	}
 
 	logx.Printf("livemode delegate: START chat=%s timeout=%s instruction=%q", chatID, timeout, truncate.Text(instruction, 200))

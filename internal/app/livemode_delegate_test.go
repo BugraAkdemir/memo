@@ -129,8 +129,11 @@ func TestSendLiveDelegatedMessageStream_DoesNotBlockOnGlobalStreamMu(t *testing.
 
 // TestSendLiveDelegatedMessageStream_RejectsConcurrentDelegation confirms
 // a second delegation call while one is already in flight (on the same
-// dedicated background chat — there is only ever one) gets the
-// "already running" error immediately rather than queuing or racing.
+// dedicated background chat — there is only ever one) returns immediately
+// rather than queuing or racing, and — the regression this asserts — does
+// so as a plain instruction, NOT an Error chunk. An Error chunk was being
+// read out loud to the user as "there's a background process running /
+// I'm trying to stop it", which the user never started.
 func TestSendLiveDelegatedMessageStream_RejectsConcurrentDelegation(t *testing.T) {
 	a := newTestAppForLiveModeDelegate(t)
 
@@ -145,9 +148,22 @@ func TestSendLiveDelegatedMessageStream_RejectsConcurrentDelegation(t *testing.T
 	defer a.finishLiveJob(chatID)
 
 	ch := a.SendLiveDelegatedMessageStream(context.Background(), "another task", 0)
-	chunk, ok := <-ch
-	if !ok || chunk.Error == "" || !chunk.Done {
-		t.Fatalf("expected an immediate Done error chunk, got ok=%v chunk=%+v", ok, chunk)
+	reply, markerHit := a.drainLiveDelegatedReplyUntilMarker(ch, false, nil, nil, nil)
+	if markerHit {
+		t.Error("concurrent-delegation reply should not carry the timeout marker")
+	}
+	if reply == "" {
+		t.Fatal("expected a non-empty instruction for a concurrent delegation")
+	}
+	if strings.Contains(reply, "⚠️") {
+		t.Errorf("concurrent-delegation reply must not be an error-shaped chunk: %q", reply)
+	}
+	low := strings.ToLower(reply)
+	if !strings.Contains(low, "do not start another") && !strings.Contains(low, "yeni bir devir başlatma") {
+		t.Errorf("expected a 'do not start another delegation' instruction, got %q", reply)
+	}
+	if !strings.Contains(low, "background") && !strings.Contains(low, "arka planda") {
+		t.Errorf("expected the instruction to forbid the 'background process' phrasing, got %q", reply)
 	}
 }
 

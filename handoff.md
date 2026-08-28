@@ -1,3 +1,36 @@
+# Ek (2026-08-28, devam 31) — transkript temizleyici: seslendirilmiş fonksiyon çağrılarını da siliyor
+
+Kullanıcı: barge-in / söz kesme **düzgün çalışıyor** (devam 30 onaylandı). Ama
+chat'e hâlâ çöp basıyor — yeni örnek (`~/Desktop/sss.md`):
+```
+response:delegate_to_main_model{instruction:User wants to hear a long poem.
+Pick a long, beautiful, classic Turkish poem (...) Present it casually
+```
+Model kendi fonksiyon çağrısını konuşma metni olarak transkribe ediyor;
+gerçek çağrı zaten ayrı `toolCall` mesajıyla geliyor, bu kopya tamamen gürültü.
+
+**Fix (`0f7f073`):** `SanitizeModelTranscript` artık şunları da siliyor:
+- `response:<tool>{...}` ve çıplak `<isim>_to_main_model{...}` — kapalı form
+  (brace'in etrafındaki gerçek konuşma korunuyor)
+- aynısının, `{` açık kalıp flush'ın sonuna kadar giden hâli (leak genelde
+  gerçek konuşmanın başladığı yerde ayraçsız kesiliyor → JSON göstermektense
+  sondaki filler'ı kaybetmeyi kabul ediyoruz; örnekteki string "" oluyor,
+  balon hiç oluşmuyor)
+- Brace tool adının hemen ardında olmalı (boşluksuz) → "in response: yes {"
+  veya kod snippet'i etkilenmiyor.
+- Test: `TestSanitizeModelTranscript`'e 5 yeni case (birebir gözlenen leak +
+  "braceli düz metin dokunulmuyor" koruması). `go test ./internal/livemode/...
+  -race` yeşil.
+
+**Kullanıcının ikinci isteği (yapılmadı, kanıt yok):** "[laughs]/[thinking]
+gibi şeyler olursa gizle ya da L10n'lı 'gülüyor'/'düşünüyor' göster". Şu ana
+kadarki loglarda Gemini böyle köşeli-parantez cue'su üretmedi — üretirse
+sanitizer'a dar bir `\[[a-z ]{1,20}\]` silme (ya da frontend'de token→L10n)
+eklemek 5 dakikalık iş. Şimdilik spekülatif pattern eklemedim (false-positive
+riski).
+
+---
+
 # Ek (2026-08-28, devam 30) — barge-in (araya girme) AYARI eklendi + interrupt'ta buffer boşaltma
 
 devam 29'un "sıradaki iş" maddesi tamamlandı (`383183d`).

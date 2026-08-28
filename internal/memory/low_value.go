@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -73,6 +74,17 @@ func IsLowValueTurn(userMsg, assistantMsg string) bool {
 	// answer ("it's 14:32 on Wednesday, 27 August 2026") easily exceeds
 	// maxLowValueRunes.
 	if isTimeOrDateQuestion(user) {
+		return true
+	}
+
+	// Language-agnostic backstop for the same bug: a short question (in ANY
+	// language — the phrase lists above only cover TR/EN) whose answer is
+	// essentially just a clock reading ("14:32", "Es ist 14:32", "saat
+	// 14:32 civarı"). Gated hard to avoid eating durable facts: the user
+	// message must be an actual question and must not be asking to set a
+	// reminder/alarm/timer, and the answer must be short and contain an
+	// HH:MM token. Uses the raw strings — normalizeLowValue strips the ":".
+	if isQuestion(userMsg) && !hasSchedulingIntent(user) && looksLikeBareClockReading(assistantMsg) {
 		return true
 	}
 
@@ -149,6 +161,42 @@ func isTimeOrDateQuestion(user string) bool {
 		}
 	}
 	return false
+}
+
+// clockToken matches an HH:MM / HH.MM wall-clock value.
+var clockToken = regexp.MustCompile(`\b\d{1,2}[:.]\d{2}\b`)
+
+// schedulingWords mark a "set a reminder/alarm/timer at X" turn — durable,
+// must never be dropped by the clock-reading backstop. Diacritic + plain.
+var schedulingWords = []string{
+	"hatirlat", "hatırlat", "alarm", "zamanlayici", "zamanlayıcı", "kur ",
+	"remind", "reminder", "set a", "set an", "schedule", "timer", "wake me", "alert me",
+}
+
+func hasSchedulingIntent(user string) bool {
+	for _, w := range schedulingWords {
+		if strings.Contains(user, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// isQuestion reports whether raw looks like a question (any script's
+// question mark). normalizeLowValue drops "?", so this checks the raw text.
+func isQuestion(raw string) bool {
+	return strings.ContainsAny(raw, "?？؟")
+}
+
+// looksLikeBareClockReading: a short raw reply that is essentially just a
+// wall-clock value. Length-capped so "it's 14:32, and your 15:00 meeting
+// is still on" (real content) doesn't match.
+func looksLikeBareClockReading(rawReply string) bool {
+	r := strings.TrimSpace(rawReply)
+	if r == "" || runeLen(r) > 48 {
+		return false
+	}
+	return clockToken.MatchString(r)
 }
 
 // normalizeLowValue lowercases, trims, and strips punctuation/symbols so

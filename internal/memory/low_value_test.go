@@ -113,6 +113,36 @@ func TestIsLowValueTurn_TimeDateQuestionsSkip(t *testing.T) {
 	}
 }
 
+func TestIsLowValueTurn_ClockReadingBackstopLanguageAgnostic(t *testing.T) {
+	// A short question in a language the phrase lists don't cover, answered
+	// with a bare clock value, is still ephemeral and must be skipped.
+	skip := []struct{ user, reply string }{
+		{"wie spät ist es?", "Es ist 14:32."},
+		{"quelle heure est-il ?", "Il est 14:32."},
+		{"¿qué hora es?", "Son las 14:32."},
+		{"quốc tế giờ này là mấy giờ?", "14:32"},
+	}
+	for _, tc := range skip {
+		if !IsLowValueTurn(tc.user, tc.reply) {
+			t.Errorf("IsLowValueTurn(%q,%q)=false, want true (clock-reading backstop)", tc.user, tc.reply)
+		}
+	}
+
+	// Must NOT fire without a question, without a clock token, for
+	// scheduling turns, or when the reply is long enough to carry content.
+	keep := []struct{ user, reply string }{
+		{"uyandığımda saat 8'di", "günaydın"},                       // statement, no "?"
+		{"remind me at 14:30?", "okay, reminder set for 14:30"},     // scheduling intent
+		{"saati sorabilir miyim?", "tabii, kaç olduğunu merak mı ettin"}, // question but no clock token
+		{"what's up at 15:00?", "your dentist appointment, and then you're free the rest of the day"}, // long reply = real content
+	}
+	for _, tc := range keep {
+		if IsLowValueTurn(tc.user, tc.reply) {
+			t.Errorf("IsLowValueTurn(%q,%q)=true, want false", tc.user, tc.reply)
+		}
+	}
+}
+
 func TestIsLowValueTurn_LongSidesNeverSkip(t *testing.T) {
 	// Even if user is "ok", a long assistant reply means the turn has content.
 	longReply := "Bu konuda birkaç önemli nokta var: birincisi performans, ikincisi bellek kullanımı ve üçüncüsü kullanıcı deneyimi."

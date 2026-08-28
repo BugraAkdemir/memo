@@ -197,6 +197,26 @@ func TestStripHallucinatedToolSyntax(t *testing.T) {
 			"function_calls is a term used in some APIs, not a Memo feature.",
 			"function_calls is a term used in some APIs, not a Memo feature.",
 		},
+		{
+			"strips an opencode-zen <tool_call:id> block, keeps surrounding prose",
+			"Merhaba! Hafızama bakayım.<tool_calls:6124c78e> <tool_call:6124c78e>Bash command`> ls -la ~/.claude/ description`> list</tool_calls:6124c78e> Tamam.",
+			"Merhaba! Hafızama bakayım. Tamam.",
+		},
+		{
+			"strips an unclosed <tool_call:id> block to end of string",
+			"Bakıyorum.<tool_call:abc123>Bash command`> echo hi",
+			"Bakıyorum.",
+		},
+		{
+			"strips a multi-opener <tool_calls:id> leak entirely",
+			"<tool_calls:6124c78e> <tool_call:6124c78e>Bash x <tool_call:6124c78e>Bash y </tool_calls:6124c78e>",
+			"",
+		},
+		{
+			"plain <tool_calls> with no id is still stripped",
+			"Cevap.<tool_calls>stuff</tool_calls>",
+			"Cevap.",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

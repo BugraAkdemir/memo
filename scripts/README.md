@@ -1,10 +1,14 @@
 # scripts/
 
-All of Memo's shell/PowerShell/batch scripts, moved out of the repo root
+Most of Memo's shell/PowerShell/batch scripts, moved out of the repo root
 (2026-08-09) to keep it uncluttered. **Every script here assumes it's run
-from the repo root**, e.g. `./scripts/build_releases.sh` — none of them
+from the repo root**, e.g. `./scripts/run_memo.sh` — none of them
 `cd` relative to their own file location, so running them from anywhere
 else won't find `config/`, `frontend/`, `data/`, etc.
+
+Exception: the main release builder **`build_releases.sh` lives at the repo
+root** (`./build_releases.sh`), not here — it's the one script maintainers
+reach for often enough that AGENTS.md / README point straight at it.
 
 None of these are invoked by CI (GitHub Actions builds everything inline,
 see `.github/workflows/`) — they're for local/manual use only.
@@ -15,7 +19,7 @@ see `.github/workflows/`) — they're for local/manual use only.
 
 | Script | What it does |
 |---|---|
-| `build_releases.sh` | The main Linux release builder — backend + Flutter frontend, produces `.tar.gz` / `.AppImage` / `.deb`. Run: `./scripts/build_releases.sh` |
+| `../build_releases.sh` | The main Linux release builder — backend + Flutter frontend, produces `.tar.gz` / `.AppImage` / `.deb`. Lives at the **repo root**, not in `scripts/`. Run: `./build_releases.sh` |
 | `build_releases.bat` | Same, for Windows (Inno Setup installer + zip). Run from `cmd`/PowerShell: `.\scripts\build_releases.bat` |
 | `build_releases_arm.sh` | Same as `build_releases.sh`, targeting Linux arm64 (Raspberry Pi). Needs `binaries/linux/cpu-arm64/` populated first — run `download_binaries.sh` before it if that's empty. |
 | `package_linux.sh` | Older, narrower Linux packager (backend + frontend + a generated `run_memo.sh`, no `.AppImage`/`.deb`). `build_releases.sh` superseded most of what this did — kept for a lighter-weight local test build. |

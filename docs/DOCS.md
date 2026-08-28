@@ -320,7 +320,7 @@ cd frontend && flutter run -d linux
 ```bash
 go build -o memo .                                    # backend binary
 cd frontend && flutter build linux --release         # frontend binary
-./scripts/build_releases.sh                          # dist packages (tar.gz, AppImage, deb)
+./build_releases.sh                          # dist packages (tar.gz, AppImage, deb)
 ```
 
 ### Testing

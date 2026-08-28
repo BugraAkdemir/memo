@@ -175,8 +175,18 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 				"You just called delegate_to_main_model and the result is pending. Say ONE short acknowledgment now (\"one sec, working on it\") and then stay quiet — don't try to speak again until the real result comes back.",
 			))
 		}
-		ch := a.SendLiveDelegatedMessageStream(ctx, parsed.Instruction)
+		ch := a.SendLiveDelegatedMessageStream(ctx, parsed.Instruction, liveDelegateTimeout)
 		reply := a.drainLiveDelegatedReply(ch, autoApprove, buildQuestion, sendQuestion, awaitAnswer)
+
+		// SendLiveDelegatedMessageStream appends liveDelegateTimeoutMarker
+		// when it gave up waiting on an over-running agent turn rather than
+		// leaving the realtime turn silent for tens of seconds. Turn it into
+		// an honest instruction: hand back the partial text if there is any,
+		// otherwise say plainly that it overran — never let the model paper
+		// over it with a fabricated answer.
+		if out, ok := a.resolveDelegateTimeout(reply); ok {
+			return out, nil
+		}
 
 		// The live model has been observed fabricating a plausible-sounding
 		// answer (a made-up file listing, invented file extensions) when the
@@ -246,6 +256,30 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 		}
 		return runDelegate(ctx, args)
 	}
+}
+
+// resolveDelegateTimeout inspects a drained delegated reply for
+// liveDelegateTimeoutMarker (appended by SendLiveDelegatedMessageStream
+// when it stopped waiting on an over-running turn). ok=false means "no
+// marker — caller continues with its normal empty / error handling".
+// Otherwise it returns the text to hand the live model: the partial reply
+// wrapped in a "may be incomplete" note when the agent got far enough to
+// produce some, or an honest "it took too long" instruction when it didn't.
+func (a *App) resolveDelegateTimeout(reply string) (string, bool) {
+	if !strings.Contains(reply, liveDelegateTimeoutMarker) {
+		return "", false
+	}
+	partial := strings.TrimSpace(strings.ReplaceAll(reply, liveDelegateTimeoutMarker, ""))
+	if partial == "" {
+		return a.t(
+			"DELEGASYON ZAMAN AŞIMINA UĞRADI: ana model işi verilen sürede bitiremedi (büyük ihtimalle yavaş bir web sayfası ya da uzun süren bir işlem). Kullanıcıya işlemin beklenenden uzun sürdüğünü, isterse tekrar deneyebileceğini söyle — kesinlikle bir cevap UYDURMA (dosya adı, liste, rakam vs. sallama).",
+			"DELEGATION TIMED OUT: the main model couldn't finish within the allotted time (most likely a slow web page or a long-running operation). Tell the user it's taking longer than expected and you can retry if they want — absolutely do NOT fabricate an answer (no made-up file names, lists, or numbers).",
+		), true
+	}
+	return a.t(
+		"KISMİ SONUÇ (delegasyon zaman aşımına uğradı, iş yarıda kaldı). Aşağıdakini kullanıcıya aktar ama eksik olabileceğini belirt; kalan kısmı uydurma:\n\n",
+		"PARTIAL RESULT (delegation timed out, the task was left unfinished). Relay the below to the user but note it may be incomplete; do not fabricate the rest:\n\n",
+	) + partial, true
 }
 
 // resolveLivePermission resolves one EventPermissionRequest — shared by

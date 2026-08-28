@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -114,7 +115,7 @@ func TestSendLiveDelegatedMessageStream_DoesNotBlockOnGlobalStreamMu(t *testing.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		ch := a.SendLiveDelegatedMessageStream(context.Background(), "fix the bug")
+		ch := a.SendLiveDelegatedMessageStream(context.Background(), "fix the bug", 0)
 		for range ch {
 		}
 	}()
@@ -143,7 +144,7 @@ func TestSendLiveDelegatedMessageStream_RejectsConcurrentDelegation(t *testing.T
 	}
 	defer a.finishLiveJob(chatID)
 
-	ch := a.SendLiveDelegatedMessageStream(context.Background(), "another task")
+	ch := a.SendLiveDelegatedMessageStream(context.Background(), "another task", 0)
 	chunk, ok := <-ch
 	if !ok || chunk.Error == "" || !chunk.Done {
 		t.Fatalf("expected an immediate Done error chunk, got ok=%v chunk=%+v", ok, chunk)
@@ -158,7 +159,7 @@ func TestSendLiveDelegatedMessageStream_SessionCancelStopsTheJob(t *testing.T) {
 	a := newTestAppForLiveModeDelegate(t)
 	sessionCtx, cancel := context.WithCancel(context.Background())
 
-	ch := a.SendLiveDelegatedMessageStream(sessionCtx, "a task")
+	ch := a.SendLiveDelegatedMessageStream(sessionCtx, "a task", 0)
 	cancel()
 
 	select {
@@ -211,5 +212,109 @@ func TestDrainLiveDelegatedReply_AccumulatesTextAndStopsOnError(t *testing.T) {
 	got := a.drainLiveDelegatedReply(ch, false, nil, nil, nil)
 	if got != "boom" {
 		t.Errorf("drainLiveDelegatedReply() = %q, want %q", got, "boom")
+	}
+}
+
+// TestDrainWithDeadline_ForwardsEverythingWhenInnerFinishesFirst is the
+// happy path: the delegated turn completes before the deadline, so every
+// chunk is forwarded and timedOut is false.
+func TestDrainWithDeadline_ForwardsEverythingWhenInnerFinishesFirst(t *testing.T) {
+	inner := make(chan api.StreamChunk, 3)
+	inner <- api.StreamChunk{Content: "a"}
+	inner <- api.StreamChunk{Content: "b"}
+	close(inner)
+
+	out := make(chan api.StreamChunk, 8)
+	if drainWithDeadline(context.Background(), inner, out, time.Second) {
+		t.Fatal("timedOut=true though inner closed well before the deadline")
+	}
+	close(out)
+
+	var got string
+	for c := range out {
+		got += c.Content
+	}
+	if got != "ab" {
+		t.Errorf("forwarded %q, want %q", got, "ab")
+	}
+}
+
+// TestDrainWithDeadline_ReportsTimeoutWhenInnerOverruns is the regression
+// test for the Live Mode "asked it to search the web, 30-40s of silence"
+// symptom: an agent turn that outlasts the deadline must hand control back
+// promptly with timedOut=true rather than blocking the realtime turn until
+// the agent eventually finishes.
+func TestDrainWithDeadline_ReportsTimeoutWhenInnerOverruns(t *testing.T) {
+	inner := make(chan api.StreamChunk) // never sends, never closes
+	out := make(chan api.StreamChunk, 8)
+
+	start := time.Now()
+	if !drainWithDeadline(context.Background(), inner, out, 40*time.Millisecond) {
+		t.Fatal("expected timedOut=true when inner overran the deadline")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("returned after %s — expected it to fire at the ~40ms deadline", elapsed)
+	}
+}
+
+// TestDrainWithDeadline_CtxCancelEndsItWithoutTimeout confirms a cancelled
+// session context ends the drain as a non-timeout (the caller then just
+// closes its stream) — it is not misreported as an overrun.
+func TestDrainWithDeadline_CtxCancelEndsItWithoutTimeout(t *testing.T) {
+	inner := make(chan api.StreamChunk)
+	out := make(chan api.StreamChunk, 8)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan bool, 1)
+	go func() { done <- drainWithDeadline(ctx, inner, out, 5*time.Second) }()
+
+	cancel()
+	close(inner) // the real pipeline closes its stream when its ctx is cancelled
+
+	select {
+	case timedOut := <-done:
+		if timedOut {
+			t.Error("ctx cancellation must end drainWithDeadline with timedOut=false")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("drainWithDeadline did not return after ctx cancellation")
+	}
+}
+
+func TestResolveDelegateTimeout_NoMarkerLeavesReplyToNormalHandling(t *testing.T) {
+	a := &App{identity: identity.New("Test", "Memo", "casual", "", false)}
+	if _, ok := a.resolveDelegateTimeout("a perfectly normal reply"); ok {
+		t.Error("resolveDelegateTimeout claimed a timeout on an unmarked reply")
+	}
+}
+
+func TestResolveDelegateTimeout_MarkerWithNoPartialTextGivesHonestOverrunNote(t *testing.T) {
+	a := &App{identity: identity.New("Test", "Memo", "casual", "", false)}
+	out, ok := a.resolveDelegateTimeout(liveDelegateTimeoutMarker)
+	if !ok {
+		t.Fatal("expected resolveDelegateTimeout to handle a marked reply")
+	}
+	if strings.Contains(out, liveDelegateTimeoutMarker) {
+		t.Error("the raw marker leaked into the text handed to the live model")
+	}
+	if !strings.Contains(strings.ToUpper(out), "TIMED OUT") && !strings.Contains(strings.ToUpper(out), "ZAMAN AŞIMINA") {
+		t.Errorf("expected an explicit timeout instruction, got %q", out)
+	}
+}
+
+func TestResolveDelegateTimeout_MarkerWithPartialTextRelaysItAsIncomplete(t *testing.T) {
+	a := &App{identity: identity.New("Test", "Memo", "casual", "", false)}
+	out, ok := a.resolveDelegateTimeout("here are the first three results" + liveDelegateTimeoutMarker)
+	if !ok {
+		t.Fatal("expected resolveDelegateTimeout to handle a marked reply")
+	}
+	if strings.Contains(out, liveDelegateTimeoutMarker) {
+		t.Error("the raw marker leaked into the text handed to the live model")
+	}
+	if !strings.Contains(out, "here are the first three results") {
+		t.Errorf("partial text was dropped: %q", out)
+	}
+	if !strings.Contains(strings.ToUpper(out), "PARTIAL") && !strings.Contains(strings.ToUpper(out), "KISMİ") {
+		t.Errorf("expected a 'may be incomplete' framing around the partial text, got %q", out)
 	}
 }

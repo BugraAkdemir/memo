@@ -4,11 +4,33 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"memo/internal/agent"
 	"memo/internal/api"
 	"memo/internal/logx"
 	"memo/internal/truncate"
+)
+
+const (
+	// liveDelegateTimeout bounds a single delegated agent turn against the
+	// realtime voice turn that is blocked waiting on its result. A live
+	// session has already said "one sec" (see runDelegate) and then sits
+	// silent until the tool result comes back — so an agent turn that runs
+	// 20-40s (a fetch_page that falls through to a headless browser render
+	// of a scraper-hostile page — reddit was measured at ~23s+) leaves the
+	// user hearing nothing, then an answer that no longer matches what they
+	// went on to say. 15s sits just past a normal web_search + short
+	// synthesis (~3-8s observed) while cutting the pathological case off.
+	liveDelegateTimeout = 15 * time.Second
+
+	// liveDelegateTimeoutMarker is appended to a delegated reply by
+	// SendLiveDelegatedMessageStream when it stopped waiting on an
+	// over-running turn. runDelegate (livemode_session.go) strips it back
+	// out and turns it into an honest "it overran" instruction for the live
+	// model. NUL-wrapped so it can never collide with real reply text, and
+	// so it is obviously wrong (not speakable) if a strip is ever missed.
+	liveDelegateTimeoutMarker = "\x00livemode-delegate-timeout\x00"
 )
 
 // getOrCreateLiveModeChat returns the dedicated background chat Live Mode
@@ -119,7 +141,15 @@ func (a *App) finishLiveJob(chatID string) {
 // itself, not the whole app process. Do not "fix" this back to
 // a.lifecycleCtx by analogy with the CLI precedent — it is a deliberate
 // difference, not an oversight.
-func (a *App) SendLiveDelegatedMessageStream(sessionCtx context.Context, instruction string) <-chan api.StreamChunk {
+//
+// timeout bounds the delegated turn against the realtime turn waiting on it
+// (see liveDelegateTimeout). When it elapses first, the stream is closed
+// with a liveDelegateTimeoutMarker chunk appended after whatever partial
+// text was produced, and the abandoned agent turn is left to unwind in the
+// background (the deferred cancel tears its context down). A non-positive
+// timeout waits indefinitely — used by tests that drive the inner stream
+// directly.
+func (a *App) SendLiveDelegatedMessageStream(sessionCtx context.Context, instruction string, timeout time.Duration) <-chan api.StreamChunk {
 	chatID, err := a.getOrCreateLiveModeChat()
 	if err != nil {
 		return errStreamChunk(err.Error())
@@ -131,7 +161,7 @@ func (a *App) SendLiveDelegatedMessageStream(sessionCtx context.Context, instruc
 		return errStreamChunk(a.t("⏳ Live Mode için zaten bir görev çalışıyor.", "⏳ A Live Mode task is already running."))
 	}
 
-	logx.Printf("livemode delegate: START chat=%s instruction=%q", chatID, truncate.Text(instruction, 200))
+	logx.Printf("livemode delegate: START chat=%s timeout=%s instruction=%q", chatID, timeout, truncate.Text(instruction, 200))
 	outCh := make(chan api.StreamChunk, 128)
 	go func() {
 		defer close(outCh)
@@ -140,10 +170,58 @@ func (a *App) SendLiveDelegatedMessageStream(sessionCtx context.Context, instruc
 		defer recoverStreamPanic(jobCtx, outCh, "SendLiveDelegatedMessageStream")
 
 		inner := a.sendMessageStreamCore(jobCtx, chatID, instruction, true /* forceAgent */)
-		forwardStream(jobCtx, inner, outCh)
+		if drainWithDeadline(jobCtx, inner, outCh, timeout) {
+			logx.Printf("livemode delegate: TIMEOUT chat=%s after=%s", chatID, timeout)
+			select {
+			case outCh <- api.StreamChunk{Content: liveDelegateTimeoutMarker}:
+			default:
+			}
+			return
+		}
 		logx.Printf("livemode delegate: DONE chat=%s", chatID)
 	}()
 	return outCh
+}
+
+// drainWithDeadline forwards inner→out until inner closes (returns false) or
+// timeout elapses first (returns true — the caller should then append the
+// timeout marker and stop). ctx cancellation also ends it with false. A
+// non-positive timeout disables the deadline. The forwarding runs on its
+// own goroutine writing to an internal relay channel so that, on timeout,
+// out has exactly one writer (this function) and can be closed safely by
+// the caller without racing a still-running forwardStream; the abandoned
+// forwarder unwinds once ctx is cancelled.
+func drainWithDeadline(ctx context.Context, inner <-chan api.StreamChunk, out chan<- api.StreamChunk, timeout time.Duration) (timedOut bool) {
+	relay := make(chan api.StreamChunk, 128)
+	go func() {
+		forwardStream(ctx, inner, relay)
+		close(relay)
+	}()
+
+	var timer <-chan time.Time
+	if timeout > 0 {
+		t := time.NewTimer(timeout)
+		defer t.Stop()
+		timer = t.C
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case chunk, ok := <-relay:
+			if !ok {
+				return false
+			}
+			select {
+			case out <- chunk:
+			case <-ctx.Done():
+				return false
+			}
+		case <-timer:
+			return true
+		}
+	}
 }
 
 // drainLiveDelegatedReply drains a delegated task's stream down to its

@@ -1,3 +1,76 @@
+# Ek (2026-08-28, devam 29) — devam 28'in nudger'ı geri alındı (chat kirletiyor + kesilemiyor); SIGKILL + transkript temizliği; barge-in AYARI sıradaki iş
+
+devam 28'in realtime "hiç susma" nudger'ı (`924b15c`) gerçek oturumda geri
+tepti — kullanıcı bildirdi:
+1. Chat'e `text-to-speech:one_second_pause` gibi satırlar yazılıyor (Gemini
+   "ses" olarak kontrol token'ı üretiyor, transkripte düşüyor).
+2. Memo'nun sözü kesilemiyor / susturulamıyor (nudger her 7sn "ses çıkar"
+   diye Gemini'yi zorluyor → aşırı üretim, araya girilemiyor).
+3. Live Mode kapatılınca model konuşmaya devam ediyor.
+
+**Yapılanlar:**
+- **`d8db153` — `924b15c` REVERT.** nudger + yeniden yazılan "sessizce bekle"
+  talimatı geri alındı. Orijinal "tek şey söyle sonra sus" davranışı döndü.
+  (devam 28'in DİĞER commit'i `ccdcb79` — discrete/yerel filler döngüsü —
+  DURUYOR, o ayrı yol, Gemini/transkripte dokunmuyor.)
+- **`961ae3d` — PCM player SIGKILL.** `LiveModePcmPlayer.stop()/dispose()`
+  default SIGTERM yerine SIGKILL kullanıyor. `pacat` SIGTERM'de PipeWire
+  buffer'ını boşaltıp öyle çıkıyordu → kapatınca/kesince 1+ sn ses devam
+  ediyordu. SIGKILL anında kesiyor.
+- **`ecf383d` — transkript temizleyici.** `livemode.SanitizeModelTranscript`:
+  `text-to-speech:<token>` şeklini (case-insensitive, dar kapsam) + kaçak
+  NUL-sarmalı marker'ları siliyor, boşluk topluyor; sadece çöp kalırsa ""
+  (mevcut "boş transkripti atla" korumaları eliyor). `google.Client.
+  emitTranscript` (sadece model rolü) + openai_realtime'ın
+  `response.output_audio_transcript.done` handler'ına bağlandı. Test:
+  `TestSanitizeModelTranscript` (8 case).
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` yeşil; `internal/livemode/...`
+`-race` yeşil; `flutter analyze` dokunulan dosyalarda temiz; `flutter test` 305 pass.
+
+## SIRADAKI İŞ — barge-in (araya girme) AYARI
+
+Kullanıcı isteği: "ben konuşunca dursun" default olsun ama **ayardan
+değiştirilebilsin**.
+
+**Kök bulgu:** `internal/livemode/google/client.go:297` — setup'ta
+`StartOfSpeechSensitivity: startSensitivityLow` (`START_SENSITIVITY_LOW`)
+HARDCODED. Bu, devam ~21'de kullanıcının "modelin sözü klavye/gürültüyle
+kesiliyor" şikayeti üzerine bilerek LOW'a çekilmişti. Şimdi tam tersi
+isteniyor: LOW olduğu için Gemini kullanıcının araya girmesini "yeterince
+kendinden emin sinyal değil" diye yok sayıyor → kesilemiyor. HIGH = kolay
+kesilir ama gürültü false-trigger yapar. Çözüm: **ayar yap.**
+
+**Plan (~6 dosya):**
+1. `internal/config/config.go` + `internal/livemode/config.go` —
+   `LiveModeConfig`'e `BargeInSensitivity string` ("high"|"low", default
+   "high"). `liveModeValidPermissionPolicies` yanındaki validasyona ekle.
+2. `internal/livemode/google/client.go` — `NewClient`/setup bunu alıp
+   `START_SENSITIVITY_HIGH`/`_LOW`'a maplesin (`startSensitivityLow` const'un
+   yanına `startSensitivityHigh`).
+3. `internal/app/livemode_session.go` `NewLiveModeSession` — cfg'den
+   `BargeInSensitivity`'yi client'a geçir.
+4. **`interrupted=true` → player'ı durdur:** `google/client.go:369` "interrupted
+   carry no event ... nothing downstream consumes it" — yeni bir
+   `EventInterrupted` (veya mevcut bir sinyal) emit et, Flutter tarafı
+   `_player.stop()` çağırsın. Barge-in'in "anında sussun" hissi bunsuz olmuyor
+   (buffer'daki PCM çalmaya devam ediyor). openai_realtime'da karşılığı
+   `response` iptal/`speech_started` — kontrol et.
+5. Flutter: Settings > Live Mode sekmesine toggle/segmented ("Ben konuşunca
+   dursun" ↔ "Sadece net konuşmada"). **L10n TR+EN ZORUNLU (AGENTS.md #8).**
+6. `frontend/lib/providers/live_mode_config_provider.dart` (veya benzeri) —
+   alanı taşı, `live_realtime_session_provider` connect'te kullan.
+
+**Not:** default'u HIGH yapmadan ayarı da eklemek şart — yoksa devam 21'deki
+"gürültüyle kesiliyor" şikayeti geri gelir, geri dönüş yolu olmaz.
+
+**Ayrıca doğrulanmalı:** revert sonrası (a) `text-to-speech:...` chat'e artık
+yazmıyor, (b) nudger gitince Gemini'nin native barge-in'i geri geldi mi (LOW
+hâlâ hardcoded ama nudger flood'u yoktu artık), (c) SIGKILL ile kapatınca ses
+anında kesiliyor.
+
+---
+
 # Ek (2026-08-28, devam 28) — Live Mode "hiç susma" (ChatGPT gibi bekleme sesleri): realtime model kendi sesiyle + discrete filler döngüsü
 
 Kullanıcı isteği: ChatGPT'nin advanced voice mode'u gibi Live Mode beklerken

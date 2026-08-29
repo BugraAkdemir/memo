@@ -1,5 +1,8 @@
 # Memo v4.4.0 — Yol Haritası & Görev Listesi
 
+Spec: docs/superpowers/specs/2026-08-29-self-driving-memo-design.md
+Plan: docs/superpowers/plans/2026-08-29-self-driving-memo.md
+
 > **Sürüm teması: Self-Driving Memo.** Bu sürüm Memo'yu "seninle sohbet
 > eden bir asistan" olmaktan çıkarıp **"kendine verilen görevleri sen
 > müdahale etmeden bitiren bir otomat"** haline getiriyor. Kullanıcının

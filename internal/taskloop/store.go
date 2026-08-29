@@ -27,13 +27,48 @@ type TaskItem struct {
 }
 
 type TaskList struct {
-	ID        string     `json:"id"`
-	ChatID    string     `json:"chat_id"`
-	Title     string     `json:"title"`
-	Items     []TaskItem `json:"items"`
-	Status    string     `json:"status"` // idle | running | paused | done
-	CreatedAt string     `json:"created_at"`
-	UpdatedAt string     `json:"updated_at"`
+	ID     string     `json:"id"`
+	ChatID string     `json:"chat_id"`
+	Title  string     `json:"title"`
+	Items  []TaskItem `json:"items"`
+	// Status is one of the taskListStatus* values below. "running" is legacy
+	// (pre-v4.4.0) — new writes use "planning"/"executing"; loadAll maps a
+	// leftover "running" to "paused" on restart.
+	Status string `json:"status"`
+	// NotifyLevel is parsed from the "# bildirim:" header of the source
+	// Task.md and drives how chatty the NotifyBus is for this list.
+	NotifyLevel NotifyLevel `json:"notify_level,omitempty"`
+	// TaskMdPath is the absolute path of the Task.md this list was seeded
+	// from, so item completion can mirror "[ ]" -> "[x]" back into it. Empty
+	// for lists created directly (Tasks screen / REST / REPL).
+	TaskMdPath string `json:"task_md_path,omitempty"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
+}
+
+// Task list lifecycle states.
+const (
+	taskListIdle         = "idle"
+	taskListPlanning     = "planning"
+	taskListExecuting    = "executing"
+	taskListRunning      = "running" // legacy, still accepted for reads/writes during transition
+	taskListWaitingLimit = "waiting-limit"
+	taskListWaitingUser  = "waiting-user"
+	taskListPaused       = "paused"
+	taskListDone         = "done"
+	taskListFailed       = "failed"
+	taskListCancelled    = "cancelled"
+)
+
+func validTaskListStatus(s string) bool {
+	switch s {
+	case taskListIdle, taskListPlanning, taskListExecuting, taskListRunning,
+		taskListWaitingLimit, taskListWaitingUser, taskListPaused,
+		taskListDone, taskListFailed, taskListCancelled:
+		return true
+	default:
+		return false
+	}
 }
 
 type TaskListInfo struct {
@@ -66,10 +101,23 @@ func NewStore(dir string) (*Store, error) {
 	return s, nil
 }
 
+// Create makes a task list with the default notification level and no source
+// Task.md. Kept for the Tasks screen / REST / REPL callers that pass a plain
+// item list.
 func (s *Store) Create(chatID, title string, items []string) (*TaskList, error) {
+	return s.CreateWithMeta(chatID, title, items, NotifyImportant, "")
+}
+
+// CreateWithMeta makes a task list, recording the notification level and the
+// source Task.md path so the engine can mirror checkbox state back into the
+// file. An empty notify defaults to NotifyImportant.
+func (s *Store) CreateWithMeta(chatID, title string, items []string, notify NotifyLevel, taskMdPath string) (*TaskList, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if notify == "" {
+		notify = NotifyImportant
+	}
 	now := time.Now().Format("2006-01-02 15:04")
 	taskItems := make([]TaskItem, len(items))
 	for i, text := range items {
@@ -80,13 +128,15 @@ func (s *Store) Create(chatID, title string, items []string) (*TaskList, error) 
 		}
 	}
 	tl := &TaskList{
-		ID:        uuid.New().String(),
-		ChatID:    chatID,
-		Title:     title,
-		Items:     taskItems,
-		Status:    "idle",
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:          uuid.New().String(),
+		ChatID:      chatID,
+		Title:       title,
+		Items:       taskItems,
+		Status:      taskListIdle,
+		NotifyLevel: notify,
+		TaskMdPath:  taskMdPath,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 	s.list[tl.ID] = tl
 	if err := s.save(tl); err != nil {
@@ -134,6 +184,9 @@ func (s *Store) List() []TaskListInfo {
 }
 
 func (s *Store) SetStatus(id, status string) error {
+	if !validTaskListStatus(status) {
+		return fmt.Errorf("taskloop: invalid task list status %q", status)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tl, ok := s.list[id]
@@ -284,12 +337,15 @@ func (s *Store) loadAll() error {
 			logx.Printf("taskloop: decode %s: %v", e.Name(), err)
 			continue
 		}
-		// A list (or item) can be left "running" if the process was killed
-		// mid-loop. No Engine goroutine survives a restart to finish it, so
-		// without this the list would show "running" forever with no Start
-		// button to recover it.
-		if tl.Status == "running" {
-			tl.Status = "paused"
+		// A list can be left in an active phase (planning/executing, or the
+		// legacy "running") if the process was killed mid-loop. No Engine
+		// goroutine survives a restart to finish it, so downgrade to "paused"
+		// and reset any half-run item. "waiting-limit" and "waiting-user" are
+		// deliberately kept: the former is re-armed by the retry scheduler on
+		// startup, the latter still needs the user to act.
+		switch tl.Status {
+		case taskListRunning, taskListPlanning, taskListExecuting:
+			tl.Status = taskListPaused
 			for i := range tl.Items {
 				if tl.Items[i].Status == "running" {
 					tl.Items[i].Status = "pending"

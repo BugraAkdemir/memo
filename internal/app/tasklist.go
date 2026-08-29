@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"memo/internal/api"
+	"memo/internal/logx"
 	"memo/internal/provider"
 	"memo/internal/taskloop"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -19,6 +21,49 @@ func (a *App) CreateTaskList(chatID, title string, items []string) (*taskloop.Ta
 		return nil, fmt.Errorf("görev listesi yalnızca bir ajan sohbetine bağlanabilir; önce Ajan sekmesinden bir proje sohbeti seçin")
 	}
 	return a.taskloopStore.Create(chatID, title, items)
+}
+
+// CreateTaskListFromTaskMd parses a Task.md file, seeds a task list from its
+// checkbox items, and records the notification level (from the "# bildirim:"
+// header) plus the file path so item completion can mirror "[ ]" -> "[x]" back
+// into it. Already-checked items are stored as done. A file with no checkboxes
+// is an error.
+func (a *App) CreateTaskListFromTaskMd(chatID, title, taskMdPath string) (*taskloop.TaskList, error) {
+	if a.taskloopStore == nil {
+		return nil, fmt.Errorf("görev listesi sistemi başlatılmamış")
+	}
+	sm := a.getSessionManager()
+	if sm == nil || !sm.IsAgentChat(chatID) {
+		return nil, fmt.Errorf("görev listesi yalnızca bir ajan sohbetine bağlanabilir; önce Ajan sekmesinden bir proje sohbeti seçin")
+	}
+	parsed, err := taskloop.ParseTaskMd(taskMdPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(parsed.Items) == 0 {
+		return nil, fmt.Errorf("Task.md içinde onay kutusu maddesi bulunamadı: %s", taskMdPath)
+	}
+	texts := make([]string, len(parsed.Items))
+	for i, it := range parsed.Items {
+		texts[i] = it.Text
+	}
+	if strings.TrimSpace(title) == "" {
+		title = filepath.Base(taskMdPath)
+	}
+	tl, err := a.taskloopStore.CreateWithMeta(chatID, title, texts, parsed.NotifyLevel, taskMdPath)
+	if err != nil {
+		return nil, err
+	}
+	// Carry over pre-checked items so a partially-done Task.md resumes rather
+	// than redoing completed work.
+	for i, it := range parsed.Items {
+		if it.Status == "done" && i < len(tl.Items) {
+			if err := a.taskloopStore.SetItemDone(tl.ID, tl.Items[i].ID); err != nil {
+				logx.Printf("taskloop: seed done item %s: %v", tl.Items[i].ID, err)
+			}
+		}
+	}
+	return a.taskloopStore.Get(tl.ID)
 }
 
 // memoSystemGuidance returns the instructions of the built-in memo-system

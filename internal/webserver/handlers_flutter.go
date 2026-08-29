@@ -15,6 +15,7 @@ import (
 	"memo/internal/provider"
 	"memo/internal/shutdown"
 	"memo/internal/stt"
+	"memo/internal/taskloop"
 	"memo/internal/tts"
 	"net/http"
 	"net/url"
@@ -2980,19 +2981,26 @@ func (s *Server) handleTaskLists(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.fullBridge.ListTaskLists())
 	case http.MethodPost:
 		var req struct {
-			ChatID string   `json:"chat_id"`
-			Title  string   `json:"title"`
-			Items  []string `json:"items"`
+			ChatID     string   `json:"chat_id"`
+			Title      string   `json:"title"`
+			Items      []string `json:"items"`
+			TaskMdPath string   `json:"task_md_path"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
-		if len(req.Items) == 0 {
-			http.Error(w, "items required", http.StatusBadRequest)
+		if req.TaskMdPath == "" && len(req.Items) == 0 {
+			http.Error(w, "items or task_md_path required", http.StatusBadRequest)
 			return
 		}
-		tl, err := s.fullBridge.CreateTaskList(req.ChatID, req.Title, req.Items)
+		var tl *taskloop.TaskList
+		var err error
+		if req.TaskMdPath != "" {
+			tl, err = s.fullBridge.CreateTaskListFromTaskMd(req.ChatID, req.Title, req.TaskMdPath)
+		} else {
+			tl, err = s.fullBridge.CreateTaskList(req.ChatID, req.Title, req.Items)
+		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

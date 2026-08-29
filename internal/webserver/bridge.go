@@ -360,6 +360,7 @@ type FullBridge interface {
 
 	// Task lists (autonomous task loop)
 	CreateTaskList(chatID, title string, items []string) (*taskloop.TaskList, error)
+	CreateTaskListFromTaskMd(chatID, title, taskMdPath string) (*taskloop.TaskList, error)
 	GetTaskList(id string) (*taskloop.TaskList, error)
 	ListTaskLists() []taskloop.TaskListInfo
 	DeleteTaskList(id string) error

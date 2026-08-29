@@ -529,6 +529,9 @@ func (b *swarmStubBridge) Shutdown(ctx context.Context)                         
 func (b *swarmStubBridge) CreateTaskList(chatID, title string, items []string) (*taskloop.TaskList, error) {
 	return nil, nil
 }
+func (b *swarmStubBridge) CreateTaskListFromTaskMd(chatID, title, taskMdPath string) (*taskloop.TaskList, error) {
+	return nil, nil
+}
 func (b *swarmStubBridge) GetTaskList(id string) (*taskloop.TaskList, error)      { return nil, nil }
 func (b *swarmStubBridge) ListTaskLists() []taskloop.TaskListInfo                 { return nil }
 func (b *swarmStubBridge) DeleteTaskList(id string) error                         { return nil }

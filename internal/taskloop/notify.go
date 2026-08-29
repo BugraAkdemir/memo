@@ -11,6 +11,10 @@ type Notification struct {
 	ListTitle string
 	Event     string // canonical event name, e.g. "started", "finished", "waiting_limit"
 	Detail    string
+	// Body, when set, is the exact text to deliver (e.g. a model-written
+	// completion report) — the senders use it verbatim instead of the
+	// short built-in one-liner.
+	Body string
 }
 
 // Sender delivers notifications to one channel (app event bus, Telegram,

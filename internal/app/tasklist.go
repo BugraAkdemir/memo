@@ -206,7 +206,10 @@ func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 			if chunk.Error != "" {
 				return sb.String(), fmt.Errorf("işçi hatası: %s", chunk.Error)
 			}
-			if chunk.Content != "" {
+			// Only real assistant prose — skip the status chunks the stream
+			// interleaves (agent_event tool JSON, the memory_used count),
+			// otherwise the chief reviews polluted input.
+			if chunk.Content != "" && (chunk.FinishReason == "" || chunk.FinishReason == "stop") {
 				sb.WriteString(chunk.Content)
 			}
 			if chunk.Done {

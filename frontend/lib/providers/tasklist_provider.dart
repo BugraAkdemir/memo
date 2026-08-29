@@ -92,3 +92,65 @@ class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
 final taskListsProvider =
     AsyncNotifierProvider<TaskListsNotifier, List<TaskListInfo>>(
         TaskListsNotifier.new);
+
+/// Live view of every executing task list (v4.4.0). Polls GET
+/// /api/tasks/running every 3s while a screen is watching it.
+class RunningTasksNotifier extends AsyncNotifier<List<RunningTaskInfo>> {
+  Timer? _pollTimer;
+
+  @override
+  Future<List<RunningTaskInfo>> build() async {
+    ref.onDispose(stopPolling);
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
+    final api = ref.read(apiClientProvider);
+    return api.listRunningTasks();
+  }
+
+  Future<void> _silentRefresh() async {
+    final api = ref.read(apiClientProvider);
+    state = await AsyncValue.guard(() => api.listRunningTasks());
+  }
+
+  void startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _silentRefresh());
+  }
+
+  void stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  Future<void> _act(Future<void> Function() action) async {
+    try {
+      await action();
+      await _silentRefresh();
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}';
+    }
+  }
+
+  Future<void> pause(String id) =>
+      _act(() => ref.read(apiClientProvider).pauseTask(id));
+  Future<void> resume(String id) =>
+      _act(() => ref.read(apiClientProvider).resumeTask(id));
+  Future<void> cancel(String id) =>
+      _act(() => ref.read(apiClientProvider).cancelTask(id));
+  Future<void> skip(String id) =>
+      _act(() => ref.read(apiClientProvider).skipTaskItem(id));
+
+  Future<String> inject(String id, String text) async {
+    try {
+      return await ref.read(apiClientProvider).injectTask(id, text);
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}';
+      return '';
+    }
+  }
+}
+
+final runningTasksProvider =
+    AsyncNotifierProvider<RunningTasksNotifier, List<RunningTaskInfo>>(
+        RunningTasksNotifier.new);

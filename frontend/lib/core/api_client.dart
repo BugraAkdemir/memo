@@ -2670,6 +2670,27 @@ class MemoApiClient {
     await _dio.post('/api/tasklists/$id/stop');
   }
 
+  /// Live view of every executing task list (v4.4.0 Self-Driving loop).
+  Future<List<RunningTaskInfo>> listRunningTasks() async {
+    final res = await _dio.get('/api/tasks/running');
+    if (res.data is! List) return [];
+    return (res.data as List)
+        .map((e) => RunningTaskInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> pauseTask(String id) async => _dio.post('/api/tasks/$id/pause');
+  Future<void> resumeTask(String id) async => _dio.post('/api/tasks/$id/resume');
+  Future<void> cancelTask(String id) async => _dio.post('/api/tasks/$id/cancel');
+  Future<void> skipTaskItem(String id) async => _dio.post('/api/tasks/$id/skip');
+
+  Future<String> injectTask(String id, String text) async {
+    final res = await _dio.post('/api/tasks/$id/inject', data: {'text': text});
+    final data = res.data;
+    if (data is Map && data['reply'] is String) return data['reply'] as String;
+    return '';
+  }
+
   /// Returns the backend's listen port (e.g. 8090).
   Future<int> getListenPort() async {
     try {

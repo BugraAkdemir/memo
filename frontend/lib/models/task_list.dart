@@ -119,3 +119,46 @@ class TaskListInfo {
     );
   }
 }
+
+/// Live runtime view of an executing task list (v4.4.0 Self-Driving loop),
+/// from GET /api/tasks/running.
+class RunningTaskInfo {
+  final String id;
+  final String title;
+  final String chatId;
+  final String phase;
+  final int doneCount;
+  final int itemCount;
+  final String currentItem;
+  final int elapsedSec;
+  final List<String> subAgents;
+  final String notifyLevel;
+
+  const RunningTaskInfo({
+    required this.id,
+    this.title = '',
+    this.chatId = '',
+    this.phase = '',
+    this.doneCount = 0,
+    this.itemCount = 0,
+    this.currentItem = '',
+    this.elapsedSec = 0,
+    this.subAgents = const [],
+    this.notifyLevel = '',
+  });
+
+  factory RunningTaskInfo.fromJson(Map<String, dynamic> json) {
+    return RunningTaskInfo(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      chatId: json['chat_id'] as String? ?? '',
+      phase: json['phase'] as String? ?? '',
+      doneCount: (json['done_count'] as num?)?.toInt() ?? 0,
+      itemCount: (json['item_count'] as num?)?.toInt() ?? 0,
+      currentItem: json['current_item'] as String? ?? '',
+      elapsedSec: (json['elapsed_sec'] as num?)?.toInt() ?? 0,
+      subAgents: (json['sub_agents'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+      notifyLevel: json['notify_level'] as String? ?? '',
+    );
+  }
+}

@@ -10,6 +10,16 @@ import '../models/task_list.dart';
 import '../providers/tasklist_provider.dart';
 import '../providers/chat_provider.dart';
 import '../core/friendly_error.dart';
+import '../widgets/task_status.dart';
+import 'task_detail_screen.dart';
+
+/// Phases where a task list is actively working (v4.4.0 replaced the single
+/// 'running' status with planning/executing plus the waiting-* holds).
+bool _isTaskActive(String status) =>
+    status == 'running' ||
+    status == 'planning' ||
+    status == 'executing' ||
+    status == 'waiting-limit';
 
 class TasksScreen extends ConsumerStatefulWidget {
   /// The agent chat this screen was opened from. Pre-selects that chat as
@@ -137,19 +147,23 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 // idle/paused card regardless — clicking a second one just
                 // produced an unclear rejection error instead of the button
                 // never being clickable in the first place.
-                final anyRunning = lists.any((l) => l.status == 'running');
+                final anyRunning = lists.any((l) => _isTaskActive(l.status));
                 return ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: lists.length,
                   itemBuilder: (context, index) {
                     final info = lists[index];
+                    final blocked = anyRunning && !_isTaskActive(info.status);
                     return _TaskListCard(
                       info: info,
-                      startBlocked: anyRunning && info.status != 'running',
-                      onTap: () => _showDetailDialog(info.id, anyRunning: anyRunning && info.status != 'running'),
+                      startBlocked: blocked,
+                      onTap: () => _showDetailDialog(info.id, anyRunning: blocked),
                       onStart: () => _startList(info.id),
                       onStop: () => ref.read(taskListsProvider.notifier).stopTaskList(info.id),
                       onDelete: () => _deleteList(info.id),
+                      onLiveView: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => TaskDetailScreen(taskListId: info.id, title: info.title),
+                      )),
                     );
                   },
                 );
@@ -343,7 +357,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 children: [
                   Row(
                     children: [
-                      _statusBadge(c, tl.status),
+                      TaskStatusBadge(tl.status),
                       const SizedBox(width: 12),
                       Text(
                         '${L10n.t('taskloop_updated')}: ${tl.updatedAt}',
@@ -357,7 +371,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _itemStatusIcon(item.status),
+                            taskItemStatusIcon(context, item.status),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Column(
@@ -511,53 +525,6 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
     );
   }
 
-  Widget _statusBadge(ThemeColors c, String status) {
-    Color color;
-    String text;
-    switch (status) {
-      case 'running':
-        color = MemoTheme.accent;
-        text = '● ${L10n.t('taskloop_running')}';
-        break;
-      case 'done':
-        color = MemoTheme.green;
-        text = '✓ ${L10n.t('taskloop_done')}';
-        break;
-      case 'paused':
-        color = Colors.orange;
-        text = '⏸ ${L10n.t('taskloop_paused')}';
-        break;
-      default:
-        color = c.textDim;
-        text = L10n.t('taskloop_idle');
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(text, style: TextStyle(fontSize: 12, color: color)),
-    );
-  }
-
-  Widget _itemStatusIcon(String status) {
-    switch (status) {
-      case 'done':
-        return const Icon(Icons.check_circle, size: 18, color: MemoTheme.green);
-      case 'stuck':
-        return const Icon(Icons.error, size: 18, color: MemoTheme.red);
-      case 'running':
-        return const SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        );
-      default:
-        return Icon(Icons.circle_outlined, size: 18, color: MemoTheme.of(context).textDim);
-    }
-  }
 }
 
 class _TaskListCard extends StatelessWidget {
@@ -567,6 +534,7 @@ class _TaskListCard extends StatelessWidget {
   final VoidCallback onStart;
   final VoidCallback onStop;
   final VoidCallback onDelete;
+  final VoidCallback onLiveView;
 
   const _TaskListCard({
     required this.info,
@@ -575,12 +543,13 @@ class _TaskListCard extends StatelessWidget {
     required this.onStart,
     required this.onStop,
     required this.onDelete,
+    required this.onLiveView,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = MemoTheme.of(context);
-    final isRunning = info.status == 'running';
+    final isRunning = _isTaskActive(info.status);
 
     return Card(
       color: c.bgPanel,
@@ -645,12 +614,18 @@ class _TaskListCard extends StatelessWidget {
                       ? L10n.t('taskloop_another_running')
                       : L10n.t('start'),
                 ),
-              if (isRunning)
+              if (isRunning) ...[
+                IconButton(
+                  icon: Icon(Icons.speed, size: 20, color: MemoTheme.accent),
+                  onPressed: onLiveView,
+                  tooltip: L10n.t('task_detail_title'),
+                ),
                 IconButton(
                   icon: const Icon(Icons.stop, size: 20, color: MemoTheme.red),
                   onPressed: onStop,
                   tooltip: L10n.t('stop'),
                 ),
+              ],
               IconButton(
                 icon: const Icon(Icons.delete_outline, size: 18),
                 onPressed: onDelete,

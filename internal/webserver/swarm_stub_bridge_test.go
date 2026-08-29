@@ -34,6 +34,9 @@ type swarmStubBridge struct {
 	token      string
 	uiLanguage string
 
+	injectTask       func(listID, text string) (string, error)
+	listRunningTasks func() []taskloop.RunningTaskInfo
+
 	hostCreate   func(modelPath string) (string, error)
 	addWorker    func(id, secret, myRPCAddress, label string) error
 	removeWorker func(id string) error
@@ -531,6 +534,20 @@ func (b *swarmStubBridge) CreateTaskList(chatID, title string, items []string) (
 }
 func (b *swarmStubBridge) CreateTaskListFromTaskMd(chatID, title, taskMdPath string) (*taskloop.TaskList, error) {
 	return nil, nil
+}
+func (b *swarmStubBridge) CancelTaskList(listID string) error  { return nil }
+func (b *swarmStubBridge) SkipCurrentItem(listID string) error { return nil }
+func (b *swarmStubBridge) InjectTaskMessage(ctx context.Context, listID, text string) (string, error) {
+	if b.injectTask != nil {
+		return b.injectTask(listID, text)
+	}
+	return "", nil
+}
+func (b *swarmStubBridge) ListRunningTasks() []taskloop.RunningTaskInfo {
+	if b.listRunningTasks != nil {
+		return b.listRunningTasks()
+	}
+	return nil
 }
 func (b *swarmStubBridge) GetTaskList(id string) (*taskloop.TaskList, error)      { return nil, nil }
 func (b *swarmStubBridge) ListTaskLists() []taskloop.TaskListInfo                 { return nil }

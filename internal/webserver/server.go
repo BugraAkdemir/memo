@@ -347,6 +347,8 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Task lists
 	route("/api/tasklists", s.handleTaskLists)
 	route("/api/tasklists/", s.handleTaskListByID)
+	route("/api/tasks/running", s.handleTasksRunning)
+	route("/api/tasks/", s.handleTaskControlByID)
 
 	// WhatsApp
 	// WhatsApp permission (Faz 5.1.1, yapacam.md), lenient-gated.

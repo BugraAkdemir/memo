@@ -211,6 +211,18 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 		return
 	}
 
+	// Task-loop control (see the Telegram mirror for the contract).
+	if reply, handled := a.handleTaskControl(a.lifecycleCtx, taskSurfaceWhatsApp, text); handled {
+		if reply != "" {
+			ctx, cancel := context.WithTimeout(a.lifecycleCtx, 300*time.Second)
+			defer cancel()
+			if _, err := a.WhatsAppSend(ctx, msg.ChatJID, reply); err != nil {
+				logx.Printf("WhatsApp self-chat: send task-control reply error: %v", err)
+			}
+		}
+		return
+	}
+
 	sm := a.getSessionManager()
 	if sm == nil {
 		return

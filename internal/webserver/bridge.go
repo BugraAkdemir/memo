@@ -366,6 +366,10 @@ type FullBridge interface {
 	DeleteTaskList(id string) error
 	StartTaskList(ctx context.Context, listID string) error
 	StopTaskList(listID string)
+	CancelTaskList(listID string) error
+	SkipCurrentItem(listID string) error
+	InjectTaskMessage(ctx context.Context, listID, text string) (string, error)
+	ListRunningTasks() []taskloop.RunningTaskInfo
 
 	// Swarm (Memo Swarm — multi-machine llama.cpp RPC pool). Beta-gated in App.
 	// Status methods return interface{} (JSON-serializable structs) so this

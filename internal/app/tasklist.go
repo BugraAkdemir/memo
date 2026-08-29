@@ -118,6 +118,9 @@ func (a *App) StartTaskList(ctx context.Context, listID string) error {
 	if sm == nil || !sm.IsAgentChat(tl.ChatID) {
 		return fmt.Errorf("bu listenin bağlı olduğu sohbet artık bir ajan sohbeti değil (silinmiş olabilir); listeyi yeniden oluşturun")
 	}
+	if a.taskNotifyBus != nil {
+		a.taskNotifyBus.SetLevel(listID, tl.NotifyLevel)
+	}
 	return a.taskloopEngine.Start(ctx, listID)
 }
 
@@ -126,6 +129,57 @@ func (a *App) StopTaskList(listID string) {
 		a.taskloopEngine.Stop(listID)
 	}
 }
+
+// CancelTaskList stops a list and marks it cancelled (terminal — unlike pause,
+// it won't resume).
+func (a *App) CancelTaskList(listID string) error {
+	if a.taskloopEngine == nil || a.taskloopStore == nil {
+		return fmt.Errorf("görev döngüsü motoru başlatılmamış")
+	}
+	a.taskloopEngine.Stop(listID)
+	return a.taskloopStore.SetStatus(listID, "cancelled")
+}
+
+// SkipCurrentItem abandons whatever item a list is on and moves to the next.
+func (a *App) SkipCurrentItem(listID string) error {
+	if a.taskloopEngine == nil {
+		return fmt.Errorf("görev döngüsü motoru başlatılmamış")
+	}
+	return a.taskloopEngine.SkipCurrent(listID)
+}
+
+// InjectTaskMessage sends a free-text instruction into a task list's own
+// agent chat and returns the assistant's reply.
+func (a *App) InjectTaskMessage(ctx context.Context, listID, text string) (string, error) {
+	if a.taskloopStore == nil {
+		return "", fmt.Errorf("görev listesi sistemi başlatılmamış")
+	}
+	tl, err := a.taskloopStore.Get(listID)
+	if err != nil {
+		return "", err
+	}
+	var sb strings.Builder
+	for chunk := range a.SendMessageStreamTo(context.Background(), tl.ChatID, text) {
+		if chunk.Error != "" {
+			return sb.String(), fmt.Errorf("%s", chunk.Error)
+		}
+		sb.WriteString(chunk.Content)
+		if chunk.Done {
+			break
+		}
+	}
+	return strings.TrimSpace(sb.String()), nil
+}
+
+// ListRunningTasks returns a live view of every executing task list.
+func (a *App) ListRunningTasks() []taskloop.RunningTaskInfo {
+	if a.taskloopEngine == nil {
+		return nil
+	}
+	return a.taskloopEngine.RunningTasks()
+}
+
+func (a *App) runningTaskList() []taskloop.RunningTaskInfo { return a.ListRunningTasks() }
 
 func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 	return func(ctx context.Context, chatID, prompt string) (string, error) {

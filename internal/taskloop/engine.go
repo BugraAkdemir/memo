@@ -35,6 +35,11 @@ type Engine struct {
 	retry            *RetryScheduler
 	subOrch          *SubAgentOrchestrator
 	subSpecs         func(itemText, feedback string) []SubAgentSpec
+
+	rtMu     sync.RWMutex
+	runtimes map[string]*listRuntime
+
+	skipReq map[string]bool // list IDs whose current item the user asked to skip
 }
 
 // EngineOption configures optional Engine behaviour without breaking the
@@ -123,6 +128,7 @@ func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBy
 		setBypass:   setBypass,
 		onEvent:     onEvent,
 		active:      make(map[string]context.CancelFunc),
+		skipReq:     make(map[string]bool),
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -192,6 +198,31 @@ func (e *Engine) IsRunning(listID string) bool {
 	return ok
 }
 
+// SkipCurrent abandons the item a running list is on and continues with the
+// rest. If the list isn't running, the first pending item is marked stuck.
+func (e *Engine) SkipCurrent(listID string) error {
+	e.mu.Lock()
+	cancel, running := e.active[listID]
+	if running {
+		e.skipReq[listID] = true
+		cancel()
+		e.mu.Unlock()
+		return nil
+	}
+	e.mu.Unlock()
+
+	tl, err := e.store.Get(listID)
+	if err != nil {
+		return err
+	}
+	for _, it := range tl.Items {
+		if it.Status == "pending" || it.Status == "running" {
+			return e.store.SetItemStuck(listID, it.ID, "kullanıcı tarafından atlandı")
+		}
+	}
+	return nil
+}
+
 func (e *Engine) run(ctx context.Context, listID string) {
 	defer func() {
 		e.mu.Lock()
@@ -225,6 +256,9 @@ func (e *Engine) run(ctx context.Context, listID string) {
 		logx.Printf("TASKLOOP: list %s not found: %v", listID, err)
 		return
 	}
+
+	e.rtStart(listID)
+	defer e.rtEnd(listID)
 
 	// Planning phase: gather the repo's own rules and the memo-system
 	// guidance into a preamble prepended to every worker item.
@@ -274,6 +308,7 @@ func (e *Engine) run(ctx context.Context, listID string) {
 			continue
 		}
 
+		e.rtSetItem(listID, item.Text)
 		if e.onEvent != nil {
 			e.onEvent("tasklist:item_started", fmt.Sprintf("%s:%s", listID, item.ID))
 		}
@@ -296,6 +331,28 @@ func (e *Engine) run(ctx context.Context, listID string) {
 		}
 
 		if cancelled {
+			e.mu.Lock()
+			skip := e.skipReq[listID]
+			delete(e.skipReq, listID)
+			e.mu.Unlock()
+			if skip {
+				// User asked to skip this item: mark it stuck and re-enter to
+				// continue with the rest (a fresh Start, since our ctx is now
+				// cancelled).
+				if err := e.store.SetItemStuck(listID, item.ID, "kullanıcı tarafından atlandı"); err != nil {
+					logx.Printf("TASKLOOP: skip mark stuck %s/%s: %v", listID, item.ID, err)
+				}
+				if e.onEvent != nil {
+					e.onEvent("tasklist:item_stuck", fmt.Sprintf("%s:%s", listID, item.ID))
+				}
+				go func() {
+					time.Sleep(150 * time.Millisecond) // let this run's deferred cleanup finish
+					if err := e.Start(context.Background(), listID); err != nil {
+						logx.Printf("TASKLOOP: restart after skip %s: %v", listID, err)
+					}
+				}()
+				return
+			}
 			// Interrupted (Stop() or shutdown), not actually failed — put the
 			// item back so a resumed run retries it instead of skipping it
 			// forever.
@@ -410,6 +467,11 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 		var err error
 		if useSubAgents {
 			specs := e.subSpecs(item.Text, lastFeedback)
+			roles := make([]string, len(specs))
+			for i, s := range specs {
+				roles[i] = string(s.Role)
+			}
+			e.rtAddSubAgents(listID, roles...)
 			if e.onEvent != nil {
 				e.onEvent("tasklist:subagent_spawned", fmt.Sprintf("%s:%s:%d", listID, item.ID, len(specs)))
 			}

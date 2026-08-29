@@ -173,6 +173,20 @@ func (a *App) handleTelegramMessage(msg telegram.Message) {
 		return
 	}
 
+	// Task-loop control: task_list / task_change / dur|devam|atla while
+	// focused, or a natural-language instruction for the focused task.
+	// Falls through to the normal assistant when nothing is focused.
+	if reply, handled := a.handleTaskControl(a.lifecycleCtx, taskSurfaceTelegram, text); handled {
+		if reply != "" {
+			ctx, cancel := context.WithTimeout(a.lifecycleCtx, 300*time.Second)
+			defer cancel()
+			if err := a.TelegramSend(ctx, msg.ChatID, reply); err != nil {
+				logx.Printf("Telegram: send task-control reply error: %v", err)
+			}
+		}
+		return
+	}
+
 	sm := a.getSessionManager()
 	if sm == nil {
 		return

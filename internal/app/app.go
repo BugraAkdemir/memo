@@ -267,6 +267,9 @@ type App struct {
 	taskRunMu   sync.RWMutex
 	taskRunCfgs map[string]*taskRunConfig
 
+	taskNotifyBus *taskloop.NotifyBus
+	taskFocus     taskFocusState
+
 	skillManager *skill.Manager
 
 	providerMu sync.RWMutex // protects providerRouter, providerCfgMgr, activeProviderName
@@ -680,6 +683,7 @@ func (a *App) Startup(ctx context.Context) {
 	} else {
 		a.taskloopStore = tlStore
 		a.taskRunCfgs = make(map[string]*taskRunConfig)
+		a.initTaskNotifyBus()
 		a.taskloopEngine = taskloop.NewEngine(
 			tlStore,
 			a.buildTaskLoopRunWorker(),
@@ -687,6 +691,7 @@ func (a *App) Startup(ctx context.Context) {
 			func(v bool) { a.agentExecutor.SetBypassPermissions(v) },
 			func(name, data string) {
 				a.emitEvent(name, data)
+				a.dispatchTaskEvent(name, data)
 				// Drop a list's provider snapshot once it stops making
 				// progress, so a resume re-snapshots from the current global
 				// provider. data is "listID" or "listID:final".

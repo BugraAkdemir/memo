@@ -676,6 +676,14 @@ func (a *App) Startup(ctx context.Context) {
 			a.buildTaskLoopReviewChief(),
 			func(v bool) { a.agentExecutor.SetBypassPermissions(v) },
 			func(name, data string) { a.emitEvent(name, data) },
+			taskloop.WithRuleReader(taskloop.ReadRules),
+			taskloop.WithSystemGuidance(a.memoSystemGuidance),
+			taskloop.WithProjectPathFn(func(chatID string) string {
+				if sm := a.getSessionManager(); sm != nil {
+					return sm.GetProjectPath(chatID)
+				}
+				return ""
+			}),
 		)
 		logx.Info("Task loop engine initialized")
 	}

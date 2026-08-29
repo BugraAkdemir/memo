@@ -259,8 +259,10 @@ func TestEngineStuckAfterMaxRounds(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	tl, _ = store.Get(tl.ID)
-	if tl.Status != "done" {
-		t.Fatalf("list status = %s, want done (all items exhausted)", tl.Status)
+	// Every item stuck and none done -> the list is "failed" (v4.4.0). A list
+	// that finishes with at least one item done is "done".
+	if tl.Status != "failed" {
+		t.Fatalf("list status = %s, want failed (only item is stuck)", tl.Status)
 	}
 	if tl.Items[0].Status != "stuck" {
 		t.Fatalf("item status = %s, want stuck after %d rounds", tl.Items[0].Status, maxRoundsPerItem)

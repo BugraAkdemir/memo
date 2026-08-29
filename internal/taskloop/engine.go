@@ -15,18 +15,46 @@ type ReviewChief func(ctx context.Context, itemText, workerOutput string) (appro
 type BypassSetter func(bool)
 
 type Engine struct {
-	store         *Store
-	runWorker     RunWorker
-	reviewChief   ReviewChief
-	setBypass     BypassSetter
-	onEvent       func(name, data string)
-	mu            sync.Mutex
-	activeCount   int
-	active        map[string]context.CancelFunc
+	store       *Store
+	runWorker   RunWorker
+	reviewChief ReviewChief
+	setBypass   BypassSetter
+	onEvent     func(name, data string)
+	mu          sync.Mutex
+	activeCount int
+	active      map[string]context.CancelFunc
+
+	// Optional hooks wired via EngineOption. All nil-safe.
+	ruleReader     func(projectRoot string) (string, error)
+	systemGuidance func() string
+	projectPathFn  func(chatID string) string
 }
 
-func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBypass BypassSetter, onEvent func(name, data string)) *Engine {
-	return &Engine{
+// EngineOption configures optional Engine behaviour without breaking the
+// positional constructor.
+type EngineOption func(*Engine)
+
+// WithRuleReader supplies the function the planning phase uses to read a
+// project's own rule files (AGENTS.md / CLAUDE.md / …). Without it the loop
+// simply skips repo-rule injection.
+func WithRuleReader(fn func(projectRoot string) (string, error)) EngineOption {
+	return func(e *Engine) { e.ruleReader = fn }
+}
+
+// WithSystemGuidance supplies the built-in memo-system skill text prepended to
+// every worker item during planning.
+func WithSystemGuidance(fn func() string) EngineOption {
+	return func(e *Engine) { e.systemGuidance = fn }
+}
+
+// WithProjectPathFn resolves a task list's agent chat ID to the on-disk
+// project root, so the planning phase knows where to look for rule files.
+func WithProjectPathFn(fn func(chatID string) string) EngineOption {
+	return func(e *Engine) { e.projectPathFn = fn }
+}
+
+func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBypass BypassSetter, onEvent func(name, data string), opts ...EngineOption) *Engine {
+	e := &Engine{
 		store:       store,
 		runWorker:   runWorker,
 		reviewChief: reviewChief,
@@ -34,6 +62,10 @@ func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBy
 		onEvent:     onEvent,
 		active:      make(map[string]context.CancelFunc),
 	}
+	for _, opt := range opts {
+		opt(e)
+	}
+	return e
 }
 
 func (e *Engine) Start(ctx context.Context, listID string) error {
@@ -117,8 +149,27 @@ func (e *Engine) run(ctx context.Context, listID string) {
 		return
 	}
 
-	if err := e.store.SetStatus(listID, "running"); err != nil {
-		logx.Printf("TASKLOOP: set list running %s: %v", listID, err)
+	// Planning phase: gather the repo's own rules and the memo-system
+	// guidance into a preamble prepended to every worker item.
+	if err := e.store.SetStatus(listID, taskListPlanning); err != nil {
+		logx.Printf("TASKLOOP: set list planning %s: %v", listID, err)
+	}
+	if e.onEvent != nil {
+		e.onEvent("taskloop:planning", listID)
+	}
+	preamble := e.buildPlanningPreamble(tl)
+
+	select {
+	case <-ctx.Done():
+		if err := e.store.SetStatus(listID, taskListPaused); err != nil {
+			logx.Printf("TASKLOOP: set list paused %s: %v", listID, err)
+		}
+		return
+	default:
+	}
+
+	if err := e.store.SetStatus(listID, taskListExecuting); err != nil {
+		logx.Printf("TASKLOOP: set list executing %s: %v", listID, err)
 	}
 
 	for i := range tl.Items {
@@ -143,7 +194,7 @@ func (e *Engine) run(ctx context.Context, listID string) {
 		if err := e.store.SetItemRunning(listID, item.ID); err != nil {
 			logx.Printf("TASKLOOP: set item running %s/%s: %v", listID, item.ID, err)
 		}
-		ok, cancelled := e.processItem(ctx, listID, item, tl.ChatID)
+		ok, cancelled := e.processItem(ctx, listID, item, tl.ChatID, preamble)
 
 		if cancelled {
 			// Interrupted (Stop() or shutdown), not actually failed — put the
@@ -175,20 +226,73 @@ func (e *Engine) run(ctx context.Context, listID string) {
 		}
 	}
 
-	if err := e.store.SetStatus(listID, "done"); err != nil {
-		logx.Printf("TASKLOOP: set list done %s: %v", listID, err)
+	// Terminal state: "done" if at least one item completed, "failed" if every
+	// attempted item is stuck. An empty list is trivially "done".
+	final := taskListDone
+	if fresh, err := e.store.Get(listID); err == nil {
+		anyDone, anyStuck := false, false
+		for _, it := range fresh.Items {
+			switch it.Status {
+			case "done":
+				anyDone = true
+			case "stuck":
+				anyStuck = true
+			}
+		}
+		if !anyDone && anyStuck {
+			final = taskListFailed
+		}
+	}
+	if err := e.store.SetStatus(listID, final); err != nil {
+		logx.Printf("TASKLOOP: set list %s %s: %v", final, listID, err)
 	}
 	if e.onEvent != nil {
-		e.onEvent("tasklist:finished", listID)
+		e.onEvent("tasklist:finished", fmt.Sprintf("%s:%s", listID, final))
 	}
+}
+
+// buildPlanningPreamble assembles the standing instructions prepended to the
+// first worker turn of every item: the repo's own rules, then the built-in
+// memo-system guidance, then a one-line orientation.
+func (e *Engine) buildPlanningPreamble(tl *TaskList) string {
+	var b strings.Builder
+	if e.projectPathFn != nil && e.ruleReader != nil {
+		if root := e.projectPathFn(tl.ChatID); root != "" {
+			if rules, err := e.ruleReader(root); err != nil {
+				logx.Printf("TASKLOOP: read rules for %s: %v", tl.ID, err)
+			} else if rules != "" {
+				b.WriteString("# Repo kuralları (bu görevde bunlara uy)\n\n")
+				b.WriteString(rules)
+				b.WriteString("\n\n")
+			}
+		}
+	}
+	if e.systemGuidance != nil {
+		if g := strings.TrimSpace(e.systemGuidance()); g != "" {
+			b.WriteString("# Memo öz-yönetim rehberi\n\n")
+			b.WriteString(g)
+			b.WriteString("\n\n")
+		}
+	}
+	if b.Len() > 0 {
+		fmt.Fprintf(&b, "# Görev\n\nBu bir Self-Driving görev listesi (%d madde). Aşağıdaki maddeyi eksiksiz tamamla; commit davranışı için repo kurallarına uy.\n\n",
+			len(tl.Items))
+	}
+	return b.String()
 }
 
 // processItem drives one task item through worker/CEO rounds.
 // ok reports whether the item was approved; cancelled reports that ctx was
 // cancelled mid-item (Stop() or shutdown) — the caller must treat this as an
 // interruption, not a failure, and leave the item resumable.
-func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem, chatID string) (ok bool, cancelled bool) {
-	workerPrompt := item.Text
+func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem, chatID, preamble string) (ok bool, cancelled bool) {
+	withPreamble := func(s string) string {
+		if preamble == "" {
+			return s
+		}
+		return preamble + s
+	}
+	workerPrompt := withPreamble(item.Text)
 
 	for round := 1; round <= maxRoundsPerItem; round++ {
 		select {
@@ -221,7 +325,7 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 			}
 			logx.Printf("TASKLOOP: CEO review error on item %s round %d: %v", item.ID, round, err)
 			if round < maxRoundsPerItem {
-				workerPrompt = item.Text + "\n\nÖnceki çıktı:\n" + truncate.Text(workerOutput, 2000) + "\n\nEksik/yanlış: CEO yanıtı anlaşılamadı. Lütfen görevi eksiksiz tamamlayıp tekrar dene."
+				workerPrompt = withPreamble(item.Text + "\n\nÖnceki çıktı:\n" + truncate.Text(workerOutput, 2000) + "\n\nEksik/yanlış: CEO yanıtı anlaşılamadı. Lütfen görevi eksiksiz tamamlayıp tekrar dene.")
 				if err := e.store.IncrementRounds(listID, item.ID); err != nil {
 					logx.Printf("TASKLOOP: increment rounds %s/%s: %v", listID, item.ID, err)
 				}
@@ -244,12 +348,12 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 			return false, false
 		}
 
-		workerPrompt = fmt.Sprintf(
+		workerPrompt = withPreamble(fmt.Sprintf(
 			"Madde: %s\n\nÖnceki çıktı:\n%s\n\nCEO'nun eksik/yanlış buldukları:\n%s\n\nBu eksikleri gider, hataları düzelt ve görevi eksiksiz tamamla.",
 			item.Text,
 			truncate.Text(workerOutput, 2000),
 			feedback,
-		)
+		))
 	}
 
 	item.Note = "maksimum tur sayısına ulaşıldı"

@@ -21,6 +21,19 @@ func (a *App) CreateTaskList(chatID, title string, items []string) (*taskloop.Ta
 	return a.taskloopStore.Create(chatID, title, items)
 }
 
+// memoSystemGuidance returns the instructions of the built-in memo-system
+// skill for the task loop's planning/self-heal prompts. It is read directly
+// rather than activated, so it never appears in the user's normal skill list.
+func (a *App) memoSystemGuidance() string {
+	if a.skillManager == nil {
+		return ""
+	}
+	if def, ok := a.skillManager.Get("memo-system"); ok {
+		return def.Instructions
+	}
+	return ""
+}
+
 func (a *App) GetTaskList(id string) (*taskloop.TaskList, error) {
 	if a.taskloopStore == nil {
 		return nil, fmt.Errorf("görev listesi sistemi başlatılmamış")

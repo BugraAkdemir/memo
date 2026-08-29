@@ -413,7 +413,9 @@ func (a *App) emitEvent(name string, data ...interface{}) {
 	if len(data) > 0 {
 		dataStr = fmt.Sprint(data...)
 	}
-	a.events.push(AppEvent{Name: name, Data: dataStr})
+	if a.events != nil {
+		a.events.push(AppEvent{Name: name, Data: dataStr})
+	}
 	logx.Printf("event: %s — %s", name, dataStr)
 }
 
@@ -705,6 +707,7 @@ func (a *App) Startup(ctx context.Context) {
 				return ""
 			}),
 			taskloop.WithWorkerConfigHook(a.taskRunConfigFor),
+			taskloop.WithSelfHeal(a.healTaskProvider),
 		)
 		logx.Info("Task loop engine initialized")
 	}

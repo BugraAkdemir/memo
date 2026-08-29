@@ -29,6 +29,7 @@ type Engine struct {
 	systemGuidance   func() string
 	projectPathFn    func(chatID string) string
 	workerConfigHook func(ctx context.Context, listID string) context.Context
+	selfHeal         func(ctx context.Context, listID string, workerErr error) bool
 }
 
 // EngineOption configures optional Engine behaviour without breaking the
@@ -60,6 +61,14 @@ func WithProjectPathFn(fn func(chatID string) string) EngineOption {
 // without it the worker turn uses whatever the host's default path resolves.
 func WithWorkerConfigHook(fn func(ctx context.Context, listID string) context.Context) EngineOption {
 	return func(e *Engine) { e.workerConfigHook = fn }
+}
+
+// WithSelfHeal supplies a callback invoked when a worker turn errors. If it
+// returns true it has repaired the task's config (e.g. switched to another
+// provider) and the item is retried; false means the error stands and the
+// item is marked stuck. Nil-safe.
+func WithSelfHeal(fn func(ctx context.Context, listID string, workerErr error) bool) EngineOption {
+	return func(e *Engine) { e.selfHeal = fn }
 }
 
 func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBypass BypassSetter, onEvent func(name, data string), opts ...EngineOption) *Engine {
@@ -323,6 +332,13 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 				return false, true
 			}
 			logx.Printf("TASKLOOP: worker error on item %s round %d: %v", item.ID, round, err)
+			if e.selfHeal != nil && e.selfHeal(ctx, listID, err) {
+				logx.Printf("TASKLOOP: self-heal recovered list %s, retrying item %s", listID, item.ID)
+				if err := e.store.IncrementRounds(listID, item.ID); err != nil {
+					logx.Printf("TASKLOOP: increment rounds %s/%s: %v", listID, item.ID, err)
+				}
+				continue
+			}
 			item.Note = fmt.Sprintf("İşçi hatası (tur %d): %v", round, err)
 			return false, false
 		}

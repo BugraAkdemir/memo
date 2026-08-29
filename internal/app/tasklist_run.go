@@ -13,11 +13,12 @@ import (
 // self-heal — never touching the user's global setting or a neighbouring
 // task's config.
 type taskRunConfig struct {
-	exec           *agent.Executor
-	providerName   string
-	model          string
-	effortLevel    string
-	triedProviders map[string]bool // providers self-heal has already ruled out
+	exec             *agent.Executor
+	providerName     string
+	model            string
+	effortLevel      string
+	triedProviders   map[string]bool // providers self-heal has already ruled out
+	transientRetries int             // consecutive 5xx/timeout retries on the current provider
 }
 
 type taskRunCtxKey struct{}

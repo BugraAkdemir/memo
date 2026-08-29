@@ -39,6 +39,7 @@ import (
 	"memo/internal/routine"
 	"memo/internal/sessions"
 	"memo/internal/skill"
+	"memo/internal/skills"
 	"memo/internal/stats"
 	"memo/internal/stt"
 	"memo/internal/swarm"
@@ -680,6 +681,14 @@ func (a *App) Startup(ctx context.Context) {
 	}
 
 	a.skillManager = skill.NewManager(config.DataDir())
+	// Ship the built-in memo-system skill: write it to disk if absent so it is
+	// discovered like any other skill. Deleting it is allowed — it comes back
+	// on the next start.
+	if created, err := skill.MaterializeEmbedded(a.skillManager, "memo-system", skills.MemoSystemFS); err != nil {
+		logx.Printf("skill: materialize memo-system: %v", err)
+	} else if created {
+		logx.Info("skill: materialized built-in memo-system skill")
+	}
 	if err := a.skillManager.Discover(); err != nil {
 		logx.Printf("skill: discover error: %v", err)
 	}

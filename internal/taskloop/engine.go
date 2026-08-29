@@ -25,9 +25,10 @@ type Engine struct {
 	active      map[string]context.CancelFunc
 
 	// Optional hooks wired via EngineOption. All nil-safe.
-	ruleReader     func(projectRoot string) (string, error)
-	systemGuidance func() string
-	projectPathFn  func(chatID string) string
+	ruleReader       func(projectRoot string) (string, error)
+	systemGuidance   func() string
+	projectPathFn    func(chatID string) string
+	workerConfigHook func(ctx context.Context, listID string) context.Context
 }
 
 // EngineOption configures optional Engine behaviour without breaking the
@@ -51,6 +52,14 @@ func WithSystemGuidance(fn func() string) EngineOption {
 // project root, so the planning phase knows where to look for rule files.
 func WithProjectPathFn(fn func(chatID string) string) EngineOption {
 	return func(e *Engine) { e.projectPathFn = fn }
+}
+
+// WithWorkerConfigHook lets the host wrap the context handed to each worker
+// turn — used to attach a task-local provider/model snapshot so the loop runs
+// against a fixed provider independent of the user's global setting. Nil-safe;
+// without it the worker turn uses whatever the host's default path resolves.
+func WithWorkerConfigHook(fn func(ctx context.Context, listID string) context.Context) EngineOption {
+	return func(e *Engine) { e.workerConfigHook = fn }
 }
 
 func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBypass BypassSetter, onEvent func(name, data string), opts ...EngineOption) *Engine {
@@ -194,7 +203,12 @@ func (e *Engine) run(ctx context.Context, listID string) {
 		if err := e.store.SetItemRunning(listID, item.ID); err != nil {
 			logx.Printf("TASKLOOP: set item running %s/%s: %v", listID, item.ID, err)
 		}
-		ok, cancelled := e.processItem(ctx, listID, item, tl.ChatID, preamble)
+
+		itemCtx := ctx
+		if e.workerConfigHook != nil {
+			itemCtx = e.workerConfigHook(ctx, listID)
+		}
+		ok, cancelled := e.processItem(itemCtx, listID, item, tl.ChatID, preamble)
 
 		if cancelled {
 			// Interrupted (Stop() or shutdown), not actually failed — put the

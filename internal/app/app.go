@@ -260,6 +260,13 @@ type App struct {
 	// each other's chats.
 	taskloopRunMu sync.Mutex
 
+	// taskRunCfgs holds each running task list's private provider/model
+	// snapshot + executor (see tasklist_run.go). Keyed by list ID; populated
+	// lazily by the engine's WorkerConfigHook, cleared when a list finishes
+	// or pauses so a resume re-snapshots.
+	taskRunMu   sync.RWMutex
+	taskRunCfgs map[string]*taskRunConfig
+
 	skillManager *skill.Manager
 
 	providerMu sync.RWMutex // protects providerRouter, providerCfgMgr, activeProviderName
@@ -670,12 +677,25 @@ func (a *App) Startup(ctx context.Context) {
 		logx.Printf("WARN: taskloop store: %v", err)
 	} else {
 		a.taskloopStore = tlStore
+		a.taskRunCfgs = make(map[string]*taskRunConfig)
 		a.taskloopEngine = taskloop.NewEngine(
 			tlStore,
 			a.buildTaskLoopRunWorker(),
 			a.buildTaskLoopReviewChief(),
 			func(v bool) { a.agentExecutor.SetBypassPermissions(v) },
-			func(name, data string) { a.emitEvent(name, data) },
+			func(name, data string) {
+				a.emitEvent(name, data)
+				// Drop a list's provider snapshot once it stops making
+				// progress, so a resume re-snapshots from the current global
+				// provider. data is "listID" or "listID:final".
+				if name == "tasklist:finished" || name == "taskloop:paused" {
+					id := data
+					if i := strings.IndexByte(id, ':'); i >= 0 {
+						id = id[:i]
+					}
+					a.clearTaskRunConfig(id)
+				}
+			},
 			taskloop.WithRuleReader(taskloop.ReadRules),
 			taskloop.WithSystemGuidance(a.memoSystemGuidance),
 			taskloop.WithProjectPathFn(func(chatID string) string {
@@ -684,6 +704,7 @@ func (a *App) Startup(ctx context.Context) {
 				}
 				return ""
 			}),
+			taskloop.WithWorkerConfigHook(a.taskRunConfigFor),
 		)
 		logx.Info("Task loop engine initialized")
 	}

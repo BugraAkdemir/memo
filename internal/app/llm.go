@@ -246,11 +246,30 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
 		}
 
-		agentRouter, modelName, effortLevel, err := a.resolveAgentProvider()
-		if err != nil {
-			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
-			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
-			return
+		// A Self-Driving worker turn carries its own provider/model snapshot on
+		// the ctx (see tasklist_run.go). Absent that, this is an ordinary
+		// interactive call and the path below is unchanged.
+		exec := a.agentExecutor
+		var agentRouter *provider.Router
+		var modelName, effortLevel string
+		if trc := taskRunConfigFromCtx(ctx); trc != nil {
+			exec = trc.exec
+			agentRouter = trc.exec.ActiveRouter()
+			modelName, effortLevel = trc.model, trc.effortLevel
+			if agentRouter == nil || !agentRouter.HasActiveProvider() {
+				msg := a.t("Görev için yapılandırılmış bir sağlayıcı yok.", "No provider configured for this task.")
+				a.recordStreamError(userMsg, "⚠️ "+msg, sessionID)
+				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + msg, Done: true})
+				return
+			}
+		} else {
+			var err error
+			agentRouter, modelName, effortLevel, err = a.resolveAgentProvider()
+			if err != nil {
+				a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
+				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+				return
+			}
 		}
 
 		sm := a.getSessionManager()
@@ -259,14 +278,14 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			projectPath = sm.GetProjectPath(sessionID)
 		}
 
-		a.agentExecutor.SyncRouter(agentRouter)
+		exec.SyncRouter(agentRouter)
 
 		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, Category: categoryAgent, PromptTokens: estimateMessagesTokens(messages)}
 
 		start := time.Now()
 		agentEvents := &agentEventLog{}
 
-		streamCh, err := a.agentExecutor.RunStream(ctx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
+		streamCh, err := exec.RunStream(ctx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
 			agentEvents.add(ev)
 			chunkData, _ := json.Marshal(ev)
 			trySend(ctx, outCh, api.StreamChunk{

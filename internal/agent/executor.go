@@ -150,6 +150,33 @@ func NewWebSearchExecutor(existing *Executor) *Executor {
 	}
 }
 
+// NewTaskExecutor creates a per-task-list executor for the Self-Driving loop.
+// It reuses the shared registry/permissions/backup/audit/session-manager (a
+// task worker turn is still the same agent, one audit trail) but owns its own
+// providerRouter and its own bypassPermissions flag, so a running task can
+// switch provider (self-heal) or run with permissions bypassed without
+// disturbing the executor interactive chat uses. Mirrors NewWhatsAppExecutor.
+func NewTaskExecutor(existing *Executor, router *provider.Router) *Executor {
+	return &Executor{
+		basePath:       existing.basePath,
+		providerRouter: router,
+		providerCfgMgr: existing.providerCfgMgr,
+		registry:       existing.registry,
+		permissions:    existing.permissions,
+		sandbox:        existing.sandbox,
+		backup:         existing.backup,
+		sessionManager: existing.sessionManager,
+		pendingPerms:   make(map[string]*PermissionRequest),
+		logs:           make([]AgentLogEntry, 0),
+		auditLogFile:   existing.auditLogFile,
+	}
+}
+
+// ActiveRouter returns the executor's current provider router (nil if none).
+func (e *Executor) ActiveRouter() *provider.Router {
+	return e.getRouter()
+}
+
 // Registry exposes the executor's tool registry so callers outside this
 // package (the skill system) can register/unregister additional tools
 // into the exact registry the agent pipeline executes against. The field

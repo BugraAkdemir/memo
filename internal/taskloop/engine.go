@@ -30,6 +30,7 @@ type Engine struct {
 	projectPathFn    func(chatID string) string
 	workerConfigHook func(ctx context.Context, listID string) context.Context
 	selfHeal         func(ctx context.Context, listID string, workerErr error) bool
+	planConfig       func(ctx context.Context, listID, chatID string, items []string) error
 }
 
 // EngineOption configures optional Engine behaviour without breaking the
@@ -69,6 +70,14 @@ func WithWorkerConfigHook(fn func(ctx context.Context, listID string) context.Co
 // item is marked stuck. Nil-safe.
 func WithSelfHeal(fn func(ctx context.Context, listID string, workerErr error) bool) EngineOption {
 	return func(e *Engine) { e.selfHeal = fn }
+}
+
+// WithPlanConfig supplies a callback run once during the planning phase,
+// before any item executes, letting the host choose this task's provider /
+// model / Orchestra setup autonomously. Its error is logged and ignored — a
+// planning-config failure must never block the task. Nil-safe.
+func WithPlanConfig(fn func(ctx context.Context, listID, chatID string, items []string) error) EngineOption {
+	return func(e *Engine) { e.planConfig = fn }
 }
 
 func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBypass BypassSetter, onEvent func(name, data string), opts ...EngineOption) *Engine {
@@ -176,6 +185,16 @@ func (e *Engine) run(ctx context.Context, listID string) {
 		e.onEvent("taskloop:planning", listID)
 	}
 	preamble := e.buildPlanningPreamble(tl)
+
+	if e.planConfig != nil {
+		itemTexts := make([]string, len(tl.Items))
+		for i, it := range tl.Items {
+			itemTexts[i] = it.Text
+		}
+		if err := e.planConfig(ctx, listID, tl.ChatID, itemTexts); err != nil {
+			logx.Printf("TASKLOOP: plan-config for %s: %v (continuing)", listID, err)
+		}
+	}
 
 	select {
 	case <-ctx.Done():

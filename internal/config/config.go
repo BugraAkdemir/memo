@@ -98,6 +98,7 @@ type AppConfig struct {
 	Swarm          SwarmConfig        `yaml:"swarm" json:"swarm"`
 	Onboarding     OnboardingConfig   `yaml:"onboarding" json:"onboarding"`
 	LiveMode       LiveModeConfig     `yaml:"live_mode" json:"live_mode"`
+	TaskLoop       TaskLoopConfig     `yaml:"task_loop" json:"task_loop"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
 
 	// Beta gates genuinely experimental features (e.g. Memo Swarm). Off by
@@ -107,6 +108,19 @@ type AppConfig struct {
 	// this flag. Live Mode graduated the same way (see LiveModeConfig) —
 	// its own Enabled toggle, no longer gated by Beta.
 	Beta bool `yaml:"beta" json:"beta"`
+}
+
+// TaskLoopConfig tunes the Self-Driving task loop (v4.4.0). Both switches
+// default on: the release theme is full autonomy. Existing installs keep
+// whatever their config.yaml carries once Load() overlays it.
+type TaskLoopConfig struct {
+	// PlanningSelfConfig lets the loop pick this task's provider/model (and
+	// optionally toggle Orchestra) during the planning phase instead of just
+	// inheriting the global active provider.
+	PlanningSelfConfig bool `yaml:"planning_self_config" json:"planning_self_config"`
+	// SubAgents allows a large item to fan out to parallel read-only
+	// sub-agents plus one writer.
+	SubAgents bool `yaml:"sub_agents" json:"sub_agents"`
 }
 
 // LiveModeConfig controls voice Live Mode independently of Beta — it
@@ -852,6 +866,10 @@ func Default() *AppConfig {
 		Swarm: SwarmConfig{
 			RPCPort: 50052,
 			Role:    "none",
+		},
+		TaskLoop: TaskLoopConfig{
+			PlanningSelfConfig: true,
+			SubAgents:          true,
 		},
 	}
 }

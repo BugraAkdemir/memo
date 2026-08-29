@@ -708,6 +708,7 @@ func (a *App) Startup(ctx context.Context) {
 			}),
 			taskloop.WithWorkerConfigHook(a.taskRunConfigFor),
 			taskloop.WithSelfHeal(a.healTaskProvider),
+			taskloop.WithPlanConfig(a.planTaskConfig),
 		)
 		logx.Info("Task loop engine initialized")
 	}

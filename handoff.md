@@ -1,3 +1,57 @@
+# Ek (2026-08-29, devam 38) — v4.4.0 canlı simülasyon: 4 bug bulundu+düzeltildi (branch aynı)
+
+Kullanıcı "backend+frontend başlat, browser'da aç, sahte klasör aç, gerçek
+simülasyon yap, bug bul düzelt" dedi. Yapıldı: `flutter build web` →
+`internal/webserver/webapp/`'e kopyalandı (gitignore'lu, commit yok), backend
+`--headless --port 8090` başlatıldı, `$SC/fakeproj/` (kendi AGENTS.md kuralıyla:
+"her dosya `// generated` ile başlasın") + `Task.md`. Browser görsel compositing
+bu ortamda çalışmıyor ama Flutter web app boot etti, API çağrıları 200 (network
+log doğrulandı). Frontend zaten 310 test + analyze temiz.
+
+**Bulunan + düzeltilen buglar (`f270198`):**
+
+1. **KRİTİK — bypass worker'a ulaşmıyordu.** Worker artık per-task executor
+   (`taskRunConfig.exec`) üzerinden koşuyor ama engine'in `setBypass` callback'i
+   sadece global `a.agentExecutor`'ı çeviriyordu → her `write_file` 60sn izin
+   beklemesine düşüp timeout. **Fix:** `buildTaskRunConfig` artık
+   `exec.SetBypassPermissions(true)` çağırıyor (görevi başlatmak = onay).
+2. **`classifyProviderErr` agent-içi hatayı provider hatası sanıyordu.**
+   "Agent execution cancelled (permission timeout)" içinde "timeout" var →
+   `failTransient` → self-heal sonsuz döngü. **Fix:** erken guard, agent-içi
+   string'ler (`permission wait cancelled`, `execution cancelled`,
+   `tool call rejected`, `iteration limit`) → `failOther`; transient
+   listesinden çıplak "timeout" çıkarıldı.
+3. **Task.md checkbox mirror hiç bağlanmamıştı.** `MarkItemDone` vardı ama
+   çağıran yoktu → biten görev `- [ ]`'leri işaretsiz bırakıyordu. **Fix:**
+   `TaskItem.Line` alanı + `Store.SetItemLine`; `CreateTaskListFromTaskMd`
+   satır no'larını kaydediyor; engine `SetItemDone` yan etkisi olarak
+   `MarkItemDone(TaskMdPath, item.Line)` çağırıyor (best-effort).
+4. **`waiting-user` tanımlıydı ama ulaşılamıyordu.** Self-heal auth hatasını
+   reddedince (tüm provider'lar tükendi) engine artık listeyi `waiting-user`'a
+   park ediyor, madde `pending`'e döner (task_resume ile devam), `failed`
+   yerine. App `taskloop:waiting_user`'da tükenmiş provider snapshot'ını
+   temizliyor → resume taze snapshot alıyor.
+
+**Bug OLMAYAN (model kalitesi):** `hy3-free` / free OpenCode Zen chief
+çağrısına boş dönüyor ve bazen dosyayı yazmadan "yazdım" diyor → chief retry
+edip madde stuck oluyor. Zayıf modelde beklenen; Gemini/Claude ile düzgün
+çalışır. Mimari sağlam.
+
+**Canlı doğrulanan:** kendi AGENTS.md'li fake projede 2 maddeli Task.md
+tamamlanıyor, iki checkbox da `[x]` oluyor, üretilen dosya proje kuralına
+uyuyor (`// generated` ile başlıyor), bildirim seviyesi filtresi (`önemli` vs
+`her-şey`) doğru, `/api/tasks/running` + `/api/tasks/{id}/skip` çalışıyor,
+`skip` maddeyi "kullanıcı tarafından atlandı" ile stuck yapıp sıradakine
+geçiyor.
+
+**Test:** `go test -tags sqlite_fts5 ./...` → exit 0, 49 paket ok, 0 fail.
+`-race` ile taskloop+app temiz. Branch 15 commit.
+
+**Kalan (değişmedi):** merge/PR + v4.4.0 release kullanıcının kararı; browser
+görsel testi bu ortamda yapılamadı (compositing yok) ama app fonksiyonel.
+
+---
+
 # Ek (2026-08-29, devam 37) — Self-Driving Memo v4.4.0: 8 task'ın tamamı (branch `feat/self-driving-memo-v4.4.0`)
 
 Kullanıcı `/brainstorm` benzeri bir tur istedi (skill yüklü değildi, elle

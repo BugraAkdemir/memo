@@ -1,3 +1,106 @@
+# Ek (2026-08-29, devam 37) — Self-Driving Memo v4.4.0: 8 task'ın tamamı (branch `feat/self-driving-memo-v4.4.0`)
+
+Kullanıcı `/brainstorm` benzeri bir tur istedi (skill yüklü değildi, elle
+yapıldı): plan+spec okundu, planın "zaten var" sandığı 6 API'nin gerçekte
+olmadığı 3 Explore + 1 Plan agent'la tespit edildi, düzeltilmiş plan
+`~/.claude/plans/`'e yazılıp onaylandı. Kullanıcı kararları: **tam 8 task**,
+sub-agent = **tek yazar + paralel salt-okunur**, **tam otonom self-config
+(yıkıcı dahil, sadece bildir)**, Task.md = ayna / JSON = source-of-truth,
+memo-system skill'i **silme koruması YOK**, Telegram/WhatsApp kontrolü =
+**explicit focus** (`task_change` ile).
+
+**Branch'te 13 commit (`09acc45..5e93684`), hepsi test-yeşil.** `main` v4.2.0
+embedded — release ayrı karar (memo-release skill). PR/merge açılmadı
+(kullanıcı "yeni branch" dedi, merge demedi).
+
+## Ne yapıldı (task task)
+
+1. **`be880be`** — `internal/taskloop/taskmd.go`: `ParseTaskMd` (checkbox +
+   `# bildirim:` header), `MarkItemDone` (in-place `[ ]`→`[x]`), `ReadRules`
+   (AGENTS.md>CLAUDE.md>rules.md>memo.md). `NotifyLevel` tipi burada.
+2. **`f182836`** — `memo-system` skill `go:embed` (`internal/skills/embed.go`
+   + `memo-system/SKILL.md`); `skill.MaterializeEmbedded` açılışta yoksa
+   `data/skills/`'e yazar, varsa dokunmaz. Guard yok.
+3. **`c2bb486`+`f82d212`+`3815371`** — Store: `NotifyLevel`+`TaskMdPath`
+   alanları, doğrulanan status enum (`idle|planning|executing|waiting-limit|
+   waiting-user|paused|done|failed|cancelled`), `loadAll` restart recovery
+   (`waiting-*` korunur). Engine: `opts ...EngineOption`, `planning` fazı
+   (RuleReader + memo-system guidance → preamble), `done`/`failed` ayrımı.
+   `CreateTaskListFromTaskMd` + `POST /api/tasklists` `task_md_path` alanı.
+   `Create` imzası bozulmadı (`CreateWithMeta` eklendi).
+   **Değişen test:** `TestEngineStuckAfterMaxRounds` artık `failed` bekliyor.
+4. **`abd5157`+`2590d58`+`2341120`** — Per-task provider (risk #1):
+   `agent.NewTaskExecutor`/`ActiveRouter`, `taskRunConfig` ctx'te,
+   `callAgentStream` yeni dal SADECE `taskRunConfigFromCtx(ctx)!=nil` iken;
+   nil ise interaktif yol aynen. `healTaskProvider` (401/5xx→provider geç,
+   429→geçme, global `activeProviderName` asla yazılmaz).
+   `taskloop.classifyProviderErr`/`IsRateLimitErr`/`IsAuthErr`.
+   Planning-time self-config: `WithPlanConfig` → LLM `{provider,model,effort,
+   orchestra}` → `applyPlanConfig`. `config.TaskLoopConfig{PlanningSelfConfig,
+   SubAgents}` default true. **`emitEvent` artık nil-safe.**
+5. **`5f9c30e`** — `RetryScheduler` (Arm/Cancel/Pending, nil-safe).
+   `processItem` 3. dönüş değeri `suspended`: 429'da item→pending, list→
+   `waiting-limit`, `taskloop:waiting_limit` (retry-after parse'lı), timer
+   10 dk sonra `Engine.Start` ile kaldığı yerden. Startup'ta `waiting-limit`
+   listeler re-arm. `Engine.Stop` bekleyen timer'ı iptal eder.
+6. **`b570933`** — `SubAgentOrchestrator.Spawn` (risk #2): faz-1 tek `coder`
+   (>1 → hata), faz-2 paralel salt-okunur (`analyzer/reviewer/test-runner`,
+   sem=3). `agent.NewReadOnlyRegistry` (mutating tool yok +
+   `run_command_readonly` allowlist — syscall sandbox DEĞİL, doküman edildi).
+   `agent.NewSubAgentExecutor` (efemer, session yok). `appSubAgentRunner`:
+   çıplak system+user, RAG/memory/persona yok. `resolveSubAgentSpecs`
+   SubRole→Orchestra rol map. `shouldSpawn` heuristik. `config.TaskLoop.
+   SubAgents` gate.
+7. **`635ecc1`** — `taskloop.NotifyBus` (seviye filtreli fan-out; app event
+   bus + Telegram owner + WhatsApp self-chat, bağımsız/best-effort).
+   `dispatchTaskEvent` engine event → Notification. `runtime.go`:
+   `Engine.Runtime`/`RunningTasks` (faz, current item, elapsed, sub-agent
+   rolleri). `Engine.SkipCurrent`. `App.handleTaskControl` (`task_list`/
+   `task_change <id|no>`/`task_exit`/`task_pause|resume|cancel`; focus'ta
+   `dur|devam|atla|durum` + doğal dil enjeksiyon). Telegram+WhatsApp
+   handler'larına slash-command'dan SONRA eklendi; focus yoksa pass-through.
+   REST: `GET /api/tasks/running` + `POST /api/tasks/{id}/{pause,resume,
+   cancel,skip,inject}`. FullBridge +4 metod.
+8. **`5e93684`** — Flutter: `widgets/task_status.dart` (`TaskStatusBadge` +
+   `taskItemStatusIcon`, yeni fazlar), `screens/task_detail_screen.dart`
+   (canlı: faz/ilerleme/current item/elapsed/sub-agent chip'leri +
+   pause/resume/cancel/skip + inject kutusu), `RunningTasksNotifier`
+   (3sn poll), `api_client` 6 metod, `RunningTaskInfo` model, ~24 `task_*`
+   l10n key TR+EN. `tasks_screen.dart` shared widget + tüm aktif fazları
+   "running" sayıyor + canlı-görünüm butonu.
+
+## Doğrulama
+
+- `CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` temiz.
+- `go test -tags sqlite_fts5 ./...` → tüm paketler PASS (exit 0).
+- `-race` ile `./internal/{taskloop,app,agent,agent/tools,skill,webserver,
+  config}` PASS.
+- `flutter analyze lib/` → sadece dokunulmayan dosyalarda 5 pre-existing
+  `use_build_context_synchronously` info'su (AGENTS.md'nin kabul ettiği
+  gürültü). `flutter test` → 310 PASS (2 yeni widget testi dahil).
+- Rule #8 grep dokunulan `.dart` dosyalarında temiz.
+
+## Bilinçli kapsam dışı (planda yazılı)
+
+İki görevin gerçek paralel worker turu (global `a.streamMu` single-flight),
+canlı Task.md yeniden-okuma, cross-vendor router fallback zinciri, per-task
+Orchestra izolasyonu (Orchestra config process-global — bir görev açarsa
+kullanıcının interaktif sohbetlerini de etkiler, doküman edildi), memo-system
+silme guard'ı, backend Türkçe string l10n'ı.
+
+## Sırada
+
+- Kullanıcı isterse PR/merge (kendi kararı). Sonra v4.4.0 release =
+  `memo-release` skill (7 versiyon yeri, EN+TR notlar, `version.json` beacon
+  en son). `main` şu an v4.2.0 embedded.
+- Manuel smoke: planın "Verification" bölümündeki 7 adım (Task.md ver →
+  planning→executing→checkbox mirror; provider auth fail → geç; 429 →
+  waiting-limit → resume; Telegram `task_change` → doğal dil; `[parallel]`
+  item → ≤3 sub-agent 1 yazar; `data/skills/memo-system/` sil → restart'ta
+  geri gelir).
+
+---
+
 # Ek (2026-08-28, devam 36) — OpenCode Zen tool-call leak'i + boş sohbette config uyarı banner'ı (branch `fix/toolcall-leak-and-config-banner`)
 
 Kullanıcı iki screenshot gösterdi: (1) Memo "Ben Claude'um" diyor, (2) chat'e

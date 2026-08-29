@@ -64,8 +64,15 @@ func (a *App) buildTaskRunConfig() (*taskRunConfig, error) {
 		}
 	}
 
+	exec := agent.NewTaskExecutor(a.agentExecutor, taskRouter)
+	// A running Self-Driving task is unattended by definition — starting it is
+	// the consent. The worker turn goes through this private executor, so the
+	// bypass must live here, not only on the engine's ref-counted global
+	// setBypass callback (which now only covers the fallback-to-global path).
+	exec.SetBypassPermissions(true)
+
 	return &taskRunConfig{
-		exec:           agent.NewTaskExecutor(a.agentExecutor, taskRouter),
+		exec:           exec,
 		providerName:   name,
 		model:          model,
 		effortLevel:    effort,

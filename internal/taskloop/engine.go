@@ -369,6 +369,13 @@ func (e *Engine) run(ctx context.Context, listID string) {
 			if err := e.store.SetItemDone(listID, item.ID); err != nil {
 				logx.Printf("TASKLOOP: set item done %s/%s: %v", listID, item.ID, err)
 			}
+			// Mirror the completion back into the source Task.md ("[ ]" -> "[x]").
+			// Best-effort: a file that moved or is read-only must not fail the task.
+			if tl.TaskMdPath != "" && item.Line > 0 {
+				if err := MarkItemDone(tl.TaskMdPath, item.Line); err != nil {
+					logx.Printf("TASKLOOP: mirror %s line %d: %v", tl.TaskMdPath, item.Line, err)
+				}
+			}
 			if e.onEvent != nil {
 				e.onEvent("tasklist:item_done", fmt.Sprintf("%s:%s", listID, item.ID))
 			}
@@ -512,6 +519,15 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 				}
 				continue
 			}
+			// Self-heal declined an auth failure -> every configured provider is
+			// dead. Park the list in waiting-user (not stuck/failed): the item
+			// goes back to pending and the run unwinds without a terminal state,
+			// so a task_resume retries it once the user fixes a key.
+			if IsAuthErr(err) {
+				logx.Printf("TASKLOOP: providers exhausted for %s, parking in waiting-user", listID)
+				e.parkWaitingUser(listID, item, err)
+				return false, false, true
+			}
 			item.Note = fmt.Sprintf("İşçi hatası (tur %d): %v", round, err)
 			return false, false, false
 		}
@@ -562,6 +578,21 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 
 	item.Note = "maksimum tur sayısına ulaşıldı"
 	return false, false, false
+}
+
+// parkWaitingUser puts a list into waiting-user when self-heal has exhausted
+// every provider: the current item goes back to pending and a waiting_user
+// event fires. The user resumes it (task_resume) after fixing a key.
+func (e *Engine) parkWaitingUser(listID string, item *TaskItem, cause error) {
+	if err := e.store.ResetItemPending(listID, item.ID); err != nil {
+		logx.Printf("TASKLOOP: park reset item %s/%s: %v", listID, item.ID, err)
+	}
+	if err := e.store.SetStatus(listID, taskListWaitingUser); err != nil {
+		logx.Printf("TASKLOOP: park set status %s: %v", listID, err)
+	}
+	if e.onEvent != nil {
+		e.onEvent("taskloop:waiting_user", fmt.Sprintf("%s:%v", listID, cause))
+	}
 }
 
 // suspendForRateLimit parks a rate-limited list: item back to pending, list

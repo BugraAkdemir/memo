@@ -31,6 +31,17 @@ func classifyProviderErr(err error) providerFailKind {
 		return failOther
 	}
 	s := strings.ToLower(err.Error())
+
+	// Agent-internal failures (a tool permission wait timing out, an aborted
+	// run, a tool rejection) are NOT provider problems — never self-heal or
+	// wait-limit on them. Checked first because "permission timeout" / "cancelled"
+	// would otherwise be misread as an auth or transient provider error.
+	if containsAny(s, "permission wait cancelled", "permission timeout",
+		"execution cancelled", "execution aborted", "agent execution cancelled",
+		"tool call rejected", "denied by user", "user declined", "iteration limit") {
+		return failOther
+	}
+
 	switch {
 	case containsAny(s, "429", "rate limit", "rate-limit", "ratelimit", "quota",
 		"too many requests", "please slow down", "resource exhausted",
@@ -38,13 +49,14 @@ func classifyProviderErr(err error) providerFailKind {
 		return failRateLimited
 	case containsAny(s, " 401", "401 ", "403", "unauthorized", "invalid api key",
 		"invalid_api_key", "invalid x-api-key", "authentication",
-		"api key not valid", "permission denied", "permission_denied",
+		"api key not valid", "api key not configured", "no api key",
+		"permission denied", "permission_denied",
 		"expired", "no such model", "model not found"):
 		return failAuth
-	case containsAny(s, "500", "502", "503", "504", "timeout", "timed out",
-		"deadline exceeded", "connection refused", "connection reset",
-		"unexpected eof", "temporarily unavailable", "service unavailable",
-		"internal server error", "bad gateway"):
+	case containsAny(s, "500", "502", "503", "504", "timed out", "i/o timeout",
+		"context deadline exceeded", "deadline exceeded", "connection refused",
+		"connection reset", "unexpected eof", "temporarily unavailable",
+		"service unavailable", "internal server error", "bad gateway", "eof"):
 		return failTransient
 	default:
 		return failOther

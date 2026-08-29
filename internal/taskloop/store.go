@@ -17,11 +17,15 @@ import (
 const maxRoundsPerItem = 5
 
 type TaskItem struct {
-	ID         string `json:"id"`
-	Text       string `json:"text"`
-	Status     string `json:"status"` // pending | running | done | stuck
-	Note       string `json:"note"`
-	Rounds     int    `json:"rounds"`
+	ID     string `json:"id"`
+	Text   string `json:"text"`
+	Status string `json:"status"` // pending | running | done | stuck
+	Note   string `json:"note"`
+	Rounds int    `json:"rounds"`
+	// Line is the 1-based source line in TaskList.TaskMdPath this item came
+	// from (0 when the list wasn't seeded from a file), so completion can
+	// mirror "[ ]" -> "[x]" back into that exact line.
+	Line       int    `json:"line,omitempty"`
 	StartedAt  string `json:"started_at,omitempty"`
 	FinishedAt string `json:"finished_at,omitempty"`
 }
@@ -196,6 +200,24 @@ func (s *Store) SetStatus(id, status string) error {
 	tl.Status = status
 	tl.UpdatedAt = time.Now().Format("2006-01-02 15:04")
 	return s.save(tl)
+}
+
+// SetItemLine records which Task.md source line an item maps to (used when a
+// list is seeded from a file so completion can flip its checkbox).
+func (s *Store) SetItemLine(listID, itemID string, line int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tl, ok := s.list[listID]
+	if !ok {
+		return fmt.Errorf("tasklist %s not found", listID)
+	}
+	for i := range tl.Items {
+		if tl.Items[i].ID == itemID {
+			tl.Items[i].Line = line
+			return s.save(tl)
+		}
+	}
+	return fmt.Errorf("item %s not found in list %s", itemID, listID)
 }
 
 func (s *Store) SetItemRunning(listID, itemID string) error {

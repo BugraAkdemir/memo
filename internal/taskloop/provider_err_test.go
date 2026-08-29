@@ -23,6 +23,12 @@ func TestClassifyProviderErr(t *testing.T) {
 		{"dial tcp: connection refused", failTransient},
 		{"some unrelated parsing failure", failOther},
 		{"", failOther},
+		// Agent-internal failures must NOT be treated as provider problems —
+		// otherwise self-heal loops on a tool-permission timeout.
+		{"işçi hatası: ⚠️ Agent execution cancelled (permission timeout)", failOther},
+		{"AGENT [write_file] ERROR: Permission wait cancelled", failOther},
+		{"tool call rejected by user", failOther},
+		{"reached iteration limit (40)", failOther},
 	}
 	for _, c := range cases {
 		var err error

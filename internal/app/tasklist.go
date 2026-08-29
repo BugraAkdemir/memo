@@ -54,10 +54,17 @@ func (a *App) CreateTaskListFromTaskMd(chatID, title, taskMdPath string) (*taskl
 	if err != nil {
 		return nil, err
 	}
-	// Carry over pre-checked items so a partially-done Task.md resumes rather
-	// than redoing completed work.
 	for i, it := range parsed.Items {
-		if it.Status == "done" && i < len(tl.Items) {
+		if i >= len(tl.Items) {
+			break
+		}
+		// Record the source line so completion can flip the checkbox in place.
+		if err := a.taskloopStore.SetItemLine(tl.ID, tl.Items[i].ID, it.Line); err != nil {
+			logx.Printf("taskloop: seed item line %s: %v", tl.Items[i].ID, err)
+		}
+		// Carry over pre-checked items so a partially-done Task.md resumes
+		// rather than redoing completed work.
+		if it.Status == "done" {
 			if err := a.taskloopStore.SetItemDone(tl.ID, tl.Items[i].ID); err != nil {
 				logx.Printf("taskloop: seed done item %s: %v", tl.Items[i].ID, err)
 			}

@@ -1,3 +1,38 @@
+# Ek (2026-08-29, devam 39) — bitiş bildirimi artık modelin kendi raporu (branch aynı)
+
+Kullanıcı: "telegramdan sadece 'task bitti' geldi; bitince modelin kendisi
+detaylı rapor sunsun, hardcoded olmasın."
+
+**Yapıldı (`051c71c`):**
+- `taskloop.Notification` + `Body` alanı; set ise sender'lar (Telegram/WhatsApp/
+  app) onu birebir yolluyor.
+- `tasklist:finished`'te `dispatchTaskFinishReport` engine goroutine'i DIŞINDA
+  koşuyor → `generateTaskReport`: görevin KENDI sohbetinde (tüm worker turları
+  context'te) `SendMessageStreamTo` ile kapanış raporu ister, status chunk'larını
+  (agent_event JSON, memory_used sayısı) filtreler. Fallback: transcript+madde
+  metadata'sından tool'suz özet; son çare `factualTaskRollup` ("2/3 tamamlandı,
+  1 takıldı: …"). Hiçbir durumda sabit per-event string değil.
+- `buildTaskLoopRunWorker` aynı chunk filtresini uyguluyor → chief artık
+  worker çıktısına karışan agent_event JSON / memory sayısını görmüyordu (yan
+  fayda, pre-existing kirlilik).
+- Diğer kısa bildirimler (başladı/takıldı/limit) tek satır kaldı — sadece
+  bitiş rapora döndü.
+
+**Canlı doğrulama:** OpenCode Zen ile biten Task.md artık yapılandırılmış TR
+rapor üretiyor: hangi maddeler bitti, hangi dosyalara dokunuldu, repo kuralı
+(`// generated`) neden atlandı, commit davranışı. İlk denemede `24{"type":
+"final_response"...}` kirliliği vardı (memory_used chunk'ı + agent_event) →
+Finish­Reason filtresiyle çözüldü, temiz.
+
+**Bulunan pre-existing bug (kapsam dışı, düzeltilmedi):** local model + chief
+review yolunda `callLLMForReview` `model 'local-model' not found` (400) veriyor —
+2026-07-05 taskloop'tan beri var, external provider ile sorun yok.
+
+**Test:** `go test -tags sqlite_fts5 ./...` exit 0, 49 paket, 0 fail. `-race`
+temiz. Branch 18 commit.
+
+---
+
 # Ek (2026-08-29, devam 38) — v4.4.0 canlı simülasyon: 4 bug bulundu+düzeltildi (branch aynı)
 
 Kullanıcı "backend+frontend başlat, browser'da aç, sahte klasör aç, gerçek

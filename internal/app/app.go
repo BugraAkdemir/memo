@@ -709,7 +709,15 @@ func (a *App) Startup(ctx context.Context) {
 			taskloop.WithWorkerConfigHook(a.taskRunConfigFor),
 			taskloop.WithSelfHeal(a.healTaskProvider),
 			taskloop.WithPlanConfig(a.planTaskConfig),
+			taskloop.WithRetryScheduler(taskloop.DefaultRetryInterval),
 		)
+		// Re-arm any list left parked in waiting-limit by a previous run.
+		for _, info := range tlStore.List() {
+			if info.Status == "waiting-limit" {
+				a.taskloopEngine.ArmRetry(info.ID)
+				logx.Printf("taskloop: re-armed rate-limit retry for %s", info.ID)
+			}
+		}
 		logx.Info("Task loop engine initialized")
 	}
 

@@ -8,6 +8,7 @@ import (
 	"memo/internal/truncate"
 	"strings"
 	"sync"
+	"time"
 )
 
 type RunWorker func(ctx context.Context, chatID, prompt string) (string, error)
@@ -31,6 +32,7 @@ type Engine struct {
 	workerConfigHook func(ctx context.Context, listID string) context.Context
 	selfHeal         func(ctx context.Context, listID string, workerErr error) bool
 	planConfig       func(ctx context.Context, listID, chatID string, items []string) error
+	retry            *RetryScheduler
 }
 
 // EngineOption configures optional Engine behaviour without breaking the
@@ -80,6 +82,26 @@ func WithPlanConfig(fn func(ctx context.Context, listID, chatID string, items []
 	return func(e *Engine) { e.planConfig = fn }
 }
 
+// WithRetryScheduler enables rate-limit handling: on a 429/quota worker error
+// the list is parked in "waiting-limit" and a one-shot timer (interval, or
+// DefaultRetryInterval when <= 0) later re-enters the loop from the same item.
+func WithRetryScheduler(interval time.Duration) EngineOption {
+	return func(e *Engine) {
+		e.retry = NewRetryScheduler(interval, func(listID string) {
+			if err := e.Start(context.Background(), listID); err != nil {
+				logx.Printf("TASKLOOP: retry resume %s: %v", listID, err)
+			}
+		})
+	}
+}
+
+// ArmRetry parks listID's wait timer without a preceding worker error — used
+// on startup to re-arm lists found persisted in "waiting-limit". No-op if no
+// retry scheduler is configured.
+func (e *Engine) ArmRetry(listID string) {
+	e.retry.Arm(listID)
+}
+
 func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBypass BypassSetter, onEvent func(name, data string), opts ...EngineOption) *Engine {
 	e := &Engine{
 		store:       store,
@@ -119,10 +141,25 @@ func (e *Engine) Start(ctx context.Context, listID string) error {
 }
 
 func (e *Engine) Stop(listID string) {
+	// Cancel a pending rate-limit retry even if the list isn't actively
+	// running (a suspended list is not in e.active).
+	e.retry.Cancel(listID)
+
 	e.mu.Lock()
 	cancel, ok := e.active[listID]
 	if !ok {
 		e.mu.Unlock()
+		// Not running, but it may be parked in waiting-limit/waiting-user —
+		// still move it to paused so the UI shows a stopped list.
+		if tl, err := e.store.Get(listID); err == nil {
+			switch tl.Status {
+			case taskListWaitingLimit, taskListWaitingUser:
+				e.store.SetStatus(listID, taskListPaused)
+				if e.onEvent != nil {
+					e.onEvent("taskloop:paused", listID)
+				}
+			}
+		}
 		return
 	}
 	cancel()
@@ -236,7 +273,14 @@ func (e *Engine) run(ctx context.Context, listID string) {
 		if e.workerConfigHook != nil {
 			itemCtx = e.workerConfigHook(ctx, listID)
 		}
-		ok, cancelled := e.processItem(itemCtx, listID, item, tl.ChatID, preamble)
+		ok, cancelled, suspended := e.processItem(itemCtx, listID, item, tl.ChatID, preamble)
+
+		if suspended {
+			// Rate-limited: processItem parked the list in waiting-limit,
+			// reset the item to pending, and armed the retry timer. Unwind
+			// this run; the timer will re-enter from the same item.
+			return
+		}
 
 		if cancelled {
 			// Interrupted (Stop() or shutdown), not actually failed — put the
@@ -324,10 +368,12 @@ func (e *Engine) buildPlanningPreamble(tl *TaskList) string {
 }
 
 // processItem drives one task item through worker/CEO rounds.
-// ok reports whether the item was approved; cancelled reports that ctx was
-// cancelled mid-item (Stop() or shutdown) — the caller must treat this as an
-// interruption, not a failure, and leave the item resumable.
-func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem, chatID, preamble string) (ok bool, cancelled bool) {
+//   - ok:        the item was approved
+//   - cancelled: ctx was cancelled mid-item (Stop()/shutdown) — an
+//     interruption, not a failure; the caller leaves the item resumable
+//   - suspended: a rate-limit error parked the list in waiting-limit and armed
+//     the retry timer; the caller must unwind the run without a terminal state
+func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem, chatID, preamble string) (ok, cancelled, suspended bool) {
 	withPreamble := func(s string) string {
 		if preamble == "" {
 			return s
@@ -339,7 +385,7 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 	for round := 1; round <= maxRoundsPerItem; round++ {
 		select {
 		case <-ctx.Done():
-			return false, true
+			return false, true, false
 		default:
 		}
 
@@ -348,9 +394,15 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 		workerOutput, err := e.runWorker(ctx, chatID, workerPrompt)
 		if err != nil {
 			if ctx.Err() != nil {
-				return false, true
+				return false, true, false
 			}
 			logx.Printf("TASKLOOP: worker error on item %s round %d: %v", item.ID, round, err)
+			if e.retry != nil && IsRateLimitErr(err) {
+				if suspErr := e.suspendForRateLimit(listID, item, err); suspErr != nil {
+					logx.Printf("TASKLOOP: suspend %s: %v", listID, suspErr)
+				}
+				return false, false, true
+			}
 			if e.selfHeal != nil && e.selfHeal(ctx, listID, err) {
 				logx.Printf("TASKLOOP: self-heal recovered list %s, retrying item %s", listID, item.ID)
 				if err := e.store.IncrementRounds(listID, item.ID); err != nil {
@@ -359,18 +411,18 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 				continue
 			}
 			item.Note = fmt.Sprintf("İşçi hatası (tur %d): %v", round, err)
-			return false, false
+			return false, false, false
 		}
 
 		if workerOutput == "" {
 			item.Note = fmt.Sprintf("İşçi boş çıktı döndü (tur %d)", round)
-			return false, false
+			return false, false, false
 		}
 
 		approved, feedback, err := e.reviewChief(ctx, item.Text, workerOutput)
 		if err != nil {
 			if ctx.Err() != nil {
-				return false, true
+				return false, true, false
 			}
 			logx.Printf("TASKLOOP: CEO review error on item %s round %d: %v", item.ID, round, err)
 			if round < maxRoundsPerItem {
@@ -381,11 +433,11 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 				continue
 			}
 			item.Note = fmt.Sprintf("CEO inceleme hatası (tur %d): %v", round, err)
-			return false, false
+			return false, false, false
 		}
 
 		if approved {
-			return true, false
+			return true, false, false
 		}
 
 		if err := e.store.IncrementRounds(listID, item.ID); err != nil {
@@ -394,7 +446,7 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 
 		if round >= maxRoundsPerItem {
 			item.Note = fmt.Sprintf("5 tur sonunda onaylanmadı: %s", feedback)
-			return false, false
+			return false, false, false
 		}
 
 		workerPrompt = withPreamble(fmt.Sprintf(
@@ -406,7 +458,28 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 	}
 
 	item.Note = "maksimum tur sayısına ulaşıldı"
-	return false, false
+	return false, false, false
+}
+
+// suspendForRateLimit parks a rate-limited list: item back to pending, list
+// status waiting-limit, a waiting_limit event carrying any "try again in Ns"
+// hint, and the retry timer armed to re-enter the loop later.
+func (e *Engine) suspendForRateLimit(listID string, item *TaskItem, workerErr error) error {
+	if err := e.store.ResetItemPending(listID, item.ID); err != nil {
+		return err
+	}
+	if err := e.store.SetStatus(listID, taskListWaitingLimit); err != nil {
+		return err
+	}
+	if e.onEvent != nil {
+		detail := ""
+		if s := RetryAfterSeconds(workerErr); s > 0 {
+			detail = fmt.Sprintf("~%ds", s)
+		}
+		e.onEvent("taskloop:waiting_limit", fmt.Sprintf("%s:%s", listID, detail))
+	}
+	e.retry.Arm(listID)
+	return nil
 }
 
 func ChiefReviewSystemPrompt() string {

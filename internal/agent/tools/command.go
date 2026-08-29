@@ -400,3 +400,42 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 
 	return FormatCommandOutput(runErr, timedOut, stdout.String(), stderr.String()), nil
 }
+
+// readOnlyCommandAllowlist is the set of command prefixes a read-only
+// sub-agent may run. Matching is prefix-anchored on the trimmed command
+// string, so "go test ./..." is allowed but "go run x.go" and
+// "gofmt -w ." are not. This is not a syscall sandbox — `go test` can still
+// write files — it only removes the obvious mutation paths.
+var readOnlyCommandAllowlist = []string{
+	"go test", "go build", "go vet", "go doc", "go list", "go env",
+	"git status", "git diff", "git log", "git show", "git branch", "git blame",
+	"ls", "cat", "head", "tail", "wc", "file", "stat", "tree",
+	"rg", "grep", "find", "fd", "which",
+	"flutter analyze", "flutter test", "dart analyze",
+	"npm test", "npm run test", "pnpm test", "yarn test",
+	"pytest", "python -m pytest",
+}
+
+func isReadOnlyCommand(cmd string) bool {
+	c := strings.TrimSpace(cmd)
+	for _, p := range readOnlyCommandAllowlist {
+		if c == p || strings.HasPrefix(c, p+" ") {
+			return true
+		}
+	}
+	return false
+}
+
+// RunCommandReadOnly is the ExecuteFn for the run_command_readonly tool given
+// to read-only sub-agents. It rejects anything not on
+// readOnlyCommandAllowlist, then delegates to RunCommand.
+func RunCommandReadOnly(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+	var args RunCommandArgs
+	if err := json.Unmarshal(argsJSON, &args); err != nil {
+		return "", fmt.Errorf("invalid arguments: %w", err)
+	}
+	if !isReadOnlyCommand(args.Command) {
+		return "", fmt.Errorf("run_command_readonly: %q is not on the read-only allowlist (build/test/inspect commands only)", args.Command)
+	}
+	return RunCommand(ctx, argsJSON, basePath, createBackup)
+}

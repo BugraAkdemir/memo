@@ -17,6 +17,7 @@ type taskRunConfig struct {
 	providerName     string
 	model            string
 	effortLevel      string
+	projectPath      string          // resolved once from the list's agent chat
 	triedProviders   map[string]bool // providers self-heal has already ruled out
 	transientRetries int             // consecutive 5xx/timeout retries on the current provider
 }
@@ -87,6 +88,7 @@ func (a *App) taskRunConfigFor(ctx context.Context, listID string) context.Conte
 			// path (callAgentStream will surface the same error to the user).
 			return ctx
 		}
+		built.projectPath = a.taskListProjectPath(listID)
 		a.taskRunMu.Lock()
 		if existing := a.taskRunCfgs[listID]; existing != nil {
 			trc = existing
@@ -97,6 +99,22 @@ func (a *App) taskRunConfigFor(ctx context.Context, listID string) context.Conte
 		a.taskRunMu.Unlock()
 	}
 	return withTaskRunConfig(ctx, trc)
+}
+
+// taskListProjectPath resolves a list's agent chat to its on-disk project
+// root ("" if unknown).
+func (a *App) taskListProjectPath(listID string) string {
+	if a.taskloopStore == nil {
+		return ""
+	}
+	tl, err := a.taskloopStore.Get(listID)
+	if err != nil {
+		return ""
+	}
+	if sm := a.getSessionManager(); sm != nil {
+		return sm.GetProjectPath(tl.ChatID)
+	}
+	return ""
 }
 
 // clearTaskRunConfig drops a finished/paused list's provider snapshot so a

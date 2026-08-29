@@ -177,6 +177,31 @@ func (e *Executor) ActiveRouter() *provider.Router {
 	return e.getRouter()
 }
 
+// NewSubAgentExecutor creates an ephemeral executor for one Self-Driving
+// sub-agent run: caller-supplied registry (full for the "coder", read-only
+// for everyone else), caller-supplied router, its own bypass flag,
+// sessionManager nil (no cd persistence, no session), and a sandbox scoped to
+// projectPath. It reuses the shared permissions/backup/audit trail.
+func NewSubAgentExecutor(existing *Executor, registry *ToolRegistry, router *provider.Router, projectPath string) *Executor {
+	base := existing.basePath
+	if projectPath != "" {
+		base = projectPath
+	}
+	return &Executor{
+		basePath:       base,
+		providerRouter: router,
+		providerCfgMgr: existing.providerCfgMgr,
+		registry:       registry,
+		permissions:    existing.permissions,
+		sandbox:        NewSandbox(DefaultSandboxConfig(base)),
+		backup:         existing.backup,
+		sessionManager: nil,
+		pendingPerms:   make(map[string]*PermissionRequest),
+		logs:           make([]AgentLogEntry, 0),
+		auditLogFile:   existing.auditLogFile,
+	}
+}
+
 // Registry exposes the executor's tool registry so callers outside this
 // package (the skill system) can register/unregister additional tools
 // into the exact registry the agent pipeline executes against. The field

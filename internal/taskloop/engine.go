@@ -33,6 +33,8 @@ type Engine struct {
 	selfHeal         func(ctx context.Context, listID string, workerErr error) bool
 	planConfig       func(ctx context.Context, listID, chatID string, items []string) error
 	retry            *RetryScheduler
+	subOrch          *SubAgentOrchestrator
+	subSpecs         func(itemText, feedback string) []SubAgentSpec
 }
 
 // EngineOption configures optional Engine behaviour without breaking the
@@ -92,6 +94,17 @@ func WithRetryScheduler(interval time.Duration) EngineOption {
 				logx.Printf("TASKLOOP: retry resume %s: %v", listID, err)
 			}
 		})
+	}
+}
+
+// WithSubAgents enables fan-out: for an item shouldSpawn() considers large,
+// the loop runs specFn(itemText, lastFeedback) sub-agents through orch instead
+// of a single worker turn, then hands the aggregated output to the chief
+// review. Both must be non-nil to take effect.
+func WithSubAgents(orch *SubAgentOrchestrator, specFn func(itemText, feedback string) []SubAgentSpec) EngineOption {
+	return func(e *Engine) {
+		e.subOrch = orch
+		e.subSpecs = specFn
 	}
 }
 
@@ -381,6 +394,8 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 		return preamble + s
 	}
 	workerPrompt := withPreamble(item.Text)
+	useSubAgents := e.subOrch != nil && e.subSpecs != nil && shouldSpawn(item.Text)
+	lastFeedback := ""
 
 	for round := 1; round <= maxRoundsPerItem; round++ {
 		select {
@@ -389,9 +404,34 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 		default:
 		}
 
-		logx.Printf("TASKLOOP: item %s round %d/%d", item.ID, round, maxRoundsPerItem)
+		logx.Printf("TASKLOOP: item %s round %d/%d (subagents=%v)", item.ID, round, maxRoundsPerItem, useSubAgents)
 
-		workerOutput, err := e.runWorker(ctx, chatID, workerPrompt)
+		var workerOutput string
+		var err error
+		if useSubAgents {
+			specs := e.subSpecs(item.Text, lastFeedback)
+			if e.onEvent != nil {
+				e.onEvent("tasklist:subagent_spawned", fmt.Sprintf("%s:%s:%d", listID, item.ID, len(specs)))
+			}
+			results, serr := e.subOrch.Spawn(ctx, item.Text, specs)
+			if serr != nil {
+				err = serr
+			} else {
+				workerOutput = AggregateResults(results)
+				allFailed := len(results) > 0
+				for _, r := range results {
+					if r.Err == nil {
+						allFailed = false
+						break
+					}
+				}
+				if allFailed {
+					err = fmt.Errorf("tüm alt-agent'lar başarısız oldu")
+				}
+			}
+		} else {
+			workerOutput, err = e.runWorker(ctx, chatID, workerPrompt)
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return false, true, false
@@ -449,6 +489,7 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 			return false, false, false
 		}
 
+		lastFeedback = feedback
 		workerPrompt = withPreamble(fmt.Sprintf(
 			"Madde: %s\n\nÖnceki çıktı:\n%s\n\nCEO'nun eksik/yanlış buldukları:\n%s\n\nBu eksikleri gider, hataları düzelt ve görevi eksiksiz tamamla.",
 			item.Text,

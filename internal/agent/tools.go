@@ -322,6 +322,72 @@ func NewWhatsAppRegistry() *ToolRegistry {
 	return r
 }
 
+// NewReadOnlyRegistry creates a registry with no mutating tools — read/list/
+// search/inspect plus web_search, fetch_page, get_calendar_events and an
+// allowlisted run_command_readonly. Used for the analyzer/reviewer/test-runner
+// sub-agents of the Self-Driving loop, so exactly one "coder" sub-agent can
+// write while the others run in parallel with no risk of clobbering it.
+//
+// "Read-only" here means no write/edit/delete/cd/run_command tools and a
+// prefix-anchored command allowlist — it is not a syscall sandbox (a test run
+// can still touch the filesystem). That trade-off is what removes the need for
+// any conflict-merge logic.
+func NewReadOnlyRegistry() *ToolRegistry {
+	r := &ToolRegistry{tools: make(map[string]ToolDef)}
+	r.Register(ToolDef{
+		Name:        "read_file",
+		Description: "Reads the content of a file",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Path to the file to read"}}, "required": ["path"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.ReadFile,
+	})
+	r.Register(ToolDef{
+		Name:        "list_directory",
+		Description: "Lists files and directories in a path",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Path to directory"}, "recursive": {"type": "boolean", "description": "Whether to list recursively"}}, "required": ["path", "recursive"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.ListDirectory,
+	})
+	r.Register(ToolDef{
+		Name:        "search_files",
+		Description: "Searches for files matching a pattern",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {"pattern": {"type": "string", "description": "Glob pattern (e.g. *.go)"}, "path": {"type": "string", "description": "Directory to search in"}}, "required": ["pattern", "path"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.SearchFiles,
+	})
+	r.Register(ToolDef{
+		Name:        "get_file_info",
+		Description: "Gets metadata about a file or directory",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Path to the file/directory"}}, "required": ["path"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.GetFileInfo,
+	})
+	r.Register(ToolDef{
+		Name:        "read_env",
+		Description: "Reads non-sensitive environment variables",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {}}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.ReadEnv,
+	})
+	r.Register(ToolDef{
+		Name:        "get_calendar_events",
+		Description: "Reads saved calendar events.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"}}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.GetCalendarEvents,
+	})
+	r.Register(ToolDef{
+		Name:        "run_command_readonly",
+		Description: "Runs a build/test/inspection command from a fixed allowlist (go test/build/vet, git status/diff/log, ls, cat, rg, grep, find, flutter analyze/test, npm test, pytest, ...). Anything not on the allowlist is rejected.",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {"command": {"type": "string"}, "cwd": {"type": "string"}}, "required": ["command"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.RunCommandReadOnly,
+	})
+	r.registerWebSearchTool()
+	r.registerFetchPageTool()
+	return r
+}
+
 func (r *ToolRegistry) Register(tool ToolDef) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

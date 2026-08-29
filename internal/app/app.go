@@ -711,6 +711,12 @@ func (a *App) Startup(ctx context.Context) {
 			taskloop.WithPlanConfig(a.planTaskConfig),
 			taskloop.WithRetryScheduler(taskloop.DefaultRetryInterval),
 		)
+		if a.cfg != nil && a.cfg.TaskLoop.SubAgents {
+			// Applied after construction (rather than inline above) only so the
+			// whole block stays behind the config gate.
+			orch := taskloop.NewSubAgentOrchestrator(&appSubAgentRunner{a: a}, 3)
+			taskloop.WithSubAgents(orch, a.resolveSubAgentSpecs)(a.taskloopEngine)
+		}
 		// Re-arm any list left parked in waiting-limit by a previous run.
 		for _, info := range tlStore.List() {
 			if info.Status == "waiting-limit" {

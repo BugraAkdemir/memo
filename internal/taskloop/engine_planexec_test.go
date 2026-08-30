@@ -120,6 +120,7 @@ func TestEngine_PlanExec_FailedAcceptanceMarksItemStuck(t *testing.T) {
 	}}
 	eng, _, _ := newPlanExecEngine(t, store, plan,
 		WithAutoApprovePlan(true),
+		WithMaxExecutorAttempts(1), // fail once -> stuck, no retry loop
 		WithAcceptanceChecker(func(ctx context.Context, listID string, step PlanStep) (bool, string, error) {
 			return step.ID == "S1", "S2 fails its check", nil
 		}),
@@ -127,7 +128,7 @@ func TestEngine_PlanExec_FailedAcceptanceMarksItemStuck(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = eng.Start(ctx, tl.ID)
-	waitForStatus(t, store, tl.ID, taskListDone, 3*time.Second) // any item done -> list "done"
+	waitForStatus(t, store, tl.ID, taskListDone, 4*time.Second) // any item done -> list "done"
 
 	got, _ := store.Get(tl.ID)
 	if got.Items[0].Status != "done" {
@@ -139,6 +140,49 @@ func TestEngine_PlanExec_FailedAcceptanceMarksItemStuck(t *testing.T) {
 	p, _ := store.GetPlan(tl.ID)
 	if p.Steps[0].Status != "done" || p.Steps[1].Status != "stuck" {
 		t.Fatalf("step statuses = %q/%q", p.Steps[0].Status, p.Steps[1].Status)
+	}
+}
+
+func TestEngine_PlanExec_StepRetriesBeforeStuck(t *testing.T) {
+	store, _ := NewStore(t.TempDir())
+	tl, _ := store.Create("c1", "T", []string{"the item"})
+	_ = store.SetMode(tl.ID, ModePlanner)
+	plan := Plan{Steps: []PlanStep{{ID: "S1", ItemID: "1", Text: "flaky"}}}
+
+	var checkCalls int32
+	eng, _, _ := newPlanExecEngine(t, store, plan,
+		WithAutoApprovePlan(true),
+		WithMaxExecutorAttempts(3),
+		WithAcceptanceChecker(func(ctx context.Context, listID string, step PlanStep) (bool, string, error) {
+			// fail the first two acceptance checks, pass the third
+			return atomic.AddInt32(&checkCalls, 1) >= 3, "not yet", nil
+		}),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_ = eng.Start(ctx, tl.ID)
+	waitForStatus(t, store, tl.ID, taskListDone, 18*time.Second)
+
+	got, _ := store.Get(tl.ID)
+	if got.Items[0].Status != "done" {
+		t.Fatalf("item status = %q, want done (retry should have recovered it)", got.Items[0].Status)
+	}
+	if n := atomic.LoadInt32(&checkCalls); n < 3 {
+		t.Fatalf("acceptance checked %d times, want >= 3 (2 retries)", n)
+	}
+}
+
+func TestStore_SetAutoApprovePlan(t *testing.T) {
+	s := newStore(t)
+	tl, _ := s.Create("c", "t", []string{"x"})
+	if got, _ := s.Get(tl.ID); got.AutoApprovePlan {
+		t.Fatal("default should be false")
+	}
+	if err := s.SetAutoApprovePlan(tl.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(tl.ID); !got.AutoApprovePlan {
+		t.Fatal("SetAutoApprovePlan did not persist")
 	}
 }
 

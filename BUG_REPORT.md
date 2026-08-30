@@ -147,6 +147,59 @@ canlı doğrulaması gerekiyor**. Doğrulanınca buradan silinecek (git log kay�
   `runCheckCommand` (kabul-komutu, ör. `go test ./...`) 180s → config'lenebilir
   `TaskLoopConfig.AcceptanceCommandTimeoutSec` (default 300).
 
+### BUG-PLAN3..8 — 2. canlı test turu (Sonnet planlayıcı ile), planexec 1/8 maddede takıldı
+
+2026-08-30 gece, güçlü planlayıcı (`claude-3-5-sonnet` local proxy) ile ikinci
+tur. **Planlayıcı bu sefer sorunsuz çalıştı** — `create_task_md` mükemmel
+Task.md yazdı, `start_self_driving_task` planexec listesi kurdu, planlayıcı
+turu 8 adımlık (literal_content + acceptance_checks + DAG) 20 KB'lık geçerli
+`Plan.md` üretti, liste `awaiting-plan-approval`'a düştü. API'den approve →
+`executing` → S1 (`db.py` + `blog.db`) **gerçekten çalıştı, item 1 done**.
+Sonra 6 bug yüzünden 1/8'de durdu:
+
+- **BUG-PLAN3 — `# onay: otomatik` ve `# hafıza: kapalı` Task.md header'ları
+  parse ediliyor ama TÜKETİLMİYOR.** `CreateTaskListFromTaskMd` yalnızca
+  `Headers["mod"]`'u okuyor. `AutoApprovePlan` global config; per-liste
+  auto-approve alanı yok. Model header'ı yazıyor, hiçbir etkisi olmuyor →
+  liste onay kapısında asılı kalıyor.
+- **BUG-PLAN4 — Görevler sekmesindeki kart `task_detail_screen.dart`'ı
+  (Faz F onay UI'ı) AÇMIYOR.** Kart tıklaması `tasks_screen.dart`'ın eski
+  `_showDetailDialog` modalını açıyor: statüyü **"Idle"** gösteriyor (gerçek:
+  `awaiting-plan-approval`), radio-buton madde listesi + "Close". Plan onay
+  butonu YOK. `# onay` de bozuk olduğundan (BUG-PLAN3) UI'dan planı
+  onaylamanın **hiçbir yolu yok** — planexec modu UI'dan kilitli.
+- **BUG-PLAN5 — paralel step goroutine'lerinden eşzamanlı `SavePlan` yarışı.**
+  `MaxParallelSteps=3` step goroutine'i `IncrementStepAttempts` → `mutatePlan`
+  → `SavePlan` → `fileutil.AtomicWrite` (tmp + rename) çağırıyor. İki goroutine
+  aynı `.plan.json.tmp`'yi yazıp rename edince biri `rename …tmp: no such file
+  or directory` alıyor. `mutatePlan` yorumu "tek yazar: engine goroutine'i"
+  diyor ama artık yanlış — `runOneStep` paralel goroutine'lerden çağırıyor.
+  Transient (bu turda öldürmedi) ama attempt sayacı kaybı + potansiyel plan
+  bozulması.
+- **BUG-PLAN6 — fuzzy kabul kontrolü non-git projede her zaman başarısız.**
+  `runFuzzyCheck` bağlam olarak `git -C projectPath diff --stat` kullanıyor.
+  `~/memo-blog-test` git deposu değil → çıktı boş → doğrulayıcı "değişiklik
+  özeti boş, ölçüt doğrulanamadı" → adım stuck (S7/style.css).
+- **BUG-PLAN7 (HARD BLOCKER) — `command` kabul kontrolü `expect: "present"`'i
+  stdout substring'i sanıyor.** Planlayıcı grep semantiğini (`expect:
+  "present"`) `command` çeklerine de kopyalıyor:
+  `{"kind":"command","spec":"python3 -c \"...print(callable(...))\"","expect":"present"}`.
+  Komut exit 0 veriyor ama stdout `True`, `present` değil → `runCheckCommand`
+  "output missing present" → adım stuck. S2 böyle takıldı, S3-S8 hepsi S2'ye
+  bağlı olduğu için art arda stuck → 1/8.
+- **BUG-PLAN8 (HARD BLOCKER) — takılan adım ne retry ediliyor ne escalate.**
+  `executePlan` bir adım kabul kontrolünü geçmeyince **1 denemede** `stuck`
+  yapıyor. `escalateStuckSteps` ise `s.Attempts >= maxAttempts` (3) istiyor —
+  ama hiçbir şey attempt'i 1'in üstüne çıkarmıyor (per-adım retry döngüsü hiç
+  yazılmamış). Sonuç: `MaxExecutorAttempts` fiilen "1 dene, bırak";
+  escalation acceptance-check hatalarında hiç tetiklenmiyor.
+
+**Ayrıca (bug değil ama gürültü):** her mesajda `LATENCY app.retrieve_memory
+status=error` + `memory_save_sync status=error` — embedder :8082'de
+başlamamış/erişilemiyor olabilir, "Memory off — RAG not working" banner'ıyla
+tutarlı. Provider auto-revert (frontend her reconnect'te aktif provider'ı
+kendi cache'ine çeviriyor) da tekrar görüldü — pre-existing, v4.5.0 dışı.
+
 ---
 
 ## Bilgi notları (bug değil, takip amaçlı)

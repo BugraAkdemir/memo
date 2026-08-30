@@ -521,6 +521,9 @@ func (e *Engine) run(ctx context.Context, listID string) {
 // already exists, so it skips straight to execution.
 func (e *Engine) runPlanExec(ctx context.Context, listID string, tl *TaskList) {
 	granularity, autoApprove := e.planCfg()
+	if tl.AutoApprovePlan {
+		autoApprove = true // per-list "# onay: otomatik" wins
+	}
 	if !e.store.HasPlan(listID) {
 		if err := e.store.SetStatus(listID, taskListPlanning); err != nil {
 			logx.Printf("TASKLOOP: set planning %s: %v", listID, err)
@@ -718,21 +721,57 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 			return
 		}
 
+		// Reload once to read the fresh per-step Attempts (runOneStep bumped
+		// them) before deciding retry vs. stuck.
+		fresh, _ := e.store.GetPlan(listID)
+		attemptsOf := func(id string) int {
+			if fresh == nil {
+				return 0
+			}
+			for _, s := range fresh.Steps {
+				if s.ID == id {
+					return s.Attempts
+				}
+			}
+			return 0
+		}
+
 		progressed := false
+		completed, retried := 0, 0
 		for r := range results {
-			if r.err != nil {
-				logx.Printf("TASKLOOP: step %s/%s stuck: %v", listID, r.id, r.err)
-				_ = e.store.SetStepStatus(listID, r.id, "stuck", r.err.Error())
-			} else {
+			if r.err == nil {
 				_ = e.store.SetStepStatus(listID, r.id, "done", "")
 				e.emitEvent("taskloop:step_done", fmt.Sprintf("%s:%s", listID, r.id))
 				progressed = true
+				completed++
+			} else if attemptsOf(r.id) < maxAttempts {
+				// Not out of tries yet — back to pending so the next wave
+				// re-runs it (coder gets another shot, then escalation).
+				logx.Printf("TASKLOOP: step %s/%s failed (attempt %d/%d), retrying: %v",
+					listID, r.id, attemptsOf(r.id), maxAttempts, r.err)
+				_ = e.store.SetStepStatus(listID, r.id, "pending", r.err.Error())
+				progressed = true // a wave with a retry queued is still forward motion
+				retried++
+			} else {
+				logx.Printf("TASKLOOP: step %s/%s stuck after %d attempts: %v", listID, r.id, maxAttempts, r.err)
+				_ = e.store.SetStepStatus(listID, r.id, "stuck", r.err.Error())
 			}
 			if r.summary != "" {
 				state = appendState(state, r.summary)
 			}
 		}
 		_ = e.store.SaveState(listID, state)
+
+		// A wave that only re-queued retries and completed nothing: brief
+		// backoff so a fast-failing coder doesn't spin.
+		if retried > 0 && completed == 0 {
+			select {
+			case <-ctx.Done():
+				_ = e.store.SetStatus(listID, taskListPaused)
+				return
+			case <-time.After(3 * time.Second):
+			}
+		}
 
 		reloaded, gerr := e.store.GetPlan(listID)
 		if gerr != nil {

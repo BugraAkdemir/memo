@@ -61,6 +61,13 @@ func (a *App) CreateTaskListFromTaskMd(chatID, title, taskMdPath string) (*taskl
 			logx.Printf("taskloop: set mode planlayıcı %s: %v", tl.ID, err)
 		}
 	}
+	// "# onay: otomatik" skips the plan approval gate for this list.
+	switch strings.ToLower(strings.TrimSpace(parsed.Headers["onay"])) {
+	case "otomatik", "auto", "automatic":
+		if err := a.taskloopStore.SetAutoApprovePlan(tl.ID, true); err != nil {
+			logx.Printf("taskloop: set auto-approve %s: %v", tl.ID, err)
+		}
+	}
 	for i, it := range parsed.Items {
 		if i >= len(tl.Items) {
 			break

@@ -50,9 +50,12 @@ type TaskList struct {
 	// Mode selects the execution strategy: "" / "worker" (v4.4.0 default —
 	// one agent turn per item) or "planlayıcı" (v4.5.0 planner/executor — a
 	// reviewed Plan.md of small steps run by a coder model). See plan.go.
-	Mode      string `json:"mode,omitempty"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	Mode string `json:"mode,omitempty"`
+	// AutoApprovePlan set from a Task.md "# onay: otomatik" header — skips the
+	// plan approval gate for this list regardless of the global setting.
+	AutoApprovePlan bool `json:"auto_approve_plan,omitempty"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
 }
 
 // Task list execution modes.
@@ -104,6 +107,11 @@ type Store struct {
 	dir  string
 	mu   sync.RWMutex
 	list map[string]*TaskList
+	// planMu serialises the per-list plan file (<id>.plan.json). Unlike the
+	// task list itself, the plan is written from the parallel step goroutines
+	// (IncrementStepAttempts / SetStepStatus inside runOneStep), so it needs
+	// its own lock — the atomic write's temp file races otherwise.
+	planMu sync.Mutex
 }
 
 func NewStore(dir string) (*Store, error) {
@@ -378,11 +386,30 @@ func (s *Store) SetMode(id, mode string) error {
 	return s.save(tl)
 }
 
+// SetAutoApprovePlan records the per-list plan-approval override.
+func (s *Store) SetAutoApprovePlan(id string, v bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tl, ok := s.list[id]
+	if !ok {
+		return fmt.Errorf("tasklist %s not found", id)
+	}
+	tl.AutoApprovePlan = v
+	tl.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	return s.save(tl)
+}
+
 func (s *Store) planPath(id string) string { return filepath.Join(s.dir, id+".plan.json") }
 
 // SavePlan writes a list's Plan as <id>.plan.json (the canonical copy;
 // Plan.md is only the review surface).
 func (s *Store) SavePlan(listID string, p Plan) error {
+	s.planMu.Lock()
+	defer s.planMu.Unlock()
+	return s.savePlanLocked(listID, p)
+}
+
+func (s *Store) savePlanLocked(listID string, p Plan) error {
 	p.ListID = listID
 	if p.CreatedAt == "" {
 		p.CreatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -417,15 +444,17 @@ func (s *Store) HasPlan(listID string) bool {
 	return err == nil
 }
 
-// mutatePlan loads, applies fn, and re-saves a list's plan under no lock (the
-// plan file has a single writer: the engine goroutine for that list).
+// mutatePlan loads, applies fn, and re-saves a list's plan under planMu — the
+// parallel step goroutines all call this via SetStepStatus / IncrementStepAttempts.
 func (s *Store) mutatePlan(listID string, fn func(*Plan)) error {
+	s.planMu.Lock()
+	defer s.planMu.Unlock()
 	p, err := s.GetPlan(listID)
 	if err != nil {
 		return err
 	}
 	fn(p)
-	return s.SavePlan(listID, *p)
+	return s.savePlanLocked(listID, *p)
 }
 
 // SetStepStatus updates one step's status (and optional note).

@@ -31,7 +31,8 @@ func (a *App) planTask(ctx context.Context, listID, chatID, projectRoot, preambl
 
 	sctx, scancel := context.WithCancel(ctx)
 	defer scancel()
-	streamCh, err := exec.RunStream(sctx, "", model, effort, msgs, func(agent.AgentEvent) {}, projectRoot)
+	streamCh, err := exec.RunStream(sctx, "", model, effort, msgs,
+		func(ev agent.AgentEvent) { a.emitStepToolActivity(listID, ev) }, projectRoot)
 	if err != nil {
 		return nil, err
 	}

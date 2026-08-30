@@ -548,6 +548,7 @@ func (e *Engine) runPlanExec(ctx context.Context, listID string, tl *TaskList) {
 			logx.Printf("TASKLOOP: set planning %s: %v", listID, err)
 		}
 		e.emitEvent("taskloop:planning", listID)
+		e.emitActivity(listID, "plan_start", "Plan hazırlanıyor — repo inceleniyor")
 
 		preamble := e.buildPlanningPreamble(tl)
 		root := ""
@@ -591,6 +592,7 @@ func (e *Engine) runPlanExec(ctx context.Context, listID string, tl *TaskList) {
 			e.failPlan(listID, err.Error())
 			return
 		}
+		e.emitActivity(listID, "plan_done", fmt.Sprintf("Plan hazır — %d adım", len(plan.Steps)))
 		if tl.TaskMdPath != "" {
 			if err := WritePlanMd(PlanMdPath(tl.TaskMdPath), *plan, itemTextMap(tl)); err != nil {
 				logx.Printf("TASKLOOP: write Plan.md %s: %v", listID, err)
@@ -728,6 +730,7 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 					return
 				}
 				e.rtSetItem(listID, step.Text)
+				e.emitActivity(listID, "step_start", step.ID+" · "+truncateLine(step.Text, 140))
 				out, rerr := e.runOneStep(ctx, listID, step, state)
 				results <- stepRes{step.ID, rerr, summariseStep(step, out, rerr)}
 			}(step)
@@ -761,6 +764,7 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 			if r.err == nil {
 				_ = e.store.SetStepStatus(listID, r.id, "done", "")
 				e.emitEvent("taskloop:step_done", fmt.Sprintf("%s:%s", listID, r.id))
+				e.emitActivity(listID, "step_done", truncateLine(strings.TrimPrefix(r.summary, "- "), 200))
 				progressed = true
 				completed++
 			} else if attemptsOf(r.id) < maxAttempts {
@@ -769,11 +773,13 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 				logx.Printf("TASKLOOP: step %s/%s failed (attempt %d/%d), retrying: %v",
 					listID, r.id, attemptsOf(r.id), maxAttempts, r.err)
 				_ = e.store.SetStepStatus(listID, r.id, "pending", r.err.Error())
+				e.emitActivity(listID, "step_retry", fmt.Sprintf("%s tekrar deneniyor (%d/%d)", r.id, attemptsOf(r.id), maxAttempts))
 				progressed = true // a wave with a retry queued is still forward motion
 				retried++
 			} else {
 				logx.Printf("TASKLOOP: step %s/%s stuck after %d attempts: %v", listID, r.id, maxAttempts, r.err)
 				_ = e.store.SetStepStatus(listID, r.id, "stuck", r.err.Error())
+				e.emitActivity(listID, "step_stuck", fmt.Sprintf("%s takıldı — %s", r.id, truncateLine(r.err.Error(), 160)))
 			}
 			if r.summary != "" {
 				state = appendState(state, r.summary)
@@ -829,6 +835,7 @@ func (e *Engine) escalateStuckSteps(ctx context.Context, listID string, tl *Task
 		}
 		input := EscalationInput{StepID: s.ID, Error: s.Note}
 		e.emitEvent("taskloop:escalating", fmt.Sprintf("%s:%s", listID, s.ID))
+		e.emitActivity(listID, "escalate", s.ID+" takıldı → yeniden planlanıyor")
 		repl, err := e.escalator(ctx, listID, s, input)
 		if err != nil {
 			if isOfflineErr(err) {
@@ -1102,6 +1109,30 @@ func (e *Engine) emitEvent(name, data string) {
 	if e.onEvent != nil {
 		e.onEvent(name, data)
 	}
+}
+
+const activitySep = "\x1f" // unit separator: listID<US>kind<US>text
+
+// emitActivity emits one human-readable "here is what I'm doing right now" line
+// for the live chat activity block (v4.6.0). kind is one of plan_start,
+// plan_done, step_start, step_done, step_retry, step_stuck, escalate, tool,
+// paused, resumed. It also refreshes the list's last-activity timestamp so a
+// client can tell "working" from "hung".
+func (e *Engine) emitActivity(listID, kind, text string) {
+	e.rtTouch(listID)
+	e.emitEvent("taskloop:activity", listID+activitySep+kind+activitySep+text)
+}
+
+// EmitActivity is the exported hook the host (internal/app) uses to forward
+// per-tool step activity from the coder turn's AgentEvent callback.
+func (e *Engine) EmitActivity(listID, kind, text string) { e.emitActivity(listID, kind, text) }
+
+func truncateLine(s string, n int) string {
+	s = strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 func itemTexts(tl *TaskList) []string {

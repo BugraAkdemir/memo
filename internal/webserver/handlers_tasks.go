@@ -100,6 +100,11 @@ func (s *Server) handleTaskControlByID(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"status": "paused"})
 	case "resume":
 		if err := s.fullBridge.StartTaskList(context.Background(), id); err != nil {
+			// Already running → benign no-op, not a 500.
+			if strings.Contains(err.Error(), "zaten çalışıyor") {
+				writeJSON(w, map[string]string{"status": "running"})
+				return
+			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

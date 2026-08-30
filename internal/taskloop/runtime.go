@@ -16,6 +16,9 @@ type RunningTaskInfo struct {
 	ElapsedSec  int      `json:"elapsed_sec"`
 	SubAgents   []string `json:"sub_agents"`
 	NotifyLevel string   `json:"notify_level"`
+	// SilentSec is how many seconds since the last activity/step signal — a
+	// client uses it to tell "coder is working on a hard step" from "hung".
+	SilentSec int `json:"silent_sec"`
 	// planner/executor mode only (zero otherwise):
 	Mode           string `json:"mode,omitempty"`
 	PlanSteps      int    `json:"plan_steps,omitempty"`
@@ -25,9 +28,10 @@ type RunningTaskInfo struct {
 }
 
 type listRuntime struct {
-	startedAt   time.Time
-	currentItem string
-	subAgents   []string
+	startedAt      time.Time
+	lastActivityAt time.Time
+	currentItem    string
+	subAgents      []string
 }
 
 func (e *Engine) rtStart(listID string) {
@@ -35,7 +39,18 @@ func (e *Engine) rtStart(listID string) {
 	if e.runtimes == nil {
 		e.runtimes = make(map[string]*listRuntime)
 	}
-	e.runtimes[listID] = &listRuntime{startedAt: time.Now()}
+	now := time.Now()
+	e.runtimes[listID] = &listRuntime{startedAt: now, lastActivityAt: now}
+	e.rtMu.Unlock()
+}
+
+// rtTouch refreshes the last-activity timestamp — called on every activity/step
+// signal so SilentSec measures "time since we last did something visible".
+func (e *Engine) rtTouch(listID string) {
+	e.rtMu.Lock()
+	if rt := e.runtimes[listID]; rt != nil {
+		rt.lastActivityAt = time.Now()
+	}
 	e.rtMu.Unlock()
 }
 
@@ -43,6 +58,7 @@ func (e *Engine) rtSetItem(listID, itemText string) {
 	e.rtMu.Lock()
 	if rt := e.runtimes[listID]; rt != nil {
 		rt.currentItem = itemText
+		rt.lastActivityAt = time.Now()
 	}
 	e.rtMu.Unlock()
 }
@@ -91,6 +107,7 @@ func (e *Engine) Runtime(listID string) (RunningTaskInfo, bool) {
 		ItemCount:   len(tl.Items),
 		CurrentItem: rt.currentItem,
 		ElapsedSec:  int(time.Since(rt.startedAt).Seconds()),
+		SilentSec:   int(time.Since(rt.lastActivityAt).Seconds()),
 		SubAgents:   subs,
 		NotifyLevel: string(tl.NotifyLevel),
 		Mode:        tl.Mode,

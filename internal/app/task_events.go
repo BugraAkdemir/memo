@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -13,6 +14,8 @@ type taskChatEvent struct {
 	ListID     string `json:"list_id"`
 	ChatID     string `json:"chat_id"`
 	Detail     string `json:"detail,omitempty"`
+	Kind       string `json:"kind,omitempty"` // for "activity" events: plan_start|plan_done|step_start|step_done|step_retry|step_stuck|escalate|tool|paused|resumed
+	Text       string `json:"text,omitempty"` // for "activity" events: the human-readable line
 	Phase      string `json:"phase,omitempty"`
 	Mode       string `json:"mode,omitempty"`
 	StepDone   int    `json:"step_done"`
@@ -21,6 +24,7 @@ type taskChatEvent struct {
 	ItemTotal  int    `json:"item_total"`
 	Current    string `json:"current,omitempty"`
 	ElapsedSec int    `json:"elapsed_sec"`
+	SilentSec  int    `json:"silent_sec"`
 }
 
 // SubscribeTaskEvents registers a subscriber for enriched task-loop event
@@ -70,6 +74,34 @@ func (a *App) publishTaskEvent(name, data string) {
 		return
 	}
 
+	// "taskloop:activity" carries "listID\x1fkind\x1ftext" — a live "here's what
+	// I'm doing" line for the chat activity block. Parsed before the generic
+	// "listID:extra" split (the text may contain ':').
+	if name == "taskloop:activity" {
+		parts := strings.SplitN(data, "\x1f", 3)
+		if len(parts) != 3 {
+			return
+		}
+		listID := parts[0]
+		if a.taskloopStore != nil {
+			if _, err := a.taskloopStore.Get(listID); err != nil {
+				return
+			}
+		}
+		ev := taskChatEvent{Event: "activity", ListID: listID, Kind: parts[1], Text: parts[2]}
+		a.fillTaskEventSnapshot(&ev, listID)
+		if payload, err := json.Marshal(ev); err == nil {
+			line := string(payload)
+			for _, ch := range subs {
+				select {
+				case ch <- line:
+				default:
+				}
+			}
+		}
+		return
+	}
+
 	listID, extra := data, ""
 	if i := strings.IndexByte(data, ':'); i >= 0 {
 		listID, extra = data[:i], data[i+1:]
@@ -113,13 +145,52 @@ func (a *App) RunningTaskEventSnapshot() []string {
 			Event: "snapshot", ListID: r.ID, ChatID: r.ChatID, Phase: r.Phase, Mode: r.Mode,
 			StepDone: r.PlanStepsDone, StepTotal: r.PlanSteps,
 			ItemDone: r.DoneCount, ItemTotal: r.ItemCount,
-			Current: r.CurrentItem, ElapsedSec: r.ElapsedSec,
+			Current: r.CurrentItem, ElapsedSec: r.ElapsedSec, SilentSec: r.SilentSec,
 		}
 		if b, err := json.Marshal(ev); err == nil {
 			out = append(out, string(b))
 		}
 	}
 	return out
+}
+
+// postTaskFinishMessage drops a single, plain (no LLM) assistant line into the
+// task's chat when the loop ends, so there is a persisted record in the
+// transcript even though the live activity block is ephemeral. data is
+// "listID:done" / "listID:failed".
+func (a *App) postTaskFinishMessage(data string) {
+	id, final := data, ""
+	if i := strings.IndexByte(data, ':'); i >= 0 {
+		id, final = data[:i], data[i+1:]
+	}
+	if a.taskloopStore == nil {
+		return
+	}
+	tl, err := a.taskloopStore.Get(id)
+	if err != nil || tl.ChatID == "" {
+		return
+	}
+	sm := a.getSessionManager()
+	if sm == nil {
+		return
+	}
+	done, stuck := 0, 0
+	for _, it := range tl.Items {
+		switch it.Status {
+		case "done":
+			done++
+		case "stuck":
+			stuck++
+		}
+	}
+	total := len(tl.Items)
+	var msg string
+	if final == "failed" || stuck > 0 {
+		msg = fmt.Sprintf(a.t("⚠️ Görev kısmen bitti — %d/%d madde, %d takıldı.", "⚠️ Task partly finished — %d/%d items, %d stuck."), done, total, stuck)
+	} else {
+		msg = fmt.Sprintf(a.t("✅ Görev bitti — %d/%d madde tamamlandı.", "✅ Task done — %d/%d items completed."), done, total)
+	}
+	sm.AddMessageToSession(tl.ChatID, "assistant", msg, "", "")
 }
 
 func (a *App) fillTaskEventSnapshot(ev *taskChatEvent, listID string) {
@@ -138,6 +209,7 @@ func (a *App) fillTaskEventSnapshot(ev *taskChatEvent, listID string) {
 			ev.ItemDone, ev.ItemTotal = rt.DoneCount, rt.ItemCount
 			ev.Current = rt.CurrentItem
 			ev.ElapsedSec = rt.ElapsedSec
+			ev.SilentSec = rt.SilentSec
 			if ev.ChatID == "" {
 				ev.ChatID = rt.ChatID
 			}

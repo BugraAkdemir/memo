@@ -50,7 +50,7 @@ SADECE şu JSON'u döndür: {"steps":[{"id":"","item_id":"...","text":"...","dif
 		[]provider.Message{
 			provider.TextMessage("system", sys),
 			provider.TextMessage("user", user.String()),
-		}, func(agent.AgentEvent) {}, projectPath)
+		}, func(ev agent.AgentEvent) { a.emitStepToolActivity(listID, ev) }, projectPath)
 	if err != nil {
 		return nil, err
 	}

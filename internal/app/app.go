@@ -712,6 +712,9 @@ func (a *App) Startup(ctx context.Context) {
 					}
 					a.clearTaskRunConfig(id)
 				}
+				if name == "tasklist:finished" {
+					a.postTaskFinishMessage(data)
+				}
 			},
 			taskloop.WithRuleReader(taskloop.ReadRules),
 			taskloop.WithSystemGuidance(a.memoSystemGuidance),

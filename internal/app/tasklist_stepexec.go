@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -51,7 +52,8 @@ func (a *App) runPlanStep(ctx context.Context, listID string, step taskloop.Plan
 
 	sctx, scancel := context.WithCancel(ctx)
 	defer scancel()
-	streamCh, err := subExec.RunStream(sctx, "", model, effort, msgs, func(agent.AgentEvent) {}, projectPath)
+	streamCh, err := subExec.RunStream(sctx, "", model, effort, msgs,
+		func(ev agent.AgentEvent) { a.emitStepToolActivity(listID, ev) }, projectPath)
 	if err != nil {
 		return "", err
 	}
@@ -60,6 +62,69 @@ func (a *App) runPlanStep(ctx context.Context, listID string, step taskloop.Plan
 		return "", fmt.Errorf("coder: %w", derr)
 	}
 	return strings.TrimSpace(out), nil
+}
+
+// toolVerbTR maps an agent tool name to a short Turkish verb for the live
+// activity block — the Go counterpart of chat_message_list.dart's
+// _AgentStatusBadge._label.
+var toolVerbTR = map[string]string{
+	"read_file":      "Dosya okudu",
+	"write_file":     "Dosya yazdı",
+	"edit_file":      "Dosya düzenledi",
+	"insert_line":    "Satır ekledi",
+	"delete_lines":   "Sildi",
+	"delete_file":    "Dosya sildi",
+	"run_command":    "Komut",
+	"search_files":   "Arama yaptı",
+	"list_directory": "Klasör listeledi",
+	"web_search":     "Web araması",
+	"fetch_page":     "Sayfa okudu",
+}
+
+// emitStepToolActivity forwards one coder/planner tool call into the live task
+// activity stream. Only finished results/errors — tool_executing and permission
+// events are noise for a "what did it do" log.
+func (a *App) emitStepToolActivity(listID string, ev agent.AgentEvent) {
+	if a.taskloopEngine == nil {
+		return
+	}
+	if ev.Type != agent.EventToolResult && ev.Type != agent.EventToolError {
+		return
+	}
+	verb := toolVerbTR[ev.ToolName]
+	if verb == "" {
+		verb = ev.ToolName
+	}
+	line := verb
+	if arg := shortToolArg(ev.Args); arg != "" {
+		line = verb + ": " + arg
+	}
+	if ev.Type == agent.EventToolError {
+		line = "⚠ " + line
+	}
+	a.taskloopEngine.EmitActivity(listID, "tool", line)
+}
+
+// shortToolArg pulls a compact identifier (a path, a command) out of an agent
+// event's args JSON for the activity line.
+func shortToolArg(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return ""
+	}
+	for _, k := range []string{"path", "file", "file_path", "command", "cmd", "query", "url", "pattern", "dir"} {
+		if s, ok := m[k].(string); ok && strings.TrimSpace(s) != "" {
+			s = strings.TrimSpace(s)
+			if len(s) > 80 {
+				s = s[:80] + "…"
+			}
+			return s
+		}
+	}
+	return ""
 }
 
 func coderStepSystemPrompt() string {

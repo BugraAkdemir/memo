@@ -1,3 +1,54 @@
+# Ek (2026-08-30, devam 45) — v4.6.0'ın 9 fazının TAMAMI uygulandı (branch aynı)
+
+Kullanıcı "kural 5'e uyma, tüm planı bitir, sonra test et" dedi. `~/.claude/
+plans/selam-agents-md-handoff-md-iterative-pearl.md`'deki 9 fazın tamamı bu
+oturumda yazıldı. **`main` hâlâ v4.2.0 embedded; merge/PR/tag + sürüm kararı
+kullanıcıda.**
+
+**Commit'ler (`0741332..HEAD`, hepsi ayrı, Conventional Commits, AI-attr yok):**
+
+| Faz | commit | ne yaptı |
+|-----|--------|----------|
+| G | `58e95f5` | durdurunca kısmi çıktıyı koru — 4 `ctxDone` dalı (`drainAgentStream`, `callLLMStream` ext+local, CLI) artık `persistInterruptedTurn` ile kısmi metni `finishStream` yoluyla kalıcılaştırıyor + stop işareti; Flutter `stopStreaming` 3 dalı refresh'ten sonra overlay temizliyor |
+| I | `dd803d6` | plan maddeleri artımlı işaretleniyor — `syncItemProgress` her dalga sonunda; `finishPlanItems` sadece kalanları stuck yapıyor. BUG-PLAN11 |
+| A | `7dd6538` | `a.streamMu` → RWMutex geçit; sohbet-başına `chatStreamLocks` (chat_locks.go). `sendMessageStreamInnerTo` + `SendMessage(WithImage/File)` + `SendMessageWith{Image,File}Stream` + `WhatsAppChatStream` per-chat kilit. incognito + `runAgentRoutine` yazma kilidinde kalıyor |
+| C | `6991334` | `a.taskloopRunMu` kaldırıldı; `TaskLoopConfig.MaxConcurrentLists` (0=sınırsız) + `Engine.Start` geçidi + `ApplyConfig` param |
+| B | `3e01d648` | planexec rol-başına provider — `resolveOneRoleProvider` ("local" / "provider" / "provider/model" → özel tek-provider router), `planexecRouting`/`planexecRoleRouter`, `planTask`/`runPlanStep`/`escalateStep` + fuzzy/compactor (`callLLMForReviewWith`). `a.activeProviderName`'e dokunmuyor |
+| H | `def5ac1c` | `get_task_status` salt-okunur ajan aracı (`tools.TaskStatus` + adapter → `Engine.RunningTasks()`/`Runtime()`), sistem prompt'a uydurma-yasağı satırı. BUG-PLAN10 |
+| D | `0814277`+`63cc1ad` | `App.publishTaskEvent` fan-out + `SubscribeTaskEvents` + `GET /api/tasks/events` SSE (snapshot priming + 25s keepalive); Flutter `taskEventStream` + `ChatTaskState.fold` + `chatTasksProvider` (3s reconnect, gate-aware) + `chatTaskForProvider` |
+| E | `63cc1ad` | `task_activity_card.dart` — composer üstünde sabit; tek kanonik ilerleme satırı, faz rozeti, son olaylar, plan onay bottom-sheet (BUG-PLAN9), Duraklat/Devam/Görevler'de aç (BUG-PLAN12). l10n TR+EN |
+| F | `9df07d5` | görev koşarken `chat_input` TextField disable + kırmızı→Duraklat; `paused` iken `devam\|continue\|resume` → `resumeTask`, diğer mesajlar yan soru + `ResumeNotes` kaydı. Backend: `TaskList.ResumeNotes`, `Store.AddResumeNote/DrainResumeNotes`, `runPlanStep` prompt'a ekliyor, `POST /api/tasks/{id}/note` |
+
+Ek: `9daacea8` test tidy.
+
+**Taslaktan sapılan yerler (planda da not düşülmüştü):** BUG-PLAN11 kök sebep
+düzeltildi (eşleme zaten doğru, sorun zamanlamaydı); Faz C bypass-toggle işi
+zaten yapılmıştı → sadece `taskloopRunMu` kaldırıldı; `taskloop:paused` aslında
+`Stop()`'ta zaten yayılıyor (D için ek emit gerekmedi); D fan-out ham `onEvent`
+closure'una takıldı (`dispatchTaskEvent` bazı olayları yutuyor).
+
+**Doğrulama (tam):**
+- `CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` temiz.
+- `go test -tags sqlite_fts5 ./... -race` → **48 paket, tamamı `ok`** (memo kökü
+  dahil). Yeni testler: `TestDrainAgentStream_CtxDone_KeepsPartialReply`,
+  `TestEngine_PlanExec_ItemsCompleteIncrementally`,
+  `TestSendMessageStreamTo_PerChatLock_OtherChatsNotBlocked`,
+  `TestEngine_MaxConcurrentLists_Gate`, `TestResolveOneRoleProvider_Routing`,
+  `TestTaskStatusForChat_*`, `TestPublishTaskEvent_FanOut`.
+- `flutter analyze lib/` → 5 pre-existing info (calendar_screen, chat_sidebar,
+  chat_input'un dokunmadığım `use_build_context_synchronously`/`use_null_aware`
+  satırları — AGENTS.md'de "kabul edilebilir gürültü"). Dokunulan dosyalar temiz.
+- `flutter test` → **315 pass** (+ `ChatTaskState.fold` grubu).
+- Rule #8 grep `0741332..HEAD` tüm `.dart`'larda temiz.
+
+**Sıradaki:** kullanıcının canlı testi (gerçek masaüstü, `scripts/run_memo.sh`) —
+planda "Doğrulama > Canlı" bölümündeki 6 senaryo (iki sohbette farklı modelli iki
+planexec, sohbet kartından plan onayı, artımlı sayaç, duraklat+not+devam, düz
+ajan turu durdurma, "görev durumu" sorusu). BUG_REPORT.md'de PLAN9/10/11/12
+kapatılabilir. Merge/PR/tag + v4.6.0 release kullanıcının kararı.
+
+---
+
 # Ek (2026-08-30, devam 44) — v4.6.0 planı onaylandı + Faz G & I uygulandı (branch aynı)
 
 Kullanıcı geçen oturumda büyük özellik için bir plan taslağı yaptırmış, context

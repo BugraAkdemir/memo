@@ -16,6 +16,12 @@ type RunningTaskInfo struct {
 	ElapsedSec  int      `json:"elapsed_sec"`
 	SubAgents   []string `json:"sub_agents"`
 	NotifyLevel string   `json:"notify_level"`
+	// planner/executor mode only (zero otherwise):
+	Mode           string `json:"mode,omitempty"`
+	PlanSteps      int    `json:"plan_steps,omitempty"`
+	PlanStepsDone  int    `json:"plan_steps_done,omitempty"`
+	StateDocTokens int    `json:"state_doc_tokens,omitempty"`
+	StateDocBudget int    `json:"state_doc_budget,omitempty"`
 }
 
 type listRuntime struct {
@@ -76,7 +82,7 @@ func (e *Engine) Runtime(listID string) (RunningTaskInfo, bool) {
 	}
 	subs := make([]string, len(rt.subAgents))
 	copy(subs, rt.subAgents)
-	return RunningTaskInfo{
+	info := RunningTaskInfo{
 		ID:          tl.ID,
 		Title:       tl.Title,
 		ChatID:      tl.ChatID,
@@ -87,7 +93,21 @@ func (e *Engine) Runtime(listID string) (RunningTaskInfo, bool) {
 		ElapsedSec:  int(time.Since(rt.startedAt).Seconds()),
 		SubAgents:   subs,
 		NotifyLevel: string(tl.NotifyLevel),
-	}, true
+		Mode:        tl.Mode,
+	}
+	if tl.Mode == ModePlanner {
+		if p, err := e.store.GetPlan(listID); err == nil {
+			info.PlanSteps = len(p.Steps)
+			for _, s := range p.Steps {
+				if s.Status == "done" {
+					info.PlanStepsDone++
+				}
+			}
+		}
+		info.StateDocTokens = approxTokens(e.store.GetState(listID))
+		info.StateDocBudget = e.stateMaxTokens
+	}
+	return info, true
 }
 
 // RunningTasks returns a live view of every list currently executing.

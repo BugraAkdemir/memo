@@ -22,7 +22,18 @@ import (
 // ContextTokens for the active provider's model wins; an explicit global
 // MaxContextTokens override comes next; otherwise a conservative default.
 func (a *App) apiContextBudget() int {
-	// Explicit global override (Llama/GPU settings) applies to API too.
+	a.providerMu.RLock()
+	active := a.activeProviderName
+	a.providerMu.RUnlock()
+	return a.contextBudgetFor(active)
+}
+
+// contextBudgetFor returns the context-window token budget for a named
+// provider, following the model not the type: an explicit global
+// MaxContextTokens override wins, then the user-configured per-model
+// ContextTokens, then a conservative per-provider fallback. Used by the
+// planner/executor mode's context gauge as well as apiContextBudget.
+func (a *App) contextBudgetFor(providerName string) int {
 	a.cfgMu.RLock()
 	maxContextTokens := a.cfg.Llama.MaxContextTokens
 	a.cfgMu.RUnlock()
@@ -30,21 +41,15 @@ func (a *App) apiContextBudget() int {
 		return maxContextTokens
 	}
 
-	a.providerMu.RLock()
-	active := a.activeProviderName
-	a.providerMu.RUnlock()
-
-	// Per-model context window, set by the user when configuring the provider.
-	if a.providerCfgMgr != nil {
+	if a.providerCfgMgr != nil && providerName != "" {
 		for _, p := range a.providerCfgMgr.GetEnabled() {
-			if p.Name == active && p.ContextTokens > 0 {
+			if p.Name == providerName && p.ContextTokens > 0 {
 				return p.ContextTokens
 			}
 		}
 	}
 
-	// Fallback when the model's context window hasn't been set yet.
-	switch active {
+	switch providerName {
 	case "gemini":
 		return 1024 * 1024
 	case "claude":

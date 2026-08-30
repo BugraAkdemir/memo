@@ -142,6 +142,13 @@ type TaskLoopConfig struct {
 	MaxParallelSteps int `yaml:"max_parallel_steps" json:"max_parallel_steps"`
 	// HandoffStateMaxTokens before the state doc is compacted (default 2000).
 	HandoffStateMaxTokens int `yaml:"handoff_state_max_tokens" json:"handoff_state_max_tokens"`
+	// StreamIdleTimeoutSec: a planner/coder/escalator LLM stream is aborted
+	// only after this many seconds with NO new token (default 300). Total run
+	// time is unbounded as long as tokens keep flowing — a 3-hour plan is fine.
+	StreamIdleTimeoutSec int `yaml:"stream_idle_timeout_sec" json:"stream_idle_timeout_sec"`
+	// AcceptanceCommandTimeoutSec caps a single `command` acceptance check
+	// (e.g. `go test ./...`) — default 300.
+	AcceptanceCommandTimeoutSec int `yaml:"acceptance_command_timeout_sec" json:"acceptance_command_timeout_sec"`
 }
 
 // LiveModeConfig controls voice Live Mode independently of Beta — it
@@ -891,12 +898,14 @@ func Default() *AppConfig {
 		TaskLoop: TaskLoopConfig{
 			PlanningSelfConfig:    true,
 			SubAgents:             true,
-			StepGranularity:       "hybrid",
-			AutoApprovePlan:       false,
-			TaskMemory:            false,
-			MaxExecutorAttempts:   3,
-			MaxParallelSteps:      3,
-			HandoffStateMaxTokens: 2000,
+			StepGranularity:             "hybrid",
+			AutoApprovePlan:             false,
+			TaskMemory:                  false,
+			MaxExecutorAttempts:         3,
+			MaxParallelSteps:            3,
+			HandoffStateMaxTokens:       2000,
+			StreamIdleTimeoutSec:        300,
+			AcceptanceCommandTimeoutSec: 300,
 		},
 	}
 }

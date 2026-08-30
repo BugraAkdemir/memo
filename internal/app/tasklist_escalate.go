@@ -49,7 +49,9 @@ SADECE şu JSON'u döndür: {"steps":[{"id":"","item_id":"...","text":"...","dif
 	}
 	user.WriteString("\nBu adımı yeniden planla ve SADECE JSON döndür.")
 
-	streamCh, err := subExec.RunStream(ctx, "", model, effort,
+	sctx, scancel := context.WithCancel(ctx)
+	defer scancel()
+	streamCh, err := subExec.RunStream(sctx, "", model, effort,
 		[]provider.Message{
 			provider.TextMessage("system", sys),
 			provider.TextMessage("user", user.String()),
@@ -57,14 +59,12 @@ SADECE şu JSON'u döndür: {"steps":[{"id":"","item_id":"...","text":"...","dif
 	if err != nil {
 		return nil, err
 	}
-	var sb strings.Builder
-	for chunk := range streamCh {
-		if chunk.Error != "" {
-			return nil, fmt.Errorf("%s", chunk.Error) // string carries offline markers for isOfflineErr
-		}
-		sb.WriteString(chunk.Content)
+	out, derr := drainStreamIdle(streamCh, scancel, a.streamIdleTimeout())
+	if derr != nil {
+		// The raw string carries dial/DNS markers for isOfflineErr.
+		return nil, fmt.Errorf("%w", derr)
 	}
-	raw := strings.TrimSpace(sb.String())
+	raw := strings.TrimSpace(out)
 	if raw == "" {
 		return nil, fmt.Errorf("escalator produced no output")
 	}

@@ -32,6 +32,7 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
 
   late int _secondsLeft = _timeout.inSeconds;
   Timer? _countdownTimer;
+  Timer? _staleCheckTimer;
   bool _submitting = false;
   String? _error;
 
@@ -53,6 +54,7 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _staleCheckTimer?.cancel();
     super.dispose();
   }
 
@@ -104,19 +106,22 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
     });
     // ref.listen only fires on a live transition — it does nothing if
     // isSendingProvider was ALREADY false by the time this widget's first
-    // build ran. That race is real, not theoretical: reproduced live with
-    // the backend's own 60s auto-deny (internal/agent/executor.go) firing
-    // and the turn ending before the dialog even finished mounting off a
-    // slow agent_event delivery, leaving it permanently stuck - every
-    // button just re-fails against a requestId the backend had already
-    // discarded, with no way to dismiss it at all (not even Escape).
-    // Checking the CURRENT value on every build closes that window: once
-    // it's false, schedule the pop after this frame (Navigator calls
-    // during build are not allowed) instead of waiting for a transition
-    // that already happened.
-    if (!ref.read(isSendingProvider) && !_submitting) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) Navigator.of(context).pop();
+    // build ran (turn ended before the dialog finished mounting off a slow
+    // agent_event delivery). But a bare "false right now → pop" also killed a
+    // legitimately-live dialog: during an agentic loop isSendingProvider can
+    // read false for a frame at a tool-round boundary right as create_task_md
+    // / start_self_driving_task raise their permission request, and the
+    // dialog flashed open and shut before the user could answer while the
+    // backend still waited its full 60s (BUG-PERM1, reproduced live).
+    // Debounce it: only pop if it is STILL not-sending ~1.4s later.
+    if (!ref.read(isSendingProvider) && !_submitting && _staleCheckTimer == null) {
+      _staleCheckTimer = Timer(const Duration(milliseconds: 1400), () {
+        if (mounted &&
+            !_submitting &&
+            !ref.read(isSendingProvider) &&
+            widget.event.requestId != null) {
+          Navigator.of(context).pop();
+        }
       });
     }
 

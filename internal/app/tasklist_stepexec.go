@@ -39,18 +39,17 @@ func (a *App) runPlanStep(ctx context.Context, listID string, step taskloop.Plan
 		provider.TextMessage("user", coderStepUserPrompt(projectPath, step, stateDoc)),
 	}
 
-	streamCh, err := subExec.RunStream(ctx, "", model, effort, msgs, func(agent.AgentEvent) {}, projectPath)
+	sctx, scancel := context.WithCancel(ctx)
+	defer scancel()
+	streamCh, err := subExec.RunStream(sctx, "", model, effort, msgs, func(agent.AgentEvent) {}, projectPath)
 	if err != nil {
 		return "", err
 	}
-	var sb strings.Builder
-	for chunk := range streamCh {
-		if chunk.Error != "" {
-			return "", fmt.Errorf("coder: %s", chunk.Error)
-		}
-		sb.WriteString(chunk.Content)
+	out, derr := drainStreamIdle(streamCh, scancel, a.streamIdleTimeout())
+	if derr != nil {
+		return "", fmt.Errorf("coder: %w", derr)
 	}
-	return strings.TrimSpace(sb.String()), nil
+	return strings.TrimSpace(out), nil
 }
 
 func coderStepSystemPrompt() string {
@@ -97,7 +96,7 @@ func (a *App) acceptancecheck(ctx context.Context, listID string, step taskloop.
 	for _, c := range step.AcceptanceChecks {
 		switch strings.ToLower(c.Kind) {
 		case "command":
-			if ok, detail := runCheckCommand(ctx, projectPath, c.Spec, c.Expect); !ok {
+			if ok, detail := runCheckCommand(ctx, projectPath, c.Spec, c.Expect, a.acceptanceCommandTimeout()); !ok {
 				return false, fmt.Sprintf("command %q: %s", c.Spec, detail), nil
 			}
 		case "grep":
@@ -118,8 +117,21 @@ func (a *App) acceptancecheck(ctx context.Context, listID string, step taskloop.
 	return true, "", nil
 }
 
-func runCheckCommand(ctx context.Context, dir, spec, expect string) (bool, string) {
-	cctx, cancel := context.WithTimeout(ctx, 180*time.Second)
+func (a *App) acceptanceCommandTimeout() time.Duration {
+	a.cfgMu.RLock()
+	s := a.cfg.TaskLoop.AcceptanceCommandTimeoutSec
+	a.cfgMu.RUnlock()
+	if s <= 0 {
+		s = 300
+	}
+	return time.Duration(s) * time.Second
+}
+
+func runCheckCommand(ctx context.Context, dir, spec, expect string, timeout time.Duration) (bool, string) {
+	if timeout <= 0 {
+		timeout = 300 * time.Second
+	}
+	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, "bash", "-lc", spec)
 	if dir != "" {

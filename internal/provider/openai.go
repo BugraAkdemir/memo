@@ -50,16 +50,20 @@ func newOpenAIProvider(cfg ProviderConfig) (*openAIProvider, error) {
 			},
 		},
 		// No overall Timeout — streaming responses are long-lived and the request
-		// context bounds total duration. But ResponseHeaderTimeout guards the
-		// failure mode that froze Orchestra: an endpoint that accepts the TCP
-		// connection and then never sends a response. Without it the chief's
-		// planning call hung silently until the 300s context timeout.
+		// context bounds total duration. ResponseHeaderTimeout still guards the
+		// "connection accepted, then silence" failure mode, but at 240s rather
+		// than 90s: a reasoning model doing long hidden thinking, or a request
+		// queued behind other traffic, legitimately needs more than 90s to send
+		// its first byte on a big planning prompt (the Self-Driving planner hit
+		// this on a queued free endpoint). A genuinely dead endpoint still fails
+		// in 4 minutes. Mid-stream, the caller's own idle guard takes over (see
+		// the Self-Driving loop's drainStreamIdle).
 		streamCl: &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConns:          10,
 				MaxIdleConnsPerHost:   10,
 				IdleConnTimeout:       90 * time.Second,
-				ResponseHeaderTimeout: 90 * time.Second,
+				ResponseHeaderTimeout: 240 * time.Second,
 			},
 		},
 	}, nil

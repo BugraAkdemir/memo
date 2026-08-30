@@ -11,16 +11,16 @@ func TestRunCheckCommand(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("world"), 0o644)
 
-	if ok, detail := runCheckCommand(context.Background(), dir, "test -f hello.txt", ""); !ok {
+	if ok, detail := runCheckCommand(context.Background(), dir, "test -f hello.txt", "", 0); !ok {
 		t.Fatalf("expected pass, got %s", detail)
 	}
-	if ok, _ := runCheckCommand(context.Background(), dir, "test -f nope.txt", ""); ok {
+	if ok, _ := runCheckCommand(context.Background(), dir, "test -f nope.txt", "", 0); ok {
 		t.Fatal("expected fail for a missing file")
 	}
-	if ok, _ := runCheckCommand(context.Background(), dir, "cat hello.txt", "world"); !ok {
+	if ok, _ := runCheckCommand(context.Background(), dir, "cat hello.txt", "world", 0); !ok {
 		t.Fatal("expected pass when output contains the expected substring")
 	}
-	if ok, _ := runCheckCommand(context.Background(), dir, "cat hello.txt", "absent-string"); ok {
+	if ok, _ := runCheckCommand(context.Background(), dir, "cat hello.txt", "absent-string", 0); ok {
 		t.Fatal("expected fail when output lacks the expected substring")
 	}
 }

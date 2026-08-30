@@ -309,6 +309,63 @@ func TestEngine_PlanExec_OfflineEscalationParksThenResumes(t *testing.T) {
 	}
 }
 
+func TestEngine_PlanExec_PlannerRetriesTransientFailure(t *testing.T) {
+	store, _ := NewStore(t.TempDir())
+	tl, _ := store.Create("c1", "T", []string{"one item"})
+	_ = store.SetMode(tl.ID, ModePlanner)
+
+	var calls int32
+	eng := NewEngine(store,
+		func(ctx context.Context, chatID, prompt string) (string, error) { return "ok", nil },
+		func(ctx context.Context, itemText, workerOutput string) (bool, string, error) { return true, "", nil },
+		func(bool) {}, func(string, string) {},
+		WithPlanner(func(ctx context.Context, listID, chatID, root, preamble string, items []string, gran string) (*Plan, error) {
+			if atomic.AddInt32(&calls, 1) < 3 {
+				return nil, errors.New("planner: LLM stream idle for 5m with no new token")
+			}
+			return &Plan{Steps: []PlanStep{{ID: "S1", ItemID: "1", Text: "do it"}}}, nil
+		}),
+		WithAutoApprovePlan(true),
+		WithStepRunner(func(ctx context.Context, listID string, step PlanStep, stateDoc string) (string, error) {
+			return "ok", nil
+		}),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_ = eng.Start(ctx, tl.ID)
+	waitForStatus(t, store, tl.ID, taskListDone, 25*time.Second)
+
+	if atomic.LoadInt32(&calls) != 3 {
+		t.Fatalf("planner calls = %d, want 3 (2 retries then success)", calls)
+	}
+}
+
+func TestEngine_PlanExec_PlannerFailsAfterAllRetries(t *testing.T) {
+	store, _ := NewStore(t.TempDir())
+	tl, _ := store.Create("c1", "T", []string{"x"})
+	_ = store.SetMode(tl.ID, ModePlanner)
+
+	var calls int32
+	eng := NewEngine(store,
+		func(ctx context.Context, chatID, prompt string) (string, error) { return "ok", nil },
+		func(ctx context.Context, itemText, workerOutput string) (bool, string, error) { return true, "", nil },
+		func(bool) {}, func(string, string) {},
+		WithPlanner(func(ctx context.Context, listID, chatID, root, preamble string, items []string, gran string) (*Plan, error) {
+			atomic.AddInt32(&calls, 1)
+			return nil, errors.New("planner: dead")
+		}),
+		WithAutoApprovePlan(true),
+		WithStepRunner(func(ctx context.Context, listID string, step PlanStep, stateDoc string) (string, error) { return "ok", nil }),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_ = eng.Start(ctx, tl.ID)
+	waitForStatus(t, store, tl.ID, taskListFailed, 25*time.Second)
+	if atomic.LoadInt32(&calls) != int32(plannerMaxAttempts) {
+		t.Fatalf("planner calls = %d, want %d", calls, plannerMaxAttempts)
+	}
+}
+
 func TestEngine_PlanExec_NoStepRunnerFails(t *testing.T) {
 	store, _ := NewStore(t.TempDir())
 	tl, _ := store.Create("c1", "T", []string{"x"})

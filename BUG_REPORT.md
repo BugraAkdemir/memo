@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-13 — **RPi canlı testinden 2 bug** (kullanıcı bildirimi, BUG-ONB10'un bir önceki fix turunun ardından): (1) **BUG-ONB12 — Orchestra config toast spam**: `orchestraConfigProvider`'ın `build()`'i BUG-ONB6 gate-guard'ını taşıyordu ama gate açıkken herhangi bir başka fetch hatasında hâlâ `errorMessageProvider`'a toast basıyordu; bu provider `engine_strip.dart`/`chat_input.dart` tarafından **ambient** izlendiği için (Orchestra kapalıyken bile arka planda çekiliyor), her geçici hata alakasız bir "Orchestra'da hata oluştu" toast'ına dönüşüyordu. `activeProviderTypeProvider`/`remoteAccessProvider`'ın zaten aldığı "ambient watcher'lara sessiz kal" fix'i uygulandı. (2) **BUG-ONB13 — token-only kurulum, loopback olmayan istemciden her zaman 401**: kurulumun "sadece token" seçeneği ilk çağrı olarak kimlik doğrulamalı `PUT /api/remote-access`'i (elde henüz hiç kimlik yokken) çağırıyordu — `password`/`token_password` yöntemleri kimlik doğrulamasız `/api/setup/create-admin`'den geçtiği için bu sorunu yaşamıyordu. `create-admin` ile aynı desende yeni bir `POST /api/setup/create-device` (self-gating, `NeedsSetup()` üzerinden) eklendi; `RemoteAccessConfig.SetupBootstrapped` yeni alanı, token-only yolun `Accounts`/`Username`'e hiç dokunmadığı için `needs_setup`'ın sonsuza dek `true` kalmasını da ayrıca kapattı. Go+Flutter build/vet/test `-race` yeşil, `flutter test` 253/253, yeni testlerin fix'ten önce kırıldığı doğrulandı, canlı duman testiyle (gerçek binary, izole data dir) uçtan uca doğrulandı. **Aynı gün, gerçek RPi'de gerçek non-loopback kaynaktan da doğrulandı:** eski yol 401, yeni yol 200+token, ikinci deneme 403, `config.yaml`'da `setup_bootstrapped: true`. Detay: handoff.md "Ek (2026-08-13, devam 3)".
+> **Son güncelleme:** 2026-08-30 (akşam) — v4.5.0 planlayıcı/uygulayıcı modu canlı testinde 3 sorun bulundu, **üçünün de fix'i aynı oturumda indirildi, canlı yeniden-test bekliyor** (test ortamında güçlü model / gerçek Flutter dialogu yok): **BUG-PERM1** (izin dialogu flash), **BUG-PLAN1** (planlayıcı 90s ResponseHeaderTimeout'a takılıp tek hatada listeyi öldürüyordu), **BUG-PLAN2** (review/compaction 120s + kabul-komutu 180s sabit). Detay aşağıda.
+>
+> **Önceki güncelleme:** 2026-08-13 — **RPi canlı testinden 2 bug** (kullanıcı bildirimi, BUG-ONB10'un bir önceki fix turunun ardından): (1) **BUG-ONB12 — Orchestra config toast spam**: `orchestraConfigProvider`'ın `build()`'i BUG-ONB6 gate-guard'ını taşıyordu ama gate açıkken herhangi bir başka fetch hatasında hâlâ `errorMessageProvider`'a toast basıyordu; bu provider `engine_strip.dart`/`chat_input.dart` tarafından **ambient** izlendiği için (Orchestra kapalıyken bile arka planda çekiliyor), her geçici hata alakasız bir "Orchestra'da hata oluştu" toast'ına dönüşüyordu. `activeProviderTypeProvider`/`remoteAccessProvider`'ın zaten aldığı "ambient watcher'lara sessiz kal" fix'i uygulandı. (2) **BUG-ONB13 — token-only kurulum, loopback olmayan istemciden her zaman 401**: kurulumun "sadece token" seçeneği ilk çağrı olarak kimlik doğrulamalı `PUT /api/remote-access`'i (elde henüz hiç kimlik yokken) çağırıyordu — `password`/`token_password` yöntemleri kimlik doğrulamasız `/api/setup/create-admin`'den geçtiği için bu sorunu yaşamıyordu. `create-admin` ile aynı desende yeni bir `POST /api/setup/create-device` (self-gating, `NeedsSetup()` üzerinden) eklendi; `RemoteAccessConfig.SetupBootstrapped` yeni alanı, token-only yolun `Accounts`/`Username`'e hiç dokunmadığı için `needs_setup`'ın sonsuza dek `true` kalmasını da ayrıca kapattı. Go+Flutter build/vet/test `-race` yeşil, `flutter test` 253/253, yeni testlerin fix'ten önce kırıldığı doğrulandı, canlı duman testiyle (gerçek binary, izole data dir) uçtan uca doğrulandı. **Aynı gün, gerçek RPi'de gerçek non-loopback kaynaktan da doğrulandı:** eski yol 401, yeni yol 200+token, ikinci deneme 403, `config.yaml`'da `setup_bootstrapped: true`. Detay: handoff.md "Ek (2026-08-13, devam 3)".
 >
 > **Önceki güncelleme — İki varsayılan hatası düzeltildi** (`08d0b0d`, kullanıcı bildirimi): (1) **mood ilk kurulumda açık geliyordu** — `config.Default()` `Mood.Enabled: true` veriyordu, oysa mood motoru her mesaja ton direktifi enjekte ediyor (WebSearch'ün kapalı gelmesiyle aynı gerekçe). Kapatıldı; mevcut kurulumlar etkilenmiyor (`Load()` config.yaml'ı üstüne biniyor) ve `TestExplicitMoodEnabledSurvivesLoad` bunu sabitliyor. Not: `config.yaml.example` zaten `false`'du, sorun yalnızca "config dosyası hiç yok" yolundaydı. (2) **beta kapalıyken Swarm sekmesi görünüyordu** — `_showSwarmNav()` cevabın `beta:true` dışında ne olduğuna bakmadan yerel `memo_beta_features` aynasına düşüyordu (yorumu "yüklenene kadar" dese de kod öyle değildi), yani bayat bir yerel `true` sapasağlam bir `beta:false`'u kalıcı olarak eziyordu. Ayrıca `remoteAccessProvider` de BUG-ONB11 şeklindeydi: gate arkasında 401 alıp `{'enabled': false}` önbelleğe alıyordu ve o map'te `'beta'` anahtarı olmadığı için "henüz cevap gelmedi"den ayırt edilemiyordu. Fix: provider gate kapalıyken boş map dönüyor + merkezi listener'dan invalidate ediliyor, `_showSwarmNav` `containsKey('beta')` ile test ediyor. `memo_beta_features` ayrıca `serverCoupledPrefsKeys`'e taşındı (sunucu config'inin aynası, cihaz tercihi değil). Go+Flutter yeşil, `flutter test` 251/251, yeni testin fix'ten önce kırıldığı doğrulandı. RPi config'i SSH ile kontrol edildi (`mood: false`, `beta: false`) — sunucu tarafı zaten doğruydu.
 >
@@ -91,7 +93,59 @@
 | 🟡 MEDIUM | 0 |
 | 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **0** |
+| ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 3 |
+| **AÇIK TOPLAM** | **0** |
+
+---
+
+## ⏳ Fix indi — canlı yeniden-test bekliyor
+
+Bu üçünün fix'i 2026-08-30 akşamı v4.5.0 canlı testinin ardından indirildi;
+test ortamında güçlü model / gerçek Flutter dialogu olmadığı için **kullanıcının
+canlı doğrulaması gerekiyor**. Doğrulanınca buradan silinecek (git log kayıt).
+
+### BUG-PERM1 — interaktif sohbette agent tool izin dialogu anında kapanıyordu
+
+- **Bulgu:** interaktif ajan sohbetinde model `create_task_md` çağırdı; izin
+  ekranı **"0.1 ms bile değil, geldi gitti"** — açılıp kapandı, kullanıcı
+  onaylayamadı. Backend `permission request … timed out (60s), auto-denied`
+  → tur `⚠️ Agent execution cancelled (permission timeout)` ile bitti.
+- **Kök neden:** `permission_dialog.dart` `isSendingProvider == false` gördüğü
+  her an kendini pop ediyordu (turun bittiğinde bayat dialog kalmasın diye).
+  Ama agentic döngüde tool-round sınırında `isSendingProvider` bir frame
+  boyunca `false` okunabiliyor — tam da `create_task_md` /
+  `start_self_driving_task` izin isteği o ana denk gelince dialog flash edip
+  kapanıyordu.
+- **Fix:** "build sırasında zaten false" yolundaki anında pop, **~1.4 sn
+  debounce** edildi (`_staleCheckTimer`) — ancak hâlâ not-sending ise pop eder.
+  `ref.listen` gerçek `true→false` geçişi yolu (turun gerçekten bitmesi)
+  aynen kaldı. Yeni test: "brief not-sending dip must not flash-close a live
+  dialog" + mevcut "already-ended turn" testi debounce'a göre güncellendi.
+
+### BUG-PLAN1 — planlayıcı/uygulayıcı LLM çağrıları 90s'e takılıyor + tek hatada liste `failed`
+
+- **Bulgu:** `# mod: planlayıcı` görevi başladı, planlayıcı turu ~2 dk sonra
+  `[custom] provider request timed out` → liste `failed`, kullanıcı elden
+  yeniden kurmak zorunda. Ücretsiz endpoint 90 sn'de yanıt başlığı dönemedi.
+- **Kök neden:** (a) `internal/provider/openai.go` streaming client'ının
+  `ResponseHeaderTimeout: 90s` — reasoning modeli / kuyruktaki istek ilk
+  token'a meşru olarak 90 sn'den fazla ihtiyaç duyar. (b) `runPlanExec`
+  planlayıcı çağrısını **tek hatada** `failPlan` ediyordu.
+- **Fix:** (a) `ResponseHeaderTimeout` 90s → **240s**; ayrıca taskloop
+  stream tüketicilerine (`planTask`/`runPlanStep`/`escalateStep`) gerçek
+  **idle-timeout** eklendi (`drainStreamIdle`, yeni `internal/app/
+  tasklist_stream.go`): her token'da sıfırlanan timer, sadece
+  `TaskLoopConfig.StreamIdleTimeoutSec` (default 300) boyunca **hiç token
+  gelmezse** iptal — token aktıkça plan 3 saat sürsün fark etmez.
+  (b) `runPlanExec` planlayıcıyı **3 kez** dener (3s/6s backoff), bad-JSON
+  dahil; hepsi tükenince `failPlan`. (`plannerMaxAttempts = 3`)
+
+### BUG-PLAN2 — review/compaction 120s + kabul-komutu 180s sabit timeout
+
+- **Fix:** `callLLMForReview` (worker CEO review, fuzzy kabul kontrolü,
+  state-doc compaction, bitiş raporu) provider/local yolları **120s → 240s**.
+  `runCheckCommand` (kabul-komutu, ör. `go test ./...`) 180s → config'lenebilir
+  `TaskLoopConfig.AcceptanceCommandTimeoutSec` (default 300).
 
 ---
 

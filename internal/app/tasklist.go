@@ -300,6 +300,11 @@ func (a *App) reviewChiefViaLocal(ctx context.Context, itemText, workerOutput st
 	return taskloop.ExtractAndParseReview(raw)
 }
 
+// callLLMForReview is the taskloop's single-completion helper (worker-mode CEO
+// review, planner/executor-mode fuzzy acceptance checks, state-doc compaction,
+// finish reports). The budget is generous — a reasoning model or a queued
+// endpoint can legitimately take a few minutes to answer a review of a large
+// output — but still bounded so a dead endpoint fails.
 func (a *App) callLLMForReview(ctx context.Context, messages []api.Message) string {
 	a.providerMu.RLock()
 	activeName := a.activeProviderName
@@ -307,7 +312,7 @@ func (a *App) callLLMForReview(ctx context.Context, messages []api.Message) stri
 	a.providerMu.RUnlock()
 
 	if activeName != "" && providerRouter != nil {
-		pctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+		pctx, cancel := context.WithTimeout(ctx, 240*time.Second)
 		defer cancel()
 
 		pMsgs := make([]provider.Message, len(messages))
@@ -328,7 +333,7 @@ func (a *App) callLLMForReview(ctx context.Context, messages []api.Message) stri
 		return resp.Content
 	}
 
-	lctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	lctx, cancel := context.WithTimeout(ctx, 240*time.Second)
 	defer cancel()
 
 	a.clientMu.RLock()

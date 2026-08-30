@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+// plannerMaxAttempts is how many times runPlanExec retries the planner call
+// (stream stall / 429 / network / bad JSON) before failing the list.
+const plannerMaxAttempts = 3
+
 type RunWorker func(ctx context.Context, chatID, prompt string) (string, error)
 type ReviewChief func(ctx context.Context, itemText, workerOutput string) (approved bool, feedback string, err error)
 type BypassSetter func(bool)
@@ -528,13 +532,36 @@ func (e *Engine) runPlanExec(ctx context.Context, listID string, tl *TaskList) {
 		if e.projectPathFn != nil {
 			root = e.projectPathFn(tl.ChatID)
 		}
-		plan, err := e.planner(ctx, listID, tl.ChatID, root, preamble, itemTexts(tl), granularity)
-		if err != nil {
-			e.failPlan(listID, "planlama başarısız: "+err.Error())
-			return
+
+		// Planning is one big LLM call — a stream stall, a 429, a network
+		// blip, or a flaky model emitting bad JSON should not kill the whole
+		// list on the first try. Retry a few times with a short backoff before
+		// giving up.
+		var plan *Plan
+		var perr error
+		for attempt := 1; attempt <= plannerMaxAttempts; attempt++ {
+			plan, perr = e.planner(ctx, listID, tl.ChatID, root, preamble, itemTexts(tl), granularity)
+			if perr == nil {
+				if nerr := plan.Normalize(); nerr != nil {
+					perr = fmt.Errorf("geçersiz plan: %w", nerr)
+				}
+			}
+			if perr == nil {
+				break
+			}
+			logx.Printf("TASKLOOP: planner attempt %d/%d for %s failed: %v", attempt, plannerMaxAttempts, listID, perr)
+			if attempt == plannerMaxAttempts {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				_ = e.store.SetStatus(listID, taskListPaused)
+				return
+			case <-time.After(time.Duration(attempt) * 3 * time.Second):
+			}
 		}
-		if err := plan.Normalize(); err != nil {
-			e.failPlan(listID, "geçersiz plan: "+err.Error())
+		if perr != nil {
+			e.failPlan(listID, fmt.Sprintf("planlama başarısız (%d deneme): %v", plannerMaxAttempts, perr))
 			return
 		}
 		plan.ListID = listID

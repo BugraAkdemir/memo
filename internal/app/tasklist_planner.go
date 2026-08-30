@@ -35,18 +35,17 @@ func (a *App) planTask(ctx context.Context, listID, chatID, projectRoot, preambl
 		provider.TextMessage("user", plannerUserPrompt(preamble, items)),
 	}
 
-	streamCh, err := exec.RunStream(ctx, "", model, effort, msgs, func(agent.AgentEvent) {}, projectRoot)
+	sctx, scancel := context.WithCancel(ctx)
+	defer scancel()
+	streamCh, err := exec.RunStream(sctx, "", model, effort, msgs, func(agent.AgentEvent) {}, projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	var sb strings.Builder
-	for chunk := range streamCh {
-		if chunk.Error != "" {
-			return nil, fmt.Errorf("planner: %s", chunk.Error)
-		}
-		sb.WriteString(chunk.Content)
+	out, derr := drainStreamIdle(streamCh, scancel, a.streamIdleTimeout())
+	if derr != nil {
+		return nil, fmt.Errorf("planner: %w", derr)
 	}
-	raw := strings.TrimSpace(sb.String())
+	raw := strings.TrimSpace(out)
 	if raw == "" {
 		return nil, fmt.Errorf("planner produced no output")
 	}

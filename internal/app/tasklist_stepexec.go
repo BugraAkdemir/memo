@@ -31,9 +31,20 @@ func (a *App) runPlanStep(ctx context.Context, listID string, step taskloop.Plan
 	subExec := agent.NewSubAgentExecutor(a.agentExecutor, agent.NewRegistry(), router, projectPath)
 	subExec.SetBypassPermissions(true)
 
+	userPrompt := coderStepUserPrompt(projectPath, step, stateDoc)
+	if a.taskloopStore != nil {
+		if notes := a.taskloopStore.DrainResumeNotes(listID); len(notes) > 0 {
+			userPrompt = "# Kullanıcı notları (duraklatmada yazıldı)\n\n" +
+				strings.Join(notes, "\n") +
+				"\n\nBunlardaki gerçek talimatları (ekle/düzelt) uygula; salt durum sorularını " +
+				"(\"nerdeyiz\", \"bitti mi\") yok say ve zaten biten işi baştan yapma.\n\n" +
+				userPrompt
+		}
+	}
+
 	msgs := []provider.Message{
 		provider.TextMessage("system", coderStepSystemPrompt()),
-		provider.TextMessage("user", coderStepUserPrompt(projectPath, step, stateDoc)),
+		provider.TextMessage("user", userPrompt),
 	}
 
 	sctx, scancel := context.WithCancel(ctx)

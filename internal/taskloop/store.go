@@ -54,8 +54,11 @@ type TaskList struct {
 	// AutoApprovePlan set from a Task.md "# onay: otomatik" header — skips the
 	// plan approval gate for this list regardless of the global setting.
 	AutoApprovePlan bool `json:"auto_approve_plan,omitempty"`
-	CreatedAt       string `json:"created_at"`
-	UpdatedAt       string `json:"updated_at"`
+	// ResumeNotes are messages the user typed while the list was paused; the
+	// next coder/worker turn consumes and clears them (v4.6.0 Faz F).
+	ResumeNotes []string `json:"resume_notes,omitempty"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
 }
 
 // Task list execution modes.
@@ -397,6 +400,39 @@ func (s *Store) SetAutoApprovePlan(id string, v bool) error {
 	tl.AutoApprovePlan = v
 	tl.UpdatedAt = time.Now().Format("2006-01-02 15:04")
 	return s.save(tl)
+}
+
+// AddResumeNote appends a user note to be handed to the next coder/worker
+// turn (typed while the list was paused).
+func (s *Store) AddResumeNote(id, note string) error {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tl, ok := s.list[id]
+	if !ok {
+		return fmt.Errorf("tasklist %s not found", id)
+	}
+	tl.ResumeNotes = append(tl.ResumeNotes, note)
+	tl.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	return s.save(tl)
+}
+
+// DrainResumeNotes returns and clears the pending resume notes for a list.
+func (s *Store) DrainResumeNotes(id string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tl, ok := s.list[id]
+	if !ok || len(tl.ResumeNotes) == 0 {
+		return nil
+	}
+	notes := tl.ResumeNotes
+	tl.ResumeNotes = nil
+	tl.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	_ = s.save(tl)
+	return notes
 }
 
 func (s *Store) planPath(id string) string { return filepath.Join(s.dir, id+".plan.json") }

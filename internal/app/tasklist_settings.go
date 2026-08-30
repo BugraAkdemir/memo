@@ -33,6 +33,15 @@ func (a *App) UpdateTaskLoopSettings(c config.TaskLoopConfig) error {
 	return config.Save(a.cfg)
 }
 
+// AddTaskResumeNote queues a user note for the next coder/worker turn of a
+// paused list (v4.6.0 Faz F).
+func (a *App) AddTaskResumeNote(listID, note string) error {
+	if a.taskloopStore == nil {
+		return fmt.Errorf("görev listesi sistemi başlatılmamış")
+	}
+	return a.taskloopStore.AddResumeNote(listID, note)
+}
+
 // SetTaskListMode records a list's execution mode ("worker" / "planlayıcı").
 func (a *App) SetTaskListMode(listID, mode string) error {
 	if a.taskloopStore == nil {

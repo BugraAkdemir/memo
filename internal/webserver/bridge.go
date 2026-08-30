@@ -375,6 +375,7 @@ type FullBridge interface {
 	// currently-running list so a fresh subscriber isn't blind.
 	SubscribeTaskEvents() (<-chan string, func())
 	RunningTaskEventSnapshot() []string
+	AddTaskResumeNote(listID, note string) error
 	// Planner/executor mode (v4.5.0)
 	SetTaskListMode(listID, mode string) error
 	ApproveTaskPlan(listID string) error

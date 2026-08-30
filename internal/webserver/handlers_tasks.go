@@ -130,6 +130,19 @@ func (s *Server) handleTaskControlByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, map[string]string{"reply": reply})
+	case "note":
+		var body struct {
+			Text string `json:"text"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Text) == "" {
+			http.Error(w, "text required", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.AddTaskResumeNote(id, body.Text); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"status": "noted"})
 	default:
 		http.Error(w, "unknown action", http.StatusBadRequest)
 	}

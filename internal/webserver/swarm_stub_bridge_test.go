@@ -553,7 +553,8 @@ func (b *swarmStubBridge) SubscribeTaskEvents() (<-chan string, func()) {
 	ch := make(chan string)
 	return ch, func() {}
 }
-func (b *swarmStubBridge) RunningTaskEventSnapshot() []string { return nil }
+func (b *swarmStubBridge) RunningTaskEventSnapshot() []string             { return nil }
+func (b *swarmStubBridge) AddTaskResumeNote(listID, note string) error    { return nil }
 func (b *swarmStubBridge) SetTaskListMode(listID, mode string) error   { return nil }
 func (b *swarmStubBridge) ApproveTaskPlan(listID string) error          { return nil }
 func (b *swarmStubBridge) GetTaskPlanMd(listID string) (string, error)  { return "", nil }

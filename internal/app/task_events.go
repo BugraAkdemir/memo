@@ -47,8 +47,20 @@ func (a *App) SubscribeTaskEvents() (<-chan string, func()) {
 // publishTaskEvent fans one raw engine event (name, "listID" or "listID:extra")
 // out to every task-event subscriber as an enriched JSON line. Best-effort:
 // non-taskloop events are ignored, and a full subscriber channel is skipped.
+// taskEventSkip lists engine events whose data payload is a human-readable
+// message, not a list ID — they carry no per-chat meaning and must not reach
+// the chat card.
+var taskEventSkip = map[string]bool{
+	"taskloop:bypass_enabled":  true,
+	"taskloop:bypass_disabled": true,
+	"taskloop:notify":          true, // already delivered via the NotifyBus
+}
+
 func (a *App) publishTaskEvent(name, data string) {
 	if !strings.HasPrefix(name, "taskloop:") && !strings.HasPrefix(name, "tasklist:") {
+		return
+	}
+	if taskEventSkip[name] {
 		return
 	}
 	a.taskEventMu.RLock()
@@ -61,6 +73,12 @@ func (a *App) publishTaskEvent(name, data string) {
 	listID, extra := data, ""
 	if i := strings.IndexByte(data, ':'); i >= 0 {
 		listID, extra = data[:i], data[i+1:]
+	}
+	// Guard against any other event whose data isn't a real list ID.
+	if a.taskloopStore != nil {
+		if _, err := a.taskloopStore.Get(listID); err != nil {
+			return
+		}
 	}
 	ev := taskChatEvent{
 		Event:  strings.TrimPrefix(strings.TrimPrefix(name, "taskloop:"), "tasklist:"),

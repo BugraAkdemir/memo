@@ -34,10 +34,12 @@ func (a *App) runPlanStep(ctx context.Context, listID string, step taskloop.Plan
 	userPrompt := coderStepUserPrompt(projectPath, step, stateDoc)
 	if a.taskloopStore != nil {
 		if notes := a.taskloopStore.DrainResumeNotes(listID); len(notes) > 0 {
-			userPrompt = "# Kullanıcı notları (duraklatmada yazıldı)\n\n" +
+			userPrompt = "# Kullanıcı notları (görev duraklatılmışken yazıldı) — YÜKSEK ÖNCELİK\n\n" +
 				strings.Join(notes, "\n") +
-				"\n\nBunlardaki gerçek talimatları (ekle/düzelt) uygula; salt durum sorularını " +
-				"(\"nerdeyiz\", \"bitti mi\") yok say ve zaten biten işi baştan yapma.\n\n" +
+				"\n\nBu notlardaki gerçek talimatları uygula: bir şey EKLE/DÜZELT deniyorsa, " +
+				"bu adımın dar kapsamının dışına çıkıp gereken dosyaları oluştur/değiştir. " +
+				"Salt durum sorularını (\"nerdeyiz\", \"bitti mi\") yok say. Zaten biten işi baştan yapma.\n\n" +
+				"---\n\n" +
 				userPrompt
 		}
 	}

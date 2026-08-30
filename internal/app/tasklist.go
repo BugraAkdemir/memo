@@ -311,6 +311,32 @@ func (a *App) reviewChiefViaLocal(ctx context.Context, itemText, workerOutput st
 // endpoint can legitimately take a few minutes to answer a review of a large
 // output — but still bounded so a dead endpoint fails.
 func (a *App) callLLMForReview(ctx context.Context, messages []api.Message) string {
+	return a.callLLMForReviewWith(ctx, messages, nil)
+}
+
+// callLLMForReviewWith is callLLMForReview with an optional caller-supplied
+// router (a planexec verifier role's private single-provider router, model
+// already baked in). A nil router keeps the original global-provider
+// behaviour.
+func (a *App) callLLMForReviewWith(ctx context.Context, messages []api.Message, roleRouter *provider.Router) string {
+	if roleRouter != nil {
+		pctx, cancel := context.WithTimeout(ctx, 240*time.Second)
+		defer cancel()
+		pMsgs := make([]provider.Message, len(messages))
+		for i, m := range messages {
+			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
+		}
+		resp, err := roleRouter.ChatCompletion(pctx, provider.ChatRequest{
+			Messages:    pMsgs,
+			Temperature: 0.2,
+			MaxTokens:   1024,
+		})
+		if err != nil {
+			return "⚠️ " + err.Error()
+		}
+		return resp.Content
+	}
+
 	a.providerMu.RLock()
 	activeName := a.activeProviderName
 	providerRouter := a.providerRouter

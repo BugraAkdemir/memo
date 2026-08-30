@@ -245,3 +245,18 @@ func resolveLocalLlamaRouter(baseURL, modelName string) *provider.Router {
 	}
 	return provider.NewRouter([]provider.ProviderConfig{cfg})
 }
+
+// localLlamaAgentRouter builds a single-provider router for the running local
+// llama.cpp server — the "local" choice for a planexec role model. Errors if
+// no local model is loaded.
+func (a *App) localLlamaAgentRouter() (*provider.Router, string, string, error) {
+	if a.llamaServer == nil || !a.llamaServer.IsRunning() {
+		return nil, "", "", fmt.Errorf("yerel model çalışmıyor")
+	}
+	status := a.llamaServer.GetStatus()
+	modelName := status.ModelName
+	if modelName == "" {
+		modelName = provider.DefaultModels[provider.ProviderLlamaCPP]
+	}
+	return resolveLocalLlamaRouter(a.llamaServer.GetBaseURL(), modelName), modelName, "", nil
+}

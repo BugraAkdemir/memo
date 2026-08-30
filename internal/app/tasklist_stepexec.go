@@ -22,15 +22,9 @@ import (
 // coder turn per plan step. No session, no RAG/memory/persona — a bare
 // system+user pair, permissions bypassed (starting the task was the consent).
 func (a *App) runPlanStep(ctx context.Context, listID string, step taskloop.PlanStep, stateDoc string) (string, error) {
-	rm := a.resolveRoleModels(listID)
-
-	router, defModel, effort, err := a.resolveAgentProvider()
+	router, model, effort, err := a.planexecRouting(listID, "coder")
 	if err != nil {
 		return "", err
-	}
-	model := rm.Coder
-	if model == "" {
-		model = defModel
 	}
 
 	projectPath := a.taskListProjectPath(listID)
@@ -107,7 +101,7 @@ func (a *App) acceptancecheck(ctx context.Context, listID string, step taskloop.
 				return false, fmt.Sprintf("grep %q: %s", c.Spec, detail), nil
 			}
 		case "fuzzy":
-			ok, detail, err := a.runFuzzyCheck(ctx, projectPath, c.Spec)
+			ok, detail, err := a.runFuzzyCheck(ctx, listID, projectPath, c.Spec)
 			if err != nil {
 				logx.Printf("TASKLOOP: fuzzy check error (%s): %v — treating as pass", listID, err)
 				continue
@@ -181,7 +175,7 @@ func runCheckGrep(ctx context.Context, dir, pattern, expect string) (bool, strin
 	return true, ""
 }
 
-func (a *App) runFuzzyCheck(ctx context.Context, projectPath, criterion string) (bool, string, error) {
+func (a *App) runFuzzyCheck(ctx context.Context, listID, projectPath, criterion string) (bool, string, error) {
 	ctxInfo := ""
 	if projectPath != "" {
 		// A git diff is the best signal when the project is a repo; most
@@ -200,7 +194,7 @@ Gerekirse dosyaları okuduğunu VARSAY — elinde listesi var. SADECE şu JSON'u
 Ölçüt açıkça karşılanmıyorsa approved:false + kısa feedback; emin değilsen approved:true (şüpheden yararlandır).`),
 		api.NewTextMessage("user", fmt.Sprintf("Ölçüt: %s\n\nProje durumu:\n%s", criterion, tail(ctxInfo, 3000))),
 	}
-	raw := a.callLLMForReview(ctx, msgs)
+	raw := a.callLLMForReviewWith(ctx, msgs, a.planexecRoleRouter(listID, "verifier"))
 	if strings.HasPrefix(raw, "⚠") {
 		return false, "", fmt.Errorf("verifier LLM: %s", raw)
 	}
@@ -217,7 +211,7 @@ func (a *App) compactPlanState(ctx context.Context, listID, current string) (str
 		api.NewTextMessage("system", `Aşağıdaki ilerleme kaydını kısalt. Kararları, dokunulan dosyaları ve keşfedilen tuzakları KORU; tekrarları ve ayrıntıyı at. Markdown döndür.`),
 		api.NewTextMessage("user", current),
 	}
-	raw := a.callLLMForReview(ctx, msgs)
+	raw := a.callLLMForReviewWith(ctx, msgs, a.planexecRoleRouter(listID, "verifier"))
 	if strings.HasPrefix(raw, "⚠") {
 		return "", fmt.Errorf("compactor LLM: %s", raw)
 	}

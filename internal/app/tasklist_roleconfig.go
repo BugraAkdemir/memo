@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"memo/internal/provider"
 	"memo/internal/taskloop"
 )
 
@@ -55,6 +56,95 @@ func (a *App) resolveRoleModels(listID string) roleModels {
 
 	// 3) Settings default.
 	return a.roleModelsFromConfig(rm)
+}
+
+// roleProvider is one planexec role's resolved routing. router is non-nil only
+// when the role string actually named a provider ("claude", "local",
+// "openrouter/anthropic/claude-3", …); model is always set alongside a router,
+// and may be a bare model name when router is nil.
+type roleProvider struct {
+	router *provider.Router
+	model  string
+	effort string
+}
+
+// resolveOneRoleProvider turns one role model string into a roleProvider.
+// "local" -> the local llama router; "provider/model" or a bare provider
+// name/type -> a private single-provider router (model overridden); anything
+// else -> just a model name for the caller to pair with the global provider.
+func (a *App) resolveOneRoleProvider(roleStr string) roleProvider {
+	roleStr = strings.TrimSpace(roleStr)
+	if roleStr == "" {
+		return roleProvider{}
+	}
+	if strings.EqualFold(roleStr, "local") {
+		if r, m, e, err := a.localLlamaAgentRouter(); err == nil {
+			return roleProvider{router: r, model: m, effort: e}
+		}
+		return roleProvider{}
+	}
+	if prov, model, ok := strings.Cut(roleStr, "/"); ok {
+		if r, m, e, err := a.agentRouterFromProviderName(strings.TrimSpace(prov), strings.TrimSpace(model)); err == nil {
+			return roleProvider{router: r, model: m, effort: e}
+		}
+		return roleProvider{}
+	}
+	a.providerMu.RLock()
+	cfgMgr := a.providerCfgMgr
+	a.providerMu.RUnlock()
+	if cfgMgr != nil {
+		for _, p := range cfgMgr.GetEnabled() {
+			if p.Name == roleStr || string(p.Type) == roleStr {
+				if r, m, e, err := a.agentRouterFromProviderName(roleStr, p.Model); err == nil {
+					return roleProvider{router: r, model: m, effort: e}
+				}
+			}
+		}
+	}
+	return roleProvider{model: roleStr}
+}
+
+// planexecRouting resolves the router/model/effort a planexec role should run
+// against for a given list: the role's own provider when it named one
+// (planner on Claude, coder on local, …), otherwise the global agent
+// provider, with the role's model string overriding in either case. This is
+// what makes two lists able to run planner/coder/verifier on entirely
+// different providers at the same time (v4.6.0 Faz B). role is
+// "planner" | "coder" | "verifier".
+func (a *App) roleStrFor(listID, role string) string {
+	rm := a.resolveRoleModels(listID)
+	switch role {
+	case "planner":
+		return rm.Planner
+	case "coder":
+		return rm.Coder
+	case "verifier":
+		return rm.Verifier
+	}
+	return ""
+}
+
+// planexecRoleRouter returns a role's own private router, or nil when the role
+// didn't name a provider (so the caller falls back to its global default,
+// including the local-model path). Used where only the router matters.
+func (a *App) planexecRoleRouter(listID, role string) *provider.Router {
+	return a.resolveOneRoleProvider(a.roleStrFor(listID, role)).router
+}
+
+func (a *App) planexecRouting(listID, role string) (*provider.Router, string, string, error) {
+	rp := a.resolveOneRoleProvider(a.roleStrFor(listID, role))
+	if rp.router != nil {
+		return rp.router, rp.model, rp.effort, nil
+	}
+	gr, gModel, gEffort, err := a.resolveAgentProvider()
+	if err != nil {
+		return nil, "", "", err
+	}
+	model := rp.model
+	if model == "" {
+		model = gModel
+	}
+	return gr, model, gEffort, nil
 }
 
 func (a *App) roleModelsFromConfig(rm roleModels) roleModels {

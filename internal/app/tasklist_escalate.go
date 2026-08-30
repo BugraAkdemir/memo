@@ -17,14 +17,9 @@ import (
 // model (a strong/cloud model). A network error propagates so the engine can
 // park the list offline and retry later.
 func (a *App) escalateStep(ctx context.Context, listID string, step taskloop.PlanStep, failure taskloop.EscalationInput) ([]taskloop.PlanStep, error) {
-	rm := a.resolveRoleModels(listID)
-	router, defModel, effort, err := a.resolveAgentProvider()
+	router, model, effort, err := a.planexecRouting(listID, "planner")
 	if err != nil {
 		return nil, err
-	}
-	model := rm.Planner
-	if model == "" {
-		model = defModel
 	}
 
 	projectPath := a.taskListProjectPath(listID)

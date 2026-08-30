@@ -15,15 +15,9 @@ import (
 // one bounded, read-only agent turn (the planner role's model) that inspects
 // the repo and emits a structured Plan JSON, then parses it.
 func (a *App) planTask(ctx context.Context, listID, chatID, projectRoot, preamble string, items []string, granularity string) (*taskloop.Plan, error) {
-	rm := a.resolveRoleModels(listID)
-
-	router, defModel, effort, err := a.resolveAgentProvider()
+	router, model, effort, err := a.planexecRouting(listID, "planner")
 	if err != nil {
 		return nil, err
-	}
-	model := rm.Planner
-	if model == "" {
-		model = defModel
 	}
 
 	registry := agent.NewReadOnlyRegistry()

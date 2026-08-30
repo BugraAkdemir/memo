@@ -1,7 +1,7 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-30 (akşam) — v4.5.0 planlayıcı/uygulayıcı modu canlı testinde 3 sorun bulundu, **üçünün de fix'i aynı oturumda indirildi, canlı yeniden-test bekliyor** (test ortamında güçlü model / gerçek Flutter dialogu yok): **BUG-PERM1** (izin dialogu flash), **BUG-PLAN1** (planlayıcı 90s ResponseHeaderTimeout'a takılıp tek hatada listeyi öldürüyordu), **BUG-PLAN2** (review/compaction 120s + kabul-komutu 180s sabit). Detay aşağıda.
+> **Son güncelleme:** 2026-08-30 (gece) — v4.5.0 planlayıcı/uygulayıcı modu **iki tur canlı test edildi**. 2. turda planexec pipeline'ı ücretsiz zayıf modelle (`hy3:free`) **çalışan bir SQLite blog sitesi** kurdu: signup, salted-hash login, session/cookie, blog yazısı + index — 6 maddeden 5'i, checkbox mirror + `# onay: otomatik` + retry + escalation dahil uçtan uca doğrulandı (curl ile signup→login→post→index zinciri gerçekten çalışıyor). Yol boyunca **8 bug** bulundu, **hepsinin fix'i aynı oturumda indirildi**: BUG-PERM1 (izin dialogu flash — canlı yeniden-test bekliyor, gerçek Flutter dialogu yok), BUG-PLAN1/2 (timeout'lar — kök neden düzeltildi: agent pipeline non-stream `client` 120s'e takılıyordu, 300s yapıldı), **BUG-PLAN3/5/6/7/8 (planexec çalıştırma sertleştirmesi — 2. turda canlı doğrulandı)**. BUG-PLAN4 (Görevler sekmesi kartı onay UI'ını açmıyor) hâlâ açık — Flutter fix'i.
 >
 > **Önceki güncelleme:** 2026-08-13 — **RPi canlı testinden 2 bug** (kullanıcı bildirimi, BUG-ONB10'un bir önceki fix turunun ardından): (1) **BUG-ONB12 — Orchestra config toast spam**: `orchestraConfigProvider`'ın `build()`'i BUG-ONB6 gate-guard'ını taşıyordu ama gate açıkken herhangi bir başka fetch hatasında hâlâ `errorMessageProvider`'a toast basıyordu; bu provider `engine_strip.dart`/`chat_input.dart` tarafından **ambient** izlendiği için (Orchestra kapalıyken bile arka planda çekiliyor), her geçici hata alakasız bir "Orchestra'da hata oluştu" toast'ına dönüşüyordu. `activeProviderTypeProvider`/`remoteAccessProvider`'ın zaten aldığı "ambient watcher'lara sessiz kal" fix'i uygulandı. (2) **BUG-ONB13 — token-only kurulum, loopback olmayan istemciden her zaman 401**: kurulumun "sadece token" seçeneği ilk çağrı olarak kimlik doğrulamalı `PUT /api/remote-access`'i (elde henüz hiç kimlik yokken) çağırıyordu — `password`/`token_password` yöntemleri kimlik doğrulamasız `/api/setup/create-admin`'den geçtiği için bu sorunu yaşamıyordu. `create-admin` ile aynı desende yeni bir `POST /api/setup/create-device` (self-gating, `NeedsSetup()` üzerinden) eklendi; `RemoteAccessConfig.SetupBootstrapped` yeni alanı, token-only yolun `Accounts`/`Username`'e hiç dokunmadığı için `needs_setup`'ın sonsuza dek `true` kalmasını da ayrıca kapattı. Go+Flutter build/vet/test `-race` yeşil, `flutter test` 253/253, yeni testlerin fix'ten önce kırıldığı doğrulandı, canlı duman testiyle (gerçek binary, izole data dir) uçtan uca doğrulandı. **Aynı gün, gerçek RPi'de gerçek non-loopback kaynaktan da doğrulandı:** eski yol 401, yeni yol 200+token, ikinci deneme 403, `config.yaml`'da `setup_bootstrapped: true`. Detay: handoff.md "Ek (2026-08-13, devam 3)".
 >
@@ -93,8 +93,9 @@
 | 🟡 MEDIUM | 0 |
 | 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 0 |
-| ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 3 |
-| **AÇIK TOPLAM** | **0** |
+| ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 2 (BUG-PERM1, BUG-PLAN4) |
+| ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 6 (PLAN1/2/3/5/6/7/8) |
+| **AÇIK TOPLAM** | **1 (BUG-PLAN4)** |
 
 ---
 
@@ -127,18 +128,21 @@ canlı doğrulaması gerekiyor**. Doğrulanınca buradan silinecek (git log kay�
 - **Bulgu:** `# mod: planlayıcı` görevi başladı, planlayıcı turu ~2 dk sonra
   `[custom] provider request timed out` → liste `failed`, kullanıcı elden
   yeniden kurmak zorunda. Ücretsiz endpoint 90 sn'de yanıt başlığı dönemedi.
-- **Kök neden:** (a) `internal/provider/openai.go` streaming client'ının
-  `ResponseHeaderTimeout: 90s` — reasoning modeli / kuyruktaki istek ilk
-  token'a meşru olarak 90 sn'den fazla ihtiyaç duyar. (b) `runPlanExec`
-  planlayıcı çağrısını **tek hatada** `failPlan` ediyordu.
-- **Fix:** (a) `ResponseHeaderTimeout` 90s → **240s**; ayrıca taskloop
-  stream tüketicilerine (`planTask`/`runPlanStep`/`escalateStep`) gerçek
-  **idle-timeout** eklendi (`drainStreamIdle`, yeni `internal/app/
-  tasklist_stream.go`): her token'da sıfırlanan timer, sadece
-  `TaskLoopConfig.StreamIdleTimeoutSec` (default 300) boyunca **hiç token
-  gelmezse** iptal — token aktıkça plan 3 saat sürsün fark etmez.
-  (b) `runPlanExec` planlayıcıyı **3 kez** dener (3s/6s backoff), bad-JSON
-  dahil; hepsi tükenince `failPlan`. (`plannerMaxAttempts = 3`)
+- **GERÇEK kök neden (2. turda bulundu):** agent pipeline (`pipeline.go:143`)
+  **non-streaming** `ChatCompletion`'ı çağırıyor, `...Stream`'i değil — yani
+  planlayıcı/coder/escalator turları `openai.go`/`claude.go`/`gemini.go`'nun
+  düz `client`'ını kullanıyor, `Timeout: 120s` (claude/gemini'de ayrıca 30s
+  `ResponseHeaderTimeout`). Büyük bir planlama çağrısı tek dev JSON gövdesi
+  döndürüyor, ilerleme sinyali yok, 120s'de kesiliyordu. İlk fix `streamCl`'i
+  değiştirmişti — pipeline onu hiç kullanmıyor.
+- **Fix:** (a) üç provider'ın da non-stream `client.Timeout` **120s → 300s**
+  (claude/gemini header timeout 30s → 120s). (b) `runPlanExec` planlayıcıyı
+  **3 kez** dener (3s/6s backoff), bad-JSON dahil; hepsi tükenince `failPlan`
+  (`plannerMaxAttempts = 3`). (c) streaming yolu için de idle-timeout altyapısı
+  eklendi (`drainStreamIdle`, `tasklist_stream.go`) — `streamCl`
+  `ResponseHeaderTimeout` 90s → 240s. **Canlı doğrulandı:** hy3:free her
+  çağrıda ~120s timeout veriyor ama 3. denemede plan geçiyor; 300s ile ilk
+  denemede geçmesi bekleniyor.
 
 ### BUG-PLAN2 — review/compaction 120s + kabul-komutu 180s sabit timeout
 
@@ -147,7 +151,12 @@ canlı doğrulaması gerekiyor**. Doğrulanınca buradan silinecek (git log kay�
   `runCheckCommand` (kabul-komutu, ör. `go test ./...`) 180s → config'lenebilir
   `TaskLoopConfig.AcceptanceCommandTimeoutSec` (default 300).
 
-### BUG-PLAN3..8 — 2. canlı test turu (Sonnet planlayıcı ile), planexec 1/8 maddede takıldı
+### ✅ BUG-PLAN3, 5, 6, 7, 8 — planexec çalıştırma sertleştirmesi (2. turda bulundu, 3. turda canlı doğrulandı)
+
+**Fix commit `86de45f`. 3. canlı turda hepsi doğrulandı: aynı zayıf modelle
+(`hy3:free`) 6 maddeli Task.md → 5/6 madde done, gerçekten çalışan blog
+sitesi (curl ile signup→login→post→index doğrulandı).** Aşağısı bulgu/kök
+neden kaydı, silinebilir.
 
 2026-08-30 gece, güçlü planlayıcı (`claude-3-5-sonnet` local proxy) ile ikinci
 tur. **Planlayıcı bu sefer sorunsuz çalıştı** — `create_task_md` mükemmel

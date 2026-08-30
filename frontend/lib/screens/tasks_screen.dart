@@ -1,4 +1,3 @@
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,7 +9,6 @@ import '../models/task_list.dart';
 import '../providers/tasklist_provider.dart';
 import '../providers/chat_provider.dart';
 import '../core/friendly_error.dart';
-import '../widgets/task_status.dart';
 import 'task_detail_screen.dart';
 
 /// Phases where a task list is actively working (v4.4.0 replaced the single
@@ -160,7 +158,14 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                     return _TaskListCard(
                       info: info,
                       startBlocked: blocked,
-                      onTap: () => _showDetailDialog(info.id, anyRunning: blocked),
+                      // Open the full detail screen — it carries the live view
+                      // AND the plan-approval / escalation UI for planexec
+                      // lists. (The old _showDetailDialog modal showed a stale
+                      // "Idle" status and had no way to approve a plan.)
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) =>
+                            TaskDetailScreen(taskListId: info.id, title: info.title),
+                      )),
                       onStart: () => _startList(info.id),
                       onStop: () => ref.read(taskListsProvider.notifier).stopTaskList(info.id),
                       onDelete: () => _deleteList(info.id),
@@ -382,147 +387,6 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
     });
   }
 
-  void _showDetailDialog(String listId, {bool anyRunning = false}) async {
-    final api = ref.read(apiClientProvider);
-    try {
-      var tl = await api.getTaskList(listId);
-      if (!mounted) return;
-
-      // The list view behind this dialog polls every 3s (taskListsProvider),
-      // but this dialog took a static snapshot at open time — a running
-      // list's item statuses/notes never updated while the dialog was open,
-      // so the user had to close and reopen it to see progress. Poll the
-      // same list on the same cadence while the dialog is up.
-      Timer? refreshTimer;
-      showDialog(
-        context: context,
-        builder: (ctx) {
-          return StatefulBuilder(builder: (ctx, setDialogState) {
-            refreshTimer ??= Timer.periodic(const Duration(seconds: 3), (_) async {
-              try {
-                final fresh = await api.getTaskList(listId);
-                setDialogState(() => tl = fresh);
-              } catch (_) {
-                // Transient poll failure — keep showing the last known state.
-              }
-            });
-          final c = MemoTheme.of(ctx);
-          return AlertDialog(
-            backgroundColor: c.bgPanel,
-            title: Text(tl.title),
-            content: SizedBox(
-              width: 400,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      TaskStatusBadge(tl.status),
-                      const SizedBox(width: 12),
-                      Text(
-                        '${L10n.t('taskloop_updated')}: ${tl.updatedAt}',
-                        style: TextStyle(fontSize: 12, color: c.textDim),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  ...tl.items.map((item) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            taskItemStatusIcon(context, item.status),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    item.text,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: c.textMain,
-                                      decoration: item.status == 'done'
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                    ),
-                                  ),
-                                  if (item.note.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Text(
-                                        item.note,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: item.status == 'stuck'
-                                              ? MemoTheme.red
-                                              : c.textDim,
-                                        ),
-                                      ),
-                                    ),
-                                  if (item.rounds > 0)
-                                    Text(
-                                      '${item.rounds} tur',
-                                      style: TextStyle(fontSize: 11, color: c.textDim),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      )),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text(L10n.t('close')),
-              ),
-              if (tl.status == 'idle' || tl.status == 'paused')
-                ElevatedButton.icon(
-                  onPressed: anyRunning
-                      ? null
-                      : () {
-                          Navigator.of(ctx).pop();
-                          _startList(listId);
-                        },
-                  icon: const Icon(Icons.play_arrow, size: 16),
-                  label: Text(anyRunning
-                      ? L10n.t('taskloop_another_running')
-                      : L10n.t('start')),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: MemoTheme.green,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              if (tl.status == 'running')
-                ElevatedButton.icon(
-                  onPressed: () {
-                    ref.read(taskListsProvider.notifier).stopTaskList(listId);
-                    Navigator.of(ctx).pop();
-                  },
-                  icon: const Icon(Icons.stop, size: 16),
-                  label: Text(L10n.t('stop')),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: MemoTheme.red,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-            ],
-          );
-          });
-        },
-      ).then((_) => refreshTimer?.cancel());
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'), backgroundColor: MemoTheme.red),
-        );
-      }
-    }
-  }
 
   void _startList(String listId) {
     showDialog(

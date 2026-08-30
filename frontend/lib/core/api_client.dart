@@ -2649,14 +2649,17 @@ class MemoApiClient {
     String title,
     List<String> items, {
     String? taskMdPath,
+    String? mode,
   }) async {
     final path = taskMdPath?.trim() ?? '';
+    final m = mode?.trim() ?? '';
     final res = await _dio.post(
       '/api/tasklists',
       data: {
         'chat_id': chatId,
         'title': title,
         if (path.isNotEmpty) 'task_md_path': path else 'items': items,
+        if (m.isNotEmpty) 'mode': m,
       },
     );
     return TaskList.fromJson(Map<String, dynamic>.from(_guard<Map>(res.data)));
@@ -2677,6 +2680,33 @@ class MemoApiClient {
 
   Future<void> stopTaskList(String id) async {
     await _dio.post('/api/tasklists/$id/stop');
+  }
+
+  /// Plan.md text for a planner/executor-mode list awaiting approval.
+  Future<String> getTaskPlanMd(String id) async {
+    final res = await _dio.get('/api/tasklists/$id/plan');
+    final m = Map<String, dynamic>.from(_guard<Map>(res.data));
+    return (m['plan_md'] as String?) ?? '';
+  }
+
+  Future<void> saveTaskPlanMd(String id, String planMd) async {
+    await _dio.put('/api/tasklists/$id/plan', data: {'plan_md': planMd});
+  }
+
+  Future<void> approveTaskPlan(String id) async {
+    await _dio.post('/api/tasklists/$id/approve-plan');
+  }
+
+  Future<Map<String, dynamic>> getTaskLoopSettings() async {
+    final res = await _dio.get('/api/taskloop/settings');
+    return Map<String, dynamic>.from(_guard<Map>(res.data));
+  }
+
+  Future<Map<String, dynamic>> updateTaskLoopSettings(
+    Map<String, dynamic> settings,
+  ) async {
+    final res = await _dio.put('/api/taskloop/settings', data: settings);
+    return Map<String, dynamic>.from(_guard<Map>(res.data));
   }
 
   /// Live view of every executing task list (v4.4.0 Self-Driving loop).

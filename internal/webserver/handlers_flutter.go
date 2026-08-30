@@ -2985,6 +2985,7 @@ func (s *Server) handleTaskLists(w http.ResponseWriter, r *http.Request) {
 			Title      string   `json:"title"`
 			Items      []string `json:"items"`
 			TaskMdPath string   `json:"task_md_path"`
+			Mode       string   `json:"mode"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
@@ -3004,6 +3005,16 @@ func (s *Server) handleTaskLists(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		// An explicit mode from the create dialog overrides any "# mod:" header.
+		if req.Mode != "" && tl != nil {
+			if merr := s.fullBridge.SetTaskListMode(tl.ID, req.Mode); merr != nil {
+				http.Error(w, merr.Error(), http.StatusInternalServerError)
+				return
+			}
+			if fresh, ferr := s.fullBridge.GetTaskList(tl.ID); ferr == nil {
+				tl = fresh
+			}
 		}
 		writeJSON(w, tl)
 	default:
@@ -3080,6 +3091,19 @@ func (s *Server) handleTaskListByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, map[string]string{"plan_md": md})
+	case subAction == "plan" && r.Method == http.MethodPut:
+		var body struct {
+			PlanMd string `json:"plan_md"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SaveTaskPlanMd(listID, body.PlanMd); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, map[string]string{"status": "saved"})
 	case subAction == "approve-plan" && r.Method == http.MethodPost:
 		if err := s.fullBridge.ApproveTaskPlan(listID); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

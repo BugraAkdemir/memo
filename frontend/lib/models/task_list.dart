@@ -133,6 +133,11 @@ class RunningTaskInfo {
   final int elapsedSec;
   final List<String> subAgents;
   final String notifyLevel;
+  final String mode; // '' | 'worker' | 'planlayıcı'
+  final int planSteps;
+  final int planStepsDone;
+  final int stateDocTokens;
+  final int stateDocBudget;
 
   const RunningTaskInfo({
     required this.id,
@@ -145,6 +150,11 @@ class RunningTaskInfo {
     this.elapsedSec = 0,
     this.subAgents = const [],
     this.notifyLevel = '',
+    this.mode = '',
+    this.planSteps = 0,
+    this.planStepsDone = 0,
+    this.stateDocTokens = 0,
+    this.stateDocBudget = 0,
   });
 
   factory RunningTaskInfo.fromJson(Map<String, dynamic> json) {
@@ -159,6 +169,11 @@ class RunningTaskInfo {
       elapsedSec: (json['elapsed_sec'] as num?)?.toInt() ?? 0,
       subAgents: (json['sub_agents'] as List?)?.map((e) => e.toString()).toList() ?? const [],
       notifyLevel: json['notify_level'] as String? ?? '',
+      mode: json['mode'] as String? ?? '',
+      planSteps: (json['plan_steps'] as num?)?.toInt() ?? 0,
+      planStepsDone: (json['plan_steps_done'] as num?)?.toInt() ?? 0,
+      stateDocTokens: (json['state_doc_tokens'] as num?)?.toInt() ?? 0,
+      stateDocBudget: (json['state_doc_budget'] as num?)?.toInt() ?? 0,
     );
   }
 }

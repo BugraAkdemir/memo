@@ -73,10 +73,12 @@ class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
     String title,
     List<String> items, {
     String? taskMdPath,
+    String? mode,
   }) {
     final api = ref.read(apiClientProvider);
     return _guarded(
-      () => api.createTaskList(chatId, title, items, taskMdPath: taskMdPath),
+      () => api.createTaskList(chatId, title, items,
+          taskMdPath: taskMdPath, mode: mode),
     );
   }
 

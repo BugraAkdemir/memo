@@ -39,6 +39,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
   final _taskMdCtrl = TextEditingController();
   final _itemCtrls = <TextEditingController>[];
   String? _dialogChatId;
+  String _dialogMode = 'worker';
 
   @override
   void initState() {
@@ -201,6 +202,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
   void _showCreateDialog(List<ChatSession> agentChats) {
     _titleCtrl.clear();
     _taskMdCtrl.clear();
+    _dialogMode = 'worker';
     for (final c in _itemCtrls) {
       c.dispose();
     }
@@ -239,6 +241,29 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                               ))
                           .toList(),
                       onChanged: (value) => setDialogState(() => _dialogChatId = value),
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(L10n.t('tasklist_mode'),
+                          style: TextStyle(fontSize: 12, color: c.textDim)),
+                    ),
+                    const SizedBox(height: 4),
+                    SegmentedButton<String>(
+                      segments: [
+                        ButtonSegment(
+                            value: 'worker',
+                            label: Text(L10n.t('tasklist_mode_worker'),
+                                style: const TextStyle(fontSize: 11))),
+                        ButtonSegment(
+                            value: 'planlayıcı',
+                            label: Text(L10n.t('tasklist_mode_planner'),
+                                style: const TextStyle(fontSize: 11))),
+                      ],
+                      selected: {_dialogMode},
+                      showSelectedIcon: false,
+                      onSelectionChanged: (s) =>
+                          setDialogState(() => _dialogMode = s.first),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -338,6 +363,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                           title,
                           items,
                           taskMdPath: taskMdPath.isEmpty ? null : taskMdPath,
+                          mode: _dialogMode == 'worker' ? null : _dialogMode,
                         );
                     Navigator.of(ctx).pop();
                   },

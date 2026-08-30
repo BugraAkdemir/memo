@@ -371,8 +371,10 @@ type FullBridge interface {
 	InjectTaskMessage(ctx context.Context, listID, text string) (string, error)
 	ListRunningTasks() []taskloop.RunningTaskInfo
 	// Planner/executor mode (v4.5.0)
+	SetTaskListMode(listID, mode string) error
 	ApproveTaskPlan(listID string) error
 	GetTaskPlanMd(listID string) (string, error)
+	SaveTaskPlanMd(listID, md string) error
 	GetTaskLoopSettings() config.TaskLoopConfig
 	UpdateTaskLoopSettings(config.TaskLoopConfig) error
 

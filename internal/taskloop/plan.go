@@ -284,7 +284,12 @@ func ParsePlanMd(path string) (*Plan, error) {
 	if err != nil {
 		return nil, fmt.Errorf("taskloop: read Plan.md: %w", err)
 	}
-	text := string(data)
+	return ParsePlanMdText(string(data))
+}
+
+// ParsePlanMdText is ParsePlanMd for an in-memory string (e.g. the editor text
+// posted from the approval screen).
+func ParsePlanMdText(text string) (*Plan, error) {
 	i := strings.Index(text, planJSONOpen)
 	if i < 0 {
 		return nil, fmt.Errorf("taskloop: Plan.md has no %q block", planJSONOpen)

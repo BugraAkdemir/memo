@@ -5,6 +5,7 @@ import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/task_list.dart';
 import '../providers/tasklist_provider.dart';
+import '../providers/chat_provider.dart' show apiClientProvider;
 import '../widgets/task_status.dart';
 
 /// Live view of one Self-Driving task list: phase, progress, current item,
@@ -78,6 +79,31 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _PlanApprovalSection(taskListId: widget.taskListId),
+            if (info != null &&
+                info.mode == 'planlayıcı' &&
+                info.planSteps > 0) ...[
+              Text('${L10n.t('taskdetail_steps')}: '
+                  '${info.planStepsDone}/${info.planSteps}',
+                  style: TextStyle(color: c.textDim, fontSize: 12)),
+              const SizedBox(height: 4),
+              LinearProgressIndicator(
+                value: info.planStepsDone / info.planSteps,
+                backgroundColor: c.borderSoft,
+              ),
+              if (info.stateDocBudget > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                    '${L10n.t('taskdetail_state_gauge')}: '
+                    '${info.stateDocTokens}/${info.stateDocBudget}',
+                    style: TextStyle(color: c.textDim, fontSize: 11)),
+                LinearProgressIndicator(
+                  value: (info.stateDocTokens / info.stateDocBudget).clamp(0, 1),
+                  backgroundColor: c.borderSoft,
+                ),
+              ],
+              const SizedBox(height: 16),
+            ],
             if (info == null)
               Text(L10n.t('taskloop_paused'), style: TextStyle(color: c.textDim))
             else ...[
@@ -168,6 +194,132 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Self-fetching section shown only when a list is awaiting plan approval or
+/// parked waiting for an offline escalation. Otherwise renders nothing.
+class _PlanApprovalSection extends ConsumerStatefulWidget {
+  final String taskListId;
+  const _PlanApprovalSection({required this.taskListId});
+
+  @override
+  ConsumerState<_PlanApprovalSection> createState() =>
+      _PlanApprovalSectionState();
+}
+
+class _PlanApprovalSectionState extends ConsumerState<_PlanApprovalSection> {
+  final _planCtrl = TextEditingController();
+  String _status = '';
+  bool _loaded = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _planCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      final tl = await api.getTaskList(widget.taskListId);
+      String plan = '';
+      if (tl.status == 'awaiting-plan-approval') {
+        plan = await api.getTaskPlanMd(widget.taskListId);
+      }
+      if (!mounted) return;
+      setState(() {
+        _status = tl.status;
+        if (plan.isNotEmpty && _planCtrl.text.isEmpty) _planCtrl.text = plan;
+        _loaded = true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loaded = true);
+    }
+  }
+
+  Future<void> _approve() async {
+    setState(() => _busy = true);
+    try {
+      final api = ref.read(apiClientProvider);
+      await api.saveTaskPlanMd(widget.taskListId, _planCtrl.text);
+      await api.approveTaskPlan(widget.taskListId);
+      ref.invalidate(runningTasksProvider);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MemoTheme.of(context);
+    if (!_loaded) return const SizedBox.shrink();
+
+    if (_status == 'waiting-escalation') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: c.bgPanel,
+            border: Border.all(color: MemoTheme.red),
+            borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+          ),
+          child: Text(L10n.t('taskdetail_waiting_escalation'),
+              style: const TextStyle(fontSize: 12, color: MemoTheme.red)),
+        ),
+      );
+    }
+
+    if (_status != 'awaiting-plan-approval') return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(L10n.t('taskdetail_plan_review'),
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w600, color: c.textMain)),
+          const SizedBox(height: 4),
+          Text(L10n.t('taskdetail_plan_edit_hint'),
+              style: TextStyle(fontSize: 11, color: c.textDim)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _planCtrl,
+            minLines: 8,
+            maxLines: 20,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _busy ? null : _approve,
+            icon: _busy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.play_arrow, size: 18),
+            label: Text(L10n.t('taskdetail_plan_approve')),
+          ),
+          const Divider(height: 32),
+        ],
       ),
     );
   }

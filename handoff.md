@@ -1,3 +1,66 @@
+# Ek (2026-08-30, devam 47) — sohbet-içi canlı görev bloğu (Claude Code tarzı) (branch aynı)
+
+devam 46 fikslerinden sonra kullanıcı: "çalışıyor mu belli değil, ne yaptığını
+göremiyorum; Claude Code / ChatGPT masaüstü gibi adımlar sohbette canlı aksın,
+alt-ajan/araç çıktılarının metinlerini göreyim; kart Agent sohbetinde yok; Task
+Detay Resume hata veriyor." Plan modunda 2 Explore ajanı + `/frontend-design` ile
+planlandı (`~/.claude/plans/ve-birde-al-yormu-al-m-yormu-inherited-music.md`),
+onaylandı, uygulandı.
+
+**Backend (`859533e`, `6e584aa`):**
+- Yeni motor olayı `taskloop:activity`, veri `listID\x1fkind\x1ftext`; kinds:
+  plan_start/plan_done/step_start/step_done/step_retry/step_stuck/escalate/tool.
+  `emitActivity` + public `Engine.EmitActivity`. Yayım: `runPlanExec`,
+  `executePlan` per-step goroutine + sınıflama döngüsü, `escalateStuckSteps`.
+- `runPlanStep`/`planTask`/`escalateStep` artık coder'ın `AgentEvent`
+  callback'ini no-op'la atmıyor → `emitStepToolActivity` her biten araç
+  çağrısını kısa TR satıra çevirip `taskloop:activity` "tool" olarak yayıyor
+  ("Dosya yazdı: signup.py", "Komut: python3 …").
+- `listRuntime.lastActivityAt` + `rtTouch`; `RunningTaskInfo`/`taskChatEvent`'e
+  `SilentSec` (= son aktiviteden bu yana sn). `publishTaskEvent`
+  `taskloop:activity`'yi `\x1f` ile parse ediyor.
+- `tasklist:finished`'te `postTaskFinishMessage` sohbete **tek** düz satır
+  ("✅ Görev bitti — 6/6 madde" / "⚠️ … kısmen …"), LLM yok.
+- `generateTaskReport` artık `SendMessageStreamTo` ile sohbete kapanış-raporu
+  prompt'u + uzun cevap yazmıyor (her bitişte kirletiyordu); bildirim gövdesini
+  transcript'ten tek `callLLMForReview` ile üretiyor, fallback `factualTaskRollup`.
+- `POST /api/tasks/{id}/resume` koşan görevde 500 yerine 200 no-op.
+
+**Frontend (`adb363e`):**
+- `TaskActivityCard` → `TaskActivityBlock` (`widgets/agent/task_activity_block.dart`).
+  `ChatMessageList`'in son öğesi olarak, asistan mesajı hizasıyla çizilir.
+  **Chat + Agent** ekranlarının ikisinde de (`taskActivity` param).
+- Başlık: nefes eden nabız noktası (bronz); `silentSec >= 60` → amber +
+  "{n} sn sessiz"; tek kanonik ilerleme `Adım N/M · Madde a/b` + ince çubuk;
+  **saniyede tıklayan** geçen süre; mevcut adım metni.
+- Gövde (varsayılan açık, ~220px kaydırmalı, otomatik en alta): zaman damgalı
+  adım-adım günlük (`_AgentStatusBadge` rozet dili). "Daha az göster" toggle.
+- Tek birincil düğme (faza göre Duraklat/Devam/Planı gör-Onayla) + sönük
+  "Görevler'de aç". Bitince blok kaybolur, sohbette tek özet satırı kalır.
+- `models/task_list.dart`: `TaskChatEvent` kind/text/silent_sec; yeni
+  `TaskLogEntry`; `ChatTaskState` `log` (60 cap) + `silentSec` + `stalled`;
+  `fold()` activity + planning/awaiting_plan/paused/item_* → günlük satırı.
+- `task_detail_screen`: Resume yalnız koşmayan görevde, Pause yalnız koşarken.
+
+**Canlı doğrulandı (headless :8097, gerçek free model):** `activity` olayları
+`kind`+`text` ile akıyor (`plan_start`→`tool`→`plan_done`→`step_start`→`tool`
+"Dosya yazdı: g.txt"→`step_done` "S1 bitti — …"→`finished`), dosyalar oluştu,
+"✅ Görev bitti — 1/1 madde" sohbete düştü.
+
+**Doğrulama:** `go build/vet -race` temiz, `go test ./internal/{taskloop,app,
+webserver}` yeşil; `flutter analyze lib/` sadece pre-existing info; `flutter
+test` 317 yeşil (+ `ChatTaskState.fold` log/stalled + task_detail buton testleri
+güncellendi); Rule #8 temiz.
+
+**Kullanıcının yapması gereken:** Flutter yeniden build + `memo --kill` sonra
+backend restart.
+
+**Hâlâ açık:** worker modu kapsam dışı; `step_done` metninde markdown `**`
+görünüyor (küçük); inline bloğun görsel render'ı gerçek GUI'de gözle
+doğrulanmadı.
+
+---
+
 # Ek (2026-08-30, devam 46) — ilk masaüstü turunda çıkan 3 bug + pause/resume araçları (branch aynı)
 
 Kullanıcı v4.6.0'ı gerçek masaüstü uygulamada koştu, çuvalladı. Loglardan

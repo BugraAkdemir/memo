@@ -13,10 +13,11 @@ import 'package:memo_flutter/models/task_list.dart';
 
 void main() {
   group('ChatTaskState.fold (v4.6.0 Faz D/E)', () {
-    TaskChatEvent ev(String event, {String phase = '', int stepDone = 0, int stepTotal = 0, int itemDone = 0, int itemTotal = 0, String current = ''}) =>
+    TaskChatEvent ev(String event, {String phase = '', int stepDone = 0, int stepTotal = 0, int itemDone = 0, int itemTotal = 0, String current = '', String kind = '', String text = '', int silentSec = 0}) =>
         TaskChatEvent(
           event: event, listId: 'L1', chatId: 'C1', phase: phase,
           stepDone: stepDone, stepTotal: stepTotal, itemDone: itemDone, itemTotal: itemTotal, current: current,
+          kind: kind, text: text, silentSec: silentSec,
         );
 
     test('a snapshot seeds progress without adding to the recent feed', () {
@@ -49,6 +50,31 @@ void main() {
     test('phase predicates', () {
       expect(ChatTaskState.fold(null, ev('paused', phase: 'paused'))!.paused, true);
       expect(ChatTaskState.fold(null, ev('awaiting_plan', phase: 'awaiting-plan-approval'))!.awaitingPlan, true);
+    });
+
+    test('activity events append to the log (not recent) and cap at 60', () {
+      ChatTaskState? s;
+      s = ChatTaskState.fold(s, ev('snapshot', phase: 'executing', stepTotal: 3));
+      s = ChatTaskState.fold(s, ev('activity', kind: 'step_start', text: 'S1 · users kur'));
+      s = ChatTaskState.fold(s, ev('activity', kind: 'tool', text: 'Dosya yazdı: signup.py'));
+      expect(s!.log.length, 2);
+      expect(s.log.first.kind, 'step_start');
+      expect(s.log.last.text, 'Dosya yazdı: signup.py');
+      expect(s.recent, isEmpty); // activity never enters recent
+      for (var i = 0; i < 100; i++) {
+        s = ChatTaskState.fold(s, ev('activity', kind: 'tool', text: 'x$i'));
+      }
+      expect(s!.log.length, 60);
+      expect(s.log.last.text, 'x99');
+    });
+
+    test('stalled: running + silent >= 60s', () {
+      final s = ChatTaskState.fold(null, ev('snapshot', phase: 'executing', stepTotal: 2, silentSec: 75));
+      expect(s!.stalled, true);
+      final s2 = ChatTaskState.fold(null, ev('snapshot', phase: 'executing', stepTotal: 2, silentSec: 10));
+      expect(s2!.stalled, false);
+      final s3 = ChatTaskState.fold(null, ev('snapshot', phase: 'paused', silentSec: 200));
+      expect(s3!.stalled, false); // paused isn't "stalled"
     });
   });
 

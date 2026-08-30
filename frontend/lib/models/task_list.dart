@@ -214,6 +214,9 @@ class TaskChatEvent {
   final int itemTotal;
   final String current;
   final int elapsedSec;
+  final int silentSec; // seconds since the task last did something visible
+  final String kind; // for event == 'activity': plan_start|plan_done|step_start|step_done|step_retry|step_stuck|escalate|tool
+  final String text; // for event == 'activity': the human-readable line
 
   const TaskChatEvent({
     required this.event,
@@ -228,6 +231,9 @@ class TaskChatEvent {
     this.itemTotal = 0,
     this.current = '',
     this.elapsedSec = 0,
+    this.silentSec = 0,
+    this.kind = '',
+    this.text = '',
   });
 
   factory TaskChatEvent.fromJson(Map<String, dynamic> json) {
@@ -244,8 +250,19 @@ class TaskChatEvent {
       itemTotal: (json['item_total'] as num?)?.toInt() ?? 0,
       current: json['current'] as String? ?? '',
       elapsedSec: (json['elapsed_sec'] as num?)?.toInt() ?? 0,
+      silentSec: (json['silent_sec'] as num?)?.toInt() ?? 0,
+      kind: json['kind'] as String? ?? '',
+      text: json['text'] as String? ?? '',
     );
   }
+}
+
+/// One line in the live task activity log (v4.6.0 in-chat block).
+class TaskLogEntry {
+  final String kind; // plan_start | plan_done | step_start | step_done | step_retry | step_stuck | escalate | tool | paused | resumed | awaiting_plan | item_done | item_stuck
+  final String text;
+  final DateTime ts;
+  const TaskLogEntry(this.kind, this.text, this.ts);
 }
 
 /// The rolled-up state of the task bound to one chat, maintained by
@@ -260,7 +277,9 @@ class ChatTaskState {
   final int itemDone;
   final int itemTotal;
   final int elapsedSec;
+  final int silentSec;
   final List<String> recent; // last few event names, newest last
+  final List<TaskLogEntry> log; // the in-chat activity feed, newest last, capped
 
   const ChatTaskState({
     required this.listId,
@@ -272,7 +291,9 @@ class ChatTaskState {
     this.itemDone = 0,
     this.itemTotal = 0,
     this.elapsedSec = 0,
+    this.silentSec = 0,
     this.recent = const [],
+    this.log = const [],
   });
 
   bool get isPlanner => mode == 'planlayıcı' || mode == 'planner';
@@ -282,17 +303,34 @@ class ChatTaskState {
   bool get paused => phase == 'paused' || phase == 'waiting-user' || phase == 'waiting-limit';
   bool get finished => phase == 'done' || phase == 'failed' || phase == 'cancelled';
 
+  /// Whether the task looks quiet enough that it might be hung (not a hard
+  /// guarantee — a genuinely hard step can run for a minute+).
+  bool get stalled => running && silentSec >= 60;
+
+  static const int _logCap = 60;
+
   /// Fold one event into the running state. A 'finished' event is returned as
-  /// null so the caller drops the card.
+  /// null so the caller drops the block (the persisted finish message stays).
   static ChatTaskState? fold(ChatTaskState? prev, TaskChatEvent e) {
     if (e.event == 'finished') return null;
+
     final recent = <String>[...(prev?.recent ?? const [])];
-    if (e.event.isNotEmpty && e.event != 'snapshot') {
+    if (e.event.isNotEmpty && e.event != 'snapshot' && e.event != 'activity') {
       recent.add(e.event);
       while (recent.length > 4) {
         recent.removeAt(0);
       }
     }
+
+    final log = <TaskLogEntry>[...(prev?.log ?? const [])];
+    final entry = _logEntryFor(e);
+    if (entry != null) {
+      log.add(entry);
+      while (log.length > _logCap) {
+        log.removeAt(0);
+      }
+    }
+
     return ChatTaskState(
       listId: e.listId,
       phase: e.phase.isNotEmpty ? e.phase : (prev?.phase ?? ''),
@@ -303,7 +341,33 @@ class ChatTaskState {
       itemDone: e.itemTotal > 0 ? e.itemDone : (prev?.itemDone ?? 0),
       itemTotal: e.itemTotal > 0 ? e.itemTotal : (prev?.itemTotal ?? 0),
       elapsedSec: e.elapsedSec > 0 ? e.elapsedSec : (prev?.elapsedSec ?? 0),
+      // silent_sec is always fresh off the snapshot; 0 is a legit value.
+      silentSec: e.silentSec,
       recent: recent,
+      log: log,
     );
+  }
+
+  /// Turn one SSE event into an activity-log line, or null if it isn't worth a
+  /// line. `text` is either the backend-supplied activity text or a fixed label.
+  static TaskLogEntry? _logEntryFor(TaskChatEvent e) {
+    final now = DateTime.now();
+    if (e.event == 'activity' && e.kind.isNotEmpty) {
+      return TaskLogEntry(e.kind, e.text, now);
+    }
+    switch (e.event) {
+      case 'planning':
+        return TaskLogEntry('plan_start', '', now);
+      case 'awaiting_plan':
+        return TaskLogEntry('awaiting_plan', '', now);
+      case 'paused':
+        return TaskLogEntry('paused', '', now);
+      case 'item_done':
+        return TaskLogEntry('item_done', '', now);
+      case 'item_stuck':
+        return TaskLogEntry('item_stuck', '', now);
+      default:
+        return null;
+    }
   }
 }

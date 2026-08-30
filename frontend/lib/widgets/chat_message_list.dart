@@ -9,7 +9,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/theme.dart';
 import '../models/chat.dart';
 import '../models/agent.dart';
+import '../models/task_list.dart';
 import '../core/l10n.dart';
+import 'agent/task_activity_block.dart';
 
 // Opens a markdown link tapped in a chat message. A share_file download
 // link (internal/app/sendfile.go's App.DeliverFile) comes back as a
@@ -73,6 +75,9 @@ class ChatMessageList extends StatefulWidget {
   final String apiBaseUrl;
   final void Function(int index, String newContent)? onEdit;
   final void Function(int index)? onDelete;
+  /// Live Self-Driving task bound to this chat, or null. Rendered as the last
+  /// item, styled like an assistant turn (v4.6.0 in-chat task block).
+  final ChatTaskState? taskActivity;
 
    const ChatMessageList({
     super.key,
@@ -86,6 +91,7 @@ class ChatMessageList extends StatefulWidget {
     required this.apiBaseUrl,
     this.onEdit,
     this.onDelete,
+    this.taskActivity,
   });
 
   @override
@@ -102,8 +108,16 @@ class _ChatMessageListState extends State<ChatMessageList> {
     final streamingLenChanged =
         widget.streamingContent.length != oldWidget.streamingContent.length;
     final typingStarted = widget.isTyping && !oldWidget.isTyping;
+    final taskAppeared =
+        widget.taskActivity != null && oldWidget.taskActivity == null;
+    final taskLogGrew = (widget.taskActivity?.log.length ?? 0) !=
+        (oldWidget.taskActivity?.log.length ?? 0);
 
-    if (messagesChanged || streamingLenChanged || typingStarted) {
+    if (messagesChanged ||
+        streamingLenChanged ||
+        typingStarted ||
+        taskAppeared ||
+        taskLogGrew) {
       _scrollToBottom();
     }
   }
@@ -137,8 +151,11 @@ class _ChatMessageListState extends State<ChatMessageList> {
   Widget build(BuildContext context) {
     final hasStreaming = widget.streamingContent.isNotEmpty || (widget.streamingAgentEvents != null && widget.streamingAgentEvents!.isNotEmpty);
     final showTyping = widget.isTyping && !hasStreaming;
-    final itemCount =
-        widget.messages.length + (hasStreaming ? 1 : 0) + (showTyping ? 1 : 0);
+    final hasTask = widget.taskActivity != null;
+    final itemCount = widget.messages.length +
+        (hasStreaming ? 1 : 0) +
+        (showTyping ? 1 : 0) +
+        (hasTask ? 1 : 0);
 
     return ListView.builder(
       controller: _scrollController,
@@ -158,18 +175,29 @@ class _ChatMessageListState extends State<ChatMessageList> {
             ),
           );
         }
+        var rest = index - widget.messages.length;
         // Streaming message — rendered as a virtual assistant bubble
         if (hasStreaming) {
-          return _StreamingBubble(
-            content: widget.streamingContent,
-            thinking: widget.streamingThinking,
-            agentEvents: widget.streamingAgentEvents,
-            keepWorkingCue: widget.isCLIChat,
-            apiBaseUrl: widget.apiBaseUrl,
-          );
+          if (rest == 0) {
+            return _StreamingBubble(
+              content: widget.streamingContent,
+              thinking: widget.streamingThinking,
+              agentEvents: widget.streamingAgentEvents,
+              keepWorkingCue: widget.isCLIChat,
+              apiBaseUrl: widget.apiBaseUrl,
+            );
+          }
+          rest -= 1;
         }
-        // Typing indicator — shown before first token arrives
-        return _TypingIndicator(statusText: widget.statusText);
+        if (showTyping) {
+          if (rest == 0) return _TypingIndicator(statusText: widget.statusText);
+          rest -= 1;
+        }
+        // Live task block — always last
+        return TaskActivityBlock(
+          key: ValueKey('task_${widget.taskActivity!.listId}'),
+          state: widget.taskActivity!,
+        );
       },
     );
   }

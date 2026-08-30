@@ -52,9 +52,10 @@ void main() {
     expect(find.text('reviewer'), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
 
-    // Control buttons present.
+    // A running task shows Pause (not Resume — resuming an already-running
+    // task is a no-op and used to 500).
     expect(find.text(L10n.t('task_pause')), findsOneWidget);
-    expect(find.text(L10n.t('task_resume')), findsOneWidget);
+    expect(find.text(L10n.t('task_resume')), findsNothing);
     expect(find.text(L10n.t('task_cancel')), findsOneWidget);
     expect(find.text(L10n.t('task_skip')), findsOneWidget);
   });
@@ -71,6 +72,8 @@ void main() {
     await tester.pump();
 
     expect(find.byType(TaskDetailScreen), findsOneWidget);
-    expect(find.text(L10n.t('task_pause')), findsOneWidget); // controls still render
+    // Not running in-process → Resume is the offered control, not Pause.
+    expect(find.text(L10n.t('task_resume')), findsOneWidget);
+    expect(find.text(L10n.t('task_cancel')), findsOneWidget);
   });
 }

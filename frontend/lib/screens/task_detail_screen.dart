@@ -147,20 +147,27 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                 const SizedBox(height: 16),
               ],
             ],
-            Wrap(
+            Builder(builder: (context) {
+              final running = info != null &&
+                  (info.phase == 'running' ||
+                      info.phase == 'executing' ||
+                      info.phase == 'planning');
+              return Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                OutlinedButton.icon(
-                  onPressed: () => notifier.pause(widget.taskListId),
-                  icon: const Icon(Icons.pause, size: 18),
-                  label: Text(L10n.t('task_pause')),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => notifier.resume(widget.taskListId),
-                  icon: const Icon(Icons.play_arrow, size: 18),
-                  label: Text(L10n.t('task_resume')),
-                ),
+                if (running)
+                  OutlinedButton.icon(
+                    onPressed: () => notifier.pause(widget.taskListId),
+                    icon: const Icon(Icons.pause, size: 18),
+                    label: Text(L10n.t('task_pause')),
+                  ),
+                if (!running)
+                  OutlinedButton.icon(
+                    onPressed: () => notifier.resume(widget.taskListId),
+                    icon: const Icon(Icons.play_arrow, size: 18),
+                    label: Text(L10n.t('task_resume')),
+                  ),
                 OutlinedButton.icon(
                   onPressed: () => notifier.skip(widget.taskListId),
                   icon: const Icon(Icons.skip_next, size: 18),
@@ -172,7 +179,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                   label: Text(L10n.t('task_cancel')),
                 ),
               ],
-            ),
+            );
+            }),
             const SizedBox(height: 20),
             TextField(
               controller: _injectCtrl,

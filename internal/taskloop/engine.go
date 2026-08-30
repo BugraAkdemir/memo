@@ -779,6 +779,13 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 			return
 		}
 		plan = reloaded
+		if completed > 0 {
+			// Mirror any item whose last step just went green — incrementally,
+			// not only in finishPlanItems at the very end, so the item
+			// counters and Task.md checkboxes track a long run and a run that
+			// never finishes still shows the progress it made (BUG-PLAN11).
+			e.syncItemProgress(listID, plan)
+		}
 		if !progressed {
 			// No step advanced this wave; the top-of-loop empty-ready branch
 			// (with its escalation attempt) decides whether to stop.
@@ -979,13 +986,25 @@ func appendState(state, line string) string {
 	return state + "\n" + line
 }
 
-// finishPlanItems mirrors step completion up to the Task.md items: an item is
-// done when every step serving it is done, otherwise stuck. The list ends
-// "done" if any item completed, else "failed".
-func (e *Engine) finishPlanItems(listID string, tl *TaskList, plan *Plan) {
-	anyDone, anyStuck := false, false
+// syncItemProgress mirrors step completion up to the Task.md items *while the
+// plan is still executing*: the moment every step serving an item is done, the
+// item is marked done, its Task.md checkbox is ticked and a tasklist:item_done
+// event fires. Before this the item statuses (and the checkboxes, and every
+// item counter derived from them) only moved in finishPlanItems at the very
+// end, so a run that stalled on one step sat at "0/N items" forever even with
+// most steps green (BUG-PLAN11). It re-reads the list so it sees live item
+// statuses and is idempotent — an item already done is skipped — so calling it
+// every wave is cheap.
+func (e *Engine) syncItemProgress(listID string, plan *Plan) {
+	tl, err := e.store.Get(listID)
+	if err != nil {
+		return
+	}
 	for idx := range tl.Items {
 		it := &tl.Items[idx]
+		if it.Status == "done" {
+			continue
+		}
 		steps := plan.StepsForItem(strconv.Itoa(idx + 1))
 		if len(steps) == 0 {
 			continue
@@ -997,24 +1016,47 @@ func (e *Engine) finishPlanItems(listID string, tl *TaskList, plan *Plan) {
 				break
 			}
 		}
-		if allDone {
-			if err := e.store.SetItemDone(listID, it.ID); err != nil {
-				logx.Printf("TASKLOOP: plan item done %s/%s: %v", listID, it.ID, err)
-			}
-			if tl.TaskMdPath != "" && it.Line > 0 {
-				if err := MarkItemDone(tl.TaskMdPath, it.Line); err != nil {
-					logx.Printf("TASKLOOP: mirror %s line %d: %v", tl.TaskMdPath, it.Line, err)
-				}
-			}
-			e.emitEvent("tasklist:item_done", fmt.Sprintf("%s:%s", listID, it.ID))
-			anyDone = true
-		} else {
-			if err := e.store.SetItemStuck(listID, it.ID, "bazı adımlar tamamlanamadı"); err != nil {
-				logx.Printf("TASKLOOP: plan item stuck %s/%s: %v", listID, it.ID, err)
-			}
-			e.emitEvent("tasklist:item_stuck", fmt.Sprintf("%s:%s", listID, it.ID))
-			anyStuck = true
+		if !allDone {
+			continue
 		}
+		if err := e.store.SetItemDone(listID, it.ID); err != nil {
+			logx.Printf("TASKLOOP: plan item done %s/%s: %v", listID, it.ID, err)
+		}
+		if tl.TaskMdPath != "" && it.Line > 0 {
+			if err := MarkItemDone(tl.TaskMdPath, it.Line); err != nil {
+				logx.Printf("TASKLOOP: mirror %s line %d: %v", tl.TaskMdPath, it.Line, err)
+			}
+		}
+		e.emitEvent("tasklist:item_done", fmt.Sprintf("%s:%s", listID, it.ID))
+	}
+}
+
+// finishPlanItems settles the Task.md items once execution has stopped: it
+// first flushes any item completed by the final wave (syncItemProgress), then
+// marks every still-unfinished item stuck. The list ends "done" if any item
+// completed, else "failed".
+func (e *Engine) finishPlanItems(listID string, tl *TaskList, plan *Plan) {
+	e.syncItemProgress(listID, plan)
+
+	fresh, err := e.store.Get(listID)
+	if err != nil {
+		fresh = tl
+	}
+	anyDone, anyStuck := false, false
+	for idx := range fresh.Items {
+		it := &fresh.Items[idx]
+		if len(plan.StepsForItem(strconv.Itoa(idx+1))) == 0 {
+			continue
+		}
+		if it.Status == "done" {
+			anyDone = true
+			continue
+		}
+		if err := e.store.SetItemStuck(listID, it.ID, "bazı adımlar tamamlanamadı"); err != nil {
+			logx.Printf("TASKLOOP: plan item stuck %s/%s: %v", listID, it.ID, err)
+		}
+		e.emitEvent("tasklist:item_stuck", fmt.Sprintf("%s:%s", listID, it.ID))
+		anyStuck = true
 	}
 	final := taskListDone
 	if !anyDone && anyStuck {

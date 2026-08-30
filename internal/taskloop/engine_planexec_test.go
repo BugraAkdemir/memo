@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -140,6 +141,97 @@ func TestEngine_PlanExec_FailedAcceptanceMarksItemStuck(t *testing.T) {
 	p, _ := store.GetPlan(tl.ID)
 	if p.Steps[0].Status != "done" || p.Steps[1].Status != "stuck" {
 		t.Fatalf("step statuses = %q/%q", p.Steps[0].Status, p.Steps[1].Status)
+	}
+}
+
+// TestEngine_PlanExec_ItemsCompleteIncrementally is the BUG-PLAN11 regression:
+// an item whose steps all finish in an early wave must be marked done (and its
+// checkbox ticked, and a tasklist:item_done event fired) right then — not only
+// in finishPlanItems after the whole plan ends. The plan is chained so item 1
+// completes a full wave before item 2's step even runs, and the test asserts
+// item 1's item_done event lands before item 2's step_done.
+func TestEngine_PlanExec_ItemsCompleteIncrementally(t *testing.T) {
+	dir := t.TempDir()
+	md := filepath.Join(dir, "Task.md")
+	os.WriteFile(md, []byte("- [ ] first\n- [ ] second\n"), 0644)
+
+	store, _ := NewStore(t.TempDir())
+	tl, _ := store.CreateWithMeta("c1", "T", []string{"first", "second"}, NotifyImportant, md)
+	_ = store.SetItemLine(tl.ID, tl.Items[0].ID, 1)
+	_ = store.SetItemLine(tl.ID, tl.Items[1].ID, 2)
+	_ = store.SetMode(tl.ID, ModePlanner)
+	item1 := tl.Items[0].ID
+
+	// S1,S2 -> item 1 (S2 after S1); S3 -> item 2, after S2. So the waves are
+	// {S1}, {S2}, {S3} and item 1 is fully green after wave 2.
+	plan := Plan{Steps: []PlanStep{
+		{ID: "S1", ItemID: "1", Text: "a"},
+		{ID: "S2", ItemID: "1", Text: "b", DependsOn: []string{"S1"}},
+		{ID: "S3", ItemID: "2", Text: "c", DependsOn: []string{"S2"}},
+	}}
+
+	var mu sync.Mutex
+	var events []string
+	eng := NewEngine(store,
+		func(ctx context.Context, chatID, prompt string) (string, error) { return "ok", nil },
+		func(ctx context.Context, itemText, workerOutput string) (bool, string, error) { return true, "", nil },
+		func(bool) {},
+		func(name, data string) {
+			mu.Lock()
+			events = append(events, name+"|"+data)
+			mu.Unlock()
+		},
+		WithAutoApprovePlan(true),
+		WithPlanner(func(ctx context.Context, listID, chatID, root, preamble string, items []string, gran string) (*Plan, error) {
+			p := plan
+			p.ListID = listID
+			return &p, nil
+		}),
+		WithStepRunner(func(ctx context.Context, listID string, step PlanStep, stateDoc string) (string, error) {
+			return "did " + step.ID, nil
+		}),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = eng.Start(ctx, tl.ID)
+	waitForStatus(t, store, tl.ID, taskListDone, 3*time.Second)
+
+	mu.Lock()
+	seq := append([]string(nil), events...)
+	mu.Unlock()
+
+	idxItem1Done, idxS3Done, idxFinished := -1, -1, -1
+	for i, e := range seq {
+		switch {
+		case e == "tasklist:item_done|"+tl.ID+":"+item1 && idxItem1Done == -1:
+			idxItem1Done = i
+		case e == "taskloop:step_done|"+tl.ID+":S3":
+			idxS3Done = i
+		case strings.HasPrefix(e, "tasklist:finished|"):
+			idxFinished = i
+		}
+	}
+	if idxItem1Done == -1 {
+		t.Fatalf("no tasklist:item_done for item 1; events: %v", seq)
+	}
+	if idxS3Done == -1 {
+		t.Fatalf("no taskloop:step_done for S3; events: %v", seq)
+	}
+	if idxItem1Done > idxS3Done {
+		t.Fatalf("item 1 was only marked done after S3 ran (index %d vs %d) — not incremental; events: %v", idxItem1Done, idxS3Done, seq)
+	}
+	if idxFinished != -1 && idxItem1Done > idxFinished {
+		t.Fatalf("item 1 done fired after tasklist:finished; events: %v", seq)
+	}
+
+	got, _ := store.Get(tl.ID)
+	if got.Items[0].Status != "done" || got.Items[1].Status != "done" {
+		t.Fatalf("final item statuses = %q/%q, want done/done", got.Items[0].Status, got.Items[1].Status)
+	}
+	mdGot, _ := os.ReadFile(md)
+	if string(mdGot) != "- [x] first\n- [x] second\n" {
+		t.Fatalf("Task.md not mirrored:\n%q", string(mdGot))
 	}
 }
 

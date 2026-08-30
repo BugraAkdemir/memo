@@ -2641,14 +2641,23 @@ class MemoApiClient {
         .toList();
   }
 
+  /// Creates a task list. When [taskMdPath] is a non-empty path the backend
+  /// seeds the list from that Task.md's "- [ ]" items (and mirrors "[x]" back
+  /// into the file as items complete); otherwise it uses [items] verbatim.
   Future<TaskList> createTaskList(
     String chatId,
     String title,
-    List<String> items,
-  ) async {
+    List<String> items, {
+    String? taskMdPath,
+  }) async {
+    final path = taskMdPath?.trim() ?? '';
     final res = await _dio.post(
       '/api/tasklists',
-      data: {'chat_id': chatId, 'title': title, 'items': items},
+      data: {
+        'chat_id': chatId,
+        'title': title,
+        if (path.isNotEmpty) 'task_md_path': path else 'items': items,
+      },
     );
     return TaskList.fromJson(Map<String, dynamic>.from(_guard<Map>(res.data)));
   }

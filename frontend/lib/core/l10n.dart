@@ -1814,6 +1814,10 @@ class L10n {
     'tasklist_item_hint': 'Madde metni',
     'tasklist_add_item': 'Madde ekle',
     'tasklist_select_chat': 'Hangi ajan sohbetinde çalışsın?',
+    'tasklist_taskmd_path_hint': 'Task.md yolu (isteğe bağlı)',
+    'tasklist_taskmd_path_help':
+        'Doldurulursa maddeler bu dosyadaki "- [ ]" satırlarından okunur, başlık boş bırakılabilir ve maddeler tamamlandıkça dosyaya "[x]" olarak işlenir.',
+    'tasklist_taskmd_items_from_file': 'Maddeler Task.md dosyasından okunacak.',
     'tasklist_no_agent_chats':
         'Henüz bir ajan sohbeti yok. Görev listesi oluşturmak için önce Ajan sekmesinden bir proje sohbeti açın.',
 
@@ -3784,6 +3788,10 @@ class L10n {
     'tasklist_item_hint': 'Item text',
     'tasklist_add_item': 'Add item',
     'tasklist_select_chat': 'Which agent chat should this run in?',
+    'tasklist_taskmd_path_hint': 'Task.md path (optional)',
+    'tasklist_taskmd_path_help':
+        'If set, items are read from the "- [ ]" lines in this file, the title can be left blank, and "[x]" is mirrored back into the file as items complete.',
+    'tasklist_taskmd_items_from_file': 'Items will be read from the Task.md file.',
     'tasklist_no_agent_chats':
         'No agent chats yet. Open a project chat from the Agent tab first to create a task list.',
 

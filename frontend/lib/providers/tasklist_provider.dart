@@ -68,9 +68,16 @@ class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
     }
   }
 
-  Future<void> createTaskList(String chatId, String title, List<String> items) {
+  Future<void> createTaskList(
+    String chatId,
+    String title,
+    List<String> items, {
+    String? taskMdPath,
+  }) {
     final api = ref.read(apiClientProvider);
-    return _guarded(() => api.createTaskList(chatId, title, items));
+    return _guarded(
+      () => api.createTaskList(chatId, title, items, taskMdPath: taskMdPath),
+    );
   }
 
   Future<void> deleteTaskList(String id) {

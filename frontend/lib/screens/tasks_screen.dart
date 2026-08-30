@@ -36,6 +36,7 @@ class TasksScreen extends ConsumerStatefulWidget {
 
 class _TasksScreenState extends ConsumerState<TasksScreen> {
   final _titleCtrl = TextEditingController();
+  final _taskMdCtrl = TextEditingController();
   final _itemCtrls = <TextEditingController>[];
   String? _dialogChatId;
 
@@ -51,6 +52,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
   void dispose() {
     ref.read(taskListsProvider.notifier).stopPolling();
     _titleCtrl.dispose();
+    _taskMdCtrl.dispose();
     for (final c in _itemCtrls) {
       c.dispose();
     }
@@ -198,6 +200,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
 
   void _showCreateDialog(List<ChatSession> agentChats) {
     _titleCtrl.clear();
+    _taskMdCtrl.clear();
     for (final c in _itemCtrls) {
       c.dispose();
     }
@@ -239,6 +242,18 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                     ),
                     const SizedBox(height: 12),
                     TextField(
+                      controller: _taskMdCtrl,
+                      decoration: InputDecoration(
+                        labelText: L10n.t('tasklist_taskmd_path_hint'),
+                        helperText: L10n.t('tasklist_taskmd_path_help'),
+                        helperMaxLines: 3,
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
                       controller: _titleCtrl,
                       decoration: InputDecoration(
                         labelText: L10n.t('tasklist_title_hint'),
@@ -246,44 +261,54 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    ...List.generate(_itemCtrls.length, (i) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Row(
-                          children: [
-                            Text('${i + 1}.', style: TextStyle(color: c.textDim)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _itemCtrls[i],
-                                decoration: InputDecoration(
-                                  hintText: L10n.t('tasklist_item_hint'),
-                                  border: const OutlineInputBorder(),
-                                  isDense: true,
+                    if (_taskMdCtrl.text.trim().isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          L10n.t('tasklist_taskmd_items_from_file'),
+                          style: TextStyle(fontSize: 12, color: c.textDim),
+                        ),
+                      )
+                    else ...[
+                      ...List.generate(_itemCtrls.length, (i) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              Text('${i + 1}.', style: TextStyle(color: c.textDim)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  controller: _itemCtrls[i],
+                                  decoration: InputDecoration(
+                                    hintText: L10n.t('tasklist_item_hint'),
+                                    border: const OutlineInputBorder(),
+                                    isDense: true,
+                                  ),
                                 ),
                               ),
-                            ),
-                            if (_itemCtrls.length > 1)
-                              IconButton(
-                                icon: Icon(Icons.remove_circle_outline, size: 18, color: MemoTheme.red),
-                                onPressed: () {
-                                  _itemCtrls[i].dispose();
-                                  _itemCtrls.removeAt(i);
-                                  setDialogState(() {});
-                                },
-                              ),
-                          ],
-                        ),
-                      );
-                    }),
-                    TextButton.icon(
-                      onPressed: () {
-                        _itemCtrls.add(TextEditingController());
-                        setDialogState(() {});
-                      },
-                      icon: const Icon(Icons.add, size: 16),
-                      label: Text(L10n.t('tasklist_add_item')),
-                    ),
+                              if (_itemCtrls.length > 1)
+                                IconButton(
+                                  icon: Icon(Icons.remove_circle_outline, size: 18, color: MemoTheme.red),
+                                  onPressed: () {
+                                    _itemCtrls[i].dispose();
+                                    _itemCtrls.removeAt(i);
+                                    setDialogState(() {});
+                                  },
+                                ),
+                            ],
+                          ),
+                        );
+                      }),
+                      TextButton.icon(
+                        onPressed: () {
+                          _itemCtrls.add(TextEditingController());
+                          setDialogState(() {});
+                        },
+                        icon: const Icon(Icons.add, size: 16),
+                        label: Text(L10n.t('tasklist_add_item')),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -295,15 +320,25 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 ElevatedButton(
                   onPressed: () {
                     final title = _titleCtrl.text.trim();
+                    final taskMdPath = _taskMdCtrl.text.trim();
                     final items = _itemCtrls
                         .map((c) => c.text.trim())
                         .where((t) => t.isNotEmpty)
                         .toList();
                     final chatId = _dialogChatId;
-                    if (title.isEmpty || items.isEmpty || chatId == null) return;
-                    ref
-                        .read(taskListsProvider.notifier)
-                        .createTaskList(chatId, title, items);
+                    if (chatId == null) return;
+                    // With a Task.md path the backend reads the items (and the
+                    // title falls back to the file name); without one we need
+                    // both a title and at least one manual item.
+                    if (taskMdPath.isEmpty && (title.isEmpty || items.isEmpty)) {
+                      return;
+                    }
+                    ref.read(taskListsProvider.notifier).createTaskList(
+                          chatId,
+                          title,
+                          items,
+                          taskMdPath: taskMdPath.isEmpty ? null : taskMdPath,
+                        );
                     Navigator.of(ctx).pop();
                   },
                   child: Text(L10n.t('save')),

@@ -33,12 +33,15 @@ func newGeminiProvider(cfg ProviderConfig) (*geminiProvider, error) {
 		model:   cfg.Model,
 		apiKey:  cfg.APIKey,
 		client: &http.Client{
-			Timeout: 120 * time.Second,
+			// Non-stream path also bounds agent-pipeline turns (planner/coder
+			// / escalator in the Self-Driving loop). 120s/30s were too tight
+			// for a big planning call to a reasoning model.
+			Timeout: 300 * time.Second,
 			Transport: &http.Transport{
 				MaxIdleConns:          10,
 				MaxIdleConnsPerHost:   10,
 				IdleConnTimeout:       90 * time.Second,
-				ResponseHeaderTimeout: 30 * time.Second,
+				ResponseHeaderTimeout: 120 * time.Second,
 			},
 		},
 		streamCl: &http.Client{

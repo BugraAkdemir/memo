@@ -42,7 +42,16 @@ func newOpenAIProvider(cfg ProviderConfig) (*openAIProvider, error) {
 		model:    cfg.Model,
 		apiKey:   cfg.APIKey,
 		client: &http.Client{
-			Timeout: 120 * time.Second,
+			// The non-streaming path — used by the agent pipeline
+			// (pipeline.go calls ChatCompletion, not ...Stream), so this
+			// also bounds every planner / coder / escalator turn in the
+			// Self-Driving loop. 120s was too tight: a big planning call to a
+			// slow or queued endpoint returns one large JSON body with no
+			// progress signal, and 120s killed it mid-generation (the
+			// planner then failed the whole list). 300s still fails a
+			// genuinely dead endpoint; the loop's own retry covers a
+			// transient one.
+			Timeout: 300 * time.Second,
 			Transport: &http.Transport{
 				MaxIdleConns:        10,
 				MaxIdleConnsPerHost: 10,

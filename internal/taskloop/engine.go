@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"memo/internal/logx"
 	"memo/internal/truncate"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,18 @@ import (
 type RunWorker func(ctx context.Context, chatID, prompt string) (string, error)
 type ReviewChief func(ctx context.Context, itemText, workerOutput string) (approved bool, feedback string, err error)
 type BypassSetter func(bool)
+
+// Planner turns a task list's items into a reviewed Plan for "planlayıcı"
+// mode. projectRoot / preamble carry the repo rules already assembled by
+// buildPlanningPreamble; granularity is "intent" | "literal" | "hybrid".
+type Planner func(ctx context.Context, listID, chatID, projectRoot, preamble string, items []string, granularity string) (*Plan, error)
+
+// StepRunner executes one plan step (a fresh ephemeral coder turn). stateDoc
+// is the running project-state handoff (empty until Phase B wires it).
+type StepRunner func(ctx context.Context, listID string, step PlanStep, stateDoc string) (output string, err error)
+
+// AcceptanceChecker verifies a step's acceptance checks after the coder ran.
+type AcceptanceChecker func(ctx context.Context, listID string, step PlanStep) (pass bool, detail string, err error)
 
 type Engine struct {
 	store       *Store
@@ -35,6 +48,14 @@ type Engine struct {
 	retry            *RetryScheduler
 	subOrch          *SubAgentOrchestrator
 	subSpecs         func(itemText, feedback string) []SubAgentSpec
+
+	// v4.5.0 planner/executor mode (all nil/zero-safe; only used when a list's
+	// Mode == ModePlanner and a Planner is configured).
+	planner       Planner
+	stepRunner    StepRunner
+	acceptChecker AcceptanceChecker
+	granularity   string
+	autoApprove   bool
 
 	rtMu     sync.RWMutex
 	runtimes map[string]*listRuntime
@@ -119,6 +140,25 @@ func WithSubAgents(orch *SubAgentOrchestrator, specFn func(itemText, feedback st
 func (e *Engine) ArmRetry(listID string) {
 	e.retry.Arm(listID)
 }
+
+// WithPlanner enables "planlayıcı" mode: for a list whose Mode == ModePlanner
+// the loop asks fn for a Plan, writes Plan.md, waits for approval (unless
+// WithAutoApprovePlan), then runs the plan's steps via the StepRunner.
+func WithPlanner(fn Planner) EngineOption { return func(e *Engine) { e.planner = fn } }
+
+// WithStepRunner supplies the per-step coder turn for planner mode.
+func WithStepRunner(fn StepRunner) EngineOption { return func(e *Engine) { e.stepRunner = fn } }
+
+// WithAcceptanceChecker supplies the post-step verification for planner mode.
+func WithAcceptanceChecker(fn AcceptanceChecker) EngineOption {
+	return func(e *Engine) { e.acceptChecker = fn }
+}
+
+// WithGranularity sets the planner's step granularity ("intent"|"literal"|"hybrid").
+func WithGranularity(g string) EngineOption { return func(e *Engine) { e.granularity = g } }
+
+// WithAutoApprovePlan skips the plan approval gate.
+func WithAutoApprovePlan(v bool) EngineOption { return func(e *Engine) { e.autoApprove = v } }
 
 func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBypass BypassSetter, onEvent func(name, data string), opts ...EngineOption) *Engine {
 	e := &Engine{
@@ -259,6 +299,13 @@ func (e *Engine) run(ctx context.Context, listID string) {
 
 	e.rtStart(listID)
 	defer e.rtEnd(listID)
+
+	// v4.5.0: a planner/executor list takes a completely separate path. The
+	// worker-mode body below is byte-for-byte unchanged.
+	if tl.Mode == ModePlanner && e.planner != nil {
+		e.runPlanExec(ctx, listID, tl)
+		return
+	}
 
 	// Planning phase: gather the repo's own rules and the memo-system
 	// guidance into a preamble prepended to every worker item.
@@ -412,6 +459,247 @@ func (e *Engine) run(ctx context.Context, listID string) {
 	if e.onEvent != nil {
 		e.onEvent("tasklist:finished", fmt.Sprintf("%s:%s", listID, final))
 	}
+}
+
+// ---- v4.5.0 planner/executor mode -------------------------------------------
+
+// runPlanExec drives a Mode==ModePlanner list: plan (once) -> approval gate ->
+// execute the plan's steps. Re-entrant: on a resume after approval a plan
+// already exists, so it skips straight to execution.
+func (e *Engine) runPlanExec(ctx context.Context, listID string, tl *TaskList) {
+	if !e.store.HasPlan(listID) {
+		if err := e.store.SetStatus(listID, taskListPlanning); err != nil {
+			logx.Printf("TASKLOOP: set planning %s: %v", listID, err)
+		}
+		e.emitEvent("taskloop:planning", listID)
+
+		preamble := e.buildPlanningPreamble(tl)
+		root := ""
+		if e.projectPathFn != nil {
+			root = e.projectPathFn(tl.ChatID)
+		}
+		plan, err := e.planner(ctx, listID, tl.ChatID, root, preamble, itemTexts(tl), e.granularity)
+		if err != nil {
+			e.failPlan(listID, "planlama başarısız: "+err.Error())
+			return
+		}
+		if err := plan.Normalize(); err != nil {
+			e.failPlan(listID, "geçersiz plan: "+err.Error())
+			return
+		}
+		plan.ListID = listID
+		if err := e.store.SavePlan(listID, *plan); err != nil {
+			e.failPlan(listID, err.Error())
+			return
+		}
+		if tl.TaskMdPath != "" {
+			if err := WritePlanMd(PlanMdPath(tl.TaskMdPath), *plan, itemTextMap(tl)); err != nil {
+				logx.Printf("TASKLOOP: write Plan.md %s: %v", listID, err)
+			}
+		}
+		if !e.autoApprove {
+			if err := e.store.SetStatus(listID, taskListAwaitingPlan); err != nil {
+				logx.Printf("TASKLOOP: set awaiting-plan %s: %v", listID, err)
+			}
+			e.emitEvent("taskloop:awaiting_plan", listID)
+			return
+		}
+	}
+
+	select {
+	case <-ctx.Done():
+		_ = e.store.SetStatus(listID, taskListPaused)
+		return
+	default:
+	}
+	e.executePlan(ctx, listID, tl)
+}
+
+// ApprovePlan moves an awaiting-plan-approval list into execution. It re-reads
+// Plan.md first (the user may have edited it) and starts the loop.
+func (e *Engine) ApprovePlan(ctx context.Context, listID string) error {
+	tl, err := e.store.Get(listID)
+	if err != nil {
+		return err
+	}
+	if tl.Status != taskListAwaitingPlan {
+		return fmt.Errorf("tasklist %s onay bekleyen durumda değil (%s)", listID, tl.Status)
+	}
+	if tl.TaskMdPath != "" {
+		if p, perr := ParsePlanMd(PlanMdPath(tl.TaskMdPath)); perr == nil {
+			p.ListID = listID
+			if serr := e.store.SavePlan(listID, *p); serr != nil {
+				return serr
+			}
+		} else {
+			logx.Printf("TASKLOOP: ApprovePlan re-read Plan.md %s: %v (keeping stored plan)", listID, perr)
+		}
+	}
+	if err := e.store.SetStatus(listID, taskListExecuting); err != nil {
+		return err
+	}
+	return e.Start(ctx, listID)
+}
+
+// executePlan runs the plan's steps in dependency order. Phase B replaces the
+// sequential ready-set loop here with a parallel scheduler + state doc; for
+// now it needs a StepRunner and runs ready steps one at a time.
+func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
+	if err := e.store.SetStatus(listID, taskListExecuting); err != nil {
+		logx.Printf("TASKLOOP: set executing %s: %v", listID, err)
+	}
+	e.emitEvent("taskloop:executing", listID)
+
+	if e.stepRunner == nil {
+		e.failPlan(listID, "executor yapılandırılmamış (WithStepRunner)")
+		return
+	}
+	plan, err := e.store.GetPlan(listID)
+	if err != nil {
+		e.failPlan(listID, err.Error())
+		return
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			_ = e.store.SetStatus(listID, taskListPaused)
+			return
+		default:
+		}
+		ready := plan.ReadySteps()
+		if len(ready) == 0 {
+			break
+		}
+		progressed := false
+		for _, step := range ready {
+			select {
+			case <-ctx.Done():
+				_ = e.store.SetStatus(listID, taskListPaused)
+				return
+			default:
+			}
+			e.rtSetItem(listID, step.Text)
+			if err := e.runOneStep(ctx, listID, step); err != nil {
+				logx.Printf("TASKLOOP: step %s/%s stuck: %v", listID, step.ID, err)
+				_ = e.store.SetStepStatus(listID, step.ID, "stuck", err.Error())
+			} else {
+				_ = e.store.SetStepStatus(listID, step.ID, "done", "")
+				e.emitEvent("taskloop:step_done", fmt.Sprintf("%s:%s", listID, step.ID))
+				progressed = true
+			}
+		}
+		reloaded, gerr := e.store.GetPlan(listID)
+		if gerr != nil {
+			e.failPlan(listID, gerr.Error())
+			return
+		}
+		plan = reloaded
+		if !progressed {
+			break // every currently-ready step is stuck; nothing more will unblock
+		}
+	}
+
+	e.finishPlanItems(listID, tl, plan)
+}
+
+// runOneStep runs the coder turn for one step and applies its acceptance
+// checks. Returns nil only when the step both ran and passed.
+func (e *Engine) runOneStep(ctx context.Context, listID string, step PlanStep) error {
+	_ = e.store.SetStepStatus(listID, step.ID, "running", "")
+	if _, err := e.store.IncrementStepAttempts(listID, step.ID); err != nil {
+		logx.Printf("TASKLOOP: bump attempts %s/%s: %v", listID, step.ID, err)
+	}
+	if _, err := e.stepRunner(ctx, listID, step, ""); err != nil {
+		return err
+	}
+	if e.acceptChecker != nil {
+		pass, detail, err := e.acceptChecker(ctx, listID, step)
+		if err != nil {
+			return fmt.Errorf("kabul kontrolü hatası: %w", err)
+		}
+		if !pass {
+			return fmt.Errorf("kabul kontrolü geçmedi: %s", detail)
+		}
+	}
+	return nil
+}
+
+// finishPlanItems mirrors step completion up to the Task.md items: an item is
+// done when every step serving it is done, otherwise stuck. The list ends
+// "done" if any item completed, else "failed".
+func (e *Engine) finishPlanItems(listID string, tl *TaskList, plan *Plan) {
+	anyDone, anyStuck := false, false
+	for idx := range tl.Items {
+		it := &tl.Items[idx]
+		steps := plan.StepsForItem(strconv.Itoa(idx + 1))
+		if len(steps) == 0 {
+			continue
+		}
+		allDone := true
+		for _, s := range steps {
+			if s.Status != "done" {
+				allDone = false
+				break
+			}
+		}
+		if allDone {
+			if err := e.store.SetItemDone(listID, it.ID); err != nil {
+				logx.Printf("TASKLOOP: plan item done %s/%s: %v", listID, it.ID, err)
+			}
+			if tl.TaskMdPath != "" && it.Line > 0 {
+				if err := MarkItemDone(tl.TaskMdPath, it.Line); err != nil {
+					logx.Printf("TASKLOOP: mirror %s line %d: %v", tl.TaskMdPath, it.Line, err)
+				}
+			}
+			e.emitEvent("tasklist:item_done", fmt.Sprintf("%s:%s", listID, it.ID))
+			anyDone = true
+		} else {
+			if err := e.store.SetItemStuck(listID, it.ID, "bazı adımlar tamamlanamadı"); err != nil {
+				logx.Printf("TASKLOOP: plan item stuck %s/%s: %v", listID, it.ID, err)
+			}
+			e.emitEvent("tasklist:item_stuck", fmt.Sprintf("%s:%s", listID, it.ID))
+			anyStuck = true
+		}
+	}
+	final := taskListDone
+	if !anyDone && anyStuck {
+		final = taskListFailed
+	}
+	if err := e.store.SetStatus(listID, final); err != nil {
+		logx.Printf("TASKLOOP: set list %s %s: %v", final, listID, err)
+	}
+	e.emitEvent("tasklist:finished", fmt.Sprintf("%s:%s", listID, final))
+}
+
+func (e *Engine) failPlan(listID, note string) {
+	logx.Printf("TASKLOOP: plan-exec %s failed: %s", listID, note)
+	if err := e.store.SetStatus(listID, taskListFailed); err != nil {
+		logx.Printf("TASKLOOP: set failed %s: %v", listID, err)
+	}
+	e.emitEvent("tasklist:finished", listID+":"+taskListFailed)
+}
+
+func (e *Engine) emitEvent(name, data string) {
+	if e.onEvent != nil {
+		e.onEvent(name, data)
+	}
+}
+
+func itemTexts(tl *TaskList) []string {
+	out := make([]string, len(tl.Items))
+	for i, it := range tl.Items {
+		out[i] = it.Text
+	}
+	return out
+}
+
+func itemTextMap(tl *TaskList) map[string]string {
+	m := make(map[string]string, len(tl.Items))
+	for i, it := range tl.Items {
+		m[strconv.Itoa(i+1)] = it.Text
+	}
+	return m
 }
 
 // buildPlanningPreamble assembles the standing instructions prepended to the

@@ -93,9 +93,9 @@
 | 🟡 MEDIUM | 0 |
 | 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 0 |
-| ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 2 (BUG-PERM1, BUG-PLAN4) |
-| ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 6 (PLAN1/2/3/5/6/7/8) |
-| **AÇIK TOPLAM** | **1 (BUG-PLAN4)** |
+| ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 1 (BUG-PERM1 — gerçek Flutter dialogu) |
+| ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 7 (PLAN1/2/3/4/5/6/7/8 — PLAN4 kod+analyze doğrulandı) |
+| **AÇIK TOPLAM** | **0** |
 
 ---
 
@@ -171,12 +171,14 @@ Sonra 6 bug yüzünden 1/8'de durdu:
   `Headers["mod"]`'u okuyor. `AutoApprovePlan` global config; per-liste
   auto-approve alanı yok. Model header'ı yazıyor, hiçbir etkisi olmuyor →
   liste onay kapısında asılı kalıyor.
-- **BUG-PLAN4 — Görevler sekmesindeki kart `task_detail_screen.dart`'ı
-  (Faz F onay UI'ı) AÇMIYOR.** Kart tıklaması `tasks_screen.dart`'ın eski
-  `_showDetailDialog` modalını açıyor: statüyü **"Idle"** gösteriyor (gerçek:
-  `awaiting-plan-approval`), radio-buton madde listesi + "Close". Plan onay
-  butonu YOK. `# onay` de bozuk olduğundan (BUG-PLAN3) UI'dan planı
-  onaylamanın **hiçbir yolu yok** — planexec modu UI'dan kilitli.
+- **✅ BUG-PLAN4 (fix `<commit>`) — Görevler sekmesi kartı `task_detail_screen.dart`'ı
+  açmıyordu.** Kart `onTap`'i eski `_showDetailDialog` statik-snapshot modalını
+  açıyordu: bayat statü ("Idle"), plan onay butonu YOK → `# onay` header'sız
+  planexec listesi UI'dan onaylanamıyordu. `onTap` artık `TaskDetailScreen`'e
+  push ediyor (canlı görünüm + self-fetch eden `_PlanApprovalSection`
+  düzenlenebilir Plan.md + "Onayla ve çalıştır" + `waiting-escalation`
+  banner'ı). `_showDetailDialog` ve 2 kullanılmayan import silindi. Kod +
+  `flutter analyze` + widget testleri yeşil.
 - **BUG-PLAN5 — paralel step goroutine'lerinden eşzamanlı `SavePlan` yarışı.**
   `MaxParallelSteps=3` step goroutine'i `IncrementStepAttempts` → `mutatePlan`
   → `SavePlan` → `fileutil.AtomicWrite` (tmp + rename) çağırıyor. İki goroutine

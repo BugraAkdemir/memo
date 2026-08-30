@@ -191,6 +191,27 @@ func (r *ToolRegistry) registerBuiltins() {
 	r.registerRoutineTool()
 	r.registerFileSenderTool()
 	r.registerSelfDrivingTaskTool()
+	r.registerTaskMdTools()
+}
+
+// registerTaskMdTools adds create_task_md / edit_task_md — only to the
+// main/full registry (like create_routine), reachable from any agent-enabled
+// chat. They write/mutate a Task.md following taskloop.TaskMdSchemaDoc.
+func (r *ToolRegistry) registerTaskMdTools() {
+	r.Register(ToolDef{
+		Name:        "create_task_md",
+		Description: "Yeni bir Task.md dosyası yazar (Memo'nun otonom görev listesi formatında). Kullanıcı \"benimle bir task listesi/Task.md hazırla\", \"şu işi maddelere böl\" gibi bir şey dediğinde: önce sohbette hedefi ve ayrık, tek tek doğrulanabilir teslimatları netleştir, sonra bu aracı çağır. path: opsiyonel (verilmezse bu sohbetin proje klasöründe Task.md). items: onay kutulu maddeler (zorunlu). intro: hedefi anlatan kısa paragraf. notify: sadece-bitince|önemli|her-şey. mode: worker|planlayıcı. planner_model/coder_model/verifier_model: rol başına model sabitlemek istersen (ör. \"local\", \"claude\"). memory: açık|kapalı. auto_approve: plan onay kapısını atla. Dosya zaten varsa hata verir; değiştirmek için edit_task_md kullan.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Optional file path; defaults to Task.md in this chat's project folder"},"items":{"type":"array","items":{"type":"string"},"description":"Checkbox items — each a concrete, independently verifiable deliverable"},"intro":{"type":"string","description":"Short paragraph stating the goal and any context"},"notify":{"type":"string","description":"sadece-bitince | önemli | her-şey"},"mode":{"type":"string","description":"worker | planlayıcı"},"planner_model":{"type":"string"},"coder_model":{"type":"string"},"verifier_model":{"type":"string"},"memory":{"type":"string","description":"açık | kapalı"},"auto_approve":{"type":"boolean"}},"required":["items"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.CreateTaskMd,
+	})
+	r.Register(ToolDef{
+		Name:        "edit_task_md",
+		Description: "Var olan bir Task.md'yi yerinde düzenler, mevcut onay kutusu durumlarını ve başlıkları koruyarak. op: add_item (yeni madde ekle — text), split_item (item_index'teki maddeyi sub_items alt maddelerine böl, maddeye [parallel] ekler), set_header (header_key + header_value), check_item (item_index'teki maddeyi [x] yap). item_index 1 tabanlıdır ve iç içe maddeler dahil dosya sırasına göredir.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Task.md path; defaults to this chat's project Task.md"},"op":{"type":"string","enum":["add_item","split_item","set_header","check_item"]},"text":{"type":"string","description":"add_item: the new item text"},"item_index":{"type":"integer","description":"1-based, for split_item / check_item"},"sub_items":{"type":"array","items":{"type":"string"},"description":"split_item: the sub-item texts"},"header_key":{"type":"string","description":"set_header: e.g. bildirim, mod, kodlayıcı"},"header_value":{"type":"string"}},"required":["op"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.EditTaskMd,
+	})
 }
 
 // registerSelfDrivingTaskTool adds start_self_driving_task to this registry —

@@ -13,6 +13,7 @@ import (
 
 	"memo/internal/api"
 	moodpkg "memo/internal/mood"
+	"memo/internal/taskloop"
 )
 
 // forwardStream drains inner into out, preferring delivery of each chunk
@@ -812,5 +813,18 @@ kodlama ajanı olarak çalışıyorsun. Aşağıdaki kurallara uy:
   duraklat/devam/atla kontrolleri oradadır (Telegram/WhatsApp'ta da task_list / task_change ile).
 - start_self_driving_task yalnızca bir Ajan sohbetinden (bir proje klasörüne bağlı) çalışır; sohbet
   ajan sohbeti değilse araç bunu söyleyip hata döndürür, sen de kullanıcıya Ajan sekmesinden proje
-  bağlamasını söyle.`
+  bağlamasını söyle.
+
+### Task.md Yazma / Düzenleme
+- Kullanıcı "benimle bir Task.md hazırla", "bu işi maddelere böl", "Task.md'ye şu maddeyi ekle",
+  "3. maddeyi ikiye böl" gibi bir şey dediğinde dosyayı elle write_file ile uydurma —
+  create_task_md / edit_task_md araçlarını kullan. Önce sohbette hedefi ve ayrık, tek tek
+  doğrulanabilir teslimatları netleştir, sonra create_task_md'yi çağır.
+- Aşağıdaki şema tek geçerli biçimdir:
+
+` + taskloop.TaskMdSchemaDoc() + `
+
+Örnek iskelet:
+
+` + taskloop.TaskMdTemplate() + ``
 }

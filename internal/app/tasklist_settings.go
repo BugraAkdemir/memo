@@ -27,6 +27,7 @@ func (a *App) UpdateTaskLoopSettings(c config.TaskLoopConfig) error {
 		a.taskloopEngine.ApplyConfig(
 			c.StepGranularity, c.AutoApprovePlan,
 			c.MaxParallelSteps, c.MaxExecutorAttempts, c.HandoffStateMaxTokens,
+			c.MaxConcurrentLists,
 		)
 	}
 	return config.Save(a.cfg)

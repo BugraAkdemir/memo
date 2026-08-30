@@ -253,12 +253,6 @@ type App struct {
 
 	taskloopStore  *taskloop.Store
 	taskloopEngine *taskloop.Engine
-	// taskloopRunMu serializes taskloop worker calls: the worker needs to
-	// switch the single global active session to the task list's chat and
-	// force agent mode on, so two lists running at once must never overlap
-	// a switch+send critical section or their messages would cross-talk into
-	// each other's chats.
-	taskloopRunMu sync.Mutex
 
 	// taskRunCfgs holds each running task list's private provider/model
 	// snapshot + executor (see tasklist_run.go). Keyed by list ID; populated
@@ -737,6 +731,7 @@ func (a *App) Startup(ctx context.Context) {
 			taskloop.WithMaxParallelSteps(a.cfg.TaskLoop.MaxParallelSteps),
 			taskloop.WithMaxExecutorAttempts(a.cfg.TaskLoop.MaxExecutorAttempts),
 			taskloop.WithStateMaxTokens(a.cfg.TaskLoop.HandoffStateMaxTokens),
+			taskloop.WithMaxConcurrentLists(a.cfg.TaskLoop.MaxConcurrentLists),
 		)
 		if a.cfg != nil && a.cfg.TaskLoop.SubAgents {
 			// Applied after construction (rather than inline above) only so the

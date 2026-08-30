@@ -361,8 +361,7 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 // so a caller like the task loop (internal/app/tasklist.go) no longer has
 // to SwitchChat + force the global agent-mode flag on and back off around
 // every call — a pattern that raced a concurrent user-driven chat switch or
-// manual agent-mode toggle (a.agentMu is a different lock than
-// taskloopRunMu). Tool execution is active for this one call if chatID
+// manual agent-mode toggle. Tool execution is active for this one call if chatID
 // itself is an agent chat (sm.IsAgentChat — true for every task-loop and
 // CLI-created chat), regardless of the global agent-mode toggle's current
 // state, so no shared flag needs to move at all.

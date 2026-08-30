@@ -149,6 +149,11 @@ type TaskLoopConfig struct {
 	// AcceptanceCommandTimeoutSec caps a single `command` acceptance check
 	// (e.g. `go test ./...`) — default 300.
 	AcceptanceCommandTimeoutSec int `yaml:"acceptance_command_timeout_sec" json:"acceptance_command_timeout_sec"`
+	// MaxConcurrentLists caps how many task lists may run at the same time.
+	// 0 (default) means unlimited — since v4.6.0 lists no longer serialise
+	// against each other, so this is only a safety valve for very
+	// resource-constrained hosts.
+	MaxConcurrentLists int `yaml:"max_concurrent_lists" json:"max_concurrent_lists"`
 }
 
 // LiveModeConfig controls voice Live Mode independently of Beta — it

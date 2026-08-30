@@ -74,6 +74,7 @@ type Engine struct {
 	maxPar         int
 	maxAttempts    int
 	stateMaxTokens int
+	maxConcurrent  int // task lists allowed to run at once; 0 = unlimited
 
 	rtMu     sync.RWMutex
 	runtimes map[string]*listRuntime
@@ -213,6 +214,16 @@ func WithMaxExecutorAttempts(n int) EngineOption {
 	}
 }
 
+// WithMaxConcurrentLists caps how many task lists Start will allow to run at
+// once. 0 (the default) is unlimited.
+func WithMaxConcurrentLists(n int) EngineOption {
+	return func(e *Engine) {
+		if n > 0 {
+			e.maxConcurrent = n
+		}
+	}
+}
+
 func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBypass BypassSetter, onEvent func(name, data string), opts ...EngineOption) *Engine {
 	e := &Engine{
 		store:       store,
@@ -230,10 +241,18 @@ func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBy
 }
 
 func (e *Engine) Start(ctx context.Context, listID string) error {
+	e.cfgMu.RLock()
+	limit := e.maxConcurrent
+	e.cfgMu.RUnlock()
+
 	e.mu.Lock()
 	if _, running := e.active[listID]; running {
 		e.mu.Unlock()
 		return fmt.Errorf("tasklist %s zaten çalışıyor", listID)
+	}
+	if limit > 0 && len(e.active) >= limit {
+		e.mu.Unlock()
+		return fmt.Errorf("en fazla %d görev listesi aynı anda çalışabilir", limit)
 	}
 	listCtx, cancel := context.WithCancel(ctx)
 	e.active[listID] = cancel
@@ -886,7 +905,7 @@ func (e *Engine) resumePendingEscalation(ctx context.Context, listID string, tl 
 
 // ApplyConfig updates the planexec tunables at runtime (from Settings). Values
 // <= 0 (or "" for granularity) leave that field unchanged.
-func (e *Engine) ApplyConfig(granularity string, autoApprove bool, maxPar, maxAttempts, stateMaxTokens int) {
+func (e *Engine) ApplyConfig(granularity string, autoApprove bool, maxPar, maxAttempts, stateMaxTokens, maxConcurrent int) {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
 	if granularity != "" {
@@ -901,6 +920,9 @@ func (e *Engine) ApplyConfig(granularity string, autoApprove bool, maxPar, maxAt
 	}
 	if stateMaxTokens >= 0 {
 		e.stateMaxTokens = stateMaxTokens
+	}
+	if maxConcurrent >= 0 {
+		e.maxConcurrent = maxConcurrent
 	}
 }
 

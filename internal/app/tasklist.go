@@ -206,14 +206,12 @@ func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 	return func(ctx context.Context, chatID, prompt string) (string, error) {
 		// SendMessageStreamTo (docs/plans/PLAN_chatid_refactor.md Faz 3)
 		// targets chatID directly and activates tool execution because the
-		// chat itself is an agent chat — no SwitchChat, no global
-		// agent-mode flag to flip and race back. taskloopRunMu now only
-		// serializes task-list turns against each other, so two lists
-		// running at once queue in order instead of both racing streamMu
-		// and one silently failing its turn with a "please wait" error.
-		a.taskloopRunMu.Lock()
-		defer a.taskloopRunMu.Unlock()
-
+		// chat itself is an agent chat — no SwitchChat, no global agent-mode
+		// flag to flip and race back. There is no longer a global
+		// taskloopRunMu: each list's turns land in that list's own agent
+		// chat, so the per-chat stream lock (chat_locks.go) already keeps a
+		// list's turns from overlapping, and two different lists run in
+		// parallel instead of queueing (v4.6.0 Faz C).
 		a.cfgMu.RLock()
 		taskMem := a.cfg.TaskLoop.TaskMemory
 		a.cfgMu.RUnlock()

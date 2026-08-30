@@ -283,6 +283,7 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 	// the pre-toggle value.
 	pipeline.bypassPermissions = e.GetBypassPermissions()
 	pipeline.autoPermission = e.GetAutoPermission()
+	pipeline.autoPermissionFn = e.GetAutoPermission
 	pipeline.effortLevel = effortLevel
 
 	wrappedOnEvent := func(ev AgentEvent) {
@@ -385,10 +386,34 @@ func (e *Executor) GetBypassPermissions() bool {
 }
 
 // SetAutoPermission kullanıcının Shift+Tab ile açtığı otomatik izin modunu ayarlar.
+//
+// Turning it ON also resolves every permission request that is currently
+// waiting for an answer: the user's whole intent when they flip auto-permission
+// while a prompt is on screen is "stop asking me — including this one". Without
+// this the on-screen dialog just sat there until its 60s auto-deny, because the
+// pipeline goroutine had already committed to blocking on that request's
+// channel before the toggle flipped (BUG-PERM auto-permission: "açıkken neden
+// hâlâ soruyor").
 func (e *Executor) SetAutoPermission(v bool) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	e.autoPermission = v
+	var draining []*PermissionRequest
+	if v {
+		for id, req := range e.pendingPerms {
+			draining = append(draining, req)
+			delete(e.pendingPerms, id)
+		}
+	}
+	e.mu.Unlock()
+
+	for _, req := range draining {
+		logx.Printf("AGENT: [AUTO] resolving pending permission %s (auto-permission just enabled)", req.ID)
+		select {
+		case req.ResCh <- AllowOnce:
+		case <-time.After(time.Second):
+			logx.Printf("AGENT: pending permission %s had no listener when draining", req.ID)
+		}
+	}
 }
 
 // GetAutoPermission otomatik izin modunun durumunu döndürür.

@@ -57,6 +57,12 @@ type Pipeline struct {
 	toolTimeout        time.Duration // max time per tool execution (0 = no limit)
 	bypassPermissions  bool          // sistem yönetimi açıkken tüm izinleri otomatik onayla
 	autoPermission     bool          // kullanıcı Shift+Tab ile açtığında tüm izinleri otomatik onayla
+	// autoPermissionFn, when set, is consulted live at every permission check
+	// so a toggle made DURING a long agentic loop takes effect on the next
+	// tool call instead of only on the next turn (the struct copy above is
+	// snapshotted once at RunStream construction). Executor.RunStream wires
+	// this to e.GetAutoPermission.
+	autoPermissionFn   func() bool
 
 	// effortLevel is the active provider's resolved EffortLevel for this
 	// run (see provider.ChatRequest.EffortLevel's doc comment) — set by the
@@ -246,8 +252,15 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				permRes.Allowed = true
 			}
 
-			// Shift+Tab auto-permission modunda da izin ekranı çıkmaz.
-			if p.autoPermission {
+			// Shift+Tab auto-permission modunda da izin ekranı çıkmaz. Read it
+			// live (autoPermissionFn) as well as from the construction-time
+			// snapshot, so enabling it mid-loop applies to the very next tool
+			// call rather than only the next turn.
+			autoNow := p.autoPermission
+			if !autoNow && p.autoPermissionFn != nil {
+				autoNow = p.autoPermissionFn()
+			}
+			if autoNow {
 				logx.Printf("AGENT: [AUTO] auto-approving %q (auto-permission mode; prompt_required=%v)", toolName, permRes.NeedPrompt)
 				permRes.NeedPrompt = false
 				permRes.Allowed = true

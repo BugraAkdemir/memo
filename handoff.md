@@ -1,3 +1,52 @@
+# Ek (2026-08-30, devam 46) — ilk masaüstü turunda çıkan 3 bug + pause/resume araçları (branch aynı)
+
+Kullanıcı v4.6.0'ı gerçek masaüstü uygulamada koştu, çuvalladı. Loglardan
+teşhis + düzeltme:
+
+- **`Bad state: Cannot use "ref" after the widget was disposed`** (tekrar tekrar,
+  chat UI donuyor) — `5a195871`. İki kaynak: (a) Faz G'nin `MessagesNotifier`
+  `_stopped` dallarını `await refresh()`'ten SONRA `ref` kullanacak şekilde
+  sıralaması — geri alındı, overlay temizliği yine await'ten önce senkron
+  (backend kısmi cevabı zaten kalıcılaştırıyor, refresh geri boyuyor).
+  (b) `ChatTasksNotifier` SSE callback'i + 3sn Timer'ı `_ref`'i canlılık
+  kontrolü olmadan kullanıyordu + her görev olayında `runningTasksProvider`
+  invalidate ediyordu (görev stuck-loop'ta fırtına). Artık her `_ref`
+  kullanımında `mounted`/`_closed` guard, `_connect` try/catch, invalidate
+  kaldırıldı.
+- **Chat sel oluyor** — `5a195871`. `# mod:` header'ı olmayan sohbet-başlatımlı
+  Task.md **worker** modda koşuyordu; worker modu her turda dev memo-system
+  prompt'unu + maddeyi chat'e `user` mesajı olarak yazıyor, model bunu
+  injection sanıp reddediyor, 5 tur × N madde chat'i dolduruyor. Artık
+  sohbet-başlatımlı listeler (`create_task_md`, `start_self_driving_task`,
+  `POST /api/tasklists` + `task_md_path`) **varsayılan planlayıcı modda** —
+  coder turları izole alt-ajan turlarında, chat'e hiçbir şey yazılmıyor.
+  Worker modu artık `# mod: worker` ile opt-in.
+- **`pause_task` / `resume_task` ajan araçları** — `a837a08d`. Kullanıcının
+  isteği: memo chat'ten "dur"/"devam"/"tamam" gibi cümleleri anlayıp görevi
+  duraklatıp sürdürebilsin, bu yeteneğinin farkında olsun. `tools.TaskStatus`
+  arayüzüne 2 Safe araç + `chatBoundTaskID` (ctx'ten sohbete bağlı liste) +
+  sistem prompt'a hangi ifade hangi araç. Composer'ın literal "devam"
+  yakalaması (Faz F) sıfır-gecikme yolu olarak kalıyor; regex genişletildi.
+- **git sızıntısı** — `3013d5e7`. `git add -A` kullanıcının canlı
+  `data/tasklists/<uuid>.json`'unu commit'lemişti; commit amend'lendi,
+  `.gitignore` `data/tasklists/` + `.freebuff/` ile düzeltildi. (Ayrıca
+  kullanıcı ben çalışırken `1d890d88 "A"` diye masaüstü session state'i
+  commit'lemiş — benim commit'lerim üstünde.)
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz; `go test ./...
+-race` (app/agent/taskloop/webserver) yeşil; `flutter analyze lib/` 5
+pre-existing info; `flutter test` 315 yeşil.
+
+**Kullanıcının yapması gereken:** Flutter'ı yeniden build + backend restart
+(`memo --kill` sonra tekrar). Eski build'de bu düzeltmeler yok.
+
+**Hâlâ açık:** worker modu seçilirse turlar yine chat'e yazılıyor (v4.4.0
+tasarımı, ayrı iş); zayıf/free CEO-review modeli boş JSON döndürüp maddeyi
+stuck bırakıyor (model kalitesi); inline kartın görsel render'ı canlı GUI'de
+gözle doğrulanmadı.
+
+---
+
 # Ek (2026-08-30, devam 45) — v4.6.0'ın 9 fazının TAMAMI uygulandı (branch aynı)
 
 Kullanıcı "kural 5'e uyma, tüm planı bitir, sonra test et" dedi. `~/.claude/

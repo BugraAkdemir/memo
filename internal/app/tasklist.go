@@ -54,6 +54,13 @@ func (a *App) CreateTaskListFromTaskMd(chatID, title, taskMdPath string) (*taskl
 	if err != nil {
 		return nil, err
 	}
+	// "# mod: planlayıcı" opts a Task.md into planner/executor mode.
+	switch strings.ToLower(strings.TrimSpace(parsed.Headers["mod"])) {
+	case "planlayıcı", "planlayici", "planner":
+		if err := a.taskloopStore.SetMode(tl.ID, taskloop.ModePlanner); err != nil {
+			logx.Printf("taskloop: set mode planlayıcı %s: %v", tl.ID, err)
+		}
+	}
 	for i, it := range parsed.Items {
 		if i >= len(tl.Items) {
 			break

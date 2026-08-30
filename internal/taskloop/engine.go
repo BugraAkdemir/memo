@@ -61,6 +61,10 @@ type Engine struct {
 	acceptChecker  AcceptanceChecker
 	stateCompactor func(ctx context.Context, listID, current string) (string, error)
 	escalator      Escalator
+
+	// planexec tunables — mutable at runtime via ApplyConfig, so read them
+	// through the guarded accessors below, never the fields directly.
+	cfgMu          sync.RWMutex
 	granularity    string
 	autoApprove    bool
 	maxPar         int
@@ -512,6 +516,7 @@ func (e *Engine) run(ctx context.Context, listID string) {
 // execute the plan's steps. Re-entrant: on a resume after approval a plan
 // already exists, so it skips straight to execution.
 func (e *Engine) runPlanExec(ctx context.Context, listID string, tl *TaskList) {
+	granularity, autoApprove := e.planCfg()
 	if !e.store.HasPlan(listID) {
 		if err := e.store.SetStatus(listID, taskListPlanning); err != nil {
 			logx.Printf("TASKLOOP: set planning %s: %v", listID, err)
@@ -523,7 +528,7 @@ func (e *Engine) runPlanExec(ctx context.Context, listID string, tl *TaskList) {
 		if e.projectPathFn != nil {
 			root = e.projectPathFn(tl.ChatID)
 		}
-		plan, err := e.planner(ctx, listID, tl.ChatID, root, preamble, itemTexts(tl), e.granularity)
+		plan, err := e.planner(ctx, listID, tl.ChatID, root, preamble, itemTexts(tl), granularity)
 		if err != nil {
 			e.failPlan(listID, "planlama başarısız: "+err.Error())
 			return
@@ -542,7 +547,7 @@ func (e *Engine) runPlanExec(ctx context.Context, listID string, tl *TaskList) {
 				logx.Printf("TASKLOOP: write Plan.md %s: %v", listID, err)
 			}
 		}
-		if !e.autoApprove {
+		if !autoApprove {
 			if err := e.store.SetStatus(listID, taskListAwaitingPlan); err != nil {
 				logx.Printf("TASKLOOP: set awaiting-plan %s: %v", listID, err)
 			}
@@ -606,10 +611,7 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 		return
 	}
 
-	par := e.maxPar
-	if par < 1 {
-		par = 1
-	}
+	par, maxAttempts, stateMaxTokens := e.execCfg()
 	state := e.store.GetState(listID)
 
 	// Resume path: a step failed offline last time and the list was parked.
@@ -637,7 +639,7 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 			// Nothing runnable. Before giving up, try the escalation valve on
 			// any stuck step that has exhausted its coder attempts.
 			if e.escalator != nil {
-				esc, parked := e.escalateStuckSteps(ctx, listID, tl, plan)
+				esc, parked := e.escalateStuckSteps(ctx, listID, tl, plan, maxAttempts)
 				if parked {
 					return // offline — parked in waiting-escalation, retry armed
 				}
@@ -651,7 +653,7 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 			break
 		}
 
-		if e.stateMaxTokens > 0 && approxTokens(state) > e.stateMaxTokens && e.stateCompactor != nil {
+		if stateMaxTokens > 0 && approxTokens(state) > stateMaxTokens && e.stateCompactor != nil {
 			if c, cerr := e.stateCompactor(ctx, listID, state); cerr == nil && strings.TrimSpace(c) != "" {
 				state = strings.TrimSpace(c)
 				_ = e.store.SaveState(listID, state)
@@ -723,9 +725,9 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 
 // escalateStuckSteps re-plans the first stuck step that has run out of coder
 // attempts. Returns (escalated, parkedOffline).
-func (e *Engine) escalateStuckSteps(ctx context.Context, listID string, tl *TaskList, plan *Plan) (bool, bool) {
+func (e *Engine) escalateStuckSteps(ctx context.Context, listID string, tl *TaskList, plan *Plan, maxAttempts int) (bool, bool) {
 	for _, s := range plan.Steps {
-		if s.Status != "stuck" || s.Attempts < e.maxAtt() {
+		if s.Status != "stuck" || s.Attempts < maxAttempts {
 			continue
 		}
 		// Depth guard: a step already re-planned twice ("S2.1.3") is not
@@ -809,11 +811,44 @@ func (e *Engine) resumePendingEscalation(ctx context.Context, listID string, tl 
 	return true
 }
 
-func (e *Engine) maxAtt() int {
-	if e.maxAttempts > 0 {
-		return e.maxAttempts
+// ApplyConfig updates the planexec tunables at runtime (from Settings). Values
+// <= 0 (or "" for granularity) leave that field unchanged.
+func (e *Engine) ApplyConfig(granularity string, autoApprove bool, maxPar, maxAttempts, stateMaxTokens int) {
+	e.cfgMu.Lock()
+	defer e.cfgMu.Unlock()
+	if granularity != "" {
+		e.granularity = granularity
 	}
-	return 3
+	e.autoApprove = autoApprove
+	if maxPar > 0 {
+		e.maxPar = maxPar
+	}
+	if maxAttempts > 0 {
+		e.maxAttempts = maxAttempts
+	}
+	if stateMaxTokens >= 0 {
+		e.stateMaxTokens = stateMaxTokens
+	}
+}
+
+func (e *Engine) planCfg() (granularity string, autoApprove bool) {
+	e.cfgMu.RLock()
+	defer e.cfgMu.RUnlock()
+	return e.granularity, e.autoApprove
+}
+
+func (e *Engine) execCfg() (maxPar, maxAttempts, stateMaxTokens int) {
+	e.cfgMu.RLock()
+	defer e.cfgMu.RUnlock()
+	p := e.maxPar
+	if p < 1 {
+		p = 1
+	}
+	a := e.maxAttempts
+	if a < 1 {
+		a = 3
+	}
+	return p, a, e.stateMaxTokens
 }
 
 // isOfflineErr reports whether err looks like a lost network connection (vs. a

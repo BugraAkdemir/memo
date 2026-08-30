@@ -347,6 +347,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Task lists
 	route("/api/tasklists", s.handleTaskLists)
 	route("/api/tasklists/", s.handleTaskListByID)
+	route("/api/taskloop/settings", s.handleTaskLoopSettings)
 	route("/api/tasks/running", s.handleTasksRunning)
 	route("/api/tasks/", s.handleTaskControlByID)
 

@@ -549,6 +549,10 @@ func (b *swarmStubBridge) ListRunningTasks() []taskloop.RunningTaskInfo {
 	}
 	return nil
 }
+func (b *swarmStubBridge) ApproveTaskPlan(listID string) error          { return nil }
+func (b *swarmStubBridge) GetTaskPlanMd(listID string) (string, error)  { return "", nil }
+func (b *swarmStubBridge) GetTaskLoopSettings() config.TaskLoopConfig   { return config.TaskLoopConfig{} }
+func (b *swarmStubBridge) UpdateTaskLoopSettings(config.TaskLoopConfig) error { return nil }
 func (b *swarmStubBridge) GetTaskList(id string) (*taskloop.TaskList, error)      { return nil, nil }
 func (b *swarmStubBridge) ListTaskLists() []taskloop.TaskListInfo                 { return nil }
 func (b *swarmStubBridge) DeleteTaskList(id string) error                         { return nil }

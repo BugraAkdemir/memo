@@ -3011,6 +3011,30 @@ func (s *Server) handleTaskLists(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleTaskLoopSettings(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusMethodNotAllowed)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, s.fullBridge.GetTaskLoopSettings())
+	case http.MethodPut:
+		var c config.TaskLoopConfig
+		if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.UpdateTaskLoopSettings(c); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, s.fullBridge.GetTaskLoopSettings())
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func (s *Server) handleTaskListByID(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusMethodNotAllowed)
@@ -3049,6 +3073,19 @@ func (s *Server) handleTaskListByID(w http.ResponseWriter, r *http.Request) {
 	case subAction == "stop" && r.Method == http.MethodPost:
 		s.fullBridge.StopTaskList(listID)
 		writeJSON(w, map[string]string{"status": "stopped"})
+	case subAction == "plan" && r.Method == http.MethodGet:
+		md, err := s.fullBridge.GetTaskPlanMd(listID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]string{"plan_md": md})
+	case subAction == "approve-plan" && r.Method == http.MethodPost:
+		if err := s.fullBridge.ApproveTaskPlan(listID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"status": "approved"})
 	case subAction == "" && r.Method == http.MethodGet:
 		tl, err := s.fullBridge.GetTaskList(listID)
 		if err != nil {

@@ -105,7 +105,7 @@ func (e *Engine) Runtime(listID string) (RunningTaskInfo, bool) {
 			}
 		}
 		info.StateDocTokens = approxTokens(e.store.GetState(listID))
-		info.StateDocBudget = e.stateMaxTokens
+		_, _, info.StateDocBudget = e.execCfg()
 	}
 	return info, true
 }

@@ -370,6 +370,11 @@ type FullBridge interface {
 	SkipCurrentItem(listID string) error
 	InjectTaskMessage(ctx context.Context, listID, text string) (string, error)
 	ListRunningTasks() []taskloop.RunningTaskInfo
+	// Planner/executor mode (v4.5.0)
+	ApproveTaskPlan(listID string) error
+	GetTaskPlanMd(listID string) (string, error)
+	GetTaskLoopSettings() config.TaskLoopConfig
+	UpdateTaskLoopSettings(config.TaskLoopConfig) error
 
 	// Swarm (Memo Swarm — multi-machine llama.cpp RPC pool). Beta-gated in App.
 	// Status methods return interface{} (JSON-serializable structs) so this

@@ -63,6 +63,23 @@ func TestCreateTaskListFromTaskMd_SeedsItemsAndMeta(t *testing.T) {
 	}
 }
 
+func TestCreateTaskListFromTaskMd_ModeHeaderSelectsPlanner(t *testing.T) {
+	a, sm := newTestAppForTaskMd(t)
+	dir := t.TempDir()
+	chat := sm.NewAgentChat(dir)
+	taskMd := filepath.Join(dir, "Task.md")
+	if err := os.WriteFile(taskMd, []byte("# mod: planlayıcı\n\n- [ ] one\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tl, err := a.CreateTaskListFromTaskMd(chat, "", taskMd)
+	if err != nil {
+		t.Fatalf("CreateTaskListFromTaskMd: %v", err)
+	}
+	if tl.Mode != taskloop.ModePlanner {
+		t.Fatalf("Mode = %q, want %q", tl.Mode, taskloop.ModePlanner)
+	}
+}
+
 func TestCreateTaskListFromTaskMd_NoCheckboxesErrors(t *testing.T) {
 	a, sm := newTestAppForTaskMd(t)
 	dir := t.TempDir()

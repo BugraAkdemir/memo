@@ -264,6 +264,10 @@ type App struct {
 	taskNotifyBus *taskloop.NotifyBus
 	taskFocus     taskFocusState
 
+	// task-loop event fan-out to chat SSE clients (GET /api/tasks/events).
+	taskEventMu   sync.RWMutex
+	taskEventSubs []chan string
+
 	skillManager *skill.Manager
 
 	providerMu sync.RWMutex // protects providerRouter, providerCfgMgr, activeProviderName
@@ -696,6 +700,7 @@ func (a *App) Startup(ctx context.Context) {
 			func(name, data string) {
 				a.emitEvent(name, data)
 				a.dispatchTaskEvent(name, data)
+				a.publishTaskEvent(name, data)
 				// Drop a list's provider snapshot once it stops making
 				// progress, so a resume re-snapshots from the current global
 				// provider. data is "listID" or "listID:extra".

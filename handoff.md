@@ -1,3 +1,50 @@
+# Ek (2026-08-30, devam 44) — v4.6.0 planı onaylandı + Faz G & I uygulandı (branch aynı)
+
+Kullanıcı geçen oturumda büyük özellik için bir plan taslağı yaptırmış, context
+dolunca döndü. Taslak `/codebase-memory` ile uçtan uca doğrulandı (index taze,
+2026-08-30 full) ve düzeltilmiş hâli
+`~/.claude/plans/selam-agents-md-handoff-md-iterative-pearl.md`'ye yazıldı —
+**v4.6.0: "görevler sohbette yaşasın, eşzamanlı & bağımsız"**, 9 faz
+(G, I, A, C, B, D, E, F, H), BUG-PLAN9/10/11/12'yi kapsıyor. Plana ayrıca
+"AGENTS.md kurallarına uyum" + plana-özel Gotcha bölümü eklendi.
+
+**Taslaktan düzeltilen 3 nokta:** (1) BUG-PLAN11 kök sebep yanlış teşhis
+edilmişti — sıra-no→UUID eşlemesi `finishPlanItems`'te zaten doğru; gerçek sorun
+`finishPlanItems`'in yalnızca koşu sonunda çalışması. (2) Section C fazla iş
+sayıyordu — global bypass toggle büyük ölçüde zaten per-task executor'lara
+taşınmış. (3) Section D olay fan-out'u `dispatchTaskEvent` yerine ham `onEvent`
+closure'una takılmalı + `taskloop:paused` olayı yayılmıyor, eklenmeli.
+
+**Bu oturumda uygulanan 2 faz (AGENTS.md kural 5: oturum başına 1-2):**
+
+- **Faz G — `58e95f5`** — durdurunca kısmi çıktıyı koru. Streaming yığınındaki
+  4 `ctxDone` dalı (`drainAgentStream`, `callLLMStream` external + local,
+  `SendCLIMessageStream`) üretilmiş metni atıp yerine yalın "⏹️ Cevap
+  durduruldu." yazıyordu. Yeni `App.persistInterruptedTurn`: kısmi metin varsa
+  `finishStream` yoluyla (stop işaretiyle) kalıcılaştır, yoksa yalnız işaret.
+  `App.stopMarker` işareti `a.t` ile TR/EN. Flutter: `MessagesNotifier`'ın 3
+  `_stopped` dalı artık overlay'i temizlemeden **önce** `refresh()` bekliyor
+  (tek-frame boşluk yok). Test: `TestDrainAgentStream_CtxDone_KeepsPartialReply`.
+  Genel iyileştirme — sadece görevler değil, tüm sohbet durdurmaları.
+- **Faz I — `dd803d6`** — plan maddeleri artımlı işaretleniyor. `finishPlanItems`
+  yalnızca `executePlan`'ın son satırında çalışıyordu → takılan koşuda kart
+  sonsuza dek 0/N. Madde-tamamlama mantığı `syncItemProgress`'e çıkarıldı, her
+  adım-tamamlayan dalga sonunda çağrılıyor (canlı listeyi tekrar okur,
+  idempotent). `finishPlanItems` artık son dalgayı bu helper'la boşaltıp yalnız
+  kalan maddeleri stuck işaretliyor + terminal statü. Test:
+  `TestEngine_PlanExec_ItemsCompleteIncrementally`.
+
+**Doğrulama:** `CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` temiz;
+`go test -tags sqlite_fts5 -race ./internal/{app,taskloop,agent/...,webserver,replcli}`
+tamamı yeşil; `flutter analyze lib/providers/chat_provider.dart` temiz;
+`flutter test test/providers/` 60/60; Rule #8 grep dokunulan `.dart`'ta temiz.
+
+**Sıradaki (plan sırası):** Faz A (sohbet-başına stream kilidi — çekirdek),
+sonra C (sınırsız eşzamanlılık), B (görev-başına provider izolasyonu), D/E/F/H.
+`main` hâlâ v4.2.0 embedded; merge/PR/tag kararı kullanıcıda.
+
+---
+
 # Ek (2026-08-30, devam 43) — 2. canlı planexec turu: 4 yeni bug notu + büyük özellik talebi (branch aynı)
 
 devam 42 fix'lerinden sonra kullanıcı gerçek masaüstü uygulamasıyla ikinci bir

@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"memo/internal/api"
 	"memo/internal/config"
+	"memo/internal/identity"
 	"memo/internal/provider"
+	"memo/internal/sessions"
 	"memo/internal/stats"
 )
 
@@ -341,6 +344,69 @@ func TestDrainAgentStream_EmptyChannelSendsTerminalChunk(t *testing.T) {
 	}
 	if chunks[0].Error == "" {
 		t.Errorf("expected the terminal chunk to carry an error explaining the empty response, got %+v", chunks[0])
+	}
+}
+
+// TestDrainAgentStream_CtxDone_KeepsPartialReply is the Faz G regression test:
+// when the user stops a turn mid-generation, whatever the agent already
+// streamed must survive in session history (with a trailing stop marker)
+// instead of being discarded and replaced by the bare "stopped" notice, which
+// is what every ctxDone branch did before.
+func TestDrainAgentStream_CtxDone_KeepsPartialReply(t *testing.T) {
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("sessions.NewManager: %v", err)
+	}
+	chatID := sm.NewChat()
+
+	a := &App{
+		cfg:      &config.AppConfig{Memory: config.MemoryConfig{MemoryEnabled: false}},
+		identity: identity.New("Test", "Memo", "casual", "", false),
+		sessions: sm,
+		events:   &eventRing{},
+	}
+
+	streamCh := make(chan provider.StreamChunk, 1)
+	streamCh <- provider.StreamChunk{Content: "kismen yazilmis cevap"}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel once the partial chunk has been consumed and drainAgentStream is
+	// blocked waiting for the next one — exercises the real ctxDone branch.
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	outCh := make(chan api.StreamChunk, 8)
+	a.drainAgentStream(ctx, streamCh, outCh, time.Now(), "soru", chatID, &usageMeta{}, &agentEventLog{})
+	close(outCh)
+
+	var terminal api.StreamChunk
+	sawContent := false
+	for c := range outCh {
+		if c.Content != "" {
+			sawContent = true
+		}
+		if c.Done {
+			terminal = c
+		}
+	}
+	if !sawContent {
+		t.Error("expected the partial content chunk to be forwarded before the cancel")
+	}
+	if !terminal.Done || terminal.Error == "" {
+		t.Fatalf("expected a Done terminal chunk with an Error set, got %+v", terminal)
+	}
+
+	msgs := sm.GetActiveMessagesForSession(chatID)
+	if len(msgs) != 1 || msgs[0].Role != "assistant" {
+		t.Fatalf("expected exactly one persisted assistant message, got %+v", msgs)
+	}
+	if !strings.Contains(msgs[0].Content, "kismen yazilmis cevap") {
+		t.Errorf("persisted turn dropped the partial reply: %q", msgs[0].Content)
+	}
+	if !strings.Contains(msgs[0].Content, "stopped") {
+		t.Errorf("persisted turn missing the stop marker: %q", msgs[0].Content)
 	}
 }
 

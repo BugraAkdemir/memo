@@ -385,8 +385,8 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 	for {
 		chunk, ok, ctxDone := recvChunk(ctx, streamCh)
 		if ctxDone {
-			a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
-			trySend(ctx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
+			a.persistInterruptedTurn(ctx, start, 0, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+			trySend(ctx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 			return
 		}
 		if !ok {
@@ -924,8 +924,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			for {
 				chunk, ok, ctxDone := recvChunk(providerCtx, ch)
 				if ctxDone {
-					a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
-					trySend(providerCtx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
+					a.persistInterruptedTurn(ctx, start, tokenCount, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+					trySend(providerCtx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 					return
 				}
 				if !ok {
@@ -1038,8 +1038,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		for {
 			chunk, ok, ctxDone := recvChunk(streamCtx, ch)
 			if ctxDone {
-				a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
-				trySend(streamCtx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
+				a.persistInterruptedTurn(ctx, start, tokenCount, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				trySend(streamCtx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 				return
 			}
 			if !ok {
@@ -1182,6 +1182,26 @@ func (a *App) recordStreamError(userMsg, errReply, sessionID string) {
 		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", errReply))
 		a.incognitoMu.Unlock()
 	}
+}
+
+// stopMarker is the notice appended to a turn the user stopped mid-generation.
+func (a *App) stopMarker() string {
+	return a.t("⏹️ Cevap durduruldu.", "⏹️ Response stopped.")
+}
+
+// persistInterruptedTurn saves a turn the user cancelled while it was still
+// streaming. Any assistant text that already arrived is kept (with a trailing
+// stop marker) and flows through the normal finishStream persistence path,
+// instead of being thrown away and replaced by the bare "stopped" notice as
+// every ctxDone branch used to do — a partial answer is still useful and the
+// user explicitly chose to keep what they had. With nothing generated yet it
+// falls back to recording just the marker.
+func (a *App) persistInterruptedTurn(ctx context.Context, start time.Time, tokenCount int, partial, userMsg, sessionID string, meta *usageMeta, agentEvents ...[]interface{}) {
+	if strings.TrimSpace(partial) == "" {
+		a.recordStreamError(userMsg, a.stopMarker(), sessionID)
+		return
+	}
+	a.finishStream(ctx, start, tokenCount, "stop", partial+"\n\n"+a.stopMarker(), userMsg, sessionID, meta, agentEvents...)
 }
 
 // recordUsageEvent persists one completed turn to the usage-stats store.

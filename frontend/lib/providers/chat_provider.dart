@@ -556,8 +556,12 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         if (_generation != myGeneration) return;
         if (_stopped) {
           _stopped = false;
-          ref.read(streamingContentProvider.notifier).state = '';
+          // Refresh first so the backend-persisted partial reply (Faz G — a
+          // stopped turn keeps whatever streamed) is already in the list
+          // before the streaming overlay is cleared; clearing first would
+          // blank the text for one frame.
           await refresh();
+          ref.read(streamingContentProvider.notifier).state = '';
           return;
         }
       } else if (streamingEnabled) {
@@ -660,11 +664,14 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
         if (_stopped) {
           _stopped = false;
+          // Refresh before clearing the streaming overlay so the
+          // backend-persisted partial reply (Faz G) is painted from the
+          // message list without a one-frame blank gap.
+          await refresh();
           ref.read(streamingContentProvider.notifier).state = '';
           ref.read(streamingThinkingProvider.notifier).state = '';
           ref.read(streamingAgentEventsProvider.notifier).state = [];
           ref.read(streamingStatusProvider.notifier).state = '';
-          await refresh();
           return;
         }
       } else {
@@ -832,11 +839,14 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
         if (_stopped) {
           _stopped = false;
+          // Refresh before clearing the streaming overlay so the
+          // backend-persisted partial reply (Faz G) is painted from the
+          // message list without a one-frame blank gap.
+          await refresh();
           ref.read(streamingContentProvider.notifier).state = '';
           ref.read(streamingThinkingProvider.notifier).state = '';
           ref.read(streamingAgentEventsProvider.notifier).state = [];
           ref.read(streamingStatusProvider.notifier).state = '';
-          await refresh();
           return '';
         }
       } else {

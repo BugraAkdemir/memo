@@ -124,11 +124,12 @@ void main() {
     // Simulate what stopStreaming() does, whether triggered by the Stop
     // button or ActiveChatIdNotifier.switchTo() switching chats.
     container.read(isSendingProvider.notifier).state = false;
-    // The auto-dismiss is debounced ~1.8s (BUG-PERM1: a transient
-    // not-sending read at an agentic tool-round boundary must not
-    // flash-close a live dialog). It still closes here — the turn really
-    // ended and never resumes — just a beat later, not on the same frame.
-    await tester.pump(const Duration(milliseconds: 2000));
+    // The auto-dismiss is debounced ~1.8s AND floored so the dialog is
+    // always visible at least 2s first (BUG-PERM1: a transient not-sending
+    // read at an agentic tool-round boundary, or an out-of-order first
+    // frame, must not flash-close a live dialog). It still closes here —
+    // the turn really ended and never resumes — just a few seconds later.
+    await tester.pump(const Duration(milliseconds: 4200));
     await tester.pumpAndSettle();
 
     expect(find.byType(PermissionDialog), findsNothing,
@@ -182,10 +183,11 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    // The auto-dismiss is now debounced ~1.8s (so a transient not-sending
-    // read at a tool-round boundary can't flash-close a live dialog —
-    // BUG-PERM1). It still closes, just not on the same frame.
-    await tester.pump(const Duration(milliseconds: 2000));
+    // The auto-dismiss is debounced ~1.8s and floored to a 2s minimum
+    // visible time (so a transient not-sending read at a tool-round
+    // boundary, or an out-of-order first frame, can't flash-close a live
+    // dialog — BUG-PERM1). It still closes, just a few seconds later.
+    await tester.pump(const Duration(milliseconds: 4200));
     await tester.pumpAndSettle();
 
     expect(find.byType(PermissionDialog), findsNothing,

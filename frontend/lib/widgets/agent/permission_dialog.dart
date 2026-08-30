@@ -36,6 +36,15 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
   bool _staleScheduled = false;
   bool _submitting = false;
   String? _error;
+  final DateTime _openedAt = DateTime.now();
+
+  // Hard floor: never auto-dismiss within the first 2s of being shown, no
+  // matter what isSendingProvider reads. The permission_request event and the
+  // isSendingProvider=true write travel on different providers and can be
+  // observed out of order on the first frame; without this floor a stale
+  // "false" read there closed the dialog before the user's eyes could even
+  // land on it ("izin penceresi neden hemen gidiyor").
+  static const Duration _minVisible = Duration(seconds: 2);
 
   // A not-sending signal (either the live isSendingProvider true->false
   // transition or an already-false first build) only closes this dialog if it
@@ -49,7 +58,11 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
   void _scheduleStaleCheck() {
     _staleScheduled = true;
     _staleCheckTimer?.cancel();
-    _staleCheckTimer = Timer(const Duration(milliseconds: 1800), () {
+    final elapsed = DateTime.now().difference(_openedAt);
+    final delay = elapsed >= _minVisible
+        ? const Duration(milliseconds: 1800)
+        : (_minVisible - elapsed) + const Duration(milliseconds: 1800);
+    _staleCheckTimer = Timer(delay, () {
       if (mounted &&
           !_submitting &&
           !ref.read(isSendingProvider) &&

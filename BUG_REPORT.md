@@ -91,11 +91,11 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 0 |
-| 🟢 LOW | 0 |
+| 🟢 LOW | 2 (BUG-PLAN9 sohbetten onay, BUG-PLAN10 model görev durumunu uyduruyor — kod değişikliği testten sonra) |
 | 🔧 TEKNİK BORÇ | 0 |
-| ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 1 (BUG-PERM1 — gerçek Flutter dialogu) |
+| ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 1 (BUG-PERM1 + e43627e/b9fc2eb — gerçek masaüstü doğrulaması) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 7 (PLAN1/2/3/4/5/6/7/8 — PLAN4 kod+analyze doğrulandı) |
-| **AÇIK TOPLAM** | **0** |
+| **AÇIK TOPLAM** | **2** (ikisi de düşük, ertelendi) |
 
 ---
 
@@ -210,6 +210,53 @@ status=error` + `memory_save_sync status=error` — embedder :8082'de
 başlamamış/erişilemiyor olabilir, "Memory off — RAG not working" banner'ıyla
 tutarlı. Provider auto-revert (frontend her reconnect'te aktif provider'ı
 kendi cache'ine çeviriyor) da tekrar görüldü — pre-existing, v4.5.0 dışı.
+
+---
+
+## 🟢 AÇIK — kod değişikliği TESTTEN SONRA (kullanıcı 2026-08-30 canlı testte istedi)
+
+Kullanıcı v4.5.0 canlı testinde bunları bildirdi; **"kullanıcı deneyimini
+kötü etkileyen bir hata değil ama"** dedi, "şimdilik kodda değişiklik yapma,
+testten sonra" — sadece not.
+
+### BUG-PLAN9 — planexec planı yalnızca Görevler sekmesinden onaylanabiliyor
+
+- **Bulgu:** sohbetten `start_self_driving_task` ile planexec listesi başlıyor,
+  planlayıcı `Plan.md`'yi üretip liste `awaiting-plan-approval`'a düşüyor. Ama
+  onay UI'ı (düzenlenebilir plan + "Approve & run") **yalnızca** Görevler
+  sekmesi → task detay ekranında (`_PlanApprovalSection`,
+  `task_detail_screen.dart`). Kullanıcı onaylamak için sohbetten çıkıp o ekrana
+  gitmek zorunda.
+- **İstenen:** plan hazır olunca **sohbete** düşsün — konuşma içinde inline bir
+  "planı gör / onayla" kartı/butonu, oradan `saveTaskPlanMd` + `approveTaskPlan`
+  çağrılsın. (Agent izin dialogu deseni gibi; `agentEventBus` üzerinden bir
+  `plan_ready` event'i + `app_shell` listener olabilir.)
+- **Öncelik:** düşük (akış çalışıyor, sadece fazladan tıklama).
+
+### BUG-PLAN10 — sohbet modeli görev durumunu okuyamıyor, uyduruyor
+
+- **Bulgu:** kullanıcı sohbette "görev durumu ne" / "task duruyor mu" diye
+  sordu. Model canlı task-listesi durumunu görebileceği bir araca sahip değil →
+  **halüsinasyon:** "hiçbir LLM sağlayıcı yapılandırılmamış / LLM Error: no
+  provider configured, döngü ilk maddeyi bile yapamadan durdu" dedi. Bu
+  **tamamen yanlıştı** — planlayıcı o sırada 17 KB'lık geçerli bir `Plan.md` +
+  6 adımlık `plan.json` üretmişti, liste `awaiting-plan-approval`'daydı.
+- **İstenen:** sohbet modeline canlı görev durumunu verecek bir yol — ya bir
+  agent aracı (`get_task_status` / `list_running_tasks` → id, statü, faz,
+  adım ilerleme, son hata), ya da aktif proje bir task-listesine bağlıysa
+  sistem prompt'una özet enjeksiyonu. Model **veri yokken durum uydurmamalı**.
+- **Öncelik:** orta (yanlış bilgi kullanıcıyı "her şey bozuldu" sanıp gereksiz
+  müdahaleye itiyor).
+
+### Not — BUG-PERM1 canlı durumu (2026-08-30 öğleden sonra)
+
+Yeni web build'le sohbetten `create_task_md` denendi: izin dialogu **anında
+kapanmadı**, "0:59" sayaçla stabil göründü, kullanıcı Allow'a bastı, `Task.md`
++ `Plan.md` üretildi. Yani BUG-PERM1'in çekirdeği çözülmüş görünüyor. Ek
+olarak `e43627e` (auto-permission: canlı getter + bekleyen istekleri drenaj)
+ve `b9fc2eb` (dialog en az 2 sn görünür kalır) da indi — kullanıcının gerçek
+masaüstü uygulamasında bunları da doğrulaması iyi olur, sonra BUG-PERM1
+buradan silinebilir.
 
 ---
 

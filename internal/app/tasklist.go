@@ -54,9 +54,14 @@ func (a *App) CreateTaskListFromTaskMd(chatID, title, taskMdPath string) (*taskl
 	if err != nil {
 		return nil, err
 	}
-	// "# mod: planlayıcı" opts a Task.md into planner/executor mode.
+	// Mode: "# mod: worker" for the legacy one-turn-per-item loop, anything
+	// else (including no header) → planner/executor. Planexec keeps its coder
+	// turns in isolated sub-agent runs; worker mode streams every round into
+	// this chat's history and floods it, so it's now strictly opt-in.
 	switch strings.ToLower(strings.TrimSpace(parsed.Headers["mod"])) {
-	case "planlayıcı", "planlayici", "planner":
+	case "worker", "işçi", "isci":
+		// leave Mode "" (worker)
+	default:
 		if err := a.taskloopStore.SetMode(tl.ID, taskloop.ModePlanner); err != nil {
 			logx.Printf("taskloop: set mode planlayıcı %s: %v", tl.ID, err)
 		}

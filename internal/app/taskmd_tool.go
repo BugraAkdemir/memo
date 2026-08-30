@@ -68,7 +68,15 @@ func (a *App) createTaskMd(ctx context.Context, req tools.CreateTaskMdRequest) (
 		}
 	}
 	set("bildirim", req.Notify)
-	set("mod", req.Mode)
+	// Default chat-created task lists to planner/executor mode: its coder
+	// turns run in isolated sub-agent turns (nothing written to this chat),
+	// whereas worker mode streams every round into the chat history and
+	// floods it. Worker mode stays available via an explicit "# mod: worker".
+	mode := strings.TrimSpace(req.Mode)
+	if mode == "" {
+		mode = taskloop.ModePlanner
+	}
+	set("mod", mode)
 	set("planlayıcı", req.PlannerModel)
 	set("kodlayıcı", req.CoderModel)
 	set("doğrulayıcı", req.VerifierModel)

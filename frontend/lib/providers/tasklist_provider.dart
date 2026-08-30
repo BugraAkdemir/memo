@@ -180,26 +180,31 @@ class ChatTasksNotifier extends StateNotifier<Map<String, ChatTaskState>> {
   bool _closed = false;
 
   void _connect() {
-    if (_closed) return;
+    if (_closed || !mounted) return;
     _retry?.cancel();
-    // While the auth gate is up every request 401s — don't hammer it.
-    if (authGateBlocked(_ref.read(authGateProvider).valueOrNull)) {
-      _scheduleReconnect();
-      return;
+    try {
+      // While the auth gate is up every request 401s — don't hammer it.
+      if (authGateBlocked(_ref.read(authGateProvider).valueOrNull)) {
+        _scheduleReconnect();
+        return;
+      }
+      _cancel = CancelToken();
+      _sub = _ref
+          .read(apiClientProvider)
+          .taskEventStream(cancelToken: _cancel)
+          .listen(
+            _onEvent,
+            onError: (_) => _scheduleReconnect(),
+            onDone: _scheduleReconnect,
+            cancelOnError: true,
+          );
+    } catch (_) {
+      // Provider/ref torn down mid-callback — stop, don't crash the app.
     }
-    _cancel = CancelToken();
-    _sub = _ref
-        .read(apiClientProvider)
-        .taskEventStream(cancelToken: _cancel)
-        .listen(
-          _onEvent,
-          onError: (_) => _scheduleReconnect(),
-          onDone: _scheduleReconnect,
-          cancelOnError: true,
-        );
   }
 
   void _onEvent(TaskChatEvent e) {
+    if (!mounted || _closed) return;
     if (e.chatId.isEmpty) return;
     final next = {...state};
     final folded = ChatTaskState.fold(next[e.chatId], e);
@@ -209,21 +214,17 @@ class ChatTasksNotifier extends StateNotifier<Map<String, ChatTaskState>> {
       next[e.chatId] = folded;
     }
     state = next;
-    if (e.event == 'item_done' ||
-        e.event == 'finished' ||
-        e.event == 'item_stuck') {
-      // Keep the Tasks screen + Task.md mirror consistent.
-      _ref.invalidate(runningTasksProvider);
-    }
   }
 
   void _scheduleReconnect() {
     _sub?.cancel();
     _sub = null;
     _cancel = null;
-    if (_closed) return;
+    if (_closed || !mounted) return;
     _retry?.cancel();
-    _retry = Timer(const Duration(seconds: 3), _connect);
+    _retry = Timer(const Duration(seconds: 3), () {
+      if (!_closed && mounted) _connect();
+    });
   }
 
   /// Called from app_shell's centralised auth-gate listener when the gate opens.

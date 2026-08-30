@@ -556,12 +556,12 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         if (_generation != myGeneration) return;
         if (_stopped) {
           _stopped = false;
-          // Refresh first so the backend-persisted partial reply (Faz G — a
-          // stopped turn keeps whatever streamed) is already in the list
-          // before the streaming overlay is cleared; clearing first would
-          // blank the text for one frame.
-          await refresh();
+          // Clear the overlay synchronously (before any await) — touching
+          // ref after `await refresh()` can hit a disposed/rebuilt notifier
+          // instance. The backend now persists the partial reply (Faz G), so
+          // refresh() repaints it from the message list.
           ref.read(streamingContentProvider.notifier).state = '';
+          await refresh();
           return;
         }
       } else if (streamingEnabled) {
@@ -664,14 +664,13 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
         if (_stopped) {
           _stopped = false;
-          // Refresh before clearing the streaming overlay so the
-          // backend-persisted partial reply (Faz G) is painted from the
-          // message list without a one-frame blank gap.
-          await refresh();
+          // Clear synchronously before awaiting — see the matching comment in
+          // the CLI branch above. Backend persists the partial (Faz G).
           ref.read(streamingContentProvider.notifier).state = '';
           ref.read(streamingThinkingProvider.notifier).state = '';
           ref.read(streamingAgentEventsProvider.notifier).state = [];
           ref.read(streamingStatusProvider.notifier).state = '';
+          await refresh();
           return;
         }
       } else {
@@ -839,14 +838,13 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
         if (_stopped) {
           _stopped = false;
-          // Refresh before clearing the streaming overlay so the
-          // backend-persisted partial reply (Faz G) is painted from the
-          // message list without a one-frame blank gap.
-          await refresh();
+          // Clear synchronously before awaiting — see the matching comment in
+          // the CLI branch above. Backend persists the partial (Faz G).
           ref.read(streamingContentProvider.notifier).state = '';
           ref.read(streamingThinkingProvider.notifier).state = '';
           ref.read(streamingAgentEventsProvider.notifier).state = [];
           ref.read(streamingStatusProvider.notifier).state = '';
+          await refresh();
           return '';
         }
       } else {

@@ -96,10 +96,14 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
 
-  // Words that resume a paused Self-Driving task instead of being sent as a
-  // chat message (v4.6.0 Faz F).
-  static final _resumeWordRe =
-      RegExp(r'^(devam|devam et|devam et\.|continue|resume)$', caseSensitive: false);
+  // Short phrases that resume a paused Self-Driving task instead of being sent
+  // as a chat message (v4.6.0 Faz F). Kept deliberately tight — a longer
+  // sentence is treated as a real instruction (recorded as a resume note).
+  static final _resumeWordRe = RegExp(
+    r'^(devam|devam et|devam edelim|devam ettir|kaldığın yerden devam et|'
+    r'devam edebilirsin|sürdür|continue|resume|go on|keep going)[.!]?$',
+    caseSensitive: false,
+  );
   bool _showTemplates = false;
   String _filterQuery = '';
   int _selectedIndex = 0;

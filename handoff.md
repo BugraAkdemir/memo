@@ -1,3 +1,70 @@
+# Ek (2026-08-30, devam 41) — v4.5.0 Planlayıcı/Uygulayıcı modu: 7 fazın tamamı (branch aynı)
+
+Kullanıcı iki tur brainstorm sonrası planı onayladı ("devam et durma hiçbir
+fazda"). Plan dosyası: `~/.claude/plans/imdi-bu-fikiri-ba-arabilememiz-
+ticklish-island.md`. Repo spec: `docs/superpowers/specs/2026-08-30-planner-
+executor-mode.md`.
+
+**Fikir:** Task loop'u rol sınırında böl. Planlayıcı (bir salt-okunur ajan
+turu) işi küçük, kendi kendini doğrulayan adımların DAG'ına böler → `Plan.md`
+→ onay kapısı. Uygulayıcı (coder) her adımı **taze ephemeral** turda koşar →
+context hiç büyümez (85% handoff sorunu tasarımla çözülür). Doğrulayıcı
+deterministik (build/test/grep) + fuzzy (LLM). Escalation valfi: takılan adımı
+bulut yeniden planlar; offline'da `waiting-escalation` kuyruğu + retry.
+"Online planla, offline uygula." Rol→model: Task.md header → AGENTS.md
+`<!-- memo:taskloop … -->` satırı → Settings → aktif provider. Eski `worker`
+modu byte-for-byte değişmedi; `planlayıcı` per-liste opt-in.
+
+**Commit'ler (branch'te `989b9a2..169f0fa`):**
+- `6ba04bb` schema unit — `internal/taskloop/schema.go` (doc/template/render),
+  `ParseTaskMd` (Headers map, Indent, `---` kesme), `create_task_md`/
+  `edit_task_md` araçları, sistem prompt'a şema
+- `1a29cc9` Faz A — `plan.go` (Plan/PlanStep/AcceptanceCheck, Normalize+cycle,
+  ReadySteps, Render/ParsePlanMd JSON-blok), store `Mode`+plan persist+yeni
+  statüler
+- `d2a29e4` Faz A — engine mod dalı, `WithPlanner`, `runPlanExec`/
+  `ApprovePlan`/`executePlan`, checkbox mirror
+- `9409e57` Faz A — `resolveRoleModels`/`persistRoleChoiceToRules`,
+  `planTask` (salt-okunur planlayıcı turu), config alanları, app.go wiring
+- `c8caddc` Faz B — gerçek `runPlanStep` (taze ephemeral coder turu),
+  `acceptancecheck` (command/grep bash -lc + fuzzy LLM), paralel scheduler
+  (`MaxParallelSteps`), `state.md` handoff + compactor
+- `f8d3d65` Faz C — escalation: `escalateStep`, `Plan.ReplaceStep`,
+  `PendingEscalation` offline kuyruğu + `isOfflineErr` + retry resume,
+  `.x.y` derinlik guard
+- `04bcaf5` Faz D — `RunningTaskInfo` gauge alanları (Mode/PlanSteps*/
+  StateDoc*), `contextBudgetFor(provider)` (apiContextBudget genelleştirme)
+- `b5ce156` Faz E — `Engine.ApplyConfig` (runtime-mutable tunables),
+  `/api/taskloop/settings` GET/PUT, `/api/tasklists/{id}/plan` GET +
+  `/approve-plan` POST, `# mod: planlayıcı` header wiring
+- `d491ff7` Faz G — `TaskMemory` toggle: `withTaskMemoryDisabled` ctx →
+  `buildMessagesForSession` RAG bloğunu atlar (worker yolu; planexec zaten
+  memory-free)
+- `169f0fa` Faz F — Flutter: Settings sekmesi gerçek kontroller (rol model
+  dropdown'ları / granülerlik / toggle'lar), create dialog mod SegmentedButton,
+  detay ekranı düzenlenebilir Plan.md onayı + adım/handoff gauge; `mode` +
+  `PUT .../plan` (SaveTaskPlanMd) backend glue; RunningTaskInfo model + l10n
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz. `go test
+./...` **tamamı yeşil** (whisper flake dahil). `-race ./internal/{taskloop,
+app,webserver,config}` temiz. `flutter analyze lib/` → sadece 5 pre-existing
+info (dokunulmayan dosyalar). `flutter test` → 310 pass. Rule #8 grep
+dokunulan `.dart`'larda temiz. ~40 yeni test.
+
+**Bilinen v1 sınırları (spec'te yazılı, follow-up):** verifier+compactor
+`callLLMForReview` (aktif provider) kullanıyor, rol modeli değil;
+`start_self_driving_task` interaktif "local mi bulut mu" sorusunu henüz
+sormuyor (header/AGENTS.md/Settings'e dayanıyor); paralel adımlar planlayıcının
+DAG'ına güveniyor (dosya çakışması guard'ı yok); `callLLMForReview` local
+modelle bozuk (pre-existing 2026-07-05) → fuzzy check/compaction için external
+provider şart.
+
+**Sırada:** kullanıcının canlı testi (Gemini/Claude planner + local coder,
+`~/memo-selftest-site/Task.md` + `# mod: planlayıcı`). Sonra merge/PR +
+v4.5.0 release kararı kullanıcıda. `main` hâlâ v4.2.0 embedded.
+
+---
+
 # Ek (2026-08-30, devam 40) — Task loop artık sohbetten başlatılabiliyor (branch aynı)
 
 Kullanıcı: "chat'ten 'Task.md'ye başla' demem yeterli olmalı; Memo bölye bir

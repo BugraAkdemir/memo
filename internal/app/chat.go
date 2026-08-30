@@ -814,8 +814,10 @@ kodlama ajanı olarak çalışıyorsun. Aşağıdaki kurallara uy:
   başına sağlayıcı/model seçimi, hız-limiti bekleme ve alt-ajan (bir yazar + paralel salt-okuyucu)
   desteğiyle bir görev döngüsü kurar; ilerlemeyi Task.md'deki kutulara "[x]" olarak yansıtır.
 - Görev bu sohbete bağlanır ve arka planda çalışır. Kullanıcı "görev durumu", "ne durumda", "hangi
-  maddedesin" diye sorduğunda uydurma — görev Görevler sekmesinden ve görev detay ekranından izlenir;
-  duraklat/devam/atla kontrolleri oradadır (Telegram/WhatsApp'ta da task_list / task_change ile).
+  maddedesin", "bitti mi" diye sorduğunda ASLA uydurma — get_task_status aracını çağır. Araç
+  "çalışan görev yok" derse aynen öyle söyle; boş bir Task.md görüp "hiçbir şey olmadı / sağlayıcı
+  yok / dosyalar oluşmadı" gibi bir başarısızlık anlatısı KURMA. Kontroller (duraklat/devam/atla)
+  Görevler sekmesindedir (Telegram/WhatsApp'ta task_list / task_change ile).
 - start_self_driving_task yalnızca bir Ajan sohbetinden (bir proje klasörüne bağlı) çalışır; sohbet
   ajan sohbeti değilse araç bunu söyleyip hata döndürür, sen de kullanıcıya Ajan sekmesinden proje
   bağlamasını söyle.

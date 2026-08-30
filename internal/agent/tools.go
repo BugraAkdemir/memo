@@ -192,6 +192,14 @@ func (r *ToolRegistry) registerBuiltins() {
 	r.registerFileSenderTool()
 	r.registerSelfDrivingTaskTool()
 	r.registerTaskMdTools()
+
+	r.Register(ToolDef{
+		Name:        "get_task_status",
+		Description: "Çalışan otonom görev (Self-Driving / Task.md döngüsü) durumunu OKUR: faz, adım N/M, madde a/b, o an işlenen adım, geçen süre. Kullanıcı \"görev ne durumda\", \"nerede kaldı\", \"bitti mi\" gibi bir şey sorduğunda TAHMİN ETME — bu aracı çağır. Araç \"çalışan görev yok\" derse, öyle söyle; asla durum uydurma.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.GetTaskStatus,
+	})
 }
 
 // registerTaskMdTools adds create_task_md / edit_task_md — only to the

@@ -1,3 +1,53 @@
+# Ek (2026-08-30, devam 40) — Task loop artık sohbetten başlatılabiliyor (branch aynı)
+
+Kullanıcı: "chat'ten 'Task.md'ye başla' demem yeterli olmalı; Memo bölye bir
+task özelliği olduğunu bilsin; /codebase-memory kullan." Kod tarandı — v4.4.0'da
+task loop'a **sohbetsel giriş yoktu**: sadece Flutter Görevler sekmesi (elle
+madde) + REST + Telegram/WhatsApp'tan **çalışan** görevi yönetme. `task_md_path`
+Flutter'da hiç gönderilmiyordu, ajanda `create_task` tool'u yoktu, sistem
+prompt'u özellikten bahsetmiyordu.
+
+**Yapıldı:**
+
+1. **`c5bbeda`** — `start_self_driving_task` ajan tool'u (`internal/agent/
+   tools/selfdrivingtask.go` + `tools.go` kaydı, sadece full registry →
+   normal chat + WhatsApp self-chat + Telegram). Args: `task_md_path`
+   (mutlak/göreli/`~`), `title?`. `create_routine` gibi **chat/hedef parametresi
+   YOK** — liste, agent turu'nun koştuğu sohbete bağlanır. Yeni
+   `currentChatIDCtxKey`: `callAgentStream` `sessionID`'yi ctx'e ekliyor (task
+   worker turu HARİÇ — nested task loop olmasın). `StartSelfDrivingTaskFromChat`
+   (`internal/app/selfdriving_task_tool.go`): ctx'te chat yoksa / ajan sohbeti
+   değilse net hata; `CreateTaskListFromTaskMd` + `StartTaskList(context.
+   Background())` (turu aşar). `buildAgentSystemPrompt`'a "Otonom Görev Döngüsü"
+   bölümü — model artık maddeleri elle ezmek yerine tool'u çağırıyor, durum
+   uydurmuyor. Test: 3 case (chat yok / non-agent / agent chat'te kurar+başlatır).
+   Orchestra çok-uzmanlı yol bilinçli dışarıda.
+2. **`5282cf2`** — Flutter: Görevler sekmesi "yeni liste" dialog'una opsiyonel
+   **"Task.md yolu"** alanı. Doluysa elle madde satırları gizlenir, istek
+   `items` yerine `task_md_path` yollar, başlık boş kalabilir. `createTaskList`
+   (api_client + provider) opsiyonel `taskMdPath` named param aldı; pozisyonel
+   çağrılar değişmedi. 3 yeni l10n key TR+EN.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz. `go test -tags
+sqlite_fts5 ./...` → tek fail `internal/whisper/TestGetStatus_NewServer`
+(pre-existing, `git stash` ile doğrulandı — bu ortamda porta bağlı, kodla
+ilgisiz). `-race ./internal/{app,agent...,taskloop}` temiz. `flutter analyze
+lib/` → sadece 5 pre-existing info (dokunulmayan dosyalar). `flutter test` →
+310 pass. Rule #8 grep dokunulan `.dart`'larda temiz.
+
+**Bilinen sınır:** Telegram/WhatsApp self-chat genelde ajan sohbeti (proje
+yolu) DEĞİL → oradan `start_self_driving_task` "ajan sohbeti gerekli" hatası
+verir. Birincil akış masaüstü/web ajan sohbeti. Telegram'dan **çalışan**
+görevi yönetmek (`task_change` vs.) zaten çalışıyordu, o değişmedi.
+
+**Sırada:** kullanıcı canlı denesin (Gemini/Claude, free model değil): ajan
+sohbeti aç → proje klasörü bağla → "`~/memo-selftest-site/Task.md`'ye başla"
+de → tool çağrılmalı, görev Görevler sekmesinde görünmeli, checkbox mirror +
+`[parallel]` maddede sub-agent + bitişte model raporu. Sonra merge/PR + v4.4.0
+release kullanıcının kararı.
+
+---
+
 # Ek (2026-08-29, devam 39) — bitiş bildirimi artık modelin kendi raporu (branch aynı)
 
 Kullanıcı: "telegramdan sadece 'task bitti' geldi; bitince modelin kendisi

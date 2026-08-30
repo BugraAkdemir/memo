@@ -90,12 +90,12 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 0 |
-| 🟢 LOW | 2 (BUG-PLAN9 sohbetten onay, BUG-PLAN10 model görev durumunu uyduruyor — kod değişikliği testten sonra) |
+| 🟡 MEDIUM | 1 (BUG-PLAN11 — planexec adım→madde eşlemesi tutmuyor, Task.md aynası çalışmıyor) |
+| 🟢 LOW | 2 (BUG-PLAN9 sohbetten onay, BUG-PLAN10 model görev durumunu uyduruyor) |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 1 (BUG-PERM1 + e43627e/b9fc2eb — gerçek masaüstü doğrulaması) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 7 (PLAN1/2/3/4/5/6/7/8 — PLAN4 kod+analyze doğrulandı) |
-| **AÇIK TOPLAM** | **2** (ikisi de düşük, ertelendi) |
+| **AÇIK TOPLAM** | **3** (hepsi kod değişikliği = testten sonra) |
 
 ---
 
@@ -247,6 +247,32 @@ testten sonra" — sadece not.
   sistem prompt'una özet enjeksiyonu. Model **veri yokken durum uydurmamalı**.
 - **Öncelik:** orta (yanlış bilgi kullanıcıyı "her şey bozuldu" sanıp gereksiz
   müdahaleye itiyor).
+
+### BUG-PLAN11 — planexec adım→madde eşlemesi tutmuyor: Task.md checkbox'ları hiç işaretlenmiyor + kart 0/6 donuk
+
+- **Bulgu:** planexec listesi koşarken kart "0/6 done", detay ekranında
+  "Steps: 2/6" (sonra 3/8). İki farklı "/6" sayacı çelişiyor. Steps ilerliyor
+  ama madde ilerlemesi 0'da donuk.
+- **Kök neden (gerçek bug, kozmetik değil):** planlayıcı adımlara
+  `item_id = "1".."6"` (sıra numarası) veriyor:
+  ```
+  S1 item_id="1" done | S2 item_id="2" done | 3.1/3.2/3.3 item_id="3" done
+  S4 item_id="4" running | S5 "5" | S6 "6"
+  ```
+  ama task-listesi maddeleri **UUID** ile anahtarlı
+  (`items[].id = "04a7d8f9-8494-…"`, ayrıca `line: 7,8,9…`). `SetItemDone` /
+  `MarkItemDone` gerçek madde id'sini (UUID) veya line'ı arıyor, `"1"`
+  bulamıyor → bir maddenin tüm adımları bitse bile madde `pending` kalıyor →
+  `Task.md` checkbox'ları **hiç** işaretlenmiyor, kart sonsuza dek 0/6.
+  (BUG-PLAN4 turunda "checkbox mirror doğrulandı" denmişti — muhtemelen o
+  planlayıcı eşleşen id / index üretmişti; eşleme kırılgan.)
+- **İstenen:** (a) plan step'in `item_id`'si gerçek `TaskList.items[].id`'ye
+  (veya line'a) çözülsün — planlayıcı prompt'unda gerçek id verilmeli ya da
+  `ItemID` "1".."N" ise index olarak `items[N-1].id`'ye map'lensin. (b) planexec
+  kartı + "Executing X/6" satırı **adım ilerlemesini** göstersin (ya da
+  "0/6 madde · 3/8 adım" gibi ikisini birden).
+- **Öncelik:** orta-yüksek (uçtan uca "bitti" sinyali ve Task.md aynası
+  planexec'te çalışmıyor demek).
 
 ### Not — BUG-PERM1 canlı durumu (2026-08-30 öğleden sonra)
 

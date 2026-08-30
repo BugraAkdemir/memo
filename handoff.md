@@ -41,11 +41,36 @@ closure'una takıldı (`dispatchTaskEvent` bazı olayları yutuyor).
 - `flutter test` → **315 pass** (+ `ChatTaskState.fold` grubu).
 - Rule #8 grep `0741332..HEAD` tüm `.dart`'larda temiz.
 
-**Sıradaki:** kullanıcının canlı testi (gerçek masaüstü, `scripts/run_memo.sh`) —
-planda "Doğrulama > Canlı" bölümündeki 6 senaryo (iki sohbette farklı modelli iki
-planexec, sohbet kartından plan onayı, artımlı sayaç, duraklat+not+devam, düz
-ajan turu durdurma, "görev durumu" sorusu). BUG_REPORT.md'de PLAN9/10/11/12
-kapatılabilir. Merge/PR/tag + v4.6.0 release kullanıcının kararı.
+**Canlı test yapıldı (headless backend :8095, gerçek `api.kilo.ai` free
+modelleri, `~/…/scratchpad/livetest-*` scratch projeleri; sonrası temizlendi):**
+
+- ✅ **Uçtan uca planexec (Run 1, `tencent/hy3:free`):** `planning → executing →
+  step_done×2 → item_done×2 → finished(done)`. İki dosya doğru içerikle
+  oluştu, `Task.md` `[x][x]` — **artımlı** işaretlendi (`item_done` olayları
+  `phase:executing` sırasında geldi, sonda değil). BUG-PLAN11 mekaniği doğru.
+- ✅ **Faz D SSE:** her olay `chat_id` + canlı `step_done/step_total`,
+  `item_done/item_total`, `current` adım metni, `elapsed_sec` taşıyor.
+  Snapshot priming + `paused` olayı çalışıyor.
+- ✅ **Faz F:** `POST /api/tasks/{id}/pause` → `paused`; `POST …/note` →
+  `TaskList.resume_notes`'a yazıyor; `POST …/resume` → kaldığı adımdan sürüyor,
+  `resume_notes` drain oluyor. **Yeni-dosya isteyen resume notu** ilk denemede
+  yok sayıldı (coder "sadece bu adım" prompt'u) → prompt sertleştirildi
+  (`ad84642`), Run 4'te `n9.txt` resume notundan oluştu. ✓
+- ✅ **Bulundu+düzeltildi (`ad84642`):** `bypass_enabled/disabled` olayları
+  SSE'ye `list_id` = Türkçe mesaj string'iyle sızıyordu → filtrelendi + liste
+  olmayan her olaya backstop guard.
+- ⚠️ **Not:** free model tekrarlı kullanımda flake yaptı (Run 2/3 adımları
+  stuck bıraktı, dosya oluşmadı) — pipeline doğru davrandı (failed işaretledi,
+  crash yok). Handoff'un eski notuyla aynı: "model kalitesi, pipeline değil."
+- ⏳ **Kalan (kullanıcının gerçek GUI testi):** Flutter inline kartın görsel
+  render'ı + giriş kilidi + kırmızı→duraklat + "devam" yakalama (bunlar
+  `flutter analyze`/`test` + widget testleriyle doğrulandı, canlı GUI'de
+  gözle görülmedi); `get_task_status`'un model tarafından çağrılıp
+  uydurmaması (araç kayıtlı + adapter unit-test yeşil; canlı LLM flake
+  olduğu için sohbette denenemedi).
+
+BUG_REPORT.md'de PLAN9/10/11/12 kapatılabilir. Merge/PR/tag + v4.6.0 release
+kullanıcının kararı.
 
 ---
 

@@ -715,6 +715,7 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 			id      string
 			err     error
 			summary string
+			out     string
 		}
 		results := make(chan stepRes, len(ready))
 		sem := make(chan struct{}, par)
@@ -726,13 +727,13 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 				sem <- struct{}{}
 				defer func() { <-sem }()
 				if ctx.Err() != nil {
-					results <- stepRes{step.ID, ctx.Err(), ""}
+					results <- stepRes{step.ID, ctx.Err(), "", ""}
 					return
 				}
 				e.rtSetItem(listID, step.Text)
 				e.emitActivity(listID, "step_start", step.ID+" · "+truncateLine(step.Text, 140))
 				out, rerr := e.runOneStep(ctx, listID, step, state)
-				results <- stepRes{step.ID, rerr, summariseStep(step, out, rerr)}
+				results <- stepRes{step.ID, rerr, summariseStep(step, out, rerr), out}
 			}(step)
 		}
 		wg.Wait()
@@ -764,7 +765,11 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 			if r.err == nil {
 				_ = e.store.SetStepStatus(listID, r.id, "done", "")
 				e.emitEvent("taskloop:step_done", fmt.Sprintf("%s:%s", listID, r.id))
-				e.emitActivity(listID, "step_done", truncateLine(strings.TrimPrefix(r.summary, "- "), 200))
+				doneLine := r.id + " bitti"
+				if o := truncateLine(r.out, 180); o != "" {
+					doneLine += " — " + o
+				}
+				e.emitActivity(listID, "step_done", doneLine)
 				progressed = true
 				completed++
 			} else if attemptsOf(r.id) < maxAttempts {

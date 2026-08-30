@@ -106,42 +106,15 @@ func (a *App) dispatchTaskFinishReport(listID, event string) {
 	})
 }
 
-// reportPrompt is the wrap-up instruction handed to the model.
-const reportPrompt = "Bu Self-Driving görev listesi bitti. Kullanıcıya bir KAPANIŞ RAPORU yaz: " +
-	"hangi maddeleri tamamladın, hangileri takıldı ve neden, hangi dosyalara/değişikliklere dokundun, " +
-	"kullanıcının bilmesi gereken bir şey varsa. Görev maddelerinin diliyle yaz. " +
-	"Selamlama ve dolgu cümlesi kullanma, direkt rapora geç. En fazla ~150 kelime."
-
-// generateTaskReport has the model write its own completion report. It first
-// asks in the task's own chat (full context of everything it actually did);
-// if that can't run it falls back to a tool-less summary from the transcript,
-// then to a factual roll-up. Never a canned per-event string.
+// generateTaskReport has the model write a completion report for the
+// notification channel from the run's transcript + item metadata, via a
+// single non-persisting completion (callLLMForReview) — it deliberately does
+// NOT stream through SendMessageStreamTo any more, which used to persist a big
+// "write a closing report" prompt and a long reply into the task's chat. The
+// in-chat record is the one-line postTaskFinishMessage; the activity block
+// covers the play-by-play. Falls back to a factual roll-up.
 func (a *App) generateTaskReport(tl *taskloop.TaskList) string {
-	// Primary: the task's own chat — same client path the worker turns used,
-	// with the whole run in context.
-	if sm := a.getSessionManager(); sm != nil && sm.SessionExists(tl.ChatID) {
-		var sb strings.Builder
-		failed := false
-		for chunk := range a.SendMessageStreamTo(context.Background(), tl.ChatID, reportPrompt) {
-			if chunk.Error != "" {
-				failed = true
-				break
-			}
-			// Only real prose chunks — skip the status chunks the stream
-			// prepends/interleaves (agent_event JSON, the memory_used count).
-			if chunk.FinishReason == "" || chunk.FinishReason == "stop" {
-				sb.WriteString(chunk.Content)
-			}
-			if chunk.Done {
-				break
-			}
-		}
-		if out := strings.TrimSpace(sb.String()); out != "" && !failed {
-			return out
-		}
-	}
-
-	// Fallback: tool-less summary from the transcript + item metadata.
+	// Tool-less summary context from the transcript + item metadata.
 	var ctxb strings.Builder
 	ctxb.WriteString("GÖREV: " + tl.Title + "\n\nMADDELER:\n")
 	for i, it := range tl.Items {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,9 +47,19 @@ type TaskList struct {
 	// from, so item completion can mirror "[ ]" -> "[x]" back into it. Empty
 	// for lists created directly (Tasks screen / REST / REPL).
 	TaskMdPath string `json:"task_md_path,omitempty"`
-	CreatedAt  string `json:"created_at"`
-	UpdatedAt  string `json:"updated_at"`
+	// Mode selects the execution strategy: "" / "worker" (v4.4.0 default —
+	// one agent turn per item) or "planlayıcı" (v4.5.0 planner/executor — a
+	// reviewed Plan.md of small steps run by a coder model). See plan.go.
+	Mode      string `json:"mode,omitempty"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
+
+// Task list execution modes.
+const (
+	ModeWorker  = "worker"
+	ModePlanner = "planlayıcı"
+)
 
 // Task list lifecycle states.
 const (
@@ -62,12 +73,16 @@ const (
 	taskListDone         = "done"
 	taskListFailed       = "failed"
 	taskListCancelled    = "cancelled"
+	// v4.5.0 planner/executor mode:
+	taskListAwaitingPlan      = "awaiting-plan-approval" // planner produced Plan.md, waiting for the user
+	taskListWaitingEscalation = "waiting-escalation"     // a step failed offline; queued for a cloud re-plan
 )
 
 func validTaskListStatus(s string) bool {
 	switch s {
 	case taskListIdle, taskListPlanning, taskListExecuting, taskListRunning,
 		taskListWaitingLimit, taskListWaitingUser, taskListPaused,
+		taskListAwaitingPlan, taskListWaitingEscalation,
 		taskListDone, taskListFailed, taskListCancelled:
 		return true
 	default:
@@ -322,7 +337,103 @@ func (s *Store) Delete(id string) error {
 	if err := os.Remove(filepath.Join(s.dir, id+".json")); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	if err := os.Remove(s.planPath(id)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	return nil
+}
+
+// SetMode records a list's execution mode ("worker" / "planlayıcı").
+func (s *Store) SetMode(id, mode string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tl, ok := s.list[id]
+	if !ok {
+		return fmt.Errorf("tasklist %s not found", id)
+	}
+	tl.Mode = mode
+	tl.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	return s.save(tl)
+}
+
+func (s *Store) planPath(id string) string { return filepath.Join(s.dir, id+".plan.json") }
+
+// SavePlan writes a list's Plan as <id>.plan.json (the canonical copy;
+// Plan.md is only the review surface).
+func (s *Store) SavePlan(listID string, p Plan) error {
+	p.ListID = listID
+	if p.CreatedAt == "" {
+		p.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	p.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := fileutil.AtomicWrite(s.planPath(listID), data, 0600); err != nil {
+		return fmt.Errorf("taskloop: save plan %s: %w", listID, err)
+	}
+	return nil
+}
+
+// GetPlan loads a list's Plan, or an error if none was saved.
+func (s *Store) GetPlan(listID string) (*Plan, error) {
+	data, err := os.ReadFile(s.planPath(listID))
+	if err != nil {
+		return nil, fmt.Errorf("taskloop: read plan %s: %w", listID, err)
+	}
+	var p Plan
+	if err := json.Unmarshal(data, &p); err != nil {
+		return nil, fmt.Errorf("taskloop: decode plan %s: %w", listID, err)
+	}
+	return &p, nil
+}
+
+// HasPlan reports whether a saved plan exists for listID.
+func (s *Store) HasPlan(listID string) bool {
+	_, err := os.Stat(s.planPath(listID))
+	return err == nil
+}
+
+// mutatePlan loads, applies fn, and re-saves a list's plan under no lock (the
+// plan file has a single writer: the engine goroutine for that list).
+func (s *Store) mutatePlan(listID string, fn func(*Plan)) error {
+	p, err := s.GetPlan(listID)
+	if err != nil {
+		return err
+	}
+	fn(p)
+	return s.SavePlan(listID, *p)
+}
+
+// SetStepStatus updates one step's status (and optional note).
+func (s *Store) SetStepStatus(listID, stepID, status, note string) error {
+	return s.mutatePlan(listID, func(p *Plan) {
+		for i := range p.Steps {
+			if p.Steps[i].ID == stepID {
+				p.Steps[i].Status = status
+				if note != "" {
+					p.Steps[i].Note = note
+				}
+				return
+			}
+		}
+	})
+}
+
+// IncrementStepAttempts bumps one step's attempt counter and returns the new value.
+func (s *Store) IncrementStepAttempts(listID, stepID string) (int, error) {
+	n := 0
+	err := s.mutatePlan(listID, func(p *Plan) {
+		for i := range p.Steps {
+			if p.Steps[i].ID == stepID {
+				p.Steps[i].Attempts++
+				n = p.Steps[i].Attempts
+				return
+			}
+		}
+	})
+	return n, err
 }
 
 func (s *Store) save(tl *TaskList) error {
@@ -346,7 +457,7 @@ func (s *Store) loadAll() error {
 		return err
 	}
 	for _, e := range entries {
-		if filepath.Ext(e.Name()) != ".json" {
+		if filepath.Ext(e.Name()) != ".json" || strings.HasSuffix(e.Name(), ".plan.json") {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(s.dir, e.Name()))

@@ -89,13 +89,13 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 1 (BUG-PLAN11 — planexec adım→madde eşlemesi tutmuyor, Task.md aynası çalışmıyor) |
-| 🟢 LOW | 2 (BUG-PLAN9 sohbetten onay, BUG-PLAN10 model görev durumunu uyduruyor) |
+| 🟠 HIGH | 1 (BUG-PLAN10 — sohbet modeli çalışan task için ayrıntılı YANLIŞ "bozuk" hikayesi uyduruyor) |
+| 🟡 MEDIUM | 2 (BUG-PLAN11 adım→madde eşleme + sayaç kaosu · BUG-PLAN12 canlı task aktivitesi sohbette yok) |
+| 🟢 LOW | 1 (BUG-PLAN9 planı sohbetten onayla) |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 1 (BUG-PERM1 + e43627e/b9fc2eb — gerçek masaüstü doğrulaması) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 7 (PLAN1/2/3/4/5/6/7/8 — PLAN4 kod+analyze doğrulandı) |
-| **AÇIK TOPLAM** | **3** (hepsi kod değişikliği = testten sonra) |
+| **AÇIK TOPLAM** | **4** (hepsi kod değişikliği = testten sonra) |
 
 ---
 
@@ -233,26 +233,59 @@ testten sonra" — sadece not.
   `plan_ready` event'i + `app_shell` listener olabilir.)
 - **Öncelik:** düşük (akış çalışıyor, sadece fazladan tıklama).
 
-### BUG-PLAN10 — sohbet modeli görev durumunu okuyamıyor, uyduruyor
+### BUG-PLAN10 — sohbet modeli görev durumunu okuyamıyor, AYRINTILI YANLIŞ HİKAYE uyduruyor
 
 - **Bulgu:** kullanıcı sohbette "görev durumu ne" / "task duruyor mu" diye
-  sordu. Model canlı task-listesi durumunu görebileceği bir araca sahip değil →
-  **halüsinasyon:** "hiçbir LLM sağlayıcı yapılandırılmamış / LLM Error: no
-  provider configured, döngü ilk maddeyi bile yapamadan durdu" dedi. Bu
-  **tamamen yanlıştı** — planlayıcı o sırada 17 KB'lık geçerli bir `Plan.md` +
-  6 adımlık `plan.json` üretmişti, liste `awaiting-plan-approval`'daydı.
-- **İstenen:** sohbet modeline canlı görev durumunu verecek bir yol — ya bir
+  sordu. Model canlı task-listesi durumunu görebileceği bir araca sahip değil.
+  `read_file` ile `Task.md`'yi okudu, 6 kutunun da `[ ]` olduğunu gördü ve
+  **baştan sona uydurma bir başarısızlık anlatısı üretti:** "döngü hiçbir
+  maddeyi işleyememiş", "LLM sağlayıcı yapılandırılmamış / LLM Error: no
+  provider configured", "`app.py` veya `blog.db` de oluşturulmamış", "çözüm:
+  Settings → Provider'dan sağlayıcı ekle". **Hepsi yanlıştı** — o sırada
+  planexec **7/13 adımı bitirmiş, aktif koşuyordu**, `app.py`/`blog.db` vardı,
+  escalation 2 kez tetiklenmişti. Model, checkbox'ların boş olmasını
+  (BUG-PLAN11 yüzünden boşlar) "hiçbir şey olmadı"ya + "sağlayıcı yok"a
+  genişletti.
+- **İstenen:** sohbet modeline canlı görev durumunu verecek bir yol — bir
   agent aracı (`get_task_status` / `list_running_tasks` → id, statü, faz,
-  adım ilerleme, son hata), ya da aktif proje bir task-listesine bağlıysa
-  sistem prompt'una özet enjeksiyonu. Model **veri yokken durum uydurmamalı**.
-- **Öncelik:** orta (yanlış bilgi kullanıcıyı "her şey bozuldu" sanıp gereksiz
-  müdahaleye itiyor).
+  adım ilerleme `N/M`, son adım metni, son hata, escalation sayısı), ya da
+  aktif proje bir task-listesine bağlıysa sistem prompt'una özet enjeksiyonu.
+  Model **veri yokken / araç yokken durum uydurmamalı**, "göremiyorum, Görevler
+  sekmesine bak" demeli.
+- **Öncelik:** YÜKSEK — ayrıntılı, ikna edici yanlış bilgi kullanıcıyı çalışan
+  bir sistemi "komple bozuk" sanıp iptal et/yeniden kur'a itiyor.
 
-### BUG-PLAN11 — planexec adım→madde eşlemesi tutmuyor: Task.md checkbox'ları hiç işaretlenmiyor + kart 0/6 donuk
+### BUG-PLAN12 — canlı task aktivitesi sohbette görünmüyor, ayrı Görevler ekranı şart
 
-- **Bulgu:** planexec listesi koşarken kart "0/6 done", detay ekranında
-  "Steps: 2/6" (sonra 3/8). İki farklı "/6" sayacı çelişiyor. Steps ilerliyor
-  ama madde ilerlemesi 0'da donuk.
+- **Bulgu (kullanıcı):** "alt agent çalıştırmış / adım tamamlanmış / plan onayı
+  gibi şeyleri anlık sohbette görebileyim, ayrı task screen'a muhtaç kalmak
+  istemiyorum." Şu an çalışan bir planexec listesinin tüm canlı sinyalleri
+  (adım başladı/bitti, alt-agent turu, kabul kontrolü, escalation, handoff
+  context doluluğu, `awaiting-plan-approval`) **sadece** Görevler sekmesi → task
+  detay ekranında. Sohbet tarafında hiçbir iz yok; sohbet modeli de göremiyor
+  (BUG-PLAN10).
+- **İstenen:** `start_self_driving_task` bir sohbetten başlatıldığında o
+  sohbete canlı bir aktivite akışı düşsün — ajan `tool_executing` /
+  `tool_result` baloncukları gibi hafif satırlar: "Adım 4/13: create_post()…",
+  "Adım 4/13 geçti", "Adım 6 tekrar kuyruğa alındı (kabul kontrolü)",
+  "Adım 6 escalate → 6 alt-adıma bölündü", "plan hazır — [Onayla]".
+  Muhtemelen mevcut `agentEventBus`
+  + `app_shell` listener deseni; backend zaten `event: taskloop:*` yayınlıyor
+  (`taskloop:escalating/escalated` loglarda görülüyor) — bunları SSE'den
+  sohbete köprülemek yeterli olabilir.
+- **Öncelik:** orta-yüksek (BUG-PLAN9 + BUG-PLAN10'un şemsiye çözümü; "sohbetten
+  yönet" vaadinin özü).
+
+### BUG-PLAN11 — planexec adım→madde eşlemesi tutmuyor + sayaçlar her ekranda farklı
+
+- **Bulgu:** aynı anda ekranlarda: kart "0/6 done", detay bar "Steps: 7/13",
+  detay satır "Executing 0/6", sohbet modeli "6 madde hepsi boş". Dört farklı
+  sayı. İki sorun:
+  1. **Adım paydası büyüyor:** plan 6 adım başladı (S1–S6). Escalation S3'ü
+     3.1/3.2/3.3'e (→8), sonra S6'yı S6.1–S6.6'ya böldü (→13). "7/13" ilerleme
+     gibi hissettirmiyor çünkü payda kayıyor; kullanıcı "8'den 13'e niye çıktı"
+     diye soruyor. Escalation'ın adım eklediği UI'da hiç açıklanmıyor.
+  2. **Madde ilerlemesi 0'da donuk** (asıl bug, aşağıda).
 - **Kök neden (gerçek bug, kozmetik değil):** planlayıcı adımlara
   `item_id = "1".."6"` (sıra numarası) veriyor:
   ```
@@ -268,11 +301,13 @@ testten sonra" — sadece not.
   planlayıcı eşleşen id / index üretmişti; eşleme kırılgan.)
 - **İstenen:** (a) plan step'in `item_id`'si gerçek `TaskList.items[].id`'ye
   (veya line'a) çözülsün — planlayıcı prompt'unda gerçek id verilmeli ya da
-  `ItemID` "1".."N" ise index olarak `items[N-1].id`'ye map'lensin. (b) planexec
-  kartı + "Executing X/6" satırı **adım ilerlemesini** göstersin (ya da
-  "0/6 madde · 3/8 adım" gibi ikisini birden).
+  `ItemID` "1".."N" ise index olarak `items[N-1].id`'ye map'lensin. (b) planexec'te
+  her yerde **tek tutarlı** ilerleme metni: "adım N/M (madde a/b)" — kart, detay
+  bar, "Executing" satırı aynı şeyi göstersin. (c) escalation adım eklediğinde
+  UI'da bir iz olsun ("+3 adım: S6 bölündü").
 - **Öncelik:** orta-yüksek (uçtan uca "bitti" sinyali ve Task.md aynası
-  planexec'te çalışmıyor demek).
+  planexec'te çalışmıyor demek; sayı kaosu kullanıcıyı BUG-PLAN10'la birlikte
+  "bozuk" sanısına itiyor).
 
 ### Not — BUG-PERM1 canlı durumu (2026-08-30 öğleden sonra)
 

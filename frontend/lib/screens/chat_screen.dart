@@ -13,6 +13,7 @@ import '../providers/whatsapp_provider.dart';
 import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
+import '../widgets/agent/task_activity_card.dart';
 import '../widgets/provider_config_dialog.dart';
 import '../widgets/welcome_view.dart';
 import '../widgets/live_realtime_view.dart';
@@ -224,6 +225,9 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
             },
           ),
         ),
+
+        // ─── Live Self-Driving task strip (v4.6.0 Faz E) ──
+        const TaskActivityCard(),
 
         // ─── Input ────────────────────────────────
          ChatInput(),

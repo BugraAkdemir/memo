@@ -2718,8 +2718,44 @@ class MemoApiClient {
         .toList();
   }
 
+  /// SSE stream of live Self-Driving task-loop events (v4.6.0 Faz D). Each
+  /// item is one enriched event carrying the list's chat_id + progress. The
+  /// stream ends when the request is cancelled or the connection drops; the
+  /// caller is expected to reconnect.
+  Stream<TaskChatEvent> taskEventStream({CancelToken? cancelToken}) async* {
+    final response = await _dio.get(
+      '/api/tasks/events',
+      options: Options(
+        responseType: ResponseType.stream,
+        // Long-lived: never time out on receive (the 25s keepalive comment
+        // keeps it warm). Do NOT touch Dio's global receiveTimeout.
+        receiveTimeout: Duration.zero,
+      ),
+      cancelToken: cancelToken,
+    );
+    final lineStream = response.data.stream
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+    await for (final line in lineStream) {
+      if (!line.startsWith('data: ')) continue;
+      Map<String, dynamic> data;
+      try {
+        data = json.decode(line.substring(6)) as Map<String, dynamic>;
+      } catch (_) {
+        continue;
+      }
+      yield TaskChatEvent.fromJson(data);
+    }
+  }
+
   Future<void> pauseTask(String id) async => _dio.post('/api/tasks/$id/pause');
   Future<void> resumeTask(String id) async => _dio.post('/api/tasks/$id/resume');
+
+  /// Queues a user note for the next coder/worker turn of a paused task
+  /// (v4.6.0 Faz F — messages typed while a task is paused).
+  Future<void> addTaskNote(String id, String text) async =>
+      _dio.post('/api/tasks/$id/note', data: {'text': text});
   Future<void> cancelTask(String id) async => _dio.post('/api/tasks/$id/cancel');
   Future<void> skipTaskItem(String id) async => _dio.post('/api/tasks/$id/skip');
 

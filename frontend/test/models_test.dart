@@ -9,8 +9,49 @@ import 'package:memo_flutter/models/whatsapp.dart';
 import 'package:memo_flutter/models/token_usage.dart';
 import 'package:memo_flutter/models/provider_config.dart';
 import 'package:memo_flutter/models/orchestra_config.dart';
+import 'package:memo_flutter/models/task_list.dart';
 
 void main() {
+  group('ChatTaskState.fold (v4.6.0 Faz D/E)', () {
+    TaskChatEvent ev(String event, {String phase = '', int stepDone = 0, int stepTotal = 0, int itemDone = 0, int itemTotal = 0, String current = ''}) =>
+        TaskChatEvent(
+          event: event, listId: 'L1', chatId: 'C1', phase: phase,
+          stepDone: stepDone, stepTotal: stepTotal, itemDone: itemDone, itemTotal: itemTotal, current: current,
+        );
+
+    test('a snapshot seeds progress without adding to the recent feed', () {
+      final s = ChatTaskState.fold(null, ev('snapshot', phase: 'executing', stepDone: 2, stepTotal: 5, itemTotal: 3));
+      expect(s, isNotNull);
+      expect(s!.running, true);
+      expect(s.stepDone, 2);
+      expect(s.stepTotal, 5);
+      expect(s.recent, isEmpty);
+    });
+
+    test('subsequent events keep the last known counts and cap the feed at 4', () {
+      ChatTaskState? s;
+      s = ChatTaskState.fold(s, ev('snapshot', phase: 'executing', stepDone: 1, stepTotal: 5, itemTotal: 3));
+      for (final e in ['step_done', 'step_done', 'item_done', 'step_done', 'subagent_spawned']) {
+        s = ChatTaskState.fold(s, ev(e));
+      }
+      expect(s!.recent.length, 4);
+      expect(s.recent.last, 'subagent_spawned');
+      // A count-less event must not zero the seeded progress.
+      expect(s.stepTotal, 5);
+      expect(s.itemTotal, 3);
+    });
+
+    test('a finished event drops the card', () {
+      final s0 = ChatTaskState.fold(null, ev('snapshot', phase: 'executing', stepTotal: 2));
+      expect(ChatTaskState.fold(s0, ev('finished', phase: 'done')), isNull);
+    });
+
+    test('phase predicates', () {
+      expect(ChatTaskState.fold(null, ev('paused', phase: 'paused'))!.paused, true);
+      expect(ChatTaskState.fold(null, ev('awaiting_plan', phase: 'awaiting-plan-approval'))!.awaitingPlan, true);
+    });
+  });
+
   group('ChatMessage', () {
     test('fromJson parses all fields', () {
       final msg = ChatMessage.fromJson({

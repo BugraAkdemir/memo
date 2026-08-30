@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
@@ -163,3 +164,92 @@ class RunningTasksNotifier extends AsyncNotifier<List<RunningTaskInfo>> {
 final runningTasksProvider =
     AsyncNotifierProvider<RunningTasksNotifier, List<RunningTaskInfo>>(
         RunningTasksNotifier.new);
+
+/// Live per-chat Self-Driving state, folded from the GET /api/tasks/events SSE
+/// stream (v4.6.0 Faz D). Keyed by chat id; a chat with no running task simply
+/// isn't in the map. Owns one long-lived SSE subscription with auto-reconnect.
+class ChatTasksNotifier extends StateNotifier<Map<String, ChatTaskState>> {
+  ChatTasksNotifier(this._ref) : super(const {}) {
+    _connect();
+  }
+
+  final Ref _ref;
+  StreamSubscription<TaskChatEvent>? _sub;
+  CancelToken? _cancel;
+  Timer? _retry;
+  bool _closed = false;
+
+  void _connect() {
+    if (_closed) return;
+    _retry?.cancel();
+    // While the auth gate is up every request 401s — don't hammer it.
+    if (authGateBlocked(_ref.read(authGateProvider).valueOrNull)) {
+      _scheduleReconnect();
+      return;
+    }
+    _cancel = CancelToken();
+    _sub = _ref
+        .read(apiClientProvider)
+        .taskEventStream(cancelToken: _cancel)
+        .listen(
+          _onEvent,
+          onError: (_) => _scheduleReconnect(),
+          onDone: _scheduleReconnect,
+          cancelOnError: true,
+        );
+  }
+
+  void _onEvent(TaskChatEvent e) {
+    if (e.chatId.isEmpty) return;
+    final next = {...state};
+    final folded = ChatTaskState.fold(next[e.chatId], e);
+    if (folded == null) {
+      next.remove(e.chatId);
+    } else {
+      next[e.chatId] = folded;
+    }
+    state = next;
+    if (e.event == 'item_done' ||
+        e.event == 'finished' ||
+        e.event == 'item_stuck') {
+      // Keep the Tasks screen + Task.md mirror consistent.
+      _ref.invalidate(runningTasksProvider);
+    }
+  }
+
+  void _scheduleReconnect() {
+    _sub?.cancel();
+    _sub = null;
+    _cancel = null;
+    if (_closed) return;
+    _retry?.cancel();
+    _retry = Timer(const Duration(seconds: 3), _connect);
+  }
+
+  /// Called from app_shell's centralised auth-gate listener when the gate opens.
+  void reconnectNow() {
+    if (_closed) return;
+    _cancel?.cancel();
+    _sub?.cancel();
+    _sub = null;
+    _retry?.cancel();
+    _connect();
+  }
+
+  @override
+  void dispose() {
+    _closed = true;
+    _retry?.cancel();
+    _cancel?.cancel();
+    _sub?.cancel();
+    super.dispose();
+  }
+}
+
+final chatTasksProvider =
+    StateNotifierProvider<ChatTasksNotifier, Map<String, ChatTaskState>>(
+        (ref) => ChatTasksNotifier(ref));
+
+/// The Self-Driving task bound to [chatId], or null if none is running there.
+final chatTaskForProvider = Provider.family<ChatTaskState?, String>(
+    (ref, chatId) => ref.watch(chatTasksProvider)[chatId]);

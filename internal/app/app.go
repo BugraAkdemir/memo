@@ -721,8 +721,13 @@ func (a *App) Startup(ctx context.Context) {
 			// v4.5.0 planner/executor mode — only engaged for a list whose
 			// Mode == ModePlanner; worker-mode lists never touch this path.
 			taskloop.WithPlanner(a.planTask),
+			taskloop.WithStepRunner(a.runPlanStep),
+			taskloop.WithAcceptanceChecker(a.acceptancecheck),
+			taskloop.WithStateCompactor(a.compactPlanState),
 			taskloop.WithGranularity(a.cfg.TaskLoop.StepGranularity),
 			taskloop.WithAutoApprovePlan(a.cfg.TaskLoop.AutoApprovePlan),
+			taskloop.WithMaxParallelSteps(a.cfg.TaskLoop.MaxParallelSteps),
+			taskloop.WithStateMaxTokens(a.cfg.TaskLoop.HandoffStateMaxTokens),
 		)
 		if a.cfg != nil && a.cfg.TaskLoop.SubAgents {
 			// Applied after construction (rather than inline above) only so the

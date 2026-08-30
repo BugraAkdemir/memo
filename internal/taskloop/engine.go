@@ -51,11 +51,14 @@ type Engine struct {
 
 	// v4.5.0 planner/executor mode (all nil/zero-safe; only used when a list's
 	// Mode == ModePlanner and a Planner is configured).
-	planner       Planner
-	stepRunner    StepRunner
-	acceptChecker AcceptanceChecker
-	granularity   string
-	autoApprove   bool
+	planner        Planner
+	stepRunner     StepRunner
+	acceptChecker  AcceptanceChecker
+	stateCompactor func(ctx context.Context, listID, current string) (string, error)
+	granularity    string
+	autoApprove    bool
+	maxPar         int
+	stateMaxTokens int
 
 	rtMu     sync.RWMutex
 	runtimes map[string]*listRuntime
@@ -159,6 +162,26 @@ func WithGranularity(g string) EngineOption { return func(e *Engine) { e.granula
 
 // WithAutoApprovePlan skips the plan approval gate.
 func WithAutoApprovePlan(v bool) EngineOption { return func(e *Engine) { e.autoApprove = v } }
+
+// WithMaxParallelSteps caps how many ready steps run at once (default 1).
+func WithMaxParallelSteps(n int) EngineOption {
+	return func(e *Engine) {
+		if n > 0 {
+			e.maxPar = n
+		}
+	}
+}
+
+// WithStateCompactor supplies a summariser for the running state doc, called
+// when it grows past WithStateMaxTokens. Without it an oversized state doc is
+// just truncated.
+func WithStateCompactor(fn func(ctx context.Context, listID, current string) (string, error)) EngineOption {
+	return func(e *Engine) { e.stateCompactor = fn }
+}
+
+// WithStateMaxTokens sets the state-doc size (approx tokens) that triggers
+// compaction. 0 disables it.
+func WithStateMaxTokens(n int) EngineOption { return func(e *Engine) { e.stateMaxTokens = n } }
 
 func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBypass BypassSetter, onEvent func(name, data string), opts ...EngineOption) *Engine {
 	e := &Engine{
@@ -541,9 +564,10 @@ func (e *Engine) ApprovePlan(ctx context.Context, listID string) error {
 	return e.Start(ctx, listID)
 }
 
-// executePlan runs the plan's steps in dependency order. Phase B replaces the
-// sequential ready-set loop here with a parallel scheduler + state doc; for
-// now it needs a StepRunner and runs ready steps one at a time.
+// executePlan runs the plan's steps in dependency order: each wave takes the
+// ready set (pending steps whose deps are done) and runs it, up to maxPar at
+// once. A running state doc is threaded to every coder turn and compacted when
+// it grows too large.
 func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 	if err := e.store.SetStatus(listID, taskListExecuting); err != nil {
 		logx.Printf("TASKLOOP: set executing %s: %v", listID, err)
@@ -560,6 +584,12 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 		return
 	}
 
+	par := e.maxPar
+	if par < 1 {
+		par = 1
+	}
+	state := e.store.GetState(listID)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -571,24 +601,61 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 		if len(ready) == 0 {
 			break
 		}
-		progressed := false
-		for _, step := range ready {
-			select {
-			case <-ctx.Done():
-				_ = e.store.SetStatus(listID, taskListPaused)
-				return
-			default:
-			}
-			e.rtSetItem(listID, step.Text)
-			if err := e.runOneStep(ctx, listID, step); err != nil {
-				logx.Printf("TASKLOOP: step %s/%s stuck: %v", listID, step.ID, err)
-				_ = e.store.SetStepStatus(listID, step.ID, "stuck", err.Error())
-			} else {
-				_ = e.store.SetStepStatus(listID, step.ID, "done", "")
-				e.emitEvent("taskloop:step_done", fmt.Sprintf("%s:%s", listID, step.ID))
-				progressed = true
+
+		if e.stateMaxTokens > 0 && approxTokens(state) > e.stateMaxTokens && e.stateCompactor != nil {
+			if c, cerr := e.stateCompactor(ctx, listID, state); cerr == nil && strings.TrimSpace(c) != "" {
+				state = strings.TrimSpace(c)
+				_ = e.store.SaveState(listID, state)
 			}
 		}
+
+		type stepRes struct {
+			id      string
+			err     error
+			summary string
+		}
+		results := make(chan stepRes, len(ready))
+		sem := make(chan struct{}, par)
+		var wg sync.WaitGroup
+		for _, step := range ready {
+			wg.Add(1)
+			go func(step PlanStep) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				if ctx.Err() != nil {
+					results <- stepRes{step.ID, ctx.Err(), ""}
+					return
+				}
+				e.rtSetItem(listID, step.Text)
+				out, rerr := e.runOneStep(ctx, listID, step, state)
+				results <- stepRes{step.ID, rerr, summariseStep(step, out, rerr)}
+			}(step)
+		}
+		wg.Wait()
+		close(results)
+
+		if ctx.Err() != nil {
+			_ = e.store.SetStatus(listID, taskListPaused)
+			return
+		}
+
+		progressed := false
+		for r := range results {
+			if r.err != nil {
+				logx.Printf("TASKLOOP: step %s/%s stuck: %v", listID, r.id, r.err)
+				_ = e.store.SetStepStatus(listID, r.id, "stuck", r.err.Error())
+			} else {
+				_ = e.store.SetStepStatus(listID, r.id, "done", "")
+				e.emitEvent("taskloop:step_done", fmt.Sprintf("%s:%s", listID, r.id))
+				progressed = true
+			}
+			if r.summary != "" {
+				state = appendState(state, r.summary)
+			}
+		}
+		_ = e.store.SaveState(listID, state)
+
 		reloaded, gerr := e.store.GetPlan(listID)
 		if gerr != nil {
 			e.failPlan(listID, gerr.Error())
@@ -605,24 +672,45 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 
 // runOneStep runs the coder turn for one step and applies its acceptance
 // checks. Returns nil only when the step both ran and passed.
-func (e *Engine) runOneStep(ctx context.Context, listID string, step PlanStep) error {
+func (e *Engine) runOneStep(ctx context.Context, listID string, step PlanStep, stateDoc string) (string, error) {
 	_ = e.store.SetStepStatus(listID, step.ID, "running", "")
 	if _, err := e.store.IncrementStepAttempts(listID, step.ID); err != nil {
 		logx.Printf("TASKLOOP: bump attempts %s/%s: %v", listID, step.ID, err)
 	}
-	if _, err := e.stepRunner(ctx, listID, step, ""); err != nil {
-		return err
+	out, err := e.stepRunner(ctx, listID, step, stateDoc)
+	if err != nil {
+		return "", err
 	}
 	if e.acceptChecker != nil {
-		pass, detail, err := e.acceptChecker(ctx, listID, step)
-		if err != nil {
-			return fmt.Errorf("kabul kontrolü hatası: %w", err)
+		pass, detail, cerr := e.acceptChecker(ctx, listID, step)
+		if cerr != nil {
+			return "", fmt.Errorf("kabul kontrolü hatası: %w", cerr)
 		}
 		if !pass {
-			return fmt.Errorf("kabul kontrolü geçmedi: %s", detail)
+			return "", fmt.Errorf("kabul kontrolü geçmedi: %s", detail)
 		}
 	}
-	return nil
+	return out, nil
+}
+
+func approxTokens(s string) int { return len(s) / 4 }
+
+func summariseStep(step PlanStep, out string, err error) string {
+	if err != nil {
+		return fmt.Sprintf("- %s (%s): TAKILDI — %s", step.ID, step.Text, truncate.Text(err.Error(), 200))
+	}
+	line := fmt.Sprintf("- %s (%s): tamam", step.ID, step.Text)
+	if o := strings.TrimSpace(out); o != "" {
+		line += " — " + truncate.Text(o, 300)
+	}
+	return line
+}
+
+func appendState(state, line string) string {
+	if strings.TrimSpace(state) == "" {
+		return "## İlerleme\n" + line
+	}
+	return state + "\n" + line
 }
 
 // finishPlanItems mirrors step completion up to the Task.md items: an item is

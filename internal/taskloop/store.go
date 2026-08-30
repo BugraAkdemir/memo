@@ -340,7 +340,29 @@ func (s *Store) Delete(id string) error {
 	if err := os.Remove(s.planPath(id)); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	if err := os.Remove(s.statePath(id)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	return nil
+}
+
+func (s *Store) statePath(id string) string { return filepath.Join(s.dir, id+".state.md") }
+
+// SaveState persists a planner/executor list's running project-state doc.
+func (s *Store) SaveState(listID, doc string) error {
+	if err := fileutil.AtomicWrite(s.statePath(listID), []byte(doc), 0600); err != nil {
+		return fmt.Errorf("taskloop: save state %s: %w", listID, err)
+	}
+	return nil
+}
+
+// GetState returns the state doc, or "" if none was written yet.
+func (s *Store) GetState(listID string) string {
+	data, err := os.ReadFile(s.statePath(listID))
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 // SetMode records a list's execution mode ("worker" / "planlayıcı").

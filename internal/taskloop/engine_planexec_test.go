@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -137,6 +138,64 @@ func TestEngine_PlanExec_FailedAcceptanceMarksItemStuck(t *testing.T) {
 	p, _ := store.GetPlan(tl.ID)
 	if p.Steps[0].Status != "done" || p.Steps[1].Status != "stuck" {
 		t.Fatalf("step statuses = %q/%q", p.Steps[0].Status, p.Steps[1].Status)
+	}
+}
+
+func TestEngine_PlanExec_ParallelAndStateDoc(t *testing.T) {
+	store, _ := NewStore(t.TempDir())
+	tl, _ := store.Create("c1", "T", []string{"one item"})
+	_ = store.SetMode(tl.ID, ModePlanner)
+
+	// Three independent steps -> all ready at once.
+	plan := Plan{Steps: []PlanStep{
+		{ID: "S1", ItemID: "1", Text: "a"},
+		{ID: "S2", ItemID: "1", Text: "b"},
+		{ID: "S3", ItemID: "1", Text: "c"},
+	}}
+
+	var inFlight, maxInFlight int32
+	var sawState int32
+	eng := NewEngine(store,
+		func(ctx context.Context, chatID, prompt string) (string, error) { return "ok", nil },
+		func(ctx context.Context, itemText, workerOutput string) (bool, string, error) { return true, "", nil },
+		func(bool) {}, func(string, string) {},
+		WithPlanner(func(ctx context.Context, listID, chatID, root, preamble string, items []string, gran string) (*Plan, error) {
+			p := plan
+			return &p, nil
+		}),
+		WithAutoApprovePlan(true),
+		WithMaxParallelSteps(3),
+		WithStepRunner(func(ctx context.Context, listID string, step PlanStep, stateDoc string) (string, error) {
+			n := atomic.AddInt32(&inFlight, 1)
+			for {
+				m := atomic.LoadInt32(&maxInFlight)
+				if n <= m || atomic.CompareAndSwapInt32(&maxInFlight, m, n) {
+					break
+				}
+			}
+			time.Sleep(30 * time.Millisecond)
+			if step.ID != "S1" && strings.Contains(stateDoc, "S1") {
+				atomic.StoreInt32(&sawState, 1)
+			}
+			atomic.AddInt32(&inFlight, -1)
+			return "touched " + step.ID, nil
+		}),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = eng.Start(ctx, tl.ID)
+	waitForStatus(t, store, tl.ID, taskListDone, 3*time.Second)
+
+	if atomic.LoadInt32(&maxInFlight) < 2 {
+		t.Fatalf("steps did not run in parallel (max in flight = %d)", maxInFlight)
+	}
+	// The state doc persisted and carries every step's summary.
+	st := store.GetState(tl.ID)
+	for _, id := range []string{"S1", "S2", "S3"} {
+		if !strings.Contains(st, id) {
+			t.Fatalf("state doc missing %s:\n%s", id, st)
+		}
 	}
 }
 

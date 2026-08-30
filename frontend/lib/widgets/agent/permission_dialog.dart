@@ -33,8 +33,31 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
   late int _secondsLeft = _timeout.inSeconds;
   Timer? _countdownTimer;
   Timer? _staleCheckTimer;
+  bool _staleScheduled = false;
   bool _submitting = false;
   String? _error;
+
+  // A not-sending signal (either the live isSendingProvider true->false
+  // transition or an already-false first build) only closes this dialog if it
+  // is STILL not-sending ~1.8s later. isSendingProvider genuinely dips to
+  // false for a frame at an agentic tool-round boundary — the exact moment
+  // create_task_md / start_self_driving_task raise their permission request —
+  // and an un-debounced pop flash-closed the live dialog before the user
+  // could answer, while the backend still sat in its full 60s wait
+  // (BUG-PERM1, reproduced live). A resume to sending cancels the pending
+  // check.
+  void _scheduleStaleCheck() {
+    _staleScheduled = true;
+    _staleCheckTimer?.cancel();
+    _staleCheckTimer = Timer(const Duration(milliseconds: 1800), () {
+      if (mounted &&
+          !_submitting &&
+          !ref.read(isSendingProvider) &&
+          widget.event.requestId != null) {
+        Navigator.of(context).pop();
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -90,39 +113,28 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
   @override
   Widget build(BuildContext context) {
     // isSendingProvider covers every way this dialog's underlying turn can
-    // end without the user answering: the explicit Stop button, switching
-    // to a different chat (ActiveChatIdNotifier.switchTo calls
-    // stopStreaming() before switching), natural completion, or an error —
-    // all of them flip it to false. Once that happens the backend side has
-    // already given up waiting on this requestId (context cancellation) or
-    // moved on entirely, so leaving the dialog up would only let the user
-    // send a decision for a request that no longer exists (BUG-L1). Skip
-    // the auto-pop while a submit is already in flight so it can't race
-    // Navigator.pop with _submit's own.
+    // end without the user answering: the explicit Stop button, switching to
+    // a different chat (ActiveChatIdNotifier.switchTo calls stopStreaming()
+    // before switching), natural completion, or an error — all of them flip
+    // it to false. Once that has really happened the backend has given up on
+    // this requestId (context cancellation) or moved on, so leaving the
+    // dialog up would only let the user answer a request that no longer
+    // exists (BUG-L1). But isSendingProvider ALSO dips to false for a single
+    // frame at an agentic tool-round boundary — the exact moment
+    // create_task_md / start_self_driving_task raise their permission
+    // request — so both the live true->false transition and an already-false
+    // first build route through _scheduleStaleCheck()'s ~1.8s debounce
+    // instead of popping immediately (BUG-PERM1). A resume to sending
+    // cancels the pending check; an in-flight submit suppresses it.
     ref.listen<bool>(isSendingProvider, (prev, next) {
       if (!next && !_submitting && mounted) {
-        Navigator.of(context).pop();
+        _scheduleStaleCheck();
+      } else if (next) {
+        _staleCheckTimer?.cancel();
       }
     });
-    // ref.listen only fires on a live transition — it does nothing if
-    // isSendingProvider was ALREADY false by the time this widget's first
-    // build ran (turn ended before the dialog finished mounting off a slow
-    // agent_event delivery). But a bare "false right now → pop" also killed a
-    // legitimately-live dialog: during an agentic loop isSendingProvider can
-    // read false for a frame at a tool-round boundary right as create_task_md
-    // / start_self_driving_task raise their permission request, and the
-    // dialog flashed open and shut before the user could answer while the
-    // backend still waited its full 60s (BUG-PERM1, reproduced live).
-    // Debounce it: only pop if it is STILL not-sending ~1.4s later.
-    if (!ref.read(isSendingProvider) && !_submitting && _staleCheckTimer == null) {
-      _staleCheckTimer = Timer(const Duration(milliseconds: 1400), () {
-        if (mounted &&
-            !_submitting &&
-            !ref.read(isSendingProvider) &&
-            widget.event.requestId != null) {
-          Navigator.of(context).pop();
-        }
-      });
+    if (!ref.read(isSendingProvider) && !_submitting && !_staleScheduled) {
+      _scheduleStaleCheck();
     }
 
     final isDangerous = widget.event.dangerLevel == 'dangerous';

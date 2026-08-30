@@ -662,6 +662,7 @@ func (a *App) Startup(ctx context.Context) {
 	tools.Configurator = a
 	tools.Routines = routineToolAdapter{a}
 	tools.FileSender = fileToolAdapter{a}
+	tools.SelfDrivingTasks = selfDrivingTaskToolAdapter{a}
 
 	basePath, _ := filepath.Abs(".")
 	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr, a.getSessionManager())

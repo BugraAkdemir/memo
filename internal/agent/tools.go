@@ -190,6 +190,22 @@ func (r *ToolRegistry) registerBuiltins() {
 	r.registerWhatsAppTools()
 	r.registerRoutineTool()
 	r.registerFileSenderTool()
+	r.registerSelfDrivingTaskTool()
+}
+
+// registerSelfDrivingTaskTool adds start_self_driving_task to this registry —
+// only to the main/full registry (like create_routine), so it's reachable
+// from any agent-enabled chat: normal chat, WhatsApp self-chat, Telegram. It
+// deliberately has no chat/target parameter; the task binds to the chat that
+// asked (see tools.SelfDrivingTasks).
+func (r *ToolRegistry) registerSelfDrivingTaskTool() {
+	r.Register(ToolDef{
+		Name:        "start_self_driving_task",
+		Description: "Bir Task.md dosyasından otonom (kendi kendine ilerleyen) bir görev döngüsü başlatır. Kullanıcı \"şu Task.md'ye başla\", \"bu görev listesini çalıştır\", \"Task.md'yi otonom yap\" gibi bir şey dediğinde çağır — sen tek tek yapmak yerine görev döngüsü maddeleri sırayla, planlama + alt-ajan desteğiyle işler. task_md_path: onay kutulu maddeler (- [ ]) içeren Task.md dosyasının yolu (mutlak ya da çalışma dizinine göreli, ~ desteklenir). title: opsiyonel görünen ad (verilmezse dosya adı). Görev bu sohbete bağlanır, arka planda çalışır; ilerleme Görevler sekmesinden ve \"görev durumu\" diye sorulunca görülür. Bu aracı çağırmak, maddelerin gerektirdiği dosya değişikliklerine onay vermek demektir.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"task_md_path":{"type":"string","description":"Path to a Task.md file containing '- [ ]' checkbox items (absolute, or relative to the working directory; ~ is expanded)"},"title":{"type":"string","description":"Optional display name for the task list; defaults to the file name"}},"required":["task_md_path"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.StartSelfDrivingTask,
+	})
 }
 
 // registerFileSenderTool adds share_file to this registry — same

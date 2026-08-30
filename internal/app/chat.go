@@ -799,5 +799,18 @@ kodlama ajanı olarak çalışıyorsun. Aşağıdaki kurallara uy:
 - Kullanıcı "takvimimde ne var", "bu hafta ne yapacağım" gibi bir şey sorduğunda hafızandan/RAG'dan
   TAHMİN ETME — gerçek, kaydedilmiş etkinlikleri okumak için get_calendar_events aracını çağır.
   Bu, gerçekten kaydedilmiş bir etkinlik ile sadece sohbette bahsedilmiş ama hiç kaydedilmemiş bir
-  şeyi birbirine karıştırmanı engeller.`
+  şeyi birbirine karıştırmanı engeller.
+
+### Otonom Görev Döngüsü (Self-Driving)
+- Bir "Task.md" dosyası (onay kutulu maddeler: "- [ ]") söz konusuysa ve kullanıcı "şuna başla",
+  "bu listeyi çalıştır", "otonom yap", "kendi kendine ilerlet" gibi bir şey diyorsa: maddeleri
+  tek tek sen elle yapma — start_self_driving_task aracını çağır. Bu araç, planlama fazı, madde
+  başına sağlayıcı/model seçimi, hız-limiti bekleme ve alt-ajan (bir yazar + paralel salt-okuyucu)
+  desteğiyle bir görev döngüsü kurar; ilerlemeyi Task.md'deki kutulara "[x]" olarak yansıtır.
+- Görev bu sohbete bağlanır ve arka planda çalışır. Kullanıcı "görev durumu", "ne durumda", "hangi
+  maddedesin" diye sorduğunda uydurma — görev Görevler sekmesinden ve görev detay ekranından izlenir;
+  duraklat/devam/atla kontrolleri oradadır (Telegram/WhatsApp'ta da task_list / task_change ile).
+- start_self_driving_task yalnızca bir Ajan sohbetinden (bir proje klasörüne bağlı) çalışır; sohbet
+  ajan sohbeti değilse araç bunu söyleyip hata döndürür, sen de kullanıcıya Ajan sekmesinden proje
+  bağlamasını söyle.`
 }

@@ -272,6 +272,13 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			}
 		}
 
+		// Let "this chat" agent tools (start_self_driving_task) resolve the
+		// chat that asked. Not for a Self-Driving worker turn — a task loop
+		// must not be able to launch nested task loops.
+		if taskRunConfigFromCtx(ctx) == nil {
+			ctx = withCurrentChatID(ctx, sessionID)
+		}
+
 		sm := a.getSessionManager()
 		projectPath := ""
 		if sessionID != "" && sm != nil {

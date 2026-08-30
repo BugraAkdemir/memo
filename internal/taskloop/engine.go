@@ -28,6 +28,11 @@ type StepRunner func(ctx context.Context, listID string, step PlanStep, stateDoc
 // AcceptanceChecker verifies a step's acceptance checks after the coder ran.
 type AcceptanceChecker func(ctx context.Context, listID string, step PlanStep) (pass bool, detail string, err error)
 
+// Escalator re-plans one failed step (a targeted cloud call). It returns the
+// replacement steps, or an error. A network error signals "offline" — the
+// engine then parks the list in waiting-escalation and retries on resume.
+type Escalator func(ctx context.Context, listID string, step PlanStep, failure EscalationInput) ([]PlanStep, error)
+
 type Engine struct {
 	store       *Store
 	runWorker   RunWorker
@@ -55,9 +60,11 @@ type Engine struct {
 	stepRunner     StepRunner
 	acceptChecker  AcceptanceChecker
 	stateCompactor func(ctx context.Context, listID, current string) (string, error)
+	escalator      Escalator
 	granularity    string
 	autoApprove    bool
 	maxPar         int
+	maxAttempts    int
 	stateMaxTokens int
 
 	rtMu     sync.RWMutex
@@ -182,6 +189,21 @@ func WithStateCompactor(fn func(ctx context.Context, listID, current string) (st
 // WithStateMaxTokens sets the state-doc size (approx tokens) that triggers
 // compaction. 0 disables it.
 func WithStateMaxTokens(n int) EngineOption { return func(e *Engine) { e.stateMaxTokens = n } }
+
+// WithEscalator enables the escalation valve: after a step has failed
+// WithMaxExecutorAttempts times it is re-planned by fn instead of just going
+// stuck. Requires a RetryScheduler for the offline-park path.
+func WithEscalator(fn Escalator) EngineOption { return func(e *Engine) { e.escalator = fn } }
+
+// WithMaxExecutorAttempts sets how many times a step's coder turn may fail
+// before it escalates (default 3).
+func WithMaxExecutorAttempts(n int) EngineOption {
+	return func(e *Engine) {
+		if n > 0 {
+			e.maxAttempts = n
+		}
+	}
+}
 
 func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBypass BypassSetter, onEvent func(name, data string), opts ...EngineOption) *Engine {
 	e := &Engine{
@@ -590,6 +612,19 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 	}
 	state := e.store.GetState(listID)
 
+	// Resume path: a step failed offline last time and the list was parked.
+	if plan.PendingEscalation != nil {
+		if !e.resumePendingEscalation(ctx, listID, tl, plan) {
+			return // still offline — re-armed and parked
+		}
+		reloaded, gerr := e.store.GetPlan(listID)
+		if gerr != nil {
+			e.failPlan(listID, gerr.Error())
+			return
+		}
+		plan = reloaded
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -599,6 +634,20 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 		}
 		ready := plan.ReadySteps()
 		if len(ready) == 0 {
+			// Nothing runnable. Before giving up, try the escalation valve on
+			// any stuck step that has exhausted its coder attempts.
+			if e.escalator != nil {
+				esc, parked := e.escalateStuckSteps(ctx, listID, tl, plan)
+				if parked {
+					return // offline — parked in waiting-escalation, retry armed
+				}
+				if esc {
+					if r2, gerr := e.store.GetPlan(listID); gerr == nil {
+						plan = r2
+						continue
+					}
+				}
+			}
 			break
 		}
 
@@ -663,11 +712,127 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 		}
 		plan = reloaded
 		if !progressed {
-			break // every currently-ready step is stuck; nothing more will unblock
+			// No step advanced this wave; the top-of-loop empty-ready branch
+			// (with its escalation attempt) decides whether to stop.
+			continue
 		}
 	}
 
 	e.finishPlanItems(listID, tl, plan)
+}
+
+// escalateStuckSteps re-plans the first stuck step that has run out of coder
+// attempts. Returns (escalated, parkedOffline).
+func (e *Engine) escalateStuckSteps(ctx context.Context, listID string, tl *TaskList, plan *Plan) (bool, bool) {
+	for _, s := range plan.Steps {
+		if s.Status != "stuck" || s.Attempts < e.maxAtt() {
+			continue
+		}
+		// Depth guard: a step already re-planned twice ("S2.1.3") is not
+		// escalated a third time — it just stays stuck.
+		if strings.Count(s.ID, ".") >= 2 {
+			continue
+		}
+		input := EscalationInput{StepID: s.ID, Error: s.Note}
+		e.emitEvent("taskloop:escalating", fmt.Sprintf("%s:%s", listID, s.ID))
+		repl, err := e.escalator(ctx, listID, s, input)
+		if err != nil {
+			if isOfflineErr(err) {
+				plan.PendingEscalation = &input
+				_ = e.store.SavePlan(listID, *plan)
+				_ = e.store.SetStatus(listID, taskListWaitingEscalation)
+				e.emitEvent("taskloop:waiting_escalation", listID)
+				if e.retry != nil {
+					e.retry.Arm(listID)
+				}
+				return false, true
+			}
+			logx.Printf("TASKLOOP: escalator failed %s/%s: %v (leaving stuck)", listID, s.ID, err)
+			continue
+		}
+		if len(repl) == 0 {
+			continue
+		}
+		plan.ReplaceStep(s.ID, repl)
+		if err := plan.Normalize(); err != nil {
+			logx.Printf("TASKLOOP: escalated plan invalid %s: %v", listID, err)
+			continue
+		}
+		_ = e.store.SavePlan(listID, *plan)
+		if tl.TaskMdPath != "" {
+			if werr := WritePlanMd(PlanMdPath(tl.TaskMdPath), *plan, itemTextMap(tl)); werr != nil {
+				logx.Printf("TASKLOOP: rewrite Plan.md %s: %v", listID, werr)
+			}
+		}
+		e.emitEvent("taskloop:escalated", fmt.Sprintf("%s:%s", listID, s.ID))
+		return true, false
+	}
+	return false, false
+}
+
+// resumePendingEscalation retries a parked offline escalation. Returns true if
+// it resolved (plan updated / given up cleanly), false if still offline (the
+// list is re-armed and left parked).
+func (e *Engine) resumePendingEscalation(ctx context.Context, listID string, tl *TaskList, plan *Plan) bool {
+	pe := *plan.PendingEscalation
+	var step PlanStep
+	for _, s := range plan.Steps {
+		if s.ID == pe.StepID {
+			step = s
+			break
+		}
+	}
+	repl, err := e.escalator(ctx, listID, step, pe)
+	if err != nil {
+		if isOfflineErr(err) {
+			if e.retry != nil {
+				e.retry.Arm(listID)
+			}
+			_ = e.store.SetStatus(listID, taskListWaitingEscalation)
+			return false
+		}
+		logx.Printf("TASKLOOP: resume escalation %s/%s gave up: %v", listID, pe.StepID, err)
+		plan.PendingEscalation = nil
+		_ = e.store.SavePlan(listID, *plan)
+		return true
+	}
+	plan.ReplaceStep(pe.StepID, repl)
+	plan.PendingEscalation = nil
+	if nerr := plan.Normalize(); nerr != nil {
+		logx.Printf("TASKLOOP: resumed escalation plan invalid %s: %v", listID, nerr)
+	}
+	_ = e.store.SavePlan(listID, *plan)
+	if tl.TaskMdPath != "" {
+		_ = WritePlanMd(PlanMdPath(tl.TaskMdPath), *plan, itemTextMap(tl))
+	}
+	e.emitEvent("taskloop:escalated", fmt.Sprintf("%s:%s", listID, pe.StepID))
+	return true
+}
+
+func (e *Engine) maxAtt() int {
+	if e.maxAttempts > 0 {
+		return e.maxAttempts
+	}
+	return 3
+}
+
+// isOfflineErr reports whether err looks like a lost network connection (vs. a
+// real API/logic failure).
+func isOfflineErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	for _, m := range []string{
+		"no such host", "dial tcp", "connection refused", "network is unreachable",
+		"no route to host", "i/o timeout", "tls handshake timeout", "temporary failure in name resolution",
+		"connection reset by peer", "eof",
+	} {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // runOneStep runs the coder turn for one step and applies its acceptance

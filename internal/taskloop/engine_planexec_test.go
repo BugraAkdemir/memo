@@ -2,6 +2,7 @@ package taskloop
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -196,6 +197,115 @@ func TestEngine_PlanExec_ParallelAndStateDoc(t *testing.T) {
 		if !strings.Contains(st, id) {
 			t.Fatalf("state doc missing %s:\n%s", id, st)
 		}
+	}
+}
+
+func TestEngine_PlanExec_EscalationReplacesStuckStep(t *testing.T) {
+	store, _ := NewStore(t.TempDir())
+	tl, _ := store.Create("c1", "T", []string{"one item"})
+	_ = store.SetMode(tl.ID, ModePlanner)
+
+	plan := Plan{Steps: []PlanStep{
+		{ID: "S1", ItemID: "1", Text: "the hard step"},
+	}}
+	var escalated int32
+	eng := NewEngine(store,
+		func(ctx context.Context, chatID, prompt string) (string, error) { return "ok", nil },
+		func(ctx context.Context, itemText, workerOutput string) (bool, string, error) { return true, "", nil },
+		func(bool) {}, func(string, string) {},
+		WithPlanner(func(ctx context.Context, listID, chatID, root, preamble string, items []string, gran string) (*Plan, error) {
+			p := plan
+			return &p, nil
+		}),
+		WithAutoApprovePlan(true),
+		WithMaxExecutorAttempts(1),
+		WithStepRunner(func(ctx context.Context, listID string, step PlanStep, stateDoc string) (string, error) {
+			if step.ID == "S1" {
+				return "", errors.New("coder could not do S1")
+			}
+			return "did " + step.ID, nil
+		}),
+		WithEscalator(func(ctx context.Context, listID string, step PlanStep, f EscalationInput) ([]PlanStep, error) {
+			atomic.AddInt32(&escalated, 1)
+			if step.ID != "S1" {
+				t.Errorf("escalated unexpected step %s", step.ID)
+			}
+			return []PlanStep{
+				{ItemID: "1", Text: "smaller step a"},
+				{ItemID: "1", Text: "smaller step b"},
+			}, nil
+		}),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = eng.Start(ctx, tl.ID)
+	waitForStatus(t, store, tl.ID, taskListDone, 3*time.Second)
+
+	if atomic.LoadInt32(&escalated) != 1 {
+		t.Fatalf("escalator calls = %d, want 1", escalated)
+	}
+	p, _ := store.GetPlan(tl.ID)
+	if len(p.Steps) != 2 {
+		t.Fatalf("plan after escalation has %d steps, want 2 (S1 replaced)", len(p.Steps))
+	}
+	for _, s := range p.Steps {
+		if s.Status != "done" {
+			t.Fatalf("replacement step %s status = %q", s.ID, s.Status)
+		}
+	}
+	got, _ := store.Get(tl.ID)
+	if got.Items[0].Status != "done" {
+		t.Fatalf("item status = %q, want done", got.Items[0].Status)
+	}
+}
+
+func TestEngine_PlanExec_OfflineEscalationParksThenResumes(t *testing.T) {
+	store, _ := NewStore(t.TempDir())
+	tl, _ := store.Create("c1", "T", []string{"one item"})
+	_ = store.SetMode(tl.ID, ModePlanner)
+
+	plan := Plan{Steps: []PlanStep{{ID: "S1", ItemID: "1", Text: "step"}}}
+	var escCalls int32
+	eng := NewEngine(store,
+		func(ctx context.Context, chatID, prompt string) (string, error) { return "ok", nil },
+		func(ctx context.Context, itemText, workerOutput string) (bool, string, error) { return true, "", nil },
+		func(bool) {}, func(string, string) {},
+		WithPlanner(func(ctx context.Context, listID, chatID, root, preamble string, items []string, gran string) (*Plan, error) {
+			p := plan
+			return &p, nil
+		}),
+		WithAutoApprovePlan(true),
+		WithMaxExecutorAttempts(1),
+		WithRetryScheduler(60*time.Millisecond),
+		WithStepRunner(func(ctx context.Context, listID string, step PlanStep, stateDoc string) (string, error) {
+			if step.Text == "recovered step" {
+				return "ok", nil
+			}
+			return "", errors.New("coder failed")
+		}),
+		WithEscalator(func(ctx context.Context, listID string, step PlanStep, f EscalationInput) ([]PlanStep, error) {
+			n := atomic.AddInt32(&escCalls, 1)
+			if n == 1 {
+				return nil, errors.New("dial tcp 1.2.3.4:443: connect: network is unreachable")
+			}
+			return []PlanStep{{ItemID: "1", Text: "recovered step"}}, nil
+		}),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = eng.Start(ctx, tl.ID)
+
+	waitForStatus(t, store, tl.ID, taskListWaitingEscalation, 2*time.Second)
+	p, _ := store.GetPlan(tl.ID)
+	if p.PendingEscalation == nil || p.PendingEscalation.StepID != "S1" {
+		t.Fatalf("PendingEscalation = %+v", p.PendingEscalation)
+	}
+
+	// The retry timer fires ~60ms later, resumes, escalator now succeeds.
+	waitForStatus(t, store, tl.ID, taskListDone, 3*time.Second)
+	p, _ = store.GetPlan(tl.ID)
+	if p.PendingEscalation != nil {
+		t.Fatal("PendingEscalation not cleared after resume")
 	}
 }
 

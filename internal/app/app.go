@@ -724,9 +724,11 @@ func (a *App) Startup(ctx context.Context) {
 			taskloop.WithStepRunner(a.runPlanStep),
 			taskloop.WithAcceptanceChecker(a.acceptancecheck),
 			taskloop.WithStateCompactor(a.compactPlanState),
+			taskloop.WithEscalator(a.escalateStep),
 			taskloop.WithGranularity(a.cfg.TaskLoop.StepGranularity),
 			taskloop.WithAutoApprovePlan(a.cfg.TaskLoop.AutoApprovePlan),
 			taskloop.WithMaxParallelSteps(a.cfg.TaskLoop.MaxParallelSteps),
+			taskloop.WithMaxExecutorAttempts(a.cfg.TaskLoop.MaxExecutorAttempts),
 			taskloop.WithStateMaxTokens(a.cfg.TaskLoop.HandoffStateMaxTokens),
 		)
 		if a.cfg != nil && a.cfg.TaskLoop.SubAgents {
@@ -735,11 +737,12 @@ func (a *App) Startup(ctx context.Context) {
 			orch := taskloop.NewSubAgentOrchestrator(&appSubAgentRunner{a: a}, 3)
 			taskloop.WithSubAgents(orch, a.resolveSubAgentSpecs)(a.taskloopEngine)
 		}
-		// Re-arm any list left parked in waiting-limit by a previous run.
+		// Re-arm any list left parked in a retry-driven wait by a previous run
+		// (rate limit, or an offline escalation queued for a cloud re-plan).
 		for _, info := range tlStore.List() {
-			if info.Status == "waiting-limit" {
+			if info.Status == "waiting-limit" || info.Status == "waiting-escalation" {
 				a.taskloopEngine.ArmRetry(info.ID)
-				logx.Printf("taskloop: re-armed rate-limit retry for %s", info.ID)
+				logx.Printf("taskloop: re-armed retry for %s (%s)", info.ID, info.Status)
 			}
 		}
 		logx.Info("Task loop engine initialized")

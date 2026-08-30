@@ -41,12 +41,65 @@ type PlanStep struct {
 	Note             string            `json:"note,omitempty"`
 }
 
+// EscalationInput is the failure context handed to the escalator (a targeted
+// cloud re-plan of one step).
+type EscalationInput struct {
+	StepID      string `json:"step_id"`
+	Error       string `json:"error"`
+	CheckOutput string `json:"check_output,omitempty"`
+}
+
 // Plan is the whole step graph for one list.
 type Plan struct {
-	ListID    string     `json:"list_id"`
-	Steps     []PlanStep `json:"steps"`
-	CreatedAt string     `json:"created_at,omitempty"`
-	UpdatedAt string     `json:"updated_at,omitempty"`
+	ListID string     `json:"list_id"`
+	Steps  []PlanStep `json:"steps"`
+	// PendingEscalation, when set, means a step failed while offline and the
+	// list is parked in waiting-escalation; executePlan retries the escalator
+	// with this on the next resume.
+	PendingEscalation *EscalationInput `json:"pending_escalation,omitempty"`
+	CreatedAt         string           `json:"created_at,omitempty"`
+	UpdatedAt         string           `json:"updated_at,omitempty"`
+}
+
+// ReplaceStep swaps the step with id `stepID` for `repl` (in the same
+// position), giving replacements fresh ids / the failed step's item, and
+// rewiring anything that depended on the old step onto the last replacement.
+func (p *Plan) ReplaceStep(stepID string, repl []PlanStep) {
+	idx := -1
+	for i, s := range p.Steps {
+		if s.ID == stepID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 || len(repl) == 0 {
+		return
+	}
+	old := p.Steps[idx]
+	for i := range repl {
+		if strings.TrimSpace(repl[i].ID) == "" {
+			repl[i].ID = fmt.Sprintf("%s.%d", stepID, i+1)
+		}
+		if repl[i].ItemID == "" {
+			repl[i].ItemID = old.ItemID
+		}
+		if repl[i].Status == "" {
+			repl[i].Status = "pending"
+		}
+	}
+	lastID := repl[len(repl)-1].ID
+	out := make([]PlanStep, 0, len(p.Steps)+len(repl)-1)
+	out = append(out, p.Steps[:idx]...)
+	out = append(out, repl...)
+	out = append(out, p.Steps[idx+1:]...)
+	for i := range out {
+		for j, d := range out[i].DependsOn {
+			if d == stepID {
+				out[i].DependsOn[j] = lastID
+			}
+		}
+	}
+	p.Steps = out
 }
 
 // planJSONFence delimits the authoritative JSON block inside Plan.md. Users
@@ -250,6 +303,10 @@ func ParsePlanMd(path string) (*Plan, error) {
 	}
 	return &p, nil
 }
+
+// ExtractJSONObject pulls the first JSON object/array out of a model reply,
+// tolerating ```json fences and surrounding prose.
+func ExtractJSONObject(raw string) string { return extractJSON(raw) }
 
 // ParsePlannerJSON extracts a JSON object from a planner model's raw reply
 // (tolerating ```json fences and surrounding prose), unmarshals it into a Plan

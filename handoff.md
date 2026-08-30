@@ -1,3 +1,59 @@
+# Ek (2026-08-30, devam 43) — 2. canlı planexec turu: 4 yeni bug notu + büyük özellik talebi (branch aynı)
+
+devam 42 fix'lerinden sonra kullanıcı gerçek masaüstü uygulamasıyla ikinci bir
+planexec turu koştu (`~/memo-blog-test`, `hy3:free`). **Sonuç: motor uçtan uca
+çalıştı.** `create_task_md` 6 maddelik `Task.md` yazdı (izin diyaloğu artık
+stabil — BUG-PERM1 çekirdeği çözülmüş görünüyor), planlayıcı 17 KB `Plan.md` +
+6 adım üretti, onay kapısından geçildi, executor koştu. Turun ortasında canlı
+gözlem: **7/13 adım done**, S6.1 çalışıyor. Escalation **2 kez** doğru
+tetiklendi: S3 (login) 3 denemede geçemedi → 3.1/3.2/3.3'e bölündü;
+S6 (uçtan uca test) "Traceback" + 5dk idle → S6.1–S6.6'ya bölündü. Yani
+6→8→13 adım büyümesi = escalation'ın takılan adımı ufak adımlara ayırması,
+tasarım gereği. Zayıf model blog uygulamasında gerçek bir bug bıraktı ve
+düzeltemedi (S6.1 tekrar "Traceback") — model kalitesi, pipeline değil.
+
+**BUG_REPORT.md'ye eklenen 4 yeni not (kod = testten sonra, kullanıcı
+"şimdilik değişiklik yapma" dedi):**
+
+- **BUG-PLAN9** 🟢 — planexec planı yalnızca Görevler sekmesi → task detay
+  ekranından onaylanabiliyor (`_PlanApprovalSection`). Sohbete inline "planı
+  gör / onayla" düşmeli.
+- **BUG-PLAN10** 🟠 (HIGH) — sohbet modeli canlı task durumunu okuyamıyor.
+  `Task.md`'yi okuyup 6 boş kutu görünce **baştan sona uydurma başarısızlık
+  anlatısı** üretti ("döngü hiçbir şey yapmadı", "LLM sağlayıcı yok",
+  "`app.py`/`blog.db` yok") — hepsi yanlış, o sırada 7/13 adım bitmişti.
+  İstenen: `get_task_status` aracı ya da sistem prompt'una özet enjeksiyonu;
+  veri yoksa uydurmasın.
+- **BUG-PLAN11** 🟡 — plan adımları `item_id="1".."6"` (sıra no) taşıyor ama
+  `TaskList.items[].id` **UUID** → `SetItemDone` eşleşmiyor → `Task.md`
+  checkbox'ları hiç işaretlenmiyor, kart sonsuza dek 0/6. Ayrıca aynı anda 4
+  farklı sayaç (kart 0/6, bar 7/13, "Executing 0/6", model "6 boş") + payda
+  büyümesi UI'da açıklanmıyor.
+- **BUG-PLAN12** 🟡 — canlı task aktivitesi (adım başladı/bitti, alt-agent,
+  escalation, plan onayı, handoff doluluğu) sadece Görevler ekranında; sohbete
+  hafif bir aktivite akışı düşmeli. BUG-PLAN9+10'un şemsiye çözümü.
+
+**Kullanıcının büyük özellik talebi (sıradaki iş, henüz plan dosyası yok):**
+sohbetten başlatılan bir task için —
+1. canlı durum **aynı sohbette** görünsün ("şu adım bitti, şuna geçiyorum"),
+   ayrı Görevler ekranı şart olmasın;
+2. task çalışırken o sohbetin girişi kilitli olsun; kullanıcı kırmızı butonla
+   **durdurup** soru sorabilsin, cevabı alıp "devam" yazınca **kaldığı adımdan**
+   sürsün;
+3. durdurunca üretilen sohbet çıktısı **silinmesin** (şu an siliniyor);
+4. task o sohbete bağlı kalsın — yeni sohbet açmak / TG-WP'den alakasız
+   yazışmak çalışan task'ı etkilemesin;
+5. **task başına bağımsız model** — aynı anda biri tamamen local, biri bulut,
+   biri Claude, biri ChatGPT koşabilsin, birbirini etkilemesin. (Altyapının
+   bir kısmı var: `taskRunConfig` her listeye özel router/executor veriyor;
+   eksik: `taskloopRunMu` listeleri birbirine karşı **sıraya sokuyor**, ve
+   model başlarken **global aktif provider**'dan snapshot'lanıyor — v4.5.0
+   `# kodlayıcı:` başlıkları `taskRunConfig`'e bağlı değil.)
+Bu iş için plan modunda keşif başlatıldı (2 Explore ajanı: backend
+eşzamanlılık/yaşam döngüsü + Flutter sohbet/task arayüz bağı).
+
+---
+
 # Ek (2026-08-30, devam 42) — canlı test: izin diyaloğu + auto-permission düzeltmeleri (branch aynı)
 
 devam 41'in canlı testine geçildi. Hedef: web arayüzden (`scripts/run_memo.sh`

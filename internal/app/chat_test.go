@@ -230,6 +230,64 @@ func TestSendMessageStreamTo_TargetsGivenChatID_NotGloballyActiveChat(t *testing
 	}
 }
 
+// TestSendMessageStreamTo_PerChatLock_OtherChatsNotBlocked is the v4.6.0 Faz A
+// regression: streaming is serialised per chat, not globally. A stream in
+// flight in chat A (its per-chat lock held) must still reject a second stream
+// in chat A, but must NOT block a stream in chat B — the whole point being a
+// Self-Driving task turn in its own chat can't freeze the user's chat.
+func TestSendMessageStreamTo_PerChatLock_OtherChatsNotBlocked(t *testing.T) {
+	id := identity.New("Test", "Memo", "casual", "", false)
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	chatA := sm.NewChat()
+	chatB := sm.NewChat()
+
+	a := &App{
+		cfg:      &config.AppConfig{Memory: config.MemoryConfig{MemoryEnabled: false}, Llama: config.LlamaConfig{CtxSize: 4096}},
+		identity: id,
+		sessions: sm,
+	}
+
+	busy := a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes.")
+
+	// Simulate a stream in flight in chat A by holding its per-chat lock.
+	release, ok := a.lockChatStream(chatA)
+	if !ok {
+		t.Fatal("could not take chat A's stream lock")
+	}
+	defer release()
+
+	// Same chat -> rejected.
+	chA := a.SendMessageStreamTo(context.Background(), chatA, "second turn in A")
+	gotA := <-chA
+	if gotA.Error != busy {
+		t.Fatalf("SendMessageStreamTo(chatA) while A is streaming: Error = %q, want the busy notice", gotA.Error)
+	}
+
+	// Different chat -> proceeds (it will fail fast on no configured model,
+	// but must NOT be the busy notice).
+	chB := a.SendMessageStreamTo(context.Background(), chatB, "turn in B")
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case chunk, more := <-chB:
+			if !more {
+				t.Fatal("chat B stream closed without any chunk")
+			}
+			if chunk.Error == busy {
+				t.Fatal("chat B was blocked by chat A's in-flight stream — per-chat lock is acting global")
+			}
+			if chunk.Done {
+				return
+			}
+		case <-deadline:
+			t.Fatal("chat B stream did not finish in time")
+		}
+	}
+}
+
 // TestSendMessageStreamTo_MemoryUsed_AnnotatesSavedReply is the regression
 // test for the memory-usage badge: when buildMessagesForSession retrieves
 // N memories for a turn, the resulting assistant message must end up with

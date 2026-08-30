@@ -297,7 +297,14 @@ type App struct {
 	// waPendingPermAnswerCh/waPendingPermChatJID above, guarded by tgMu.
 	tgPendingPermAnswerCh chan string
 	tgPendingPermChatID   int64
-	streamMu              sync.Mutex // prevents concurrent stream goroutines (double-send)
+	// streamMu is now only a gate, not the stream lock (v4.6.0 Faz A, see
+	// chat_locks.go): interactive and task streams take it RLock so many
+	// chats stream at once; the routine and incognito paths take it Lock
+	// (exclusive) because they flip a global flag. Per-chat serialisation
+	// lives in chatStreamLocks.
+	streamMu        sync.RWMutex
+	chatStreamMu    sync.Mutex
+	chatStreamLocks map[string]*sync.Mutex
 
 	// cliJobs tracks in-flight CLI-backed background streams (see
 	// cli_stream.go), keyed by chat id. Deliberately separate from streamMu

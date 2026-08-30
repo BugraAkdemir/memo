@@ -46,7 +46,6 @@ func TestEngine_MaxConcurrentLists_Gate(t *testing.T) {
 
 	// Fresh engine, unlimited: both start.
 	block2 := make(chan struct{})
-	defer close(block2)
 	eng2 := NewEngine(store,
 		func(ctx context.Context, chatID, prompt string) (string, error) { <-block2; return "ok", nil },
 		chief, func(bool) {}, func(string, string) {},
@@ -57,6 +56,11 @@ func TestEngine_MaxConcurrentLists_Gate(t *testing.T) {
 	if err := eng2.Start(ctx, b); err != nil {
 		t.Fatalf("unlimited Start(B) should not be gated: %v", err)
 	}
+	// Drain both eng2 goroutines before the test's TempDir is torn down, so
+	// they don't try to persist state to a deleted directory.
+	close(block2)
+	waitFor(t, func() bool { return !eng2.IsRunning(a) && !eng2.IsRunning(b) },
+		3*time.Second, "eng2 lists to finish")
 }
 
 func waitFor(t *testing.T, cond func() bool, d time.Duration, what string) {

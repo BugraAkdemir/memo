@@ -1,3 +1,73 @@
+# Ek (2026-08-30, devam 42) — canlı test: izin diyaloğu + auto-permission düzeltmeleri (branch aynı)
+
+devam 41'in canlı testine geçildi. Hedef: web arayüzden (`scripts/run_memo.sh`
+yerine headless backend + gömülü web `:8090`) sohbet üzerinden Memo'ya blog
+sitesi task'ı anlat → `create_task_md` yazsın → planlayıcı modu koşsun.
+Test projesi `~/memo-blog-test/` (Python 3 stdlib blog, AGENTS.md kuralları:
+`# memo-gen` 1. satır, salt'lı hash parola, parametreli SQL). Provider:
+`Özel (OpenAI uyumlu)` (tencent/hy3:free @ api.kilo.ai) — çalışıyor ama tur
+başına ~60-120sn, izin penceresini (60sn) yakalamak zor.
+
+**Bulunan + düzeltilen buglar:**
+
+- **BUG-PLAN4** (`5b08e53` sonrası) — Tasks sekmesindeki kart `onTap`'i eski
+  `_showDetailDialog` modalını açıyordu ("Idle" statü, onay UI yok). Düzeltme:
+  `onTap` artık `TaskDetailScreen` push ediyor; `_showDetailDialog` + 2
+  kullanılmayan import silindi. (`frontend/lib/screens/tasks_screen.dart`)
+
+- **BUG-PERM1** — `create_task_md` / `start_self_driving_task` izin diyaloğu
+  kullanıcı cevap veremeden kapanıyor, backend 60sn sonra
+  `permission request … timed out (60s), auto-denied` logluyor. İki kök sebep,
+  iki commit:
+  - `db31c90` — `permission_dialog.dart`'taki `ref.listen(isSendingProvider)`
+    geçiş handler'ı debounce'suz `Navigator.pop()` çağırıyordu.
+    `isSendingProvider` agentik tool-round sınırında bir frame `false`'a
+    düşüyor (tam da bu araçların izin istediği an) → diyalog anında kapanıyor.
+    Artık her not-sending sinyali (canlı geçiş + ilk build'de zaten false)
+    tek `_scheduleStaleCheck()` ~1.8sn debounce'undan geçiyor; sending'e
+    dönüş timer'ı iptal ediyor.
+  - `b9fc2eb` — `permission_request` event'i ile `isSendingProvider=true`
+    yazımı farklı provider'lardan, ilk frame'de sıra karışabiliyor → stale
+    `false` okunuyor. `_openedAt` + `_minVisible = 2sn` tabanı: stale-check
+    diyalog en az 2sn ekranda kalmadan asla ateşlenmiyor (1.8sn debounce'un
+    üstüne). Gerçekten biten tur yine oto-kapanıyor, sadece birkaç sn sonra.
+  - Canlı doğrulama: yeni build'de diyalog "0:59" sayaçla stabil göründü
+    (eskiden anında flash-close). 4 `permission_dialog_test` yeşil.
+
+- **auto-permission "açıkken hâlâ soruyor"** (`e43627e`) — iki boşluk:
+  1. `Pipeline.autoPermission` `Executor.RunStream`'de bir kez snapshot
+     alınıyordu → uzun agentik döngüde (tek turda çok araç çağrısı) mod
+     ortada açılınca sonraki tura kadar etkisiz. Artık izin kontrolü canlı
+     getter'ı da (`autoPermissionFn` → `Executor.GetAutoPermission`)
+     danışıyor.
+  2. `permissionWaitFn`'de zaten park etmiş istek, kullanıcı modu açsa bile
+     60sn oto-deny'a kadar bloke kalıyordu. `SetAutoPermission(true)` artık
+     `e.pendingPerms`'i drenajlıyor, her bekleyene `AllowOnce` gönderiyor.
+  Mod kapalıyken davranış değişmedi.
+
+**Not (bug değil):** Gömülü tarayıcı panelinde (Browser pane) Flutter web
+canvas'ı arka planda throttle olabiliyor — sayaç donuk görünüyor, tık geç
+işleniyor. Gerçek masaüstü uygulamasında test daha güvenilir.
+
+**Örnek Task.md** (planlayıcı modu, onay kapısı açık — BUG-PLAN4 testi için):
+`# bildirim: önemli` / `# mod: planlayıcı` / `# hafıza: kapalı` başlıkları +
+intro + 6 madde (init_db şema, POST /signup, POST /login cookie, POST /new
+auth'lu, GET / listeleme, curl uçtan uca). Şema: `internal/taskloop/schema.go`
+`TaskMdSchemaDoc()`.
+
+**Doğrulama:** `go build -tags sqlite_fts5 ./...` temiz; `go test -tags
+sqlite_fts5 ./internal/app/ ./internal/agent/...` yeşil; `flutter test
+test/widgets/permission_dialog_test.dart` 4/4; `flutter analyze` dokunulan
+dosyada temiz. Web yeniden build + `internal/webserver/webapp/`'e deploy +
+backend restart (pid 696802).
+
+**Sıradaki:** yeni build'le temiz bir planexec turu (onay kapısı → düzenlenebilir
+Plan.md → Approve & run → adımların koşması), yeni bug varsa BUG_REPORT.md'ye.
+BUG_REPORT.md'deki tam-doğrulanmış BUG-PLAN1/2/3/5/6/7/8 kayıtları silinebilir.
+v4.5.0 merge/PR/tag kullanıcının kararı.
+
+---
+
 # Ek (2026-08-30, devam 41) — v4.5.0 Planlayıcı/Uygulayıcı modu: 7 fazın tamamı (branch aynı)
 
 Kullanıcı iki tur brainstorm sonrası planı onayladı ("devam et durma hiçbir

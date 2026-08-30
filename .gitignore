@@ -111,3 +111,7 @@ internal/app/data/agent-backups/history.json
 internal/app/data/machine.key
 internal/app/data/agent-audit.jsonl
 internal/agent/data/agent-backups/history.json
+data/tasklists/7d214035-f787-41bd-a846-f1e065f55027.json
+.gitignore
+data/tasklists/7d214035-f787-41bd-a846-f1e065f55027.state.md
+data/tasklists/7d214035-f787-41bd-a846-f1e065f55027.plan.json

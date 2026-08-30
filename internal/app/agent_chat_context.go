@@ -28,3 +28,16 @@ func currentChatIDFromContext(ctx context.Context) string {
 	id, _ := ctx.Value(currentChatIDCtxKey{}).(string)
 	return id
 }
+
+type taskMemoryDisabledCtxKey struct{}
+
+// withTaskMemoryDisabled marks a turn as running with "task memory" off, so
+// buildMessagesForSession skips the RAG/memory block for it.
+func withTaskMemoryDisabled(ctx context.Context) context.Context {
+	return context.WithValue(ctx, taskMemoryDisabledCtxKey{}, true)
+}
+
+func taskMemoryDisabled(ctx context.Context) bool {
+	v, _ := ctx.Value(taskMemoryDisabledCtxKey{}).(bool)
+	return v
+}

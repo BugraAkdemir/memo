@@ -112,7 +112,10 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 // for it.
 func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg string, extraImageB64 []string, retrievedCountOut *int) []api.Message {
 	var memories []memory.MemoryResult
-	if a.GetMemoryEnabled() {
+	// A Self-Driving task turn with "task memory" off gets no RAG/memory block
+	// at all — the task loop carries its own state, and personal memories are
+	// noise (and a privacy surface) for autonomous code work.
+	if a.GetMemoryEnabled() && !taskMemoryDisabled(ctx) {
 		memories = a.retrieveMemory(ctx, a.buildMemoryQuery(userMsg))
 	}
 	if retrievedCountOut != nil {

@@ -207,6 +207,13 @@ func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 		a.taskloopRunMu.Lock()
 		defer a.taskloopRunMu.Unlock()
 
+		a.cfgMu.RLock()
+		taskMem := a.cfg.TaskLoop.TaskMemory
+		a.cfgMu.RUnlock()
+		if !taskMem {
+			ctx = withTaskMemoryDisabled(ctx)
+		}
+
 		ch := a.SendMessageStreamTo(ctx, chatID, prompt)
 		var sb strings.Builder
 		for chunk := range ch {

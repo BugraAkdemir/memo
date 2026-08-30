@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"memo/internal/truncate"
 )
 
 // Plan is the planner model's output for a task list running in "planlayıcı"
@@ -242,6 +244,21 @@ func ParsePlanMd(path string) (*Plan, error) {
 	var p Plan
 	if err := json.Unmarshal([]byte(rest[:j]), &p); err != nil {
 		return nil, fmt.Errorf("taskloop: Plan.md JSON: %w", err)
+	}
+	if err := p.Normalize(); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// ParsePlannerJSON extracts a JSON object from a planner model's raw reply
+// (tolerating ```json fences and surrounding prose), unmarshals it into a Plan
+// and normalises it.
+func ParsePlannerJSON(raw string) (*Plan, error) {
+	cleaned := extractJSON(raw)
+	var p Plan
+	if err := json.Unmarshal([]byte(cleaned), &p); err != nil {
+		return nil, fmt.Errorf("taskloop: planner JSON: %w (raw: %s)", err, truncate.Text(cleaned, 300))
 	}
 	if err := p.Normalize(); err != nil {
 		return nil, err

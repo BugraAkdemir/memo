@@ -718,6 +718,11 @@ func (a *App) Startup(ctx context.Context) {
 			taskloop.WithSelfHeal(a.healTaskProvider),
 			taskloop.WithPlanConfig(a.planTaskConfig),
 			taskloop.WithRetryScheduler(taskloop.DefaultRetryInterval),
+			// v4.5.0 planner/executor mode — only engaged for a list whose
+			// Mode == ModePlanner; worker-mode lists never touch this path.
+			taskloop.WithPlanner(a.planTask),
+			taskloop.WithGranularity(a.cfg.TaskLoop.StepGranularity),
+			taskloop.WithAutoApprovePlan(a.cfg.TaskLoop.AutoApprovePlan),
 		)
 		if a.cfg != nil && a.cfg.TaskLoop.SubAgents {
 			// Applied after construction (rather than inline above) only so the

@@ -121,6 +121,27 @@ type TaskLoopConfig struct {
 	// SubAgents allows a large item to fan out to parallel read-only
 	// sub-agents plus one writer.
 	SubAgents bool `yaml:"sub_agents" json:"sub_agents"`
+
+	// --- v4.5.0 planner/executor mode ("planlayıcı") ---
+	// Per-role model, each "provider/model" or a bare model name. Empty means
+	// "unset" — resolveRoleModels then reads a Task.md header, an AGENTS.md
+	// directive, and finally falls back to the active provider. No role has a
+	// location bias.
+	PlannerModel  string `yaml:"planner_model" json:"planner_model"`
+	CoderModel    string `yaml:"coder_model" json:"coder_model"`
+	VerifierModel string `yaml:"verifier_model" json:"verifier_model"`
+	// StepGranularity: "intent" | "literal" | "hybrid" (default "hybrid").
+	StepGranularity string `yaml:"step_granularity" json:"step_granularity"`
+	// AutoApprovePlan skips the Plan.md approval gate.
+	AutoApprovePlan bool `yaml:"auto_approve_plan" json:"auto_approve_plan"`
+	// TaskMemory: when false, planner/executor turns skip the RAG/memory block.
+	TaskMemory bool `yaml:"task_memory" json:"task_memory"`
+	// MaxExecutorAttempts before a step escalates (default 3).
+	MaxExecutorAttempts int `yaml:"max_executor_attempts" json:"max_executor_attempts"`
+	// MaxParallelSteps run at once (default 3).
+	MaxParallelSteps int `yaml:"max_parallel_steps" json:"max_parallel_steps"`
+	// HandoffStateMaxTokens before the state doc is compacted (default 2000).
+	HandoffStateMaxTokens int `yaml:"handoff_state_max_tokens" json:"handoff_state_max_tokens"`
 }
 
 // LiveModeConfig controls voice Live Mode independently of Beta — it
@@ -868,8 +889,14 @@ func Default() *AppConfig {
 			Role:    "none",
 		},
 		TaskLoop: TaskLoopConfig{
-			PlanningSelfConfig: true,
-			SubAgents:          true,
+			PlanningSelfConfig:    true,
+			SubAgents:             true,
+			StepGranularity:       "hybrid",
+			AutoApprovePlan:       false,
+			TaskMemory:            false,
+			MaxExecutorAttempts:   3,
+			MaxParallelSteps:      3,
+			HandoffStateMaxTokens: 2000,
 		},
 	}
 }

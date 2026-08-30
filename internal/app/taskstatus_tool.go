@@ -16,6 +16,65 @@ func (ad taskStatusToolAdapter) GetTaskStatus(ctx context.Context) (string, erro
 	return ad.a.TaskStatusForChat(ctx), nil
 }
 
+func (ad taskStatusToolAdapter) PauseChatTask(ctx context.Context) (string, error) {
+	return ad.a.pauseOrResumeChatTask(ctx, false), nil
+}
+
+func (ad taskStatusToolAdapter) ResumeChatTask(ctx context.Context) (string, error) {
+	return ad.a.pauseOrResumeChatTask(ctx, true), nil
+}
+
+// chatBoundTaskID returns the id of the Self-Driving task list bound to the
+// chat whose agent turn is running (from ctx), preferring a list the engine
+// still has in memory, else the most recent list for that chat.
+func (a *App) chatBoundTaskID(ctx context.Context) string {
+	chatID := currentChatIDFromContext(ctx)
+	if chatID == "" || a.taskloopStore == nil {
+		return ""
+	}
+	if a.taskloopEngine != nil {
+		for _, r := range a.taskloopEngine.RunningTasks() {
+			if r.ChatID == chatID {
+				return r.ID
+			}
+		}
+	}
+	newestID, newestAt := "", ""
+	for _, info := range a.taskloopStore.List() {
+		tl, err := a.taskloopStore.Get(info.ID)
+		if err != nil || tl.ChatID != chatID {
+			continue
+		}
+		if newestID == "" || info.UpdatedAt > newestAt {
+			newestID, newestAt = info.ID, info.UpdatedAt
+		}
+	}
+	return newestID
+}
+
+func (a *App) pauseOrResumeChatTask(ctx context.Context, resume bool) string {
+	id := a.chatBoundTaskID(ctx)
+	if id == "" {
+		return a.t("Bu sohbete bağlı bir otonom görev bulamadım.",
+			"I couldn't find a Self-Driving task bound to this chat.")
+	}
+	if a.taskloopEngine == nil {
+		return a.t("Görev döngüsü motoru başlatılmamış.", "The task loop engine is not initialised.")
+	}
+	if resume {
+		if a.taskloopEngine.IsRunning(id) {
+			return a.t("Görev zaten çalışıyor.", "The task is already running.")
+		}
+		if err := a.StartTaskList(context.Background(), id); err != nil {
+			return a.t("Görev sürdürülemedi: ", "Could not resume the task: ") + err.Error()
+		}
+		return a.t("▶️ Görev kaldığı adımdan sürüyor.", "▶️ The task is resuming from where it stopped.")
+	}
+	a.StopTaskList(id)
+	return a.t("⏸️ Görev duraklatıldı. Sormak istediğini yaz; \"devam\" deyince kaldığı adımdan sürer.",
+		"⏸️ Task paused. Ask what you need; say \"devam\" / \"continue\" to resume from the same step.")
+}
+
 // TaskStatusForChat returns a human-readable snapshot of the Self-Driving
 // task(s). It prefers the task bound to the chat whose agent turn is running
 // (resolved from ctx) and falls back to every running list. When nothing is

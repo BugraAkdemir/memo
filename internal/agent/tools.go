@@ -200,6 +200,20 @@ func (r *ToolRegistry) registerBuiltins() {
 		DangerLevel: Safe,
 		ExecuteFn:   tools.GetTaskStatus,
 	})
+	r.Register(ToolDef{
+		Name:        "pause_task",
+		Description: "Bu sohbete bağlı çalışan otonom görevi DURAKLATIR (kaldığı adım korunur). Kullanıcı görevi kastederek \"dur\", \"duraklat\", \"bekle\", \"stop\", \"pause\" dediğinde çağır. Duraklatınca kullanıcı serbestçe soru sorabilir; sonra resume_task ile aynı adımdan devam eder.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.PauseTask,
+	})
+	r.Register(ToolDef{
+		Name:        "resume_task",
+		Description: "Bu sohbete bağlı DURAKLATILMIŞ otonom görevi kaldığı adımdan SÜRDÜRÜR. Kullanıcı \"devam\", \"devam et\", \"kaldığın yerden devam\", \"continue\", \"resume\" ya da açıkça görevin sürmesini istediğini belirten bir şey dediğinde çağır. Duraklatmada kullanıcının yazdığı gerçek talimatlar (ekle/düzelt) bir sonraki adıma otomatik iletilir.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.ResumeTask,
+	})
 }
 
 // registerTaskMdTools adds create_task_md / edit_task_md — only to the

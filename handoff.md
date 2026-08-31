@@ -1,3 +1,66 @@
+# Ek (2026-08-31, devam 48) — composer çift-kutu + canlı token + sağlayıcı kilidi + sessiz-ölmeme (branch aynı)
+
+devam 47 sonrası kullanıcı gerçek masaüstünde koştu, art arda bug bildirdi.
+Tüm aktif sağlayıcılar bozuktu (custom :8083 refused, codex 400, claude-code
+502 model-format, opencode-zen 503, kilo 503) → görev 6 maddeyi tek tek
+`item_stuck` yapıp sessizce bitiyordu, self-heal habersizce tüm
+`providers.json`'u geziyordu. Plan: `~/.claude/plans/floofy-imagining-lollipop.md`
+(onaylandı).
+
+**Commit'ler:**
+
+| commit | ne |
+|---|---|
+| `c621d1dd` | **composer çift text-box fiksi** — app geneli `inputDecorationTheme` (`filled:true` + OutlineInputBorder) composer'ın elle kurulmuş Container'ına sızıyordu → iç içe iki kutu, görev koşarken (field disabled) belirginleşiyordu. `InputDecoration`'da tüm border state'leri + `filled:false` sıfırlandı. |
+| `a28c1cbd` | **canlı token tahmini** (header'da saatin yanında `⌁ 1.4k tok`, saniye sayacı gibi tıklar; worker `buildTaskLoopRunWorker` her content chunk'ta + planexec `emitStepToolActivity`/`planTask`/`runPlanStep`; `RunningTaskInfo.Tokens`→SSE→`ChatTaskState.tokens`). **+ stuck satırı gerçek sebebi yazıyor** — `emitActivity(listID,"item_stuck",stuckActivityLine(item))` 3 stuck sitesinde (`item.Note`: "işçi hatası: 503", "5 tur sonunda onaylanmadı: …"); frontend `_logEntryFor`'dan bare `item_stuck` çıkarıldı (dup önleme). |
+| `4aa057be` | **sağlayıcı kilidi + akıllı retry + sessiz-ölmeme + model görünürlüğü** (aşağıda) |
+
+**`4aa057be` detay:**
+- **Kilit varsayılan.** `taskRunConfig.providerRoaming` (Task.md `# sağlayıcı:`
+  header → `resolveProviderPolicy`, fallback config `TaskLoop.ProviderRoaming`
+  default false). Kilit açıkken `healTaskProvider` rate-limit dışı her hatada
+  `false` döner → hiçbir şey değişmez. `# sağlayıcı: otomatik` eski switch
+  davranışını geri getirir; `# sağlayıcı: <isim>` göreve belirli bir enabled
+  sağlayıcı sabitler (`agentRouterFromProviderName` ile yeni snapshot).
+- **Beklemeli transient retry.** `RetryScheduler.ArmWithDelay` +
+  `Engine.suspendForTransient`: kilitliyken transient hatada madde parklanır,
+  **5 dk sonra**, sonra **10 dk sonra** re-arm (`WithTransientRetryDelays`,
+  sayaç `listID\x00itemID`); bütçe bitince madde stuck + not. `classifyProviderErr`
+  artık kalıcı config hatalarını (`unsupported`, `must be "type/model-id"`,
+  400 `invalid_request`) **failAuth** sayıyor → timer yerine `waiting-user` park.
+- **Asla sessiz ölme.** `dispatchTaskEvent` artık `taskloop:waiting_user` +
+  yeni `taskloop:waiting_retry` işliyor: hem `NotifyBus.Notify` (tier 1,
+  Telegram/WhatsApp) **hem** `postTaskParkMessage` → görev sohbetine kalıcı düz
+  satır (push kanalı yoksa bile kullanıcı görür). Frontend bu event'leri
+  kırmızı/amber log satırına foldluyor.
+- **Model görünürlüğü.** `Engine.WithModelLabel` hook (`app.taskModelLabel`) →
+  yürütme başında + `provider_switched`'te "Model: sağlayıcı/model" aktivite
+  satırı; frontend `"model"` kind'ı `Icons.memory` ile çiziyor.
+- `memo-system/SKILL.md` §3 yeniden yazıldı: `# sağlayıcı: otomatik` yoksa
+  sağlayıcı değiştirme.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz; `go test ./... -race`
+tam yeşil (yeni: `TestHealTaskProvider_LockedByDefault_NeverSwitches`,
+`TestEngine_TransientLocked_EscalatingRetriesThenStuck`,
+`TestRetryScheduler_ArmWithDelay`, `TestResolveProviderPolicy_*`,
+`classifyProviderErr` config-fault case'leri; eski self-heal testleri
+`providerRoaming:true` ile güncellendi). `flutter analyze lib/` 5 pre-existing
+info; `flutter test` 317 yeşil; Rule #8 temiz.
+
+**Kullanıcının yapması gereken:** Flutter yeniden build + `memo --kill` sonra
+backend restart. **Ayrıca: en az bir çalışan sağlayıcı lazım** — şu an hepsi
+down, fix'ten sonra bile görev koşamaz (custom :8083 ayakta değil,
+codex/claude-code yanlış model adıyla set, opencode-zen/kilo sunucu tarafında).
+
+**Hâlâ açık / gözle doğrulanmadı:** inline blok + token sayacı + park mesajları
++ model satırı gerçek GUI'de canlı görülmedi (widget/unit testlerle doğrulandı);
+`waiting_retry` log satırı ham `detay` string'ini gösteriyor (chat mesajı temiz,
+satır kabası — istenirse parse edilir); worker modun her turda ~112k geçmiş
+göndermesi (bağlam şişmesi) ayrı performans işi; chat'te serbest cümleyle
+sağlayıcı seçimi (`/model` zaten snapshot'a yansıyor, NL parse kapsam dışı).
+
+---
+
 # Ek (2026-08-30, devam 47) — sohbet-içi canlı görev bloğu (Claude Code tarzı) (branch aynı)
 
 devam 46 fikslerinden sonra kullanıcı: "çalışıyor mu belli değil, ne yaptığını

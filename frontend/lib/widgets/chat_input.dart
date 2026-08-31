@@ -1398,7 +1398,23 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                             hintStyle: TextStyle(
                               color: MemoTheme.of(context).textDim,
                             ),
+                            // The app-wide inputDecorationTheme sets filled:true
+                            // + an OutlineInputBorder for every state. Setting
+                            // only `border` here leaves enabledBorder/
+                            // focusedBorder/disabledBorder + the fill leaking in
+                            // from the theme, so the TextField painted its own
+                            // filled, rounded, bordered box *inside* this
+                            // widget's hand-rolled container — two concentric
+                            // "text boxes", most visible once a running task
+                            // disables the field. Neutralise the whole themed
+                            // decoration; the outer Container owns the frame.
+                            filled: false,
                             border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            errorBorder: InputBorder.none,
+                            focusedErrorBorder: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 14,
                               vertical: 12,

@@ -14,6 +14,7 @@ Tüm aktif sağlayıcılar bozuktu (custom :8083 refused, codex 400, claude-code
 | `c621d1dd` | **composer çift text-box fiksi** — app geneli `inputDecorationTheme` (`filled:true` + OutlineInputBorder) composer'ın elle kurulmuş Container'ına sızıyordu → iç içe iki kutu, görev koşarken (field disabled) belirginleşiyordu. `InputDecoration`'da tüm border state'leri + `filled:false` sıfırlandı. |
 | `a28c1cbd` | **canlı token tahmini** (header'da saatin yanında `⌁ 1.4k tok`, saniye sayacı gibi tıklar; worker `buildTaskLoopRunWorker` her content chunk'ta + planexec `emitStepToolActivity`/`planTask`/`runPlanStep`; `RunningTaskInfo.Tokens`→SSE→`ChatTaskState.tokens`). **+ stuck satırı gerçek sebebi yazıyor** — `emitActivity(listID,"item_stuck",stuckActivityLine(item))` 3 stuck sitesinde (`item.Note`: "işçi hatası: 503", "5 tur sonunda onaylanmadı: …"); frontend `_logEntryFor`'dan bare `item_stuck` çıkarıldı (dup önleme). |
 | `4aa057be` | **sağlayıcı kilidi + akıllı retry + sessiz-ölmeme + model görünürlüğü** (aşağıda) |
+| `281b732e` | **kilit planlama-anı self-config'i de kapatıyor** — `4aa057be` sadece self-heal roaming'ini durdurmuştu; `PlanningSelfConfig` (default AÇIK) yürütme başlamadan `planTaskConfig` ile LLM'e "en iyi provider'ı seç" dedirtip `trc`'yi değiştiriyordu (`config_changed — provider=Özel (OpenAI uyumlu) 2` canlı logda görüldü, kullanıcı Kilo Code seçmişken). Artık kilit açık değilse `planTaskConfig` sessiz no-op. |
 
 **`4aa057be` detay:**
 - **Kilit varsayılan.** `taskRunConfig.providerRoaming` (Task.md `# sağlayıcı:`

@@ -224,11 +224,25 @@ func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 			ctx = withTaskMemoryDisabled(ctx)
 		}
 
+		// Feed this list's live token estimate (worker mode has no per-step
+		// hook like planexec does) so the in-chat block shows a number that
+		// keeps climbing while the turn streams — a "not frozen" signal.
+		tokListID := ""
+		if trc := taskRunConfigFromCtx(ctx); trc != nil {
+			tokListID = trc.listID
+		}
+		if tokListID != "" {
+			a.taskloopEngine.AddTokens(tokListID, taskloop.EstTokens(prompt))
+		}
+
 		ch := a.SendMessageStreamTo(ctx, chatID, prompt)
 		var sb strings.Builder
 		for chunk := range ch {
 			if chunk.Error != "" {
 				return sb.String(), fmt.Errorf("işçi hatası: %s", chunk.Error)
+			}
+			if tokListID != "" && chunk.Content != "" {
+				a.taskloopEngine.AddTokens(tokListID, taskloop.EstTokens(chunk.Content))
 			}
 			// Only real assistant prose — skip the status chunks the stream
 			// interleaves (agent_event tool JSON, the memory_used count),

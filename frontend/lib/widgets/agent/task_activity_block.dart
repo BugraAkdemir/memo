@@ -83,6 +83,14 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
     return r == 0 ? '${m}dk' : '${m}dk ${r}s';
   }
 
+  /// Compact token readout for the header — "820", "1.4k", "23k". Approximate
+  /// (backend len/4 estimate), shown only as a "still working" signal.
+  String _fmtTokens(int n) {
+    if (n < 1000) return '$n';
+    if (n < 100000) return '${(n / 1000).toStringAsFixed(1)}k';
+    return '${(n / 1000).round()}k';
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = MemoTheme.of(context);
@@ -170,13 +178,35 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
               style: TextStyle(fontSize: 11, color: MemoTheme.warningOrange)),
         ],
         const Spacer(),
-        Text(_progressText(t),
-            style: TextStyle(fontSize: 11, color: c.textDim)),
+        Flexible(
+          child: Text(_progressText(t),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: c.textDim)),
+        ),
         const SizedBox(width: 10),
         Icon(Icons.schedule, size: 12, color: c.textDim),
         const SizedBox(width: 3),
         Text(_fmtDuration(_elapsed),
             style: TextStyle(fontSize: 11, color: c.textDim)),
+        if (t.tokens > 0) ...[
+          const SizedBox(width: 10),
+          Tooltip(
+            message: L10n.t('task_block_tokens_tip'),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.data_usage, size: 12, color: c.textDim),
+                const SizedBox(width: 3),
+                Text(L10n.t('task_block_tokens', {'n': _fmtTokens(t.tokens)}),
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: c.textDim,
+                        fontFeatures: const [FontFeature.tabularFigures()])),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

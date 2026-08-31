@@ -37,6 +37,9 @@ func (a *App) planTask(ctx context.Context, listID, chatID, projectRoot, preambl
 		return nil, err
 	}
 	out, derr := drainStreamIdle(streamCh, scancel, a.streamIdleTimeout())
+	a.taskloopEngine.AddTokens(listID,
+		taskloop.EstTokens(plannerSystemPrompt(granularity))+
+			taskloop.EstTokens(plannerUserPrompt(preamble, items))+taskloop.EstTokens(out))
 	if derr != nil {
 		return nil, fmt.Errorf("planner: %w", derr)
 	}

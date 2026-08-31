@@ -138,6 +138,7 @@ class RunningTaskInfo {
   final int planStepsDone;
   final int stateDocTokens;
   final int stateDocBudget;
+  final int tokens; // running approx token estimate, only grows while running
 
   const RunningTaskInfo({
     required this.id,
@@ -155,6 +156,7 @@ class RunningTaskInfo {
     this.planStepsDone = 0,
     this.stateDocTokens = 0,
     this.stateDocBudget = 0,
+    this.tokens = 0,
   });
 
   RunningTaskInfo copyWith({String? phase, int? doneCount, int? planStepsDone}) {
@@ -194,6 +196,7 @@ class RunningTaskInfo {
       planStepsDone: (json['plan_steps_done'] as num?)?.toInt() ?? 0,
       stateDocTokens: (json['state_doc_tokens'] as num?)?.toInt() ?? 0,
       stateDocBudget: (json['state_doc_budget'] as num?)?.toInt() ?? 0,
+      tokens: (json['tokens'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -215,6 +218,7 @@ class TaskChatEvent {
   final String current;
   final int elapsedSec;
   final int silentSec; // seconds since the task last did something visible
+  final int tokens; // running approx token estimate, only grows while running
   final String kind; // for event == 'activity': plan_start|plan_done|step_start|step_done|step_retry|step_stuck|escalate|tool
   final String text; // for event == 'activity': the human-readable line
 
@@ -232,6 +236,7 @@ class TaskChatEvent {
     this.current = '',
     this.elapsedSec = 0,
     this.silentSec = 0,
+    this.tokens = 0,
     this.kind = '',
     this.text = '',
   });
@@ -251,6 +256,7 @@ class TaskChatEvent {
       current: json['current'] as String? ?? '',
       elapsedSec: (json['elapsed_sec'] as num?)?.toInt() ?? 0,
       silentSec: (json['silent_sec'] as num?)?.toInt() ?? 0,
+      tokens: (json['tokens'] as num?)?.toInt() ?? 0,
       kind: json['kind'] as String? ?? '',
       text: json['text'] as String? ?? '',
     );
@@ -278,6 +284,7 @@ class ChatTaskState {
   final int itemTotal;
   final int elapsedSec;
   final int silentSec;
+  final int tokens; // running approx token estimate, only grows while running
   final List<String> recent; // last few event names, newest last
   final List<TaskLogEntry> log; // the in-chat activity feed, newest last, capped
 
@@ -292,6 +299,7 @@ class ChatTaskState {
     this.itemTotal = 0,
     this.elapsedSec = 0,
     this.silentSec = 0,
+    this.tokens = 0,
     this.recent = const [],
     this.log = const [],
   });
@@ -343,6 +351,8 @@ class ChatTaskState {
       elapsedSec: e.elapsedSec > 0 ? e.elapsedSec : (prev?.elapsedSec ?? 0),
       // silent_sec is always fresh off the snapshot; 0 is a legit value.
       silentSec: e.silentSec,
+      // tokens only ever grows; keep the last known value if an event omits it.
+      tokens: e.tokens > 0 ? e.tokens : (prev?.tokens ?? 0),
       recent: recent,
       log: log,
     );
@@ -364,8 +374,10 @@ class ChatTaskState {
         return TaskLogEntry('paused', '', now);
       case 'item_done':
         return TaskLogEntry('item_done', '', now);
-      case 'item_stuck':
-        return TaskLogEntry('item_stuck', '', now);
+      // 'item_stuck' deliberately omitted: the engine now always emits a
+      // paired 'activity'/'item_stuck' line carrying the actual reason
+      // (provider 503, empty output, CEO never approved, …). Folding the bare
+      // event here too would render a second, reason-less red row.
       default:
         return null;
     }

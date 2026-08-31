@@ -25,6 +25,7 @@ type taskChatEvent struct {
 	Current    string `json:"current,omitempty"`
 	ElapsedSec int    `json:"elapsed_sec"`
 	SilentSec  int    `json:"silent_sec"`
+	Tokens     int    `json:"tokens"` // running approx token estimate, only grows while running
 }
 
 // SubscribeTaskEvents registers a subscriber for enriched task-loop event
@@ -146,6 +147,7 @@ func (a *App) RunningTaskEventSnapshot() []string {
 			StepDone: r.PlanStepsDone, StepTotal: r.PlanSteps,
 			ItemDone: r.DoneCount, ItemTotal: r.ItemCount,
 			Current: r.CurrentItem, ElapsedSec: r.ElapsedSec, SilentSec: r.SilentSec,
+			Tokens: r.Tokens,
 		}
 		if b, err := json.Marshal(ev); err == nil {
 			out = append(out, string(b))
@@ -210,6 +212,7 @@ func (a *App) fillTaskEventSnapshot(ev *taskChatEvent, listID string) {
 			ev.Current = rt.CurrentItem
 			ev.ElapsedSec = rt.ElapsedSec
 			ev.SilentSec = rt.SilentSec
+			ev.Tokens = rt.Tokens
 			if ev.ChatID == "" {
 				ev.ChatID = rt.ChatID
 			}

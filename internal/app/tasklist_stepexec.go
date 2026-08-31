@@ -58,6 +58,10 @@ func (a *App) runPlanStep(ctx context.Context, listID string, step taskloop.Plan
 		return "", err
 	}
 	out, derr := drainStreamIdle(streamCh, scancel, a.streamIdleTimeout())
+	// Count the turn's prompt + generated output too — the per-tool hook above
+	// only sees tool round-trips, not the model's own text.
+	a.taskloopEngine.AddTokens(listID,
+		taskloop.EstTokens(coderStepSystemPrompt())+taskloop.EstTokens(userPrompt)+taskloop.EstTokens(out))
 	if derr != nil {
 		return "", fmt.Errorf("coder: %w", derr)
 	}
@@ -91,6 +95,12 @@ func (a *App) emitStepToolActivity(listID string, ev agent.AgentEvent) {
 	if ev.Type != agent.EventToolResult && ev.Type != agent.EventToolError {
 		return
 	}
+	// Every tool round-trip pushes its args + result back through the model as
+	// context on the next turn — feed that into the list's running token
+	// estimate so the chat block has a number that keeps climbing while the
+	// planner/coder works (a "not frozen" signal, not a billing figure).
+	a.taskloopEngine.AddTokens(listID,
+		taskloop.EstTokens(string(ev.Args))+taskloop.EstTokens(ev.Result)+taskloop.EstTokens(ev.Content))
 	verb := toolVerbTR[ev.ToolName]
 	if verb == "" {
 		verb = ev.ToolName

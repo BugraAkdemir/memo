@@ -464,6 +464,7 @@ func (e *Engine) run(ctx context.Context, listID string) {
 				if e.onEvent != nil {
 					e.onEvent("tasklist:item_stuck", fmt.Sprintf("%s:%s", listID, item.ID))
 				}
+				e.emitActivity(listID, "item_stuck", stuckActivityLine(item))
 				go func() {
 					time.Sleep(150 * time.Millisecond) // let this run's deferred cleanup finish
 					if err := e.Start(context.Background(), listID); err != nil {
@@ -505,6 +506,7 @@ func (e *Engine) run(ctx context.Context, listID string) {
 			if e.onEvent != nil {
 				e.onEvent("tasklist:item_stuck", fmt.Sprintf("%s:%s", listID, item.ID))
 			}
+			e.emitActivity(listID, "item_stuck", stuckActivityLine(item))
 		}
 	}
 
@@ -1090,6 +1092,8 @@ func (e *Engine) finishPlanItems(listID string, tl *TaskList, plan *Plan) {
 			logx.Printf("TASKLOOP: plan item stuck %s/%s: %v", listID, it.ID, err)
 		}
 		e.emitEvent("tasklist:item_stuck", fmt.Sprintf("%s:%s", listID, it.ID))
+		it.Note = "bazı adımlar tamamlanamadı"
+		e.emitActivity(listID, "item_stuck", stuckActivityLine(it))
 		anyStuck = true
 	}
 	final := taskListDone
@@ -1131,6 +1135,29 @@ func (e *Engine) emitActivity(listID, kind, text string) {
 // EmitActivity is the exported hook the host (internal/app) uses to forward
 // per-tool step activity from the coder turn's AgentEvent callback.
 func (e *Engine) EmitActivity(listID, kind, text string) { e.emitActivity(listID, kind, text) }
+
+// AddTokens is the exported hook the host uses to feed a list's running token
+// estimate (approx, len/4) as planner/coder turns process context and emit
+// output. Surfaced on RunningTaskInfo.Tokens and the chat event stream.
+func (e *Engine) AddTokens(listID string, n int) { e.rtAddTokens(listID, n) }
+
+// EstTokens is the shared "how many tokens is this string, roughly" estimate
+// (len/4) so the host feeds AddTokens the same unit the engine uses elsewhere.
+func EstTokens(s string) int { return approxTokens(s) }
+
+// stuckActivityLine turns a stuck item into a one-line "why" for the chat
+// activity log, so a red row says what actually failed (worker error, empty
+// output, CEO never approved, …) instead of a bare "item stuck".
+func stuckActivityLine(item *TaskItem) string {
+	note := strings.TrimSpace(item.Note)
+	if note == "" {
+		note = "sebep belirtilmedi"
+	}
+	if head := truncateLine(item.Text, 50); head != "" {
+		return head + " — " + truncateLine(note, 180)
+	}
+	return truncateLine(note, 200)
+}
 
 func truncateLine(s string, n int) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))

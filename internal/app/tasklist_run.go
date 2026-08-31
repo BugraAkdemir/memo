@@ -14,6 +14,7 @@ import (
 // task's config.
 type taskRunConfig struct {
 	exec             *agent.Executor
+	listID           string // the list this snapshot belongs to (for token accounting etc.)
 	providerName     string
 	model            string
 	effortLevel      string
@@ -96,6 +97,7 @@ func (a *App) taskRunConfigFor(ctx context.Context, listID string) context.Conte
 			return ctx
 		}
 		built.projectPath = a.taskListProjectPath(listID)
+		built.listID = listID
 		a.taskRunMu.Lock()
 		if existing := a.taskRunCfgs[listID]; existing != nil {
 			trc = existing

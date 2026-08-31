@@ -19,6 +19,11 @@ type RunningTaskInfo struct {
 	// SilentSec is how many seconds since the last activity/step signal — a
 	// client uses it to tell "coder is working on a hard step" from "hung".
 	SilentSec int `json:"silent_sec"`
+	// Tokens is a running, approximate count of tokens processed by this list's
+	// planner/coder turns (prompt context churn + generated output, len/4
+	// estimate — not a billing figure). It only ever grows while the list runs
+	// and is the chat block's "still doing something" signal alongside SilentSec.
+	Tokens int `json:"tokens,omitempty"`
 	// planner/executor mode only (zero otherwise):
 	Mode           string `json:"mode,omitempty"`
 	PlanSteps      int    `json:"plan_steps,omitempty"`
@@ -32,6 +37,7 @@ type listRuntime struct {
 	lastActivityAt time.Time
 	currentItem    string
 	subAgents      []string
+	tokens         int
 }
 
 func (e *Engine) rtStart(listID string) {
@@ -49,6 +55,21 @@ func (e *Engine) rtStart(listID string) {
 func (e *Engine) rtTouch(listID string) {
 	e.rtMu.Lock()
 	if rt := e.runtimes[listID]; rt != nil {
+		rt.lastActivityAt = time.Now()
+	}
+	e.rtMu.Unlock()
+}
+
+// rtAddTokens adds n to a list's running token estimate (no-op for n <= 0 or a
+// list that isn't currently executing in this process). Also refreshes the
+// last-activity clock — tokens moving means the list is doing something.
+func (e *Engine) rtAddTokens(listID string, n int) {
+	if n <= 0 {
+		return
+	}
+	e.rtMu.Lock()
+	if rt := e.runtimes[listID]; rt != nil {
+		rt.tokens += n
 		rt.lastActivityAt = time.Now()
 	}
 	e.rtMu.Unlock()
@@ -108,6 +129,7 @@ func (e *Engine) Runtime(listID string) (RunningTaskInfo, bool) {
 		CurrentItem: rt.currentItem,
 		ElapsedSec:  int(time.Since(rt.startedAt).Seconds()),
 		SilentSec:   int(time.Since(rt.lastActivityAt).Seconds()),
+		Tokens:      rt.tokens,
 		SubAgents:   subs,
 		NotifyLevel: string(tl.NotifyLevel),
 		Mode:        tl.Mode,

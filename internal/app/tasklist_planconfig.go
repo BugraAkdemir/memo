@@ -19,6 +19,12 @@ func (a *App) planTaskConfig(ctx context.Context, listID, chatID string, items [
 	if a.cfg == nil || !a.cfg.TaskLoop.PlanningSelfConfig {
 		return nil
 	}
+	// Provider lock (default): the task runs on whatever provider is active
+	// right now — planning must not pick a different one. Only "# sağlayıcı:
+	// otomatik" re-enables autonomous provider/model selection here.
+	if !a.resolveProviderPolicy(listID).roaming {
+		return nil
+	}
 
 	// Make sure the task has a provider snapshot to mutate.
 	a.taskRunMu.RLock()

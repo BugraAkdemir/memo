@@ -17,6 +17,33 @@ func TestPlanTaskConfig_DisabledIsNoop(t *testing.T) {
 	}
 }
 
+func TestPlanTaskConfig_ProviderLockIsNoop(t *testing.T) {
+	a := newSelfHealApp(t, "primary")
+	// Feature ON, but the provider lock is the default (no store / no roaming
+	// header / config default false) → planning must not self-configure.
+	a.cfg = &config.AppConfig{TaskLoop: config.TaskLoopConfig{PlanningSelfConfig: true}}
+	a.seedTaskRunConfig("L1", "primary")
+
+	if err := a.planTaskConfig(context.Background(), "L1", "chat", []string{"do x"}); err != nil {
+		t.Fatalf("planTaskConfig under the provider lock should be a silent no-op, got %v", err)
+	}
+}
+
+func TestPlanTaskConfig_RoamingRunsSelfConfig(t *testing.T) {
+	a := newSelfHealApp(t, "primary")
+	a.cfg = &config.AppConfig{TaskLoop: config.TaskLoopConfig{
+		PlanningSelfConfig: true,
+		ProviderRoaming:    true, // global opt-in past the lock
+	}}
+	a.seedTaskRunConfig("L1", "primary")
+
+	// With roaming on it gets past the gate and reaches the LLM call, which
+	// fails against the fake provider — a non-nil error proves the gate opened.
+	if err := a.planTaskConfig(context.Background(), "L1", "chat", []string{"do x"}); err == nil {
+		t.Fatal("expected planTaskConfig to reach (and fail) the LLM call with roaming on")
+	}
+}
+
 func TestApplyPlanConfig_SwitchesProviderTaskLocal(t *testing.T) {
 	a := newSelfHealApp(t, "primary", "backup")
 	trc := a.seedTaskRunConfig("L1", "primary")

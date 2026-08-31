@@ -38,15 +38,14 @@ stale in-memory copy and a corrupted encrypted-key blob.
 
 ## 3. Provider management
 
-- At planning time, pick the provider/model best suited to the task and the
-  repo rules. This choice is **task-local**: it applies only to this task list,
-  never to the user's global default or to a neighbouring task.
-- **The provider is locked by default.** A task runs only on the provider that
-  was active when it started. You may switch to another enabled provider on
-  failure **only** if the list's Task.md carries `# sağlayıcı: otomatik` (or the
-  user set the global `provider_roaming` default). Without that opt-in, never
-  touch `data/providers.json`'s other entries — the engine will wait/retry and
-  finally park the list instead.
+- **The provider is locked by default.** A task runs on whatever provider was
+  active when the user started it — do NOT pick a different provider/model at
+  planning time, and do NOT switch on failure. This is only relaxed when the
+  list's Task.md carries `# sağlayıcı: otomatik` (or the user set the global
+  `provider_roaming` default); only then may you choose a provider/model during
+  planning and switch to another enabled provider on failure. Without that
+  opt-in, never touch `data/providers.json`'s other entries — the engine waits,
+  retries the same provider, and finally parks the list.
 - On a **rate-limit** error (429, quota, "too many requests"): do **not** switch
   providers. Enter the wait state, retry in ~10 minutes, resume from the same
   item. Announce the wait on the notification channel.

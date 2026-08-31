@@ -31,18 +31,31 @@ func NewRetryScheduler(interval time.Duration, resume func(listID string)) *Retr
 	}
 }
 
-// Arm (re)starts the wait timer for listID. On fire it removes its own entry
-// and calls resume(listID).
+// Arm (re)starts the wait timer for listID with the scheduler's default
+// interval. On fire it removes its own entry and calls resume(listID).
 func (s *RetryScheduler) Arm(listID string) {
 	if s == nil {
 		return
+	}
+	s.ArmWithDelay(listID, s.interval)
+}
+
+// ArmWithDelay is Arm with an explicit wait — used for the transient-error
+// escalating backoff (5 min, then 10 min) which is shorter/different from the
+// fixed rate-limit interval.
+func (s *RetryScheduler) ArmWithDelay(listID string, d time.Duration) {
+	if s == nil {
+		return
+	}
+	if d <= 0 {
+		d = s.interval
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if old, ok := s.timers[listID]; ok {
 		old.Stop()
 	}
-	s.timers[listID] = time.AfterFunc(s.interval, func() {
+	s.timers[listID] = time.AfterFunc(d, func() {
 		s.mu.Lock()
 		delete(s.timers, listID)
 		s.mu.Unlock()

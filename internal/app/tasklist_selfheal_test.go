@@ -41,16 +41,37 @@ func firstOr(s []string, def string) string {
 }
 
 func (a *App) seedTaskRunConfig(listID, providerName string) *taskRunConfig {
+	return a.seedTaskRunConfigRoaming(listID, providerName, true)
+}
+
+func (a *App) seedTaskRunConfigRoaming(listID, providerName string, roaming bool) *taskRunConfig {
 	trc := &taskRunConfig{
-		exec:           agent.NewTaskExecutor(a.agentExecutor, provider.NewRouter(a.enabledProviderConfigs())),
-		providerName:   providerName,
-		model:          providerName + "-model",
-		triedProviders: map[string]bool{providerName: true},
+		exec:            agent.NewTaskExecutor(a.agentExecutor, provider.NewRouter(a.enabledProviderConfigs())),
+		providerName:    providerName,
+		model:           providerName + "-model",
+		triedProviders:  map[string]bool{providerName: true},
+		providerRoaming: roaming,
 	}
 	a.taskRunMu.Lock()
 	a.taskRunCfgs[listID] = trc
 	a.taskRunMu.Unlock()
 	return trc
+}
+
+// With the provider lock on (default), self-heal never switches — any
+// non-rate-limit error returns false so the engine parks/retries instead.
+func TestHealTaskProvider_LockedByDefault_NeverSwitches(t *testing.T) {
+	a := newSelfHealApp(t, "primary", "backup")
+	trc := a.seedTaskRunConfigRoaming("L1", "primary", false)
+
+	for _, e := range []string{"status 401: invalid api key", "status 503: service unavailable", "connection refused"} {
+		if a.healTaskProvider(context.Background(), "L1", errors.New(e)) {
+			t.Fatalf("healTaskProvider switched provider on %q with the lock on", e)
+		}
+	}
+	if trc.providerName != "primary" {
+		t.Fatalf("task provider = %q, must stay pinned to primary with the lock on", trc.providerName)
+	}
 }
 
 func TestHealTaskProvider_SwitchesOnAuthError(t *testing.T) {

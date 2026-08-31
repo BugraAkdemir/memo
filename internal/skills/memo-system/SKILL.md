@@ -41,15 +41,22 @@ stale in-memory copy and a corrupted encrypted-key blob.
 - At planning time, pick the provider/model best suited to the task and the
   repo rules. This choice is **task-local**: it applies only to this task list,
   never to the user's global default or to a neighbouring task.
-- On an **authentication** error (401/403, invalid/expired key): switch this
-  task to the next enabled provider and retry the same item. Do not stop.
+- **The provider is locked by default.** A task runs only on the provider that
+  was active when it started. You may switch to another enabled provider on
+  failure **only** if the list's Task.md carries `# sağlayıcı: otomatik` (or the
+  user set the global `provider_roaming` default). Without that opt-in, never
+  touch `data/providers.json`'s other entries — the engine will wait/retry and
+  finally park the list instead.
 - On a **rate-limit** error (429, quota, "too many requests"): do **not** switch
   providers. Enter the wait state, retry in ~10 minutes, resume from the same
   item. Announce the wait on the notification channel.
-- On repeated **transient** errors (5xx, timeouts): retry a couple of times,
-  then treat like an auth error and switch.
-- If every enabled provider has been tried and none works: stop the task in the
-  waiting-for-user state and notify.
+- On a **transient** error (5xx, timeout, connection refused): the engine waits
+  ~5 min, retries the same provider, then waits ~10 min and retries once more;
+  if it still fails the item is left stuck and the user is notified. (With
+  `# sağlayıcı: otomatik` a transient fault may instead switch provider.)
+- On an **authentication / config** error (401/403, bad key, unsupported model):
+  with the lock on, stop the task in the waiting-for-user state and notify — the
+  user must fix the provider. With `# sağlayıcı: otomatik`, switch and retry.
 
 ## 4. Orchestra
 

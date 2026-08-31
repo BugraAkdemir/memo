@@ -36,6 +36,16 @@ func (a *App) healTaskProvider(ctx context.Context, listID string, workerErr err
 		return false
 	}
 
+	// Provider lock (default). Without an explicit "# sağlayıcı: otomatik"
+	// opt-in this task never walks data/providers.json: return false so the
+	// engine handles the error itself — a transient fault becomes an
+	// escalating wait-and-retry, an auth/config fault parks the list in
+	// waiting-user. Either way the user is notified; nothing switches silently.
+	if !trc.providerRoaming {
+		a.taskRunMu.Unlock()
+		return false
+	}
+
 	if taskloop.IsTransientErr(workerErr) && trc.transientRetries < maxTaskTransientRetries {
 		trc.transientRetries++
 		a.taskRunMu.Unlock()

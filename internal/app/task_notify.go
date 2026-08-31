@@ -52,8 +52,15 @@ func (a *App) dispatchTaskEvent(name, data string) {
 		event = "item_stuck"
 	case "taskloop:waiting_limit":
 		event, detail = "waiting_limit", extra
+	case "taskloop:waiting_user":
+		event, detail = "waiting_user", strings.TrimSpace(extra)
+	case "taskloop:waiting_retry":
+		event, detail = "waiting_retry", strings.TrimSpace(extra)
 	case "taskloop:provider_switched":
 		event, detail = "provider_switched", extra
+		if a.taskloopEngine != nil {
+			a.taskloopEngine.EmitActivity(listID, "model", "Sağlayıcı değişti → "+extra)
+		}
 	case "taskloop:config_changed":
 		event, detail = "config_changed", strings.TrimSpace(extra)
 	case "tasklist:subagent_spawned":
@@ -74,6 +81,14 @@ func (a *App) dispatchTaskEvent(name, data string) {
 		Event:     event,
 		Detail:    detail,
 	})
+
+	// A parked task must never be a dead end the user can't see: the push
+	// channels (Telegram/WhatsApp) silently no-op when not configured, so also
+	// drop a plain, persistent line into the task's own chat transcript.
+	switch event {
+	case "waiting_user", "waiting_retry":
+		a.postTaskParkMessage(listID, event, detail)
+	}
 }
 
 // dispatchTaskFinishReport asks the model to summarize its own task run and
@@ -203,6 +218,8 @@ func formatTaskNotification(n taskloop.Notification) string {
 		"item_done":         "madde bitti",
 		"item_stuck":        "madde takıldı ⚠️",
 		"waiting_limit":     "kullanım limiti — bekleniyor",
+		"waiting_user":      "sağlayıcı çalışmıyor — müdahale gerekiyor ⛔",
+		"waiting_retry":     "geçici hata — tekrar denenecek ⏳",
 		"provider_switched": "sağlayıcı değiştirildi",
 		"config_changed":    "ayar değişti",
 		"subagent_spawned":  "alt-agent'lar açıldı",

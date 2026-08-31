@@ -43,6 +43,16 @@ func classifyProviderErr(err error) providerFailKind {
 	}
 
 	switch {
+	// Permanent config faults — a bad model id, an unsupported model, a
+	// malformed request. Retrying on a timer never fixes these, so bucket them
+	// with auth: the provider-locked loop parks in waiting-user for the user to
+	// fix. Checked before the transient bucket because some carry a "502"/"400"
+	// status string that would otherwise read as transient.
+	case containsAny(s, "not supported", "unsupported", "invalid_request_error",
+		"invalid request error", `must be "type/model-id"`, "model must be",
+		"is not supported when", "400 bad request", "status 400", `"status":400`,
+		" 400,", "unknown model", "unrecognized model"):
+		return failAuth
 	case containsAny(s, "429", "rate limit", "rate-limit", "ratelimit", "quota",
 		"too many requests", "please slow down", "resource exhausted",
 		"resource_exhausted", "overloaded", "capacity"):

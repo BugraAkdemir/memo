@@ -107,3 +107,54 @@ func TestCreateTaskListFromTaskMd_RejectsNonAgentChat(t *testing.T) {
 		t.Fatal("expected an error binding a task list to a non-agent chat")
 	}
 }
+
+func TestResolveProviderPolicy_FromTaskMdHeader(t *testing.T) {
+	cases := []struct {
+		header      string
+		wantRoaming bool
+		wantPinned  string
+	}{
+		{"", false, ""},                       // no header -> locked (config default false)
+		{"# sağlayıcı: sabit\n", false, ""},   // explicit lock
+		{"# sağlayıcı: otomatik\n", true, ""}, // opt into roaming
+		{"# saglayici: otomatik\n", true, ""}, // ascii alias
+		{"# sağlayıcı: kilo\n", false, "kilo"}, // pin to a named provider
+		{"# provider: auto\n", true, ""},      // english alias
+	}
+	for _, c := range cases {
+		a, sm := newTestAppForTaskMd(t)
+		dir := t.TempDir()
+		chat := sm.NewAgentChat(dir)
+		taskMd := filepath.Join(dir, "Task.md")
+		if err := os.WriteFile(taskMd, []byte(c.header+"- [ ] do a thing\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		tl, err := a.CreateTaskListFromTaskMd(chat, "", taskMd)
+		if err != nil {
+			t.Fatalf("CreateTaskListFromTaskMd(%q): %v", c.header, err)
+		}
+		pol := a.resolveProviderPolicy(tl.ID)
+		if pol.roaming != c.wantRoaming || pol.pinned != c.wantPinned {
+			t.Errorf("header %q -> policy{roaming:%v pinned:%q}, want {roaming:%v pinned:%q}",
+				c.header, pol.roaming, pol.pinned, c.wantRoaming, c.wantPinned)
+		}
+	}
+}
+
+func TestResolveProviderPolicy_ConfigDefaultRoaming(t *testing.T) {
+	a, sm := newTestAppForTaskMd(t)
+	a.cfg.TaskLoop.ProviderRoaming = true // global opt-in, no Task.md header
+	dir := t.TempDir()
+	chat := sm.NewAgentChat(dir)
+	taskMd := filepath.Join(dir, "Task.md")
+	if err := os.WriteFile(taskMd, []byte("- [ ] x\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tl, err := a.CreateTaskListFromTaskMd(chat, "", taskMd)
+	if err != nil {
+		t.Fatalf("CreateTaskListFromTaskMd: %v", err)
+	}
+	if pol := a.resolveProviderPolicy(tl.ID); !pol.roaming {
+		t.Fatalf("config ProviderRoaming=true not honoured: %+v", pol)
+	}
+}

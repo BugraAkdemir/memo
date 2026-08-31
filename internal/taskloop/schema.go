@@ -36,7 +36,7 @@ type TaskMdDoc struct {
 // headerOrder is the stable render order for recognised header keys; unknown
 // keys follow, sorted.
 var headerOrder = []string{
-	"bildirim", "mod", "planlayıcı", "kodlayıcı", "doğrulayıcı", "hafıza", "onay",
+	"bildirim", "mod", "sağlayıcı", "planlayıcı", "kodlayıcı", "doğrulayıcı", "hafıza", "onay",
 }
 
 // RenderTaskMd serialises a TaskMdDoc to Task.md file text. The result parses
@@ -129,6 +129,7 @@ A Task.md drives a Self-Driving task list. Structure, top to bottom:
 1. **Header lines** (optional, one per line, any order), each "# key: value":
    - ` + "`# bildirim: sadece-bitince | önemli | her-şey`" + ` — how chatty notifications are (default: önemli).
    - ` + "`# mod: worker | planlayıcı`" + ` — worker (default) runs each item in one agent turn; planlayıcı splits the work into a reviewed plan of small steps.
+   - ` + "`# sağlayıcı: sabit | otomatik | <name>`" + ` — sabit (default): the task runs ONLY on the provider active when it started; if that provider fails it waits/retries and finally parks + notifies — it never silently tries other providers. otomatik: allow switching to the next enabled provider on failure. <name>: pin to a specific enabled provider.
    - ` + "`# planlayıcı: <model>`" + `, ` + "`# kodlayıcı: <model>`" + `, ` + "`# doğrulayıcı: <model>`" + ` — pin the model for a role (e.g. "local", "claude", "openai/gpt-5"). Unset → asked once, then remembered in AGENTS.md.
    - ` + "`# hafıza: açık | kapalı`" + ` — whether the task's turns get memory/RAG context (default: kapalı).
    - ` + "`# onay: otomatik`" + ` — skip the plan approval gate (planlayıcı mode only).

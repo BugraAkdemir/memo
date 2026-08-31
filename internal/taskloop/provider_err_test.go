@@ -21,6 +21,11 @@ func TestClassifyProviderErr(t *testing.T) {
 		{"status 503: service unavailable", failTransient},
 		{"context deadline exceeded", failTransient},
 		{"dial tcp: connection refused", failTransient},
+		// Permanent config faults bucket with auth (park, don't timer-retry) even
+		// when they carry a 5xx/4xx status that would otherwise read as transient.
+		{`API Error: 502 model must be "type/model-id", got "claude-code"`, failAuth},
+		{`{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'codex' model is not supported when using Codex with a ChatGPT account."}}`, failAuth},
+		{"400 Bad Request: unknown model", failAuth},
 		{"some unrelated parsing failure", failOther},
 		{"", failOther},
 		// Agent-internal failures must NOT be treated as provider problems —

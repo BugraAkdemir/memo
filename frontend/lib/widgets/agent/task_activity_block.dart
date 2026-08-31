@@ -371,6 +371,8 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
         return (Icons.check_circle_outline, MemoTheme.green);
       case 'tool':
         return (Icons.bolt, MemoTheme.of(context).textMuted);
+      case 'model':
+        return (Icons.memory, MemoTheme.of(context).textMuted);
       case 'step_retry':
         return (Icons.refresh, MemoTheme.warningOrange);
       case 'step_stuck':

@@ -726,6 +726,7 @@ func (a *App) Startup(ctx context.Context) {
 			}),
 			taskloop.WithWorkerConfigHook(a.taskRunConfigFor),
 			taskloop.WithSelfHeal(a.healTaskProvider),
+			taskloop.WithModelLabel(a.taskModelLabel),
 			taskloop.WithPlanConfig(a.planTaskConfig),
 			taskloop.WithRetryScheduler(taskloop.DefaultRetryInterval),
 			// v4.5.0 planner/executor mode — only engaged for a list whose

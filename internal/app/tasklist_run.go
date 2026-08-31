@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"strings"
 
 	"memo/internal/agent"
+	"memo/internal/logx"
 	"memo/internal/provider"
 )
 
@@ -21,6 +23,11 @@ type taskRunConfig struct {
 	projectPath      string          // resolved once from the list's agent chat
 	triedProviders   map[string]bool // providers self-heal has already ruled out
 	transientRetries int             // consecutive 5xx/timeout retries on the current provider
+	// providerRoaming: when false (default), self-heal never switches this task
+	// to a different provider — a dead provider parks + notifies instead of
+	// silently walking data/providers.json. Set from the list's Task.md
+	// "# sağlayıcı:" header / config default (see resolveProviderPolicy).
+	providerRoaming bool
 }
 
 type taskRunCtxKey struct{}
@@ -98,6 +105,26 @@ func (a *App) taskRunConfigFor(ctx context.Context, listID string) context.Conte
 		}
 		built.projectPath = a.taskListProjectPath(listID)
 		built.listID = listID
+
+		// Apply the list's provider policy (Task.md "# sağlayıcı:" header /
+		// config default). "pinned" re-snapshots onto a specific enabled
+		// provider; "roaming" lets self-heal switch providers on failure.
+		pol := a.resolveProviderPolicy(listID)
+		built.providerRoaming = pol.roaming
+		if pol.pinned != "" && !strings.EqualFold(pol.pinned, built.providerName) {
+			if r, m, eff, perr := a.agentRouterFromProviderName(pol.pinned, ""); perr == nil {
+				built.exec = agent.NewTaskExecutor(a.agentExecutor, r)
+				built.exec.SetBypassPermissions(true)
+				built.providerName = pol.pinned
+				built.model = m
+				built.effortLevel = eff
+				built.triedProviders = map[string]bool{pol.pinned: true}
+			} else {
+				logx.Printf("taskloop: list %s pinned provider %q unresolved: %v (keeping %s)",
+					listID, pol.pinned, perr, built.providerName)
+			}
+		}
+
 		a.taskRunMu.Lock()
 		if existing := a.taskRunCfgs[listID]; existing != nil {
 			trc = existing
@@ -132,4 +159,28 @@ func (a *App) clearTaskRunConfig(listID string) {
 	a.taskRunMu.Lock()
 	delete(a.taskRunCfgs, listID)
 	a.taskRunMu.Unlock()
+}
+
+// taskModelLabel is the engine's WithModelLabel hook: "provider/model" for the
+// list's current worker/coder turn, shown in the in-chat activity log. Falls
+// back to the planexec coder role or the global agent provider when the list
+// has no snapshot yet.
+func (a *App) taskModelLabel(listID string) string {
+	a.taskRunMu.RLock()
+	trc := a.taskRunCfgs[listID]
+	a.taskRunMu.RUnlock()
+	if trc != nil && trc.providerName != "" {
+		if trc.model != "" {
+			return trc.providerName + "/" + trc.model
+		}
+		return trc.providerName
+	}
+	if _, m, _, err := a.planexecRouting(listID, "coder"); err == nil && m != "" {
+		return m
+	}
+	name := a.currentProviderLabel()
+	if m := a.activeProviderModel(name); m != "" {
+		return name + "/" + m
+	}
+	return name
 }

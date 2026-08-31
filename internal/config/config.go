@@ -154,6 +154,13 @@ type TaskLoopConfig struct {
 	// against each other, so this is only a safety valve for very
 	// resource-constrained hosts.
 	MaxConcurrentLists int `yaml:"max_concurrent_lists" json:"max_concurrent_lists"`
+	// ProviderRoaming is the global default for cross-provider fallback in a
+	// running task. false (default) = a task runs ONLY on the provider it
+	// started with; if that provider fails, the task parks and notifies rather
+	// than silently trying every other entry in data/providers.json. A Task.md
+	// "# sağlayıcı: otomatik" header opts one list back into roaming; a
+	// "# sağlayıcı: <name>" header pins it to a specific provider.
+	ProviderRoaming bool `yaml:"provider_roaming" json:"provider_roaming"`
 }
 
 // LiveModeConfig controls voice Live Mode independently of Beta — it

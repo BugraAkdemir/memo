@@ -67,7 +67,7 @@ func eventTier(event string) int {
 	switch event {
 	case "finished", "failed":
 		return 0
-	case "started", "item_stuck", "waiting_limit", "waiting_user",
+	case "started", "item_stuck", "waiting_limit", "waiting_user", "waiting_retry",
 		"provider_switched", "config_changed":
 		return 1
 	default: // item_started, item_done, subagent_spawned, ...

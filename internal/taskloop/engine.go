@@ -53,6 +53,7 @@ type Engine struct {
 	projectPathFn    func(chatID string) string
 	workerConfigHook func(ctx context.Context, listID string) context.Context
 	selfHeal         func(ctx context.Context, listID string, workerErr error) bool
+	modelLabelFn     func(listID string) string // "provider/model" for the activity log; nil-safe
 	planConfig       func(ctx context.Context, listID, chatID string, items []string) error
 	retry            *RetryScheduler
 	subOrch          *SubAgentOrchestrator
@@ -80,6 +81,14 @@ type Engine struct {
 	runtimes map[string]*listRuntime
 
 	skipReq map[string]bool // list IDs whose current item the user asked to skip
+
+	// transientAttempts counts escalating wait-and-retry rounds already spent on
+	// the current stuck episode, keyed by listID+"\x00"+itemID. Guarded by rtMu.
+	transientAttempts map[string]int
+	// transientRetryDelays is the escalating backoff for a transient provider
+	// fault when the provider lock is on: wait delays[0], retry the same
+	// provider; wait delays[1], retry once more; then leave the item stuck.
+	transientRetryDelays []time.Duration
 }
 
 // EngineOption configures optional Engine behaviour without breaking the
@@ -119,6 +128,24 @@ func WithWorkerConfigHook(fn func(ctx context.Context, listID string) context.Co
 // item is marked stuck. Nil-safe.
 func WithSelfHeal(fn func(ctx context.Context, listID string, workerErr error) bool) EngineOption {
 	return func(e *Engine) { e.selfHeal = fn }
+}
+
+// WithModelLabel supplies a "which provider/model is this list running on"
+// lookup, surfaced as a "model" activity-log line when execution begins and
+// whenever the provider changes. Nil-safe.
+func WithModelLabel(fn func(listID string) string) EngineOption {
+	return func(e *Engine) { e.modelLabelFn = fn }
+}
+
+// emitModelLine writes the current provider/model into the activity log, if a
+// label lookup is wired and returns something.
+func (e *Engine) emitModelLine(listID string) {
+	if e.modelLabelFn == nil {
+		return
+	}
+	if label := strings.TrimSpace(e.modelLabelFn(listID)); label != "" {
+		e.emitActivity(listID, "model", "Model: "+label)
+	}
 }
 
 // WithPlanConfig supplies a callback run once during the planning phase,
@@ -226,18 +253,27 @@ func WithMaxConcurrentLists(n int) EngineOption {
 
 func NewEngine(store *Store, runWorker RunWorker, reviewChief ReviewChief, setBypass BypassSetter, onEvent func(name, data string), opts ...EngineOption) *Engine {
 	e := &Engine{
-		store:       store,
-		runWorker:   runWorker,
-		reviewChief: reviewChief,
-		setBypass:   setBypass,
-		onEvent:     onEvent,
-		active:      make(map[string]context.CancelFunc),
-		skipReq:     make(map[string]bool),
+		store:                store,
+		runWorker:            runWorker,
+		reviewChief:          reviewChief,
+		setBypass:            setBypass,
+		onEvent:              onEvent,
+		active:               make(map[string]context.CancelFunc),
+		skipReq:              make(map[string]bool),
+		transientAttempts:    make(map[string]int),
+		transientRetryDelays: []time.Duration{5 * time.Minute, 10 * time.Minute},
 	}
 	for _, opt := range opts {
 		opt(e)
 	}
 	return e
+}
+
+// WithTransientRetryDelays overrides the escalating backoff used when a
+// provider-locked task hits a transient fault (default 5m, then 10m). Tests
+// shrink these; an empty slice disables wait-and-retry (straight to stuck).
+func WithTransientRetryDelays(d ...time.Duration) EngineOption {
+	return func(e *Engine) { e.transientRetryDelays = append([]time.Duration(nil), d...) }
 }
 
 func (e *Engine) Start(ctx context.Context, listID string) error {
@@ -275,6 +311,7 @@ func (e *Engine) Stop(listID string) {
 	// Cancel a pending rate-limit retry even if the list isn't actively
 	// running (a suspended list is not in e.active).
 	e.retry.Cancel(listID)
+	e.clearTransientFor(listID)
 
 	e.mu.Lock()
 	cancel, ok := e.active[listID]
@@ -411,6 +448,7 @@ func (e *Engine) run(ctx context.Context, listID string) {
 	if err := e.store.SetStatus(listID, taskListExecuting); err != nil {
 		logx.Printf("TASKLOOP: set list executing %s: %v", listID, err)
 	}
+	e.emitModelLine(listID)
 
 	for i := range tl.Items {
 		select {
@@ -486,6 +524,9 @@ func (e *Engine) run(ctx context.Context, listID string) {
 		}
 
 		if ok {
+			e.rtMu.Lock()
+			delete(e.transientAttempts, transientKey(listID, item.ID))
+			e.rtMu.Unlock()
 			if err := e.store.SetItemDone(listID, item.ID); err != nil {
 				logx.Printf("TASKLOOP: set item done %s/%s: %v", listID, item.ID, err)
 			}
@@ -509,6 +550,8 @@ func (e *Engine) run(ctx context.Context, listID string) {
 			e.emitActivity(listID, "item_stuck", stuckActivityLine(item))
 		}
 	}
+
+	e.clearTransientFor(listID)
 
 	// Terminal state: "done" if at least one item completed, "failed" if every
 	// attempted item is stuck. An empty list is trivially "done".
@@ -653,6 +696,7 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 		logx.Printf("TASKLOOP: set executing %s: %v", listID, err)
 	}
 	e.emitEvent("taskloop:executing", listID)
+	e.emitModelLine(listID)
 
 	if e.stepRunner == nil {
 		e.failPlan(listID, "executor yapılandırılmamış (WithStepRunner)")
@@ -1072,6 +1116,7 @@ func (e *Engine) syncItemProgress(listID string, plan *Plan) {
 // marks every still-unfinished item stuck. The list ends "done" if any item
 // completed, else "failed".
 func (e *Engine) finishPlanItems(listID string, tl *TaskList, plan *Plan) {
+	e.clearTransientFor(listID)
 	e.syncItemProgress(listID, plan)
 
 	fresh, err := e.store.Get(listID)
@@ -1107,6 +1152,7 @@ func (e *Engine) finishPlanItems(listID string, tl *TaskList, plan *Plan) {
 }
 
 func (e *Engine) failPlan(listID, note string) {
+	e.clearTransientFor(listID)
 	logx.Printf("TASKLOOP: plan-exec %s failed: %s", listID, note)
 	if err := e.store.SetStatus(listID, taskListFailed); err != nil {
 		logx.Printf("TASKLOOP: set failed %s: %v", listID, err)
@@ -1288,12 +1334,25 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 				}
 				continue
 			}
-			// Self-heal declined an auth failure -> every configured provider is
-			// dead. Park the list in waiting-user (not stuck/failed): the item
-			// goes back to pending and the run unwinds without a terminal state,
-			// so a task_resume retries it once the user fixes a key.
+			// Provider lock (self-heal declined the switch): a transient fault
+			// (5xx / timeout / connection refused) gets an escalating
+			// wait-and-retry on the SAME provider (5 min, then 10 min). Only
+			// once that budget is spent does the item go stuck.
+			if IsTransientErr(err) {
+				if e.suspendForTransient(listID, item, err) {
+					return false, false, true
+				}
+				item.Note = fmt.Sprintf("geçici sağlayıcı hatası, %d beklemeli denemeden sonra bırakıldı: %v",
+					len(e.transientRetryDelays), err)
+				e.clearTransientFor(listID)
+				return false, false, false
+			}
+			// An auth / config fault (bad key, unsupported model): retrying on a
+			// timer won't fix it. Park the list in waiting-user (item back to
+			// pending, no terminal state) so a task_resume retries it once the
+			// user has fixed the provider.
 			if IsAuthErr(err) {
-				logx.Printf("TASKLOOP: providers exhausted for %s, parking in waiting-user", listID)
+				logx.Printf("TASKLOOP: provider unusable for %s, parking in waiting-user", listID)
 				e.parkWaitingUser(listID, item, err)
 				return false, false, true
 			}
@@ -1362,6 +1421,58 @@ func (e *Engine) parkWaitingUser(listID string, item *TaskItem, cause error) {
 	if e.onEvent != nil {
 		e.onEvent("taskloop:waiting_user", fmt.Sprintf("%s:%v", listID, cause))
 	}
+}
+
+// transientKey identifies one stuck episode (a listID + item pair) for the
+// escalating-retry counter.
+func transientKey(listID, itemID string) string { return listID + "\x00" + itemID }
+
+// suspendForTransient parks a provider-locked list after a transient fault and
+// arms an escalating retry (delays[0], then delays[1], …). It returns true when
+// it parked, or false when the retry budget for this item is spent — the caller
+// then leaves the item stuck. err is the worker error, kept for the notification.
+func (e *Engine) suspendForTransient(listID string, item *TaskItem, workerErr error) bool {
+	if e.retry == nil || len(e.transientRetryDelays) == 0 {
+		return false
+	}
+	key := transientKey(listID, item.ID)
+	e.rtMu.Lock()
+	n := e.transientAttempts[key]
+	if n >= len(e.transientRetryDelays) {
+		delete(e.transientAttempts, key)
+		e.rtMu.Unlock()
+		return false
+	}
+	delay := e.transientRetryDelays[n]
+	e.transientAttempts[key] = n + 1
+	e.rtMu.Unlock()
+
+	if err := e.store.ResetItemPending(listID, item.ID); err != nil {
+		logx.Printf("TASKLOOP: transient park reset item %s/%s: %v", listID, item.ID, err)
+	}
+	if err := e.store.SetStatus(listID, taskListWaitingLimit); err != nil {
+		logx.Printf("TASKLOOP: transient park set status %s: %v", listID, err)
+	}
+	if e.onEvent != nil {
+		// data: "listID:attempt/total:delay:errSummary"
+		e.onEvent("taskloop:waiting_retry", fmt.Sprintf("%s:%d/%d:%s:%s",
+			listID, n+1, len(e.transientRetryDelays), delay.String(),
+			truncateLine(workerErr.Error(), 160)))
+	}
+	e.retry.ArmWithDelay(listID, delay)
+	return true
+}
+
+// clearTransientFor drops any escalating-retry counters for a whole list —
+// called when the list stops or finishes.
+func (e *Engine) clearTransientFor(listID string) {
+	e.rtMu.Lock()
+	for k := range e.transientAttempts {
+		if strings.HasPrefix(k, listID+"\x00") {
+			delete(e.transientAttempts, k)
+		}
+	}
+	e.rtMu.Unlock()
 }
 
 // suspendForRateLimit parks a rate-limited list: item back to pending, list

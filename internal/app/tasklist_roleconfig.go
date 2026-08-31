@@ -147,6 +147,44 @@ func (a *App) planexecRouting(listID, role string) (*provider.Router, string, st
 	return gr, model, gEffort, nil
 }
 
+// providerPolicy is a list's cross-provider fallback stance. Default (zero
+// value) = locked: the task runs only on the provider it started with; a dead
+// provider parks + notifies instead of roaming data/providers.json.
+type providerPolicy struct {
+	roaming bool   // "# sağlayıcı: otomatik" (or config ProviderRoaming) — try other enabled providers on failure
+	pinned  string // "# sağlayıcı: <name>" — snapshot this specific enabled provider instead of the global active one
+}
+
+// resolveProviderPolicy reads a list's "# sağlayıcı:" Task.md header, falling
+// back to the global config default. Values: "sabit"/"" (locked, default),
+// "otomatik" (roaming), or a provider name/type (pinned, still no roaming).
+func (a *App) resolveProviderPolicy(listID string) providerPolicy {
+	raw := ""
+	if a.taskloopStore != nil {
+		if tl, err := a.taskloopStore.Get(listID); err == nil && tl.TaskMdPath != "" {
+			if parsed, perr := taskloop.ParseTaskMd(tl.TaskMdPath); perr == nil {
+				raw = firstNonEmpty(
+					parsed.Headers["sağlayıcı"], parsed.Headers["saglayici"],
+					parsed.Headers["sağlayici"], parsed.Headers["saglayıcı"],
+					parsed.Headers["provider"])
+			}
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "otomatik", "auto", "automatic", "roam", "fallback":
+		return providerPolicy{roaming: true}
+	case "":
+		a.cfgMu.RLock()
+		roam := a.cfg.TaskLoop.ProviderRoaming
+		a.cfgMu.RUnlock()
+		return providerPolicy{roaming: roam}
+	case "sabit", "kilitli", "locked", "fixed", "pinned":
+		return providerPolicy{}
+	default:
+		return providerPolicy{pinned: strings.TrimSpace(raw)}
+	}
+}
+
 func (a *App) roleModelsFromConfig(rm roleModels) roleModels {
 	a.cfgMu.RLock()
 	tlc := a.cfg.TaskLoop

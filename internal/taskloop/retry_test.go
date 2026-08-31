@@ -3,6 +3,7 @@ package taskloop
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -20,6 +21,25 @@ func TestRetryScheduler_ArmFires(t *testing.T) {
 	if s.Pending("L1") {
 		t.Fatal("timer still pending after it fired")
 	}
+}
+
+func TestRetryScheduler_ArmWithDelay(t *testing.T) {
+	var got atomic.Int32
+	// Default interval is long; ArmWithDelay must use its own short delay.
+	s := NewRetryScheduler(10*time.Second, func(string) { got.Add(1) })
+	s.ArmWithDelay("L1", 15*time.Millisecond)
+	time.Sleep(60 * time.Millisecond)
+	if got.Load() != 1 {
+		t.Fatalf("resume fired %d times, want 1 (ArmWithDelay ignored its delay?)", got.Load())
+	}
+	// d <= 0 falls back to the scheduler interval (i.e. does NOT fire fast).
+	got.Store(0)
+	s.ArmWithDelay("L2", 0)
+	time.Sleep(60 * time.Millisecond)
+	if got.Load() != 0 {
+		t.Fatalf("ArmWithDelay(0) fired early %d times", got.Load())
+	}
+	s.Cancel("L2")
 }
 
 func TestRetryScheduler_CancelBeforeFire(t *testing.T) {
@@ -55,6 +75,47 @@ func TestRetryScheduler_NilSafe(t *testing.T) {
 	s.Cancel("x")
 	if s.Pending("x") {
 		t.Fatal("nil scheduler reported pending")
+	}
+}
+
+// With the provider lock on (no selfHeal wired), a transient fault gets an
+// escalating wait-and-retry on the same provider, and finally leaves the item
+// stuck — it must never silently switch providers or die without an event.
+func TestEngine_TransientLocked_EscalatingRetriesThenStuck(t *testing.T) {
+	store, _ := NewStore(t.TempDir())
+	tl, _ := store.Create("chat1", "T", []string{"the item"})
+
+	var retryEvents atomic.Int32
+	engine := NewEngine(
+		store,
+		func(ctx context.Context, chatID, prompt string) (string, error) {
+			return "", errors.New("status 503: service temporarily unavailable")
+		},
+		func(ctx context.Context, itemText, workerOutput string) (bool, string, error) { return true, "", nil },
+		func(v bool) {},
+		func(name, data string) {
+			if name == "taskloop:waiting_retry" {
+				retryEvents.Add(1)
+			}
+		},
+		WithRetryScheduler(10*time.Millisecond),
+		WithTransientRetryDelays(10*time.Millisecond, 10*time.Millisecond),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = engine.Start(ctx, tl.ID)
+
+	waitForStatus(t, store, tl.ID, taskListFailed, 4*time.Second)
+	got, _ := store.Get(tl.ID)
+	if got.Items[0].Status != "stuck" {
+		t.Fatalf("item = %q, want stuck after the retry budget is spent", got.Items[0].Status)
+	}
+	if n := retryEvents.Load(); n != 2 {
+		t.Fatalf("taskloop:waiting_retry fired %d times, want 2 (5m + 10m budget)", n)
+	}
+	if !strings.Contains(got.Items[0].Note, "beklemeli deneme") {
+		t.Fatalf("stuck note = %q, want it to mention the exhausted retry budget", got.Items[0].Note)
 	}
 }
 

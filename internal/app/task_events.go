@@ -195,6 +195,48 @@ func (a *App) postTaskFinishMessage(data string) {
 	sm.AddMessageToSession(tl.ChatID, "assistant", msg, "", "")
 }
 
+// postTaskParkMessage writes a plain, persistent line into a parked task's own
+// chat so the user always has an in-transcript record even when no push channel
+// (Telegram/WhatsApp) is configured. kind is "waiting_user" | "waiting_retry".
+func (a *App) postTaskParkMessage(listID, kind, detail string) {
+	if a.taskloopStore == nil {
+		return
+	}
+	tl, err := a.taskloopStore.Get(listID)
+	if err != nil || tl.ChatID == "" {
+		return
+	}
+	sm := a.getSessionManager()
+	if sm == nil {
+		return
+	}
+	var msg string
+	switch kind {
+	case "waiting_retry":
+		// detail: "attempt/total:delay:errSummary"
+		attempt, delay, reason := "?", "", strings.TrimSpace(detail)
+		if p := strings.SplitN(detail, ":", 3); len(p) == 3 {
+			attempt, delay, reason = p[0], p[1], strings.TrimSpace(p[2])
+		}
+		msg = fmt.Sprintf(a.t(
+			"⏳ Geçici sağlayıcı hatası — %s sonra tekrar denenecek (%s. deneme). Sebep: %s",
+			"⏳ Transient provider error — retrying in %s (attempt %s). Reason: %s"),
+			delay, attempt, reason)
+	case "waiting_user":
+		reason := strings.TrimSpace(detail)
+		if reason == "" {
+			reason = a.t("sağlayıcıya ulaşılamıyor", "provider unreachable")
+		}
+		msg = fmt.Sprintf(a.t(
+			"⛔ Görev duraklatıldı — sağlayıcı çalışmıyor: %s\nSağlayıcıyı düzeltip \"devam\" yazın.",
+			"⛔ Task paused — provider not working: %s\nFix the provider, then type \"resume\"."),
+			reason)
+	default:
+		return
+	}
+	sm.AddMessageToSession(tl.ChatID, "assistant", msg, "", "")
+}
+
 func (a *App) fillTaskEventSnapshot(ev *taskChatEvent, listID string) {
 	if a.taskloopStore != nil {
 		if tl, err := a.taskloopStore.Get(listID); err == nil {

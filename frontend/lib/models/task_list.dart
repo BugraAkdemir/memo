@@ -372,6 +372,12 @@ class ChatTaskState {
         return TaskLogEntry('awaiting_plan', '', now);
       case 'paused':
         return TaskLogEntry('paused', '', now);
+      case 'waiting_retry':
+        return TaskLogEntry('step_retry', e.detail, now);
+      case 'waiting_user':
+        return TaskLogEntry('step_stuck', e.detail, now);
+      case 'waiting_limit':
+        return TaskLogEntry('step_retry', e.detail, now);
       case 'item_done':
         return TaskLogEntry('item_done', '', now);
       // 'item_stuck' deliberately omitted: the engine now always emits a

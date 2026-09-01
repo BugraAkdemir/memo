@@ -1,3 +1,66 @@
+# Ek (2026-09-01, devam 57) — Tasarım/UX denetimi: canlı uygulamada 2 gerçek hata bulundu, düzeltildi
+
+Kullanıcı: "handoff'a yaz, şimdi tasarımsal olarak incele, gerekirse test yaz,
+kullanıcı deneyimini kötü etkileyen/kullanımı zorlaştıran tasarım hatalarını
+bul, analiz et, raporla." devam 56'nın hemen ardından açılan yeni faz.
+
+**Yöntem:** Aynı izole-instance yaklaşımı (headless `memo-pg` +
+`Claude_Browser` MCP ile gerçek Flutter web build'i gezmek) — bu sefer
+hipotetik değil, uygulamayı gerçekten tıklayarak. `flutter build web
+--release` → `internal/webserver/webapp/`'e kopyala (gitignored) → backend'i
+izole veri dizininde başlat → tarayıcıdan gez.
+
+## Bulgu 1 — Sohbette tekrarlanan araç rozetleri (düzeltildi, `39f3049a`)
+
+`internal/agent/pipeline.go`'daki araç-çağrı döngüsü her çağrı için
+`EventToolExecuting`'i hemen ardından aynı çağrının
+`EventToolResult`/`EventToolError`'ını, sıralı, art arda yayınlıyor — ama
+`chat_message_list.dart` ikisini de ayrı rozet olarak çiziyordu. Canlıda
+gerçek bir `list_directory` çağrısı 2 rozet, iki gerçek `get_file_info`
+hatası 4 rozet olarak göründü — model kendi çağrısını tekrar ediyormuş gibi
+yanıltıcı bir görüntü (hiçbir tekrar yoktu). `_visibleToolBadges()` eklendi:
+ardışık executing+completion çiftini tek (completion'ın) rozetine indiriyor,
+gerçekten yarım kalmış (stream kesilmiş) yalnız bir "executing"i olduğu gibi
+bırakıyor. 4 yeni widget testi (`chat_message_list_tool_badges_test.dart`) —
+fix'i geçici geri alıp 3/4'ünün kırıldığını doğrulayarak regresyon
+yakaladığı teyit edildi. Ekran görüntüsüyle canlı doğrulandı (2→1, 4→2, 2→1).
+
+## Bulgu 2 — Spotlight tour'da tamamen opak (siyah) perde (düzeltildi, `39f3049a`)
+
+`spotlight_tour.dart`'taki perde `Colors.black` (tam opak) idi. Taze bir
+ilk-çalıştırma instance'ında tur ilk kez tetiklendiğinde ekran tamamen siyah
+bir boşluk + parlayan bir kutu dışında hiçbir şey göstermiyordu — ne ikon, ne
+etiket, yeni kullanıcının nereye baktığını anlaması imkansız (spotlight
+turunun amacının tam tersi). `Colors.black.withValues(alpha: 0.72)`'ye
+çevrildi. `app_shell.dart`'taki `_navKeys`'in ikon+etiketi birlikte
+sardığını kaynaktan doğrulayıp, sonra taze bir ikinci izole instance
+(`isolated_memo2/`) açıp turu yeniden tetikleyerek ekran görüntüsüyle
+teyit edildi: perde artık saydam, sidebar/sohbet paneli/hızlı-eylem
+kartları perdenin arkasından belli belirsiz görünüyor, tur artık gerçek
+bir spotlight gibi çalışıyor.
+
+## Denetlenen diğer ekranlar — sorun bulunmadı
+
+Sohbet (rozet fix'i hariç), Ajan modu boş hali, Model Mağazası (Keşfet),
+Takvim boş hali, Rutinler boş hali, Ayarlar → Genel, Ayarlar → API
+Providers listesi ve "Sağlayıcı Ekle" diyaloğu (hem `custom` hem
+`custom-anthropic` seçili haliyle — devam 55'te eklenen ikinci provider
+tipi ikon/açıklama/Base URL ipucuyla doğru render oluyor). Kurulum
+sihirbazının son adımındaki "Sistem Kontrolü" kartı da kontrol edildi: bu
+taze instance'ta sağlayıcı hiç yapılandırılmamışken "Yerel Modeller" VE
+"Sohbete Hazır" ikisi de kırmızı/uyarı olarak tutarlı göründü — daha önce
+(devam 55 civarı) not edilen "yeşil tik + kırmızı uyarı aynı anda" şüphesi
+bu koşulda doğrulanamadı, muhtemelen farklı bir provider durumuna özgüydü;
+gerçek bir hata olarak teyit edilemediği için ayrı bir düzeltme açılmadı.
+
+**Doğrulama:** `go build/vet ./...` temiz, `go test ./...` tüm paketler
+geçti, `flutter analyze` yalnızca bu dala ait olmayan 6 pre-existing info
+(dokunulan iki dosyada sıfır), `flutter test` 324/324 geçti (yeni 4 dahil).
+Commit `39f3049a`. İzole test backend'i (port 8098) ve build artefaktları
+temizlendi, kullanıcının gerçek verisine hiç dokunulmadı.
+
+---
+
 # Ek (2026-09-01, devam 56) — Sub-agent aktivite fix'i playground'da canlı doğrulandı
 
 Kullanıcı: "sub-agent testini yap, streaming gap'e dokunma (gerçek ihtiyaç

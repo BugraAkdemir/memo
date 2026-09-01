@@ -1,3 +1,51 @@
+# Ek (2026-09-01, devam 51) — `{n} tok`, sessiz kart, yavaşlığın gerçek kaynağı
+
+devam 50'den sonra kullanıcı tekrar koştu. Kart artık tool satırlarını gösteriyor
+(devam 50 çalıştı), ama üç şey kaldı: token sayacı `{n} tok` yazıyor, uzun bir
+`write_file` sırasında kart yine sessiz kalıyor, ve "hâlâ çok uzun sürüyor".
+
+**1. `{n} tok` (`51db1a6d`).** `L10n.t` sadece `\${name}` biçimini değiştiriyor,
+ama 14 string çıplak `{name}` ile yazılmış → placeholder kullanıcıya olduğu gibi
+basılıyordu. Token sayacı, sessizlik sayacı, "N adımı göster", yedi Hesaplar
+diyalogu ve üç hata mesajı (`Could not update permissions: {err}`) etkilenmişti.
+`t()` artık iki yazımı da değiştiriyor + 14 string ev stiline (`\${name}`)
+çevrildi. Test: `test/core/l10n_placeholder_test.dart` (iki dilde de hiçbir
+string `{` sızdırmıyor).
+
+**2. Sessiz kart (`a0b878af`).** Ajan döngüsü modeli `Stream:false` ile çağırıyor
+(`internal/agent/pipeline.go:144`) — iki tool çağrısı arasında **hiçbir sinyal
+yok**. Ölçüm: `04:30:51` → `04:33:04`, tek bir `write_file` için 2dk13sn tam
+sessizlik. Kart o sürede son tool satırında donuk duruyordu.
+- 5 sn sessizlikten sonra `model yanıt üretiyor · 1dk 12s` satırı (normal renk,
+  tıklayan saat). Saat **yerel**: backend'in `silentSec`'i sadece olaylarla
+  geliyor, yani tam da ölçmesi gereken sessizlik boyunca donuyor; widget her
+  gerçek state değişiminde rebase edip kendi sayıyor.
+- "takılmış olabilir" eşiği 60 sn → **180 sn**. 60 sn her normal uzun üretimde
+  yanıyordu, yani vermesi gereken güvenin tam tersini veriyordu.
+- `_fmtDuration`'ın "dk"/"s" birimleri L10n'a taşındı.
+
+**3. Yavaş tool'lar için başlangıç satırı + verb'lerin l10n'ı (`a1b89c02`).**
+`run_command`, `web_search`, `fetch_page`, `search_files`, WhatsApp araçları artık
+`EventToolExecuting`'de de bir satır basıyor ("Komut: … …") — uzun süren komut
+koşarken görünüyor. Anlık araçlar (write_file vb.) **bilinçli olarak dışarıda**:
+başlangıç/bitiş çifti aynı saniyeye düşer, log'u iki katına çıkarır ve hiçbir şey
+anlatmaz — kullanıcının write öncesi gördüğü bekleme tool'da değil, modelin
+içerik üretmesinde. `toolVerbTR` → `toolVerbs` (TR+EN çifti, `App.t` arkasında);
+bu satırlar doğrudan Flutter kartına gittiği için Türkçe-tek map'i UI'da hardcoded
+string demekti (AGENTS.md #8).
+
+**Kalan yavaşlığın ölçümü (bizde değil).** devam 50'nin bildirim pump'ından sonra
+`planning → item_started` **0 ms**. Kalan süre tamamen sağlayıcı: her tool
+round-trip'i tam bağlamla ayrı bir bloke HTTP isteği; `kilo-auto/free` bunları
+6-18 sn'de, büyük dosya üretimini 2dk13sn'de dönüyor. Bir maddede ~10 tur var.
+Tek gerçek kaldıraç Task.md'de `# sağlayıcı: <hızlı-sağlayıcı>`.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz;
+`go test -tags sqlite_fts5 -race ./internal/app ./internal/taskloop` yeşil;
+`flutter analyze lib/` bilinen 5 info; `flutter test` 319/319.
+
+---
+
 # Ek (2026-09-01, devam 50) — 90 sn'lik "planning" donması + kartın sessizliği
 
 devam 49'daki kilit düzeltmesinden sonra görev gerçekten koştu, ama kullanıcı iki

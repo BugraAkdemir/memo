@@ -207,6 +207,17 @@ func (a *App) ListRunningTasks() []taskloop.RunningTaskInfo {
 
 func (a *App) runningTaskList() []taskloop.RunningTaskInfo { return a.ListRunningTasks() }
 
+// errIdleWorkerTurn is what a worker turn returns when its stream went quiet
+// past workerIdleTimeout.
+//
+// Deliberately worded without "timed out": classifyProviderErr would read that
+// as a transient provider fault and park the whole list on a 5-then-10-minute
+// retry timer. A wedged turn should cost its own item and let the list move on
+// to the next one.
+func errIdleWorkerTurn(idle time.Duration) error {
+	return fmt.Errorf("işçi hatası: tur %s boyunca hiç çıktı üretmedi, takıldı sayıldı", idle)
+}
+
 func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 	return func(ctx context.Context, chatID, prompt string) (string, error) {
 		// SendMessageStreamTo (docs/plans/PLAN_chatid_refactor.md Faz 3)
@@ -241,9 +252,50 @@ func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 		// the loop reaches its first item, so fail-fast made every item die
 		// instantly with "işçi hatası: ⏳ Lütfen önceki cevap..." and the
 		// whole list fail in under two seconds (chat_locks.go).
-		ch := a.SendMessageStreamTo(withChatLockWait(ctx), chatID, prompt)
+		// Hard ceiling on silence. A worker turn is a whole agent run — model
+		// call, tool, model call — and any one of those can wedge: a
+		// run_command whose backgrounded child held the output pipes open
+		// froze item 1 of a list indefinitely, with the card stuck on
+		// "No response" and items 2..N never starting. The tool bug itself is
+		// fixed (internal/agent/tools.PrepareCommand), but the loop must not
+		// depend on every tool being well-behaved, so an idle stream now ends
+		// the turn instead of hanging the list forever. The timer resets on
+		// every chunk, so a turn that keeps producing runs as long as it likes.
+		turnCtx, turnCancel := context.WithCancel(withChatLockWait(ctx))
+		defer turnCancel()
+		idle := a.workerIdleTimeout()
+
+		ch := a.SendMessageStreamTo(turnCtx, chatID, prompt)
 		var sb strings.Builder
-		for chunk := range ch {
+		timer := time.NewTimer(idle)
+		defer timer.Stop()
+	drain:
+		for {
+			var chunk api.StreamChunk
+			var open bool
+			select {
+			case chunk, open = <-ch:
+				if !open {
+					break drain
+				}
+			case <-timer.C:
+				turnCancel()
+				// Drain in the background so the producer goroutine isn't leaked.
+				go func() {
+					for range ch { //nolint:revive // discard
+					}
+				}()
+				return sb.String(), errIdleWorkerTurn(idle)
+			}
+
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(idle)
+
 			if chunk.Error != "" {
 				// A busy chat is not a provider fault — tag it so the engine
 				// waits and retries the same item instead of marking it stuck.
@@ -262,7 +314,7 @@ func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 				sb.WriteString(chunk.Content)
 			}
 			if chunk.Done {
-				break
+				break drain
 			}
 		}
 		result := sb.String()

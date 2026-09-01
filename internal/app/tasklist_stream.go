@@ -23,6 +23,23 @@ func (a *App) streamIdleTimeout() time.Duration {
 	return time.Duration(s) * time.Second
 }
 
+// workerIdleTimeout is the ceiling on total silence inside one Self-Driving
+// *worker* turn, as opposed to one planner/executor coder call.
+//
+// A worker turn is a whole agent run — model call, tool, model call, ... — and
+// the model calls are not streamed (internal/agent/pipeline.go sets
+// Stream:false), so a couple of quiet minutes while it generates a file is
+// normal; 2m13s was measured live on a free-tier model. The configured
+// StreamIdleTimeoutSec (300s by default) is therefore too tight here, so this
+// floors it at ten minutes. Past that, nothing is generating anything.
+func (a *App) workerIdleTimeout() time.Duration {
+	const floor = 10 * time.Minute
+	if d := a.streamIdleTimeout(); d > floor {
+		return d
+	}
+	return floor
+}
+
 // drainStreamIdle reads streamCh into a single string. It aborts via cancel
 // only when no chunk has arrived for `idle` (a stalled/hung stream); a stream
 // that keeps producing tokens runs for as long as it likes. A chunk carrying

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,16 @@ import (
 	"strings"
 	"time"
 )
+
+// CommandWaitDelay is how long Wait keeps draining a finished command's pipes
+// before closing them and giving up on a background process that inherited
+// them. See PrepareCommand for what this actually prevents.
+const CommandWaitDelay = 3 * time.Second
+
+// BackgroundProcessNote is prepended to the output of a command that exited
+// but left a child running (a server started with "&"). It tells the model
+// what happened so it doesn't retry the same command believing it hung.
+const BackgroundProcessNote = "Note: the command exited but left a background process running (its output pipes stayed open). It was not killed; anything it printed after this point is not captured. If you started a server this way, it is running."
 
 // DefaultToolTimeout is the maximum execution time for any single tool call.
 const DefaultToolTimeout = 60 * time.Second
@@ -279,6 +290,23 @@ func PrepareCommand(ctx context.Context, command, workingDir string) (cmd *exec.
 		}
 	}
 	cmd.Dir = workingDir
+
+	// A command that backgrounds something ("python3 server.py &") leaves the
+	// grandchild holding the stdout/stderr pipes this Cmd hands out. os/exec's
+	// Wait blocks until every writer closes them, so `cmd.Run()` sat there
+	// forever even though bash itself had exited — and because the shell was
+	// already gone, the context deadline had nothing left to kill. Live, this
+	// froze a whole Self-Driving list on item 1: the tool never returned, the
+	// worker turn never ended, and the card just said "No response".
+	//
+	// WaitDelay bounds exactly that wait: once the process has exited (or ctx
+	// is done), give the pipes a moment to drain, then close them and return
+	// whatever was captured. Cancel kills the process *group* so a timeout
+	// takes the background children with it instead of orphaning them.
+	cmd.WaitDelay = CommandWaitDelay
+	cmd.SysProcAttr = newSysProcAttr()
+	cmd.Cancel = func() error { return killProcessGroup(cmd) }
+
 	return cmd, execCtx, cancel
 }
 
@@ -397,6 +425,15 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 
 	runErr := cmd.Run()
 	timedOut := execCtx.Err() == context.DeadlineExceeded
+
+	// The command finished but left a background process holding its pipes
+	// (a started server, a daemonised worker). That is not a failure — report
+	// it as what it is, with the output captured so far, instead of surfacing
+	// Go's internal "WaitDelay expired" as a command error.
+	if errors.Is(runErr, exec.ErrWaitDelay) && !timedOut {
+		out := FormatCommandOutput(nil, false, stdout.String(), stderr.String())
+		return BackgroundProcessNote + "\n" + out, nil
+	}
 
 	return FormatCommandOutput(runErr, timedOut, stdout.String(), stderr.String()), nil
 }

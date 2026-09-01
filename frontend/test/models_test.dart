@@ -68,13 +68,30 @@ void main() {
       expect(s.log.last.text, 'x99');
     });
 
-    test('stalled: running + silent >= 60s', () {
-      final s = ChatTaskState.fold(null, ev('snapshot', phase: 'executing', stepTotal: 2, silentSec: 75));
-      expect(s!.stalled, true);
-      final s2 = ChatTaskState.fold(null, ev('snapshot', phase: 'executing', stepTotal: 2, silentSec: 10));
-      expect(s2!.stalled, false);
-      final s3 = ChatTaskState.fold(null, ev('snapshot', phase: 'paused', silentSec: 200));
-      expect(s3!.stalled, false); // paused isn't "stalled"
+    // The threshold moved from 60s to 180s: the agent loop calls the model
+    // non-streaming, so two minutes of silence while it writes a file is
+    // ordinary, and flagging that as "maybe stuck" was the opposite of the
+    // reassurance the label exists to give. Anything quieter than
+    // stalledAfterSec but past workingAfterSec is "working", not stalled.
+    test('working vs stalled thresholds', () {
+      final quiet = ChatTaskState.fold(
+          null, ev('snapshot', phase: 'executing', stepTotal: 2, silentSec: 75));
+      expect(quiet!.stalled, false);
+      expect(quiet.working, true);
+
+      final long = ChatTaskState.fold(
+          null, ev('snapshot', phase: 'executing', stepTotal: 2, silentSec: 200));
+      expect(long!.stalled, true);
+      expect(long.working, false);
+
+      final busy = ChatTaskState.fold(
+          null, ev('snapshot', phase: 'executing', stepTotal: 2, silentSec: 2));
+      expect(busy!.stalled, false);
+      expect(busy.working, false);
+
+      final paused = ChatTaskState.fold(null, ev('snapshot', phase: 'paused', silentSec: 400));
+      expect(paused!.stalled, false); // paused isn't "stalled"
+      expect(paused.working, false);
     });
   });
 

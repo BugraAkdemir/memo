@@ -33,6 +33,12 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
   // Local elapsed clock: base + wall-clock delta since the last snapshot.
   int _baseElapsed = 0;
   DateTime _baseAt = DateTime.now();
+
+  // Local quiet clock. The backend's silentSec rides along on task events,
+  // so it is frozen for exactly as long as the model is quiet — the one
+  // stretch it is meant to measure. Rebased on every real state change.
+  int _baseSilent = 0;
+  DateTime _baseSilentAt = DateTime.now();
   bool _expanded = true;
 
   @override
@@ -56,6 +62,13 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
       _baseElapsed = widget.state.elapsedSec;
       _baseAt = DateTime.now();
     }
+    if (widget.state.silentSec != old.state.silentSec ||
+        widget.state.log.length != old.state.log.length ||
+        widget.state.tokens != old.state.tokens ||
+        widget.state.phase != old.state.phase) {
+      _baseSilent = widget.state.silentSec;
+      _baseSilentAt = DateTime.now();
+    }
     if (widget.state.log.length != old.state.log.length) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_logScroll.hasClients) {
@@ -76,11 +89,24 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
   int get _elapsed =>
       _baseElapsed + DateTime.now().difference(_baseAt).inSeconds;
 
+  int get _silent =>
+      _baseSilent + DateTime.now().difference(_baseSilentAt).inSeconds;
+
+  bool _stalled(ChatTaskState t) =>
+      t.running && _silent >= ChatTaskState.stalledAfterSec;
+
+  bool _working(ChatTaskState t) =>
+      t.running &&
+      _silent >= ChatTaskState.workingAfterSec &&
+      !_stalled(t);
+
   String _fmtDuration(int s) {
-    if (s < 60) return '${s}s';
+    final min = L10n.t('dur_min_short');
+    final sec = L10n.t('dur_sec_short');
+    if (s < 60) return '$s$sec';
     final m = s ~/ 60;
     final r = s % 60;
-    return r == 0 ? '${m}dk' : '${m}dk ${r}s';
+    return r == 0 ? '$m$min' : '$m$min $r$sec';
   }
 
   /// Compact token readout for the header — "820", "1.4k", "23k". Approximate
@@ -167,15 +193,22 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
     final (dotColor, statusWord) = _status(c, t);
     return Row(
       children: [
-        _pulseDot(dotColor, alive: t.running && !t.stalled),
+        _pulseDot(dotColor, alive: t.running && !_stalled(t)),
         const SizedBox(width: 8),
         Text(statusWord,
             style: TextStyle(
                 fontSize: 12, fontWeight: FontWeight.w600, color: dotColor)),
-        if (t.stalled) ...[
+        if (_stalled(t)) ...[
           const SizedBox(width: 6),
-          Text(L10n.t('task_block_silent', {'n': '${t.silentSec}'}),
+          Text(L10n.t('task_block_silent', {'n': '$_silent'}),
               style: TextStyle(fontSize: 11, color: MemoTheme.warningOrange)),
+        ] else if (_working(t)) ...[
+          // The model call is not streamed, so a long generation looks
+          // identical to a hang. Say what is actually happening, with a
+          // ticking clock, instead of leaving the card silent.
+          const SizedBox(width: 6),
+          Text(L10n.t('task_block_thinking', {'d': _fmtDuration(t.silentSec)}),
+              style: TextStyle(fontSize: 11, color: c.textDim)),
         ],
         const Spacer(),
         Flexible(
@@ -216,7 +249,7 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
       return (MemoTheme.accent, L10n.t('task_phase_awaiting_plan'));
     }
     if (t.paused) return (MemoTheme.warningOrange, L10n.t('task_phase_paused'));
-    if (t.stalled) return (MemoTheme.warningOrange, L10n.t('task_block_maybe_stuck'));
+    if (_stalled(t)) return (MemoTheme.warningOrange, L10n.t('task_block_maybe_stuck'));
     if (t.phase == 'planning') {
       return (MemoTheme.accent, L10n.t('task_phase_planning'));
     }
@@ -371,6 +404,10 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
         return (Icons.check_circle_outline, MemoTheme.green);
       case 'tool':
         return (Icons.bolt, MemoTheme.of(context).textMuted);
+      case 'tool_start':
+        // A slow tool that has started but not finished — dimmer than the
+        // completed line that will follow it.
+        return (Icons.play_arrow_outlined, MemoTheme.of(context).textDim);
       case 'model':
         return (Icons.memory, MemoTheme.of(context).textMuted);
       case 'step_retry':

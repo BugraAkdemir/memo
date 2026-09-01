@@ -219,7 +219,7 @@ class TaskChatEvent {
   final int elapsedSec;
   final int silentSec; // seconds since the task last did something visible
   final int tokens; // running approx token estimate, only grows while running
-  final String kind; // for event == 'activity': plan_start|plan_done|step_start|step_done|step_retry|step_stuck|escalate|tool
+  final String kind; // for event == 'activity': plan_start|plan_done|step_start|step_done|step_retry|step_stuck|escalate|tool_start|tool
   final String text; // for event == 'activity': the human-readable line
 
   const TaskChatEvent({
@@ -265,7 +265,7 @@ class TaskChatEvent {
 
 /// One line in the live task activity log (v4.6.0 in-chat block).
 class TaskLogEntry {
-  final String kind; // plan_start | plan_done | step_start | step_done | step_retry | step_stuck | escalate | tool | paused | resumed | awaiting_plan | item_done | item_stuck
+  final String kind; // plan_start | plan_done | step_start | step_done | step_retry | step_stuck | escalate | tool_start | tool | paused | resumed | awaiting_plan | item_done | item_stuck
   final String text;
   final DateTime ts;
   const TaskLogEntry(this.kind, this.text, this.ts);
@@ -311,9 +311,26 @@ class ChatTaskState {
   bool get paused => phase == 'paused' || phase == 'waiting-user' || phase == 'waiting-limit';
   bool get finished => phase == 'done' || phase == 'failed' || phase == 'cancelled';
 
-  /// Whether the task looks quiet enough that it might be hung (not a hard
-  /// guarantee — a genuinely hard step can run for a minute+).
-  bool get stalled => running && silentSec >= 60;
+  /// Seconds of silence after which the card says "model is generating".
+  ///
+  /// Quiet is the normal state: the agent loop calls the model with
+  /// Stream:false (internal/agent/pipeline.go), so between two tool calls
+  /// there is no signal at all while the model works. Writing one medium
+  /// source file measured over two minutes of legitimate silence on a
+  /// free-tier model.
+  static const int workingAfterSec = 5;
+
+  /// Seconds of silence after which it might genuinely be hung. Was 60s,
+  /// which labelled every ordinary long generation "maybe stuck" — the
+  /// opposite of the reassurance the line exists to give.
+  static const int stalledAfterSec = 180;
+
+  /// NOTE: both getters read the *last snapshot's* silentSec, which only
+  /// advances when an event arrives — i.e. never during the silence they
+  /// describe. TaskActivityBlock therefore runs its own local clock off the
+  /// last state change and uses the two thresholds above directly.
+  bool get working => running && silentSec >= workingAfterSec && !stalled;
+  bool get stalled => running && silentSec >= stalledAfterSec;
 
   static const int _logCap = 60;
 

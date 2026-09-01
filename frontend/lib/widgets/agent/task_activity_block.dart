@@ -410,6 +410,11 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
         return (Icons.play_arrow_outlined, MemoTheme.of(context).textDim);
       case 'model':
         return (Icons.memory, MemoTheme.of(context).textMuted);
+      case 'waiting':
+        // The list's own chat was busy with another turn (chat_locks.go) —
+        // the worker turn is queued, not stalled. Same dim treatment as
+        // tool_start: informational, not a warning.
+        return (Icons.hourglass_empty, MemoTheme.of(context).textDim);
       case 'step_retry':
         return (Icons.refresh, MemoTheme.warningOrange);
       case 'step_stuck':

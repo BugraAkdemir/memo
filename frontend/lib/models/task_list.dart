@@ -219,7 +219,7 @@ class TaskChatEvent {
   final int elapsedSec;
   final int silentSec; // seconds since the task last did something visible
   final int tokens; // running approx token estimate, only grows while running
-  final String kind; // for event == 'activity': plan_start|plan_done|step_start|step_done|step_retry|step_stuck|escalate|tool_start|tool
+  final String kind; // for event == 'activity': plan_start|plan_done|step_start|step_done|step_retry|step_stuck|escalate|tool_start|tool|waiting
   final String text; // for event == 'activity': the human-readable line
 
   const TaskChatEvent({
@@ -265,7 +265,7 @@ class TaskChatEvent {
 
 /// One line in the live task activity log (v4.6.0 in-chat block).
 class TaskLogEntry {
-  final String kind; // plan_start | plan_done | step_start | step_done | step_retry | step_stuck | escalate | tool_start | tool | paused | resumed | awaiting_plan | item_done | item_stuck
+  final String kind; // plan_start | plan_done | step_start | step_done | step_retry | step_stuck | escalate | tool_start | tool | waiting | paused | resumed | awaiting_plan | item_done | item_stuck
   final String text;
   final DateTime ts;
   const TaskLogEntry(this.kind, this.text, this.ts);

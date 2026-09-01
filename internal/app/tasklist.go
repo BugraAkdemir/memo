@@ -218,6 +218,35 @@ func errIdleWorkerTurn(idle time.Duration) error {
 	return fmt.Errorf("işçi hatası: tur %s boyunca hiç çıktı üretmedi, takıldı sayıldı", idle)
 }
 
+// emitChatBusyProbe drops a "waiting" activity line when a worker turn is
+// about to queue behind another turn in the same chat, before it actually
+// does — the queueing itself happens silently inside SendMessageStreamTo
+// (lockChatStreamWait polls chat_locks.go's per-chat mutex with no callback
+// out). Found while reviewing this code, not from a live report: the queue
+// can legitimately run for minutes (chatLockWaitMax is 5), and until this,
+// nothing told the card that's what was happening — SilentSec just climbed
+// with no tool line and no "model generating" text either (that label is
+// keyed off silence *while running*, not off queueing), reading as a stall.
+//
+// The probe itself can't be wrong in the way that matters: if the lock is
+// free, it acquires and immediately releases it, so the real call right
+// after this just re-acquires a free lock — a harmless no-op. If it's held,
+// the chat was genuinely busy at this instant, which is exactly when the
+// "waiting" line is true. A race either way (freed a moment later, or taken
+// by someone else a moment later) only ever costs one redundant or missed
+// activity line, never correctness.
+func (a *App) emitChatBusyProbe(listID, chatID string) {
+	if listID == "" || a.taskloopEngine == nil {
+		return
+	}
+	if release, ok := a.lockChatStream(chatID); ok {
+		release()
+		return
+	}
+	a.taskloopEngine.EmitActivity(listID, "waiting",
+		a.t("Sohbet meşgul, sırada bekleniyor…", "Chat is busy, waiting in line…"))
+}
+
 func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 	return func(ctx context.Context, chatID, prompt string) (string, error) {
 		// SendMessageStreamTo (docs/plans/PLAN_chatid_refactor.md Faz 3)
@@ -252,6 +281,9 @@ func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 		// the loop reaches its first item, so fail-fast made every item die
 		// instantly with "işçi hatası: ⏳ Lütfen önceki cevap..." and the
 		// whole list fail in under two seconds (chat_locks.go).
+		//
+		a.emitChatBusyProbe(tokListID, chatID)
+
 		// Hard ceiling on silence. A worker turn is a whole agent run — model
 		// call, tool, model call — and any one of those can wedge: a
 		// run_command whose backgrounded child held the output pipes open

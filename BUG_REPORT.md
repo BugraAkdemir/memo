@@ -90,12 +90,12 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 1 (BUG-PLAN10 — sohbet modeli çalışan task için ayrıntılı YANLIŞ "bozuk" hikayesi uyduruyor) |
-| 🟡 MEDIUM | 2 (BUG-PLAN11 adım→madde eşleme + sayaç kaosu · BUG-PLAN12 canlı task aktivitesi sohbette yok) |
+| 🟡 MEDIUM | 3 (BUG-PLAN11 adım→madde eşleme + sayaç kaosu · BUG-PLAN12 canlı task aktivitesi sohbette yok · BUG-THINK1 Claude thinking hiç gösterilmiyor) |
 | 🟢 LOW | 1 (BUG-PLAN9 planı sohbetten onayla) |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 1 (BUG-PERM1 + e43627e/b9fc2eb — gerçek masaüstü doğrulaması) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 7 (PLAN1/2/3/4/5/6/7/8 — PLAN4 kod+analyze doğrulandı) |
-| **AÇIK TOPLAM** | **4** (hepsi kod değişikliği = testten sonra) |
+| **AÇIK TOPLAM** | **5** (hepsi kod değişikliği = testten sonra) |
 
 ---
 
@@ -275,6 +275,51 @@ testten sonra" — sadece not.
   sohbete köprülemek yeterli olabilir.
 - **Öncelik:** orta-yüksek (BUG-PLAN9 + BUG-PLAN10'un şemsiye çözümü; "sohbetten
   yönet" vaadinin özü).
+
+### BUG-THINK1 — Claude'un extended thinking içeriği hiçbir zaman gösterilmiyor, sessizce çöpe gidiyor
+
+- **Bulgu (2026-09-01, kullanıcı canlı testte):** kullanıcı "diğer app'lerdeki
+  gibi düşünmeyi göster/gizle toggle'ı çalışıyor mu" diye sordu (bir
+  sohbette görünen garip metni "model kendi düşüncesini mi basıyor" sanıp).
+  O akşamki asıl olay bu değildi (zayıf/ücretsiz bir Gemma modeli Memo'nun
+  kendi persona sistem promptunu — [identity.go:264](internal/identity/identity.go:264)
+  — parafraz ederek geri okumuştu, gerçek bir "thinking sızıntısı" değil,
+  model kalitesi sorunu). **Ama araştırırken ayrı, gerçek bir hata bulundu.**
+- **Kök neden:** Flutter tarafı zaten **tam bir** collapsible "düşünme"
+  bölümü içeriyor — `ChatMessage.thinking`/`hasThinking`,
+  `StreamChunk.thinking` ([chat.dart](frontend/lib/models/chat.dart)),
+  `_ThinkingSection` + expand/collapse state
+  ([chat_message_list.dart](frontend/lib/widgets/chat_message_list.dart)).
+  `claude.go`, `req.EffortLevel` seçiliyken Anthropic'e gerçekten
+  `thinking:{type:"adaptive"}` gönderiyor
+  ([claude.go:478](internal/provider/claude.go:478)) — yani kullanıcı bir
+  effort level seçtiğinde thinking token'ları **gerçekten harcanıyor**. Ama
+  gelen yanıttaki `"thinking"` tipi content block'ları hem
+  `ChatCompletion` (satır 225-243) hem `ChatCompletionStream`/`processSSE`
+  (content_block_delta ayrıştırması yalnızca `delta.text`'e bakıyor,
+  `delta.type=="thinking_delta"`/`delta.thinking`'i hiç görmüyor) tarafında
+  **hiç işlenmiyor** — switch/case'de yok, sessizce atlanıyor. `claudeBlock`
+  struct'ında `Thinking` alanı bile yok, `ChatResponse`'ta da yok. Backend
+  katmanının hiçbir yerinde (`internal/app/*.go` dahil) `.Thinking` okunan
+  tek bir satır yok — grep ile doğrulandı.
+- **Etki:** kullanıcı Claude'da bir effort level seçtiği her an, gerçek para
+  ödeyip gerçek thinking token'ı harcıyor ama bunun karşılığında **hiçbir
+  zaman** hiçbir şey görmüyor — frontend'deki toggle tamamen ölü, hiçbir
+  provider için hiç çalışmamış. Gemini tarafında da benzer bir eksik var
+  (`geminiThinkingConfig`'te `includeThoughts` hiç gönderilmiyor,
+  `geminiPart`'ta `Thought` alanı yok) ama Gemini şu an zaten thought
+  summary talep etmediği için aktif bir sızıntı/kayıp değil, sadece
+  kullanılmayan potansiyel.
+- **İstenen:** `claudeBlock`'a `Thinking`, `ChatResponse`'a `Thinking`
+  alanı eklenip her iki yol (stream + non-stream) `"thinking"` block
+  tipini/`thinking_delta`'yı yakalayacak; `internal/app` katmanının bunu
+  `api.StreamChunk`/persist edilen `ChatMessage`'a köprülemesi lazım
+  (frontend tarafı zaten hazır, hiçbir Dart değişikliği gerekmiyor).
+- **Öncelik:** ORTA — hiçbir şeyi bozmuyor, kimseyi crash etmiyor, veri
+  kaybı yok; ama effort level seçen her Claude kullanıcısı için gerçek
+  parayla satın alınan bir özellik tamamen çalışmıyor. **Kullanıcı talimatı:
+  PR #19 merge olana kadar dokunulmayacak** (o an aktif canlı test
+  sürüyordu, backend restart'ı test oturumunu bölerdi).
 
 ### BUG-PLAN11 — planexec adım→madde eşlemesi tutmuyor + sayaçlar her ekranda farklı
 

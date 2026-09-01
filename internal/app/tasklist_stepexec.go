@@ -68,52 +68,89 @@ func (a *App) runPlanStep(ctx context.Context, listID string, step taskloop.Plan
 	return strings.TrimSpace(out), nil
 }
 
-// toolVerbTR maps an agent tool name to a short Turkish verb for the live
-// activity block — the Go counterpart of chat_message_list.dart's
-// _AgentStatusBadge._label.
-var toolVerbTR = map[string]string{
-	"read_file":            "Dosya okudu",
-	"write_file":           "Dosya yazdı",
-	"edit_file":            "Dosya düzenledi",
-	"insert_line":          "Satır ekledi",
-	"delete_lines":         "Sildi",
-	"delete_file":          "Dosya sildi",
-	"run_command":          "Komut",
-	"run_command_readonly": "Komut (salt-okunur)",
-	"search_files":         "Arama yaptı",
-	"list_directory":       "Klasör listeledi",
-	"get_file_info":        "Dosya bilgisi",
-	"change_directory":     "Klasör değiştirdi",
-	"share_file":           "Dosya paylaştı",
-	"web_search":           "Web araması",
-	"fetch_page":           "Sayfa okudu",
+// toolVerb maps an agent tool name to a short verb for the live activity
+// block — the Go counterpart of chat_message_list.dart's _AgentStatusBadge.
+// TR+EN like every other user-visible backend string (AGENTS.md #8); these
+// lines are pushed straight into the Flutter task card, so a Turkish-only
+// map would have been a hardcoded string in the UI.
+var toolVerbs = map[string][2]string{
+	"read_file":            {"Dosya okudu", "Read a file"},
+	"write_file":           {"Dosya yazdı", "Wrote a file"},
+	"edit_file":            {"Dosya düzenledi", "Edited a file"},
+	"insert_line":          {"Satır ekledi", "Inserted a line"},
+	"delete_lines":         {"Sildi", "Deleted lines"},
+	"delete_file":          {"Dosya sildi", "Deleted a file"},
+	"run_command":          {"Komut", "Command"},
+	"run_command_readonly": {"Komut (salt-okunur)", "Command (read-only)"},
+	"search_files":         {"Arama yaptı", "Searched files"},
+	"list_directory":       {"Klasör listeledi", "Listed a folder"},
+	"get_file_info":        {"Dosya bilgisi", "File info"},
+	"change_directory":     {"Klasör değiştirdi", "Changed folder"},
+	"share_file":           {"Dosya paylaştı", "Shared a file"},
+	"web_search":           {"Web araması", "Web search"},
+	"fetch_page":           {"Sayfa okudu", "Read a page"},
 	// Task-loop and assistant tools a worker turn can reach. Without an entry
 	// here the activity line shows the bare tool id ("edit_task_md"), which is
 	// what the live task card used to print.
-	"edit_task_md":        "Task.md güncelledi",
-	"create_task_md":      "Task.md oluşturdu",
-	"get_task_status":     "Görev durumuna baktı",
-	"pause_task":          "Görevi duraklattı",
-	"resume_task":         "Görevi sürdürdü",
-	"create_routine":      "Rutin oluşturdu",
-	"list_routines":       "Rutinleri listeledi",
-	"cancel_routine":      "Rutini iptal etti",
-	"get_calendar_events": "Takvime baktı",
-	"whatsapp_send":       "WhatsApp mesajı gönderdi",
-	"whatsapp_messages":   "WhatsApp mesajlarını okudu",
-	"whatsapp_latest":     "Son WhatsApp mesajları",
-	"whatsapp_search":     "WhatsApp'ta aradı",
-	"configure_provider":  "Sağlayıcı ayarını değiştirdi",
-	"read_env":            "Ortam değişkeni okudu",
+	"edit_task_md":        {"Task.md güncelledi", "Updated Task.md"},
+	"create_task_md":      {"Task.md oluşturdu", "Created Task.md"},
+	"get_task_status":     {"Görev durumuna baktı", "Checked task status"},
+	"pause_task":          {"Görevi duraklattı", "Paused the task"},
+	"resume_task":         {"Görevi sürdürdü", "Resumed the task"},
+	"create_routine":      {"Rutin oluşturdu", "Created a routine"},
+	"list_routines":       {"Rutinleri listeledi", "Listed routines"},
+	"cancel_routine":      {"Rutini iptal etti", "Cancelled a routine"},
+	"get_calendar_events": {"Takvime baktı", "Checked the calendar"},
+	"whatsapp_send":       {"WhatsApp mesajı gönderdi", "Sent a WhatsApp message"},
+	"whatsapp_messages":   {"WhatsApp mesajlarını okudu", "Read WhatsApp messages"},
+	"whatsapp_latest":     {"Son WhatsApp mesajları", "Latest WhatsApp messages"},
+	"whatsapp_search":     {"WhatsApp'ta aradı", "Searched WhatsApp"},
+	"configure_provider":  {"Sağlayıcı ayarını değiştirdi", "Changed a provider setting"},
+	"read_env":            {"Ortam değişkeni okudu", "Read an env var"},
 }
 
-// emitStepToolActivity forwards one coder/planner tool call into the live task
-// activity stream. Only finished results/errors — tool_executing and permission
-// events are noise for a "what did it do" log.
+// slowTools are the tools whose *execution* can take real time (as opposed to
+// a file write, which returns instantly once the model has finished producing
+// its content). Only these get a "starting" line — pairing start/finish on an
+// instant tool would double the log without telling the user anything.
+var slowTools = map[string]bool{
+	"run_command":          true,
+	"run_command_readonly": true,
+	"web_search":           true,
+	"fetch_page":           true,
+	"search_files":         true,
+	"whatsapp_send":        true,
+	"whatsapp_search":      true,
+}
+
+func (a *App) toolVerb(name string) string {
+	if v, ok := toolVerbs[name]; ok {
+		return a.t(v[0], v[1])
+	}
+	return name
+}
+
+// emitStepToolActivity forwards one coder/worker tool call into the live task
+// activity stream.
+//
+// Finished results and errors always produce a line. A *starting* line is
+// emitted only for tools whose execution can actually take a while
+// (slowTools) — for those, the pair is the only thing standing between the
+// user and "it looks frozen"; for an instant tool like write_file the pair
+// would land in the same second and just double the log.
 func (a *App) emitStepToolActivity(listID string, ev agent.AgentEvent) {
 	if a.taskloopEngine == nil {
 		return
 	}
+
+	if ev.Type == agent.EventToolExecuting {
+		if !slowTools[ev.ToolName] {
+			return
+		}
+		a.taskloopEngine.EmitActivity(listID, "tool_start", a.toolLine(ev)+" …")
+		return
+	}
+
 	if ev.Type != agent.EventToolResult && ev.Type != agent.EventToolError {
 		return
 	}
@@ -123,18 +160,20 @@ func (a *App) emitStepToolActivity(listID string, ev agent.AgentEvent) {
 	// planner/coder works (a "not frozen" signal, not a billing figure).
 	a.taskloopEngine.AddTokens(listID,
 		taskloop.EstTokens(string(ev.Args))+taskloop.EstTokens(ev.Result)+taskloop.EstTokens(ev.Content))
-	verb := toolVerbTR[ev.ToolName]
-	if verb == "" {
-		verb = ev.ToolName
-	}
-	line := verb
-	if arg := shortToolArg(ev.Args); arg != "" {
-		line = verb + ": " + arg
-	}
+	line := a.toolLine(ev)
 	if ev.Type == agent.EventToolError {
 		line = "⚠ " + line
 	}
 	a.taskloopEngine.EmitActivity(listID, "tool", line)
+}
+
+// toolLine renders "<verb>: <short arg>" for one tool event.
+func (a *App) toolLine(ev agent.AgentEvent) string {
+	line := a.toolVerb(ev.ToolName)
+	if arg := shortToolArg(ev.Args); arg != "" {
+		line += ": " + arg
+	}
+	return line
 }
 
 // shortToolArg pulls a compact identifier (a path, a command) out of an agent

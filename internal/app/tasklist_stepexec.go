@@ -181,7 +181,21 @@ func (a *App) emitToolActivity(listID, role string, ev agent.AgentEvent) {
 		taskloop.EstTokens(string(ev.Args))+taskloop.EstTokens(ev.Result)+taskloop.EstTokens(ev.Content))
 	line := prefix + a.toolLine(ev)
 	if ev.Type == agent.EventToolError {
-		line = "⚠ " + line
+		// toolVerbs stores completed-action phrasing ("Task.md oluşturdu" /
+		// "Created Task.md") — reusing it unmodified for a failed call reads
+		// as if the action had succeeded, with only the ⚠ glyph to notice
+		// otherwise. Live-observed: create_task_md failed with "relative
+		// path but this chat has no project folder" and the task card still
+		// said "Task.md oluşturdu" — a real error read as a success. Lead
+		// with an explicit failure word and the real reason instead.
+		reason := ev.Error
+		if len(reason) > 120 {
+			reason = reason[:120] + "…"
+		}
+		line = "⚠ " + a.t("Başarısız", "Failed") + " — " + prefix + a.toolVerb(ev.ToolName)
+		if reason != "" {
+			line += ": " + reason
+		}
 	}
 	a.taskloopEngine.EmitActivity(listID, "tool", line)
 }

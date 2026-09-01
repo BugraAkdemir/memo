@@ -783,11 +783,23 @@ void main() {
       expect(ProviderDefaults.needsApiKey('openai'), true);
       expect(ProviderDefaults.needsApiKey('ollama'), false);
       expect(ProviderDefaults.needsApiKey('custom'), false);
+      expect(ProviderDefaults.needsApiKey('custom-anthropic'), false);
     });
 
-    test('needsBaseUrl returns true only for custom', () {
+    // custom-anthropic (any endpoint speaking Anthropic's own Messages API
+    // wire format, e.g. the user's own proxy) needs the same "no default
+    // endpoint" treatment as custom (OpenAI-compatible) — both must show
+    // the Base URL field and reject a missing one the same way.
+    test('needsBaseUrl returns true for both custom provider types', () {
       expect(ProviderDefaults.needsBaseUrl('custom'), true);
+      expect(ProviderDefaults.needsBaseUrl('custom-anthropic'), true);
       expect(ProviderDefaults.needsBaseUrl('openai'), false);
+      expect(ProviderDefaults.needsBaseUrl('claude'), false);
+    });
+
+    test('displayNames has an entry for custom-anthropic', () {
+      expect(ProviderDefaults.displayNames['custom-anthropic'], isNotNull);
+      expect(ProviderDefaults.displayNames['custom-anthropic'], isNot(equals('custom-anthropic')));
     });
   });
 

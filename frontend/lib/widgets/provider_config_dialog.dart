@@ -54,6 +54,7 @@ class _ProviderConfigDialogState
     'codex-cli',
     'ollama',
     'custom',
+    'custom-anthropic',
   ];
 
   @override
@@ -615,17 +616,17 @@ class _ProviderConfigDialogState
                 const SizedBox(height: 16),
 
                 // ── Step 2: API key (the part that matters) ──
-                if (needsKey || _type == 'custom') ...[
+                if (needsKey || ProviderDefaults.needsBaseUrl(_type)) ...[
                   TextField(
                     controller: _apiKeyCtrl,
                     obscureText: _obscureKey,
                     autofocus: !isEditing && needsKey,
                     decoration: InputDecoration(
-                      labelText: _type == 'custom'
+                      labelText: ProviderDefaults.needsBaseUrl(_type)
                           ? L10n.t('api_key_optional')
                           : L10n.t('api_key_step2'),
                       border: const OutlineInputBorder(),
-                      helperText: _type == 'custom'
+                      helperText: ProviderDefaults.needsBaseUrl(_type)
                           ? L10n.t('api_key_custom_hint')
                           : L10n.t('api_key_stored'),
                       prefixIcon: const Icon(Icons.key, size: 20),
@@ -679,13 +680,15 @@ class _ProviderConfigDialogState
                 ],
 
                 // ── Custom endpoint: Base URL + label up front (no defaults) ──
-                if (_type == 'custom') ...[
+                if (ProviderDefaults.needsBaseUrl(_type)) ...[
                   TextField(
                     controller: _baseUrlCtrl,
                     decoration: InputDecoration(
                       labelText: L10n.t('base_url'),
                       border: const OutlineInputBorder(),
-                      helperText: L10n.t('base_url_openai_hint'),
+                      helperText: _type == 'custom-anthropic'
+                          ? L10n.t('base_url_anthropic_hint')
+                          : L10n.t('base_url_openai_hint'),
                       prefixIcon: const Icon(Icons.link, size: 20),
                     ),
                   ),
@@ -708,11 +711,11 @@ class _ProviderConfigDialogState
                       child: TextField(
                         controller: _modelCtrl,
                         decoration: InputDecoration(
-                          labelText: _type == 'custom'
+                          labelText: ProviderDefaults.needsBaseUrl(_type)
                               ? L10n.t('model_label')
                               : (needsKey ? L10n.t('model_step3') : L10n.t('model_label')),
                           border: const OutlineInputBorder(),
-                          helperText: _type == 'custom'
+                          helperText: ProviderDefaults.needsBaseUrl(_type)
                               ? L10n.t('model_custom_hint')
                               : L10n.t('model_default_hint'),
                         ),
@@ -784,7 +787,7 @@ class _ProviderConfigDialogState
                     children: [
                       // For custom providers these two live in the main flow
                       // (above) since they're required, so don't duplicate them.
-                      if (_type != 'custom') ...[
+                      if (!ProviderDefaults.needsBaseUrl(_type)) ...[
                         TextField(
                           controller: _nameCtrl,
                           decoration: InputDecoration(

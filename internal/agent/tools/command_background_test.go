@@ -44,12 +44,10 @@ func TestRunCommand_BackgroundChildDoesNotBlockForever(t *testing.T) {
 		if !strings.Contains(out, "started") {
 			t.Fatalf("output lost the command's own stdout: %q", out)
 		}
-		if !strings.Contains(out, "background process") {
-			t.Fatalf("output should tell the model a child is still running, got: %q", out)
-		}
+
 	case err := <-errCh:
 		t.Fatalf("RunCommand returned an error for a normal backgrounded command: %v", err)
-	case <-time.After(CommandWaitDelay + 20*time.Second):
+	case <-time.After(20 * time.Second):
 		t.Fatal("RunCommand blocked on a backgrounded child — the pipes are still held open")
 	}
 }
@@ -69,9 +67,6 @@ func TestRunCommand_ForegroundOutputUnaffected(t *testing.T) {
 	}
 	if !strings.Contains(out, "hello") || !strings.Contains(out, "oops") {
 		t.Fatalf("stdout/stderr not both captured: %q", out)
-	}
-	if strings.Contains(out, "background process") {
-		t.Fatalf("a plain command must not be reported as leaving a background process: %q", out)
 	}
 }
 
@@ -97,5 +92,47 @@ func TestRunCommand_TimeoutStillReportsTimeout(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 20*time.Second {
 		t.Fatalf("timeout took %s to surface", elapsed)
+	}
+}
+
+// TestRunCommand_DevNullRedirectAllowed: "2>/dev/null" is ordinary shell
+// idiom, not a sandbox escape. Rejecting it cost a live task three model
+// round-trips in a row, each one re-issuing the same command.
+func TestRunCommand_DevNullRedirectAllowed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell")
+	}
+	dir := t.TempDir()
+	args, _ := json.Marshal(RunCommandArgs{Command: `echo keep; echo drop >/dev/null 2>/dev/null`})
+
+	out, err := RunCommand(context.Background(), args, dir, nil)
+	if err != nil {
+		t.Fatalf("RunCommand() rejected a /dev/null redirect: %v", err)
+	}
+	if !strings.Contains(out, "keep") {
+		t.Fatalf("stdout lost: %q", out)
+	}
+	if strings.Contains(out, "drop") {
+		t.Fatalf("the redirect did not take effect: %q", out)
+	}
+}
+
+// TestRunCommand_RealDevicesStillBlocked: the allowlist is exactly the
+// harmless character devices — nothing else under /dev opens up.
+func TestRunCommand_RealDevicesStillBlocked(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX paths")
+	}
+	dir := t.TempDir()
+	for _, cmd := range []string{
+		`cat /dev/sda`,
+		`cat /dev/mem`,
+		`cat /etc/shadow`,
+		`cat ~/.ssh/id_rsa`,
+	} {
+		args, _ := json.Marshal(RunCommandArgs{Command: cmd})
+		if _, err := RunCommand(context.Background(), args, dir, nil); err == nil {
+			t.Fatalf("%q was allowed through the sandbox", cmd)
+		}
 	}
 }

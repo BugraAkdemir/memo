@@ -40,6 +40,12 @@ func TestExecuteToolCall_SafeToolRunsWithoutPrompt(t *testing.T) {
 	if len(events) != 2 || events[0].Type != EventToolExecuting || events[1].Type != EventToolResult {
 		t.Errorf("expected [tool_executing, tool_result], got %+v", events)
 	}
+	// The executing event must carry Args: the live task card renders it as
+	// the "starting" line for slow tools and printed a bare "Komut …" while
+	// this was empty.
+	if len(events) > 0 && len(events[0].Args) == 0 {
+		t.Error("tool_executing carried no Args — the starting line has nothing to show")
+	}
 }
 
 func TestExecuteToolCall_UnknownToolReturnsError(t *testing.T) {

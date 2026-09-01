@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -186,6 +187,10 @@ func commandTargetsProtectedPath(command, workingDir, basePath string) (string, 
 			continue // inside the project directory — allowed
 		}
 
+		if isHarmlessDevice(resolved) {
+			continue
+		}
+
 		cmp := resolved
 		if runtime.GOOS == "windows" {
 			cmp = strings.ToLower(resolved)
@@ -201,6 +206,37 @@ func commandTargetsProtectedPath(command, workingDir, basePath string) (string, 
 		}
 	}
 	return "", false
+}
+
+// harmlessDevices are the character devices that appear in ordinary shell
+// idiom and carry no data the sandbox is protecting. /dev/ as a whole stays
+// blocked (/dev/sda, /dev/mem, /dev/input/*), but rejecting "2>/dev/null"
+// was pure friction: seen live, a task's model wrote a perfectly normal
+// "pkill -f x 2>/dev/null; ..." three times in a row, each rejected with
+// "command references /dev/null, outside the project directory", burning
+// three model round-trips before it gave up and dropped the redirect.
+var harmlessDevices = map[string]bool{
+	"/dev/null":    true,
+	"/dev/zero":    true,
+	"/dev/full":    true,
+	"/dev/random":  true,
+	"/dev/urandom": true,
+	"/dev/stdin":   true,
+	"/dev/stdout":  true,
+	"/dev/stderr":  true,
+	"/dev/tty":     true,
+}
+
+func isHarmlessDevice(resolved string) bool {
+	if runtime.GOOS == "windows" {
+		return false
+	}
+	// /dev/fd/N and /proc/self/fd/N are the same class of thing: the process's
+	// own descriptors, not somebody else's data.
+	if strings.HasPrefix(resolved, "/dev/fd/") || strings.HasPrefix(resolved, "/proc/self/fd/") {
+		return true
+	}
+	return harmlessDevices[resolved]
 }
 
 // CheckBlacklist exposes the same dangerous-command guard run_command uses,
@@ -308,6 +344,84 @@ func PrepareCommand(ctx context.Context, command, workingDir string) (cmd *exec.
 	cmd.Cancel = func() error { return killProcessGroup(cmd) }
 
 	return cmd, execCtx, cancel
+}
+
+// RunCapturingOutput runs cmd and returns what it wrote to stdout/stderr.
+//
+// The capture goes through temp *files*, not bytes.Buffers, and that is the
+// whole point. Assigning an io.Writer to cmd.Stdout makes os/exec create an
+// OS pipe plus a copier goroutine, and Wait blocks until every writer closes
+// the pipe — including a grandchild the command backgrounded. Live, a model
+// testing the app it had just written ran
+//
+//	python3 blog.py 8080 &
+//
+// and run_command never returned: bash had exited, but the server held the
+// pipe, and the context deadline could only kill the shell that was already
+// gone. WaitDelay (set in PrepareCommand) puts a ceiling on that, but it
+// unblocks Wait by *closing* the pipes, which then kills the background
+// process with SIGPIPE the first time it logs a request — turning "your
+// server is running" into "your server died a second later".
+//
+// An *os.File is passed to the child as a plain fd: no pipe, no copier, so
+// Wait returns as soon as the shell itself exits, and whatever the background
+// process keeps writing lands harmlessly in a file nobody reads. The files are
+// unlinked before returning; a child still holding one writes into an unlinked
+// inode that disappears when it exits.
+func RunCapturingOutput(cmd *exec.Cmd) (stdout, stderr string, runErr error) {
+	outF, errF, cleanup, err := newCaptureFiles()
+	if err != nil {
+		// Fall back to in-memory capture rather than failing the tool call.
+		var ob, eb bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &ob, &eb
+		runErr = cmd.Run()
+		return ob.String(), eb.String(), runErr
+	}
+	defer cleanup()
+
+	cmd.Stdout = outF
+	cmd.Stderr = errF
+	runErr = cmd.Run()
+
+	return readCapture(outF), readCapture(errF), runErr
+}
+
+// newCaptureFiles creates the two temp files RunCapturingOutput writes into,
+// already unlinked from the directory tree on Unix so nothing is left behind
+// even if this process dies.
+func newCaptureFiles() (outF, errF *os.File, cleanup func(), err error) {
+	outF, err = os.CreateTemp("", "memo-cmd-out-*")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	errF, err = os.CreateTemp("", "memo-cmd-err-*")
+	if err != nil {
+		outF.Close()
+		os.Remove(outF.Name())
+		return nil, nil, nil, err
+	}
+	return outF, errF, func() {
+		outName, errName := outF.Name(), errF.Name()
+		outF.Close()
+		errF.Close()
+		os.Remove(outName)
+		os.Remove(errName)
+	}, nil
+}
+
+// readCapture reads a capture file from the start, capped so a runaway
+// background writer can't be slurped into memory whole. FormatCommandOutput
+// applies the real, user-facing truncation on top.
+func readCapture(f *os.File) string {
+	const maxCapture = 10 * 1024 * 1024
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return ""
+	}
+	b, err := io.ReadAll(io.LimitReader(f, maxCapture))
+	if err != nil {
+		return string(b)
+	}
+	return string(b)
 }
 
 // FormatCommandOutput renders captured stdout/stderr into the truncated
@@ -419,11 +533,7 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 	cmd, execCtx, cancel := PrepareCommand(ctx, args.Command, workingDir)
 	defer cancel()
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	runErr := cmd.Run()
+	stdout, stderr, runErr := RunCapturingOutput(cmd)
 	timedOut := execCtx.Err() == context.DeadlineExceeded
 
 	// The command finished but left a background process holding its pipes
@@ -431,11 +541,10 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 	// it as what it is, with the output captured so far, instead of surfacing
 	// Go's internal "WaitDelay expired" as a command error.
 	if errors.Is(runErr, exec.ErrWaitDelay) && !timedOut {
-		out := FormatCommandOutput(nil, false, stdout.String(), stderr.String())
-		return BackgroundProcessNote + "\n" + out, nil
+		return BackgroundProcessNote + "\n" + FormatCommandOutput(nil, false, stdout, stderr), nil
 	}
 
-	return FormatCommandOutput(runErr, timedOut, stdout.String(), stderr.String()), nil
+	return FormatCommandOutput(runErr, timedOut, stdout, stderr), nil
 }
 
 // readOnlyCommandAllowlist is the set of command prefixes a read-only

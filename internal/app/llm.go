@@ -292,8 +292,22 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		start := time.Now()
 		agentEvents := &agentEventLog{}
 
+		// A Self-Driving worker turn mirrors its tool calls into the list's
+		// live activity block, the same way the planner/executor mode's coder
+		// step does (emitStepToolActivity). Without this the task card showed
+		// nothing but "planning" / "Model: …" for minutes at a time while the
+		// worker was in fact reading and writing files — indistinguishable
+		// from a hang, which is exactly how users read it.
+		taskListID := ""
+		if trc := taskRunConfigFromCtx(ctx); trc != nil {
+			taskListID = trc.listID
+		}
+
 		streamCh, err := exec.RunStream(ctx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
 			agentEvents.add(ev)
+			if taskListID != "" {
+				a.emitStepToolActivity(taskListID, ev)
+			}
 			chunkData, _ := json.Marshal(ev)
 			trySend(ctx, outCh, api.StreamChunk{
 				Content:      string(chunkData),

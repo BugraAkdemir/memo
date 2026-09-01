@@ -72,17 +72,39 @@ func (a *App) runPlanStep(ctx context.Context, listID string, step taskloop.Plan
 // activity block — the Go counterpart of chat_message_list.dart's
 // _AgentStatusBadge._label.
 var toolVerbTR = map[string]string{
-	"read_file":      "Dosya okudu",
-	"write_file":     "Dosya yazdı",
-	"edit_file":      "Dosya düzenledi",
-	"insert_line":    "Satır ekledi",
-	"delete_lines":   "Sildi",
-	"delete_file":    "Dosya sildi",
-	"run_command":    "Komut",
-	"search_files":   "Arama yaptı",
-	"list_directory": "Klasör listeledi",
-	"web_search":     "Web araması",
-	"fetch_page":     "Sayfa okudu",
+	"read_file":            "Dosya okudu",
+	"write_file":           "Dosya yazdı",
+	"edit_file":            "Dosya düzenledi",
+	"insert_line":          "Satır ekledi",
+	"delete_lines":         "Sildi",
+	"delete_file":          "Dosya sildi",
+	"run_command":          "Komut",
+	"run_command_readonly": "Komut (salt-okunur)",
+	"search_files":         "Arama yaptı",
+	"list_directory":       "Klasör listeledi",
+	"get_file_info":        "Dosya bilgisi",
+	"change_directory":     "Klasör değiştirdi",
+	"share_file":           "Dosya paylaştı",
+	"web_search":           "Web araması",
+	"fetch_page":           "Sayfa okudu",
+	// Task-loop and assistant tools a worker turn can reach. Without an entry
+	// here the activity line shows the bare tool id ("edit_task_md"), which is
+	// what the live task card used to print.
+	"edit_task_md":        "Task.md güncelledi",
+	"create_task_md":      "Task.md oluşturdu",
+	"get_task_status":     "Görev durumuna baktı",
+	"pause_task":          "Görevi duraklattı",
+	"resume_task":         "Görevi sürdürdü",
+	"create_routine":      "Rutin oluşturdu",
+	"list_routines":       "Rutinleri listeledi",
+	"cancel_routine":      "Rutini iptal etti",
+	"get_calendar_events": "Takvime baktı",
+	"whatsapp_send":       "WhatsApp mesajı gönderdi",
+	"whatsapp_messages":   "WhatsApp mesajlarını okudu",
+	"whatsapp_latest":     "Son WhatsApp mesajları",
+	"whatsapp_search":     "WhatsApp'ta aradı",
+	"configure_provider":  "Sağlayıcı ayarını değiştirdi",
+	"read_env":            "Ortam değişkeni okudu",
 }
 
 // emitStepToolActivity forwards one coder/planner tool call into the live task

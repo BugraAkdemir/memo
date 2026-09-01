@@ -1006,8 +1006,18 @@ class _ModelBrowserDialogState extends State<_ModelBrowserDialog> {
     });
   }
 
-  String _priceStr(double p) {
-    if (p == 0) return L10n.t('free');
+  // isFree is authoritative — pass it rather than inferring "free" from
+  // price==0. OpenCode Zen's catalog carries no numeric price at all (every
+  // model's prompt_price is 0.0 from the backend, see fetchOpenCodeZenModels'
+  // doc comment); its real free/paid signal is the "-free" id suffix, in
+  // is_free. Reading price==0 as "free" for that provider mislabeled every
+  // genuinely paid OpenCode Zen model as "Free" in this subtitle, while its
+  // own leading icon (driven by is_free) correctly showed the paid/orange
+  // warning icon right next to that text — the two contradicted each other
+  // for every paid model in the list.
+  String _priceStr(double p, bool isFree) {
+    if (isFree) return L10n.t('free');
+    if (p <= 0) return L10n.t('price_unknown');
     if (p < 0.000001) return '\$${p.toStringAsExponential(1)}/tkn';
     return '\$${p.toStringAsFixed(7)}/tkn';
   }
@@ -1096,7 +1106,7 @@ class _ModelBrowserDialogState extends State<_ModelBrowserDialog> {
                       [
                         if (name != id) name,
                         if (ctxLen != null && ctxLen > 0) _contextStr(ctxLen),
-                        _priceStr(promptPrice),
+                        _priceStr(promptPrice, isFree),
                       ].join(' · '),
                       style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                       maxLines: 1,

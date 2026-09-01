@@ -393,10 +393,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                           child: Wrap(
                             spacing: 6,
                             runSpacing: 4,
-                            children: widget.message.agentEvents!.map((e) {
-                              if (e is AgentEvent) {
-                                return _AgentStatusBadge(event: e);
-                              }
+                            children: _visibleToolBadges(widget.message.agentEvents!)
+                                .map((e) {
+                              if (e is AgentEvent) return _AgentStatusBadge(event: e);
                               if (e is Map<String, dynamic>) {
                                 return _AgentStatusBadge(event: AgentEvent.fromJson(e));
                               }
@@ -998,6 +997,43 @@ class _MemoryUsedIndicator extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Collapses one raw agentEvents list into the badges actually worth
+/// showing: one per real tool call, not one per raw pipeline event.
+///
+/// pipeline.go's tool loop (internal/agent/pipeline.go) always emits
+/// EventToolExecuting immediately followed by EventToolResult or
+/// EventToolError for the same call before moving to the next one — never
+/// interleaved, confirmed by reading the loop (a plain sequential `for`,
+/// not concurrent). So every stored "executing" that has a completion event
+/// right after it is the *same call*, already resolved, and the two used to
+/// render as two separate badges side by side for one action — one call to
+/// list_directory read as two list_directory badges, two calls to
+/// get_file_info (both erroring) read as four. This was a real, live,
+/// reproducible confusion found by driving the app directly, not a
+/// hypothetical: it looks exactly like the model repeated a tool call it
+/// didn't.
+///
+/// A raw "executing" with nothing after it is genuinely still in flight (or
+/// was interrupted mid-stream, per _AgentStatusBadge's own isInterrupted
+/// comment below) — that one has no pair to collapse into, so it stays.
+List<dynamic> _visibleToolBadges(List<dynamic> raw) {
+  const completions = {'tool_result', 'tool_error'};
+  final out = <dynamic>[];
+  for (var i = 0; i < raw.length; i++) {
+    final e = raw[i];
+    final type = e is AgentEvent ? e.type : (e is Map ? e['type'] as String? : null);
+    if (type == 'tool_executing' && i + 1 < raw.length) {
+      final next = raw[i + 1];
+      final nextType = next is AgentEvent ? next.type : (next is Map ? next['type'] as String? : null);
+      if (completions.contains(nextType)) {
+        continue; // the next iteration renders the real, final-state badge
+      }
+    }
+    out.add(e);
+  }
+  return out;
 }
 
 class _AgentStatusBadge extends StatelessWidget {

@@ -552,14 +552,28 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 // string, so "go test ./..." is allowed but "go run x.go" and
 // "gofmt -w ." are not. This is not a syscall sandbox — `go test` can still
 // write files — it only removes the obvious mutation paths.
+//
+// "python3 <script>.py" / "python3 -c ..." are deliberately NOT here: either
+// one is arbitrary code execution disguised as "running a test", which is
+// exactly what the read-only boundary exists to stop. A test-runner that
+// wrote its own check as a bare script must be told to invoke it through
+// pytest/unittest instead, not have the script itself allowlisted.
 var readOnlyCommandAllowlist = []string{
 	"go test", "go build", "go vet", "go doc", "go list", "go env",
 	"git status", "git diff", "git log", "git show", "git branch", "git blame",
 	"ls", "cat", "head", "tail", "wc", "file", "stat", "tree",
-	"rg", "grep", "find", "fd", "which",
+	"rg", "grep", "find", "fd", "which", "lsof",
 	"flutter analyze", "flutter test", "dart analyze",
 	"npm test", "npm run test", "pnpm test", "yarn test",
-	"pytest", "python -m pytest",
+	"pytest", "python -m pytest", "python3 -m pytest",
+	"python -m unittest", "python3 -m unittest",
+	// A test-runner verifying a web app it (or the coder) just built has no
+	// other way to hit it — curl doesn't touch the project directory, and
+	// commandTargetsProtectedPath below still blocks any path argument that
+	// does. Found missing live: a Self-Driving run's test-runner tried
+	// "curl -s -o /dev/null -w ... http://127.0.0.1:PORT/" and
+	// "lsof -i :PORT" three separate times, each rejected, before giving up.
+	"curl",
 }
 
 func isReadOnlyCommand(cmd string) bool {

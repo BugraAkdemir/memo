@@ -333,8 +333,12 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				continue
 			}
 
-			// Execute!
-			onEvent(AgentEvent{Type: EventToolExecuting, ToolName: toolName, DangerLevel: toolDef.DangerLevel})
+			// Execute! Args ride along like they do on every other event here —
+			// the task card renders this one as the "starting" line for slow
+			// tools and printed a bare "Komut …" while it was empty. (This is
+			// the emission the agent loop actually uses; ExecuteToolCall has
+			// its own, fixed the same way.)
+			onEvent(AgentEvent{Type: EventToolExecuting, ToolName: toolName, Args: args, DangerLevel: toolDef.DangerLevel})
 
 			start := time.Now()
 			toolCtx := ctx

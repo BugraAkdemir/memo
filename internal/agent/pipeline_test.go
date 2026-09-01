@@ -138,9 +138,13 @@ func TestRunStream_ChangeDirectoryTakesEffectSameTurn(t *testing.T) {
 	pipeline.autoPermission = true
 
 	var toolResults []string
+	var executingArgs []string
 	onEvent := func(ev AgentEvent) {
 		if ev.Type == EventToolResult {
 			toolResults = append(toolResults, ev.Result)
+		}
+		if ev.Type == EventToolExecuting {
+			executingArgs = append(executingArgs, string(ev.Args))
 		}
 	}
 
@@ -163,6 +167,19 @@ func TestRunStream_ChangeDirectoryTakesEffectSameTurn(t *testing.T) {
 	}
 	if !strings.Contains(toolResults[1], "hello-from-new-dir") {
 		t.Errorf("read_file's result (run right after change_directory, same turn) = %q, want it to contain the new directory's marker content — the sandbox root did not move in time", toolResults[1])
+	}
+
+	// tool_executing must carry Args: the live task card renders it as the
+	// "starting" line for slow tools, and shipped printing a bare "Komut …"
+	// because this emission (the one the agent loop actually uses) left them
+	// out — found by running a real task, not by a test.
+	if len(executingArgs) != 2 {
+		t.Fatalf("got %d tool_executing events, want 2", len(executingArgs))
+	}
+	for i, a := range executingArgs {
+		if a == "" || a == "null" {
+			t.Errorf("tool_executing[%d] carried no Args — the starting line has nothing to show", i)
+		}
 	}
 }
 

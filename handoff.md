@@ -1,3 +1,109 @@
+# Ek (2026-09-01, devam 54) — Claude ve Gemini provider'larında tool-calling SIFIRDI
+
+Kullanıcı "Google AI Studio'dan free Gemma kullansam" dedi; cevap verirken
+Memo'nun kendi `gemini.go`'sunda tool-calling kodu olmadığını fark ettim.
+Kullanıcı bunun üzerine "tüm provider'ları kontrol et ve düzelt" dedi.
+`/codebase-memory` ile tam denetim yaptırıldı (89K token, 34 tool çağrısı,
+tier 2 verify).
+
+**Bulgu — iki provider tool-calling'i tamamen atlıyordu:**
+- `claude.go` (Memo'nun "Anthropic Claude" tipi): `claudeRequest`'te `tools`
+  alanı yok, `buildClaudeRequest` `req.Tools`'u hiç okumuyor, yanıt
+  ayrıştırma sadece `text` bloklarını birleştiriyor, `ToolCalls` hiç
+  set edilmiyor. Bir `ToolCalls` taşıyan assistant mesajı ya da `role:"tool"`
+  mesajı sessizce düz metne indirgeniyordu — gerçek bir multi-turn tool
+  çağrısında Anthropic bunu **reddederdi** (sadece user/assistant rolü kabul
+  eder).
+- `gemini.go`: aynı boşluk, grep ile sıfır "tool" eşleşmesi doğrulandı.
+
+**Etkilenmeyenler:** `grok`, `groq`, `kilo`, `openrouter`, `ollama`,
+`llama.cpp`, `opencode-go`, `opencode-zen` — hepsi `*openAIProvider`'ı embed
+eden ince sarmalayıcı (~25 satır), `ChatCompletion`'ı override etmiyorlar,
+tool-calling'i bedavaya alıyorlar. Sadece kendi request/response tipini
+elle yazan iki provider (`claude.go`, `gemini.go`) etkiliydi.
+
+**Düzeltme (`ae1891ed`):** her iki yönde çeviri, sadece non-streaming
+`ChatCompletion`'da (agent pipeline'ın gerçekten kullandığı tek yol —
+`pipeline.go` her zaman `Stream:false` ile çağırıyor):
+- Giden: `ToolDefinition` (OpenAI şekli) → Anthropic'in düz
+  `{name,description,input_schema}` / Gemini'nin tek `tools[0].
+  functionDeclarations[]` girdisi.
+- `ToolCalls` taşıyan assistant mesajı → `tool_use` blokları (Claude) /
+  `functionCall` part'ları (Gemini) olarak geri yansıtılıyor.
+- `pipeline.go` her tool çağrısı için ayrı bir `Message{Role:"tool",...}`
+  ekliyor (`execute_tool_call.go`) — yani paralel N çağrılı bir turda N ardışık
+  "tool" mesajı geliyor. İkisi de bunların **TEK** sonraki turda birleşmesini
+  istiyor (Claude: bir user mesajında çoklu `tool_result`; Gemini: bir user
+  content'inde çoklu `functionResponse`) — ayrı ayrı mesaj göndermek
+  Anthropic'in rol sıralamasını bozar. Paralel-çağrı testiyle doğrulandı.
+- Gelen: `tool_use`/`functionCall` → `ChatResponse.ToolCalls`.
+- Tool yoksa `tools` alanı tamamen atlanıyor (boş dizi değil).
+
+**Bilinçli kapsam dışı:** streaming yol (`ChatCompletionStream`) düzeltilmedi
+— `pipeline.go` tool turları için hiç kullanmıyor, üstelik `StreamChunk`
+struct'ında tool-call taşıyacak alan bile yok (10 OpenAI-şekilli provider'ın
+hepsini aynı şekilde etkileyen, ama şu an **uykuda** olan ayrı bir gedik —
+takip konusu olarak not edildi).
+
+## İkincil bulgular (aynı denetimden)
+
+**`run_command_readonly` allowlist'i genişletirken güvenlik regresyonu
+yaptım, kendim yakaladım (`fcd3b200`).** Bir önceki oturumda (devam 53) `curl`'ü
+allowlist'e düz prefix olarak eklemiştim — bu, var olan bir güvenlik testini
+(`TestRunCommandReadOnly_RejectsNonAllowlisted`, "curl http://x" reddedilmeli)
+sessizce kırdı: salt-okunur bir alt-agent artık **herhangi bir dış host'a**
+curl atabiliyordu (repo içeriğini `-d` ile dışarı sızdırma / SSRF riski).
+`isAllowedReadOnlyCurl` artık sadece `127.0.0.1`/`localhost`/`::1`/`0.0.0.0`
+hedefli curl'e izin veriyor. Aynı commit'te "curl" girdisinin allowlist
+dizisinden tamamen düşmüş olduğunu da buldum (yeniden yapılandırırken kayıp
+gitmiş) — geri eklendi.
+
+**Model listeleme / fiyat denetimi (kullanıcının ikinci isteği):**
+- **Hardcoded model kataloğu YOK** — `DefaultModels` (Go) ve
+  `ProviderDefaults.defaultModels` (Dart) sadece yeni bir provider eklerken
+  metin kutusunu doldurmak için kullanılan varsayılanlar, kullanıcıya "mevcut
+  modeller" diye gösterilen bir liste değil — tüm gerçek model listeleri
+  ilgili provider'ın kendi `/models` endpoint'inden **canlı** çekiliyor
+  (codex-cli/claude-code-cli hariç — bunlar CLI köprüsü, gerçek bir katalog
+  yok, tek modelin adını hardcode etmek burada doğru davranış).
+- **Kullanıcının varsayımı yanlıştı:** OpenCode Zen'in **gerçek fiyat verisi
+  yok** — kendi API'si `{id, object, created, owned_by}` dışında hiçbir şey
+  dönmüyor (`handlers_oauth.go`'daki mevcut yorum zaten bunu belgeliyordu).
+  Sadece OpenRouter ve Kilo gerçek sayısal fiyat veriyor (marketplace/gateway
+  oldukları için). Bu **düzeltilecek bir kod hatası değil, üç birinci-taraf
+  API'nin (OpenAI, Anthropic, Google, Grok, Groq, Ollama, OpenCode Go da dahil)
+  hiçbirinin fiyatı canlı API üzerinden vermemesi** — statik bir fiyat
+  tablosu hardcode etmek "hiçbir şey hardcoded olmayacak" isteğinin taa
+  kendisini ihlal ederdi, o yüzden yapılmadı.
+- **Bulunan gerçek bug (`51dcfced`):** `_ModelBrowserDialog` (OpenRouter +
+  Kilo + OpenCode Zen paylaşıyor) fiyat metnini `promptPrice==0` ise "Free"
+  yazacak şekilde türetiyordu. OpenCode Zen'de `promptPrice` **her zaman**
+  0.0 (üstte açıklandı) — yani ücretli her OpenCode Zen modeli "Free" yazıyordu,
+  aynı satırın solundaki ikon ise (doğru `isFree`'den geliyor) turuncu "ücretli"
+  ikonunu gösteriyordu — ikon ve metin birbiriyle çelişiyordu. `_priceStr`
+  artık `isFree`'yi otorite kabul ediyor; fiyat da yoksa "fiyat bilgisi yok"
+  yazıyor, sessizce "Free" demiyor.
+
+**Yeni testler:** `claude_toolcalling_test.go`, `gemini_toolcalling_test.go`
+(giden tools çevirisi, gelen tool_calls ayrıştırma, paralel çağrı birleştirme,
+tool'suz istekte `tools` alanının atlanması — hepsi fix geri alınınca
+derlenmiyor bile, kontrol edildi), `readonly_allowlist_test.go`'ya eklenen
+localhost-kısıtlama testi.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz; **`go test -race
+./...` tüm paketler yeşil** (whisper paketindeki tek bir flake kendi eski test
+backend'imden kalan bir süreçten kaynaklıydı, temizlenince düzeldi — koddan
+bağımsız); `flutter analyze` bilinen 5 info; `flutter test` 319/319.
+
+### Sıradaki oturum için
+- Streaming path'teki tool-call gedik (`StreamChunk`'ta alan yok, 10
+  provider'ı aynı şekilde etkiliyor ama uykuda) — istenirse ayrı bir görev.
+- `claude.go`/`gemini.go`'nun `ChatCompletionStream`'i de tool-calling
+  görebilir hale getirmek `StreamChunk` tipine `ToolCalls` alanı eklemeyi ve
+  her tüketiciyi güncellemeyi gerektirir — kapsamlı, bu oturumda yapılmadı.
+
+---
+
 # Ek (2026-09-01, devam 53) — devam 52'yi canlı test ettim, yarım çıktı
 
 Kullanıcı "sen test et" dedi. devam 52'nin fix'ini gerçek süreçlerle uçtan uca

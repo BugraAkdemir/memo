@@ -7,6 +7,15 @@ Tüm aktif sağlayıcılar bozuktu (custom :8083 refused, codex 400, claude-code
 `providers.json`'u geziyordu. Plan: `~/.claude/plans/floofy-imagining-lollipop.md`
 (onaylandı).
 
+**SONUÇ — hepsi yapıldı, 5 commit (`c621d1dd..81259686`), tüm testler yeşil.**
+Kullanıcının 4 şikâyeti kapandı: (1) composer'daki çift text-box; (2) "ne
+yaptığı belli değil / donmuş mu" → header'da canlı token sayacı + stuck
+satırında gerçek sebep + "Model: …" satırı; (3) "hata verince komple durup
+haber vermiyor" → her park/retry chat mesajı + Telegram/WhatsApp push;
+(4) "kafasına göre başka model deniyor" → sağlayıcı kilidi **iki yolda birden**
+(self-heal roaming + planlama-anı `PlanningSelfConfig`), varsayılan kilitli,
+opt-in `# sağlayıcı: otomatik`.
+
 **Commit'ler:**
 
 | commit | ne |
@@ -41,17 +50,25 @@ Tüm aktif sağlayıcılar bozuktu (custom :8083 refused, codex 400, claude-code
   sağlayıcı değiştirme.
 
 **Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz; `go test ./... -race`
-tam yeşil (yeni: `TestHealTaskProvider_LockedByDefault_NeverSwitches`,
+**tam yeşil** (yeni: `TestHealTaskProvider_LockedByDefault_NeverSwitches`,
 `TestEngine_TransientLocked_EscalatingRetriesThenStuck`,
 `TestRetryScheduler_ArmWithDelay`, `TestResolveProviderPolicy_*`,
+`TestPlanTaskConfig_ProviderLockIsNoop`, `TestPlanTaskConfig_RoamingRunsSelfConfig`,
 `classifyProviderErr` config-fault case'leri; eski self-heal testleri
 `providerRoaming:true` ile güncellendi). `flutter analyze lib/` 5 pre-existing
 info; `flutter test` 317 yeşil; Rule #8 temiz.
 
-**Kullanıcının yapması gereken:** Flutter yeniden build + `memo --kill` sonra
-backend restart. **Ayrıca: en az bir çalışan sağlayıcı lazım** — şu an hepsi
-down, fix'ten sonra bile görev koşamaz (custom :8083 ayakta değil,
-codex/claude-code yanlış model adıyla set, opencode-zen/kilo sunucu tarafında).
+**Kullanıcının yapması gereken:**
+1. Flutter yeniden build + `memo --kill` sonra backend restart (eski binary'de
+   fix yok).
+2. `rm -rf data/skills/memo-system` — bu klasördeki `SKILL.md` 29 Ağu'dan kalma;
+   embed sadece dosya yoksa yazıyor (`skill/materialize.go:24-26`), bu yüzden
+   `4aa057be`/`281b732e`'deki §3 revizyonu diske düşmedi. Davranış artık koddan
+   geliyor (kilit modda guidance okunmuyor bile), ama roaming modda tazesi lazım.
+3. **En az bir çalışan sağlayıcı lazım.** Fix'ten sonra bile görev, başlatıldığı
+   anda aktif olan sağlayıcıyla koşar — o çalışmıyorsa 5/10 dk park + bildirim
+   verip durur (artık sessiz değil, ama iş de ilerlemez). Canlı logda Kilo Code
+   aktif yapılmıştı; o çalışıyorsa görev artık onunla koşar.
 
 **Hâlâ açık / gözle doğrulanmadı:** inline blok + token sayacı + park mesajları
 + model satırı gerçek GUI'de canlı görülmedi (widget/unit testlerle doğrulandı);

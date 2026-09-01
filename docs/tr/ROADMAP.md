@@ -35,9 +35,11 @@ varsayımsal değil:
 - **BUG-PLAN9** — hazır bir plan yalnızca Görevler sekmesinden
   onaylanabiliyor, planı başlatan sohbetten değil.
 - **BUG-PLAN10** — sohbet modelinin ÇALIŞAN bir görevin gerçek durumunu
-  okuyacak bir aracı yok, bir tool çağrısı hata verirken "görev nasıl
-  gidiyor" diye sorulursa, "göremiyorum, Görevler sekmesine bak" demek
-  yerine ikna edici ama tamamen yanlış bir "bozuk" hikayesi uydurabiliyor.
+  okuyacak bir aracı olmadığında, ikna edici ama tamamen yanlış bir
+  "bozuk" hikayesi uydurduğu bulunmuştu. Sonrasında bir `get_task_status`
+  aracı + uydurma-karşıtı prompt eklendi (`def5ac1c`) — çözüm gibi
+  görünüyor ama canlı doğrulanmadı; kapatılmış saymadan önce gerçek bir
+  "görev nasıl gidiyor" ile test edilmeli.
 - **BUG-PLAN11** — bir planın adım sayısı escalation ile büyüyebiliyor
   (takılan bir adım alt-adımlara bölünüyor); farklı ekranlar ilerlemeyi
   farklı hesaplıyor, aynı liste için farklı madde/adım sayıları gösteriyor.

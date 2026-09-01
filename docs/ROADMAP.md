@@ -33,10 +33,12 @@ hypothetical:
 
 - **BUG-PLAN9** — a ready plan can only be approved from the Tasks tab,
   not inline in the chat that launched it.
-- **BUG-PLAN10** — the chat model has no tool to read a *running* task's
-  real status, so if asked "how's the task going" while a tool call fails,
-  it can fabricate a confident, wrong "it's broken" narrative instead of
-  saying "I can't see that, check the Tasks tab."
+- **BUG-PLAN10** — logged when the chat model had no tool to read a
+  *running* task's real status and fabricated a confident, wrong "it's
+  broken" narrative instead. A `get_task_status` tool + anti-fabrication
+  prompt was added afterward (`def5ac1c`) that looks like the fix, but it
+  hasn't been live-verified yet — worth confirming with a real "how's the
+  task going" before treating this as closed.
 - **BUG-PLAN11** — a plan's step count can grow via escalation (a stuck
   step splits into sub-steps); different screens compute progress
   differently and show different item/step numbers for the same list.

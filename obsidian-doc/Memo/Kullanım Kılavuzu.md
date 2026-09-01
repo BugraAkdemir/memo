@@ -1,6 +1,8 @@
 # 📖 Kullanım Kılavuzu
 
-Memo ile yerel yapay zeka deneyiminize başlamak için bu adımları takip edin.
+Memo ile yerel yapay zeka deneyiminize başlamak için bu adımları takip
+edin. Daha uzun, daha ayrıntılı bir rehber için (yeni Self-Driving görev
+döngüsü ve Ajan Modu dahil) repo kökündeki [`guide/tr/`](../../guide/tr/)'ye bakın.
 
 ## İlk Kurulum
 1. Uygulamayı başlatın.
@@ -29,8 +31,11 @@ Memo ile yerel yapay zeka deneyiminize başlamak için bu adımları takip edin.
 - **`/insight` yaz** — Memo, ruh hali ve hafıza geçmişinden fark ettiği gerçek bir örüntü varsa anlatır.
 - **Minimal Mod** istersen — kişilik/ruh hali/web arama talimatlarını atlayıp sadece hafızayla (istersen onu da kapatarak) en hafif haliyle çalıştırır.
 
-## Sesli Sohbet (Beta, v3.3.4 — geliştirme aşamasında)
-Ayarlar → Beta Özellikler'i açtıktan sonra sohbet kutusunun yanındaki ses ikonuyla Memo'yla yazmadan, konuşarak sohbet edebilirsin — cevaplar sesli okunur.
+## Sesli Sohbet — Live Mode v2 (v4.3.0)
+Sohbet kutusunun yanındaki ses ikonu artık tam ekran, gerçek zamanlı bir sesli görüşme açıyor (eski yazıya-çevir-sonra-oku değil, native audio-to-audio) — önce Ayarlar'dan motor olarak Google Live ya da OpenAI Realtime seç.
+
+## Self-Driving Görevler (v4.4.0)
+Memo'ya bir `Task.md` kontrol listesi ver, gözetimsiz olarak adım adım ilerlesin — detay için [`guide/tr/`](../../guide/tr/)'nin Ajan Modu bölümüne bak.
 
 ---
 > **İpucu:** Daha hızlı yanıtlar için ayarlar kısmından "GPU Layers" sayısını artırarak ekran kartınızın gücünden faydalanabilirsiniz.

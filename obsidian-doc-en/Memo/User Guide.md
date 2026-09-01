@@ -1,6 +1,8 @@
 # 📖 User Guide
 
-Follow these steps to start your local AI experience with Memo.
+Follow these steps to start your local AI experience with Memo. For a
+longer, more detailed walkthrough (including the new Self-Driving task
+loop and Agent Mode), see [`guide/en/`](../../guide/en/) at the repo root.
 
 ## Initial Setup
 1. Start the application.
@@ -23,7 +25,8 @@ Follow these steps to start your local AI experience with Memo.
 ## Letting Memo Act On Its Own
 - **Routines** (sidebar → Routines): describe something in plain language ("every morning at 8, summarize my calendar") and Memo schedules it — as a simple message or, if you enable it, a full tool-using agent run. Works on desktop and mobile.
 - **Proactive nudges:** Memo may notice a pattern and bring it up on its own — a banner appears with Yes / Not now / Stop asking. Turn this off entirely, or trim it down with Minimal Mode, in Settings → General.
-- **Live Mode (Beta):** the small voice icon next to the chat input lets you talk to Memo hands-free — turn it on first via Settings → Beta Features.
+- **Live Mode:** the voice icon next to the chat input opens a full-screen, real-time voice call (native audio-to-audio, not the old speech-to-text relay) — pick Google Live or OpenAI Realtime as the engine in Settings first.
+- **Self-Driving tasks:** hand Memo a `Task.md` checklist and it works through it unattended — see the Agent Mode section of [`guide/en/`](../../guide/en/).
 
 ## Settings and Customization
 - **System Prompt:** You can change how the assistant should behave (e.g., "Give short and concise answers" or "Behave like a coding expert") from here.

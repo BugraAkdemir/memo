@@ -107,7 +107,7 @@ See [[Agent Mode]] for the full tool list.
 | Busy-chat queueing, rate-limit wait-and-resume, transient-fault escalating retry, auth-fault park-for-user | ✅ |
 | Never fails silently (chat message + push on every terminal state) | ✅ |
 | Plan approval reachable from chat (not just the Tasks tab) | ❌ — `BUG-PLAN9`, open |
-| Chat model can read a *running* task's live status without guessing | ❌ — `BUG-PLAN10`, open, high priority |
+| Chat model can read a *running* task's live status without guessing | ⚠️ — `get_task_status` tool exists and looks like the fix for `BUG-PLAN10`, but not live-verified yet |
 | Consistent step/item counters across screens after an escalation split | ❌ — `BUG-PLAN11`, open |
 
 See `docs/FEATURES.md` §6.5 and the repo's `BUG_REPORT.md` for detail.

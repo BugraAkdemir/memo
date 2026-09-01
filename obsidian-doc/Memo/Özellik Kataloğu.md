@@ -142,7 +142,7 @@ Sade dil + kurulum: [[Memo Swarm]].
 | Meşgul-sohbet kuyruklama, rate-limit bekle-ve-devam-et, geçici hata için artan retry, auth hatası için kullanıcı için park | ✅ |
 | Hiçbir zaman sessizce başarısız olmuyor (her terminal durumda sohbet mesajı + push) | ✅ |
 | Plan onayı sohbetten de yapılabiliyor (sadece Görevler sekmesinden değil) | ❌ — `BUG-PLAN9`, açık |
-| Sohbet modeli ÇALIŞAN bir görevin canlı durumunu tahmin etmeden okuyabiliyor | ❌ — `BUG-PLAN10`, açık, yüksek öncelik |
+| Sohbet modeli ÇALIŞAN bir görevin canlı durumunu tahmin etmeden okuyabiliyor | ⚠️ — `get_task_status` aracı var ve `BUG-PLAN10`'un çözümü gibi görünüyor, ama canlı doğrulanmadı |
 | Escalation sonrası ekranlar arası tutarlı adım/madde sayaçları | ❌ — `BUG-PLAN11`, açık |
 
 Detay: `docs/OZELLIKLER.md` §6.5 ve repo'nun `BUG_REPORT.md`'si.

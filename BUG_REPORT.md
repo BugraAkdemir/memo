@@ -254,6 +254,16 @@ testten sonra" — sadece not.
   sekmesine bak" demeli.
 - **Öncelik:** YÜKSEK — ayrıntılı, ikna edici yanlış bilgi kullanıcıyı çalışan
   bir sistemi "komple bozuk" sanıp iptal et/yeniden kur'a itiyor.
+- **Not (2026-09-01, dokümantasyon denetimi sırasında bulundu):** İstenen
+  `get_task_status` aracı `def5ac1c` commit'inde ("feat(agent): add
+  get_task_status read-only tool + anti-fabrication prompt") gerçekten
+  eklenmiş — bu satır yazıldıktan sonraki bir commit. Araç kayıtlı, "veri
+  yokken uydurma" talimatı sistem promptunda var (bkz. tools.go'daki
+  açıklaması). **Ama bu, canlı olarak doğrulanmadı** — modelin gerçekten
+  bu aracı çağırıp uydurmaktan vazgeçtiği bir canlı testle kanıtlanmadı,
+  sadece kod var olduğu için burada "muhtemelen düzeldi" diye not
+  düşülüyor. Kapatmadan önce gerçek bir "görev durumu ne" sorusuyla canlı
+  test edilmeli.
 
 ### BUG-PLAN12 — canlı task aktivitesi sohbette görünmüyor, ayrı Görevler ekranı şart
 

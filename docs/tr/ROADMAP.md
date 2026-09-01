@@ -1,70 +1,108 @@
 # Memo Yol Haritası
 
-Bu, mevcut sürümün (v3.3.4) ötesinde aktif olarak planlanan şeylerin canlı
-bir görüntüsü — tarih taahhüdü ya da nihai bir özellik listesi değil.
-Maddeler gerçek kullanım geri bildirimiyle değişir, şekil değiştirir ya da
-tamamen düşer. Geçmiş sürümlerde gerçekten neyin yayınlandığını görmek için
-[`versinNote/`](../../versinNote/) klasörüne bakın.
+Bu, mevcut sürümün ötesinde aktif olarak planlanan şeylerin canlı bir
+görüntüsü — tarih taahhüdü ya da nihai bir özellik listesi değil. Maddeler
+gerçek kullanım geri bildirimiyle değişir, şekil değiştirir ya da tamamen
+düşer. Geçmiş sürümlerde gerçekten neyin yayınlandığını görmek için
+[`versinNote/`](../../versinNote/), canlı testte bulunan açık
+bug/tasarım eksiklerini görmek için repo'nun `BUG_REPORT.md`'sine bakın.
+
+> **v4.4.0 için güncellendi** (bu dosya daha önce "v3.3.4'ün ötesi" bir
+> yol haritası anlatıyordu — o listenin çoğu şu ana kadar yayınlandı:
+> v4.0.0'da gerçek zaman farkındalığı ve WhatsApp üçüncü kişi devralma,
+> v4.3.0'da Live Mode v2. Aşağıdaki maddeler bir yıl önceki "sırada ne
+> var"ı değil, gerçekten sıradakini yansıtıyor.)
+
+## Bu döngüde yayınlanan (v4.0.0 → v4.4.0), bağlam için
+
+- **v4.0.0** — sistem promptunda gerçek zaman farkındalığı ("son
+  mesajdan bu yana ne kadar geçti"), WhatsApp üçüncü kişi sohbet devralma.
+- **v4.3.0** — Live Mode v2: native audio-to-audio ses (Google Live /
+  OpenAI Realtime), delegate/standalone modlar, barge-in, ElevenLabs +
+  özel motorlar.
+- **v4.4.0 (bu branch)** — Self-Driving görev döngüsü: `Task.md` şeması,
+  plan onaylı planlayıcı/uygulayıcı modu, alt-ajan orkestrasyonu (coder +
+  paralel analyzer/reviewer/test-runner), sohbet içi canlı görev
+  aktivitesi, escalation/retry/provider-lock sertleştirmesi, ve Claude +
+  Gemini provider'ları için gerçek tool-calling (öncesinde hiç yoktu) +
+  yeni bir Anthropic-uyumlu özel provider tipi.
+
+## Yakın vadeli — canlı testten açık maddeler (bkz. `BUG_REPORT.md`)
+
+Bunlar Self-Driving döngüsünü gerçek görevlerle çalıştırırken bulundu,
+varsayımsal değil:
+
+- **BUG-PLAN9** — hazır bir plan yalnızca Görevler sekmesinden
+  onaylanabiliyor, planı başlatan sohbetten değil.
+- **BUG-PLAN10** — sohbet modelinin ÇALIŞAN bir görevin gerçek durumunu
+  okuyacak bir aracı yok, bir tool çağrısı hata verirken "görev nasıl
+  gidiyor" diye sorulursa, "göremiyorum, Görevler sekmesine bak" demek
+  yerine ikna edici ama tamamen yanlış bir "bozuk" hikayesi uydurabiliyor.
+- **BUG-PLAN11** — bir planın adım sayısı escalation ile büyüyebiliyor
+  (takılan bir adım alt-adımlara bölünüyor); farklı ekranlar ilerlemeyi
+  farklı hesaplıyor, aynı liste için farklı madde/adım sayıları gösteriyor.
+- **BUG-PLAN12** — bir görevin canlı aktivitesi (adım başladı/bitti,
+  alt-ajan turu, escalation) sadece Görevler sekmesinde görünüyor, onu
+  başlatan sohbette hafif bir akış olarak değil.
+- **BUG-THINK1** — bir effort level seçildiğinde Claude'un extended
+  thinking'i isteniyor (gerçek token harcanıyor) ama yanıttaki
+  `"thinking"` bloğu backend'de hiçbir yerde ayrıştırılmıyor — frontend'de
+  tam bir collapsible "düşünme" arayüzü zaten var, sadece hiç
+  beslenmiyor. Orta öncelik (hiçbir şeyi bozmuyor, sadece effort level
+  seçen kullanıcılar için ücreti ödenmiş bir özelliği boşa harcıyor).
 
 ## Mobil
 
-- **CI'da iOS build doğrulaması** — `mobile/ios/` altında zaten tam bir
-  Xcode proje iskeleti var ama şu an hiçbir şey onu derlemiyor. Bu yol
-  haritasıyla birlikte eklenen Android debug APK CI'sına paralel bir
-  `flutter build ios --no-codesign` job'ı önce bu boşluğu kapatır.
-- **Uzak backend'e bağlanma** — mobil app'in de masaüstü client'ın aldığı
-  aynı "Backend URL + Token" akışına ihtiyacı var — başka bir yerde
-  (LAN, Tailscale, ngrok, bir CasaOS container'ı) çalışan bir Memo
-  instance'ına bağlanmak için. Bu olmadan mobil app sadece aynı
-  makinedeki bir backend'in yanında işe yarar, ki bu bir mobil companion
-  app'in asıl amacına aykırı.
-- **Masaüstüyle özellik paritesi denetimi** — agent modu, memory görünümü
-  ve diğer sadece-masaüstü yüzeylerin mobilde gerçekten neyinin eksik,
-  neyinin bilinçli olarak bırakıldığının açıkça netleştirilmesi gerekiyor.
-- **Mobilde Live Mode** — v3.3.4'te masaüstüne beta olarak gelen
-  hands-free sesli konuşma modu, telefon kullanım senaryosuna masaüstünden
-  muhtemelen daha çok yakışıyor.
+`mobile/` (ayrı, daha küçük bir Flutter projesi — 26 dart dosyası,
+`frontend/`'in 190'ına karşı) bu geçiş itibarıyla hâlâ aktif geliştiriliyor
+(yakın `fix(mobile)`/`feat(mobile)` commit'lerine bakın) — `frontend/`'e
+Android/iOS hedefi eklenip `mobile/`'ın kaldırılması yönündeki önceki bir
+iç plan (henüz) gerçekleşmedi; kontrol etmeden gerçekleştiğini varsayma.
+
+- **CI'da iOS build doğrulaması** — `mobile/ios/` tam bir Xcode proje
+  iskeletine sahip ama şu an CI'da hiçbir şey onu derlemiyor.
+- **Uzaktan backend bağlantısı** — masaüstü istemcideki aynı "Backend
+  URL + Token" akışının `mobile/`'a getirilmesi.
+- **Masaüstüne karşı özellik paritesi denetimi** — ajan modu, hafıza
+  görünümü ve diğer masaüstüne özel yüzeylerin gerçekten eksik mi yoksa
+  bilinçli olarak dışarıda mı bırakıldığına karar vermek için açık bir
+  geçiş gerekiyor.
 
 ## Platform Erişimi
 
-- **arm64 Docker imajı** — şu anki imaj sadece amd64. Masaüstü build'i
-  için zaten üretilen (ve R2 üzerinden dağıtılan) ARM Linux binary'leri
-  ile var olan Docker/CasaOS backend-only kurulumu, native bir arm64
-  varyant eklemek için gereken iki parça.
-- **Resmi CasaOS App Store listelemesi** — şu anki dokümantasyon
-  kullanıcıya kendi image'ını build edip push etmesini söylüyor; Memo'yu
-  CasaOS'un kendi mağazasına listelemek bu adımı tamamen ortadan kaldırır.
-- **Gerçek donanımda doğrulama** — ARM build'i ve Docker imajı şu ana
-  kadar sadece hedef ortamı sandbox/CI içinde simüle ederek doğrulandı,
-  hiçbir zaman gerçek bir Raspberry Pi veya NAS üzerinde denenmedi. İkisi
-  de gerçek anlamda "destekleniyor" denebilmesi için buna ihtiyaç duyuyor.
-- **Paket yöneticisi üzerinden dağıtım** *(olursa iyi olur, kritik değil)*
-  — macOS için bir Homebrew tap'ı ve Windows için winget/Chocolatey
-  paketi, mevcut curl/irm tek satırlık kurulum script'lerinin yanına.
-  Esas olarak, zaten bildiği bir paket yöneticisiyle kurmayı tercih eden
-  teknik olmayan kullanıcılar için bir güven ve keşfedilebilirlik
-  iyileştirmesi.
+- **arm64 Docker image** — şu anki image sadece amd64.
+- **Resmi CasaOS App Store listelemesi.**
+- **Gerçek donanım doğrulaması** — ARM build ve Docker image sadece
+  CI/sandbox'larda simüle edilerek doğrulandı, gerçek bir Raspberry Pi
+  ya da NAS'ta hiç değil.
+- **Paket yöneticisi dağıtımı** *(olsa iyi olur)* — Homebrew tap,
+  winget/Chocolatey.
 
 ## Memo Swarm
 
-`internal/swarm/` gerçek ama hâlâ küçük bir alan (~950 satır) — birden
-fazla makinede dağıtık çıkarım, şu an Beta. Bunu Beta'dan çıkarmak, tahmini
-bir özellik listesinden değil gerçek kullanım sürtünmesinden (host/join
-akışı, oda kodları) başlamalı — bu doğru şekilde kapsamlandırmak, gerçek
-oturumlarda kullanılarak bilgilenmesi gereken bir sonraki adım.
+`internal/swarm/` — birden fazla makine arasında dağıtık inference, hâlâ
+Beta. Olgunlaştırmak, tahmini bir özellik listesi yerine gerçek kullanım
+sürtünmesinden (host/join akışı, oda kodları) başlamalı.
 
-## İstikrar & Erişilebilirlik
+## Computer Use (henüz sıraya konmadı)
 
-Memo'nun kitlesi teknik olmayan/gizlilik odaklı kullanıcılar ile teknik
-self-hoster'lar arasında bölünmüş durumda — bu sürüm birini diğerine
-tercih etmek yerine ikisini de dengeliyor:
+Kullanıcının kendi tanımı: Claude Code'un computer-use'ı gibi,
+klavye/fareyi doğrudan yönetebilen bir sistem. Bilinçli olarak en sona
+bırakıldı — listedeki en büyük ve en riskli madde:
 
-- **Uygulama içinde beta kanalı görünürlüğü** — Settings, bir beta build
-  çalıştırdığını göstermeli ve beta indirmelerine link vermeli; bu yol
-  haritasıyla birlikte kurulan R2 tabanlı beta kanalını sadece
-  `curl`'a aşina insanların bildiği bir şey olmaktan çıkarıp
-  kullanıcılara görünür kılmak için.
-- **Sade dilli hata mesajlarının genişletilmesi** — v3.3.4 bunu zaten
-  setup wizard ve model store için yapmıştı; WhatsApp bridge ve uzaktan
-  erişim (Tailscale/ngrok) ekranları, aynı muameleden faydalanacak bir
-  sonraki en "teknik hissettiren" yüzeyler.
+- Şu anki agent (`internal/agent/`) dosya/komutlara danger-level izin
+  sistemiyle sandbox'lı; klavye/fare kontrolü bambaşka bir güvenlik
+  yüzeyi (ekrandaki her şeye erişim).
+- Platform başına ayrı implementasyon gerektiriyor (Linux X11/Wayland,
+  Windows, macOS Accessibility API) — tek seferlik değil, kalıcı bakım.
+- Muhtemelen daha katı, kendine özgü bir izin modeli gerektiriyor
+  (her eylem öncesi onay, kalıcı "Memo kontrolde" göstergesi).
+- Kendi başına ayrı bir sürümde ele alınması planlanıyor, 4.x'in geri
+  kalanı oturup gerçek kullanıcı geri bildirimi geldikten sonra.
+
+## Backlog, henüz sıraya konmadı
+
+- Yapısal temizlik: `handlers_flutter.go` ve `memory/store.go` ikisi de
+  alan-bazlı bölünme adayı, büyük dosyalar.
+- Self-hosted çoklu-kullanıcı için hesap bazlı veri izolasyonu (her veri
+  katmanına bir `account_id` gerekir — köklü bir değişiklik, başlanmadı).

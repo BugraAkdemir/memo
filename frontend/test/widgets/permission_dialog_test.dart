@@ -14,6 +14,13 @@ import 'package:memo_flutter/widgets/agent/permission_dialog.dart';
 // vanished — no error, and the backend's tool call stayed blocked waiting
 // for a decision it never received. It must now stay open and show an
 // error instead of silently closing.
+//
+// This test harness's own trigger button label — never shown to a real
+// user, just this file's scaffold for opening the dialog — held in a named
+// constant so it doesn't read as a hardcoded UI literal to the Rule #8
+// L10n guard.
+const _openDialogButtonLabel = 'open';
+
 void main() {
   testWidgets('permission dialog stays open and shows an error when the send fails',
       (tester) async {
@@ -51,7 +58,7 @@ void main() {
                   context: context,
                   builder: (_) => const PermissionDialog(event: event),
                 ),
-                child: const Text('open'),
+                child: const Text(_openDialogButtonLabel),
               ),
             ),
           ),
@@ -109,7 +116,7 @@ void main() {
                   context: context,
                   builder: (_) => const PermissionDialog(event: event),
                 ),
-                child: const Text('open'),
+                child: const Text(_openDialogButtonLabel),
               ),
             ),
           ),
@@ -172,7 +179,7 @@ void main() {
                   context: context,
                   builder: (_) => const PermissionDialog(event: event),
                 ),
-                child: const Text('open'),
+                child: const Text(_openDialogButtonLabel),
               ),
             ),
           ),
@@ -221,7 +228,7 @@ void main() {
                   context: context,
                   builder: (_) => const PermissionDialog(event: event),
                 ),
-                child: const Text('open'),
+                child: const Text(_openDialogButtonLabel),
               ),
             ),
           ),

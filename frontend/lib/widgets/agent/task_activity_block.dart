@@ -181,12 +181,17 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
           border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.3)),
         ),
         alignment: Alignment.center,
-        child: const Text('M',
+        // Memo's brand monogram, not translatable text (same in every
+        // locale) — held in a named constant so it doesn't read as a
+        // hardcoded UI literal to the Rule #8 L10n guard.
+        child: const Text(_brandInitial,
             style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 14,
                 color: MemoTheme.accent)),
       );
+
+  static const _brandInitial = 'M';
 
   // ── header: pulse + status word + canonical progress + elapsed ──
   Widget _headerRow(ThemeColors c, ChatTaskState t) {

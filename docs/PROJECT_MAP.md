@@ -27,27 +27,39 @@ cmd/proactive-demo/
 ```
 internal/agent/
   executor.go        — Executor: registry, permissions, sandbox'ı birbirine bağlayan üst düzey orkestrasyon
-  pipeline.go         — AgentEvent tipleri ve tool-calling döngüsünü event olarak akıtan pipeline
+  pipeline.go         — AgentEvent tipleri ve tool-calling döngüsünü event olarak akıtan pipeline (maxIters=40)
+  execute_tool_call.go — Executor.ExecuteToolCall: tek bir tool çağrısının izin-kontrolü+çalıştırma+event-yayınlama akışı (pipeline.go'dan çıkarıldı)
   sandbox.go          — SandboxConfig: rate limit, timeout, korumalı yollar (tool güvenliği)
   permissions.go      — PermissionManager: tool+argüman bazlı izin politikalarını diske kaydeder
   permissions_test.go — izin politikası wildcard eşleşmesi ve tek seferlik reddin temizlenmesi testleri
-  tools.go            — ToolDef/ToolRegistry ve DangerLevel sınıflandırması (mevcut agent tool'ları)
+  tools.go            — ToolDef/ToolRegistry ve DangerLevel sınıflandırması; registerBuiltins()'te 27 yerleşik tool kayıtlı (bkz. Ajan Modu doc'undaki tam liste)
   backup.go           — BackupManager: agent dosya düzenlemelerinden önce anlık yedek alır, geri yükler
   backup_test.go      — BackupManager oluşturma/geri yükleme round-trip testleri
 
-internal/agent/tools/  — 19 yerleşik tool (internal/agent/tools.go'da kayıtlı), aşağıdaki dosyalara dağılmış
+internal/agent/tools/  — 27 yerleşik tool'un implementasyonları (internal/agent/tools.go'daki registerBuiltins() kayıtlarının ExecuteFn'leri), aşağıdaki dosyalara dağılmış
   file.go             — read_file/write_file/delete_file/list_directory/get_file_info tool'ları: sandbox'lanmış taban yol içinde dosya G/Ç
   edit.go             — edit_file/insert_line/delete_lines tool'ları: mevcut dosyalara string/satır aralığı değişikliği uygular
   edit_test.go        — EditFile satır ve string-replace davranışı testleri
+  changedir.go        — change_directory tool'u: ajanın sandbox tabanını sohbetin geri kalanı için değiştirir
   search.go           — search_files tool'u: proje dizininde desen/glob arama
-  command.go          — run_command tool'u: kara liste ve timeout korumasıyla shell komutu çalıştırır
+  command.go          — run_command tool'u: 43 desenlik kara liste + timeout korumasıyla shell komutu çalıştırır; RunCapturingOutput (pipe değil geçici dosya ile çıktı yakalama — arkaplana atılan süreçler artık takılmıyor)
+  sysproc_unix.go / sysproc_windows.go — platform-özel process-group kurulumu/öldürme (command.go'nun arkaplan süreç desteği için)
   websearch.go        — web_search tool'u: internal/websearch'ü agent'tan çağrılabilir hale getirir
-  whatsapp.go         — whatsapp_send/search/latest/messages tool bağlamaları, enjekte edilen client arayüzü üzerinden
+  fetchpage.go        — fetch_page tool'u: bir URL'nin tam içeriğini Markdown'a çevirir
+  fetchbudget.go       — WithFetchBudget: bir istekte fetch_page'in en fazla 5 farklı domain deneyebilmesini sınırlayan context bütçesi
+  whatsapp.go         — whatsapp_send/search/latest/messages tool bağlamaları, enjekte edilen client arayüzü üzerinden (ayrı, kapsamlandırılmış registry'de)
   calendar.go         — get_calendar_events tool'u
+  routine.go          — create_routine/list_routines/cancel_routine tool'ları
   provider.go         — configure_provider tool'u: agent'ın kendi sağlayıcı ayarlarını değiştirmesine izin verir
   selfclone.go        — self_clone tool'u: çalışan Memo binary'sini/projeyi başka dizine kopyalar
   selfclone_test.go   — SelfClone'un kendine/alt dizinine klonlamaya karşı korumalarının testi
-  calendar_test.go, command_test.go, file_test.go, provider_test.go — testler
+  sendfile.go         — share_file tool'u: bir dosya/klasörü (klasörse zip'leyerek) bu konuşmaya geri gönderir
+  taskmd_tools.go     — create_task_md/edit_task_md tool'ları
+  taskstatus.go       — get_task_status/pause_task/resume_task tool'ları
+  selfdrivingtask.go  — start_self_driving_task tool'u
+  sandboxctx.go        — WithSandboxSetter/SandboxSetterFromContext: change_directory'nin sandbox'ı çalışma zamanında değiştirebilmesi için context köprüsü
+  l10n.go              — SetUILanguage/T: bu paketin kendi TR/EN metin yardımcıları (tools.go'nun `internal/app`'e bağımlı olmadan yerelleştirme yapabilmesi için)
+  calendar_test.go, command_test.go, file_test.go, provider_test.go, readonly_allowlist_test.go — testler
 ```
 
 ### internal/agentcli/ — Claude Code / Codex CLI'ı sohbet sağlayıcısına çeviren köprü (beta)
@@ -103,13 +115,21 @@ internal/swarm/
 
 > macOS'ta henüz yok (yardımcı binary orada paketlenmiyor).
 
-### internal/taskloop/ — Otonom çok-adımlı görev listesi motoru
+### internal/taskloop/ — Self-Driving otonom çok-adımlı görev döngüsü motoru (v4.4.0'da büyük genişleme — bu bölüm o genişlemeyle güncellendi, önceki hâli sadece 3 dosya listeliyordu)
 
 ```
 internal/taskloop/
-  engine.go          — worker/review-chief döngüsü: bir görevi çalıştırır, chief'e onaylatır, sıradakine geçer
-  store.go            — görev listesi kalıcılığı
-  taskloop_test.go     — testler
+  engine.go          — worker/review-chief döngüsü: processItem bir maddeyi çalıştırır (busy-chat/rate-limit/transient/auth hata sınıflandırmasıyla), chief'e onaylatır, sıradakine geçer; planlayıcı/uygulayıcı modunu da yönetir
+  schema.go           — Task.md formatının tek insan/LLM-yüzlü tanımı: TaskMdSchemaDoc() (model+kullanıcıya gösterilen spec), TaskMdTemplate(), RenderTaskMd() — taskmd.go'daki parser'la schema_parse_sync_test.go üzerinden senkron tutulur
+  taskmd.go           — ParseTaskMd: Task.md'yi header/intro/madde/not olarak ayrıştıran gerçek parser; NotifyLevel (# bildirim: header'ından)
+  plan.go             — Plan: planlayıcı modunun çıktısı (küçük, tek tek doğrulanabilir adımlar + kabul kontrolleri + bağımlılık DAG'ı), Plan.md render/parse
+  runtime.go           — RunningTaskInfo: `task_list` komutu ve GET /api/tasks/running için çalışan bir görevin canlı görünümü (store + engine'in bellek-içi durumu birleşimi)
+  notify.go            — Notification: bir taskloop olayının kullanıcının bildirim kanallarına yönlendirilmesi (NotifyBus)
+  retry.go             — RetryScheduler: "waiting-limit" durumundaki listeler için tek seferlik zamanlayıcılar (rate-limit sonrası aynı maddeden devam)
+  provider_err.go      — providerFailKind: worker-turu hatasının en-iyi-çaba sınıflandırması (auth/rate-limit/transient) — döngünün bekle mi/sağlayıcı değiştir mi/vazgeç mi kararını besler; ErrChatBusy + IsChatBusyErr de burada
+  subagent.go          — SubRole ve SubAgentOrchestrator.Spawn: büyük bir madde için 1 yazma-yetkili coder + paralel en fazla 3 salt-okunur analyzer/reviewer/test-runner alt-ajanı
+  store.go            — görev listesi kalıcılığı (JSON store)
+  *_test.go            — testler (engine_chatbusy/concurrency/mirror/planexec/planning/selfheal_test.go dahil, canlı senaryoları taklit eden geniş bir test seti)
 ```
 
 ### internal/tts/ — Live Mode metin-konuşma (Piper + opsiyonel OpenAI TTS)
@@ -175,6 +195,51 @@ internal/app/
   helpers.go          — mesaj/context builder'ları, token bütçesi, dosya indirme/kopyalama yardımcıları
   helpers_test.go     — buildMessages'in mood-disabled sistem promptu temizleme testi
   shutdown_test.go    — Shutdown'ın zamanında biten temizlik için zorla çıkış yapmadığının testi
+  file_mentions.go    — ListProjectFiles: sohbette `@dosya` anmak için proje dosyalarını arar
+  install_id.go       — InstallID: kuruluma özel rastgele kimlik (BUG-ONB10 fix'i, data dizini silinince yok olur)
+  onboarding.go       — GetOnboardingComplete: ilk-çalıştırma sihirbazının tamamlanıp tamamlanmadığı
+  insight.go          — GenerateSelfInsight (`/insight`): ruh hali/hafıza geçmişinden gerçek bir örüntü varsa anlatır
+  routine.go          — Rutinler alt sisteminin App'e bağlanması: initRoutines, Decider — bkz. internal/routine/
+  proactive_ambient.go — Proaktif öneri (ambient nudge) penceresinin aktif olup olmadığı ve prompt'a eklenecek blok
+  stats.go            — Kullanım istatistikleri alt sisteminin App'e bağlanması — bkz. internal/stats/
+  telegram.go / telegram_l10n.go — Telegram bot köprüsü durum/mesajlaşma metodları + TR/EN şablon metinleri
+  server_browse.go    — BrowseServerPath: sunucu tarafı dosya sistemi tarayıcısı (dosya seçme dialog'u için)
+  sendfile.go         — share_file agent aracının arkası: bir indirme linki (outbox) üretip süreli olarak sunar
+  swarm.go            — Memo Swarm (beta) alt sisteminin App'e bağlanması — bkz. internal/swarm/
+  stt_providers.go / tts_providers.go — data/stt_providers.json + data/tts_providers.json'dan STT/TTS sağlayıcı listesini yükler
+  tts.go / tts_voices.go — Piper synthesizer kurulumu (initTTS) + indirilebilir ses kataloğu (GetTTSVoiceCatalog)
+  clients.go          — Bağlı istemcilerin (client_id) canlı/durgun takibi — bir istemci durgunlaşınca temizlenir
+  remote_auth.go      — RemoteDeviceInfo: istemcilere gösterilen cihaz listesi DTO'su
+  claudecodecli.go / cli_status.go / cli_stream.go — Claude Code/Codex CLI sağlayıcı köprüsü: bağlantı durumu, sohbet-bazlı CLI provider/workdir ayarları, CLI stream başlatma
+  devgateway.go / devgatewaylog.go — Geliştirici API Ağ Geçidi (Sidebar → Developer) config'i + canlı istek/yanıt günlüğü
+  agent_chat_context.go / selfchat_context.go / selfchat_permission.go — hangi ajan sohbetinin/self-chat yüzeyinin (WhatsApp/Telegram) şu an aktif turu işlediğini taşıyan context anahtarları + self-chat'e özel izin/yanıt akışı
+  chat_locks.go       — Sohbet-bazlı stream kilidi: busyStreamChan, withChatLockWait — bir Self-Driving turu meşgul bir sohbeti kuyruğa alıp bekleyebilir
+  retry.go            — retryWithBackoff: genel amaçlı, anında+tekrarlı geri çağırma yardımcı fonksiyonu
+  livemode.go / livemode_delegate.go / livemode_session.go / livemode_session_wrapper.go / livemode_voice.go — Live Mode v2 (native audio-to-audio): motor/mod/izin doğrulama, delegate sohbeti, gerçek livemode.Session kurulumu, sesli izin-onay sarmalayıcısı, motor bazlı sentezleme/transkripsiyon
+  memory_import.go    — "Hafızayı İçe Aktar": başka bir AI'ın özetini atomik gerçeklere bölen JSON çıkarma yardımcıları
+```
+
+**Self-Driving görev döngüsü — App köprü katmanı** (`internal/taskloop`'u backend'e bağlayan dosyalar, v4.4.0'da eklendi):
+
+```
+internal/app/
+  tasklist.go           — CreateTaskListFromTaskMd: bir Task.md dosyasını ayrıştırıp bir görev listesini tohumlar
+  tasklist_run.go        — taskRunConfig: çalışan bir görev listesinin hangi sağlayıcı/model'i kullandığının özel görünümü
+  tasklist_stepexec.go   — runPlanStep (planlayıcı modu adım çalıştırıcı) + emitToolActivity/toolVerbs (canlı görev kartı aktivite satırları)
+  tasklist_stream.go     — streamIdleTimeout: bir worker turu için "bu kadar süre yeni token yok → bırak" bütçesi
+  tasklist_planner.go    — planTask: "planlayıcı" modu için WithPlanner callback'i, Plan.md üretimi
+  tasklist_planconfig.go — planTaskConfig: WithPlanConfig callback'i, liste başına bir kere self-configuration
+  tasklist_roleconfig.go — roleModels: planlayıcı/kodlayıcı/doğrulayıcı rolleri için çözümlenmiş model
+  tasklist_selfheal.go   — healTaskProvider: WithSelfHeal callback'i, sağlayıcı hatasına tepki (geçiş mi/bekle mi)
+  tasklist_escalate.go   — escalateStep: WithEscalator callback'i, takılan bir adımın hedefli yeniden-planlanması
+  tasklist_settings.go   — GetTaskLoopSettings: kalıcı task-loop config'i
+  task_control.go        — taskSurface: bir kontrol mesajının hangi köprüden (chat/API) geldiğini tanımlar
+  task_events.go         — taskChatEvent: bir Self-Driving olayının, güncel ilerleme bilgisiyle zenginleştirilmiş hâli
+  task_notify.go         — taskNotifyQueueSize/taskNotifySendTimeout: bildirim pompasının sınırları (engine goroutine'ini bloklamaz)
+  taskmd_tool.go         — taskMdEditorAdapter: create_task_md / edit_task_md agent araçlarının arkası
+  taskstatus_tool.go     — taskStatusToolAdapter: get_task_status agent aracının arkası
+  selfdriving_task_tool.go — selfDrivingTaskToolAdapter: start_self_driving_task agent aracının arkası
+  subagent_runner.go     — appSubAgentRunner: taskloop.SubAgentRunner'ı uygular, her Run bir efemer alt-ajan turu
 ```
 
 ### internal/calendar/
@@ -387,6 +452,10 @@ internal/provider/
   ollama.go         — Ollama sağlayıcısı, OpenAI-uyumlu istemcinin ince sarmalayıcısı
   openrouter.go     — OpenRouter sağlayıcısı, OpenAI-uyumlu istemcinin ince sarmalayıcısı
   llamacpp.go       — OpenAI-uyumlu endpoint'i üzerinden yerel llama-server sağlayıcısı
+  custom_anthropic.go — Özel (Anthropic uyumlu) sağlayıcı: *claudeProvider'ı saran ince sarmalayıcı, kullanıcının kendi Anthropic-şekilli proxy'si için (v4.4.0'da eklendi)
+  opencode_zen.go / opencode_go.go — OpenCode Zen/Go sağlayıcıları, canlı model listeli gateway'ler
+  kilo.go           — Kilo Code sağlayıcısı (app.kilo.ai), canlı model listeli gateway
+  effort.go         — GeminiThinkingBudgetForLevel + EffortLevelsFor*: "effort level" (minimal/low/medium/high/max) etiketlerinin vendor-özel parametrelere çevrimi (Gemini thinkingBudget, Claude adaptive thinking)
 ```
 
 ### internal/replcli/ — terminal REPL (`memo` CLI)
@@ -518,6 +587,7 @@ frontend/lib/models/
   orchestra_config.dart — çoklu-rol "orchestra" agent modu yapılandırması için OrchestraConfig/RoleConfig modelleri
   token_usage.dart      — üst barda gösterilen canlı tur-başı token sayımı için TokenUsage modeli
   whatsapp.dart         — WhatsApp entegrasyonu için WhatsAppMessage, WhatsAppChatSummary, WhatsAppStatus modelleri
+  task_list.dart        — Self-Driving görev listesi modelleri: ChatTaskState (working/stalled eşikleri), görev/madde/plan durumları (v4.4.0)
 
 frontend/lib/providers/ (Riverpod state)
   chat_provider.dart      — çekirdek sohbet durumu: API istemcisi, sohbet listesi, aktif sohbet, streaming içerik/durum
@@ -532,6 +602,7 @@ frontend/lib/providers/ (Riverpod state)
   skill_provider.dart     — SkillDefinition modeli ve kurulu agent skill'lerini listeleyen SkillListNotifier
   version_provider.dart   — periyodik olarak yeni uygulama versiyonu olup olmadığını kontrol eden VersionCheckNotifier
   recording_provider.dart — sesli-metin girişi için mikrofon kayıt durumunu kontrol eden RecordingNotifier
+  tasklist_provider.dart  — Self-Driving görev listelerinin durumu, SSE üzerinden canlı aktivite akışı (v4.4.0)
 
 frontend/lib/screens/
   app_shell.dart        — NavRail sekme değiştirici (sohbet/agent/model/whatsapp/takvim) ve global kısayollarla ana kabuk
@@ -540,6 +611,7 @@ frontend/lib/screens/
   model_store_screen.dart — Model Mağazası/Keşfet ekranı: seçilmiş model gezinme, yerel modeller, HF arama, donanım rozetleri (en büyük dart dosyası)
   whatsapp_screen.dart   — WhatsApp ekranı: sohbet listesi, mesaj görünümü, profil fotoğraflı avatarlar, gönder/ara arayüzü
   calendar_screen.dart   — /api/calendar/events'ten olayları çeken ve gösteren takvim ekranı
+  task_detail_screen.dart — Self-Driving görev detay ekranı: canlı faz/ilerleme, plan onay kartı (_PlanApprovalSection), escalation banner'ı (v4.4.0)
 
 frontend/lib/widgets/
   settings_dialog.dart      — settings/tabs/* içeriğine dikey sekme navigasyonuyla giden ayarlar dialog kabuğu
@@ -568,6 +640,7 @@ frontend/lib/widgets/agent/
   activity_panel.dart       — orchestra görevlerini ve agent tool adımlarını canlı gösteren sağ taraf aktivite zaman çizelgesi
   permission_dialog.dart    — istenen bir agent tool iznini onayla/reddet dialog'u
   permission_history.dart   — geçmiş agent izin kararlarının liste görünümü
+  task_activity_block.dart  — sohbet içi canlı Self-Driving görev kartı: tool/alt-ajan aktivite satırları, working/stalled durumları, "model üretiyor" göstergesi (v4.4.0)
 
 frontend/lib/widgets/settings/tabs/
   general_tab.dart           — genel tercihler + CLI yeniden yükleme/kaldırma yönetimi sekmesi
@@ -723,54 +796,60 @@ frontend/build/, frontend/.dart_tool/, mobile/build/, mobile/.dart_tool/ — Flu
 
 ## İstatistikler
 
-> **2026-08-05'te yeniden sayıldı** (`find`/`wc` ile) — v3.3.3 sürümü + v3.3.4 geliştirme dalı sonrası. Aşağıdaki sayılar bir sonraki büyük refactor'de yine bayatlayacak, elle güncel tutulur.
+> **2026-09-01'de yeniden sayıldı** (`find`/`wc` ile) — v4.4.0 (Self-Driving
+> branch) sonrası, PROJECT_MAP.md dokümantasyon denetimiyle birlikte. Bir
+> önceki sayım 2026-08-05'ten kalmıştı (v3.3.3/v3.3.4 dönemi) — aşağıdaki
+> sayılar da bir sonraki büyük değişiklikte yine bayatlayacak, elle güncel
+> tutulur.
 
 ### Go (backend)
 
-| Metrik | Değer |
+| Metrik | Değer (2026-08-05 → 2026-09-01) |
 |---|---|
-| Toplam `.go` dosyası (test hariç) | 220 |
-| Test dosyası (`_test.go`) | 161 |
-| `internal/` alt paket sayısı | 41 |
-| Kaynak kod satırı (test hariç) | 53.292 |
-| Test kodu satırı | 30.946 |
-| **Toplam Go satırı** | **84.238** |
-| En büyük dosya | `internal/webserver/handlers_flutter.go` (2.532 satır) |
-| 2. en büyük | `internal/memory/store.go` (2.333 satır) |
-| 3. en büyük | `internal/app/llm.go` (1.308 satır) |
+| Toplam `.go` dosyası (test hariç) | 220 → **327** |
+| Test dosyası (`_test.go`) | 161 → **276** |
+| `internal/` alt paket sayısı | 41 → **48** |
+| Kaynak kod satırı (test hariç) | 53.292 → **79.180** |
+| Test kodu satırı | 30.946 → **53.172** |
+| **Toplam Go satırı** | 84.238 → **132.352** |
+| En büyük dosya | `internal/webserver/handlers_flutter.go` (3.129 satır) |
+| 2. en büyük | `internal/memory/store.go` (2.624 satır) |
+| 3. en büyük | `internal/taskloop/engine.go` (1.626 satır, yeni — v4.4.0) |
+| 4. en büyük | `internal/app/llm.go` (1.573 satır) |
 
 ### Flutter — Masaüstü (`frontend/`)
 
-| Metrik | Değer |
+| Metrik | Değer (2026-08-05 → 2026-09-01) |
 |---|---|
-| Toplam `.dart` dosyası (lib/, test hariç) | 105 |
-| Test dosyası | 17 |
-| Kaynak kod satırı (lib/) | 40.341 |
-| Test kodu satırı | 2.786 |
-| En büyük dosya | `core/l10n.dart` (3.042 satır) |
-| 2. en büyük | `widgets/chat_input.dart` (1.991 satır) |
-| 3. en büyük | `core/api_client.dart` (1.967 satır) |
+| Toplam `.dart` dosyası (lib/, test hariç) | 105 → **133** |
+| Test dosyası | 17 → **45** |
+| Kaynak kod satırı (lib/) | 40.341 → **53.316** |
+| Test kodu satırı | 2.786 → **7.130** |
+| En büyük dosya | `core/l10n.dart` (4.159 satır) |
+| 2. en büyük | `core/api_client.dart` (2.778 satır) |
+| 3. en büyük | `widgets/chat_input.dart` (2.223 satır) |
 
 > `model_store_screen.dart` artık tek dev dosya değil — `settings/tabs/`'a paralel bir desenle bölündü (bkz. handoff.md, BUG-M1).
 
 ### Flutter — Mobil (`mobile/`)
 
-| Metrik | Değer |
+| Metrik | Değer (2026-08-05 → 2026-09-01) |
 |---|---|
-| Toplam `.dart` dosyası (lib/, test hariç) | 21 |
-| Test dosyası | 1 |
-| Kaynak kod satırı (lib/) | 7.848 |
+| Toplam `.dart` dosyası (lib/, test hariç) | 21 → **22** |
+| Test dosyası | 1 → **2** |
+| Kaynak kod satırı (lib/) | 7.848 → **7.888** |
 | En büyük dosya | `core/api_client.dart` (1.928 satır) |
+
+> `mobile/` hâlâ ayrı, aktif geliştirilen bir proje — `frontend/`'e Android/iOS hedefi eklenip `mobile/`'ın kaldırılması yönündeki bir önceki plan (bkz. ROADMAP.md) henüz gerçekleşmedi.
 
 ### Genel Toplamlar
 
 | Metrik | Değer |
 |---|---|
-| **Toplam kaynak dosyası** (Go + Dart, test dahil) | **~525** |
-| **Toplam kaynak kodu satırı** (Go + Dart, test dahil) | **~135.200** |
-| Shell/bat/ps1 script sayısı (kök dizin) | 15 |
-| Script satırı toplamı | 2.269 |
-| Markdown doküman sayısı (repo genelinde) | ~202 |
+| **Toplam kaynak dosyası** (Go + Dart, test dahil) | **~805** |
+| **Toplam kaynak kodu satırı** (Go + Dart, test dahil) | **~200.686** |
+| Shell/bat/ps1 script sayısı (kök dizin) | 1 (`build_releases.sh`) — geri kalan **20 script `scripts/`'e taşınmış** (3.633 satır) |
+| Markdown doküman sayısı (repo genelinde) | 238 |
 | `.github/workflows/` sayısı | 6 |
 | `skills/` altındaki skill sayısı | 2 |
 | Git commit sayısı | 1.156 |

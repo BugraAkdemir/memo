@@ -21,11 +21,12 @@ func (r *appSubAgentRunner) Run(ctx context.Context, spec taskloop.SubAgentSpec,
 	trc := taskRunConfigFromCtx(ctx)
 
 	var router *provider.Router
-	projectPath := ""
+	projectPath, listID := "", ""
 	base := r.a.agentExecutor
 	if trc != nil {
 		router = trc.exec.ActiveRouter()
 		projectPath = trc.projectPath
+		listID = trc.listID
 	}
 	if router == nil {
 		router = provider.NewRouter(r.a.enabledProviderConfigs())
@@ -48,7 +49,20 @@ func (r *appSubAgentRunner) Run(ctx context.Context, spec taskloop.SubAgentSpec,
 		provider.TextMessage("system", spec.SystemPrompt),
 		provider.TextMessage("user", spec.Task),
 	}
-	streamCh, err := exec.RunStream(ctx, "", spec.Model, "", msgs, func(agent.AgentEvent) {}, projectPath)
+	// Mirror this sub-agent's tool calls into the live task card, the same
+	// way a plain worker/coder turn does (emitStepToolActivity) — role-tagged
+	// so four sub-agents interleaving in parallel read as four sub-agents,
+	// not one. Before this, Spawn's four goroutines ran with onEvent a no-op:
+	// no tokens counted, no activity logged, so SilentSec sat frozen at the
+	// list's full elapsed time regardless of how much real work the
+	// sub-agents were doing underneath it — live, a 6-minute run (three of
+	// those on one sub-agent hitting a slow provider) looked, from the card,
+	// indistinguishable from a hang.
+	onEvent := func(ev agent.AgentEvent) {}
+	if listID != "" {
+		onEvent = func(ev agent.AgentEvent) { r.a.emitSubAgentActivity(listID, string(spec.Role), ev) }
+	}
+	streamCh, err := exec.RunStream(ctx, "", spec.Model, "", msgs, onEvent, projectPath)
 	if err != nil {
 		return "", err
 	}

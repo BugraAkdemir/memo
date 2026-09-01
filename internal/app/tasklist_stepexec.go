@@ -139,15 +139,34 @@ func (a *App) toolVerb(name string) string {
 // user and "it looks frozen"; for an instant tool like write_file the pair
 // would land in the same second and just double the log.
 func (a *App) emitStepToolActivity(listID string, ev agent.AgentEvent) {
+	a.emitToolActivity(listID, "", ev)
+}
+
+// emitSubAgentActivity is emitStepToolActivity's counterpart for a sub-agent
+// turn (SubAgentOrchestrator.Spawn — subagent.go), role-tagged so four
+// sub-agents running in parallel read as four sub-agents in the log instead
+// of one indistinguishable stream. Wired as appSubAgentRunner.Run's onEvent;
+// see that call site for why the wiring matters (it used to be a no-op).
+func (a *App) emitSubAgentActivity(listID, role string, ev agent.AgentEvent) {
+	a.emitToolActivity(listID, role, ev)
+}
+
+// emitToolActivity is the shared body: role is a "[coder] " style prefix, or
+// "" for a plain worker/coder-step turn that doesn't need one.
+func (a *App) emitToolActivity(listID, role string, ev agent.AgentEvent) {
 	if a.taskloopEngine == nil {
 		return
+	}
+	prefix := ""
+	if role != "" {
+		prefix = "[" + role + "] "
 	}
 
 	if ev.Type == agent.EventToolExecuting {
 		if !slowTools[ev.ToolName] {
 			return
 		}
-		a.taskloopEngine.EmitActivity(listID, "tool_start", a.toolLine(ev)+" …")
+		a.taskloopEngine.EmitActivity(listID, "tool_start", prefix+a.toolLine(ev)+" …")
 		return
 	}
 
@@ -160,7 +179,7 @@ func (a *App) emitStepToolActivity(listID string, ev agent.AgentEvent) {
 	// planner/coder works (a "not frozen" signal, not a billing figure).
 	a.taskloopEngine.AddTokens(listID,
 		taskloop.EstTokens(string(ev.Args))+taskloop.EstTokens(ev.Result)+taskloop.EstTokens(ev.Content))
-	line := a.toolLine(ev)
+	line := prefix + a.toolLine(ev)
 	if ev.Type == agent.EventToolError {
 		line = "⚠ " + line
 	}

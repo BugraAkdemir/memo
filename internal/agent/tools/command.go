@@ -567,18 +567,63 @@ var readOnlyCommandAllowlist = []string{
 	"npm test", "npm run test", "pnpm test", "yarn test",
 	"pytest", "python -m pytest", "python3 -m pytest",
 	"python -m unittest", "python3 -m unittest",
-	// A test-runner verifying a web app it (or the coder) just built has no
-	// other way to hit it — curl doesn't touch the project directory, and
-	// commandTargetsProtectedPath below still blocks any path argument that
-	// does. Found missing live: a Self-Driving run's test-runner tried
-	// "curl -s -o /dev/null -w ... http://127.0.0.1:PORT/" and
-	// "lsof -i :PORT" three separate times, each rejected, before giving up.
+	// Handled specially in isReadOnlyCommand — this entry is a marker, not a
+	// plain prefix — see isAllowedReadOnlyCurl.
 	"curl",
+}
+
+// curlURLPattern extracts bare http(s):// URL tokens from a shell command
+// string — good enough for the safety check below without a full shell
+// parse (which flags like `-o file` inside the same command already can't
+// escape the project directory anyway, per commandTargetsProtectedPath).
+var curlURLPattern = regexp.MustCompile(`https?://([^/\s'"]+)`)
+
+// isAllowedReadOnlyCurl reports whether cmd is a curl invocation that only
+// ever talks to localhost — the one legitimate need a read-only test-runner
+// has for curl (verifying a server the coder just started), without opening
+// the door to a read-only sub-agent exfiltrating file contents or repo
+// secrets to an attacker-controlled URL. Found missing live: a Self-Driving
+// run's test-runner tried "curl -s -o /dev/null -w ... http://127.0.0.1:PORT/"
+// and gave up after three rejections — but a blanket "curl" prefix (the
+// first fix attempted here) turned out to allow curl to ANY host, which
+// TestRunCommandReadOnly_RejectsNonAllowlisted already existed specifically
+// to catch ("curl http://x" must be denied) — so the allowlist below still
+// admits curl by prefix, and this second check narrows what it may target.
+func isAllowedReadOnlyCurl(cmd string) bool {
+	c := strings.TrimSpace(cmd)
+	if c != "curl" && !strings.HasPrefix(c, "curl ") {
+		return false
+	}
+	matches := curlURLPattern.FindAllStringSubmatch(c, -1)
+	if len(matches) == 0 {
+		// No http(s):// URL at all — "curl --help", a malformed invocation,
+		// etc. Nothing to exfiltrate to; let RunCommand's own execution
+		// report the real error.
+		return true
+	}
+	for _, m := range matches {
+		host := m[1]
+		if i := strings.IndexAny(host, ":/"); i >= 0 {
+			host = host[:i]
+		}
+		switch strings.ToLower(host) {
+		case "127.0.0.1", "localhost", "::1", "0.0.0.0":
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func isReadOnlyCommand(cmd string) bool {
 	c := strings.TrimSpace(cmd)
 	for _, p := range readOnlyCommandAllowlist {
+		if p == "curl" {
+			if isAllowedReadOnlyCurl(c) {
+				return true
+			}
+			continue
+		}
 		if c == p || strings.HasPrefix(c, p+" ") {
 			return true
 		}

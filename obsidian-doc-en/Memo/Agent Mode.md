@@ -1,6 +1,6 @@
 # 🤖 Agent Mode
 
-> **Package:** `internal/agent/` (19 built-in tools, up from the original 8)
+> **Package:** `internal/agent/` (27 built-in tools in the main registry as of this pass — verified against `registerBuiltins()`, `internal/agent/tools.go` — up from the original 8; the 4 `whatsapp_*` tools are NOT in this count, see the note under "16-19" below)
 > **Config file:** `data/permissions.json`
 > **API endpoints:** `/api/agent/enabled`, `/api/agent/permission`, `/api/agent/permissions`
 > **Requires:** An active external provider, or a running local llama.cpp model — `resolveAgentProvider()` wraps either one into the same `provider.Router`-based tool-calling request, so agent mode isn't external-provider-only. Real-world tool-calling *quality* on local models varies a lot by model (see Known Issues).
@@ -37,7 +37,7 @@ User Message
 │  │  4. Execute tool (sandboxed)         │ │
 │  │  5. Feed result back to LLM          │ │
 │  │  6. Repeat until final response      │ │
-│  │     (max 20 iterations)              │ │
+│  │     (max 40 iterations)              │ │
 │  └─────────────────────────────────────┘ │
 └──────────────────┬──────────────────────┘
                    │
@@ -103,7 +103,7 @@ This is how a feature gets native tool-calling's "model decides, single request,
 
 ## Built-in Tools
 
-Registered in `internal/agent/tools.go` — 19 tools total, up from the original 8 (`edit_file`/`insert_line`/`delete_lines`/`web_search`/`self_clone`/`configure_provider`/`get_calendar_events` and the 4 WhatsApp tools were added later, see [[WhatsApp Integration]]). On top of these, **skill tools are now real** (v3.3.3): a skill's `SKILL.md` can declare a `command:` field, and it executes through this exact same pipeline and permission UI — see [[Guides]].
+Registered in `internal/agent/tools.go`'s `registerBuiltins()` — **27 tools** in the main registry (verified by grep, not the stale "19" this doc used to claim), up from the original 8. On top of these, **skill tools are now real** (v3.3.3): a skill's `SKILL.md` can declare a `command:` field, and it executes through this exact same pipeline and permission UI — see [[Guides]].
 
 ### 1. `read_file` — Safe
 ```json
@@ -185,8 +185,35 @@ Registered in `internal/agent/tools.go` — 19 tools total, up from the original
 ### 15. `get_calendar_events` — Safe
 - Reads real events from `events.db` for a date range — the model is instructed to call this instead of guessing when asked about the calendar
 
-### 16-19. WhatsApp tools — `whatsapp_send` (Medium), `whatsapp_search` (Safe), `whatsapp_latest` (Safe), `whatsapp_messages` (Safe)
-- Send/search/list-chats/get-history against the paired WhatsApp account — see [[WhatsApp Integration]]
+### 16. `change_directory` — Dangerous
+- Switches the agent's whole file/command sandbox to a different existing directory for the rest of the conversation; every other file tool is scoped to the new base afterward
+
+### 17. `get_task_status` — Safe
+- Reads a running Self-Driving task's live status (phase, step N/M, item a/b, current step, elapsed) — the model is instructed to call this instead of guessing when asked "how's the task going"
+
+### 18. `pause_task` — Safe / 19. `resume_task` — Safe
+- Pause/resume the Self-Driving task tied to the current chat; on resume, whatever the user typed while paused is passed on to the next step
+
+### 20. `create_task_md` — Medium / 21. `edit_task_md` — Medium
+- Write a new `Task.md` (Memo's canonical checkbox-item task-list format) or edit one in place (add/split/check an item, set a header) — see [[Guides]] for the schema
+
+### 22. `start_self_driving_task` — Medium
+- Starts an autonomous, unattended run of a `Task.md` file's items — planning + optional sub-agents, progress visible in the Tasks tab or via `get_task_status`
+
+### 23. `share_file` — Medium
+- Sends a file or folder (auto-zipped) back to the user, always into the current conversation (never a different channel)
+
+### 24. `create_routine` — Medium / 25. `list_routines` — Safe / 26. `cancel_routine` — Medium
+- Create/list/cancel a scheduled routine from a free-text description (e.g. "every day at 9 send me AI news") — see [[Proactive Learning and Calendar]]
+
+### 27. `fetch_page` — Safe
+- Fetches a URL's full content as Markdown (not just `web_search`'s snippet) — up to 5 attempts across different domains per request
+
+---
+
+### WhatsApp tools are NOT in this registry
+
+`whatsapp_send` (Medium), `whatsapp_search` (Safe), `whatsapp_latest` (Safe), `whatsapp_messages` (Safe) exist in the codebase but live **only** in the separate scoped `NewWhatsAppRegistry()`/`NewWhatsAppExecutor()` (see "Scoped Registries" above, `internal/app/whatsapp.go`) — used exclusively for WhatsApp-triggered agent runs. They are **not** part of the 27-tool main registry a normal chat's Agent Mode uses; a previous version of this doc listed them here as tools "16-19" of the main set, which contradicted this page's own Scoped Registries section. See [[WhatsApp Integration]].
 
 ---
 
@@ -298,7 +325,7 @@ func (s *Sandbox) ValidatePath(path string) error {
 }
 ```
 
-### Command Blacklist (23 patterns)
+### Command Blacklist (43 patterns as of this pass — `blacklistedPatterns`, `internal/agent/tools/command.go`; grown a lot since the "23" this doc used to say)
 
 The following patterns are **blocked** in `run_command`:
 

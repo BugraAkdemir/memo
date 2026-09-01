@@ -1,6 +1,6 @@
 # 🤖 Ajan Modu
 
-> **Paket:** `internal/agent/` (19 yerleşik araç, başlangıçtaki 8'den)
+> **Paket:** `internal/agent/` (ana registry'de 27 yerleşik araç — `registerBuiltins()`'e karşı doğrulandı, başlangıçtaki 8'den; 4 `whatsapp_*` aracı bu sayıya dahil değil, aşağıdaki nota bakın)
 > **Yapılandırma dosyası:** `data/permissions.json`
 > **API endpoint'leri:** `/api/agent/enabled`, `/api/agent/permission`, `/api/agent/permissions`
 > **Gereksinim:** Aktif bir harici sağlayıcı YA DA çalışan bir yerel llama.cpp modeli — `resolveAgentProvider()` ikisini de aynı `provider.Router` tabanlı tool-calling isteğine sarıyor, yani ajan modu sadece harici sağlayıcıya bağlı değil. Yerel modellerde gerçek tool-calling *kalitesi* modelden modele büyük fark gösteriyor (bkz. Bilinen Sorunlar).
@@ -51,14 +51,12 @@ Kullanıcı Mesajı
 
 ## Araç Sistemi
 
-### Yerleşik Araçlar (19 adet)
+### Yerleşik Araçlar (27 adet, ana registry)
 
-`internal/agent/tools.go`'da kayıtlı — ilk sürümdeki 8 araçtan (`edit_file`/
-`insert_line`/`delete_lines`/`web_search`/`self_clone`/`configure_provider`/
-`get_calendar_events` ve 4 WhatsApp aracı sonradan eklendi) büyüdü. Bunun
-üstüne, **skill araçları da artık gerçek** (v3.3.3): bir skill'in
-`SKILL.md`'i bir `command:` alanı tanımlayabiliyor, ve bu tam olarak aynı
-pipeline ve izin UI'ından çalışıyor.
+`internal/agent/tools.go`'daki `registerBuiltins()`'te kayıtlı — ilk
+sürümdeki 8 araçtan büyüdü. Bunun üstüne, **skill araçları da artık gerçek**
+(v3.3.3): bir skill'in `SKILL.md`'i bir `command:` alanı tanımlayabiliyor,
+ve bu tam olarak aynı pipeline ve izin UI'ından çalışıyor.
 
 | Araç | Tehlike | Açıklama |
 |------|---------|----------|
@@ -71,20 +69,26 @@ pipeline ve izin UI'ından çalışıyor.
 | `list_directory` | ✅ Safe | Dizin içeriğini listeler (max 1000) |
 | `get_file_info` | ✅ Safe | Dosya meta bilgisi döndürür |
 | `search_files` | ✅ Safe | Glob pattern ile dosya arar (30s timeout) |
-| `run_command` | 🔴 Dangerous | Terminal komutu çalıştırır (60s timeout, 23 desenlik kara liste) |
+| `run_command` | 🔴 Dangerous | Terminal komutu çalıştırır (60s timeout, 43 desenlik kara liste — `blacklistedPatterns`, `command.go`) |
+| `change_directory` | 🔴 Dangerous | Ajanın dosya/komut sandbox'ını sohbetin geri kalanı için başka bir dizine değiştirir |
 | `read_env` | ⚠️ Medium | Ortam değişkenlerini listeler (hassas olanları maskeler) |
 | `web_search` | ✅ Safe | DuckDuckGo araması — modele, sadece training cutoff'undan sonra değişmiş olabilecek güncel olay/fiyat/gerçekler için çağırması, selamlaşma veya zaten bildiği genel bilgi için çağırmaması söyleniyor (tool'un kendi `Description` alanında). **Yeniden tasarlandı (v3.5.6):** artık sohbet üst çubuğundaki web arama toggle'ının kendi, ayrı bir "kör enjeksiyon" mekanizması yok — toggle açık ve ajan modu kapalıyken `App.routeStream` (`chat.go`), bu ARACIN BİREBİR AYNISINI sadece `web_search`'ü içeren küçültülmüş bir executor'la (`agent.NewWebSearchExecutor`/`NewWebSearchRegistry`, aşağıdaki "Kapsamlandırılmış Registry'ler" bölümüne bakın) çalıştıran `callWebSearchAgentStream`'e (`llm.go`) yönlendiriyor — tam agent modunun kullandığı aynı tek-istekli native tool-calling kararı, sadece tek bir araçla. Sonuç: normal sohbet de artık "sadece model gerçekten gerekli görürse ara" davranışını, ayrı bir "aramalı mıyım" LLM çağrısı olmadan ve dosya/komut araçlarını hiç açığa çıkarmadan alıyor. Orchestra modu açıkken (kendi tek-istekli `RunSingle` akışına tool-calling eklenemediği için) ya da Minimal Mod açıkken (eski kör-enjeksiyon tasarımının da aynı şekilde kapatıldığı gibi — Minimal Mod'un tüm vaadi "hafıza dışında sıfır enjeksiyon", ve her istekte binen bir tool tanımı da aynı kategoride bir yük) hiç tool gönderilmiyor. Canlı önce/sonra testi için `handoff.md`'nin Session 17 girdisine bakın. |
 | `self_clone` | 🔴 Dangerous | Tüm projeyi (kaynak + binary) başka bir yerel dizine kopyalar |
 | `configure_provider` | 🔴 Dangerous | Sohbet içinden sağlayıcı ekler/günceller, kullanıcı onayı gerektirir |
 | `get_calendar_events` | ✅ Safe | Gerçek takvim verisini (`events.db`) okur — model tahmin etmek yerine bunu çağırmaya yönlendiriliyor |
-| `whatsapp_send` | ⚠️ Medium | WhatsApp'tan bir kişiye mesaj gönderir |
-| `whatsapp_search` | ✅ Safe | WhatsApp mesajlarında metin arar |
-| `whatsapp_latest` | ✅ Safe | En son mesajlaşılan sohbetleri listeler |
-| `whatsapp_messages` | ✅ Safe | Belirli bir sohbetin mesaj geçmişini getirir |
+| `get_task_status` | ✅ Safe | Çalışan Self-Driving görevinin canlı durumunu okur (faz, adım N/M) — model uydurmak yerine bunu çağırmaya yönlendiriliyor |
+| `pause_task` / `resume_task` | ✅ Safe | Bu sohbete bağlı otonom görevi duraklatır/kaldığı adımdan sürdürür |
+| `create_task_md` / `edit_task_md` | ⚠️ Medium | Yeni bir Task.md yazar / var olanı yerinde düzenler (madde ekle, böl, header ayarla, işaretle) |
+| `start_self_driving_task` | ⚠️ Medium | Bir Task.md dosyasından otonom görev döngüsünü başlatır |
+| `share_file` | ⚠️ Medium | Bir dosya/klasörü (klasörse zip'leyerek) bu konuşmaya geri gönderir |
+| `create_routine` / `list_routines` / `cancel_routine` | ⚠️ Medium / ✅ Safe / ⚠️ Medium | Serbest metinden zamanlanmış bir rutin oluşturur/listeler/iptal eder |
+| `fetch_page` | ✅ Safe | Bir URL'nin tam içeriğini Markdown olarak getirir (web_search'ün kısa özetinden farklı olarak) |
+
+**Not — WhatsApp araçları bu registry'de DEĞİL:** `whatsapp_send`/`whatsapp_search`/`whatsapp_latest`/`whatsapp_messages` kodda var ama yalnızca ayrı, kapsamlandırılmış `NewWhatsAppRegistry()`/`NewWhatsAppExecutor()`'da yaşıyor (aşağıya bakın) — normal bir sohbetin Ajan Modu'nun kullandığı 27 araçlık ana registry'nin parçası değiller. Bu sayfanın önceki bir sürümü bunları yanlışlıkla ana listeye dahil ediyordu.
 
 ### Kapsamlandırılmış Registry'ler (Scoped Registries)
 
-Tam 19 araçlık registry tek seçenek değil — `NewRegistry()` bunu
+Tam 27 araçlık registry tek seçenek değil — `NewRegistry()` bunu
 `registerBuiltins()` ile kuruyor, ama iki dar kapsamlı constructor daha var,
 her biri var olan bir executor'ın sandbox/izin/backup/audit-log'unu paylaşıp
 sadece registry'sini değiştiren bir `New*Executor(existing *Executor)`

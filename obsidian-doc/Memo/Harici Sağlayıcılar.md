@@ -50,7 +50,7 @@ type Provider interface {
 
 ---
 
-## Desteklenen Sağlayıcılar (10 tür + 2 CLI provider)
+## Desteklenen Sağlayıcılar (12 tür + 2 CLI provider — `internal/provider/provider.go`'daki `ProviderType` sabitlerine karşı doğrulandı; `llama.cpp` ayrı bir enum ama gerçek bir provider olarak uygulanmamış, sayıma dahil değil)
 
 ### 1. OpenAI (`openai.go`, 353 satır)
 - **Uyumlu API'ler:** OpenAI, OpenAI uyumlu tüm endpoint'ler
@@ -59,16 +59,19 @@ type Provider interface {
 - **Varsayılan modeller:** GPT-4o, GPT-4o-mini, o1, o3
 - **Özel base URL:** LM Studio, yerel proxy desteği
 
-### 2. Google Gemini (`gemini.go`, 351 satır)
+### 2. Google Gemini (`gemini.go`)
 - **API Stili:** OpenAI uyumlu değil, özel implementasyon
 - **Auth:** API anahtarı query parameter (`?key=...`)
 - **Implementasyon:** `:generateContent` (non-streaming), `:streamGenerateContent?alt=sse` (streaming)
 - **Rol eşleme:** `system`/`developer` → `SystemInstruction`, `assistant` → `model`
+- **Tool-calling (bu branch'te eklendi, öncesinde hiç yoktu):** `tools:[{functionDeclarations:[...]}]` gönderir; aynı turdaki paralel çağrılar tek bir sonraki `functionResponse` turuna birleştirilir (Gemini'nin rol-değişimi kuralına uymak için)
 
-### 3. Anthropic Claude (`claude.go`, 368 satır)
+### 3. Anthropic Claude (`claude.go`)
 - **API Stili:** OpenAI uyumlu değil, özel implementasyon
 - **Auth:** `x-api-key` header (Bearer değil), `anthropic-version: 2023-06-01`
 - **Implementasyon:** POST `/messages` ile özel SSE event ayrıştırma
+- **Tool-calling (bu branch'te eklendi, öncesinde hiç yoktu):** `tools:[{name,description,input_schema}]` gönderir; asistan `tool_use` blokları ve takip eden `tool_result` blokları doğru round-trip ediyor, paralel çağrılar tek bir sonraki "user" turuna birleştiriliyor
+- **Extended thinking istenip gösterilmiyor** — `req.EffortLevel` seçiliyken `thinking:{type:"adaptive"}` gönderiliyor ama yanıttaki `"thinking"` bloğu hiçbir yerde ayrıştırılmıyor, sessizce çöpe gidiyor. Bkz. repo'nun `BUG_REPORT.md`'sindeki `BUG-THINK1`.
 
 ### 4. xAI Grok (`grok.go`, 29 satır)
 - **API Stili:** OpenAI uyumlu (`openAIProvider` wrapper)
@@ -106,7 +109,10 @@ type Provider interface {
 
 > **Not:** llama.cpp bir provider olarak uygulanmamıştır. Yerel modeller `api.Client` ile ayrıca yönetilir.
 
-### 11-12. Claude Code CLI ve Codex CLI (`internal/agentcli/`, CLI tabanlı — v3.3.4)
+### 11. Özel (Anthropic uyumlu) (`custom_anthropic.go`, bu branch'te eklendi)
+- `*claudeProvider`'ı saran ince bir sarmalayıcı (`grok.go`/`openrouter.go`'nun `openAIProvider`'ı sardığı desenin aynısı, ama Anthropic wire formatı için). Kullanıcının kendi Anthropic-uyumlu proxy'sini (OpenAI base URL değil) bağlayabilmesi için — `claude.go`'nun tool-calling desteğinin tamamını bedavaya miras alıyor. `BaseURL` zorunlu (boşsa `Validate()` reddediyor, `custom` ile aynı kural).
+
+### 12-13. Claude Code CLI ve Codex CLI (`internal/agentcli/`, CLI tabanlı — v3.3.4)
 
 Diğer sağlayıcılardan mimari olarak tamamen farklı: bir HTTP API'ye istek atmak yerine bilgisayarda kurulu bir komut satırı aracını subprocess olarak çalıştırır — Claude Code için `claude -p --output-format stream-json --dangerously-skip-permissions [--resume <id>]`, Codex için `codex exec --json --dangerously-bypass-approvals-and-sandbox [-C <dir>] [resume <thread-id>]`. Import cycle'a girmeden `provider.Provider` arayüzünü uygular — `internal/provider`, `internal/agentcli`'yi doğrudan import etmez; `provider.RegisterConstructor` ile `agentcli`'nin kendi `init()`'i (her iki dosya, `claude_code.go` ve `codex.go`, ayrı ayrı) kendini kaydeder (`database/sql` driver deseni). Codex'in stream-json çıktısı Claude Code'unkinden farklı: metin delta'lar halinde değil, her `item.completed` (`type:"agent_message"`) olayında turun tam metnini tek parça olarak verir; oturum kimliği `session_id` değil `thread_id` alanında gelir, ve `resume` alt-komutu (fresh-run'ın aksine) `-C` bayrağını kabul etmez — orijinal oturumun çalışma dizinini kendisi hatırlar.
 

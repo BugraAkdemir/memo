@@ -262,7 +262,11 @@ type App struct {
 	taskRunCfgs map[string]*taskRunConfig
 
 	taskNotifyBus *taskloop.NotifyBus
-	taskFocus     taskFocusState
+	// taskNotifyQ decouples the engine goroutine from Telegram/WhatsApp
+	// delivery — the pump (task_notify.go) drains it in order, one bounded
+	// send at a time. Without it a stalled push froze the whole task loop.
+	taskNotifyQ chan taskloop.Notification
+	taskFocus   taskFocusState
 
 	// task-loop event fan-out to chat SSE clients (GET /api/tasks/events).
 	taskEventMu   sync.RWMutex

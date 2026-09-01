@@ -4,18 +4,72 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"memo/internal/api"
+	"memo/internal/logx"
 	"memo/internal/taskloop"
 )
 
-// initTaskNotifyBus builds the NotifyBus and its senders. Called from the
-// taskloop wiring block in Startup once the engine exists.
+// taskNotifyQueueSize / taskNotifySendTimeout bound the notification pump
+// below. The timeout is per notification (all senders together), not per
+// sender.
+const (
+	taskNotifyQueueSize   = 128
+	taskNotifySendTimeout = 20 * time.Second
+)
+
+// initTaskNotifyBus builds the NotifyBus, its senders, and the single pump
+// goroutine that drains them. Called from the taskloop wiring block in Startup
+// once the engine exists.
 func (a *App) initTaskNotifyBus() {
 	a.taskNotifyBus = taskloop.NewNotifyBus()
 	a.taskNotifyBus.AddSender(&appNotifySender{a: a})
 	a.taskNotifyBus.AddSender(&telegramNotifySender{a: a})
 	a.taskNotifyBus.AddSender(&whatsappNotifySender{a: a})
+
+	a.taskNotifyQ = make(chan taskloop.Notification, taskNotifyQueueSize)
+	go a.pumpTaskNotifications()
+}
+
+// pumpTaskNotifications delivers queued notifications one at a time, in order,
+// off the engine goroutine.
+//
+// The engine calls onEvent synchronously from its run loop, and NotifyBus.Notify
+// fans out to Telegram and WhatsApp *inline*, so before this pump a single slow
+// push froze the whole task. Seen live: a "started" notification landed while
+// the WhatsApp socket was reconnecting; whatsmeow's SendMessage blocked on the
+// context.Background() it was handed, and item 1 of the list did not begin for
+// 90 seconds — with nothing on screen but "planning", which reads as a hang.
+func (a *App) pumpTaskNotifications() {
+	defer recoverPanic("pumpTaskNotifications")
+	for n := range a.taskNotifyQ {
+		func() {
+			ctx, cancel := context.WithTimeout(context.Background(), taskNotifySendTimeout)
+			defer cancel()
+			a.taskNotifyBus.Notify(ctx, n)
+		}()
+	}
+}
+
+// enqueueTaskNotification hands n to the pump without ever blocking the
+// caller. A full queue means the push channels are badly backed up; dropping
+// the notification is the right trade — the task itself must keep running, and
+// the in-app event/SSE copy (emitEvent) has already gone out regardless.
+func (a *App) enqueueTaskNotification(n taskloop.Notification) {
+	if a.taskNotifyQ == nil {
+		// No pump (tests constructing an App by hand): deliver inline, but
+		// still time-bounded.
+		ctx, cancel := context.WithTimeout(context.Background(), taskNotifySendTimeout)
+		defer cancel()
+		a.taskNotifyBus.Notify(ctx, n)
+		return
+	}
+	select {
+	case a.taskNotifyQ <- n:
+	default:
+		logx.Printf("TASKLOOP: notification queue full, dropping %s for %s", n.Event, n.ListID)
+	}
 }
 
 // dispatchTaskEvent translates one engine onEvent(name,data) into a
@@ -75,7 +129,7 @@ func (a *App) dispatchTaskEvent(name, data string) {
 			title = tl.Title
 		}
 	}
-	a.taskNotifyBus.Notify(context.Background(), taskloop.Notification{
+	a.enqueueTaskNotification(taskloop.Notification{
 		ListID:    listID,
 		ListTitle: title,
 		Event:     event,
@@ -113,7 +167,7 @@ func (a *App) dispatchTaskFinishReport(listID, event string) {
 	}
 	full := fmt.Sprintf("%s %s\n\n%s", header, tl.Title, body)
 
-	a.taskNotifyBus.Notify(context.Background(), taskloop.Notification{
+	a.enqueueTaskNotification(taskloop.Notification{
 		ListID:    listID,
 		ListTitle: tl.Title,
 		Event:     event,

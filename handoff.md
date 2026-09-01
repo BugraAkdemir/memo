@@ -1,3 +1,50 @@
+# Ek (2026-09-01, devam 56) — Sub-agent aktivite fix'i playground'da canlı doğrulandı
+
+Kullanıcı: "sub-agent testini yap, streaming gap'e dokunma (gerçek ihtiyaç
+doğmadıkça), 8090'ı ben kapattım sorun yok, test verisi bozulursa uğraşma."
+
+**Yöntem:** devam 55'te yazılan `model_playground.py` (scratchpad, stdlib-only
+Python — Anthropic/Gemini/OpenAI wire formatlarını konuşan sahte sunucu, FIFO
+üzerinden ben "model" rolünü oynuyorum) tekrar kullanıldı. Bu sefer **izole bir
+veri dizininde** (`scratchpad/isolated_memo/`) — devam 55'teki hatadan ders:
+ilk denemede aynı repo `data/` dizinini kullanıp kullanıcının gerçek çalışan
+uygulamasıyla (port 8090) aynı `providers.json`'a yazma riski oluşmuştu, hemen
+fark edip durdurulmuştu.
+
+**Sonuç: `[coder]` etiketli aktivite satırı canlıda gerçekten aktı.**
+
+```
+event: taskloop:activity — ...\x1ftool\x1f[coder] Wrote a file: test.py
+```
+
+Bu, devam 54/55'in (`195821db`) hiç canlı doğrulanmamış tek eksik parçasıydı.
+`[parallel]` işaretleyicili bir madde ile `custom-anthropic` provider'ı
+playground'a bağlanarak gerçek bir Self-Driving görev koşturuldu: coder
+sub-agent'ı `write_file` çağırdı (ilk denemede benim shell escaping hatam
+yüzünden boş `args` gitti, Memo doğru şekilde backup hatası verdi — Memo
+hatası değildi; ikinci denemede dosyayı doğru yazdı), aktivite akışında
+`[coder]` prefix'i doğru göründü.
+
+**3'lü paralel faz (analyzer/reviewer/test-runner) canlı doğrulanamadı** — üçü
+aynı anda tek FIFO'ya erişince yarış durumu oluştu, cevaplarım karıştı, CEO'nun
+kendi promptuna yanlışlıkla "1" gitti ("JSON ayrıştırılamadı ... ham: 1").
+**Bu test yönteminin sınırı, Memo'nun hatası değil.** Kaynak tekrar okunarak
+doğrulandı: `appSubAgentRunner.Run`'daki `onEvent` wiring'i `writeCapable`'a
+bakmaksızın 4 rol için de koşulsuz aynı (`emitSubAgentActivity(listID,
+string(spec.Role), ev)`), `emitToolActivity`'nin prefix mantığı da role
+parametresine göre role-agnostic — coder'da kanıtlanan mekanizma diğer üçü
+için de aynı kod yolu. Ayrı canlı kanıt yok ama unit test + kaynak + coder'ın
+canlı kanıtı birlikte güçlü bir güvence oluşturuyor.
+
+**Kullanıcının açık talimatıyla dokunulmayan:** streaming path'teki tool-call
+gediği (`StreamChunk`'ta `ToolCalls` alanı yok, 10 provider'ı etkiliyor ama şu
+an hiçbir kod yolu tetiklemiyor) — "gerçek ihtiyaç doğmadıkça değmez" dendi.
+
+**Temizlik:** tüm test süreçleri (playground + izole backend) durduruldu,
+kullanıcının gerçek `data/` dizinine hiç yazma olmadı.
+
+---
+
 # Ek (2026-09-01, devam 55) — Anthropic-uyumlu ikinci bir "özel" provider tipi
 
 Kullanıcı: "custom'a hem OpenAI hem Anthropic tool-calling ekleyelim ki

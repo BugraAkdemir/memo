@@ -1,3 +1,57 @@
+# Ek (2026-09-01, devam 53) — devam 52'yi canlı test ettim, yarım çıktı
+
+Kullanıcı "sen test et" dedi. devam 52'nin fix'ini gerçek süreçlerle uçtan uca
+denedim: geçici dizine gerçek bir `http.server` yazıp modelin logdaki komut
+şekliyle (`python3 blog.py <port> &` / `sleep 2` / `echo`) `RunCommand`'ı
+çağırdım. Üç şey ortaya çıktı, üçü de düzeltildi (`739631c0`).
+
+**1. WaitDelay fix'i yarım doğruydu.** `run_command` artık asılmıyordu (5.005 sn'de
+dönüyordu: 2 sn sleep + 3 sn WaitDelay) ama **sunucu ölüyordu**: WaitDelay,
+Wait'i pipe'ları *kapatarak* çözüyor, arka plandaki sunucu da ilk log satırını
+yazmaya kalkınca SIGPIPE yiyip ölüyor. Yani tool "sunucun çalışıyor" diyordu,
+sunucunun ömrü bir saniyeydi. Test bunu yakaladı (`server on :PORT is up`
+assertion'ı kırmızıydı).
+
+**Gerçek çözüm:** pipe'lara hiç gerek yok. `cmd.Stdout`'a bir `io.Writer`
+verilince `os/exec` OS pipe + kopyalayıcı goroutine yaratıyor ve `Wait` ona
+bloke oluyor; **`*os.File`** verilince çocuğa düz bir fd geçiyor — ne pipe, ne
+kopyalayıcı. `Wait` kabuk çıkar çıkmaz dönüyor, arka plandaki süreç de kimsenin
+okumadığı bir dosyaya yazmaya devam ediyor. `RunCapturingOutput` bunu yapıyor,
+geçici dosyalar dönmeden önce unlink'leniyor (hâlâ fd tutan çocuk, çıkınca yok
+olacak bir inode'a yazar). `internal/skill/executor.go` de aynı `bytes.Buffer`
+kalıbındaydı, o da bu fonksiyonu kullanıyor. Ölçüm: **2.003 sn** (komutun kendi
+sleep'i, üstüne sıfır gecikme), sunucu sonrasında **erişilebilir**, sonraki tool
+çağrısı çalışıyor. WaitDelay + process-group Cancel emniyet kemeri olarak duruyor.
+
+**2. `2>/dev/null` sandbox'a takılıyordu.** Testin ilk çalıştırmasında komut
+`access denied: command references "/dev/null"` ile reddedildi — `/dev/` toptan
+korumalı. `/dev/sda` için doğru, kabuk deyimi için değil: kullanıcının logunda
+model bu redirect'i **üç kez üst üste** yazıp üç model turu harcamıştı
+(04:33:47, 04:33:54, 04:34:05). Zararsız karakter aygıtları (null, zero, full,
+random, urandom, std*, tty, `/dev/fd/N`, `/proc/self/fd/N`) komutlarda serbest;
+`/dev/` altındaki geri kalan her şey kapalı — `/dev/sda`, `/dev/mem`,
+`/etc/shadow`, `~/.ssh/id_rsa` testle çivilendi.
+
+**3. `EventToolExecuting` tek `Args`'sız olaydı.** devam 51'de eklenen
+"başlıyor" satırı bu yüzden canlıda çıplak **`Komut …`** yazıyordu (ekran
+görüntüsünde görülüyor). Artık diğer bütün olaylar gibi `Args` taşıyor.
+
+**Canlı backend smoke:** gerçek binary `--headless --port 8098` ile ayağa
+kaldırıldı (kullanıcının çalışan örneği yoktu, portlar boştu), `Task loop engine
+initialized` + `Memo ready`, `/api/tasks/running` → `200 []`, `/api/chats` → 200;
+sonra temiz kapatıldı, artık süreç kalmadı. Sağlayıcı gerektiren uçtan uca görev
+koşusu **yapılmadı** — kullanıcının gerçek API anahtarlarını/parasını harcamamak
+için; tool katmanı zaten gerçek süreçlerle test edildi.
+
+**Doğrulama:** `go vet -tags sqlite_fts5 ./...` temiz; **`go test -tags
+sqlite_fts5 -race ./...` tamamı yeşil** (tek bir FAIL yok); `flutter analyze
+lib/` bilinen 5 info; `flutter test` 319/319.
+
+**Not:** `internal/agent/tools/selfclone_test.go`'da 3 satırlık gofmt hizalaması
+var — `gofmt -w *_test.go` yan etkisi, davranış değişikliği değil.
+
+---
+
 # Ek (2026-09-01, devam 52) — "2. maddeyi hiç göremedim": run_command sonsuza kadar asılı kalıyordu
 
 Kullanıcı: "7 dakika oldu daha 2. aşamayı göremedim, acaba alt agent mi

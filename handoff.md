@@ -1,3 +1,71 @@
+# Ek (2026-09-01, devam 49) — Self-Driving görev kendi başlatma turunda ölüyordu (branch aynı)
+
+Kullanıcı gerçek masaüstünde çalıştırdı: sohbetten `@Task.md`'yi self-driving
+verdi, görev **1.3 saniyede** 0/6 ile `failed` bitti. Her maddenin notu aynıydı:
+`işçi hatası: ⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.`
+
+**Kök neden (yeni, provider'larla ilgisi yok):** İşçi turları listenin kendi
+ajan sohbetine `SendMessageStreamTo` ile gidiyor. Ama `start_self_driving_task`
+bir **ajan aracı** — yani görevi başlatan turun kendisi, motor 1. maddeye
+geldiğinde hâlâ *tam olarak o sohbette* akıyor. `chat_locks.go`'daki per-chat
+akış kilidi `TryLock`: sıraya girmek yerine turu meşgul uyarısıyla **reddetti**.
+`buildTaskLoopRunWorker` bunu düz bir işçi hatasına çevirdi,
+`classifyProviderErr` hiçbir kovaya sokamadı (rate-limit değil, auth değil,
+transient değil) → `processItem` maddeyi anında `stuck` yapıp sıradakine geçti,
+altı madde için art arda, tek seferde. Kilidin doküman yorumu "bir listenin
+turlarının üst üste binmesini engeller" diyordu; fail-fast bunu sıralama değil
+**başarısızlık** yapıyor.
+
+**Düzeltme iki katmanlı:**
+- `withChatLockWait(ctx)` — sıraya girmesi gereken akış çağrısını işaretler.
+  Sadece görev işçisi turu kullanır: başında kimse olmayan bir tur için beklemek
+  başarısız olmaktan iyidir, buna karşılık etkileşimli çağrı (GUI, Telegram)
+  eskisi gibi anında meşgul uyarısı alır — insan bekleyen bir tur donmuş bir
+  input kutusuna dönüşmesin. `lockChatStreamWait` kilidi yoklar (`sync.Mutex`'in
+  ctx'li `Lock`'u yok): serbest kalana, ctx iptal olana ya da 5 dk geçene kadar.
+- `taskloop.ErrChatBusy` — "sohbet meşguldü" durumunu sağlayıcı hatasından
+  ayırır. `processItem` 30 sn bekleyip **aynı maddeyi** tekrar dener (en fazla
+  3 kez), tur bütçesi harcamadan, self-heal ve sağlayıcı değişimi olmadan.
+  `errors.Is` ile eşleşir, asla yerelleştirilmiş mesaj metniyle değil.
+
+Meşgul uyarısı artık `App.busyNotice()` arkasında — 11 yerde kopyalanmış literal
+yerine tek tanım (karşılaştırmanın doğruluğu buna bağlı).
+
+**Aynı oturumun konsol gürültüsü de temizlendi:**
+- `developer_screen.dart`'taki üç `SwitchListTile` dekore edilmiş kartların
+  içinde duruyordu → Flutter'ın "ListTile background color or ink splashes may be
+  invisible" assertion'ı her build'de patlıyordu; ekran `AppShell`'in
+  `IndexedStack`'inde olduğu için **açılışta** görülüyordu. `Material(transparency)`
+  ile sarıldı (auth_gate_overlay'de zaten kullanılan aynı kalıp).
+- `AgentEnabledNotifier` / `WebSearchModeNotifier` init GET'i dönerken
+  `app_shell`'in auth-gate dinleyicisi onları çoktan invalidate etmiş oluyordu →
+  "Tried to use X after dispose was called". Artık `mounted` kontrolüyle bayat
+  cevabı düşürüyorlar; yerine geçen notifier'ın kendi GET'i geçerli olan.
+
+**Yeni testler:** `internal/taskloop/engine_chatbusy_test.go` (meşgul sohbet →
+bekle + aynı maddeyi tekrar dene, tur harcamadan / self-heal çağırmadan; bütçe
+bitince stuck; `IsChatBusyErr` sınıflandırma) ve `internal/app/chat_lockwait_test.go`
+(işçi turu sıraya girer; bayraksız etkileşimli tur hâlâ hızlı reddedilir; ctx
+iptali beklemeyi keser). Düzeltme geri alınınca `ChatLockWait_QueuesInsteadOfBusy`
+gerçekten kırmızıya düşüyor — kontrol edildi.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz;
+`go test -tags sqlite_fts5 -race ./internal/taskloop ./internal/app` yeşil;
+`flutter analyze lib/` (bilinen 5 info dışında yeni uyarı yok); `flutter test`
+317/317. Commit: `34bbb960`.
+
+### Sıradaki oturum için
+- Loglarda bir de `Bad state: Cannot use "ref" after the widget was disposed.`
+  var; yukarıdaki iki notifier'dan farklı bir yerden (widget'ın kendi `ref`'i)
+  geliyor ve log'da stack trace yok, o yüzden bu oturumda **kovalanmadı**.
+  Tekrar görülürse `flutter run`'da tam stack ile yakalanmalı.
+- `InjectTaskMessage` (Telegram/WhatsApp'tan çalışan göreve komut) hâlâ meşgul
+  sohbette hızlı reddediliyor — bilinçli bırakıldı (insan bekliyor), ama
+  kullanıcı "dur/atla yazınca cevap gelmiyor" derse aynı bekleme kalıbı kısa bir
+  üst sınırla oraya da uygulanabilir.
+
+---
+
 # Ek (2026-08-31, devam 48) — composer çift-kutu + canlı token + sağlayıcı kilidi + sessiz-ölmeme (branch aynı)
 
 devam 47 sonrası kullanıcı gerçek masaüstünde koştu, art arda bug bildirdi.

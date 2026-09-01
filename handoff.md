@@ -1,3 +1,46 @@
+# Ek (2026-09-01, devam 55) — Anthropic-uyumlu ikinci bir "özel" provider tipi
+
+Kullanıcı: "custom'a hem OpenAI hem Anthropic tool-calling ekleyelim ki
+kullanıcının proxy'si OpenAI değil Anthropic base URL destekliyorsa sorun
+yaşamayalım, hem de kendim proxy ile istediğim gibi test edebilirim." Devam
+54'te `claude.go`'ya kazandırılan tool-calling desteğini, sadece resmi
+`api.anthropic.com`'a değil, **kullanıcının kendi seçtiği herhangi bir
+Anthropic-uyumlu endpoint'e** de açan bir özellik.
+
+**Backend (`d94470f5`):** yeni `ProviderCustomAnthropic = "custom-anthropic"`
+tipi. `internal/provider/custom_anthropic.go` — `*claudeProvider`'ı embed eden
+~15 satırlık sarmalayıcı (kilo.go/openrouter.go'nun `*openAIProvider`'ı
+sardığı desenin aynısı). `claudeProvider` zaten keyfi bir `BaseURL` kabul
+ediyordu (boşsa `api.anthropic.com`'a düşüyor) — yani devam 54'ün tool-calling
+düzeltmesini, `ListModels`'ini, her şeyini bedavaya miras alıyor, sadece
+`Name()`/`DisplayName()` override edildi. `ProviderConfig.Validate()` bu tip
+için de `BaseURL` zorunlu kılıyor (mevcut "custom" tipiyle aynı kural — hiçbir
+varsayılan endpoint yok, sessizce yanlış yere gitmesin).
+
+**Frontend (`eecf7022`):** dropdown'a yeni tip eklendi, kendi açıklaması +
+Base URL ipucu (`/messages`'e gittiğini belirtiyor, `/chat/completions`
+değil). Dialog'daki beş ayrı `_type == 'custom'` kontrolü tek tek
+`ProviderDefaults.needsBaseUrl(_type)`'a çevrildi — artık iki custom tipi de
+aynı davranışı otomatik alıyor, kod tekrarı yok.
+
+**Testler:** `custom_anthropic_test.go` — `NewProvider` üzerinden doğru
+routing, boş BaseURL reddi, kendi endpoint'ini kullanması (Anthropic'in
+varsayılanına düşmemesi), ve gerçek bir `httptest` sunucusuyla (kullanıcının
+kendi proxy'sinin yerine geçen) uçtan uca tool gönderme/ayrıştırma. Dart
+tarafında `models_test.dart`'a `needsBaseUrl`/`needsApiKey`/`displayNames`
+kapsamı eklendi.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz, `go test -race`
+(provider+agent) yeşil, `flutter analyze` bilinen 5 info, `flutter test`
+320/320.
+
+### Sıradaki oturum için
+- Kullanıcı kendi Anthropic-uyumlu proxy'sini bu yeni tiple test edecek —
+  sonucu bildirirse karşılaştırma (OpenAI-şekilli custom vs Anthropic-şekilli
+  custom vs native claude) tamamlanabilir.
+
+---
+
 # Ek (2026-09-01, devam 54) — Claude ve Gemini provider'larında tool-calling SIFIRDI
 
 Kullanıcı "Google AI Studio'dan free Gemma kullansam" dedi; cevap verirken

@@ -99,6 +99,23 @@ type claudeRequest struct {
 	Stream       bool                `json:"stream"`
 	Thinking     *claudeThinking     `json:"thinking,omitempty"`
 	OutputConfig *claudeOutputConfig `json:"output_config,omitempty"`
+	// Tools is Anthropic's own {name, description, input_schema} shape —
+	// not the OpenAI {type,function:{...}} envelope ChatRequest.Tools
+	// carries in from the agent pipeline. buildClaudeRequest translates one
+	// into the other. Omitted (not an empty array) when the caller passed
+	// no tools, matching every other provider here and avoiding an
+	// unnecessary tool_choice negotiation on a plain chat turn.
+	Tools []claudeTool `json:"tools,omitempty"`
+}
+
+// claudeTool is one entry in the Messages API's "tools" array (Anthropic
+// docs, 2026-08-18). Parameters is already JSON Schema (the same
+// ToolFunction.Parameters every other provider forwards as-is), so no
+// translation beyond the field name is needed.
+type claudeTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"input_schema"`
 }
 
 // claudeThinking/claudeOutputConfig implement adaptive thinking — the
@@ -130,9 +147,27 @@ type claudeMsg struct {
 	Content []claudeBlock `json:"content"`
 }
 
+// claudeBlock is every content-block shape the Messages API uses, in one
+// struct (Go's default marshaling drops the zero-value fields via
+// omitempty, so a text block, a tool_use block, and a tool_result block
+// each serialize to exactly their own three-or-so keys with nothing extra):
+//   - {"type":"text","text":"..."}
+//   - {"type":"tool_use","id":"...","name":"...","input":{...}}      — outgoing echo
+//     of a previous assistant turn's tool call, and incoming in a response
+//   - {"type":"tool_result","tool_use_id":"...","content":"..."}     — outgoing only
 type claudeBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
+
+	// tool_use (both directions: sent back when replaying an assistant
+	// turn's tool calls into history, and parsed out of a fresh response).
+	ID    string          `json:"id,omitempty"`
+	Name  string          `json:"name,omitempty"`
+	Input json.RawMessage `json:"input,omitempty"`
+
+	// tool_result (outgoing only — Memo never receives one).
+	ToolUseID string `json:"tool_use_id,omitempty"`
+	Content   string `json:"content,omitempty"`
 }
 
 type claudeResponse struct {
@@ -186,9 +221,24 @@ func (p *claudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 	}
 
 	content := ""
+	var toolCalls []ToolCall
 	for _, block := range result.Content {
-		if block.Type == "text" {
+		switch block.Type {
+		case "text":
 			content += block.Text
+		case "tool_use":
+			// Same shape resp.ToolCalls always carries regardless of
+			// provider (pipeline.go replays it back as Message.ToolCalls
+			// verbatim) — Function.Arguments is raw JSON either way, so
+			// block.Input (already json.RawMessage) needs no re-encoding.
+			toolCalls = append(toolCalls, ToolCall{
+				ID:   block.ID,
+				Type: "function",
+				Function: ToolCallFunction{
+					Name:      block.Name,
+					Arguments: block.Input,
+				},
+			})
 		}
 	}
 
@@ -202,9 +252,10 @@ func (p *claudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 	}
 
 	return &ChatResponse{
-		Content: content,
-		Model:   result.Model,
-		Usage:   usage,
+		Content:   content,
+		ToolCalls: toolCalls,
+		Model:     result.Model,
+		Usage:     usage,
 	}, nil
 }
 
@@ -338,6 +389,25 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 	var systemText string
 	var msgs []claudeMsg
 
+	// A "tool" role message never stands alone in Anthropic's shape — every
+	// tool_result belonging to one assistant turn's tool_use blocks must be
+	// content blocks inside a SINGLE following user message, not separate
+	// consecutive user turns (which the API doesn't accept: roles must
+	// strictly alternate). pipeline.go appends one Message{Role:"tool",...}
+	// per tool call (execute_tool_call.go), so a turn with N parallel calls
+	// arrives here as N consecutive "tool" messages that must be merged.
+	// pendingResults buffers that run; flush() closes it out into one
+	// claudeMsg the moment a non-tool message (or the end of the slice)
+	// breaks the run.
+	var pendingResults []claudeBlock
+	flush := func() {
+		if len(pendingResults) == 0 {
+			return
+		}
+		msgs = append(msgs, claudeMsg{Role: "user", Content: pendingResults})
+		pendingResults = nil
+	}
+
 	for _, m := range req.Messages {
 		if m.Role == "system" || m.Role == "developer" {
 			if text, ok := m.Content.(string); ok {
@@ -345,11 +415,25 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 			}
 			continue
 		}
+
+		if m.Role == "tool" {
+			text, _ := m.Content.(string)
+			pendingResults = append(pendingResults, claudeBlock{
+				Type:      "tool_result",
+				ToolUseID: m.ToolCallID,
+				Content:   text,
+			})
+			continue
+		}
+		flush()
+
 		role := m.Role
 		blocks := []claudeBlock{}
 		switch v := m.Content.(type) {
 		case string:
-			blocks = append(blocks, claudeBlock{Type: "text", Text: v})
+			if v != "" {
+				blocks = append(blocks, claudeBlock{Type: "text", Text: v})
+			}
 		case []ContentPart:
 			for _, part := range v {
 				if part.Text != "" {
@@ -357,8 +441,25 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 				}
 			}
 		}
+		// Echo this turn's own tool calls back as tool_use blocks — required
+		// so the NEXT turn's tool_result blocks have a tool_use_id to point
+		// at; Anthropic rejects a tool_result with no matching tool_use
+		// earlier in the same conversation.
+		for _, tc := range m.ToolCalls {
+			blocks = append(blocks, claudeBlock{
+				Type:  "tool_use",
+				ID:    tc.ID,
+				Name:  tc.Function.Name,
+				Input: tc.Function.Arguments,
+			})
+		}
+		if len(blocks) == 0 {
+			// Anthropic rejects a message with an empty content array outright.
+			continue
+		}
 		msgs = append(msgs, claudeMsg{Role: role, Content: blocks})
 	}
+	flush()
 
 	clReq := claudeRequest{
 		Model:       model,
@@ -368,6 +469,7 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 		Temperature: req.Temperature,
 		TopP:        req.TopP,
 		Stream:      stream,
+		Tools:       toClaudeTools(req.Tools),
 	}
 	if clReq.MaxTokens <= 0 {
 		clReq.MaxTokens = 4096
@@ -378,6 +480,25 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 	}
 
 	return clReq
+}
+
+// toClaudeTools translates the OpenAI-shaped ToolDefinition list the agent
+// pipeline builds (registry.ToOpenAITools) into Anthropic's flatter
+// {name, description, input_schema} shape. Returns nil (not an empty slice)
+// for no tools, so the "tools" field is omitted rather than sent empty.
+func toClaudeTools(defs []ToolDefinition) []claudeTool {
+	if len(defs) == 0 {
+		return nil
+	}
+	out := make([]claudeTool, 0, len(defs))
+	for _, d := range defs {
+		out = append(out, claudeTool{
+			Name:        d.Function.Name,
+			Description: d.Function.Description,
+			InputSchema: d.Function.Parameters,
+		})
+	}
+	return out
 }
 
 func (p *claudeProvider) setAuth(req *http.Request) {

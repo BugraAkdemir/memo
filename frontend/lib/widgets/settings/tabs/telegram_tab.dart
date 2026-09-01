@@ -27,18 +27,23 @@ class _TelegramTabState extends ConsumerState<TelegramTab> {
   bool _tokenVisible = false;
   bool _connecting = false;
 
+  /// Held so dispose() can stop the poll without touching `ref` —
+  /// ConsumerState.ref throws once the widget is unmounted.
+  TelegramStatusNotifier? _tg;
+
   @override
   void initState() {
     super.initState();
     Future.microtask(() {
       if (!mounted) return;
-      ref.read(telegramStatusProvider.notifier).startPolling();
+      _tg = ref.read(telegramStatusProvider.notifier);
+      _tg!.startPolling();
     });
   }
 
   @override
   void dispose() {
-    ref.read(telegramStatusProvider.notifier).stopPolling();
+    _tg?.stopPolling();
     _tokenController.dispose();
     super.dispose();
   }

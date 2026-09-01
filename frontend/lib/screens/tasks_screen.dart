@@ -39,17 +39,25 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
   String? _dialogChatId;
   String _dialogMode = 'worker';
 
+  /// Captured while the widget is alive so dispose() can stop the poll
+  /// without touching `ref` — Riverpod throws "Cannot use ref after the
+  /// widget was disposed" from ConsumerState.ref during unmount, which is
+  /// what this screen used to do on every close.
+  TaskListsNotifier? _lists;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(taskListsProvider.notifier).startPolling();
+      if (!mounted) return;
+      _lists = ref.read(taskListsProvider.notifier);
+      _lists!.startPolling();
     });
   }
 
   @override
   void dispose() {
-    ref.read(taskListsProvider.notifier).stopPolling();
+    _lists?.stopPolling();
     _titleCtrl.dispose();
     _taskMdCtrl.dispose();
     for (final c in _itemCtrls) {

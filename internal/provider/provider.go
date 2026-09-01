@@ -45,6 +45,17 @@ const (
 	// ProviderCustom is any OpenAI-compatible endpoint the user points at via a
 	// custom Base URL (self-hosted, proxies, providers we don't list natively).
 	ProviderCustom ProviderType = "custom"
+	// ProviderCustomAnthropic is ProviderCustom's Anthropic-shaped sibling: any
+	// endpoint speaking Anthropic's own Messages API wire format (POST
+	// {base_url}/messages, x-api-key auth, {tools:[{name,description,
+	// input_schema}]}) rather than OpenAI's chat/completions shape. Exists
+	// because a proxy that only speaks OpenAI's tool-calling shape can — and,
+	// found live, does — silently mishandle tools when the model behind it is
+	// actually Claude reached through a wrapper that only forwards Anthropic's
+	// native format; pointing Memo's own Anthropic-shaped client at such a
+	// proxy sidesteps that translation entirely. Backed by claudeProvider
+	// (custom_anthropic.go), which already accepts an arbitrary BaseURL.
+	ProviderCustomAnthropic ProviderType = "custom-anthropic"
 )
 
 // Provider is the common interface all LLM providers must implement.
@@ -222,7 +233,7 @@ func (c ProviderConfig) Validate() error {
 	}
 	// A custom provider has no default endpoint — without a Base URL its requests
 	// would go nowhere and fail with an opaque "unsupported protocol scheme".
-	if c.Type == ProviderCustom && strings.TrimSpace(c.BaseURL) == "" {
+	if (c.Type == ProviderCustom || c.Type == ProviderCustomAnthropic) && strings.TrimSpace(c.BaseURL) == "" {
 		return fmt.Errorf("base URL is required for a custom provider")
 	}
 	return nil
@@ -372,6 +383,8 @@ func NewProvider(cfg ProviderConfig) (Provider, error) {
 		return newOpenCodeGoProvider(cfg)
 	case ProviderKilo:
 		return newKiloProvider(cfg)
+	case ProviderCustomAnthropic:
+		return newCustomAnthropicProvider(cfg)
 	default:
 		if fn, ok := externalConstructors[cfg.Type]; ok {
 			return fn(cfg)
@@ -383,7 +396,7 @@ func NewProvider(cfg ProviderConfig) (Provider, error) {
 // authHeader sets the Authorization header for the given provider.
 func authHeader(pt ProviderType, apiKey string) string {
 	switch pt {
-	case ProviderClaude:
+	case ProviderClaude, ProviderCustomAnthropic:
 		return "x-api-key " + apiKey
 	default:
 		return "Bearer " + apiKey

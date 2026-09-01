@@ -129,7 +129,8 @@ Memo isn't just a chat; it's a "Second Brain."
 
 ### Multi-Provider Architecture
 Memo connects to external LLM APIs alongside local models:
-- **Supported Providers:** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, plus **OpenCode Zen** (pay-as-you-go, some models free), **OpenCode Go** (subscription), and **Kilo Code** (app.kilo.ai — pay-as-you-go, some models free) — all three let you pick from a live model list instead of typing a model name by hand, with free models sorted to the top and marked with a green checkmark.
+- **Supported Providers (15 `ProviderType` values):** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, a generic **Custom** (any OpenAI-compatible endpoint), a new **Custom (Anthropic-compatible)** (any Anthropic Messages API-shaped endpoint — e.g. your own proxy, for when it doesn't speak OpenAI's format), plus **OpenCode Zen** (pay-as-you-go, some models free), **OpenCode Go** (subscription), and **Kilo Code** (app.kilo.ai — pay-as-you-go, some models free) — the three gateways let you pick from a live model list instead of typing a model name by hand, with free models sorted to the top and marked with a green checkmark.
+- **Claude and Gemini now support real tool-calling** (previously entirely missing on both — an agent/task-loop turn on either provider silently couldn't use tools at all). Both round-trip single and parallel tool calls correctly per each vendor's own wire format.
 - **Claude Code / Codex CLI as chat providers (beta):** instead of an API call, Memo shells out to a locally installed `claude`/`codex` CLI. Per-chat (not app-wide), runs as a real untimed background job, uses the CLI's own no-prompt permission mode, and its own `/` slash commands surface in Memo's command popup. No memory/identity context is sent — the CLI manages its own session.
 - **Provider Interface:** Common `Provider` interface with `ChatCompletion`, `ChatCompletionStream`, `ListModels`
 - **Fallback Chain:** Router tries providers in order; auto-disables after 3 consecutive failures; health-check re-enables on recovery
@@ -150,7 +151,7 @@ Memo connects to external LLM APIs alongside local models:
 
 ### Tool Execution Engine
 Memo acts as an AI agent with full computer control:
-- **22 Built-in Tools:** file I/O (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`), `run_command`, `read_env`, `web_search`, `self_clone`, `configure_provider`, `get_calendar_events`, routines (`create_routine`, `list_routines`, `cancel_routine`), WhatsApp (`whatsapp_send`/`search`/`latest`/`messages`)
+- **27 Built-in Tools** (verified against `registerBuiltins()`, `internal/agent/tools.go` — up from an earlier "22"): file I/O (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`, `change_directory`), `run_command`, `read_env`, `web_search`, `fetch_page`, `self_clone`, `configure_provider`, `get_calendar_events`, task-loop control (`get_task_status`, `pause_task`, `resume_task`, `create_task_md`, `edit_task_md`, `start_self_driving_task` — see §6.5 below), routines (`create_routine`, `list_routines`, `cancel_routine`), `share_file`. WhatsApp's 4 tools (`whatsapp_send`/`search`/`latest`/`messages`) live in a *separate* scoped registry, not this main one.
 - **Skill tools now actually execute.** A skill's `SKILL.md` can define a `command:` field, wired into the exact same tool pipeline and permission-prompt UI as built-in tools — previously this was declaration-only and never ran anything.
 - **Tool Registry:** Thread-safe registry with JSON Schema parameter definitions
 - **Danger Level System:** `safe` (auto-allowed), `medium` (prompt user), `dangerous` (prompt + delay)
@@ -162,15 +163,29 @@ Memo acts as an AI agent with full computer control:
 
 ### Security Sandbox
 - **Path Traversal Protection:** Symlink resolution, `..` blocking, project root confinement
-- **Command Blacklist:** 23 dangerous patterns blocked (`rm -rf /`, `sudo`, fork bombs, etc.)
+- **Command Blacklist:** 43 dangerous patterns blocked (`rm -rf /`, `sudo`, fork bombs, etc. — grown from an earlier "23")
 - **Rate Limiting:** 30 tool calls/minute, 5s cooldown per command
 
 ### Agent Pipeline
-- **LLM ↔ Tool Loop:** Sends user message + tool definitions to LLM, executes tool calls, feeds results back, loops until final response (max 20 iterations)
+- **LLM ↔ Tool Loop:** Sends user message + tool definitions to LLM, executes tool calls, feeds results back, loops until final response (max 40 iterations, verified against `pipeline.go`'s `maxIters`)
 - **Event Streaming:** Tool execution events streamed to frontend via SSE
 - **Audit Log:** Last 1000 tool executions logged with timestamps
 
 > **Note:** Agent frontend UI (permission dialogs, tool call cards, mode toggle) shipped some time ago and is fully live — the toggle sits directly in Chat's top bar next to the web-search toggle, no separate Agent-only screen needed.
+
+---
+
+## 6.5 🚗 Self-Driving Task Loop (new in v4.4.0)
+
+An unattended, multi-step task runner built on top of Agent Mode — you hand it a checklist, it works through it on its own.
+
+- **`Task.md` schema.** A plain-Markdown checklist (`- [ ]` items) with optional `# key: value` headers controlling mode (`worker` or `planlayıcı`/planner), notification verbosity, per-role model pinning, memory, provider lock/roaming (`# sağlayıcı: sabit|otomatik|<name>`), and plan auto-approval. Created/edited via the `create_task_md`/`edit_task_md` tools, or started from an existing file via `start_self_driving_task` (also reachable from the Tasks tab by pointing at a `Task.md` path).
+- **Planner/executor mode.** For `# mod: planlayıcı`, a planning turn first produces a `Plan.md` (steps, acceptance checks, a DAG of dependencies) that the user approves — either from the Tasks tab's plan-approval card, or automatically with `# onay: otomatik`.
+- **Sub-agent orchestration.** A large or clearly-parallel item can split into up to 3 sub-agents: exactly one write-capable `coder` runs first, then up to 3 read-only `analyzer`/`reviewer`/`test-runner` sub-agents run in true parallel and their results feed a chief review.
+- **Live activity in the task card.** Tool calls, sub-agent turns (`[coder]`/`[analyzer]`/…), "model is generating" during long silent LLM calls, and slow-tool "starting…" lines stream into a live in-app card as the loop runs.
+- **Resilience, not silent failure.** A busy chat queues and retries instead of killing the task instantly; a rate-limited provider waits and resumes from the same item, never restarts the list; a transient fault gets an escalating retry (5 then 10 minutes) before the item is parked for the user; an auth/config fault parks the list in a waiting-user state rather than looping forever. Every terminal state notifies (chat message + push), by design.
+- **Pause/resume from chat.** `pause_task`/`resume_task` let the model itself pause a running task and resume it from the same step, carrying forward whatever the user typed while it was paused.
+- **Known open gaps** (see `BUG_REPORT.md`, `BUG-PLAN9`/`10`/`11`/`12`): plan approval is Tasks-tab-only for now (not inline in chat), the chat model can't yet read a *running* task's live status (risk of a confidently wrong "it's broken" narrative if asked mid-run), and step/item counters can disagree across screens after an escalation splits a step.
 
 ---
 

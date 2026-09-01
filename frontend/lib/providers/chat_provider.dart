@@ -267,7 +267,12 @@ class WebSearchModeNotifier extends StateNotifier<bool> {
 
   Future<void> _init() async {
     try {
-      state = await _api.getWebSearchEnabled();
+      final enabled = await _api.getWebSearchEnabled();
+      // Disposed while the GET was in flight — app_shell.dart invalidates
+      // this provider on the auth-gate transition, and the replacement
+      // notifier re-runs this. Same story as AgentEnabledNotifier._init.
+      if (!mounted) return;
+      state = enabled;
     } catch (e) {
       debugPrint('chat: web search init error: ${FriendlyError.describeGeneric(e)}');
       // leave default (off) on error
@@ -278,6 +283,7 @@ class WebSearchModeNotifier extends StateNotifier<bool> {
     final next = !state;
     try {
       await _api.setWebSearchEnabled(next);
+      if (!mounted) return; // disposed mid-request — see _init
       state = next;
     } catch (e) {
       _ref.read(errorMessageProvider.notifier).state =

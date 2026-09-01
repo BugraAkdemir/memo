@@ -160,7 +160,7 @@ func (a *App) SendMessage(userMsg string) string {
 
 	release, ok := a.lockChatStream(chatID)
 	if !ok {
-		return a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes.")
+		return a.busyNotice()
 	}
 	defer release()
 
@@ -191,7 +191,7 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 	if incog {
 		if !a.streamMu.TryLock() {
 			errCh := make(chan api.StreamChunk, 1)
-			errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
+			errCh <- api.StreamChunk{Error: a.busyNotice(), Done: true}
 			close(errCh)
 			return errCh
 		}
@@ -420,10 +420,22 @@ func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg stri
 	// user/user/assistant/assistant into one history, but a stream in a
 	// different chat — the user typing while a Self-Driving task runs in its
 	// own chat, a Telegram reply — never has to wait.
-	release, ok := a.lockChatStream(a.resolveChatID(chatID))
+	// ...except for a Self-Driving worker turn (withChatLockWait), which
+	// queues behind the in-flight turn instead of being rejected — see that
+	// function's doc comment for why an unattended turn must not fail fast.
+	lockChatID := a.resolveChatID(chatID)
+	var (
+		release func()
+		ok      bool
+	)
+	if chatLockWaitEnabled(ctx) {
+		release, ok = a.lockChatStreamWait(ctx, lockChatID)
+	} else {
+		release, ok = a.lockChatStream(lockChatID)
+	}
 	if !ok {
 		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
+		errCh <- api.StreamChunk{Error: a.busyNotice(), Done: true}
 		close(errCh)
 		return errCh
 	}
@@ -508,7 +520,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 	a.incognitoMu.RUnlock()
 	if incog {
 		if !a.streamMu.TryLock() {
-			return busyStreamChan(a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."))
+			return busyStreamChan(a.busyNotice())
 		}
 		innerCh := a.handleIncognitoStream(ctx, userMsg, b64)
 		out := make(chan api.StreamChunk, 128)
@@ -531,7 +543,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 
 	release, ok := a.lockChatStream(chatID)
 	if !ok {
-		return busyStreamChan(a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."))
+		return busyStreamChan(a.busyNotice())
 	}
 
 	// buildMessagesForSession (not a hand-rolled system+history+user list) so
@@ -580,7 +592,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 	a.incognitoMu.RUnlock()
 	if incog {
 		if !a.streamMu.TryLock() {
-			return busyStreamChan(a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."))
+			return busyStreamChan(a.busyNotice())
 		}
 		innerCh := a.handleIncognitoStream(ctx, combined, "")
 		out := make(chan api.StreamChunk, 128)
@@ -603,7 +615,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 
 	release, ok := a.lockChatStream(chatID)
 	if !ok {
-		return busyStreamChan(a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."))
+		return busyStreamChan(a.busyNotice())
 	}
 
 	messages := a.buildMessagesForSession(ctx, chatID, combined, nil, nil)
@@ -666,7 +678,7 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 
 	release, ok := a.lockChatStream(chatID)
 	if !ok {
-		return a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes.")
+		return a.busyNotice()
 	}
 	defer release()
 
@@ -724,7 +736,7 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 
 	release, ok := a.lockChatStream(chatID)
 	if !ok {
-		return a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes.")
+		return a.busyNotice()
 	}
 	defer release()
 

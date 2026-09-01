@@ -1,6 +1,9 @@
 package taskloop
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 // providerFailKind is a best-effort classification of a worker-turn error.
 // Only the OpenAI-family providers classify HTTP status centrally; Claude and
@@ -126,3 +129,16 @@ func retryAfterHint(err error) int {
 	}
 	return 0
 }
+
+// ErrChatBusy marks a worker turn that never reached the model at all: the
+// list's own agent chat was already streaming something else, so the host's
+// per-chat lock rejected the turn. It is not a provider fault — no self-heal,
+// no provider switch, no rate-limit wait. The loop simply waits a few seconds
+// and re-runs the same item (processItem).
+//
+// Hosts wrap it with %w around their own busy notice; the engine matches with
+// errors.Is, never on the message text (which is localised).
+var ErrChatBusy = errors.New("görev sohbeti meşgul")
+
+// IsChatBusyErr reports whether err is (or wraps) ErrChatBusy.
+func IsChatBusyErr(err error) bool { return errors.Is(err, ErrChatBusy) }

@@ -16,6 +16,14 @@ import (
 // (stream stall / 429 / network / bad JSON) before failing the list.
 const plannerMaxAttempts = 3
 
+// chatBusyWait / maxChatBusyWaits bound processItem's wait when the list's own
+// chat is occupied by another turn (ErrChatBusy). The host already queues for
+// minutes before reporting busy, so these only cover the case where it gave up.
+var (
+	chatBusyWait     = 30 * time.Second
+	maxChatBusyWaits = 3
+)
+
 type RunWorker func(ctx context.Context, chatID, prompt string) (string, error)
 type ReviewChief func(ctx context.Context, itemText, workerOutput string) (approved bool, feedback string, err error)
 type BypassSetter func(bool)
@@ -1275,6 +1283,7 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 	workerPrompt := withPreamble(item.Text)
 	useSubAgents := e.subOrch != nil && e.subSpecs != nil && shouldSpawn(item.Text)
 	lastFeedback := ""
+	busyWaits := 0
 
 	for round := 1; round <= maxRoundsPerItem; round++ {
 		select {
@@ -1321,6 +1330,25 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 				return false, true, false
 			}
 			logx.Printf("TASKLOOP: worker error on item %s round %d: %v", item.ID, round, err)
+			// The list's chat was busy — the turn never reached a model, so
+			// this round doesn't count. Wait for the other turn (usually the
+			// agent turn that launched the list) to finish and re-run the
+			// same item.
+			if IsChatBusyErr(err) {
+				if busyWaits >= maxChatBusyWaits {
+					item.Note = fmt.Sprintf("görev sohbeti %d denemede de meşgul kaldı: %v", maxChatBusyWaits, err)
+					return false, false, false
+				}
+				busyWaits++
+				logx.Printf("TASKLOOP: chat busy for item %s, waiting %s (%d/%d)", item.ID, chatBusyWait, busyWaits, maxChatBusyWaits)
+				select {
+				case <-ctx.Done():
+					return false, true, false
+				case <-time.After(chatBusyWait):
+				}
+				round--
+				continue
+			}
 			if e.retry != nil && IsRateLimitErr(err) {
 				if suspErr := e.suspendForRateLimit(listID, item, err); suspErr != nil {
 					logx.Printf("TASKLOOP: suspend %s: %v", listID, suspErr)

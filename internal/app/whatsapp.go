@@ -740,7 +740,7 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 	release, ok := a.lockChatStream(waSessionID)
 	if !ok {
 		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
+		errCh <- api.StreamChunk{Error: a.busyNotice(), Done: true}
 		close(errCh)
 		return errCh
 	}

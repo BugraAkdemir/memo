@@ -235,10 +235,21 @@ func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 			a.taskloopEngine.AddTokens(tokListID, taskloop.EstTokens(prompt))
 		}
 
-		ch := a.SendMessageStreamTo(ctx, chatID, prompt)
+		// Queue behind whatever is already streaming in this chat instead of
+		// bouncing off the per-chat lock: the agent turn that called
+		// start_self_driving_task is still streaming in exactly this chat when
+		// the loop reaches its first item, so fail-fast made every item die
+		// instantly with "işçi hatası: ⏳ Lütfen önceki cevap..." and the
+		// whole list fail in under two seconds (chat_locks.go).
+		ch := a.SendMessageStreamTo(withChatLockWait(ctx), chatID, prompt)
 		var sb strings.Builder
 		for chunk := range ch {
 			if chunk.Error != "" {
+				// A busy chat is not a provider fault — tag it so the engine
+				// waits and retries the same item instead of marking it stuck.
+				if chunk.Error == a.busyNotice() {
+					return sb.String(), fmt.Errorf("%w: %s", taskloop.ErrChatBusy, chunk.Error)
+				}
 				return sb.String(), fmt.Errorf("işçi hatası: %s", chunk.Error)
 			}
 			if tokListID != "" && chunk.Content != "" {

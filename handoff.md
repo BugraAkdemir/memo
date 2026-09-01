@@ -1,3 +1,64 @@
+# Ek (2026-09-01, devam 52) — "2. maddeyi hiç göremedim": run_command sonsuza kadar asılı kalıyordu
+
+Kullanıcı: "7 dakika oldu daha 2. aşamayı göremedim, acaba alt agent mi
+çalışmıyor?" Alt agent değil. Kart `No response · 326s quiet` diyordu ve log'un
+son satırı şuydu:
+
+```
+04:53:05.477  run_command SUCCESS 0ms
+04:53:05.477  taskloop:activity … tool_start  Komut …
+(sonrasında 3+ dakika hiçbir tamamlanma satırı yok)
+```
+
+**Kök neden.** Model yazdığı uygulamayı test etmek için en doğal şeyi yaptı:
+
+```
+pkill -f "python3 blog.py"; sleep 1; python3 blog.py 8080 &
+```
+
+`bash` hemen çıkıyor, ama arka plana atılan sunucu, `os/exec`'in
+`cmd.Stdout` bir `*os.File` olmadığı için yarattığı **stdout/stderr
+pipe'larını miras alıyor**. `Wait` bütün yazıcılar kapanana kadar bloke olur →
+`cmd.Run()` sunucu yaşadığı sürece, yani sonsuza kadar bekledi. Context
+deadline'ı da kurtarmıyor: o `bash`'i öldürüyor, `bash` zaten ölmüş; `Wait`
+hâlâ pipe'ta asılı. Tool dönmedi → işçi turu bitmedi → liste 5 madde bekler
+hâlde durdu. Bir önceki koşuda (`04:34:19`) da aynı komut aynı şekilde
+tamamlanma satırı bırakmamış — yani baştan beri oluyormuş.
+
+**Düzeltme (`8a7244e1`), iki katman:**
+
+1. `PrepareCommand` artık `cmd.WaitDelay = 3s` (süreç çıktıktan/ctx bittikten
+   sonra pipe'lara kısa bir drenaj süresi, sonra kapat ve yakalananla dön) +
+   `Setpgid` ve **process grubunu** öldüren bir `cmd.Cancel` (gerçek timeout'ta
+   arka plandaki çocuklar da ölsün, öksüz kalmasın). `exec.ErrWaitDelay` hata
+   olarak değil, "komut bitti ama arkada bir süreç bıraktı" notu olarak
+   raporlanıyor — model sunucu başlatmayı "asıldı" sanıp tekrar denemesin.
+2. Döngü hiçbir tool'un uslu olmasına bel bağlamamalı: işçi turu artık
+   `workerIdleTimeout` boyunca (config `StreamIdleTimeoutSec`, **10 dakika
+   tabanlı**) hiç chunk gelmezse turu bitiriyor. Taban gerekliydi: bir işçi turu
+   içinde tam bir ajan koşusu var ve model çağrıları stream'siz — canlıda
+   2dk13sn meşru sessizlik ölçüldü. Hata metni bilinçli olarak "timed out"
+   içermiyor; içerseydi `classifyProviderErr` bunu geçici sağlayıcı hatası
+   sanıp **tüm listeyi** 5+10 dk'lık retry timer'ına park edecekti. Böyle madde
+   `stuck` olup liste sıradakine geçiyor.
+
+**Testler:** `internal/agent/tools/command_background_test.go` — arka plana
+süreç atan komut 3 sn'de dönüyor (fix'siz 23 sn'de bile dönmüyor, kontrol
+edildi), normal komutun çıktısı kırpılmıyor, gerçek timeout hâlâ "timed out"
+diyor. `internal/app/tasklist_worker_idle_test.go` — 10 dk tabanı ve hata
+metninin sağlayıcı hatası olarak sınıflanmadığı.
+
+**Not:** kullanıcının Task.md'si worker modunda koşuyor (`mod: worker` header'ı
+ya da eski liste), o yüzden alt-agent yok — `subagents=false` log'da görünüyor.
+Planlayıcı mod varsayılan; bu listenin worker'da olması bilinçli bir seçim mi,
+sorulmadı.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz;
+`go test -tags sqlite_fts5 -race ./internal/app ./internal/taskloop ./internal/agent/...`
+yeşil.
+
+---
+
 # Ek (2026-09-01, devam 51) — `{n} tok`, sessiz kart, yavaşlığın gerçek kaynağı
 
 devam 50'den sonra kullanıcı tekrar koştu. Kart artık tool satırlarını gösteriyor

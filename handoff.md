@@ -1,3 +1,62 @@
+# Ek (2026-09-01, devam 50) — 90 sn'lik "planning" donması + kartın sessizliği
+
+devam 49'daki kilit düzeltmesinden sonra görev gerçekten koştu, ama kullanıcı iki
+şey bildirdi: (1) kartta sadece `planning` + `Model: kilo-auto/free` görünüyor,
+backend log'unda `write_file`/`run_command`/`edit_task_md` uçuşurken kart sessiz —
+"kullanıcı dondu sanabilir"; (2) "niye bu kadar yavaş, ilk maddeyi 6 dakikada
+yapmadı".
+
+**Kök neden 1 — 90 saniye tamamen bizim (`780c9f1f`).** Motor `onEvent`'i kendi
+run goroutine'inde **senkron** çağırıyor; `dispatchTaskEvent` de
+`NotifyBus.Notify`'ı satır içi çalıştırıyordu: app event bus → Telegram →
+WhatsApp, arka arkaya, hepsi `context.Background()` ile (yani **hiç deadline
+yok**). Bildirilen koşuda `started` bildirimi WhatsApp soketi yeniden bağlanırken
+düştü (birkaç saniye önce log'da `get joined groups: context deadline exceeded`,
+bir dakika sonra da `WhatsApp: disconnected` var) → whatsmeow'un `SendMessage`'ı
+orada bekledi, görev döngüsü de onun arkasında bekledi: `taskloop:planning`
+04:12:42.8, 1. madde 04:14:13.4. Aradaki her şey boşa geçen 90 saniye.
+Artık tek bir **pump goroutine** var: 128 slotluk kanal, sırayla, bildirim başına
+20 sn timeout; `dispatchTaskEvent` sadece kuyruğa atıp dönüyor, kuyruk dolarsa
+bildirim düşürülüyor (görev asla beklemiyor; SSE kopyası zaten `emitEvent`'ten
+gitti). Regresyon testi: `internal/app/task_notify_pump_test.go`.
+
+**Kök neden 2 — kartın sessizliği (`696e0494`).** planexec modu tool
+round-trip'lerini zaten `emitStepToolActivity` ile aktiviteye yansıtıyordu; worker
+modu `callAgentStream`'den geçtiği için hiçbir şey yansıtmıyordu. Artık ctx'te
+task run config varsa aynı fonksiyon çağrılıyor → kartta `⚡ Dosya yazdı: blog.db`
+satırları akıyor, token sayacı da tool args/result'ları görüyor. `toolVerbTR`'ye
+worker turunun gerçekten çağırdığı araçlar eklendi (`edit_task_md`,
+`create_task_md`, `get_task_status`, `change_directory`, routine/takvim/WhatsApp
+araçları) — eşleşme yoksa çıplak tool adı basılıyordu, kullanıcının şikâyet ettiği
+şey buydu.
+
+**Kök neden 3 — `ref` after dispose (`791c6945`).** devam 49'da stack trace yoktu,
+bu sefer vardı: `_TasksScreenState.dispose` içinde
+`ref.read(taskListsProvider.notifier).stopPolling()`. `ConsumerState.ref` unmount
+sırasında geçersiz. Üç ekran da (tasks_screen + ayarlar WhatsApp/Telegram
+sekmeleri) notifier'ı canlıyken yakalayıp dispose'da onu kullanıyor —
+`task_detail_screen.dart`'ın zaten yaptığı kalıp.
+
+**Geri kalan yavaşlık bizim değil (ölçüldü).** 90 sn düşüldükten sonra kalan süre
+saf model gecikmesi: her tool round-trip'i tam bağlamla yeni bir LLM isteği ve
+`kilo-auto/free` bunları ~6-15 sn'de dönüyor (`04:14:23 read_file` → `04:14:29
+list_directory` → `04:15:40 write_file` — sonuncusu büyük dosya üretimi, 70 sn).
+Bir madde ~10 tool turu + CEO incelemesi demek. Yani "6 dakikada bitmedi"nin
+~1.5 dakikası bizdendi, gerisi ücretsiz katman modelinin hızı. Görev için daha
+hızlı bir sağlayıcı seçmek (Task.md'de `# sağlayıcı: <isim>`) tek gerçek kaldıraç.
+
+**Bilinçli yapılmayanlar:** worker prompt'undaki preamble (repo kuralları +
+memo-system rehberi, ~1.6k token) her madde için tekrar gönderiliyor ve aynı
+sohbet geçmişinde birikiyor. Sadece ilk maddede göndermek her turdan ~%10 prompt
+kazandırırdı, ama bağlam kırpılınca kuralların geçmişten düşme riski var —
+davranış değiştiren bir değişiklik olduğu için kullanıcıya sorulmadan yapılmadı.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz;
+`go test -tags sqlite_fts5 -race ./internal/app ./internal/taskloop` yeşil;
+`flutter analyze lib/` bilinen 5 info; `flutter test` 317/317.
+
+---
+
 # Ek (2026-09-01, devam 49) — Self-Driving görev kendi başlatma turunda ölüyordu (branch aynı)
 
 Kullanıcı gerçek masaüstünde çalıştırdı: sohbetten `@Task.md`'yi self-driving

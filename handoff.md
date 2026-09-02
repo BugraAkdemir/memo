@@ -1,3 +1,70 @@
+# Ek (2026-09-02, devam 58 · devam) — 2 bug daha + Memo overhead benchmark
+
+Kullanıcı: "dene ve düzelt; token/request başına doğruluk için kodlama +
+sohbet benchmark yap; hız Memo'ya göre olacak (model sabit); sonra Claude Code
+ve Codex **istemcilerini** karşılaştır."
+
+## Düzeltilen 2 bug daha
+
+- **`0fdbbc6d` fix(taskloop): cancel artık gerçekten terminal.** Önceki
+  bulgunun (devam 58 ana blok, madde 1) düzeltmesi. `Engine.Cancel()` eklendi:
+  terminal status'u context iptalinden **önce** yazıyor. Yeni terminal-aware
+  `parkPaused()` helper'ı engine'deki tüm Stop()/ctx-cancel duraklama
+  yollarında kullanılıyor — cancelled/done/failed'i "paused"a ezmiyor.
+  `Engine.Start` cancelled bir listeyi reddediyor. Frontend `ChatTaskState.fold`
+  `event == 'cancelled'`'da da kartı kaldırıyor. Test `TestEngineCancelIsTerminal`.
+  Canlı: taze görev → cancel → status `cancelled` (paused değil), resume
+  reddediliyor ("iptal edildi, devam ettirilemez").
+- **`b5260ea1` fix(app): CONTEXT log yanıltıcıydı.** `history=%d` alanı history
+  *bütçesini* yazıyordu, kullanımını değil. Taze sohbette `history=115023
+  history_msgs=0` = alarm verici görünüyordu ama hiçbir şey gönderilmiyor.
+  `hist_budget` / `hist_used` diye ayrıldı. (Devam 58 ana blok madde 5 bu
+  yüzden yanlış alarmdı — gerçek bir context şişkinliği YOK.)
+
+## Benchmark (rapor: Artifact "Memo Overhead Benchmark")
+
+Sabit model = **Kilo Code** (`kilo-auto`/`hy3-free`, free). Her sayı Memo'nun
+katkısı. Harici: `scratchpad/bench.py` (REST+SSE, stdlib). Token/request
+`/api/stats/usage` snapshot'larından, süre SSE wall-clock, retrieval+context
+backend loglarından.
+
+**Sohbet — 5 görev × 2 Memo config (model sabit):**
+| config | doğruluk | medyan toplam s | prompt tok/tur | request/tur | mem retrieve |
+|---|---|---|---|---|---|
+| lean (minimal prompt, memory OFF) | 5/5 | 5.70 | ~9,317 | 1.2 | — |
+| full (normal prompt, memory ON)   | 5/5 | 5.63 | ~11,730 | 2.0 | ~53 ms |
+→ "full"un maliyeti: doğruluk aynı, hız ~sabit, **+2,413 prompt tok/tur (+%26)**,
++~1 ekstra LLM çağrısı/tur, +53 ms retrieval. Retrieval her sorguda **sabit 44
+hafıza** getiriyor (identik set, sorgudan bağımsız) — token maliyetinin çoğu bu,
+ayrıca incelenmeli. Lean bile 6 kelimelik soruya ~9.3k prompt tok harcıyor
+(minimal system prompt ~16k tok estimate).
+
+**Kodlama — 4 görev, agent modu, Kilo, lean:** 4/4 doğru. Medyan toplam ~19.2 s
+(sohbetin 3-5×'i), ortalama 7 tool call/görev, ~11,412 prompt tok/görev,
+completion 65-4,419 (model, Memo değil).
+
+**Claude Code CLI vs Codex CLI karşılaştırması — YAPILAMADI.** İki CLI de bu
+makinede auth'suz: `claude-code-cli` → "Invalid API key"; ayrıca Memo aktif
+provider'ın model id'sini (`opencode-zen/hy3-free`) doğrudan `claude` binary'sine
+geçiyor, o da tanımıyor (ikinci, auth'tan bağımsız entegrasyon sorunu).
+`codex-cli` → 401 (missing bearer, api.openai.com). Shell'den direkt
+çağırınca da aynı → Memo bug'ı değil, host setup eksiği. Harness
+(`bench.py code-cli <prov>`) hazır, kimlik gelince koşar.
+
+### Bu oturumda düzeltilmeyen (gözlem)
+- Memory retrieval sorgu-agnostik: her turda aynı 44 hafıza. Relevance
+  filtreleme zayıf. `internal/memory` / `internal/app` retrieve yolu.
+- `sendFileStream` web'de hâlâ Dio (multipart) — buffered kalıyor.
+- Worker↔CEO thrash (devam 58 ana blok madde 2) — hâlâ açık.
+- Agent chat oluşturma folder picker'ında path input yok (devam 58 ana blok).
+
+### Sıradaki oturum
+- Memory retrieve sorgu-agnostisizmi (sabit 44).
+- CLI kimlikleri düzelince client karşılaştırmasını koştur.
+- Kalan matris: #2 planner modu, #7 Task.md path, #8 eşzamanlı listeler.
+
+---
+
 # Ek (2026-09-02, devam 58) — Web build'de SSE streaming tamamen kırıktı; düzeltildi (`c59a5458`)
 
 Kullanıcı: v4.4.0 branch'ini gerçek tarayıcı UI'ında test et (yeni eklediği

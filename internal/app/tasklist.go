@@ -157,13 +157,15 @@ func (a *App) StopTaskList(listID string) {
 }
 
 // CancelTaskList stops a list and marks it cancelled (terminal — unlike pause,
-// it won't resume).
+// it won't resume). The engine writes the terminal status itself, in the right
+// order relative to the run goroutine's own ctx-cancel cleanup — doing it here
+// after Stop() used to race that cleanup and land back on "paused".
 func (a *App) CancelTaskList(listID string) error {
 	if a.taskloopEngine == nil || a.taskloopStore == nil {
 		return fmt.Errorf("görev döngüsü motoru başlatılmamış")
 	}
-	a.taskloopEngine.Stop(listID)
-	return a.taskloopStore.SetStatus(listID, "cancelled")
+	a.taskloopEngine.Cancel(listID)
+	return nil
 }
 
 // SkipCurrentItem abandons whatever item a list is on and moves to the next.

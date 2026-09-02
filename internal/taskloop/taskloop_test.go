@@ -353,6 +353,68 @@ func TestEngineContextCancelLastItem(t *testing.T) {
 	}
 }
 
+// TestEngineCancelIsTerminal: Cancel() must leave the list at "cancelled", not
+// "paused". Regression for a live bug where CancelTaskList set "cancelled"
+// after Stop(), and the run goroutine's own ctx.Done cleanup then raced it back
+// to "paused" — so "cancel" behaved exactly like "pause" (list stayed
+// resumable, card kept showing "Resume").
+func TestEngineCancelIsTerminal(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := NewStore(dir)
+	tl, _ := store.Create("chat1", "Test", []string{"item1", "item2", "item3"})
+
+	var events []string
+	var evMu sync.Mutex
+	engine := NewEngine(
+		store,
+		func(ctx context.Context, chatID, prompt string) (string, error) {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(10 * time.Second):
+				return "output", nil
+			}
+		},
+		func(ctx context.Context, itemText, workerOutput string) (bool, string, error) {
+			return true, "", nil
+		},
+		func(v bool) {},
+		func(name, data string) {
+			evMu.Lock()
+			events = append(events, name)
+			evMu.Unlock()
+		},
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_ = engine.Start(ctx, tl.ID)
+
+	time.Sleep(100 * time.Millisecond)
+	engine.Cancel(tl.ID)
+	time.Sleep(500 * time.Millisecond)
+
+	tl, _ = store.Get(tl.ID)
+	if tl.Status != taskListCancelled {
+		t.Fatalf("status = %s, want %q after Cancel()", tl.Status, taskListCancelled)
+	}
+
+	evMu.Lock()
+	defer evMu.Unlock()
+	var sawCancelled bool
+	for _, e := range events {
+		if e == "taskloop:cancelled" {
+			sawCancelled = true
+		}
+		if e == "taskloop:paused" {
+			t.Fatalf("emitted taskloop:paused during a Cancel() — the run cleanup clobbered the terminal state; events=%v", events)
+		}
+	}
+	if !sawCancelled {
+		t.Fatalf("never emitted taskloop:cancelled; events=%v", events)
+	}
+}
+
 func TestEngineCEOErrorFallback(t *testing.T) {
 	dir := t.TempDir()
 	store, _ := NewStore(dir)

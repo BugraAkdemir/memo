@@ -289,6 +289,12 @@ func (e *Engine) Start(ctx context.Context, listID string) error {
 	limit := e.maxConcurrent
 	e.cfgMu.RUnlock()
 
+	// A cancelled list is terminal — it must not be resumable (that is the
+	// whole difference between Cancel() and Stop()).
+	if tl, err := e.store.Get(listID); err == nil && tl.Status == taskListCancelled {
+		return fmt.Errorf("tasklist %s iptal edildi, devam ettirilemez", listID)
+	}
+
 	e.mu.Lock()
 	if _, running := e.active[listID]; running {
 		e.mu.Unlock()
@@ -330,10 +336,7 @@ func (e *Engine) Stop(listID string) {
 		if tl, err := e.store.Get(listID); err == nil {
 			switch tl.Status {
 			case taskListWaitingLimit, taskListWaitingUser:
-				e.store.SetStatus(listID, taskListPaused)
-				if e.onEvent != nil {
-					e.onEvent("taskloop:paused", listID)
-				}
+				e.parkPaused(listID)
 			}
 		}
 		return
@@ -342,9 +345,50 @@ func (e *Engine) Stop(listID string) {
 	delete(e.active, listID)
 	e.mu.Unlock()
 
-	e.store.SetStatus(listID, "paused")
+	e.parkPaused(listID)
+}
+
+// parkPaused moves a list to "paused" as part of a Stop()/ctx-cancel shutdown,
+// but refuses to overwrite a status that is already terminal. Without this
+// guard a Cancel() — which sets "cancelled" and only then cancels the context —
+// has its terminal status clobbered straight back to "paused" by the run()
+// goroutine's own ctx.Done cleanup landing a moment later (observed live: the
+// list stayed resumable and the card kept showing "Resume" after a cancel).
+func (e *Engine) parkPaused(listID string) {
+	if tl, err := e.store.Get(listID); err == nil {
+		switch tl.Status {
+		case taskListCancelled, taskListDone, taskListFailed:
+			return
+		}
+	}
+	if err := e.store.SetStatus(listID, taskListPaused); err != nil {
+		logx.Printf("TASKLOOP: set list paused %s: %v", listID, err)
+	}
 	if e.onEvent != nil {
 		e.onEvent("taskloop:paused", listID)
+	}
+}
+
+// Cancel terminates a list for good. Unlike Stop() (pause — the list stays
+// resumable), Cancel moves it to "cancelled" and it stays there. The terminal
+// status is written BEFORE the context is cancelled so the run() goroutine's
+// own ctx.Done cleanup (parkPaused) sees it and leaves it alone.
+func (e *Engine) Cancel(listID string) {
+	e.retry.Cancel(listID)
+	e.clearTransientFor(listID)
+
+	e.mu.Lock()
+	cancel, ok := e.active[listID]
+	e.mu.Unlock()
+
+	if err := e.store.SetStatus(listID, taskListCancelled); err != nil {
+		logx.Printf("TASKLOOP: set list cancelled %s: %v", listID, err)
+	}
+	if e.onEvent != nil {
+		e.onEvent("taskloop:cancelled", listID)
+	}
+	if ok {
+		cancel()
 	}
 }
 
@@ -446,9 +490,7 @@ func (e *Engine) run(ctx context.Context, listID string) {
 
 	select {
 	case <-ctx.Done():
-		if err := e.store.SetStatus(listID, taskListPaused); err != nil {
-			logx.Printf("TASKLOOP: set list paused %s: %v", listID, err)
-		}
+		e.parkPaused(listID)
 		return
 	default:
 	}
@@ -461,9 +503,7 @@ func (e *Engine) run(ctx context.Context, listID string) {
 	for i := range tl.Items {
 		select {
 		case <-ctx.Done():
-			if err := e.store.SetStatus(listID, "paused"); err != nil {
-				logx.Printf("TASKLOOP: set list paused %s: %v", listID, err)
-			}
+			e.parkPaused(listID)
 			return
 		default:
 		}
@@ -525,9 +565,7 @@ func (e *Engine) run(ctx context.Context, listID string) {
 			if err := e.store.ResetItemPending(listID, item.ID); err != nil {
 				logx.Printf("TASKLOOP: reset item pending %s/%s: %v", listID, item.ID, err)
 			}
-			if err := e.store.SetStatus(listID, "paused"); err != nil {
-				logx.Printf("TASKLOOP: set list paused %s: %v", listID, err)
-			}
+			e.parkPaused(listID)
 			return
 		}
 
@@ -631,7 +669,7 @@ func (e *Engine) runPlanExec(ctx context.Context, listID string, tl *TaskList) {
 			}
 			select {
 			case <-ctx.Done():
-				_ = e.store.SetStatus(listID, taskListPaused)
+				e.parkPaused(listID)
 				return
 			case <-time.After(time.Duration(attempt) * 3 * time.Second):
 			}
@@ -662,7 +700,7 @@ func (e *Engine) runPlanExec(ctx context.Context, listID string, tl *TaskList) {
 
 	select {
 	case <-ctx.Done():
-		_ = e.store.SetStatus(listID, taskListPaused)
+		e.parkPaused(listID)
 		return
 	default:
 	}
@@ -735,7 +773,7 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 	for {
 		select {
 		case <-ctx.Done():
-			_ = e.store.SetStatus(listID, taskListPaused)
+			e.parkPaused(listID)
 			return
 		default:
 		}
@@ -794,7 +832,7 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 		close(results)
 
 		if ctx.Err() != nil {
-			_ = e.store.SetStatus(listID, taskListPaused)
+			e.parkPaused(listID)
 			return
 		}
 
@@ -851,7 +889,7 @@ func (e *Engine) executePlan(ctx context.Context, listID string, tl *TaskList) {
 		if retried > 0 && completed == 0 {
 			select {
 			case <-ctx.Done():
-				_ = e.store.SetStatus(listID, taskListPaused)
+				e.parkPaused(listID)
 				return
 			case <-time.After(3 * time.Second):
 			}

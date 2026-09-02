@@ -709,7 +709,7 @@ func (a *App) Startup(ctx context.Context) {
 				// progress, so a resume re-snapshots from the current global
 				// provider. data is "listID" or "listID:extra".
 				switch name {
-				case "tasklist:finished", "taskloop:paused", "taskloop:waiting_user":
+				case "tasklist:finished", "taskloop:cancelled", "taskloop:paused", "taskloop:waiting_user":
 					id := data
 					if i := strings.IndexByte(id, ':'); i >= 0 {
 						id = id[:i]

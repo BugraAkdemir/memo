@@ -337,7 +337,9 @@ class ChatTaskState {
   /// Fold one event into the running state. A 'finished' event is returned as
   /// null so the caller drops the block (the persisted finish message stays).
   static ChatTaskState? fold(ChatTaskState? prev, TaskChatEvent e) {
-    if (e.event == 'finished') return null;
+    // 'finished' = the list reached done/failed; 'cancelled' = the user killed
+    // it. Either way the live card is gone — drop this chat's entry.
+    if (e.event == 'finished' || e.event == 'cancelled') return null;
 
     final recent = <String>[...(prev?.recent ?? const [])];
     if (e.event.isNotEmpty && e.event != 'snapshot' && e.event != 'activity') {

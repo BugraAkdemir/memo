@@ -1,3 +1,125 @@
+# Ek (2026-09-02, devam 58) — Web build'de SSE streaming tamamen kırıktı; düzeltildi (`c59a5458`)
+
+Kullanıcı: v4.4.0 branch'ini gerçek tarayıcı UI'ında test et (yeni eklediği
+"Minimax m3" custom provider'ıyla). P0/P1/P2 UX test matrisi verdi. Masa
+başında değildi: "auto-permission aç ki permission timeout yeme, bug varsa
+düzelt tekrar test et".
+
+## Kök bulgu — Flutter **web** build'de hiçbir SSE endpoint'i gerçekten stream etmiyordu
+
+`dio_web_adapter` 2.2.1'in `BrowserHttpClientAdapter.fetch()`'i `XMLHttpRequest`
++ `responseType='arraybuffer'` kullanıyor ve yanıtı **yalnızca `xhr.onLoad`'da**
+tamamlıyor — tüm gövde tamponlanıp tek parça olarak, istek bitince veriliyor.
+Adapter'da streaming kod yolu **yok**.
+
+Web'deki sonuçları:
+- `/api/tasks/events` sonsuz stream → `onLoad` hiç ateşlenmiyor → istek abort
+  (`net::ERR_ABORTED`), `ChatTasksNotifier` 3sn'de bir sonsuz yeniden bağlanıyor,
+  `chatTasksProvider` hiç dolmuyor → **canlı Self-Driving görev kartı hiç
+  render olmuyor** (görev çalışsa, izlenen sohbete bağlı olsa bile). Kullanıcının
+  "sabit ilerleme card'ı nerede?" sorusunun cevabı buydu.
+- `/api/send/stream` vb. sonlu → "çalışıyor" ama her chunk (token + mid-stream
+  `agent_event`) turun **sonunda** geliyor. `permission_request` agent_event'i
+  backend'in 60sn izin beklemesi auto-deny'ledikten sonra ulaşıyor → **ajan izin
+  dialogu web'de hiç çıkmıyor**, her prompted tool "Agent execution cancelled
+  (permission timeout)" ile ölüyor. (devam 57'de fark edilmemişti çünkü orada
+  Claude_Browser MCP değil bu oturumda ilk kez gerçek tarayıcıda tıklanarak
+  test edildi.)
+- Sohbette token-token akış yok (uzun "Thinking...", sonra tüm mesaj).
+
+Tarayıcının kendi Fetch API'si stream ediyor (ham `fetch()`+`ReadableStream`
+ile kanıtladım: `firstMs:5`, snapshot+event'ler anında). Curl da (gzip
+göndermediği için) anında snapshot alıyordu — kafa karıştıran fark buydu.
+
+## Fix (`c59a5458`, sadece frontend)
+
+Yeni `lib/core/sse_stream.dart` (conditional export) + `sse_stream_web.dart`
+(`package:web` + `dart:js_interop` ile `window.fetch` → `Response.body`
+`ReadableStream` reader) + `sse_stream_stub.dart` (native'de hiç çağrılmayan
+hedef). `api_client.dart`'a `_sseLines()` helper'ı: `kIsWeb` ise fetch yolu,
+değilse Dio `ResponseType.stream` (native aynen). Aynı `utf8.decoder` +
+`LineSplitter` transform'u her iki yolda da, yani her caller'ın parse döngüsü
+değişmedi. Wired: `sendMessageStream`, `sendCLIMessageStream`,
+`sendWhatsAppChatStream`, `taskEventStream`. `sendFileStream` web'de hâlâ Dio
+(multipart) — Self-Driving yolunda değil, kabul edilebilir.
+`CancelToken` → `AbortController.abort()`; iptal sessizce biter (Dio'nun
+`DioExceptionType.cancel` davranışı). 300sn üretim bütçesi zaten
+chat_provider.dart'ta `Stream.timeout` ile Dart-tarafında sarılıyor, web
+yolunun ayrı receiveTimeout'a ihtiyacı yok. `package:web` transitive'den
+direct'e alındı, exact pinlendi (1.1.1) ki lockfile churn olmasın.
+
+## Canlı doğrulama (Kilo Code provider'ıyla, tarayıcıda tıklayarak)
+
+- ✅ Canlı görev kartı: render oluyor + **gerçek zamanlı** güncelleniyor
+  (elapsed, token sayısı, satır satır aktivite logu: "Dosya yazdı: …",
+  "planning", "Model: kilo-auto/free", …). "model is generating" göstergesi
+  görünüyor, rozet tekrarı yok (devam 57 fix'i sağlam).
+- ✅ Composer kilidi: görev çalışırken "A task is running — stop it…" + kırmızı
+  buton; **Pause**'da açılıyor, **Resume**'da tekrar kilitleniyor.
+- ✅ Pause/Resume kart butonları çalışıyor (pause item'ı done işaretledi,
+  resume re-plan'ladı).
+- ✅ **Ajan izin dialogu web'de artık çıkıyor** (auto-permission OFF iken
+  write_file istedim → "Permission Required / wants to use Write File / Deny·
+  Always allow·Allow" ~8sn'de belirdi, 0:50 geri sayım). Allow → tool çalıştı
+  → dosya yazıldı.
+- ✅ `run_command` arka plan sunucu (P0 #6): `python3 -m http.server 8177`
+  başlattı, turn takılmadı (`chat:done` ~28sn'de), sunucu ayakta, curl cevap
+  verdi. devam 52 fix'i sağlam.
+- ✅ Normal sohbet (agent değil) bozulmadı — düz mesaj streamli cevap aldı.
+- ✅ Regression: Model Store / Takvim / Rutinler render oluyor.
+- ✅ `go build/vet -tags sqlite_fts5 ./...` temiz, `go test -race` tüm paketler
+  geçti, `flutter analyze` dokunulan dosyalarda 0 (repo'da 5 pre-existing info),
+  `flutter test` 324/324, L10n grep temiz.
+
+## Açık kalanlar / yeni gözlemler (düzeltilmedi)
+
+1. **`/api/tasks/{id}/cancel` aslında iptal etmiyor, "pause"a düşürüyor.**
+   `App.CancelTaskList` (`internal/app/tasklist.go:161`) önce
+   `engine.Stop(listID)` sonra `store.SetStatus(listID,"cancelled")` yapıyor;
+   ama Stop'un in-flight worker turn'ünü bitiren yolu `taskloop:paused` yayıp
+   status'u "paused"a geri yazıyor (yarış). Backend log `taskloop:paused`,
+   `/api/tasklists` "paused", kart "Resume" gösteriyor. Backend fix gerek —
+   scope dışı bıraktım.
+2. **Worker mod, per-item CEO verifier ile çelişiyor.** 3 maddelik görevde
+   kilo-auto/free worker tek turda 3 dosyayı da yazdı; CEO madde 1'i "istenmeyen
+   x2/x3 dosyaları oluşturdun" diye reddedip round 2/5'e attı; round 2'de worker
+   x2/x3'ü **sildi**. Görev `done 0/3`'te takıldı, iptal ettim. Kısmen model
+   (kilo-auto/free) davranışı ama loop tasarımı over-delivery'yi cezalandırıp
+   thrash'e sokuyor.
+3. **Kart aktivite logu ardışık aynı satırı dedupe etmiyor** ("Görev durumuna
+   baktı" 6x arka arkaya). Kozmetik.
+4. **Minimax m3** (`custom`, `https://router.bynara.id/v1`, `minimax-m3-free`):
+   aralıklı `502` (~%50 istek, gateway); + kullanıcı notu: **15 req/dk** limit.
+   Memo'nun memory-consolidation + proactive LLM çağrıları da bu bütçeyi yiyordu
+   (kullanıcı minimal mod açıp memory kapattı, ben proactive'i test için kapatıp
+   sona geri açtım). Testlerin çoğu Kilo Code ile yapıldı, sorunsuz aktı.
+5. **`CONTEXT … history=114943 history_msgs=0`** — memory kapalıyken, birkaç
+   kısa mesajlık **taze** sohbette bile ~115k "history" token raporlanıyor
+   (dolu geçmişi olan sohbette 114k makul, taze olanda değil). İncelenmeli.
+6. Kod diziniyle çalışırken agent chat oluşturma diyaloğundaki "Browse server"
+   klasör seçici path input'u yok; derin bir dizine (örn. scratch) ulaşmak
+   sadece tıklama-scroll ile, çok zahmetli. Workdir'i API'den
+   (`POST /api/chats/cli-workdir`) set edince UI'daki "Project:" etiketi
+   stale kalıyor (backend doğru dizini kullanıyor).
+
+## Test durumu (matristen)
+
+P0: #1 kısmen (mekanizma çalışıyor, kilo-auto/free CEO-loop'ta thrash), #3 ✅,
+#4 ✅, #5 ✅, #6 ✅. #2 (Planner/Executor modu explicit) yapılmadı.
+P1/P2: #9 ✅ (pause/resume), #12 ✅ (rozet dedup + kart), #13 ✅ (regression).
+Kalanlar (#2, #7 Task.md path, #8 eşzamanlı listeler, #10, #11 escalation)
+yapılmadı — sıradaki oturuma.
+
+### Sıradaki oturum için
+- `cancel != pause` backend fix'i (gözlem 1).
+- Kalan matris maddeleri (#2 planner modu, #7 Task.md path, #8 eşzamanlı
+  listeler / MaxConcurrentLists).
+- `history` token şişkinliği (gözlem 5) — `internal/app` context builder.
+- İstenirse: `sendFileStream`'i de web fetch yoluna taşımak (multipart body,
+  `web.FormData`).
+
+---
+
 # Ek (2026-09-01, devam 57) — Tasarım/UX denetimi: canlı uygulamada 2 gerçek hata bulundu, düzeltildi
 
 Kullanıcı: "handoff'a yaz, şimdi tasarımsal olarak incele, gerekirse test yaz,

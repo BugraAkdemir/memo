@@ -60,9 +60,9 @@ type Provider interface {
 
 ---
 
-## Supported Providers (14 registered `ProviderType` values)
+## Supported Providers (15 registered `ProviderType` values, verified against `internal/provider/provider.go`)
 
-7 detailed below (OpenAI, Gemini, Claude, Grok, Groq, OpenRouter, Ollama), plus: **Custom** (any OpenAI-compatible endpoint — LM Studio, vLLM, etc., wraps `openAIProvider`), **OpenCode Zen**, **OpenCode Go**, and **Kilo Code** (app.kilo.ai, added v3.9.0 — three live-model-list gateways; Zen and Kilo are pay-as-you-go with some free models sorted to the top and marked with a green checkmark, Go is subscription-based), the two CLI-based providers (#8-9 below, v3.3.4), and `llama.cpp` — an enum placeholder only, **not actually implemented** as a provider (see the note below).
+7 detailed below (OpenAI, Gemini, Claude, Grok, Groq, OpenRouter, Ollama), plus: **Custom** (any OpenAI-compatible endpoint — LM Studio, vLLM, etc., wraps `openAIProvider`), **Custom (Anthropic-compatible)** (`custom-anthropic`, added this branch — any Anthropic Messages API-shaped endpoint, e.g. your own proxy; wraps `claudeProvider` the same way `custom` wraps `openAIProvider`, see §10 below), **OpenCode Zen**, **OpenCode Go**, and **Kilo Code** (app.kilo.ai, added v3.9.0 — three live-model-list gateways; Zen and Kilo are pay-as-you-go with some free models sorted to the top and marked with a green checkmark, Go is subscription-based), the two CLI-based providers (#8-9 below, v3.3.4), and `llama.cpp` — an enum placeholder only, **not actually implemented** as a provider (see the note below).
 
 ### 1. OpenAI (`openai.go`, 353 lines)
 - **Compatible APIs:** OpenAI, any OpenAI-compatible endpoint
@@ -71,19 +71,22 @@ type Provider interface {
 - **Default models:** GPT-4o, GPT-4o-mini, o1, o3
 - **Custom base URL:** Supports LM Studio, local proxies (e.g., `http://127.0.0.1:8046/v1`)
 
-### 2. Google Gemini (`gemini.go`, 351 lines)
+### 2. Google Gemini (`gemini.go`)
 - **API Style:** Custom (not OpenAI-compatible)
 - **Auth:** API key as query parameter (`?key=...`)
 - **Implementation:** `:generateContent` (non-streaming), `:streamGenerateContent?alt=sse` (streaming)
 - **Role mapping:** `system`/`developer` → `SystemInstruction`, `assistant` → `model`
-- **Default models:** Gemini 2.0 Flash, Gemini 2.5 Pro
+- **Default model (`DefaultModels`, `provider.go`):** `gemini-2.0-flash` — a single fallback used when the user hasn't picked one; the actual model list is fetched live, never hardcoded beyond this fallback
+- **Tool-calling (fixed this branch, was previously entirely missing):** requests send `tools:[{functionDeclarations:[...]}]`; parallel calls in one turn are merged into a single following `functionResponse` turn per Gemini's role-alternation rules
 
-### 3. Anthropic Claude (`claude.go`, 368 lines)
+### 3. Anthropic Claude (`claude.go`)
 - **API Style:** Custom (not OpenAI-compatible)
 - **Auth:** `x-api-key` header (not Bearer), `anthropic-version: 2023-06-01`
 - **Implementation:** POST `/messages` with custom SSE event parsing (`content_block_delta`, `message_stop`, `error`)
 - **Role mapping:** `system` → top-level `system` field
-- **Default models:** Claude 3.5 Sonnet, Claude 3 Opus, Claude 4 Sonnet
+- **Default model (`DefaultModels`, `provider.go`):** `claude-sonnet-4-20250514` — a single fallback, live-fetched list otherwise
+- **Tool-calling (fixed this branch, was previously entirely missing):** sends `tools:[{name,description,input_schema}]`; assistant `tool_use` blocks and the following `tool_result` blocks are round-tripped correctly, including batching parallel calls into one following "user" turn
+- **Extended thinking is requested but not yet surfaced** — see [[Agent Mode]]'s Known Issues / `BUG-THINK1` in the repo's `BUG_REPORT.md`: `thinking:{type:"adaptive"}` is sent whenever an effort level is picked, but the response's `"thinking"` content block is parsed nowhere yet, so it's silently dropped rather than shown
 
 ### 4. xAI Grok (`grok.go`, 29 lines)
 - **API Style:** OpenAI-compatible (wraps `openAIProvider`)
@@ -117,6 +120,10 @@ Architecturally unlike the other providers: instead of calling an HTTP API, it s
 - New endpoints: `GET /api/cli/status?type=`, `POST /api/chats/cli-provider`, `POST /api/chats/cli-workdir`, `POST /api/send/cli-stream`, `GET /api/cli/running`, `GET /api/cli/commands?type=&chat_id=`.
 - **Slash commands** (`internal/agentcli/commands.go`): `ListCommands` reads each CLI's own command directories — `.claude/commands/*.md` + `.claude/skills/*/SKILL.md` for Claude Code, `.codex/prompts/*.md` for Codex — at both project (the chat's working directory) and user (home) level, with project winning a name clash. Descriptions come from the YAML frontmatter `description:`, falling back to the first prose line. Built-ins are deliberately a short curated list: most (`/clear`, `/model`, `/compact`, …) only mutate interactive-session state and mean nothing in Memo's chat.
 - **Execution difference (verified against the real binaries, 2026-08-02):** `claude -p "/command"` genuinely runs the command (its init event even returns the full `slash_commands` list) — pass-through is enough. `codex exec "/command"` does **not**; codex only resolves `~/.codex/prompts` in its own TUI, and in exec mode the text reaches the model verbatim, which then improvises. So `CodexCLI.ChatCompletionStream` expands it itself (`ExpandCommand`): frontmatter stripped, `$ARGUMENTS`/`$1..$9` substituted, bare arguments appended when the file declares no placeholder (so the user's words are never silently dropped). An unknown command passes through unchanged.
+
+### 10. Custom (Anthropic-compatible) (`custom_anthropic.go`, new this branch)
+
+A thin wrapper (`customAnthropicProvider{*claudeProvider}`) — same pattern as `grok.go`/`openrouter.go` wrapping `openAIProvider`, but for the Anthropic Messages API shape instead. Exists so a user whose own proxy speaks Anthropic's wire format (not OpenAI's) can still point Memo at it and get the same tool-calling support `claude.go` has, without Memo assuming it's talking to `api.anthropic.com` itself — `BaseURL` is required (`Validate()` rejects an empty one, same rule as plain `custom`). Verified end-to-end (tool send, parse, round-trip) against a local `httptest` server standing in for a real proxy.
 
 ---
 

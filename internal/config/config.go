@@ -98,6 +98,7 @@ type AppConfig struct {
 	Swarm          SwarmConfig        `yaml:"swarm" json:"swarm"`
 	Onboarding     OnboardingConfig   `yaml:"onboarding" json:"onboarding"`
 	LiveMode       LiveModeConfig     `yaml:"live_mode" json:"live_mode"`
+	TaskLoop       TaskLoopConfig     `yaml:"task_loop" json:"task_loop"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
 
 	// Beta gates genuinely experimental features (e.g. Memo Swarm). Off by
@@ -107,6 +108,59 @@ type AppConfig struct {
 	// this flag. Live Mode graduated the same way (see LiveModeConfig) —
 	// its own Enabled toggle, no longer gated by Beta.
 	Beta bool `yaml:"beta" json:"beta"`
+}
+
+// TaskLoopConfig tunes the Self-Driving task loop (v4.4.0). Both switches
+// default on: the release theme is full autonomy. Existing installs keep
+// whatever their config.yaml carries once Load() overlays it.
+type TaskLoopConfig struct {
+	// PlanningSelfConfig lets the loop pick this task's provider/model (and
+	// optionally toggle Orchestra) during the planning phase instead of just
+	// inheriting the global active provider.
+	PlanningSelfConfig bool `yaml:"planning_self_config" json:"planning_self_config"`
+	// SubAgents allows a large item to fan out to parallel read-only
+	// sub-agents plus one writer.
+	SubAgents bool `yaml:"sub_agents" json:"sub_agents"`
+
+	// --- v4.5.0 planner/executor mode ("planlayıcı") ---
+	// Per-role model, each "provider/model" or a bare model name. Empty means
+	// "unset" — resolveRoleModels then reads a Task.md header, an AGENTS.md
+	// directive, and finally falls back to the active provider. No role has a
+	// location bias.
+	PlannerModel  string `yaml:"planner_model" json:"planner_model"`
+	CoderModel    string `yaml:"coder_model" json:"coder_model"`
+	VerifierModel string `yaml:"verifier_model" json:"verifier_model"`
+	// StepGranularity: "intent" | "literal" | "hybrid" (default "hybrid").
+	StepGranularity string `yaml:"step_granularity" json:"step_granularity"`
+	// AutoApprovePlan skips the Plan.md approval gate.
+	AutoApprovePlan bool `yaml:"auto_approve_plan" json:"auto_approve_plan"`
+	// TaskMemory: when false, planner/executor turns skip the RAG/memory block.
+	TaskMemory bool `yaml:"task_memory" json:"task_memory"`
+	// MaxExecutorAttempts before a step escalates (default 3).
+	MaxExecutorAttempts int `yaml:"max_executor_attempts" json:"max_executor_attempts"`
+	// MaxParallelSteps run at once (default 3).
+	MaxParallelSteps int `yaml:"max_parallel_steps" json:"max_parallel_steps"`
+	// HandoffStateMaxTokens before the state doc is compacted (default 2000).
+	HandoffStateMaxTokens int `yaml:"handoff_state_max_tokens" json:"handoff_state_max_tokens"`
+	// StreamIdleTimeoutSec: a planner/coder/escalator LLM stream is aborted
+	// only after this many seconds with NO new token (default 300). Total run
+	// time is unbounded as long as tokens keep flowing — a 3-hour plan is fine.
+	StreamIdleTimeoutSec int `yaml:"stream_idle_timeout_sec" json:"stream_idle_timeout_sec"`
+	// AcceptanceCommandTimeoutSec caps a single `command` acceptance check
+	// (e.g. `go test ./...`) — default 300.
+	AcceptanceCommandTimeoutSec int `yaml:"acceptance_command_timeout_sec" json:"acceptance_command_timeout_sec"`
+	// MaxConcurrentLists caps how many task lists may run at the same time.
+	// 0 (default) means unlimited — since v4.6.0 lists no longer serialise
+	// against each other, so this is only a safety valve for very
+	// resource-constrained hosts.
+	MaxConcurrentLists int `yaml:"max_concurrent_lists" json:"max_concurrent_lists"`
+	// ProviderRoaming is the global default for cross-provider fallback in a
+	// running task. false (default) = a task runs ONLY on the provider it
+	// started with; if that provider fails, the task parks and notifies rather
+	// than silently trying every other entry in data/providers.json. A Task.md
+	// "# sağlayıcı: otomatik" header opts one list back into roaming; a
+	// "# sağlayıcı: <name>" header pins it to a specific provider.
+	ProviderRoaming bool `yaml:"provider_roaming" json:"provider_roaming"`
 }
 
 // LiveModeConfig controls voice Live Mode independently of Beta — it
@@ -852,6 +906,18 @@ func Default() *AppConfig {
 		Swarm: SwarmConfig{
 			RPCPort: 50052,
 			Role:    "none",
+		},
+		TaskLoop: TaskLoopConfig{
+			PlanningSelfConfig:    true,
+			SubAgents:             true,
+			StepGranularity:             "hybrid",
+			AutoApprovePlan:             false,
+			TaskMemory:                  false,
+			MaxExecutorAttempts:         3,
+			MaxParallelSteps:            3,
+			HandoffStateMaxTokens:       2000,
+			StreamIdleTimeoutSec:        300,
+			AcceptanceCommandTimeoutSec: 300,
 		},
 	}
 }

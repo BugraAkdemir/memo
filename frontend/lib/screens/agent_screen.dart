@@ -7,6 +7,7 @@ import '../core/theme.dart';
 import '../models/chat.dart';
 import '../providers/chat_provider.dart';
 import '../providers/agent_provider.dart';
+import '../providers/tasklist_provider.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/server_file_browser_dialog.dart';
@@ -319,6 +320,7 @@ class _AgentContent extends ConsumerWidget {
                 streamingAgentEvents: streamingAgentEvents,
                 statusText: streamingStatus,
                 apiBaseUrl: ref.watch(apiClientProvider).baseUrl,
+                taskActivity: ref.watch(chatTaskForProvider(activeChat.id)),
                 onEdit: (index, newContent) => ref.read(messagesProvider.notifier).updateMessage(index, newContent),
                 onDelete: (index) => ref.read(messagesProvider.notifier).deleteMessage(index),
               );

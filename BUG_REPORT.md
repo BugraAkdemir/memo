@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-13 — **RPi canlı testinden 2 bug** (kullanıcı bildirimi, BUG-ONB10'un bir önceki fix turunun ardından): (1) **BUG-ONB12 — Orchestra config toast spam**: `orchestraConfigProvider`'ın `build()`'i BUG-ONB6 gate-guard'ını taşıyordu ama gate açıkken herhangi bir başka fetch hatasında hâlâ `errorMessageProvider`'a toast basıyordu; bu provider `engine_strip.dart`/`chat_input.dart` tarafından **ambient** izlendiği için (Orchestra kapalıyken bile arka planda çekiliyor), her geçici hata alakasız bir "Orchestra'da hata oluştu" toast'ına dönüşüyordu. `activeProviderTypeProvider`/`remoteAccessProvider`'ın zaten aldığı "ambient watcher'lara sessiz kal" fix'i uygulandı. (2) **BUG-ONB13 — token-only kurulum, loopback olmayan istemciden her zaman 401**: kurulumun "sadece token" seçeneği ilk çağrı olarak kimlik doğrulamalı `PUT /api/remote-access`'i (elde henüz hiç kimlik yokken) çağırıyordu — `password`/`token_password` yöntemleri kimlik doğrulamasız `/api/setup/create-admin`'den geçtiği için bu sorunu yaşamıyordu. `create-admin` ile aynı desende yeni bir `POST /api/setup/create-device` (self-gating, `NeedsSetup()` üzerinden) eklendi; `RemoteAccessConfig.SetupBootstrapped` yeni alanı, token-only yolun `Accounts`/`Username`'e hiç dokunmadığı için `needs_setup`'ın sonsuza dek `true` kalmasını da ayrıca kapattı. Go+Flutter build/vet/test `-race` yeşil, `flutter test` 253/253, yeni testlerin fix'ten önce kırıldığı doğrulandı, canlı duman testiyle (gerçek binary, izole data dir) uçtan uca doğrulandı. **Aynı gün, gerçek RPi'de gerçek non-loopback kaynaktan da doğrulandı:** eski yol 401, yeni yol 200+token, ikinci deneme 403, `config.yaml`'da `setup_bootstrapped: true`. Detay: handoff.md "Ek (2026-08-13, devam 3)".
+> **Son güncelleme:** 2026-08-30 (gece) — v4.5.0 planlayıcı/uygulayıcı modu **iki tur canlı test edildi**. 2. turda planexec pipeline'ı ücretsiz zayıf modelle (`hy3:free`) **çalışan bir SQLite blog sitesi** kurdu: signup, salted-hash login, session/cookie, blog yazısı + index — 6 maddeden 5'i, checkbox mirror + `# onay: otomatik` + retry + escalation dahil uçtan uca doğrulandı (curl ile signup→login→post→index zinciri gerçekten çalışıyor). Yol boyunca **8 bug** bulundu, **hepsinin fix'i aynı oturumda indirildi**: BUG-PERM1 (izin dialogu flash — canlı yeniden-test bekliyor, gerçek Flutter dialogu yok), BUG-PLAN1/2 (timeout'lar — kök neden düzeltildi: agent pipeline non-stream `client` 120s'e takılıyordu, 300s yapıldı), **BUG-PLAN3/5/6/7/8 (planexec çalıştırma sertleştirmesi — 2. turda canlı doğrulandı)**. BUG-PLAN4 (Görevler sekmesi kartı onay UI'ını açmıyor) hâlâ açık — Flutter fix'i.
+>
+> **Önceki güncelleme:** 2026-08-13 — **RPi canlı testinden 2 bug** (kullanıcı bildirimi, BUG-ONB10'un bir önceki fix turunun ardından): (1) **BUG-ONB12 — Orchestra config toast spam**: `orchestraConfigProvider`'ın `build()`'i BUG-ONB6 gate-guard'ını taşıyordu ama gate açıkken herhangi bir başka fetch hatasında hâlâ `errorMessageProvider`'a toast basıyordu; bu provider `engine_strip.dart`/`chat_input.dart` tarafından **ambient** izlendiği için (Orchestra kapalıyken bile arka planda çekiliyor), her geçici hata alakasız bir "Orchestra'da hata oluştu" toast'ına dönüşüyordu. `activeProviderTypeProvider`/`remoteAccessProvider`'ın zaten aldığı "ambient watcher'lara sessiz kal" fix'i uygulandı. (2) **BUG-ONB13 — token-only kurulum, loopback olmayan istemciden her zaman 401**: kurulumun "sadece token" seçeneği ilk çağrı olarak kimlik doğrulamalı `PUT /api/remote-access`'i (elde henüz hiç kimlik yokken) çağırıyordu — `password`/`token_password` yöntemleri kimlik doğrulamasız `/api/setup/create-admin`'den geçtiği için bu sorunu yaşamıyordu. `create-admin` ile aynı desende yeni bir `POST /api/setup/create-device` (self-gating, `NeedsSetup()` üzerinden) eklendi; `RemoteAccessConfig.SetupBootstrapped` yeni alanı, token-only yolun `Accounts`/`Username`'e hiç dokunmadığı için `needs_setup`'ın sonsuza dek `true` kalmasını da ayrıca kapattı. Go+Flutter build/vet/test `-race` yeşil, `flutter test` 253/253, yeni testlerin fix'ten önce kırıldığı doğrulandı, canlı duman testiyle (gerçek binary, izole data dir) uçtan uca doğrulandı. **Aynı gün, gerçek RPi'de gerçek non-loopback kaynaktan da doğrulandı:** eski yol 401, yeni yol 200+token, ikinci deneme 403, `config.yaml`'da `setup_bootstrapped: true`. Detay: handoff.md "Ek (2026-08-13, devam 3)".
 >
 > **Önceki güncelleme — İki varsayılan hatası düzeltildi** (`08d0b0d`, kullanıcı bildirimi): (1) **mood ilk kurulumda açık geliyordu** — `config.Default()` `Mood.Enabled: true` veriyordu, oysa mood motoru her mesaja ton direktifi enjekte ediyor (WebSearch'ün kapalı gelmesiyle aynı gerekçe). Kapatıldı; mevcut kurulumlar etkilenmiyor (`Load()` config.yaml'ı üstüne biniyor) ve `TestExplicitMoodEnabledSurvivesLoad` bunu sabitliyor. Not: `config.yaml.example` zaten `false`'du, sorun yalnızca "config dosyası hiç yok" yolundaydı. (2) **beta kapalıyken Swarm sekmesi görünüyordu** — `_showSwarmNav()` cevabın `beta:true` dışında ne olduğuna bakmadan yerel `memo_beta_features` aynasına düşüyordu (yorumu "yüklenene kadar" dese de kod öyle değildi), yani bayat bir yerel `true` sapasağlam bir `beta:false`'u kalıcı olarak eziyordu. Ayrıca `remoteAccessProvider` de BUG-ONB11 şeklindeydi: gate arkasında 401 alıp `{'enabled': false}` önbelleğe alıyordu ve o map'te `'beta'` anahtarı olmadığı için "henüz cevap gelmedi"den ayırt edilemiyordu. Fix: provider gate kapalıyken boş map dönüyor + merkezi listener'dan invalidate ediliyor, `_showSwarmNav` `containsKey('beta')` ile test ediyor. `memo_beta_features` ayrıca `serverCoupledPrefsKeys`'e taşındı (sunucu config'inin aynası, cihaz tercihi değil). Go+Flutter yeşil, `flutter test` 251/251, yeni testin fix'ten önce kırıldığı doğrulandı. RPi config'i SSH ile kontrol edildi (`mood: false`, `beta: false`) — sunucu tarafı zaten doğruydu.
 >
@@ -87,11 +89,290 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 0 |
-| 🟢 LOW | 0 |
+| 🟠 HIGH | 1 (BUG-PLAN10 — sohbet modeli çalışan task için ayrıntılı YANLIŞ "bozuk" hikayesi uyduruyor) |
+| 🟡 MEDIUM | 3 (BUG-PLAN11 adım→madde eşleme + sayaç kaosu · BUG-PLAN12 canlı task aktivitesi sohbette yok · BUG-THINK1 Claude thinking hiç gösterilmiyor) |
+| 🟢 LOW | 1 (BUG-PLAN9 planı sohbetten onayla) |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **0** |
+| ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 1 (BUG-PERM1 + e43627e/b9fc2eb — gerçek masaüstü doğrulaması) |
+| ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 7 (PLAN1/2/3/4/5/6/7/8 — PLAN4 kod+analyze doğrulandı) |
+| **AÇIK TOPLAM** | **5** (hepsi kod değişikliği = testten sonra) |
+
+---
+
+## ⏳ Fix indi — canlı yeniden-test bekliyor
+
+Bu üçünün fix'i 2026-08-30 akşamı v4.5.0 canlı testinin ardından indirildi;
+test ortamında güçlü model / gerçek Flutter dialogu olmadığı için **kullanıcının
+canlı doğrulaması gerekiyor**. Doğrulanınca buradan silinecek (git log kayıt).
+
+### BUG-PERM1 — interaktif sohbette agent tool izin dialogu anında kapanıyordu
+
+- **Bulgu:** interaktif ajan sohbetinde model `create_task_md` çağırdı; izin
+  ekranı **"0.1 ms bile değil, geldi gitti"** — açılıp kapandı, kullanıcı
+  onaylayamadı. Backend `permission request … timed out (60s), auto-denied`
+  → tur `⚠️ Agent execution cancelled (permission timeout)` ile bitti.
+- **Kök neden:** `permission_dialog.dart` `isSendingProvider == false` gördüğü
+  her an kendini pop ediyordu (turun bittiğinde bayat dialog kalmasın diye).
+  Ama agentic döngüde tool-round sınırında `isSendingProvider` bir frame
+  boyunca `false` okunabiliyor — tam da `create_task_md` /
+  `start_self_driving_task` izin isteği o ana denk gelince dialog flash edip
+  kapanıyordu.
+- **Fix:** "build sırasında zaten false" yolundaki anında pop, **~1.4 sn
+  debounce** edildi (`_staleCheckTimer`) — ancak hâlâ not-sending ise pop eder.
+  `ref.listen` gerçek `true→false` geçişi yolu (turun gerçekten bitmesi)
+  aynen kaldı. Yeni test: "brief not-sending dip must not flash-close a live
+  dialog" + mevcut "already-ended turn" testi debounce'a göre güncellendi.
+
+### BUG-PLAN1 — planlayıcı/uygulayıcı LLM çağrıları 90s'e takılıyor + tek hatada liste `failed`
+
+- **Bulgu:** `# mod: planlayıcı` görevi başladı, planlayıcı turu ~2 dk sonra
+  `[custom] provider request timed out` → liste `failed`, kullanıcı elden
+  yeniden kurmak zorunda. Ücretsiz endpoint 90 sn'de yanıt başlığı dönemedi.
+- **GERÇEK kök neden (2. turda bulundu):** agent pipeline (`pipeline.go:143`)
+  **non-streaming** `ChatCompletion`'ı çağırıyor, `...Stream`'i değil — yani
+  planlayıcı/coder/escalator turları `openai.go`/`claude.go`/`gemini.go`'nun
+  düz `client`'ını kullanıyor, `Timeout: 120s` (claude/gemini'de ayrıca 30s
+  `ResponseHeaderTimeout`). Büyük bir planlama çağrısı tek dev JSON gövdesi
+  döndürüyor, ilerleme sinyali yok, 120s'de kesiliyordu. İlk fix `streamCl`'i
+  değiştirmişti — pipeline onu hiç kullanmıyor.
+- **Fix:** (a) üç provider'ın da non-stream `client.Timeout` **120s → 300s**
+  (claude/gemini header timeout 30s → 120s). (b) `runPlanExec` planlayıcıyı
+  **3 kez** dener (3s/6s backoff), bad-JSON dahil; hepsi tükenince `failPlan`
+  (`plannerMaxAttempts = 3`). (c) streaming yolu için de idle-timeout altyapısı
+  eklendi (`drainStreamIdle`, `tasklist_stream.go`) — `streamCl`
+  `ResponseHeaderTimeout` 90s → 240s. **Canlı doğrulandı:** hy3:free her
+  çağrıda ~120s timeout veriyor ama 3. denemede plan geçiyor; 300s ile ilk
+  denemede geçmesi bekleniyor.
+
+### BUG-PLAN2 — review/compaction 120s + kabul-komutu 180s sabit timeout
+
+- **Fix:** `callLLMForReview` (worker CEO review, fuzzy kabul kontrolü,
+  state-doc compaction, bitiş raporu) provider/local yolları **120s → 240s**.
+  `runCheckCommand` (kabul-komutu, ör. `go test ./...`) 180s → config'lenebilir
+  `TaskLoopConfig.AcceptanceCommandTimeoutSec` (default 300).
+
+### ✅ BUG-PLAN3, 5, 6, 7, 8 — planexec çalıştırma sertleştirmesi (2. turda bulundu, 3. turda canlı doğrulandı)
+
+**Fix commit `86de45f`. 3. canlı turda hepsi doğrulandı: aynı zayıf modelle
+(`hy3:free`) 6 maddeli Task.md → 5/6 madde done, gerçekten çalışan blog
+sitesi (curl ile signup→login→post→index doğrulandı).** Aşağısı bulgu/kök
+neden kaydı, silinebilir.
+
+2026-08-30 gece, güçlü planlayıcı (`claude-3-5-sonnet` local proxy) ile ikinci
+tur. **Planlayıcı bu sefer sorunsuz çalıştı** — `create_task_md` mükemmel
+Task.md yazdı, `start_self_driving_task` planexec listesi kurdu, planlayıcı
+turu 8 adımlık (literal_content + acceptance_checks + DAG) 20 KB'lık geçerli
+`Plan.md` üretti, liste `awaiting-plan-approval`'a düştü. API'den approve →
+`executing` → S1 (`db.py` + `blog.db`) **gerçekten çalıştı, item 1 done**.
+Sonra 6 bug yüzünden 1/8'de durdu:
+
+- **BUG-PLAN3 — `# onay: otomatik` ve `# hafıza: kapalı` Task.md header'ları
+  parse ediliyor ama TÜKETİLMİYOR.** `CreateTaskListFromTaskMd` yalnızca
+  `Headers["mod"]`'u okuyor. `AutoApprovePlan` global config; per-liste
+  auto-approve alanı yok. Model header'ı yazıyor, hiçbir etkisi olmuyor →
+  liste onay kapısında asılı kalıyor.
+- **✅ BUG-PLAN4 (fix `<commit>`) — Görevler sekmesi kartı `task_detail_screen.dart`'ı
+  açmıyordu.** Kart `onTap`'i eski `_showDetailDialog` statik-snapshot modalını
+  açıyordu: bayat statü ("Idle"), plan onay butonu YOK → `# onay` header'sız
+  planexec listesi UI'dan onaylanamıyordu. `onTap` artık `TaskDetailScreen`'e
+  push ediyor (canlı görünüm + self-fetch eden `_PlanApprovalSection`
+  düzenlenebilir Plan.md + "Onayla ve çalıştır" + `waiting-escalation`
+  banner'ı). `_showDetailDialog` ve 2 kullanılmayan import silindi. Kod +
+  `flutter analyze` + widget testleri yeşil.
+- **BUG-PLAN5 — paralel step goroutine'lerinden eşzamanlı `SavePlan` yarışı.**
+  `MaxParallelSteps=3` step goroutine'i `IncrementStepAttempts` → `mutatePlan`
+  → `SavePlan` → `fileutil.AtomicWrite` (tmp + rename) çağırıyor. İki goroutine
+  aynı `.plan.json.tmp`'yi yazıp rename edince biri `rename …tmp: no such file
+  or directory` alıyor. `mutatePlan` yorumu "tek yazar: engine goroutine'i"
+  diyor ama artık yanlış — `runOneStep` paralel goroutine'lerden çağırıyor.
+  Transient (bu turda öldürmedi) ama attempt sayacı kaybı + potansiyel plan
+  bozulması.
+- **BUG-PLAN6 — fuzzy kabul kontrolü non-git projede her zaman başarısız.**
+  `runFuzzyCheck` bağlam olarak `git -C projectPath diff --stat` kullanıyor.
+  `~/memo-blog-test` git deposu değil → çıktı boş → doğrulayıcı "değişiklik
+  özeti boş, ölçüt doğrulanamadı" → adım stuck (S7/style.css).
+- **BUG-PLAN7 (HARD BLOCKER) — `command` kabul kontrolü `expect: "present"`'i
+  stdout substring'i sanıyor.** Planlayıcı grep semantiğini (`expect:
+  "present"`) `command` çeklerine de kopyalıyor:
+  `{"kind":"command","spec":"python3 -c \"...print(callable(...))\"","expect":"present"}`.
+  Komut exit 0 veriyor ama stdout `True`, `present` değil → `runCheckCommand`
+  "output missing present" → adım stuck. S2 böyle takıldı, S3-S8 hepsi S2'ye
+  bağlı olduğu için art arda stuck → 1/8.
+- **BUG-PLAN8 (HARD BLOCKER) — takılan adım ne retry ediliyor ne escalate.**
+  `executePlan` bir adım kabul kontrolünü geçmeyince **1 denemede** `stuck`
+  yapıyor. `escalateStuckSteps` ise `s.Attempts >= maxAttempts` (3) istiyor —
+  ama hiçbir şey attempt'i 1'in üstüne çıkarmıyor (per-adım retry döngüsü hiç
+  yazılmamış). Sonuç: `MaxExecutorAttempts` fiilen "1 dene, bırak";
+  escalation acceptance-check hatalarında hiç tetiklenmiyor.
+
+**Ayrıca (bug değil ama gürültü):** her mesajda `LATENCY app.retrieve_memory
+status=error` + `memory_save_sync status=error` — embedder :8082'de
+başlamamış/erişilemiyor olabilir, "Memory off — RAG not working" banner'ıyla
+tutarlı. Provider auto-revert (frontend her reconnect'te aktif provider'ı
+kendi cache'ine çeviriyor) da tekrar görüldü — pre-existing, v4.5.0 dışı.
+
+---
+
+## 🟢 AÇIK — kod değişikliği TESTTEN SONRA (kullanıcı 2026-08-30 canlı testte istedi)
+
+Kullanıcı v4.5.0 canlı testinde bunları bildirdi; **"kullanıcı deneyimini
+kötü etkileyen bir hata değil ama"** dedi, "şimdilik kodda değişiklik yapma,
+testten sonra" — sadece not.
+
+### BUG-PLAN9 — planexec planı yalnızca Görevler sekmesinden onaylanabiliyor
+
+- **Bulgu:** sohbetten `start_self_driving_task` ile planexec listesi başlıyor,
+  planlayıcı `Plan.md`'yi üretip liste `awaiting-plan-approval`'a düşüyor. Ama
+  onay UI'ı (düzenlenebilir plan + "Approve & run") **yalnızca** Görevler
+  sekmesi → task detay ekranında (`_PlanApprovalSection`,
+  `task_detail_screen.dart`). Kullanıcı onaylamak için sohbetten çıkıp o ekrana
+  gitmek zorunda.
+- **İstenen:** plan hazır olunca **sohbete** düşsün — konuşma içinde inline bir
+  "planı gör / onayla" kartı/butonu, oradan `saveTaskPlanMd` + `approveTaskPlan`
+  çağrılsın. (Agent izin dialogu deseni gibi; `agentEventBus` üzerinden bir
+  `plan_ready` event'i + `app_shell` listener olabilir.)
+- **Öncelik:** düşük (akış çalışıyor, sadece fazladan tıklama).
+
+### BUG-PLAN10 — sohbet modeli görev durumunu okuyamıyor, AYRINTILI YANLIŞ HİKAYE uyduruyor
+
+- **Bulgu:** kullanıcı sohbette "görev durumu ne" / "task duruyor mu" diye
+  sordu. Model canlı task-listesi durumunu görebileceği bir araca sahip değil.
+  `read_file` ile `Task.md`'yi okudu, 6 kutunun da `[ ]` olduğunu gördü ve
+  **baştan sona uydurma bir başarısızlık anlatısı üretti:** "döngü hiçbir
+  maddeyi işleyememiş", "LLM sağlayıcı yapılandırılmamış / LLM Error: no
+  provider configured", "`app.py` veya `blog.db` de oluşturulmamış", "çözüm:
+  Settings → Provider'dan sağlayıcı ekle". **Hepsi yanlıştı** — o sırada
+  planexec **7/13 adımı bitirmiş, aktif koşuyordu**, `app.py`/`blog.db` vardı,
+  escalation 2 kez tetiklenmişti. Model, checkbox'ların boş olmasını
+  (BUG-PLAN11 yüzünden boşlar) "hiçbir şey olmadı"ya + "sağlayıcı yok"a
+  genişletti.
+- **İstenen:** sohbet modeline canlı görev durumunu verecek bir yol — bir
+  agent aracı (`get_task_status` / `list_running_tasks` → id, statü, faz,
+  adım ilerleme `N/M`, son adım metni, son hata, escalation sayısı), ya da
+  aktif proje bir task-listesine bağlıysa sistem prompt'una özet enjeksiyonu.
+  Model **veri yokken / araç yokken durum uydurmamalı**, "göremiyorum, Görevler
+  sekmesine bak" demeli.
+- **Öncelik:** YÜKSEK — ayrıntılı, ikna edici yanlış bilgi kullanıcıyı çalışan
+  bir sistemi "komple bozuk" sanıp iptal et/yeniden kur'a itiyor.
+- **Not (2026-09-01, dokümantasyon denetimi sırasında bulundu):** İstenen
+  `get_task_status` aracı `def5ac1c` commit'inde ("feat(agent): add
+  get_task_status read-only tool + anti-fabrication prompt") gerçekten
+  eklenmiş — bu satır yazıldıktan sonraki bir commit. Araç kayıtlı, "veri
+  yokken uydurma" talimatı sistem promptunda var (bkz. tools.go'daki
+  açıklaması). **Ama bu, canlı olarak doğrulanmadı** — modelin gerçekten
+  bu aracı çağırıp uydurmaktan vazgeçtiği bir canlı testle kanıtlanmadı,
+  sadece kod var olduğu için burada "muhtemelen düzeldi" diye not
+  düşülüyor. Kapatmadan önce gerçek bir "görev durumu ne" sorusuyla canlı
+  test edilmeli.
+
+### BUG-PLAN12 — canlı task aktivitesi sohbette görünmüyor, ayrı Görevler ekranı şart
+
+- **Bulgu (kullanıcı):** "alt agent çalıştırmış / adım tamamlanmış / plan onayı
+  gibi şeyleri anlık sohbette görebileyim, ayrı task screen'a muhtaç kalmak
+  istemiyorum." Şu an çalışan bir planexec listesinin tüm canlı sinyalleri
+  (adım başladı/bitti, alt-agent turu, kabul kontrolü, escalation, handoff
+  context doluluğu, `awaiting-plan-approval`) **sadece** Görevler sekmesi → task
+  detay ekranında. Sohbet tarafında hiçbir iz yok; sohbet modeli de göremiyor
+  (BUG-PLAN10).
+- **İstenen:** `start_self_driving_task` bir sohbetten başlatıldığında o
+  sohbete canlı bir aktivite akışı düşsün — ajan `tool_executing` /
+  `tool_result` baloncukları gibi hafif satırlar: "Adım 4/13: create_post()…",
+  "Adım 4/13 geçti", "Adım 6 tekrar kuyruğa alındı (kabul kontrolü)",
+  "Adım 6 escalate → 6 alt-adıma bölündü", "plan hazır — [Onayla]".
+  Muhtemelen mevcut `agentEventBus`
+  + `app_shell` listener deseni; backend zaten `event: taskloop:*` yayınlıyor
+  (`taskloop:escalating/escalated` loglarda görülüyor) — bunları SSE'den
+  sohbete köprülemek yeterli olabilir.
+- **Öncelik:** orta-yüksek (BUG-PLAN9 + BUG-PLAN10'un şemsiye çözümü; "sohbetten
+  yönet" vaadinin özü).
+
+### BUG-THINK1 — Claude'un extended thinking içeriği hiçbir zaman gösterilmiyor, sessizce çöpe gidiyor
+
+- **Bulgu (2026-09-01, kullanıcı canlı testte):** kullanıcı "diğer app'lerdeki
+  gibi düşünmeyi göster/gizle toggle'ı çalışıyor mu" diye sordu (bir
+  sohbette görünen garip metni "model kendi düşüncesini mi basıyor" sanıp).
+  O akşamki asıl olay bu değildi (zayıf/ücretsiz bir Gemma modeli Memo'nun
+  kendi persona sistem promptunu — [identity.go:264](internal/identity/identity.go:264)
+  — parafraz ederek geri okumuştu, gerçek bir "thinking sızıntısı" değil,
+  model kalitesi sorunu). **Ama araştırırken ayrı, gerçek bir hata bulundu.**
+- **Kök neden:** Flutter tarafı zaten **tam bir** collapsible "düşünme"
+  bölümü içeriyor — `ChatMessage.thinking`/`hasThinking`,
+  `StreamChunk.thinking` ([chat.dart](frontend/lib/models/chat.dart)),
+  `_ThinkingSection` + expand/collapse state
+  ([chat_message_list.dart](frontend/lib/widgets/chat_message_list.dart)).
+  `claude.go`, `req.EffortLevel` seçiliyken Anthropic'e gerçekten
+  `thinking:{type:"adaptive"}` gönderiyor
+  ([claude.go:478](internal/provider/claude.go:478)) — yani kullanıcı bir
+  effort level seçtiğinde thinking token'ları **gerçekten harcanıyor**. Ama
+  gelen yanıttaki `"thinking"` tipi content block'ları hem
+  `ChatCompletion` (satır 225-243) hem `ChatCompletionStream`/`processSSE`
+  (content_block_delta ayrıştırması yalnızca `delta.text`'e bakıyor,
+  `delta.type=="thinking_delta"`/`delta.thinking`'i hiç görmüyor) tarafında
+  **hiç işlenmiyor** — switch/case'de yok, sessizce atlanıyor. `claudeBlock`
+  struct'ında `Thinking` alanı bile yok, `ChatResponse`'ta da yok. Backend
+  katmanının hiçbir yerinde (`internal/app/*.go` dahil) `.Thinking` okunan
+  tek bir satır yok — grep ile doğrulandı.
+- **Etki:** kullanıcı Claude'da bir effort level seçtiği her an, gerçek para
+  ödeyip gerçek thinking token'ı harcıyor ama bunun karşılığında **hiçbir
+  zaman** hiçbir şey görmüyor — frontend'deki toggle tamamen ölü, hiçbir
+  provider için hiç çalışmamış. Gemini tarafında da benzer bir eksik var
+  (`geminiThinkingConfig`'te `includeThoughts` hiç gönderilmiyor,
+  `geminiPart`'ta `Thought` alanı yok) ama Gemini şu an zaten thought
+  summary talep etmediği için aktif bir sızıntı/kayıp değil, sadece
+  kullanılmayan potansiyel.
+- **İstenen:** `claudeBlock`'a `Thinking`, `ChatResponse`'a `Thinking`
+  alanı eklenip her iki yol (stream + non-stream) `"thinking"` block
+  tipini/`thinking_delta`'yı yakalayacak; `internal/app` katmanının bunu
+  `api.StreamChunk`/persist edilen `ChatMessage`'a köprülemesi lazım
+  (frontend tarafı zaten hazır, hiçbir Dart değişikliği gerekmiyor).
+- **Öncelik:** ORTA — hiçbir şeyi bozmuyor, kimseyi crash etmiyor, veri
+  kaybı yok; ama effort level seçen her Claude kullanıcısı için gerçek
+  parayla satın alınan bir özellik tamamen çalışmıyor. **Kullanıcı talimatı:
+  PR #19 merge olana kadar dokunulmayacak** (o an aktif canlı test
+  sürüyordu, backend restart'ı test oturumunu bölerdi).
+
+### BUG-PLAN11 — planexec adım→madde eşlemesi tutmuyor + sayaçlar her ekranda farklı
+
+- **Bulgu:** aynı anda ekranlarda: kart "0/6 done", detay bar "Steps: 7/13",
+  detay satır "Executing 0/6", sohbet modeli "6 madde hepsi boş". Dört farklı
+  sayı. İki sorun:
+  1. **Adım paydası büyüyor:** plan 6 adım başladı (S1–S6). Escalation S3'ü
+     3.1/3.2/3.3'e (→8), sonra S6'yı S6.1–S6.6'ya böldü (→13). "7/13" ilerleme
+     gibi hissettirmiyor çünkü payda kayıyor; kullanıcı "8'den 13'e niye çıktı"
+     diye soruyor. Escalation'ın adım eklediği UI'da hiç açıklanmıyor.
+  2. **Madde ilerlemesi 0'da donuk** (asıl bug, aşağıda).
+- **Kök neden (gerçek bug, kozmetik değil):** planlayıcı adımlara
+  `item_id = "1".."6"` (sıra numarası) veriyor:
+  ```
+  S1 item_id="1" done | S2 item_id="2" done | 3.1/3.2/3.3 item_id="3" done
+  S4 item_id="4" running | S5 "5" | S6 "6"
+  ```
+  ama task-listesi maddeleri **UUID** ile anahtarlı
+  (`items[].id = "04a7d8f9-8494-…"`, ayrıca `line: 7,8,9…`). `SetItemDone` /
+  `MarkItemDone` gerçek madde id'sini (UUID) veya line'ı arıyor, `"1"`
+  bulamıyor → bir maddenin tüm adımları bitse bile madde `pending` kalıyor →
+  `Task.md` checkbox'ları **hiç** işaretlenmiyor, kart sonsuza dek 0/6.
+  (BUG-PLAN4 turunda "checkbox mirror doğrulandı" denmişti — muhtemelen o
+  planlayıcı eşleşen id / index üretmişti; eşleme kırılgan.)
+- **İstenen:** (a) plan step'in `item_id`'si gerçek `TaskList.items[].id`'ye
+  (veya line'a) çözülsün — planlayıcı prompt'unda gerçek id verilmeli ya da
+  `ItemID` "1".."N" ise index olarak `items[N-1].id`'ye map'lensin. (b) planexec'te
+  her yerde **tek tutarlı** ilerleme metni: "adım N/M (madde a/b)" — kart, detay
+  bar, "Executing" satırı aynı şeyi göstersin. (c) escalation adım eklediğinde
+  UI'da bir iz olsun ("+3 adım: S6 bölündü").
+- **Öncelik:** orta-yüksek (uçtan uca "bitti" sinyali ve Task.md aynası
+  planexec'te çalışmıyor demek; sayı kaosu kullanıcıyı BUG-PLAN10'la birlikte
+  "bozuk" sanısına itiyor).
+
+### Not — BUG-PERM1 canlı durumu (2026-08-30 öğleden sonra)
+
+Yeni web build'le sohbetten `create_task_md` denendi: izin dialogu **anında
+kapanmadı**, "0:59" sayaçla stabil göründü, kullanıcı Allow'a bastı, `Task.md`
++ `Plan.md` üretildi. Yani BUG-PERM1'in çekirdeği çözülmüş görünüyor. Ek
+olarak `e43627e` (auto-permission: canlı getter + bekleyen istekleri drenaj)
+ve `b9fc2eb` (dialog en az 2 sn görünür kalır) da indi — kullanıcının gerçek
+masaüstü uygulamasında bunları da doğrulaması iyi olur, sonra BUG-PERM1
+buradan silinebilir.
 
 ---
 

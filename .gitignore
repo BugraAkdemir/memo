@@ -111,3 +111,6 @@ internal/app/data/agent-backups/history.json
 internal/app/data/machine.key
 internal/app/data/agent-audit.jsonl
 internal/agent/data/agent-backups/history.json
+data/tasklists/
+.gitignore
+.freebuff/

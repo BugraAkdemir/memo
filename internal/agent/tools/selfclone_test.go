@@ -64,9 +64,9 @@ func TestSelfCloneCopiesFiles(t *testing.T) {
 
 	// Birkaç dosya ve alt dizin oluştur
 	files := map[string]string{
-		"main.go":          "package main",
-		"internal/app.go":  "package app",
-		"config/cfg.yaml":  "key: value",
+		"main.go":         "package main",
+		"internal/app.go": "package app",
+		"config/cfg.yaml": "key: value",
 	}
 	for rel, content := range files {
 		path := filepath.Join(src, rel)

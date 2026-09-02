@@ -63,12 +63,11 @@ func (m *Manager) ExecuteTool(ctx context.Context, skillName, toolName string, a
 		"MEMO_PROJECT_DIR="+basePath,
 	)
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	runErr := cmd.Run()
+	// Same file-backed capture run_command uses — see RunCapturingOutput for
+	// why a bytes.Buffer here would hang on any skill that backgrounds a
+	// process.
+	stdout, stderr, runErr := tools.RunCapturingOutput(cmd)
 	timedOut := execCtx.Err() == context.DeadlineExceeded
 
-	return tools.FormatCommandOutput(runErr, timedOut, stdout.String(), stderr.String()), nil
+	return tools.FormatCommandOutput(runErr, timedOut, stdout, stderr), nil
 }

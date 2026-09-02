@@ -559,23 +559,31 @@ class _ClaudeCodeCLIConnectRow extends ConsumerWidget {
       data: (st) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SwitchListTile(
-            title: Text(
-              L10n.t('dev_gateway_claude_cli_connect_label'),
-              style: TextStyle(fontSize: 13, color: theme.textMain),
+          // Material(transparency) gives this tile its own nearest Material
+          // ancestor — the card's decorated Container above it would otherwise
+          // hide the tile's background and ink splashes (framework assertion,
+          // thrown on every build since this screen lives in AppShell's
+          // IndexedStack and is built at startup).
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              title: Text(
+                L10n.t('dev_gateway_claude_cli_connect_label'),
+                style: TextStyle(fontSize: 13, color: theme.textMain),
+              ),
+              subtitle: Text(
+                L10n.t('dev_gateway_claude_cli_connect_desc'),
+                style: TextStyle(fontSize: 11, color: theme.textDim),
+              ),
+              value: st.connected,
+              onChanged: toggle,
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              activeThumbColor: MemoTheme.accent,
+              inactiveThumbColor: theme.textDim,
+              inactiveTrackColor: theme.bgHover,
+              trackOutlineColor: WidgetStateProperty.all(theme.borderHover),
             ),
-            subtitle: Text(
-              L10n.t('dev_gateway_claude_cli_connect_desc'),
-              style: TextStyle(fontSize: 11, color: theme.textDim),
-            ),
-            value: st.connected,
-            onChanged: toggle,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            activeThumbColor: MemoTheme.accent,
-            inactiveThumbColor: theme.textDim,
-            inactiveTrackColor: theme.bgHover,
-            trackOutlineColor: WidgetStateProperty.all(theme.borderHover),
           ),
           const SizedBox(height: 10),
           Text(
@@ -801,23 +809,31 @@ class _SettingsPanelState extends ConsumerState<_SettingsPanel> {
         children: [
           sectionLabel(context, L10n.t('dev_gateway_settings_title')),
           const SizedBox(height: 8),
-          SwitchListTile(
-            title: Text(
-              L10n.t('dev_gateway_require_key_label'),
-              style: TextStyle(fontSize: 13, color: theme.textMain),
+          // Material(transparency) gives this tile its own nearest Material
+          // ancestor — the card's decorated Container above it would otherwise
+          // hide the tile's background and ink splashes (framework assertion,
+          // thrown on every build since this screen lives in AppShell's
+          // IndexedStack and is built at startup).
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              title: Text(
+                L10n.t('dev_gateway_require_key_label'),
+                style: TextStyle(fontSize: 13, color: theme.textMain),
+              ),
+              subtitle: Text(
+                L10n.t('dev_gateway_require_key_desc'),
+                style: TextStyle(fontSize: 11, color: theme.textDim),
+              ),
+              value: config.requireAPIKey,
+              onChanged: (v) => _update(requireAPIKey: v),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              activeThumbColor: MemoTheme.accent,
+              inactiveThumbColor: theme.textDim,
+              inactiveTrackColor: theme.bgHover,
+              trackOutlineColor: WidgetStateProperty.all(theme.borderHover),
             ),
-            subtitle: Text(
-              L10n.t('dev_gateway_require_key_desc'),
-              style: TextStyle(fontSize: 11, color: theme.textDim),
-            ),
-            value: config.requireAPIKey,
-            onChanged: (v) => _update(requireAPIKey: v),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            activeThumbColor: MemoTheme.accent,
-            inactiveThumbColor: theme.textDim,
-            inactiveTrackColor: theme.bgHover,
-            trackOutlineColor: WidgetStateProperty.all(theme.borderHover),
           ),
           if (config.requireAPIKey) ...[
             const SizedBox(height: 8),
@@ -828,23 +844,31 @@ class _SettingsPanelState extends ConsumerState<_SettingsPanel> {
           const SizedBox(height: 12),
           Divider(height: 1, color: theme.borderSoft),
           const SizedBox(height: 12),
-          SwitchListTile(
-            title: Text(
-              L10n.t('dev_gateway_use_memory_label'),
-              style: TextStyle(fontSize: 13, color: theme.textMain),
+          // Material(transparency) gives this tile its own nearest Material
+          // ancestor — the card's decorated Container above it would otherwise
+          // hide the tile's background and ink splashes (framework assertion,
+          // thrown on every build since this screen lives in AppShell's
+          // IndexedStack and is built at startup).
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              title: Text(
+                L10n.t('dev_gateway_use_memory_label'),
+                style: TextStyle(fontSize: 13, color: theme.textMain),
+              ),
+              subtitle: Text(
+                L10n.t('dev_gateway_use_memory_desc'),
+                style: TextStyle(fontSize: 11, color: theme.textDim),
+              ),
+              value: config.useMemory,
+              onChanged: (v) => _update(useMemory: v),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              activeThumbColor: MemoTheme.accent,
+              inactiveThumbColor: theme.textDim,
+              inactiveTrackColor: theme.bgHover,
+              trackOutlineColor: WidgetStateProperty.all(theme.borderHover),
             ),
-            subtitle: Text(
-              L10n.t('dev_gateway_use_memory_desc'),
-              style: TextStyle(fontSize: 11, color: theme.textDim),
-            ),
-            value: config.useMemory,
-            onChanged: (v) => _update(useMemory: v),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            activeThumbColor: MemoTheme.accent,
-            inactiveThumbColor: theme.textDim,
-            inactiveTrackColor: theme.bgHover,
-            trackOutlineColor: WidgetStateProperty.all(theme.borderHover),
           ),
           const SizedBox(height: 12),
           Divider(height: 1, color: theme.borderSoft),

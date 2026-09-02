@@ -243,8 +243,15 @@ func (a *App) SendCLIMessageStream(ctx context.Context, chatID, userMsg string) 
 		for {
 			chunk, ok, ctxDone := recvChunk(cliCtx, ch)
 			if ctxDone {
-				a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", chatID)
-				trySend(cliCtx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
+				// Keep whatever the CLI already streamed instead of replacing it
+				// with the bare stop notice (Faz G).
+				if fullReply.Len() > 0 {
+					sm.AddMessageToSession(chatID, "assistant", fullReply.String()+"\n\n"+a.stopMarker(), "", "")
+					a.generateCLIChatTitleIfNew(chatID, sm)
+				} else {
+					a.recordStreamError(userMsg, a.stopMarker(), chatID)
+				}
+				trySend(cliCtx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 				return
 			}
 			if !ok {

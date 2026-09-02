@@ -39,6 +39,7 @@ import (
 	"memo/internal/routine"
 	"memo/internal/sessions"
 	"memo/internal/skill"
+	"memo/internal/skills"
 	"memo/internal/stats"
 	"memo/internal/stt"
 	"memo/internal/swarm"
@@ -252,12 +253,24 @@ type App struct {
 
 	taskloopStore  *taskloop.Store
 	taskloopEngine *taskloop.Engine
-	// taskloopRunMu serializes taskloop worker calls: the worker needs to
-	// switch the single global active session to the task list's chat and
-	// force agent mode on, so two lists running at once must never overlap
-	// a switch+send critical section or their messages would cross-talk into
-	// each other's chats.
-	taskloopRunMu sync.Mutex
+
+	// taskRunCfgs holds each running task list's private provider/model
+	// snapshot + executor (see tasklist_run.go). Keyed by list ID; populated
+	// lazily by the engine's WorkerConfigHook, cleared when a list finishes
+	// or pauses so a resume re-snapshots.
+	taskRunMu   sync.RWMutex
+	taskRunCfgs map[string]*taskRunConfig
+
+	taskNotifyBus *taskloop.NotifyBus
+	// taskNotifyQ decouples the engine goroutine from Telegram/WhatsApp
+	// delivery — the pump (task_notify.go) drains it in order, one bounded
+	// send at a time. Without it a stalled push froze the whole task loop.
+	taskNotifyQ chan taskloop.Notification
+	taskFocus   taskFocusState
+
+	// task-loop event fan-out to chat SSE clients (GET /api/tasks/events).
+	taskEventMu   sync.RWMutex
+	taskEventSubs []chan string
 
 	skillManager *skill.Manager
 
@@ -286,7 +299,14 @@ type App struct {
 	// waPendingPermAnswerCh/waPendingPermChatJID above, guarded by tgMu.
 	tgPendingPermAnswerCh chan string
 	tgPendingPermChatID   int64
-	streamMu              sync.Mutex // prevents concurrent stream goroutines (double-send)
+	// streamMu is now only a gate, not the stream lock (v4.6.0 Faz A, see
+	// chat_locks.go): interactive and task streams take it RLock so many
+	// chats stream at once; the routine and incognito paths take it Lock
+	// (exclusive) because they flip a global flag. Per-chat serialisation
+	// lives in chatStreamLocks.
+	streamMu        sync.RWMutex
+	chatStreamMu    sync.Mutex
+	chatStreamLocks map[string]*sync.Mutex
 
 	// cliJobs tracks in-flight CLI-backed background streams (see
 	// cli_stream.go), keyed by chat id. Deliberately separate from streamMu
@@ -405,7 +425,9 @@ func (a *App) emitEvent(name string, data ...interface{}) {
 	if len(data) > 0 {
 		dataStr = fmt.Sprint(data...)
 	}
-	a.events.push(AppEvent{Name: name, Data: dataStr})
+	if a.events != nil {
+		a.events.push(AppEvent{Name: name, Data: dataStr})
+	}
 	logx.Printf("event: %s — %s", name, dataStr)
 }
 
@@ -649,6 +671,9 @@ func (a *App) Startup(ctx context.Context) {
 	tools.Configurator = a
 	tools.Routines = routineToolAdapter{a}
 	tools.FileSender = fileToolAdapter{a}
+	tools.SelfDrivingTasks = selfDrivingTaskToolAdapter{a}
+	tools.TaskMdEditor = taskMdEditorAdapter{a}
+	tools.TaskStatus = taskStatusToolAdapter{a}
 
 	basePath, _ := filepath.Abs(".")
 	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr, a.getSessionManager())
@@ -669,17 +694,85 @@ func (a *App) Startup(ctx context.Context) {
 		logx.Printf("WARN: taskloop store: %v", err)
 	} else {
 		a.taskloopStore = tlStore
+		a.taskRunCfgs = make(map[string]*taskRunConfig)
+		a.initTaskNotifyBus()
 		a.taskloopEngine = taskloop.NewEngine(
 			tlStore,
 			a.buildTaskLoopRunWorker(),
 			a.buildTaskLoopReviewChief(),
 			func(v bool) { a.agentExecutor.SetBypassPermissions(v) },
-			func(name, data string) { a.emitEvent(name, data) },
+			func(name, data string) {
+				a.emitEvent(name, data)
+				a.dispatchTaskEvent(name, data)
+				a.publishTaskEvent(name, data)
+				// Drop a list's provider snapshot once it stops making
+				// progress, so a resume re-snapshots from the current global
+				// provider. data is "listID" or "listID:extra".
+				switch name {
+				case "tasklist:finished", "taskloop:cancelled", "taskloop:paused", "taskloop:waiting_user":
+					id := data
+					if i := strings.IndexByte(id, ':'); i >= 0 {
+						id = id[:i]
+					}
+					a.clearTaskRunConfig(id)
+				}
+				if name == "tasklist:finished" {
+					a.postTaskFinishMessage(data)
+				}
+			},
+			taskloop.WithRuleReader(taskloop.ReadRules),
+			taskloop.WithSystemGuidance(a.memoSystemGuidance),
+			taskloop.WithProjectPathFn(func(chatID string) string {
+				if sm := a.getSessionManager(); sm != nil {
+					return sm.GetProjectPath(chatID)
+				}
+				return ""
+			}),
+			taskloop.WithWorkerConfigHook(a.taskRunConfigFor),
+			taskloop.WithSelfHeal(a.healTaskProvider),
+			taskloop.WithModelLabel(a.taskModelLabel),
+			taskloop.WithPlanConfig(a.planTaskConfig),
+			taskloop.WithRetryScheduler(taskloop.DefaultRetryInterval),
+			// v4.5.0 planner/executor mode — only engaged for a list whose
+			// Mode == ModePlanner; worker-mode lists never touch this path.
+			taskloop.WithPlanner(a.planTask),
+			taskloop.WithStepRunner(a.runPlanStep),
+			taskloop.WithAcceptanceChecker(a.acceptancecheck),
+			taskloop.WithStateCompactor(a.compactPlanState),
+			taskloop.WithEscalator(a.escalateStep),
+			taskloop.WithGranularity(a.cfg.TaskLoop.StepGranularity),
+			taskloop.WithAutoApprovePlan(a.cfg.TaskLoop.AutoApprovePlan),
+			taskloop.WithMaxParallelSteps(a.cfg.TaskLoop.MaxParallelSteps),
+			taskloop.WithMaxExecutorAttempts(a.cfg.TaskLoop.MaxExecutorAttempts),
+			taskloop.WithStateMaxTokens(a.cfg.TaskLoop.HandoffStateMaxTokens),
+			taskloop.WithMaxConcurrentLists(a.cfg.TaskLoop.MaxConcurrentLists),
 		)
+		if a.cfg != nil && a.cfg.TaskLoop.SubAgents {
+			// Applied after construction (rather than inline above) only so the
+			// whole block stays behind the config gate.
+			orch := taskloop.NewSubAgentOrchestrator(&appSubAgentRunner{a: a}, 3)
+			taskloop.WithSubAgents(orch, a.resolveSubAgentSpecs)(a.taskloopEngine)
+		}
+		// Re-arm any list left parked in a retry-driven wait by a previous run
+		// (rate limit, or an offline escalation queued for a cloud re-plan).
+		for _, info := range tlStore.List() {
+			if info.Status == "waiting-limit" || info.Status == "waiting-escalation" {
+				a.taskloopEngine.ArmRetry(info.ID)
+				logx.Printf("taskloop: re-armed retry for %s (%s)", info.ID, info.Status)
+			}
+		}
 		logx.Info("Task loop engine initialized")
 	}
 
 	a.skillManager = skill.NewManager(config.DataDir())
+	// Ship the built-in memo-system skill: write it to disk if absent so it is
+	// discovered like any other skill. Deleting it is allowed — it comes back
+	// on the next start.
+	if created, err := skill.MaterializeEmbedded(a.skillManager, "memo-system", skills.MemoSystemFS); err != nil {
+		logx.Printf("skill: materialize memo-system: %v", err)
+	} else if created {
+		logx.Info("skill: materialized built-in memo-system skill")
+	}
 	if err := a.skillManager.Discover(); err != nil {
 		logx.Printf("skill: discover error: %v", err)
 	}

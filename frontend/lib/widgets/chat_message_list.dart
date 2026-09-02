@@ -9,7 +9,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/theme.dart';
 import '../models/chat.dart';
 import '../models/agent.dart';
+import '../models/task_list.dart';
 import '../core/l10n.dart';
+import 'agent/task_activity_block.dart';
 
 // Opens a markdown link tapped in a chat message. A share_file download
 // link (internal/app/sendfile.go's App.DeliverFile) comes back as a
@@ -73,6 +75,9 @@ class ChatMessageList extends StatefulWidget {
   final String apiBaseUrl;
   final void Function(int index, String newContent)? onEdit;
   final void Function(int index)? onDelete;
+  /// Live Self-Driving task bound to this chat, or null. Rendered as the last
+  /// item, styled like an assistant turn (v4.6.0 in-chat task block).
+  final ChatTaskState? taskActivity;
 
    const ChatMessageList({
     super.key,
@@ -86,6 +91,7 @@ class ChatMessageList extends StatefulWidget {
     required this.apiBaseUrl,
     this.onEdit,
     this.onDelete,
+    this.taskActivity,
   });
 
   @override
@@ -102,8 +108,16 @@ class _ChatMessageListState extends State<ChatMessageList> {
     final streamingLenChanged =
         widget.streamingContent.length != oldWidget.streamingContent.length;
     final typingStarted = widget.isTyping && !oldWidget.isTyping;
+    final taskAppeared =
+        widget.taskActivity != null && oldWidget.taskActivity == null;
+    final taskLogGrew = (widget.taskActivity?.log.length ?? 0) !=
+        (oldWidget.taskActivity?.log.length ?? 0);
 
-    if (messagesChanged || streamingLenChanged || typingStarted) {
+    if (messagesChanged ||
+        streamingLenChanged ||
+        typingStarted ||
+        taskAppeared ||
+        taskLogGrew) {
       _scrollToBottom();
     }
   }
@@ -137,8 +151,11 @@ class _ChatMessageListState extends State<ChatMessageList> {
   Widget build(BuildContext context) {
     final hasStreaming = widget.streamingContent.isNotEmpty || (widget.streamingAgentEvents != null && widget.streamingAgentEvents!.isNotEmpty);
     final showTyping = widget.isTyping && !hasStreaming;
-    final itemCount =
-        widget.messages.length + (hasStreaming ? 1 : 0) + (showTyping ? 1 : 0);
+    final hasTask = widget.taskActivity != null;
+    final itemCount = widget.messages.length +
+        (hasStreaming ? 1 : 0) +
+        (showTyping ? 1 : 0) +
+        (hasTask ? 1 : 0);
 
     return ListView.builder(
       controller: _scrollController,
@@ -158,18 +175,29 @@ class _ChatMessageListState extends State<ChatMessageList> {
             ),
           );
         }
+        var rest = index - widget.messages.length;
         // Streaming message — rendered as a virtual assistant bubble
         if (hasStreaming) {
-          return _StreamingBubble(
-            content: widget.streamingContent,
-            thinking: widget.streamingThinking,
-            agentEvents: widget.streamingAgentEvents,
-            keepWorkingCue: widget.isCLIChat,
-            apiBaseUrl: widget.apiBaseUrl,
-          );
+          if (rest == 0) {
+            return _StreamingBubble(
+              content: widget.streamingContent,
+              thinking: widget.streamingThinking,
+              agentEvents: widget.streamingAgentEvents,
+              keepWorkingCue: widget.isCLIChat,
+              apiBaseUrl: widget.apiBaseUrl,
+            );
+          }
+          rest -= 1;
         }
-        // Typing indicator — shown before first token arrives
-        return _TypingIndicator(statusText: widget.statusText);
+        if (showTyping) {
+          if (rest == 0) return _TypingIndicator(statusText: widget.statusText);
+          rest -= 1;
+        }
+        // Live task block — always last
+        return TaskActivityBlock(
+          key: ValueKey('task_${widget.taskActivity!.listId}'),
+          state: widget.taskActivity!,
+        );
       },
     );
   }
@@ -365,10 +393,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                           child: Wrap(
                             spacing: 6,
                             runSpacing: 4,
-                            children: widget.message.agentEvents!.map((e) {
-                              if (e is AgentEvent) {
-                                return _AgentStatusBadge(event: e);
-                              }
+                            children: _visibleToolBadges(widget.message.agentEvents!)
+                                .map((e) {
+                              if (e is AgentEvent) return _AgentStatusBadge(event: e);
                               if (e is Map<String, dynamic>) {
                                 return _AgentStatusBadge(event: AgentEvent.fromJson(e));
                               }
@@ -970,6 +997,43 @@ class _MemoryUsedIndicator extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Collapses one raw agentEvents list into the badges actually worth
+/// showing: one per real tool call, not one per raw pipeline event.
+///
+/// pipeline.go's tool loop (internal/agent/pipeline.go) always emits
+/// EventToolExecuting immediately followed by EventToolResult or
+/// EventToolError for the same call before moving to the next one — never
+/// interleaved, confirmed by reading the loop (a plain sequential `for`,
+/// not concurrent). So every stored "executing" that has a completion event
+/// right after it is the *same call*, already resolved, and the two used to
+/// render as two separate badges side by side for one action — one call to
+/// list_directory read as two list_directory badges, two calls to
+/// get_file_info (both erroring) read as four. This was a real, live,
+/// reproducible confusion found by driving the app directly, not a
+/// hypothetical: it looks exactly like the model repeated a tool call it
+/// didn't.
+///
+/// A raw "executing" with nothing after it is genuinely still in flight (or
+/// was interrupted mid-stream, per _AgentStatusBadge's own isInterrupted
+/// comment below) — that one has no pair to collapse into, so it stays.
+List<dynamic> _visibleToolBadges(List<dynamic> raw) {
+  const completions = {'tool_result', 'tool_error'};
+  final out = <dynamic>[];
+  for (var i = 0; i < raw.length; i++) {
+    final e = raw[i];
+    final type = e is AgentEvent ? e.type : (e is Map ? e['type'] as String? : null);
+    if (type == 'tool_executing' && i + 1 < raw.length) {
+      final next = raw[i + 1];
+      final nextType = next is AgentEvent ? next.type : (next is Map ? next['type'] as String? : null);
+      if (completions.contains(nextType)) {
+        continue; // the next iteration renders the real, final-state badge
+      }
+    }
+    out.add(e);
+  }
+  return out;
 }
 
 class _AgentStatusBadge extends StatelessWidget {

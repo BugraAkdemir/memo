@@ -157,6 +157,7 @@ class ProviderDefaults {
     'claude-code-cli': 'Claude Code (CLI)',
     'codex-cli': 'Codex (CLI)',
     'custom': 'Özel (OpenAI uyumlu)',
+    'custom-anthropic': 'Özel (Anthropic uyumlu)',
   };
 
   /// Where the user gets an API key for each provider. Shown as a tappable
@@ -190,6 +191,8 @@ class ProviderDefaults {
     'codex-cli':
         'Bilgisayarında kurulu Codex CLI\'ı kullanır — dosya/komut çalıştırma yetkisi olan gerçek bir ajan, sadece bir sohbet API\'si değil. API anahtarı gerekmez.',
     'custom': 'Herhangi bir OpenAI uyumlu endpoint. Base URL\'i sen girersin.',
+    'custom-anthropic':
+        'Herhangi bir Anthropic Messages API uyumlu endpoint (kendi proxy\'n dahil). Base URL\'i sen girersin — tool-calling Anthropic\'in kendi formatında gönderilir, OpenAI şekline çevrilmez.',
   };
 
   /// Provider types backed by a local CLI subprocess (internal/agentcli),
@@ -212,8 +215,12 @@ class ProviderDefaults {
   /// Providers that need no API key (local). Custom endpoints often need one,
   /// but not always (local proxies), so it's treated as optional there.
   static bool needsApiKey(String type) =>
-      type != 'ollama' && type != 'custom' && !isCLIType(type);
+      type != 'ollama' &&
+      type != 'custom' &&
+      type != 'custom-anthropic' &&
+      !isCLIType(type);
 
   /// Providers that require the user to supply a Base URL (no sensible default).
-  static bool needsBaseUrl(String type) => type == 'custom';
+  static bool needsBaseUrl(String type) =>
+      type == 'custom' || type == 'custom-anthropic';
 }

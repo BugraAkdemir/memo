@@ -211,6 +211,18 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 		return
 	}
 
+	// Task-loop control (see the Telegram mirror for the contract).
+	if reply, handled := a.handleTaskControl(a.lifecycleCtx, taskSurfaceWhatsApp, text); handled {
+		if reply != "" {
+			ctx, cancel := context.WithTimeout(a.lifecycleCtx, 300*time.Second)
+			defer cancel()
+			if _, err := a.WhatsAppSend(ctx, msg.ChatJID, reply); err != nil {
+				logx.Printf("WhatsApp self-chat: send task-control reply error: %v", err)
+			}
+		}
+		return
+	}
+
 	sm := a.getSessionManager()
 	if sm == nil {
 		return
@@ -705,15 +717,6 @@ is clear, don't refuse to send it on your own judgment.`
 func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api.StreamChunk {
 	outCh := make(chan api.StreamChunk, 128)
 
-	// Prevent concurrent WhatsApp chat streams from racing each other or the
-	// main chat stream (they share the same session manager via AddMessageToSession).
-	if !a.streamMu.TryLock() {
-		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
-		close(errCh)
-		return errCh
-	}
-
 	// Use a dedicated WhatsApp session so WhatsApp messages don't pollute the
 	// active chat session the user is viewing. whatsAppSessionID is also
 	// written (reset to "") by StopWhatsApp/LogoutWhatsApp under waMu, so it
@@ -731,9 +734,20 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 	waSessionID := a.whatsAppSessionID
 	a.waMu.Unlock()
 
+	// Serialise per (WhatsApp) chat, not globally (v4.6.0 Faz A): concurrent
+	// WhatsApp streams still can't race into the same session, but they no
+	// longer block the desktop chat or a Self-Driving task running elsewhere.
+	release, ok := a.lockChatStream(waSessionID)
+	if !ok {
+		errCh := make(chan api.StreamChunk, 1)
+		errCh <- api.StreamChunk{Error: a.busyNotice(), Done: true}
+		close(errCh)
+		return errCh
+	}
+
 	go func() {
 		defer close(outCh)
-		defer a.streamMu.Unlock()
+		defer release()
 		defer recoverPanic("WhatsAppChatStream")
 
 		// Prefer delivery over ctx cancellation (BUG-H2). A bare

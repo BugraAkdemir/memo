@@ -72,7 +72,7 @@ Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-
 |-----------|---------------|-----------|
 | `internal/app/` | Central orchestrator (25 files) | `app.go`, `llm.go`, `chat.go`, `learning.go`, `whatsapp.go` |
 | `internal/replcli/` | Terminal REPL client — talks to the REST API the same way Flutter does | `client.go`, `repl.go`, `sse.go`, `agent_event.go`, `clients_client.go`, `commands.go`, `editor.go`, `keys.go`, `models_client.go`, `remote_client.go`, `sessions_client.go`, `tasklist_client.go`, `color.go` (welcome panel), `l10n.go` (CLI's own TR/EN string table, separate from Flutter's `l10n.dart` — synced to the same language via backend `Identity.UILanguage`), `filematch.go` (`@` file-mention) |
-| `internal/webserver/` | REST API (~45 endpoints) | `server.go`, `handlers_flutter.go`, `bridge.go` |
+| `internal/webserver/` | REST API (~50 endpoints; task loop: `/api/tasklists/*` CRUD + `/api/tasks/running` + `/api/tasks/{id}/{pause,resume,cancel,skip,inject}` in `handlers_tasks.go`) | `server.go`, `handlers_flutter.go`, `handlers_tasks.go`, `bridge.go` |
 | `internal/llama/` | llama.cpp subprocess lifecycle | `llama.go`, `installer.go`, `gpu.go` |
 | `internal/memory/` | Vector store (SQLite + sqlite-vec) | `store.go`, `embedder.go` |
 | `internal/database/` | SQLite connection management | `sqlite.go`, `vec_register.go` |
@@ -99,6 +99,8 @@ Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-
 | `internal/models/` | Shared data types | `memory.go` |
 | `internal/lora/` | LoRA adapter building (embryonic) | `build/` (cmake artifacts) |
 | `internal/stats/` | Persistent LLM usage-event store (tokens, speed, model) for the Settings stats tab | `store.go` |
+| `internal/taskloop/` | Self-Driving task loop (v4.4.0): Task.md parser, state machine, planning phase, 10-min rate-limit retry, sub-agent orchestrator, NotifyBus | `store.go`, `engine.go`, `taskmd.go`, `retry.go`, `subagent.go`, `notify.go`, `runtime.go`, `provider_err.go` |
+| `internal/skills/` | `go:embed`ded built-in skills materialized to `data/skills/` at startup | `embed.go`, `memo-system/SKILL.md` |
 
 ### Flutter Entrypoint
 
@@ -241,8 +243,8 @@ confirm every single time before tagging or pushing a tag.
 
 **Concurrency & architecture**
 - SQLite writes go through `database.DB.Write()` (serialized write loop) — never call `ExecContext`/`Exec` directly on the DB; it corrupts the single-writer design.
-- The app has **one global active chat** and a global agent-mode flag. `App.SendMessageStream` writes to whatever chat is currently active. Any automated caller (e.g. task loop) must `SwitchChat` under `taskloopRunMu` and restore state after. In Flutter, don't trust `activeChatIdProvider` blindly — pass explicit chat IDs.
-- `a.client` and `providerRouter` are swapped at runtime (model/provider changes during active streams) — always take `clientMu`/`providerMu` before touching them.
+- The app has **one global active chat** and a global agent-mode flag. `App.SendMessageStream` writes to whatever chat is currently active. Automated callers target a chat **by ID** instead: `App.SendMessageStreamTo(ctx, chatID, msg)` / `SendMessageStreamToAsAgent` (no `SwitchChat`, no global-flag flip). The Self-Driving task loop's worker goes through `SendMessageStreamTo` under `a.taskloopRunMu`, which now only **serializes task-list worker turns against each other** (two lists interleave item-by-item rather than racing the global `a.streamMu` single-flight). In Flutter, don't trust `activeChatIdProvider` blindly — pass explicit chat IDs.
+- `a.client` and `providerRouter` are swapped at runtime (model/provider changes during active streams) — always take `clientMu`/`providerMu` before touching them. **Exception — the Self-Driving loop (v4.4.0):** a running task list carries its **own** `agent.Executor` + provider `Router` snapshot (`taskRunConfig` on `ctx`, see `internal/app/tasklist_run.go`); `callAgentStream` uses it when `taskRunConfigFromCtx(ctx) != nil` and is otherwise byte-for-byte unchanged. Self-heal (`healTaskProvider`) and planning-time self-config mutate **that** snapshot only — never `a.activeProviderName`.
 
 **Streaming / SSE**
 - Timeout contract: backend generation budget in `internal/app/llm.go` is **300s**; every frontend SSE consumer (`chat_provider.dart`, `chat_input.dart` WhatsApp stream, file-send stream) must use the **same 300s — as a per-call option on the streaming request**, NOT via Dio's global `receiveTimeout` (that stays at 120s for regular API calls; see commit `2abf8dd`). A 60s frontend timeout once aborted valid slow generations on CPU hardware.

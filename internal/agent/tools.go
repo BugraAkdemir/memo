@@ -190,6 +190,65 @@ func (r *ToolRegistry) registerBuiltins() {
 	r.registerWhatsAppTools()
 	r.registerRoutineTool()
 	r.registerFileSenderTool()
+	r.registerSelfDrivingTaskTool()
+	r.registerTaskMdTools()
+
+	r.Register(ToolDef{
+		Name:        "get_task_status",
+		Description: "Çalışan otonom görev (Self-Driving / Task.md döngüsü) durumunu OKUR: faz, adım N/M, madde a/b, o an işlenen adım, geçen süre. Kullanıcı \"görev ne durumda\", \"nerede kaldı\", \"bitti mi\" gibi bir şey sorduğunda TAHMİN ETME — bu aracı çağır. Araç \"çalışan görev yok\" derse, öyle söyle; asla durum uydurma.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.GetTaskStatus,
+	})
+	r.Register(ToolDef{
+		Name:        "pause_task",
+		Description: "Bu sohbete bağlı çalışan otonom görevi DURAKLATIR (kaldığı adım korunur). Kullanıcı görevi kastederek \"dur\", \"duraklat\", \"bekle\", \"stop\", \"pause\" dediğinde çağır. Duraklatınca kullanıcı serbestçe soru sorabilir; sonra resume_task ile aynı adımdan devam eder.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.PauseTask,
+	})
+	r.Register(ToolDef{
+		Name:        "resume_task",
+		Description: "Bu sohbete bağlı DURAKLATILMIŞ otonom görevi kaldığı adımdan SÜRDÜRÜR. Kullanıcı \"devam\", \"devam et\", \"kaldığın yerden devam\", \"continue\", \"resume\" ya da açıkça görevin sürmesini istediğini belirten bir şey dediğinde çağır. Duraklatmada kullanıcının yazdığı gerçek talimatlar (ekle/düzelt) bir sonraki adıma otomatik iletilir.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.ResumeTask,
+	})
+}
+
+// registerTaskMdTools adds create_task_md / edit_task_md — only to the
+// main/full registry (like create_routine), reachable from any agent-enabled
+// chat. They write/mutate a Task.md following taskloop.TaskMdSchemaDoc.
+func (r *ToolRegistry) registerTaskMdTools() {
+	r.Register(ToolDef{
+		Name:        "create_task_md",
+		Description: "Yeni bir Task.md dosyası yazar (Memo'nun otonom görev listesi formatında). Kullanıcı \"benimle bir task listesi/Task.md hazırla\", \"şu işi maddelere böl\" gibi bir şey dediğinde: önce sohbette hedefi ve ayrık, tek tek doğrulanabilir teslimatları netleştir, sonra bu aracı çağır. path: opsiyonel (verilmezse bu sohbetin proje klasöründe Task.md). items: onay kutulu maddeler (zorunlu). intro: hedefi anlatan kısa paragraf. notify: sadece-bitince|önemli|her-şey. mode: worker|planlayıcı. planner_model/coder_model/verifier_model: rol başına model sabitlemek istersen (ör. \"local\", \"claude\"). memory: açık|kapalı. auto_approve: plan onay kapısını atla. Dosya zaten varsa hata verir; değiştirmek için edit_task_md kullan.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Optional file path; defaults to Task.md in this chat's project folder"},"items":{"type":"array","items":{"type":"string"},"description":"Checkbox items — each a concrete, independently verifiable deliverable"},"intro":{"type":"string","description":"Short paragraph stating the goal and any context"},"notify":{"type":"string","description":"sadece-bitince | önemli | her-şey"},"mode":{"type":"string","description":"worker | planlayıcı"},"planner_model":{"type":"string"},"coder_model":{"type":"string"},"verifier_model":{"type":"string"},"memory":{"type":"string","description":"açık | kapalı"},"auto_approve":{"type":"boolean"}},"required":["items"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.CreateTaskMd,
+	})
+	r.Register(ToolDef{
+		Name:        "edit_task_md",
+		Description: "Var olan bir Task.md'yi yerinde düzenler, mevcut onay kutusu durumlarını ve başlıkları koruyarak. op: add_item (yeni madde ekle — text), split_item (item_index'teki maddeyi sub_items alt maddelerine böl, maddeye [parallel] ekler), set_header (header_key + header_value), check_item (item_index'teki maddeyi [x] yap). item_index 1 tabanlıdır ve iç içe maddeler dahil dosya sırasına göredir.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Task.md path; defaults to this chat's project Task.md"},"op":{"type":"string","enum":["add_item","split_item","set_header","check_item"]},"text":{"type":"string","description":"add_item: the new item text"},"item_index":{"type":"integer","description":"1-based, for split_item / check_item"},"sub_items":{"type":"array","items":{"type":"string"},"description":"split_item: the sub-item texts"},"header_key":{"type":"string","description":"set_header: e.g. bildirim, mod, kodlayıcı"},"header_value":{"type":"string"}},"required":["op"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.EditTaskMd,
+	})
+}
+
+// registerSelfDrivingTaskTool adds start_self_driving_task to this registry —
+// only to the main/full registry (like create_routine), so it's reachable
+// from any agent-enabled chat: normal chat, WhatsApp self-chat, Telegram. It
+// deliberately has no chat/target parameter; the task binds to the chat that
+// asked (see tools.SelfDrivingTasks).
+func (r *ToolRegistry) registerSelfDrivingTaskTool() {
+	r.Register(ToolDef{
+		Name:        "start_self_driving_task",
+		Description: "Bir Task.md dosyasından otonom (kendi kendine ilerleyen) bir görev döngüsü başlatır. Kullanıcı \"şu Task.md'ye başla\", \"bu görev listesini çalıştır\", \"Task.md'yi otonom yap\" gibi bir şey dediğinde çağır — sen tek tek yapmak yerine görev döngüsü maddeleri sırayla, planlama + alt-ajan desteğiyle işler. task_md_path: onay kutulu maddeler (- [ ]) içeren Task.md dosyasının yolu (mutlak ya da çalışma dizinine göreli, ~ desteklenir). title: opsiyonel görünen ad (verilmezse dosya adı). Görev bu sohbete bağlanır, arka planda çalışır; ilerleme Görevler sekmesinden ve \"görev durumu\" diye sorulunca görülür. Bu aracı çağırmak, maddelerin gerektirdiği dosya değişikliklerine onay vermek demektir.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"task_md_path":{"type":"string","description":"Path to a Task.md file containing '- [ ]' checkbox items (absolute, or relative to the working directory; ~ is expanded)"},"title":{"type":"string","description":"Optional display name for the task list; defaults to the file name"}},"required":["task_md_path"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.StartSelfDrivingTask,
+	})
 }
 
 // registerFileSenderTool adds share_file to this registry — same
@@ -319,6 +378,72 @@ func NewWhatsAppRegistry() *ToolRegistry {
 		tools: make(map[string]ToolDef),
 	}
 	r.registerWhatsAppTools()
+	return r
+}
+
+// NewReadOnlyRegistry creates a registry with no mutating tools — read/list/
+// search/inspect plus web_search, fetch_page, get_calendar_events and an
+// allowlisted run_command_readonly. Used for the analyzer/reviewer/test-runner
+// sub-agents of the Self-Driving loop, so exactly one "coder" sub-agent can
+// write while the others run in parallel with no risk of clobbering it.
+//
+// "Read-only" here means no write/edit/delete/cd/run_command tools and a
+// prefix-anchored command allowlist — it is not a syscall sandbox (a test run
+// can still touch the filesystem). That trade-off is what removes the need for
+// any conflict-merge logic.
+func NewReadOnlyRegistry() *ToolRegistry {
+	r := &ToolRegistry{tools: make(map[string]ToolDef)}
+	r.Register(ToolDef{
+		Name:        "read_file",
+		Description: "Reads the content of a file",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Path to the file to read"}}, "required": ["path"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.ReadFile,
+	})
+	r.Register(ToolDef{
+		Name:        "list_directory",
+		Description: "Lists files and directories in a path",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Path to directory"}, "recursive": {"type": "boolean", "description": "Whether to list recursively"}}, "required": ["path", "recursive"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.ListDirectory,
+	})
+	r.Register(ToolDef{
+		Name:        "search_files",
+		Description: "Searches for files matching a pattern",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {"pattern": {"type": "string", "description": "Glob pattern (e.g. *.go)"}, "path": {"type": "string", "description": "Directory to search in"}}, "required": ["pattern", "path"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.SearchFiles,
+	})
+	r.Register(ToolDef{
+		Name:        "get_file_info",
+		Description: "Gets metadata about a file or directory",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Path to the file/directory"}}, "required": ["path"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.GetFileInfo,
+	})
+	r.Register(ToolDef{
+		Name:        "read_env",
+		Description: "Reads non-sensitive environment variables",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {}}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.ReadEnv,
+	})
+	r.Register(ToolDef{
+		Name:        "get_calendar_events",
+		Description: "Reads saved calendar events.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"}}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.GetCalendarEvents,
+	})
+	r.Register(ToolDef{
+		Name:        "run_command_readonly",
+		Description: "Runs a build/test/inspection command from a fixed allowlist (go test/build/vet, git status/diff/log, ls, cat, rg, grep, find, flutter analyze/test, npm test, pytest, ...). Anything not on the allowlist is rejected.",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {"command": {"type": "string"}, "cwd": {"type": "string"}}, "required": ["command"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.RunCommandReadOnly,
+	})
+	r.registerWebSearchTool()
+	r.registerFetchPageTool()
 	return r
 }
 

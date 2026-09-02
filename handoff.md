@@ -1,3 +1,1492 @@
+# Ek (2026-09-02, devam 58 · devam) — 2 bug daha + Memo overhead benchmark
+
+Kullanıcı: "dene ve düzelt; token/request başına doğruluk için kodlama +
+sohbet benchmark yap; hız Memo'ya göre olacak (model sabit); sonra Claude Code
+ve Codex **istemcilerini** karşılaştır."
+
+## Düzeltilen 2 bug daha
+
+- **`0fdbbc6d` fix(taskloop): cancel artık gerçekten terminal.** Önceki
+  bulgunun (devam 58 ana blok, madde 1) düzeltmesi. `Engine.Cancel()` eklendi:
+  terminal status'u context iptalinden **önce** yazıyor. Yeni terminal-aware
+  `parkPaused()` helper'ı engine'deki tüm Stop()/ctx-cancel duraklama
+  yollarında kullanılıyor — cancelled/done/failed'i "paused"a ezmiyor.
+  `Engine.Start` cancelled bir listeyi reddediyor. Frontend `ChatTaskState.fold`
+  `event == 'cancelled'`'da da kartı kaldırıyor. Test `TestEngineCancelIsTerminal`.
+  Canlı: taze görev → cancel → status `cancelled` (paused değil), resume
+  reddediliyor ("iptal edildi, devam ettirilemez").
+- **`b5260ea1` fix(app): CONTEXT log yanıltıcıydı.** `history=%d` alanı history
+  *bütçesini* yazıyordu, kullanımını değil. Taze sohbette `history=115023
+  history_msgs=0` = alarm verici görünüyordu ama hiçbir şey gönderilmiyor.
+  `hist_budget` / `hist_used` diye ayrıldı. (Devam 58 ana blok madde 5 bu
+  yüzden yanlış alarmdı — gerçek bir context şişkinliği YOK.)
+
+## Benchmark (rapor: Artifact "Memo Overhead Benchmark")
+
+Sabit model = **Kilo Code** (`kilo-auto`/`hy3-free`, free). Her sayı Memo'nun
+katkısı. Harici: `scratchpad/bench.py` (REST+SSE, stdlib). Token/request
+`/api/stats/usage` snapshot'larından, süre SSE wall-clock, retrieval+context
+backend loglarından.
+
+**Sohbet — 5 görev × 2 Memo config (model sabit):**
+| config | doğruluk | medyan toplam s | prompt tok/tur | request/tur | mem retrieve |
+|---|---|---|---|---|---|
+| lean (minimal prompt, memory OFF) | 5/5 | 5.70 | ~9,317 | 1.2 | — |
+| full (normal prompt, memory ON)   | 5/5 | 5.63 | ~11,730 | 2.0 | ~53 ms |
+→ "full"un maliyeti: doğruluk aynı, hız ~sabit, **+2,413 prompt tok/tur (+%26)**,
++~1 ekstra LLM çağrısı/tur, +53 ms retrieval. Retrieval her sorguda **sabit 44
+hafıza** getiriyor (identik set, sorgudan bağımsız) — token maliyetinin çoğu bu,
+ayrıca incelenmeli. Lean bile 6 kelimelik soruya ~9.3k prompt tok harcıyor
+(minimal system prompt ~16k tok estimate).
+
+**Kodlama — 4 görev, agent modu, Kilo, lean:** 4/4 doğru. Medyan toplam ~19.2 s
+(sohbetin 3-5×'i), ortalama 7 tool call/görev, ~11,412 prompt tok/görev,
+completion 65-4,419 (model, Memo değil).
+
+**Claude Code CLI vs Codex CLI karşılaştırması — YAPILAMADI.** İki CLI de bu
+makinede auth'suz: `claude-code-cli` → "Invalid API key"; ayrıca Memo aktif
+provider'ın model id'sini (`opencode-zen/hy3-free`) doğrudan `claude` binary'sine
+geçiyor, o da tanımıyor (ikinci, auth'tan bağımsız entegrasyon sorunu).
+`codex-cli` → 401 (missing bearer, api.openai.com). Shell'den direkt
+çağırınca da aynı → Memo bug'ı değil, host setup eksiği. Harness
+(`bench.py code-cli <prov>`) hazır, kimlik gelince koşar.
+
+### Bu oturumda düzeltilmeyen (gözlem)
+- Memory retrieval sorgu-agnostik: her turda aynı 44 hafıza. Relevance
+  filtreleme zayıf. `internal/memory` / `internal/app` retrieve yolu.
+- `sendFileStream` web'de hâlâ Dio (multipart) — buffered kalıyor.
+- Worker↔CEO thrash (devam 58 ana blok madde 2) — hâlâ açık.
+- Agent chat oluşturma folder picker'ında path input yok (devam 58 ana blok).
+
+### Sıradaki oturum
+- Memory retrieve sorgu-agnostisizmi (sabit 44).
+- CLI kimlikleri düzelince client karşılaştırmasını koştur.
+- Kalan matris: #2 planner modu, #7 Task.md path, #8 eşzamanlı listeler.
+
+---
+
+# Ek (2026-09-02, devam 58) — Web build'de SSE streaming tamamen kırıktı; düzeltildi (`c59a5458`)
+
+Kullanıcı: v4.4.0 branch'ini gerçek tarayıcı UI'ında test et (yeni eklediği
+"Minimax m3" custom provider'ıyla). P0/P1/P2 UX test matrisi verdi. Masa
+başında değildi: "auto-permission aç ki permission timeout yeme, bug varsa
+düzelt tekrar test et".
+
+## Kök bulgu — Flutter **web** build'de hiçbir SSE endpoint'i gerçekten stream etmiyordu
+
+`dio_web_adapter` 2.2.1'in `BrowserHttpClientAdapter.fetch()`'i `XMLHttpRequest`
++ `responseType='arraybuffer'` kullanıyor ve yanıtı **yalnızca `xhr.onLoad`'da**
+tamamlıyor — tüm gövde tamponlanıp tek parça olarak, istek bitince veriliyor.
+Adapter'da streaming kod yolu **yok**.
+
+Web'deki sonuçları:
+- `/api/tasks/events` sonsuz stream → `onLoad` hiç ateşlenmiyor → istek abort
+  (`net::ERR_ABORTED`), `ChatTasksNotifier` 3sn'de bir sonsuz yeniden bağlanıyor,
+  `chatTasksProvider` hiç dolmuyor → **canlı Self-Driving görev kartı hiç
+  render olmuyor** (görev çalışsa, izlenen sohbete bağlı olsa bile). Kullanıcının
+  "sabit ilerleme card'ı nerede?" sorusunun cevabı buydu.
+- `/api/send/stream` vb. sonlu → "çalışıyor" ama her chunk (token + mid-stream
+  `agent_event`) turun **sonunda** geliyor. `permission_request` agent_event'i
+  backend'in 60sn izin beklemesi auto-deny'ledikten sonra ulaşıyor → **ajan izin
+  dialogu web'de hiç çıkmıyor**, her prompted tool "Agent execution cancelled
+  (permission timeout)" ile ölüyor. (devam 57'de fark edilmemişti çünkü orada
+  Claude_Browser MCP değil bu oturumda ilk kez gerçek tarayıcıda tıklanarak
+  test edildi.)
+- Sohbette token-token akış yok (uzun "Thinking...", sonra tüm mesaj).
+
+Tarayıcının kendi Fetch API'si stream ediyor (ham `fetch()`+`ReadableStream`
+ile kanıtladım: `firstMs:5`, snapshot+event'ler anında). Curl da (gzip
+göndermediği için) anında snapshot alıyordu — kafa karıştıran fark buydu.
+
+## Fix (`c59a5458`, sadece frontend)
+
+Yeni `lib/core/sse_stream.dart` (conditional export) + `sse_stream_web.dart`
+(`package:web` + `dart:js_interop` ile `window.fetch` → `Response.body`
+`ReadableStream` reader) + `sse_stream_stub.dart` (native'de hiç çağrılmayan
+hedef). `api_client.dart`'a `_sseLines()` helper'ı: `kIsWeb` ise fetch yolu,
+değilse Dio `ResponseType.stream` (native aynen). Aynı `utf8.decoder` +
+`LineSplitter` transform'u her iki yolda da, yani her caller'ın parse döngüsü
+değişmedi. Wired: `sendMessageStream`, `sendCLIMessageStream`,
+`sendWhatsAppChatStream`, `taskEventStream`. `sendFileStream` web'de hâlâ Dio
+(multipart) — Self-Driving yolunda değil, kabul edilebilir.
+`CancelToken` → `AbortController.abort()`; iptal sessizce biter (Dio'nun
+`DioExceptionType.cancel` davranışı). 300sn üretim bütçesi zaten
+chat_provider.dart'ta `Stream.timeout` ile Dart-tarafında sarılıyor, web
+yolunun ayrı receiveTimeout'a ihtiyacı yok. `package:web` transitive'den
+direct'e alındı, exact pinlendi (1.1.1) ki lockfile churn olmasın.
+
+## Canlı doğrulama (Kilo Code provider'ıyla, tarayıcıda tıklayarak)
+
+- ✅ Canlı görev kartı: render oluyor + **gerçek zamanlı** güncelleniyor
+  (elapsed, token sayısı, satır satır aktivite logu: "Dosya yazdı: …",
+  "planning", "Model: kilo-auto/free", …). "model is generating" göstergesi
+  görünüyor, rozet tekrarı yok (devam 57 fix'i sağlam).
+- ✅ Composer kilidi: görev çalışırken "A task is running — stop it…" + kırmızı
+  buton; **Pause**'da açılıyor, **Resume**'da tekrar kilitleniyor.
+- ✅ Pause/Resume kart butonları çalışıyor (pause item'ı done işaretledi,
+  resume re-plan'ladı).
+- ✅ **Ajan izin dialogu web'de artık çıkıyor** (auto-permission OFF iken
+  write_file istedim → "Permission Required / wants to use Write File / Deny·
+  Always allow·Allow" ~8sn'de belirdi, 0:50 geri sayım). Allow → tool çalıştı
+  → dosya yazıldı.
+- ✅ `run_command` arka plan sunucu (P0 #6): `python3 -m http.server 8177`
+  başlattı, turn takılmadı (`chat:done` ~28sn'de), sunucu ayakta, curl cevap
+  verdi. devam 52 fix'i sağlam.
+- ✅ Normal sohbet (agent değil) bozulmadı — düz mesaj streamli cevap aldı.
+- ✅ Regression: Model Store / Takvim / Rutinler render oluyor.
+- ✅ `go build/vet -tags sqlite_fts5 ./...` temiz, `go test -race` tüm paketler
+  geçti, `flutter analyze` dokunulan dosyalarda 0 (repo'da 5 pre-existing info),
+  `flutter test` 324/324, L10n grep temiz.
+
+## Açık kalanlar / yeni gözlemler (düzeltilmedi)
+
+1. **`/api/tasks/{id}/cancel` aslında iptal etmiyor, "pause"a düşürüyor.**
+   `App.CancelTaskList` (`internal/app/tasklist.go:161`) önce
+   `engine.Stop(listID)` sonra `store.SetStatus(listID,"cancelled")` yapıyor;
+   ama Stop'un in-flight worker turn'ünü bitiren yolu `taskloop:paused` yayıp
+   status'u "paused"a geri yazıyor (yarış). Backend log `taskloop:paused`,
+   `/api/tasklists` "paused", kart "Resume" gösteriyor. Backend fix gerek —
+   scope dışı bıraktım.
+2. **Worker mod, per-item CEO verifier ile çelişiyor.** 3 maddelik görevde
+   kilo-auto/free worker tek turda 3 dosyayı da yazdı; CEO madde 1'i "istenmeyen
+   x2/x3 dosyaları oluşturdun" diye reddedip round 2/5'e attı; round 2'de worker
+   x2/x3'ü **sildi**. Görev `done 0/3`'te takıldı, iptal ettim. Kısmen model
+   (kilo-auto/free) davranışı ama loop tasarımı over-delivery'yi cezalandırıp
+   thrash'e sokuyor.
+3. **Kart aktivite logu ardışık aynı satırı dedupe etmiyor** ("Görev durumuna
+   baktı" 6x arka arkaya). Kozmetik.
+4. **Minimax m3** (`custom`, `https://router.bynara.id/v1`, `minimax-m3-free`):
+   aralıklı `502` (~%50 istek, gateway); + kullanıcı notu: **15 req/dk** limit.
+   Memo'nun memory-consolidation + proactive LLM çağrıları da bu bütçeyi yiyordu
+   (kullanıcı minimal mod açıp memory kapattı, ben proactive'i test için kapatıp
+   sona geri açtım). Testlerin çoğu Kilo Code ile yapıldı, sorunsuz aktı.
+5. **`CONTEXT … history=114943 history_msgs=0`** — memory kapalıyken, birkaç
+   kısa mesajlık **taze** sohbette bile ~115k "history" token raporlanıyor
+   (dolu geçmişi olan sohbette 114k makul, taze olanda değil). İncelenmeli.
+6. Kod diziniyle çalışırken agent chat oluşturma diyaloğundaki "Browse server"
+   klasör seçici path input'u yok; derin bir dizine (örn. scratch) ulaşmak
+   sadece tıklama-scroll ile, çok zahmetli. Workdir'i API'den
+   (`POST /api/chats/cli-workdir`) set edince UI'daki "Project:" etiketi
+   stale kalıyor (backend doğru dizini kullanıyor).
+
+## Test durumu (matristen)
+
+P0: #1 kısmen (mekanizma çalışıyor, kilo-auto/free CEO-loop'ta thrash), #3 ✅,
+#4 ✅, #5 ✅, #6 ✅. #2 (Planner/Executor modu explicit) yapılmadı.
+P1/P2: #9 ✅ (pause/resume), #12 ✅ (rozet dedup + kart), #13 ✅ (regression).
+Kalanlar (#2, #7 Task.md path, #8 eşzamanlı listeler, #10, #11 escalation)
+yapılmadı — sıradaki oturuma.
+
+### Sıradaki oturum için
+- `cancel != pause` backend fix'i (gözlem 1).
+- Kalan matris maddeleri (#2 planner modu, #7 Task.md path, #8 eşzamanlı
+  listeler / MaxConcurrentLists).
+- `history` token şişkinliği (gözlem 5) — `internal/app` context builder.
+- İstenirse: `sendFileStream`'i de web fetch yoluna taşımak (multipart body,
+  `web.FormData`).
+
+---
+
+# Ek (2026-09-01, devam 57) — Tasarım/UX denetimi: canlı uygulamada 2 gerçek hata bulundu, düzeltildi
+
+Kullanıcı: "handoff'a yaz, şimdi tasarımsal olarak incele, gerekirse test yaz,
+kullanıcı deneyimini kötü etkileyen/kullanımı zorlaştıran tasarım hatalarını
+bul, analiz et, raporla." devam 56'nın hemen ardından açılan yeni faz.
+
+**Yöntem:** Aynı izole-instance yaklaşımı (headless `memo-pg` +
+`Claude_Browser` MCP ile gerçek Flutter web build'i gezmek) — bu sefer
+hipotetik değil, uygulamayı gerçekten tıklayarak. `flutter build web
+--release` → `internal/webserver/webapp/`'e kopyala (gitignored) → backend'i
+izole veri dizininde başlat → tarayıcıdan gez.
+
+## Bulgu 1 — Sohbette tekrarlanan araç rozetleri (düzeltildi, `39f3049a`)
+
+`internal/agent/pipeline.go`'daki araç-çağrı döngüsü her çağrı için
+`EventToolExecuting`'i hemen ardından aynı çağrının
+`EventToolResult`/`EventToolError`'ını, sıralı, art arda yayınlıyor — ama
+`chat_message_list.dart` ikisini de ayrı rozet olarak çiziyordu. Canlıda
+gerçek bir `list_directory` çağrısı 2 rozet, iki gerçek `get_file_info`
+hatası 4 rozet olarak göründü — model kendi çağrısını tekrar ediyormuş gibi
+yanıltıcı bir görüntü (hiçbir tekrar yoktu). `_visibleToolBadges()` eklendi:
+ardışık executing+completion çiftini tek (completion'ın) rozetine indiriyor,
+gerçekten yarım kalmış (stream kesilmiş) yalnız bir "executing"i olduğu gibi
+bırakıyor. 4 yeni widget testi (`chat_message_list_tool_badges_test.dart`) —
+fix'i geçici geri alıp 3/4'ünün kırıldığını doğrulayarak regresyon
+yakaladığı teyit edildi. Ekran görüntüsüyle canlı doğrulandı (2→1, 4→2, 2→1).
+
+## Bulgu 2 — Spotlight tour'da tamamen opak (siyah) perde (düzeltildi, `39f3049a`)
+
+`spotlight_tour.dart`'taki perde `Colors.black` (tam opak) idi. Taze bir
+ilk-çalıştırma instance'ında tur ilk kez tetiklendiğinde ekran tamamen siyah
+bir boşluk + parlayan bir kutu dışında hiçbir şey göstermiyordu — ne ikon, ne
+etiket, yeni kullanıcının nereye baktığını anlaması imkansız (spotlight
+turunun amacının tam tersi). `Colors.black.withValues(alpha: 0.72)`'ye
+çevrildi. `app_shell.dart`'taki `_navKeys`'in ikon+etiketi birlikte
+sardığını kaynaktan doğrulayıp, sonra taze bir ikinci izole instance
+(`isolated_memo2/`) açıp turu yeniden tetikleyerek ekran görüntüsüyle
+teyit edildi: perde artık saydam, sidebar/sohbet paneli/hızlı-eylem
+kartları perdenin arkasından belli belirsiz görünüyor, tur artık gerçek
+bir spotlight gibi çalışıyor.
+
+## Denetlenen diğer ekranlar — sorun bulunmadı
+
+Sohbet (rozet fix'i hariç), Ajan modu boş hali, Model Mağazası (Keşfet),
+Takvim boş hali, Rutinler boş hali, Ayarlar → Genel, Ayarlar → API
+Providers listesi ve "Sağlayıcı Ekle" diyaloğu (hem `custom` hem
+`custom-anthropic` seçili haliyle — devam 55'te eklenen ikinci provider
+tipi ikon/açıklama/Base URL ipucuyla doğru render oluyor). Kurulum
+sihirbazının son adımındaki "Sistem Kontrolü" kartı da kontrol edildi: bu
+taze instance'ta sağlayıcı hiç yapılandırılmamışken "Yerel Modeller" VE
+"Sohbete Hazır" ikisi de kırmızı/uyarı olarak tutarlı göründü — daha önce
+(devam 55 civarı) not edilen "yeşil tik + kırmızı uyarı aynı anda" şüphesi
+bu koşulda doğrulanamadı, muhtemelen farklı bir provider durumuna özgüydü;
+gerçek bir hata olarak teyit edilemediği için ayrı bir düzeltme açılmadı.
+
+**Doğrulama:** `go build/vet ./...` temiz, `go test ./...` tüm paketler
+geçti, `flutter analyze` yalnızca bu dala ait olmayan 6 pre-existing info
+(dokunulan iki dosyada sıfır), `flutter test` 324/324 geçti (yeni 4 dahil).
+Commit `39f3049a`. İzole test backend'i (port 8098) ve build artefaktları
+temizlendi, kullanıcının gerçek verisine hiç dokunulmadı.
+
+---
+
+# Ek (2026-09-01, devam 56) — Sub-agent aktivite fix'i playground'da canlı doğrulandı
+
+Kullanıcı: "sub-agent testini yap, streaming gap'e dokunma (gerçek ihtiyaç
+doğmadıkça), 8090'ı ben kapattım sorun yok, test verisi bozulursa uğraşma."
+
+**Yöntem:** devam 55'te yazılan `model_playground.py` (scratchpad, stdlib-only
+Python — Anthropic/Gemini/OpenAI wire formatlarını konuşan sahte sunucu, FIFO
+üzerinden ben "model" rolünü oynuyorum) tekrar kullanıldı. Bu sefer **izole bir
+veri dizininde** (`scratchpad/isolated_memo/`) — devam 55'teki hatadan ders:
+ilk denemede aynı repo `data/` dizinini kullanıp kullanıcının gerçek çalışan
+uygulamasıyla (port 8090) aynı `providers.json`'a yazma riski oluşmuştu, hemen
+fark edip durdurulmuştu.
+
+**Sonuç: `[coder]` etiketli aktivite satırı canlıda gerçekten aktı.**
+
+```
+event: taskloop:activity — ...\x1ftool\x1f[coder] Wrote a file: test.py
+```
+
+Bu, devam 54/55'in (`195821db`) hiç canlı doğrulanmamış tek eksik parçasıydı.
+`[parallel]` işaretleyicili bir madde ile `custom-anthropic` provider'ı
+playground'a bağlanarak gerçek bir Self-Driving görev koşturuldu: coder
+sub-agent'ı `write_file` çağırdı (ilk denemede benim shell escaping hatam
+yüzünden boş `args` gitti, Memo doğru şekilde backup hatası verdi — Memo
+hatası değildi; ikinci denemede dosyayı doğru yazdı), aktivite akışında
+`[coder]` prefix'i doğru göründü.
+
+**3'lü paralel faz (analyzer/reviewer/test-runner) canlı doğrulanamadı** — üçü
+aynı anda tek FIFO'ya erişince yarış durumu oluştu, cevaplarım karıştı, CEO'nun
+kendi promptuna yanlışlıkla "1" gitti ("JSON ayrıştırılamadı ... ham: 1").
+**Bu test yönteminin sınırı, Memo'nun hatası değil.** Kaynak tekrar okunarak
+doğrulandı: `appSubAgentRunner.Run`'daki `onEvent` wiring'i `writeCapable`'a
+bakmaksızın 4 rol için de koşulsuz aynı (`emitSubAgentActivity(listID,
+string(spec.Role), ev)`), `emitToolActivity`'nin prefix mantığı da role
+parametresine göre role-agnostic — coder'da kanıtlanan mekanizma diğer üçü
+için de aynı kod yolu. Ayrı canlı kanıt yok ama unit test + kaynak + coder'ın
+canlı kanıtı birlikte güçlü bir güvence oluşturuyor.
+
+**Kullanıcının açık talimatıyla dokunulmayan:** streaming path'teki tool-call
+gediği (`StreamChunk`'ta `ToolCalls` alanı yok, 10 provider'ı etkiliyor ama şu
+an hiçbir kod yolu tetiklemiyor) — "gerçek ihtiyaç doğmadıkça değmez" dendi.
+
+**Temizlik:** tüm test süreçleri (playground + izole backend) durduruldu,
+kullanıcının gerçek `data/` dizinine hiç yazma olmadı.
+
+---
+
+# Ek (2026-09-01, devam 55) — Anthropic-uyumlu ikinci bir "özel" provider tipi
+
+Kullanıcı: "custom'a hem OpenAI hem Anthropic tool-calling ekleyelim ki
+kullanıcının proxy'si OpenAI değil Anthropic base URL destekliyorsa sorun
+yaşamayalım, hem de kendim proxy ile istediğim gibi test edebilirim." Devam
+54'te `claude.go`'ya kazandırılan tool-calling desteğini, sadece resmi
+`api.anthropic.com`'a değil, **kullanıcının kendi seçtiği herhangi bir
+Anthropic-uyumlu endpoint'e** de açan bir özellik.
+
+**Backend (`d94470f5`):** yeni `ProviderCustomAnthropic = "custom-anthropic"`
+tipi. `internal/provider/custom_anthropic.go` — `*claudeProvider`'ı embed eden
+~15 satırlık sarmalayıcı (kilo.go/openrouter.go'nun `*openAIProvider`'ı
+sardığı desenin aynısı). `claudeProvider` zaten keyfi bir `BaseURL` kabul
+ediyordu (boşsa `api.anthropic.com`'a düşüyor) — yani devam 54'ün tool-calling
+düzeltmesini, `ListModels`'ini, her şeyini bedavaya miras alıyor, sadece
+`Name()`/`DisplayName()` override edildi. `ProviderConfig.Validate()` bu tip
+için de `BaseURL` zorunlu kılıyor (mevcut "custom" tipiyle aynı kural — hiçbir
+varsayılan endpoint yok, sessizce yanlış yere gitmesin).
+
+**Frontend (`eecf7022`):** dropdown'a yeni tip eklendi, kendi açıklaması +
+Base URL ipucu (`/messages`'e gittiğini belirtiyor, `/chat/completions`
+değil). Dialog'daki beş ayrı `_type == 'custom'` kontrolü tek tek
+`ProviderDefaults.needsBaseUrl(_type)`'a çevrildi — artık iki custom tipi de
+aynı davranışı otomatik alıyor, kod tekrarı yok.
+
+**Testler:** `custom_anthropic_test.go` — `NewProvider` üzerinden doğru
+routing, boş BaseURL reddi, kendi endpoint'ini kullanması (Anthropic'in
+varsayılanına düşmemesi), ve gerçek bir `httptest` sunucusuyla (kullanıcının
+kendi proxy'sinin yerine geçen) uçtan uca tool gönderme/ayrıştırma. Dart
+tarafında `models_test.dart`'a `needsBaseUrl`/`needsApiKey`/`displayNames`
+kapsamı eklendi.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz, `go test -race`
+(provider+agent) yeşil, `flutter analyze` bilinen 5 info, `flutter test`
+320/320.
+
+### Sıradaki oturum için
+- Kullanıcı kendi Anthropic-uyumlu proxy'sini bu yeni tiple test edecek —
+  sonucu bildirirse karşılaştırma (OpenAI-şekilli custom vs Anthropic-şekilli
+  custom vs native claude) tamamlanabilir.
+
+---
+
+# Ek (2026-09-01, devam 54) — Claude ve Gemini provider'larında tool-calling SIFIRDI
+
+Kullanıcı "Google AI Studio'dan free Gemma kullansam" dedi; cevap verirken
+Memo'nun kendi `gemini.go`'sunda tool-calling kodu olmadığını fark ettim.
+Kullanıcı bunun üzerine "tüm provider'ları kontrol et ve düzelt" dedi.
+`/codebase-memory` ile tam denetim yaptırıldı (89K token, 34 tool çağrısı,
+tier 2 verify).
+
+**Bulgu — iki provider tool-calling'i tamamen atlıyordu:**
+- `claude.go` (Memo'nun "Anthropic Claude" tipi): `claudeRequest`'te `tools`
+  alanı yok, `buildClaudeRequest` `req.Tools`'u hiç okumuyor, yanıt
+  ayrıştırma sadece `text` bloklarını birleştiriyor, `ToolCalls` hiç
+  set edilmiyor. Bir `ToolCalls` taşıyan assistant mesajı ya da `role:"tool"`
+  mesajı sessizce düz metne indirgeniyordu — gerçek bir multi-turn tool
+  çağrısında Anthropic bunu **reddederdi** (sadece user/assistant rolü kabul
+  eder).
+- `gemini.go`: aynı boşluk, grep ile sıfır "tool" eşleşmesi doğrulandı.
+
+**Etkilenmeyenler:** `grok`, `groq`, `kilo`, `openrouter`, `ollama`,
+`llama.cpp`, `opencode-go`, `opencode-zen` — hepsi `*openAIProvider`'ı embed
+eden ince sarmalayıcı (~25 satır), `ChatCompletion`'ı override etmiyorlar,
+tool-calling'i bedavaya alıyorlar. Sadece kendi request/response tipini
+elle yazan iki provider (`claude.go`, `gemini.go`) etkiliydi.
+
+**Düzeltme (`ae1891ed`):** her iki yönde çeviri, sadece non-streaming
+`ChatCompletion`'da (agent pipeline'ın gerçekten kullandığı tek yol —
+`pipeline.go` her zaman `Stream:false` ile çağırıyor):
+- Giden: `ToolDefinition` (OpenAI şekli) → Anthropic'in düz
+  `{name,description,input_schema}` / Gemini'nin tek `tools[0].
+  functionDeclarations[]` girdisi.
+- `ToolCalls` taşıyan assistant mesajı → `tool_use` blokları (Claude) /
+  `functionCall` part'ları (Gemini) olarak geri yansıtılıyor.
+- `pipeline.go` her tool çağrısı için ayrı bir `Message{Role:"tool",...}`
+  ekliyor (`execute_tool_call.go`) — yani paralel N çağrılı bir turda N ardışık
+  "tool" mesajı geliyor. İkisi de bunların **TEK** sonraki turda birleşmesini
+  istiyor (Claude: bir user mesajında çoklu `tool_result`; Gemini: bir user
+  content'inde çoklu `functionResponse`) — ayrı ayrı mesaj göndermek
+  Anthropic'in rol sıralamasını bozar. Paralel-çağrı testiyle doğrulandı.
+- Gelen: `tool_use`/`functionCall` → `ChatResponse.ToolCalls`.
+- Tool yoksa `tools` alanı tamamen atlanıyor (boş dizi değil).
+
+**Bilinçli kapsam dışı:** streaming yol (`ChatCompletionStream`) düzeltilmedi
+— `pipeline.go` tool turları için hiç kullanmıyor, üstelik `StreamChunk`
+struct'ında tool-call taşıyacak alan bile yok (10 OpenAI-şekilli provider'ın
+hepsini aynı şekilde etkileyen, ama şu an **uykuda** olan ayrı bir gedik —
+takip konusu olarak not edildi).
+
+## İkincil bulgular (aynı denetimden)
+
+**`run_command_readonly` allowlist'i genişletirken güvenlik regresyonu
+yaptım, kendim yakaladım (`fcd3b200`).** Bir önceki oturumda (devam 53) `curl`'ü
+allowlist'e düz prefix olarak eklemiştim — bu, var olan bir güvenlik testini
+(`TestRunCommandReadOnly_RejectsNonAllowlisted`, "curl http://x" reddedilmeli)
+sessizce kırdı: salt-okunur bir alt-agent artık **herhangi bir dış host'a**
+curl atabiliyordu (repo içeriğini `-d` ile dışarı sızdırma / SSRF riski).
+`isAllowedReadOnlyCurl` artık sadece `127.0.0.1`/`localhost`/`::1`/`0.0.0.0`
+hedefli curl'e izin veriyor. Aynı commit'te "curl" girdisinin allowlist
+dizisinden tamamen düşmüş olduğunu da buldum (yeniden yapılandırırken kayıp
+gitmiş) — geri eklendi.
+
+**Model listeleme / fiyat denetimi (kullanıcının ikinci isteği):**
+- **Hardcoded model kataloğu YOK** — `DefaultModels` (Go) ve
+  `ProviderDefaults.defaultModels` (Dart) sadece yeni bir provider eklerken
+  metin kutusunu doldurmak için kullanılan varsayılanlar, kullanıcıya "mevcut
+  modeller" diye gösterilen bir liste değil — tüm gerçek model listeleri
+  ilgili provider'ın kendi `/models` endpoint'inden **canlı** çekiliyor
+  (codex-cli/claude-code-cli hariç — bunlar CLI köprüsü, gerçek bir katalog
+  yok, tek modelin adını hardcode etmek burada doğru davranış).
+- **Kullanıcının varsayımı yanlıştı:** OpenCode Zen'in **gerçek fiyat verisi
+  yok** — kendi API'si `{id, object, created, owned_by}` dışında hiçbir şey
+  dönmüyor (`handlers_oauth.go`'daki mevcut yorum zaten bunu belgeliyordu).
+  Sadece OpenRouter ve Kilo gerçek sayısal fiyat veriyor (marketplace/gateway
+  oldukları için). Bu **düzeltilecek bir kod hatası değil, üç birinci-taraf
+  API'nin (OpenAI, Anthropic, Google, Grok, Groq, Ollama, OpenCode Go da dahil)
+  hiçbirinin fiyatı canlı API üzerinden vermemesi** — statik bir fiyat
+  tablosu hardcode etmek "hiçbir şey hardcoded olmayacak" isteğinin taa
+  kendisini ihlal ederdi, o yüzden yapılmadı.
+- **Bulunan gerçek bug (`51dcfced`):** `_ModelBrowserDialog` (OpenRouter +
+  Kilo + OpenCode Zen paylaşıyor) fiyat metnini `promptPrice==0` ise "Free"
+  yazacak şekilde türetiyordu. OpenCode Zen'de `promptPrice` **her zaman**
+  0.0 (üstte açıklandı) — yani ücretli her OpenCode Zen modeli "Free" yazıyordu,
+  aynı satırın solundaki ikon ise (doğru `isFree`'den geliyor) turuncu "ücretli"
+  ikonunu gösteriyordu — ikon ve metin birbiriyle çelişiyordu. `_priceStr`
+  artık `isFree`'yi otorite kabul ediyor; fiyat da yoksa "fiyat bilgisi yok"
+  yazıyor, sessizce "Free" demiyor.
+
+**Yeni testler:** `claude_toolcalling_test.go`, `gemini_toolcalling_test.go`
+(giden tools çevirisi, gelen tool_calls ayrıştırma, paralel çağrı birleştirme,
+tool'suz istekte `tools` alanının atlanması — hepsi fix geri alınınca
+derlenmiyor bile, kontrol edildi), `readonly_allowlist_test.go`'ya eklenen
+localhost-kısıtlama testi.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz; **`go test -race
+./...` tüm paketler yeşil** (whisper paketindeki tek bir flake kendi eski test
+backend'imden kalan bir süreçten kaynaklıydı, temizlenince düzeldi — koddan
+bağımsız); `flutter analyze` bilinen 5 info; `flutter test` 319/319.
+
+### Sıradaki oturum için
+- Streaming path'teki tool-call gedik (`StreamChunk`'ta alan yok, 10
+  provider'ı aynı şekilde etkiliyor ama uykuda) — istenirse ayrı bir görev.
+- `claude.go`/`gemini.go`'nun `ChatCompletionStream`'i de tool-calling
+  görebilir hale getirmek `StreamChunk` tipine `ToolCalls` alanı eklemeyi ve
+  her tüketiciyi güncellemeyi gerektirir — kapsamlı, bu oturumda yapılmadı.
+
+---
+
+# Ek (2026-09-01, devam 53) — devam 52'yi canlı test ettim, yarım çıktı
+
+Kullanıcı "sen test et" dedi. devam 52'nin fix'ini gerçek süreçlerle uçtan uca
+denedim: geçici dizine gerçek bir `http.server` yazıp modelin logdaki komut
+şekliyle (`python3 blog.py <port> &` / `sleep 2` / `echo`) `RunCommand`'ı
+çağırdım. Üç şey ortaya çıktı, üçü de düzeltildi (`739631c0`).
+
+**1. WaitDelay fix'i yarım doğruydu.** `run_command` artık asılmıyordu (5.005 sn'de
+dönüyordu: 2 sn sleep + 3 sn WaitDelay) ama **sunucu ölüyordu**: WaitDelay,
+Wait'i pipe'ları *kapatarak* çözüyor, arka plandaki sunucu da ilk log satırını
+yazmaya kalkınca SIGPIPE yiyip ölüyor. Yani tool "sunucun çalışıyor" diyordu,
+sunucunun ömrü bir saniyeydi. Test bunu yakaladı (`server on :PORT is up`
+assertion'ı kırmızıydı).
+
+**Gerçek çözüm:** pipe'lara hiç gerek yok. `cmd.Stdout`'a bir `io.Writer`
+verilince `os/exec` OS pipe + kopyalayıcı goroutine yaratıyor ve `Wait` ona
+bloke oluyor; **`*os.File`** verilince çocuğa düz bir fd geçiyor — ne pipe, ne
+kopyalayıcı. `Wait` kabuk çıkar çıkmaz dönüyor, arka plandaki süreç de kimsenin
+okumadığı bir dosyaya yazmaya devam ediyor. `RunCapturingOutput` bunu yapıyor,
+geçici dosyalar dönmeden önce unlink'leniyor (hâlâ fd tutan çocuk, çıkınca yok
+olacak bir inode'a yazar). `internal/skill/executor.go` de aynı `bytes.Buffer`
+kalıbındaydı, o da bu fonksiyonu kullanıyor. Ölçüm: **2.003 sn** (komutun kendi
+sleep'i, üstüne sıfır gecikme), sunucu sonrasında **erişilebilir**, sonraki tool
+çağrısı çalışıyor. WaitDelay + process-group Cancel emniyet kemeri olarak duruyor.
+
+**2. `2>/dev/null` sandbox'a takılıyordu.** Testin ilk çalıştırmasında komut
+`access denied: command references "/dev/null"` ile reddedildi — `/dev/` toptan
+korumalı. `/dev/sda` için doğru, kabuk deyimi için değil: kullanıcının logunda
+model bu redirect'i **üç kez üst üste** yazıp üç model turu harcamıştı
+(04:33:47, 04:33:54, 04:34:05). Zararsız karakter aygıtları (null, zero, full,
+random, urandom, std*, tty, `/dev/fd/N`, `/proc/self/fd/N`) komutlarda serbest;
+`/dev/` altındaki geri kalan her şey kapalı — `/dev/sda`, `/dev/mem`,
+`/etc/shadow`, `~/.ssh/id_rsa` testle çivilendi.
+
+**3. `EventToolExecuting` tek `Args`'sız olaydı.** devam 51'de eklenen
+"başlıyor" satırı bu yüzden canlıda çıplak **`Komut …`** yazıyordu (ekran
+görüntüsünde görülüyor). Artık diğer bütün olaylar gibi `Args` taşıyor.
+
+**Canlı backend smoke:** gerçek binary `--headless --port 8098` ile ayağa
+kaldırıldı (kullanıcının çalışan örneği yoktu, portlar boştu), `Task loop engine
+initialized` + `Memo ready`, `/api/tasks/running` → `200 []`, `/api/chats` → 200;
+sonra temiz kapatıldı, artık süreç kalmadı. Sağlayıcı gerektiren uçtan uca görev
+koşusu **yapılmadı** — kullanıcının gerçek API anahtarlarını/parasını harcamamak
+için; tool katmanı zaten gerçek süreçlerle test edildi.
+
+**Doğrulama:** `go vet -tags sqlite_fts5 ./...` temiz; **`go test -tags
+sqlite_fts5 -race ./...` tamamı yeşil** (tek bir FAIL yok); `flutter analyze
+lib/` bilinen 5 info; `flutter test` 319/319.
+
+**Not:** `internal/agent/tools/selfclone_test.go`'da 3 satırlık gofmt hizalaması
+var — `gofmt -w *_test.go` yan etkisi, davranış değişikliği değil.
+
+---
+
+# Ek (2026-09-01, devam 52) — "2. maddeyi hiç göremedim": run_command sonsuza kadar asılı kalıyordu
+
+Kullanıcı: "7 dakika oldu daha 2. aşamayı göremedim, acaba alt agent mi
+çalışmıyor?" Alt agent değil. Kart `No response · 326s quiet` diyordu ve log'un
+son satırı şuydu:
+
+```
+04:53:05.477  run_command SUCCESS 0ms
+04:53:05.477  taskloop:activity … tool_start  Komut …
+(sonrasında 3+ dakika hiçbir tamamlanma satırı yok)
+```
+
+**Kök neden.** Model yazdığı uygulamayı test etmek için en doğal şeyi yaptı:
+
+```
+pkill -f "python3 blog.py"; sleep 1; python3 blog.py 8080 &
+```
+
+`bash` hemen çıkıyor, ama arka plana atılan sunucu, `os/exec`'in
+`cmd.Stdout` bir `*os.File` olmadığı için yarattığı **stdout/stderr
+pipe'larını miras alıyor**. `Wait` bütün yazıcılar kapanana kadar bloke olur →
+`cmd.Run()` sunucu yaşadığı sürece, yani sonsuza kadar bekledi. Context
+deadline'ı da kurtarmıyor: o `bash`'i öldürüyor, `bash` zaten ölmüş; `Wait`
+hâlâ pipe'ta asılı. Tool dönmedi → işçi turu bitmedi → liste 5 madde bekler
+hâlde durdu. Bir önceki koşuda (`04:34:19`) da aynı komut aynı şekilde
+tamamlanma satırı bırakmamış — yani baştan beri oluyormuş.
+
+**Düzeltme (`8a7244e1`), iki katman:**
+
+1. `PrepareCommand` artık `cmd.WaitDelay = 3s` (süreç çıktıktan/ctx bittikten
+   sonra pipe'lara kısa bir drenaj süresi, sonra kapat ve yakalananla dön) +
+   `Setpgid` ve **process grubunu** öldüren bir `cmd.Cancel` (gerçek timeout'ta
+   arka plandaki çocuklar da ölsün, öksüz kalmasın). `exec.ErrWaitDelay` hata
+   olarak değil, "komut bitti ama arkada bir süreç bıraktı" notu olarak
+   raporlanıyor — model sunucu başlatmayı "asıldı" sanıp tekrar denemesin.
+2. Döngü hiçbir tool'un uslu olmasına bel bağlamamalı: işçi turu artık
+   `workerIdleTimeout` boyunca (config `StreamIdleTimeoutSec`, **10 dakika
+   tabanlı**) hiç chunk gelmezse turu bitiriyor. Taban gerekliydi: bir işçi turu
+   içinde tam bir ajan koşusu var ve model çağrıları stream'siz — canlıda
+   2dk13sn meşru sessizlik ölçüldü. Hata metni bilinçli olarak "timed out"
+   içermiyor; içerseydi `classifyProviderErr` bunu geçici sağlayıcı hatası
+   sanıp **tüm listeyi** 5+10 dk'lık retry timer'ına park edecekti. Böyle madde
+   `stuck` olup liste sıradakine geçiyor.
+
+**Testler:** `internal/agent/tools/command_background_test.go` — arka plana
+süreç atan komut 3 sn'de dönüyor (fix'siz 23 sn'de bile dönmüyor, kontrol
+edildi), normal komutun çıktısı kırpılmıyor, gerçek timeout hâlâ "timed out"
+diyor. `internal/app/tasklist_worker_idle_test.go` — 10 dk tabanı ve hata
+metninin sağlayıcı hatası olarak sınıflanmadığı.
+
+**Not:** kullanıcının Task.md'si worker modunda koşuyor (`mod: worker` header'ı
+ya da eski liste), o yüzden alt-agent yok — `subagents=false` log'da görünüyor.
+Planlayıcı mod varsayılan; bu listenin worker'da olması bilinçli bir seçim mi,
+sorulmadı.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz;
+`go test -tags sqlite_fts5 -race ./internal/app ./internal/taskloop ./internal/agent/...`
+yeşil.
+
+---
+
+# Ek (2026-09-01, devam 51) — `{n} tok`, sessiz kart, yavaşlığın gerçek kaynağı
+
+devam 50'den sonra kullanıcı tekrar koştu. Kart artık tool satırlarını gösteriyor
+(devam 50 çalıştı), ama üç şey kaldı: token sayacı `{n} tok` yazıyor, uzun bir
+`write_file` sırasında kart yine sessiz kalıyor, ve "hâlâ çok uzun sürüyor".
+
+**1. `{n} tok` (`51db1a6d`).** `L10n.t` sadece `\${name}` biçimini değiştiriyor,
+ama 14 string çıplak `{name}` ile yazılmış → placeholder kullanıcıya olduğu gibi
+basılıyordu. Token sayacı, sessizlik sayacı, "N adımı göster", yedi Hesaplar
+diyalogu ve üç hata mesajı (`Could not update permissions: {err}`) etkilenmişti.
+`t()` artık iki yazımı da değiştiriyor + 14 string ev stiline (`\${name}`)
+çevrildi. Test: `test/core/l10n_placeholder_test.dart` (iki dilde de hiçbir
+string `{` sızdırmıyor).
+
+**2. Sessiz kart (`a0b878af`).** Ajan döngüsü modeli `Stream:false` ile çağırıyor
+(`internal/agent/pipeline.go:144`) — iki tool çağrısı arasında **hiçbir sinyal
+yok**. Ölçüm: `04:30:51` → `04:33:04`, tek bir `write_file` için 2dk13sn tam
+sessizlik. Kart o sürede son tool satırında donuk duruyordu.
+- 5 sn sessizlikten sonra `model yanıt üretiyor · 1dk 12s` satırı (normal renk,
+  tıklayan saat). Saat **yerel**: backend'in `silentSec`'i sadece olaylarla
+  geliyor, yani tam da ölçmesi gereken sessizlik boyunca donuyor; widget her
+  gerçek state değişiminde rebase edip kendi sayıyor.
+- "takılmış olabilir" eşiği 60 sn → **180 sn**. 60 sn her normal uzun üretimde
+  yanıyordu, yani vermesi gereken güvenin tam tersini veriyordu.
+- `_fmtDuration`'ın "dk"/"s" birimleri L10n'a taşındı.
+
+**3. Yavaş tool'lar için başlangıç satırı + verb'lerin l10n'ı (`a1b89c02`).**
+`run_command`, `web_search`, `fetch_page`, `search_files`, WhatsApp araçları artık
+`EventToolExecuting`'de de bir satır basıyor ("Komut: … …") — uzun süren komut
+koşarken görünüyor. Anlık araçlar (write_file vb.) **bilinçli olarak dışarıda**:
+başlangıç/bitiş çifti aynı saniyeye düşer, log'u iki katına çıkarır ve hiçbir şey
+anlatmaz — kullanıcının write öncesi gördüğü bekleme tool'da değil, modelin
+içerik üretmesinde. `toolVerbTR` → `toolVerbs` (TR+EN çifti, `App.t` arkasında);
+bu satırlar doğrudan Flutter kartına gittiği için Türkçe-tek map'i UI'da hardcoded
+string demekti (AGENTS.md #8).
+
+**Kalan yavaşlığın ölçümü (bizde değil).** devam 50'nin bildirim pump'ından sonra
+`planning → item_started` **0 ms**. Kalan süre tamamen sağlayıcı: her tool
+round-trip'i tam bağlamla ayrı bir bloke HTTP isteği; `kilo-auto/free` bunları
+6-18 sn'de, büyük dosya üretimini 2dk13sn'de dönüyor. Bir maddede ~10 tur var.
+Tek gerçek kaldıraç Task.md'de `# sağlayıcı: <hızlı-sağlayıcı>`.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz;
+`go test -tags sqlite_fts5 -race ./internal/app ./internal/taskloop` yeşil;
+`flutter analyze lib/` bilinen 5 info; `flutter test` 319/319.
+
+---
+
+# Ek (2026-09-01, devam 50) — 90 sn'lik "planning" donması + kartın sessizliği
+
+devam 49'daki kilit düzeltmesinden sonra görev gerçekten koştu, ama kullanıcı iki
+şey bildirdi: (1) kartta sadece `planning` + `Model: kilo-auto/free` görünüyor,
+backend log'unda `write_file`/`run_command`/`edit_task_md` uçuşurken kart sessiz —
+"kullanıcı dondu sanabilir"; (2) "niye bu kadar yavaş, ilk maddeyi 6 dakikada
+yapmadı".
+
+**Kök neden 1 — 90 saniye tamamen bizim (`780c9f1f`).** Motor `onEvent`'i kendi
+run goroutine'inde **senkron** çağırıyor; `dispatchTaskEvent` de
+`NotifyBus.Notify`'ı satır içi çalıştırıyordu: app event bus → Telegram →
+WhatsApp, arka arkaya, hepsi `context.Background()` ile (yani **hiç deadline
+yok**). Bildirilen koşuda `started` bildirimi WhatsApp soketi yeniden bağlanırken
+düştü (birkaç saniye önce log'da `get joined groups: context deadline exceeded`,
+bir dakika sonra da `WhatsApp: disconnected` var) → whatsmeow'un `SendMessage`'ı
+orada bekledi, görev döngüsü de onun arkasında bekledi: `taskloop:planning`
+04:12:42.8, 1. madde 04:14:13.4. Aradaki her şey boşa geçen 90 saniye.
+Artık tek bir **pump goroutine** var: 128 slotluk kanal, sırayla, bildirim başına
+20 sn timeout; `dispatchTaskEvent` sadece kuyruğa atıp dönüyor, kuyruk dolarsa
+bildirim düşürülüyor (görev asla beklemiyor; SSE kopyası zaten `emitEvent`'ten
+gitti). Regresyon testi: `internal/app/task_notify_pump_test.go`.
+
+**Kök neden 2 — kartın sessizliği (`696e0494`).** planexec modu tool
+round-trip'lerini zaten `emitStepToolActivity` ile aktiviteye yansıtıyordu; worker
+modu `callAgentStream`'den geçtiği için hiçbir şey yansıtmıyordu. Artık ctx'te
+task run config varsa aynı fonksiyon çağrılıyor → kartta `⚡ Dosya yazdı: blog.db`
+satırları akıyor, token sayacı da tool args/result'ları görüyor. `toolVerbTR`'ye
+worker turunun gerçekten çağırdığı araçlar eklendi (`edit_task_md`,
+`create_task_md`, `get_task_status`, `change_directory`, routine/takvim/WhatsApp
+araçları) — eşleşme yoksa çıplak tool adı basılıyordu, kullanıcının şikâyet ettiği
+şey buydu.
+
+**Kök neden 3 — `ref` after dispose (`791c6945`).** devam 49'da stack trace yoktu,
+bu sefer vardı: `_TasksScreenState.dispose` içinde
+`ref.read(taskListsProvider.notifier).stopPolling()`. `ConsumerState.ref` unmount
+sırasında geçersiz. Üç ekran da (tasks_screen + ayarlar WhatsApp/Telegram
+sekmeleri) notifier'ı canlıyken yakalayıp dispose'da onu kullanıyor —
+`task_detail_screen.dart`'ın zaten yaptığı kalıp.
+
+**Geri kalan yavaşlık bizim değil (ölçüldü).** 90 sn düşüldükten sonra kalan süre
+saf model gecikmesi: her tool round-trip'i tam bağlamla yeni bir LLM isteği ve
+`kilo-auto/free` bunları ~6-15 sn'de dönüyor (`04:14:23 read_file` → `04:14:29
+list_directory` → `04:15:40 write_file` — sonuncusu büyük dosya üretimi, 70 sn).
+Bir madde ~10 tool turu + CEO incelemesi demek. Yani "6 dakikada bitmedi"nin
+~1.5 dakikası bizdendi, gerisi ücretsiz katman modelinin hızı. Görev için daha
+hızlı bir sağlayıcı seçmek (Task.md'de `# sağlayıcı: <isim>`) tek gerçek kaldıraç.
+
+**Bilinçli yapılmayanlar:** worker prompt'undaki preamble (repo kuralları +
+memo-system rehberi, ~1.6k token) her madde için tekrar gönderiliyor ve aynı
+sohbet geçmişinde birikiyor. Sadece ilk maddede göndermek her turdan ~%10 prompt
+kazandırırdı, ama bağlam kırpılınca kuralların geçmişten düşme riski var —
+davranış değiştiren bir değişiklik olduğu için kullanıcıya sorulmadan yapılmadı.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz;
+`go test -tags sqlite_fts5 -race ./internal/app ./internal/taskloop` yeşil;
+`flutter analyze lib/` bilinen 5 info; `flutter test` 317/317.
+
+---
+
+# Ek (2026-09-01, devam 49) — Self-Driving görev kendi başlatma turunda ölüyordu (branch aynı)
+
+Kullanıcı gerçek masaüstünde çalıştırdı: sohbetten `@Task.md`'yi self-driving
+verdi, görev **1.3 saniyede** 0/6 ile `failed` bitti. Her maddenin notu aynıydı:
+`işçi hatası: ⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.`
+
+**Kök neden (yeni, provider'larla ilgisi yok):** İşçi turları listenin kendi
+ajan sohbetine `SendMessageStreamTo` ile gidiyor. Ama `start_self_driving_task`
+bir **ajan aracı** — yani görevi başlatan turun kendisi, motor 1. maddeye
+geldiğinde hâlâ *tam olarak o sohbette* akıyor. `chat_locks.go`'daki per-chat
+akış kilidi `TryLock`: sıraya girmek yerine turu meşgul uyarısıyla **reddetti**.
+`buildTaskLoopRunWorker` bunu düz bir işçi hatasına çevirdi,
+`classifyProviderErr` hiçbir kovaya sokamadı (rate-limit değil, auth değil,
+transient değil) → `processItem` maddeyi anında `stuck` yapıp sıradakine geçti,
+altı madde için art arda, tek seferde. Kilidin doküman yorumu "bir listenin
+turlarının üst üste binmesini engeller" diyordu; fail-fast bunu sıralama değil
+**başarısızlık** yapıyor.
+
+**Düzeltme iki katmanlı:**
+- `withChatLockWait(ctx)` — sıraya girmesi gereken akış çağrısını işaretler.
+  Sadece görev işçisi turu kullanır: başında kimse olmayan bir tur için beklemek
+  başarısız olmaktan iyidir, buna karşılık etkileşimli çağrı (GUI, Telegram)
+  eskisi gibi anında meşgul uyarısı alır — insan bekleyen bir tur donmuş bir
+  input kutusuna dönüşmesin. `lockChatStreamWait` kilidi yoklar (`sync.Mutex`'in
+  ctx'li `Lock`'u yok): serbest kalana, ctx iptal olana ya da 5 dk geçene kadar.
+- `taskloop.ErrChatBusy` — "sohbet meşguldü" durumunu sağlayıcı hatasından
+  ayırır. `processItem` 30 sn bekleyip **aynı maddeyi** tekrar dener (en fazla
+  3 kez), tur bütçesi harcamadan, self-heal ve sağlayıcı değişimi olmadan.
+  `errors.Is` ile eşleşir, asla yerelleştirilmiş mesaj metniyle değil.
+
+Meşgul uyarısı artık `App.busyNotice()` arkasında — 11 yerde kopyalanmış literal
+yerine tek tanım (karşılaştırmanın doğruluğu buna bağlı).
+
+**Aynı oturumun konsol gürültüsü de temizlendi:**
+- `developer_screen.dart`'taki üç `SwitchListTile` dekore edilmiş kartların
+  içinde duruyordu → Flutter'ın "ListTile background color or ink splashes may be
+  invisible" assertion'ı her build'de patlıyordu; ekran `AppShell`'in
+  `IndexedStack`'inde olduğu için **açılışta** görülüyordu. `Material(transparency)`
+  ile sarıldı (auth_gate_overlay'de zaten kullanılan aynı kalıp).
+- `AgentEnabledNotifier` / `WebSearchModeNotifier` init GET'i dönerken
+  `app_shell`'in auth-gate dinleyicisi onları çoktan invalidate etmiş oluyordu →
+  "Tried to use X after dispose was called". Artık `mounted` kontrolüyle bayat
+  cevabı düşürüyorlar; yerine geçen notifier'ın kendi GET'i geçerli olan.
+
+**Yeni testler:** `internal/taskloop/engine_chatbusy_test.go` (meşgul sohbet →
+bekle + aynı maddeyi tekrar dene, tur harcamadan / self-heal çağırmadan; bütçe
+bitince stuck; `IsChatBusyErr` sınıflandırma) ve `internal/app/chat_lockwait_test.go`
+(işçi turu sıraya girer; bayraksız etkileşimli tur hâlâ hızlı reddedilir; ctx
+iptali beklemeyi keser). Düzeltme geri alınınca `ChatLockWait_QueuesInsteadOfBusy`
+gerçekten kırmızıya düşüyor — kontrol edildi.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz;
+`go test -tags sqlite_fts5 -race ./internal/taskloop ./internal/app` yeşil;
+`flutter analyze lib/` (bilinen 5 info dışında yeni uyarı yok); `flutter test`
+317/317. Commit: `34bbb960`.
+
+### Sıradaki oturum için
+- Loglarda bir de `Bad state: Cannot use "ref" after the widget was disposed.`
+  var; yukarıdaki iki notifier'dan farklı bir yerden (widget'ın kendi `ref`'i)
+  geliyor ve log'da stack trace yok, o yüzden bu oturumda **kovalanmadı**.
+  Tekrar görülürse `flutter run`'da tam stack ile yakalanmalı.
+- `InjectTaskMessage` (Telegram/WhatsApp'tan çalışan göreve komut) hâlâ meşgul
+  sohbette hızlı reddediliyor — bilinçli bırakıldı (insan bekliyor), ama
+  kullanıcı "dur/atla yazınca cevap gelmiyor" derse aynı bekleme kalıbı kısa bir
+  üst sınırla oraya da uygulanabilir.
+
+---
+
+# Ek (2026-08-31, devam 48) — composer çift-kutu + canlı token + sağlayıcı kilidi + sessiz-ölmeme (branch aynı)
+
+devam 47 sonrası kullanıcı gerçek masaüstünde koştu, art arda bug bildirdi.
+Tüm aktif sağlayıcılar bozuktu (custom :8083 refused, codex 400, claude-code
+502 model-format, opencode-zen 503, kilo 503) → görev 6 maddeyi tek tek
+`item_stuck` yapıp sessizce bitiyordu, self-heal habersizce tüm
+`providers.json`'u geziyordu. Plan: `~/.claude/plans/floofy-imagining-lollipop.md`
+(onaylandı).
+
+**SONUÇ — hepsi yapıldı, 5 commit (`c621d1dd..81259686`), tüm testler yeşil.**
+Kullanıcının 4 şikâyeti kapandı: (1) composer'daki çift text-box; (2) "ne
+yaptığı belli değil / donmuş mu" → header'da canlı token sayacı + stuck
+satırında gerçek sebep + "Model: …" satırı; (3) "hata verince komple durup
+haber vermiyor" → her park/retry chat mesajı + Telegram/WhatsApp push;
+(4) "kafasına göre başka model deniyor" → sağlayıcı kilidi **iki yolda birden**
+(self-heal roaming + planlama-anı `PlanningSelfConfig`), varsayılan kilitli,
+opt-in `# sağlayıcı: otomatik`.
+
+**Commit'ler:**
+
+| commit | ne |
+|---|---|
+| `c621d1dd` | **composer çift text-box fiksi** — app geneli `inputDecorationTheme` (`filled:true` + OutlineInputBorder) composer'ın elle kurulmuş Container'ına sızıyordu → iç içe iki kutu, görev koşarken (field disabled) belirginleşiyordu. `InputDecoration`'da tüm border state'leri + `filled:false` sıfırlandı. |
+| `a28c1cbd` | **canlı token tahmini** (header'da saatin yanında `⌁ 1.4k tok`, saniye sayacı gibi tıklar; worker `buildTaskLoopRunWorker` her content chunk'ta + planexec `emitStepToolActivity`/`planTask`/`runPlanStep`; `RunningTaskInfo.Tokens`→SSE→`ChatTaskState.tokens`). **+ stuck satırı gerçek sebebi yazıyor** — `emitActivity(listID,"item_stuck",stuckActivityLine(item))` 3 stuck sitesinde (`item.Note`: "işçi hatası: 503", "5 tur sonunda onaylanmadı: …"); frontend `_logEntryFor`'dan bare `item_stuck` çıkarıldı (dup önleme). |
+| `4aa057be` | **sağlayıcı kilidi + akıllı retry + sessiz-ölmeme + model görünürlüğü** (aşağıda) |
+| `281b732e` | **kilit planlama-anı self-config'i de kapatıyor** — `4aa057be` sadece self-heal roaming'ini durdurmuştu; `PlanningSelfConfig` (default AÇIK) yürütme başlamadan `planTaskConfig` ile LLM'e "en iyi provider'ı seç" dedirtip `trc`'yi değiştiriyordu (`config_changed — provider=Özel (OpenAI uyumlu) 2` canlı logda görüldü, kullanıcı Kilo Code seçmişken). Artık kilit açık değilse `planTaskConfig` sessiz no-op. |
+
+**`4aa057be` detay:**
+- **Kilit varsayılan.** `taskRunConfig.providerRoaming` (Task.md `# sağlayıcı:`
+  header → `resolveProviderPolicy`, fallback config `TaskLoop.ProviderRoaming`
+  default false). Kilit açıkken `healTaskProvider` rate-limit dışı her hatada
+  `false` döner → hiçbir şey değişmez. `# sağlayıcı: otomatik` eski switch
+  davranışını geri getirir; `# sağlayıcı: <isim>` göreve belirli bir enabled
+  sağlayıcı sabitler (`agentRouterFromProviderName` ile yeni snapshot).
+- **Beklemeli transient retry.** `RetryScheduler.ArmWithDelay` +
+  `Engine.suspendForTransient`: kilitliyken transient hatada madde parklanır,
+  **5 dk sonra**, sonra **10 dk sonra** re-arm (`WithTransientRetryDelays`,
+  sayaç `listID\x00itemID`); bütçe bitince madde stuck + not. `classifyProviderErr`
+  artık kalıcı config hatalarını (`unsupported`, `must be "type/model-id"`,
+  400 `invalid_request`) **failAuth** sayıyor → timer yerine `waiting-user` park.
+- **Asla sessiz ölme.** `dispatchTaskEvent` artık `taskloop:waiting_user` +
+  yeni `taskloop:waiting_retry` işliyor: hem `NotifyBus.Notify` (tier 1,
+  Telegram/WhatsApp) **hem** `postTaskParkMessage` → görev sohbetine kalıcı düz
+  satır (push kanalı yoksa bile kullanıcı görür). Frontend bu event'leri
+  kırmızı/amber log satırına foldluyor.
+- **Model görünürlüğü.** `Engine.WithModelLabel` hook (`app.taskModelLabel`) →
+  yürütme başında + `provider_switched`'te "Model: sağlayıcı/model" aktivite
+  satırı; frontend `"model"` kind'ı `Icons.memory` ile çiziyor.
+- `memo-system/SKILL.md` §3 yeniden yazıldı: `# sağlayıcı: otomatik` yoksa
+  sağlayıcı değiştirme.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz; `go test ./... -race`
+**tam yeşil** (yeni: `TestHealTaskProvider_LockedByDefault_NeverSwitches`,
+`TestEngine_TransientLocked_EscalatingRetriesThenStuck`,
+`TestRetryScheduler_ArmWithDelay`, `TestResolveProviderPolicy_*`,
+`TestPlanTaskConfig_ProviderLockIsNoop`, `TestPlanTaskConfig_RoamingRunsSelfConfig`,
+`classifyProviderErr` config-fault case'leri; eski self-heal testleri
+`providerRoaming:true` ile güncellendi). `flutter analyze lib/` 5 pre-existing
+info; `flutter test` 317 yeşil; Rule #8 temiz.
+
+**Kullanıcının yapması gereken:**
+1. Flutter yeniden build + `memo --kill` sonra backend restart (eski binary'de
+   fix yok).
+2. `rm -rf data/skills/memo-system` — bu klasördeki `SKILL.md` 29 Ağu'dan kalma;
+   embed sadece dosya yoksa yazıyor (`skill/materialize.go:24-26`), bu yüzden
+   `4aa057be`/`281b732e`'deki §3 revizyonu diske düşmedi. Davranış artık koddan
+   geliyor (kilit modda guidance okunmuyor bile), ama roaming modda tazesi lazım.
+3. **En az bir çalışan sağlayıcı lazım.** Fix'ten sonra bile görev, başlatıldığı
+   anda aktif olan sağlayıcıyla koşar — o çalışmıyorsa 5/10 dk park + bildirim
+   verip durur (artık sessiz değil, ama iş de ilerlemez). Canlı logda Kilo Code
+   aktif yapılmıştı; o çalışıyorsa görev artık onunla koşar.
+
+**Hâlâ açık / gözle doğrulanmadı:** inline blok + token sayacı + park mesajları
++ model satırı gerçek GUI'de canlı görülmedi (widget/unit testlerle doğrulandı);
+`waiting_retry` log satırı ham `detay` string'ini gösteriyor (chat mesajı temiz,
+satır kabası — istenirse parse edilir); worker modun her turda ~112k geçmiş
+göndermesi (bağlam şişmesi) ayrı performans işi; chat'te serbest cümleyle
+sağlayıcı seçimi (`/model` zaten snapshot'a yansıyor, NL parse kapsam dışı).
+
+---
+
+# Ek (2026-08-30, devam 47) — sohbet-içi canlı görev bloğu (Claude Code tarzı) (branch aynı)
+
+devam 46 fikslerinden sonra kullanıcı: "çalışıyor mu belli değil, ne yaptığını
+göremiyorum; Claude Code / ChatGPT masaüstü gibi adımlar sohbette canlı aksın,
+alt-ajan/araç çıktılarının metinlerini göreyim; kart Agent sohbetinde yok; Task
+Detay Resume hata veriyor." Plan modunda 2 Explore ajanı + `/frontend-design` ile
+planlandı (`~/.claude/plans/ve-birde-al-yormu-al-m-yormu-inherited-music.md`),
+onaylandı, uygulandı.
+
+**Backend (`859533e`, `6e584aa`):**
+- Yeni motor olayı `taskloop:activity`, veri `listID\x1fkind\x1ftext`; kinds:
+  plan_start/plan_done/step_start/step_done/step_retry/step_stuck/escalate/tool.
+  `emitActivity` + public `Engine.EmitActivity`. Yayım: `runPlanExec`,
+  `executePlan` per-step goroutine + sınıflama döngüsü, `escalateStuckSteps`.
+- `runPlanStep`/`planTask`/`escalateStep` artık coder'ın `AgentEvent`
+  callback'ini no-op'la atmıyor → `emitStepToolActivity` her biten araç
+  çağrısını kısa TR satıra çevirip `taskloop:activity` "tool" olarak yayıyor
+  ("Dosya yazdı: signup.py", "Komut: python3 …").
+- `listRuntime.lastActivityAt` + `rtTouch`; `RunningTaskInfo`/`taskChatEvent`'e
+  `SilentSec` (= son aktiviteden bu yana sn). `publishTaskEvent`
+  `taskloop:activity`'yi `\x1f` ile parse ediyor.
+- `tasklist:finished`'te `postTaskFinishMessage` sohbete **tek** düz satır
+  ("✅ Görev bitti — 6/6 madde" / "⚠️ … kısmen …"), LLM yok.
+- `generateTaskReport` artık `SendMessageStreamTo` ile sohbete kapanış-raporu
+  prompt'u + uzun cevap yazmıyor (her bitişte kirletiyordu); bildirim gövdesini
+  transcript'ten tek `callLLMForReview` ile üretiyor, fallback `factualTaskRollup`.
+- `POST /api/tasks/{id}/resume` koşan görevde 500 yerine 200 no-op.
+
+**Frontend (`adb363e`):**
+- `TaskActivityCard` → `TaskActivityBlock` (`widgets/agent/task_activity_block.dart`).
+  `ChatMessageList`'in son öğesi olarak, asistan mesajı hizasıyla çizilir.
+  **Chat + Agent** ekranlarının ikisinde de (`taskActivity` param).
+- Başlık: nefes eden nabız noktası (bronz); `silentSec >= 60` → amber +
+  "{n} sn sessiz"; tek kanonik ilerleme `Adım N/M · Madde a/b` + ince çubuk;
+  **saniyede tıklayan** geçen süre; mevcut adım metni.
+- Gövde (varsayılan açık, ~220px kaydırmalı, otomatik en alta): zaman damgalı
+  adım-adım günlük (`_AgentStatusBadge` rozet dili). "Daha az göster" toggle.
+- Tek birincil düğme (faza göre Duraklat/Devam/Planı gör-Onayla) + sönük
+  "Görevler'de aç". Bitince blok kaybolur, sohbette tek özet satırı kalır.
+- `models/task_list.dart`: `TaskChatEvent` kind/text/silent_sec; yeni
+  `TaskLogEntry`; `ChatTaskState` `log` (60 cap) + `silentSec` + `stalled`;
+  `fold()` activity + planning/awaiting_plan/paused/item_* → günlük satırı.
+- `task_detail_screen`: Resume yalnız koşmayan görevde, Pause yalnız koşarken.
+
+**Canlı doğrulandı (headless :8097, gerçek free model):** `activity` olayları
+`kind`+`text` ile akıyor (`plan_start`→`tool`→`plan_done`→`step_start`→`tool`
+"Dosya yazdı: g.txt"→`step_done` "S1 bitti — …"→`finished`), dosyalar oluştu,
+"✅ Görev bitti — 1/1 madde" sohbete düştü.
+
+**Doğrulama:** `go build/vet -race` temiz, `go test ./internal/{taskloop,app,
+webserver}` yeşil; `flutter analyze lib/` sadece pre-existing info; `flutter
+test` 317 yeşil (+ `ChatTaskState.fold` log/stalled + task_detail buton testleri
+güncellendi); Rule #8 temiz.
+
+**Kullanıcının yapması gereken:** Flutter yeniden build + `memo --kill` sonra
+backend restart.
+
+**Hâlâ açık:** worker modu kapsam dışı; `step_done` metninde markdown `**`
+görünüyor (küçük); inline bloğun görsel render'ı gerçek GUI'de gözle
+doğrulanmadı.
+
+---
+
+# Ek (2026-08-30, devam 46) — ilk masaüstü turunda çıkan 3 bug + pause/resume araçları (branch aynı)
+
+Kullanıcı v4.6.0'ı gerçek masaüstü uygulamada koştu, çuvalladı. Loglardan
+teşhis + düzeltme:
+
+- **`Bad state: Cannot use "ref" after the widget was disposed`** (tekrar tekrar,
+  chat UI donuyor) — `5a195871`. İki kaynak: (a) Faz G'nin `MessagesNotifier`
+  `_stopped` dallarını `await refresh()`'ten SONRA `ref` kullanacak şekilde
+  sıralaması — geri alındı, overlay temizliği yine await'ten önce senkron
+  (backend kısmi cevabı zaten kalıcılaştırıyor, refresh geri boyuyor).
+  (b) `ChatTasksNotifier` SSE callback'i + 3sn Timer'ı `_ref`'i canlılık
+  kontrolü olmadan kullanıyordu + her görev olayında `runningTasksProvider`
+  invalidate ediyordu (görev stuck-loop'ta fırtına). Artık her `_ref`
+  kullanımında `mounted`/`_closed` guard, `_connect` try/catch, invalidate
+  kaldırıldı.
+- **Chat sel oluyor** — `5a195871`. `# mod:` header'ı olmayan sohbet-başlatımlı
+  Task.md **worker** modda koşuyordu; worker modu her turda dev memo-system
+  prompt'unu + maddeyi chat'e `user` mesajı olarak yazıyor, model bunu
+  injection sanıp reddediyor, 5 tur × N madde chat'i dolduruyor. Artık
+  sohbet-başlatımlı listeler (`create_task_md`, `start_self_driving_task`,
+  `POST /api/tasklists` + `task_md_path`) **varsayılan planlayıcı modda** —
+  coder turları izole alt-ajan turlarında, chat'e hiçbir şey yazılmıyor.
+  Worker modu artık `# mod: worker` ile opt-in.
+- **`pause_task` / `resume_task` ajan araçları** — `a837a08d`. Kullanıcının
+  isteği: memo chat'ten "dur"/"devam"/"tamam" gibi cümleleri anlayıp görevi
+  duraklatıp sürdürebilsin, bu yeteneğinin farkında olsun. `tools.TaskStatus`
+  arayüzüne 2 Safe araç + `chatBoundTaskID` (ctx'ten sohbete bağlı liste) +
+  sistem prompt'a hangi ifade hangi araç. Composer'ın literal "devam"
+  yakalaması (Faz F) sıfır-gecikme yolu olarak kalıyor; regex genişletildi.
+- **git sızıntısı** — `3013d5e7`. `git add -A` kullanıcının canlı
+  `data/tasklists/<uuid>.json`'unu commit'lemişti; commit amend'lendi,
+  `.gitignore` `data/tasklists/` + `.freebuff/` ile düzeltildi. (Ayrıca
+  kullanıcı ben çalışırken `1d890d88 "A"` diye masaüstü session state'i
+  commit'lemiş — benim commit'lerim üstünde.)
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz; `go test ./...
+-race` (app/agent/taskloop/webserver) yeşil; `flutter analyze lib/` 5
+pre-existing info; `flutter test` 315 yeşil.
+
+**Kullanıcının yapması gereken:** Flutter'ı yeniden build + backend restart
+(`memo --kill` sonra tekrar). Eski build'de bu düzeltmeler yok.
+
+**Hâlâ açık:** worker modu seçilirse turlar yine chat'e yazılıyor (v4.4.0
+tasarımı, ayrı iş); zayıf/free CEO-review modeli boş JSON döndürüp maddeyi
+stuck bırakıyor (model kalitesi); inline kartın görsel render'ı canlı GUI'de
+gözle doğrulanmadı.
+
+---
+
+# Ek (2026-08-30, devam 45) — v4.6.0'ın 9 fazının TAMAMI uygulandı (branch aynı)
+
+Kullanıcı "kural 5'e uyma, tüm planı bitir, sonra test et" dedi. `~/.claude/
+plans/selam-agents-md-handoff-md-iterative-pearl.md`'deki 9 fazın tamamı bu
+oturumda yazıldı. **`main` hâlâ v4.2.0 embedded; merge/PR/tag + sürüm kararı
+kullanıcıda.**
+
+**Commit'ler (`0741332..HEAD`, hepsi ayrı, Conventional Commits, AI-attr yok):**
+
+| Faz | commit | ne yaptı |
+|-----|--------|----------|
+| G | `58e95f5` | durdurunca kısmi çıktıyı koru — 4 `ctxDone` dalı (`drainAgentStream`, `callLLMStream` ext+local, CLI) artık `persistInterruptedTurn` ile kısmi metni `finishStream` yoluyla kalıcılaştırıyor + stop işareti; Flutter `stopStreaming` 3 dalı refresh'ten sonra overlay temizliyor |
+| I | `dd803d6` | plan maddeleri artımlı işaretleniyor — `syncItemProgress` her dalga sonunda; `finishPlanItems` sadece kalanları stuck yapıyor. BUG-PLAN11 |
+| A | `7dd6538` | `a.streamMu` → RWMutex geçit; sohbet-başına `chatStreamLocks` (chat_locks.go). `sendMessageStreamInnerTo` + `SendMessage(WithImage/File)` + `SendMessageWith{Image,File}Stream` + `WhatsAppChatStream` per-chat kilit. incognito + `runAgentRoutine` yazma kilidinde kalıyor |
+| C | `6991334` | `a.taskloopRunMu` kaldırıldı; `TaskLoopConfig.MaxConcurrentLists` (0=sınırsız) + `Engine.Start` geçidi + `ApplyConfig` param |
+| B | `3e01d648` | planexec rol-başına provider — `resolveOneRoleProvider` ("local" / "provider" / "provider/model" → özel tek-provider router), `planexecRouting`/`planexecRoleRouter`, `planTask`/`runPlanStep`/`escalateStep` + fuzzy/compactor (`callLLMForReviewWith`). `a.activeProviderName`'e dokunmuyor |
+| H | `def5ac1c` | `get_task_status` salt-okunur ajan aracı (`tools.TaskStatus` + adapter → `Engine.RunningTasks()`/`Runtime()`), sistem prompt'a uydurma-yasağı satırı. BUG-PLAN10 |
+| D | `0814277`+`63cc1ad` | `App.publishTaskEvent` fan-out + `SubscribeTaskEvents` + `GET /api/tasks/events` SSE (snapshot priming + 25s keepalive); Flutter `taskEventStream` + `ChatTaskState.fold` + `chatTasksProvider` (3s reconnect, gate-aware) + `chatTaskForProvider` |
+| E | `63cc1ad` | `task_activity_card.dart` — composer üstünde sabit; tek kanonik ilerleme satırı, faz rozeti, son olaylar, plan onay bottom-sheet (BUG-PLAN9), Duraklat/Devam/Görevler'de aç (BUG-PLAN12). l10n TR+EN |
+| F | `9df07d5` | görev koşarken `chat_input` TextField disable + kırmızı→Duraklat; `paused` iken `devam\|continue\|resume` → `resumeTask`, diğer mesajlar yan soru + `ResumeNotes` kaydı. Backend: `TaskList.ResumeNotes`, `Store.AddResumeNote/DrainResumeNotes`, `runPlanStep` prompt'a ekliyor, `POST /api/tasks/{id}/note` |
+
+Ek: `9daacea8` test tidy.
+
+**Taslaktan sapılan yerler (planda da not düşülmüştü):** BUG-PLAN11 kök sebep
+düzeltildi (eşleme zaten doğru, sorun zamanlamaydı); Faz C bypass-toggle işi
+zaten yapılmıştı → sadece `taskloopRunMu` kaldırıldı; `taskloop:paused` aslında
+`Stop()`'ta zaten yayılıyor (D için ek emit gerekmedi); D fan-out ham `onEvent`
+closure'una takıldı (`dispatchTaskEvent` bazı olayları yutuyor).
+
+**Doğrulama (tam):**
+- `CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` temiz.
+- `go test -tags sqlite_fts5 ./... -race` → **48 paket, tamamı `ok`** (memo kökü
+  dahil). Yeni testler: `TestDrainAgentStream_CtxDone_KeepsPartialReply`,
+  `TestEngine_PlanExec_ItemsCompleteIncrementally`,
+  `TestSendMessageStreamTo_PerChatLock_OtherChatsNotBlocked`,
+  `TestEngine_MaxConcurrentLists_Gate`, `TestResolveOneRoleProvider_Routing`,
+  `TestTaskStatusForChat_*`, `TestPublishTaskEvent_FanOut`.
+- `flutter analyze lib/` → 5 pre-existing info (calendar_screen, chat_sidebar,
+  chat_input'un dokunmadığım `use_build_context_synchronously`/`use_null_aware`
+  satırları — AGENTS.md'de "kabul edilebilir gürültü"). Dokunulan dosyalar temiz.
+- `flutter test` → **315 pass** (+ `ChatTaskState.fold` grubu).
+- Rule #8 grep `0741332..HEAD` tüm `.dart`'larda temiz.
+
+**Canlı test yapıldı (headless backend :8095, gerçek `api.kilo.ai` free
+modelleri, `~/…/scratchpad/livetest-*` scratch projeleri; sonrası temizlendi):**
+
+- ✅ **Uçtan uca planexec (Run 1, `tencent/hy3:free`):** `planning → executing →
+  step_done×2 → item_done×2 → finished(done)`. İki dosya doğru içerikle
+  oluştu, `Task.md` `[x][x]` — **artımlı** işaretlendi (`item_done` olayları
+  `phase:executing` sırasında geldi, sonda değil). BUG-PLAN11 mekaniği doğru.
+- ✅ **Faz D SSE:** her olay `chat_id` + canlı `step_done/step_total`,
+  `item_done/item_total`, `current` adım metni, `elapsed_sec` taşıyor.
+  Snapshot priming + `paused` olayı çalışıyor.
+- ✅ **Faz F:** `POST /api/tasks/{id}/pause` → `paused`; `POST …/note` →
+  `TaskList.resume_notes`'a yazıyor; `POST …/resume` → kaldığı adımdan sürüyor,
+  `resume_notes` drain oluyor. **Yeni-dosya isteyen resume notu** ilk denemede
+  yok sayıldı (coder "sadece bu adım" prompt'u) → prompt sertleştirildi
+  (`ad84642`), Run 4'te `n9.txt` resume notundan oluştu. ✓
+- ✅ **Bulundu+düzeltildi (`ad84642`):** `bypass_enabled/disabled` olayları
+  SSE'ye `list_id` = Türkçe mesaj string'iyle sızıyordu → filtrelendi + liste
+  olmayan her olaya backstop guard.
+- ⚠️ **Not:** free model tekrarlı kullanımda flake yaptı (Run 2/3 adımları
+  stuck bıraktı, dosya oluşmadı) — pipeline doğru davrandı (failed işaretledi,
+  crash yok). Handoff'un eski notuyla aynı: "model kalitesi, pipeline değil."
+- ⏳ **Kalan (kullanıcının gerçek GUI testi):** Flutter inline kartın görsel
+  render'ı + giriş kilidi + kırmızı→duraklat + "devam" yakalama (bunlar
+  `flutter analyze`/`test` + widget testleriyle doğrulandı, canlı GUI'de
+  gözle görülmedi); `get_task_status`'un model tarafından çağrılıp
+  uydurmaması (araç kayıtlı + adapter unit-test yeşil; canlı LLM flake
+  olduğu için sohbette denenemedi).
+
+BUG_REPORT.md'de PLAN9/10/11/12 kapatılabilir. Merge/PR/tag + v4.6.0 release
+kullanıcının kararı.
+
+---
+
+# Ek (2026-08-30, devam 44) — v4.6.0 planı onaylandı + Faz G & I uygulandı (branch aynı)
+
+Kullanıcı geçen oturumda büyük özellik için bir plan taslağı yaptırmış, context
+dolunca döndü. Taslak `/codebase-memory` ile uçtan uca doğrulandı (index taze,
+2026-08-30 full) ve düzeltilmiş hâli
+`~/.claude/plans/selam-agents-md-handoff-md-iterative-pearl.md`'ye yazıldı —
+**v4.6.0: "görevler sohbette yaşasın, eşzamanlı & bağımsız"**, 9 faz
+(G, I, A, C, B, D, E, F, H), BUG-PLAN9/10/11/12'yi kapsıyor. Plana ayrıca
+"AGENTS.md kurallarına uyum" + plana-özel Gotcha bölümü eklendi.
+
+**Taslaktan düzeltilen 3 nokta:** (1) BUG-PLAN11 kök sebep yanlış teşhis
+edilmişti — sıra-no→UUID eşlemesi `finishPlanItems`'te zaten doğru; gerçek sorun
+`finishPlanItems`'in yalnızca koşu sonunda çalışması. (2) Section C fazla iş
+sayıyordu — global bypass toggle büyük ölçüde zaten per-task executor'lara
+taşınmış. (3) Section D olay fan-out'u `dispatchTaskEvent` yerine ham `onEvent`
+closure'una takılmalı + `taskloop:paused` olayı yayılmıyor, eklenmeli.
+
+**Bu oturumda uygulanan 2 faz (AGENTS.md kural 5: oturum başına 1-2):**
+
+- **Faz G — `58e95f5`** — durdurunca kısmi çıktıyı koru. Streaming yığınındaki
+  4 `ctxDone` dalı (`drainAgentStream`, `callLLMStream` external + local,
+  `SendCLIMessageStream`) üretilmiş metni atıp yerine yalın "⏹️ Cevap
+  durduruldu." yazıyordu. Yeni `App.persistInterruptedTurn`: kısmi metin varsa
+  `finishStream` yoluyla (stop işaretiyle) kalıcılaştır, yoksa yalnız işaret.
+  `App.stopMarker` işareti `a.t` ile TR/EN. Flutter: `MessagesNotifier`'ın 3
+  `_stopped` dalı artık overlay'i temizlemeden **önce** `refresh()` bekliyor
+  (tek-frame boşluk yok). Test: `TestDrainAgentStream_CtxDone_KeepsPartialReply`.
+  Genel iyileştirme — sadece görevler değil, tüm sohbet durdurmaları.
+- **Faz I — `dd803d6`** — plan maddeleri artımlı işaretleniyor. `finishPlanItems`
+  yalnızca `executePlan`'ın son satırında çalışıyordu → takılan koşuda kart
+  sonsuza dek 0/N. Madde-tamamlama mantığı `syncItemProgress`'e çıkarıldı, her
+  adım-tamamlayan dalga sonunda çağrılıyor (canlı listeyi tekrar okur,
+  idempotent). `finishPlanItems` artık son dalgayı bu helper'la boşaltıp yalnız
+  kalan maddeleri stuck işaretliyor + terminal statü. Test:
+  `TestEngine_PlanExec_ItemsCompleteIncrementally`.
+
+**Doğrulama:** `CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` temiz;
+`go test -tags sqlite_fts5 -race ./internal/{app,taskloop,agent/...,webserver,replcli}`
+tamamı yeşil; `flutter analyze lib/providers/chat_provider.dart` temiz;
+`flutter test test/providers/` 60/60; Rule #8 grep dokunulan `.dart`'ta temiz.
+
+**Sıradaki (plan sırası):** Faz A (sohbet-başına stream kilidi — çekirdek),
+sonra C (sınırsız eşzamanlılık), B (görev-başına provider izolasyonu), D/E/F/H.
+`main` hâlâ v4.2.0 embedded; merge/PR/tag kararı kullanıcıda.
+
+---
+
+# Ek (2026-08-30, devam 43) — 2. canlı planexec turu: 4 yeni bug notu + büyük özellik talebi (branch aynı)
+
+devam 42 fix'lerinden sonra kullanıcı gerçek masaüstü uygulamasıyla ikinci bir
+planexec turu koştu (`~/memo-blog-test`, `hy3:free`). **Sonuç: motor uçtan uca
+çalıştı.** `create_task_md` 6 maddelik `Task.md` yazdı (izin diyaloğu artık
+stabil — BUG-PERM1 çekirdeği çözülmüş görünüyor), planlayıcı 17 KB `Plan.md` +
+6 adım üretti, onay kapısından geçildi, executor koştu. Turun ortasında canlı
+gözlem: **7/13 adım done**, S6.1 çalışıyor. Escalation **2 kez** doğru
+tetiklendi: S3 (login) 3 denemede geçemedi → 3.1/3.2/3.3'e bölündü;
+S6 (uçtan uca test) "Traceback" + 5dk idle → S6.1–S6.6'ya bölündü. Yani
+6→8→13 adım büyümesi = escalation'ın takılan adımı ufak adımlara ayırması,
+tasarım gereği. Zayıf model blog uygulamasında gerçek bir bug bıraktı ve
+düzeltemedi (S6.1 tekrar "Traceback") — model kalitesi, pipeline değil.
+
+**BUG_REPORT.md'ye eklenen 4 yeni not (kod = testten sonra, kullanıcı
+"şimdilik değişiklik yapma" dedi):**
+
+- **BUG-PLAN9** 🟢 — planexec planı yalnızca Görevler sekmesi → task detay
+  ekranından onaylanabiliyor (`_PlanApprovalSection`). Sohbete inline "planı
+  gör / onayla" düşmeli.
+- **BUG-PLAN10** 🟠 (HIGH) — sohbet modeli canlı task durumunu okuyamıyor.
+  `Task.md`'yi okuyup 6 boş kutu görünce **baştan sona uydurma başarısızlık
+  anlatısı** üretti ("döngü hiçbir şey yapmadı", "LLM sağlayıcı yok",
+  "`app.py`/`blog.db` yok") — hepsi yanlış, o sırada 7/13 adım bitmişti.
+  İstenen: `get_task_status` aracı ya da sistem prompt'una özet enjeksiyonu;
+  veri yoksa uydurmasın.
+- **BUG-PLAN11** 🟡 — plan adımları `item_id="1".."6"` (sıra no) taşıyor ama
+  `TaskList.items[].id` **UUID** → `SetItemDone` eşleşmiyor → `Task.md`
+  checkbox'ları hiç işaretlenmiyor, kart sonsuza dek 0/6. Ayrıca aynı anda 4
+  farklı sayaç (kart 0/6, bar 7/13, "Executing 0/6", model "6 boş") + payda
+  büyümesi UI'da açıklanmıyor.
+- **BUG-PLAN12** 🟡 — canlı task aktivitesi (adım başladı/bitti, alt-agent,
+  escalation, plan onayı, handoff doluluğu) sadece Görevler ekranında; sohbete
+  hafif bir aktivite akışı düşmeli. BUG-PLAN9+10'un şemsiye çözümü.
+
+**Kullanıcının büyük özellik talebi (sıradaki iş, henüz plan dosyası yok):**
+sohbetten başlatılan bir task için —
+1. canlı durum **aynı sohbette** görünsün ("şu adım bitti, şuna geçiyorum"),
+   ayrı Görevler ekranı şart olmasın;
+2. task çalışırken o sohbetin girişi kilitli olsun; kullanıcı kırmızı butonla
+   **durdurup** soru sorabilsin, cevabı alıp "devam" yazınca **kaldığı adımdan**
+   sürsün;
+3. durdurunca üretilen sohbet çıktısı **silinmesin** (şu an siliniyor);
+4. task o sohbete bağlı kalsın — yeni sohbet açmak / TG-WP'den alakasız
+   yazışmak çalışan task'ı etkilemesin;
+5. **task başına bağımsız model** — aynı anda biri tamamen local, biri bulut,
+   biri Claude, biri ChatGPT koşabilsin, birbirini etkilemesin. (Altyapının
+   bir kısmı var: `taskRunConfig` her listeye özel router/executor veriyor;
+   eksik: `taskloopRunMu` listeleri birbirine karşı **sıraya sokuyor**, ve
+   model başlarken **global aktif provider**'dan snapshot'lanıyor — v4.5.0
+   `# kodlayıcı:` başlıkları `taskRunConfig`'e bağlı değil.)
+Bu iş için plan modunda keşif başlatıldı (2 Explore ajanı: backend
+eşzamanlılık/yaşam döngüsü + Flutter sohbet/task arayüz bağı).
+
+---
+
+# Ek (2026-08-30, devam 42) — canlı test: izin diyaloğu + auto-permission düzeltmeleri (branch aynı)
+
+devam 41'in canlı testine geçildi. Hedef: web arayüzden (`scripts/run_memo.sh`
+yerine headless backend + gömülü web `:8090`) sohbet üzerinden Memo'ya blog
+sitesi task'ı anlat → `create_task_md` yazsın → planlayıcı modu koşsun.
+Test projesi `~/memo-blog-test/` (Python 3 stdlib blog, AGENTS.md kuralları:
+`# memo-gen` 1. satır, salt'lı hash parola, parametreli SQL). Provider:
+`Özel (OpenAI uyumlu)` (tencent/hy3:free @ api.kilo.ai) — çalışıyor ama tur
+başına ~60-120sn, izin penceresini (60sn) yakalamak zor.
+
+**Bulunan + düzeltilen buglar:**
+
+- **BUG-PLAN4** (`5b08e53` sonrası) — Tasks sekmesindeki kart `onTap`'i eski
+  `_showDetailDialog` modalını açıyordu ("Idle" statü, onay UI yok). Düzeltme:
+  `onTap` artık `TaskDetailScreen` push ediyor; `_showDetailDialog` + 2
+  kullanılmayan import silindi. (`frontend/lib/screens/tasks_screen.dart`)
+
+- **BUG-PERM1** — `create_task_md` / `start_self_driving_task` izin diyaloğu
+  kullanıcı cevap veremeden kapanıyor, backend 60sn sonra
+  `permission request … timed out (60s), auto-denied` logluyor. İki kök sebep,
+  iki commit:
+  - `db31c90` — `permission_dialog.dart`'taki `ref.listen(isSendingProvider)`
+    geçiş handler'ı debounce'suz `Navigator.pop()` çağırıyordu.
+    `isSendingProvider` agentik tool-round sınırında bir frame `false`'a
+    düşüyor (tam da bu araçların izin istediği an) → diyalog anında kapanıyor.
+    Artık her not-sending sinyali (canlı geçiş + ilk build'de zaten false)
+    tek `_scheduleStaleCheck()` ~1.8sn debounce'undan geçiyor; sending'e
+    dönüş timer'ı iptal ediyor.
+  - `b9fc2eb` — `permission_request` event'i ile `isSendingProvider=true`
+    yazımı farklı provider'lardan, ilk frame'de sıra karışabiliyor → stale
+    `false` okunuyor. `_openedAt` + `_minVisible = 2sn` tabanı: stale-check
+    diyalog en az 2sn ekranda kalmadan asla ateşlenmiyor (1.8sn debounce'un
+    üstüne). Gerçekten biten tur yine oto-kapanıyor, sadece birkaç sn sonra.
+  - Canlı doğrulama: yeni build'de diyalog "0:59" sayaçla stabil göründü
+    (eskiden anında flash-close). 4 `permission_dialog_test` yeşil.
+
+- **auto-permission "açıkken hâlâ soruyor"** (`e43627e`) — iki boşluk:
+  1. `Pipeline.autoPermission` `Executor.RunStream`'de bir kez snapshot
+     alınıyordu → uzun agentik döngüde (tek turda çok araç çağrısı) mod
+     ortada açılınca sonraki tura kadar etkisiz. Artık izin kontrolü canlı
+     getter'ı da (`autoPermissionFn` → `Executor.GetAutoPermission`)
+     danışıyor.
+  2. `permissionWaitFn`'de zaten park etmiş istek, kullanıcı modu açsa bile
+     60sn oto-deny'a kadar bloke kalıyordu. `SetAutoPermission(true)` artık
+     `e.pendingPerms`'i drenajlıyor, her bekleyene `AllowOnce` gönderiyor.
+  Mod kapalıyken davranış değişmedi.
+
+**Not (bug değil):** Gömülü tarayıcı panelinde (Browser pane) Flutter web
+canvas'ı arka planda throttle olabiliyor — sayaç donuk görünüyor, tık geç
+işleniyor. Gerçek masaüstü uygulamasında test daha güvenilir.
+
+**Örnek Task.md** (planlayıcı modu, onay kapısı açık — BUG-PLAN4 testi için):
+`# bildirim: önemli` / `# mod: planlayıcı` / `# hafıza: kapalı` başlıkları +
+intro + 6 madde (init_db şema, POST /signup, POST /login cookie, POST /new
+auth'lu, GET / listeleme, curl uçtan uca). Şema: `internal/taskloop/schema.go`
+`TaskMdSchemaDoc()`.
+
+**Doğrulama:** `go build -tags sqlite_fts5 ./...` temiz; `go test -tags
+sqlite_fts5 ./internal/app/ ./internal/agent/...` yeşil; `flutter test
+test/widgets/permission_dialog_test.dart` 4/4; `flutter analyze` dokunulan
+dosyada temiz. Web yeniden build + `internal/webserver/webapp/`'e deploy +
+backend restart (pid 696802).
+
+**Sıradaki:** yeni build'le temiz bir planexec turu (onay kapısı → düzenlenebilir
+Plan.md → Approve & run → adımların koşması), yeni bug varsa BUG_REPORT.md'ye.
+BUG_REPORT.md'deki tam-doğrulanmış BUG-PLAN1/2/3/5/6/7/8 kayıtları silinebilir.
+v4.5.0 merge/PR/tag kullanıcının kararı.
+
+---
+
+# Ek (2026-08-30, devam 41) — v4.5.0 Planlayıcı/Uygulayıcı modu: 7 fazın tamamı (branch aynı)
+
+Kullanıcı iki tur brainstorm sonrası planı onayladı ("devam et durma hiçbir
+fazda"). Plan dosyası: `~/.claude/plans/imdi-bu-fikiri-ba-arabilememiz-
+ticklish-island.md`. Repo spec: `docs/superpowers/specs/2026-08-30-planner-
+executor-mode.md`.
+
+**Fikir:** Task loop'u rol sınırında böl. Planlayıcı (bir salt-okunur ajan
+turu) işi küçük, kendi kendini doğrulayan adımların DAG'ına böler → `Plan.md`
+→ onay kapısı. Uygulayıcı (coder) her adımı **taze ephemeral** turda koşar →
+context hiç büyümez (85% handoff sorunu tasarımla çözülür). Doğrulayıcı
+deterministik (build/test/grep) + fuzzy (LLM). Escalation valfi: takılan adımı
+bulut yeniden planlar; offline'da `waiting-escalation` kuyruğu + retry.
+"Online planla, offline uygula." Rol→model: Task.md header → AGENTS.md
+`<!-- memo:taskloop … -->` satırı → Settings → aktif provider. Eski `worker`
+modu byte-for-byte değişmedi; `planlayıcı` per-liste opt-in.
+
+**Commit'ler (branch'te `989b9a2..169f0fa`):**
+- `6ba04bb` schema unit — `internal/taskloop/schema.go` (doc/template/render),
+  `ParseTaskMd` (Headers map, Indent, `---` kesme), `create_task_md`/
+  `edit_task_md` araçları, sistem prompt'a şema
+- `1a29cc9` Faz A — `plan.go` (Plan/PlanStep/AcceptanceCheck, Normalize+cycle,
+  ReadySteps, Render/ParsePlanMd JSON-blok), store `Mode`+plan persist+yeni
+  statüler
+- `d2a29e4` Faz A — engine mod dalı, `WithPlanner`, `runPlanExec`/
+  `ApprovePlan`/`executePlan`, checkbox mirror
+- `9409e57` Faz A — `resolveRoleModels`/`persistRoleChoiceToRules`,
+  `planTask` (salt-okunur planlayıcı turu), config alanları, app.go wiring
+- `c8caddc` Faz B — gerçek `runPlanStep` (taze ephemeral coder turu),
+  `acceptancecheck` (command/grep bash -lc + fuzzy LLM), paralel scheduler
+  (`MaxParallelSteps`), `state.md` handoff + compactor
+- `f8d3d65` Faz C — escalation: `escalateStep`, `Plan.ReplaceStep`,
+  `PendingEscalation` offline kuyruğu + `isOfflineErr` + retry resume,
+  `.x.y` derinlik guard
+- `04bcaf5` Faz D — `RunningTaskInfo` gauge alanları (Mode/PlanSteps*/
+  StateDoc*), `contextBudgetFor(provider)` (apiContextBudget genelleştirme)
+- `b5ce156` Faz E — `Engine.ApplyConfig` (runtime-mutable tunables),
+  `/api/taskloop/settings` GET/PUT, `/api/tasklists/{id}/plan` GET +
+  `/approve-plan` POST, `# mod: planlayıcı` header wiring
+- `d491ff7` Faz G — `TaskMemory` toggle: `withTaskMemoryDisabled` ctx →
+  `buildMessagesForSession` RAG bloğunu atlar (worker yolu; planexec zaten
+  memory-free)
+- `169f0fa` Faz F — Flutter: Settings sekmesi gerçek kontroller (rol model
+  dropdown'ları / granülerlik / toggle'lar), create dialog mod SegmentedButton,
+  detay ekranı düzenlenebilir Plan.md onayı + adım/handoff gauge; `mode` +
+  `PUT .../plan` (SaveTaskPlanMd) backend glue; RunningTaskInfo model + l10n
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz. `go test
+./...` **tamamı yeşil** (whisper flake dahil). `-race ./internal/{taskloop,
+app,webserver,config}` temiz. `flutter analyze lib/` → sadece 5 pre-existing
+info (dokunulmayan dosyalar). `flutter test` → 310 pass. Rule #8 grep
+dokunulan `.dart`'larda temiz. ~40 yeni test.
+
+**Bilinen v1 sınırları (spec'te yazılı, follow-up):** verifier+compactor
+`callLLMForReview` (aktif provider) kullanıyor, rol modeli değil;
+`start_self_driving_task` interaktif "local mi bulut mu" sorusunu henüz
+sormuyor (header/AGENTS.md/Settings'e dayanıyor); paralel adımlar planlayıcının
+DAG'ına güveniyor (dosya çakışması guard'ı yok); `callLLMForReview` local
+modelle bozuk (pre-existing 2026-07-05) → fuzzy check/compaction için external
+provider şart.
+
+**Sırada:** kullanıcının canlı testi (Gemini/Claude planner + local coder,
+`~/memo-selftest-site/Task.md` + `# mod: planlayıcı`). Sonra merge/PR +
+v4.5.0 release kararı kullanıcıda. `main` hâlâ v4.2.0 embedded.
+
+---
+
+# Ek (2026-08-30, devam 40) — Task loop artık sohbetten başlatılabiliyor (branch aynı)
+
+Kullanıcı: "chat'ten 'Task.md'ye başla' demem yeterli olmalı; Memo bölye bir
+task özelliği olduğunu bilsin; /codebase-memory kullan." Kod tarandı — v4.4.0'da
+task loop'a **sohbetsel giriş yoktu**: sadece Flutter Görevler sekmesi (elle
+madde) + REST + Telegram/WhatsApp'tan **çalışan** görevi yönetme. `task_md_path`
+Flutter'da hiç gönderilmiyordu, ajanda `create_task` tool'u yoktu, sistem
+prompt'u özellikten bahsetmiyordu.
+
+**Yapıldı:**
+
+1. **`c5bbeda`** — `start_self_driving_task` ajan tool'u (`internal/agent/
+   tools/selfdrivingtask.go` + `tools.go` kaydı, sadece full registry →
+   normal chat + WhatsApp self-chat + Telegram). Args: `task_md_path`
+   (mutlak/göreli/`~`), `title?`. `create_routine` gibi **chat/hedef parametresi
+   YOK** — liste, agent turu'nun koştuğu sohbete bağlanır. Yeni
+   `currentChatIDCtxKey`: `callAgentStream` `sessionID`'yi ctx'e ekliyor (task
+   worker turu HARİÇ — nested task loop olmasın). `StartSelfDrivingTaskFromChat`
+   (`internal/app/selfdriving_task_tool.go`): ctx'te chat yoksa / ajan sohbeti
+   değilse net hata; `CreateTaskListFromTaskMd` + `StartTaskList(context.
+   Background())` (turu aşar). `buildAgentSystemPrompt`'a "Otonom Görev Döngüsü"
+   bölümü — model artık maddeleri elle ezmek yerine tool'u çağırıyor, durum
+   uydurmuyor. Test: 3 case (chat yok / non-agent / agent chat'te kurar+başlatır).
+   Orchestra çok-uzmanlı yol bilinçli dışarıda.
+2. **`5282cf2`** — Flutter: Görevler sekmesi "yeni liste" dialog'una opsiyonel
+   **"Task.md yolu"** alanı. Doluysa elle madde satırları gizlenir, istek
+   `items` yerine `task_md_path` yollar, başlık boş kalabilir. `createTaskList`
+   (api_client + provider) opsiyonel `taskMdPath` named param aldı; pozisyonel
+   çağrılar değişmedi. 3 yeni l10n key TR+EN.
+
+**Doğrulama:** `go build/vet -tags sqlite_fts5 ./...` temiz. `go test -tags
+sqlite_fts5 ./...` → tek fail `internal/whisper/TestGetStatus_NewServer`
+(pre-existing, `git stash` ile doğrulandı — bu ortamda porta bağlı, kodla
+ilgisiz). `-race ./internal/{app,agent...,taskloop}` temiz. `flutter analyze
+lib/` → sadece 5 pre-existing info (dokunulmayan dosyalar). `flutter test` →
+310 pass. Rule #8 grep dokunulan `.dart`'larda temiz.
+
+**Bilinen sınır:** Telegram/WhatsApp self-chat genelde ajan sohbeti (proje
+yolu) DEĞİL → oradan `start_self_driving_task` "ajan sohbeti gerekli" hatası
+verir. Birincil akış masaüstü/web ajan sohbeti. Telegram'dan **çalışan**
+görevi yönetmek (`task_change` vs.) zaten çalışıyordu, o değişmedi.
+
+**Sırada:** kullanıcı canlı denesin (Gemini/Claude, free model değil): ajan
+sohbeti aç → proje klasörü bağla → "`~/memo-selftest-site/Task.md`'ye başla"
+de → tool çağrılmalı, görev Görevler sekmesinde görünmeli, checkbox mirror +
+`[parallel]` maddede sub-agent + bitişte model raporu. Sonra merge/PR + v4.4.0
+release kullanıcının kararı.
+
+---
+
+# Ek (2026-08-29, devam 39) — bitiş bildirimi artık modelin kendi raporu (branch aynı)
+
+Kullanıcı: "telegramdan sadece 'task bitti' geldi; bitince modelin kendisi
+detaylı rapor sunsun, hardcoded olmasın."
+
+**Yapıldı (`051c71c`):**
+- `taskloop.Notification` + `Body` alanı; set ise sender'lar (Telegram/WhatsApp/
+  app) onu birebir yolluyor.
+- `tasklist:finished`'te `dispatchTaskFinishReport` engine goroutine'i DIŞINDA
+  koşuyor → `generateTaskReport`: görevin KENDI sohbetinde (tüm worker turları
+  context'te) `SendMessageStreamTo` ile kapanış raporu ister, status chunk'larını
+  (agent_event JSON, memory_used sayısı) filtreler. Fallback: transcript+madde
+  metadata'sından tool'suz özet; son çare `factualTaskRollup` ("2/3 tamamlandı,
+  1 takıldı: …"). Hiçbir durumda sabit per-event string değil.
+- `buildTaskLoopRunWorker` aynı chunk filtresini uyguluyor → chief artık
+  worker çıktısına karışan agent_event JSON / memory sayısını görmüyordu (yan
+  fayda, pre-existing kirlilik).
+- Diğer kısa bildirimler (başladı/takıldı/limit) tek satır kaldı — sadece
+  bitiş rapora döndü.
+
+**Canlı doğrulama:** OpenCode Zen ile biten Task.md artık yapılandırılmış TR
+rapor üretiyor: hangi maddeler bitti, hangi dosyalara dokunuldu, repo kuralı
+(`// generated`) neden atlandı, commit davranışı. İlk denemede `24{"type":
+"final_response"...}` kirliliği vardı (memory_used chunk'ı + agent_event) →
+Finish­Reason filtresiyle çözüldü, temiz.
+
+**Bulunan pre-existing bug (kapsam dışı, düzeltilmedi):** local model + chief
+review yolunda `callLLMForReview` `model 'local-model' not found` (400) veriyor —
+2026-07-05 taskloop'tan beri var, external provider ile sorun yok.
+
+**Test:** `go test -tags sqlite_fts5 ./...` exit 0, 49 paket, 0 fail. `-race`
+temiz. Branch 18 commit.
+
+---
+
+# Ek (2026-08-29, devam 38) — v4.4.0 canlı simülasyon: 4 bug bulundu+düzeltildi (branch aynı)
+
+Kullanıcı "backend+frontend başlat, browser'da aç, sahte klasör aç, gerçek
+simülasyon yap, bug bul düzelt" dedi. Yapıldı: `flutter build web` →
+`internal/webserver/webapp/`'e kopyalandı (gitignore'lu, commit yok), backend
+`--headless --port 8090` başlatıldı, `$SC/fakeproj/` (kendi AGENTS.md kuralıyla:
+"her dosya `// generated` ile başlasın") + `Task.md`. Browser görsel compositing
+bu ortamda çalışmıyor ama Flutter web app boot etti, API çağrıları 200 (network
+log doğrulandı). Frontend zaten 310 test + analyze temiz.
+
+**Bulunan + düzeltilen buglar (`f270198`):**
+
+1. **KRİTİK — bypass worker'a ulaşmıyordu.** Worker artık per-task executor
+   (`taskRunConfig.exec`) üzerinden koşuyor ama engine'in `setBypass` callback'i
+   sadece global `a.agentExecutor`'ı çeviriyordu → her `write_file` 60sn izin
+   beklemesine düşüp timeout. **Fix:** `buildTaskRunConfig` artık
+   `exec.SetBypassPermissions(true)` çağırıyor (görevi başlatmak = onay).
+2. **`classifyProviderErr` agent-içi hatayı provider hatası sanıyordu.**
+   "Agent execution cancelled (permission timeout)" içinde "timeout" var →
+   `failTransient` → self-heal sonsuz döngü. **Fix:** erken guard, agent-içi
+   string'ler (`permission wait cancelled`, `execution cancelled`,
+   `tool call rejected`, `iteration limit`) → `failOther`; transient
+   listesinden çıplak "timeout" çıkarıldı.
+3. **Task.md checkbox mirror hiç bağlanmamıştı.** `MarkItemDone` vardı ama
+   çağıran yoktu → biten görev `- [ ]`'leri işaretsiz bırakıyordu. **Fix:**
+   `TaskItem.Line` alanı + `Store.SetItemLine`; `CreateTaskListFromTaskMd`
+   satır no'larını kaydediyor; engine `SetItemDone` yan etkisi olarak
+   `MarkItemDone(TaskMdPath, item.Line)` çağırıyor (best-effort).
+4. **`waiting-user` tanımlıydı ama ulaşılamıyordu.** Self-heal auth hatasını
+   reddedince (tüm provider'lar tükendi) engine artık listeyi `waiting-user`'a
+   park ediyor, madde `pending`'e döner (task_resume ile devam), `failed`
+   yerine. App `taskloop:waiting_user`'da tükenmiş provider snapshot'ını
+   temizliyor → resume taze snapshot alıyor.
+
+**Bug OLMAYAN (model kalitesi):** `hy3-free` / free OpenCode Zen chief
+çağrısına boş dönüyor ve bazen dosyayı yazmadan "yazdım" diyor → chief retry
+edip madde stuck oluyor. Zayıf modelde beklenen; Gemini/Claude ile düzgün
+çalışır. Mimari sağlam.
+
+**Canlı doğrulanan:** kendi AGENTS.md'li fake projede 2 maddeli Task.md
+tamamlanıyor, iki checkbox da `[x]` oluyor, üretilen dosya proje kuralına
+uyuyor (`// generated` ile başlıyor), bildirim seviyesi filtresi (`önemli` vs
+`her-şey`) doğru, `/api/tasks/running` + `/api/tasks/{id}/skip` çalışıyor,
+`skip` maddeyi "kullanıcı tarafından atlandı" ile stuck yapıp sıradakine
+geçiyor.
+
+**Test:** `go test -tags sqlite_fts5 ./...` → exit 0, 49 paket ok, 0 fail.
+`-race` ile taskloop+app temiz. Branch 15 commit.
+
+**Kalan (değişmedi):** merge/PR + v4.4.0 release kullanıcının kararı; browser
+görsel testi bu ortamda yapılamadı (compositing yok) ama app fonksiyonel.
+
+---
+
+# Ek (2026-08-29, devam 37) — Self-Driving Memo v4.4.0: 8 task'ın tamamı (branch `feat/self-driving-memo-v4.4.0`)
+
+Kullanıcı `/brainstorm` benzeri bir tur istedi (skill yüklü değildi, elle
+yapıldı): plan+spec okundu, planın "zaten var" sandığı 6 API'nin gerçekte
+olmadığı 3 Explore + 1 Plan agent'la tespit edildi, düzeltilmiş plan
+`~/.claude/plans/`'e yazılıp onaylandı. Kullanıcı kararları: **tam 8 task**,
+sub-agent = **tek yazar + paralel salt-okunur**, **tam otonom self-config
+(yıkıcı dahil, sadece bildir)**, Task.md = ayna / JSON = source-of-truth,
+memo-system skill'i **silme koruması YOK**, Telegram/WhatsApp kontrolü =
+**explicit focus** (`task_change` ile).
+
+**Branch'te 13 commit (`09acc45..5e93684`), hepsi test-yeşil.** `main` v4.2.0
+embedded — release ayrı karar (memo-release skill). PR/merge açılmadı
+(kullanıcı "yeni branch" dedi, merge demedi).
+
+## Ne yapıldı (task task)
+
+1. **`be880be`** — `internal/taskloop/taskmd.go`: `ParseTaskMd` (checkbox +
+   `# bildirim:` header), `MarkItemDone` (in-place `[ ]`→`[x]`), `ReadRules`
+   (AGENTS.md>CLAUDE.md>rules.md>memo.md). `NotifyLevel` tipi burada.
+2. **`f182836`** — `memo-system` skill `go:embed` (`internal/skills/embed.go`
+   + `memo-system/SKILL.md`); `skill.MaterializeEmbedded` açılışta yoksa
+   `data/skills/`'e yazar, varsa dokunmaz. Guard yok.
+3. **`c2bb486`+`f82d212`+`3815371`** — Store: `NotifyLevel`+`TaskMdPath`
+   alanları, doğrulanan status enum (`idle|planning|executing|waiting-limit|
+   waiting-user|paused|done|failed|cancelled`), `loadAll` restart recovery
+   (`waiting-*` korunur). Engine: `opts ...EngineOption`, `planning` fazı
+   (RuleReader + memo-system guidance → preamble), `done`/`failed` ayrımı.
+   `CreateTaskListFromTaskMd` + `POST /api/tasklists` `task_md_path` alanı.
+   `Create` imzası bozulmadı (`CreateWithMeta` eklendi).
+   **Değişen test:** `TestEngineStuckAfterMaxRounds` artık `failed` bekliyor.
+4. **`abd5157`+`2590d58`+`2341120`** — Per-task provider (risk #1):
+   `agent.NewTaskExecutor`/`ActiveRouter`, `taskRunConfig` ctx'te,
+   `callAgentStream` yeni dal SADECE `taskRunConfigFromCtx(ctx)!=nil` iken;
+   nil ise interaktif yol aynen. `healTaskProvider` (401/5xx→provider geç,
+   429→geçme, global `activeProviderName` asla yazılmaz).
+   `taskloop.classifyProviderErr`/`IsRateLimitErr`/`IsAuthErr`.
+   Planning-time self-config: `WithPlanConfig` → LLM `{provider,model,effort,
+   orchestra}` → `applyPlanConfig`. `config.TaskLoopConfig{PlanningSelfConfig,
+   SubAgents}` default true. **`emitEvent` artık nil-safe.**
+5. **`5f9c30e`** — `RetryScheduler` (Arm/Cancel/Pending, nil-safe).
+   `processItem` 3. dönüş değeri `suspended`: 429'da item→pending, list→
+   `waiting-limit`, `taskloop:waiting_limit` (retry-after parse'lı), timer
+   10 dk sonra `Engine.Start` ile kaldığı yerden. Startup'ta `waiting-limit`
+   listeler re-arm. `Engine.Stop` bekleyen timer'ı iptal eder.
+6. **`b570933`** — `SubAgentOrchestrator.Spawn` (risk #2): faz-1 tek `coder`
+   (>1 → hata), faz-2 paralel salt-okunur (`analyzer/reviewer/test-runner`,
+   sem=3). `agent.NewReadOnlyRegistry` (mutating tool yok +
+   `run_command_readonly` allowlist — syscall sandbox DEĞİL, doküman edildi).
+   `agent.NewSubAgentExecutor` (efemer, session yok). `appSubAgentRunner`:
+   çıplak system+user, RAG/memory/persona yok. `resolveSubAgentSpecs`
+   SubRole→Orchestra rol map. `shouldSpawn` heuristik. `config.TaskLoop.
+   SubAgents` gate.
+7. **`635ecc1`** — `taskloop.NotifyBus` (seviye filtreli fan-out; app event
+   bus + Telegram owner + WhatsApp self-chat, bağımsız/best-effort).
+   `dispatchTaskEvent` engine event → Notification. `runtime.go`:
+   `Engine.Runtime`/`RunningTasks` (faz, current item, elapsed, sub-agent
+   rolleri). `Engine.SkipCurrent`. `App.handleTaskControl` (`task_list`/
+   `task_change <id|no>`/`task_exit`/`task_pause|resume|cancel`; focus'ta
+   `dur|devam|atla|durum` + doğal dil enjeksiyon). Telegram+WhatsApp
+   handler'larına slash-command'dan SONRA eklendi; focus yoksa pass-through.
+   REST: `GET /api/tasks/running` + `POST /api/tasks/{id}/{pause,resume,
+   cancel,skip,inject}`. FullBridge +4 metod.
+8. **`5e93684`** — Flutter: `widgets/task_status.dart` (`TaskStatusBadge` +
+   `taskItemStatusIcon`, yeni fazlar), `screens/task_detail_screen.dart`
+   (canlı: faz/ilerleme/current item/elapsed/sub-agent chip'leri +
+   pause/resume/cancel/skip + inject kutusu), `RunningTasksNotifier`
+   (3sn poll), `api_client` 6 metod, `RunningTaskInfo` model, ~24 `task_*`
+   l10n key TR+EN. `tasks_screen.dart` shared widget + tüm aktif fazları
+   "running" sayıyor + canlı-görünüm butonu.
+
+## Doğrulama
+
+- `CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` temiz.
+- `go test -tags sqlite_fts5 ./...` → tüm paketler PASS (exit 0).
+- `-race` ile `./internal/{taskloop,app,agent,agent/tools,skill,webserver,
+  config}` PASS.
+- `flutter analyze lib/` → sadece dokunulmayan dosyalarda 5 pre-existing
+  `use_build_context_synchronously` info'su (AGENTS.md'nin kabul ettiği
+  gürültü). `flutter test` → 310 PASS (2 yeni widget testi dahil).
+- Rule #8 grep dokunulan `.dart` dosyalarında temiz.
+
+## Bilinçli kapsam dışı (planda yazılı)
+
+İki görevin gerçek paralel worker turu (global `a.streamMu` single-flight),
+canlı Task.md yeniden-okuma, cross-vendor router fallback zinciri, per-task
+Orchestra izolasyonu (Orchestra config process-global — bir görev açarsa
+kullanıcının interaktif sohbetlerini de etkiler, doküman edildi), memo-system
+silme guard'ı, backend Türkçe string l10n'ı.
+
+## Sırada
+
+- Kullanıcı isterse PR/merge (kendi kararı). Sonra v4.4.0 release =
+  `memo-release` skill (7 versiyon yeri, EN+TR notlar, `version.json` beacon
+  en son). `main` şu an v4.2.0 embedded.
+- Manuel smoke: planın "Verification" bölümündeki 7 adım (Task.md ver →
+  planning→executing→checkbox mirror; provider auth fail → geç; 429 →
+  waiting-limit → resume; Telegram `task_change` → doğal dil; `[parallel]`
+  item → ≤3 sub-agent 1 yazar; `data/skills/memo-system/` sil → restart'ta
+  geri gelir).
+
+---
+
 # Ek (2026-08-28, devam 36) — OpenCode Zen tool-call leak'i + boş sohbette config uyarı banner'ı (branch `fix/toolcall-leak-and-config-banner`)
 
 Kullanıcı iki screenshot gösterdi: (1) Memo "Ben Claude'um" diyor, (2) chat'e

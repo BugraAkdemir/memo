@@ -267,7 +267,12 @@ class WebSearchModeNotifier extends StateNotifier<bool> {
 
   Future<void> _init() async {
     try {
-      state = await _api.getWebSearchEnabled();
+      final enabled = await _api.getWebSearchEnabled();
+      // Disposed while the GET was in flight — app_shell.dart invalidates
+      // this provider on the auth-gate transition, and the replacement
+      // notifier re-runs this. Same story as AgentEnabledNotifier._init.
+      if (!mounted) return;
+      state = enabled;
     } catch (e) {
       debugPrint('chat: web search init error: ${FriendlyError.describeGeneric(e)}');
       // leave default (off) on error
@@ -278,6 +283,7 @@ class WebSearchModeNotifier extends StateNotifier<bool> {
     final next = !state;
     try {
       await _api.setWebSearchEnabled(next);
+      if (!mounted) return; // disposed mid-request — see _init
       state = next;
     } catch (e) {
       _ref.read(errorMessageProvider.notifier).state =
@@ -556,6 +562,10 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         if (_generation != myGeneration) return;
         if (_stopped) {
           _stopped = false;
+          // Clear the overlay synchronously (before any await) — touching
+          // ref after `await refresh()` can hit a disposed/rebuilt notifier
+          // instance. The backend now persists the partial reply (Faz G), so
+          // refresh() repaints it from the message list.
           ref.read(streamingContentProvider.notifier).state = '';
           await refresh();
           return;
@@ -660,6 +670,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
         if (_stopped) {
           _stopped = false;
+          // Clear synchronously before awaiting — see the matching comment in
+          // the CLI branch above. Backend persists the partial (Faz G).
           ref.read(streamingContentProvider.notifier).state = '';
           ref.read(streamingThinkingProvider.notifier).state = '';
           ref.read(streamingAgentEventsProvider.notifier).state = [];
@@ -832,6 +844,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
         if (_stopped) {
           _stopped = false;
+          // Clear synchronously before awaiting — see the matching comment in
+          // the CLI branch above. Backend persists the partial (Faz G).
           ref.read(streamingContentProvider.notifier).state = '';
           ref.read(streamingThinkingProvider.notifier).state = '';
           ref.read(streamingAgentEventsProvider.notifier).state = [];

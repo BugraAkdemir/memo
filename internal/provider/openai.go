@@ -42,7 +42,16 @@ func newOpenAIProvider(cfg ProviderConfig) (*openAIProvider, error) {
 		model:    cfg.Model,
 		apiKey:   cfg.APIKey,
 		client: &http.Client{
-			Timeout: 120 * time.Second,
+			// The non-streaming path — used by the agent pipeline
+			// (pipeline.go calls ChatCompletion, not ...Stream), so this
+			// also bounds every planner / coder / escalator turn in the
+			// Self-Driving loop. 120s was too tight: a big planning call to a
+			// slow or queued endpoint returns one large JSON body with no
+			// progress signal, and 120s killed it mid-generation (the
+			// planner then failed the whole list). 300s still fails a
+			// genuinely dead endpoint; the loop's own retry covers a
+			// transient one.
+			Timeout: 300 * time.Second,
 			Transport: &http.Transport{
 				MaxIdleConns:        10,
 				MaxIdleConnsPerHost: 10,
@@ -50,16 +59,20 @@ func newOpenAIProvider(cfg ProviderConfig) (*openAIProvider, error) {
 			},
 		},
 		// No overall Timeout — streaming responses are long-lived and the request
-		// context bounds total duration. But ResponseHeaderTimeout guards the
-		// failure mode that froze Orchestra: an endpoint that accepts the TCP
-		// connection and then never sends a response. Without it the chief's
-		// planning call hung silently until the 300s context timeout.
+		// context bounds total duration. ResponseHeaderTimeout still guards the
+		// "connection accepted, then silence" failure mode, but at 240s rather
+		// than 90s: a reasoning model doing long hidden thinking, or a request
+		// queued behind other traffic, legitimately needs more than 90s to send
+		// its first byte on a big planning prompt (the Self-Driving planner hit
+		// this on a queued free endpoint). A genuinely dead endpoint still fails
+		// in 4 minutes. Mid-stream, the caller's own idle guard takes over (see
+		// the Self-Driving loop's drainStreamIdle).
 		streamCl: &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConns:          10,
 				MaxIdleConnsPerHost:   10,
 				IdleConnTimeout:       90 * time.Second,
-				ResponseHeaderTimeout: 90 * time.Second,
+				ResponseHeaderTimeout: 240 * time.Second,
 			},
 		},
 	}, nil

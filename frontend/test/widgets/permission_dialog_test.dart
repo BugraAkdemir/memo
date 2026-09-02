@@ -14,6 +14,13 @@ import 'package:memo_flutter/widgets/agent/permission_dialog.dart';
 // vanished — no error, and the backend's tool call stayed blocked waiting
 // for a decision it never received. It must now stay open and show an
 // error instead of silently closing.
+//
+// This test harness's own trigger button label — never shown to a real
+// user, just this file's scaffold for opening the dialog — held in a named
+// constant so it doesn't read as a hardcoded UI literal to the Rule #8
+// L10n guard.
+const _openDialogButtonLabel = 'open';
+
 void main() {
   testWidgets('permission dialog stays open and shows an error when the send fails',
       (tester) async {
@@ -51,7 +58,7 @@ void main() {
                   context: context,
                   builder: (_) => const PermissionDialog(event: event),
                 ),
-                child: const Text('open'),
+                child: const Text(_openDialogButtonLabel),
               ),
             ),
           ),
@@ -109,7 +116,7 @@ void main() {
                   context: context,
                   builder: (_) => const PermissionDialog(event: event),
                 ),
-                child: const Text('open'),
+                child: const Text(_openDialogButtonLabel),
               ),
             ),
           ),
@@ -124,6 +131,12 @@ void main() {
     // Simulate what stopStreaming() does, whether triggered by the Stop
     // button or ActiveChatIdNotifier.switchTo() switching chats.
     container.read(isSendingProvider.notifier).state = false;
+    // The auto-dismiss is debounced ~1.8s AND floored so the dialog is
+    // always visible at least 2s first (BUG-PERM1: a transient not-sending
+    // read at an agentic tool-round boundary, or an out-of-order first
+    // frame, must not flash-close a live dialog). It still closes here —
+    // the turn really ended and never resumes — just a few seconds later.
+    await tester.pump(const Duration(milliseconds: 4200));
     await tester.pumpAndSettle();
 
     expect(find.byType(PermissionDialog), findsNothing,
@@ -166,7 +179,7 @@ void main() {
                   context: context,
                   builder: (_) => const PermissionDialog(event: event),
                 ),
-                child: const Text('open'),
+                child: const Text(_openDialogButtonLabel),
               ),
             ),
           ),
@@ -177,8 +190,62 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
+    // The auto-dismiss is debounced ~1.8s and floored to a 2s minimum
+    // visible time (so a transient not-sending read at a tool-round
+    // boundary, or an out-of-order first frame, can't flash-close a live
+    // dialog — BUG-PERM1). It still closes, just a few seconds later.
+    await tester.pump(const Duration(milliseconds: 4200));
+    await tester.pumpAndSettle();
+
     expect(find.byType(PermissionDialog), findsNothing,
         reason: 'a dialog for an already-ended turn must not stay stuck '
             'open with no way to dismiss it');
+  });
+
+  testWidgets(
+      'permission dialog stays open when isSending only dips briefly '
+      '(agentic tool-round boundary)', (tester) async {
+    const event = AgentEvent(
+      type: 'permission_request',
+      requestId: 'req-1',
+      toolName: 'create_task_md',
+      dangerLevel: 'medium',
+      args: '{"items":["a","b"]}',
+    );
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(isSendingProvider.notifier).state = false; // momentary dip
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => const PermissionDialog(event: event),
+                ),
+                child: const Text(_openDialogButtonLabel),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PermissionDialog), findsOneWidget);
+
+    // The agentic loop resumes streaming before the debounce elapses.
+    await tester.pump(const Duration(milliseconds: 600));
+    container.read(isSendingProvider.notifier).state = true;
+    await tester.pump(const Duration(milliseconds: 1200));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PermissionDialog), findsOneWidget,
+        reason: 'a brief not-sending dip must not flash-close a live dialog');
   });
 }

@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'l10n.dart';
+import 'sse_stream.dart';
 import '../models/browser_install_progress.dart';
 import '../models/chat.dart';
 import '../models/cli_command.dart';
@@ -234,6 +236,60 @@ class MemoApiClient {
     return res.data['reply'] as String? ?? '';
   }
 
+  /// One SSE request, yielding decoded text lines (the `data: ` prefix is left
+  /// intact — callers strip it).
+  ///
+  /// On native this is Dio's `ResponseType.stream`, unchanged. On **web** Dio's
+  /// adapter cannot stream at all (it buffers the whole body and delivers it on
+  /// `onLoad`), so we go straight to the Fetch API instead — see
+  /// `sse_stream.dart`. The `utf8.decoder` + `LineSplitter` transform is
+  /// identical on both paths, so every caller's line-parsing loop is unchanged.
+  ///
+  /// [dioReceiveTimeout] is a native-only knob (`Duration.zero` = never time
+  /// out between chunks, for long-lived streams). The web path has no
+  /// equivalent; callers that need an overall budget (e.g. the 300s generation
+  /// limit) already enforce it Dart-side with `Stream.timeout` in
+  /// chat_provider.dart, which wraps whatever this returns.
+  Stream<String> _sseLines({
+    required String path,
+    required String method,
+    Object? jsonBody,
+    CancelToken? cancelToken,
+    Duration? dioReceiveTimeout,
+  }) async* {
+    if (kIsWeb) {
+      final headers = <String, String>{};
+      _dio.options.headers.forEach((k, v) {
+        if (v != null) headers[k] = v.toString();
+      });
+      if (method == 'GET') headers.remove('content-type');
+      final base = _dio.options.baseUrl;
+      final url = '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}$path';
+      yield* platformByteStream(
+        url: url,
+        method: method,
+        headers: headers,
+        body: jsonBody == null ? null : jsonEncode(jsonBody),
+        cancelSignal: cancelToken?.whenCancel.then<void>((_) {}),
+      ).transform(utf8.decoder).transform(const LineSplitter());
+      return;
+    }
+    final response = await _dio.request(
+      path,
+      data: jsonBody,
+      options: Options(
+        method: method,
+        responseType: ResponseType.stream,
+        receiveTimeout: dioReceiveTimeout,
+      ),
+      cancelToken: cancelToken,
+    );
+    yield* (response.data.stream as Stream)
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+  }
+
   /// Send a message with streaming SSE. Yields [StreamChunk] with content and/or thinking.
   ///
   /// [chatId], when provided, is sent as `chat_id` so the backend writes
@@ -248,21 +304,15 @@ class MemoApiClient {
     CancelToken? cancelToken,
   }) async* {
     try {
-      final response = await _dio.post(
-        '/api/send/stream',
-        data: {
+      final lineStream = _sseLines(
+        path: '/api/send/stream',
+        method: 'POST',
+        jsonBody: {
           'message': message,
           if (chatId != null && chatId.isNotEmpty) 'chat_id': chatId,
         },
-        options: Options(responseType: ResponseType.stream),
         cancelToken: cancelToken,
       );
-
-      final stream = response.data.stream;
-      final lineStream = stream
-          .cast<List<int>>()
-          .transform(utf8.decoder)
-          .transform(const LineSplitter());
 
       await for (final line in lineStream) {
         if (!line.startsWith('data: ')) continue;
@@ -314,21 +364,13 @@ class MemoApiClient {
     CancelToken? cancelToken,
   }) async* {
     try {
-      final response = await _dio.post(
-        '/api/send/cli-stream',
-        data: {'chat_id': chatId, 'message': message},
-        options: Options(
-          responseType: ResponseType.stream,
-          receiveTimeout: Duration.zero,
-        ),
+      final lineStream = _sseLines(
+        path: '/api/send/cli-stream',
+        method: 'POST',
+        jsonBody: {'chat_id': chatId, 'message': message},
         cancelToken: cancelToken,
+        dioReceiveTimeout: Duration.zero,
       );
-
-      final stream = response.data.stream;
-      final lineStream = stream
-          .cast<List<int>>()
-          .transform(utf8.decoder)
-          .transform(const LineSplitter());
 
       await for (final line in lineStream) {
         if (!line.startsWith('data: ')) continue;
@@ -2244,17 +2286,12 @@ class MemoApiClient {
     CancelToken? cancelToken,
   }) async* {
     try {
-      final response = await _dio.post(
-        '/api/whatsapp/chat-stream',
-        data: {'message': message},
-        options: Options(responseType: ResponseType.stream),
+      final lineStream = _sseLines(
+        path: '/api/whatsapp/chat-stream',
+        method: 'POST',
+        jsonBody: {'message': message},
         cancelToken: cancelToken,
       );
-      final stream = response.data.stream;
-      final lineStream = stream
-          .cast<List<int>>()
-          .transform(utf8.decoder)
-          .transform(const LineSplitter());
       await for (final line in lineStream) {
         if (cancelToken?.isCancelled == true) return;
         if (!line.startsWith('data: ')) continue;
@@ -2641,14 +2678,26 @@ class MemoApiClient {
         .toList();
   }
 
+  /// Creates a task list. When [taskMdPath] is a non-empty path the backend
+  /// seeds the list from that Task.md's "- [ ]" items (and mirrors "[x]" back
+  /// into the file as items complete); otherwise it uses [items] verbatim.
   Future<TaskList> createTaskList(
     String chatId,
     String title,
-    List<String> items,
-  ) async {
+    List<String> items, {
+    String? taskMdPath,
+    String? mode,
+  }) async {
+    final path = taskMdPath?.trim() ?? '';
+    final m = mode?.trim() ?? '';
     final res = await _dio.post(
       '/api/tasklists',
-      data: {'chat_id': chatId, 'title': title, 'items': items},
+      data: {
+        'chat_id': chatId,
+        'title': title,
+        if (path.isNotEmpty) 'task_md_path': path else 'items': items,
+        if (m.isNotEmpty) 'mode': m,
+      },
     );
     return TaskList.fromJson(Map<String, dynamic>.from(_guard<Map>(res.data)));
   }
@@ -2668,6 +2717,84 @@ class MemoApiClient {
 
   Future<void> stopTaskList(String id) async {
     await _dio.post('/api/tasklists/$id/stop');
+  }
+
+  /// Plan.md text for a planner/executor-mode list awaiting approval.
+  Future<String> getTaskPlanMd(String id) async {
+    final res = await _dio.get('/api/tasklists/$id/plan');
+    final m = Map<String, dynamic>.from(_guard<Map>(res.data));
+    return (m['plan_md'] as String?) ?? '';
+  }
+
+  Future<void> saveTaskPlanMd(String id, String planMd) async {
+    await _dio.put('/api/tasklists/$id/plan', data: {'plan_md': planMd});
+  }
+
+  Future<void> approveTaskPlan(String id) async {
+    await _dio.post('/api/tasklists/$id/approve-plan');
+  }
+
+  Future<Map<String, dynamic>> getTaskLoopSettings() async {
+    final res = await _dio.get('/api/taskloop/settings');
+    return Map<String, dynamic>.from(_guard<Map>(res.data));
+  }
+
+  Future<Map<String, dynamic>> updateTaskLoopSettings(
+    Map<String, dynamic> settings,
+  ) async {
+    final res = await _dio.put('/api/taskloop/settings', data: settings);
+    return Map<String, dynamic>.from(_guard<Map>(res.data));
+  }
+
+  /// Live view of every executing task list (v4.4.0 Self-Driving loop).
+  Future<List<RunningTaskInfo>> listRunningTasks() async {
+    final res = await _dio.get('/api/tasks/running');
+    if (res.data is! List) return [];
+    return (res.data as List)
+        .map((e) => RunningTaskInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// SSE stream of live Self-Driving task-loop events (v4.6.0 Faz D). Each
+  /// item is one enriched event carrying the list's chat_id + progress. The
+  /// stream ends when the request is cancelled or the connection drops; the
+  /// caller is expected to reconnect.
+  Stream<TaskChatEvent> taskEventStream({CancelToken? cancelToken}) async* {
+    // Long-lived: never time out on receive (the 25s keepalive keeps it warm).
+    // Do NOT touch Dio's global receiveTimeout.
+    final lineStream = _sseLines(
+      path: '/api/tasks/events',
+      method: 'GET',
+      cancelToken: cancelToken,
+      dioReceiveTimeout: Duration.zero,
+    );
+    await for (final line in lineStream) {
+      if (!line.startsWith('data: ')) continue;
+      Map<String, dynamic> data;
+      try {
+        data = json.decode(line.substring(6)) as Map<String, dynamic>;
+      } catch (_) {
+        continue;
+      }
+      yield TaskChatEvent.fromJson(data);
+    }
+  }
+
+  Future<void> pauseTask(String id) async => _dio.post('/api/tasks/$id/pause');
+  Future<void> resumeTask(String id) async => _dio.post('/api/tasks/$id/resume');
+
+  /// Queues a user note for the next coder/worker turn of a paused task
+  /// (v4.6.0 Faz F — messages typed while a task is paused).
+  Future<void> addTaskNote(String id, String text) async =>
+      _dio.post('/api/tasks/$id/note', data: {'text': text});
+  Future<void> cancelTask(String id) async => _dio.post('/api/tasks/$id/cancel');
+  Future<void> skipTaskItem(String id) async => _dio.post('/api/tasks/$id/skip');
+
+  Future<String> injectTask(String id, String text) async {
+    final res = await _dio.post('/api/tasks/$id/inject', data: {'text': text});
+    final data = res.data;
+    if (data is Map && data['reply'] is String) return data['reply'] as String;
+    return '';
   }
 
   /// Returns the backend's listen port (e.g. 8090).

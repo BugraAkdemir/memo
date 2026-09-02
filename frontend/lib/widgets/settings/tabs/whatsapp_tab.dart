@@ -31,18 +31,23 @@ class WhatsAppTab extends ConsumerStatefulWidget {
 }
 
 class _WhatsAppTabState extends ConsumerState<WhatsAppTab> {
+  /// Held so dispose() can stop the poll without touching `ref` —
+  /// ConsumerState.ref throws once the widget is unmounted.
+  WhatsAppStatusNotifier? _wa;
+
   @override
   void initState() {
     super.initState();
     Future.microtask(() {
       if (!mounted) return;
-      ref.read(whatsAppStatusProvider.notifier).startPolling();
+      _wa = ref.read(whatsAppStatusProvider.notifier);
+      _wa!.startPolling();
     });
   }
 
   @override
   void dispose() {
-    ref.read(whatsAppStatusProvider.notifier).stopPolling();
+    _wa?.stopPolling();
     super.dispose();
   }
 

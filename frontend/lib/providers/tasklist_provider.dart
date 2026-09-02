@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
@@ -68,9 +69,18 @@ class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
     }
   }
 
-  Future<void> createTaskList(String chatId, String title, List<String> items) {
+  Future<void> createTaskList(
+    String chatId,
+    String title,
+    List<String> items, {
+    String? taskMdPath,
+    String? mode,
+  }) {
     final api = ref.read(apiClientProvider);
-    return _guarded(() => api.createTaskList(chatId, title, items));
+    return _guarded(
+      () => api.createTaskList(chatId, title, items,
+          taskMdPath: taskMdPath, mode: mode),
+    );
   }
 
   Future<void> deleteTaskList(String id) {
@@ -92,3 +102,155 @@ class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
 final taskListsProvider =
     AsyncNotifierProvider<TaskListsNotifier, List<TaskListInfo>>(
         TaskListsNotifier.new);
+
+/// Live view of every executing task list (v4.4.0). Polls GET
+/// /api/tasks/running every 3s while a screen is watching it.
+class RunningTasksNotifier extends AsyncNotifier<List<RunningTaskInfo>> {
+  Timer? _pollTimer;
+
+  @override
+  Future<List<RunningTaskInfo>> build() async {
+    ref.onDispose(stopPolling);
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
+    final api = ref.read(apiClientProvider);
+    return api.listRunningTasks();
+  }
+
+  Future<void> _silentRefresh() async {
+    final api = ref.read(apiClientProvider);
+    state = await AsyncValue.guard(() => api.listRunningTasks());
+  }
+
+  void startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _silentRefresh());
+  }
+
+  void stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  Future<void> _act(Future<void> Function() action) async {
+    try {
+      await action();
+      await _silentRefresh();
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}';
+    }
+  }
+
+  Future<void> pause(String id) =>
+      _act(() => ref.read(apiClientProvider).pauseTask(id));
+  Future<void> resume(String id) =>
+      _act(() => ref.read(apiClientProvider).resumeTask(id));
+  Future<void> cancel(String id) =>
+      _act(() => ref.read(apiClientProvider).cancelTask(id));
+  Future<void> skip(String id) =>
+      _act(() => ref.read(apiClientProvider).skipTaskItem(id));
+
+  Future<String> inject(String id, String text) async {
+    try {
+      return await ref.read(apiClientProvider).injectTask(id, text);
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}';
+      return '';
+    }
+  }
+}
+
+final runningTasksProvider =
+    AsyncNotifierProvider<RunningTasksNotifier, List<RunningTaskInfo>>(
+        RunningTasksNotifier.new);
+
+/// Live per-chat Self-Driving state, folded from the GET /api/tasks/events SSE
+/// stream (v4.6.0 Faz D). Keyed by chat id; a chat with no running task simply
+/// isn't in the map. Owns one long-lived SSE subscription with auto-reconnect.
+class ChatTasksNotifier extends StateNotifier<Map<String, ChatTaskState>> {
+  ChatTasksNotifier(this._ref) : super(const {}) {
+    _connect();
+  }
+
+  final Ref _ref;
+  StreamSubscription<TaskChatEvent>? _sub;
+  CancelToken? _cancel;
+  Timer? _retry;
+  bool _closed = false;
+
+  void _connect() {
+    if (_closed || !mounted) return;
+    _retry?.cancel();
+    try {
+      // While the auth gate is up every request 401s — don't hammer it.
+      if (authGateBlocked(_ref.read(authGateProvider).valueOrNull)) {
+        _scheduleReconnect();
+        return;
+      }
+      _cancel = CancelToken();
+      _sub = _ref
+          .read(apiClientProvider)
+          .taskEventStream(cancelToken: _cancel)
+          .listen(
+            _onEvent,
+            onError: (_) => _scheduleReconnect(),
+            onDone: _scheduleReconnect,
+            cancelOnError: true,
+          );
+    } catch (_) {
+      // Provider/ref torn down mid-callback — stop, don't crash the app.
+    }
+  }
+
+  void _onEvent(TaskChatEvent e) {
+    if (!mounted || _closed) return;
+    if (e.chatId.isEmpty) return;
+    final next = {...state};
+    final folded = ChatTaskState.fold(next[e.chatId], e);
+    if (folded == null) {
+      next.remove(e.chatId);
+    } else {
+      next[e.chatId] = folded;
+    }
+    state = next;
+  }
+
+  void _scheduleReconnect() {
+    _sub?.cancel();
+    _sub = null;
+    _cancel = null;
+    if (_closed || !mounted) return;
+    _retry?.cancel();
+    _retry = Timer(const Duration(seconds: 3), () {
+      if (!_closed && mounted) _connect();
+    });
+  }
+
+  /// Called from app_shell's centralised auth-gate listener when the gate opens.
+  void reconnectNow() {
+    if (_closed) return;
+    _cancel?.cancel();
+    _sub?.cancel();
+    _sub = null;
+    _retry?.cancel();
+    _connect();
+  }
+
+  @override
+  void dispose() {
+    _closed = true;
+    _retry?.cancel();
+    _cancel?.cancel();
+    _sub?.cancel();
+    super.dispose();
+  }
+}
+
+final chatTasksProvider =
+    StateNotifierProvider<ChatTasksNotifier, Map<String, ChatTaskState>>(
+        (ref) => ChatTasksNotifier(ref));
+
+/// The Self-Driving task bound to [chatId], or null if none is running there.
+final chatTaskForProvider = Provider.family<ChatTaskState?, String>(
+    (ref, chatId) => ref.watch(chatTasksProvider)[chatId]);

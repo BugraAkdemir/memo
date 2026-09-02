@@ -262,8 +262,16 @@ class _AppShellState extends ConsumerState<AppShell> {
         // Invalidating recreates the notifier and re-runs its init GET.
         ref.invalidate(agentEnabledProvider);
         ref.invalidate(webSearchModeProvider);
+        // v4.6.0 Faz D: the task-event SSE also 401s while the gate is up;
+        // its own 3s retry loop would eventually recover, this just makes it
+        // immediate.
+        ref.read(chatTasksProvider.notifier).reconnectNow();
       }
     });
+
+    // Keep the per-chat task-event stream alive for the whole app session so
+    // the inline task card in chat can render without a screen owning it.
+    ref.watch(chatTasksProvider);
 
     return Shortcuts(
       shortcuts: {

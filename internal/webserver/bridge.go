@@ -360,11 +360,29 @@ type FullBridge interface {
 
 	// Task lists (autonomous task loop)
 	CreateTaskList(chatID, title string, items []string) (*taskloop.TaskList, error)
+	CreateTaskListFromTaskMd(chatID, title, taskMdPath string) (*taskloop.TaskList, error)
 	GetTaskList(id string) (*taskloop.TaskList, error)
 	ListTaskLists() []taskloop.TaskListInfo
 	DeleteTaskList(id string) error
 	StartTaskList(ctx context.Context, listID string) error
 	StopTaskList(listID string)
+	CancelTaskList(listID string) error
+	SkipCurrentItem(listID string) error
+	InjectTaskMessage(ctx context.Context, listID, text string) (string, error)
+	ListRunningTasks() []taskloop.RunningTaskInfo
+	// SubscribeTaskEvents returns a channel of JSON task-loop event lines and
+	// an unsubscribe func; RunningTaskEventSnapshot returns one JSON line per
+	// currently-running list so a fresh subscriber isn't blind.
+	SubscribeTaskEvents() (<-chan string, func())
+	RunningTaskEventSnapshot() []string
+	AddTaskResumeNote(listID, note string) error
+	// Planner/executor mode (v4.5.0)
+	SetTaskListMode(listID, mode string) error
+	ApproveTaskPlan(listID string) error
+	GetTaskPlanMd(listID string) (string, error)
+	SaveTaskPlanMd(listID, md string) error
+	GetTaskLoopSettings() config.TaskLoopConfig
+	UpdateTaskLoopSettings(config.TaskLoopConfig) error
 
 	// Swarm (Memo Swarm — multi-machine llama.cpp RPC pool). Beta-gated in App.
 	// Status methods return interface{} (JSON-serializable structs) so this

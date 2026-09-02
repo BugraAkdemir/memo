@@ -182,6 +182,7 @@ Widget providerLogoWidget(String type, {double size = 18}) {
     final fallback = switch (type) {
       'claude-code-cli' || 'codex-cli' => Icons.terminal,
       'custom' => Icons.settings_ethernet,
+      'custom-anthropic' => Icons.settings_ethernet,
       _ => Icons.cloud_outlined,
     };
     // BUG fix: this used to hardcode size: 18 regardless of the caller's

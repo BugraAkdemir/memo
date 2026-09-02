@@ -22,7 +22,18 @@ import (
 // ContextTokens for the active provider's model wins; an explicit global
 // MaxContextTokens override comes next; otherwise a conservative default.
 func (a *App) apiContextBudget() int {
-	// Explicit global override (Llama/GPU settings) applies to API too.
+	a.providerMu.RLock()
+	active := a.activeProviderName
+	a.providerMu.RUnlock()
+	return a.contextBudgetFor(active)
+}
+
+// contextBudgetFor returns the context-window token budget for a named
+// provider, following the model not the type: an explicit global
+// MaxContextTokens override wins, then the user-configured per-model
+// ContextTokens, then a conservative per-provider fallback. Used by the
+// planner/executor mode's context gauge as well as apiContextBudget.
+func (a *App) contextBudgetFor(providerName string) int {
 	a.cfgMu.RLock()
 	maxContextTokens := a.cfg.Llama.MaxContextTokens
 	a.cfgMu.RUnlock()
@@ -30,21 +41,15 @@ func (a *App) apiContextBudget() int {
 		return maxContextTokens
 	}
 
-	a.providerMu.RLock()
-	active := a.activeProviderName
-	a.providerMu.RUnlock()
-
-	// Per-model context window, set by the user when configuring the provider.
-	if a.providerCfgMgr != nil {
+	if a.providerCfgMgr != nil && providerName != "" {
 		for _, p := range a.providerCfgMgr.GetEnabled() {
-			if p.Name == active && p.ContextTokens > 0 {
+			if p.Name == providerName && p.ContextTokens > 0 {
 				return p.ContextTokens
 			}
 		}
 	}
 
-	// Fallback when the model's context window hasn't been set yet.
-	switch active {
+	switch providerName {
 	case "gemini":
 		return 1024 * 1024
 	case "claude":
@@ -107,7 +112,10 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 // for it.
 func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg string, extraImageB64 []string, retrievedCountOut *int) []api.Message {
 	var memories []memory.MemoryResult
-	if a.GetMemoryEnabled() {
+	// A Self-Driving task turn with "task memory" off gets no RAG/memory block
+	// at all — the task loop carries its own state, and personal memories are
+	// noise (and a privacy surface) for autonomous code work.
+	if a.GetMemoryEnabled() && !taskMemoryDisabled(ctx) {
 		memories = a.retrieveMemory(ctx, a.buildMemoryQuery(userMsg))
 	}
 	if retrievedCountOut != nil {
@@ -265,8 +273,12 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		}
 	}
 
-	logx.Printf("CONTEXT: budget=%d system=%d user=%d history=%d history_msgs=%d total_msgs=%d",
-		tokenBudget, systemTokens, userTokens, historyBudget, len(history), len(msgs))
+	histUsed := 0
+	for _, h := range history {
+		histUsed += truncate.EstimateTokens(h.GetTextContent())
+	}
+	logx.Printf("CONTEXT: budget=%d system=%d user=%d hist_budget=%d hist_used=%d history_msgs=%d total_msgs=%d",
+		tokenBudget, systemTokens, userTokens, historyBudget, histUsed, len(history), len(msgs))
 	return msgs
 }
 

@@ -122,7 +122,10 @@ func (e *Executor) ExecuteToolCall(ctx context.Context, sessionID, toolName stri
 		return "", fmt.Errorf("permission denied")
 	}
 
-	e.emitToolCallEvent(sessionID, onEvent, AgentEvent{Type: EventToolExecuting, ToolName: toolName, DangerLevel: toolDef.DangerLevel})
+	// Args, like every other event here: the live task card renders this one
+	// as the "starting" line for slow tools, and without them it could only
+	// print a bare verb ("Komut …") with no hint of which command.
+	e.emitToolCallEvent(sessionID, onEvent, AgentEvent{Type: EventToolExecuting, ToolName: toolName, Args: args, DangerLevel: toolDef.DangerLevel})
 
 	start := time.Now()
 	result, err := e.registry.Execute(ctx, toolName, args, effectiveBase, e.backup.CreateBackup)

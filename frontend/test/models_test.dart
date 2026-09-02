@@ -9,8 +9,92 @@ import 'package:memo_flutter/models/whatsapp.dart';
 import 'package:memo_flutter/models/token_usage.dart';
 import 'package:memo_flutter/models/provider_config.dart';
 import 'package:memo_flutter/models/orchestra_config.dart';
+import 'package:memo_flutter/models/task_list.dart';
 
 void main() {
+  group('ChatTaskState.fold (v4.6.0 Faz D/E)', () {
+    TaskChatEvent ev(String event, {String phase = '', int stepDone = 0, int stepTotal = 0, int itemDone = 0, int itemTotal = 0, String current = '', String kind = '', String text = '', int silentSec = 0}) =>
+        TaskChatEvent(
+          event: event, listId: 'L1', chatId: 'C1', phase: phase,
+          stepDone: stepDone, stepTotal: stepTotal, itemDone: itemDone, itemTotal: itemTotal, current: current,
+          kind: kind, text: text, silentSec: silentSec,
+        );
+
+    test('a snapshot seeds progress without adding to the recent feed', () {
+      final s = ChatTaskState.fold(null, ev('snapshot', phase: 'executing', stepDone: 2, stepTotal: 5, itemTotal: 3));
+      expect(s, isNotNull);
+      expect(s!.running, true);
+      expect(s.stepDone, 2);
+      expect(s.stepTotal, 5);
+      expect(s.recent, isEmpty);
+    });
+
+    test('subsequent events keep the last known counts and cap the feed at 4', () {
+      ChatTaskState? s;
+      s = ChatTaskState.fold(s, ev('snapshot', phase: 'executing', stepDone: 1, stepTotal: 5, itemTotal: 3));
+      for (final e in ['step_done', 'step_done', 'item_done', 'step_done', 'subagent_spawned']) {
+        s = ChatTaskState.fold(s, ev(e));
+      }
+      expect(s!.recent.length, 4);
+      expect(s.recent.last, 'subagent_spawned');
+      // A count-less event must not zero the seeded progress.
+      expect(s.stepTotal, 5);
+      expect(s.itemTotal, 3);
+    });
+
+    test('a finished event drops the card', () {
+      final s0 = ChatTaskState.fold(null, ev('snapshot', phase: 'executing', stepTotal: 2));
+      expect(ChatTaskState.fold(s0, ev('finished', phase: 'done')), isNull);
+    });
+
+    test('phase predicates', () {
+      expect(ChatTaskState.fold(null, ev('paused', phase: 'paused'))!.paused, true);
+      expect(ChatTaskState.fold(null, ev('awaiting_plan', phase: 'awaiting-plan-approval'))!.awaitingPlan, true);
+    });
+
+    test('activity events append to the log (not recent) and cap at 60', () {
+      ChatTaskState? s;
+      s = ChatTaskState.fold(s, ev('snapshot', phase: 'executing', stepTotal: 3));
+      s = ChatTaskState.fold(s, ev('activity', kind: 'step_start', text: 'S1 · users kur'));
+      s = ChatTaskState.fold(s, ev('activity', kind: 'tool', text: 'Dosya yazdı: signup.py'));
+      expect(s!.log.length, 2);
+      expect(s.log.first.kind, 'step_start');
+      expect(s.log.last.text, 'Dosya yazdı: signup.py');
+      expect(s.recent, isEmpty); // activity never enters recent
+      for (var i = 0; i < 100; i++) {
+        s = ChatTaskState.fold(s, ev('activity', kind: 'tool', text: 'x$i'));
+      }
+      expect(s!.log.length, 60);
+      expect(s.log.last.text, 'x99');
+    });
+
+    // The threshold moved from 60s to 180s: the agent loop calls the model
+    // non-streaming, so two minutes of silence while it writes a file is
+    // ordinary, and flagging that as "maybe stuck" was the opposite of the
+    // reassurance the label exists to give. Anything quieter than
+    // stalledAfterSec but past workingAfterSec is "working", not stalled.
+    test('working vs stalled thresholds', () {
+      final quiet = ChatTaskState.fold(
+          null, ev('snapshot', phase: 'executing', stepTotal: 2, silentSec: 75));
+      expect(quiet!.stalled, false);
+      expect(quiet.working, true);
+
+      final long = ChatTaskState.fold(
+          null, ev('snapshot', phase: 'executing', stepTotal: 2, silentSec: 200));
+      expect(long!.stalled, true);
+      expect(long.working, false);
+
+      final busy = ChatTaskState.fold(
+          null, ev('snapshot', phase: 'executing', stepTotal: 2, silentSec: 2));
+      expect(busy!.stalled, false);
+      expect(busy.working, false);
+
+      final paused = ChatTaskState.fold(null, ev('snapshot', phase: 'paused', silentSec: 400));
+      expect(paused!.stalled, false); // paused isn't "stalled"
+      expect(paused.working, false);
+    });
+  });
+
   group('ChatMessage', () {
     test('fromJson parses all fields', () {
       final msg = ChatMessage.fromJson({
@@ -699,11 +783,23 @@ void main() {
       expect(ProviderDefaults.needsApiKey('openai'), true);
       expect(ProviderDefaults.needsApiKey('ollama'), false);
       expect(ProviderDefaults.needsApiKey('custom'), false);
+      expect(ProviderDefaults.needsApiKey('custom-anthropic'), false);
     });
 
-    test('needsBaseUrl returns true only for custom', () {
+    // custom-anthropic (any endpoint speaking Anthropic's own Messages API
+    // wire format, e.g. the user's own proxy) needs the same "no default
+    // endpoint" treatment as custom (OpenAI-compatible) — both must show
+    // the Base URL field and reject a missing one the same way.
+    test('needsBaseUrl returns true for both custom provider types', () {
       expect(ProviderDefaults.needsBaseUrl('custom'), true);
+      expect(ProviderDefaults.needsBaseUrl('custom-anthropic'), true);
       expect(ProviderDefaults.needsBaseUrl('openai'), false);
+      expect(ProviderDefaults.needsBaseUrl('claude'), false);
+    });
+
+    test('displayNames has an entry for custom-anthropic', () {
+      expect(ProviderDefaults.displayNames['custom-anthropic'], isNotNull);
+      expect(ProviderDefaults.displayNames['custom-anthropic'], isNot(equals('custom-anthropic')));
     });
   });
 

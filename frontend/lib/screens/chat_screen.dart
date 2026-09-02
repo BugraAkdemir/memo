@@ -13,6 +13,7 @@ import '../providers/whatsapp_provider.dart';
 import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
+import '../providers/tasklist_provider.dart';
 import '../widgets/provider_config_dialog.dart';
 import '../widgets/welcome_view.dart';
 import '../widgets/live_realtime_view.dart';
@@ -205,6 +206,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
                   ],
                 );
               }
+              final taskChatId = ref.watch(activeChatIdProvider).valueOrNull ?? '';
               return ChatMessageList(
                 messages: messages,
                 isTyping: isSending,
@@ -214,6 +216,9 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
                 statusText: streamingStatus,
                 isCLIChat: isCLIChat,
                 apiBaseUrl: ref.watch(apiClientProvider).baseUrl,
+                taskActivity: taskChatId.isEmpty
+                    ? null
+                    : ref.watch(chatTaskForProvider(taskChatId)),
                 onEdit: (index, newContent) {
                   ref.read(messagesProvider.notifier).updateMessage(index, newContent);
                 },

@@ -150,6 +150,58 @@ func NewWebSearchExecutor(existing *Executor) *Executor {
 	}
 }
 
+// NewTaskExecutor creates a per-task-list executor for the Self-Driving loop.
+// It reuses the shared registry/permissions/backup/audit/session-manager (a
+// task worker turn is still the same agent, one audit trail) but owns its own
+// providerRouter and its own bypassPermissions flag, so a running task can
+// switch provider (self-heal) or run with permissions bypassed without
+// disturbing the executor interactive chat uses. Mirrors NewWhatsAppExecutor.
+func NewTaskExecutor(existing *Executor, router *provider.Router) *Executor {
+	return &Executor{
+		basePath:       existing.basePath,
+		providerRouter: router,
+		providerCfgMgr: existing.providerCfgMgr,
+		registry:       existing.registry,
+		permissions:    existing.permissions,
+		sandbox:        existing.sandbox,
+		backup:         existing.backup,
+		sessionManager: existing.sessionManager,
+		pendingPerms:   make(map[string]*PermissionRequest),
+		logs:           make([]AgentLogEntry, 0),
+		auditLogFile:   existing.auditLogFile,
+	}
+}
+
+// ActiveRouter returns the executor's current provider router (nil if none).
+func (e *Executor) ActiveRouter() *provider.Router {
+	return e.getRouter()
+}
+
+// NewSubAgentExecutor creates an ephemeral executor for one Self-Driving
+// sub-agent run: caller-supplied registry (full for the "coder", read-only
+// for everyone else), caller-supplied router, its own bypass flag,
+// sessionManager nil (no cd persistence, no session), and a sandbox scoped to
+// projectPath. It reuses the shared permissions/backup/audit trail.
+func NewSubAgentExecutor(existing *Executor, registry *ToolRegistry, router *provider.Router, projectPath string) *Executor {
+	base := existing.basePath
+	if projectPath != "" {
+		base = projectPath
+	}
+	return &Executor{
+		basePath:       base,
+		providerRouter: router,
+		providerCfgMgr: existing.providerCfgMgr,
+		registry:       registry,
+		permissions:    existing.permissions,
+		sandbox:        NewSandbox(DefaultSandboxConfig(base)),
+		backup:         existing.backup,
+		sessionManager: nil,
+		pendingPerms:   make(map[string]*PermissionRequest),
+		logs:           make([]AgentLogEntry, 0),
+		auditLogFile:   existing.auditLogFile,
+	}
+}
+
 // Registry exposes the executor's tool registry so callers outside this
 // package (the skill system) can register/unregister additional tools
 // into the exact registry the agent pipeline executes against. The field
@@ -231,6 +283,7 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 	// the pre-toggle value.
 	pipeline.bypassPermissions = e.GetBypassPermissions()
 	pipeline.autoPermission = e.GetAutoPermission()
+	pipeline.autoPermissionFn = e.GetAutoPermission
 	pipeline.effortLevel = effortLevel
 
 	wrappedOnEvent := func(ev AgentEvent) {
@@ -333,10 +386,34 @@ func (e *Executor) GetBypassPermissions() bool {
 }
 
 // SetAutoPermission kullanıcının Shift+Tab ile açtığı otomatik izin modunu ayarlar.
+//
+// Turning it ON also resolves every permission request that is currently
+// waiting for an answer: the user's whole intent when they flip auto-permission
+// while a prompt is on screen is "stop asking me — including this one". Without
+// this the on-screen dialog just sat there until its 60s auto-deny, because the
+// pipeline goroutine had already committed to blocking on that request's
+// channel before the toggle flipped (BUG-PERM auto-permission: "açıkken neden
+// hâlâ soruyor").
 func (e *Executor) SetAutoPermission(v bool) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	e.autoPermission = v
+	var draining []*PermissionRequest
+	if v {
+		for id, req := range e.pendingPerms {
+			draining = append(draining, req)
+			delete(e.pendingPerms, id)
+		}
+	}
+	e.mu.Unlock()
+
+	for _, req := range draining {
+		logx.Printf("AGENT: [AUTO] resolving pending permission %s (auto-permission just enabled)", req.ID)
+		select {
+		case req.ResCh <- AllowOnce:
+		case <-time.After(time.Second):
+			logx.Printf("AGENT: pending permission %s had no listener when draining", req.ID)
+		}
+	}
 }
 
 // GetAutoPermission otomatik izin modunun durumunu döndürür.

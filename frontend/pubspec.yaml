@@ -13,6 +13,14 @@ dependencies:
   # HTTP & Networking
   dio: ^5.4.0
 
+  # Browser Fetch API bindings — used ONLY on web, and ONLY for the SSE
+  # streaming endpoints (see lib/core/sse_stream_web.dart): dio_web_adapter
+  # buffers the whole response instead of streaming it, which breaks the live
+  # Self-Driving task card and delays mid-stream agent permission prompts.
+  # Already pulled in transitively by Flutter; pinned exact to keep `pub get`
+  # from churning the lockfile.
+  web: 1.1.1
+
   # WebSocket transport for Live Mode's realtime session bridge
   # (docs/plans/PLAN_live_mode_v2.md, Phase 6) — duplex audio to
   # /api/livemode/session, separate from Dio's request/response HTTP calls.

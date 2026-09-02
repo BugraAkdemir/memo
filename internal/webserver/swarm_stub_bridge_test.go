@@ -34,6 +34,9 @@ type swarmStubBridge struct {
 	token      string
 	uiLanguage string
 
+	injectTask       func(listID, text string) (string, error)
+	listRunningTasks func() []taskloop.RunningTaskInfo
+
 	hostCreate   func(modelPath string) (string, error)
 	addWorker    func(id, secret, myRPCAddress, label string) error
 	removeWorker func(id string) error
@@ -529,6 +532,35 @@ func (b *swarmStubBridge) Shutdown(ctx context.Context)                         
 func (b *swarmStubBridge) CreateTaskList(chatID, title string, items []string) (*taskloop.TaskList, error) {
 	return nil, nil
 }
+func (b *swarmStubBridge) CreateTaskListFromTaskMd(chatID, title, taskMdPath string) (*taskloop.TaskList, error) {
+	return nil, nil
+}
+func (b *swarmStubBridge) CancelTaskList(listID string) error  { return nil }
+func (b *swarmStubBridge) SkipCurrentItem(listID string) error { return nil }
+func (b *swarmStubBridge) InjectTaskMessage(ctx context.Context, listID, text string) (string, error) {
+	if b.injectTask != nil {
+		return b.injectTask(listID, text)
+	}
+	return "", nil
+}
+func (b *swarmStubBridge) ListRunningTasks() []taskloop.RunningTaskInfo {
+	if b.listRunningTasks != nil {
+		return b.listRunningTasks()
+	}
+	return nil
+}
+func (b *swarmStubBridge) SubscribeTaskEvents() (<-chan string, func()) {
+	ch := make(chan string)
+	return ch, func() {}
+}
+func (b *swarmStubBridge) RunningTaskEventSnapshot() []string             { return nil }
+func (b *swarmStubBridge) AddTaskResumeNote(listID, note string) error    { return nil }
+func (b *swarmStubBridge) SetTaskListMode(listID, mode string) error   { return nil }
+func (b *swarmStubBridge) ApproveTaskPlan(listID string) error          { return nil }
+func (b *swarmStubBridge) GetTaskPlanMd(listID string) (string, error)  { return "", nil }
+func (b *swarmStubBridge) SaveTaskPlanMd(listID, md string) error       { return nil }
+func (b *swarmStubBridge) GetTaskLoopSettings() config.TaskLoopConfig   { return config.TaskLoopConfig{} }
+func (b *swarmStubBridge) UpdateTaskLoopSettings(config.TaskLoopConfig) error { return nil }
 func (b *swarmStubBridge) GetTaskList(id string) (*taskloop.TaskList, error)      { return nil, nil }
 func (b *swarmStubBridge) ListTaskLists() []taskloop.TaskListInfo                 { return nil }
 func (b *swarmStubBridge) DeleteTaskList(id string) error                         { return nil }

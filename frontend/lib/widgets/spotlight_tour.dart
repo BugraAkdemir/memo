@@ -110,7 +110,18 @@ class _SpotlightTourState extends State<SpotlightTour>
                 ),
                 radius: 16,
               ),
-              child: Container(color: Colors.black),
+              // Translucent, not opaque: found live — a fully opaque scrim
+              // hides the entire rest of the app, including whatever should
+              // have been visible through the punched-out hole around the
+              // highlighted target (the target itself renders underneath
+              // this overlay in the same Stack, so an opaque neighbor with
+              // razor-sharp clip edges leaves nothing for the eye to orient
+              // by beyond the hole's exact rectangle). A first-time user's
+              // very first screen was a black void with one glowing box and
+              // no visible icon or label — the opposite of what a tour is
+              // for. Standard spotlight dimming keeps the real UI faintly
+              // visible everywhere outside the hole.
+              child: Container(color: Colors.black.withValues(alpha: 0.72)),
             ),
           ),
         ),

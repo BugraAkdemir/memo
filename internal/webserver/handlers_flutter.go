@@ -15,6 +15,7 @@ import (
 	"memo/internal/provider"
 	"memo/internal/shutdown"
 	"memo/internal/stt"
+	"memo/internal/taskloop"
 	"memo/internal/tts"
 	"net/http"
 	"net/url"
@@ -2980,24 +2981,66 @@ func (s *Server) handleTaskLists(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.fullBridge.ListTaskLists())
 	case http.MethodPost:
 		var req struct {
-			ChatID string   `json:"chat_id"`
-			Title  string   `json:"title"`
-			Items  []string `json:"items"`
+			ChatID     string   `json:"chat_id"`
+			Title      string   `json:"title"`
+			Items      []string `json:"items"`
+			TaskMdPath string   `json:"task_md_path"`
+			Mode       string   `json:"mode"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
-		if len(req.Items) == 0 {
-			http.Error(w, "items required", http.StatusBadRequest)
+		if req.TaskMdPath == "" && len(req.Items) == 0 {
+			http.Error(w, "items or task_md_path required", http.StatusBadRequest)
 			return
 		}
-		tl, err := s.fullBridge.CreateTaskList(req.ChatID, req.Title, req.Items)
+		var tl *taskloop.TaskList
+		var err error
+		if req.TaskMdPath != "" {
+			tl, err = s.fullBridge.CreateTaskListFromTaskMd(req.ChatID, req.Title, req.TaskMdPath)
+		} else {
+			tl, err = s.fullBridge.CreateTaskList(req.ChatID, req.Title, req.Items)
+		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		// An explicit mode from the create dialog overrides any "# mod:" header.
+		if req.Mode != "" && tl != nil {
+			if merr := s.fullBridge.SetTaskListMode(tl.ID, req.Mode); merr != nil {
+				http.Error(w, merr.Error(), http.StatusInternalServerError)
+				return
+			}
+			if fresh, ferr := s.fullBridge.GetTaskList(tl.ID); ferr == nil {
+				tl = fresh
+			}
+		}
 		writeJSON(w, tl)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleTaskLoopSettings(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusMethodNotAllowed)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, s.fullBridge.GetTaskLoopSettings())
+	case http.MethodPut:
+		var c config.TaskLoopConfig
+		if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.UpdateTaskLoopSettings(c); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, s.fullBridge.GetTaskLoopSettings())
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -3041,6 +3084,32 @@ func (s *Server) handleTaskListByID(w http.ResponseWriter, r *http.Request) {
 	case subAction == "stop" && r.Method == http.MethodPost:
 		s.fullBridge.StopTaskList(listID)
 		writeJSON(w, map[string]string{"status": "stopped"})
+	case subAction == "plan" && r.Method == http.MethodGet:
+		md, err := s.fullBridge.GetTaskPlanMd(listID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]string{"plan_md": md})
+	case subAction == "plan" && r.Method == http.MethodPut:
+		var body struct {
+			PlanMd string `json:"plan_md"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SaveTaskPlanMd(listID, body.PlanMd); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, map[string]string{"status": "saved"})
+	case subAction == "approve-plan" && r.Method == http.MethodPost:
+		if err := s.fullBridge.ApproveTaskPlan(listID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"status": "approved"})
 	case subAction == "" && r.Method == http.MethodGet:
 		tl, err := s.fullBridge.GetTaskList(listID)
 		if err != nil {

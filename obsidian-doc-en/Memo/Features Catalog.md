@@ -49,13 +49,14 @@ Complete feature-by-feature listing of Memo. Full detail: `docs/FEATURES.md`.
 | Groq | ✅ | API key |
 | Ollama | ✅ | URL |
 | Custom (OpenAI-compatible) | ✅ | Base URL |
+| Custom (Anthropic-compatible) | ✅ (new this branch) | Base URL — for a proxy that speaks Anthropic's Messages API shape instead of OpenAI's |
 | OpenCode Zen | ✅ (v3.3.3) | API key — pay-as-you-go, some models free; free-sorted model browser (v3.9.0) |
 | OpenCode Go | ✅ (v3.3.3) | API key — subscription-based |
 | Kilo Code | ✅ (v3.9.0) | API key — app.kilo.ai, pay-as-you-go, some models free, live model browser with free models sorted to the top |
 | Claude Code (CLI) | ✅ Beta (v3.3.4) | Shells out to the locally installed `claude` CLI, per-chat, real background job |
 | Codex (CLI) | ✅ Beta (v3.3.4) | Shells out to the locally installed `codex` CLI, per-chat, real background job |
 
-Router features: fallback chain, auto-disable after 3 failures, health check goroutine. Full detail: [[External Providers]].
+Router features: fallback chain, auto-disable after 3 failures, health check goroutine. **Claude and Gemini tool-calling** (previously entirely missing on both) fixed this branch — see [[External Providers]] for detail.
 
 ## 🧑‍💻 Developer Tools (v3.3.3)
 
@@ -80,7 +81,8 @@ Plain-language guide: [[Memo Swarm]].
 
 | Feature | Status |
 |---------|--------|
-| 22 built-in tools (file/edit/command/search/calendar/routines/WhatsApp/web-search/provider-config/self-clone) | ✅ |
+| 27 built-in tools in the main registry (file/edit/command/search/calendar/routines/web-search/fetch-page/provider-config/self-clone/task-loop-control — verified against `registerBuiltins()`, up from an earlier "22") | ✅ |
+| WhatsApp's 4 tools | ✅ — separate scoped registry, not part of the 27 above |
 | `create_routine`/`list_routines`/`cancel_routine` | ✅ (v3.9.0) — usable from normal chat or the WhatsApp/Telegram self-chat assistant |
 | Skill tools actually executable | ✅ (v3.3.3) — a skill's `SKILL.md` `command:` field now runs through the same tool pipeline and permission UI |
 | 3-tier danger level | ✅ |
@@ -92,6 +94,23 @@ Plain-language guide: [[Memo Swarm]].
 | Agent frontend UI (permission dialog, toggle in Chat's top bar) | ✅ |
 
 See [[Agent Mode]] for the full tool list.
+
+## 🚗 Self-Driving Task Loop (v4.4.0)
+
+| Feature | Status |
+|---------|--------|
+| `Task.md` checkbox-item schema + `# key: value` headers (mode, notify, provider lock, memory, plan auto-approve) | ✅ |
+| `create_task_md`/`edit_task_md`/`start_self_driving_task`/`get_task_status`/`pause_task`/`resume_task` tools | ✅ |
+| Planner/executor mode with `Plan.md` + plan-approval gate | ✅ |
+| Sub-agent orchestration (1 write-capable `coder` then up to 3 parallel read-only `analyzer`/`reviewer`/`test-runner`) | ✅ |
+| Live in-chat/in-card activity (tool calls, sub-agent turns, "model is generating") | ✅ |
+| Busy-chat queueing, rate-limit wait-and-resume, transient-fault escalating retry, auth-fault park-for-user | ✅ |
+| Never fails silently (chat message + push on every terminal state) | ✅ |
+| Plan approval reachable from chat (not just the Tasks tab) | ❌ — `BUG-PLAN9`, open |
+| Chat model can read a *running* task's live status without guessing | ⚠️ — `get_task_status` tool exists and looks like the fix for `BUG-PLAN10`, but not live-verified yet |
+| Consistent step/item counters across screens after an escalation split | ❌ — `BUG-PLAN11`, open |
+
+See `docs/FEATURES.md` §6.5 and the repo's `BUG_REPORT.md` for detail.
 
 ## 🎵 Orchestra Mode (Multi-Model)
 
@@ -172,6 +191,7 @@ See [[Telegram Integration]].
 | Feature | Status |
 |---------|--------|
 | Local STT | ✅ |
-| Live Mode (hands-free voice chat) | ✅ Beta (v3.3.4) — icon next to the chat input; local Piper TTS by default, optional external OpenAI TTS, offline voice picker, one-directional barge-in; no echo cancellation yet — see [[Multimodal Capabilities (Vision and Voice)]] |
+| Live Mode v2 — native audio-to-audio (Google Live / OpenAI Realtime) | ✅ (v4.3.0) — replaced the old Whisper→LLM→Piper relay entirely; full-screen call UI, delegate mode (main model does real work, live model narrates) or standalone mode (live model gets the full agent toolset directly), configurable barge-in sensitivity, transcript kept in chat history, feeds long-term memory — see [[Multimodal Capabilities (Vision and Voice)]] |
+| ElevenLabs / Custom voice engines | ✅ (v4.3.0) |
 | Image upload (multimodal GGUF) | ✅ |
 | Document indexing | ✅ |

@@ -24,6 +24,13 @@ class AgentEnabledNotifier extends StateNotifier<bool> {
   Future<void> _init() async {
     try {
       final enabled = await _ref.read(apiClientProvider).getAgentEnabled();
+      // app_shell.dart invalidates this provider the moment the auth gate
+      // opens, which disposes *this* notifier while its GET is still in
+      // flight. Writing state then throws "Tried to use
+      // AgentEnabledNotifier after dispose was called" into the console on
+      // every cold start. The replacement notifier runs its own GET, so the
+      // dead one just drops its answer.
+      if (!mounted) return;
       state = enabled;
     } catch (e) {
       debugPrint('agent: init error: ${FriendlyError.describeGeneric(e)}');
@@ -37,6 +44,7 @@ class AgentEnabledNotifier extends StateNotifier<bool> {
       await _ref.read(apiClientProvider).setAgentEnabled(enabled);
     } catch (e) {
       debugPrint('agent: setEnabled error: ${FriendlyError.describeGeneric(e)}');
+      if (!mounted) return; // disposed mid-request — see _init
       state = previous;
       _ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Ajan modu değiştirilemedi (${FriendlyError.describeGeneric(e)})';

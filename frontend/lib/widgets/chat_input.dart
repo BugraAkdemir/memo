@@ -24,6 +24,7 @@ import '../providers/live_realtime_session_provider.dart';
 import '../providers/recording_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/skill_provider.dart';
+import '../providers/tasklist_provider.dart';
 import '../providers/voice_mode_provider.dart';
 import '../providers/whatsapp_provider.dart';
 import 'orchestra_config_dialog.dart';
@@ -94,6 +95,15 @@ const double _composerStackBelowWidth = 460;
 class _ChatInputState extends ConsumerState<ChatInput> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
+
+  // Short phrases that resume a paused Self-Driving task instead of being sent
+  // as a chat message (v4.6.0 Faz F). Kept deliberately tight — a longer
+  // sentence is treated as a real instruction (recorded as a resume note).
+  static final _resumeWordRe = RegExp(
+    r'^(devam|devam et|devam edelim|devam ettir|kaldığın yerden devam et|'
+    r'devam edebilirsin|sürdür|continue|resume|go on|keep going)[.!]?$',
+    caseSensitive: false,
+  );
   bool _showTemplates = false;
   String _filterQuery = '';
   int _selectedIndex = 0;
@@ -397,6 +407,32 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     if (imagePath == null && text.startsWith('/')) {
       final handled = await _tryHandleManualCommand(text);
       if (handled) return;
+    }
+
+    // v4.6.0 Faz F: a Self-Driving task bound to this chat.
+    final sendChatId = ref.read(activeChatIdProvider).valueOrNull ?? '';
+    final sendChatTask =
+        sendChatId.isEmpty ? null : ref.read(chatTaskForProvider(sendChatId));
+    if (sendChatTask != null) {
+      if (sendChatTask.running || sendChatTask.awaitingPlan) {
+        // Composer is disabled in this state; guard the code path too.
+        return;
+      }
+      if (sendChatTask.paused && _resumeWordRe.hasMatch(text)) {
+        _controller.clear();
+        _dismissPopup();
+        await ref
+            .read(runningTasksProvider.notifier)
+            .resume(sendChatTask.listId);
+        return;
+      }
+      // A paused task otherwise lets the message through as a side question —
+      // and also records it so the coder sees it when the task resumes.
+      if (sendChatTask.paused && text.isNotEmpty) {
+        // Fire-and-forget; a failed note must not block the chat message.
+        // ignore: unawaited_futures
+        ref.read(apiClientProvider).addTaskNote(sendChatTask.listId, text);
+      }
     }
 
     if (ref.read(isSendingProvider)) return;
@@ -919,6 +955,16 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final orchestraAsync = ref.watch(orchestraConfigProvider);
     final orchestraEnabled = orchestraAsync.valueOrNull?.enabled ?? false;
 
+    // v4.6.0 Faz F: a Self-Driving task running in the active chat owns the
+    // composer. The user stops it (red button -> pause) to ask a question,
+    // then types "devam" to continue. A paused task leaves the input open.
+    final sdChatId = ref.watch(activeChatIdProvider).valueOrNull ?? '';
+    final sdTask = sdChatId.isEmpty
+        ? null
+        : ref.watch(chatTaskForProvider(sdChatId));
+    final taskLocksInput =
+        sdTask != null && (sdTask.running || sdTask.awaitingPlan);
+
     ref.listen(activeChatIdProvider, (prev, next) {
       final prevId = prev?.valueOrNull ?? '';
       final nextId = next.valueOrNull ?? '';
@@ -1337,6 +1383,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                       child: TextField(
                           controller: _controller,
                           focusNode: _focusNode,
+                          enabled: !taskLocksInput,
                           maxLines: null,
                           textInputAction: TextInputAction.newline,
                           style: TextStyle(
@@ -1345,11 +1392,29 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                             height: 1.5,
                           ),
                           decoration: InputDecoration(
-                            hintText: '${L10n.t('type_message')} (/)',
+                            hintText: taskLocksInput
+                                ? L10n.t('task_running_hint')
+                                : '${L10n.t('type_message')} (/)',
                             hintStyle: TextStyle(
                               color: MemoTheme.of(context).textDim,
                             ),
+                            // The app-wide inputDecorationTheme sets filled:true
+                            // + an OutlineInputBorder for every state. Setting
+                            // only `border` here leaves enabledBorder/
+                            // focusedBorder/disabledBorder + the fill leaking in
+                            // from the theme, so the TextField painted its own
+                            // filled, rounded, bordered box *inside* this
+                            // widget's hand-rolled container — two concentric
+                            // "text boxes", most visible once a running task
+                            // disables the field. Neutralise the whole themed
+                            // decoration; the outer Container owns the frame.
+                            filled: false,
                             border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            errorBorder: InputBorder.none,
+                            focusedErrorBorder: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 14,
                               vertical: 12,
@@ -1361,11 +1426,12 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     ),
                   );
 
-            // ─── Send / Stop Button ──────────────────
+            // ─── Send / Stop / Pause-task Button ──────
+            final showStop = isSending || taskLocksInput;
             final send = AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 child: Material(
-                  color: isSending ? MemoTheme.red : MemoTheme.accent,
+                  color: showStop ? MemoTheme.red : MemoTheme.accent,
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
                   child: InkWell(
                     onTap: isSending
@@ -1376,14 +1442,22 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                   .read(messagesProvider.notifier)
                                   .stopStreaming();
                             }
-                        : _send,
+                        : taskLocksInput
+                            ? () {
+                                ref
+                                    .read(runningTasksProvider.notifier)
+                                    .pause(sdTask.listId);
+                              }
+                            : _send,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
                     child: SizedBox(
                       width: 42,
                       height: 42,
-                      child: isSending
+                      child: showStop
                           ? Icon(
-                              Icons.stop_rounded,
+                              taskLocksInput && !isSending
+                                  ? Icons.pause_rounded
+                                  : Icons.stop_rounded,
                               size: 22,
                               color: MemoTheme.of(context).textInverse,
                             )

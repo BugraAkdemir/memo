@@ -13,6 +13,7 @@ import (
 
 	"memo/internal/api"
 	moodpkg "memo/internal/mood"
+	"memo/internal/taskloop"
 )
 
 // forwardStream drains inner into out, preferring delivery of each chunk
@@ -151,16 +152,17 @@ func (a *App) SendMessage(userMsg string) string {
 		return a.handleIncognito(userMsg, "")
 	}
 
-	if !a.streamMu.TryLock() {
-		return a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes.")
-	}
-	defer a.streamMu.Unlock()
-
 	sm := a.getSessionManager()
 	var chatID string
 	if sm != nil {
 		chatID = sm.GetActiveID()
 	}
+
+	release, ok := a.lockChatStream(chatID)
+	if !ok {
+		return a.busyNotice()
+	}
+	defer release()
 
 	// An agent chat (one with a ProjectPath) must keep its tool access and
 	// bound working directory even when reached via the implicit-active-chat
@@ -189,7 +191,7 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 	if incog {
 		if !a.streamMu.TryLock() {
 			errCh := make(chan api.StreamChunk, 1)
-			errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
+			errCh <- api.StreamChunk{Error: a.busyNotice(), Done: true}
 			close(errCh)
 			return errCh
 		}
@@ -359,8 +361,7 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 // so a caller like the task loop (internal/app/tasklist.go) no longer has
 // to SwitchChat + force the global agent-mode flag on and back off around
 // every call — a pattern that raced a concurrent user-driven chat switch or
-// manual agent-mode toggle (a.agentMu is a different lock than
-// taskloopRunMu). Tool execution is active for this one call if chatID
+// manual agent-mode toggle. Tool execution is active for this one call if chatID
 // itself is an agent chat (sm.IsAgentChat — true for every task-loop and
 // CLI-created chat), regardless of the global agent-mode toggle's current
 // state, so no shared flag needs to move at all.
@@ -414,23 +415,38 @@ func (a *App) SendMessageStreamToAsAgent(ctx context.Context, chatID, userMsg st
 // call regardless of the global agent-mode toggle — see SendMessageStreamTo's
 // doc comment for why.
 func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg string, forceAgent bool) <-chan api.StreamChunk {
-	// Prevent concurrent stream goroutines. If a stream is already running,
-	// return an error immediately instead of racing two parallel streams that
-	// would interleave user/user/assistant/assistant into the session history.
-	if !a.streamMu.TryLock() {
+	// Serialise per chat, not globally (v4.6.0 Faz A, chat_locks.go): a second
+	// stream in the *same* chat is rejected so two turns can't interleave
+	// user/user/assistant/assistant into one history, but a stream in a
+	// different chat — the user typing while a Self-Driving task runs in its
+	// own chat, a Telegram reply — never has to wait.
+	// ...except for a Self-Driving worker turn (withChatLockWait), which
+	// queues behind the in-flight turn instead of being rejected — see that
+	// function's doc comment for why an unattended turn must not fail fast.
+	lockChatID := a.resolveChatID(chatID)
+	var (
+		release func()
+		ok      bool
+	)
+	if chatLockWaitEnabled(ctx) {
+		release, ok = a.lockChatStreamWait(ctx, lockChatID)
+	} else {
+		release, ok = a.lockChatStream(lockChatID)
+	}
+	if !ok {
 		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
+		errCh <- api.StreamChunk{Error: a.busyNotice(), Done: true}
 		close(errCh)
 		return errCh
 	}
 
 	innerCh := a.sendMessageStreamCore(ctx, chatID, userMsg, forceAgent)
 
-	// Wrap the inner channel so streamMu is released when the stream completes.
+	// Wrap the inner channel so the lock is released when the stream completes.
 	out := make(chan api.StreamChunk, 128)
 	go func() {
 		defer close(out)
-		defer a.streamMu.Unlock()
+		defer release()
 		defer recoverPanic("forwardStream")
 		forwardStream(ctx, innerCh, out)
 	}()
@@ -438,13 +454,13 @@ func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg stri
 }
 
 // sendMessageStreamCore does the actual routing/streaming work for chatID.
-// Callers must already hold a.streamMu and are responsible for releasing it
-// once the returned channel is fully drained (or abandoned) — the two
-// existing ways that happens are sendMessageStreamInnerTo's async forwarding
-// goroutine above, and runAgentRoutine's synchronous drain (internal/app/
-// routine.go), which needs to hold the lock for its whole call so an
-// unattended routine's auto-permission scoping can't leak into a concurrent
-// interactive stream — see runAgentRoutine's doc comment.
+// Callers must already hold the relevant stream lock and are responsible for
+// releasing it once the returned channel is fully drained (or abandoned):
+// sendMessageStreamInnerTo's async forwarding goroutine holds the per-chat
+// lock (chat_locks.go), and runAgentRoutine's synchronous drain holds the
+// global streamMu write lock for its whole call so an unattended routine's
+// auto-permission scoping can't leak into a concurrent interactive stream —
+// see runAgentRoutine's doc comment.
 func (a *App) sendMessageStreamCore(ctx context.Context, chatID, userMsg string, forceAgent bool) <-chan api.StreamChunk {
 	a.observerRecorder.RecordMessage(userMsg)
 	goRecover("processMessageIntent", func() { a.processMessageIntent(userMsg, "chat", "", time.Now()) })
@@ -489,16 +505,8 @@ func (a *App) sendMessageStreamCore(ctx context.Context, chatID, userMsg string,
 func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, imagePath string) <-chan api.StreamChunk {
 	logx.Printf(">> VisionStream: %q with image %s", userMsg, imagePath)
 
-	if !a.streamMu.TryLock() {
-		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
-		close(errCh)
-		return errCh
-	}
-
 	imgData, err := os.ReadFile(imagePath)
 	if err != nil {
-		a.streamMu.Unlock()
 		ch := make(chan api.StreamChunk, 1)
 		ch <- api.StreamChunk{Error: "⚠️ Cannot read image: " + err.Error(), Done: true}
 		close(ch)
@@ -511,6 +519,9 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
 	if incog {
+		if !a.streamMu.TryLock() {
+			return busyStreamChan(a.busyNotice())
+		}
 		innerCh := a.handleIncognitoStream(ctx, userMsg, b64)
 		out := make(chan api.StreamChunk, 128)
 		go func() {
@@ -530,6 +541,11 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		chatID = sm.GetActiveID()
 	}
 
+	release, ok := a.lockChatStream(chatID)
+	if !ok {
+		return busyStreamChan(a.busyNotice())
+	}
+
 	// buildMessagesForSession (not a hand-rolled system+history+user list) so
 	// image messages get the same mood directive, web search context, and
 	// token-aware history truncation as plain text ones — the manual
@@ -544,7 +560,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 	out := make(chan api.StreamChunk, 128)
 	go func() {
 		defer close(out)
-		defer a.streamMu.Unlock()
+		defer release()
 		defer recoverPanic("forwardStream")
 		forwardStream(ctx, innerCh, out)
 	}()
@@ -555,16 +571,8 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, filePath string) <-chan api.StreamChunk {
 	logx.Printf(">> FileStream: %q with %s", userMsg, filePath)
 
-	if !a.streamMu.TryLock() {
-		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes."), Done: true}
-		close(errCh)
-		return errCh
-	}
-
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		a.streamMu.Unlock()
 		ch := make(chan api.StreamChunk, 1)
 		ch <- api.StreamChunk{Error: "⚠️ Cannot read file: " + err.Error(), Done: true}
 		close(ch)
@@ -583,6 +591,9 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
 	if incog {
+		if !a.streamMu.TryLock() {
+			return busyStreamChan(a.busyNotice())
+		}
 		innerCh := a.handleIncognitoStream(ctx, combined, "")
 		out := make(chan api.StreamChunk, 128)
 		go func() {
@@ -602,6 +613,11 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		chatID = sm.GetActiveID()
 	}
 
+	release, ok := a.lockChatStream(chatID)
+	if !ok {
+		return busyStreamChan(a.busyNotice())
+	}
+
 	messages := a.buildMessagesForSession(ctx, chatID, combined, nil, nil)
 	if sm != nil {
 		sm.AddMessageToSession(chatID, "user", userMsg, "", filePath)
@@ -612,7 +628,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 	out := make(chan api.StreamChunk, 128)
 	go func() {
 		defer close(out)
-		defer a.streamMu.Unlock()
+		defer release()
 		defer recoverPanic("forwardStream")
 		forwardStream(ctx, innerCh, out)
 	}()
@@ -654,16 +670,17 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 		return a.handleIncognito(userMsg, b64)
 	}
 
-	if !a.streamMu.TryLock() {
-		return a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes.")
-	}
-	defer a.streamMu.Unlock()
-
 	sm := a.getSessionManager()
 	var chatID string
 	if sm != nil {
 		chatID = sm.GetActiveID()
 	}
+
+	release, ok := a.lockChatStream(chatID)
+	if !ok {
+		return a.busyNotice()
+	}
+	defer release()
 
 	msgs := a.buildMessagesForSession(context.Background(), chatID, userMsg, []string{b64}, nil)
 	if sm != nil {
@@ -711,16 +728,17 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 		return a.handleIncognito(combined, "")
 	}
 
-	if !a.streamMu.TryLock() {
-		return a.t("⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", "⏳ Please wait until the previous response finishes.")
-	}
-	defer a.streamMu.Unlock()
-
 	sm := a.getSessionManager()
 	var chatID string
 	if sm != nil {
 		chatID = sm.GetActiveID()
 	}
+
+	release, ok := a.lockChatStream(chatID)
+	if !ok {
+		return a.busyNotice()
+	}
+	defer release()
 
 	messages := a.buildMessagesForSession(context.Background(), chatID, combined, nil, nil)
 	if sm != nil {
@@ -799,5 +817,38 @@ kodlama ajanı olarak çalışıyorsun. Aşağıdaki kurallara uy:
 - Kullanıcı "takvimimde ne var", "bu hafta ne yapacağım" gibi bir şey sorduğunda hafızandan/RAG'dan
   TAHMİN ETME — gerçek, kaydedilmiş etkinlikleri okumak için get_calendar_events aracını çağır.
   Bu, gerçekten kaydedilmiş bir etkinlik ile sadece sohbette bahsedilmiş ama hiç kaydedilmemiş bir
-  şeyi birbirine karıştırmanı engeller.`
+  şeyi birbirine karıştırmanı engeller.
+
+### Otonom Görev Döngüsü (Self-Driving)
+- Bir "Task.md" dosyası (onay kutulu maddeler: "- [ ]") söz konusuysa ve kullanıcı "şuna başla",
+  "bu listeyi çalıştır", "otonom yap", "kendi kendine ilerlet" gibi bir şey diyorsa: maddeleri
+  tek tek sen elle yapma — start_self_driving_task aracını çağır. Bu araç, planlama fazı, madde
+  başına sağlayıcı/model seçimi, hız-limiti bekleme ve alt-ajan (bir yazar + paralel salt-okuyucu)
+  desteğiyle bir görev döngüsü kurar; ilerlemeyi Task.md'deki kutulara "[x]" olarak yansıtır.
+- Görev bu sohbete bağlanır ve arka planda çalışır. Kullanıcı "görev durumu", "ne durumda", "hangi
+  maddedesin", "bitti mi" diye sorduğunda ASLA uydurma — get_task_status aracını çağır. Araç
+  "çalışan görev yok" derse aynen öyle söyle; boş bir Task.md görüp "hiçbir şey olmadı / sağlayıcı
+  yok / dosyalar oluşmadı" gibi bir başarısızlık anlatısı KURMA.
+- Bu görevi bu sohbetten DURAKLATIP SÜRDÜREBİLİRSİN. Kullanıcı görevi kastederek "dur", "duraklat",
+  "bekle", "stop" dediğinde pause_task; "devam", "devam et", "kaldığın yerden devam et", "continue"
+  dediğinde ya da açıkça sürmesini istediğinde resume_task çağır. Duraklatmadayken kullanıcının
+  yazdığı gerçek talimatlar bir sonraki adıma otomatik iletilir — sen sadece aracı çağır.
+- Ayrıntılı kontroller (madde atlama vb.) Görevler sekmesindedir (Telegram/WhatsApp'ta task_list /
+  task_change ile).
+- start_self_driving_task yalnızca bir Ajan sohbetinden (bir proje klasörüne bağlı) çalışır; sohbet
+  ajan sohbeti değilse araç bunu söyleyip hata döndürür, sen de kullanıcıya Ajan sekmesinden proje
+  bağlamasını söyle.
+
+### Task.md Yazma / Düzenleme
+- Kullanıcı "benimle bir Task.md hazırla", "bu işi maddelere böl", "Task.md'ye şu maddeyi ekle",
+  "3. maddeyi ikiye böl" gibi bir şey dediğinde dosyayı elle write_file ile uydurma —
+  create_task_md / edit_task_md araçlarını kullan. Önce sohbette hedefi ve ayrık, tek tek
+  doğrulanabilir teslimatları netleştir, sonra create_task_md'yi çağır.
+- Aşağıdaki şema tek geçerli biçimdir:
+
+` + taskloop.TaskMdSchemaDoc() + `
+
+Örnek iskelet:
+
+` + taskloop.TaskMdTemplate() + ``
 }

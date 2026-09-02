@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"memo/internal/api"
+	"memo/internal/logx"
 	"memo/internal/provider"
 	"memo/internal/taskloop"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -19,6 +21,88 @@ func (a *App) CreateTaskList(chatID, title string, items []string) (*taskloop.Ta
 		return nil, fmt.Errorf("görev listesi yalnızca bir ajan sohbetine bağlanabilir; önce Ajan sekmesinden bir proje sohbeti seçin")
 	}
 	return a.taskloopStore.Create(chatID, title, items)
+}
+
+// CreateTaskListFromTaskMd parses a Task.md file, seeds a task list from its
+// checkbox items, and records the notification level (from the "# bildirim:"
+// header) plus the file path so item completion can mirror "[ ]" -> "[x]" back
+// into it. Already-checked items are stored as done. A file with no checkboxes
+// is an error.
+func (a *App) CreateTaskListFromTaskMd(chatID, title, taskMdPath string) (*taskloop.TaskList, error) {
+	if a.taskloopStore == nil {
+		return nil, fmt.Errorf("görev listesi sistemi başlatılmamış")
+	}
+	sm := a.getSessionManager()
+	if sm == nil || !sm.IsAgentChat(chatID) {
+		return nil, fmt.Errorf("görev listesi yalnızca bir ajan sohbetine bağlanabilir; önce Ajan sekmesinden bir proje sohbeti seçin")
+	}
+	parsed, err := taskloop.ParseTaskMd(taskMdPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(parsed.Items) == 0 {
+		return nil, fmt.Errorf("Task.md içinde onay kutusu maddesi bulunamadı: %s", taskMdPath)
+	}
+	texts := make([]string, len(parsed.Items))
+	for i, it := range parsed.Items {
+		texts[i] = it.Text
+	}
+	if strings.TrimSpace(title) == "" {
+		title = filepath.Base(taskMdPath)
+	}
+	tl, err := a.taskloopStore.CreateWithMeta(chatID, title, texts, parsed.NotifyLevel, taskMdPath)
+	if err != nil {
+		return nil, err
+	}
+	// Mode: "# mod: worker" for the legacy one-turn-per-item loop, anything
+	// else (including no header) → planner/executor. Planexec keeps its coder
+	// turns in isolated sub-agent runs; worker mode streams every round into
+	// this chat's history and floods it, so it's now strictly opt-in.
+	switch strings.ToLower(strings.TrimSpace(parsed.Headers["mod"])) {
+	case "worker", "işçi", "isci":
+		// leave Mode "" (worker)
+	default:
+		if err := a.taskloopStore.SetMode(tl.ID, taskloop.ModePlanner); err != nil {
+			logx.Printf("taskloop: set mode planlayıcı %s: %v", tl.ID, err)
+		}
+	}
+	// "# onay: otomatik" skips the plan approval gate for this list.
+	switch strings.ToLower(strings.TrimSpace(parsed.Headers["onay"])) {
+	case "otomatik", "auto", "automatic":
+		if err := a.taskloopStore.SetAutoApprovePlan(tl.ID, true); err != nil {
+			logx.Printf("taskloop: set auto-approve %s: %v", tl.ID, err)
+		}
+	}
+	for i, it := range parsed.Items {
+		if i >= len(tl.Items) {
+			break
+		}
+		// Record the source line so completion can flip the checkbox in place.
+		if err := a.taskloopStore.SetItemLine(tl.ID, tl.Items[i].ID, it.Line); err != nil {
+			logx.Printf("taskloop: seed item line %s: %v", tl.Items[i].ID, err)
+		}
+		// Carry over pre-checked items so a partially-done Task.md resumes
+		// rather than redoing completed work.
+		if it.Status == "done" {
+			if err := a.taskloopStore.SetItemDone(tl.ID, tl.Items[i].ID); err != nil {
+				logx.Printf("taskloop: seed done item %s: %v", tl.Items[i].ID, err)
+			}
+		}
+	}
+	return a.taskloopStore.Get(tl.ID)
+}
+
+// memoSystemGuidance returns the instructions of the built-in memo-system
+// skill for the task loop's planning/self-heal prompts. It is read directly
+// rather than activated, so it never appears in the user's normal skill list.
+func (a *App) memoSystemGuidance() string {
+	if a.skillManager == nil {
+		return ""
+	}
+	if def, ok := a.skillManager.Get("memo-system"); ok {
+		return def.Instructions
+	}
+	return ""
 }
 
 func (a *App) GetTaskList(id string) (*taskloop.TaskList, error) {
@@ -60,6 +144,9 @@ func (a *App) StartTaskList(ctx context.Context, listID string) error {
 	if sm == nil || !sm.IsAgentChat(tl.ChatID) {
 		return fmt.Errorf("bu listenin bağlı olduğu sohbet artık bir ajan sohbeti değil (silinmiş olabilir); listeyi yeniden oluşturun")
 	}
+	if a.taskNotifyBus != nil {
+		a.taskNotifyBus.SetLevel(listID, tl.NotifyLevel)
+	}
 	return a.taskloopEngine.Start(ctx, listID)
 }
 
@@ -69,29 +156,199 @@ func (a *App) StopTaskList(listID string) {
 	}
 }
 
+// CancelTaskList stops a list and marks it cancelled (terminal — unlike pause,
+// it won't resume). The engine writes the terminal status itself, in the right
+// order relative to the run goroutine's own ctx-cancel cleanup — doing it here
+// after Stop() used to race that cleanup and land back on "paused".
+func (a *App) CancelTaskList(listID string) error {
+	if a.taskloopEngine == nil || a.taskloopStore == nil {
+		return fmt.Errorf("görev döngüsü motoru başlatılmamış")
+	}
+	a.taskloopEngine.Cancel(listID)
+	return nil
+}
+
+// SkipCurrentItem abandons whatever item a list is on and moves to the next.
+func (a *App) SkipCurrentItem(listID string) error {
+	if a.taskloopEngine == nil {
+		return fmt.Errorf("görev döngüsü motoru başlatılmamış")
+	}
+	return a.taskloopEngine.SkipCurrent(listID)
+}
+
+// InjectTaskMessage sends a free-text instruction into a task list's own
+// agent chat and returns the assistant's reply.
+func (a *App) InjectTaskMessage(ctx context.Context, listID, text string) (string, error) {
+	if a.taskloopStore == nil {
+		return "", fmt.Errorf("görev listesi sistemi başlatılmamış")
+	}
+	tl, err := a.taskloopStore.Get(listID)
+	if err != nil {
+		return "", err
+	}
+	var sb strings.Builder
+	for chunk := range a.SendMessageStreamTo(context.Background(), tl.ChatID, text) {
+		if chunk.Error != "" {
+			return sb.String(), fmt.Errorf("%s", chunk.Error)
+		}
+		sb.WriteString(chunk.Content)
+		if chunk.Done {
+			break
+		}
+	}
+	return strings.TrimSpace(sb.String()), nil
+}
+
+// ListRunningTasks returns a live view of every executing task list.
+func (a *App) ListRunningTasks() []taskloop.RunningTaskInfo {
+	if a.taskloopEngine == nil {
+		return nil
+	}
+	return a.taskloopEngine.RunningTasks()
+}
+
+func (a *App) runningTaskList() []taskloop.RunningTaskInfo { return a.ListRunningTasks() }
+
+// errIdleWorkerTurn is what a worker turn returns when its stream went quiet
+// past workerIdleTimeout.
+//
+// Deliberately worded without "timed out": classifyProviderErr would read that
+// as a transient provider fault and park the whole list on a 5-then-10-minute
+// retry timer. A wedged turn should cost its own item and let the list move on
+// to the next one.
+func errIdleWorkerTurn(idle time.Duration) error {
+	return fmt.Errorf("işçi hatası: tur %s boyunca hiç çıktı üretmedi, takıldı sayıldı", idle)
+}
+
+// emitChatBusyProbe drops a "waiting" activity line when a worker turn is
+// about to queue behind another turn in the same chat, before it actually
+// does — the queueing itself happens silently inside SendMessageStreamTo
+// (lockChatStreamWait polls chat_locks.go's per-chat mutex with no callback
+// out). Found while reviewing this code, not from a live report: the queue
+// can legitimately run for minutes (chatLockWaitMax is 5), and until this,
+// nothing told the card that's what was happening — SilentSec just climbed
+// with no tool line and no "model generating" text either (that label is
+// keyed off silence *while running*, not off queueing), reading as a stall.
+//
+// The probe itself can't be wrong in the way that matters: if the lock is
+// free, it acquires and immediately releases it, so the real call right
+// after this just re-acquires a free lock — a harmless no-op. If it's held,
+// the chat was genuinely busy at this instant, which is exactly when the
+// "waiting" line is true. A race either way (freed a moment later, or taken
+// by someone else a moment later) only ever costs one redundant or missed
+// activity line, never correctness.
+func (a *App) emitChatBusyProbe(listID, chatID string) {
+	if listID == "" || a.taskloopEngine == nil {
+		return
+	}
+	if release, ok := a.lockChatStream(chatID); ok {
+		release()
+		return
+	}
+	a.taskloopEngine.EmitActivity(listID, "waiting",
+		a.t("Sohbet meşgul, sırada bekleniyor…", "Chat is busy, waiting in line…"))
+}
+
 func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 	return func(ctx context.Context, chatID, prompt string) (string, error) {
 		// SendMessageStreamTo (docs/plans/PLAN_chatid_refactor.md Faz 3)
 		// targets chatID directly and activates tool execution because the
-		// chat itself is an agent chat — no SwitchChat, no global
-		// agent-mode flag to flip and race back. taskloopRunMu now only
-		// serializes task-list turns against each other, so two lists
-		// running at once queue in order instead of both racing streamMu
-		// and one silently failing its turn with a "please wait" error.
-		a.taskloopRunMu.Lock()
-		defer a.taskloopRunMu.Unlock()
+		// chat itself is an agent chat — no SwitchChat, no global agent-mode
+		// flag to flip and race back. There is no longer a global
+		// taskloopRunMu: each list's turns land in that list's own agent
+		// chat, so the per-chat stream lock (chat_locks.go) already keeps a
+		// list's turns from overlapping, and two different lists run in
+		// parallel instead of queueing (v4.6.0 Faz C).
+		a.cfgMu.RLock()
+		taskMem := a.cfg.TaskLoop.TaskMemory
+		a.cfgMu.RUnlock()
+		if !taskMem {
+			ctx = withTaskMemoryDisabled(ctx)
+		}
 
-		ch := a.SendMessageStreamTo(ctx, chatID, prompt)
+		// Feed this list's live token estimate (worker mode has no per-step
+		// hook like planexec does) so the in-chat block shows a number that
+		// keeps climbing while the turn streams — a "not frozen" signal.
+		tokListID := ""
+		if trc := taskRunConfigFromCtx(ctx); trc != nil {
+			tokListID = trc.listID
+		}
+		if tokListID != "" {
+			a.taskloopEngine.AddTokens(tokListID, taskloop.EstTokens(prompt))
+		}
+
+		// Queue behind whatever is already streaming in this chat instead of
+		// bouncing off the per-chat lock: the agent turn that called
+		// start_self_driving_task is still streaming in exactly this chat when
+		// the loop reaches its first item, so fail-fast made every item die
+		// instantly with "işçi hatası: ⏳ Lütfen önceki cevap..." and the
+		// whole list fail in under two seconds (chat_locks.go).
+		//
+		a.emitChatBusyProbe(tokListID, chatID)
+
+		// Hard ceiling on silence. A worker turn is a whole agent run — model
+		// call, tool, model call — and any one of those can wedge: a
+		// run_command whose backgrounded child held the output pipes open
+		// froze item 1 of a list indefinitely, with the card stuck on
+		// "No response" and items 2..N never starting. The tool bug itself is
+		// fixed (internal/agent/tools.PrepareCommand), but the loop must not
+		// depend on every tool being well-behaved, so an idle stream now ends
+		// the turn instead of hanging the list forever. The timer resets on
+		// every chunk, so a turn that keeps producing runs as long as it likes.
+		turnCtx, turnCancel := context.WithCancel(withChatLockWait(ctx))
+		defer turnCancel()
+		idle := a.workerIdleTimeout()
+
+		ch := a.SendMessageStreamTo(turnCtx, chatID, prompt)
 		var sb strings.Builder
-		for chunk := range ch {
+		timer := time.NewTimer(idle)
+		defer timer.Stop()
+	drain:
+		for {
+			var chunk api.StreamChunk
+			var open bool
+			select {
+			case chunk, open = <-ch:
+				if !open {
+					break drain
+				}
+			case <-timer.C:
+				turnCancel()
+				// Drain in the background so the producer goroutine isn't leaked.
+				go func() {
+					for range ch { //nolint:revive // discard
+					}
+				}()
+				return sb.String(), errIdleWorkerTurn(idle)
+			}
+
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(idle)
+
 			if chunk.Error != "" {
+				// A busy chat is not a provider fault — tag it so the engine
+				// waits and retries the same item instead of marking it stuck.
+				if chunk.Error == a.busyNotice() {
+					return sb.String(), fmt.Errorf("%w: %s", taskloop.ErrChatBusy, chunk.Error)
+				}
 				return sb.String(), fmt.Errorf("işçi hatası: %s", chunk.Error)
 			}
-			if chunk.Content != "" {
+			if tokListID != "" && chunk.Content != "" {
+				a.taskloopEngine.AddTokens(tokListID, taskloop.EstTokens(chunk.Content))
+			}
+			// Only real assistant prose — skip the status chunks the stream
+			// interleaves (agent_event tool JSON, the memory_used count),
+			// otherwise the chief reviews polluted input.
+			if chunk.Content != "" && (chunk.FinishReason == "" || chunk.FinishReason == "stop") {
 				sb.WriteString(chunk.Content)
 			}
 			if chunk.Done {
-				break
+				break drain
 			}
 		}
 		result := sb.String()
@@ -164,14 +421,45 @@ func (a *App) reviewChiefViaLocal(ctx context.Context, itemText, workerOutput st
 	return taskloop.ExtractAndParseReview(raw)
 }
 
+// callLLMForReview is the taskloop's single-completion helper (worker-mode CEO
+// review, planner/executor-mode fuzzy acceptance checks, state-doc compaction,
+// finish reports). The budget is generous — a reasoning model or a queued
+// endpoint can legitimately take a few minutes to answer a review of a large
+// output — but still bounded so a dead endpoint fails.
 func (a *App) callLLMForReview(ctx context.Context, messages []api.Message) string {
+	return a.callLLMForReviewWith(ctx, messages, nil)
+}
+
+// callLLMForReviewWith is callLLMForReview with an optional caller-supplied
+// router (a planexec verifier role's private single-provider router, model
+// already baked in). A nil router keeps the original global-provider
+// behaviour.
+func (a *App) callLLMForReviewWith(ctx context.Context, messages []api.Message, roleRouter *provider.Router) string {
+	if roleRouter != nil {
+		pctx, cancel := context.WithTimeout(ctx, 240*time.Second)
+		defer cancel()
+		pMsgs := make([]provider.Message, len(messages))
+		for i, m := range messages {
+			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
+		}
+		resp, err := roleRouter.ChatCompletion(pctx, provider.ChatRequest{
+			Messages:    pMsgs,
+			Temperature: 0.2,
+			MaxTokens:   1024,
+		})
+		if err != nil {
+			return "⚠️ " + err.Error()
+		}
+		return resp.Content
+	}
+
 	a.providerMu.RLock()
 	activeName := a.activeProviderName
 	providerRouter := a.providerRouter
 	a.providerMu.RUnlock()
 
 	if activeName != "" && providerRouter != nil {
-		pctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+		pctx, cancel := context.WithTimeout(ctx, 240*time.Second)
 		defer cancel()
 
 		pMsgs := make([]provider.Message, len(messages))
@@ -192,7 +480,7 @@ func (a *App) callLLMForReview(ctx context.Context, messages []api.Message) stri
 		return resp.Content
 	}
 
-	lctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	lctx, cancel := context.WithTimeout(ctx, 240*time.Second)
 	defer cancel()
 
 	a.clientMu.RLock()

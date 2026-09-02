@@ -246,11 +246,37 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
 		}
 
-		agentRouter, modelName, effortLevel, err := a.resolveAgentProvider()
-		if err != nil {
-			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
-			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
-			return
+		// A Self-Driving worker turn carries its own provider/model snapshot on
+		// the ctx (see tasklist_run.go). Absent that, this is an ordinary
+		// interactive call and the path below is unchanged.
+		exec := a.agentExecutor
+		var agentRouter *provider.Router
+		var modelName, effortLevel string
+		if trc := taskRunConfigFromCtx(ctx); trc != nil {
+			exec = trc.exec
+			agentRouter = trc.exec.ActiveRouter()
+			modelName, effortLevel = trc.model, trc.effortLevel
+			if agentRouter == nil || !agentRouter.HasActiveProvider() {
+				msg := a.t("Görev için yapılandırılmış bir sağlayıcı yok.", "No provider configured for this task.")
+				a.recordStreamError(userMsg, "⚠️ "+msg, sessionID)
+				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + msg, Done: true})
+				return
+			}
+		} else {
+			var err error
+			agentRouter, modelName, effortLevel, err = a.resolveAgentProvider()
+			if err != nil {
+				a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
+				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+				return
+			}
+		}
+
+		// Let "this chat" agent tools (start_self_driving_task) resolve the
+		// chat that asked. Not for a Self-Driving worker turn — a task loop
+		// must not be able to launch nested task loops.
+		if taskRunConfigFromCtx(ctx) == nil {
+			ctx = withCurrentChatID(ctx, sessionID)
 		}
 
 		sm := a.getSessionManager()
@@ -259,15 +285,29 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			projectPath = sm.GetProjectPath(sessionID)
 		}
 
-		a.agentExecutor.SyncRouter(agentRouter)
+		exec.SyncRouter(agentRouter)
 
 		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, Category: categoryAgent, PromptTokens: estimateMessagesTokens(messages)}
 
 		start := time.Now()
 		agentEvents := &agentEventLog{}
 
-		streamCh, err := a.agentExecutor.RunStream(ctx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
+		// A Self-Driving worker turn mirrors its tool calls into the list's
+		// live activity block, the same way the planner/executor mode's coder
+		// step does (emitStepToolActivity). Without this the task card showed
+		// nothing but "planning" / "Model: …" for minutes at a time while the
+		// worker was in fact reading and writing files — indistinguishable
+		// from a hang, which is exactly how users read it.
+		taskListID := ""
+		if trc := taskRunConfigFromCtx(ctx); trc != nil {
+			taskListID = trc.listID
+		}
+
+		streamCh, err := exec.RunStream(ctx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
 			agentEvents.add(ev)
+			if taskListID != "" {
+				a.emitStepToolActivity(taskListID, ev)
+			}
 			chunkData, _ := json.Marshal(ev)
 			trySend(ctx, outCh, api.StreamChunk{
 				Content:      string(chunkData),
@@ -359,8 +399,8 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 	for {
 		chunk, ok, ctxDone := recvChunk(ctx, streamCh)
 		if ctxDone {
-			a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
-			trySend(ctx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
+			a.persistInterruptedTurn(ctx, start, 0, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+			trySend(ctx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 			return
 		}
 		if !ok {
@@ -898,8 +938,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			for {
 				chunk, ok, ctxDone := recvChunk(providerCtx, ch)
 				if ctxDone {
-					a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
-					trySend(providerCtx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
+					a.persistInterruptedTurn(ctx, start, tokenCount, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+					trySend(providerCtx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 					return
 				}
 				if !ok {
@@ -1012,8 +1052,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		for {
 			chunk, ok, ctxDone := recvChunk(streamCtx, ch)
 			if ctxDone {
-				a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
-				trySend(streamCtx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
+				a.persistInterruptedTurn(ctx, start, tokenCount, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				trySend(streamCtx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 				return
 			}
 			if !ok {
@@ -1156,6 +1196,26 @@ func (a *App) recordStreamError(userMsg, errReply, sessionID string) {
 		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", errReply))
 		a.incognitoMu.Unlock()
 	}
+}
+
+// stopMarker is the notice appended to a turn the user stopped mid-generation.
+func (a *App) stopMarker() string {
+	return a.t("⏹️ Cevap durduruldu.", "⏹️ Response stopped.")
+}
+
+// persistInterruptedTurn saves a turn the user cancelled while it was still
+// streaming. Any assistant text that already arrived is kept (with a trailing
+// stop marker) and flows through the normal finishStream persistence path,
+// instead of being thrown away and replaced by the bare "stopped" notice as
+// every ctxDone branch used to do — a partial answer is still useful and the
+// user explicitly chose to keep what they had. With nothing generated yet it
+// falls back to recording just the marker.
+func (a *App) persistInterruptedTurn(ctx context.Context, start time.Time, tokenCount int, partial, userMsg, sessionID string, meta *usageMeta, agentEvents ...[]interface{}) {
+	if strings.TrimSpace(partial) == "" {
+		a.recordStreamError(userMsg, a.stopMarker(), sessionID)
+		return
+	}
+	a.finishStream(ctx, start, tokenCount, "stop", partial+"\n\n"+a.stopMarker(), userMsg, sessionID, meta, agentEvents...)
 }
 
 // recordUsageEvent persists one completed turn to the usage-stats store.

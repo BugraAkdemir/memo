@@ -131,7 +131,8 @@ Memo sadece bir sohbet aracı değil, bir "İkinci Beyin"dir.
 
 ### Çoklu Sağlayıcı Mimarisi
 Memo, yerel modellerin yanında harici LLM API'lerine de bağlanır:
-- **Desteklenen Sağlayıcılar:** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, artı **OpenCode Zen** (kullandıkça öde, bazı modeller ücretsiz), **OpenCode Go** (abonelik) ve **Kilo Code** (app.kilo.ai — kullandıkça öde, bazı modeller ücretsiz) — üçü de gerçek, canlı model listesinden seçim yaptırır; ücretsiz modeller en üste sıralanır ve yeşil onay işaretiyle gösterilir.
+- **Desteklenen Sağlayıcılar (15 `ProviderType` değeri):** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, genel bir **Özel** (herhangi bir OpenAI-uyumlu endpoint), yeni bir **Özel (Anthropic uyumlu)** (Anthropic Messages API şeklindeki herhangi bir endpoint — ör. kendi proxy'n, OpenAI formatını konuşmuyorsa), artı **OpenCode Zen** (kullandıkça öde, bazı modeller ücretsiz), **OpenCode Go** (abonelik) ve **Kilo Code** (app.kilo.ai — kullandıkça öde, bazı modeller ücretsiz) — üç gateway de gerçek, canlı model listesinden seçim yaptırır; ücretsiz modeller en üste sıralanır ve yeşil onay işaretiyle gösterilir.
+- **Claude ve Gemini artık gerçek tool-calling destekliyor** (öncesinde ikisinde de tamamen yoktu — bir ajan/görev döngüsü turu bu sağlayıcılardan hiçbirinde araç kullanamıyordu, sessizce). İkisi de tek ve paralel araç çağrılarını kendi vendor formatına göre doğru round-trip ediyor.
 - **Sohbet Sağlayıcısı Olarak Claude Code / Codex CLI (beta):** API çağrısı yerine Memo, kurulu `claude`/`codex` CLI'ını arka planda çalıştırır. Sohbet-bazlı (uygulama geneli değil), sabit zaman aşımı olmadan gerçek bir arka plan görevi olarak çalışır, CLI'ın kendi `/` komutları Memo'nun komut penceresinde görünür. Hafıza/kimlik bağlamı gönderilmez — CLI kendi oturumunu kendi yönetir.
 - **Sağlayıcı Arayüzü:** Ortak `Provider` interface ile `ChatCompletion`, `ChatCompletionStream`, `ListModels`
 - **Fallback Zinciri:** Router sağlayıcıları sırayla dener; 3 başarısızlıkta auto-disable; iyileşince health check ile tekrar aktifleştirme
@@ -152,7 +153,7 @@ Memo, yerel modellerin yanında harici LLM API'lerine de bağlanır:
 
 ### Araç Çalıştırma Motoru
 Memo, bilgisayarınızda işlem yapabilen bir AI ajanı olarak çalışır:
-- **22 Yerleşik Araç:** dosya G/Ç (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`), `run_command`, `read_env`, `web_search`, `self_clone`, `configure_provider`, `get_calendar_events`, rutinler (`create_routine`, `list_routines`, `cancel_routine`), WhatsApp (`whatsapp_send`/`search`/`latest`/`messages`)
+- **27 Yerleşik Araç** (`registerBuiltins()`'e karşı doğrulandı, `internal/agent/tools.go` — eski "22"den büyüdü): dosya G/Ç (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`, `change_directory`), `run_command`, `read_env`, `web_search`, `fetch_page`, `self_clone`, `configure_provider`, `get_calendar_events`, görev döngüsü kontrolü (`get_task_status`, `pause_task`, `resume_task`, `create_task_md`, `edit_task_md`, `start_self_driving_task` — bkz. §6.5), rutinler (`create_routine`, `list_routines`, `cancel_routine`), `share_file`. WhatsApp'ın 4 aracı (`whatsapp_send`/`search`/`latest`/`messages`) ayrı, kapsamlandırılmış bir registry'de yaşıyor, bu ana registry'de değil.
 - **Skill tool'ları artık gerçekten çalışıyor.** Bir skill'in `SKILL.md`'sinde tanımlanan `command:` alanı, yerleşik araçlarla aynı tool pipeline'ına ve izin-sorma arayüzüne bağlanıyor — önceden sadece deklaratifti, hiçbir şey çalıştırmıyordu.
 - **Araç Kaydı:** JSON Schema parametre tanımlarıyla thread-safe kayıt sistemi
 - **Tehlike Seviyesi:** `safe` (otomatik izin), `medium` (kullanıcıya sor), `dangerous` (kullanıcıya sor + 2sn gecikme)
@@ -164,15 +165,29 @@ Memo, bilgisayarınızda işlem yapabilen bir AI ajanı olarak çalışır:
 
 ### Güvenlik Sandbox'ı
 - **Path Traversal Koruması:** Symlink çözümleme, `..` engelleme, proje kök dizini sınırlaması
-- **Komut Kara Listesi:** 23 tehlikeli pattern engellenir (`rm -rf /`, `sudo`, fork bomb, vb.)
+- **Komut Kara Listesi:** 43 tehlikeli pattern engellenir (`rm -rf /`, `sudo`, fork bomb, vb. — eski "23"ten büyüdü)
 - **Rate Limiting:** Dakikada 30 araç çağrısı, komut başına 5sn bekleme
 
 ### Ajan Pipeline'ı
-- **LLM ↔ Araç Döngüsü:** Kullanıcı mesajı + araç tanımları LLM'e gönderilir, araç çağrıları çalıştırılır, sonuçlar LLM'e geri beslenir, nihai yanıta kadar döngü devam eder (max 20 iterasyon)
+- **LLM ↔ Araç Döngüsü:** Kullanıcı mesajı + araç tanımları LLM'e gönderilir, araç çağrıları çalıştırılır, sonuçlar LLM'e geri beslenir, nihai yanıta kadar döngü devam eder (max 40 iterasyon, `pipeline.go`'nun `maxIters`'ına karşı doğrulandı)
 - **Olay Akışı:** Araç çalıştırma olayları SSE ile frontend'e iletilir
 - **Denetim Günlüğü:** Son 1000 araç çalıştırması zaman damgasıyla kaydedilir
 
 > **Not:** Ajan frontend UI'ı (izin dialog'ları, araç kartları, mod toggle) bir süredir tamamen canlı — toggle doğrudan sohbetin üst çubuğunda, web arama toggle'ının yanında; ayrı bir Agent ekranı gerekmiyor.
+
+---
+
+## 6.5 🚗 Self-Driving Görev Döngüsü (v4.4.0'da yeni)
+
+Ajan Modu'nun üstüne kurulu, gözetimsiz, çok adımlı bir görev çalıştırıcı — ona bir kontrol listesi verirsin, kendi başına ilerler.
+
+- **`Task.md` şeması.** Düz Markdown bir kontrol listesi (`- [ ]` maddeleri), modu (`worker` ya da `planlayıcı`), bildirim ayrıntısını, rol-bazlı model sabitlemeyi, hafızayı, sağlayıcı kilidini/dolaşmasını (`# sağlayıcı: sabit|otomatik|<isim>`) ve plan otomatik-onayını kontrol eden opsiyonel `# key: value` header'larıyla. `create_task_md`/`edit_task_md` araçlarıyla oluşturulur/düzenlenir, ya da var olan bir dosyadan `start_self_driving_task` ile başlatılır (Görevler sekmesinden bir `Task.md` yoluna işaret ederek de erişilebilir).
+- **Planlayıcı/uygulayıcı modu.** `# mod: planlayıcı` için, önce bir planlama turu bir `Plan.md` üretir (adımlar, kabul kontrolleri, bağımlılık DAG'ı) — kullanıcı bunu Görevler sekmesinin plan onay kartından, ya da `# onay: otomatik` ile otomatik onaylar.
+- **Alt-ajan orkestrasyonu.** Büyük ya da açıkça paralelleşebilir bir madde en fazla 3 alt-ajana bölünebilir: tam olarak bir yazma-yetkili `coder` önce çalışır, sonra en fazla 3 salt-okunur `analyzer`/`reviewer`/`test-runner` alt-ajanı gerçek paralellikte çalışır ve sonuçları bir chief review'a beslenir.
+- **Görev kartında canlı aktivite.** Araç çağrıları, alt-ajan turları (`[coder]`/`[analyzer]`/…), uzun sessiz LLM çağrılarında "model üretiyor", ve yavaş araçlar için "başlıyor…" satırları döngü çalışırken canlı bir uygulama-içi kartına akıyor.
+- **Sessizce başarısız olmak yerine dayanıklılık.** Meşgul bir sohbet görevi anında öldürmek yerine kuyruğa girip yeniden dener; rate-limit'e giren bir sağlayıcı bekler ve aynı maddeden devam eder, listeyi asla yeniden başlatmaz; geçici bir hata artan bir yeniden deneme alır (5, sonra 10 dakika) madde kullanıcı için park edilmeden önce; bir auth/config hatası sonsuza dek döngüye girmek yerine listeyi waiting-user durumuna park eder. Her terminal durum bildirim gönderir (sohbet mesajı + push), tasarım gereği.
+- **Sohbetten duraklat/devam ettir.** `pause_task`/`resume_task`, modelin çalışan bir görevi kendisinin duraklatmasına ve aynı adımdan devam ettirmesine izin verir, duraklatılmışken kullanıcının yazdığı her şeyi bir sonraki adıma taşıyarak.
+- **Bilinen açık eksikler** (bkz. `BUG_REPORT.md`, `BUG-PLAN9`/`10`/`11`/`12`): plan onayı şimdilik yalnızca Görevler sekmesinden (sohbet içinde değil), sohbet modeli henüz ÇALIŞAN bir görevin canlı durumunu okuyamıyor (araya sorulursa ikna edici ama yanlış bir "bozuk" hikayesi uydurma riski), ve bir escalation bir adımı böldüğünde ekranlar arası adım/madde sayaçları uyuşmayabiliyor.
 
 ---
 

@@ -273,8 +273,12 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		}
 	}
 
-	logx.Printf("CONTEXT: budget=%d system=%d user=%d history=%d history_msgs=%d total_msgs=%d",
-		tokenBudget, systemTokens, userTokens, historyBudget, len(history), len(msgs))
+	histUsed := 0
+	for _, h := range history {
+		histUsed += truncate.EstimateTokens(h.GetTextContent())
+	}
+	logx.Printf("CONTEXT: budget=%d system=%d user=%d hist_budget=%d hist_used=%d history_msgs=%d total_msgs=%d",
+		tokenBudget, systemTokens, userTokens, historyBudget, histUsed, len(history), len(msgs))
 	return msgs
 }
 

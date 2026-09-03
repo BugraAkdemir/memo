@@ -304,7 +304,14 @@ class _AppShellState extends ConsumerState<AppShell> {
                     ),
                   ),
                 ),
-              Row(
+              // Keeps every screen's content — top bars, the composer's
+              // bottom edge, the NavRail in landscape — clear of the status
+              // bar / display cutout / home indicator on mobile and mobile
+              // web. Every inset is 0 on desktop, so it is a no-op there.
+              // The background gradient above is a separate Stack child and
+              // still paints edge-to-edge behind the inset content.
+              SafeArea(
+                child: Row(
                 children: [
                   if (!narrow) _buildNavRail(),
                   Expanded(
@@ -341,6 +348,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                     ),
                   ),
                 ],
+                ),
               ),
               // One floating hamburger, present on every screen regardless
               // of whether that screen has its own header — Developer/

@@ -42,7 +42,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
               ),
               child: Row(
                 children: [
-                  Text('🧩', style: TextStyle(fontSize: 20)),
+                  Icon(Icons.extension, size: 20, color: theme.textMain),
                   const SizedBox(width: 10),
                   Text(
                     L10n.t('skill_management_btn'),
@@ -104,9 +104,10 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                       final skill = skills[index];
                       final isActive = skill.isActive;
                       return ListTile(
-                        leading: Text(
-                          isActive ? '✅' : '🧩',
-                          style: const TextStyle(fontSize: 20),
+                        leading: Icon(
+                          isActive ? Icons.check_circle : Icons.extension,
+                          size: 20,
+                          color: isActive ? MemoTheme.green : theme.textDim,
                         ),
                         title: Text(
                           skill.name,

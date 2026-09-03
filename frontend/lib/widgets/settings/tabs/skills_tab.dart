@@ -21,7 +21,7 @@ class SkillsTab extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Text('🧩', style: TextStyle(fontSize: 24)),
+              Icon(Icons.extension, size: 24, color: theme.textMain),
               const SizedBox(width: 10),
               Text(
                 L10n.t('skills_title'),
@@ -79,7 +79,11 @@ class SkillsTab extends ConsumerWidget {
                   itemBuilder: (_, i) {
                     final s = skills[i];
                     return ListTile(
-                      leading: Text(s.isActive ? '✅' : '🧩', style: const TextStyle(fontSize: 24)),
+                      leading: Icon(
+                        s.isActive ? Icons.check_circle : Icons.extension,
+                        size: 24,
+                        color: s.isActive ? MemoTheme.green : theme.textDim,
+                      ),
                       title: Text(
                         s.name,
                         style: TextStyle(

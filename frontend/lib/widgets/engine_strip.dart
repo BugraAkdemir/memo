@@ -179,7 +179,8 @@ class EngineStrip extends ConsumerWidget {
                           decoration: const BoxDecoration(color: MemoTheme.accent, shape: BoxShape.circle),
                         ),
                         const SizedBox(width: 8),
-                        const Text('🎵', style: TextStyle(fontSize: 13)),
+                        const Icon(Icons.graphic_eq,
+                            size: 13, color: MemoTheme.accent),
                         const SizedBox(width: 4),
                         Text(
                           'Orchestra',

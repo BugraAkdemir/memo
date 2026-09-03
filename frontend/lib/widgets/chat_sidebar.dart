@@ -258,6 +258,15 @@ class _ChatListItemState extends State<_ChatListItem> {
         onSecondaryTap: _isEditing
             ? null
             : () => _showContextMenu(context),
+        // Touch devices have no right-click: long-press opens the same
+        // rename/delete menu. Without this, chats could not be renamed or
+        // deleted at all on mobile/web-on-phone.
+        onLongPressStart: _isEditing
+            ? null
+            : (details) {
+                _secondaryTapPosition = details.globalPosition;
+                _showContextMenu(context);
+              },
         child: AnimatedContainer(
           duration:  Duration(milliseconds: 120),
           margin:  EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -367,42 +376,25 @@ class _ChatListItemState extends State<_ChatListItem> {
                       ),
               ),
               if ((_hovering || widget.isActive) && !_isEditing)
-                GestureDetector(
+                _RowIconButton(
+                  icon: Icons.close,
+                  color: MemoTheme.of(context).textDim,
+                  tooltip: L10n.t('delete'),
                   onTap: () => widget.onDelete(widget.chat.id),
-                  child: Padding(
-                    padding:  EdgeInsets.only(left: 4),
-                    child: Icon(
-                      Icons.close,
-                      size: 14,
-                      color: MemoTheme.of(context).textDim,
-                    ),
-                  ),
                 ),
               if (_isEditing)
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    GestureDetector(
+                    _RowIconButton(
+                      icon: Icons.check,
+                      color: MemoTheme.green,
                       onTap: _finishEditing,
-                      child: Padding(
-                        padding:  EdgeInsets.only(left: 4),
-                        child: Icon(
-                          Icons.check,
-                          size: 14,
-                          color: MemoTheme.green,
-                        ),
-                      ),
                     ),
-                    GestureDetector(
+                    _RowIconButton(
+                      icon: Icons.close,
+                      color: MemoTheme.red,
                       onTap: _cancelEditing,
-                      child: Padding(
-                        padding:  EdgeInsets.only(left: 4),
-                        child: Icon(
-                          Icons.close,
-                          size: 14,
-                          color: MemoTheme.red,
-                        ),
-                      ),
                     ),
                   ],
                 ),
@@ -475,6 +467,43 @@ class _ChatListItemState extends State<_ChatListItem> {
     if (confirmed == true) {
       widget.onDelete(widget.chat.id);
     }
+  }
+}
+
+/// Compact but touch-sized icon button for the chat-row trailing actions
+/// (delete / confirm-rename / cancel-rename). The visible glyph stays small
+/// to suit the dense list, but the tap area is 32×32 so it is usable with a
+/// finger, not just a mouse.
+class _RowIconButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  final String? tooltip;
+
+  const _RowIconButton({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.tooltip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Material(
+      type: MaterialType.transparency,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 18,
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: Icon(icon, size: 16, color: color),
+        ),
+      ),
+    );
+    return tooltip == null
+        ? button
+        : Tooltip(message: tooltip!, child: button);
   }
 }
 

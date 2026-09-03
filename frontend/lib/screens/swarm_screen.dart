@@ -830,7 +830,7 @@ class _JoinSwarmViewState extends ConsumerState<_JoinSwarmView> {
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide(color: c.borderSoft),
                 ),
-                hintText: 'swarm-…',
+                hintText: L10n.t('swarm_code_hint'),
                 hintStyle: TextStyle(color: c.textDim),
               ),
             ),

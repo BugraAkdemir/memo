@@ -1881,14 +1881,15 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
               children: [
                 const Icon(Icons.model_training, size: 20),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'OpenRouter Modelleri',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    L10n.t('openrouter_models'),
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),
                 Text(
-                  '${widget.models.length} model',
+                  L10n.t('model_count', {'count': '${widget.models.length}'}),
                   style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                 ),
               ],
@@ -1900,7 +1901,7 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
             child: TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(
-                hintText: 'Model ara...',
+                hintText: L10n.t('model_search'),
                 prefixIcon: const Icon(Icons.search, size: 20),
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 8),

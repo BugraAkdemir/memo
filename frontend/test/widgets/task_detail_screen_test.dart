@@ -46,7 +46,9 @@ void main() {
 
     expect(find.text('Ship feature'), findsWidgets);
     expect(find.textContaining(L10n.t('task_phase_executing')), findsOneWidget);
-    expect(find.text('1/3'), findsOneWidget);
+    // BUG-PLAN11(b): was a bare, unlabeled '1/3' — now carries the same
+    // 'madde'/'item' label the chat activity block's progress line uses.
+    expect(find.text('${L10n.t('task_card_item')} 1/3'), findsOneWidget);
     expect(find.text('wire the endpoint'), findsOneWidget);
     expect(find.text('coder'), findsOneWidget);
     expect(find.text('reviewer'), findsOneWidget);

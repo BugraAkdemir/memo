@@ -110,7 +110,14 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               Row(children: [
                 TaskStatusBadge(info.phase),
                 const SizedBox(width: 12),
-                Text('${info.doneCount}/${info.itemCount}',
+                Text(
+                    // BUG-PLAN11(b): this used to be a bare "N/M" with no
+                    // unit at all next to the phase badge — unreadable on
+                    // its own, and inconsistent with the labeled step count
+                    // just above and the chat activity block's own
+                    // "adım N/M · madde a/b" (task_activity_block.dart's
+                    // _progressText), which already used this exact label.
+                    '${L10n.t('task_card_item')} ${info.doneCount}/${info.itemCount}',
                     style: TextStyle(color: c.textDim, fontSize: 12)),
                 const Spacer(),
                 Text('${L10n.t('task_elapsed')}: ${info.elapsedSec}s',

@@ -343,14 +343,16 @@ testten sonra" — sadece not.
   `"S1 yeniden planlandı"`. Frontend değişikliği gerekmedi — `escalate` kind'i
   zaten stilize ediliyordu (başlangıç satırından). Test:
   `TestEscalationResolvedText`, `TestEngine_PlanExec_EscalationAnnouncesStepCount`.
-- **(b) hâlâ açık, dokunulmadı:** kart / detay bar / "Executing" satırı hâlâ
-  **madde** sayısını (`itemDone/itemTotal`), detay bar'daki "Steps: N/M" ise
-  ayrı bir **adım** sayısını (`stepDone/stepTotal`, escalation ile büyüyen
-  payda) gösteriyor — bunlar gerçekten farklı iki metrik (kavramsal olarak
-  doğru), ama üç yüzeyde tek tutarlı "adım N/M (madde a/b)" formatı yok; her
-  biri kendi kısmi görünümünü basıyor. Artık (c) sayesinde büyüme
-  açıklanıyor, ama format hâlâ birleştirilmedi. Kozmetik, düşük risk —
-  isterse ayrı bir Flutter turu.
+- **(b) kısmen düzeltildi (`849f84fa`), tam birleştirme hâlâ açık:** sohbet
+  aktivite bloğu zaten örnek alınacak formattaydı (`task_activity_block.dart`'ın
+  `_progressText`'i: `"adım N/M · madde a/b"`, `task_card_step`/`task_card_item`
+  etiketleriyle). `task_detail_screen.dart`'ta madde sayısı rozetin yanında
+  **hiç etiketsiz** çıplak "N/M" olarak duruyordu (adım bölümünün kendi
+  başlığı vardı, bu ikincisinin yoktu) — artık aynı `task_card_item`
+  ("madde"/"item") etiketini kullanıyor. `tasks_screen.dart`'ın kartı hâlâ
+  dokunulmadı: `TaskListInfo` (düz liste endpoint'i) adım sayısını hiç
+  taşımıyor, eklemek backend alanı gerektirir — kapsam dışı bırakıldı.
+  Kozmetik, düşük risk, isterse ayrı bir tur.
 - **Öncelik:** düşük (kalan tek parça kozmetik; asıl "ilerleme hiç
   çalışmıyor" ve "escalation açıklanmıyor" şikayetleri kapandı).
 

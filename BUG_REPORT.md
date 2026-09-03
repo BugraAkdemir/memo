@@ -90,11 +90,11 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 1 (BUG-PLAN10 — sohbet modeli çalışan task için ayrıntılı YANLIŞ "bozuk" hikayesi uyduruyor) |
-| 🟡 MEDIUM | 3 (BUG-PLAN11 adım→madde eşleme + sayaç kaosu · BUG-PLAN12 canlı task aktivitesi sohbette yok · BUG-THINK1 Claude thinking hiç gösterilmiyor) |
-| 🟢 LOW | 1 (BUG-PLAN9 planı sohbetten onayla) |
+| 🟡 MEDIUM | 2 (BUG-PLAN12 canlı task aktivitesi sohbette yok · BUG-THINK1 Claude thinking hiç gösterilmiyor) |
+| 🟢 LOW | 2 (BUG-PLAN9 planı sohbetten onayla · BUG-PLAN11(b) tek tutarlı ilerleme metni, kozmetik) |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 1 (BUG-PERM1 + e43627e/b9fc2eb — gerçek masaüstü doğrulaması) |
-| ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 7 (PLAN1/2/3/4/5/6/7/8 — PLAN4 kod+analyze doğrulandı) |
+| ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 8 (PLAN1/2/3/4/5/6/7/8 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(c) `dd803d6`/`a35593f4`) |
 | **AÇIK TOPLAM** | **5** (hepsi kod değişikliği = testten sonra) |
 
 ---
@@ -331,38 +331,42 @@ testten sonra" — sadece not.
   PR #19 merge olana kadar dokunulmayacak** (o an aktif canlı test
   sürüyordu, backend restart'ı test oturumunu bölerdi).
 
-### BUG-PLAN11 — planexec adım→madde eşlemesi tutmuyor + sayaçlar her ekranda farklı
+### BUG-PLAN11 — planexec sayaç kaosu: (a)+(c) düzeltildi, (b) hâlâ açık
 
-- **Bulgu:** aynı anda ekranlarda: kart "0/6 done", detay bar "Steps: 7/13",
-  detay satır "Executing 0/6", sohbet modeli "6 madde hepsi boş". Dört farklı
-  sayı. İki sorun:
-  1. **Adım paydası büyüyor:** plan 6 adım başladı (S1–S6). Escalation S3'ü
-     3.1/3.2/3.3'e (→8), sonra S6'yı S6.1–S6.6'ya böldü (→13). "7/13" ilerleme
-     gibi hissettirmiyor çünkü payda kayıyor; kullanıcı "8'den 13'e niye çıktı"
-     diye soruyor. Escalation'ın adım eklediği UI'da hiç açıklanmıyor.
-  2. **Madde ilerlemesi 0'da donuk** (asıl bug, aşağıda).
-- **Kök neden (gerçek bug, kozmetik değil):** planlayıcı adımlara
-  `item_id = "1".."6"` (sıra numarası) veriyor:
-  ```
-  S1 item_id="1" done | S2 item_id="2" done | 3.1/3.2/3.3 item_id="3" done
-  S4 item_id="4" running | S5 "5" | S6 "6"
-  ```
-  ama task-listesi maddeleri **UUID** ile anahtarlı
-  (`items[].id = "04a7d8f9-8494-…"`, ayrıca `line: 7,8,9…`). `SetItemDone` /
-  `MarkItemDone` gerçek madde id'sini (UUID) veya line'ı arıyor, `"1"`
-  bulamıyor → bir maddenin tüm adımları bitse bile madde `pending` kalıyor →
-  `Task.md` checkbox'ları **hiç** işaretlenmiyor, kart sonsuza dek 0/6.
-  (BUG-PLAN4 turunda "checkbox mirror doğrulandı" denmişti — muhtemelen o
-  planlayıcı eşleşen id / index üretmişti; eşleme kırılgan.)
-- **İstenen:** (a) plan step'in `item_id`'si gerçek `TaskList.items[].id`'ye
-  (veya line'a) çözülsün — planlayıcı prompt'unda gerçek id verilmeli ya da
-  `ItemID` "1".."N" ise index olarak `items[N-1].id`'ye map'lensin. (b) planexec'te
-  her yerde **tek tutarlı** ilerleme metni: "adım N/M (madde a/b)" — kart, detay
-  bar, "Executing" satırı aynı şeyi göstersin. (c) escalation adım eklediğinde
-  UI'da bir iz olsun ("+3 adım: S6 bölündü").
-- **Öncelik:** orta-yüksek (uçtan uca "bitti" sinyali ve Task.md aynası
-  planexec'te çalışmıyor demek; sayı kaosu kullanıcıyı BUG-PLAN10'la birlikte
-  "bozuk" sanısına itiyor).
+- **Orijinal bulgu (3 parça):** aynı anda ekranlarda kart "0/6 done", detay
+  bar "Steps: 7/13", detay satır "Executing 0/6", sohbet modeli "6 madde
+  hepsi boş" — (a) madde ilerlemesi 0'da donuk kalıyordu, (b) dört farklı
+  sayı aynı anda gösteriliyordu, (c) escalation'ın adım eklediği (6→8→13)
+  UI'da hiç açıklanmıyordu.
+- **(a) zaten düzeltilmişti, dokümana hiç işlenmemiş:** kök neden —
+  planlayıcının verdiği `item_id="1".."N"` (sıra no) ile gerçek
+  `TaskList.items[].id` (UUID) arasındaki eşleme — `dd803d6`'da (2026-08-30)
+  çözülmüş: `Engine.syncItemProgress` her `executePlan` dalgasından sonra
+  (yalnızca en sonda değil) `idx+1` sırasını `plan.StepsForItem(ordinal)`
+  ile eşleştirip gerçek `TaskItem.ID`/`.Line`'ı `SetItemDone`/`MarkItemDone`'a
+  veriyor. `TestEngine_PlanExec_ItemsCompleteIncrementally` bunu kilitliyor.
+  `codebase-memory` ile doğrulandı (2026-09-04): mevcut kod tam olarak bunu
+  yapıyor, dokümanın üstteki iddiası (checkbox'lar hiç işaretlenmiyor) artık
+  gerçek değil.
+- **(c) bu oturumda düzeltildi** (`a35593f4`): `escalateStuckSteps` /
+  `resumePendingEscalation` escalation **başladığında** ("S6 takıldı →
+  yeniden planlanıyor") aktivite satırı basıyordu ama **çözüldüğünde** hiç
+  basmıyordu — payda sessizce büyüyordu. Artık ikisi de çözüm anında ikinci
+  bir `escalate` aktivite satırı basıyor: gerçek bölünmede
+  `"S6 3 alt-adıma bölündü (+2 adım)"`, 1'e-1 yeniden yazımda (bölünme değilse)
+  `"S1 yeniden planlandı"`. Frontend değişikliği gerekmedi — `escalate` kind'i
+  zaten stilize ediliyordu (başlangıç satırından). Test:
+  `TestEscalationResolvedText`, `TestEngine_PlanExec_EscalationAnnouncesStepCount`.
+- **(b) hâlâ açık, dokunulmadı:** kart / detay bar / "Executing" satırı hâlâ
+  **madde** sayısını (`itemDone/itemTotal`), detay bar'daki "Steps: N/M" ise
+  ayrı bir **adım** sayısını (`stepDone/stepTotal`, escalation ile büyüyen
+  payda) gösteriyor — bunlar gerçekten farklı iki metrik (kavramsal olarak
+  doğru), ama üç yüzeyde tek tutarlı "adım N/M (madde a/b)" formatı yok; her
+  biri kendi kısmi görünümünü basıyor. Artık (c) sayesinde büyüme
+  açıklanıyor, ama format hâlâ birleştirilmedi. Kozmetik, düşük risk —
+  isterse ayrı bir Flutter turu.
+- **Öncelik:** düşük (kalan tek parça kozmetik; asıl "ilerleme hiç
+  çalışmıyor" ve "escalation açıklanmıyor" şikayetleri kapandı).
 
 ### Not — BUG-PERM1 canlı durumu (2026-08-30 öğleden sonra)
 

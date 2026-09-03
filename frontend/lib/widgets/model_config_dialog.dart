@@ -173,7 +173,12 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
       child: Container(
         width: 440,
         padding: EdgeInsets.all(24),
-        child: Column(
+        // Scrollable so the on-screen keyboard (mobile / mobile web) can't
+        // cover the lower fields or the Start button — Dialog already lifts
+        // itself above the keyboard, but the fixed-height Column of text
+        // fields would otherwise just overflow.
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -419,6 +424,7 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               ],
             ),
           ],
+          ),
         ),
       ),
     );

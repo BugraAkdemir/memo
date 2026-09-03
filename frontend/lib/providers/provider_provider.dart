@@ -193,6 +193,30 @@ Widget providerLogoWidget(String type, {double size = 18}) {
     return Icon(fallback, size: size);
   }
   if (path.endsWith('.svg')) {
+    // These three brand marks are a single-colour glyph (OpenAI ships it
+    // white, OpenCode and xAI ship it black), so on the "wrong" theme they
+    // used to vanish into the background. Tint them with the ambient text
+    // colour at render time — no call site has to pass anything. The
+    // multi-colour logos (Google, Kilo) must NOT be tinted, so they fall
+    // through to the plain branch.
+    const monochrome = {
+      'lib/icon/OpenAI_Symbol_0.svg',
+      'lib/icon/opencode.svg',
+      'lib/icon/XAL.svg',
+    };
+    if (monochrome.contains(path)) {
+      return Builder(
+        builder: (context) => SvgPicture.asset(
+          path,
+          width: size,
+          height: size,
+          colorFilter: ColorFilter.mode(
+            DefaultTextStyle.of(context).style.color ?? const Color(0xFF000000),
+            BlendMode.srcIn,
+          ),
+        ),
+      );
+    }
     return SvgPicture.asset(path, width: size, height: size);
   }
   return Image.asset(path, width: size, height: size, fit: BoxFit.contain);

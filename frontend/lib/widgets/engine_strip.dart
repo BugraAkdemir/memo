@@ -10,6 +10,7 @@ import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
 import '../providers/agent_provider.dart';
 import 'mood_gauge.dart';
+import 'svg_icon.dart';
 import '../providers/mood_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
@@ -179,7 +180,7 @@ class EngineStrip extends ConsumerWidget {
                           decoration: const BoxDecoration(color: MemoTheme.accent, shape: BoxShape.circle),
                         ),
                         const SizedBox(width: 8),
-                        const Icon(Icons.graphic_eq,
+                        const SvgIcon('music-notes',
                             size: 13, color: MemoTheme.accent),
                         const SizedBox(width: 4),
                         Text(

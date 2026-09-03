@@ -6,6 +6,7 @@ import '../../../providers/provider_provider.dart';
 import '../../../models/orchestra_config.dart';
 import '../../../providers/orchestra_provider.dart';
 import '../../orchestra_config_dialog.dart';
+import '../../svg_icon.dart';
 import '../../../core/friendly_error.dart';
 
 class OrchestraTab extends ConsumerWidget {
@@ -21,7 +22,7 @@ class OrchestraTab extends ConsumerWidget {
         // Header
         Row(
           children: [
-            const Text('🎵', style: TextStyle(fontSize: 24)),
+            SvgIcon('music-notes', size: 24, color: MemoTheme.of(context).textMain),
             const SizedBox(width: 12),
             Text(
               L10n.t('orchestra_title'),
@@ -70,9 +71,12 @@ class OrchestraTab extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
                   ),
                   child: Center(
-                    child: Text(
-                      config.enabled ? '🎵' : '⏸️',
-                      style: const TextStyle(fontSize: 20),
+                    child: SvgIcon(
+                      config.enabled ? 'music-notes' : 'pause',
+                      size: 20,
+                      color: config.enabled
+                          ? MemoTheme.accent
+                          : MemoTheme.of(context).textDim,
                     ),
                   ),
                 ),

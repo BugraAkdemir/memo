@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
+import 'svg_icon.dart';
 import '../providers/skill_provider.dart';
 import '../core/friendly_error.dart';
 
@@ -42,7 +43,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.extension, size: 20, color: theme.textMain),
+                  SvgIcon('puzzle-piece', size: 20, color: theme.textMain),
                   const SizedBox(width: 10),
                   Text(
                     L10n.t('skill_management_btn'),
@@ -104,8 +105,8 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                       final skill = skills[index];
                       final isActive = skill.isActive;
                       return ListTile(
-                        leading: Icon(
-                          isActive ? Icons.check_circle : Icons.extension,
+                        leading: SvgIcon(
+                          isActive ? 'check-circle' : 'puzzle-piece',
                           size: 20,
                           color: isActive ? MemoTheme.green : theme.textDim,
                         ),

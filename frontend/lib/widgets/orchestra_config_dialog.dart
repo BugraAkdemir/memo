@@ -315,7 +315,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
 
   List<_ModelChoice> _buildModelChoices(AsyncValue<List<ProviderConfig>> providersAsync) {
     final choices = <_ModelChoice>[];
-    choices.add(_ModelChoice('local', 'local', '🖥️', L10n.t('local_model_option')));
+    choices.add(_ModelChoice('local', 'local', '▣', L10n.t('local_model_option')));
     if (providersAsync case AsyncData(:final value)) {
       for (final p in value) {
         if (p.enabled) {

@@ -3,6 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/mood_provider.dart';
+import 'svg_icon.dart';
+
+/// Maps a mood [score] (-10..10) to a Phosphor smiley SVG stem under
+/// `lib/icon/slash/`. Shared by both the compact and expanded gauges so the
+/// thresholds can never drift apart.
+String moodFaceIcon(double score) {
+  if (score <= -7) return 'smiley-angry';
+  if (score <= -3) return 'smiley-sad';
+  if (score <= 2) return 'smiley-meh';
+  if (score <= 6) return 'smiley';
+  return 'smiley-wink';
+}
 
 /// Engine strip'te kompakt mood göstergesi: dot + emoji + label.
 /// Settings dialog'da [showLabel] = true ile genişletilmiş bar gösterir.
@@ -38,14 +50,6 @@ class _CompactIndicator extends StatelessWidget {
     return MemoTheme.accent;
   }
 
-  String get _emoji {
-    if (score <= -7) return '😠';
-    if (score <= -3) return '😒';
-    if (score <= 2) return '😐';
-    if (score <= 6) return '🙂';
-    return '😄';
-  }
-
   String get _label {
     if (score <= -9) return L10n.t('mood_breaking');
     if (score <= -7) return L10n.t('mood_furious');
@@ -68,7 +72,7 @@ class _CompactIndicator extends StatelessWidget {
             decoration: BoxDecoration(color: _dotColor, shape: BoxShape.circle),
           ),
           const SizedBox(width: 6),
-          Text(_emoji, style: const TextStyle(fontSize: 13)),
+          SvgIcon(moodFaceIcon(score), size: 13, color: _dotColor),
           const SizedBox(width: 4),
           Text(
             _label,
@@ -103,14 +107,6 @@ class _ExpandedGauge extends StatelessWidget {
     return MemoTheme.accent;
   }
 
-  String get _emoji {
-    if (score <= -7) return '😠';
-    if (score <= -3) return '😒';
-    if (score <= 2) return '😐';
-    if (score <= 6) return '🙂';
-    return '😄';
-  }
-
   @override
   Widget build(BuildContext context) {
     const barWidth = 200.0;
@@ -127,7 +123,7 @@ class _ExpandedGauge extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(_emoji, style: const TextStyle(fontSize: 18)),
+              SvgIcon(moodFaceIcon(score), size: 18, color: _dotColor),
               const SizedBox(width: 6),
               SizedBox(
                 width: barWidth,

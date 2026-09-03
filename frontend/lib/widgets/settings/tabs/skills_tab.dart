@@ -4,6 +4,7 @@ import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
 import '../../../providers/skill_provider.dart';
 import '../../skill_config_dialog.dart';
+import '../../svg_icon.dart';
 import '../../../core/friendly_error.dart';
 
 class SkillsTab extends ConsumerWidget {
@@ -21,7 +22,7 @@ class SkillsTab extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.extension, size: 24, color: theme.textMain),
+              SvgIcon('puzzle-piece', size: 24, color: theme.textMain),
               const SizedBox(width: 10),
               Text(
                 L10n.t('skills_title'),
@@ -79,8 +80,8 @@ class SkillsTab extends ConsumerWidget {
                   itemBuilder: (_, i) {
                     final s = skills[i];
                     return ListTile(
-                      leading: Icon(
-                        s.isActive ? Icons.check_circle : Icons.extension,
+                      leading: SvgIcon(
+                        s.isActive ? 'check-circle' : 'puzzle-piece',
                         size: 24,
                         color: s.isActive ? MemoTheme.green : theme.textDim,
                       ),

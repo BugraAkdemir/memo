@@ -4,6 +4,7 @@ import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/learning_provider.dart';
+import '../../svg_icon.dart';
 import '../../../core/friendly_error.dart';
 
 class LearningTab extends ConsumerWidget {
@@ -420,9 +421,24 @@ class PatternCard extends ConsumerWidget {
                   color: confColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text(
-                  confPct >= 70 ? '🔥 $confPct%' : confPct >= 40 ? '📈 $confPct%' : '📊 $confPct%',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: confColor, fontFamily: 'JetBrains Mono'),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SvgIcon(
+                      confPct >= 70
+                          ? 'flame'
+                          : confPct >= 40
+                              ? 'trend-up'
+                              : 'chart-bar',
+                      size: 11,
+                      color: confColor,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$confPct%',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: confColor, fontFamily: 'JetBrains Mono'),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 8),

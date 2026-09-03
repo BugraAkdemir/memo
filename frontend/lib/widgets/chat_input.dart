@@ -30,6 +30,7 @@ import '../providers/whatsapp_provider.dart';
 import 'orchestra_config_dialog.dart';
 import 'prompt_templates.dart';
 import 'skill_config_dialog.dart';
+import 'svg_icon.dart';
 import '../core/friendly_error.dart';
 
 // Intents for the "/" and "@" popups' keyboard navigation. Bound via a
@@ -735,7 +736,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       _ModelOption(
         type: 'local',
         name: L10n.t('local_model'),
-        icon: '🖥️',
+        icon: '▣', // ▣ — matches the geometric glyphs providerIcon() uses
         subtitle: L10n.t('llama_cpp'),
       ),
     );
@@ -1735,7 +1736,8 @@ class _ModelSwitcherDialog extends StatelessWidget {
             const SizedBox(height: 16),
             TextButton.icon(
               onPressed: onOpenRouterOAuth,
-              icon: const Text('🔑', style: TextStyle(fontSize: 16)),
+              icon: const SvgIcon('key', size: 16,
+                  color: MemoTheme.warningOrange),
               label: Text(L10n.t('login_openrouter')),
               style: TextButton.styleFrom(foregroundColor: MemoTheme.warningOrange),
             ),

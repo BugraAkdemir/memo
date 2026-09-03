@@ -83,7 +83,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/brain.svg',
     'lib/icon/slash/translate.svg',
     'lib/icon/slash/plug.svg',
-    'lib/icon/slash/code.svg', // CLI Bağlantıları
+    'lib/icon/slash/terminal-window.svg', // CLI Bağlantıları
     'lib/icon/slash/music-notes.svg',
     'lib/icon/slash/shield-check.svg',
     'lib/icon/slash/lightbulb.svg',
@@ -93,15 +93,15 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/chart-bar.svg',
     'lib/icon/slash/archive.svg',
     'lib/icon/slash/globe.svg',
-    'lib/icon/slash/code.svg', // Beta features
+    'lib/icon/slash/flask.svg', // Beta features
     'lib/icon/slash/info.svg',
     'lib/icon/slash/list-checks.svg',
     'lib/icon/slash/wrench.svg',
     'lib/icon/slash/people.svg',
-    'lib/icon/slash/brain.svg', // Dream — reuses Memory's icon, same family
-    'lib/icon/slash/chat-text.svg', // WhatsApp — reuses System Prompt's icon, same family
-    'lib/icon/slash/chat-text.svg', // Telegram — same family, same reason as WhatsApp above
-    'lib/icon/slash/music-notes.svg', // Live Mode — reuses Orchestra's icon, same "audio" family
+    'lib/icon/slash/moon-stars.svg', // Dream
+    'lib/icon/slash/whatsapp-logo.svg', // WhatsApp
+    'lib/icon/slash/telegram-logo.svg', // Telegram
+    'lib/icon/slash/microphone.svg', // Live Mode
   ];
 
   /// Tab indices grouped under an eyebrow header, in sidebar display order.

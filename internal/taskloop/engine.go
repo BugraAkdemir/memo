@@ -962,10 +962,30 @@ func (e *Engine) escalateStuckSteps(ctx context.Context, listID string, tl *Task
 				logx.Printf("TASKLOOP: rewrite Plan.md %s: %v", listID, werr)
 			}
 		}
+		// BUG-PLAN11 (part c): the step denominator can jump (6 -> 8 -> 13)
+		// whenever a stuck step is escalated into several sub-steps, with no
+		// UI explanation for where the extra steps came from. Announce the
+		// resolution — not just the "escalating" start line above — with the
+		// actual sub-step count, so the chat activity log and Tasks detail
+		// screen both carry an explicit "+N adım" line.
+		e.emitActivity(listID, "escalate", escalationResolvedText(s.ID, len(repl)))
 		e.emitEvent("taskloop:escalated", fmt.Sprintf("%s:%s", listID, s.ID))
 		return true, false
 	}
 	return false, false
+}
+
+// escalationResolvedText describes what an escalation actually produced: a
+// genuine split into replCount sub-steps grows the plan's step denominator
+// by replCount-1, which is what confused users in BUG-PLAN11 ("7/13" with no
+// explanation of the 13); a same-count replacement is just a reworded retry,
+// not a split, so it gets a plainer message instead of a misleading "+0".
+func escalationResolvedText(stepID string, replCount int) string {
+	delta := replCount - 1
+	if delta > 0 {
+		return fmt.Sprintf("%s %d alt-adıma bölündü (+%d adım)", stepID, replCount, delta)
+	}
+	return fmt.Sprintf("%s yeniden planlandı", stepID)
 }
 
 // resumePendingEscalation retries a parked offline escalation. Returns true if
@@ -1003,6 +1023,7 @@ func (e *Engine) resumePendingEscalation(ctx context.Context, listID string, tl 
 	if tl.TaskMdPath != "" {
 		_ = WritePlanMd(PlanMdPath(tl.TaskMdPath), *plan, itemTextMap(tl))
 	}
+	e.emitActivity(listID, "escalate", escalationResolvedText(pe.StepID, len(repl)))
 	e.emitEvent("taskloop:escalated", fmt.Sprintf("%s:%s", listID, pe.StepID))
 	return true
 }

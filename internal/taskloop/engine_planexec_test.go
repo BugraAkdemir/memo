@@ -336,6 +336,23 @@ func TestEngine_PlanExec_ParallelAndStateDoc(t *testing.T) {
 	}
 }
 
+func TestEscalationResolvedText(t *testing.T) {
+	cases := []struct {
+		stepID    string
+		replCount int
+		want      string
+	}{
+		{"S6", 3, "S6 3 alt-adıma bölündü (+2 adım)"},
+		{"S3", 6, "S3 6 alt-adıma bölündü (+5 adım)"},
+		{"S1", 1, "S1 yeniden planlandı"}, // 1-for-1 reword, not a split
+	}
+	for _, c := range cases {
+		if got := escalationResolvedText(c.stepID, c.replCount); got != c.want {
+			t.Errorf("escalationResolvedText(%q, %d) = %q, want %q", c.stepID, c.replCount, got, c.want)
+		}
+	}
+}
+
 func TestEngine_PlanExec_EscalationReplacesStuckStep(t *testing.T) {
 	store, _ := NewStore(t.TempDir())
 	tl, _ := store.Create("c1", "T", []string{"one item"})
@@ -392,6 +409,81 @@ func TestEngine_PlanExec_EscalationReplacesStuckStep(t *testing.T) {
 	got, _ := store.Get(tl.ID)
 	if got.Items[0].Status != "done" {
 		t.Fatalf("item status = %q, want done", got.Items[0].Status)
+	}
+}
+
+// TestEngine_PlanExec_EscalationAnnouncesStepCount is the BUG-PLAN11 (part c)
+// regression: a stuck step split into several sub-steps must produce a chat
+// activity line naming how many steps were added, not just the earlier
+// "escalating" line that fires before the split is even known — otherwise
+// the plan's step denominator silently jumps (6 -> 8 -> 13) with no
+// explanation in the UI.
+func TestEngine_PlanExec_EscalationAnnouncesStepCount(t *testing.T) {
+	store, _ := NewStore(t.TempDir())
+	tl, _ := store.Create("c1", "T", []string{"one item"})
+	_ = store.SetMode(tl.ID, ModePlanner)
+
+	plan := Plan{Steps: []PlanStep{
+		{ID: "S1", ItemID: "1", Text: "the hard step"},
+	}}
+
+	var mu sync.Mutex
+	var activity []string // "kind\x1ftext" pairs from every taskloop:activity event
+	onEvent := func(name, data string) {
+		if name != "taskloop:activity" {
+			return
+		}
+		parts := strings.SplitN(data, activitySep, 3)
+		if len(parts) != 3 {
+			return
+		}
+		mu.Lock()
+		activity = append(activity, parts[1]+"\x1f"+parts[2])
+		mu.Unlock()
+	}
+
+	eng := NewEngine(store,
+		func(ctx context.Context, chatID, prompt string) (string, error) { return "ok", nil },
+		func(ctx context.Context, itemText, workerOutput string) (bool, string, error) { return true, "", nil },
+		func(bool) {}, onEvent,
+		WithPlanner(func(ctx context.Context, listID, chatID, root, preamble string, items []string, gran string) (*Plan, error) {
+			p := plan
+			return &p, nil
+		}),
+		WithAutoApprovePlan(true),
+		WithMaxExecutorAttempts(1),
+		WithStepRunner(func(ctx context.Context, listID string, step PlanStep, stateDoc string) (string, error) {
+			if step.ID == "S1" {
+				return "", errors.New("coder could not do S1")
+			}
+			return "did " + step.ID, nil
+		}),
+		WithEscalator(func(ctx context.Context, listID string, step PlanStep, f EscalationInput) ([]PlanStep, error) {
+			return []PlanStep{
+				{ItemID: "1", Text: "smaller step a"},
+				{ItemID: "1", Text: "smaller step b"},
+				{ItemID: "1", Text: "smaller step c"},
+			}, nil
+		}),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = eng.Start(ctx, tl.ID)
+	waitForStatus(t, store, tl.ID, taskListDone, 3*time.Second)
+
+	mu.Lock()
+	defer mu.Unlock()
+	var resolved string
+	for _, line := range activity {
+		if strings.HasPrefix(line, "escalate\x1f") && strings.Contains(line, "bölündü") {
+			resolved = line
+		}
+	}
+	if resolved == "" {
+		t.Fatalf("no escalate activity line announcing the split; got %v", activity)
+	}
+	if !strings.Contains(resolved, "+2 adım") {
+		t.Fatalf("escalate resolution line = %q, want it to mention +2 adım (3 replacement steps - 1)", resolved)
 	}
 }
 

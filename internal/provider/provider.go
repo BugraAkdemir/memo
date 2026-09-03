@@ -146,6 +146,7 @@ type ToolCallFunction struct {
 // ChatResponse is the non-streaming response from a provider.
 type ChatResponse struct {
 	Content   string
+	Thinking  string
 	ToolCalls []ToolCall
 	Usage     *Usage
 	Model     string

@@ -932,6 +932,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			start := time.Now()
 			usageMetaVal := usageMeta{Provider: activeName, Model: a.activeProviderModel(activeName), Category: categoryChat, PromptTokens: estimateMessagesTokens(messages)}
 			var fullReply strings.Builder
+			var fullThinking strings.Builder
 			tokenCount := 0
 			firstTokenLogged := false
 
@@ -961,6 +962,15 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 					return
 				}
 
+				// BUG-THINK1: Claude's thinking_delta chunks used to have
+				// nowhere to go on this path — chunk.Thinking was never
+				// read here, so a selected effort level spent real thinking
+				// tokens the user could never see.
+				if chunk.Thinking != "" {
+					fullThinking.WriteString(chunk.Thinking)
+					trySend(providerCtx, outCh, api.StreamChunk{Thinking: chunk.Thinking})
+				}
+
 				if chunk.Content != "" {
 					if !firstTokenLogged {
 						firstTokenLogged = true
@@ -972,14 +982,14 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 
 				if chunk.Done {
-					a.finishStream(ctx, start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+					a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 					trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 					return
 				}
 			}
 
 			if fullReply.Len() > 0 {
-				a.finishStream(ctx, start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 			} else {
 				errMsg := "⚠️ Provider returned empty response"
@@ -1046,6 +1056,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		start := time.Now()
 		usageMetaVal := usageMeta{Provider: "local", Model: a.localModelName(), Category: categoryChat, PromptTokens: estimateMessagesTokens(messages)}
 		var fullReply strings.Builder
+		var fullThinking strings.Builder
 		tokenCount := 0
 		firstTokenLogged := false
 
@@ -1072,6 +1083,19 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				return
 			}
 
+			// BUG-THINK1: a local reasoning model's <think> tags arrive as
+			// their own Thinking-only chunks (Content == ""). The forward
+			// below is gated on chunk.Content, so without this a
+			// thinking-only chunk never reached the SSE stream at all —
+			// send it here instead, once, so the Content branch below
+			// doesn't end up double-sending a chunk that carries both.
+			if chunk.Thinking != "" {
+				fullThinking.WriteString(chunk.Thinking)
+				if chunk.Content == "" {
+					trySend(streamCtx, outCh, chunk)
+				}
+			}
+
 			if chunk.Content != "" {
 				if !firstTokenLogged {
 					firstTokenLogged = true
@@ -1084,7 +1108,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 			if chunk.Done {
 				logx.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
-				a.finishStream(ctx, start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(streamCtx, outCh, chunk)
 				return
 			}
@@ -1092,7 +1116,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 		if fullReply.Len() > 0 {
 			logx.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
-			a.finishStream(ctx, start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
+			a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
 			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		} else {
 			logx.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
@@ -1248,6 +1272,26 @@ func (a *App) recordUsageEvent(meta usageMeta, completionTokens int, durationSec
 // to each of them for a value only the two endpoints care about.
 type memoryUsedCtxKey struct{}
 
+// thinkingCtxKey carries a stream's accumulated extended-thinking text
+// (BUG-THINK1) from wherever a provider chunk supplied it to finishStream,
+// the same way memoryUsedCtxKey above does for the retrieved-memory count —
+// both are only known at the two call sites that produce them, not by
+// finishStream's other callers, so a ctx value avoids widening finishStream's
+// own signature (and every one of its 9 call sites) for a value most of them
+// never have.
+type thinkingCtxKey struct{}
+
+// withThinking attaches thinking to ctx for finishStream to pick up, or
+// returns ctx unchanged when there's nothing to attach — every call site
+// below can pass this straight into finishStream's ctx argument without an
+// extra "if it's non-empty" branch of its own.
+func withThinking(ctx context.Context, thinking string) context.Context {
+	if thinking == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, thinkingCtxKey{}, thinking)
+}
+
 func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int, finishReason, reply, userMsg, sessionID string, meta *usageMeta, agentEvents ...[]interface{}) {
 	duration := time.Since(start).Seconds()
 	tps := 0.0
@@ -1275,6 +1319,9 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 				sm.AddMessageToSession(sessionID, "assistant", reply, "", "", agentEvents...)
 				if memUsed, ok := ctx.Value(memoryUsedCtxKey{}).(int); ok && memUsed > 0 {
 					sm.SetLastMessageMemoryUsed(sessionID, memUsed)
+				}
+				if thinking, ok := ctx.Value(thinkingCtxKey{}).(string); ok && thinking != "" {
+					sm.SetLastMessageThinking(sessionID, thinking)
 				}
 				if len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
 					goRecover("generateChatTitleForSession", func() { a.generateChatTitleForSession(sessionID) })

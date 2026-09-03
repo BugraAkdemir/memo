@@ -314,6 +314,92 @@ loop:
 	}
 }
 
+// TestCallLLMStream_ExternalProvider_PersistsThinking is the end-to-end
+// BUG-THINK1 regression: a Claude turn's thinking_delta chunks must both
+// reach the live SSE output AND survive into the persisted session message
+// — internal/provider/claude_test.go already covers the wire-format parsing
+// in isolation; this covers callLLMStream actually reading chunk.Thinking
+// (it never did before) and finishStream persisting it via the new
+// thinkingCtxKey/SetLastMessageThinking path.
+func TestCallLLMStream_ExternalProvider_PersistsThinking(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		lines := []string{
+			`data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"let me think... "}}`,
+			`data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"2+2=4."}}`,
+			`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"4"}}`,
+			`data: {"type":"message_stop"}`,
+		}
+		for _, l := range lines {
+			fmt.Fprint(w, l+"\n\n")
+			flusher.Flush()
+		}
+	}))
+	defer srv.Close()
+
+	router := provider.NewRouter([]provider.ProviderConfig{{
+		Type:    provider.ProviderClaude,
+		Name:    "test-claude",
+		BaseURL: srv.URL,
+		Model:   "claude-3-5-sonnet-20241022",
+		Enabled: true,
+	}})
+
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("sessions.NewManager() error = %v", err)
+	}
+	sessionID := sm.NewChat()
+
+	a := &App{
+		providerRouter:     router,
+		activeProviderName: "test-claude",
+		cfg:                &config.AppConfig{},
+		sessions:           sm,
+	}
+
+	outCh := a.callLLMStream(context.Background(), []api.Message{api.NewTextMessage("user", "what's 2+2")}, "what's 2+2", "", "", sessionID)
+
+	var gotThinking, gotContent strings.Builder
+	timeout := time.After(2 * time.Second)
+drain:
+	for {
+		select {
+		case chunk, ok := <-outCh:
+			if !ok {
+				break drain
+			}
+			gotThinking.WriteString(chunk.Thinking)
+			gotContent.WriteString(chunk.Content)
+		case <-timeout:
+			t.Fatal("timed out draining outCh")
+		}
+	}
+
+	if gotThinking.String() != "let me think... 2+2=4." {
+		t.Errorf("live SSE thinking = %q, want the streamed thinking to reach the client", gotThinking.String())
+	}
+	if gotContent.String() != "4" {
+		t.Errorf("live SSE content = %q, want %q", gotContent.String(), "4")
+	}
+
+	// callLLMStream's loop calls finishStream synchronously before sending
+	// the terminal chunk and returning (which is what closes outCh above),
+	// so the persisted message is already there — no polling needed.
+	msgs := sm.GetActiveMessagesForSession(sessionID)
+	if len(msgs) == 0 {
+		t.Fatal("no message persisted to the session")
+	}
+	last := msgs[len(msgs)-1]
+	if last.Thinking != "let me think... 2+2=4." {
+		t.Errorf("persisted message Thinking = %q, want the accumulated thinking text", last.Thinking)
+	}
+	if last.Content != "4" {
+		t.Errorf("persisted message Content = %q, want %q", last.Content, "4")
+	}
+}
+
 // TestDrainAgentStream_EmptyChannelSendsTerminalChunk is the regression test
 // for BUG_REPORT.md's SF-5: callAgentStream's tail (now extracted as
 // drainAgentStream) used to reach `if fullReply.Len() > 0 {...} else {

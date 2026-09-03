@@ -174,6 +174,38 @@ func TestClaudeProvider_ChatCompletion_ParsesTextBlocksAndUsage(t *testing.T) {
 	}
 }
 
+// TestClaudeProvider_ChatCompletion_ParsesThinkingBlock is the BUG-THINK1
+// regression: a "thinking" content block used to fall straight through
+// ChatCompletion's switch (it only handled "text"/"tool_use"), so
+// ChatResponse.Thinking stayed "" even though Anthropic really sent one back
+// (and Memo really paid for the tokens — see claude.go:478's
+// clReq.Thinking = &claudeThinking{Type: "adaptive"}).
+func TestClaudeProvider_ChatCompletion_ParsesThinkingBlock(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(claudeResponse{
+			Model: "claude-3-5-sonnet-20241022",
+			Content: []claudeBlock{
+				{Type: "thinking", Thinking: "let me work through this... "},
+				{Type: "thinking", Thinking: "okay, got it."},
+				{Type: "text", Text: "the answer is 4"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	p := newTestClaudeProvider(t, srv, "claude-3-5-sonnet-20241022")
+	resp, err := p.ChatCompletion(context.Background(), ChatRequest{Messages: []Message{TextMessage("user", "hi")}})
+	if err != nil {
+		t.Fatalf("ChatCompletion() error = %v", err)
+	}
+	if resp.Content != "the answer is 4" {
+		t.Errorf("resp.Content = %q, want %q (thinking blocks must not leak into Content)", resp.Content, "the answer is 4")
+	}
+	if resp.Thinking != "let me work through this... okay, got it." {
+		t.Errorf("resp.Thinking = %q, want the concatenated thinking blocks", resp.Thinking)
+	}
+}
+
 func TestClaudeProvider_ChatCompletion_RateLimitedWrapsErrRateLimited(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -218,6 +250,60 @@ func TestClaudeProvider_ChatCompletionStream_ParsesContentBlockDeltasAndMessageS
 	}
 	if !sawDone {
 		t.Error("expected a Done chunk after message_stop")
+	}
+}
+
+// TestClaudeProvider_ChatCompletionStream_ParsesThinkingDelta is the
+// streaming half of the BUG-THINK1 regression: processSSE's content_block_delta
+// handling only ever unmarshaled delta.text — a thinking_delta event's
+// delta.thinking payload silently vanished (no unmarshal error, the struct
+// just had nowhere to put it), so a streamed Claude turn with an effort
+// level selected never emitted a single Thinking chunk.
+func TestClaudeProvider_ChatCompletionStream_ParsesThinkingDelta(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		lines := []string{
+			`data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"hmm, "}}`,
+			`data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"let's see."}}`,
+			`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"4"}}`,
+			`data: {"type":"message_stop"}`,
+		}
+		for _, l := range lines {
+			w.Write([]byte(l + "\n\n"))
+			flusher.Flush()
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestClaudeProvider(t, srv, "claude-3-5-sonnet-20241022")
+	ch, err := p.ChatCompletionStream(context.Background(), ChatRequest{Messages: []Message{TextMessage("user", "hi")}})
+	if err != nil {
+		t.Fatalf("ChatCompletionStream() error = %v", err)
+	}
+
+	var content, thinking strings.Builder
+	timeout := time.After(2 * time.Second)
+	for {
+		select {
+		case chunk, ok := <-ch:
+			if !ok {
+				if content.String() != "4" {
+					t.Errorf("accumulated content = %q, want %q", content.String(), "4")
+				}
+				if thinking.String() != "hmm, let's see." {
+					t.Errorf("accumulated thinking = %q, want %q", thinking.String(), "hmm, let's see.")
+				}
+				return
+			}
+			content.WriteString(chunk.Content)
+			thinking.WriteString(chunk.Thinking)
+			if chunk.Content != "" && chunk.Thinking != "" {
+				t.Errorf("chunk %+v carries both Content and Thinking — a single delta should only ever have one", chunk)
+			}
+		case <-timeout:
+			t.Fatal("timed out draining the stream")
+		}
 	}
 }
 

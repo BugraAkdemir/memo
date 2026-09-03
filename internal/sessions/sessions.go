@@ -22,6 +22,12 @@ type ChatMessage struct {
 	FilePath    string        `json:"file_path,omitempty"`
 	Timestamp   string        `json:"timestamp"`
 	AgentEvents []interface{} `json:"agent_events,omitempty"`
+	// Thinking is the model's extended-thinking / reasoning text for this
+	// (assistant) message, set via SetLastMessageThinking right after
+	// AddMessageToSession for the same reason MemoryUsed is (see its own
+	// doc comment below) — the content only exists once the stream has
+	// fully drained, after the message itself was already appended.
+	Thinking string `json:"thinking,omitempty"`
 	// MemoryUsed is how many memories were retrieved and injected into the
 	// system prompt for the turn that produced this (assistant) message —
 	// 0/omitted means either memory was off, or nothing relevant enough was
@@ -359,6 +365,27 @@ func (m *Manager) SetLastMessageMemoryUsed(sessionID string, count int) {
 	s.Messages[len(s.Messages)-1].MemoryUsed = count
 	if err := m.save(s); err != nil {
 		logx.Printf("sessions: save memory-used %s: %v", s.ID, err)
+	}
+}
+
+// SetLastMessageThinking sets Thinking on the most recently added message in
+// sessionID — the same call-immediately-after-AddMessageToSession shape as
+// SetLastMessageMemoryUsed, for the same reason (BUG-THINK1). No-ops when
+// thinking is empty, so a turn without any (no effort level selected, or a
+// provider that doesn't support it) costs nothing extra over today.
+func (m *Manager) SetLastMessageThinking(sessionID, thinking string) {
+	if thinking == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[sessionID]
+	if s == nil || len(s.Messages) == 0 {
+		return
+	}
+	s.Messages[len(s.Messages)-1].Thinking = thinking
+	if err := m.save(s); err != nil {
+		logx.Printf("sessions: save thinking %s: %v", s.ID, err)
 	}
 }
 

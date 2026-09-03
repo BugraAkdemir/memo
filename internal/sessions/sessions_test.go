@@ -636,3 +636,56 @@ func TestCLIFields_SurviveReload(t *testing.T) {
 		t.Errorf("reloaded CLIModel = %q", got)
 	}
 }
+
+// TestSetLastMessageThinking is the persistence half of the BUG-THINK1
+// regression: ChatMessage had no field to hold a model's extended-thinking
+// text at all, so even once the streaming pipeline captured it there was
+// nowhere on disk for it to survive to. Mirrors SetLastMessageMemoryUsed's
+// call-immediately-after-AddMessageToSession shape.
+func TestSetLastMessageThinking(t *testing.T) {
+	dir := t.TempDir()
+	m, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	id := m.NewChat()
+	m.AddMessageToSession(id, "user", "what's 2+2", "", "")
+	m.AddMessageToSession(id, "assistant", "4", "", "")
+	m.SetLastMessageThinking(id, "let me think... 2+2=4")
+
+	msgs := m.GetActiveMessagesForSession(id)
+	if len(msgs) != 2 {
+		t.Fatalf("len(msgs) = %d, want 2", len(msgs))
+	}
+	if msgs[1].Thinking != "let me think... 2+2=4" {
+		t.Errorf("last (assistant) message Thinking = %q, want the set value", msgs[1].Thinking)
+	}
+	if msgs[0].Thinking != "" {
+		t.Errorf("first (user) message Thinking = %q, want untouched empty", msgs[0].Thinking)
+	}
+
+	// Persisted, not just in-memory — the whole point of this bug being a
+	// persistence gap, not just a live-stream one.
+	m2, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("reload NewManager() error = %v", err)
+	}
+	msgs2 := m2.GetActiveMessagesForSession(id)
+	if len(msgs2) != 2 || msgs2[1].Thinking != "let me think... 2+2=4" {
+		t.Errorf("after reload, last message Thinking = %q, want it to have survived", msgs2[1].Thinking)
+	}
+}
+
+func TestSetLastMessageThinking_NoOpsOnEmpty(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	id := m.NewChat()
+	m.AddMessageToSession(id, "assistant", "4", "", "")
+
+	m.SetLastMessageThinking(id, "")
+
+	msgs := m.GetActiveMessagesForSession(id)
+	if msgs[0].Thinking != "" {
+		t.Errorf("Thinking = %q after calling with an empty string, want it to stay untouched empty", msgs[0].Thinking)
+	}
+}

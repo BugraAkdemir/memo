@@ -159,6 +159,18 @@ type claudeBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
 
+	// thinking (incoming only — BUG-THINK1). Anthropic requires a turn's
+	// thinking block to be echoed back verbatim (with its signature) on any
+	// follow-up request that continues that same turn's tool_use loop; this
+	// package's buildClaudeRequest never replays thinking or text blocks
+	// today, only tool_use ones (see its own doc comment), and the plain
+	// chat path that owns effort levels/thinking never sends req.Tools at
+	// all — so there is no such follow-up request to get wrong here. If
+	// Claude ever gets extended thinking + tool use on the same turn (agent
+	// pipeline, currently non-stream and out of this bug's scope), a
+	// Signature field and replay logic would need to be added then.
+	Thinking string `json:"thinking,omitempty"`
+
 	// tool_use (both directions: sent back when replaying an assistant
 	// turn's tool calls into history, and parsed out of a fresh response).
 	ID    string          `json:"id,omitempty"`
@@ -221,11 +233,16 @@ func (p *claudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 	}
 
 	content := ""
+	var thinking strings.Builder
 	var toolCalls []ToolCall
 	for _, block := range result.Content {
 		switch block.Type {
 		case "text":
 			content += block.Text
+		case "thinking":
+			// BUG-THINK1: this block type was silently ignored before —
+			// falls through the switch, ChatResponse.Thinking stayed "".
+			thinking.WriteString(block.Thinking)
 		case "tool_use":
 			// Same shape resp.ToolCalls always carries regardless of
 			// provider (pipeline.go replays it back as Message.ToolCalls
@@ -253,6 +270,7 @@ func (p *claudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 
 	return &ChatResponse{
 		Content:   content,
+		Thinking:  thinking.String(),
 		ToolCalls: toolCalls,
 		Model:     result.Model,
 		Usage:     usage,
@@ -330,13 +348,23 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 
 		switch event.Type {
 		case "content_block_delta":
+			// BUG-THINK1: a thinking_delta event's payload used to be
+			// silently dropped — this struct only ever had a Text field, so
+			// json.Unmarshal just left it at its zero value with no error.
 			var delta struct {
 				Delta struct {
-					Text string `json:"text"`
+					Text     string `json:"text"`
+					Thinking string `json:"thinking"`
 				} `json:"delta"`
 			}
 			if err := json.Unmarshal([]byte(data), &delta); err != nil {
 				continue
+			}
+			if delta.Delta.Thinking != "" {
+				trySend(ctx, ch, StreamChunk{Thinking: delta.Delta.Thinking})
+				if ctx.Err() != nil {
+					return
+				}
 			}
 			if delta.Delta.Text != "" {
 				fullContent.WriteString(delta.Delta.Text)

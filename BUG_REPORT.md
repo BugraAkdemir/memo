@@ -90,12 +90,12 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 1 (BUG-PLAN10 — sohbet modeli çalışan task için ayrıntılı YANLIŞ "bozuk" hikayesi uyduruyor) |
-| 🟡 MEDIUM | 2 (BUG-PLAN12 canlı task aktivitesi sohbette yok · BUG-THINK1 Claude thinking hiç gösterilmiyor) |
+| 🟡 MEDIUM | 1 (BUG-PLAN12 canlı task aktivitesi sohbette yok) |
 | 🟢 LOW | 2 (BUG-PLAN9 planı sohbetten onayla · BUG-PLAN11(b) tek tutarlı ilerleme metni, kozmetik) |
 | 🔧 TEKNİK BORÇ | 0 |
-| ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 1 (BUG-PERM1 + e43627e/b9fc2eb — gerçek masaüstü doğrulaması) |
+| ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 2 (BUG-PERM1 + e43627e/b9fc2eb — gerçek masaüstü doğrulaması · BUG-THINK1 `08ea76ad` — gerçek Anthropic API'ye karşı doğrulanmadı, yalnızca test) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 8 (PLAN1/2/3/4/5/6/7/8 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(c) `dd803d6`/`a35593f4`) |
-| **AÇIK TOPLAM** | **5** (hepsi kod değişikliği = testten sonra) |
+| **AÇIK TOPLAM** | **4** (hepsi kod değişikliği = testten sonra) |
 
 ---
 
@@ -286,50 +286,36 @@ testten sonra" — sadece not.
 - **Öncelik:** orta-yüksek (BUG-PLAN9 + BUG-PLAN10'un şemsiye çözümü; "sohbetten
   yönet" vaadinin özü).
 
-### BUG-THINK1 — Claude'un extended thinking içeriği hiçbir zaman gösterilmiyor, sessizce çöpe gidiyor
+### ✅ BUG-THINK1 (fix `08ea76ad`) — Claude'un extended thinking içeriği hiçbir zaman gösterilmiyordu
 
-- **Bulgu (2026-09-01, kullanıcı canlı testte):** kullanıcı "diğer app'lerdeki
-  gibi düşünmeyi göster/gizle toggle'ı çalışıyor mu" diye sordu (bir
-  sohbette görünen garip metni "model kendi düşüncesini mi basıyor" sanıp).
-  O akşamki asıl olay bu değildi (zayıf/ücretsiz bir Gemma modeli Memo'nun
-  kendi persona sistem promptunu — [identity.go:264](internal/identity/identity.go:264)
-  — parafraz ederek geri okumuştu, gerçek bir "thinking sızıntısı" değil,
-  model kalitesi sorunu). **Ama araştırırken ayrı, gerçek bir hata bulundu.**
-- **Kök neden:** Flutter tarafı zaten **tam bir** collapsible "düşünme"
-  bölümü içeriyor — `ChatMessage.thinking`/`hasThinking`,
-  `StreamChunk.thinking` ([chat.dart](frontend/lib/models/chat.dart)),
-  `_ThinkingSection` + expand/collapse state
-  ([chat_message_list.dart](frontend/lib/widgets/chat_message_list.dart)).
-  `claude.go`, `req.EffortLevel` seçiliyken Anthropic'e gerçekten
-  `thinking:{type:"adaptive"}` gönderiyor
-  ([claude.go:478](internal/provider/claude.go:478)) — yani kullanıcı bir
-  effort level seçtiğinde thinking token'ları **gerçekten harcanıyor**. Ama
-  gelen yanıttaki `"thinking"` tipi content block'ları hem
-  `ChatCompletion` (satır 225-243) hem `ChatCompletionStream`/`processSSE`
-  (content_block_delta ayrıştırması yalnızca `delta.text`'e bakıyor,
-  `delta.type=="thinking_delta"`/`delta.thinking`'i hiç görmüyor) tarafında
-  **hiç işlenmiyor** — switch/case'de yok, sessizce atlanıyor. `claudeBlock`
-  struct'ında `Thinking` alanı bile yok, `ChatResponse`'ta da yok. Backend
-  katmanının hiçbir yerinde (`internal/app/*.go` dahil) `.Thinking` okunan
-  tek bir satır yok — grep ile doğrulandı.
-- **Etki:** kullanıcı Claude'da bir effort level seçtiği her an, gerçek para
-  ödeyip gerçek thinking token'ı harcıyor ama bunun karşılığında **hiçbir
-  zaman** hiçbir şey görmüyor — frontend'deki toggle tamamen ölü, hiçbir
-  provider için hiç çalışmamış. Gemini tarafında da benzer bir eksik var
-  (`geminiThinkingConfig`'te `includeThoughts` hiç gönderilmiyor,
-  `geminiPart`'ta `Thought` alanı yok) ama Gemini şu an zaten thought
-  summary talep etmediği için aktif bir sızıntı/kayıp değil, sadece
-  kullanılmayan potansiyel.
-- **İstenen:** `claudeBlock`'a `Thinking`, `ChatResponse`'a `Thinking`
-  alanı eklenip her iki yol (stream + non-stream) `"thinking"` block
-  tipini/`thinking_delta`'yı yakalayacak; `internal/app` katmanının bunu
-  `api.StreamChunk`/persist edilen `ChatMessage`'a köprülemesi lazım
-  (frontend tarafı zaten hazır, hiçbir Dart değişikliği gerekmiyor).
-- **Öncelik:** ORTA — hiçbir şeyi bozmuyor, kimseyi crash etmiyor, veri
-  kaybı yok; ama effort level seçen her Claude kullanıcısı için gerçek
-  parayla satın alınan bir özellik tamamen çalışmıyor. **Kullanıcı talimatı:
-  PR #19 merge olana kadar dokunulmayacak** (o an aktif canlı test
-  sürüyordu, backend restart'ı test oturumunu bölerdi).
+- **Kök neden (buradaydı, artık düzeltildi):** `claude.go`, effort level
+  seçiliyken Anthropic'e gerçekten `thinking:{type:"adaptive"}` gönderip
+  ([claude.go:478](internal/provider/claude.go:478)) gerçek para/token
+  harcıyordu, ama dönen `"thinking"` content block'ları/`thinking_delta`
+  event'leri ne `ChatCompletion`'da ne `processSSE`'de işleniyordu —
+  `claudeBlock`/`ChatResponse`'ta alan bile yoktu, `internal/app`'ta
+  `.Thinking` okunan tek satır yoktu. Flutter tarafı zaten tam hazırdı
+  (`ChatMessage.thinking`/`hasThinking`, `_ThinkingSection`), hiç Dart
+  değişikliği gerekmedi.
+- **Fix (`08ea76ad`):** `claudeBlock`/`ChatResponse` `Thinking` alanı
+  kazandı; `ChatCompletion` `"thinking"` bloklarını, `processSSE`
+  `thinking_delta`'yı ayrıştırıyor. `callLLMStream`'in external-provider
+  döngüsü artık `chunk.Thinking`'i hem canlı SSE'ye hem (yeni
+  `thinkingCtxKey`/`finishStream` üzerinden) `sessions.ChatMessage.Thinking`'e
+  köprülüyor. **Yan ürün:** local reasoning modellerin (`<think>` etiketi)
+  thinking-only chunk'ları da `chunk.Content != ""` kapısı yüzünden hiç
+  SSE'ye ulaşmıyordu — o da aynı commit'te düzeltildi.
+- **Kapsam dışı bırakılanlar (bilinçli):** non-stream yol (yalnızca title-gen/
+  memory/mood/routine gibi arka plan çağrıları kullanıyor, interaktif
+  sohbet değil — `trace_path` ile doğrulandı); Gemini'nin cevap tarafı
+  (zaten thought summary istemiyor, aktif kayıp değil); Claude thinking-block
+  signature echo'su çoklu-tur tool-use continuation için (düz sohbet yolu
+  hiç `ChatRequest.Tools` göndermiyor, o yüzden gerekmiyor).
+- **Doğrulama:** 4 yeni test (provider wire-format parse × 2, sessions
+  persistence + reload × 1, `callLLMStream` uçtan uca × 1), hepsi fix'ten
+  önce derlenmediği doğrulanarak eklendi. `go build/vet/test -race` tüm
+  paketlerde yeşil. **Gerçek Anthropic API'ye karşı canlı doğrulanmadı** —
+  yalnızca sahte HTTP sunucularıyla.
 
 ### BUG-PLAN11 — planexec sayaç kaosu: (a)+(c) düzeltildi, (b) hâlâ açık
 

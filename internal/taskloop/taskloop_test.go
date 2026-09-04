@@ -46,6 +46,61 @@ func TestStoreCreateGetList(t *testing.T) {
 	}
 }
 
+// TestStoreList_PlannerModeIncludesPlanStepCounts is the BUG-PLAN11(b)
+// regression: the plain Tasks-tab list (Store.List, GET /api/tasklists) only
+// ever carried the item count, never the plan step count — the tab's card
+// couldn't show "adım N/M" at all, unlike the detail screen and chat
+// activity block, which read it from the separate Runtime()/RunningTasks()
+// view. A worker-mode (or planless) list must NOT carry a misleading
+// PlanSteps=0 "step 0/0" — Mode being non-planner is the guard.
+func TestStoreList_PlannerModeIncludesPlanStepCounts(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := NewStore(dir)
+
+	worker, _ := store.Create("chat1", "worker list", []string{"item 1"})
+
+	planner, _ := store.Create("chat1", "planner list", []string{"item a", "item b"})
+	if err := store.SetMode(planner.ID, ModePlanner); err != nil {
+		t.Fatalf("SetMode: %v", err)
+	}
+	plan := Plan{Steps: []PlanStep{
+		{ID: "S1", ItemID: "1", Status: "done"},
+		{ID: "S2", ItemID: "1", Status: "done"},
+		{ID: "S3", ItemID: "2", Status: "running"},
+	}}
+	if err := store.SavePlan(planner.ID, plan); err != nil {
+		t.Fatalf("SavePlan: %v", err)
+	}
+
+	byID := map[string]TaskListInfo{}
+	for _, info := range store.List() {
+		byID[info.ID] = info
+	}
+
+	w, ok := byID[worker.ID]
+	if !ok {
+		t.Fatal("worker list missing from List()")
+	}
+	if w.PlanSteps != 0 || w.PlanStepsDone != 0 {
+		t.Errorf("worker-mode list PlanSteps=%d PlanStepsDone=%d, want 0/0 (no plan concept)", w.PlanSteps, w.PlanStepsDone)
+	}
+
+	p, ok := byID[planner.ID]
+	if !ok {
+		t.Fatal("planner list missing from List()")
+	}
+	if p.Mode != ModePlanner {
+		t.Errorf("Mode = %q, want %q", p.Mode, ModePlanner)
+	}
+	if p.PlanSteps != 3 || p.PlanStepsDone != 2 {
+		t.Errorf("PlanSteps/PlanStepsDone = %d/%d, want 3/2", p.PlanSteps, p.PlanStepsDone)
+	}
+	// Item count is unaffected — still its own, separate metric.
+	if p.ItemCount != 2 || p.DoneCount != 0 {
+		t.Errorf("ItemCount/DoneCount = %d/%d, want 2/0 (unrelated to plan step status)", p.ItemCount, p.DoneCount)
+	}
+}
+
 func TestStoreItemStatusTransitions(t *testing.T) {
 	dir := t.TempDir()
 	store, _ := NewStore(dir)
@@ -718,4 +773,3 @@ func TestListSkipsDoneAndStuckItems(t *testing.T) {
 		t.Fatal("item3 should be done (only pending item processed)")
 	}
 }
-

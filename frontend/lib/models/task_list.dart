@@ -96,6 +96,13 @@ class TaskListInfo {
   final int doneCount;
   final String createdAt;
   final String updatedAt;
+  // Planner/executor mode only (empty/zero otherwise) — mirrors
+  // RunningTaskInfo's own mode/planSteps/planStepsDone below, added so the
+  // Tasks-tab list card can show a step count too, not just the item count
+  // (BUG-PLAN11(b)).
+  final String mode;
+  final int planSteps;
+  final int planStepsDone;
 
   const TaskListInfo({
     required this.id,
@@ -105,7 +112,12 @@ class TaskListInfo {
     this.doneCount = 0,
     this.createdAt = '',
     this.updatedAt = '',
+    this.mode = '',
+    this.planSteps = 0,
+    this.planStepsDone = 0,
   });
+
+  bool get isPlanner => mode == 'planlayıcı' || mode == 'planner';
 
   factory TaskListInfo.fromJson(Map<String, dynamic> json) {
     return TaskListInfo(
@@ -116,6 +128,9 @@ class TaskListInfo {
       doneCount: (json['done_count'] as num?)?.toInt() ?? 0,
       createdAt: json['created_at'] as String? ?? '',
       updatedAt: json['updated_at'] as String? ?? '',
+      mode: json['mode'] as String? ?? '',
+      planSteps: (json['plan_steps'] as num?)?.toInt() ?? 0,
+      planStepsDone: (json['plan_steps_done'] as num?)?.toInt() ?? 0,
     );
   }
 }

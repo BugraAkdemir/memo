@@ -532,7 +532,18 @@ class _TaskListCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${info.doneCount}/${info.itemCount} ${L10n.t('taskloop_items_done')} · ${L10n.t('taskloop_updated')}: ${info.updatedAt}',
+                      // BUG-PLAN11(b): this card used to show only the item
+                      // count ("N/M tamamlandı") — the detail screen and the
+                      // chat activity block both already show a step count
+                      // too for planner-mode lists. Same task_card_step/
+                      // task_card_item labels as those two, so all three
+                      // surfaces finally read the same way.
+                      [
+                        if (info.isPlanner && info.planSteps > 0)
+                          '${L10n.t('task_card_step')} ${info.planStepsDone}/${info.planSteps}',
+                        '${L10n.t('task_card_item')} ${info.doneCount}/${info.itemCount}',
+                        '${L10n.t('taskloop_updated')}: ${info.updatedAt}',
+                      ].join('  ·  '),
                       style: TextStyle(fontSize: 12, color: c.textDim),
                     ),
                   ],

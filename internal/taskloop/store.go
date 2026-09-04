@@ -104,6 +104,14 @@ type TaskListInfo struct {
 	DoneCount int    `json:"done_count"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
+	// Mode/PlanSteps/PlanStepsDone mirror RunningTaskInfo's own fields
+	// (Runtime(), above) — planner/executor mode only, zero otherwise. Added
+	// so the plain Tasks-tab list card can show a step count alongside the
+	// item count instead of only ever showing the item count (BUG-PLAN11(b)
+	// part 2 — the detail screen and chat activity block already show both).
+	Mode          string `json:"mode,omitempty"`
+	PlanSteps     int    `json:"plan_steps,omitempty"`
+	PlanStepsDone int    `json:"plan_steps_done,omitempty"`
 }
 
 type Store struct {
@@ -197,7 +205,7 @@ func (s *Store) List() []TaskListInfo {
 				done++
 			}
 		}
-		out = append(out, TaskListInfo{
+		info := TaskListInfo{
 			ID:        tl.ID,
 			Title:     tl.Title,
 			Status:    tl.Status,
@@ -205,7 +213,19 @@ func (s *Store) List() []TaskListInfo {
 			DoneCount: done,
 			CreatedAt: tl.CreatedAt,
 			UpdatedAt: tl.UpdatedAt,
-		})
+			Mode:      tl.Mode,
+		}
+		if tl.Mode == ModePlanner {
+			if p, err := s.GetPlan(tl.ID); err == nil {
+				info.PlanSteps = len(p.Steps)
+				for _, step := range p.Steps {
+					if step.Status == "done" {
+						info.PlanStepsDone++
+					}
+				}
+			}
+		}
+		out = append(out, info)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].UpdatedAt > out[j].UpdatedAt

@@ -89,13 +89,13 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 1 (BUG-PLAN10 — sohbet modeli çalışan task için ayrıntılı YANLIŞ "bozuk" hikayesi uyduruyor) |
-| 🟡 MEDIUM | 1 (BUG-PLAN12 canlı task aktivitesi sohbette yok) |
-| 🟢 LOW | 2 (BUG-PLAN9 planı sohbetten onayla · BUG-PLAN11(b) tek tutarlı ilerleme metni, kozmetik) |
+| 🟠 HIGH | 0 |
+| 🟡 MEDIUM | 0 |
+| 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 0 |
-| ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 2 (BUG-PERM1 + e43627e/b9fc2eb — gerçek masaüstü doğrulaması · BUG-THINK1 `08ea76ad` — gerçek Anthropic API'ye karşı doğrulanmadı, yalnızca test) |
-| ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 8 (PLAN1/2/3/4/5/6/7/8 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(c) `dd803d6`/`a35593f4`) |
-| **AÇIK TOPLAM** | **4** (hepsi kod değişikliği = testten sonra) |
+| ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
+| ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
+| **AÇIK TOPLAM** | **0** — kalan her şey ya "canlı doğrulama bekliyor" ya "silinecek" kovasında, kod tarafında dokunulmamış gerçek bug kalmadı |
 
 ---
 
@@ -338,7 +338,7 @@ testten sonra" — sadece not.
   paketlerde yeşil. **Gerçek Anthropic API'ye karşı canlı doğrulanmadı** —
   yalnızca sahte HTTP sunucularıyla.
 
-### BUG-PLAN11 — planexec sayaç kaosu: (a)+(c) düzeltildi, (b) hâlâ açık
+### ✅ BUG-PLAN11 — planexec sayaç kaosu, üç parçası da (a/b/c) düzeltildi
 
 - **Orijinal bulgu (3 parça):** aynı anda ekranlarda kart "0/6 done", detay
   bar "Steps: 7/13", detay satır "Executing 0/6", sohbet modeli "6 madde
@@ -364,18 +364,19 @@ testten sonra" — sadece not.
   `"S1 yeniden planlandı"`. Frontend değişikliği gerekmedi — `escalate` kind'i
   zaten stilize ediliyordu (başlangıç satırından). Test:
   `TestEscalationResolvedText`, `TestEngine_PlanExec_EscalationAnnouncesStepCount`.
-- **(b) kısmen düzeltildi (`849f84fa`), tam birleştirme hâlâ açık:** sohbet
-  aktivite bloğu zaten örnek alınacak formattaydı (`task_activity_block.dart`'ın
+- **(b) tamamen düzeltildi** (`849f84fa` + `d321b23f`): sohbet aktivite
+  bloğu zaten örnek alınacak formattaydı (`task_activity_block.dart`'ın
   `_progressText`'i: `"adım N/M · madde a/b"`, `task_card_step`/`task_card_item`
   etiketleriyle). `task_detail_screen.dart`'ta madde sayısı rozetin yanında
-  **hiç etiketsiz** çıplak "N/M" olarak duruyordu (adım bölümünün kendi
-  başlığı vardı, bu ikincisinin yoktu) — artık aynı `task_card_item`
-  ("madde"/"item") etiketini kullanıyor. `tasks_screen.dart`'ın kartı hâlâ
-  dokunulmadı: `TaskListInfo` (düz liste endpoint'i) adım sayısını hiç
-  taşımıyor, eklemek backend alanı gerektirir — kapsam dışı bırakıldı.
-  Kozmetik, düşük risk, isterse ayrı bir tur.
-- **Öncelik:** düşük (kalan tek parça kozmetik; asıl "ilerleme hiç
-  çalışmıyor" ve "escalation açıklanmıyor" şikayetleri kapandı).
+  çıplak, etiketsiz "N/M" idi — `849f84fa` aynı `task_card_item` etiketini
+  ekledi. `tasks_screen.dart`'ın kartı adım sayısını **hiç** taşımıyordu —
+  `d321b23f` `Store.List()`/`TaskListInfo`'ya `mode`/`plan_steps`/
+  `plan_steps_done` ekledi (planner-mode listeler için `Runtime()`'ın zaten
+  yaptığı hesaplama, düz liste endpoint'ine de taşındı), kart artık
+  `"adım N/M · madde a/b · güncellendi: ..."` gösteriyor — üç yüzey de
+  aynı formatta.
+- **Öncelik:** düşük — BUG-PLAN11'in tüm parçaları (a/b/c) artık kod+test
+  seviyesinde kapatıldı.
 
 ### Not — BUG-PERM1 canlı durumu (2026-08-30 öğleden sonra)
 

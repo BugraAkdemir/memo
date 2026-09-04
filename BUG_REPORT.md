@@ -221,17 +221,20 @@ testten sonra" — sadece not.
 
 ### BUG-PLAN9 — planexec planı yalnızca Görevler sekmesinden onaylanabiliyor
 
-- **Bulgu:** sohbetten `start_self_driving_task` ile planexec listesi başlıyor,
-  planlayıcı `Plan.md`'yi üretip liste `awaiting-plan-approval`'a düşüyor. Ama
-  onay UI'ı (düzenlenebilir plan + "Approve & run") **yalnızca** Görevler
-  sekmesi → task detay ekranında (`_PlanApprovalSection`,
-  `task_detail_screen.dart`). Kullanıcı onaylamak için sohbetten çıkıp o ekrana
-  gitmek zorunda.
-- **İstenen:** plan hazır olunca **sohbete** düşsün — konuşma içinde inline bir
-  "planı gör / onayla" kartı/butonu, oradan `saveTaskPlanMd` + `approveTaskPlan`
-  çağrılsın. (Agent izin dialogu deseni gibi; `agentEventBus` üzerinden bir
-  `plan_ready` event'i + `app_shell` listener olabilir.)
-- **Öncelik:** düşük (akış çalışıyor, sadece fazladan tıklama).
+- **Bulgu (orijinal):** onay UI'ı (düzenlenebilir plan + "Approve & run")
+  **yalnızca** Görevler sekmesi → task detay ekranında vardı, sohbetten
+  onaylanamıyordu.
+- **İstenen'in kodu artık var:** `TaskActivityBlock` (`63cc1ad`/`adb363e7`),
+  `awaitingPlan` fazında sohbette inline bir "Planı gör ve onayla" butonu
+  gösterip `showModalBottomSheet` ile in-chat bir plan-onay sayfası açıyor
+  (`_showPlanSheet`, `task_activity_block.dart`).
+- **2026-09-04 eklenen:** bu widget'ın hiç testi yoktu — yalnızca altındaki
+  veri modeli (`ChatTaskState.fold`) test ediliyordu, gerçekte ekrana ne
+  çizildiği hiç kanıtlanmamıştı. `task_activity_block_test.dart` eklendi:
+  `awaitingPlan` durumunda buton render oluyor mu, tıklanınca gerçekten
+  bottom sheet açılıyor mu (fake HTTP adapter ile).
+- **Öncelik:** düşük — akış artık kod+widget test seviyesinde doğrulandı,
+  **gerçek backend/model'e karşı canlı doğrulanmadı**.
 
 ### BUG-PLAN10 — sohbet modeli görev durumunu okuyamıyor, AYRINTILI YANLIŞ HİKAYE uyduruyor
 
@@ -264,6 +267,16 @@ testten sonra" — sadece not.
   sadece kod var olduğu için burada "muhtemelen düzeldi" diye not
   düşülüyor. Kapatmadan önce gerçek bir "görev durumu ne" sorusuyla canlı
   test edilmeli.
+- **Not (2026-09-04):** `formatRunningTask`'ın (aracın modele döndürdüğü asıl
+  metni üreten fonksiyon) hiç testi yoktu — yalnızca "hiçbir şey çalışmıyor"/
+  "engine yok" negatif dalları test ediliyordu, tam da bu bug'ın gerçekleştiği
+  "görev gerçekten koşuyor" pozitif dalı hiç kanıtlanmamıştı.
+  `TestFormatRunningTask_ReportsRealProgressNotFabrication` eklendi (7/13
+  adım, 2/6 madde, sub-agent, geçen süre — hepsinin doğru metne yansıdığını
+  doğruluyor) + `TestFormatRunningTask_WorkerMode_OmitsStepCount`. Bu,
+  aracın **doğruyu söylediğini** kanıtlıyor; modelin **bu aracı gerçekten
+  çağırıp uydurmayı bıraktığını** kanıtlamıyor — o kısım hâlâ gerçek bir LLM
+  ile canlı test gerektiriyor, yukarıdaki not geçerliliğini koruyor.
 
 ### BUG-PLAN12 — canlı task aktivitesi sohbette görünmüyor, ayrı Görevler ekranı şart
 
@@ -283,8 +296,16 @@ testten sonra" — sadece not.
   + `app_shell` listener deseni; backend zaten `event: taskloop:*` yayınlıyor
   (`taskloop:escalating/escalated` loglarda görülüyor) — bunları SSE'den
   sohbete köprülemek yeterli olabilir.
+- **İstenen'in kodu artık var:** aynı `TaskActivityBlock` (`63cc1ad`/`adb363e7`)
+  bu bug'ı da kapsıyor — canlı adım/madde ilerlemesi, zaman damgalı aktivite
+  logu (`tool`/`step_done`/`step_retry`/`escalate`/... satırları), escalation
+  artık (`a35593f4`, BUG-PLAN11(c)) alt-adım sayısını da açıklıyor. Sohbette,
+  ayrı ekrana gitmeden. **2026-09-04:** `task_activity_block_test.dart`
+  eklendi — koşan bir görevde ilerleme satırının hem adım hem madde sayısını
+  taşıdığı ve log satırlarının gerçekten render olduğu kanıtlandı.
 - **Öncelik:** orta-yüksek (BUG-PLAN9 + BUG-PLAN10'un şemsiye çözümü; "sohbetten
-  yönet" vaadinin özü).
+  yönet" vaadinin özü) — kod+widget test seviyesinde doğrulandı, **gerçek
+  backend/model'e karşı canlı doğrulanmadı**.
 
 ### ✅ BUG-THINK1 (fix `08ea76ad`) — Claude'un extended thinking içeriği hiçbir zaman gösterilmiyordu
 

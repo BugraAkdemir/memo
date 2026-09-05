@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,4 +155,86 @@ func TestValidatePath_AllowsSymlinkedAncestorToNotYetExistingFileWithinBase(t *t
 	if got != want {
 		t.Errorf("validatePath() = %q, want %q", got, want)
 	}
+}
+
+func readFile(t *testing.T, base, path string, offset, limit int) string {
+	t.Helper()
+	args := map[string]any{"path": path}
+	if offset > 0 {
+		args["offset"] = offset
+	}
+	if limit > 0 {
+		args["limit"] = limit
+	}
+	raw, _ := json.Marshal(args)
+	out, err := ReadFile(context.Background(), raw, base, nil)
+	if err != nil {
+		t.Fatalf("ReadFile(%q, off=%d lim=%d): %v", path, offset, limit, err)
+	}
+	return out
+}
+
+func TestReadFile_WholeSmallFileUnchanged(t *testing.T) {
+	base := t.TempDir()
+	if err := os.WriteFile(filepath.Join(base, "s.txt"), []byte("a\nb\nc"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, base, "s.txt", 0, 0); got != "a\nb\nc" {
+		t.Errorf("small file read = %q, want verbatim", got)
+	}
+}
+
+func TestReadFile_OffsetLimitWindow(t *testing.T) {
+	base := t.TempDir()
+	var sb strings.Builder
+	for i := 1; i <= 50; i++ {
+		sb.WriteString("line")
+		sb.WriteByte(byte('0' + i%10))
+		sb.WriteByte('\n')
+	}
+	if err := os.WriteFile(filepath.Join(base, "f.txt"), []byte(sb.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out := readFile(t, base, "f.txt", 10, 5)
+	if !strings.HasPrefix(out, "[read_file f.txt: lines 10-14 of 51") {
+		t.Errorf("missing/incorrect window header: %q", firstLine(out))
+	}
+	if strings.Contains(out, "pass offset/limit to read more") == false {
+		t.Errorf("expected a 'read more' hint when the window ends before EOF: %q", firstLine(out))
+	}
+}
+
+func TestReadFile_BigFileAutoCapped(t *testing.T) {
+	base := t.TempDir()
+	var sb strings.Builder
+	for i := 0; i < 5000; i++ {
+		sb.WriteString("some line of content here to add bytes ")
+		sb.WriteString(strings.Repeat("x", 40))
+		sb.WriteByte('\n')
+	}
+	if err := os.WriteFile(filepath.Join(base, "big.txt"), []byte(sb.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out := readFile(t, base, "big.txt", 0, 0) // no window given
+	if !strings.HasPrefix(out, "[read_file big.txt: lines 1-2000 of 5001") {
+		t.Errorf("big unwindowed read should auto-cap to 2000 lines: %q", firstLine(out))
+	}
+}
+
+func TestReadFile_OffsetPastEnd(t *testing.T) {
+	base := t.TempDir()
+	if err := os.WriteFile(filepath.Join(base, "s.txt"), []byte("a\nb\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out := readFile(t, base, "s.txt", 999, 0)
+	if !strings.Contains(out, "past end of file") {
+		t.Errorf("out-of-range offset should say so, got %q", out)
+	}
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
 }

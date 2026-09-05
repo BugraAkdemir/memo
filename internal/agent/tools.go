@@ -63,7 +63,7 @@ func (r *ToolRegistry) registerBuiltins() {
 	r.Register(ToolDef{
 		Name:        "read_file",
 		Description: "Reads the content of a file",
-		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Path to the file to read"}}, "required": ["path"]}`),
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read"},"offset":{"type":"integer","description":"1-based line to start from (optional)"},"limit":{"type":"integer","description":"max lines to return from offset (optional)"}},"required":["path"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.ReadFile,
 	})
@@ -396,7 +396,7 @@ func NewReadOnlyRegistry() *ToolRegistry {
 	r.Register(ToolDef{
 		Name:        "read_file",
 		Description: "Reads the content of a file",
-		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Path to the file to read"}}, "required": ["path"]}`),
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read"},"offset":{"type":"integer","description":"1-based line to start from (optional)"},"limit":{"type":"integer","description":"max lines to return from offset (optional)"}},"required":["path"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.ReadFile,
 	})

@@ -12,10 +12,26 @@ import (
 	"time"
 )
 
-// ReadFileArgs represents arguments for read_file tool.
+// ReadFileArgs represents arguments for read_file tool. Offset/Limit give a
+// line window so large files (and files a plain read used to reject outright)
+// stay usable without dumping the whole thing into context.
 type ReadFileArgs struct {
-	Path string `json:"path"`
+	Path   string `json:"path"`
+	Offset int    `json:"offset"` // 1-based start line; 0 = from the top
+	Limit  int    `json:"limit"`  // max lines to return; 0 = default
 }
+
+const (
+	// readFileHardCapBytes rejects only pathological files — a real read
+	// windows into the content instead of failing (the old limit was 1MB,
+	// which made large source/log files unreadable at all).
+	readFileHardCapBytes = 25 * 1024 * 1024
+	// readFileAutoLineCap bounds an un-windowed read of a big file so a
+	// single call can't blow the context window; the model is told the total
+	// and can page with offset/limit.
+	readFileAutoLineCap = 2000
+	readFileAutoByteCap = 256 * 1024
+)
 
 func ReadFile(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args ReadFileArgs
@@ -32,10 +48,8 @@ func ReadFile(ctx context.Context, argsJSON json.RawMessage, basePath string, cr
 	if err != nil {
 		return "", fmt.Errorf("stat failed: %w", err)
 	}
-
-	// 1MB limit for reading files
-	if info.Size() > 1024*1024 {
-		return "", fmt.Errorf("file is too large (size: %d bytes, limit: 1MB)", info.Size())
+	if info.Size() > readFileHardCapBytes {
+		return "", fmt.Errorf("file is too large (size: %d bytes, limit: %d MB) — read a specific range with offset/limit is not supported above this size", info.Size(), readFileHardCapBytes/(1024*1024))
 	}
 
 	data, err := os.ReadFile(fullPath)
@@ -43,7 +57,45 @@ func ReadFile(ctx context.Context, argsJSON json.RawMessage, basePath string, cr
 		return "", fmt.Errorf("read failed: %w", err)
 	}
 
-	return string(data), nil
+	windowed := args.Offset > 0 || args.Limit > 0
+	bigUnwindowed := !windowed && (len(data) > readFileAutoByteCap)
+	if !windowed && !bigUnwindowed {
+		return string(data), nil
+	}
+
+	lines := strings.Split(string(data), "\n")
+	total := len(lines)
+
+	start := 0
+	if args.Offset > 1 {
+		start = args.Offset - 1
+	}
+	if start >= total {
+		return fmt.Sprintf("[read_file %s: offset %d is past end of file (%d lines)]", args.Path, args.Offset, total), nil
+	}
+
+	limit := args.Limit
+	if limit <= 0 {
+		if bigUnwindowed {
+			limit = readFileAutoLineCap
+		} else {
+			limit = total - start
+		}
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+
+	body := strings.Join(lines[start:end], "\n")
+	if start > 0 || end < total {
+		hint := ""
+		if end < total {
+			hint = " — pass offset/limit to read more"
+		}
+		return fmt.Sprintf("[read_file %s: lines %d-%d of %d%s]\n%s", args.Path, start+1, end, total, hint, body), nil
+	}
+	return body, nil
 }
 
 // WriteFileArgs represents arguments for write_file tool.

@@ -1,3 +1,84 @@
+# Ek (2026-09-06, devam 60) — Uzun-oturum yol haritası Faz 1-4 tamam (18 commit)
+
+Kullanıcı: "durma, her fazı sırayla yap." Faz 0 (devam 59) zaten bitmişti;
+bu oturumda Faz 1-4 uygulandı. Hepsi main'e, normal tarihlerle (Faz 0'ın ilk
+3 commiti 2026-09-05 backdate'liydi, gerisi normal). Tarih/versiyon tag'i
+atılmadı. Plan dosyası: `~/.claude/plans/kanka-memo-ya-u-stateless-quasar.md`
+(her faz ✅ DONE + ne shipped edildi).
+
+## Faz 1 — Memory relevance (4 commit)
+- min_similarity 0.1→0.35; validate() <0.15 olanı yükseltiyor. Yeni config:
+  `pinned_facts_per_turn`(10), `recency_half_life_days`(30),
+  `query_history_turns`(1), `fact_extraction_every_n_turns`(3).
+- `RetrieveContext` recency ağırlığı (recencyFactor, yarı-ömür başına ×0.5,
+  0.15 taban). `GetPinnedFactsRanked`: pinned fact'leri sorgu cosine'ine göre
+  sırala + 3'lük "son eklenen" çekirdek + `NearDuplicateContent` (lexical
+  Jaccard≥0.7) ile tekilleştir, 10'a sınırla (eskiden 75 koşulsuz).
+  `retrieveMemory` RAG sonuçlarından pinned fact'i tekrar edenleri atıyor.
+- Chat yolu `stripAssistant=true` (anıda sadece kullanıcının sözleri).
+  Wrapper metni ~150→~30 tok. Fact extraction N turda bir batch'leniyor
+  (fact kaybı yok — birleştirilmiş mesajlar üzerinden tek çağrı).
+
+## Faz 2 — Uzun-oturum context (4 commit)
+- Pipeline tur-içi bütçesi 64k sabit → gerçek model penceresinin %75'i
+  (`modelContextWindow`: per-model ContextTokens → tip default → 128k), taban
+  32k. Claude 64k→~150k.
+- Tur-içi truncation kesilen tool sonucunu sessizce atmak yerine yenilenen
+  `[context-trim]` işaretçisi bırakıyor (hangi araçların düştüğünü sayıyor).
+- `internal/app/workingset.go`: per-chat dosya (path/satır/aksiyon, cap 12) +
+  komut (ok|failed + tail, cap 5) özeti, agent tool event'lerinden doluyor,
+  time bloğunun yanına enjekte, 600 tok cap, in-memory, DeleteChat'te siliniyor.
+- `internal/app/conversation_compact.go`: `maybeCompactHistory` — history
+  bütçenin %60'ını (CompactThresholdPct) aşınca eski ~%60'ı tek özet system
+  mesajına indiriyor, yeni ~%40 aynen kalıyor. Özet `conversationSig` ile
+  cache'li → LLM çağrısı seyrek. compactPlanState + `compaction` kategorisini
+  yeniden kullanıyor.
+- Config: `agent_mode.working_set_enabled/working_set_max_tokens/
+  conversation_compact_enabled/compact_threshold_pct` — eski configler için
+  validate() adopte ediyor.
+
+## Faz 3 — Döngü sağlamlığı (3 commit)
+- `MaxIterations` config'e (default 40). Agent turuna toplam süre kalkanı:
+  `callAgentStream` `context.WithTimeout(ctx, TurnBudgetSecs)` (default 1200,
+  0=kapalı) ile sarılıyor — interaktif yol; Self-Driving worker muaf; süre
+  dolunca stop yolundan yarım kaydediyor.
+- Sınırlı akıllı devam: `MaxContinuations` (default 2) — ilerleme varken
+  tavana çarpınca döngüyü "[auto-continue N/M] devam et" nudge'ıyla yeniden
+  başlatıyor. Toplam sınır MaxIterations×(1+MaxContinuations) + duvar saati.
+- `read_file` offset/limit kazandı, 1MB red → 25MB, pencere verilmemiş büyük
+  okuma ilk 2000 satıra otomatik iniyor + "lines X-Y of Z" başlığı.
+
+## Faz 4 — Prompt hygiene + caching (2 commit)
+- `ToOpenAITools` isme göre sıralı (bir turun iterasyonları arası byte-stabil
+  — cache-hit önkoşulu).
+- `claude.go` system promptunu `cache_control: ephemeral` bloğu olarak
+  gönderiyor + son tool'u işaretliyor. `*.anthropic.com` base URL'e sınırlı
+  (custom Anthropic-uyumlu endpoint'ler dokunulmuyor; customAnthropic miras
+  alıyor). Agent modda iterasyon 2..N statik prefix'i ~%10 fiyata.
+
+## Doğrulama
+`CGO_ENABLED=1 go build/vet/test -tags sqlite_fts5 ./... -race` her fazda
+tam yeşil. `.dart` hiç dokunulmadı. Her commit'te odaklı testler eklendi
+(recencyFactor, GetPinnedFactsRanked, NearDuplicateContent, modelContextWindow,
+stub-on-evict, maxIters/auto-continue, read_file pencereleme, ToOpenAITools
+stabil sıra, claude cache_control gating, conversationSig/maybeCompactHistory,
+bufferFactExtraction, working-set record/render).
+
+## Sıradaki / açık
+- **CANLI BENCHMARK YAPILMADI** (Faz 0 dahil): `scratchpad/bench.py` ile
+  gerçek sağlayıcıya bir agent kodlama görevi + planner-mod Self-Driving
+  liste koşup: (a) `/api/stats/usage`'da `task_plan`/`task_step` satırları,
+  (b) `AGENT-CONTEXT:` logu vs stats, (c) memory ON prompt tok/tur
+  ~11.7k→~9.5-10k, mem-retrieve ~44→~12-18, (d) Anthropic yanıtında
+  `cache_read_input_tokens>0`, (e) uzun oturumda tur başına token düz mü.
+  Backend + gerçek sağlayıcı gerekiyor → kullanıcıda.
+- P11: local-model agent yolu agent talimat bloğunu düşürüyor — kapsam dışı,
+  düzeltilmedi.
+- Faz 4'teki opsiyonel "kodlama modu" trim'i (mood/nudge/passive blokları)
+  yapılmadı — kazanç az, passive blok regresyon riski var.
+
+---
+
 # Ek (2026-09-05, devam 59) — Uzun-oturum token/kalite yol haritası: Faz 0 (ölçüm) bitti
 
 Kullanıcı: "memonun uzun kodlamalarda 1-2 saat aralıksız tek oturum

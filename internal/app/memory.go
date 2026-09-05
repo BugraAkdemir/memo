@@ -365,10 +365,10 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 	// decomposition, which would otherwise leave GetPinnedFacts almost no
 	// time and silently break the "unconditional" guarantee under load.
 	pinCtx, pinCancel := context.WithTimeout(ctx, 5*time.Second)
-	pinned, pinErr := a.store.GetPinnedFacts(pinCtx)
+	pinned, pinErr := a.store.GetPinnedFactsRanked(pinCtx, query, a.cfg.Memory.PinnedFactsPerTurn)
 	pinCancel()
 	if pinErr != nil {
-		logx.Printf("MEMORY: GetPinnedFacts: %v", pinErr)
+		logx.Printf("MEMORY: GetPinnedFactsRanked: %v", pinErr)
 	} else if len(pinned) > 0 {
 		// Pinned facts go FIRST, not appended at the end: BuildSystemPrompt
 		// (internal/identity) truncates the formatted memory block from the
@@ -382,7 +382,21 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 			seen[p.ID] = struct{}{}
 		}
 		for _, r := range m {
-			if _, dup := seen[r.ID]; !dup {
+			if _, dup := seen[r.ID]; dup {
+				continue
+			}
+			// Drop a RAG hit that only re-states a pinned fact in different
+			// words — exact-ID was the only dedup here before, so "kedimin
+			// adı Zeytin" pinned and the conversational turn it came from
+			// both landed in the prompt.
+			nearDup := false
+			for _, p := range pinned {
+				if memory.NearDuplicateContent(p.Content, r.Content) {
+					nearDup = true
+					break
+				}
+			}
+			if !nearDup {
 				merged = append(merged, r)
 			}
 		}

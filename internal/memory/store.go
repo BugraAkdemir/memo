@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"memo/internal/database"
 	"memo/internal/models"
@@ -1370,6 +1372,184 @@ func (s *Store) GetPinnedFacts(ctx context.Context) ([]MemoryResult, error) {
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// GetPinnedFactsRanked returns at most `limit` pinned facts, chosen by
+// relevance to `query` rather than dumping the whole set. Pinned facts were
+// injected into every prompt unconditionally (up to pinnedFactsLimit=75,
+// most-recent-first, no query involved) — the single biggest reason
+// retrieval returned a near-identical large set every turn regardless of
+// what was asked. This scores each candidate by cosine similarity to the
+// query embedding, always keeps a small most-recent core (so a fact the
+// user just pinned still surfaces on an unrelated next turn), and returns
+// the union, score-sorted, capped at `limit`, with near-duplicate facts
+// collapsed. Similarity on each result is the real cosine, not a hardcoded
+// 1.0, so the formatted prompt shows an honest relevance figure.
+//
+// limit <= 0 falls back to GetPinnedFacts (whole set). An embedding failure
+// falls back to most-recent-`limit` — pinned facts are important enough
+// that "recent ones" beats "none".
+func (s *Store) GetPinnedFactsRanked(ctx context.Context, query string, limit int) ([]MemoryResult, error) {
+	if limit <= 0 {
+		return s.GetPinnedFacts(ctx)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT uuid, content, timestamp, user_msg, assist_msg,
+		       importance, source, tags, session_id, retrieve_count, embedding
+		FROM memories
+		WHERE source = 'explicit' AND importance = 5 AND pending_deletion = 0
+		ORDER BY timestamp DESC
+		LIMIT ?
+	`, pinnedFactsLimit)
+	if err != nil {
+		return nil, fmt.Errorf("memory.GetPinnedFactsRanked: %w", err)
+	}
+	defer rows.Close()
+
+	type cand struct {
+		r   MemoryResult
+		vec []float32
+	}
+	var cands []cand
+	for rows.Next() {
+		var r MemoryResult
+		var blob []byte
+		if err := rows.Scan(&r.ID, &r.Content, &r.Timestamp, &r.UserMsg, &r.AssistMsg,
+			&r.Importance, &r.Source, &r.Tags, &r.SessionID, &r.RetrieveCount, &blob); err != nil {
+			continue
+		}
+		r.MatchType = "pinned"
+		cands = append(cands, cand{r: r, vec: blobToFloats(blob)})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(cands) == 0 {
+		return nil, nil
+	}
+
+	// cands is already most-recent-first from the ORDER BY.
+	coreN := 3
+	if coreN > limit {
+		coreN = limit
+	}
+
+	queryEmb, embErr := s.embed(ctx, capForEmbedding(query, chunkMaxTokens))
+	if embErr != nil || len(queryEmb) != s.dim {
+		logx.Printf("MEMORY: GetPinnedFactsRanked embed failed (%v), falling back to most-recent-%d", embErr, limit)
+		out := make([]MemoryResult, 0, limit)
+		for i := 0; i < len(cands) && i < limit; i++ {
+			c := cands[i].r
+			c.Similarity = 1.0
+			out = append(out, c)
+		}
+		return out, nil
+	}
+	qNorm := vectorNorm(queryEmb)
+	for i := range cands {
+		if len(cands[i].vec) == s.dim {
+			cands[i].r.Similarity = cosineSimilarityFast(queryEmb, qNorm, cands[i].vec, vectorNorm(cands[i].vec))
+		} else {
+			cands[i].r.Similarity = 0
+		}
+	}
+
+	picked := make([]MemoryResult, 0, limit)
+	inPicked := make(map[string]struct{}, limit)
+	add := func(m MemoryResult) bool {
+		if len(picked) >= limit {
+			return false
+		}
+		if _, dup := inPicked[m.ID]; dup {
+			return true
+		}
+		for _, p := range picked {
+			if NearDuplicateContent(p.Content, m.Content) {
+				return true // collapse near-identical pinned facts
+			}
+		}
+		picked = append(picked, m)
+		inPicked[m.ID] = struct{}{}
+		return true
+	}
+
+	// Always-on recent core first, then fill by score.
+	for i := 0; i < coreN; i++ {
+		add(cands[i].r)
+	}
+	byScore := make([]MemoryResult, len(cands))
+	for i := range cands {
+		byScore[i] = cands[i].r
+	}
+	sort.Slice(byScore, func(i, j int) bool {
+		if byScore[i].Similarity != byScore[j].Similarity {
+			return byScore[i].Similarity > byScore[j].Similarity
+		}
+		return byScore[i].ID < byScore[j].ID
+	})
+	for _, m := range byScore {
+		if !add(m) {
+			break
+		}
+	}
+
+	sort.Slice(picked, func(i, j int) bool {
+		if picked[i].Similarity != picked[j].Similarity {
+			return picked[i].Similarity > picked[j].Similarity
+		}
+		return picked[i].ID < picked[j].ID
+	})
+	return picked, nil
+}
+
+// NearDuplicateContent reports whether two memory contents are near-identical
+// — differing only by a timestamp/id prefix, a trailing tense change, or a
+// word or two — by normalized word-set overlap (Jaccard >= 0.7, pure-digit
+// tokens ignored). It is deliberately lexical and conservative: catching a
+// pinned fact that got re-pinned in slightly different words, or a pinned
+// fact next to the RAG hit it was extracted from, without the cost of
+// embeddings. It does NOT catch semantic paraphrase with different word
+// forms — that is what the vector search itself is for.
+func NearDuplicateContent(a, b string) bool {
+	ta, tb := contentTokenSet(a), contentTokenSet(b)
+	if len(ta) < 2 || len(tb) < 2 {
+		return false
+	}
+	inter := 0
+	for w := range ta {
+		if _, ok := tb[w]; ok {
+			inter++
+		}
+	}
+	union := len(ta) + len(tb) - inter
+	if union == 0 {
+		return false
+	}
+	return float64(inter)/float64(union) >= 0.7
+}
+
+func contentTokenSet(s string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, w := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		if utf8.RuneCountInString(w) < 2 {
+			continue
+		}
+		allDigits := true
+		for _, r := range w {
+			if !unicode.IsDigit(r) {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			continue // timestamps, ids — not meaningful content
+		}
+		out[w] = struct{}{}
+	}
+	return out
 }
 
 // incrementRetrieveCounts increments retrieve_count for the given memory UUIDs.

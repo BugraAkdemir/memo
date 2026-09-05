@@ -1076,3 +1076,88 @@ func TestHybridSearch_MatchTypeIsHybridWhenFTSCompiled(t *testing.T) {
 		t.Errorf("MatchType = %q, want hybrid (exact-text query should match both vector and FTS passes)", results[0].MatchType)
 	}
 }
+
+// TestGetPinnedFactsRanked_PicksRelevantAndCaps: pinned facts must no longer
+// be dumped whole every turn — GetPinnedFactsRanked scores them against the
+// query and returns at most `limit`, so a question about coffee surfaces the
+// coffee fact and not five unrelated ones.
+func TestGetPinnedFactsRanked_PicksRelevantAndCaps(t *testing.T) {
+	ctx := context.Background()
+	store := newRecallStore(t, bagOfWordsEmbedding(64), 64)
+
+	facts := []string{
+		"kullanici sabah kahvesini arabica cekirdegiyle demler",
+		"kullanicinin kopeginin adi Karabas",
+		"kullanici Ankara'da yasiyor",
+		"kullanici backend icin Go dilini tercih ediyor",
+		"kullanici aksamlari dag yuruyusu yapmayi seviyor",
+		"kullanicinin kardesi doktor",
+	}
+	for _, f := range facts {
+		if err := store.SaveExplicit(ctx, f, "profile"); err != nil {
+			t.Fatalf("SaveExplicit(%q): %v", f, err)
+		}
+	}
+
+	got, err := store.GetPinnedFactsRanked(ctx, "en sevdigi kahve cekirdegi arabica mi", 3)
+	if err != nil {
+		t.Fatalf("GetPinnedFactsRanked: %v", err)
+	}
+	if len(got) > 3 {
+		t.Fatalf("returned %d facts, want <= 3", len(got))
+	}
+	if !containsMemory(got, "arabica") {
+		t.Errorf("coffee-relevant fact missing from ranked pinned set: %+v", got)
+	}
+	// The whole set is 6; a real cap means we did not just get everything.
+	if len(got) == len(facts) {
+		t.Errorf("cap not applied: got the entire pinned set back")
+	}
+	for _, r := range got {
+		if r.MatchType != "pinned" {
+			t.Errorf("MatchType = %q, want pinned", r.MatchType)
+		}
+	}
+}
+
+// TestGetPinnedFactsRanked_LimitZeroFallsBackToFullSet keeps the old
+// contract reachable for callers that still want every pinned fact.
+func TestGetPinnedFactsRanked_LimitZeroFallsBackToFullSet(t *testing.T) {
+	ctx := context.Background()
+	store := newRecallStore(t, bagOfWordsEmbedding(32), 32)
+	for _, f := range []string{"fact bir", "fact iki", "fact uc"} {
+		if err := store.SaveExplicit(ctx, f, ""); err != nil {
+			t.Fatalf("SaveExplicit: %v", err)
+		}
+	}
+	got, err := store.GetPinnedFactsRanked(ctx, "anything", 0)
+	if err != nil {
+		t.Fatalf("GetPinnedFactsRanked: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("limit=0 should return the whole set (3), got %d", len(got))
+	}
+}
+
+func TestNearDuplicateContent(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		// near-identical: only a timestamp prefix differs
+		{"2026-09-01 kedimin adı Zeytin", "kedimin adı Zeytin", true},
+		// near-identical: only a trailing tense change
+		{"kullanıcı sabah kahvesini arabica çekirdeğiyle demler",
+			"kullanıcı sabah kahvesini arabica çekirdeğiyle demliyor", true},
+		// unrelated
+		{"kullanıcı kahveyi arabica çekirdekle demler", "kullanıcının kardeşi doktor", false},
+		// genuine paraphrase with different word forms — deliberately NOT caught
+		{"kullanıcı Ankara'da yaşıyor", "kullanıcı Ankara ilinde ikamet ediyor", false},
+		{"", "anything at all", false},
+	}
+	for _, c := range cases {
+		if got := NearDuplicateContent(c.a, c.b); got != c.want {
+			t.Errorf("NearDuplicateContent(%q,%q) = %v, want %v", c.a, c.b, got, c.want)
+		}
+	}
+}

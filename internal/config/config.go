@@ -290,6 +290,14 @@ type AgentModeConfig struct {
 	// CompactThresholdPct is the history-vs-context-budget percentage that
 	// triggers the summarization above. Default 60.
 	CompactThresholdPct int `yaml:"compact_threshold_pct" json:"compact_threshold_pct"`
+
+	// MaxIterations is the per-turn tool-call ceiling for one agent turn.
+	// Was a hardcoded 40. Default 40.
+	MaxIterations int `yaml:"max_iterations" json:"max_iterations"`
+	// TurnBudgetSecs is the aggregate wall-clock ceiling for one agent turn.
+	// The agent loop previously had no total-time guard at all (only
+	// maxIterations and a 120s-per-tool timeout). 0 disables it. Default 1200.
+	TurnBudgetSecs int `yaml:"turn_budget_secs" json:"turn_budget_secs"`
 }
 
 // BrowserConfig controls the optional headless-browser fallback
@@ -948,6 +956,8 @@ func Default() *AppConfig {
 			WorkingSetMaxTokens:        600,
 			ConversationCompactEnabled: true,
 			CompactThresholdPct:        60,
+			MaxIterations:              40,
+			TurnBudgetSecs:             1200,
 		},
 		Browser: BrowserConfig{
 			// Off by default — a fresh browser per fetch, closed
@@ -1184,11 +1194,20 @@ func (c *AppConfig) validate() []string {
 		c.AgentMode.WorkingSetEnabled = true
 		c.AgentMode.ConversationCompactEnabled = true
 		c.AgentMode.CompactThresholdPct = 60
+		c.AgentMode.TurnBudgetSecs = 1200
 		fixes = append(fixes, "AgentMode.WorkingSet")
 	}
 	if c.AgentMode.CompactThresholdPct <= 0 || c.AgentMode.CompactThresholdPct > 95 {
 		c.AgentMode.CompactThresholdPct = 60
 		fixes = append(fixes, "AgentMode.CompactThresholdPct")
+	}
+	if c.AgentMode.MaxIterations <= 0 {
+		c.AgentMode.MaxIterations = 40
+		fixes = append(fixes, "AgentMode.MaxIterations")
+	}
+	if c.AgentMode.TurnBudgetSecs < 0 {
+		c.AgentMode.TurnBudgetSecs = 0 // negative is nonsense; treat as disabled
+		fixes = append(fixes, "AgentMode.TurnBudgetSecs")
 	}
 	if c.Memory.EmbeddingDimension <= 0 {
 		c.Memory.EmbeddingDimension = 768

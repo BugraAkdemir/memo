@@ -453,7 +453,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		}
 
 		logContext("max_iters")
-		trySend(ctx, outCh, provider.StreamChunk{Content: "\n\n⚠️ Agent reached the maximum number of tool calls (40). The task may be incomplete.", Done: true, Usage: termUsage()})
+		trySend(ctx, outCh, provider.StreamChunk{Content: fmt.Sprintf("\n\n⚠️ Agent reached the maximum number of tool calls (%d). The task may be incomplete.", p.maxIters), Done: true, Usage: termUsage()})
 	}()
 
 	return outCh, nil

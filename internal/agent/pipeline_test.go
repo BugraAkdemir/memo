@@ -429,3 +429,39 @@ func TestRunStream_EvictedToolOutputLeavesMarker(t *testing.T) {
 		t.Errorf("no %s marker in the final request after an eviction; messages=%+v", contextTrimMarker, last)
 	}
 }
+
+// TestRunStream_MaxItersOverride confirms pipeline.maxIters (set by
+// Executor from config.AgentMode.MaxIterations) actually bounds the loop
+// and is reflected in the ceiling message.
+func TestRunStream_MaxItersOverride(t *testing.T) {
+	registry := NewRegistry()
+	permissions := NewPermissionManager(t.TempDir())
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+
+	// Always ask for another tool call — the loop only ends on the cap.
+	resp := provider.ChatResponse{ToolCalls: []provider.ToolCall{mustToolCall(t, "c", "read_file", map[string]string{"path": "a.txt"})}}
+	prov := &scriptedProvider{responses: []provider.ChatResponse{resp, resp, resp, resp, resp, resp, resp, resp}}
+
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, nil)
+	pipeline.autoPermission = true
+	pipeline.maxIters = 3
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "m", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream: %v", err)
+	}
+	var text string
+	for c := range ch {
+		text += c.Content
+	}
+	if prov.calls != 3 {
+		t.Errorf("ChatCompletion calls = %d, want 3 (the maxIters cap)", prov.calls)
+	}
+	if !strings.Contains(text, "(3)") {
+		t.Errorf("ceiling message should name the configured cap, got %q", text)
+	}
+}

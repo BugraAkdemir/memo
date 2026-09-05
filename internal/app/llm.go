@@ -317,7 +317,26 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			taskListID = trc.listID
 		}
 
-		streamCh, err := exec.RunStream(ctx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
+		// Aggregate wall-clock ceiling for one interactive agent turn: the
+		// loop otherwise had no total-time guard (only maxIters and a
+		// per-tool 120s), so a wedged turn could run for an hour. On expiry
+		// the pipeline's ctx.Done() branch ends the turn and drainAgentStream
+		// persists whatever was produced (same path as the user hitting
+		// stop). The Self-Driving worker path is exempt — the task loop runs
+		// its own idle/retry timing.
+		turnCtx := ctx
+		if taskListID == "" {
+			a.cfgMu.RLock()
+			budget := a.cfg.AgentMode.TurnBudgetSecs
+			a.cfgMu.RUnlock()
+			if budget > 0 {
+				var cancel context.CancelFunc
+				turnCtx, cancel = context.WithTimeout(ctx, time.Duration(budget)*time.Second)
+				defer cancel()
+			}
+		}
+
+		streamCh, err := exec.RunStream(turnCtx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
 			agentEvents.add(ev)
 			a.recordWorkingSetEvent(sessionID, ev)
 			if taskListID != "" {
@@ -337,7 +356,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			return
 		}
 
-		a.drainAgentStream(ctx, streamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents)
+		a.drainAgentStream(turnCtx, streamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents)
 	}()
 
 	return outCh

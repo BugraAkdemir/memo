@@ -61,6 +61,9 @@ type Executor struct {
 	auditLogFile      *os.File // nil if it couldn't be opened; logging then falls back to logx only
 	bypassPermissions bool // sistem yönetimi açıkken true
 	autoPermission    bool // kullanıcı Shift+Tab ile açtığında tüm izinleri otomatik onayla
+	// maxIters overrides the pipeline's default per-turn tool-call ceiling
+	// when > 0 (config.AgentMode.MaxIterations, set by the app at startup).
+	maxIters int
 }
 
 // openAuditLogFile opens the agent's append-only audit trail
@@ -310,6 +313,9 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 	}
 
 	pipeline := NewPipelineWithBudget(e.registry, e.permissions, sessionSandbox, router, e.backup, maxTokens)
+	if mi := e.getMaxIterations(); mi > 0 {
+		pipeline.maxIters = mi
+	}
 	// Read through the locked getters, not the bare fields — SetBypassPermissions/
 	// SetAutoPermission write under e.mu from a different goroutine (an HTTP
 	// handler), and a plain field read here has no happens-before guarantee with
@@ -419,6 +425,20 @@ func (e *Executor) GetBypassPermissions() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.bypassPermissions
+}
+
+// SetMaxIterations overrides the pipeline's per-turn tool-call ceiling for
+// every subsequent RunStream. <= 0 restores the built-in default (40).
+func (e *Executor) SetMaxIterations(n int) {
+	e.mu.Lock()
+	e.maxIters = n
+	e.mu.Unlock()
+}
+
+func (e *Executor) getMaxIterations() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.maxIters
 }
 
 // SetAutoPermission kullanıcının Shift+Tab ile açtığı otomatik izin modunu ayarlar.

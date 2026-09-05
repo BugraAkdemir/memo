@@ -31,6 +31,15 @@ func TestDefaultValues(t *testing.T) {
 	if cfg.Memory.FactExtractionEveryNTurns != 3 {
 		t.Errorf("Memory.FactExtractionEveryNTurns = %d, want 3", cfg.Memory.FactExtractionEveryNTurns)
 	}
+	if cfg.AgentMode.MaxIterations != 40 {
+		t.Errorf("AgentMode.MaxIterations = %d, want 40", cfg.AgentMode.MaxIterations)
+	}
+	if cfg.AgentMode.TurnBudgetSecs != 1200 {
+		t.Errorf("AgentMode.TurnBudgetSecs = %d, want 1200", cfg.AgentMode.TurnBudgetSecs)
+	}
+	if !cfg.AgentMode.WorkingSetEnabled || !cfg.AgentMode.ConversationCompactEnabled {
+		t.Errorf("AgentMode working-set/compact should default on")
+	}
 	if !cfg.Memory.AutoFactExtraction {
 		t.Error("Memory.AutoFactExtraction = false, want true for fresh installs")
 	}
@@ -193,6 +202,15 @@ func TestValidateFixesEmptyFields(t *testing.T) {
 	}
 	if cfg.Memory.FactExtractionEveryNTurns != 3 {
 		t.Errorf("Memory.FactExtractionEveryNTurns = %d, want 3 after validate", cfg.Memory.FactExtractionEveryNTurns)
+	}
+	if cfg.AgentMode.MaxIterations != 40 {
+		t.Errorf("AgentMode.MaxIterations = %d, want 40 after validate", cfg.AgentMode.MaxIterations)
+	}
+	if cfg.AgentMode.TurnBudgetSecs != 1200 {
+		t.Errorf("AgentMode.TurnBudgetSecs = %d, want 1200 after validate (adopted for older configs)", cfg.AgentMode.TurnBudgetSecs)
+	}
+	if !cfg.AgentMode.WorkingSetEnabled {
+		t.Error("AgentMode.WorkingSetEnabled should be adopted true by validate for an older config")
 	}
 }
 

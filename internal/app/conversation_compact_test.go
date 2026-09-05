@@ -70,7 +70,7 @@ func TestMaybeCompactHistory_UsesCachedSummary(t *testing.T) {
 	h := longHistory(20)
 	cut := len(h) * 6 / 10
 	a.convSummaries = map[string]*convSummary{
-		"c1": {coveredSig: conversationSig(h[:cut]), text: "- did X\n- decided Y"},
+		"c1": {coveredCount: cut, prefixSig: conversationSig(h[:cut]), text: "- did X\n- decided Y"},
 	}
 
 	// Budget small enough that the ~20*~31-token history is well over 60%.

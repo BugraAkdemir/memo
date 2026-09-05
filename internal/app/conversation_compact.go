@@ -14,9 +14,19 @@ import (
 
 // convSummary is the cached result of one maybeCompactHistory summarization.
 type convSummary struct {
-	coveredSig string // signature of the message slice this summary condensed
-	text       string
+	coveredCount int    // how many leading history messages this summary condenses
+	prefixSig    string // signature of history[:coveredCount] — to detect edits
+	text         string
 }
+
+// compactRegionGrowthSlack is how many messages the to-be-condensed region
+// may grow past a cached summary's coverage before we re-summarize. Without
+// it the region (len*0.6) shifts every turn and the LLM call never gets
+// cached; with it a 30-turn session re-summarizes a handful of times, not
+// every other turn.
+const compactRegionGrowthSlack = 8
+
+const compactSummaryHeader = "[Earlier conversation summary — the turns before this point were condensed to save context; treat it as background, not as something the user just said]\n"
 
 // maybeCompactHistory condenses the oldest part of a long conversation into a
 // single summary system message, keeping the recent tail verbatim, instead of
@@ -54,36 +64,47 @@ func (a *App) maybeCompactHistory(ctx context.Context, chatID string, history []
 	if cut < 2 || len(history)-cut < 2 {
 		return history
 	}
-	old, recent := history[:cut], history[cut:]
 
-	sig := conversationSig(old)
 	a.convSummaryMu.Lock()
 	cached := a.convSummaries[chatID]
 	a.convSummaryMu.Unlock()
 
-	summary := ""
-	if cached != nil && cached.coveredSig == sig {
-		summary = cached.text
-	} else {
-		summary = a.summarizeHistorySlice(ctx, old)
-		if summary == "" {
-			logx.Printf("CONTEXT: conversation compaction produced nothing, keeping raw history (%d msgs)", len(history))
-			return history
-		}
-		a.convSummaryMu.Lock()
-		if a.convSummaries == nil {
-			a.convSummaries = map[string]*convSummary{}
-		}
-		a.convSummaries[chatID] = &convSummary{coveredSig: sig, text: summary}
-		a.convSummaryMu.Unlock()
+	// Reuse the cached summary when it still condenses an unchanged prefix of
+	// this history and the ideal cut hasn't outgrown that prefix by more than
+	// the slack — the newer turns just go into the verbatim tail.
+	if cached != nil && cached.coveredCount <= len(history) &&
+		cut <= cached.coveredCount+compactRegionGrowthSlack &&
+		conversationSig(history[:cached.coveredCount]) == cached.prefixSig {
+		cut = cached.coveredCount
+		summary := cached.text
+		out := make([]api.Message, 0, len(history)-cut+1)
+		out = append(out, api.NewTextMessage("system", compactSummaryHeader+summary))
+		out = append(out, history[cut:]...)
+		return out
 	}
+
+	old, recent := history[:cut], history[cut:]
+	summary := a.summarizeHistorySlice(ctx, old)
+	if summary == "" {
+		logx.Printf("CONTEXT: conversation compaction produced nothing, keeping raw history (%d msgs)", len(history))
+		return history
+	}
+	a.convSummaryMu.Lock()
+	if a.convSummaries == nil {
+		a.convSummaries = map[string]*convSummary{}
+	}
+	a.convSummaries[chatID] = &convSummary{
+		coveredCount: cut,
+		prefixSig:    conversationSig(old),
+		text:         summary,
+	}
+	a.convSummaryMu.Unlock()
 
 	logx.Printf("CONTEXT: compacted %d old messages into a %d-token summary, %d recent kept verbatim",
 		len(old), truncate.EstimateTokens(summary), len(recent))
 
 	out := make([]api.Message, 0, len(recent)+1)
-	out = append(out, api.NewTextMessage("system",
-		"[Earlier conversation summary — the turns before this point were condensed to save context; treat it as background, not as something the user just said]\n"+summary))
+	out = append(out, api.NewTextMessage("system", compactSummaryHeader+summary))
 	out = append(out, recent...)
 	return out
 }

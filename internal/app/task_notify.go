@@ -228,7 +228,7 @@ func (a *App) generateTaskReport(tl *taskloop.TaskList) string {
 				"hangi dosyalara/değişikliklere dokunuldu, kullanıcının bilmesi gereken bir şey varsa. "+
 				"Görev maddelerinin diliyle yaz. Selamlama ve dolgu cümlesi kullanma, direkt rapora geç. En fazla ~150 kelime."),
 		api.NewTextMessage("user", ctxb.String()),
-	})
+	}, categoryTaskReview)
 	if strings.HasPrefix(raw, "⚠") {
 		return ""
 	}

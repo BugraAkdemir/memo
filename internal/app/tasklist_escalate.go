@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"memo/internal/agent"
 	"memo/internal/logx"
@@ -46,6 +47,7 @@ SADECE şu JSON'u döndür: {"steps":[{"id":"","item_id":"...","text":"...","dif
 
 	sctx, scancel := context.WithCancel(ctx)
 	defer scancel()
+	start := time.Now()
 	streamCh, err := subExec.RunStream(sctx, "", model, effort,
 		[]provider.Message{
 			provider.TextMessage("system", sys),
@@ -54,7 +56,9 @@ SADECE şu JSON'u döndür: {"steps":[{"id":"","item_id":"...","text":"...","dif
 	if err != nil {
 		return nil, err
 	}
-	out, derr := drainStreamIdle(streamCh, scancel, a.streamIdleTimeout())
+	out, usage, derr := drainStreamIdleUsage(streamCh, scancel, a.streamIdleTimeout())
+	a.recordTaskStreamUsage(start, routerProviderName(router), model, categoryTaskStep, usage,
+		taskloop.EstTokens(sys)+taskloop.EstTokens(user.String()), out)
 	if derr != nil {
 		// The raw string carries dial/DNS markers for isOfflineErr.
 		return nil, fmt.Errorf("%w", derr)

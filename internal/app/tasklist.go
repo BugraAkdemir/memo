@@ -413,7 +413,7 @@ func (a *App) reviewChiefViaLocal(ctx context.Context, itemText, workerOutput st
 		api.NewTextMessage("user", taskloop.ChiefReviewPrompt(itemText, workerOutput)),
 	}
 
-	raw := a.callLLMForReview(ctx, msgs)
+	raw := a.callLLMForReview(ctx, msgs, categoryTaskReview)
 	if strings.HasPrefix(raw, "\u26a0") {
 		return false, "", fmt.Errorf("CEO LLM hatası: %s", raw)
 	}
@@ -426,15 +426,19 @@ func (a *App) reviewChiefViaLocal(ctx context.Context, itemText, workerOutput st
 // finish reports). The budget is generous — a reasoning model or a queued
 // endpoint can legitimately take a few minutes to answer a review of a large
 // output — but still bounded so a dead endpoint fails.
-func (a *App) callLLMForReview(ctx context.Context, messages []api.Message) string {
-	return a.callLLMForReviewWith(ctx, messages, nil)
+func (a *App) callLLMForReview(ctx context.Context, messages []api.Message, category string) string {
+	return a.callLLMForReviewWith(ctx, messages, category, nil)
 }
 
 // callLLMForReviewWith is callLLMForReview with an optional caller-supplied
 // router (a planexec verifier role's private single-provider router, model
 // already baked in). A nil router keeps the original global-provider
-// behaviour.
-func (a *App) callLLMForReviewWith(ctx context.Context, messages []api.Message, roleRouter *provider.Router) string {
+// behaviour. category tags the persisted usage event (see the categoryTask*
+// constants) so a long autonomous run's review/compaction/plan-config token
+// spend shows up in /api/stats/usage instead of vanishing.
+func (a *App) callLLMForReviewWith(ctx context.Context, messages []api.Message, category string, roleRouter *provider.Router) string {
+	start := time.Now()
+
 	if roleRouter != nil {
 		pctx, cancel := context.WithTimeout(ctx, 240*time.Second)
 		defer cancel()
@@ -450,6 +454,7 @@ func (a *App) callLLMForReviewWith(ctx context.Context, messages []api.Message, 
 		if err != nil {
 			return "⚠️ " + err.Error()
 		}
+		a.recordReviewUsage(start, routerProviderName(roleRouter), resp.Model, category, messages, resp.Usage, resp.Content)
 		return resp.Content
 	}
 
@@ -477,6 +482,11 @@ func (a *App) callLLMForReviewWith(ctx context.Context, messages []api.Message, 
 		if err != nil {
 			return "⚠️ " + err.Error()
 		}
+		model := resp.Model
+		if model == "" {
+			model = a.activeProviderModel(activeName)
+		}
+		a.recordReviewUsage(start, activeName, model, category, messages, resp.Usage, resp.Content)
 		return resp.Content
 	}
 
@@ -498,5 +508,46 @@ func (a *App) callLLMForReviewWith(ctx context.Context, messages []api.Message, 
 	if len(resp.Choices) == 0 {
 		return "⚠️ Boş yanıt"
 	}
-	return resp.Choices[0].Message.GetTextContent()
+	reply := resp.Choices[0].Message.GetTextContent()
+	var usage *provider.Usage
+	if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 {
+		usage = &provider.Usage{PromptTokens: resp.Usage.PromptTokens, CompletionTokens: resp.Usage.CompletionTokens}
+	}
+	a.recordReviewUsage(start, "local", a.localModelName(), category, messages, usage, reply)
+	return reply
+}
+
+// recordReviewUsage persists one taskloop single-completion call to the
+// usage-stats store, preferring the provider's real token counts and falling
+// back to the len/3-consistent word estimate when it reported none.
+func (a *App) recordReviewUsage(start time.Time, providerName, model, category string, messages []api.Message, usage *provider.Usage, reply string) {
+	prompt, completion := estimateMessagesTokens(messages), estimateContentTokens(reply)
+	if usage != nil && (usage.PromptTokens > 0 || usage.CompletionTokens > 0) {
+		prompt, completion = usage.PromptTokens, usage.CompletionTokens
+	}
+	a.recordCallLLMUsage(start, providerName, model, category, prompt, completion)
+}
+
+// recordTaskStreamUsage is recordReviewUsage for the streaming sub-agent
+// paths (planner, coder step, escalation, worker sub-agents): those drain a
+// provider stream rather than a single ChatCompletion, so the real usage
+// arrives on the terminal chunk (see internal/agent/pipeline.go) via
+// drainStreamIdleUsage, and promptEst is the caller's own EstTokens sum.
+func (a *App) recordTaskStreamUsage(start time.Time, providerName, model, category string, usage *provider.Usage, promptEst int, reply string) {
+	prompt, completion := promptEst, estimateContentTokens(reply)
+	if usage != nil && (usage.PromptTokens > 0 || usage.CompletionTokens > 0) {
+		prompt, completion = usage.PromptTokens, usage.CompletionTokens
+	}
+	a.recordCallLLMUsage(start, providerName, model, category, prompt, completion)
+}
+
+// routerProviderName is a best-effort label for a role router whose active
+// provider isn't otherwise in scope at the call site.
+func routerProviderName(r *provider.Router) string {
+	if r != nil {
+		if ps := r.ActiveProviders(); len(ps) > 0 && ps[0].Name != "" {
+			return ps[0].Name
+		}
+	}
+	return "taskloop"
 }

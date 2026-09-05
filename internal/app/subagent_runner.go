@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"memo/internal/agent"
 	"memo/internal/orchestra"
@@ -62,18 +63,25 @@ func (r *appSubAgentRunner) Run(ctx context.Context, spec taskloop.SubAgentSpec,
 	if listID != "" {
 		onEvent = func(ev agent.AgentEvent) { r.a.emitSubAgentActivity(listID, string(spec.Role), ev) }
 	}
+	start := time.Now()
 	streamCh, err := exec.RunStream(ctx, "", spec.Model, "", msgs, onEvent, projectPath)
 	if err != nil {
 		return "", err
 	}
 	var sb strings.Builder
+	var usage *provider.Usage
 	for chunk := range streamCh {
+		if chunk.Usage != nil {
+			usage = chunk.Usage
+		}
 		if chunk.Error != "" {
 			return sb.String(), fmt.Errorf("sub-agent %s: %s", spec.Role, chunk.Error)
 		}
 		sb.WriteString(chunk.Content)
 	}
 	out := strings.TrimSpace(sb.String())
+	r.a.recordTaskStreamUsage(start, routerProviderName(router), spec.Model, categoryTaskSubagent, usage,
+		taskloop.EstTokens(spec.SystemPrompt)+taskloop.EstTokens(spec.Task), out)
 	if out == "" {
 		return "", fmt.Errorf("sub-agent %s produced no output", spec.Role)
 	}

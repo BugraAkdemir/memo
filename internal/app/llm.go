@@ -68,6 +68,14 @@ const (
 	categoryProactive      = "proactive"
 	categoryInsight        = "insight"
 	categoryWebSearch      = "web_search"
+
+	// Self-Driving task loop internals — previously unrecorded entirely, so a
+	// long autonomous run's real token spend never reached /api/stats/usage.
+	categoryTaskReview   = "task_review"   // worker-mode CEO review, planexec fuzzy acceptance checks, finish reports
+	categoryTaskPlan     = "task_plan"     // planner-mode plan generation, pre-run plan-config
+	categoryTaskStep     = "task_step"     // planner-mode per-step coder runs, one-step escalation re-plans
+	categoryTaskSubagent = "task_subagent" // worker-mode parallel sub-agent runs
+	categoryCompaction   = "compaction"    // plan-state / conversation compaction LLM calls
 )
 
 // currentProviderLabel returns the active external provider's name, or

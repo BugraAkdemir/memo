@@ -75,6 +75,40 @@ func TestDrainStreamIdle_AbortsOnStall_ButKeepsFlowingStreamAlive(t *testing.T) 
 	}
 }
 
+func TestDrainStreamIdleUsage_SurfacesTerminalUsage(t *testing.T) {
+	ch := make(chan provider.StreamChunk, 3)
+	ch <- provider.StreamChunk{Content: "plan"}
+	ch <- provider.StreamChunk{Content: " json"}
+	ch <- provider.StreamChunk{Done: true, Usage: &provider.Usage{PromptTokens: 5000, CompletionTokens: 220}}
+	close(ch)
+
+	out, usage, err := drainStreamIdleUsage(ch, func() {}, time.Second)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if out != "plan json" {
+		t.Fatalf("out = %q", out)
+	}
+	if usage == nil || usage.PromptTokens != 5000 || usage.CompletionTokens != 220 {
+		t.Fatalf("usage = %+v, want {5000 220}", usage)
+	}
+}
+
+func TestDrainStreamIdleUsage_NilWhenProviderReportedNone(t *testing.T) {
+	ch := make(chan provider.StreamChunk, 2)
+	ch <- provider.StreamChunk{Content: "hi"}
+	ch <- provider.StreamChunk{Done: true}
+	close(ch)
+
+	_, usage, err := drainStreamIdleUsage(ch, func() {}, time.Second)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if usage != nil {
+		t.Fatalf("expected nil usage, got %+v", usage)
+	}
+}
+
 func TestDrainStreamIdle_ZeroDisablesGuard(t *testing.T) {
 	ch := make(chan provider.StreamChunk)
 	go func() {

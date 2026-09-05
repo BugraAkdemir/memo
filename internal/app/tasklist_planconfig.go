@@ -84,7 +84,7 @@ func (a *App) askPlanConfigLLM(ctx context.Context, trc *taskRunConfig, enabled 
 	raw := a.callLLMForReview(ctx, []api.Message{
 		api.NewTextMessage("system", sys),
 		api.NewTextMessage("user", usr),
-	})
+	}, categoryTaskPlan)
 	if strings.HasPrefix(raw, "⚠") {
 		return planConfigChoice{}, fmt.Errorf("plan-config LLM: %s", raw)
 	}

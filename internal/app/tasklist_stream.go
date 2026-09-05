@@ -45,16 +45,32 @@ func (a *App) workerIdleTimeout() time.Duration {
 // that keeps producing tokens runs for as long as it likes. A chunk carrying
 // an Error ends the read with that error. idle <= 0 disables the guard.
 func drainStreamIdle(streamCh <-chan provider.StreamChunk, cancel context.CancelFunc, idle time.Duration) (string, error) {
+	s, _, err := drainStreamIdleUsage(streamCh, cancel, idle)
+	return s, err
+}
+
+// drainStreamIdleUsage is drainStreamIdle that also surfaces the token
+// accounting the agent pipeline attaches to its terminal chunk (nil when the
+// provider reported none), so the Self-Driving planner/coder/escalator paths
+// can persist a real usage event instead of only an EstTokens guess.
+func drainStreamIdleUsage(streamCh <-chan provider.StreamChunk, cancel context.CancelFunc, idle time.Duration) (string, *provider.Usage, error) {
 	var sb strings.Builder
+	var usage *provider.Usage
+	keep := func(c provider.StreamChunk) {
+		if c.Usage != nil {
+			usage = c.Usage
+		}
+		sb.WriteString(c.Content)
+	}
 
 	if idle <= 0 {
 		for chunk := range streamCh {
 			if chunk.Error != "" {
-				return sb.String(), fmt.Errorf("%s", chunk.Error)
+				return sb.String(), usage, fmt.Errorf("%s", chunk.Error)
 			}
-			sb.WriteString(chunk.Content)
+			keep(chunk)
 		}
-		return sb.String(), nil
+		return sb.String(), usage, nil
 	}
 
 	timer := time.NewTimer(idle)
@@ -63,12 +79,12 @@ func drainStreamIdle(streamCh <-chan provider.StreamChunk, cancel context.Cancel
 		select {
 		case chunk, ok := <-streamCh:
 			if !ok {
-				return sb.String(), nil
+				return sb.String(), usage, nil
 			}
 			if chunk.Error != "" {
-				return sb.String(), fmt.Errorf("%s", chunk.Error)
+				return sb.String(), usage, fmt.Errorf("%s", chunk.Error)
 			}
-			sb.WriteString(chunk.Content)
+			keep(chunk)
 			if !timer.Stop() {
 				select {
 				case <-timer.C:
@@ -83,7 +99,7 @@ func drainStreamIdle(streamCh <-chan provider.StreamChunk, cancel context.Cancel
 				for range streamCh {
 				}
 			}()
-			return sb.String(), fmt.Errorf("taskloop: LLM stream idle for %s with no new token", idle)
+			return sb.String(), usage, fmt.Errorf("taskloop: LLM stream idle for %s with no new token", idle)
 		}
 	}
 }

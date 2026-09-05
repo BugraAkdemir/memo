@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"memo/internal/agent"
 	"memo/internal/logx"
@@ -31,15 +32,16 @@ func (a *App) planTask(ctx context.Context, listID, chatID, projectRoot, preambl
 
 	sctx, scancel := context.WithCancel(ctx)
 	defer scancel()
+	start := time.Now()
 	streamCh, err := exec.RunStream(sctx, "", model, effort, msgs,
 		func(ev agent.AgentEvent) { a.emitStepToolActivity(listID, ev) }, projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	out, derr := drainStreamIdle(streamCh, scancel, a.streamIdleTimeout())
-	a.taskloopEngine.AddTokens(listID,
-		taskloop.EstTokens(plannerSystemPrompt(granularity))+
-			taskloop.EstTokens(plannerUserPrompt(preamble, items))+taskloop.EstTokens(out))
+	out, usage, derr := drainStreamIdleUsage(streamCh, scancel, a.streamIdleTimeout())
+	promptEst := taskloop.EstTokens(plannerSystemPrompt(granularity)) + taskloop.EstTokens(plannerUserPrompt(preamble, items))
+	a.taskloopEngine.AddTokens(listID, promptEst+taskloop.EstTokens(out))
+	a.recordTaskStreamUsage(start, routerProviderName(router), model, categoryTaskPlan, usage, promptEst, out)
 	if derr != nil {
 		return nil, fmt.Errorf("planner: %w", derr)
 	}

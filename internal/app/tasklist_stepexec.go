@@ -52,16 +52,18 @@ func (a *App) runPlanStep(ctx context.Context, listID string, step taskloop.Plan
 
 	sctx, scancel := context.WithCancel(ctx)
 	defer scancel()
+	start := time.Now()
 	streamCh, err := subExec.RunStream(sctx, "", model, effort, msgs,
 		func(ev agent.AgentEvent) { a.emitStepToolActivity(listID, ev) }, projectPath)
 	if err != nil {
 		return "", err
 	}
-	out, derr := drainStreamIdle(streamCh, scancel, a.streamIdleTimeout())
+	out, usage, derr := drainStreamIdleUsage(streamCh, scancel, a.streamIdleTimeout())
 	// Count the turn's prompt + generated output too — the per-tool hook above
 	// only sees tool round-trips, not the model's own text.
-	a.taskloopEngine.AddTokens(listID,
-		taskloop.EstTokens(coderStepSystemPrompt())+taskloop.EstTokens(userPrompt)+taskloop.EstTokens(out))
+	promptEst := taskloop.EstTokens(coderStepSystemPrompt()) + taskloop.EstTokens(userPrompt)
+	a.taskloopEngine.AddTokens(listID, promptEst+taskloop.EstTokens(out))
+	a.recordTaskStreamUsage(start, routerProviderName(router), model, categoryTaskStep, usage, promptEst, out)
 	if derr != nil {
 		return "", fmt.Errorf("coder: %w", derr)
 	}
@@ -376,7 +378,7 @@ Gerekirse dosyaları okuduğunu VARSAY — elinde listesi var. SADECE şu JSON'u
 Ölçüt açıkça karşılanmıyorsa approved:false + kısa feedback; emin değilsen approved:true (şüpheden yararlandır).`),
 		api.NewTextMessage("user", fmt.Sprintf("Ölçüt: %s\n\nProje durumu:\n%s", criterion, tail(ctxInfo, 3000))),
 	}
-	raw := a.callLLMForReviewWith(ctx, msgs, a.planexecRoleRouter(listID, "verifier"))
+	raw := a.callLLMForReviewWith(ctx, msgs, categoryTaskReview, a.planexecRoleRouter(listID, "verifier"))
 	if strings.HasPrefix(raw, "⚠") {
 		return false, "", fmt.Errorf("verifier LLM: %s", raw)
 	}
@@ -393,7 +395,7 @@ func (a *App) compactPlanState(ctx context.Context, listID, current string) (str
 		api.NewTextMessage("system", `Aşağıdaki ilerleme kaydını kısalt. Kararları, dokunulan dosyaları ve keşfedilen tuzakları KORU; tekrarları ve ayrıntıyı at. Markdown döndür.`),
 		api.NewTextMessage("user", current),
 	}
-	raw := a.callLLMForReviewWith(ctx, msgs, a.planexecRoleRouter(listID, "verifier"))
+	raw := a.callLLMForReviewWith(ctx, msgs, categoryCompaction, a.planexecRoleRouter(listID, "verifier"))
 	if strings.HasPrefix(raw, "⚠") {
 		return "", fmt.Errorf("compactor LLM: %s", raw)
 	}

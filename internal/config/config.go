@@ -745,6 +745,11 @@ type MemoryConfig struct {
 	// unconditionally, instead of competing with routine chit-chat under RAG
 	// ranking. See internal/app/memory.go's extractAndPinFacts.
 	AutoFactExtraction bool `yaml:"auto_fact_extraction" json:"auto_fact_extraction"`
+	// FactExtractionEveryNTurns batches the fact-extraction LLM call: it runs
+	// once per N saved turns over the combined messages, instead of firing
+	// after every turn (which the benchmark measured as roughly one extra LLM
+	// request per turn). 1 = every turn, no batching. Default 3.
+	FactExtractionEveryNTurns int `yaml:"fact_extraction_every_n_turns" json:"fact_extraction_every_n_turns"`
 
 	// PinnedFactsPerTurn caps how many pinned facts are injected into a single
 	// turn's system prompt. Pinned facts used to be dumped in unconditionally
@@ -808,20 +813,21 @@ func Default() *AppConfig {
 			IncognitoPrompt: "You are Memo, in Incognito Mode. This is a secure session. Never refer to past events, because you have no memory here. Do your best to assist the user right now.",
 		},
 		Memory: MemoryConfig{
-			PersistDir:               "./data/memory",
-			TopK:                     8,
-			MinSimilarity:            0.35,
-			MemoryEnabled:            true,
-			EmbeddingDimension:       768,
-			EmbeddingModelRepo:       "nomic-ai/nomic-embed-text-v1.5-GGUF",
-			EmbeddingModelFile:       "nomic-embed-text-v1.5.Q4_K_M.gguf",
-			AutoFactExtraction:       true,
-			PinnedFactsPerTurn:       10,
-			RecencyHalfLifeDays:      30,
-			QueryHistoryTurns:        1,
-			DreamEnabled:             true,
-			DreamInitialDelayMinutes: 5,
-			DreamIntervalHours:       24,
+			PersistDir:                "./data/memory",
+			TopK:                      8,
+			MinSimilarity:             0.35,
+			MemoryEnabled:             true,
+			EmbeddingDimension:        768,
+			EmbeddingModelRepo:        "nomic-ai/nomic-embed-text-v1.5-GGUF",
+			EmbeddingModelFile:        "nomic-embed-text-v1.5.Q4_K_M.gguf",
+			AutoFactExtraction:        true,
+			FactExtractionEveryNTurns: 3,
+			PinnedFactsPerTurn:        10,
+			RecencyHalfLifeDays:       30,
+			QueryHistoryTurns:         1,
+			DreamEnabled:              true,
+			DreamInitialDelayMinutes:  5,
+			DreamIntervalHours:        24,
 		},
 		RemoteAccess: RemoteAccessConfig{
 			Enabled:  false,
@@ -932,8 +938,8 @@ func Default() *AppConfig {
 			Role:    "none",
 		},
 		TaskLoop: TaskLoopConfig{
-			PlanningSelfConfig:    true,
-			SubAgents:             true,
+			PlanningSelfConfig:          true,
+			SubAgents:                   true,
 			StepGranularity:             "hybrid",
 			AutoApprovePlan:             false,
 			TaskMemory:                  false,
@@ -1143,6 +1149,10 @@ func (c *AppConfig) validate() []string {
 	if c.Memory.QueryHistoryTurns <= 0 {
 		c.Memory.QueryHistoryTurns = 1
 		fixes = append(fixes, "Memory.QueryHistoryTurns")
+	}
+	if c.Memory.FactExtractionEveryNTurns <= 0 {
+		c.Memory.FactExtractionEveryNTurns = 3
+		fixes = append(fixes, "Memory.FactExtractionEveryNTurns")
 	}
 	if c.Memory.EmbeddingDimension <= 0 {
 		c.Memory.EmbeddingDimension = 768

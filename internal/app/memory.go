@@ -136,8 +136,9 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 		// budget (up to 300s for an external provider/orchestra call), and
 		// memorySaveWorker is a single goroutine draining every queued save —
 		// blocking it here would back up every other chat's save behind this
-		// one turn's extraction call.
-		goRecover("extractAndPinFacts", func() { a.extractAndPinFacts(ctx, userMsg) })
+		// one turn's extraction call. queueFactExtraction batches it so the
+		// call fires once per FactExtractionEveryNTurns turns, not every turn.
+		a.queueFactExtraction(ctx, userMsg)
 	}
 }
 
@@ -203,6 +204,48 @@ const (
 // future prompt (pinned facts bypass RAG ranking entirely). The user's own
 // words are always genuinely about the user, which the assistant's reply is
 // not guaranteed to be.
+// queueFactExtraction batches user messages for fact extraction. With
+// Memory.FactExtractionEveryNTurns = N > 1 it buffers messages and only runs
+// the extraction LLM call once N have accumulated, over their combined text —
+// cutting extraction from ~1 extra LLM request per turn to 1 per N. N <= 1
+// keeps the old per-turn behaviour. The buffer is in-memory and best-effort
+// (a <N tail left when a session goes quiet is dropped on restart), matching
+// how fact extraction is already treated as an enhancement, not a core save.
+func (a *App) queueFactExtraction(ctx context.Context, userMsg string) {
+	a.cfgMu.RLock()
+	auto := a.cfg.Memory.AutoFactExtraction
+	everyN := a.cfg.Memory.FactExtractionEveryNTurns
+	a.cfgMu.RUnlock()
+	if !auto {
+		return
+	}
+	if everyN <= 1 {
+		goRecover("extractAndPinFacts", func() { a.extractAndPinFacts(ctx, userMsg) })
+		return
+	}
+
+	if batch := a.bufferFactExtraction(userMsg, everyN); batch != nil {
+		combined := strings.Join(batch, "\n---\n")
+		goRecover("extractAndPinFacts", func() { a.extractAndPinFacts(ctx, combined) })
+	}
+}
+
+// bufferFactExtraction appends userMsg to the pending buffer and, once it
+// holds everyN messages, returns and clears them as a batch (nil otherwise).
+// Split out from queueFactExtraction purely so the batching accounting is
+// unit-testable without spawning the extraction call.
+func (a *App) bufferFactExtraction(userMsg string, everyN int) []string {
+	a.factExtractMu.Lock()
+	defer a.factExtractMu.Unlock()
+	a.factExtractBuf = append(a.factExtractBuf, userMsg)
+	if len(a.factExtractBuf) < everyN {
+		return nil
+	}
+	batch := a.factExtractBuf
+	a.factExtractBuf = nil
+	return batch
+}
+
 func (a *App) extractAndPinFacts(ctx context.Context, userMsg string) {
 	if !a.cfg.Memory.AutoFactExtraction {
 		return
@@ -216,7 +259,7 @@ func (a *App) extractAndPinFacts(ctx context.Context, userMsg string) {
 
 	msgs := []api.Message{
 		api.NewTextMessage("system", factExtractionSystemPrompt),
-		api.NewTextMessage("user", fmt.Sprintf("User: %s", userMsg)),
+		api.NewTextMessage("user", fmt.Sprintf("User messages:\n%s", userMsg)),
 	}
 	reply2 := a.callLLM(bgCtx, msgs, categoryFactExtraction)
 	if isLLMErrorReply(reply2) {

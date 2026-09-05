@@ -194,6 +194,12 @@ type App struct {
 	memorySaveWg    sync.WaitGroup
 	events          *eventRing
 
+	// factExtractBuf batches user messages for auto fact-extraction so the
+	// narrow extraction LLM call fires once per Memory.FactExtractionEveryNTurns
+	// turns instead of after every single saved turn. See queueFactExtraction.
+	factExtractMu  sync.Mutex
+	factExtractBuf []string
+
 	providerCfgMgr     *provider.ConfigManager
 	providerRouter     *provider.Router
 	activeProviderName string // which provider is currently active (by Name)

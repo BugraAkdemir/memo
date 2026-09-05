@@ -28,6 +28,9 @@ func TestDefaultValues(t *testing.T) {
 	if cfg.Memory.QueryHistoryTurns != 1 {
 		t.Errorf("Memory.QueryHistoryTurns = %d, want 1", cfg.Memory.QueryHistoryTurns)
 	}
+	if cfg.Memory.FactExtractionEveryNTurns != 3 {
+		t.Errorf("Memory.FactExtractionEveryNTurns = %d, want 3", cfg.Memory.FactExtractionEveryNTurns)
+	}
 	if !cfg.Memory.AutoFactExtraction {
 		t.Error("Memory.AutoFactExtraction = false, want true for fresh installs")
 	}
@@ -187,6 +190,9 @@ func TestValidateFixesEmptyFields(t *testing.T) {
 	}
 	if cfg.Memory.QueryHistoryTurns != 1 {
 		t.Errorf("Memory.QueryHistoryTurns = %d, want 1 after validate", cfg.Memory.QueryHistoryTurns)
+	}
+	if cfg.Memory.FactExtractionEveryNTurns != 3 {
+		t.Errorf("Memory.FactExtractionEveryNTurns = %d, want 3 after validate", cfg.Memory.FactExtractionEveryNTurns)
 	}
 }
 

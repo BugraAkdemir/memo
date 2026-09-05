@@ -157,9 +157,12 @@ func TestBuildSystemPromptWithMemories_WarnsAgainstVerbatimReuse(t *testing.T) {
 	memories := []memory.MemoryResult{
 		{Content: "User: selam\nAssistant: Selam! Ne var ne yok?", Similarity: 0.5},
 	}
-	prompt := id.BuildSystemPrompt(memories, false, true, true, false, false)
-	if !strings.Contains(prompt, "never a template to copy") {
-		t.Error("system prompt should warn the model not to reuse a past reply verbatim when memories include its own prior replies")
+	prompt := id.BuildSystemPrompt(memories, true, true, true, false, false)
+	if !strings.Contains(prompt, "fresh reply to the current message") {
+		t.Error("system prompt should still tell the model to write a fresh reply rather than lean on recalled memories")
+	}
+	if strings.Contains(prompt, "Assistant: Selam! Ne var ne yok?") {
+		t.Error("chat path is stripAssistant=true: the memory block must not carry Memo's own past reply text")
 	}
 }
 

@@ -490,3 +490,29 @@ func TestMergeMemoriesLLMNoModelFailsFastWithClearMessage(t *testing.T) {
 		t.Errorf("error = %q, want it to contain callLLM's clear no-model-loaded message", err.Error())
 	}
 }
+
+// TestBufferFactExtraction_BatchesEveryN checks the fact-extraction throttle:
+// with FactExtractionEveryNTurns = N, the extraction batch is only released
+// once every N saved turns, over the combined messages.
+func TestBufferFactExtraction_BatchesEveryN(t *testing.T) {
+	a := &App{}
+	const n = 3
+
+	if b := a.bufferFactExtraction("m1", n); b != nil {
+		t.Fatalf("after 1 msg: got batch %v, want nil", b)
+	}
+	if b := a.bufferFactExtraction("m2", n); b != nil {
+		t.Fatalf("after 2 msgs: got batch %v, want nil", b)
+	}
+	b := a.bufferFactExtraction("m3", n)
+	if len(b) != 3 || b[0] != "m1" || b[2] != "m3" {
+		t.Fatalf("after 3 msgs: got batch %v, want [m1 m2 m3]", b)
+	}
+	if len(a.factExtractBuf) != 0 {
+		t.Fatalf("buffer not cleared after flush: %v", a.factExtractBuf)
+	}
+	// next cycle starts fresh
+	if b := a.bufferFactExtraction("m4", n); b != nil {
+		t.Fatalf("after flush + 1 msg: got batch %v, want nil", b)
+	}
+}

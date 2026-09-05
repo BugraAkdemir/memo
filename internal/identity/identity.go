@@ -244,9 +244,9 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		if sb.Len() > 0 {
 			sb.WriteString("\n\n")
 		}
-		fmt.Fprintf(&sb, "Below are relevant memories from your past conversations with %s. Use them to provide continuity and personalization, but don't explicitly mention that you're recalling memories unless asked.", id.UserName)
+		fmt.Fprintf(&sb, "Relevant memories from past conversations with %s — background context for continuity; don't mention recalling them unless asked.", id.UserName)
 		sb.WriteString(memoryBlock)
-		sb.WriteString("\nDo not fabricate details not present in memories. Do not mention recall unless asked. Do not repeat memory timestamps verbatim in replies. These memories are background context only, never a template to copy — if a memory shows one of your own past replies (e.g. to an earlier greeting like \"selam\"/\"hey\"), do not reuse that exact wording; always write a fresh, natural reply to the current message, even for short or repetitive-looking messages.")
+		sb.WriteString("\nDon't invent details beyond these, and don't repeat their timestamps verbatim. Always write a fresh reply to the current message.")
 	}
 
 	return sb.String()

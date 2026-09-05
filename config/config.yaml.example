@@ -23,6 +23,7 @@ memory:
     pinned_facts_per_turn: 10
     recency_half_life_days: 30
     query_history_turns: 1
+    fact_extraction_every_n_turns: 3
     memory_enabled: true
     embedding_dimension: 768
     embedding_model_repo: nomic-ai/nomic-embed-text-v1.5-GGUF

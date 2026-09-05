@@ -145,7 +145,12 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	agentEnabled := a.GetAgentEnabled()
 	// Memory formatting is independent of mood — the mood engine must have ZERO
 	// influence when disabled.
-	systemPrompt := a.identity.BuildSystemPrompt(memories, false, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
+	// stripAssistant=true: the memory block carries only the user's own past
+	// words, not Memo's replies to them. The reply half roughly doubled each
+	// conversational memory's token cost and was the thing the "never a
+	// template to copy" guardrail existed to police; the durable content is
+	// what the user said, which is kept.
+	systemPrompt := a.identity.BuildSystemPrompt(memories, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
 	// MinimalMode means zero injection beyond memory — mood and web search
 	// context are both prompt injection just like identity/persona is, so
 	// they're skipped here too rather than only in BuildSystemPrompt. Read

@@ -58,11 +58,25 @@ atılmadı. Plan dosyası: `~/.claude/plans/kanka-memo-ya-u-stateless-quasar.md`
 
 ## Doğrulama
 `CGO_ENABLED=1 go build/vet/test -tags sqlite_fts5 ./... -race` her fazda
-tam yeşil. `.dart` hiç dokunulmadı. Her commit'te odaklı testler eklendi
-(recencyFactor, GetPinnedFactsRanked, NearDuplicateContent, modelContextWindow,
-stub-on-evict, maxIters/auto-continue, read_file pencereleme, ToOpenAITools
-stabil sıra, claude cache_control gating, conversationSig/maybeCompactHistory,
-bufferFactExtraction, working-set record/render).
+tam yeşil (49 paket). `.dart` hiç dokunulmadı. Her commit'te odaklı unit test
+eklendi (recencyFactor, GetPinnedFactsRanked, NearDuplicateContent,
+modelContextWindow, stub-on-evict, maxIters/auto-continue, read_file
+pencereleme, ToOpenAITools stabil sıra, claude cache_control gating,
+conversationSig/maybeCompactHistory, bufferFactExtraction, working-set
+record/render).
+
+**Ek: hermetik uçtan-uca entegrasyon testleri** (`45e1b59d`,
+`internal/app/longsession_integration_test.go`) — gerçek `App` + scripted
+in-process HTTP provider (canlı model YOK) ile gerçek agent turları koşup
+Faz 0-4 davranışlarının birlikte çalıştığını doğruluyor: agent turu gerçek
+summed token kaydediyor (3300/72, kategori "agent"); 15 pinned fact'ten
+prompt'a ≤10 giriyor + asistan cevabı sızmıyor; tur 1'de okunan dosya tur
+2'nin working-set bloğunda; 30-turluk oturum compaction eşiğini geçip özet
+system mesajı üretiyor (özet LLM çağrısı seyrek); maxIters=3+continuations=2
+tam 9 agent çağrısında bounded duruyor + nudge modele ulaşıyor; tools dizisi
+iterasyonlar arası byte-identik. Ayrıca `maybeCompactHistory` cache'i
+düzeltildi (prefix+slack anahtarı — eski %60-cut slice anahtarı her tur
+kayıyordu, özet 2 turda bir yeniden koşuyordu).
 
 ## Sıradaki / açık
 - **CANLI BENCHMARK YAPILMADI** (Faz 0 dahil): `scratchpad/bench.py` ile

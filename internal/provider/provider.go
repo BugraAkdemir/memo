@@ -171,6 +171,15 @@ type StreamChunk struct {
 	// persists it (per Memo chat) to pass back as ChatRequest.ResumeSessionID
 	// on the next message. Empty for every HTTP provider.
 	CLISessionID string `json:"cli_session_id,omitempty"`
+
+	// Usage, when non-nil, carries a token accounting for the stream that just
+	// finished. HTTP providers' own ChatCompletionStream implementations don't
+	// set it (their SSE format rarely reports usage); it's the agent pipeline
+	// (internal/agent/pipeline.go) that attaches it to its terminal chunk,
+	// summed across every non-streaming ChatCompletion iteration the turn made,
+	// so callAgentStream can record real prompt/completion counts instead of a
+	// word-count estimate of the first request only.
+	Usage *Usage `json:"usage,omitempty"`
 }
 
 // trySend delivers chunk to ch, preferring the send over ctx cancellation. A

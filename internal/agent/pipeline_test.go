@@ -284,3 +284,80 @@ func TestRunStream_StripsHallucinatedToolCallFromFinalContent(t *testing.T) {
 		t.Errorf("final content = %q, want %q", gotContent, "Selam kanka!")
 	}
 }
+
+// TestRunStream_AccumulatesUsageOntoTerminalChunk is the Phase 0 measurement
+// guarantee: the pipeline runs one non-streaming ChatCompletion per
+// iteration, each separately billed, so the terminal chunk must carry the
+// sum of every iteration's prompt AND completion tokens — that is what lets
+// callAgentStream record a real per-turn cost instead of a word-count
+// estimate of the seed messages alone.
+func TestRunStream_AccumulatesUsageOntoTerminalChunk(t *testing.T) {
+	registry := NewRegistry() // has read_file
+	permissions := NewPermissionManager(t.TempDir())
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hi"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+
+	prov := &scriptedProvider{responses: []provider.ChatResponse{
+		{
+			ToolCalls: []provider.ToolCall{mustToolCall(t, "c1", "read_file", map[string]string{"path": "a.txt"})},
+			Usage:     &provider.Usage{PromptTokens: 1000, CompletionTokens: 40, TotalTokens: 1040},
+		},
+		{
+			Content: "done",
+			Usage:   &provider.Usage{PromptTokens: 1200, CompletionTokens: 15, TotalTokens: 1215},
+		},
+	}}
+
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, nil)
+	pipeline.autoPermission = true
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "test-model", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream() error = %v", err)
+	}
+
+	var terminal *provider.StreamChunk
+	for chunk := range ch {
+		c := chunk
+		if c.Done {
+			terminal = &c
+		}
+	}
+	if terminal == nil {
+		t.Fatal("no terminal (Done) chunk received")
+	}
+	if terminal.Usage == nil {
+		t.Fatal("terminal chunk carried no Usage")
+	}
+	if terminal.Usage.PromptTokens != 2200 {
+		t.Errorf("PromptTokens = %d, want 2200 (1000+1200)", terminal.Usage.PromptTokens)
+	}
+	if terminal.Usage.CompletionTokens != 55 {
+		t.Errorf("CompletionTokens = %d, want 55 (40+15)", terminal.Usage.CompletionTokens)
+	}
+}
+
+// TestRunStream_NoUsageLeavesTerminalChunkUsageNil confirms the fallback
+// path stays intact: a provider that reports no usage must not cause a
+// zero-valued Usage to be attached (which callAgentStream would misread as
+// "real, and zero"), it must stay nil so the word-count estimate is kept.
+func TestRunStream_NoUsageLeavesTerminalChunkUsageNil(t *testing.T) {
+	registry := NewRegistry()
+	permissions := NewPermissionManager(t.TempDir())
+	sandbox := NewSandbox(DefaultSandboxConfig(t.TempDir()))
+	prov := fakeContentProvider{content: "hello"}
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, nil)
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "test-model", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream() error = %v", err)
+	}
+	for chunk := range ch {
+		if chunk.Done && chunk.Usage != nil {
+			t.Fatalf("expected nil Usage on terminal chunk when provider reported none, got %+v", *chunk.Usage)
+		}
+	}
+}

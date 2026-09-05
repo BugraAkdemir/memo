@@ -126,11 +126,27 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		currentMessages := make([]provider.Message, len(messages))
 		copy(currentMessages, messages)
 
+		// Real token accounting for this turn, summed across every
+		// non-streaming ChatCompletion iteration below (each is a separately
+		// billed call, so both prompt and completion accumulate). Attached to
+		// whichever terminal chunk ends the turn via termUsage() so
+		// callAgentStream/drainAgentStream can record the true cost instead of
+		// a word-count estimate of the seed messages alone.
+		var totalUsage provider.Usage
+		sawUsage := false
+		termUsage := func() *provider.Usage {
+			if !sawUsage {
+				return nil
+			}
+			u := totalUsage
+			return &u
+		}
+
 		for iteration := 0; iteration < p.maxIters; iteration++ {
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
-			trySend(ctx, outCh, provider.StreamChunk{Error: "Agent execution cancelled", Done: true})
+			trySend(ctx, outCh, provider.StreamChunk{Error: "Agent execution cancelled", Done: true, Usage: termUsage()})
 			return
 		default:
 		}
@@ -149,8 +165,17 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		resp, err := p.prov.ChatCompletion(ctx, req)
 		if err != nil {
 			logx.Printf("AGENT: ChatCompletion error: %v", err)
-			trySend(ctx, outCh, provider.StreamChunk{Error: fmt.Sprintf("LLM Error: %v", err), Done: true})
+			trySend(ctx, outCh, provider.StreamChunk{Error: fmt.Sprintf("LLM Error: %v", err), Done: true, Usage: termUsage()})
 			return
+		}
+
+		if resp.Usage != nil {
+			totalUsage.PromptTokens += resp.Usage.PromptTokens
+			totalUsage.CompletionTokens += resp.Usage.CompletionTokens
+			totalUsage.TotalTokens += resp.Usage.TotalTokens
+			if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 {
+				sawUsage = true
+			}
 		}
 
 		// If no tool calls, we are done
@@ -160,7 +185,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				trySend(ctx, outCh, provider.StreamChunk{Content: content})
 			}
 			onEvent(AgentEvent{Type: EventFinalResponse, Content: content})
-			trySend(ctx, outCh, provider.StreamChunk{Done: true, FinishReason: "stop"})
+			trySend(ctx, outCh, provider.StreamChunk{Done: true, FinishReason: "stop", Usage: termUsage()})
 			return
 		}
 
@@ -372,7 +397,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		}
 		}
 
-		trySend(ctx, outCh, provider.StreamChunk{Content: "\n\n⚠️ Agent reached the maximum number of tool calls (40). The task may be incomplete.", Done: true})
+		trySend(ctx, outCh, provider.StreamChunk{Content: "\n\n⚠️ Agent reached the maximum number of tool calls (40). The task may be incomplete.", Done: true, Usage: termUsage()})
 	}()
 
 	return outCh, nil

@@ -287,6 +287,10 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 
 		exec.SyncRouter(agentRouter)
 
+		// PromptTokens here is only a seed-message word-count estimate; it is
+		// overwritten with the provider's real prompt-token count in
+		// drainAgentStream once the pipeline reports usage on its terminal
+		// chunk. It stays as the fallback for providers that report no usage.
 		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, Category: categoryAgent, PromptTokens: estimateMessagesTokens(messages)}
 
 		start := time.Now()
@@ -396,16 +400,34 @@ func (l *agentEventLog) snapshot() []interface{} {
 // ChatCompletionStream implementations.
 func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.StreamChunk, outCh chan<- api.StreamChunk, start time.Time, userMsg, sessionID string, usageMetaVal *usageMeta, agentEvents *agentEventLog) {
 	var fullReply strings.Builder
+	// The agent pipeline attaches a real cross-iteration token accounting to
+	// its terminal chunk (see internal/agent/pipeline.go). Fold it into
+	// usageMetaVal.PromptTokens (which otherwise holds only a word-count
+	// estimate of the seed messages) and pass the real completion count on to
+	// finishStream instead of the historical literal 0.
+	completionTokens := 0
+	applyUsage := func(u *provider.Usage) {
+		if u == nil {
+			return
+		}
+		if u.PromptTokens > 0 && usageMetaVal != nil {
+			usageMetaVal.PromptTokens = u.PromptTokens
+		}
+		if u.CompletionTokens > 0 {
+			completionTokens = u.CompletionTokens
+		}
+	}
 	for {
 		chunk, ok, ctxDone := recvChunk(ctx, streamCh)
 		if ctxDone {
-			a.persistInterruptedTurn(ctx, start, 0, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+			a.persistInterruptedTurn(ctx, start, completionTokens, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 			trySend(ctx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 			return
 		}
 		if !ok {
 			break
 		}
+		applyUsage(chunk.Usage)
 		if chunk.Error != "" {
 			a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
@@ -418,14 +440,14 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		}
 
 		if chunk.Done {
-			a.finishStream(ctx, start, 0, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+			a.finishStream(ctx, start, completionTokens, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 			return
 		}
 	}
 
 	if fullReply.Len() > 0 {
-		a.finishStream(ctx, start, 0, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+		a.finishStream(ctx, start, completionTokens, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 		trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 	} else {
 		a.recordStreamError(userMsg, a.t("⚠️ Agent boş yanıt döndürdü", "⚠️ Agent returned an empty response"), sessionID)
@@ -1338,9 +1360,11 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 			goRecover("updateMoodAsync", func() { a.updateMoodAsync(userMsg) })
 		}
 		if meta != nil {
-			// tokenCount is 0 on some branches (agent pipeline doesn't count
-			// output tokens today) — fall back to estimating from the saved
-			// reply so those turns still show up in usage stats.
+			// tokenCount is 0 when the provider reported no usage (some local
+			// models, passthrough providers) — fall back to estimating from the
+			// saved reply so those turns still show up in usage stats. When the
+			// agent pipeline did report usage, drainAgentStream passes the real
+			// completion count through and this fallback is skipped.
 			completionTokens := tokenCount
 			statsTps := tps
 			if completionTokens == 0 {

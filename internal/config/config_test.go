@@ -19,8 +19,14 @@ func TestDefaultValues(t *testing.T) {
 	if cfg.Memory.TopK != 8 {
 		t.Errorf("Memory.TopK = %d, want 8", cfg.Memory.TopK)
 	}
-	if cfg.Memory.MinSimilarity != 0.1 {
-		t.Errorf("Memory.MinSimilarity = %f, want 0.1", cfg.Memory.MinSimilarity)
+	if cfg.Memory.MinSimilarity != 0.35 {
+		t.Errorf("Memory.MinSimilarity = %f, want 0.35", cfg.Memory.MinSimilarity)
+	}
+	if cfg.Memory.PinnedFactsPerTurn != 10 {
+		t.Errorf("Memory.PinnedFactsPerTurn = %d, want 10", cfg.Memory.PinnedFactsPerTurn)
+	}
+	if cfg.Memory.QueryHistoryTurns != 1 {
+		t.Errorf("Memory.QueryHistoryTurns = %d, want 1", cfg.Memory.QueryHistoryTurns)
 	}
 	if !cfg.Memory.AutoFactExtraction {
 		t.Error("Memory.AutoFactExtraction = false, want true for fresh installs")
@@ -172,6 +178,34 @@ func TestValidateFixesEmptyFields(t *testing.T) {
 	}
 	if cfg.Swarm.Role != "none" {
 		t.Errorf("Swarm.Role = %q, want %q", cfg.Swarm.Role, "none")
+	}
+	if cfg.Memory.PinnedFactsPerTurn != 10 {
+		t.Errorf("Memory.PinnedFactsPerTurn = %d, want 10 after validate", cfg.Memory.PinnedFactsPerTurn)
+	}
+	if cfg.Memory.RecencyHalfLifeDays != 30 {
+		t.Errorf("Memory.RecencyHalfLifeDays = %d, want 30 after validate", cfg.Memory.RecencyHalfLifeDays)
+	}
+	if cfg.Memory.QueryHistoryTurns != 1 {
+		t.Errorf("Memory.QueryHistoryTurns = %d, want 1 after validate", cfg.Memory.QueryHistoryTurns)
+	}
+}
+
+// TestValidateRaisesIneffectiveMinSimilarity: 0.1 was the old default and it
+// gates out effectively nothing (sim = 1 - dist/2 admits cosine distance up
+// to 1.8/2.0). validate() must raise anything below 0.15 to 0.35 so an old
+// config, or one that took the old default, starts actually filtering — while
+// leaving a deliberately-chosen value like 0.2 alone.
+func TestValidateRaisesIneffectiveMinSimilarity(t *testing.T) {
+	low := &AppConfig{Memory: MemoryConfig{MinSimilarity: 0.1}}
+	low.validate()
+	if low.Memory.MinSimilarity != 0.35 {
+		t.Errorf("MinSimilarity 0.1 -> %f, want 0.35", low.Memory.MinSimilarity)
+	}
+
+	deliberate := &AppConfig{Memory: MemoryConfig{MinSimilarity: 0.2}}
+	deliberate.validate()
+	if deliberate.Memory.MinSimilarity != 0.2 {
+		t.Errorf("MinSimilarity 0.2 -> %f, want it left at 0.2", deliberate.Memory.MinSimilarity)
 	}
 }
 

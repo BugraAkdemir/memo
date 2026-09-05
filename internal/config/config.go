@@ -746,6 +746,27 @@ type MemoryConfig struct {
 	// ranking. See internal/app/memory.go's extractAndPinFacts.
 	AutoFactExtraction bool `yaml:"auto_fact_extraction" json:"auto_fact_extraction"`
 
+	// PinnedFactsPerTurn caps how many pinned facts are injected into a single
+	// turn's system prompt. Pinned facts used to be dumped in unconditionally
+	// (up to a hard 75) with no per-query ranking, which is most of why
+	// retrieval returned a near-identical ~40+ memory set every turn
+	// regardless of the question. They are now scored by relevance to the
+	// current query and only the top N (plus a small always-on recent core)
+	// survive — see internal/memory/store.go GetPinnedFactsRanked.
+	PinnedFactsPerTurn int `yaml:"pinned_facts_per_turn" json:"pinned_facts_per_turn"`
+	// RecencyHalfLifeDays weights retrieval toward newer memories: a memory's
+	// similarity score is multiplied by 0.5 once it is this many days old
+	// (halving again every further half-life). 0/unset disables recency
+	// weighting. See internal/memory/store.go RetrieveContext.
+	RecencyHalfLifeDays int `yaml:"recency_half_life_days" json:"recency_half_life_days"`
+	// QueryHistoryTurns is how many prior user turns are prepended to the
+	// current message when building the retrieval query. The old hardcoded 3
+	// blended four turns into one near-static vector, so consecutive turns
+	// retrieved almost the same set; 1 keeps enough context for "buna ne
+	// demiştik?" follow-ups without smearing the query. See
+	// internal/app/helpers.go buildMemoryQuery.
+	QueryHistoryTurns int `yaml:"query_history_turns" json:"query_history_turns"`
+
 	// Dream periodically rewrites the pinned-facts set as a whole, merging
 	// facts about the same topic into fewer, denser ones (e.g. four separate
 	// facts about one pet into a single sentence) instead of letting the set
@@ -789,12 +810,15 @@ func Default() *AppConfig {
 		Memory: MemoryConfig{
 			PersistDir:               "./data/memory",
 			TopK:                     8,
-			MinSimilarity:            0.1,
+			MinSimilarity:            0.35,
 			MemoryEnabled:            true,
 			EmbeddingDimension:       768,
 			EmbeddingModelRepo:       "nomic-ai/nomic-embed-text-v1.5-GGUF",
 			EmbeddingModelFile:       "nomic-embed-text-v1.5.Q4_K_M.gguf",
 			AutoFactExtraction:       true,
+			PinnedFactsPerTurn:       10,
+			RecencyHalfLifeDays:      30,
+			QueryHistoryTurns:        1,
 			DreamEnabled:             true,
 			DreamInitialDelayMinutes: 5,
 			DreamIntervalHours:       24,
@@ -1100,9 +1124,25 @@ func (c *AppConfig) validate() []string {
 		c.Memory.TopK = 8
 		fixes = append(fixes, "Memory.TopK")
 	}
-	if c.Memory.MinSimilarity <= 0 {
-		c.Memory.MinSimilarity = 0.3
+	if c.Memory.MinSimilarity < 0.15 {
+		// Below ~0.15 the vector gate admits almost everything (sim = 1 -
+		// dist/2, so 0.1 lets cosine distance up to 1.8/2.0 through) — that
+		// was the old default and it meant no filtering at all. Anything a
+		// user deliberately set at or above 0.15 is left alone.
+		c.Memory.MinSimilarity = 0.35
 		fixes = append(fixes, "Memory.MinSimilarity")
+	}
+	if c.Memory.PinnedFactsPerTurn <= 0 {
+		c.Memory.PinnedFactsPerTurn = 10
+		fixes = append(fixes, "Memory.PinnedFactsPerTurn")
+	}
+	if c.Memory.RecencyHalfLifeDays <= 0 {
+		c.Memory.RecencyHalfLifeDays = 30
+		fixes = append(fixes, "Memory.RecencyHalfLifeDays")
+	}
+	if c.Memory.QueryHistoryTurns <= 0 {
+		c.Memory.QueryHistoryTurns = 1
+		fixes = append(fixes, "Memory.QueryHistoryTurns")
 	}
 	if c.Memory.EmbeddingDimension <= 0 {
 		c.Memory.EmbeddingDimension = 768

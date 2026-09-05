@@ -59,14 +59,23 @@ func (a *App) contextBudgetFor(providerName string) int {
 	}
 }
 
-// buildMemoryQuery enriches the retrieval query with recent conversation context
-// (up to 3 prior user turns) so that follow-up questions like "buna ne demiştik?"
-// can find relevant memories even when the current message alone is too vague.
+// buildMemoryQuery enriches the retrieval query with recent conversation
+// context (Memory.QueryHistoryTurns prior user turns, default 1) so that
+// follow-up questions like "buna ne demiştik?" can still find relevant
+// memories when the current message alone is too vague. The old hardcoded 3
+// blended four turns into one near-static vector, so consecutive turns
+// retrieved almost the same set regardless of what was asked.
 func (a *App) buildMemoryQuery(userMsg string) string {
+	a.cfgMu.RLock()
+	window := a.cfg.Memory.QueryHistoryTurns
+	a.cfgMu.RUnlock()
+	if window <= 0 {
+		return userMsg
+	}
 	history := a.getSessionHistory()
 	var recent []string
 	count := 0
-	for i := len(history) - 1; i >= 0 && count < 3; i-- {
+	for i := len(history) - 1; i >= 0 && count < window; i-- {
 		if history[i].Role != "user" {
 			continue
 		}

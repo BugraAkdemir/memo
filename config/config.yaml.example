@@ -19,7 +19,10 @@ identity:
 memory:
     persist_dir: data/memory
     top_k: 5
-    min_similarity: 0.1
+    min_similarity: 0.35
+    pinned_facts_per_turn: 10
+    recency_half_life_days: 30
+    query_history_turns: 1
     memory_enabled: true
     embedding_dimension: 768
     embedding_model_repo: nomic-ai/nomic-embed-text-v1.5-GGUF

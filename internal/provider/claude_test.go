@@ -388,3 +388,43 @@ func drainStream(t *testing.T, ch <-chan StreamChunk) (string, bool) {
 		}
 	}
 }
+
+func TestBuildClaudeRequest_PromptCachingOnAnthropicOnly(t *testing.T) {
+	req := ChatRequest{
+		Messages: []Message{
+			TextMessage("system", "you are a long system prompt worth caching"),
+			TextMessage("user", "hi"),
+		},
+		Tools: []ToolDefinition{
+			{Type: "function", Function: ToolFunction{Name: "a", Description: "d", Parameters: json.RawMessage(`{"type":"object"}`)}},
+			{Type: "function", Function: ToolFunction{Name: "b", Description: "d", Parameters: json.RawMessage(`{"type":"object"}`)}},
+		},
+	}
+
+	anth := &claudeProvider{baseURL: "https://api.anthropic.com"}
+	got := anth.buildClaudeRequest(req, "claude-x", false)
+	sysBlocks, ok := got.System.([]claudeSystemBlock)
+	if !ok || len(sysBlocks) != 1 || sysBlocks[0].CacheControl == nil || sysBlocks[0].CacheControl.Type != "ephemeral" {
+		t.Fatalf("anthropic: system should be a cache-controlled block, got %#v", got.System)
+	}
+	if got.Tools[len(got.Tools)-1].CacheControl == nil {
+		t.Errorf("anthropic: last tool should carry cache_control")
+	}
+	if got.Tools[0].CacheControl != nil {
+		t.Errorf("anthropic: only the LAST tool should carry cache_control")
+	}
+
+	custom := &claudeProvider{baseURL: "https://my-proxy.example.com/v1"}
+	got2 := custom.buildClaudeRequest(req, "claude-x", false)
+	if _, isBlocks := got2.System.([]claudeSystemBlock); isBlocks {
+		t.Errorf("custom endpoint: system must stay a plain string, got %#v", got2.System)
+	}
+	if s, _ := got2.System.(string); s != "you are a long system prompt worth caching" {
+		t.Errorf("custom endpoint: system string = %q", s)
+	}
+	for i, tl := range got2.Tools {
+		if tl.CacheControl != nil {
+			t.Errorf("custom endpoint: tool %d must not carry cache_control", i)
+		}
+	}
+}

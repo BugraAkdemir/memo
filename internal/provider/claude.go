@@ -90,10 +90,13 @@ func (p *claudeProvider) ListModels(ctx context.Context) ([]string, error) {
 }
 
 type claudeRequest struct {
-	Model        string              `json:"model"`
-	MaxTokens    int                 `json:"max_tokens"`
-	Messages     []claudeMsg         `json:"messages"`
-	System       string              `json:"system,omitempty"`
+	Model     string      `json:"model"`
+	MaxTokens int         `json:"max_tokens"`
+	Messages  []claudeMsg `json:"messages"`
+	// System is either a plain string or, when prompt caching is in play, a
+	// []claudeSystemBlock so the last block can carry cache_control. Anthropic
+	// accepts both shapes.
+	System       any                 `json:"system,omitempty"`
 	Temperature  float64             `json:"temperature,omitempty"`
 	TopP         float64             `json:"top_p,omitempty"`
 	Stream       bool                `json:"stream"`
@@ -113,9 +116,28 @@ type claudeRequest struct {
 // ToolFunction.Parameters every other provider forwards as-is), so no
 // translation beyond the field name is needed.
 type claudeTool struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"input_schema"`
+	Name         string              `json:"name"`
+	Description  string              `json:"description,omitempty"`
+	InputSchema  json.RawMessage     `json:"input_schema"`
+	CacheControl *claudeCacheControl `json:"cache_control,omitempty"`
+}
+
+// claudeCacheControl marks a prefix boundary for Anthropic prompt caching.
+// Placed on the last tool and the system block, it lets the (stable, large)
+// system-prompt + tool-schema prefix be served from cache on iterations
+// 2..N of an agent turn at ~10% of the input price. Only sent to
+// api.anthropic.com — a custom Anthropic-compatible endpoint that doesn't
+// know the field would 400 on it.
+type claudeCacheControl struct {
+	Type string `json:"type"` // "ephemeral"
+}
+
+// claudeSystemBlock is the array form of the "system" field, used only when
+// cache control is being applied.
+type claudeSystemBlock struct {
+	Type         string              `json:"type"` // "text"
+	Text         string              `json:"text"`
+	CacheControl *claudeCacheControl `json:"cache_control,omitempty"`
 }
 
 // claudeThinking/claudeOutputConfig implement adaptive thinking — the
@@ -493,12 +515,34 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 		Model:       model,
 		MaxTokens:   req.MaxTokens,
 		Messages:    msgs,
-		System:      strings.TrimSpace(systemText),
 		Temperature: req.Temperature,
 		TopP:        req.TopP,
 		Stream:      stream,
 		Tools:       toClaudeTools(req.Tools),
 	}
+
+	// Prompt caching: on the real Anthropic API, mark the system prompt and
+	// the tail of the tool list as a cacheable prefix so an agent turn's
+	// later iterations don't re-pay full input price for the (unchanging)
+	// system + tool schema. Gated to api.anthropic.com — a custom
+	// Anthropic-compatible endpoint may not accept the cache_control field.
+	sys := strings.TrimSpace(systemText)
+	cacheable := strings.Contains(p.baseURL, "anthropic.com")
+	if sys != "" {
+		if cacheable {
+			clReq.System = []claudeSystemBlock{{
+				Type:         "text",
+				Text:         sys,
+				CacheControl: &claudeCacheControl{Type: "ephemeral"},
+			}}
+		} else {
+			clReq.System = sys
+		}
+	}
+	if cacheable && len(clReq.Tools) > 0 {
+		clReq.Tools[len(clReq.Tools)-1].CacheControl = &claudeCacheControl{Type: "ephemeral"}
+	}
+
 	if clReq.MaxTokens <= 0 {
 		clReq.MaxTokens = 4096
 	}

@@ -232,6 +232,36 @@ func (e *Executor) getRouter() *provider.Router {
 	return e.providerRouter
 }
 
+// modelContextWindow resolves modelName's context-window size (in tokens)
+// from the router's active provider configs, falling back to a conservative
+// per-type default and finally 128K. Mirrors app.contextBudgetFor but lives
+// here so the agent pipeline's intra-turn budget can track the real model
+// instead of a flat constant.
+func modelContextWindow(router *provider.Router, modelName string) int {
+	if router != nil {
+		active := router.ActiveProviders()
+		for _, p := range active {
+			if p.ContextTokens > 0 && (modelName == "" || p.Model == modelName) {
+				return p.ContextTokens
+			}
+		}
+		for _, p := range active {
+			if p.ContextTokens > 0 {
+				return p.ContextTokens
+			}
+		}
+		for _, p := range active {
+			switch p.Type {
+			case provider.ProviderGemini:
+				return 1024 * 1024
+			case provider.ProviderClaude, provider.ProviderCustomAnthropic:
+				return 200 * 1024
+			}
+		}
+	}
+	return 128 * 1024
+}
+
 // RunStream starts the agent execution and streams back chunks and events.
 // effortLevel is the active provider's resolved EffortLevel (empty = let
 // the provider/model use its own default) — callers resolve it the same
@@ -254,7 +284,11 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 	sessionSandbox := NewSandbox(DefaultSandboxConfig(effectiveBase))
 
 	// Estimate token budget: sum of all initial messages' tokens as base,
-	// plus generous headroom for tool call iterations.
+	// plus headroom for tool-call iterations, but derived from the real model
+	// context window instead of a flat 64K. The flat floor meant a 200K-window
+	// model kept only 64K of accumulated tool results before dropping the
+	// oldest — needlessly re-reading files it had already read this turn —
+	// while a tiny local window got a budget it couldn't honour anyway.
 	baseTokens := 0
 	for _, m := range messages {
 		var content string
@@ -265,12 +299,14 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 		}
 		baseTokens += len(content) / 3
 	}
-	// Give 32K headroom for tool call iterations on top of the message budget.
-	// The total maxTokens should still be well within the model's context window
-	// because buildMessages() already truncated the history to fit CtxSize/MaxContextTokens.
-	maxTokens := baseTokens + 32*1024
-	if maxTokens < 64*1024 {
-		maxTokens = 64 * 1024
+	window := modelContextWindow(router, modelName)
+	maxTokens := int(float64(window) * 0.75) // leave room for the model's own output + margin
+	if maxTokens < 32*1024 {
+		maxTokens = 32 * 1024
+	}
+	// A large seed still gets the historical 32K of working headroom on top.
+	if seedPlus := baseTokens + 32*1024; seedPlus > maxTokens {
+		maxTokens = seedPlus
 	}
 
 	pipeline := NewPipelineWithBudget(e.registry, e.permissions, sessionSandbox, router, e.backup, maxTokens)

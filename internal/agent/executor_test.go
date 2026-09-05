@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"memo/internal/config"
+	"memo/internal/provider"
 )
 
 // TestExecutor_PermissionFlagsConcurrentAccess guards against the bug where
@@ -86,5 +87,36 @@ func TestExecutor_LogEventPersistsToAuditFile(t *testing.T) {
 	}
 	if entry.SessionID != "session-h10" || entry.ToolName != "write_file" || entry.DurationMs != 42 {
 		t.Errorf("got entry %+v, want SessionID=session-h10 ToolName=write_file DurationMs=42", entry)
+	}
+}
+
+func TestModelContextWindow(t *testing.T) {
+	if got := modelContextWindow(nil, "anything"); got != 128*1024 {
+		t.Errorf("nil router: got %d, want 128K", got)
+	}
+
+	explicit := provider.NewRouter([]provider.ProviderConfig{
+		{Type: provider.ProviderClaude, Name: "c", Model: "claude-x", Enabled: true, APIKey: "k", ContextTokens: 200000},
+	})
+	if got := modelContextWindow(explicit, "claude-x"); got != 200000 {
+		t.Errorf("explicit ContextTokens: got %d, want 200000", got)
+	}
+	// modelName mismatch still falls back to "any provider with a window".
+	if got := modelContextWindow(explicit, "some-other-model"); got != 200000 {
+		t.Errorf("mismatched model: got %d, want 200000 (any-window fallback)", got)
+	}
+
+	typeFallback := provider.NewRouter([]provider.ProviderConfig{
+		{Type: provider.ProviderClaude, Name: "c", Model: "claude-y", Enabled: true, APIKey: "k"},
+	})
+	if got := modelContextWindow(typeFallback, "claude-y"); got != 200*1024 {
+		t.Errorf("claude type fallback: got %d, want 200K", got)
+	}
+
+	geminiFallback := provider.NewRouter([]provider.ProviderConfig{
+		{Type: provider.ProviderGemini, Name: "g", Model: "gem", Enabled: true, APIKey: "k"},
+	})
+	if got := modelContextWindow(geminiFallback, "gem"); got != 1024*1024 {
+		t.Errorf("gemini type fallback: got %d, want 1M", got)
 	}
 }

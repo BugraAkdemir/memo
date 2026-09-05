@@ -361,3 +361,71 @@ func TestRunStream_NoUsageLeavesTerminalChunkUsageNil(t *testing.T) {
 		}
 	}
 }
+
+// recordingProvider keeps every request it was sent, and replays a script of
+// responses, so a test can inspect what the pipeline sent on a later
+// iteration.
+type recordingProvider struct {
+	responses []provider.ChatResponse
+	calls     int
+	seen      [][]provider.Message
+}
+
+func (p *recordingProvider) ChatCompletion(_ context.Context, req provider.ChatRequest) (*provider.ChatResponse, error) {
+	msgs := make([]provider.Message, len(req.Messages))
+	copy(msgs, req.Messages)
+	p.seen = append(p.seen, msgs)
+	r := p.responses[p.calls]
+	p.calls++
+	return &r, nil
+}
+
+// TestRunStream_EvictedToolOutputLeavesMarker: when intra-turn truncation
+// drops an earlier tool result to fit the budget, the model must get a
+// one-line [context-trim] marker on the next request instead of silence, so
+// it re-runs a tool deliberately rather than assuming it never ran.
+func TestRunStream_EvictedToolOutputLeavesMarker(t *testing.T) {
+	dir := t.TempDir()
+	big := strings.Repeat("x ", 40000) // ~27k len/3 tokens — dwarfs the tiny budget below
+	if err := os.WriteFile(filepath.Join(dir, "big.txt"), []byte(big), 0644); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry()
+	permissions := NewPermissionManager(t.TempDir())
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+
+	prov := &recordingProvider{responses: []provider.ChatResponse{
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "c1", "read_file", map[string]string{"path": "big.txt"})}},
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "c2", "list_directory", map[string]string{"path": "."})}},
+		{Content: "done"},
+	}}
+
+	// Budget small enough that iteration 1's ~27k-token tool result cannot be
+	// kept alongside the rest.
+	pipeline := NewPipelineWithBudget(registry, permissions, sandbox, prov, nil, 4000)
+	pipeline.autoPermission = true
+
+	ch, err := pipeline.RunStream(context.Background(), []provider.Message{{Role: "system", Content: "sys"}}, "m", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream: %v", err)
+	}
+	for range ch {
+	}
+
+	if len(prov.seen) < 2 {
+		t.Fatalf("expected at least 2 upstream requests, got %d", len(prov.seen))
+	}
+	last := prov.seen[len(prov.seen)-1]
+	found := false
+	for _, m := range last {
+		if s, ok := m.Content.(string); ok && strings.HasPrefix(s, contextTrimMarker) {
+			found = true
+			if !strings.Contains(s, "read_file") {
+				t.Errorf("marker should name the evicted tool, got %q", s)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("no %s marker in the final request after an eviction; messages=%+v", contextTrimMarker, last)
+	}
+}

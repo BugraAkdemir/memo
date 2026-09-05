@@ -136,6 +136,10 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		sawUsage := false
 		firstPromptTok := 0 // iteration-0 prefill: system + agent block + tool schema + history + user
 		iters := 0
+		// Tool names whose results have been dropped by intra-turn truncation
+		// so far this run — surfaced to the model as one marker message.
+		var evictedTools []string
+		evictedSeen := map[string]bool{}
 		termUsage := func() *provider.Usage {
 			if !sawUsage {
 				return nil
@@ -238,11 +242,44 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			// content (the old approach) is unsafe because distinct tool
 			// results can share identical text (e.g. two calls both returning
 			// "OK"), which could truncate the wrong message.
-			filtered := make([]provider.Message, 0, len(truncMsgs))
+			kept := make(map[int]struct{}, len(truncMsgs))
 			for _, tm := range truncMsgs {
-				if tm.Index >= 0 && tm.Index < len(currentMessages) {
-					filtered = append(filtered, currentMessages[tm.Index])
+				kept[tm.Index] = struct{}{}
+			}
+			// Note which tools' outputs are being dropped so the model gets a
+			// one-line marker instead of silently losing them and blindly
+			// re-running the same reads a few iterations later.
+			for i, m := range currentMessages {
+				if _, ok := kept[i]; ok {
+					continue
 				}
+				for _, tc := range m.ToolCalls {
+					if n := tc.Function.Name; n != "" && !evictedSeen[n] {
+						evictedSeen[n] = true
+						evictedTools = append(evictedTools, n)
+					}
+				}
+			}
+			filtered := make([]provider.Message, 0, len(truncMsgs)+1)
+			stubInserted := false
+			for _, tm := range truncMsgs {
+				if tm.Index < 0 || tm.Index >= len(currentMessages) {
+					continue
+				}
+				m := currentMessages[tm.Index]
+				// Drop any earlier trim-marker; a single fresh one covering the
+				// whole evicted set is re-inserted below.
+				if s, ok := m.Content.(string); ok && strings.HasPrefix(s, contextTrimMarker) {
+					continue
+				}
+				filtered = append(filtered, m)
+				if !stubInserted && m.Role == "system" && len(evictedTools) > 0 {
+					filtered = append(filtered, provider.Message{Role: "assistant", Content: evictionStub(evictedTools)})
+					stubInserted = true
+				}
+			}
+			if !stubInserted && len(evictedTools) > 0 {
+				filtered = append([]provider.Message{{Role: "assistant", Content: evictionStub(evictedTools)}}, filtered...)
 			}
 			currentMessages = filtered
 		}
@@ -420,6 +457,19 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 	}()
 
 	return outCh, nil
+}
+
+// contextTrimMarker prefixes the synthetic assistant message that stands in
+// for tool results dropped by intra-turn truncation. Recognisable so a later
+// truncation pass can replace it with a fresh combined one rather than
+// stacking markers.
+const contextTrimMarker = "[context-trim]"
+
+// evictionStub is that message's body: it tells the model which tools'
+// outputs from earlier in this same turn were trimmed to fit the context
+// window, so it re-runs one deliberately instead of assuming it never ran.
+func evictionStub(tools []string) string {
+	return fmt.Sprintf("%s Earlier in this turn some tool outputs were trimmed to fit the context window (tools used: %s). If you need any of that information again, call the tool again rather than assuming it was never run.", contextTrimMarker, strings.Join(tools, ", "))
 }
 
 // trySend delivers chunk to outCh, preferring the send over ctx cancellation.

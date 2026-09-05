@@ -200,6 +200,12 @@ type App struct {
 	factExtractMu  sync.Mutex
 	factExtractBuf []string
 
+	// workingSets is a per-chat digest of files/commands an agent turn has
+	// already touched this session, injected into later turns so the model
+	// doesn't re-read what it read two turns ago. In-memory, session-scoped.
+	workingSetMu sync.Mutex
+	workingSets  map[string]*workingSet
+
 	providerCfgMgr     *provider.ConfigManager
 	providerRouter     *provider.Router
 	activeProviderName string // which provider is currently active (by Name)

@@ -272,6 +272,14 @@ type WebSearchConfig struct {
 // Mirrors WebSearchConfig.Enabled, which is persisted for the same reason.
 type AgentModeConfig struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
+
+	// WorkingSetEnabled keeps a per-chat digest of the files and commands an
+	// agent turn has already touched this session and injects it (compactly)
+	// into later turns, so the model doesn't re-read a file it read two turns
+	// ago just because the tool output fell out of history. Default on.
+	WorkingSetEnabled bool `yaml:"working_set_enabled" json:"working_set_enabled"`
+	// WorkingSetMaxTokens hard-caps that injected digest. Default 600.
+	WorkingSetMaxTokens int `yaml:"working_set_max_tokens" json:"working_set_max_tokens"`
 }
 
 // BrowserConfig controls the optional headless-browser fallback
@@ -925,7 +933,9 @@ func Default() *AppConfig {
 			// agent mode on when they last shut down now keep it on, since
 			// SetAgentEnabled persists it and Load() overlays their
 			// config.yaml.
-			Enabled: false,
+			Enabled:             false,
+			WorkingSetEnabled:   true,
+			WorkingSetMaxTokens: 600,
 		},
 		Browser: BrowserConfig{
 			// Off by default — a fresh browser per fetch, closed
@@ -1153,6 +1163,13 @@ func (c *AppConfig) validate() []string {
 	if c.Memory.FactExtractionEveryNTurns <= 0 {
 		c.Memory.FactExtractionEveryNTurns = 3
 		fixes = append(fixes, "Memory.FactExtractionEveryNTurns")
+	}
+	if c.AgentMode.WorkingSetMaxTokens <= 0 {
+		// Absent from an older config.yaml — adopt the new defaults (on, 600)
+		// rather than leaving the feature silently disabled on upgrade.
+		c.AgentMode.WorkingSetMaxTokens = 600
+		c.AgentMode.WorkingSetEnabled = true
+		fixes = append(fixes, "AgentMode.WorkingSet")
 	}
 	if c.Memory.EmbeddingDimension <= 0 {
 		c.Memory.EmbeddingDimension = 768

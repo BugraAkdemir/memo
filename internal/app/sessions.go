@@ -59,6 +59,7 @@ func (a *App) DeleteChat(id string) error {
 	if sm == nil {
 		return fmt.Errorf("no session manager")
 	}
+	a.clearWorkingSet(id)
 	return sm.DeleteChat(id)
 }
 

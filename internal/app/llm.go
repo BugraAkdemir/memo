@@ -319,6 +319,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 
 		streamCh, err := exec.RunStream(ctx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
 			agentEvents.add(ev)
+			a.recordWorkingSetEvent(sessionID, ev)
 			if taskListID != "" {
 				a.emitStepToolActivity(taskListID, ev)
 			}

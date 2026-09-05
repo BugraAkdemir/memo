@@ -204,6 +204,13 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// minimal mode strips personality, it doesn't make the model time-blind.
 	systemPrompt += a.timeContextBlockForChat(chatID)
 
+	// Working set: a compact digest of files/commands this chat's agent turns
+	// have already handled, so the model doesn't re-read what it read a
+	// couple of turns ago after the raw tool output aged out of history.
+	// Factual grounding like the time block above, so it rides outside the
+	// MinimalMode check.
+	systemPrompt += a.renderWorkingSet(chatID)
+
 	var tokenBudget int
 	if a.llamaServer != nil && a.llamaServer.IsRunning() {
 		a.cfgMu.RLock()

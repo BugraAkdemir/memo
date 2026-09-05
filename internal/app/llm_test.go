@@ -15,7 +15,21 @@ import (
 	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/stats"
+	"memo/internal/truncate"
 )
+
+// TestEstimateContentTokens_MatchesBudgeter locks the Phase 0 estimator
+// unification: the usage-stats fallback estimate and the context-budget math
+// in buildMessagesForSession / the pipeline's truncation must speak the same
+// units. estimateContentTokens used to be words*1.3 while the budgeter is
+// len/3; they now must agree.
+func TestEstimateContentTokens_MatchesBudgeter(t *testing.T) {
+	for _, s := range []string{"", "kısa", "a somewhat longer sentence with code_ident := 42", strings.Repeat("x ", 500)} {
+		if got, want := estimateContentTokens(s), truncate.EstimateTokens(s); got != want {
+			t.Errorf("estimateContentTokens(%q) = %d, want %d (truncate.EstimateTokens)", s, got, want)
+		}
+	}
+}
 
 // TestRecordUsageEvent_ThreadsCategoryThrough is a regression test for the
 // usage-stats category breakdown: recordUsageEvent must forward

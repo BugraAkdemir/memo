@@ -16,15 +16,17 @@ import (
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/stats"
+	"memo/internal/truncate"
 )
 
-// estimateContentTokens gives a rough token count for a UI display label.
-// Word-based (~1.3 tokens/word) is closer than len/4 for Turkish and code.
+// estimateContentTokens gives a rough token count for a UI display label and
+// for the usage-stats fallback when a provider reports no real token count.
+// It delegates to truncate.EstimateTokens (len/3) so this estimate, the
+// context-budget math in buildMessagesForSession, and the pipeline's
+// intra-turn truncation all speak the same units — they used to disagree
+// (this was words*1.3, the budgeter len/3, one orchestra spot len/4).
 func estimateContentTokens(s string) int {
-	if s == "" {
-		return 0
-	}
-	return int(float64(len(strings.Fields(s))) * 1.3)
+	return truncate.EstimateTokens(s)
 }
 
 // estimateMessagesTokens sums estimateContentTokens across a conversation —
@@ -902,10 +904,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				finalContent = finalResponse
 			}
 
-			tokenCount := 0
-			if finalContent != "" {
-				tokenCount = len(finalContent) / 4
-			}
+			tokenCount := estimateContentTokens(finalContent)
 
 			a.finishStream(ctx, start, tokenCount, "stop", finalContent, userPrompt, sessionID, &usageMetaVal)
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})

@@ -134,6 +134,8 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		// a word-count estimate of the seed messages alone.
 		var totalUsage provider.Usage
 		sawUsage := false
+		firstPromptTok := 0 // iteration-0 prefill: system + agent block + tool schema + history + user
+		iters := 0
 		termUsage := func() *provider.Usage {
 			if !sawUsage {
 				return nil
@@ -141,11 +143,22 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			u := totalUsage
 			return &u
 		}
+		// logContext emits the one honest per-turn accounting line for agent
+		// mode. The app-side CONTEXT log is written before routeStream appends
+		// the agent instruction block and before the tool schema is attached,
+		// so it undercounts the real prefill by thousands of tokens; this one
+		// is measured from what the provider actually billed.
+		logContext := func(end string) {
+			logx.Printf("AGENT-CONTEXT: end=%s iters=%d msgs=%d first_prompt_tok=%d total_prompt_tok=%d completion_tok=%d",
+				end, iters, len(currentMessages), firstPromptTok, totalUsage.PromptTokens, totalUsage.CompletionTokens)
+		}
 
 		for iteration := 0; iteration < p.maxIters; iteration++ {
+		iters = iteration + 1
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
+			logContext("cancelled")
 			trySend(ctx, outCh, provider.StreamChunk{Error: "Agent execution cancelled", Done: true, Usage: termUsage()})
 			return
 		default:
@@ -165,6 +178,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		resp, err := p.prov.ChatCompletion(ctx, req)
 		if err != nil {
 			logx.Printf("AGENT: ChatCompletion error: %v", err)
+			logContext("error")
 			trySend(ctx, outCh, provider.StreamChunk{Error: fmt.Sprintf("LLM Error: %v", err), Done: true, Usage: termUsage()})
 			return
 		}
@@ -176,6 +190,9 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 {
 				sawUsage = true
 			}
+			if firstPromptTok == 0 && resp.Usage.PromptTokens > 0 {
+				firstPromptTok = resp.Usage.PromptTokens
+			}
 		}
 
 		// If no tool calls, we are done
@@ -185,6 +202,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				trySend(ctx, outCh, provider.StreamChunk{Content: content})
 			}
 			onEvent(AgentEvent{Type: EventFinalResponse, Content: content})
+			logContext("stop")
 			trySend(ctx, outCh, provider.StreamChunk{Done: true, FinishReason: "stop", Usage: termUsage()})
 			return
 		}
@@ -397,6 +415,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		}
 		}
 
+		logContext("max_iters")
 		trySend(ctx, outCh, provider.StreamChunk{Content: "\n\n⚠️ Agent reached the maximum number of tool calls (40). The task may be incomplete.", Done: true, Usage: termUsage()})
 	}()
 

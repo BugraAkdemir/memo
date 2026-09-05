@@ -450,3 +450,30 @@ func testEmbedding(_ context.Context, text string) ([]float32, error) {
 		return []float32{0, 0, 1}, nil
 	}
 }
+
+func TestRecencyFactor(t *testing.T) {
+	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+	rfc := func(d time.Duration) string { return now.Add(-d).Format(time.RFC3339) }
+
+	if got := recencyFactor(rfc(200*24*time.Hour), 0, now); got != 1 {
+		t.Errorf("halfLifeDays=0 must disable: got %v, want 1", got)
+	}
+	if got := recencyFactor("", 30, now); got != 1 {
+		t.Errorf("empty timestamp: got %v, want 1", got)
+	}
+	if got := recencyFactor("not-a-date", 30, now); got != 1 {
+		t.Errorf("bad timestamp: got %v, want 1", got)
+	}
+	if got := recencyFactor(rfc(0), 30, now); got != 1 {
+		t.Errorf("fresh memory: got %v, want 1", got)
+	}
+	if got := recencyFactor(rfc(-48*time.Hour), 30, now); got != 1 {
+		t.Errorf("future timestamp: got %v, want 1", got)
+	}
+	if got := recencyFactor(rfc(30*24*time.Hour), 30, now); got < 0.49 || got > 0.51 {
+		t.Errorf("one half-life old: got %v, want ~0.5", got)
+	}
+	if got := recencyFactor(rfc(300*24*time.Hour), 30, now); got != 0.15 {
+		t.Errorf("ten half-lives old must hit the 0.15 floor: got %v", got)
+	}
+}

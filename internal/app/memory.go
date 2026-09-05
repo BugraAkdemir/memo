@@ -414,10 +414,11 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 
 	embeddingFunc := memory.NewEmbeddingFunc(client, model)
 	newStore, err := memory.NewStore(memory.StoreConfig{
-		Dir:           a.cfg.Memory.PersistDir,
-		Dimension:     a.cfg.Memory.EmbeddingDimension,
-		EmbeddingFunc: embeddingFunc,
-		DreamSettings: a.dreamSettings,
+		Dir:                 a.cfg.Memory.PersistDir,
+		Dimension:           a.cfg.Memory.EmbeddingDimension,
+		EmbeddingFunc:       embeddingFunc,
+		DreamSettings:       a.dreamSettings,
+		RecencyHalfLifeDays: a.cfg.Memory.RecencyHalfLifeDays,
 	})
 	if err != nil {
 		logx.Printf("WARN: memory re-init: %v (restoring old store)", err)

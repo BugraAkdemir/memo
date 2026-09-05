@@ -500,9 +500,10 @@ func (a *App) Startup(ctx context.Context) {
 		defer close(memStoreReady)
 		defer recoverPanic("Startup/memory.NewStore")
 		store, err := memory.NewStore(memory.StoreConfig{
-			Dir:           cfg.Memory.PersistDir,
-			Dimension:     cfg.Memory.EmbeddingDimension,
-			EmbeddingFunc: embeddingFunc,
+			Dir:                 cfg.Memory.PersistDir,
+			Dimension:           cfg.Memory.EmbeddingDimension,
+			EmbeddingFunc:       embeddingFunc,
+			RecencyHalfLifeDays: cfg.Memory.RecencyHalfLifeDays,
 		})
 		if err != nil {
 			logx.Printf("WARN: memory: %v", err)

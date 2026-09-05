@@ -58,6 +58,13 @@ type Store struct {
 	useFTS        bool
 	stopCh        chan struct{}
 
+	// recencyHalfLifeDays weights RetrieveContext toward newer memories: a
+	// result's similarity is multiplied by 0.5 once it is this many days old
+	// (halving again every further half-life, floored so a strongly relevant
+	// old memory still surfaces). 0 disables it. Set once from config at
+	// construction; a config change takes effect on the next store reinit.
+	recencyHalfLifeDays int
+
 	// forceGoFallback skips sqlite-vec entirely during initSchema, as if
 	// the extension weren't compiled in — test-only (see StoreConfig's doc
 	// comment). Read exactly once, synchronously, inside initSchema before
@@ -95,6 +102,11 @@ type StoreConfig struct {
 	// from tests, without ever running automatically).
 	DreamSettings DreamSettingsFunc
 
+	// RecencyHalfLifeDays, when > 0, makes RetrieveContext down-weight older
+	// results (see Store.recencyHalfLifeDays). 0 leaves scoring purely on
+	// vector/keyword similarity and importance, as before.
+	RecencyHalfLifeDays int
+
 	// ForceGoFallback makes NewStore skip sqlite-vec entirely, as if the
 	// extension weren't compiled in — for tests that need to exercise
 	// goSearch specifically (the code path a CI runner without sqlite-vec
@@ -129,13 +141,14 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	}
 
 	s := &Store{
-		db:              db,
-		embed:           cfg.EmbeddingFunc,
-		dim:             cfg.Dimension,
-		dir:             cfg.Dir,
-		dbPath:          dbPath,
-		forceGoFallback: cfg.ForceGoFallback,
-		dreamSettings:   cfg.DreamSettings,
+		db:                  db,
+		embed:               cfg.EmbeddingFunc,
+		dim:                 cfg.Dimension,
+		dir:                 cfg.Dir,
+		dbPath:              dbPath,
+		forceGoFallback:     cfg.ForceGoFallback,
+		dreamSettings:       cfg.DreamSettings,
+		recencyHalfLifeDays: cfg.RecencyHalfLifeDays,
 	}
 
 	if err := s.initSchema(); err != nil {
@@ -943,6 +956,31 @@ func splitCompoundQuery(q string) []string {
 	return segments
 }
 
+// recencyFactor returns a multiplier in [0.15, 1] that halves for every
+// halfLifeDays of age: a memory exactly one half-life old counts half as
+// much toward its retrieval score, two half-lives a quarter, and so on,
+// floored at 0.15 so a strongly relevant old memory can still surface.
+// halfLifeDays <= 0 disables it (returns 1); an unparseable, zero or future
+// timestamp also returns 1 — bad data never penalises.
+func recencyFactor(tsRFC3339 string, halfLifeDays int, now time.Time) float32 {
+	if halfLifeDays <= 0 || tsRFC3339 == "" {
+		return 1
+	}
+	t, err := time.Parse(time.RFC3339, tsRFC3339)
+	if err != nil {
+		return 1
+	}
+	ageDays := now.Sub(t).Hours() / 24
+	if ageDays <= 0 {
+		return 1
+	}
+	f := math.Pow(0.5, ageDays/float64(halfLifeDays))
+	if f < 0.15 {
+		f = 0.15
+	}
+	return float32(f)
+}
+
 func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, minSimilarity float32) ([]MemoryResult, error) {
 	start := time.Now()
 
@@ -1042,7 +1080,11 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 
 	// Boost similarity scores based on importance (1–5).
 	// importance=1 → ×0.90, importance=3 → ×1.10, importance=5 → ×1.30
-	// Re-sort after boost since relative order may change.
+	// Then down-weight by age (recencyHalfLifeDays, 0 = off) so a fresh
+	// memory outranks a slightly-more-similar stale one — the retrieval set
+	// used to be recency-blind, which is part of why it barely moved turn to
+	// turn. Re-sort after both since relative order may change.
+	now := time.Now()
 	for i := range memories {
 		imp := memories[i].Importance
 		if imp < 1 {
@@ -1051,6 +1093,7 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 			imp = 5
 		}
 		memories[i].Similarity *= float32(0.8 + float64(imp)*0.1)
+		memories[i].Similarity *= recencyFactor(memories[i].Timestamp, s.recencyHalfLifeDays, now)
 	}
 	// Same ID tiebreaker as reciprocalRankFusion, and for the same reason —
 	// this slice can carry ties (e.g. two candidates with the exact same

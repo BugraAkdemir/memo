@@ -257,6 +257,11 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	}
 
 	history := a.getSessionHistoryTokenAwareForSession(chatID, historyBudget)
+	// Once history fills most of the budget, condense its oldest stretch into
+	// one summary message instead of letting drop-oldest quietly lose early
+	// turns. No-op below the threshold, and the summary is cached so the
+	// extra LLM call only runs when the condensed region actually changes.
+	history = a.maybeCompactHistory(ctx, chatID, history, tokenBudget)
 	history = append([]api.Message{}, history...)
 	var msgs []api.Message
 

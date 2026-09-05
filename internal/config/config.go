@@ -280,6 +280,16 @@ type AgentModeConfig struct {
 	WorkingSetEnabled bool `yaml:"working_set_enabled" json:"working_set_enabled"`
 	// WorkingSetMaxTokens hard-caps that injected digest. Default 600.
 	WorkingSetMaxTokens int `yaml:"working_set_max_tokens" json:"working_set_max_tokens"`
+
+	// ConversationCompactEnabled: once a chat's history passes
+	// CompactThresholdPct of the model's context budget, condense the oldest
+	// ~60% of it into a single summary system message and keep the rest
+	// verbatim, instead of letting drop-oldest silently discard early turns.
+	// Default on.
+	ConversationCompactEnabled bool `yaml:"conversation_compact_enabled" json:"conversation_compact_enabled"`
+	// CompactThresholdPct is the history-vs-context-budget percentage that
+	// triggers the summarization above. Default 60.
+	CompactThresholdPct int `yaml:"compact_threshold_pct" json:"compact_threshold_pct"`
 }
 
 // BrowserConfig controls the optional headless-browser fallback
@@ -933,9 +943,11 @@ func Default() *AppConfig {
 			// agent mode on when they last shut down now keep it on, since
 			// SetAgentEnabled persists it and Load() overlays their
 			// config.yaml.
-			Enabled:             false,
-			WorkingSetEnabled:   true,
-			WorkingSetMaxTokens: 600,
+			Enabled:                    false,
+			WorkingSetEnabled:          true,
+			WorkingSetMaxTokens:        600,
+			ConversationCompactEnabled: true,
+			CompactThresholdPct:        60,
 		},
 		Browser: BrowserConfig{
 			// Off by default — a fresh browser per fetch, closed
@@ -1165,11 +1177,18 @@ func (c *AppConfig) validate() []string {
 		fixes = append(fixes, "Memory.FactExtractionEveryNTurns")
 	}
 	if c.AgentMode.WorkingSetMaxTokens <= 0 {
-		// Absent from an older config.yaml — adopt the new defaults (on, 600)
-		// rather than leaving the feature silently disabled on upgrade.
+		// Absent from an older config.yaml — adopt the new long-session
+		// defaults rather than leaving the features silently disabled on
+		// upgrade.
 		c.AgentMode.WorkingSetMaxTokens = 600
 		c.AgentMode.WorkingSetEnabled = true
+		c.AgentMode.ConversationCompactEnabled = true
+		c.AgentMode.CompactThresholdPct = 60
 		fixes = append(fixes, "AgentMode.WorkingSet")
+	}
+	if c.AgentMode.CompactThresholdPct <= 0 || c.AgentMode.CompactThresholdPct > 95 {
+		c.AgentMode.CompactThresholdPct = 60
+		fixes = append(fixes, "AgentMode.CompactThresholdPct")
 	}
 	if c.Memory.EmbeddingDimension <= 0 {
 		c.Memory.EmbeddingDimension = 768

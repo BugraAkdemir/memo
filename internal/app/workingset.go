@@ -268,10 +268,13 @@ func (a *App) renderWorkingSet(chatID string) string {
 	return ws.render(maxTok)
 }
 
-// clearWorkingSet drops a chat's working set (e.g. when the chat is deleted
-// or reset). Safe to call for an unknown chatID.
+// clearWorkingSet drops a chat's working set and cached conversation summary
+// (e.g. when the chat is deleted). Safe to call for an unknown chatID.
 func (a *App) clearWorkingSet(chatID string) {
 	a.workingSetMu.Lock()
 	delete(a.workingSets, chatID)
 	a.workingSetMu.Unlock()
+	a.convSummaryMu.Lock()
+	delete(a.convSummaries, chatID)
+	a.convSummaryMu.Unlock()
 }

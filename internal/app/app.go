@@ -206,6 +206,12 @@ type App struct {
 	workingSetMu sync.Mutex
 	workingSets  map[string]*workingSet
 
+	// convSummaries caches the last "earlier conversation" summary computed
+	// for each chat by maybeCompactHistory, so the summarization LLM call
+	// only re-runs when the summarized region actually changes.
+	convSummaryMu sync.Mutex
+	convSummaries map[string]*convSummary
+
 	providerCfgMgr     *provider.ConfigManager
 	providerRouter     *provider.Router
 	activeProviderName string // which provider is currently active (by Name)

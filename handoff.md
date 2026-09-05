@@ -1,3 +1,68 @@
+# Ek (2026-09-05, devam 59) — Uzun-oturum token/kalite yol haritası: Faz 0 (ölçüm) bitti
+
+Kullanıcı: "memonun uzun kodlamalarda 1-2 saat aralıksız tek oturum
+kodlamalarında sorun yaşamamak, token kullanımını optimize etmek, çıktı
+kalitesini (kodlama + sohbet) artırmak. /codebase-memory ile araştır, sistem
+promptlarını incele, yapılacak mimari değişiklikleri planla." Sonra: "tamam
+sırayla ilerle, başla; ilk 3 commiti dünün (2026-09-05) tarihiyle at, sonrası
+normal, tarih tag'i koyma."
+
+## Yapıldı
+
+**Araştırma + plan.** 3 paralel Explore ajanı (sistem promptu/context assembly,
+memory retrieval pipeline, agent loop/taskloop) + kritik dosya okumaları. Tam
+yol haritası: `~/.claude/plans/kanka-memo-ya-u-stateless-quasar.md` (P1–P11
+bulguları tabloyla, 5 faz). Kullanıcı kararları: tam yol haritası şimdi/sıra
+sonra; uzun-oturum context = iki katman (yapısal working-set + eşik LLM
+özeti); agent döngüsü = configurable maxIters + sınırlı akıllı devam; **sadece
+harici sağlayıcılar** (local-model agent yolundaki düşen-blok bug'ı P11 sadece
+not edildi, düzeltilmedi).
+
+**Faz 0 — Ölçüm doğruluğu (3 commit, hepsi 2026-09-05 tarihli, main'e):**
+- `ac115b20` feat(agent,stats): agent turları artık gerçek per-turn token
+  kaydediyor. `provider.StreamChunk`'a `Usage *Usage` alanı;
+  `Pipeline.RunStream` her iterasyonun `resp.Usage`'ını topluyor, terminal
+  chunk'a iliştiriyor (stop/max_iters/error/cancel). `drainAgentStream` bunu
+  okuyup `usageMeta.PromptTokens`'ı gerçek değerle eziyor, gerçek completion'ı
+  `finishStream`'e geçiriyor. Sağlayıcı usage vermezse eski kelime-tahmini
+  fallback kalıyor. `callWebSearchAgentStream` de bedava faydalanıyor.
+- `b8df17a9` feat(taskloop,stats): Self-Driving iç LLM çağrıları artık
+  kaydediliyor (önceden HİÇBİRİ kaydedilmiyordu). `callLLMForReview(With)`'e
+  `category` parametresi + 3 dalın hepsinde usage kaydı. Yeni
+  `drainStreamIdleUsage` (terminal chunk usage'ını da döndürür);
+  `drainStreamIdle` ince wrapper olarak kaldı. planTask/runPlanStep/
+  escalateStep/sub-agent runner kaydediyor. Yeni kategoriler: `task_review`,
+  `task_plan`, `task_step`, `task_subagent`, `compaction`.
+- `5d766a24` refactor(app,agent): tek token estimator. `estimateContentTokens`
+  artık `truncate.EstimateTokens`'a (len/3) delege ediyor (eskiden words×1.3;
+  orchestra'daki len/4 de düzeltildi) — bütçe matı ile stats aynı birimi
+  konuşuyor. Ayrıca `Pipeline.RunStream` her terminal noktada bir
+  `AGENT-CONTEXT:` log satırı yazıyor (iters, msgs, first_prompt_tok,
+  total_prompt_tok, completion_tok) — sağlayıcının faturaladığı gerçek
+  sayılardan; app-tarafı `CONTEXT:` satırı agent bloğu+tool şeması eklenmeden
+  önce yazıldığı için agent modda ~binlerce token eksik gösteriyordu.
+
+Doğrulama: `CGO_ENABLED=1 go build/vet/test -tags sqlite_fts5 ./... -race`
+tamamı yeşil. `.dart` dokunulmadı. Yeni testler: pipeline usage toplama +
+no-usage fallback, `drainStreamIdleUsage` usage yüzeye çıkarma,
+`estimateContentTokens == truncate.EstimateTokens`.
+
+## Sıradaki
+
+- **Canlı doğrulama (Faz 0):** `scratchpad/bench.py` ile bir agent kodlama
+  görevi koş, `/api/stats/usage` toplamlarını `AGENT-CONTEXT:` loguyla
+  karşılaştır; planner-mod bir Self-Driving liste koşup `usage_events`'te
+  `task_plan`/`task_step` satırları görün. (Backend + gerçek sağlayıcı gerekir.)
+- **Faz 1 — Memory relevance** (plan dosyası): min_similarity 0.1→0.35,
+  pinned fact'leri sorguya göre sırala+sınırla, recency ağırlığı, semantik
+  dedup, asistan cevaplarını anıdan çıkar, sabit consts→config, fact
+  extraction throttle. `internal/memory/store.go` + `internal/app/memory.go` +
+  `helpers.go` + `identity.go` + config.
+- Faz 2 (uzun-oturum context), Faz 3 (döngü sağlamlığı), Faz 4 (prompt
+  caching) — plan dosyasında detaylı.
+
+---
+
 # Ek (2026-09-02, devam 58 · devam) — 2 bug daha + Memo overhead benchmark
 
 Kullanıcı: "dene ve düzelt; token/request başına doğruluk için kodlama +

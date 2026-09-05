@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"memo/internal/agent/tools"
 	"memo/internal/provider"
+	"sort"
 	"sync"
 )
 
@@ -468,13 +469,25 @@ func (r *ToolRegistry) Unregister(name string) {
 	delete(r.tools, name)
 }
 
-// ToOpenAITools converts the registered tools into the format expected by the LLM providers.
+// ToOpenAITools converts the registered tools into the format expected by the
+// LLM providers, sorted by tool name. The order matters: this is re-sent on
+// every one of a turn's up-to-N agent iterations, and providers only serve a
+// prompt-cache hit on it (Anthropic explicit cache_control, OpenAI automatic)
+// when the serialized bytes are identical each time — a Go map iteration
+// order is not.
 func (r *ToolRegistry) ToOpenAITools() []provider.ToolDefinition {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	var defs []provider.ToolDefinition
-	for _, t := range r.tools {
+	names := make([]string, 0, len(r.tools))
+	for name := range r.tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	defs := make([]provider.ToolDefinition, 0, len(names))
+	for _, name := range names {
+		t := r.tools[name]
 		defs = append(defs, provider.ToolDefinition{
 			Type: "function",
 			Function: provider.ToolFunction{

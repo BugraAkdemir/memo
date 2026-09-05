@@ -45,3 +45,25 @@ func TestToOpenAITools_OnlyStandardFields(t *testing.T) {
 		}
 	}
 }
+
+// TestToOpenAITools_StableOrder guards the prompt-cache prerequisite: the
+// serialized tools array must be byte-identical across calls (Go map
+// iteration order is not), or a provider re-sending it every agent
+// iteration never gets a cache hit on it.
+func TestToOpenAITools_StableOrder(t *testing.T) {
+	r := NewRegistry()
+	first, _ := json.Marshal(r.ToOpenAITools())
+	for i := 0; i < 20; i++ {
+		next, _ := json.Marshal(r.ToOpenAITools())
+		if string(next) != string(first) {
+			t.Fatalf("ToOpenAITools output changed between calls (call %d):\n%s\nvs\n%s", i, first, next)
+		}
+	}
+	// And it is actually sorted by name.
+	defs := r.ToOpenAITools()
+	for i := 1; i < len(defs); i++ {
+		if defs[i-1].Function.Name > defs[i].Function.Name {
+			t.Fatalf("not name-sorted: %q before %q", defs[i-1].Function.Name, defs[i].Function.Name)
+		}
+	}
+}

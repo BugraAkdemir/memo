@@ -698,6 +698,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr, a.getSessionManager())
 	a.agentExecutor.SetBypassPermissions(a.cfg.Mood.SystemManagement)
 	a.agentExecutor.SetMaxIterations(a.cfg.AgentMode.MaxIterations)
+	a.agentExecutor.SetMaxContinuations(a.cfg.AgentMode.MaxContinuations)
 	// Restored from config rather than hardcoded off: the toggle is
 	// persisted by SetAgentEnabled now (see config.AgentModeConfig), so a
 	// backend restart no longer silently drops agent mode while every

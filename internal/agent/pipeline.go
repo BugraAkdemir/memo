@@ -52,6 +52,7 @@ type Pipeline struct {
 	sandbox            *Sandbox
 	prov               AgentProvider
 	maxIters           int
+	maxContinuations   int // auto-"keep going" restarts allowed after hitting maxIters (0 = hard stop)
 	backup             *BackupManager
 	maxTokens          int           // context window token budget for this turn (0 = unlimited)
 	toolTimeout        time.Duration // max time per tool execution (0 = no limit)
@@ -157,8 +158,10 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				end, iters, len(currentMessages), firstPromptTok, totalUsage.PromptTokens, totalUsage.CompletionTokens)
 		}
 
+		continuations := 0
+	restart:
 		for iteration := 0; iteration < p.maxIters; iteration++ {
-		iters = iteration + 1
+		iters++ // cumulative across auto-continue passes
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
@@ -452,8 +455,31 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		}
 		}
 
+		// Reaching here means every one of this pass's iterations issued tool
+		// calls — the model kept working and never signalled completion. Give
+		// it a bounded number of "keep going" restarts before hard-stopping,
+		// so a genuinely long task finishes instead of being cut at the
+		// ceiling. The turn is still bounded overall by maxContinuations and
+		// (in callAgentStream) the wall-clock TurnBudgetSecs.
+		if continuations < p.maxContinuations {
+			continuations++
+			select {
+			case <-ctx.Done():
+				logContext("cancelled")
+				trySend(ctx, outCh, provider.StreamChunk{Error: "Agent execution cancelled", Done: true, Usage: termUsage()})
+				return
+			default:
+			}
+			currentMessages = append(currentMessages, provider.Message{
+				Role:    "user",
+				Content: fmt.Sprintf("[auto-continue %d/%d] You've made %d tool calls without signalling completion. Continue from where you left off and finish the task; stop as soon as it is genuinely done.", continuations, p.maxContinuations, iters),
+			})
+			logx.Printf("AGENT: auto-continue %d/%d after %d tool calls", continuations, p.maxContinuations, iters)
+			goto restart
+		}
+
 		logContext("max_iters")
-		trySend(ctx, outCh, provider.StreamChunk{Content: fmt.Sprintf("\n\n⚠️ Agent reached the maximum number of tool calls (%d). The task may be incomplete.", p.maxIters), Done: true, Usage: termUsage()})
+		trySend(ctx, outCh, provider.StreamChunk{Content: fmt.Sprintf("\n\n⚠️ Agent reached the maximum number of tool calls (%d). The task may be incomplete.", p.maxIters*(1+p.maxContinuations)), Done: true, Usage: termUsage()})
 	}()
 
 	return outCh, nil

@@ -64,6 +64,10 @@ type Executor struct {
 	// maxIters overrides the pipeline's default per-turn tool-call ceiling
 	// when > 0 (config.AgentMode.MaxIterations, set by the app at startup).
 	maxIters int
+	// maxContinuations bounds the auto-"keep going" restarts a turn gets
+	// after hitting maxIters while still making tool calls
+	// (config.AgentMode.MaxContinuations; 0 = hard stop, the old behaviour).
+	maxContinuations int
 }
 
 // openAuditLogFile opens the agent's append-only audit trail
@@ -313,8 +317,11 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 	}
 
 	pipeline := NewPipelineWithBudget(e.registry, e.permissions, sessionSandbox, router, e.backup, maxTokens)
-	if mi := e.getMaxIterations(); mi > 0 {
-		pipeline.maxIters = mi
+	if mi, mc := e.getLoopBounds(); mi > 0 || mc > 0 {
+		if mi > 0 {
+			pipeline.maxIters = mi
+		}
+		pipeline.maxContinuations = mc
 	}
 	// Read through the locked getters, not the bare fields — SetBypassPermissions/
 	// SetAutoPermission write under e.mu from a different goroutine (an HTTP
@@ -435,10 +442,19 @@ func (e *Executor) SetMaxIterations(n int) {
 	e.mu.Unlock()
 }
 
-func (e *Executor) getMaxIterations() int {
+// SetMaxContinuations sets how many "keep going" auto-restarts a turn that
+// hits the iteration ceiling with progress still being made is allowed. 0
+// (the default) = hard stop at the ceiling.
+func (e *Executor) SetMaxContinuations(n int) {
+	e.mu.Lock()
+	e.maxContinuations = n
+	e.mu.Unlock()
+}
+
+func (e *Executor) getLoopBounds() (maxIters, maxContinuations int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.maxIters
+	return e.maxIters, e.maxContinuations
 }
 
 // SetAutoPermission kullanıcının Shift+Tab ile açtığı otomatik izin modunu ayarlar.

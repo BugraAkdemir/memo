@@ -465,3 +465,91 @@ func TestRunStream_MaxItersOverride(t *testing.T) {
 		t.Errorf("ceiling message should name the configured cap, got %q", text)
 	}
 }
+
+// TestRunStream_AutoContinue: when the loop hits maxIters while still making
+// tool calls, maxContinuations>0 restarts it with a nudge instead of
+// hard-stopping — bounded, so a genuinely long task can finish.
+func TestRunStream_AutoContinue(t *testing.T) {
+	registry := NewRegistry()
+	permissions := NewPermissionManager(t.TempDir())
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+
+	toolResp := provider.ChatResponse{ToolCalls: []provider.ToolCall{mustToolCall(t, "c", "read_file", map[string]string{"path": "a.txt"})}}
+	// 2 iters, then a continuation of 2 more, then it "finishes".
+	prov := &recordingProvider{responses: []provider.ChatResponse{
+		toolResp, toolResp, // pass 1 (maxIters=2)
+		toolResp, {Content: "finally done"}, // pass 2 after auto-continue
+	}}
+
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, nil)
+	pipeline.autoPermission = true
+	pipeline.maxIters = 2
+	pipeline.maxContinuations = 1
+
+	ch, err := pipeline.RunStream(context.Background(), []provider.Message{{Role: "system", Content: "s"}}, "m", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream: %v", err)
+	}
+	var text string
+	for c := range ch {
+		text += c.Content
+	}
+	if !strings.Contains(text, "finally done") {
+		t.Errorf("expected the turn to finish after the continuation, got %q", text)
+	}
+	if strings.Contains(text, "maximum number of tool calls") {
+		t.Errorf("should not have hit the hard ceiling, got %q", text)
+	}
+	// The continuation nudge must have been sent upstream.
+	sawNudge := false
+	for _, req := range prov.seen {
+		for _, m := range req {
+			if s, ok := m.Content.(string); ok && strings.Contains(s, "[auto-continue 1/1]") {
+				sawNudge = true
+			}
+		}
+	}
+	if !sawNudge {
+		t.Errorf("auto-continue nudge was never sent to the model")
+	}
+}
+
+// TestRunStream_AutoContinueExhausted: with continuations used up, it still
+// hard-stops (bounded).
+func TestRunStream_AutoContinueExhausted(t *testing.T) {
+	registry := NewRegistry()
+	permissions := NewPermissionManager(t.TempDir())
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+	toolResp := provider.ChatResponse{ToolCalls: []provider.ToolCall{mustToolCall(t, "c", "read_file", map[string]string{"path": "a.txt"})}}
+	rs := make([]provider.ChatResponse, 20)
+	for i := range rs {
+		rs[i] = toolResp
+	}
+	prov := &scriptedProvider{responses: rs}
+
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, nil)
+	pipeline.autoPermission = true
+	pipeline.maxIters = 2
+	pipeline.maxContinuations = 1
+
+	ch, _ := pipeline.RunStream(context.Background(), nil, "m", func(AgentEvent) {}, nil)
+	var text string
+	for c := range ch {
+		text += c.Content
+	}
+	if !strings.Contains(text, "maximum number of tool calls") {
+		t.Errorf("expected hard stop once continuations are exhausted, got %q", text)
+	}
+	// 2 (pass 1) + 2 (pass 2) = 4 model calls, then stop.
+	if prov.calls != 4 {
+		t.Errorf("ChatCompletion calls = %d, want 4 (maxIters 2 x (1 + 1 continuation))", prov.calls)
+	}
+}

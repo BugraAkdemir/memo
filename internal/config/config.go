@@ -298,6 +298,11 @@ type AgentModeConfig struct {
 	// The agent loop previously had no total-time guard at all (only
 	// maxIterations and a 120s-per-tool timeout). 0 disables it. Default 1200.
 	TurnBudgetSecs int `yaml:"turn_budget_secs" json:"turn_budget_secs"`
+	// MaxContinuations bounds how many times a turn that hit MaxIterations
+	// while still making tool calls is auto-restarted with a "keep going"
+	// nudge instead of stopping with "task may be incomplete". 0 disables
+	// (hard stop at MaxIterations, the old behaviour). Default 2.
+	MaxContinuations int `yaml:"max_continuations" json:"max_continuations"`
 }
 
 // BrowserConfig controls the optional headless-browser fallback
@@ -958,6 +963,7 @@ func Default() *AppConfig {
 			CompactThresholdPct:        60,
 			MaxIterations:              40,
 			TurnBudgetSecs:             1200,
+			MaxContinuations:           2,
 		},
 		Browser: BrowserConfig{
 			// Off by default — a fresh browser per fetch, closed
@@ -1195,7 +1201,12 @@ func (c *AppConfig) validate() []string {
 		c.AgentMode.ConversationCompactEnabled = true
 		c.AgentMode.CompactThresholdPct = 60
 		c.AgentMode.TurnBudgetSecs = 1200
+		c.AgentMode.MaxContinuations = 2
 		fixes = append(fixes, "AgentMode.WorkingSet")
+	}
+	if c.AgentMode.MaxContinuations < 0 {
+		c.AgentMode.MaxContinuations = 2
+		fixes = append(fixes, "AgentMode.MaxContinuations")
 	}
 	if c.AgentMode.CompactThresholdPct <= 0 || c.AgentMode.CompactThresholdPct > 95 {
 		c.AgentMode.CompactThresholdPct = 60

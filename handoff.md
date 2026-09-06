@@ -1,3 +1,43 @@
+# Ek (2026-09-06, devam 62) — "Code Mode": per-chat kodlama preset'i (2 commit)
+
+Kullanıcı: "minimal mode benzeri ama kodlamayı hızlandıran bir 'code mode'
+olsa; neler açık neler kapalı." Kararlar: per-chat + proje/agent sohbetlerinde
+otomatik AÇIK (per-chat explicit override var), ajan zorla açık, hafıza
+tamamen kapalı.
+
+## Ne yapıldı
+- `Session.CodeMode *bool` (nil = default = proje sohbetinde açık) —
+  `internal/sessions`, `save()` ile persist, `SetCodeMode`/`GetCodeMode`.
+- `resolveCodeMode(chatID)` + `withCodeMode(ctx)` (taskMemoryDisabled idiom'u),
+  `sendMessageStreamCore`'da ctx'e iliştiriliyor — `internal/app/agent_chat_context.go`.
+- **Code Mode turunda KAPALI:** persona/origin/style/passive/capabilities
+  blokları, kişisel hafıza retrieval (+ embed çağrısı), time-context bloğu,
+  mood direktifi + `updateMoodAsync` çağrısı, proactive nudge + LLM çağrısı,
+  intent-extraction, fact-extraction, chat-title generation çağrıları.
+- **AÇIK/KORUNUR:** zorla ajan tool döngüsü, tool şeması, agent talimat bloğu,
+  working-set digest'i (Faz 2), conversation compaction (Faz 2), append-only
+  history, Faz 3/4 işleri.
+- **YENİ:** persona yerine ~110 token'lık `codingDirective` (oku-sonra-düzenle,
+  hedefli edit, stili koru, non-trivial'dan sonra build/test, kısa yaz, riskli
+  şeyden önce sor). Kullanıcıya görünmüyor → L10n muaf.
+- Toggle: `GET/POST /api/chats/code-mode` (`{enabled, pinned}` / `{id, enabled}`;
+  `enabled:null` pin'i temizler) + agent sohbeti üst barında code/code_off
+  IconButton'ı (yeşil = aktif), TR+EN l10n tooltip'leri.
+- Net: Code Mode agent turu ön-eki ~7k sabit/cache'lenebilir token + SIFIR
+  Memo-tetikli yan LLM çağrısı (normalde 4'e kadar, tek inference slotu için
+  yarışan).
+
+## Doğrulama
+`go build/vet/test -tags sqlite_fts5 ./... -race` tam yeşil. `flutter analyze
+lib/` sadece pre-existing 5 info (dokunulan dosyalarda 0), `flutter test`
+hepsi geçti, rule-8 grep temiz. Testler: sessions CodeMode round-trip +
+reload; `resolveCodeMode` (plain/project/explicit-override/empty);
+`buildMessagesForSession` Code Mode'da sadece coding directive; entegrasyon
+testi (proje sohbeti → coding directive, working-set korunuyor, title-gen
+çağrısı yok).
+
+---
+
 # Ek (2026-09-06, devam 61) — Minimal Mode gerçekten sıfır-injection + local KV cache düzeltmesi
 
 Kullanıcı: "minimal mode + hafıza kapalı olmasına rağmen ham llama.cpp'de 10sn

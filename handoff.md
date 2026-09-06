@@ -1,3 +1,44 @@
+# Ek (2026-09-06, devam 61) — Minimal Mode gerçekten sıfır-injection + local KV cache düzeltmesi
+
+Kullanıcı: "minimal mode + hafıza kapalı olmasına rağmen ham llama.cpp'de 10sn
+gelen cevap Memo'da 50sn-1dk sürüyor; minimal mode gerçekten açıkken hiçbir
+prompt injection olmasın, saf llama cpp."
+
+## Kök neden
+Her turda **değişen** içerik prompt'un **başına** giriyordu:
+`buildMessagesForSession` `timeContextBlockForChat` (güncel saat!) +
+`renderWorkingSet` + `buildActiveSkillPrompt` bloklarını `systemPrompt`'a
+ekliyor, local-model dalı da `systemPrompt`'u **ilk history mesajına
+birleştiriyor**. Sonuç: mesaj 0 her turda farklı → llama-server'ın KV-cache
+prefix eşleşmesi çöküyor → **tüm konuşma her mesajda baştan prefill ediliyor**.
+CPU'da 5x'in tamamı bu. Bu üç blok minimal mode kontrolünün DIŞINDAYDI (sadece
+persona/mood/web-search gate'liydi). Ayrıca Faz 2'de eklediğim
+`maybeCompactHistory` (bloklu local LLM çağrısı) da minimal'de çalışıyordu.
+
+## Fix (`internal/app/helpers.go`, `chat.go`)
+- **Minimal mode artık şunları da atlıyor:** aktif skill bloğu, time-context
+  bloğu, working-set digest'i, konuşma-compaction LLM çağrısı, arka plan
+  intent-extraction çağrısı. Hafıza zaten kapalıyken minimal local tur =
+  tam olarak `[history] + [user mesajı]`, başka hiçbir şey yok; external
+  yolda hiç system mesajı emit edilmiyor.
+- **Minimal mode'dan bağımsız iyileştirme:** volatile per-turn bloklar (saat,
+  working set) artık `systemPrompt`'a / history prefix'ine değil, **güncel
+  user mesajına** ekleniyor → history prefix'i turlar arası byte-identik
+  kalıyor → local server KV cache'i yeniden kullanıyor. Her local-model
+  kullanıcısına fayda. İlk history mesajı sadece `systemPrompt` boş değilse
+  yeniden yazılıyor.
+
+Testler: minimal mode'da `[Time context]` ve system mesajı yok (non-minimal'de
+var); entegrasyon testi 2 minimal tur sürüp 2. isteğin mesaj listesinin 1.'nin
+byte-identik prefix uzantısı olduğunu, sızan persona/saat metni olmadığını
+doğruluyor. Eski "time context minimal'de de var" testi yeni kontrata çevrildi.
+Tam `-race` paketi yeşil (49 paket). `.dart` dokunulmadı.
+
+Not: `internal/app/config/config.yaml` bazı testlerce üzerine yazılıyor
+(pre-existing pollution) — commit'lere dahil ETME, `git checkout` ile geri al.
+
+---
+
 # Ek (2026-09-06, devam 60) — Uzun-oturum yol haritası Faz 1-4 tamam (18 commit)
 
 Kullanıcı: "durma, her fazı sırayla yap." Faz 0 (devam 59) zaten bitmişti;

@@ -1,4 +1,4 @@
-# Ek (2026-09-06, devam 62) — "Code Mode": per-chat kodlama preset'i (2 commit)
+# Ek (2026-09-06, devam 62) — "Code Mode": per-chat kodlama preset'i (3 commit)
 
 Kullanıcı: "minimal mode benzeri ama kodlamayı hızlandıran bir 'code mode'
 olsa; neler açık neler kapalı." Kararlar: per-chat + proje/agent sohbetlerinde
@@ -27,14 +27,33 @@ tamamen kapalı.
   Memo-tetikli yan LLM çağrısı (normalde 4'e kadar, tek inference slotu için
   yarışan).
 
+## 3. commit (`6d520a93`) — "bilerek yapmadıkların"
+- **Code Mode'da yüksek döngü tavanı:** `CodeModeMaxIterations` (80) /
+  `CodeModeMaxContinuations` (3), Code Mode turunda 40/2 yerine geçiyor.
+- **Code Mode'da edit'ler prompt'suz akıyor:** `CodeModeAutoApproveEdits`
+  (default true) Medium-danger araçları (write_file/edit_file/insert_line/
+  delete_lines/*_task_md) izin ekranı olmadan onaylıyor — her write
+  BackupManager ile snapshot'lanıp geri alınabilir, proje sohbeti açmak rıza.
+  **Dangerous** (delete_file, run_command, change_directory) hâlâ soruyor.
+  Salt-okuma araçları (read_file/list_directory/... ) zaten `Safe` → sessizdi,
+  değişiklik yok.
+- Plumbing: yeni `agent.TurnOverrides` ctx üzerinden (`agent.WithTurnOverrides`),
+  `Executor.RunStream` executor-geneli default'lardan SONRA uyguluyor;
+  `callAgentStream` `codeModeActive(ctx)` iken config'ten iliştiriyor.
+- `pipeline.go` bu commit'te gofmt pası da yedi (dosya öncesinde non-compliant'tı);
+  `git diff -w` gerçek 11 satırı gösteriyor.
+
 ## Doğrulama
-`go build/vet/test -tags sqlite_fts5 ./... -race` tam yeşil. `flutter analyze
-lib/` sadece pre-existing 5 info (dokunulan dosyalarda 0), `flutter test`
-hepsi geçti, rule-8 grep temiz. Testler: sessions CodeMode round-trip +
-reload; `resolveCodeMode` (plain/project/explicit-override/empty);
-`buildMessagesForSession` Code Mode'da sadece coding directive; entegrasyon
-testi (proje sohbeti → coding directive, working-set korunuyor, title-gen
-çağrısı yok).
+`go build/vet/test -tags sqlite_fts5 ./... -race` tam yeşil (49 paket).
+`flutter analyze lib/` sadece pre-existing 5 info (dokunulan dosyalarda 0),
+`flutter test` hepsi geçti, rule-8 grep temiz. Testler: sessions CodeMode
+round-trip + reload; `resolveCodeMode` (plain/project/explicit-override/empty);
+`buildMessagesForSession` Code Mode'da sadece coding directive; TurnOverrides
+round-trip; pipeline autoApproveMedium ile write_file prompt'suz koşuyor;
+config default'ları; entegrasyon testleri (proje sohbeti → coding directive,
+working-set korunuyor, title-gen çağrısı yok; Code Mode tavan
+CodeModeMaxIterations×(1+CodeModeMaxContinuations)'da duruyor + write_file
+diske düşüyor).
 
 ---
 

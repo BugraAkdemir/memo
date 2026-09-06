@@ -229,9 +229,11 @@ func (h *lsHarness) turn(t *testing.T, userMsg string) (reply string, reqsDuring
 	t.Helper()
 	before := h.fp.callCount()
 
-	h.sm.AddMessageToSession(h.chatID, "user", userMsg, "", "")
+	// Match sendMessageStreamCore's real order: build the prompt from the
+	// history as it stands, THEN persist the new user message.
 	ctx := context.Background()
 	msgs := h.a.buildMessagesForSession(ctx, h.chatID, userMsg, nil, nil)
+	h.sm.AddMessageToSession(h.chatID, "user", userMsg, "", "")
 
 	out := h.a.callAgentStream(ctx, msgs, userMsg, h.chatID)
 	var sb strings.Builder
@@ -291,6 +293,20 @@ func (r capturedReq) system() string {
 		}
 	}
 	return ""
+}
+
+// allText concatenates every message's string content — used when a block
+// (time context, working set) may ride on the system prompt or on the
+// current user message depending on the path.
+func (r capturedReq) allText() string {
+	var b strings.Builder
+	for _, m := range r.Messages {
+		if s, ok := m.Content.(string); ok {
+			b.WriteString(s)
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
 }
 
 func (r capturedReq) isAgent() bool {
@@ -397,12 +413,12 @@ func TestIntegration_WorkingSetInjectedNextTurn(t *testing.T) {
 	h.turn(t, "look at internal/app/llm.go")
 	_, reqs := h.turn(t, "now what does it do")
 
-	sys := firstAgentReq(t, reqs).system()
-	if !strings.Contains(sys, "[Working set") {
-		t.Fatalf("turn 2 system prompt has no working-set block:\n%s", sys)
+	txt := firstAgentReq(t, reqs).allText()
+	if !strings.Contains(txt, "[Working set") {
+		t.Fatalf("turn 2 request has no working-set block:\n%s", txt)
 	}
-	if !strings.Contains(sys, "internal/app/llm.go") {
-		t.Errorf("working set should name the file read in turn 1:\n%s", sys)
+	if !strings.Contains(txt, "internal/app/llm.go") {
+		t.Errorf("working set should name the file read in turn 1:\n%s", txt)
 	}
 }
 
@@ -462,6 +478,74 @@ func TestIntegration_LongHistoryGetsCompacted(t *testing.T) {
 	if summaries > 8 {
 		t.Errorf("compaction re-ran %d times over 30 turns — the prefix cache isn't holding", summaries)
 	}
+}
+
+// ===========================================================================
+// Minimal Mode — truly zero injection, so the local KV cache prefix is stable
+// ===========================================================================
+
+func TestIntegration_MinimalModeStablePrefix(t *testing.T) {
+	fp := newFakeProvider(t, func(n int, req map[string]any) map[string]any {
+		return respText("fake-model", fmt.Sprintf("reply %d", n), 100, 5)
+	})
+	h := newLongSessionApp(t, fp, false)
+	h.a.identity.SetMinimalMode(true)
+
+	// Two turns.
+	h.turn(t, "first question")
+	h.turn(t, "second question")
+
+	rs := agentReqs(t, h.fp.reqBodies())
+	// (no tools in a plain minimal chat — the fake never asked for a tool
+	// call, so these are plain chat requests; grab them directly)
+	all := parseAll(t, h.fp.reqBodies())
+	if len(all) < 2 {
+		t.Fatalf("want >=2 requests, got %d", len(all))
+	}
+	_ = rs
+
+	// The 2nd request's message list must START with the exact messages the
+	// 1st request sent (append-only), with NO Memo-injected preamble that
+	// changed between them — that byte-stable prefix is what lets
+	// llama-server reuse its KV cache instead of re-prefilling everything.
+	r1, r2 := all[len(all)-2], all[len(all)-1]
+	if len(r2.Messages) <= len(r1.Messages) {
+		t.Fatalf("turn 2 should have more messages than turn 1 (append-only); got %d vs %d", len(r2.Messages), len(r1.Messages))
+	}
+	for i := range r1.Messages {
+		c1, _ := r1.Messages[i].Content.(string)
+		c2, _ := r2.Messages[i].Content.(string)
+		if r1.Messages[i].Role != r2.Messages[i].Role || c1 != c2 {
+			t.Fatalf("minimal-mode prefix diverged at message %d:\n  turn1: [%s] %q\n  turn2: [%s] %q",
+				i, r1.Messages[i].Role, c1, r2.Messages[i].Role, c2)
+		}
+	}
+	// And no system message / no [Time context] anywhere.
+	for _, m := range r2.Messages {
+		s, _ := m.Content.(string)
+		if m.Role == "system" {
+			t.Errorf("minimal mode emitted a system message: %q", s)
+		}
+		if strings.Contains(s, "[Time context]") || strings.Contains(s, "You are Memo") {
+			t.Errorf("minimal mode leaked injected content: %q", s)
+		}
+	}
+}
+
+func parseAll(t *testing.T, bodies []string) []capturedReq {
+	t.Helper()
+	out := make([]capturedReq, 0, len(bodies))
+	for _, b := range bodies {
+		// skip the title-generation call (single user message, no history)
+		r := parseReq(t, b)
+		if len(r.Messages) == 1 {
+			if s, _ := r.Messages[0].Content.(string); strings.Contains(s, "generate a very short chat title") {
+				continue
+			}
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 // ===========================================================================

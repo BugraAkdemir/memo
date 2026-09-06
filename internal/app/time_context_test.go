@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/identity"
 	"memo/internal/sessions"
@@ -85,37 +86,51 @@ func TestLastActivity_ParsesUpdatedAtAndHandlesUnknownChat(t *testing.T) {
 	}
 }
 
-// The wiring point matters more than the formatting: like the active-skill
-// block, the time block must ride inside buildMessagesForSession's
-// systemPrompt itself, because routeStream's later role:"system" append finds
-// nothing when the local-model branch merges the prompt into a user message.
-// And it must survive MinimalMode, which strips persona — not facts.
-func TestBuildMessagesForSession_IncludesTimeContextEvenInMinimalMode(t *testing.T) {
+// MinimalMode's contract is "pure model, zero Memo injection" — and that now
+// includes the time-context block. Prepending a string that changes every
+// turn (the current time) to the front of the prompt was defeating the local
+// llama-server's KV-cache prefix reuse and forcing a full re-prefill of the
+// whole conversation on every message. Non-minimal turns still get the time
+// block, but on the *current user message*, not the system prefix.
+func TestBuildMessagesForSession_MinimalModeOmitsTimeContext(t *testing.T) {
 	sm, err := sessions.NewManager(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewManager() error = %v", err)
 	}
-	id := identity.New("Test", "Memo", "casual", "", true) // MinimalMode on
-	a := &App{
-		cfg: &config.AppConfig{
-			Memory: config.MemoryConfig{MemoryEnabled: false},
-			Llama:  config.LlamaConfig{CtxSize: 4096},
-		},
-		identity: id,
-		sessions: sm,
+	newApp := func(minimal bool) *App {
+		return &App{
+			cfg: &config.AppConfig{
+				Memory: config.MemoryConfig{MemoryEnabled: false},
+				Llama:  config.LlamaConfig{CtxSize: 4096},
+			},
+			identity: identity.New("Test", "Memo", "casual", "", minimal),
+			sessions: sm,
+		}
+	}
+	hasTimeBlock := func(msgs []api.Message) bool {
+		for _, m := range msgs {
+			if s, ok := m.Content.(string); ok && strings.Contains(s, "[Time context]") {
+				return true
+			}
+		}
+		return false
 	}
 
 	chatID := sm.GetActiveID()
-	messages := a.buildMessagesForSession(context.Background(), chatID, "hello", nil, nil)
 
-	found := false
-	for _, m := range messages {
-		if content, ok := m.Content.(string); ok && strings.Contains(content, "[Time context]") {
-			found = true
+	minimalMsgs := newApp(true).buildMessagesForSession(context.Background(), chatID, "hello", nil, nil)
+	if hasTimeBlock(minimalMsgs) {
+		t.Error("MinimalMode: the [Time context] block must not be injected")
+	}
+	for _, m := range minimalMsgs {
+		if m.Role == "system" {
+			t.Errorf("MinimalMode: no system message should be emitted, got %+v", m)
 		}
 	}
-	if !found {
-		t.Fatal("buildMessagesForSession() did not include the [Time context] block; MinimalMode strips persona, not temporal grounding")
+
+	fullMsgs := newApp(false).buildMessagesForSession(context.Background(), chatID, "hello", nil, nil)
+	if !hasTimeBlock(fullMsgs) {
+		t.Error("non-minimal: the [Time context] block must still be present")
 	}
 }
 

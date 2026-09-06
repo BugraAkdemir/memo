@@ -150,17 +150,15 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// conversational memory's token cost and was the thing the "never a
 	// template to copy" guardrail existed to police; the durable content is
 	// what the user said, which is kept.
+	// MinimalMode's promise is "pure model, zero Memo injection". Read through
+	// a.identity (the field BuildSystemPrompt just checked), not
+	// a.cfg.Identity.MinimalMode — SetMinimalMode's two non-atomic writes
+	// could otherwise disagree with this read for the duration of a toggle
+	// and produce a half-applied prompt.
+	minimal := a.identity.GetMinimalMode()
+
 	systemPrompt := a.identity.BuildSystemPrompt(memories, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
-	// MinimalMode means zero injection beyond memory — mood and web search
-	// context are both prompt injection just like identity/persona is, so
-	// they're skipped here too rather than only in BuildSystemPrompt. Read
-	// through a.identity (the same field BuildSystemPrompt just checked
-	// above), not a.cfg.Identity.MinimalMode — a separate copy kept in sync
-	// by SetMinimalMode's two non-atomic writes, which could disagree with
-	// this one for the duration of a toggle and produce a half-applied
-	// prompt (identity block skipped but mood/web-search still injected, or
-	// vice versa).
-	if !a.identity.GetMinimalMode() {
+	if !minimal {
 		// Mood is fully opt-in. When the engine is disabled the model is driven
 		// solely by the configured system prompt: no directive, no neutral block,
 		// no self-interest text is injected.
@@ -168,48 +166,32 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 			systemPrompt += a.mood.BuildDirective()
 			systemPrompt += a.mood.BuildSelfInterestDirective()
 		}
+		// An active skill is something the user explicitly turned on — but it
+		// is still Memo injecting text the bare model wouldn't see, so Minimal
+		// Mode strips it too (previously it did not).
+		if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
+			systemPrompt += skillPrompt
+		}
 	}
 
-	// Deliberately outside the MinimalMode check above: mood/web-search are
-	// ambient enhancements Minimal Mode is meant to strip, but an active
-	// skill is something the user explicitly turned on, not incidental
-	// prompt bloat.
-	//
-	// Injected here — into systemPrompt itself, before the local/external
-	// branch below decides how to fold it into the outgoing messages —
-	// rather than by the caller appending it onto a `role: "system"`
-	// message afterward (the previous approach, in routeStream/
-	// callLLMStream's Orchestra branch). That approach silently dropped
-	// every active skill's instructions whenever a.llamaServer was running:
-	// the local-model branch just below never emits a `role: "system"`
-	// message at all (it merges systemPrompt straight into a user-role
-	// message instead, apparently for chat-template compatibility), so a
-	// search for `msg.Role == "system"` after the fact found nothing to
-	// attach to. Baking it into systemPrompt up front means it rides along
-	// no matter which branch below actually uses it.
-	if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
-		systemPrompt += skillPrompt
+	// Volatile per-turn grounding — current time, and the agent working-set
+	// digest — kept OUT of systemPrompt. Both change every turn; folded into
+	// the front of the prompt (which is what happened when they were part of
+	// systemPrompt, since the local-model branch merges systemPrompt into the
+	// first history message) they broke the local llama-server's KV-cache
+	// prefix match and forced a full re-prefill of the whole conversation on
+	// every message — the single biggest reason a long Memo chat crawls
+	// compared to raw llama.cpp. They now ride on the *current* user message
+	// instead, so everything before it stays byte-identical turn to turn.
+	// Skipped entirely under Minimal Mode.
+	volatileCtx := ""
+	if !minimal {
+		volatileCtx = a.timeContextBlockForChat(chatID) + a.renderWorkingSet(chatID)
 	}
-
-	// Time awareness (yapacam.md 4.0.0): the model has no clock of its own —
-	// without this, a "sabah merhaba" arriving at 23:00 got answered as if it
-	// were morning, and a user returning after days got a reply with zero
-	// sense of the gap. Injected here, into systemPrompt itself like the
-	// skill block above, rather than appended onto a role:"system" message
-	// later by routeStream — same reason as the skill block: the local-model
-	// branch below never emits a system message, so a later append finds
-	// nothing to attach to.
-	// Deliberately OUTSIDE the MinimalMode check above: like memory context,
-	// this is factual grounding about reality, not persona/mood decoration —
-	// minimal mode strips personality, it doesn't make the model time-blind.
-	systemPrompt += a.timeContextBlockForChat(chatID)
-
-	// Working set: a compact digest of files/commands this chat's agent turns
-	// have already handled, so the model doesn't re-read what it read a
-	// couple of turns ago after the raw tool output aged out of history.
-	// Factual grounding like the time block above, so it rides outside the
-	// MinimalMode check.
-	systemPrompt += a.renderWorkingSet(chatID)
+	effectiveUserMsg := userMsg
+	if volatileCtx != "" {
+		effectiveUserMsg = userMsg + volatileCtx
+	}
 
 	var tokenBudget int
 	if a.llamaServer != nil && a.llamaServer.IsRunning() {
@@ -250,7 +232,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	}
 
 	systemTokens := truncate.EstimateTokens(systemPrompt)
-	userTokens := truncate.EstimateTokens(userMsg)
+	userTokens := truncate.EstimateTokens(effectiveUserMsg)
 	historyBudget := tokenBudget - systemTokens - userTokens
 	if historyBudget < 512 {
 		historyBudget = 512
@@ -261,50 +243,64 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// one summary message instead of letting drop-oldest quietly lose early
 	// turns. No-op below the threshold, and the summary is cached so the
 	// extra LLM call only runs when the condensed region actually changes.
-	history = a.maybeCompactHistory(ctx, chatID, history, tokenBudget)
+	// Skipped under Minimal Mode — it is a Memo-initiated LLM call, exactly
+	// the kind of extra work Minimal Mode promises not to do.
+	if !minimal {
+		history = a.maybeCompactHistory(ctx, chatID, history, tokenBudget)
+	}
 	history = append([]api.Message{}, history...)
 	var msgs []api.Message
 
+	// appendUser adds the current turn's user message (with any images).
+	appendUser := func() {
+		if len(extraImageB64) > 0 {
+			msgs = append(msgs, api.NewMultimodalMessage("user", effectiveUserMsg, extraImageB64...))
+		} else {
+			msgs = append(msgs, api.NewTextMessage("user", effectiveUserMsg))
+		}
+	}
+
 	if a.llamaServer != nil && a.llamaServer.IsRunning() {
 		if len(history) == 0 {
-			combinedMsg := systemPrompt + "\n\n" + userMsg
+			combined := effectiveUserMsg
+			if systemPrompt != "" {
+				combined = systemPrompt + "\n\n" + effectiveUserMsg
+			}
 			if len(extraImageB64) > 0 {
-				msgs = append(msgs, api.NewMultimodalMessage("user", combinedMsg, extraImageB64...))
+				msgs = append(msgs, api.NewMultimodalMessage("user", combined, extraImageB64...))
 			} else {
-				msgs = append(msgs, api.NewTextMessage("user", combinedMsg))
+				msgs = append(msgs, api.NewTextMessage("user", combined))
 			}
 		} else {
-			injected := false
-			for i, h := range history {
-				if !injected && h.Role == "user" {
-					content := systemPrompt + "\n\n" + h.GetTextContent()
-					history[i] = api.NewTextMessage("user", content)
-					injected = true
+			// Only rewrite the first history message when there is actually a
+			// system prompt to fold in — under Minimal Mode (systemPrompt
+			// empty) history stays byte-identical to the previous turn, so the
+			// local server reuses its KV cache and only prefills the new text.
+			if systemPrompt != "" {
+				for i, h := range history {
+					if h.Role == "user" {
+						history[i] = api.NewTextMessage("user", systemPrompt+"\n\n"+h.GetTextContent())
+						break
+					}
 				}
 			}
 			msgs = append(msgs, history...)
-			if len(extraImageB64) > 0 {
-				msgs = append(msgs, api.NewMultimodalMessage("user", userMsg, extraImageB64...))
-			} else {
-				msgs = append(msgs, api.NewTextMessage("user", userMsg))
-			}
+			appendUser()
 		}
 	} else {
-		msgs = append(msgs, api.NewTextMessage("system", systemPrompt))
-		msgs = append(msgs, history...)
-		if len(extraImageB64) > 0 {
-			msgs = append(msgs, api.NewMultimodalMessage("user", userMsg, extraImageB64...))
-		} else {
-			msgs = append(msgs, api.NewTextMessage("user", userMsg))
+		if systemPrompt != "" {
+			msgs = append(msgs, api.NewTextMessage("system", systemPrompt))
 		}
+		msgs = append(msgs, history...)
+		appendUser()
 	}
 
 	histUsed := 0
 	for _, h := range history {
 		histUsed += truncate.EstimateTokens(h.GetTextContent())
 	}
-	logx.Printf("CONTEXT: budget=%d system=%d user=%d hist_budget=%d hist_used=%d history_msgs=%d total_msgs=%d",
-		tokenBudget, systemTokens, userTokens, historyBudget, histUsed, len(history), len(msgs))
+	logx.Printf("CONTEXT: minimal=%v budget=%d system=%d user=%d hist_budget=%d hist_used=%d history_msgs=%d total_msgs=%d",
+		minimal, tokenBudget, systemTokens, userTokens, historyBudget, histUsed, len(history), len(msgs))
 	return msgs
 }
 

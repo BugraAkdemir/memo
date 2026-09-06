@@ -463,7 +463,13 @@ func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg stri
 // see runAgentRoutine's doc comment.
 func (a *App) sendMessageStreamCore(ctx context.Context, chatID, userMsg string, forceAgent bool) <-chan api.StreamChunk {
 	a.observerRecorder.RecordMessage(userMsg)
-	goRecover("processMessageIntent", func() { a.processMessageIntent(userMsg, "chat", "", time.Now()) })
+	// Intent extraction (calendar/habit detection) can fire its own LLM call
+	// on the shared local inference slot, competing with this turn's reply.
+	// Minimal Mode's promise is "pure model, no Memo-initiated work", so skip
+	// it there.
+	if a.identity == nil || !a.identity.GetMinimalMode() {
+		goRecover("processMessageIntent", func() { a.processMessageIntent(userMsg, "chat", "", time.Now()) })
+	}
 
 	sm := a.getSessionManager()
 	var memUsed int

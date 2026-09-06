@@ -120,11 +120,19 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 // return type changing for its other seven call sites, which have no use
 // for it.
 func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg string, extraImageB64 []string, retrievedCountOut *int) []api.Message {
+	// Code Mode (per-chat, resolved in sendMessageStreamCore) is a
+	// coding-tuned preset: no persona / mood / skill / time block / personal
+	// memory / background LLM calls, but the agent tool loop, the working-set
+	// digest and conversation compaction all stay, and the persona is
+	// replaced by one compact coding directive.
+	code := codeModeActive(ctx)
+
 	var memories []memory.MemoryResult
-	// A Self-Driving task turn with "task memory" off gets no RAG/memory block
-	// at all — the task loop carries its own state, and personal memories are
-	// noise (and a privacy surface) for autonomous code work.
-	if a.GetMemoryEnabled() && !taskMemoryDisabled(ctx) {
+	// A Self-Driving task turn with "task memory" off — or any Code Mode turn
+	// — gets no RAG/memory block at all: personal memories are noise (and a
+	// privacy surface) for code work, and retrieval also costs an embed call
+	// on the shared inference slot.
+	if a.GetMemoryEnabled() && !taskMemoryDisabled(ctx) && !code {
 		memories = a.retrieveMemory(ctx, a.buildMemoryQuery(userMsg))
 	}
 	if retrievedCountOut != nil {
@@ -157,20 +165,29 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// and produce a half-applied prompt.
 	minimal := a.identity.GetMinimalMode()
 
-	systemPrompt := a.identity.BuildSystemPrompt(memories, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
-	if !minimal {
-		// Mood is fully opt-in. When the engine is disabled the model is driven
-		// solely by the configured system prompt: no directive, no neutral block,
-		// no self-interest text is injected.
-		if a.mood != nil && a.mood.Enabled() {
-			systemPrompt += a.mood.BuildDirective()
-			systemPrompt += a.mood.BuildSelfInterestDirective()
-		}
-		// An active skill is something the user explicitly turned on — but it
-		// is still Memo injecting text the bare model wouldn't see, so Minimal
-		// Mode strips it too (previously it did not).
-		if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
-			systemPrompt += skillPrompt
+	var systemPrompt string
+	switch {
+	case code:
+		// One compact directive replaces the whole persona / style / memory
+		// stack. Nothing BuildSystemPrompt produces (persona, origin, style,
+		// passive, capabilities, memory) is wanted for a coding turn.
+		systemPrompt = codingDirective
+	default:
+		systemPrompt = a.identity.BuildSystemPrompt(memories, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
+		if !minimal {
+			// Mood is fully opt-in. When the engine is disabled the model is driven
+			// solely by the configured system prompt: no directive, no neutral block,
+			// no self-interest text is injected.
+			if a.mood != nil && a.mood.Enabled() {
+				systemPrompt += a.mood.BuildDirective()
+				systemPrompt += a.mood.BuildSelfInterestDirective()
+			}
+			// An active skill is something the user explicitly turned on — but it
+			// is still Memo injecting text the bare model wouldn't see, so Minimal
+			// Mode strips it too (previously it did not).
+			if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
+				systemPrompt += skillPrompt
+			}
 		}
 	}
 
@@ -183,10 +200,15 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// every message — the single biggest reason a long Memo chat crawls
 	// compared to raw llama.cpp. They now ride on the *current* user message
 	// instead, so everything before it stays byte-identical turn to turn.
-	// Skipped entirely under Minimal Mode.
+	// Skipped entirely under Minimal Mode. Code Mode keeps the working-set
+	// digest (it is coding infra, the whole point) but drops the time block
+	// (irrelevant to a coding turn, and it is the volatile part).
 	volatileCtx := ""
+	if !minimal && !code {
+		volatileCtx += a.timeContextBlockForChat(chatID)
+	}
 	if !minimal {
-		volatileCtx = a.timeContextBlockForChat(chatID) + a.renderWorkingSet(chatID)
+		volatileCtx += a.renderWorkingSet(chatID)
 	}
 	effectiveUserMsg := userMsg
 	if volatileCtx != "" {

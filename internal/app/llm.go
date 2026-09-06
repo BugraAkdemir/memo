@@ -1361,6 +1361,10 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 	a.incognitoMu.RLock()
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
+	// Code Mode suppresses every Memo-initiated follow-up LLM call: title
+	// generation, mood update, personal-memory save + fact extraction, and
+	// the ambient-nudge surfaced check. The reply itself is still persisted.
+	code := codeModeActive(ctx)
 	if !incog {
 		sm := a.getSessionManager()
 		if sm != nil {
@@ -1372,18 +1376,20 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 				if thinking, ok := ctx.Value(thinkingCtxKey{}).(string); ok && thinking != "" {
 					sm.SetLastMessageThinking(sessionID, thinking)
 				}
-				if len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
+				if !code && len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
 					goRecover("generateChatTitleForSession", func() { a.generateChatTitleForSession(sessionID) })
 				}
 			} else {
 				sm.AddMessage("assistant", reply, "", "", agentEvents...)
-				if len(sm.GetActiveMessages()) == 2 {
+				if !code && len(sm.GetActiveMessages()) == 2 {
 					goRecover("GenerateChatTitle", func() { a.GenerateChatTitle() })
 				}
 			}
 		}
-		a.saveMemoryAsync(userMsg, reply)
-		if a.mood != nil && a.mood.Enabled() {
+		if !code {
+			a.saveMemoryAsync(userMsg, reply)
+		}
+		if !code && a.mood != nil && a.mood.Enabled() {
 			goRecover("updateMoodAsync", func() { a.updateMoodAsync(userMsg) })
 		}
 		if meta != nil {
@@ -1404,7 +1410,7 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 		}
 		// Captured synchronously here, not inside the goroutine — see
 		// takeNudgedPattern's doc comment for why that ordering matters.
-		if nudged := a.takeNudgedPattern(); nudged != nil {
+		if nudged := a.takeNudgedPattern(); !code && nudged != nil {
 			goRecover("checkAmbientNudgeSurfaced", func() { a.checkAmbientNudgeSurfaced(nudged, reply) })
 		}
 	} else {

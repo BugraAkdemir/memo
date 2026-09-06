@@ -251,19 +251,23 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
 
+	// Code Mode suppresses every Memo-initiated side call and injection, the
+	// proactive nudge (and its LLM call) included.
+	code := codeModeActive(ctx)
+
 	// Independent of memory/RAG (see proactive_ambient.go's package doc
 	// comment) — fired before the reply so a stale pending suggestion from
 	// several turns ago doesn't linger past this one, but backgrounded since
 	// it makes its own LLM call and must not add latency to this turn's
 	// actual reply. Gated here (not just inside checkAmbientNudgeOutcome)
-	// so a disabled/off/MinimalMode/incognito setup doesn't pay for a
-	// goroutine spawn and a pending.json read on every single message.
-	if !incog && a.ambientNudgingActive() {
+	// so a disabled/off/MinimalMode/Code-Mode/incognito setup doesn't pay for
+	// a goroutine spawn and a pending.json read on every single message.
+	if !incog && !code && a.ambientNudgingActive() {
 		goRecover("checkAmbientNudgeOutcome", func() { a.checkAmbientNudgeOutcome(userMsg) })
 	}
 
 	var nudge string
-	if !incog {
+	if !incog && !code {
 		nudge = a.buildProactiveNudgeBlock(time.Now())
 	}
 	if nudge != "" {
@@ -280,7 +284,8 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 	a.agentMu.RLock()
 	agentActive := a.agentEnabled
 	a.agentMu.RUnlock()
-	if forceAgent {
+	if forceAgent || code {
+		// Code Mode is a coding preset — the tool loop is the whole point.
 		agentActive = true
 	}
 
@@ -463,11 +468,19 @@ func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg stri
 // see runAgentRoutine's doc comment.
 func (a *App) sendMessageStreamCore(ctx context.Context, chatID, userMsg string, forceAgent bool) <-chan api.StreamChunk {
 	a.observerRecorder.RecordMessage(userMsg)
+
+	// Code Mode: a coding-tuned preset resolved per chat. Attached to ctx here
+	// so buildMessagesForSession / routeStream / finishStream can all consult
+	// it without a new parameter on each (same idiom as taskMemoryDisabled).
+	codeMode := a.resolveCodeMode(chatID)
+	if codeMode {
+		ctx = withCodeMode(ctx)
+	}
+
 	// Intent extraction (calendar/habit detection) can fire its own LLM call
 	// on the shared local inference slot, competing with this turn's reply.
-	// Minimal Mode's promise is "pure model, no Memo-initiated work", so skip
-	// it there.
-	if a.identity == nil || !a.identity.GetMinimalMode() {
+	// Minimal Mode and Code Mode both promise "no Memo-initiated side work".
+	if (a.identity == nil || !a.identity.GetMinimalMode()) && !codeMode {
 		goRecover("processMessageIntent", func() { a.processMessageIntent(userMsg, "chat", "", time.Now()) })
 	}
 

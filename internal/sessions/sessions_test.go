@@ -689,3 +689,49 @@ func TestSetLastMessageThinking_NoOpsOnEmpty(t *testing.T) {
 		t.Errorf("Thinking = %q after calling with an empty string, want it to stay untouched empty", msgs[0].Thinking)
 	}
 }
+
+func TestCodeMode_RoundTripsAndDefaultsNil(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	chat := m.NewChat()
+
+	if got := m.GetCodeMode(chat); got != nil {
+		t.Errorf("initial CodeMode = %v, want nil (follow default)", got)
+	}
+	on := true
+	if err := m.SetCodeMode(chat, &on); err != nil {
+		t.Fatalf("SetCodeMode: %v", err)
+	}
+	if got := m.GetCodeMode(chat); got == nil || *got != true {
+		t.Errorf("CodeMode = %v, want &true", got)
+	}
+	// clear back to default
+	if err := m.SetCodeMode(chat, nil); err != nil {
+		t.Fatalf("SetCodeMode(nil): %v", err)
+	}
+	if got := m.GetCodeMode(chat); got != nil {
+		t.Errorf("CodeMode after clear = %v, want nil", got)
+	}
+	if err := m.SetCodeMode("nope", &on); err == nil {
+		t.Error("SetCodeMode on unknown chat should error")
+	}
+}
+
+func TestCodeMode_SurvivesReload(t *testing.T) {
+	dir := t.TempDir()
+	m1, _ := NewManager(dir)
+	chat := m1.NewChat()
+	m1.AddMessageToSession(chat, "user", "hi", "", "")
+	off := false
+	if err := m1.SetCodeMode(chat, &off); err != nil {
+		t.Fatalf("SetCodeMode: %v", err)
+	}
+	m2, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	got := m2.GetCodeMode(chat)
+	if got == nil || *got != false {
+		t.Errorf("reloaded CodeMode = %v, want &false", got)
+	}
+}

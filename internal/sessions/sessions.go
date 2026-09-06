@@ -70,6 +70,12 @@ type Session struct {
 	// override is passed — the CLI uses its own configured default, exactly
 	// as it did before this field existed.
 	CLIModel string `json:"cli_model,omitempty"`
+	// CodeMode is this chat's explicit Code Mode choice: nil = follow the
+	// default (on for a project/agent chat, off otherwise), non-nil = the
+	// user pinned it. Code Mode strips chat-oriented prompt blocks and
+	// background LLM calls while keeping the agent tool loop — see
+	// internal/app/agent_chat_context.go's withCodeMode.
+	CodeMode *bool `json:"code_mode,omitempty"`
 }
 
 type Manager struct {
@@ -181,6 +187,31 @@ func (m *Manager) SetProjectPath(id, path string) error {
 		return fmt.Errorf("session not found: %s", id)
 	}
 	s.ProjectPath = path
+	return m.save(s)
+}
+
+// GetCodeMode returns id's explicit Code Mode choice (nil = follow the
+// default). See Session.CodeMode.
+func (m *Manager) GetCodeMode(id string) *bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return nil
+	}
+	return s.CodeMode
+}
+
+// SetCodeMode pins (v != nil) or clears (v == nil) a chat's Code Mode
+// choice and persists it.
+func (m *Manager) SetCodeMode(id string, v *bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	s.CodeMode = v
 	return m.save(s)
 }
 

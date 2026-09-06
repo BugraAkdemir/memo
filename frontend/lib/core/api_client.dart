@@ -445,6 +445,29 @@ class MemoApiClient {
     );
   }
 
+  /// Code Mode for one chat: (effective, pinned). `effective` is whether the
+  /// coding preset is active; `pinned` is whether the user set it explicitly
+  /// (vs. the project-chat default).
+  Future<({bool enabled, bool pinned})> getChatCodeMode(String chatId) async {
+    final res = await _dio.get(
+      '/api/chats/code-mode',
+      queryParameters: {'id': chatId},
+    );
+    return (
+      enabled: res.data['enabled'] as bool? ?? false,
+      pinned: res.data['pinned'] as bool? ?? false,
+    );
+  }
+
+  /// enabled = true/false pins the choice; enabled = null clears the pin so
+  /// the chat follows the project-chat default again.
+  Future<void> setChatCodeMode(String chatId, bool? enabled) async {
+    await _dio.post(
+      '/api/chats/code-mode',
+      data: {'id': chatId, 'enabled': enabled},
+    );
+  }
+
   /// Model ids a CLI-backed chat can be switched to. Empty means no override
   /// list is available right now (e.g. Codex before its own model cache
   /// exists) — the CLI's own default is the only option.

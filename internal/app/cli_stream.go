@@ -65,6 +65,27 @@ func (a *App) GetChatCLIModel(chatID string) string {
 	return sm.GetCLIModel(chatID)
 }
 
+// GetChatCodeMode returns whether Code Mode is effectively active for chatID
+// (per resolveCodeMode) and whether that value is an explicit per-chat pin
+// (vs. the project-chat default).
+func (a *App) GetChatCodeMode(chatID string) (enabled bool, pinned bool) {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return false, false
+	}
+	return a.resolveCodeMode(chatID), sm.GetCodeMode(chatID) != nil
+}
+
+// SetChatCodeMode pins Code Mode for chatID (enabled != nil) or clears the
+// pin so the chat follows the default again (enabled == nil).
+func (a *App) SetChatCodeMode(chatID string, enabled *bool) error {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return fmt.Errorf("sessions not initialized")
+	}
+	return sm.SetCodeMode(chatID, enabled)
+}
+
 // ListCLIModels returns the model ids cliType's chat can be switched to via
 // its per-chat override — the backing data for the top bar's model picker in
 // CLI mode. Empty means the CLI has no override list available right now

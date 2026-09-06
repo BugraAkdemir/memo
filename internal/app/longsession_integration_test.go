@@ -229,9 +229,11 @@ func (h *lsHarness) turn(t *testing.T, userMsg string) (reply string, reqsDuring
 	t.Helper()
 	before := h.fp.callCount()
 
-	// Match sendMessageStreamCore's real order: build the prompt from the
-	// history as it stands, THEN persist the new user message.
+	// Match sendMessageStreamCore's real order and its Code Mode ctx attach.
 	ctx := context.Background()
+	if h.a.resolveCodeMode(h.chatID) {
+		ctx = withCodeMode(ctx)
+	}
 	msgs := h.a.buildMessagesForSession(ctx, h.chatID, userMsg, nil, nil)
 	h.sm.AddMessageToSession(h.chatID, "user", userMsg, "", "")
 
@@ -477,6 +479,65 @@ func TestIntegration_LongHistoryGetsCompacted(t *testing.T) {
 	}
 	if summaries > 8 {
 		t.Errorf("compaction re-ran %d times over 30 turns — the prefix cache isn't holding", summaries)
+	}
+}
+
+// ===========================================================================
+// Code Mode — coding preset: coding directive only, working set kept, zero
+// Memo-initiated side LLM calls (no title generation)
+// ===========================================================================
+
+func TestIntegration_CodeMode(t *testing.T) {
+	fp := newFakeProvider(t, func(n int, req map[string]any) map[string]any {
+		// turn 1: read a file then finish; turn 2: finish.
+		if n == 1 {
+			return respToolCall("fake-model", "c1", "read_file",
+				map[string]any{"path": "cmd/main.go"}, 800, 10)
+		}
+		return respText("fake-model", "done", 800, 10)
+	})
+	h := newLongSessionApp(t, fp, true) // memory ON — Code Mode must suppress it anyway
+	h.chatID = h.sm.NewAgentChat("/tmp/proj") // project chat → Code Mode on by default
+	if !h.a.resolveCodeMode(h.chatID) {
+		t.Fatal("a project chat should resolve to Code Mode on")
+	}
+
+	h.turn(t, "read cmd/main.go")
+	_, reqs := h.turn(t, "now add a flag")
+
+	r := firstAgentReq(t, reqs)
+	sys := r.system()
+	if !strings.HasPrefix(sys, "You are a coding agent") {
+		t.Fatalf("Code Mode system prompt should be the coding directive, got: %q", sys)
+	}
+	full := r.allText()
+	for _, banned := range []string{"You are Memo", "AI friend", "[Time context]", "RELEVANT MEMORIES", "Communication Style"} {
+		if strings.Contains(full, banned) {
+			t.Errorf("Code Mode leaked chat content: %q", banned)
+		}
+	}
+	// working set is coding infra — it stays.
+	if !strings.Contains(full, "[Working set") || !strings.Contains(full, "cmd/main.go") {
+		t.Errorf("Code Mode should keep the working-set digest; request text:\n%s", full)
+	}
+
+	// finishStream suppressions: no chat-title generation call for a Code Mode
+	// chat, so no `title` usage row — only `agent`.
+	agentRow := h.waitUsageCategory(t, categoryAgent)
+	if agentRow.Requests != 2 {
+		t.Errorf("agent request count = %d, want 2", agentRow.Requests)
+	}
+	sum := h.usageSummary(t)
+	for _, c := range sum.CategoryBreakdown {
+		if c.Category == categoryTitle {
+			t.Errorf("Code Mode should not run chat-title generation, found %d %q rows", c.Requests, c.Category)
+		}
+	}
+	// no title-generation HTTP request either
+	for _, b := range h.fp.reqBodies() {
+		if strings.Contains(b, "generate a very short chat title") {
+			t.Error("Code Mode fired a chat-title generation request")
+		}
 	}
 }
 

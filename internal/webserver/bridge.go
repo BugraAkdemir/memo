@@ -152,6 +152,10 @@ type FullBridge interface {
 	GetChatCLIModel(chatID string) string
 	ListCLIModels(cliType string) []string
 
+	// Code Mode (per-chat coding preset)
+	GetChatCodeMode(chatID string) (enabled bool, pinned bool)
+	SetChatCodeMode(chatID string, enabled *bool) error
+
 	// Remote access
 	GetRemoteAccessStatus() interface{}
 	SetRemoteAccess(enabled bool, port int) error

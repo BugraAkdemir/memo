@@ -299,6 +299,8 @@ func (b *swarmStubBridge) ListCLICommands(cliType, chatID string) []agentcli.Com
 func (b *swarmStubBridge) SetChatCLIModel(chatID, model string) error                   { return nil }
 func (b *swarmStubBridge) GetChatCLIModel(chatID string) string                         { return "" }
 func (b *swarmStubBridge) ListCLIModels(cliType string) []string                        { return nil }
+func (b *swarmStubBridge) GetChatCodeMode(chatID string) (bool, bool)                   { return false, false }
+func (b *swarmStubBridge) SetChatCodeMode(chatID string, enabled *bool) error           { return nil }
 func (b *swarmStubBridge) GetRemoteAccessStatus() interface{}                           { return nil }
 func (b *swarmStubBridge) SetRemoteAccess(enabled bool, port int) error                 { return nil }
 func (b *swarmStubBridge) SetNgrokMode(enabled bool, port int, ngrokToken string) error { return nil }

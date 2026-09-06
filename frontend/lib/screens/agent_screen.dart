@@ -390,6 +390,7 @@ class _AgentTopBar extends ConsumerWidget {
           Expanded(
             child: Text(activeChat.title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain), overflow: TextOverflow.ellipsis),
           ),
+          _CodeModeToggle(chatId: activeChat.id),
           IconButton(
             icon: const Icon(Icons.checklist),
             tooltip: L10n.t('taskloop_title'),
@@ -404,6 +405,38 @@ class _AgentTopBar extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Per-chat Code Mode switch. Code Mode strips chat-oriented prompt blocks
+/// and background LLM calls while keeping the agent tool loop — leaner,
+/// faster, coding-focused. Defaults on for a project chat; tapping pins the
+/// opposite choice.
+class _CodeModeToggle extends ConsumerWidget {
+  final String chatId;
+  const _CodeModeToggle({required this.chatId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(chatCodeModeProvider(chatId));
+    final on = state.valueOrNull?.enabled ?? false;
+    return IconButton(
+      icon: Icon(on ? Icons.code : Icons.code_off),
+      tooltip: on ? L10n.t('code_mode_on_tooltip') : L10n.t('code_mode_off_tooltip'),
+      color: on ? MemoTheme.green : MemoTheme.of(context).textSecondary,
+      onPressed: () async {
+        try {
+          await ref.read(apiClientProvider).setChatCodeMode(chatId, !on);
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(L10n.t('code_mode_toggle_failed', {'error': FriendlyError.describeGeneric(e)}))),
+            );
+          }
+        }
+        ref.invalidate(chatCodeModeProvider(chatId));
+      },
     );
   }
 }

@@ -1225,6 +1225,11 @@ class L10n {
     'agent_select_project': 'Ajan için proje klasörü seç',
     'agent_no_chats': 'Henüz ajan sohbeti yok',
     'agent_mode': 'Agent Modu',
+    'code_mode_on_tooltip':
+        'Kod Modu açık — yalın, hızlı, kodlamaya odaklı prompt (kişilik/hafıza/arka plan çağrıları kapalı). Kapatmak için dokun.',
+    'code_mode_off_tooltip':
+        'Kod Modu kapalı — normal sohbet promptu. Açmak için dokun.',
+    'code_mode_toggle_failed': 'Kod Modu değiştirilemedi (\${error})',
     'agent_chat_select': 'Ajan Sohbeti Seç',
     'agent_chat_instruction':
         'Soldan bir ajan sohbeti seç veya yeni bir tane başlat.',
@@ -3268,6 +3273,11 @@ class L10n {
     'agent_select_project': 'Select project folder for agent',
     'agent_no_chats': 'No agent chats yet',
     'agent_mode': 'Agent Mode',
+    'code_mode_on_tooltip':
+        'Code Mode on — lean, fast, coding-focused prompt (persona / memory / background calls off). Tap to turn off.',
+    'code_mode_off_tooltip':
+        'Code Mode off — normal chat prompt. Tap to turn on.',
+    'code_mode_toggle_failed': 'Could not change Code Mode (\${error})',
     'agent_chat_select': 'Select Agent Chat',
     'agent_chat_instruction':
         'Select an agent chat from the left or start a new one.',

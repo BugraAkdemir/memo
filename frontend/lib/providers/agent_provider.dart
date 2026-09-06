@@ -52,6 +52,17 @@ class AgentEnabledNotifier extends StateNotifier<bool> {
   }
 }
 
+/// (effective, pinned) Code Mode state for one chat. `effective` is whether
+/// the coding preset is active for it; `pinned` is whether the user set that
+/// explicitly (vs. the project-chat default).
+typedef CodeModeState = ({bool enabled, bool pinned});
+
+final chatCodeModeProvider =
+    FutureProvider.family<CodeModeState, String>((ref, chatId) async {
+  if (chatId.isEmpty) return (enabled: false, pinned: false);
+  return ref.read(apiClientProvider).getChatCodeMode(chatId);
+});
+
 final agentPermissionsProvider =
     AsyncNotifierProvider<AgentPermissionsNotifier, List<AgentPermission>>(
   AgentPermissionsNotifier.new,

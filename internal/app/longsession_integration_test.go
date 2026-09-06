@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -538,6 +539,46 @@ func TestIntegration_CodeMode(t *testing.T) {
 		if strings.Contains(b, "generate a very short chat title") {
 			t.Error("Code Mode fired a chat-title generation request")
 		}
+	}
+}
+
+// TestIntegration_CodeModeLoopBoundsAndEdits: Code Mode uses its own
+// (higher) loop ceilings and lets Medium-danger edits run without a
+// permission prompt.
+func TestIntegration_CodeModeLoopBoundsAndEdits(t *testing.T) {
+	fp := newFakeProvider(t, func(n int, req map[string]any) map[string]any {
+		// n=1: a write_file (Medium). Then keep asking for tool calls so the
+		// loop runs to its Code Mode ceiling.
+		if n == 1 {
+			return respToolCall("fake-model", "w1", "write_file",
+				map[string]any{"path": "gen.txt", "content": "generated"}, 100, 5)
+		}
+		return respToolCall("fake-model", fmt.Sprintf("r%d", n), "read_file",
+			map[string]any{"path": "gen.txt"}, 100, 5)
+	})
+	h := newLongSessionApp(t, fp, false)
+	h.chatID = h.sm.NewAgentChat(t.TempDir())
+	// small Code Mode ceilings so the test is quick; the non-Code values stay
+	// at the Default() 40 / 2.
+	h.a.cfgMu.Lock()
+	h.a.cfg.AgentMode.CodeModeMaxIterations = 2
+	h.a.cfg.AgentMode.CodeModeMaxContinuations = 1
+	h.a.cfgMu.Unlock()
+
+	reply, reqs := h.turn(t, "generate gen.txt then keep reading it")
+
+	// 2 iters x (1 + 1 continuation) = 4 model calls, then the bounded stop.
+	if n := len(agentReqs(t, reqs)); n != 4 {
+		t.Errorf("Code Mode agent calls = %d, want 4 (CodeModeMaxIterations 2 x (1+1))", n)
+	}
+	if !strings.Contains(reply, "maximum number of tool calls") {
+		t.Errorf("expected the bounded hard-stop, got %q", reply)
+	}
+	// write_file (Medium) must have run despite there being no permission
+	// prompt path in this harness.
+	proj := h.sm.GetProjectPath(h.chatID)
+	if b, err := os.ReadFile(filepath.Join(proj, "gen.txt")); err != nil || string(b) != "generated" {
+		t.Errorf("write_file did not run under Code Mode auto-approve: err=%v content=%q", err, b)
 	}
 }
 

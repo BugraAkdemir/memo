@@ -553,3 +553,46 @@ func TestRunStream_AutoContinueExhausted(t *testing.T) {
 		t.Errorf("ChatCompletion calls = %d, want 4 (maxIters 2 x (1 + 1 continuation))", prov.calls)
 	}
 }
+
+// TestRunStream_AutoApproveMedium: with autoApproveMedium set (Code Mode), a
+// Medium-danger tool like write_file executes without a permission prompt —
+// no permissionWaitFn is provided and the pipeline must not block or panic
+// waiting for one.
+func TestRunStream_AutoApproveMedium(t *testing.T) {
+	dir := t.TempDir()
+	registry := NewRegistry()
+	permissions := NewPermissionManager(t.TempDir())
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+	backup := NewBackupManager(t.TempDir())
+
+	prov := &scriptedProvider{responses: []provider.ChatResponse{
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "w1", "write_file", map[string]string{
+			"path": "out.txt", "content": "hello from code mode",
+		})}},
+		{Content: "wrote it"},
+	}}
+
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, backup)
+	pipeline.autoApproveMedium = true // no autoPermission, no bypass
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "m", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream: %v", err)
+	}
+	var text string
+	sawDenied := false
+	for c := range ch {
+		text += c.Content
+		if c.Error != "" {
+			text += c.Error
+		}
+	}
+	_ = sawDenied
+	if !strings.Contains(text, "wrote it") {
+		t.Fatalf("turn did not complete cleanly: %q", text)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "out.txt"))
+	if err != nil || string(data) != "hello from code mode" {
+		t.Fatalf("write_file did not run under autoApproveMedium: err=%v data=%q", err, data)
+	}
+}

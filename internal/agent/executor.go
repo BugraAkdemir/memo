@@ -323,6 +323,18 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 		}
 		pipeline.maxContinuations = mc
 	}
+	// Per-turn overrides (Code Mode): higher loop ceilings, and edits flow
+	// without a permission prompt. Applied last so they win over the
+	// executor-wide defaults.
+	if o := turnOverridesFromCtx(ctx); o != (TurnOverrides{}) {
+		if o.MaxIters > 0 {
+			pipeline.maxIters = o.MaxIters
+		}
+		if o.MaxContinuations > 0 {
+			pipeline.maxContinuations = o.MaxContinuations
+		}
+		pipeline.autoApproveMedium = o.AutoApproveMedium
+	}
 	// Read through the locked getters, not the bare fields — SetBypassPermissions/
 	// SetAutoPermission write under e.mu from a different goroutine (an HTTP
 	// handler), and a plain field read here has no happens-before guarantee with

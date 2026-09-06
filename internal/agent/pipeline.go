@@ -47,23 +47,24 @@ type AgentProvider interface {
 
 // Pipeline orchestrates the interaction between the LLM and tools.
 type Pipeline struct {
-	registry           *ToolRegistry
-	permissions        *PermissionManager
-	sandbox            *Sandbox
-	prov               AgentProvider
-	maxIters           int
-	maxContinuations   int // auto-"keep going" restarts allowed after hitting maxIters (0 = hard stop)
-	backup             *BackupManager
-	maxTokens          int           // context window token budget for this turn (0 = unlimited)
-	toolTimeout        time.Duration // max time per tool execution (0 = no limit)
-	bypassPermissions  bool          // sistem yönetimi açıkken tüm izinleri otomatik onayla
-	autoPermission     bool          // kullanıcı Shift+Tab ile açtığında tüm izinleri otomatik onayla
+	registry          *ToolRegistry
+	permissions       *PermissionManager
+	sandbox           *Sandbox
+	prov              AgentProvider
+	maxIters          int
+	maxContinuations  int  // auto-"keep going" restarts allowed after hitting maxIters (0 = hard stop)
+	autoApproveMedium bool // Code Mode: approve Medium-danger tools (edits) without a prompt
+	backup            *BackupManager
+	maxTokens         int           // context window token budget for this turn (0 = unlimited)
+	toolTimeout       time.Duration // max time per tool execution (0 = no limit)
+	bypassPermissions bool          // sistem yönetimi açıkken tüm izinleri otomatik onayla
+	autoPermission    bool          // kullanıcı Shift+Tab ile açtığında tüm izinleri otomatik onayla
 	// autoPermissionFn, when set, is consulted live at every permission check
 	// so a toggle made DURING a long agentic loop takes effect on the next
 	// tool call instead of only on the next turn (the struct copy above is
 	// snapshotted once at RunStream construction). Executor.RunStream wires
 	// this to e.GetAutoPermission.
-	autoPermissionFn   func() bool
+	autoPermissionFn func() bool
 
 	// effortLevel is the active provider's resolved EffortLevel for this
 	// run (see provider.ChatRequest.EffortLevel's doc comment) — set by the
@@ -161,298 +162,308 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		continuations := 0
 	restart:
 		for iteration := 0; iteration < p.maxIters; iteration++ {
-		iters++ // cumulative across auto-continue passes
-		// Check context cancellation
-		select {
-		case <-ctx.Done():
-			logContext("cancelled")
-			trySend(ctx, outCh, provider.StreamChunk{Error: "Agent execution cancelled", Done: true, Usage: termUsage()})
-			return
-		default:
-		}
-
-		// Define request
-		req := provider.ChatRequest{
-			Model:       modelName,
-			Messages:    currentMessages,
-			Temperature: 0.2,
-			Tools:       p.registry.ToOpenAITools(),
-			Stream:      false,
-			EffortLevel: p.effortLevel,
-		}
-
-		// Call LLM
-		resp, err := p.prov.ChatCompletion(ctx, req)
-		if err != nil {
-			logx.Printf("AGENT: ChatCompletion error: %v", err)
-			logContext("error")
-			trySend(ctx, outCh, provider.StreamChunk{Error: fmt.Sprintf("LLM Error: %v", err), Done: true, Usage: termUsage()})
-			return
-		}
-
-		if resp.Usage != nil {
-			totalUsage.PromptTokens += resp.Usage.PromptTokens
-			totalUsage.CompletionTokens += resp.Usage.CompletionTokens
-			totalUsage.TotalTokens += resp.Usage.TotalTokens
-			if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 {
-				sawUsage = true
+			iters++ // cumulative across auto-continue passes
+			// Check context cancellation
+			select {
+			case <-ctx.Done():
+				logContext("cancelled")
+				trySend(ctx, outCh, provider.StreamChunk{Error: "Agent execution cancelled", Done: true, Usage: termUsage()})
+				return
+			default:
 			}
-			if firstPromptTok == 0 && resp.Usage.PromptTokens > 0 {
-				firstPromptTok = resp.Usage.PromptTokens
+
+			// Define request
+			req := provider.ChatRequest{
+				Model:       modelName,
+				Messages:    currentMessages,
+				Temperature: 0.2,
+				Tools:       p.registry.ToOpenAITools(),
+				Stream:      false,
+				EffortLevel: p.effortLevel,
 			}
-		}
 
-		// If no tool calls, we are done
-		if len(resp.ToolCalls) == 0 {
-			content := stripHallucinatedToolSyntax(resp.Content)
-			if content != "" {
-				trySend(ctx, outCh, provider.StreamChunk{Content: content})
+			// Call LLM
+			resp, err := p.prov.ChatCompletion(ctx, req)
+			if err != nil {
+				logx.Printf("AGENT: ChatCompletion error: %v", err)
+				logContext("error")
+				trySend(ctx, outCh, provider.StreamChunk{Error: fmt.Sprintf("LLM Error: %v", err), Done: true, Usage: termUsage()})
+				return
 			}
-			onEvent(AgentEvent{Type: EventFinalResponse, Content: content})
-			logContext("stop")
-			trySend(ctx, outCh, provider.StreamChunk{Done: true, FinishReason: "stop", Usage: termUsage()})
-			return
-		}
 
-		// Add assistant message with tool_calls to history
-		assistantMsg := provider.Message{
-			Role:      "assistant",
-			Content:   resp.Content,
-			ToolCalls: resp.ToolCalls,
-		}
-		currentMessages = append(currentMessages, assistantMsg)
-
-		// Snapshot basePath once per iteration to avoid repeated mutex acquisitions.
-		basePath := p.sandbox.GetBasePath()
-
-		// Enforce context token budget: if currentMessages exceeds maxTokens,
-		// drop oldest assistant+tool message pairs, keeping system prompt and
-		// the most recent turn. This prevents unbounded message growth when
-		// many tool calls are made across iterations.
-		if p.maxTokens > 0 {
-			truncMsgs := make([]truncate.Message, len(currentMessages))
-			for i, m := range currentMessages {
-				var content string
-				if s, ok := m.Content.(string); ok {
-					content = s
+			if resp.Usage != nil {
+				totalUsage.PromptTokens += resp.Usage.PromptTokens
+				totalUsage.CompletionTokens += resp.Usage.CompletionTokens
+				totalUsage.TotalTokens += resp.Usage.TotalTokens
+				if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 {
+					sawUsage = true
 				}
-				truncMsgs[i] = truncate.Message{Role: m.Role, Content: content, Index: i}
-			}
-			truncMsgs = truncate.TruncateMessages(truncMsgs, p.maxTokens)
-			// Recover original messages by position (Index), not content equality.
-			// Rebuilding from truncate.Message would strip ToolCalls, causing
-			// orphaned tool-role messages and LLM API rejections. Matching on
-			// content (the old approach) is unsafe because distinct tool
-			// results can share identical text (e.g. two calls both returning
-			// "OK"), which could truncate the wrong message.
-			kept := make(map[int]struct{}, len(truncMsgs))
-			for _, tm := range truncMsgs {
-				kept[tm.Index] = struct{}{}
-			}
-			// Note which tools' outputs are being dropped so the model gets a
-			// one-line marker instead of silently losing them and blindly
-			// re-running the same reads a few iterations later.
-			for i, m := range currentMessages {
-				if _, ok := kept[i]; ok {
-					continue
+				if firstPromptTok == 0 && resp.Usage.PromptTokens > 0 {
+					firstPromptTok = resp.Usage.PromptTokens
 				}
-				for _, tc := range m.ToolCalls {
-					if n := tc.Function.Name; n != "" && !evictedSeen[n] {
-						evictedSeen[n] = true
-						evictedTools = append(evictedTools, n)
+			}
+
+			// If no tool calls, we are done
+			if len(resp.ToolCalls) == 0 {
+				content := stripHallucinatedToolSyntax(resp.Content)
+				if content != "" {
+					trySend(ctx, outCh, provider.StreamChunk{Content: content})
+				}
+				onEvent(AgentEvent{Type: EventFinalResponse, Content: content})
+				logContext("stop")
+				trySend(ctx, outCh, provider.StreamChunk{Done: true, FinishReason: "stop", Usage: termUsage()})
+				return
+			}
+
+			// Add assistant message with tool_calls to history
+			assistantMsg := provider.Message{
+				Role:      "assistant",
+				Content:   resp.Content,
+				ToolCalls: resp.ToolCalls,
+			}
+			currentMessages = append(currentMessages, assistantMsg)
+
+			// Snapshot basePath once per iteration to avoid repeated mutex acquisitions.
+			basePath := p.sandbox.GetBasePath()
+
+			// Enforce context token budget: if currentMessages exceeds maxTokens,
+			// drop oldest assistant+tool message pairs, keeping system prompt and
+			// the most recent turn. This prevents unbounded message growth when
+			// many tool calls are made across iterations.
+			if p.maxTokens > 0 {
+				truncMsgs := make([]truncate.Message, len(currentMessages))
+				for i, m := range currentMessages {
+					var content string
+					if s, ok := m.Content.(string); ok {
+						content = s
+					}
+					truncMsgs[i] = truncate.Message{Role: m.Role, Content: content, Index: i}
+				}
+				truncMsgs = truncate.TruncateMessages(truncMsgs, p.maxTokens)
+				// Recover original messages by position (Index), not content equality.
+				// Rebuilding from truncate.Message would strip ToolCalls, causing
+				// orphaned tool-role messages and LLM API rejections. Matching on
+				// content (the old approach) is unsafe because distinct tool
+				// results can share identical text (e.g. two calls both returning
+				// "OK"), which could truncate the wrong message.
+				kept := make(map[int]struct{}, len(truncMsgs))
+				for _, tm := range truncMsgs {
+					kept[tm.Index] = struct{}{}
+				}
+				// Note which tools' outputs are being dropped so the model gets a
+				// one-line marker instead of silently losing them and blindly
+				// re-running the same reads a few iterations later.
+				for i, m := range currentMessages {
+					if _, ok := kept[i]; ok {
+						continue
+					}
+					for _, tc := range m.ToolCalls {
+						if n := tc.Function.Name; n != "" && !evictedSeen[n] {
+							evictedSeen[n] = true
+							evictedTools = append(evictedTools, n)
+						}
 					}
 				}
-			}
-			filtered := make([]provider.Message, 0, len(truncMsgs)+1)
-			stubInserted := false
-			for _, tm := range truncMsgs {
-				if tm.Index < 0 || tm.Index >= len(currentMessages) {
-					continue
+				filtered := make([]provider.Message, 0, len(truncMsgs)+1)
+				stubInserted := false
+				for _, tm := range truncMsgs {
+					if tm.Index < 0 || tm.Index >= len(currentMessages) {
+						continue
+					}
+					m := currentMessages[tm.Index]
+					// Drop any earlier trim-marker; a single fresh one covering the
+					// whole evicted set is re-inserted below.
+					if s, ok := m.Content.(string); ok && strings.HasPrefix(s, contextTrimMarker) {
+						continue
+					}
+					filtered = append(filtered, m)
+					if !stubInserted && m.Role == "system" && len(evictedTools) > 0 {
+						filtered = append(filtered, provider.Message{Role: "assistant", Content: evictionStub(evictedTools)})
+						stubInserted = true
+					}
 				}
-				m := currentMessages[tm.Index]
-				// Drop any earlier trim-marker; a single fresh one covering the
-				// whole evicted set is re-inserted below.
-				if s, ok := m.Content.(string); ok && strings.HasPrefix(s, contextTrimMarker) {
-					continue
+				if !stubInserted && len(evictedTools) > 0 {
+					filtered = append([]provider.Message{{Role: "assistant", Content: evictionStub(evictedTools)}}, filtered...)
 				}
-				filtered = append(filtered, m)
-				if !stubInserted && m.Role == "system" && len(evictedTools) > 0 {
-					filtered = append(filtered, provider.Message{Role: "assistant", Content: evictionStub(evictedTools)})
-					stubInserted = true
-				}
-			}
-			if !stubInserted && len(evictedTools) > 0 {
-				filtered = append([]provider.Message{{Role: "assistant", Content: evictionStub(evictedTools)}}, filtered...)
-			}
-			currentMessages = filtered
-		}
-
-		// Execute each tool call
-		for _, tc := range resp.ToolCalls {
-			// Some local models omit the tool_call_id field. Generate a fallback so
-			// the assistant + tool message pair is always well-formed.
-			if tc.ID == "" {
-				tc.ID = generateID()
+				currentMessages = filtered
 			}
 
-			toolName := tc.Function.Name
-			args := tc.Function.Arguments
-
-			// Fix double-encoded JSON args (some LLMs return string inside string)
-			args = fixJSONArgs(args)
-
-			// Ensure tool exists
-			toolDef, ok := p.registry.Get(toolName)
-			if !ok {
-				errMsg := fmt.Sprintf("Unknown tool: %s", toolName)
-				onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: errMsg})
-				currentMessages = append(currentMessages, provider.Message{
-					Role:       "tool",
-					ToolCallID: tc.ID,
-					Content:    fmt.Sprintf("Error: %s", errMsg),
-				})
-				continue
-			}
-
-			// Check Rate Limit
-			if err := p.sandbox.RateLimit(toolName, hashArgs(args)); err != nil {
-				onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: err.Error()})
-				currentMessages = append(currentMessages, provider.Message{
-					Role:       "tool",
-					ToolCallID: tc.ID,
-					Content:    fmt.Sprintf("Error: %s", err.Error()),
-				})
-				continue
-			}
-
-			// Check Permission
-			permRes := p.permissions.Check(toolName, args, toolDef.DangerLevel)
-
-			// Sistem yönetimi modunda izin ekranı çıkmaz — tüm tool'lar otomatik onaylanır.
-			if p.bypassPermissions {
-				logx.Printf("AGENT: [BYPASS] auto-approving %q (system management mode; prompt_required=%v)", toolName, permRes.NeedPrompt)
-				permRes.NeedPrompt = false
-				permRes.Allowed = true
-			}
-
-			// Shift+Tab auto-permission modunda da izin ekranı çıkmaz. Read it
-			// live (autoPermissionFn) as well as from the construction-time
-			// snapshot, so enabling it mid-loop applies to the very next tool
-			// call rather than only the next turn.
-			autoNow := p.autoPermission
-			if !autoNow && p.autoPermissionFn != nil {
-				autoNow = p.autoPermissionFn()
-			}
-			if autoNow {
-				logx.Printf("AGENT: [AUTO] auto-approving %q (auto-permission mode; prompt_required=%v)", toolName, permRes.NeedPrompt)
-				permRes.NeedPrompt = false
-				permRes.Allowed = true
-			}
-
-			if permRes.NeedPrompt {
-				var preview string
-				if toolDef.PreviewFn != nil {
-					preview, _ = toolDef.PreviewFn(args, basePath)
+			// Execute each tool call
+			for _, tc := range resp.ToolCalls {
+				// Some local models omit the tool_call_id field. Generate a fallback so
+				// the assistant + tool message pair is always well-formed.
+				if tc.ID == "" {
+					tc.ID = generateID()
 				}
 
-				reqID := generateID()
-				ev := AgentEvent{
-					Type:        EventPermissionRequest,
-					RequestID:   reqID,
-					ToolName:    toolName,
-					Args:        args,
-					DangerLevel: toolDef.DangerLevel,
-					Preview:     preview,
-				}
-				onEvent(ev)
+				toolName := tc.Function.Name
+				args := tc.Function.Arguments
 
-				policy, err := permissionWaitFn(reqID, ev)
-				if err != nil {
-					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: "Permission wait cancelled"})
-					// Append a stub tool response for this call so the assistant
-					// message's ToolCalls list stays well-formed. Then stub out any
-					// remaining calls in this batch before returning.
+				// Fix double-encoded JSON args (some LLMs return string inside string)
+				args = fixJSONArgs(args)
+
+				// Ensure tool exists
+				toolDef, ok := p.registry.Get(toolName)
+				if !ok {
+					errMsg := fmt.Sprintf("Unknown tool: %s", toolName)
+					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: errMsg})
 					currentMessages = append(currentMessages, provider.Message{
 						Role:       "tool",
 						ToolCallID: tc.ID,
-						Content:    "Error: permission request cancelled",
+						Content:    fmt.Sprintf("Error: %s", errMsg),
 					})
-					for _, remaining := range resp.ToolCalls {
-						if remaining.ID == tc.ID {
-							continue
-						}
-						id := remaining.ID
-						if id == "" {
-							id = generateID()
-						}
-						currentMessages = append(currentMessages, provider.Message{
-							Role:       "tool",
-							ToolCallID: id,
-							Content:    "Error: earlier permission request cancelled",
-						})
-					}
-					trySend(ctx, outCh, provider.StreamChunk{Error: "Agent execution cancelled (permission timeout)", Done: true})
-					return
+					continue
 				}
 
-				p.permissions.HandleResponse(toolName, args, policy)
+				// Check Rate Limit
+				if err := p.sandbox.RateLimit(toolName, hashArgs(args)); err != nil {
+					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: err.Error()})
+					currentMessages = append(currentMessages, provider.Message{
+						Role:       "tool",
+						ToolCallID: tc.ID,
+						Content:    fmt.Sprintf("Error: %s", err.Error()),
+					})
+					continue
+				}
 
-				if policy == DenyOnce || policy == DenyForever {
-					permRes.Allowed = false
-				} else {
+				// Check Permission
+				permRes := p.permissions.Check(toolName, args, toolDef.DangerLevel)
+
+				// Sistem yönetimi modunda izin ekranı çıkmaz — tüm tool'lar otomatik onaylanır.
+				if p.bypassPermissions {
+					logx.Printf("AGENT: [BYPASS] auto-approving %q (system management mode; prompt_required=%v)", toolName, permRes.NeedPrompt)
+					permRes.NeedPrompt = false
 					permRes.Allowed = true
 				}
-			}
 
-			if !permRes.Allowed {
-				// Clear DenyOnce so the user is prompted again on the next identical call.
+				// Shift+Tab auto-permission modunda da izin ekranı çıkmaz. Read it
+				// live (autoPermissionFn) as well as from the construction-time
+				// snapshot, so enabling it mid-loop applies to the very next tool
+				// call rather than only the next turn.
+				autoNow := p.autoPermission
+				if !autoNow && p.autoPermissionFn != nil {
+					autoNow = p.autoPermissionFn()
+				}
+				if autoNow {
+					logx.Printf("AGENT: [AUTO] auto-approving %q (auto-permission mode; prompt_required=%v)", toolName, permRes.NeedPrompt)
+					permRes.NeedPrompt = false
+					permRes.Allowed = true
+				}
+
+				// Code Mode: Medium-danger tools (file edits/writes) flow without a
+				// prompt — every write is snapshotted by the BackupManager and
+				// revertible, and opening a project chat is the consent. Dangerous
+				// tools (delete_file, run_command, change_directory) are untouched.
+				if permRes.NeedPrompt && p.autoApproveMedium && toolDef.DangerLevel == Medium {
+					logx.Printf("AGENT: [CODE] auto-approving %q (code-mode edits; danger=medium)", toolName)
+					permRes.NeedPrompt = false
+					permRes.Allowed = true
+				}
+
+				if permRes.NeedPrompt {
+					var preview string
+					if toolDef.PreviewFn != nil {
+						preview, _ = toolDef.PreviewFn(args, basePath)
+					}
+
+					reqID := generateID()
+					ev := AgentEvent{
+						Type:        EventPermissionRequest,
+						RequestID:   reqID,
+						ToolName:    toolName,
+						Args:        args,
+						DangerLevel: toolDef.DangerLevel,
+						Preview:     preview,
+					}
+					onEvent(ev)
+
+					policy, err := permissionWaitFn(reqID, ev)
+					if err != nil {
+						onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: "Permission wait cancelled"})
+						// Append a stub tool response for this call so the assistant
+						// message's ToolCalls list stays well-formed. Then stub out any
+						// remaining calls in this batch before returning.
+						currentMessages = append(currentMessages, provider.Message{
+							Role:       "tool",
+							ToolCallID: tc.ID,
+							Content:    "Error: permission request cancelled",
+						})
+						for _, remaining := range resp.ToolCalls {
+							if remaining.ID == tc.ID {
+								continue
+							}
+							id := remaining.ID
+							if id == "" {
+								id = generateID()
+							}
+							currentMessages = append(currentMessages, provider.Message{
+								Role:       "tool",
+								ToolCallID: id,
+								Content:    "Error: earlier permission request cancelled",
+							})
+						}
+						trySend(ctx, outCh, provider.StreamChunk{Error: "Agent execution cancelled (permission timeout)", Done: true})
+						return
+					}
+
+					p.permissions.HandleResponse(toolName, args, policy)
+
+					if policy == DenyOnce || policy == DenyForever {
+						permRes.Allowed = false
+					} else {
+						permRes.Allowed = true
+					}
+				}
+
+				if !permRes.Allowed {
+					// Clear DenyOnce so the user is prompted again on the next identical call.
+					p.permissions.ClearOnce(toolName, args)
+					onEvent(AgentEvent{Type: EventPermissionDenied, ToolName: toolName, Args: args})
+					currentMessages = append(currentMessages, provider.Message{
+						Role:       "tool",
+						ToolCallID: tc.ID,
+						Content:    "Error: User denied permission to execute this tool.",
+					})
+					continue
+				}
+
+				// Execute! Args ride along like they do on every other event here —
+				// the task card renders this one as the "starting" line for slow
+				// tools and printed a bare "Komut …" while it was empty. (This is
+				// the emission the agent loop actually uses; ExecuteToolCall has
+				// its own, fixed the same way.)
+				onEvent(AgentEvent{Type: EventToolExecuting, ToolName: toolName, Args: args, DangerLevel: toolDef.DangerLevel})
+
+				start := time.Now()
+				toolCtx := ctx
+				var toolCancel context.CancelFunc
+				if p.toolTimeout > 0 {
+					toolCtx, toolCancel = context.WithTimeout(ctx, p.toolTimeout)
+				}
+				result, err := p.registry.Execute(toolCtx, toolName, args, basePath, p.backup.CreateBackup)
+				if toolCancel != nil {
+					toolCancel()
+				}
+				duration := time.Since(start).Milliseconds()
+
 				p.permissions.ClearOnce(toolName, args)
-				onEvent(AgentEvent{Type: EventPermissionDenied, ToolName: toolName, Args: args})
-				currentMessages = append(currentMessages, provider.Message{
-					Role:       "tool",
-					ToolCallID: tc.ID,
-					Content:    "Error: User denied permission to execute this tool.",
-				})
-				continue
-			}
 
-			// Execute! Args ride along like they do on every other event here —
-			// the task card renders this one as the "starting" line for slow
-			// tools and printed a bare "Komut …" while it was empty. (This is
-			// the emission the agent loop actually uses; ExecuteToolCall has
-			// its own, fixed the same way.)
-			onEvent(AgentEvent{Type: EventToolExecuting, ToolName: toolName, Args: args, DangerLevel: toolDef.DangerLevel})
-
-			start := time.Now()
-			toolCtx := ctx
-			var toolCancel context.CancelFunc
-			if p.toolTimeout > 0 {
-				toolCtx, toolCancel = context.WithTimeout(ctx, p.toolTimeout)
+				if err != nil {
+					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Args: args, Error: err.Error(), DurationMs: duration})
+					currentMessages = append(currentMessages, provider.Message{
+						Role:       "tool",
+						ToolCallID: tc.ID,
+						Content:    fmt.Sprintf("Execution Error: %v", err),
+					})
+				} else {
+					onEvent(AgentEvent{Type: EventToolResult, ToolName: toolName, Args: args, Result: result, DurationMs: duration})
+					currentMessages = append(currentMessages, provider.Message{
+						Role:       "tool",
+						ToolCallID: tc.ID,
+						Content:    result,
+					})
+				}
 			}
-			result, err := p.registry.Execute(toolCtx, toolName, args, basePath, p.backup.CreateBackup)
-			if toolCancel != nil {
-				toolCancel()
-			}
-			duration := time.Since(start).Milliseconds()
-
-			p.permissions.ClearOnce(toolName, args)
-
-			if err != nil {
-				onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Args: args, Error: err.Error(), DurationMs: duration})
-				currentMessages = append(currentMessages, provider.Message{
-					Role:       "tool",
-					ToolCallID: tc.ID,
-					Content:    fmt.Sprintf("Execution Error: %v", err),
-				})
-			} else {
-				onEvent(AgentEvent{Type: EventToolResult, ToolName: toolName, Args: args, Result: result, DurationMs: duration})
-				currentMessages = append(currentMessages, provider.Message{
-					Role:       "tool",
-					ToolCallID: tc.ID,
-					Content:    result,
-				})
-			}
-		}
 		}
 
 		// Reaching here means every one of this pass's iterations issued tool

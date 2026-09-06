@@ -37,6 +37,13 @@ func TestDefaultValues(t *testing.T) {
 	if cfg.AgentMode.TurnBudgetSecs != 1200 {
 		t.Errorf("AgentMode.TurnBudgetSecs = %d, want 1200", cfg.AgentMode.TurnBudgetSecs)
 	}
+	if cfg.AgentMode.CodeModeMaxIterations != 80 || cfg.AgentMode.CodeModeMaxContinuations != 3 {
+		t.Errorf("AgentMode CodeMode loop bounds = %d/%d, want 80/3",
+			cfg.AgentMode.CodeModeMaxIterations, cfg.AgentMode.CodeModeMaxContinuations)
+	}
+	if !cfg.AgentMode.CodeModeAutoApproveEdits {
+		t.Error("AgentMode.CodeModeAutoApproveEdits should default true")
+	}
 	if !cfg.AgentMode.WorkingSetEnabled || !cfg.AgentMode.ConversationCompactEnabled {
 		t.Errorf("AgentMode working-set/compact should default on")
 	}

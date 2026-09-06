@@ -303,6 +303,21 @@ type AgentModeConfig struct {
 	// nudge instead of stopping with "task may be incomplete". 0 disables
 	// (hard stop at MaxIterations, the old behaviour). Default 2.
 	MaxContinuations int `yaml:"max_continuations" json:"max_continuations"`
+
+	// CodeModeMaxIterations / CodeModeMaxContinuations replace MaxIterations /
+	// MaxContinuations for a turn running in Code Mode (a project/agent chat's
+	// coding preset) — coding tasks are long, and Code Mode has no chat cruft
+	// competing for the budget. Defaults 80 / 3. <=0 falls back to the
+	// non-Code-Mode value.
+	CodeModeMaxIterations    int `yaml:"code_mode_max_iterations" json:"code_mode_max_iterations"`
+	CodeModeMaxContinuations int `yaml:"code_mode_max_continuations" json:"code_mode_max_continuations"`
+	// CodeModeAutoApproveEdits: in Code Mode, auto-approve Medium-danger tools
+	// (write_file / edit_file / insert_line / delete_lines / *_task_md) without
+	// a permission prompt — every write is snapshotted by the BackupManager
+	// and revertible, and opening a project chat is the consent. Dangerous
+	// tools (delete_file, run_command, change_directory) still prompt. Default
+	// true.
+	CodeModeAutoApproveEdits bool `yaml:"code_mode_auto_approve_edits" json:"code_mode_auto_approve_edits"`
 }
 
 // BrowserConfig controls the optional headless-browser fallback
@@ -964,6 +979,9 @@ func Default() *AppConfig {
 			MaxIterations:              40,
 			TurnBudgetSecs:             1200,
 			MaxContinuations:           2,
+			CodeModeMaxIterations:      80,
+			CodeModeMaxContinuations:   3,
+			CodeModeAutoApproveEdits:   true,
 		},
 		Browser: BrowserConfig{
 			// Off by default — a fresh browser per fetch, closed
@@ -1202,6 +1220,9 @@ func (c *AppConfig) validate() []string {
 		c.AgentMode.CompactThresholdPct = 60
 		c.AgentMode.TurnBudgetSecs = 1200
 		c.AgentMode.MaxContinuations = 2
+		c.AgentMode.CodeModeMaxIterations = 80
+		c.AgentMode.CodeModeMaxContinuations = 3
+		c.AgentMode.CodeModeAutoApproveEdits = true
 		fixes = append(fixes, "AgentMode.WorkingSet")
 	}
 	if c.AgentMode.MaxContinuations < 0 {

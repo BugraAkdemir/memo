@@ -336,6 +336,20 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			}
 		}
 
+		// Code Mode raises the loop ceilings (coding tasks are long, and the
+		// turn has no chat cruft eating the budget) and lets file edits flow
+		// without a permission prompt.
+		if codeModeActive(ctx) {
+			a.cfgMu.RLock()
+			am := a.cfg.AgentMode
+			a.cfgMu.RUnlock()
+			turnCtx = agent.WithTurnOverrides(turnCtx, agent.TurnOverrides{
+				MaxIters:          am.CodeModeMaxIterations,
+				MaxContinuations:  am.CodeModeMaxContinuations,
+				AutoApproveMedium: am.CodeModeAutoApproveEdits,
+			})
+		}
+
 		streamCh, err := exec.RunStream(turnCtx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
 			agentEvents.add(ev)
 			a.recordWorkingSetEvent(sessionID, ev)

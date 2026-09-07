@@ -139,8 +139,9 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 	// physically present but invisible to us because nvidia-smi/rocm-smi
 	// isn't on PATH (containers, fresh driver installs) — and today the only
 	// trace of that is a debug line nobody reads. Say so once, loudly, with
-	// the fix.
-	if (mode == "" || mode == "auto") && s.gpu.Type == GPUTypeCPU {
+	// the fix. Only for the chat model start — the embedding server is a
+	// CPU-by-default sidecar and would just double the line.
+	if !embedding && (mode == "" || mode == "auto") && s.gpu.Type == GPUTypeCPU {
 		logx.Printf("llama: no GPU acceleration detected — running on CPU. " +
 			"If this machine has an NVIDIA/AMD GPU, ensure nvidia-smi/rocm-smi is on " +
 			"PATH, or set llama.engine_mode (nvidia|amd) in config.yaml to force it.")
@@ -204,9 +205,10 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		"--parallel", "1",
 	}
 	// On pure-CPU inference with a hyperthreaded CPU, pin --threads to the
-	// physical core count. llama.cpp's own default is
+	// physical core count — for both the chat model and the CPU-by-default
+	// embedding sidecar. llama.cpp's own default is
 	// std::thread::hardware_concurrency() (== logical CPUs), which
-	// over-subscribes a compute-bound decode — the sibling hyperthreads just
+	// over-subscribes a compute-bound decode: the sibling hyperthreads just
 	// fight over the same execution units. No-op (flag omitted, llama.cpp
 	// default stands) when layers are GPU-offloaded, when there's no SMT, or
 	// when the physical count can't be read (see serverThreads).
@@ -230,35 +232,39 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		// mode relies on when running against a local model.
 		args = append(args, "--jinja")
 
-		// Fail loudly instead of silently corrupting. When the KV context
-		// fills, llama.cpp's context-shift discards the oldest half — which
-		// in Memo's prompt layout is the system / agent-instruction block,
-		// so generation quietly continues against a truncated persona and
-		// toolset. Memo already trims history to fit --ctx-size in
-		// buildMessagesForSession, so in normal use this never triggers;
-		// when it does (a single oversized message, or the len/3 token
-		// estimate undershooting) the user gets a clear "context exceeded"
-		// error rather than a subtly wrong answer. Stable llama-server flag,
-		// takes no value — safe to pass unprobed.
-		args = append(args, "--no-context-shift")
+		// Perf/behaviour tuning flags — passed only when this specific binary
+		// is probed to accept all of them (see tuningFlagsSupported; an
+		// unrecognized flag would make llama-server exit at arg-parsing and
+		// the model would never start). One probe, cached per binary path.
+		if tuningFlagsSupported(bin) {
+			// Fail loudly instead of silently corrupting. When the KV context
+			// fills, llama.cpp's context-shift discards the oldest half —
+			// which in Memo's prompt layout is the system / agent-instruction
+			// block, so generation quietly continues against a truncated
+			// persona and toolset. Memo already trims history to fit the
+			// server's real --ctx-size in buildMessagesForSession, so in
+			// normal use this never triggers; when it does (a single
+			// oversized message, or the len/3 token estimate undershooting)
+			// the user gets a clear "context exceeded" error rather than a
+			// subtly wrong answer.
+			args = append(args, "--no-context-shift")
 
-		// Let the server reuse cached KV blocks even when a chunk in the
-		// middle of the prompt changed (e.g. a memory-retrieval result
-		// shifted but the conversation after it is byte-identical), not just
-		// a clean common prefix. 256 is llama.cpp's own suggested minimum
-		// reuse chunk. Pure upside for prompt-processing latency on repeated
-		// turns.
-		args = append(args, "--cache-reuse", "256")
+			// Let the server reuse cached KV blocks even when a chunk in the
+			// middle of the prompt changed (e.g. a memory-retrieval result
+			// shifted but the conversation after it is byte-identical), not
+			// just a clean common prefix. 256 is llama.cpp's own suggested
+			// minimum reuse chunk. Pure upside for prompt-processing latency
+			// on repeated turns.
+			args = append(args, "--cache-reuse", "256")
 
-		// Flash attention: a large, free speedup on GPU and roughly halves
-		// KV-cache memory (which in turn lets more layers fit — see
-		// autoGPULayers). Only when layers are actually offloaded (pointless,
-		// occasionally slower, on pure CPU) and only when this specific
-		// binary is probed to accept the flag (spelling has drifted across
-		// llama.cpp releases — see flashAttnSupported). Not applied on the
-		// swarm/RPC path, which has its own tuned invocation.
-		if rpc == nil && actualGPU > 0 && flashAttnSupported(bin) {
-			args = append(args, "--flash-attn")
+			// Flash attention: a large, free speedup on GPU and roughly
+			// halves KV-cache memory (which in turn lets more layers fit —
+			// see autoGPULayers). Only when layers are actually offloaded
+			// (pointless, occasionally slower, on pure CPU) and not on the
+			// swarm/RPC path, which has its own tuned invocation.
+			if rpc == nil && actualGPU > 0 {
+				args = append(args, "--flash-attn")
+			}
 		}
 	}
 
@@ -552,6 +558,19 @@ func (s *Server) pingPort() bool {
 // GetBaseURL returns the OpenAI-compatible API base URL.
 func (s *Server) GetBaseURL() string {
 	return fmt.Sprintf("http://127.0.0.1:%d/v1", s.port)
+}
+
+// CtxSize returns the context window the running server was actually
+// launched with — i.e. the requested ctx-size AFTER clampContextSize
+// reduced it to the model's trained maximum. Callers that assemble prompts
+// must budget against THIS, not config.Llama.CtxSize: the two diverge
+// whenever the configured value exceeds what the model supports, and with
+// --no-context-shift an over-budget request is a hard error, not a silent
+// truncation. Returns 0 when no server has been started yet.
+func (s *Server) CtxSize() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ctxSize
 }
 
 // ─── Binary Resolution ──────────────────────────────────────────

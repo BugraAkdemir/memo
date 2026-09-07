@@ -2,7 +2,7 @@ package llama
 
 import "testing"
 
-func TestFlashAttnProbeAccepted(t *testing.T) {
+func TestProbeReachedModelLoad(t *testing.T) {
 	tests := []struct {
 		name   string
 		output string
@@ -10,17 +10,22 @@ func TestFlashAttnProbeAccepted(t *testing.T) {
 	}{
 		{
 			name:   "unknown flag — old or stripped build",
-			output: "error: invalid argument: --flash-attn\nusage: llama-server [options]",
+			output: "error: invalid argument: --cache-reuse\nusage: llama-server [options]",
 			want:   false,
 		},
 		{
-			name:   "flag now requires a value, aborts before model load",
+			name:   "flash-attn now requires a value, aborts before model load",
 			output: "error while handling argument \"--flash-attn\": expected value\n",
 			want:   false,
 		},
 		{
+			name:   "no-context-shift unrecognized",
+			output: "main: error: unrecognized argument: --no-context-shift\n",
+			want:   false,
+		},
+		{
 			name:   "accepted — reached model load and failed on the probe path",
-			output: "llama_model_load: error loading model: failed to open __memo_fa_probe_nonexistent__.gguf\n",
+			output: "llama_model_load: error loading model: failed to open __memo_tuning_probe_nonexistent__.gguf\n",
 			want:   true,
 		},
 		{
@@ -30,7 +35,7 @@ func TestFlashAttnProbeAccepted(t *testing.T) {
 		},
 		{
 			name:   "accepted — no such file",
-			output: "gguf_init_from_file: failed to open '__memo_fa_probe_nonexistent__.gguf': No such file or directory\n",
+			output: "gguf_init_from_file: failed to open '__memo_tuning_probe_nonexistent__.gguf': No such file or directory\n",
 			want:   true,
 		},
 		{
@@ -46,8 +51,8 @@ func TestFlashAttnProbeAccepted(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := flashAttnProbeAccepted(tt.output); got != tt.want {
-				t.Errorf("flashAttnProbeAccepted(%q) = %v, want %v", tt.output, got, tt.want)
+			if got := probeReachedModelLoad(tt.output); got != tt.want {
+				t.Errorf("probeReachedModelLoad(%q) = %v, want %v", tt.output, got, tt.want)
 			}
 		})
 	}

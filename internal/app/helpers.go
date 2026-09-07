@@ -224,25 +224,27 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		if maxLocal <= 0 {
 			maxLocal = 8192
 		}
+		// The server was launched with clampContextSize(cfg.CtxSize) — reduced
+		// to the model's trained max whenever the configured value was too
+		// large. Budget against THAT real window, not the config: with
+		// --no-context-shift an over-window request is a hard error, not a
+		// silent truncation, and cfg.CtxSize can legitimately exceed it (a
+		// global setting kept while a smaller model is loaded).
+		if realCtx := a.llamaServer.CtxSize(); realCtx > 0 && realCtx < maxLocal {
+			maxLocal = realCtx
+		}
 		if maxContextTokens > 0 && maxContextTokens < maxLocal {
 			tokenBudget = maxContextTokens
 		} else {
 			tokenBudget = maxLocal
 		}
-		// Keep the assembled prompt a margin below the local server's hard
-		// --ctx-size wall. truncate.EstimateTokens is len/3, which slightly
-		// UNDER-counts token-dense text (Turkish, code), so a request this
-		// budget rates as "exactly fits" can still cross n_ctx once the
-		// server really tokenizes it. That used to be masked by llama.cpp
-		// context-shift silently dropping the oldest tokens; the server now
-		// runs with --no-context-shift (a truncated system prompt is worse
-		// than a clean error), so an over-tight budget would turn a normal
-		// full-context chat into a hard failure. ~5%, min 256 tokens.
-		if margin := maxLocal / 20; margin >= 256 {
-			tokenBudget -= margin
-		} else {
-			tokenBudget -= 256
-		}
+		// Keep the assembled prompt a margin below that wall: truncate.
+		// EstimateTokens is len/3, which slightly UNDER-counts token-dense
+		// text (Turkish, code), so a request this budget rates as "exactly
+		// fits" can still cross n_ctx once the server really tokenizes it —
+		// and under --no-context-shift that is a hard failure, not a silent
+		// trim. ~5%, min 256 tokens.
+		tokenBudget -= max(maxLocal/20, 256)
 		// Agent mode sends the tool schema (agent.ToOpenAITools) alongside
 		// every request as a separate "tools" field, which the model's chat
 		// template folds into the actual prompt it sees — real context-window

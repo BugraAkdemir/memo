@@ -1,9 +1,10 @@
-# Ek (2026-09-07, devam 63) — Local model ayar denetimi: 5 boşluk kapatıldı (1 commit `1f1144e2`)
+# Ek (2026-09-07, devam 63) — Local model ayar denetimi: 8 madde (2 commit `1f1144e2` + `c884de39`)
 
 Kullanıcı: "local model çalıştırırken kullanımı yavaşlatan/bozan eksik ayar var mı,
-/codebase-memory ile düzelt, scout gibi kör noktaları tekrar tara."
+/codebase-memory ile düzelt, scout gibi kör noktaları tekrar tara." → sonra:
+"kalan flag'lenen maddelerin de hepsini sırayla yap; commit tipi perf kalsın."
 
-## Bulgular + fix (`1f1144e2`, `perf(llama,api,frontend)`)
+## 1. tur — denetim + 5 boşluk (`1f1144e2`, `perf(llama,api,frontend)`)
 1. **Flash attention hiç açılmıyordu.** `internal/llama/llama.go` arg listesinde
    `--flash-attn` yoktu. Yeni `internal/llama/flash_probe.go` — `flashAttnSupported(bin)`
    binary başına probe (rpc_probe.go kalıbı; flag yazımı llama.cpp sürümleri
@@ -28,25 +29,52 @@ Kullanıcı: "local model çalıştırırken kullanımı yavaşlatan/bozan eksik
    transport, 240s header timeout (internal/provider ile aynı); toplam süre zaten
    `callLLMStream`'deki 300s ctx ile sınırlı.
 
-## Doğrulama
-`go build/vet/test -tags sqlite_fts5 ./... -race` tam yeşil (49 paket).
-`flutter analyze lib/` sadece 5 pre-existing info (dokunulan dosyalarda 0),
-`flutter test` yeşil, rule-8 grep temiz. Yeni testler: `flashAttnProbeAccepted`
-sınıflandırma (unknown-flag / requires-value / reached-model-load / unknown /
-reject-wins); `autoGPULayers` (sığar / sığmaz / VRAM yok / okunamaz path);
-stream vs non-stream header-timeout ayrımı.
+## 2. tur — flag'lenen 4 madde (`c884de39`, `perf(llama,app)`)
+5. **`--no-context-shift`** chat sunucusuna. KV context dolunca llama.cpp'nin
+   default context-shift'i en eski yarıyı atıyor = Memo'nun düzeninde sistem/
+   agent-talimat bloğu (P11'in llama.cpp seviyesindeki yarısı). Artık temiz
+   "context exceeded" hatası veriyor. `buildMessagesForSession` zaten history'yi
+   `--ctx-size`'a trimliyor; `len/3` token tahmini yoğun metinde (TR/kod) hafif
+   düşük saydığı için oradaki local token bütçesine `--ctx-size`'ın ~%5 / min-256
+   altında pay bırakıldı → normal tam-context sohbet hata vermez.
+6. **`--cache-reuse 256`** chat sunucusuna. Prompt ortasında bir chunk değişip
+   sonrası aynı kalınca (ör. memory-retrieval sonucu kaydı) KV bloklarını yeniden
+   kullandırıyor, sadece temiz prefix değil. `--no-context-shift` ile etkileşimi
+   canlı benchmark'ta doğrulanacak; en kötü ihtimal "hızlanma yok".
+7. **`--threads` = fiziksel çekirdek** (sadece pure-CPU + SMT'li CPU). llama.cpp
+   default'u `hardware_concurrency()` (logical) → compute-bound decode'da
+   over-subscribe. Yeni `serverThreads()` GPU offload / SMT yok / okunamaz iken 0
+   döner (flag atlanır). `physicalCoreCount()` Linux'ta `/proc/cpuinfo`, başka
+   yerde 0.
+8. **GPU tespit edilemedi → tek gür startup log satırı** (engine_mode auto +
+   detection CPU): sebep (nvidia-smi/rocm-smi PATH'te değil) + çözüm
+   (llama.engine_mode). CPU-fallback `GPUInfo.Description` aynı ipucunu taşıyor.
 
-## Değiştirilmedi — ayrı karar gerekiyor (davranış değişikliği, flag'lendi)
-- **llama.cpp default context-shift**: local agent oturumunda `--ctx-size` (default
-  8192) dolunca KV context'in eski yarısını (sistem/agent-talimat bloğu dahil)
-  sessizce atıyor — handoff P11 ile bağlantılı. `--no-context-shift` verip temiz
-  hata almak ya da agent modellerinde default ctx yükseltmek seçenek; ikisi de
-  davranış değişikliği.
-- Chat sunucusuna `--threads` verilmiyor (whisper + swarm worker veriyor).
-- GPU tespiti hâlâ tamamen `nvidia-smi`/`rocm-smi` PATH'te olmaya bağlı; yoksa
-  sessizce tam CPU. `engine_mode: nvidia/amd` config override'ı bypass ediyor ama
-  bunu kullanıcıya söyleyen bir şey yok.
-- KV-cache quant (`--cache-type-k/-v`), `--cache-reuse N` expose edilmemiş (minör).
+## Doğrulama
+- 1. tur: `go build/vet/test -race ./...` tam yeşil (49 paket), `flutter
+  analyze/test` yeşil, rule-8 grep temiz.
+- 2. tur: backend build + vet temiz; `internal/llama` `-race` yeşil; `internal/api`
+  değişmedi/yeşil; `internal/app` — **`TestStartSelfDrivingTaskFromChat_StartsOnAgentChat`
+  HARİÇ** hepsi yeşil. O test pre-existing flaky: self-driving worker goroutine'i
+  test bitince `t.TempDir()` altına yazmaya devam ediyor → `RemoveAll: directory
+  not empty`. Değişikliklerim stash'liyken temiz ağaçta da aynı hata → benim
+  değişikliklerle alakasız (llama/api/frontend'e dokunuyorum, taskloop'a değil).
+- `internal/app/config/config.yaml` yine testlerce kirletildi → `git checkout` ile
+  geri alındı, commit'e dahil edilmedi (devam 61 notu).
+- Yeni testler: `flashAttnProbeAccepted`, `autoGPULayers`, stream/non-stream
+  header-timeout ayrımı, `parseCPUInfoPhysicalCores` (SMT/dual-socket/id-yok/
+  trailing), `serverThreads` matrisi.
+
+## Sıradaki / açık
+- **CANLI BENCHMARK hâlâ yapılmadı** — devam 60'tan beri açık. Bu turda eklenen
+  flag'ler (özellikle `--flash-attn`, `--cache-reuse` + `--no-context-shift`
+  etkileşimi, `--threads`) gerçek GPU + CPU makinede tok/s / TTFT ölçülmeli.
+- `TestStartSelfDrivingTaskFromChat_StartsOnAgentChat` flaky'si duruyor —
+  `newSelfDrivingTaskApp` test helper'ına shutdown/wait plumbing gerekiyor, ayrı
+  iş (taskloop test altyapısı, bu değişikliğin kapsamı dışında).
+- KV-cache quant (`--cache-type-k/-v`) hâlâ expose değil (minör, flash-attn'e bağlı).
+- P11'in Memo-tarafı (local agent yolu agent talimat bloğunu düşürüyor) hâlâ açık;
+  bu tur sadece llama.cpp'nin sessiz-truncation yarısını gürleştirdi.
 
 ---
 

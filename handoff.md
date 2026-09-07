@@ -45,14 +45,27 @@ kırpılmış aynası), Live Mode tab'ında TTS'in altına. Yeni l10n TR+EN
 (`tts_provider_base_url`, `tts_provider_fetch_voices/pick_voice/voices_*`, `stt_providers_*`).
 `mobile/lib` dokunulmadı (frontend/ lehine emekliye ayrılıyor).
 
+### `d97ec64e` `test(llama)` — OOM kök nedeni (kullanıcının makinesini kilitleyen)
+`go test` sırasında Linux OOM-killer `llama.test`'i (11.6 GiB RSS / 33 GiB virtual)
+ve Claude'u öldürdü (16 GiB makine). **Memory leak DEĞİL, `-race` overhead'i DEĞİL,
+paralel test DEĞİL, 150K satır DEĞİL** (`go test` her paketi ayrı derler; `internal/llama`
+küçük). Sebep: 1. turda eklediğim `TestAutoGPULayers`'ın helper'ı sahte model dosyasını
+`os.WriteFile(p, make([]byte, sizeMB*1024*1024))` ile yaratıyordu, `sizeMB` = 2048 ve
+7168 → **2 GiB + 7 GiB heap slice + 9 GiB gerçek disk yazımı**, sırf `stat().Size()`
+için. `autoGPULayers` dosyayı hiç açmıyor, sadece `os.Stat`. `-race`'in shadow memory'si
++ subtest'ler arası GC gecikmesi 11.6 GiB'a çıkardı. Fix: `f.Truncate(sizeMB<<20)` ile
+sparse dosya — aynı boyut, 0 heap, 0 disk bloğu. Ölçülen peak RSS: **50 MiB** (öncesi
+~11,600). Ders: testte GiB'lık `make([]byte, N)` yazma — özellikle SUT dosyayı okumuyorsa.
+
 ### Doğrulama (3. tur)
-- Backend `build` + `vet` `-tags sqlite_fts5 ./...` temiz. `internal/llama` + `internal/api`
-  testleri yeşil (düz `go test`). **`-race ./...` KOŞULMADI** — kullanıcının makinesi
-  (16GB, Ryzen 5500H) `-race` × 49 CGO paketinde OOM-killer yiyor; düz test + build + vet
-  yeterli kabul edildi bu tur. `/tmp` tmpfs %97 doluyordu → `TMPDIR=~/.cache/gotmp`.
+- `d97ec64e` sonrası **tam `-race ./...` süiti temiz**: `-p 3` ile 48 paket yeşil,
+  sistem peak ~5.8 GiB (öncesi 12.8 GiB RAM + 13.1 GiB swap → OOM). `build` + `vet`
+  `-tags sqlite_fts5 ./...` temiz.
+- `/tmp` tmpfs (7.6 GiB) CGO link'te doluyordu → `TMPDIR=~/.cache/gotmp` (disk) şart.
 - `flutter analyze lib/` sadece 5 pre-existing info (dokunulan dosyalarda 0), `flutter test`
   327/327, rule-8 grep temiz.
-- `TestStartSelfDrivingTaskFromChat_StartsOnAgentChat` hâlâ pre-existing flaky (2. tur notu).
+- `TestStartSelfDrivingTaskFromChat_StartsOnAgentChat` hâlâ pre-existing flaky (2. tur notu) —
+  `-race ./...`'daki tek fail, temiz ağaçta stash'liyken de aynı.
 - `internal/app/config/config.yaml` testlerce kirletildi → `git checkout`, commit'e girmedi.
 
 ### Sıradaki / açık

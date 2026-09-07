@@ -11,6 +11,7 @@ import '../../../models/live_mode_engine_config.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../tts_provider_section.dart';
+import '../stt_provider_section.dart';
 import '../tts_voice_section.dart';
 
 /// The four non-local engines, in picker display order. "local" is handled
@@ -200,6 +201,8 @@ class _LiveModeTabState extends ConsumerState<LiveModeTab> {
                 const TTSVoiceSection(),
                 const SizedBox(height: 16),
                 const TTSProviderSection(),
+                const SizedBox(height: 16),
+                const STTProviderSection(),
               ] else ...[
                 const SizedBox(height: 16),
                 _EngineConfigForm(

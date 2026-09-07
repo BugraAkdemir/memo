@@ -202,18 +202,26 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
   final _nameCtrl = TextEditingController();
   final _apiKeyCtrl = TextEditingController();
   final _voiceCtrl = TextEditingController(text: 'alloy');
+  final _baseUrlCtrl = TextEditingController();
   final _priorityCtrl = TextEditingController(text: '0');
   String _type = TTSProviderDefaults.implementedTypes.first;
   bool _saving = false;
   bool _testing = false;
+  bool _loadingVoices = false;
+  List<TTSProviderVoice> _voices = const [];
   String? _status;
   bool _statusIsError = false;
+
+  bool get _needsBaseUrl => TTSProviderDefaults.needsBaseUrl.contains(_type);
+  bool get _hasVoiceDiscovery =>
+      TTSProviderDefaults.hasVoiceDiscovery.contains(_type);
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _apiKeyCtrl.dispose();
     _voiceCtrl.dispose();
+    _baseUrlCtrl.dispose();
     _priorityCtrl.dispose();
     super.dispose();
   }
@@ -222,7 +230,11 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
     final name = _nameCtrl.text.trim();
     final apiKey = _apiKeyCtrl.text.trim();
     final voice = _voiceCtrl.text.trim();
-    if (name.isEmpty || apiKey.isEmpty || voice.isEmpty) {
+    final baseUrl = _baseUrlCtrl.text.trim();
+    if (name.isEmpty ||
+        apiKey.isEmpty ||
+        voice.isEmpty ||
+        (_needsBaseUrl && baseUrl.isEmpty)) {
       setState(() {
         _status = L10n.t('tts_provider_validation_error');
         _statusIsError = true;
@@ -234,9 +246,46 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
       name: name,
       apiKey: apiKey,
       voice: voice,
+      baseUrl: _needsBaseUrl ? baseUrl : null,
       enabled: true,
       priority: int.tryParse(_priorityCtrl.text.trim()) ?? 0,
     );
+  }
+
+  Future<void> _fetchVoices() async {
+    final apiKey = _apiKeyCtrl.text.trim();
+    if (apiKey.isEmpty) {
+      setState(() {
+        _status = L10n.t('tts_provider_validation_error');
+        _statusIsError = true;
+      });
+      return;
+    }
+    setState(() {
+      _loadingVoices = true;
+      _status = null;
+    });
+    try {
+      final voices =
+          await ref.read(apiClientProvider).fetchTTSProviderVoices(_type, apiKey);
+      if (!mounted) return;
+      setState(() {
+        _loadingVoices = false;
+        _voices = voices;
+        if (voices.isEmpty) {
+          _status = L10n.t('tts_provider_voices_none');
+          _statusIsError = false;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingVoices = false;
+        _statusIsError = true;
+        _status = L10n.t('tts_provider_voices_failed',
+            {'err': FriendlyError.describeGeneric(e)});
+      });
+    }
   }
 
   Future<void> _test() async {
@@ -312,7 +361,12 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
                       child: Text(TTSProviderDefaults.displayNames[t] ?? t),
                     ))
                 .toList(),
-            onChanged: busy ? null : (v) => setState(() => _type = v ?? _type),
+            onChanged: busy
+                ? null
+                : (v) => setState(() {
+                      _type = v ?? _type;
+                      _voices = const []; // provider-specific, drop stale list
+                    }),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -336,6 +390,20 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
               border: const OutlineInputBorder(),
             ),
           ),
+          if (_needsBaseUrl) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _baseUrlCtrl,
+              enabled: !busy,
+              keyboardType: TextInputType.url,
+              decoration: InputDecoration(
+                labelText: L10n.t('tts_provider_base_url'),
+                hintText: 'https://api.example.com/v1',
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           TextField(
             controller: _voiceCtrl,
@@ -345,8 +413,44 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
               hintText: L10n.t('tts_provider_voice_hint'),
               isDense: true,
               border: const OutlineInputBorder(),
+              suffixIcon: _hasVoiceDiscovery
+                  ? IconButton(
+                      tooltip: L10n.t('tts_provider_fetch_voices'),
+                      icon: _loadingVoices
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh, size: 18),
+                      onPressed: busy || _loadingVoices ? null : _fetchVoices,
+                    )
+                  : null,
             ),
           ),
+          if (_voices.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            DropdownButton<String>(
+              value: _voices.any((v) => v.id == _voiceCtrl.text.trim())
+                  ? _voiceCtrl.text.trim()
+                  : null,
+              isDense: true,
+              isExpanded: true,
+              hint: Text(L10n.t('tts_provider_pick_voice')),
+              items: _voices
+                  .map((v) => DropdownMenuItem(
+                        value: v.id,
+                        child: Text('${v.name}  (${v.id})',
+                            overflow: TextOverflow.ellipsis),
+                      ))
+                  .toList(),
+              onChanged: busy
+                  ? null
+                  : (v) => setState(() {
+                        if (v != null) _voiceCtrl.text = v;
+                      }),
+            ),
+          ],
           const SizedBox(height: 8),
           TextField(
             controller: _priorityCtrl,

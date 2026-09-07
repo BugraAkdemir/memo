@@ -1,12 +1,15 @@
 /// External TTS provider configuration — mirrors Go `tts.ProviderConfig`
 /// (internal/tts/provider.go). Deliberately smaller than [ProviderConfig]
-/// (chat providers): no base URL/model/temperature/top_p/max_tokens, and
-/// has a voice field instead — see PLAN_voice_live_mode_faz2.md's 2.1 note.
+/// (chat providers): no model/temperature/top_p/max_tokens, and has a voice
+/// field instead — see PLAN_voice_live_mode_faz2.md's 2.1 note. [baseUrl] is
+/// only meaningful for the `custom` type (a user-supplied OpenAI-compatible
+/// TTS endpoint).
 class TTSProviderConfig {
   final String type;
   final String name;
   final String? apiKey;
   final String voice;
+  final String? baseUrl;
   final bool enabled;
   final int priority;
   final bool connected;
@@ -17,6 +20,7 @@ class TTSProviderConfig {
     required this.name,
     this.apiKey,
     required this.voice,
+    this.baseUrl,
     this.enabled = false,
     this.priority = 0,
     this.connected = false,
@@ -29,6 +33,7 @@ class TTSProviderConfig {
       name: json['name'] as String? ?? '',
       apiKey: json['api_key'] as String?,
       voice: json['voice'] as String? ?? '',
+      baseUrl: json['base_url'] as String?,
       enabled: json['enabled'] as bool? ?? false,
       priority: json['priority'] as int? ?? 0,
       connected: json['connected'] as bool? ?? false,
@@ -42,6 +47,7 @@ class TTSProviderConfig {
       'name': name,
       'api_key': apiKey ?? '',
       'voice': voice,
+      if (baseUrl != null && baseUrl!.isNotEmpty) 'base_url': baseUrl,
       'enabled': enabled,
       'priority': priority,
     };
@@ -52,6 +58,7 @@ class TTSProviderConfig {
     String? name,
     String? apiKey,
     String? voice,
+    String? baseUrl,
     bool? enabled,
     int? priority,
   }) {
@@ -60,6 +67,7 @@ class TTSProviderConfig {
       name: name ?? this.name,
       apiKey: apiKey ?? this.apiKey,
       voice: voice ?? this.voice,
+      baseUrl: baseUrl ?? this.baseUrl,
       enabled: enabled ?? this.enabled,
       priority: priority ?? this.priority,
       connected: connected,
@@ -68,15 +76,37 @@ class TTSProviderConfig {
   }
 }
 
-/// TTS provider types the backend knows about (internal/tts.ProviderType).
-/// Only "openai" has a real implementation (Faz 2.2) — "elevenlabs" is
-/// declared here for future use but selecting it fails server-side with a
-/// clear "not yet supported" error.
+/// One entry from an external TTS provider's live voice list
+/// (`POST /api/tts/providers/voices` → ElevenLabs `GET /v1/voices`).
+class TTSProviderVoice {
+  final String id;
+  final String name;
+
+  const TTSProviderVoice({required this.id, required this.name});
+
+  factory TTSProviderVoice.fromJson(Map<String, dynamic> json) => TTSProviderVoice(
+        id: json['voice_id'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+      );
+}
+
+/// TTS provider types the backend implements (internal/tts.NewProvider):
+/// `openai`, `elevenlabs` and `custom` all build real providers. `custom`
+/// additionally requires [TTSProviderConfig.baseUrl]. Only `elevenlabs`
+/// exposes a live voice-discovery endpoint; the others return a clear
+/// "not supported" and the voice must be entered by hand.
 class TTSProviderDefaults {
   static const Map<String, String> displayNames = {
     'openai': 'OpenAI',
     'elevenlabs': 'ElevenLabs',
+    'custom': 'Custom (OpenAI-compatible)',
   };
 
-  static const List<String> implementedTypes = ['openai'];
+  static const List<String> implementedTypes = ['openai', 'elevenlabs', 'custom'];
+
+  /// Types that need a base URL entered.
+  static const List<String> needsBaseUrl = ['custom'];
+
+  /// Types with a live voice-discovery endpoint.
+  static const List<String> hasVoiceDiscovery = ['elevenlabs'];
 }

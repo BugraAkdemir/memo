@@ -23,6 +23,7 @@ import '../models/dream.dart';
 import '../models/swarm.dart';
 import '../models/task_list.dart';
 import '../models/tts_provider_config.dart';
+import '../models/stt_provider_config.dart';
 import '../models/tts_voice.dart';
 import '../models/usage_stats.dart';
 
@@ -1930,6 +1931,56 @@ class MemoApiClient {
       data: config.toJson(),
     );
     return _guard<Map<String, dynamic>>(res.data);
+  }
+
+  /// Live-fetch an external TTS provider's available voices (ElevenLabs
+  /// `GET /v1/voices`). Providers without a discovery endpoint (OpenAI,
+  /// Custom) make the backend return 400 with a "not supported" message,
+  /// which surfaces here as a DioException — callers fall back to the
+  /// free-text voice field.
+  Future<List<TTSProviderVoice>> fetchTTSProviderVoices(
+    String type,
+    String apiKey,
+  ) async {
+    final res = await _dio.post(
+      '/api/tts/providers/voices',
+      data: {'type': type, 'api_key': apiKey},
+    );
+    final raw = _guard<Map<String, dynamic>>(res.data)['voices'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(TTSProviderVoice.fromJson)
+        .where((v) => v.id.isNotEmpty)
+        .toList();
+  }
+
+  // ─── STT (speech-to-text) Provider Management ──────────────────────
+  // Mirrors the TTS provider CRUD above; backend: /api/stt/providers
+  // (GET list, PUT upsert, DELETE by type[+name]). No test endpoint.
+
+  /// Get all external STT provider configs.
+  Future<List<STTProviderConfig>> getSTTProviders() async {
+    final res = await _dio.get('/api/stt/providers');
+    if (res.data is List) {
+      return (_guard<List>(res.data))
+          .map((e) => STTProviderConfig.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  /// Update (add or edit) an STT provider config.
+  Future<void> updateSTTProvider(STTProviderConfig config) async {
+    await _dio.put('/api/stt/providers', data: config.toJson());
+  }
+
+  /// Delete an STT provider config by type, disambiguated by [name] when given.
+  Future<void> deleteSTTProvider(String type, {String? name}) async {
+    await _dio.delete(
+      '/api/stt/providers',
+      data: {'type': type, if (name != null && name.isNotEmpty) 'name': name},
+    );
   }
 
   // ─── TTS Local Voice Store (Faz 2.6 — fully offline, no API key) ──

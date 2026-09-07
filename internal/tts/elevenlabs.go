@@ -17,6 +17,7 @@ import (
 type elevenLabsProvider struct {
 	baseURL string
 	apiKey  string
+	model   string
 	client  *http.Client
 }
 
@@ -37,9 +38,14 @@ const elevenLabsTTSDefaultModel = "eleven_multilingual_v2"
 const elevenLabsOutputFormat = "wav_24000"
 
 func newElevenLabsProvider(cfg ProviderConfig) (*elevenLabsProvider, error) {
+	model := strings.TrimSpace(cfg.Model)
+	if model == "" {
+		model = elevenLabsTTSDefaultModel
+	}
 	return &elevenLabsProvider{
 		baseURL: "https://api.elevenlabs.io/v1",
 		apiKey:  cfg.APIKey,
+		model:   model,
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
@@ -63,7 +69,7 @@ func (p *elevenLabsProvider) Synthesize(ctx context.Context, text, voice string)
 	}
 	body := elevenLabsSpeechRequest{
 		Text:    text,
-		ModelID: elevenLabsTTSDefaultModel,
+		ModelID: p.model,
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {

@@ -1955,6 +1955,24 @@ class MemoApiClient {
         .toList();
   }
 
+  /// Live-fetch a TTS provider's model ids, TTS-capable only (ElevenLabs
+  /// `GET /v1/models` filtered on can_do_text_to_speech). Same fallback
+  /// behaviour as fetchTTSProviderVoices for providers without discovery.
+  Future<List<String>> fetchTTSProviderModels(String type, String apiKey) async {
+    final res = await _dio.post(
+      '/api/tts/providers/models',
+      data: {'type': type, 'api_key': apiKey},
+    );
+    final raw = _guard<Map<String, dynamic>>(res.data)['models'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .where((m) => m['can_do_text_to_speech'] as bool? ?? true)
+        .map((m) => m['model_id'] as String? ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+  }
+
   // ─── STT (speech-to-text) Provider Management ──────────────────────
   // Mirrors the TTS provider CRUD above; backend: /api/stt/providers
   // (GET list, PUT upsert, DELETE by type[+name]). No test endpoint.

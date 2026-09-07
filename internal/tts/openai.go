@@ -18,6 +18,7 @@ import (
 type openAIProvider struct {
 	baseURL string
 	apiKey  string
+	model   string
 	client  *http.Client
 }
 
@@ -30,9 +31,14 @@ type openAIProvider struct {
 const openAITTSDefaultModel = "tts-1"
 
 func newOpenAIProvider(cfg ProviderConfig) (*openAIProvider, error) {
+	model := strings.TrimSpace(cfg.Model)
+	if model == "" {
+		model = openAITTSDefaultModel
+	}
 	return &openAIProvider{
 		baseURL: "https://api.openai.com/v1",
 		apiKey:  cfg.APIKey,
+		model:   model,
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
@@ -57,7 +63,7 @@ type openAISpeechRequest struct {
 // unrequested default is mp3).
 func (p *openAIProvider) Synthesize(ctx context.Context, text, voice string) ([]byte, error) {
 	body := openAISpeechRequest{
-		Model:          openAITTSDefaultModel,
+		Model:          p.model,
 		Input:          text,
 		Voice:          voice,
 		ResponseFormat: "wav",

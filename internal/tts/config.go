@@ -88,6 +88,7 @@ func (cm *ConfigManager) Load() {
 			Name:     s.Name,
 			APIKey:   apiKey,
 			Voice:    s.Voice,
+			Model:    s.Model,
 			BaseURL:  s.BaseURL,
 			Enabled:  s.Enabled,
 			Priority: s.Priority,
@@ -120,6 +121,7 @@ func (cm *ConfigManager) saveLocked() {
 			Name:            cfg.Name,
 			APIKeyEncrypted: encrypted,
 			Voice:           cfg.Voice,
+			Model:           cfg.Model,
 			BaseURL:         cfg.BaseURL,
 			Enabled:         cfg.Enabled,
 			Priority:        cfg.Priority,
@@ -293,6 +295,7 @@ type providerConfigStored struct {
 	Name            string       `json:"name"`
 	APIKeyEncrypted string       `json:"api_key_encrypted"`
 	Voice           string       `json:"voice"`
+	Model           string       `json:"model,omitempty"`
 	BaseURL         string       `json:"base_url,omitempty"`
 	Enabled         bool         `json:"enabled"`
 	Priority        int          `json:"priority"`

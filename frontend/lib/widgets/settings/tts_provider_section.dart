@@ -202,6 +202,7 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
   final _nameCtrl = TextEditingController();
   final _apiKeyCtrl = TextEditingController();
   final _voiceCtrl = TextEditingController(text: 'alloy');
+  final _modelCtrl = TextEditingController();
   final _baseUrlCtrl = TextEditingController();
   final _priorityCtrl = TextEditingController(text: '0');
   String _type = TTSProviderDefaults.implementedTypes.first;
@@ -209,18 +210,23 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
   bool _testing = false;
   bool _loadingVoices = false;
   List<TTSProviderVoice> _voices = const [];
+  List<String> _models = const [];
   String? _status;
   bool _statusIsError = false;
 
   bool get _needsBaseUrl => TTSProviderDefaults.needsBaseUrl.contains(_type);
   bool get _hasVoiceDiscovery =>
       TTSProviderDefaults.hasVoiceDiscovery.contains(_type);
+  bool get _hasModelDiscovery =>
+      TTSProviderDefaults.hasModelDiscovery.contains(_type);
+  bool get _canFetch => _hasVoiceDiscovery || _hasModelDiscovery;
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _apiKeyCtrl.dispose();
     _voiceCtrl.dispose();
+    _modelCtrl.dispose();
     _baseUrlCtrl.dispose();
     _priorityCtrl.dispose();
     super.dispose();
@@ -241,18 +247,23 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
       });
       return null;
     }
+    final model = _modelCtrl.text.trim();
     return TTSProviderConfig(
       type: _type,
       name: name,
       apiKey: apiKey,
       voice: voice,
+      model: model.isEmpty ? null : model,
       baseUrl: _needsBaseUrl ? baseUrl : null,
       enabled: true,
       priority: int.tryParse(_priorityCtrl.text.trim()) ?? 0,
     );
   }
 
-  Future<void> _fetchVoices() async {
+  /// One button fetches whatever this provider exposes — voices and/or the
+  /// TTS-capable model list.
+  Future<void> _fetchDiscovery() async {
+    final api = ref.read(apiClientProvider);
     final apiKey = _apiKeyCtrl.text.trim();
     if (apiKey.isEmpty) {
       setState(() {
@@ -266,13 +277,18 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
       _status = null;
     });
     try {
-      final voices =
-          await ref.read(apiClientProvider).fetchTTSProviderVoices(_type, apiKey);
+      final voices = _hasVoiceDiscovery
+          ? await api.fetchTTSProviderVoices(_type, apiKey)
+          : const <TTSProviderVoice>[];
+      final models = _hasModelDiscovery
+          ? await api.fetchTTSProviderModels(_type, apiKey)
+          : const <String>[];
       if (!mounted) return;
       setState(() {
         _loadingVoices = false;
         _voices = voices;
-        if (voices.isEmpty) {
+        _models = models;
+        if (voices.isEmpty && models.isEmpty) {
           _status = L10n.t('tts_provider_voices_none');
           _statusIsError = false;
         }
@@ -365,7 +381,8 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
                 ? null
                 : (v) => setState(() {
                       _type = v ?? _type;
-                      _voices = const []; // provider-specific, drop stale list
+                      _voices = const []; // provider-specific, drop stale lists
+                      _models = const [];
                     }),
           ),
           const SizedBox(height: 8),
@@ -413,7 +430,7 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
               hintText: L10n.t('tts_provider_voice_hint'),
               isDense: true,
               border: const OutlineInputBorder(),
-              suffixIcon: _hasVoiceDiscovery
+              suffixIcon: _canFetch
                   ? IconButton(
                       tooltip: L10n.t('tts_provider_fetch_voices'),
                       icon: _loadingVoices
@@ -423,7 +440,7 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.refresh, size: 18),
-                      onPressed: busy || _loadingVoices ? null : _fetchVoices,
+                      onPressed: busy || _loadingVoices ? null : _fetchDiscovery,
                     )
                   : null,
             ),
@@ -450,6 +467,41 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
                         if (v != null) _voiceCtrl.text = v;
                       }),
             ),
+          ],
+          if (_hasModelDiscovery) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _modelCtrl,
+              enabled: !busy,
+              decoration: InputDecoration(
+                labelText: L10n.t('tts_provider_model'),
+                hintText: L10n.t('tts_provider_model_hint'),
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            if (_models.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              DropdownButton<String>(
+                value: _models.contains(_modelCtrl.text.trim())
+                    ? _modelCtrl.text.trim()
+                    : null,
+                isDense: true,
+                isExpanded: true,
+                hint: Text(L10n.t('tts_provider_pick_model')),
+                items: _models
+                    .map((m) => DropdownMenuItem(
+                          value: m,
+                          child: Text(m, overflow: TextOverflow.ellipsis),
+                        ))
+                    .toList(),
+                onChanged: busy
+                    ? null
+                    : (m) => setState(() {
+                          if (m != null) _modelCtrl.text = m;
+                        }),
+              ),
+            ],
           ],
           const SizedBox(height: 8),
           TextField(

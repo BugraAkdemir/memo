@@ -43,6 +43,10 @@ type ProviderConfig struct {
 	Name   string       `json:"name"`
 	APIKey string       `json:"api_key,omitempty"`
 	Voice  string       `json:"voice"`
+	// Model is optional — an empty value means "use the provider's built-in
+	// default" (see openAITTSDefaultModel / elevenLabsTTSDefaultModel). The
+	// UI populates it from the live model list (GET /api/tts/providers/models).
+	Model string `json:"model,omitempty"`
 	// BaseURL is only meaningful for ProviderCustom — a user-supplied
 	// OpenAI-compatible TTS endpoint's base URL.
 	BaseURL   string `json:"base_url,omitempty"`

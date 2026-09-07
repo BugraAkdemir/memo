@@ -1686,6 +1686,7 @@ func (s *Server) handleTTSProviders(w http.ResponseWriter, r *http.Request) {
 			Name     string           `json:"name"`
 			APIKey   string           `json:"api_key"`
 			Voice    string           `json:"voice"`
+			Model    string           `json:"model"`
 			BaseURL  string           `json:"base_url"`
 			Enabled  bool             `json:"enabled"`
 			Priority int              `json:"priority"`
@@ -1699,6 +1700,7 @@ func (s *Server) handleTTSProviders(w http.ResponseWriter, r *http.Request) {
 			Name:     req.Name,
 			APIKey:   req.APIKey,
 			Voice:    req.Voice,
+			Model:    req.Model,
 			BaseURL:  req.BaseURL,
 			Enabled:  req.Enabled,
 			Priority: req.Priority,

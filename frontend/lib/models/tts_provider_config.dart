@@ -9,6 +9,11 @@ class TTSProviderConfig {
   final String name;
   final String? apiKey;
   final String voice;
+
+  /// Empty = the provider's built-in default model. Populated from the live
+  /// model list (`POST /api/tts/providers/models`) for providers that expose
+  /// one.
+  final String? model;
   final String? baseUrl;
   final bool enabled;
   final int priority;
@@ -20,6 +25,7 @@ class TTSProviderConfig {
     required this.name,
     this.apiKey,
     required this.voice,
+    this.model,
     this.baseUrl,
     this.enabled = false,
     this.priority = 0,
@@ -33,6 +39,7 @@ class TTSProviderConfig {
       name: json['name'] as String? ?? '',
       apiKey: json['api_key'] as String?,
       voice: json['voice'] as String? ?? '',
+      model: json['model'] as String?,
       baseUrl: json['base_url'] as String?,
       enabled: json['enabled'] as bool? ?? false,
       priority: json['priority'] as int? ?? 0,
@@ -47,6 +54,7 @@ class TTSProviderConfig {
       'name': name,
       'api_key': apiKey ?? '',
       'voice': voice,
+      if (model != null && model!.isNotEmpty) 'model': model,
       if (baseUrl != null && baseUrl!.isNotEmpty) 'base_url': baseUrl,
       'enabled': enabled,
       'priority': priority,
@@ -58,6 +66,7 @@ class TTSProviderConfig {
     String? name,
     String? apiKey,
     String? voice,
+    String? model,
     String? baseUrl,
     bool? enabled,
     int? priority,
@@ -67,6 +76,7 @@ class TTSProviderConfig {
       name: name ?? this.name,
       apiKey: apiKey ?? this.apiKey,
       voice: voice ?? this.voice,
+      model: model ?? this.model,
       baseUrl: baseUrl ?? this.baseUrl,
       enabled: enabled ?? this.enabled,
       priority: priority ?? this.priority,
@@ -109,4 +119,7 @@ class TTSProviderDefaults {
 
   /// Types with a live voice-discovery endpoint.
   static const List<String> hasVoiceDiscovery = ['elevenlabs'];
+
+  /// Types with a live model-discovery endpoint.
+  static const List<String> hasModelDiscovery = ['elevenlabs'];
 }

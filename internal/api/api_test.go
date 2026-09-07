@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewTextMessage(t *testing.T) {
@@ -285,5 +287,35 @@ func TestNewClientZeroTimeout(t *testing.T) {
 	c := NewClient("http://test:8080/v1", 0)
 	if c.httpClient.Timeout != 0 {
 		t.Errorf("Timeout = %v, want 0", c.httpClient.Timeout)
+	}
+}
+
+// TestStreamClientHeaderTimeoutIsGenerous guards the fix for slow local
+// llama-server first-token latency: the streaming transport must NOT inherit
+// the non-stream client's short 30s ResponseHeaderTimeout, or a valid slow
+// CPU generation aborts before the first token.
+func TestStreamClientHeaderTimeoutIsGenerous(t *testing.T) {
+	c := NewClient("http://localhost:8081/v1", 30)
+
+	nonStream, ok := c.httpClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("httpClient.Transport = %T, want *http.Transport", c.httpClient.Transport)
+	}
+	if nonStream.ResponseHeaderTimeout != 30*time.Second {
+		t.Errorf("non-stream ResponseHeaderTimeout = %v, want 30s", nonStream.ResponseHeaderTimeout)
+	}
+
+	stream, ok := c.streamClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("streamClient.Transport = %T, want *http.Transport", c.streamClient.Transport)
+	}
+	if stream.ResponseHeaderTimeout == nonStream.ResponseHeaderTimeout {
+		t.Errorf("streamClient shares the 30s header timeout — must have its own generous one")
+	}
+	if stream.ResponseHeaderTimeout < 120*time.Second {
+		t.Errorf("stream ResponseHeaderTimeout = %v, want >= 120s", stream.ResponseHeaderTimeout)
+	}
+	if c.streamClient.Timeout != 0 {
+		t.Errorf("streamClient.Timeout = %v, want 0 (context-bounded)", c.streamClient.Timeout)
 	}
 }

@@ -32,6 +32,21 @@ func NewClientWithKey(baseURL, apiKey string, timeoutSeconds int) *Client {
 		IdleConnTimeout:       90 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
 	}
+	// The streaming path needs its own transport: a local llama-server on
+	// slow CPU hardware can take well over 30s to return the first response
+	// header on a large prompt (cold KV cache, or the single inference slot
+	// still busy). The shared 30s ResponseHeaderTimeout above would abort a
+	// perfectly valid slow generation before the first token — exactly the
+	// class of bug the 60s frontend timeout once caused (see AGENTS.md).
+	// Total duration is already bounded by the request context (300s in
+	// callLLMStream); this only needs to catch a genuinely dead connection.
+	// 240s matches the external-provider streaming client (internal/provider).
+	streamTransport := &http.Transport{
+		MaxIdleConns:          10,
+		MaxIdleConnsPerHost:   10,
+		IdleConnTimeout:       90 * time.Second,
+		ResponseHeaderTimeout: 240 * time.Second,
+	}
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"), // prevent double-slash in paths
 		apiKey:  apiKey,
@@ -40,7 +55,7 @@ func NewClientWithKey(baseURL, apiKey string, timeoutSeconds int) *Client {
 			Timeout:   time.Duration(timeoutSeconds) * time.Second,
 			Transport: transport,
 		},
-		streamClient: &http.Client{Transport: transport},
+		streamClient: &http.Client{Transport: streamTransport},
 	}
 }
 

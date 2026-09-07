@@ -1144,6 +1144,9 @@ class L10n {
     'ctx_size_max_unknown':
         'Bu modelin desteklediği maksimum bağlam boyutu tespit edilemedi — dikkatli girin, çok yüksek bir değer modelin çökmesine neden olabilir.',
     'gpu_layers': 'GPU Katmanları',
+    'gpu_layers_auto': 'otomatik',
+    'gpu_layers_auto_desc':
+        'Boş bırak: Memo, modeli GPU belleğine göre otomatik yerleştirir.',
     'port': 'Port',
     'delete_model': 'Modeli Sil',
     'delete_model_confirm': 'Bu modeli silmek istediğinizden emin misiniz?',
@@ -3198,6 +3201,9 @@ class L10n {
     'ctx_size_max_unknown':
         'This model\'s maximum supported context size could not be detected — enter a value carefully, since too high a value can crash the model.',
     'gpu_layers': 'GPU Layers',
+    'gpu_layers_auto': 'auto',
+    'gpu_layers_auto_desc':
+        'Leave empty to let Memo size GPU offload from your VRAM automatically.',
     'port': 'Port',
     'delete_model': 'Delete Model',
     'delete_model_confirm': 'Are you sure you want to delete this model?',

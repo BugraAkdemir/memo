@@ -124,6 +124,47 @@ func TestRecommendLayers(t *testing.T) {
 	}
 }
 
+func TestAutoGPULayers(t *testing.T) {
+	writeModel := func(t *testing.T, sizeMB int) string {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), "model.gguf")
+		if err := os.WriteFile(p, make([]byte, sizeMB*1024*1024), 0644); err != nil {
+			t.Fatalf("write fake model: %v", err)
+		}
+		return p
+	}
+
+	t.Run("model fits comfortably -> offload everything", func(t *testing.T) {
+		// 2 GB model, 8 GB card: 2048*1.25 + 1024 = 3584 < 8192.
+		got := autoGPULayers(writeModel(t, 2048), GPUInfo{VRAM: 8192, GPULayers: 33})
+		if got != 999 {
+			t.Errorf("autoGPULayers = %d, want 999 (full offload)", got)
+		}
+	})
+
+	t.Run("model does not fit -> fall back to the VRAM bucket", func(t *testing.T) {
+		// 7 GB model, 8 GB card: 7168*1.25 + 1024 = 9984 > 8192.
+		got := autoGPULayers(writeModel(t, 7168), GPUInfo{VRAM: 8192, GPULayers: 33})
+		if got != 33 {
+			t.Errorf("autoGPULayers = %d, want 33 (bucket fallback)", got)
+		}
+	})
+
+	t.Run("no VRAM figure -> bucket, never a fit guess", func(t *testing.T) {
+		got := autoGPULayers(writeModel(t, 1), GPUInfo{VRAM: 0, GPULayers: 0})
+		if got != 0 {
+			t.Errorf("autoGPULayers = %d, want 0", got)
+		}
+	})
+
+	t.Run("unreadable model path -> bucket", func(t *testing.T) {
+		got := autoGPULayers("/no/such/model.gguf", GPUInfo{VRAM: 99999, GPULayers: 20})
+		if got != 20 {
+			t.Errorf("autoGPULayers = %d, want 20 (bucket fallback)", got)
+		}
+	})
+}
+
 func TestReadSysfsFile(t *testing.T) {
 	dir := t.TempDir()
 	// Create a fake sysfs-like structure

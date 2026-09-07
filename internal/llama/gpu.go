@@ -409,6 +409,38 @@ func detectAppleSilicon() (GPUInfo, bool) {
 
 // ─── Layer Recommendation ────────────────────────────────────────
 
+// autoGPULayers picks n_gpu_layers for an "auto" request (the caller passed
+// gpuLayers < 0). recommendLayers alone only buckets by total VRAM and never
+// returns "offload everything" below 24 GB — so a 4B model on an 8 GB card
+// was capped at 33 layers when all of them plus the KV cache would fit with
+// room to spare, needlessly splitting it onto the CPU and tanking tok/s.
+//
+// When the model file itself comfortably fits in VRAM (weights + headroom
+// for the KV cache, compute buffers and fragmentation), offload everything;
+// otherwise fall back to the VRAM bucket. Deliberately conservative: a wrong
+// "fits" guess makes llama-server OOM at load, a wrong "doesn't fit" only
+// costs some speed — so the headroom margin is generous and any uncertainty
+// (no VRAM figure, unreadable model file) falls back to the bucket.
+func autoGPULayers(modelPath string, gpu GPUInfo) int {
+	bucket := gpu.GPULayers
+	if gpu.VRAM <= 0 {
+		return bucket
+	}
+	fi, err := os.Stat(modelPath)
+	if err != nil || fi.Size() <= 0 {
+		return bucket
+	}
+	modelMB := float64(fi.Size()) / (1024 * 1024)
+	// weights ×1.25 (KV cache + compute/context buffers + allocator slack)
+	// plus a flat 1 GB floor so tiny models on tiny cards still keep a real
+	// margin.
+	needed := modelMB*1.25 + 1024
+	if needed < float64(gpu.VRAM) {
+		return 999
+	}
+	return bucket
+}
+
 // recommendLayers estimates the optimal n_gpu_layers based on VRAM.
 // Uses float division so that e.g. 6143 MB (≈6 GB) hits the ≥6 GB bucket
 // instead of being truncated to 5 GB by integer division.

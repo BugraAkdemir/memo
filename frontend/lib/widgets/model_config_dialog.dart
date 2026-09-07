@@ -26,7 +26,11 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
   // against.
   final _ctxSizeController = TextEditingController(text: '4096');
   late int _ctxSize;
-  final _gpuLayersController = TextEditingController(text: '33');
+  // Empty = "auto": let the backend size n_gpu_layers from the model vs. VRAM
+  // (chat) or run on CPU (embedding, the deliberate default). A hardcoded
+  // number here used to be sent verbatim, bypassing that detection entirely —
+  // every model started with exactly 33 layers regardless of GPU or size.
+  final _gpuLayersController = TextEditingController();
   final _portController = TextEditingController(text: '8081');
 
   bool _starting = false;
@@ -67,9 +71,16 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
     final ctx = widget.model.maxContext > 0
         ? _ctxSize
         : (int.tryParse(_ctxSizeController.text) ?? 4096);
-    final gpuLayers = int.tryParse(_gpuLayersController.text) ?? 33;
-    final port = int.tryParse(_portController.text) ?? 8081;
     final isEmbeddingModel = widget.model.isEmbedding;
+    // Empty field => auto: -1 tells the backend to size GPU offload itself
+    // for a chat model; embedding models default to CPU (0), matching the
+    // backend's EmbeddingGPULayers rationale.
+    final gpuLayersText = _gpuLayersController.text.trim();
+    final gpuAutoDefault = isEmbeddingModel ? 0 : -1;
+    final gpuLayers = gpuLayersText.isEmpty
+        ? gpuAutoDefault
+        : (int.tryParse(gpuLayersText) ?? gpuAutoDefault);
+    final port = int.tryParse(_portController.text) ?? 8081;
 
     setState(() {
       _starting = true;
@@ -224,11 +235,16 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               SizedBox(height: 16),
             ],
 
-            // GPU Layers
+            // GPU Layers — empty means auto-detect (see _gpuLayersController).
             _ConfigField(
               label: L10n.t('gpu_layers'),
               controller: _gpuLayersController,
-              hint: '33',
+              hint: L10n.t('gpu_layers_auto'),
+            ),
+            SizedBox(height: 4),
+            Text(
+              L10n.t('gpu_layers_auto_desc'),
+              style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim),
             ),
             SizedBox(height: 16),
 

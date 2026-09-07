@@ -137,7 +137,10 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 	// Apply overrides
 	actualGPU := gpuLayers
 	if actualGPU < 0 {
-		actualGPU = s.gpu.GPULayers
+		// "auto" — size from the model file vs. VRAM, not just a flat VRAM
+		// bucket (see autoGPULayers), so a model that fits entirely gets
+		// fully offloaded instead of being capped at the bucket's layer count.
+		actualGPU = autoGPULayers(modelPath, s.gpu)
 	}
 	// If mode is CPU, force 0 layers
 	if mode == "cpu" {
@@ -204,6 +207,17 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		// OpenAI-style tool calling on /v1/chat/completions, which the agent
 		// mode relies on when running against a local model.
 		args = append(args, "--jinja")
+
+		// Flash attention: a large, free speedup on GPU and roughly halves
+		// KV-cache memory (which in turn lets more layers fit — see
+		// autoGPULayers). Only when layers are actually offloaded (pointless,
+		// occasionally slower, on pure CPU) and only when this specific
+		// binary is probed to accept the flag (spelling has drifted across
+		// llama.cpp releases — see flashAttnSupported). Not applied on the
+		// swarm/RPC path, which has its own tuned invocation.
+		if rpc == nil && actualGPU > 0 && flashAttnSupported(bin) {
+			args = append(args, "--flash-attn")
+		}
 	}
 
 	// Auto-detect multimodal projector (mmproj) file next to the model

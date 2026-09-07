@@ -1,3 +1,55 @@
+# Ek (2026-09-07, devam 63) — Local model ayar denetimi: 5 boşluk kapatıldı (1 commit `1f1144e2`)
+
+Kullanıcı: "local model çalıştırırken kullanımı yavaşlatan/bozan eksik ayar var mı,
+/codebase-memory ile düzelt, scout gibi kör noktaları tekrar tara."
+
+## Bulgular + fix (`1f1144e2`, `perf(llama,api,frontend)`)
+1. **Flash attention hiç açılmıyordu.** `internal/llama/llama.go` arg listesinde
+   `--flash-attn` yoktu. Yeni `internal/llama/flash_probe.go` — `flashAttnSupported(bin)`
+   binary başına probe (rpc_probe.go kalıbı; flag yazımı llama.cpp sürümleri
+   arasında kaydı, bundled binary `releases/latest` çekiyor → koşulsuz flag bazı
+   build'lerde "başlamıyor" regresyonu olurdu). Sadece `actualGPU > 0` + `rpc == nil`
+   iken ekleniyor.
+2. **GPU-layer auto-detect sadece VRAM bucket'ıydı**, 24 GB altı asla "hepsini
+   yükle" demiyordu → 4B model 8 GB kartta 33 layer'a sabitleniyordu. Yeni
+   `autoGPULayers()` (`gpu.go`): model dosya boyutu vs VRAM (ağırlık ×1.25 + 1 GB
+   pay), sığıyorsa 999; belirsizlikte eski bucket'a düşüyor. Sadece `gpuLayers < 0`
+   (auto) yolunu etkiliyor.
+3. **Flutter model-config dialog GPU-layers alanını `'33'` hardcode edip aynen
+   gönderiyordu** → GUI'den başlatılan her model detection'ı komple bypass ediyordu
+   (CLI zaten `--gpu -1` default'lu, etkilenmemişti). Alan artık boş = "auto";
+   chat için `-1`, embedding için `0` (backend'in bilinçli EmbeddingGPULayers=CPU
+   default'u — 33 onu da eziyordu) gönderiyor. Yeni l10n: `gpu_layers_auto` /
+   `gpu_layers_auto_desc` (TR+EN).
+4. **Düz-sohbet streaming HTTP client'ı non-stream transport'un 30s
+   `ResponseHeaderTimeout`'unu paylaşıyordu.** Yavaş CPU'da local llama-server ilk
+   header'ı 30s+ sonra flush edebiliyor → geçerli yavaş üretim ilk token'dan önce
+   iptal (AGENTS.md'deki 60s frontend timeout hata sınıfı). Stream client'a ayrı
+   transport, 240s header timeout (internal/provider ile aynı); toplam süre zaten
+   `callLLMStream`'deki 300s ctx ile sınırlı.
+
+## Doğrulama
+`go build/vet/test -tags sqlite_fts5 ./... -race` tam yeşil (49 paket).
+`flutter analyze lib/` sadece 5 pre-existing info (dokunulan dosyalarda 0),
+`flutter test` yeşil, rule-8 grep temiz. Yeni testler: `flashAttnProbeAccepted`
+sınıflandırma (unknown-flag / requires-value / reached-model-load / unknown /
+reject-wins); `autoGPULayers` (sığar / sığmaz / VRAM yok / okunamaz path);
+stream vs non-stream header-timeout ayrımı.
+
+## Değiştirilmedi — ayrı karar gerekiyor (davranış değişikliği, flag'lendi)
+- **llama.cpp default context-shift**: local agent oturumunda `--ctx-size` (default
+  8192) dolunca KV context'in eski yarısını (sistem/agent-talimat bloğu dahil)
+  sessizce atıyor — handoff P11 ile bağlantılı. `--no-context-shift` verip temiz
+  hata almak ya da agent modellerinde default ctx yükseltmek seçenek; ikisi de
+  davranış değişikliği.
+- Chat sunucusuna `--threads` verilmiyor (whisper + swarm worker veriyor).
+- GPU tespiti hâlâ tamamen `nvidia-smi`/`rocm-smi` PATH'te olmaya bağlı; yoksa
+  sessizce tam CPU. `engine_mode: nvidia/amd` config override'ı bypass ediyor ama
+  bunu kullanıcıya söyleyen bir şey yok.
+- KV-cache quant (`--cache-type-k/-v`), `--cache-reuse N` expose edilmemiş (minör).
+
+---
+
 # Ek (2026-09-06, devam 62) — "Code Mode": per-chat kodlama preset'i (3 commit)
 
 Kullanıcı: "minimal mode benzeri ama kodlamayı hızlandıran bir 'code mode'

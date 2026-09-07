@@ -1,4 +1,53 @@
-# Ek (2026-09-07, devam 63) — Local model denetimi + self-review + kopuk-feature taraması (4 commit)
+# Ek (2026-09-07, devam 63) — Local model denetimi + self-review + kopuk-feature + flaky test (7 commit)
+
+## 4. tur — flaky test + kalan scout maddeleri
+
+### `19236507` `fix(taskloop)` — `Engine.Shutdown()` run() goroutine'lerini bekliyor
+`Stop()` sadece cancel sinyali yolluyordu, `run()` bitene kadar beklemiyordu →
+`newSelfDrivingTaskApp` testlerinde worker goroutine test bitince `t.TempDir()`'a
+yazmaya devam ediyor → `TempDir RemoveAll: directory not empty` (%60 fail).
+Engine'e `sync.WaitGroup` (her `run()` üstünde) + `Shutdown(ctx)` (tüm aktif
+listeleri cancel + `retry.CancelAll()` + WaitGroup'ta blokla, ctx sınırlı).
+`App.shutdownSync` artık `engine.Shutdown(ctx)` kullanıyor (bypass-izin restore'u
+artık sadece sinyallenmiyor, tamamlanması garanti). `newSelfDrivingTaskApp`'e
+`t.Cleanup` eklendi. Test **20x yeşil** (öncesi flaky).
+
+### `a6530003` `feat(tts)` — `/api/tts/providers/models` endpoint'i wire edildi
+Endpoint + `App.ListTTSProviderModels` + `tts.ListElevenLabsModels` zinciri Faz
+2'den beri vardı ama **tüketen yoktu** (`tts.ProviderConfig`'te model alanı yok,
+provider'lar default'u hardcode ediyordu). `tts.ProviderConfig.Model` eklendi
+(boş = provider default), `newElevenLabs/OpenAIProvider` → struct → `Synthesize`,
+`providerConfigStored` (persist), `handleTTSProviders` PUT. Frontend:
+`TTSProviderConfig.model`, `fetchTTSProviderModels` (can_do_text_to_speech
+filtreli), `hasModelDiscovery`. Mevcut refresh butonu artık ses+model'i birlikte
+çekiyor (`_fetchDiscovery`), discovery-yetenekli provider'da model alanı+dropdown.
+Yeni l10n TR+EN (`tts_provider_model[_hint]`, `tts_provider_pick_model`).
+
+### Yapılmadı — gerekçeli
+- **STT "test" butonu**: `internal/stt/config.go` yorumu açıkça "no TestConnection"
+  diyor — bilinçli dar tutulmuş, eklemek kapatılmış backend yüzeyi eklemek olur,
+  boşluk kapatmak değil. `STTProviderSection` backend'in gerçek CRUD yüzeyiyle eşleşiyor.
+- **KV-cache quant** (`--cache-type-k/-v`): kopuk feature değil, yapılmamış
+  enhancement. Config tasarım kararı (default? per-model?) + `Start()` imzası
+  değişikliği (tüm caller'lar + AppBridge) gerektiriyor. Ertelendi.
+
+### Doğrulama (4. tur)
+- `go vet -tags sqlite_fts5 ./...` temiz. `go test -race -p 3 ./...`: **48 paket
+  deterministik yeşil**, sistem peak ~4.7 GiB (OOM yok — `d97ec64e` fix'i sayesinde).
+- `internal/app`'te 1 pre-existing flaky test KALDI: **`TestBootstrapTokenAuth_Succeeds`**
+  (ve remote_auth_test.go kardeşleri) — ~1/15 `TempDir RemoveAll: directory not empty`.
+  **Pre-existing**: değişikliklerim stash'liyken de fail ediyor; `newAccountsApp`
+  hiç `Shutdown` çağırmıyor → benim taskloop fix'im / `app.go` değişikliğim
+  dokunmuyor. Farklı kök neden: `config.Load`/`config.Save`/`CreateRemoteDevice`
+  `t.TempDir()`'a Go cleanup'ıyla yarışan bir yazım yapıyor (muhtemelen atomik
+  write+rename, ya da bir events subscriber). Ayrı iş — `config`/accounts test
+  harness'i, taskloop değil.
+- `flutter analyze` 5 pre-existing info (dokunulan dosyalarda 0), `flutter test`
+  327/327, rule-8 temiz. `config.yaml` kirlenmesi geri alındı.
+
+---
+
+# Ek (2026-09-07, devam 63) — Local model denetimi + self-review + kopuk-feature taraması (eski başlık, 1-3. tur aşağıda)
 
 Kullanıcı: "local model çalıştırırken kullanımı yavaşlatan/bozan eksik ayar var mı,
 /codebase-memory ile düzelt, scout gibi kör noktaları tekrar tara." → "kalan

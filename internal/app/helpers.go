@@ -229,6 +229,20 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		} else {
 			tokenBudget = maxLocal
 		}
+		// Keep the assembled prompt a margin below the local server's hard
+		// --ctx-size wall. truncate.EstimateTokens is len/3, which slightly
+		// UNDER-counts token-dense text (Turkish, code), so a request this
+		// budget rates as "exactly fits" can still cross n_ctx once the
+		// server really tokenizes it. That used to be masked by llama.cpp
+		// context-shift silently dropping the oldest tokens; the server now
+		// runs with --no-context-shift (a truncated system prompt is worse
+		// than a clean error), so an over-tight budget would turn a normal
+		// full-context chat into a hard failure. ~5%, min 256 tokens.
+		if margin := maxLocal / 20; margin >= 256 {
+			tokenBudget -= margin
+		} else {
+			tokenBudget -= 256
+		}
 		// Agent mode sends the tool schema (agent.ToOpenAITools) alongside
 		// every request as a separate "tools" field, which the model's chat
 		// template folds into the actual prompt it sees — real context-window

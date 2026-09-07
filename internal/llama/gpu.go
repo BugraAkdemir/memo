@@ -64,11 +64,13 @@ func detectGPUInner() GPUInfo {
 		return info
 	}
 	return GPUInfo{
-		Type:        GPUTypeCPU,
-		Name:        "CPU",
-		VRAM:        0,
-		GPULayers:   0,
-		Description: "No GPU detected — CPU inference mode",
+		Type:      GPUTypeCPU,
+		Name:      "CPU",
+		VRAM:      0,
+		GPULayers: 0,
+		Description: "No GPU detected — CPU inference mode. If this machine has a GPU, " +
+			"check that nvidia-smi (NVIDIA) or rocm-smi (AMD) is on PATH, or set " +
+			"llama.engine_mode explicitly in config.yaml.",
 	}
 }
 

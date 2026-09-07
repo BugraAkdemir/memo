@@ -134,6 +134,18 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		s.gpu = GPUInfo{Type: GPUTypeMetal, Name: "Apple Silicon (Metal)", GPULayers: 999}
 	}
 
+	// Surface a silent CPU fallback. When the engine mode is left on auto and
+	// detection still comes back CPU, the most common cause is a GPU that's
+	// physically present but invisible to us because nvidia-smi/rocm-smi
+	// isn't on PATH (containers, fresh driver installs) — and today the only
+	// trace of that is a debug line nobody reads. Say so once, loudly, with
+	// the fix.
+	if (mode == "" || mode == "auto") && s.gpu.Type == GPUTypeCPU {
+		logx.Printf("llama: no GPU acceleration detected — running on CPU. " +
+			"If this machine has an NVIDIA/AMD GPU, ensure nvidia-smi/rocm-smi is on " +
+			"PATH, or set llama.engine_mode (nvidia|amd) in config.yaml to force it.")
+	}
+
 	// Apply overrides
 	actualGPU := gpuLayers
 	if actualGPU < 0 {
@@ -191,6 +203,16 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		"--ctx-size", fmt.Sprintf("%d", actualCtx),
 		"--parallel", "1",
 	}
+	// On pure-CPU inference with a hyperthreaded CPU, pin --threads to the
+	// physical core count. llama.cpp's own default is
+	// std::thread::hardware_concurrency() (== logical CPUs), which
+	// over-subscribes a compute-bound decode — the sibling hyperthreads just
+	// fight over the same execution units. No-op (flag omitted, llama.cpp
+	// default stands) when layers are GPU-offloaded, when there's no SMT, or
+	// when the physical count can't be read (see serverThreads).
+	if t := serverThreads(actualGPU, runtime.NumCPU(), physicalCoreCount()); t > 0 {
+		args = append(args, "--threads", fmt.Sprintf("%d", t))
+	}
 	// Offload layers to the GPU when one is available. Without this flag
 	// llama-server runs entirely on the CPU regardless of the detected GPU,
 	// which makes both chat and embedding startup/inference much slower.
@@ -207,6 +229,26 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		// OpenAI-style tool calling on /v1/chat/completions, which the agent
 		// mode relies on when running against a local model.
 		args = append(args, "--jinja")
+
+		// Fail loudly instead of silently corrupting. When the KV context
+		// fills, llama.cpp's context-shift discards the oldest half — which
+		// in Memo's prompt layout is the system / agent-instruction block,
+		// so generation quietly continues against a truncated persona and
+		// toolset. Memo already trims history to fit --ctx-size in
+		// buildMessagesForSession, so in normal use this never triggers;
+		// when it does (a single oversized message, or the len/3 token
+		// estimate undershooting) the user gets a clear "context exceeded"
+		// error rather than a subtly wrong answer. Stable llama-server flag,
+		// takes no value — safe to pass unprobed.
+		args = append(args, "--no-context-shift")
+
+		// Let the server reuse cached KV blocks even when a chunk in the
+		// middle of the prompt changed (e.g. a memory-retrieval result
+		// shifted but the conversation after it is byte-identical), not just
+		// a clean common prefix. 256 is llama.cpp's own suggested minimum
+		// reuse chunk. Pure upside for prompt-processing latency on repeated
+		// turns.
+		args = append(args, "--cache-reuse", "256")
 
 		// Flash attention: a large, free speedup on GPU and roughly halves
 		// KV-cache memory (which in turn lets more layers fit — see

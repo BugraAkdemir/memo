@@ -125,11 +125,23 @@ func TestRecommendLayers(t *testing.T) {
 }
 
 func TestAutoGPULayers(t *testing.T) {
-	writeModel := func(t *testing.T, sizeMB int) string {
+	// autoGPULayers only os.Stat()s the model and reads fi.Size() — it never
+	// opens the file. So the fake model is a SPARSE file: Truncate sets the
+	// reported size with zero heap allocation and (on any modern fs) zero
+	// disk blocks. The earlier `os.WriteFile(p, make([]byte, sizeMB<<20))`
+	// actually allocated 2 GiB + 7 GiB byte slices and wrote them out —
+	// under `go test -race` that drove the llama.test binary to ~11.6 GiB
+	// RSS and tripped the OOM killer on a 16 GiB machine.
+	writeModel := func(t *testing.T, sizeMB int64) string {
 		t.Helper()
 		p := filepath.Join(t.TempDir(), "model.gguf")
-		if err := os.WriteFile(p, make([]byte, sizeMB*1024*1024), 0644); err != nil {
-			t.Fatalf("write fake model: %v", err)
+		f, err := os.Create(p)
+		if err != nil {
+			t.Fatalf("create fake model: %v", err)
+		}
+		defer f.Close()
+		if err := f.Truncate(sizeMB << 20); err != nil {
+			t.Fatalf("truncate fake model to %d MiB: %v", sizeMB, err)
 		}
 		return p
 	}

@@ -1,8 +1,67 @@
-# Ek (2026-09-07, devam 63) — Local model ayar denetimi: 8 madde (2 commit `1f1144e2` + `c884de39`)
+# Ek (2026-09-07, devam 63) — Local model denetimi + self-review + kopuk-feature taraması (4 commit)
 
 Kullanıcı: "local model çalıştırırken kullanımı yavaşlatan/bozan eksik ayar var mı,
-/codebase-memory ile düzelt, scout gibi kör noktaları tekrar tara." → sonra:
-"kalan flag'lenen maddelerin de hepsini sırayla yap; commit tipi perf kalsın."
+/codebase-memory ile düzelt, scout gibi kör noktaları tekrar tara." → "kalan
+flag'lenen maddelerin de hepsini sırayla yap; commit tipi perf kalsın." → "birde
+AGENTS.md commit kurallarına uy." → "memo'nun kopuk/yarım feature'larını /codebase-memory
++ /code-review ile tara" → "tamam sırayla hepsini yap."
+
+Commit'ler: `1f1144e2` `c884de39` (1-2. tur, aşağıda), `26c12082` (self-review fix),
+`15414674` (TTS/STT provider UI). Hepsi main'e, AI-attribution yok.
+
+## 3. tur — /code-review self-audit + kopuk-feature taraması
+
+### `26c12082` `fix(llama,app)` — kendi 1-2. tur kodumun review'ından çıkan 3 gerçek sorun
+- **`--cache-reuse` + `--no-context-shift` probe'suz gidiyordu** (sadece `--flash-attn`
+  probe'luydu). Eski/özel `llama-server` binary'si flag'i tanımıyorsa **her local başlatma
+  patlar** ("3 dk timeout" yanıltıcı mesajıyla). `flash_probe.go` → `flag_probe.go`:
+  tek birleşik probe (`tuningFlagsSupported`) binary'yi üç flag + sentinel model'le bir
+  kez koşup cache'liyor; biri reddedilirse **hiçbiri** geçilmiyor (yavaş ama başlıyor).
+- **Bütçe `cfg.Llama.CtxSize`'a göreydi, sunucuya giden `clampContextSize(...)`'e değil.**
+  Global `ctx_size` ayarı model max'ından büyükse `--no-context-shift` ile sert hata.
+  Yeni `Server.CtxSize()` accessor (post-clamp `s.ctxSize`) → `buildMessagesForSession`
+  onu kullanıyor; ~%5 pay sadece len/3 tahmin sapması için kaldı, `max(maxLocal/20,256)`.
+- GPU-uyarı log'u artık embedding sidecar'ında tekrar etmiyor (`!embedding`).
+- Kalan 3 minör review bulgusu (`probeReachedModelLoad` testleri güncellendi, `max()`
+  builtin, `--threads` yorumu düzeltildi) da bu commit'te.
+
+### `15414674` `feat(frontend)` — Live Mode v2 Faz 2'nin bitmemiş frontend'i
+`/codebase-memory` scout taraması: backend route ↔ frontend caller çapraz kontrolü.
+Bulunan gerçek kopukluklar (retract edilenler: telegram parity=bilinçli, swarm/add=
+worker→host kayıt, files/outbox=indirme linki):
+- **`/api/tts/providers/voices` çağıran yok** → ElevenLabs voice'u kör `voice_id` yapıştırması.
+- **`/api/tts/providers/models` çağıran yok** → `TTSProviderConfig`'te model alanı yok, STT
+  reuse için bırakılmış; dokunulmadı (vestigial ama zararsız).
+- **`/api/stt/providers` (tam CRUD) frontend'de HİÇ yok** — TTS tam UI aldı, STT sadece backend.
+- **TTS form sadece `openai` sunuyordu** oysa backend `elevenlabs`+`custom` da build ediyor
+  (devam 8, `69a9dfe`); `custom` için base_url alanı da yoktu → ikisi de app'ten
+  yapılandırılamıyordu. `TTSProviderDefaults.implementedTypes` = 3 tip, `TTSProviderConfig.baseUrl`
+  eklendi, stale "sadece OpenAI" yorumları silindi.
+
+Yapıldı: `fetchTTSProviderVoices` + `TTSProviderVoice` model + form'da refresh→dropdown
+(discovery'siz provider'da text field'a düşüyor). Yeni `STTProviderConfig` model +
+`get/update/deleteSTTProvider` + `STTProviderSection` widget (TTS'in voice/discovery/test'siz
+kırpılmış aynası), Live Mode tab'ında TTS'in altına. Yeni l10n TR+EN
+(`tts_provider_base_url`, `tts_provider_fetch_voices/pick_voice/voices_*`, `stt_providers_*`).
+`mobile/lib` dokunulmadı (frontend/ lehine emekliye ayrılıyor).
+
+### Doğrulama (3. tur)
+- Backend `build` + `vet` `-tags sqlite_fts5 ./...` temiz. `internal/llama` + `internal/api`
+  testleri yeşil (düz `go test`). **`-race ./...` KOŞULMADI** — kullanıcının makinesi
+  (16GB, Ryzen 5500H) `-race` × 49 CGO paketinde OOM-killer yiyor; düz test + build + vet
+  yeterli kabul edildi bu tur. `/tmp` tmpfs %97 doluyordu → `TMPDIR=~/.cache/gotmp`.
+- `flutter analyze lib/` sadece 5 pre-existing info (dokunulan dosyalarda 0), `flutter test`
+  327/327, rule-8 grep temiz.
+- `TestStartSelfDrivingTaskFromChat_StartsOnAgentChat` hâlâ pre-existing flaky (2. tur notu).
+- `internal/app/config/config.yaml` testlerce kirletildi → `git checkout`, commit'e girmedi.
+
+### Sıradaki / açık
+- **CANLI BENCHMARK** — devam 60'tan beri açık, hâlâ yapılmadı. `--flash-attn`,
+  `--cache-reuse`/`--no-context-shift` etkileşimi, `--threads`, autoGPULayers gerçek
+  GPU'lu + CPU'lu makinede ölçülmeli. Kullanıcıda.
+- STT provider'a "test" butonu yok (backend'de `TestSTTProvider` yok) — istenirse eklenir.
+- `TestStartSelfDrivingTaskFromChat` flaky'si: `newSelfDrivingTaskApp` helper'ına
+  shutdown/wait plumbing gerekiyor (ayrı iş).
 
 ## 1. tur — denetim + 5 boşluk (`1f1144e2`, `perf(llama,api,frontend)`)
 1. **Flash attention hiç açılmıyordu.** `internal/llama/llama.go` arg listesinde

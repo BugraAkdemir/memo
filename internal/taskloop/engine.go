@@ -54,6 +54,7 @@ type Engine struct {
 	mu          sync.Mutex
 	activeCount int
 	active      map[string]context.CancelFunc
+	runWG       sync.WaitGroup // tracks every live run() goroutine — see Shutdown
 
 	// Optional hooks wired via EngineOption. All nil-safe.
 	ruleReader       func(projectRoot string) (string, error)
@@ -317,8 +318,43 @@ func (e *Engine) Start(ctx context.Context, listID string) error {
 		}
 	}
 
-	go e.run(listCtx, listID)
+	e.runWG.Add(1)
+	go func() {
+		defer e.runWG.Done()
+		e.run(listCtx, listID)
+	}()
 	return nil
+}
+
+// Shutdown cancels every running list and blocks until their run()
+// goroutines have fully returned, or ctx expires. Unlike Stop() — which
+// returns the moment the cancel signal is sent — this guarantees no
+// goroutine is still writing to the store or the filesystem once it
+// returns. Both the app shutdown path and tests depend on that ordering: a
+// run() still mirroring Task.md into a directory the caller is about to
+// delete is a "directory not empty" failure.
+func (e *Engine) Shutdown(ctx context.Context) {
+	if e == nil {
+		return
+	}
+	e.retry.CancelAll() // wake any list parked in a backoff so it doesn't resume mid-teardown
+
+	e.mu.Lock()
+	for _, cancel := range e.active {
+		cancel() // run()'s own defer removes it from e.active + fixes activeCount
+	}
+	e.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		e.runWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		logx.Printf("TASKLOOP: shutdown timed out before every run() goroutine exited")
+	}
 }
 
 func (e *Engine) Stop(listID string) {

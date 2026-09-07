@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"memo/internal/config"
 	"memo/internal/identity"
@@ -37,6 +38,16 @@ func newSelfDrivingTaskApp(t *testing.T) (*App, *sessions.Manager) {
 		taskloopStore:  store,
 		taskloopEngine: eng,
 	}
+	// A self-driving run() goroutine outlives the test body (it keeps
+	// iterating rounds and mirroring Task.md into these t.TempDir()s). Without
+	// this, t.TempDir()'s deferred RemoveAll races those writes and fails with
+	// "directory not empty". Shutdown cancels every active list and waits for
+	// the goroutines to return.
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		eng.Shutdown(ctx)
+	})
 	return a, sm
 }
 

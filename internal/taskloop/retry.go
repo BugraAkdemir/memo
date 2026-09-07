@@ -78,6 +78,21 @@ func (s *RetryScheduler) Cancel(listID string) {
 	}
 }
 
+// CancelAll stops and forgets every pending timer. Used on engine shutdown
+// so a list parked in a rate-limit / transient backoff can't fire resume()
+// into an engine that is being torn down.
+func (s *RetryScheduler) CancelAll() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, t := range s.timers {
+		t.Stop()
+		delete(s.timers, id)
+	}
+}
+
 // Pending reports whether listID currently has a wait timer.
 func (s *RetryScheduler) Pending(listID string) bool {
 	if s == nil {

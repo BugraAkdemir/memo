@@ -911,14 +911,11 @@ func (a *App) shutdownSync(ctx context.Context) {
 	logx.Info("Memo shutting down, cleaning up background processes...")
 
 	// Stop all running task lists so bypass permissions are restored before
-	// the rest of shutdown tears things down.
+	// the rest of shutdown tears things down. Shutdown() also blocks until
+	// every run() goroutine has actually exited (bounded by ctx) — so no
+	// worker is still writing to the store/filesystem past this point.
 	if a.taskloopEngine != nil {
-		tlInfos := a.taskloopStore.List()
-		for _, info := range tlInfos {
-			if info.Status == "running" {
-				a.taskloopEngine.Stop(info.ID)
-			}
-		}
+		a.taskloopEngine.Shutdown(ctx)
 	}
 
 	// Cancel lifecycle context to stop all goroutines (proactive engine, calendar

@@ -91,13 +91,13 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 3 — BUG-SCAN1 (pinned-facts panic), SCAN2 (evictionStub → Anthropic 400), SCAN3 (Code Mode auto-approve kapsamı) |
+| 🟠 HIGH | 2 — BUG-SCAN2 (evictionStub → Anthropic 400), SCAN3 (Code Mode auto-approve kapsamı) |
 | 🟡 MEDIUM | 5 — BUG-SCAN4 (compact cached-guard), SCAN5 (flag_probe kalıcı cache), SCAN6 (taskloop Shutdown/Start yarışı), SCAN7 (batch fact-extraction cap), SCAN8 (chatCodeModeProvider auth-gate) |
 | 🟢 LOW | 9 — BUG-SCAN9..17 (aşağıda) |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **17** — 2026-09-09 taramasından (BUG-SCAN1..17); fix turu bu güncellemeyle başladı, düzeltilen madde buradan silinecek |
+| **AÇIK TOPLAM** | **16** — 2026-09-09 taramasından (BUG-SCAN2..17); fix turu sürüyor, düzeltilen madde buradan siliniyor |
 
 ---
 
@@ -108,13 +108,6 @@ llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
 provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
 "Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
 somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
-
-### 🔴 BUG-SCAN1 — `GetPinnedFactsRanked` panic: 1-2 pinned fact varken her mesajda `index out of range` (doğrulandı)
-
-- **Yer:** [internal/memory/store.go:1478](internal/memory/store.go:1478) (döngü), `coreN` [:1433](internal/memory/store.go:1433).
-- **Kök neden:** `coreN := 3; if coreN > limit { coreN = limit }` — `limit`'e kırpılıyor ama **`len(cands)`'e kırpılmıyor**. Tek uzunluk guard'ı `if len(cands) == 0 { return nil, nil }`. `for i := 0; i < coreN; i++ { add(cands[i].r) }` → `len(cands)` 1 veya 2 iken `cands[1]`/`cands[2]` panic.
-- **Tetik:** Kullanıcının tam 1 veya 2 explicit pinned fact'i var (`source='explicit' AND importance=5`) — ilk `/remember`'dan sonraki dönem. Default `PinnedFactsPerTurn=10` → `coreN=3`. `retrieveMemory` → `GetPinnedFactsRanked(ctx, query, 10)` → panic. 3. fact eklenene kadar **her mesajda**. `embErr` fallback yolu doğru sınırlı (`i < len(cands) && i < limit`); sadece ana yol bozuk. Mevcut test 6 fact seed'liyor.
-- **Fix:** `if coreN > len(cands) { coreN = len(cands) }` (fallback yoluyla aynı). Regresyon testi: 1 ve 2 fact'li seed.
 
 ### 🔴 BUG-SCAN2 — intra-turn truncation `evictionStub`'ı baştaki/ardışık `assistant` mesajı → Anthropic 400, uzun agent turu ölüyor (doğrulandı)
 

@@ -1434,6 +1434,13 @@ func (s *Store) GetPinnedFactsRanked(ctx context.Context, query string, limit in
 	if coreN > limit {
 		coreN = limit
 	}
+	// Clamp to what we actually have — otherwise a user with only 1-2 pinned
+	// facts indexes past cands below (the `len(cands) == 0` guard above only
+	// covers the empty case). The embErr fallback path is already bounded
+	// this way.
+	if coreN > len(cands) {
+		coreN = len(cands)
+	}
 
 	queryEmb, embErr := s.embed(ctx, capForEmbedding(query, chunkMaxTokens))
 	if embErr != nil || len(queryEmb) != s.dim {

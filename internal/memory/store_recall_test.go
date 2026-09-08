@@ -1120,6 +1120,33 @@ func TestGetPinnedFactsRanked_PicksRelevantAndCaps(t *testing.T) {
 	}
 }
 
+// TestGetPinnedFactsRanked_FewerFactsThanCore guards BUG-SCAN1: the
+// always-on recent-core loop bounded its index by min(3, limit) but not by
+// len(cands), so a user with only 1 or 2 pinned facts panicked with
+// index-out-of-range on every retrieval. Default limit here (10) keeps
+// coreN at 3, i.e. larger than the seeded set.
+func TestGetPinnedFactsRanked_FewerFactsThanCore(t *testing.T) {
+	ctx := context.Background()
+	// Deliberately unrelated wording so NearDuplicateContent doesn't collapse
+	// the pair — this test is about the len(cands) clamp, not dedup.
+	distinct := []string{"kullanicinin kopeginin adi Karabas", "kullanici Ankara'da yasiyor"}
+	for _, n := range []int{1, 2} {
+		store := newRecallStore(t, bagOfWordsEmbedding(32), 32)
+		for i := 0; i < n; i++ {
+			if err := store.SaveExplicit(ctx, distinct[i], ""); err != nil {
+				t.Fatalf("SaveExplicit: %v", err)
+			}
+		}
+		got, err := store.GetPinnedFactsRanked(ctx, "anything at all", 10)
+		if err != nil {
+			t.Fatalf("n=%d GetPinnedFactsRanked: %v", n, err)
+		}
+		if len(got) != n {
+			t.Fatalf("n=%d: returned %d facts, want %d", n, len(got), n)
+		}
+	}
+}
+
 // TestGetPinnedFactsRanked_LimitZeroFallsBackToFullSet keeps the old
 // contract reachable for callers that still want every pinned fact.
 func TestGetPinnedFactsRanked_LimitZeroFallsBackToFullSet(t *testing.T) {

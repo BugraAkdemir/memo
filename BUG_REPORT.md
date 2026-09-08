@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-30 (gece) — v4.5.0 planlayıcı/uygulayıcı modu **iki tur canlı test edildi**. 2. turda planexec pipeline'ı ücretsiz zayıf modelle (`hy3:free`) **çalışan bir SQLite blog sitesi** kurdu: signup, salted-hash login, session/cookie, blog yazısı + index — 6 maddeden 5'i, checkbox mirror + `# onay: otomatik` + retry + escalation dahil uçtan uca doğrulandı (curl ile signup→login→post→index zinciri gerçekten çalışıyor). Yol boyunca **8 bug** bulundu, **hepsinin fix'i aynı oturumda indirildi**: BUG-PERM1 (izin dialogu flash — canlı yeniden-test bekliyor, gerçek Flutter dialogu yok), BUG-PLAN1/2 (timeout'lar — kök neden düzeltildi: agent pipeline non-stream `client` 120s'e takılıyordu, 300s yapıldı), **BUG-PLAN3/5/6/7/8 (planexec çalıştırma sertleştirmesi — 2. turda canlı doğrulandı)**. BUG-PLAN4 (Görevler sekmesi kartı onay UI'ını açmıyor) da **aynı gece düzeltildi** (`91c763bc`, kart artık `TaskDetailScreen`'e push ediyor; doğrulama `1191ae92` — bu paragraf o zaman güncellenmemişti, madde aşağıda "✅ (silinecek)" olarak duruyor, gerçek açık liste "Özet" tablosundadır).
+> **Son güncelleme:** 2026-09-09 — **6 paralel inceleme ajanı + kaynak-kod doğrulaması** ile son ~40 commitlik geliştirme (agent uzun-oturum: `pipeline.go`/`conversation_compact.go`/`workingset.go`; hafıza retrieval reworku; taskloop `Shutdown`; llama arg tuning `flag_probe.go`; TTS/STT provider UI) tarandı. **17 bulgu** kayda geçti: **3 HIGH, 5 MEDIUM, 9 LOW** (BUG-SCAN1..17, aşağıda). Öne çıkanlar: `GetPinnedFactsRanked` 1-2 pinned fact varken **her mesajda panic** ediyor (SCAN1); intra-turn truncation stub'ı Anthropic'e **baştaki `assistant` mesajı** olarak gidip 400 aldırıyor, uzun agent turu ölüyor (SCAN2); Code Mode **tüm Medium araçları** (`whatsapp_send`/`share_file`/`read_env` dahil) izin sormadan otomatik onaylıyor, sadece dosya edit'lerini değil (SCAN3). Fix turu bu güncellemeyle başladı.
+>
+> **Önceki güncelleme:** 2026-08-30 (gece) — v4.5.0 planlayıcı/uygulayıcı modu **iki tur canlı test edildi**. 2. turda planexec pipeline'ı ücretsiz zayıf modelle (`hy3:free`) **çalışan bir SQLite blog sitesi** kurdu: signup, salted-hash login, session/cookie, blog yazısı + index — 6 maddeden 5'i, checkbox mirror + `# onay: otomatik` + retry + escalation dahil uçtan uca doğrulandı (curl ile signup→login→post→index zinciri gerçekten çalışıyor). Yol boyunca **8 bug** bulundu, **hepsinin fix'i aynı oturumda indirildi**: BUG-PERM1 (izin dialogu flash — canlı yeniden-test bekliyor, gerçek Flutter dialogu yok), BUG-PLAN1/2 (timeout'lar — kök neden düzeltildi: agent pipeline non-stream `client` 120s'e takılıyordu, 300s yapıldı), **BUG-PLAN3/5/6/7/8 (planexec çalıştırma sertleştirmesi — 2. turda canlı doğrulandı)**. BUG-PLAN4 (Görevler sekmesi kartı onay UI'ını açmıyor) da **aynı gece düzeltildi** (`91c763bc`, kart artık `TaskDetailScreen`'e push ediyor; doğrulama `1191ae92` — bu paragraf o zaman güncellenmemişti, madde aşağıda "✅ (silinecek)" olarak duruyor, gerçek açık liste "Özet" tablosundadır).
 >
 > **Önceki güncelleme:** 2026-08-13 — **RPi canlı testinden 2 bug** (kullanıcı bildirimi, BUG-ONB10'un bir önceki fix turunun ardından): (1) **BUG-ONB12 — Orchestra config toast spam**: `orchestraConfigProvider`'ın `build()`'i BUG-ONB6 gate-guard'ını taşıyordu ama gate açıkken herhangi bir başka fetch hatasında hâlâ `errorMessageProvider`'a toast basıyordu; bu provider `engine_strip.dart`/`chat_input.dart` tarafından **ambient** izlendiği için (Orchestra kapalıyken bile arka planda çekiliyor), her geçici hata alakasız bir "Orchestra'da hata oluştu" toast'ına dönüşüyordu. `activeProviderTypeProvider`/`remoteAccessProvider`'ın zaten aldığı "ambient watcher'lara sessiz kal" fix'i uygulandı. (2) **BUG-ONB13 — token-only kurulum, loopback olmayan istemciden her zaman 401**: kurulumun "sadece token" seçeneği ilk çağrı olarak kimlik doğrulamalı `PUT /api/remote-access`'i (elde henüz hiç kimlik yokken) çağırıyordu — `password`/`token_password` yöntemleri kimlik doğrulamasız `/api/setup/create-admin`'den geçtiği için bu sorunu yaşamıyordu. `create-admin` ile aynı desende yeni bir `POST /api/setup/create-device` (self-gating, `NeedsSetup()` üzerinden) eklendi; `RemoteAccessConfig.SetupBootstrapped` yeni alanı, token-only yolun `Accounts`/`Username`'e hiç dokunmadığı için `needs_setup`'ın sonsuza dek `true` kalmasını da ayrıca kapattı. Go+Flutter build/vet/test `-race` yeşil, `flutter test` 253/253, yeni testlerin fix'ten önce kırıldığı doğrulandı, canlı duman testiyle (gerçek binary, izole data dir) uçtan uca doğrulandı. **Aynı gün, gerçek RPi'de gerçek non-loopback kaynaktan da doğrulandı:** eski yol 401, yeni yol 200+token, ikinci deneme 403, `config.yaml`'da `setup_bootstrapped: true`. Detay: handoff.md "Ek (2026-08-13, devam 3)".
 >
@@ -89,13 +91,130 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 0 |
-| 🟢 LOW | 0 |
+| 🟠 HIGH | 3 — BUG-SCAN1 (pinned-facts panic), SCAN2 (evictionStub → Anthropic 400), SCAN3 (Code Mode auto-approve kapsamı) |
+| 🟡 MEDIUM | 5 — BUG-SCAN4 (compact cached-guard), SCAN5 (flag_probe kalıcı cache), SCAN6 (taskloop Shutdown/Start yarışı), SCAN7 (batch fact-extraction cap), SCAN8 (chatCodeModeProvider auth-gate) |
+| 🟢 LOW | 9 — BUG-SCAN9..17 (aşağıda) |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **0** — kalan her şey ya "canlı doğrulama bekliyor" ya "silinecek" kovasında, kod tarafında dokunulmamış gerçek bug kalmadı |
+| **AÇIK TOPLAM** | **17** — 2026-09-09 taramasından (BUG-SCAN1..17); fix turu bu güncellemeyle başladı, düzeltilen madde buradan silinecek |
+
+---
+
+## 🔴🟡🟢 2026-09-09 tarama bulguları (BUG-SCAN1..17)
+
+6 paralel inceleme ajanı (agent uzun-oturum çekirdeği / hafıza retrieval /
+llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
+provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
+"Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
+somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
+
+### 🔴 BUG-SCAN1 — `GetPinnedFactsRanked` panic: 1-2 pinned fact varken her mesajda `index out of range` (doğrulandı)
+
+- **Yer:** [internal/memory/store.go:1478](internal/memory/store.go:1478) (döngü), `coreN` [:1433](internal/memory/store.go:1433).
+- **Kök neden:** `coreN := 3; if coreN > limit { coreN = limit }` — `limit`'e kırpılıyor ama **`len(cands)`'e kırpılmıyor**. Tek uzunluk guard'ı `if len(cands) == 0 { return nil, nil }`. `for i := 0; i < coreN; i++ { add(cands[i].r) }` → `len(cands)` 1 veya 2 iken `cands[1]`/`cands[2]` panic.
+- **Tetik:** Kullanıcının tam 1 veya 2 explicit pinned fact'i var (`source='explicit' AND importance=5`) — ilk `/remember`'dan sonraki dönem. Default `PinnedFactsPerTurn=10` → `coreN=3`. `retrieveMemory` → `GetPinnedFactsRanked(ctx, query, 10)` → panic. 3. fact eklenene kadar **her mesajda**. `embErr` fallback yolu doğru sınırlı (`i < len(cands) && i < limit`); sadece ana yol bozuk. Mevcut test 6 fact seed'liyor.
+- **Fix:** `if coreN > len(cands) { coreN = len(cands) }` (fallback yoluyla aynı). Regresyon testi: 1 ve 2 fact'li seed.
+
+### 🔴 BUG-SCAN2 — intra-turn truncation `evictionStub`'ı baştaki/ardışık `assistant` mesajı → Anthropic 400, uzun agent turu ölüyor (doğrulandı)
+
+- **Yer:** [internal/agent/pipeline.go:280-287](internal/agent/pipeline.go:280) (stub ekleme) vs [internal/provider/claude.go:461](internal/provider/claude.go:461) (`buildClaudeRequest`).
+- **Kök neden:** Truncation bir tool-taşıyan mesajı attığında `Role:"assistant"` `evictionStub`, `system`'den hemen sonraya (ya da `system` yoksa index 0'a) ekleniyor. `buildClaudeRequest` mesajları sırayla geçiriyor — ne baştaki `user`'ı garanti ediyor ne ardışık aynı-rol mesajları birleştiriyor. `system` strip edilince Anthropic'e giden `messages` `assistant` ile başlıyor (çoğu zaman `assistant,assistant`).
+- **Tetik:** Agent modu + Claude/custom-anthropic provider + turn içinde `currentMessages` `p.maxTokens`'ı aşıyor → `TruncateMessages` en eski assistant+tool grubunu atıyor → `evictedTools` dolu → stub ilk non-system mesaj oluyor → `ChatCompletion` HTTP 400 ("first message must use the user role" / strict alternation) → pipeline `err` dalı → turn `LLM Error` `Done:true` ile ölüyor. Tam da bu rewrite'ın hedeflediği uzun oturumlarda.
+- **Fix:** Stub'ı tek başına eklemek yerine komşu (ilk `user`, ya da devam eden `assistant`) mesajın content'ine merge et; hiçbir koşulda non-`user` ilk mesaj veya ardışık aynı-rol üretme.
+
+### 🔴 BUG-SCAN3 — Code Mode **tüm** Medium-danger araçları izin sormadan onaylıyor, sadece dosya edit'lerini değil (doğrulandı)
+
+- **Yer:** [internal/agent/pipeline.go:357](internal/agent/pipeline.go:357). Gate: `permRes.NeedPrompt && p.autoApproveMedium && toolDef.DangerLevel == Medium`.
+- **Kök neden:** Kapı saf `DangerLevel == Medium`. Medium set'i ([internal/agent/tools.go](internal/agent/tools.go)) sadece edit'ler değil: **`whatsapp_send`, `share_file`, `read_env`, `start_self_driving_task`, `create_routine`, `cancel_routine`** de Medium. Code Mode her proje/agent chat'inde **default AÇIK** (`resolveCodeMode` → `sm.IsAgentChat` = `ProjectPath != ""`, [agent_chat_context.go:89](internal/app/agent_chat_context.go:89)), `CodeModeAutoApproveEdits` default `true` ([config.go:984](internal/config/config.go:984)), yani `p.autoApproveMedium` set ([llm.go:349](internal/app/llm.go:349)).
+- **Tetik:** Proje chat'inde model — veya coding görevi sırasında okuduğu bir kaynak dosyadaki prompt injection — `whatsapp_send`/`share_file` çağırıyor → mesaj/dosya **izin sormadan** dışarı gidiyor. `read_env` env secret'ları sessizce döküyor. Commit `6d520a93` mesajı ve [pipeline.go:353-356](internal/agent/pipeline.go:353) yorumu "yalnızca `write_file`/`edit_file`/`insert_line`/`delete_lines`/`*_task_md`" ve "Dangerous tools still prompt" diyor.
+- **Fix:** `DangerLevel == Medium` yerine açık tool-adı allowlist'i (`write_file`, `edit_file`, `insert_line`, `delete_lines`, `create_task_md`, `edit_task_md`).
+
+### 🟡 BUG-SCAN4 — `maybeCompactHistory` cached-summary yolu min-tail guard'ını atlıyor → tüm verbatim geçmiş özete çöküyor (doğrulandı)
+
+- **Yer:** [internal/app/conversation_compact.go:75-84](internal/app/conversation_compact.go:75).
+- **Kök neden:** Fresh yol `if cut < 2 || len(history)-cut < 2 { return history }` ile korunuyor. Cached-reuse yolu `cut = cached.coveredCount` ile üzerine yazıp bu guard'ı tekrar çalıştırmıyor → `history[cut:]` boş veya tek mesaj olabiliyor.
+- **Tetik:** Turn A: history 30 mesaj, `cut=18`, özet `coveredCount=18` ile cache'lendi. Kullanıcı 18. mesajı edit'liyor (sonrasını kesiyor) ya da son turn'leri siliyor/branch açıyor → history ~18'e iniyor. Turn B: `cut=10`, guard geçiyor; cached-reuse koşulları hepsi tutuyor (`coveredCount<=len(history)`, `cut<=coveredCount+slack`, prefix sig artık tüm history'yle eşleşiyor) → `cut:=18` → `out = [summary]`. Ekrandaki tüm konuşma özete çöküyor; model ~25 turn boyunca amnezik.
+- **Fix:** Cached dalında da `len(history)-cut < 2` (ve `cut < 2`) kontrolü; tutmuyorsa raw history dön.
+
+### 🟡 BUG-SCAN5 — `flag_probe` geçici/timeout hatasını kalıcı & sessiz "unsupported" olarak cache'liyor (doğrulandı)
+
+- **Yer:** [internal/llama/flag_probe.go:47-63](internal/llama/flag_probe.go:47).
+- **Kök neden:** `out, _ := exec.CommandContext(...)` — exec hatası yutuluyor; timeout 4s; dosyada `logx` import'u yok (tamamen sessiz); `sync.Map` cache'inde mtime yok / TTL yok / retry yok. Soğuk başlangıçta 4s aşılırsa (yüklü makine, soğuk CUDA/ROCm `.so` link'i, soğuk disk) `probeReachedModelLoad("")` → `false` → **process ömrü boyunca** cache'leniyor.
+- **Etki:** Sonraki tüm local model başlatmaları `--no-context-shift` + `--cache-reuse` + `--flash-attn`'i atlıyor, logda tek satır yok. `c884de39`'un `--no-context-shift` koruması (KV cache'in yarısını = sistem/agent bloğunu sessizce atma yerine temiz "context exceeded" hatası) sessizce kayboluyor. Ayrıca: cache **path-only** key'li → Settings'ten engine güncellemesi (`installer.go` in-place overwrite) stale sonuç bırakıyor (downgrade'de stale `true` → model hiç başlamıyor).
+- **Fix:** exec hatasını logla; timeout/exec-hatası sonucunu cache'leme (yalnızca kesin kabul/ret cache'lensin) veya kısa TTL; cache key'ine binary `mtime` ekle (`rpcCapabilityCache` deseni).
+
+### 🟡 BUG-SCAN6 — taskloop `Shutdown` `Start`'a karşı tam senkronize değil (`runWG.Add` kilit dışında, `shuttingDown` flag'i yok, retry `AfterFunc` yarışı) (doğrulandı)
+
+- **Yer:** [internal/taskloop/engine.go:321](internal/taskloop/engine.go:321) (`Add` kilit dışında), [:336](internal/taskloop/engine.go:336) (`Shutdown`), [retry.go](internal/taskloop/retry.go) `CancelAll`.
+- **Kök neden 1:** `Start` listeyi `e.active`'e koyup `e.mu`'yu bırakıyor (312), bypass callout yapıyor, `e.runWG.Add(1)`'e ancak 321'de varıyor. `Shutdown` `e.mu` altında cancel sweep + `runWG.Wait()`. A goroutine'i 312-321 arasındayken B `Shutdown` çalışırsa: sayaç hâlâ 0, `Wait()` hemen dönüyor, `Shutdown` dönüyor, `shutdownSync` tempdir siliyor; sonra A `Add(1)` + `run()` cancelled ctx ile → `run()` üstte `ctx.Err()` bakmıyor, `store.Get`/`rtStart`/`SetStatus(planning)` (store write) yapıyor. `-race` "WaitGroup misuse: Add concurrently with Wait" flag'liyor.
+- **Kök neden 2:** Shutdown anında fire etmiş bir retry `time.AfterFunc` — `t.Stop()` süresi dolmuş timer'ı durdurmuyor — `resume()` → `Start(context.Background())` → izlenmeyen, iptal edilemeyen `run()` → silinen dizine `MarkItemDone` yazıyor. `skip-restart` (`engine.go:590`) ve `ApprovePlan` (`context.Background()`) de aynı.
+- **Fix:** `runWG.Add(1)` `e.mu` altında, `e.active`'e eklemeden önce; Engine'e `shuttingDown bool` (`e.mu` altında set), `Start` başında kontrol → hata dön; `RetryScheduler`'a `stopped bool`, `AfterFunc` içinde `resume`'dan önce kontrol + `Arm`/`ArmWithDelay` shutdown sonrası re-arm etmesin.
+- **Ayrıca (ayrı, daha hafif):** `shutdownSync` `engine.Shutdown(ctx)`'i **ilk** adım olarak çağırıyor ve `ctx`'in deadline'ı yok ([main.go:191](main.go:191) `context.WithCancel(context.Background())`) → ctx'i gözlemeyen wedged bir worker turu tüm graceful teardown'u (llama/whisper `Stop()`) 15s hard `os.Exit`'e kadar blokluyor, port'lar bağlı çocuk süreçler orphan kalıyor. `engine.Shutdown` kendi kısa `context.WithTimeout(ctx, 5s)`'ini türetsin, ya da llama/whisper stop'ları öne/paralele alınsın.
+
+### 🟡 BUG-SCAN7 — batch fact extraction N turn'de tek 5-fact cap paylaşıyor → sessiz fact kaybı (plausible)
+
+- **Yer:** [internal/app/memory.go:172](internal/app/memory.go:172) (`maxExtractedFactsPerTurn = 5`), `queueFactExtraction`/`bufferFactExtraction` (`8b0b1682`).
+- **Kök neden:** `FactExtractionEveryNTurns=3` (default) → 3 turn'ün metni `strings.Join(batch, "\n---\n")` ile birleşip **tek** extraction call'ına gidiyor, ama `parseExtractedFacts` sonucu hâlâ ilk 5 fact'te kesiyor. Öncesi: turn başına 5 (3 turn'de 15'e kadar).
+- **Tetik:** Kullanıcı 3 ardışık turn'de ailesini anlatıyor (eş adı, 3 çocuk adı+yaş, 2 evcil hayvan, şehir = 8+ ayrık fact). Batch call hepsini dönüyor; `parseExtractedFacts` ilk 5'i tutup gerisini sessizce atıyor. Ayrıca `a.factExtractBuf` per-`App` (per-chat değil) → alakasız chat'lerin mesajları tek extraction prompt'una birleşiyor.
+- **Fix:** cap'i batch'lenen turn sayısıyla ölçekle (`maxExtractedFactsPerTurn * batchLen`), ya da buffer'ı per-chat yap.
+
+### 🟡 BUG-SCAN8 — `chatCodeModeProvider` auth-gate guard'ı yok, IndexedStack arkasında düz `FutureProvider` (plausible)
+
+- **Yer:** [frontend/lib/providers/agent_provider.dart:60](frontend/lib/providers/agent_provider.dart:60) (`88a34adc`).
+- **Kök neden:** `FutureProvider.family` — `authGateBlocked()` guard'ı yok, retry yok, `app_shell.dart`'ın gate-geçişi invalidate listesinde yok. `AgentScreen` `AppShell` IndexedStack'inin index 0'ı, açılışta build oluyor. BUG-ONB11/13 sınıfının 5. şekli.
+- **Tetik:** Soğuk başlangıçta agent tab görünür + chat seçili. Gate kısa süre bloklu (localhost'ta bile, ONB13). `GET /api/chats/code-mode` 401 → `FutureProvider` hatayı kalıcı cache'liyor. Gate açılıyor, hiçbir şey invalidate etmiyor. Toggle sonsuza "Code Mode kapalı" gösteriyor; tek kurtuluş toggle'a basmak — o da `setChatCodeMode(chatId, true)` ile başarısız bir okumanın yan etkisi olarak değer pinliyor.
+- **Fix:** `app_shell.dart`'ın `authGateProvider` listener'ındaki `ref.invalidate(...)` listesine ekle, ve/veya `build()`'i `authGateBlocked` ile guard'la.
+
+### 🟢 BUG-SCAN9 — recency/importance ağırlığı top-K truncation'dan **sonra** uygulanıyor (plausible)
+
+- **Yer:** [internal/memory/store.go:1063-1099](internal/memory/store.go:1063) (`4cba8eb3`). Her iki dal da havuzu `topK`'ya kırpıyor (`reciprocalRankFusion(...,topK)` / `memories[:topK]`) **sonra** `*= importance` / `*= recencyFactor(...)` döngüsü çalışıp yeniden sıralıyor. `vecMemories` `candidateK`'ya (≤100) kadar taşıyordu; ~92 aday recency görülmeden atılıyor.
+- **Etki:** Dünkü çok-alakalı bir kayıt ham-cosine rank ~12'deyse ve 2 yıllık zar-zor-alakalı bir kayıt rank 5'teyse, recency taze olanı üste iterdi ama taze olan `[:topK]`'da zaten düşmüş. Commit'in "taze kayıt biraz-daha-benzer bayat kaydı geçsin" hedefi yarım: dönen **set** hâlâ turn'den turn'e aynı, sadece son 8'in iç sırası değişiyor.
+- **Fix:** Ağırlıklandırmayı `candidateK` havuzuna uygula, sonra `topK`'ya kes.
+
+### 🟢 BUG-SCAN10 — dokümante edilen "0 = disable" iki hafıza knob'u için config'den ulaşılamaz (doğrulandı)
+
+- **Yer:** [internal/config/config.go:1201-1207](internal/config/config.go:1201). Doküman ([:810](internal/config/config.go:810)) "RecencyHalfLifeDays 0/unset disables recency weighting" diyor, `4cba8eb3` "query_history_turns 0 keeps old behaviour" diyor. Ama `validate()` `RecencyHalfLifeDays <= 0 → 30` ve `QueryHistoryTurns <= 0 → 1` zorluyor. `recencyFactor` / `buildMemoryQuery`'deki `<= 0` disable dalları fiilen ölü kod.
+- **Fix:** Bu iki alanı `validate()`'te 0'a izin verecek şekilde muaf tut (negatifi 0'a çek).
+
+### 🟢 BUG-SCAN11 — `read_file` otomatik byte-cap'i yalnızca tetikleyici, gerçek çıktı sınırı değil (plausible)
+
+- **Yer:** [internal/agent/tools/file.go:60-98](internal/agent/tools/file.go:60), sabitler [:32-33](internal/agent/tools/file.go:32). `readFileAutoByteCap` (256 KiB) yalnızca windowlanmamış bir okumayı windowlamaya karar veriyor (`bigUnwindowed`). Windowing devreye girince tek cap `readFileAutoLineCap = 2000` satır; `body` hiçbir zaman byte ile sınırlanmıyor.
+- **Tetik:** Model `read_file`'ı offset/limit'siz 12 MB minified/generated dosyada çağırıyor (satır başı ~3 KB, 4000 satır — minified JS, tek-satır JSON, base64). `bigUnwindowed` true, `limit=2000`, `strings.Join(lines[0:2000])` ~6 MB metin döndürüyor → `currentMessages` → sonraki prompt. `readFileAutoByteCap` yorumunun önlediğini iddia ettiği context patlaması. Yalnızca kısa satırlı dosyalar korunuyor.
+- **Fix:** windowlanmış `body`'ye de byte cap uygula (satır sınırından bağımsız).
+
+### 🟢 BUG-SCAN12 — working set: komut dedup yok, ham-path dosya key'leri (plausible)
+
+- **Yer:** [internal/app/workingset.go:121-133](internal/app/workingset.go:121) (`addCmd`), [:94-119](internal/app/workingset.go:94) (`touchFile`). `addCmd` koşulsuz append + son `wsMaxCmds` (5)'e trim, `cmd` ile dedup yok. `touchFile` `w.files`'ı ham `path` argümanıyla key'liyor.
+- **Etki:** Bir turn'de 5 kez `go test ./...` → 5 slotun hepsi aynı komut, diğer tüm komutlar (`git status`, `go build`) digest'ten atılıyor. `./internal/app/llm.go` ve `internal/app/llm.go` → tek dosya için iki `wsFile` entry, 12+ dosyada gerçek bir farklı dosyayı atabiliyor. İkisi de digest kalitesi (yanlış çıktı değil).
+- **Fix:** `addCmd`'de `cmd`'e göre dedup; `touchFile`'da `filepath.Clean`/rel-path normalizasyonu.
+
+### 🟢 BUG-SCAN13 — STT "Kaydet" butonu kaydederken "Test ediliyor…" gösteriyor (doğrulandı)
+
+- **Yer:** [frontend/lib/widgets/settings/stt_provider_section.dart:352-354](frontend/lib/widgets/settings/stt_provider_section.dart:352). `_saving` iken `L10n.t('tts_provider_testing')` ("Test ediliyor…" / "Testing…") gösteriliyor. STT bölümünün test akışı yok — busy etiketi TTS'ten kopyalanmış, semantik olarak yanlış key.
+- **Fix:** `tts_provider_save` veya yeni bir "kaydediliyor" key'i kullan.
+
+### 🟢 BUG-SCAN14 — `stripAssistantReply` ilk `Assistant:`/`Asistan:` satırından sonra gerçek kullanıcı içeriğini kesiyor (plausible)
+
+- **Yer:** [internal/memory/store.go:2798](internal/memory/store.go:2798). Artık ana chat/agent yolunda çağrılıyor ([helpers.go:150](internal/app/helpers.go:150) `stripAssistant=true`, `8b0b1682`). Döngü trimmed satır `Assistant:`/`Asistan:` ile başlıyorsa `break` — o satırı **ve sonrasını** atıyor. Depolanan `content` = `"[ts] User: <userChunk>\nAssistant: <reply>"` ve `<userChunk>` sık sık newline içeriyor (yapıştırılan transcript, kod, roleplay).
+- **Tetik:** Kullanıcı bir sistem-prompt denemesi yapıştırıyor, içinde `Assistant: you are a helpful bot` satırı var → depolanan hafızanın kullanıcı tarafı `"[ts] User: <ilk satır>"`e iniyor, asıl soru kesiliyor.
+- **Fix:** Yalnızca `content`'in bilinen `\nAssistant: ` ayracından böl (ilk satır-başı eşleşmesi değil), ya da orijinal `user_msg` alanını kullan.
+
+### 🟢 BUG-SCAN15 — Anthropic prompt-cache breakpoint'i düz chat yolunda da konuyor, orada blok her turn değişiyor (doğrulandı — correctness değil, maliyet)
+
+- **Yer:** [internal/provider/claude.go:531-541](internal/provider/claude.go:531). Ephemeral breakpoint tüm `systemText`'in sonuna konuyor. `BuildSystemPrompt` retrieved-memory bloğunu **en sona** ekliyor ([identity.go:223](internal/identity/identity.go:223)); düz (non-agent) chat'te turn başına tek completion var → query-varying retrieval yüzünden cache prefix key'i her turn değişiyor → ~%0 cache hit + %25 cache-write premium 4-8k token'lık system prompt'ta. Agent yolu (bir turn içi iterasyon 2..N) gerçek kazanç.
+- **Fix:** Cache breakpoint'i yalnızca agent yolunda (≥2 iterasyon beklenen) uygula, ya da memory bloğunu system'den çıkarıp user mesajına taşı (time/working-set digest'inde zaten yapıldığı gibi).
+
+### 🟢 BUG-SCAN16 — `NearDuplicateContent` digit-blind normalizasyonu sadece sayıyla farklı iki fact'i çöküyor (plausible)
+
+- **Yer:** [internal/memory/store.go](internal/memory/store.go) `NearDuplicateContent` / `contentTokenSet` (`8bef0e8b`). Saf-rakam token'ları Jaccard'dan önce atılıyor. `"kira 5000 lira"` ve `"kira 8000 lira"` → token set `{kira, lira}` her ikisinde → Jaccard 1.0 → biri çöküyor. Recent core `add()`'i önce çalıştığı için eski-ama-recent olan kazanıp yeni/yüksek-skorlu duplicate atılabiliyor. `len(ta) < 2` guard'ı yalnızca tek-token fact'leri kurtarıyor.
+- **Fix:** Rakam token'larını tamamen atmak yerine normalize et (ör. `#`), ya da 2 fact yalnız rakamla farklıysa near-dup sayma.
+
+### 🟢 BUG-SCAN17 — `_CodeModeToggle.onPressed` `ref.invalidate`'i `await` sonrası `mounted` guard'sız (plausible)
+
+- **Yer:** [frontend/lib/screens/agent_screen.dart](frontend/lib/screens/agent_screen.dart) `_CodeModeToggle` (`88a34adc`). SnackBar `context.mounted` ile guard'lı ama `await`'ten sonraki `ref.invalidate(chatCodeModeProvider(chatId))` koşulsuz çalışıyor. `ConsumerWidget`'ın `WidgetRef`'i element unmount olduktan sonra `StateError: Cannot use "ref" after the widget was disposed` atıyor.
+- **Tetik:** Toggle'a bas, yavaş `POST /api/chats/code-mode` dönmeden o agent chat'i sil/seçimi kaldır → `_CodeModeToggle` dispose → `ref.invalidate` disposed ref üstünde → yakalanmamış exception.
+- **Fix:** `if (context.mounted)` ile `ref.invalidate`'i de sar.
 
 ---
 

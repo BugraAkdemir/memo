@@ -428,3 +428,42 @@ func TestBuildClaudeRequest_PromptCachingOnAnthropicOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildClaudeRequest_NormalizesRoleAlternation guards BUG-SCAN2: the
+// agent pipeline's intra-turn context-trim note is a user-role message that
+// can land right next to the real user turn (or, if that turn was also
+// evicted, become the first message). Anthropic 400s on consecutive
+// same-role messages and on a leading assistant message; buildClaudeRequest
+// must coalesce / bridge so neither shape is emitted.
+func TestBuildClaudeRequest_NormalizesRoleAlternation(t *testing.T) {
+	p := &claudeProvider{baseURL: "https://api.anthropic.com"}
+
+	// Two consecutive user messages (trim note + real task) must merge into one.
+	got := p.buildClaudeRequest(ChatRequest{Messages: []Message{
+		TextMessage("system", "sys"),
+		TextMessage("user", "[context-trim] some tool outputs were trimmed"),
+		TextMessage("user", "now do the real task"),
+		{Role: "assistant", Content: "on it"},
+	}}, "claude-x", false)
+	for i := 1; i < len(got.Messages); i++ {
+		if got.Messages[i].Role == got.Messages[i-1].Role {
+			t.Fatalf("consecutive %q messages at %d not merged: %+v", got.Messages[i].Role, i, got.Messages)
+		}
+	}
+	if got.Messages[0].Role != "user" {
+		t.Fatalf("first message role = %q, want user", got.Messages[0].Role)
+	}
+	if n := len(got.Messages[0].Content); n != 2 {
+		t.Fatalf("merged first user message should carry both text blocks, got %d", n)
+	}
+
+	// A leading assistant message (real user turn fully evicted) gets a user bridge.
+	got2 := p.buildClaudeRequest(ChatRequest{Messages: []Message{
+		TextMessage("system", "sys"),
+		{Role: "assistant", Content: "prefill"},
+		{Role: "user", Content: "reply"},
+	}}, "claude-x", false)
+	if got2.Messages[0].Role != "user" {
+		t.Fatalf("leading assistant not bridged: %+v", got2.Messages)
+	}
+}

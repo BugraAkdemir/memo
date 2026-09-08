@@ -278,12 +278,12 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 					}
 					filtered = append(filtered, m)
 					if !stubInserted && m.Role == "system" && len(evictedTools) > 0 {
-						filtered = append(filtered, provider.Message{Role: "assistant", Content: evictionStub(evictedTools)})
+						filtered = append(filtered, provider.Message{Role: "user", Content: evictionStub(evictedTools)})
 						stubInserted = true
 					}
 				}
 				if !stubInserted && len(evictedTools) > 0 {
-					filtered = append([]provider.Message{{Role: "assistant", Content: evictionStub(evictedTools)}}, filtered...)
+					filtered = append([]provider.Message{{Role: "user", Content: evictionStub(evictedTools)}}, filtered...)
 				}
 				currentMessages = filtered
 			}
@@ -496,10 +496,14 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 	return outCh, nil
 }
 
-// contextTrimMarker prefixes the synthetic assistant message that stands in
-// for tool results dropped by intra-turn truncation. Recognisable so a later
+// contextTrimMarker prefixes the synthetic user message that stands in for
+// tool results dropped by intra-turn truncation. Recognisable so a later
 // truncation pass can replace it with a fresh combined one rather than
-// stacking markers.
+// stacking markers. It is a user-role note (not assistant): it must never
+// become a leading assistant message nor sit two-assistant-deep, both of
+// which Anthropic rejects with a 400 (BUG-SCAN2) — and provider adapters
+// that require strict role alternation (see claude.go) coalesce it into the
+// adjacent real user turn.
 const contextTrimMarker = "[context-trim]"
 
 // evictionStub is that message's body: it tells the model which tools'

@@ -425,6 +425,35 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 	}
 }
 
+// normalizeClaudeMessages enforces the two shape rules the Anthropic
+// Messages API applies to the messages array, so callers upstream don't
+// have to: (1) roles strictly alternate — consecutive same-role messages
+// are merged by concatenating their content blocks; (2) the array cannot
+// begin with an assistant message — a minimal user bridge is prepended if
+// it would. Without (1) an intra-turn context-trim note landing next to the
+// real user turn produced two consecutive user messages and a 400
+// (BUG-SCAN2); (2) is defence-in-depth for any future caller.
+func normalizeClaudeMessages(msgs []claudeMsg) []claudeMsg {
+	if len(msgs) == 0 {
+		return msgs
+	}
+	merged := make([]claudeMsg, 0, len(msgs))
+	for _, m := range msgs {
+		if n := len(merged); n > 0 && merged[n-1].Role == m.Role {
+			merged[n-1].Content = append(merged[n-1].Content, m.Content...)
+			continue
+		}
+		merged = append(merged, m)
+	}
+	if merged[0].Role == "assistant" {
+		merged = append([]claudeMsg{{
+			Role:    "user",
+			Content: []claudeBlock{{Type: "text", Text: "(continued)"}},
+		}}, merged...)
+	}
+	return merged
+}
+
 // buildClaudeRequest takes the already-resolved model (req.Model if set,
 // else the provider's own configured default — see ChatCompletion/
 // ChatCompletionStream) as an explicit parameter rather than reading
@@ -510,6 +539,8 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 		msgs = append(msgs, claudeMsg{Role: role, Content: blocks})
 	}
 	flush()
+
+	msgs = normalizeClaudeMessages(msgs)
 
 	clReq := claudeRequest{
 		Model:       model,

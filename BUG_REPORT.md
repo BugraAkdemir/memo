@@ -91,13 +91,13 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 2 — BUG-SCAN2 (evictionStub → Anthropic 400), SCAN3 (Code Mode auto-approve kapsamı) |
+| 🟠 HIGH | 1 — BUG-SCAN3 (Code Mode auto-approve kapsamı) |
 | 🟡 MEDIUM | 5 — BUG-SCAN4 (compact cached-guard), SCAN5 (flag_probe kalıcı cache), SCAN6 (taskloop Shutdown/Start yarışı), SCAN7 (batch fact-extraction cap), SCAN8 (chatCodeModeProvider auth-gate) |
 | 🟢 LOW | 9 — BUG-SCAN9..17 (aşağıda) |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **16** — 2026-09-09 taramasından (BUG-SCAN2..17); fix turu sürüyor, düzeltilen madde buradan siliniyor |
+| **AÇIK TOPLAM** | **15** — 2026-09-09 taramasından (BUG-SCAN3..17); fix turu sürüyor, düzeltilen madde buradan siliniyor |
 
 ---
 
@@ -108,13 +108,6 @@ llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
 provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
 "Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
 somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
-
-### 🔴 BUG-SCAN2 — intra-turn truncation `evictionStub`'ı baştaki/ardışık `assistant` mesajı → Anthropic 400, uzun agent turu ölüyor (doğrulandı)
-
-- **Yer:** [internal/agent/pipeline.go:280-287](internal/agent/pipeline.go:280) (stub ekleme) vs [internal/provider/claude.go:461](internal/provider/claude.go:461) (`buildClaudeRequest`).
-- **Kök neden:** Truncation bir tool-taşıyan mesajı attığında `Role:"assistant"` `evictionStub`, `system`'den hemen sonraya (ya da `system` yoksa index 0'a) ekleniyor. `buildClaudeRequest` mesajları sırayla geçiriyor — ne baştaki `user`'ı garanti ediyor ne ardışık aynı-rol mesajları birleştiriyor. `system` strip edilince Anthropic'e giden `messages` `assistant` ile başlıyor (çoğu zaman `assistant,assistant`).
-- **Tetik:** Agent modu + Claude/custom-anthropic provider + turn içinde `currentMessages` `p.maxTokens`'ı aşıyor → `TruncateMessages` en eski assistant+tool grubunu atıyor → `evictedTools` dolu → stub ilk non-system mesaj oluyor → `ChatCompletion` HTTP 400 ("first message must use the user role" / strict alternation) → pipeline `err` dalı → turn `LLM Error` `Done:true` ile ölüyor. Tam da bu rewrite'ın hedeflediği uzun oturumlarda.
-- **Fix:** Stub'ı tek başına eklemek yerine komşu (ilk `user`, ya da devam eden `assistant`) mesajın content'ine merge et; hiçbir koşulda non-`user` ilk mesaj veya ardışık aynı-rol üretme.
 
 ### 🔴 BUG-SCAN3 — Code Mode **tüm** Medium-danger araçları izin sormadan onaylıyor, sadece dosya edit'lerini değil (doğrulandı)
 

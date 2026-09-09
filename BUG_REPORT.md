@@ -93,11 +93,11 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 0 |
-| 🟢 LOW | 6 — BUG-SCAN11-16 (aşağıda); SCAN9 + SCAN10 + SCAN17 düzeltildi |
+| 🟢 LOW | 5 — BUG-SCAN12-16 (aşağıda); SCAN9-11 + SCAN17 düzeltildi |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **6** — 2026-09-09 taramasından (BUG-SCAN11-16); fix turu sürüyor, düzeltilen madde buradan siliniyor |
+| **AÇIK TOPLAM** | **5** — 2026-09-09 taramasından (BUG-SCAN12-16); fix turu sürüyor, düzeltilen madde buradan siliniyor |
 
 ---
 
@@ -108,12 +108,6 @@ llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
 provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
 "Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
 somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
-
-### 🟢 BUG-SCAN11 — `read_file` otomatik byte-cap'i yalnızca tetikleyici, gerçek çıktı sınırı değil (plausible)
-
-- **Yer:** [internal/agent/tools/file.go:60-98](internal/agent/tools/file.go:60), sabitler [:32-33](internal/agent/tools/file.go:32). `readFileAutoByteCap` (256 KiB) yalnızca windowlanmamış bir okumayı windowlamaya karar veriyor (`bigUnwindowed`). Windowing devreye girince tek cap `readFileAutoLineCap = 2000` satır; `body` hiçbir zaman byte ile sınırlanmıyor.
-- **Tetik:** Model `read_file`'ı offset/limit'siz 12 MB minified/generated dosyada çağırıyor (satır başı ~3 KB, 4000 satır — minified JS, tek-satır JSON, base64). `bigUnwindowed` true, `limit=2000`, `strings.Join(lines[0:2000])` ~6 MB metin döndürüyor → `currentMessages` → sonraki prompt. `readFileAutoByteCap` yorumunun önlediğini iddia ettiği context patlaması. Yalnızca kısa satırlı dosyalar korunuyor.
-- **Fix:** windowlanmış `body`'ye de byte cap uygula (satır sınırından bağımsız).
 
 ### 🟢 BUG-SCAN12 — working set: komut dedup yok, ham-path dosya key'leri (plausible)
 

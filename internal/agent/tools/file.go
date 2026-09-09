@@ -88,7 +88,25 @@ func ReadFile(ctx context.Context, argsJSON json.RawMessage, basePath string, cr
 	}
 
 	body := strings.Join(lines[start:end], "\n")
-	if start > 0 || end < total {
+
+	// The auto-window (no offset/limit on a big file) exists so one call can't
+	// blow the context window, but readFileAutoLineCap alone doesn't bound it:
+	// 2000 lines of a minified/one-line-JSON/base64 file is still multiple MB.
+	// Cap the auto path by bytes too, cutting on a line boundary (BUG-SCAN11).
+	// An explicit offset/limit read is the model's own call and stays bounded
+	// only by readFileHardCapBytes.
+	truncatedByBytes := false
+	if bigUnwindowed && len(body) > readFileAutoByteCap {
+		cut := readFileAutoByteCap
+		if nl := strings.LastIndexByte(body[:cut], '\n'); nl > 0 {
+			cut = nl
+		}
+		body = body[:cut]
+		end = start + strings.Count(body, "\n") + 1
+		truncatedByBytes = true
+	}
+
+	if start > 0 || end < total || truncatedByBytes {
 		hint := ""
 		if end < total {
 			hint = " — pass offset/limit to read more"

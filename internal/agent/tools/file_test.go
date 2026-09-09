@@ -221,6 +221,28 @@ func TestReadFile_BigFileAutoCapped(t *testing.T) {
 	}
 }
 
+// TestReadFile_BigFileLongLinesByteCapped guards BUG-SCAN11: the auto-window
+// bounded lines (2000) but not bytes, so a minified / one-line-JSON / base64
+// file of few but huge lines still returned multiple MB into the context.
+func TestReadFile_BigFileLongLinesByteCapped(t *testing.T) {
+	base := t.TempDir()
+	var sb strings.Builder
+	for i := 0; i < 400; i++ { // 400 lines * ~8KB = ~3.2MB, well under the 2000-line cap
+		sb.WriteString(strings.Repeat("x", 8000))
+		sb.WriteByte('\n')
+	}
+	if err := os.WriteFile(filepath.Join(base, "min.js"), []byte(sb.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out := readFile(t, base, "min.js", 0, 0)
+	if len(out) > readFileAutoByteCap+512 { // +header slack
+		t.Errorf("auto read returned %d bytes, must be byte-capped near %d", len(out), readFileAutoByteCap)
+	}
+	if !strings.HasPrefix(out, "[read_file min.js: lines 1-") {
+		t.Errorf("byte-capped read should still carry the range header: %q", firstLine(out))
+	}
+}
+
 func TestReadFile_OffsetPastEnd(t *testing.T) {
 	base := t.TempDir()
 	if err := os.WriteFile(filepath.Join(base, "s.txt"), []byte("a\nb\n"), 0644); err != nil {

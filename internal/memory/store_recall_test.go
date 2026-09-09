@@ -1252,6 +1252,10 @@ func TestNearDuplicateContent(t *testing.T) {
 		// genuine paraphrase with different word forms — deliberately NOT caught
 		{"kullanıcı Ankara'da yaşıyor", "kullanıcı Ankara ilinde ikamet ediyor", false},
 		{"", "anything at all", false},
+		// BUG-SCAN16: same words, different number on each side — distinct facts.
+		{"kira bedeli 5000 lira", "kira bedeli 8000 lira", false},
+		// but the same number on both sides with matching words is still a dup.
+		{"kira bedeli 5000 lira aylik", "kira bedeli 5000 lira", true},
 	}
 	for _, c := range cases {
 		if got := NearDuplicateContent(c.a, c.b); got != c.want {

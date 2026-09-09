@@ -93,26 +93,24 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 0 |
-| 🟢 LOW | 1 — BUG-SCAN16 (aşağıda); SCAN9-15 + SCAN17 düzeltildi |
+| 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **1** — 2026-09-09 taramasından (BUG-SCAN16); fix turu sürüyor, düzeltilen madde buradan siliniyor |
+| **AÇIK TOPLAM** | **0** — 2026-09-09 taramasının 17 bulgusunun tamamı düzeltildi (SCAN1..17), her biri kendi regresyon testiyle |
 
 ---
 
-## 🔴🟡🟢 2026-09-09 tarama bulguları (BUG-SCAN1..17)
+## 2026-09-09 tarama bulguları (BUG-SCAN1..17) — HEPSİ DÜZELTİLDİ
 
 6 paralel inceleme ajanı (agent uzun-oturum çekirdeği / hafıza retrieval /
 llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
-provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
-"Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
-somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
-
-### 🟢 BUG-SCAN16 — `NearDuplicateContent` digit-blind normalizasyonu sadece sayıyla farklı iki fact'i çöküyor (plausible)
-
-- **Yer:** [internal/memory/store.go](internal/memory/store.go) `NearDuplicateContent` / `contentTokenSet` (`8bef0e8b`). Saf-rakam token'ları Jaccard'dan önce atılıyor. `"kira 5000 lira"` ve `"kira 8000 lira"` → token set `{kira, lira}` her ikisinde → Jaccard 1.0 → biri çöküyor. Recent core `add()`'i önce çalıştığı için eski-ama-recent olan kazanıp yeni/yüksek-skorlu duplicate atılabiliyor. `len(ta) < 2` guard'ı yalnızca tek-token fact'leri kurtarıyor.
-- **Fix:** Rakam token'larını tamamen atmak yerine normalize et (ör. `#`), ya da 2 fact yalnız rakamla farklıysa near-dup sayma.
+provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulamasıyla
+son ~40 commit tarandı; 17 bulgunun (3 HIGH, 5 MEDIUM, 9 LOW) tamamı aynı
+oturumda düzeltildi, her biri kendi regresyon testiyle (fix'ten önce
+kırıldığı doğrulanarak). Detay `git log` `fix(...): ... (BUG-SCANn)`
+commit'lerinde. İlk 3 (docs + SCAN1 + SCAN2) 2026-09-08 tarihli, gerisi
+2026-09-09/10.
 
 ---
 

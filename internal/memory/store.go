@@ -1526,6 +1526,15 @@ func (s *Store) GetPinnedFactsRanked(ctx context.Context, query string, limit in
 // embeddings. It does NOT catch semantic paraphrase with different word
 // forms — that is what the vector search itself is for.
 func NearDuplicateContent(a, b string) bool {
+	// If both sides carry numbers and they aren't the same numbers, these are
+	// distinct facts even when every word matches — "kira 5000 lira" vs
+	// "kira 8000 lira" (BUG-SCAN16). A number on only one side (a leading
+	// timestamp/id) does not block: that is the prefix case this function is
+	// meant to see through.
+	if na, nb := digitTokenSet(a), digitTokenSet(b); len(na) > 0 && len(nb) > 0 && !sameStringSet(na, nb) {
+		return false
+	}
+
 	ta, tb := contentTokenSet(a), contentTokenSet(b)
 	if len(ta) < 2 || len(tb) < 2 {
 		return false
@@ -1564,6 +1573,43 @@ func contentTokenSet(s string) map[string]struct{} {
 		out[w] = struct{}{}
 	}
 	return out
+}
+
+// digitTokenSet is contentTokenSet's complement: the pure-digit tokens
+// (numbers) it drops. Used by NearDuplicateContent to tell two facts apart
+// when they differ only by a number.
+func digitTokenSet(s string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, w := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		if utf8.RuneCountInString(w) < 1 {
+			continue
+		}
+		allDigits := true
+		for _, r := range w {
+			if !unicode.IsDigit(r) {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			out[w] = struct{}{}
+		}
+	}
+	return out
+}
+
+func sameStringSet(a, b map[string]struct{}) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if _, ok := b[k]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // incrementRetrieveCounts increments retrieve_count for the given memory UUIDs.

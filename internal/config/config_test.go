@@ -173,6 +173,42 @@ func TestSaveAndReload(t *testing.T) {
 	}
 }
 
+// TestMemoryRecencyKnobsZeroSurvivesLoad is the BUG-SCAN10 regression: a
+// config.yaml that explicitly sets these to 0 to opt out of recency
+// weighting / history enrichment must not be silently forced back to the
+// defaults, while an absent key still keeps the default.
+func TestMemoryRecencyKnobsZeroSurvivesLoad(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("memory:\n  recency_half_life_days: 0\n  query_history_turns: 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Memory.RecencyHalfLifeDays != 0 {
+		t.Errorf("explicit recency_half_life_days: 0 became %d", cfg.Memory.RecencyHalfLifeDays)
+	}
+	if cfg.Memory.QueryHistoryTurns != 0 {
+		t.Errorf("explicit query_history_turns: 0 became %d", cfg.Memory.QueryHistoryTurns)
+	}
+
+	// Absent keys still keep Default()'s values.
+	path2 := filepath.Join(dir, "config2.yaml")
+	if err := os.WriteFile(path2, []byte("memory:\n  top_k: 7\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg2, err := Load(path2)
+	if err != nil {
+		t.Fatalf("Load2: %v", err)
+	}
+	if cfg2.Memory.RecencyHalfLifeDays != 30 || cfg2.Memory.QueryHistoryTurns != 1 {
+		t.Errorf("absent keys should keep defaults, got half-life=%d turns=%d",
+			cfg2.Memory.RecencyHalfLifeDays, cfg2.Memory.QueryHistoryTurns)
+	}
+}
+
 func TestValidateFixesEmptyFields(t *testing.T) {
 	cfg := &AppConfig{}
 	cfg.validate()
@@ -201,11 +237,15 @@ func TestValidateFixesEmptyFields(t *testing.T) {
 	if cfg.Memory.PinnedFactsPerTurn != 10 {
 		t.Errorf("Memory.PinnedFactsPerTurn = %d, want 10 after validate", cfg.Memory.PinnedFactsPerTurn)
 	}
-	if cfg.Memory.RecencyHalfLifeDays != 30 {
-		t.Errorf("Memory.RecencyHalfLifeDays = %d, want 30 after validate", cfg.Memory.RecencyHalfLifeDays)
+	// BUG-SCAN10: 0 is a documented opt-out for these two, so validate()
+	// leaves it alone (only a negative is a real error). An absent key keeps
+	// Default()'s 30 / 1 because Load() unmarshals over Default(), covered by
+	// TestMemoryRecencyKnobsZeroSurvivesLoad below.
+	if cfg.Memory.RecencyHalfLifeDays != 0 {
+		t.Errorf("Memory.RecencyHalfLifeDays = %d, want 0 left as the opt-out", cfg.Memory.RecencyHalfLifeDays)
 	}
-	if cfg.Memory.QueryHistoryTurns != 1 {
-		t.Errorf("Memory.QueryHistoryTurns = %d, want 1 after validate", cfg.Memory.QueryHistoryTurns)
+	if cfg.Memory.QueryHistoryTurns != 0 {
+		t.Errorf("Memory.QueryHistoryTurns = %d, want 0 left as the opt-out", cfg.Memory.QueryHistoryTurns)
 	}
 	if cfg.Memory.FactExtractionEveryNTurns != 3 {
 		t.Errorf("Memory.FactExtractionEveryNTurns = %d, want 3 after validate", cfg.Memory.FactExtractionEveryNTurns)

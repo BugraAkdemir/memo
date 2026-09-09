@@ -93,11 +93,11 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 0 |
-| 🟢 LOW | 8 — BUG-SCAN9..16 (aşağıda); SCAN17 aynı Code Mode toggle commit'inde SCAN8 ile birlikte düzeltildi |
+| 🟢 LOW | 7 — BUG-SCAN9, 11-16 (aşağıda); SCAN10 + SCAN17 düzeltildi |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **8** — 2026-09-09 taramasından (BUG-SCAN9..16); fix turu sürüyor, düzeltilen madde buradan siliniyor |
+| **AÇIK TOPLAM** | **7** — 2026-09-09 taramasından (BUG-SCAN9, 11-16); fix turu sürüyor, düzeltilen madde buradan siliniyor |
 
 ---
 
@@ -114,11 +114,6 @@ somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan si
 - **Yer:** [internal/memory/store.go:1063-1099](internal/memory/store.go:1063) (`4cba8eb3`). Her iki dal da havuzu `topK`'ya kırpıyor (`reciprocalRankFusion(...,topK)` / `memories[:topK]`) **sonra** `*= importance` / `*= recencyFactor(...)` döngüsü çalışıp yeniden sıralıyor. `vecMemories` `candidateK`'ya (≤100) kadar taşıyordu; ~92 aday recency görülmeden atılıyor.
 - **Etki:** Dünkü çok-alakalı bir kayıt ham-cosine rank ~12'deyse ve 2 yıllık zar-zor-alakalı bir kayıt rank 5'teyse, recency taze olanı üste iterdi ama taze olan `[:topK]`'da zaten düşmüş. Commit'in "taze kayıt biraz-daha-benzer bayat kaydı geçsin" hedefi yarım: dönen **set** hâlâ turn'den turn'e aynı, sadece son 8'in iç sırası değişiyor.
 - **Fix:** Ağırlıklandırmayı `candidateK` havuzuna uygula, sonra `topK`'ya kes.
-
-### 🟢 BUG-SCAN10 — dokümante edilen "0 = disable" iki hafıza knob'u için config'den ulaşılamaz (doğrulandı)
-
-- **Yer:** [internal/config/config.go:1201-1207](internal/config/config.go:1201). Doküman ([:810](internal/config/config.go:810)) "RecencyHalfLifeDays 0/unset disables recency weighting" diyor, `4cba8eb3` "query_history_turns 0 keeps old behaviour" diyor. Ama `validate()` `RecencyHalfLifeDays <= 0 → 30` ve `QueryHistoryTurns <= 0 → 1` zorluyor. `recencyFactor` / `buildMemoryQuery`'deki `<= 0` disable dalları fiilen ölü kod.
-- **Fix:** Bu iki alanı `validate()`'te 0'a izin verecek şekilde muaf tut (negatifi 0'a çek).
 
 ### 🟢 BUG-SCAN11 — `read_file` otomatik byte-cap'i yalnızca tetikleyici, gerçek çıktı sınırı değil (plausible)
 

@@ -1198,11 +1198,16 @@ func (c *AppConfig) validate() []string {
 		c.Memory.PinnedFactsPerTurn = 10
 		fixes = append(fixes, "Memory.PinnedFactsPerTurn")
 	}
-	if c.Memory.RecencyHalfLifeDays <= 0 {
+	// Only a genuinely invalid (negative) value is reset — 0 is a documented
+	// opt-out ("0 disables recency weighting" / keeps the age-blind
+	// behaviour) that recencyFactor and buildMemoryQuery both honour, and an
+	// absent key already keeps Default()'s 30 / 1 since Load() unmarshals
+	// over Default() (BUG-SCAN10).
+	if c.Memory.RecencyHalfLifeDays < 0 {
 		c.Memory.RecencyHalfLifeDays = 30
 		fixes = append(fixes, "Memory.RecencyHalfLifeDays")
 	}
-	if c.Memory.QueryHistoryTurns <= 0 {
+	if c.Memory.QueryHistoryTurns < 0 {
 		c.Memory.QueryHistoryTurns = 1
 		fixes = append(fixes, "Memory.QueryHistoryTurns")
 	}

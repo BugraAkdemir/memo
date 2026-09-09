@@ -427,6 +427,19 @@ func TestBuildClaudeRequest_PromptCachingOnAnthropicOnly(t *testing.T) {
 			t.Errorf("custom endpoint: tool %d must not carry cache_control", i)
 		}
 	}
+
+	// BUG-SCAN15: a plain chat turn (no Tools) on anthropic.com must NOT get
+	// a system cache breakpoint — its system prompt is rebuilt with a fresh
+	// memory block every turn, so it never hits and only pays the write
+	// premium.
+	noTools := ChatRequest{Messages: []Message{
+		TextMessage("system", "you are a long system prompt worth caching"),
+		TextMessage("user", "hi"),
+	}}
+	got3 := anth.buildClaudeRequest(noTools, "claude-x", false)
+	if _, isBlocks := got3.System.([]claudeSystemBlock); isBlocks {
+		t.Errorf("no-tools turn: system must stay a plain string (no cache_control), got %#v", got3.System)
+	}
 }
 
 // TestBuildClaudeRequest_NormalizesRoleAlternation guards BUG-SCAN2: the

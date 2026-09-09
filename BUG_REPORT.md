@@ -93,11 +93,11 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 0 |
-| 🟢 LOW | 2 — BUG-SCAN15-16 (aşağıda); SCAN9-14 + SCAN17 düzeltildi |
+| 🟢 LOW | 1 — BUG-SCAN16 (aşağıda); SCAN9-15 + SCAN17 düzeltildi |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **2** — 2026-09-09 taramasından (BUG-SCAN15-16); fix turu sürüyor, düzeltilen madde buradan siliniyor |
+| **AÇIK TOPLAM** | **1** — 2026-09-09 taramasından (BUG-SCAN16); fix turu sürüyor, düzeltilen madde buradan siliniyor |
 
 ---
 
@@ -108,11 +108,6 @@ llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
 provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
 "Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
 somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
-
-### 🟢 BUG-SCAN15 — Anthropic prompt-cache breakpoint'i düz chat yolunda da konuyor, orada blok her turn değişiyor (doğrulandı — correctness değil, maliyet)
-
-- **Yer:** [internal/provider/claude.go:531-541](internal/provider/claude.go:531). Ephemeral breakpoint tüm `systemText`'in sonuna konuyor. `BuildSystemPrompt` retrieved-memory bloğunu **en sona** ekliyor ([identity.go:223](internal/identity/identity.go:223)); düz (non-agent) chat'te turn başına tek completion var → query-varying retrieval yüzünden cache prefix key'i her turn değişiyor → ~%0 cache hit + %25 cache-write premium 4-8k token'lık system prompt'ta. Agent yolu (bir turn içi iterasyon 2..N) gerçek kazanç.
-- **Fix:** Cache breakpoint'i yalnızca agent yolunda (≥2 iterasyon beklenen) uygula, ya da memory bloğunu system'den çıkarıp user mesajına taşı (time/working-set digest'inde zaten yapıldığı gibi).
 
 ### 🟢 BUG-SCAN16 — `NearDuplicateContent` digit-blind normalizasyonu sadece sayıyla farklı iki fact'i çöküyor (plausible)
 

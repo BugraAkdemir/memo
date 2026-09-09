@@ -557,8 +557,15 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 	// later iterations don't re-pay full input price for the (unchanging)
 	// system + tool schema. Gated to api.anthropic.com — a custom
 	// Anthropic-compatible endpoint may not accept the cache_control field.
+	//
+	// Also gated to tool-carrying (agent) turns: only there is the same
+	// system prefix reused inside the 5-minute TTL (iterations 2..N of one
+	// turn, system built once). On the plain chat path every turn rebuilds
+	// the system prompt with a freshly retrieved memory block appended last,
+	// so a breakpoint there would score ~0% hits while still paying the
+	// 1.25x cache-write premium on a multi-KB prompt (BUG-SCAN15).
 	sys := strings.TrimSpace(systemText)
-	cacheable := strings.Contains(p.baseURL, "anthropic.com")
+	cacheable := strings.Contains(p.baseURL, "anthropic.com") && len(clReq.Tools) > 0
 	if sys != "" {
 		if cacheable {
 			clReq.System = []claudeSystemBlock{{

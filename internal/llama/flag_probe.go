@@ -2,11 +2,15 @@ package llama
 
 import (
 	"context"
+	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"memo/internal/logx"
 )
 
 // tuningProbeModel is a deliberately-nonexistent model path handed to the
@@ -26,10 +30,12 @@ var tuningProbeFlags = []string{
 	"--cache-reuse", "256",
 }
 
-// tuningFlagCache maps an absolute llama-server binary path to whether it
-// accepts tuningProbeFlags. Populated lazily by tuningFlagsSupported, kept
-// for the process's lifetime — the bundled binary a path points at doesn't
-// change while Memo is running. Mirrors rpcCapabilityCache in rpc_probe.go.
+// tuningFlagCache maps a cache key (absolute binary path + "@" + mtime) to
+// whether that build accepts tuningProbeFlags. Populated lazily by
+// tuningFlagsSupported. The mtime is part of the key so a Settings-triggered
+// engine reinstall (installer.go overwrites in place at the same path) is
+// re-probed rather than served a stale verdict. Mirrors rpcCapabilityCache
+// in rpc_probe.go.
 var tuningFlagCache sync.Map // map[string]bool
 
 // tuningFlagsSupported reports whether bin's llama-server build accepts all
@@ -49,18 +55,52 @@ func tuningFlagsSupported(bin string) bool {
 	if err != nil {
 		abs = bin
 	}
-	if cached, ok := tuningFlagCache.Load(abs); ok {
+	key := abs
+	if fi, statErr := os.Stat(abs); statErr == nil {
+		key = abs + "@" + fi.ModTime().UTC().Format(time.RFC3339Nano)
+	}
+	if cached, ok := tuningFlagCache.Load(key); ok {
 		return cached.(bool)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	args := append(append([]string{}, tuningProbeFlags...), "--model", tuningProbeModel)
-	out, _ := exec.CommandContext(ctx, bin, args...).CombinedOutput()
-	supported := probeReachedModelLoad(string(out))
+	out, runErr := exec.CommandContext(ctx, bin, args...).CombinedOutput()
 
-	tuningFlagCache.Store(abs, supported)
+	// A probe that never actually ran the binary to an arg-parse verdict —
+	// timeout, or the process failing to start (missing file, ENOEXEC, EACCES)
+	// — tells us nothing about flag support. Returning false is the safe
+	// choice for THIS start (no tuning flags, but the server still comes up),
+	// but caching it would silently disable --no-context-shift / --cache-reuse
+	// / --flash-attn for the rest of the process even though the very next
+	// start might probe cleanly (BUG-SCAN5). So log it and skip the cache.
+	if ctx.Err() != nil || (runErr != nil && !ranToVerdict(runErr)) {
+		logx.Printf("llama: tuning-flag probe of %s did not complete (%v); passing no tuning flags this start, will re-probe next start", filepath.Base(abs), firstErr(ctx.Err(), runErr))
+		return false
+	}
+
+	supported := probeReachedModelLoad(string(out))
+	if !supported {
+		logx.Printf("llama: %s rejected one of %v — passing none of them (slower, but the server starts)", filepath.Base(abs), tuningProbeFlags)
+	}
+	tuningFlagCache.Store(key, supported)
 	return supported
+}
+
+// ranToVerdict reports whether an *exec.Cmd error still means the binary ran
+// and exited on its own (a non-zero exit is exactly the arg-parse-rejection
+// signal probeReachedModelLoad classifies) rather than never having started.
+func ranToVerdict(err error) bool {
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr)
+}
+
+func firstErr(a, b error) error {
+	if a != nil {
+		return a
+	}
+	return b
 }
 
 // probeReachedModelLoad decides, from a probe run's combined output, whether

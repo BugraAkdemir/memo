@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	pathpkg "path"
 	"sort"
 	"strings"
 	"sync"
@@ -92,6 +93,13 @@ func (w *workingSet) record(ev agent.AgentEvent) {
 }
 
 func (w *workingSet) touchFile(path, action string, lines int) {
+	// Normalise so "./x.go", "x.go" and "a/../x.go" are one entry, not three
+	// that each burn a slot and can evict a genuinely different file
+	// (BUG-SCAN12). Tool paths are project-relative and slash-style, so the
+	// slash-based path.Clean is correct here (not filepath.Clean).
+	if c := pathpkg.Clean(path); c != "." {
+		path = c
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.order++
@@ -126,7 +134,17 @@ func (w *workingSet) addCmd(cmd string, ok bool, body string) {
 		tail = "…" + tail[len(tail)-wsCmdTailChars:]
 	}
 	tail = strings.ReplaceAll(tail, "\n", " ")
-	w.cmds = append(w.cmds, wsCmd{cmd: strings.TrimSpace(cmd), ok: ok, tail: tail})
+	cmd = strings.TrimSpace(cmd)
+	// Dedup: re-running the same command (edit → test → edit → test …) must
+	// refresh its single entry, not fill every slot with one command and
+	// evict the others (BUG-SCAN12).
+	for i, c := range w.cmds {
+		if c.cmd == cmd {
+			w.cmds = append(w.cmds[:i], w.cmds[i+1:]...)
+			break
+		}
+	}
+	w.cmds = append(w.cmds, wsCmd{cmd: cmd, ok: ok, tail: tail})
 	if len(w.cmds) > wsMaxCmds {
 		w.cmds = w.cmds[len(w.cmds)-wsMaxCmds:]
 	}

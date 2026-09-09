@@ -63,6 +63,37 @@ func TestWorkingSet_MostRecentFileActionWins(t *testing.T) {
 	}
 }
 
+// TestWorkingSet_CommandDedup guards BUG-SCAN12: re-running the same command
+// must refresh its one entry, not fill all wsMaxCmds slots and evict the
+// distinct commands the digest exists to carry.
+func TestWorkingSet_CommandDedup(t *testing.T) {
+	ws := newWorkingSet()
+	ws.record(toolResult("run_command", map[string]any{"command": "git status"}, "clean"))
+	ws.record(toolResult("run_command", map[string]any{"command": "go build ./..."}, "ok"))
+	for i := 0; i < 6; i++ {
+		ws.record(toolResult("run_command", map[string]any{"command": "go test ./..."}, "pass"))
+	}
+	out := ws.render(0)
+	if strings.Count(out, "`go test ./...`") != 1 {
+		t.Errorf("repeated command should appear once:\n%s", out)
+	}
+	if !strings.Contains(out, "`git status`") || !strings.Contains(out, "`go build ./...`") {
+		t.Errorf("distinct earlier commands evicted by the repeat:\n%s", out)
+	}
+}
+
+// TestWorkingSet_FilePathNormalized guards BUG-SCAN12: "./x.go" and "x.go"
+// are the same file, one entry.
+func TestWorkingSet_FilePathNormalized(t *testing.T) {
+	ws := newWorkingSet()
+	ws.record(toolResult("read_file", map[string]any{"path": "./internal/app/llm.go"}, "x\ny"))
+	ws.record(toolResult("edit_file", map[string]any{"path": "internal/app/llm.go"}, "ok"))
+	out := ws.render(0)
+	if strings.Count(out, "internal/app/llm.go") != 1 {
+		t.Errorf("./x and x should be one entry:\n%s", out)
+	}
+}
+
 func TestWorkingSet_CapsFileCount(t *testing.T) {
 	ws := newWorkingSet()
 	for i := 0; i < wsMaxFiles+8; i++ {

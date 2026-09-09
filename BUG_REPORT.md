@@ -93,11 +93,11 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 0 |
-| 🟢 LOW | 5 — BUG-SCAN12-16 (aşağıda); SCAN9-11 + SCAN17 düzeltildi |
+| 🟢 LOW | 4 — BUG-SCAN13-16 (aşağıda); SCAN9-12 + SCAN17 düzeltildi |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **5** — 2026-09-09 taramasından (BUG-SCAN12-16); fix turu sürüyor, düzeltilen madde buradan siliniyor |
+| **AÇIK TOPLAM** | **4** — 2026-09-09 taramasından (BUG-SCAN13-16); fix turu sürüyor, düzeltilen madde buradan siliniyor |
 
 ---
 
@@ -108,12 +108,6 @@ llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
 provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
 "Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
 somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
-
-### 🟢 BUG-SCAN12 — working set: komut dedup yok, ham-path dosya key'leri (plausible)
-
-- **Yer:** [internal/app/workingset.go:121-133](internal/app/workingset.go:121) (`addCmd`), [:94-119](internal/app/workingset.go:94) (`touchFile`). `addCmd` koşulsuz append + son `wsMaxCmds` (5)'e trim, `cmd` ile dedup yok. `touchFile` `w.files`'ı ham `path` argümanıyla key'liyor.
-- **Etki:** Bir turn'de 5 kez `go test ./...` → 5 slotun hepsi aynı komut, diğer tüm komutlar (`git status`, `go build`) digest'ten atılıyor. `./internal/app/llm.go` ve `internal/app/llm.go` → tek dosya için iki `wsFile` entry, 12+ dosyada gerçek bir farklı dosyayı atabiliyor. İkisi de digest kalitesi (yanlış çıktı değil).
-- **Fix:** `addCmd`'de `cmd`'e göre dedup; `touchFile`'da `filepath.Clean`/rel-path normalizasyonu.
 
 ### 🟢 BUG-SCAN13 — STT "Kaydet" butonu kaydederken "Test ediliyor…" gösteriyor (doğrulandı)
 

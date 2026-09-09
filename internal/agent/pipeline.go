@@ -350,12 +350,17 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 					permRes.Allowed = true
 				}
 
-				// Code Mode: Medium-danger tools (file edits/writes) flow without a
-				// prompt — every write is snapshotted by the BackupManager and
-				// revertible, and opening a project chat is the consent. Dangerous
-				// tools (delete_file, run_command, change_directory) are untouched.
-				if permRes.NeedPrompt && p.autoApproveMedium && toolDef.DangerLevel == Medium {
-					logx.Printf("AGENT: [CODE] auto-approving %q (code-mode edits; danger=medium)", toolName)
+				// Code Mode: the file-editing tools flow without a prompt — every
+				// write is snapshotted by the BackupManager and revertible, and
+				// opening a project chat is the consent. This is gated on an
+				// explicit tool all-list, NOT on DangerLevel == Medium: the Medium
+				// set also contains whatsapp_send / share_file / read_env /
+				// start_self_driving_task / create_routine / cancel_routine, none
+				// of which are revertible or implied by "I opened a coding chat"
+				// (BUG-SCAN3). Everything outside the list still prompts.
+				if permRes.NeedPrompt && p.autoApproveMedium &&
+					toolDef.DangerLevel == Medium && codeModeAutoApproveTools[toolName] {
+					logx.Printf("AGENT: [CODE] auto-approving %q (code-mode edits)", toolName)
 					permRes.NeedPrompt = false
 					permRes.Allowed = true
 				}
@@ -494,6 +499,21 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 	}()
 
 	return outCh, nil
+}
+
+// codeModeAutoApproveTools is the exact set of tools Code Mode may run
+// without a permission prompt (see the gate in RunStream). Deliberately a
+// name all-list and not a DangerLevel bucket: these all edit files under the
+// project directory and are individually revertible via the BackupManager,
+// which is the property that makes "opening a project chat is the consent"
+// defensible. Adding a tool here is a security decision.
+var codeModeAutoApproveTools = map[string]bool{
+	"write_file":     true,
+	"edit_file":      true,
+	"insert_line":    true,
+	"delete_lines":   true,
+	"create_task_md": true,
+	"edit_task_md":   true,
 }
 
 // contextTrimMarker prefixes the synthetic user message that stands in for

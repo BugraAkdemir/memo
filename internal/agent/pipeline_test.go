@@ -596,3 +596,41 @@ func TestRunStream_AutoApproveMedium(t *testing.T) {
 		t.Fatalf("write_file did not run under autoApproveMedium: err=%v data=%q", err, data)
 	}
 }
+
+// TestRunStream_AutoApproveMedium_OnlyFileEditTools guards BUG-SCAN3: Code
+// Mode (autoApproveMedium) must auto-approve only the file-editing tools,
+// not every Medium-danger tool. read_env is Medium but not revertible and
+// not implied by "I opened a coding chat", so it must still prompt.
+func TestRunStream_AutoApproveMedium_OnlyFileEditTools(t *testing.T) {
+	dir := t.TempDir()
+	registry := NewRegistry()
+	permissions := NewPermissionManager(t.TempDir())
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+	backup := NewBackupManager(t.TempDir())
+
+	prov := &scriptedProvider{responses: []provider.ChatResponse{
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "e1", "read_env", map[string]string{"name": "PATH"})}},
+		{Content: "done"},
+	}}
+
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, backup)
+	pipeline.autoApproveMedium = true
+
+	prompted := false
+	deny := func(_ string, ev AgentEvent) (PermissionPolicy, error) {
+		if ev.ToolName == "read_env" {
+			prompted = true
+		}
+		return DenyOnce, nil
+	}
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "m", func(AgentEvent) {}, deny)
+	if err != nil {
+		t.Fatalf("RunStream: %v", err)
+	}
+	for range ch {
+	}
+	if !prompted {
+		t.Fatalf("read_env was auto-approved under Code Mode; it must still prompt (BUG-SCAN3)")
+	}
+}

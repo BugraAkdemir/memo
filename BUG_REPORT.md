@@ -91,13 +91,13 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 1 — BUG-SCAN3 (Code Mode auto-approve kapsamı) |
+| 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 5 — BUG-SCAN4 (compact cached-guard), SCAN5 (flag_probe kalıcı cache), SCAN6 (taskloop Shutdown/Start yarışı), SCAN7 (batch fact-extraction cap), SCAN8 (chatCodeModeProvider auth-gate) |
 | 🟢 LOW | 9 — BUG-SCAN9..17 (aşağıda) |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **15** — 2026-09-09 taramasından (BUG-SCAN3..17); fix turu sürüyor, düzeltilen madde buradan siliniyor |
+| **AÇIK TOPLAM** | **14** — 2026-09-09 taramasından (BUG-SCAN4..17); fix turu sürüyor, düzeltilen madde buradan siliniyor |
 
 ---
 
@@ -108,13 +108,6 @@ llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
 provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
 "Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
 somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
-
-### 🔴 BUG-SCAN3 — Code Mode **tüm** Medium-danger araçları izin sormadan onaylıyor, sadece dosya edit'lerini değil (doğrulandı)
-
-- **Yer:** [internal/agent/pipeline.go:357](internal/agent/pipeline.go:357). Gate: `permRes.NeedPrompt && p.autoApproveMedium && toolDef.DangerLevel == Medium`.
-- **Kök neden:** Kapı saf `DangerLevel == Medium`. Medium set'i ([internal/agent/tools.go](internal/agent/tools.go)) sadece edit'ler değil: **`whatsapp_send`, `share_file`, `read_env`, `start_self_driving_task`, `create_routine`, `cancel_routine`** de Medium. Code Mode her proje/agent chat'inde **default AÇIK** (`resolveCodeMode` → `sm.IsAgentChat` = `ProjectPath != ""`, [agent_chat_context.go:89](internal/app/agent_chat_context.go:89)), `CodeModeAutoApproveEdits` default `true` ([config.go:984](internal/config/config.go:984)), yani `p.autoApproveMedium` set ([llm.go:349](internal/app/llm.go:349)).
-- **Tetik:** Proje chat'inde model — veya coding görevi sırasında okuduğu bir kaynak dosyadaki prompt injection — `whatsapp_send`/`share_file` çağırıyor → mesaj/dosya **izin sormadan** dışarı gidiyor. `read_env` env secret'ları sessizce döküyor. Commit `6d520a93` mesajı ve [pipeline.go:353-356](internal/agent/pipeline.go:353) yorumu "yalnızca `write_file`/`edit_file`/`insert_line`/`delete_lines`/`*_task_md`" ve "Dangerous tools still prompt" diyor.
-- **Fix:** `DangerLevel == Medium` yerine açık tool-adı allowlist'i (`write_file`, `edit_file`, `insert_line`, `delete_lines`, `create_task_md`, `edit_task_md`).
 
 ### 🟡 BUG-SCAN4 — `maybeCompactHistory` cached-summary yolu min-tail guard'ını atlıyor → tüm verbatim geçmiş özete çöküyor (doğrulandı)
 

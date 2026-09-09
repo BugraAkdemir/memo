@@ -1955,7 +1955,16 @@ func FormatMemoriesUserOnly(memories []MemoryResult) string {
 		if age != "" {
 			meta += " | " + age
 		}
-		fmt.Fprintf(&sb, "[Memory %d | %s]\n%s\n\n", i+1, meta, stripAssistantReply(m.Content))
+		// Prefer the verbatim user_msg column — the raw user text is stored
+		// there precisely so we don't have to parse it back out of the
+		// formatted "[ts] User: …\nAssistant: …" content, which breaks when
+		// the user's own message contains a line starting with "Assistant:"
+		// (a pasted transcript, a prompt they're asking about) — BUG-SCAN14.
+		userText := m.UserMsg
+		if userText == "" {
+			userText = stripAssistantReply(m.Content)
+		}
+		fmt.Fprintf(&sb, "[Memory %d | %s]\n%s\n\n", i+1, meta, userText)
 	}
 	sb.WriteString("--- END MEMORIES ---\n")
 	return sb.String()
@@ -2809,17 +2818,25 @@ func (s *Store) Import(ctx context.Context, data []byte) (int, error) {
 	return imported, nil
 }
 
+// stripAssistantReply removes the trailing "\nAssistant: …" block from a
+// stored "[ts] User: …\nAssistant: …" content string. It cuts at the LAST
+// such delimiter, matching exactly how the content is assembled in
+// SaveInteraction (`content += "\nAssistant: " + storedAssist`), so a line
+// starting with "Assistant:" *inside* the user's own message (a pasted
+// transcript) no longer truncates it there (BUG-SCAN14). Callers should
+// prefer the verbatim user_msg column when they have it; this is the
+// fallback for rows that predate it.
 func stripAssistantReply(content string) string {
-	lines := strings.Split(content, "\n")
-	var result []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "Assistant:") || strings.HasPrefix(trimmed, "Asistan:") {
-			break
+	cut := -1
+	for _, delim := range []string{"\nAssistant: ", "\nAsistan: "} {
+		if i := strings.LastIndex(content, delim); i > cut {
+			cut = i
 		}
-		result = append(result, line)
 	}
-	return strings.Join(result, "\n")
+	if cut < 0 {
+		return content
+	}
+	return content[:cut]
 }
 
 func vectorNorm(v []float32) float64 {

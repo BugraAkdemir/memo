@@ -254,6 +254,41 @@ func TestFormatMemoriesForPrompt(t *testing.T) {
 	}
 }
 
+// TestFormatMemoriesUserOnly_KeepsUserContentPastInlineAssistantLine guards
+// BUG-SCAN14: the user's own message can contain a line starting with
+// "Assistant:" (a pasted prompt/transcript). FormatMemoriesUserOnly must
+// not truncate the memory there — it uses the verbatim UserMsg column, and
+// the stripAssistantReply fallback now cuts only at the real trailing
+// "\nAssistant: " delimiter.
+func TestFormatMemoriesUserOnly_KeepsUserContentPastInlineAssistantLine(t *testing.T) {
+	const userText = "I tried this prompt:\nAssistant: you are a helpful bot\n...but it keeps refusing. Why?"
+
+	// Row with the verbatim UserMsg column populated (current save path).
+	withCol := FormatMemoriesUserOnly([]MemoryResult{{
+		Content: "[2026-01-01T00:00:00Z] User: " + userText + "\nAssistant: some reply",
+		UserMsg: userText,
+		ID:      "1",
+	}})
+	if !strings.Contains(withCol, "but it keeps refusing. Why?") {
+		t.Fatalf("user question dropped:\n%s", withCol)
+	}
+	if strings.Contains(withCol, "some reply") {
+		t.Fatalf("assistant reply leaked into user-only format:\n%s", withCol)
+	}
+
+	// Legacy row with no UserMsg column — fallback path.
+	noCol := FormatMemoriesUserOnly([]MemoryResult{{
+		Content: "[2026-01-01T00:00:00Z] User: " + userText + "\nAssistant: some reply",
+		ID:      "2",
+	}})
+	if !strings.Contains(noCol, "but it keeps refusing. Why?") {
+		t.Fatalf("fallback dropped user question:\n%s", noCol)
+	}
+	if strings.Contains(noCol, "some reply") {
+		t.Fatalf("fallback leaked the assistant reply:\n%s", noCol)
+	}
+}
+
 func TestHybridSearch_MatchTypeSet(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

@@ -8,6 +8,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 )
 
 // bagOfWordsEmbedding returns a deterministic EmbeddingFunc that behaves
@@ -1117,6 +1118,76 @@ func TestGetPinnedFactsRanked_PicksRelevantAndCaps(t *testing.T) {
 		if r.MatchType != "pinned" {
 			t.Errorf("MatchType = %q, want pinned", r.MatchType)
 		}
+	}
+}
+
+// backdateMemory rewrites one row's timestamp so recency-weighting tests
+// can create a genuinely old memory (every save path uses time.Now()).
+func backdateMemory(t *testing.T, s *Store, contentSubstr string, ts time.Time) {
+	t.Helper()
+	err := s.db.Write(context.Background(), func(tx *sql.Tx) error {
+		_, e := tx.Exec(`UPDATE memories SET timestamp = ? WHERE content LIKE ?`,
+			ts.Format(time.RFC3339), "%"+contentSubstr+"%")
+		return e
+	})
+	if err != nil {
+		t.Fatalf("backdateMemory(%q): %v", contentSubstr, err)
+	}
+}
+
+// TestRetrieveContext_RecencyChangesMembershipNotJustOrder guards BUG-SCAN9:
+// importance/recency weighting used to run only after the pool was already
+// cut to topK, so it could reorder the survivors but never rescue a fresh,
+// slightly-less-similar memory that a recency-blind cut had dropped.
+func TestRetrieveContext_RecencyChangesMembershipNotJustOrder(t *testing.T) {
+	ctx := context.Background()
+	mk := func(halfLife int) *Store {
+		s, err := NewStore(StoreConfig{
+			Dir: t.TempDir(), Dimension: 64, EmbeddingFunc: bagOfWordsEmbedding(64),
+			ForceGoFallback: true, RecencyHalfLifeDays: halfLife,
+		})
+		if err != nil {
+			t.Fatalf("NewStore: %v", err)
+		}
+		t.Cleanup(func() { s.Close() })
+		// A near-exact match for the query, plus two weaker but still-matching
+		// memories.
+		for _, f := range []string{
+			"kullanici arabica kahve cekirdegi tercih eder",           // strongest cosine
+			"kullanici arabica cekirdegini kavurmayi sever bazen",     // weaker
+			"kullanici kahve dukkanina ugrar arada",                   // weaker
+		} {
+			if err := s.SaveExplicit(ctx, f, ""); err != nil {
+				t.Fatalf("SaveExplicit: %v", err)
+			}
+		}
+		// The strongest-cosine memory is ancient.
+		backdateMemory(t, s, "tercih eder", time.Now().AddDate(0, 0, -600))
+		return s
+	}
+
+	const q = "arabica kahve cekirdegi"
+
+	blind := mk(0) // recency off
+	got, err := blind.RetrieveContext(ctx, q, 1, 0.0)
+	if err != nil {
+		t.Fatalf("RetrieveContext (blind): %v", err)
+	}
+	if len(got) != 1 || !strings.Contains(got[0].Content, "tercih eder") {
+		t.Fatalf("recency off: top-1 should be the strongest cosine match, got %+v", got)
+	}
+
+	fresh := mk(30) // recency on
+	got, err = fresh.RetrieveContext(ctx, q, 1, 0.0)
+	if err != nil {
+		t.Fatalf("RetrieveContext (fresh): %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("recency on: want 1 result, got %d", len(got))
+	}
+	if strings.Contains(got[0].Content, "tercih eder") {
+		t.Fatalf("recency on: the 600-day-old strong match should have been "+
+			"demoted out of top-1, got %+v", got)
 	}
 }
 

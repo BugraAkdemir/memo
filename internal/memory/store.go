@@ -1055,13 +1055,17 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 
 	vecMemories := mergeVectorCandidates(candidateK, vectorLists...)
 
+	// Assemble the full candidate pool (up to candidateK), NOT already cut to
+	// topK: importance + recency weighting below runs on this whole pool so
+	// it can change which memories make the final topK, not just reorder the
+	// ones that already survived a recency-blind cut (BUG-SCAN9).
 	var memories []MemoryResult
 	if s.useFTS {
 		ftsMemories, ftsErr := s.ftsSearch(ctx, query, candidateK)
 		if ftsErr != nil {
 			logx.Printf("MEMORY: ftsSearch: %v", ftsErr)
 		} else if len(ftsMemories) > 0 {
-			memories = reciprocalRankFusion(vecMemories, ftsMemories, topK)
+			memories = reciprocalRankFusion(vecMemories, ftsMemories, candidateK)
 			// RRF scores range ~0.008–0.016 (k=60); filter low-confidence matches.
 			const minRRFScore = float32(0.008)
 			filtered := memories[:0]
@@ -1075,9 +1079,6 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 	}
 	if len(memories) == 0 {
 		memories = vecMemories
-		if topK < len(memories) {
-			memories = memories[:topK]
-		}
 	}
 
 	// Boost similarity scores based on importance (1–5).
@@ -1108,6 +1109,12 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 		}
 		return memories[i].ID < memories[j].ID
 	})
+
+	// Now cut to topK — after importance/recency weighting has had a say in
+	// the ordering of the whole candidate pool (BUG-SCAN9).
+	if topK < len(memories) {
+		memories = memories[:topK]
+	}
 
 	if len(memories) > 0 {
 		ids := make([]string, len(memories))

@@ -63,6 +63,31 @@ func TestEngine_MaxConcurrentLists_Gate(t *testing.T) {
 		3*time.Second, "eng2 lists to finish")
 }
 
+// TestEngine_ShutdownRefusesStart guards BUG-SCAN6: once Shutdown has run,
+// Start must refuse — otherwise the skip-restart / ApprovePlan / retry-resume
+// paths can launch a run() goroutine after Shutdown returned and the caller
+// has begun tearing down the store / data dir.
+func TestEngine_ShutdownRefusesStart(t *testing.T) {
+	store, _ := NewStore(t.TempDir())
+	tl, _ := store.Create("c1", "A", []string{"x"})
+
+	eng := NewEngine(store,
+		func(ctx context.Context, chatID, prompt string) (string, error) { return "ok", nil },
+		func(ctx context.Context, itemText, workerOutput string) (bool, string, error) { return true, "", nil },
+		func(bool) {}, func(string, string) {})
+
+	eng.Shutdown(context.Background())
+
+	if err := eng.Start(context.Background(), tl.ID); err == nil {
+		t.Fatal("Start after Shutdown should be refused")
+	} else if !strings.Contains(err.Error(), "kapan") {
+		t.Fatalf("Start-after-Shutdown error = %q, want the shutting-down message", err)
+	}
+	if eng.IsRunning(tl.ID) {
+		t.Fatal("a run() goroutine was launched after Shutdown")
+	}
+}
+
 func waitFor(t *testing.T, cond func() bool, d time.Duration, what string) {
 	t.Helper()
 	deadline := time.Now().Add(d)

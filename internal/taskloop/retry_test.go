@@ -69,6 +69,24 @@ func TestRetryScheduler_ReArmRestartsTimer(t *testing.T) {
 	}
 }
 
+// TestRetryScheduler_CancelAllIsPermanent guards BUG-SCAN6: after CancelAll
+// (engine shutdown) the scheduler must stay dead — a subsequent Arm must not
+// schedule a resume() into an engine that is tearing down.
+func TestRetryScheduler_CancelAllIsPermanent(t *testing.T) {
+	var got atomic.Int32
+	s := NewRetryScheduler(10*time.Millisecond, func(string) { got.Add(1) })
+	s.Arm("L1")
+	s.CancelAll()
+	s.Arm("L2") // must be a no-op now
+	if s.Pending("L2") {
+		t.Fatal("Arm scheduled a timer after CancelAll")
+	}
+	time.Sleep(40 * time.Millisecond)
+	if got.Load() != 0 {
+		t.Fatalf("resume fired %d times after CancelAll, want 0", got.Load())
+	}
+}
+
 func TestRetryScheduler_NilSafe(t *testing.T) {
 	var s *RetryScheduler
 	s.Arm("x")

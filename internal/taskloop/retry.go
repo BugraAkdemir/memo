@@ -18,6 +18,7 @@ type RetryScheduler struct {
 	resume   func(listID string)
 	mu       sync.Mutex
 	timers   map[string]*time.Timer
+	stopped  bool // set once by CancelAll; Arm and fired timers become no-ops
 }
 
 func NewRetryScheduler(interval time.Duration, resume func(listID string)) *RetryScheduler {
@@ -52,16 +53,24 @@ func (s *RetryScheduler) ArmWithDelay(listID string, d time.Duration) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.stopped {
+		return // engine is shutting down — don't schedule a resume into it
+	}
 	if old, ok := s.timers[listID]; ok {
 		old.Stop()
 	}
 	s.timers[listID] = time.AfterFunc(d, func() {
 		s.mu.Lock()
 		delete(s.timers, listID)
+		stopped := s.stopped
 		s.mu.Unlock()
-		if s.resume != nil {
-			s.resume(listID)
+		// time.Timer.Stop() is a no-op once the AfterFunc is already queued,
+		// so CancelAll can't unschedule a timer that fires in the shutdown
+		// window — this check is what actually stops resume() then (BUG-SCAN6).
+		if stopped || s.resume == nil {
+			return
 		}
+		s.resume(listID)
 	})
 }
 
@@ -78,15 +87,18 @@ func (s *RetryScheduler) Cancel(listID string) {
 	}
 }
 
-// CancelAll stops and forgets every pending timer. Used on engine shutdown
-// so a list parked in a rate-limit / transient backoff can't fire resume()
-// into an engine that is being torn down.
+// CancelAll stops and forgets every pending timer and permanently disables
+// the scheduler. Used on engine shutdown so a list parked in a rate-limit /
+// transient backoff can't fire resume() into an engine that is being torn
+// down — including a timer that already fired and whose AfterFunc is queued
+// or running (Stop() is a no-op by then; the stopped flag covers that case).
 func (s *RetryScheduler) CancelAll() {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.stopped = true
 	for id, t := range s.timers {
 		t.Stop()
 		delete(s.timers, id)

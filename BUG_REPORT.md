@@ -92,12 +92,12 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 3 — BUG-SCAN6 (taskloop Shutdown/Start yarışı), SCAN7 (batch fact-extraction cap), SCAN8 (chatCodeModeProvider auth-gate) |
+| 🟡 MEDIUM | 2 — BUG-SCAN7 (batch fact-extraction cap), SCAN8 (chatCodeModeProvider auth-gate) |
 | 🟢 LOW | 9 — BUG-SCAN9..17 (aşağıda) |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **12** — 2026-09-09 taramasından (BUG-SCAN6..17); fix turu sürüyor, düzeltilen madde buradan siliniyor |
+| **AÇIK TOPLAM** | **11** — 2026-09-09 taramasından (BUG-SCAN7..17); fix turu sürüyor, düzeltilen madde buradan siliniyor |
 
 ---
 
@@ -108,14 +108,6 @@ llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
 provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
 "Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
 somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
-
-### 🟡 BUG-SCAN6 — taskloop `Shutdown` `Start`'a karşı tam senkronize değil (`runWG.Add` kilit dışında, `shuttingDown` flag'i yok, retry `AfterFunc` yarışı) (doğrulandı)
-
-- **Yer:** [internal/taskloop/engine.go:321](internal/taskloop/engine.go:321) (`Add` kilit dışında), [:336](internal/taskloop/engine.go:336) (`Shutdown`), [retry.go](internal/taskloop/retry.go) `CancelAll`.
-- **Kök neden 1:** `Start` listeyi `e.active`'e koyup `e.mu`'yu bırakıyor (312), bypass callout yapıyor, `e.runWG.Add(1)`'e ancak 321'de varıyor. `Shutdown` `e.mu` altında cancel sweep + `runWG.Wait()`. A goroutine'i 312-321 arasındayken B `Shutdown` çalışırsa: sayaç hâlâ 0, `Wait()` hemen dönüyor, `Shutdown` dönüyor, `shutdownSync` tempdir siliyor; sonra A `Add(1)` + `run()` cancelled ctx ile → `run()` üstte `ctx.Err()` bakmıyor, `store.Get`/`rtStart`/`SetStatus(planning)` (store write) yapıyor. `-race` "WaitGroup misuse: Add concurrently with Wait" flag'liyor.
-- **Kök neden 2:** Shutdown anında fire etmiş bir retry `time.AfterFunc` — `t.Stop()` süresi dolmuş timer'ı durdurmuyor — `resume()` → `Start(context.Background())` → izlenmeyen, iptal edilemeyen `run()` → silinen dizine `MarkItemDone` yazıyor. `skip-restart` (`engine.go:590`) ve `ApprovePlan` (`context.Background()`) de aynı.
-- **Fix:** `runWG.Add(1)` `e.mu` altında, `e.active`'e eklemeden önce; Engine'e `shuttingDown bool` (`e.mu` altında set), `Start` başında kontrol → hata dön; `RetryScheduler`'a `stopped bool`, `AfterFunc` içinde `resume`'dan önce kontrol + `Arm`/`ArmWithDelay` shutdown sonrası re-arm etmesin.
-- **Ayrıca (ayrı, daha hafif):** `shutdownSync` `engine.Shutdown(ctx)`'i **ilk** adım olarak çağırıyor ve `ctx`'in deadline'ı yok ([main.go:191](main.go:191) `context.WithCancel(context.Background())`) → ctx'i gözlemeyen wedged bir worker turu tüm graceful teardown'u (llama/whisper `Stop()`) 15s hard `os.Exit`'e kadar blokluyor, port'lar bağlı çocuk süreçler orphan kalıyor. `engine.Shutdown` kendi kısa `context.WithTimeout(ctx, 5s)`'ini türetsin, ya da llama/whisper stop'ları öne/paralele alınsın.
 
 ### 🟡 BUG-SCAN7 — batch fact extraction N turn'de tek 5-fact cap paylaşıyor → sessiz fact kaybı (plausible)
 

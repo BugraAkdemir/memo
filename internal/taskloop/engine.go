@@ -51,10 +51,11 @@ type Engine struct {
 	reviewChief ReviewChief
 	setBypass   BypassSetter
 	onEvent     func(name, data string)
-	mu          sync.Mutex
-	activeCount int
-	active      map[string]context.CancelFunc
-	runWG       sync.WaitGroup // tracks every live run() goroutine — see Shutdown
+	mu           sync.Mutex
+	activeCount  int
+	active       map[string]context.CancelFunc
+	runWG        sync.WaitGroup // tracks every live run() goroutine — see Shutdown
+	shuttingDown bool           // set once by Shutdown; Start refuses afterwards
 
 	// Optional hooks wired via EngineOption. All nil-safe.
 	ruleReader       func(projectRoot string) (string, error)
@@ -297,6 +298,10 @@ func (e *Engine) Start(ctx context.Context, listID string) error {
 	}
 
 	e.mu.Lock()
+	if e.shuttingDown {
+		e.mu.Unlock()
+		return fmt.Errorf("tasklist %s başlatılamadı: motor kapanıyor", listID)
+	}
 	if _, running := e.active[listID]; running {
 		e.mu.Unlock()
 		return fmt.Errorf("tasklist %s zaten çalışıyor", listID)
@@ -309,6 +314,12 @@ func (e *Engine) Start(ctx context.Context, listID string) error {
 	e.active[listID] = cancel
 	e.activeCount++
 	shouldBypass := e.activeCount == 1
+	// Add() under e.mu, before the goroutine is launched: Shutdown does its
+	// cancel sweep while holding e.mu, so once it releases the lock and calls
+	// runWG.Wait() this counter is already >= 1 for every list it swept. A
+	// bare Add() after the unlock could race Wait() down to zero and let a
+	// run() start after Shutdown returned (BUG-SCAN6).
+	e.runWG.Add(1)
 	e.mu.Unlock()
 
 	if shouldBypass {
@@ -318,7 +329,6 @@ func (e *Engine) Start(ctx context.Context, listID string) error {
 		}
 	}
 
-	e.runWG.Add(1)
 	go func() {
 		defer e.runWG.Done()
 		e.run(listCtx, listID)
@@ -337,13 +347,21 @@ func (e *Engine) Shutdown(ctx context.Context) {
 	if e == nil {
 		return
 	}
-	e.retry.CancelAll() // wake any list parked in a backoff so it doesn't resume mid-teardown
+	e.retry.CancelAll() // stop the scheduler for good so a fired backoff can't resume() mid-teardown
 
 	e.mu.Lock()
+	e.shuttingDown = true // Start() refuses from here on — closes the skip-restart / ApprovePlan / resume re-entry paths
 	for _, cancel := range e.active {
 		cancel() // run()'s own defer removes it from e.active + fixes activeCount
 	}
 	e.mu.Unlock()
+
+	// Bound the drain independently of the caller's ctx (shutdownSync passes
+	// one with no deadline): a worker turn wedged in something that ignores
+	// its listCtx must not hold up llama/whisper teardown until the 15s hard
+	// os.Exit — 5s is plenty for a well-behaved run() to observe the cancel.
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
 	done := make(chan struct{})
 	go func() {
@@ -352,7 +370,7 @@ func (e *Engine) Shutdown(ctx context.Context) {
 	}()
 	select {
 	case <-done:
-	case <-ctx.Done():
+	case <-waitCtx.Done():
 		logx.Printf("TASKLOOP: shutdown timed out before every run() goroutine exited")
 	}
 }

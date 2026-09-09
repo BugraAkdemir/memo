@@ -93,11 +93,11 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 0 |
-| 🟢 LOW | 4 — BUG-SCAN13-16 (aşağıda); SCAN9-12 + SCAN17 düzeltildi |
+| 🟢 LOW | 3 — BUG-SCAN14-16 (aşağıda); SCAN9-13 + SCAN17 düzeltildi |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **4** — 2026-09-09 taramasından (BUG-SCAN13-16); fix turu sürüyor, düzeltilen madde buradan siliniyor |
+| **AÇIK TOPLAM** | **3** — 2026-09-09 taramasından (BUG-SCAN14-16); fix turu sürüyor, düzeltilen madde buradan siliniyor |
 
 ---
 
@@ -108,11 +108,6 @@ llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
 provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
 "Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
 somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
-
-### 🟢 BUG-SCAN13 — STT "Kaydet" butonu kaydederken "Test ediliyor…" gösteriyor (doğrulandı)
-
-- **Yer:** [frontend/lib/widgets/settings/stt_provider_section.dart:352-354](frontend/lib/widgets/settings/stt_provider_section.dart:352). `_saving` iken `L10n.t('tts_provider_testing')` ("Test ediliyor…" / "Testing…") gösteriliyor. STT bölümünün test akışı yok — busy etiketi TTS'ten kopyalanmış, semantik olarak yanlış key.
-- **Fix:** `tts_provider_save` veya yeni bir "kaydediliyor" key'i kullan.
 
 ### 🟢 BUG-SCAN14 — `stripAssistantReply` ilk `Assistant:`/`Asistan:` satırından sonra gerçek kullanıcı içeriğini kesiyor (plausible)
 

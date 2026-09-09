@@ -350,7 +350,7 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
               FilledButton(
                 onPressed: _saving ? null : _save,
                 child: Text(_saving
-                    ? L10n.t('tts_provider_testing')
+                    ? L10n.t('tts_provider_saving')
                     : L10n.t('tts_provider_save')),
               ),
               const SizedBox(width: 8),

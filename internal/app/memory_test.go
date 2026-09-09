@@ -135,7 +135,7 @@ func TestParseExtractedFacts(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := parseExtractedFacts(tc.raw)
+			got := parseExtractedFacts(tc.raw, 1)
 			if len(got) != len(tc.want) {
 				t.Fatalf("parseExtractedFacts(%q) = %v, want %v", tc.raw, got, tc.want)
 			}
@@ -154,16 +154,23 @@ func TestParseExtractedFacts(t *testing.T) {
 // parser must still bound both how many facts come out and how long each one is.
 func TestParseExtractedFacts_CapsCountAndLength(t *testing.T) {
 	var lines []string
-	for i := range maxExtractedFactsPerTurn + 10 {
+	for i := range maxExtractedFactsPerTurn*4 + 10 {
 		lines = append(lines, fmt.Sprintf("fact number %d", i))
 	}
-	got := parseExtractedFacts(strings.Join(lines, "\n"))
+	got := parseExtractedFacts(strings.Join(lines, "\n"), 1)
 	if len(got) != maxExtractedFactsPerTurn {
-		t.Fatalf("len(facts) = %d, want %d (cap must hold)", len(got), maxExtractedFactsPerTurn)
+		t.Fatalf("len(facts) = %d, want %d (per-turn cap must hold)", len(got), maxExtractedFactsPerTurn)
+	}
+
+	// BUG-SCAN7: a batched call covering N turns gets N * the per-turn budget,
+	// so batching FactExtractionEveryNTurns doesn't silently drop facts.
+	got = parseExtractedFacts(strings.Join(lines, "\n"), 3)
+	if len(got) != maxExtractedFactsPerTurn*3 {
+		t.Fatalf("batched len(facts) = %d, want %d (3 turns * per-turn cap)", len(got), maxExtractedFactsPerTurn*3)
 	}
 
 	longLine := strings.Repeat("x", maxExtractedFactLength+100)
-	got = parseExtractedFacts(longLine)
+	got = parseExtractedFacts(longLine, 1)
 	if len(got) != 1 || len(got[0]) != maxExtractedFactLength {
 		t.Fatalf("long fact not truncated to %d chars, got len=%d", maxExtractedFactLength, len(got[0]))
 	}
@@ -202,7 +209,7 @@ func TestExtractAndPinFacts_DoesNotSendAssistantReply(t *testing.T) {
 		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
 	}
 
-	a.extractAndPinFacts(context.Background(), userMsg)
+	a.extractAndPinFacts(context.Background(), userMsg, 1)
 
 	if !strings.Contains(capturedBody, userMsg) {
 		t.Fatalf("extraction request should contain the user's own message; body=%s", capturedBody)
@@ -237,7 +244,7 @@ func TestExtractAndPinFacts_SkipsAlreadyPinnedDuplicate(t *testing.T) {
 		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
 	}
 
-	a.extractAndPinFacts(context.Background(), "adım Ece, en sevdiğim renk turuncu")
+	a.extractAndPinFacts(context.Background(), "adım Ece, en sevdiğim renk turuncu", 1)
 
 	pinned, err := store.GetPinnedFacts(context.Background())
 	if err != nil {
@@ -306,7 +313,7 @@ func TestExtractAndPinFacts_SavesEachExtractedFact(t *testing.T) {
 		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
 	}
 
-	a.extractAndPinFacts(context.Background(), "kopeğimin adı Zeytin, en sevdiğim renk kırmızı")
+	a.extractAndPinFacts(context.Background(), "kopeğimin adı Zeytin, en sevdiğim renk kırmızı", 1)
 
 	pinned, err := store.GetPinnedFacts(context.Background())
 	if err != nil {
@@ -333,7 +340,7 @@ func TestExtractAndPinFacts_NoneResponsePinsNothing(t *testing.T) {
 		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
 	}
 
-	a.extractAndPinFacts(context.Background(), "selam")
+	a.extractAndPinFacts(context.Background(), "selam", 1)
 
 	pinned, err := store.GetPinnedFacts(context.Background())
 	if err != nil {
@@ -368,7 +375,7 @@ func TestExtractAndPinFacts_DisabledConfigNeverCallsProvider(t *testing.T) {
 		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: false}},
 	}
 
-	a.extractAndPinFacts(context.Background(), "adım Ahmet")
+	a.extractAndPinFacts(context.Background(), "adım Ahmet", 1)
 
 	if hit {
 		t.Fatal("provider must not be called when AutoFactExtraction is disabled")
@@ -393,7 +400,7 @@ func TestExtractAndPinFacts_NoModelConfigured_SkipsGracefully(t *testing.T) {
 		cfg:   &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
 	}
 
-	a.extractAndPinFacts(context.Background(), "adım Ahmet")
+	a.extractAndPinFacts(context.Background(), "adım Ahmet", 1)
 
 	pinned, _ := store.GetPinnedFacts(context.Background())
 	if len(pinned) != 0 {
@@ -423,7 +430,7 @@ func TestExtractAndPinFacts_LocalOnlySetup_ActuallyRuns(t *testing.T) {
 		cfg:    &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
 	}
 
-	a.extractAndPinFacts(context.Background(), "adım Ahmet")
+	a.extractAndPinFacts(context.Background(), "adım Ahmet", 1)
 
 	pinned, err := store.GetPinnedFacts(context.Background())
 	if err != nil {

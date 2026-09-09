@@ -220,13 +220,14 @@ func (a *App) queueFactExtraction(ctx context.Context, userMsg string) {
 		return
 	}
 	if everyN <= 1 {
-		goRecover("extractAndPinFacts", func() { a.extractAndPinFacts(ctx, userMsg) })
+		goRecover("extractAndPinFacts", func() { a.extractAndPinFacts(ctx, userMsg, 1) })
 		return
 	}
 
 	if batch := a.bufferFactExtraction(userMsg, everyN); batch != nil {
 		combined := strings.Join(batch, "\n---\n")
-		goRecover("extractAndPinFacts", func() { a.extractAndPinFacts(ctx, combined) })
+		turns := len(batch)
+		goRecover("extractAndPinFacts", func() { a.extractAndPinFacts(ctx, combined, turns) })
 	}
 }
 
@@ -246,7 +247,7 @@ func (a *App) bufferFactExtraction(userMsg string, everyN int) []string {
 	return batch
 }
 
-func (a *App) extractAndPinFacts(ctx context.Context, userMsg string) {
+func (a *App) extractAndPinFacts(ctx context.Context, userMsg string, turns int) {
 	if !a.cfg.Memory.AutoFactExtraction {
 		return
 	}
@@ -271,7 +272,7 @@ func (a *App) extractAndPinFacts(ctx context.Context, userMsg string) {
 		return
 	}
 
-	facts := parseExtractedFacts(reply2)
+	facts := parseExtractedFacts(reply2, turns)
 	if len(facts) == 0 {
 		return
 	}
@@ -336,12 +337,20 @@ var factListMarkerPrefixes = []string{"- ", "* ", "• ", "-", "*", "•"}
 // parseExtractedFacts turns the extraction call's raw text output into a
 // bounded, sanitized list of facts. Nothing here trusts the model's output
 // format blindly — a misbehaving or hallucinating model must not be able to
-// flood the pinned-facts list (capped per turn), inject arbitrarily long
-// garbage into a system prompt (capped per fact), or leave stray list-marker
+// flood the pinned-facts list (capped), inject arbitrarily long garbage
+// into a system prompt (capped per fact), or leave stray list-marker
 // artifacts that would then sit in every future system prompt forever, since
 // pinned facts bypass the RAG relevance decay a normal memory would age out
-// under.
-func parseExtractedFacts(raw string) []string {
+// under. turns is how many chat turns' text this raw output covers (1 for
+// the per-turn path, N for a batched FactExtractionEveryNTurns call): the
+// count cap scales with it so batching doesn't silently shrink the budget
+// from maxExtractedFactsPerTurn-per-turn to maxExtractedFactsPerTurn total
+// (BUG-SCAN7).
+func parseExtractedFacts(raw string, turns int) []string {
+	if turns < 1 {
+		turns = 1
+	}
+	limit := maxExtractedFactsPerTurn * turns
 	var facts []string
 	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.TrimSpace(line)
@@ -353,7 +362,7 @@ func parseExtractedFacts(raw string) []string {
 			line = line[:maxExtractedFactLength]
 		}
 		facts = append(facts, line)
-		if len(facts) >= maxExtractedFactsPerTurn {
+		if len(facts) >= limit {
 			break
 		}
 	}

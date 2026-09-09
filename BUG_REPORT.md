@@ -92,12 +92,12 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 2 — BUG-SCAN7 (batch fact-extraction cap), SCAN8 (chatCodeModeProvider auth-gate) |
+| 🟡 MEDIUM | 1 — BUG-SCAN8 (chatCodeModeProvider auth-gate) |
 | 🟢 LOW | 9 — BUG-SCAN9..17 (aşağıda) |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **11** — 2026-09-09 taramasından (BUG-SCAN7..17); fix turu sürüyor, düzeltilen madde buradan siliniyor |
+| **AÇIK TOPLAM** | **10** — 2026-09-09 taramasından (BUG-SCAN8..17); fix turu sürüyor, düzeltilen madde buradan siliniyor |
 
 ---
 
@@ -108,13 +108,6 @@ llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
 provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
 "Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
 somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
-
-### 🟡 BUG-SCAN7 — batch fact extraction N turn'de tek 5-fact cap paylaşıyor → sessiz fact kaybı (plausible)
-
-- **Yer:** [internal/app/memory.go:172](internal/app/memory.go:172) (`maxExtractedFactsPerTurn = 5`), `queueFactExtraction`/`bufferFactExtraction` (`8b0b1682`).
-- **Kök neden:** `FactExtractionEveryNTurns=3` (default) → 3 turn'ün metni `strings.Join(batch, "\n---\n")` ile birleşip **tek** extraction call'ına gidiyor, ama `parseExtractedFacts` sonucu hâlâ ilk 5 fact'te kesiyor. Öncesi: turn başına 5 (3 turn'de 15'e kadar).
-- **Tetik:** Kullanıcı 3 ardışık turn'de ailesini anlatıyor (eş adı, 3 çocuk adı+yaş, 2 evcil hayvan, şehir = 8+ ayrık fact). Batch call hepsini dönüyor; `parseExtractedFacts` ilk 5'i tutup gerisini sessizce atıyor. Ayrıca `a.factExtractBuf` per-`App` (per-chat değil) → alakasız chat'lerin mesajları tek extraction prompt'una birleşiyor.
-- **Fix:** cap'i batch'lenen turn sayısıyla ölçekle (`maxExtractedFactsPerTurn * batchLen`), ya da buffer'ı per-chat yap.
 
 ### 🟡 BUG-SCAN8 — `chatCodeModeProvider` auth-gate guard'ı yok, IndexedStack arkasında düz `FutureProvider` (plausible)
 

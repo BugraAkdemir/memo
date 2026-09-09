@@ -71,8 +71,13 @@ func (a *App) maybeCompactHistory(ctx context.Context, chatID string, history []
 
 	// Reuse the cached summary when it still condenses an unchanged prefix of
 	// this history and the ideal cut hasn't outgrown that prefix by more than
-	// the slack — the newer turns just go into the verbatim tail.
-	if cached != nil && cached.coveredCount <= len(history) &&
+	// the slack — the newer turns just go into the verbatim tail. The
+	// len(history)-coveredCount >= 2 check is the same min-tail guard the
+	// fresh path applies above: without it, a history that shrank back to
+	// (or just past) coveredCount — user edited/deleted/branched recent
+	// turns — would splice history[coveredCount:] down to zero or one
+	// message and hand the model nothing but the summary (BUG-SCAN4).
+	if cached != nil && cached.coveredCount <= len(history)-2 &&
 		cut <= cached.coveredCount+compactRegionGrowthSlack &&
 		conversationSig(history[:cached.coveredCount]) == cached.prefixSig {
 		cut = cached.coveredCount

@@ -92,12 +92,12 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 5 — BUG-SCAN4 (compact cached-guard), SCAN5 (flag_probe kalıcı cache), SCAN6 (taskloop Shutdown/Start yarışı), SCAN7 (batch fact-extraction cap), SCAN8 (chatCodeModeProvider auth-gate) |
+| 🟡 MEDIUM | 4 — BUG-SCAN5 (flag_probe kalıcı cache), SCAN6 (taskloop Shutdown/Start yarışı), SCAN7 (batch fact-extraction cap), SCAN8 (chatCodeModeProvider auth-gate) |
 | 🟢 LOW | 9 — BUG-SCAN9..17 (aşağıda) |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **14** — 2026-09-09 taramasından (BUG-SCAN4..17); fix turu sürüyor, düzeltilen madde buradan siliniyor |
+| **AÇIK TOPLAM** | **13** — 2026-09-09 taramasından (BUG-SCAN5..17); fix turu sürüyor, düzeltilen madde buradan siliniyor |
 
 ---
 
@@ -108,13 +108,6 @@ llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
 provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
 "Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
 somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
-
-### 🟡 BUG-SCAN4 — `maybeCompactHistory` cached-summary yolu min-tail guard'ını atlıyor → tüm verbatim geçmiş özete çöküyor (doğrulandı)
-
-- **Yer:** [internal/app/conversation_compact.go:75-84](internal/app/conversation_compact.go:75).
-- **Kök neden:** Fresh yol `if cut < 2 || len(history)-cut < 2 { return history }` ile korunuyor. Cached-reuse yolu `cut = cached.coveredCount` ile üzerine yazıp bu guard'ı tekrar çalıştırmıyor → `history[cut:]` boş veya tek mesaj olabiliyor.
-- **Tetik:** Turn A: history 30 mesaj, `cut=18`, özet `coveredCount=18` ile cache'lendi. Kullanıcı 18. mesajı edit'liyor (sonrasını kesiyor) ya da son turn'leri siliyor/branch açıyor → history ~18'e iniyor. Turn B: `cut=10`, guard geçiyor; cached-reuse koşulları hepsi tutuyor (`coveredCount<=len(history)`, `cut<=coveredCount+slack`, prefix sig artık tüm history'yle eşleşiyor) → `cut:=18` → `out = [summary]`. Ekrandaki tüm konuşma özete çöküyor; model ~25 turn boyunca amnezik.
-- **Fix:** Cached dalında da `len(history)-cut < 2` (ve `cut < 2`) kontrolü; tutmuyorsa raw history dön.
 
 ### 🟡 BUG-SCAN5 — `flag_probe` geçici/timeout hatasını kalıcı & sessiz "unsupported" olarak cache'liyor (doğrulandı)
 

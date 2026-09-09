@@ -92,3 +92,31 @@ func TestMaybeCompactHistory_UsesCachedSummary(t *testing.T) {
 		}
 	}
 }
+
+// TestMaybeCompactHistory_CachedSummaryKeepsMinTail guards BUG-SCAN4: the
+// cached-summary reuse path overwrote `cut` with cached.coveredCount
+// without re-checking the min-tail guard the fresh path applies. If the
+// history shrank back to (or past) coveredCount — user edited/deleted/
+// branched recent turns — reuse spliced the verbatim tail down to nothing
+// and returned only the summary.
+func TestMaybeCompactHistory_CachedSummaryKeepsMinTail(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{}}
+	a.cfg.AgentMode.ConversationCompactEnabled = true
+	a.cfg.AgentMode.CompactThresholdPct = 60
+
+	// A 30-message history compacted with coveredCount=18...
+	full := longHistory(30)
+	a.convSummaries = map[string]*convSummary{
+		"c1": {coveredCount: 18, prefixSig: conversationSig(full[:18]), text: "- did X"},
+	}
+
+	// ...then the user trims recent turns so only those first 18 remain.
+	shrunk := full[:18]
+	got := a.maybeCompactHistory(context.Background(), "c1", shrunk, 400)
+
+	if len(got) != len(shrunk) {
+		t.Fatalf("history collapsed to %d messages (summary=%v); the whole visible "+
+			"conversation was replaced by the cached summary", len(got),
+			len(got) > 0 && got[0].Role == "system")
+	}
+}

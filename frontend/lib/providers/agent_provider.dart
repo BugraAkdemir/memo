@@ -60,6 +60,16 @@ typedef CodeModeState = ({bool enabled, bool pinned});
 final chatCodeModeProvider =
     FutureProvider.family<CodeModeState, String>((ref, chatId) async {
   if (chatId.isEmpty) return (enabled: false, pinned: false);
+  // BUG-SCAN8 / BUG-ONB6: this FutureProvider is watched by the Code Mode
+  // toggle in _AgentTopBar, which AppShell's IndexedStack builds at cold
+  // start — before the auth gate opens. A one-shot 401 there gets cached as
+  // an error forever (no retry loop), so the toggle would read "off" for
+  // the rest of the session even for a project chat that resolves to on.
+  // Mount the safe default instead; app_shell.dart's gate-transition
+  // listener re-invalidates this once the gate actually opens.
+  if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+    return (enabled: false, pinned: false);
+  }
   return ref.read(apiClientProvider).getChatCodeMode(chatId);
 });
 

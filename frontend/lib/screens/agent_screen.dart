@@ -435,7 +435,10 @@ class _CodeModeToggle extends ConsumerWidget {
             );
           }
         }
-        ref.invalidate(chatCodeModeProvider(chatId));
+        // Guard the ref too, not just the SnackBar (BUG-SCAN17): if the chat
+        // was deselected/deleted while the POST was in flight this widget is
+        // gone, and invalidating through a disposed ref throws StateError.
+        if (context.mounted) ref.invalidate(chatCodeModeProvider(chatId));
       },
     );
   }

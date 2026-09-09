@@ -262,6 +262,10 @@ class _AppShellState extends ConsumerState<AppShell> {
         // Invalidating recreates the notifier and re-runs its init GET.
         ref.invalidate(agentEnabledProvider);
         ref.invalidate(webSearchModeProvider);
+        // BUG-SCAN8: the per-chat Code Mode toggle's FutureProvider.family
+        // is built by the always-mounted _AgentTopBar; a 401 during startup
+        // stuck it at the "off" default. Invalidate every family instance.
+        ref.invalidate(chatCodeModeProvider);
         // v4.6.0 Faz D: the task-event SSE also 401s while the gate is up;
         // its own 3s retry loop would eventually recover, this just makes it
         // immediate.

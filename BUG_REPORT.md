@@ -92,12 +92,12 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 1 — BUG-SCAN8 (chatCodeModeProvider auth-gate) |
-| 🟢 LOW | 9 — BUG-SCAN9..17 (aşağıda) |
+| 🟡 MEDIUM | 0 |
+| 🟢 LOW | 8 — BUG-SCAN9..16 (aşağıda); SCAN17 aynı Code Mode toggle commit'inde SCAN8 ile birlikte düzeltildi |
 | 🔧 TEKNİK BORÇ | 0 |
 | ⏳ FIX İNDİ, CANLI DOĞRULAMA BEKLİYOR | 5 (BUG-PERM1 + e43627e/b9fc2eb · BUG-THINK1 `08ea76ad` · BUG-PLAN9/10/12 — üçü de kod+test seviyesinde doğrulandı (`def5ac1c`, `63cc1ad`/`adb363e7`, artık `task_activity_block_test.dart`/`taskstatus_tool_test.dart` ile), hiçbiri gerçek backend+model'e karşı canlı doğrulanmadı) |
 | ✅ FIX İNDİ + CANLI DOĞRULANDI (silinecek) | 9 (PLAN1/2/3/4/5/6/7/8/11 — PLAN4 kod+analyze doğrulandı; PLAN11(a)+(b)+(c) `dd803d6`/`849f84fa`/`a35593f4`/`d321b23f`) |
-| **AÇIK TOPLAM** | **10** — 2026-09-09 taramasından (BUG-SCAN8..17); fix turu sürüyor, düzeltilen madde buradan siliniyor |
+| **AÇIK TOPLAM** | **8** — 2026-09-09 taramasından (BUG-SCAN9..16); fix turu sürüyor, düzeltilen madde buradan siliniyor |
 
 ---
 
@@ -108,13 +108,6 @@ llama arg tuning + SSE / taskloop eşzamanlılık / Flutter TTS-STT+Code Mode /
 provider-config-sessions) + `/codebase-memory` + kaynak-kod doğrulaması.
 "Doğrulandı" = kaynak koda karşı bizzat teyit edildi; "plausible" = ajan raporu,
 somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan silinir.
-
-### 🟡 BUG-SCAN8 — `chatCodeModeProvider` auth-gate guard'ı yok, IndexedStack arkasında düz `FutureProvider` (plausible)
-
-- **Yer:** [frontend/lib/providers/agent_provider.dart:60](frontend/lib/providers/agent_provider.dart:60) (`88a34adc`).
-- **Kök neden:** `FutureProvider.family` — `authGateBlocked()` guard'ı yok, retry yok, `app_shell.dart`'ın gate-geçişi invalidate listesinde yok. `AgentScreen` `AppShell` IndexedStack'inin index 0'ı, açılışta build oluyor. BUG-ONB11/13 sınıfının 5. şekli.
-- **Tetik:** Soğuk başlangıçta agent tab görünür + chat seçili. Gate kısa süre bloklu (localhost'ta bile, ONB13). `GET /api/chats/code-mode` 401 → `FutureProvider` hatayı kalıcı cache'liyor. Gate açılıyor, hiçbir şey invalidate etmiyor. Toggle sonsuza "Code Mode kapalı" gösteriyor; tek kurtuluş toggle'a basmak — o da `setChatCodeMode(chatId, true)` ile başarısız bir okumanın yan etkisi olarak değer pinliyor.
-- **Fix:** `app_shell.dart`'ın `authGateProvider` listener'ındaki `ref.invalidate(...)` listesine ekle, ve/veya `build()`'i `authGateBlocked` ile guard'la.
 
 ### 🟢 BUG-SCAN9 — recency/importance ağırlığı top-K truncation'dan **sonra** uygulanıyor (plausible)
 
@@ -159,12 +152,6 @@ somut senaryo var ama satır satır teyit edilmedi. Düzeltilen madde buradan si
 
 - **Yer:** [internal/memory/store.go](internal/memory/store.go) `NearDuplicateContent` / `contentTokenSet` (`8bef0e8b`). Saf-rakam token'ları Jaccard'dan önce atılıyor. `"kira 5000 lira"` ve `"kira 8000 lira"` → token set `{kira, lira}` her ikisinde → Jaccard 1.0 → biri çöküyor. Recent core `add()`'i önce çalıştığı için eski-ama-recent olan kazanıp yeni/yüksek-skorlu duplicate atılabiliyor. `len(ta) < 2` guard'ı yalnızca tek-token fact'leri kurtarıyor.
 - **Fix:** Rakam token'larını tamamen atmak yerine normalize et (ör. `#`), ya da 2 fact yalnız rakamla farklıysa near-dup sayma.
-
-### 🟢 BUG-SCAN17 — `_CodeModeToggle.onPressed` `ref.invalidate`'i `await` sonrası `mounted` guard'sız (plausible)
-
-- **Yer:** [frontend/lib/screens/agent_screen.dart](frontend/lib/screens/agent_screen.dart) `_CodeModeToggle` (`88a34adc`). SnackBar `context.mounted` ile guard'lı ama `await`'ten sonraki `ref.invalidate(chatCodeModeProvider(chatId))` koşulsuz çalışıyor. `ConsumerWidget`'ın `WidgetRef`'i element unmount olduktan sonra `StateError: Cannot use "ref" after the widget was disposed` atıyor.
-- **Tetik:** Toggle'a bas, yavaş `POST /api/chats/code-mode` dönmeden o agent chat'i sil/seçimi kaldır → `_CodeModeToggle` dispose → `ref.invalidate` disposed ref üstünde → yakalanmamış exception.
-- **Fix:** `if (context.mounted)` ile `ref.invalidate`'i de sar.
 
 ---
 

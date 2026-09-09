@@ -128,6 +128,10 @@ void main() {
     // of its own, so a 401 here is permanent.
     final gatewayModels = await container.read(gatewayModelsProvider.future);
     final gpuInfo = await container.read(gpuInfoProvider.future);
+    // BUG-SCAN8: the per-chat Code Mode toggle's FutureProvider.family,
+    // built by the always-mounted _AgentTopBar at cold start.
+    final codeMode =
+        await container.read(chatCodeModeProvider('chat-abc').future);
 
     // Safe defaults, not errors.
     expect(llama.engineMode, 'auto');
@@ -148,6 +152,8 @@ void main() {
     expect(orchestra.enabled, false);
     expect(gatewayModels, isEmpty);
     expect(gpuInfo.ramTotalMb, 0);
+    expect(codeMode.enabled, false);
+    expect(codeMode.pinned, false);
 
     // The one and only assertion that actually matters: zero requests ever
     // reached the (401-answering) backend, for any of them.

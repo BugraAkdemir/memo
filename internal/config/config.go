@@ -449,6 +449,21 @@ type DevGatewayConfig struct {
 	// gateway, and what was there before, so disconnecting restores it
 	// exactly instead of just deleting the keys.
 	ClaudeCodeCLI ClaudeCodeCLIState `yaml:"claude_code_cli" json:"claude_code_cli"`
+
+	// GeminiSub tracks the "connect Google account" flow in the Developer
+	// screen (see internal/app/gemauth.go) — whether Memo holds a valid
+	// OAuth token for the gemini-sub subscription provider, plus a cached
+	// display email. The token itself lives encrypted under
+	// DataDir()/geminisub/, never here.
+	GeminiSub GeminiSubState `yaml:"gemini_sub" json:"gemini_sub"`
+}
+
+// GeminiSubState is the frontend-facing state of the gemini-sub Google
+// account connection. Both fields are display-only; the OAuth token is kept
+// (encrypted) under DataDir()/geminisub/, not in config.
+type GeminiSubState struct {
+	Connected bool   `yaml:"connected" json:"connected"`
+	Email     string `yaml:"email" json:"email"`
 }
 
 // ClaudeCodeCLIState is internal bookkeeping for

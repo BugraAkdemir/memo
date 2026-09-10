@@ -415,6 +415,9 @@ func (b *swarmStubBridge) GetClaudeCodeCLIConnected() bool                      
 func (b *swarmStubBridge) GetClaudeCodeCLIModel() string                                 { return "" }
 func (b *swarmStubBridge) ConnectClaudeCodeCLI(baseURL, model string) error              { return nil }
 func (b *swarmStubBridge) DisconnectClaudeCodeCLI() error                                { return nil }
+func (b *swarmStubBridge) GoogleAccountState() (bool, string)                            { return false, "" }
+func (b *swarmStubBridge) StartGoogleAuth() (string, error)                              { return "", nil }
+func (b *swarmStubBridge) DisconnectGoogleAccount() error                                { return nil }
 func (b *swarmStubBridge) GetProviders() []provider.ProviderConfig                       { return nil }
 func (b *swarmStubBridge) UpdateProvider(cfg provider.ProviderConfig) error              { return nil }
 func (b *swarmStubBridge) DeleteProvider(pt provider.ProviderType, name ...string) error { return nil }

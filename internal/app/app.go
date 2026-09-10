@@ -687,6 +687,10 @@ func (a *App) Startup(ctx context.Context) {
 	// and cloud restore call after replacing providers.json/orchestra.json on
 	// disk — keeping this as one code path means the two can't drift apart.
 	a.reinitProviderAndOrchestra()
+	// If the user is already signed in with the official gemini-cli, adopt
+	// that token so gemini-sub works with no extra click (like
+	// claude-code-proxy's ~/.claude/.credentials.json fallback).
+	a.adoptGeminiCLILoginIfPresent()
 	tools.Configurator = a
 	tools.Routines = routineToolAdapter{a}
 	tools.FileSender = fileToolAdapter{a}

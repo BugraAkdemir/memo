@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -22,6 +23,11 @@ import (
 func init() {
 	provider.RegisterConstructor(provider.ProviderGeminiSub, NewProvider)
 }
+
+// userAgent is sent on every Code Assist call so the request looks like it
+// comes from the official gemini-cli (same spirit as claude-code-proxy
+// spoofing Claude Code's headers). Kept close to gemini-cli's real format.
+var userAgent = fmt.Sprintf("GeminiCLI/0.1.0 (%s; %s)", runtime.GOOS, runtime.GOARCH)
 
 // defaultModels is what ListModels reports. Code Assist has no models list
 // endpoint in the public GenerateContent shape, so this is a fixed set of
@@ -146,6 +152,7 @@ func (p *geminiSubProvider) ChatCompletion(ctx context.Context, req provider.Cha
 		return nil, &provider.ProviderError{Provider: p.Name(), Err: fmt.Errorf("request: %w", err)}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("User-Agent", userAgent)
 
 	resp, err := hc.Do(httpReq)
 	if err != nil {
@@ -176,6 +183,7 @@ func (p *geminiSubProvider) ChatCompletionStream(ctx context.Context, req provid
 		return nil, &provider.ProviderError{Provider: p.Name(), Err: fmt.Errorf("request: %w", err)}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("User-Agent", userAgent)
 
 	resp, err := hc.Do(httpReq)
 	if err != nil {

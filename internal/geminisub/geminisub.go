@@ -75,6 +75,14 @@ func newManager(ts *tokenStore) *Manager {
 	m := &Manager{tok: ts}
 	if t, ok := ts.load(); ok {
 		m.token = t
+		return m
+	}
+	// No token of our own yet — fall back to the one the official gemini-cli
+	// already has, if the user is logged in there (same public client id, so
+	// our refresh works against it). We don't write back to gemini-cli's
+	// file; the first refresh persists into our own encrypted store.
+	if t, ok := loadGeminiCLIToken(); ok {
+		m.token = t
 	}
 	return m
 }

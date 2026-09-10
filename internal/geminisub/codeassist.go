@@ -186,6 +186,7 @@ func postJSON(ctx context.Context, hc *http.Client, url string, in, out any) err
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := hc.Do(req)
 	if err != nil {

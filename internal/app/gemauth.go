@@ -92,6 +92,53 @@ func (a *App) finalizeGoogleConnect(ctx context.Context) error {
 	return config.Save(cfg)
 }
 
+// adoptGeminiCLILoginIfPresent is called once at startup. If the user has
+// not connected in-app but the official gemini-cli is already logged in
+// (~/.gemini/oauth_creds.json), verify that token works and adopt it —
+// writing the marker provider and connected state so gemini-sub is usable
+// with no extra click. Mirrors claude-code-proxy's ~/.claude/.credentials.json
+// fallback. Best-effort: a dead/absent gemini-cli token is silently ignored.
+func (a *App) adoptGeminiCLILoginIfPresent() {
+	a.cfgMu.RLock()
+	already := a.cfg.DevGateway.GeminiSub.Connected
+	a.cfgMu.RUnlock()
+	if already {
+		return
+	}
+
+	m := geminisub.Default()
+	if !m.Connected() {
+		return // no gemini-cli token seeded
+	}
+
+	parent := a.lifecycleCtx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 20*time.Second)
+	defer cancel()
+
+	_, email, err := m.AccountInfo(ctx)
+	if err != nil {
+		logx.Printf("gemauth: gemini-cli token present but not usable, ignoring: %v", err)
+		return
+	}
+
+	if err := a.UpdateProvider(geminiSubMarkerConfig()); err != nil {
+		logx.Printf("gemauth: adopt gemini-cli login — write marker: %v", err)
+		return
+	}
+	a.cfgMu.Lock()
+	a.cfg.DevGateway.GeminiSub = config.GeminiSubState{Connected: true, Email: email}
+	cfg := a.cfg
+	a.cfgMu.Unlock()
+	if err := config.Save(cfg); err != nil {
+		logx.Printf("gemauth: adopt gemini-cli login — save config: %v", err)
+		return
+	}
+	logx.Printf("gemauth: adopted existing gemini-cli login (%s) for gemini-sub", email)
+}
+
 // DisconnectGoogleAccount revokes and deletes the stored token, removes the
 // marker provider, and clears the connected state. A no-op if not connected.
 func (a *App) DisconnectGoogleAccount() error {

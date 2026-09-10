@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -15,6 +16,13 @@ import (
 
 	"golang.org/x/oauth2"
 )
+
+// TestMain neutralises the real ~/.gemini/oauth_creds.json fallback so tests
+// never pick up an actual gemini-cli login on the dev's machine.
+func TestMain(m *testing.M) {
+	geminiCLICredsPath = ""
+	os.Exit(m.Run())
+}
 
 func newTestManager(t *testing.T) *Manager {
 	t.Helper()
@@ -88,7 +96,7 @@ func TestOAuthFlow_Success(t *testing.T) {
 	}
 	host := redirectPort(t, authURL)
 
-	resp, err := http.Get("http://" + host + "/callback?code=fake-code&state=memo-gemini-sub")
+	resp, err := http.Get("http://" + host + "/oauth2callback?code=fake-code&state=memo-gemini-sub")
 	if err != nil {
 		t.Fatalf("callback GET: %v", err)
 	}
@@ -127,7 +135,7 @@ func TestOAuthFlow_Denied(t *testing.T) {
 	}
 	host := redirectPort(t, authURL)
 
-	resp, err := http.Get("http://" + host + "/callback?error=access_denied")
+	resp, err := http.Get("http://" + host + "/oauth2callback?error=access_denied")
 	if err != nil {
 		t.Fatalf("callback GET: %v", err)
 	}

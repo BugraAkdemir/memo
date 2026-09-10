@@ -32,17 +32,37 @@ tek blank import. Code Assist ölürse: paket + 1 sabit + ~3 mekanik satır sili
 - `flutter analyze lib/` — dokunulan dosyalarda 0 yeni sorun (5 info hepsi pre-existing, başka dosyalarda). `flutter test` 327/327. Rule-8 grep temiz.
 - **Canlı headless smoke**: `POST /api/dev-gateway/google-account {connect:true}` → geçerli Google OAuth URL'i (PKCE S256, `access_type=offline`, `cloud-platform`+`openid`+userinfo scope'ları, `127.0.0.1` loopback redirect). Sadece `client_id=REPLACE_ME` gerçek değeri bekliyor. `/v1/models` bağlanana kadar boş (beklenen).
 
+## Faz 7 (2026-09-10, `eab31acd`) — kayıt gereksinimi kaldırıldı
+
+Kullanıcı: "böyle bir sistem istemedim, `~/Documents/claude-code-proxy/`nin
+Google halini Go ile yaz, **Google secret key olmayacak**." claude-code-proxy
+Claude Code'un **herkese açık** OAuth client'ını (`9d1c250a-...`, secret yok)
+yeniden kullanıyor; kullanıcı hiçbir şey kaydetmiyor. Gemini karşılığı:
+**gemini-cli'ın kendi public "installed app" client'ı**
+(`681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com`
++ non-secret secret — google-gemini/gemini-cli kaynağında birebir yazılı).
+
+Değişenler: `oauth.go` yerleşik client = gemini-cli'ınki (env override opsiyonel,
+artık şart değil); scope'lar gemini-cli ile birebir (openid çıktı); redirect
+`/oauth2callback`. Yeni `geminicli.go` — `~/.gemini/oauth_creds.json` varsa
+oradan seed alıyor (claude-code-proxy'nin `~/.claude/.credentials.json`
+fallback'i gibi; aynı public client, refresh çalışıyor). `internal/app/gemauth.go`
+`adoptGeminiCLILoginIfPresent()` — startup'ta gemini-cli login'i varsa ve token
+çalışıyorsa otomatik adopt (marker + connected state), sıfır tık. `provider.go`/
+`codeassist.go` — gemini-cli şeklinde `User-Agent` (claude-code-proxy'nin header
+spoof ruhu).
+
+**Artık kullanıcının Google Cloud'da hiçbir şey açmasına gerek yok.** Headless
+smoke: connect endpoint gerçek çalışan bir Google consent URL'i döndürüyor
+(public client id, `REPLACE_ME` yok).
+
 ## Sıradaki / kullanıcıda
 
-1. **Google Cloud kurulumu (faz 4 öncesi engel):** Code Assist API açık bir proje,
-   OAuth consent screen, bir **"Desktop app" OAuth client**. ID/secret →
-   `internal/geminisub/oauth.go` sabitleri veya `MEMO_GOOGLE_GEMINI_CLIENT_ID`/
-   `_SECRET` env. (`.env.example` güncellendi.)
-2. **Canlı doğrulama (plan'ın kabul ettiği risk):** `cloudcode-pa` Google-dışı bir
-   OAuth client'ı kabul ediyor mu, trafik abonelik kotasından mı düşüyor?
-   Fallback'ler plan dosyasında: F1 (kullanıcının kendi client'ı), F2 (standart
-   Gemini API — ama GCP faturalar, abonelik değil), F3 (ertele).
-3. Sonraki fazlar (fikir): aynı `internal/geminisub` kalıbıyla `claudesub`/`codexsub`
+1. **Canlı doğrulama:** tarayıcıda Google hesabıyla giriş yapıp `gemini-sub/gemini-2.5-pro`
+   ile gerçek bir istek at — `cloudcode-pa` bu client + token'ı kabul edip trafiği
+   abonelik kotasından düşürüyor mu? (gemini-cli aynı client'ı kullandığı için
+   çalışması bekleniyor.) Plan'da F2/F3 fallback'leri duruyor.
+2. Sonraki fazlar (fikir): aynı `internal/geminisub` kalıbıyla `claudesub`/`codexsub`
    (Claude Pro, ChatGPT Plus). yapacam.md'de.
 
 ## Ayrıca — 2026-09-08..10 BUG-SCAN turu handoff'suz

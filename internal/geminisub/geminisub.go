@@ -50,6 +50,9 @@ type Manager struct {
 	tok   *tokenStore
 	token *oauth2.Token // nil == not connected
 	flow  *authFlow     // in-progress OAuth flow, if any
+
+	bootMu sync.Mutex
+	boot   *bootstrap // cached Code Assist handshake result, nil until first use
 }
 
 var (

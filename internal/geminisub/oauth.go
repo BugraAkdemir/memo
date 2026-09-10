@@ -301,6 +301,7 @@ func (m *Manager) Disconnect(ctx context.Context) error {
 	if tok != nil {
 		revokeToken(ctx, tok)
 	}
+	m.invalidateBootstrap()
 	return m.tok.clear()
 }
 

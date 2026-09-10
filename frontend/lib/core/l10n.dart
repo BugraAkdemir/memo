@@ -471,14 +471,18 @@ class L10n {
     'dev_gateway_claude_cli_model_none': 'Model seçilmedi',
     'dev_gateway_claude_cli_model_disabled_hint':
         'Model seçmeden önce yukarıdan bağlan.',
+    'tab_gemini_subscription': 'Gemini Aboneliği',
     'google_account_connect_label': 'Google Hesabını Bağla (Gemini aboneliği)',
     'google_account_connect_desc':
-        'Google AI Pro/Ultra aboneliğine sahip bir hesabı bağla; Gemini modelleri hem Memo sohbetinde hem de bu yerel ağ geçidinde "gemini-sub/model" olarak kullanılabilir. CLI aracı gerekmez.',
+        'Google AI Pro/Ultra aboneliğine sahip bir hesabı bağla; Gemini modelleri hem Memo sohbetinde hem de yerel ağ geçidinde (localhost:8090/v1) "gemini-sub/model" olarak kullanılabilir. Tarayıcıda giriş yaparsın, kayıt/anahtar gerekmez.',
     'google_account_connect_cta': 'Google Hesabını Bağla',
     'google_account_connecting': 'Yetkilendirme bekleniyor…',
-    'google_account_disconnect_cta': 'Bağlantıyı Kes',
+    'google_account_disconnect_cta': 'Çıkış Yap',
     'google_account_connected': 'Google hesabı bağlı',
     'google_account_connected_as': 'Bağlı: \${email}',
+    'google_account_usage_hint':
+        'Sohbette sağlayıcı olarak "Google — Gemini (subscription)" seç, ya da dışarıdan model adı olarak "gemini-sub/gemini-2.5-pro" kullan.',
+    'google_account_manual_link_hint': 'Tarayıcı açılmadıysa bu bağlantıyı elle aç:',
     'google_account_timeout':
         'Yetkilendirme zaman aşımına uğradı. Tekrar dene.',
     'google_account_error': 'Google hesabı işlemi başarısız: \${e}',
@@ -2569,14 +2573,18 @@ class L10n {
     'dev_gateway_claude_cli_model_none': 'No model selected',
     'dev_gateway_claude_cli_model_disabled_hint':
         'Connect above before picking a model.',
+    'tab_gemini_subscription': 'Gemini Subscription',
     'google_account_connect_label': 'Connect Google Account (Gemini subscription)',
     'google_account_connect_desc':
-        'Connect an account with a Google AI Pro/Ultra subscription; Gemini models become usable as "gemini-sub/model" both in Memo chat and on this local gateway. No CLI tool required.',
+        'Connect an account with a Google AI Pro/Ultra subscription; Gemini models become usable as "gemini-sub/model" both in Memo chat and on the local gateway (localhost:8090/v1). You sign in in the browser — nothing to register, no key.',
     'google_account_connect_cta': 'Connect Google Account',
     'google_account_connecting': 'Waiting for authorization…',
-    'google_account_disconnect_cta': 'Disconnect',
+    'google_account_disconnect_cta': 'Sign Out',
     'google_account_connected': 'Google account connected',
     'google_account_connected_as': 'Connected: \${email}',
+    'google_account_usage_hint':
+        'In chat, pick "Google — Gemini (subscription)" as the provider, or use the model name "gemini-sub/gemini-2.5-pro" from an external tool.',
+    'google_account_manual_link_hint': "If the browser didn't open, open this link manually:",
     'google_account_timeout': 'Authorization timed out. Try again.',
     'google_account_error': 'Google account action failed: \${e}',
     'dev_gateway_settings_title': 'Gateway Settings',

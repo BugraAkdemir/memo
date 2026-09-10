@@ -1,3 +1,58 @@
+# Ek (2026-09-10, devam 64) — gemini-sub: Google aboneliğiyle Gemini (native OAuth + yerel endpoint)
+
+Kullanıcı isteği: kullanıcı **hiçbir CLI aracı olmadan** kendi Google
+(AI Pro/Ultra) hesabını bağlayıp Gemini'yi abonelik kotasıyla kullansın —
+hem Memo sohbetinde hem de Memo'nun yerel OpenAI-uyumlu endpoint'inde
+(VS Code / Zed / script'ler de erişsin). "Modüler olsun, kırılınca app
+çökmesin, fix'lerken dosyalar arasında kaybolmayalım."
+
+Plan onaylandı: `.claude/plans/se-enek-2-yerel-endpoint-recursive-quail.md`.
+6 faz; **1-5 kodlandı + commit'lendi**, faz 6 = bu handoff + dokümantasyon.
+
+## Ne yapıldı — yeni izole paket `internal/geminisub/`
+
+Feature tamamen bu pakette. `internal/provider`/`internal/agentcli` içine
+konmadı (biri stateless HTTP, diğeri subprocess; bu OAuth + disk'te token +
+bootstrap taşıyor). Sisteme bağlanışı: `provider.go`'da tek `ProviderType`
+sabiti (`gemini-sub`) + `RegisterConstructor` (`init()`) + `internal/app`'te
+tek blank import. Code Assist ölürse: paket + 1 sabit + ~3 mekanik satır silinir.
+
+| Commit | Faz | İçerik |
+|---|---|---|
+| `9b218289` | 1 | `geminisub.go`/`oauth.go`/`token.go` — Google OAuth loopback (drive.go kalıbı) + PKCE (S256) + `AccessTypeOffline`; token `DataDir()/geminisub/token.enc`'te AES-256-GCM şifreli (`provider.DefaultMachineKey`), bozuk token = "bağlı değil" (startup'ı kilitlemez); refresh eden + yeniden-persist eden `TokenSource`; `AccountInfo` (userinfo); disconnect'te best-effort revoke. Yerleşik "Desktop app" client ID/secret **`REPLACE_ME` placeholder** — env override `MEMO_GOOGLE_GEMINI_CLIENT_ID`/`_SECRET`. |
+| `d876b25f` | 2 | `wire.go` — `internal/provider/gemini.go`'nun **kopyası** (adapte, ayrışmasına izin var): mesaj→`contents`, `system`→`systemInstruction`, `assistant`→`model`, tool-rol→`functionResponse`, `functionCall` echo, tek `{functionDeclarations:[...]}`. Code Assist zarfı: istek `{model,project,request:{...}}`, yanıt `{response:{...}}`. `codeassist.go` — `loadCodeAssist` (proje+tier) + `onboardUser` (60s bounded poll) bootstrap, `Manager`'da cache. Endpoint `MEMO_GEMINI_SUB_ENDPOINT` ile override. |
+| `46a025c9` | 3 | `provider.go` — `geminiSubProvider` (`provider.Provider`). Kimlik taşımaz; her çağrıda `Manager` (`Default()` singleton) üzerinden canlı token + proje. `NewProvider` **token yokken hata vermez** (`agentcli` kalıbı) — her metot `ErrNotConnected` döner; router kurulumu kırılmaz. `internal/provider/provider.go`: `ProviderGeminiSub` sabiti (DefaultBaseURL/init panic loop'una **eklenmedi**, CLI emsali). `internal/app/providers.go`: blank import + `isCLIProviderName`→`isSessionProviderName` (gemini-sub'ı da kapsıyor — restart'ta yapışkan global aktif provider olmaz). `.gitignore`: `internal/geminisub/data/`. |
+| `6fed3088` | 4 | `internal/config`: `DevGatewayConfig.GeminiSub` (`GeminiSubState{Connected,Email}` — sır yok). `internal/app/gemauth.go`: `GoogleAccountState`/`StartGoogleAuth`/`DisconnectGoogleAccount`. Connect: OAuth başlat → URL döndür → arkada `AwaitAuth` → email al → **enabled marker `ProviderConfig`** yaz (`Type:gemini-sub`, `Name:"Google — Gemini (subscription)"`, sır yok). Bu marker = tüm routing entegrasyonu: `resolveGatewayProvider`/`ListGatewayModels` type'a göre eşleştiriyor → `gemini-sub/<model>` `/v1/*` ve Memo sohbetinde otomatik erişilebilir, **`devgateway.go`/`/v1` handler'larına 0 dokunuş**. `internal/webserver`: `FullBridge`'e 3 metot, yeni route `/api/dev-gateway/google-account`, ayrı `googleauth_handlers.go`. |
+| `09bcc4ec` | 5 | Flutter: `GoogleAccountState` modeli, `api_client` (`getGoogleAccountState`/`startGoogleAuth`/`disconnectGoogleAccount`), `googleAccountProvider` (authGateBlocked guard'lı), Developer ekranında `_ClaudeCodeCLIConnectRow`'un altına `_GoogleAccountConnectRow` — connect Google consent'i `launchUrl` ile açıp 3sn/2dk poll eder, bağlanınca `gatewayModelsProvider` invalidate. l10n `google_account_*` TR+EN. |
+
+## Doğrulama
+
+- `CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` temiz.
+- `go test -tags sqlite_fts5 ./internal/geminisub/ ./internal/app/ ./internal/webserver/ ./internal/provider/ -race` yeşil. Yeni testler: token lifecycle (round-trip/eksik/bozuk/yanlış-anahtar/clear), OAuth (PKCE URL şekli, başarılı loopback exchange + persist, reddedilen yetki, revoke-on-disconnect), wire (system/rol/tool round-trip, response+SSE parse), bootstrap (load-only+cache+invalidate, onboard poll, not-connected, load error), provider (kayıt + token'sız `ErrNotConnected`, model normalizasyonu, httptest Code Assist stub'ına karşı tam ChatCompletion + streaming, API hata mesajı), `isSessionProviderName`, `geminiSubMarkerConfig`.
+- `flutter analyze lib/` — dokunulan dosyalarda 0 yeni sorun (5 info hepsi pre-existing, başka dosyalarda). `flutter test` 327/327. Rule-8 grep temiz.
+- **Canlı headless smoke**: `POST /api/dev-gateway/google-account {connect:true}` → geçerli Google OAuth URL'i (PKCE S256, `access_type=offline`, `cloud-platform`+`openid`+userinfo scope'ları, `127.0.0.1` loopback redirect). Sadece `client_id=REPLACE_ME` gerçek değeri bekliyor. `/v1/models` bağlanana kadar boş (beklenen).
+
+## Sıradaki / kullanıcıda
+
+1. **Google Cloud kurulumu (faz 4 öncesi engel):** Code Assist API açık bir proje,
+   OAuth consent screen, bir **"Desktop app" OAuth client**. ID/secret →
+   `internal/geminisub/oauth.go` sabitleri veya `MEMO_GOOGLE_GEMINI_CLIENT_ID`/
+   `_SECRET` env. (`.env.example` güncellendi.)
+2. **Canlı doğrulama (plan'ın kabul ettiği risk):** `cloudcode-pa` Google-dışı bir
+   OAuth client'ı kabul ediyor mu, trafik abonelik kotasından mı düşüyor?
+   Fallback'ler plan dosyasında: F1 (kullanıcının kendi client'ı), F2 (standart
+   Gemini API — ama GCP faturalar, abonelik değil), F3 (ertele).
+3. Sonraki fazlar (fikir): aynı `internal/geminisub` kalıbıyla `claudesub`/`codexsub`
+   (Claude Pro, ChatGPT Plus). yapacam.md'de.
+
+## Ayrıca — 2026-09-08..10 BUG-SCAN turu handoff'suz
+
+`BUG_REPORT.md` "2026-09-09 tarama bulguları (BUG-SCAN1..17) — HEPSİ DÜZELTİLDİ"
+turunun (commit'ler `24740fdc`..`82d5b200`) hâlâ kendi handoff girişi yok; bu
+devam 64'ten önce yapılmıştı, ayrı bir oturumdu.
+
+---
+
 # Ek (2026-09-07, devam 63) — Local model denetimi + self-review + kopuk-feature + flaky test (7 commit)
 
 ## 4. tur — flaky test + kalan scout maddeleri

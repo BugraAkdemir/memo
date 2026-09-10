@@ -77,6 +77,7 @@ Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-
 | `internal/memory/` | Vector store (SQLite + sqlite-vec) | `store.go`, `embedder.go` |
 | `internal/database/` | SQLite connection management | `sqlite.go`, `vec_register.go` |
 | `internal/provider/` | External LLM providers (9 types) | `provider.go`, `router.go`, `openai.go`, `gemini.go`, `claude.go`, `grok.go`, `groq.go`, `openrouter.go`, `ollama.go`, `llamacpp.go`, `opencode_zen.go`, `opencode_go.go` |
+| `internal/geminisub/` | "gemini-sub" subscription provider: connect a personal Google account by native OAuth (no CLI) and reach Gemini on the user's Google AI Pro/Ultra quota via Google's Code Assist endpoint. Self-contained on purpose (isolation); wired in via one `ProviderType` const + `RegisterConstructor` + a blank import in `internal/app`. Connect surface: `internal/app/gemauth.go`, `/api/dev-gateway/google-account`. Env: `MEMO_GOOGLE_GEMINI_CLIENT_ID`/`_SECRET`, `MEMO_GEMINI_SUB_ENDPOINT`. | `oauth.go`, `token.go`, `codeassist.go`, `wire.go`, `provider.go` |
 | `internal/orchestra/` | Multi-model orchestration | `conductor.go`, `roles.go`, `types.go` |
 | `internal/agent/` | Agent / tool execution sandbox | `executor.go`, `pipeline.go`, `sandbox.go`, `permissions.go`, `tools.go`, `tools/` |
 | `internal/cloudsync/` | Google Drive E2E encrypted backup | `drive.go`, `crypto.go`, `sync_manager.go` |

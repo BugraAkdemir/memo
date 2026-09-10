@@ -500,6 +500,38 @@ class ClaudeCodeCLIConnectedNotifier extends AsyncNotifier<ClaudeCodeCLIState> {
   }
 }
 
+final googleAccountProvider =
+    AsyncNotifierProvider<GoogleAccountNotifier, GoogleAccountState>(
+      GoogleAccountNotifier.new,
+    );
+
+/// Developer screen's "connect Google account" flow for the gemini-sub
+/// subscription provider — see api_client.dart's
+/// getGoogleAccountState/startGoogleAuth/disconnectGoogleAccount and
+/// internal/app/gemauth.go. The OAuth dance itself (open the URL, poll for
+/// completion) is driven by the widget; this notifier only loads the
+/// current state and performs the disconnect.
+class GoogleAccountNotifier extends AsyncNotifier<GoogleAccountState> {
+  @override
+  Future<GoogleAccountState> build() async {
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      return const GoogleAccountState();
+    }
+    return ref.read(apiClientProvider).getGoogleAccountState();
+  }
+
+  Future<void> reload() async {
+    state = await AsyncValue.guard(
+      () => ref.read(apiClientProvider).getGoogleAccountState(),
+    );
+  }
+
+  Future<void> disconnect() async {
+    final next = await ref.read(apiClientProvider).disconnectGoogleAccount();
+    state = AsyncValue.data(next);
+  }
+}
+
 final gatewayModelsProvider = FutureProvider<List<GatewayModel>>((ref) async {
   // BUG-ONB11: same trap as gpuInfoProvider (BUG-ONB5), and missed by the
   // BUG-ONB6 sweep because that audit searched for AsyncNotifier.build()

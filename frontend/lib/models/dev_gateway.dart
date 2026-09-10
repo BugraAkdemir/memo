@@ -44,6 +44,23 @@ class ClaudeCodeCLIState {
   }
 }
 
+/// State of the Developer screen's "connect Google account" flow for the
+/// gemini-sub subscription provider — mirrors the {"connected", "email"}
+/// response from GET/POST /api/dev-gateway/google-account.
+class GoogleAccountState {
+  final bool connected;
+  final String email;
+
+  const GoogleAccountState({this.connected = false, this.email = ''});
+
+  factory GoogleAccountState.fromJson(Map<String, dynamic> json) {
+    return GoogleAccountState(
+      connected: json['connected'] as bool? ?? false,
+      email: json['email'] as String? ?? '',
+    );
+  }
+}
+
 class GatewayModel {
   final String id;
   final String type;

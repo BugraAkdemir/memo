@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -454,6 +457,10 @@ class _ReferenceSection extends ConsumerWidget {
         Divider(height: 1, color: theme.borderSoft),
         const SizedBox(height: 14),
         _ClaudeCodeCLIConnectRow(baseUrl: baseUrl),
+        const SizedBox(height: 14),
+        Divider(height: 1, color: theme.borderSoft),
+        const SizedBox(height: 14),
+        const _GoogleAccountConnectRow(),
       ],
     );
   }
@@ -629,6 +636,150 @@ class _ClaudeCodeCLIConnectRow extends ConsumerWidget {
               onChanged: st.connected ? selectModel : null,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Connect Google account" for the gemini-sub subscription provider: a
+/// native OAuth flow (no CLI). Connecting opens Google's consent page in the
+/// browser and polls until the backend finalizes; once connected, a
+/// `gemini-sub/<model>` entry appears in the gateway model list and as a
+/// selectable provider in Memo's own chat. See internal/app/gemauth.go and
+/// internal/geminisub.
+class _GoogleAccountConnectRow extends ConsumerStatefulWidget {
+  const _GoogleAccountConnectRow();
+
+  @override
+  ConsumerState<_GoogleAccountConnectRow> createState() => _GoogleAccountConnectRowState();
+}
+
+class _GoogleAccountConnectRowState extends ConsumerState<_GoogleAccountConnectRow> {
+  Timer? _pollTimer;
+  bool _connecting = false;
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _connect() async {
+    setState(() => _connecting = true);
+    try {
+      final url = await ref.read(apiClientProvider).startGoogleAuth();
+      if (url.isNotEmpty) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      }
+      // Poll every 3s until the backend reports the connection finalized
+      // (or ~2 min timeout).
+      var attempts = 0;
+      _pollTimer?.cancel();
+      _pollTimer = Timer.periodic(const Duration(seconds: 3), (t) async {
+        attempts++;
+        try {
+          await ref.read(googleAccountProvider.notifier).reload();
+          final st = ref.read(googleAccountProvider).valueOrNull;
+          if (st?.connected == true) {
+            t.cancel();
+            ref.invalidate(gatewayModelsProvider);
+            if (mounted) setState(() => _connecting = false);
+          }
+        } catch (_) {
+          // transient — keep polling
+        }
+        if (attempts > 40) {
+          t.cancel();
+          if (mounted) {
+            setState(() => _connecting = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(L10n.t('google_account_timeout'))),
+            );
+          }
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _connecting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('google_account_error', {'e': FriendlyError.describeGeneric(e)}))),
+        );
+      }
+    }
+  }
+
+  Future<void> _disconnect() async {
+    _pollTimer?.cancel();
+    setState(() => _connecting = false);
+    try {
+      await ref.read(googleAccountProvider.notifier).disconnect();
+      ref.invalidate(gatewayModelsProvider);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('google_account_error', {'e': FriendlyError.describeGeneric(e)}))),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    final stateAsync = ref.watch(googleAccountProvider);
+
+    return stateAsync.when(
+      loading: () => const SizedBox(height: 20, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+      error: (e, _) => Text(
+        '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
+        style: TextStyle(color: MemoTheme.red, fontSize: 12),
+      ),
+      data: (st) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            L10n.t('google_account_connect_label'),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.textMain),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            L10n.t('google_account_connect_desc'),
+            style: TextStyle(fontSize: 11, color: theme.textDim, height: 1.4),
+          ),
+          const SizedBox(height: 10),
+          if (st.connected)
+            Row(
+              children: [
+                Icon(Icons.check_circle_rounded, size: 16, color: MemoTheme.green),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    st.email.isEmpty
+                        ? L10n.t('google_account_connected')
+                        : L10n.t('google_account_connected_as', {'email': st.email}),
+                    style: TextStyle(fontSize: 12, color: theme.textMain),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: _disconnect,
+                  child: Text(L10n.t('google_account_disconnect_cta')),
+                ),
+              ],
+            )
+          else
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: _connecting ? null : _connect,
+                icon: _connecting
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.link_rounded, size: 16),
+                label: Text(_connecting ? L10n.t('google_account_connecting') : L10n.t('google_account_connect_cta')),
+              ),
+            ),
         ],
       ),
     );

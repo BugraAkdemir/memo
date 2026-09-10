@@ -968,6 +968,34 @@ class MemoApiClient {
     return ClaudeCodeCLIState.fromJson(data);
   }
 
+  Future<GoogleAccountState> getGoogleAccountState() async {
+    final res = await _dio.get('/api/dev-gateway/google-account');
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return GoogleAccountState.fromJson(data);
+  }
+
+  /// Starts the gemini-sub OAuth loopback flow; returns the URL the user
+  /// must open in a browser. Poll [getGoogleAccountState] until `connected`
+  /// flips true — the connection is finalized in the background once the
+  /// user finishes authorizing.
+  Future<String> startGoogleAuth() async {
+    final res = await _dio.post(
+      '/api/dev-gateway/google-account',
+      data: {'connect': true},
+    );
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return data['auth_url'] as String? ?? '';
+  }
+
+  Future<GoogleAccountState> disconnectGoogleAccount() async {
+    final res = await _dio.post(
+      '/api/dev-gateway/google-account',
+      data: {'connect': false},
+    );
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return GoogleAccountState.fromJson(data);
+  }
+
   Future<List<GatewayModel>> getGatewayModels() async {
     final res = await _dio.get('/api/dev-gateway/models');
     final list = res.data;

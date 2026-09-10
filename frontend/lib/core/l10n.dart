@@ -471,6 +471,17 @@ class L10n {
     'dev_gateway_claude_cli_model_none': 'Model seçilmedi',
     'dev_gateway_claude_cli_model_disabled_hint':
         'Model seçmeden önce yukarıdan bağlan.',
+    'google_account_connect_label': 'Google Hesabını Bağla (Gemini aboneliği)',
+    'google_account_connect_desc':
+        'Google AI Pro/Ultra aboneliğine sahip bir hesabı bağla; Gemini modelleri hem Memo sohbetinde hem de bu yerel ağ geçidinde "gemini-sub/model" olarak kullanılabilir. CLI aracı gerekmez.',
+    'google_account_connect_cta': 'Google Hesabını Bağla',
+    'google_account_connecting': 'Yetkilendirme bekleniyor…',
+    'google_account_disconnect_cta': 'Bağlantıyı Kes',
+    'google_account_connected': 'Google hesabı bağlı',
+    'google_account_connected_as': 'Bağlı: \${email}',
+    'google_account_timeout':
+        'Yetkilendirme zaman aşımına uğradı. Tekrar dene.',
+    'google_account_error': 'Google hesabı işlemi başarısız: \${e}',
     'dev_gateway_settings_title': 'Ağ Geçidi Ayarları',
     'dev_gateway_system_prompt_label': 'Ek Sistem Talimatı',
     'dev_gateway_system_prompt_desc':
@@ -2558,6 +2569,16 @@ class L10n {
     'dev_gateway_claude_cli_model_none': 'No model selected',
     'dev_gateway_claude_cli_model_disabled_hint':
         'Connect above before picking a model.',
+    'google_account_connect_label': 'Connect Google Account (Gemini subscription)',
+    'google_account_connect_desc':
+        'Connect an account with a Google AI Pro/Ultra subscription; Gemini models become usable as "gemini-sub/model" both in Memo chat and on this local gateway. No CLI tool required.',
+    'google_account_connect_cta': 'Connect Google Account',
+    'google_account_connecting': 'Waiting for authorization…',
+    'google_account_disconnect_cta': 'Disconnect',
+    'google_account_connected': 'Google account connected',
+    'google_account_connected_as': 'Connected: \${email}',
+    'google_account_timeout': 'Authorization timed out. Try again.',
+    'google_account_error': 'Google account action failed: \${e}',
     'dev_gateway_settings_title': 'Gateway Settings',
     'dev_gateway_system_prompt_label': 'Extra System Instruction',
     'dev_gateway_system_prompt_desc':

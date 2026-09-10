@@ -42,6 +42,14 @@ const (
 	// ProviderCodexCLI is the same idea as ProviderClaudeCodeCLI but for
 	// OpenAI's `codex` CLI — implemented in internal/agentcli.
 	ProviderCodexCLI ProviderType = "codex-cli"
+	// ProviderGeminiSub reaches Gemini through the user's personal Google
+	// account (native OAuth, no CLI) on their Google AI Pro/Ultra
+	// subscription quota, via Google's Code Assist endpoint. Implemented in
+	// internal/geminisub and registered through RegisterConstructor for the
+	// same import-cycle reason as the CLI providers; like them it is a
+	// per-session choice, not a sticky default (see isSessionProviderName in
+	// internal/app). First of a planned "subscription providers" family.
+	ProviderGeminiSub ProviderType = "gemini-sub"
 	// ProviderCustom is any OpenAI-compatible endpoint the user points at via a
 	// custom Base URL (self-hosted, proxies, providers we don't list natively).
 	ProviderCustom ProviderType = "custom"

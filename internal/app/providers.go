@@ -10,6 +10,9 @@ import (
 	// provider.RegisterConstructor — see internal/agentcli's package doc
 	// for why it can't be imported by internal/provider directly.
 	_ "memo/internal/agentcli"
+	// Blank-imported for its init(), which registers gemini-sub with
+	// provider.RegisterConstructor — same import-cycle reason as agentcli.
+	_ "memo/internal/geminisub"
 	"memo/internal/config"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
@@ -172,13 +175,14 @@ func (a *App) reinitProviderAndOrchestra() {
 				}
 			}
 		}
-		// CLI providers (Claude Code CLI / Codex CLI) are a per-session tool,
-		// not a sticky default the way an external API provider is — silently
-		// restoring one across an app restart routed every subsequent chat,
-		// including a brand new one, through that CLI subprocess. Startup
-		// always treats a previously-active CLI provider as unset; the user
-		// reselects it explicitly to keep working in CLI mode.
-		if isCLIProviderName(activeProviderName, configs) {
+		// Session providers (Claude Code CLI / Codex CLI / gemini-sub) are a
+		// per-session tool, not a sticky default the way an external API
+		// provider is — silently restoring one across an app restart routed
+		// every subsequent chat, including a brand new one, through that
+		// subprocess / subscription account. Startup always treats a
+		// previously-active session provider as unset; the user reselects it
+		// explicitly to keep working that way.
+		if isSessionProviderName(activeProviderName, configs) {
 			activeProviderName = ""
 			a.cfg.ActiveProvider = ""
 		}
@@ -234,15 +238,19 @@ func (a *App) reinitProviderAndOrchestra() {
 	logx.Printf("provider/orchestra config reloaded (%d enabled provider(s), orchestra enabled=%v)", len(configs), orchestraCfg.Enabled)
 }
 
-// isCLIProviderName reports whether name (a provider Name, as stored in
-// cfg.ActiveProvider) refers to a CLI-backed provider — Claude Code CLI or
-// Codex CLI — per configs. Unknown names report false rather than erroring;
+// isSessionProviderName reports whether name (a provider Name, as stored in
+// cfg.ActiveProvider) refers to a per-session provider that must not be
+// auto-restored as the sticky global active provider on startup — the
+// CLI-backed agents (Claude Code CLI, Codex CLI) and the subscription
+// provider gemini-sub. Unknown names report false rather than erroring;
 // callers only use this to decide whether to keep an active-provider
 // selection, not to validate it.
-func isCLIProviderName(name string, configs []provider.ProviderConfig) bool {
+func isSessionProviderName(name string, configs []provider.ProviderConfig) bool {
 	for _, p := range configs {
 		if p.Name == name {
-			return p.Type == provider.ProviderClaudeCodeCLI || p.Type == provider.ProviderCodexCLI
+			return p.Type == provider.ProviderClaudeCodeCLI ||
+				p.Type == provider.ProviderCodexCLI ||
+				p.Type == provider.ProviderGeminiSub
 		}
 	}
 	return false

@@ -56,6 +56,19 @@ spoof ruhu).
 smoke: connect endpoint gerçek çalışan bir Google consent URL'i döndürüyor
 (public client id, `REPLACE_ME` yok).
 
+## Faz 8 (`30159dc0`) — Developer ekranından ayrı bir Ayarlar sekmesine taşındı
+
+Kullanıcı: "yerini değiştir, Ayarlar'a abonelik-girişi benzeri bir sekme."
+Yeni `frontend/lib/widgets/settings/tabs/gemini_subscription_tab.dart` →
+Ayarlar dialog'unda **"Gemini Aboneliği"** sekmesi (index 25, Providers grubu).
+Giriş butonu tarayıcı OAuth'unu başlatır + 3sn poll eder; bağlanınca
+`gatewayModelsProvider`+`providerListProvider` invalidate → model hemen
+görünür. Bağlıyken: hesap email'i + "nasıl kullanılır" ipucu + **"Çıkış Yap"**
+(revoke + token sil). Auth URL her zaman kopyalanabilir kutuda gösteriliyor
+(launchUrl açamazsa fallback — Linux/macOS/Windows). `_GoogleAccountConnectRow`
+Developer ekranından kaldırıldı. l10n TR+EN. `flutter analyze`/`flutter test`
+(327/327) temiz, rule-8 temiz.
+
 ## Sıradaki / kullanıcıda
 
 1. **Canlı doğrulama:** tarayıcıda Google hesabıyla giriş yapıp `gemini-sub/gemini-2.5-pro`

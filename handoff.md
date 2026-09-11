@@ -69,14 +69,71 @@ görünür. Bağlıyken: hesap email'i + "nasıl kullanılır" ipucu + **"Çık�
 Developer ekranından kaldırıldı. l10n TR+EN. `flutter analyze`/`flutter test`
 (327/327) temiz, rule-8 temiz.
 
+## Faz 9 (`59e111f2`) — canlı model listesi denemesi + KRİTİK bulgu
+
+Kullanıcı: giriş yapınca sabit 2 model yerine hesabın gerçekten
+kullanabildiği güncel modeller gelsin, hardcoded olmasın.
+
+**Yapılan:** `internal/geminisub/models.go` — `Manager.Models(ctx)`
+`generativelanguage.googleapis.com/v1beta/models`'i Bearer token'la çağırıp
+`generateContent` destekleyen gemini/gemma modellerini filtreleyip
+sıralıyor, 1 saat cache'liyor, hata durumunda son iyi listeye ya da kısa
+sabit bir fallback'e (`gemini-2.5-pro/flash/flash-lite`) düşüyor —
+**hiçbir zaman boş liste ya da hata döndürmüyor**. `ListModels` artık buna
+bağlı. `devgateway.go`'nun `ListGatewayModels`'ı cache doluysa `gemini-sub`'ı
+tüm modellere genişletiyor. Frontend: Ayarlar sekmesinde canlı model
+dropdown'u (`googleSubModelsProvider`), backend'de `SetGoogleAccountModel`.
+
+**KRİTİK CANLI BULGU — kullanıcının gerçek hesabıyla test edildi:**
+`generativelanguage`'e Bearer token'la istek **403
+ACCESS_TOKEN_SCOPE_INSUFFICIENT** ile reddedildi — Code Assist login'inin
+`cloud-platform` scope'u bu API için yetmiyor, fallback devreye giriyor
+(tasarım gereği doğru davrandı, çökmedi).
+
+Daha da önemlisi — ham `loadCodeAssist` cevabı (gerçek hesapla, tam JSON):
+```json
+{"allowedTiers":[{"id":"standard-tier","userDefinedCloudaicompanionProject":true,"usesGcpTos":true,"isDefault":true}],
+ "ineligibleTiers":[{"reasonCode":"UNSUPPORTED_CLIENT","tierId":"free-tier",
+   "reasonMessage":"This client is no longer supported for Gemini Code Assist for individuals. To continue using Gemini, please migrate to the Antigravity suite of products: https://antigravity.google"}]}
+```
+**`free-tier` (bireysel/abonelik kotası) Google tarafından reddediliyor** —
+gemini-cli'ın public OAuth client'ı bu akış için artık desteklenmiyor. Tek
+izin verilen `standard-tier` `userDefinedCloudaicompanionProject: true` +
+`usesGcpTos: true` istiyor — yani **kullanıcının kendi GCP projesi ve GCP
+faturalandırması**, Google AI Pro/Ultra abonelik kotası değil. Planın en
+başındaki F2/F3 riski gerçekleşti.
+
+**Antigravity araştırması** (kullanıcı isteğiyle, `~/.local/bin/agy` binary'si
+`strings` ile incelendi): Antigravity CLI basit REST değil, Google'ın özel/
+dokümansız bir servisi — `businessaicode.googleapis.com`/`agentaicode.googleapis.com`,
+gRPC/Connect-RPC protokolü, `GetAvailableModels`/`CreateMagicProjectID`/
+`SelfAssignLicense` RPC'leri, iki farklı gömülü OAuth client ID
+(`1071006060591-...`, `884354919052-...`, hangisi ne için belirsiz). Bunu
+taklit etmek kapalı kaynak binary'den proto şeması reverse-engineer etmek
+demek — public client kullanmaktan çok daha kırılgan/riskli bir sınıf iş.
+**Kullanıcıya durum anlatıldı, devam edilip edilmeyeceği soruldu — henüz
+karar verilmedi, kodlanmadı.**
+
+**Sonuç — Faz 10 (`ca88bd28`):** özelliğin temel önermesi (ücretsiz abonelik
+kotası) şu an doğrulanmamış/muhtemelen çalışmıyor. Kullanıcı isteğiyle
+**"Gemini Aboneliği" Ayarlar sekmesi Beta Features'ın arkasına gizlendi**
+(`settings_dialog.dart` `_betaEnabled()` — `app_shell.dart`'ın
+`_showSwarmNav()` ile aynı backend-truth-first kalıp: `remoteAccessProvider`
+`beta` key'i gelince otoriter, gelene kadar yerel `betaFeaturesProvider`
+mirror'ına düşüyor). Beta kapalıyken sekme ne sidebar'da ne direkt index
+erişiminde görünüyor. 2 yeni test (`settings_dialog_test.dart`).
+
 ## Sıradaki / kullanıcıda
 
-1. **Canlı doğrulama:** tarayıcıda Google hesabıyla giriş yapıp `gemini-sub/gemini-2.5-pro`
-   ile gerçek bir istek at — `cloudcode-pa` bu client + token'ı kabul edip trafiği
-   abonelik kotasından düşürüyor mu? (gemini-cli aynı client'ı kullandığı için
-   çalışması bekleniyor.) Plan'da F2/F3 fallback'leri duruyor.
-2. Sonraki fazlar (fikir): aynı `internal/geminisub` kalıbıyla `claudesub`/`codexsub`
-   (Claude Pro, ChatGPT Plus). yapacam.md'de.
+1. **Asıl açık soru — özellik gerçekten çalışıyor mu?** `standard-tier` +
+   kendi GCP projenle denemek (F1'e yakın ama artık "abonelik" değil, GCP
+   faturalı) mı, yoksa Antigravity'nin private API'sini reverse-engineer
+   etmeye mi girişmek, yoksa özelliği olduğu gibi (Beta'nın arkasında,
+   `standard-tier`/GCP proje gerektiren haliyle) bırakmak mı — kullanıcı
+   karar verecek.
+2. Sonraki fazlar (fikir, önce yukarıdaki netleşirse): aynı
+   `internal/geminisub` kalıbıyla `claudesub`/`codexsub` (Claude Pro,
+   ChatGPT Plus). yapacam.md'de.
 
 ## Ayrıca — 2026-09-08..10 BUG-SCAN turu handoff'suz
 

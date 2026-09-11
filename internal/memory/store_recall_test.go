@@ -1263,3 +1263,60 @@ func TestNearDuplicateContent(t *testing.T) {
 		}
 	}
 }
+
+// TestGoSearch_CapsCandidateRowsToMostRecent guards O3: goSearch used to
+// scan every embedding row in the memories table with no LIMIT at all — a
+// genuinely unbounded full-table scan repeated up to 5+ times per chat turn
+// (RetrieveContext's whole-query/expand-query/per-segment calls, plus one
+// more from findDuplicateInteraction on every SaveInteraction).
+// goSearchMaxCandidateRows now caps the scanned window to the
+// most-recently-saved rows (ORDER BY id DESC LIMIT). Shrinking the cap
+// (rather than inserting tens of thousands of real rows) proves it's
+// actually applied: an old memory that would otherwise be the best match
+// must be excluded once it falls outside the capped window, and found again
+// once the cap is widened back over it — ruling out the exclusion being a
+// similarity-threshold miss instead.
+func TestGoSearch_CapsCandidateRowsToMostRecent(t *testing.T) {
+	store := newRecallStoreGoFallback(t, bagOfWordsEmbedding(32), 32)
+	ctx := context.Background()
+
+	old := goSearchMaxCandidateRows
+	t.Cleanup(func() { goSearchMaxCandidateRows = old })
+
+	// The most distinctive memory is saved FIRST (lowest id), so it's the
+	// first to fall outside an id-DESC-LIMIT window as more rows are added.
+	if err := store.SaveInteraction(ctx, "zebra kanguru ahtapot", "ilginc hayvanlar"); err != nil {
+		t.Fatalf("SaveInteraction() error = %v", err)
+	}
+	for i := range 4 {
+		if err := store.SaveInteraction(ctx, fmt.Sprintf("alakasiz konu numara %d", i), "cevap"); err != nil {
+			t.Fatalf("SaveInteraction() [%d] error = %v", i, err)
+		}
+	}
+
+	q, err := store.embed(ctx, "zebra kanguru ahtapot")
+	if err != nil {
+		t.Fatalf("embed() error = %v", err)
+	}
+
+	// Cap smaller than the 5 saved rows: the distinctive memory must fall
+	// outside the window and not be found.
+	goSearchMaxCandidateRows = 3
+	capped, err := store.goSearch(ctx, q, 5, 0)
+	if err != nil {
+		t.Fatalf("goSearch() error = %v", err)
+	}
+	if containsMemory(capped, "zebra kanguru ahtapot") {
+		t.Fatal("expected the oldest memory to be excluded once it falls outside the capped candidate window")
+	}
+
+	// Widen the cap back over it: the same memory must be found again.
+	goSearchMaxCandidateRows = 100
+	uncapped, err := store.goSearch(ctx, q, 5, 0)
+	if err != nil {
+		t.Fatalf("goSearch() error = %v", err)
+	}
+	if !containsMemory(uncapped, "zebra kanguru ahtapot") {
+		t.Fatal("expected the oldest memory to be found once the cap is widened back over it")
+	}
+}

@@ -1215,6 +1215,21 @@ func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK in
 	return results, rows.Err()
 }
 
+// goSearchMaxCandidateRows bounds how many embedding rows goSearch scores in
+// Go when the optional sqlite-vec extension isn't available. Without a cap
+// this was a genuinely unbounded full-table scan plus in-process cosine
+// similarity over every embedding ever saved — and RetrieveContext calls
+// this path up to 5+ times per chat turn (whole-query, expand-query, and
+// one call per splitCompoundQuery segment; findDuplicateInteraction adds
+// one more per SaveInteraction), so a long-lived install (months of daily
+// use) made every single message measurably slower with no ceiling in
+// sight (O3). This is a safety valve, not a real ANN index — sqlite-vec is
+// the actual fix for exact top-K at real scale; this only keeps the no-vec0
+// fallback from growing unbounded. A var (not const) so tests can shrink it
+// without inserting tens of thousands of rows to prove the cap works;
+// production code must never change it.
+var goSearchMaxCandidateRows = 20000
+
 func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int, minSimilarity float32) ([]MemoryResult, error) {
 	// pending_deletion = 0 excludes a consolidation merge's two originals
 	// (saveMergedAs marks them pending_deletion=1 but leaves the rows
@@ -1222,10 +1237,15 @@ func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int
 	// vecSearch's identical fix for the full explanation (BUG-H5). This is
 	// the no-vec0 Go fallback path (unlike vecSearch, no fragile virtual
 	// table query shape to worry about), so the filter goes directly in SQL.
+	// ORDER BY id DESC LIMIT caps the candidate pool at the most recently
+	// saved goSearchMaxCandidateRows memories (see its doc comment) — final
+	// result ordering is unaffected, since the loop below re-sorts every
+	// scanned candidate by similarity regardless of this scan order.
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, uuid, content, timestamp, user_msg, assist_msg, embedding,
 		        importance, source, tags, session_id, retrieve_count
-		 FROM memories WHERE embedding IS NOT NULL AND pending_deletion = 0`)
+		 FROM memories WHERE embedding IS NOT NULL AND pending_deletion = 0
+		 ORDER BY id DESC LIMIT ?`, goSearchMaxCandidateRows)
 	if err != nil {
 		return nil, fmt.Errorf("memory.goSearch: %w", err)
 	}

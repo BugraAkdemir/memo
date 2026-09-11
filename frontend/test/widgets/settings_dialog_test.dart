@@ -220,4 +220,29 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+      'Gemini Subscription tab is hidden when beta features are off',
+      (tester) async {
+    // No memo_beta_features pref set -> BetaFeaturesNotifier defaults to
+    // false, and the unreachable test API client makes remoteAccessProvider
+    // swallow into a beta-less map, so _betaEnabled() falls through to that
+    // false mirror.
+    await _pumpSettingsDialog(tester);
+    expect(find.text(L10n.t('tab_gemini_subscription')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'Gemini Subscription tab appears once beta features are turned on',
+      (tester) async {
+    await _pumpSettingsDialog(tester, initialPrefs: {
+      'memo_beta_features': true,
+    });
+    await tester.scrollUntilVisible(
+        find.text(L10n.t('tab_gemini_subscription')), 150,
+        scrollable: _railScrollable);
+    expect(find.text(L10n.t('tab_gemini_subscription')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

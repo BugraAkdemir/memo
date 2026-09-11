@@ -156,11 +156,23 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   Set<int> get _hiddenTabIndices {
     final perms = readMyPermissions(ref.read(prefsProvider));
     final hidden = <int>{};
-    if (!perms.models) hidden.addAll([5, 25]); // Providers, Gemini Subscription
+    if (!perms.models) hidden.add(5); // Providers
     if (!perms.memory) hidden.addAll([3, 4, 21]); // Memory, Memory Import, Dream
     if (!perms.whatsapp) hidden.add(22);
     if (!perms.telegram) hidden.add(23);
+    if (!perms.models || !_betaEnabled()) hidden.add(25); // Gemini Subscription
     return hidden;
+  }
+
+  /// Same backend-truth-first pattern as app_shell.dart's _showSwarmNav():
+  /// the backend's cfg.Beta (via remoteAccessProvider's "beta" key) is
+  /// authoritative once it has actually answered — tested by key presence,
+  /// not by non-null, since a swallowed provider failure also resolves to a
+  /// non-null map. Falls back to the local mirror only while waiting.
+  bool _betaEnabled() {
+    final ra = ref.watch(remoteAccessProvider).valueOrNull;
+    if (ra != null && ra.containsKey('beta')) return ra['beta'] == true;
+    return ref.watch(betaFeaturesProvider);
   }
 
   @override

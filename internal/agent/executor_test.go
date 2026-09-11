@@ -1,7 +1,10 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"sync"
@@ -118,5 +121,67 @@ func TestModelContextWindow(t *testing.T) {
 	})
 	if got := modelContextWindow(geminiFallback, "gem"); got != 1024*1024 {
 		t.Errorf("gemini type fallback: got %d, want 1M", got)
+	}
+}
+
+// fakeChatCompletionServer returns an httptest server that answers every
+// POST with a fixed assistant reply, for building a distinguishable
+// *provider.Router in tests without a real LLM backend.
+func fakeChatCompletionServer(t *testing.T, reply string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"` + reply + `"}}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestExecutor_RunStreamWithRouter_UsesGivenRouterNotSyncedOne guards O5:
+// RunStream used to read whatever router SyncRouter last stored on the
+// Executor. For a *shared* Executor instance (a.agentExecutor in
+// internal/app, used directly by ordinary interactive agent chats — unlike
+// every other caller, which constructs its own private Executor), two
+// concurrent interactive turns are only serialized per chat ID, not
+// globally, so a second call's SyncRouter could land between this call's
+// own SyncRouter and RunStream — silently running this call's tools
+// against the OTHER chat's router. RunStreamWithRouter takes the router as
+// an explicit per-call argument instead, closing that window regardless of
+// what SyncRouter last set. Simulates the race scenario directly: the
+// Executor is constructed with (or synced to) router A, matching "another
+// chat already synced its router onto this shared executor", then
+// RunStreamWithRouter is called with a *different* router B — the reply
+// must come from B, never from the synced A.
+func TestExecutor_RunStreamWithRouter_UsesGivenRouterNotSyncedOne(t *testing.T) {
+	srvA := fakeChatCompletionServer(t, "reply-from-A")
+	srvB := fakeChatCompletionServer(t, "reply-from-B")
+
+	routerA := provider.NewRouter([]provider.ProviderConfig{
+		{Type: provider.ProviderCustom, Name: "a", BaseURL: srvA.URL, Model: "m", Enabled: true},
+	})
+	routerA.SetActiveProvider("a")
+	routerB := provider.NewRouter([]provider.ProviderConfig{
+		{Type: provider.ProviderCustom, Name: "b", BaseURL: srvB.URL, Model: "m", Enabled: true},
+	})
+	routerB.SetActiveProvider("b")
+
+	// Constructing with routerA (and SyncRouter would do the same) stands
+	// in for another concurrent interactive chat having last synced its own
+	// router onto this shared executor.
+	e := NewExecutor(t.TempDir(), routerA, nil, nil)
+
+	ch, err := e.RunStreamWithRouter(context.Background(), routerB, "sess", "m", "", []provider.Message{{Role: "user", Content: "hi"}}, func(AgentEvent) {})
+	if err != nil {
+		t.Fatalf("RunStreamWithRouter() error = %v", err)
+	}
+	var content string
+	for chunk := range ch {
+		content += chunk.Content
+	}
+	if strings.Contains(content, "reply-from-A") {
+		t.Errorf("content = %q — used the synced router A instead of the explicitly passed router B (O5)", content)
+	}
+	if !strings.Contains(content, "reply-from-B") {
+		t.Errorf("content = %q, want the reply to come from the explicitly passed router B", content)
 	}
 }

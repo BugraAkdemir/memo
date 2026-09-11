@@ -318,8 +318,6 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			projectPath = sm.GetProjectPath(sessionID)
 		}
 
-		exec.SyncRouter(agentRouter)
-
 		// PromptTokens here is only a seed-message word-count estimate; it is
 		// overwritten with the provider's real prompt-token count in
 		// drainAgentStream once the pipeline reports usage on its terminal
@@ -373,7 +371,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			})
 		}
 
-		streamCh, err := exec.RunStream(turnCtx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
+		streamCh, err := exec.RunStreamWithRouter(turnCtx, agentRouter, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
 			agentEvents.add(ev)
 			a.recordWorkingSetEvent(sessionID, ev)
 			if taskListID != "" {
@@ -700,8 +698,6 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 				return
 			}
 		}
-		a.agentExecutor.SyncRouter(agentRouter)
-
 		sm := a.getSessionManager()
 		projectPath := ""
 		if sessionID != "" && sm != nil {
@@ -726,7 +722,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		// tool access" failures this replaces (see RunAgentTasks).
 		agentRunner := func(taskCtx context.Context, taskPrompt string, onEvent func(string)) (string, error) {
 			taskMsgs := append(append([]provider.Message{}, pMsgs...), provider.Message{Role: "user", Content: taskPrompt})
-			streamCh, err := a.agentExecutor.RunStream(taskCtx, sessionID, modelName, effortLevel, taskMsgs, func(ev agent.AgentEvent) {
+			streamCh, err := a.agentExecutor.RunStreamWithRouter(taskCtx, agentRouter, sessionID, modelName, effortLevel, taskMsgs, func(ev agent.AgentEvent) {
 				agentEventsMu.Lock()
 				agentEvents = append(agentEvents, ev)
 				agentEventsMu.Unlock()

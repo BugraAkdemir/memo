@@ -269,13 +269,40 @@ func modelContextWindow(router *provider.Router, modelName string) int {
 	return 128 * 1024
 }
 
-// RunStream starts the agent execution and streams back chunks and events.
+// RunStream starts the agent execution and streams back chunks and events,
+// using whatever router SyncRouter last set on this Executor. Safe for a
+// per-call/per-task Executor instance (NewTaskExecutor, NewWhatsAppExecutor,
+// NewSubAgentExecutor all return an independent instance, never shared), but
+// see RunStreamWithRouter's doc comment for why a *shared* Executor
+// (a.agentExecutor, used directly for ordinary interactive agent chats)
+// must not call SyncRouter-then-RunStream as two separate steps.
+//
 // effortLevel is the active provider's resolved EffortLevel (empty = let
 // the provider/model use its own default) — callers resolve it the same
 // way they resolve modelName, since both come from the same active
 // provider config; see provider.ChatRequest.EffortLevel's doc comment.
 func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName string, effortLevel string, messages []provider.Message, onEvent func(AgentEvent), projectPath ...string) (<-chan provider.StreamChunk, error) {
-	router := e.getRouter()
+	return e.RunStreamWithRouter(ctx, e.getRouter(), sessionID, modelName, effortLevel, messages, onEvent, projectPath...)
+}
+
+// RunStreamWithRouter is RunStream but takes router explicitly instead of
+// reading whatever SyncRouter last stored on the Executor (O5). A *shared*
+// Executor instance — a.agentExecutor in internal/app, used directly by
+// both callAgentStream's plain-agent branch and its combined agent+
+// orchestra branch, unlike every other caller which constructs its own
+// private Executor (NewTaskExecutor/NewWhatsAppExecutor/
+// NewSubAgentExecutor) — used to call SyncRouter(router) and RunStream(...)
+// as two separate steps. Two interactive agent chats are only serialized
+// per chat ID, not globally (see chat_locks.go), so a second concurrent
+// call on the very same shared Executor could run its own SyncRouter in
+// between this call's SyncRouter and RunStream, and RunStream would then
+// silently execute this call's tools against the OTHER chat's router
+// instead of the one just resolved for it. Harmless today only because
+// there is exactly one global active provider (every concurrent call
+// resolves the identical router value regardless of which chat asked) —
+// passing the router through explicitly, per call, removes the race
+// outright rather than relying on that always remaining true.
+func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Router, sessionID string, modelName string, effortLevel string, messages []provider.Message, onEvent func(AgentEvent), projectPath ...string) (<-chan provider.StreamChunk, error) {
 	if router == nil {
 		return nil, fmt.Errorf("agent mode requires an active provider (external API or local model)")
 	}

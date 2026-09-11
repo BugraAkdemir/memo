@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"runtime/debug"
 	"sync"
 	"time"
 
 	"memo/internal/api"
+	"memo/internal/logx"
 )
 
 // busyStreamChan returns a closed single-chunk channel carrying a "please
@@ -75,6 +77,31 @@ func (a *App) lockChatStream(chatID string) (release func(), ok bool) {
 			a.streamMu.RUnlock()
 		})
 	}, true
+}
+
+// runLockedStreamSetup runs fn — the synchronous work between acquiring a
+// per-chat stream lock and launching the async forwarding goroutine that
+// normally releases it (buildMessagesForSession, AddMessageToSession,
+// routeStream/sendMessageStreamCore) — with its own recover. Without this, a
+// panic in that synchronous prefix (a nil-map/index-out-of-range on
+// corrupted session data, for example) propagates straight out of the
+// exported SendMessage*Stream call with the lock still held: release's only
+// existing caller is the forwarding goroutine spawned *after* fn returns,
+// which a panic here never reaches, so the chat is left permanently "busy"
+// (every future message to it gets busyNotice) until the backend restarts.
+// release is safe to call twice (sync.Once-guarded, see lockChatStream), so
+// calling it here on the panic path never conflicts with the normal-path
+// call in the forwarding goroutine — which never runs when fn panics, since
+// ok is false and the caller returns before reaching it.
+func runLockedStreamSetup(label string, release func(), fn func() <-chan api.StreamChunk) (ch <-chan api.StreamChunk, ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			logx.Printf("PANIC in %s: %v\n%s", label, r, string(debug.Stack()))
+			release()
+			ch, ok = nil, false
+		}
+	}()
+	return fn(), true
 }
 
 // resolveChatID returns chatID unchanged when set, otherwise the currently

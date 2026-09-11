@@ -445,7 +445,15 @@ func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg stri
 		return errCh
 	}
 
-	innerCh := a.sendMessageStreamCore(ctx, chatID, userMsg, forceAgent)
+	innerCh, ok := runLockedStreamSetup("sendMessageStreamInnerTo/setup", release, func() <-chan api.StreamChunk {
+		return a.sendMessageStreamCore(ctx, chatID, userMsg, forceAgent)
+	})
+	if !ok {
+		errCh := make(chan api.StreamChunk, 1)
+		errCh <- api.StreamChunk{Error: a.busyNotice(), Done: true}
+		close(errCh)
+		return errCh
+	}
 
 	// Wrap the inner channel so the lock is released when the stream completes.
 	out := make(chan api.StreamChunk, 128)
@@ -565,16 +573,20 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		return busyStreamChan(a.busyNotice())
 	}
 
-	// buildMessagesForSession (not a hand-rolled system+history+user list) so
-	// image messages get the same mood directive, web search context, and
-	// token-aware history truncation as plain text ones — the manual
-	// construction this replaced skipped all three (BUG-QL5).
-	msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64}, nil)
-	if sm != nil {
-		sm.AddMessageToSession(chatID, "user", userMsg, imagePath, "")
+	innerCh, ok := runLockedStreamSetup("SendMessageWithImageStream/setup", release, func() <-chan api.StreamChunk {
+		// buildMessagesForSession (not a hand-rolled system+history+user list) so
+		// image messages get the same mood directive, web search context, and
+		// token-aware history truncation as plain text ones — the manual
+		// construction this replaced skipped all three (BUG-QL5).
+		msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64}, nil)
+		if sm != nil {
+			sm.AddMessageToSession(chatID, "user", userMsg, imagePath, "")
+		}
+		return a.routeStream(ctx, msgs, userMsg, imagePath, "", chatID, false)
+	})
+	if !ok {
+		return busyStreamChan(a.busyNotice())
 	}
-
-	innerCh := a.routeStream(ctx, msgs, userMsg, imagePath, "", chatID, false)
 
 	out := make(chan api.StreamChunk, 128)
 	go func() {
@@ -637,12 +649,16 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		return busyStreamChan(a.busyNotice())
 	}
 
-	messages := a.buildMessagesForSession(ctx, chatID, combined, nil, nil)
-	if sm != nil {
-		sm.AddMessageToSession(chatID, "user", userMsg, "", filePath)
+	innerCh, ok := runLockedStreamSetup("SendMessageWithFileStream/setup", release, func() <-chan api.StreamChunk {
+		messages := a.buildMessagesForSession(ctx, chatID, combined, nil, nil)
+		if sm != nil {
+			sm.AddMessageToSession(chatID, "user", userMsg, "", filePath)
+		}
+		return a.routeStream(ctx, messages, userMsg, "", filePath, chatID, false)
+	})
+	if !ok {
+		return busyStreamChan(a.busyNotice())
 	}
-
-	innerCh := a.routeStream(ctx, messages, userMsg, "", filePath, chatID, false)
 
 	out := make(chan api.StreamChunk, 128)
 	go func() {

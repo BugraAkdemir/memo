@@ -124,3 +124,65 @@ func TestDisconnectedGuardsReconnectLoop(t *testing.T) {
 		t.Error("a second Disconnected must not clear the reconnecting flag")
 	}
 }
+
+// TestAttemptReconnect_StaleGenerationDoesNotClobberNewerState guards Y3:
+// Stop() does not wait for an in-flight autoReconnect goroutine to exit —
+// it just closes stopCh and relies on the goroutine noticing on its own
+// next check. If a Stop()+Start() cycle (toggling WhatsApp off and back on)
+// completes while an old autoReconnect attempt is past its stopCh check
+// (e.g. mid wa.Connect(), an unlocked network call, or in the
+// field-write right after), it used to overwrite c.reconnecting/
+// c.lastError unconditionally on the way out — silently clobbering
+// whatever the new generation's own Start()/autoReconnect had already set.
+// attemptReconnect(myGen) must recognize its generation was superseded
+// (c.startGen bumped by a newer Start()) and return without touching
+// either field.
+func TestAttemptReconnect_StaleGenerationDoesNotClobberNewerState(t *testing.T) {
+	c := NewClient(Config{})
+	c.startMu.Lock()
+	staleGen := c.startGen // generation this (simulated) goroutine was spawned under
+	// Simulate a Stop()+Start() cycle completing concurrently: a newer
+	// generation is now active, and it (or its own autoReconnect) has
+	// already recorded real state that must survive.
+	c.startGen++
+	c.started = true
+	c.reconnecting = true
+	c.lastError = "a real error from the new generation"
+	c.startMu.Unlock()
+
+	outcome := c.attemptReconnect(staleGen)
+	if outcome != reconnectDone {
+		t.Fatalf("attemptReconnect() = %v, want reconnectDone for a superseded generation", outcome)
+	}
+
+	c.startMu.Lock()
+	defer c.startMu.Unlock()
+	if !c.reconnecting {
+		t.Error("stale attemptReconnect must not clear reconnecting — it does not own the current generation's state")
+	}
+	if c.lastError != "a real error from the new generation" {
+		t.Errorf("lastError = %q, want the newer generation's error left untouched", c.lastError)
+	}
+}
+
+// TestAttemptReconnect_SameGenerationStoppedClient_ClearsReconnecting is the
+// non-superseded counterpart: when the generation still matches but the
+// client has genuinely been stopped (c.started == false), attemptReconnect
+// must still clear reconnecting — this is the ordinary "give up, we were
+// stopped" path, unaffected by the Y3 generation guard.
+func TestAttemptReconnect_SameGenerationStoppedClient_ClearsReconnecting(t *testing.T) {
+	c := NewClient(Config{})
+	c.startMu.Lock()
+	myGen := c.startGen
+	c.reconnecting = true
+	c.started = false
+	c.startMu.Unlock()
+
+	outcome := c.attemptReconnect(myGen)
+	if outcome != reconnectDone {
+		t.Fatalf("attemptReconnect() = %v, want reconnectDone for a stopped client", outcome)
+	}
+	if c.IsReconnecting() {
+		t.Error("expected reconnecting to be cleared for a genuinely stopped client")
+	}
+}

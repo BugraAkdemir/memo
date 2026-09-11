@@ -59,6 +59,11 @@ type Client struct {
 	startMu      sync.Mutex
 	stopCh       chan struct{}
 	stopOnce     sync.Once
+	// startGen counts Start() calls (bumped on every call, success or
+	// failure) so a stale autoReconnect goroutine spawned by an earlier
+	// generation can tell it has been superseded — see autoReconnect's doc
+	// comment (Y3).
+	startGen int
 
 	// selfSentIDs remembers message IDs this client itself just sent via
 	// SendMessage, so a caller reacting to incoming self-chat messages (see
@@ -156,6 +161,11 @@ func (c *Client) Start(ctx context.Context) error {
 	// restarts.
 	c.stopCh = make(chan struct{})
 	c.stopOnce = sync.Once{}
+	// New lineage: any autoReconnect goroutine still running from a
+	// previous Start() (see that function's doc comment) captured the old
+	// generation number and will now recognize it no longer owns
+	// reconnecting/lastError once it next checks in.
+	c.startGen++
 
 	// Drain stale entries from a previous session.
 	for len(c.msgCh) > 0 {
@@ -690,13 +700,27 @@ func (c *Client) handleEvent(evt interface{}) {
 // manually" — so any outage longer than that (VPN reconnect, ISP blip,
 // laptop resume, boot before the network is up) left the bridge dead until
 // the user noticed and reconnected by hand.
+//
+// Y3: Stop() does not wait for an in-flight autoReconnect goroutine to
+// actually exit — it just closes stopCh and lets the goroutine notice on
+// its own next loop iteration. If a Stop()+Start() cycle (toggling
+// WhatsApp off and back on in Settings) completes while this goroutine is
+// past its stopCh check but hasn't yet reached the next one — mid
+// wa.Connect() call, or in the field-write right after — it used to write
+// c.reconnecting/c.lastError unconditionally on the way out, silently
+// clobbering whatever the *new* generation (a fresh Start(), possibly its
+// own autoReconnect) had already set. myGen (c.startGen at spawn time)
+// lets every write in this function check "is this generation still
+// current?" first — see attemptReconnect.
 func (c *Client) autoReconnect() {
 	c.startMu.Lock()
 	c.reconnecting = true
-	// Snapshot stopCh under the lock rather than reading c.stopCh directly
-	// in the select below — Start() reassigns it on every call, and an
-	// unsynchronized read here would race that write.
+	// Snapshot stopCh/startGen under the lock rather than reading the
+	// fields directly below — Start() reassigns stopCh and bumps startGen
+	// on every call, and an unsynchronized read here would race those
+	// writes.
 	stopCh := c.stopCh
+	myGen := c.startGen
 	c.startMu.Unlock()
 
 	delay := 5 * time.Second
@@ -709,45 +733,82 @@ func (c *Client) autoReconnect() {
 		case <-time.After(delay):
 		}
 
-		c.startMu.Lock()
-		wa := c.waClient
-		alive := c.started && wa != nil
-		connected := alive && wa.IsConnected()
-		c.startMu.Unlock()
-
-		if !alive {
-			c.setReconnecting(false)
+		switch c.attemptReconnect(myGen) {
+		case reconnectDone:
 			return
-		}
-		if connected {
-			c.startMu.Lock()
-			c.reconnecting = false
-			c.lastError = ""
-			c.startMu.Unlock()
-			return
-		}
-
-		logx.Printf("WhatsApp: reconnecting...")
-		if err := wa.Connect(); err != nil {
-			logx.Printf("WhatsApp: reconnect error: %v", err)
-			c.startMu.Lock()
-			c.lastError = "reconnecting…"
-			c.startMu.Unlock()
+		case reconnectRetry:
 			if delay < maxDelay {
 				delay *= 2
 				if delay > maxDelay {
 					delay = maxDelay
 				}
 			}
-			continue
 		}
-		logx.Printf("WhatsApp: reconnected")
+	}
+}
+
+// reconnectOutcome is attemptReconnect's result: whether autoReconnect's
+// loop should stop or sleep-and-retry.
+type reconnectOutcome int
+
+const (
+	reconnectDone reconnectOutcome = iota
+	reconnectRetry
+)
+
+// attemptReconnect runs one reconnect attempt on behalf of the generation
+// captured as myGen when autoReconnect was spawned (see that function's Y3
+// doc comment). Every write to c.reconnecting/c.lastError below is guarded
+// by a fresh c.startGen == myGen check taken under the same lock as the
+// write, so a goroutine superseded by a newer Start() during this attempt
+// (including while wa.Connect() — an unlocked, potentially slow network
+// call — is in flight) silently stops instead of stomping the new
+// generation's state.
+func (c *Client) attemptReconnect(myGen int) reconnectOutcome {
+	c.startMu.Lock()
+	if c.startGen != myGen {
+		// A newer Start() already began a new generation; it (or its own
+		// autoReconnect) now owns reconnecting/lastError.
+		c.startMu.Unlock()
+		return reconnectDone
+	}
+	wa := c.waClient
+	alive := c.started && wa != nil
+	connected := alive && wa.IsConnected()
+	c.startMu.Unlock()
+
+	if !alive {
+		c.setReconnecting(false)
+		return reconnectDone
+	}
+	if connected {
 		c.startMu.Lock()
+		if c.startGen == myGen {
+			c.reconnecting = false
+			c.lastError = ""
+		}
+		c.startMu.Unlock()
+		return reconnectDone
+	}
+
+	logx.Printf("WhatsApp: reconnecting...")
+	if err := wa.Connect(); err != nil {
+		logx.Printf("WhatsApp: reconnect error: %v", err)
+		c.startMu.Lock()
+		if c.startGen == myGen {
+			c.lastError = "reconnecting…"
+		}
+		c.startMu.Unlock()
+		return reconnectRetry
+	}
+	logx.Printf("WhatsApp: reconnected")
+	c.startMu.Lock()
+	if c.startGen == myGen {
 		c.reconnecting = false
 		c.lastError = ""
-		c.startMu.Unlock()
-		return
 	}
+	c.startMu.Unlock()
+	return reconnectDone
 }
 
 func (c *Client) setReconnecting(v bool) {

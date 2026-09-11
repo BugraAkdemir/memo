@@ -456,6 +456,26 @@ func (e *Engine) IsRunning(listID string) bool {
 // SkipCurrent abandons the item a running list is on and continues with the
 // rest. If the list isn't running, the first pending item is marked stuck.
 func (e *Engine) SkipCurrent(listID string) error {
+	tl, err := e.store.Get(listID)
+	if err != nil {
+		return err
+	}
+
+	// O4: a planner/executor list (see run()'s identical Mode/e.planner
+	// check) runs steps in dependency-ordered, possibly-parallel waves
+	// (executePlan), not one item at a time — there is no single
+	// well-defined "current item" the way worker mode has. Before this
+	// check, calling Skip here silently degraded to the same thing as
+	// Pause: it cancelled the run's ctx, and executePlan's ctx.Done()
+	// branch treats every cancellation identically (park paused, step
+	// left untouched to be retried unchanged on resume) — same "Atla"
+	// button, same label, a completely different and undocumented result
+	// depending on the list's mode. Fail loudly instead of no-op-ing so
+	// the caller can tell the user Skip isn't supported here yet.
+	if tl.Mode == ModePlanner && e.planner != nil {
+		return fmt.Errorf("tasklist %s planlayıcı/uygulayıcı modunda — mevcut adımı atlama henüz desteklenmiyor; listeyi duraklatabilir ya da iptal edebilirsiniz", listID)
+	}
+
 	e.mu.Lock()
 	cancel, running := e.active[listID]
 	if running {
@@ -466,10 +486,6 @@ func (e *Engine) SkipCurrent(listID string) error {
 	}
 	e.mu.Unlock()
 
-	tl, err := e.store.Get(listID)
-	if err != nil {
-		return err
-	}
 	for _, it := range tl.Items {
 		if it.Status == "pending" || it.Status == "running" {
 			return e.store.SetItemStuck(listID, it.ID, "kullanıcı tarafından atlandı")

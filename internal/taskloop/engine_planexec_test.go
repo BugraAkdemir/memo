@@ -613,3 +613,49 @@ func TestEngine_PlanExec_NoStepRunnerFails(t *testing.T) {
 	_ = eng.Start(ctx, tl.ID)
 	waitForStatus(t, store, tl.ID, taskListFailed, 3*time.Second)
 }
+
+// TestSkipCurrent_PlannerMode_ReturnsErrorInsteadOfSilentPause guards O4:
+// SkipCurrent used to silently do nothing meaningful for a planner/executor
+// list — it just cancelled the run's context, and executePlan's ctx.Done()
+// branch treats every cancellation identically to Pause/Stop (park paused,
+// the step untouched, retried unchanged on resume). Same "Atla" (Skip)
+// button as worker mode, same label, a completely different and
+// undocumented result depending on the list's mode. It must now return a
+// clear error instead of a no-op.
+func TestSkipCurrent_PlannerMode_ReturnsErrorInsteadOfSilentPause(t *testing.T) {
+	store, _ := NewStore(t.TempDir())
+	tl, _ := store.Create("c1", "T", []string{"x"})
+	_ = store.SetMode(tl.ID, ModePlanner)
+
+	eng, _, _ := newPlanExecEngine(t, store, Plan{Steps: []PlanStep{{ID: "S1", ItemID: "1", Text: "x"}}})
+
+	if err := eng.SkipCurrent(tl.ID); err == nil {
+		t.Fatal("expected SkipCurrent to return an error for a planner/executor-mode list, not silently no-op")
+	}
+}
+
+// TestSkipCurrent_WorkerMode_StillMarksPendingItemStuck is the non-planner
+// counterpart, confirming SkipCurrent's ordinary behavior for a worker-mode
+// list (its only mode before the planner/executor path existed) is
+// unaffected by the O4 fix above.
+func TestSkipCurrent_WorkerMode_StillMarksPendingItemStuck(t *testing.T) {
+	store, _ := NewStore(t.TempDir())
+	tl, _ := store.Create("c1", "T", []string{"x"})
+
+	eng := NewEngine(store,
+		func(ctx context.Context, chatID, prompt string) (string, error) { return "ok", nil },
+		func(ctx context.Context, itemText, workerOutput string) (bool, string, error) { return true, "", nil },
+		func(bool) {}, func(string, string) {},
+	)
+
+	if err := eng.SkipCurrent(tl.ID); err != nil {
+		t.Fatalf("SkipCurrent() error = %v, want nil for a worker-mode list", err)
+	}
+	got, err := store.Get(tl.ID)
+	if err != nil {
+		t.Fatalf("store.Get() error = %v", err)
+	}
+	if got.Items[0].Status != "stuck" {
+		t.Errorf("item status = %q, want %q", got.Items[0].Status, "stuck")
+	}
+}

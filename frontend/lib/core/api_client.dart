@@ -996,6 +996,16 @@ class MemoApiClient {
     return GoogleAccountState.fromJson(data);
   }
 
+  /// Switch which Gemini model the gemini-sub provider uses.
+  Future<GoogleAccountState> setGoogleAccountModel(String model) async {
+    final res = await _dio.post(
+      '/api/dev-gateway/google-account',
+      data: {'model': model},
+    );
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return GoogleAccountState.fromJson(data);
+  }
+
   Future<List<GatewayModel>> getGatewayModels() async {
     final res = await _dio.get('/api/dev-gateway/models');
     final list = res.data;

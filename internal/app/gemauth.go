@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"memo/internal/config"
@@ -20,23 +21,31 @@ import (
 // through geminisub.Default().
 const geminiSubProviderName = "Google — Gemini (subscription)"
 
+// geminiSubDefaultModel is the marker's initial model until the user picks
+// one from the account's live list in the Gemini Subscription settings tab.
+const geminiSubDefaultModel = "gemini-2.5-pro"
+
 // geminiSubMarkerConfig is the enabled ProviderConfig written on connect and
-// removed on disconnect.
-func geminiSubMarkerConfig() provider.ProviderConfig {
+// removed on disconnect. model may be "" to use the default.
+func geminiSubMarkerConfig(model string) provider.ProviderConfig {
+	if strings.TrimSpace(model) == "" {
+		model = geminiSubDefaultModel
+	}
 	return provider.ProviderConfig{
 		Type:    provider.ProviderGeminiSub,
 		Name:    geminiSubProviderName,
-		Model:   "gemini-2.5-pro",
+		Model:   model,
 		Enabled: true,
 	}
 }
 
 // GoogleAccountState reports whether a Google account is connected for the
-// gemini-sub provider, and the cached display email.
-func (a *App) GoogleAccountState() (connected bool, email string) {
+// gemini-sub provider, the cached display email, and the selected model id.
+func (a *App) GoogleAccountState() (connected bool, email, model string) {
 	a.cfgMu.RLock()
 	defer a.cfgMu.RUnlock()
-	return a.cfg.DevGateway.GeminiSub.Connected, a.cfg.DevGateway.GeminiSub.Email
+	st := a.cfg.DevGateway.GeminiSub
+	return st.Connected, st.Email, st.Model
 }
 
 // StartGoogleAuth begins the OAuth loopback flow and returns the URL the
@@ -70,7 +79,8 @@ func (a *App) StartGoogleAuth() (string, error) {
 
 // finalizeGoogleConnect runs once the OAuth flow has produced a token: fetch
 // the account email (best-effort), write the enabled marker provider so the
-// model is reachable, and persist the connected state.
+// model is reachable, and persist the connected state. Keeps any model the
+// user had already selected on a reconnect.
 func (a *App) finalizeGoogleConnect(ctx context.Context) error {
 	m := geminisub.Default()
 
@@ -81,14 +91,42 @@ func (a *App) finalizeGoogleConnect(ctx context.Context) error {
 		email = e
 	}
 
-	if err := a.UpdateProvider(geminiSubMarkerConfig()); err != nil {
+	a.cfgMu.RLock()
+	model := a.cfg.DevGateway.GeminiSub.Model
+	a.cfgMu.RUnlock()
+
+	marker := geminiSubMarkerConfig(model)
+	if err := a.UpdateProvider(marker); err != nil {
 		return err
 	}
 
 	a.cfgMu.Lock()
-	a.cfg.DevGateway.GeminiSub = config.GeminiSubState{Connected: true, Email: email}
+	a.cfg.DevGateway.GeminiSub = config.GeminiSubState{Connected: true, Email: email, Model: marker.Model}
 	cfg := a.cfg
 	a.cfgMu.Unlock()
+	return config.Save(cfg)
+}
+
+// SetGoogleAccountModel changes which model the gemini-sub marker provider
+// (and Memo's own chat, when this provider is active) uses. No-op if not
+// connected.
+func (a *App) SetGoogleAccountModel(model string) error {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return nil
+	}
+	a.cfgMu.Lock()
+	if !a.cfg.DevGateway.GeminiSub.Connected {
+		a.cfgMu.Unlock()
+		return nil
+	}
+	a.cfg.DevGateway.GeminiSub.Model = model
+	cfg := a.cfg
+	a.cfgMu.Unlock()
+
+	if err := a.UpdateProvider(geminiSubMarkerConfig(model)); err != nil {
+		return err
+	}
 	return config.Save(cfg)
 }
 
@@ -124,12 +162,13 @@ func (a *App) adoptGeminiCLILoginIfPresent() {
 		return
 	}
 
-	if err := a.UpdateProvider(geminiSubMarkerConfig()); err != nil {
+	marker := geminiSubMarkerConfig("")
+	if err := a.UpdateProvider(marker); err != nil {
 		logx.Printf("gemauth: adopt gemini-cli login — write marker: %v", err)
 		return
 	}
 	a.cfgMu.Lock()
-	a.cfg.DevGateway.GeminiSub = config.GeminiSubState{Connected: true, Email: email}
+	a.cfg.DevGateway.GeminiSub = config.GeminiSubState{Connected: true, Email: email, Model: marker.Model}
 	cfg := a.cfg
 	a.cfgMu.Unlock()
 	if err := config.Save(cfg); err != nil {

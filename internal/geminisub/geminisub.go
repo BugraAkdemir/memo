@@ -53,6 +53,8 @@ type Manager struct {
 
 	bootMu sync.Mutex
 	boot   *bootstrap // cached Code Assist handshake result, nil until first use
+
+	models modelsCache // cached live model list (see models.go)
 }
 
 var (

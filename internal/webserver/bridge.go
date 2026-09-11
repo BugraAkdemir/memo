@@ -238,8 +238,9 @@ type FullBridge interface {
 	GetClaudeCodeCLIModel() string
 	ConnectClaudeCodeCLI(baseURL, model string) error
 	DisconnectClaudeCodeCLI() error
-	GoogleAccountState() (connected bool, email string)
+	GoogleAccountState() (connected bool, email, model string)
 	StartGoogleAuth() (string, error)
+	SetGoogleAccountModel(model string) error
 	DisconnectGoogleAccount() error
 
 	// Providers

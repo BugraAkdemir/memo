@@ -530,7 +530,27 @@ class GoogleAccountNotifier extends AsyncNotifier<GoogleAccountState> {
     final next = await ref.read(apiClientProvider).disconnectGoogleAccount();
     state = AsyncValue.data(next);
   }
+
+  Future<void> setModel(String model) async {
+    final next = await ref.read(apiClientProvider).setGoogleAccountModel(model);
+    state = AsyncValue.data(next);
+  }
 }
+
+/// The connected Google account's live Gemini model list (from the account,
+/// not hard-coded). Empty until connected.
+final googleSubModelsProvider = FutureProvider<List<String>>((ref) async {
+  if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
+  final st = ref.watch(googleAccountProvider).valueOrNull;
+  if (st == null || !st.connected) return const [];
+  final res = await ref.read(apiClientProvider).fetchProviderModels(
+        type: 'gemini-sub',
+        apiKey: '',
+      );
+  if (res['status'] != 'ok') return const [];
+  final list = (res['models'] as List?)?.whereType<String>().toList() ?? const [];
+  return list;
+});
 
 final gatewayModelsProvider = FutureProvider<List<GatewayModel>>((ref) async {
   // BUG-ONB11: same trap as gpuInfoProvider (BUG-ONB5), and missed by the

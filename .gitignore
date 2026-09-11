@@ -40,6 +40,9 @@ data/cli_theme
 data/tailscale/
 data/machine.key
 
+# gemini-sub OAuth token — CONTAINS A LIVE (encrypted) CREDENTIAL, never commit
+data/geminisub/
+
 # Config (user-specific, never commit)
 config/config.yaml
 .env

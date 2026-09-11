@@ -50,13 +50,15 @@ class ClaudeCodeCLIState {
 class GoogleAccountState {
   final bool connected;
   final String email;
+  final String model;
 
-  const GoogleAccountState({this.connected = false, this.email = ''});
+  const GoogleAccountState({this.connected = false, this.email = '', this.model = ''});
 
   factory GoogleAccountState.fromJson(Map<String, dynamic> json) {
     return GoogleAccountState(
       connected: json['connected'] as bool? ?? false,
       email: json['email'] as String? ?? '',
+      model: json['model'] as String? ?? '',
     );
   }
 }

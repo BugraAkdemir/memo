@@ -170,7 +170,14 @@ class _GeminiSubscriptionTabState extends ConsumerState<GeminiSubscriptionTab> {
                     L10n.t('google_account_usage_hint'),
                     style: TextStyle(fontSize: 11, color: theme.textDim, height: 1.4),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
+                  Text(
+                    L10n.t('google_account_model_label'),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.textMain),
+                  ),
+                  const SizedBox(height: 6),
+                  _ModelDropdown(current: st.model),
+                  const SizedBox(height: 16),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: OutlinedButton.icon(
@@ -205,6 +212,51 @@ class _GeminiSubscriptionTabState extends ConsumerState<GeminiSubscriptionTab> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Model picker for the connected account — populated live from Google
+/// (googleSubModelsProvider), never a hard-coded list. Falls back to a plain
+/// display of the current model while the list is loading or unavailable.
+class _ModelDropdown extends ConsumerWidget {
+  final String current;
+  const _ModelDropdown({required this.current});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = MemoTheme.of(context);
+    final modelsAsync = ref.watch(googleSubModelsProvider);
+
+    return modelsAsync.when(
+      loading: () => Row(
+        children: [
+          const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+          const SizedBox(width: 8),
+          Text(current, style: TextStyle(fontSize: 12, color: theme.textDim, fontFamily: 'JetBrainsMono')),
+        ],
+      ),
+      error: (e, _) => Text(current, style: TextStyle(fontSize: 12, color: theme.textDim, fontFamily: 'JetBrainsMono')),
+      data: (models) {
+        // Keep the current value selectable even if it's not in the fetched
+        // list (offline fallback, or a model the account just lost access to).
+        final items = <String>{...models, if (current.isNotEmpty) current}.toList()..sort();
+        return DropdownButtonFormField<String>(
+          key: ValueKey(current),
+          initialValue: items.contains(current) ? current : (items.isNotEmpty ? items.first : null),
+          isDense: true,
+          style: TextStyle(fontFamily: 'JetBrainsMono', fontSize: 13, color: theme.textMain),
+          decoration: const InputDecoration(
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+          items: [for (final m in items) DropdownMenuItem(value: m, child: Text(m))],
+          onChanged: (m) {
+            if (m == null || m == current) return;
+            ref.read(googleAccountProvider.notifier).setModel(m);
+          },
+        );
+      },
     );
   }
 }

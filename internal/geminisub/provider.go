@@ -29,11 +29,6 @@ func init() {
 // spoofing Claude Code's headers). Kept close to gemini-cli's real format.
 var userAgent = fmt.Sprintf("GeminiCLI/0.1.0 (%s; %s)", runtime.GOOS, runtime.GOARCH)
 
-// defaultModels is what ListModels reports. Code Assist has no models list
-// endpoint in the public GenerateContent shape, so this is a fixed set of
-// the models the subscription tiers expose.
-var defaultModels = []string{"gemini-2.5-pro", "gemini-2.5-flash"}
-
 // geminiSubProvider is the provider.Provider for ProviderGeminiSub. It holds
 // no credentials of its own — every call resolves the live token and Code
 // Assist project through the process-wide Manager (Default()), so connecting
@@ -79,12 +74,9 @@ func (p *geminiSubProvider) Name() provider.ProviderType { return provider.Provi
 func (p *geminiSubProvider) DisplayName() string         { return "Google Gemini (subscription)" }
 
 func (p *geminiSubProvider) ListModels(ctx context.Context) ([]string, error) {
-	if !p.mgr.Connected() {
-		return nil, ErrNotConnected
-	}
-	out := make([]string, len(defaultModels))
-	copy(out, defaultModels)
-	return out, nil
+	// Live list from Google, cached; falls back internally so it never
+	// returns an empty list once connected (see Manager.Models).
+	return p.mgr.Models(ctx)
 }
 
 // resolveModel normalises the model id to the bare form Code Assist wants in
@@ -99,7 +91,7 @@ func (p *geminiSubProvider) resolveModel(reqModel string) string {
 		m = after
 	}
 	if m == "" {
-		m = defaultModels[0]
+		m = fallbackModels[0]
 	}
 	return m
 }

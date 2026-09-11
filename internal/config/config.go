@@ -464,6 +464,10 @@ type DevGatewayConfig struct {
 type GeminiSubState struct {
 	Connected bool   `yaml:"connected" json:"connected"`
 	Email     string `yaml:"email" json:"email"`
+	// Model is the currently selected model id for the gemini-sub marker
+	// provider (e.g. "gemini-2.5-pro"). The user picks it in the Gemini
+	// Subscription settings tab from the account's live model list.
+	Model string `yaml:"model" json:"model"`
 }
 
 // ClaudeCodeCLIState is internal bookkeeping for

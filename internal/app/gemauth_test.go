@@ -10,7 +10,7 @@ import (
 )
 
 func TestGeminiSubMarkerConfig(t *testing.T) {
-	cfg := geminiSubMarkerConfig()
+	cfg := geminiSubMarkerConfig("")
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("marker config fails Validate: %v", err)
 	}
@@ -30,12 +30,22 @@ func TestGeminiSubMarkerConfig(t *testing.T) {
 
 func TestGoogleAccountState(t *testing.T) {
 	a := &App{cfg: &config.AppConfig{}}
-	if c, e := a.GoogleAccountState(); c || e != "" {
-		t.Errorf("fresh state = (%v, %q), want (false, \"\")", c, e)
+	if c, e, m := a.GoogleAccountState(); c || e != "" || m != "" {
+		t.Errorf("fresh state = (%v, %q, %q), want (false, \"\", \"\")", c, e, m)
 	}
-	a.cfg.DevGateway.GeminiSub = config.GeminiSubState{Connected: true, Email: "x@y.z"}
-	if c, e := a.GoogleAccountState(); !c || e != "x@y.z" {
-		t.Errorf("state = (%v, %q), want (true, x@y.z)", c, e)
+	a.cfg.DevGateway.GeminiSub = config.GeminiSubState{Connected: true, Email: "x@y.z", Model: "gemini-2.5-flash"}
+	if c, e, m := a.GoogleAccountState(); !c || e != "x@y.z" || m != "gemini-2.5-flash" {
+		t.Errorf("state = (%v, %q, %q), want (true, x@y.z, gemini-2.5-flash)", c, e, m)
+	}
+}
+
+func TestSetGoogleAccountModel_NotConnectedIsNoop(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{}}
+	if err := a.SetGoogleAccountModel("gemini-2.5-pro"); err != nil {
+		t.Errorf("SetGoogleAccountModel when not connected = %v, want nil", err)
+	}
+	if a.cfg.DevGateway.GeminiSub.Model != "" {
+		t.Errorf("model was set despite not being connected: %q", a.cfg.DevGateway.GeminiSub.Model)
 	}
 }
 

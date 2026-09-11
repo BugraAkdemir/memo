@@ -481,7 +481,8 @@ class L10n {
     'google_account_connected': 'Google hesabı bağlı',
     'google_account_connected_as': 'Bağlı: \${email}',
     'google_account_usage_hint':
-        'Sohbette sağlayıcı olarak "Google — Gemini (subscription)" seç, ya da dışarıdan model adı olarak "gemini-sub/gemini-2.5-pro" kullan.',
+        'Sohbette sağlayıcı olarak "Google — Gemini (subscription)" seç, ya da dışarıdan model adı olarak "gemini-sub/<model>" kullan.',
+    'google_account_model_label': 'Kullanılacak Model',
     'google_account_manual_link_hint': 'Tarayıcı açılmadıysa bu bağlantıyı elle aç:',
     'google_account_timeout':
         'Yetkilendirme zaman aşımına uğradı. Tekrar dene.',
@@ -2583,7 +2584,8 @@ class L10n {
     'google_account_connected': 'Google account connected',
     'google_account_connected_as': 'Connected: \${email}',
     'google_account_usage_hint':
-        'In chat, pick "Google — Gemini (subscription)" as the provider, or use the model name "gemini-sub/gemini-2.5-pro" from an external tool.',
+        'In chat, pick "Google — Gemini (subscription)" as the provider, or use the model name "gemini-sub/<model>" from an external tool.',
+    'google_account_model_label': 'Model to use',
     'google_account_manual_link_hint': "If the browser didn't open, open this link manually:",
     'google_account_timeout': 'Authorization timed out. Try again.',
     'google_account_error': 'Google account action failed: \${e}',

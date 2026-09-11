@@ -320,6 +320,7 @@ func (m *Manager) Disconnect(ctx context.Context) error {
 		revokeToken(ctx, tok)
 	}
 	m.invalidateBootstrap()
+	m.invalidateModels()
 	return m.tok.clear()
 }
 

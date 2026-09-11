@@ -56,6 +56,50 @@ func TestDevGatewayAuthOK_EmptyStoredTokenFailsClosed(t *testing.T) {
 	}
 }
 
+// TestDevGatewayRequireKey_NonLoopbackForcesKeyEvenWhenConfigOff guards K2: a
+// remote caller (LAN, tunnel, ngrok) hitting /v1/* must never be able to
+// skip the API-key check just because the user left "Require API Key" off
+// for local-CLI convenience — that toggle's whole point is letting a
+// same-machine process (Claude Code, etc.) skip typing a key, not opening
+// the gateway to the network once remote access is on.
+func TestDevGatewayRequireKey_NonLoopbackForcesKeyEvenWhenConfigOff(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	r.RemoteAddr = "192.0.2.55:54321" // TEST-NET-1, definitely non-loopback
+	if !devGatewayRequireKey(r, false) {
+		t.Fatal("expected a non-loopback caller to require the API key regardless of the configured toggle")
+	}
+}
+
+func TestDevGatewayRequireKey_LoopbackSkipsKeyWhenConfigOff(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	r.RemoteAddr = "127.0.0.1:54321"
+	if devGatewayRequireKey(r, false) {
+		t.Fatal("expected a genuine same-machine loopback caller to still be able to skip the key when the toggle is off")
+	}
+}
+
+// TestDevGatewayRequireKey_LoopbackButForwardedStillRequiresKey guards the
+// tunnel case: cloudflared/ngrok/nginx relay a remote connection to
+// 127.0.0.1, so RemoteAddr looks loopback at the TCP level even though the
+// real caller is remote — the forwarded-header signal must override the
+// loopback pass, same as remoteAuthMiddleware's own reasoning.
+func TestDevGatewayRequireKey_LoopbackButForwardedStillRequiresKey(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	r.RemoteAddr = "127.0.0.1:54321"
+	r.Header.Set("X-Forwarded-For", "203.0.113.9")
+	if !devGatewayRequireKey(r, false) {
+		t.Fatal("expected a tunnel-relayed loopback connection to still require the API key")
+	}
+}
+
+func TestDevGatewayRequireKey_ConfiguredOnAlwaysRequiresKey(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	r.RemoteAddr = "127.0.0.1:54321"
+	if !devGatewayRequireKey(r, true) {
+		t.Fatal("expected the configured toggle=true to always require the key, even for loopback")
+	}
+}
+
 func TestLastUserMessageText(t *testing.T) {
 	cases := []struct {
 		name     string

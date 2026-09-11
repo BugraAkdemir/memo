@@ -123,14 +123,27 @@ func (s *Server) handleClaudeCodeCLIConnection(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// devGatewayRequireKey forces the API-key check on for any /v1/* caller that
+// isn't a genuine same-machine process, regardless of the stored "Require
+// API Key" toggle. That toggle's whole point is letting a local CLI tool
+// (Claude Code, etc.) skip typing a key for a same-machine, low-stakes
+// connection — it was never meant to leave the gateway open to the LAN/
+// tunnel once remote access is on (server.go's routes for /v1/* bypass
+// remoteAuthMiddleware entirely, by design, so this is the only gate a
+// non-loopback caller ever hits). Same loopback test remoteAuthOK uses.
+func devGatewayRequireKey(r *http.Request, configuredRequireAPIKey bool) bool {
+	if configuredRequireAPIKey {
+		return true
+	}
+	return !(isLoopbackIP(requestIP(r)) && !isForwardedRequest(r))
+}
+
 // devGatewayAuthOK reports whether an incoming /v1/messages request may
-// proceed, independent of remoteAuthMiddleware's listenAddr-gated check —
-// the dev gateway's "require API key" setting applies (or doesn't) the same
-// way whether Memo is bound to localhost or 0.0.0.0, since arbitrary local
-// processes pointing at this port is exactly the scenario the toggle exists
-// for. Real Anthropic clients (including Claude Code) send the key as
+// proceed. Real Anthropic clients (including Claude Code) send the key as
 // `x-api-key`, not `Authorization: Bearer` — checked first, with Bearer as a
-// fallback for tools that only support the latter.
+// fallback for tools that only support the latter. Callers should pass
+// devGatewayRequireKey(r, configuredValue) as requireAPIKey, not the raw
+// config value, so a non-loopback caller can never skip this check.
 func devGatewayAuthOK(r *http.Request, requireAPIKey bool, wantToken string) bool {
 	if !requireAPIKey {
 		return true
@@ -163,7 +176,7 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	requireAPIKey, _, _ := s.fullBridge.GetDevGatewayConfig()
-	if !devGatewayAuthOK(r, requireAPIKey, s.fullBridge.GetDevGatewayToken()) {
+	if !devGatewayAuthOK(r, devGatewayRequireKey(r, requireAPIKey), s.fullBridge.GetDevGatewayToken()) {
 		anthropicapi.WriteError(w, http.StatusUnauthorized, "missing or invalid x-api-key")
 		return
 	}

@@ -251,8 +251,19 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/cli/status", s.handleCLIStatus)
 	route("/api/cli/running", s.handleCLIRunning)
 	route("/api/cli/commands", s.handleCLICommands)
-	route("/api/files/mentions", s.handleFileMentions)
-	route("/api/files/browse", s.handleFileBrowse)
+	// requirePermissionStrict (not requirePermission — reads must be gated
+	// too, same reasoning as memory): both handlers walk whatever path/root
+	// the caller supplies with no boundary check, so without this a
+	// restricted "user"-role remote account could browse or search any
+	// absolute path on the server (e.g. /etc, ~/.ssh), not just its own
+	// chat/agent working directory. Gated on Models because that's the
+	// existing permission that already implies "may point the backend at
+	// an arbitrary local path" (importing a local model file via
+	// my_models_tab.dart's own ServerFileBrowserDialog use). Fails open for
+	// admin/local-desktop sessions and any pre-Faz-5.1.1 install — see
+	// callerHasPermission's doc comment.
+	route("/api/files/mentions", s.requirePermissionStrict(s.handleFileMentions, hasModelsPerm))
+	route("/api/files/browse", s.requirePermissionStrict(s.handleFileBrowse, hasModelsPerm))
 	route("/api/files/outbox/{token}", s.handleOutboxDownload)
 	route("/api/chats/cli-provider", s.handleChatCLIProvider)
 	route("/api/chats/cli-workdir", s.handleChatCLIWorkdir)

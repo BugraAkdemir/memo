@@ -262,6 +262,27 @@ class _AppShellState extends ConsumerState<AppShell> {
         // Invalidating recreates the notifier and re-runs its init GET.
         ref.invalidate(agentEnabledProvider);
         ref.invalidate(webSearchModeProvider);
+        // Same shape as agentEnabledProvider/webSearchModeProvider just
+        // above (a StateNotifier that GETs its value once at construction,
+        // catches a 401 into a debugPrint and stays at its `false`
+        // default) but missing from this list — a GET that landed while
+        // the gate was still up left incognito/auto-permission showing
+        // "off" forever even once the backend reported the real value, no
+        // way to recover short of reloading the whole app (O8).
+        ref.invalidate(incognitoProvider);
+        ref.invalidate(agentAutoPermissionProvider);
+        // ClaudeCodeCLIConnectedNotifier/googleAccountProvider/
+        // DreamSettingsNotifier are all already correctly gated in their
+        // own build() (authGateBlocked -> safe default, same as every
+        // other AsyncNotifier in this list) but were never invalidated
+        // here, so a build() landing during the gate window stayed on
+        // that safe default for the rest of the session once the gate
+        // opened for real (O9) — lower-risk than O8 since these back
+        // lazily-mounted Developer/Settings screens rather than
+        // always-visible chat UI, but the same class of bug.
+        ref.invalidate(claudeCodeCLIConnectedProvider);
+        ref.invalidate(googleAccountProvider);
+        ref.invalidate(dreamSettingsProvider);
         // BUG-SCAN8: the per-chat Code Mode toggle's FutureProvider.family
         // is built by the always-mounted _AgentTopBar; a 401 during startup
         // stuck it at the "off" default. Invalidate every family instance.
@@ -486,7 +507,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             key: _navKeys[1],
             icon: Icons.smart_toy_outlined,
             activeIcon: Icons.smart_toy,
-            label: 'Ajan',
+            label: L10n.t('nav_agent'),
             isActive: _currentIndex == 1,
             onTap: () => _handleTabChange(1),
           ),
@@ -504,7 +525,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             key: _navKeys[3],
             icon: Icons.calendar_month_outlined,
             activeIcon: Icons.calendar_month,
-            label: 'Takvim',
+            label: L10n.t('calendar_title'),
             isActive: _currentIndex == 3,
             onTap: () => _handleTabChange(3),
           ),
@@ -677,7 +698,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         item(
           icon: Icons.smart_toy_outlined,
           activeIcon: Icons.smart_toy,
-          label: 'Ajan',
+          label: L10n.t('nav_agent'),
           isActive: _currentIndex == 1,
           onTap: () => _selectMobileTab(1),
         ),
@@ -691,7 +712,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         item(
           icon: Icons.calendar_month_outlined,
           activeIcon: Icons.calendar_month,
-          label: 'Takvim',
+          label: L10n.t('calendar_title'),
           isActive: _currentIndex == 3,
           onTap: () => _selectMobileTab(3),
         ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/friendly_error.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/task_list.dart';
@@ -271,8 +272,8 @@ class _PlanApprovalSectionState extends ConsumerState<_PlanApprovalSection> {
       ref.invalidate(runningTasksProvider);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(FriendlyError.describeGeneric(e))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);

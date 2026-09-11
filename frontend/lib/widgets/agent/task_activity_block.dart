@@ -551,7 +551,21 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
                       onPressed: () async {
                         try {
                           await api.approveTaskPlan(widget.state.listId);
-                        } catch (_) {}
+                        } catch (e) {
+                          // Same behavior as TaskDetailScreen._approve's
+                          // identical call: show the error and leave the
+                          // sheet open instead of closing it — a swallowed
+                          // exception used to close this sheet
+                          // unconditionally, so a 401/timeout/network error
+                          // looked exactly like a successful approval while
+                          // the task list silently stayed in
+                          // awaiting-plan-approval.
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx)
+                                .showSnackBar(SnackBar(content: Text('$e')));
+                          }
+                          return;
+                        }
                         if (ctx.mounted) Navigator.of(ctx).pop();
                       },
                       child: Text(L10n.t('task_plan_approve_run')),

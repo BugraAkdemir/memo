@@ -37,6 +37,37 @@ class _FakePlanAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// Like _FakePlanAdapter, but the approve-plan POST fails (500) while every
+/// other request (the plan_md GET the sheet loads on open) still succeeds —
+/// for the Y4 regression test below.
+class _FakePlanAdapterApproveFails implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    if (options.path.contains('approve-plan')) {
+      throw DioException(
+        requestOptions: options,
+        response: Response(requestOptions: options, statusCode: 500),
+        type: DioExceptionType.badResponse,
+        error: 'approve failed',
+      );
+    }
+    return ResponseBody.fromString(
+      '{"plan_md":"# Plan\\n- S1: do the thing"}',
+      200,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 class _FakeRunningTasks extends RunningTasksNotifier {
   @override
   Future<List<RunningTaskInfo>> build() async => const [];
@@ -46,9 +77,10 @@ class _FakeRunningTasks extends RunningTasksNotifier {
   void stopPolling() {}
 }
 
-Future<void> _pump(WidgetTester tester, ChatTaskState state) async {
+Future<void> _pump(WidgetTester tester, ChatTaskState state,
+    {HttpClientAdapter? adapter}) async {
   final client = MemoApiClient(baseUrl: 'http://memo.test');
-  client.dio.httpClientAdapter = _FakePlanAdapter();
+  client.dio.httpClientAdapter = adapter ?? _FakePlanAdapter();
   await tester.pumpWidget(ProviderScope(
     overrides: [
       apiClientProvider.overrideWithValue(client),
@@ -133,5 +165,42 @@ void main() {
 
     expect(find.text(L10n.t('task_card_resume')), findsOneWidget);
     expect(find.text(L10n.t('task_card_pause')), findsNothing);
+  });
+
+  // Y4 regression: the plan-review sheet's approve button used to swallow
+  // any exception from approveTaskPlan (try/catch(_){}) and close the sheet
+  // unconditionally regardless of success or failure — a 401/timeout/
+  // network error looked exactly like a successful approval, and the task
+  // list silently stayed in awaiting-plan-approval with no indication
+  // anything went wrong. TaskDetailScreen._approve's identical call already
+  // showed a SnackBar and kept the screen open on error; the sheet must now
+  // behave the same way.
+  testWidgets('plan sheet approve button shows an error and stays open on failure (Y4)', (tester) async {
+    final state = const ChatTaskState(
+      listId: 'L1',
+      phase: 'awaiting-plan-approval',
+      mode: 'planlayıcı',
+    );
+    await _pump(tester, state, adapter: _FakePlanAdapterApproveFails());
+
+    await tester.tap(find.text(L10n.t('task_card_view_approve_plan')));
+    // The activity block's own "alive" pulse AnimationController repeats
+    // forever, so pumpAndSettle() never converges here — pump a fixed
+    // number of frames instead, long enough for the modal bottom sheet's
+    // own entrance transition to finish settling into place.
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.text(L10n.t('task_plan_review_title')), findsOneWidget,
+        reason: 'sheet must be open before we test the approve button');
+
+    await tester.tap(find.text(L10n.t('task_plan_approve_run')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text(L10n.t('task_plan_review_title')), findsOneWidget,
+        reason: 'a failed approve must leave the plan sheet open, not close it as if it succeeded');
+    expect(find.textContaining('approve failed'), findsOneWidget,
+        reason: 'a failed approve must surface the error (SnackBar), not silently swallow it');
   });
 }

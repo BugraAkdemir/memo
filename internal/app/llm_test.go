@@ -12,6 +12,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/identity"
+	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/stats"
@@ -657,4 +658,65 @@ func TestResolveAgentProvider_LazyRouterStartsHealthCheck(t *testing.T) {
 		t.Fatal("resolveAgentProvider's lazy router-creation branch did not start a HealthCheck goroutine (healthCheckCancel still nil) — Y5")
 	}
 	a.healthCheckCancel()
+}
+
+// TestCallLLMStream_OrchestraPlainChatError_PersistsErrorNotEmptyReply guards
+// O1: the plain-chat (non-agent) Orchestra branch of callLLMStream used to
+// call finishStream with fullBuf's content (often empty — the chief can fail
+// before any content streams) and finishReason "error" on a RunWithProgress
+// failure, instead of recordStreamError like every sibling error branch in
+// this file. The live SSE chunk shows the real error to whoever is watching
+// at that moment, but the session history ends up with an empty assistant
+// turn — reloading the chat or scrolling back shows a blank bubble with zero
+// indication anything went wrong. The chief here is wired to a
+// ProviderFactory that can never succeed (and an empty provider-config list,
+// so it fails during provider lookup, before ever touching the network),
+// forcing RunWithProgress to fail deterministically and fast.
+func TestCallLLMStream_OrchestraPlainChatError_PersistsErrorNotEmptyReply(t *testing.T) {
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("sessions.NewManager() error = %v", err)
+	}
+	chatID := sm.NewChat()
+
+	conductor := orchestra.NewConductor(
+		orchestra.OrchestraConfig{Enabled: true, ChiefType: "custom", ChiefModel: "m"},
+		func(cfg provider.ProviderConfig) (provider.Provider, error) {
+			return nil, fmt.Errorf("boom: no real provider in this test")
+		},
+		func() []provider.ProviderConfig { return nil },
+	)
+
+	a := &App{
+		cfg:                &config.AppConfig{},
+		sessions:           sm,
+		orchestraConductor: conductor,
+	}
+
+	msgs := []api.Message{api.NewTextMessage("user", "hello")}
+	ch := a.callLLMStream(context.Background(), msgs, "hello", "", "", chatID)
+	var gotError bool
+	for c := range ch {
+		if c.Error != "" {
+			gotError = true
+		}
+	}
+	if !gotError {
+		t.Fatal("expected an error chunk on the live stream")
+	}
+
+	saved := sm.GetActiveMessagesForSession(chatID)
+	if len(saved) == 0 {
+		t.Fatal("expected an assistant message to be persisted after the orchestra error")
+	}
+	last := saved[len(saved)-1]
+	if last.Role != "assistant" {
+		t.Fatalf("last message role = %q, want assistant", last.Role)
+	}
+	if strings.TrimSpace(last.Content) == "" {
+		t.Fatal("O1: persisted assistant reply is empty — the error was shown live but never saved, so reloading/scrolling back shows a blank bubble")
+	}
+	if !strings.Contains(last.Content, "⚠️") {
+		t.Errorf("persisted reply = %q, want it to contain the error text", last.Content)
+	}
 }

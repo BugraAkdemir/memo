@@ -951,8 +951,25 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			fullBufStr := fullBuf.String()
 			fullBufMu.Unlock()
 			if err != nil {
-				a.finishStream(ctx, start, 0, "error", fullBufStr, userPrompt, sessionID, &usageMetaVal)
-				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+				// O1: this used to call finishStream with fullBufStr (often
+				// empty — the chief/specialist chain can fail before any
+				// content streams) and finishReason "error", which persists
+				// whatever that string is as the assistant's saved reply —
+				// never the actual error. The live SSE chunk below shows the
+				// error to whoever is watching right now, but reloading or
+				// scrolling back showed an empty assistant bubble with zero
+				// indication anything went wrong. Every sibling error branch
+				// in this file (including the agent+orchestra path just
+				// above) uses recordStreamError instead, which persists the
+				// error text itself; do the same here, keeping any partial
+				// content that did stream before the failure.
+				errMsg := "⚠️ " + err.Error()
+				saved := errMsg
+				if fullBufStr != "" {
+					saved = fullBufStr + "\n\n" + errMsg
+				}
+				a.recordStreamError(userPrompt, saved, sessionID)
+				trySend(ctx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 				return
 			}
 

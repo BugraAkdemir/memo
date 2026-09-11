@@ -614,3 +614,47 @@ func TestCallLLM_Incognito_DoesNotRecordUsage(t *testing.T) {
 		t.Fatalf("TotalRequests = %d, want 0 (incognito calls must not be recorded)", sum.TotalRequests)
 	}
 }
+
+// TestResolveAgentProvider_LazyRouterStartsHealthCheck guards Y5: every
+// other place that builds a.providerRouter (UpdateProvider, DeleteProvider,
+// the config-reload path in providers.go) starts a HealthCheck goroutine
+// alongside it, but resolveAgentProvider's own lazy nil->router branch
+// (taken the first time Agent mode is used after startup, before any
+// Settings edit has gone through UpdateProvider) did not. Router.recordFailure
+// permanently disables a provider entry after 3 consecutive failures; with
+// no health check ever probing a disabled entry back, a transient blip
+// (rate limit, brief network outage) disabled the provider for the rest of
+// the process's life. healthCheckCancel being set after the call is the
+// observable proxy for "a HealthCheck goroutine is now running against a
+// cancellable context", the same thing the other three call sites arrange.
+func TestResolveAgentProvider_LazyRouterStartsHealthCheck(t *testing.T) {
+	cfgMgr := provider.NewConfigManager(t.TempDir()+"/providers.json", nil)
+	cfgMgr.Set(provider.ProviderConfig{
+		Type: provider.ProviderCustom, Name: "test", BaseURL: "http://127.0.0.1:1",
+		Model: "test-model", Enabled: true,
+	})
+
+	a := &App{
+		cfg:                &config.AppConfig{},
+		providerCfgMgr:     cfgMgr,
+		activeProviderName: "test",
+	}
+	a.lifecycleCtx, a.lifecycleCancel = context.WithCancel(context.Background())
+	t.Cleanup(a.lifecycleCancel)
+
+	if a.healthCheckCancel != nil {
+		t.Fatal("test setup invariant broken: healthCheckCancel should start nil")
+	}
+
+	router, _, _, err := a.resolveAgentProvider()
+	if err != nil {
+		t.Fatalf("resolveAgentProvider() error = %v", err)
+	}
+	if router == nil {
+		t.Fatal("expected a non-nil router")
+	}
+	if a.healthCheckCancel == nil {
+		t.Fatal("resolveAgentProvider's lazy router-creation branch did not start a HealthCheck goroutine (healthCheckCancel still nil) — Y5")
+	}
+	a.healthCheckCancel()
+}

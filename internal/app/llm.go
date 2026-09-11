@@ -156,14 +156,37 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, string, error) {
 	providerRouter := a.providerRouter
 	providerCfgMgr := a.providerCfgMgr
 
+	var (
+		healthCtx    context.Context
+		healthCancel context.CancelFunc
+	)
 	if activeName != "" && providerRouter == nil && providerCfgMgr != nil {
 		if configs := providerCfgMgr.GetEnabled(); len(configs) > 0 {
 			a.providerRouter = provider.NewRouter(configs)
 			a.providerRouter.SetActiveProvider(activeName)
 			providerRouter = a.providerRouter
+			// Every other place that builds a.providerRouter (UpdateProvider,
+			// DeleteProvider, the config-reload path in providers.go) starts a
+			// HealthCheck goroutine alongside it; this lazy-init branch didn't,
+			// so a router built here never got one. Router.recordFailure
+			// permanently disables a provider entry after 3 consecutive
+			// failures — with no health check ever probing it back, a transient
+			// blip (rate limit, brief network outage) disabled the provider for
+			// the rest of the process's life, with no way to recover short of
+			// touching Settings or restarting.
+			if a.healthCheckCancel != nil {
+				a.healthCheckCancel()
+			}
+			healthCtx, healthCancel = context.WithCancel(a.lifecycleCtx)
+			a.healthCheckCancel = healthCancel
 		}
 	}
 	a.providerMu.Unlock()
+
+	if healthCtx != nil {
+		rt := providerRouter
+		goRecover("providerRouter.HealthCheck", func() { rt.HealthCheck(healthCtx, 5*time.Minute) })
+	}
 
 	if activeName != "" {
 		if providerRouter == nil || !providerRouter.HasActiveProvider() {

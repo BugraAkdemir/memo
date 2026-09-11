@@ -215,6 +215,22 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				return
 			}
 
+			// Some local models omit the tool_call_id field entirely. Assign
+			// missing IDs by index into resp.ToolCalls *before* assistantMsg
+			// captures the slice below — a later range loop (`for _, tc :=
+			// range resp.ToolCalls`) patches only its own per-iteration copy
+			// of tc, never the backing array, so doing it there left
+			// assistantMsg.ToolCalls[i].ID empty while the paired tool-role
+			// reply carried the generated ID: a structurally invalid
+			// assistant/tool pairing that broke schema-strict backends and
+			// confused the permission-timeout cleanup below (it matches
+			// remaining calls by ID).
+			for i := range resp.ToolCalls {
+				if resp.ToolCalls[i].ID == "" {
+					resp.ToolCalls[i].ID = generateID()
+				}
+			}
+
 			// Add assistant message with tool_calls to history
 			assistantMsg := provider.Message{
 				Role:      "assistant",
@@ -288,13 +304,14 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				currentMessages = filtered
 			}
 
-			// Execute each tool call
+			// Execute each tool call. processedToolCallIDs tracks which calls
+			// in this batch already got a real tool-role response, so the
+			// permission-timeout cleanup below (which stubs out the rest of
+			// the batch on cancellation) never re-labels an already-finished
+			// call as cancelled (O2).
+			processedToolCallIDs := make(map[string]bool, len(resp.ToolCalls))
 			for _, tc := range resp.ToolCalls {
-				// Some local models omit the tool_call_id field. Generate a fallback so
-				// the assistant + tool message pair is always well-formed.
-				if tc.ID == "" {
-					tc.ID = generateID()
-				}
+				processedToolCallIDs[tc.ID] = true
 
 				toolName := tc.Function.Name
 				args := tc.Function.Arguments
@@ -394,16 +411,19 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 							Content:    "Error: permission request cancelled",
 						})
 						for _, remaining := range resp.ToolCalls {
-							if remaining.ID == tc.ID {
+							// Skip calls that already have a real tool-role
+							// response in this batch (including this one,
+							// marked above) — otherwise an already-succeeded
+							// or already-failed call gets a second, bogus
+							// "cancelled" message appended after its real
+							// result.
+							if processedToolCallIDs[remaining.ID] {
 								continue
 							}
-							id := remaining.ID
-							if id == "" {
-								id = generateID()
-							}
+							processedToolCallIDs[remaining.ID] = true
 							currentMessages = append(currentMessages, provider.Message{
 								Role:       "tool",
-								ToolCallID: id,
+								ToolCallID: remaining.ID,
 								Content:    "Error: earlier permission request cancelled",
 							})
 						}

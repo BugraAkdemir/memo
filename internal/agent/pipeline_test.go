@@ -634,3 +634,61 @@ func TestRunStream_AutoApproveMedium_OnlyFileEditTools(t *testing.T) {
 		t.Fatalf("read_env was auto-approved under Code Mode; it must still prompt (BUG-SCAN3)")
 	}
 }
+
+// TestRunStream_MissingToolCallIDPropagatesToAssistantMessage guards a bug
+// where a model that omits tool_call_id (the comment above the ID-generation
+// loop notes llama.cpp-style OpenAI-compatible servers do this) got a
+// structurally invalid history on the next turn: the generated ID was
+// written only into the paired tool-role message, while the assistant
+// message's ToolCalls[i].ID — built from the same resp.ToolCalls slice —
+// stayed empty, because the old code patched a per-iteration range-loop copy
+// instead of the backing array. A schema-strict backend (or the next turn's
+// own bookkeeping) then sees an assistant tool_call with no id paired with a
+// tool reply whose tool_call_id doesn't match anything.
+func TestRunStream_MissingToolCallIDPropagatesToAssistantMessage(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry()
+	permissions := NewPermissionManager(t.TempDir())
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+
+	prov := &recordingProvider{responses: []provider.ChatResponse{
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "", "read_file", map[string]string{"path": "a.txt"})}},
+		{Content: "done"},
+	}}
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, nil)
+	pipeline.autoPermission = true
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "m", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream: %v", err)
+	}
+	for range ch {
+	}
+
+	if len(prov.seen) < 2 {
+		t.Fatalf("expected a second upstream request (the model's follow-up turn), got %d", len(prov.seen))
+	}
+	second := prov.seen[1]
+
+	var assistantID, toolCallID string
+	for _, m := range second {
+		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
+			assistantID = m.ToolCalls[0].ID
+		}
+		if m.Role == "tool" {
+			toolCallID = m.ToolCallID
+		}
+	}
+	if assistantID == "" {
+		t.Fatalf("assistant message's ToolCalls[0].ID is empty after a generated-ID fixup; second request messages=%+v", second)
+	}
+	if toolCallID == "" {
+		t.Fatalf("tool message's ToolCallID is empty; second request messages=%+v", second)
+	}
+	if assistantID != toolCallID {
+		t.Fatalf("assistant tool_call id %q does not match paired tool response's tool_call_id %q — structurally invalid pairing", assistantID, toolCallID)
+	}
+}

@@ -208,6 +208,9 @@ func (m *Manager) TriggerPullNow() {
 	if m == nil || m.drive == nil {
 		return
 	}
+	if m.stopped.Load() {
+		return
+	}
 	m.mu.Lock()
 	if m.inFlight {
 		m.mu.Unlock()
@@ -231,6 +234,9 @@ func (m *Manager) TriggerPullNow() {
 // TriggerFullSyncNow runs push (backup) then pull (restore latest) in one flow.
 func (m *Manager) TriggerFullSyncNow() {
 	if m == nil || m.drive == nil {
+		return
+	}
+	if m.stopped.Load() {
 		return
 	}
 	m.mu.Lock()

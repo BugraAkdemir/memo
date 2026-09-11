@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"memo/internal/config"
+	"memo/internal/fileutil"
 	"memo/internal/logx"
 	"memo/internal/provider"
 
@@ -85,7 +86,14 @@ func (s *tokenStore) save(t *oauth2.Token) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, []byte(enc), 0600)
+	// AtomicWrite (write-tmp-then-rename), not a plain os.WriteFile — every
+	// other credential file in this codebase (config.yaml, providers.json,
+	// sessions, taskloop state, ...) already writes this way. A crash/power
+	// loss mid-write here previously left a truncated .enc file that fails
+	// to decrypt on the next load() — read as "not connected" (see load's
+	// doc comment), silently forcing the user to sign in to Google again
+	// for no reason they'd ever see logged as an actual error.
+	return fileutil.AtomicWrite(s.path, []byte(enc), 0600)
 }
 
 // clear removes the token file. A missing file is not an error.

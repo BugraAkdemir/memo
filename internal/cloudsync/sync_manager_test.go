@@ -12,6 +12,44 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// TestTriggerPullNow_StoppedManagerDoesNothing guards O7: Increment() and
+// TriggerNow() both check m.stopped before doing any work, but
+// TriggerPullNow() didn't — a "sync now"/"pull now" request racing a
+// concurrent Stop() (the user turning Cloud Sync off) could still flip
+// inFlight and launch runPullPipeline(), which can overwrite local data
+// with whatever was last backed up, after the manager was told to shut
+// down. Once stopped, TriggerPullNow must be a no-op: inFlight stays false
+// and no goroutine is launched.
+func TestTriggerPullNow_StoppedManagerDoesNothing(t *testing.T) {
+	m := &Manager{drive: &driveClient{}}
+	m.Stop()
+
+	m.TriggerPullNow()
+
+	m.mu.Lock()
+	inFlight := m.inFlight
+	m.mu.Unlock()
+	if inFlight {
+		t.Fatal("TriggerPullNow launched a pull after Stop() — O7")
+	}
+}
+
+// TestTriggerFullSyncNow_StoppedManagerDoesNothing mirrors the above for
+// TriggerFullSyncNow, the other trigger that was missing the same guard.
+func TestTriggerFullSyncNow_StoppedManagerDoesNothing(t *testing.T) {
+	m := &Manager{drive: &driveClient{}}
+	m.Stop()
+
+	m.TriggerFullSyncNow()
+
+	m.mu.Lock()
+	inFlight := m.inFlight
+	m.mu.Unlock()
+	if inFlight {
+		t.Fatal("TriggerFullSyncNow launched a sync after Stop() — O7")
+	}
+}
+
 // TestArchiveIncludesSQLiteWALSidecars verifies that SQLite databases using
 // WAL mode are archived. After a WAL checkpoint (TRUNCATE), committed data is
 // flushed to the main DB and sidecar files may be removed — so only the main

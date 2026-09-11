@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -95,5 +96,57 @@ func TestTokenStore_Clear(t *testing.T) {
 	// clear on an already-missing file is not an error.
 	if err := s.clear(); err != nil {
 		t.Errorf("second clear: %v", err)
+	}
+}
+
+// TestTokenStore_SaveIsAtomic_FailedWriteDoesNotCorruptExistingToken guards
+// O6: save() used to write straight to the destination file (os.WriteFile),
+// unlike every other credential file in this codebase. A crash or power
+// loss partway through that write left a truncated token.enc that fails to
+// decrypt on the next load() (see load's doc comment) — read as "not
+// connected", silently forcing a fresh Google sign-in for no reason ever
+// logged as an actual error. save() now goes through fileutil.AtomicWrite
+// (write-to-a-sibling-.tmp, then rename), so a failed write must leave the
+// previously-saved good token completely intact rather than overwriting it.
+//
+// A real mid-write crash can't be simulated in a unit test, so this
+// exercises the same guarantee via a write that fails for a different
+// reason (a read-only directory refusing to create the .tmp file) —
+// exactly the failure branch AtomicWrite's rename-or-nothing design exists
+// to protect against either way.
+func TestTokenStore_SaveIsAtomic_FailedWriteDoesNotCorruptExistingToken(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory permission bits don't work the same way on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("running as root bypasses directory permission checks")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "token.enc")
+	s := newTokenStoreAt(path, testKey())
+
+	good := &oauth2.Token{AccessToken: "good-token", RefreshToken: "good-refresh"}
+	if err := s.save(good); err != nil {
+		t.Fatalf("initial save: %v", err)
+	}
+
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o700) })
+
+	bad := &oauth2.Token{AccessToken: "should-never-land", RefreshToken: "should-never-land"}
+	if err := s.save(bad); err == nil {
+		t.Fatal("expected save to fail while its directory is read-only")
+	}
+
+	os.Chmod(dir, 0o700) // restore write access before reading back
+	got, ok := s.load()
+	if !ok {
+		t.Fatal("load: ok=false — the original good token was lost after a failed save")
+	}
+	if got.AccessToken != good.AccessToken {
+		t.Errorf("AccessToken = %q after a failed save, want the untouched original %q", got.AccessToken, good.AccessToken)
 	}
 }

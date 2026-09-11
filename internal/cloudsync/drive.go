@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"memo/internal/fileutil"
 	"memo/internal/logx"
 	"net"
 	"net/http"
@@ -489,8 +490,15 @@ func (dc *driveClient) saveToken(t *oauth2.Token) error {
 	if err != nil {
 		return err
 	}
-	// 0600 — only the owner can read the token file.
-	return os.WriteFile(dc.tokenPath, data, 0600)
+	// AtomicWrite (write-tmp-then-rename), not a plain os.WriteFile — every
+	// other credential file in this codebase (config.yaml, providers.json,
+	// geminisub's token store, ...) already writes this way. A crash/power
+	// loss mid-write here previously left a truncated token.json that
+	// fails loadToken's json.Unmarshal on the next start, silently
+	// dropping Cloud Sync back to "not connected" with no error surfaced
+	// anywhere, forcing the user to re-auth Google Drive for no reason
+	// they'd ever see logged. 0600 — only the owner can read the token file.
+	return fileutil.AtomicWrite(dc.tokenPath, data, 0600)
 }
 
 func (dc *driveClient) closeAuthDoneLocked() {

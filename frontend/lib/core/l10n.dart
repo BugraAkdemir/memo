@@ -906,6 +906,9 @@ class L10n {
     'beta_item_swarm_title': 'Memo Swarm',
     'beta_item_swarm_desc':
         'Birden fazla makineyi birleştirip tek büyük model çalıştır (yan menü → Swarm). macOS’ta henüz yok.',
+    'beta_item_gemini_sub_title': 'Gemini Aboneliği',
+    'beta_item_gemini_sub_desc':
+        'Google hesabınla giriş yapıp Gemini\'yi kendi aboneliğinle kullan (Ayarlar → Gemini Aboneliği).',
     'tab_live_mode': 'Sesli Mod',
     'live_mode_tab_title': 'Sesli Mod',
     'live_mode_tab_desc':
@@ -3005,6 +3008,9 @@ class L10n {
     'beta_item_swarm_title': 'Memo Swarm',
     'beta_item_swarm_desc':
         'Pool machines to run one large model (sidebar → Swarm). Not available on macOS yet.',
+    'beta_item_gemini_sub_title': 'Gemini Subscription',
+    'beta_item_gemini_sub_desc':
+        'Sign in with your Google account and use Gemini on your own subscription (Settings → Gemini Subscription).',
     'tab_live_mode': 'Live Mode',
     'live_mode_tab_title': 'Live Mode',
     'live_mode_tab_desc':

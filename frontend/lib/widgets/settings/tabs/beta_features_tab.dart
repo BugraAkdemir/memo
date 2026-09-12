@@ -118,6 +118,18 @@ class _BetaFeaturesTabState extends ConsumerState<BetaFeaturesTab> {
               body: L10n.t('beta_item_swarm_desc'),
               enabled: beta,
             ),
+            const SizedBox(height: 16),
+            // Gemini Subscription's Settings tab is also gated behind this
+            // same toggle (settings_dialog.dart's _betaEnabled() check) but
+            // wasn't listed here — this page's own description promised
+            // "her özellik kendi ekranında ayrıca yapılandırılır" for
+            // everything this switch unlocks, and this one was missing.
+            _BetaFeatureRow(
+              icon: Icons.key_outlined,
+              title: L10n.t('beta_item_gemini_sub_title'),
+              body: L10n.t('beta_item_gemini_sub_desc'),
+              enabled: beta,
+            ),
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(12),

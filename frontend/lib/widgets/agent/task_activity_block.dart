@@ -367,9 +367,22 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
         ),
       );
 
+  static const _errorBearingKinds = {'step_retry', 'step_stuck', 'item_stuck'};
+
   Widget _logRow(ThemeColors c, TaskLogEntry e) {
     final (icon, color) = _rowStyle(e.kind);
-    final label = e.text.trim().isNotEmpty ? e.text.trim() : _fixedLabel(e.kind);
+    // M3 (stability audit): step_retry/step_stuck/item_stuck carry the
+    // backend's raw err.Error() text (engine.go's stuckActivityLine /
+    // worker-mode item.Note), unlike every other kind here which is
+    // Memo's own composed status prose — route those three through
+    // FriendlyError like the rest of the app's error surfaces, instead of
+    // rendering a provider/network error verbatim in the activity log.
+    final rawText = e.text.trim();
+    final label = rawText.isEmpty
+        ? _fixedLabel(e.kind)
+        : (_errorBearingKinds.contains(e.kind)
+            ? FriendlyError.describeGeneric(rawText)
+            : rawText);
     final hh = e.ts.hour.toString().padLeft(2, '0');
     final mm = e.ts.minute.toString().padLeft(2, '0');
     return Padding(

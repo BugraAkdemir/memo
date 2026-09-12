@@ -156,6 +156,54 @@ void main() {
     expect(find.text(L10n.t('task_card_pause')), findsOneWidget);
   });
 
+  // M3 (stability audit): step_stuck/item_stuck/step_retry carry the
+  // backend's raw err.Error() text (engine.go's stuckActivityLine) and used
+  // to render it completely verbatim in the activity log — a rate-limit
+  // failure showed the raw provider dump instead of the same short,
+  // friendly sentence every other error surface in the app already shows
+  // for that exact case.
+  testWidgets('a stuck step shows the friendly error text, not the raw provider dump', (tester) async {
+    final state = ChatTaskState(
+      listId: 'L4',
+      phase: 'executing',
+      mode: 'worker',
+      itemDone: 1,
+      itemTotal: 3,
+      log: [
+        TaskLogEntry(
+          'step_stuck',
+          'S2 — all providers failed: [opencode-zen] provider rate limited: Rate limit exceeded. Please try again later.',
+          DateTime.now(),
+        ),
+      ],
+    );
+    await _pump(tester, state);
+
+    expect(find.textContaining('all providers failed'), findsNothing,
+        reason: 'must not leak the raw provider/router error dump into the activity log');
+    expect(find.text(L10n.t('friendly_error_provider_rate_limited')), findsOneWidget,
+        reason: 'must show FriendlyError.describeGeneric\'s rate-limit classification instead');
+  });
+
+  testWidgets('an ordinary log line (not an error kind) is shown verbatim, untouched by FriendlyError', (tester) async {
+    final state = ChatTaskState(
+      listId: 'L5',
+      phase: 'executing',
+      mode: 'worker',
+      itemDone: 1,
+      itemTotal: 3,
+      log: [
+        TaskLogEntry('tool', 'all providers failed: rate limit in a filename.py', DateTime.now()),
+      ],
+    );
+    await _pump(tester, state);
+
+    // A 'tool' line is Memo's own composed status text, never a raw error —
+    // it must never be run through error classification just because its
+    // content happens to mention a word FriendlyError recognizes.
+    expect(find.text('all providers failed: rate limit in a filename.py'), findsOneWidget);
+  });
+
   testWidgets('paused task shows the resume action', (tester) async {
     final state = const ChatTaskState(
       listId: 'L3',

@@ -92,10 +92,15 @@ func (a *App) GetLiveModeEngines() []livemode.EngineConfig {
 }
 
 // UpdateLiveModeEngine saves one engine's config (add or update, keyed by
-// Type). Does not touch internal/tts/internal/stt's own provider systems —
-// that sync lands in a later phase, once TranscribeAudio/SynthesizeSpeech
-// actually dispatch through the active Live Mode engine (see
-// docs/plans/PLAN_live_mode_v2.md's Phase 5).
+// Type) into the same store TranscribeAudio/SynthesizeSpeech read from —
+// tts.go's synthesizeViaLiveModeEngine and stt.go's transcribeViaLiveModeEngine
+// both resolve the "elevenlabs"/"custom" engines' credentials straight out
+// of this ConfigManager (Phase 5, docs/plans/PLAN_live_mode_v2.md),
+// falling back to the separate tts.Router/stt provider system on failure.
+// This comment previously said that dispatch was a "later phase" still to
+// come; it landed a while ago and the comment was just never updated
+// (stability audit, M7) — corrected here rather than left to mislead the
+// next reader into thinking a real sync gap still exists.
 func (a *App) UpdateLiveModeEngine(cfg livemode.EngineConfig) error {
 	a.liveModeMu.RLock()
 	cfgMgr := a.liveModeEngineCfgMgr

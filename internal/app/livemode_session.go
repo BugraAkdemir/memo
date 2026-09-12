@@ -34,20 +34,32 @@ func (a *App) NewLiveModeSession(ctx context.Context) livemode.Session {
 	cfg := a.GetLiveModeConfig()
 	engineType := livemode.EngineType(cfg.ActiveEngine)
 	if engineType != livemode.EngineGoogleLive && engineType != livemode.EngineOpenAIRealtime {
+		reason := fmt.Errorf(a.t(
+			"Sesli Mod'un gerçek bir motoru (Google Live / OpenAI Realtime) seçili değil (%q) — sadece kendi sesin geri çalınıyor, model yanıt vermiyor. Ayarlar > Sesli Mod'dan bir motor seç.",
+			"Live Mode has no real engine selected (%q) — you'll only hear your own voice echoed back, the model isn't responding. Pick an engine in Settings > Live Mode.",
+		), cfg.ActiveEngine)
 		logx.Printf("livemode: active engine %q is not a native realtime engine, using EchoSession", cfg.ActiveEngine)
-		return livemode.NewEchoSession()
+		return livemode.NewEchoSessionWithReason(reason)
 	}
 
 	engineCfg, ok := a.findLiveModeEngineConfig(engineType)
 	if !ok || engineCfg.APIKey == "" || engineCfg.Model == "" {
+		reason := fmt.Errorf(a.t(
+			"%s motoru yapılandırılmamış (API anahtarı/model eksik) — sadece kendi sesin geri çalınıyor, model yanıt vermiyor. Ayarlar > Sesli Mod'dan tamamla.",
+			"The %s engine isn't fully configured (missing API key/model) — you'll only hear your own voice echoed back, the model isn't responding. Finish setting it up in Settings > Live Mode.",
+		), engineType)
 		logx.Printf("livemode: engine %q not configured (found=%v, apiKey set=%v, model set=%v), using EchoSession", engineType, ok, engineCfg.APIKey != "", engineCfg.Model != "")
-		return livemode.NewEchoSession()
+		return livemode.NewEchoSessionWithReason(reason)
 	}
 
 	sessionID, err := a.getOrCreateLiveModeChat()
 	if err != nil {
+		reason := fmt.Errorf(a.t(
+			"Sesli Mod için sohbet oturumu açılamadı: %v — sadece kendi sesin geri çalınıyor, model yanıt vermiyor.",
+			"Live Mode's background chat session failed to open: %v — you'll only hear your own voice echoed back, the model isn't responding.",
+		), err)
 		logx.Printf("livemode: getOrCreateLiveModeChat failed: %v, using EchoSession", err)
-		return livemode.NewEchoSession()
+		return livemode.NewEchoSessionWithReason(reason)
 	}
 
 	// injectFn is set below, once the real client exists. The tool-call
@@ -82,7 +94,14 @@ func (a *App) NewLiveModeSession(ctx context.Context) livemode.Session {
 		injectFn = client.InjectContext
 		session = client
 	default:
-		return livemode.NewEchoSession()
+		// Unreachable in practice — engineType was already checked against
+		// exactly these two values above — but kept fail-safe rather than a
+		// panic if a third EngineType is ever added here without updating
+		// this switch.
+		return livemode.NewEchoSessionWithReason(fmt.Errorf(a.t(
+			"Beklenmeyen Sesli Mod motor tipi (%q) — sadece kendi sesin geri çalınıyor.",
+			"Unexpected Live Mode engine type (%q) — you'll only hear your own voice echoed back.",
+		), engineType))
 	}
 	logx.Printf("livemode: built a real %s session (model=%q, workMode=%q, tools=%d)", engineType, engineCfg.Model, cfg.WorkMode, len(tools))
 

@@ -226,6 +226,22 @@ func (m *Manager) AwaitAuth(ctx context.Context) error {
 		m.mu.Unlock()
 		return err
 	case <-ctx.Done():
+		// The caller (StartGoogleAuth's 5-minute ctx) is giving up on this
+		// flow, but nothing else ever told the loopback server to stop: the
+		// only other shutdown paths are the OAuth callback actually firing
+		// (success or error) and the *next* StartAuth call's own cleanup
+		// guard. An abandoned flow — the user closes the tab, or the
+		// browser never gets opened at all — left the listening socket and
+		// its Serve goroutine running indefinitely past this timeout, until
+		// the user happened to retry (or the process restarted). Shut it
+		// down here too so a genuinely abandoned flow's resources are freed
+		// promptly instead of only on the next attempt.
+		m.mu.Lock()
+		srv := f.srv
+		m.mu.Unlock()
+		if srv != nil {
+			shutdown(srv)
+		}
 		return ctx.Err()
 	}
 }

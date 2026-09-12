@@ -125,6 +125,48 @@ func TestOAuthFlow_Success(t *testing.T) {
 	}
 }
 
+// TestAwaitAuth_TimeoutShutsDownLoopbackServer guards a resource leak: an
+// abandoned OAuth flow (the user never opens the browser, or opens it but
+// never completes the consent screen) used to leave StartAuth's loopback
+// HTTP server — its listening socket and Serve goroutine — running forever
+// once AwaitAuth's caller (StartGoogleAuth's 5-minute ctx, gemauth.go) gave
+// up: neither the OAuth callback (never fires) nor the timeout itself ever
+// called shutdown(srv). The only other cleanup path was the *next*
+// StartAuth call's own guard, so a user who tried once, gave up, and never
+// tried again leaked the listener until the process restarted.
+func TestAwaitAuth_TimeoutShutsDownLoopbackServer(t *testing.T) {
+	fakeGoogle(t)
+	m := newTestManager(t)
+
+	authURL, err := m.StartAuth()
+	if err != nil {
+		t.Fatalf("StartAuth: %v", err)
+	}
+	host := redirectPort(t, authURL)
+
+	// Confirm the loopback server is actually up before the timeout fires.
+	if _, err := http.Get("http://" + host + "/oauth2callback"); err != nil {
+		t.Fatalf("server should be reachable before the timeout: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := m.AwaitAuth(ctx); err == nil {
+		t.Fatal("expected AwaitAuth to return the ctx deadline error for an abandoned flow")
+	}
+
+	// The callback never fired, so nothing else would ever stop this
+	// server pre-fix. Poll briefly for the shutdown goroutine to finish.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := http.Get("http://" + host + "/oauth2callback"); err != nil {
+			return // connection refused/closed — server is down, as expected
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("loopback OAuth server is still accepting connections after AwaitAuth timed out — leaked")
+}
+
 func TestOAuthFlow_Denied(t *testing.T) {
 	fakeGoogle(t)
 	m := newTestManager(t)

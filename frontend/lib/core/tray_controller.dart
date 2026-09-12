@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import 'dart:async' show unawaited;
-import 'dart:io' show Platform, Process;
+import 'dart:io' show Platform;
 
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +13,6 @@ import 'package:window_manager/window_manager.dart';
 import '../providers/chat_provider.dart' show apiClientProvider, currentClientIdProvider;
 import '../providers/models_provider.dart';
 import '../providers/settings_provider.dart';
-import '../widgets/mascot_window.dart' show mascotWindowEnvVar;
 import 'l10n.dart';
 
 /// Whether the system tray / window-close-interception feature can run at
@@ -44,13 +43,28 @@ class TrayController extends ConsumerStatefulWidget {
 class _TrayControllerState extends ConsumerState<TrayController>
     with WindowListener, TrayListener {
   bool _trayReady = false;
-  Process? _mascotProcess;
+  WindowController? _mascotWindow;
 
   @override
   void initState() {
     super.initState();
     if (trayFeatureSupported) {
       _init();
+      // Catches both the tray's own close request and the mascot's own
+      // hover close button — either way the window disappears from this
+      // list, which is the one signal both paths actually share.
+      onWindowsChanged.listen((_) => _syncMascotState());
+    }
+  }
+
+  Future<void> _syncMascotState() async {
+    final tracked = _mascotWindow;
+    if (tracked == null) return;
+    final stillOpen =
+        (await WindowController.getAll()).any((w) => w.windowId == tracked.windowId);
+    if (!stillOpen && mounted) {
+      setState(() => _mascotWindow = null);
+      await _rebuildMenu();
     }
   }
 
@@ -88,7 +102,7 @@ class _TrayControllerState extends ConsumerState<TrayController>
       MenuItem(label: modelLabel, disabled: true),
       MenuItem.separator(),
       MenuItem(
-        label: _mascotProcess == null
+        label: _mascotWindow == null
             ? L10n.t('tray_mascot_show')
             : L10n.t('tray_mascot_hide'),
         onClick: (_) => _toggleMascot(),
@@ -98,29 +112,22 @@ class _TrayControllerState extends ConsumerState<TrayController>
     ]));
   }
 
-  /// Starts the standalone mascot as a child process — a second launch of
-  /// this exact binary with MEMO_MASCOT_WINDOW set, which main.dart reads to
-  /// boot the mascot UI instead of the chat app (see mascot_window.dart).
-  /// Not a window inside this app: closing/quitting Memo does not close it,
-  /// same as the CLI staying up independently of the Flutter app.
+  /// Opens or closes the desktop mascot — a second window in this same
+  /// process (desktop_multi_window), not a separate app. Left running when
+  /// Memo's own window closes/hides, same as the tray icon itself; only
+  /// _quit() below or the mascot's own close button end it.
   Future<void> _toggleMascot() async {
-    final existing = _mascotProcess;
+    final existing = _mascotWindow;
     if (existing != null) {
-      existing.kill();
-      return; // onExit below clears _mascotProcess and rebuilds the menu.
+      await existing.invokeMethod('window_close');
+      return; // onWindowsChanged -> _syncMascotState clears the field.
     }
-    final process = await Process.start(
-      Platform.resolvedExecutable,
-      const [],
-      environment: {mascotWindowEnvVar: '1'},
+    final controller = await WindowController.create(
+      const WindowConfiguration(arguments: '', hiddenAtLaunch: true),
     );
-    setState(() => _mascotProcess = process);
+    await controller.show();
+    setState(() => _mascotWindow = controller);
     await _rebuildMenu();
-    unawaited(process.exitCode.then((_) {
-      if (!mounted) return;
-      setState(() => _mascotProcess = null);
-      _rebuildMenu();
-    }));
   }
 
   String _fileName(String path) {

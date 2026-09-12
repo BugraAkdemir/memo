@@ -1,29 +1,54 @@
 import 'dart:io' show Platform;
 
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'memo_mascot.dart';
 
-const mascotWindowEnvVar = 'MEMO_MASCOT_WINDOW';
-const _windowSize = Size(170, 190);
+/// Window size hugs the character tightly on purpose — the whole window
+/// rectangle is what's draggable/clickable (there's no per-pixel hit
+/// testing against the transparent margin), so the smaller it is, the
+/// closer "click near the character" and "click the character" become.
+const _windowSize = Size(132, 148);
 
 /// Boots the standalone floating desktop mascot in place of the normal chat
-/// UI. Reached two ways that end up running the exact same code: the
-/// separate `lib/mascot_main.dart` entrypoint (fast iteration via
-/// `flutter run -t lib/mascot_main.dart`), and the main app's own
-/// `lib/main.dart`, which calls this instead of the chat app when it finds
-/// [mascotWindowEnvVar] set on itself — which is how the tray's "Desktop
-/// mascot" menu item turns it on, by relaunching this same binary with that
-/// variable set (see tray_controller.dart). Either way it's a separate OS
-/// process from the chat window; the size/frameless/transparency that make
-/// it look like a free-floating character are decided natively at window
-/// creation (linux/runner/my_application.cc, keyed off the same env var) so
-/// they're correct from the first frame — see that file's comment for why a
-/// later async window_manager call isn't soon enough.
+/// UI. This runs as a `desktop_multi_window` sub-window inside the SAME
+/// process as the main chat window — one Memo, one running app, not a
+/// second one — reached when `lib/main.dart`'s `main(args)` sees the
+/// `multi_window` marker that plugin passes as the first Dart entrypoint
+/// argument for any window it creates (see tray_controller.dart, which is
+/// what actually calls `WindowController.create(...)` to spawn this).
+///
+/// Frameless, always-on-top, skip-taskbar and drag-anywhere all come from
+/// the plain (unforked) `window_manager` package, which works here exactly
+/// as it does in the main window: `desktop_multi_window` gives every
+/// sub-window its own Flutter engine, and `linux/runner/my_application.cc`
+/// registers window_manager's plugin for each one via the exact callback
+/// the package's README documents. Real per-pixel transparency needed one
+/// thing that callback fires too late for — see
+/// frontend/third_party/README.md for that one vendored native patch.
 Future<void> runMascotWindow() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
+
+  // Lets the main window ask this one to close itself (see
+  // tray_controller.dart) — WindowController has no close() of its own;
+  // this is the hand-off point the package's README documents for that.
+  // Only reachable when this is actually a desktop_multi_window sub-window;
+  // the standalone `flutter run -t lib/mascot_main.dart` dev entrypoint has
+  // no such window to attach to, so this is best-effort.
+  try {
+    final controller = await WindowController.fromCurrentEngine();
+    await controller.setWindowMethodHandler((call) async {
+      if (call.method == 'window_close') {
+        await windowManager.close();
+      }
+    });
+  } catch (_) {
+    // Standalone dev run — nothing to wire up, the on-window close button
+    // already calls windowManager.close() directly.
+  }
 
   const options = WindowOptions(
     size: _windowSize,
@@ -47,6 +72,12 @@ Future<void> runMascotWindow() async {
 
   runApp(const MascotWindowApp());
 }
+
+/// True for a Dart entrypoint invocation that's a desktop_multi_window
+/// sub-window rather than the app's normal launch — see runMascotWindow's
+/// doc comment. Checked against `main(args)`'s own argument list.
+bool isMascotSubWindow(List<String> args) =>
+    args.isNotEmpty && args.first == 'multi_window';
 
 class MascotWindowApp extends StatelessWidget {
   const MascotWindowApp({super.key});
@@ -90,10 +121,10 @@ class _MascotSurfaceState extends State<_MascotSurface> {
         behavior: HitTestBehavior.translucent,
         child: Stack(
           children: [
-            const Center(child: MemoMascot(size: 128)),
+            const Center(child: MemoMascot(size: 100)),
             Positioned(
-              top: 4,
-              right: 4,
+              top: 2,
+              right: 2,
               child: AnimatedOpacity(
                 opacity: _hovering ? 1 : 0,
                 duration: const Duration(milliseconds: 150),
@@ -119,13 +150,13 @@ class _CloseButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 22,
-        height: 22,
+        width: 20,
+        height: 20,
         decoration: BoxDecoration(
           color: const Color(0xFF2A211A).withValues(alpha: 0.85),
           shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.close_rounded, size: 14, color: Color(0xFFE8DCC8)),
+        child: const Icon(Icons.close_rounded, size: 13, color: Color(0xFFE8DCC8)),
       ),
     );
   }

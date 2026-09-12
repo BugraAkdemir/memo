@@ -1,4 +1,85 @@
-# Ek (2026-09-12, devam 66) — v4.4.0 release çıkarıldı (Self-Driving Task Loop)
+# Ek (2026-09-13, devam 67) — Masaüstü maskotu: gerçek 2. pencere + gerçek state bağlama
+
+Önceki oturumun (devam 66) kapanışından sonra kullanıcı "Codex'inki gibi
+sevimli bir maskot yapalım" dedi — bu oturum tamamen o özelliğe gitti,
+üç büyük mimari turu ve gece yarısı "ben yatıyorum, sabaha çalışır halde
+gör" talimatıyla bitti. Hepsi commit'lendi, hepsi canlı test edildi.
+
+## Turlar (özet — detay commit mesajlarında)
+
+1. **Karakter tasarımı** (`3712d363`'ten önce, bu oturumun en başı) —
+   `frontend/lib/widgets/memo_mascot.dart`: sıcak mocha-kahve/altın renk
+   paleti (Memo'nun bronz aksanına göre), `CustomPainter` ile tamamen
+   Dart'ta çizilmiş (resim asset'i yok), 5 mood (idle/thinking/writing/
+   generating/tool), nefes alma + anten gecikmeli sallanma animasyonu.
+2. **`28633d4a`/`7cb97741`** — İlk versiyon: maskot ayrı bir binary/süreç
+   olarak çalışıyordu (`MEMO_MASCOT_WINDOW` env var ile aynı `memo_flutter`
+   binary'sini ikinci kez başlatarak). Çalışıyordu ama kullanıcı bunu
+   **istemedi** — "neden ayrı süreç, aynı uygulamanın 2. penceresi olsun,
+   2. uygulama olmasın" dedi.
+3. **`dfecfd89`** — Bunun üzerine tamamen yeniden yapıldı:
+   `desktop_multi_window` paketi `frontend/third_party/`'e **yerelde
+   yamalı** olarak gömüldü (resmi pub.dev sürümü + 1 native yama), tek
+   process içinde gerçek 2. pencere. Üç gerçek native bug canlı testte
+   bulunup düzeltildi (hepsi commit mesajında detaylı): (a) paket
+   `window_manager`'ın **fork'lanmış** bir git sürümünü istiyordu — bu,
+   tepsi özelliğinin kullandığı resmi paketle çakışırdı, kaçınıldı; (b)
+   Wayland'da pencere gizliyken yapılan resize compositor'a hiç
+   yansımıyordu (GTK'nın kendi `getSize()`'ı doğru dönüyordu ama ekranda
+   eski/1280x720 boyut kalıyordu) — pencereyi zaten küçük (132×148)
+   yaratarak çözüldü; (c) `decorated(FALSE)` tek başına KWin'in sunucu
+   taraflı başlık çubuğunu (rastgele "W" ikonlu) susturmuyordu — boş bir
+   `gtk_window_set_titlebar()` çağrısı gerekti. Üçü de ekran görüntüsüyle
+   (gerekirse opak kırmızı arkaplana geçici olarak boyayarak) doğrulandı.
+4. **`dfbadc99`** — Gerçek state bağlama. Arka planda bir `Explore`-tipi
+   ajanla backend'de mevcut sinyaller araştırıldı (`NotifyBus` sadece
+   task-loop'a özel, `/api/tasks/running` de öyle — ikisi de agent tool
+   çağrılarını görmüyor). Gerçek tek nokta: `internal/agent/executor.go`
+   `wrappedOnEvent` — **her** `RunStream` çağrısı (sohbet, WhatsApp,
+   Telegram, task-loop, sub-agent, Orchestra) buradan geçiyor. Yeni
+   `agent.GlobalActivityHook` (paket seviyesi, `NewApp`'ta bağlanıyor) +
+   `internal/app/activity.go`'daki basit tracker (12sn sessizlikte
+   otomatik idle'a dönüyor, generation counter ile eski timer'ın yeni
+   state'i ezmesi engelleniyor) + yeni `GET /api/mascot/activity` +
+   Flutter tarafında 1.2sn'de bir poll. **"düşünüyor" bilerek
+   bağlanmadı** — gerçek bir "turn başladı" sinyali ya da Live Mode'un
+   kendi faz bilgisi henüz app-geneli değil, uydurmak yanlış olurdu.
+   Canlı doğrulama: gerçek LLM sağlayıcı yokken, geçici bir debug-only
+   endpoint (`POST /api/mascot/activity/debug-set`) eklenip gerçek
+   binary'de yazıyor/araç/üretiyor durumları tek tek tetiklendi, maskotun
+   gerçekten defter/anahtar/kutlama pozlarına geçtiği ekran görüntüsüyle
+   doğrulandı, sonra bu debug endpoint'i **tamamen kaldırıldı** (commit'te
+   `TEMP-TEST` grep'i boş döner).
+
+## Doğrulama durumu
+
+`CGO_ENABLED=1 go build/vet/test -race ./...` tamamı yeşil (11 yeni
+backend testi dahil). `flutter analyze`/`flutter test` (337/337) yeşil,
+Rule 8 grep boş. Gerçek `memo_flutter` binary'si + gerçek `memo` backend'i
+canlı çalıştırılıp ekran görüntüsüyle üç kez doğrulandı (tasarım turu,
+mimari turu, state-bağlama turu — her birinde ayrı ayrı).
+
+## Sıradaki oturum için
+
+1. **"düşünüyor" mood'u hâlâ hiçbir gerçek sinyale bağlı değil** —
+   Live Mode'un dinleme/düşünme/konuşma fazını app-geneli bir sinyale
+   çevirmek ya da agent turn'ün "başladı" anını yakalayan yeni bir event
+   eklemek gerekiyor. `internal/app/activity.go`'nun doc comment'i bunu
+   zaten işaretliyor.
+2. Debug-set testinde "thinking" pozu görsel olarak idle'dan pek
+   ayırt edilemedi (anten sallanması/düşünce noktaları ekranda net
+   görünmedi) — gerçek sinyale bağlanmadan önce bu görsel de bir
+   gözden geçirme isteyebilir.
+3. Maskotun kendi ikonu/görseli macOS ve Windows'ta hiç test edilmedi —
+   `frontend/third_party/desktop_multi_window`'un o platformlardaki
+   native kodu hiç çalıştırılmadı, sadece Linux'ta.
+4. `frontend/lib/mascot_main.dart` (hızlı geliştirme için `flutter run -t
+   lib/mascot_main.dart`) hâlâ duruyor ve çalışıyor — `desktop_multi_window`
+   olmadan, karakterin görselini hızlıca denemek için hâlâ kullanışlı.
+
+---
+
+
 
 Bir üstteki girişin bahsettiği context-taşması düzeltmesi dahil, v4.3.0'dan
 beri biriken tüm iş (Self-Driving Task Loop, Code Mode, Claude/Gemini

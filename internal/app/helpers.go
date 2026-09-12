@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"memo/internal/api"
+	"memo/internal/identity"
 	"memo/internal/memory"
 	"memo/internal/truncate"
 )
@@ -165,56 +166,17 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// and produce a half-applied prompt.
 	minimal := a.identity.GetMinimalMode()
 
-	var systemPrompt string
-	switch {
-	case code:
-		// One compact directive replaces the whole persona / style / memory
-		// stack. Nothing BuildSystemPrompt produces (persona, origin, style,
-		// passive, capabilities, memory) is wanted for a coding turn.
-		systemPrompt = codingDirective
-	default:
-		systemPrompt = a.identity.BuildSystemPrompt(memories, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
-		if !minimal {
-			// Mood is fully opt-in. When the engine is disabled the model is driven
-			// solely by the configured system prompt: no directive, no neutral block,
-			// no self-interest text is injected.
-			if a.mood != nil && a.mood.Enabled() {
-				systemPrompt += a.mood.BuildDirective()
-				systemPrompt += a.mood.BuildSelfInterestDirective()
-			}
-			// An active skill is something the user explicitly turned on — but it
-			// is still Memo injecting text the bare model wouldn't see, so Minimal
-			// Mode strips it too (previously it did not).
-			if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
-				systemPrompt += skillPrompt
-			}
-		}
-	}
-
-	// Volatile per-turn grounding — current time, and the agent working-set
-	// digest — kept OUT of systemPrompt. Both change every turn; folded into
-	// the front of the prompt (which is what happened when they were part of
-	// systemPrompt, since the local-model branch merges systemPrompt into the
-	// first history message) they broke the local llama-server's KV-cache
-	// prefix match and forced a full re-prefill of the whole conversation on
-	// every message — the single biggest reason a long Memo chat crawls
-	// compared to raw llama.cpp. They now ride on the *current* user message
-	// instead, so everything before it stays byte-identical turn to turn.
-	// Skipped entirely under Minimal Mode. Code Mode keeps the working-set
-	// digest (it is coding infra, the whole point) but drops the time block
-	// (irrelevant to a coding turn, and it is the volatile part).
-	volatileCtx := ""
-	if !minimal && !code {
-		volatileCtx += a.timeContextBlockForChat(chatID)
-	}
-	if !minimal {
-		volatileCtx += a.renderWorkingSet(chatID)
-	}
-	effectiveUserMsg := userMsg
-	if volatileCtx != "" {
-		effectiveUserMsg = userMsg + volatileCtx
-	}
-
+	// Computed here, before the system prompt, so the local-model branch
+	// below can pass BuildSystemPrompt a memory-block budget that actually
+	// fits this model's real window — see identity.MaxMemoryContextTokens'
+	// doc comment for the bug this closes (a fixed 4096-token memory
+	// ceiling was letting memory alone consume an entire small local
+	// model's context, e.g. Phi-3-mini-4k, before persona/history/the
+	// user's own message ever got a look-in). This block itself is
+	// unchanged from where it used to sit further down — it only reads
+	// a.llamaServer/a.cfg.Llama/agent tool schema, never systemPrompt or
+	// memories, so hoisting it earlier changes nothing about what it
+	// computes.
 	var tokenBudget int
 	if a.llamaServer != nil && a.llamaServer.IsRunning() {
 		a.cfgMu.RLock()
@@ -269,10 +231,98 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		tokenBudget = a.apiContextBudget()
 	}
 
+	// Memory-block budget: a fraction of this turn's real tokenBudget on a
+	// local model, so memory can never alone consume a small model's whole
+	// window — capped at identity.MaxMemoryContextTokens (never grow memory
+	// beyond what that ceiling already considers reasonable just because a
+	// local model happens to have a huge context). 0 tells BuildSystemPrompt
+	// to fall back to its own default, which is what every non-local
+	// (API/orchestra) turn already relied on before this fix and is left
+	// unchanged here.
+	memoryBudget := 0
+	if a.llamaServer != nil && a.llamaServer.IsRunning() {
+		memoryBudget = tokenBudget * 2 / 5
+		if memoryBudget > identity.MaxMemoryContextTokens {
+			memoryBudget = identity.MaxMemoryContextTokens
+		}
+		if memoryBudget < 256 {
+			memoryBudget = 256
+		}
+	}
+
+	var systemPrompt string
+	switch {
+	case code:
+		// One compact directive replaces the whole persona / style / memory
+		// stack. Nothing BuildSystemPrompt produces (persona, origin, style,
+		// passive, capabilities, memory) is wanted for a coding turn.
+		systemPrompt = codingDirective
+	default:
+		systemPrompt = a.identity.BuildSystemPrompt(memories, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable(), memoryBudget)
+		if !minimal {
+			// Mood is fully opt-in. When the engine is disabled the model is driven
+			// solely by the configured system prompt: no directive, no neutral block,
+			// no self-interest text is injected.
+			if a.mood != nil && a.mood.Enabled() {
+				systemPrompt += a.mood.BuildDirective()
+				systemPrompt += a.mood.BuildSelfInterestDirective()
+			}
+			// An active skill is something the user explicitly turned on — but it
+			// is still Memo injecting text the bare model wouldn't see, so Minimal
+			// Mode strips it too (previously it did not).
+			if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
+				systemPrompt += skillPrompt
+			}
+		}
+	}
+
+	// Volatile per-turn grounding — current time, and the agent working-set
+	// digest — kept OUT of systemPrompt. Both change every turn; folded into
+	// the front of the prompt (which is what happened when they were part of
+	// systemPrompt, since the local-model branch merges systemPrompt into the
+	// first history message) they broke the local llama-server's KV-cache
+	// prefix match and forced a full re-prefill of the whole conversation on
+	// every message — the single biggest reason a long Memo chat crawls
+	// compared to raw llama.cpp. They now ride on the *current* user message
+	// instead, so everything before it stays byte-identical turn to turn.
+	// Skipped entirely under Minimal Mode. Code Mode keeps the working-set
+	// digest (it is coding infra, the whole point) but drops the time block
+	// (irrelevant to a coding turn, and it is the volatile part).
+	volatileCtx := ""
+	if !minimal && !code {
+		volatileCtx += a.timeContextBlockForChat(chatID)
+	}
+	if !minimal {
+		volatileCtx += a.renderWorkingSet(chatID)
+	}
+	effectiveUserMsg := userMsg
+	if volatileCtx != "" {
+		effectiveUserMsg = userMsg + volatileCtx
+	}
+
 	systemTokens := truncate.EstimateTokens(systemPrompt)
 	userTokens := truncate.EstimateTokens(effectiveUserMsg)
 	historyBudget := tokenBudget - systemTokens - userTokens
-	if historyBudget < 512 {
+	// Only lift a small/negative remainder up to a workable minimum — if
+	// systemTokens+userTokens have already blown well past tokenBudget (the
+	// exact failure mode identity.MaxMemoryContextTokens's fix above closes
+	// for the common case), flooring historyBudget to 512 regardless used to
+	// pile even more tokens onto an already-oversized request instead of
+	// recognizing it was already doomed.
+	//
+	// The floor for that case is 1, not 0: getSessionHistoryTokenAwareForSession
+	// -> truncate.TruncateMessages treats a maxTokens of 0 (or negative) as
+	// "no limit at all" and returns the *entire* untruncated history — the
+	// opposite of what a deeply negative historyBudget is trying to signal.
+	// 1 sidesteps that sentinel while still asking TruncateMessages to trim
+	// as hard as it can (it always keeps at least one message when history
+	// is non-empty, so this can't produce a broken empty-history request
+	// either). There's still no way to shrink an oversized systemPrompt from
+	// here, but not making it worse is strictly better than the old
+	// unconditional 512 floor.
+	if historyBudget < 1 {
+		historyBudget = 1
+	} else if historyBudget < 512 {
 		historyBudget = 512
 	}
 

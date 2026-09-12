@@ -166,6 +166,55 @@ func TestBuildSystemPromptWithMemories_WarnsAgainstVerbatimReuse(t *testing.T) {
 	}
 }
 
+// TestBuildSystemPrompt_MemoryTokenBudgetOverridesDefault guards a real,
+// live-found bug: MaxMemoryContextTokens (4096) is a fixed global tuned for
+// a normal large-context model — it has no way to know when the model
+// actually being talked to has a much smaller *total* window (a common
+// local GGUF model like Phi-3-mini-4k, also 4096). Letting the memory block
+// alone claim the whole constant left zero room for persona/history/the
+// user's own message on such a model — reproduced live: a two-word message
+// on a Phi-3-mini-4k-instruct install with accumulated memories produced an
+// 18095-token request against a 4096-token window. The optional trailing
+// memoryTokenBudget argument lets a caller who knows the real per-request
+// budget (helpers.buildMessagesForSession, for the local-model path) pass a
+// tighter ceiling than the default.
+func TestBuildSystemPrompt_MemoryTokenBudgetOverridesDefault(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", false)
+	var memories []memory.MemoryResult
+	for range 50 {
+		memories = append(memories, memory.MemoryResult{
+			Content:    strings.Repeat("kelime ", 40),
+			Similarity: 0.9,
+		})
+	}
+
+	full := id.BuildSystemPrompt(memories, true, true, true, false, false)
+	tight := id.BuildSystemPrompt(memories, true, true, true, false, false, 100)
+
+	if len(tight) >= len(full) {
+		t.Fatalf("a tight memory budget (100) should produce a meaningfully shorter prompt than the default; tight=%d chars, full=%d chars", len(tight), len(full))
+	}
+	if !strings.Contains(tight, "more memories available") {
+		t.Error("expected the tight-budget prompt to show the truncation marker")
+	}
+}
+
+// TestBuildSystemPrompt_ZeroOrNegativeMemoryBudgetFallsBackToDefault checks
+// the "omitted or <= 0" half of memoryTokenBudget's contract directly — a
+// caller passing 0 explicitly (helpers.buildMessagesForSession does this on
+// the non-local-model path) must see the same output as not passing the
+// argument at all.
+func TestBuildSystemPrompt_ZeroOrNegativeMemoryBudgetFallsBackToDefault(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", false)
+	memories := []memory.MemoryResult{{Content: "User likes coffee", Similarity: 0.9}}
+
+	omitted := id.BuildSystemPrompt(memories, true, true, true, false, false)
+	explicitZero := id.BuildSystemPrompt(memories, true, true, true, false, false, 0)
+	if explicitZero != omitted {
+		t.Error("passing memoryTokenBudget=0 should behave identically to omitting it")
+	}
+}
+
 func TestBuildSystemPromptEmptyMemories(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", false)
 	prompt := id.BuildSystemPrompt([]memory.MemoryResult{}, false, true, true, false, false)

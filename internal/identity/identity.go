@@ -130,7 +130,7 @@ func (id *Identity) GetLearnedStyleNotes() string {
 	return id.LearnedStyleNotes
 }
 
-// maxMemoryContextTokens caps how much of the prompt the memory block
+// MaxMemoryContextTokens caps how much of the prompt the memory block
 // (retrieved RAG results + unconditionally-injected pinned facts, see
 // retrieveMemory in internal/app/memory.go) can ever consume. Was 16K —
 // effectively no real ceiling for how this app actually uses it: the
@@ -145,9 +145,39 @@ func (id *Identity) GetLearnedStyleNotes() string {
 // local model — turn after turn. 4096 is still generous for what this
 // actually needs (see the estimate above) while giving the growth a real,
 // much closer ceiling instead of a practically-unbounded ~49K-char one.
-const maxMemoryContextTokens = 4096
+const MaxMemoryContextTokens = 4096
 
-func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool, agentEnabled, webSearchEnabled, whatsappReachable, telegramReachable bool) string {
+// BuildSystemPrompt assembles the system prompt: persona/origin/style,
+// capabilities, and a memory block truncated to fit a token budget.
+//
+// memoryTokenBudget is optional (variadic so every existing call site keeps
+// compiling unchanged): the first positive value given overrides
+// MaxMemoryContextTokens for the memory block's truncation ceiling below.
+// Omitted or <= 0 falls back to MaxMemoryContextTokens, preserving this
+// function's historical behavior for every caller that doesn't know a
+// tighter one applies.
+//
+// Why this needs to exist at all: MaxMemoryContextTokens is a fixed global
+// tuned for a normal large-context model, where "the memory block might use
+// up to 4096 tokens" is a small, safe fraction of the window. It has no way
+// to know when the model actually being talked to has a *total* context of
+// 4096 (or less) — a common size for compact local GGUF models (Phi-3-mini-
+// 4k and similar) — in which case letting the memory block alone claim the
+// whole constant leaves zero room for persona, conversation history, and
+// the user's own message, and llama.cpp's --no-context-shift rejects the
+// resulting oversized request outright with a hard 400 instead of silently
+// truncating it. Found live: a fresh two-word message ("merhaba naber") on
+// a Phi-3-mini-4k-instruct install with an accumulated memory/pinned-facts
+// set produced an 18095-token request against a 4096-token window. See
+// helpers.buildMessagesForSession's caller-side fix for how the real
+// per-request budget is derived and passed in here for the local-model
+// path specifically.
+func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool, agentEnabled, webSearchEnabled, whatsappReachable, telegramReachable bool, memoryTokenBudget ...int) string {
+	memBudget := MaxMemoryContextTokens
+	if len(memoryTokenBudget) > 0 && memoryTokenBudget[0] > 0 {
+		memBudget = memoryTokenBudget[0]
+	}
+
 	var sb strings.Builder
 
 	minimal := id.GetMinimalMode()
@@ -221,17 +251,18 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		memoryBlock = memory.FormatMemoriesForPrompt(memories)
 	}
 	if memoryBlock != "" {
-		// Ensure memories don't exceed maxMemoryContextTokens (leaves room for
-		// identity + conversation).
+		// Ensure memories don't exceed memBudget (MaxMemoryContextTokens
+		// unless the caller passed a tighter one — see memoryTokenBudget's
+		// doc comment above) — leaves room for identity + conversation.
 		blockTokens := truncate.EstimateTokens(memoryBlock)
-		if blockTokens > maxMemoryContextTokens {
+		if blockTokens > memBudget {
 			// Truncate the memory block to fit
 			lines := strings.Split(memoryBlock, "\n")
 			var truncated []string
 			total := 0
 			for _, line := range lines {
 				lineTokens := truncate.EstimateTokens(line)
-				if total+lineTokens > maxMemoryContextTokens {
+				if total+lineTokens > memBudget {
 					truncated = append(truncated, "... (more memories available)")
 					break
 				}

@@ -425,6 +425,74 @@ func TestBuildMessagesForSession_IgnoresConcurrentActiveChatSwitch(t *testing.T)
 	}
 }
 
+// TestBuildMessagesForSession_HistoryBudgetFloorTightensWhenAlreadyOverBudget
+// guards part of the fix for a live "request (18095 tokens) exceeds the
+// available context size (4096 tokens)" report on a small local model
+// (identity.MaxMemoryContextTokens's fix addresses the larger, memory-block
+// half of that; this covers a smaller compounding factor). When
+// systemTokens+userTokens alone already exceed tokenBudget, historyBudget
+// goes deeply negative — the old code unconditionally floored *any* value
+// under 512 up to 512, piling a further ~512 tokens of history onto a
+// request that was already over budget, rather than recognizing there was
+// no room left at all. The fix floors a negative remainder to 1 instead
+// (getSessionHistoryTokenAwareForSession -> truncate.TruncateMessages
+// always keeps at least one message when history is non-empty, so 1 asks
+// it to trim as hard as possible without tripping its own "maxTokens <= 0
+// means no limit" sentinel — see the doc comment on that floor in
+// helpers.go for why exactly 0 would have been actively worse, not better).
+//
+// This asserts the concrete, measurable difference: given the same
+// deeply-negative-budget setup, at most 1 history message should survive
+// with the fix, where the old unconditional 512 floor let substantially
+// more through (confirmed by running this exact test against the pre-fix
+// code: 6 messages survived there, not 1).
+func TestBuildMessagesForSession_HistoryBudgetFloorTightensWhenAlreadyOverBudget(t *testing.T) {
+	id := identity.New("Test", "Memo", "casual", "", false)
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	chatID := sm.GetActiveID()
+
+	for i := range 20 {
+		sm.AddMessageToSession(chatID, "user", fmt.Sprintf("distinctive-history-turn-%d %s", i, strings.Repeat("kelime ", 30)), "", "")
+		sm.AddMessageToSession(chatID, "assistant", fmt.Sprintf("distinctive-reply-turn-%d %s", i, strings.Repeat("kelime ", 30)), "", "")
+	}
+
+	a := &App{
+		cfg: &config.AppConfig{
+			Memory: config.MemoryConfig{MemoryEnabled: false},
+			// No llamaServer running, so this exercises the API-budget path
+			// (apiContextBudget) — MaxContextTokens forces it down to a tiny
+			// value regardless of provider, no real local model needed.
+			Llama: config.LlamaConfig{MaxContextTokens: 10},
+		},
+		identity: id,
+		sessions: sm,
+	}
+
+	// A deliberately large current message: with a tokenBudget of 10 this
+	// alone already guarantees systemTokens+userTokens > tokenBudget, so
+	// historyBudget starts deeply negative every time, regardless of the
+	// (small, but nonzero) persona block's own size.
+	userMsg := strings.Repeat("mesaj ", 50)
+	messages := a.buildMessagesForSession(context.Background(), chatID, userMsg, nil, nil)
+
+	found := 0
+	for _, m := range messages {
+		content, ok := m.Content.(string)
+		if !ok {
+			continue
+		}
+		if strings.Contains(content, "distinctive-history-turn-") || strings.Contains(content, "distinctive-reply-turn-") {
+			found++
+		}
+	}
+	if found > 1 {
+		t.Fatalf("expected at most 1 history message to survive a deeply negative historyBudget with the tightened floor, got %d (pre-fix code lets ~6 through here)", found)
+	}
+}
+
 // TestBuildMessagesForSession_IncludesActiveSkillInstructions is the
 // regression test for the bug found while investigating "do activated
 // skills actually reach the model": buildActiveSkillPrompt() used to be

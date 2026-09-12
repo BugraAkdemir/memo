@@ -111,6 +111,48 @@ func (a *App) NewLiveModeSession(ctx context.Context) livemode.Session {
 	return a.wrapLiveModeSessionForPermissionRouting(session)
 }
 
+// refreshLiveModeMemory is the mid-session memory refresh
+// docs/plans/PLAN_live_mode_v2.md's Phase 11 deliberately deferred (it
+// needed live API confirmation that InjectContext actually works — Phase
+// 12's voice-permission feature confirmed that afterward, so this closes
+// the other of the two consumers that plan left open). buildLiveModeSystemPrompt
+// only ever gets a one-time, session-start memory snapshot; a long
+// conversation can easily wander onto a topic that snapshot knows nothing
+// about. Called from the session wrapper's event pump for every real
+// EventTranscript with Role == RoleUser (livemode_session_wrapper.go) — one
+// full utterance per call, never a partial chunk, since both google.Client
+// and openai_realtime.Client already accumulate and flush exactly one
+// EventTranscript per turn. Runs in its own goroutine (see the pump's call
+// site) so a slow embedding/vector search never delays forwarding other
+// session events (audio, transcripts) to the Flutter client.
+//
+// Silent no-op when memory is off, the transcript is empty, or the search
+// finds nothing relevant — an empty "nothing found" injection would just be
+// noise the model has to read past, the same reasoning
+// injectDelegateOutcome already applies to a delegated task's own result.
+func (a *App) refreshLiveModeMemory(session livemode.Session, userText string) {
+	defer logx.Recover("livemode mid-session memory refresh")
+	if !a.GetMemoryEnabled() {
+		return
+	}
+	text := strings.TrimSpace(userText)
+	if text == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	results := a.retrieveMemory(ctx, text)
+	block := memory.FormatMemoriesForPrompt(results)
+	if block == "" {
+		return
+	}
+	msg := a.t(
+		"(İç bağlam güncellemesi — az önce söylenenden tetiklendi. Bunu SESLENDİRME, kullanıcıya bundan bahsetme; sadece şu an konuşulanla gerçekten ilgiliyse sessizce kullan, ilgisizse yok say.)\n",
+		"(Internal context update — triggered by what was just said. Do NOT voice this or mention it to the user; use it silently only if it's actually relevant to what's being discussed right now, otherwise ignore it.)\n",
+	) + block
+	_ = session.InjectContext(msg)
+}
+
 func (a *App) findLiveModeEngineConfig(t livemode.EngineType) (livemode.EngineConfig, bool) {
 	a.liveModeMu.RLock()
 	cfgMgr := a.liveModeEngineCfgMgr
@@ -535,14 +577,15 @@ func (a *App) buildLiveModeSystemPrompt(ctx context.Context, workMode string) st
 		// Broadened after real-world testing showed the live model doing
 		// nothing — not even recalling something from the user's memory —
 		// when the original wording only mentioned coding/file/command
-		// access as delegation triggers. The memory context above is a
-		// one-time snapshot from session start (a generic, non-specific
-		// pull — there is no per-turn memory refresh in delegate mode, see
-		// docs/plans/PLAN_live_mode_v2.md's Phase 11 note on the deferred
-		// mid-session refresh consumer), so anything the user asks that
-		// needs real recall — not just "real work" in the coding sense —
-		// genuinely requires delegation; the live model has no other way
-		// to reach it.
+		// access as delegation triggers. The memory context above is still
+		// only a one-time snapshot from session start; the model is
+		// deliberately NOT told about refreshLiveModeMemory's mid-session
+		// injection (livemode_session_wrapper.go's pump — closes
+		// docs/plans/PLAN_live_mode_v2.md's Phase 11 deferred consumer) —
+		// it's a silent "use it if it happens to be there" background
+		// signal, not a capability the model should ever plan around or
+		// wait for, so delegation stays the one dependable way to get a
+		// real, on-demand recall.
 		capability = a.t(
 			"Sesli canlı sohbet modundasın. Kendin dosya/komut çalıştıramaz, web'de arama yapamazsın — ama bunların HEPSİNE delegate_to_main_model aracıyla ulaşırsın (ana model senin adına dosya işi yapar, komut çalıştırır, web'de arar, gerçek hafıza araması yapar). Kullanıcı böyle bir şey istediğinde \"yapamam / bu özellik kapalı / agent modunu aç\" DEME — bunun yerine delegate_to_main_model'i çağır, sonucu doğal bir şekilde anlat. Yukarıdaki bağlam sadece oturum başında alınmış tek seferlik bir hafıza özeti; kullanıcı sana özel bir şey (geçmişte konuştuğunuz bir konu, bir tercih, bir hatırlatma, bir dosya/kod, bir komut, güncel bir bilgi) sorduğunda ve yukarıdaki bağlamda gerçek cevabı yoksa kafandan uydurma — devret. Sadece sohbet/görüş sorularında (hava nasıl, nasılsın gibi) kendi başına cevap ver. ÇOK ÖNEMLİ: bir işi 'yaptım', 'hallettim', 'tamamladım' gibi ifadelerle asla söyleme — bunu ancak delegate_to_main_model aracını GERÇEKTEN çağırıp gerçek bir sonuç aldıktan SONRA söyleyebilirsin. Aracı çağırmadan başarı iddia etmek bir yalandır, asla yapma.",
 			"You are in live voice mode. You can't run files/commands or search the web yourself — but you reach ALL of that through the delegate_to_main_model tool (the main model does file work, runs commands, searches the web, and runs a real memory search on your behalf). When the user asks for any of that, do NOT say \"I can't / that feature is off / turn on agent mode\" — call delegate_to_main_model instead, then narrate the result naturally. The context above is only a one-time memory snapshot taken at session start; when the user asks about something specific (something you discussed before, a preference, a reminder, a file/code, a command, some current info) and the answer isn't actually in that context, don't make it up — delegate. Only answer directly for genuinely casual/conversational questions (how's the weather, how are you, etc.). CRITICAL: never say you 'did it', 'took care of it', or 'finished' unless you actually called delegate_to_main_model and got a real result back first. Claiming success without actually calling the tool is a lie — never do it.",

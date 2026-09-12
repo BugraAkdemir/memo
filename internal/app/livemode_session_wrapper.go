@@ -31,6 +31,13 @@ func (w *livePermissionRoutingSession) pump() {
 	for ev := range w.Session.Events() {
 		if ev.Type == livemode.EventTranscript && ev.Transcript != "" {
 			w.a.routeLiveTranscriptToPermissionAnswer(ev.Transcript)
+			// Mid-session memory refresh (PLAN_live_mode_v2.md Phase 11's
+			// deferred consumer) — only on the user's own speech, never the
+			// model's, and in its own goroutine so a slow retrieval never
+			// delays this pump from forwarding the next event.
+			if ev.Role == livemode.RoleUser {
+				go w.a.refreshLiveModeMemory(w.Session, ev.Transcript)
+			}
 		}
 		w.events <- ev
 	}

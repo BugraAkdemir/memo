@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -317,5 +318,63 @@ func TestStreamClientHeaderTimeoutIsGenerous(t *testing.T) {
 	}
 	if c.streamClient.Timeout != 0 {
 		t.Errorf("streamClient.Timeout = %v, want 0 (context-bounded)", c.streamClient.Timeout)
+	}
+}
+
+// TestExtractErrorMessage_UnwrapsOpenAIShape guards a real, live-reported
+// bug: every error path in this file used to dump the *entire raw response
+// body* into the returned error, so a context-overflow 400 from
+// llama-server showed up completely verbatim in a chat bubble and a
+// SnackBar — the exact body below, reported live — instead of the one
+// clean sentence buried inside it.
+func TestExtractErrorMessage_UnwrapsOpenAIShape(t *testing.T) {
+	body := []byte(`{"error":{"code":400,"message":"request (18147 tokens) exceeds the available context size (4096 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":18147,"n_ctx":4096}}`)
+	got := extractErrorMessage(body)
+	want := "request (18147 tokens) exceeds the available context size (4096 tokens), try increasing it"
+	if got != want {
+		t.Errorf("extractErrorMessage() = %q, want %q", got, want)
+	}
+}
+
+// TestExtractErrorMessage_FallsBackToRawBody covers the "not this shape"
+// case — a response that isn't the {"error":{"message":...}} JSON shape
+// must still surface as something (the raw body), not be silently dropped.
+func TestExtractErrorMessage_FallsBackToRawBody(t *testing.T) {
+	for _, body := range [][]byte{
+		[]byte("plain text error, not JSON at all"),
+		[]byte(`{"error":"a bare string error, not an object"}`),
+		[]byte(`{}`),
+		nil,
+	} {
+		if got := extractErrorMessage(body); got != string(body) {
+			t.Errorf("extractErrorMessage(%q) = %q, want the raw body unchanged", body, got)
+		}
+	}
+}
+
+// TestChatCompletionStream_ErrorSurfacesCleanMessage is the end-to-end
+// version of the two unit tests above: a real ChatCompletionStream call
+// against a server returning llama-server's exact context-overflow body
+// must produce an error containing the clean message, not the raw JSON
+// (checked by asserting a field name that only appears in the raw JSON,
+// "n_prompt_tokens", is nowhere in the error).
+func TestChatCompletionStream_ErrorSurfacesCleanMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"code":400,"message":"request (18147 tokens) exceeds the available context size (4096 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":18147,"n_ctx":4096}}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, 30)
+	_, err := c.ChatCompletionStream(context.Background(), []Message{NewTextMessage("user", "selam")}, 0.2, 0.9, 512)
+	if err == nil {
+		t.Fatal("expected an error from the 400 response")
+	}
+	if strings.Contains(err.Error(), "n_prompt_tokens") {
+		t.Errorf("error still contains the raw JSON body: %v", err)
+	}
+	if !strings.Contains(err.Error(), "exceeds the available context size") {
+		t.Errorf("error lost the actual message: %v", err)
 	}
 }

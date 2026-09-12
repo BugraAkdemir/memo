@@ -102,7 +102,7 @@ func (c *Client) ChatCompletion(ctx context.Context, messages []Message, tempera
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("api.ChatCompletion: status %d: %s", resp.StatusCode, string(b))
+		return nil, fmt.Errorf("api.ChatCompletion: status %d: %s", resp.StatusCode, extractErrorMessage(b))
 	}
 
 	var result ChatCompletionResponse
@@ -148,7 +148,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, messages []Message, t
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("api.Stream: status %d: %s", resp.StatusCode, string(b))
+		return nil, fmt.Errorf("api.Stream: status %d: %s", resp.StatusCode, extractErrorMessage(b))
 	}
 
 	ch := make(chan StreamChunk, 128)
@@ -183,7 +183,7 @@ func (c *Client) CreateEmbedding(ctx context.Context, model, text string) ([]flo
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("api.Embedding: status %d: %s", resp.StatusCode, string(b))
+		return nil, fmt.Errorf("api.Embedding: status %d: %s", resp.StatusCode, extractErrorMessage(b))
 	}
 
 	var result EmbeddingResponse
@@ -233,7 +233,7 @@ func (c *Client) TranscribeAudio(ctx context.Context, audioData []byte, filename
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("api.Transcribe: status %d: %s", resp.StatusCode, string(b))
+		return "", fmt.Errorf("api.Transcribe: status %d: %s", resp.StatusCode, extractErrorMessage(b))
 	}
 
 	var result TranscriptionResponse
@@ -265,4 +265,34 @@ func (c *Client) CheckConnection(ctx context.Context) ([]ModelInfo, error) {
 	}
 
 	return result.Data, nil
+}
+
+// extractErrorMessage unwraps an OpenAI-compatible {"error":{"message":"..."}}
+// body (llama-server, and every OpenAI-compatible endpoint, shape their error
+// responses this way) into just the human-readable message. Without this,
+// every error path in this file dumped the *entire raw response body*
+// straight into the error string — reported live: a context-overflow 400
+// from llama-server showed up verbatim in a chat bubble and a SnackBar as
+// `{"error":{"code":400,"message":"request (18147 tokens) exceeds the
+// available context size (4096 tokens), try increasing it","type":
+// "exceed_context_size_error","n_prompt_tokens":18147,"n_ctx":4096}}`
+// instead of the one clean sentence buried inside it. Falls back to the raw
+// body (as a string) when it isn't this shape, same as before — this only
+// ever makes the message shorter/cleaner, never hides a failure.
+//
+// Deliberately duplicated (not imported) from provider.ExtractErrorMessage
+// (internal/provider/provider.go) rather than importing that package here:
+// this client predates the provider abstraction and is intentionally
+// self-contained — the two are allowed to diverge, and the parsing logic is
+// small enough that keeping them in sync by hand is not a burden.
+func extractErrorMessage(body []byte) string {
+	var parsed struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &parsed); err == nil && parsed.Error.Message != "" {
+		return parsed.Error.Message
+	}
+	return string(body)
 }

@@ -14,16 +14,22 @@ import (
 
 // OpenURL opens u in the user's default browser.
 func OpenURL(u string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
+	return browserCommand(runtime.GOOS, u).Start()
+}
+
+// browserCommand builds (without starting) the platform-specific command
+// that opens u — split out from OpenURL so the per-OS branch selection is
+// testable without actually spawning a browser process for whichever OS
+// happens to be running go test.
+func browserCommand(goos, u string) *exec.Cmd {
+	switch goos {
 	case "windows":
 		// rundll32 rather than `start`: `start` is a cmd.exe builtin, not an
 		// executable, so it can't be exec'd directly.
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
 	case "darwin":
-		cmd = exec.Command("open", u)
+		return exec.Command("open", u)
 	default:
-		cmd = exec.Command("xdg-open", u)
+		return exec.Command("xdg-open", u)
 	}
-	return cmd.Start()
 }

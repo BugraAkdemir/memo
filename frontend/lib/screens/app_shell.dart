@@ -16,6 +16,7 @@ import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
 import '../providers/skill_provider.dart';
 import '../providers/tasklist_provider.dart';
+import '../providers/taskloop_settings_provider.dart';
 import '../providers/whatsapp_provider.dart';
 import '../providers/swarm_provider.dart';
 import '../providers/agent_provider.dart';
@@ -283,6 +284,10 @@ class _AppShellState extends ConsumerState<AppShell> {
         ref.invalidate(claudeCodeCLIConnectedProvider);
         ref.invalidate(googleAccountProvider);
         ref.invalidate(dreamSettingsProvider);
+        // Same shape, lowest risk of the three (autoDispose + only mounted
+        // while the Task Loop settings tab is actually open) — added for
+        // consistency with the rest of this list.
+        ref.invalidate(taskLoopSettingsProvider);
         // BUG-SCAN8: the per-chat Code Mode toggle's FutureProvider.family
         // is built by the always-mounted _AgentTopBar; a 401 during startup
         // stuck it at the "off" default. Invalidate every family instance.

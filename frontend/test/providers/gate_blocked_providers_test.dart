@@ -17,6 +17,7 @@ import 'package:memo_flutter/providers/settings_provider.dart';
 import 'package:memo_flutter/providers/skill_provider.dart';
 import 'package:memo_flutter/providers/swarm_provider.dart';
 import 'package:memo_flutter/providers/tasklist_provider.dart';
+import 'package:memo_flutter/providers/taskloop_settings_provider.dart';
 
 /// Answers every request with 401 and counts calls per path — a token-gated
 /// backend's exact behavior while the login/setup gate is still up.
@@ -132,6 +133,7 @@ void main() {
     // built by the always-mounted _AgentTopBar at cold start.
     final codeMode =
         await container.read(chatCodeModeProvider('chat-abc').future);
+    final taskLoopSettings = await container.read(taskLoopSettingsProvider.future);
 
     // Safe defaults, not errors.
     expect(llama.engineMode, 'auto');
@@ -154,6 +156,7 @@ void main() {
     expect(gpuInfo.ramTotalMb, 0);
     expect(codeMode.enabled, false);
     expect(codeMode.pinned, false);
+    expect(taskLoopSettings, isEmpty);
 
     // The one and only assertion that actually matters: zero requests ever
     // reached the (401-answering) backend, for any of them.

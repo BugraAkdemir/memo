@@ -25,6 +25,18 @@ static void my_application_activate(GApplication* application) {
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
+  // Request an alpha-capable visual so a window that explicitly asks for a
+  // translucent background (the separate mascot_main.dart target, via
+  // window_manager's setBackgroundColor) can actually render one on a
+  // compositing window manager. This main window never sets an alpha
+  // channel itself, so it stays exactly as opaque as before — the alpha
+  // channel just goes unused here.
+  GdkScreen* rgba_screen = gtk_window_get_screen(window);
+  GdkVisual* rgba_visual = gdk_screen_get_rgba_visual(rgba_screen);
+  if (rgba_visual != nullptr && gdk_screen_is_composited(rgba_screen)) {
+    gtk_widget_set_visual(GTK_WIDGET(window), rgba_visual);
+  }
+
   // Use a header bar when running in GNOME as this is the common style used
   // by applications and is the setup most users will be using (e.g. Ubuntu
   // desktop).
@@ -70,10 +82,22 @@ static void my_application_activate(GApplication* application) {
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;
-  // Light base so the Glass Light theme's BackdropFilter samples a light
-  // backdrop (a black clear colour made frosted surfaces render dark gray).
-  // Opaque dark theme paints over this fully, save a brief startup frame.
-  gdk_rgba_parse(&background_color, "#F2EDE6");
+  // MEMO_MASCOT_WINDOW is set only by the standalone mascot binary's own
+  // launcher (see mascot_window_launcher.dart) — everything below this
+  // check is unchanged for the main app. The mascot draws a transparent,
+  // frameless floating character, so its FlView background must actually
+  // be see-through (alpha 0), not the main app's opaque startup colour.
+  if (g_getenv("MEMO_MASCOT_WINDOW") != nullptr) {
+    gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
+    gdk_rgba_parse(&background_color, "#000000");
+    background_color.alpha = 0;
+  } else {
+    // Light base so the Glass Light theme's BackdropFilter samples a light
+    // backdrop (a black clear colour made frosted surfaces render dark
+    // gray). Opaque dark theme paints over this fully, save a brief
+    // startup frame.
+    gdk_rgba_parse(&background_color, "#F2EDE6");
+  }
   fl_view_set_background_color(view, &background_color);
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));

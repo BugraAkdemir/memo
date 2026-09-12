@@ -1,3 +1,34 @@
+# Ek (2026-09-12, devam 65 devamı) — Kalan 6 DÜŞÜK öncelikli madde
+
+Aşağıdaki "14/28 bulgu düzeltildi" girişinin devamı, aynı oturumda: kullanıcı
+"kalan DÜŞÜK öncelikli maddeleri de yap" dedi, 6 maddenin 5'i düzeltildi.
+
+| Madde | Commit | Özet |
+|---|---|---|
+| taskLoopSettingsProvider gate guard | `5c2ec770` | `authGateBlocked()` koruması + app_shell.dart merkezi invalidation listesine eklendi |
+| geminisub OAuth loopback sızıntısı | `8f726e4d` | `AwaitAuth`'un ctx.Done() dalı artık `shutdown(srv)` çağırıyor — terk edilmiş bir OAuth akışı artık sonsuza dek dinlemiyor |
+| Beta Features metni | `cc25eb3f` | "Gemini Aboneliği" de Beta'nın açtığı özellikler listesine eklendi (aynı toggle'la kilitli olmasına rağmen listede yoktu) |
+| Client unregister on quit | `f4c94197` | `TrayController.onWindowClose`/`_quit()` artık gerçek kapanışta `unregisterClient` çağırıyor (yeni `currentClientIdProvider`) — on-demand backend artık ~90s beklemeden kapanıyor |
+| Dev gateway token rotasyonu | `268c62a7` | `RotateDevGatewayToken()` + `POST /api/dev-gateway/token/rotate` + Developer ekranında onay dialoglu "Token'ı Yenile" butonu |
+
+**Telegram Y3-benzeri yarış — kasıtlı olarak düzeltilmedi:** kod okunarak
+doğrulandı ki `internal/app/telegram.go`'nun HER gerçek çağrı yolu (`initTelegram`,
+`connectTelegramLocked`) her bağlantıda **yepyeni bir `telegram.NewClient(...)`**
+oluşturuyor — `a.tgClient.Start()` hiçbir yerde ikinci kez çağrılmıyor, sadece
+`.Stop()` eski client'ta çağrılıyor. WhatsApp'ın Y3 hatası tam olarak "aynı
+instance'ı Stop()+Start() ile tekrar tekrar kullanma" senaryosundan doğuyordu;
+Telegram'da bu senaryo mevcut kod yollarıyla **yapısal olarak imkansız**. Bunu
+düzeltmek "henüz gerekmeyen bir mimari için tasarım" olurdu — AGENTS.md'nin
+"don't design for hypothetical future requirements" kuralına aykırı, o yüzden
+dokunulmadı. Eğer ileride `a.tgClient`'ı Stop()+Start() ile yeniden kullanan bir
+kod yolu eklenirse, WhatsApp'ın `startGen` kalıbı (`6727569d`) doğrudan uygulanabilir.
+
+**Sonuç: 28 bulgunun 19'u düzeltildi.** Geriye sadece **Y1 (TLS)** kaldı —
+kullanıcıyla ayrıca konuşulacak bir ürün kararı, plan başından beri kasıtlı
+olarak bekletiliyor.
+
+---
+
 # Ek (2026-09-12, devam 65) — Kararlılık denetimi: 28 bulgu, 14'ü düzeltildi
 
 Kullanıcı isteği: "uygulamayı nasıl daha stabil hale getirebiliriz" — tüm

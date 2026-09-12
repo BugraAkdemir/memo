@@ -1,3 +1,97 @@
+# Ek (2026-09-12, devam 65 — devamı 2) — aynı bağlam taşması bugı tekrarladı: 3 gerçek düzeltme + 1 açık soru
+
+Bir önceki girişteki (`2b47272a`) düzeltmeden sonra kullanıcı iki yeni ekran
+görüntüsü paylaştı: yeni bir "selam" sohbetinde AYNI hata sınıfı tekrar
+çıktı (bu sefer 18147 token), hem sohbet balonunda hem alttaki kırmızı
+toast'ta ham JSON görünür halde; başka bir "selam" sohbeti ise sorunsuz
+çalıştı. Kullanıcının orijinal mesajı iki ayrı, açık talep içeriyordu:
+"aynı hata var birde sikko sikko hata mesajları çıkmasın user görünce
+kaçar bunları amk. bu arada minimal mode açıkken hata almıyorum çıktı
+gelior ona göre" — (1) tekrarın kök nedenini bul, "minimal mode'da hata
+yok" ipucunu kullanarak, (2) kök neden ne olursa olsun ham/teknik hata
+metinleri son kullanıcıya asla gösterilmesin.
+
+## Kesin olarak düzeltilen 3 şey (hepsi commit'lendi, testli, `go test -race`
+## tüm paketler + `flutter test` 335/335 yeşil)
+
+**1. `5426baa1` — Agent pipeline'ın kendi context bütçesi yerel modeli
+tanımıyordu.** `resolveAgentProvider`/`resolveLocalLlamaRouter`'ın kurduğu
+`provider.ProviderConfig`'te `ContextTokens` hiç set edilmiyordu →
+`modelContextWindow` (`internal/agent/executor.go`) `ProviderLlamaCPP`'yi
+Claude/Gemini gibi tip-bazlı özel durumlardan biri olarak tanımadığından,
+en sona düşüp **128*1024** varsayılana geri dönüyordu — 4096 ctx'lik bir
+model için devasa bir bütçe. Artık her iki çağrı yolu da
+`a.llamaServer.CtxSize()`'ı geçiyor. Bu gerçek ve doğrulanmış bir bug, ama
+**bu spesifik "selam" hatasının kök nedeni DEĞİL** — o hata `api.Stream:`
+önekiyle geldi, yani agent pipeline'dan değil `internal/api.Client`'ın
+düz (agent-dışı) yolundan geçti.
+
+**2. `760866c9` — `internal/api.Client` hata gövdesini hiç ayrıştırmıyordu.**
+`ChatCompletion`/`ChatCompletionStream`/`CreateEmbedding`/`TranscribeAudio`'nun
+4 hata yolu da ham response body'yi (`string(b)`) doğrudan error string'ine
+gömüyordu — `internal/provider/openai.go`'nun zaten sahip olduğu
+`ExtractErrorMessage` deseninin bu client'ta hiç bir karşılığı yoktu. Yeni
+`extractErrorMessage` (kasıtlı olarak `provider` paketinden import değil,
+kopya — bu client provider soyutlamasından önce yazıldı ve kasıtlı olarak
+kendi kendine yeterli, geminisub AES helper emsaliyle aynı gerekçe) artık
+`{"error":{"message":"..."}}`'i tek cümleye indiriyor.
+
+**3. `0c3608eb` — Temizlenmiş mesaj bile teknikti.** Backend artık
+"request (N tokens) exceeds the available context size (M tokens), try
+increasing it" gibi TEK cümleyi döndürüyor olsa da, bu hâlâ bir kullanıcının
+elinde bir şey yapamayacağı teknik bir cümle. `friendly_error.dart`'taki
+`_classifyProviderMessage` genişletildi: "exceeds the available context
+size"/"exceed_context_size" artık yeni `friendly_error_context_overflow`
+l10n anahtarına (TR+EN) yönlendiriyor — kullanıcıya Ayarlar > Model
+Ayarları'ndan context boyutunu artırmasını ya da Hafıza'yı geçici kapatmasını
+öneren, gerçekte yapılabilecek 2 çözümü söyleyen bir metin.
+
+**Sonuç: kullanıcının 2. açık talebi ("sikko sikko hata mesajları
+çıkmasın") artık gerçekten kapalı** — hem backend hem frontend katmanında.
+
+## AÇIK KALAN SORU: tekrar neden hâlâ oluyor, kesin olarak bilmiyorum
+
+`2b47272a`'nın düzeltmesi (`memoryTokenBudget` + `historyBudget` tabanı)
+tam olarak bu "selam" isteğinin geçtiği `buildMessagesForSession` yolunda —
+yani teorik olarak bu ikinci tekrarı da önlemiş olması gerekirdi. İki
+olası açıklama var, ikisini de kesin ayırt edemedim:
+
+- **(a) Bayat backend ihtimali** — kullanıcı, run_memo.sh'nin port/build
+  düzeltmesini (`f03e0fae`) TAM OLARAK bu 2. bug raporundan HEMEN ÖNCE,
+  aynı oturumda istedi ("muhtemelen eski port açık kaldı" — kendi
+  ifadesi). Bu, `2b47272a`'nın henüz derlenip yeniden başlatılmamış eski
+  bir `memo` sürecinin hâlâ portu tutuyor olabileceğine dair doğrudan bir
+  işaret. `feedback_memo_stale_backend_debugging.md` (proje hafızası) tam
+  bu sınıf hatayı flag'liyor: "kod bug'ı varsaymadan önce `memo --kill` +
+  yeniden başlatmayı kontrol et". Eğer bu buysa, `2b47272a` zaten yeterliydi
+  ve kullanıcı sadece patch'lenmemiş bir binary'ye karşı test etti.
+- **(b) `truncate.EstimateTokens`'ın `len/3` tahmini gerçekten yetersiz
+  kalıyor olabilir** — Phi-3 gibi Türkçe desteği zayıf bir tokenizer,
+  Türkçe metni İngilizce'den çok daha fazla alt-parçaya bölebilir (gerçek
+  chars/token oranı 3'ten belirgin şekilde düşük). Ama 18147 gerçek token
+  vs. ~4096 bütçesi ~4.4x'lik bir fark — bu büyüklükte bir sapmayı SADECE
+  tokenizer kalibrasyon hatasıyla açıklamak zor, çünkü bütçeleme kodu
+  (systemPrompt+memory+history) tahminî toplamı zaten ~4096'nın epey altına
+  sıkıştırmaya çalışıyor. 4.4x'lik bir fark, bütçenin telefon ATLANDIĞINI
+  düşündürüyor — (a) ihtimalini daha olası kılıyor.
+
+**Gerçek backend log'una erişemedim** (`run_memo.sh` şu an stdout'u bir
+dosyaya yazmıyor, `data/` altında böyle bir log yok) — yoksa
+`buildMessagesForSession`'ın her turda yazdığı
+`CONTEXT: minimal=... budget=... system=... user=... hist_budget=...
+hist_used=...` satırı bu ikisini kesin ayırt ederdi (tahmini toplam
+gerçekten ~4096 altındaysa (a), zaten ~18000'e yakınsa (b) veya üçüncü bir
+şey).
+
+**Sıradaki oturum için:** kullanıcı hatayı tekrar görürse, backend'i
+`run_memo.sh` üzerinden (yeni build+kill mantığıyla) başlatıp terminaldeki
+`CONTEXT:` satırını iletmesini iste — bu tek satır kök nedeni kesinleştirir.
+O olmadan (b)'yi düzeltmeye çalışmak (ör. llama-server'ın gerçek
+`/tokenize` endpoint'ini her istekte çağırıp kesin sayım almak) spekülatif
+bir mühendislik olurdu; şu an yapılmadı.
+
+---
+
 # Ek (2026-09-12, devam 65 — release-öncesi test) — canlı bulunan bağlam taşması bugı
 
 Kullanıcı v4.4.0'ı release öncesi test ederken canlı bir hata bildirdi:

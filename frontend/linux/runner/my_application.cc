@@ -25,9 +25,20 @@ static void my_application_activate(GApplication* application) {
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
+  // MEMO_MASCOT_WINDOW is set only by the standalone mascot binary's own
+  // launcher (see mascot_window_launcher.dart) — every branch below keyed
+  // on it leaves the main app byte-for-byte unchanged when it's unset.
+  // Decided here, natively, before the window is ever shown: the runner's
+  // own first-frame hook (below) shows the window the moment Flutter
+  // renders anything, which can win the race against an async Dart-side
+  // window_manager call still awaiting its channel round-trip — sizing
+  // and decoration must already be correct at creation time, not applied
+  // a moment later, or the mascot flashes at the main app's 1280x720
+  // decorated default first.
+  gboolean is_mascot = g_getenv("MEMO_MASCOT_WINDOW") != nullptr;
+
   // Request an alpha-capable visual so a window that explicitly asks for a
-  // translucent background (the separate mascot_main.dart target, via
-  // window_manager's setBackgroundColor) can actually render one on a
+  // translucent background (the mascot) can actually render one on a
   // compositing window manager. This main window never sets an alpha
   // channel itself, so it stays exactly as opaque as before — the alpha
   // channel just goes unused here.
@@ -37,6 +48,12 @@ static void my_application_activate(GApplication* application) {
     gtk_widget_set_visual(GTK_WIDGET(window), rgba_visual);
   }
 
+  if (is_mascot) {
+    gtk_window_set_decorated(window, FALSE);
+    gtk_window_set_resizable(window, FALSE);
+    gtk_window_set_default_size(window, 170, 190);
+    gtk_window_set_skip_taskbar_hint(window, TRUE);
+  } else {
   // Use a header bar when running in GNOME as this is the common style used
   // by applications and is the setup most users will be using (e.g. Ubuntu
   // desktop).
@@ -75,6 +92,7 @@ static void my_application_activate(GApplication* application) {
   }
 
   gtk_window_set_default_size(window, 1280, 720);
+  }
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
@@ -82,12 +100,10 @@ static void my_application_activate(GApplication* application) {
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;
-  // MEMO_MASCOT_WINDOW is set only by the standalone mascot binary's own
-  // launcher (see mascot_window_launcher.dart) — everything below this
-  // check is unchanged for the main app. The mascot draws a transparent,
-  // frameless floating character, so its FlView background must actually
-  // be see-through (alpha 0), not the main app's opaque startup colour.
-  if (g_getenv("MEMO_MASCOT_WINDOW") != nullptr) {
+  // The mascot draws a transparent, frameless floating character, so its
+  // FlView background must actually be see-through (alpha 0), not the
+  // main app's opaque startup colour.
+  if (is_mascot) {
     gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
     gdk_rgba_parse(&background_color, "#000000");
     background_color.alpha = 0;

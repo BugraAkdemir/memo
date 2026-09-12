@@ -1,3 +1,67 @@
+# Ek (2026-09-12, devam 65) — Kararlılık denetimi: 28 bulgu, 14'ü düzeltildi
+
+Kullanıcı isteği: "uygulamayı nasıl daha stabil hale getirebiliriz" — tüm
+backend + frontend'in gerçek kod okunarak yapılmış bir denetimi (3 paralel
+Explore ajanı, `codebase-memory-mcp` grafiği üzerinden), sonra öncelik
+sıralı bir düzeltme planı. Plan ve 28 bulgunun tam listesi bu oturumun
+başındaki kullanıcı mesajında duruyor (kopyalanmadı — gerekirse konuşma
+geçmişinden bulunabilir). Kullanıcı "adım adım sırayla yap, durma" dedi;
+K1-O10 grubu (8 commit) onay istemeden yapıldı, kalan ORTA'lar için
+(O1/O3/O4/O5/O11/O12) ayrıca soruldu ve onay alındı.
+
+**Yöntem, her madde için:** kodu oku → doğrula → küçük, izole bir düzeltme
+yaz → önce-başarısız/sonra-geçen bir regresyon testi ekle (git stash ile
+pre-fix koda karşı testin gerçekten kırıldığını kanıtla) → `go build/vet/
+test -race` ya da `flutter analyze`+`flutter test`+Rule-8 grep → commit.
+Her commit AGENTS.md kural 6'ya göre onay istemeden atıldı (repo'nun kendi
+auto-commit kuralı).
+
+## Düzeltilen 14 madde (13 commit — K1+K2 aynı commit'te)
+
+| # | Commit | Özet |
+|---|---|---|
+| K1+K2 | `8a098218` | `/api/files/browse`+`/api/files/mentions` izinsizdi → `requirePermissionStrict(hasModelsPerm)`; `/v1/*` dev gateway loopback olmayan çağrılarda `Require API Key` kapalıyken bile artık zorunlu (`devGatewayRequireKey`) |
+| K3+O2 | `d807f797` | Agent pipeline'da eksik `tool_call_id` üretimi bir kopyaya yazılıyordu (assistant mesajına değil) — index-bazlı düzeltmeye taşındı; izin-timeout temizleme döngüsü artık zaten yanıtlanmış çağrıları "iptal edildi" diye yeniden etiketlemiyor |
+| Y2 | `7b4ca9ea` | `sendMessageStreamInnerTo`/görsel/dosya stream'lerinin senkron kurulum kısmında panik olursa chat kilidi artık kalıcı kilitli kalmıyor (`runLockedStreamSetup`) |
+| Y5 | `b9b34bc6` | `resolveAgentProvider`'ın lazy router-oluşturma dalı artık `HealthCheck` goroutine'i başlatıyor (geçici hatalar artık sağlayıcıyı kalıcı devre dışı bırakmıyor) |
+| Y3 | `6727569d` | WhatsApp `autoReconnect`'e nesil sayacı (`startGen`) eklendi — Stop()+Start() sırasında eski goroutine artık yeni oturumun `reconnecting`/`lastError` durumunu ezmiyor |
+| Y4 | `32af8ce6` | Plan-onay bottom sheet'i artık `approveTaskPlan` hatasını yutmuyor, sheet'i açık bırakıp hatayı gösteriyor (task_detail_screen.dart ile aynı davranış) |
+| O6+O7 | `7fcdc901` | geminisub token + cloudsync Drive token artık `fileutil.AtomicWrite`; `TriggerPullNow`/`TriggerFullSyncNow` artık `m.stopped` kontrolü yapıyor |
+| O8+O9+O10 | `d830991e` | `incognitoProvider`/`agentAutoPermissionProvider`/`claudeCodeCLIConnectedProvider`/`googleAccountProvider`/`dreamSettingsProvider` app_shell.dart'ın merkezi gate-invalidation listesine eklendi; nav rail'deki hardcoded 'Ajan'/'Takvim' → `L10n.t(...)` |
+| O1 | `bdf35a4b` | Orchestra düz-sohbet hata yolu artık `recordStreamError` kullanıyor (`finishStream` + boş içerik yerine) — reload/scroll-back'te artık boş asistan balonu yok |
+| O3 | `b2a199e5` | `goSearch` (vec0 yoksa) artık `goSearchMaxCandidateRows` (20000) ile sınırlı — sınırsız tam-tablo tarama bitti |
+| O4 | `34f3e5c4` | `SkipCurrent` artık planner/executor modunda sessizce duraklatmak yerine açık hata dönüyor |
+| O5 | `f388874b` | Paylaşılan `a.agentExecutor`'a `SyncRouter`+`RunStream` yerine `RunStreamWithRouter(ctx, router, ...)` — router artık her çağrıda açıkça geçiliyor, TOCTOU riski kapandı |
+| O11 | `f8e670af` | `task_detail_screen.dart`'ın onay hatası artık `FriendlyError.describeGeneric` kullanıyor (ham `$e` değil) |
+| O12 | `80eef0a5` | Task Loop granularity satırı `Row`'dan `Wrap`'a taşındı (`TaskLoopGranularityRow` olarak ayrı, test edilebilir widget'a çıkarıldı) |
+
+Her madde için yeni bir regresyon testi eklendi ve `git stash` ile pre-fix
+koda karşı gerçekten kırıldığı doğrulandı (fabrikasyon değil — AGENTS.md
+kural 9). Backend: `CGO_ENABLED=1 go build/vet/test -race ./...` her
+commit'ten önce yeşil. Frontend: `flutter analyze lib/` (sadece
+AGENTS.md'nin belgelediği 5 pre-existing info bulgusu), `flutter test`
+sonunda 332/332, Rule-8 l10n grep her dokunulan dosyada temiz.
+
+## Bilinçli olarak yapılmayanlar
+
+- **Y1 (TLS)** — kasıtlı olarak atlandı. Plan bunu "hızlı düzeltme değil,
+  ürün kararı" diye işaretledi (HTTPS'i gerçekten bağlamak mı, yoksa LAN
+  modunun şifrelenmediğini arayüzde açıkça yazmak mı) — kullanıcıyla ayrıca
+  konuşulmalı, henüz konuşulmadı.
+- **DÜŞÜK öncelikli maddeler** (client unregister, dev gateway token
+  rotasyonu, geminisub OAuth loopback sızıntısı, Telegram'daki Y3-benzeri
+  gizli yarış, Beta Features metni, `taskLoopSettingsProvider` gate koruması)
+  — kullanıcı onayı sadece "kalan ORTA'lar" için alındı, bunlara dokunulmadı.
+
+## Sıradaki / kullanıcıda
+
+1. Y1 (TLS) hakkında karar — kullanıcıyla konuşulacak.
+2. DÜŞÜK öncelikli maddeler — kullanıcı isterse ayrı ayrı ele alınabilir.
+3. `BUG_REPORT.md` bu 28 bulguyu (14 düzeltilen + 14 açık) henüz yansıtmıyor
+   — istenirse güncellenebilir (bu handoff girişi update'in kaynağı olabilir).
+
+---
+
 # Ek (2026-09-10, devam 64) — gemini-sub: Google aboneliğiyle Gemini (native OAuth + yerel endpoint)
 
 Kullanıcı isteği: kullanıcı **hiçbir CLI aracı olmadan** kendi Google

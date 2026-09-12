@@ -178,6 +178,20 @@ cd frontend && flutter analyze         # lint
 
 Ad-hoc API smoke tests: `dart run test_api_all.dart` (requires running backend).
 
+**Real E2E tests:** `go test ./internal/e2e/...` — boots an actual `app.App`
+behind an actual HTTP server on a real port (the same `NewApp -> Startup ->
+StartWebServerHTTP` sequence `main.go` uses), wired to `FakeProvider` (a
+scripted OpenAI-compatible fake, not a mock at the unit level) instead of a
+real LLM, and drives it with a real `net/http.Client` over the real REST
+API — real SSE streaming, real agent permission-request round trips, real
+Self-Driving task-loop state transitions. This is what closes the "unit
+tests use fakes everywhere, nothing proves the real wiring works" gap — see
+`internal/e2e/harness.go`'s package doc for the design (and why it doesn't
+assert on real LLM wording — script behavior, not text). Fast (whole suite
+well under 2s) since nothing here waits on a real model; add new scenarios
+here rather than reaching for a live backend + real API key to "just check
+it works."
+
 CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/PR.
 
 ### Release

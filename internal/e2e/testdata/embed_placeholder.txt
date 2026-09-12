@@ -1,0 +1,4 @@
+This E2E harness never installs a local llama.cpp/whisper binary (every
+test points the app at FakeProvider instead), so app.NewApp's required
+embed.FS just needs one real file to embed — go:embed rejects an empty
+directory. This file is that one file.

@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -9,8 +10,17 @@ import 'core/theme.dart';
 import 'core/tray_controller.dart';
 import 'providers/settings_provider.dart';
 import 'screens/app_shell.dart';
+import 'widgets/mascot_window.dart';
 
 void main() async {
+  // The tray's "Desktop mascot" toggle relaunches this exact binary with
+  // this variable set, rather than juggling a second compiled executable —
+  // see mascot_window.dart's doc comment for why. Checked before Flutter's
+  // own binding init since the mascot boots its own, separate app.
+  if (Platform.environment[mascotWindowEnvVar] == '1') {
+    return runMascotWindow();
+  }
+
   WidgetsFlutterBinding.ensureInitialized();
 
   // A ConsumerStatefulWidget's Element can go defunct (torn down mid-

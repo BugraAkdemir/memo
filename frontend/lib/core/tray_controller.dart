@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import 'dart:io' show Platform;
+import 'dart:async' show unawaited;
+import 'dart:io' show Platform, Process;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import 'package:window_manager/window_manager.dart';
 import '../providers/chat_provider.dart' show apiClientProvider, currentClientIdProvider;
 import '../providers/models_provider.dart';
 import '../providers/settings_provider.dart';
+import '../widgets/mascot_window.dart' show mascotWindowEnvVar;
 import 'l10n.dart';
 
 /// Whether the system tray / window-close-interception feature can run at
@@ -42,6 +44,7 @@ class TrayController extends ConsumerStatefulWidget {
 class _TrayControllerState extends ConsumerState<TrayController>
     with WindowListener, TrayListener {
   bool _trayReady = false;
+  Process? _mascotProcess;
 
   @override
   void initState() {
@@ -84,8 +87,40 @@ class _TrayControllerState extends ConsumerState<TrayController>
       MenuItem.separator(),
       MenuItem(label: modelLabel, disabled: true),
       MenuItem.separator(),
+      MenuItem(
+        label: _mascotProcess == null
+            ? L10n.t('tray_mascot_show')
+            : L10n.t('tray_mascot_hide'),
+        onClick: (_) => _toggleMascot(),
+      ),
+      MenuItem.separator(),
       MenuItem(label: L10n.t('tray_quit'), onClick: (_) => _quit()),
     ]));
+  }
+
+  /// Starts the standalone mascot as a child process — a second launch of
+  /// this exact binary with MEMO_MASCOT_WINDOW set, which main.dart reads to
+  /// boot the mascot UI instead of the chat app (see mascot_window.dart).
+  /// Not a window inside this app: closing/quitting Memo does not close it,
+  /// same as the CLI staying up independently of the Flutter app.
+  Future<void> _toggleMascot() async {
+    final existing = _mascotProcess;
+    if (existing != null) {
+      existing.kill();
+      return; // onExit below clears _mascotProcess and rebuilds the menu.
+    }
+    final process = await Process.start(
+      Platform.resolvedExecutable,
+      const [],
+      environment: {mascotWindowEnvVar: '1'},
+    );
+    setState(() => _mascotProcess = process);
+    await _rebuildMenu();
+    unawaited(process.exitCode.then((_) {
+      if (!mounted) return;
+      setState(() => _mascotProcess = null);
+      _rebuildMenu();
+    }));
   }
 
   String _fileName(String path) {

@@ -1,3 +1,32 @@
+# Ek (2026-09-12, devam 65 sonu) — Y1 (TLS) kararı + uygulaması
+
+Aynı oturumun kapanışı. Kullanıcıyla Y1 (LAN modunun şifrelenmemiş olması)
+konuşuldu — iki seçenek sunuldu:
+- **A) Gerçek TLS** — sunucu tarafı küçük (var olan `generateSelfSignedCert`'i
+  bağlamak), ama asıl iş Flutter tarafında: Dio self-signed sertifikayı
+  varsayılan olarak reddeder, yani sertifika kalıcılığı + istemci güven/pinning
+  akışı gerekir — gerçek bir özellik, tek satırlık iş değil.
+- **B) Uyar + var olan tünelleri öne çıkar** — ngrok/Tailscale zaten var,
+  ikisi de kendi şifreli tünelini sağlıyor.
+
+Kullanıcı **B**'yi seçti. `114df9a5`: `RemoteAccessStatus.TransportWarning`
+(remote.go) — `Enabled` iken **her zaman** true (AuthMode/NgrokMode'dan
+bağımsız, çünkü `SetRemoteAccess` etkinken sunucuyu her zaman `0.0.0.0`'a
+düz HTTP olarak bağlıyor — tünel sadece kendi taşıdığı bacağı şifreliyor, LAN
+segmentini değil). Remote Access sekmesinde ikinci bir uyarı banner'ı (var
+olan "AUTH KAPALI" banner'ıyla aynı stil, `_warningBanner` helper'ına
+çıkarıldı), TR+EN metin ngrok/Tailscale'in ne şifrelediğini/şifrelemediğini
+açıkça anlatıyor. Test: `TestGetRemoteAccessStatus_TransportWarning`
+(pre-fix koda karşı derleme hatası verdiği doğrulandı). Widget testi yok —
+kardeşi olan AuthWarning banner'ının da hiç testi yok, aynı emsal izlendi.
+
+**Sonuç: stabilite denetiminin 28 bulgusunun tamamı ele alındı** — 20'si
+düzeltildi, 1'i (Telegram Y3-benzeri) kod okunarak "şu an tetiklenmesi
+imkansız" diye doğrulanıp bilinçli olarak atlandı, Y1 kullanıcıyla konuşulup
+karara bağlandı ve uygulandı. Denetim kapandı.
+
+---
+
 # Ek (2026-09-12, devam 65 devamı) — Kalan 6 DÜŞÜK öncelikli madde
 
 Aşağıdaki "14/28 bulgu düzeltildi" girişinin devamı, aynı oturumda: kullanıcı

@@ -28,6 +28,17 @@ type RemoteAccessStatus struct {
 	// GetRemoteAccessStatus for why this is computed once here rather than
 	// left to every caller to re-derive.
 	AuthWarning string `json:"auth_warning,omitempty"`
+	// TransportWarning is non-empty exactly when remote access is enabled —
+	// see GetRemoteAccessStatus's assignment. SetRemoteAccess always binds
+	// the web server to 0.0.0.0 whenever Enabled (never behind TLS: no
+	// caller of internal/webserver's StartHTTPWithAddr ever sets a
+	// TLSConfig), so passwords, device tokens, and every request/response
+	// body cross the LAN in plain HTTP regardless of AuthMode or whether
+	// ngrok/Tailscale is also configured — a tunnel only encrypts the leg
+	// between the tunnel provider and a remote client, not the LAN segment
+	// itself, so this is a distinct, independent warning from AuthWarning
+	// above (a strong password doesn't stop LAN packet sniffing).
+	TransportWarning string `json:"transport_warning,omitempty"`
 	NgrokMode   bool   `json:"ngrok_mode"`
 	NgrokToken  string `json:"ngrok_token"`
 	NgrokURL    string `json:"ngrok_url"`
@@ -102,6 +113,12 @@ func (a *App) GetRemoteAccessStatus() interface{} {
 		// each one having to duplicate "AuthMode == none" as its own
 		// trigger condition.
 		status.AuthWarning = "AUTH DISABLED — this server accepts requests from this network/tunnel with no credential at all."
+	}
+	if status.Enabled {
+		// See TransportWarning's doc comment — this is unconditional on
+		// Enabled (not gated on tunnel mode), since the underlying LAN bind
+		// is plain HTTP either way.
+		status.TransportWarning = "UNENCRYPTED — this connection is plain HTTP, not HTTPS."
 	}
 	return status
 }

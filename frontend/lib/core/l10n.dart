@@ -877,6 +877,8 @@ class L10n {
     'remote_auth_section_title': 'Kimlik Doğrulama',
     'remote_auth_warning_banner':
         'AUTH KAPALI — bu sunucu, ağda/tünelde hiçbir kimlik bilgisi istemeden herkesin erişimine açık.',
+    'remote_transport_warning_banner':
+        'ŞİFRELENMEMİŞ BAĞLANTI — bu düz HTTP; aynı ağdaki başka bir cihaz parolanı/token\'ını görebilir. ngrok veya Tailscale kullanmak evden uzaktayken bu bağlantıyı şifreler, ama yerel ağın içindeki bu risk her zaman geçerlidir.',
     'remote_auth_mode_none': 'Kapalı',
     'remote_auth_mode_token': 'Token',
     'remote_auth_mode_password': 'Şifre',
@@ -2983,6 +2985,8 @@ class L10n {
     'remote_auth_section_title': 'Authentication',
     'remote_auth_warning_banner':
         'AUTH DISABLED — this server accepts requests from this network/tunnel with no credential at all.',
+    'remote_transport_warning_banner':
+        'UNENCRYPTED CONNECTION — this is plain HTTP; another device on the same network can see your password/token. Using ngrok or Tailscale encrypts this connection while you\'re away from home, but this risk on your local network always applies.',
     'remote_auth_mode_none': 'Off',
     'remote_auth_mode_token': 'Token',
     'remote_auth_mode_password': 'Password',

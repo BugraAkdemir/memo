@@ -414,6 +414,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     final savedNgrokToken = data['ngrok_token'] as String? ?? '';
     final ngrokAutoStart = data['ngrok_auto_start'] as bool? ?? false;
     final authWarning = data['auth_warning'] as String? ?? '';
+    final transportWarning = data['transport_warning'] as String? ?? '';
     if (_ngrokTokenCtrl.text.isEmpty && savedNgrokToken.isNotEmpty) {
       _ngrokTokenCtrl.text = savedNgrokToken;
     }
@@ -487,35 +488,19 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
         ],
 
         if (authWarning.isNotEmpty) ...[
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: MemoTheme.warningOrange.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: MemoTheme.warningOrange),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.warning_amber_rounded,
-                  color: MemoTheme.warningOrange,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    L10n.t('remote_auth_warning_banner'),
-                    style: const TextStyle(
-                      color: MemoTheme.warningOrange,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          _warningBanner(L10n.t('remote_auth_warning_banner')),
+          const SizedBox(height: 20),
+        ],
+
+        // Y1 (kararlılık denetimi): SetRemoteAccess always binds the web
+        // server to 0.0.0.0 whenever remote access is enabled, and nothing
+        // ever wires up TLS — plain HTTP regardless of AuthMode or whether
+        // ngrok/Tailscale is also configured (a tunnel only encrypts the
+        // leg it carries, not the LAN segment itself). Independent of the
+        // auth-disabled warning above: a strong password doesn't stop LAN
+        // packet sniffing.
+        if (transportWarning.isNotEmpty) ...[
+          _warningBanner(L10n.t('remote_transport_warning_banner')),
           const SizedBox(height: 20),
         ],
 
@@ -829,6 +814,40 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
               label: Text(L10n.t('apply')),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shared styling for the auth-disabled and unencrypted-transport
+  /// warnings above — same orange banner, only the text differs.
+  Widget _warningBanner(String text) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: MemoTheme.warningOrange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: MemoTheme.warningOrange),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: MemoTheme.warningOrange,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: MemoTheme.warningOrange,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),

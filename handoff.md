@@ -1,3 +1,41 @@
+# Ek (2026-09-12, devam 65 — release-öncesi test) — canlı bulunan bağlam taşması bugı
+
+Kullanıcı v4.4.0'ı release öncesi test ederken canlı bir hata bildirdi:
+Phi-3-mini-4k-instruct (4096 ctx) ile yeni bir sohbette "merhaba naber" (2
+kelime) gönderince `all providers failed: [llama.cpp] status 400: request
+(18095 tokens) exceeds the available context size (4096 tokens)`.
+
+**Kök neden** (`2b47272a`): `internal/identity/identity.go`'daki
+`MaxMemoryContextTokens = 4096` sabiti — hafıza bloğunun prompt'ta ne kadar
+yer kaplayabileceğinin tavanı — modelin GERÇEK context boyutundan tamamen
+habersiz, büyük context'li modeller için ayarlanmış global bir sabitti.
+Phi-3-mini-4k gibi küçük context'li yerel bir modelde, hafıza bloğu TEK
+BAŞINA modelin TÜM penceresini tüketebiliyordu — persona/geçmiş/kullanıcı
+mesajı için hiç yer bırakmadan. `buildMessagesForSession` yerel model için
+gerçek `tokenBudget`'ı zaten hesaplıyordu (geçmiş sohbet boyutlandırması
+için) ama bunu hiç `BuildSystemPrompt`'un hafıza formatlamasına geçirmiyordu.
+
+**Düzeltme:** `BuildSystemPrompt`'a opsiyonel (variadic, 26 mevcut çağrı
+noktası değişmeden derleniyor) bir `memoryTokenBudget` parametresi eklendi.
+`buildMessagesForSession` artık yerel llama.cpp çalışırken gerçek
+`tokenBudget`'ın 2/5'ini (4096 varsayılanla sınırlı, 256 taban) hesaplayıp
+geçiyor. Aynı fonksiyonda ikinci, birleşen bir bug daha bulundu: geçmiş
+sohbet bütçesi tabanı, sistem promptu bütçeyi ZATEN aşmışken bile
+koşulsuz 512'ye yükseltiyordu — düzeltme taban değerini 1 yaptı (0 değil —
+`truncate.TruncateMessages` 0/negatif'i "sınırsız" olarak yorumluyor,
+0 yapmak orijinal bug'dan daha kötü bir regresyon olurdu, bunu testle
+doğrulayarak yakaladım).
+
+Yeni testler: `TestBuildSystemPrompt_MemoryTokenBudgetOverridesDefault`,
+`TestBuildSystemPrompt_ZeroOrNegativeMemoryBudgetFallsBackToDefault`,
+`TestBuildMessagesForSession_HistoryBudgetFloorTightensWhenAlreadyOverBudget`
+— hepsi pre-fix koda karşı doğrulandı. `go build/vet/test -race` tüm paket
+yeşil.
+
+Kullanıcı hâlâ test ediyor — release henüz yapılmadı.
+
+---
+
 # Ek (2026-09-12, devam 65 sonu) — Y1 (TLS) kararı + uygulaması
 
 Aynı oturumun kapanışı. Kullanıcıyla Y1 (LAN modunun şifrelenmemiş olması)

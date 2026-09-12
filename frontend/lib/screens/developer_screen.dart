@@ -792,6 +792,51 @@ class _SettingsPanelState extends ConsumerState<_SettingsPanel> {
     }
   }
 
+  void _confirmRotateToken() {
+    final theme = MemoTheme.of(context);
+    showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.bgPanel,
+        title: Text(L10n.t('dev_gateway_rotate_token_confirm_title'),
+            style: TextStyle(color: theme.textMain, fontSize: 16)),
+        content: Text(
+          L10n.t('dev_gateway_rotate_token_confirm_desc'),
+          style: TextStyle(color: theme.textDim, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(L10n.t('cancel'), style: TextStyle(color: theme.textDim)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _rotateToken();
+            },
+            child: Text(L10n.t('dev_gateway_rotate_token_button'),
+                style: const TextStyle(color: MemoTheme.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _rotateToken() async {
+    setState(() => _saving = true);
+    try {
+      await ref.read(devGatewayConfigProvider.notifier).rotateToken();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('dev_gateway_save_error', {'e': FriendlyError.describeGeneric(e)}))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = MemoTheme.of(context);
@@ -841,6 +886,15 @@ class _SettingsPanelState extends ConsumerState<_SettingsPanel> {
             sectionLabel(context, L10n.t('dev_gateway_token_label')),
             const SizedBox(height: 6),
             copyableValueBox(context, config.token, monospace: true, borderColor: MemoTheme.accent),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _saving ? null : _confirmRotateToken,
+                icon: const Icon(Icons.refresh, size: 16),
+                label: Text(L10n.t('dev_gateway_rotate_token_button')),
+              ),
+            ),
           ],
           const SizedBox(height: 12),
           Divider(height: 1, color: theme.borderSoft),

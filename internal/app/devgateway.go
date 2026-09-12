@@ -63,6 +63,23 @@ func (a *App) GetDevGatewayToken() string {
 	return token
 }
 
+// RotateDevGatewayToken generates a fresh dev-gateway API key, persists it,
+// and returns it — the old token stops working immediately (devGatewayAuthOK
+// compares against whatever config.DevGatewayConfig.Token currently holds).
+// Before this, a leaked/logged token had no way to be invalidated short of
+// hand-editing config.yaml (LOW priority audit finding): GetDevGatewayToken
+// only ever generates one the first time it's empty, never regenerates an
+// existing one.
+func (a *App) RotateDevGatewayToken() string {
+	a.cfgMu.Lock()
+	a.cfg.DevGateway.Token = remoteauth.GenerateDeviceToken()
+	token := a.cfg.DevGateway.Token
+	cfg := a.cfg
+	a.cfgMu.Unlock()
+	config.Save(cfg)
+	return token
+}
+
 // ListGatewayModels enumerates every model currently reachable through the
 // dev gateway: the local model (if a llama.cpp server is running) plus every
 // enabled external provider, each labeled "type/model-id".

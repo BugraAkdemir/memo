@@ -52,6 +52,17 @@ func (s *Server) handleDevGatewayConfig(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// handleDevGatewayRotateToken generates a fresh dev-gateway API key,
+// invalidating the previous one immediately, and returns it — the
+// Developer screen's "Regenerate token" button.
+func (s *Server) handleDevGatewayRotateToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, map[string]any{"token": s.fullBridge.RotateDevGatewayToken()})
+}
+
 // handleDevGatewayModels lists every "type/model-id" the dev gateway can
 // currently route to, for the Settings tab's copyable model list.
 func (s *Server) handleDevGatewayModels(w http.ResponseWriter, r *http.Request) {

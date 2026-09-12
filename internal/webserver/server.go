@@ -429,6 +429,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// exactly so pointing a client's ANTHROPIC_BASE_URL/OPENAI_BASE_URL at
 	// Memo works unmodified.
 	route("/api/dev-gateway/config", s.handleDevGatewayConfig)
+	route("/api/dev-gateway/token/rotate", s.handleDevGatewayRotateToken)
 	route("/api/dev-gateway/models", s.handleDevGatewayModels)
 	route("/api/dev-gateway/logs", s.handleDevGatewayLogs)
 	route("/api/dev-gateway/claude-code-cli", s.handleClaudeCodeCLIConnection)

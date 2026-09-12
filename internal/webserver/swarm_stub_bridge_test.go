@@ -398,6 +398,7 @@ func (b *swarmStubBridge) SetDevGatewayConfig(requireAPIKey, useMemory bool, sys
 	return nil
 }
 func (b *swarmStubBridge) GetDevGatewayToken() string               { return "" }
+func (b *swarmStubBridge) RotateDevGatewayToken() string            { return "" }
 func (b *swarmStubBridge) ListGatewayModels() []models.GatewayModel { return nil }
 func (b *swarmStubBridge) DevGatewayChatStream(ctx context.Context, modelSpec string, req provider.ChatRequest) (<-chan provider.StreamChunk, string, error) {
 	ch := make(chan provider.StreamChunk)

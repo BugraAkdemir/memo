@@ -446,6 +446,10 @@ class L10n {
     'dev_gateway_require_key_desc':
         'Açıksa istekler bu token\'ı x-api-key veya Authorization: Bearer olarak taşımalı. Kapalıysa herkes bu adrese erişebilen (ör. aynı makinedeki başka bir program) modeli kullanabilir.',
     'dev_gateway_token_label': 'Token',
+    'dev_gateway_rotate_token_button': 'Token\'ı Yenile',
+    'dev_gateway_rotate_token_confirm_title': 'Token yenilensin mi?',
+    'dev_gateway_rotate_token_confirm_desc':
+        'Eski token anında geçersiz olur — bu token\'ı kullanan tüm harici araçları (IDE, script, vb.) yeni token ile güncellemen gerekir.',
     'dev_gateway_use_memory_label': 'Hafızayı Kullan',
     'dev_gateway_use_memory_desc':
         'Açıksa bu ağ geçidi üzerinden gelen isteklerde Memo\'nun hafızasındaki bilgiler kullanılır ve sohbet hafızaya kaydedilir — ama sohbet geçmişinde görünmez. Kapalıysa (varsayılan) istekler tamamen ayrı tutulur.',
@@ -2552,6 +2556,10 @@ class L10n {
     'dev_gateway_require_key_desc':
         'When on, requests must carry this token as x-api-key or Authorization: Bearer. When off, anything that can reach this address (e.g. another program on the same machine) can use the model.',
     'dev_gateway_token_label': 'Token',
+    'dev_gateway_rotate_token_button': 'Regenerate Token',
+    'dev_gateway_rotate_token_confirm_title': 'Regenerate token?',
+    'dev_gateway_rotate_token_confirm_desc':
+        'The old token stops working immediately — any external tool (IDE, script, etc.) using it will need updating with the new one.',
     'dev_gateway_use_memory_label': 'Use Memory',
     'dev_gateway_use_memory_desc':
         'When on, requests through this gateway draw on Memo\'s memory and get saved to it — but never show up in chat history. When off (default), gateway traffic stays completely separate.',

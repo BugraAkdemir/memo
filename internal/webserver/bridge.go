@@ -228,6 +228,7 @@ type FullBridge interface {
 	GetDevGatewayConfig() (requireAPIKey, useMemory bool, systemPrompt string)
 	SetDevGatewayConfig(requireAPIKey, useMemory bool, systemPrompt string) error
 	GetDevGatewayToken() string
+	RotateDevGatewayToken() string
 	ListGatewayModels() []models.GatewayModel
 	DevGatewayChatStream(ctx context.Context, modelSpec string, req provider.ChatRequest) (<-chan provider.StreamChunk, string, error)
 	DevGatewayChat(ctx context.Context, modelSpec string, req provider.ChatRequest) (*provider.ChatResponse, string, error)

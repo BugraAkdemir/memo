@@ -949,6 +949,13 @@ class MemoApiClient {
     );
   }
 
+  /// Generates a fresh dev-gateway API key, invalidating the previous one
+  /// immediately, and returns it.
+  Future<String> rotateDevGatewayToken() async {
+    final res = await _dio.post('/api/dev-gateway/token/rotate');
+    return _guard<Map<String, dynamic>>(res.data)['token'] as String? ?? '';
+  }
+
   Future<ClaudeCodeCLIState> getClaudeCodeCLIState() async {
     final res = await _dio.get('/api/dev-gateway/claude-code-cli');
     final data = _guard<Map<String, dynamic>>(res.data);

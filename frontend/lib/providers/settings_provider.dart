@@ -461,6 +461,15 @@ class DevGatewayConfigNotifier extends AsyncNotifier<DevGatewayConfig> {
       () => ref.read(apiClientProvider).getDevGatewayConfig(),
     );
   }
+
+  /// Generates a fresh dev-gateway token, invalidating the previous one —
+  /// until now the only way to do this was hand-editing config.yaml.
+  Future<void> rotateToken() async {
+    await ref.read(apiClientProvider).rotateDevGatewayToken();
+    state = await AsyncValue.guard(
+      () => ref.read(apiClientProvider).getDevGatewayConfig(),
+    );
+  }
 }
 
 final claudeCodeCLIConnectedProvider =

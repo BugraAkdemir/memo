@@ -110,6 +110,47 @@ func TestGetSetDevGatewayConfig(t *testing.T) {
 	}
 }
 
+// TestRotateDevGatewayToken_InvalidatesThePrevious guards a LOW-priority
+// audit finding: GetDevGatewayToken only ever generates a token the first
+// time it's empty and never regenerates an existing one, so a leaked/logged
+// token had no way to be invalidated short of hand-editing config.yaml.
+// RotateDevGatewayToken must replace the stored token with a fresh,
+// different one and persist it.
+func TestRotateDevGatewayToken_InvalidatesThePrevious(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load() error = %v", err)
+	}
+	a := &App{cfg: cfg}
+
+	original := a.GetDevGatewayToken()
+	if original == "" {
+		t.Fatal("GetDevGatewayToken() returned empty on first call")
+	}
+
+	rotated := a.RotateDevGatewayToken()
+	if rotated == "" {
+		t.Fatal("RotateDevGatewayToken() returned empty")
+	}
+	if rotated == original {
+		t.Fatalf("RotateDevGatewayToken() returned the same token (%q) — old token never invalidated", rotated)
+	}
+	if got := a.GetDevGatewayToken(); got != rotated {
+		t.Errorf("GetDevGatewayToken() after rotation = %q, want the rotated token %q", got, rotated)
+	}
+
+	// Persisted, not just in-memory: reloading from the same path must see
+	// the rotated token, not the original.
+	reloaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("reload config.Load() error = %v", err)
+	}
+	if reloaded.DevGateway.Token != rotated {
+		t.Errorf("reloaded token = %q, want the rotated token %q (not persisted)", reloaded.DevGateway.Token, rotated)
+	}
+}
+
 func TestMaybeSaveGatewayMemory_RespectsToggle(t *testing.T) {
 	a := &App{cfg: &config.AppConfig{}}
 	// UseMemory defaults to false — must be a no-op (and, crucially, must not

@@ -70,6 +70,7 @@ func TestHandlers_NoFullBridge(t *testing.T) {
 		{"LearningSettings", http.MethodGet, "/api/learning/settings", s.handleLearningSettings, http.StatusNotImplemented},
 		{"DevGatewayConfig", http.MethodGet, "/api/dev-gateway/config", s.handleDevGatewayConfig, http.StatusServiceUnavailable},
 		{"DevGatewayModels", http.MethodGet, "/api/dev-gateway/models", s.handleDevGatewayModels, http.StatusMethodNotAllowed},
+		{"DevGatewayRotateToken", http.MethodPost, "/api/dev-gateway/token/rotate", s.handleDevGatewayRotateToken, http.StatusMethodNotAllowed},
 		{"AnthropicMessages", http.MethodPost, "/v1/messages", s.handleAnthropicMessages, http.StatusServiceUnavailable},
 		{"DevGatewayLogs", http.MethodGet, "/api/dev-gateway/logs", s.handleDevGatewayLogs, http.StatusMethodNotAllowed},
 		{"FileBrowse", http.MethodGet, "/api/files/browse", s.handleFileBrowse, http.StatusNotImplemented},

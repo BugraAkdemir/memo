@@ -78,7 +78,17 @@ class LearningTab extends ConsumerWidget {
             child: CircularProgressIndicator(),
           )),
           error: (e, _) => Center(
-            child: Text(L10n.t('learning_patterns_load_error', {'e': FriendlyError.describeGeneric(e)}), style: TextStyle(color: theme.textDim)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(L10n.t('learning_patterns_load_error', {'e': FriendlyError.describeGeneric(e)}), style: TextStyle(color: theme.textDim)),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => ref.invalidate(learningPatternsProvider),
+                  child: Text(L10n.t('retry')),
+                ),
+              ],
+            ),
           ),
           data: (patterns) {
             if (patterns.isEmpty) {

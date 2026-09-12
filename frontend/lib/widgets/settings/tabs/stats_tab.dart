@@ -86,9 +86,19 @@ class _StatsTabState extends ConsumerState<StatsTab> {
           ),
           error: (e, _) => Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
-            child: Text(
-              L10n.t('stats_load_error', {'e': FriendlyError.describeGeneric(e)}),
-              style: TextStyle(color: MemoTheme.red),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  L10n.t('stats_load_error', {'e': FriendlyError.describeGeneric(e)}),
+                  style: TextStyle(color: MemoTheme.red),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => ref.invalidate(usageStatsProvider),
+                  child: Text(L10n.t('retry')),
+                ),
+              ],
             ),
           ),
           data: (stats) {

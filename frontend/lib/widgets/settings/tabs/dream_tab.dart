@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
 import '../../../core/friendly_error.dart';
+import '../../error_retry.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../models/dream.dart';
@@ -108,8 +109,9 @@ class _DreamTabState extends ConsumerState<DreamTab> {
         const SizedBox(height: 20),
         settingsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text(
-            '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
+          error: (e, _) => ErrorRetryLine(
+            error: e,
+            onRetry: () => ref.invalidate(dreamSettingsProvider),
           ),
           data: (settings) {
             if (!_settingsInitialized) {

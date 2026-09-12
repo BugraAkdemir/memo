@@ -117,9 +117,19 @@ class _LiveModeTabState extends ConsumerState<LiveModeTab> {
       error: (err, _) => Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
-          child: Text(
-            L10n.t('remote_load_failed', {'err': FriendlyError.describeGeneric(err)}),
-            style: TextStyle(color: MemoTheme.red),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                L10n.t('remote_load_failed', {'err': FriendlyError.describeGeneric(err)}),
+                style: TextStyle(color: MemoTheme.red),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => ref.invalidate(liveModeConfigProvider),
+                child: Text(L10n.t('retry')),
+              ),
+            ],
           ),
         ),
       ),

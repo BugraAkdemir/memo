@@ -10,6 +10,7 @@ import '../../../providers/models_provider.dart';
 import '../../../models/browser_install_progress.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../core/friendly_error.dart';
+import '../../error_retry.dart';
 
 class GeneralTab extends ConsumerWidget {
   const GeneralTab({super.key});
@@ -262,7 +263,10 @@ class GeneralTab extends ConsumerWidget {
               height: 24,
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
-            error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
+            error: (e, _) => ErrorRetryLine(
+              error: e,
+              onRetry: () => ref.invalidate(memoryEnabledProvider),
+            ),
             data: (enabled) => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -358,7 +362,10 @@ class GeneralTab extends ConsumerWidget {
               height: 24,
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
-            error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
+            error: (e, _) => ErrorRetryLine(
+              error: e,
+              onRetry: () => ref.invalidate(whisperEnabledProvider),
+            ),
             data: (enabled) => Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -431,7 +438,10 @@ class GeneralTab extends ConsumerWidget {
               height: 24,
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
-            error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
+            error: (e, _) => ErrorRetryLine(
+              error: e,
+              onRetry: () => ref.invalidate(minimalModeProvider),
+            ),
             data: (enabled) => Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -617,7 +627,10 @@ class _MinimalModeOverridesDropdown extends ConsumerWidget {
         ),
         error: (e, _) => Padding(
           padding: EdgeInsets.all(16),
-          child: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
+          child: ErrorRetryLine(
+            error: e,
+            onRetry: () => ref.invalidate(minimalModeOverridesProvider),
+          ),
         ),
         data: (overrides) => Theme(
           // ExpansionTile's default divider clashes with this panel's own

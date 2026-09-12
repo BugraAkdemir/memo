@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
 import '../../../providers/settings_provider.dart';
-import '../../../core/friendly_error.dart';
+import '../../error_retry.dart';
 
 class IncognitoPromptTab extends ConsumerStatefulWidget {
   const IncognitoPromptTab({super.key});
@@ -46,7 +46,10 @@ class IncognitoPromptTabState extends ConsumerState<IncognitoPromptTab> {
 
         asyncPrompt.when(
           loading: () => Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
+          error: (e, _) => ErrorRetryLine(
+            error: e,
+            onRetry: () => ref.invalidate(incognitoPromptProvider),
+          ),
           data: (prompt) {
             // Always update controller text; _initialized prevents overwriting user edits on rebuild
             if (!_initialized || _controller.text.isEmpty) {

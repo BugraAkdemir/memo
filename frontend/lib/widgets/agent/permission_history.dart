@@ -109,8 +109,19 @@ class PermissionHistory extends ConsumerWidget {
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, st) =>
-                Center(child: Text(L10n.t('engine_error', {'e': FriendlyError.describeGeneric(e)}))),
+            error: (e, st) => Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(L10n.t('engine_error', {'e': FriendlyError.describeGeneric(e)})),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => ref.invalidate(agentPermissionsProvider),
+                    child: Text(L10n.t('retry')),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ],

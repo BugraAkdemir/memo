@@ -8,6 +8,7 @@ import '../../../providers/taskloop_settings_provider.dart';
 import '../../../providers/chat_provider.dart'
     show apiClientProvider, errorMessageProvider;
 import '../../../core/friendly_error.dart';
+import '../../error_retry.dart';
 
 class TaskLoopTab extends ConsumerStatefulWidget {
   const TaskLoopTab({super.key});
@@ -131,9 +132,9 @@ class _TaskLoopTabState extends ConsumerState<TaskLoopTab> {
                     ],
                   ),
                   loading: () => const LinearProgressIndicator(),
-                  error: (e, _) => Text(
-                    '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
-                    style: const TextStyle(fontSize: 12, color: MemoTheme.red),
+                  error: (e, _) => ErrorRetryLine(
+                    error: e,
+                    onRetry: () => ref.invalidate(providerListProvider),
                   ),
                 ),
                 const SizedBox(height: 8),

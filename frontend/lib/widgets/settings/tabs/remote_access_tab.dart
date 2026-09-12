@@ -392,9 +392,19 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (err, _) => Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Text(
-              L10n.t('remote_load_failed', {'err': FriendlyError.describeGeneric(err)}),
-              style: TextStyle(color: MemoTheme.red),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  L10n.t('remote_load_failed', {'err': FriendlyError.describeGeneric(err)}),
+                  style: TextStyle(color: MemoTheme.red),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => ref.invalidate(remoteAccessProvider),
+                  child: Text(L10n.t('retry')),
+                ),
+              ],
             ),
           ),
           data: (data) => _buildStatus(context, theme, data),

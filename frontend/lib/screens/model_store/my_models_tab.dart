@@ -10,6 +10,7 @@ import '../../providers/models_provider.dart';
 import '../../widgets/model_config_dialog.dart';
 import '../../widgets/server_file_browser_dialog.dart';
 import '../../core/friendly_error.dart';
+import '../../widgets/error_retry.dart';
 
 // ─── My Models tab (unchanged design) ────────────────────────────
 
@@ -23,7 +24,12 @@ class MyModelsTab extends ConsumerWidget {
 
     return localAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}')),
+      error: (e, _) => Center(
+        child: ErrorRetryLine(
+          error: e,
+          onRetry: () => ref.invalidate(localModelsProvider),
+        ),
+      ),
       data: (models) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

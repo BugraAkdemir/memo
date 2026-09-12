@@ -9,6 +9,7 @@ import '../models/dev_gateway.dart';
 import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
 import '../core/friendly_error.dart';
+import '../widgets/error_retry.dart';
 
 /// Developer screen (NavRail): the local Anthropic-compatible API gateway's
 /// status/reference/model list, plus a live log of requests passing through
@@ -81,9 +82,9 @@ class _DeveloperScreenState extends ConsumerState<DeveloperScreen> {
                           key: _settingsKey,
                           child: configAsync.when(
                             loading: () => const Center(child: CircularProgressIndicator()),
-                            error: (e, _) => Text(
-                              '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
-                              style: TextStyle(color: MemoTheme.red),
+                            error: (e, _) => ErrorRetryLine(
+                              error: e,
+                              onRetry: () => ref.invalidate(devGatewayConfigProvider),
                             ),
                             data: (config) => _SettingsPanel(config: config),
                           ),
@@ -553,9 +554,9 @@ class _ClaudeCodeCLIConnectRow extends ConsumerWidget {
 
     return stateAsync.when(
       loading: () => const SizedBox(height: 20, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
-      error: (e, _) => Text(
-        '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
-        style: TextStyle(color: MemoTheme.red, fontSize: 12),
+      error: (e, _) => ErrorRetryLine(
+        error: e,
+        onRetry: () => ref.invalidate(claudeCodeCLIConnectedProvider),
       ),
       data: (st) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -601,9 +602,9 @@ class _ClaudeCodeCLIConnectRow extends ConsumerWidget {
           const SizedBox(height: 8),
           modelsAsync.when(
             loading: () => const SizedBox(height: 20, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
-            error: (e, _) => Text(
-              '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
-              style: TextStyle(color: MemoTheme.red, fontSize: 12),
+            error: (e, _) => ErrorRetryLine(
+              error: e,
+              onRetry: () => ref.invalidate(gatewayModelsProvider),
             ),
             data: (models) => DropdownButtonFormField<String>(
               // Keyed on the server-reported (connected, model) pair so a
@@ -660,12 +661,12 @@ class _MethodBadge extends StatelessWidget {
 /// Available models — one entry per enabled provider + the running local
 /// model, if any. Memo has no separate load/unload step for the gateway
 /// itself, so this just reflects whatever's already active.
-class _ModelsPanel extends StatelessWidget {
+class _ModelsPanel extends ConsumerWidget {
   final AsyncValue<List<GatewayModel>> modelsAsync;
   const _ModelsPanel({super.key, required this.modelsAsync});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = MemoTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -679,9 +680,9 @@ class _ModelsPanel extends StatelessWidget {
         const SizedBox(height: 10),
         modelsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text(
-            '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
-            style: TextStyle(color: MemoTheme.red),
+          error: (e, _) => ErrorRetryLine(
+            error: e,
+            onRetry: () => ref.invalidate(gatewayModelsProvider),
           ),
           data: (models) {
             if (models.isEmpty) {
@@ -1014,9 +1015,19 @@ class _LogSection extends ConsumerWidget {
         SizedBox(height: 12),
         logsAsync.when(
           loading: () => Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text(
-            L10n.t('dev_gateway_logs_error', {'e': FriendlyError.describeGeneric(e)}),
-            style: TextStyle(color: MemoTheme.red),
+          error: (e, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                L10n.t('dev_gateway_logs_error', {'e': FriendlyError.describeGeneric(e)}),
+                style: TextStyle(color: MemoTheme.red),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => ref.invalidate(gatewayLogsProvider),
+                child: Text(L10n.t('retry')),
+              ),
+            ],
           ),
           data: (logs) {
             if (logs.isEmpty) {

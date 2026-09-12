@@ -972,6 +972,13 @@ final isSendingProvider = StateProvider<bool>((ref) => false);
 
 // ─── Connection Status (polls every 30s) ────────────────────────
 
+/// Mirrors connectionStatusProvider's local clientId so something outside
+/// that provider's own closure (TrayController's real-quit path) can send a
+/// graceful unregisterClient goodbye for whichever ID is currently
+/// registered, instead of the backend only noticing this GUI is gone once
+/// it misses ~3 heartbeats (~90s later).
+final currentClientIdProvider = StateProvider<String?>((ref) => null);
+
 final connectionStatusProvider = StreamProvider.autoDispose<bool>((ref) async* {
   var alive = true;
   ref.onDispose(() => alive = false);
@@ -991,6 +998,7 @@ final connectionStatusProvider = StreamProvider.autoDispose<bool>((ref) async* {
     if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
       yield true;
       clientId = null;
+      ref.read(currentClientIdProvider.notifier).state = null;
       await cancellablePause(ref, const Duration(seconds: 5));
       continue;
     }
@@ -1020,6 +1028,7 @@ final connectionStatusProvider = StreamProvider.autoDispose<bool>((ref) async* {
       yield false;
       clientId = null;
     }
+    ref.read(currentClientIdProvider.notifier).state = clientId;
     if (!alive) break;
     await cancellablePause(ref, const Duration(seconds: 30));
   }

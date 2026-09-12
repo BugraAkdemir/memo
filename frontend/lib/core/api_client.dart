@@ -1833,6 +1833,20 @@ class MemoApiClient {
     }
   }
 
+  /// A graceful goodbye — call when this GUI instance is actually quitting
+  /// (not minimizing to tray), so an on-demand backend with no other
+  /// attached client shuts itself down immediately instead of waiting out
+  /// the ~90s staleness window. Best-effort like the calls above: the
+  /// process is exiting either way, so a failed request here changes
+  /// nothing except how quickly a lingering on-demand backend notices.
+  Future<void> unregisterClient(String clientId) async {
+    try {
+      await _dio.post('/api/clients/unregister', data: {'client_id': clientId});
+    } catch (e) {
+      // best-effort — see class doc above
+    }
+  }
+
   /// Reports this client's current wall-clock UTC offset so every routine's
   /// stored Schedule.UTCOffsetMinutes (see its doc comment, BUG_REPORT TD-1)
   /// gets corrected to match. UTCOffsetMinutes freezes at routine-creation

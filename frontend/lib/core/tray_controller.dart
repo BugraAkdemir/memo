@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../providers/chat_provider.dart' show apiClientProvider, currentClientIdProvider;
 import '../providers/models_provider.dart';
 import '../providers/settings_provider.dart';
 import 'l10n.dart';
@@ -98,6 +99,7 @@ class _TrayControllerState extends ConsumerState<TrayController>
   }
 
   Future<void> _quit() async {
+    await _unregisterClient();
     await windowManager.setPreventClose(false);
     await windowManager.destroy();
   }
@@ -107,8 +109,26 @@ class _TrayControllerState extends ConsumerState<TrayController>
     if (ref.read(minimizeToTrayProvider)) {
       await windowManager.hide();
     } else {
+      await _unregisterClient();
       await windowManager.setPreventClose(false);
       await windowManager.destroy();
+    }
+  }
+
+  /// Sends the graceful goodbye an on-demand backend (main.go's
+  /// --auto-shutdown spawn) is waiting for, so it shuts itself down the
+  /// moment this was the last attached client instead of only noticing via
+  /// the ~90s missed-heartbeat staleness window (connectionStatusProvider's
+  /// own doc comment used to say there was no reliable close hook on
+  /// desktop for this — there is, via this same WindowListener the tray
+  /// feature already uses). Only reached on an actual quit, never on
+  /// minimize-to-tray (the app keeps running there, so it stays registered).
+  /// Best-effort: MemoApiClient.unregisterClient already swallows its own
+  /// errors, and the app is quitting either way.
+  Future<void> _unregisterClient() async {
+    final id = ref.read(currentClientIdProvider);
+    if (id != null) {
+      await ref.read(apiClientProvider).unregisterClient(id);
     }
   }
 

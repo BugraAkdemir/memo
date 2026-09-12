@@ -63,7 +63,9 @@ class LiveModeController {
       }
     });
     handler.onError.listen((message) {
-      if (!_errorController.isClosed) _errorController.add(message);
+      if (!_errorController.isClosed) {
+        _errorController.add(FriendlyError.describeGeneric(message));
+      }
     });
 
     await handler.startListening(baseAssetPath: vadModelBaseAssetPath);

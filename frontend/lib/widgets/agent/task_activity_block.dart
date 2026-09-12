@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/friendly_error.dart';
 import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../models/task_list.dart';
@@ -561,8 +562,9 @@ class _TaskActivityBlockState extends ConsumerState<TaskActivityBlock>
                           // the task list silently stayed in
                           // awaiting-plan-approval.
                           if (ctx.mounted) {
-                            ScaffoldMessenger.of(ctx)
-                                .showSnackBar(SnackBar(content: Text('$e')));
+                            ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                                content:
+                                    Text(FriendlyError.describeGeneric(e))));
                           }
                           return;
                         }

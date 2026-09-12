@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memo_flutter/core/api_client.dart';
 import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/models/task_list.dart';
+import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart' show apiClientProvider;
 import 'package:memo_flutter/providers/tasklist_provider.dart';
 import 'package:memo_flutter/screens/task_detail_screen.dart';
@@ -93,11 +94,24 @@ void main() {
     final client = MemoApiClient(baseUrl: 'http://memo.test');
     client.dio.httpClientAdapter = _FakeApprovalFailsAdapter();
 
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        apiClientProvider.overrideWithValue(client),
-        runningTasksProvider.overrideWith(() => _FakeRunningTasks(const [])),
-      ],
+    // M5 (stability audit): _PlanApprovalSection._load() now checks the auth
+    // gate before fetching (routines_screen.dart's BUG-ONB11 pattern) — an
+    // unresolved gate (the default with no override) reads as blocked, so
+    // the container must be pre-resolved to AuthGateState.ok before
+    // pumpWidget, same as settings_toggle_race_test.dart /
+    // routines_channel_chips_test.dart.
+    final container = ProviderContainer(overrides: [
+      apiClientProvider.overrideWithValue(client),
+      runningTasksProvider.overrideWith(() => _FakeRunningTasks(const [])),
+      authGateProvider.overrideWith(
+        (ref) => Stream.value(const AuthGateInfo(AuthGateState.ok)),
+      ),
+    ]);
+    addTearDown(container.dispose);
+    await container.read(authGateProvider.future);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
       child: const MaterialApp(
         home: Scaffold(body: TaskDetailScreen(taskListId: 'L1', title: 'T')),
       ),

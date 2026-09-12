@@ -98,7 +98,6 @@ Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-
 | `internal/tunnel/` | Tailscale embedded tunnel (tsnet) | `tailscale.go` |
 | `internal/truncate/` | Token-aware context truncation | `tokens.go` |
 | `internal/models/` | Shared data types | `memory.go` |
-| `internal/lora/` | LoRA adapter building (embryonic) | `build/` (cmake artifacts) |
 | `internal/stats/` | Persistent LLM usage-event store (tokens, speed, model) for the Settings stats tab | `store.go` |
 | `internal/taskloop/` | Self-Driving task loop (v4.4.0): Task.md parser, state machine, planning phase, 10-min rate-limit retry, sub-agent orchestrator, NotifyBus | `store.go`, `engine.go`, `taskmd.go`, `retry.go`, `subagent.go`, `notify.go`, `runtime.go`, `provider_err.go` |
 | `internal/skills/` | `go:embed`ded built-in skills materialized to `data/skills/` at startup | `embed.go`, `memo-system/SKILL.md` |

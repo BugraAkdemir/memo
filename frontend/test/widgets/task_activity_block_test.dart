@@ -39,7 +39,12 @@ class _FakePlanAdapter implements HttpClientAdapter {
 
 /// Like _FakePlanAdapter, but the approve-plan POST fails (500) while every
 /// other request (the plan_md GET the sheet loads on open) still succeeds —
-/// for the Y4 regression test below.
+/// for the Y4 regression test below. Mirrors task_detail_screen_test.dart's
+/// _FakeApprovalFailsAdapter: a realistic {"error": "..."} JSON body, not a
+/// bespoke DioException.error string — describeGeneric only extracts a
+/// message from response.data, so an unrealistic empty body would silently
+/// fall back to the generic friendly-error text instead of exercising the
+/// real extraction path (M2, stability audit).
 class _FakePlanAdapterApproveFails implements HttpClientAdapter {
   @override
   Future<ResponseBody> fetch(
@@ -48,12 +53,9 @@ class _FakePlanAdapterApproveFails implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     if (options.path.contains('approve-plan')) {
-      throw DioException(
-        requestOptions: options,
-        response: Response(requestOptions: options, statusCode: 500),
-        type: DioExceptionType.badResponse,
-        error: 'approve failed',
-      );
+      return ResponseBody.fromString('{"error":"approve failed"}', 500, headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      });
     }
     return ResponseBody.fromString(
       '{"plan_md":"# Plan\\n- S1: do the thing"}',

@@ -7,6 +7,8 @@ import '../core/theme.dart';
 import '../models/task_list.dart';
 import '../providers/tasklist_provider.dart';
 import '../providers/chat_provider.dart' show apiClientProvider;
+import '../providers/auth_gate_provider.dart';
+import '../providers/gate_guard.dart';
 import '../widgets/task_status.dart';
 
 /// Live view of one Self-Driving task list: phase, progress, current item,
@@ -245,6 +247,16 @@ class _PlanApprovalSectionState extends ConsumerState<_PlanApprovalSection> {
   }
 
   Future<void> _load() async {
+    // Reached via Navigator.push (task_activity_block.dart / tasks_screen.dart),
+    // not AppShell's IndexedStack, so this only bites a narrow window: opening
+    // task detail while the auth gate is still resolving/reopening. Same
+    // shape as BUG-ONB11 (routines_screen.dart) — skip the fetch while
+    // blocked and let build()'s gate-transition listener retry once it opens,
+    // instead of a 401 permanently blanking this section.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      if (mounted) setState(() => _loaded = true);
+      return;
+    }
     try {
       final api = ref.read(apiClientProvider);
       final tl = await api.getTaskList(widget.taskListId);
@@ -283,6 +295,11 @@ class _PlanApprovalSectionState extends ConsumerState<_PlanApprovalSection> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AsyncValue<AuthGateInfo>>(authGateProvider, (prev, next) {
+      if (authGateBlocked(prev?.valueOrNull) && !authGateBlocked(next.valueOrNull)) {
+        _load();
+      }
+    });
     final c = MemoTheme.of(context);
     if (!_loaded) return const SizedBox.shrink();
 

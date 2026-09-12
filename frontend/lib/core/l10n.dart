@@ -109,6 +109,8 @@ class L10n {
         'İndirme tamamlanamadı. İnternet bağlantını kontrol edip tekrar dene.',
     'friendly_error_provider_rate_limited':
         'Sağlayıcı şu anda çok fazla istek aldığı için geçici olarak sınırlıyor — bu Memo\'nun sorunu değil. Birazdan tekrar dene, ya da Ayarlar\'dan başka bir sağlayıcı/model seç.',
+    'friendly_error_context_overflow':
+        'Bu model için sohbet/hafıza içeriği çok büyüdü. Ayarlar > Model Ayarları\'ndan context boyutunu artırmayı, ya da Hafıza\'yı geçici olarak kapatmayı dene.',
     'friendly_error_generic': 'Bir şeyler ters gitti. Lütfen tekrar dene.',
     'gguf_tooltip':
         'GGUF: bu modelin bilgisayarında çalışması için kullanılan dosya formatı.',
@@ -2233,6 +2235,8 @@ class L10n {
         'The download didn\'t finish. Check your connection and try again.',
     'friendly_error_provider_rate_limited':
         'The provider is temporarily rate-limiting requests — this isn\'t a Memo problem. Try again shortly, or switch providers/models in Settings.',
+    'friendly_error_context_overflow':
+        'The conversation/memory content got too large for this model. Try raising the context size in Settings > Model Settings, or turn Memory off temporarily.',
     'friendly_error_generic': 'Something went wrong. Please try again.',
     'gguf_tooltip':
         'GGUF: the file format used to run this model on your computer.',

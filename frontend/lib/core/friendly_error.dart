@@ -95,8 +95,20 @@ class FriendlyError {
   /// broken for something outside its control. Returns null (caller keeps
   /// showing the original message) for anything not recognized here.
   static String? _classifyProviderMessage(String message) {
-    if (message.toLowerCase().contains('rate limit')) {
+    final lower = message.toLowerCase();
+    if (lower.contains('rate limit')) {
       return L10n.t('friendly_error_provider_rate_limited');
+    }
+    // Reported live: a local model's context window (e.g. a compact 4K-ctx
+    // GGUF) overflowed on an ordinary message once accumulated memory/
+    // history grew large enough — internal/api's extractErrorMessage
+    // already strips llama-server's raw JSON down to this one sentence,
+    // but "request (N tokens) exceeds the available context size (M
+    // tokens), try increasing it" is still a technical sentence, not
+    // something a non-technical user can act on.
+    if (lower.contains('exceeds the available context size') ||
+        lower.contains('exceed_context_size')) {
+      return L10n.t('friendly_error_context_overflow');
     }
     return null;
   }

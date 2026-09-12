@@ -1,3 +1,54 @@
+# Ek (2026-09-12, devam 65 — devamı 3) — KESİN KÖK NEDEN bulundu: sınırsız aktif-skill enjeksiyonu (`8a2e78ac`)
+
+Bir alttaki girinin "açık kalan soru"suna kesin cevap: kullanıcı backend'i
+gerçekten `run_memo.sh` üzerinden başlatıp aynı "selam" hatasını tekrar
+üretti ve terminaldeki gerçek `CONTEXT:` satırını paylaştı:
+
+```
+CONTEXT: minimal=false budget=3840 system=20101 user=68 hist_budget=1
+hist_used=0 history_msgs=0 total_msgs=1
+LLM stream error: api.Stream: status 400: request (18175 tokens)
+exceeds the available context size (4096 tokens), try increasing it
+```
+
+`system=20101` — SADECE system prompt bile bütçenin (3840) 5 katından
+fazla. Ne bayat backend ne de tokenizer kalibrasyonu — kullanıcının kendi
+şüphesi doğru çıktı: "biz çok önceden agent modu için bir alt context
+limiti belirlemiştik, onu detaylıca kontrol et". `codebase-memory-mcp`
+grafiği + doğrudan kod okumayla `internal/app/skill.go`'daki
+`buildActiveSkillPrompt` bulundu: aktif her skill'in TAM, tamamen
+sınırsız `Instructions` metnini system prompt'a ekliyordu — hiçbir boyut
+kontrolü yoktu. Kullanıcının bu chat'te **5 aktif skill'i** vardı
+(`codebase-memory`, `frontend-design`, `testsprite-onboard`,
+`testsprite-verify`, `ui-ux-pro-max` — `data/active_skills.json`'dan
+doğrulandı); `testsprite-verify/SKILL.md` tek başına ~25KB. Beşinin
+toplam byte sayısı ~57KB → `len/3` tahminiyle ~19K token — `system=20101`
+ile (persona/origin/style/capabilities/passive'in birkaç yüz tokenlik payı
+dahil) neredeyse birebir örtüşüyor. "Minimal mode'da hata yok" ipucu da
+tam açıklandı: `buildMessagesForSession` Minimal Mode'da
+`buildActiveSkillPrompt`'u hiç ÇAĞIRMIYOR (`if !minimal` bloğu) — daha iyi
+bütçelediğinden değil, hiç çalıştırmadığından.
+
+**Düzeltme (`8a2e78ac`):** `buildActiveSkillPrompt` artık opsiyonel bir
+`skillTokenBudget` alıyor. Bir skill ya TAMAMEN dahil ediliyor ya da
+TAMAMEN atlanıyor — talimatların ortasından kesmek modele yarım, kırık bir
+prosedür vermek demek olurdu, hiç göstermemekten daha kötü. Yerel modelde
+`tokenBudget/5` (taban 256) — `memoryBudget`'ın kullandığı desenin aynısı.
+API/orchestra turlarında bütçe 0 (sınırsız, mevcut davranış korunuyor —
+zaten devasa bir context penceresine karşı sorun değil).
+
+Yeni testler: `TestBuildActiveSkillPrompt_NilManagerReturnsEmpty`,
+`_NoBudgetIncludesEverything`, `_BudgetOmitsSkillThatDoesNotFit`,
+`_SkillFittingBudgetIsIncluded` — pre-fix kodun derleme hatası verdiği
+(parametre yoktu) `git stash` ile doğrulandı. `go build/vet/test -race`
+tüm paketler yeşil.
+
+**Sonuç: kullanıcının ilk açık talebi ("aynı hata neden tekrarladı") artık
+gerçekten kapalı** — hem kesin kök neden bulundu hem düzeltildi, hem de
+canlı log verisiyle doğrulandı (varsayımla değil).
+
+---
+
 # Ek (2026-09-12, devam 65 — devamı 2) — aynı bağlam taşması bugı tekrarladı: 3 gerçek düzeltme + 1 açık soru
 
 Bir önceki girişteki (`2b47272a`) düzeltmeden sonra kullanıcı iki yeni ekran
@@ -49,46 +100,13 @@ Ayarları'ndan context boyutunu artırmasını ya da Hafıza'yı geçici kapatma
 **Sonuç: kullanıcının 2. açık talebi ("sikko sikko hata mesajları
 çıkmasın") artık gerçekten kapalı** — hem backend hem frontend katmanında.
 
-## AÇIK KALAN SORU: tekrar neden hâlâ oluyor, kesin olarak bilmiyorum
+## Açık soru — ÇÖZÜLDÜ (bkz. bir üstteki giriş)
 
-`2b47272a`'nın düzeltmesi (`memoryTokenBudget` + `historyBudget` tabanı)
-tam olarak bu "selam" isteğinin geçtiği `buildMessagesForSession` yolunda —
-yani teorik olarak bu ikinci tekrarı da önlemiş olması gerekirdi. İki
-olası açıklama var, ikisini de kesin ayırt edemedim:
-
-- **(a) Bayat backend ihtimali** — kullanıcı, run_memo.sh'nin port/build
-  düzeltmesini (`f03e0fae`) TAM OLARAK bu 2. bug raporundan HEMEN ÖNCE,
-  aynı oturumda istedi ("muhtemelen eski port açık kaldı" — kendi
-  ifadesi). Bu, `2b47272a`'nın henüz derlenip yeniden başlatılmamış eski
-  bir `memo` sürecinin hâlâ portu tutuyor olabileceğine dair doğrudan bir
-  işaret. `feedback_memo_stale_backend_debugging.md` (proje hafızası) tam
-  bu sınıf hatayı flag'liyor: "kod bug'ı varsaymadan önce `memo --kill` +
-  yeniden başlatmayı kontrol et". Eğer bu buysa, `2b47272a` zaten yeterliydi
-  ve kullanıcı sadece patch'lenmemiş bir binary'ye karşı test etti.
-- **(b) `truncate.EstimateTokens`'ın `len/3` tahmini gerçekten yetersiz
-  kalıyor olabilir** — Phi-3 gibi Türkçe desteği zayıf bir tokenizer,
-  Türkçe metni İngilizce'den çok daha fazla alt-parçaya bölebilir (gerçek
-  chars/token oranı 3'ten belirgin şekilde düşük). Ama 18147 gerçek token
-  vs. ~4096 bütçesi ~4.4x'lik bir fark — bu büyüklükte bir sapmayı SADECE
-  tokenizer kalibrasyon hatasıyla açıklamak zor, çünkü bütçeleme kodu
-  (systemPrompt+memory+history) tahminî toplamı zaten ~4096'nın epey altına
-  sıkıştırmaya çalışıyor. 4.4x'lik bir fark, bütçenin telefon ATLANDIĞINI
-  düşündürüyor — (a) ihtimalini daha olası kılıyor.
-
-**Gerçek backend log'una erişemedim** (`run_memo.sh` şu an stdout'u bir
-dosyaya yazmıyor, `data/` altında böyle bir log yok) — yoksa
-`buildMessagesForSession`'ın her turda yazdığı
-`CONTEXT: minimal=... budget=... system=... user=... hist_budget=...
-hist_used=...` satırı bu ikisini kesin ayırt ederdi (tahmini toplam
-gerçekten ~4096 altındaysa (a), zaten ~18000'e yakınsa (b) veya üçüncü bir
-şey).
-
-**Sıradaki oturum için:** kullanıcı hatayı tekrar görürse, backend'i
-`run_memo.sh` üzerinden (yeni build+kill mantığıyla) başlatıp terminaldeki
-`CONTEXT:` satırını iletmesini iste — bu tek satır kök nedeni kesinleştirir.
-O olmadan (b)'yi düzeltmeye çalışmak (ör. llama-server'ın gerçek
-`/tokenize` endpoint'ini her istekte çağırıp kesin sayım almak) spekülatif
-bir mühendislik olurdu; şu an yapılmadı.
+Kullanıcı gerçek backend log'undan `CONTEXT:` satırını yakalayıp paylaştı:
+`system=20101 budget=3840`. Bu, aşağıdaki "kesin kök neden" girişinin
+konusu olan `buildActiveSkillPrompt`'un sınırsız aktif-skill enjeksiyonu
+olduğunu kanıtladı — ne (a) bayat backend ne de (b) tokenizer kalibrasyonu;
+üçüncü, o zaman akla gelmemiş bir neden. Detay için yukarıdaki girişe bak.
 
 ---
 

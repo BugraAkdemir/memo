@@ -1,3 +1,66 @@
+# Ek (2026-09-12, devam 66) — v4.4.0 release çıkarıldı (Self-Driving Task Loop)
+
+Bir üstteki girişin bahsettiği context-taşması düzeltmesi dahil, v4.3.0'dan
+beri biriken tüm iş (Self-Driving Task Loop, Code Mode, Claude/Gemini
+tool-calling, Live Mode TTS/STT, yerel model perf turu, BUG-SCAN1-17,
+gemini-sub) `memo-release` skill'iyle tek seferde release edildi.
+
+**Yapılan (skill'in 5 fazı sırasıyla):**
+
+1. **Sürüm notları tamamlandı** (`35c7286d`) — `versinNote/v4.4.0.md`+`tr/`
+   zaten `37be87ac`'a kadar doluydu; bu commit `6673a4c7..HEAD` arasında
+   kalan boşlukları kapattı: yerel llama.cpp perf turu (flash attention,
+   akıllı GPU offload, thread pinning, context-shift/cache-reuse), Live
+   Mode v2 TTS/STT frontend'i, küçük-context yerel model taşma düzeltmesi
+   (bir üstteki girişin "selam" bug'ı), ve BUG-SCAN1-17 turunun konsolide
+   özeti. **`gemini-sub` bilinçli olarak hiç geçmiyor** — kullanıcıya
+   soruldu, "Hiç bahsetme" cevabı geldi: canlı testte Google'ın
+   `UNSUPPORTED_CLIENT`/free-tier reddi (`handoff.md:361-398`) özelliğin
+   temel önermesini (ücretsiz abonelik kotası) doğrulanmamış/muhtemelen
+   çalışmaz durumda bırakıyor; kod Beta'nın arkasında duruyor ama public
+   release notunda hiç yok.
+2. **Versiyon bump** (`156bcdd4`) — `version`, `installer.iss`,
+   `README.md`, `READmeTR.md` → 4.4.0, grep ile eski `4.3.0` referansı
+   sıfır olduğu doğrulandı.
+3. **Tag push** — kullanıcı onayıyla `v4.4.0` push edildi (hem GitHub hem
+   `web.bugradev.com` remote'una). CI: Docker/Linux/Windows/macOS
+   hepsi **yeşil** (Windows ~17dk, öncekiyle tutarlı). Freshness check:
+   `download.bugradev.com/memo.tar.gz` Last-Modified CI bitişinden ~9dk
+   sonraydı — gerçekten bu release'in binary'si, stale cache değil.
+4. **Update beacon (`version-zeta.vercel.app`) BİLEREK DOKUNULMADI** —
+   kullanıcıya soruldu, "Ben hallederim" dedi (önceki oturumlarda da aynı
+   tercih tekrarlanmıştı, `~/Documents/version` reposu hâlâ `V4.3.0`
+   gösteriyor). Kullanıcı kendi bump edecek.
+5. **Bu giriş** — kapanış.
+
+**Ayrıca aynı oturumda: memo-web (tanıtım sitesi) v4.4.0'a güncellendi,
+push edilmedi.** Arka planda çalışan bir ajan `90a453e`'nin (v3.9.0→v4.3.0
+turu) kalıbını izleyerek `48705be` commit'ini üretti: yeni flagship kart
+çifti (Self-Driving Task Loop + Code Mode), Live Mode kartı ElevenLabs/
+Custom TTS+STT'yi anlatacak şekilde güncellendi, "10 External Providers"
+kartına Claude/Gemini tool-calling + yeni Custom (Anthropic-uyumlu) slotu
+notu eklendi, llama.cpp kartına perf notu, WhatsNew/Ticker/roadmap
+v4.4.0'a çekildi, `scripts/sync-release.js` ile version.generated.js +
+versionNote EN/TR dosyaları gerçek tag'den yeniden üretildi. `gemini-sub`
+burada da hiç geçmiyor (grep ile doğrulandı). `npm run build` yeşil
+(126/126 route), `npm run lint` yeni hata yok. **Push kullanıcının
+kararına bırakıldı** — origin/main'e push otomatik Vercel deploy'u
+tetikliyor, bu oturumda henüz onay gelmedi.
+
+## Sıradaki oturum için
+
+1. Kullanıcı `version-zeta.vercel.app/version.json`'ı kendisi V4.4.0'a
+   bump edecek — yapılıp yapılmadığı doğrulanmadı.
+2. `memo-web`'deki `48705be` commit'i push edilmeli mi diye kullanıcıya
+   soruldu, bu oturumda cevap gelmeden kesildi — bir sonraki oturum önce
+   bunu netleştirsin.
+3. GitHub release sayfasının notes'u hâlâ boş (CI'ın oluşturduğu otomatik
+   boş release) — istenirse `gh release edit v4.4.0 --notes-file` ile
+   `versinNote/v4.4.0.md` içeriği eklenebilir, memo-release skill'i bunu
+   zorunlu kılmıyor ama önceki release'lerde bazen yapılmış.
+
+---
+
 # Ek (2026-09-12, devam 65 — devamı 3) — KESİN KÖK NEDEN bulundu: sınırsız aktif-skill enjeksiyonu (`8a2e78ac`)
 
 Bir alttaki girinin "açık kalan soru"suna kesin cevap: kullanıcı backend'i

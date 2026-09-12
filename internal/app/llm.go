@@ -226,6 +226,21 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, string, error) {
 			BaseURL: a.llamaServer.GetBaseURL(),
 			Model:   modelName,
 			Enabled: true,
+			// Without this, modelContextWindow (internal/agent/executor.go)
+			// finds no ContextTokens on this config, doesn't recognize
+			// ProviderLlamaCPP as one of its type-based fallback cases
+			// (Claude/Gemini), and falls all the way through to its final
+			// 128*1024 default — meaning the agent pipeline's own per-turn
+			// token budget (maxTokens in Executor.RunStream) thought a
+			// small local model like Phi-3-mini-4k had a 128K window
+			// instead of its real 4096, and assembled a prompt sized
+			// accordingly. Found live: an agent-mode "selam" turn on
+			// Phi-3-mini-4k-instruct produced an 18147-token request
+			// against the model's real 4096-token window. CtxSize() is
+			// the server's actual running window (post-clampContextSize),
+			// the same value buildMessagesForSession's local-model path
+			// already budgets against for the *non*-agent chat path.
+			ContextTokens: a.llamaServer.CtxSize(),
 		}
 		return provider.NewRouter([]provider.ProviderConfig{cfg}), modelName, "", nil
 	}

@@ -17,6 +17,29 @@ func ptrInt(v int) *int             { return &v }
 // not being included in the request. Pointer fields on LlamaConfigUpdate
 // fix that: nil means "not provided", a non-nil pointer to 0 means
 // "explicitly set to zero".
+// TestResolveLocalLlamaRouter_CarriesRealContextTokens guards a live bug: an
+// agent-mode turn on a small local model (Phi-3-mini-4k-instruct, 4096 ctx)
+// produced an 18147-token request against its real 4096-token window.
+// modelContextWindow (internal/agent/executor.go) reads ContextTokens off
+// the router's active provider config; when nothing ever set it for the
+// local llama.cpp provider it fell through to that function's 128*1024
+// fallback, so the agent pipeline's own per-turn token budget thought a
+// tiny local model had a 128K window. resolveLocalLlamaRouter now takes the
+// real ctx-size explicitly (llama.Server.CtxSize(), the same value
+// buildMessagesForSession's non-agent path already budgets the plain-chat
+// prompt against) and must carry it through onto the constructed router's
+// provider config.
+func TestResolveLocalLlamaRouter_CarriesRealContextTokens(t *testing.T) {
+	router := resolveLocalLlamaRouter("http://127.0.0.1:9999", "phi-3-mini-4k", 4096)
+	active := router.ActiveProviders()
+	if len(active) != 1 {
+		t.Fatalf("ActiveProviders() = %d entries, want 1", len(active))
+	}
+	if active[0].ContextTokens != 4096 {
+		t.Errorf("ContextTokens = %d, want 4096 — modelContextWindow will otherwise fall back to its 128K default for this small local model", active[0].ContextTokens)
+	}
+}
+
 func TestUpdateLlamaConfig_ExplicitZero(t *testing.T) {
 	a := &App{cfg: &config.AppConfig{
 		Llama: config.LlamaConfig{

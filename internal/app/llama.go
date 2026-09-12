@@ -235,13 +235,23 @@ func (a *App) isEmbeddingModelPath(modelPath string) bool {
 
 // resolveAgentProviderForLlama builds a one-off local router pointing at the llama-server.
 // It is used by the embedding server startup path to avoid circular dependencies.
-func resolveLocalLlamaRouter(baseURL, modelName string) *provider.Router {
+//
+// contextTokens should be the server's real running window (llama.Server.
+// CtxSize(), post-clampContextSize) whenever the router is going to feed an
+// agent turn's own token budgeting (modelContextWindow in
+// internal/agent/executor.go) — 0 there falls all the way through to that
+// function's 128*1024 default, same bug class as resolveAgentProvider's
+// identical fix in llm.go (found live: an agent-mode turn on a 4096-ctx
+// local model produced an 18147-token request). Embedding-only callers that
+// never reach an agent turn can safely pass 0.
+func resolveLocalLlamaRouter(baseURL, modelName string, contextTokens int) *provider.Router {
 	cfg := provider.ProviderConfig{
-		Type:    provider.ProviderLlamaCPP,
-		Name:    "Local (llama.cpp)",
-		BaseURL: baseURL,
-		Model:   modelName,
-		Enabled: true,
+		Type:          provider.ProviderLlamaCPP,
+		Name:          "Local (llama.cpp)",
+		BaseURL:       baseURL,
+		Model:         modelName,
+		Enabled:       true,
+		ContextTokens: contextTokens,
 	}
 	return provider.NewRouter([]provider.ProviderConfig{cfg})
 }
@@ -258,5 +268,5 @@ func (a *App) localLlamaAgentRouter() (*provider.Router, string, string, error) 
 	if modelName == "" {
 		modelName = provider.DefaultModels[provider.ProviderLlamaCPP]
 	}
-	return resolveLocalLlamaRouter(a.llamaServer.GetBaseURL(), modelName), modelName, "", nil
+	return resolveLocalLlamaRouter(a.llamaServer.GetBaseURL(), modelName, a.llamaServer.CtxSize()), modelName, "", nil
 }

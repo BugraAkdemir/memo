@@ -169,27 +169,11 @@ class _TaskLoopTabState extends ConsumerState<TaskLoopTab> {
 
   Widget _granularity(ThemeColors c) {
     final v = (_s['step_granularity'] as String?) ?? 'hybrid';
-    const opts = {
-      'intent': 'taskloop_gran_intent',
-      'literal': 'taskloop_gran_literal',
-      'hybrid': 'taskloop_gran_hybrid',
-    };
-    return Row(
-      children: [
-        Text(L10n.t('taskloop_granularity'),
-            style: TextStyle(fontSize: 13, color: c.textSecondary)),
-        const SizedBox(width: 12),
-        ...opts.entries.map((e) => Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: ChoiceChip(
-                label: Text(L10n.t(e.value)),
-                selected: v == e.key,
-                onSelected: _saving
-                    ? null
-                    : (_) => _save({'step_granularity': e.key}),
-              ),
-            )),
-      ],
+    return TaskLoopGranularityRow(
+      color: c,
+      value: v,
+      enabled: !_saving,
+      onSelect: (key) => _save({'step_granularity': key}),
     );
   }
 
@@ -242,6 +226,60 @@ class _TaskLoopTabState extends ConsumerState<TaskLoopTab> {
           ...children,
         ],
       ),
+    );
+  }
+}
+
+/// The step-granularity picker (a label plus 3 ChoiceChips) — extracted
+/// from _TaskLoopTabState._granularity as its own public, standalone
+/// widget so it can be pumped and measured in isolation in tests, without
+/// the rest of the tab's unrelated widgets (dropdowns, other panels) also
+/// needing to fit the same narrow test viewport.
+///
+/// Wrap, not Row: a Row of a label plus 3 localized ChoiceChips fits in
+/// English but can overflow once Turkish's longer chip labels ("hibrit",
+/// "literal") push the total width past the tab's content area — the same
+/// class of bug the auth gate footer had (see AGENTS.md's Flutter
+/// Gotchas). Wrap lets the chips flow onto a second line instead of
+/// throwing a RenderFlex overflow (O12).
+class TaskLoopGranularityRow extends StatelessWidget {
+  final ThemeColors color;
+  final String value;
+  final bool enabled;
+  final void Function(String key) onSelect;
+
+  const TaskLoopGranularityRow({
+    super.key,
+    required this.color,
+    required this.value,
+    required this.enabled,
+    required this.onSelect,
+  });
+
+  static const _options = {
+    'intent': 'taskloop_gran_intent',
+    'literal': 'taskloop_gran_literal',
+    'hybrid': 'taskloop_gran_hybrid',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: Text(L10n.t('taskloop_granularity'),
+              style: TextStyle(fontSize: 13, color: color.textSecondary)),
+        ),
+        ..._options.entries.map((e) => ChoiceChip(
+              label: Text(L10n.t(e.value)),
+              selected: value == e.key,
+              onSelected: enabled ? (_) => onSelect(e.key) : null,
+            )),
+      ],
     );
   }
 }

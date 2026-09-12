@@ -118,7 +118,7 @@ class _LiveModeTabState extends ConsumerState<LiveModeTab> {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Text(
-            L10n.t('remote_load_failed', {'err': '$err'}),
+            L10n.t('remote_load_failed', {'err': FriendlyError.describeGeneric(err)}),
             style: TextStyle(color: MemoTheme.red),
           ),
         ),

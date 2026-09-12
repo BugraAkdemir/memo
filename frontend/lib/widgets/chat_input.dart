@@ -722,7 +722,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(L10n.t('providers_load_failed', {'e': e.toString()})),
+            content: Text(L10n.t('providers_load_failed', {'e': FriendlyError.describeGeneric(e)})),
           ),
         );
       }
@@ -791,7 +791,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('switch_failed', {'e': e.toString()}))),
+          SnackBar(content: Text(L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     }

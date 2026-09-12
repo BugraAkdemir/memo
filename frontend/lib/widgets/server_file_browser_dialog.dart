@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/friendly_error.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/server_browse_entry.dart';
@@ -70,7 +71,7 @@ class _ServerFileBrowserDialogState extends ConsumerState<ServerFileBrowserDialo
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = L10n.t('server_browse_load_error', {'e': e.toString()});
+        _error = L10n.t('server_browse_load_error', {'e': FriendlyError.describeGeneric(e)});
         _loading = false;
       });
     }

@@ -390,7 +390,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           error: (err, _) => Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Text(
-              L10n.t('remote_load_failed', {'err': '$err'}),
+              L10n.t('remote_load_failed', {'err': FriendlyError.describeGeneric(err)}),
               style: TextStyle(color: MemoTheme.red),
             ),
           ),

@@ -76,7 +76,7 @@ class MyModelsTab extends ConsumerWidget {
     } catch (e) {
       messenger.showSnackBar(SnackBar(
           content:
-              Text(L10n.t('import_error', {'e': e.toString()}))));
+              Text(L10n.t('import_error', {'e': FriendlyError.describeGeneric(e)}))));
     }
   }
 }

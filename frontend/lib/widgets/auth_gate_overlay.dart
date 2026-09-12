@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/friendly_error.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/auth_gate_provider.dart';
@@ -281,13 +282,13 @@ class _SetupGateViewState extends ConsumerState<_SetupGateView> {
         _busy = false;
         _error = e.response?.statusCode == 403
             ? L10n.t('auth_gate_error_create_failed')
-            : L10n.t('auth_gate_error_generic', {'err': '$e'});
+            : L10n.t('auth_gate_error_generic', {'err': FriendlyError.describeGeneric(e)});
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = L10n.t('auth_gate_error_generic', {'err': '$e'});
+        _error = L10n.t('auth_gate_error_generic', {'err': FriendlyError.describeGeneric(e)});
       });
     }
   }
@@ -583,14 +584,14 @@ class _LoginGateViewState extends ConsumerState<_LoginGateView> {
         _error = switch (e.response?.statusCode) {
           401 => L10n.t('auth_gate_error_invalid_credentials'),
           429 => L10n.t('auth_gate_error_locked'),
-          _ => L10n.t('auth_gate_error_generic', {'err': '$e'}),
+          _ => L10n.t('auth_gate_error_generic', {'err': FriendlyError.describeGeneric(e)}),
         };
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = L10n.t('auth_gate_error_generic', {'err': '$e'});
+        _error = L10n.t('auth_gate_error_generic', {'err': FriendlyError.describeGeneric(e)});
       });
     }
   }

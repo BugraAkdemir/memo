@@ -182,7 +182,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(L10n.t('calendar_delete_error', {'e': e.toString()}))));
+            .showSnackBar(SnackBar(content: Text(L10n.t('calendar_delete_error', {'e': FriendlyError.describeGeneric(e)}))));
       }
     }
   }
@@ -614,7 +614,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context)
-                        .showSnackBar(SnackBar(content: Text(L10n.t('calendar_add_error', {'e': e.toString()}))));
+                        .showSnackBar(SnackBar(content: Text(L10n.t('calendar_add_error', {'e': FriendlyError.describeGeneric(e)}))));
                   }
                 }
               },

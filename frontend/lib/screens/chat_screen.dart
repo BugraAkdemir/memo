@@ -419,7 +419,7 @@ class _CLIModelBadge extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ref.read(errorMessageProvider.notifier).state =
-            L10n.t('switch_failed', {'e': e.toString()});
+            L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)});
       }
       return;
     }
@@ -465,7 +465,7 @@ class _CLIModelBadge extends ConsumerWidget {
       ref.invalidate(activeChatCLIModelProvider);
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
-          L10n.t('switch_failed', {'e': e.toString()});
+          L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)});
     }
   }
 
@@ -546,7 +546,7 @@ class _QuickModelDropdown extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('providers_load_failed', {'e': e.toString()}))),
+          SnackBar(content: Text(L10n.t('providers_load_failed', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
       return;
@@ -647,7 +647,7 @@ class _QuickModelDropdown extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('switch_failed', {'e': e.toString()}))),
+          SnackBar(content: Text(L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     }
@@ -694,7 +694,7 @@ class _QuickModelDropdown extends ConsumerWidget {
       // SnackBar (see _ChatContent's ref.listen) — this codebase's own
       // established way of avoiding exactly this class of crash.
       ref.read(errorMessageProvider.notifier).state =
-          L10n.t('switch_failed', {'e': e.toString()});
+          L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)});
     }
   }
 
@@ -811,7 +811,7 @@ class _QuickEffortSelector extends ConsumerWidget {
         ref.invalidate(providerListProvider);
       } catch (e) {
         ref.read(errorMessageProvider.notifier).state =
-            L10n.t('switch_failed', {'e': e.toString()});
+            L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)});
       }
     }
 
@@ -970,7 +970,7 @@ class _ChatTopBar extends ConsumerWidget {
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(L10n.t('agent_undo_failed', {'e': e.toString()})), backgroundColor: MemoTheme.red),
+            SnackBar(content: Text(L10n.t('agent_undo_failed', {'e': FriendlyError.describeGeneric(e)})), backgroundColor: MemoTheme.red),
           );
         }
       }
@@ -998,7 +998,7 @@ class _ChatTopBar extends ConsumerWidget {
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(L10n.t('export_failed', {'e': e.toString()}))),
+            SnackBar(content: Text(L10n.t('export_failed', {'e': FriendlyError.describeGeneric(e)}))),
           );
         }
       }

@@ -250,6 +250,24 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		}
 	}
 
+	// Active-skill budget: same rationale as memoryBudget above, but for
+	// buildActiveSkillPrompt's skill-instructions block, which had NO budget
+	// at all until now — see that function's doc comment (internal/app/
+	// skill.go) for the live incident this closes: 5 simultaneously active
+	// Claude-Code-imported skills alone blew a 4096-ctx model's entire
+	// budget several times over on a bare "selam". Smaller share than
+	// memory's 2/5 — skill instructions are supplementary tool-use
+	// guidance, not core to the conversation the way personal memory is.
+	// 0 (every non-local turn) keeps buildActiveSkillPrompt's pre-existing
+	// unbounded behavior, which is fine against a huge API context window.
+	skillBudget := 0
+	if a.llamaServer != nil && a.llamaServer.IsRunning() {
+		skillBudget = tokenBudget / 5
+		if skillBudget < 256 {
+			skillBudget = 256
+		}
+	}
+
 	var systemPrompt string
 	switch {
 	case code:
@@ -270,7 +288,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 			// An active skill is something the user explicitly turned on — but it
 			// is still Memo injecting text the bare model wouldn't see, so Minimal
 			// Mode strips it too (previously it did not).
-			if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
+			if skillPrompt := a.buildActiveSkillPrompt(skillBudget); skillPrompt != "" {
 				systemPrompt += skillPrompt
 			}
 		}

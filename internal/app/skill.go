@@ -7,6 +7,7 @@ import (
 
 	"memo/internal/api"
 	"memo/internal/skill"
+	"memo/internal/truncate"
 )
 
 // ListSkills returns all installed skill definitions.
@@ -193,8 +194,28 @@ func (a *App) handleSkillCommand(ctx context.Context, userMsg string) <-chan api
 	}
 }
 
-// buildActiveSkillPrompt returns formatted skill instructions block for active skills.
-func (a *App) buildActiveSkillPrompt() string {
+// buildActiveSkillPrompt returns a formatted skill-instructions block for
+// every active skill. skillTokenBudget, if given and positive, caps the
+// TOTAL size of that block — a whole skill is either included in full or
+// left out entirely (never truncated mid-instructions, which would hand the
+// model a broken, half-explained procedure that's arguably worse than not
+// mentioning it at all). Omitted with no cap (the pre-existing, unbounded
+// behavior) for every non-local API/orchestra turn, which already has a
+// huge context window.
+//
+// Found live: a single chat with 5 active Claude-Code-imported skills
+// (codebase-memory, frontend-design, testsprite-onboard, testsprite-verify,
+// ui-ux-pro-max — testsprite-verify's SKILL.md alone is ~25KB) blew a
+// 4096-ctx local model's ENTIRE budget by itself on a bare "selam" with
+// nothing else in the request (~20K estimated system-prompt tokens against
+// a ~3840 budget) — this function injected every active skill's full,
+// unbounded Instructions with no size check at all, regardless of how many
+// were active or how large. Confirmed via the CONTEXT log line the user
+// captured live (system=20101, budget=3840) — the persona/origin/style/
+// capabilities/passive blocks together account for only a few hundred
+// tokens of that, and it wasn't the memory block either (already
+// budget-capped by the fix in helpers.go).
+func (a *App) buildActiveSkillPrompt(skillTokenBudget ...int) string {
 	if a.skillManager == nil {
 		return ""
 	}
@@ -203,16 +224,44 @@ func (a *App) buildActiveSkillPrompt() string {
 		return ""
 	}
 
+	maxTok := 0
+	if len(skillTokenBudget) > 0 && skillTokenBudget[0] > 0 {
+		maxTok = skillTokenBudget[0]
+	}
+
+	var body strings.Builder
+	used := 0
+	omitted := 0
+	for _, act := range activations {
+		var block strings.Builder
+		block.WriteString(fmt.Sprintf("### Skill: %s\n", act.Name))
+		if act.Description != "" {
+			block.WriteString(fmt.Sprintf("_%s_\n\n", act.Description))
+		}
+		block.WriteString(act.Instructions)
+		block.WriteString("\n\n---\n\n")
+		text := block.String()
+
+		if maxTok > 0 {
+			blockTokens := truncate.EstimateTokens(text)
+			if used+blockTokens > maxTok {
+				omitted++
+				continue
+			}
+			used += blockTokens
+		}
+		body.WriteString(text)
+	}
+	if omitted > 0 {
+		fmt.Fprintf(&body, "(%d more active skill(s) not shown here — not enough context budget on this model)\n\n", omitted)
+	}
+	if body.Len() == 0 {
+		return ""
+	}
+
 	var b strings.Builder
 	b.WriteString("\n\n## Active Skills\n\n")
 	b.WriteString("The following skills are active. Follow their instructions carefully:\n\n")
-	for _, act := range activations {
-		b.WriteString(fmt.Sprintf("### Skill: %s\n", act.Name))
-		if act.Description != "" {
-			b.WriteString(fmt.Sprintf("_%s_\n\n", act.Description))
-		}
-		b.WriteString(act.Instructions)
-		b.WriteString("\n\n---\n\n")
-	}
+	b.WriteString(body.String())
 	return b.String()
 }

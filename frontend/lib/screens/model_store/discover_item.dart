@@ -221,7 +221,9 @@ class _AuthorAvatarState extends State<AuthorAvatar> {
         );
         final u = r.data?['avatarUrl'] as String?;
         if (u != null && u.isNotEmpty) { url = u; break; }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('discover_item: avatar lookup failed for $endpoint: $e');
+      }
     }
     if (_cache.length >= _cacheCap) _cache.clear();
     _cache[a] = url;

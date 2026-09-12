@@ -607,7 +607,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
                 ref.read(tokenUsageProvider.notifier).state =
                     TokenUsage.fromJson(decoded);
               }
-            } catch (_) {/* ignore */}
+            } catch (e) {
+              debugPrint('chat_provider: malformed usage SSE chunk: $e');
+            }
           } else if (chunk.finishReason == 'agent_event') {
             try {
               final ev = AgentEvent.fromJson(json.decode(chunk.content));
@@ -802,7 +804,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
                 ref.read(tokenUsageProvider.notifier).state =
                     TokenUsage.fromJson(decoded);
               }
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('chat_provider: malformed activity/usage SSE chunk: $e');
+            }
           } else if (chunk.finishReason == 'agent_event') {
             try {
               final ev = AgentEvent.fromJson(json.decode(chunk.content));
@@ -825,7 +829,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
               }
               ref.read(streamingAgentEventsProvider.notifier).state = currentEvents;
               finalAgentEvents = currentEvents;
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('chat_provider: malformed agent_event SSE chunk: $e');
+            }
           } else {
             if (ref.read(streamingStatusProvider).isNotEmpty) {
               ref.read(streamingStatusProvider.notifier).state = '';

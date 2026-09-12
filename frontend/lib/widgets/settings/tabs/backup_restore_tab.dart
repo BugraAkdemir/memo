@@ -80,7 +80,9 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
           _passphraseCtrl.text = settings['passphrase'] as String? ?? '';
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('backup_restore_tab: could not load cloud-backup settings: $e');
+    }
   }
 
   /// If the passphrase field is empty, warns the user that their backup will

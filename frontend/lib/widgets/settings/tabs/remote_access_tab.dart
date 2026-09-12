@@ -292,7 +292,9 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           final authUrl = status['tailscale_auth_url'] as String? ?? '';
           if (mounted) setState(() => _tsPendingAuthUrl = authUrl);
           if (running || err.isNotEmpty) break;
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('remote_access_tab: Tailscale status poll failed: $e');
+        }
       }
       ref.invalidate(remoteAccessProvider);
     } catch (e) {
@@ -358,7 +360,8 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     try {
       await ref.read(apiClientProvider).setTailscaleMode(false, _listenPort);
       ref.invalidate(remoteAccessProvider);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('remote_access_tab: disabling Tailscale failed: $e');
     } finally {
       if (mounted) setState(() => _tsBusy = false);
     }
@@ -1467,7 +1470,9 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
             final url = status['ngrok_url'] as String? ?? '';
             final err = status['ngrok_error'] as String? ?? '';
             if (url.isNotEmpty || err.isNotEmpty) break;
-          } catch (_) {}
+          } catch (e) {
+            debugPrint('remote_access_tab: ngrok status poll failed: $e');
+          }
         }
       }
       ref.invalidate(remoteAccessProvider);
@@ -1514,7 +1519,9 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           final url = status['ngrok_url'] as String? ?? '';
           final err = status['ngrok_error'] as String? ?? '';
           if (url.isNotEmpty || err.isNotEmpty) break;
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('remote_access_tab: ngrok status poll failed: $e');
+        }
       }
       ref.invalidate(remoteAccessProvider);
     } catch (e) {

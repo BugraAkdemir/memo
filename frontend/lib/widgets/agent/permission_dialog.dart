@@ -170,7 +170,9 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
           shortArg = m.values.first.toString();
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('permission_dialog: could not decode tool-call args for display: $e');
+    }
 
     return AlertDialog(
       title: Row(

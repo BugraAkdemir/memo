@@ -49,7 +49,9 @@ class _GeminiSubscriptionTabState extends ConsumerState<GeminiSubscriptionTab> {
         // the copyable link below is the fallback, always shown.
         try {
           await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('gemini_subscription_tab: launchUrl failed, falling back to the copyable link: $e');
+        }
       }
 
       var attempts = 0;

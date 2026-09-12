@@ -77,6 +77,11 @@ type swarmStubBridge struct {
 	getLiveModeConfig  func() config.LiveModeConfig
 	getLiveModeEngines func() []livemode.EngineConfig
 	newLiveModeSession func(ctx context.Context) livemode.Session
+
+	// Dev gateway (/v1/*) auth — see openai_handlers_test.go's non-loopback
+	// key-bypass regression coverage.
+	devGatewayRequireAPIKey bool
+	devGatewayTokenValue    string
 }
 
 func (b *swarmStubBridge) GetRemoteAccessToken() string { return b.token }
@@ -393,11 +398,13 @@ func (b *swarmStubBridge) GetOutboxFile(token string) (string, string, bool) {
 	}
 	return "", "", false
 }
-func (b *swarmStubBridge) GetDevGatewayConfig() (bool, bool, string) { return false, false, "" }
+func (b *swarmStubBridge) GetDevGatewayConfig() (bool, bool, string) {
+	return b.devGatewayRequireAPIKey, false, ""
+}
 func (b *swarmStubBridge) SetDevGatewayConfig(requireAPIKey, useMemory bool, systemPrompt string) error {
 	return nil
 }
-func (b *swarmStubBridge) GetDevGatewayToken() string               { return "" }
+func (b *swarmStubBridge) GetDevGatewayToken() string               { return b.devGatewayTokenValue }
 func (b *swarmStubBridge) RotateDevGatewayToken() string            { return "" }
 func (b *swarmStubBridge) ListGatewayModels() []models.GatewayModel { return nil }
 func (b *swarmStubBridge) DevGatewayChatStream(ctx context.Context, modelSpec string, req provider.ChatRequest) (<-chan provider.StreamChunk, string, error) {

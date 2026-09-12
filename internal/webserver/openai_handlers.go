@@ -26,7 +26,7 @@ func (s *Server) handleOpenAIModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	requireAPIKey, _, _ := s.fullBridge.GetDevGatewayConfig()
-	if !devGatewayAuthOK(r, requireAPIKey, s.fullBridge.GetDevGatewayToken()) {
+	if !devGatewayAuthOK(r, devGatewayRequireKey(r, requireAPIKey), s.fullBridge.GetDevGatewayToken()) {
 		openaiapi.WriteError(w, http.StatusUnauthorized, "missing or invalid API key")
 		return
 	}
@@ -54,7 +54,7 @@ func (s *Server) handleOpenAIChatCompletions(w http.ResponseWriter, r *http.Requ
 	}
 
 	requireAPIKey, _, _ := s.fullBridge.GetDevGatewayConfig()
-	if !devGatewayAuthOK(r, requireAPIKey, s.fullBridge.GetDevGatewayToken()) {
+	if !devGatewayAuthOK(r, devGatewayRequireKey(r, requireAPIKey), s.fullBridge.GetDevGatewayToken()) {
 		openaiapi.WriteError(w, http.StatusUnauthorized, "missing or invalid API key")
 		return
 	}

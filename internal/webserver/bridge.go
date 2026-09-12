@@ -379,6 +379,10 @@ type FullBridge interface {
 	SkipCurrentItem(listID string) error
 	InjectTaskMessage(ctx context.Context, listID, text string) (string, error)
 	ListRunningTasks() []taskloop.RunningTaskInfo
+	// GetActivityStatus reports Memo's current app-wide activity — see
+	// models.ActivityStatus's doc comment. Consumed by the desktop
+	// mascot window (a separate Flutter window with no chat context).
+	GetActivityStatus() models.ActivityStatus
 	// SubscribeTaskEvents returns a channel of JSON task-loop event lines and
 	// an unsubscribe func; RunningTaskEventSnapshot returns one JSON line per
 	// currently-running list so a fresh subscriber isn't blind.

@@ -408,6 +408,7 @@ type App struct {
 // must be provided by the caller (typically main), because go:embed directives
 // cannot reference paths outside the package directory.
 func NewApp(binaries embed.FS, version string) *App {
+	wireGlobalActivityHook()
 	return &App{
 		events:   &eventRing{},
 		binaries: binaries,

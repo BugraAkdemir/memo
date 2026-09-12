@@ -34,8 +34,9 @@ type swarmStubBridge struct {
 	token      string
 	uiLanguage string
 
-	injectTask       func(listID, text string) (string, error)
-	listRunningTasks func() []taskloop.RunningTaskInfo
+	injectTask        func(listID, text string) (string, error)
+	listRunningTasks  func() []taskloop.RunningTaskInfo
+	getActivityStatus func() models.ActivityStatus
 
 	hostCreate   func(modelPath string) (string, error)
 	addWorker    func(id, secret, myRPCAddress, label string) error
@@ -562,6 +563,12 @@ func (b *swarmStubBridge) ListRunningTasks() []taskloop.RunningTaskInfo {
 		return b.listRunningTasks()
 	}
 	return nil
+}
+func (b *swarmStubBridge) GetActivityStatus() models.ActivityStatus {
+	if b.getActivityStatus != nil {
+		return b.getActivityStatus()
+	}
+	return models.ActivityStatus{State: models.ActivityIdle}
 }
 func (b *swarmStubBridge) SubscribeTaskEvents() (<-chan string, func()) {
 	ch := make(chan string)

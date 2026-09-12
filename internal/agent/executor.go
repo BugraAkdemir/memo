@@ -14,6 +14,17 @@ import (
 	"time"
 )
 
+// GlobalActivityHook, if set, is called for every AgentEvent from every
+// RunStream/RunStreamWithRouter caller across the whole app — interactive
+// chat, WhatsApp, Telegram, task-loop items, sub-agents, Orchestra (see
+// RunStreamWithRouter's own doc comment for the exhaustive call-site list).
+// internal/app sets this once (NewApp) to drive the desktop mascot's
+// coarse activity signal, which needs a single app-wide choke point since
+// it has no per-chat context of its own — every other caller would need
+// its own plumbing otherwise. nil by default (unit tests, and any binary
+// that never imports internal/app).
+var GlobalActivityHook func(ev AgentEvent)
+
 // PermissionRequest encapsulates a pending permission request.
 type PermissionRequest struct {
 	ID    string
@@ -377,6 +388,9 @@ func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Rou
 	wrappedOnEvent := func(ev AgentEvent) {
 		// Log the event
 		e.logEvent(sessionID, ev)
+		if GlobalActivityHook != nil {
+			GlobalActivityHook(ev)
+		}
 		// Pass to frontend
 		onEvent(ev)
 	}

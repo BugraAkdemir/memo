@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../core/backend_url.dart';
 import 'memo_mascot.dart';
 
 /// Window size hugs the character tightly on purpose — the whole window
@@ -108,8 +112,70 @@ class _MascotSurface extends StatefulWidget {
   State<_MascotSurface> createState() => _MascotSurfaceState();
 }
 
+/// How often to poll GET /api/mascot/activity. This is a decorative,
+/// coarse-grained signal (see models.ActivityStatus on the Go side) — a
+/// second of lag between a tool call starting and the mascot noticing
+/// doesn't matter the way it would for, say, streamed chat tokens.
+const _pollInterval = Duration(milliseconds: 1200);
+
 class _MascotSurfaceState extends State<_MascotSurface> {
   bool _hovering = false;
+  MascotMood _mood = MascotMood.idle;
+  Timer? _pollTimer;
+  Dio? _dio;
+
+  @override
+  void initState() {
+    super.initState();
+    _startPolling();
+  }
+
+  Future<void> _startPolling() async {
+    // Same SharedPreferences store the main chat window reads/writes
+    // (memo_api_base_url) — a separate Flutter engine/isolate, but the
+    // same underlying prefs file, so a server the user changed from
+    // Settings is picked up here too, not just Memo's own loopback default.
+    final prefs = await SharedPreferences.getInstance();
+    final baseUrl = normalizeBackendUrl(prefs.getString('memo_api_base_url') ?? '');
+    if (!mounted) return;
+    _dio = Dio(BaseOptions(baseUrl: baseUrl, connectTimeout: const Duration(seconds: 2)));
+    _poll();
+    _pollTimer = Timer.periodic(_pollInterval, (_) => _poll());
+  }
+
+  Future<void> _poll() async {
+    final dio = _dio;
+    if (dio == null) return;
+    try {
+      final res = await dio.get('/api/mascot/activity');
+      final state = res.data is Map ? res.data['state'] as String? : null;
+      final mood = _moodFor(state);
+      if (mounted && mood != _mood) {
+        setState(() => _mood = mood);
+      }
+    } catch (_) {
+      // Backend not reachable (not started yet, or briefly restarting) —
+      // idle is always a safe, non-alarming default to fall back to.
+      if (mounted && _mood != MascotMood.idle) {
+        setState(() => _mood = MascotMood.idle);
+      }
+    }
+  }
+
+  MascotMood _moodFor(String? state) => switch (state) {
+        'thinking' => MascotMood.thinking,
+        'tool' => MascotMood.tool,
+        'writing' => MascotMood.writing,
+        'generating' => MascotMood.generating,
+        _ => MascotMood.idle,
+      };
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    _dio?.close();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +187,7 @@ class _MascotSurfaceState extends State<_MascotSurface> {
         behavior: HitTestBehavior.translucent,
         child: Stack(
           children: [
-            const Center(child: MemoMascot(size: 100)),
+            Center(child: MemoMascot(mood: _mood, size: 100)),
             Positioned(
               top: 2,
               right: 2,

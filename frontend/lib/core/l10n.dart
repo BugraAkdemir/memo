@@ -545,6 +545,11 @@ class L10n {
     'mascot_toggle_title': 'Masaüstü Maskotu',
     'mascot_toggle_desc':
         'Ekranda serbestçe sürükleyebileceğin küçük, canlı bir karakter — Memo ne yaptığını (düşünüyor, yazıyor, bir araç kullanıyor) gösterir.',
+    'mascot_status_thinking': 'Düşünüyor…',
+    'mascot_status_writing': 'Yazıyor…',
+    'mascot_status_generating': 'Yanıt hazırlıyor…',
+    'mascot_status_tool': 'Bir araç kullanıyor…',
+    'mascot_status_tool_named': '\${tool} çalıştırıyor…',
     'tray_open': 'Memo\'yu Aç',
     'tray_model_running': 'Yerel Model: \${name}',
     'tray_model_none': 'Yerel Model Yüklü Değil',
@@ -2664,6 +2669,11 @@ class L10n {
     'mascot_toggle_title': 'Desktop Mascot',
     'mascot_toggle_desc':
         'A small, lively character you can drag anywhere on screen — it shows what Memo is doing (thinking, writing, using a tool).',
+    'mascot_status_thinking': 'Thinking…',
+    'mascot_status_writing': 'Writing…',
+    'mascot_status_generating': 'Preparing a response…',
+    'mascot_status_tool': 'Using a tool…',
+    'mascot_status_tool_named': 'Running \${tool}…',
     'tray_open': 'Open Memo',
     'tray_model_running': 'Local Model: \${name}',
     'tray_model_none': 'No Local Model Loaded',

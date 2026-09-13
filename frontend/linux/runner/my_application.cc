@@ -19,9 +19,14 @@ struct _MyApplication {
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
 // Restricts the desktop mascot's *input* region (what actually receives
-// clicks/drags) to a rough ellipse instead of its whole 132x148 window —
-// the transparent margin around the character stops swallowing clicks
-// meant for whatever is behind it. Only takes effect on X11/XWayland
+// clicks/drags) to a rough ellipse over the character instead of the whole
+// window — the transparent margin around it, and the status bubble area
+// below it (mascot_window.dart's _StatusBubble, display-only), stop
+// swallowing clicks meant for whatever is behind them. The ellipse is
+// sized against the top 132x148 "pet area" only (mascot_window.dart's
+// _petAreaSize) — the window itself is taller to fit the bubble below, but
+// that extra height starts past this shape entirely, so growing the bubble
+// never requires touching these numbers. Only takes effect on X11/XWayland
 // (main() forces GDK_BACKEND=x11 for exactly this and the always-on-top
 // fix — see that comment); gdk_window_input_shape_combine_region has no
 // native-Wayland equivalent either, so this silently no-ops there instead

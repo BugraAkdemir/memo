@@ -8,13 +8,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../core/backend_url.dart';
+import '../core/l10n.dart';
 import 'memo_mascot.dart';
 
-/// Window size the character is designed against — `set_mascot_input_shape`
-/// in linux/runner/my_application.cc hand-codes an ellipse (plus a small
-/// rectangle for the hover close button's corner) in these exact
-/// coordinates, so this and that native function must be changed together.
-const _windowSize = Size(132, 148);
+/// Size of the pet itself — the top of the window, everything below is the
+/// status bubble. `set_mascot_input_shape` in linux/runner/my_application.cc
+/// hand-codes an ellipse (plus a small rectangle for the hover close
+/// button's corner) against these exact coordinates, measured from the
+/// window's top-left — since the pet area always starts at the window's
+/// top-left too, growing the bubble below it never shifts the ellipse, but
+/// shrinking or repositioning the *pet* area still requires updating that
+/// native function to match.
+const _petAreaSize = Size(132, 148);
+
+/// Gap between the pet and the status bubble below it, plus how much
+/// vertical room the bubble reserves — reserved unconditionally (not just
+/// while a status is showing) so the window never resizes at runtime, which
+/// would be jarring for an always-on-top widget sitting on the desktop.
+const _bubbleGap = 8.0;
+const _bubbleAreaHeight = 54.0;
+
+const _windowSize = Size(132, 148 + _bubbleGap + _bubbleAreaHeight);
 
 /// Boots the standalone floating desktop mascot in place of the normal chat
 /// UI. This runs as a `desktop_multi_window` sub-window inside the SAME
@@ -126,6 +140,7 @@ const _pollInterval = Duration(milliseconds: 1200);
 class _MascotSurfaceState extends State<_MascotSurface> {
   bool _hovering = false;
   MascotMood _mood = MascotMood.idle;
+  String? _toolName;
   Timer? _pollTimer;
   Dio? _dio;
 
@@ -153,16 +168,24 @@ class _MascotSurfaceState extends State<_MascotSurface> {
     if (dio == null) return;
     try {
       final res = await dio.get('/api/mascot/activity');
-      final state = res.data is Map ? res.data['state'] as String? : null;
+      final data = res.data;
+      final state = data is Map ? data['state'] as String? : null;
+      final toolName = data is Map ? data['tool_name'] as String? : null;
       final mood = _moodFor(state);
-      if (mounted && mood != _mood) {
-        setState(() => _mood = mood);
+      if (mounted && (mood != _mood || toolName != _toolName)) {
+        setState(() {
+          _mood = mood;
+          _toolName = toolName;
+        });
       }
     } catch (_) {
       // Backend not reachable (not started yet, or briefly restarting) —
       // idle is always a safe, non-alarming default to fall back to.
       if (mounted && _mood != MascotMood.idle) {
-        setState(() => _mood = MascotMood.idle);
+        setState(() {
+          _mood = MascotMood.idle;
+          _toolName = null;
+        });
       }
     }
   }
@@ -190,22 +213,100 @@ class _MascotSurfaceState extends State<_MascotSurface> {
       child: GestureDetector(
         onPanStart: (_) => windowManager.startDragging(),
         behavior: HitTestBehavior.translucent,
-        child: Stack(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Center(child: MemoMascot(mood: _mood, size: 100)),
-            Positioned(
-              top: 2,
-              right: 2,
-              child: AnimatedOpacity(
-                opacity: _hovering ? 1 : 0,
-                duration: const Duration(milliseconds: 150),
-                child: IgnorePointer(
-                  ignoring: !_hovering,
-                  child: _CloseButton(onTap: () => windowManager.close()),
-                ),
+            SizedBox(
+              width: _petAreaSize.width,
+              height: _petAreaSize.height,
+              child: Stack(
+                children: [
+                  Center(child: MemoMascot(mood: _mood, size: 100)),
+                  Positioned(
+                    top: 2,
+                    right: 2,
+                    child: AnimatedOpacity(
+                      opacity: _hovering ? 1 : 0,
+                      duration: const Duration(milliseconds: 150),
+                      child: IgnorePointer(
+                        ignoring: !_hovering,
+                        child: _CloseButton(onTap: () => windowManager.close()),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
+            const SizedBox(height: _bubbleGap),
+            _StatusBubble(mood: _mood, toolName: _toolName),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Status readout below the pet — what Memo is doing right now, in plain
+/// words (never the AI's actual reply text: see [MascotMood]'s doc comment,
+/// this only ever renders a fixed phrase per [mood]). Reserves
+/// [_bubbleAreaHeight] unconditionally and fades its content in and out so
+/// the always-on-top window never resizes at runtime.
+class _StatusBubble extends StatelessWidget {
+  final MascotMood mood;
+  final String? toolName;
+
+  const _StatusBubble({required this.mood, required this.toolName});
+
+  String? _textFor(MascotMood mood, String? toolName) => switch (mood) {
+        MascotMood.idle => null,
+        MascotMood.thinking => L10n.t('mascot_status_thinking'),
+        MascotMood.writing => L10n.t('mascot_status_writing'),
+        MascotMood.generating => L10n.t('mascot_status_generating'),
+        MascotMood.tool => (toolName == null || toolName.isEmpty)
+            ? L10n.t('mascot_status_tool')
+            : L10n.t('mascot_status_tool_named', {'tool': toolName}),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final text = _textFor(mood, toolName);
+    return SizedBox(
+      height: _bubbleAreaHeight,
+      width: _petAreaSize.width,
+      child: Center(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: text == null
+              ? const SizedBox.shrink(key: ValueKey('empty'))
+              : Container(
+                  key: ValueKey(text),
+                  constraints: BoxConstraints(maxWidth: _petAreaSize.width),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xE6231B14),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0x33E8DCC8)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    text,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFFE8DCC8),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                      height: 1.25,
+                    ),
+                  ),
+                ),
         ),
       ),
     );

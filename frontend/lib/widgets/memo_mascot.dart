@@ -1,8 +1,15 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../core/l10n.dart';
+
+/// A one-shot idle flourish (wave, hop, sway) played at random intervals
+/// while [MascotMood.idle] so the character doesn't read as frozen between
+/// real activity — separate from the continuous breathing/blink loop, which
+/// keeps running underneath regardless of mood.
+enum _IdleGesture { none, wave, hop, sway }
 
 /// What Memo's mascot is currently "doing" — maps to a real app signal once
 /// wired up (Live Mode transcript state, agent tool-call events, task loop
@@ -13,7 +20,10 @@ enum MascotMood { idle, thinking, writing, generating, tool }
 /// Memo's mascot: a warm mocha-and-gold character, hand-drawn as vector
 /// shapes (no external asset) so every state renders crisply at any size.
 /// Runs a continuous idle loop (breathing, antenna wobble, blink) regardless
-/// of [mood], plus a mood-specific pose, prop and secondary motion.
+/// of [mood], plus a mood-specific pose, prop and secondary motion. While
+/// [MascotMood.idle], it also plays an occasional random flourish (wave,
+/// hop, sway — see [_IdleGesture]) so it doesn't read as frozen between
+/// real activity.
 class MemoMascot extends StatefulWidget {
   final MascotMood mood;
   final double size;
@@ -25,8 +35,12 @@ class MemoMascot extends StatefulWidget {
 }
 
 class _MemoMascotState extends State<MemoMascot>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _loop;
+  late final AnimationController _gesture;
+  Timer? _gestureTimer;
+  _IdleGesture _activeGesture = _IdleGesture.none;
+  final math.Random _rng = math.Random();
 
   // One long looping controller; every sub-animation derives its own phase
   // from elapsed seconds via modulo, rather than juggling several
@@ -40,11 +54,58 @@ class _MemoMascotState extends State<MemoMascot>
       vsync: this,
       duration: const Duration(seconds: 20),
     )..repeat();
+    _gesture = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
+    if (widget.mood == MascotMood.idle) _scheduleNextGesture();
+  }
+
+  @override
+  void didUpdateWidget(covariant MemoMascot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mood == widget.mood) return;
+    if (widget.mood != MascotMood.idle) {
+      // Real activity started — stop mid-flourish rather than let a wave
+      // finish while the mascot is supposed to be thinking/working.
+      _gestureTimer?.cancel();
+      _gestureTimer = null;
+      _gesture.stop();
+      if (_activeGesture != _IdleGesture.none) {
+        setState(() => _activeGesture = _IdleGesture.none);
+      }
+    } else if (_gestureTimer == null) {
+      _scheduleNextGesture();
+    }
+  }
+
+  void _scheduleNextGesture() {
+    _gestureTimer?.cancel();
+    // Randomized so the idle character never settles into a predictable
+    // rhythm — long enough gaps that a gesture reads as a deliberate
+    // flourish, not a nervous tic.
+    final delay = Duration(milliseconds: 3500 + _rng.nextInt(6000));
+    _gestureTimer = Timer(delay, _playRandomGesture);
+  }
+
+  Future<void> _playRandomGesture() async {
+    if (!mounted || widget.mood != MascotMood.idle) {
+      _scheduleNextGesture();
+      return;
+    }
+    const options = [_IdleGesture.wave, _IdleGesture.hop, _IdleGesture.sway];
+    setState(() => _activeGesture = options[_rng.nextInt(options.length)]);
+    await _gesture.forward(from: 0);
+    if (!mounted) return;
+    setState(() => _activeGesture = _IdleGesture.none);
+    if (widget.mood == MascotMood.idle) _scheduleNextGesture();
   }
 
   @override
   void dispose() {
+    _gestureTimer?.cancel();
     _loop.dispose();
+    _gesture.dispose();
     super.dispose();
   }
 
@@ -56,11 +117,16 @@ class _MemoMascotState extends State<MemoMascot>
         width: widget.size,
         height: widget.size * 1.05,
         child: AnimatedBuilder(
-          animation: _loop,
+          animation: Listenable.merge([_loop, _gesture]),
           builder: (context, _) {
             final t = _loop.value * _loopSeconds;
             return CustomPaint(
-              painter: _MascotPainter(mood: widget.mood, t: t),
+              painter: _MascotPainter(
+                mood: widget.mood,
+                t: t,
+                gesture: _activeGesture,
+                gestureT: _gesture.value,
+              ),
             );
           },
         ),
@@ -90,8 +156,20 @@ double _frac(double x) => x - x.floorToDouble();
 class _MascotPainter extends CustomPainter {
   final MascotMood mood;
   final double t;
+  final _IdleGesture gesture;
+  final double gestureT;
 
-  _MascotPainter({required this.mood, required this.t});
+  _MascotPainter({
+    required this.mood,
+    required this.t,
+    this.gesture = _IdleGesture.none,
+    this.gestureT = 0,
+  });
+
+  /// 0 at the start/end of a gesture, 1 at its midpoint — the shared
+  /// envelope every gesture eases in and out of instead of snapping.
+  double get _gestureEnvelope =>
+      gesture == _IdleGesture.none ? 0 : math.sin(gestureT.clamp(0, 1) * math.pi);
 
   // Design space: a fixed local coordinate system the character is drawn
   // in, then uniformly scaled to fit whatever pixel size the widget gets.
@@ -106,6 +184,20 @@ class _MascotPainter extends CustomPainter {
     canvas.translate(_origin.dx, _origin.dy);
 
     _drawShadow(canvas);
+
+    // Sway and hop are whole-body flourishes — applied here, before the
+    // breathe scale and limb drawing below, so every part of the character
+    // moves together instead of the sway looking like just a head tilt.
+    canvas.save();
+    if (gesture == _IdleGesture.sway) {
+      final angle = 9 * math.pi / 180 * math.sin(gestureT.clamp(0, 1) * math.pi * 2);
+      canvas.rotate(angle);
+    }
+    if (gesture == _IdleGesture.hop) {
+      final g = gestureT.clamp(0.0, 1.0);
+      final hopDy = -22 * 4 * g * (1 - g); // parabolic arc, peak mid-gesture
+      canvas.translate(0, hopDy);
+    }
 
     // Squash & stretch: neutral at the loop's start/midpoint, extreme at
     // the quarter-points in between (matches the source design's
@@ -130,6 +222,7 @@ class _MascotPainter extends CustomPainter {
     canvas.restore(); // breathe
     _drawParticles(canvas);
 
+    canvas.restore(); // sway/hop
     canvas.restore(); // scale + translate
   }
 
@@ -306,10 +399,38 @@ class _MascotPainter extends CustomPainter {
     final bodyFill = Paint()..color = _cBody;
     switch (mood) {
       case MascotMood.idle:
-        for (final side in [-1, 1]) {
+        // Left arm: normal resting pose, always.
+        canvas.save();
+        canvas.translate(-45.5, -5);
+        canvas.rotate(6 * math.pi / 180);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset.zero, width: 19, height: 30),
+            const Radius.circular(9),
+          ),
+          bodyFill,
+        );
+        canvas.restore();
+
+        if (gesture == _IdleGesture.wave) {
+          // Right arm: raises and wiggles side to side — a "hi" wave.
+          final lift = _gestureEnvelope;
+          final wiggle = math.sin(gestureT.clamp(0, 1) * math.pi * 7) * 16 * lift;
           canvas.save();
-          canvas.translate(side * 45.5, -5);
-          canvas.rotate(side * -6 * math.pi / 180);
+          canvas.translate(38, 4 - 34 * lift);
+          canvas.rotate((-70 * lift + wiggle) * math.pi / 180);
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              const Rect.fromLTWH(-9.5, 0, 19, 30),
+              const Radius.circular(9),
+            ),
+            bodyFill,
+          );
+          canvas.restore();
+        } else {
+          canvas.save();
+          canvas.translate(45.5, -5);
+          canvas.rotate(-6 * math.pi / 180);
           canvas.drawRRect(
             RRect.fromRectAndRadius(
               Rect.fromCenter(center: Offset.zero, width: 19, height: 30),
@@ -491,5 +612,8 @@ class _MascotPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MascotPainter oldDelegate) =>
-      oldDelegate.t != t || oldDelegate.mood != mood;
+      oldDelegate.t != t ||
+      oldDelegate.mood != mood ||
+      oldDelegate.gesture != gesture ||
+      oldDelegate.gestureT != gestureT;
 }

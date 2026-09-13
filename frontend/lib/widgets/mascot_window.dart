@@ -10,10 +10,10 @@ import 'package:window_manager/window_manager.dart';
 import '../core/backend_url.dart';
 import 'memo_mascot.dart';
 
-/// Window size hugs the character tightly on purpose — the whole window
-/// rectangle is what's draggable/clickable (there's no per-pixel hit
-/// testing against the transparent margin), so the smaller it is, the
-/// closer "click near the character" and "click the character" become.
+/// Window size the character is designed against — `set_mascot_input_shape`
+/// in linux/runner/my_application.cc hand-codes an ellipse (plus a small
+/// rectangle for the hover close button's corner) in these exact
+/// coordinates, so this and that native function must be changed together.
 const _windowSize = Size(132, 148);
 
 /// Boots the standalone floating desktop mascot in place of the normal chat
@@ -29,12 +29,13 @@ const _windowSize = Size(132, 148);
 /// does in the main window: `desktop_multi_window` gives every sub-window
 /// its own Flutter engine, and `linux/runner/my_application.cc` registers
 /// window_manager's plugin for each one via the exact callback the
-/// package's README documents. Always-on-top (`alwaysOnTop: true` below)
-/// is best-effort only, not guaranteed — confirmed live that on a native
-/// Wayland/KWin session (GDK_BACKEND=wayland) another window can still
-/// cover the mascot once focused; see the vendored keep_above patch's own
-/// comment in third_party/desktop_multi_window for why. Real per-pixel transparency needed one
-/// thing that callback fires too late for — see
+/// package's README documents. Always-on-top (`alwaysOnTop: true` below,
+/// backed by `gtk_window_set_keep_above` in the vendored patch) has no
+/// native-Wayland equivalent in plain GTK — main.cc forces the whole app
+/// onto XWayland specifically so this (and the input-shape "collider"
+/// fix) have the X11 mechanism to call; see main.cc's own comment. Real
+/// per-pixel transparency needed one thing that callback fires too late
+/// for — see
 /// frontend/third_party/README.md for that one vendored native patch.
 Future<void> runMascotWindow() async {
   WidgetsFlutterBinding.ensureInitialized();

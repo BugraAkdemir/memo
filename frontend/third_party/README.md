@@ -28,16 +28,28 @@ gets a callback, it's too late for any of these three:
    client-side decoration with the compositor once the app has gone
    through `set_titlebar` at all, even with nothing in it.
 3. **`gtk_window_set_keep_above`** — moved here for consistency with the
-   other two, but this one is a known **partial** fix, not a real one:
-   confirmed live that on native Wayland (`GDK_BACKEND=wayland`, KDE/KWin)
-   another window can still cover the mascot once focused, regardless of
-   *when* this is called. `gtk_window_set_keep_above` is an X11 EWMH
-   mechanism with no native-Wayland equivalent in plain GTK — Wayland
-   compositors deliberately refuse an unprompted "always above everything"
-   request from a client, the same security model that blocks unprompted
-   focus-stealing. A real fix needs a compositor-specific protocol (KDE's
-   `org_kde_plasma_window_management`) that plain GTK doesn't expose. Left
-   in anyway since it's the correct, working call on X11 sessions.
+   other two. On its own this doesn't work on native Wayland at all (no
+   equivalent to the X11 EWMH mechanism it uses, confirmed live: another
+   window still covered the mascot once focused, regardless of *when*
+   this was called) — Wayland compositors deliberately refuse an
+   unprompted "always above everything" request from a client, the same
+   security model that blocks unprompted focus-stealing. Rather than
+   chase KDE's own compositor protocol
+   (`org_kde_plasma_window_management`), `linux/runner/main.cc` forces
+   the whole app onto XWayland instead (`setenv("GDK_BACKEND", "x11", 1)`
+   as the very first line of `main()`), which gives this call — and the
+   input-shape "collider" fix below — the X11 mechanism they need.
+   Confirmed live after that change: opening another window directly
+   over the mascot's screen position no longer covers it.
+
+Also **not a `MEMO PATCH` in this vendored file**, but the same
+before-realize timing idea applied one level up:
+`my_application.cc`'s own window-created callback (already registering
+every plugin for the mascot's sub-window) sets an elliptical *input*
+shape via `gdk_window_input_shape_combine_region` — another X11-only
+GDK call — so the transparent margin around the character doesn't
+swallow clicks meant for whatever's behind it. Same XWayland
+requirement as always-on-top.
 
 Frameless, skip-taskbar and dragging (once actually realized at the right
 size) are still set from `mascot_window.dart`'s own Dart code via the

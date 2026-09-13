@@ -7,6 +7,8 @@
 
 #include "flutter/generated_plugin_registrant.h"
 
+#include <math.h>
+
 #include "desktop_multi_window/desktop_multi_window_plugin.h"
 
 struct _MyApplication {
@@ -15,6 +17,48 @@ struct _MyApplication {
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
+
+// Restricts the desktop mascot's *input* region (what actually receives
+// clicks/drags) to a rough ellipse instead of its whole 132x148 window —
+// the transparent margin around the character stops swallowing clicks
+// meant for whatever is behind it. Only takes effect on X11/XWayland
+// (main() forces GDK_BACKEND=x11 for exactly this and the always-on-top
+// fix — see that comment); gdk_window_input_shape_combine_region has no
+// native-Wayland equivalent either, so this silently no-ops there instead
+// of erroring. Built from horizontal bands rather than one shape call
+// because cairo_region_t is fundamentally rectangle-based — this is the
+// standard way to approximate a curve with one.
+static void set_mascot_input_shape(GtkWindow* window) {
+  GdkWindow* gdk_win = gtk_widget_get_window(GTK_WIDGET(window));
+  if (gdk_win == nullptr) return;
+
+  const double cx = 66.0, cy = 78.0, rx = 54.0, ry = 62.0;
+  const int bands = 48;
+  cairo_region_t* region = cairo_region_create();
+  for (int i = 0; i < bands; i++) {
+    double y0 = -ry + (2.0 * ry * i) / bands;
+    double y1 = -ry + (2.0 * ry * (i + 1)) / bands;
+    double ymid = (y0 + y1) / 2.0;
+    double frac = 1.0 - (ymid * ymid) / (ry * ry);
+    if (frac < 0) continue;
+    double halfw = rx * sqrt(frac);
+    cairo_rectangle_int_t rect;
+    rect.x = static_cast<int>(cx - halfw);
+    rect.y = static_cast<int>(cy + y0);
+    rect.width = static_cast<int>(2 * halfw);
+    rect.height = static_cast<int>(y1 - y0) + 1;
+    cairo_region_union_rectangle(region, &rect);
+  }
+  // The hover-close button (mascot_window.dart's _CloseButton) sits in the
+  // top-right corner, outside the ellipse above — without this, hovering
+  // or clicking it would never reach Flutter at all, since a shaped
+  // window has no input surface outside the shape to begin with.
+  cairo_rectangle_int_t close_button_corner = {100, 0, 32, 30};
+  cairo_region_union_rectangle(region, &close_button_corner);
+
+  gdk_window_input_shape_combine_region(gdk_win, region, 0, 0);
+  cairo_region_destroy(region);
+}
 
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
@@ -102,6 +146,8 @@ static void my_application_activate(GApplication* application) {
         gdk_rgba_parse(&transparent, "#000000");
         transparent.alpha = 0;
         fl_view_set_background_color(FL_VIEW(registry), &transparent);
+        GtkWidget* toplevel = gtk_widget_get_toplevel(GTK_WIDGET(FL_VIEW(registry)));
+        set_mascot_input_shape(GTK_WINDOW(toplevel));
       });
 
   gtk_widget_grab_focus(GTK_WIDGET(view));

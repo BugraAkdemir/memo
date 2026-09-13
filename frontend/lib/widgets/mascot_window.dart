@@ -203,6 +203,7 @@ class _MascotSurfaceState extends State<_MascotSurface> {
         'writing' => MascotMood.writing,
         'generating' => MascotMood.generating,
         'done' => MascotMood.done,
+        'speaking' => MascotMood.speaking,
         _ => MascotMood.idle,
       };
 
@@ -274,6 +275,7 @@ class _StatusBubble extends StatelessWidget {
             ? L10n.t('mascot_status_tool')
             : L10n.t('mascot_status_tool_named', {'tool': toolName}),
         MascotMood.done => L10n.t('mascot_status_done'),
+        MascotMood.speaking => L10n.t('mascot_status_speaking'),
       };
 
   @override

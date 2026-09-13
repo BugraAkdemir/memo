@@ -409,6 +409,7 @@ type App struct {
 // cannot reference paths outside the package directory.
 func NewApp(binaries embed.FS, version string) *App {
 	wireGlobalActivityHook()
+	wireLiveModeActivityHook()
 	return &App{
 		events:   &eventRing{},
 		binaries: binaries,

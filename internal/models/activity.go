@@ -20,6 +20,12 @@ const (
 	// the desktop mascot gets a "completed" beat instead of either
 	// lingering in "generating" or silently going straight to idle.
 	ActivityDone ActivityState = "done"
+	// ActivitySpeaking reports a Live Mode session's engine actively
+	// playing audio back to the user (see livemode.GlobalActivityHook,
+	// fed from every SessionEventType.EventAudioOut) — the only genuinely
+	// available Live Mode signal today; there is deliberately no
+	// "listening" counterpart (see that hook's doc comment for why).
+	ActivitySpeaking ActivityState = "speaking"
 )
 
 // ActivityStatus is what GET /api/mascot/activity returns.

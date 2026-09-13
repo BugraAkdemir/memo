@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"memo/internal/agent"
+	"memo/internal/livemode"
 	"memo/internal/models"
 )
 
@@ -20,7 +21,9 @@ func resetActivity(t *testing.T) *App {
 	globalActivity.since = time.Now()
 	globalActivity.gen++
 	globalActivity.mu.Unlock()
+	lastLiveModeSpeaking.Store(0)
 	wireGlobalActivityHook()
+	wireLiveModeActivityHook()
 	return &App{}
 }
 
@@ -87,6 +90,29 @@ func TestGlobalActivityHook_FinalResponseReportsDone(t *testing.T) {
 	}
 }
 
+func TestLiveModeActivityHook_AudioOutReportsSpeaking(t *testing.T) {
+	a := resetActivity(t)
+	livemode.GlobalActivityHook()
+
+	got := a.GetActivityStatus()
+	if got.State != models.ActivitySpeaking {
+		t.Errorf("State = %q, want speaking", got.State)
+	}
+}
+
+func TestLiveModeActivityHook_ThrottlesWithinTwoSeconds(t *testing.T) {
+	a := resetActivity(t)
+	livemode.GlobalActivityHook()
+	first := a.GetActivityStatus().Since
+
+	livemode.GlobalActivityHook()
+	second := a.GetActivityStatus().Since
+
+	if !second.Equal(first) {
+		t.Errorf("activity was re-armed within the 2s throttle window: first=%v second=%v", first, second)
+	}
+}
+
 func TestSetActivity_AutoIdlesAfterTimeout(t *testing.T) {
 	a := resetActivity(t)
 	original := activityIdleTimeout
@@ -118,6 +144,23 @@ func TestSetActivity_DoneAutoIdlesAfterItsOwnShorterTimeout(t *testing.T) {
 	time.Sleep(60 * time.Millisecond)
 	if got := a.GetActivityStatus().State; got != models.ActivityIdle {
 		t.Errorf("State after done timeout = %q, want idle", got)
+	}
+}
+
+func TestSetActivity_SpeakingAutoIdlesAfterItsOwnTimeout(t *testing.T) {
+	a := resetActivity(t)
+	original := activitySpeakingTimeout
+	activitySpeakingTimeout = 20 * time.Millisecond
+	defer func() { activitySpeakingTimeout = original }()
+
+	setActivity(models.ActivitySpeaking, "")
+	if got := a.GetActivityStatus().State; got != models.ActivitySpeaking {
+		t.Fatalf("State right after setActivity = %q, want speaking", got)
+	}
+
+	time.Sleep(60 * time.Millisecond)
+	if got := a.GetActivityStatus().State; got != models.ActivityIdle {
+		t.Errorf("State after speaking timeout = %q, want idle", got)
 	}
 }
 

@@ -2,9 +2,11 @@ package app
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"memo/internal/agent"
+	"memo/internal/livemode"
 	"memo/internal/models"
 )
 
@@ -31,6 +33,15 @@ var activityIdleTimeout = 12 * time.Second // var, not const: shortened in tests
 // one-off beat meant to be noticed and then get out of the way, not a
 // lingering status the way "generating"/"tool" are.
 var activityDoneTimeout = 2500 * time.Millisecond // var, not const: shortened in tests
+
+// activitySpeakingTimeout: how long models.ActivitySpeaking stays up after
+// the last audio_out chunk before falling back to idle — audio_out fires
+// repeatedly throughout playback (re-arming this on every chunk, see
+// wireLiveModeActivityHook), so in practice this only matters for the tail
+// end once speech actually stops. Shorter than activityIdleTimeout since a
+// gap this size in a real-time audio stream reliably means playback ended,
+// not just a slow chunk.
+var activitySpeakingTimeout = 4 * time.Second // var, not const: shortened in tests
 
 type activityTracker struct {
 	mu       sync.Mutex
@@ -63,8 +74,11 @@ func setActivity(state models.ActivityState, toolName string) {
 		return
 	}
 	timeout := activityIdleTimeout
-	if state == models.ActivityDone {
+	switch state {
+	case models.ActivityDone:
 		timeout = activityDoneTimeout
+	case models.ActivitySpeaking:
+		timeout = activitySpeakingTimeout
 	}
 	time.AfterFunc(timeout, func() {
 		globalActivity.mu.Lock()
@@ -83,9 +97,8 @@ func setActivity(state models.ActivityState, toolName string) {
 // aren't distinguished from an executing tool, and two concurrent agent
 // turns (the task loop now allows this) just overwrite each other's
 // state — good enough for a decorative desktop companion, not a queue or
-// per-session record. Live Mode's own listening/thinking/speaking phase
-// is a separate, not-yet-wired signal (see internal/webserver/
-// handlers_livemode_session.go) — out of scope for this pass.
+// per-session record. Live Mode's activity signal is wired separately, see
+// wireLiveModeActivityHook.
 func wireGlobalActivityHook() {
 	agent.GlobalActivityHook = func(ev agent.AgentEvent) {
 		switch ev.Type {
@@ -102,6 +115,33 @@ func wireGlobalActivityHook() {
 		case agent.EventFinalResponse:
 			setActivity(models.ActivityDone, "")
 		}
+	}
+}
+
+// lastLiveModeSpeaking throttles wireLiveModeActivityHook's setActivity
+// calls to at most once per 2s (unix nanos, atomic since
+// livemode.GlobalActivityHook can be invoked concurrently from more than
+// one pumpLiveModeSessionEvents goroutine if more than one Live Mode
+// session is open at once — unlike activityRelay's lastGenerating, which
+// is a single goroutine's own closure state and needs no synchronization).
+// Without this, a real-time audio stream's small, frequent chunks would
+// each schedule a fresh time.AfterFunc in setActivity for no benefit, since
+// the state doesn't change between calls anyway.
+var lastLiveModeSpeaking atomic.Int64
+
+// wireLiveModeActivityHook sets livemode.GlobalActivityHook once at App
+// construction, the Live Mode half of wireGlobalActivityHook. See
+// models.ActivitySpeaking's doc comment for what this does and doesn't
+// cover.
+func wireLiveModeActivityHook() {
+	livemode.GlobalActivityHook = func() {
+		now := time.Now()
+		last := lastLiveModeSpeaking.Load()
+		if last != 0 && now.Sub(time.Unix(0, last)) < 2*time.Second {
+			return
+		}
+		lastLiveModeSpeaking.Store(now.UnixNano())
+		setActivity(models.ActivitySpeaking, "")
 	}
 }
 

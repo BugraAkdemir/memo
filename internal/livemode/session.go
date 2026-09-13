@@ -32,6 +32,21 @@ const (
 	EventInterrupted SessionEventType = "interrupted"
 )
 
+// GlobalActivityHook, if set, is called on every EventAudioOut from every
+// active Session (google, openai_realtime, and EchoSession all emit it —
+// see each Client's Events() implementation), regardless of which chat or
+// WS connection produced it. Set once by internal/app (mirrors
+// internal/agent's GlobalActivityHook for the same reason: this package
+// can't import internal/app, which owns the desktop mascot's activity
+// tracker). There is deliberately no equivalent "listening" hook — neither
+// real engine currently parses the provider's speech-start/stop fields
+// into anything this package exposes — google.Client's readLoop doc
+// comment and openai_realtime.Client's serverEvent doc comment both note
+// those fields are read and silently discarded — so a "listening" signal
+// would have to be guessed from the absence of audio rather than a real
+// event.
+var GlobalActivityHook func()
+
 // RoleUser/RoleModel identify who a SessionEvent.Transcript belongs to —
 // the user's own speech vs. the model's spoken reply, transcribed by the
 // provider itself. Added after real-world testing surfaced that the Live

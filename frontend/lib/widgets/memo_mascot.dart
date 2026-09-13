@@ -16,8 +16,12 @@ enum _IdleGesture { none, wave, hop, sway }
 /// "just finished" beat (models.ActivityDone on the Go side): visually the
 /// same celebratory pose as [generating], reported as its own mood only so
 /// the status bubble can show a distinct "Completed!" instead of either
-/// lingering on "Preparing a response…" or silently going blank.
-enum MascotMood { idle, thinking, writing, generating, tool, done }
+/// lingering on "Preparing a response…" or silently going blank. [speaking]
+/// is Live Mode's own signal (models.ActivitySpeaking, fed from
+/// livemode.GlobalActivityHook on every audio_out chunk) — an animated
+/// open/close mouth instead of [generating]'s static happy face, since a
+/// Live Mode reply is heard, not read.
+enum MascotMood { idle, thinking, writing, generating, tool, done, speaking }
 
 /// Which character [MemoMascot] renders — a user-facing choice (Settings >
 /// General, `mascotSkinProvider`), not a mood. Both skins share the exact
@@ -318,8 +322,10 @@ class _MascotPainter extends CustomPainter {
         ..strokeWidth = 6
         ..strokeCap = StrokeCap.round,
     );
-    final glowing =
-        mood == MascotMood.generating || mood == MascotMood.tool || mood == MascotMood.done;
+    final glowing = mood == MascotMood.generating ||
+        mood == MascotMood.tool ||
+        mood == MascotMood.done ||
+        mood == MascotMood.speaking;
     final glowAlpha = glowing ? 0.4 + 0.6 * ((math.sin(2 * math.pi * t / 1.6) + 1) / 2) : 1.0;
     canvas.drawCircle(const Offset(0, -27), 7, Paint()..color = _cEye.withValues(alpha: glowAlpha));
     canvas.restore();
@@ -393,6 +399,7 @@ class _MascotPainter extends CustomPainter {
       case MascotMood.idle:
       case MascotMood.generating:
       case MascotMood.done:
+      case MascotMood.speaking:
         // generating/done never actually reach here (handled above), kept
         // only so this switch stays exhaustive.
         eyeL = Rect.fromLTWH(-21, -21, 8, 13);
@@ -413,7 +420,18 @@ class _MascotPainter extends CustomPainter {
       canvas.restore();
     }
 
-    canvas.drawPath(Path()..moveTo(-9, 16)..quadraticBezierTo(0, 24, 9, 16), mouthPaint);
+    if (mood == MascotMood.speaking) {
+      // An open/close talking mouth instead of the static smile — Live
+      // Mode's reply is heard, not read, so the mouth is what shows it.
+      final openness = math.sin(2 * math.pi * t / 0.32).abs();
+      final mouthH = 3 + 9 * openness;
+      canvas.drawOval(
+        Rect.fromCenter(center: const Offset(0, 18), width: 15, height: mouthH),
+        Paint()..color = _cMouth,
+      );
+    } else {
+      canvas.drawPath(Path()..moveTo(-9, 16)..quadraticBezierTo(0, 24, 9, 16), mouthPaint);
+    }
   }
 
   Paint _armPaint() => Paint()
@@ -529,6 +547,24 @@ class _MascotPainter extends CustomPainter {
         canvas.drawPath(right, _armPaint());
         canvas.drawCircle(const Offset(33, -49), 8.6, bodyFill);
         break;
+      case MascotMood.speaking:
+        // A gentle talking gesture — both arms sway out of phase with each
+        // other, like natural hand movement while explaining something.
+        for (final side in [-1, 1]) {
+          final wobble = math.sin(2 * math.pi * t / 1.1 + (side < 0 ? 0 : math.pi)) * 10;
+          canvas.save();
+          canvas.translate(side * 45.5, -5);
+          canvas.rotate(side * (6 + wobble) * math.pi / 180);
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromCenter(center: Offset.zero, width: 19, height: 30),
+              const Radius.circular(9),
+            ),
+            bodyFill,
+          );
+          canvas.restore();
+        }
+        break;
     }
   }
 
@@ -576,6 +612,7 @@ class _MascotPainter extends CustomPainter {
       case MascotMood.thinking:
       case MascotMood.generating:
       case MascotMood.done:
+      case MascotMood.speaking:
         break;
     }
   }
@@ -653,6 +690,24 @@ class _MascotPainter extends CustomPainter {
         3.5 * s.scale,
         Paint()..color = _cEye.withValues(alpha: s.opacity.clamp(0, 1)),
       );
+    } else if (mood == MascotMood.speaking) {
+      // Small sound-wave arcs pulsing outward from the mouth.
+      for (int i = 0; i < 3; i++) {
+        final phase = _frac((t - i * 0.25) / 0.9);
+        final r = 8 + 14 * phase;
+        final alpha = (1 - phase).clamp(0, 1) * 0.55;
+        final arcPaint = Paint()
+          ..color = _cEye.withValues(alpha: alpha)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.2;
+        canvas.drawArc(
+          Rect.fromCenter(center: const Offset(0, 18), width: r * 2, height: r * 1.4),
+          math.pi * 0.15,
+          math.pi * 0.7,
+          false,
+          arcPaint,
+        );
+      }
     }
   }
 
@@ -841,8 +896,10 @@ class _PixelMascotPainter extends CustomPainter {
       Rect.fromCenter(center: const Offset(0, -12), width: 6, height: 24),
       Paint()..color = _pxBodyShadow,
     );
-    final glowing =
-        mood == MascotMood.generating || mood == MascotMood.tool || mood == MascotMood.done;
+    final glowing = mood == MascotMood.generating ||
+        mood == MascotMood.tool ||
+        mood == MascotMood.done ||
+        mood == MascotMood.speaking;
     final glowAlpha = glowing ? 0.5 + 0.5 * ((math.sin(2 * math.pi * t / 1.6) + 1) / 2) : 1.0;
     canvas.drawRect(
       Rect.fromCenter(center: const Offset(0, -26), width: 11, height: 11),
@@ -890,6 +947,7 @@ class _PixelMascotPainter extends CustomPainter {
       case MascotMood.idle:
       case MascotMood.generating:
       case MascotMood.done:
+      case MascotMood.speaking:
         eyeCy = -60;
         eyeH = 9;
         break;
@@ -917,11 +975,20 @@ class _PixelMascotPainter extends CustomPainter {
       }
     }
 
-    final mouthWidth = happy ? 22.0 : 14.0;
-    canvas.drawRect(
-      Rect.fromCenter(center: const Offset(0, -47), width: mouthWidth, height: 3),
-      Paint()..color = _pxGlowSoft,
-    );
+    if (mood == MascotMood.speaking) {
+      final openness = math.sin(2 * math.pi * t / 0.32).abs();
+      final mouthH = 3 + 7 * openness;
+      canvas.drawRect(
+        Rect.fromCenter(center: const Offset(0, -47), width: 16, height: mouthH),
+        Paint()..color = _pxGlowSoft,
+      );
+    } else {
+      final mouthWidth = happy ? 22.0 : 14.0;
+      canvas.drawRect(
+        Rect.fromCenter(center: const Offset(0, -47), width: mouthWidth, height: 3),
+        Paint()..color = _pxGlowSoft,
+      );
+    }
   }
 
   Paint _armPaint() => Paint()..color = _pxBody;
@@ -984,6 +1051,12 @@ class _PixelMascotPainter extends CustomPainter {
         _drawArmSegment(canvas, const Offset(-38, -2), -145, 26);
         _drawArmSegment(canvas, const Offset(38, -2), 145, 26);
         break;
+      case MascotMood.speaking:
+        final wobbleL = math.sin(2 * math.pi * t / 1.1) * 10;
+        final wobbleR = math.sin(2 * math.pi * t / 1.1 + math.pi) * 10;
+        _drawArmSegment(canvas, const Offset(-42, -2), 8 + wobbleL, 26);
+        _drawArmSegment(canvas, const Offset(42, -2), -8 + wobbleR, 26);
+        break;
     }
   }
 
@@ -1014,6 +1087,7 @@ class _PixelMascotPainter extends CustomPainter {
       case MascotMood.thinking:
       case MascotMood.generating:
       case MascotMood.done:
+      case MascotMood.speaking:
         break;
     }
   }
@@ -1054,6 +1128,16 @@ class _PixelMascotPainter extends CustomPainter {
         canvas.drawRect(
           Rect.fromCenter(center: pos.translate(0, s.dy), width: sz, height: sz),
           Paint()..color = _pxGlow.withValues(alpha: s.opacity.clamp(0, 1)),
+        );
+      }
+    } else if (mood == MascotMood.speaking) {
+      for (int i = 0; i < 3; i++) {
+        final phase = _frac((t - i * 0.25) / 0.9);
+        final sz = 4 + 10 * phase;
+        final alpha = (1 - phase).clamp(0, 1) * 0.55;
+        canvas.drawRect(
+          Rect.fromCenter(center: const Offset(38, -58), width: sz, height: sz),
+          Paint()..color = _pxGlow.withValues(alpha: alpha),
         );
       }
     }

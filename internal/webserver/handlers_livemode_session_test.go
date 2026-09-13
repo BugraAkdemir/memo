@@ -316,3 +316,68 @@ func TestPumpLiveModeSessionAudio_ForwardsInjectText(t *testing.T) {
 		t.Errorf("expected exactly one InjectContext call with the client's text, got %v", got)
 	}
 }
+
+// TestPumpLiveModeSessionEvents_CallsActivityHookOnAudioOut proves the
+// desktop mascot's activity hook (internal/app's wireLiveModeActivityHook)
+// actually gets invoked for every EventAudioOut this function forwards —
+// the one real "Memo is speaking" signal, see livemode.GlobalActivityHook's
+// doc comment. internal/webserver can't import internal/app (the reverse
+// dependency already exists), so this only proves the hook is *called*, not
+// what internal/app's real implementation does with it — that's
+// internal/app/activity_test.go's job.
+func TestPumpLiveModeSessionEvents_CallsActivityHookOnAudioOut(t *testing.T) {
+	originalHook := livemode.GlobalActivityHook
+	defer func() { livemode.GlobalActivityHook = originalHook }()
+
+	var calls int
+	var mu sync.Mutex
+	livemode.GlobalActivityHook = func() {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+	}
+
+	events := make(chan livemode.SessionEvent, 2)
+	events <- livemode.SessionEvent{Type: livemode.EventAudioOut, Audio: []byte("pcm")}
+	events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleUser, Transcript: "merhaba"}
+	close(events)
+	session := &fakeRoleSession{events: events}
+
+	httpSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		writeDone := make(chan struct{})
+		pumpLiveModeSessionEvents(r.Context(), c, session, writeDone)
+		<-writeDone
+	}))
+	defer httpSrv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(httpSrv.URL, "http")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer c.CloseNow()
+
+	// Drain both frames (the binary audio_out, then the transcript text
+	// frame) so pumpLiveModeSessionEvents actually reaches the channel
+	// close and writeDone fires before this test's assertions run.
+	if _, _, err := c.Read(ctx); err != nil {
+		t.Fatalf("Read audio frame: %v", err)
+	}
+	if _, _, err := c.Read(ctx); err != nil {
+		t.Fatalf("Read transcript frame: %v", err)
+	}
+	c.Close(websocket.StatusNormalClosure, "")
+
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 1 {
+		t.Errorf("expected the activity hook called exactly once (only for EventAudioOut), got %d", calls)
+	}
+}

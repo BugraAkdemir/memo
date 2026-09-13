@@ -1,4 +1,84 @@
-# Ek (2026-09-13, devam 67) — Masaüstü maskotu: gerçek 2. pencere + gerçek state bağlama
+# Ek (2026-09-13, devam 68) — Maskot: canlı test bulguları düzeltildi + Settings toggle
+
+Kullanıcı sabah (devam 67'nin hemen ardından, aynı gece devamı) üç şey
+bildirdi: (1) düz sohbette ("merhaba" yazıp cevap alınca) maskot hiç
+tepki vermiyor, (2) maskot her zaman üstte kalmıyor, başka pencerelerin
+arkasına geçiyor, (3) tepsinin yanı sıra Ayarlar'a da aç/kapat eklenmeli.
+Üçü de ele alındı, ikisi gerçekten düzeltildi, biri **kısmen** düzeltildi
+ve dürüstçe belgelendi (tam çözülemedi).
+
+## 1. Düz sohbet artık maskotu tetikliyor (`0c0d015a`)
+
+Kök neden: `callLLMStream`'in birden fazla erken `return outCh`'ı var
+(Orchestra/harici sağlayıcı/yerel llama.cpp branch'lerinin her biri kendi
+noktasında dönüyor) — bir önceki oturumda (devam 67) sarmalamayı
+fonksiyonun **en sonundaki** tek return'e koymuştum, ki o nokta pratikte
+hiç ulaşılmıyormuş. Geçici bir debug log ekleyip gerçek binary'de test
+ettim: cevap düzgün akıyordu ama log satırı **hiç** basmadı — kanıt.
+Çözüm: sarmalamayı `callLLMStream`'i çağıran 2 yere taşıdım
+(`chat.go`'da `routeStream`'in düz-LLM fallback'i + Incognito Mode),
+böylece hangi branch çalışırsa çalışsın kapsanıyor. Canlı doğrulama:
+gerçek binary'ye curl ile mesaj gönderip `/api/mascot/activity`'yi
+saniyede bir 16-20 saniye boyunca yokladım — "düşünüyor" → "üretiyor"
+(uzun yanıt boyunca 3 saniyede bir tazeleniyor, otomatik idle'a
+düşmüyor) → "idle" (Done anında). Sonra gerçek Flutter uygulamasıyla da
+tekrarladım — maskotun gerçek bir sohbet cevabı akarken "üretiyor"
+pozunda (kollar havada, sparkle) olduğunu ekran görüntüsüyle gördüm.
+
+## 2. "Her zaman üstte" — KISMEN düzeltildi, tam çözülemedi (`16b10625`)
+
+`gtk_window_set_keep_above`'ı native yamaya (realize'dan önce) taşıdım —
+boyut/dekorasyon düzeltmesiyle aynı desen olur diye düşündüm. **Değildi.**
+Canlı test (maskotun ekran konumuna `zenity` penceresi açıp ekran
+görüntüsüyle doğrulama): zenity maskotu tamamen kapattı, kapatınca maskot
+aynı yerde tekrar ortaya çıktı. Gerçek sebep: bu makine
+`GDK_BACKEND=wayland` (KDE Plasma, native Wayland) kullanıyor —
+`gtk_window_set_keep_above` X11'e özgü bir EWMH mekanizması, native
+Wayland'da hiçbir GTK karşılığı yok. Wayland compositor'ları bir
+uygulamanın kendini "herkesin üstüne" zorla çıkarma isteğini **bilerek**
+reddediyor (izinsiz odak çalma ile aynı güvenlik gerekçesiyle). Gerçek
+çözüm KDE'nin kendi `org_kde_plasma_window_management` protokolünü
+konuşmayı gerektirir — düz GTK API'siyle mümkün değil, bu oturumun
+kapsamı dışında bırakıldı. Çağrı yine de yerinde duruyor (X11
+oturumlarında doğru çalışan mekanizma budur), hem native yamanın hem
+`mascot_window.dart`'ın doc comment'inde "kısmen/best-effort" olarak
+işaretlendi ki "çözüldü" sanılmasın.
+
+## 3. Ayarlara aç/kapat eklendi (`16b10625`)
+
+`_TrayControllerState`'in özel `_mascotWindow` state'i
+`providers/mascot_provider.dart`'a (paylaşılan bir
+`StateNotifierProvider<MascotWindowNotifier, WindowController?>`) taşındı.
+Tepsi menüsü ve Settings > General'daki yeni "Masaüstü Maskotu" switch'i
+artık **aynı** provider'ı okuyup/tetikliyor — hangisinden açılıp
+kapatılırsa kapatılsın (maskotun kendi X butonu dahil) etiket/switch
+durumu ikisinde de doğru kalıyor.
+
+## Doğrulama
+
+`CGO_ENABLED=1 go build/vet/test -race ./...` yeşil (2 yeni test:
+`TestActivityRelay_ContentReportsGenerating`,
+`TestActivityRelay_DoneReportsIdle`, artık gerçek bug'ı kilitliyor).
+`flutter analyze`/`flutter test` (337/337) yeşil, Rule 8 boş.
+
+## Sıradaki oturum için
+
+1. **"Her zaman üstte" gerçek çözümü henüz yok** — `org_kde_plasma_window_management`
+   (ya da genel olarak masaüstü ortamından bağımsız çalışan bir yaklaşım)
+   araştırılmalı. Alternatif: kullanıcıya "X11 oturumuyla dene" seçeneği
+   sunmak, ya da bu sınırlamayı olduğu gibi kabul etmek.
+2. "düşünüyor" mood'u hâlâ agent/tool akışına bağlı değil (devam 67'nin
+   notu geçerliliğini koruyor) — ama artık düz sohbet "generating"i
+   tetikliyor, yani en azından "hiçbir şey olmuyor" hissi kalmadı.
+3. Bu oturumda birden fazla kez eski/derlenmemiş `memo` binary'sine karşı
+   test yapıp yanlış sonuca vardım (kod değişikliği + `go build ./...`
+   çalıştırmak, kökteki `memo` binary'sini otomatik güncellemiyor) —
+   ileride "gerçek binary'de test ettim" derken önce `ls -la memo` ile
+   zaman damgasını kontrol etmek iyi bir alışkanlık olur.
+
+---
+
+
 
 Önceki oturumun (devam 66) kapanışından sonra kullanıcı "Codex'inki gibi
 sevimli bir maskot yapalım" dedi — bu oturum tamamen o özelliğe gitti,

@@ -1,3 +1,71 @@
+# Ek (2026-09-13, devam 72) — Maskot: 2. karakter — piksel-art mavi robot
+
+Kullanıcı devam 71'in ardından ikinci bir maskot istedi: kullanıcıya
+seçim özgürlüğü sağlayan, piksel-art tarzında, açık/mavi-lacivert
+renklerde, **aynı animasyon sistemine** sahip bir alternatif karakter,
+Ayarlar'dan seçilebilsin.
+
+## Ne yapıldı (`9d4b6d7d`)
+
+`MascotSkin` enum'u eklendi (`classic`/`pixel`) — bir mood değil, kalıcı
+kullanıcı tercihi. Her iki skin de **tıpatıp aynı** `MascotMood`/gesture
+rig'ini paylaşıyor (nefes alma, göz kırpma, rastgele dalgalanma/zıplama/
+sallanma, mood pozları, parçacık zamanlaması) — sadece farklı bir
+`CustomPainter` ile çiziliyor, davranış hiç değişmiyor.
+
+`_PixelMascotPainter`: bloklu, ızgaraya oturan (`_pixelBlock` — eğriyi
+yatay bantlara rasterize etme tekniği, `my_application.cc`'deki native
+tıklama-ellipsi ile **aynı fikir**, burada piksel ızgarası için) mavi-
+lacivert bir robot. Kol takılma noktaları, parçacık fazları gibi sayılar
+kasıtlı olarak `_MascotPainter`'ınkilerle mümkün olduğunca aynı tutuldu
+— "aynı animasyonlar olsun" isteğine göre iki skin'in aynı rig'in farklı
+kıyafeti gibi hissettirmesi için.
+
+`mascotSkinProvider` (`settings_provider.dart`): tercihi düz bir
+'classic'/'pixel' string olarak `memo_mascot_skin` altında saklıyor
+(`memo_theme_mode` ile aynı desen). `general_tab.dart`'a, **gerçek canlı
+önizlemeli** (statik resim değil) iki kartlık bir seçici eklendi.
+`mascot_window.dart` bu tercihi açılışta bir kere okuyor — o pencerenin
+kendi Riverpod ProviderScope'u yok, `memo_api_base_url` ile aynı desen.
+
+## Doğrulama
+
+`flutter analyze`/`flutter test` (337/337, sıfır yeni sorun), Rule 8
+grep boş. **Canlı doğrulama**: gerçek `memo` backend'i başlatılıp
+`flutter run -d linux` ile gerçek uygulama açıldı, Settings > General'da
+iki kart da doğru göründü — sıcak mocha yaratık vs. ekran-yüzlü, anteni
+parlayan mavi robot, ikisi de canlı nefes/göz kırpma animasyonuyla.
+
+## Garip bir gözlem — şeffafça not düşülüyor
+
+Doğrulama sırasında `~/.local/share/com.memo.memo_flutter/
+shared_preferences.json` dosyasında `memo_mascot_skin` değerinin
+"pixel" olarak ayarlandığını gördüm — ama ben (bu ajan) **hiçbir
+tıklama yapmadım**, bu ortamda `xdotool`/`ydotool` yok (devam 69'dan
+beri bilinen kısıt). Kodu tekrar tekrar denetledim: `setSkin(...)`
+çağrıları sadece `onTap` closure'ları içinde, build sırasında eager
+çağrılan hiçbir yer yok — yani kodda otomatik yazan bir bug bulamadım.
+En olası açıklama: bu gerçek, kullanıcının kendi masaüstünde çalışan
+gerçek uygulaması (gerçek sohbet geçmişiyle) — kullanıcı muhtemelen
+kendisi "Pixel" kartına tıkladı (belki merak edip denedi). **Bunu
+doğrulamadım, kullanıcıya sormadan tercihi geri almadım** — Rule 9
+gereği burada net bir kanıtım yok, sadece en makul açıklamayı
+paylaşıyorum. Sıradaki oturum/kullanıcı bu notu görürse: eğer bu
+gerçekten kasıtsızsa, ayarlardan "Classic"e geri almak tek satırlık bir
+tıklama.
+
+## Sıradaki oturum için
+
+1. Piksel maskotun **gerçek floating pencerede** (Settings kartının
+   dışında) görünümü tıklama-otomasyonu olmadığı için doğrulanamadı —
+   kod incelemesiyle güveniliyor (aynı `MemoMascot` widget'ı/painter'ı,
+   sadece farklı boyut) ama kullanıcının kendi masaüstünde bir kez göz
+   atması iyi olur.
+2. Yukarıdaki "pixel" tercihi gözlemi — kullanıcıya sorulmalı, kasıtlı
+   mıydı yoksa sıfırlansın mı.
+
+---
+
 # Ek (2026-09-13, devam 71) — Maskot: tur bittiğinde "Tamamlandı!" anı
 
 Devam 70'in hemen ardından kullanıcı bir şey daha istedi: çıktı/tur

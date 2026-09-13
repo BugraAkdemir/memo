@@ -75,9 +75,10 @@ type swarmStubBridge struct {
 	// Live Mode v2 (see PLAN_live_mode_v2.md) — overridable so
 	// handlers_livemode_session_test.go can exercise newLiveModeSession's
 	// active-engine dispatch without a real App.
-	getLiveModeConfig  func() config.LiveModeConfig
-	getLiveModeEngines func() []livemode.EngineConfig
-	newLiveModeSession func(ctx context.Context) livemode.Session
+	getLiveModeConfig        func() config.LiveModeConfig
+	getLiveModeEngines       func() []livemode.EngineConfig
+	newLiveModeSession       func(ctx context.Context) livemode.Session
+	listLiveModeEngineModels func(ctx context.Context, t livemode.EngineType, apiKey string) ([]livemode.ModelInfo, error)
 
 	// Dev gateway (/v1/*) auth — see openai_handlers_test.go's non-loopback
 	// key-bypass regression coverage.
@@ -470,6 +471,9 @@ func (b *swarmStubBridge) GetLiveModeEngines() []livemode.EngineConfig {
 func (b *swarmStubBridge) UpdateLiveModeEngine(cfg livemode.EngineConfig) error { return nil }
 func (b *swarmStubBridge) DeleteLiveModeEngine(t livemode.EngineType) error     { return nil }
 func (b *swarmStubBridge) ListLiveModeEngineModels(ctx context.Context, t livemode.EngineType, apiKey string) ([]livemode.ModelInfo, error) {
+	if b.listLiveModeEngineModels != nil {
+		return b.listLiveModeEngineModels(ctx, t, apiKey)
+	}
 	return nil, nil
 }
 func (b *swarmStubBridge) NewLiveModeSession(ctx context.Context) livemode.Session {
@@ -574,14 +578,14 @@ func (b *swarmStubBridge) SubscribeTaskEvents() (<-chan string, func()) {
 	ch := make(chan string)
 	return ch, func() {}
 }
-func (b *swarmStubBridge) RunningTaskEventSnapshot() []string             { return nil }
-func (b *swarmStubBridge) AddTaskResumeNote(listID, note string) error    { return nil }
-func (b *swarmStubBridge) SetTaskListMode(listID, mode string) error   { return nil }
-func (b *swarmStubBridge) ApproveTaskPlan(listID string) error          { return nil }
-func (b *swarmStubBridge) GetTaskPlanMd(listID string) (string, error)  { return "", nil }
-func (b *swarmStubBridge) SaveTaskPlanMd(listID, md string) error       { return nil }
-func (b *swarmStubBridge) GetTaskLoopSettings() config.TaskLoopConfig   { return config.TaskLoopConfig{} }
-func (b *swarmStubBridge) UpdateTaskLoopSettings(config.TaskLoopConfig) error { return nil }
+func (b *swarmStubBridge) RunningTaskEventSnapshot() []string                     { return nil }
+func (b *swarmStubBridge) AddTaskResumeNote(listID, note string) error            { return nil }
+func (b *swarmStubBridge) SetTaskListMode(listID, mode string) error              { return nil }
+func (b *swarmStubBridge) ApproveTaskPlan(listID string) error                    { return nil }
+func (b *swarmStubBridge) GetTaskPlanMd(listID string) (string, error)            { return "", nil }
+func (b *swarmStubBridge) SaveTaskPlanMd(listID, md string) error                 { return nil }
+func (b *swarmStubBridge) GetTaskLoopSettings() config.TaskLoopConfig             { return config.TaskLoopConfig{} }
+func (b *swarmStubBridge) UpdateTaskLoopSettings(config.TaskLoopConfig) error     { return nil }
 func (b *swarmStubBridge) GetTaskList(id string) (*taskloop.TaskList, error)      { return nil, nil }
 func (b *swarmStubBridge) ListTaskLists() []taskloop.TaskListInfo                 { return nil }
 func (b *swarmStubBridge) DeleteTaskList(id string) error                         { return nil }

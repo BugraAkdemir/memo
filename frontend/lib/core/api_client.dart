@@ -2139,6 +2139,15 @@ class MemoApiClient {
       data: {'type': type, 'api_key': apiKey},
     );
     final body = _guard<Map<String, dynamic>>(res.data);
+    if (body['status'] == 'error') {
+      // The backend always answers 200 here (see handleLiveModeEngineModels)
+      // so a real failure — bad key, rate limit, network error — never
+      // reaches Dio's error path; it has to be checked explicitly. Thrown
+      // as a plain Exception so FriendlyError.describeGeneric's fallback
+      // path (_stripExceptionPrefix) surfaces this message verbatim
+      // instead of the generic "Something went wrong."
+      throw Exception(body['error'] as String? ?? 'unknown error');
+    }
     final list = (body['models'] as List<dynamic>?) ?? const [];
     return list
         .map((e) => LiveModeModelInfo.fromJson(e as Map<String, dynamic>))

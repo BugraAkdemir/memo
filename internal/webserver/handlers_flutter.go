@@ -2483,10 +2483,18 @@ func (s *Server) handleLiveModeEngineModels(w http.ResponseWriter, r *http.Reque
 	}
 	models, err := s.fullBridge.ListLiveModeEngineModels(r.Context(), req.Type, req.APIKey)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		// A plain http.Error here writes a text/plain body, which Dio
+		// hands back as a raw String — FriendlyError.describeGeneric's
+		// _messageFromResponseBody only extracts a message from a JSON
+		// object, so the real reason (bad key, rate limit, network
+		// failure) silently became the generic "Something went wrong"
+		// fallback. Mirrors handleProviderModels's status/error JSON
+		// shape (already correctly consumed client-side by
+		// _browseGenericModels) so the actual error reaches the user.
+		writeJSON(w, map[string]interface{}{"status": "error", "error": err.Error()})
 		return
 	}
-	writeJSON(w, map[string][]livemode.ModelInfo{"models": models})
+	writeJSON(w, map[string]interface{}{"status": "ok", "models": models})
 }
 
 // handleLiveModeActive: GET reports the current Live Mode selector

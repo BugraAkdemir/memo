@@ -6,6 +6,7 @@ import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
 import '../../../core/tray_controller.dart';
 import '../../../providers/chat_provider.dart';
+import '../../../providers/mascot_provider.dart';
 import '../../../providers/models_provider.dart';
 import '../../../models/browser_install_progress.dart';
 import '../../../providers/settings_provider.dart';
@@ -233,6 +234,68 @@ class GeneralTab extends ConsumerWidget {
                   trackOutlineColor: WidgetStateProperty.all(MemoTheme.of(context).borderHover),
                   onChanged: (v) {
                     ref.read(minimizeToTrayProvider.notifier).setEnabled(v);
+                  },
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 32),
+        ],
+
+        // Desktop Mascot Toggle — same platforms as minimize-to-tray
+        // above, and the same desktop_multi_window window either way (see
+        // providers/mascot_provider.dart) whether opened from here or the
+        // tray menu.
+        if (trayFeatureSupported) ...[
+          Text(
+            L10n.t('mascot_toggle_title'),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: MemoTheme.of(context).textMain,
+            ),
+          ),
+          SizedBox(height: 12),
+          Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: MemoTheme.of(context).bgPanel,
+              borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+              border: Border.all(color: MemoTheme.of(context).borderSoft),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ref.watch(mascotWindowOpenProvider) ? L10n.t('on') : L10n.t('off'),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: MemoTheme.of(context).textMain,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        L10n.t('mascot_toggle_desc'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: MemoTheme.of(context).textDim,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: ref.watch(mascotWindowOpenProvider),
+                  activeThumbColor: MemoTheme.accent,
+                  inactiveThumbColor: MemoTheme.of(context).textDim,
+                  inactiveTrackColor: MemoTheme.of(context).bgHover,
+                  trackOutlineColor: WidgetStateProperty.all(MemoTheme.of(context).borderHover),
+                  onChanged: (_) {
+                    ref.read(mascotWindowProvider.notifier).toggle();
                   },
                 ),
               ],

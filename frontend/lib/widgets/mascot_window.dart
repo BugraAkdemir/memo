@@ -24,12 +24,16 @@ const _windowSize = Size(132, 148);
 /// argument for any window it creates (see tray_controller.dart, which is
 /// what actually calls `WindowController.create(...)` to spawn this).
 ///
-/// Frameless, always-on-top, skip-taskbar and drag-anywhere all come from
-/// the plain (unforked) `window_manager` package, which works here exactly
-/// as it does in the main window: `desktop_multi_window` gives every
-/// sub-window its own Flutter engine, and `linux/runner/my_application.cc`
-/// registers window_manager's plugin for each one via the exact callback
-/// the package's README documents. Real per-pixel transparency needed one
+/// Frameless, skip-taskbar and drag-anywhere all come from the plain
+/// (unforked) `window_manager` package, which works here exactly as it
+/// does in the main window: `desktop_multi_window` gives every sub-window
+/// its own Flutter engine, and `linux/runner/my_application.cc` registers
+/// window_manager's plugin for each one via the exact callback the
+/// package's README documents. Always-on-top (`alwaysOnTop: true` below)
+/// is best-effort only, not guaranteed — confirmed live that on a native
+/// Wayland/KWin session (GDK_BACKEND=wayland) another window can still
+/// cover the mascot once focused; see the vendored keep_above patch's own
+/// comment in third_party/desktop_multi_window for why. Real per-pixel transparency needed one
 /// thing that callback fires too late for — see
 /// frontend/third_party/README.md for that one vendored native patch.
 Future<void> runMascotWindow() async {

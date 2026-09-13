@@ -2,7 +2,6 @@
 
 import 'dart:io' show Platform;
 
-import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +10,7 @@ import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../providers/chat_provider.dart' show apiClientProvider, currentClientIdProvider;
+import '../providers/mascot_provider.dart';
 import '../providers/models_provider.dart';
 import '../providers/settings_provider.dart';
 import 'l10n.dart';
@@ -43,28 +43,12 @@ class TrayController extends ConsumerStatefulWidget {
 class _TrayControllerState extends ConsumerState<TrayController>
     with WindowListener, TrayListener {
   bool _trayReady = false;
-  WindowController? _mascotWindow;
 
   @override
   void initState() {
     super.initState();
     if (trayFeatureSupported) {
       _init();
-      // Catches both the tray's own close request and the mascot's own
-      // hover close button — either way the window disappears from this
-      // list, which is the one signal both paths actually share.
-      onWindowsChanged.listen((_) => _syncMascotState());
-    }
-  }
-
-  Future<void> _syncMascotState() async {
-    final tracked = _mascotWindow;
-    if (tracked == null) return;
-    final stillOpen =
-        (await WindowController.getAll()).any((w) => w.windowId == tracked.windowId);
-    if (!stillOpen && mounted) {
-      setState(() => _mascotWindow = null);
-      await _rebuildMenu();
     }
   }
 
@@ -102,32 +86,14 @@ class _TrayControllerState extends ConsumerState<TrayController>
       MenuItem(label: modelLabel, disabled: true),
       MenuItem.separator(),
       MenuItem(
-        label: _mascotWindow == null
-            ? L10n.t('tray_mascot_show')
-            : L10n.t('tray_mascot_hide'),
-        onClick: (_) => _toggleMascot(),
+        label: ref.read(mascotWindowOpenProvider)
+            ? L10n.t('tray_mascot_hide')
+            : L10n.t('tray_mascot_show'),
+        onClick: (_) => ref.read(mascotWindowProvider.notifier).toggle(),
       ),
       MenuItem.separator(),
       MenuItem(label: L10n.t('tray_quit'), onClick: (_) => _quit()),
     ]));
-  }
-
-  /// Opens or closes the desktop mascot — a second window in this same
-  /// process (desktop_multi_window), not a separate app. Left running when
-  /// Memo's own window closes/hides, same as the tray icon itself; only
-  /// _quit() below or the mascot's own close button end it.
-  Future<void> _toggleMascot() async {
-    final existing = _mascotWindow;
-    if (existing != null) {
-      await existing.invokeMethod('window_close');
-      return; // onWindowsChanged -> _syncMascotState clears the field.
-    }
-    final controller = await WindowController.create(
-      const WindowConfiguration(arguments: '', hiddenAtLaunch: true),
-    );
-    await controller.show();
-    setState(() => _mascotWindow = controller);
-    await _rebuildMenu();
   }
 
   String _fileName(String path) {
@@ -200,6 +166,11 @@ class _TrayControllerState extends ConsumerState<TrayController>
       // polling modelStatusProvider already does for the in-app engine
       // strip (see engine_strip.dart) — no separate polling loop needed.
       ref.listen(modelStatusProvider, (_, _) => _rebuildMenu());
+      // Keeps the tray menu's "Show/Hide Desktop Mascot" label correct
+      // whether it was opened/closed from here, from Settings, or by the
+      // mascot's own hover close button (mascot_provider.dart's
+      // onWindowsChanged listener is what notices that last one).
+      ref.listen(mascotWindowProvider, (_, _) => _rebuildMenu());
     }
     return widget.child;
   }

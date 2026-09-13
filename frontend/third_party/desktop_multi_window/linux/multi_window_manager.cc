@@ -94,6 +94,24 @@ std::string MultiWindowManager::Create(FlValue* args) {
   gtk_window_set_titlebar(window, gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0));
   gtk_window_set_decorated(window, FALSE);
   gtk_window_set_default_size(window, 132, 148);
+  // Same reasoning as the size fix above: window_manager's own
+  // KNOWN LIMITATION, not fully fixed: gtk_window_set_keep_above() is an
+  // X11 EWMH mechanism (_NET_WM_STATE_ABOVE) with no native-Wayland
+  // equivalent in plain GTK — confirmed live on this machine's
+  // GDK_BACKEND=wayland KWin/Plasma session, moving it here (before
+  // realize, same fix that worked for size/decoration above) did NOT
+  // stop another window from covering the mascot once focused. Wayland
+  // compositors deliberately refuse an unprompted "raise me above
+  // everything" request from a client for the same reason they refuse
+  // unprompted focus-stealing — letting any app self-promote above
+  // others is exactly the attention-hijacking pattern the protocol's
+  // security model exists to prevent. A real fix needs a
+  // compositor-specific protocol (KDE's org_kde_plasma_window_management)
+  // that plain GTK doesn't expose — real Wayland/KWin client code, not a
+  // GTK call, and out of scope for this pass. Left in place anyway: on
+  // X11 sessions (or GDK_BACKEND=x11) this same call is the correct,
+  // working mechanism.
+  gtk_window_set_keep_above(window, TRUE);
 
   gtk_window_set_title(window, "");
   if (config.hidden_at_launch) {

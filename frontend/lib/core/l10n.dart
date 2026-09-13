@@ -542,6 +542,9 @@ class L10n {
     'minimize_to_tray_title': 'Sistem Tepsisine Küçült',
     'minimize_to_tray_desc':
         'Açıkken pencereyi kapatmak Memo\'yu tamamen kapatmaz — arka planda sistem tepsisinde çalışmaya devam eder. Tepsi simgesine sağ tıklayarak yeniden açabilir ya da tamamen çıkabilirsin.',
+    'mascot_toggle_title': 'Masaüstü Maskotu',
+    'mascot_toggle_desc':
+        'Ekranda serbestçe sürükleyebileceğin küçük, canlı bir karakter — Memo ne yaptığını (düşünüyor, yazıyor, bir araç kullanıyor) gösterir.',
     'tray_open': 'Memo\'yu Aç',
     'tray_model_running': 'Yerel Model: \${name}',
     'tray_model_none': 'Yerel Model Yüklü Değil',
@@ -2658,6 +2661,9 @@ class L10n {
     'minimize_to_tray_title': 'Minimize to System Tray',
     'minimize_to_tray_desc':
         'Closing the window won\'t quit Memo while this is on — it keeps running in the background. Right-click the tray icon to reopen it or quit entirely.',
+    'mascot_toggle_title': 'Desktop Mascot',
+    'mascot_toggle_desc':
+        'A small, lively character you can drag anywhere on screen — it shows what Memo is doing (thinking, writing, using a tool).',
     'tray_open': 'Open Memo',
     'tray_model_running': 'Local Model: \${name}',
     'tray_model_none': 'No Local Model Loaded',

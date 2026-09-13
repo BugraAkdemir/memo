@@ -11,11 +11,13 @@ import '../core/l10n.dart';
 /// keeps running underneath regardless of mood.
 enum _IdleGesture { none, wave, hop, sway }
 
-/// What Memo's mascot is currently "doing" — maps to a real app signal once
-/// wired up (Live Mode transcript state, agent tool-call events, task loop
-/// item completion). [idle] is the only state used today, in [WelcomeView];
-/// the rest are painted and ready for that wiring to land separately.
-enum MascotMood { idle, thinking, writing, generating, tool }
+/// What Memo's mascot is currently "doing" — driven by GET
+/// /api/mascot/activity (see mascot_window.dart). [done] is a brief
+/// "just finished" beat (models.ActivityDone on the Go side): visually the
+/// same celebratory pose as [generating], reported as its own mood only so
+/// the status bubble can show a distinct "Completed!" instead of either
+/// lingering on "Preparing a response…" or silently going blank.
+enum MascotMood { idle, thinking, writing, generating, tool, done }
 
 /// Memo's mascot: a warm mocha-and-gold character, hand-drawn as vector
 /// shapes (no external asset) so every state renders crisply at any size.
@@ -278,7 +280,8 @@ class _MascotPainter extends CustomPainter {
         ..strokeWidth = 6
         ..strokeCap = StrokeCap.round,
     );
-    final glowing = mood == MascotMood.generating || mood == MascotMood.tool;
+    final glowing =
+        mood == MascotMood.generating || mood == MascotMood.tool || mood == MascotMood.done;
     final glowAlpha = glowing ? 0.4 + 0.6 * ((math.sin(2 * math.pi * t / 1.6) + 1) / 2) : 1.0;
     canvas.drawCircle(const Offset(0, -27), 7, Paint()..color = _cEye.withValues(alpha: glowAlpha));
     canvas.restore();
@@ -320,7 +323,7 @@ class _MascotPainter extends CustomPainter {
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
 
-    if (mood == MascotMood.generating) {
+    if (mood == MascotMood.generating || mood == MascotMood.done) {
       // Happy closed eyes — no blink, this expression already reads as joy.
       final arcPaint = Paint()
         ..color = _cEye
@@ -351,6 +354,9 @@ class _MascotPainter extends CustomPainter {
         break;
       case MascotMood.idle:
       case MascotMood.generating:
+      case MascotMood.done:
+        // generating/done never actually reach here (handled above), kept
+        // only so this switch stays exhaustive.
         eyeL = Rect.fromLTWH(-21, -21, 8, 13);
         eyeR = Rect.fromLTWH(13, -21, 8, 13);
         break;
@@ -461,6 +467,7 @@ class _MascotPainter extends CustomPainter {
         canvas.drawCircle(Offset(13, 33 + 3 * tapPhaseR), 7.7, bodyFill);
         break;
       case MascotMood.generating:
+      case MascotMood.done:
         final left = Path()..moveTo(-39, 9)..quadraticBezierTo(-62, -9, -51, -34);
         final right = Path()..moveTo(39, 9)..quadraticBezierTo(62, -9, 51, -34);
         canvas.drawPath(left, _armPaint());
@@ -530,6 +537,7 @@ class _MascotPainter extends CustomPainter {
       case MascotMood.idle:
       case MascotMood.thinking:
       case MascotMood.generating:
+      case MascotMood.done:
         break;
     }
   }
@@ -586,7 +594,7 @@ class _MascotPainter extends CustomPainter {
           Paint()..color = _cEye.withValues(alpha: s.opacity.clamp(0, 1)),
         );
       }
-    } else if (mood == MascotMood.generating) {
+    } else if (mood == MascotMood.generating || mood == MascotMood.done) {
       final specs = [
         (const Offset(26, -66), 1.0, 0.0),
         (const Offset(44, -46), 0.8, 0.5),

@@ -23,7 +23,7 @@ func TestActivityRelay_ContentReportsGenerating(t *testing.T) {
 	<-out // drain to close
 }
 
-func TestActivityRelay_DoneReportsIdle(t *testing.T) {
+func TestActivityRelay_DoneChunkReportsActivityDone(t *testing.T) {
 	resetActivity(t)
 	in := make(chan api.StreamChunk, 4)
 	out := activityRelay(in)
@@ -35,8 +35,8 @@ func TestActivityRelay_DoneReportsIdle(t *testing.T) {
 	close(in)
 
 	got := (&App{}).GetActivityStatus()
-	if got.State != models.ActivityIdle {
-		t.Errorf("State = %q, want idle", got.State)
+	if got.State != models.ActivityDone {
+		t.Errorf("State = %q, want done", got.State)
 	}
 }
 

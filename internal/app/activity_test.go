@@ -77,13 +77,13 @@ func TestGlobalActivityHook_ErrorReportsIdle(t *testing.T) {
 	}
 }
 
-func TestGlobalActivityHook_FinalResponseReportsGenerating(t *testing.T) {
+func TestGlobalActivityHook_FinalResponseReportsDone(t *testing.T) {
 	a := resetActivity(t)
 	agent.GlobalActivityHook(agent.AgentEvent{Type: agent.EventFinalResponse})
 
 	got := a.GetActivityStatus()
-	if got.State != models.ActivityGenerating {
-		t.Errorf("State = %q, want generating", got.State)
+	if got.State != models.ActivityDone {
+		t.Errorf("State = %q, want done", got.State)
 	}
 }
 
@@ -101,6 +101,23 @@ func TestSetActivity_AutoIdlesAfterTimeout(t *testing.T) {
 	time.Sleep(60 * time.Millisecond)
 	if got := a.GetActivityStatus().State; got != models.ActivityIdle {
 		t.Errorf("State after idle timeout = %q, want idle", got)
+	}
+}
+
+func TestSetActivity_DoneAutoIdlesAfterItsOwnShorterTimeout(t *testing.T) {
+	a := resetActivity(t)
+	original := activityDoneTimeout
+	activityDoneTimeout = 20 * time.Millisecond
+	defer func() { activityDoneTimeout = original }()
+
+	setActivity(models.ActivityDone, "")
+	if got := a.GetActivityStatus().State; got != models.ActivityDone {
+		t.Fatalf("State right after setActivity = %q, want done", got)
+	}
+
+	time.Sleep(60 * time.Millisecond)
+	if got := a.GetActivityStatus().State; got != models.ActivityIdle {
+		t.Errorf("State after done timeout = %q, want idle", got)
 	}
 }
 

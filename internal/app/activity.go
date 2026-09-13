@@ -20,12 +20,17 @@ var codeModeWriteTools = map[string]bool{
 }
 
 // activityIdleTimeout: no new agent event within this window and the
-// tracker reports idle again on its own — a turn that ends via
-// EventFinalResponse still gets one explicit "generating" pulse, but a
-// crashed/abandoned turn (context cancelled, process killed mid-tool)
-// would otherwise leave the tracker stuck reporting stale activity
-// forever, since nothing else ever tells it the turn ended.
+// tracker reports idle again on its own — a crashed/abandoned turn
+// (context cancelled, process killed mid-tool) would otherwise leave the
+// tracker stuck reporting stale activity forever, since nothing else ever
+// tells it the turn ended.
 var activityIdleTimeout = 12 * time.Second // var, not const: shortened in tests
+
+// activityDoneTimeout: how long models.ActivityDone's "completed" pulse
+// stays up before falling back to idle on its own — short, since it's a
+// one-off beat meant to be noticed and then get out of the way, not a
+// lingering status the way "generating"/"tool" are.
+var activityDoneTimeout = 2500 * time.Millisecond // var, not const: shortened in tests
 
 type activityTracker struct {
 	mu       sync.Mutex
@@ -57,7 +62,11 @@ func setActivity(state models.ActivityState, toolName string) {
 	if state == models.ActivityIdle {
 		return
 	}
-	time.AfterFunc(activityIdleTimeout, func() {
+	timeout := activityIdleTimeout
+	if state == models.ActivityDone {
+		timeout = activityDoneTimeout
+	}
+	time.AfterFunc(timeout, func() {
 		globalActivity.mu.Lock()
 		defer globalActivity.mu.Unlock()
 		if globalActivity.gen == gen {
@@ -91,7 +100,7 @@ func wireGlobalActivityHook() {
 		case agent.EventToolError:
 			setActivity(models.ActivityIdle, "")
 		case agent.EventFinalResponse:
-			setActivity(models.ActivityGenerating, "")
+			setActivity(models.ActivityDone, "")
 		}
 	}
 }

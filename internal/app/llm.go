@@ -1263,8 +1263,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 // unconditionally, no matter which one produced the channel. See
 // setActivity calls in callLLMStream's own body for what "thinking" means
 // here; this half handles "generating" (once content starts, re-armed
-// periodically so a long response doesn't auto-idle mid-stream) and
-// "idle" (once the branch signals Done).
+// periodically so a long response doesn't auto-idle mid-stream) and "done"
+// (once the branch signals Done — a brief "completed" pulse that reverts
+// to idle on its own shortly after, see activityDoneTimeout).
 func activityRelay(in <-chan api.StreamChunk) <-chan api.StreamChunk {
 	out := make(chan api.StreamChunk, cap(in))
 	go func() {
@@ -1276,7 +1277,7 @@ func activityRelay(in <-chan api.StreamChunk) <-chan api.StreamChunk {
 				lastGenerating = time.Now()
 			}
 			if chunk.Done {
-				setActivity(models.ActivityIdle, "")
+				setActivity(models.ActivityDone, "")
 			}
 			out <- chunk
 		}

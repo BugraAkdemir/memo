@@ -1,4 +1,80 @@
-# Ek (2026-09-13, devam 69) — "Her zaman üstte" aslında çözüldü: zorlanmış XWayland
+# Ek (2026-09-13, devam 70) — Maskot: durum balonu + rastgele idle hareketleri
+
+Kullanıcı devam 69'un hemen ardından ekran görüntüsü referans göstererek
+(Codex CLI'nin durum balonu) iki şey istedi: (1) maskotun altında ne
+yaptığını düz metinle gösteren küçük bir balon — ama **AI'nin gerçek
+yanıt metni değil**, sadece "düşünüyor"/"araç kullanıyor" gibi durum
+ifadeleri; (2) idle'da tamamen donuk durmasın, göz kırpmanın yanına
+rastgele el sallama/zıplama/sallanma gibi hareketler eklensin. İkisi de
+yapıldı, ikisi de canlı ekran görüntüsüyle doğrulandı.
+
+## 1. Rastgele idle hareketleri (`e72e549a`)
+
+`memo_mascot.dart`'a ayrı bir "gesture" sistemi eklendi: sadece
+`MascotMood.idle`'dayken çalışan, 3.5-9.5sn arası rastgele gecikmeli bir
+`Timer`, her tetiklendiğinde wave/hop/sway'den birini seçip kısa (1.1sn)
+bir `AnimationController`'ı oynatıyor — ortak bir sin-eğrisi "envelope"
+ile yumuşak giriş/çıkış. Gerçek aktivite başlarsa (mood idle'dan
+çıkarsa) hareket ortasında bile iptal ediliyor. `_MascotPainter`'a
+`gesture`/`gestureT` alanları eklendi: sway gövdeyi hafif döndürüyor,
+hop parabolik bir zıplama eğrisiyle gövdeyi kaldırıyor, wave sağ kolu
+kaldırıp sallıyor (sol kol normal duruşta kalıyor).
+
+## 2. Durum balonu (`cad86baa`)
+
+Maskotun altına, Codex'inki gibi koyu, yuvarlak köşeli bir "pill"
+eklendi (`_StatusBubble`, `mascot_window.dart`). Zaten var olan
+`GET /api/mascot/activity` poll'undan (artık `tool_name`'i de okuyarak)
+duruma göre sabit bir ifade gösteriyor: "Thinking…"/"Writing…"/
+"Preparing a response…"/"Running {tool}…" — **hiçbir zaman modelin
+gerçek yanıt metnini değil**, kullanıcının özellikle istediği gibi.
+Pencere, balona yer açmak için büyütüldü (132×148 → 132×210); pet'in
+kendisi tam olarak eskisi gibi pencerenin en üstünde aynı boyutta
+kaldığı için `my_application.cc`'deki `set_mascot_input_shape`
+ellipsinin **sayısal olarak hiçbir değişikliği gerekmedi** — sadece
+yorum güncellendi (artık "pet alanı" vs "tüm pencere" ayrımını
+açıklıyor). Balonun alanı içerik olsun olmasın sabit yükseklikte
+ayrılıyor (sadece içerik fade in/out oluyor) ki her zaman üstte duran
+pencere çalışırken boyut değiştirmesin — bu göze çarpan bir "zıplama"
+olurdu.
+
+## Doğrulama
+
+`flutter analyze lib/` ve `flutter test` (337/337, sıfır yeni sorun)
+yeşil, Rule 8 grep boş. **Canlı UI doğrulaması**: `flutter run -d linux
+-t lib/mascot_main.dart` ile gerçek pencere açıldı; backend yerine
+sadece `GET /api/mascot/activity`'yi taklit eden geçici, repo'ya hiç
+girmeyen bir Python mock sunucusu (127.0.0.1:8090) kullanıldı — böylece
+gerçek Dart polling/parsing/render kod yolu, sadece gerçek LLM/agent
+gerektirmeden test edildi. `spectacle` ile alınan ekran görüntüleri şunu
+kanıtladı: idle'da balon hiç görünmüyor; thinking/writing durumlarında
+doğru İngilizce metin çıkıyor (bu makinede locale İngilizce varsayılan);
+tool durumunda "Running search_web…" iki satıra düzgün sarılıyor; idle
+burst'lerinde hem **wave** (kol başın yanına kalkmış halde yakalandı)
+hem **hop** (gövde gölgesinden ayrılmış halde yakalandı) gerçekten
+tetiklendi ve görsel olarak doğru göründü. Test sonrası tüm süreçler
+(flutter run, mock sunucu) temizlendi, repo'da hiçbir geçici dosya
+kalmadı.
+
+## Sıradaki oturum için
+
+1. **Sway hareketi ayrı ekran görüntüsüyle yakalanamadı** — wave ve hop
+   aynı zamanlama/envelope mekanizmasıyla doğrulandığı için mekanizmanın
+   kendisi güvenilir, ama sway'in kendi rotasyon formülü (işaret/pivot)
+   hiç görsel olarak teyit edilmedi. Şansa bakıp yakalamak ya da daha
+   uzun bir idle burst denemek gerekebilir.
+2. Balon ve yeni pencere boyutu sadece Linux/X11'de (zorlanmış XWayland)
+   test edildi — macOS/Windows'ta `desktop_multi_window`'un o
+   platformlardaki native kodu hâlâ hiç çalıştırılmadı (bu, önceki
+   oturumlardan beri açık kalan bir nokta).
+3. Balonun font/renk/gölge detayları ("göz yormasın, güzel olsun"
+   isteğine göre) kullanıcının kendi ekranında gerçek arka planların
+   üzerinde son bir görsel onay bekliyor — mock testte sadece açık renkli
+   bir masaüstü arka planına karşı görüldü.
+
+---
+
+
 
 Devam 68'de "her zaman üstte native Wayland'da imkansız" dedim — **yanlış
 çıktı**, düzeltiyorum. Kullanıcı sordu: "Codex vesaire bunu nasıl

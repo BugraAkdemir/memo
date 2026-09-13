@@ -1,3 +1,45 @@
+# Ek (2026-09-13, devam 69) — "Her zaman üstte" aslında çözüldü: zorlanmış XWayland
+
+Devam 68'de "her zaman üstte native Wayland'da imkansız" dedim — **yanlış
+çıktı**, düzeltiyorum. Kullanıcı sordu: "Codex vesaire bunu nasıl
+yapıyor?" — doğru soruydu. Cevap: o tür araçlar büyük ihtimalle Electron,
+ve Electron Linux'ta varsayılan olarak XWayland'e düşüyor (native Wayland
+desteği tarihsel olarak eksik olduğu için). Aynısını yaptım:
+`linux/runner/main.cc`'nin `main()`'ının ilk satırına
+`setenv("GDK_BACKEND", "x11", 1)` ekledim — GTK/GDK ortam değişkenini
+okumadan önce. Bu, bu makinenin `GDK_BACKEND=wayland` (KDE Plasma, native
+Wayland) oturumunda bile **tüm uygulamayı** XWayland'e zorluyor.
+
+Canlı doğrulama (`ed02037a`): maskotun ekran konumuna `zenity` penceresi
+açtım — değişiklikten önce zenity maskotu tamamen kapatıyordu, sonra
+maskot zenity'nin **üstünde** görünüyor. İki ekran görüntüsüyle
+kanıtlandı.
+
+Aynı XWayland zorlamasıyla ikinci bir şey daha çözüldü: "collider kare
+değil pet boyutunda olsun" isteği. `my_application.cc`'ye
+`set_mascot_input_shape` eklendi — `gdk_window_input_shape_combine_region`
+(X11'e özgü) ile karakterin gövdesine yaklaşan eliptik bir input-shape
+(artı hover-kapatma butonunun köşesi için küçük bir dikdörtgen, yoksa o
+buton hiç tıklanamaz hale gelirdi). **Bunu gerçek tıklama/sürükleme ile
+test edemedim** — bu ortamda `xdotool` yok, kurmak sudo şifresi istiyor
+(bu oturumun sağlayamayacağı bir şey). Geometriyi elle hesapladım,
+uygulama çöküyor mu/görsel bozuluyor mu diye kontrol ettim (hayır), ama
+"gerçekten tıklama geçiyor mu" iddiasını doğrulanmamış olarak işaretliyorum.
+
+## Sıradaki oturum için
+
+1. **Collider'ın gerçek tıklama davranışı doğrulanmadı** — kullanıcı
+   kendi masaüstünde deneyip "köşelerden sürüklemiyor ama karakterden
+   sürüklüyor mu" diye bakmalı. Sorun varsa `my_application.cc`'deki
+   `set_mascot_input_shape`'in elips parametrelerini (cx/cy/rx/ry) ayarla.
+2. XWayland zorlamasının ana pencere için herhangi bir yan etkisi olup
+   olmadığı (HiDPI ölçekleme, giriş yöntemleri vb.) sadece bu oturumda
+   kısa süreli görsel kontrolle doğrulandı — uzun süreli günlük kullanımda
+   bir şey fark edilirse ilk şüpheli bu değişiklik olmalı
+   (`frontend/linux/runner/main.cc`).
+
+---
+
 # Ek (2026-09-13, devam 68) — Maskot: canlı test bulguları düzeltildi + Settings toggle
 
 Kullanıcı sabah (devam 67'nin hemen ardından, aynı gece devamı) üç şey

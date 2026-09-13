@@ -1,3 +1,80 @@
+# Ek (2026-09-13, devam 73) — Maskot: Live Mode konuşma animasyonu (iki skin de); "Hey Memo" bilinçli olarak ertelendi
+
+Kullanıcı devam 72'nin ardından üç şey istedi: (1) her iki skin'e de Live
+Mode için "konuşurken" bir animasyon, (2) "Hey Memo" uyandırma kelimesi —
+duyunca ya normal sohbet ya da maskot+Live Mode açılsın, ayarlardan
+seçilebilir, (3) ilk açılışta kullanıcının sesini tanıtan bir "enrollment"
+akışı, daha iyi tanıma için. Sadece (1) yapıldı; (2) ve (3) kullanıcıya
+soru sorularak **bilinçli olarak ertelendi** — gerekçe aşağıda.
+
+## Neden (2) ve (3) ertelendi
+
+`yapacam.md` zaten bunu net yazmış: "Hey Memo" wake-word Live Mode'un
+Faz 5'i, **hiç başlanmamış** ve **madde 2'ye (mobile/ kaldırılıp
+frontend/'e taşınması) bağımlı, ondan önce başlanmayacak** diye
+kaydedilmiş. Bu, sürekli arka plan mikrofon dinleme + wake-word modeli +
+konuşmacı tanıma/enrollment gerektiren, günler süren bir iş — roadmap'in
+kendi mimari kararına aykırı, aceleye getirilmiş bir versiyonunu
+kullanıcıya sormadan yapmak riskli görüldü (AGENTS.md'nin "yarım
+implementasyon yok" kuralıyla da çelişirdi). `AskUserQuestion` ile
+soruldu, kullanıcı "şimdilik sadece maskot animasyonunu yap" seçeneğini
+onayladı — (2)/(3) madde 2 bittikten sonra, ayrı ve düzgün planlanmış bir
+iş olarak ele alınacak.
+
+## Ne yapıldı — Live Mode "speaking" animasyonu (`e3e5f539`)
+
+Arka planda gerçekten var olan TEK sinyal araştırıldı (bir Explore
+ajanıyla): `internal/livemode`'da "listening" diye bir event **yok** —
+ne Google ne OpenAI Realtime client'ı, sağlayıcının speech-start/stop
+alanlarını hiçbir şeye çevirmiyor, ikisi de tip eşleşmediği için sessizce
+atıyor. Var olan tek gerçek sinyal `EventAudioOut` (ses gerçekten
+çalınırken) — üç Session implementasyonunun (google, openai_realtime,
+echo) **üçü de** yayınlıyor. Bu yüzden **bilerek sadece "speaking" eklendi,
+"listening" eklenmedi** — sesin yokluğundan bir "dinliyor" durumu uydurmak
+gerçek bir sinyal değil, bir tahmin olurdu.
+
+Backend: `models.ActivitySpeaking` + `livemode.GlobalActivityHook`
+(paket-seviyesi hook, `agent.GlobalActivityHook`'un aynısı — internal/livemode
+internal/app'i import edemediği için), `pumpLiveModeSessionEvents`'te her
+`EventAudioOut`'ta çağrılıyor, 2sn throttle'lı (atomic — aynı anda birden
+fazla Live Mode oturumu açık olabileceği için `activityRelay`'in
+tek-goroutine'lik closure deseni burada güvenli değildi), kendi kısa
+timeout'uyla (4sn) idle'a dönüyor.
+
+Frontend: her iki painter'a da `MascotMood.speaking` eklendi — animasyonlu
+açılıp-kapanan bir ağız (Live Mode duyulur, okunmaz, o yüzden ifadeyi ağız
+taşıyor), kollar hafif faz-kaymalı sallanıyor, küçük "ses dalgası"
+parçacıkları, anten/ekran parlaması generating/tool/done'ın olduğu gruba
+katıldı. Balon metni: "Speaking…"/"Konuşuyor…".
+
+## Doğrulama
+
+`CGO_ENABLED=1 go build/vet/test -tags sqlite_fts5 -race ./...` tamamı
+yeşil (4 yeni test). `flutter analyze`/`flutter test` (337/337, sıfır
+yeni sorun), Rule 8 grep boş. **Canlı doğrulama**: her iki skin için
+`flutter run -t lib/mascot_main.dart` + repo'ya hiç girmeyen geçici bir
+mock sunucu (sabit "speaking" state). Ekran görüntüsü burst'leri: her iki
+skin'de de ağız gerçekten kareler arasında açılıp kapanıyor, "Speaking…"
+balonu altında doğru görünüyor. Test sonrası tüm süreçler temizlendi,
+`memo_mascot_skin` tercihi bulduğum değere ("pixel") geri yazıldı.
+
+## Sıradaki oturum için
+
+1. **"Hey Memo" wake-word + ses enrollment henüz kodlanmadı** —
+   `yapacam.md`'nin kendi sırasına göre madde 2 (mobile/ → frontend/
+   taşınması) bitmeden başlanmayacak. Kullanıcı bunu istediğinde ayrı,
+   düzgün planlanmış bir oturum olarak ele alınmalı (sürekli mikrofon
+   dinleme gizlilik/kaynak kararı, wake-word modeli seçimi, enrollment
+   akışı tasarımı — hepsi kendi başına tartışma gerektirir).
+2. "Listening" mood'u hâlâ yok — Google/OpenAI Realtime client'ları
+   speech-start/stop'u parse etmeye başlarsa (`google/client.go`'nun
+   `readLoop` doc comment'i, `openai_realtime/client.go`'nun
+   `serverEvent` doc comment'i, ikisi de şu an bunu bilerek atıyor),
+   `models.ActivityListening`/`MascotMood.listening` eklenebilir —
+   şu an gerçek bir sinyal olmadığı için bilerek yapılmadı.
+
+---
+
 # Ek (2026-09-13, devam 72) — Maskot: 2. karakter — piksel-art mavi robot
 
 Kullanıcı devam 71'in ardından ikinci bir maskot istedi: kullanıcıya

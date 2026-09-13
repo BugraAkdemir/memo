@@ -334,7 +334,7 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 	if a.GetWebSearchEnabled() && !orchestraEnabled && !a.identity.GetMinimalMode() && (hasProvider || localModelRunning) {
 		return a.callWebSearchAgentStream(ctx, messages, userMsg, sessionID)
 	}
-	return a.callLLMStream(ctx, messages, userMsg, imagePath, filePath, sessionID)
+	return activityRelay(a.callLLMStream(ctx, messages, userMsg, imagePath, filePath, sessionID))
 }
 
 // sendMessageStreamInner is the core of SendMessageStream: it records the
@@ -681,7 +681,7 @@ func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 str
 	msgs = append(msgs, a.incognitoMessages...)
 	a.incognitoMu.Unlock()
 
-	return a.callLLMStream(ctx, msgs, userMsg, "", "", "")
+	return activityRelay(a.callLLMStream(ctx, msgs, userMsg, "", "", ""))
 }
 
 // SendMessageWithImage sends a vision message (non-streaming). Same

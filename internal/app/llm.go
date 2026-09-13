@@ -13,6 +13,7 @@ import (
 
 	"memo/internal/agent"
 	"memo/internal/api"
+	"memo/internal/models"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/stats"
@@ -864,6 +865,14 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 
 func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath, sessionID string) <-chan api.StreamChunk {
 	outCh := make(chan api.StreamChunk, 128)
+	// Every plain (non-agent) chat turn goes through this one function
+	// regardless of branch (Orchestra/external provider/local llama.cpp)
+	// — the desktop mascot's activity signal for ordinary conversation
+	// (agent tool calls are covered separately, at agent.Executor's own
+	// choke point). "thinking" until the first content/thinking chunk
+	// arrives, "generating" while it streams (re-armed every few seconds
+	// so a long response doesn't auto-idle mid-stream), idle on Done.
+	setActivity(models.ActivityThinking, "")
 
 	// Orchestra mode takes priority
 	a.providerMu.RLock()
@@ -1240,6 +1249,39 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	}()
 
 	return outCh
+}
+
+// activityRelay wraps a plain-chat stream so the desktop mascot's activity
+// signal tracks it. Deliberately applied at callLLMStream's two call sites
+// (chat.go) rather than inside callLLMStream itself: that function has
+// several early `return outCh` statements, one per branch (Orchestra/
+// external provider/local llama.cpp/...), so wrapping only its very last
+// return silently missed whichever branch actually handled the request —
+// confirmed live, with a temporary debug log inside this function that
+// never printed a single line despite a real chat reply streaming back
+// successfully. Wrapping at the call site instead covers every branch
+// unconditionally, no matter which one produced the channel. See
+// setActivity calls in callLLMStream's own body for what "thinking" means
+// here; this half handles "generating" (once content starts, re-armed
+// periodically so a long response doesn't auto-idle mid-stream) and
+// "idle" (once the branch signals Done).
+func activityRelay(in <-chan api.StreamChunk) <-chan api.StreamChunk {
+	out := make(chan api.StreamChunk, cap(in))
+	go func() {
+		defer close(out)
+		var lastGenerating time.Time
+		for chunk := range in {
+			if chunk.Content != "" && time.Since(lastGenerating) > 3*time.Second {
+				setActivity(models.ActivityGenerating, "")
+				lastGenerating = time.Now()
+			}
+			if chunk.Done {
+				setActivity(models.ActivityIdle, "")
+			}
+			out <- chunk
+		}
+	}()
+	return out
 }
 
 // trySend delivers chunk to outCh, preferring the send over ctx cancellation.

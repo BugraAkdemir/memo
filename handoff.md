@@ -1,3 +1,60 @@
+# Ek (2026-09-13, devam 71) — Maskot: tur bittiğinde "Tamamlandı!" anı
+
+Devam 70'in hemen ardından kullanıcı bir şey daha istedi: çıktı/tur
+bittiğinde balonda kısa bir "tamamlandı" bildirimi olsun, öyle mi
+anladım diye sordu — evet, tam da bu: bir turun **gerçekten bittiği**
+an ayrı, fark edilir bir "an" olsun, ne sessizce idle'a düşsün ne de
+"generating" pozunda 12sn boyunca asılı kalsın.
+
+## Kök durum (öncesi)
+
+İki farklı yol vardı, ikisi de "bitti" anını iyi işaretlemiyordu:
+- Düz sohbet: `activityRelay`'in `chunk.Done` dalı direkt `ActivityIdle`
+  yazıyordu — sessizce, hiç fark edilmeden.
+- Agent turları: `EventFinalResponse` `ActivityGenerating` yazıyordu —
+  turun gerçek bitişinden sonra bile, genel 12sn'lik
+  `activityIdleTimeout` dolana kadar "generating" pozunda asılı kalıyordu.
+
+## Değişiklik (`a2a63fb9`)
+
+`models.ActivityDone` adında yeni, kısa ömürlü bir state eklendi.
+Yukarıdaki iki nokta artık ikisi de bunu yazıyor. `setActivity`'ye,
+state `ActivityDone` olduğunda genel 12sn yerine kendi kısa süresini
+(`activityDoneTimeout`, 2.5sn) kullanan bir dal eklendi — aynı
+generation-korumalı timer mekanizması, sadece süre state'e göre seçiliyor.
+
+Frontend: `MascotMood.done` eklendi. Kendi pozu yok — `generating`'in
+zaten var olan "kutlama" pozunu (kollar havada, mutlu yüz, parlayan
+anten) aynen kullanıyor, çünkü "az önce bitti" de "devam ediyor" kadar
+kutlanası bir an. Ayrı bir mood olarak raporlanmasının tek sebebi: balon
+metninin "Preparing a response…" yerine "Completed!"/"Tamamlandı!"
+gösterebilmesi.
+
+## Doğrulama
+
+Backend: 3 test güncellendi/eklendi
+(`TestGlobalActivityHook_FinalResponseReportsDone`,
+`TestActivityRelay_DoneChunkReportsActivityDone`,
+`TestSetActivity_DoneAutoIdlesAfterItsOwnShorterTimeout`).
+`CGO_ENABLED=1 go build/vet/test -tags sqlite_fts5 -race ./...` tamamı
+yeşil. Frontend: `flutter analyze`/`flutter test` (337/337, sıfır yeni
+sorun), Rule 8 grep boş.
+
+**Canlı doğrulama**: yine `flutter run -t lib/mascot_main.dart` +
+repo'ya hiç girmeyen geçici bir mock sunucu (bu sefer generating → done
+→ idle döngüsü). Ekran görüntüsü: kollar havada kutlama pozu + "Completed!"
+balonu aynı anda, doğru şekilde görünüyor. Test sonrası tüm süreçler
+temizlendi.
+
+## Sıradaki oturum için
+
+1. `activityDoneTimeout` (2.5sn) sezgisel bir değer — kullanıcı kendi
+   masaüstünde deneyip "çok kısa/çok uzun" derse ayarlanabilir.
+2. Sway hareketi hâlâ ayrı ekran görüntüsüyle doğrulanmadı (devam 70'in
+   notu geçerliliğini koruyor).
+
+---
+
 # Ek (2026-09-13, devam 70) — Maskot: durum balonu + rastgele idle hareketleri
 
 Kullanıcı devam 69'un hemen ardından ekran görüntüsü referans göstererek

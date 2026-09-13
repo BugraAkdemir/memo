@@ -1045,6 +1045,34 @@ class MinimizeToTrayNotifier extends StateNotifier<bool> {
   }
 }
 
+// ─── Desktop Mascot Skin ─────────────────────────────────────────
+
+/// Which character the desktop mascot renders — a raw 'classic'/'pixel'
+/// string (see widgets/memo_mascot.dart's MascotSkinPrefValue extension for
+/// the enum on the other side), the same pattern as `memo_theme_mode`.
+/// Read once at mascot-window startup (mascot_window.dart), same as
+/// `memo_api_base_url` — the mascot window is a separate
+/// desktop_multi_window engine with no Riverpod ProviderScope of its own,
+/// so it reads SharedPreferences directly rather than watching this
+/// provider.
+final mascotSkinProvider = StateNotifierProvider<MascotSkinNotifier, String>(
+  (ref) {
+    final prefs = ref.read(prefsProvider);
+    return MascotSkinNotifier(prefs);
+  },
+);
+
+class MascotSkinNotifier extends StateNotifier<String> {
+  final SharedPreferences _prefs;
+
+  MascotSkinNotifier(this._prefs) : super(_prefs.getString('memo_mascot_skin') ?? 'classic');
+
+  Future<void> setSkin(String skin) async {
+    await _prefs.setString('memo_mascot_skin', skin);
+    state = skin;
+  }
+}
+
 // ─── Beta Features ─────────────────────────────────────────────
 
 final betaFeaturesProvider = StateNotifierProvider<BetaFeaturesNotifier, bool>(

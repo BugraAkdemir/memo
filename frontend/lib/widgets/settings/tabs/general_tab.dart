@@ -7,6 +7,7 @@ import '../../../core/l10n.dart';
 import '../../../core/tray_controller.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/mascot_provider.dart';
+import '../../memo_mascot.dart';
 import '../../../providers/models_provider.dart';
 import '../../../models/browser_install_progress.dart';
 import '../../../providers/settings_provider.dart';
@@ -300,6 +301,48 @@ class GeneralTab extends ConsumerWidget {
                 ),
               ],
             ),
+          ),
+          SizedBox(height: 16),
+
+          // Mascot Character — a second, user-picked skin (see
+          // widgets/memo_mascot.dart's MascotSkin) on top of the same
+          // mood/gesture rig, not a separate feature. Live previews (real
+          // MemoMascot instances, not screenshots) so the choice is
+          // actually informed.
+          Text(
+            L10n.t('mascot_skin_title'),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: MemoTheme.of(context).textMain,
+            ),
+          ),
+          SizedBox(height: 4),
+          Text(
+            L10n.t('mascot_skin_desc'),
+            style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim),
+          ),
+          SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _MascotSkinOption(
+                  skin: MascotSkin.classic,
+                  label: L10n.t('mascot_skin_classic'),
+                  selected: ref.watch(mascotSkinProvider) != 'pixel',
+                  onTap: () => ref.read(mascotSkinProvider.notifier).setSkin('classic'),
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: _MascotSkinOption(
+                  skin: MascotSkin.pixel,
+                  label: L10n.t('mascot_skin_pixel'),
+                  selected: ref.watch(mascotSkinProvider) == 'pixel',
+                  onTap: () => ref.read(mascotSkinProvider.notifier).setSkin('pixel'),
+                ),
+              ),
+            ],
           ),
           SizedBox(height: 32),
         ],
@@ -1302,6 +1345,62 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// One selectable card in the mascot-skin picker (general_tab.dart) — a
+/// live [MemoMascot] preview (idle mood, always breathing/blinking) plus a
+/// label, highlighted when [selected]. Tapping an already-selected card is
+/// harmless (setSkin just re-writes the same value).
+class _MascotSkinOption extends StatelessWidget {
+  final MascotSkin skin;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _MascotSkinOption({
+    required this.skin,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: theme.bgPanel,
+          borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+          border: Border.all(
+            color: selected ? MemoTheme.accent : theme.borderSoft,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            SizedBox(
+              height: 72,
+              child: Center(child: MemoMascot(skin: skin, size: 64)),
+            ),
+            SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                color: selected ? theme.textMain : theme.textDim,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

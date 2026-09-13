@@ -19,18 +19,48 @@ enum _IdleGesture { none, wave, hop, sway }
 /// lingering on "Preparing a response…" or silently going blank.
 enum MascotMood { idle, thinking, writing, generating, tool, done }
 
-/// Memo's mascot: a warm mocha-and-gold character, hand-drawn as vector
-/// shapes (no external asset) so every state renders crisply at any size.
-/// Runs a continuous idle loop (breathing, antenna wobble, blink) regardless
-/// of [mood], plus a mood-specific pose, prop and secondary motion. While
-/// [MascotMood.idle], it also plays an occasional random flourish (wave,
-/// hop, sway — see [_IdleGesture]) so it doesn't read as frozen between
-/// real activity.
+/// Which character [MemoMascot] renders — a user-facing choice (Settings >
+/// General, `mascotSkinProvider`), not a mood. Both skins share the exact
+/// same [MascotMood]/gesture rig (timing, poses, particles), just painted
+/// by a different [CustomPainter]; see [_PixelMascotPainter]'s doc comment
+/// for how it mirrors [_MascotPainter]'s geometry on purpose.
+enum MascotSkin { classic, pixel }
+
+/// Converts [MascotSkin] to/from the raw string stored in SharedPreferences
+/// (`memo_mascot_skin`, see settings_provider.dart's `mascotSkinProvider`).
+/// Kept here rather than importing this enum into the providers layer, the
+/// same way `memo_theme_mode` stores a plain 'light'/'dark' string instead
+/// of an enum.
+extension MascotSkinPrefValue on MascotSkin {
+  String get prefValue => switch (this) {
+        MascotSkin.classic => 'classic',
+        MascotSkin.pixel => 'pixel',
+      };
+
+  static MascotSkin fromPrefValue(String? value) =>
+      value == 'pixel' ? MascotSkin.pixel : MascotSkin.classic;
+}
+
+/// Memo's mascot: hand-drawn as vector shapes (no external asset, no
+/// runtime image decode) so every state renders crisply at any size. Two
+/// interchangeable [skin]s — [MascotSkin.classic]'s warm mocha-and-gold
+/// creature, or [MascotSkin.pixel]'s blocky blue-navy robot — both driven
+/// by the identical [mood]/gesture rig below. Runs a continuous idle loop
+/// (breathing, antenna wobble, blink) regardless of [mood], plus a
+/// mood-specific pose, prop and secondary motion. While [MascotMood.idle],
+/// it also plays an occasional random flourish (wave, hop, sway — see
+/// [_IdleGesture]) so it doesn't read as frozen between real activity.
 class MemoMascot extends StatefulWidget {
   final MascotMood mood;
+  final MascotSkin skin;
   final double size;
 
-  const MemoMascot({super.key, this.mood = MascotMood.idle, this.size = 96});
+  const MemoMascot({
+    super.key,
+    this.mood = MascotMood.idle,
+    this.skin = MascotSkin.classic,
+    this.size = 96,
+  });
 
   @override
   State<MemoMascot> createState() => _MemoMascotState();
@@ -123,12 +153,20 @@ class _MemoMascotState extends State<MemoMascot>
           builder: (context, _) {
             final t = _loop.value * _loopSeconds;
             return CustomPaint(
-              painter: _MascotPainter(
-                mood: widget.mood,
-                t: t,
-                gesture: _activeGesture,
-                gestureT: _gesture.value,
-              ),
+              painter: switch (widget.skin) {
+                MascotSkin.classic => _MascotPainter(
+                    mood: widget.mood,
+                    t: t,
+                    gesture: _activeGesture,
+                    gestureT: _gesture.value,
+                  ),
+                MascotSkin.pixel => _PixelMascotPainter(
+                    mood: widget.mood,
+                    t: t,
+                    gesture: _activeGesture,
+                    gestureT: _gesture.value,
+                  ),
+              },
             );
           },
         ),
@@ -620,6 +658,409 @@ class _MascotPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MascotPainter oldDelegate) =>
+      oldDelegate.t != t ||
+      oldDelegate.mood != mood ||
+      oldDelegate.gesture != gesture ||
+      oldDelegate.gestureT != gestureT;
+}
+
+// ─── Pixel skin — palette ───────────────────────────────────────────────
+const _pxBody = Color(0xFF3D6FE0);
+const _pxBodyShadow = Color(0xFF2A4FB8);
+const _pxBodyLight = Color(0xFF8FB4F5);
+const _pxScreen = Color(0xFF0F1B33);
+const _pxGlow = Color(0xFF7FE0EE);
+const _pxGlowSoft = Color(0xFFBFEFF5);
+const _pxPaper = Color(0xFFE7F0FF);
+const _pxPaperLine = Color(0xFF9FB7E8);
+
+/// One "pixel" unit for [_PixelMascotPainter] — every shape's size snaps to
+/// a multiple of this so edges line up on a grid instead of floating at
+/// arbitrary sub-pixel offsets, which is what actually reads as pixel art
+/// rather than just "a vector shape with sharp corners."
+const double _pxUnit = 6;
+
+/// [MascotSkin.pixel]'s character: a small blue-navy robot with a screen
+/// face, built from blocky, grid-snapped rectangles (see [_pixelBlock])
+/// instead of [_MascotPainter]'s smooth bezier curves. Deliberately mirrors
+/// that class's structure and, where the pose allows, its exact numbers
+/// (arm attachment points, particle timing, gesture transforms) — the two
+/// skins are meant to feel like the same rig wearing a different look, not
+/// two unrelated characters, per the user's request that both "yine aynı
+/// animasyonlar olsun."
+class _PixelMascotPainter extends CustomPainter {
+  final MascotMood mood;
+  final double t;
+  final _IdleGesture gesture;
+  final double gestureT;
+
+  _PixelMascotPainter({
+    required this.mood,
+    required this.t,
+    this.gesture = _IdleGesture.none,
+    this.gestureT = 0,
+  });
+
+  double get _gestureEnvelope =>
+      gesture == _IdleGesture.none ? 0 : math.sin(gestureT.clamp(0, 1) * math.pi);
+
+  static const double _designW = 200;
+  static const Offset _origin = Offset(100, 130);
+
+  /// Approximates a rounded rect as stacked horizontal bands, each snapped
+  /// to [_pxUnit] — the same "rasterize a curve into bands" idea
+  /// my_application.cc's set_mascot_input_shape uses for the native input
+  /// ellipse, just in Dart and for pixels instead of a click region.
+  void _pixelBlock(
+    Canvas canvas, {
+    required double cx,
+    required double top,
+    required double width,
+    required double height,
+    required double cornerRadius,
+    required Paint paint,
+    double? shadeBelow,
+    Paint? shadePaint,
+  }) {
+    final bands = (height / _pxUnit).round().clamp(1, 200);
+    final bandH = height / bands;
+    for (int i = 0; i < bands; i++) {
+      final bandCenterY = top + (i + 0.5) * bandH;
+      final edgeDist = math.min(bandCenterY - top, (top + height) - bandCenterY);
+      double inset = 0;
+      if (edgeDist < cornerRadius) {
+        final frac = edgeDist / cornerRadius;
+        final raw = cornerRadius * (1 - math.sqrt((1 - (1 - frac) * (1 - frac)).clamp(0, 1)));
+        inset = (raw / _pxUnit).ceil() * _pxUnit;
+        inset = inset.clamp(0, width / 2 - 1);
+      }
+      final w = width - 2 * inset;
+      if (w <= 0) continue;
+      final useShade = shadeBelow != null && bandCenterY >= shadeBelow;
+      canvas.drawRect(
+        Rect.fromCenter(center: Offset(cx, bandCenterY), width: w, height: bandH + 0.5),
+        useShade ? (shadePaint ?? paint) : paint,
+      );
+    }
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scale = size.width / _designW;
+    canvas.save();
+    canvas.scale(scale);
+    canvas.translate(_origin.dx, _origin.dy);
+
+    _drawShadow(canvas);
+
+    canvas.save();
+    if (gesture == _IdleGesture.sway) {
+      final angle = 9 * math.pi / 180 * math.sin(gestureT.clamp(0, 1) * math.pi * 2);
+      canvas.rotate(angle);
+    }
+    if (gesture == _IdleGesture.hop) {
+      final g = gestureT.clamp(0.0, 1.0);
+      final hopDy = -22 * 4 * g * (1 - g);
+      canvas.translate(0, hopDy);
+    }
+
+    final breathe = _pingPong(t / 2.6);
+    final scaleY = 1 - 0.03 * breathe;
+    canvas.save();
+    canvas.scale(1 + 0.015 * breathe, scaleY);
+
+    _drawFeet(canvas);
+    _drawArmsBehind(canvas);
+    _drawBody(canvas);
+    _drawAntenna(canvas);
+    _drawArmsFront(canvas);
+    _drawScreenFace(canvas);
+    _drawProps(canvas);
+
+    canvas.restore(); // breathe
+    _drawParticles(canvas);
+
+    canvas.restore(); // sway/hop
+    canvas.restore(); // scale + translate
+  }
+
+  void _drawShadow(Canvas canvas) {
+    final paint = Paint()..color = Colors.black.withValues(alpha: 0.2);
+    canvas.drawOval(Rect.fromCenter(center: const Offset(0, 66), width: 82, height: 16), paint);
+  }
+
+  void _drawFeet(Canvas canvas) {
+    final paint = Paint()..color = _pxBodyShadow;
+    canvas.drawRect(Rect.fromCenter(center: const Offset(-22, 54), width: 18, height: 11), paint);
+    canvas.drawRect(Rect.fromCenter(center: const Offset(22, 54), width: 18, height: 11), paint);
+  }
+
+  void _drawBody(Canvas canvas) {
+    _pixelBlock(
+      canvas,
+      cx: 0,
+      top: -97,
+      width: 96,
+      height: 82,
+      cornerRadius: 24,
+      paint: Paint()..color = _pxBody,
+      shadeBelow: -30,
+      shadePaint: Paint()..color = _pxBodyShadow,
+    );
+    canvas.drawRect(
+      Rect.fromCenter(center: const Offset(-30, -84), width: 16, height: 10),
+      Paint()..color = _pxBodyLight.withValues(alpha: 0.55),
+    );
+
+    _pixelBlock(
+      canvas,
+      cx: 0,
+      top: -6,
+      width: 78,
+      height: 56,
+      cornerRadius: 16,
+      paint: Paint()..color = _pxBody,
+      shadeBelow: 28,
+      shadePaint: Paint()..color = _pxBodyShadow,
+    );
+
+    final chestPulse = 0.5 + 0.5 * math.sin(2 * math.pi * t / 2.4);
+    canvas.drawRect(
+      Rect.fromCenter(center: const Offset(0, 18), width: 10, height: 10),
+      Paint()..color = _pxGlow.withValues(alpha: 0.5 + 0.4 * chestPulse),
+    );
+  }
+
+  void _drawAntenna(Canvas canvas) {
+    final wobblePhase = _pingPong((t - 0.12) / 2.6);
+    final angle = 6 * math.pi / 180 * wobblePhase;
+    canvas.save();
+    canvas.translate(0, -97);
+    canvas.rotate(angle);
+    canvas.drawRect(
+      Rect.fromCenter(center: const Offset(0, -12), width: 6, height: 24),
+      Paint()..color = _pxBodyShadow,
+    );
+    final glowing =
+        mood == MascotMood.generating || mood == MascotMood.tool || mood == MascotMood.done;
+    final glowAlpha = glowing ? 0.5 + 0.5 * ((math.sin(2 * math.pi * t / 1.6) + 1) / 2) : 1.0;
+    canvas.drawRect(
+      Rect.fromCenter(center: const Offset(0, -26), width: 11, height: 11),
+      Paint()..color = _pxGlow.withValues(alpha: glowAlpha),
+    );
+    canvas.restore();
+  }
+
+  double _blinkScaleY() {
+    const period = 4.6;
+    final p = _frac(t / period);
+    if (p < 0.90 || p > 0.97) return 1.0;
+    final local = (p - 0.90) / 0.07;
+    return 1 - 0.88 * math.sin(math.pi * local);
+  }
+
+  void _drawScreenFace(Canvas canvas) {
+    _pixelBlock(
+      canvas,
+      cx: 0,
+      top: -78,
+      width: 62,
+      height: 40,
+      cornerRadius: 9,
+      paint: Paint()..color = _pxScreen,
+    );
+
+    final eyePaint = Paint()..color = _pxGlow;
+    final happy = mood == MascotMood.generating || mood == MascotMood.done;
+
+    late final double eyeCy, eyeH;
+    switch (mood) {
+      case MascotMood.thinking:
+        eyeCy = -63;
+        eyeH = 9;
+        break;
+      case MascotMood.writing:
+        eyeCy = -58;
+        eyeH = 5;
+        break;
+      case MascotMood.tool:
+        eyeCy = -60;
+        eyeH = 8;
+        break;
+      case MascotMood.idle:
+      case MascotMood.generating:
+      case MascotMood.done:
+        eyeCy = -60;
+        eyeH = 9;
+        break;
+    }
+
+    if (happy) {
+      // Happy squint — a flat glowing bar per eye, no blink.
+      for (final dx in [-13.0, 13.0]) {
+        canvas.drawRect(
+          Rect.fromCenter(center: Offset(dx, eyeCy), width: 11, height: 4),
+          eyePaint,
+        );
+      }
+    } else {
+      final blinkY = _blinkScaleY();
+      for (final dx in [-13.0, 13.0]) {
+        canvas.save();
+        canvas.translate(dx, eyeCy);
+        canvas.scale(1, blinkY);
+        canvas.drawRect(
+          Rect.fromCenter(center: Offset.zero, width: 9, height: eyeH),
+          eyePaint,
+        );
+        canvas.restore();
+      }
+    }
+
+    final mouthWidth = happy ? 22.0 : 14.0;
+    canvas.drawRect(
+      Rect.fromCenter(center: const Offset(0, -47), width: mouthWidth, height: 3),
+      Paint()..color = _pxGlowSoft,
+    );
+  }
+
+  Paint _armPaint() => Paint()..color = _pxBody;
+
+  void _drawArmsBehind(Canvas canvas) {
+    if (mood == MascotMood.thinking || mood == MascotMood.tool) {
+      canvas.save();
+      canvas.translate(-45, 19);
+      canvas.rotate(-10 * math.pi / 180);
+      canvas.drawRect(
+        Rect.fromCenter(center: Offset.zero, width: 17, height: 36),
+        Paint()..color = _pxBody,
+      );
+      canvas.restore();
+    }
+  }
+
+  void _drawArmSegment(Canvas canvas, Offset shoulder, double angleDeg, double length,
+      {double width = 15}) {
+    canvas.save();
+    canvas.translate(shoulder.dx, shoulder.dy);
+    canvas.rotate(angleDeg * math.pi / 180);
+    canvas.drawRect(
+      Rect.fromLTWH(-width / 2, 0, width, length),
+      _armPaint(),
+    );
+    canvas.drawRect(
+      Rect.fromCenter(center: Offset(0, length), width: width * 0.7, height: width * 0.7),
+      Paint()..color = _pxBodyShadow,
+    );
+    canvas.restore();
+  }
+
+  void _drawArmsFront(Canvas canvas) {
+    switch (mood) {
+      case MascotMood.idle:
+        _drawArmSegment(canvas, const Offset(-42, -2), 8, 26);
+        if (gesture == _IdleGesture.wave) {
+          final lift = _gestureEnvelope;
+          final wiggle = math.sin(gestureT.clamp(0, 1) * math.pi * 7) * 14 * lift;
+          _drawArmSegment(canvas, Offset(42, 2 - 30 * lift), -160 + 70 * lift + wiggle, 26);
+        } else {
+          _drawArmSegment(canvas, const Offset(42, -2), -8, 26);
+        }
+        break;
+      case MascotMood.thinking:
+        _drawArmSegment(canvas, const Offset(34, 5), -125, 24);
+        break;
+      case MascotMood.writing:
+        final tapL = math.max(0.0, math.sin(2 * math.pi * t / 0.7));
+        final tapR = math.max(0.0, math.sin(2 * math.pi * (t - 0.35) / 0.7));
+        _drawArmSegment(canvas, Offset(-38, 6 - 2 * tapL), 25, 26);
+        _drawArmSegment(canvas, Offset(38, 6 - 2 * tapR), -25, 26);
+        break;
+      case MascotMood.tool:
+        _drawArmSegment(canvas, const Offset(38, 2), -95, 28);
+        break;
+      case MascotMood.generating:
+      case MascotMood.done:
+        _drawArmSegment(canvas, const Offset(-38, -2), -145, 26);
+        _drawArmSegment(canvas, const Offset(38, -2), 145, 26);
+        break;
+    }
+  }
+
+  void _drawProps(Canvas canvas) {
+    switch (mood) {
+      case MascotMood.writing:
+        canvas.drawRect(
+          Rect.fromCenter(center: const Offset(0, 40), width: 40, height: 24),
+          Paint()..color = _pxPaper,
+        );
+        final linePaint = Paint()..color = _pxPaperLine;
+        for (final dy in [33.0, 39.0, 45.0]) {
+          canvas.drawRect(Rect.fromCenter(center: Offset(0, dy), width: 26, height: 2.5), linePaint);
+        }
+        break;
+      case MascotMood.tool:
+        final glintAlpha = 0.5 + 0.5 * ((math.sin(2 * math.pi * t / 1.6) + 1) / 2);
+        canvas.drawRect(
+          Rect.fromCenter(center: const Offset(38, -58), width: 16, height: 16),
+          Paint()..color = _pxBodyShadow,
+        );
+        canvas.drawRect(
+          Rect.fromCenter(center: const Offset(38, -58), width: 8, height: 8),
+          Paint()..color = _pxGlow.withValues(alpha: glintAlpha),
+        );
+        break;
+      case MascotMood.idle:
+      case MascotMood.thinking:
+      case MascotMood.generating:
+      case MascotMood.done:
+        break;
+    }
+  }
+
+  ({double opacity, double dy}) _rise(double phase) {
+    if (phase < 0.3) {
+      final seg = phase / 0.3;
+      return (opacity: seg, dy: 6 * (1 - seg));
+    }
+    final seg = (phase - 0.3) / 0.7;
+    return (opacity: 1 - seg, dy: -8 * seg);
+  }
+
+  void _drawParticles(Canvas canvas) {
+    if (mood == MascotMood.thinking) {
+      final specs = [
+        (const Offset(44, -92), 6.0, 0.0),
+        (const Offset(54, -104), 7.5, 0.3),
+        (const Offset(66, -118), 9.0, 0.6),
+      ];
+      for (final (pos, sz, delay) in specs) {
+        final phase = _frac((t - delay) / 1.8);
+        final s = _rise(phase);
+        canvas.drawRect(
+          Rect.fromCenter(center: pos.translate(0, s.dy), width: sz, height: sz),
+          Paint()..color = _pxGlow.withValues(alpha: s.opacity.clamp(0, 1)),
+        );
+      }
+    } else if (mood == MascotMood.generating || mood == MascotMood.done) {
+      final specs = [
+        (const Offset(-58, -90), 8.0, 0.0),
+        (const Offset(58, -90), 8.0, 0.5),
+        (const Offset(0, -110), 7.0, 1.0),
+      ];
+      for (final (pos, sz, delay) in specs) {
+        final phase = _frac((t - delay) / 1.8);
+        final s = _rise(phase);
+        canvas.drawRect(
+          Rect.fromCenter(center: pos.translate(0, s.dy), width: sz, height: sz),
+          Paint()..color = _pxGlow.withValues(alpha: s.opacity.clamp(0, 1)),
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PixelMascotPainter oldDelegate) =>
       oldDelegate.t != t ||
       oldDelegate.mood != mood ||
       oldDelegate.gesture != gesture ||

@@ -140,6 +140,7 @@ const _pollInterval = Duration(milliseconds: 1200);
 class _MascotSurfaceState extends State<_MascotSurface> {
   bool _hovering = false;
   MascotMood _mood = MascotMood.idle;
+  MascotSkin _skin = MascotSkin.classic;
   String? _toolName;
   Timer? _pollTimer;
   Dio? _dio;
@@ -152,12 +153,18 @@ class _MascotSurfaceState extends State<_MascotSurface> {
 
   Future<void> _startPolling() async {
     // Same SharedPreferences store the main chat window reads/writes
-    // (memo_api_base_url) — a separate Flutter engine/isolate, but the
-    // same underlying prefs file, so a server the user changed from
-    // Settings is picked up here too, not just Memo's own loopback default.
+    // (memo_api_base_url, memo_mascot_skin) — a separate Flutter
+    // engine/isolate, but the same underlying prefs file, so a server or
+    // skin the user changed from Settings is picked up here too. Read
+    // once at startup rather than watched live (this window has no
+    // Riverpod ProviderScope of its own) — changing the skin while the
+    // mascot is already open takes a close/reopen to pick up, same as the
+    // existing base-URL behavior.
     final prefs = await SharedPreferences.getInstance();
     final baseUrl = normalizeBackendUrl(prefs.getString('memo_api_base_url') ?? '');
+    final skin = MascotSkinPrefValue.fromPrefValue(prefs.getString('memo_mascot_skin'));
     if (!mounted) return;
+    setState(() => _skin = skin);
     _dio = Dio(BaseOptions(baseUrl: baseUrl, connectTimeout: const Duration(seconds: 2)));
     _poll();
     _pollTimer = Timer.periodic(_pollInterval, (_) => _poll());
@@ -222,7 +229,7 @@ class _MascotSurfaceState extends State<_MascotSurface> {
               height: _petAreaSize.height,
               child: Stack(
                 children: [
-                  Center(child: MemoMascot(mood: _mood, size: 100)),
+                  Center(child: MemoMascot(mood: _mood, skin: _skin, size: 100)),
                   Positioned(
                     top: 2,
                     right: 2,

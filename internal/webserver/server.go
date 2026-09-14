@@ -269,6 +269,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/chats/cli-workdir", s.handleChatCLIWorkdir)
 	route("/api/chats/cli-model", s.handleChatCLIModel)
 	route("/api/chats/code-mode", s.handleChatCodeMode)
+	route("/api/chats/code-submode", s.handleChatCodeSubMode)
 	route("/api/cli/model-options", s.handleCLIModelOptions)
 	route("/api/send/cli-stream", s.handleSendCLIStream)
 	route("/api/sync/settings", s.handleSyncSettings)

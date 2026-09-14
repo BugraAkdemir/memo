@@ -308,6 +308,8 @@ func (b *swarmStubBridge) GetChatCLIModel(chatID string) string                 
 func (b *swarmStubBridge) ListCLIModels(cliType string) []string                        { return nil }
 func (b *swarmStubBridge) GetChatCodeMode(chatID string) (bool, bool)                   { return false, false }
 func (b *swarmStubBridge) SetChatCodeMode(chatID string, enabled *bool) error           { return nil }
+func (b *swarmStubBridge) GetChatCodeSubMode(chatID string) (string, bool)              { return "auto", false }
+func (b *swarmStubBridge) SetChatCodeSubMode(chatID string, subMode *string) error      { return nil }
 func (b *swarmStubBridge) GetRemoteAccessStatus() interface{}                           { return nil }
 func (b *swarmStubBridge) SetRemoteAccess(enabled bool, port int) error                 { return nil }
 func (b *swarmStubBridge) SetNgrokMode(enabled bool, port int, ngrokToken string) error { return nil }

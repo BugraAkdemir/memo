@@ -483,6 +483,26 @@ func (a *App) sendMessageStreamCore(ctx context.Context, chatID, userMsg string,
 	codeMode := a.resolveCodeMode(chatID)
 	if codeMode {
 		ctx = withCodeMode(ctx)
+
+		// One-shot check: is this message answering the "move to build/auto?"
+		// question the model asked after saving a plan (plan sub-mode,
+		// save_code_plan succeeded, global auto-permission was off — see
+		// callAgentStream's chaining logic)? AwaitingPlanDecision is set
+		// exactly once per plan and always cleared here regardless of
+		// whether this message matched, so it never lingers past the very
+		// next message in the chat.
+		if sm := a.getSessionManager(); sm != nil && sm.GetAwaitingPlanDecision(chatID) {
+			if newMode, matched := classifyPlanDecisionReply(userMsg); matched {
+				if err := sm.SetCodeSubMode(chatID, newMode); err != nil {
+					logx.Printf("CODE-SUBMODE: SetCodeSubMode(%s, %s) after plan decision: %v", chatID, newMode, err)
+				}
+			}
+			if err := sm.SetAwaitingPlanDecision(chatID, false); err != nil {
+				logx.Printf("CODE-SUBMODE: clear AwaitingPlanDecision(%s): %v", chatID, err)
+			}
+		}
+
+		ctx = withCodeSubMode(ctx, a.resolveCodeSubMode(chatID))
 	}
 
 	// Intent extraction (calendar/habit detection) can fire its own LLM call

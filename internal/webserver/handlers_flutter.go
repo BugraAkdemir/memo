@@ -845,6 +845,36 @@ func (s *Server) handleChatCodeMode(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleChatCodeSubMode(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		subMode, pinned := s.fullBridge.GetChatCodeSubMode(r.URL.Query().Get("id"))
+		writeJSON(w, map[string]interface{}{"sub_mode": subMode, "pinned": pinned})
+	case http.MethodPost:
+		// sub_mode: "plan"|"auto"|"build" pins the choice; "" (or omitted)
+		// clears the pin so the chat follows the default ("auto") again.
+		var req struct {
+			ID      string  `json:"id"`
+			SubMode *string `json:"sub_mode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetChatCodeSubMode(req.ID, req.SubMode); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or POST", http.StatusMethodNotAllowed)
+	}
+}
+
 func (s *Server) handleChatCLIWorkdir(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusNotImplemented)

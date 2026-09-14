@@ -86,6 +86,32 @@ func (a *App) SetChatCodeMode(chatID string, enabled *bool) error {
 	return sm.SetCodeMode(chatID, enabled)
 }
 
+// GetChatCodeSubMode returns chatID's effective Code Mode sub-mode (per
+// resolveCodeSubMode — "auto" when nothing is pinned) and whether that value
+// is an explicit per-chat pin.
+func (a *App) GetChatCodeSubMode(chatID string) (subMode string, pinned bool) {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return "auto", false
+	}
+	return a.resolveCodeSubMode(chatID), sm.GetCodeSubMode(chatID) != ""
+}
+
+// SetChatCodeSubMode pins chatID's sub-mode ("plan"/"auto"/"build") or
+// clears the pin so the chat follows the default ("auto") again (subMode ==
+// nil or "").
+func (a *App) SetChatCodeSubMode(chatID string, subMode *string) error {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return fmt.Errorf("sessions not initialized")
+	}
+	mode := ""
+	if subMode != nil {
+		mode = *subMode
+	}
+	return sm.SetCodeSubMode(chatID, mode)
+}
+
 // ListCLIModels returns the model ids cliType's chat can be switched to via
 // its per-chat override — the backing data for the top bar's model picker in
 // CLI mode. Empty means the CLI has no override list available right now

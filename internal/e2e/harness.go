@@ -253,6 +253,50 @@ func (h *Harness) postAgentEnabled(enabled bool) *http.Response {
 	return resp
 }
 
+// SetChatCodeSubMode pins chatID's Code Mode sub-mode via POST
+// /api/chats/code-submode ("plan"/"auto"/"build"; "" clears the pin).
+func (h *Harness) SetChatCodeSubMode(chatID, subMode string) {
+	h.t.Helper()
+	resp := h.postJSON("/api/chats/code-submode", map[string]string{"id": chatID, "sub_mode": subMode})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.t.Fatalf("POST /api/chats/code-submode(%s, %s): status %d", chatID, subMode, resp.StatusCode)
+	}
+}
+
+// GetChatCodeSubMode reads chatID's effective Code Mode sub-mode via GET
+// /api/chats/code-submode.
+func (h *Harness) GetChatCodeSubMode(chatID string) (subMode string, pinned bool) {
+	h.t.Helper()
+	resp := h.getJSON("/api/chats/code-submode?id=" + chatID)
+	var out struct {
+		SubMode string `json:"sub_mode"`
+		Pinned  bool   `json:"pinned"`
+	}
+	decodeInto(h.t, resp, &out)
+	return out.SubMode, out.Pinned
+}
+
+// SetAutoPermission toggles the global "Shift+Tab" auto-permission flag via
+// PUT /api/agent/auto-permission.
+func (h *Harness) SetAutoPermission(enabled bool) {
+	h.t.Helper()
+	req, err := http.NewRequest(http.MethodPut, h.BaseURL+"/api/agent/auto-permission",
+		bytes.NewReader(mustJSON(h.t, map[string]bool{"enabled": enabled})))
+	if err != nil {
+		h.t.Fatalf("build PUT /api/agent/auto-permission: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := h.client.Do(req)
+	if err != nil {
+		h.t.Fatalf("PUT /api/agent/auto-permission: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.t.Fatalf("PUT /api/agent/auto-permission(%v): status %d", enabled, resp.StatusCode)
+	}
+}
+
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, err := json.Marshal(v)

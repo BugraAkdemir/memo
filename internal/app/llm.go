@@ -9,10 +9,12 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"memo/internal/agent"
 	"memo/internal/api"
+	"memo/internal/config"
 	"memo/internal/models"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
@@ -395,44 +397,61 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		}
 
 		// Code Mode raises the loop ceilings (coding tasks are long, and the
-		// turn has no chat cruft eating the budget) and lets file edits flow
-		// without a permission prompt.
-		//
-		// codeSubModeFromCtx(ctx) is deliberately NOT read here yet — no ctx
-		// ever carries a real sub-mode until sendMessageStreamCore starts
-		// attaching one (a later unit), so this always resolves the
-		// auto-approve set exactly as Code Mode did before sub-modes existed:
-		// "auto" (today's 6-tool set) when CodeModeAutoApproveEdits is on,
-		// nothing auto-approved when it's off. This keeps that existing
-		// config toggle meaningful in the interim.
-		if codeModeActive(ctx) {
+		// turn has no chat cruft eating the budget), and the sub-mode
+		// (plan/auto/build) decides which tools flow without a permission
+		// prompt — see codeModeToolAutoApproveSet's doc comment.
+		codeMode := codeModeActive(ctx)
+		subMode := codeSubModeFromCtx(ctx)
+		var am config.AgentModeConfig
+		if codeMode {
 			a.cfgMu.RLock()
-			am := a.cfg.AgentMode
+			am = a.cfg.AgentMode
 			a.cfgMu.RUnlock()
-			subMode := ""
-			if am.CodeModeAutoApproveEdits {
+			if subMode == "" {
 				subMode = "auto"
+			}
+			// CodeModeAutoApproveEdits is "auto" sub-mode's own on/off switch
+			// for its auto-approve set — turning it off makes "auto" behave
+			// like "plan" for tool approval (still prompts for every edit)
+			// without changing the sub-mode itself or its system prompt. It
+			// has no effect on "plan" (already prompts for everything) or
+			// "build" (its own fixed set has no toggle).
+			approveSubMode := subMode
+			if subMode == "auto" && !am.CodeModeAutoApproveEdits {
+				approveSubMode = ""
 			}
 			turnCtx = agent.WithTurnOverrides(turnCtx, agent.TurnOverrides{
 				MaxIters:         am.CodeModeMaxIterations,
 				MaxContinuations: am.CodeModeMaxContinuations,
-				CodeSubMode:      subMode,
+				CodeSubMode:      approveSubMode,
 			})
 		}
 
-		streamCh, err := exec.RunStreamWithRouter(turnCtx, agentRouter, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
+		// planSaved is set from the pipeline's own goroutine inside onEvent,
+		// strictly before that goroutine's eventual terminal send on
+		// streamCh (same happens-before relationship agentEventLog already
+		// relies on) — safe to read plainly after RunStreamWithRouter's
+		// channel is fully drained below, no atomic needed for a single
+		// write-then-single-read across that boundary, but atomic.Bool costs
+		// nothing and removes any doubt.
+		var planSaved atomic.Bool
+		onEvent := func(ev agent.AgentEvent) {
 			agentEvents.add(ev)
 			a.recordWorkingSetEvent(sessionID, ev)
 			if taskListID != "" {
 				a.emitStepToolActivity(taskListID, ev)
+			}
+			if ev.Type == agent.EventToolResult && ev.ToolName == "save_code_plan" && ev.Error == "" {
+				planSaved.Store(true)
 			}
 			chunkData, _ := json.Marshal(ev)
 			trySend(ctx, outCh, api.StreamChunk{
 				Content:      string(chunkData),
 				FinishReason: "agent_event",
 			})
-		}, projectPath)
+		}
 
+		streamCh, err := exec.RunStreamWithRouter(turnCtx, agentRouter, sessionID, modelName, effortLevel, pMsgs, onEvent, projectPath)
 		if err != nil {
 			logx.Printf("Agent error: %v", err)
 			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
@@ -440,7 +459,92 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			return
 		}
 
-		a.drainAgentStream(turnCtx, streamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents)
+		finishReason, chainable := a.drainAgentStream(turnCtx, streamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents)
+		if !chainable {
+			return // drainAgentStream already sent its own terminal Done (or error+Done)
+		}
+
+		// Code Mode "plan" sub-mode chaining (decision 1/4 of
+		// docs/plans/PLAN_code_submodes.md): only when this pass actually
+		// saved a plan, only when the turn is genuinely in "plan" sub-mode
+		// (not e.g. already "build"), and only for an ordinary interactive
+		// turn (never a Self-Driving worker turn — task lists are a
+		// completely separate orchestration this feature doesn't touch).
+		if !codeMode || subMode != "plan" || !planSaved.Load() || taskListID != "" {
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason})
+			return
+		}
+
+		// Local-model turns fold the system prompt into a user-role message
+		// instead of a separate system-role one (buildMessagesForSession's
+		// a.llamaServer.IsRunning() branch, internal/app/helpers.go) — the
+		// pMsgs[0]-is-the-system-message rewrite below assumes an
+		// external-provider turn and would silently corrupt a local turn's
+		// first history message instead. Rather than build a second,
+		// role-agnostic rewrite path for a narrow combination (Code Mode +
+		// local model + plan sub-mode + auto-permission on), fall back to
+		// the plain-text-confirm flow below exactly as if auto-permission
+		// were off — see docs/plans/PLAN_code_submodes.md's "Bilinen sınır"
+		// section for the reasoning.
+		localModelTurn := a.llamaServer != nil && a.llamaServer.IsRunning()
+		// Defensive: the direct-continuation rewrite below assumes pMsgs[0]
+		// is the turn's system-role message, true today for every non-local
+		// Code Mode turn (helpers.go always prepends a non-empty
+		// codeSubModeDirective as msgs[0] there) — if that ever stops
+		// holding, fail safe into the ask-by-text path instead of silently
+		// overwriting the wrong message.
+		firstMsgIsSystem := len(pMsgs) > 0 && pMsgs[0].Role == "system"
+
+		if localModelTurn || !firstMsgIsSystem || !a.agentExecutor.GetAutoPermission() {
+			// Ask-by-text path: the model's own reply (guided by
+			// codePlanDirective) already asked the user whether to move to
+			// build/auto. Mark this chat as awaiting that answer so the very
+			// next user message gets a one-shot check (chat.go's
+			// sendMessageStreamCore) instead of routing straight through.
+			if sm := a.getSessionManager(); sm != nil {
+				if err := sm.SetAwaitingPlanDecision(sessionID, true); err != nil {
+					logx.Printf("CODE-SUBMODE: SetAwaitingPlanDecision(%s): %v", sessionID, err)
+				}
+			}
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason})
+			return
+		}
+
+		// Auto-permission is on: switch this chat to "build" and continue
+		// executing the plan immediately, in this same SSE response — a
+		// second, separate stream would arrive after the client's original
+		// request already closed (see drainAgentStream's doc comment on why
+		// only one terminal Done can ever go out per response).
+		if sm := a.getSessionManager(); sm != nil {
+			if err := sm.SetCodeSubMode(sessionID, "build"); err != nil {
+				logx.Printf("CODE-SUBMODE: SetCodeSubMode(%s, build): %v", sessionID, err)
+			}
+		}
+		trySend(ctx, outCh, api.StreamChunk{FinishReason: "code_submode_changed", Content: "build"})
+
+		buildSystemPrompt := codeSubModeDirective(am, "build") + buildAgentSystemPrompt()
+		pMsgs[0] = provider.Message{Role: "system", Content: buildSystemPrompt}
+		pMsgs = append(pMsgs, provider.Message{
+			Role:    "user",
+			Content: "<memo-internal>Auto-permission is on. The plan you just saved was approved automatically — continue and execute it now in build mode.</memo-internal>",
+		})
+		turnCtx = agent.WithTurnOverrides(turnCtx, agent.TurnOverrides{
+			MaxIters:         am.CodeModeMaxIterations,
+			MaxContinuations: am.CodeModeMaxContinuations,
+			CodeSubMode:      "build",
+		})
+
+		buildStreamCh, err := exec.RunStreamWithRouter(turnCtx, agentRouter, sessionID, modelName, effortLevel, pMsgs, onEvent, projectPath)
+		if err != nil {
+			logx.Printf("Agent error (build continuation): %v", err)
+			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
+			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+			return
+		}
+		buildFinishReason, buildChainable := a.drainAgentStream(turnCtx, buildStreamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents)
+		if buildChainable {
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: buildFinishReason})
+		}
 	}()
 
 	return outCh
@@ -512,7 +616,27 @@ func (l *agentEventLog) snapshot() []interface{} {
 // introducing exactly that gap, matching the same "every branch sends a
 // terminal chunk" rule already enforced in internal/agentcli's own
 // ChatCompletionStream implementations.
-func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.StreamChunk, outCh chan<- api.StreamChunk, start time.Time, userMsg, sessionID string, usageMetaVal *usageMeta, agentEvents *agentEventLog) {
+// drainAgentStream reads streamCh (the pipeline's raw provider-level stream)
+// to completion, persisting the turn via finishStream and forwarding
+// content chunks onto outCh. Three of its four exit paths — context
+// cancellation, a mid-stream error, and an empty final reply — always send
+// their own terminal Done chunk and return chainable=false: those must end
+// the SSE response immediately, exactly as this method did before it grew a
+// return value at all.
+//
+// The remaining path ("stop": either the provider's own terminal chunk.Done,
+// or the fallback case of a non-empty reply with no explicit Done) does NOT
+// send Done itself — it returns (finishReason, true) so the caller decides
+// whether to send Done now or run another pass onto the same outCh first.
+// This exists for callAgentStream's Code Mode "plan" sub-mode chaining: a
+// real SSE response can carry exactly one terminal Done
+// (handlers_flutter.go's streamSSE returns the instant it sees one), so a
+// build-mode continuation appended after a plan is saved must run BEFORE
+// this call's Done goes out, never as a second, separate stream. Every
+// other caller (callWebSearchAgentStream, and this file's own tests) simply
+// sends Done itself when chainable is true — see callWebSearchAgentStream's
+// call site for the minimal pattern.
+func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.StreamChunk, outCh chan<- api.StreamChunk, start time.Time, userMsg, sessionID string, usageMetaVal *usageMeta, agentEvents *agentEventLog) (finishReason string, chainable bool) {
 	var fullReply strings.Builder
 	// The agent pipeline attaches a real cross-iteration token accounting to
 	// its terminal chunk (see internal/agent/pipeline.go). Fold it into
@@ -536,7 +660,7 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		if ctxDone {
 			a.persistInterruptedTurn(ctx, start, completionTokens, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 			trySend(ctx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
-			return
+			return "", false
 		}
 		if !ok {
 			break
@@ -545,7 +669,7 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		if chunk.Error != "" {
 			a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
-			return
+			return "", false
 		}
 
 		if chunk.Content != "" {
@@ -555,18 +679,17 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 
 		if chunk.Done {
 			a.finishStream(ctx, start, completionTokens, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
-			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
-			return
+			return chunk.FinishReason, true
 		}
 	}
 
 	if fullReply.Len() > 0 {
 		a.finishStream(ctx, start, completionTokens, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
-		trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
-	} else {
-		a.recordStreamError(userMsg, a.t("⚠️ Agent boş yanıt döndürdü", "⚠️ Agent returned an empty response"), sessionID)
-		trySend(ctx, outCh, api.StreamChunk{Error: a.t("⚠️ Agent boş yanıt döndürdü", "⚠️ Agent returned an empty response"), Done: true})
+		return "stop", true
 	}
+	a.recordStreamError(userMsg, a.t("⚠️ Agent boş yanıt döndürdü", "⚠️ Agent returned an empty response"), sessionID)
+	trySend(ctx, outCh, api.StreamChunk{Error: a.t("⚠️ Agent boş yanıt döndürdü", "⚠️ Agent returned an empty response"), Done: true})
+	return "", false
 }
 
 // callWebSearchAgentStream runs a scoped (web_search + fetch_page only)
@@ -646,7 +769,12 @@ func (a *App) callWebSearchAgentStream(ctx context.Context, messages []api.Messa
 			return
 		}
 
-		a.drainAgentStream(ctx, streamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents)
+		// This call path never chains an extra pass (that's Code Mode "plan"
+		// sub-mode-only, in callAgentStream) — a "normal stop" here always
+		// just means send Done immediately, same as every other exit.
+		if finishReason, chainable := a.drainAgentStream(ctx, streamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents); chainable {
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason})
+		}
 	}()
 
 	return outCh

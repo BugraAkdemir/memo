@@ -245,7 +245,17 @@ değişiklik). Flutter'a henüz dokunulmuyor — `code_submode_changed`
 chunk'ının mevcut Flutter SSE tüketicisini bozmadığı (bilinmeyen
 `finishReason`'ı sessizce yok saydığı) ayrıca kontrol edilmeli.
 
-- [ ] Yapıldı
+- [x] Yapıldı (commit'lendi 2026-09-15) — plan doc'unda tarif edilenden iki
+  küçük sapma: (1) `data/plans/...` yazan `save_code_plan` aracının yanı
+  sıra, testin bunu gerçek HTTP API üzerinden tetikleyebilmesi için Birim
+  5'in `GET/POST /api/chats/code-submode` uç noktası (bridge + handler +
+  route + stub) bu birimde erkenden eklendi — Flutter tarafı hâlâ yok,
+  sadece backend yüzeyi; (2) `drainAgentStream`'in yeni `(finishReason,
+  chainable)` dönüş imzası `callWebSearchAgentStream`'in çağrı noktasını da
+  (3 satır) etkiledi, davranış değişmeden. Test edilmeyen (gerçekçi
+  olmayan) kenar durum: yerel llama.cpp modeli + plan modu + auto-perm açık
+  kombinasyonu — kod incelemesiyle doğrulandı (bkz. "Bilinen sınır"), gerçek
+  bir yerel model gerektirdiği için otomatik testte kapsanmadı.
 
 ---
 
@@ -254,10 +264,12 @@ chunk'ının mevcut Flutter SSE tüketicisini bozmadığı (bilinmeyen
 **Dosyalar:** `frontend/lib/core/api_client.dart`,
 `frontend/lib/providers/agent_provider.dart`,
 `frontend/lib/widgets/chat_input.dart`,
-`frontend/lib/screens/agent_screen.dart`,
-(+ backend: `internal/webserver/handlers_flutter.go`/`bridge.go`/`server.go`,
-`internal/app/cli_stream.go` — sadece `/api/chats/code-submode` endpoint'i,
-prompt editör endpoint'leri değil, onlar Birim 6'da).
+`frontend/lib/screens/agent_screen.dart`.
+
+**Not:** Backend tarafı (`GET/POST /api/chats/code-submode` — bridge +
+handler + route + stub) Birim 4'te erkenden eklendi (Unit 4'ün e2e
+testlerinin gerçek HTTP API üzerinden sub-mode pinleyebilmesi için gerekti)
+— burada sadece Flutter tarafı kaldı.
 
 - `getChatCodeSubMode`/`setChatCodeSubMode` (api_client.dart) —
   `getChatCodeMode`/`setChatCodeMode` ile birebir aynı şekil.

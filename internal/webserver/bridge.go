@@ -155,6 +155,10 @@ type FullBridge interface {
 	// Code Mode (per-chat coding preset)
 	GetChatCodeMode(chatID string) (enabled bool, pinned bool)
 	SetChatCodeMode(chatID string, enabled *bool) error
+	// Code Mode sub-mode ("plan"/"auto"/"build") — only meaningful when
+	// GetChatCodeMode's enabled is true.
+	GetChatCodeSubMode(chatID string) (subMode string, pinned bool)
+	SetChatCodeSubMode(chatID string, subMode *string) error
 
 	// Remote access
 	GetRemoteAccessStatus() interface{}

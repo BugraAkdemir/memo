@@ -1,7 +1,9 @@
 package identity
 
 import (
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"memo/internal/memory"
@@ -489,6 +491,42 @@ func TestGetStyleInstructionsFallback(t *testing.T) {
 	if !strings.Contains(instructions, "CASUAL") {
 		t.Error("unknown style should fallback to casual")
 	}
+}
+
+// TestUpdate_DoesNotRaceBuildSystemPrompt is the regression test for the
+// P1 finding that Update() mutated UserName/AssistantName/Style/CustomRole
+// with no lock, while BuildSystemPrompt (and the helpers it calls) read
+// those same fields with no lock — a genuine, unguarded data race (Go
+// string headers aren't atomically read/written), reachable any time a
+// Settings identity change (UpdateIdentity/SetSystemPrompt, an HTTP
+// handler goroutine) lands while a chat stream on another chat is
+// building its system prompt concurrently. Run with -race: this fails on
+// the pre-fix code (Update/BuildSystemPrompt with no identityMu).
+func TestUpdate_DoesNotRaceBuildSystemPrompt(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", false)
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			id.Update("User"+strconv.Itoa(i), "Assistant"+strconv.Itoa(i), "technical", "")
+			id.Update("", "", "", "custom role "+strconv.Itoa(i))
+		}
+	}()
+
+	for i := 0; i < 200; i++ {
+		_ = id.BuildSystemPrompt(nil, false, true, true, true, true)
+	}
+	close(stop)
+	wg.Wait()
 }
 
 func TestAvailableStyles(t *testing.T) {

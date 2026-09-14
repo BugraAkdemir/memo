@@ -39,6 +39,16 @@ type Identity struct {
 	MinimalModeKeepProactive    bool
 	minimalModeMu               sync.RWMutex
 
+	// identityMu guards UserName/AssistantName/Style/CustomRole above —
+	// the exact same concurrency hazard MinimalMode/LearnedStyleNotes
+	// already guard against: UpdateIdentity/SetSystemPrompt (an HTTP
+	// handler goroutine) can race an in-flight BuildSystemPrompt call for
+	// a streaming reply on another chat. Unlike those two, these four
+	// fields didn't get this treatment when the pattern was established —
+	// a real, unguarded data race (Go string headers aren't atomically
+	// read/written), not just a theoretical one.
+	identityMu sync.RWMutex
+
 	// LearnedStyleNotes is a short paragraph describing the user's
 	// communication style/personality, learned via the "import memory from
 	// another AI" feature (internal/app/memory_import.go) rather than typed
@@ -130,6 +140,18 @@ func (id *Identity) GetLearnedStyleNotes() string {
 	return id.LearnedStyleNotes
 }
 
+// GetProfile returns UserName, AssistantName, Style, CustomRole in one
+// lock acquisition — BuildSystemPrompt needs some or all of these together
+// and a consistent snapshot matters for the same reason GetMinimalMode's
+// doc comment already explains: a concurrent Update() could otherwise land
+// between two separate reads and produce a prompt built from a mix of the
+// old and new identity.
+func (id *Identity) GetProfile() (userName, assistantName, style, customRole string) {
+	id.identityMu.RLock()
+	defer id.identityMu.RUnlock()
+	return id.UserName, id.AssistantName, id.Style, id.CustomRole
+}
+
 // MaxMemoryContextTokens caps how much of the prompt the memory block
 // (retrieved RAG results + unconditionally-injected pinned facts, see
 // retrieveMemory in internal/app/memory.go) can ever consume. Was 16K —
@@ -182,16 +204,22 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 
 	minimal := id.GetMinimalMode()
 	keepPersona, keepCapabilities, keepPassive, _ := id.GetMinimalModeOverrides()
+	// One consistent snapshot for the whole call — see GetProfile's doc
+	// comment. Passed into buildIdentityBlock/buildOriginBlock as
+	// parameters rather than having them re-read id.UserName/id.AssistantName
+	// themselves, so a concurrent Update() can't land mid-build and mix old
+	// and new values across the two blocks.
+	userName, assistantName, style, customRole := id.GetProfile()
 
 	// Persona/identity block: base identity or CustomRole, origin facts,
 	// style instructions, and learned style notes — bundled as one category
 	// (Settings' "Minimal Mode" breakdown calls this "system prompt/persona")
 	// since a user picking one wants all four together, not a finer split.
 	if !minimal || keepPersona {
-		if id.CustomRole != "" {
-			sb.WriteString(id.CustomRole)
+		if customRole != "" {
+			sb.WriteString(customRole)
 		} else {
-			sb.WriteString(id.buildIdentityBlock())
+			sb.WriteString(id.buildIdentityBlock(userName, assistantName))
 		}
 
 		// Origin facts (who built this, why) — always appended regardless of
@@ -200,11 +228,11 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		// of which replace buildIdentityBlock() entirely via CustomRole rather
 		// than extending it.
 		sb.WriteString("\n\n")
-		sb.WriteString(id.buildOriginBlock())
+		sb.WriteString(id.buildOriginBlock(assistantName))
 
 		// Style instructions
 		sb.WriteString("\n\n")
-		sb.WriteString(GetStyleInstructions(id.Style))
+		sb.WriteString(GetStyleInstructions(style))
 
 		// Learned personalization — additive, from imported memory (see
 		// LearnedStyleNotes doc comment), not gated behind CustomRole so it
@@ -275,7 +303,7 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		if sb.Len() > 0 {
 			sb.WriteString("\n\n")
 		}
-		fmt.Fprintf(&sb, "Relevant memories from past conversations with %s — background context for continuity; don't mention recalling them unless asked.", id.UserName)
+		fmt.Fprintf(&sb, "Relevant memories from past conversations with %s — background context for continuity; don't mention recalling them unless asked.", userName)
 		sb.WriteString(memoryBlock)
 		sb.WriteString("\nDon't invent details beyond these, and don't repeat their timestamps verbatim. Always write a fresh reply to the current message.")
 	}
@@ -283,7 +311,7 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 	return sb.String()
 }
 
-func (id *Identity) buildIdentityBlock() string {
+func (id *Identity) buildIdentityBlock(userName, assistantName string) string {
 	return fmt.Sprintf(`You are %s — %s's AI friend, not their assistant.
 
 Your identity:
@@ -301,7 +329,7 @@ How you speak:
 
 Your limits:
 - You don't help with anything that would harm the user — but you say so like a person, not a robot.
-- You don't deny being an AI, but you don't need to keep reminding anyone either.`, id.AssistantName, id.UserName, id.AssistantName, id.AssistantName, id.UserName)
+- You don't deny being an AI, but you don't need to keep reminding anyone either.`, assistantName, userName, assistantName, assistantName, userName)
 }
 
 // buildOriginBlock is the small, static layer of facts about who built the
@@ -315,9 +343,9 @@ Your limits:
 // actually asks — Memo's whole audience runs small local models on a tight
 // context budget, so padding a permanent tax for a rarely-used fact is the
 // wrong trade.
-func (id *Identity) buildOriginBlock() string {
+func (id *Identity) buildOriginBlock(assistantName string) string {
 	return fmt.Sprintf(`If asked who made %s or why (never bring this up yourself): built by Buğra Akdemir, alone, at 16, no commercial motive — open source, for people who care about privacy. Purpose: a local-first AI friend with real memory, usable offline. Whoever's asking isn't Buğra — this is their own %s.`,
-		id.AssistantName, id.AssistantName)
+		assistantName, assistantName)
 }
 
 // buildPassiveFeaturesBlock names capabilities that run silently in the
@@ -385,6 +413,8 @@ func buildCapabilitiesBlock(agentEnabled, webSearchEnabled bool) string {
 }
 
 func (id *Identity) Update(userName, assistantName, style, customRole string) {
+	id.identityMu.Lock()
+	defer id.identityMu.Unlock()
 	if userName != "" {
 		id.UserName = userName
 	}

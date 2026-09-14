@@ -628,11 +628,17 @@ func (a *App) buildLiveModeHistoryBlock() string {
 	userLabel := "User"
 	assistantLabel := "Memo"
 	if a.identity != nil {
-		if a.identity.UserName != "" {
-			userLabel = a.identity.UserName
+		// GetProfile, not a.identity.UserName/.AssistantName directly — see
+		// Identity.identityMu's doc comment: those are mutated concurrently
+		// by UpdateIdentity/SetSystemPrompt, and a direct field read here
+		// (outside the identity package, so it can't take the lock itself)
+		// used to be a genuine unguarded data race.
+		userName, assistantName, _, _ := a.identity.GetProfile()
+		if userName != "" {
+			userLabel = userName
 		}
-		if a.identity.AssistantName != "" {
-			assistantLabel = a.identity.AssistantName
+		if assistantName != "" {
+			assistantLabel = assistantName
 		}
 	}
 

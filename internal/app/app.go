@@ -701,7 +701,10 @@ func (a *App) Startup(ctx context.Context) {
 	tools.TaskStatus = taskStatusToolAdapter{a}
 
 	basePath, _ := filepath.Abs(".")
-	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr, a.getSessionManager())
+	a.providerMu.RLock()
+	providerRouter, providerCfgMgr := a.providerRouter, a.providerCfgMgr
+	a.providerMu.RUnlock()
+	a.agentExecutor = agent.NewExecutor(basePath, providerRouter, providerCfgMgr, a.getSessionManager())
 	a.agentExecutor.SetBypassPermissions(a.cfg.Mood.SystemManagement)
 	a.agentExecutor.SetMaxIterations(a.cfg.AgentMode.MaxIterations)
 	a.agentExecutor.SetMaxContinuations(a.cfg.AgentMode.MaxContinuations)

@@ -639,9 +639,30 @@ var readOnlyCommandAllowlist = []string{
 
 // curlURLPattern extracts bare http(s):// URL tokens from a shell command
 // string — good enough for the safety check below without a full shell
-// parse (which flags like `-o file` inside the same command already can't
-// escape the project directory anyway, per commandTargetsProtectedPath).
+// parse.
 var curlURLPattern = regexp.MustCompile(`https?://([^/\s'"]+)`)
+
+// curlNoTargetOutputFlags are curl flags that write the response to disk
+// and have NO safe form — -O/--remote-name always derive a real filename
+// from the URL and write it, no matter what follows on the command line.
+// A read-only sub-agent's curl is meant only for polling a server the
+// coder just started, never for writing a file — see
+// isAllowedReadOnlyCurl. -o/--output are handled separately below since
+// they have one legitimate form ("-o /dev/null", discarding the body —
+// exactly what TestRunCommandReadOnly_CurlReachesTheSandboxedServer/the
+// live incident isAllowedReadOnlyCurl's own doc comment describes use).
+var curlNoTargetOutputFlags = map[string]bool{
+	"-O": true, "--remote-name": true, "--remote-name-all": true,
+	"-J": true, "--remote-header-name": true, "--output-dir": true,
+}
+
+// curlDiscardTargets are the only arguments to -o/--output this tool
+// accepts — writing anywhere else is a real file write inside the
+// project, violating the single-writer invariant (see
+// isAllowedReadOnlyCurl's doc comment).
+var curlDiscardTargets = map[string]bool{
+	"/dev/null": true, "NUL": true, "nul": true,
+}
 
 // isAllowedReadOnlyCurl reports whether cmd is a curl invocation that only
 // ever talks to localhost — the one legitimate need a read-only test-runner
@@ -658,6 +679,36 @@ func isAllowedReadOnlyCurl(cmd string) bool {
 	c := strings.TrimSpace(cmd)
 	if c != "curl" && !strings.HasPrefix(c, "curl ") {
 		return false
+	}
+	// Never allow writing the response to a real file: -o/-O and friends
+	// let a read-only sub-agent (analyzer/reviewer/test-runner, run in
+	// parallel with each other per SubAgentOrchestrator's Phase 2,
+	// subagent.go) write a file inside the project — violating the
+	// single-writer invariant the orchestrator's whole race-freedom design
+	// assumes ("the coder is the ONLY sub-agent allowed to write files").
+	// That the write target can't escape the project directory
+	// (commandTargetsProtectedPath) is a different, already-enforced
+	// property from write-exclusivity. -o/--output specifically to
+	// /dev/null (discarding the body, not writing anything) stays allowed
+	// — that's the actual, live, legitimate use case this tool exists for.
+	// Token-based, like the rest of this file's "good enough without a
+	// full shell parse" checks — a glued short option ("-o/tmp/x" with no
+	// space) is not recognized as -o at all here and slips through
+	// unexamined; realistic tool-call syntax (and every example in this
+	// codebase's own tests) always uses the spaced form.
+	if strings.Contains(c, ">") {
+		return false
+	}
+	toks := strings.Fields(c)
+	for i, tok := range toks {
+		if curlNoTargetOutputFlags[tok] {
+			return false
+		}
+		if tok == "-o" || tok == "--output" {
+			if i+1 >= len(toks) || !curlDiscardTargets[toks[i+1]] {
+				return false
+			}
+		}
 	}
 	matches := curlURLPattern.FindAllStringSubmatch(c, -1)
 	if len(matches) == 0 {

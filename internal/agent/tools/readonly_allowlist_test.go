@@ -120,3 +120,41 @@ func TestIsAllowedReadOnlyCurl_LocalhostOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestIsAllowedReadOnlyCurl_RejectsFileWrites is the regression test for
+// the P2 finding that a read-only sub-agent's curl allowlist only checked
+// the target host, never whether the invocation writes the response to a
+// real file (-o/-O and friends) — letting analyzer/reviewer/test-runner
+// sub-agents (run in parallel with each other and with the coder,
+// SubAgentOrchestrator's Phase 2) write inside the project despite the
+// single-writer invariant that design assumes ("the coder is the ONLY
+// sub-agent allowed to write files", subagent.go). -o /dev/null (discard
+// the body) must stay allowed — see TestIsAllowedReadOnlyCurl_LocalhostOnly
+// above for the live, legitimate use of exactly that form.
+func TestIsAllowedReadOnlyCurl_RejectsFileWrites(t *testing.T) {
+	blocked := []string{
+		`curl -s -o result.txt http://127.0.0.1:8199/`,
+		`curl -s --output result.txt http://127.0.0.1:8199/`,
+		`curl -s -o /tmp/evil http://127.0.0.1:8199/`,
+		`curl -s -O http://127.0.0.1:8199/report.json`,
+		`curl -s --remote-name http://127.0.0.1:8199/report.json`,
+		`curl -s http://127.0.0.1:8199/ > out.txt`,
+		`curl -s http://127.0.0.1:8199/ >> out.txt`,
+	}
+	for _, c := range blocked {
+		if isAllowedReadOnlyCurl(c) {
+			t.Errorf("isAllowedReadOnlyCurl(%q) = true, want false (writes a real file)", c)
+		}
+	}
+
+	allowed := []string{
+		`curl -s -o /dev/null http://127.0.0.1:8199/`,
+		`curl -s --output /dev/null http://127.0.0.1:8199/`,
+		`curl -s -o NUL http://127.0.0.1:8199/`,
+	}
+	for _, c := range allowed {
+		if !isAllowedReadOnlyCurl(c) {
+			t.Errorf("isAllowedReadOnlyCurl(%q) = false, want true (discards the body, writes nothing)", c)
+		}
+	}
+}

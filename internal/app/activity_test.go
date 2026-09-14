@@ -1,6 +1,7 @@
 package app
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -113,6 +114,25 @@ func TestLiveModeActivityHook_ThrottlesWithinTwoSeconds(t *testing.T) {
 	}
 }
 
+func TestLiveModeActivityHook_ThrottleIsRaceSafe(t *testing.T) {
+	a := resetActivity(t)
+	const callers = 32
+	var wg sync.WaitGroup
+	wg.Add(callers)
+	for i := 0; i < callers; i++ {
+		go func() {
+			defer wg.Done()
+			livemode.GlobalActivityHook()
+		}()
+	}
+	wg.Wait()
+
+	got := a.GetActivityStatus()
+	if got.State != models.ActivitySpeaking {
+		t.Fatalf("State = %q, want speaking", got.State)
+	}
+}
+
 func TestSetActivity_AutoIdlesAfterTimeout(t *testing.T) {
 	a := resetActivity(t)
 	original := activityIdleTimeout
@@ -171,10 +191,10 @@ func TestSetActivity_NewerEventCancelsStaleAutoIdle(t *testing.T) {
 	defer func() { activityIdleTimeout = original }()
 
 	setActivity(models.ActivityTool, "run_command")
-	time.Sleep(15 * time.Millisecond) // let the first timer get close, not fire
+	time.Sleep(15 * time.Millisecond)
 	setActivity(models.ActivityWriting, "edit_file")
 
-	time.Sleep(15 * time.Millisecond) // first timer's original deadline passes now
+	time.Sleep(15 * time.Millisecond)
 	if got := a.GetActivityStatus().State; got != models.ActivityWriting {
 		t.Errorf("State = %q, want writing (stale timer must not have reset it)", got)
 	}

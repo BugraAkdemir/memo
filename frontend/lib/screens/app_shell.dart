@@ -231,6 +231,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         ref.invalidate(skillListProvider);
         ref.invalidate(localModelsProvider);
         ref.invalidate(taskListsProvider);
+        ref.invalidate(runningTasksProvider);
         ref.invalidate(providerListProvider);
         ref.invalidate(activeProviderTypeProvider);
         ref.invalidate(orchestraConfigProvider);

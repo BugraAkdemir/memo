@@ -22,6 +22,12 @@ const serverCoupledPrefsKeys = <String>[
   'memo_remote_access_token',
   'memo_session_username',
   'memo_session_role',
+  // The role's cached effective permissions (permissions_provider.dart) —
+  // scoped to the same account+backend as memo_session_role right above it,
+  // so it belongs in this list for the same reason: orphaned, it stays on
+  // disk after a backend swap for anything that ever reads it without also
+  // re-checking role first.
+  'memo_session_permissions',
   // First-run milestones: a genuinely new install should show these again.
   'memo_setup_complete',
   'memo_launchpad_seen',

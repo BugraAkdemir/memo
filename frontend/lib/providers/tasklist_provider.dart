@@ -13,8 +13,23 @@ import '../core/friendly_error.dart';
 class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
   Timer? _pollTimer;
 
+  // Riverpod can rebuild this exact same TaskListsNotifier *instance* (not a
+  // fresh one) when taskListsProvider is invalidated — the same reuse
+  // MessagesNotifier's own _generation comment (chat_provider.dart) already
+  // documents in detail for the identical reason (app_shell.dart's
+  // gate-transition ref.invalidate). Without this, a poll's in-flight
+  // request that started under the old generation writes its now-stale
+  // response into `state` *after* the rebuilt notifier already fetched
+  // fresh data, silently reverting it until the next poll tick happens to
+  // correct it again. Each build() bumps this; refresh()/_silentRefresh()
+  // capture it before their await and skip the write if it no longer
+  // matches — see MessagesNotifier for the two-directional footgun a plain
+  // disposed-bool would have here instead.
+  int _generation = 0;
+
   @override
   Future<List<TaskListInfo>> build() async {
+    _generation++;
     ref.onDispose(stopPolling);
     // BUG-ONB6 (see chat_provider.dart's ChatListNotifier for the full
     // story): a one-shot AsyncNotifier whose single build() attempt landing
@@ -27,18 +42,24 @@ class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
   }
 
   Future<void> refresh() async {
+    final gen = _generation;
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() async {
+    final result = await AsyncValue.guard(() async {
       final api = ref.read(apiClientProvider);
       return api.listTaskLists();
     });
+    if (gen != _generation) return; // see _generation's doc comment above
+    state = result;
   }
 
   /// Re-fetches without flipping to a loading state first, so a periodic
   /// poll doesn't flash the whole list to a spinner every tick.
   Future<void> _silentRefresh() async {
+    final gen = _generation;
     final api = ref.read(apiClientProvider);
-    state = await AsyncValue.guard(() => api.listTaskLists());
+    final result = await AsyncValue.guard(() => api.listTaskLists());
+    if (gen != _generation) return; // see _generation's doc comment above
+    state = result;
   }
 
   /// The engine runs a task list's items in the background with no push
@@ -108,8 +129,14 @@ final taskListsProvider =
 class RunningTasksNotifier extends AsyncNotifier<List<RunningTaskInfo>> {
   Timer? _pollTimer;
 
+  // See TaskListsNotifier's identical field for the full story (same
+  // instance-reuse-on-invalidate gotcha MessagesNotifier's _generation
+  // comment in chat_provider.dart documents).
+  int _generation = 0;
+
   @override
   Future<List<RunningTaskInfo>> build() async {
+    _generation++;
     ref.onDispose(stopPolling);
     if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
     final api = ref.read(apiClientProvider);
@@ -117,8 +144,11 @@ class RunningTasksNotifier extends AsyncNotifier<List<RunningTaskInfo>> {
   }
 
   Future<void> _silentRefresh() async {
+    final gen = _generation;
     final api = ref.read(apiClientProvider);
-    state = await AsyncValue.guard(() => api.listRunningTasks());
+    final result = await AsyncValue.guard(() => api.listRunningTasks());
+    if (gen != _generation) return; // see TaskListsNotifier for the full story
+    state = result;
   }
 
   void startPolling() {

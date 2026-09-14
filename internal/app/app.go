@@ -727,7 +727,25 @@ func (a *App) Startup(ctx context.Context) {
 			tlStore,
 			a.buildTaskLoopRunWorker(),
 			a.buildTaskLoopReviewChief(),
-			func(v bool) { a.agentExecutor.SetBypassPermissions(v) },
+			// Deliberately a no-op: this used to call
+			// a.agentExecutor.SetBypassPermissions(v) directly, but
+			// a.agentExecutor is the SAME executor every interactive chat /
+			// WhatsApp / Telegram agent-mode call runs through
+			// (callAgentStream's default exec, see llm.go). That meant any
+			// unrelated agent-mode message sent while ANY task list was
+			// running had its tool-permission prompt silently skipped for
+			// the whole list's run — a real permission bypass reachable by
+			// just starting a Self-Driving task. Every task-owned executor
+			// already sets its own SetBypassPermissions(true) individually
+			// (buildTaskRunConfig, tasklist_escalate.go, tasklist_stepexec.go,
+			// tasklist_planner.go, subagent_runner.go) — the shared
+			// interactive executor must never be touched by this ref-counted
+			// toggle. The "fallback-to-global path" this once covered
+			// (buildTaskRunConfig failing to resolve a provider) can't reach
+			// a tool call anyway: callAgentStream's non-task branch calls the
+			// same resolveAgentProvider() and fails identically before exec
+			// is ever used.
+			func(v bool) {},
 			func(name, data string) {
 				a.emitEvent(name, data)
 				a.dispatchTaskEvent(name, data)

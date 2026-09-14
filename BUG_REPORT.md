@@ -1,483 +1,286 @@
 # Memo — Genel Özellik / Bug / Hazırlık Denetim Raporu
 
-> **Denetim tarihi:** 2026-09-14
+> **Denetim tarihi:** 2026-09-14  
+> **Kapsam:** Yeni feature geliştirmek yerine mevcut ürünün tamamına yönelik ikinci genel bug/reliability taraması. Backend (Go), Flutter, CLI, memory/RAG, agent, providers, local inference, model store, orchestra, taskloop, calendar/routines, observer/proactive/mood, WhatsApp/Telegram, voice/live, cloud sync, remote/self-host, skills, installers, mascot ve güvenlik yüzeyleri incelendi.
 >
-> **Kapsam:** Son özelliklerle sınırlı olmayan geniş repo denetimi. Backend (Go), Flutter frontend, CLI, local inference, providers, memory/RAG, agent, orchestra, taskloop, calendar/routines, proactive/observer/mood, WhatsApp/Telegram, voice/live mode, cloud sync, remote/self-hosting, skills, installers ve güvenlik yüzeyleri birlikte değerlendirildi.
->
-> **Skorların anlamı:** Bu yüzdeler **test coverage değildir** ve test sayısından hesaplanmamıştır. Her skor; kodun gerçek implementasyon seviyesi, ana akışların bağlılığı, hata/edge-case savunmaları, concurrency/lifecycle riski, frontend-backend entegrasyonu, persistence, fallback davranışı ve ürün iddiası ile mevcut implementasyon arasındaki mesafe değerlendirilerek verilmiş mühendislik olgunluk tahminidir. `%90` = özelliğin yaklaşık %90 oranında ürünleşmiş/çalışır durumda görünmesi; `%90 test edildi` anlamına gelmez.
->
-> **Doğrulama sınırı:** Bu audit GitHub'daki mevcut `main` kaynak ağacı, README, architecture/module map, mevcut bug kayıtları ve hedefli kod aramaları üzerinden yapılmıştır. Bu oturumda yerel Go/Flutter build, gerçek provider API, gerçek WhatsApp/Telegram hesabı veya fiziksel RPi üzerinde canlı E2E çalıştırılmadı. Bu nedenle canlı doğrulama isteyen alanlar ayrıca belirtilmiştir.
+> **Önemli:** Bu rapordaki yüzdeler test coverage değildir. Kodun ürünleşme/maturity tahminidir. Bu taramada yerel build veya gerçek provider/mesajlaşma hesabı E2E çalıştırılmadı; GitHub `main` kaynak ağacı ve mevcut dokümantasyon/kod aramaları kullanıldı.
 
-## 1. Yönetici Özeti
+## 1. Kısa karar
 
-### Genel Memo olgunluğu: **%89**
+**Evet: sıradaki adım yeni feature değil, mevcut feature'ları sertleştirmek olmalı.**
 
-Memo artık prototip seviyesinde değil. Çekirdek chat, memory/RAG, agent, provider routing, local inference, model store, calendar/routines, messaging, orchestra, taskloop, voice, cloud sync ve self-hosting gibi büyük sistemlerin gerçek implementasyonları mevcut.
+Bu taramada yeni bir P0/P1 seviyesinde kesin fonksiyonel bug doğrulayamadım. Buna karşılık birkaç **P1/P2 reliability/design riski** açıkça görünüyor. Bunlar özellikle concurrency, uzun yaşayan bağlantılar, fallback zincirleri ve gerçek deployment kombinasyonlarında ortaya çıkabilir.
 
-En önemli sonuç: Bundan sonraki kalite artışının büyük kısmı yeni özellik eklemekten değil, **cross-feature reliability + canlı deployment doğrulaması + uzun süreli runtime davranışı** iyileştirmekten gelecek.
+### Genel ürün olgunluğu: **%89**
 
-| Katman | Skor |
-|---|---:|
-| Backend | **%91** |
-| Flutter frontend | **%88** |
-| Core product | **%93** |
-| Integrations | **%87** |
-| Deployment / self-host | **%84** |
-| Security / privacy | **%94** |
-| **GENEL MEMO** | **%89** |
-
----
-
-# 2. Özellik Bazlı Denetim
-
-## A — Core Chat
-
-| Özellik | Skor |
-|---|---:|
-| Streaming chat | **%96** |
-| Markdown / code / tables | **%95** |
-| File / PDF / image input | **%91** |
-| Slash commands / chat controls | **%93** |
-| Session persistence | **%94** |
-| Chat/data export | **%90** |
-| **Core Chat** | **%94** |
-
-Ana chat zinciri ürünün en olgun parçalarından biri. SSE streaming, cancellation, terminal chunk ve geçmiş stream/lifecycle bug'ları ele alınmış.
-
-## B — Memory / RAG
-
-| Özellik | Skor |
-|---|---:|
-| SQLite memory store | **%95** |
-| sqlite-vec retrieval | **%92** |
-| Embedding pipeline | **%86** |
-| Fact extraction | **%91** |
-| Pinned facts / consolidation | **%90** |
-| Context truncation / compaction | **%89** |
-| Memory privacy | **%94** |
-| **Memory/RAG** | **%91** |
-
-Memory gerçek kalıcı veri + vector retrieval sistemi. En büyük risk düşük RAM cihazlar ve uzun context/agent akışları.
-
-## C — Agent Engine
-
-| Özellik | Skor |
-|---|---:|
-| Tool execution | **%95** |
-| File read/write/edit | **%96** |
-| Shell / run_command | **%93** |
-| Permission system | **%91** |
-| Cancellation | **%94** |
-| Iteration/time limits | **%95** |
-| Agent ↔ memory | **%92** |
-| Agent ↔ taskloop | **%88** |
-| **Agent** | **%93** |
-
-Agent tarafı çok güçlü. Sandbox/path/symlink/backup/permission/cancellation gibi güvenlik ve lifecycle alanları geçmişte defalarca gerçek bug taramasından geçti.
-
-## D — Providers
-
-| Özellik | Skor |
-|---|---:|
-| Router / fallback | **%93** |
-| OpenAI | **%92** |
-| Claude | **%94** |
-| Gemini | **%91** |
-| Grok | **%90** |
-| Groq | **%90** |
-| OpenRouter | **%91** |
-| Ollama | **%92** |
-| OpenCode / CLI | **%88** |
-| Key encryption/config | **%94** |
-| Model switching | **%92** |
-| Error normalization | **%93** |
-| **Providers** | **%92** |
-
-Vendor implementasyonları gerçek. Ancak dış API schema/rate-limit/auth değişiklikleri nedeniyle canlı provider matrix'i ayrıca gerekli.
-
-## E — Local Inference / llama.cpp
-
-| Özellik | Skor |
-|---|---:|
-| Process lifecycle | **%94** |
-| GPU detection | **%91** |
-| RAM detection | **%91** |
-| Flag probing/tuning | **%89** |
-| Context/performance tuning | **%89** |
-| Model startup | **%91** |
-| **Local inference** | **%91** |
-
-Local inference sağlam; cihaz/model kombinasyonlarının çokluğu nedeniyle burada kalan pay çoğunlukla deployment/performance edge-case'i.
-
-## F — Model Store
-
-| Özellik | Skor |
-|---|---:|
-| HuggingFace discovery | **%92** |
-| Hardware-fit | **%93** |
-| RAM/GPU recommendation | **%92** |
-| Download/progress | **%92** |
-| Persistence | **%93** |
-| Capability filters | **%91** |
-| One-click start | **%91** |
-| Metadata/README | **%88** |
-| **Model Store** | **%92** |
-
-Model Store artık yalnızca downloader değil; donanım uygunluğu ve model capability bilgisiyle ürünleşmiş durumda.
-
-## G — Orchestra
-
-| Özellik | Skor |
-|---|---:|
-| Chief/planner | **%90** |
-| Specialist roles | **%91** |
-| Parallel execution | **%89** |
-| Provider mixing | **%91** |
-| Progress | **%90** |
-| Fallback/retry | **%90** |
-| Agent integration | **%88** |
-| Deadlock/error resilience | **%91** |
-| **Orchestra** | **%90** |
-
-Paralel multi-model çalışma doğal olarak yüksek concurrency riski taşıyor. Geçmiş deadlock/fallback/user-message sorunları kapatılmış.
-
-## H — Self-Driving Taskloop
-
-| Özellik | Skor |
-|---|---:|
-| Task.md parser | **%95** |
-| Planning | **%88** |
-| Plan approval | **%91** |
-| DAG/step execution | **%88** |
-| Parallel steps | **%86** |
-| Acceptance checks | **%87** |
-| Retry | **%87** |
-| Escalation/sub-agent | **%86** |
-| Activity UI | **%89** |
-| Task status tool | **%90** |
-| Long-running recovery | **%84** |
-| **Taskloop** | **%88** |
-
-**En yüksek riskli ana özelliklerden biri.** Çünkü LLM + filesystem + shell + persistent state + parallel goroutines + acceptance checks + escalation + UI aynı sistemde birleşiyor. Kod seviyesi yüksek olsa da uzun süreli gerçek görevlerle daha fazla doğrulama gerekiyor.
-
-## I — Calendar / Routines
-
-| Özellik | Skor |
-|---|---:|
-| Automatic event extraction | **%92** |
-| Intent filtering | **%93** |
-| Calendar persistence | **%94** |
-| Reminder loop | **%93** |
-| Ambiguous events | **%90** |
-| Routines | **%90** |
-| Timezone sync | **%88** |
-| Remote UX | **%87** |
-| **Calendar/Routines** | **%91** |
-
-Reminder başlangıç davranışı ve timezone offset gibi geçmiş sorunlar ele alınmış.
-
-## J — Observer / Proactive / Mood
-
-| Özellik | Skor |
-|---|---:|
-| Observer recorder | **%91** |
-| Pattern detection | **%88** |
-| Circular statistics | **%89** |
-| Proactive decisions | **%86** |
-| Suggestions | **%87** |
-| Notifications | **%85** |
-| Self-interest | **%88** |
-| Mood engine | **%89** |
-| Privacy boundary | **%94** |
-| **Proactive/Observer/Mood** | **%88** |
-
-Buradaki kalan pay daha çok davranış kalitesi: kodun çalışması ile gerçekten iyi öneri üretmesi aynı şey değil.
-
-## K — WhatsApp / Telegram
-
-| Özellik | Skor |
-|---|---:|
-| WhatsApp QR/connection | **%92** |
-| Receive/send | **%91** |
-| Media | **%88** |
-| Contact resolution | **%89** |
-| WhatsApp ↔ memory | **%90** |
-| WhatsApp ↔ calendar | **%87** |
-| WhatsApp ↔ agent | **%89** |
-| Telegram | **%85** |
-| Reconnect resilience | **%86** |
-| **Messaging** | **%89** |
-
-Messaging artık yalnızca bridge değil; memory/calendar/agent zincirlerine bağlanıyor. En büyük kalan risk uzun bağlantı lifecycle'ı.
-
-## L — Voice / STT / TTS / Live Mode
-
-| Özellik | Skor |
-|---|---:|
-| Local Whisper STT | **%91** |
-| STT providers | **%88** |
-| TTS providers | **%87** |
-| Live Mode session | **%88** |
-| Live audio | **%88** |
-| Live model discovery | **%89** |
-| Live error reporting | **%94** |
-| Speaking mascot | **%94** |
-| Long session resilience | **%83** |
-| **Voice/Live** | **%88** |
-
-Son Live Mode değişiklikleri güçlü; fakat gerçek provider + microphone + speaker + uzun session kombinasyonu canlı doğrulanmalı.
-
-## M — Cloud Sync
-
-| Özellik | Skor |
-|---|---:|
-| Google Drive | **%87** |
-| E2E encryption | **%94** |
-| AES-256-GCM | **%95** |
-| PBKDF2 | **%94** |
-| Sync lifecycle | **%87** |
-| Auth lifecycle | **%87** |
-| Conflict handling | **%83** |
-| Large backup resilience | **%84** |
-| **Cloud Sync** | **%88** |
-
-Encryption tasarımı güçlü. Conflict/revoked auth/büyük backup senaryoları canlı doğrulama istiyor.
-
-## N — Remote Access / Self-hosting
-
-| Özellik | Skor |
-|---|---:|
-| Headless backend | **%91** |
-| Token auth | **%91** |
-| Password auth | **%90** |
-| Token+password | **%90** |
-| Device tokens | **%88** |
-| Setup gate | **%91** |
-| LAN discovery | **%89** |
-| systemd | **%88** |
-| Docker/CasaOS | **%83** |
-| RPi | **%84** |
-| Install/update scripts | **%89** |
-| Reinstall/auth recovery | **%91** |
-| **Self-hosting** | **%87** |
-
-README de self-hosting'in aktif geliştirme altında olduğunu belirtiyor. Bu nedenle deployment katmanı özellikle takip edilmeli.
-
-## O — Security / Privacy
-
-| Özellik | Skor |
-|---|---:|
-| Setup/auth gate | **%92** |
-| Remote authentication | **%91** |
-| API key encryption | **%94** |
-| Sandbox path validation | **%95** |
-| Symlink protections | **%95** |
-| Command restrictions | **%93** |
-| CORS | **%94** |
-| Config permissions | **%94** |
-| Incognito | **%91** |
-| Observer privacy | **%94** |
-| Backup encryption | **%95** |
-| **Security/Privacy** | **%94** |
-
-Bu alan Memo'nun en güçlü alanlarından. Ancak agent shell execution ve remote-access yüzeyleri sürekli review gerektiriyor.
-
-## P — Skills
-
-| Özellik | Skor |
-|---|---:|
-| Discovery/loading | **%89** |
-| Manifest validation | **%94** |
-| Install/remove | **%92** |
-| Symlink safety | **%94** |
-| File limits | **%93** |
-| Tool registration | **%91** |
-| Runtime execution | **%87** |
-| Ecosystem UX | **%84** |
-| **Skills** | **%90** |
-
-## Q — CLI
-
-| Özellik | Skor |
-|---|---:|
-| REST client | **%92** |
-| REPL | **%91** |
-| SSE | **%90** |
-| Session/model commands | **%91** |
-| Remote management | **%90** |
-| Task commands | **%88** |
-| Auth UX | **%88** |
-| SSH workflow | **%91** |
-| **CLI** | **%90** |
-
-## R — Mascot
-
-| Özellik | Skor |
-|---|---:|
-| Idle animation | **%95** |
-| Gesture system | **%94** |
-| Multiple skins | **%95** |
-| Activity moods | **%94** |
-| Completed beat | **%95** |
-| Speaking | **%95** |
-| Status bubble | **%94** |
-| Polling | **%92** |
-| Poll concurrency | **%95** |
-| **Mascot** | **%95** |
-
-Mascot şu anda küçük ama çok iyi ürünleşmiş bir sistem.
-
----
-
-# 3. Frontend Denetimi
-
-### Flutter genel: **%88**
-
-**Güçlü:** Riverpod state yönetimi, merkezi API client, auth-gate-aware provider lifecycle, L10n, streaming/cancellation cleanup, agent/task activity UI.
-
-**Riskli:**
-1. `IndexedStack` altında erken fetch yapan yeni provider/widget eklenmesi.
-2. Timer + async request polling kombinasyonları.
-3. Remote backend + auth gate kombinasyonları.
-4. Backend kaynaklı kullanıcıya görünen stringlerin L10n dışında kalması.
-5. Desktop/mobile/web davranışlarının birebir olmaması.
-
-Özellikle onboarding/auth-gate bug sınıfı daha önce defalarca farklı kod şekillerinde ortaya çıktığı için yeni ekran eklenirken yalnızca `AsyncNotifier.build()` değil; `FutureProvider`, `initState` fetch ve polling de taranmalı.
-
-# 4. Backend Denetimi
-
-### Go genel: **%91**
-
-**Güçlü:** modüler paket yapısı, Bridge pattern, context cancellation, mutex/race düzeltmeleri, sandbox, provider abstraction, SQLite, task state machine, remote auth ve process lifecycle.
-
-**Riskli:**
-1. Taskloop/orchestra concurrency.
-2. Background goroutine lifecycle.
-3. SQLite/vector store concurrent writes.
-4. External provider schema/auth/rate-limit değişimleri.
-5. WhatsApp/Telegram long-lived session lifecycle.
-6. Remote deployment kombinasyonları.
-
----
-
-# 5. Özellikler Arası Entegrasyon
-
-| Entegrasyon | Skor |
-|---|---:|
-| Chat ↔ Memory | **%94** |
-| Chat ↔ Provider | **%93** |
-| Chat ↔ Agent | **%92** |
-| Chat ↔ Orchestra | **%89** |
-| Chat ↔ Taskloop | **%87** |
-| Chat ↔ Calendar | **%91** |
-| Chat ↔ Proactive | **%87** |
-| Chat ↔ WhatsApp | **%89** |
-| Chat ↔ Telegram | **%84** |
-| Agent ↔ Memory | **%92** |
-| Agent ↔ Taskloop | **%87** |
-| Agent ↔ Orchestra | **%88** |
-| Taskloop ↔ UI | **%88** |
-| Memory ↔ WhatsApp | **%90** |
-| Calendar ↔ WhatsApp | **%87** |
-| Provider ↔ Live Mode | **%88** |
-| Self-host ↔ Flutter | **%86** |
-| Self-host ↔ Mobile | **%82** |
-| Cloud Sync ↔ persistence | **%86** |
-
-**Ana sonuç:** Tek tek feature'lar yüksek; en düşük skorlar feature'ların birbirine bağlandığı noktalarda.
-
----
-
-# 6. Takip Edilecek Bug / Riskler
-
-## 🟠 R1 — Backend user-facing stringler L10n dışında
-
-İngilizce Flutter UI kullanılırken bazı backend kaynaklı sistem mesajları Türkçe kalabiliyor. Fonksiyonelliği bozmaz ama dil tutarlılığını bozar.
-
-**Öneri:** Backend raw sentence yerine stable error/status code + parametre döndürsün; UI son kullanıcı metnini L10n'dan üretsin.
-
-## 🟡 R2 — Self-host deployment matrix
-
-Native server + Docker/CasaOS + systemd + remote auth + installer yolları gerçek. Ancak self-hosting aktif geliştirme yüzeyi olduğu için her release'te fresh install → setup → remote login → chat → memory → model → restart → update → reinstall zinciri çalıştırılmalı.
-
-## 🟡 R3 — Provider live matrix
-
-Provider kodları güçlü fakat üçüncü taraf API'lere bağlı. Provider başına mock contract testi yanında per-release minimal live smoke test faydalı olur.
-
-## 🟡 R4 — Taskloop uzun görev güvenilirliği
-
-Taskloop en fazla moving part'a sahip sistem. 30–60 dakikalık gerçek görev/soak senaryoları ve invariant/property testleri eklenmeli.
-
-## 🟡 R5 — Long-lived connections
-
-Live Mode, WhatsApp ve Telegram için reconnect, network drop, server restart, auth expiry ve concurrent session testleri ayrı bir matriste tutulmalı.
-
-## 🟢 R6 — Mascot stale polling
-
-**FIXED.** Eski HTTP response'un yeni activity state'ini ezmesi engellendi.
-
-## 🟢 R7 — Live Mode speaking throttle race
-
-**FIXED.** Atomic Load→Store yerine CAS kullanıldı ve concurrent regression testi eklendi.
-
----
-
-# 7. Genel Skor Tablosu
-
-| Sistem | Skor |
+| Katman | Maturity |
 |---|---:|
 | Core Chat | **%94** |
-| Memory/RAG | **%91** |
+| Memory / RAG | **%91** |
 | Agent | **%93** |
 | Providers | **%92** |
 | Local inference | **%91** |
 | Model Store | **%92** |
 | Orchestra | **%90** |
 | Taskloop | **%88** |
-| Calendar/Routines | **%91** |
-| Proactive/Observer/Mood | **%88** |
-| WhatsApp/Telegram | **%89** |
-| Voice/Live | **%88** |
+| Calendar / Routines | **%91** |
+| Observer / Proactive / Mood | **%88** |
+| WhatsApp / Telegram | **%89** |
+| Voice / Live | **%88** |
 | Cloud Sync | **%88** |
-| Self-hosting | **%87** |
-| Security/Privacy | **%94** |
+| Self-host / Remote | **%87** |
+| Security / Privacy | **%94** |
 | Skills | **%90** |
 | CLI | **%90** |
 | Mascot | **%95** |
 | Frontend | **%88** |
 | Backend | **%91** |
-| Deployment/Integration | **%84** |
-| **GENEL MEMO** | **%89** |
+| Deployment / Integration | **%84** |
+| **GENEL** | **%89** |
 
 ---
 
-# 8. Sonuç
+# 2. Tarama sonucu — açık bug adayları ve riskler
 
-### %0–70 — prototip
-**Memo bu seviyede değil.**
+## 🔴 B1 — `client` / `providerRouter` yeniden atanırken streaming goroutine'lerinin eski referansı kullanabilmesi
 
-### %70–80 — çalışan ama ciddi eksikleri olan ürün
-**Bu seviyeyi geçti.**
+**Kategori:** concurrency / lifecycle  
+**Öncelik:** P1 reliability  
+**Durum:** Açık tasarım riski
 
-### %80–90 — ciddi beta / erken production
-**Memo burada: %89.**
+`internal/app` içinde LLM client ve provider router yaşam döngüsü model değişimi/yeniden başlatma ile bağlantılı. Mevcut Known Issues kaydına göre `clientMu` mevcut olsa da streaming goroutine'leri model stop/start arasında eski client/router referansını taşıyabiliyor.
 
-### %90–95 — geniş production ürünü
-Çekirdek sistemlerin bir kısmı zaten bu banda ulaştı.
+**Muhtemel etki:** Çok nadir zamanlamalarda eski provider'a istek gitmesi, provider state değişiminin stream ile yarışması veya stop/swap sırasında beklenmeyen hata.
 
-### %95–100 — battle-tested
-Henüz değil. Önündeki ana işler yeni feature değil:
+**Önerilen çözüm:** Client/router snapshot'ını stream başlangıcında atomik/lock altında almak ve lifecycle generation/version ile stream'in artık geçersiz client kullanmasını engellemek. Önce concurrency regression testleri yazılmalı.
 
-1. Taskloop uzun görev/soak testleri.
-2. Self-host fresh-install/update/reinstall matrisi.
-3. Provider canlı smoke matrix.
-4. Live Mode/WhatsApp/Telegram reconnect testleri.
-5. Chat → memory → agent → taskloop gibi cross-feature zincirleri.
-6. Remote Flutter/mobile parity.
-7. Backend user-facing localization seam'lerinin temizlenmesi.
-
-**Kısa hüküm:** Memo'nun temel teknolojik çekirdeği artık ciddi derecede olgun. En büyük sıçrama, bundan sonra "daha fazla özellik" değil, mevcut özelliklerin birbirleriyle ve gerçek makinelerde uzun süre kusursuz çalışmasını sağlamaktan gelecek.
+**Kaynak:** `obsidian-doc-en/Memo/Known Issues.md`.
 
 ---
 
-**Rapor durumu:** 2026-09-14 genel statik ürün denetimi. Skorlar test coverage değil, kod-temelli ürün olgunluğu tahminleridir.
+## 🟠 B2 — Orchestra, provider Router/fallback zincirini bypass ediyor
+
+**Kategori:** entegrasyon / resilience  
+**Öncelik:** P2
+
+Orchestra provider'ları doğrudan oluşturuyor; normal `provider.Router` fallback zincirinden geçmiyor.
+
+**Muhtemel etki:** Normal chat'te çalışan fallback/retry davranışı Orchestra içinde aynı şekilde çalışmayabilir. Bir provider transient hata verdiğinde Orchestra gereksiz şekilde görevi başarısız bırakabilir.
+
+**Öneri:** Orchestra'nın provider resolution'ını Router üzerinden geçirmek veya Orchestra için açıkça tanımlanmış ayrı fallback policy oluşturmak. Bu davranış integration test ile sabitlenmeli.
+
+---
+
+## 🟠 B3 — `provider.Priority` tanımlı fakat router davranışına bağlı değil
+
+**Kategori:** davranış / configuration debt  
+**Öncelik:** P2
+
+Provider modelinde `Priority` alanı bulunmasına rağmen router tarafındaki sıralama davranışına bağlanmamış.
+
+**Muhtemel etki:** Kullanıcı/config tarafından beklenen provider önceliği ile gerçek fallback sırası farklı olabilir.
+
+**Öneri:** Ya alan tamamen kaldırılmalı ya da tek bir yerde gerçek routing policy'ye bağlanmalı; iki farklı "source of truth" bırakılmamalı.
+
+---
+
+## 🟠 B4 — Orchestra paketinde yaklaşık 800 satır kod için test boşluğu
+
+**Kategori:** test / regression risk  
+**Öncelik:** P2
+
+Mevcut Known Issues kaydında Orchestra paketi için ayrı test dosyalarının olmadığı belirtiliyor.
+
+**Muhtemel etki:** Parallel execution, fallback, cancellation ve multi-provider davranışlarındaki regressions kolayca production'a kaçabilir.
+
+**Öneri:** Yeni feature eklemek yerine Orchestra için önce deterministic unit + concurrency tests: provider failure, cancellation, partial specialist failure, synthesis failure, parallel completion ordering ve context cancellation.
+
+---
+
+## 🟠 B5 — Taskloop uzun görevlerde recovery/soak riski
+
+**Kategori:** state machine / persistence / concurrency  
+**Öncelik:** P1 reliability
+
+Taskloop; LLM planning, filesystem, shell, acceptance checks, retry, escalation, parallel step ve persistent state'i aynı zincirde birleştiriyor. Mevcut maturity değerlendirmesinde en düşük ana özelliklerden biri (%88) ve long-running recovery %84.
+
+**Muhtemel etki:** 30–60 dakikalık görevlerde process restart, network/provider timeout, tek bir step'in stuck olması veya parallel step race'i tüm görevin durumunu bozabilir.
+
+**Öneri:** Yeni Taskloop özelliği eklemek yerine crash/restart/resume, timeout, retry budget, cancellation ve idempotency test matrisi hazırlanmalı.
+
+---
+
+## 🟠 B6 — Live Mode'da echo cancellation yok
+
+**Kategori:** gerçek zamanlı audio UX  
+**Öncelik:** P2
+
+Live Mode için mevcut Known Issues kaydı echo cancellation olmadığını belirtiyor.
+
+**Muhtemel etki:** Hoparlör kullanılırken Memo kendi TTS çıktısını kullanıcı konuşması/interruption gibi algılayabilir.
+
+**Öneri:** Audio pipeline'a echo cancellation/echo suppression veya güvenilir output-reference tabanlı filtre eklenene kadar bu durum Live Mode beta limitation olarak açıkça korunmalı. Headphones ile smoke test de release checklist'e girmeli.
+
+---
+
+## 🟠 B7 — Live Mode / WhatsApp / Telegram long-lived connection resilience
+
+**Kategori:** lifecycle / network  
+**Öncelik:** P1 reliability
+
+Bu üç sistem kısa isteklerden farklı olarak uzun yaşayan bağlantılar kullanıyor. Reconnect, network drop, server restart, authentication expiry ve concurrent session kombinasyonları statik kod taramasından tam kanıtlanamıyor.
+
+**Öneri:** Ortak long-lived-session test matrisi:
+
+1. bağlantı kurulması
+2. 5–15 dk idle
+3. network drop
+4. network geri gelmesi
+5. backend restart
+6. auth expiry/re-auth
+7. iki concurrent session
+8. clean shutdown
+
+---
+
+## 🟡 B8 — Unsupported platformlarda RAM detection `0` dönüyor
+
+`internal/llama/sysram_other.go`, Linux/Windows/macOS dışındaki platformlarda `systemRAMMb()` için `0` döndürüyor.
+
+Bu doğrudan crash bug'ı değil; ancak hardware-fit/model recommendation katmanında `0` değerinin "RAM bilinmiyor" ile "0 MB RAM" ayrımını doğru yapması gerekiyor.
+
+**Öneri:** Unknown state'i açıkça modelle (`ok=false` / nullable) ve recommendation kodunun `0`'ı gerçek RAM gibi yorumlamadığını test et.
+
+---
+
+## 🟡 B9 — Embedding model auto-start hâlâ configuration'a bağlı
+
+Memory/RAG dokümantasyonunda embedding model için config-driven auto-start bulunuyor fakat kurulum/konfigürasyon gerektiriyor.
+
+Bu bir bug değil; fakat fresh install deneyiminde memory'nin ilk kullanımda neden çalışmadığı anlaşılmazsa "Memory bozuk" algısı oluşturabilir.
+
+**Öneri:** Setup sırasında embedding dependency health-check + açık UI status + recovery path.
+
+---
+
+## 🟡 B10 — Pinned facts kapasitesi ve local inference slot contention
+
+Pinned facts için sabit bir üst sınır ve consolidation davranışı mevcut. Ayrıca local model kurulumunda background fact extraction, `--parallel 1` durumunda gerçek chat ile aynı inference slotunu paylaşabiliyor.
+
+**Muhtemel etki:** Çok yoğun memory extraction altında chat latency artabilir; çok uzun süre biriken pinned facts önemli eski bilginin yerini doldurabilir.
+
+**Öneri:** Priority-aware eviction/consolidation ve background extraction için starvation/latency budget.
+
+---
+
+## 🟡 B11 — Self-host deployment matrix hâlâ en zayıf büyük yüzeylerden biri
+
+Native server, Docker/CasaOS, systemd, remote auth, installer/update ve RPi kombinasyonları mevcut. Kod olgun olsa da gerçek cihaz/OS kombinasyonu statik taramayla doğrulanamaz.
+
+**Öneri:** Her release'te minimum smoke matrix:
+
+`fresh install → setup → auth → chat → memory → model → restart → update → reinstall → remote login`.
+
+---
+
+## 🟡 B12 — Backend user-facing error stringleri Flutter L10n sınırını aşabiliyor
+
+Flutter tarafında user-facing stringler için L10n zorunlu. Backend'in doğrudan insan-readable hata cümlesi döndürdüğü yerlerde dil tutarlılığı bozulabilir.
+
+**Öneri:** Backend stable error/status code + structured parameters döndürsün; son kullanıcı cümlesini Flutter L10n üretsin.
+
+---
+
+## 🟡 B13 — API versioning yok
+
+API yüzeyi düz `/api/...` olarak ilerliyor; `/api/v1` gibi bir versioning stratejisi bulunmuyor.
+
+Bug değil fakat self-hosting ve CLI/mobile client aynı anda farklı sürümlerde olduğunda geriye dönük uyumluluk maliyetini artırır.
+
+**Öneri:** Hemen breaking change yapmak yerine yeni API surface için versioning policy belirle; mevcut endpoint'leri geriye dönük bırak.
+
+---
+
+# 3. Şu an BUG DEĞİL / yanlış pozitif olarak elenenler
+
+### Mascot stale polling — **FIXED**
+
+`frontend/lib/widgets/mascot_window.dart` şu anda request generation kontrolü kullanıyor. Eski HTTP response yeni state'i ezemiyor ve `dispose()` generation'ı invalidate ediyor. Bu nedenle önceki stale-polling bulgusu tekrar açık bug olarak yazılmadı.
+
+### Live Mode speaking throttle race — **FIXED implementation**
+
+`internal/app/activity.go` şu anda Load→Store yerine atomic CAS kullanıyor. Birden fazla Live Mode session aynı anda audio event gönderse de throttle penceresi yarışmadan korunuyor.
+
+**Not:** Bu taramada bu helper için ayrı concurrency regression testinin mevcut olduğunu doğrulayamadım; dolayısıyla "test eklendi/yeşil" iddiası yazılmıyor.
+
+### Session ID collision — **FIXED**
+
+Eski 8-hex session ID problemi full UUID'ye çevrilmiş durumda. Bu nedenle aktif bug değildir.
+
+### `skill.DangerLevel` / `agent.DangerLevel` — **design duplication, compile failure değil**
+
+İki package ayrı named type tanımlıyor ancak mevcut agent kodunda dönüşüm/uyumluluk yolu bulunuyor. Bu nedenle "compile-time bug" olarak işaretlenmedi; type duplication olarak teknik borç kabul edildi.
+
+### Unsupported RAM detection — **limitation, crash bug değil**
+
+`sysram_other.go`'daki `0` dönüşü bilinen platform limitation'ı. Ancak downstream recommendation kodunun bunu güvenli yorumlaması ayrıca test edilmeli.
+
+---
+
+# 4. Özellik bazlı öncelik
+
+| Özellik | Öncelik | Neden |
+|---|---|---|
+| Taskloop | 🔴 P1 | Uzun görev + state + parallelism + recovery |
+| Provider lifecycle / Router | 🔴 P1 | Streaming sırasında client değişimi |
+| Live/WhatsApp/Telegram | 🔴 P1 | Long-lived connection lifecycle |
+| Orchestra | 🟠 P2 | Fallback + concurrency + test boşluğu |
+| Self-host | 🟠 P2 | Çoklu deployment matrisi |
+| Memory background extraction | 🟠 P2 | Local inference contention |
+| Live echo | 🟠 P2 | Gerçek kullanım UX'i |
+| L10n error seam | 🟡 P3 | Dil/UX tutarlılığı |
+| API versioning | 🟡 P3 | Gelecek compatibility |
+| RAM unknown state | 🟡 P3 | Edge platform correctness |
+
+---
+
+# 5. Benim önerdiğim sıradaki geliştirme sırası
+
+Yeni feature **eklemeyelim**. Şu sırayla ilerlemek daha mantıklı:
+
+### 1. Provider/client lifecycle hardening
+`client` + `providerRouter` snapshot/generation modelini temizle ve race regression testlerini yaz.
+
+### 2. Taskloop soak/recovery
+Crash/restart/resume + timeout + cancellation + retry + parallel-step testleri.
+
+### 3. Orchestra reliability
+Router/fallback entegrasyonu ve concurrency testleri.
+
+### 4. Long-lived connection matrix
+Live Mode + WhatsApp + Telegram için reconnect/restart/auth-expiry testleri.
+
+### 5. Self-host release matrix
+RPi + Linux + Docker/CasaOS + remote auth üzerinde gerçek smoke test.
+
+### 6. Memory latency/reliability
+Background extraction'ın local model slotunu bloke etmesini azalt; pinned-facts consolidation/eviction davranışını sertleştir.
+
+Bu altı başlık bitmeden yeni büyük feature açmak yerine mevcut özellikleri production-grade seviyeye taşımak daha yüksek değer üretir.
+
+---
+
+# 6. Verification durumu
+
+Bu rapor **statik repo auditidir**. Bu taramada yerel ortamda şu zorunlu komutların çalıştırıldığı iddia edilmiyor:
+
+```text
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race
+cd frontend && flutter analyze lib/ && flutter test
+```
+
+GitHub tarafında mevcut audit commit'i için yayınlanmış status kaydı bulunmadı; bu nedenle "CI green" de iddia edilmiyor.
+
+**Son hüküm:** Memo'nun temel feature seti artık yeterince geniş. Şu an en yüksek ROI yeni bir özellik değil; **reliability pass**. Özellikle Taskloop + provider lifecycle + long-lived connections üçlüsünü sertleştirmek, Memo'yu %89 maturity'den production'a daha hızlı taşır.

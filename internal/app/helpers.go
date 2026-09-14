@@ -273,8 +273,13 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	case code:
 		// One compact directive replaces the whole persona / style / memory
 		// stack. Nothing BuildSystemPrompt produces (persona, origin, style,
-		// passive, capabilities, memory) is wanted for a coding turn.
-		systemPrompt = codingDirective
+		// passive, capabilities, memory) is wanted for a coding turn. Which
+		// directive depends on the turn's sub-mode (plan/auto/build) — see
+		// codeSubModeDirective's doc comment.
+		a.cfgMu.RLock()
+		am := a.cfg.AgentMode
+		a.cfgMu.RUnlock()
+		systemPrompt = codeSubModeDirective(am, codeSubModeFromCtx(ctx))
 	default:
 		systemPrompt = a.identity.BuildSystemPrompt(memories, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable(), memoryBudget)
 		if !minimal {

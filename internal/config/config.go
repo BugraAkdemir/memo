@@ -318,6 +318,16 @@ type AgentModeConfig struct {
 	// tools (delete_file, run_command, change_directory) still prompt. Default
 	// true.
 	CodeModeAutoApproveEdits bool `yaml:"code_mode_auto_approve_edits" json:"code_mode_auto_approve_edits"`
+
+	// CodePlanPrompt / CodeAutoPrompt / CodeBuildPrompt are user-editable
+	// overrides for Code Mode's three sub-mode system prompts (see
+	// internal/app/agent_chat_context.go's codeSubModeDirective). Empty (the
+	// default) means "use the built-in const for that sub-mode" — edited from
+	// Settings > Code Mode Prompts, mirroring GetSystemPrompt/SetSystemPrompt's
+	// own empty-means-default shape.
+	CodePlanPrompt  string `yaml:"code_plan_prompt" json:"code_plan_prompt"`
+	CodeAutoPrompt  string `yaml:"code_auto_prompt" json:"code_auto_prompt"`
+	CodeBuildPrompt string `yaml:"code_build_prompt" json:"code_build_prompt"`
 }
 
 // BrowserConfig controls the optional headless-browser fallback

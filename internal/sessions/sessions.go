@@ -76,6 +76,19 @@ type Session struct {
 	// background LLM calls while keeping the agent tool loop — see
 	// internal/app/agent_chat_context.go's withCodeMode.
 	CodeMode *bool `json:"code_mode,omitempty"`
+	// CodeSubMode is this chat's pinned Code Mode sub-mode: "" (follow the
+	// default, "auto"), "plan", "auto", or "build". Only meaningful when
+	// CodeMode itself resolves on for this chat — see
+	// internal/app/agent_chat_context.go's resolveCodeSubMode.
+	CodeSubMode string `json:"code_sub_mode,omitempty"`
+	// AwaitingPlanDecision is set right after the save_code_plan tool
+	// succeeds in "plan" sub-mode with global auto-permission off — the
+	// model's own reply asks in plain chat text whether to move to build or
+	// auto. The next user message in this chat gets a one-shot, non-LLM
+	// keyword check (see app.classifyPlanDecisionReply) instead of routing
+	// straight through, then this is cleared regardless of whether it
+	// matched.
+	AwaitingPlanDecision bool `json:"awaiting_plan_decision,omitempty"`
 }
 
 type Manager struct {
@@ -212,6 +225,64 @@ func (m *Manager) SetCodeMode(id string, v *bool) error {
 		return fmt.Errorf("session not found: %s", id)
 	}
 	s.CodeMode = v
+	return m.save(s)
+}
+
+// validCodeSubModes are the only values SetCodeSubMode accepts besides "".
+var validCodeSubModes = map[string]bool{"plan": true, "auto": true, "build": true}
+
+// GetCodeSubMode returns id's pinned Code Mode sub-mode ("" = follow the
+// default, "auto"). See Session.CodeSubMode.
+func (m *Manager) GetCodeSubMode(id string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return ""
+	}
+	return s.CodeSubMode
+}
+
+// SetCodeSubMode pins ("plan"/"auto"/"build") or clears ("") a chat's Code
+// Mode sub-mode and persists it. Any other value is rejected rather than
+// silently stored, since resolveCodeSubMode's callers trust this field to
+// already be one of the three known values or empty.
+func (m *Manager) SetCodeSubMode(id, mode string) error {
+	if mode != "" && !validCodeSubModes[mode] {
+		return fmt.Errorf("invalid code sub-mode: %q", mode)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	s.CodeSubMode = mode
+	return m.save(s)
+}
+
+// GetAwaitingPlanDecision reports whether id's next user message should be
+// checked for a plan-ready decision (build/auto/neither). See
+// Session.AwaitingPlanDecision.
+func (m *Manager) GetAwaitingPlanDecision(id string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return false
+	}
+	return s.AwaitingPlanDecision
+}
+
+// SetAwaitingPlanDecision sets or clears id's pending-plan-decision flag and persists it.
+func (m *Manager) SetAwaitingPlanDecision(id string, v bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	s.AwaitingPlanDecision = v
 	return m.save(s)
 }
 

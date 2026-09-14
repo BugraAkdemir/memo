@@ -101,7 +101,7 @@ override dalı için tablo testi.
 **Doğrulama:** `CGO_ENABLED=1 go build/vet/test -tags sqlite_fts5 -race ./...`
 yeşil. Flutter tarafı dokunulmadı, `flutter analyze`/`test` gerekmiyor.
 
-- [ ] Yapıldı
+- [x] Yapıldı (commit'lendi 2026-09-15)
 
 ---
 

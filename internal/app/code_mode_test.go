@@ -65,6 +65,35 @@ func TestResolveCodeMode(t *testing.T) {
 	}
 }
 
+func TestResolveCodeSubMode(t *testing.T) {
+	a, sm := newCodeModeApp(t)
+
+	chat := sm.NewAgentChat("/tmp/proj")
+	if got := a.resolveCodeSubMode(chat); got != "auto" {
+		t.Errorf("unpinned chat resolveCodeSubMode = %q, want \"auto\"", got)
+	}
+
+	for _, mode := range []string{"plan", "build", "auto"} {
+		if err := sm.SetCodeSubMode(chat, mode); err != nil {
+			t.Fatal(err)
+		}
+		if got := a.resolveCodeSubMode(chat); got != mode {
+			t.Errorf("pinned resolveCodeSubMode = %q, want %q", got, mode)
+		}
+	}
+
+	if err := sm.SetCodeSubMode(chat, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.resolveCodeSubMode(chat); got != "auto" {
+		t.Errorf("cleared pin resolveCodeSubMode = %q, want \"auto\"", got)
+	}
+
+	if got := a.resolveCodeSubMode(""); got != "auto" {
+		t.Errorf("empty chatID resolveCodeSubMode = %q, want \"auto\"", got)
+	}
+}
+
 func TestBuildMessagesForSession_CodeMode(t *testing.T) {
 	a, sm := newCodeModeApp(t)
 	chat := sm.NewAgentChat("/tmp/proj") // Code Mode on by default

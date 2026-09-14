@@ -735,3 +735,76 @@ func TestCodeMode_SurvivesReload(t *testing.T) {
 		t.Errorf("reloaded CodeMode = %v, want &false", got)
 	}
 }
+
+func TestCodeSubMode_RoundTripsAndDefaultsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	chat := m.NewChat()
+
+	if got := m.GetCodeSubMode(chat); got != "" {
+		t.Errorf("initial CodeSubMode = %q, want \"\" (follow default)", got)
+	}
+	for _, mode := range []string{"plan", "auto", "build"} {
+		if err := m.SetCodeSubMode(chat, mode); err != nil {
+			t.Fatalf("SetCodeSubMode(%q): %v", mode, err)
+		}
+		if got := m.GetCodeSubMode(chat); got != mode {
+			t.Errorf("CodeSubMode = %q, want %q", got, mode)
+		}
+	}
+	// clear back to default
+	if err := m.SetCodeSubMode(chat, ""); err != nil {
+		t.Fatalf("SetCodeSubMode(\"\"): %v", err)
+	}
+	if got := m.GetCodeSubMode(chat); got != "" {
+		t.Errorf("CodeSubMode after clear = %q, want \"\"", got)
+	}
+	if err := m.SetCodeSubMode(chat, "sideways"); err == nil {
+		t.Error("SetCodeSubMode with an unknown value should error")
+	}
+	if err := m.SetCodeSubMode("nope", "auto"); err == nil {
+		t.Error("SetCodeSubMode on unknown chat should error")
+	}
+}
+
+func TestCodeSubMode_SurvivesReload(t *testing.T) {
+	dir := t.TempDir()
+	m1, _ := NewManager(dir)
+	chat := m1.NewChat()
+	m1.AddMessageToSession(chat, "user", "hi", "", "")
+	if err := m1.SetCodeSubMode(chat, "build"); err != nil {
+		t.Fatalf("SetCodeSubMode: %v", err)
+	}
+	m2, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if got := m2.GetCodeSubMode(chat); got != "build" {
+		t.Errorf("reloaded CodeSubMode = %q, want \"build\"", got)
+	}
+}
+
+func TestAwaitingPlanDecision_RoundTripsAndDefaultsFalse(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	chat := m.NewChat()
+
+	if got := m.GetAwaitingPlanDecision(chat); got != false {
+		t.Errorf("initial AwaitingPlanDecision = %v, want false", got)
+	}
+	if err := m.SetAwaitingPlanDecision(chat, true); err != nil {
+		t.Fatalf("SetAwaitingPlanDecision(true): %v", err)
+	}
+	if got := m.GetAwaitingPlanDecision(chat); got != true {
+		t.Errorf("AwaitingPlanDecision = %v, want true", got)
+	}
+	if err := m.SetAwaitingPlanDecision(chat, false); err != nil {
+		t.Fatalf("SetAwaitingPlanDecision(false): %v", err)
+	}
+	if got := m.GetAwaitingPlanDecision(chat); got != false {
+		t.Errorf("AwaitingPlanDecision after clear = %v, want false", got)
+	}
+	if err := m.SetAwaitingPlanDecision("nope", true); err == nil {
+		t.Error("SetAwaitingPlanDecision on unknown chat should error")
+	}
+}

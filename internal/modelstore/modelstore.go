@@ -2,6 +2,8 @@ package modelstore
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -160,9 +162,19 @@ func isEmbeddingModel(filename, repoID string) bool {
 
 // ─── HF API response types (internal) ────────────────────────────
 
+// hfLFS carries the git-lfs blob metadata HF's tree API returns for any file
+// tracked by LFS (in practice, every GGUF file — they're always well over
+// the LFS size threshold). OID here is the SHA-256 of the actual file
+// content, distinct from the tree item's own top-level "oid" (the git blob
+// hash of the LFS pointer file, not the content).
+type hfLFS struct {
+	OID string `json:"oid"`
+}
+
 type hfTreeItem struct {
 	Path string `json:"path"`
 	Size int64  `json:"size"`
+	LFS  *hfLFS `json:"lfs,omitempty"`
 }
 
 type hfModelInfo struct {
@@ -180,6 +192,12 @@ type downloadEntry struct {
 type Store struct {
 	modelsDir string
 	client    *http.Client
+	// transport, when non-nil, replaces the default transport for both the
+	// metadata client and the per-download client below — the only seam
+	// tests need to point HF API/download calls at a local httptest server
+	// instead of the real huggingface.co. nil in production, meaning the
+	// normal DefaultTransport-based dialing.
+	transport http.RoundTripper
 
 	mu        sync.RWMutex
 	downloads map[string]*downloadEntry // key: downloadKey(repoID, filename)
@@ -353,6 +371,45 @@ func loadModelMeta(ggufPath string) *modelMeta {
 	return &meta
 }
 
+// fetchExpectedSHA256 looks up the HF LFS content hash for repoID/filename
+// via the same tree endpoint GetModelFiles already uses, so a completed
+// download can be verified against what HF itself reports for that exact
+// path — not just its byte length, which a corrupted-but-same-size transfer
+// (a truncated proxy response padded by a buggy retry, a bit-flipped disk)
+// would still pass. Returns "" with a nil error if HF doesn't report this
+// path as an LFS blob (no content hash available to check against) — GGUF
+// files are LFS-tracked in practice, but this must not be treated as a hard
+// failure if one ever isn't. Non-fatal on any error, same convention as
+// fetchModelMeta — caller logs and downloads without verification.
+func (s *Store) fetchExpectedSHA256(repoID, filename string) (string, error) {
+	u := fmt.Sprintf("https://huggingface.co/api/models/%s/tree/main", repoID)
+	resp, err := s.client.Get(u)
+	if err != nil {
+		return "", fmt.Errorf("fetchExpectedSHA256: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("fetchExpectedSHA256: HF API status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tree []hfTreeItem
+	if err := json.NewDecoder(resp.Body).Decode(&tree); err != nil {
+		return "", fmt.Errorf("fetchExpectedSHA256: decode: %w", err)
+	}
+
+	for _, item := range tree {
+		if item.Path == filename {
+			if item.LFS != nil {
+				return item.LFS.OID, nil
+			}
+			return "", nil
+		}
+	}
+	return "", nil
+}
+
 // ─── Download ────────────────────────────────────────────────────
 
 // DownloadModel starts downloading repoID/filename in the background.
@@ -457,6 +514,9 @@ func (s *Store) doDownload(ctx context.Context, entry *downloadEntry, repoID, fi
 			MaxIdleConnsPerHost:   2,
 		},
 	}
+	if s.transport != nil {
+		dlClient.Transport = s.transport
+	}
 	resp, err := dlClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("download request: %w", err)
@@ -495,6 +555,17 @@ func (s *Store) doDownload(ctx context.Context, entry *downloadEntry, repoID, fi
 		os.Remove(tmpPath)
 	}()
 
+	// Best-effort: look up the expected content hash so a completed download
+	// can be checked against something stronger than byte count. A failure
+	// here (HF API hiccup, or a path HF doesn't LFS-track) just means
+	// integrity verification is skipped below, same as fetchModelMeta's
+	// existing non-fatal convention.
+	expectedSHA256, shaErr := s.fetchExpectedSHA256(repoID, filename)
+	if shaErr != nil {
+		logx.Printf("modelstore: could not fetch expected checksum for %s/%s, skipping integrity verification: %v", repoID, filename, shaErr)
+	}
+	hasher := sha256.New()
+
 	buf := make([]byte, 256*1024) // 256KB chunks
 	var downloaded int64
 	startTime := time.Now()
@@ -511,6 +582,7 @@ func (s *Store) doDownload(ctx context.Context, entry *downloadEntry, repoID, fi
 			if _, writeErr := f.Write(buf[:n]); writeErr != nil {
 				return fmt.Errorf("write file: %w", writeErr)
 			}
+			hasher.Write(buf[:n])
 			downloaded += int64(n)
 
 			elapsed := time.Since(startTime).Seconds()
@@ -552,6 +624,19 @@ func (s *Store) doDownload(ctx context.Context, entry *downloadEntry, repoID, fi
 	// transfer encoding without Content-Length.
 	if totalBytes > 0 && downloaded != totalBytes {
 		return fmt.Errorf("download incomplete: got %d of %d bytes", downloaded, totalBytes)
+	}
+
+	// Verify content against HF's own checksum, when we have one. A
+	// same-size-but-corrupted transfer (bit flip, buggy transparent proxy)
+	// passes the byte-count check above but would still hand llama-server a
+	// file it either fails to load or — worse — loads with subtly wrong
+	// weights. gotSHA256 is only computed when needed, since hashing runs
+	// over the whole file's bytes.
+	if expectedSHA256 != "" {
+		gotSHA256 := hex.EncodeToString(hasher.Sum(nil))
+		if !strings.EqualFold(gotSHA256, expectedSHA256) {
+			return fmt.Errorf("download corrupted: sha256 mismatch (got %s, want %s)", gotSHA256, expectedSHA256)
+		}
 	}
 
 	// Rename temp file to final name

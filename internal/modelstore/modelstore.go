@@ -208,12 +208,44 @@ func New(modelsDir string) *Store {
 	if err := os.MkdirAll(modelsDir, 0755); err != nil {
 		logx.Printf("modelstore: cannot create models dir: %v", err)
 	}
-	return &Store{
+	s := &Store{
 		modelsDir: modelsDir,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 		downloads: make(map[string]*downloadEntry),
+	}
+	s.cleanupOrphanedDownloads()
+	return s
+}
+
+// cleanupOrphanedDownloads removes any leftover ".downloading" temp file at
+// startup — doDownload's own deferred cleanup only runs if the process is
+// still alive to execute it, so a crash or force-kill mid-transfer leaves
+// the temp file behind. ListLocalModels explicitly skips ".downloading"
+// names, so without this an orphaned temp file was permanently invisible
+// in the UI yet permanently occupying disk (multi-GB for a large model)
+// with no way for the user to even see, let alone remove, it. Safe to run
+// unconditionally: s.downloads always starts empty on a fresh process, so
+// no in-flight download can be using any of these files when this runs —
+// nothing here can ever race a real download.
+func (s *Store) cleanupOrphanedDownloads() {
+	walkErr := filepath.Walk(s.modelsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(info.Name(), ".downloading") {
+			return nil
+		}
+		if rmErr := os.Remove(path); rmErr != nil {
+			logx.Printf("modelstore: could not remove orphaned download temp file %s: %v", path, rmErr)
+		} else {
+			logx.Printf("modelstore: removed orphaned download temp file %s (%d bytes)", path, info.Size())
+		}
+		return nil
+	})
+	if walkErr != nil {
+		logx.Printf("modelstore: cleanupOrphanedDownloads walk error: %v", walkErr)
 	}
 }
 

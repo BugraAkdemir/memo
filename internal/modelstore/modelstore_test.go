@@ -192,6 +192,53 @@ func TestListLocalModelsSkipsDownloading(t *testing.T) {
 	}
 }
 
+// TestNew_RemovesOrphanedDownloadingFiles proves a ".downloading" temp file
+// left behind by a crash (doDownload's own deferred cleanup never ran) is
+// removed at startup — before this fix it sat on disk forever, invisible
+// to ListLocalModels (which explicitly skips ".downloading" names) and so
+// unreachable through the app's own model-management UI.
+func TestNew_RemovesOrphanedDownloadingFiles(t *testing.T) {
+	dir := t.TempDir()
+	orphan := filepath.Join(dir, "model.gguf.downloading")
+	if err := os.WriteFile(orphan, []byte("half a model, crashed mid-write"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	New(dir)
+
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatalf("orphaned .downloading file was not removed at startup, stat err: %v", err)
+	}
+}
+
+// TestNew_LeavesCompletedModelsAndNestedDirsAlone proves the startup
+// cleanup only ever touches ".downloading" names, never a real model file
+// or a legacy nested repo directory.
+func TestNew_LeavesCompletedModelsAndNestedDirsAlone(t *testing.T) {
+	dir := t.TempDir()
+	realModel := filepath.Join(dir, "real.gguf")
+	if err := os.WriteFile(realModel, []byte("a complete model"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(dir, "some__repo")
+	if err := os.MkdirAll(nested, 0755); err != nil {
+		t.Fatal(err)
+	}
+	nestedModel := filepath.Join(nested, "nested.gguf")
+	if err := os.WriteFile(nestedModel, []byte("nested legacy model"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	New(dir)
+
+	if _, err := os.Stat(realModel); err != nil {
+		t.Fatalf("real model file was removed by startup cleanup: %v", err)
+	}
+	if _, err := os.Stat(nestedModel); err != nil {
+		t.Fatalf("nested legacy model file was removed by startup cleanup: %v", err)
+	}
+}
+
 func TestListLocalModelsWithRepoDir(t *testing.T) {
 	dir := t.TempDir()
 	s := &Store{modelsDir: dir}

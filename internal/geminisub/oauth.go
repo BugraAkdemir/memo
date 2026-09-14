@@ -249,6 +249,19 @@ func (m *Manager) AwaitAuth(ctx context.Context) error {
 // TokenSource returns an oauth2.TokenSource that transparently refreshes the
 // stored token and re-persists it (encrypted) whenever it changes. Returns
 // ErrNotConnected when no account is connected.
+//
+// Callers (codeassist.go, models.go, provider.go, AccountInfo) each call
+// this fresh per use rather than sharing one long-lived source, so two
+// concurrent callers can easily observe the same expired token at once —
+// e.g. an interactive chat and a background task both hitting Gemini-sub at
+// the same moment after the access token has expired. Every
+// persistingTokenSource this returns funnels its actual refresh through
+// Manager.refreshMu, so only one of them ever calls Google; the rest block
+// on the lock and then find (via the re-read of m.token right after
+// acquiring it) that the winner already refreshed, and reuse that result
+// instead of making their own redundant — and, if Google were ever to
+// rotate/invalidate the prior access token on refresh, mutually
+// destructive — refresh call.
 func (m *Manager) TokenSource(ctx context.Context) (oauth2.TokenSource, error) {
 	m.mu.Lock()
 	tok := m.token
@@ -258,38 +271,65 @@ func (m *Manager) TokenSource(ctx context.Context) (oauth2.TokenSource, error) {
 	}
 	return &persistingTokenSource{
 		m:    m,
-		src:  oauthConfig("").TokenSource(ctx, tok),
+		cfg:  oauthConfig(""),
 		last: tok,
 	}, nil
 }
 
 type persistingTokenSource struct {
 	m    *Manager
-	src  oauth2.TokenSource
+	cfg  *oauth2.Config
 	mu   sync.Mutex
 	last *oauth2.Token
 }
 
+// refreshTimeout bounds the actual network round-trip to Google's token
+// endpoint once decided (see Token below). Deliberately not tied to any one
+// caller's ctx: the refresh, once started, is shared by every caller
+// waiting on refreshMu, so it must not be cancellable by whichever one of
+// them happened to trigger it.
+var refreshTimeout = 30 * time.Second
+
 func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
-	t, err := p.src.Token()
+	p.mu.Lock()
+	tok := p.last
+	p.mu.Unlock()
+	if tok.Valid() {
+		return tok, nil
+	}
+
+	p.m.refreshMu.Lock()
+	defer p.m.refreshMu.Unlock()
+
+	// Re-read the Manager's current token: another persistingTokenSource may
+	// have already refreshed (and persisted) a new one while this call was
+	// waiting for refreshMu.
+	p.m.mu.Lock()
+	current := p.m.token
+	p.m.mu.Unlock()
+	if current.Valid() {
+		p.mu.Lock()
+		p.last = current
+		p.mu.Unlock()
+		return current, nil
+	}
+
+	refreshCtx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
+	defer cancel()
+	t, err := p.cfg.TokenSource(refreshCtx, current).Token()
 	if err != nil {
 		return nil, err
 	}
+
 	p.mu.Lock()
-	changed := p.last == nil ||
-		t.AccessToken != p.last.AccessToken ||
-		t.RefreshToken != p.last.RefreshToken ||
-		!t.Expiry.Equal(p.last.Expiry)
 	p.last = t
 	p.mu.Unlock()
 
-	if changed {
-		p.m.mu.Lock()
-		p.m.token = t
-		p.m.mu.Unlock()
-		if err := p.m.tok.save(t); err != nil {
-			logx.Printf("geminisub: persist refreshed token: %v", err)
-		}
+	p.m.mu.Lock()
+	p.m.token = t
+	p.m.mu.Unlock()
+	if err := p.m.tok.save(t); err != nil {
+		logx.Printf("geminisub: persist refreshed token: %v", err)
 	}
 	return t, nil
 }

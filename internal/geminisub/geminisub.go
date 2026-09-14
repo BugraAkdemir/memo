@@ -51,6 +51,13 @@ type Manager struct {
 	token *oauth2.Token // nil == not connected
 	flow  *authFlow     // in-progress OAuth flow, if any
 
+	// refreshMu serializes the actual "refresh the access token with
+	// Google" step across every persistingTokenSource — see TokenSource's
+	// doc comment. A separate lock from mu so a slow refresh call doesn't
+	// block unrelated Manager methods (Connected, Disconnect, ...) that
+	// only need the current token snapshot.
+	refreshMu sync.Mutex
+
 	bootMu sync.Mutex
 	boot   *bootstrap // cached Code Assist handshake result, nil until first use
 

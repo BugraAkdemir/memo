@@ -200,6 +200,70 @@ func TestTokenSource_NotConnected(t *testing.T) {
 	}
 }
 
+// TestTokenSource_ConcurrentRefreshesAreCoordinated proves two concurrent
+// callers racing against the same expired token result in exactly one real
+// refresh call to Google, not one per caller. Before this fix, every
+// TokenSource(ctx) call built its own independent oauth2.TokenSource chain
+// from the same stale Manager.token, so N concurrent callers (e.g. an
+// interactive chat and a background task both hitting Gemini-sub right
+// after the access token expires) each made their own refresh request and
+// raced to overwrite the persisted token file with whichever finished last.
+func TestTokenSource_ConcurrentRefreshesAreCoordinated(t *testing.T) {
+	m := newTestManager(t)
+	m.token = &oauth2.Token{
+		AccessToken:  "at-old",
+		RefreshToken: "rt-old",
+		Expiry:       time.Now().Add(-time.Hour), // already expired
+	}
+
+	_, exchanges := fakeGoogle(t)
+
+	const n = 8
+	results := make(chan *oauth2.Token, n)
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			ts, err := m.TokenSource(context.Background())
+			if err != nil {
+				errs <- err
+				return
+			}
+			tok, err := ts.Token()
+			if err != nil {
+				errs <- err
+				return
+			}
+			results <- tok
+		}()
+	}
+
+	for i := 0; i < n; i++ {
+		select {
+		case err := <-errs:
+			t.Fatalf("concurrent TokenSource/Token call failed: %v", err)
+		case tok := <-results:
+			if tok.AccessToken != "at-new" {
+				t.Errorf("got access token %q, want the refreshed at-new", tok.AccessToken)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for concurrent refreshes to complete")
+		}
+	}
+
+	if got := atomic.LoadInt32(exchanges); got != 1 {
+		t.Errorf("Google token endpoint hit %d times for %d concurrent callers racing the same expired token, want exactly 1", got, n)
+	}
+
+	// The single winning refresh must be the one actually persisted to disk.
+	saved, ok := m.tok.load()
+	if !ok {
+		t.Fatal("refreshed token was not persisted")
+	}
+	if saved.AccessToken != "at-new" {
+		t.Errorf("persisted access token = %q, want at-new", saved.AccessToken)
+	}
+}
+
 func TestAccountInfo(t *testing.T) {
 	m := newTestManager(t)
 	m.token = &oauth2.Token{AccessToken: "at", Expiry: time.Now().Add(time.Hour)}

@@ -338,6 +338,56 @@ func (ps *PatternStore) AdjustConfidence(id string, delta float64) (bool, error)
 	return true, nil
 }
 
+// ReplaceComputedPatterns atomically replaces the analyzer's own
+// (statistically re-derived) patterns with newPatterns, applying
+// suppression and re-merging any currently-declared pattern, all under
+// one lock acquisition. Used by Analyzer.Run instead of composing
+// SuppressedSet+Load+Save as three separate lock acquisitions — the old
+// three-step sequence let a concurrent SaveDeclared/Suppress/
+// AdjustConfidence call land in the gap between this method's own Load
+// and Save, and have its change silently reverted by the analyzer's
+// stale-computed Save overwriting the whole file. newPatterns is already
+// computed by the caller from fresh observations (AnalyzePatterns) and
+// carries no suppression/declared-merge of its own — this method applies
+// both against the CURRENT on-disk state, not a snapshot read earlier.
+func (ps *PatternStore) ReplaceComputedPatterns(newPatterns []TimePattern) error {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	pf, err := ps.readFile()
+	if err != nil {
+		return fmt.Errorf("observer.PatternStore.ReplaceComputedPatterns: read: %w", err)
+	}
+	suppressed := make(map[string]bool, len(pf.Suppressed))
+	for _, id := range pf.Suppressed {
+		suppressed[id] = true
+	}
+
+	kept := make([]TimePattern, 0, len(newPatterns))
+	for _, p := range newPatterns {
+		if !suppressed[p.ID] {
+			kept = append(kept, p)
+		}
+	}
+	// Declared (explicitly stated) habits are a separate, guaranteed layer
+	// the analyzer's statistical recomputation knows nothing about (it only
+	// sees passively-observed rows) — re-merge them from the CURRENT file
+	// so a declared habit survives every periodic analyzer run, and so a
+	// SaveDeclared that landed just before this lock was acquired is
+	// reflected here rather than overwritten.
+	for _, p := range pf.Patterns {
+		if p.Declared && !suppressed[p.ID] {
+			kept = append(kept, p)
+		}
+	}
+
+	pf.Patterns = kept
+	if err := ps.writeFile(pf); err != nil {
+		return fmt.Errorf("observer.PatternStore.ReplaceComputedPatterns: %w", err)
+	}
+	return nil
+}
+
 func clampUnit(v float64) float64 {
 	if v < 0 {
 		return 0

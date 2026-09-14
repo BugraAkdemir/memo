@@ -4,6 +4,7 @@ package observer
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -223,5 +224,74 @@ func TestAnalyzerRun_PreservesDeclaredPatternAcrossReanalysis(t *testing.T) {
 	}
 	if _, ok := findPattern(all, declared.ID); ok {
 		t.Error("suppressed declared pattern was resurrected by re-analysis merge-back")
+	}
+}
+
+// TestAnalyzerRun_ConcurrentSuppressNeverResurrectsPattern is the
+// regression test for the P2 finding that Analyzer.Run composed
+// SuppressedSet+Load+Save as three separate PatternStore lock
+// acquisitions instead of one atomic operation: a Suppress/SaveDeclared/
+// AdjustConfidence call landing in the gap between Run's own Load and
+// Save got silently reverted by Run's stale-computed Save overwriting the
+// whole file. The actual race window (between two specific statements
+// inside one specific Run() call) is a handful of Go instructions wide —
+// far too narrow to reliably hit with only one Suppress call racing a
+// background loop (confirmed empirically: an earlier, single-suppression
+// version of this test passed even against the pre-fix code across 10
+// runs). Instead this declares-then-immediately-suppresses many distinct
+// patterns while Run() races continuously in the background, giving the
+// race dozens of independent chances to land instead of one — and checks
+// every single one of them, not just whether any single pattern survived.
+func TestAnalyzerRun_ConcurrentSuppressNeverResurrectsPattern(t *testing.T) {
+	store := newTestStore(t)
+	ps := NewPatternStore(filepath.Join(t.TempDir(), "patterns.json"))
+	an := NewAnalyzer(store, ps)
+	ctx := context.Background()
+	mustRecord(t, store, Observation{Timestamp: time.Now(), ActivityType: ActivityChat, Topic: "general"})
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			_ = an.Run(ctx)
+		}
+	}()
+
+	const rounds = 100
+	suppressedIDs := make([]string, 0, rounds)
+	for i := 0; i < rounds; i++ {
+		habitTime := time.Date(2026, 6, 15, 0, 0, 0, 0, time.Local).Add(time.Duration(i) * time.Minute)
+		declared, err := ps.SaveDeclared(DeclaredHabitPattern(fmt.Sprintf("habit-%d", i), habitTime, nil))
+		if err != nil {
+			t.Fatalf("SaveDeclared(%d): %v", i, err)
+		}
+		if _, err := ps.Suppress(declared.ID); err != nil {
+			t.Fatalf("Suppress(%d): %v", i, err)
+		}
+		suppressedIDs = append(suppressedIDs, declared.ID)
+	}
+
+	close(stop)
+	wg.Wait()
+
+	all, err := ps.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	var resurrected []string
+	for _, id := range suppressedIDs {
+		if _, ok := findPattern(all, id); ok {
+			resurrected = append(resurrected, id)
+		}
+	}
+	if len(resurrected) > 0 {
+		t.Errorf("%d of %d suppressed patterns reappeared after racing Analyzer.Run (e.g. %v) — the old non-atomic SuppressedSet+Load+Save sequence resurrected them", len(resurrected), rounds, resurrected)
 	}
 }

@@ -11,56 +11,14 @@ import '../core/backend_url.dart';
 import '../core/l10n.dart';
 import 'memo_mascot.dart';
 
-/// Size of the pet itself — the top of the window, everything below is the
-/// status bubble. `set_mascot_input_shape` in linux/runner/my_application.cc
-/// hand-codes an ellipse (plus a small rectangle for the hover close
-/// button's corner) against these exact coordinates, measured from the
-/// window's top-left — since the pet area always starts at the window's
-/// top-left too, growing the bubble below it never shifts the ellipse, but
-/// shrinking or repositioning the *pet* area still requires updating that
-/// native function to match.
 const _petAreaSize = Size(132, 148);
-
-/// Gap between the pet and the status bubble below it, plus how much
-/// vertical room the bubble reserves — reserved unconditionally (not just
-/// while a status is showing) so the window never resizes at runtime, which
-/// would be jarring for an always-on-top widget sitting on the desktop.
 const _bubbleGap = 8.0;
 const _bubbleAreaHeight = 54.0;
-
 const _windowSize = Size(132, 148 + _bubbleGap + _bubbleAreaHeight);
 
-/// Boots the standalone floating desktop mascot in place of the normal chat
-/// UI. This runs as a `desktop_multi_window` sub-window inside the SAME
-/// process as the main chat window — one Memo, one running app, not a
-/// second one — reached when `lib/main.dart`'s `main(args)` sees the
-/// `multi_window` marker that plugin passes as the first Dart entrypoint
-/// argument for any window it creates (see tray_controller.dart, which is
-/// what actually calls `WindowController.create(...)` to spawn this).
-///
-/// Frameless, skip-taskbar and drag-anywhere all come from the plain
-/// (unforked) `window_manager` package, which works here exactly as it
-/// does in the main window: `desktop_multi_window` gives every sub-window
-/// its own Flutter engine, and `linux/runner/my_application.cc` registers
-/// window_manager's plugin for each one via the exact callback the
-/// package's README documents. Always-on-top (`alwaysOnTop: true` below,
-/// backed by `gtk_window_set_keep_above` in the vendored patch) has no
-/// native-Wayland equivalent in plain GTK — main.cc forces the whole app
-/// onto XWayland specifically so this (and the input-shape "collider"
-/// fix) have the X11 mechanism to call; see main.cc's own comment. Real
-/// per-pixel transparency needed one thing that callback fires too late
-/// for — see
-/// frontend/third_party/README.md for that one vendored native patch.
 Future<void> runMascotWindow() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
-
-  // Lets the main window ask this one to close itself (see
-  // tray_controller.dart) — WindowController has no close() of its own;
-  // this is the hand-off point the package's README documents for that.
-  // Only reachable when this is actually a desktop_multi_window sub-window;
-  // the standalone `flutter run -t lib/mascot_main.dart` dev entrypoint has
-  // no such window to attach to, so this is best-effort.
   try {
     final controller = await WindowController.fromCurrentEngine();
     await controller.setWindowMethodHandler((call) async {
@@ -68,10 +26,7 @@ Future<void> runMascotWindow() async {
         await windowManager.close();
       }
     });
-  } catch (_) {
-    // Standalone dev run — nothing to wire up, the on-window close button
-    // already calls windowManager.close() directly.
-  }
+  } catch (_) {}
 
   const options = WindowOptions(
     size: _windowSize,
@@ -83,8 +38,6 @@ Future<void> runMascotWindow() async {
   );
   await windowManager.waitUntilReadyToShow(options, () async {
     await windowManager.setAsFrameless();
-    // setHasShadow isn't implemented on Linux (window_manager's Linux
-    // plugin has no such method) — only call it where it exists.
     if (!Platform.isLinux) {
       await windowManager.setHasShadow(false);
     }
@@ -96,9 +49,6 @@ Future<void> runMascotWindow() async {
   runApp(const MascotWindowApp());
 }
 
-/// True for a Dart entrypoint invocation that's a desktop_multi_window
-/// sub-window rather than the app's normal launch — see runMascotWindow's
-/// doc comment. Checked against `main(args)`'s own argument list.
 bool isMascotSubWindow(List<String> args) =>
     args.isNotEmpty && args.first == 'multi_window';
 
@@ -122,8 +72,6 @@ class MascotWindowApp extends StatelessWidget {
   }
 }
 
-/// The whole window's content: drag-anywhere by default, a small close
-/// button that only appears on hover (there's no OS title bar to carry one).
 class _MascotSurface extends StatefulWidget {
   const _MascotSurface();
 
@@ -131,10 +79,6 @@ class _MascotSurface extends StatefulWidget {
   State<_MascotSurface> createState() => _MascotSurfaceState();
 }
 
-/// How often to poll GET /api/mascot/activity. This is a decorative,
-/// coarse-grained signal (see models.ActivityStatus on the Go side) — a
-/// second of lag between a tool call starting and the mascot noticing
-/// doesn't matter the way it would for, say, streamed chat tokens.
 const _pollInterval = Duration(milliseconds: 1200);
 
 class _MascotSurfaceState extends State<_MascotSurface> {
@@ -144,6 +88,7 @@ class _MascotSurfaceState extends State<_MascotSurface> {
   String? _toolName;
   Timer? _pollTimer;
   Dio? _dio;
+  int _pollGeneration = 0;
 
   @override
   void initState() {
@@ -152,14 +97,6 @@ class _MascotSurfaceState extends State<_MascotSurface> {
   }
 
   Future<void> _startPolling() async {
-    // Same SharedPreferences store the main chat window reads/writes
-    // (memo_api_base_url, memo_mascot_skin) — a separate Flutter
-    // engine/isolate, but the same underlying prefs file, so a server or
-    // skin the user changed from Settings is picked up here too. Read
-    // once at startup rather than watched live (this window has no
-    // Riverpod ProviderScope of its own) — changing the skin while the
-    // mascot is already open takes a close/reopen to pick up, same as the
-    // existing base-URL behavior.
     final prefs = await SharedPreferences.getInstance();
     final baseUrl = normalizeBackendUrl(prefs.getString('memo_api_base_url') ?? '');
     final skin = MascotSkinPrefValue.fromPrefValue(prefs.getString('memo_mascot_skin'));
@@ -173,22 +110,23 @@ class _MascotSurfaceState extends State<_MascotSurface> {
   Future<void> _poll() async {
     final dio = _dio;
     if (dio == null) return;
+    final generation = ++_pollGeneration;
     try {
       final res = await dio.get('/api/mascot/activity');
+      if (!mounted || generation != _pollGeneration) return;
       final data = res.data;
       final state = data is Map ? data['state'] as String? : null;
       final toolName = data is Map ? data['tool_name'] as String? : null;
       final mood = _moodFor(state);
-      if (mounted && (mood != _mood || toolName != _toolName)) {
+      if (mood != _mood || toolName != _toolName) {
         setState(() {
           _mood = mood;
           _toolName = toolName;
         });
       }
     } catch (_) {
-      // Backend not reachable (not started yet, or briefly restarting) —
-      // idle is always a safe, non-alarming default to fall back to.
-      if (mounted && _mood != MascotMood.idle) {
+      if (!mounted || generation != _pollGeneration) return;
+      if (_mood != MascotMood.idle) {
         setState(() {
           _mood = MascotMood.idle;
           _toolName = null;
@@ -209,6 +147,7 @@ class _MascotSurfaceState extends State<_MascotSurface> {
 
   @override
   void dispose() {
+    _pollGeneration++;
     _pollTimer?.cancel();
     _dio?.close();
     super.dispose();
@@ -255,11 +194,6 @@ class _MascotSurfaceState extends State<_MascotSurface> {
   }
 }
 
-/// Status readout below the pet — what Memo is doing right now, in plain
-/// words (never the AI's actual reply text: see [MascotMood]'s doc comment,
-/// this only ever renders a fixed phrase per [mood]). Reserves
-/// [_bubbleAreaHeight] unconditionally and fades its content in and out so
-/// the always-on-top window never resizes at runtime.
 class _StatusBubble extends StatelessWidget {
   final MascotMood mood;
   final String? toolName;

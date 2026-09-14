@@ -11,6 +11,7 @@ import '../providers/settings_provider.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/gate_guard.dart';
+import '../providers/learning_provider.dart';
 import '../providers/models_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
@@ -296,6 +297,15 @@ class _AppShellState extends ConsumerState<AppShell> {
         // its own 3s retry loop would eventually recover, this just makes it
         // immediate.
         ref.read(chatTasksProvider.notifier).reconnectNow();
+        // learningSettingsProvider had no authGateBlocked guard at all
+        // (every sibling StateNotifier in this list does) and is watched
+        // from Setup Wizard Step 4 — one of the very screens the original
+        // auth-gate-race bug class was discovered on. learningPatternsProvider
+        // is the same shape (a plain FutureProvider with no retry of its
+        // own). Both now degrade safely in their own build()/guard; this
+        // invalidation is what actually recovers them once the gate opens.
+        ref.invalidate(learningSettingsProvider);
+        ref.invalidate(learningPatternsProvider);
       }
     });
 

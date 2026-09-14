@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'auth_gate_provider.dart';
 import 'chat_provider.dart';
+import 'gate_guard.dart';
 
 /// A learned pattern displayed in the Settings > Learning Profile UI.
 class LearnedPattern {
@@ -75,6 +77,17 @@ class LearningSettingsNotifier extends StateNotifier<AsyncValue<Map<String, dyna
   }
 
   Future<void> _load() async {
+    // BUG-ONB6-shaped gap: this notifier's build-time fetch had no
+    // authGateBlocked guard at all (every sibling in settings_provider.dart
+    // does), and it's watched from Setup Wizard Step 4 — one of the very
+    // screens the original auth-gate-race bug was discovered on. A 401
+    // landing here got cached as AsyncError permanently for the rest of
+    // the session; app_shell.dart's gate-transition listener re-invalidates
+    // this once the gate actually opens.
+    if (authGateBlocked(_ref.read(authGateProvider).valueOrNull)) {
+      state = const AsyncData(<String, dynamic>{});
+      return;
+    }
     try {
       final api = _ref.read(apiClientProvider);
       state = AsyncData(await api.getProactiveSettings());
@@ -96,6 +109,9 @@ class LearningSettingsNotifier extends StateNotifier<AsyncValue<Map<String, dyna
 
 /// Learned patterns list.
 final learningPatternsProvider = FutureProvider<List<LearnedPattern>>((ref) async {
+  // Same auth-gate gap as learningSettingsProvider above — a plain
+  // FutureProvider has no retry loop, so a 401 here is cached forever.
+  if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
   final api = ref.read(apiClientProvider);
   final data = await api.getProactivePatterns();
   return data.map((j) => LearnedPattern.fromJson(j)).toList();
@@ -144,11 +160,16 @@ final pendingProactiveSuggestionProvider =
   ref.onDispose(() => alive = false);
   final api = ref.read(apiClientProvider);
   while (alive) {
-    try {
-      final data = await api.getPendingSuggestion();
-      yield data == null ? null : PendingProactiveSuggestion.fromJson(data);
-    } catch (_) {
-      yield null;
+    // Same auth-gate gap as learningSettingsProvider/learningPatternsProvider
+    // above — skip the request while the gate is up rather than generating
+    // an avoidable 401 every tick; the next tick re-checks.
+    if (!authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      try {
+        final data = await api.getPendingSuggestion();
+        yield data == null ? null : PendingProactiveSuggestion.fromJson(data);
+      } catch (_) {
+        yield null;
+      }
     }
     if (!alive) break;
     await Future.delayed(const Duration(seconds: 20));

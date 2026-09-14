@@ -164,6 +164,12 @@ class AgentAutoPermissionNotifier extends StateNotifier<bool> {
     try {
       final enabled =
           await _ref.read(apiClientProvider).getAgentAutoPermission();
+      // app_shell.dart invalidates this provider the moment the auth gate
+      // opens, which disposes *this* notifier while its GET is still in
+      // flight — same race AgentEnabledNotifier._init documents above.
+      // Writing state then throws "Tried to use AgentAutoPermissionNotifier
+      // after dispose was called" into the console on every cold start.
+      if (!mounted) return;
       state = enabled;
     } catch (e) {
       debugPrint('agent: auto-permission init error: ${FriendlyError.describeGeneric(e)}');
@@ -177,6 +183,7 @@ class AgentAutoPermissionNotifier extends StateNotifier<bool> {
       await _ref.read(apiClientProvider).setAgentAutoPermission(next);
     } catch (e) {
       debugPrint('agent: auto-permission toggle error: ${FriendlyError.describeGeneric(e)}');
+      if (!mounted) return; // disposed mid-request — see _init
       state = !next;
       _ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Otomatik izin değiştirilemedi (${FriendlyError.describeGeneric(e)})';
@@ -190,6 +197,7 @@ class AgentAutoPermissionNotifier extends StateNotifier<bool> {
       await _ref.read(apiClientProvider).setAgentAutoPermission(enabled);
     } catch (e) {
       debugPrint('agent: auto-permission set error: ${FriendlyError.describeGeneric(e)}');
+      if (!mounted) return; // disposed mid-request — see _init
       state = previous;
       _ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Otomatik izin değiştirilemedi (${FriendlyError.describeGeneric(e)})';

@@ -173,7 +173,7 @@ oluştuğu doğrulanır).
 
 **Doğrulama:** Go build/vet/test/race yeşil.
 
-- [ ] Yapıldı
+- [x] Yapıldı (commit'lendi 2026-09-15)
 
 ---
 

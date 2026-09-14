@@ -193,6 +193,7 @@ func (r *ToolRegistry) registerBuiltins() {
 	r.registerFileSenderTool()
 	r.registerSelfDrivingTaskTool()
 	r.registerTaskMdTools()
+	r.registerCodePlanTool()
 
 	r.Register(ToolDef{
 		Name:        "get_task_status",
@@ -234,6 +235,25 @@ func (r *ToolRegistry) registerTaskMdTools() {
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Task.md path; defaults to this chat's project Task.md"},"op":{"type":"string","enum":["add_item","split_item","set_header","check_item"]},"text":{"type":"string","description":"add_item: the new item text"},"item_index":{"type":"integer","description":"1-based, for split_item / check_item"},"sub_items":{"type":"array","items":{"type":"string"},"description":"split_item: the sub-item texts"},"header_key":{"type":"string","description":"set_header: e.g. bildirim, mod, kodlayıcı"},"header_value":{"type":"string"}},"required":["op"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.EditTaskMd,
+	})
+}
+
+// registerCodePlanTool adds save_code_plan — only to the main/full registry
+// (like create_routine), reachable from any agent-enabled chat. Always
+// registered rather than filtered to Code Mode's "plan" sub-mode: the
+// registry has no per-turn tool-subset mechanism (see the other
+// NewXxxRegistry constructors below, each a completely separate fixed set
+// built for a different call path, not a per-turn filter), and Code Mode's
+// "plan" sub-mode restriction is deliberately soft/prompt-only (codePlanDirective)
+// — harmless if called outside plan sub-mode, since "auto"/"build"'s own
+// directives never mention it.
+func (r *ToolRegistry) registerCodePlanTool() {
+	r.Register(ToolDef{
+		Name:        "save_code_plan",
+		Description: "Saves the current implementation plan as Markdown to Memo's own plan storage — NOT the user's project, nothing here touches the project directory. Call this once your investigation is done and you have a concrete, reviewable, step-by-step plan — only in Code Mode's planning mode, never mid-edit. After it succeeds, ask the user in plain chat text whether to proceed in build mode (fast, auto-approved edits) or auto mode (normal confirm-as-you-go editing).",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"content":{"type":"string","description":"The full plan as Markdown"}},"required":["content"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.SaveCodePlan,
 	})
 }
 

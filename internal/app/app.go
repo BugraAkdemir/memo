@@ -699,6 +699,7 @@ func (a *App) Startup(ctx context.Context) {
 	tools.SelfDrivingTasks = selfDrivingTaskToolAdapter{a}
 	tools.TaskMdEditor = taskMdEditorAdapter{a}
 	tools.TaskStatus = taskStatusToolAdapter{a}
+	tools.PlanSaver = planSaverAdapter{a}
 
 	basePath, _ := filepath.Abs(".")
 	a.providerMu.RLock()

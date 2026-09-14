@@ -2,8 +2,10 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -58,6 +60,90 @@ func TestOpenHardensFilePermissions(t *testing.T) {
 	}
 	if mode := info.Mode() & os.ModePerm; mode != 0o600 {
 		t.Errorf("mode = %o, want 0600", mode)
+	}
+}
+
+// TestCheckpointTruncate_SucceedsAndClosedReturnsError is a basic
+// sanity/error-path check for CheckpointTruncate — see the concurrency
+// test below for the actual regression this method exists to fix
+// (BUG_REPORT.md P1-4).
+func TestCheckpointTruncate_SucceedsAndClosedReturnsError(t *testing.T) {
+	db, err := Open(Config{Path: filepath.Join(t.TempDir(), "test.db"), MaxPool: 1})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	ctx := context.Background()
+
+	if err := db.CheckpointTruncate(ctx); err != nil {
+		t.Errorf("CheckpointTruncate() on an open DB: %v", err)
+	}
+
+	if err := db.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := db.CheckpointTruncate(ctx); err == nil {
+		t.Error("CheckpointTruncate() on a closed DB returned nil, want an error")
+	}
+}
+
+// TestCheckpointTruncate_DoesNotRaceConcurrentWrites is the regression
+// test for BUG_REPORT.md P1-4: internal/app/backup.go's ExportData and
+// internal/cloudsync's periodic archive used to open a SECOND, raw
+// sql.Open connection to the same database file to run this exact PRAGMA,
+// completely unsynchronized with writeLoop's own transactions — a real
+// concurrency hazard against the live database. CheckpointTruncate runs on
+// the SAME single connection (MaxPool 1) writeLoop's transactions draw
+// from, so database/sql's own pool serializes it automatically. Fires a
+// burst of concurrent Write() calls and CheckpointTruncate() calls at the
+// same time and asserts none of them fail — a second, unsynchronized
+// connection would intermittently surface a "database is locked" error
+// under this exact load.
+func TestCheckpointTruncate_DoesNotRaceConcurrentWrites(t *testing.T) {
+	db, err := Open(Config{Path: filepath.Join(t.TempDir(), "test.db"), MaxPool: 1})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+
+	if _, err := db.ExecContext(ctx, "CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER)"); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+
+	const writers = 8
+	const checkpointers = 4
+	const opsPerGoroutine = 20
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, writers*opsPerGoroutine+checkpointers*opsPerGoroutine)
+
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < opsPerGoroutine; j++ {
+				if _, err := db.ExecContext(ctx, "INSERT INTO t (v) VALUES (?)", i*opsPerGoroutine+j); err != nil {
+					errCh <- fmt.Errorf("write: %w", err)
+				}
+			}
+		}(i)
+	}
+	for i := 0; i < checkpointers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < opsPerGoroutine; j++ {
+				if err := db.CheckpointTruncate(ctx); err != nil {
+					errCh <- fmt.Errorf("checkpoint: %w", err)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		t.Error(err)
 	}
 }
 

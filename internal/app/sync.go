@@ -61,6 +61,27 @@ func (a *App) wireSyncRestoreHooks(sm *cloudsync.Manager) {
 	if sm == nil {
 		return
 	}
+	// Route archive()'s pre-backup WAL checkpoints through the live stores
+	// instead of cloudsync opening its own raw connection to the same
+	// files — see BUG_REPORT.md P1-4. Guarded by storeMu (same lock
+	// BeforeRestore below takes) since this runs from cloudsync's own
+	// background goroutine and could otherwise race a.store being closed
+	// and nilled out for a restore.
+	sm.CheckpointMemoryDB = func(ctx context.Context) error {
+		a.storeMu.RLock()
+		store := a.store
+		a.storeMu.RUnlock()
+		if store == nil {
+			return nil
+		}
+		return store.Checkpoint(ctx)
+	}
+	sm.CheckpointMoodDB = func(ctx context.Context) error {
+		if a.mood == nil {
+			return nil
+		}
+		return a.mood.Checkpoint(ctx)
+	}
 	sm.BeforeRestore = func() {
 		a.storeMu.Lock()
 		if a.store != nil {

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -115,6 +116,102 @@ func TestArchiveIncludesSQLiteWALSidecars(t *testing.T) {
 	for name, found := range required {
 		if !found {
 			t.Errorf("expected %s in archive", name)
+		}
+	}
+}
+
+// TestArchive_UsesLiveStoreCheckpointCallbacksWhenSet is the regression
+// test for the P1 finding that archive() always opened its own raw
+// sql.Open connection to memory.db/mood.db to run the pre-backup WAL
+// checkpoint — a second, unsynchronized connection racing the real
+// store's own write loop (database.DB for memory, Store.db for mood) with
+// no coordination at all. CheckpointMemoryDB/CheckpointMoodDB let the
+// owner (internal/app) route this through the live store instead; this
+// confirms archive() actually calls them when set, rather than always
+// falling back to the raw-connection path.
+func TestArchive_UsesLiveStoreCheckpointCallbacksWhenSet(t *testing.T) {
+	tmp := t.TempDir()
+	persistDir := filepath.Join(tmp, "memory")
+	dataDir := filepath.Join(tmp, "data")
+	if err := os.MkdirAll(persistDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "mood"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeSQLiteDB(t, filepath.Join(persistDir, "memory.db"))
+	writeSQLiteDB(t, filepath.Join(dataDir, "mood", "mood.db"))
+	writeFile(t, filepath.Join(dataDir, "sessions", "s1.json"), []byte("{}"))
+
+	var memCalls, moodCalls int
+	m := &Manager{
+		ctx:        context.Background(),
+		persistDir: persistDir,
+		dataDir:    dataDir,
+		passphrase: "test",
+		CheckpointMemoryDB: func(ctx context.Context) error {
+			memCalls++
+			return nil
+		},
+		CheckpointMoodDB: func(ctx context.Context) error {
+			moodCalls++
+			return nil
+		},
+	}
+
+	if _, err := m.archive(); err != nil {
+		t.Fatalf("archive failed: %v", err)
+	}
+
+	if memCalls != 1 {
+		t.Errorf("CheckpointMemoryDB called %d times, want 1", memCalls)
+	}
+	if moodCalls != 1 {
+		t.Errorf("CheckpointMoodDB called %d times, want 1", moodCalls)
+	}
+}
+
+// TestArchive_MemoryCheckpointCallbackErrorSkipsFile confirms a failing
+// live-store checkpoint is treated exactly like the old raw-connection
+// failure path: the file is skipped from the backup rather than archiving
+// a possibly-incomplete database.
+func TestArchive_MemoryCheckpointCallbackErrorSkipsFile(t *testing.T) {
+	tmp := t.TempDir()
+	persistDir := filepath.Join(tmp, "memory")
+	dataDir := filepath.Join(tmp, "data")
+	if err := os.MkdirAll(persistDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeSQLiteDB(t, filepath.Join(persistDir, "memory.db"))
+	writeFile(t, filepath.Join(dataDir, "sessions", "s1.json"), []byte("{}"))
+
+	m := &Manager{
+		ctx:        context.Background(),
+		persistDir: persistDir,
+		dataDir:    dataDir,
+		passphrase: "test",
+		CheckpointMemoryDB: func(ctx context.Context) error {
+			return fmt.Errorf("simulated checkpoint failure")
+		},
+	}
+
+	zipData, err := m.archive()
+	if err != nil {
+		t.Fatalf("archive failed: %v", err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		t.Fatalf("zip reader: %v", err)
+	}
+	for _, f := range zr.File {
+		if f.Name == "memory/memory.db" {
+			t.Error("memory.db was archived despite a failing checkpoint — should have been skipped")
 		}
 	}
 }

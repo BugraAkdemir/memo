@@ -221,6 +221,32 @@ func (db *DB) Write(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	}
 }
 
+// CheckpointTruncate forces a WAL checkpoint (mode TRUNCATE), flushing
+// committed-but-unmerged WAL transactions into the main database file and
+// truncating the WAL — used before archiving/exporting the file so a
+// backup isn't missing recent, still-WAL-only data.
+//
+// Deliberately does NOT go through writeCh/writeLoop like Write() —
+// PRAGMA wal_checkpoint runs on db.sql directly, but every caller of this
+// package opens with MaxPool 1 (a single physical connection), so
+// database/sql's own pool already serializes this against any in-flight
+// writeLoop transaction: both draw from the same one connection, and the
+// pool blocks whichever side asks second until the first releases it. No
+// second, unsynchronized connection to the same file is needed for this —
+// see BUG_REPORT.md P1-4, which is exactly what internal/app/backup.go's
+// ExportData and internal/cloudsync's periodic archive used to do (each
+// opening its own raw sql.Open to memory.db/mood.db to run this same
+// PRAGMA, racing the real write loop with no coordination at all).
+func (db *DB) CheckpointTruncate(ctx context.Context) error {
+	db.closeMu.RLock()
+	defer db.closeMu.RUnlock()
+	if db.closed {
+		return fmt.Errorf("database: closed")
+	}
+	_, err := db.sql.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
+	return err
+}
+
 // ExecContext executes a write query through the serialised write loop so
 // that all DDL and DML writes are funneled through a single goroutine,
 // preventing "database is locked" errors under concurrent access.

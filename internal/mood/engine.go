@@ -159,6 +159,10 @@ func (e *Engine) SetSystemManagement(v bool) {
 // Close store bağlantısını kapatır.
 func (e *Engine) Close() error { return e.store.close() }
 
+// Checkpoint forces a WAL checkpoint on mood.db — see Store.checkpoint's
+// doc comment.
+func (e *Engine) Checkpoint(ctx context.Context) error { return e.store.checkpoint(ctx) }
+
 // HistorySince returns recorded mood samples since the given time, oldest
 // first — used to summarize a mood trend over a window (e.g. a weekly/
 // monthly self-insight digest) rather than just the current point value.

@@ -1948,6 +1948,14 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// Checkpoint forces a WAL checkpoint on the underlying database — see
+// database.DB.CheckpointTruncate's doc comment. Callers that need to
+// archive/export memory.db (ExportData, cloudsync's periodic backup) use
+// this instead of opening their own raw connection to the same file.
+func (s *Store) Checkpoint(ctx context.Context) error {
+	return s.db.CheckpointTruncate(ctx)
+}
+
 func formatMemoryAge(timestamp string) string {
 	t, err := time.Parse(time.RFC3339, timestamp)
 	if err != nil {

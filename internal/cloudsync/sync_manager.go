@@ -58,6 +58,20 @@ type Manager struct {
 	// the store must be closed before restoreZip and re-opened afterwards.
 	BeforeRestore func()
 	AfterRestore  func()
+
+	// CheckpointMemoryDB/CheckpointMoodDB let the owner route archive()'s
+	// pre-backup WAL checkpoint through the live store (memory.Store.Checkpoint/
+	// mood.Engine.Checkpoint) instead of this package opening its own raw
+	// sql.Open connection to the same file — see BUG_REPORT.md P1-4: a second,
+	// unsynchronized connection racing the real store's own writes. Optional:
+	// this package has no live store reference of its own (it's constructed
+	// from file paths only, runs as a background job independent of the
+	// app's object graph), so a nil callback falls back to the old
+	// raw-connection behavior rather than skipping the checkpoint outright —
+	// set by internal/app at construction time; tests that build a Manager
+	// directly are unaffected if left unset.
+	CheckpointMemoryDB func(ctx context.Context) error
+	CheckpointMoodDB   func(ctx context.Context) error
 }
 
 // AccountInfo describes the connected Google account.
@@ -438,7 +452,15 @@ func (m *Manager) archive() ([]byte, error) {
 	// file for the current backup instead.
 	memDBOK := true
 	if _, statErr := os.Stat(memDB); statErr == nil {
-		if db, err := sql.Open("sqlite3", memDB); err == nil {
+		if m.CheckpointMemoryDB != nil {
+			if chkErr := m.CheckpointMemoryDB(m.ctx); chkErr != nil {
+				logx.Printf("cloudsync: ERROR wal_checkpoint(TRUNCATE) failed for memory.db: %v — skipping memory.db in this backup to avoid archiving a possibly-incomplete database", chkErr)
+				memDBOK = false
+			}
+		} else if db, err := sql.Open("sqlite3", memDB); err == nil {
+			// No live store wired in (e.g. a test constructing Manager
+			// directly) — fall back to a one-off connection, same as
+			// before this existed.
 			if _, chkErr := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); chkErr != nil {
 				logx.Printf("cloudsync: ERROR wal_checkpoint(TRUNCATE) failed for memory.db: %v — skipping memory.db in this backup to avoid archiving a possibly-incomplete database", chkErr)
 				memDBOK = false
@@ -513,7 +535,15 @@ func (m *Manager) archive() ([]byte, error) {
 	moodDB := filepath.Join(m.dataDir, "mood", "mood.db")
 	moodDBOK := true
 	if _, statErr := os.Stat(moodDB); statErr == nil {
-		if db, err := sql.Open("sqlite3", moodDB); err == nil {
+		if m.CheckpointMoodDB != nil {
+			if chkErr := m.CheckpointMoodDB(m.ctx); chkErr != nil {
+				logx.Printf("cloudsync: ERROR wal_checkpoint(TRUNCATE) failed for mood.db: %v — skipping mood.db in this backup to avoid archiving a possibly-incomplete database", chkErr)
+				moodDBOK = false
+			}
+		} else if db, err := sql.Open("sqlite3", moodDB); err == nil {
+			// No live store wired in (e.g. a test constructing Manager
+			// directly) — fall back to a one-off connection, same as
+			// before this existed.
 			if _, chkErr := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); chkErr != nil {
 				logx.Printf("cloudsync: ERROR wal_checkpoint(TRUNCATE) failed for mood.db: %v — skipping mood.db in this backup to avoid archiving a possibly-incomplete database", chkErr)
 				moodDBOK = false

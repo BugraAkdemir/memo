@@ -3,7 +3,7 @@ package app
 import (
 	"archive/zip"
 	"bytes"
-	"database/sql"
+	"context"
 	"fmt"
 	"io"
 	"memo/internal/logx"
@@ -12,8 +12,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	_ "github.com/mattn/go-sqlite3"
 
 	"memo/internal/config"
 	"memo/internal/fileutil"
@@ -28,7 +26,17 @@ func (a *App) ExportData(includeModels bool) ([]byte, error) {
 	// Force WAL checkpoint on memory.db so that committed-but-unmerged WAL
 	// transactions are flushed to the main database file before archiving.
 	// Without this, recent interactions may be missing from the export.
-	checkpointMemoryDB(config.DataPath("memory", "memory.db"))
+	// Routed through the live store (not a second raw connection to the
+	// same file, which used to race the store's own write loop with no
+	// coordination — see BUG_REPORT.md P1-4); a.store is nil on a fresh
+	// install that has never opened memory.db, nothing to checkpoint then.
+	if a.store != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := a.store.Checkpoint(ctx); err != nil {
+			logx.Printf("export: WAL checkpoint on memory.db: %v", err)
+		}
+		cancel()
+	}
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -493,17 +501,3 @@ func (a *App) WipeAllData() error {
 	return nil
 }
 
-// checkpointMemoryDB forces a WAL checkpoint on memory.db so committed
-// transactions are flushed to the main database file. This ensures exports
-// contain recent data that may still be in the WAL journal. Errors are
-// non-fatal — a missing/unopened DB (e.g. first run) is silently skipped.
-func checkpointMemoryDB(dbPath string) {
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return
-	}
-	defer db.Close()
-	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
-		logx.Printf("export: WAL checkpoint on %s: %v", dbPath, err)
-	}
-}

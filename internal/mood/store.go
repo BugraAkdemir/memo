@@ -113,3 +113,15 @@ func (s *Store) historySince(ctx context.Context, since time.Time) ([]HistoryPoi
 }
 
 func (s *Store) close() error { return s.db.Close() }
+
+// checkpoint forces a WAL checkpoint (mode TRUNCATE) so committed-but-WAL-only
+// mood records are flushed into mood.db's main file before it's archived.
+// Runs directly on s.db (not a second connection) — SetMaxOpenConns(1)
+// above means database/sql's own pool already serializes this against any
+// other query this Store issues; a second sql.Open to the same path (what
+// cloudsync used to do) would not share that serialization at all. See
+// BUG_REPORT.md P1-4.
+func (s *Store) checkpoint(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
+	return err
+}

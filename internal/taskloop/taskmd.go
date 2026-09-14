@@ -7,6 +7,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+
+	"memo/internal/fileutil"
 )
 
 // NotifyLevel controls how chatty a Self-Driving task is on its notification
@@ -126,11 +129,25 @@ func ParseTaskMd(path string) (*ParsedTaskMd, error) {
 	return out, nil
 }
 
+// markItemDoneMu serializes every MarkItemDone call process-wide. Without
+// it, two task lists that happen to share the same TaskMdPath (or even two
+// calls for the same list racing a retry/resume) each do their own
+// read-full-file -> mutate-one-line -> write-full-file with no
+// coordination — a classic TOCTOU: whichever write lands second silently
+// reverts whatever line the first write had just set, based on the stale
+// copy it read before the first write happened. One process-wide mutex is
+// simpler than per-path locking and costs nothing measurable — this
+// rewrites one small markdown file, not a hot path.
+var markItemDoneMu sync.Mutex
+
 // MarkItemDone rewrites the "[ ]" on the given 1-based line to "[x]" in place,
 // preserving indentation and everything after the checkbox. If the line has no
 // unchecked box (already "[x]", or not a checkbox line) it is a no-op. An
 // out-of-range line number is an error.
 func MarkItemDone(path string, line int) error {
+	markItemDoneMu.Lock()
+	defer markItemDoneMu.Unlock()
+
 	info, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("taskloop: stat Task.md: %w", err)
@@ -149,7 +166,11 @@ func MarkItemDone(path string, line int) error {
 	} else {
 		return nil
 	}
-	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), info.Mode().Perm())
+	// AtomicWrite (temp file + rename), not a plain truncate-then-write:
+	// store.go's own state already goes through this for the same reason
+	// (a crash mid-write must never leave Task.md — the user-facing source
+	// file, not just internal state — truncated/corrupted).
+	return fileutil.AtomicWrite(path, []byte(strings.Join(lines, "\n")), info.Mode().Perm())
 }
 
 // markLineDone replaces the first "[ ]" in s with "[x]". It only touches a line

@@ -1,9 +1,11 @@
 package taskloop
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -140,6 +142,58 @@ func TestMarkItemDone_LineOutOfRange(t *testing.T) {
 
 	if err := MarkItemDone(path, 99); err == nil {
 		t.Fatal("expected an error for an out-of-range line")
+	}
+}
+
+// TestMarkItemDone_ConcurrentCallsDoNotLoseUpdates is the regression test
+// for the P2 finding that MarkItemDone did an unlocked
+// read-full-file -> mutate-one-line -> write-full-file with no
+// coordination — two task lists sharing the same TaskMdPath (or two calls
+// for the same list racing a retry/resume) could each read a stale copy
+// and one write would silently clobber the other's already-applied
+// change. Fires many concurrent MarkItemDone calls against different
+// lines of the same file and asserts every single one actually stuck —
+// a lost update shows up as a line that's still "[ ]" afterward.
+func TestMarkItemDone_ConcurrentCallsDoNotLoseUpdates(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Task.md")
+
+	const n = 50
+	var sb strings.Builder
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&sb, "- [ ] item %d\n", i)
+	}
+	writeFile(t, path, sb.String())
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(line int) {
+			defer wg.Done()
+			if err := MarkItemDone(path, line); err != nil {
+				errCh <- err
+			}
+		}(i + 1) // 1-based lines
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Errorf("MarkItemDone: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read final Task.md: %v", err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) != n {
+		t.Fatalf("got %d lines, want %d", len(lines), n)
+	}
+	for i, line := range lines {
+		if !strings.Contains(line, "[x]") {
+			t.Errorf("line %d (%q) was never marked done — a concurrent write lost this update", i+1, line)
+		}
 	}
 }
 

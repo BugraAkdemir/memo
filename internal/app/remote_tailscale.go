@@ -58,6 +58,33 @@ func (a *App) stopTailscale() {
 	}
 }
 
+// ensureTailscaleWebServerBind makes sure the local web server the
+// Tailscale tunnel reverse-proxies to is actually bound to 0.0.0.0,
+// restarting it if necessary. This must run before the tunnel is (re)started
+// whenever Tailscale is being enabled: tsnet forwards every inbound tailnet
+// (and, with Funnel on, public-internet) request to this same local port,
+// but remoteAuthOK (server.go) skips its auth check entirely whenever the
+// listener isn't bound to 0.0.0.0 — SetTailscaleMode/startupTailscale used
+// to only ever bind (or leave bound) to 127.0.0.1, so every request
+// arriving through Tailscale/Funnel bypassed auth completely regardless of
+// AuthMode, even with a password configured. A nil web server is tolerated
+// as a no-op, matching the callers' pre-existing nil handling.
+func (a *App) ensureTailscaleWebServerBind(port int) error {
+	ws := a.getWebServer()
+	if ws == nil {
+		return nil
+	}
+	if ws.IsRunning() && ws.GetListenAddr() == "0.0.0.0" {
+		return nil
+	}
+	if ws.IsRunning() {
+		if err := ws.Stop(); err != nil {
+			logx.Printf("[tailscale] error stopping server for rebind: %v", err)
+		}
+	}
+	return ws.StartHTTPWithAddr(port, "0.0.0.0")
+}
+
 // SetTailscaleMode configures and (re)starts the Tailscale tunnel. Passing an
 // empty authKey keeps the previously stored key. No longer Beta-gated — see
 // SetBeta's doc comment for why Tailscale and Beta were decoupled.
@@ -81,8 +108,15 @@ func (a *App) SetTailscaleMode(enabled bool, authKey, hostname string, funnel bo
 		return fmt.Errorf("save config: %w", err)
 	}
 
-	// Ensure the local web server is up (LAN bind) so the tunnel has a target.
-	if ws := a.getWebServer(); ws != nil && !ws.IsRunning() {
+	if enabled {
+		// Must be bound to 0.0.0.0 before the tunnel goes up — see
+		// ensureTailscaleWebServerBind's doc comment for why.
+		if err := a.ensureTailscaleWebServerBind(port); err != nil {
+			return fmt.Errorf("start web server: %w", err)
+		}
+	} else if ws := a.getWebServer(); ws != nil && !ws.IsRunning() {
+		// Ensure the local web server is up (loopback bind) so the tunnel
+		// has a target — unchanged from before, only reachable on disable.
 		if err := ws.StartHTTPWithAddr(port, "127.0.0.1"); err != nil {
 			return fmt.Errorf("start web server: %w", err)
 		}
@@ -191,11 +225,14 @@ func (a *App) startupTailscale() {
 		return
 	}
 	port := rc.Port
-	if ws := a.getWebServer(); ws != nil && !ws.IsRunning() {
-		if err := ws.StartHTTPWithAddr(port, "127.0.0.1"); err != nil {
-			logx.Printf("[tailscale] web server start: %v", err)
-			return
-		}
+	// Must be bound to 0.0.0.0 before the tunnel comes up on launch, exactly
+	// like the runtime-toggle path in SetTailscaleMode — a boot-time
+	// auto-start that left the listener on 127.0.0.1 exposed every request
+	// arriving through Tailscale/Funnel with no auth check from the moment
+	// the app started.
+	if err := a.ensureTailscaleWebServerBind(port); err != nil {
+		logx.Printf("[tailscale] web server start: %v", err)
+		return
 	}
 
 	var err error

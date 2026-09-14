@@ -479,13 +479,23 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	if addr == "0.0.0.0" {
 		addrLog = "0.0.0.0 (LAN accessible)"
 	}
+	// Captured as locals rather than read from s.srv/s.localIPs inside the
+	// goroutine below: a rapid Stop()+StartHTTPWithAddr() rebind (e.g.
+	// ensureTailscaleWebServerBind, SetRemoteAccess) reassigns both fields
+	// for the new server while this goroutine — spawned by the *previous*
+	// call — may still be at these very first lines, unsynchronized reads
+	// of the struct fields would then race the new call's writes (caught
+	// live by go test -race once a test actually exercised back-to-back
+	// Stop+Start).
+	srv := s.srv
+	localIPs := s.localIPs
 	go func() {
 		defer logx.Recover("webserver.Server/HTTP serve")
 		logx.Info("Flutter API server (HTTP) started", "addr", fmt.Sprintf("http://%s:%d", addrLog, port))
-		for _, ip := range s.localIPs {
+		for _, ip := range localIPs {
 			logx.Info("LAN address available", "ip", ip, "port", port)
 		}
-		if err := s.srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logx.Error("Flutter server error", "err", err)
 		}
 		s.mu.Lock()

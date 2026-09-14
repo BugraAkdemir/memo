@@ -55,6 +55,11 @@ type Client struct {
 	msgCh chan Message
 	errCh chan error
 
+	// startMu serializes Start() end-to-end (see Start's own comment) —
+	// separate from mu so it doesn't also block unrelated concurrent reads
+	// (GetMe, Stop, message polling) for the whole duration of a Start call.
+	startMu sync.Mutex
+
 	mu           sync.Mutex
 	started      bool
 	reconnecting bool
@@ -126,6 +131,15 @@ func (c *Client) GetMe(ctx context.Context) (*BotInfo, error) {
 // Start validates the token and begins long-polling for updates in the
 // background. Thread-safe, no-op if already started.
 func (c *Client) Start(ctx context.Context) error {
+	// Mirrors whatsapp.Client.Start's startMu: held for this whole call so
+	// two concurrent Start()s can't both observe !c.started, both dial
+	// GetMe, and both end up launching their own pollLoop — the second
+	// clobbering the first's stopCh/stopOnce (see below) and leaving two
+	// goroutines racing to consume the same msgCh/errCh. No known caller
+	// actually does this today, but nothing before this fix made it safe.
+	c.startMu.Lock()
+	defer c.startMu.Unlock()
+
 	c.mu.Lock()
 	if c.started {
 		c.mu.Unlock()

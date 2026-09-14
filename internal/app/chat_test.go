@@ -646,6 +646,88 @@ func TestSendMessage_WebSearchOnMinimalModeOn_NoToolDefinitions(t *testing.T) {
 	}
 }
 
+// TestCallWebSearchAgentStream_UsesResolvedRouterNotStaleSyncedOne is the
+// regression test for the P1 finding that callWebSearchAgentStream called
+// a.webSearchExecutor.SyncRouter(agentRouter) followed by a separate
+// RunStream call, two steps on a SHARED Executor every web-search-mode
+// chat turn uses (unlike task/WhatsApp/sub-agent executors, which each get
+// their own private instance). Streams are only serialized per chat ID
+// (chat_locks.go), not globally, so a second concurrent web-search turn on
+// a different chat could run its own SyncRouter in between this call's
+// SyncRouter and RunStream — silently running this call's tools against
+// the OTHER chat's router. Mirrors internal/agent/executor_test.go's O5
+// regression test at this call site.
+//
+// Asserting on the REPLY CONTENT doesn't actually distinguish old from new
+// code here: in a single-threaded test, the old code's own SyncRouter(B)
+// call (right before RunStream) always overwrites a pre-set stale A before
+// RunStream ever reads it — the bug only bites under real goroutine
+// interleaving, which a deterministic test can't force. What the fix
+// (RunStreamWithRouter) actually changes structurally is that it never
+// touches the shared executor's synced router field AT ALL — so the
+// correct, precise assertion is that the executor's ActiveRouter() is
+// STILL router A (completely untouched) after the call, proving
+// SyncRouter was never invoked by this call path. The pre-fix code fails
+// this because it unconditionally calls SyncRouter(resolved router),
+// changing ActiveRouter() to B every time regardless of interleaving.
+func TestCallWebSearchAgentStream_UsesResolvedRouterNotStaleSyncedOne(t *testing.T) {
+	t.Setenv("MEMO_DATA_DIR", t.TempDir())
+
+	fakeReply := func(text string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"id":"1","object":"chat.completion","created":1,"model":"m",`+
+				`"choices":[{"index":0,"message":{"role":"assistant","content":%q},"finish_reason":"stop"}],`+
+				`"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`, text)
+		}
+	}
+	srvA := httptest.NewServer(fakeReply("reply-from-A"))
+	t.Cleanup(srvA.Close)
+	srvB := httptest.NewServer(fakeReply("reply-from-B"))
+	t.Cleanup(srvB.Close)
+
+	routerA := provider.NewRouter([]provider.ProviderConfig{
+		{Type: provider.ProviderCustom, Name: "a", BaseURL: srvA.URL, Model: "m", Enabled: true},
+	})
+	routerA.SetActiveProvider("a")
+
+	cfgMgr := provider.NewConfigManager(filepath.Join(t.TempDir(), "providers.json"), make([]byte, 32))
+	cfgMgr.Set(provider.ProviderConfig{Type: provider.ProviderCustom, Name: "b", BaseURL: srvB.URL, Model: "m", Enabled: true})
+	routerB := provider.NewRouter(cfgMgr.GetEnabled())
+	routerB.SetActiveProvider("b")
+
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("sessions.NewManager: %v", err)
+	}
+	agentExecutor := agent.NewExecutor(t.TempDir(), routerB, cfgMgr, sm)
+	webSearchExecutor := agent.NewWebSearchExecutor(agentExecutor)
+	// Pre-sync to router A — standing in for another concurrent
+	// web-search-mode chat's SyncRouter having landed on this shared
+	// executor just before this call's own RunStream would have run.
+	webSearchExecutor.SyncRouter(routerA)
+
+	a := &App{
+		cfg:                &config.AppConfig{Memory: config.MemoryConfig{MemoryEnabled: false}, WebSearch: config.WebSearchConfig{Enabled: true}},
+		identity:           identity.New("Test", "Memo", "casual", "", false),
+		sessions:           sm,
+		providerRouter:     routerB,
+		providerCfgMgr:     cfgMgr,
+		activeProviderName: "b",
+		agentExecutor:      agentExecutor,
+		webSearchExecutor:  webSearchExecutor,
+		events:             &eventRing{},
+	}
+
+	reply := a.SendMessage("naber")
+	if reply != "reply-from-B" {
+		t.Fatalf("SendMessage() = %q, want %q — must use the freshly-resolved router B, not the stale-synced router A left by another chat", reply, "reply-from-B")
+	}
+	if got := webSearchExecutor.ActiveRouter(); got != routerA {
+		t.Fatalf("shared executor's synced router changed from A to %p (want it to stay exactly routerA, i.e. SyncRouter must never be called by this call path) — this call path is back to mutating shared executor state instead of passing the router through RunStreamWithRouter", got)
+	}
+}
+
 // TestSendMessage_WebSearchOnAgentOff_SendsOnlyWebSearchTool is the
 // regression test for the redesign that replaced blind web-search
 // injection: with agent mode off and the web-search toggle on,

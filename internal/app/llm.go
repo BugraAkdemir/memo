@@ -584,14 +584,23 @@ func (a *App) callWebSearchAgentStream(ctx context.Context, messages []api.Messa
 			projectPath = sm.GetProjectPath(sessionID)
 		}
 
-		a.webSearchExecutor.SyncRouter(agentRouter)
-
 		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, Category: categoryWebSearch, PromptTokens: estimateMessagesTokens(messages)}
 
 		start := time.Now()
 		agentEvents := &agentEventLog{}
 
-		streamCh, err := a.webSearchExecutor.RunStream(ctx, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
+		// RunStreamWithRouter, not SyncRouter+RunStream — a.webSearchExecutor
+		// is one shared Executor every web-search-mode chat turn uses (unlike
+		// task/WhatsApp/sub-agent executors, which each get their own private
+		// instance), and streams are only serialized per chat ID, not
+		// globally (chat_locks.go). Two concurrent web-search turns on
+		// different chats could otherwise interleave their SyncRouter calls
+		// with each other's RunStream, silently running one chat's tools
+		// against the other chat's resolved provider — see
+		// RunStreamWithRouter's own doc comment (O5), which already fixed
+		// the identical race for a.agentExecutor; this executor had been
+		// left on the old, still-racy two-step pattern.
+		streamCh, err := a.webSearchExecutor.RunStreamWithRouter(ctx, agentRouter, sessionID, modelName, effortLevel, pMsgs, func(ev agent.AgentEvent) {
 			if ev.Type == agent.EventToolExecuting && (ev.ToolName == "web_search" || ev.ToolName == "fetch_page") {
 				trySend(ctx, outCh, api.StreamChunk{FinishReason: "status", Content: ev.ToolName})
 			}

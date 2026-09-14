@@ -41,3 +41,34 @@ func TestNewConfigManager_AddedProviderPersistsAndIsTheOnlyOne(t *testing.T) {
 		t.Errorf("GetAll()[0] = %+v, want the just-added Kilo config", got[0])
 	}
 }
+
+// TestGetEnabled_SortsByPriorityDescending_MatchingRouter is the
+// regression test for the P2 finding that GetEnabled() sorted ascending
+// (ProviderConfig with the LOWEST Priority first) while a comment claimed
+// this "matches the router's behaviour" — Router.UpdateConfigs/
+// getActiveEntries actually sort descending (HIGHEST Priority first,
+// router.go), and the Settings UI's own priority_hint text agrees
+// ("Higher = preferred"). Callers that fall back to GetEnabled()[0] as
+// "the preferred provider" (resolveAgentProvider's fallback path, llm.go)
+// silently picked the LEAST-preferred enabled provider under the old
+// ordering.
+func TestGetEnabled_SortsByPriorityDescending_MatchingRouter(t *testing.T) {
+	dir := t.TempDir()
+	cm := NewConfigManager(filepath.Join(dir, "providers.json"), []byte("test-key-32-bytes-padded-out!!!!"))
+
+	cm.Set(ProviderConfig{Type: ProviderKilo, Name: "low", Enabled: true, Priority: 1})
+	cm.Set(ProviderConfig{Type: ProviderKilo, Name: "high", Enabled: true, Priority: 10})
+	cm.Set(ProviderConfig{Type: ProviderKilo, Name: "mid", Enabled: true, Priority: 5})
+	cm.Set(ProviderConfig{Type: ProviderKilo, Name: "disabled", Enabled: false, Priority: 99})
+
+	got := cm.GetEnabled()
+	if len(got) != 3 {
+		t.Fatalf("GetEnabled() = %d entries, want 3 (disabled one excluded): %+v", len(got), got)
+	}
+	wantOrder := []string{"high", "mid", "low"}
+	for i, name := range wantOrder {
+		if got[i].Name != name {
+			t.Errorf("GetEnabled()[%d].Name = %q, want %q (want descending Priority: %v)", i, got[i].Name, name, wantOrder)
+		}
+	}
+}

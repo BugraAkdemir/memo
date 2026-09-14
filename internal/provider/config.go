@@ -159,8 +159,15 @@ func (cm *ConfigManager) GetAll() []ProviderConfig {
 	return configs
 }
 
-// GetEnabled returns only enabled provider configs, sorted by Priority ascending
-// (lower number = higher priority, matching the router's behaviour).
+// GetEnabled returns only enabled provider configs, sorted by Priority
+// descending (higher number = tried first) — matching Router.UpdateConfigs/
+// getActiveEntries's actual sort direction (router.go) and the Settings UI's
+// own documented convention (l10n.dart's priority_hint: "Higher = preferred.
+// Empty = 0."). This used to sort ascending with a comment claiming the
+// opposite was true, so a caller that falls back to GetEnabled()[0] when the
+// configured active provider isn't found (resolveAgentProvider,
+// WhatsApp self-chat's equivalent fallback) picked the LEAST-preferred
+// enabled provider instead of the most-preferred one.
 func (cm *ConfigManager) GetEnabled() []ProviderConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -172,7 +179,7 @@ func (cm *ConfigManager) GetEnabled() []ProviderConfig {
 		}
 	}
 	sort.Slice(enabled, func(i, j int) bool {
-		return enabled[i].Priority < enabled[j].Priority
+		return enabled[i].Priority > enabled[j].Priority
 	})
 	return enabled
 }

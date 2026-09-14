@@ -73,6 +73,44 @@ final chatCodeModeProvider =
   return ref.read(apiClientProvider).getChatCodeMode(chatId);
 });
 
+/// (subMode, pinned) Code Mode sub-mode state for one chat. Only meaningful
+/// when that chat's [chatCodeModeProvider] `enabled` is true.
+typedef CodeSubModeState = ({String subMode, bool pinned});
+
+final chatCodeSubModeProvider =
+    FutureProvider.family<CodeSubModeState, String>((ref, chatId) async {
+  if (chatId.isEmpty) return (subMode: 'auto', pinned: false);
+  // Same BUG-SCAN8/BUG-ONB6 guard as chatCodeModeProvider above.
+  if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+    return (subMode: 'auto', pinned: false);
+  }
+  return ref.read(apiClientProvider).getChatCodeSubMode(chatId);
+});
+
+/// Order the plan/auto/build cycle advances in — Tab in [ChatInput] and
+/// tapping [_CodeSubModeIndicator] (agent_screen.dart) both drive this same
+/// sequence, so it's defined once here rather than duplicated.
+const List<String> codeSubModeCycle = ['plan', 'auto', 'build'];
+
+/// Returns the sub-mode after `current` in [codeSubModeCycle] (wrapping);
+/// an unrecognized `current` starts the cycle from the front.
+String nextCodeSubMode(String current) {
+  final i = codeSubModeCycle.indexOf(current);
+  return codeSubModeCycle[(i + 1) % codeSubModeCycle.length];
+}
+
+/// Advances chatId's Code Mode sub-mode to the next one in
+/// [codeSubModeCycle] and invalidates [chatCodeSubModeProvider] so watchers
+/// pick up the change. Shared by the Tab keybinding (chat_input.dart) and
+/// the tap handler on the sub-mode chip (agent_screen.dart) so the two
+/// triggers can never drift out of sync with each other.
+Future<void> cycleChatCodeSubMode(WidgetRef ref, String chatId) async {
+  final current = ref.read(chatCodeSubModeProvider(chatId)).valueOrNull?.subMode ?? 'auto';
+  final next = nextCodeSubMode(current);
+  await ref.read(apiClientProvider).setChatCodeSubMode(chatId, next);
+  ref.invalidate(chatCodeSubModeProvider(chatId));
+}
+
 final agentPermissionsProvider =
     AsyncNotifierProvider<AgentPermissionsNotifier, List<AgentPermission>>(
   AgentPermissionsNotifier.new,

@@ -1295,6 +1295,11 @@ class L10n {
     'code_mode_off_tooltip':
         'Kod Modu kapalı — normal sohbet promptu. Açmak için dokun.',
     'code_mode_toggle_failed': 'Kod Modu değiştirilemedi (\${error})',
+    'code_submode_plan': 'Plan',
+    'code_submode_auto': 'Auto',
+    'code_submode_build': 'Build',
+    'code_submode_tab_hint':
+        'Plan / Auto / Build arasında geçiş — Tab tuşuna bas ya da dokun',
     'agent_chat_select': 'Ajan Sohbeti Seç',
     'agent_chat_instruction':
         'Soldan bir ajan sohbeti seç veya yeni bir tane başlat.',
@@ -3406,6 +3411,11 @@ class L10n {
     'code_mode_off_tooltip':
         'Code Mode off — normal chat prompt. Tap to turn on.',
     'code_mode_toggle_failed': 'Could not change Code Mode (\${error})',
+    'code_submode_plan': 'Plan',
+    'code_submode_auto': 'Auto',
+    'code_submode_build': 'Build',
+    'code_submode_tab_hint':
+        'Switch between Plan / Auto / Build — press Tab or tap',
     'agent_chat_select': 'Select Agent Chat',
     'agent_chat_instruction':
         'Select an agent chat from the left or start a new one.',

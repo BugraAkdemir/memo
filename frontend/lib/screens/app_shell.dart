@@ -294,6 +294,8 @@ class _AppShellState extends ConsumerState<AppShell> {
         // is built by the always-mounted _AgentTopBar; a 401 during startup
         // stuck it at the "off" default. Invalidate every family instance.
         ref.invalidate(chatCodeModeProvider);
+        // Same guard, same reason, for the per-chat sub-mode indicator.
+        ref.invalidate(chatCodeSubModeProvider);
         // v4.6.0 Faz D: the task-event SSE also 401s while the gate is up;
         // its own 3s retry loop would eventually recover, this just makes it
         // immediate.

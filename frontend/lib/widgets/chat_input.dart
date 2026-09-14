@@ -16,6 +16,7 @@ import '../models/agent.dart';
 import '../models/chat.dart';
 import '../models/cli_command.dart';
 import '../models/provider_config.dart';
+import '../providers/agent_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
 import '../providers/orchestra_provider.dart';
@@ -55,8 +56,10 @@ class _PopupEnterIntent extends Intent {
   const _PopupEnterIntent();
 }
 
-/// Tab: confirm the popup. Only bound/enabled while a popup is open — falls
-/// through to normal focus-traversal behavior otherwise.
+/// Tab: confirm the popup if one is open; otherwise, while Code Mode is on
+/// for the active chat, cycle its plan/auto/build sub-mode. Falls through to
+/// normal focus-traversal behavior only when neither applies (no popup, and
+/// either no active chat or Code Mode off for it).
 class _PopupConfirmIntent extends Intent {
   const _PopupConfirmIntent();
 }
@@ -966,6 +969,13 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final taskLocksInput =
         sdTask != null && (sdTask.running || sdTask.awaitingPlan);
 
+    // Code Mode's plan/auto/build cycle: Tab advances it, but only while
+    // Code Mode is actually on for this chat and no popup is open (Tab's
+    // existing job there wins) — see the _PopupConfirmIntent action below.
+    final codeModeOn = sdChatId.isEmpty
+        ? false
+        : ref.watch(chatCodeModeProvider(sdChatId)).valueOrNull?.enabled ?? false;
+
     ref.listen(activeChatIdProvider, (prev, next) {
       final prevId = prev?.valueOrNull ?? '';
       final nextId = next.valueOrNull ?? '';
@@ -1372,9 +1382,25 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                             return null;
                           },
                         ),
+                        // Tab: confirm the popup if one is open (unchanged);
+                        // otherwise, while Code Mode is on for this chat,
+                        // cycle its plan/auto/build sub-mode instead — same
+                        // key the _CodeSubModeIndicator chip in
+                        // agent_screen.dart's top bar cycles on tap
+                        // (agent_provider.dart's cycleChatCodeSubMode, so
+                        // the two triggers can't drift apart). Falls through
+                        // to normal focus traversal when Code Mode is off,
+                        // exactly as before this sub-mode feature existed.
                         _PopupConfirmIntent: _PopupCallbackAction<_PopupConfirmIntent>(
-                          isEnabledWhen: () => _popupActive,
-                          onInvoke: (_) => _confirmPopupSelection(),
+                          isEnabledWhen: () => _popupActive || codeModeOn,
+                          onInvoke: (_) {
+                            if (_popupActive) {
+                              _confirmPopupSelection();
+                            } else if (codeModeOn && sdChatId.isNotEmpty) {
+                              cycleChatCodeSubMode(ref, sdChatId);
+                            }
+                            return null;
+                          },
                         ),
                         _PopupDismissIntent: _PopupCallbackAction<_PopupDismissIntent>(
                           isEnabledWhen: () => _popupActive,

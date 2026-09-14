@@ -293,7 +293,12 @@ testlerinin gerçek HTTP API üzerinden sub-mode pinleyebilmesi için gerekti)
 grep'i, gerçek uygulamada manuel tab-döngüsü + dosya-mention popup'ıyla
 çakışmadığı kontrolü.
 
-- [ ] Yapıldı
+- [x] Yapıldı (commit'lendi 2026-09-15) — `flutter analyze` temiz (bilinen
+  5 info dışında yeni uyarı yok), `flutter test` 341/341, Rule #8 grep boş.
+  **Gerçek masaüstü uygulamada manuel/görsel doğrulama yapılmadı** (bu
+  ortamda görsel bir Flutter Linux masaüstü test ortamı yok) — Tab
+  döngüsünün dosya-mention popup'ıyla gerçekten çakışmadığı ve rozetin
+  gerçek pencerede doğru göründüğü kullanıcı tarafından teyit edilmeli.
 
 ---
 

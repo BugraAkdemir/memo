@@ -469,6 +469,32 @@ class MemoApiClient {
     );
   }
 
+  /// Code Mode's sub-mode for one chat: (subMode, pinned). subMode is
+  /// 'plan' | 'auto' | 'build'; pinned is whether the user chose it
+  /// explicitly (vs. the "auto" default). Only meaningful when
+  /// [getChatCodeMode]'s `enabled` is true.
+  Future<({String subMode, bool pinned})> getChatCodeSubMode(
+    String chatId,
+  ) async {
+    final res = await _dio.get(
+      '/api/chats/code-submode',
+      queryParameters: {'id': chatId},
+    );
+    return (
+      subMode: res.data['sub_mode'] as String? ?? 'auto',
+      pinned: res.data['pinned'] as bool? ?? false,
+    );
+  }
+
+  /// subMode = 'plan'/'auto'/'build' pins the choice; null (or '') clears
+  /// the pin so the chat follows the default ('auto') again.
+  Future<void> setChatCodeSubMode(String chatId, String? subMode) async {
+    await _dio.post(
+      '/api/chats/code-submode',
+      data: {'id': chatId, 'sub_mode': subMode},
+    );
+  }
+
   /// Model ids a CLI-backed chat can be switched to. Empty means no override
   /// list is available right now (e.g. Codex before its own model cache
   /// exists) — the CLI's own default is the only option.

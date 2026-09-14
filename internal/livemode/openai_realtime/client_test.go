@@ -528,6 +528,53 @@ func TestClient_OmitsVoiceWhenNoneGiven(t *testing.T) {
 	}
 }
 
+// TestClient_EmitsInterruptedEventOnSpeechStarted is the regression test
+// for the P2 finding that this client never surfaced server-side barge-in
+// at all — google.Client's equivalent (serverContent.Interrupted ->
+// EventInterrupted) has its own TestClient_EmitsInterruptedEvent, but this
+// client's serverEvent doc comment used to say every field besides audio-
+// delta/function-call was "read and silently ignored", including
+// input_audio_buffer.speech_started — OpenAI Realtime's own server-VAD
+// barge-in signal. Mirrors google's test exactly: a real websocket server
+// sends the raw event, and the client must surface it as the same
+// EventInterrupted the rest of this codebase (and the Flutter UI) already
+// knows how to handle.
+func TestClient_EmitsInterruptedEventOnSpeechStarted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		if _, _, err := c.Read(ctx); err != nil { // consume session.update
+			return
+		}
+		payload, _ := json.Marshal(serverEvent{Type: serverEventSpeechStarted})
+		c.Write(ctx, websocket.MessageText, payload)
+		<-ctx.Done()
+	}))
+	defer srv.Close()
+	original := SessionBaseURL
+	SessionBaseURL = "ws" + strings.TrimPrefix(srv.URL, "http")
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("oa-key", "gpt-realtime-2.1", "", nil, nil)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case ev := <-c.Events():
+		if ev.Type != livemode.EventInterrupted {
+			t.Fatalf("expected EventInterrupted, got %s", ev.Type)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the interrupted event")
+	}
+}
+
 func TestClient_SendsToolsInSessionUpdate(t *testing.T) {
 	f := newFakeRealtimeServer(t)
 	original := SessionBaseURL

@@ -144,11 +144,13 @@ type messageContentPart struct {
 
 // serverEvent covers only the fields this phase's client reads —
 // response.output_audio.delta's "delta" field, and
-// response.function_call_arguments.done's call_id/name/arguments. Every
-// other event type (session.created, session.updated, input_audio_buffer.
-// speech_started/stopped, etc.) is read and silently ignored by Type not
-// matching, the same defensive "unknown/irrelevant message is not fatal"
-// stance google.Client's readLoop takes.
+// response.function_call_arguments.done's call_id/name/arguments.
+// input_audio_buffer.speech_started (server-side barge-in) is now also
+// handled — see serverEventSpeechStarted. Every other event type
+// (session.created, session.updated, input_audio_buffer.speech_stopped,
+// etc.) is read and silently ignored by Type not matching, the same
+// defensive "unknown/irrelevant message is not fatal" stance
+// google.Client's readLoop takes.
 type serverEvent struct {
 	Type       string `json:"type"`
 	Delta      string `json:"delta,omitempty"`
@@ -172,6 +174,16 @@ const (
 	// use — the field itself is named "transcript", the same name
 	// conversation.item.input_audio_transcription.completed already uses).
 	serverEventOutputTranscriptDone = "response.output_audio_transcript.done"
+	// serverEventSpeechStarted is OpenAI Realtime's server-side VAD
+	// barge-in signal — the user started talking over the model. Mirrors
+	// google.Client's serverContent.Interrupted handling: the client
+	// should immediately drop any audio it still has buffered so the
+	// model doesn't keep talking for the tail of that buffer after a
+	// clear interruption. Confirmed against current API docs,
+	// 2026-08-26 (input_audio_buffer.speech_started, emitted whenever
+	// server-side turn detection is enabled — the default this package's
+	// Start() leaves in place).
+	serverEventSpeechStarted = "input_audio_buffer.speech_started"
 )
 
 // ─── Client ───────────────────────────────────────────────────────────
@@ -391,6 +403,16 @@ func (c *Client) readLoop() {
 		}
 
 		switch ev.Type {
+		case serverEventSpeechStarted:
+			// Server-side barge-in — see serverEventSpeechStarted's doc
+			// comment. Previously discarded entirely (this package's own
+			// doc comments used to note that every event besides the two
+			// handled ones was "read and silently ignored by Type not
+			// matching" — including this one, meaning barge-in only ever
+			// worked on the Google Live engine).
+			if !c.trySendEvent(livemode.SessionEvent{Type: livemode.EventInterrupted}) {
+				return
+			}
 		case serverEventFunctionCallArgsDone:
 			logx.GoRecover("livemode/openai_realtime.Client.runToolCall", func() { c.runToolCall(ev) })
 			continue

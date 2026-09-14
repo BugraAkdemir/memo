@@ -38,13 +38,15 @@ const (
 // WS connection produced it. Set once by internal/app (mirrors
 // internal/agent's GlobalActivityHook for the same reason: this package
 // can't import internal/app, which owns the desktop mascot's activity
-// tracker). There is deliberately no equivalent "listening" hook — neither
-// real engine currently parses the provider's speech-start/stop fields
-// into anything this package exposes — google.Client's readLoop doc
-// comment and openai_realtime.Client's serverEvent doc comment both note
-// those fields are read and silently discarded — so a "listening" signal
-// would have to be guessed from the absence of audio rather than a real
-// event.
+// tracker). There is deliberately no equivalent "listening" hook: neither
+// engine's speech-start/stop fields are parsed into a distinct "the user
+// is currently talking" signal this package exposes, so a "listening"
+// mood would have to be guessed from the absence of audio rather than a
+// real event. openai_realtime.Client now does parse its speech-start
+// field (input_audio_buffer.speech_started) — but only as the existing
+// EventInterrupted (server-side barge-in), mirroring what google.Client
+// already did with serverContent.Interrupted, not as a new "listening"
+// event type.
 var GlobalActivityHook func()
 
 // RoleUser/RoleModel identify who a SessionEvent.Transcript belongs to —

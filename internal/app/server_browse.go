@@ -43,13 +43,16 @@ type ServerBrowseResult struct {
 //
 // path == "" starts at the server's home directory (matching where a
 // native file dialog usually opens) — falls back to "/" if that can't be
-// determined. No extra permission check beyond normal request
-// authentication: this exposes directory/file *names* only (never
-// content) to any authenticated account, admin or not, which is no wider
-// than what agent tools (ReadFile/WriteFile/RunCommand) already grant a
-// "user"-role account's own agent chats — see yapacam.md's Faz 5.1 role
-// boundary (users get full agent access; only server-*security*-config is
-// admin-only).
+// determined. This function itself does no permission check (walks
+// whatever path it's given with no boundary) — that's enforced one layer
+// up, at the route: internal/webserver/server.go gates GET /api/files/browse
+// behind requirePermissionStrict(..., hasModelsPerm), not just normal
+// authentication, precisely because this exposes directory/file *names*
+// (never content) system-wide to whoever can call it. Models was chosen
+// there as the narrowest existing permission that already implies "may
+// point the backend at an arbitrary local path" (importing a local model
+// file), rather than treating every authenticated account as equivalent —
+// see that route's own comment for the full reasoning.
 func (a *App) BrowseServerPath(path string) (interface{}, error) {
 	if path == "" {
 		if home, err := os.UserHomeDir(); err == nil {

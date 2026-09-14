@@ -371,7 +371,7 @@ func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Rou
 		if o.MaxContinuations > 0 {
 			pipeline.maxContinuations = o.MaxContinuations
 		}
-		pipeline.autoApproveMedium = o.AutoApproveMedium
+		pipeline.codeSubMode = o.CodeSubMode
 	}
 	// Read through the locked getters, not the bare fields — SetBypassPermissions/
 	// SetAutoPermission write under e.mu from a different goroutine (an HTTP

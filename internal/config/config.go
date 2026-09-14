@@ -311,12 +311,19 @@ type AgentModeConfig struct {
 	// non-Code-Mode value.
 	CodeModeMaxIterations    int `yaml:"code_mode_max_iterations" json:"code_mode_max_iterations"`
 	CodeModeMaxContinuations int `yaml:"code_mode_max_continuations" json:"code_mode_max_continuations"`
-	// CodeModeAutoApproveEdits: in Code Mode, auto-approve Medium-danger tools
-	// (write_file / edit_file / insert_line / delete_lines / *_task_md) without
-	// a permission prompt — every write is snapshotted by the BackupManager
-	// and revertible, and opening a project chat is the consent. Dangerous
-	// tools (delete_file, run_command, change_directory) still prompt. Default
-	// true.
+	// CodeModeAutoApproveEdits: whether Code Mode's "auto" sub-mode (see
+	// internal/app/agent_chat_context.go's resolveCodeSubMode) auto-approves
+	// its file-editing tools (write_file / edit_file / insert_line /
+	// delete_lines / *_task_md) without a permission prompt — every write is
+	// snapshotted by the BackupManager and revertible, and opening a project
+	// chat is the consent. false makes "auto" behave like "plan" (nothing
+	// auto-approved, every edit still prompts) without changing which
+	// sub-mode is active or its system prompt. delete_file, run_command,
+	// change_directory, self_clone, and configure_provider are unaffected by
+	// this flag either way — "auto" never auto-approves them; only "build"
+	// sub-mode's separate, fixed set (agent.codeModeBuildAutoApproveTools)
+	// adds run_command, and that set has no config toggle of its own.
+	// Default true.
 	CodeModeAutoApproveEdits bool `yaml:"code_mode_auto_approve_edits" json:"code_mode_auto_approve_edits"`
 
 	// CodePlanPrompt / CodeAutoPrompt / CodeBuildPrompt are user-editable

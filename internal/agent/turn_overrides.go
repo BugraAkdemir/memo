@@ -10,9 +10,13 @@ type TurnOverrides struct {
 	// turn when > 0.
 	MaxIters         int
 	MaxContinuations int
-	// AutoApproveMedium auto-approves Medium-danger tools (file edits/writes)
-	// without a permission prompt. Dangerous tools still prompt.
-	AutoApproveMedium bool
+	// CodeSubMode is Code Mode's sub-mode for this turn ("plan"/"auto"/
+	// "build", "" = not Code Mode) — see codeModeToolAutoApproveSet's doc
+	// comment for what each auto-approves. Kept as a plain string (not a
+	// bool, unlike the field this replaced) so TurnOverrides stays a
+	// comparable struct — the `o != (TurnOverrides{})` check above and this
+	// package's tests both rely on that; a map field here would break it.
+	CodeSubMode string
 }
 
 type turnOverridesCtxKey struct{}

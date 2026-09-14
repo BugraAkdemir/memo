@@ -135,7 +135,7 @@ yeşil. Flutter tarafı dokunulmadı, `flutter analyze`/`test` gerekmiyor.
 **Doğrulama:** Go build/vet/test **-race** (bu birim tam olarak `-race`'in
 bulmaya çalıştığı tool-call döngüsüne dokunuyor).
 
-- [ ] Yapıldı
+- [x] Yapıldı (commit'lendi 2026-09-15)
 
 ---
 

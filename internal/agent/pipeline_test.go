@@ -554,7 +554,7 @@ func TestRunStream_AutoContinueExhausted(t *testing.T) {
 	}
 }
 
-// TestRunStream_AutoApproveMedium: with autoApproveMedium set (Code Mode), a
+// TestRunStream_AutoApproveMedium: with codeSubMode "auto" set (Code Mode), a
 // Medium-danger tool like write_file executes without a permission prompt —
 // no permissionWaitFn is provided and the pipeline must not block or panic
 // waiting for one.
@@ -573,7 +573,7 @@ func TestRunStream_AutoApproveMedium(t *testing.T) {
 	}}
 
 	pipeline := NewPipeline(registry, permissions, sandbox, prov, backup)
-	pipeline.autoApproveMedium = true // no autoPermission, no bypass
+	pipeline.codeSubMode = "auto" // no autoPermission, no bypass
 
 	ch, err := pipeline.RunStream(context.Background(), nil, "m", func(AgentEvent) {}, nil)
 	if err != nil {
@@ -598,9 +598,9 @@ func TestRunStream_AutoApproveMedium(t *testing.T) {
 }
 
 // TestRunStream_AutoApproveMedium_OnlyFileEditTools guards BUG-SCAN3: Code
-// Mode (autoApproveMedium) must auto-approve only the file-editing tools,
-// not every Medium-danger tool. read_env is Medium but not revertible and
-// not implied by "I opened a coding chat", so it must still prompt.
+// Mode's "auto" sub-mode must auto-approve only the file-editing tools, not
+// every Medium-danger tool. read_env is Medium but not revertible and not
+// implied by "I opened a coding chat", so it must still prompt.
 func TestRunStream_AutoApproveMedium_OnlyFileEditTools(t *testing.T) {
 	dir := t.TempDir()
 	registry := NewRegistry()
@@ -614,7 +614,7 @@ func TestRunStream_AutoApproveMedium_OnlyFileEditTools(t *testing.T) {
 	}}
 
 	pipeline := NewPipeline(registry, permissions, sandbox, prov, backup)
-	pipeline.autoApproveMedium = true
+	pipeline.codeSubMode = "auto"
 
 	prompted := false
 	deny := func(_ string, ev AgentEvent) (PermissionPolicy, error) {
@@ -632,6 +632,118 @@ func TestRunStream_AutoApproveMedium_OnlyFileEditTools(t *testing.T) {
 	}
 	if !prompted {
 		t.Fatalf("read_env was auto-approved under Code Mode; it must still prompt (BUG-SCAN3)")
+	}
+}
+
+// TestRunStream_PlanSubMode_NoAutoApprove: "plan" sub-mode's restriction is
+// soft/prompt-only (see agent_chat_context.go's codePlanDirective) — the
+// tool itself stays callable, but codeModeToolAutoApproveSet("plan") is
+// empty, so an edit attempt still falls through to a normal permission
+// prompt instead of being silently approved like "auto"/"build" would.
+func TestRunStream_PlanSubMode_NoAutoApprove(t *testing.T) {
+	dir := t.TempDir()
+	registry := NewRegistry()
+	permissions := NewPermissionManager(t.TempDir())
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+	backup := NewBackupManager(t.TempDir())
+
+	prov := &scriptedProvider{responses: []provider.ChatResponse{
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "w1", "write_file", map[string]string{
+			"path": "out.txt", "content": "should not land without a prompt",
+		})}},
+		{Content: "done"},
+	}}
+
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, backup)
+	pipeline.codeSubMode = "plan"
+
+	prompted := false
+	deny := func(_ string, ev AgentEvent) (PermissionPolicy, error) {
+		if ev.ToolName == "write_file" {
+			prompted = true
+		}
+		return DenyOnce, nil
+	}
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "m", func(AgentEvent) {}, deny)
+	if err != nil {
+		t.Fatalf("RunStream: %v", err)
+	}
+	for range ch {
+	}
+	if !prompted {
+		t.Fatal("write_file was auto-approved in plan sub-mode; it must still prompt")
+	}
+	if _, err := os.ReadFile(filepath.Join(dir, "out.txt")); err == nil {
+		t.Fatal("write_file executed in plan sub-mode despite being denied")
+	}
+}
+
+// TestRunStream_BuildSubMode_AutoApprovesRunCommand: "build" sub-mode's set
+// is "auto"'s 6 tools plus run_command (Dangerous, not Medium) — decision 2
+// of the plan/auto/build design. Membership in the resolved set is what
+// grants approval here, not DangerLevel.
+func TestRunStream_BuildSubMode_AutoApprovesRunCommand(t *testing.T) {
+	dir := t.TempDir()
+	registry := NewRegistry()
+	permissions := NewPermissionManager(t.TempDir())
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+	backup := NewBackupManager(t.TempDir())
+
+	prov := &scriptedProvider{responses: []provider.ChatResponse{
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "c1", "run_command", map[string]string{
+			"command": "echo hello-from-build-mode > out.txt",
+		})}},
+		{Content: "ran it"},
+	}}
+
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, backup)
+	pipeline.codeSubMode = "build" // no autoPermission, no bypass — proves the sub-mode set alone approves it
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "m", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream: %v", err)
+	}
+	var text string
+	for c := range ch {
+		text += c.Content
+		text += c.Error
+	}
+	if !strings.Contains(text, "ran it") {
+		t.Fatalf("turn did not complete cleanly: %q", text)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "out.txt"))
+	if err != nil || strings.TrimSpace(string(data)) != "hello-from-build-mode" {
+		t.Fatalf("run_command did not execute under build sub-mode: err=%v data=%q", err, data)
+	}
+}
+
+// TestCodeModeToolAutoApproveSet is a table test over every sub-mode string
+// the resolver needs to handle correctly.
+func TestCodeModeToolAutoApproveSet(t *testing.T) {
+	cases := []struct {
+		subMode          string
+		wantAutoApproved []string
+		wantStillPrompts []string
+	}{
+		{"", nil, []string{"write_file", "run_command"}},
+		{"plan", nil, []string{"write_file", "run_command"}},
+		{"auto", []string{"write_file", "edit_file", "insert_line", "delete_lines", "create_task_md", "edit_task_md"}, []string{"run_command", "delete_file", "change_directory"}},
+		{"build", []string{"write_file", "edit_file", "insert_line", "delete_lines", "create_task_md", "edit_task_md", "run_command"}, []string{"delete_file", "change_directory", "self_clone", "configure_provider"}},
+		{"unknown-value", nil, []string{"write_file", "run_command"}},
+	}
+	for _, c := range cases {
+		set := codeModeToolAutoApproveSet(c.subMode)
+		for _, tool := range c.wantAutoApproved {
+			if !set[tool] {
+				t.Errorf("subMode %q: expected %q to be auto-approved, set=%v", c.subMode, tool, set)
+			}
+		}
+		for _, tool := range c.wantStillPrompts {
+			if set[tool] {
+				t.Errorf("subMode %q: expected %q to still prompt, but it's in the auto-approve set", c.subMode, tool)
+			}
+		}
 	}
 }
 

@@ -52,8 +52,8 @@ type Pipeline struct {
 	sandbox           *Sandbox
 	prov              AgentProvider
 	maxIters          int
-	maxContinuations  int  // auto-"keep going" restarts allowed after hitting maxIters (0 = hard stop)
-	autoApproveMedium bool // Code Mode: approve Medium-danger tools (edits) without a prompt
+	maxContinuations  int    // auto-"keep going" restarts allowed after hitting maxIters (0 = hard stop)
+	codeSubMode       string // Code Mode sub-mode ("plan"/"auto"/"build", "" = not Code Mode) — see codeModeToolAutoApproveSet
 	backup            *BackupManager
 	maxTokens         int           // context window token budget for this turn (0 = unlimited)
 	toolTimeout       time.Duration // max time per tool execution (0 = no limit)
@@ -367,17 +367,20 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 					permRes.Allowed = true
 				}
 
-				// Code Mode: the file-editing tools flow without a prompt — every
-				// write is snapshotted by the BackupManager and revertible, and
-				// opening a project chat is the consent. This is gated on an
-				// explicit tool all-list, NOT on DangerLevel == Medium: the Medium
-				// set also contains whatsapp_send / share_file / read_env /
+				// Code Mode: the sub-mode's auto-approve set flows without a
+				// prompt — every file edit in it is snapshotted by the
+				// BackupManager and revertible, "build" additionally auto-approves
+				// run_command (still subject to RunCommand's own unconditional
+				// blacklist/protected-path check). Gated on an explicit tool
+				// name-list per sub-mode, NOT on DangerLevel: the Medium level also
+				// contains whatsapp_send / share_file / read_env /
 				// start_self_driving_task / create_routine / cancel_routine, none
 				// of which are revertible or implied by "I opened a coding chat"
-				// (BUG-SCAN3). Everything outside the list still prompts.
-				if permRes.NeedPrompt && p.autoApproveMedium &&
-					toolDef.DangerLevel == Medium && codeModeAutoApproveTools[toolName] {
-					logx.Printf("AGENT: [CODE] auto-approving %q (code-mode edits)", toolName)
+				// (BUG-SCAN3), and build's run_command is Dangerous, not Medium —
+				// so membership in the resolved set is the only thing that matters
+				// here. Everything outside it still prompts, in every sub-mode.
+				if permRes.NeedPrompt && codeModeToolAutoApproveSet(p.codeSubMode)[toolName] {
+					logx.Printf("AGENT: [CODE:%s] auto-approving %q (code-mode edits)", p.codeSubMode, toolName)
 					permRes.NeedPrompt = false
 					permRes.Allowed = true
 				}
@@ -521,9 +524,10 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 	return outCh, nil
 }
 
-// codeModeAutoApproveTools is the exact set of tools Code Mode may run
-// without a permission prompt (see the gate in RunStream). Deliberately a
-// name all-list and not a DangerLevel bucket: these all edit files under the
+// codeModeAutoApproveTools is the exact set of tools Code Mode's "auto"
+// sub-mode (and, historically, Code Mode as a whole before sub-modes
+// existed) may run without a permission prompt. Deliberately a name
+// all-list and not a DangerLevel bucket: these all edit files under the
 // project directory and are individually revertible via the BackupManager,
 // which is the property that makes "opening a project chat is the consent"
 // defensible. Adding a tool here is a security decision.
@@ -534,6 +538,47 @@ var codeModeAutoApproveTools = map[string]bool{
 	"delete_lines":   true,
 	"create_task_md": true,
 	"edit_task_md":   true,
+}
+
+// codeModeBuildAutoApproveTools is "build" sub-mode's set: everything "auto"
+// auto-approves, plus run_command. Deliberately its own explicit literal
+// (not codeModeAutoApproveTools copied-and-mutated at init time) so it reads
+// as its own security decision, same reasoning as the doc comment above.
+// run_command is DangerLevel Dangerous, not Medium — membership in this map
+// is what grants the auto-approval, not the tool's danger level (see the gate
+// in RunStream) — and it still passes through the independent, unconditional
+// isBlacklisted/commandTargetsProtectedPath floor inside RunCommand itself
+// (internal/agent/tools/command.go), which nothing here can bypass.
+// delete_file, change_directory, self_clone, and configure_provider are
+// deliberately absent from both sets — irreversible or scope-changing
+// enough that no sub-mode auto-approves them; they always prompt.
+var codeModeBuildAutoApproveTools = map[string]bool{
+	"write_file":     true,
+	"edit_file":      true,
+	"insert_line":    true,
+	"delete_lines":   true,
+	"create_task_md": true,
+	"edit_task_md":   true,
+	"run_command":    true,
+}
+
+// codeModeToolAutoApproveSet resolves which tools Code Mode sub-mode subMode
+// may run without a permission prompt. "" (not Code Mode) and "plan" both
+// return nil (no tool auto-approved) — plan sub-mode's restriction is
+// soft/prompt-only by design (see agent_chat_context.go's codePlanDirective):
+// the model is merely instructed not to edit, and this empty set is what
+// still makes any edit attempt it makes anyway fall through to a normal
+// permission prompt instead of a hard tool-level lockout. Unrecognized
+// values also return nil (fail closed).
+func codeModeToolAutoApproveSet(subMode string) map[string]bool {
+	switch subMode {
+	case "auto":
+		return codeModeAutoApproveTools
+	case "build":
+		return codeModeBuildAutoApproveTools
+	default:
+		return nil
+	}
 }
 
 // contextTrimMarker prefixes the synthetic user message that stands in for

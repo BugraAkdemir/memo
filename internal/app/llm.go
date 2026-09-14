@@ -397,14 +397,26 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		// Code Mode raises the loop ceilings (coding tasks are long, and the
 		// turn has no chat cruft eating the budget) and lets file edits flow
 		// without a permission prompt.
+		//
+		// codeSubModeFromCtx(ctx) is deliberately NOT read here yet — no ctx
+		// ever carries a real sub-mode until sendMessageStreamCore starts
+		// attaching one (a later unit), so this always resolves the
+		// auto-approve set exactly as Code Mode did before sub-modes existed:
+		// "auto" (today's 6-tool set) when CodeModeAutoApproveEdits is on,
+		// nothing auto-approved when it's off. This keeps that existing
+		// config toggle meaningful in the interim.
 		if codeModeActive(ctx) {
 			a.cfgMu.RLock()
 			am := a.cfg.AgentMode
 			a.cfgMu.RUnlock()
+			subMode := ""
+			if am.CodeModeAutoApproveEdits {
+				subMode = "auto"
+			}
 			turnCtx = agent.WithTurnOverrides(turnCtx, agent.TurnOverrides{
-				MaxIters:          am.CodeModeMaxIterations,
-				MaxContinuations:  am.CodeModeMaxContinuations,
-				AutoApproveMedium: am.CodeModeAutoApproveEdits,
+				MaxIters:         am.CodeModeMaxIterations,
+				MaxContinuations: am.CodeModeMaxContinuations,
+				CodeSubMode:      subMode,
 			})
 		}
 

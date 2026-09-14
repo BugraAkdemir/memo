@@ -10,10 +10,11 @@ import (
 	"memo/internal/models"
 )
 
-// codeModeWriteTools mirrors the file-editing tool set Code Mode
-// auto-approves (see agent.Pipeline's autoApproveMedium) — the same
-// intuition applies here: these read as "writing" to a human watching,
-// everything else as a more generic "tool".
+// codeModeWriteTools mirrors the file-editing tool set Code Mode's "auto"
+// sub-mode auto-approves (see agent.Pipeline's codeSubMode /
+// codeModeToolAutoApproveSet) — the same intuition applies here: these read
+// as "writing" to a human watching, everything else as a more generic
+// "tool".
 var codeModeWriteTools = map[string]bool{
 	"write_file":   true,
 	"edit_file":    true,

@@ -52,6 +52,50 @@ func TestIsBlacklisted_AllowsScopedRm(t *testing.T) {
 	}
 }
 
+// TestIsBlacklisted_DefeatsQuoteSplittingBypass is the regression test for
+// the P0 finding that the blacklist matched only the raw, unparsed command
+// string: bash removes quote characters (and unescapes unquoted
+// backslash-escapes) before running a command, concatenating what's left
+// into the actual word list — so a blacklisted word broken up with empty or
+// single-character quotes/escapes never appeared as a contiguous substring
+// in the raw text the old regex-only check saw, even though the shell would
+// execute the exact same dangerous command.
+func TestIsBlacklisted_DefeatsQuoteSplittingBypass(t *testing.T) {
+	blocked := []string{
+		`rm -rf "/"`,
+		`rm -rf '/'`,
+		`rm -rf "/" `,
+		`s''udo -k`,
+		`s""udo -k`,
+		`su""do -k`,
+		`s\u\d\o -k`,
+		`"r""m" -rf /`,
+	}
+	for _, cmd := range blocked {
+		if _, ok := isBlacklisted(cmd); !ok {
+			t.Errorf("isBlacklisted(%q) = false, want true (quote/escape-split bypass of a blacklisted word)", cmd)
+		}
+	}
+}
+
+// TestIsBlacklisted_QuoteStrippingHasNoNewFalsePositive confirms the
+// dequote-and-recheck fix above doesn't reject a command just because it
+// legitimately uses quotes — only a quote-split blacklisted word should
+// trip it.
+func TestIsBlacklisted_QuoteStrippingHasNoNewFalsePositive(t *testing.T) {
+	allowed := []string{
+		`echo "hello world"`,
+		`git commit -m "fix: update readme"`,
+		`grep -rn "TODO" .`,
+		`echo 'it works'`,
+	}
+	for _, cmd := range allowed {
+		if pattern, ok := isBlacklisted(cmd); ok {
+			t.Errorf("isBlacklisted(%q) = true (matched %q), want false (ordinary quoted text)", cmd, pattern)
+		}
+	}
+}
+
 // TestRunCommand_BlocksProtectedPathBypass is the regression test for
 // BUG-M7: read_file correctly refused "../../../../etc/passwd" ("access
 // denied: path is within protected directory"), but the exact same target

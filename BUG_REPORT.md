@@ -42,10 +42,12 @@
 
 **Düzeltme:** `setBypass` callback'inin `a.agentExecutor`'a etkisini tamamen kaldırın — her task worker'ının zaten kendi `NewTaskExecutor`'ı var, paylaşılan interaktif executor'a hiç dokunmamalı.
 
-### P0-4 — `run_command` kara listesi shell quoting ile trivially atlatılabiliyor
+### P0-4 — ✅ Düzeltildi — `run_command` kara listesi shell quoting ile trivially atlatılabiliyor
 **Dosya:** `internal/agent/tools/command.go:48-100,107-118,515-517`
 
 `blacklistedPatterns` (`\brm\s+-rf\s+/…`, `\bsudo\b`, `\bmkfs\b` vb.) **ham, parse edilmemiş** komut string'ine regex ile bakıyor — bash'in tırnak birleştirmesini hesaba katmıyor. `rm -rf "/"` (tırnak `/`'den önceki boşluk-bitişikliğini bozuyor, pattern eşleşmiyor) veya `s''udo -k` (bash boş tırnakları birleştirip `sudo` yapıyor ama ham string'de bitişik `"sudo"` alt dizesi hiç yok) gibi basit hileler filtreyi tamamen atlatıp `bash -c` ile gerçek shell'e ulaşıyor.
+
+**Düzeltildi:** `dequoteForBlacklist` eklendi — bash'in tırnak-kaldırma adımını (tırnak karakterlerini ve unquoted backslash-escape'leri kaldırıp bitişik parçaları birleştirme) yaklaşık olarak taklit ediyor; `isBlacklisted` artık hem ham komutu hem bu "dequoted" halini kontrol ediyor. `run_command`'ı hâlâ gerçek `bash -c` ile çalıştırıyoruz (bu, seçenek (b)'deki argv-tabanlı yeniden yazımdan çok daha küçük/az riskli bir değişiklik) — bu yüzden bu hâlâ tam bir shell-lexer değil, sadece "bilinçli olarak tırnaklarla bölünmüş kelime" sınıfını kapatan bir tespit katmanı; kendi payına düşen yeni bir false-positive riski yok (kelime zaten tırnaksız haliyle raw check'i her zaman geçiyordu). Regresyon testleri: `internal/agent/tools/command_test.go`'da `TestIsBlacklisted_DefeatsQuoteSplittingBypass` (eski koda karşı 7/8 örnekte kırmızı yandığı doğrulandı — `git stash` ile kanıtlandı) ve `TestIsBlacklisted_QuoteStrippingHasNoNewFalsePositive`. `go build/vet/test -race` (`internal/agent`, `internal/agent/tools`) tamamı yeşil.
 
 **Sonuç:** Prompt injection'a maruz kalmış ya da halüsinasyon gören bir LLM worker turu, "temizlik yap" adı altında `rm -rf "/"` çalıştırabilir — kara liste bunu sessizce geçiriyor, komut Memo'yu çalıştıran kullanıcının tüm yetkileriyle icra ediliyor.
 

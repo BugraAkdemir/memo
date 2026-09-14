@@ -104,15 +104,80 @@ var blacklistedPatterns = []*regexp.Regexp{
 // we reject these to reduce injection risk.
 var shellSubstitutionChars = regexp.MustCompile("[\\$\\`\\`]")
 
-func isBlacklisted(cmd string) (string, bool) {
-	cmdLower := strings.ToLower(cmd)
-	for _, re := range blacklistedPatterns {
-		if re.MatchString(cmdLower) {
-			return re.String(), true
+// dequoteForBlacklist approximates bash's quote-removal step (word-boundary
+// preserved, quote characters and unquoted backslash-escapes dropped) well
+// enough to defeat the "split a blacklisted word across quotes so it never
+// appears as a contiguous substring" bypass — e.g. rm -rf "/" (the pattern
+// requires "/" to be whitespace-adjacent; the quote breaks that), s''udo or
+// s\u\d\o (bash concatenates/unescapes these into the literal word "sudo"
+// before executing, but the raw string never contains that substring).
+// This is a detection aid only, run in ADDITION to the raw-string check
+// below, not a real shell lexer — it does not change what actually runs.
+// A command that already contains a blacklisted word as plain text matched
+// before this existed and still does; this only adds matches for the
+// deliberately-quote-split case, so it introduces no new false positive
+// beyond what the existing raw substring check already produces for the
+// same words used unsplit.
+func dequoteForBlacklist(cmd string) string {
+	var b strings.Builder
+	b.Grow(len(cmd))
+	inSingle, inDouble := false, false
+	for i := 0; i < len(cmd); i++ {
+		c := cmd[i]
+		switch {
+		case inSingle:
+			if c == '\'' {
+				inSingle = false
+				continue
+			}
+			b.WriteByte(c)
+		case inDouble:
+			if c == '"' {
+				inDouble = false
+				continue
+			}
+			if c == '\\' && i+1 < len(cmd) {
+				switch cmd[i+1] {
+				case '"', '\\', '$', '`':
+					b.WriteByte(cmd[i+1])
+					i++
+					continue
+				}
+			}
+			b.WriteByte(c)
+		default:
+			switch c {
+			case '\'':
+				inSingle = true
+			case '"':
+				inDouble = true
+			case '\\':
+				if i+1 < len(cmd) {
+					b.WriteByte(cmd[i+1])
+					i++
+				}
+			default:
+				b.WriteByte(c)
+			}
 		}
 	}
-	if shellSubstitutionChars.MatchString(cmd) {
-		return "shell substitution characters ($ `) are not allowed", true
+	return b.String()
+}
+
+func isBlacklisted(cmd string) (string, bool) {
+	// Checked against both the raw command and its quote-stripped form: a
+	// quoting trick (rm -rf "/", s''udo) that hides a blacklisted word from
+	// the raw string is still caught via the dequoted candidate.
+	for _, candidate := range [2]string{cmd, dequoteForBlacklist(cmd)} {
+		cmdLower := strings.ToLower(candidate)
+		for _, re := range blacklistedPatterns {
+			if re.MatchString(cmdLower) {
+				return re.String(), true
+			}
+		}
+		if shellSubstitutionChars.MatchString(candidate) {
+			return "shell substitution characters ($ `) are not allowed", true
+		}
 	}
 	return "", false
 }

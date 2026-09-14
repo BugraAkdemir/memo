@@ -9,6 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 	"memo/internal/livemode"
+	"memo/internal/logx"
 )
 
 // SessionBaseURL is a var (not const) so tests can point it at an
@@ -193,6 +194,16 @@ type Client struct {
 
 	events    chan livemode.SessionEvent
 	closeOnce sync.Once
+
+	// readDone is closed exactly once, by readLoop's own deferred cleanup,
+	// strictly before it closes events — see trySendEvent's doc comment for
+	// why runToolCall (a separate goroutine) must gate its sends on this
+	// rather than only on ctx.Done(): readLoop can exit and close events
+	// for a reason unrelated to context cancellation (e.g. a plain network
+	// read error while ctx is still perfectly valid), and ctx.Done() alone
+	// would not catch that case.
+	readDone     chan struct{}
+	readDoneOnce sync.Once
 }
 
 var _ livemode.Session = (*Client)(nil)
@@ -218,6 +229,7 @@ func NewClient(apiKey, model, instructions string, tools []livemode.ToolSpec, ha
 		tools:          tools,
 		handleToolCall: handleToolCall,
 		events:         make(chan livemode.SessionEvent, 16),
+		readDone:       make(chan struct{}),
 	}
 }
 
@@ -319,19 +331,57 @@ func (c *Client) writeJSON(v any) error {
 	return c.conn.Write(c.ctx, websocket.MessageText, payload)
 }
 
+// trySendEvent delivers ev on c.events, guarding against a send racing
+// readLoop's close(c.events) on return: sending to a closed channel always
+// panics in Go regardless of what other case a select also offers, so a
+// bare `select { case c.events <- ev: case <-c.ctx.Done(): }` can still
+// pick the panicking send if both happen to be ready at once (this is
+// exactly how runToolCall — run in its own goroutine so a slow tool call
+// never blocks readLoop — could crash the whole process, not just this
+// session, the moment readLoop's own exit raced its pending send). Gating
+// on ctx.Done() alone isn't enough either: readLoop can exit and close
+// events for a reason unrelated to context cancellation (a plain network
+// read error while ctx is still perfectly valid), so this also checks
+// readDone — closed by readLoop's own deferred cleanup strictly before it
+// closes events, giving every other goroutine a safe, always-current
+// signal for "events is closing/closed" regardless of why. Checking both
+// non-blocking first narrows the remaining window to the same negligible
+// one internal/livemode's EchoSession already accepts with its own
+// closed-flag guard, and every send in this file is additionally wrapped
+// in logx.GoRecover at its goroutine boundary as the last line of defense.
+// Returns false if the session is done and ev was not sent — callers with
+// a loop to unwind (readLoop) should return in that case.
+func (c *Client) trySendEvent(ev livemode.SessionEvent) bool {
+	select {
+	case <-c.ctx.Done():
+		return false
+	case <-c.readDone:
+		return false
+	default:
+	}
+	select {
+	case c.events <- ev:
+		return true
+	case <-c.ctx.Done():
+		return false
+	case <-c.readDone:
+		return false
+	}
+}
+
 // readLoop decodes server events until the connection closes, emitting
 // EventAudioOut for each response.output_audio.delta and EventTranscript
 // for both directions (user speech, model's own spoken reply). Every other
 // event type is skipped — see serverEvent's doc comment.
 func (c *Client) readLoop() {
-	defer close(c.events)
+	defer func() {
+		c.readDoneOnce.Do(func() { close(c.readDone) })
+		close(c.events)
+	}()
 	for {
 		_, data, err := c.conn.Read(c.ctx)
 		if err != nil {
-			select {
-			case c.events <- livemode.SessionEvent{Type: livemode.EventError, Err: err}:
-			case <-c.ctx.Done():
-			}
+			c.trySendEvent(livemode.SessionEvent{Type: livemode.EventError, Err: err})
 			return
 		}
 
@@ -342,15 +392,13 @@ func (c *Client) readLoop() {
 
 		switch ev.Type {
 		case serverEventFunctionCallArgsDone:
-			go c.runToolCall(ev)
+			logx.GoRecover("livemode/openai_realtime.Client.runToolCall", func() { c.runToolCall(ev) })
 			continue
 		case serverEventInputTranscriptionComplete:
 			if ev.Transcript == "" {
 				continue
 			}
-			select {
-			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleUser, Transcript: ev.Transcript}:
-			case <-c.ctx.Done():
+			if !c.trySendEvent(livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleUser, Transcript: ev.Transcript}) {
 				return
 			}
 		case serverEventOutputTranscriptDone:
@@ -368,9 +416,7 @@ func (c *Client) readLoop() {
 			if transcript == "" {
 				continue
 			}
-			select {
-			case c.events <- livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleModel, Transcript: transcript}:
-			case <-c.ctx.Done():
+			if !c.trySendEvent(livemode.SessionEvent{Type: livemode.EventTranscript, Role: livemode.RoleModel, Transcript: transcript}) {
 				return
 			}
 		case serverEventAudioDelta:
@@ -381,9 +427,7 @@ func (c *Client) readLoop() {
 			if err != nil {
 				continue
 			}
-			select {
-			case c.events <- livemode.SessionEvent{Type: livemode.EventAudioOut, Audio: audio}:
-			case <-c.ctx.Done():
+			if !c.trySendEvent(livemode.SessionEvent{Type: livemode.EventAudioOut, Audio: audio}) {
 				return
 			}
 		}
@@ -410,16 +454,10 @@ func (c *Client) runToolCall(ev serverEvent) {
 		Type: "conversation.item.create",
 		Item: functionCallOutputItem{Type: "function_call_output", CallID: ev.CallID, Output: result},
 	}); err != nil {
-		select {
-		case c.events <- livemode.SessionEvent{Type: livemode.EventError, Err: err}:
-		case <-c.ctx.Done():
-		}
+		c.trySendEvent(livemode.SessionEvent{Type: livemode.EventError, Err: err})
 		return
 	}
 	if err := c.writeJSON(responseCreateEvent{Type: "response.create"}); err != nil {
-		select {
-		case c.events <- livemode.SessionEvent{Type: livemode.EventError, Err: err}:
-		case <-c.ctx.Done():
-		}
+		c.trySendEvent(livemode.SessionEvent{Type: livemode.EventError, Err: err})
 	}
 }

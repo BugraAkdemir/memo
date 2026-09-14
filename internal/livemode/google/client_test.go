@@ -73,6 +73,94 @@ func (f *fakeLiveServer) wsURL() string {
 	return "ws" + strings.TrimPrefix(f.srv.URL, "http")
 }
 
+// TestClient_TrySendEventGuardsOnReadDoneWithoutCtxCancel is the regression
+// test for the P0 finding that runToolCall (its own goroutine, spawned from
+// readLoop for every tool call) could panic the whole process by sending on
+// c.events after readLoop had already closed it. Critically, readLoop can
+// exit and close events for a reason that has nothing to do with context
+// cancellation — a plain network read error — so a guard keyed only on
+// ctx.Done() (the original, incomplete fix attempt) would not catch this
+// exact case: ctx is deliberately left un-cancelled here.
+func TestClient_TrySendEventGuardsOnReadDoneWithoutCtxCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // not called before the assertion below — ctx stays live
+	c := &Client{
+		ctx:      ctx,
+		events:   make(chan livemode.SessionEvent), // unbuffered: a bad guard would block forever instead of panicking cleanly, still proving it never attempted the send
+		readDone: make(chan struct{}),
+	}
+	close(c.readDone) // simulates readLoop having exited for a non-ctx reason
+
+	done := make(chan bool, 1)
+	go func() { done <- c.trySendEvent(livemode.SessionEvent{Type: livemode.EventError}) }()
+
+	select {
+	case ok := <-done:
+		if ok {
+			t.Fatal("trySendEvent returned true (sent) after readDone was closed")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("trySendEvent blocked instead of returning false once readDone was closed")
+	}
+}
+
+// TestClient_RunToolCallAfterReadLoopExitDoesNotPanic reproduces the exact
+// live scenario deterministically: a real websocket connection is severed
+// (so writeJSON fails, driving runToolCall into its error-reporting send),
+// while readLoop's channels are already closed exactly as its own deferred
+// cleanup would leave them — with ctx still live, matching a genuine
+// network read error rather than a Close()/cancellation. Before the fix,
+// runToolCall's `select { case c.events <- ev: case <-c.ctx.Done(): }` had
+// only one ready case here (ctx.Done() never fires) — the closed-channel
+// send — guaranteeing a panic, not just a possible one.
+func TestClient_RunToolCallAfterReadLoopExitDoesNotPanic(t *testing.T) {
+	f := newFakeLiveServer(t)
+	original := SessionBaseURL
+	SessionBaseURL = f.wsURL()
+	defer func() { SessionBaseURL = original }()
+
+	c := NewClient("g-key", "models/x", "sys", nil, func(context.Context, string, json.RawMessage) (string, error) {
+		return "result", nil
+	})
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case <-f.gotSetup:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for setup message on the server side")
+	}
+
+	// Sever the connection (so writeJSON below fails) and wait for the
+	// real, already-running readLoop goroutine to actually observe the
+	// read error and exit — its own deferred cleanup then closes
+	// readDone/events itself, without c.ctx ever being cancelled, exactly
+	// like a genuine network drop.
+	c.conn.CloseNow()
+	drained := make(chan struct{})
+	go func() {
+		for range c.Events() {
+		}
+		close(drained)
+	}()
+	select {
+	case <-drained:
+	case <-time.After(2 * time.Second):
+		t.Fatal("readLoop never closed the events channel after the connection was severed")
+	}
+
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("runToolCall panicked after readLoop's channels were closed: %v", r)
+			}
+		}()
+		c.runToolCall(functionCall{ID: "1", Name: "test_tool", Args: json.RawMessage(`{}`)})
+	}()
+}
+
 func TestClient_SendsSetupMessageOnStart(t *testing.T) {
 	f := newFakeLiveServer(t)
 	original := SessionBaseURL

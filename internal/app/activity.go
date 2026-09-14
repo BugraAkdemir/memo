@@ -119,15 +119,25 @@ func wireGlobalActivityHook() {
 }
 
 // lastLiveModeSpeaking throttles wireLiveModeActivityHook's setActivity
-// calls to at most once per 2s (unix nanos, atomic since
+// calls to at most once per 2s. A compare-and-swap is required here because
 // livemode.GlobalActivityHook can be invoked concurrently from more than
 // one pumpLiveModeSessionEvents goroutine if more than one Live Mode
-// session is open at once — unlike activityRelay's lastGenerating, which
-// is a single goroutine's own closure state and needs no synchronization).
-// Without this, a real-time audio stream's small, frequent chunks would
-// each schedule a fresh time.AfterFunc in setActivity for no benefit, since
-// the state doesn't change between calls anyway.
+// session is open at once. A Load followed by Store would let two
+// concurrent callers both pass the window and defeat the throttle.
 var lastLiveModeSpeaking atomic.Int64
+
+func shouldReportLiveModeSpeaking(now time.Time) bool {
+	stamp := now.UnixNano()
+	for {
+		last := lastLiveModeSpeaking.Load()
+		if last != 0 && now.Sub(time.Unix(0, last)) < 2*time.Second {
+			return false
+		}
+		if lastLiveModeSpeaking.CompareAndSwap(last, stamp) {
+			return true
+		}
+	}
+}
 
 // wireLiveModeActivityHook sets livemode.GlobalActivityHook once at App
 // construction, the Live Mode half of wireGlobalActivityHook. See
@@ -135,19 +145,16 @@ var lastLiveModeSpeaking atomic.Int64
 // cover.
 func wireLiveModeActivityHook() {
 	livemode.GlobalActivityHook = func() {
-		now := time.Now()
-		last := lastLiveModeSpeaking.Load()
-		if last != 0 && now.Sub(time.Unix(0, last)) < 2*time.Second {
+		if !shouldReportLiveModeSpeaking(time.Now()) {
 			return
 		}
-		lastLiveModeSpeaking.Store(now.UnixNano())
 		setActivity(models.ActivitySpeaking, "")
 	}
 }
 
 // GetActivityStatus reports Memo's current app-wide activity. Read by the
-// desktop mascot's own polling loop (a separate window/process with no
-// chat context) via GET /api/mascot/activity.
+// desktop mascot's own polling loop (a separate window/process with no chat
+// context) via GET /api/mascot/activity.
 func (a *App) GetActivityStatus() models.ActivityStatus {
 	globalActivity.mu.Lock()
 	defer globalActivity.mu.Unlock()

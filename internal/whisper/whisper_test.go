@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewServer(t *testing.T) {
@@ -260,5 +261,132 @@ func TestBinarySearchBasesFrom_IncludesParentOfExeDir(t *testing.T) {
 	}
 	if !slices.Contains(bases, wantParent) {
 		t.Errorf("bases = %v, want to contain parent dir %q", bases, wantParent)
+	}
+}
+
+// TestServer_MonitorRestartsAfterUnexpectedCrash is the regression test for
+// the P1 finding that a crashed whisper-server was never restarted: before
+// this fix, monitor() only logged the exit and cleared s.cmd, leaving
+// every future Transcribe() call failing with a connection error
+// indefinitely (a.whisperServer at the internal/app layer still pointed at
+// this same, now-permanently-dead Server). A tiny shell script stands in
+// for whisper-server: it exits immediately (simulating a crash) on its
+// first launch, and stays "running" on every later launch — proving
+// monitor() actually relaunched it, not just detected the exit.
+func TestServer_MonitorRestartsAfterUnexpectedCrash(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell script stand-in for whisper-server")
+	}
+
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "runs")
+	script := filepath.Join(dir, "fake-whisper-server")
+	scriptBody := "#!/bin/sh\n" +
+		"echo run >> \"" + marker + "\"\n" +
+		"n=$(wc -l < \"" + marker + "\")\n" +
+		"if [ \"$n\" -eq 1 ]; then\n" +
+		"  exit 1\n" +
+		"fi\n" +
+		"exec sleep 30\n" // exec, not a plain command: replaces the shell's process image so Stop()'s SIGTERM (sent to this PID) actually reaches the sleep, instead of orphaning it as an untracked grandchild
+	if err := os.WriteFile(script, []byte(scriptBody), 0755); err != nil {
+		t.Fatalf("write stub script: %v", err)
+	}
+	model := filepath.Join(dir, "fake-model.bin")
+	if err := os.WriteFile(model, []byte("not a real model, just needs to exist"), 0644); err != nil {
+		t.Fatalf("write stub model: %v", err)
+	}
+
+	origDelay := whisperRestartDelay
+	whisperRestartDelay = 20 * time.Millisecond
+	t.Cleanup(func() { whisperRestartDelay = origDelay })
+
+	s := NewServer(0)
+	if err := s.Start(script, model, "auto", 19998); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { s.Stop() })
+
+	deadline := time.Now().Add(3 * time.Second)
+	var runs int
+	for time.Now().Before(deadline) {
+		data, _ := os.ReadFile(marker)
+		runs = strings.Count(string(data), "\n")
+		if runs >= 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if runs < 2 {
+		t.Fatalf("stub server was launched %d time(s) within the deadline, want >= 2 (monitor() never restarted it after the crash)", runs)
+	}
+
+	// Give startLocked's own bookkeeping a moment to land, then confirm
+	// the Server object reports itself running again — the whole point:
+	// a.whisperServer (the same pointer) self-heals in place, no caller
+	// action needed.
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if s.IsRunning() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("server did not report itself running again after the auto-restart")
+}
+
+// TestServer_StopDuringRestartWindowPreventsRevival is the regression test
+// for the race the restart fix could otherwise introduce: Stop() must set
+// s.stopping even when s.cmd is already nil (the crash cleared it, but the
+// backoff-delayed restart hasn't run yet) — otherwise a Stop() landing in
+// exactly that window wouldn't be seen by attemptRestart, and the server
+// would come back up right after the user asked to stop it.
+func TestServer_StopDuringRestartWindowPreventsRevival(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell script stand-in for whisper-server")
+	}
+
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "runs")
+	script := filepath.Join(dir, "fake-whisper-server")
+	// Always exits immediately — every launch is a "crash".
+	scriptBody := "#!/bin/sh\necho run >> \"" + marker + "\"\nexit 1\n"
+	if err := os.WriteFile(script, []byte(scriptBody), 0755); err != nil {
+		t.Fatalf("write stub script: %v", err)
+	}
+	model := filepath.Join(dir, "fake-model.bin")
+	if err := os.WriteFile(model, []byte("stub"), 0644); err != nil {
+		t.Fatalf("write stub model: %v", err)
+	}
+
+	origDelay := whisperRestartDelay
+	whisperRestartDelay = 100 * time.Millisecond
+	t.Cleanup(func() { whisperRestartDelay = origDelay })
+
+	s := NewServer(0)
+	if err := s.Start(script, model, "auto", 19997); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Wait for the first (crashing) launch to be observed by monitor(),
+	// then call Stop() while attemptRestart is still in its backoff sleep
+	// — before it has re-acquired s.mu to check s.stopping.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		data, _ := os.ReadFile(marker)
+		if strings.Count(string(data), "\n") >= 1 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond) // land inside the 100ms backoff window
+	if err := s.Stop(); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+
+	// Give attemptRestart's full backoff+retry budget time to elapse, then
+	// confirm it did not bring the server back up.
+	time.Sleep(whisperRestartMaxAttempts*whisperRestartDelay + 200*time.Millisecond)
+	if s.IsRunning() {
+		t.Fatal("server is running after Stop() — the pending auto-restart revived it")
 	}
 }

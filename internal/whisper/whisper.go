@@ -35,6 +35,18 @@ type Server struct {
 	stopping  bool
 	waitDone  chan struct{}
 	portPid   int
+
+	// lastBinaryPath/lastModelPath/lastLanguage/lastPort are the exact
+	// arguments the most recent successful Start() call was given —
+	// separate from modelPath/language/port above (which Start resolves
+	// to their effective values, and monitor() clears on an unexpected
+	// exit). Kept so monitor() can restart the server with the original
+	// request after a crash without the caller having to remember/resupply
+	// them.
+	lastBinaryPath string
+	lastModelPath  string
+	lastLanguage   string
+	lastPort       int
 }
 
 func NewServer(port int) *Server {
@@ -47,7 +59,14 @@ func NewServer(port int) *Server {
 func (s *Server) Start(binaryPath, modelPath, language string, port int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.startLocked(binaryPath, modelPath, language, port)
+}
 
+// startLocked is Start's actual implementation, callable with s.mu already
+// held — used both by the public Start() and by monitor()'s crash-restart
+// (attemptRestart), which needs to hold the lock across its own
+// already-running/stopping check and the spawn itself.
+func (s *Server) startLocked(binaryPath, modelPath, language string, port int) error {
 	if s.cmd != nil && s.cmd.Process != nil {
 		return fmt.Errorf("whisper: server already running (PID %d)", s.cmd.Process.Pid)
 	}
@@ -143,6 +162,7 @@ func (s *Server) Start(binaryPath, modelPath, language string, port int) error {
 	}
 
 	s.portPid = s.cmd.Process.Pid
+	s.lastBinaryPath, s.lastModelPath, s.lastLanguage, s.lastPort = binaryPath, modelPath, language, port
 
 	logx.Printf("whisper: server started (PID %d, port %d)", s.cmd.Process.Pid, s.port)
 
@@ -174,6 +194,16 @@ func (s *Server) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Set unconditionally, before the branch below — attemptRestart's
+	// crash-restart (monitor.go) checks this flag between backoff
+	// attempts, and only takes s.mu itself right before checking it. If
+	// Stop() is called while s.cmd is already nil (a crash left it that
+	// way, restart hasn't happened yet) and only set stopping inside the
+	// "still running" branch below, a Stop() landing in exactly that
+	// window would silently fail to prevent the pending auto-restart from
+	// bringing the server back up right after the user asked to stop it.
+	s.stopping = true
+
 	if s.cmd == nil || s.cmd.Process == nil {
 		if s.port > 0 {
 			if s.portPid > 0 {
@@ -191,7 +221,6 @@ func (s *Server) Stop() error {
 		return nil
 	}
 
-	s.stopping = true
 	logx.Printf("whisper: stopping server (PID %d)", s.cmd.Process.Pid)
 
 	processSignalTerm(s.cmd.Process)
@@ -248,6 +277,24 @@ func (s *Server) forceKill() {
 	forceKillCmd(s.cmd, s.waitDone)
 }
 
+// whisperRestartMaxAttempts/-Delay bound monitor()'s crash-restart below.
+// Before this existed, an unexpected exit (OOM, segfault, killed by the
+// OS) was only ever logged: s.cmd/s.modelPath were cleared but a.whisperServer
+// at the internal/app layer kept pointing at this same, now-dead Server,
+// so every subsequent transcription request failed with a connection
+// error indefinitely — the only fix was manually toggling Whisper off/on
+// in Settings or restarting the whole app. A short, bounded retry (not
+// unbounded like internal/telegram's network reconnect — a local
+// subprocess that keeps crashing immediately, e.g. a missing shared
+// library, won't fix itself no matter how many times it's retried) covers
+// the common transient case without looping forever on a broken install.
+const whisperRestartMaxAttempts = 3
+
+// whisperRestartDelay is a var (not const), the same trick used elsewhere
+// in this codebase (e.g. google.Client's SessionBaseURL) so tests can
+// shrink it instead of taking real wall-clock seconds per retry.
+var whisperRestartDelay = 2 * time.Second
+
 func (s *Server) monitor() {
 	s.mu.Lock()
 	cmd := s.cmd
@@ -272,9 +319,15 @@ func (s *Server) monitor() {
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	stopping := s.stopping
+	binaryPath, modelPath, language, port := s.lastBinaryPath, s.lastModelPath, s.lastLanguage, s.lastPort
+	if !stopping {
+		s.cmd = nil
+		s.modelPath = ""
+	}
+	s.mu.Unlock()
 
-	if s.stopping {
+	if stopping {
 		return
 	}
 
@@ -283,8 +336,40 @@ func (s *Server) monitor() {
 	} else {
 		logx.Printf("whisper: server exited unexpectedly (exit 0)")
 	}
-	s.cmd = nil
-	s.modelPath = ""
+
+	logx.GoRecover("whisper.Server.restart", func() {
+		s.attemptRestart(binaryPath, modelPath, language, port)
+	})
+}
+
+// attemptRestart tries to bring the whisper-server back up after monitor()
+// observed an unexpected exit — see whisperRestartMaxAttempts/-Delay.
+// Deliberately runs outside s.mu between attempts (startLocked/Stop each
+// take it themselves for their own critical section) so IsRunning()/Stop()
+// aren't blocked for the whole retry sequence, only for each individual
+// spawn attempt.
+func (s *Server) attemptRestart(binaryPath, modelPath, language string, port int) {
+	for attempt := 1; attempt <= whisperRestartMaxAttempts; attempt++ {
+		time.Sleep(whisperRestartDelay)
+
+		s.mu.Lock()
+		if s.stopping || (s.cmd != nil && s.cmd.Process != nil) {
+			// Stop() ran, or something else (a user toggling Whisper
+			// off/on in Settings) already got a server running again —
+			// don't fight it.
+			s.mu.Unlock()
+			return
+		}
+		startErr := s.startLocked(binaryPath, modelPath, language, port)
+		s.mu.Unlock()
+
+		if startErr == nil {
+			logx.Printf("whisper: auto-restarted successfully (attempt %d/%d)", attempt, whisperRestartMaxAttempts)
+			return
+		}
+		logx.Printf("whisper: auto-restart attempt %d/%d failed: %v", attempt, whisperRestartMaxAttempts, startErr)
+	}
+	logx.Printf("whisper: auto-restart gave up after %d attempts — STT will stay down until manually toggled off/on or the app is restarted", whisperRestartMaxAttempts)
 }
 
 func (s *Server) IsRunning() bool {

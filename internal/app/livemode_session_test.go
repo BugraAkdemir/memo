@@ -352,6 +352,44 @@ func TestBuildLiveModeHistoryBlock_EmptyWithNoMessages(t *testing.T) {
 	}
 }
 
+// TestBuildLiveModeHistoryBlock_KeepsMostRecentMessagesNotOldest is the
+// regression test for the P2 finding that truncate.Text keeps the FIRST n
+// runes, but this call site's own comment claimed (and the "pick up where
+// it left off, don't act like it's a fresh start" instruction right below
+// it depends on) keeping the most recent TAIL. Once the accumulated
+// history exceeds the 6000-rune cap, the model needs the END of the
+// conversation, not the beginning — the old code silently handed it the
+// oldest messages instead, the exact opposite of "continuity".
+func TestBuildLiveModeHistoryBlock_KeepsMostRecentMessagesNotOldest(t *testing.T) {
+	a := newTestAppForLiveModeSession(t)
+	a.sessions.NewChat()
+
+	// Each message is long enough that a handful of them blow well past the
+	// 6000-rune cap — distinctive markers at the very start and very end so
+	// the test can tell which end of the conversation survived truncation.
+	longFiller := strings.Repeat("x", 500)
+	a.sessions.AddMessage("user", "OLDEST_MARKER "+longFiller, "", "")
+	for i := 0; i < 20; i++ {
+		a.sessions.AddMessage("assistant", longFiller, "", "")
+	}
+	a.sessions.AddMessage("assistant", "NEWEST_MARKER "+longFiller, "", "")
+
+	got := a.buildLiveModeHistoryBlock()
+	if !strings.Contains(got, "NEWEST_MARKER") {
+		t.Errorf("history block is missing the most recent message (NEWEST_MARKER) — truncation kept the wrong end:\n%s", firstAndLast(got, 200))
+	}
+	if strings.Contains(got, "OLDEST_MARKER") {
+		t.Errorf("history block still contains the oldest message (OLDEST_MARKER) after truncation — expected it to have been cut")
+	}
+}
+
+func firstAndLast(s string, n int) string {
+	if len(s) <= 2*n {
+		return s
+	}
+	return s[:n] + " ... " + s[len(s)-n:]
+}
+
 func TestBuildLiveModeSystemPrompt_NoIdentityReturnsEmpty(t *testing.T) {
 	a := &App{}
 	if got := a.buildLiveModeSystemPrompt(context.Background(), "delegate"); got != "" {

@@ -13,7 +13,6 @@ import (
 	"memo/internal/livemode/openai_realtime"
 	"memo/internal/logx"
 	"memo/internal/memory"
-	"memo/internal/truncate"
 )
 
 // NewLiveModeSession builds the livemode.Session for whatever engine is
@@ -659,11 +658,32 @@ func (a *App) buildLiveModeHistoryBlock() string {
 		return ""
 	}
 	// ~1.5k tokens of history is plenty for continuity without crowding the
-	// rest of the instruction; truncate.Text keeps the most recent tail.
-	body = truncate.Text(body, 6000)
+	// rest of the instruction — keep the most recent TAIL, not the oldest
+	// messages. truncate.Text (like every one of its 400+ other callers,
+	// which genuinely want the head — a log preview, an error snippet)
+	// keeps the FIRST n runes; calling it here kept the oldest of the last
+	// 24 messages and threw away the most recent ones once the 6000-rune
+	// cap was hit — exactly backwards for "pick up where it left off,
+	// don't act like it's a fresh start" below. truncateTail instead.
+	body = truncateTail(body, 6000)
 
 	return a.t(
 		"Bu sohbette şu ana kadar geçen konuşma (devamlılık için — kaldığın yerden devam et, baştan başlıyormuş gibi davranma):\n",
 		"The conversation so far in this chat (for continuity — pick up where it left off, don't act like it's a fresh start):\n",
 	) + body
+}
+
+// truncateTail keeps the last n runes of s (prefixed with "..." if
+// anything was cut) — the mirror of truncate.Text, which keeps the first
+// n. Kept local to this file rather than promoted into the shared
+// truncate package: every one of truncate.Text's many other callers in
+// this codebase genuinely wants the head (a log preview, an error
+// snippet), so this file is the one deliberate exception, not a second
+// general-purpose primitive to keep in sync with the first.
+func truncateTail(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return "..." + string(runes[len(runes)-n:])
 }

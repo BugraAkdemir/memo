@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -658,6 +660,61 @@ func TestResolveAgentProvider_LazyRouterStartsHealthCheck(t *testing.T) {
 		t.Fatal("resolveAgentProvider's lazy router-creation branch did not start a HealthCheck goroutine (healthCheckCancel still nil) — Y5")
 	}
 	a.healthCheckCancel()
+}
+
+// TestSendMessage_PlainChatSelfHealsNilProviderRouter is the regression
+// test for the P2 finding that callLLMStream's plain-chat (non-agent)
+// path read a.providerRouter directly instead of self-healing it the way
+// resolveAgentProvider already did for agent mode (now both share
+// ensureProviderRouter). A partial restore or manual providers.json edit
+// that left activeProviderName set but providerRouter nil made plain chat
+// silently fall through to the local-model branch — a confusing "local
+// model not loaded" error telling the user to do something they'd already
+// done — instead of rebuilding the router from providerCfgMgr the way
+// agent mode already recovered.
+func TestSendMessage_PlainChatSelfHealsNilProviderRouter(t *testing.T) {
+	reqs := &capturedRequests{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		reqs.add(string(body))
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"healed reply\"}}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	cfgMgr := provider.NewConfigManager(filepath.Join(t.TempDir(), "providers.json"), make([]byte, 32))
+	cfgMgr.Set(provider.ProviderConfig{
+		Type: provider.ProviderCustom, Name: "test", BaseURL: srv.URL, Model: "test-model", Enabled: true,
+	})
+
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("sessions.NewManager: %v", err)
+	}
+
+	a := &App{
+		cfg:                &config.AppConfig{Memory: config.MemoryConfig{MemoryEnabled: false}},
+		identity:           identity.New("Test", "Memo", "casual", "", false),
+		sessions:           sm,
+		providerRouter:     nil, // deliberately nil, e.g. after a partial restore
+		providerCfgMgr:     cfgMgr,
+		activeProviderName: "test",
+		events:             &eventRing{},
+	}
+	a.lifecycleCtx, a.lifecycleCancel = context.WithCancel(context.Background())
+	t.Cleanup(a.lifecycleCancel)
+
+	reply := a.SendMessage("naber")
+	if reply != "healed reply" {
+		t.Fatalf("SendMessage() = %q, want %q — plain chat should have self-healed the nil providerRouter and used the external provider, not fallen through to local model", reply, "healed reply")
+	}
+	if a.providerRouter == nil {
+		t.Error("a.providerRouter is still nil after SendMessage — self-heal did not persist the rebuilt router")
+	}
+	if !reqs.containsAny("naber") {
+		t.Errorf("outbound request never reached the fake provider server: requests=%s", reqs)
+	}
 }
 
 // TestCallLLMStream_OrchestraPlainChatError_PersistsErrorNotEmptyReply guards

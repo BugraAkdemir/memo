@@ -144,28 +144,40 @@ func (a *App) localModelName() string {
 	return provider.DefaultModels[provider.ProviderLlamaCPP]
 }
 
-// resolveAgentProvider returns the provider router, model name, and
-// resolved EffortLevel (see activeProviderEffortLevel's doc comment; empty
-// for the local llama.cpp fallback, which has no such stored setting) the
-// agent pipeline should use. The write lock is held continuously during
-// the nil->router creation window to prevent a second goroutine from
-// racing in and creating a second router (which would silently replace the
-// first one).
-func (a *App) resolveAgentProvider() (*provider.Router, string, string, error) {
+// ensureProviderRouter returns the current provider router, active
+// provider name, and config manager, all read under one lock for a
+// consistent snapshot — lazily rebuilding a.providerRouter from
+// a.providerCfgMgr first if activeProviderName is set but the router is
+// nil (e.g. a partial restore/manual providers.json edit left
+// activeProviderName pointing at a provider nothing ever routed). The
+// write lock is held continuously during the nil->router creation window
+// to prevent a second goroutine from racing in and creating a second
+// router (which would silently replace the first one).
+//
+// Originally lived only inside resolveAgentProvider (agent-mode calls
+// self-healed this way already); callLLMStream's plain-chat path used to
+// read a.providerRouter directly with no equivalent recovery, so the exact
+// same activeProviderName-set-but-router-nil state that agent mode quietly
+// repaired left plain chat silently falling through to the local-model
+// branch instead — a confusing "local model not loaded" error telling the
+// user to do something they'd already done. Factored out so both paths
+// share one self-heal implementation rather than two copies that could
+// drift.
+func (a *App) ensureProviderRouter() (router *provider.Router, activeName string, cfgMgr *provider.ConfigManager) {
 	a.providerMu.Lock()
-	activeName := a.activeProviderName
-	providerRouter := a.providerRouter
-	providerCfgMgr := a.providerCfgMgr
+	activeName = a.activeProviderName
+	router = a.providerRouter
+	cfgMgr = a.providerCfgMgr
 
 	var (
 		healthCtx    context.Context
 		healthCancel context.CancelFunc
 	)
-	if activeName != "" && providerRouter == nil && providerCfgMgr != nil {
-		if configs := providerCfgMgr.GetEnabled(); len(configs) > 0 {
+	if activeName != "" && router == nil && cfgMgr != nil {
+		if configs := cfgMgr.GetEnabled(); len(configs) > 0 {
 			a.providerRouter = provider.NewRouter(configs)
 			a.providerRouter.SetActiveProvider(activeName)
-			providerRouter = a.providerRouter
+			router = a.providerRouter
 			// Every other place that builds a.providerRouter (UpdateProvider,
 			// DeleteProvider, the config-reload path in providers.go) starts a
 			// HealthCheck goroutine alongside it; this lazy-init branch didn't,
@@ -185,9 +197,18 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, string, error) {
 	a.providerMu.Unlock()
 
 	if healthCtx != nil {
-		rt := providerRouter
+		rt := router
 		goRecover("providerRouter.HealthCheck", func() { rt.HealthCheck(healthCtx, 5*time.Minute) })
 	}
+	return router, activeName, cfgMgr
+}
+
+// resolveAgentProvider returns the provider router, model name, and
+// resolved EffortLevel (see activeProviderEffortLevel's doc comment; empty
+// for the local llama.cpp fallback, which has no such stored setting) the
+// agent pipeline should use.
+func (a *App) resolveAgentProvider() (*provider.Router, string, string, error) {
+	providerRouter, activeName, providerCfgMgr := a.ensureProviderRouter()
 
 	if activeName != "" {
 		if providerRouter == nil || !providerRouter.HasActiveProvider() {
@@ -1015,11 +1036,12 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		return outCh
 	}
 
-	// Use external provider only if user explicitly selected one
-	a.providerMu.RLock()
-	activeName := a.activeProviderName
-	providerRouter := a.providerRouter
-	a.providerMu.RUnlock()
+	// Use external provider only if user explicitly selected one.
+	// ensureProviderRouter (not a bare field read) so a router left nil by
+	// a partial restore/manual config edit gets the same lazy-rebuild
+	// resolveAgentProvider already relies on for agent mode — see its doc
+	// comment for the confusing-error-message this used to produce here.
+	providerRouter, activeName, _ := a.ensureProviderRouter()
 	if activeName != "" && providerRouter != nil {
 		go func() {
 			defer close(outCh)
@@ -1593,11 +1615,12 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 		return finalResponse
 	}
 
-	// Use external provider only if user explicitly selected one
-	a.providerMu.RLock()
-	activeName := a.activeProviderName
-	providerRouter := a.providerRouter
-	a.providerMu.RUnlock()
+	// Use external provider only if user explicitly selected one.
+	// ensureProviderRouter (not a bare field read) so a router left nil by
+	// a partial restore/manual config edit gets the same lazy-rebuild
+	// resolveAgentProvider already relies on for agent mode — see its doc
+	// comment for the confusing-error-message this used to produce here.
+	providerRouter, activeName, _ := a.ensureProviderRouter()
 	if activeName != "" && providerRouter != nil {
 		pctx, cancel := context.WithTimeout(ctx, 300*time.Second)
 		defer cancel()

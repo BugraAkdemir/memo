@@ -66,7 +66,7 @@
 
 | # | Bulgu | Dosya |
 |---|---|---|
-| P1-1 | Admin, kendi şifresini mevcut-şifre doğrulaması **olmadan** değiştirebiliyor — `id == subject` (ID vs username) karşılaştırması hiçbir zaman doğru olmayan ölü kod, admin-kendi-şifresi durumu her iki dalı da atlıyor | `internal/app/remote_auth.go:745-780` |
+| P1-1 | ✅ **Düzeltildi.** Admin, kendi şifresini mevcut-şifre doğrulaması **olmadan** değiştirebiliyor — `id == subject` (ID vs username) karşılaştırması hiçbir zaman doğru olmayan ölü kod, admin-kendi-şifresi durumu her iki dalı da atlıyordu. Koşul `acc.Username == subject`'e (rol farketmeksizin) sadeleştirildi. Regresyon: `TestChangeAccountPassword_AdminChangingOwnPasswordNeedsCurrentPassword` — eski koda karşı kırmızı yandığı doğrulandı. `go test -race` yeşil. | `internal/app/remote_auth.go:745-786` |
 | P1-2 | Live Mode'da (Google/OpenAI Realtime) hiç reconnect/backoff yok — tek websocket dial, kopunca oturum kalıcı olarak düşüyor, manuel yeniden başlatma gerekiyor | `internal/livemode/{google,openai_realtime}/client.go` |
 | P1-3 | whisper.cpp alt süreci çökerse hiç yeniden başlatılmıyor — `monitor()` sadece logluyor, `a.whisperServer` `nil`'lenmiyor, her STT isteği sonsuza dek "connection refused" ile başarısız oluyor | `internal/whisper/whisper.go:251-288`, `internal/app/stt.go:291-313` |
 | P1-4 | `database.DB.Write()` serileştirmesini atlayan 2 ayrı ham `sql.Open` bağlantısı — `ExportData` ve periyodik cloud sync, `memory.db`/`mood.db` üzerinde `wal_checkpoint` çalıştırırken canlı yazma döngüsüyle senkronize değil | `internal/app/backup.go:500-509`, `internal/cloudsync/sync_manager.go:440-450,513-525` |

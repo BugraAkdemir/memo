@@ -690,8 +690,43 @@ func TestChangeAccountPassword_RequiresValidSessionAndNewPassword(t *testing.T) 
 	if err := a.ChangeAccountPassword(tok, "a-admin", "", ""); err == nil || err.Error() != "new password is required" {
 		t.Fatalf("empty new password: err = %v, want 'new password is required'", err)
 	}
-	if err := a.ChangeAccountPassword(tok, "a-admin", "", "xl"); err != nil {
+	// "a-admin" is admin's own account (self-service), so this still needs
+	// the real current password — see TestChangeAccountPassword_
+	// AdminChangingOwnPasswordNeedsCurrentPassword for the dedicated
+	// regression test on that requirement.
+	if err := a.ChangeAccountPassword(tok, "a-admin", "adminpw", "xl"); err != nil {
 		t.Fatalf("plain change: %v", err)
+	}
+}
+
+// TestChangeAccountPassword_AdminChangingOwnPasswordNeedsCurrentPassword is
+// the regression test for the P1 finding: `id == subject` compared an
+// account ID against a username — two value spaces that are never
+// legitimately equal — so it was permanently dead code, and the
+// surrounding `&& subjectRole != "admin"` meant an admin changing their
+// OWN password fell through neither branch, skipping current-password
+// verification entirely. Only a non-admin self-service change was ever
+// actually checked. An attacker holding a stolen/shared admin session
+// token could silently take over the account with no re-authentication.
+func TestChangeAccountPassword_AdminChangingOwnPasswordNeedsCurrentPassword(t *testing.T) {
+	a := accountsApp(t)
+	tok := sessionTokenFor(t, a, "admin", "admin")
+
+	err := a.ChangeAccountPassword(tok, "a-admin", "wrongpw", "hijacked")
+	if err == nil || err.Error() != "current password is incorrect" {
+		t.Fatalf("admin self-change with wrong current password: err = %v, want 'current password is incorrect'", err)
+	}
+	err = a.ChangeAccountPassword(tok, "a-admin", "", "hijacked")
+	if err == nil || err.Error() != "current password is incorrect" {
+		t.Fatalf("admin self-change with NO current password: err = %v, want 'current password is incorrect' (this must not silently succeed)", err)
+	}
+
+	if err := a.ChangeAccountPassword(tok, "a-admin", "adminpw", "newadminpw"); err != nil {
+		t.Fatalf("admin self-change with correct current password: %v", err)
+	}
+	ok, verr := remoteauth.VerifyPassword(a.cfg.RemoteAccess.Accounts[0].PasswordHash, "newadminpw")
+	if verr != nil || !ok {
+		t.Errorf("expected newadminpw to verify, ok=%v err=%v", ok, verr)
 	}
 }
 

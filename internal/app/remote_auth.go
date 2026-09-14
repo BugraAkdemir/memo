@@ -766,7 +766,15 @@ func (a *App) ChangeAccountPassword(sessionToken, id, currentPassword, newPasswo
 	if acc == nil {
 		return fmt.Errorf("account not found: %s", id)
 	}
-	if id == subject || (acc.Username == subject && subjectRole != "admin") {
+	// Self-service (the caller changing their OWN account's password —
+	// matched by username, since id is the target account's ID and subject
+	// is the caller's username, different value spaces that are never
+	// legitimately equal) always requires the current password, admin or
+	// not: an admin session is a stolen/shared-machine risk like any other,
+	// and a sensitive self-action shouldn't skip re-authentication just
+	// because the role happens to be elevated. Only changing SOMEONE ELSE's
+	// account is the admin-only, no-current-password-needed path.
+	if acc.Username == subject {
 		ok, err := remoteauth.VerifyPassword(acc.PasswordHash, currentPassword)
 		if err != nil || !ok {
 			return fmt.Errorf("current password is incorrect")

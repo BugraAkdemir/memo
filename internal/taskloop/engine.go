@@ -995,9 +995,13 @@ func (e *Engine) escalateStuckSteps(ctx context.Context, listID string, tl *Task
 		if s.Status != "stuck" || s.Attempts < maxAttempts {
 			continue
 		}
-		// Depth guard: a step already re-planned twice ("S2.1.3") is not
-		// escalated a third time — it just stays stuck.
-		if strings.Count(s.ID, ".") >= 2 {
+		// Depth guard: a step already re-planned twice is not escalated a
+		// third time — it just stays stuck. Tracked via PlanStep.EscalationDepth
+		// (set by ReplaceStep), not inferred from the step ID's dot-count —
+		// see EscalationDepth's doc comment for why counting dots let an
+		// escalator that names its own replacement steps bypass this guard
+		// entirely.
+		if s.EscalationDepth >= 2 {
 			continue
 		}
 		input := EscalationInput{StepID: s.ID, Error: s.Note}

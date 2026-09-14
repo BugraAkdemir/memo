@@ -39,6 +39,16 @@ type PlanStep struct {
 	Status           string            `json:"status,omitempty"`     // "pending" | "running" | "done" | "stuck"
 	Attempts         int               `json:"attempts,omitempty"`
 	Note             string            `json:"note,omitempty"`
+	// EscalationDepth counts how many times this step's lineage has been
+	// re-planned by the escalator, tracked explicitly rather than inferred
+	// from the step ID's dot-count. escalateStuckSteps's depth guard used
+	// to count dots in the ID ("S2.1.3" = depth 2) — but ReplaceStep only
+	// auto-generates a dotted ID when the escalator's replacement carries
+	// an empty one; an escalator (an LLM call) that returns its own
+	// non-dotted IDs (e.g. "Retry1") silently escaped the guard, letting a
+	// stuck step re-escalate indefinitely. Incremented by ReplaceStep for
+	// every replacement regardless of what ID it's given.
+	EscalationDepth int `json:"escalation_depth,omitempty"`
 }
 
 // EscalationInput is the failure context handed to the escalator (a targeted
@@ -86,6 +96,9 @@ func (p *Plan) ReplaceStep(stepID string, repl []PlanStep) {
 		if repl[i].Status == "" {
 			repl[i].Status = "pending"
 		}
+		// Always derived from the replaced step's own depth, never trusted
+		// from the escalator's output — see EscalationDepth's doc comment.
+		repl[i].EscalationDepth = old.EscalationDepth + 1
 	}
 	lastID := repl[len(repl)-1].ID
 	out := make([]PlanStep, 0, len(p.Steps)+len(repl)-1)

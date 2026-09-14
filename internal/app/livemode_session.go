@@ -85,14 +85,24 @@ func (a *App) NewLiveModeSession(ctx context.Context) livemode.Session {
 	var session livemode.Session
 	switch engineType {
 	case livemode.EngineGoogleLive:
-		client := google.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler, engineCfg.Voice)
-		client.SetBargeInSensitivity(cfg.BargeInSensitivity)
-		injectFn = client.InjectContext
-		session = client
+		// factory is called again by ReconnectingSession on every redial —
+		// each Client instance is one-shot (Start() can't be called
+		// twice), and a fresh websocket needs the setup message re-sent
+		// regardless, so a brand-new client per attempt is correct here,
+		// not wasteful.
+		reconn := livemode.NewReconnectingSession(func() livemode.Session {
+			client := google.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler, engineCfg.Voice)
+			client.SetBargeInSensitivity(cfg.BargeInSensitivity)
+			return client
+		})
+		injectFn = reconn.InjectContext
+		session = reconn
 	case livemode.EngineOpenAIRealtime:
-		client := openai_realtime.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler, engineCfg.Voice)
-		injectFn = client.InjectContext
-		session = client
+		reconn := livemode.NewReconnectingSession(func() livemode.Session {
+			return openai_realtime.NewClient(engineCfg.APIKey, engineCfg.Model, systemPrompt, tools, handler, engineCfg.Voice)
+		})
+		injectFn = reconn.InjectContext
+		session = reconn
 	default:
 		// Unreachable in practice — engineType was already checked against
 		// exactly these two values above — but kept fail-safe rather than a

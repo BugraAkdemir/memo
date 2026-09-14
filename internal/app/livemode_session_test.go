@@ -13,7 +13,6 @@ import (
 	"memo/internal/config"
 	"memo/internal/identity"
 	"memo/internal/livemode"
-	"memo/internal/livemode/google"
 	"memo/internal/sessions"
 )
 
@@ -94,8 +93,13 @@ func TestNewLiveModeSession_BuildsRealGoogleClientWhenConfigured(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected a *livePermissionRoutingSession wrapping the real client, got %T", s)
 	}
-	if _, ok := wrapped.Session.(*google.Client); !ok {
-		t.Errorf("expected the wrapped session to be a real *google.Client, got %T", wrapped.Session)
+	// The real google.Client is only built lazily, inside
+	// ReconnectingSession's factory closure, once Start() actually runs
+	// (and again on every reconnect) — not constructible here without
+	// dialing out. Confirming the reconnect wrapper is in the chain (not
+	// EchoSession) is what this test can verify at construction time.
+	if _, ok := wrapped.Session.(*livemode.ReconnectingSession); !ok {
+		t.Errorf("expected the wrapped session to be a *livemode.ReconnectingSession around the real google engine, got %T", wrapped.Session)
 	}
 }
 

@@ -76,11 +76,19 @@ func (m *Manager) ImportRegistryPath() string {
 }
 
 // SyncExternalSkills scans every source's directories for skills, installs
-// any that are new, re-installs any whose source content changed since the
-// last sync, and auto-activates everything it has ever imported. A name
-// that already exists in the manager but was never imported by this
-// function (a hand-authored or manually `/skill install`ed skill) is left
-// alone rather than overwritten.
+// any that are new, and re-installs any whose source content changed since
+// the last sync. A name that already exists in the manager but was never
+// imported by this function (a hand-authored or manually `/skill install`ed
+// skill) is left alone rather than overwritten.
+//
+// Imported skills are never auto-activated. A SKILL.md is arbitrary,
+// externally-edited markdown that, once active, is spliced verbatim into
+// the system prompt as "follow these instructions carefully" — installing
+// it (so it shows up for the user to review and turn on) is safe, but
+// switching it on unattended is not: it would hand full system-prompt
+// authority to a file the user never looked at. The user opts in explicitly
+// (skill settings UI / `/skill:on`), same as a manually `/skill install`ed
+// skill already requires.
 //
 // Skills are never auto-removed just because their source directory
 // disappeared (unmounted drive, renamed folder) — that's a deliberate,
@@ -162,37 +170,6 @@ func SyncExternalSkills(m *Manager, sources []ExternalSource) (SyncResult, error
 					Signature:  sig,
 					ImportedAt: time.Now(),
 				}
-			}
-		}
-	}
-
-	// Auto-activate only names imported for the very first time *this run*
-	// — never on Updated (re-imported because source content changed) and
-	// never by re-scanning the whole registry on every sync. Activation is
-	// now persisted (Manager.LoadActiveSkills/SetActive, loaded before this
-	// function ever runs), so an already-imported skill's current on/off
-	// state already reflects whatever the user last set it to; force-
-	// activating it again here would silently override a deliberate
-	// `/skill:off` the moment its source content next changes, or on every
-	// single restart if activation had never been persisted at all (the
-	// original bug this comment replaces).
-	if len(result.Imported) > 0 {
-		active := m.GetActiveNames()
-		activeSet := make(map[string]bool, len(active))
-		for _, n := range active {
-			activeSet[n] = true
-		}
-		changed := false
-		for _, name := range result.Imported {
-			if !activeSet[name] {
-				active = append(active, name)
-				activeSet[name] = true
-				changed = true
-			}
-		}
-		if changed {
-			if err := m.SetActive(active); err != nil {
-				return result, fmt.Errorf("activate imported skills: %w", err)
 			}
 		}
 	}

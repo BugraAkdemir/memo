@@ -20,7 +20,13 @@ func writeExternalSkill(t *testing.T, root, name, description string) string {
 	return dir
 }
 
-func TestSyncExternalSkills_ImportsAndActivates(t *testing.T) {
+// TestSyncExternalSkills_ImportsWithoutActivating is the regression test for
+// "Memo silently gives a downloaded/edited SKILL.md full system-prompt
+// authority the moment it's discovered": importing must install the skill
+// (so the user can find and review it) without switching it on. See
+// SyncExternalSkills' doc comment for why unattended activation of
+// externally-sourced instruction text is unsafe.
+func TestSyncExternalSkills_ImportsWithoutActivating(t *testing.T) {
 	dataDir := t.TempDir()
 	sourceDir := t.TempDir()
 	m := NewManager(dataDir)
@@ -42,19 +48,16 @@ func TestSyncExternalSkills_ImportsAndActivates(t *testing.T) {
 	if def.Manifest.Description != "A Claude Code skill" {
 		t.Errorf("Description = %q", def.Manifest.Description)
 	}
-	if !m.IsActive("claude-only") {
-		t.Error("imported skill should be auto-activated")
+	if m.IsActive("claude-only") {
+		t.Error("imported skill must not be auto-activated — user must opt in")
 	}
 }
 
-// TestSyncExternalSkills_RespectsManualDeactivation is the regression test
-// for "an imported skill you turned off comes back on by itself": the
-// original auto-activate logic re-scanned every skill the registry had
-// *ever* imported on *every* sync and force-activated any that weren't
-// currently active — indistinguishable from "never activated yet" once
-// activation wasn't persisted across restarts either. Only genuinely new
-// imports (result.Imported) should ever be auto-activated.
-func TestSyncExternalSkills_RespectsManualDeactivation(t *testing.T) {
+// TestSyncExternalSkills_RespectsManualActivationState is the regression
+// test for "a resync resets whatever the user chose": a skill the user
+// explicitly turned on, then back off, must stay off across a later sync of
+// unchanged content — the sync must never touch activation state itself.
+func TestSyncExternalSkills_RespectsManualActivationState(t *testing.T) {
 	dataDir := t.TempDir()
 	sourceDir := t.TempDir()
 	m := NewManager(dataDir)
@@ -65,10 +68,14 @@ func TestSyncExternalSkills_RespectsManualDeactivation(t *testing.T) {
 	if _, err := SyncExternalSkills(m, sources); err != nil {
 		t.Fatalf("first sync error: %v", err)
 	}
-	if !m.IsActive("opt-out") {
-		t.Fatal("first import should auto-activate")
+	if m.IsActive("opt-out") {
+		t.Fatal("import should not auto-activate")
 	}
 
+	// User reviews it, turns it on, then changes their mind.
+	if err := m.SetActive([]string{"opt-out"}); err != nil {
+		t.Fatalf("SetActive([opt-out]) error: %v", err)
+	}
 	if err := m.SetActive(nil); err != nil {
 		t.Fatalf("SetActive(nil) error: %v", err)
 	}

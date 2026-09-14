@@ -207,38 +207,68 @@ func main() {
 		// a second invocation attach instead of failing to bind.
 		if !alreadyRunning {
 			a.Startup(ctx)
-			defer a.Shutdown(ctx)
 			if *autoShutdown {
 				a.EnableAutoShutdown()
 			}
 
+			// fatalExit reports err and exits non-zero, but — unlike a bare
+			// os.Exit, which skips every deferred call — first runs
+			// a.Shutdown(ctx) explicitly so anything Startup() already
+			// acquired (ngrok tunnel, embedding llama-server, etc.) doesn't
+			// leak as an orphaned subprocess just because this process is
+			// about to die.
+			fatalExit := func(format string, args ...any) {
+				fmt.Fprintf(os.Stderr, "FATAL: "+format+"\n", args...)
+				a.Shutdown(ctx)
+				os.Exit(1)
+			}
+
 			// Start the REST API server for Flutter frontend (plain HTTP, no TLS)
 			if err := a.StartWebServerHTTP(*port); err != nil {
-				fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
-				os.Exit(1)
-			}
-			if !waitForBackend(client, 10*time.Second) {
-				fmt.Fprintf(os.Stderr, "FATAL: backend %d portunda ayağa kalkmadı\n", *port)
-				os.Exit(1)
-			}
-			log.Printf("Memo backend server running on port %d", *port)
-
-			if *lanMode {
-				if err := a.SetRemoteAccess(true, *port); err != nil {
-					fmt.Fprintf(os.Stderr, "FATAL: --lan: %v\n", err)
+				// The "is something already listening" probe above and this
+				// bind are not atomic — a second `memo` invocation starting
+				// within that narrow window can lose the race to bind
+				// first. Clean up whatever Startup() already acquired, then
+				// check whether the winner is actually serving before
+				// giving up entirely: if so, fall through to the same
+				// "attach instead of running our own backend" path used
+				// when alreadyRunning was true from the start, rather than
+				// crashing this process (and orphaning anything it already
+				// started) just because it happened to lose a race that
+				// was never fatal to begin with.
+				a.Shutdown(ctx)
+				recheckCtx, recheckCancel := context.WithTimeout(ctx, 2*time.Second)
+				wonByAnother := client.Status(recheckCtx) == nil
+				recheckCancel()
+				if !wonByAnother {
+					fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
 					os.Exit(1)
 				}
-				status, _ := a.GetRemoteAccessStatus().(app.RemoteAccessStatus)
-				switch status.AuthMode {
-				case "none":
-					log.Printf("⚠️  Memo backend bound to 0.0.0.0:%d (LAN mode) — AUTH DISABLED (auth_mode: none). Anyone on this network can reach the API with no credential at all.", *port)
-				case "password":
-					log.Printf("Memo backend bound to 0.0.0.0:%d (LAN mode) — password login required (user: %s). POST /api/auth/login to get a session token.", *port, status.Username)
-				default: // "token" or "token_password"
-					if status.Token != "" {
-						log.Printf("Memo backend bound to 0.0.0.0:%d (LAN mode) — X-Memo-Token required on every request: %s", *port, status.Token)
-					} else {
-						log.Printf("Memo backend bound to 0.0.0.0:%d (LAN mode) — a device token is required; existing paired device token(s) remain valid.", *port)
+				log.Printf("another memo instance won the race to bind port %d — attaching to it instead", *port)
+				alreadyRunning = true
+			} else {
+				defer a.Shutdown(ctx)
+				if !waitForBackend(client, 10*time.Second) {
+					fatalExit("backend %d portunda ayağa kalkmadı", *port)
+				}
+				log.Printf("Memo backend server running on port %d", *port)
+
+				if *lanMode {
+					if err := a.SetRemoteAccess(true, *port); err != nil {
+						fatalExit("--lan: %v", err)
+					}
+					status, _ := a.GetRemoteAccessStatus().(app.RemoteAccessStatus)
+					switch status.AuthMode {
+					case "none":
+						log.Printf("⚠️  Memo backend bound to 0.0.0.0:%d (LAN mode) — AUTH DISABLED (auth_mode: none). Anyone on this network can reach the API with no credential at all.", *port)
+					case "password":
+						log.Printf("Memo backend bound to 0.0.0.0:%d (LAN mode) — password login required (user: %s). POST /api/auth/login to get a session token.", *port, status.Username)
+					default: // "token" or "token_password"
+						if status.Token != "" {
+							log.Printf("Memo backend bound to 0.0.0.0:%d (LAN mode) — X-Memo-Token required on every request: %s", *port, status.Token)
+						} else {
+							log.Printf("Memo backend bound to 0.0.0.0:%d (LAN mode) — a device token is required; existing paired device token(s) remain valid.", *port)
+						}
 					}
 				}
 			}

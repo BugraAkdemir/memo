@@ -151,13 +151,15 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
   }
 
-  /// Plain Tab: confirm the file-mention/template popup if one is open,
+  /// Ctrl+Tab: cycle Code Mode's plan/auto/build sub-mode if Code Mode is on
+  /// for the active chat — app-wide, like Shift+Tab's auto-permission
+  /// toggle (app_shell.dart), deliberately NOT gated on the composer having
+  /// focus (a user reasonably expects a mode-switch chord to work regardless
+  /// of whether they've clicked into the text field first). Plain Tab:
+  /// confirm the file-mention/template popup if one is open — this part
+  /// DOES require composer focus, since a popup is always tied to it —
   /// otherwise let normal focus traversal happen (unchanged from before
-  /// Code Mode's sub-mode feature existed). Ctrl+Tab: cycle Code Mode's
-  /// plan/auto/build sub-mode if Code Mode is on for the active chat —
-  /// deliberately a different chord than plain Tab so it can never collide
-  /// with the popup's own Tab-confirm, and Ctrl+Shift+Tab is left alone in
-  /// case a future reverse-cycle wants it.
+  /// Code Mode's sub-mode feature existed).
   ///
   /// Registered as a HardwareKeyboard.instance handler rather than a
   /// Shortcuts/Actions binding (which is how every other composer shortcut
@@ -176,17 +178,25 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   bool _handleHardwareKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
     if (event.logicalKey != LogicalKeyboardKey.tab) return false;
-    if (!_focusNode.hasFocus) return false;
 
     if (HardwareKeyboard.instance.isControlPressed) {
       if (HardwareKeyboard.instance.isShiftPressed) return false; // reserved
       final chatId = ref.read(activeChatIdProvider).valueOrNull ?? '';
-      if (chatId.isEmpty) return false;
+      if (chatId.isEmpty) {
+        debugPrint('code-submode: Ctrl+Tab pressed but no active chat id');
+        return false;
+      }
       final codeModeOn = ref.read(chatCodeModeProvider(chatId)).valueOrNull?.enabled ?? false;
-      if (!codeModeOn) return false;
+      if (!codeModeOn) {
+        debugPrint('code-submode: Ctrl+Tab pressed but Code Mode is off for chat $chatId');
+        return false;
+      }
+      debugPrint('code-submode: Ctrl+Tab cycling sub-mode for chat $chatId');
       cycleChatCodeSubMode(ref, chatId);
       return true;
     }
+
+    if (!_focusNode.hasFocus) return false;
 
     // Shift+Tab (no Ctrl) is reserved app-wide for the auto-permission
     // toggle (app_shell.dart's _ToggleAutoPermissionIntent) — never claim it.

@@ -156,6 +156,8 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/system-prompt/minimal-mode", s.handleMinimalMode)
 	route("/api/system-prompt/minimal-mode/overrides", s.handleMinimalModeOverrides)
 	route("/api/incognito-prompt", s.handleIncognitoPrompt)
+	route("/api/code-mode/prompt", s.handleCodeSubModePrompt)
+	route("/api/code-mode/prompt/reset", s.handleResetCodeSubModePrompt)
 	// Memory permission (Faz 5.1.1, yapacam.md): strict-gated (reads
 	// included, not just writes — the point of denying it is that a
 	// restricted account can't see memory *content* at all) on every

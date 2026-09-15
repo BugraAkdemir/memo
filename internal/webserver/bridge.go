@@ -51,6 +51,10 @@ type FullBridge interface {
 	ResetSystemPrompt() error
 	GetIncognitoPrompt() string
 	SetIncognitoPrompt(prompt string) error
+	// Code Mode sub-mode prompts ("plan"/"auto"/"build")
+	GetCodeSubModePrompt(subMode string) string
+	SetCodeSubModePrompt(subMode, prompt string) error
+	ResetCodeSubModePrompt(subMode string) error
 	GetUILanguage() string
 	SetUILanguage(lang string) error
 	GetMinimalMode() bool

@@ -608,6 +608,22 @@ class L10n {
     'reset_prompt': 'Varsayılana Sıfırla',
     'save_successful': 'Kaydetme başarılı',
 
+    // Settings — Code Mode Prompts
+    'code_submode_prompts_tab_title': 'Kod Modu Promptları',
+    'code_submode_prompts_title': 'Kod Modu Promptları',
+    'code_submode_prompts_desc':
+        'Kod Modu\'nun plan / auto / build alt-modlarının her biri için ayrı bir sistem promptu — Tab tuşuyla ya da sohbetteki rozete dokunarak aralarında geçiş yapılır.',
+    'code_submode_plan_prompt_label': 'Plan modu promptu',
+    'code_submode_plan_prompt_desc':
+        'Sadece inceler ve plan çıkarır, dosya değiştirmez — planı kaydettikten sonra build/auto\'ya geçelim mi diye sorar.',
+    'code_submode_auto_prompt_label': 'Auto modu promptu',
+    'code_submode_auto_prompt_desc':
+        'Bugünkü varsayılan Kod Modu davranışı — düzenlemeler sorulduktan sonra uygulanır.',
+    'code_submode_build_prompt_label': 'Build modu promptu',
+    'code_submode_build_prompt_desc':
+        'Hızlı ve izinli — dosya düzenlemeleri ve komutlar onay beklemeden akar.',
+    'code_submode_prompt_default_hint': 'Boş bırakılırsa yerleşik varsayılan kullanılır',
+
     // Persona picker (shared: Settings → System Prompt, and Setup Wizard)
     'persona_picker_name_label': 'Adın (isteğe bağlı)',
     'persona_picker_name_hint': 'örn. Buğra',
@@ -2742,6 +2758,22 @@ class L10n {
         'Instruction for how the model should behave without memory access in incognito mode.',
     'reset_prompt': 'Reset to Default',
     'save_successful': 'Saved successfully',
+
+    // Settings — Code Mode Prompts
+    'code_submode_prompts_tab_title': 'Code Mode Prompts',
+    'code_submode_prompts_title': 'Code Mode Prompts',
+    'code_submode_prompts_desc':
+        'A separate system prompt for each of Code Mode\'s plan / auto / build sub-modes — switch between them with Tab or by tapping the chip in the chat header.',
+    'code_submode_plan_prompt_label': 'Plan mode prompt',
+    'code_submode_plan_prompt_desc':
+        'Investigates and produces a plan only, never edits files — asks whether to move to build/auto once the plan is saved.',
+    'code_submode_auto_prompt_label': 'Auto mode prompt',
+    'code_submode_auto_prompt_desc':
+        'Today\'s default Code Mode behavior — edits apply after being confirmed.',
+    'code_submode_build_prompt_label': 'Build mode prompt',
+    'code_submode_build_prompt_desc':
+        'Fast and permissive — file edits and commands proceed without waiting for confirmation.',
+    'code_submode_prompt_default_hint': 'Leave empty to use the built-in default',
 
     // Persona picker (shared: Settings → System Prompt, and Setup Wizard)
     'persona_picker_name_label': 'Your name (optional)',

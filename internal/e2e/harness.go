@@ -297,6 +297,17 @@ func (h *Harness) SetAutoPermission(enabled bool) {
 	}
 }
 
+// SetCodeSubModePrompt overrides subMode's ("plan"/"auto"/"build") Code Mode
+// system prompt via POST /api/code-mode/prompt.
+func (h *Harness) SetCodeSubModePrompt(subMode, prompt string) {
+	h.t.Helper()
+	resp := h.postJSON("/api/code-mode/prompt", map[string]string{"sub_mode": subMode, "prompt": prompt})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.t.Fatalf("POST /api/code-mode/prompt(%s): status %d", subMode, resp.StatusCode)
+	}
+}
+
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, err := json.Marshal(v)

@@ -328,4 +328,23 @@ grep'i, gerçek uygulamada manuel tab-döngüsü + dosya-mention popup'ıyla
 **Doğrulama:** `flutter analyze`/`test` + kural #8 grep + backend endpoint'ler
 için Go handler testi.
 
-- [ ] Yapıldı
+- [x] Yapıldı (commit'lendi 2026-09-15). Backend: `GET/POST
+  /api/code-mode/prompt` + `POST /api/code-mode/prompt/reset` (sub_mode
+  doğrulamalı, geçersiz değerde 400), bir `internal/e2e` testiyle uçtan uca
+  doğrulandı (özel prompt gerçekten modele giden system mesajının başına
+  geçiyor, reset sonrası kayboluyor). Frontend: plan tasarımındaki "tek
+  provider ailesi" fikri yerine üç ayrı `AsyncNotifierProvider` (bu kod
+  tabanında `.family` AsyncNotifier hiç kullanılmıyor, üç küçük sınıf yeni
+  bir deseni ilk kez tanıtmaktan daha az sürpriz) — `_CodeSubModePromptSection`
+  de generic tip yerine düz callback'ler alacak şekilde tasarlandı (generic
+  `N extends AsyncNotifier<String>` yaklaşımı `flutter analyze`'da
+  `undefined_method` hatası verdi, çünkü temel sınıfta `save`/`reset` yok,
+  callback deseni bunu tamamen ortadan kaldırdı). `flutter analyze` temiz
+  (5 bilinen info), `flutter test` 341/341, kural #8 grep boş, Go
+  build/vet/test/race yeşil.
+
+**PLAN TAMAMLANDI — 6/6 birim commit'lendi.** Kullanıcı uyanınca gerçek
+masaüstü uygulamada görsel doğrulama (Tab döngüsü, rozet görünümü, Ayarlar
+sekmesindeki yeni sekme) yapması gerekiyor — bu ortamda görsel bir Flutter
+Linux masaüstü çalıştırma imkanı yoktu, sadece `flutter analyze`/`test` ile
+doğrulanabildi.

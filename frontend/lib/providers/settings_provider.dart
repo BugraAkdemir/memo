@@ -297,6 +297,82 @@ class IncognitoPromptNotifier extends AsyncNotifier<String> {
   }
 }
 
+// ─── Code Mode Sub-Mode Prompts ─────────────────────────────────
+//
+// Three separate providers (not a family) — this codebase has no existing
+// AsyncNotifierProvider.family precedent, and three small near-identical
+// notifiers is less surprising here than introducing that shape for the
+// first time over three fixed, known-in-advance sub-modes.
+
+final codePlanPromptProvider =
+    AsyncNotifierProvider<CodePlanPromptNotifier, String>(
+      CodePlanPromptNotifier.new,
+    );
+
+class CodePlanPromptNotifier extends AsyncNotifier<String> {
+  @override
+  Future<String> build() async {
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return '';
+    return ref.read(apiClientProvider).getCodeSubModePrompt('plan');
+  }
+
+  Future<void> save(String prompt) async {
+    await ref.read(apiClientProvider).setCodeSubModePrompt('plan', prompt);
+    state = AsyncData(prompt);
+  }
+
+  Future<void> reset() async {
+    await ref.read(apiClientProvider).resetCodeSubModePrompt('plan');
+    ref.invalidateSelf();
+  }
+}
+
+final codeAutoPromptProvider =
+    AsyncNotifierProvider<CodeAutoPromptNotifier, String>(
+      CodeAutoPromptNotifier.new,
+    );
+
+class CodeAutoPromptNotifier extends AsyncNotifier<String> {
+  @override
+  Future<String> build() async {
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return '';
+    return ref.read(apiClientProvider).getCodeSubModePrompt('auto');
+  }
+
+  Future<void> save(String prompt) async {
+    await ref.read(apiClientProvider).setCodeSubModePrompt('auto', prompt);
+    state = AsyncData(prompt);
+  }
+
+  Future<void> reset() async {
+    await ref.read(apiClientProvider).resetCodeSubModePrompt('auto');
+    ref.invalidateSelf();
+  }
+}
+
+final codeBuildPromptProvider =
+    AsyncNotifierProvider<CodeBuildPromptNotifier, String>(
+      CodeBuildPromptNotifier.new,
+    );
+
+class CodeBuildPromptNotifier extends AsyncNotifier<String> {
+  @override
+  Future<String> build() async {
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return '';
+    return ref.read(apiClientProvider).getCodeSubModePrompt('build');
+  }
+
+  Future<void> save(String prompt) async {
+    await ref.read(apiClientProvider).setCodeSubModePrompt('build', prompt);
+    state = AsyncData(prompt);
+  }
+
+  Future<void> reset() async {
+    await ref.read(apiClientProvider).resetCodeSubModePrompt('build');
+    ref.invalidateSelf();
+  }
+}
+
 // ─── Memory Files ───────────────────────────────────────────────
 
 final memoryFilesProvider =

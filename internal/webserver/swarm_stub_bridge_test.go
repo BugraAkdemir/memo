@@ -193,6 +193,9 @@ func (b *swarmStubBridge) GenerateChatTitle() string              { return "" }
 func (b *swarmStubBridge) GetSystemPrompt() string                { return "" }
 func (b *swarmStubBridge) SetSystemPrompt(prompt string) error    { return nil }
 func (b *swarmStubBridge) ResetSystemPrompt() error               { return nil }
+func (b *swarmStubBridge) GetCodeSubModePrompt(subMode string) string       { return "" }
+func (b *swarmStubBridge) SetCodeSubModePrompt(subMode, prompt string) error { return nil }
+func (b *swarmStubBridge) ResetCodeSubModePrompt(subMode string) error       { return nil }
 func (b *swarmStubBridge) GetIncognitoPrompt() string             { return "" }
 func (b *swarmStubBridge) SetIncognitoPrompt(prompt string) error { return nil }
 func (b *swarmStubBridge) GetUILanguage() string                  { return b.uiLanguage }

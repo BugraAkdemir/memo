@@ -772,6 +772,31 @@ class MemoApiClient {
     await _dio.post('/api/system-prompt/reset');
   }
 
+  // ─── Code Mode Sub-Mode Prompts ─────────────────────────────────
+
+  /// subMode: 'plan' | 'auto' | 'build'.
+  Future<String> getCodeSubModePrompt(String subMode) async {
+    final res = await _dio.get(
+      '/api/code-mode/prompt',
+      queryParameters: {'sub_mode': subMode},
+    );
+    return res.data['prompt'] as String? ?? '';
+  }
+
+  Future<void> setCodeSubModePrompt(String subMode, String prompt) async {
+    await _dio.post(
+      '/api/code-mode/prompt',
+      data: {'sub_mode': subMode, 'prompt': prompt},
+    );
+  }
+
+  Future<void> resetCodeSubModePrompt(String subMode) async {
+    await _dio.post(
+      '/api/code-mode/prompt/reset',
+      data: {'sub_mode': subMode},
+    );
+  }
+
   /// Persists the GUI's current display language ("tr"/"en") backend-side.
   /// The backend has no display language of its own — this exists purely so
   /// a second client with no SharedPreferences of its own (the terminal

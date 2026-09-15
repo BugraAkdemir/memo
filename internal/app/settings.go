@@ -235,6 +235,53 @@ CORE DIRECTIVES:
 	return config.Save(a.cfg)
 }
 
+// GetCodeSubModePrompt returns subMode's ("plan"/"auto"/"build") Settings
+// override, or "" if none is set — codeSubModeDirective (agent_chat_context.go)
+// falls back to the built-in const for that sub-mode in that case, the same
+// empty-means-default shape GetSystemPrompt's siblings use.
+func (a *App) GetCodeSubModePrompt(subMode string) string {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	switch subMode {
+	case "plan":
+		return a.cfg.AgentMode.CodePlanPrompt
+	case "build":
+		return a.cfg.AgentMode.CodeBuildPrompt
+	default: // "auto" and ""
+		return a.cfg.AgentMode.CodeAutoPrompt
+	}
+}
+
+// SetCodeSubModePrompt overrides subMode's Code Mode system prompt.
+func (a *App) SetCodeSubModePrompt(subMode, prompt string) error {
+	a.cfgMu.Lock()
+	switch subMode {
+	case "plan":
+		a.cfg.AgentMode.CodePlanPrompt = prompt
+	case "auto", "":
+		a.cfg.AgentMode.CodeAutoPrompt = prompt
+	case "build":
+		a.cfg.AgentMode.CodeBuildPrompt = prompt
+	default:
+		a.cfgMu.Unlock()
+		return fmt.Errorf("unknown code sub-mode: %q", subMode)
+	}
+	cfg := a.cfg
+	a.cfgMu.Unlock()
+	logx.Printf("Code Mode %s prompt updated (%d chars)", subMode, len(prompt))
+	return config.Save(cfg)
+}
+
+// ResetCodeSubModePrompt clears subMode's override, falling back to its
+// built-in default (codeSubModeDirective).
+func (a *App) ResetCodeSubModePrompt(subMode string) error {
+	if err := a.SetCodeSubModePrompt(subMode, ""); err != nil {
+		return err
+	}
+	logx.Printf("Code Mode %s prompt reset to default", subMode)
+	return nil
+}
+
 // GetUILanguage returns the GUI's last-known display language ("tr"/"en",
 // or "" if never set). The backend never picks this itself — it's purely
 // what the Flutter GUI last wrote via SetUILanguage.

@@ -319,6 +319,69 @@ func (s *Server) handleResetSystemPrompt(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, map[string]string{"ok": "true"})
 }
 
+// ─── Code Mode sub-mode prompts ─────────────────────────────────
+
+var validCodeSubModePromptModes = map[string]bool{"plan": true, "auto": true, "build": true}
+
+func (s *Server) handleCodeSubModePrompt(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		subMode := r.URL.Query().Get("sub_mode")
+		if !validCodeSubModePromptModes[subMode] {
+			http.Error(w, "sub_mode must be plan, auto, or build", http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, map[string]string{"prompt": s.fullBridge.GetCodeSubModePrompt(subMode)})
+	case http.MethodPost:
+		var req struct {
+			SubMode string `json:"sub_mode"`
+			Prompt  string `json:"prompt"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if !validCodeSubModePromptModes[req.SubMode] {
+			http.Error(w, "sub_mode must be plan, auto, or build", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetCodeSubModePrompt(req.SubMode, req.Prompt); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or POST", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleResetCodeSubModePrompt(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		SubMode string `json:"sub_mode"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if !validCodeSubModePromptModes[req.SubMode] {
+		http.Error(w, "sub_mode must be plan, auto, or build", http.StatusBadRequest)
+		return
+	}
+	if err := s.fullBridge.ResetCodeSubModePrompt(req.SubMode); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
 // ─── Minimal Mode ───────────────────────────────────────────────
 //
 // When on, identity/persona/mood/web-search prompt injection is disabled

@@ -391,7 +391,6 @@ class _AgentTopBar extends ConsumerWidget {
             child: Text(activeChat.title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain), overflow: TextOverflow.ellipsis),
           ),
           _CodeModeToggle(chatId: activeChat.id),
-          _CodeSubModeIndicator(chatId: activeChat.id),
           IconButton(
             icon: const Icon(Icons.checklist),
             tooltip: L10n.t('taskloop_title'),
@@ -441,68 +440,6 @@ class _CodeModeToggle extends ConsumerWidget {
         // gone, and invalidating through a disposed ref throws StateError.
         if (context.mounted) ref.invalidate(chatCodeModeProvider(chatId));
       },
-    );
-  }
-}
-
-/// Per-chat Code Mode sub-mode indicator/switcher — plan (investigate,
-/// don't edit) / auto (today's default, confirm-as-you-go) / build (fast,
-/// wider auto-approval). Only shown while Code Mode itself is on for this
-/// chat (a sub-mode is meaningless otherwise). Tapping cycles the same
-/// plan→auto→build→plan sequence Tab does in the message composer
-/// (chat_input.dart) — see agent_provider.dart's cycleChatCodeSubMode.
-class _CodeSubModeIndicator extends ConsumerWidget {
-  final String chatId;
-  const _CodeSubModeIndicator({required this.chatId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final codeModeOn = ref.watch(chatCodeModeProvider(chatId)).valueOrNull?.enabled ?? false;
-    if (!codeModeOn) return const SizedBox.shrink();
-
-    final subMode = ref.watch(chatCodeSubModeProvider(chatId)).valueOrNull?.subMode ?? 'auto';
-    final Color color;
-    final IconData icon;
-    final String label;
-    switch (subMode) {
-      case 'plan':
-        color = MemoTheme.accent;
-        icon = Icons.checklist_outlined;
-        label = L10n.t('code_submode_plan');
-      case 'build':
-        color = MemoTheme.warningOrange;
-        icon = Icons.bolt;
-        label = L10n.t('code_submode_build');
-      default:
-        color = MemoTheme.green;
-        icon = Icons.code;
-        label = L10n.t('code_submode_auto');
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(left: 8),
-      child: Tooltip(
-        message: L10n.t('code_submode_tab_hint'),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          onTap: () => cycleChatCodeSubMode(ref, chatId),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 13, color: color),
-                const SizedBox(width: 4),
-                Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

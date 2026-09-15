@@ -54,6 +54,19 @@ class EngineStrip extends ConsumerWidget {
     final cliType = ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '';
     final isCLIChat = cliType.isNotEmpty;
 
+    // Code Mode's plan/auto/build sub-mode for the active chat — shown here
+    // (not in agent_screen.dart's own header, where it used to live) so
+    // it's visible from any screen, right next to the rest of the "what's
+    // currently running" strip. Ctrl+Tab cycles it (chat_input.dart);
+    // tapping this chip does the same.
+    final activeChatId = ref.watch(activeChatIdProvider).valueOrNull ?? '';
+    final codeModeOn = activeChatId.isEmpty
+        ? false
+        : ref.watch(chatCodeModeProvider(activeChatId)).valueOrNull?.enabled ?? false;
+    final codeSubMode = !codeModeOn
+        ? null
+        : ref.watch(chatCodeSubModeProvider(activeChatId)).valueOrNull?.subMode ?? 'auto';
+
     // Whether the strip's first "slot" (chat model / API provider / offline
     // hint) rendered anything, and whether the second slot (embedding
     // model / memory warning) did — used to decide when a divider actually
@@ -193,6 +206,10 @@ class EngineStrip extends ConsumerWidget {
                   if (ref.watch(moodEnabledProvider).valueOrNull == true) ...[
                     _divider(c.borderSoft),
                     const MoodGauge(),
+                  ],
+                  if (codeSubMode != null) ...[
+                    _divider(c.borderSoft),
+                    _CodeSubModeIndicator(chatId: activeChatId, subMode: codeSubMode),
                   ],
                 ],
               ),
@@ -385,6 +402,62 @@ class _OfflineHint extends StatelessWidget {
                   color: MemoTheme.accent),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Code Mode's plan/auto/build sub-mode for the currently active chat —
+/// only rendered by the caller when Code Mode is actually on for that chat.
+/// Ctrl+Tab cycles it (chat_input.dart's _handleHardwareKeyEvent); tapping
+/// this chip does the same (agent_provider.dart's cycleChatCodeSubMode, so
+/// the two triggers can't drift apart).
+class _CodeSubModeIndicator extends ConsumerWidget {
+  final String chatId;
+  final String subMode;
+  const _CodeSubModeIndicator({required this.chatId, required this.subMode});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final Color color;
+    final IconData icon;
+    final String label;
+    switch (subMode) {
+      case 'plan':
+        color = MemoTheme.accent;
+        icon = Icons.checklist_outlined;
+        label = L10n.t('code_submode_plan');
+      case 'build':
+        color = MemoTheme.warningOrange;
+        icon = Icons.bolt;
+        label = L10n.t('code_submode_build');
+      default:
+        color = MemoTheme.green;
+        icon = Icons.code;
+        label = L10n.t('code_submode_auto');
+    }
+
+    return Tooltip(
+      message: L10n.t('code_submode_tab_hint'),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => cycleChatCodeSubMode(ref, chatId),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+              Icon(icon, size: 13, color: color),
+              const SizedBox(width: 4),
+              Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+            ],
+          ),
         ),
       ),
     );

@@ -1315,7 +1315,7 @@ class L10n {
     'code_submode_auto': 'Auto',
     'code_submode_build': 'Build',
     'code_submode_tab_hint':
-        'Plan / Auto / Build arasında geçiş — Tab tuşuna bas ya da dokun',
+        'Plan / Auto / Build arasında geçiş — Ctrl+Tab\'a bas ya da dokun',
     'agent_chat_select': 'Ajan Sohbeti Seç',
     'agent_chat_instruction':
         'Soldan bir ajan sohbeti seç veya yeni bir tane başlat.',
@@ -3447,7 +3447,7 @@ class L10n {
     'code_submode_auto': 'Auto',
     'code_submode_build': 'Build',
     'code_submode_tab_hint':
-        'Switch between Plan / Auto / Build — press Tab or tap',
+        'Switch between Plan / Auto / Build — press Ctrl+Tab or tap',
     'agent_chat_select': 'Select Agent Chat',
     'agent_chat_instruction':
         'Select an agent chat from the left or start a new one.',

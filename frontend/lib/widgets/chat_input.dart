@@ -151,9 +151,13 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
   }
 
-  /// Tab: confirm the file-mention/template popup if one is open, otherwise
-  /// cycle Code Mode's plan/auto/build sub-mode if Code Mode is on for the
-  /// active chat, otherwise let normal focus traversal happen.
+  /// Plain Tab: confirm the file-mention/template popup if one is open,
+  /// otherwise let normal focus traversal happen (unchanged from before
+  /// Code Mode's sub-mode feature existed). Ctrl+Tab: cycle Code Mode's
+  /// plan/auto/build sub-mode if Code Mode is on for the active chat —
+  /// deliberately a different chord than plain Tab so it can never collide
+  /// with the popup's own Tab-confirm, and Ctrl+Shift+Tab is left alone in
+  /// case a future reverse-cycle wants it.
   ///
   /// Registered as a HardwareKeyboard.instance handler rather than a
   /// Shortcuts/Actions binding (which is how every other composer shortcut
@@ -172,23 +176,27 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   bool _handleHardwareKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
     if (event.logicalKey != LogicalKeyboardKey.tab) return false;
-    // Shift+Tab is reserved app-wide for the auto-permission toggle
-    // (app_shell.dart's _ToggleAutoPermissionIntent) — never claim it here.
-    if (HardwareKeyboard.instance.isShiftPressed) return false;
     if (!_focusNode.hasFocus) return false;
+
+    if (HardwareKeyboard.instance.isControlPressed) {
+      if (HardwareKeyboard.instance.isShiftPressed) return false; // reserved
+      final chatId = ref.read(activeChatIdProvider).valueOrNull ?? '';
+      if (chatId.isEmpty) return false;
+      final codeModeOn = ref.read(chatCodeModeProvider(chatId)).valueOrNull?.enabled ?? false;
+      if (!codeModeOn) return false;
+      cycleChatCodeSubMode(ref, chatId);
+      return true;
+    }
+
+    // Shift+Tab (no Ctrl) is reserved app-wide for the auto-permission
+    // toggle (app_shell.dart's _ToggleAutoPermissionIntent) — never claim it.
+    if (HardwareKeyboard.instance.isShiftPressed) return false;
 
     if (_popupActive) {
       _confirmPopupSelection();
       return true;
     }
-
-    final chatId = ref.read(activeChatIdProvider).valueOrNull ?? '';
-    if (chatId.isEmpty) return false;
-    final codeModeOn = ref.read(chatCodeModeProvider(chatId)).valueOrNull?.enabled ?? false;
-    if (!codeModeOn) return false;
-
-    cycleChatCodeSubMode(ref, chatId);
-    return true;
+    return false;
   }
 
   void _onTextChanged() {

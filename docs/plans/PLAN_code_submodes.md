@@ -1,5 +1,13 @@
 # PLAN — Code Mode plan / auto / build alt-modları
 
+> **DURUM: TAMAMLANDI (2026-09-15).** 6/6 birim commit'lendi, backend
+> (`go test -race`) ve frontend (`flutter analyze`/`test`) yeşil, **canlı
+> masaüstü uygulamada kullanıcı tarafından uçtan uca doğrulandı** — Ctrl+Tab
+> ile plan/auto/build döngüsü ve durum çubuğundaki rozet çalışıyor. Tab
+> tuşundan Ctrl+Tab'a geçiş ve rozetin konumu, ilk canlı testte gelen
+> kullanıcı geri bildirimiyle şekillendi (bkz. Birim 5'in notu ve
+> `docs/handoff.md`'deki ilgili oturum girdisi).
+
 > **Kaynak:** Kullanıcı isteği (2026-09-14/15 oturumu). Claude Code CLI'nin
 > kendi plan/auto/build döngüsüne benzer şekilde, Code Mode açıkken Tab
 > tuşuyla sohbet üç alt-mod arasında geçebilsin: **plan** (sadece planlar,
@@ -295,10 +303,13 @@ grep'i, gerçek uygulamada manuel tab-döngüsü + dosya-mention popup'ıyla
 
 - [x] Yapıldı (commit'lendi 2026-09-15) — `flutter analyze` temiz (bilinen
   5 info dışında yeni uyarı yok), `flutter test` 341/341, Rule #8 grep boş.
-  **Gerçek masaüstü uygulamada manuel/görsel doğrulama yapılmadı** (bu
-  ortamda görsel bir Flutter Linux masaüstü test ortamı yok) — Tab
-  döngüsünün dosya-mention popup'ıyla gerçekten çakışmadığı ve rozetin
-  gerçek pencerede doğru göründüğü kullanıcı tarafından teyit edilmeli.
+  **Canlı masaüstü doğrulaması tamamlandı** (2026-09-15, kullanıcı
+  tarafından): ilk elde plan Tab (Shortcuts/Actions) mekanizması gerçek
+  uygulamada çalışmadı — kök neden `HardwareKeyboard`-seviyesi bir
+  handler'a taşınarak (`09f3e3c1`), rozet alt "engine strip"e alınarak ve
+  kısayol Ctrl+Tab'a çevrilerek (`e0006912`), son olarak Ctrl+Tab'ın
+  composer odağı şartı kaldırılarak (`bb73e092`) çözüldü. Kullanıcı
+  "çalışıyor, sorun yok" diye teyit etti.
 
 ---
 

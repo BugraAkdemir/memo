@@ -1,4 +1,4 @@
-# Handoff — 2026-09-15 (devam 75) — Skill auto-activation fix + Code Mode plan/auto/build alt-modları (tam plan, 6/6 birim)
+# Handoff — 2026-09-15 (devam 75) — Skill auto-activation fix + Code Mode plan/auto/build alt-modları (6/6 birim, canlı doğrulandı)
 
 ## Oturum Özeti
 
@@ -74,27 +74,76 @@ tüm onay kelimeleri + kelime-sınırı güvenliği), ve en önemlisi 4 yeni
 `Done:true`'yu ve deadlock olmadığını doğruluyor), ve
 `TestCodeSubModePrompt_OverrideAffectsRealSystemPrompt`.
 
+## Ek — canlı masaüstü doğrulaması ve üç düzeltme turu (aynı gün, devam)
+
+Kullanıcı `./run_memo.sh` ile gerçek masaüstü uygulamayı ayağa kaldırıp canlı
+test etti. Rozet (o an hâlâ Ajan ekranının üst çubuğundaydı) doğru
+görünüyordu, ama **Tab tuşu alt-mod döngüsünü hiç tetiklemiyordu** — sadece
+normal elemanlar-arası odak geçişi yapıyordu. Üç düzeltme turu gerekti:
+
+1. **Kök neden araştırması** — Flutter SDK kaynağına kadar inildi
+   (`packages/flutter/lib/src/widgets/shortcuts.dart`,
+   `default_text_editing_shortcuts.dart`). `DefaultTextEditingShortcuts`'ın
+   Tab'ı yutması sadece macOS/iOS/web'de oluyor
+   (`_getDisablingShortcut()` Linux'ta `null` dönüyor, doğrulandı) — yani
+   ilk hipotez yanlıştı. Tam sıralama çatışması canlı ortam olmadan kesin
+   tespit edilemedi; bunun yerine Tab işleyişi tamamen farklı, daha
+   güvenilir bir mekanizmaya taşındı: `HardwareKeyboard.instance.addHandler`
+   — widget-ağacı `Shortcuts`/`Focus` dağıtımından ÖNCE çalışıyor, bu yüzden
+   hangi ata widget'ın önce göreceği belirsizliğini tamamen by-pass ediyor
+   (`09f3e3c1`). Eski `_PopupConfirmIntent` Shortcuts/Actions girdisi
+   tamamen kaldırıldı (iki paralel mekanizma yerine tek mekanizma).
+2. **Kullanıcı geri bildirimi:** rozet üst çubuktan alt "engine strip" durum
+   çubuğuna taşınsın (her ekranda görünür olsun), kısayol Tab yerine
+   Ctrl+Tab olsun. `_CodeSubModeIndicator` `agent_screen.dart`'tan
+   `engine_strip.dart`'a taşındı (aktif sohbeti okuyacak şekilde
+   `activeChatIdProvider` ilk kez oraya eklendi), `_handleHardwareKeyEvent`
+   Ctrl+Tab (mod döngüsü) / düz Tab (sadece popup onayı) olarak ikiye
+   ayrıldı (`e0006912`).
+3. **Hâlâ çalışmıyordu** — kök neden: Ctrl+Tab, composer'a tıklanmamışsa
+   (`_focusNode.hasFocus` şartı) sessizce no-op oluyordu; Shift+Tab
+   (auto-permission) uygulama genelinde çalıştığı için mod-değiştirme
+   kısayolunun da öyle davranması beklenirdi. Ctrl+Tab dalından bu şart
+   kaldırıldı, ayrıca teşhis için her erken-return noktasına `debugPrint`
+   eklendi (`bb73e092`). **Kullanıcı bu turdan sonra "çalışıyor, sorun yok"
+   diye teyit etti** — Ctrl+Tab + rozet artık canlı doğrulanmış durumda.
+
+Ayrıca kullanıcı canlı log'da bir 404 seli fark etti (Model Store Discover
+sekmesi, `discover_item.dart`). Kök neden: HuggingFace'in artık geçerli
+olmayan `/api/organizations/<isim>` / `/api/users/<isim>` yol şekli
+kullanılıyordu (gerçek API'ye curl ile doğrulandı — doğrusu sonuna
+`/overview` eklemek). Kozmetik bir sorundu (harf-avatarına zaten
+düşüyordu) ama gereksiz ağ isteği + log gürültüsü yaratıyordu; düzeltildi,
+düz 404'ler artık loglanmıyor (`a7019c54`).
+
+**Sürüm notları:** `versinNote/v4.5.0.md` + `versinNote/tr/v4.5.0.md`
+güncellendi — Code Mode alt-modları için yeni bir "Yeni Özellik" bölümü,
+skill auto-activation düzeltmesi mevcut "Güvenlik düzeltmesi" bölümüne
+ikinci madde olarak eklendi (başlık çoğullaştırıldı), HF avatar düzeltmesi
+Güvenilirlik turu'na bir madde olarak eklendi (`b1b851f7`).
+
 ## Sıradaki oturum için
 
-1. **Gerçek masaüstü uygulamada görsel doğrulama yapılmadı** — bu ortamda
-   Flutter Linux masaüstü görsel çalıştırma imkanı yoktu. Kullanıcının
-   kontrol etmesi gereken: (a) Tab tuşu dosya-mention popup'ıyla gerçekten
-   çakışmıyor mu, (b) `_CodeSubModeIndicator` rozeti gerçek pencerede doğru
-   görünüyor mu (plan/auto/build renkleri, tıklanabilirlik), (c) Ayarlar'daki
-   yeni "Kod Modu Promptları" sekmesi düzgün render oluyor mu.
+1. ~~Gerçek masaüstü uygulamada görsel doğrulama yapılmadı~~ → **yapıldı,
+   kullanıcı teyit etti** (yukarıdaki bölüm). Tab/Ctrl+Tab + rozet canlı
+   çalışıyor.
 2. **Yerel model + plan modu + auto-perm zincirleme** hâlâ test edilmedi
    (gerçek bir yerel llama.cpp modeli gerektiriyor) — kod incelemesiyle
    "düz-metin-sor akışına düş" olarak doğru davrandığı gösterildi ama canlı
-   doğrulanmadı.
+   doğrulanmadı. Hâlâ açık.
 3. Commit'ler main'e doğrudan atıldı (branch/PR yok, mevcut proje kuralı).
    Push atılmadı benim tarafımdan, ama oturum ortasında `origin/main`'in
    zaten `git fetch` ile doğrulanmış şekilde en son commit'lerle eşleştiği
    görüldü — bu oturumdaki hiçbir noktada `git push` çalıştırılmadı, bu
    senkronizasyonun nereden geldiği araştırılmadı (muhtemelen bu makinedeki
    ayrı bir otomasyon/senkron mekanizması, konuyla ilgisiz).
-4. Plan dosyası (`docs/plans/PLAN_code_submodes.md`) 6/6 birimi "Yapıldı"
-   olarak işaretliyor, her birimde sapma/bilinen sınır notu var — yeni bir
-   oturuma başlarken önce onu oku.
+4. Plan dosyası (`docs/plans/PLAN_code_submodes.md`) artık başında "DURUM:
+   TAMAMLANDI" notu taşıyor, 6/6 birim "Yapıldı" + canlı doğrulama notlarıyla
+   işaretli — yeni bir oturuma başlarken önce onu oku.
+5. `versinNote/v4.5.0.md` hâlâ bir TASLAK — gerçek bir sürüm henüz kesilmedi
+   (`version` dosyası hâlâ `V4.4.0` diyor). Bir sonraki release aslında
+   çıkarılacaksa `memo-release` skill'i kullanılmalı, bu oturumda sadece
+   notlar yazıldı.
 
 ---
 

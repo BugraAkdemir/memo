@@ -56,14 +56,6 @@ class _PopupEnterIntent extends Intent {
   const _PopupEnterIntent();
 }
 
-/// Tab: confirm the popup if one is open; otherwise, while Code Mode is on
-/// for the active chat, cycle its plan/auto/build sub-mode. Falls through to
-/// normal focus-traversal behavior only when neither applies (no popup, and
-/// either no active chat or Code Mode off for it).
-class _PopupConfirmIntent extends Intent {
-  const _PopupConfirmIntent();
-}
-
 class _PopupDismissIntent extends Intent {
   const _PopupDismissIntent();
 }
@@ -156,6 +148,47 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   void initState() {
     super.initState();
     _controller.addListener(_onTextChanged);
+    HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
+  }
+
+  /// Tab: confirm the file-mention/template popup if one is open, otherwise
+  /// cycle Code Mode's plan/auto/build sub-mode if Code Mode is on for the
+  /// active chat, otherwise let normal focus traversal happen.
+  ///
+  /// Registered as a HardwareKeyboard.instance handler rather than a
+  /// Shortcuts/Actions binding (which is how every other composer shortcut
+  /// in this file works) because HardwareKeyboard handlers run before any
+  /// widget-tree key dispatch at all — see HardwareKeyboard.handleKeyEvent's
+  /// call order (hardware handlers first, then Focus/Shortcuts bubbling
+  /// second). A Shortcuts-based Tab binding here was tried first and did not
+  /// fire reliably in the real desktop app despite matching Flutter's
+  /// documented Shortcuts/Actions bubbling semantics exactly; this bypasses
+  /// that whole class of ordering ambiguity by construction instead of
+  /// relying on winning a specific ancestor-chain race.
+  ///
+  /// Reads ref.read(...) fresh on every call (not a build()-time local like
+  /// the rest of this widget) since a hardware handler can fire between
+  /// builds — always current, no stale-closure risk.
+  bool _handleHardwareKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    if (event.logicalKey != LogicalKeyboardKey.tab) return false;
+    // Shift+Tab is reserved app-wide for the auto-permission toggle
+    // (app_shell.dart's _ToggleAutoPermissionIntent) — never claim it here.
+    if (HardwareKeyboard.instance.isShiftPressed) return false;
+    if (!_focusNode.hasFocus) return false;
+
+    if (_popupActive) {
+      _confirmPopupSelection();
+      return true;
+    }
+
+    final chatId = ref.read(activeChatIdProvider).valueOrNull ?? '';
+    if (chatId.isEmpty) return false;
+    final codeModeOn = ref.read(chatCodeModeProvider(chatId)).valueOrNull?.enabled ?? false;
+    if (!codeModeOn) return false;
+
+    cycleChatCodeSubMode(ref, chatId);
+    return true;
   }
 
   void _onTextChanged() {
@@ -310,6 +343,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
     _controller.removeListener(_onTextChanged);
     _controller.dispose();
     _focusNode.dispose();
@@ -969,13 +1003,6 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final taskLocksInput =
         sdTask != null && (sdTask.running || sdTask.awaitingPlan);
 
-    // Code Mode's plan/auto/build cycle: Tab advances it, but only while
-    // Code Mode is actually on for this chat and no popup is open (Tab's
-    // existing job there wins) — see the _PopupConfirmIntent action below.
-    final codeModeOn = sdChatId.isEmpty
-        ? false
-        : ref.watch(chatCodeModeProvider(sdChatId)).valueOrNull?.enabled ?? false;
-
     ref.listen(activeChatIdProvider, (prev, next) {
       final prevId = prev?.valueOrNull ?? '';
       final nextId = next.valueOrNull ?? '';
@@ -1352,7 +1379,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                       // isn't matched here and falls through to
                       // EditableText's own default behavior untouched.
                       SingleActivator(LogicalKeyboardKey.enter): _PopupEnterIntent(),
-                      SingleActivator(LogicalKeyboardKey.tab): _PopupConfirmIntent(),
+                      // Tab is deliberately NOT bound here — see
+                      // _handleHardwareKeyEvent's doc comment for why the
+                      // popup-confirm-or-cycle-sub-mode behavior lives at the
+                      // HardwareKeyboard level instead of in this
+                      // Shortcuts/Actions pair.
                       SingleActivator(LogicalKeyboardKey.escape): _PopupDismissIntent(),
                     },
                     child: Actions(
@@ -1378,26 +1409,6 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                               _confirmPopupSelection();
                             } else {
                               _send();
-                            }
-                            return null;
-                          },
-                        ),
-                        // Tab: confirm the popup if one is open (unchanged);
-                        // otherwise, while Code Mode is on for this chat,
-                        // cycle its plan/auto/build sub-mode instead — same
-                        // key the _CodeSubModeIndicator chip in
-                        // agent_screen.dart's top bar cycles on tap
-                        // (agent_provider.dart's cycleChatCodeSubMode, so
-                        // the two triggers can't drift apart). Falls through
-                        // to normal focus traversal when Code Mode is off,
-                        // exactly as before this sub-mode feature existed.
-                        _PopupConfirmIntent: _PopupCallbackAction<_PopupConfirmIntent>(
-                          isEnabledWhen: () => _popupActive || codeModeOn,
-                          onInvoke: (_) {
-                            if (_popupActive) {
-                              _confirmPopupSelection();
-                            } else if (codeModeOn && sdChatId.isNotEmpty) {
-                              cycleChatCodeSubMode(ref, sdChatId);
                             }
                             return null;
                           },

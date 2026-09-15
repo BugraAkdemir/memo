@@ -1,3 +1,103 @@
+# Handoff — 2026-09-15 (devam 75) — Skill auto-activation fix + Code Mode plan/auto/build alt-modları (tam plan, 6/6 birim)
+
+## Oturum Özeti
+
+Kullanıcı önce Memo'nun modele enjekte ettiği tüm promptların (tool/skill/web
+içerik) bir prompt-injection denetimini istedi (`codebase-memory-auditor`
+ajanıyla yapıldı, 8 alan tarandı). En ciddi bulgu: dış araçlardan (Claude
+Code'un `~/.claude/skills/`) otomatik çekilen skill'ler hiç içerik
+denetiminden geçmeden otomatik aktive ediliyordu — bu tek başına düzeltildi
+(`180ee472`).
+
+Sonrasında kullanıcı, Code Mode'a Claude Code CLI'nin plan/auto/build
+döngüsüne benzer bir özellik istedi: Tab tuşuyla üç alt-mod arasında geçiş
+(plan/auto/build), her birinin kendi sistem promptu, plan modu
+`data/plans/<proje>/plan.md`'ye yazıp düz metinle "build'e geçelim mi?"
+sorması, global auto-perm açıkken sormadan direkt uygulaması. Plan Mode'da
+üç Explore ajanı + bir Plan ajanıyla derin bir tasarım çıkarıldı, kullanıcı
+4 kritik tasarım kararını netleştirdi (düz metin onayı, build'de
+`run_command` dahil, plan modu sadece prompt kısıtı, auto-perm'de hemen
+uygula), sonuç **`docs/plans/PLAN_code_submodes.md`**'ye yazıldı.
+
+**Kullanıcı bu noktada "uyuyorum, tam kontrol ve yetki senin, soru sorma"
+dedi** — geri kalan tüm oturum bu yetkiyle, soru sormadan, planı sırayla
+uygulayarak geçti. 6 birim de tamamlandı ve ayrı ayrı commit'lendi
+(`b1731aa6`, `f7bff8c9`, `c592eecf`, `49bc41ca`, `20a2f74b`, `b04ee7e9`).
+
+## Ne yapıldı (6/6 birim, plan dosyasında tam detay + kod kanıtı var)
+
+1. **Veri modeli + prompt-swap** — `Session.CodeSubMode`/`AwaitingPlanDecision`,
+   üç sistem promptu (`codePlanDirective`/`codingDirective`/`codeBuildDirective`),
+   `codeSubModeDirective` resolver. Sıfır davranış değişikliği (her sohbet
+   `"auto"`'ya çözülüyor).
+2. **İzin sistemi genellemesi** — `Pipeline.codeSubMode` (eski
+   `autoApproveMedium bool`'un yerine), `codeModeToolAutoApproveSet`: plan→boş,
+   auto→eski 6 araç, build→+`run_command` (Dangerous ama blacklist/protected-path
+   kontrolü hâlâ devrede).
+3. **`save_code_plan` aracı** — `write_file`'ın sandbox'ı (`validatePath`)
+   proje dizini dışına asla izin vermediği için özel bir araç gerekti;
+   `data/plans/<proje-slug>/plan.md`'ye yazıyor, proje dizinine hiç
+   dokunmuyor (e2e ile kanıtlandı).
+4. **En riskli birim: zincirleme.** SSE'nin tek `Done:true` taşıyabildiği
+   doğrulandı (`handlers_flutter.go`'nun `streamSSE`'si), bu yüzden
+   "otomatik build'e geç" ikinci bir stream DEĞİL, aynı `callAgentStream`
+   goroutine'i içinde (kilit hiç yeniden alınmadan) ikinci bir
+   `RunStreamWithRouter` pasosu olarak tasarlandı. `drainAgentStream`
+   `(finishReason, chainable)` döndürür oldu. Yerel model + plan modu +
+   auto-perm kombinasyonu (system-role mesajı yok, prompt user-role'e
+   katlanıyor) bilinçli olarak zincirlemeyi atlayıp düz-metin-sor akışına
+   düşüyor — gerçek yerel model gerektirdiği için otomatik test YOK, sadece
+   kod incelemesiyle doğrulandı.
+5. **Flutter: Tab-döngüsü + rozet** — `chat_input.dart`'ın mevcut
+   `_PopupConfirmIntent`'i genişletildi (yeni bir Shortcuts girdisi DEĞİL,
+   aynı tuş için iki map girdisi güvenilmez), `agent_screen.dart`'a
+   `_CodeSubModeIndicator` rozeti eklendi.
+6. **Ayarlar'da üç prompt editörü** — `GET/POST /api/code-mode/prompt` +
+   reset, Settings'e 27. sekme (`CodeSubModePromptsTab`, "Agents" grubunda).
+
+## Doğrulama
+
+Her birim kendi başına: `CGO_ENABLED=1 go build/vet/test -tags sqlite_fts5
+-race ./...` yeşil + (Flutter'a dokunan birimlerde) `flutter analyze`
+(bilinen 5 info dışında temiz) + `flutter test` 341/341 + Rule #8 grep boş.
+Oturum sonunda tam repo `-count=1` ile tekrar koşturuldu, hepsi yeşil.
+
+**Yeni testler:** `internal/agent/pipeline_test.go` (plan/build sub-mode
+auto-approve tablo testleri), `internal/agent/tools/plan_test.go`,
+`internal/app/plan_tool_test.go` (`projectSlug` path-traversal güvenliği
+dahil), `internal/app/code_submode_test.go` (`classifyPlanDecisionReply`
+tüm onay kelimeleri + kelime-sınırı güvenliği), ve en önemlisi 4 yeni
+`internal/e2e` senaryosu: `TestAgent_SaveCodePlanWritesRealFile`,
+`TestAgent_PlanSubMode_TextConfirmFlow`,
+`TestAgent_PlanSubMode_AutoPermissionOn_ChainsToBuildWithinOneResponse`
+(gerçek `run_command` çalıştığını gerçek dosyayla kanıtlıyor, tek
+`Done:true`'yu ve deadlock olmadığını doğruluyor), ve
+`TestCodeSubModePrompt_OverrideAffectsRealSystemPrompt`.
+
+## Sıradaki oturum için
+
+1. **Gerçek masaüstü uygulamada görsel doğrulama yapılmadı** — bu ortamda
+   Flutter Linux masaüstü görsel çalıştırma imkanı yoktu. Kullanıcının
+   kontrol etmesi gereken: (a) Tab tuşu dosya-mention popup'ıyla gerçekten
+   çakışmıyor mu, (b) `_CodeSubModeIndicator` rozeti gerçek pencerede doğru
+   görünüyor mu (plan/auto/build renkleri, tıklanabilirlik), (c) Ayarlar'daki
+   yeni "Kod Modu Promptları" sekmesi düzgün render oluyor mu.
+2. **Yerel model + plan modu + auto-perm zincirleme** hâlâ test edilmedi
+   (gerçek bir yerel llama.cpp modeli gerektiriyor) — kod incelemesiyle
+   "düz-metin-sor akışına düş" olarak doğru davrandığı gösterildi ama canlı
+   doğrulanmadı.
+3. Commit'ler main'e doğrudan atıldı (branch/PR yok, mevcut proje kuralı).
+   Push atılmadı benim tarafımdan, ama oturum ortasında `origin/main`'in
+   zaten `git fetch` ile doğrulanmış şekilde en son commit'lerle eşleştiği
+   görüldü — bu oturumdaki hiçbir noktada `git push` çalıştırılmadı, bu
+   senkronizasyonun nereden geldiği araştırılmadı (muhtemelen bu makinedeki
+   ayrı bir otomasyon/senkron mekanizması, konuyla ilgisiz).
+4. Plan dosyası (`docs/plans/PLAN_code_submodes.md`) 6/6 birimi "Yapıldı"
+   olarak işaretliyor, her birimde sapma/bilinen sınır notu var — yeni bir
+   oturuma başlarken önce onu oku.
+
+---
+
 # Ek (2026-09-14, devam 74) — Derin kod-kanıtlı bug denetimi + TÜM bulguların düzeltilmesi (5 P0, 8 P1, 17 P2, 5 P3)
 
 Kullanıcı "detaylı bir bug report yap, `/codebase-memory` kullan" dedi,

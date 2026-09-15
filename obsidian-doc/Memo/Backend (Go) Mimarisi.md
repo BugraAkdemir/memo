@@ -1,5 +1,7 @@
 # 🖥️ Backend (Go) Mimarisi
 
+> **v4.5.0'a göre güncellendi.** Bu sayfanın son tam geçişinden beri yeni: `internal/taskloop/` (büyük genişleme, v4.4.0 — bkz. [[Otonom Görev Döngüsü]]), `internal/livemode/` (native sesten-sese Live Mode v2, v4.3.0), `internal/telegram/` (ikinci mesajlaşma köprüsü, v4.3.0), `internal/openaiapi/` (Geliştirici Ağ Geçidi'nin OpenAI-uyumlu kardeşi, v4.4.0), `internal/geminisub/` (gemini-sub sağlayıcısı, Beta, v4.4.0), `internal/remoteauth/`, `internal/browserengine/`, `internal/stt/`. Masaüstü maskotu (v4.5.0, frontend tarafında — bkz. [[Masaüstü Maskotu]]) ve Code Mode'un Plan/Auto/Build alt-modları (v4.5.0, `internal/app/code_submode.go`) da yeni. Sağlayıcı sayısı artık 16, ajan tool sayısı 27.
+
 Memo'nun arka ucu, hız, güvenilirlik ve düşük kaynak tüketimi için Go dili ile yazılmış "Headless" bir sunucudur.
 
 ## Modüler Yapı (`internal/`)

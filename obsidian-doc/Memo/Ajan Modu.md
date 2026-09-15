@@ -212,9 +212,33 @@ Executor.RunStream():
 
 ---
 
+## Code Mode: Plan / Auto / Build alt-modları (v4.5.0'da yeni)
+
+**Dosyalar:** `internal/app/code_submode.go` (durum + promptlar), `internal/agent/tools/plan.go` (`save_code_plan` aracı), `internal/app/plan_tool.go` (arka ucu)
+
+Code Mode eskiden tek bir aç/kapa anahtarıydı — artık sohbet-başına kaydedilen (`Session.CodeSubMode`) üç preset, mesaj kutusunda **Ctrl+Tab** ile ya da frontend'in alt durum çubuğundaki çip'e dokunarak döngülenir:
+
+| Alt-mod | Davranış | Tool otomatik-onay kümesi |
+|---|---|---|
+| **Plan** | Kod tabanını inceler, adım adım bir plan yazar, hiçbir dosyaya dokunmaz | Boş — Plan modu hiçbir düzenleme yapamaz veya komut çalıştıramaz |
+| **Auto** | Bugünkü bildik Code Mode | Orijinal 6 otomatik-onaylı tool |
+| **Build** | Hızlı şerit — düzenlemeler ve komutlar beklemeden çalışır | Auto'nun kümesi **artı `run_command`** (hâlâ Dangerous sınıflandırmasında; sandbox'taki kara liste/korumalı-yol kontrolleri hâlâ geçerli) |
+
+Her alt-modun kendi sistem promptu vardır (`codePlanDirective`/`codingDirective`/`codeBuildDirective`, `codeSubModeDirective` tarafından çözülür) — Memo'nun ana sistem promptu gibi, varsayılanlar uymuyorsa Ayarlar'dan her biri düzenlenebilir (`GET/POST /api/code-mode/prompt`, `POST /api/code-mode/prompt/reset`).
+
+### Plan → Build geçişi
+
+Plan modunun çıktısı normal `write_file` yerine **özel bir araçla**, `save_code_plan`, diske yazılır — `write_file`'ın sandbox'ı (`validatePath`) proje dizini dışına yazmaya asla izin vermez, ama bir plan bilinçli olarak dışında, `data/plans/<proje-slug>/plan.md`'ye kaydedilir. Bu, planlama sırasında proje dizinine hiç dokunulmamasını sağlar.
+
+Bir plan hazır olduğunda, Memo düz sohbette Build'e mi yoksa Auto'ya mı geçilsin diye sorar. Plan bittiğinde **global auto-permission anahtarı** zaten açıksa, Memo soruyu tamamen atlar ve **aynı yanıt içinde** doğrudan Build'e zincirler: Memo'nun SSE protokolü bir yanıtta sadece bir `Done:true` taşıyabildiğinden (`streamSSE`, `handlers_flutter.go`), otomatik-zincirleme ikinci bir stream değil — aynı `callAgentStream` goroutine'i içinde, kilit hiç bırakılmadan ikinci bir `RunStreamWithRouter` pasosudur. `drainAgentStream` bu kararı vermek için `(finishReason, chainable)` döndürür.
+
+> **Bilinen boşluk:** yerel bir model + Plan modu + auto-permission kombinasyonunda (yerel modellerde system-role mesajı yok — prompt user-role'e katlanıyor), zincirleme yolu bilinçli olarak otomatik-zincirleme yerine düz-metin-sor akışına düşer. Sadece kod incelemesiyle doğrulandı — gerçek bir yerel llama.cpp modeli gerektirdiği için otomatik test yok, canlı doğrulanmadı.
+
+---
+
 ## Güvenlik Sandbox'ı
 
-### Komut Kara Listesi (23 pattern)
+### Komut Kara Listesi (43 pattern — büyüdü, eskiden 23'tü)
 
 Aşağıdaki pattern'ler `run_command`'da **engellenir**:
 
@@ -292,5 +316,7 @@ Aşağıdaki pattern'ler `run_command`'da **engellenir**:
 
 ### Bağlantılı Notlar:
 - [[Harici Sağlayıcılar]] — Ajan modu için gereklidir
+- [[Otonom Görev Döngüsü]] — Bu pipeline üzerine inşa edilen gözetimsiz çok-adımlı çalıştırma
+- [[Masaüstü Maskotu]] — Ajan/tool aktivitesini gerçek zamanlı yansıtır
 - [[Orkestra Modu]] — Alternatif çoklu model iş akışı
 - [[API Dökümantasyonu]] — Ajan endpoint detayları

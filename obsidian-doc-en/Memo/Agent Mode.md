@@ -297,6 +297,30 @@ Return NeedPrompt → frontend must respond
 
 ---
 
+## Code Mode: Plan / Auto / Build sub-modes (new in v4.5.0)
+
+**Files:** `internal/app/code_submode.go` (state + prompts), `internal/agent/tools/plan.go` (`save_code_plan` tool), `internal/app/plan_tool.go` (its backend)
+
+Code Mode used to be a single on/off switch — now it's three presets stored per-session (`Session.CodeSubMode`), cycled with **Ctrl+Tab** in the message box or a tap on the chip in the frontend's bottom engine strip:
+
+| Sub-mode | Behavior | Tool auto-approve set |
+|---|---|---|
+| **Plan** | Investigates the codebase, writes a step-by-step plan, touches no files | Empty — Plan mode can't edit or run commands at all |
+| **Auto** | Today's familiar Code Mode | The original 6 auto-approved tools |
+| **Build** | Fast lane — edits and commands run without waiting | Auto's set **plus `run_command`** (still Dangerous-classified; blacklist/protected-path checks in the sandbox still apply) |
+
+Each sub-mode has its own system prompt (`codePlanDirective`/`codingDirective`/`codeBuildDirective`, resolved by `codeSubModeDirective`) — like Memo's main system prompt, each is editable from Settings if the defaults don't fit (`GET/POST /api/code-mode/prompt`, `POST /api/code-mode/prompt/reset`).
+
+### The Plan → Build hand-off
+
+Plan mode's output is written to disk via a **dedicated tool**, `save_code_plan`, rather than the normal `write_file` — `write_file`'s sandbox (`validatePath`) never permits writing outside the project directory, but a plan is deliberately saved outside it at `data/plans/<project-slug>/plan.md`. This keeps the project directory itself untouched during planning.
+
+Once a plan is ready, Memo asks in plain chat whether to proceed to Build or Auto. If the **global auto-permission toggle** is already on when the plan finishes, Memo skips the question entirely and chains straight into Build — **within the same reply**: since Memo's SSE protocol can only carry one `Done:true` per response (`streamSSE`, `handlers_flutter.go`), the auto-chain isn't a second stream — it's a second `RunStreamWithRouter` pass inside the *same* `callAgentStream` goroutine, without ever releasing the lock. `drainAgentStream` returns `(finishReason, chainable)` to make this decision.
+
+> **Known gap:** on a local model + Plan mode + auto-permission (no system-role message on local models — the prompt folds into the user role instead), the chaining path deliberately falls back to the plain-text-ask flow instead of auto-chaining. Verified by code review only — no automated test exists for it since it requires a real local llama.cpp model; not yet live-verified.
+
+---
+
 ## Security Sandbox
 
 **File:** `internal/agent/sandbox.go` (137 lines)
@@ -521,6 +545,8 @@ return a.callLLMStream(ctx, messages, userMsg, "", "")
 
 ### Linked Notes:
 - [[External Providers]] — Required for agent mode to function
+- [[Self-Driving Task Loop]] — Builds on this pipeline for unattended multi-step execution
+- [[Desktop Mascot]] — Reflects agent/tool activity in real time
 - [[Orchestra Mode]] — Alternative multi-model workflow
 - [[Architecture]] — System integration
 - [[API Documentation]] — Agent endpoint details

@@ -7,24 +7,35 @@ get reshaped, or get dropped as real usage informs them. See
 release, and the repo's `BUG_REPORT.md` for open bugs/design gaps found in
 live testing.
 
-> **Updated for v4.4.0** (this doc previously described a roadmap for
-> "past v3.3.4" — most of that has since shipped: real time-awareness and
-> WhatsApp third-party takeover in v4.0.0, Live Mode v2 in v4.3.0. The
-> items below reflect what's actually next, not what was next a year ago.)
+> **Updated for v4.5.0** (this doc previously described a roadmap for
+> "past v4.4.0" — the desktop mascot and Code Mode's Plan/Auto/Build
+> sub-modes have since shipped. The items below reflect what's actually
+> next, not what was next a release ago.)
 
-## Shipped this cycle (v4.0.0 → v4.4.0), for context
+## Shipped this cycle (v4.0.0 → v4.5.0), for context
 
 - **v4.0.0** — real time-awareness in the system prompt ("how long since
   the last message"), WhatsApp third-party conversation takeover.
 - **v4.3.0** — Live Mode v2: native audio-to-audio voice (Google Live /
   OpenAI Realtime), delegate/standalone modes, barge-in, ElevenLabs +
-  custom engines.
-- **v4.4.0 (this branch)** — the Self-Driving task loop: `Task.md`
-  schema, planner/executor mode with plan approval, sub-agent
-  orchestration (coder + parallel analyzer/reviewer/test-runner), live
-  in-chat task activity, escalation/retry/provider-lock hardening, and
-  real tool-calling for the Claude and Gemini providers (previously
-  entirely missing) plus a new Anthropic-compatible custom provider type.
+  custom engines; Telegram added as a second messaging bridge.
+- **v4.4.0** — the Self-Driving task loop: `Task.md` schema,
+  planner/executor mode with plan approval, sub-agent orchestration
+  (coder + parallel analyzer/reviewer/test-runner), live in-chat task
+  activity, escalation/retry/provider-lock hardening, real tool-calling
+  for the Claude and Gemini providers (previously entirely missing), a
+  new Anthropic-compatible custom provider type, an OpenAI-compatible
+  Developer Gateway sibling, and an experimental "gemini-sub" provider
+  (sign in with a personal Google account, Beta).
+- **v4.5.0 (this branch)** — the desktop mascot: a second, always-on-top
+  window (same process) that reflects Memo's live activity across every
+  channel, with two selectable skins and idle animation; Code Mode split
+  into three cycled sub-modes (Plan/Auto/Build) with per-mode system
+  prompts and auto-permission chaining into Build; both Developer
+  Gateway endpoints (Anthropic- and OpenAI-compatible) now key-enforced
+  for non-loopback callers; imported skills no longer auto-activate;
+  clearer Live Mode failure messages and a fixed HuggingFace avatar
+  404 spam in the Model Store.
 
 ## Near-term — open items from live testing (see `BUG_REPORT.md`)
 

@@ -123,6 +123,14 @@
 - Agent messages: tool execution cards with status
 - Permission requests: dialog (allow/deny/always)
 - Undo button for edits
+- **Code Mode sub-mode chip** (bottom engine strip, `engine_strip.dart`): shows the active sub-mode (Plan/Auto/Build); cycle with **Ctrl+Tab** anywhere in the app, or tap the chip
+- **Plan approval**: when a Plan sub-mode turn finishes, Memo asks in plain chat whether to proceed to Build or Auto (skipped — chains straight to Build — if the global auto-permission toggle is already on)
+
+## 4.1 TASK DETAIL SCREEN (task_detail_screen.dart)
+
+- Self-Driving task list detail view: live phase/progress, plan-approval card (`_PlanApprovalSection`) for planner-mode lists, escalation banner
+- Live activity: tool calls, sub-agent turns (`[coder]`/`[analyzer]`/`[reviewer]`/`[test-runner]`), "model is generating" indicator during long silent LLM calls
+- Pause/resume/cancel/skip controls for a running task list
 
 ---
 
@@ -148,8 +156,9 @@
 
 ## 5.3 DEVELOPER SCREEN (developer_screen.dart)
 
-- Anthropic-compatible Developer API Gateway: Base URL, model list (`type/model-id`), token, live request log
-- Optional API key requirement (shares Remote Access's token), optional memory integration
+- Developer API Gateway, both wire formats: Anthropic-compatible (for Claude Code) and OpenAI-compatible (`GET /v1/models`, `POST /v1/chat/completions`) — Base URL, model list (`type/model-id`), token, live request log
+- API key requirement now **enforced** for any non-loopback caller on both endpoints (v4.5.0); optional memory integration
+- **gemini-sub connect (Beta)**: sign in with a personal Google account to reach Gemini via Code Assist on your own AI Pro/Ultra quota, no separate API key
 
 ## 5.4 SWARM SCREEN (swarm_screen.dart) — BETA
 
@@ -157,11 +166,21 @@
 - Join: enter a room code to lend compute without downloading the model
 - Gated behind Settings → Beta Features; not shown on macOS
 
-## 5.5 LIVE MODE — VOICE ICON (chat_input.dart) — BETA
+## 5.5 LIVE MODE V2 — VOICE ICON (chat_input.dart)
 
-- A small icon next to the chat input box (not a separate screen/tab) — enabled via Settings → Beta Features
-- Listens, auto-detects speech start/stop, transcribes locally, sends as a normal message, speaks the reply back (local Piper TTS by default, optional external OpenAI TTS)
-- One-directional barge-in; no echo cancellation yet (known limitation)
+- A small icon next to the chat input box (not a separate screen/tab)
+- Native audio-to-audio conversation via Google Live or OpenAI Realtime, delegate (into an existing chat) or standalone modes; falls back to local whisper.cpp transcription + Piper TTS when no native engine is configured
+- One-directional barge-in; mid-session memory refresh (not just once at session start)
+- Clear failure messages when a real voice engine can't start (no engine selected / incomplete config / background chat session failing to open) instead of a silent self-echo
+- No echo cancellation yet (known limitation)
+
+## 5.6 MASCOT WINDOW (mascot_window.dart / memo_mascot.dart) — new in v4.5.0
+
+- A separate, always-on-top, frameless window (same process, `desktop_multi_window`) showing an animated character reflecting Memo's live activity — not a screen inside `AppShell`
+- Enabled/disabled and skin-selected from Settings → General, with a live preview of each skin
+- Poses driven by `/api/mascot/activity`: thinking, writing, running a specific tool, a distinct "Completed!" moment, idle flourishes (blink/breathe/occasional wave)
+- Speaks in time during Live Mode (mouth animation + "Speaking…" bubble) — no "listening" pose, since neither voice engine currently reports one
+- Click/drag zone shaped to the character's silhouette, not its bounding box; forced onto XWayland on Linux so always-on-top actually works under Wayland
 
 ---
 
@@ -170,7 +189,7 @@
 - Reorganized (v3.3.4) into a **searchable, grouped rail** with a search box up top, replacing the old flat row of ~20 tabs
 - Left panel: grouped tab rail
 - Right panel: content area
-- Includes (non-exhaustive): General (incl. Minimal Mode, per-sub-feature overrides), Providers, CLI Connections (Claude Code/Codex install check), Llama, Memory, Cloud Sync, Identity, Orchestra, Agent Permissions, Skills, Learning (Proactive), Stats (Usage), Beta Features, Remote Access, Backup/Restore, Report Bug, About
+- Includes (non-exhaustive): General (incl. Minimal Mode, per-sub-feature overrides, mascot toggle + skin picker), Providers, CLI Connections (Claude Code/Codex install check), Llama, Memory, Cloud Sync, Identity, Orchestra, Agent Permissions, **Code Sub-Mode Prompts** (edit the Plan/Auto/Build system prompts), Skills, Learning (Proactive), Live Mode (engine + voice config), Stats (Usage), Beta Features, Remote Access, Accounts (self-hosted multi-user), Backup/Restore, Report Bug, About
 - Tabs (original set, still present in some form):
 
 ### General
@@ -179,6 +198,7 @@
 - Streaming toggle
 - Beta features toggle
 - Incognito mode toggle
+- Desktop mascot toggle + skin picker (live preview), v4.5.0
 
 ### Providers
 - Provider cards: name, active status

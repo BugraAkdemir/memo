@@ -14,7 +14,7 @@
   <a href="https://memocpp.com/tr/guide"><img src="https://img.shields.io/badge/📖_Kılavuzu_Oku-memocpp.com-1b1916?style=for-the-badge&logoColor=white" alt="Kılavuz"/></a>
   <a href="https://github.com/BugraAkdemir/memo/stargazers"><img src="https://img.shields.io/github/stars/BugraAkdemir/memo?style=for-the-badge&color=B08D57&logo=github&logoColor=white" alt="Yıldız"/></a>
   <img src="https://img.shields.io/badge/Lisans-AGPL_v3-0a0a0a?style=for-the-badge" alt="Lisans"/>
-  <img src="https://img.shields.io/badge/Sürüm-v4.4.0-B08D57?style=for-the-badge" alt="Sürüm"/>
+  <img src="https://img.shields.io/badge/Sürüm-v4.5.0-B08D57?style=for-the-badge" alt="Sürüm"/>
 
   <br/><br/>
 
@@ -141,9 +141,13 @@ Her mesajlaşma **768 boyutlu bir vektöre** dönüştürülür ve `sqlite-vec` 
 <tr>
 <td width="58%">
 
-Memo'ya bir proje klasörü göster, konuşmayı bırakıp **yapmaya** başlasın — dosya oku, yaz, düzenle, sil; dizin listele; shell komutu çalıştır; web'de ara. Yol doğrulaması, symlink koruması ve komut kara listesi olan bir sandbox içinde **8 yerleşik araç.**
+Memo'ya bir proje klasörü göster, konuşmayı bırakıp **yapmaya** başlasın — dosya oku, yaz, düzenle, sil; dizin listele; shell komutu çalıştır; web'de ara ve sayfa çek. Yol doğrulaması, symlink koruması ve 43 desenlik komut kara listesi olan bir sandbox içinde **27 yerleşik araç.**
 
-Her araç çağrısı önce sorar. **Bir kereliğine, oturum boyunca ya da kalıcı** izin ver veya reddet. Görev başına 20 iterasyon, araç başına 60sn zaman aşımı, istediğin an iptal. Claude Code ya da Cursor gibi hissettirir — minimal, bilgilendirici, asla gürültülü değil.
+Her araç çağrısı önce sorar. **Bir kereliğine, oturum boyunca ya da kalıcı** izin ver veya reddet. Görev başına 40 iterasyon, istediğin an iptal. Claude Code ya da Cursor gibi hissettirir — minimal, bilgilendirici, asla gürültülü değil.
+
+**Code Mode'un artık üç vitesi var** — Plan / Auto / Build, **Ctrl+Tab** ile döngülenir. Plan hiçbir dosyaya dokunmadan inceler ve adım adım bir plan yazıp diske kaydeder, sonra sohbette devam edip etmeyeceğini sorar; Auto bildik onayla-sonra-düzenle akışı; Build beklemeden dosya düzenleyip komut çalıştıran hızlı şerit. Auto-permission açıksa, biten bir plan aynı yanıt içinde doğrudan Build'e zincirlenir.
+
+**Ona bir kontrol listesi ver, bırak kendi çalışsın** — Self-Driving görev döngüsü bir `Task.md` dosyasını alır ve gözetimsiz üzerinde çalışır: plan onaylı planlayıcı/uygulayıcı modu, en fazla 3 paralel alt-ajan (bir coder, artı analyzer/reviewer/test-runner), geçici hatalarda artan tekrar deneme, ve her sonuçta sohbet/push bildirimi.
 
 </td>
 <td align="center" width="42%">
@@ -151,6 +155,14 @@ Her araç çağrısı önce sorar. **Bir kereliğine, oturum boyunca ya da kalı
 </td>
 </tr>
 </table>
+
+---
+
+### 🐾 İşini Gösteren Bir Masaüstü Maskotu
+
+Masaüstünde küçük, animasyonlu bir karakter yaşıyor — sohbetten ayrı, ama aynı çalışan uygulamayı paylaşan kendi her-zaman-üstte penceresi. Memo'nun gerçekte ne yaptığını gerçek zamanlı yansıtır — hangi kanaldan olursa olsun: sohbet, WhatsApp, Telegram ya da çalışan bir görev listesi.
+
+Düşünüyor, yazıyor, belirli bir tool çalıştırıyor — pozu canlı değişir, altında sade-dilli bir durum balonuyla (asla modelinin gerçek yanıt metni değil). Boşta donuk durmaz: göz kırpar, nefes alır, ara sıra bir sallanma ya da zıplama yapar. Ayarlar'da canlı önizlemeyle iki cilt arasından seç — elle-çizilmiş bir yaratık ya da piksel-art bir robot.
 
 ---
 
@@ -246,13 +258,13 @@ Bir **Şef** model karmaşık görevi parçalara böler, 8 uzman role dağıtır
 
 ---
 
-### 🔌 8 Sağlayıcı · 🎤 Ses · ☁️ Bulut Senk. · 🔒 Gizlilik
+### 🔌 16 Sağlayıcı · 🎤 Canlı Ses · ☁️ Bulut Senk. · 🔒 Gizlilik
 
-- **8 Sağlayıcı, Tek Arayüz** — OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama ve gömülü `llama.cpp`. Hatada otomatik yedek, 3 hatada otomatik devre dışı, sohbet ortasında `/model` ile canlı geçiş. Anahtarlar AES-256-GCM ile şifreli.
+- **16 Sağlayıcı, Tek Arayüz** — OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama, gömülü `llama.cpp`, genel OpenAI-/Anthropic-uyumlu Custom, OpenCode Zen, OpenCode Go, Kilo Code ve **gemini-sub** (Beta) — kişisel bir Google hesabıyla giriş yap, kendi AI Pro/Ultra kotanla Gemini'ye eriş, API anahtarı yok. Hatada otomatik yedek, 3 hatada otomatik devre dışı, sohbet ortasında `/model` ile canlı geçiş. Anahtarlar AES-256-GCM ile şifreli.
 - **🖥️ Kodlama Ajanı Sağlayıcı Olarak (Beta)** — herhangi bir sohbeti, bir API yerine bilgisayarında kurulu **Claude Code** veya **Codex CLI**'a bağla. O sohbet, dosya/komut yetkisi olan gerçek bir kodlama ajanına dönüşür — Memo'da başka ne yapıyor olursan ol, arka planda bağımsız çalışır; diğer tüm sohbetler kendi sağlayıcısını kullanmaya devam eder, hiç etkilenmez.
-- **🎤 Sesli Giriş** — cihaz üzerinde whisper.cpp. Bas, konuş, bırak. TR/EN otomatik algılar. Ses makineni terk etmez.
+- **🎤 Live Mode v2** — Google Live ya da OpenAI Realtime üzerinden gerçek native sesten-sese konuşma, barge-in ve konuşma-ortası hafıza hatırlamasıyla. Hiçbir motor yapılandırılmadıysa cihaz-üstü whisper.cpp transkripsiyonu + yerel Piper TTS'e düşer, ses hiç makineni terk etmez.
 - **☁️ Bulut Senkronizasyonu** — isteğe bağlı uçtan uca şifreli Google Drive yedeği. AES-256-GCM + PBKDF2 (600K iterasyon). Yüklemeden *önce* şifrelenir — Google okuyamaz.
-- **🔒 Tasarımı Gereği Gizli** — telemetri yok, analitik yok, çökme raporu yok. Yapılandırma dosyaları `0600`. Gizli mod sıfır iz bırakır. Gözlemci yalnız aktivite zaman damgalarını saklar, mesaj içeriğini değil.
+- **🔒 Tasarımı Gereği Gizli** — telemetri yok, analitik yok, çökme raporu yok. Yapılandırma dosyaları `0600`. Gizli mod sıfır iz bırakır. Gözlemci yalnız aktivite zaman damgalarını saklar, mesaj içeriğini değil. İki yerel Developer Gateway endpoint'i de (Anthropic- ve OpenAI-uyumlu) artık loopback-olmayan her çağıran için API anahtarını zorunlu kılıyor, ve içe aktarılan bir skill artık kendi kendine aktive olmuyor.
 
 ---
 
@@ -391,13 +403,13 @@ Sürüm paketleri:
                │  REST + SSE (:8090)                 │  LAN / ngrok
                └──────────────┬──────────────────────┘
 ┌──────────────────────────────┴──────────────────────────────────┐
-│               Go Backend — 25 paket, ~90 endpoint                │
+│              Go Backend — 40+ paket, 180+ endpoint                │
 │  ┌─────────┐ ┌──────┐ ┌──────┐ ┌────────┐ ┌──────┐ ┌────────┐  │
 │  │ Hafıza  │ │Oturum│ │Llama │ │WhatsApp│ │Ajan  │ │Sağlayıc│  │
-│  │ vec0    │ │JSON  │ │GPU   │ │whatsmeow│ │Pipe  │ │Router  │  │
+│  │vec0+FTS5│ │JSON  │ │GPU   │ │/Telegram│ │GörevD.│ │Router │  │
 │  └─────────┘ └──────┘ └──────┘ └────────┘ └──────┘ └────────┘  │
 │  Orkestra · ModelMağaza · BulutSenk · Takvim · DuyguMotoru       │
-│  ngrok · Tailscale · Whisper · Skill · Niyet · Gözlemci          │
+│  LiveMode v2 · ngrok · Tailscale · Whisper · Skill · Gözlemci    │
 └──────────────────────────────────────────────────────────────────┘
 ```
 </details>
@@ -408,7 +420,7 @@ Sürüm paketleri:
 | **State** Riverpod 2.4 | **HTTP** Dio 5.4 / SSE | **Ses** whisper.cpp | **WhatsApp** whatsmeow |
 | **Bulut** Drive + AES-256 | **GPU** nvidia/rocm/sysfs | **Lisans** AGPL v3 | **CI** GitHub Actions |
 
-📚 **Derin dalış:** [Mimari](docs/architecture.md) · [API Referansı](docs/API_REFERENCE.md) · [Tasarım Sistemi](frontend/DESIGN.md) · [Yol Haritası](docs/ROADMAP.md) · [Değişiklik Günlüğü](versinNote/tr/v4.4.0.md) · [Tam dokümantasyon ve kılavuz (memocpp.com)](https://memocpp.com/tr/guide)
+📚 **Derin dalış:** [Mimari](docs/architecture.md) · [API Referansı](docs/API_REFERENCE.md) · [Tasarım Sistemi](frontend/DESIGN.md) · [Yol Haritası](docs/ROADMAP.md) · [Değişiklik Günlüğü](versinNote/tr/v4.5.0.md) · [Tam dokümantasyon ve kılavuz (memocpp.com)](https://memocpp.com/tr/guide)
 
 ---
 

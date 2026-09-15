@@ -24,29 +24,29 @@ Bu sayfa, Memo'nun temel özellik dokümantasyonu için bir İçerik Haritasıd�
 
 | Sayfa | Açıklama |
 |-------|----------|
-| [[Harici Sağlayıcılar]] | OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama |
-| [[WhatsApp Entegrasyonu]] | QR eşleştirme, çift yönlü mesajlaşma, dosya transferi |
+| [[Harici Sağlayıcılar]] | 16 sağlayıcı tipi — OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama, Custom (OpenAI/Anthropic-uyumlu), OpenCode Zen/Go, Kilo Code, gemini-sub |
+| [[WhatsApp Entegrasyonu]] | QR eşleştirme, çift yönlü mesajlaşma, dosya transferi, kendine-sohbet asistanı |
+| [[Telegram Entegrasyonu]] | Bot eşleştirme, sahip kilidi, kendine-sohbet asistanı |
 | [[Yedekleme & Restore]] | `.memo` zip tabanlı dışa/içe aktarma, şifreleme |
 | [[Bulut Senkronizasyonu]] | Google Drive E2E şifreli yedekleme |
-| [[Uzaktan Erişim (ngrok)]] | Her yerden güvenli tünel erişimi |
+| [[Uzaktan Erişim ve Self-Hosting]] | Token/parola kimlik doğrulama, cihaz-başı tokenlar, ngrok/Tailscale, self-hosted sunucu modu |
 
 ## 🧰 Gelişmiş Özellikler
 
 | Sayfa | Açıklama |
 |-------|----------|
-| [[Ajan Modu]] | İzin sistemi ve sandbox ile AI araç çağırma |
+| [[Ajan Modu]] | İzin sistemi ve sandbox ile AI araç çağırma — 27 yerleşik araç, çalıştırılabilir skill araçları, ve Code Mode'un Plan/Auto/Build alt-modları |
+| [[Otonom Görev Döngüsü]] | Bir `Task.md` kontrol listesinden gözetimsiz çok-adımlı çalıştırma, planlayıcı/uygulayıcı modu, alt-ajan orkestrasyonu |
+| [[Masaüstü Maskotu]] | Memo'nun canlı aktivitesini yansıtan her-zaman-üstte bir pencere |
 | [[Orkestra Modu]] | Uzman rollerle çoklu model orkestrasyonu |
-| [[Multimodal Yetenekler (Görsel ve Ses)]] | Görsel yükleme, STT transkripsiyon, Sesli Mod / Live Mode (beta) |
+| [[Multimodal Yetenekler (Görsel ve Ses)]] | Görsel yükleme, STT transkripsiyon, Live Mode v2 native sesten-sese konuşma |
 | [[Proaktif Öğrenme ve Takvim]] | Rutinler, ambient nudge'lar, Self-Insight, niyet çıkarımı, takvim |
-| [[Geliştirici API Ağ Geçidi]] | Claude Code'u (ya da Anthropic-uyumlu herhangi bir aracı) Memo'ya bağla |
+| [[Geliştirici API Ağ Geçidi]] | Claude Code'u (ya da Anthropic/OpenAI-uyumlu herhangi bir aracı) Memo'ya bağla |
 | [[Memo Swarm]] | Birkaç PC ile büyük model çalıştırma (beta) |
-| [[Ajan Araçları Referansı]] | 8 yerleşik araç ve JSON şemaları |
 
 ## 🗂️ Sürüm Özellikleri
 
 | Sayfa | Açıklama |
 |-------|----------|
-| [[v3.1.1 Özellikleri]] | WhatsApp, mobil, yedekleme, agent, orkestra, sağlayıcılar (tarihsel kayıt — v3.1.0 anlık görüntüsü) |
-| [[Özellik Kataloğu]] | Özellik-özellik güncel tam liste (Routines, Sesli Mod, CLI provider'lar, istatistikler, geliştirici ağ geçidi dahil) |
-| Değişiklik Günlüğü (yayınlanan) | `versinNote/tr/v3.3.3.md` |
-| Değişiklik Günlüğü (geliştirme aşamasında) | `versinNote/tr/v3.3.4.md` |
+| [[Özellik Kataloğu]] | Özellik-özellik güncel tam liste |
+| Değişiklik Günlüğü (güncel) | `versinNote/tr/v4.5.0.md` — tüm sürüm geçmişi için `versinNote/tr/` |

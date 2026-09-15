@@ -10,7 +10,9 @@ For a self-hosted server, this token model sits alongside a full **account syste
 ## Developer API Gateway (Anthropic-compatible)
 `POST /v1/messages` implements the server side of Anthropic's Messages API wire format (`internal/anthropicapi/`), so tools that only know how to talk to Anthropic — most notably **Claude Code** via `ANTHROPIC_BASE_URL` — can point at Memo instead. Model selection uses a `type/model-id` format (`local/qwen2.5`, `openai/gpt-4o`, ...). See Sidebar → Developer for the base URL/token/live request log.
 
-This list below is not exhaustive — there are 180+ registered endpoints as of v3.9.0. It groups the major ones by area; see `internal/webserver/server.go`'s `route(...)` calls for the full, current list.
+`POST /v1/models` and `POST /v1/chat/completions` (`internal/openaiapi/`) are the OpenAI-compatible sibling of the same gateway, for tools that only speak OpenAI's wire format. Both this and the Anthropic-compatible endpoint above now **enforce the configured API key for any non-loopback caller** (v4.5.0 security fix) — previously, with "Require API Key" left off and remote access on, either could be reached by anything else able to reach the port, no credential at all.
+
+This list below is not exhaustive — there are 180+ registered endpoints as of v4.5.0. It groups the major ones by area; see `internal/webserver/server.go`'s `route(...)` calls for the full, current list.
 
 ## Endpoints
 
@@ -109,6 +111,37 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 | `POST` | `/api/telegram/stop` | Stop the client without clearing the token |
 | `POST` | `/api/telegram/disconnect` | Disconnect and clear the stored token/owner link |
 
+### 🚗 Self-Driving Task Loop
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET`/`POST` | `/api/tasklists` | List task lists / create one from a `Task.md` |
+| `GET`/`PUT`/`DELETE` | `/api/tasklists/{id}` | Get/update/delete a task list |
+| `POST` | `/api/tasklists/{id}/plan` | Trigger a planning turn (planner mode) |
+| `POST` | `/api/tasklists/{id}/approve-plan` | Approve a pending `Plan.md` |
+| `GET` | `/api/tasks/running` | Live view of the currently-running task list |
+| `GET` | `/api/tasks/events` | SSE stream of task-loop activity |
+| `POST` | `/api/tasks/{id}/pause`, `/resume`, `/cancel`, `/skip`, `/inject` | Control a running task list from outside the model (pause/resume/cancel current item, skip it, or inject a message) |
+| `GET`/`PUT` | `/api/taskloop/settings` | Persistent task-loop configuration |
+
+### 🛠️ Code Mode
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET`/`POST` | `/api/code-mode/prompt` | Get/set the system prompt for a Code Mode sub-mode (`plan`/`auto`/`build`) |
+| `POST` | `/api/code-mode/prompt/reset` | Reset a sub-mode's prompt to its default |
+
+### 🐾 Desktop Mascot
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/mascot/activity` | App-wide "what is Memo doing right now" activity signal the mascot window polls (also consumed by the terminal REPL's spinner) |
+
+### 🎙️ Live Mode v2 (native audio-to-audio)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET`/`PUT` | `/api/livemode/engines` | List/select the configured voice engine (Google Live, OpenAI Realtime, local fallback) |
+| `GET` | `/api/livemode/engines/models` | Live model list for the selected engine |
+| `POST` | `/api/livemode/session` | Start/manage a Live Mode v2 session |
+| `GET`/`PUT` | `/api/livemode/active` | Get/set whether Live Mode is the active surface for a chat |
+
 ### 🎵 Orchestra Mode
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
@@ -184,10 +217,12 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 ### 🛠️ Developer API Gateway
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET`/`PUT` | `/api/dev-gateway/config` | Get/update the Anthropic-compatible gateway's config (API key requirement, memory integration) |
+| `GET`/`PUT` | `/api/dev-gateway/config` | Get/update the gateway's config (API key requirement, memory integration) — shared by both the Anthropic- and OpenAI-compatible endpoints |
 | `GET` | `/api/dev-gateway/models` | List `type/model-id` selectable models across local + configured providers |
 | `GET` | `/api/dev-gateway/logs` | Live request log |
 | `GET` | `/api/dev-gateway/claude-code-cli` | Claude Code CLI connection helper/status |
+| `POST` | `/api/dev-gateway/token/rotate` | Rotate the gateway's API key |
+| `POST` | `/api/dev-gateway/google-account` | Connect a personal Google account for the "gemini-sub" provider (Beta) — OAuth handled by `internal/geminisub/` |
 
 ### 🗂️ Skills
 | Method | Endpoint | Description |

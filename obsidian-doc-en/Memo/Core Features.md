@@ -8,9 +8,9 @@ This is a Map of Content (MOC) for Memo's core feature documentation. Each linke
 
 | Page | Description |
 |------|-------------|
-| [[RAG and Semantic Memory]] | Vector-based retrieval-augmented generation — how Memo remembers |
-| [[Memory Store (SQLite + vec0)]] | Database schema, ANN indexing, persistence architecture |
-| [[Vector Search Logic]] | Cosine similarity, parallel workers, Top-K search |
+| [[RAG and Semantic Memory]] | Hybrid vector + FTS5 retrieval-augmented generation — how Memo remembers |
+| [[Data Layer and Persistence]] | Database schema, ANN indexing, persistence architecture |
+| [[Vector Search Logic]] | Cosine similarity, hybrid RRF merging, Top-K search |
 | [[Incognito Mode]] | Ephemeral sessions that leave no trace |
 
 ## 🏭 Model Management
@@ -24,20 +24,23 @@ This is a Map of Content (MOC) for Memo's core feature documentation. Each linke
 
 | Page | Description |
 |------|-------------|
-| [[External Providers]] | OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama |
-| [[WhatsApp Integration]] | QR pairing, bidirectional messaging, file transfer |
+| [[External Providers]] | 16 provider types — OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama, Custom (OpenAI/Anthropic-compatible), OpenCode Zen/Go, Kilo Code, gemini-sub |
+| [[WhatsApp Integration]] | QR pairing, bidirectional messaging, file transfer, self-chat assistant |
+| [[Telegram Integration]] | Bot pairing, owner lock, self-chat assistant |
 | [[Backup & Restore]] | `.memo` zip-based export/import with encryption |
 | [[Cloud Sync]] | Google Drive E2E encrypted backup |
-| [[Remote Access (ngrok)]] | Secure tunnel for anywhere access |
+| [[Remote Access & Self-Hosting]] | Token/password auth, per-device tokens, ngrok/Tailscale, self-hosted server mode |
 
 ## 🧰 Advanced Features
 
 | Page | Description |
 |------|-------------|
-| [[Agent Mode]] | AI tool calling with permission system and sandbox — 19 built-in tools + executable skill tools |
+| [[Agent Mode]] | AI tool calling with permission system and sandbox — 27 built-in tools, executable skill tools, and Code Mode's Plan/Auto/Build sub-modes |
+| [[Self-Driving Task Loop]] | Unattended multi-step execution from a `Task.md` checklist, planner/executor mode, sub-agent orchestration |
+| [[Desktop Mascot]] | An always-on-top window reflecting Memo's live activity |
 | [[Orchestra Mode]] | Multi-model orchestration with expert roles |
-| [[Multimodal Capabilities (Vision and Voice)]] | Image uploads, STT transcription, and (Beta) hands-free Live Mode voice conversation |
-| [[Developer API Gateway]] | Anthropic-compatible endpoint — point Claude Code at Memo |
+| [[Multimodal Capabilities (Vision and Voice)]] | Image uploads, STT transcription, and Live Mode v2 native audio-to-audio voice |
+| [[Developer API Gateway]] | Anthropic- and OpenAI-compatible endpoints — point Claude Code (or anything else) at Memo |
 | [[Memo Swarm]] | Beta — pool several PCs for one oversized local model |
 
 ## ⏰ Automation & Proactivity
@@ -50,6 +53,5 @@ This is a Map of Content (MOC) for Memo's core feature documentation. Each linke
 
 | Page | Description |
 |------|-------------|
-| [[v3.1.1 Features]] | WhatsApp, mobile, backup, agent, orchestra, providers — historical snapshot, frozen at v3.1.0/v3.1.1, two majors behind current |
 | [[Features Catalog]] | Complete, current feature-by-feature listing |
-| Release Notes | `versinNote/v3.3.3.md` (released), `versinNote/v3.3.4.md` (in development) |
+| Release Notes | `versinNote/v4.5.0.md` (current) — see `versinNote/` for the full per-version history |

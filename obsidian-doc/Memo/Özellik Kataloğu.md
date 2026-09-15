@@ -42,6 +42,7 @@ Memo'nun özellik-özellik tam listesi. Tam detay: `docs/tr/FEATURES.md`.
 | Kilo Code (v3.9.0) | ✅ | API anahtarı — app.kilo.ai, pay-as-you-go, bazı modeller ücretsiz, ücretsiz modeller en üstte canlı model tarayıcı |
 | Claude Code CLI (Beta, v3.3.4) | ✅ | Yok — kurulu `claude` CLI'ını subprocess olarak çalıştırır |
 | Codex CLI (Beta, v3.3.4) | ✅ | Yok — kurulu `codex` CLI'ını subprocess olarak çalıştırır |
+| gemini-sub (Beta, v4.4.0) | ✅ | Kişisel bir Google hesabıyla giriş — Google'ın Code Assist endpoint'i üzerinden kendi AI Pro/Ultra kotanızla Gemini'ye erişim, ayrı bir API anahtarı yok |
 
 Router özellikleri: fallback zinciri, 3 hatada otomatik devre dışı bırakma, sağlık kontrolü goroutine'i. OpenCode Zen/Go, OpenRouter gibi model adını elle yazmak yerine sağlayıcının canlı model listesinden seçtiriyor. **Claude ve Gemini tool-calling** (öncesinde ikisinde de tamamen yoktu) bu branch'te düzeltildi. Claude Code/Codex CLI mimari olarak bambaşka — bkz. [[Harici Sağlayıcılar]].
 
@@ -72,12 +73,13 @@ Router özellikleri: fallback zinciri, 3 hatada otomatik devre dışı bırakma,
 | Ayarlar → Genel | ✅ | Kişilik/ruh hali/web arama talimatlarını tamamen atlar — sadece hafıza (açıksa) modele gider |
 | Parça parça yeniden açma | ✅ | Persona/sistem promptu, yetenek duyuruları, pasif-özellik duyuruları, proaktif öğrenme ayrı ayrı yeniden açılabilir |
 
-## 🧑‍💻 Geliştirici Araçları (v3.3.3)
+## 🧑‍💻 Geliştirici Araçları
 
 | Özellik | Durum | Açıklama |
 |---------|-------|----------|
 | Kullanım İstatistikleri | ✅ | Ayarlar → İstatistikler: token/hız/model dağılımı, 30 günlük grafik (fl_chart) |
-| Geliştirici API Ağ Geçidi | ✅ | Yan menüde ayrı bir ekran (Ayarlar içinde değil): Claude Code'u (`ANTHROPIC_BASE_URL`) ya da OpenAI-uyumlu bir aracı Memo'daki yerel/harici modele bağla, canlı istek/yanıt günlüğü dahil — bkz. [[Geliştirici API Ağ Geçidi]] |
+| Geliştirici API Ağ Geçidi | ✅ | Yan menüde ayrı bir ekran (Ayarlar içinde değil): hem Anthropic-uyumlu (`ANTHROPIC_BASE_URL`, Claude Code için) hem OpenAI-uyumlu (`/v1/models`, `/v1/chat/completions`) endpoint, canlı istek/yanıt günlüğü dahil — bkz. [[Geliştirici API Ağ Geçidi]] |
+| İki ağ geçidi endpoint'i de loopback-olmayan çağıranlar için anahtar zorunlu | ✅ (v4.5.0 güvenlik düzeltmesi) | Önceden, uzaktan erişim açıkken ve anahtar gereksinimi kapalıyken OpenAI-uyumlu çift hiçbir kimlik bilgisi olmadan erişilebiliyordu |
 
 ## 🎙️ Sesli Mod / Live Mode v2 (v4.3.0 — eski Whisper→LLM→Piper relay'i tamamen değiştirdi)
 
@@ -131,6 +133,34 @@ Sade dil + kurulum: [[Memo Swarm]].
 | Denetim izi (1000 kayıt)      | ✅          |
 | Ajan frontend UI (izin dialog'u, sohbet üst çubuğunda toggle) | ✅ |
 
+## 🛠️ Code Mode: Plan / Auto / Build (v4.5.0)
+
+| Özellik | Durum |
+|---------|-------|
+| Ctrl+Tab (ya da durum çubuğu çip'i) ile döngülenen üç alt-mod | ✅ |
+| Plan — inceler, kaydedilmiş bir plan yazar, hiçbir dosyaya dokunmaz | ✅ |
+| Auto — bugünkü bildik onayla-sonra-düzenle akışı | ✅ |
+| Build — düzenlemeler + `run_command` beklemeden çalışır | ✅ |
+| Alt-mod başına düzenlenebilir sistem promptu (Ayarlar) | ✅ |
+| Auto-permission, biten bir planı aynı yanıt içinde doğrudan Build'e zincirler | ✅ |
+| Yerel model + Plan modu + auto-permission zincirleme | ⚠️ — kod incelemesiyle doğru fallback davranışı doğrulandı, gerçek bir yerel modele karşı henüz canlı doğrulanmadı |
+
+Detay: [[Ajan Modu]] §Code Mode.
+
+## 🐾 Masaüstü Maskotu (v4.5.0)
+
+| Özellik | Durum |
+|---------|-------|
+| Aynı süreci paylaşan her-zaman-üstte ikinci pencere | ✅ |
+| Sohbet/WhatsApp/Telegram/görev-döngüsü genelinde canlı aktiviteyi yansıtır | ✅ |
+| Sade-dilli durum balonu | ✅ |
+| Boşta animasyon (göz kırpma/nefes/sallanma) | ✅ |
+| Canlı önizlemeli iki seçilebilir cilt | ✅ |
+| Live Mode'da eşlik eder | ✅ |
+| Wayland'da gerçekten her-zaman-üstte (XWayland'a zorlama) | ✅ |
+
+Detay: [[Masaüstü Maskotu]].
+
 ## 🚗 Self-Driving Görev Döngüsü (v4.4.0)
 
 | Özellik | Durum |
@@ -145,7 +175,7 @@ Sade dil + kurulum: [[Memo Swarm]].
 | Sohbet modeli ÇALIŞAN bir görevin canlı durumunu tahmin etmeden okuyabiliyor | ⚠️ — `get_task_status` aracı var ve `BUG-PLAN10`'un çözümü gibi görünüyor, ama canlı doğrulanmadı |
 | Escalation sonrası ekranlar arası tutarlı adım/madde sayaçları | ❌ — `BUG-PLAN11`, açık |
 
-Detay: `docs/OZELLIKLER.md` §6.5 ve repo'nun `BUG_REPORT.md`'si.
+Detay: [[Otonom Görev Döngüsü]] ve repo'nun `BUG_REPORT.md`'si.
 
 ## 🎵 Orkestra Modu (Multi-Model)
 

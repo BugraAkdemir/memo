@@ -55,15 +55,17 @@ Complete feature-by-feature listing of Memo. Full detail: `docs/FEATURES.md`.
 | Kilo Code | ✅ (v3.9.0) | API key — app.kilo.ai, pay-as-you-go, some models free, live model browser with free models sorted to the top |
 | Claude Code (CLI) | ✅ Beta (v3.3.4) | Shells out to the locally installed `claude` CLI, per-chat, real background job |
 | Codex (CLI) | ✅ Beta (v3.3.4) | Shells out to the locally installed `codex` CLI, per-chat, real background job |
+| gemini-sub | ✅ Beta (v4.4.0) | Sign in with a personal Google account, reach Gemini via Google's Code Assist endpoint on your own AI Pro/Ultra quota — no separate API key |
 
 Router features: fallback chain, auto-disable after 3 failures, health check goroutine. **Claude and Gemini tool-calling** (previously entirely missing on both) fixed this branch — see [[External Providers]] for detail.
 
-## 🧑‍💻 Developer Tools (v3.3.3)
+## 🧑‍💻 Developer Tools
 
 | Feature | Status | Description |
 |---------|--------|-------------|
 | Usage Stats | ✅ | Settings → Stats: token/speed/model breakdown, 30-day chart (fl_chart) |
-| Developer API Gateway | ✅ | Its own screen in the sidebar (not inside Settings): point Claude Code (`ANTHROPIC_BASE_URL`) or any OpenAI-compatible tool at Memo's local/external model, includes a live request/response log — see [[Developer API Gateway]] |
+| Developer API Gateway | ✅ | Its own screen in the sidebar (not inside Settings): Anthropic-compatible (`ANTHROPIC_BASE_URL`, for Claude Code) **and** OpenAI-compatible (`/v1/models`, `/v1/chat/completions`) endpoints, live request/response log — see [[Developer API Gateway]] |
+| Both gateway endpoints require their API key for non-loopback callers | ✅ (v4.5.0 security fix) | Previously the OpenAI-compatible pair could be reached with no credential at all when remote access was on and the key requirement left off |
 
 ## 🐝 Memo Swarm (Beta)
 
@@ -94,6 +96,34 @@ Plain-language guide: [[Memo Swarm]].
 | Agent frontend UI (permission dialog, toggle in Chat's top bar) | ✅ |
 
 See [[Agent Mode]] for the full tool list.
+
+## 🛠️ Code Mode: Plan / Auto / Build (v4.5.0)
+
+| Feature | Status |
+|---------|--------|
+| Three sub-modes cycled with Ctrl+Tab (or the engine-strip chip) | ✅ |
+| Plan — investigates, writes a saved plan, touches no files | ✅ |
+| Auto — today's familiar confirm-before-edit flow | ✅ |
+| Build — edits + `run_command` run without waiting | ✅ |
+| Per-sub-mode editable system prompt (Settings) | ✅ |
+| Auto-permission chains a finished plan straight into Build, same reply | ✅ |
+| Local model + Plan mode + auto-permission chaining | ⚠️ — code-reviewed correct fallback behavior, not yet live-verified against a real local model |
+
+See [[Agent Mode]] §Code Mode for detail.
+
+## 🐾 Desktop Mascot (v4.5.0)
+
+| Feature | Status |
+|---------|--------|
+| Always-on-top second window, same process | ✅ |
+| Reflects live activity across chat/WhatsApp/Telegram/task-loop | ✅ |
+| Plain-language status bubble | ✅ |
+| Idle animation (blink/breathe/wave) | ✅ |
+| Two selectable skins with live preview | ✅ |
+| Speaks along in Live Mode | ✅ |
+| Genuinely always-on-top on Wayland (forced XWayland) | ✅ |
+
+See [[Desktop Mascot]] for detail.
 
 ## 🚗 Self-Driving Task Loop (v4.4.0)
 

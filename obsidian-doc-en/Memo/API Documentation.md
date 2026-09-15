@@ -178,5 +178,42 @@ Details: [[Developer API Gateway]]
 | `POST` | `/api/embed/start` | Start embedding server |
 | `POST` | `/api/embed/stop` | Stop embedding server |
 
+### Self-Driving Task Loop (v4.4.0)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`/`POST` | `/api/tasklists` | List task lists / create one from a `Task.md` |
+| `GET`/`PUT`/`DELETE` | `/api/tasklists/{id}` | Get/update/delete a task list |
+| `POST` | `/api/tasklists/{id}/plan` | Trigger a planning turn (planner mode) |
+| `POST` | `/api/tasklists/{id}/approve-plan` | Approve a pending `Plan.md` |
+| `GET` | `/api/tasks/running` | Live view of the currently-running task list |
+| `GET` | `/api/tasks/events` | SSE stream of task-loop activity |
+| `POST` | `/api/tasks/{id}/{pause,resume,cancel,skip,inject}` | Control a running task list from outside the model |
+| `GET`/`PUT` | `/api/taskloop/settings` | Persistent task-loop configuration |
+
+Details: [[Self-Driving Task Loop]]
+
+### Code Mode (v4.5.0)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`/`POST` | `/api/code-mode/prompt` | Get/set a Code Mode sub-mode's system prompt (`plan`/`auto`/`build`) |
+| `POST` | `/api/code-mode/prompt/reset` | Reset a sub-mode's prompt to its default |
+
+### Desktop Mascot (v4.5.0)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/mascot/activity` | App-wide activity signal the mascot window (and terminal REPL) polls |
+
+Details: [[Desktop Mascot]]
+
+### Live Mode v2 (v4.3.0)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`/`PUT` | `/api/livemode/engines` | List/select the configured voice engine |
+| `GET` | `/api/livemode/engines/models` | Live model list for the selected engine |
+| `POST` | `/api/livemode/session` | Start/manage a Live Mode v2 session |
+| `GET`/`PUT` | `/api/livemode/active` | Get/set whether Live Mode is the active surface for a chat |
+
+Details: [[Multimodal Capabilities (Vision and Voice)]]
+
 ---
 > **Note:** For more details on API usage, examine `internal/webserver/server.go` and `internal/webserver/handlers_flutter.go`.

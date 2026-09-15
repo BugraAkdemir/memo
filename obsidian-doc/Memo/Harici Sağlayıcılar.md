@@ -50,7 +50,9 @@ type Provider interface {
 
 ---
 
-## Desteklenen Sağlayıcılar (12 tür + 2 CLI provider — `internal/provider/provider.go`'daki `ProviderType` sabitlerine karşı doğrulandı; `llama.cpp` ayrı bir enum ama gerçek bir provider olarak uygulanmamış, sayıma dahil değil)
+## Desteklenen Sağlayıcılar (16 kayıtlı `ProviderType` değeri — `internal/provider/provider.go`'ya karşı doğrulandı; `llama.cpp` ayrı bir enum ama gerçek bir provider olarak uygulanmamış, sayıma dahil değil)
+
+> **v4.5.0'a göre güncellendi:** aşağıdaki detaylı liste OpenAI/Gemini/Claude/Grok/Groq/OpenRouter/Ollama'yı kapsıyor; buna ek olarak Custom (OpenAI-uyumlu), Custom (Anthropic-uyumlu), OpenCode Zen, OpenCode Go, Kilo Code, Claude Code CLI, Codex CLI, ve **gemini-sub** (Beta, v4.4.0 — kişisel bir Google hesabıyla giriş, Google'ın Code Assist endpoint'i üzerinden kendi AI Pro/Ultra kotanızla Gemini'ye erişim, ayrı bir API anahtarı olmadan; `internal/geminisub/`) de mevcut. Tam liste ve daha fazla detay için İngilizce dokümantasyondaki `External Providers.md`'ye bakın.
 
 ### 1. OpenAI (`openai.go`, 353 satır)
 - **Uyumlu API'ler:** OpenAI, OpenAI uyumlu tüm endpoint'ler

@@ -1,11 +1,13 @@
 # 🧩 Developer API Gateway
 
-> **Package:** `internal/anthropicapi/` (wire-format translation), `internal/app/devgateway.go` (routing), `internal/webserver/devgateway_handlers.go` (HTTP)
+> **Package:** `internal/anthropicapi/` + `internal/openaiapi/` (wire-format translation), `internal/app/devgateway.go` (routing), `internal/webserver/devgateway_handlers.go` + `openai_handlers.go` (HTTP)
 > **Config:** `config.DevGatewayConfig` (`require_api_key`, `use_memory`) — both default off
-> **API endpoints:** `GET/PUT /api/dev-gateway/config`, `GET /api/dev-gateway/models`, `GET /api/dev-gateway/logs`, `POST /v1/messages`
+> **API endpoints:** `GET/PUT /api/dev-gateway/config`, `GET /api/dev-gateway/models`, `GET /api/dev-gateway/logs`, `POST /api/dev-gateway/token/rotate`, `POST /v1/messages` (Anthropic-compatible), `GET /v1/models` + `POST /v1/chat/completions` (OpenAI-compatible)
 > **NavRail:** the "Developer" icon in the left sidebar (NOT inside Settings — its own top-level screen)
 
-Makes Memo usable from tools that only speak an Anthropic-compatible endpoint — most notably **Claude Code itself**, via `ANTHROPIC_BASE_URL`. The point: point Claude Code at Memo, and have it actually run your own local model or your own OpenAI/Gemini/etc. API key behind the scenes.
+Makes Memo usable from tools that only speak an Anthropic- or OpenAI-compatible endpoint — most notably **Claude Code itself**, via `ANTHROPIC_BASE_URL`, or any OpenAI-SDK-based tool via a custom base URL. The point: point the tool at Memo, and have it actually run your own local model or your own OpenAI/Gemini/etc. API key behind the scenes.
+
+Since v4.4.0 there are genuinely **two** gateway endpoints sharing the same config, routing, and live log: the original Anthropic-compatible one (`internal/anthropicapi/`, `POST /v1/messages`) and an OpenAI-compatible sibling (`internal/openaiapi/`, `GET /v1/models` + `POST /v1/chat/completions`) for tools that only know OpenAI's wire format.
 
 ---
 
@@ -38,8 +40,10 @@ If more than one provider shares a type, the **enabled** one wins — there's no
 `DevGateway.RequireAPIKey` **defaults to off** — matching how plain localhost access is already unauthenticated (see `remoteAuthOK`). When turned on:
 
 - The request must carry an `x-api-key` header (what real Anthropic clients — including Claude Code — send automatically) or `Authorization: Bearer <token>` as a fallback.
-- The token is the **same one** Remote Access uses (`RemoteAccess.Token`) — shown as copyable in the Developer screen.
+- The token is the **same one** Remote Access uses (`RemoteAccess.Token`) — shown as copyable in the Developer screen, rotatable via `POST /api/dev-gateway/token/rotate`.
 - This check is **independent** of the existing `remoteAuthMiddleware`: that one only kicks in once Memo is bound to `0.0.0.0`; this one applies based purely on `RequireAPIKey`, local or remote — the point is stopping another process on the same machine from using this port without permission.
+
+**v4.5.0 security fix:** v4.4.0 closed the key-enforcement gap for `/v1/messages` (the Anthropic-compatible endpoint); this release closed the same gap for the OpenAI-compatible pair (`GET /v1/models`, `POST /v1/chat/completions`) — with "Require API Key" left off (its default) and remote access on, either endpoint could previously be reached by anything else able to reach the port, with no credential at all, using the configured provider for free. Both endpoints now enforce the key for any caller that isn't genuinely on this machine.
 
 ---
 
@@ -65,7 +69,7 @@ Claude Code's actual power — tool calling (reading/writing files, running comm
 - **A subtle but critical format detail:** Anthropic's `tool_use.input` is a real JSON object, while OpenAI's `function.arguments` is a JSON *string* carrying that object's text — conflating the two (e.g. passing the same bytes straight through) either double-encodes or produces the exact bug found and fixed via a live end-to-end test: Claude Code would receive a plain string in `input` instead of an object. `anthropicInputToOpenAIArguments`/`openAIArgumentsToJSONText` are the exact inverse of each other and handle this correctly.
 - Tool-calling requests always go to the backend **non-streaming** (`DevGatewayChat`) — Memo's own agent pipeline (`internal/agent/pipeline.go`) already only ever decides tool calls via non-streaming `ChatCompletion`; no provider's streaming path decodes `tool_calls` deltas at all. If the client asked for streaming, the complete response is replayed as Anthropic's SSE event sequence in one shot.
 
-**Known limitation:** `gemini`, `claude`, and `ollama` provider types don't support tool calling yet — their `internal/provider` implementations don't decode/encode Tools/ToolCalls at all (a pre-existing gap, unrelated to the gateway itself). A tools-bearing request routed to one of those gets a clear error instead of silently dropping the tools.
+**Known limitation:** `ollama` doesn't support tool calling yet — its `internal/provider` implementation doesn't decode/encode Tools/ToolCalls at all (a pre-existing gap, unrelated to the gateway itself). A tools-bearing request routed to it gets a clear error instead of silently dropping the tools. (`gemini` and `claude` **used to** be in this list too — both gained real tool-calling in v4.4.0.)
 
 Token counts are also **estimates** (word-count based), not the real provider-reported numbers — the same approach the rest of the codebase's live counter already uses.
 

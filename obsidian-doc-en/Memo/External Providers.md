@@ -60,7 +60,7 @@ type Provider interface {
 
 ---
 
-## Supported Providers (15 registered `ProviderType` values, verified against `internal/provider/provider.go`)
+## Supported Providers (16 registered `ProviderType` values, verified against `internal/provider/provider.go`)
 
 7 detailed below (OpenAI, Gemini, Claude, Grok, Groq, OpenRouter, Ollama), plus: **Custom** (any OpenAI-compatible endpoint — LM Studio, vLLM, etc., wraps `openAIProvider`), **Custom (Anthropic-compatible)** (`custom-anthropic`, added this branch — any Anthropic Messages API-shaped endpoint, e.g. your own proxy; wraps `claudeProvider` the same way `custom` wraps `openAIProvider`, see §10 below), **OpenCode Zen**, **OpenCode Go**, and **Kilo Code** (app.kilo.ai, added v3.9.0 — three live-model-list gateways; Zen and Kilo are pay-as-you-go with some free models sorted to the top and marked with a green checkmark, Go is subscription-based), the two CLI-based providers (#8-9 below, v3.3.4), and `llama.cpp` — an enum placeholder only, **not actually implemented** as a provider (see the note below).
 
@@ -124,6 +124,14 @@ Architecturally unlike the other providers: instead of calling an HTTP API, it s
 ### 10. Custom (Anthropic-compatible) (`custom_anthropic.go`, new this branch)
 
 A thin wrapper (`customAnthropicProvider{*claudeProvider}`) — same pattern as `grok.go`/`openrouter.go` wrapping `openAIProvider`, but for the Anthropic Messages API shape instead. Exists so a user whose own proxy speaks Anthropic's wire format (not OpenAI's) can still point Memo at it and get the same tool-calling support `claude.go` has, without Memo assuming it's talking to `api.anthropic.com` itself — `BaseURL` is required (`Validate()` rejects an empty one, same rule as plain `custom`). Verified end-to-end (tool send, parse, round-trip) against a local `httptest` server standing in for a real proxy.
+
+### 11. gemini-sub (`internal/geminisub/`, Beta, added v4.4.0)
+
+Sign in with a **personal Google account** (browser OAuth, using gemini-cli's own public client — nothing to register yourself) and reach Gemini through Google's **Code Assist** endpoint on your own AI Pro/Ultra subscription quota, instead of a separate API key. Also adopts an existing `~/.gemini/oauth_creds.json` login automatically at startup, if present.
+
+Self-contained by design (isolation from the rest of `internal/provider/`): wired in via one `ProviderType` const + `RegisterConstructor` + a blank import in `internal/app`, the same registration pattern `internal/agentcli`'s CLI providers use. Connect surface: `internal/app/gemauth.go`, `POST /api/dev-gateway/google-account`. Optional env overrides: `MEMO_GOOGLE_GEMINI_CLIENT_ID`/`_SECRET`, `MEMO_GEMINI_SUB_ENDPOINT`.
+
+Gated behind Beta — a live test found the free-tier subscription quota rejected by Google (`UNSUPPORTED_CLIENT`), so the premise (using a free/non-paid Google AI subscription this way) is not yet fully resolved; a paid AI Pro/Ultra subscription is the tested-working path.
 
 ---
 

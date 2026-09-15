@@ -3,12 +3,12 @@
 Memo Backend, varsayılan olarak `localhost:8090` üzerinde bir REST API çalıştırır.
 
 ## Kimlik Doğrulama
-Yerel (`localhost`) bağlantılar token gerektirmeden açıktır. **Uzaktan erişim (LAN, ngrok veya Tailscale) artık her istekte Settings'te gösterilen erişim token'ını zorunlu kılıyor** — önceden isteğe bağlıydı, v3.3.3'te güvenlik düzeltmesiyle zorunlu hale geldi. Mobil uygulama bu token'ı zaten gönderiyor.
+Yerel (`localhost`) bağlantılar token gerektirmeden açıktır. **Uzaktan erişim (LAN, ngrok veya Tailscale) her istekte Settings'te gösterilen erişim token'ını zorunlu kılar.**
 
-## Developer API Gateway (Anthropic-uyumlu)
-`POST /v1/messages`, Claude Code gibi sadece Anthropic'in Messages API formatını konuşan araçların (`ANTHROPIC_BASE_URL` ile) Memo'ya bağlanmasını sağlar — model seçimi `type/model-id` formatında (`local/qwen2.5`, `openai/gpt-4o`, ...). Bkz. Sidebar → Developer.
+## Developer API Gateway (Anthropic- ve OpenAI-uyumlu)
+`POST /v1/messages`, Claude Code gibi sadece Anthropic'in Messages API formatını konuşan araçların (`ANTHROPIC_BASE_URL` ile) Memo'ya bağlanmasını sağlar. `GET /v1/models` + `POST /v1/chat/completions` aynı gateway'in OpenAI-uyumlu ikizidir. Model seçimi her ikisinde de `type/model-id` formatında (`local/qwen2.5`, `openai/gpt-4o`, ...). **Her iki endpoint de artık loopback-olmayan her çağıran için API anahtarını zorunlu kılıyor** (v4.5.0 güvenlik düzeltmesi). Bkz. Sidebar → Developer.
 
-Aşağıdaki liste kapsayıcı değildir — v3.3.4 itibarıyla ~118 kayıtlı endpoint var (rutinler, proaktif öğrenme, Sesli Mod/TTS, Memo Swarm, Kullanım İstatistikleri, CLI sağlayıcıları, skill'ler, yedekleme dahil). Tam ve güncel liste için `internal/webserver/server.go`'daki `route(...)` çağrılarına bakın.
+Aşağıdaki liste kapsayıcı değildir — v4.5.0 itibarıyla 180+ kayıtlı endpoint var: rutinler, proaktif öğrenme, Live Mode v2 (native sesten-sese), Memo Swarm, Kullanım İstatistikleri, CLI sağlayıcıları, skill'ler, Self-Driving görev döngüsü (`/api/tasklists`, `/api/tasks/*`), Code Mode alt-mod promptları (`/api/code-mode/prompt`), masaüstü maskotu aktivite sinyali (`/api/mascot/activity`), ve yedekleme dahil. Tam ve güncel liste için İngilizce [`API_REFERENCE.md`](../API_REFERENCE.md) ya da `internal/webserver/server.go`'daki `route(...)` çağrılarına bakın.
 
 ## Endpointler
 

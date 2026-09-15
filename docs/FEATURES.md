@@ -87,15 +87,26 @@ Memo isn't just a chat; it's a "Second Brain."
 - **Thinking State**: A pulsing "Memo is thinking..." status provides visual feedback before the first token arrives.
 - **Cursor UI**: A blinking terminal-style cursor (`▊`) follows the stream.
 
-### Live Mode — Hands-Free Voice (Beta)
-- A small voice icon next to the chat input box (after enabling Settings → Beta Features) — not a separate sidebar tab. Listens, auto-detects when you start/stop speaking, transcribes locally, sends it as a normal chat message, and speaks the reply back.
-- **Local by default**: on-device transcription + local **Piper** TTS, so nothing has to leave the machine. An optional external OpenAI TTS provider can be configured instead; local Piper is always the fallback.
-- **Offline voice picker**: download a small curated set of Piper voices (Turkish/English), switch instantly, no restart.
+### Live Mode v2 — Native Audio-to-Audio Voice
+- A small voice icon next to the chat input box — not a separate sidebar tab. Real native audio-to-audio conversation via **Google Live** or **OpenAI Realtime**, not a transcribe-then-TTS round trip.
+- **Delegate or standalone modes**: run Live Mode as its own conversation, or delegate it into an existing chat so the two share memory/context.
 - **One-directional barge-in**: speak again while Memo is talking and it stops to listen instead of talking over you.
+- **Mid-session memory refresh**: memory context is re-pulled during a long conversation, not just once at the start, so Memo can recall something you mentioned partway through.
+- **Clearer failures**: a session that can't start a real voice engine now says why (no engine selected, incomplete engine config, background chat session failing to open) instead of silently falling back to hearing your own voice echoed back.
+- **Local fallback path**: when no native engine is configured, on-device whisper.cpp transcription + local **Piper** TTS still works end-to-end, with an offline voice picker (Turkish/English) and ElevenLabs/custom engines also selectable.
 - **Known limitation**: no echo cancellation yet — speakers (vs. headphones) can occasionally make Memo mistake its own voice for an interruption.
 
 ### @ File-Mention
 - Type `@` in any chat's message box to search for and reference a file by name — useful for pointing agent mode at a specific file without typing the full path.
+
+### Desktop Mascot
+- A small animated character that lives on your desktop as its own always-on-top window — separate from the chat window, sharing the same running app/process/state (not a second binary).
+- **Shows what Memo is actually doing, live**: every agent tool call, plain chat reply, or task-loop turn, from any channel (chat, WhatsApp, Telegram, a task list), feeds one app-wide activity signal the mascot polls — its pose changes with it in real time (thinking, writing, running a specific tool).
+- **Plain-language status bubble** below the character: "Thinking…", "Writing…", "Running search_web…" — never the model's actual reply text. A finished turn gets a distinct "Completed!" moment (arms up, a couple of seconds) before settling back to idle.
+- **Alive when idle**: blinks, breathes, and throws in an occasional random wave/hop/sway instead of standing frozen.
+- **Two selectable skins** (Settings → General, with a live preview): the original hand-drawn creature, or a blue-navy pixel-art robot — same animation system, same moods.
+- **Speaks in Live Mode too**: mouth opens/closes in time with speech, a sound-wave flourish, and a "Speaking…" bubble (Live Mode's speaking state is the only one surfaced — neither Google Live's nor OpenAI Realtime's client currently reports a real "listening" signal).
+- Genuinely always-on-top (including on Wayland, via forcing XWayland), with a click/drag zone shaped to the character's real silhouette rather than its bounding box.
 
 ### Incognito Mode
 - **Zero-Persistence**: A secure toggle that disables all memory saving and history logging for sensitive sessions.
@@ -129,7 +140,7 @@ Memo isn't just a chat; it's a "Second Brain."
 
 ### Multi-Provider Architecture
 Memo connects to external LLM APIs alongside local models:
-- **Supported Providers (15 `ProviderType` values):** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, a generic **Custom** (any OpenAI-compatible endpoint), a new **Custom (Anthropic-compatible)** (any Anthropic Messages API-shaped endpoint — e.g. your own proxy, for when it doesn't speak OpenAI's format), plus **OpenCode Zen** (pay-as-you-go, some models free), **OpenCode Go** (subscription), and **Kilo Code** (app.kilo.ai — pay-as-you-go, some models free) — the three gateways let you pick from a live model list instead of typing a model name by hand, with free models sorted to the top and marked with a green checkmark.
+- **Supported Providers (16 `ProviderType` values):** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, a generic **Custom** (any OpenAI-compatible endpoint), **Custom (Anthropic-compatible)** (any Anthropic Messages API-shaped endpoint — e.g. your own proxy), **OpenCode Zen** (pay-as-you-go, some models free), **OpenCode Go** (subscription), **Kilo Code** (app.kilo.ai — pay-as-you-go, some models free), and **gemini-sub** (Beta) — sign in with a personal Google account and reach Gemini through Google's Code Assist endpoint on your own AI Pro/Ultra quota, no separate API key. The gateway-style providers let you pick from a live model list instead of typing a model name by hand, with free models sorted to the top and marked with a green checkmark.
 - **Claude and Gemini now support real tool-calling** (previously entirely missing on both — an agent/task-loop turn on either provider silently couldn't use tools at all). Both round-trip single and parallel tool calls correctly per each vendor's own wire format.
 - **Claude Code / Codex CLI as chat providers (beta):** instead of an API call, Memo shells out to a locally installed `claude`/`codex` CLI. Per-chat (not app-wide), runs as a real untimed background job, uses the CLI's own no-prompt permission mode, and its own `/` slash commands surface in Memo's command popup. No memory/identity context is sent — the CLI manages its own session.
 - **Provider Interface:** Common `Provider` interface with `ChatCompletion`, `ChatCompletionStream`, `ListModels`
@@ -153,6 +164,7 @@ Memo connects to external LLM APIs alongside local models:
 Memo acts as an AI agent with full computer control:
 - **27 Built-in Tools** (verified against `registerBuiltins()`, `internal/agent/tools.go` — up from an earlier "22"): file I/O (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`, `change_directory`), `run_command`, `read_env`, `web_search`, `fetch_page`, `self_clone`, `configure_provider`, `get_calendar_events`, task-loop control (`get_task_status`, `pause_task`, `resume_task`, `create_task_md`, `edit_task_md`, `start_self_driving_task` — see §6.5 below), routines (`create_routine`, `list_routines`, `cancel_routine`), `share_file`. WhatsApp's 4 tools (`whatsapp_send`/`search`/`latest`/`messages`) live in a *separate* scoped registry, not this main one.
 - **Skill tools now actually execute.** A skill's `SKILL.md` can define a `command:` field, wired into the exact same tool pipeline and permission-prompt UI as built-in tools — previously this was declaration-only and never ran anything.
+- **Imported skills no longer auto-activate (v4.5.0 security fix).** Memo still automatically picks up skills from other tools' skill folders (e.g. Claude Code's) — but a newly-discovered skill now waits for you to turn it on instead of getting instant system-prompt authority the moment it's found.
 - **Tool Registry:** Thread-safe registry with JSON Schema parameter definitions
 - **Danger Level System:** `safe` (auto-allowed), `medium` (prompt user), `dangerous` (prompt + delay)
 
@@ -173,9 +185,16 @@ Memo acts as an AI agent with full computer control:
 
 > **Note:** Agent frontend UI (permission dialogs, tool call cards, mode toggle) shipped some time ago and is fully live — the toggle sits directly in Chat's top bar next to the web-search toggle, no separate Agent-only screen needed.
 
+### Code Mode: Plan / Auto / Build (new in v4.5.0)
+Code Mode used to be a single on/off switch. It's now three presets, cycled with **Ctrl+Tab** in the message box (or a tap on the chip in the bottom engine strip), each with its own editable system prompt (Settings):
+- **Plan** — investigates the codebase and writes a concrete, step-by-step plan without touching a single file. The plan is saved to disk (`data/plans/<project>/plan.md`, via the dedicated `save_code_plan` tool — sandboxed outside the project directory), and once ready Memo asks in plain chat whether to move on to Build or Auto.
+- **Auto** — today's familiar Code Mode: file edits still go through a quick confirm.
+- **Build** — the fast lane: file edits and `run_command` calls run without waiting.
+- If the global auto-permission toggle is already on when a plan finishes, Memo skips the question and chains straight into Build **within the same reply** (one SSE stream, no second round trip) instead of waiting for an answer.
+
 ---
 
-## 6.5 🚗 Self-Driving Task Loop (new in v4.4.0)
+## 6.5 🚗 Self-Driving Task Loop (v4.4.0, sub-modes chaining added in v4.5.0)
 
 An unattended, multi-step task runner built on top of Agent Mode — you hand it a checklist, it works through it on its own.
 
@@ -267,9 +286,10 @@ Multiple AI models collaborate as a team:
 ## 10. 🛠️ Developer & Power-User Features
 
 ### Developer API Gateway (Sidebar → Developer)
-- A local Anthropic-compatible API endpoint, so tools that only support that wire format (most notably **Claude Code**, via `ANTHROPIC_BASE_URL`) can run against Memo's local model or any configured provider/key.
+- Two local endpoints: an **Anthropic-compatible** one (so tools like **Claude Code**, via `ANTHROPIC_BASE_URL`, can run against Memo) and an **OpenAI-compatible** sibling (`GET /v1/models`, `POST /v1/chat/completions`), both pointed at Memo's local model or any configured provider/key.
 - Model selection via a `type/model-id` format (`local/qwen2.5`, `openai/gpt-4o`, ...). Full agentic tool calling for openai/custom/local/groq/openrouter/grok/opencode-zen/opencode-go providers.
-- Optional API-key requirement (shares Remote Access's token), optional memory integration, live request log.
+- **"Require API Key" now enforced on both gateways for any non-loopback caller** (v4.5.0 security fix) — previously, with remote access on and the key requirement left off, the OpenAI-compatible pair could be reached by anything else able to reach the port, no credential at all.
+- Optional memory integration, live request log.
 
 ### Memo Swarm (Beta)
 - Pool several PCs' compute (Settings → Beta Features → Swarm) to run one GGUF model too large for a single machine's RAM/VRAM — one Host holds the model file, others Join with a room code and lend compute via llama.cpp's `rpc-server`.
@@ -295,5 +315,7 @@ Multiple AI models collaborate as a team:
 - **Onboarding Wizard**: A guided setup for name, persona, and initial diagnostics.
 
 ---
+*Last updated: 2026-09-15 · Version: v4.5.0*
+
 **Built by Buğra.**
 *Control your AI. Own your Memory.*

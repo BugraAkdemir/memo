@@ -111,6 +111,8 @@ sequenceDiagram
 
 ## 🖥️ 4. Backend Modules
 
+> This section documents the foundational modules in depth (line counts and known-issue notes are from earlier in the project's life and not re-verified per release). For the full current package list including everything added since — task loop, Live Mode v2, Telegram, the OpenAI-compatible gateway, gemini-sub, the desktop mascot, Code Mode sub-modes — see [`docs/DOCS.md`](DOCS.md) §4 and the file-by-file [`docs/PROJECT_MAP.md`](PROJECT_MAP.md).
+
 ### `app.go` (2409 lines)
 Central orchestrator. Manages:
 - LLM client lifecycle (`a.client`, `a.embeddingClient`)
@@ -379,21 +381,21 @@ cd frontend && flutter run -d linux
 
 ## 📋 8. Current Status
 
-**Current version:** v3.3.3 (open beta), v3.3.4 in development
+**Current version:** v4.5.0
 
-**Bug tracking:** [`BUG_REPORT.md`](../BUG_REPORT.md) (repo root) is the actively-maintained log — 0 open bugs as of 2026-08-05. [docs/KNOWN_ISSUES.md](./KNOWN_ISSUES.md) is a frozen 2026-07-04 snapshot kept for historical reference.
+**Bug tracking:** [`BUG_REPORT.md`](../BUG_REPORT.md) (repo root) is the actively-maintained log. [docs/KNOWN_ISSUES.md](./KNOWN_ISSUES.md) and [docs/RESOLVED_ISSUES.md](./RESOLVED_ISSUES.md) are frozen historical snapshots from the v3.x line, kept for reference only.
 
-**Since v3.1.2, headline architectural additions** (see `versinNote/v3.3.3.md` and `versinNote/v3.3.4.md` for full detail):
-- `internal/agentcli/` — Claude Code / Codex CLI as chat providers (beta), shelling out to a local CLI instead of an HTTP call
-- `internal/anthropicapi/` — Developer API Gateway, an Anthropic-compatible local endpoint for tools like Claude Code
-- `internal/routine/` — scheduled automations ("Routines"), desktop + mobile
-- `internal/tts/` — Live Mode voice (beta): local Piper TTS by default, optional external OpenAI TTS
-- `internal/swarm/` — Memo Swarm (beta), pooling several machines' compute via llama.cpp's `rpc-server`
-- `internal/stats/` — Usage Stats persistence
-- Backend-wide panic recovery: `logx.Recover`/`logx.GoRecover` now wrap essentially every background goroutine (memory, streaming, WhatsApp, cloud sync, routines, proactive suggestions, notifications, remote-access tunnels), so an unexpected error in one no longer takes the whole process down
-- Remote access (LAN/ngrok/Tailscale) now requires the access token on every request; Tailscale itself graduated out of Beta
+**Since v3.3.4, headline architectural additions** (see `versinNote/` for full per-version detail):
+- **v4.0.0** — real time-awareness in the system prompt; WhatsApp third-party conversation takeover.
+- **v4.3.0** — `internal/livemode/` — Live Mode v2: native audio-to-audio voice (Google Live / OpenAI Realtime sessions), delegate/standalone modes, reconnect + transcript handling; `internal/telegram/` — a second messaging bridge mirroring WhatsApp's shape.
+- **v4.4.0** — `internal/taskloop/` (large expansion) — the Self-Driving task loop: `Task.md` schema, planner/executor engine, sub-agent orchestration, escalating retry, provider-lock hardening; `internal/openaiapi/` — OpenAI-compatible sibling of the Developer Gateway; real tool-calling added for the Claude and Gemini providers; `internal/geminisub/` — sign in with a personal Google account, reach Gemini via Code Assist (Beta); `internal/remoteauth/` split out of the webserver package (bruteforce lockout, per-device tokens, JWT session tokens); `internal/browserengine/` — optional headless-browser rendering for JS-heavy pages `internal/websearch` alone can't read.
+- **v4.5.0** — the desktop mascot (`frontend/lib/mascot_main.dart` + `mascot_window.dart`/`memo_mascot.dart`/`mascot_provider.dart`, a second window in the same process, driven by an app-wide activity signal in `internal/app/activity.go`/`internal/models/activity.go`); Code Mode's Plan/Auto/Build sub-modes (`Session.CodeSubMode`, `Pipeline.codeSubMode`, the `save_code_plan` tool); both Developer Gateway endpoints now key-enforced for non-loopback callers; imported skills no longer auto-activate.
+- Backend-wide panic recovery: `logx.Recover`/`logx.GoRecover` wrap essentially every background goroutine, so an unexpected error in one no longer takes the whole process down.
+- Remote access (LAN/ngrok/Tailscale) requires the access token on every request; Tailscale itself is out of Beta.
+
+Package count has grown to 40+ (`ls internal/`) and registered endpoints to 180+ (`internal/webserver/server.go`'s `route(...)` calls) — the endpoint table in §6 above predates most of this and is illustrative, not exhaustive; see [`docs/API_REFERENCE.md`](API_REFERENCE.md) for the maintained list.
 
 ---
 
-> **Last updated:** 2026-08-05
-> **Version:** v3.3.3 open beta (v3.3.4 in development)
+> **Last updated:** 2026-09-15
+> **Version:** v4.5.0

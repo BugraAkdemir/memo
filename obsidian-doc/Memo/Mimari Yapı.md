@@ -1,4 +1,6 @@
-# Mimari — Memo v3.3.3 (+ v3.3.4 geliştirme aşamasında)
+# Mimari — Memo v4.5.0
+
+> **v4.5.0'a göre güncellendi.** Bu sayfanın son tam yazıldığı v3.3.4 taban çizgisinden beri dört sürüm daha yayınlandı: v4.0.0 (gerçek zaman farkındalığı, WhatsApp devralma), v4.3.0 (Live Mode v2 native ses, Telegram köprüsü), v4.4.0 (Self-Driving görev döngüsünün büyük genişlemesi, gerçek Claude/Gemini tool-calling, OpenAI-uyumlu Geliştirici Ağ Geçidi kardeşi, gemini-sub), ve v4.5.0 (masaüstü maskotu, Code Mode'un Plan/Auto/Build alt-modları). Yeni paketler: `internal/taskloop/`, `internal/livemode/`, `internal/telegram/`, `internal/openaiapi/`, `internal/geminisub/`, `internal/remoteauth/`, `internal/browserengine/`, `internal/stt/`. Sağlayıcı sayısı artık 16, ajan tool sayısı 27. En yeni iki alt sistem için bkz. [[Otonom Görev Döngüsü]] ve [[Masaüstü Maskotu]].
 
 ## Genel Bakış
 

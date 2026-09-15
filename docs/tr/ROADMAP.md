@@ -7,25 +7,36 @@ düşer. Geçmiş sürümlerde gerçekten neyin yayınlandığını görmek içi
 [`versinNote/`](../../versinNote/), canlı testte bulunan açık
 bug/tasarım eksiklerini görmek için repo'nun `BUG_REPORT.md`'sine bakın.
 
-> **v4.4.0 için güncellendi** (bu dosya daha önce "v3.3.4'ün ötesi" bir
-> yol haritası anlatıyordu — o listenin çoğu şu ana kadar yayınlandı:
-> v4.0.0'da gerçek zaman farkındalığı ve WhatsApp üçüncü kişi devralma,
-> v4.3.0'da Live Mode v2. Aşağıdaki maddeler bir yıl önceki "sırada ne
-> var"ı değil, gerçekten sıradakini yansıtıyor.)
+> **v4.5.0 için güncellendi** (bu dosya daha önce "v4.4.0'ın ötesi" bir
+> yol haritası anlatıyordu — masaüstü maskotu ve Code Mode'un Plan/Auto/
+> Build alt-modları şu ana kadar yayınlandı. Aşağıdaki maddeler bir sürüm
+> önceki "sırada ne var"ı değil, gerçekten sıradakini yansıtıyor.)
 
-## Bu döngüde yayınlanan (v4.0.0 → v4.4.0), bağlam için
+## Bu döngüde yayınlanan (v4.0.0 → v4.5.0), bağlam için
 
 - **v4.0.0** — sistem promptunda gerçek zaman farkındalığı ("son
   mesajdan bu yana ne kadar geçti"), WhatsApp üçüncü kişi sohbet devralma.
 - **v4.3.0** — Live Mode v2: native audio-to-audio ses (Google Live /
   OpenAI Realtime), delegate/standalone modlar, barge-in, ElevenLabs +
-  özel motorlar.
-- **v4.4.0 (bu branch)** — Self-Driving görev döngüsü: `Task.md` şeması,
+  özel motorlar; ikinci bir mesajlaşma köprüsü olarak Telegram eklendi.
+- **v4.4.0** — Self-Driving görev döngüsü: `Task.md` şeması,
   plan onaylı planlayıcı/uygulayıcı modu, alt-ajan orkestrasyonu (coder +
   paralel analyzer/reviewer/test-runner), sohbet içi canlı görev
-  aktivitesi, escalation/retry/provider-lock sertleştirmesi, ve Claude +
-  Gemini provider'ları için gerçek tool-calling (öncesinde hiç yoktu) +
-  yeni bir Anthropic-uyumlu özel provider tipi.
+  aktivitesi, escalation/retry/provider-lock sertleştirmesi, Claude +
+  Gemini provider'ları için gerçek tool-calling (öncesinde hiç yoktu),
+  yeni bir Anthropic-uyumlu özel provider tipi, OpenAI-uyumlu bir
+  Developer Gateway kardeşi, ve deneysel "gemini-sub" provider'ı
+  (kişisel Google hesabıyla giriş, Beta).
+- **v4.5.0 (bu branch)** — masaüstü maskotu: aynı süreci paylaşan, her
+  kanalda Memo'nun canlı aktivitesini yansıtan, iki seçilebilir cilti ve
+  boşta animasyonu olan her-zaman-üstte ikinci bir pencere; Code Mode'un
+  mod-başı sistem promptları ve auto-permission ile Build'e zincirlemesi
+  olan üç döngülenen alt-moda (Plan/Auto/Build) bölünmesi; her iki
+  Developer Gateway endpoint'inin de (Anthropic- ve OpenAI-uyumlu)
+  loopback-olmayan çağıranlar için artık anahtar zorunlu kılması; içe
+  aktarılan skill'lerin artık kendi kendine aktive olmaması; daha net
+  Live Mode hata mesajları; ve Model Mağazası'nda düzeltilen bir
+  HuggingFace avatar 404 seli.
 
 ## Yakın vadeli — canlı testten açık maddeler (bkz. `BUG_REPORT.md`)
 

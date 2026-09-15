@@ -2,6 +2,7 @@
 
 > **Paket:** `internal/anthropicapi/` (wire-format çevirisi), `internal/app/devgateway.go` (yönlendirme), `internal/webserver/devgateway_handlers.go` (HTTP)
 > **Yapılandırma:** `config.DevGatewayConfig` (`require_api_key`, `use_memory`) — ikisi de varsayılan kapalı
+> **v4.4.0'dan beri iki ayrı endpoint var:** orijinal Anthropic-uyumlu olan (`internal/anthropicapi/`, `POST /v1/messages`) ve OpenAI-uyumlu kardeşi (`internal/openaiapi/`, `GET /v1/models` + `POST /v1/chat/completions`) — ikisi de aynı config, routing ve canlı günlüğü paylaşıyor.
 > **API endpoint'leri:** `GET/PUT /api/dev-gateway/config`, `GET /api/dev-gateway/models`, `GET /api/dev-gateway/logs`, `POST /v1/messages`
 > **Yan menü:** Sol navigasyon çubuğunda "Geliştirici" simgesi (Ayarlar içinde DEĞİL, ayrı bir ekran)
 
@@ -41,6 +42,8 @@ Aynı tipten birden fazla sağlayıcı tanımlıysa **etkin (enabled) olan** kul
 - Token, Uzaktan Erişim'in kullandığı **aynı token** (`RemoteAccess.Token`) — Geliştirici ekranında kopyalanabilir gösterilir.
 - Bu kontrol, mevcut `remoteAuthMiddleware`'den **bağımsız**: o sadece Memo `0.0.0.0`'a bağlıyken devreye girer, bu ise local/uzak fark etmeksizin her zaman `RequireAPIKey` ayarına göre çalışır — amaç, aynı makinedeki başka bir sürecin izinsiz bu portu kullanmasını engellemek.
 
+**v4.5.0 güvenlik düzeltmesi:** v4.4.0, `/v1/messages` (Anthropic-uyumlu endpoint) için anahtar-zorunluluğu boşluğunu kapatmıştı; bu sürüm aynı boşluğu OpenAI-uyumlu çift için de kapattı (`GET /v1/models`, `POST /v1/chat/completions`) — "API Anahtarı Gerektir" kapalı bırakıldığında (varsayılanı) ve uzaktan erişim açıkken, bu iki endpoint önceden portla erişebilen herhangi bir şey tarafından, hiçbir kimlik bilgisi olmadan erişilebiliyordu. İki endpoint de artık bu makinede gerçekten olmayan her çağıran için anahtarı zorunlu kılıyor.
+
 ---
 
 ## Hafıza entegrasyonu
@@ -65,7 +68,7 @@ Claude Code'un asıl gücü olan araç çağırma (dosya okuma/yazma, komut çal
 - **Önemli format detayı:** Anthropic'in `tool_use.input`'u gerçek bir JSON nesnesi, OpenAI'ın `function.arguments`'ı ise o nesnenin metnini taşıyan bir JSON **string**'i — ikisi karıştırılırsa (örn. doğrudan aynı bytes'ı kullanmak) ya çifte kodlama ya da Claude Code'un `input` alanında bir nesne yerine düz metin görmesi gibi sinsi bir hata oluşuyor. `anthropicInputToOpenAIArguments`/`openAIArgumentsToJSONText` bu ikisi arasında tam ters çeviriyi yapıyor — canlı bir uçtan uca testte bu hata gerçekten yakalandı ve düzeltildi.
 - Araç çağıran istekler her zaman **non-streaming** olarak backend'e gidiyor (`DevGatewayChat`) — Memo'nun kendi agent pipeline'ı (`internal/agent/pipeline.go`) da araç çağırma kararını hep non-streaming `ChatCompletion` ile alıyor, hiçbir sağlayıcının streaming tarafı `tool_calls` delta'larını çözmüyor zaten. İstemci streaming istediyse, tamamlanmış cevap tek seferde Anthropic'in SSE event dizisi olarak "yeniden oynatılıyor".
 
-**Bilinen sınırlama:** `gemini`, `claude`, `ollama` tipi sağlayıcılar için araç çağırma henüz desteklenmiyor — bu üçünün `internal/provider` içindeki kendi implementasyonları Tools/ToolCalls'ı hiç çözmüyor (ağ geçidinden bağımsız, önceden var olan bir eksiklik). Bu tiplerden birine araç tanımlı bir istek gelirse, sessizce araçları düşürmek yerine açık bir hata dönülür.
+**Bilinen sınırlama:** `ollama` tipi sağlayıcı için araç çağırma henüz desteklenmiyor — `internal/provider` içindeki implementasyonu Tools/ToolCalls'ı hiç çözmüyor (ağ geçidinden bağımsız, önceden var olan bir eksiklik). Ona araç tanımlı bir istek gelirse, sessizce araçları düşürmek yerine açık bir hata dönülür. (`gemini` ve `claude` **eskiden** bu listedeydi — ikisi de v4.4.0'da gerçek tool-calling kazandı.)
 
 Token sayıları **tahmini** (kelime sayısına dayalı) — gerçek sağlayıcının raporladığı kesin sayılar değil, kod tabanının geri kalanındaki canlı sayaçla aynı yaklaşım.
 
@@ -85,4 +88,4 @@ Geliştirici ekranının altında, ağ geçidinden geçen her isteği gösteren 
 
 - [[Harici Sağlayıcılar]] — ağ geçidinin yönlendirdiği sağlayıcı sistemi
 - [[RAG ve Semantik Hafıza]] — hafıza entegrasyonunun dayandığı sistem
-- [[API Dokümantasyonu]] — tüm REST endpoint'leri
+- [[API Dökümantasyonu]] — tüm REST endpoint'leri

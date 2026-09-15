@@ -1,4 +1,6 @@
-# Architecture — Memo v3.3.4 (in development; last released v3.3.3)
+# Architecture — Memo v4.5.0
+
+> **Updated for v4.5.0.** Since the v3.3.4 baseline this page was last fully written for, four more releases shipped: v4.0.0 (real time-awareness, WhatsApp takeover), v4.3.0 (Live Mode v2 native audio, Telegram bridge), v4.4.0 (the Self-Driving task loop's major expansion, real Claude/Gemini tool-calling, the OpenAI-compatible Developer Gateway sibling, gemini-sub), and v4.5.0 (the desktop mascot, Code Mode's Plan/Auto/Build sub-modes). The module map and data-flow list below have been updated to match; the ASCII diagram and per-module descriptions elsewhere on this page may still read slightly foundational — see [[Self-Driving Task Loop]] and [[Desktop Mascot]] for the two newest subsystems in full depth.
 
 ## Overview
 
@@ -20,36 +22,45 @@ Flutter Desktop (Linux/Windows/macOS)     Flutter Mobile (Android/iOS)
               │                                            │
               │  ┌──────────┐  ┌────────┐  ┌───────────┐  │
               │  │Web Server│  │  App   │  │ Proactive │  │
-              │  │160+ routes│ │ Engine │  │  Engine   │  │
-              │  │SSE stream│  │(25+ files)│ │Observer→  │  │
+              │  │180+ routes│ │ Engine │  │  Engine   │  │
+              │  │SSE stream│  │(40+ files)│ │Observer→  │  │
               │  └──────────┘  └───┬────┘  │Analyzer→Act│  │
               │                    │        └───────────┘  │
               │  ┌────────┐┌──────┴──────┐┌─────────────┐  │
               │  │ Memory ││  Providers  ││    Agent    │  │
-              │  │SQLite+ ││ 13 types    ││  Pipeline   │  │
-              │  │vec0    ││  Router     ││  19 tools   │  │
+              │  │SQLite+ ││ 16 types    ││  Pipeline   │  │
+              │  │vec0+FTS││  Router     ││  27 tools   │  │
               │  └────────┘└─────────────┘└─────────────┘  │
               │                                            │
-              │  Llama · WhatsApp · Calendar · Orchestra    │
-              │  CloudSync · Whisper · Skills · Mood · TTS  │
+              │  Llama · WhatsApp · Telegram · Calendar     │
+              │  Orchestra · TaskLoop · LiveMode · CloudSync│
+              │  Whisper · STT · TTS · Skills · Mood        │
               │  ModelStore · Intent · ngrok · Tunnel       │
               │  Routine · Stats · Swarm · AgentCLI         │
-              │  AnthropicAPI (Dev Gateway) · GGUF · Models │
-              │  Sessions · Config · Truncate · Logx        │
+              │  GeminiSub · RemoteAuth · BrowserEngine     │
+              │  AnthropicAPI/OpenAIAPI (Dev Gateway)       │
+              │  GGUF · Models · Sessions · Config · Logx   │
               └────────────────────────────────────────────┘
 ```
 
-## Module Map (41 packages)
+## Module Map (40+ packages)
 
 | Directory | Responsibility |
 |-----------|---------------|
 | `internal/app/` | Central orchestrator |
-| `internal/webserver/` | REST API (160+ routes), SSE streaming |
+| `internal/webserver/` | REST API (180+ routes), SSE streaming |
 | `internal/memory/` | Vector store — SQLite + sqlite-vec + FTS5 hybrid search, embedder |
-| `internal/provider/` | External LLM providers — 13 types, router, fallback |
-| `internal/agent/` | Agent pipeline, sandbox, permissions, 19 built-in tools |
-| `internal/agentcli/` | Claude Code CLI / Codex CLI as chat providers (Beta, v3.3.4) — subprocess-based, registers into `provider` via `RegisterConstructor` |
-| `internal/anthropicapi/` | Developer API Gateway wire-format translation (Anthropic ⇄ internal) |
+| `internal/provider/` | External LLM providers — 16 types, router, fallback |
+| `internal/agent/` | Agent pipeline, sandbox, permissions, 27 built-in tools, Code Mode sub-mode tool set (`save_code_plan`) |
+| `internal/taskloop/` | Self-Driving task loop engine — `Task.md` schema, planner/executor, sub-agent orchestration, escalating retry — see [[Self-Driving Task Loop]] |
+| `internal/agentcli/` | Claude Code CLI / Codex CLI as chat providers (Beta) — subprocess-based, registers into `provider` via `RegisterConstructor` |
+| `internal/geminisub/` | "gemini-sub" — personal Google account sign-in, Gemini via Code Assist (Beta) |
+| `internal/anthropicapi/`, `internal/openaiapi/` | Developer API Gateway wire-format translation — Anthropic- and OpenAI-compatible, both key-enforced for non-loopback callers (v4.5.0) |
+| `internal/livemode/` | Live Mode v2 engine — Google Live / OpenAI Realtime session management, reconnect, transcript, delegate mode |
+| `internal/telegram/` | Telegram bot bridge — mirrors `internal/whatsapp/`'s shape, isolated SQLite store |
+| `internal/remoteauth/` | Remote access auth core — password hashing, brute-force lockout, per-device tokens, JWT session tokens |
+| `internal/browserengine/` | Optional headless-browser rendering for JS-heavy pages `internal/websearch` alone can't read |
+| `internal/stt/` | Live Mode speech-to-text provider routing (local whisper.cpp, ElevenLabs, custom) |
 | `internal/orchestra/` | Multi-model conductor, 8 roles, parallel execution |
 | `internal/llama/` | llama.cpp subprocess lifecycle, GPU detection, RPC (Swarm) support |
 | `internal/whatsapp/` | WhatsApp bridge — whatsmeow client + store |
@@ -78,7 +89,6 @@ Flutter Desktop (Linux/Windows/macOS)     Flutter Mobile (Android/iOS)
 | `internal/truncate/` | Token-aware context truncation |
 | `internal/logx/` | Structured logging (slog wrapper with levels) |
 | `internal/websearch/` | DuckDuckGo HTML scraping |
-| `internal/taskloop/` | Task list subsystem |
 | `internal/shutdown/` | Coordinated graceful shutdown |
 | `internal/fileutil/`, `internal/jsonutil/` | Shared file/JSON helpers |
 | `internal/browseropen/` | Cross-platform "open in browser" helper |
@@ -92,5 +102,9 @@ Flutter Desktop (Linux/Windows/macOS)     Flutter Mobile (Android/iOS)
 4. **Proactive** — Observer records timestamps → Analyzer detects patterns → Chief LLM decides action → Notify/Suggest/Auto-execute (suggestion banner on desktop)
 5. **Calendar** — Message text → Keyword filter → LLM intent extraction → Store event → Reminder loop fires notification
 6. **Routines** — User describes a schedule in plain language → parsed into a routine → fires in the device's own timezone → simple prompt or full agent run → notification (mobile: real pre-scheduled local notification)
-7. **Developer Gateway** — External tool (e.g. Claude Code via `ANTHROPIC_BASE_URL`) → `POST /v1/messages` → `internal/anthropicapi` translates to Memo's internal format → routes to local model or a configured provider → translates the response back to Anthropic's shape
+7. **Developer Gateway** — External tool (e.g. Claude Code via `ANTHROPIC_BASE_URL`, or any OpenAI-SDK tool) → `POST /v1/messages` or `/v1/chat/completions` → `internal/anthropicapi`/`internal/openaiapi` translates to Memo's internal format → routes to local model or a configured provider → translates the response back
 8. **CLI providers** — Chat with Claude Code/Codex CLI selected → Memo shells out to the installed CLI as a subprocess tied to the chat, independent of the app's global stream lock, survives switching chats/closing the window
+9. **Self-Driving task loop** — `Task.md` checklist → `internal/taskloop` engine works items sequentially (optionally via a planner turn first) → each item runs through the same Agent Pipeline, its own provider/executor snapshot, with up to 3 parallel sub-agents on large items → live activity streamed to the Tasks tab and the desktop mascot → terminal state always notifies
+10. **Code Mode sub-modes** — `Session.CodeSubMode` (Plan/Auto/Build) resolves which system prompt and tool auto-approve set an agent turn gets; Plan's output goes through the dedicated `save_code_plan` tool to `data/plans/`, never through the project-sandboxed `write_file`
+11. **Desktop Mascot** — every agent/task-loop/plain-chat turn updates one app-wide activity signal (`internal/app/activity.go`) → polled by the mascot's separate window (`mascot_main.dart`) and by the terminal REPL's spinner
+12. **Live Mode v2** — audio in/out streams natively through `internal/livemode`'s Google Live / OpenAI Realtime session, refreshing memory context mid-conversation, with the mascot animating along

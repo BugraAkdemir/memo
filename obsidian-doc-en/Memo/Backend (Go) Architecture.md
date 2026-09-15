@@ -41,6 +41,8 @@ The codebase is divided into modules, each with a specific responsibility:
 - **Role:** Claude Code CLI / Codex CLI as chat providers — shells out to the locally installed `claude`/`codex` binary instead of calling an HTTP API.
 - **Feature:** Registers itself into `internal/provider` via `RegisterConstructor` (avoids an import cycle), runs as a real per-chat background job tied to `App.lifecycleCtx` rather than the HTTP request, own slash-command resolution.
 
+> **Updated for v4.5.0.** New since this page's last full pass: `internal/taskloop/` (major expansion, v4.4.0 — see [[Self-Driving Task Loop]]), `internal/livemode/` (native audio-to-audio Live Mode v2, v4.3.0), `internal/telegram/` (second messaging bridge, v4.3.0), `internal/openaiapi/` (Developer Gateway's OpenAI-compatible sibling, v4.4.0), `internal/geminisub/` (gemini-sub provider, Beta, v4.4.0), `internal/remoteauth/`, `internal/browserengine/`, `internal/stt/`. The desktop mascot (v4.5.0, frontend-side — see [[Desktop Mascot]]) and Code Mode's Plan/Auto/Build sub-modes (v4.5.0, `internal/app/code_submode.go`) are new too. Provider count is now 16, agent tool count 27.
+
 ### 10. `anthropicapi` + Developer API Gateway (NEW in v3.3.3)
 - **Role:** Anthropic Messages API-compatible server (`POST /v1/messages`) so tools like Claude Code can point straight at Memo.
 - **Feature:** Full agentic tool-calling translation (Anthropic ⇄ OpenAI-shaped tool calls), optional token auth, optional memory integration — see [[Developer API Gateway]].

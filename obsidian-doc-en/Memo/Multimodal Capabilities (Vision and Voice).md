@@ -14,20 +14,22 @@ Memo includes a local Speech-to-Text (STT) engine:
 - **Low Latency:** As soon as the process finishes, the text is automatically written into the input field.
 - Fixed in v3.3.4: starting STT from an installed terminal CLI (as opposed to the desktop app) could fail with "whisper-server binary not found" — it was only looking next to the CLI's own executable, not the separate folder an installed CLI's bundled files actually live in.
 
-## Live Mode — Hands-Free Voice Conversation (Beta, v3.3.4)
+## Live Mode v2 — Native Audio-to-Audio Voice Conversation (since v4.3.0)
 
-A small voice icon **next to the chat input box** (not a sidebar tab — turn it on via Settings → Beta Features first) lets you have a real spoken back-and-forth with Memo instead of typing: it listens, detects when you start/stop speaking, transcribes locally, sends it as a normal chat message, and speaks the reply back — hands-free, right inside any chat.
+A small voice icon **next to the chat input box** (not a sidebar tab) lets you have a real spoken back-and-forth with Memo. As of v4.3.0 this is genuinely **native audio-to-audio** — the engine (Google Live or OpenAI Realtime) hears and speaks audio directly, not a transcribe-then-synthesize round trip through separate STT/TTS steps.
 
-- **Local by default.** Speech is transcribed with the same on-device engine used elsewhere; replies are spoken with **Piper**, a local, offline TTS engine — nothing about a Live Mode conversation has to leave the machine.
-- **Optional external TTS.** Settings → Beta Features can configure an external provider (OpenAI) instead, trading the local-only guarantee for a different voice; local Piper remains the fallback whenever nothing is configured or a call fails.
-- **Offline voice picker.** Settings → Beta Features downloads a small, curated set of Piper voices (Turkish and English) and switches instantly, no restart needed.
-- **One-directional barge-in.** Speaking again while Memo is thinking/replying stops it and lets it listen to the new message instead of talking over you.
-- A short, locally-synthesized "thinking" sound plays during the generation gap so the pause doesn't feel frozen.
-- The voice-activity detection (VAD) model ships **bundled with the app** rather than downloading from a CDN at runtime.
+> **Package:** `internal/livemode/` (`engine.go`, `session.go`, `reconnecting_session.go`, `echo_session.go`, `delegate_tool.go`, `transcript.go`, plus `google/` and `openai_realtime/` engine implementations), bridged into `internal/app/livemode*.go`
+> **API endpoints:** `GET`/`PUT /api/livemode/engines`, `GET /api/livemode/engines/models`, `POST /api/livemode/session`, `GET`/`PUT /api/livemode/active`
+
+- **Delegate or standalone modes.** Run Live Mode as its own conversation, or delegate it into an existing chat so the two share memory/context.
+- **One-directional barge-in.** Speaking again while Memo is talking stops it and lets it listen to you instead of talking over you.
+- **Mid-session memory refresh (v4.5.0).** Memory context is re-pulled during a long conversation, not just once at session start, so Memo can recall something mentioned partway through — the same way text chat already does.
+- **Clearer failures (v4.5.0).** A session that can't start a real voice engine now says why — no engine selected, the engine's config is incomplete, or the background chat session failed to open — instead of silently falling back to hearing your own voice echoed back (`echo_session.go`, previously an unexplained default).
+- **Reconnect handling.** `reconnecting_session.go` wraps a live session and reconnects automatically on a dropped connection, rather than silently going dead.
+- **Local fallback path.** When no native engine is configured, Live Mode still works end-to-end via on-device STT + local **Piper** TTS (see the STT section above and [[External Providers]]) — an offline voice picker (Turkish/English), plus ElevenLabs and custom TTS engines, are also selectable.
+- **The [[Desktop Mascot]] speaks along.** Its mouth animates in time with Live Mode's audio, with a "Speaking…" bubble — no "listening" pose exists, since neither engine currently reports a real listening signal.
 - Works on Linux, Windows, and macOS.
-- **Known limitation:** no echo cancellation yet — using speakers instead of headphones can occasionally make Memo mistake its own voice for an interruption. Full duplex audio is planned for a later release.
-
-Backend: `internal/tts/` (synthesis, provider abstraction, voice picker), plus VAD/barge-in logic in the Flutter layer (`frontend/lib/core/live_mode_controller.dart`, `duplex_audio_engine.dart`).
+- **Known limitation:** no echo cancellation yet — using speakers instead of headphones can occasionally make Memo mistake its own voice for an interruption.
 
 ## File Contextualization
 Not just media, but also code files (.go, .js, .py) or documents can be fed into the system. Memo reads the content of these files and uses them as instant context via the RAG mechanism.
@@ -35,3 +37,5 @@ Not just media, but also code files (.go, .js, .py) or documents can be fed into
 ### Linked Notes:
 - [[Frontend (Flutter) Design]]
 - [[RAG and Semantic Memory]]
+- [[Desktop Mascot]] — animates along with Live Mode speech
+- [[External Providers]] — Google Live / OpenAI Realtime / ElevenLabs engine configuration

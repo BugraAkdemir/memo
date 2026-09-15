@@ -4,6 +4,11 @@ Bu dosya, projedeki her kaynak dosyanın ne işe yaradığını kısaca açıkla
 referans ağaçtır. Elle güncel tutulur — büyük bir refactor sonrası tekrar
 oluşturulması gerekebilir.
 
+> **v4.5.0'a göre güncellendi** (2026-09-15): masaüstü maskotu, Code Mode
+> Plan/Auto/Build alt-modları, ve `internal/livemode/`, `internal/openaiapi/`,
+> `internal/remoteauth/`, `internal/browserengine/`, `internal/geminisub/`,
+> `internal/stt/` paketleri eklendi.
+
 ---
 
 ## 1. Go Backend
@@ -54,6 +59,8 @@ internal/agent/tools/  — 27 yerleşik tool'un implementasyonları (internal/ag
   selfclone.go        — self_clone tool'u: çalışan Memo binary'sini/projeyi başka dizine kopyalar
   selfclone_test.go   — SelfClone'un kendine/alt dizinine klonlamaya karşı korumalarının testi
   sendfile.go         — share_file tool'u: bir dosya/klasörü (klasörse zip'leyerek) bu konuşmaya geri gönderir
+  plan.go             — save_code_plan tool'u: Code Mode Plan alt-modunun çıktısını data/plans/<proje-slug>/plan.md'ye yazar (write_file'ın proje-dizini sandbox'ından bağımsız, ayrı bir yol doğrulaması kullanır)
+  plan_test.go        — save_code_plan'ın path-traversal korumasının testi
   taskmd_tools.go     — create_task_md/edit_task_md tool'ları
   taskstatus.go       — get_task_status/pause_task/resume_task tool'ları
   selfdrivingtask.go  — start_self_driving_task tool'u
@@ -217,6 +224,9 @@ internal/app/
   retry.go            — retryWithBackoff: genel amaçlı, anında+tekrarlı geri çağırma yardımcı fonksiyonu
   livemode.go / livemode_delegate.go / livemode_session.go / livemode_session_wrapper.go / livemode_voice.go — Live Mode v2 (native audio-to-audio): motor/mod/izin doğrulama, delegate sohbeti, gerçek livemode.Session kurulumu, sesli izin-onay sarmalayıcısı, motor bazlı sentezleme/transkripsiyon
   memory_import.go    — "Hafızayı İçe Aktar": başka bir AI'ın özetini atomik gerçeklere bölen JSON çıkarma yardımcıları
+  code_submode.go     — Code Mode alt-mod durumu (Session.CodeSubMode/AwaitingPlanDecision), üç sistem promptu (plan/auto/build) ve codeSubModeDirective resolver'ı, classifyPlanDecisionReply
+  plan_tool.go        — save_code_plan agent aracının arkası: projectSlug hesaplama + data/plans/ altına yazma
+  activity.go         — uygulama-geneli "Memo şu an ne yapıyor" aktivite sinyali (maskot ve REPL spinner/renk çıktısının ortak kaynağı) — internal/models/activity.go'daki tipleri günceller/yayınlar
 ```
 
 **Self-Driving görev döngüsü — App köprü katmanı** (`internal/taskloop`'u backend'e bağlayan dosyalar, v4.4.0'da eklendi):
@@ -357,7 +367,78 @@ internal/memory/
 
 ```
 internal/models/
-  memory.go — paylaşılan Memory/MemoryResult/MemoryFileInfo/SearchParams veri tipleri
+  memory.go   — paylaşılan Memory/MemoryResult/MemoryFileInfo/SearchParams veri tipleri
+  activity.go — uygulama-geneli aktivite sinyalinin (maskot + REPL tüketir) paylaşılan tip tanımları
+```
+
+### internal/livemode/ — Live Mode v2 (native audio-to-audio) motoru
+
+```
+internal/livemode/
+  engine.go               — motor seçimi ve oturum yaşam döngüsü orkestrasyonu
+  session.go               — Session arayüzü: bir canlı ses oturumunun ortak sözleşmesi
+  reconnecting_session.go  — bağlantı koptuğunda otomatik yeniden bağlanan Session sarmalayıcısı
+  echo_session.go          — hiçbir motor yapılandırılmadığında kullanılan basit yankı/test oturumu
+  delegate_tool.go         — Live Mode'u mevcut bir sohbete devretme (delegate) mekanizması
+  transcript.go            — oturum transkript biriktirme/hafızaya besleme
+  config.go / models.go    — motor yapılandırması ve model listesi tipleri
+  google/                  — Google Live motoru implementasyonu
+  openai_realtime/         — OpenAI Realtime motoru implementasyonu
+  *_test.go                — testler
+```
+
+### internal/openaiapi/ — Developer Gateway'in OpenAI-uyumlu ikizi
+
+```
+internal/openaiapi/
+  openaiapi.go       — POST /v1/chat/completions'ın sunucu tarafı implementasyonu (internal/anthropicapi'nin OpenAI-şekilli kardeşi)
+  openaiapi_test.go  — testler
+```
+
+### internal/remoteauth/ — uzak erişim kimlik doğrulama çekirdeği
+
+```
+internal/remoteauth/
+  password.go    — argon2id parola hash'leme/doğrulama
+  bruteforce.go  — parola girişleri için genel API rate limiter'dan bağımsız exponential-backoff kilitleme
+  devices.go     — cihaz-başı token üretimi/hash'lenmesi/iptali
+  jwt.go         — kısa ömürlü imzalı oturum tokenları
+  *_test.go      — testler
+```
+
+### internal/browserengine/ — opsiyonel headless tarayıcı
+
+```
+internal/browserengine/
+  browserengine.go       — internal/websearch'ün JS-ağırlıklı sayfalar için kullandığı opsiyonel headless tarayıcının (gosearch/browser) yaşam döngüsü
+  browserengine_test.go  — testler
+```
+
+### internal/geminisub/ — "gemini-sub" abonelik sağlayıcısı (Beta)
+
+```
+internal/geminisub/
+  oauth.go        — kişisel Google hesabıyla tarayıcı OAuth girişi (gemini-cli'nin genel istemcisi gömülü)
+  geminicli.go     — gemini-cli protokolüyle uyumlu istemci katmanı
+  codeassist.go    — Google Code Assist endpoint'i üzerinden Gemini'ye erişim (AI Pro/Ultra kotası)
+  token.go         — token yenileme/saklama
+  models.go        — model listesi
+  wire.go          — internal/provider'a ProviderType kaydı + blank import bağlaması
+  provider.go      — Provider arayüzü implementasyonu
+  data/            — ~/.gemini/oauth_creds.json'dan otomatik login desteği
+  *_test.go        — testler
+```
+
+### internal/stt/ — Live Mode konuşma-metin sağlayıcıları
+
+```
+internal/stt/
+  provider.go   — STT sağlayıcı arayüzü
+  router.go     — hangi STT motorunun kullanılacağına karar verir
+  custom.go     — özel/harici STT endpoint desteği
+  elevenlabs.go — ElevenLabs STT sağlayıcısı
+  config.go     — sağlayıcı yapılandırması
+  *_test.go     — testler
 ```
 
 ### internal/modelstore/
@@ -526,18 +607,31 @@ internal/websearch/
   ddg_test.go  — DDG HTML sonuç ayrıştırmasının kaydedilmiş örnek sayfaya karşı testi
 ```
 
-### internal/webserver/ — REST API (Flutter'ın kullandığı ~45+ endpoint)
+### internal/webserver/ — REST API (180+ endpoint, `/api/*` ve `/api/v1/*` alias'lı)
 
 ```
 internal/webserver/
-  server.go              — HTTP sunucu kurulumu, routing, self-signed TLS, CORS/rate-limit middleware, temel sohbet/oturum handler'ları
-  bridge.go              — FullBridge arayüzü: Flutter REST API'sinin ihtiyaç duyduğu tüm App metodları
-  handlers_flutter.go    — en büyük handler dosyası: sohbet streaming, hafıza, modeller, sağlayıcılar, orchestra, agent, WhatsApp, skill endpoint'leri
-  handlers_calendar.go   — takvim olayları, ayarlar ve öğrenme-sistemi ayarları için REST handler'ları
-  handlers_mood.go       — mood skoru ve mood/self-interest/sistem-yönetimi ayarları için REST handler'ları
-  handlers_oauth.go      — OpenRouter OAuth bağlanma akışı ve model liste/anahtar doğrulama handler'ları
-  handlers_proactive.go  — proaktif ayarlar, bekleyen öneriler ve desenler için REST handler'ları
-  server_test.go         — temel webserver handler'larının bir mockBridge'e karşı testleri
+  server.go                    — HTTP sunucu kurulumu, routing, self-signed TLS, CORS/rate-limit middleware, temel sohbet/oturum handler'ları
+  bridge.go                    — FullBridge arayüzü: Flutter REST API'sinin ihtiyaç duyduğu tüm App metodları (Code Mode prompt get/set/reset dahil)
+  handlers_flutter.go          — en büyük handler dosyası: sohbet streaming, hafıza, modeller, sağlayıcılar, orchestra, agent, WhatsApp, skill, Code Mode prompt endpoint'leri
+  handlers_activity.go         — maskotun/REPL'in tükettiği uygulama-geneli aktivite sinyali için REST handler'ı
+  handlers_auth.go             — uzak erişim kimlik doğrulama (token/parola/token+parola) handler'ları
+  handlers_calendar.go         — takvim olayları, ayarlar ve öğrenme-sistemi ayarları için REST handler'ları
+  handlers_clients.go          — bağlı istemci (client_id) canlı/durgun listesi handler'ı
+  handlers_livemode_session.go — Live Mode v2 (native audio-to-audio) oturum başlat/durdur/durum handler'ları
+  handlers_mood.go             — mood skoru ve mood/self-interest/sistem-yönetimi ayarları için REST handler'ları
+  handlers_oauth.go            — OpenRouter OAuth bağlanma akışı ve model liste/anahtar doğrulama handler'ları
+  handlers_outbox_test.go      — share_file aracının indirme-linki (outbox) handler'ı testi
+  handlers_proactive.go        — proaktif ayarlar, bekleyen öneriler ve desenler için REST handler'ları
+  handlers_routine.go          — Rutinler CRUD ve tetikleme handler'ları
+  handlers_swarm.go            — Memo Swarm (beta) host/join/durum handler'ları
+  handlers_tasks.go            — Self-Driving görev listesi CRUD + /api/tasks/running + pause/resume/cancel/skip/inject handler'ları
+  devgateway_handlers.go       — Geliştirici API Ağ Geçidi (Sidebar → Developer) config + canlı istek/yanıt günlüğü handler'ları
+  googleauth_handlers.go       — gemini-sub Google hesabı OAuth bağlama handler'ı
+  openai_handlers.go           — Developer Gateway'in OpenAI-uyumlu ikizi: GET /v1/models, POST /v1/chat/completions (internal/openaiapi'yi sarar)
+  mime.go                      — dosya yükleme MIME tespiti (istemci header'ına değil içeriğe göre)
+  webapp.go                    — Flutter web build'inin (internal/webserver/webapp/) statik dosya servisi
+  server_test.go               — temel webserver handler'larının bir mockBridge'e karşı testleri
 ```
 
 ### internal/whatsapp/
@@ -569,7 +663,8 @@ internal/whisper/
 
 ```
 frontend/lib/
-  main.dart — uygulama giriş noktası; SharedPreferences, ProviderScope, MaterialApp/tema/dil kurulumu
+  main.dart        — uygulama giriş noktası; SharedPreferences, ProviderScope, MaterialApp/tema/dil kurulumu
+  mascot_main.dart — masaüstü maskotu için AYRI bir giriş noktası (desktop_multi_window ile aynı process içinde ikinci pencere olarak açılır, ayrı bir binary değil)
 
 frontend/lib/core/
   api_client.dart — Go backend'in REST API'sini saran Dio tabanlı MemoApiClient
@@ -603,6 +698,7 @@ frontend/lib/providers/ (Riverpod state)
   version_provider.dart   — periyodik olarak yeni uygulama versiyonu olup olmadığını kontrol eden VersionCheckNotifier
   recording_provider.dart — sesli-metin girişi için mikrofon kayıt durumunu kontrol eden RecordingNotifier
   tasklist_provider.dart  — Self-Driving görev listelerinin durumu, SSE üzerinden canlı aktivite akışı (v4.4.0)
+  mascot_provider.dart    — maskotun aç/kapa durumu, seçili cilt ve uygulama-geneli aktivite sinyalinden okunan canlı pose/durum akışı (v4.5.0)
 
 frontend/lib/screens/
   app_shell.dart        — NavRail sekme değiştirici (sohbet/agent/model/whatsapp/takvim) ve global kısayollarla ana kabuk
@@ -633,6 +729,8 @@ frontend/lib/widgets/
   gpu_badge.dart            — GPU tespit edildi mi yoksa sadece CPU mu olduğunu gösteren küçük rozet
   mood_gauge.dart           — özel painter'lı kompakt ve genişletilmiş mood göstergesi (nokta/emoji/bar)
   glass_surface.dart        — Glass Light teması için Apple-tarzı buzlu cam panelleri render eden GlassBlur/GlassSurface
+  mascot_window.dart        — maskot penceresinin kendi kabuğu (şeffaf, çerçevesiz, her zaman üstte — Wayland'da XWayland zorlamasıyla)
+  memo_mascot.dart          — maskot karakterinin animasyon/pose render'ı (iki cilt: sıcak el-çizimi yaratık / lacivert piksel-art robot), boşta sallanma/göz kırpma/nefes alma dahil
 
 frontend/lib/widgets/agent/
   agent_mode_toggle.dart    — agent modunu aç/kapa anahtarı

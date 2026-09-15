@@ -18,6 +18,9 @@ When a user sends a message, the following happens in the background:
 5. **Persistence:** When the response is complete, both the message and response are permanently written to memory.
 6. **Agent Mode** (optional): When enabled, the LLM can call tools (read_file, run_command, etc.) with user permission.
 7. **Reliability (v3.3.4):** Every background task (memory saving, routines, WhatsApp, cloud sync, STT, notifications, tunnels, ...) now runs under panic recovery — an unexpected error in one is logged and contained instead of crashing the whole backend.
+8. **Self-Driving (v4.4.0):** A `Task.md` checklist runs unattended through [[Self-Driving Task Loop]] — planner/executor mode, sub-agent orchestration, escalating retry.
+9. **Live Mode v2 (v4.3.0):** Native audio-to-audio voice via Google Live / OpenAI Realtime — see [[Multimodal Capabilities (Vision and Voice)]].
+10. **Presence (v4.5.0):** A [[Desktop Mascot]] reflects live activity in its own always-on-top window; Code Mode gained Plan/Auto/Build sub-modes (see [[Agent Mode]]).
 
 ## Core Metrics
 - **Latency:** The time until the first token arrives.

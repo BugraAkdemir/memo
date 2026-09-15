@@ -14,7 +14,7 @@
   <a href="https://memocpp.com/guide"><img src="https://img.shields.io/badge/📖_Read_the_Guide-memocpp.com-1b1916?style=for-the-badge&logoColor=white" alt="Guide"/></a>
   <a href="https://github.com/BugraAkdemir/memo/stargazers"><img src="https://img.shields.io/github/stars/BugraAkdemir/memo?style=for-the-badge&color=B08D57&logo=github&logoColor=white" alt="Stars"/></a>
   <img src="https://img.shields.io/badge/License-AGPL_v3-0a0a0a?style=for-the-badge" alt="License"/>
-  <img src="https://img.shields.io/badge/Version-v4.4.0-B08D57?style=for-the-badge" alt="Version"/>
+  <img src="https://img.shields.io/badge/Version-v4.5.0-B08D57?style=for-the-badge" alt="Version"/>
 
   <br/><br/>
 
@@ -141,9 +141,13 @@ Every exchange is embedded into a **768-dimension vector** and stored in SQLite 
 <tr>
 <td width="58%">
 
-Point Memo at a project folder and it stops talking and starts **doing** — reading, writing, editing, deleting files; listing directories; running shell commands; searching the web. **8 built-in tools** inside a sandbox with path validation, symlink protection, and a command blacklist.
+Point Memo at a project folder and it stops talking and starts **doing** — reading, writing, editing, deleting files; listing directories; running shell commands; searching and fetching the web. **27 built-in tools** inside a sandbox with path validation, symlink protection, and a 43-pattern command blacklist.
 
-Every tool call asks first. Allow or deny **once, for the session, or forever.** Up to 20 iterations per task, a 60s timeout per tool, cancel anytime. It feels like Claude Code or Cursor — minimal, informative, never noisy.
+Every tool call asks first. Allow or deny **once, for the session, or forever.** Up to 40 iterations per task, cancel anytime. It feels like Claude Code or Cursor — minimal, informative, never noisy.
+
+**Code Mode has three gears** — Plan / Auto / Build, cycled with **Ctrl+Tab**. Plan investigates and writes a saved, step-by-step plan without touching a file, then asks in chat whether to proceed; Auto is the familiar confirm-before-edit flow; Build runs edits and commands without waiting. Turn on auto-permission and a finished plan chains straight into Build in the same reply.
+
+**Hand it a checklist and walk away** — the Self-Driving task loop takes a `Task.md` file and works through it unattended: planner/executor mode with plan approval, up to 3 parallel sub-agents (one coder, plus analyzer/reviewer/test-runner), escalating retry on transient failures, and a chat/push notification on every outcome.
 
 </td>
 <td align="center" width="42%">
@@ -151,6 +155,14 @@ Every tool call asks first. Allow or deny **once, for the session, or forever.**
 </td>
 </tr>
 </table>
+
+---
+
+### 🐾 A Desktop Mascot That Shows Its Work
+
+A small animated character lives on your desktop — its own always-on-top window, separate from chat, sharing the same running app. It reflects what Memo is actually doing in real time, from any channel: chat, WhatsApp, Telegram, or a running task list.
+
+Thinking, writing, running a specific tool — its pose changes live, with a plain-language status bubble underneath (never your model's actual reply text). Idle isn't frozen: it blinks, breathes, and throws in the occasional wave or hop. Pick from two skins — a hand-drawn creature or a pixel-art robot — with a live preview in Settings.
 
 ---
 
@@ -246,13 +258,13 @@ A **Chief** model decomposes a complex task and delegates to 8 specialist roles,
 
 ---
 
-### 🔌 8 Providers · 🎤 Voice · ☁️ Cloud Sync · 🔒 Privacy
+### 🔌 16 Providers · 🎤 Live Voice · ☁️ Cloud Sync · 🔒 Privacy
 
-- **8 Providers, One Interface** — OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama, and bundled `llama.cpp`. Auto-fallback on failure, auto-disable after 3 errors, live `/model` switching mid-chat. Keys encrypted with AES-256-GCM.
+- **16 Providers, One Interface** — OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama, bundled `llama.cpp`, generic OpenAI-/Anthropic-compatible Custom, OpenCode Zen, OpenCode Go, Kilo Code, and **gemini-sub** (Beta) — sign in with a personal Google account and reach Gemini on your own AI Pro/Ultra quota, no API key. Auto-fallback on failure, auto-disable after 3 errors, live `/model` switching mid-chat. Keys encrypted with AES-256-GCM.
 - **🖥️ Coding Agent as a Provider (Beta)** — point any single chat at your locally installed **Claude Code** or **Codex CLI** instead of an API. That chat becomes a real coding agent with file/shell access, running in the background independent of whatever else you're doing in Memo — while every other chat keeps using its own provider, untouched.
-- **🎤 Voice Input** — on-device whisper.cpp. Press, speak, release. Auto-detects TR/EN. Audio never leaves your machine.
+- **🎤 Live Mode v2** — real native audio-to-audio conversation via Google Live or OpenAI Realtime, with barge-in and mid-conversation memory recall. No engine configured? It falls back to on-device whisper.cpp transcription + local Piper TTS, audio never leaving your machine.
 - **☁️ Cloud Sync** — optional E2E-encrypted Google Drive backup. AES-256-GCM + PBKDF2 (600K iterations). Encrypted *before* upload — Google can't read it.
-- **🔒 Privacy by Design** — no telemetry, no analytics, no crash reporting. Config files at `0600`. Incognito mode leaves zero trace. The observer stores activity timestamps, never message content.
+- **🔒 Privacy by Design** — no telemetry, no analytics, no crash reporting. Config files at `0600`. Incognito mode leaves zero trace. The observer stores activity timestamps, never message content. Both local Developer Gateway endpoints (Anthropic- and OpenAI-compatible) now require their API key for any non-loopback caller, and an imported skill no longer auto-activates itself.
 
 ---
 
@@ -390,13 +402,13 @@ Two decoupled processes talk over plain HTTP/SSE on `localhost:8090`. No TLS (lo
                │  REST + SSE (:8090)                 │  LAN / ngrok
                └──────────────┬──────────────────────┘
 ┌──────────────────────────────┴──────────────────────────────────┐
-│               Go Backend — 25 packages, ~90 endpoints            │
+│              Go Backend — 40+ packages, 180+ endpoints           │
 │  ┌─────────┐ ┌──────┐ ┌──────┐ ┌────────┐ ┌──────┐ ┌────────┐  │
 │  │ Memory  │ │Sess. │ │Llama │ │WhatsApp│ │Agent │ │Provider│  │
-│  │ vec0    │ │JSON  │ │GPU   │ │whatsmeow│ │Pipe  │ │Router  │  │
+│  │vec0+FTS5│ │JSON  │ │GPU   │ │/Telegram│ │TaskLoop│ │Router │  │
 │  └─────────┘ └──────┘ └──────┘ └────────┘ └──────┘ └────────┘  │
 │  Orchestra · ModelStore · CloudSync · Calendar · Mood            │
-│  ngrok · Tailscale · Whisper · Skills · Intent · Observer        │
+│  LiveMode v2 · ngrok · Tailscale · Whisper · Skills · Observer   │
 └──────────────────────────────────────────────────────────────────┘
 ```
 </details>
@@ -407,7 +419,7 @@ Two decoupled processes talk over plain HTTP/SSE on `localhost:8090`. No TLS (lo
 | **State** Riverpod 2.4 | **HTTP** Dio 5.4 / SSE | **Voice** whisper.cpp | **WhatsApp** whatsmeow |
 | **Cloud** Drive + AES-256 | **GPU** nvidia/rocm/sysfs | **License** AGPL v3 | **CI** GitHub Actions |
 
-📚 **Deep dive:** [Architecture](docs/architecture.md) · [API Reference](docs/API_REFERENCE.md) · [Design System](frontend/DESIGN.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](versinNote/v4.4.0.md) · [Full docs & guide (memocpp.com)](https://memocpp.com/guide)
+📚 **Deep dive:** [Architecture](docs/architecture.md) · [API Reference](docs/API_REFERENCE.md) · [Design System](frontend/DESIGN.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](versinNote/v4.5.0.md) · [Full docs & guide (memocpp.com)](https://memocpp.com/guide)
 
 ---
 

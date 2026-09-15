@@ -18,6 +18,9 @@ Kullanıcı bir mesaj gönderdiğinde arka planda şunlar gerçekleşir:
 5. **Persistence:** Cevap tamamlandığında hem mesaj hem cevap kalıcı olarak hafızaya yazılır.
 6. **Ajan Modu** (opsiyonel): Aktifken LLM araç çağırabilir (dosya okuma, komut çalıştırma, vb.) kullanıcı izniyle.
 7. **Proaktif katman** (arka planda, sürekli): Gözlemci kullanım örüntülerini kaydeder, tespit edilen bir örüntü varsa ambient nudge olarak sohbete doğal biçimde ya da ayrı bir öneri banner'ıyla gündeme gelebilir. **Routines** ayrı bir zamanlayıcı döngüsüyle kullanıcı tanımlı otomasyonları tetikler (masaüstü + mobil).
+8. **Self-Driving (v4.4.0):** Bir `Task.md` kontrol listesi [[Otonom Görev Döngüsü]] üzerinden gözetimsiz çalışır — plan onaylı planlayıcı/uygulayıcı modu, alt-ajan orkestrasyonu, artan tekrar deneme.
+9. **Live Mode v2 (v4.3.0):** Google Live / OpenAI Realtime üzerinden native sesten-sese konuşma — bkz. [[Multimodal Yetenekler (Görsel ve Ses)]].
+10. **Varlık (v4.5.0):** Bir [[Masaüstü Maskotu]], kendi her-zaman-üstte penceresinde canlı aktiviteyi yansıtır; Code Mode Plan/Auto/Build alt-modları kazandı (bkz. [[Ajan Modu]]).
 
 ## Kararlılık: Panic Recovery (v3.3.4)
 

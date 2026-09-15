@@ -207,9 +207,14 @@ class _AuthorAvatarState extends State<AuthorAvatar> {
       return;
     }
     String? url;
+    // HF's bare /api/organizations/<name> and /api/users/<name> paths 404 —
+    // the actual profile data (including avatarUrl) lives under /overview.
+    // Trying organizations then users is intentional (an author can be
+    // either), not a fallback typo — a 404 on the first leg just means
+    // "this name isn't an org," expected often enough not to warrant a log.
     for (final endpoint in [
-      'https://huggingface.co/api/organizations/$a',
-      'https://huggingface.co/api/users/$a',
+      'https://huggingface.co/api/organizations/$a/overview',
+      'https://huggingface.co/api/users/$a/overview',
     ]) {
       try {
         final r = await widget.dio.get<Map<String, dynamic>>(
@@ -221,6 +226,10 @@ class _AuthorAvatarState extends State<AuthorAvatar> {
         );
         final u = r.data?['avatarUrl'] as String?;
         if (u != null && u.isNotEmpty) { url = u; break; }
+      } on DioException catch (e) {
+        if (e.response?.statusCode != 404) {
+          debugPrint('discover_item: avatar lookup failed for $endpoint: $e');
+        }
       } catch (e) {
         debugPrint('discover_item: avatar lookup failed for $endpoint: $e');
       }

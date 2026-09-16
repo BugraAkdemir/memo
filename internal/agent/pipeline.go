@@ -206,9 +206,23 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			// If no tool calls, we are done
 			if len(resp.ToolCalls) == 0 {
 				content := stripHallucinatedToolSyntax(resp.Content)
-				if content != "" {
-					trySend(ctx, outCh, provider.StreamChunk{Content: content})
+				if content == "" {
+					// A genuinely empty assistant turn — no tool calls, no
+					// text — used to end the stream with nothing sent at
+					// all: the user just sees silence, with no way to tell
+					// "the model produced nothing" apart from a dropped
+					// request. Root cause varies (a weak/local model, or
+					// this turn's tool set genuinely has nothing for the
+					// request — e.g. Agent Mode off means open_app/
+					// run_command/etc. aren't on the table at all, only
+					// web_search/fetch_page or nothing), so the fallback
+					// stays generic rather than guessing which one applies.
+					content = tools.T(
+						"Bu isteğe bir cevap üretemedim. Farklı bir şekilde ifade etmeyi, ya da (bir uygulama açma/dosya işlemi gibi bir şey istiyorsan) Ajan Modu'nun açık olduğunu kontrol etmeyi deneyebilirsin.",
+						"I couldn't generate a reply to that. Try rephrasing it, or — if you're asking for something like opening an app or a file operation — check that Agent Mode is turned on.",
+					)
 				}
+				trySend(ctx, outCh, provider.StreamChunk{Content: content})
 				onEvent(AgentEvent{Type: EventFinalResponse, Content: content})
 				logContext("stop")
 				trySend(ctx, outCh, provider.StreamChunk{Done: true, FinishReason: "stop", Usage: termUsage()})

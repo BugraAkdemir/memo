@@ -285,6 +285,33 @@ func TestRunStream_StripsHallucinatedToolCallFromFinalContent(t *testing.T) {
 	}
 }
 
+// TestRunStream_EmptyContentGetsFallbackMessage covers a real live report: a
+// turn with no tool calls and genuinely empty content (Agent Mode off, so
+// the tool the user actually needed wasn't on the table, and the model
+// produced no text either) used to end the stream with nothing sent at
+// all — the user saw pure silence with zero explanation. The pipeline must
+// now substitute a real, visible fallback instead of a wordless "stop".
+func TestRunStream_EmptyContentGetsFallbackMessage(t *testing.T) {
+	registry := NewRegistry()
+	permissions := NewPermissionManager(t.TempDir())
+	sandbox := NewSandbox(DefaultSandboxConfig(t.TempDir()))
+	prov := fakeContentProvider{content: ""}
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, nil)
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "test-model", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream() error = %v", err)
+	}
+
+	var gotContent string
+	for chunk := range ch {
+		gotContent += chunk.Content
+	}
+	if gotContent == "" {
+		t.Fatal("empty model turn produced no fallback content at all — user sees silence")
+	}
+}
+
 // TestRunStream_AccumulatesUsageOntoTerminalChunk is the Phase 0 measurement
 // guarantee: the pipeline runs one non-streaming ChatCompletion per
 // iteration, each separately billed, so the terminal chunk must carry the

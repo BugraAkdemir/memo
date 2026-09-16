@@ -33,6 +33,13 @@ const (
 	// Models are listed dynamically, never hand-typed, same reasoning as
 	// OpenCode Zen/Go above.
 	ProviderKilo ProviderType = "kilo"
+	// ProviderCline is Cline's own hosted API gateway (api.cline.bot) — an
+	// OpenAI-compatible, OpenRouter-shaped catalog (444 models observed live,
+	// provider/model-name ids, several ":free" suffixed) behind a plain
+	// dashboard-issued API key, no OAuth. GET {base}/models needs no auth at
+	// all (verified live via an unauthenticated curl), so models are listed
+	// dynamically the same way as OpenCode Zen/Go, not hand-typed.
+	ProviderCline ProviderType = "cline"
 	// ProviderClaudeCodeCLI shells out to the user's locally installed Claude
 	// Code CLI (`claude`) instead of making an HTTP call — implemented in
 	// internal/agentcli, not this package (see RegisterConstructor below for
@@ -326,6 +333,8 @@ func DefaultBaseURL(p ProviderType) string {
 		return "https://opencode.ai/zen/go/v1"
 	case ProviderKilo:
 		return "https://api.kilo.ai/api/gateway"
+	case ProviderCline:
+		return "https://api.cline.bot/api/v1"
 	default:
 		return ""
 	}
@@ -346,11 +355,16 @@ var DefaultModels = map[ProviderType]string{
 	// reasonable default that works immediately without the user having to
 	// already know a specific Kilo model id (see kilo.ai/docs/gateway).
 	ProviderKilo: "kilo-auto/balanced",
+	// Verified present in the live catalog at implementation time (see
+	// ProviderCline's doc comment) — just a starting suggestion, since
+	// ProviderDefaults.hasModelBrowser lets the user pick from the real
+	// list instead of typing one in.
+	ProviderCline: "anthropic/claude-opus-5",
 }
 
 func init() {
 	// Validate that DefaultBaseURL returns a value for all known types
-	for _, pt := range []ProviderType{ProviderOpenAI, ProviderGemini, ProviderGrok, ProviderGroq, ProviderClaude, ProviderOpenRouter, ProviderOllama, ProviderLlamaCPP, ProviderOpenCodeZen, ProviderOpenCodeGo, ProviderKilo} {
+	for _, pt := range []ProviderType{ProviderOpenAI, ProviderGemini, ProviderGrok, ProviderGroq, ProviderClaude, ProviderOpenRouter, ProviderOllama, ProviderLlamaCPP, ProviderOpenCodeZen, ProviderOpenCodeGo, ProviderKilo, ProviderCline} {
 		if DefaultBaseURL(pt) == "" {
 			panic(fmt.Sprintf("missing default base URL for %s", pt))
 		}
@@ -401,6 +415,8 @@ func NewProvider(cfg ProviderConfig) (Provider, error) {
 		return newOpenCodeGoProvider(cfg)
 	case ProviderKilo:
 		return newKiloProvider(cfg)
+	case ProviderCline:
+		return newClineProvider(cfg)
 	case ProviderCustomAnthropic:
 		return newCustomAnthropicProvider(cfg)
 	default:

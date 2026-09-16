@@ -126,6 +126,7 @@ class ProviderDefaults {
     'opencode-zen': '',
     'opencode-go': '',
     'kilo': 'kilo-auto/balanced',
+    'cline': 'anthropic/claude-opus-5',
     'claude-code-cli': 'claude-code',
     'codex-cli': 'codex',
   };
@@ -141,6 +142,7 @@ class ProviderDefaults {
     'opencode-zen': 'https://opencode.ai/zen/v1',
     'opencode-go': 'https://opencode.ai/zen/go/v1',
     'kilo': 'https://api.kilo.ai/api/gateway',
+    'cline': 'https://api.cline.bot/api/v1',
   };
 
   static const Map<String, String> displayNames = {
@@ -154,6 +156,7 @@ class ProviderDefaults {
     'opencode-zen': 'OpenCode Zen',
     'opencode-go': 'OpenCode Go',
     'kilo': 'Kilo Code',
+    'cline': 'Cline',
     'claude-code-cli': 'Claude Code (CLI)',
     'codex-cli': 'Codex (CLI)',
     'custom': 'Özel (OpenAI uyumlu)',
@@ -172,6 +175,7 @@ class ProviderDefaults {
     'opencode-zen': 'https://opencode.ai/zen',
     'opencode-go': 'https://opencode.ai/zen',
     'kilo': 'https://app.kilo.ai/profile',
+    'cline': 'https://app.cline.bot/dashboard/account?tab=api-keys',
   };
 
   /// One-line, plain-language hint about each provider shown under the picker.
@@ -186,6 +190,7 @@ class ProviderDefaults {
     'opencode-zen': 'OpenCode\'un kullandığın kadar öde modeli — bazı modeller ücretsiz.',
     'opencode-go': 'OpenCode\'un abonelik modeli.',
     'kilo': 'Kilo Code\'un yüzlerce modele tek anahtarla erişim sağlayan gateway\'i — bazı modeller ücretsiz.',
+    'cline': 'Cline\'ın kendi API gateway\'i — Claude, Gemini, GPT ve yüzlerce model tek anahtarla, bazıları ücretsiz.',
     'claude-code-cli':
         'Bilgisayarında kurulu Claude Code CLI\'ı kullanır — dosya/komut çalıştırma yetkisi olan gerçek bir ajan, sadece bir sohbet API\'si değil. API anahtarı gerekmez.',
     'codex-cli':
@@ -210,7 +215,8 @@ class ProviderDefaults {
       type == 'openrouter' ||
       type == 'opencode-zen' ||
       type == 'opencode-go' ||
-      type == 'kilo';
+      type == 'kilo' ||
+      type == 'cline';
 
   /// Providers that need no API key (local). Custom endpoints often need one,
   /// but not always (local proxies), so it's treated as optional there.

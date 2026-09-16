@@ -27,6 +27,7 @@ func TestNewProvider_DispatchesToCorrectImplementation(t *testing.T) {
 		ProviderOpenCodeZen,
 		ProviderOpenCodeGo,
 		ProviderKilo,
+		ProviderCline,
 	}
 	for _, pt := range types {
 		t.Run(string(pt), func(t *testing.T) {
@@ -86,6 +87,7 @@ func TestDefaultBaseURL_CoversEveryProviderType(t *testing.T) {
 		{ProviderOpenCodeZen, "https://opencode.ai/zen/v1"},
 		{ProviderOpenCodeGo, "https://opencode.ai/zen/go/v1"},
 		{ProviderKilo, "https://api.kilo.ai/api/gateway"},
+		{ProviderCline, "https://api.cline.bot/api/v1"},
 		{ProviderCustom, ""},
 		{"unknown-type", ""},
 	}
@@ -122,6 +124,8 @@ func thinWrapperBaseURL(t *testing.T, p Provider) string {
 		return v.baseURL
 	case *kiloProvider:
 		return v.baseURL
+	case *clineProvider:
+		return v.baseURL
 	default:
 		t.Fatalf("unhandled provider type %T in thinWrapperBaseURL", p)
 		return ""
@@ -129,8 +133,8 @@ func thinWrapperBaseURL(t *testing.T, p Provider) string {
 }
 
 // TestThinWrapperProviders_UseCorrectDefaultBaseURLAndIdentity covers the
-// seven OpenAI-compatible wrappers (grok, groq, ollama, llama.cpp,
-// opencode-zen, opencode-go, openrouter, kilo) that embed *openAIProvider — each
+// nine OpenAI-compatible wrappers (grok, groq, ollama, llama.cpp,
+// opencode-zen, opencode-go, openrouter, kilo, cline) that embed *openAIProvider — each
 // only differs in its default Base URL and Name()/DisplayName(), but a
 // mixed-up default URL (e.g. Ollama's constructor accidentally defaulting
 // to llama.cpp's port) would silently point every request at the wrong
@@ -151,6 +155,7 @@ func TestThinWrapperProviders_UseCorrectDefaultBaseURLAndIdentity(t *testing.T) 
 		{"opencode-go", ProviderOpenCodeGo, "https://opencode.ai/zen/go/v1", "OpenCode Go"},
 		{"openrouter", ProviderOpenRouter, "https://openrouter.ai/api/v1", "OpenRouter"},
 		{"kilo", ProviderKilo, "https://api.kilo.ai/api/gateway", "Kilo Code"},
+		{"cline", ProviderCline, "https://api.cline.bot/api/v1", "Cline"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

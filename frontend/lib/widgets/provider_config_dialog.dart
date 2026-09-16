@@ -50,6 +50,7 @@ class _ProviderConfigDialogState
     'opencode-zen',
     'opencode-go',
     'kilo',
+    'cline',
     'claude-code-cli',
     'codex-cli',
     'ollama',
@@ -184,11 +185,12 @@ class _ProviderConfigDialogState
   /// Provider types whose /models catalog needs no API key at all —
   /// verified live against each real endpoint (kilo.ai/docs/gateway/
   /// models-and-providers for Kilo; opencode.ai/zen/v1/models answers
-  /// with no Authorization header for OpenCode Zen) — so these are the
-  /// ones that can browse before a key is ever entered. Every other type
-  /// still requires one first since their /models calls actually forward
-  /// it upstream.
-  static const _keylessBrowserTypes = {'kilo', 'opencode-zen'};
+  /// with no Authorization header for OpenCode Zen; api.cline.bot/api/v1/
+  /// models answered 200 with a full catalog to an unauthenticated curl for
+  /// Cline) — so these are the ones that can browse before a key is ever
+  /// entered. Every other type still requires one first since their
+  /// /models calls actually forward it upstream.
+  static const _keylessBrowserTypes = {'kilo', 'opencode-zen', 'cline'};
 
   Future<void> _openModelBrowser() async {
     final apiKey = _apiKeyCtrl.text.trim();

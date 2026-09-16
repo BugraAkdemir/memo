@@ -1,4 +1,70 @@
-# Handoff — 2026-09-15 (devam 75) — Skill auto-activation fix + Code Mode plan/auto/build alt-modları (6/6 birim, canlı doğrulandı)
+# Handoff — 2026-09-16 (devam 76) — Tüm dokümantasyon v4.5.0'a güncellendi + v4.5.0 sürümü kesildi
+
+## Oturum Özeti
+
+İki ayrı istek art arda geldi.
+
+**1) Dokümantasyon güncellemesi.** Kullanıcı `docs/`, `docs/tr/`,
+`obsidian-doc/`, `obsidian-doc-en/` altındaki TÜM dökümanların v4.5.0'a
+göre güncel, eski/tekrarlayan içerik barındırmayan hale getirilmesini
+istedi, `codebase-memory` kullanılarak. 44 dosya değişti (commit
+`480e3ea3`): `docs/DOCS.md` baştan yazıldı, `FEATURES.md`/`architecture.md`/
+`PROJECT_MAP.md`/`ROADMAP.md`/`API_REFERENCE.md`/`UI_FEATURES.md`
+güncellendi (maskot, Code Mode Plan/Auto/Build, Self-Driving görev
+döngüsü, Live Mode v2, Telegram, gemini-sub, OpenAI-uyumlu Developer
+Gateway + iki güvenlik düzeltmesi eklendi). `docs/tr/FEATURES.md` tam
+Türkçe çeviriyle yeniden yazıldı, eski kopya `docs/OZELLIKLER.md`
+silindi. Kök `README.md`/`READmeTR.md` sürüm rozetleri + mimari diyagramı
+güncellendi. `obsidian-doc-en/` ve `obsidian-doc/`'ta ilgili tüm sayfalar
+güncellendi, iki yeni sayfa eklendi (EN: `Self-Driving Task Loop.md`,
+`Desktop Mascot.md`; TR: `Otonom Görev Döngüsü.md`, `Masaüstü
+Maskotu.md`), eski/bozuk içerik silindi (`v3.1.1 Features/Özellikleri.md`,
+2 boş tarihli not, 1 yazım-hatası kopya dosya, bağlantısız `docs/tr/
+README.md` kopyası). Kapsam dışı bırakılanlar (bilinçli): `Technical Deep
+Dive`/`Technical Reference`/`Known Issues`/`Frontend (Flutter) Design`
+sayfaları (EN+TR, hâlâ v3.3.x seviyesinde) ve tarihsel planlama arşivleri
+(`docs/task.md`, `BLUEPRINT.md`, `history.md`, `docs/plans/` vb.) —
+detay `project_memo_docs_overhaul_v450.md` memory'sinde.
+
+**2) v4.5.0 sürümü kesildi.** `memo-release` skill'i kullanıldı:
+- **Faz 1 (versiyon bump):** `version` → `V4.5.0`, `installer.iss`'teki
+  `MyAppVersion` → `4.5.0` (commit `c615d512`). README/READmeTR rozetleri
+  ve değişiklik günlüğü linkleri zaten bir önceki dokümantasyon
+  commit'inde v4.5.0'a güncellenmişti.
+- **Faz 2 (release notes):** Zaten önceki bir oturumda yazılmış ve
+  commit'lenmişti (`versinNote/v4.5.0.md` + `versinNote/tr/v4.5.0.md`) —
+  90 commit'lik `v4.4.0..HEAD` aralığıyla karşılaştırıldı, tutarlı
+  bulundu, yeniden yazılmadı.
+- **Faz 3 (tag & push):** Kullanıcıya AskUserQuestion ile açıkça soruldu
+  ("v4.5.0 etiketini push etmemi onaylıyor musun?"), "Evet" cevabı
+  alındı. `git tag v4.5.0` + hem GitHub hem `web.bugradev.com` remote'una
+  push edildi. CI'nin dört iş akışı da (`Build Linux`/`Windows`/`macOS`/
+  `Docker`) yeşil bitti (~10-18 dakika sürdü, arkaplanda beklendi).
+  Tazelik kontrolü: `download.bugradev.com/memo.tar.gz`'nin
+  `Last-Modified` zaman damgası CI bitişinden ~9 dakika sonrasına denk
+  geliyordu — gerçekten yeni build servis ediliyor.
+- **Faz 4 (update beacon, `version-zeta.vercel.app`) BİLİNÇLİ OLARAK
+  ATLANDI** — `handoff.md`'nin daha önceki kayıtları (satır ~747, ~5914,
+  ~12222) kullanıcının bunu kendi işi olarak ayırdığını ve bu ortamda
+  zaten `vercel` CLI/kimlik bilgisi bulunmadığını gösteriyor; bu oturumda
+  da doğrulandı (`which vercel` → not found). Beacon hâlâ `V4.4.0`
+  diyor — kullanıcı kendisi `version-zeta.vercel.app/version.json`'ı
+  `V4.5.0`'a bump'lamalı, ancak o zaman kurulu uygulamalarda güncelleme
+  banner'ı görünür.
+
+## Sıradaki oturum için
+
+1. **Update beacon hâlâ eski** — yukarıya bakın, kullanıcının kendisi
+   yapacak.
+2. Dokümantasyon geçişinde bilinçli olarak dokunulmayan sayfalar var
+   (yukarıdaki liste) — bir sonraki dokümantasyon isteğinde bunları da
+   kapsama almayı düşün, `project_memo_docs_overhaul_v450.md`'ye bakın.
+3. Yerel model + Plan modu + auto-permission zincirleme hâlâ canlı
+   doğrulanmadı (önceki oturumdan devam eden açık madde).
+
+---
+
+
 
 ## Oturum Özeti
 

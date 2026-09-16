@@ -166,6 +166,10 @@ String? _providerAssetPath(String type) {
     case 'kilo':
       // Source: kilo.ai's own favicon (kilo.ai/favicon/favicon.svg).
       return 'lib/icon/kilo.svg';
+    case 'cline':
+      // Source: Simple Icons (cdn.simpleicons.org/cline) — a flat single-
+      // colour glyph, unlike the app-icon PNG in cline/cline's own repo.
+      return 'lib/icon/cline.svg';
     default:
       return null;
   }
@@ -203,6 +207,7 @@ Widget providerLogoWidget(String type, {double size = 18}) {
       'lib/icon/OpenAI_Symbol_0.svg',
       'lib/icon/opencode.svg',
       'lib/icon/XAL.svg',
+      'lib/icon/cline.svg',
     };
     if (monochrome.contains(path)) {
       return Builder(

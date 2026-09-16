@@ -163,6 +163,7 @@ func (r *ToolRegistry) registerBuiltins() {
 
 	r.registerWebSearchTool()
 	r.registerFetchPageTool()
+	r.registerOpenAppTool()
 
 	r.Register(ToolDef{
 		Name:        "self_clone",
@@ -323,7 +324,7 @@ func (r *ToolRegistry) registerRoutineTool() {
 func (r *ToolRegistry) registerWebSearchTool() {
 	r.Register(ToolDef{
 		Name:        "web_search",
-		Description: "Searches the web (DuckDuckGo) and returns relevant results. Only call this for current events, recent news, prices, or specific facts that may have changed after your training cutoff. Do NOT call it for greetings, small talk, general knowledge you already know, or coding/file/project questions — answer those directly instead.",
+		Description: "Searches the web (DuckDuckGo) and returns relevant results. Only call this for current events, recent news, prices, or specific facts that may have changed after your training cutoff. Do NOT call it for greetings, small talk, general knowledge you already know, or coding/file/project questions — answer those directly instead. This tool answers information requests in place — it never opens a browser window; use open_app only for an explicit \"launch/open the browser\" command with no actual question attached.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Short keyword-style search query (2-6 words) — extract the subject, do NOT pass the user's raw message verbatim"},"max_results":{"type":"integer","description":"Number of results to return (default 5, max 10)"}},"required":["query"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.WebSearch,
@@ -340,6 +341,23 @@ func (r *ToolRegistry) registerFetchPageTool() {
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"url":{"type":"string","description":"The exact URL to fetch — from a web_search result, or given directly by the user"}},"required":["url"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.FetchPage,
+	})
+}
+
+// registerOpenAppTool adds the open_app tool to this registry. Split out of
+// registerBuiltins for the same reason as registerWebSearchTool — see its
+// doc comment. The Description below is the entire disambiguation mechanism
+// against web_search: without the explicit carve-out, "what's the latest
+// news" and "open the browser" both mention a browser-adjacent concept, and
+// nothing else in the prompt tells the model which tool actually answers
+// which.
+func (r *ToolRegistry) registerOpenAppTool() {
+	r.Register(ToolDef{
+		Name:        "open_app",
+		Description: "Launches a desktop application, or the default browser with a blank tab, on the user's computer (Windows, macOS, or Linux). Call this ONLY for an explicit launch/open command naming an application — e.g. \"Spotify'ı aç\", \"Steam'i başlat\", \"tarayıcıyı aç\", \"open VS Code\". Do NOT call this for a question, a search, or any information request, even if it mentions a browser or an app by name — \"en son haberler ne\", \"X hakkında bilgi ver\", \"YouTube'da ne var\" are answered with web_search or directly, never by opening anything. This tool only starts the program — it cannot search inside it, open a specific site, play a specific song, or answer any question.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"app_name":{"type":"string","description":"Just the application's name (e.g. \"Spotify\", \"Steam\", \"tarayıcı\"/\"browser\", \"Discord\", \"VS Code\") — extract it, do NOT pass the user's raw sentence"}},"required":["app_name"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.OpenApp,
 	})
 }
 

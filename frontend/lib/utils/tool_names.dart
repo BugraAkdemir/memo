@@ -20,6 +20,7 @@ class ToolNames {
     'whatsapp_search': _ToolMeta('tool_whatsapp_search', 'tool_whatsapp_search_desc', Icons.chat),
     'whatsapp_latest': _ToolMeta('tool_whatsapp_latest', 'tool_whatsapp_latest_desc', Icons.chat_bubble_outline),
     'whatsapp_messages': _ToolMeta('tool_whatsapp_messages', 'tool_whatsapp_messages_desc', Icons.history),
+    'open_app': _ToolMeta('tool_open_app', 'tool_open_app_desc', Icons.open_in_new),
   };
 
   static String displayName(String? toolName) {

@@ -109,6 +109,7 @@ var toolVerbs = map[string][2]string{
 	"whatsapp_search":     {"WhatsApp'ta aradı", "Searched WhatsApp"},
 	"configure_provider":  {"Sağlayıcı ayarını değiştirdi", "Changed a provider setting"},
 	"read_env":            {"Ortam değişkeni okudu", "Read an env var"},
+	"open_app":            {"Uygulama açtı", "Opened an app"},
 }
 
 // slowTools are the tools whose *execution* can take real time (as opposed to
@@ -123,6 +124,7 @@ var slowTools = map[string]bool{
 	"search_files":         true,
 	"whatsapp_send":        true,
 	"whatsapp_search":      true,
+	"open_app":             true,
 }
 
 func (a *App) toolVerb(name string) string {

@@ -334,6 +334,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// as Kilo's above. Deliberately no OpenCode Go equivalent, see
 	// handleOpenCodeZenModels' own doc comment for why.
 	route("/api/opencode-zen/models", s.handleOpenCodeZenModels)
+	route("/api/cline/models", s.handleClineModels)
 
 	// Orchestra mode
 	route("/api/orchestra/config", s.handleOrchestraConfig)

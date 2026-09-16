@@ -727,3 +727,103 @@ func TestHandleOpenCodeZenModels_RejectsNonPost(t *testing.T) {
 		t.Errorf("status = %d, want 405", w.Code)
 	}
 }
+
+// TestFetchClineModels_DerivesIsFreeFromIDSuffix mirrors
+// TestFetchOpenCodeZenModels_DerivesIsFreeFromIDSuffix — Cline's catalog
+// also carries no pricing field, but marks free models with a ":free"
+// suffix (OpenRouter's own convention, not OpenCode Zen's "-free") verified
+// against the real, live catalog.
+func TestFetchClineModels_DerivesIsFreeFromIDSuffix(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]interface{}{
+				{"id": "anthropic/claude-opus-5", "object": "model", "owned_by": "anthropic"},
+				{"id": "inclusionai/ling-3.0-flash-vl:free", "object": "model", "owned_by": "inclusionai"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	orig := clineModelsURL
+	clineModelsURL = srv.URL
+	defer func() { clineModelsURL = orig }()
+
+	models, err := (&Server{}).fetchClineModels()
+	if err != nil {
+		t.Fatalf("fetchClineModels() error = %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("got %d models, want 2", len(models))
+	}
+	if models[0].IsFree {
+		t.Errorf("anthropic/claude-opus-5 (no :free suffix) reported as free")
+	}
+	if !models[1].IsFree {
+		t.Errorf("inclusionai/ling-3.0-flash-vl:free (:free suffix) not reported as free")
+	}
+}
+
+func TestFetchClineModels_SkipsEntriesWithNoID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]interface{}{
+				{"id": ""},
+				{"id": "openai/gpt-6-astra"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	orig := clineModelsURL
+	clineModelsURL = srv.URL
+	defer func() { clineModelsURL = orig }()
+
+	models, err := (&Server{}).fetchClineModels()
+	if err != nil {
+		t.Fatalf("fetchClineModels() error = %v", err)
+	}
+	if len(models) != 1 || models[0].ID != "openai/gpt-6-astra" {
+		t.Errorf("models = %+v, want exactly the one entry with a real id", models)
+	}
+}
+
+func TestHandleClineModels_NoAPIKeyRequired(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]interface{}{
+				{"id": "anthropic/claude-opus-5"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	orig := clineModelsURL
+	clineModelsURL = srv.URL
+	defer func() { clineModelsURL = orig }()
+
+	s := New(&swarmStubBridge{})
+	r := httptest.NewRequest(http.MethodPost, "/api/cline/models", nil)
+	w := httptest.NewRecorder()
+	s.handleClineModels(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"status":"ok"`) {
+		t.Errorf("body = %s, want status ok", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "anthropic/claude-opus-5") {
+		t.Errorf("body = %s, want the fetched model id present", w.Body.String())
+	}
+}
+
+func TestHandleClineModels_RejectsNonPost(t *testing.T) {
+	s := New(&swarmStubBridge{})
+	r := httptest.NewRequest(http.MethodGet, "/api/cline/models", nil)
+	w := httptest.NewRecorder()
+	s.handleClineModels(w, r)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want 405", w.Code)
+	}
+}

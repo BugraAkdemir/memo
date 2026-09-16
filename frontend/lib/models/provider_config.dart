@@ -218,6 +218,32 @@ class ProviderDefaults {
       type == 'kilo' ||
       type == 'cline';
 
+  /// Providers whose model browser is free-aware (each model carries a real
+  /// is_free flag, server-derived from pricing or an id-suffix convention —
+  /// see fetchOpenRouterModels/fetchKiloModels/fetchOpenCodeZenModels/
+  /// fetchClineModels) — a strict subset of hasModelBrowser, since
+  /// OpenCode Go's catalog has no free models worth surfacing (see
+  /// handleOpenCodeZenModels' doc comment) and stays on the plain generic
+  /// browser. Gates the one-click "pick a free model automatically" action
+  /// next to the model field — the whole point of this set is that a user
+  /// who doesn't understand pricing/model-ID syntax can still end up on a
+  /// genuinely free model for any of these four, not just OpenRouter.
+  static bool hasFreeModelCatalog(String type) =>
+      type == 'openrouter' || type == 'kilo' || type == 'opencode-zen' || type == 'cline';
+
+  /// Providers with a real, no-cost way to get a working model — either a
+  /// free-tagged model in hasFreeModelCatalog's own catalog, or (Gemini,
+  /// Groq, Ollama) a generous free API tier / local-only runtime with no
+  /// hosted cost at all. Drives the "Ücretsiz" badge in the provider type
+  /// picker — grounded in the same claims the hints map above already makes
+  /// for gemini/groq ("cömert ücretsiz kota" / "ücretsiz başla"), not a new
+  /// judgment call. Deliberately does NOT include claude-code-cli/codex-cli
+  /// (their own CLI subscriptions aren't free) or opencode-go (a paid
+  /// subscription tier, see its own hint) — badging those "free" would be
+  /// wrong, not just unhelpful.
+  static bool hasGenuineFreeTier(String type) =>
+      hasFreeModelCatalog(type) || type == 'gemini' || type == 'groq' || type == 'ollama';
+
   /// Providers that need no API key (local). Custom endpoints often need one,
   /// but not always (local proxies), so it's treated as optional there.
   static bool needsApiKey(String type) =>

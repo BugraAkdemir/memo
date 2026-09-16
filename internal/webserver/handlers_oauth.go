@@ -555,6 +555,86 @@ func (s *Server) fetchOpenCodeZenModels() ([]ProviderModelInfo, error) {
 	return models, nil
 }
 
+// clineModelsURL is a var for the same test-injection reason as
+// openRouterModelsURL/kiloModelsURL/openCodeZenModelsURL above.
+var clineModelsURL = "https://api.cline.bot/api/v1/models"
+
+// handleClineModels implements POST /api/cline/models — the rich,
+// free-aware model browser for Cline's own gateway, same reasoning as
+// handleKiloModels/handleOpenCodeZenModels: no API key required (verified
+// live against the real endpoint — an unauthenticated GET answers 200 with
+// the full catalog), so it's reachable before a key is ever entered.
+func (s *Server) handleClineModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+
+	models, err := s.fetchClineModels()
+	if err != nil {
+		writeJSON(w, map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"status": "ok",
+		"models": models,
+	})
+}
+
+// fetchClineModels fetches Cline's model catalog. Like OpenCode Zen, this
+// endpoint's response carries no pricing or free/paid metadata at all —
+// just {id, object, created, owned_by} (verified live: 444 models). Cline
+// mirrors OpenRouter's own id convention though, marking free models with a
+// ":free" suffix (e.g. "inclusionai/ling-3.0-flash-vl:free" — confirmed
+// against the real, live catalog), so IsFree is derived from that, same
+// technique as fetchOpenCodeZenModels but with OpenRouter's colon
+// separator instead of OpenCode Zen's hyphen.
+func (s *Server) fetchClineModels() ([]ProviderModelInfo, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", clineModelsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf(s.t("request oluşturulamadı: ", "could not create request: ")+"%w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf(s.t("Cline API hatası: ", "Cline API error: ")+"%w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf(s.t("Cline döndü %d: %s", "Cline returned %d: %s"), resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("parse hatası: %w", err)
+	}
+
+	models := make([]ProviderModelInfo, 0, len(result.Data))
+	for _, m := range result.Data {
+		if m.ID == "" {
+			continue
+		}
+		models = append(models, ProviderModelInfo{
+			ID:     m.ID,
+			Name:   m.ID,
+			IsFree: strings.HasSuffix(strings.ToLower(m.ID), ":free"),
+		})
+	}
+
+	return models, nil
+}
+
 // fetchOpenRouterModelEffortLevels is OpenRouter's one real point of
 // runtime capability discovery (see provider/effort.go's package doc
 // comment) — its /api/v1/models response includes a per-model "reasoning"

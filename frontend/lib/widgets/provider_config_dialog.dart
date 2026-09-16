@@ -31,6 +31,7 @@ class _ProviderConfigDialogState
   late TextEditingController _priorityCtrl;
   late bool _enabled;
   bool _testing = false;
+  bool _pickingFreeModel = false;
   bool? _testResult;
   bool _isSaving = false;
   bool _showAdvanced = false;
@@ -205,12 +206,75 @@ class _ProviderConfigDialogState
       'openrouter' => await _browseOpenRouterModels(apiKey),
       'kilo' => await _browseKiloModels(),
       'opencode-zen' => await _browseOpenCodeZenModels(),
+      'cline' => await _browseClineModels(),
       _ => await _browseGenericModels(apiKey),
     };
 
     if (selected != null) {
       _modelCtrl.text = selected;
     }
+  }
+
+  /// One-click alternative to _openModelBrowser for the four providers in
+  /// ProviderDefaults.hasFreeModelCatalog: fetches the same catalog the
+  /// browse dialog would show, but instead of making the user scan a list
+  /// for the green "Ücretsiz" badge themselves, picks the first free model
+  /// itself and fills the field directly. This is the actual point of the
+  /// whole free-tier redesign — someone who has never heard of "pricing" or
+  /// "model ID" can still end up on a real, working, $0 model in one tap.
+  Future<void> _pickFreeModelAutomatically() async {
+    final apiKey = _apiKeyCtrl.text.trim();
+    if (apiKey.isEmpty && !_keylessBrowserTypes.contains(_type)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(L10n.t('enter_api_key_first'))),
+      );
+      return;
+    }
+
+    setState(() => _pickingFreeModel = true);
+    List<Map<String, dynamic>>? models;
+    try {
+      final api = ref.read(apiClientProvider);
+      final result = switch (_type) {
+        'openrouter' => await api.fetchOpenRouterModels(apiKey),
+        'kilo' => await api.fetchKiloModels(),
+        'opencode-zen' => await api.fetchOpenCodeZenModels(),
+        'cline' => await api.fetchClineModels(),
+        _ => <String, dynamic>{'status': 'error', 'error': 'unsupported type'},
+      };
+      if (result['status'] == 'ok') {
+        final raw = result['models'];
+        models = (raw is List) ? raw.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ ${result['error'] ?? L10n.t('models_fetch_error_short')}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('models_fetch_error', {'e': FriendlyError.describeGeneric(e)}))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _pickingFreeModel = false);
+    }
+    if (models == null || !mounted) return;
+
+    final free = models.where((m) => (m['is_free'] as bool?) ?? false).toList()
+      ..sort((a, b) => ((a['id'] as String?) ?? '').compareTo((b['id'] as String?) ?? ''));
+    if (free.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(L10n.t('pick_free_model_none_found'))),
+      );
+      return;
+    }
+
+    final pickedId = free.first['id'] as String;
+    setState(() => _modelCtrl.text = pickedId);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(L10n.t('pick_free_model_success', {'model': pickedId}))),
+    );
   }
 
   Future<String?> _browseOpenRouterModels(String apiKey) async {
@@ -333,6 +397,49 @@ class _ProviderConfigDialogState
       builder: (_) => _ModelBrowserDialog(
         models: models,
         title: L10n.t('opencode_zen_models'),
+      ),
+    );
+  }
+
+  /// Cline's rich, free-aware model browser — same pattern as
+  /// [_browseOpenCodeZenModels], fed by the dedicated /api/cline/models
+  /// endpoint (internal/webserver's handleClineModels) so the ":free"
+  /// suffix Cline marks free models with shows up as a real is_free flag
+  /// here, instead of falling through to the plain generic string-list
+  /// browser every other provider without a dedicated endpoint gets.
+  Future<String?> _browseClineModels() async {
+    final api = ref.read(apiClientProvider);
+
+    Map<String, dynamic> result;
+    try {
+      result = await api.fetchClineModels();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('models_fetch_error', {'e': FriendlyError.describeGeneric(e)}))),
+        );
+      }
+      return null;
+    }
+
+    if (result['status'] != 'ok') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ ${result['error'] ?? L10n.t('models_fetch_error_short')}')),
+        );
+      }
+      return null;
+    }
+
+    final rawModels = result['models'];
+    final models = (rawModels is List) ? rawModels.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
+    if (!mounted) return null;
+
+    return showDialog<String>(
+      context: context,
+      builder: (_) => _ModelBrowserDialog(
+        models: models,
+        title: L10n.t('cline_models'),
       ),
     );
   }
@@ -739,6 +846,31 @@ class _ProviderConfigDialogState
                     ],
                   ],
                 ),
+                if (ProviderDefaults.hasFreeModelCatalog(_type)) ...[
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _pickingFreeModel ? null : _pickFreeModelAutomatically,
+                      icon: _pickingFreeModel
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.card_giftcard, size: 16, color: MemoTheme.green),
+                      label: Text(
+                        L10n.t('pick_free_model'),
+                        style: const TextStyle(color: MemoTheme.green, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
 
                 // ── Test connection ──
@@ -1284,14 +1416,42 @@ class _SimpleModelBrowserDialogState extends State<_SimpleModelBrowserDialog> {
 // provider types exist, and shares this app's own rounded Dialog shape
 // (MemoTheme.radiusLg) instead of Material's small default popup radius.
 
+/// A section-header row in [_ProviderTypePickerDialog]'s list — distinct
+/// from a provider type (also represented as a plain String) so
+/// itemBuilder can tell the two apart in the mixed List<Object> _rows()
+/// returns.
+class _PickerHeader {
+  final String label;
+  const _PickerHeader(this.label);
+}
+
 class _ProviderTypePickerDialog extends StatelessWidget {
   final List<String> types;
   final String current;
   const _ProviderTypePickerDialog({required this.types, required this.current});
 
+  /// Builds one flat row list for the ListView: section-header strings
+  /// interleaved with the provider types under them. Free-tier providers
+  /// (ProviderDefaults.hasGenuineFreeTier) are grouped first under their own
+  /// header so someone who has no idea what "OpenRouter" or "model ID"
+  /// means can still tell, from the very first screen, which options cost
+  /// nothing to try — without hiding or otherwise deprioritizing the paid
+  /// ones, which keep their original relative order in the second group.
+  List<Object> _rows() {
+    final free = types.where(ProviderDefaults.hasGenuineFreeTier).toList();
+    final other = types.where((t) => !ProviderDefaults.hasGenuineFreeTier(t)).toList();
+    return [
+      if (free.isNotEmpty) _PickerHeader(L10n.t('provider_free_section_title')),
+      ...free,
+      if (other.isNotEmpty) _PickerHeader(L10n.t('provider_other_section_title')),
+      ...other,
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
+    final rows = _rows();
 
     return Dialog(
       shape: RoundedRectangleBorder(
@@ -1334,10 +1494,26 @@ class _ProviderTypePickerDialog extends StatelessWidget {
               child: ListView.builder(
                 shrinkWrap: true,
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: types.length,
+                itemCount: rows.length,
                 itemBuilder: (ctx, i) {
-                  final t = types[i];
+                  final row = rows[i];
+                  if (row is _PickerHeader) {
+                    return Padding(
+                      padding: EdgeInsets.fromLTRB(16, i == 0 ? 4 : 16, 16, 6),
+                      child: Text(
+                        row.label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.4,
+                          color: MemoTheme.of(context).textDim,
+                        ),
+                      ),
+                    );
+                  }
+                  final t = row as String;
                   final isSelected = t == current;
+                  final isFree = ProviderDefaults.hasGenuineFreeTier(t);
                   return ListTile(
                     dense: true,
                     leading: providerLogoWidget(t, size: 22),
@@ -1348,9 +1524,26 @@ class _ProviderTypePickerDialog extends StatelessWidget {
                         fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                       ),
                     ),
-                    trailing: isSelected
-                        ? Icon(Icons.check, size: 18, color: MemoTheme.accent)
-                        : null,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isFree) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: MemoTheme.green.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              L10n.t('provider_free_badge'),
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: MemoTheme.green),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        if (isSelected) Icon(Icons.check, size: 18, color: MemoTheme.accent),
+                      ],
+                    ),
                     selected: isSelected,
                     selectedTileColor: MemoTheme.accentMuted,
                     onTap: () => Navigator.of(context).pop(t),

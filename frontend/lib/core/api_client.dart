@@ -719,6 +719,15 @@ class MemoApiClient {
     return _guard<Map<String, dynamic>>(res.data);
   }
 
+  /// Fetch available models from Cline's own gateway — same rich shape as
+  /// [fetchOpenCodeZenModels] (is_free is derived server-side from a
+  /// ":free" id suffix rather than a pricing field, which this endpoint
+  /// doesn't carry at all), and likewise needs no API key.
+  Future<Map<String, dynamic>> fetchClineModels() async {
+    final res = await _dio.post('/api/cline/models');
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
   // ─── Status ─────────────────────────────────────────────────────
 
   /// Check backend connection status.

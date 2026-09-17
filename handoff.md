@@ -1,3 +1,98 @@
+# Handoff — 2026-09-16 (devam 77) — open_app aracı + Cline sağlayıcısı + Add Provider'da ücretsiz-katman keşfi + boş-cevap fallback'i (geriye dönük kayıt)
+
+## Oturum Özeti
+
+Bu kayıt geriye dönük: bir önceki oturum (devam 76, v4.5.0 sürümü) bittikten
+sonra aynı gün içinde 6 commit daha atılmış ama hiçbiri handoff'a
+işlenmemiş ve origin'e push edilmemiş kalmıştı (kural #2 atlanmış). Şimdiki
+oturum bunu fark edip düzeltiyor: aşağıdaki özet + push.
+
+## Ne yapıldı (6 commit, `1b7fa390`..`492a9323` arası)
+
+1. **`22caaaa5` — `open_app` aracı (v4.6 katman 1).** Agent'ın masaüstü
+   uygulaması veya varsayılan tarayıcıyı isimle açabilmesi
+   ("Spotify'ı aç", "tarayıcıyı aç"), Windows/macOS/Linux. "browser"/
+   "tarayıcı" ve TR/EN varyantları `internal/browseropen` üzerinden boş
+   sekme açıyor, diğer her isim OS'un kendi genel launch mekanizmasına
+   düşüyor (macOS `open -a`, Windows `cmd /C start`, Linux doğrudan exec).
+   `DangerLevel: Medium`. Bir bilgi isteğini ("en son haberler ne") yanlışlıkla
+   `open_app`'e yönlendirmeyi önlemek `web_search` ile `open_app`'in tool
+   description'larındaki karşılıklı çapraz-referansla çözülmüş. Katman 2
+   (Spotify'da belirli bir şarkı çalma gibi uygulama-içi kontrol) bilinçli
+   olarak kapsam dışı — API entegrasyonu planlanan yaklaşım, vision/
+   computer-use değil.
+2. **`491c2c23` — Cline sağlayıcı desteği.** `api.cline.bot` araştırıldı
+   (docs + canlı curl): OpenAI-uyumlu `/chat/completions`, Bearer auth,
+   `GET /models` key'siz 200 dönüyor (444 model, bazıları `:free` son ekli).
+   Backend: `ProviderCline` (`*openAIProvider` thin-wrapper, Kilo/OpenRouter
+   ile aynı desen). Frontend: provider type picker'a eklendi, key'siz
+   browse edilebiliyor (`_keylessBrowserTypes`).
+3. **`e45572b1` — Cline logosu.** Simple Icons'tan düz tek renkli glyph
+   (Cline'ın kendi repo asset'i sadece yuvarlak-köşe app-icon PNG'si,
+   UI'ya uygun değildi), monokrom tint setine eklendi.
+4. **`0602f5c6` — Add Provider akışı ücretsiz-katman keşfi etrafında
+   yeniden tasarlandı.** Sorun OpenRouter'a özel değildi — 14 düz seçenekten
+   hangisinin bedava olduğuna dair kullanıcıya hiç sinyal yoktu, ücretsiz
+   olsa bile pricing/model-ID syntax'ı anlamak gerekiyordu. Backend:
+   Cline, mevcut free-aware model katalog ailesine eklendi
+   (`GET /api/cline/models`, `:free` son ekinden `IsFree` türetiliyor).
+   Frontend: `ProviderDefaults.hasFreeModelCatalog` (openrouter/kilo/
+   opencode-zen/cline — gerçek per-model `is_free` bayrağı olanlar) ve
+   `hasGenuineFreeTier` (+ gemini/groq/ollama — bedelsiz API kotası/yerel
+   çalışma). Provider type picker artık "Ücretsiz kullanılabilir" /
+   "Diğer sağlayıcılar" olarak gruplanıyor, yeşil rozet var. Yeni
+   "Ücretsiz model seç" tek-tık aksiyonu: dört `hasFreeModelCatalog`
+   sağlayıcısı için kataloğu çekip ilk ücretsiz modeli otomatik seçiyor —
+   değişikliğin asıl amacı bu, pricing/model-ID bilmeden çalışan $0 model.
+5. **`5c193e0f` — Ücretsiz-katman metni netleştirildi.** "Ücretsiz
+   kullanılabilir"/"Free to use" ifadesi o sağlayıcının HER modelinin
+   bedava olduğu izlenimini veriyordu; "Ücretsiz modeli olanlar"/"Have a
+   free model" + rozet "Ücretsiz var"/"Has free" olarak değiştirildi,
+   diğer bölüm başlığı da "Ücretli sağlayıcılar"/"Paid providers" olarak
+   açık hale getirildi.
+6. **`492a9323` — Boş model cevabında asla sessiz kalma.** Canlı rapor:
+   Agent Mode kapalıyken "tarayıcımı aç" gönderildiğinde hiç çıktı yoktu —
+   hata da yok, metin de yok. Kök neden: `Pipeline.RunStream`'in
+   no-tool-calls dalı, `stripHallucinatedToolSyntax` sonrası `resp.Content`
+   boşsa hiçbir şey göndermeden `Done:true/FinishReason:"stop"` ile stream'i
+   kapatıyordu — pipeline'ın kendi bakış açısından "başarılı" bir tur, ama
+   kullanıcı tarafında düşmüş/asılı kalmış istekten ayırt edilemez. Asıl
+   tetikleyici (Agent Mode kapalıyken `open_app` gibi araçlar tool set'te
+   yok) daha geniş bir sınıfın tek örneği — model her nedenle (zayıf/yerel
+   model, bu tur için uygun hiç araç yok, kafa karışıklığı) tool-call'sız
+   ve metinsiz kalabilir. Düzeltme geneldir: content boşsa görünür bir
+   fallback mesajı ("Bu isteğe bir cevap üretemedim...") gönderiliyor —
+   AGENTS.md'nin SSE-stream-hiç-bitmiyor sınıfı için zaten belgelediği
+   "kullanıcıyı açıklamasız bırakma" ilkesinin, "stream düzgün bitiyor ama
+   içerik taşımıyor" haliyle aynısı.
+
+## Doğrulama
+
+Bu oturumda tekrar koşturuldu: `CGO_ENABLED=1 go build -tags sqlite_fts5
+./...` yeşil (working tree zaten temizdi, commit'ler kendi zamanlarında
+test edilmiş — her commit mesajı kendi test kanıtını taşıyor, örn.
+`TestRunStream_EmptyContentGetsFallbackMessage`,
+`TestNewProvider_DispatchesToCorrectImplementation`).
+
+## Push
+
+Bu 6 commit + bu handoff kaydı origin'e push edildi (önceden sadece yerelde
+duruyorlardı, origin v4.5.0 release commit'inde kalmıştı).
+
+## Sıradaki oturum için
+
+1. Update beacon (`version-zeta.vercel.app/version.json`) hâlâ V4.4.0 —
+   kullanıcının kendisi bump'layacak (bkz. devam 76).
+2. `open_app` v4.6 katman 2 (uygulama-içi kontrol, örn. Spotify'da belirli
+   parça çalma) bilinçli olarak kapsam dışı bırakıldı — ileride API
+   entegrasyonu olarak planlı.
+3. Yerel model + Plan modu + auto-permission zincirleme hâlâ canlı
+   doğrulanmadı (devam 76'dan devam eden açık madde).
+
+---
+
+
+
 # Handoff — 2026-09-16 (devam 76) — Tüm dokümantasyon v4.5.0'a güncellendi + v4.5.0 sürümü kesildi
 
 ## Oturum Özeti

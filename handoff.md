@@ -67,18 +67,36 @@ biri olmadığı için akış orada bekliyor, bu beklenen davranış).
 `web_search.enabled` API üzerinden geçici kapatılıp tekrar `true`'ya
 alındı (config.yaml gitignore'da, git durumuna etkisi yok).
 
+## Ek — write_file ve run_command regresyon testi (aynı gün, devam)
+
+Kullanıcı düzeltmenin open_app'e özel olmadığını doğrulamak için
+`write_file` ve `run_command`'ın da Cline üzerinden test edilmesini
+istedi. Aynı headless backend + curl yöntemiyle uçtan uca (izin onayı
+dahil) denendi:
+
+- **write_file**: "data/scratchpad/cline_regression_test.txt dosyasına
+  ... yaz" → doğru `permission_request` → `allow_once` onayı → gerçek
+  dosya yazıldı (`"Successfully wrote 24 bytes..."`) → model kendiliğinden
+  `read_file` ile geri okuyup doğruladı → doğru `final_response`. Bu,
+  düzeltmenin sadece ilk `ChatCompletion` çağrısında değil, tool sonucu
+  modele geri beslendikten sonraki **ikinci ve üçüncü** iterasyonda da
+  (write_file → read_file → final text, üç ayrı Cline çağrısı) çalıştığını
+  kanıtlıyor — çok-turlu agent döngüsü baştan sona sağlam.
+- **run_command**: "echo Cline regression run_command OK komutunu
+  çalıştır" → doğru `permission_request` (`danger_level: dangerous`) →
+  onay → gerçek komut çalıştı, stdout doğru yakalandı → doğru
+  `final_response`.
+
+Test artığı (`data/scratchpad/cline_regression_test.txt`) temizlendi,
+`git status` temiz. **Sonuç: Cline üzerinden agent modundaki tool-call
+zinciri artık uçtan uca sağlam — open_app, write_file, run_command üçü de
+canlı doğrulandı.**
+
 ## Sıradaki oturum için
 
-1. Bu bug muhtemelen bugünün v4.5.0-sonrası Cline entegrasyonunun ilk
-   canlı kullanımında yakalandı — Cline üzerinden yapılan hiçbir
-   agent-mode tool-call (sadece open_app değil, tüm araçlar) bu güne kadar
-   çalışmıyordu. Kullanıcı Cline'ı aktif sağlayıcı olarak ne zamandır
-   kullanıyor bilinmiyor; regresyon testi olarak birkaç farklı araçla
-   (örn. `run_command`, `write_file`) Cline üzerinden ayrıca denenebilir.
-   Bu oturumda sadece open_app doğrulandı.
-2. Update beacon (`version-zeta.vercel.app/version.json`) hâlâ V4.4.0 —
+1. Update beacon (`version-zeta.vercel.app/version.json`) hâlâ V4.4.0 —
    kullanıcının kendisi bump'layacak (bkz. devam 76).
-3. Yerel model + Plan modu + auto-permission zincirleme hâlâ canlı
+2. Yerel model + Plan modu + auto-permission zincirleme hâlâ canlı
    doğrulanmadı (devam 76'dan devam eden açık madde).
 
 ---

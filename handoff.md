@@ -86,11 +86,17 @@ dahil) denendi:
   çalıştır" → doğru `permission_request` (`danger_level: dangerous`) →
   onay → gerçek komut çalıştı, stdout doğru yakalandı → doğru
   `final_response`.
+- **open_app**: bir önceki round'da sadece `permission_request`'in doğru
+  geldiği görülmüştü, onay+gerçek çalıştırma denenmemişti — kullanıcı
+  bunu fark edip düzeltmeyi istedi. Aynı yöntemle tamamlandı: "tarayıcımı
+  açar mısın" → doğru `permission_request` → `allow_once` onayı →
+  `tool_result: "Varsayılan tarayıcı açıldı."` → doğru `final_response`.
+  Üçü de artık sadece tanınma değil, gerçek çalıştırma dahil doğrulanmış.
 
 Test artığı (`data/scratchpad/cline_regression_test.txt`) temizlendi,
 `git status` temiz. **Sonuç: Cline üzerinden agent modundaki tool-call
 zinciri artık uçtan uca sağlam — open_app, write_file, run_command üçü de
-canlı doğrulandı.**
+izin onayı + gerçek çalıştırma dahil canlı doğrulandı.**
 
 ## Sıradaki oturum için
 

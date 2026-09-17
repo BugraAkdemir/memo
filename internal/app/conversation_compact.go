@@ -26,7 +26,21 @@ type convSummary struct {
 // every other turn.
 const compactRegionGrowthSlack = 8
 
-const compactSummaryHeader = "[Earlier conversation summary — the turns before this point were condensed to save context; treat it as background, not as something the user just said]\n"
+// compactSummaryHeader's precedence sentence exists for a real, reported
+// failure mode specific to the long-lived Telegram/WhatsApp self-chat
+// sessions (handleTelegramMessage/handleWhatsAppSelfChatMessage): unlike
+// the Flutter UI, where a user naturally starts a fresh chat now and then,
+// those two reuse ONE session forever, so they're far more likely to have
+// actually hit CompactThresholdPct and be carrying a cached summary. That
+// summary is an accurate record of what was said AT THE TIME — if the
+// user has since pinned a fact that supersedes something stated back then
+// (a favorite color, a job, whatever), the fresh pinned-fact/RAG block in
+// systemPrompt (assembled earlier in this same message list, in
+// buildMessagesForSession) is just as easy for the model to weigh equally
+// against, or even under, an "earlier in this very conversation" summary
+// with no explicit signal that the summary can be stale. Without this
+// sentence, nothing ever told the model which one wins.
+const compactSummaryHeader = "[Earlier conversation summary — the turns before this point were condensed to save context; treat it as background, not as something the user just said. This summary reflects what was true AT THAT TIME and may be outdated — if anything here conflicts with your current instructions or memory above, or with what the user says now, treat the current information as correct.]\n"
 
 // maybeCompactHistory condenses the oldest part of a long conversation into a
 // single summary system message, keeping the recent tail verbatim, instead of

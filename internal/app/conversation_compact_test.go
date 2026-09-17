@@ -93,6 +93,24 @@ func TestMaybeCompactHistory_UsesCachedSummary(t *testing.T) {
 	}
 }
 
+// TestCompactSummaryHeader_StatesCurrentInfoWins guards a live report: the
+// Telegram/WhatsApp self-chat sessions (handleTelegramMessage/
+// handleWhatsAppSelfChatMessage) reuse ONE session forever, unlike the
+// Flutter UI where a user naturally starts fresh chats — so they're far
+// more likely to actually be carrying a cached compacted-history summary
+// that describes something (a preference, a fact) which has since been
+// superseded by a newly pinned fact. Without an explicit precedence
+// sentence, nothing ever told the model that current instructions/memory
+// beat an old "earlier in this conversation" summary if the two conflict.
+func TestCompactSummaryHeader_StatesCurrentInfoWins(t *testing.T) {
+	if !strings.Contains(strings.ToLower(compactSummaryHeader), "outdated") {
+		t.Fatalf("compactSummaryHeader must warn the model this summary can be outdated, got: %q", compactSummaryHeader)
+	}
+	if !strings.Contains(strings.ToLower(compactSummaryHeader), "current") {
+		t.Fatalf("compactSummaryHeader must tell the model current info wins on conflict, got: %q", compactSummaryHeader)
+	}
+}
+
 // TestMaybeCompactHistory_CachedSummaryKeepsMinTail guards BUG-SCAN4: the
 // cached-summary reuse path overwrote `cut` with cached.coveredCount
 // without re-checking the min-tail guard the fresh path applies. If the

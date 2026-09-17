@@ -1,3 +1,93 @@
+# Handoff — 2026-09-17 (devam 83) — Telegram/WhatsApp'ın eski bilgi verme şüphesi: kök neden bulundu (özet önbelleği önceliksiz)
+
+## Oturum Özeti
+
+Kullanıcı: Flutter arayüzünden sohbet ederken hafıza iyi çalışıyor, ama
+Telegram'a geçtiğinde yeni kaydedilen hafızaları değil eski bilgileri
+veriyormuş gibi görünüyor. WhatsApp'ta da aynı hata olabileceğini düşündü.
+`codebase-memory` ile araştırma istendi (kod değişikliği istenmedi, sadece
+"nedeni araştır" — ama kök neden netleşince düşük riskli bir düzeltme de
+uygulandı).
+
+## Araştırma
+
+`codebase-memory` ile `handleTelegramMessage`/`handleWhatsAppSelfChatMessage`
+izlendi: ikisi de BİREBİR aynı mimari — `a.tgSelfChatSessionID`/
+`a.waSelfChatSessionID`, `sm.NewBackgroundChat(...)` ile SADECE bir kere
+oluşturulup sonsuza dek yeniden kullanılan TEK bir arka plan chat oturumu,
+`SendMessageStreamToAsAgent` → `buildMessagesForSession` → `retrieveMemory`
+üzerinden. Bu paylaşılan pipeline'ın kendisi (`buildMessagesForSession`,
+`retrieveMemory`, `GetPinnedFactsRanked`) her turda taze çalışıyor, hiçbir
+önbellekleme/bayat state yok — kanal farketmeksizin (Flutter/Telegram/
+WhatsApp) aynı şekilde çalışıyor. Yani "hafıza sorgusu" kendisi bozuk değil.
+
+Asıl bulunan mekanizma **`internal/app/conversation_compact.go`**'da:
+`maybeCompactHistory` bir sohbetin geçmişi context bütçesinin
+`CompactThresholdPct`'ini (%60) aşınca en eski ~%60'ı TEK SEFERLİK bir
+özete sıkıştırıp `a.convSummaries[chatID]` içinde önbelleğe alıyor, ve bu
+özet sadece chat SİLİNİNCE (`clearWorkingSet`) temizleniyor — yeni bir
+pinned fact eklendiğinde ASLA invalide olmuyor. Flutter kullanıcısı sık
+sık yeni chat açtığı için bu sorunu neredeyse hiç yaşamaz (taze chat =
+sıfır geçmiş = sıkıştırma tetiklenmez). Ama Telegram/WhatsApp TEK oturumu
+sonsuza dek kullandığı için, uzun vadede neredeyse kesin sıkıştırma
+eşiğini geçer ve eski bir özet kalıcı hale gelir.
+
+**Asıl kusur bu özetin bayat olması değildi (o, "o an ne konuşulduğunun"
+doğru bir kaydı) — kusur, bu eski özetin, `buildMessagesForSession`'ın
+aynı prompt'a koyduğu TAZE pinned-fact/RAG bloğuyla EŞİT otorite ile
+sunulmasıydı.** `compactSummaryHeader` sadece "bunu arka plan olarak gör,
+kullanıcının az önce söylediği bir şey değil" diyordu — ama hangisinin
+GÜNCEL olduğuna dair hiçbir öncelik sinyali vermiyordu. Model, eski özette
+"kullanıcının favori rengi mavi" gibi bir şey görüp, sistem promptundaki
+taze "artık mor" bilgisiyle çelişirse, hangisini esas alacağına dair
+hiçbir talimat yoktu.
+
+## Düzeltme
+
+`compactSummaryHeader`'a ([conversation_compact.go](internal/app/conversation_compact.go))
+açık bir öncelik cümlesi eklendi: özetin "o anki" doğru olduğunu ama
+güncel talimatlar/hafıza veya kullanıcının şimdi söyledikleriyle
+çelişirse GÜNCEL olanın esas alınması gerektiğini söylüyor. Salt metinsel,
+sıfır davranış/veri değişikliği — önbellekleme mantığına dokunulmadı
+(zaten önbelleğin kendisi "yanlış" değil, sadece önceliksizdi).
+
+## Doğrulama
+
+Yeni `TestCompactSummaryHeader_StatesCurrentInfoWins`
+([conversation_compact_test.go](internal/app/conversation_compact_test.go))
+— header'da "outdated" ve "current" kelimelerinin varlığını doğruluyor
+(regresyon kilidi). Mevcut `TestMaybeCompactHistory_*` testleri (substring
+kontrolü kullandıkları için) hâlâ yeşil. `CGO_ENABLED=1 go build/vet -tags
+sqlite_fts5 ./...` yeşil, tam `go test ... -race -count=1 ./...` yeşil.
+
+**Not:** Bu oturumdaki dev makinesinin `data/` dizininde gerçek bir
+Telegram/WhatsApp self-chat oturumu bulunamadı (42 chat listelendi, hiçbiri
+"Telegram Asistanı"/"WhatsApp Self-Chat" değildi) — kullanıcının gerçek
+kullanımı görünüşe göre ayrı bir kutuda (192.168.1.106, önceki oturumların
+ekran görüntüsünden). Yani bu canlı olarak, kullanıcının gerçek bayat
+özetiyle uçtan uca doğrulanamadı — analiz tamamen kod okumasına ve
+`maybeCompactHistory`'nin kanıtlanmış davranışına dayanıyor. Kullanıcı
+gerçek Telegram/WhatsApp'ta tekrar deneyip iyileşip iyileşmediğini
+bildirmeli.
+
+## Sıradaki oturum için
+
+1. Kullanıcı gerçek Telegram/WhatsApp'ta bu düzeltmenin sorunu
+   çözüp çözmediğini test etmeli — model artık "güncel bilgi kazanır"
+   talimatını görüyor ama nihayetinde bu hâlâ bir prompt-engineering
+   sinyali, garanti değil. İyileşmezse bir sonraki adım muhtemelen
+   `a.convSummaries[chatID]`'i yeni bir pinned fact eklendiğinde invalide
+   etmek olurdu (ama bu, aynı eski mesajları yeniden özetlemekten öteye
+   geçmez — asıl kazanç yine header'daki öncelik talimatından gelir).
+2. `internal/app`'daki seyrek `-race` flake'i hâlâ açık (devam 82'den).
+3. Update beacon hâlâ V4.4.0.
+4. Yerel model + Plan modu + auto-permission zincirleme hâlâ canlı
+   doğrulanmadı.
+
+---
+
+
+
 # Handoff — 2026-09-17 (devam 82) — Sohbet sidebar'ına "hâlâ çalışıyor" animasyonlu göstergesi eklendi
 
 ## Oturum Özeti

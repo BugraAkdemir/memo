@@ -310,6 +310,7 @@ func (b *swarmStubBridge) SendCLIMessageStream(ctx context.Context, chatID, user
 	return ch
 }
 func (b *swarmStubBridge) GetRunningCLIChats() []string                                 { return nil }
+func (b *swarmStubBridge) GetStreamingChatIDs() []string                                { return nil }
 func (b *swarmStubBridge) ListProjectFiles(root, query string) []string                 { return nil }
 func (b *swarmStubBridge) ListCLICommands(cliType, chatID string) []agentcli.Command    { return nil }
 func (b *swarmStubBridge) SetChatCLIModel(chatID, model string) error                   { return nil }

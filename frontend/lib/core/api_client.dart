@@ -568,6 +568,17 @@ class MemoApiClient {
     return ids is List ? ids.cast<String>() : const [];
   }
 
+  /// Chat ids with an ordinary (non-CLI) stream currently in flight —
+  /// polled for the chat sidebar's "still working" indicator on any chat
+  /// generating right now, whether that's a Self-Driving task worker, a
+  /// WhatsApp/Telegram bridge reply, or another browser tab/window. Same
+  /// shape as [getRunningCLIChats].
+  Future<List<String>> getStreamingChats() async {
+    final res = await _dio.get('/api/chats/streaming');
+    final ids = res.data['chat_ids'];
+    return ids is List ? ids.cast<String>() : const [];
+  }
+
   /// Get recent background events (chat:done, memory:saved, memory:error,
   /// etc.) from the backend's ring buffer — used by the bug-report tab to
   /// optionally attach the last few errors to a report.

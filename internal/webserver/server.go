@@ -136,6 +136,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/chats/delete", s.handleDeleteChat)
 	route("/api/chats/rename", s.handleRenameChat)
 	route("/api/chats/active", s.handleActiveChat)
+	route("/api/chats/streaming", s.handleStreamingChats)
 	route("/api/messages", s.handleMessages)
 	route("/api/messages/update", s.handleUpdateMessage)
 	route("/api/messages/delete", s.handleDeleteMessage)

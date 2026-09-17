@@ -154,6 +154,7 @@ type FullBridge interface {
 	GetChatCLIWorkdir(chatID string) string
 	SendCLIMessageStream(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk
 	GetRunningCLIChats() []string
+	GetStreamingChatIDs() []string
 	ListProjectFiles(root, query string) []string
 	ListCLICommands(cliType, chatID string) []agentcli.Command
 	SetChatCLIModel(chatID, model string) error

@@ -72,3 +72,60 @@ func TestRunLockedStreamSetup_NoPanicPassesChannelThroughUnchanged(t *testing.T)
 	}
 	release()
 }
+
+// TestGetStreamingChatIDs_ReflectsHeldLocksOnly is the chat sidebar's
+// "still working" indicator's backing signal: a chat currently holding its
+// stream lock must be reported, a chat that never streamed or whose stream
+// already released must not, and the shared empty-string key (sends with
+// no resolvable active chat) must never leak out as a fake chat id.
+func TestGetStreamingChatIDs_ReflectsHeldLocksOnly(t *testing.T) {
+	a := &App{}
+
+	releaseA, ok := a.lockChatStream("chat-a")
+	if !ok {
+		t.Fatal("expected to acquire chat-a's lock")
+	}
+	releaseB, ok := a.lockChatStream("chat-b")
+	if !ok {
+		t.Fatal("expected to acquire chat-b's lock")
+	}
+	// chat-c: lock briefly then release, same as a turn that already
+	// finished — must not show up as streaming.
+	releaseC, ok := a.lockChatStream("chat-c")
+	if !ok {
+		t.Fatal("expected to acquire chat-c's lock")
+	}
+	releaseC()
+	// The shared empty-key lock, from a send with no resolvable active
+	// chat — must never surface as a chat id.
+	releaseEmpty, ok := a.lockChatStream("")
+	if !ok {
+		t.Fatal("expected to acquire the empty-key lock")
+	}
+
+	ids := a.GetStreamingChatIDs()
+	got := map[string]bool{}
+	for _, id := range ids {
+		got[id] = true
+	}
+	if !got["chat-a"] || !got["chat-b"] {
+		t.Fatalf("GetStreamingChatIDs() = %v, want chat-a and chat-b (both still locked)", ids)
+	}
+	if got["chat-c"] {
+		t.Fatalf("GetStreamingChatIDs() = %v, want chat-c absent (its lock was released)", ids)
+	}
+	if got[""] {
+		t.Fatalf("GetStreamingChatIDs() = %v, want the empty-key lock never reported as a chat id", ids)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("GetStreamingChatIDs() returned %d ids, want exactly 2: %v", len(ids), ids)
+	}
+
+	releaseA()
+	releaseB()
+	releaseEmpty()
+
+	if ids := a.GetStreamingChatIDs(); len(ids) != 0 {
+		t.Fatalf("GetStreamingChatIDs() after releasing everything = %v, want empty", ids)
+	}
+}

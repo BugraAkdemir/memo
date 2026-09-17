@@ -23,6 +23,8 @@ class ChatSidebar extends ConsumerWidget {
     final isIncognito = ref.watch(incognitoProvider);
     final runningCLIChats = ref.watch(runningCLIChatsProvider).valueOrNull ?? const {};
     final finishedCLIChats = ref.watch(cliJustFinishedChatsProvider);
+    final streamingChats = ref.watch(streamingChatsProvider).valueOrNull ?? const {};
+    final finishedStreamingChats = ref.watch(streamingJustFinishedChatsProvider);
 
     final c = MemoTheme.of(context);
     final glass = c.isGlass;
@@ -131,8 +133,16 @@ class ChatSidebar extends ConsumerWidget {
                     return _ChatListItem(
                       chat: chat,
                       isActive: isActive,
-                      isCLIRunning: runningCLIChats.contains(chat.id),
-                      isCLIFinished: finishedCLIChats.contains(chat.id),
+                      // Combined "busy"/"just finished" signal — a chat can
+                      // be working for several different reasons (a CLI
+                      // job, an ordinary agent turn from a Self-Driving
+                      // task worker or a WhatsApp/Telegram bridge reply,
+                      // another browser tab) and the sidebar shows one
+                      // indicator regardless of which.
+                      isCLIRunning: runningCLIChats.contains(chat.id) ||
+                          streamingChats.contains(chat.id),
+                      isCLIFinished: finishedCLIChats.contains(chat.id) ||
+                          finishedStreamingChats.contains(chat.id),
                       onTap: (id) {
                         if (isIncognito) {
                           ref.read(incognitoProvider.notifier).toggle();
@@ -141,6 +151,7 @@ class ChatSidebar extends ConsumerWidget {
                             .read(activeChatIdProvider.notifier)
                             .switchTo(id);
                         ref.read(cliJustFinishedChatsProvider.notifier).markSeen(id);
+                        ref.read(streamingJustFinishedChatsProvider.notifier).markSeen(id);
                         onChatSelected?.call();
                       },
                       onDelete: (id) async {

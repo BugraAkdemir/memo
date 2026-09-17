@@ -178,3 +178,34 @@ func (a *App) lockChatStreamWait(ctx context.Context, chatID string) (release fu
 		}
 	}
 }
+
+// GetStreamingChatIDs returns every chat id whose per-chat stream lock is
+// currently held — i.e. actively generating right now, regardless of what
+// started it (an interactive send, a Self-Driving task worker, a WhatsApp/
+// Telegram bridge reply, or another browser tab/window entirely). Polled by
+// the chat sidebar for a "still working" indicator on chats other than
+// whichever one the client currently has open — same shape and purpose as
+// GetRunningCLIChats (cli_stream.go), just backed by chatStreamLocks
+// instead of the separate cliJobs map since ordinary (non-CLI) streams
+// never registered themselves anywhere queryable before this.
+//
+// Checking lock state via TryLock+Unlock rather than a separate "is
+// streaming" bool avoids a second piece of state that could drift out of
+// sync with the lock itself — the lock IS the source of truth for "this
+// chat has a turn in flight" (see lockChatStream's doc comment).
+func (a *App) GetStreamingChatIDs() []string {
+	a.chatStreamMu.Lock()
+	defer a.chatStreamMu.Unlock()
+	ids := make([]string, 0, len(a.chatStreamLocks))
+	for chatID, l := range a.chatStreamLocks {
+		if chatID == "" {
+			continue // shared by sends with no resolvable active chat — not a real chat id
+		}
+		if l.TryLock() {
+			l.Unlock()
+			continue
+		}
+		ids = append(ids, chatID)
+	}
+	return ids
+}

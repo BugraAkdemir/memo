@@ -1148,6 +1148,21 @@ func (s *Server) handleCLIRunning(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string][]string{"chat_ids": s.fullBridge.GetRunningCLIChats()})
 }
 
+// handleStreamingChats serves GetStreamingChatIDs (chat_locks.go) — the
+// chat sidebar's "still working" indicator for ordinary (non-CLI) streams,
+// same shape as handleCLIRunning above.
+func (s *Server) handleStreamingChats(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, map[string][]string{"chat_ids": s.fullBridge.GetStreamingChatIDs()})
+}
+
 func (s *Server) handleFileMentions(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusNotImplemented)

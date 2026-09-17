@@ -67,6 +67,34 @@ final runningCLIChatsProvider = StreamProvider.autoDispose<Set<String>>((ref) as
   }
 });
 
+// Chat ids with an ordinary (non-CLI) stream currently in flight — the
+// general-purpose counterpart to runningCLIChatsProvider above, for a chat
+// generating from any source other than this exact tab watching it right
+// now (a Self-Driving task worker, a WhatsApp/Telegram bridge reply,
+// another browser tab/window on the same backend). Without this, someone
+// running several chats in parallel has no way to tell which ones are
+// still working short of clicking into each one — reported live by a user
+// juggling multiple chats through Cline. Same poll cadence/gate-guard/
+// silent-degrade shape as runningCLIChatsProvider; autoDispose since it's
+// only worth polling while the sidebar is actually watching it.
+final streamingChatsProvider = StreamProvider.autoDispose<Set<String>>((ref) async* {
+  final api = ref.watch(apiClientProvider);
+  while (true) {
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      yield <String>{};
+      await cancellablePause(ref, const Duration(seconds: 3));
+      continue;
+    }
+    try {
+      final ids = await api.getStreamingChats();
+      yield ids.toSet();
+    } catch (_) {
+      yield <String>{};
+    }
+    await cancellablePause(ref, const Duration(seconds: 2));
+  }
+});
+
 /// The currently active chat's own CLI provider (empty string if it isn't
 /// CLI-backed). Watched by chat_input.dart's "is there anywhere to send
 /// this message" check — without this, a chat using ONLY a CLI provider
@@ -123,6 +151,38 @@ class CLIJustFinishedNotifier extends StateNotifier<Set<String>> {
         state = {...state, ...finished}..remove(activeId);
       }
       _lastRunning = current;
+    });
+  }
+
+  void markSeen(String chatId) {
+    if (state.contains(chatId)) {
+      state = {...state}..remove(chatId);
+    }
+  }
+}
+
+/// Chat ids whose ordinary stream just finished while the user wasn't
+/// looking at that chat — cleared once they open it. streamingChatsProvider's
+/// counterpart to cliJustFinishedChatsProvider above, same "was it running,
+/// is it done now" transition logic.
+final streamingJustFinishedChatsProvider =
+    StateNotifierProvider<StreamingJustFinishedNotifier, Set<String>>((ref) {
+  return StreamingJustFinishedNotifier(ref);
+});
+
+class StreamingJustFinishedNotifier extends StateNotifier<Set<String>> {
+  final Ref _ref;
+  Set<String> _lastStreaming = {};
+
+  StreamingJustFinishedNotifier(this._ref) : super({}) {
+    _ref.listen(streamingChatsProvider, (previous, next) {
+      final current = next.valueOrNull ?? {};
+      final finished = _lastStreaming.difference(current);
+      if (finished.isNotEmpty) {
+        final activeId = _ref.read(activeChatIdProvider).valueOrNull;
+        state = {...state, ...finished}..remove(activeId);
+      }
+      _lastStreaming = current;
     });
   }
 

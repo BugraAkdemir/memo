@@ -1,3 +1,94 @@
+# Handoff — 2026-09-17 (devam 82) — Sohbet sidebar'ına "hâlâ çalışıyor" animasyonlu göstergesi eklendi
+
+## Oturum Özeti
+
+Kullanıcı bir ekran görüntüsüyle (self-hosted web build, 192.168.1.106:8090,
+Cline sağlayıcısı aktif) net bir sorun gösterdi: ana sohbet alanında
+"Sayfa okunuyor..." animasyonu varken, sol sidebar'daki diğer sohbetlerde
+hiçbir gösterge yok. "3 farklı sohbette aynı anda koşuyor olsam, yanıtın
+tamamlanıp tamamlanmadığını anlayamam" dedi.
+
+## Araştırma
+
+Kod incelemesi: `isSendingProvider` tek, global bir Riverpod flag'i —
+Flutter tarafı zaten iki chat'i AYNI ANDA sen'den başlatmaya izin vermiyor
+(`sendMessage`'ın en başındaki guard). Ama backend tarafı bambaşka bir
+resim çiziyor: `internal/app/chat_locks.go`'daki v4.6.0 Faz A yorumu
+("Per-chat streaming serialisation... many chats stream at the same time")
++ `a.chatStreamLocks` (`map[string]*sync.Mutex`) zaten TAM OLARAK bunu
+destekliyor — bir Self-Driving görev listesi, bir WhatsApp/Telegram bridge
+cevabı, ya da AYNI backend'e açılmış başka bir tarayıcı sekmesi, kullanıcının
+şu an baktığı sekmeden bağımsız olarak kendi sohbetinde akış çalıştırabiliyor.
+Yani senaryo gerçek: kullanıcı muhtemelen aynı Memo'yu birden fazla sekmede
+açıp farklı sohbetlerde iş başlatıyor (ya da task loop/bridge arka planda
+çalışıyor) — ama HİÇBİR yerde "hangi chat'ler şu an stream ediyor" diye
+sorgulanabilir bir sinyal yoktu.
+
+Tam olarak aynı problemin CLI-backed chat'ler için zaten çözülmüş olduğunu
+buldum: `GetRunningCLIChats()`/`runningCLIChatsProvider`/`isCLIRunning` +
+`cliJustFinishedChatsProvider` — sidebar'da küçük bir spinner + "az önce
+bitti" yeşil nokta göstergesi olarak zaten var, sadece CLI (Claude Code/
+Codex) sohbetlerine özel. Ben bunun BİREBİR aynısını, sıradan (CLI
+olmayan) akışlar için, mevcut `chatStreamLocks` map'ini kaynak alarak
+ekledim.
+
+## Ne yapıldı
+
+**Backend:** `App.GetStreamingChatIDs()` ([chat_locks.go](internal/app/chat_locks.go)) —
+`chatStreamLocks`'taki her per-chat mutex'i `TryLock`+`Unlock` ile
+kontrol edip hangi chat'lerin şu an kilitli (= aktif akışta) olduğunu
+döndürüyor; paylaşılan boş-string anahtarı (resolve edilemeyen aktif chat)
+sahte bir chat id olarak sızmasın diye filtreleniyor. `GetRunningCLIChats`
+ile birebir aynı şekle sahip yeni `GET /api/chats/streaming` route'u +
+`FullBridge` metodu + stub.
+
+**Frontend:** `streamingChatsProvider` (`chat_provider.dart`) —
+`runningCLIChatsProvider`'ın birebir kopyası (2sn poll, authGateBlocked
+guard, hatada sessizce boş küme — BUG-ONB12 dersine uygun, her zaman
+mount'lu sidebar'dan hata toast'ı fırlatmıyor). `streamingJustFinishedChatsProvider`
+de `cliJustFinishedChatsProvider`'ın kopyası — "az önce bitti ama henüz
+görmedin" yeşil nokta için. `chat_sidebar.dart`'ta bu ikisi mevcut
+`isCLIRunning`/`isCLIFinished` prop'larına OR'lanarak ekleniyor — yani
+sidebar zaten var olan spinner/yeşil-nokta görselini, sebebi ne olursa
+olsun (CLI, sıradan agent turu, task loop, bridge) her çalışan chat için
+gösteriyor; widget'ın kendisine hiç dokunulmadı.
+
+## Doğrulama
+
+Go: yeni `TestGetStreamingChatIDs_ReflectsHeldLocksOnly` ([chat_locks_test.go](internal/app/chat_locks_test.go)) —
+tutulan kilitler raporlanıyor, serbest bırakılan/hiç başlamayan chat'ler
+raporlanmıyor, paylaşılan boş-string anahtarı asla sızmıyor. Canlı HTTP
+testi: yeni bir chat açılıp `web_search`+`fetch_page` tetikleyen bir mesaj
+arka planda gönderildi, akış sürerken `GET /api/chats/streaming` doğru
+chat id'yi döndürdü, akış bitince liste anında boşaldı. Test chat'i
+silindi.
+
+`internal/app` paketinde `-race` altında **seyrek, aralıklı bir flake**
+gözlendi (10 koşudan 1'i başarısız, hangi test olduğu yakalanamadı — 9/10
+temiz, art arda 4+5 koşu tamamen yeşil) — bu oturumun yoğun arkaplan
+backend/curl trafiğinden kaynaklanan önceden var olan bir zamanlama
+hassasiyeti gibi duruyor, `GetStreamingChatIDs`'e özgü bir kanıt yok
+(kendi testi her koşuda temiz geçti). Not düşülüyor, kod bu haliyle
+commit'lendi.
+
+`CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` yeşil, tam
+`go test ... -race -count=1 ./...` genel olarak yeşil (yukarıdaki flake
+notu hariç). Frontend: `flutter analyze` temiz (bilinen 5 info dışında),
+Rule #8 grep boş, `flutter test` 341/341 yeşil.
+
+## Sıradaki oturum için
+
+1. `internal/app`'daki seyrek `-race` flake'i — hangi test olduğunu
+   yakalamak için `-count=20` gibi tekrarlı bir koşu + `go test -v` log
+   arşivlemesi gerekebilir, aciliyeti düşük.
+2. Update beacon (`version-zeta.vercel.app/version.json`) hâlâ V4.4.0.
+3. Yerel model + Plan modu + auto-permission zincirleme hâlâ canlı
+   doğrulanmadı.
+
+---
+
+
+
 # Handoff — 2026-09-17 (devam 81) — Hafıza sekmesine checkbox'lı silme/düzenleme sistemi eklendi
 
 ## Oturum Özeti

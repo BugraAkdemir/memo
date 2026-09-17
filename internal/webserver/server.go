@@ -176,6 +176,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/memory/dream/settings", s.requirePermission(s.handleMemoryDreamSettings, hasMemoryPerm))
 	route("/api/memory/dream/run", s.requirePermissionStrict(s.handleMemoryDreamRun, hasMemoryPerm))
 	route("/api/memory/debug-search", s.requirePermissionStrict(s.handleMemoryDebugSearch, hasMemoryPerm))
+	route("/api/memory/known-facts", s.requirePermissionStrict(s.handleMemoryKnownFacts, hasMemoryPerm))
 	route("/api/memory/explicit/save", s.requirePermissionStrict(s.handleMemoryExplicitSave, hasMemoryPerm))
 	route("/api/memory/explicit/delete", s.requirePermissionStrict(s.handleMemoryExplicitDelete, hasMemoryPerm))
 	route("/api/memory/import-text", s.requirePermissionStrict(s.handleMemoryImportText, hasMemoryPerm))

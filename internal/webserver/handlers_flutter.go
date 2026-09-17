@@ -739,6 +739,24 @@ func (s *Server) handleMemoryDebugSearch(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, results)
 }
 
+// handleMemoryKnownFacts serves the Settings > Memory tab's read-only
+// "what Memo knows about you" summary — the same shape as
+// handleMemoryDebugSearch's results (so the Flutter side reuses
+// MemorySearchResult/debugMemorySearch's JSON decoding verbatim) but
+// unconditional: every currently pinned fact, no query needed.
+func (s *Server) handleMemoryKnownFacts(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	results := s.fullBridge.GetKnownFacts()
+	if results == nil {
+		writeJSON(w, []struct{}{})
+		return
+	}
+	writeJSON(w, results)
+}
+
 // ─── Version & Image ────────────────────────────────────────────
 
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {

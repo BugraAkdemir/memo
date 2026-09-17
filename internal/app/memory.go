@@ -545,6 +545,29 @@ func (a *App) DebugMemorySearch(query string) []memory.MemoryResult {
 	return merged
 }
 
+// GetKnownFacts returns every currently pinned fact about the user — the
+// Settings > Memory tab's read-only "what Memo knows about you" view. Purely
+// for the user's own inspection/debugging of the RAG pipeline (are the
+// facts Dream/consolidation produced actually correct, is anything stale or
+// wrong) — this list is never sent to a model itself; the real chat path
+// already decides what to inject per turn via GetPinnedFactsRanked, and
+// this call doesn't touch that path at all.
+func (a *App) GetKnownFacts() []memory.MemoryResult {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
+	if a.store == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	facts, err := a.store.GetPinnedFacts(ctx)
+	if err != nil {
+		logx.Printf("MEMORY: GetKnownFacts: %v", err)
+		return nil
+	}
+	return facts
+}
+
 // GetMemoryCount returns the number of stored memory entries.
 func (a *App) GetMemoryCount() int {
 	a.storeMu.RLock()

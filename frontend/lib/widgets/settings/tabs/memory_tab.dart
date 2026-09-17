@@ -33,6 +33,9 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
   bool _debugSearched = false;
   MemoryStats? _memoryStats;
   bool _statsLoading = false;
+  List<MemorySearchResult> _knownFacts = [];
+  bool _knownFactsLoading = false;
+  String? _knownFactsError;
 
   @override
   void dispose() {
@@ -45,7 +48,32 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadStats());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadStats();
+      _loadKnownFacts();
+    });
+  }
+
+  Future<void> _loadKnownFacts() async {
+    if (!mounted) return;
+    setState(() {
+      _knownFactsLoading = true;
+      _knownFactsError = null;
+    });
+    try {
+      final facts = await ref.read(apiClientProvider).getKnownFacts();
+      if (mounted) setState(() => _knownFacts = facts);
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _knownFactsError = L10n.t('memory_known_facts_error', {
+            'e': FriendlyError.describeGeneric(e),
+          }),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _knownFactsLoading = false);
+    }
   }
 
   Future<void> _loadStats() async {
@@ -544,6 +572,102 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                 ),
                 SizedBox(height: 28),
               ],
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      L10n.t('memory_known_facts_title'),
+                      style: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: MemoTheme.of(context).textMain,
+                          ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _knownFactsLoading ? null : _loadKnownFacts,
+                    child: _knownFactsLoading
+                        ? SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(L10n.t('memory_known_facts_refresh_btn')),
+                  ),
+                ],
+              ),
+              SizedBox(height: 8),
+              Text(
+                L10n.t('memory_known_facts_hint'),
+                style: TextStyle(
+                  color: MemoTheme.of(context).textDim,
+                  fontSize: 13,
+                ),
+              ),
+              SizedBox(height: 12),
+              if (_knownFactsError != null)
+                Text(
+                  _knownFactsError!,
+                  style: TextStyle(color: MemoTheme.red, fontSize: 12),
+                )
+              else if (!_knownFactsLoading && _knownFacts.isEmpty)
+                Text(
+                  L10n.t('memory_known_facts_empty'),
+                  style: TextStyle(
+                    color: MemoTheme.of(context).textDim,
+                    fontSize: 13,
+                  ),
+                )
+              else if (_knownFacts.isNotEmpty)
+                // Same bounded-height ListView.builder reasoning as the
+                // debug-search results list below — a well-populated pinned
+                // set shouldn't eagerly build every decorated row up front.
+                SizedBox(
+                  height: 260,
+                  child: ListView.builder(
+                    itemCount: _knownFacts.length,
+                    itemBuilder: (context, i) {
+                      final f = _knownFacts[i];
+                      return Container(
+                        margin: EdgeInsets.only(bottom: 8),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: MemoTheme.of(context).bgApp,
+                          borderRadius: BorderRadius.circular(
+                            MemoTheme.radiusSm,
+                          ),
+                          border: Border.all(
+                            color: MemoTheme.of(context).borderSoft,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              f.content,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: MemoTheme.of(context).textMain,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              f.timestamp,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: MemoTheme.of(context).textDim,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              SizedBox(height: 28),
               Text(
                 L10n.t('memory_debug_search'),
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(

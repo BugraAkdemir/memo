@@ -946,6 +946,20 @@ class MemoApiClient {
     return [];
   }
 
+  /// Every currently pinned fact about the user, for the Settings > Memory
+  /// tab's read-only "what Memo knows about you" view — same JSON shape as
+  /// [debugMemorySearch]'s results, unconditional (no query). Purely for
+  /// the user's own inspection; nothing here feeds back into any prompt.
+  Future<List<MemorySearchResult>> getKnownFacts() async {
+    final res = await _dio.get('/api/memory/known-facts');
+    if (res.data is List) {
+      return (_guard<List>(res.data))
+          .map((e) => MemorySearchResult.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
   Future<void> saveExplicitMemory(String content, {String tags = ''}) async {
     await _dio.post(
       '/api/memory/explicit/save',

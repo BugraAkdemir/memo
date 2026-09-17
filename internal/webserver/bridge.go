@@ -84,6 +84,7 @@ type FullBridge interface {
 	SetMemoryDreamSettings(enabled bool, initialDelayMinutes, intervalHours int) error
 	RunDreamNow(ctx context.Context) (before, after int, ran bool, err error)
 	DebugMemorySearch(query string) []memory.MemoryResult
+	GetKnownFacts() []memory.MemoryResult
 	SaveExplicitMemory(content, tags string) error
 	DeleteExplicitMemory(pattern string) (int, error)
 	ImportMemoryFromText(ctx context.Context, rawText string) (factsSaved int, styleUpdated bool, err error)

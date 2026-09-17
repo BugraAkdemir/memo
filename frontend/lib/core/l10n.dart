@@ -726,6 +726,12 @@ class L10n {
     'memory_debug_match_hybrid': 'Karma',
     'memory_debug_match_pinned': 'Sabitlenmiş',
     'memory_debug_score': 'Skor',
+    'memory_known_facts_title': 'Senin Hakkında Bilinenler',
+    'memory_known_facts_hint':
+        'Memo\'nun sabitlediği tüm fact\'ler — sadece görüntüleme amaçlı, modele ayrıca gönderilmez (bu zaten sohbet sırasında RAG üzerinden otomatik oluyor).',
+    'memory_known_facts_refresh_btn': 'Yenile',
+    'memory_known_facts_empty': 'Henüz sabitlenmiş bir fact yok.',
+    'memory_known_facts_error': 'Bilinen bilgiler yüklenemedi: \${e}',
 
     'tab_memory_import': 'Hafızayı İçe Aktar',
     'memory_import_title': 'Hafızayı İçe Aktar',
@@ -2885,6 +2891,12 @@ class L10n {
     'memory_debug_match_hybrid': 'Hybrid',
     'memory_debug_match_pinned': 'Pinned',
     'memory_debug_score': 'Score',
+    'memory_known_facts_title': 'What Memo Knows About You',
+    'memory_known_facts_hint':
+        'Every fact Memo has pinned — for viewing only, this is not sent to the model separately (that already happens automatically via RAG during chat).',
+    'memory_known_facts_refresh_btn': 'Refresh',
+    'memory_known_facts_empty': 'No pinned facts yet.',
+    'memory_known_facts_error': 'Could not load known facts: \${e}',
 
     'tab_memory_import': 'Import Memory',
     'memory_import_title': 'Import Memory',

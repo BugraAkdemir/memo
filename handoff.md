@@ -1,3 +1,81 @@
+# Handoff — 2026-09-17 (devam 80) — Ayarlar > Hafıza'ya "Senin Hakkında Bilinenler" özet görünümü eklendi
+
+## Oturum Özeti
+
+Kullanıcı iki fikri art arda getirdi. Birincisi (Memo'nun kendi sistem
+promptunu ihtiyaç halinde kendisi güncellemesi, örn. "kullanıcı Python'dan
+nefret ediyor" öğrenip kalıcı hale getirmesi) sadece SOHBET edildi, kod
+yazılmadı — kullanıcı "yapma kod yazma konuş" dedi. Özet: fikir iyi,
+`LearnedStyleNotes` (tek paragraf, ama şu an sadece tek seferlik "hafıza
+içe aktar" ile doluyor) ve Dream'in sınırlı-büyüme deseni zaten buna en
+yakın altyapı; ama önerim genel amaçlı bir "system_prompt'u güncelle"
+aracı DEĞİL, dar kapsamlı + kullanıcı tarafından görünür/düzenlenebilir
+bir liste (ChatGPT'nin Memory özelliği gibi) + Dream tarzı otomatik
+sıkıştırma olması yönünde oldu. Uygulanmadı, sadece konuşuldu.
+
+İkincisi gerçek bir istek: RAG sorgulama sistemini debug etmek için,
+kullanıcının Memo'nun kendisi hakkında bildiği fact'lerin özetini
+görebileceği salt-okunur bir görünüm. Açıkça belirtildi: bu özet modele
+AYRICA gönderilmeyecek (RAG zaten kendi işini görüyor), sadece kullanıcı
+görecek.
+
+## Ne yapıldı
+
+Mevcut Ayarlar → Hafıza sekmesindeki "Bellek Ara (Debug)" bölümünün
+(sorgu bazlı, `handleMemoryDebugSearch`) ÜSTÜNE yeni, sorgusuz bir bölüm
+eklendi: **"Senin Hakkında Bilinenler"** — tüm sabitlenmiş (pinned)
+fact'leri koşulsuz listeler, "Yenile" butonu var, tab açılışında otomatik
+yükleniyor.
+
+- Backend: `App.GetKnownFacts()` ([memory.go](internal/app/memory.go)) —
+  `store.GetPinnedFacts(ctx)`'i doğrudan sarıyor, `DebugMemorySearch`'ün
+  zaten yaptığı gibi. `FullBridge` arayüzüne eklendi (+ `swarmStubBridge`
+  stub'ı), yeni `GET /api/memory/known-facts` route'u +
+  `handleMemoryKnownFacts` — `handleMemoryDebugSearch` ile birebir aynı
+  JSON şekli (`[]memory.MemoryResult`) kullanıyor ki Flutter tarafı sıfır
+  yeni model koduyla `MemorySearchResult.fromJson`'ı tekrar kullanabilsin.
+- Frontend: `api_client.dart`'a `getKnownFacts()`, `memory_tab.dart`'a
+  yeni state (`_knownFacts`/`_knownFactsLoading`/`_knownFactsError`) +
+  `_loadKnownFacts()` (initState'te otomatik + manuel "Yenile" butonu) +
+  UI bölümü (debug-search'ün sonuç listesiyle aynı görsel dil,
+  bounded-height `ListView.builder`). 5 yeni TR+EN l10n key'i eklendi
+  (`memory_known_facts_*`).
+
+## Doğrulama
+
+Headless backend + curl ile uçtan uca: boşken `[]`, gerçek embedding
+sunucusu başlatılıp bir test fact'i eklenince endpoint doğru şekilde
+`[{"content":"...","match_type":"pinned",...}]` döndürdü, sonra test
+verisi temizlendi ve embedding sunucusu durdurulup ortam eski haline
+getirildi (`memory_enabled: false`).
+
+`CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` yeşil,
+`go test -tags sqlite_fts5 ./... -race -count=1` tüm paketlerde yeşil.
+Frontend: `flutter analyze` temiz (bilinen 5 info dışında), Rule #8 grep
+boş, `flutter test` 341/341 yeşil. Flutter masaüstü uygulamasında
+gerçek tıklama testi yapılmadı (bu ortamda Flutter Linux masaüstü
+preview edilemiyor) — sadece headless backend + widget/analyze testleri.
+
+## Sıradaki oturum için
+
+1. Kullanıcı ayrıca CI'da `govulncheck`'in `google.golang.org/grpc`
+   (v1.82.1, indirect) için GO-2026-6348 (HTTP/2 DATA frame
+   fragmentation → heap exhaustion, v1.83.1'de düzeltilmiş) bulduğunu
+   bildirdi — bu oturumda ayrıca ele alınıyor, ayrı bir handoff notuna
+   bakın ya da git log'a bakın.
+2. Sistem promptu self-update fikri konuşuldu ama uygulanmadı — kullanıcı
+   isterse ileride: dar kapsamlı `remember_preference` benzeri bir araç +
+   görünür/düzenlenebilir liste + Dream tarzı sıkıştırma şeklinde ele
+   alınabilir.
+3. Update beacon (`version-zeta.vercel.app/version.json`) hâlâ V4.4.0 —
+   kullanıcının kendisi bump'layacak (bkz. devam 76).
+4. Yerel model + Plan modu + auto-permission zincirleme hâlâ canlı
+   doğrulanmadı (devam 76'dan devam eden açık madde).
+
+---
+
+
+
 # Handoff — 2026-09-17 (devam 79) — Dream özelliği startup'ta hiç bağlanmıyormuş, bulundu + düzeltildi
 
 ## Oturum Özeti

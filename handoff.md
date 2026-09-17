@@ -1,3 +1,100 @@
+# Handoff — 2026-09-17 (devam 79) — Dream özelliği startup'ta hiç bağlanmıyormuş, bulundu + düzeltildi
+
+## Oturum Özeti
+
+Kullanıcı Ayarlar'daki Dream sekmesinin (pinned-fact sıkıştırma) gerçekten
+çalışıp çalışmadığını sordu. Kod okuması + canlı headless-backend testiyle
+araştırıldı.
+
+## Dream nasıl çalışıyor
+
+`internal/memory/store.go`: sabitlenmiş (pinned, importance=5,
+source=explicit) fact'ler zamanla büyür. Dream tüm seti tek seferde LLM'e
+gönderip aynı konudaki fact'leri tek, daha yoğun cümlede birleştirmesini
+ister (`dreamPass`/`runDream`/`RunDreamNow`) — near-duplicate'leri
+temizleyen `consolidation`'dan farklı olarak, konuca ilişkili ama farklı
+fact'leri de birleştirir ("Köpeğinin adı Zeytin" + "Golden Retriever'ı
+var" → "Zeytin adlı Golden Retriever'ı var"). Hiçbir zaman hard-delete
+yapmaz (`pending_deletion`), boş/daha büyük sonuç gelirse mevcut seti
+olduğu gibi bırakır. Ayarlar → Dream sekmesi (`dream_tab.dart`): açma/
+kapama anahtarı, ilk gecikme (dk) + tekrar aralığı (saat) alanları, ve
+"Şimdi Çalıştır" butonu (`RunDreamNow`, zamanlamayı beklemeden manuel
+tetikler).
+
+## Bulunan bug: Dream, normal başlangıçta HİÇ bağlanmıyor
+
+`internal/memory/store.go`'da `SetDreamFunc`/`SetConsolidationFunc`
+çağrılmadan `dreamFn`/`consolidationFn` `nil` kalır — bu durumda
+`RunDreamNow` doğrudan `"dream is disabled"` hatası döner ve otomatik
+zamanlayıcı (`runDreamScheduler`) hiç başlamaz (`DreamSettings` de nil
+geçilirse aynı şekilde). `internal/app/memory.go`'daki
+`reinitMemoryStore` bu ikisini doğru bağlıyor (`DreamSettings:
+a.dreamSettings`, `SetConsolidationFunc(a.mergeMemoriesLLM)`,
+`SetDreamFunc(a.dreamPinnedFactsLLM)`) — ama `internal/app/app.go`'daki
+**normal uygulama açılışının kendi `memory.NewStore(...)` çağrısı bu üç
+satırı hiç yapmıyordu.** `reinitMemoryStore` sadece şu durumlarda
+tetikleniyor: embedding modeli başlatma/durdurma, backup restore/wipe,
+llama sunucu geri alma, cloud sync — yani Dream sadece kullanıcı bu
+işlemlerden birini yaptıktan SONRA "kazayla" çalışır hale geliyordu,
+düz bir `memo` açılışında asla değil. Bu kullanıcının somut ortamında
+daha da kötü: `memory_enabled: false` olduğu için embedding sunucusu
+otomatik hiç başlamıyor (`app.go:642`'nin koşulu), yani
+`reinitMemoryStore` kendiliğinden asla tetiklenmiyor — Dream ayarlar
+sekmesinde "Otomatik çalışsın: açık" görünse bile fiilen KALICI olarak
+hiç çalışmıyordu.
+
+**Canlı kanıt:** headless backend + `curl -X POST /api/memory/dream/run`
+→ düzeltmeden önce `"dream is disabled"`.
+
+## Düzeltme
+
+`internal/app/app.go`'daki startup `memory.NewStore(...)` çağrısına
+`DreamSettings: a.dreamSettings` eklendi, ve store başarıyla
+oluşturulduktan hemen sonra `store.SetConsolidationFunc(a.mergeMemoriesLLM)`
++ `store.SetDreamFunc(a.dreamPinnedFactsLLM)` çağrıldı — `reinitMemoryStore`
+ile birebir aynı satırlar, artık başlangıçta da çalışıyor. Master "Memory"
+anahtarından bağımsız (Dream sekmesinin kendi UI'ı zaten bu bağımlılığı
+hiç göstermiyordu, `RunDreamNow`'ın kendi doc comment'i de "DreamEnabled
+zamanlama anahtarından bağımsız çalışmalı" diyor).
+
+## Doğrulama (tam uçtan uca, gerçek embedding dahil)
+
+1. Düzeltmeden önce: `curl -X POST /api/memory/dream/run` →
+   `"dream is disabled"`.
+2. Düzeltmeden sonra: aynı çağrı → `{"after":0,"before":0,"ran":false}`
+   (hata yok, sadece 0 pinned fact var — doğru davranış).
+3. Gerçek embedding sunucusu başlatıldı (`data/models/
+   nomic-embed-text-v1.5.Q4_K_M.gguf`, zaten indirilmişti), iki test
+   fact'i eklendi ("Kullanıcının köpeğinin adı Zeytin.", "Kullanıcının bir
+   Golden Retriever köpeği var."), Dream tekrar çalıştırıldı →
+   `{"after":1,"before":2,"ran":true}`. Sonucu `debug-search` ile
+   okundu: **"Kullanıcının Zeytin adlı bir Golden Retriever köpeği var."**
+   — iki fact doğru şekilde tek, anlamlı cümlede birleşmiş. LLM
+   sıkıştırması gerçekten çalışıyor.
+4. Test fact'i temizlendi (`/api/memory/explicit/delete`, 1 kayıt
+   silindi), embedding sunucusu durduruldu — ortam test öncesi haline
+   döndü (`memory_enabled: false`, embedding kapalı).
+
+`CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` yeşil,
+`go test -tags sqlite_fts5 ./internal/app/... ./internal/memory/... -race
+-count=1` yeşil.
+
+## Sıradaki oturum için
+
+1. Bu bug muhtemelen Dream özelliği eklenip `reinitMemoryStore`'a
+   kablolandığında startup path'in aynı anda güncellenmemesinden
+   kaynaklandı — ne zamandır böyle olduğu araştırılmadı (git blame
+   yapılmadı, aciliyeti yoktu, düzeltme zaten hem doğru hem test
+   edilmiş durumda).
+2. Update beacon (`version-zeta.vercel.app/version.json`) hâlâ V4.4.0 —
+   kullanıcının kendisi bump'layacak (bkz. devam 76).
+3. Yerel model + Plan modu + auto-permission zincirleme hâlâ canlı
+   doğrulanmadı (devam 76'dan devam eden açık madde).
+
+---
+
+
+
 # Handoff — 2026-09-17 (devam 78) — Cline sağlayıcısında open_app'i (ve her tool-call'ı) kıran zarf bug'ı bulundu + düzeltildi
 
 ## Oturum Özeti

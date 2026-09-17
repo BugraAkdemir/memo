@@ -523,6 +523,7 @@ func (a *App) Startup(ctx context.Context) {
 			Dir:                 cfg.Memory.PersistDir,
 			Dimension:           cfg.Memory.EmbeddingDimension,
 			EmbeddingFunc:       embeddingFunc,
+			DreamSettings:       a.dreamSettings,
 			RecencyHalfLifeDays: cfg.Memory.RecencyHalfLifeDays,
 		})
 		if err != nil {
@@ -530,6 +531,8 @@ func (a *App) Startup(ctx context.Context) {
 			a.emitEvent("memory_store_error", err.Error())
 			return
 		}
+		store.SetConsolidationFunc(a.mergeMemoriesLLM)
+		store.SetDreamFunc(a.dreamPinnedFactsLLM)
 		a.storeMu.Lock()
 		a.store = store
 		a.storeMu.Unlock()

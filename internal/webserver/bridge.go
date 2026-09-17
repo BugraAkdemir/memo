@@ -87,6 +87,9 @@ type FullBridge interface {
 	GetKnownFacts() []memory.MemoryResult
 	SaveExplicitMemory(content, tags string) error
 	DeleteExplicitMemory(pattern string) (int, error)
+	DeleteMemoriesByIDs(ids []string) (int, error)
+	ListConversationMemories(limit, offset int) ([]memory.MemoryResult, int, error)
+	UpdatePinnedFact(oldID, content, tags string) error
 	ImportMemoryFromText(ctx context.Context, rawText string) (factsSaved int, styleUpdated bool, err error)
 	SynthesizeSpeech(text string) ([]byte, error)
 	GetTTSFillerSound() ([]byte, error)

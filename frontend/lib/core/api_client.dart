@@ -960,6 +960,49 @@ class MemoApiClient {
     return [];
   }
 
+  /// Checkbox-based bulk delete — exact uuids only (see the backend's
+  /// Store.DeleteByUUIDs doc comment for why this, not a pattern, is what
+  /// the Settings > Memory tab's selection UI is built on). Returns how
+  /// many rows were actually removed (a stale/already-gone id is silently
+  /// skipped, not an error).
+  Future<int> deleteMemoriesByIds(List<String> ids) async {
+    final res = await _dio.post(
+      '/api/memory/delete-by-ids',
+      data: {'ids': ids},
+    );
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return (data['deleted'] as num?)?.toInt() ?? 0;
+  }
+
+  /// A page of conversation-history (non-pinned) memories, for the
+  /// Settings > Memory tab's browsable list.
+  Future<ConversationMemoriesPage> listConversationMemories({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final res = await _dio.get(
+      '/api/memory/conversation',
+      queryParameters: {'limit': limit, 'offset': offset},
+    );
+    return ConversationMemoriesPage.fromJson(
+      _guard<Map<String, dynamic>>(res.data),
+    );
+  }
+
+  /// Rewrites a pinned fact's content in place — the Settings > Memory
+  /// tab's inline edit. [id] must be the fact's own uuid (from
+  /// [getKnownFacts]).
+  Future<void> updatePinnedFact(
+    String id,
+    String content, {
+    String tags = '',
+  }) async {
+    await _dio.post(
+      '/api/memory/pinned/update',
+      data: {'id': id, 'content': content, 'tags': tags},
+    );
+  }
+
   Future<void> saveExplicitMemory(String content, {String tags = ''}) async {
     await _dio.post(
       '/api/memory/explicit/save',

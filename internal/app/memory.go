@@ -816,6 +816,60 @@ func (a *App) DeleteExplicitMemory(pattern string) (int, error) {
 	return a.store.DeleteByContent(ctx, pattern)
 }
 
+// DeleteMemoriesByIDs is the Settings > Memory tab's checkbox-based bulk
+// delete — exact-uuid, hard delete, works for both pinned facts and
+// conversation-history rows (see Store.DeleteByUUIDs' doc comment for why
+// this is the safe primitive to build a selection UI on, unlike
+// DeleteExplicitMemory's pattern matching above).
+func (a *App) DeleteMemoriesByIDs(ids []string) (int, error) {
+	a.storeMu.Lock()
+	defer a.storeMu.Unlock()
+	if a.store == nil {
+		return 0, fmt.Errorf("memory store not initialized")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return a.store.DeleteByUUIDs(ctx, ids)
+}
+
+// ListConversationMemories returns a page of non-pinned memories for the
+// Settings > Memory tab's browsable conversation-history list.
+func (a *App) ListConversationMemories(limit, offset int) ([]memory.MemoryResult, int, error) {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
+	if a.store == nil {
+		return nil, 0, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.store.ListConversationMemories(ctx, limit, offset)
+}
+
+// UpdatePinnedFact rewrites a pinned fact's content in place, from the
+// Settings > Memory tab's inline edit — saves the new content FIRST and
+// only removes the old row once that succeeds, never the other order: if
+// the embedding call (SaveExplicit's first step) fails after the old row
+// was already deleted, the edit would silently lose the fact instead of
+// just leaving a harmless stale duplicate for the user to notice and
+// clean up. oldID must be the pinned fact's own uuid (from GetKnownFacts),
+// not a pattern.
+func (a *App) UpdatePinnedFact(oldID, content, tags string) error {
+	a.storeMu.Lock()
+	defer a.storeMu.Unlock()
+	if a.store == nil {
+		return fmt.Errorf("memory store not initialized")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := a.store.SaveExplicit(ctx, content, tags); err != nil {
+		return err
+	}
+	if _, err := a.store.DeleteByUUIDs(ctx, []string{oldID}); err != nil {
+		logx.Printf("MEMORY: UpdatePinnedFact: new fact saved but old row %s could not be removed: %v", oldID, err)
+	}
+	return nil
+}
+
 // ExportMemories exports all memories as JSON bytes.
 func (a *App) ExportMemories() ([]byte, error) {
 	a.storeMu.RLock()

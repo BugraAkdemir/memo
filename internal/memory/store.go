@@ -2132,6 +2132,111 @@ func (s *Store) DeleteByContent(ctx context.Context, pattern string) (int, error
 	return deleted, writeErr
 }
 
+// DeleteByUUIDs hard-deletes exactly the rows named by uuids — the
+// Settings > Memory tab's checkbox-based deletion, for both pinned facts
+// and plain conversation history. Deliberately exact-match on the unique
+// `uuid` column (see initSchema) rather than DeleteByContent's LIKE
+// %pattern% matching: a substring pattern can match rows the caller never
+// selected (a fact whose wording happens to contain another fact's text),
+// silently deleting more than intended. The Settings UI always has the
+// exact uuid of every row it displays, so there is no reason to accept
+// anything looser here — this is the safe primitive that UI is built on.
+// Unknown/already-gone uuids are silently skipped (not an error), so a
+// stale selection from a since-refreshed list can't fail the whole batch.
+func (s *Store) DeleteByUUIDs(ctx context.Context, uuids []string) (int, error) {
+	if len(uuids) == 0 {
+		return 0, nil
+	}
+	placeholders := make([]string, len(uuids))
+	args := make([]any, len(uuids))
+	for i, u := range uuids {
+		placeholders[i] = "?"
+		args[i] = u
+	}
+	type entry struct{ id int64 }
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT id FROM memories WHERE uuid IN ("+strings.Join(placeholders, ",")+")",
+		args...,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("memory.DeleteByUUIDs: %w", err)
+	}
+	var entries []entry
+	for rows.Next() {
+		var e entry
+		if scanErr := rows.Scan(&e.id); scanErr == nil {
+			entries = append(entries, e)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(entries) == 0 {
+		return 0, nil
+	}
+	deleted := 0
+	writeErr := s.db.Write(ctx, func(tx *sql.Tx) error {
+		for _, e := range entries {
+			if _, err := tx.Exec("DELETE FROM memories WHERE id = ?", e.id); err != nil {
+				return err
+			}
+			if s.useVec {
+				if _, vecErr := tx.Exec("DELETE FROM vec_memories WHERE rowid = ?", e.id); vecErr != nil {
+					logx.Printf("MEMORY: DeleteByUUIDs vec cascade id=%d: %v", e.id, vecErr)
+				}
+			}
+			if s.useFTS {
+				if _, ftsErr := tx.Exec("DELETE FROM memories_fts WHERE rowid = ?", e.id); ftsErr != nil {
+					logx.Printf("MEMORY: DeleteByUUIDs fts cascade id=%d: %v", e.id, ftsErr)
+				}
+			}
+			deleted++
+		}
+		return nil
+	})
+	return deleted, writeErr
+}
+
+// ListConversationMemories returns a timestamp-descending page of
+// non-pinned (source != 'explicit') memories — the Settings > Memory tab's
+// browsable conversation-history list, GetPinnedFacts' counterpart for the
+// other half of the store. total is the full matching count (ignoring
+// limit/offset) so the UI can show "showing X of Y" / decide whether a
+// "load more" makes sense, computed in the same query via COUNT(*) OVER()
+// rather than a second round-trip.
+func (s *Store) ListConversationMemories(ctx context.Context, limit, offset int) ([]MemoryResult, int, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT uuid, content, timestamp, user_msg, assist_msg,
+		       importance, source, tags, session_id, retrieve_count,
+		       COUNT(*) OVER() AS total
+		FROM memories
+		WHERE source != 'explicit' AND pending_deletion = 0
+		ORDER BY timestamp DESC
+		LIMIT ? OFFSET ?
+	`, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("memory.ListConversationMemories: %w", err)
+	}
+	defer rows.Close()
+
+	var out []MemoryResult
+	total := 0
+	for rows.Next() {
+		var r MemoryResult
+		if err := rows.Scan(&r.ID, &r.Content, &r.Timestamp, &r.UserMsg, &r.AssistMsg,
+			&r.Importance, &r.Source, &r.Tags, &r.SessionID, &r.RetrieveCount, &total); err != nil {
+			continue
+		}
+		r.MatchType = "conversation"
+		out = append(out, r)
+	}
+	return out, total, rows.Err()
+}
+
 func (s *Store) MarkStaleForDeletion(ctx context.Context) (int, error) {
 	var marked int
 	err := s.db.Write(ctx, func(tx *sql.Tx) error {

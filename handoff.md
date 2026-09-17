@@ -1,3 +1,110 @@
+# Handoff — 2026-09-17 (devam 81) — Hafıza sekmesine checkbox'lı silme/düzenleme sistemi eklendi
+
+## Oturum Özeti
+
+Kullanıcı isteği: hafıza dolduğunda pinned fact'leri ve sohbet geçmişini
+ayrı ayrı, checkbox ile seçip silebileceği (ya da tam tersi — birini
+tutup diğerini silebileceği) bir sistem, pinned kısmında ayrıca
+düzenleme/ekleme de olsun. Açıkça "yanlış veriler silinmemeli kesinlikle"
+vurgusu yapıldı; `codebase-memory` ve `frontend-design` kullanılması
+istendi.
+
+## Araştırma (codebase-memory ile)
+
+`search_graph`/`get_code_snippet` ile mevcut silme altyapısı incelendi.
+Kritik bulgu: var olan `DeleteByContent`/`DeleteExplicitMemory`
+(`content LIKE '%pattern%' OR user_msg LIKE '%pattern%'`) bir **hard
+delete** ve **substring eşleşmesi** kullanıyor — örn. "kahve seviyor"
+pattern'i hem "Kullanıcı kahve seviyor" hem "Kullanıcı kahve ve çay
+seviyor" fact'lerini eşleştirip ikisini de silebilir. Checkbox'lı bir
+UI için bu güvensiz bir temel olurdu (kullanıcının seçmediği bir satırı
+kazayla silebilir). Çözüm: `memories` tablosunun `uuid TEXT NOT NULL
+UNIQUE` kolonu zaten var (initSchema) — UI zaten her satırın tam uuid'sini
+elinde tutuyor, o yüzden pattern yerine **tam eşleşmeli** yeni bir
+primitive yazıldı.
+
+## Ne yapıldı
+
+**Backend:**
+- `Store.DeleteByUUIDs(ctx, uuids)` ([store.go](internal/memory/store.go)) —
+  `uuid IN (...)` ile tam eşleşme, vec/FTS cascade, bilinmeyen/eski
+  uuid'ler sessizce atlanıyor (hata değil — UI listesi tazelenmeden önce
+  silinmiş bir satır tüm batch'i başarısız kılmasın diye).
+- `Store.ListConversationMemories(ctx, limit, offset)` — sabitlenmemiş
+  (`source != 'explicit'`) hafızaların sayfalı listesi, `COUNT(*) OVER()`
+  ile tek sorguda toplam sayı da dönüyor.
+- `App.DeleteMemoriesByIDs`/`App.ListConversationMemories`/
+  `App.UpdatePinnedFact` ([memory.go](internal/app/memory.go)) —
+  `UpdatePinnedFact` bilinçli olarak **önce yeni içeriği kaydedip SONRA
+  eskisini siliyor** (ters sıra değil): embed çağrısı eski satır
+  silindikten sonra başarısız olursa fact tamamen kaybolurdu, bu sırayla
+  en kötü ihtimalle zararsız bir kopya kalır.
+- `FullBridge`'e 3 yeni metod + `swarmStubBridge` stub'ları,
+  3 yeni route: `POST /api/memory/delete-by-ids`,
+  `GET /api/memory/conversation`, `POST /api/memory/pinned/update`.
+
+**Frontend** (`memory_tab.dart` — `codebase-memory`'den sonra `frontend-design`
+skill'i yüklendi; skill web/HTML odaklı olduğu için doğrudan
+uygulanmadı, sadece "amaçlı hiyerarşi, tutarlı yıkıcı-eylem rengi,
+generic olmayan satır tasarımı" gibi transfer edilebilir ilkeler
+Memo'nun mevcut `MemoTheme` diliyle uygulandı — bu ayarlar sekmesinde
+yabancı bir web-estetiği yerine mevcut tasarım sistemiyle tutarlılık
+tercih edildi):
+- "Senin Hakkında Bilinenler" (pinned facts) artık salt-okunur değil:
+  her satırda checkbox + düzenle (kalem) + sil ikonu, üstte "Tümünü Seç/
+  Kaldır" + "Seçilenleri Sil (N)" barı (N=0 iken buton disabled), "Yeni
+  Ekle" butonu (AlertDialog).
+- Yeni **"Sohbet Geçmişi"** bölümü: sabitlenmemiş hafızaların sayfalı
+  (30'ar), checkbox'lı, toplu silinebilir listesi — "Daha Fazla Yükle"
+  butonu, "X / Y gösteriliyor" sayacı. Pinned'lerden tamamen ayrı state,
+  birini silmek diğerini etkilemiyor — kullanıcının "birini tutup
+  diğerini silmek" isteğini doğrudan karşılıyor.
+- Her iki liste de seçili satırda accent renkli kenarlık/arkaplan ile
+  vurgulanıyor (bare bir Material checkbox değil).
+- Paylaşılan `_SelectionBar`/`_SelectableMemoryTile` private widget'ları,
+  silme her zaman `_confirmDelete` üzerinden (sayı gösteren) bir
+  AlertDialog'dan geçiyor — tek satır sil de dahil.
+- 30 yeni TR+EN l10n key'i.
+
+## Doğrulama (güvenlik kritik — birebir test edildi)
+
+**Go birim testleri** (yeni `internal/memory/store_memory_management_test.go`):
+`TestDeleteByUUIDs_DeletesExactRowsOnly` — bilerek üst üste binen içerikli
+("User likes cats" / "User likes cats and dogs too") iki fact kaydedilip
+sadece birinin uuid'si silindi, DİĞERİNİN dokunulmadığı doğrulandı (asıl
+korkulan senaryo). + `UnknownIDSkippedWithoutError`, `EmptyInputIsNoOp`,
+`ListConversationMemories_ExcludesPinnedFacts` (pagination + total dahil).
+
+**Canlı HTTP testi (gerçek kullanıcı verisiyle, dokunmadan):**
+`GET /api/memory/conversation` gerçek 10 sohbet geçmişi kaydını doğru
+döndürdü. Ayrı bir test olarak "TEST-CRUD: ... kahve seviyor" /
+"... kahve ve çay seviyor" iki pinned fact eklendi, sadece biri
+`delete-by-ids` ile silindi → diğeri sağlam kaldı (aynı canlı-kanıt
+deseni, gerçek HTTP katmanından). `pinned/update` ile düzenleme
+denendi → eski satır gitti, yenisi doğru içerikle geldi, veri kaybı
+yok. Tüm test verisi temizlendi; gerçek 10 kayıtlık sohbet geçmişi
+sonda hâlâ `total: 10` — hiç dokunulmadı.
+
+`CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` yeşil,
+`go test -tags sqlite_fts5 ./... -race -count=1` tüm paketlerde yeşil.
+Frontend: `flutter analyze` temiz (bilinen 5 info dışında), Rule #8 grep
+boş, `flutter test` 341/341 yeşil. Gerçek masaüstü tıklama testi
+yapılmadı (bu ortamda Flutter Linux masaüstü preview edilemiyor).
+
+## Sıradaki oturum için
+
+1. Kullanıcı bu değişikliği gerçek masaüstü uygulamasında görsel olarak
+   doğrulamalı — backend/widget testleri yeşil ama tıklama akışı canlı
+   test edilmedi.
+2. Update beacon (`version-zeta.vercel.app/version.json`) hâlâ V4.4.0 —
+   kullanıcının kendisi bump'layacak (bkz. devam 76).
+3. Yerel model + Plan modu + auto-permission zincirleme hâlâ canlı
+   doğrulanmadı (devam 76'dan devam eden açık madde).
+
+---
+
+
+
 # Handoff — 2026-09-17 (devam 80) — Ayarlar > Hafıza'ya "Senin Hakkında Bilinenler" özet görünümü eklendi
 
 ## Oturum Özeti

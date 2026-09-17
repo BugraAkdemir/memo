@@ -36,6 +36,17 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
   List<MemorySearchResult> _knownFacts = [];
   bool _knownFactsLoading = false;
   String? _knownFactsError;
+  final Set<String> _selectedFactIds = {};
+  bool _factsBusy = false;
+
+  static const _convPageSize = 30;
+  List<MemorySearchResult> _convMemories = [];
+  int _convTotal = 0;
+  int _convOffset = 0;
+  bool _convLoading = false;
+  String? _convError;
+  final Set<String> _selectedConvIds = {};
+  bool _convBusy = false;
 
   @override
   void dispose() {
@@ -51,6 +62,7 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadStats();
       _loadKnownFacts();
+      _loadConversationMemories();
     });
   }
 
@@ -73,6 +85,228 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
       }
     } finally {
       if (mounted) setState(() => _knownFactsLoading = false);
+    }
+  }
+
+  Future<void> _loadConversationMemories({bool reset = true}) async {
+    if (!mounted) return;
+    setState(() {
+      _convLoading = true;
+      _convError = null;
+      if (reset) {
+        _convMemories = [];
+        _convOffset = 0;
+        _selectedConvIds.clear();
+      }
+    });
+    try {
+      final page = await ref
+          .read(apiClientProvider)
+          .listConversationMemories(limit: _convPageSize, offset: _convOffset);
+      if (mounted) {
+        setState(() {
+          _convMemories = reset
+              ? page.results
+              : [..._convMemories, ...page.results];
+          _convTotal = page.total;
+          _convOffset = _convMemories.length;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _convError = L10n.t('memory_conversation_error', {
+            'e': FriendlyError.describeGeneric(e),
+          }),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _convLoading = false);
+    }
+  }
+
+  Future<bool> _confirmDelete(int count) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: MemoTheme.of(context).bgPanel,
+        title: Text(L10n.t('memory_delete_confirm_title')),
+        content: Text(
+          count == 1
+              ? L10n.t('memory_delete_confirm_body_one')
+              : L10n.t('memory_delete_confirm_body_many', {'n': '$count'}),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(L10n.t('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: MemoTheme.red),
+            child: Text(L10n.t('delete')),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  /// Shared executor for both the pinned-facts list and the
+  /// conversation-history list: confirm, call the exact-id bulk delete,
+  /// then reconcile local state from the server's actual `deleted` count
+  /// rather than assuming every requested id was removed (a stale
+  /// selection can legitimately delete fewer than requested — see
+  /// Store.DeleteByUUIDs' doc comment).
+  Future<void> _deleteIds(List<String> ids, {required bool isFacts}) async {
+    if (ids.isEmpty) return;
+    if (!await _confirmDelete(ids.length)) return;
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => isFacts ? _factsBusy = true : _convBusy = true);
+    try {
+      final deleted = await ref
+          .read(apiClientProvider)
+          .deleteMemoriesByIds(ids);
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              L10n.t('memory_deleted_success', {'n': '$deleted'}),
+            ),
+          ),
+        );
+        setState(() {
+          if (isFacts) {
+            _knownFacts.removeWhere((f) => ids.contains(f.id));
+            _selectedFactIds.removeAll(ids);
+          } else {
+            _convMemories.removeWhere((f) => ids.contains(f.id));
+            _selectedConvIds.removeAll(ids);
+            _convTotal = (_convTotal - deleted).clamp(0, _convTotal);
+            _convOffset = _convMemories.length;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => isFacts ? _factsBusy = false : _convBusy = false);
+      }
+    }
+  }
+
+  Future<void> _showAddFactDialog() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: MemoTheme.of(context).bgPanel,
+        title: Text(L10n.t('memory_known_facts_add_title')),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          decoration: InputDecoration(
+            hintText: L10n.t('memory_known_facts_add_hint'),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(L10n.t('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: Text(L10n.t('save')),
+          ),
+        ],
+      ),
+    );
+    if (result == null || result.isEmpty || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(apiClientProvider).saveExplicitMemory(result);
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text(L10n.t('memory_known_facts_add_success'))),
+        );
+      }
+      await _loadKnownFacts();
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showEditFactDialog(MemorySearchResult fact) async {
+    final controller = TextEditingController(text: fact.content);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: MemoTheme.of(context).bgPanel,
+        title: Text(L10n.t('memory_known_facts_edit_title')),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          decoration: InputDecoration(
+            hintText: L10n.t('memory_known_facts_add_hint'),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(L10n.t('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: Text(L10n.t('save')),
+          ),
+        ],
+      ),
+    );
+    if (result == null ||
+        result.isEmpty ||
+        result == fact.content ||
+        !mounted) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(apiClientProvider).updatePinnedFact(fact.id, result);
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text(L10n.t('memory_known_facts_edit_success'))),
+        );
+      }
+      await _loadKnownFacts();
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -584,6 +818,12 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                           ),
                     ),
                   ),
+                  TextButton.icon(
+                    onPressed: _factsBusy ? null : _showAddFactDialog,
+                    icon: Icon(Icons.add, size: 16),
+                    label: Text(L10n.t('memory_known_facts_add_btn')),
+                  ),
+                  SizedBox(width: 4),
                   TextButton(
                     onPressed: _knownFactsLoading ? null : _loadKnownFacts,
                     child: _knownFactsLoading
@@ -618,55 +858,160 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                     fontSize: 13,
                   ),
                 )
-              else if (_knownFacts.isNotEmpty)
+              else if (_knownFacts.isNotEmpty) ...[
+                _SelectionBar(
+                  selectedCount: _selectedFactIds.length,
+                  busy: _factsBusy,
+                  onSelectAll: () => setState(
+                    () => _selectedFactIds.addAll(
+                      _knownFacts.map((f) => f.id),
+                    ),
+                  ),
+                  onDeselectAll: () =>
+                      setState(() => _selectedFactIds.clear()),
+                  onDeleteSelected: () =>
+                      _deleteIds(_selectedFactIds.toList(), isFacts: true),
+                ),
+                SizedBox(height: 8),
                 // Same bounded-height ListView.builder reasoning as the
                 // debug-search results list below — a well-populated pinned
                 // set shouldn't eagerly build every decorated row up front.
                 SizedBox(
-                  height: 260,
+                  height: 300,
                   child: ListView.builder(
                     itemCount: _knownFacts.length,
                     itemBuilder: (context, i) {
                       final f = _knownFacts[i];
-                      return Container(
-                        margin: EdgeInsets.only(bottom: 8),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: MemoTheme.of(context).bgApp,
-                          borderRadius: BorderRadius.circular(
-                            MemoTheme.radiusSm,
-                          ),
-                          border: Border.all(
-                            color: MemoTheme.of(context).borderSoft,
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              f.content,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: MemoTheme.of(context).textMain,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              f.timestamp,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: MemoTheme.of(context).textDim,
-                              ),
-                            ),
-                          ],
-                        ),
+                      return _SelectableMemoryTile(
+                        selected: _selectedFactIds.contains(f.id),
+                        onSelectedChanged: (v) => setState(() {
+                          if (v == true) {
+                            _selectedFactIds.add(f.id);
+                          } else {
+                            _selectedFactIds.remove(f.id);
+                          }
+                        }),
+                        content: f.content,
+                        timestamp: f.timestamp,
+                        busy: _factsBusy,
+                        onEdit: () => _showEditFactDialog(f),
+                        onDelete: () => _deleteIds([f.id], isFacts: true),
                       );
                     },
                   ),
                 ),
+              ],
+              SizedBox(height: 28),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      L10n.t('memory_conversation_title'),
+                      style: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: MemoTheme.of(context).textMain,
+                          ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _convLoading
+                        ? null
+                        : () => _loadConversationMemories(),
+                    child: _convLoading
+                        ? SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(L10n.t('memory_known_facts_refresh_btn')),
+                  ),
+                ],
+              ),
+              SizedBox(height: 8),
+              Text(
+                L10n.t('memory_conversation_hint'),
+                style: TextStyle(
+                  color: MemoTheme.of(context).textDim,
+                  fontSize: 13,
+                ),
+              ),
+              SizedBox(height: 12),
+              if (_convError != null)
+                Text(
+                  _convError!,
+                  style: TextStyle(color: MemoTheme.red, fontSize: 12),
+                )
+              else if (!_convLoading && _convMemories.isEmpty)
+                Text(
+                  L10n.t('memory_conversation_empty'),
+                  style: TextStyle(
+                    color: MemoTheme.of(context).textDim,
+                    fontSize: 13,
+                  ),
+                )
+              else if (_convMemories.isNotEmpty) ...[
+                _SelectionBar(
+                  selectedCount: _selectedConvIds.length,
+                  busy: _convBusy,
+                  onSelectAll: () => setState(
+                    () => _selectedConvIds.addAll(
+                      _convMemories.map((f) => f.id),
+                    ),
+                  ),
+                  onDeselectAll: () =>
+                      setState(() => _selectedConvIds.clear()),
+                  onDeleteSelected: () =>
+                      _deleteIds(_selectedConvIds.toList(), isFacts: false),
+                ),
+                SizedBox(height: 8),
+                SizedBox(
+                  height: 300,
+                  child: ListView.builder(
+                    itemCount: _convMemories.length,
+                    itemBuilder: (context, i) {
+                      final m = _convMemories[i];
+                      return _SelectableMemoryTile(
+                        selected: _selectedConvIds.contains(m.id),
+                        onSelectedChanged: (v) => setState(() {
+                          if (v == true) {
+                            _selectedConvIds.add(m.id);
+                          } else {
+                            _selectedConvIds.remove(m.id);
+                          }
+                        }),
+                        content: m.content,
+                        timestamp: m.timestamp,
+                        busy: _convBusy,
+                        onDelete: () => _deleteIds([m.id], isFacts: false),
+                      );
+                    },
+                  ),
+                ),
+                SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      L10n.t('memory_conversation_showing', {
+                        'shown': '${_convMemories.length}',
+                        'total': '$_convTotal',
+                      }),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: MemoTheme.of(context).textDim,
+                      ),
+                    ),
+                    if (_convMemories.length < _convTotal)
+                      TextButton(
+                        onPressed: _convLoading
+                            ? null
+                            : () => _loadConversationMemories(reset: false),
+                        child: Text(L10n.t('memory_conversation_load_more')),
+                      ),
+                  ],
+                ),
+              ],
               SizedBox(height: 28),
               Text(
                 L10n.t('memory_debug_search'),
@@ -869,6 +1214,159 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Selection toolbar shared by the pinned-facts and conversation-history
+/// lists — select-all/deselect-all (scoped to whatever is currently
+/// loaded, not the whole store) plus a delete-selected action that's
+/// disabled until at least one row is checked, so there's no way to fire
+/// a bulk delete with an empty/accidental selection.
+class _SelectionBar extends StatelessWidget {
+  final int selectedCount;
+  final bool busy;
+  final VoidCallback onSelectAll;
+  final VoidCallback onDeselectAll;
+  final VoidCallback onDeleteSelected;
+
+  const _SelectionBar({
+    required this.selectedCount,
+    required this.busy,
+    required this.onSelectAll,
+    required this.onDeselectAll,
+    required this.onDeleteSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    return Row(
+      children: [
+        TextButton(
+          onPressed: busy ? null : onSelectAll,
+          child: Text(L10n.t('memory_select_all_btn')),
+        ),
+        TextButton(
+          onPressed: busy ? null : onDeselectAll,
+          child: Text(L10n.t('memory_deselect_all_btn')),
+        ),
+        Spacer(),
+        if (selectedCount > 0)
+          Padding(
+            padding: EdgeInsets.only(right: 10),
+            child: Text(
+              L10n.t('memory_selection_count', {'n': '$selectedCount'}),
+              style: TextStyle(fontSize: 12, color: theme.textDim),
+            ),
+          ),
+        OutlinedButton.icon(
+          icon: busy
+              ? SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(Icons.delete_sweep, size: 16),
+          label: Text(
+            L10n.t('memory_delete_selected_btn', {'n': '$selectedCount'}),
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: MemoTheme.red,
+            side: BorderSide(color: MemoTheme.red),
+          ),
+          onPressed: (busy || selectedCount == 0) ? null : onDeleteSelected,
+        ),
+      ],
+    );
+  }
+}
+
+/// One row in the pinned-facts or conversation-history list: a checkbox
+/// (a checked row gets a visibly highlighted border/background — a bare
+/// checkbox with no other feedback is too easy to lose track of in a
+/// scrolled list), the content + timestamp, an optional edit action
+/// (pinned facts only — editing raw conversation history doesn't make
+/// sense), and a delete action. `busy` disables all actions while a
+/// bulk/single delete for this list is already in flight.
+class _SelectableMemoryTile extends StatelessWidget {
+  final bool selected;
+  final ValueChanged<bool?> onSelectedChanged;
+  final String content;
+  final String timestamp;
+  final bool busy;
+  final VoidCallback? onEdit;
+  final VoidCallback onDelete;
+
+  const _SelectableMemoryTile({
+    required this.selected,
+    required this.onSelectedChanged,
+    required this.content,
+    required this.timestamp,
+    required this.busy,
+    this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    return Container(
+      margin: EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(right: 4),
+      decoration: BoxDecoration(
+        color: selected
+            ? MemoTheme.accent.withValues(alpha: 0.08)
+            : theme.bgApp,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+        border: Border.all(
+          color: selected
+              ? MemoTheme.accent.withValues(alpha: 0.6)
+              : theme.borderSoft,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Checkbox(
+            value: selected,
+            onChanged: busy ? null : onSelectedChanged,
+            activeColor: MemoTheme.accent,
+          ),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    content,
+                    style: TextStyle(fontSize: 13, color: theme.textMain),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    timestamp,
+                    style: TextStyle(fontSize: 11, color: theme.textDim),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (onEdit != null)
+            IconButton(
+              icon: Icon(Icons.edit_outlined, size: 18),
+              color: theme.textDim,
+              tooltip: L10n.t('memory_known_facts_edit_tooltip'),
+              onPressed: busy ? null : onEdit,
+            ),
+          IconButton(
+            icon: Icon(Icons.delete_outline, size: 18),
+            color: MemoTheme.red,
+            tooltip: L10n.t('memory_delete_tooltip'),
+            onPressed: busy ? null : onDelete,
+          ),
+        ],
+      ),
     );
   }
 }

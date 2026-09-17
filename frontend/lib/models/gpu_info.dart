@@ -140,6 +140,27 @@ class MemorySearchResult {
       );
 }
 
+/// One page of GET /api/memory/conversation — the Settings > Memory tab's
+/// browsable conversation-history list. [total] is the full matching count
+/// regardless of the page size requested, for "load more" / "showing X of
+/// Y" decisions.
+class ConversationMemoriesPage {
+  final List<MemorySearchResult> results;
+  final int total;
+
+  const ConversationMemoriesPage({required this.results, required this.total});
+
+  factory ConversationMemoriesPage.fromJson(Map<String, dynamic> json) {
+    final raw = json['results'];
+    return ConversationMemoriesPage(
+      results: raw is List
+          ? raw.map((e) => MemorySearchResult.fromJson(e as Map<String, dynamic>)).toList()
+          : const [],
+      total: (json['total'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class MemoryStats {
   final int count;
   final int explicitCount;

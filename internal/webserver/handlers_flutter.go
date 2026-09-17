@@ -757,6 +757,77 @@ func (s *Server) handleMemoryKnownFacts(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, results)
 }
 
+// handleMemoryDeleteByIDs is the Settings > Memory tab's checkbox-based
+// bulk delete — exact uuids only (see Store.DeleteByUUIDs), never a
+// pattern, so a selection can never collaterally delete a row the user
+// didn't check.
+func (s *Server) handleMemoryDeleteByIDs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
+		http.Error(w, "ids required", http.StatusBadRequest)
+		return
+	}
+	deleted, err := s.fullBridge.DeleteMemoriesByIDs(body.IDs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]int{"deleted": deleted})
+}
+
+// handleMemoryConversation serves a paginated page of conversation-history
+// memories (non-pinned) for the Settings > Memory tab's browsable list —
+// GetPinnedFacts'/handleMemoryKnownFacts' counterpart for the other half
+// of the store.
+func (s *Server) handleMemoryConversation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	results, total, err := s.fullBridge.ListConversationMemories(limit, offset)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var payload any = results
+	if results == nil {
+		payload = []struct{}{}
+	}
+	writeJSON(w, map[string]any{"results": payload, "total": total})
+}
+
+// handleMemoryPinnedUpdate is the Settings > Memory tab's inline edit for a
+// pinned fact — rewrites its content (see App.UpdatePinnedFact's doc
+// comment for the safe insert-then-delete ordering this relies on).
+func (s *Server) handleMemoryPinnedUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		ID      string `json:"id"`
+		Content string `json:"content"`
+		Tags    string `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == "" || body.Content == "" {
+		http.Error(w, "id and content required", http.StatusBadRequest)
+		return
+	}
+	if err := s.fullBridge.UpdatePinnedFact(body.ID, body.Content, body.Tags); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
 // ─── Version & Image ────────────────────────────────────────────
 
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {

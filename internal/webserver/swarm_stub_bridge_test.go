@@ -230,6 +230,11 @@ func (b *swarmStubBridge) RunDreamNow(ctx context.Context) (before, after int, r
 }
 func (b *swarmStubBridge) DebugMemorySearch(query string) []memory.MemoryResult { return nil }
 func (b *swarmStubBridge) GetKnownFacts() []memory.MemoryResult                 { return nil }
+func (b *swarmStubBridge) DeleteMemoriesByIDs(ids []string) (int, error)        { return 0, nil }
+func (b *swarmStubBridge) ListConversationMemories(limit, offset int) ([]memory.MemoryResult, int, error) {
+	return nil, 0, nil
+}
+func (b *swarmStubBridge) UpdatePinnedFact(oldID, content, tags string) error { return nil }
 func (b *swarmStubBridge) SaveExplicitMemory(content, tags string) error        { return nil }
 func (b *swarmStubBridge) DeleteExplicitMemory(pattern string) (int, error)     { return 0, nil }
 func (b *swarmStubBridge) ImportMemoryFromText(ctx context.Context, rawText string) (int, bool, error) {

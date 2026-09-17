@@ -1,3 +1,90 @@
+# Handoff — 2026-09-17 (devam 78) — Cline sağlayıcısında open_app'i (ve her tool-call'ı) kıran zarf bug'ı bulundu + düzeltildi
+
+## Oturum Özeti
+
+Kullanıcı canlı masaüstü testinde `open_app` aracının çalışmadığını, modelin
+"bunu yapmama şekilde yanıt verdiğini" bildirdi ("selam trayıcmı açarmısın"
+→ model reddediyormuş gibi bir cevap döndürüyordu) ve önce veriyle kök
+neden araştırması istedi.
+
+## Araştırma
+
+Kullanıcının canlı log'undaki `AGENT-CONTEXT: end=stop ... completion_tok=0`
+satırları `internal/agent/pipeline.go`'nun "ne tool-call ne content" dalına
+işaret ediyordu — yani tam olarak bu sabah eklenen 492a9323 fallback'inin
+("Bu isteğe bir cevap üretemedim...") tetiklendiği durum. Ama config
+(`agent_mode.enabled: true`, `active_provider: Cline`) Agent Mode'un açık
+olduğunu ve tam toolset'in (open_app dahil) modele sunulduğunu gösteriyordu
+— yani "Agent Mode kapalı" ihtimali dışlandı.
+
+Headless backend + `curl -X POST /api/send/stream` ile canlı tekrar
+üretildi (`internal/provider/openai.go`'ya geçici bir debug log eklenip
+ham HTTP response body'si yakalandı). Kanıt kesindi: Cline'ın
+`/chat/completions` (non-streaming) cevabı düz OpenAI şekli DEĞİL,
+`{"success":true,"data":{...gerçek cevap...}}` zarfına sarılıymış — ve
+`data` içinde model **doğru** kararı vermişti: `finish_reason:"tool_calls"`,
+`tool_calls:[{"name":"open_app","arguments":"{\"app_name\":\"tarayıcı\"}"}]`,
+hatta bir `reasoning` alanında "User asks to open browser. Use open_app..."
+diye açıklıyordu. `internal/provider/cline.go` (`491c2c23`'te eklendi)
+`*openAIProvider`'ı hiç override etmeden embed ettiği için üst seviye
+parser `choices`'ı boş görüp sessizce boş `ChatResponse{}` döndürüyordu —
+bu da 492a9323'ün yeni fallback'ini tetikleyip modelin reddetmiş gibi
+görünmesine yol açıyordu. Streaming yolu (`ChatCompletionStream`/
+`processSSE`) ayrıca canlı test edildi — o etkilenmiyor, Cline SSE
+delta'larını sarmıyor.
+
+**Sonuç: bu open_app'e özel bir bug değildi — Cline sağlayıcısı üzerinden
+gelen HER tool-call, agent pipeline'ın kullandığı non-streaming
+ChatCompletion yolunda sessizce kayboluyordu.** `491c2c23`'ün commit
+mesajındaki "fully OpenAI-compatible" iddiası GET /models ve genel
+request şekli için doğrulanmıştı ama canlı bir completions çağrısıyla hiç
+test edilmemişti.
+
+## Düzeltme
+
+`internal/provider/openai.go`'nun `ChatCompletion`'ında `p.provType ==
+ProviderCline` olduğunda ham body önce `{Data openAIResponse}` zarfından
+çözülüyor, sonra normal akış devam ediyor — diğer tüm OpenAI-uyumlu
+sağlayıcılar (OpenRouter/Kilo/OpenCode Zen/gerçek OpenAI/custom)
+etkilenmedi. Ayrıca kalıcı, düşük hacimli bir log eklendi:
+`len(result.Choices)==0` (HTTP 200 ama hiç choice yok) artık her zaman
+`PROVIDER: %s returned HTTP 200 with zero choices...` diye loglanıyor —
+bu tam olarak bug'ı gizleyen sessiz-boş-cevap deseni, gelecekte aynı
+sınıf bir soruna geçici debug log eklemeden teşhis koymayı sağlıyor.
+
+## Doğrulama
+
+Düzeltmeden sonra aynı canlı repro tekrarlandı: `curl -X POST
+/api/send/stream -d '{"message":"tarayıcımı açar mısın"}'` artık doğru
+`permission_request` event'i döndürüyor (`"tool":"open_app","args":
+{"app_name":"tarayıcı"},"danger_level":"medium"`) — model artık gerçekten
+tanınıyor ve izin akışına giriyor (headless test ortamında onaylayacak
+biri olmadığı için akış orada bekliyor, bu beklenen davranış).
+
+`CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` yeşil,
+`go test -tags sqlite_fts5 ./... -race -count=1` tüm paketlerde yeşil
+(internal/provider dahil). Test sırasında `agent_mode.enabled` ve
+`web_search.enabled` API üzerinden geçici kapatılıp tekrar `true`'ya
+alındı (config.yaml gitignore'da, git durumuna etkisi yok).
+
+## Sıradaki oturum için
+
+1. Bu bug muhtemelen bugünün v4.5.0-sonrası Cline entegrasyonunun ilk
+   canlı kullanımında yakalandı — Cline üzerinden yapılan hiçbir
+   agent-mode tool-call (sadece open_app değil, tüm araçlar) bu güne kadar
+   çalışmıyordu. Kullanıcı Cline'ı aktif sağlayıcı olarak ne zamandır
+   kullanıyor bilinmiyor; regresyon testi olarak birkaç farklı araçla
+   (örn. `run_command`, `write_file`) Cline üzerinden ayrıca denenebilir.
+   Bu oturumda sadece open_app doğrulandı.
+2. Update beacon (`version-zeta.vercel.app/version.json`) hâlâ V4.4.0 —
+   kullanıcının kendisi bump'layacak (bkz. devam 76).
+3. Yerel model + Plan modu + auto-permission zincirleme hâlâ canlı
+   doğrulanmadı (devam 76'dan devam eden açık madde).
+
+---
+
+
+
 # Handoff — 2026-09-16 (devam 77) — open_app aracı + Cline sağlayıcısı + Add Provider'da ücretsiz-katman keşfi + boş-cevap fallback'i (geriye dönük kayıt)
 
 ## Oturum Özeti

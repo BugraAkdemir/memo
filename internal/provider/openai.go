@@ -239,12 +239,44 @@ func (p *openAIProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 		return nil, p.parseError(resp)
 	}
 
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("read body: %w", err)}
+	}
+
 	var result openAIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if p.provType == ProviderCline {
+		// Cline's hosted gateway wraps the non-streaming response in its own
+		// envelope — {"success":true,"data":{...the real OpenAI-shaped chat
+		// completion...}} — instead of returning it at the top level like
+		// every other thin-wrapper provider (OpenRouter/Kilo/OpenCode Zen).
+		// Undetected, this silently discarded every completion Cline ever
+		// returned: a live capture (2026-09-17) showed a fully-formed
+		// open_app tool call — finish_reason "tool_calls", the right
+		// app_name argument, a "reasoning" field explaining the model's
+		// choice — sitting unseen inside `data` while the code that only
+		// looked at the top-level `choices` field saw nothing and reported
+		// a fake-empty response. Streaming (ChatCompletionStream/processSSE
+		// below) is unaffected — verified separately against the same
+		// gateway, SSE deltas arrive unwrapped — so only this path needs it.
+		var envelope struct {
+			Data openAIResponse `json:"data"`
+		}
+		if err := json.Unmarshal(rawBody, &envelope); err != nil {
+			return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("decode: %w", err)}
+		}
+		result = envelope.Data
+	} else if err := json.Unmarshal(rawBody, &result); err != nil {
 		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("decode: %w", err)}
 	}
 
 	if len(result.Choices) == 0 {
+		// An HTTP 200 with no choices at all is unusual enough across every
+		// OpenAI-compatible provider this app talks to that it's worth a
+		// permanent, low-volume log line — this exact shape (silently
+		// treated as a legitimate empty turn) is what hid the Cline envelope
+		// bug above from every earlier "why did the model say nothing" report.
+		logx.Printf("PROVIDER: %s returned HTTP 200 with zero choices (model=%q) — treating as an empty turn", p.Name(), result.Model)
 		return &ChatResponse{Model: model}, nil
 	}
 

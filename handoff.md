@@ -1,4 +1,80 @@
-# Handoff — 2026-09-18 (devam 84) — Ayarlar > Hafıza sekmesi pill alt-navigasyonuyla yeniden tasarlandı
+# Handoff — 2026-09-18 (devam 85) — Diğer ayar sekmelerinde aynı overflow taraması + Genel sekmesi de pill'lendi
+
+## Oturum Özeti
+
+Devam 84'ün hemen ardından, kullanıcı: "diğer sekmeleri de kontrol et,
+aynı overflow sorunu var mı, genele sekmesi de aynı şekilde her şey alt
+alta ona da el at". Tüm 26 `settings/tabs/*.dart` dosyasını (26'sı da
+`spaceBetween`/`Spacer()` deseni için) taradım.
+
+## Bulunan ve düzeltilen overflow riskleri (memory_tab dışında)
+
+Aynı sınıf hata — bir `Text` başlık/etiketin bir buton/başka bir etiketle
+aynı `Row`'da, `Expanded`/`Flexible` OLMADAN paylaşılması:
+- [providers_tab.dart](frontend/lib/widgets/settings/tabs/providers_tab.dart) — sayfa başlığı + "Sağlayıcı Ekle" butonu
+- [backup_restore_tab.dart](frontend/lib/widgets/settings/tabs/backup_restore_tab.dart) — OAuth kimlik bilgileri VE yedekleme işlemleri başlıkları, ikisi de kendi aksiyon butonlarıyla
+- [general_tab.dart](frontend/lib/widgets/settings/tabs/general_tab.dart) — 3 sıfırlama satırının etiketleri + "Sıfırla" butonları
+- [learning_tab.dart](frontend/lib/widgets/settings/tabs/learning_tab.dart) — pattern listesi başlığı + "Tümünü Sil"; VE bir pattern kartının **sınırsız uzunluktaki** `pattern.activityType` metni + sil ikonu (kullanıcı/model verisi, en yüksek gerçek risk)
+- [stats_tab.dart](frontend/lib/widgets/settings/tabs/stats_tab.dart) — grafik başlığı + 2 lejant noktası
+- [memory_tab.dart](frontend/lib/widgets/settings/tabs/memory_tab.dart)'ın kendi `_SelectionBar`'ı (devam 84'te eklenmişti ama dar genişlikte hiç test edilmemişti) — 4 bağımsız-boyutlu etiket tek `Row`+`Spacer()`'a sıkıştırılmıştı → `Wrap`'e çevrildi (AGENTS.md'nin "yerelleştirilmiş aksiyon satırları için Wrap kullan" kuralı)
+
+Düşük riskli olup FIX edilmeyenler (gerekçeyle): `gpu_config_tab.dart` slider etiketleri (kısa sabit metin), `learning_tab.dart`'ın Switch/Dropdown yanındaki 2 satırı (kısa başlıklar), `skills_tab.dart`/`cli_connections_tab.dart` (kısa etiketler) — gereksiz değişiklik yapmamak için dokunulmadı.
+
+## Genel sekmesi yeniden tasarımı
+
+[general_tab.dart](frontend/lib/widgets/settings/tabs/general_tab.dart) — Memory tab'daki BİREBİR pattern: `ConsumerWidget` → `ConsumerStatefulWidget`'a çevrilip 12 alanı (dil/tema, streaming, tray/maskot, hafıza/tarayıcı/whisper/minimal mod, 3 sıfırlama satırı, CLI+kaldırma) 4 pill'e böldüm: **Genel / Özellikler / Sıfırlama / CLI ve Kaldırma** (Görünüm/tray+maskot pill'i SADECE `trayFeatureSupported` true iken listede — masaüstü dışı build'lerde pill'in kendisi hiç yok, boş bir sekme değil).
+
+Pill bar widget'ı Memory tab'dan **shared** hale getirildi:
+yeni [section_tab_bar.dart](frontend/lib/widgets/settings/section_tab_bar.dart) (`SectionTabBar`/`SectionTabItem`, public) — memory_tab.dart'ın kendi private `_MemorySectionTabs`/`_SectionPill` kopyası silinip bu ortak widget'ı import edecek şekilde refactor edildi. İki sekme aynı deseni kullanınca bunu paylaşılan bileşene çıkarmak mantıklıydı (üçüncü/dördüncü bir kopya çıkmasın diye).
+
+## Doğrulama
+
+`flutter analyze`/`flutter test` yeşil (341 test). Rule #8 grep boş.
+Canlı doğrulama: web build + embedded webapp/ + gerçek backend →
+Claude Browser pane'de Genel sekmesinin 4 bölümü de (gerçek toggle'lar/
+veri ile), Providers sekmesi hem masaüstü hem 375px mobilde Türkçe
+(başlık doğru `...` ile kesiliyor, overflow yok) doğrulandı.
+
+**Ortam notu:** Doğrulama sırasında `/home/bugra/Documents/memo/memo`
+adında, BU oturumun başlatmadığı, 8090'a zaten bağlı bir process
+bulundu — memo'nun "port doluysa yeniden bind etmek yerine bağlan"
+davranışı yüzünden birkaç yeniden-başlatma denemem sessizce O ESKİ
+process'e bağlanıp benim taze derlememi hiç sunmadı; izole 8095
+portunda yeniden doğrulayarak fark edildi/düzeltildi. Ayrıca oturumun
+sonlarına doğru Claude Browser pane'de click event'leri "pane is
+currently hidden" hatasıyla timeout olmaya başladı (muhtemelen
+kullanıcı aynı anda kendi tarayıcısını/oturumunu kullanıyordu — bir
+clipboard değişikliği bildirimi de bunu destekliyor) — bu yüzden
+backup_restore_tab.dart/learning_tab.dart/stats_tab.dart düzeltmeleri
+tek tek 375px'te screenshot'la doğrulanamadı, ama providers_tab.dart ve
+general_tab.dart'ta CANLI doğrulanmış olan BİREBİR aynı `Expanded`+
+`ellipsis` deseniyle yapıldılar.
+
+## Sıradaki oturum için
+
+1. Kullanıcı "tüm ayarlar sekmesini baştan yapabilirsin" dedi ama bu
+   26 dosyalık bir kapsam — AGENTS.md Rule #5 ("max 1-2 plan item/
+   oturum") gereği bilinçli olarak YAPILMADI. Bu oturumda sadece en çok
+   şikayet edilen 2 sekme (Hafıza, Genel) + overflow taraması yapıldı.
+   Bir sonraki en büyük/karmaşık adaylar (boyuta göre):
+   `remote_access_tab.dart` (54KB), `backup_restore_tab.dart` (35KB),
+   `live_mode_tab.dart` (29KB), `stats_tab.dart`/`accounts_tab.dart`
+   (~23KB), `gpu_config_tab.dart` (21KB), `mood_tab.dart` (19.6KB),
+   `learning_tab.dart` (18.8KB) — hepsi muhtemelen aynı pill-sub-nav
+   pattern'inden faydalanır, artık `SectionTabBar` paylaşılan widget
+   olarak hazır.
+2. backup_restore_tab.dart/learning_tab.dart/stats_tab.dart'ın overflow
+   fix'leri henüz 375px'te canlı screenshot'la doğrulanmadı (yukarıdaki
+   ortam notuna bak) — bir sonraki oturumda Browser pane sorunsuz
+   çalışıyorsa hızlıca tekrar kontrol edilebilir.
+3. Commit: `2b432652`.
+4. Önceki oturumdan kalan açık kalemler (devam 84 handoff'undaki
+   Telegram/WhatsApp özet-önceliği doğrulaması, `-race` flake'i, v4.4.0
+   update beacon'ı) hâlâ bekliyor.
+
+---
+
+
 
 ## Oturum Özeti
 

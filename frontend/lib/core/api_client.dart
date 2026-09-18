@@ -1697,25 +1697,40 @@ class MemoApiClient {
 
   // ─── File Upload ────────────────────────────────────────────────
 
-  Future<String> sendFile(String message, String filePath) async {
+  /// Exactly one of [filePath] (desktop's real filesystem path) or
+  /// [fileBytes] (web, which has no filesystem to point a path at — see
+  /// chat_input.dart's picker handlers) is expected to be non-null.
+  Future<String> sendFile(
+    String message, {
+    String? filePath,
+    Uint8List? fileBytes,
+    String? fileName,
+  }) async {
     final formData = FormData.fromMap({
       'message': message,
-      'file': await MultipartFile.fromFile(filePath),
+      'file': filePath != null
+          ? await MultipartFile.fromFile(filePath, filename: fileName)
+          : MultipartFile.fromBytes(fileBytes!, filename: fileName),
     });
     final res = await _dio.post('/api/send_file', data: formData);
     return res.data['reply'] as String? ?? '';
   }
 
-  /// Send a file (image or document) with SSE streaming.
+  /// Send a file (image or document) with SSE streaming. See [sendFile]'s
+  /// doc comment for the filePath/fileBytes split.
   Stream<StreamChunk> sendFileStream(
-    String message,
-    String filePath, {
+    String message, {
+    String? filePath,
+    Uint8List? fileBytes,
+    String? fileName,
     CancelToken? cancelToken,
   }) async* {
     try {
       final formData = FormData.fromMap({
         'message': message,
-        'file': await MultipartFile.fromFile(filePath),
+        'file': filePath != null
+            ? await MultipartFile.fromFile(filePath, filename: fileName)
+            : MultipartFile.fromBytes(fileBytes!, filename: fileName),
       });
       final response = await _dio.post(
         '/api/send_file/stream',

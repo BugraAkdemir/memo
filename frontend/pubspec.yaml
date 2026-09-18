@@ -92,6 +92,12 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # Only used to swap FilePicker.platform for a fake in
+  # chat_input_web_file_attach_test.dart (MockPlatformInterfaceMixin) —
+  # already pulled in transitively by file_picker, declared directly so
+  # that import doesn't silently depend on file_picker's own dependency
+  # graph never changing.
+  plugin_platform_interface: ^2.1.8
 
 flutter:
   uses-material-design: true

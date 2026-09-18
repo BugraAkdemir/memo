@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -103,7 +104,16 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   bool _showTemplates = false;
   String _filterQuery = '';
   int _selectedIndex = 0;
+  // Desktop's FilePicker gives a real filesystem path; the web backend
+  // never populates `path` (there's no such concept in a browser) and
+  // gives raw `bytes` instead — see file_picker_web.dart's addPickedFile
+  // calls, which hard-code path to null on every branch. Both fields are
+  // carried side by side (rather than picking one representation) so a
+  // path-only check like the old `_pickedImagePath != null` never again
+  // silently no-ops on web the way it did before this fix.
   String? _pickedImagePath;
+  Uint8List? _pickedImageBytes;
+  String? _pickedFileName;
   bool _whatsappStopped = false;
   CancelToken? _whatsappCancelToken;
 
@@ -457,10 +467,12 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   Future<void> _send() async {
     final text = _controller.text.trim();
     final imagePath = _pickedImagePath;
-    if (text.isEmpty && imagePath == null) return;
+    final imageBytes = _pickedImageBytes;
+    final hasPickedFile = imagePath != null || imageBytes != null;
+    if (text.isEmpty && !hasPickedFile) return;
 
     // Intercept manual /command entries
-    if (imagePath == null && text.startsWith('/')) {
+    if (!hasPickedFile && text.startsWith('/')) {
       final handled = await _tryHandleManualCommand(text);
       if (handled) return;
     }
@@ -497,7 +509,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     if (ref.read(whatsAppChatModeProvider)) {
       _controller.clear();
       _dismissPopup();
-      setState(() => _pickedImagePath = null);
+      setState(() {
+        _pickedImagePath = null;
+        _pickedImageBytes = null;
+        _pickedFileName = null;
+      });
       await _sendWhatsApp(text);
       return;
     }
@@ -508,7 +524,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     // rather not say out loud (a code snippet, a long piece of text)
     // during a live conversation should still reach the live model.
     final liveStatus = ref.read(liveRealtimeSessionProvider).status;
-    if (imagePath == null &&
+    if (!hasPickedFile &&
         (liveStatus == LiveRealtimeSessionStatus.connecting || liveStatus == LiveRealtimeSessionStatus.connected)) {
       _controller.clear();
       _dismissPopup();
@@ -530,11 +546,21 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
     _controller.clear();
     _dismissPopup();
-    setState(() => _pickedImagePath = null);
+    final fileName = _pickedFileName;
+    setState(() {
+      _pickedImagePath = null;
+      _pickedImageBytes = null;
+      _pickedFileName = null;
+    });
 
     try {
-      if (imagePath != null) {
-        await ref.read(messagesProvider.notifier).sendFile(text, imagePath);
+      if (hasPickedFile) {
+        await ref.read(messagesProvider.notifier).sendFile(
+              text,
+              filePath: imagePath,
+              fileBytes: imageBytes,
+              fileName: fileName,
+            );
       } else {
         await ref.read(messagesProvider.notifier).sendMessage(text);
       }
@@ -1083,7 +1109,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         // for interaction that is guaranteed to actually work.
         if (popup != null) popup,
         // Image preview
-        if (_pickedImagePath != null)
+        if (_pickedImagePath != null || _pickedImageBytes != null)
           Container(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             decoration: BoxDecoration(
@@ -1096,17 +1122,27 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: Image.file(
-                    File(_pickedImagePath!),
-                    width: 60,
-                    height: 60,
-                    fit: BoxFit.cover,
-                  ),
+                  child: _pickedImagePath != null
+                      ? Image.file(
+                          File(_pickedImagePath!),
+                          width: 60,
+                          height: 60,
+                          fit: BoxFit.cover,
+                        )
+                      : Image.memory(
+                          _pickedImageBytes!,
+                          width: 60,
+                          height: 60,
+                          fit: BoxFit.cover,
+                        ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    p.basename(_pickedImagePath!),
+                    _pickedFileName ??
+                        (_pickedImagePath != null
+                            ? p.basename(_pickedImagePath!)
+                            : ''),
                     style: TextStyle(
                       fontSize: 12,
                       color: MemoTheme.of(context).textDim,
@@ -1119,7 +1155,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   padding: EdgeInsets.zero,
                   constraints: BoxConstraints(),
                   color: MemoTheme.of(context).textDim,
-                  onPressed: () => setState(() => _pickedImagePath = null),
+                  onPressed: () => setState(() {
+                    _pickedImagePath = null;
+                    _pickedImageBytes = null;
+                    _pickedFileName = null;
+                  }),
                 ),
               ],
             ),
@@ -1174,11 +1214,26 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   final result = await FilePicker.platform.pickFiles(
                     type: FileType.image,
                     allowMultiple: false,
+                    // Desktop never needs the bytes (it has a real path,
+                    // and loading a whole image into memory just to
+                    // discard it would be wasteful); web has no path at
+                    // all, so it's the only way to get the file there.
+                    withData: kIsWeb,
                   );
-                  if (result != null && result.files.single.path != null) {
-                    setState(() => _pickedImagePath = result.files.single.path);
-                    _focusNode.requestFocus();
-                  }
+                  if (result == null) return;
+                  final file = result.files.single;
+                  // PlatformFile.path's getter unconditionally throws on
+                  // web (see file_picker's platform_file.dart) — it's not
+                  // simply null there, so it must never be READ at all
+                  // under kIsWeb, not just null-checked.
+                  final path = kIsWeb ? null : file.path;
+                  if (path == null && file.bytes == null) return;
+                  setState(() {
+                    _pickedImagePath = path;
+                    _pickedImageBytes = file.bytes;
+                    _pickedFileName = file.name;
+                  });
+                  _focusNode.requestFocus();
                 },
               ),
               const SizedBox(width: 4),
@@ -1195,22 +1250,27 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   final result = await FilePicker.platform.pickFiles(
                     type: FileType.any,
                     allowMultiple: false,
+                    withData: kIsWeb,
                   );
-                  if (result != null && result.files.single.path != null) {
-                    final path = result.files.single.path!;
-                    final text = _controller.text.trim();
-                    _controller.clear();
-                    _dismissPopup();
-                    try {
-                      await ref
-                          .read(messagesProvider.notifier)
-                          .sendFile(text, path);
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}')),
+                  if (result == null) return;
+                  final file = result.files.single;
+                  final path = kIsWeb ? null : file.path;
+                  if (path == null && file.bytes == null) return;
+                  final text = _controller.text.trim();
+                  _controller.clear();
+                  _dismissPopup();
+                  try {
+                    await ref.read(messagesProvider.notifier).sendFile(
+                          text,
+                          filePath: path,
+                          fileBytes: file.bytes,
+                          fileName: file.name,
                         );
-                      }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}')),
+                      );
                     }
                   }
                 },

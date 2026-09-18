@@ -805,7 +805,19 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     }
   }
 
-  Future<String> sendFile(String message, String filePath) async {
+  /// [filePath] is desktop's real filesystem path; [fileBytes]+[fileName]
+  /// is web's representation (no filesystem to point a path at) — see
+  /// chat_input.dart's picker handlers, which populate whichever of the
+  /// two the platform actually gave back. Exactly one of filePath/
+  /// fileBytes is expected to be non-null; fileName is required either
+  /// way since desktop's own basename is derived from filePath but web
+  /// has nothing else to derive it from.
+  Future<String> sendFile(
+    String message, {
+    String? filePath,
+    Uint8List? fileBytes,
+    String? fileName,
+  }) async {
     if (ref.read(isSendingProvider)) return '';
     final myGeneration = _generation;
 
@@ -815,12 +827,13 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
     ref.read(isSendingProvider.notifier).state = true;
 
-    final fileName = p.basename(filePath);
-    final ext = filePath.split('.').last.toLowerCase();
+    final resolvedFileName =
+        fileName ?? (filePath != null ? p.basename(filePath) : 'file');
+    final ext = resolvedFileName.split('.').last.toLowerCase();
     final isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].contains(ext);
     final displayMsg = message.isEmpty
-        ? '*(Dosya gönderildi: $fileName)*'
-        : '$message\n*(Dosya: $fileName)*';
+        ? '*(Dosya gönderildi: $resolvedFileName)*'
+        : '$message\n*(Dosya: $resolvedFileName)*';
 
     final userMsg = ChatMessage(
       role: 'user',
@@ -841,7 +854,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       if (streamingEnabled) {
         final stream = api.sendFileStream(
           message,
-          filePath,
+          filePath: filePath,
+          fileBytes: fileBytes,
+          fileName: resolvedFileName,
           cancelToken: _cancelToken,
         );
 
@@ -920,7 +935,12 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           return '';
         }
       } else {
-        fullReply = await api.sendFile(message, filePath);
+        fullReply = await api.sendFile(
+          message,
+          filePath: filePath,
+          fileBytes: fileBytes,
+          fileName: resolvedFileName,
+        );
       }
 
       if (_generation != myGeneration) return '';

@@ -1,4 +1,90 @@
-# Handoff — 2026-09-18 (devam 85) — Diğer ayar sekmelerinde aynı overflow taraması + Genel sekmesi de pill'lendi
+# Handoff — 2026-09-18 (devam 86) — Web'de resim/dosya ekleme tepki vermiyordu: bulundu, düzeltildi
+
+## Oturum Özeti
+
+Kullanıcı yeni bir bug rapor etti (video değil, yazıyla): Raspberry Pi'de
+self-hosted Memo'yu tarayıcıdan kullanırken resim eklemek "tepki
+vermiyor" — native/desktop app'te sorun yok. Ayrıca pano'dan resim
+yapıştırmanın (Ctrl+V) da aynı şekilde çalışmasını bekliyor.
+
+## Kök neden
+
+Bir Explore agent'ı önce `chat_input.dart`'daki iki attach handler'ını
+(resim butonu, genel dosya butonu) buldu — ikisi de
+`result.files.single.path != null` şartına bağlıydı. `file_picker`
+paketinin web backend'i (`file_picker_web.dart`) hiçbir zaman kullanılabilir
+bir `path` vermiyor. Agent'ın raporunu kabul etmeden ÖNCE paketin gerçek
+kaynağını (`platform_file.dart`) okuyarak doğruladım — ve daha kritik bir
+şey buldum: `PlatformFile.path`'in getter'ı `kIsWeb` iken sadece `null`
+DÖNMÜYOR, doğrudan **throw ediyor** (bkz. GitHub issue #751 referansı
+kod içinde). Yani web'de bu satır ya hep `false` değerlendiriliyordu ya
+da yakalanmayan bir async exception'a düşüyordu — ikisi de kullanıcıya
+görünmeyen, "tepki yok" belirtisiyle birebir eşleşen bir sessiz
+başarısızlık. Bu ayrım önemliydi çünkü kendi ilk taslak düzeltmem de
+hâlâ `.path`'i şartsız okuyordu — kaynağı bizzat okumasam aynı hatayı
+yeniden üretecektim.
+
+## Düzeltme
+
+Dosya, path (desktop) ya da bytes+isim (web) olarak uçtan uca taşınacak
+şekilde değiştirildi:
+- [chat_input.dart](frontend/lib/widgets/chat_input.dart) — picker
+  handler'ları artık `kIsWeb ? null : file.path` okuyor (throw eden
+  getter'a web'de hiç dokunmuyor), `file.bytes`/`file.name`'e düşüyor;
+  `withData: kIsWeb` desktop'ta gereksiz bytes yüklemesini önlüyor.
+  Önizleme artık path yoksa `Image.memory` kullanıyor. `_send()` ve
+  reset noktaları hem path hem bytes alanlarını takip ediyor.
+- [chat_provider.dart](frontend/lib/providers/chat_provider.dart)'daki
+  `sendFile` — tek zorunlu `filePath` yerine `filePath`/`fileBytes`/
+  `fileName` parametreleri.
+- [api_client.dart](frontend/lib/core/api_client.dart)'daki `sendFile`/
+  `sendFileStream` — path yoksa `MultipartFile.fromBytes`, varsa
+  `.fromFile`. Backend'in `r.FormFile("file")` handler'ı (Go tarafı)
+  hiç değişmedi — tel formatı (multipart/form-data) ikisinde de aynı.
+
+**Pano'dan resim yapıştırma:** Kodda HİÇBİR platformda (ne web ne
+desktop) bulunamadı — `super_clipboard`/`pasteboard` gibi bir paket bile
+bağımlılık değil, hiçbir yerde `Clipboard.getData` çağrısı yok. Kullanıcıya
+bunun bir "web'de bozuk" değil muhtemelen sıfırdan eklenecek bir özellik
+olduğunu söyledim, varsayıp koda eklemedim.
+
+## Doğrulama
+
+`flutter analyze` temiz (5 önceden var olan info bulgusu), Rule #8 grep
+boş, `go build` temiz (backend'e hiç dokunulmadı). Yeni
+[chat_input_web_file_attach_test.dart](frontend/test/widgets/chat_input_web_file_attach_test.dart) —
+`MockPlatformInterfaceMixin` ile `FilePicker.platform`'u, file_picker'ın
+web'de gerçekten döndürdüğü TAM şekli (bytes var, path yok) veren sahte
+bir picker'a çeviriyor; önizlemenin artık göründüğünü doğruluyor. 343/343
+test yeşil.
+
+**Canlı browser E2E notu:** Gerçek embedded web build + backend üzerinden
+gerçek bir native dosya seçici dialogunu tetikleyip otomasyon aracıyla
+dosya seçmeyi denedim (JS ile gizli `<input type=file>`'a DataTransfer
+enjekte ederek) — file_picker'ın kendi `window focus` tabanlı 1 saniyelik
+iptal mekanizmasıyla yarışa girdi ve başarısız oldu (headless ortamda
+native dialog hiç render olmadığı için pencere focus event'i beklenenden
+farklı davranıyor olabilir). Bu, otomasyon ortamının genel bir kısıtı —
+koddan bağımsız. Bunun yerine widget test'i doğrudan regresyona giden kod
+yolunu (FilePicker.platform → state → önizleme render) egzersiz ediyor,
+bu da yeterli güven verdi. Commit: `344c9aa8`.
+
+## Sıradaki oturum için
+
+1. Kullanıcıdan pano-yapıştırma iddiasını netleştirmesi istendi (native'de
+   gerçekten Ctrl+V ile mi yapıştırıyor, yoksa sürükle-bırak mı) — cevap
+   gelirse ya "zaten yok, isterse ekleriz" diye kapatılır ya da yeni bir
+   özellik olarak planlanır.
+2. Önceki oturumdan (devam 85) kalan: 26 ayar sekmesinin geri kalanı
+   (`remote_access_tab.dart` en büyüğü) hâlâ pill-sub-nav pattern'ine
+   geçirilmedi, kullanıcı isterse sırayla devam edilebilir.
+3. Daha önceki oturumlardan kalan açık kalemler (Telegram/WhatsApp özet-
+   önceliği canlı doğrulaması, `-race` flake'i, v4.4.0 update beacon'ı)
+   hâlâ bekliyor.
+
+---
+
+
 
 ## Oturum Özeti
 

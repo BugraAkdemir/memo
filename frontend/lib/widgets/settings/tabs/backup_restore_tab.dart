@@ -779,14 +779,16 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
         if (!_cloudConnected || _showCredSetup) ...[
           SizedBox(height: 16),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                L10n.t('backup_oauth_creds_title'),
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: MemoTheme.of(context).textMain,
+              Expanded(
+                child: Text(
+                  L10n.t('backup_oauth_creds_title'),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: MemoTheme.of(context).textMain,
+                  ),
                 ),
               ),
               if (_cloudConnected)
@@ -876,14 +878,16 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
         if (_cloudConnected) ...[
           SizedBox(height: 16),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                L10n.t('backup_operations_title'),
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: MemoTheme.of(context).textMain,
+              Expanded(
+                child: Text(
+                  L10n.t('backup_operations_title'),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: MemoTheme.of(context).textMain,
+                  ),
                 ),
               ),
               TextButton(

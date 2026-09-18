@@ -13,30 +13,115 @@ import '../../../models/browser_install_progress.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../core/friendly_error.dart';
 import '../../error_retry.dart';
+import '../section_tab_bar.dart';
 
-class GeneralTab extends ConsumerWidget {
+class _GeneralSection {
+  final IconData icon;
+  final String label;
+  final WidgetBuilder builder;
+  const _GeneralSection({
+    required this.icon,
+    required this.label,
+    required this.builder,
+  });
+}
+
+class GeneralTab extends ConsumerStatefulWidget {
   const GeneralTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final locale = ref.watch(localeProvider);
-    final memoryEnabledAsync = ref.watch(memoryEnabledProvider);
-    final embeddingStatus = ref.watch(embeddingStatusProvider);
-    final minimalModeAsync = ref.watch(minimalModeProvider);
-    final whisperEnabledAsync = ref.watch(whisperEnabledProvider);
+  ConsumerState<GeneralTab> createState() => _GeneralTabState();
+}
 
-    return ListView(
-      padding: EdgeInsets.all(32),
+class _GeneralTabState extends ConsumerState<GeneralTab> {
+  int _activeSection = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+
+    // Sections instead of one long stacked ListView — General used to run
+    // language/theme/streaming, tray/mascot, memory/browser/whisper/minimal
+    // mode, three reset rows and the whole CLI/uninstall flow one after
+    // another, so reaching the uninstall section meant scrolling past
+    // everything else. A list (not a fixed switch) so the tray/mascot
+    // section — desktop-only, see trayFeatureSupported below — simply
+    // isn't in the list on web/mobile builds rather than existing as an
+    // empty pane; both the pill bar and the content pane read from the
+    // same list, so their indices can never drift apart.
+    final sections = <_GeneralSection>[
+      _GeneralSection(
+        icon: Icons.tune,
+        label: L10n.t('general_tab_basics'),
+        builder: _buildBasicsSection,
+      ),
+      if (trayFeatureSupported)
+        _GeneralSection(
+          icon: Icons.face_outlined,
+          label: L10n.t('general_tab_appearance'),
+          builder: _buildAppearanceSection,
+        ),
+      _GeneralSection(
+        icon: Icons.extension_outlined,
+        label: L10n.t('general_tab_features'),
+        builder: _buildFeaturesSection,
+      ),
+      _GeneralSection(
+        icon: Icons.restart_alt,
+        label: L10n.t('general_tab_reset'),
+        builder: _buildResetSection,
+      ),
+      _GeneralSection(
+        icon: Icons.terminal,
+        label: L10n.t('general_tab_cli'),
+        builder: (context) => const _CliUninstallSection(),
+      ),
+    ];
+    final activeIndex = _activeSection < sections.length ? _activeSection : 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          L10n.t('general'),
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: MemoTheme.of(context).textMain,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 28, 32, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                L10n.t('general'),
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.textMain,
+                ),
+              ),
+              const SizedBox(height: 18),
+              SectionTabBar(
+                selected: activeIndex,
+                onSelected: (i) => setState(() => _activeSection = i),
+                items: [
+                  for (final s in sections) SectionTabItem(s.icon, s.label),
+                ],
+              ),
+            ],
           ),
         ),
-        SizedBox(height: 32),
+        const SizedBox(height: 14),
+        Divider(height: 1, color: theme.borderSoft),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(32, 20, 32, 32),
+            children: [sections[activeIndex].builder(context)],
+          ),
+        ),
+      ],
+    );
+  }
 
+  Widget _buildBasicsSection(BuildContext context) {
+    final locale = ref.watch(localeProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         // Language Selection
         Text(
           L10n.t('language'),
@@ -180,173 +265,185 @@ class GeneralTab extends ConsumerWidget {
             ],
           ),
         ),
+      ],
+    );
+  }
 
-        SizedBox(height: 32),
-
+  Widget _buildAppearanceSection(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         // Minimize to Tray Toggle — desktop only (window_manager/tray_manager
         // have no web/mobile implementation, see core/tray_controller.dart).
-        if (trayFeatureSupported) ...[
-          Text(
-            L10n.t('minimize_to_tray_title'),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: MemoTheme.of(context).textMain,
-            ),
+        Text(
+          L10n.t('minimize_to_tray_title'),
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: MemoTheme.of(context).textMain,
           ),
-          SizedBox(height: 12),
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: MemoTheme.of(context).bgPanel,
-              borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-              border: Border.all(color: MemoTheme.of(context).borderSoft),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        ref.watch(minimizeToTrayProvider) ? L10n.t('on') : L10n.t('off'),
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: MemoTheme.of(context).textMain,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        L10n.t('minimize_to_tray_desc'),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: MemoTheme.of(context).textDim,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Switch(
-                  value: ref.watch(minimizeToTrayProvider),
-                  activeThumbColor: MemoTheme.accent,
-                  inactiveThumbColor: MemoTheme.of(context).textDim,
-                  inactiveTrackColor: MemoTheme.of(context).bgHover,
-                  trackOutlineColor: WidgetStateProperty.all(MemoTheme.of(context).borderHover),
-                  onChanged: (v) {
-                    ref.read(minimizeToTrayProvider.notifier).setEnabled(v);
-                  },
-                ),
-              ],
-            ),
+        ),
+        SizedBox(height: 12),
+        Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: MemoTheme.of(context).bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
           ),
-          SizedBox(height: 32),
-        ],
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      ref.watch(minimizeToTrayProvider) ? L10n.t('on') : L10n.t('off'),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: MemoTheme.of(context).textMain,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      L10n.t('minimize_to_tray_desc'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: MemoTheme.of(context).textDim,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: ref.watch(minimizeToTrayProvider),
+                activeThumbColor: MemoTheme.accent,
+                inactiveThumbColor: MemoTheme.of(context).textDim,
+                inactiveTrackColor: MemoTheme.of(context).bgHover,
+                trackOutlineColor: WidgetStateProperty.all(MemoTheme.of(context).borderHover),
+                onChanged: (v) {
+                  ref.read(minimizeToTrayProvider.notifier).setEnabled(v);
+                },
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 32),
 
         // Desktop Mascot Toggle — same platforms as minimize-to-tray
         // above, and the same desktop_multi_window window either way (see
         // providers/mascot_provider.dart) whether opened from here or the
         // tray menu.
-        if (trayFeatureSupported) ...[
-          Text(
-            L10n.t('mascot_toggle_title'),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: MemoTheme.of(context).textMain,
-            ),
+        Text(
+          L10n.t('mascot_toggle_title'),
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: MemoTheme.of(context).textMain,
           ),
-          SizedBox(height: 12),
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: MemoTheme.of(context).bgPanel,
-              borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-              border: Border.all(color: MemoTheme.of(context).borderSoft),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        ref.watch(mascotWindowOpenProvider) ? L10n.t('on') : L10n.t('off'),
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: MemoTheme.of(context).textMain,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        L10n.t('mascot_toggle_desc'),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: MemoTheme.of(context).textDim,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Switch(
-                  value: ref.watch(mascotWindowOpenProvider),
-                  activeThumbColor: MemoTheme.accent,
-                  inactiveThumbColor: MemoTheme.of(context).textDim,
-                  inactiveTrackColor: MemoTheme.of(context).bgHover,
-                  trackOutlineColor: WidgetStateProperty.all(MemoTheme.of(context).borderHover),
-                  onChanged: (_) {
-                    ref.read(mascotWindowProvider.notifier).toggle();
-                  },
-                ),
-              ],
-            ),
+        ),
+        SizedBox(height: 12),
+        Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: MemoTheme.of(context).bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
           ),
-          SizedBox(height: 16),
-
-          // Mascot Character — a second, user-picked skin (see
-          // widgets/memo_mascot.dart's MascotSkin) on top of the same
-          // mood/gesture rig, not a separate feature. Live previews (real
-          // MemoMascot instances, not screenshots) so the choice is
-          // actually informed.
-          Text(
-            L10n.t('mascot_skin_title'),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: MemoTheme.of(context).textMain,
-            ),
-          ),
-          SizedBox(height: 4),
-          Text(
-            L10n.t('mascot_skin_desc'),
-            style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim),
-          ),
-          SizedBox(height: 12),
-          Row(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: _MascotSkinOption(
-                  skin: MascotSkin.classic,
-                  label: L10n.t('mascot_skin_classic'),
-                  selected: ref.watch(mascotSkinProvider) != 'pixel',
-                  onTap: () => ref.read(mascotSkinProvider.notifier).setSkin('classic'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      ref.watch(mascotWindowOpenProvider) ? L10n.t('on') : L10n.t('off'),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: MemoTheme.of(context).textMain,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      L10n.t('mascot_toggle_desc'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: MemoTheme.of(context).textDim,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              SizedBox(width: 12),
-              Expanded(
-                child: _MascotSkinOption(
-                  skin: MascotSkin.pixel,
-                  label: L10n.t('mascot_skin_pixel'),
-                  selected: ref.watch(mascotSkinProvider) == 'pixel',
-                  onTap: () => ref.read(mascotSkinProvider.notifier).setSkin('pixel'),
-                ),
+              Switch(
+                value: ref.watch(mascotWindowOpenProvider),
+                activeThumbColor: MemoTheme.accent,
+                inactiveThumbColor: MemoTheme.of(context).textDim,
+                inactiveTrackColor: MemoTheme.of(context).bgHover,
+                trackOutlineColor: WidgetStateProperty.all(MemoTheme.of(context).borderHover),
+                onChanged: (_) {
+                  ref.read(mascotWindowProvider.notifier).toggle();
+                },
               ),
             ],
           ),
-          SizedBox(height: 32),
-        ],
+        ),
+        SizedBox(height: 16),
 
+        // Mascot Character — a second, user-picked skin (see
+        // widgets/memo_mascot.dart's MascotSkin) on top of the same
+        // mood/gesture rig, not a separate feature. Live previews (real
+        // MemoMascot instances, not screenshots) so the choice is
+        // actually informed.
+        Text(
+          L10n.t('mascot_skin_title'),
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: MemoTheme.of(context).textMain,
+          ),
+        ),
+        SizedBox(height: 4),
+        Text(
+          L10n.t('mascot_skin_desc'),
+          style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim),
+        ),
+        SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _MascotSkinOption(
+                skin: MascotSkin.classic,
+                label: L10n.t('mascot_skin_classic'),
+                selected: ref.watch(mascotSkinProvider) != 'pixel',
+                onTap: () => ref.read(mascotSkinProvider.notifier).setSkin('classic'),
+              ),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: _MascotSkinOption(
+                skin: MascotSkin.pixel,
+                label: L10n.t('mascot_skin_pixel'),
+                selected: ref.watch(mascotSkinProvider) == 'pixel',
+                onTap: () => ref.read(mascotSkinProvider.notifier).setSkin('pixel'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeaturesSection(BuildContext context) {
+    final memoryEnabledAsync = ref.watch(memoryEnabledProvider);
+    final embeddingStatus = ref.watch(embeddingStatusProvider);
+    final whisperEnabledAsync = ref.watch(whisperEnabledProvider);
+    final minimalModeAsync = ref.watch(minimalModeProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         // Memory Toggle
         Text(
           L10n.t('memory_section'),
@@ -601,19 +698,14 @@ class GeneralTab extends ConsumerWidget {
           SizedBox(height: 8),
           const _MinimalModeOverridesDropdown(),
         ],
+      ],
+    );
+  }
 
-        SizedBox(height: 32),
-
-        // Reset Setup Wizard
-        Text(
-          L10n.t('settings_setup_section'),
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: MemoTheme.of(context).textMain,
-          ),
-        ),
-        SizedBox(height: 12),
+  Widget _buildResetSection(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         Container(
           padding: EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -622,15 +714,18 @@ class GeneralTab extends ConsumerWidget {
             border: Border.all(color: MemoTheme.of(context).borderSoft),
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                L10n.t('settings_reset_setup'),
-                style: TextStyle(
-                  fontSize: 14,
-                  color: MemoTheme.of(context).textMain,
+              Expanded(
+                child: Text(
+                  L10n.t('settings_reset_setup'),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: MemoTheme.of(context).textMain,
+                  ),
                 ),
               ),
+              const SizedBox(width: 8),
               OutlinedButton(
                 onPressed: () {
                   ref.read(setupCompleteProvider.notifier).resetSetup();
@@ -650,15 +745,18 @@ class GeneralTab extends ConsumerWidget {
             border: Border.all(color: MemoTheme.of(context).borderSoft),
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                L10n.t('settings_reset_tour'),
-                style: TextStyle(
-                  fontSize: 14,
-                  color: MemoTheme.of(context).textMain,
+              Expanded(
+                child: Text(
+                  L10n.t('settings_reset_tour'),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: MemoTheme.of(context).textMain,
+                  ),
                 ),
               ),
+              const SizedBox(width: 8),
               OutlinedButton(
                 onPressed: () {
                   ref.read(tourSeenProvider.notifier).resetTour();
@@ -678,15 +776,18 @@ class GeneralTab extends ConsumerWidget {
             border: Border.all(color: MemoTheme.of(context).borderSoft),
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                L10n.t('settings_reset_launchpad'),
-                style: TextStyle(
-                  fontSize: 14,
-                  color: MemoTheme.of(context).textMain,
+              Expanded(
+                child: Text(
+                  L10n.t('settings_reset_launchpad'),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: MemoTheme.of(context).textMain,
+                  ),
                 ),
               ),
+              const SizedBox(width: 8),
               OutlinedButton(
                 onPressed: () {
                   ref.read(launchpadSeenProvider.notifier).reset();
@@ -697,9 +798,6 @@ class GeneralTab extends ConsumerWidget {
             ],
           ),
         ),
-
-        SizedBox(height: 32),
-        const _CliUninstallSection(),
       ],
     );
   }

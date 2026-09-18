@@ -55,11 +55,13 @@ class LearningTab extends ConsumerWidget {
         // Patterns header
         Row(
           children: [
-            Text(
-              L10n.t('learning_patterns_title'),
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: theme.textMain),
+            Expanded(
+              child: Text(
+                L10n.t('learning_patterns_title'),
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: theme.textMain),
+              ),
             ),
-            const Spacer(),
             if (patternsAsync.valueOrNull?.isNotEmpty ?? false)
               TextButton.icon(
                 onPressed: () => _clearAll(context, ref),
@@ -452,11 +454,13 @@ class PatternCard extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                pattern.activityType,
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: theme.textMain),
+              Expanded(
+                child: Text(
+                  pattern.activityType,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: theme.textMain),
+                ),
               ),
-              const Spacer(),
               IconButton(
                 icon: Icon(Icons.delete_outline, size: 16, color: theme.textDim),
                 onPressed: () => _forget(context, ref),

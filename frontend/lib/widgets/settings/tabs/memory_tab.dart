@@ -7,6 +7,7 @@ import '../../../models/gpu_info.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../core/friendly_error.dart';
+import '../section_tab_bar.dart';
 
 String _formatCompactCount(int n) {
   if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
@@ -395,12 +396,34 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
               // Splitting into pills that swap the content pane below keeps
               // each screenful focused and lets the pill itself carry a
               // live count (files/facts/history) as an at-a-glance signal.
-              _MemorySectionTabs(
+              SectionTabBar(
                 selected: _activeSection,
                 onSelected: (i) => setState(() => _activeSection = i),
-                filesCount: memoryAsync.valueOrNull?.length,
-                factsCount: _knownFacts.length,
-                historyCount: _convTotal,
+                items: [
+                  SectionTabItem(
+                    Icons.tune,
+                    L10n.t('memory_tab_settings'),
+                    count: memoryAsync.valueOrNull?.length,
+                  ),
+                  SectionTabItem(
+                    Icons.fact_check_outlined,
+                    L10n.t('memory_tab_facts'),
+                    count: _knownFacts.length,
+                  ),
+                  SectionTabItem(
+                    Icons.history,
+                    L10n.t('memory_tab_history'),
+                    count: _convTotal,
+                  ),
+                  SectionTabItem(
+                    Icons.insights_outlined,
+                    L10n.t('memory_tab_analytics'),
+                  ),
+                  SectionTabItem(
+                    Icons.bug_report_outlined,
+                    L10n.t('memory_tab_debug'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1262,160 +1285,6 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
   }
 }
 
-/// Horizontal pill sub-navigation for [MemoryTab] — swaps the content pane
-/// below between the five memory sections instead of stacking all of them
-/// in one long scroll. A pill can carry a live count badge (files/facts/
-/// history) so the section's size is visible before switching to it.
-class _MemorySectionTabs extends StatelessWidget {
-  final int selected;
-  final ValueChanged<int> onSelected;
-  final int? filesCount;
-  final int factsCount;
-  final int historyCount;
-
-  const _MemorySectionTabs({
-    required this.selected,
-    required this.onSelected,
-    required this.filesCount,
-    required this.factsCount,
-    required this.historyCount,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final items = <_SectionTabItem>[
-      _SectionTabItem(
-        Icons.tune,
-        L10n.t('memory_tab_settings'),
-        filesCount,
-      ),
-      _SectionTabItem(
-        Icons.fact_check_outlined,
-        L10n.t('memory_tab_facts'),
-        factsCount,
-      ),
-      _SectionTabItem(
-        Icons.history,
-        L10n.t('memory_tab_history'),
-        historyCount,
-      ),
-      _SectionTabItem(
-        Icons.insights_outlined,
-        L10n.t('memory_tab_analytics'),
-        null,
-      ),
-      _SectionTabItem(
-        Icons.bug_report_outlined,
-        L10n.t('memory_tab_debug'),
-        null,
-      ),
-    ];
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (var i = 0; i < items.length; i++) ...[
-            if (i > 0) const SizedBox(width: 6),
-            _SectionPill(
-              icon: items[i].icon,
-              label: items[i].label,
-              count: items[i].count,
-              selected: selected == i,
-              onTap: () => onSelected(i),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionTabItem {
-  final IconData icon;
-  final String label;
-  final int? count;
-  const _SectionTabItem(this.icon, this.label, this.count);
-}
-
-class _SectionPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final int? count;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _SectionPill({
-    required this.icon,
-    required this.label,
-    required this.count,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = MemoTheme.of(context);
-    final fg = selected ? theme.textInverse : theme.textMain;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          decoration: BoxDecoration(
-            color: selected ? MemoTheme.accent : theme.bgElement,
-            borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-            border: Border.all(
-              color: selected ? MemoTheme.accent : theme.borderSoft,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 16, color: fg),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: fg,
-                ),
-              ),
-              if (count != null && count! > 0) ...[
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? theme.textInverse.withValues(alpha: 0.2)
-                        : MemoTheme.accent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    _formatCompactCount(count!),
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w700,
-                      color: selected ? fg : MemoTheme.accent,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Selection toolbar shared by the pinned-facts and conversation-history
 /// lists — select-all/deselect-all (scoped to whatever is currently
 /// loaded, not the whole store) plus a delete-selected action that's
@@ -1439,7 +1308,16 @@ class _SelectionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = MemoTheme.of(context);
-    return Row(
+    // Wrap, not Row+Spacer — four independently-sized, localized labels
+    // (two text buttons, an optional count, a delete button whose label
+    // grows with the count) packed into one Row never fit at narrow
+    // dialog widths; Wrap folds the overflow onto a second line instead
+    // of throwing a RenderFlex overflow (see AGENTS.md's Flutter gotcha
+    // on localized action rows).
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         TextButton(
           onPressed: busy ? null : onSelectAll,
@@ -1449,14 +1327,10 @@ class _SelectionBar extends StatelessWidget {
           onPressed: busy ? null : onDeselectAll,
           child: Text(L10n.t('memory_deselect_all_btn')),
         ),
-        Spacer(),
         if (selectedCount > 0)
-          Padding(
-            padding: EdgeInsets.only(right: 10),
-            child: Text(
-              L10n.t('memory_selection_count', {'n': '$selectedCount'}),
-              style: TextStyle(fontSize: 12, color: theme.textDim),
-            ),
+          Text(
+            L10n.t('memory_selection_count', {'n': '$selectedCount'}),
+            style: TextStyle(fontSize: 12, color: theme.textDim),
           ),
         OutlinedButton.icon(
           icon: busy

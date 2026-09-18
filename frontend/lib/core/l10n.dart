@@ -1665,6 +1665,11 @@ class L10n {
     'settings_reset_launchpad': 'Launchpad\'i Tekrar Göster',
     'settings_setup_section': 'Kurulum',
     'settings_reset_setup': 'Kurulumu Sıfırla',
+    'general_tab_basics': 'Genel',
+    'general_tab_appearance': 'Görünüm',
+    'general_tab_features': 'Özellikler',
+    'general_tab_reset': 'Sıfırlama',
+    'general_tab_cli': 'CLI ve Kaldırma',
     'agent_create_failed': 'Ajan sohbeti oluşturulamadı: \${error}',
 
     // Settings tabs (missing)
@@ -3845,6 +3850,11 @@ class L10n {
     'settings_reset_launchpad': 'Show Launchpad Again',
     'settings_setup_section': 'Setup',
     'settings_reset_setup': 'Reset Setup',
+    'general_tab_basics': 'General',
+    'general_tab_appearance': 'Appearance',
+    'general_tab_features': 'Features',
+    'general_tab_reset': 'Reset',
+    'general_tab_cli': 'CLI & Uninstall',
     'agent_create_failed': 'Could not create agent chat: \${error}',
 
     // Settings tabs (missing)

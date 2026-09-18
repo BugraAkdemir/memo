@@ -38,15 +38,18 @@ class ProvidersTab extends ConsumerWidget {
       padding: const EdgeInsets.all(32),
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              L10n.t('providers_title'),
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: MemoTheme.of(context).textMain,
+            Expanded(
+              child: Text(
+                L10n.t('providers_title'),
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: MemoTheme.of(context).textMain,
+                ),
               ),
             ),
+            const SizedBox(width: 8),
             FilledButton.icon(
               onPressed: () async {
                 final result = await showDialog<bool>(

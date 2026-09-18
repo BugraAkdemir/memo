@@ -370,11 +370,14 @@ class _UsageChart extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                L10n.t('stats_chart_title'),
-                style: TextStyle(fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain),
+              Expanded(
+                child: Text(
+                  L10n.t('stats_chart_title'),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain),
+                ),
               ),
-              Spacer(),
+              SizedBox(width: 12),
               _LegendDot(color: MemoTheme.accent, label: L10n.t('stats_chart_legend_input')),
               SizedBox(width: 12),
               _LegendDot(color: MemoTheme.green, label: L10n.t('stats_chart_legend_output')),

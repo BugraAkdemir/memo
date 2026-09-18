@@ -1,3 +1,61 @@
+# Handoff — 2026-09-18 (devam 84) — Ayarlar > Hafıza sekmesi pill alt-navigasyonuyla yeniden tasarlandı
+
+## Oturum Özeti
+
+Kullanıcı: "ayarl sekmesindeki bellek sekmesinin tasarımı bok gibi her şey
+alt alta" — MemoryTab tek bir uzun `ListView` içinde 6 tam bölümü
+(Gelişmiş Hatırlama Ayarları, Bellek Dosyaları, Memory Analytics, Bilinen
+Bilgiler, Sohbet Geçmişi, Debug Search) art arda diziyordu; herhangi bir
+bölüme ulaşmak öncekilerin hepsini scroll etmeyi gerektiriyordu.
+
+## Ne yapıldı
+
+[memory_tab.dart](frontend/lib/widgets/settings/tabs/memory_tab.dart) —
+tek yığından, 5 sekmeli yatay "pill" alt-navigasyona geçirildi (Ayarlar /
+Bilinen Bilgiler / Sohbet Geçmişi / Analiz / Hata Ayıklama). Ayarlar/
+Bilinen Bilgiler/Sohbet Geçmişi pill'leri canlı sayı rozeti taşıyor
+(`memoryAsync.valueOrNull?.length`, `_knownFacts.length`, `_convTotal`).
+Her bölüm kendi `ListView` içinde ayrı scroll ediyor — büyük listeler için
+zaten var olan bounded-height `ListView.builder` perf optimizasyonuna
+(RAM/lag şikayetini önceden çözen) dokunulmadı, tamamen layout-only bir
+refactor. Business logic (veri yükleme, dialog'lar, seçim/silme akışları)
+birebir korundu.
+
+Aynı geçişte Rule #8 ihlali de bulundu ve düzeltildi: Analytics
+bölümündeki başlık + stat chip etiketleri ("Total", "Pinned", "This
+Week"...) ve "Most accessed memories" hardcoded İngilizce string'lerdi,
+Türkçe karşılığı yoktu — artık `L10n.t()` üzerinden TR+EN.
+[l10n.dart](frontend/lib/core/l10n.dart)'a `memory_tab_*` (5 sekme
+etiketi) ve `memory_stats_*` (6 anahtar) eklendi.
+
+Canlı mobil genişlikte (375px) test ederken, ÖNCEDEN VAR OLAN bir sorun
+fark edildi: "Bellek Dosyaları" başlığı `Expanded` içine sarılmamıştı (diğer
+iki bölüm başlığı sarılıyken), Türkçe metinle "Tüm Belleği Temizle"
+butonuna sıkışıyordu — AGENTS.md'nin Flutter gotcha'sında belgelenen tam
+o overflow sınıfı. Aynı dosyadayken düzeltildi (`Expanded` + `ellipsis`).
+
+## Doğrulama
+
+`flutter analyze`/`flutter test` yeşil (285+ test). Rule #8 grep'i
+(değişen dosyalarda quoted literal + Text/Tooltip/SnackBar/AlertDialog)
+boş sonuç verdi. Canlı doğrulama: `flutter build web --release` →
+`internal/webserver/webapp/`'a kopyalandı (gitignored, `//go:embed
+all:webapp`) → backend `CGO_ENABLED=1 go build -tags sqlite_fts5`
+ile yeniden derlenip `--headless --port 8090` ile başlatıldı → Claude
+Browser pane üzerinden hem İngilizce hem Türkçe'de tüm 5 sekme (canlı veri,
+gerçek bir debug search sonucu dahil) gezildi, konsol hatası yok.
+Doğrulama sonunda test backend'i durduruldu, `internal/webserver/webapp/`
+gitignored olduğu için repo'ya bir etkisi yok. Commit: `deec9463`.
+
+**Not:** Doğrulama oturumunun sonunda Claude Browser pane click event'leri
+"pane is currently hidden" hatasıyla timeout olmaya başladı (screenshot/
+read hâlâ çalışıyordu) — ortam/panel görünürlük sorunu, koddan bağımsız.
+Mobil overflow düzeltmesi bu yüzden ikinci kez canlı ekran görüntüsüyle
+tekrar doğrulanamadı, ama aynı `Expanded`+`ellipsis` deseni dosyadaki diğer
+iki başlıkta zaten canlı doğrulanmıştı.
+
+---
+
 # Handoff — 2026-09-17 (devam 83) — Telegram/WhatsApp'ın eski bilgi verme şüphesi: kök neden bulundu (özet önbelleği önceliksiz)
 
 ## Oturum Özeti

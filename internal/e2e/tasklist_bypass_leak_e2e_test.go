@@ -40,6 +40,20 @@ func TestTaskList_RunningDoesNotBypassPermissionsForUnrelatedInteractiveChat(t *
 	workerBlocked := make(chan struct{})
 	releaseWorker := make(chan struct{})
 	var once sync.Once
+	var releaseOnce sync.Once
+	releaseWorkerNow := func() { releaseOnce.Do(func() { close(releaseWorker) }) }
+	// Guarantees the task list's worker goroutine (blocked on <-releaseWorker
+	// inside the fake provider's Script callback, itself invoked from an HTTP
+	// handler on the harness's httptest.Server) is released on ANY exit path,
+	// not just the happy one at the bottom of this test. Without this, a
+	// t.Fatal/t.Fatalf anywhere above (e.g. ResolveAgentPermission getting a
+	// non-200 under CI's -race load) short-circuits straight to test cleanup
+	// via runtime.Goexit — skipping the close(releaseWorker) call below
+	// entirely — and NewHarness's t.Cleanup(server.Close) then blocks
+	// forever inside httptest.Server.Close()'s wg.Wait(), since that one
+	// handler never returns. Observed live in CI as a 10-minute
+	// "panic: test timed out" that swallowed whatever the real failure was.
+	defer releaseWorkerNow()
 
 	var mu sync.Mutex
 	sentInteractiveToolCall := false
@@ -101,7 +115,7 @@ func TestTaskList_RunningDoesNotBypassPermissionsForUnrelatedInteractiveChat(t *
 		}
 	}
 
-	close(releaseWorker)
+	releaseWorkerNow()
 	final := h.WaitForTaskStatus(tl.ID, 10*time.Second, "done", "failed")
 	if final.Status != "done" {
 		t.Errorf("task list ended in status %q, want done", final.Status)

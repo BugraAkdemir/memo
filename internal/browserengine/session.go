@@ -21,6 +21,20 @@ import (
 // forgotten session holding a Chromium process open indefinitely.
 var sessionIdleTimeout = 5 * time.Minute
 
+// actionTimeout bounds every single chromedp action below (Navigate, Click,
+// Type, Scroll, Screenshot) and the initial launch handshake. A var (not
+// const) so tests can shrink it. This matters more than it looks: every
+// action runs against s.tabCtx, which is deliberately NOT derived from the
+// per-call ctx argument (see startSession's doc comment — the session must
+// outlive a single HTTP request), so without a bound of its own here, a
+// hung chromedp action (a click that never resolves, a page that never
+// finishes loading) would block forever with nothing — not even the
+// caller's own context deadline — able to stop it. Caught empirically: an
+// early version of this file had no such bound and a real Chromium click
+// test hung indefinitely under go test's own -race build until killed by
+// hand.
+var actionTimeout = 30 * time.Second
+
 var errSessionClosed = errors.New("browsersession: session is closed")
 
 // Session is a long-lived, interactive, sandboxed Chromium tab the agent
@@ -79,6 +93,17 @@ func startSession(ctx context.Context, onIdle func(*Session)) (*Session, error) 
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.WithoutCancel(ctx), opts...)
 	tabCtx, tabCancel := chromedp.NewContext(allocCtx)
 
+	// This first Run call is deliberately NOT given a bounded/derived child
+	// context the way every later action below is (see runCtx) — chromedp
+	// ties actual browser-process allocation to whichever context object is
+	// passed to the Run call that triggers it (the first one), not just to
+	// tabCtx as a logical parent. A child context cancelled right after this
+	// call returns — even a WithTimeout one, cancelled via its own
+	// CancelFunc immediately on success — kills the underlying CDP
+	// connection along with it, so every later action then fails with
+	// "context canceled" despite tabCtx itself being untouched. Caught
+	// empirically: an earlier version of this function bounded this exact
+	// call and broke every real-Chromium test that followed it.
 	if err := chromedp.Run(tabCtx); err != nil {
 		tabCancel()
 		allocCancel()
@@ -144,14 +169,95 @@ func (s *Session) checkOpen() error {
 	return nil
 }
 
+// runCtx builds the context a single chromedp action actually runs under:
+// rooted in the session's own tabCtx (so Session.Close cancels it right
+// away, and it survives past whatever single call's ctx started the
+// session — see startSession's doc comment), capped at actionTimeout so a
+// hung action can never block forever, and additionally cancelled early if
+// the caller's ctx is cancelled first (e.g. the HTTP request driving this
+// tool call was aborted). Always pair with `defer cancel()`.
+func (s *Session) runCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	runCtx, cancel := context.WithTimeout(s.tabCtx, actionTimeout)
+	stop := context.AfterFunc(ctx, cancel)
+	return runCtx, func() {
+		stop()
+		cancel()
+	}
+}
+
 // Navigate loads url in the session's tab.
 func (s *Session) Navigate(ctx context.Context, rawURL string) error {
 	if err := s.checkOpen(); err != nil {
 		return err
 	}
 	s.touch()
-	if err := chromedp.Run(s.tabCtx, chromedp.Navigate(rawURL)); err != nil {
+	runCtx, cancel := s.runCtx(ctx)
+	defer cancel()
+	if err := chromedp.Run(runCtx, chromedp.Navigate(rawURL)); err != nil {
 		return fmt.Errorf("browsersession: navigate %s: %w", rawURL, err)
+	}
+	return nil
+}
+
+// Click clicks the first element matching a CSS selector. Waits for the
+// element to be visible first (chromedp.Click's default behavior) so a
+// click right after Navigate on a still-rendering page doesn't just miss.
+func (s *Session) Click(ctx context.Context, selector string) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	s.touch()
+	runCtx, cancel := s.runCtx(ctx)
+	defer cancel()
+	if err := chromedp.Run(runCtx, chromedp.Click(selector, chromedp.ByQuery)); err != nil {
+		return fmt.Errorf("browsersession: click %q: %w", selector, err)
+	}
+	return nil
+}
+
+// ClickAt clicks at fixed viewport coordinates — for elements with no
+// stable selector to target (canvas content, an icon inside a shadow DOM,
+// etc.), the same escape hatch Claude Code's own browser tools offer
+// alongside a selector-based click.
+func (s *Session) ClickAt(ctx context.Context, x, y float64) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	s.touch()
+	runCtx, cancel := s.runCtx(ctx)
+	defer cancel()
+	if err := chromedp.Run(runCtx, chromedp.MouseClickXY(x, y)); err != nil {
+		return fmt.Errorf("browsersession: click at (%.0f, %.0f): %w", x, y, err)
+	}
+	return nil
+}
+
+// Type focuses the first element matching selector and sends text as key
+// events (so it behaves like real typing — triggers input/keydown
+// listeners a page might rely on, not just a value assignment).
+func (s *Session) Type(ctx context.Context, selector, text string) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	s.touch()
+	runCtx, cancel := s.runCtx(ctx)
+	defer cancel()
+	if err := chromedp.Run(runCtx, chromedp.SendKeys(selector, text, chromedp.ByQuery)); err != nil {
+		return fmt.Errorf("browsersession: type into %q: %w", selector, err)
+	}
+	return nil
+}
+
+// Scroll scrolls the page by (dx, dy) pixels from its current position.
+func (s *Session) Scroll(ctx context.Context, dx, dy int) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	s.touch()
+	runCtx, cancel := s.runCtx(ctx)
+	defer cancel()
+	if err := chromedp.Run(runCtx, chromedp.Evaluate(fmt.Sprintf("window.scrollBy(%d, %d)", dx, dy), nil)); err != nil {
+		return fmt.Errorf("browsersession: scroll: %w", err)
 	}
 	return nil
 }
@@ -162,8 +268,10 @@ func (s *Session) Screenshot(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 	s.touch()
+	runCtx, cancel := s.runCtx(ctx)
+	defer cancel()
 	var buf []byte
-	if err := chromedp.Run(s.tabCtx, chromedp.CaptureScreenshot(&buf)); err != nil {
+	if err := chromedp.Run(runCtx, chromedp.CaptureScreenshot(&buf)); err != nil {
 		return nil, fmt.Errorf("browsersession: screenshot: %w", err)
 	}
 	return buf, nil

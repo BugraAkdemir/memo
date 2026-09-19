@@ -389,6 +389,27 @@ func (r *ToolRegistry) registerBrowserTools() {
 		ExecuteFn:   tools.BrowserNavigate,
 	})
 	r.Register(ToolDef{
+		Name:        "browser_click",
+		Description: "Clicks an element in the active interactive browser session — either by CSS selector, or by exact viewport coordinates if there's no stable selector to target (e.g. canvas content). Provide exactly one of selector or (x and y). Requires an existing session (call browser_navigate first).",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector of the element to click"},"x":{"type":"number","description":"Viewport x coordinate (use together with y instead of selector)"},"y":{"type":"number","description":"Viewport y coordinate (use together with x instead of selector)"}}}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.BrowserClick,
+	})
+	r.Register(ToolDef{
+		Name:        "browser_type",
+		Description: "Focuses an element by CSS selector in the active interactive browser session and types text into it as real key events (triggers the page's own input handlers, not just a value assignment). Requires an existing session (call browser_navigate first).",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector of the input/textarea/editable element"},"text":{"type":"string","description":"The text to type"}},"required":["selector","text"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.BrowserType,
+	})
+	r.Register(ToolDef{
+		Name:        "browser_scroll",
+		Description: "Scrolls the page in the active interactive browser session by (dx, dy) pixels from its current position. Omitting both scrolls down a bit by default. Requires an existing session (call browser_navigate first).",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"dx":{"type":"integer","description":"Horizontal scroll in pixels (default 0)"},"dy":{"type":"integer","description":"Vertical scroll in pixels (default 800 if both dx and dy are omitted)"}}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.BrowserScroll,
+	})
+	r.Register(ToolDef{
 		Name:        "browser_screenshot",
 		Description: "Captures the current page of the active interactive browser session as an image. Call this after browser_navigate (or after any action on it) to actually see what's displayed. Returns an error if no session is currently open.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),

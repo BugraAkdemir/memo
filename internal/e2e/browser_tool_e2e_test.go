@@ -18,9 +18,26 @@ import (
 // or a real Chromium process. See internal/browserengine's own
 // session_real_test.go for the one test in this repo that actually launches
 // a real browser.
+type clickCall struct {
+	selector string
+	x, y     float64
+	byCoords bool
+}
+
+type typeCall struct {
+	selector, text string
+}
+
+type scrollCall struct {
+	dx, dy int
+}
+
 type fakeBrowserSession struct {
 	mu          sync.Mutex
 	navigatedTo []string
+	clicks      []clickCall
+	types       []typeCall
+	scrolls     []scrollCall
 	screenshotN int
 	closed      bool
 }
@@ -29,6 +46,34 @@ func (f *fakeBrowserSession) Navigate(_ context.Context, url string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.navigatedTo = append(f.navigatedTo, url)
+	return nil
+}
+
+func (f *fakeBrowserSession) Click(_ context.Context, selector string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.clicks = append(f.clicks, clickCall{selector: selector})
+	return nil
+}
+
+func (f *fakeBrowserSession) ClickAt(_ context.Context, x, y float64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.clicks = append(f.clicks, clickCall{x: x, y: y, byCoords: true})
+	return nil
+}
+
+func (f *fakeBrowserSession) Type(_ context.Context, selector, text string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.types = append(f.types, typeCall{selector: selector, text: text})
+	return nil
+}
+
+func (f *fakeBrowserSession) Scroll(_ context.Context, dx, dy int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.scrolls = append(f.scrolls, scrollCall{dx: dx, dy: dy})
 	return nil
 }
 
@@ -288,5 +333,86 @@ func TestAgent_BrowserScreenshot_SafeNoPromptReturnsImageData(t *testing.T) {
 	}
 	if toolResult == "" {
 		t.Error("tool result never reached the model with the expected data:image/png;base64, prefix")
+	}
+}
+
+// TestAgent_BrowserFullFlow_NavigateClickTypeScrollScreenshot scripts a
+// realistic "test the page I just built" sequence — the actual use case
+// this whole tool set exists for — and proves every step reaches the fake
+// session with the right arguments, in order, and that only the Medium
+// tools (navigate, click, type) prompt while scroll (Safe) doesn't.
+func TestAgent_BrowserFullFlow_NavigateClickTypeScrollScreenshot(t *testing.T) {
+	h := NewHarness(t)
+	h.SetAgentEnabled(true)
+	fake := withFakeBrowser(t)
+
+	steps := []FakeToolCall{
+		{ID: "call_1", Name: "browser_navigate", Arguments: `{"url":"https://example.com/signup"}`},
+		{ID: "call_2", Name: "browser_click", Arguments: `{"selector":"#email"}`},
+		{ID: "call_3", Name: "browser_type", Arguments: `{"selector":"#email","text":"test@example.com"}`},
+		{ID: "call_4", Name: "browser_scroll", Arguments: `{"dy":400}`},
+		{ID: "call_5", Name: "browser_click", Arguments: `{"x":120,"y":340}`},
+		{ID: "call_6", Name: "browser_screenshot", Arguments: `{}`},
+	}
+	callCount := 0
+	h.Fake.Script = func(callNum int, req FakeChatRequest) FakeChatResponse {
+		callCount++
+		if callCount <= len(steps) {
+			return FakeChatResponse{ToolCalls: []FakeToolCall{steps[callCount-1]}}
+		}
+		return FakeChatResponse{Text: "kayıt formunu test ettim"}
+	}
+
+	chatID := h.NewAgentChat(t.TempDir())
+
+	mediumPrompts := 0
+	for ev := range h.SendMessageStreamAsync(chatID, "signup formunu test et") {
+		if ev.FinishReason != "agent_event" {
+			continue
+		}
+		for _, ae := range AgentEvents(t, []SSEEvent{ev}) {
+			if ae.Type != "permission_request" {
+				continue
+			}
+			if ae.DangerLevel != "medium" {
+				t.Errorf("permission_request for %s has DangerLevel %q, want medium", ae.ToolName, ae.DangerLevel)
+			}
+			mediumPrompts++
+			h.ResolveAgentPermission(ae.RequestID, "allow_session")
+		}
+	}
+
+	// navigate, click(selector), type are Medium — three prompts (no
+	// allow_session carry-over between DIFFERENT tool names, only within
+	// the same tool per permissions.go's per-tool wildcard key). The second
+	// click (by coordinates) is still browser_click, so it reuses the
+	// session-wide grant from the first click and does not prompt again.
+	if mediumPrompts != 3 {
+		t.Errorf("saw %d Medium permission prompts, want exactly 3 (navigate, click, type each prompt once; the second click reuses click's session grant)", mediumPrompts)
+	}
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	s := fake.session
+	if s == nil {
+		t.Fatal("no session was ever created")
+	}
+	if len(s.navigatedTo) != 1 || s.navigatedTo[0] != "https://example.com/signup" {
+		t.Errorf("navigatedTo = %v, want exactly one call to https://example.com/signup", s.navigatedTo)
+	}
+	if len(s.clicks) != 2 || s.clicks[0].selector != "#email" || s.clicks[0].byCoords {
+		t.Errorf("first click = %+v, want a selector click on #email", s.clicks)
+	}
+	if len(s.clicks) == 2 && (!s.clicks[1].byCoords || s.clicks[1].x != 120 || s.clicks[1].y != 340) {
+		t.Errorf("second click = %+v, want a coordinate click at (120, 340)", s.clicks[1])
+	}
+	if len(s.types) != 1 || s.types[0].selector != "#email" || s.types[0].text != "test@example.com" {
+		t.Errorf("types = %+v, want one call typing test@example.com into #email", s.types)
+	}
+	if len(s.scrolls) != 1 || s.scrolls[0].dy != 400 {
+		t.Errorf("scrolls = %+v, want one call with dy=400", s.scrolls)
+	}
+	if s.screenshotN != 1 {
+		t.Errorf("screenshotN = %d, want 1", s.screenshotN)
 	}
 }

@@ -1012,6 +1012,7 @@ func (a *App) shutdownSync(ctx context.Context) {
 	}
 	if a.browserMgr != nil {
 		stop("browser engine", a.browserMgr.Stop)
+		stop("browser session", a.browserMgr.StopSession)
 	}
 	if a.swarmServer != nil {
 		stop("swarm coordinator", a.swarmServer.Stop)

@@ -71,6 +71,13 @@ type Manager struct {
 	// with (or risk deadlocking against) the engine-lifecycle lock above.
 	progressMu sync.Mutex
 	progress   InstallProgress
+
+	// sessionMu guards the interactive Session (session.go) independently
+	// of mu — its lifecycle (long-lived, stateful) is unrelated to the
+	// Fetch engine's above and must never contend with or deadlock against
+	// it. nil session means no interactive session is currently running.
+	sessionMu sync.Mutex
+	session   *Session
 }
 
 // New creates a Manager. keepAlive seeds the initial mode (normally

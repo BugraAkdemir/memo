@@ -72,69 +72,90 @@ Get instructions
 	}
 }
 
-func TestManagerActivateDeactivate(t *testing.T) {
+// fakeToolRegistrar is a minimal ToolRegistrar recording every
+// register/unregister call, used to prove tools get wired up without any
+// "activate" step now that registration happens at install/discover time.
+type fakeToolRegistrar struct {
+	registered map[string]bool
+}
+
+func newFakeToolRegistrar() *fakeToolRegistrar {
+	return &fakeToolRegistrar{registered: make(map[string]bool)}
+}
+
+func (f *fakeToolRegistrar) RegisterTool(name string, toolDef any) error {
+	f.registered[name] = true
+	return nil
+}
+
+func (f *fakeToolRegistrar) UnregisterTool(name string) {
+	delete(f.registered, name)
+}
+
+// TestManagerRegisterAllTools_RegistersWithoutActivation is the regression
+// test for the old model where a skill's tools only reached the agent's
+// ToolRegistry once something called SetActive — that concept is gone now;
+// a skill's tools must be registered as soon as the skill is known,
+// regardless of whether any chat has turned it on (per-chat visibility is
+// enforced later, at dispatch time, via agent.ToolDef.SkillOwner).
+func TestManagerRegisterAllTools_RegistersWithoutActivation(t *testing.T) {
 	dir := t.TempDir()
 	m := NewManager(dir)
 	skillsDir := filepath.Join(dir, skillsDirName)
 	os.MkdirAll(skillsDir, 0755)
-	writeTestSkill(t, skillsDir, "active-test", `---
-name: active-test
-description: "Active test"
+	writeTestSkill(t, skillsDir, "tooled", `---
+name: tooled
+description: "Has a tool"
 danger_level: safe
+tools:
+  - name: dothing
+    description: "does a thing"
+    danger_level: safe
+    command: "cat"
 ---
-Active instructions
+Instructions
 `)
-	m.Discover()
-
-	if m.IsActive("active-test") {
-		t.Fatal("should not be active yet")
+	if err := m.Discover(); err != nil {
+		t.Fatalf("Discover() error: %v", err)
 	}
 
-	if err := m.SetActive([]string{"active-test"}); err != nil {
-		t.Fatalf("SetActive() error: %v", err)
-	}
+	reg := newFakeToolRegistrar()
+	m.SetToolRegistrar(reg)
+	m.RegisterAllTools()
 
-	if !m.IsActive("active-test") {
-		t.Fatal("should be active")
-	}
-
-	active := m.GetActiveNames()
-	if len(active) != 1 || active[0] != "active-test" {
-		t.Errorf("GetActiveNames() = %v", active)
-	}
-
-	if err := m.SetActive(nil); err != nil {
-		t.Fatalf("SetActive(nil) error: %v", err)
-	}
-	if m.IsActive("active-test") {
-		t.Fatal("should be inactive after SetActive(nil)")
+	if !reg.registered["skill_tooled_dothing"] {
+		t.Fatal("expected skill_tooled_dothing to be registered by RegisterAllTools with no activation step")
 	}
 }
 
-func TestManagerActiveInstructions(t *testing.T) {
+// TestManagerInstall_RegistersToolsImmediately covers the runtime-install
+// path (as opposed to startup's Discover+RegisterAllTools): a skill
+// installed after SetToolRegistrar must get its tools wired up right away.
+func TestManagerInstall_RegistersToolsImmediately(t *testing.T) {
 	dir := t.TempDir()
 	m := NewManager(dir)
-	skillsDir := filepath.Join(dir, skillsDirName)
-	os.MkdirAll(skillsDir, 0755)
-	writeTestSkill(t, skillsDir, "test-skill", `---
-name: test-skill
-description: "Test instructions"
-danger_level: safe
----
-Instructions content here
-`)
-	m.Discover()
-	m.SetActive([]string{"test-skill"})
+	reg := newFakeToolRegistrar()
+	m.SetToolRegistrar(reg)
 
-	activations := m.ActiveInstructions()
-	if len(activations) != 1 {
-		t.Fatalf("len(ActiveInstructions()) = %d", len(activations))
+	sourceDir := filepath.Join(dir, "source-tooled")
+	skillSourceDir := writeTestSkill(t, sourceDir, "runtime-tooled", `---
+name: runtime-tooled
+description: "Installed at runtime"
+danger_level: safe
+tools:
+  - name: dothing
+    description: "does a thing"
+    danger_level: safe
+    command: "cat"
+---
+Instructions
+`)
+
+	if _, err := m.Install(skillSourceDir); err != nil {
+		t.Fatalf("Install() error: %v", err)
 	}
-	if activations[0].Name != "test-skill" {
-		t.Errorf("Name = %q", activations[0].Name)
-	}
-	if activations[0].Instructions != "Instructions content here" {
-		t.Errorf("Instructions mismatch")
+	if !reg.registered["skill_runtime-tooled_dothing"] {
+		t.Fatal("expected Install() to register the skill's tool immediately")
 	}
 }
 
@@ -199,95 +220,6 @@ Remove instructions
 
 	if err := m.Remove("nonexistent"); err == nil {
 		t.Fatal("expected error for non-existent skill")
-	}
-}
-
-// TestManagerSetActive_PersistsAcrossRestart is the regression test for
-// "activation only lived in memory": a fresh Manager instance pointed at
-// the same baseDir (simulating an app restart) used to always start with
-// every skill inactive, no matter what the user had turned on before.
-func TestManagerSetActive_PersistsAcrossRestart(t *testing.T) {
-	dir := t.TempDir()
-	skillsDir := filepath.Join(dir, skillsDirName)
-	os.MkdirAll(skillsDir, 0755)
-	writeTestSkill(t, skillsDir, "persistent", `---
-name: persistent
-description: "Persistence test"
-danger_level: safe
----
-Persistent instructions
-`)
-
-	m1 := NewManager(dir)
-	if err := m1.Discover(); err != nil {
-		t.Fatalf("Discover() error: %v", err)
-	}
-	if err := m1.SetActive([]string{"persistent"}); err != nil {
-		t.Fatalf("SetActive() error: %v", err)
-	}
-
-	// A brand new Manager, same baseDir — this is what app.go's Startup()
-	// actually constructs on every launch.
-	m2 := NewManager(dir)
-	if err := m2.Discover(); err != nil {
-		t.Fatalf("Discover() error: %v", err)
-	}
-	if m2.IsActive("persistent") {
-		t.Fatal("m2 should start inactive before LoadActiveSkills() runs")
-	}
-	if err := m2.LoadActiveSkills(); err != nil {
-		t.Fatalf("LoadActiveSkills() error: %v", err)
-	}
-	if !m2.IsActive("persistent") {
-		t.Fatal("LoadActiveSkills() did not restore activation from the previous Manager instance")
-	}
-}
-
-// TestManagerLoadActiveSkills_DropsRemovedSkillsSilently covers a name in
-// the persisted file that no longer corresponds to an installed skill
-// (removed since last session) — must not error and must not block
-// restoring the other, still-valid names.
-func TestManagerLoadActiveSkills_DropsRemovedSkillsSilently(t *testing.T) {
-	dir := t.TempDir()
-	skillsDir := filepath.Join(dir, skillsDirName)
-	os.MkdirAll(skillsDir, 0755)
-	writeTestSkill(t, skillsDir, "still-here", `---
-name: still-here
-description: "Still installed"
-danger_level: safe
----
-Instructions
-`)
-
-	m := NewManager(dir)
-	if err := m.Discover(); err != nil {
-		t.Fatalf("Discover() error: %v", err)
-	}
-	data := `["still-here", "long-since-removed"]`
-	if err := os.WriteFile(m.ActiveSkillsPath(), []byte(data), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := m.LoadActiveSkills(); err != nil {
-		t.Fatalf("LoadActiveSkills() error: %v", err)
-	}
-	if !m.IsActive("still-here") {
-		t.Fatal("still-installed skill should be restored active")
-	}
-}
-
-func TestManagerLoadActiveSkills_NoFileIsNotAnError(t *testing.T) {
-	m := NewManager(t.TempDir())
-	if err := m.LoadActiveSkills(); err != nil {
-		t.Fatalf("LoadActiveSkills() with no persisted file should be a no-op, got error: %v", err)
-	}
-}
-
-func TestManagerSetActiveInvalid(t *testing.T) {
-	dir := t.TempDir()
-	m := NewManager(dir)
-	if err := m.SetActive([]string{"nonexistent"}); err == nil {
-		t.Fatal("expected error for non-existent skill activation")
 	}
 }
 

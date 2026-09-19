@@ -1,17 +1,14 @@
 package skill
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 )
 
 const skillsDirName = "skills"
-const activeSkillsFileName = "active_skills.json"
 
 type ToolRegistrar interface {
 	RegisterTool(name string, toolDef any) error
@@ -22,31 +19,20 @@ type Manager struct {
 	mu      sync.RWMutex
 	baseDir string
 
-	skills       map[string]*SkillDefinition
-	activeSkills map[string]bool
+	skills map[string]*SkillDefinition
 
 	toolRegistrar ToolRegistrar
 }
 
 func NewManager(baseDir string) *Manager {
 	return &Manager{
-		baseDir:      baseDir,
-		skills:       make(map[string]*SkillDefinition),
-		activeSkills: make(map[string]bool),
+		baseDir: baseDir,
+		skills:  make(map[string]*SkillDefinition),
 	}
 }
 
 func (m *Manager) SkillsDir() string {
 	return filepath.Join(m.baseDir, skillsDirName)
-}
-
-// ActiveSkillsPath is where SetActive persists which skills are currently
-// active, so activation survives an app restart. Previously activeSkills
-// lived only in the Manager's in-memory map and silently reset to empty on
-// every launch — a skill turned on by hand had to be turned on again every
-// single time the app started.
-func (m *Manager) ActiveSkillsPath() string {
-	return filepath.Join(m.baseDir, activeSkillsFileName)
 }
 
 func (m *Manager) Discover() error {
@@ -61,12 +47,6 @@ func (m *Manager) Discover() error {
 	m.skills = make(map[string]*SkillDefinition, len(skills))
 	for _, s := range skills {
 		m.skills[s.Manifest.Name] = s
-	}
-
-	for name := range m.activeSkills {
-		if _, ok := m.skills[name]; !ok {
-			delete(m.activeSkills, name)
-		}
 	}
 
 	return nil
@@ -134,6 +114,7 @@ func (m *Manager) Install(sourcePath string) (*SkillDefinition, error) {
 
 	def.Path = targetDir
 	m.skills[def.Manifest.Name] = def
+	m.registerToolsLocked(def)
 
 	return def, nil
 }
@@ -177,7 +158,6 @@ func (m *Manager) Remove(name string) error {
 	}
 
 	delete(m.skills, name)
-	delete(m.activeSkills, name)
 
 	if m.toolRegistrar != nil {
 		for _, tool := range def.Manifest.Tools {
@@ -188,128 +168,38 @@ func (m *Manager) Remove(name string) error {
 	return nil
 }
 
-func (m *Manager) IsActive(name string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.activeSkills[name]
+// registerToolsLocked registers def's `tools:` manifest entries with the
+// configured ToolRegistrar, if any. Caller must already hold m.mu (write
+// lock). Unlike the old activate/deactivate dance, this always runs once a
+// skill is known — a tool's registration in the shared agent.ToolRegistry
+// costs nothing on its own (no LLM ever sees it just from being
+// registered); which chats can actually see/use it is decided per-turn by
+// the caller against each chat's own active-skill list (see
+// agent.ToolDef.SkillOwner and Pipeline.activeSkills), not by
+// register/unregister here.
+func (m *Manager) registerToolsLocked(def *SkillDefinition) {
+	if m.toolRegistrar == nil {
+		return
+	}
+	for _, tool := range def.Manifest.Tools {
+		m.toolRegistrar.RegisterTool(skillToolName(def.Manifest.Name, tool.Name), SkillToolRegistration{SkillName: def.Manifest.Name, Tool: tool})
+	}
 }
 
-func (m *Manager) SetActive(names []string) error {
+// RegisterAllTools registers every currently-known skill's tools with the
+// configured ToolRegistrar. Called once at startup, after Discover() (so
+// m.skills is populated) and after SetToolRegistrar. A skill installed
+// later at runtime (Install(), including via SyncExternalSkills) registers
+// its own tools immediately instead of waiting for this.
+func (m *Manager) RegisterAllTools() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	newActive := make(map[string]bool)
-	for _, name := range names {
-		if _, ok := m.skills[name]; !ok {
-			return fmt.Errorf("skill %q not found", name)
-		}
-		newActive[name] = true
+	if m.toolRegistrar == nil {
+		return
 	}
-
-	if m.toolRegistrar != nil {
-		for name := range m.activeSkills {
-			if !newActive[name] {
-				if def, ok := m.skills[name]; ok {
-					for _, tool := range def.Manifest.Tools {
-						m.toolRegistrar.UnregisterTool(skillToolName(name, tool.Name))
-					}
-				}
-			}
-		}
-
-		for name := range newActive {
-			if !m.activeSkills[name] {
-				if def, ok := m.skills[name]; ok {
-					for _, tool := range def.Manifest.Tools {
-						m.toolRegistrar.RegisterTool(skillToolName(name, tool.Name), SkillToolRegistration{SkillName: name, Tool: tool})
-					}
-				}
-			}
-		}
+	for _, def := range m.skills {
+		m.registerToolsLocked(def)
 	}
-
-	m.activeSkills = newActive
-
-	return m.saveActiveSkillsLocked()
-}
-
-// saveActiveSkillsLocked writes the current activeSkills map to
-// ActiveSkillsPath(). Caller must already hold m.mu (write lock).
-func (m *Manager) saveActiveSkillsLocked() error {
-	names := make([]string, 0, len(m.activeSkills))
-	for name := range m.activeSkills {
-		names = append(names, name)
-	}
-	sort.Strings(names) // stable file contents, easier to diff/inspect by hand
-
-	data, err := json.MarshalIndent(names, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal active skills: %w", err)
-	}
-	if err := os.WriteFile(m.ActiveSkillsPath(), data, 0644); err != nil {
-		return fmt.Errorf("write active skills: %w", err)
-	}
-	return nil
-}
-
-// LoadActiveSkills restores which skills were active in a previous session
-// from ActiveSkillsPath(). Called once during startup, after Discover() (so
-// m.skills is populated) and after SetToolRegistrar (so tools belonging to
-// a restored-active skill actually get wired up). A name in the file that
-// no longer corresponds to an installed skill — removed since last
-// session — is silently dropped rather than treated as an error: the file
-// records past intent, not a request that must fully succeed.
-func (m *Manager) LoadActiveSkills() error {
-	data, err := os.ReadFile(m.ActiveSkillsPath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("read active skills: %w", err)
-	}
-	var names []string
-	if err := json.Unmarshal(data, &names); err != nil {
-		return fmt.Errorf("parse active skills: %w", err)
-	}
-
-	m.mu.RLock()
-	valid := make([]string, 0, len(names))
-	for _, name := range names {
-		if _, ok := m.skills[name]; ok {
-			valid = append(valid, name)
-		}
-	}
-	m.mu.RUnlock()
-
-	return m.SetActive(valid)
-}
-
-func (m *Manager) GetActiveNames() []string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	names := make([]string, 0, len(m.activeSkills))
-	for name := range m.activeSkills {
-		names = append(names, name)
-	}
-	return names
-}
-
-func (m *Manager) ActiveInstructions() []SkillActivation {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	var activations []SkillActivation
-	for name := range m.activeSkills {
-		if def, ok := m.skills[name]; ok {
-			activations = append(activations, SkillActivation{
-				Name:         name,
-				Description:  def.Manifest.Description,
-				Instructions: def.Instructions,
-			})
-		}
-	}
-	return activations
 }
 
 func (m *Manager) SetToolRegistrar(r ToolRegistrar) {

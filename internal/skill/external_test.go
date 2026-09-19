@@ -20,13 +20,13 @@ func writeExternalSkill(t *testing.T, root, name, description string) string {
 	return dir
 }
 
-// TestSyncExternalSkills_ImportsWithoutActivating is the regression test for
-// "Memo silently gives a downloaded/edited SKILL.md full system-prompt
-// authority the moment it's discovered": importing must install the skill
-// (so the user can find and review it) without switching it on. See
-// SyncExternalSkills' doc comment for why unattended activation of
-// externally-sourced instruction text is unsafe.
-func TestSyncExternalSkills_ImportsWithoutActivating(t *testing.T) {
+// TestSyncExternalSkills_Imports is the regression test for "Memo silently
+// gives a downloaded/edited SKILL.md full system-prompt authority the
+// moment it's discovered": importing must install the skill (so the user
+// can find and review it) — whether/where it then gets turned on is a
+// per-chat choice made later (see internal/sessions' ActiveSkills), not
+// something SyncExternalSkills itself has any say over.
+func TestSyncExternalSkills_Imports(t *testing.T) {
 	dataDir := t.TempDir()
 	sourceDir := t.TempDir()
 	m := NewManager(dataDir)
@@ -47,48 +47,6 @@ func TestSyncExternalSkills_ImportsWithoutActivating(t *testing.T) {
 	}
 	if def.Manifest.Description != "A Claude Code skill" {
 		t.Errorf("Description = %q", def.Manifest.Description)
-	}
-	if m.IsActive("claude-only") {
-		t.Error("imported skill must not be auto-activated — user must opt in")
-	}
-}
-
-// TestSyncExternalSkills_RespectsManualActivationState is the regression
-// test for "a resync resets whatever the user chose": a skill the user
-// explicitly turned on, then back off, must stay off across a later sync of
-// unchanged content — the sync must never touch activation state itself.
-func TestSyncExternalSkills_RespectsManualActivationState(t *testing.T) {
-	dataDir := t.TempDir()
-	sourceDir := t.TempDir()
-	m := NewManager(dataDir)
-	sources := []ExternalSource{{ID: "claude-code", Name: "Claude Code", Dirs: []string{sourceDir}}}
-
-	writeExternalSkill(t, sourceDir, "opt-out", "Auto-imported skill")
-
-	if _, err := SyncExternalSkills(m, sources); err != nil {
-		t.Fatalf("first sync error: %v", err)
-	}
-	if m.IsActive("opt-out") {
-		t.Fatal("import should not auto-activate")
-	}
-
-	// User reviews it, turns it on, then changes their mind.
-	if err := m.SetActive([]string{"opt-out"}); err != nil {
-		t.Fatalf("SetActive([opt-out]) error: %v", err)
-	}
-	if err := m.SetActive(nil); err != nil {
-		t.Fatalf("SetActive(nil) error: %v", err)
-	}
-
-	result, err := SyncExternalSkills(m, sources)
-	if err != nil {
-		t.Fatalf("second sync error: %v", err)
-	}
-	if len(result.Imported) != 0 {
-		t.Fatalf("unchanged skill should not be re-imported, got %+v", result.Imported)
-	}
-	if m.IsActive("opt-out") {
-		t.Fatal("sync re-activated a skill the user had manually turned off")
 	}
 }
 

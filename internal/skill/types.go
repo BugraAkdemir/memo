@@ -46,12 +46,6 @@ type SkillDefinition struct {
 	LoadedAt     time.Time
 }
 
-type SkillActivation struct {
-	Name         string
-	Description  string
-	Instructions string
-}
-
 // SkillToolRegistration is the value passed to ToolRegistrar.RegisterTool.
 // It carries the owning skill's name alongside the tool spec because a
 // registrar's ExecuteFn needs both to call back into Manager.ExecuteTool —

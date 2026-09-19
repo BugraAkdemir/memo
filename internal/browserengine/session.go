@@ -119,7 +119,18 @@ func startSession(ctx context.Context, onIdle func(*Session)) (*Session, error) 
 	opts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
 		chromedp.ExecPath(execPath),
 		chromedp.UserDataDir(profileDir),
-		chromedp.WindowSize(1280, 800),
+		// Matches BrowserPane's own width in frontend/lib/widgets/agent/
+		// browser_pane.dart (kept in sync by hand — Go and Dart can't share
+		// a literal). A fixed 1280x800 desktop viewport here was the first
+		// version, and it looked broken in the pane: a responsive page
+		// always rendered its desktop layout regardless of how narrow the
+		// pane actually displays it, then got squeezed down to ~30% size
+		// with a large dead-space letterbox below it once BoxFit.contain
+		// fit its now-oversized aspect ratio into the pane's tall, narrow
+		// one. Matching the aspect ratio here means a responsive site
+		// renders the same narrow layout the pane actually shows, and fills
+		// the available space instead of shrinking into a corner of it.
+		chromedp.WindowSize(420, 900),
 		chromedp.Flag("disable-extensions", true),
 	)
 	// allocCtx is deliberately NOT derived from ctx as-is (ctx is normally an

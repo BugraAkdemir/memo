@@ -10,6 +10,7 @@ import '../core/api_client.dart';
 import '../core/backend_url.dart';
 import '../core/l10n.dart';
 import '../models/agent.dart';
+import '../models/browser_frame.dart';
 import '../models/chat.dart';
 import '../models/token_usage.dart';
 import 'agent_provider.dart';
@@ -311,6 +312,63 @@ final streamingStatusProvider = StateProvider<String>((ref) => '');
 
 /// Live token usage for the current/last turn (Claude-Code-style counter).
 final tokenUsageProvider = StateProvider<TokenUsage?>((ref) => null);
+
+/// The most recent live screenshot from a "browser_frame" SSE chunk — see
+/// BrowserPane, which is the only consumer. No async/staleness guard needed
+/// here (unlike an AsyncNotifier's _generation pattern): each frame is just
+/// the latest value pushed, there's no earlier in-flight fetch a later one
+/// could race against.
+final browserFrameProvider = StateProvider<BrowserFrame?>((ref) => null);
+
+/// Whether the agent's interactive browser session is currently open —
+/// best-effort, derived from browser_navigate/browser_close tool events on
+/// the same agent_event stream (see the SSE loop below), not a live poll of
+/// backend state. Gates whether BrowserPane renders at all.
+final browserSessionActiveProvider = StateProvider<bool>((ref) => false);
+
+/// The URL of the page the agent's browser session last navigated to —
+/// derived from browser_navigate's own tool_executing AgentEvent (Args.url)
+/// rather than carried on BrowserFrame itself, since that event is already
+/// flowing through the same stream. Shown as BrowserPane's header label.
+final browserCurrentUrlProvider = StateProvider<String?>((ref) => null);
+
+/// Extracts the `url` argument from a browser_navigate AgentEvent's `args`
+/// — mirrors permission_dialog.dart's own String-vs-Map handling for the
+/// same dynamic field (AgentEvent.args' doc comment explains why it can't
+/// be a single concrete type).
+String? _browserNavigateUrl(dynamic args) {
+  try {
+    if (args is String) {
+      final decoded = json.decode(args);
+      if (decoded is Map) return decoded['url'] as String?;
+    } else if (args is Map) {
+      return args['url'] as String?;
+    }
+  } catch (_) {
+    // ignore malformed args
+  }
+  return null;
+}
+
+/// Applies a decoded AgentEvent's effect on the three browser-pane
+/// providers above — shared by every SSE-consuming loop in this file (the
+/// normal send path and the file-attach send path both parse agent_event
+/// chunks independently; see chat_provider.dart's other `agent_event`
+/// branches for why they're duplicated rather than shared).
+void _applyBrowserPaneEvent(Ref ref, AgentEvent ev) {
+  if (ev.toolName == 'browser_navigate' &&
+      (ev.type == 'tool_executing' || ev.type == 'tool_result')) {
+    ref.read(browserSessionActiveProvider.notifier).state = true;
+    final url = _browserNavigateUrl(ev.args);
+    if (url != null && url.isNotEmpty) {
+      ref.read(browserCurrentUrlProvider.notifier).state = url;
+    }
+  } else if (ev.toolName == 'browser_close' && ev.type == 'tool_result') {
+    ref.read(browserSessionActiveProvider.notifier).state = false;
+    ref.read(browserCurrentUrlProvider.notifier).state = null;
+    ref.read(browserFrameProvider.notifier).state = null;
+  }
+}
 
 /// Web-search mode: when on, every message is enriched with live web results
 /// (no keyword detection). Persisted server-side.
@@ -697,12 +755,20 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
                 currentEvents.add(ev);
                 ref.read(agentEventBusProvider).emit(ev);
               }
+              _applyBrowserPaneEvent(ref, ev);
 
               ref.read(streamingAgentEventsProvider.notifier).state =
                   currentEvents;
               finalAgentEvents = currentEvents;
             } catch (e) {
               // ignore parse errors
+            }
+          } else if (chunk.finishReason == 'browser_frame') {
+            try {
+              ref.read(browserFrameProvider.notifier).state =
+                  BrowserFrame.fromJson(json.decode(chunk.content));
+            } catch (e) {
+              // ignore parse errors — same defensive convention as agent_event above
             }
           } else if (chunk.finishReason == 'memory_used') {
             memoryUsed = int.tryParse(chunk.content) ?? 0;
@@ -902,10 +968,18 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
                 currentEvents.add(ev);
                 ref.read(agentEventBusProvider).emit(ev);
               }
+              _applyBrowserPaneEvent(ref, ev);
               ref.read(streamingAgentEventsProvider.notifier).state = currentEvents;
               finalAgentEvents = currentEvents;
             } catch (e) {
               debugPrint('chat_provider: malformed agent_event SSE chunk: $e');
+            }
+          } else if (chunk.finishReason == 'browser_frame') {
+            try {
+              ref.read(browserFrameProvider.notifier).state =
+                  BrowserFrame.fromJson(json.decode(chunk.content));
+            } catch (e) {
+              debugPrint('chat_provider: malformed browser_frame SSE chunk: $e');
             }
           } else {
             if (ref.read(streamingStatusProvider).isNotEmpty) {

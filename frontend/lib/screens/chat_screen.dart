@@ -13,6 +13,7 @@ import '../providers/whatsapp_provider.dart';
 import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
+import '../widgets/agent/browser_pane.dart';
 import '../providers/tasklist_provider.dart';
 import '../widgets/provider_config_dialog.dart';
 import '../widgets/welcome_view.dart';
@@ -84,6 +85,9 @@ class ChatScreen extends ConsumerWidget {
 
             // ─── Main Chat Area ───────────────────────
             Expanded(child: content),
+
+            // ─── Agent Browser (only while a session is open) ──
+            if (ref.watch(browserSessionActiveProvider)) const BrowserPane(),
           ],
         );
       },

@@ -21,6 +21,12 @@ class ToolNames {
     'whatsapp_latest': _ToolMeta('tool_whatsapp_latest', 'tool_whatsapp_latest_desc', Icons.chat_bubble_outline),
     'whatsapp_messages': _ToolMeta('tool_whatsapp_messages', 'tool_whatsapp_messages_desc', Icons.history),
     'open_app': _ToolMeta('tool_open_app', 'tool_open_app_desc', Icons.open_in_new),
+    'browser_navigate': _ToolMeta('tool_browser_navigate', 'tool_browser_navigate_desc', Icons.public),
+    'browser_click': _ToolMeta('tool_browser_click', 'tool_browser_click_desc', Icons.touch_app_outlined),
+    'browser_type': _ToolMeta('tool_browser_type', 'tool_browser_type_desc', Icons.keyboard_alt_outlined),
+    'browser_scroll': _ToolMeta('tool_browser_scroll', 'tool_browser_scroll_desc', Icons.swap_vert),
+    'browser_screenshot': _ToolMeta('tool_browser_screenshot', 'tool_browser_screenshot_desc', Icons.photo_camera_outlined),
+    'browser_close': _ToolMeta('tool_browser_close', 'tool_browser_close_desc', Icons.close),
   };
 
   static String displayName(String? toolName) {

@@ -50,10 +50,10 @@ class SkillListNotifier extends AsyncNotifier<List<SkillDefinition>> {
 
   Future<List<SkillDefinition>> _fetchSkills() async {
     final api = ref.read(apiClientProvider);
-    final activeNames = await api.getActiveSkills();
-    final activeSet = activeNames.toSet();
     final skills = await api.listSkills();
-    return skills.map((s) => SkillDefinition.fromJson(s, isActive: activeSet.contains(s['Manifest']?['name']))).toList();
+    // Active/inactive is per-chat now (see chatActiveSkillsProvider) — this
+    // plain installed-skills list carries no activation state of its own.
+    return skills.map((s) => SkillDefinition.fromJson(s)).toList();
   }
 
   /// Install a skill from a local path.
@@ -86,19 +86,20 @@ class SkillListNotifier extends AsyncNotifier<List<SkillDefinition>> {
     }
   }
 
-  /// Toggle a skill on/off.
-  Future<bool> toggleSkill(String name, bool active) async {
+  /// Toggle a skill on/off for one chat. Activation is per-chat — this
+  /// never affects any other chat's active-skill list.
+  Future<bool> toggleSkill(String chatId, String name, bool active) async {
     try {
       final api = ref.read(apiClientProvider);
-      final current = await api.getActiveSkills();
+      final current = await api.getActiveSkills(chatId);
       final updated = Set<String>.from(current);
       if (active) {
         updated.add(name);
       } else {
         updated.remove(name);
       }
-      await api.setActiveSkills(updated.toList());
-      ref.invalidateSelf();
+      await api.setActiveSkills(chatId, updated.toList());
+      ref.invalidate(chatActiveSkillsProvider(chatId));
       return true;
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
@@ -107,3 +108,17 @@ class SkillListNotifier extends AsyncNotifier<List<SkillDefinition>> {
     }
   }
 }
+
+/// The set of skill names active for one chat. Mirrors chatCodeModeProvider
+/// (agent_provider.dart) — same per-chat FutureProvider.family shape and
+/// the same BUG-SCAN8/BUG-ONB6 auth-gate guard: a widget that's always
+/// mounted (this one lives behind a dialog the user opens, but the pattern
+/// is kept consistent regardless) must not cache a pre-auth-gate 401 as a
+/// permanent error.
+final chatActiveSkillsProvider =
+    FutureProvider.family<Set<String>, String>((ref, chatId) async {
+  if (chatId.isEmpty) return const {};
+  if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const {};
+  final names = await ref.read(apiClientProvider).getActiveSkills(chatId);
+  return names.toSet();
+});

@@ -2395,14 +2395,15 @@ class MemoApiClient {
     await _dio.delete('/api/skills/remove/$name');
   }
 
-  /// Set which skills are active.
-  Future<void> setActiveSkills(List<String> names) async {
-    await _dio.put('/api/skills/active', data: {'names': names});
+  /// Set which skills are active for one chat. Activation is per-chat, not
+  /// global — a skill turned on in one chat has no effect on any other.
+  Future<void> setActiveSkills(String chatId, List<String> names) async {
+    await _dio.put('/api/skills/active', data: {'chat_id': chatId, 'names': names});
   }
 
-  /// Get list of currently active skill names.
-  Future<List<String>> getActiveSkills() async {
-    final res = await _dio.get('/api/skills/active-list');
+  /// Get the skill names currently active for one chat.
+  Future<List<String>> getActiveSkills(String chatId) async {
+    final res = await _dio.get('/api/skills/active-list', queryParameters: {'chat_id': chatId});
     if (res.data is Map && res.data['names'] is List) {
       return (res.data['names'] as List).cast<String>();
     }

@@ -79,12 +79,12 @@ class SkillsTab extends ConsumerWidget {
                   separatorBuilder: (_, _) => Divider(height: 1, color: theme.borderSoft),
                   itemBuilder: (_, i) {
                     final s = skills[i];
+                    // Activation is per-chat now (see SkillConfigDialog) —
+                    // there's no chat context here in Settings, so this is
+                    // an installed-skills list only, no active/inactive
+                    // state to show.
                     return ListTile(
-                      leading: SvgIcon(
-                        s.isActive ? 'check-circle' : 'puzzle-piece',
-                        size: 24,
-                        color: s.isActive ? MemoTheme.green : theme.textDim,
-                      ),
+                      leading: SvgIcon('puzzle-piece', size: 24, color: theme.textDim),
                       title: Text(
                         s.name,
                         style: TextStyle(
@@ -99,11 +99,6 @@ class SkillsTab extends ConsumerWidget {
                         style: TextStyle(color: theme.textDim, fontSize: 12),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: Switch(
-                        value: s.isActive,
-                        onChanged: (v) => _toggleSkill(ref, s.name, v),
-                        activeThumbColor: MemoTheme.accent,
                       ),
                     );
                   },
@@ -121,10 +116,5 @@ class SkillsTab extends ConsumerWidget {
       context: context,
       builder: (_) => const SkillConfigDialog(),
     ).then((_) => ref.invalidate(skillListProvider));
-  }
-
-  Future<void> _toggleSkill(WidgetRef ref, String name, bool active) async {
-    final notifier = ref.read(skillListProvider.notifier);
-    await notifier.toggleSkill(name, active);
   }
 }

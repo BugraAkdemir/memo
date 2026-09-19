@@ -669,6 +669,8 @@ class L10n {
     'skills_empty_hint_dialog':
         'data/skills/ klasörüne SKILL.md dosyası ekleyin\nveya aşağıdan yükleyin.',
     'skills_list_load_failed': 'Skill\'ler yüklenemedi: \${e}',
+    'skill_activation_hint_settings':
+        'Skill\'ler sohbet bazında etkinleştirilir. Bir skill\'i açmak için sohbetin giriş çubuğundaki skill menüsünü kullanın.',
     'skill_activated': '✅ \${name} aktifleştirildi',
     'skill_deactivated': '⏸️ \${name} devre dışı',
     'skill_deleted_ok': '🗑️ \${name} silindi',
@@ -2896,6 +2898,8 @@ class L10n {
     'skills_empty_hint_dialog':
         'Add a SKILL.md file under data/skills/\nor install one below.',
     'skills_list_load_failed': 'Failed to load skills: \${e}',
+    'skill_activation_hint_settings':
+        'Skills are activated per chat. Use the skill menu in a chat\'s input bar to turn one on.',
     'skill_activated': '✅ \${name} activated',
     'skill_deactivated': '⏸️ \${name} deactivated',
     'skill_deleted_ok': '🗑️ \${name} removed',

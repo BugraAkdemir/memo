@@ -750,11 +750,17 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   }
 
   Future<void> _showSkillManager() async {
+    final chatId = ref.read(activeChatIdProvider).valueOrNull ?? '';
+    if (chatId.isEmpty) {
+      debugPrint('skill manager: opened but no active chat id');
+      return;
+    }
     await showDialog(
       context: context,
-      builder: (_) => const SkillConfigDialog(),
+      builder: (_) => SkillConfigDialog(chatId: chatId),
     );
     ref.invalidate(skillListProvider);
+    ref.invalidate(chatActiveSkillsProvider(chatId));
   }
 
   /// Whether a chat request would actually have somewhere to go: either an

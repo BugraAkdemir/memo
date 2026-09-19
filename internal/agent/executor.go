@@ -228,6 +228,26 @@ func (e *Executor) Registry() *ToolRegistry {
 	return e.registry
 }
 
+// resolveActiveSkillSet returns the set of skill names active for
+// sessionID's chat — the allowlist RunStream/RunStreamWithRouter hand to
+// Pipeline (as activeSkills) and ExecuteToolCall checks directly, gating
+// which skill-owned tools (ToolDef.SkillOwner != "") this call can
+// advertise to the LLM or actually execute. Empty when there's no session
+// manager (background/test executors) or no sessionID (sub-agent/planner/
+// escalation calls, which aren't tied to any real chat) — those turns
+// simply get no skill tools, which is the correct default for a call with
+// no chat a user could have turned a skill on in.
+func (e *Executor) resolveActiveSkillSet(sessionID string) map[string]bool {
+	set := make(map[string]bool)
+	if e.sessionManager == nil || sessionID == "" {
+		return set
+	}
+	for _, name := range e.sessionManager.GetActiveSkills(sessionID) {
+		set[name] = true
+	}
+	return set
+}
+
 // IsAvailable checks if the agent can run (needs a provider router).
 func (e *Executor) IsAvailable() bool {
 	e.mu.Lock()
@@ -384,6 +404,7 @@ func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Rou
 	pipeline.autoPermission = e.GetAutoPermission()
 	pipeline.autoPermissionFn = e.GetAutoPermission
 	pipeline.effortLevel = effortLevel
+	pipeline.activeSkills = e.resolveActiveSkillSet(sessionID)
 
 	wrappedOnEvent := func(ev AgentEvent) {
 		// Log the event

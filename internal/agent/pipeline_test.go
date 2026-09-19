@@ -831,3 +831,100 @@ func TestRunStream_MissingToolCallIDPropagatesToAssistantMessage(t *testing.T) {
 		t.Fatalf("assistant tool_call id %q does not match paired tool response's tool_call_id %q — structurally invalid pairing", assistantID, toolCallID)
 	}
 }
+
+// newSkillOwnedTestTool registers a tool tagged with SkillOwner "myskill"
+// into registry, and returns a pointer that flips true if the tool's
+// ExecuteFn actually ran — used by the two tests below to prove a skill's
+// tool is gated by Pipeline.activeSkills regardless of what the model asks
+// for.
+func newSkillOwnedTestTool(registry *ToolRegistry) *bool {
+	executed := false
+	registry.Register(ToolDef{
+		Name:        "skill_myskill_dothing",
+		Description: "test skill tool",
+		Parameters:  json.RawMessage(`{"type":"object"}`),
+		DangerLevel: Safe,
+		SkillOwner:  "myskill",
+		ExecuteFn: func(ctx context.Context, args json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+			executed = true
+			return "ok", nil
+		},
+	})
+	return &executed
+}
+
+// TestRunStream_SkillToolBlockedWhenSkillNotActive is the enforcement half
+// of chat-scoped skill tools: a skill's tools are registered into the
+// shared registry unconditionally (skill.Manager.RegisterAllTools), so a
+// model that names one must still be refused if the calling chat hasn't
+// activated the owning skill (Pipeline.activeSkills). ToOpenAITools not
+// advertising the tool is the other half — this guards the case where the
+// model asks for it anyway (stale context, hallucination).
+func TestRunStream_SkillToolBlockedWhenSkillNotActive(t *testing.T) {
+	dir := t.TempDir()
+	registry := NewRegistry()
+	executed := newSkillOwnedTestTool(registry)
+	permissions := NewPermissionManager(t.TempDir())
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+	backup := NewBackupManager(t.TempDir())
+
+	prov := &scriptedProvider{responses: []provider.ChatResponse{
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "s1", "skill_myskill_dothing", map[string]string{})}},
+		{Content: "done"},
+	}}
+
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, backup)
+	// activeSkills left at its zero value (nil) — "myskill" is not active.
+
+	var events []AgentEvent
+	ch, err := pipeline.RunStream(context.Background(), nil, "m", func(ev AgentEvent) { events = append(events, ev) }, nil)
+	if err != nil {
+		t.Fatalf("RunStream: %v", err)
+	}
+	for range ch {
+	}
+
+	if *executed {
+		t.Fatal("skill tool executed even though its skill is not active in this chat")
+	}
+	found := false
+	for _, ev := range events {
+		if ev.Type == EventToolError && ev.ToolName == "skill_myskill_dothing" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected an EventToolError for the inactive skill's tool")
+	}
+}
+
+// TestRunStream_SkillToolAllowedWhenSkillActive is the mirror case: once the
+// chat's activeSkills set names the owning skill, the same tool call must
+// execute normally.
+func TestRunStream_SkillToolAllowedWhenSkillActive(t *testing.T) {
+	dir := t.TempDir()
+	registry := NewRegistry()
+	executed := newSkillOwnedTestTool(registry)
+	permissions := NewPermissionManager(t.TempDir())
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+	backup := NewBackupManager(t.TempDir())
+
+	prov := &scriptedProvider{responses: []provider.ChatResponse{
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "s1", "skill_myskill_dothing", map[string]string{})}},
+		{Content: "done"},
+	}}
+
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, backup)
+	pipeline.activeSkills = map[string]bool{"myskill": true}
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "m", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream: %v", err)
+	}
+	for range ch {
+	}
+
+	if !*executed {
+		t.Fatal("skill tool did not execute even though its skill is active in this chat")
+	}
+}

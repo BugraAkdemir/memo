@@ -38,6 +38,14 @@ func (e *Executor) ExecuteToolCall(ctx context.Context, sessionID, toolName stri
 		e.emitToolCallEvent(sessionID, onEvent, AgentEvent{Type: EventToolError, ToolName: toolName, Error: err.Error()})
 		return "", err
 	}
+	// Same chat-scoping gate as Pipeline's dispatch loop (pipeline.go) —
+	// this is the Live Mode standalone path's own tool dispatch, so it
+	// needs the identical check rather than inheriting Pipeline's.
+	if toolDef.SkillOwner != "" && !e.resolveActiveSkillSet(sessionID)[toolDef.SkillOwner] {
+		err := fmt.Errorf("tool %q belongs to skill %q, which is not active in this chat", toolName, toolDef.SkillOwner)
+		e.emitToolCallEvent(sessionID, onEvent, AgentEvent{Type: EventToolError, ToolName: toolName, Error: err.Error()})
+		return "", err
+	}
 
 	effectiveBase := e.basePath
 	if len(projectPath) > 0 && projectPath[0] != "" {

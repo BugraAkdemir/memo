@@ -89,6 +89,17 @@ type Session struct {
 	// straight through, then this is cleared regardless of whether it
 	// matched.
 	AwaitingPlanDecision bool `json:"awaiting_plan_decision,omitempty"`
+	// ActiveSkills is the set of skill names turned on for this chat —
+	// nil/empty (the zero value, so a brand-new chat always starts with no
+	// skills active) means none. Deliberately per-chat rather than a single
+	// app-wide list: a skill's instructions and agent tools used to stay
+	// active in every chat forever once turned on anywhere, which is what
+	// let 5 simultaneously-active imported skills bloat every subsequent
+	// chat's prompt regardless of relevance. See internal/agent/tools.go's
+	// ToolDef.SkillOwner and internal/skill/manager.go's RegisterAllTools
+	// for how this gates which skill tools a given chat's turns can
+	// actually see/execute.
+	ActiveSkills []string `json:"active_skills,omitempty"`
 }
 
 type Manager struct {
@@ -225,6 +236,30 @@ func (m *Manager) SetCodeMode(id string, v *bool) error {
 		return fmt.Errorf("session not found: %s", id)
 	}
 	s.CodeMode = v
+	return m.save(s)
+}
+
+// GetActiveSkills returns id's active skill names (nil = none). See
+// Session.ActiveSkills.
+func (m *Manager) GetActiveSkills(id string) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return nil
+	}
+	return s.ActiveSkills
+}
+
+// SetActiveSkills replaces id's active skill list and persists it.
+func (m *Manager) SetActiveSkills(id string, names []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	s.ActiveSkills = names
 	return m.save(s)
 }
 

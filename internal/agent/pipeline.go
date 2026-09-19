@@ -73,6 +73,15 @@ type Pipeline struct {
 	// signatures are already exercised directly by pipeline_test.go and
 	// don't need a new constructor param for this.
 	effortLevel string
+
+	// activeSkills is the set of skill names active for this turn's chat —
+	// set by the Executor after construction (same pattern as the fields
+	// above), via Executor.resolveActiveSkillSet(sessionID). Gates both
+	// which skill-owned tools ToOpenAITools advertises to the LLM and
+	// which ones the dispatch loop below will actually execute. nil/empty
+	// means no skill tools are available this turn (built-ins are never
+	// gated by this).
+	activeSkills map[string]bool
 }
 
 // NewPipeline creates a new agent execution pipeline.
@@ -177,7 +186,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				Model:       modelName,
 				Messages:    currentMessages,
 				Temperature: 0.2,
-				Tools:       p.registry.ToOpenAITools(),
+				Tools:       p.registry.ToOpenAITools(p.activeSkills),
 				Stream:      false,
 				EffortLevel: p.effortLevel,
 			}
@@ -337,6 +346,25 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				toolDef, ok := p.registry.Get(toolName)
 				if !ok {
 					errMsg := fmt.Sprintf("Unknown tool: %s", toolName)
+					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: errMsg})
+					currentMessages = append(currentMessages, provider.Message{
+						Role:       "tool",
+						ToolCallID: tc.ID,
+						Content:    fmt.Sprintf("Error: %s", errMsg),
+					})
+					continue
+				}
+
+				// A skill's tools are always registered (see
+				// skill.Manager.RegisterAllTools), regardless of which chat
+				// activated the skill — this is the enforcement half of
+				// chat-scoped skill tools (ToOpenAITools above is the
+				// advertise half). Without this check a model that already
+				// saw the tool name earlier in the conversation (or one
+				// that guesses/hallucinates it) could still call a tool
+				// belonging to a skill this chat never activated.
+				if toolDef.SkillOwner != "" && !p.activeSkills[toolDef.SkillOwner] {
+					errMsg := fmt.Sprintf("tool %q belongs to skill %q, which is not active in this chat", toolName, toolDef.SkillOwner)
 					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: errMsg})
 					currentMessages = append(currentMessages, provider.Message{
 						Role:       "tool",

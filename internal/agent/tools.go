@@ -44,6 +44,13 @@ type ToolDef struct {
 	DangerLevel DangerLevel
 	ExecuteFn   func(ctx context.Context, args json.RawMessage, basePath string, createBackup func(string) error) (string, error)
 	PreviewFn   func(args json.RawMessage, basePath string) (string, error)
+	// SkillOwner is the name of the skill that contributed this tool, or ""
+	// for a built-in tool. Tools are registered unconditionally (at skill
+	// install/discover time, not at "activate" time) — SkillOwner is what
+	// lets ToOpenAITools/dispatch gate a skill's tools to only the chats
+	// that actually have that skill active, without needing a separate
+	// registry per chat.
+	SkillOwner string
 }
 
 // ToolRegistry manages all available tools.
@@ -584,7 +591,16 @@ func (r *ToolRegistry) Unregister(name string) {
 // prompt-cache hit on it (Anthropic explicit cache_control, OpenAI automatic)
 // when the serialized bytes are identical each time — a Go map iteration
 // order is not.
-func (r *ToolRegistry) ToOpenAITools() []provider.ToolDefinition {
+//
+// activeSkills restricts skill-provided tools (ToolDef.SkillOwner != "") to
+// those whose owning skill is in the set — a skill's tools are registered
+// into this shared registry unconditionally (see skill.Manager.
+// RegisterAllTools), so this is the boundary that actually makes a skill's
+// tools chat-scoped: a chat whose active-skill set doesn't include the
+// owner never has that tool sent to the LLM. Built-in tools
+// (SkillOwner == "") are never gated and always included. Pass nil (or an
+// empty map) to include only built-ins.
+func (r *ToolRegistry) ToOpenAITools(activeSkills map[string]bool) []provider.ToolDefinition {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -597,6 +613,9 @@ func (r *ToolRegistry) ToOpenAITools() []provider.ToolDefinition {
 	defs := make([]provider.ToolDefinition, 0, len(names))
 	for _, name := range names {
 		t := r.tools[name]
+		if t.SkillOwner != "" && !activeSkills[t.SkillOwner] {
+			continue
+		}
 		defs = append(defs, provider.ToolDefinition{
 			Type: "function",
 			Function: provider.ToolFunction{

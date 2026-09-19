@@ -20,7 +20,7 @@ import (
 // pure leaked internal state with no purpose on the wire.
 func TestToOpenAITools_OnlyStandardFields(t *testing.T) {
 	r := NewRegistry()
-	defs := r.ToOpenAITools()
+	defs := r.ToOpenAITools(nil)
 	if len(defs) == 0 {
 		t.Fatal("expected at least one registered built-in tool")
 	}
@@ -52,15 +52,15 @@ func TestToOpenAITools_OnlyStandardFields(t *testing.T) {
 // iteration never gets a cache hit on it.
 func TestToOpenAITools_StableOrder(t *testing.T) {
 	r := NewRegistry()
-	first, _ := json.Marshal(r.ToOpenAITools())
+	first, _ := json.Marshal(r.ToOpenAITools(nil))
 	for i := 0; i < 20; i++ {
-		next, _ := json.Marshal(r.ToOpenAITools())
+		next, _ := json.Marshal(r.ToOpenAITools(nil))
 		if string(next) != string(first) {
 			t.Fatalf("ToOpenAITools output changed between calls (call %d):\n%s\nvs\n%s", i, first, next)
 		}
 	}
 	// And it is actually sorted by name.
-	defs := r.ToOpenAITools()
+	defs := r.ToOpenAITools(nil)
 	for i := 1; i < len(defs); i++ {
 		if defs[i-1].Function.Name > defs[i].Function.Name {
 			t.Fatalf("not name-sorted: %q before %q", defs[i-1].Function.Name, defs[i].Function.Name)

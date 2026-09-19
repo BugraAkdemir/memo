@@ -164,6 +164,7 @@ func (r *ToolRegistry) registerBuiltins() {
 	r.registerWebSearchTool()
 	r.registerFetchPageTool()
 	r.registerOpenAppTool()
+	r.registerBrowserTools()
 
 	r.Register(ToolDef{
 		Name:        "self_clone",
@@ -358,6 +359,48 @@ func (r *ToolRegistry) registerOpenAppTool() {
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"app_name":{"type":"string","description":"Just the application's name (e.g. \"Spotify\", \"Steam\", \"tarayıcı\"/\"browser\", \"Discord\", \"VS Code\") — extract it, do NOT pass the user's raw sentence"}},"required":["app_name"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.OpenApp,
+	})
+}
+
+// registerBrowserTools adds the interactive-browser tools to this registry.
+// Split out of registerBuiltins for the same reason as registerWebSearchTool
+// — see its doc comment. Only in the main/full registry: not
+// NewWebSearchRegistry (unrelated scope — search + static fetch only, no
+// interactive session), not NewWhatsAppRegistry (unrelated), and not
+// NewReadOnlyRegistry (this checkpoint's tools are all Medium/Safe but the
+// whole set is interactive/stateful by nature — a read-only sub-agent
+// wanting to verify UI state would go through the full-registry coder
+// sub-agent instead, not get its own session).
+//
+// browser_navigate is Medium, not Dangerous: the session runs as a
+// brand-new, sandboxed OS process with its own dedicated profile directory
+// (see internal/browserengine/session.go's doc comment) — never attached
+// to, or sharing cookies/accounts with, the user's real browser. That's
+// categorically safer than open_app's "launch the user's actual browser"
+// (also Medium). Making it Dangerous would deny "allow for this session" in
+// the permission dialog, forcing a fresh prompt on every single call during
+// a multi-step UI test — exactly the friction this tool exists to avoid.
+func (r *ToolRegistry) registerBrowserTools() {
+	r.Register(ToolDef{
+		Name:        "browser_navigate",
+		Description: "Opens a URL in Memo's own sandboxed, interactive browser session (a dedicated, disposable Chromium process — never the user's real browser or accounts) so you can look at and test a live page, e.g. a site you just built. Starts a session on first use; a later call reuses it, loading a new URL in the same tab. Does not return a screenshot itself — call browser_screenshot afterward to see the page.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"url":{"type":"string","description":"The URL to open"}},"required":["url"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.BrowserNavigate,
+	})
+	r.Register(ToolDef{
+		Name:        "browser_screenshot",
+		Description: "Captures the current page of the active interactive browser session as an image. Call this after browser_navigate (or after any action on it) to actually see what's displayed. Returns an error if no session is currently open.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.BrowserScreenshot,
+	})
+	r.Register(ToolDef{
+		Name:        "browser_close",
+		Description: "Closes the active interactive browser session, if one is open. Call this once you're done testing a page — a forgotten session closes itself automatically after a few minutes of inactivity, but closing it explicitly frees the resources sooner.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.BrowserClose,
 	})
 }
 

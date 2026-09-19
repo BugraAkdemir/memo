@@ -265,8 +265,10 @@ type App struct {
 	webSearchExecutor *agent.Executor
 
 	// browserMgr manages the optional headless-browser fallback fetch_page
-	// uses for JavaScript-rendered pages (see internal/browserengine's doc
-	// comment). Wired into internal/websearch.Browser in Startup().
+	// uses for JavaScript-rendered pages, and the interactive session the
+	// browser_navigate/browser_screenshot/browser_close agent tools drive
+	// (see internal/browserengine's doc comment). Wired into
+	// internal/websearch.Browser and tools.InteractiveBrowser in Startup().
 	browserMgr *browserengine.Manager
 
 	taskloopStore  *taskloop.Store
@@ -722,6 +724,7 @@ func (a *App) Startup(ctx context.Context) {
 
 	a.browserMgr = browserengine.New(a.cfg.Browser.KeepAlive)
 	websearch.Browser = a.browserMgr
+	tools.InteractiveBrowser = browserToolAdapter{a.browserMgr}
 
 	tlStore, err := taskloop.NewStore(config.DataPath("tasklists"))
 	if err != nil {

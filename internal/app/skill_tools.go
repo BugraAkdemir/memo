@@ -54,6 +54,7 @@ func (r *skillToolRegistrar) RegisterTool(name string, toolDef any) error {
 		Description: fmt.Sprintf("[skill:%s] %s", skillName, reg.Tool.Description),
 		Parameters:  params,
 		DangerLevel: agent.FromString(string(reg.Tool.DangerLevel)),
+		SkillOwner:  skillName,
 		ExecuteFn: func(ctx context.Context, args json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 			return r.skillMgr.ExecuteTool(ctx, skillName, toolName, args, basePath)
 		},

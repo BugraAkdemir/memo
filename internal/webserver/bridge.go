@@ -383,8 +383,8 @@ type FullBridge interface {
 	InstallSkill(path string) (*skill.SkillDefinition, error)
 	RemoveSkill(name string) error
 	GetSkill(name string) (*skill.SkillDefinition, error)
-	SetActiveSkills(names []string) error
-	GetActiveSkills() []string
+	SetChatActiveSkills(chatID string, names []string) error
+	GetChatActiveSkills(chatID string) []string
 
 	// Shutdown gracefully stops all background processes and the HTTP server.
 	Shutdown(ctx context.Context)

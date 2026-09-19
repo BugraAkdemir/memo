@@ -51,24 +51,48 @@ func (a *App) GetSkill(name string) (*skill.SkillDefinition, error) {
 	return def, nil
 }
 
-// SetActiveSkills sets the list of active skill names.
-func (a *App) SetActiveSkills(names []string) error {
+// SetChatActiveSkills sets chatID's active skill list, validating every
+// name against the installed skills first (same UX as the old global
+// SetActive: an unknown name errors rather than being silently dropped).
+func (a *App) SetChatActiveSkills(chatID string, names []string) error {
 	if a.skillManager == nil {
 		return fmt.Errorf("skill manager not initialized")
 	}
-	return a.skillManager.SetActive(names)
+	for _, name := range names {
+		if _, ok := a.skillManager.Get(name); !ok {
+			return fmt.Errorf("skill %q not found", name)
+		}
+	}
+	sm := a.getSessionManager()
+	if sm == nil {
+		return fmt.Errorf("session manager not initialized")
+	}
+	return sm.SetActiveSkills(chatID, names)
 }
 
-// GetActiveSkills returns the names of currently active skills.
-func (a *App) GetActiveSkills() []string {
-	if a.skillManager == nil {
+// GetChatActiveSkills returns chatID's active skill names.
+func (a *App) GetChatActiveSkills(chatID string) []string {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return nil
 	}
-	return a.skillManager.GetActiveNames()
+	return sm.GetActiveSkills(chatID)
+}
+
+// activeSkillSet is GetChatActiveSkills as a lookup set, for callers that
+// need membership tests (ToOpenAITools' allowlist) rather than the plain
+// name list buildActiveSkillPrompt below iterates.
+func (a *App) activeSkillSet(chatID string) map[string]bool {
+	names := a.GetChatActiveSkills(chatID)
+	set := make(map[string]bool, len(names))
+	for _, name := range names {
+		set[name] = true
+	}
+	return set
 }
 
 // handleSkillCommand intercepts /skill prefixed messages and handles them as commands.
-func (a *App) handleSkillCommand(ctx context.Context, userMsg string) <-chan api.StreamChunk {
+func (a *App) handleSkillCommand(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk {
 	if a.skillManager == nil {
 		return nil
 	}
@@ -85,11 +109,12 @@ func (a *App) handleSkillCommand(ctx context.Context, userMsg string) <-chan api
 		if len(skills) == 0 {
 			b.WriteString("**📦 Installed Skills:**\n\nNo skills installed. Use `/skill install <path>` to add one.")
 		} else {
+			activeHere := a.activeSkillSet(chatID)
 			b.WriteString("**📦 Installed Skills:**\n\n")
 			for _, s := range skills {
 				active := ""
-				if a.skillManager.IsActive(s.Manifest.Name) {
-					active = " ✅ **active**"
+				if activeHere[s.Manifest.Name] {
+					active = " ✅ **active in this chat**"
 				}
 				b.WriteString(fmt.Sprintf("- **%s**%s — %s\n", s.Manifest.Name, active, s.Manifest.Description))
 			}
@@ -139,7 +164,7 @@ func (a *App) handleSkillCommand(ctx context.Context, userMsg string) <-chan api
 			close(ch)
 			return ch
 		}
-		active := a.skillManager.GetActiveNames()
+		active := a.GetChatActiveSkills(chatID)
 		alreadyActive := false
 		for _, n := range active {
 			if n == name {
@@ -148,12 +173,12 @@ func (a *App) handleSkillCommand(ctx context.Context, userMsg string) <-chan api
 			}
 		}
 		if alreadyActive {
-			ch <- api.StreamChunk{Content: fmt.Sprintf("ℹ️ Skill **%s** is already active.", name)}
+			ch <- api.StreamChunk{Content: fmt.Sprintf("ℹ️ Skill **%s** is already active in this chat.", name)}
 		} else {
-			if err := a.skillManager.SetActive(append(active, name)); err != nil {
+			if err := a.SetChatActiveSkills(chatID, append(active, name)); err != nil {
 				ch <- api.StreamChunk{Content: fmt.Sprintf("❌ Activation failed: %s", err.Error())}
 			} else {
-				ch <- api.StreamChunk{Content: fmt.Sprintf("✅ Skill **%s** activated.", name)}
+				ch <- api.StreamChunk{Content: fmt.Sprintf("✅ Skill **%s** activated in this chat.", name)}
 			}
 		}
 		ch <- api.StreamChunk{Done: true}
@@ -166,20 +191,20 @@ func (a *App) handleSkillCommand(ctx context.Context, userMsg string) <-chan api
 			name = parts[1]
 		}
 		if name == "" {
-			a.skillManager.SetActive(nil)
-			ch <- api.StreamChunk{Content: "✅ All skills deactivated."}
+			a.SetChatActiveSkills(chatID, nil)
+			ch <- api.StreamChunk{Content: "✅ All skills deactivated in this chat."}
 		} else {
-			active := a.skillManager.GetActiveNames()
+			active := a.GetChatActiveSkills(chatID)
 			var remaining []string
 			for _, n := range active {
 				if n != name {
 					remaining = append(remaining, n)
 				}
 			}
-			if err := a.skillManager.SetActive(remaining); err != nil {
+			if err := a.SetChatActiveSkills(chatID, remaining); err != nil {
 				ch <- api.StreamChunk{Content: fmt.Sprintf("❌ Deactivation failed: %s", err.Error())}
 			} else {
-				ch <- api.StreamChunk{Content: fmt.Sprintf("✅ Skill **%s** deactivated.", name)}
+				ch <- api.StreamChunk{Content: fmt.Sprintf("✅ Skill **%s** deactivated in this chat.", name)}
 			}
 		}
 		ch <- api.StreamChunk{Done: true}
@@ -195,13 +220,13 @@ func (a *App) handleSkillCommand(ctx context.Context, userMsg string) <-chan api
 }
 
 // buildActiveSkillPrompt returns a formatted skill-instructions block for
-// every active skill. skillTokenBudget, if given and positive, caps the
-// TOTAL size of that block — a whole skill is either included in full or
-// left out entirely (never truncated mid-instructions, which would hand the
-// model a broken, half-explained procedure that's arguably worse than not
-// mentioning it at all). Omitted with no cap (the pre-existing, unbounded
-// behavior) for every non-local API/orchestra turn, which already has a
-// huge context window.
+// every skill active in chatID. skillTokenBudget, if given and positive,
+// caps the TOTAL size of that block — a whole skill is either included in
+// full or left out entirely (never truncated mid-instructions, which would
+// hand the model a broken, half-explained procedure that's arguably worse
+// than not mentioning it at all). Omitted with no cap (the pre-existing,
+// unbounded behavior) for every non-local API/orchestra turn, which already
+// has a huge context window.
 //
 // Found live: a single chat with 5 active Claude-Code-imported skills
 // (codebase-memory, frontend-design, testsprite-onboard, testsprite-verify,
@@ -214,13 +239,21 @@ func (a *App) handleSkillCommand(ctx context.Context, userMsg string) <-chan api
 // captured live (system=20101, budget=3840) — the persona/origin/style/
 // capabilities/passive blocks together account for only a few hundred
 // tokens of that, and it wasn't the memory block either (already
-// budget-capped by the fix in helpers.go).
-func (a *App) buildActiveSkillPrompt(skillTokenBudget ...int) string {
+// budget-capped by the fix in helpers.go). Root cause of *why* 5 skills
+// were simultaneously active in the first place: activation used to be one
+// global, persisted list, so a skill turned on anywhere stayed on in every
+// chat forever — now it's per-chat (Session.ActiveSkills), which is what
+// chatID selects here.
+func (a *App) buildActiveSkillPrompt(chatID string, skillTokenBudget ...int) string {
 	if a.skillManager == nil {
 		return ""
 	}
-	activations := a.skillManager.ActiveInstructions()
-	if len(activations) == 0 {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return ""
+	}
+	names := sm.GetActiveSkills(chatID)
+	if len(names) == 0 {
 		return ""
 	}
 
@@ -232,13 +265,19 @@ func (a *App) buildActiveSkillPrompt(skillTokenBudget ...int) string {
 	var body strings.Builder
 	used := 0
 	omitted := 0
-	for _, act := range activations {
-		var block strings.Builder
-		block.WriteString(fmt.Sprintf("### Skill: %s\n", act.Name))
-		if act.Description != "" {
-			block.WriteString(fmt.Sprintf("_%s_\n\n", act.Description))
+	for _, name := range names {
+		def, ok := a.skillManager.Get(name)
+		if !ok {
+			// A skill this chat had active was since removed — nothing
+			// meaningful to inject, and not an error worth surfacing here.
+			continue
 		}
-		block.WriteString(act.Instructions)
+		var block strings.Builder
+		block.WriteString(fmt.Sprintf("### Skill: %s\n", name))
+		if def.Manifest.Description != "" {
+			block.WriteString(fmt.Sprintf("_%s_\n\n", def.Manifest.Description))
+		}
+		block.WriteString(def.Instructions)
 		block.WriteString("\n\n---\n\n")
 		text := block.String()
 

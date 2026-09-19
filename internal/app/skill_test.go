@@ -6,14 +6,17 @@ import (
 	"strings"
 	"testing"
 
+	"memo/internal/sessions"
 	"memo/internal/skill"
 )
 
-// newTestSkillManager creates a real skill.Manager backed by a temp dir,
-// with one skill discovered and activated whose SKILL.md body is exactly
-// bodySize bytes of filler instructions — big enough to blow past a small
-// token budget on purpose.
-func newTestSkillManager(t *testing.T, name string, bodySize int) *skill.Manager {
+// newTestAppWithActiveSkill creates a real skill.Manager backed by a temp
+// dir, with one skill discovered whose SKILL.md body is exactly bodySize
+// bytes of filler instructions — big enough to blow past a small token
+// budget on purpose — and a real sessions.Manager with that skill activated
+// on its active chat. Returns the App and that chat's ID, since
+// buildActiveSkillPrompt is now chat-scoped rather than global.
+func newTestAppWithActiveSkill(t *testing.T, name string, bodySize int) (*App, string) {
 	t.Helper()
 	dir := t.TempDir()
 	skillsDir := filepath.Join(dir, "skills")
@@ -34,23 +37,30 @@ func newTestSkillManager(t *testing.T, name string, bodySize int) *skill.Manager
 	if err := m.Discover(); err != nil {
 		t.Fatalf("Discover() error: %v", err)
 	}
-	if err := m.SetActive([]string{name}); err != nil {
-		t.Fatalf("SetActive() error: %v", err)
+
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("sessions.NewManager() error: %v", err)
 	}
-	return m
+	chatID := sm.GetActiveID()
+	if err := sm.SetActiveSkills(chatID, []string{name}); err != nil {
+		t.Fatalf("SetActiveSkills() error: %v", err)
+	}
+
+	return &App{skillManager: m, sessions: sm}, chatID
 }
 
 func TestBuildActiveSkillPrompt_NilManagerReturnsEmpty(t *testing.T) {
 	a := &App{}
-	if got := a.buildActiveSkillPrompt(); got != "" {
+	if got := a.buildActiveSkillPrompt(""); got != "" {
 		t.Errorf("buildActiveSkillPrompt() = %q, want empty", got)
 	}
 }
 
 func TestBuildActiveSkillPrompt_NoBudgetIncludesEverything(t *testing.T) {
-	a := &App{skillManager: newTestSkillManager(t, "big-skill", 6000)}
+	a, chatID := newTestAppWithActiveSkill(t, "big-skill", 6000)
 
-	got := a.buildActiveSkillPrompt()
+	got := a.buildActiveSkillPrompt(chatID)
 	if !strings.Contains(got, "big-skill") {
 		t.Errorf("expected the skill name in the output with no budget, got: %.200s...", got)
 	}
@@ -68,10 +78,10 @@ func TestBuildActiveSkillPrompt_NoBudgetIncludesEverything(t *testing.T) {
 // buildActiveSkillPrompt must now drop a whole skill rather than let an
 // oversized one blow past the caller's budget.
 func TestBuildActiveSkillPrompt_BudgetOmitsSkillThatDoesNotFit(t *testing.T) {
-	a := &App{skillManager: newTestSkillManager(t, "huge-skill", 6000)}
+	a, chatID := newTestAppWithActiveSkill(t, "huge-skill", 6000)
 
 	const budget = 100 // ~300 chars — far smaller than the ~6000-byte skill body
-	got := a.buildActiveSkillPrompt(budget)
+	got := a.buildActiveSkillPrompt(chatID, budget)
 
 	if strings.Contains(got, "huge-skill") {
 		t.Errorf("expected the oversized skill to be omitted, got: %.200s...", got)
@@ -85,10 +95,27 @@ func TestBuildActiveSkillPrompt_BudgetOmitsSkillThatDoesNotFit(t *testing.T) {
 }
 
 func TestBuildActiveSkillPrompt_SkillFittingBudgetIsIncluded(t *testing.T) {
-	a := &App{skillManager: newTestSkillManager(t, "small-skill", 20)}
+	a, chatID := newTestAppWithActiveSkill(t, "small-skill", 20)
 
-	got := a.buildActiveSkillPrompt(2000)
+	got := a.buildActiveSkillPrompt(chatID, 2000)
 	if !strings.Contains(got, "small-skill") {
 		t.Errorf("expected a small skill to fit within a generous budget, got: %q", got)
+	}
+}
+
+// TestBuildActiveSkillPrompt_ChatScoped is the regression test for the bug
+// this whole per-chat rework fixes: a skill active in one chat must not
+// leak its instructions into a different chat that never activated it.
+func TestBuildActiveSkillPrompt_ChatScoped(t *testing.T) {
+	a, activeChatID := newTestAppWithActiveSkill(t, "only-here", 20)
+
+	sm := a.getSessionManager()
+	otherChatID := sm.NewBackgroundChat("other chat")
+
+	if got := a.buildActiveSkillPrompt(activeChatID); !strings.Contains(got, "only-here") {
+		t.Errorf("expected the skill in its own chat's prompt, got: %q", got)
+	}
+	if got := a.buildActiveSkillPrompt(otherChatID); got != "" {
+		t.Errorf("expected no skill prompt in an unrelated chat, got: %q", got)
 	}
 }

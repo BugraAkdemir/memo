@@ -532,8 +532,10 @@ func TestBuildMessagesForSession_IncludesActiveSkillInstructions(t *testing.T) {
 	if err := skillMgr.Discover(); err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	if err := skillMgr.SetActive([]string{"greeter"}); err != nil {
-		t.Fatalf("SetActive() error = %v", err)
+
+	chatID := sm.GetActiveID()
+	if err := sm.SetActiveSkills(chatID, []string{"greeter"}); err != nil {
+		t.Fatalf("SetActiveSkills() error = %v", err)
 	}
 
 	a := &App{
@@ -546,7 +548,6 @@ func TestBuildMessagesForSession_IncludesActiveSkillInstructions(t *testing.T) {
 		skillManager: skillMgr,
 	}
 
-	chatID := sm.GetActiveID()
 	messages := a.buildMessagesForSession(context.Background(), chatID, "hello", nil, nil)
 
 	var found bool

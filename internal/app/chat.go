@@ -181,7 +181,12 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 	logx.Printf(">> SendMessageStream: %q", userMsg)
 
 	// Handle skill commands
-	if ch := a.handleSkillCommand(ctx, userMsg); ch != nil {
+	sm := a.getSessionManager()
+	var skillChatID string
+	if sm != nil {
+		skillChatID = sm.GetActiveID()
+	}
+	if ch := a.handleSkillCommand(ctx, skillChatID, userMsg); ch != nil {
 		return ch
 	}
 

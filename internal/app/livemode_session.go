@@ -77,7 +77,7 @@ func (a *App) NewLiveModeSession(ctx context.Context) livemode.Session {
 		return injectFn(text)
 	}
 
-	tools := a.buildLiveModeToolList(cfg.WorkMode)
+	tools := a.buildLiveModeToolList(cfg.WorkMode, sessionID)
 	handler := a.buildLiveModeToolCallHandler(cfg.WorkMode, sessionID, injectContext)
 	systemPrompt := a.buildLiveModeSystemPrompt(ctx, cfg.WorkMode)
 
@@ -180,14 +180,14 @@ func (a *App) findLiveModeEngineConfig(t livemode.EngineType) (livemode.EngineCo
 // real translation needed); every other WorkMode (including the
 // unconfigured/empty default, which config.DefaultConfig seeds as
 // "delegate") gets exactly one: delegate_to_main_model.
-func (a *App) buildLiveModeToolList(workMode string) []livemode.ToolSpec {
+func (a *App) buildLiveModeToolList(workMode, sessionID string) []livemode.ToolSpec {
 	if workMode != "standalone" {
 		return []livemode.ToolSpec{livemode.DelegateToolSpec()}
 	}
 	if a.agentExecutor == nil {
 		return nil
 	}
-	defs := a.agentExecutor.Registry().ToOpenAITools()
+	defs := a.agentExecutor.Registry().ToOpenAITools(a.activeSkillSet(sessionID))
 	specs := make([]livemode.ToolSpec, 0, len(defs)+1)
 	for _, d := range defs {
 		specs = append(specs, livemode.ToolSpec{Name: d.Function.Name, Description: d.Function.Description, Parameters: d.Function.Parameters})

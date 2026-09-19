@@ -593,8 +593,8 @@ func (b *swarmStubBridge) ListSkills() []skill.SkillDefinition                  
 func (b *swarmStubBridge) InstallSkill(path string) (*skill.SkillDefinition, error) { return nil, nil }
 func (b *swarmStubBridge) RemoveSkill(name string) error                            { return nil }
 func (b *swarmStubBridge) GetSkill(name string) (*skill.SkillDefinition, error)     { return nil, nil }
-func (b *swarmStubBridge) SetActiveSkills(names []string) error                     { return nil }
-func (b *swarmStubBridge) GetActiveSkills() []string                                { return nil }
+func (b *swarmStubBridge) SetChatActiveSkills(chatID string, names []string) error  { return nil }
+func (b *swarmStubBridge) GetChatActiveSkills(chatID string) []string               { return nil }
 func (b *swarmStubBridge) Shutdown(ctx context.Context)                             {}
 func (b *swarmStubBridge) CreateTaskList(chatID, title string, items []string) (*taskloop.TaskList, error) {
 	return nil, nil

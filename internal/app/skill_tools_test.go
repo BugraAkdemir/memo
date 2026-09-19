@@ -42,14 +42,19 @@ func writeSkillWithTool(t *testing.T, mgr *skill.Manager, name, command string) 
 	}
 }
 
-// TestSkillToolRegistrar_ActivationWiresRealAgentTool is the end-to-end
+// TestSkillToolRegistrar_RegistersRealAgentTool is the end-to-end
 // regression test for TD-1 (BUG_REPORT.md): before this, SetToolRegistrar
-// was never called in prod code, so activating a skill with a `tools:`
-// entry never made it callable by the agent. Here we wire the registrar
-// exactly as app.go's Startup() does and drive it through the same path
-// skill.Manager.SetActive uses, then execute the registered tool through
-// the real agent.ToolRegistry the pipeline calls.
-func TestSkillToolRegistrar_ActivationWiresRealAgentTool(t *testing.T) {
+// was never called in prod code, so a skill with a `tools:` entry never
+// made it callable by the agent. Here we wire the registrar exactly as
+// app.go's Startup() does and drive it through RegisterAllTools (tools are
+// registered as soon as a skill is known now, no activation step involved
+// — see skill.Manager's doc comments), then execute the registered tool
+// through the real agent.ToolRegistry the pipeline calls. Whether a given
+// chat is actually allowed to use it is enforced separately, per-chat, at
+// Pipeline/ExecuteToolCall dispatch time (see internal/agent/pipeline_test.go's
+// TestRunStream_SkillToolBlockedWhenSkillNotActive) — not by anything in
+// this registry.
+func TestSkillToolRegistrar_RegistersRealAgentTool(t *testing.T) {
 	skipOnWindows(t)
 
 	dataDir := t.TempDir()
@@ -63,10 +68,7 @@ func TestSkillToolRegistrar_ActivationWiresRealAgentTool(t *testing.T) {
 
 	exec := agent.NewExecutor(t.TempDir(), nil, nil, nil)
 	skillMgr.SetToolRegistrar(newSkillToolRegistrar(exec.Registry(), skillMgr))
-
-	if err := skillMgr.SetActive([]string{"greeter"}); err != nil {
-		t.Fatalf("SetActive() error: %v", err)
-	}
+	skillMgr.RegisterAllTools()
 
 	toolDef, ok := exec.Registry().Get("skill_greeter_dothing")
 	if !ok {
@@ -75,6 +77,9 @@ func TestSkillToolRegistrar_ActivationWiresRealAgentTool(t *testing.T) {
 	if toolDef.DangerLevel != agent.Safe {
 		t.Errorf("DangerLevel = %v, want %v", toolDef.DangerLevel, agent.Safe)
 	}
+	if toolDef.SkillOwner != "greeter" {
+		t.Errorf("SkillOwner = %q, want %q", toolDef.SkillOwner, "greeter")
+	}
 
 	result, err := exec.Registry().Execute(context.Background(), "skill_greeter_dothing", json.RawMessage(`{"msg":"hi"}`), t.TempDir(), func(string) error { return nil })
 	if err != nil {
@@ -82,14 +87,6 @@ func TestSkillToolRegistrar_ActivationWiresRealAgentTool(t *testing.T) {
 	}
 	if !strings.Contains(result, `"msg":"hi"`) {
 		t.Errorf("result = %q, want it to contain the args delivered on stdin", result)
-	}
-
-	// Deactivating must remove it again.
-	if err := skillMgr.SetActive(nil); err != nil {
-		t.Fatalf("SetActive(nil) error: %v", err)
-	}
-	if _, ok := exec.Registry().Get("skill_greeter_dothing"); ok {
-		t.Error("expected tool to be unregistered after deactivation")
 	}
 }
 
@@ -120,10 +117,7 @@ func TestSkillToolRegistrar_DeclarativeOnlyToolNotRegistered(t *testing.T) {
 
 	exec := agent.NewExecutor(t.TempDir(), nil, nil, nil)
 	skillMgr.SetToolRegistrar(newSkillToolRegistrar(exec.Registry(), skillMgr))
-
-	if err := skillMgr.SetActive([]string{"docs-only"}); err != nil {
-		t.Fatalf("SetActive() error: %v", err)
-	}
+	skillMgr.RegisterAllTools()
 
 	if _, ok := exec.Registry().Get("skill_docs-only_reference"); ok {
 		t.Error("a tool with no command must not be registered as a callable agent tool")

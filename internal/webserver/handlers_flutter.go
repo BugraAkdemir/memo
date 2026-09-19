@@ -2935,13 +2935,14 @@ func (s *Server) handleSetActiveSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Names []string `json:"names"`
+		ChatID string   `json:"chat_id"`
+		Names  []string `json:"names"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if err := s.fullBridge.SetActiveSkills(req.Names); err != nil {
+	if err := s.fullBridge.SetChatActiveSkills(req.ChatID, req.Names); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -2959,7 +2960,8 @@ func (s *Server) handleGetActiveSkills(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
 		return
 	}
-	writeJSON(w, map[string][]string{"names": s.fullBridge.GetActiveSkills()})
+	chatID := r.URL.Query().Get("chat_id")
+	writeJSON(w, map[string][]string{"names": s.fullBridge.GetChatActiveSkills(chatID)})
 }
 
 func (s *Server) handleMemoryExplicitSave(w http.ResponseWriter, r *http.Request) {

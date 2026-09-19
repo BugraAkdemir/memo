@@ -838,9 +838,11 @@ func (a *App) Startup(ctx context.Context) {
 	tools.SetUILanguage(a.cfg.Identity.UILanguage)
 	// Same seeding for the llama.cpp installer's progress/error strings.
 	llama.SetUILanguage(a.cfg.Identity.UILanguage)
-	if err := a.skillManager.LoadActiveSkills(); err != nil {
-		logx.Printf("skill: load active skills error: %v", err)
-	}
+	// Register every discovered skill's tools unconditionally — which chat
+	// can actually see/use one is a per-chat decision (Session.ActiveSkills)
+	// made at dispatch time, not at registration time. See
+	// skill.Manager.RegisterAllTools's doc comment.
+	a.skillManager.RegisterAllTools()
 	if result, err := skill.SyncExternalSkills(a.skillManager, skill.KnownExternalSources()); err != nil {
 		logx.Printf("skill: external sync error: %v", err)
 	} else if len(result.Imported) > 0 || len(result.Updated) > 0 {

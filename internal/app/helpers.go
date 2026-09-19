@@ -218,7 +218,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		// ~4800-token request against a 4096 ctx-size — the visible message
 		// content was a handful of tokens, the rest was this unbudgeted gap.
 		if a.GetAgentEnabled() && a.agentExecutor != nil {
-			if toolDefs := a.agentExecutor.Registry().ToOpenAITools(); len(toolDefs) > 0 {
+			if toolDefs := a.agentExecutor.Registry().ToOpenAITools(a.activeSkillSet(chatID)); len(toolDefs) > 0 {
 				if raw, err := json.Marshal(toolDefs); err == nil {
 					tokenBudget -= truncate.EstimateTokens(string(raw))
 				}
@@ -293,7 +293,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 			// An active skill is something the user explicitly turned on — but it
 			// is still Memo injecting text the bare model wouldn't see, so Minimal
 			// Mode strips it too (previously it did not).
-			if skillPrompt := a.buildActiveSkillPrompt(skillBudget); skillPrompt != "" {
+			if skillPrompt := a.buildActiveSkillPrompt(chatID, skillBudget); skillPrompt != "" {
 				systemPrompt += skillPrompt
 			}
 		}

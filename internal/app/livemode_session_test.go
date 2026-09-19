@@ -105,7 +105,7 @@ func TestNewLiveModeSession_BuildsRealGoogleClientWhenConfigured(t *testing.T) {
 
 func TestBuildLiveModeToolList_DelegateModeHasExactlyDelegateTool(t *testing.T) {
 	a := newTestAppForLiveModeSession(t)
-	tools := a.buildLiveModeToolList("delegate")
+	tools := a.buildLiveModeToolList("delegate", "")
 	if len(tools) != 1 || tools[0].Name != livemode.DelegateToolName {
 		t.Errorf("expected exactly [%s], got %+v", livemode.DelegateToolName, tools)
 	}
@@ -115,7 +115,7 @@ func TestBuildLiveModeToolList_StandaloneModeHasFullRegistry(t *testing.T) {
 	a := newTestAppForLiveModeSession(t)
 	a.agentExecutor = agent.NewExecutor(t.TempDir(), nil, nil, nil)
 
-	tools := a.buildLiveModeToolList("standalone")
+	tools := a.buildLiveModeToolList("standalone", "")
 	if len(tools) == 0 {
 		t.Fatal("expected a non-empty tool list for standalone mode")
 	}
@@ -141,7 +141,7 @@ func TestBuildLiveModeToolList_StandaloneModeHasFullRegistry(t *testing.T) {
 
 func TestBuildLiveModeToolList_StandaloneModeNoExecutorReturnsNil(t *testing.T) {
 	a := newTestAppForLiveModeSession(t)
-	if tools := a.buildLiveModeToolList("standalone"); tools != nil {
+	if tools := a.buildLiveModeToolList("standalone", ""); tools != nil {
 		t.Errorf("expected nil when agentExecutor is not initialized, got %+v", tools)
 	}
 }

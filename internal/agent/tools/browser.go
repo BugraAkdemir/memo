@@ -39,6 +39,32 @@ func browserNotConfigured() error {
 	))
 }
 
+// interactiveBrowserInstallChecker is fetchpage.go's browserInstallChecker
+// pattern applied to InteractiveBrowser instead of websearch.Browser — kept
+// as its own type (not reused directly) since the two vars can be wired up
+// independently in tests, so a missing websearch.Browser must not be
+// mistaken for a missing InteractiveBrowser or vice versa. Same optional-
+// capability-via-type-assertion reasoning either way, satisfied by
+// browserToolAdapter in internal/app.
+type interactiveBrowserInstallChecker interface {
+	IsInstalled(ctx context.Context) bool
+}
+
+// interactiveBrowserEngineMissing reports whether starting a session would
+// fail specifically because no Chromium-family browser is installed at all
+// — as opposed to some other reason (a transient launch error, or a test
+// that never wired InteractiveBrowser up to anything install-aware).
+// Checked upfront in BrowserNavigate so the model gets the SAME actionable
+// "install it from Settings" message fetch_page's browser fallback already
+// gives, instead of a raw exec error bubbling up from chromedp.
+func interactiveBrowserEngineMissing(ctx context.Context) bool {
+	checker, ok := InteractiveBrowser.(interactiveBrowserInstallChecker)
+	if !ok {
+		return false
+	}
+	return !checker.IsInstalled(ctx)
+}
+
 type BrowserNavigateArgs struct {
 	URL string `json:"url"`
 }
@@ -57,6 +83,12 @@ func BrowserNavigate(ctx context.Context, argsJSON json.RawMessage, _ string, _ 
 	}
 	if args.URL == "" {
 		return "", fmt.Errorf("url is required")
+	}
+	if interactiveBrowserEngineMissing(ctx) {
+		return "", errors.New(T(
+			"Etkileşimli tarayıcı için bir Chromium motoru gerekiyor ama şu an kurulu değil. Kullanıcıya bunu söyle, Ayarlar'dan tek tıkla kurabileceğini belirt ve kurmak isteyip istemediğini sor.",
+			"The interactive browser needs a Chromium engine, which isn't installed right now. Tell the user this, mention they can install it from Settings with one click, and ask if they'd like to.",
+		))
 	}
 
 	sess, err := InteractiveBrowser.StartSession(ctx)

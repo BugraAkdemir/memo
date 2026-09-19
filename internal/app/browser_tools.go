@@ -27,3 +27,12 @@ func (a browserToolAdapter) GetSession() (tools.BrowserSession, bool) {
 func (a browserToolAdapter) StopSession() error {
 	return a.m.StopSession()
 }
+
+// IsInstalled satisfies tools.browserInstallChecker (an optional capability
+// checked via type assertion, same as fetchpage.go's own use of it) — lets
+// BrowserNavigate give an upfront, actionable "install the browser engine
+// from Settings" message instead of the raw exec error a failed
+// StartSession would otherwise surface.
+func (a browserToolAdapter) IsInstalled(ctx context.Context) bool {
+	return a.m.IsInstalled(ctx)
+}

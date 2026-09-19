@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BugraAkdemir/gosearch/browser"
 	"github.com/chromedp/chromedp"
 	"memo/internal/config"
 	"memo/internal/logx"
@@ -36,6 +37,35 @@ var sessionIdleTimeout = 5 * time.Minute
 var actionTimeout = 30 * time.Second
 
 var errSessionClosed = errors.New("browsersession: session is closed")
+
+// ErrBrowserNotInstalled wraps a resolveExecutable failure — no
+// Chromium-family browser could be found at all (system discovery came up
+// empty, and nothing was installed via Settings' one-click browser-engine
+// install either). Exported so callers (e.g. the agent tools) can detect
+// this specific case with errors.Is and surface an actionable message
+// instead of a raw exec error.
+var ErrBrowserNotInstalled = errors.New("browsersession: no chromium-family browser found")
+
+// resolveExecutable finds the binary Session should launch — a package var
+// (not a direct call) so tests can substitute a fake, same convention as
+// newEngine/installFn in browserengine.go. Deliberately reuses
+// gosearch/browser's OWN resolution ("explicit path > embedded archive >
+// system discovery > opt-in download", per browser.New's doc comment)
+// instead of a second, independent chromedp discovery — a user who already
+// installed the engine via Settings' one-click flow must not need a second,
+// separate Chromium found some other way, and one found via plain system
+// PATH discovery should resolve identically either way. Cheap: browser.New
+// resolves the path but does not launch a process ("The browser process
+// starts lazily on first use, not in New" — its own doc comment), so this
+// never pays real browser-startup cost just to read a path.
+var resolveExecutable = func(ctx context.Context) (string, error) {
+	e, err := browser.New(ctx)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrBrowserNotInstalled, err)
+	}
+	defer e.Close()
+	return e.Executable(), nil
+}
 
 // Session is a long-lived, interactive, sandboxed Chromium tab the agent
 // drives directly via chromedp — navigate, screenshot, (click/type/scroll
@@ -72,6 +102,11 @@ var newSession = func(ctx context.Context, onIdle func(*Session)) (*Session, err
 }
 
 func startSession(ctx context.Context, onIdle func(*Session)) (*Session, error) {
+	execPath, err := resolveExecutable(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	baseDir := config.DataPath("browsersession")
 	if err := os.MkdirAll(baseDir, 0o700); err != nil {
 		return nil, fmt.Errorf("browsersession: create base dir: %w", err)
@@ -82,6 +117,7 @@ func startSession(ctx context.Context, onIdle func(*Session)) (*Session, error) 
 	}
 
 	opts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
+		chromedp.ExecPath(execPath),
 		chromedp.UserDataDir(profileDir),
 		chromedp.WindowSize(1280, 800),
 		chromedp.Flag("disable-extensions", true),

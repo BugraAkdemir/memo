@@ -99,10 +99,20 @@ func (f *fakeBrowserSession) Close() error {
 // mirroring browserengine.Manager's real single-global-session behavior
 // (StartSession reuses an existing session rather than erroring).
 type fakeBrowserManager struct {
-	mu      sync.Mutex
-	session *fakeBrowserSession
-	starts  int // every StartSession call, whether or not it creates a new session
-	created int // only when a new underlying session was actually created
+	mu        sync.Mutex
+	session   *fakeBrowserSession
+	starts    int  // every StartSession call, whether or not it creates a new session
+	created   int  // only when a new underlying session was actually created
+	installed bool // IsInstalled's canned answer — defaults false (Go zero value); withFakeBrowser sets it true so existing tests behave as "installed" by default
+}
+
+// IsInstalled satisfies tools.interactiveBrowserInstallChecker — lets tests
+// exercise BrowserNavigate's upfront "engine not installed" message without
+// needing a real (or genuinely absent) Chromium.
+func (f *fakeBrowserManager) IsInstalled(context.Context) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.installed
 }
 
 func (f *fakeBrowserManager) StartSession(context.Context) (tools.BrowserSession, error) {
@@ -143,7 +153,7 @@ func (f *fakeBrowserManager) StopSession() error {
 func withFakeBrowser(t *testing.T) *fakeBrowserManager {
 	t.Helper()
 	orig := tools.InteractiveBrowser
-	fake := &fakeBrowserManager{}
+	fake := &fakeBrowserManager{installed: true}
 	tools.InteractiveBrowser = fake
 	t.Cleanup(func() { tools.InteractiveBrowser = orig })
 	return fake
@@ -414,5 +424,57 @@ func TestAgent_BrowserFullFlow_NavigateClickTypeScrollScreenshot(t *testing.T) {
 	}
 	if s.screenshotN != 1 {
 		t.Errorf("screenshotN = %d, want 1", s.screenshotN)
+	}
+}
+
+// TestAgent_BrowserNavigate_EngineNotInstalled_GivesActionableMessage
+// proves that when no Chromium engine is installed, browser_navigate fails
+// with a clear, actionable tool error (mentioning Settings) BEFORE ever
+// calling StartSession — not a raw exec/"file not found" error, and not a
+// wasted browser-launch attempt.
+func TestAgent_BrowserNavigate_EngineNotInstalled_GivesActionableMessage(t *testing.T) {
+	h := NewHarness(t)
+	h.SetAgentEnabled(true)
+	fake := withFakeBrowser(t)
+	fake.installed = false
+
+	var toolError string
+	callCount := 0
+	h.Fake.Script = func(callNum int, req FakeChatRequest) FakeChatResponse {
+		callCount++
+		if callCount == 1 {
+			return FakeChatResponse{ToolCalls: []FakeToolCall{{
+				ID:        "call_1",
+				Name:      "browser_navigate",
+				Arguments: `{"url":"https://example.com"}`,
+			}}}
+		}
+		for _, m := range req.Messages {
+			if s := string(m); strings.Contains(strings.ToLower(s), "settings") || strings.Contains(s, "Ayarlar") {
+				toolError = s
+			}
+		}
+		return FakeChatResponse{Text: "tarayıcı motoru kurulu değilmiş"}
+	}
+
+	chatID := h.NewAgentChat(t.TempDir())
+	for ev := range h.SendMessageStreamAsync(chatID, "example.com'u aç") {
+		if ev.FinishReason != "agent_event" {
+			continue
+		}
+		for _, ae := range AgentEvents(t, []SSEEvent{ev}) {
+			if ae.Type == "permission_request" {
+				h.ResolveAgentPermission(ae.RequestID, "allow_once")
+			}
+		}
+	}
+
+	if toolError == "" {
+		t.Error("tool error never reached the model mentioning Settings/install")
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if fake.starts != 0 {
+		t.Errorf("StartSession called %d times, want 0 — the missing-engine check must short-circuit before attempting to launch", fake.starts)
 	}
 }

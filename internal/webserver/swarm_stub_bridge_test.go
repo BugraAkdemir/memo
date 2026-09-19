@@ -38,6 +38,12 @@ type swarmStubBridge struct {
 	listRunningTasks  func() []taskloop.RunningTaskInfo
 	getActivityStatus func() models.ActivityStatus
 
+	navigateBrowserSession func(ctx context.Context, rawURL string) ([]byte, string, error)
+	clickBrowserSession    func(ctx context.Context, x, y float64) ([]byte, string, error)
+	scrollBrowserSession   func(ctx context.Context, dx, dy int) ([]byte, string, error)
+	closeBrowserSession    func() error
+	browserSessionStatus   func(ctx context.Context) (bool, string)
+
 	hostCreate   func(modelPath string) (string, error)
 	addWorker    func(id, secret, myRPCAddress, label string) error
 	removeWorker func(id string) error
@@ -188,20 +194,20 @@ func (b *swarmStubBridge) SendMessageWithImageStream(ctx context.Context, userMs
 func (b *swarmStubBridge) SendMessageWithFileStream(ctx context.Context, userMsg string, filePath string) <-chan api.StreamChunk {
 	return b.SendMessageStream(ctx, userMsg)
 }
-func (b *swarmStubBridge) ExportChat() string                     { return "" }
-func (b *swarmStubBridge) GenerateChatTitle() string              { return "" }
-func (b *swarmStubBridge) GetSystemPrompt() string                { return "" }
-func (b *swarmStubBridge) SetSystemPrompt(prompt string) error    { return nil }
-func (b *swarmStubBridge) ResetSystemPrompt() error               { return nil }
-func (b *swarmStubBridge) GetCodeSubModePrompt(subMode string) string       { return "" }
+func (b *swarmStubBridge) ExportChat() string                                { return "" }
+func (b *swarmStubBridge) GenerateChatTitle() string                         { return "" }
+func (b *swarmStubBridge) GetSystemPrompt() string                           { return "" }
+func (b *swarmStubBridge) SetSystemPrompt(prompt string) error               { return nil }
+func (b *swarmStubBridge) ResetSystemPrompt() error                          { return nil }
+func (b *swarmStubBridge) GetCodeSubModePrompt(subMode string) string        { return "" }
 func (b *swarmStubBridge) SetCodeSubModePrompt(subMode, prompt string) error { return nil }
 func (b *swarmStubBridge) ResetCodeSubModePrompt(subMode string) error       { return nil }
-func (b *swarmStubBridge) GetIncognitoPrompt() string             { return "" }
-func (b *swarmStubBridge) SetIncognitoPrompt(prompt string) error { return nil }
-func (b *swarmStubBridge) GetUILanguage() string                  { return b.uiLanguage }
-func (b *swarmStubBridge) SetUILanguage(lang string) error        { b.uiLanguage = lang; return nil }
-func (b *swarmStubBridge) GetMinimalMode() bool                   { return false }
-func (b *swarmStubBridge) SetMinimalMode(enabled bool) error      { return nil }
+func (b *swarmStubBridge) GetIncognitoPrompt() string                        { return "" }
+func (b *swarmStubBridge) SetIncognitoPrompt(prompt string) error            { return nil }
+func (b *swarmStubBridge) GetUILanguage() string                             { return b.uiLanguage }
+func (b *swarmStubBridge) SetUILanguage(lang string) error                   { b.uiLanguage = lang; return nil }
+func (b *swarmStubBridge) GetMinimalMode() bool                              { return false }
+func (b *swarmStubBridge) SetMinimalMode(enabled bool) error                 { return nil }
 func (b *swarmStubBridge) GetMinimalModeOverrides() (bool, bool, bool, bool) {
 	return false, false, false, false
 }
@@ -220,6 +226,36 @@ func (b *swarmStubBridge) InstallBrowser(ctx context.Context) error             
 func (b *swarmStubBridge) GetBrowserInstallProgress() browserengine.InstallProgress {
 	return browserengine.InstallProgress{}
 }
+func (b *swarmStubBridge) NavigateBrowserSession(ctx context.Context, rawURL string) ([]byte, string, error) {
+	if b.navigateBrowserSession != nil {
+		return b.navigateBrowserSession(ctx, rawURL)
+	}
+	return nil, "", nil
+}
+func (b *swarmStubBridge) ClickBrowserSession(ctx context.Context, x, y float64) ([]byte, string, error) {
+	if b.clickBrowserSession != nil {
+		return b.clickBrowserSession(ctx, x, y)
+	}
+	return nil, "", nil
+}
+func (b *swarmStubBridge) ScrollBrowserSession(ctx context.Context, dx, dy int) ([]byte, string, error) {
+	if b.scrollBrowserSession != nil {
+		return b.scrollBrowserSession(ctx, dx, dy)
+	}
+	return nil, "", nil
+}
+func (b *swarmStubBridge) CloseBrowserSession() error {
+	if b.closeBrowserSession != nil {
+		return b.closeBrowserSession()
+	}
+	return nil
+}
+func (b *swarmStubBridge) BrowserSessionStatus(ctx context.Context) (bool, string) {
+	if b.browserSessionStatus != nil {
+		return b.browserSessionStatus(ctx)
+	}
+	return false, ""
+}
 func (b *swarmStubBridge) GetMemoryEnabled() bool              { return false }
 func (b *swarmStubBridge) SetMemoryEnabled(enabled bool) error { return nil }
 func (b *swarmStubBridge) SetMemoryDreamSettings(enabled bool, initialDelayMinutes, intervalHours int) error {
@@ -235,8 +271,8 @@ func (b *swarmStubBridge) ListConversationMemories(limit, offset int) ([]memory.
 	return nil, 0, nil
 }
 func (b *swarmStubBridge) UpdatePinnedFact(oldID, content, tags string) error { return nil }
-func (b *swarmStubBridge) SaveExplicitMemory(content, tags string) error        { return nil }
-func (b *swarmStubBridge) DeleteExplicitMemory(pattern string) (int, error)     { return 0, nil }
+func (b *swarmStubBridge) SaveExplicitMemory(content, tags string) error      { return nil }
+func (b *swarmStubBridge) DeleteExplicitMemory(pattern string) (int, error)   { return 0, nil }
 func (b *swarmStubBridge) ImportMemoryFromText(ctx context.Context, rawText string) (int, bool, error) {
 	return 0, false, nil
 }

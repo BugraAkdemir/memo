@@ -70,6 +70,12 @@ class ChatScreen extends ConsumerWidget {
         // menu button still opens a drawer via Scaffold.of(context) — it
         // now finds AppShell's ancestor Scaffold instead of a local one.
         if (narrow) {
+          // Full-width takeover, not a side-by-side split — see
+          // BrowserPane's own doc comment for why narrow mode gets a
+          // different layout than the desktop Row below.
+          if (ref.watch(browserSessionActiveProvider)) {
+            return const BrowserPane(narrow: true);
+          }
           return content;
         }
 
@@ -933,6 +939,7 @@ class _ChatTopBar extends ConsumerWidget {
     final isAutoPermission = ref.watch(agentAutoPermissionProvider);
     final isWhatsAppMode = ref.watch(whatsAppChatModeProvider);
     final webSearchOn = ref.watch(webSearchModeProvider);
+    final browserPaneActive = ref.watch(browserSessionActiveProvider);
     final waStatus = ref.watch(whatsAppStatusProvider);
     final chatListAsync = ref.watch(chatListProvider);
     final activeChatAsync = ref.watch(activeChatIdProvider);
@@ -1088,6 +1095,23 @@ class _ChatTopBar extends ConsumerWidget {
           onPressed: () => ref.read(whatsAppChatModeProvider.notifier).toggle(),
         ),
 
+      // Manual browser-pane toggle — independent of agent mode entirely
+      // (unlike the toggles above, it doesn't change how the chat request
+      // itself is built), so it's shown even for a CLI-backed chat. Opening
+      // it costs nothing (openBrowserPane starts no backend process); the
+      // agent can also open/drive the same pane on its own via
+      // browser_navigate — both paths converge on the same
+      // browserSessionActiveProvider.
+      IconButton(
+        icon: Icon(
+          Icons.public,
+          size: 20,
+          color: browserPaneActive ? MemoTheme.green : MemoTheme.of(context).textDim,
+        ),
+        tooltip: browserPaneActive ? L10n.t('browser_pane_close') : L10n.t('browser_pane_open'),
+        onPressed: () => browserPaneActive ? closeBrowserPane(ref) : openBrowserPane(ref),
+      ),
+
       // Export button
       IconButton(
         icon: Icon(Icons.file_download_outlined, size: 20),
@@ -1178,6 +1202,12 @@ class _ChatTopBar extends ConsumerWidget {
                     isActive: isWhatsAppMode,
                     onTap: () => ref.read(whatsAppChatModeProvider.notifier).toggle(),
                   ),
+                row(
+                  icon: Icons.public,
+                  label: browserPaneActive ? L10n.t('browser_pane_close') : L10n.t('browser_pane_open'),
+                  isActive: browserPaneActive,
+                  onTap: () => browserPaneActive ? closeBrowserPane(ref) : openBrowserPane(ref),
+                ),
                 row(
                   icon: Icons.file_download_outlined,
                   label: L10n.t('export_chat'),

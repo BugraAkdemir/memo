@@ -324,6 +324,24 @@ func (s *Session) Screenshot(ctx context.Context) ([]byte, error) {
 	return buf, nil
 }
 
+// CurrentURL reports the tab's current address — used by the direct
+// (non-agent) manual-control endpoints so the Flutter pane's URL bar can
+// sync to wherever a click/navigate actually landed (a click can itself
+// navigate, e.g. following a link), without the agent's own tool-call
+// AgentEvents being the only source of the URL.
+func (s *Session) CurrentURL(ctx context.Context) (string, error) {
+	if err := s.checkOpen(); err != nil {
+		return "", err
+	}
+	runCtx, cancel := s.runCtx(ctx)
+	defer cancel()
+	var url string
+	if err := chromedp.Run(runCtx, chromedp.Location(&url)); err != nil {
+		return "", fmt.Errorf("browsersession: current url: %w", err)
+	}
+	return url, nil
+}
+
 // Close tears the session down: cancels the tab and allocator contexts
 // (which stops the Chromium process) and removes its dedicated profile
 // directory. Idempotent — safe to call more than once (e.g. once from the

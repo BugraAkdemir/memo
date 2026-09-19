@@ -14,3 +14,34 @@ class BrowserFrame {
         ts: json['ts'] as int? ?? 0,
       );
 }
+
+/// Result of a direct (non-agent) manual browser action — navigate/click/
+/// scroll all respond with this same shape, see
+/// internal/webserver/handlers_browser_session.go's
+/// browserSessionActionResponse (the Go struct this mirrors).
+class BrowserSessionAction {
+  final String? screenshotBase64;
+  final String? url;
+  final String? error;
+
+  const BrowserSessionAction({this.screenshotBase64, this.url, this.error});
+
+  factory BrowserSessionAction.fromJson(Map<String, dynamic> json) => BrowserSessionAction(
+        screenshotBase64: json['screenshot_base64'] as String?,
+        url: json['url'] as String?,
+        error: json['error'] as String?,
+      );
+}
+
+/// Result of GET /api/browser/session/status.
+class BrowserSessionStatus {
+  final bool active;
+  final String? url;
+
+  const BrowserSessionStatus({required this.active, this.url});
+
+  factory BrowserSessionStatus.fromJson(Map<String, dynamic> json) => BrowserSessionStatus(
+        active: json['active'] as bool? ?? false,
+        url: json['url'] as String?,
+      );
+}

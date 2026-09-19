@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'l10n.dart';
 import 'sse_stream.dart';
+import '../models/browser_frame.dart';
 import '../models/browser_install_progress.dart';
 import '../models/chat.dart';
 import '../models/cli_command.dart';
@@ -2554,6 +2555,35 @@ class MemoApiClient {
   Future<BrowserInstallProgress> getBrowserInstallProgress() async {
     final res = await _dio.get('/api/browser/install/progress');
     return BrowserInstallProgress.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  // ─── Direct (non-agent) interactive browser-session control ───
+  // BrowserPane's own URL bar / click-on-screenshot / scroll-wheel / close
+  // button — the user driving the browser themselves, not the agent
+  // deciding to. See internal/app/browser_session_manual.go.
+
+  Future<BrowserSessionAction> navigateBrowserSession(String url) async {
+    final res = await _dio.post('/api/browser/session/navigate', data: {'url': url});
+    return BrowserSessionAction.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  Future<BrowserSessionAction> clickBrowserSession(double x, double y) async {
+    final res = await _dio.post('/api/browser/session/click', data: {'x': x, 'y': y});
+    return BrowserSessionAction.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  Future<BrowserSessionAction> scrollBrowserSession(int dx, int dy) async {
+    final res = await _dio.post('/api/browser/session/scroll', data: {'dx': dx, 'dy': dy});
+    return BrowserSessionAction.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  Future<void> closeBrowserSession() async {
+    await _dio.post('/api/browser/session/close');
+  }
+
+  Future<BrowserSessionStatus> getBrowserSessionStatus() async {
+    final res = await _dio.get('/api/browser/session/status');
+    return BrowserSessionStatus.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   /// Get WhatsApp chat mode state.

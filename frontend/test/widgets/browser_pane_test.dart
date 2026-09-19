@@ -66,18 +66,19 @@ Future<WidgetRef> _pumpBrowserPaneBesideExpanded(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('shows the empty state before any frame arrives', (tester) async {
+  testWidgets('shows the empty state (with a URL bar) before any frame arrives', (tester) async {
     await _pumpBrowserPane(tester, overrides: [
       browserFrameProvider.overrideWith((ref) => null),
       browserCurrentUrlProvider.overrideWith((ref) => null),
     ]);
 
-    expect(find.byIcon(Icons.public), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byIcon(Icons.public), findsOneWidget); // header icon, always present
+    expect(find.byIcon(Icons.language), findsOneWidget); // empty-state body icon
+    expect(find.byType(TextField), findsOneWidget); // the manual URL bar
     expect(find.byType(Image), findsNothing);
   });
 
-  testWidgets('shows a loading state once a URL is known but no frame yet', (tester) async {
+  testWidgets('pre-fills the URL bar from browserCurrentUrlProvider', (tester) async {
     await _pumpBrowserPane(tester, overrides: [
       browserFrameProvider.overrideWith((ref) => null),
       browserCurrentUrlProvider.overrideWith((ref) => 'https://example.com'),
@@ -97,7 +98,6 @@ void main() {
 
     expect(find.byType(Image), findsOneWidget);
     expect(find.text('https://example.com/signup'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
   testWidgets('a malformed base64 frame shows an error instead of crashing', (tester) async {
@@ -110,6 +110,26 @@ void main() {
 
     expect(find.byType(Image), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('narrow mode fills the available width with no resize handle', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          browserFrameProvider.overrideWith((ref) => null),
+          browserCurrentUrlProvider.overrideWith((ref) => null),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: BrowserPane(narrow: true)),
+        ),
+      ),
+    );
+
+    expect(
+      find.byWidgetPredicate((w) => w.runtimeType.toString() == '_ResizeHandle'),
+      findsNothing,
+    );
+    expect(find.byType(TextField), findsOneWidget);
   });
 
   testWidgets('dragging the resize handle widens and narrows the pane', (tester) async {

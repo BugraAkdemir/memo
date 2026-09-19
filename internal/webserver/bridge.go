@@ -75,6 +75,15 @@ type FullBridge interface {
 	GetBrowserInstalled(ctx context.Context) bool
 	InstallBrowser(ctx context.Context) error
 	GetBrowserInstallProgress() browserengine.InstallProgress
+	// Direct (non-agent) interactive-session control for BrowserPane's own
+	// manual URL bar / click / scroll — see internal/app/
+	// browser_session_manual.go's package doc comment for why these bypass
+	// the agent permission flow entirely.
+	NavigateBrowserSession(ctx context.Context, rawURL string) (screenshot []byte, resolvedURL string, err error)
+	ClickBrowserSession(ctx context.Context, x, y float64) (screenshot []byte, resolvedURL string, err error)
+	ScrollBrowserSession(ctx context.Context, dx, dy int) (screenshot []byte, resolvedURL string, err error)
+	CloseBrowserSession() error
+	BrowserSessionStatus(ctx context.Context) (active bool, url string)
 	GetMemoryEnabled() bool
 	SetMemoryEnabled(enabled bool) error
 	// Dream settings are read via the existing GetMemorySettings()

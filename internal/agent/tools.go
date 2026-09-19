@@ -411,10 +411,17 @@ func (r *ToolRegistry) registerBrowserTools() {
 	})
 	r.Register(ToolDef{
 		Name:        "browser_screenshot",
-		Description: "Captures the current page of the active interactive browser session as an image. Call this after browser_navigate (or after any action on it) to actually see what's displayed. Returns an error if no session is currently open.",
+		Description: "Captures the current page of the active interactive browser session and shows it to the USER in a live pane — call it after navigate/click/type/scroll so the user can watch along. You yourself do NOT receive the image (no visual/multimodal channel is wired up) — call browser_get_text if you need to know what's actually on the page. Returns an error if no session is currently open.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.BrowserScreenshot,
+	})
+	r.Register(ToolDef{
+		Name:        "browser_get_text",
+		Description: "Reads the active interactive browser session's page as plain visible text. Since you cannot see screenshots yourself, this is your real way to know what's on a page — use it to find button/link text, form field labels, or confirm what actually rendered, before deciding what to click or type. Requires an existing session (call browser_navigate first).",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.BrowserGetText,
 	})
 	r.Register(ToolDef{
 		Name:        "browser_close",

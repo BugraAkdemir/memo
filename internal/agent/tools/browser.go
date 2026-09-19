@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 )
 
 // BrowserSession is the subset of *browserengine.Session these tools need —
@@ -20,6 +21,7 @@ type BrowserSession interface {
 	Type(ctx context.Context, selector, text string) error
 	Scroll(ctx context.Context, dx, dy int) error
 	Screenshot(ctx context.Context) ([]byte, error)
+	PageText(ctx context.Context) (string, error)
 	Close() error
 }
 
@@ -221,14 +223,44 @@ func BrowserScroll(ctx context.Context, argsJSON json.RawMessage, _ string, _ fu
 	return T("Sayfa kaydırıldı.", "Scrolled the page."), nil
 }
 
-// BrowserScreenshot captures the current viewport of the active session as
-// a base64-encoded PNG data URI. Returning the raw image bytes as text is a
-// deliberate, known simplification for this checkpoint — Memo's tool-result
-// pipeline doesn't yet build a proper multimodal (image) content block for
-// providers that support one, so a vision-capable model at least has the
-// bytes in reach; a live, low-cost preview for the *user* is a separate
-// mechanism (the browser_frame SSE event, added in a later checkpoint) so
-// this doesn't need to be cheap on every call.
+// lastFrameB64 holds the most recently captured screenshot, consumed
+// exactly once by emitBrowserFrame (internal/app/browser_frame.go) via
+// LastBrowserFrame below. This is deliberately NOT part of what
+// BrowserScreenshot returns to the model — see that function's doc comment
+// for why: putting a base64 PNG in the tool-result text means it rides
+// along in the conversation history sent on every subsequent LLM call for
+// the rest of the turn, and a real session doing navigate→screenshot→
+// scroll→screenshot a few times measurably ballooned prompt tokens from
+// ~25K to ~890K in one turn this way — a real, live, costly bug (it
+// coincided with a provider account running out of credit mid-task), not a
+// theoretical one. The live pane still gets every frame; the model just
+// doesn't pay to carry pixels it can't see anyway (no multimodal tool-
+// result content block is wired up yet — see that same doc comment).
+var (
+	lastFrameMu  sync.Mutex
+	lastFrameB64 string
+)
+
+// LastBrowserFrame returns the most recent screenshot as base64 PNG, if
+// one hasn't already been consumed, and clears it — a single-reader,
+// consume-once handoff so a slow SSE consumer never re-sends a stale frame.
+// Safe to call even when no frame is pending (returns "", false).
+func LastBrowserFrame() (string, bool) {
+	lastFrameMu.Lock()
+	defer lastFrameMu.Unlock()
+	b64 := lastFrameB64
+	lastFrameB64 = ""
+	return b64, b64 != ""
+}
+
+// BrowserScreenshot captures the current viewport of the active session.
+// The image itself goes out via LastBrowserFrame/the browser_frame SSE
+// event for the *user's* live pane to show — not in this function's own
+// return value, which the model actually reads. See lastFrameB64's doc
+// comment for the real, measured cost of getting this backwards: no
+// multimodal tool-result content block is wired up yet, so the model can't
+// see pixels either way: returning them as text was pure token cost for
+// zero benefit, not a "the model looks at it" tradeoff.
 func BrowserScreenshot(ctx context.Context, _ json.RawMessage, _ string, _ func(string) error) (string, error) {
 	if InteractiveBrowser == nil {
 		return "", browserNotConfigured()
@@ -241,7 +273,38 @@ func BrowserScreenshot(ctx context.Context, _ json.RawMessage, _ string, _ func(
 	if err != nil {
 		return "", fmt.Errorf(T("ekran görüntüsü alınamadı: %w", "could not take screenshot: %w"), err)
 	}
-	return fmt.Sprintf("data:image/png;base64,%s", base64.StdEncoding.EncodeToString(shot)), nil
+	lastFrameMu.Lock()
+	lastFrameB64 = base64.StdEncoding.EncodeToString(shot)
+	lastFrameMu.Unlock()
+	return T(
+		"Ekran görüntüsü alındı — kullanıcının canlı tarayıcı panelinde görünüyor. Bu görselin piksellerini SEN göremiyorsun (henüz görsel/multimodal bir kanal yok) — yerleşim ya da görsel detay hakkında tahmin yürütme. Sayfada ne olduğunu anlamak için browser_get_text kullan.",
+		"Screenshot captured — visible in the user's live browser pane. You cannot see its pixels yourself (no visual/multimodal channel is wired up yet) — don't guess at layout or visual detail. Use browser_get_text to actually know what's on the page.",
+	), nil
+}
+
+// BrowserGetTextArgs is currently empty (whole-page text only) — kept as
+// its own type so a selector-scoped variant can be added later without
+// changing BrowserGetText's signature.
+type BrowserGetTextArgs struct{}
+
+// BrowserGetText reads the active session's page as plain visible text
+// (document.body.innerText, truncated) — the model's only real grounding
+// for what's on a page and, by extension, what a browser_click selector
+// might plausibly be, given there is no visual channel (see
+// BrowserScreenshot's doc comment).
+func BrowserGetText(ctx context.Context, _ json.RawMessage, _ string, _ func(string) error) (string, error) {
+	if InteractiveBrowser == nil {
+		return "", browserNotConfigured()
+	}
+	sess, err := activeSession()
+	if err != nil {
+		return "", err
+	}
+	text, err := sess.PageText(ctx)
+	if err != nil {
+		return "", fmt.Errorf(T("sayfa metni okunamadı: %w", "could not read page text: %w"), err)
+	}
+	return text, nil
 }
 
 // BrowserClose ends the active interactive session, if any. Always

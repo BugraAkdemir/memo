@@ -3,19 +3,12 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"time"
 
 	"memo/internal/agent"
+	"memo/internal/agent/tools"
 	"memo/internal/api"
 )
-
-// browserScreenshotDataURIPrefix is exactly what tools.BrowserScreenshot
-// returns before its base64 payload — see internal/agent/tools/browser.go.
-// Checked here rather than changing that tool's return format: the model
-// still sees a plain data URI string, nothing about this live-frame
-// mechanism leaks into its own context.
-const browserScreenshotDataURIPrefix = "data:image/png;base64,"
 
 // BrowserFrame is the payload of a "browser_frame" SSE chunk: a live
 // screenshot pushed to the client whenever browser_screenshot succeeds, so
@@ -36,11 +29,20 @@ type BrowserFrame struct {
 // from the onEvent closure in llm.go, the same place agent_event chunks are
 // already built, so it shares that closure's ctx/outCh instead of needing
 // separate wiring.
+//
+// Pulls the image from tools.LastBrowserFrame(), NOT from ev.Result — an
+// earlier version parsed the base64 out of the tool's own text result, which
+// required BrowserScreenshot to put the full base64 PNG in that text in the
+// first place. That measurably bloated conversation history (every
+// subsequent LLM call in the turn resends it) and cost real money in a live
+// session — see tools.BrowserScreenshot's doc comment for the actual
+// numbers. This side-channel lets the tool's text result stay a short
+// confirmation while the live pane still gets every frame.
 func emitBrowserFrame(ctx context.Context, outCh chan<- api.StreamChunk, ev agent.AgentEvent) {
 	if ev.Type != agent.EventToolResult || ev.ToolName != "browser_screenshot" {
 		return
 	}
-	b64, ok := strings.CutPrefix(ev.Result, browserScreenshotDataURIPrefix)
+	b64, ok := tools.LastBrowserFrame()
 	if !ok {
 		return
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/chromedp/chromedp"
 	"memo/internal/config"
 	"memo/internal/logx"
+	"memo/internal/truncate"
 )
 
 // sessionIdleTimeout is how long an interactive Session may sit unused
@@ -340,6 +341,30 @@ func (s *Session) CurrentURL(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("browsersession: current url: %w", err)
 	}
 	return url, nil
+}
+
+// maxPageTextRunes bounds PageText's return value — same order of
+// magnitude as websearch's own maxFetchContentRunes (8000), just enough for
+// the model to know what's on a page without itself becoming a second
+// context-bloat source (see BrowserScreenshot's doc comment in
+// internal/agent/tools/browser.go for the first one, and why it mattered).
+const maxPageTextRunes = 6000
+
+// PageText returns the tab's visible text (document.body.innerText),
+// truncated — the model's only real grounding for what's on a page given
+// there is no visual/multimodal channel wired up (see
+// tools.BrowserScreenshot's doc comment).
+func (s *Session) PageText(ctx context.Context) (string, error) {
+	if err := s.checkOpen(); err != nil {
+		return "", err
+	}
+	runCtx, cancel := s.runCtx(ctx)
+	defer cancel()
+	var text string
+	if err := chromedp.Run(runCtx, chromedp.Evaluate("document.body.innerText", &text)); err != nil {
+		return "", fmt.Errorf("browsersession: page text: %w", err)
+	}
+	return truncate.Text(text, maxPageTextRunes), nil
 }
 
 // Close tears the session down: cancels the tab and allocator contexts

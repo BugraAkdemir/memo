@@ -26,6 +26,7 @@ class ToolNames {
     'browser_type': _ToolMeta('tool_browser_type', 'tool_browser_type_desc', Icons.keyboard_alt_outlined),
     'browser_scroll': _ToolMeta('tool_browser_scroll', 'tool_browser_scroll_desc', Icons.swap_vert),
     'browser_screenshot': _ToolMeta('tool_browser_screenshot', 'tool_browser_screenshot_desc', Icons.photo_camera_outlined),
+    'browser_get_text': _ToolMeta('tool_browser_get_text', 'tool_browser_get_text_desc', Icons.article_outlined),
     'browser_close': _ToolMeta('tool_browser_close', 'tool_browser_close_desc', Icons.close),
   };
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,5 +117,21 @@ func TestSession_Real_ClickTypeScroll(t *testing.T) {
 	}
 	if scrollY < 400 {
 		t.Errorf("window.scrollY = %v after scrolling by 500px, want roughly 500 — the scroll did not actually register", scrollY)
+	}
+
+	text, err := s.PageText(ctx)
+	if err != nil {
+		t.Fatalf("PageText: %v", err)
+	}
+	if !strings.Contains(text, "Click me") {
+		t.Errorf("PageText() = %q, want it to contain the button's visible text %q", text, "Click me")
+	}
+
+	url, err := s.CurrentURL(ctx)
+	if err != nil {
+		t.Fatalf("CurrentURL: %v", err)
+	}
+	if url != srv.URL+"/" {
+		t.Errorf("CurrentURL() = %q, want %q", url, srv.URL+"/")
 	}
 }

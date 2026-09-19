@@ -90,6 +90,12 @@ func (f *fakeBrowserSession) Screenshot(_ context.Context) ([]byte, error) {
 	return []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}, nil
 }
 
+func (f *fakeBrowserSession) PageText(_ context.Context) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return "fake page text", nil
+}
+
 func (f *fakeBrowserSession) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -288,10 +294,18 @@ func TestAgent_BrowserNavigate_AllowSession_SkipsPromptOnSecondCall(t *testing.T
 	}
 }
 
-// TestAgent_BrowserScreenshot_SafeNoPromptReturnsImageData proves
-// browser_screenshot (Safe) never triggers a permission prompt and its
-// tool result actually carries the captured image data.
-func TestAgent_BrowserScreenshot_SafeNoPromptReturnsImageData(t *testing.T) {
+// TestAgent_BrowserScreenshot_SafeNoPromptAndNoImageInModelContext proves
+// browser_screenshot (Safe) never triggers a permission prompt AND — the
+// point of the fix this test is named for — never puts the base64 image
+// itself into what the model reads back. An earlier version returned
+// "data:image/png;base64,<huge payload>" directly as the tool result, which
+// got resent on every subsequent LLM call for the rest of the turn; a real
+// navigate→screenshot→scroll→screenshot session measurably ballooned prompt
+// tokens from ~25K to ~890K this way (see tools.BrowserScreenshot's doc
+// comment). The image still reaches the user's live pane — see
+// TestAgent_BrowserScreenshot_EmitsLiveFrameOverSSE — just not through the
+// model's own context.
+func TestAgent_BrowserScreenshot_SafeNoPromptAndNoImageInModelContext(t *testing.T) {
 	h := NewHarness(t)
 	h.SetAgentEnabled(true)
 	fake := withFakeBrowser(t)
@@ -300,7 +314,7 @@ func TestAgent_BrowserScreenshot_SafeNoPromptReturnsImageData(t *testing.T) {
 	}
 
 	callCount := 0
-	var toolResult string
+	sawImageInRequest := false
 	h.Fake.Script = func(callNum int, req FakeChatRequest) FakeChatResponse {
 		callCount++
 		if callCount == 1 {
@@ -310,14 +324,16 @@ func TestAgent_BrowserScreenshot_SafeNoPromptReturnsImageData(t *testing.T) {
 				Arguments: `{}`,
 			}}}
 		}
-		// The fake provider's second call receives the tool result as part
-		// of req — capture it here rather than needing a separate hook.
+		// The fake provider's second call receives the tool result (from
+		// the first call) as part of req's message history — this is
+		// exactly the resent-every-iteration conversation history the fix
+		// is about keeping small.
 		for _, m := range req.Messages {
-			if s := string(m); strings.Contains(s, "data:image/png;base64,") {
-				toolResult = s
+			if strings.Contains(string(m), "data:image/png;base64,") {
+				sawImageInRequest = true
 			}
 		}
-		return FakeChatResponse{Text: "işte ekran görüntüsü"}
+		return FakeChatResponse{Text: "işte, canlı panelde görebilirsin"}
 	}
 
 	chatID := h.NewAgentChat(t.TempDir())
@@ -343,8 +359,8 @@ func TestAgent_BrowserScreenshot_SafeNoPromptReturnsImageData(t *testing.T) {
 	if screenshotN != 1 {
 		t.Errorf("session.Screenshot called %d times, want exactly 1", screenshotN)
 	}
-	if toolResult == "" {
-		t.Error("tool result never reached the model with the expected data:image/png;base64, prefix")
+	if sawImageInRequest {
+		t.Error("the base64 image reached the model's own request history — it should only flow to the live pane via browser_frame, never through the model's context")
 	}
 }
 
@@ -540,5 +556,58 @@ func TestAgent_BrowserScreenshot_EmitsLiveFrameOverSSE(t *testing.T) {
 	wantPNG := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A} // fakeBrowserSession.Screenshot's canned bytes
 	if string(decoded) != string(wantPNG) {
 		t.Errorf("decoded browser_frame bytes = %x, want %x (the fake session's own screenshot bytes)", decoded, wantPNG)
+	}
+}
+
+// TestAgent_BrowserGetText_SafeNoPromptReturnsPageText proves browser_get_text
+// (Safe) never triggers a permission prompt and its result — the model's
+// only real grounding for page content now that browser_screenshot doesn't
+// hand it pixels (see that tool's doc comment) — actually reaches the model.
+func TestAgent_BrowserGetText_SafeNoPromptReturnsPageText(t *testing.T) {
+	h := NewHarness(t)
+	h.SetAgentEnabled(true)
+	fake := withFakeBrowser(t)
+	if _, err := fake.StartSession(context.Background()); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	callCount := 0
+	sawPageText := false
+	h.Fake.Script = func(callNum int, req FakeChatRequest) FakeChatResponse {
+		callCount++
+		if callCount == 1 {
+			return FakeChatResponse{ToolCalls: []FakeToolCall{{
+				ID:        "call_1",
+				Name:      "browser_get_text",
+				Arguments: `{}`,
+			}}}
+		}
+		for _, m := range req.Messages {
+			if strings.Contains(string(m), "fake page text") {
+				sawPageText = true
+			}
+		}
+		return FakeChatResponse{Text: "sayfada şunlar var"}
+	}
+
+	chatID := h.NewAgentChat(t.TempDir())
+
+	sawPermission := false
+	for ev := range h.SendMessageStreamAsync(chatID, "sayfada ne yazıyor") {
+		if ev.FinishReason != "agent_event" {
+			continue
+		}
+		for _, ae := range AgentEvents(t, []SSEEvent{ev}) {
+			if ae.Type == "permission_request" {
+				sawPermission = true
+			}
+		}
+	}
+
+	if sawPermission {
+		t.Error("browser_get_text (Safe) should never trigger a permission_request")
+	}
+	if !sawPageText {
+		t.Error("the fake session's page text never reached the model")
 	}
 }

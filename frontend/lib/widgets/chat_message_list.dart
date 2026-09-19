@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,18 @@ import '../models/task_list.dart';
 import '../core/l10n.dart';
 import 'agent/task_activity_block.dart';
 
+/// Max width for a message bubble's content, given the ACTUAL width this
+/// Row was laid out at (from a LayoutBuilder — see both call sites' doc
+/// comments for why that matters and not MediaQuery.of(context).size.width,
+/// which reports the whole app window regardless of how much a sidebar or
+/// BrowserPane sibling has already taken from it). Leaves room for the
+/// avatar+margin (~42px, only present on assistant messages, but reserving
+/// it unconditionally is harmless) and caps at 640 so a bubble doesn't look
+/// absurdly wide with no sidebar/pane open on an ultra-wide monitor.
+double _chatBubbleMaxWidth(double availableWidth) {
+  return math.min((availableWidth - 42).clamp(80.0, double.infinity), 640.0);
+}
+
 // Opens a markdown link tapped in a chat message. A share_file download
 // link (internal/app/sendfile.go's App.DeliverFile) comes back as a
 // relative path — the backend has no reliable way to know which
@@ -21,7 +34,9 @@ import 'agent/task_activity_block.dart';
 // Anything not starting with "/" is treated as already-absolute (a normal
 // external link) and launched as-is.
 Future<void> _openChatLink(String apiBaseUrl, String href) async {
-  final uri = href.startsWith('/') ? Uri.parse('$apiBaseUrl$href') : Uri.parse(href);
+  final uri = href.startsWith('/')
+      ? Uri.parse('$apiBaseUrl$href')
+      : Uri.parse(href);
   await launchUrl(uri, mode: LaunchMode.externalApplication);
 }
 
@@ -47,15 +62,31 @@ MarkdownStyleSheet _buildMarkdownStyleSheet(BuildContext context) {
         borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
         border: Border.all(color: c.borderSoft),
       ),
-      codeblockPadding:  EdgeInsets.all(14),
+      codeblockPadding: EdgeInsets.all(14),
       blockquoteDecoration: BoxDecoration(
         border: Border(left: BorderSide(color: c.borderHover, width: 3)),
       ),
-      blockquotePadding:  EdgeInsets.only(left: 12),
-      h1: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: c.textMain),
-      h2: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: c.textMain),
-      h3: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: c.textMain),
-      tableHead: TextStyle(fontWeight: FontWeight.w600, color: c.textMuted, fontSize: 13),
+      blockquotePadding: EdgeInsets.only(left: 12),
+      h1: TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        color: c.textMain,
+      ),
+      h2: TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+        color: c.textMain,
+      ),
+      h3: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        color: c.textMain,
+      ),
+      tableHead: TextStyle(
+        fontWeight: FontWeight.w600,
+        color: c.textMuted,
+        fontSize: 13,
+      ),
       tableBody: TextStyle(color: c.textMain, fontSize: 13),
       tableBorder: TableBorder.all(color: c.borderSoft),
       a: TextStyle(color: MemoTheme.accent, decoration: TextDecoration.none),
@@ -75,11 +106,12 @@ class ChatMessageList extends StatefulWidget {
   final String apiBaseUrl;
   final void Function(int index, String newContent)? onEdit;
   final void Function(int index)? onDelete;
+
   /// Live Self-Driving task bound to this chat, or null. Rendered as the last
   /// item, styled like an assistant turn (v4.6.0 in-chat task block).
   final ChatTaskState? taskActivity;
 
-   const ChatMessageList({
+  const ChatMessageList({
     super.key,
     required this.messages,
     this.isTyping = false,
@@ -110,7 +142,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
     final typingStarted = widget.isTyping && !oldWidget.isTyping;
     final taskAppeared =
         widget.taskActivity != null && oldWidget.taskActivity == null;
-    final taskLogGrew = (widget.taskActivity?.log.length ?? 0) !=
+    final taskLogGrew =
+        (widget.taskActivity?.log.length ?? 0) !=
         (oldWidget.taskActivity?.log.length ?? 0);
 
     if (messagesChanged ||
@@ -134,7 +167,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
-          duration:  Duration(milliseconds: 300),
+          duration: Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
       }
@@ -149,17 +182,21 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
   @override
   Widget build(BuildContext context) {
-    final hasStreaming = widget.streamingContent.isNotEmpty || (widget.streamingAgentEvents != null && widget.streamingAgentEvents!.isNotEmpty);
+    final hasStreaming =
+        widget.streamingContent.isNotEmpty ||
+        (widget.streamingAgentEvents != null &&
+            widget.streamingAgentEvents!.isNotEmpty);
     final showTyping = widget.isTyping && !hasStreaming;
     final hasTask = widget.taskActivity != null;
-    final itemCount = widget.messages.length +
+    final itemCount =
+        widget.messages.length +
         (hasStreaming ? 1 : 0) +
         (showTyping ? 1 : 0) +
         (hasTask ? 1 : 0);
 
     return ListView.builder(
       controller: _scrollController,
-      padding:  EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       itemCount: itemCount,
       itemBuilder: (context, index) {
         if (index < widget.messages.length) {
@@ -210,7 +247,7 @@ class _MessageBubble extends StatefulWidget {
   final void Function(int index, String newContent)? onEdit;
   final void Function(int index)? onDelete;
 
-   const _MessageBubble({
+  const _MessageBubble({
     super.key,
     required this.message,
     required this.index,
@@ -241,8 +278,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
         position.dy + 1,
       ),
       items: [
-         PopupMenuItem(value: 'edit', child: Text(L10n.t('edit'))),
-         PopupMenuItem(value: 'delete', child: Text(L10n.t('delete'))),
+        PopupMenuItem(value: 'edit', child: Text(L10n.t('edit'))),
+        PopupMenuItem(value: 'delete', child: Text(L10n.t('delete'))),
       ],
     ).then((value) {
       if (value == 'edit') {
@@ -258,10 +295,10 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title:  Text(L10n.t('edit_message')),
+        title: Text(L10n.t('edit_message')),
         content: TextField(
           controller: controller,
-          decoration:  InputDecoration(
+          decoration: InputDecoration(
             hintText: L10n.t('edit_message_hint'),
             border: OutlineInputBorder(),
           ),
@@ -272,11 +309,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child:  Text(L10n.t('cancel')),
+            child: Text(L10n.t('cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-            child:  Text(L10n.t('save')),
+            child: Text(L10n.t('save')),
           ),
         ],
       ),
@@ -296,12 +333,12 @@ class _MessageBubbleState extends State<_MessageBubble> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child:  Text(L10n.t('cancel')),
+            child: Text(L10n.t('cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: FilledButton.styleFrom(backgroundColor: MemoTheme.red),
-            child:  Text(L10n.t('delete')),
+            child: Text(L10n.t('delete')),
           ),
         ],
       ),
@@ -314,166 +351,196 @@ class _MessageBubbleState extends State<_MessageBubble> {
   @override
   Widget build(BuildContext context) {
     final isUser = widget.message.isUser;
-    final maxWidth = MediaQuery.of(context).size.width * 0.55;
 
     return Padding(
-      padding:  EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment: isUser
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!isUser) ...[
-            Container(
-              width: 32,
-              height: 32,
-              margin:  EdgeInsets.only(right: 10, top: 2),
-              decoration: BoxDecoration(
-                color: MemoTheme.accentPale,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: MemoTheme.accent.withValues(alpha: 0.3),
-                ),
-              ),
-              child:  Center(
-                child: Text(
-                  'M',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: MemoTheme.accent,
-                  ),
-                ),
-              ),
-            ),
-          ],
-          MouseRegion(
-            onEnter: (_) => setState(() => _hovering = true),
-            onExit: (_) => setState(() => _hovering = false),
-            child: GestureDetector(
-              onSecondaryTapDown: (details) {
-                setState(() => _tapPosition = details.localPosition);
-              },
-              onSecondaryTap: _showContextMenu,
-              onLongPress: () {
-                setState(() => _tapPosition = Offset.zero);
-                _showContextMenu();
-              },
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxWidth),
-                child: Container(
-                  padding:  EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
+      padding: EdgeInsets.only(bottom: 12),
+      // LayoutBuilder — not MediaQuery.of(context).size.width — matters
+      // here: this Row's own available width can be much narrower than the
+      // full app window (the sidebar, and now BrowserPane, both take a
+      // share of it), and the old MediaQuery-based calc had no way to know
+      // that. It happened to fit anyway as long as only the ~260px sidebar
+      // was subtracted, but BrowserPane's up-to-820px reliably overflowed
+      // it (a real, live RenderFlex overflow this fix was written to close
+      // — see AGENTS.md's Flutter gotchas for the project's general stance
+      // on this exact class of bug).
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = _chatBubbleMaxWidth(constraints.maxWidth);
+          return Row(
+            mainAxisAlignment: isUser
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!isUser) ...[
+                Container(
+                  width: 32,
+                  height: 32,
+                  margin: EdgeInsets.only(right: 10, top: 2),
                   decoration: BoxDecoration(
-                    color: isUser ? MemoTheme.accentMuted : MemoTheme.of(context).bgPanel,
-                    borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                    color: MemoTheme.accentPale,
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: isUser
-                          ? MemoTheme.accent.withValues(alpha: 0.2)
-                          : MemoTheme.of(context).borderSoft,
+                      color: MemoTheme.accent.withValues(alpha: 0.3),
                     ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (!isUser && widget.message.hasThinking)
-                        _ThinkingToggle(
-                          thinking: widget.message.thinking!,
-                          expanded: _thinkingExpanded,
-                          onToggle: () => setState(
-                            () => _thinkingExpanded = !_thinkingExpanded,
-                          ),
+                  child: Center(
+                    child: Text(
+                      'M',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: MemoTheme.accent,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              MouseRegion(
+                onEnter: (_) => setState(() => _hovering = true),
+                onExit: (_) => setState(() => _hovering = false),
+                child: GestureDetector(
+                  onSecondaryTapDown: (details) {
+                    setState(() => _tapPosition = details.localPosition);
+                  },
+                  onSecondaryTap: _showContextMenu,
+                  onLongPress: () {
+                    setState(() => _tapPosition = Offset.zero);
+                    _showContextMenu();
+                  },
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: maxWidth),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isUser
+                            ? MemoTheme.accentMuted
+                            : MemoTheme.of(context).bgPanel,
+                        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                        border: Border.all(
+                          color: isUser
+                              ? MemoTheme.accent.withValues(alpha: 0.2)
+                              : MemoTheme.of(context).borderSoft,
                         ),
-                      if (!isUser && widget.message.agentEvents != null && widget.message.agentEvents!.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: _visibleToolBadges(widget.message.agentEvents!)
-                                .map((e) {
-                              if (e is AgentEvent) return _AgentStatusBadge(event: e);
-                              if (e is Map<String, dynamic>) {
-                                return _AgentStatusBadge(event: AgentEvent.fromJson(e));
-                              }
-                              return const SizedBox.shrink();
-                            }).toList(),
-                          ),
-                        ),
-                      if (widget.message.hasImage)
-                        Padding(
-                          padding:  EdgeInsets.only(bottom: 8),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.file(
-                              File(widget.message.imagePath!),
-                              width: 480,
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, _, _) =>  SizedBox.shrink(),
-                            ),
-                          ),
-                        ),
-                      if (widget.message.content.isNotEmpty)
-                        MarkdownBody(
-                          data: widget.message.content,
-                          selectable: true,
-                          styleSheet: _buildMarkdownStyleSheet(context),
-                          onTapLink: (text, href, title) {
-                            if (href != null) _openChatLink(widget.apiBaseUrl, href);
-                          },
-                        ),
-                      if (_hovering || isUser) ...[
-                         SizedBox(height: 6),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              widget.message.timestamp,
-                              style:  TextStyle(
-                                fontSize: 10,
-                                color: MemoTheme.of(context).textDim,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!isUser && widget.message.hasThinking)
+                            _ThinkingToggle(
+                              thinking: widget.message.thinking!,
+                              expanded: _thinkingExpanded,
+                              onToggle: () => setState(
+                                () => _thinkingExpanded = !_thinkingExpanded,
                               ),
                             ),
-                            if (!isUser && widget.message.memoryUsed > 0) ...[
-                               SizedBox(width: 8),
-                              _MemoryUsedIndicator(count: widget.message.memoryUsed),
-                            ],
-                            if (_hovering && !isUser) ...[
-                               SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () {
-                                  Clipboard.setData(
-                                    ClipboardData(
-                                      text: widget.message.content,
-                                    ),
-                                  );
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(L10n.t('copied')),
-                                      duration: const Duration(seconds: 1),
-                                    ),
-                                  );
-                                },
-                                child:  Icon(
-                                  Icons.copy,
-                                  size: 12,
-                                  color: MemoTheme.of(context).textDim,
+                          if (!isUser &&
+                              widget.message.agentEvents != null &&
+                              widget.message.agentEvents!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                children:
+                                    _visibleToolBadges(
+                                      widget.message.agentEvents!,
+                                    ).map((e) {
+                                      if (e is AgentEvent) {
+                                        return _AgentStatusBadge(event: e);
+                                      }
+                                      if (e is Map<String, dynamic>) {
+                                        return _AgentStatusBadge(
+                                          event: AgentEvent.fromJson(e),
+                                        );
+                                      }
+                                      return const SizedBox.shrink();
+                                    }).toList(),
+                              ),
+                            ),
+                          if (widget.message.hasImage)
+                            Padding(
+                              padding: EdgeInsets.only(bottom: 8),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.file(
+                                  File(widget.message.imagePath!),
+                                  width: 480,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, _, _) => SizedBox.shrink(),
                                 ),
                               ),
-                            ],
+                            ),
+                          if (widget.message.content.isNotEmpty)
+                            MarkdownBody(
+                              data: widget.message.content,
+                              selectable: true,
+                              styleSheet: _buildMarkdownStyleSheet(context),
+                              onTapLink: (text, href, title) {
+                                if (href != null) {
+                                  _openChatLink(widget.apiBaseUrl, href);
+                                }
+                              },
+                            ),
+                          if (_hovering || isUser) ...[
+                            SizedBox(height: 6),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  widget.message.timestamp,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: MemoTheme.of(context).textDim,
+                                  ),
+                                ),
+                                if (!isUser &&
+                                    widget.message.memoryUsed > 0) ...[
+                                  SizedBox(width: 8),
+                                  _MemoryUsedIndicator(
+                                    count: widget.message.memoryUsed,
+                                  ),
+                                ],
+                                if (_hovering && !isUser) ...[
+                                  SizedBox(width: 8),
+                                  GestureDetector(
+                                    onTap: () {
+                                      Clipboard.setData(
+                                        ClipboardData(
+                                          text: widget.message.content,
+                                        ),
+                                      );
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(L10n.t('copied')),
+                                          duration: const Duration(seconds: 1),
+                                        ),
+                                      );
+                                    },
+                                    child: Icon(
+                                      Icons.copy,
+                                      size: 12,
+                                      color: MemoTheme.of(context).textDim,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ],
-                        ),
-                      ],
-                    ],
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -496,7 +563,7 @@ class _StreamingBubble extends StatefulWidget {
   final bool keepWorkingCue;
   final String apiBaseUrl;
 
-   const _StreamingBubble({
+  const _StreamingBubble({
     required this.content,
     this.thinking = '',
     this.agentEvents,
@@ -513,80 +580,87 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
 
   @override
   Widget build(BuildContext context) {
-    final maxWidth = MediaQuery.of(context).size.width * 0.55;
-
     return Padding(
-      padding:  EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            margin:  EdgeInsets.only(right: 10, top: 2),
-            decoration: BoxDecoration(
-              color: MemoTheme.accentPale,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: MemoTheme.accent.withValues(alpha: 0.3),
-              ),
-            ),
-            child:  Center(
-              child: Text(
-                'M',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: MemoTheme.accent,
+      padding: EdgeInsets.only(bottom: 12),
+      // See _MessageBubble.build's matching comment — same fix, same bug.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = _chatBubbleMaxWidth(constraints.maxWidth);
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                margin: EdgeInsets.only(right: 10, top: 2),
+                decoration: BoxDecoration(
+                  color: MemoTheme.accentPale,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: MemoTheme.accent.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    'M',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: MemoTheme.accent,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxWidth),
-            child: Container(
-              padding:  EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: MemoTheme.of(context).bgPanel,
-                borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                border: Border.all(color: MemoTheme.of(context).borderSoft),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: MemoTheme.of(context).bgPanel,
+                    borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                    border: Border.all(color: MemoTheme.of(context).borderSoft),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.thinking.isNotEmpty)
+                        _ThinkingToggle(
+                          thinking: widget.thinking,
+                          expanded: _thinkingExpanded,
+                          onToggle: () => setState(
+                            () => _thinkingExpanded = !_thinkingExpanded,
+                          ),
+                        ),
+                      if (widget.content.isNotEmpty)
+                        MarkdownBody(
+                          data: widget.content,
+                          selectable: true,
+                          styleSheet: _buildMarkdownStyleSheet(context),
+                          onTapLink: (text, href, title) {
+                            if (href != null) {
+                              _openChatLink(widget.apiBaseUrl, href);
+                            }
+                          },
+                        ),
+                      if (widget.agentEvents != null &&
+                          widget.agentEvents!.isNotEmpty)
+                        _AgentStatusBar(events: widget.agentEvents!)
+                      else if (widget.content.isEmpty || widget.keepWorkingCue)
+                        // No live tool activity and no content yet — show an
+                        // animated cue so the wait feels alive. Normally skipped
+                        // once content is streaming (dots next to growing text
+                        // would be redundant) — except for CLI turns, which can
+                        // go quiet mid-reply with no other signal that it's
+                        // still working (see keepWorkingCue's doc comment).
+                        const _AgentWorkingIndicator(),
+                    ],
+                  ),
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (widget.thinking.isNotEmpty)
-                    _ThinkingToggle(
-                      thinking: widget.thinking,
-                      expanded: _thinkingExpanded,
-                      onToggle: () => setState(
-                        () => _thinkingExpanded = !_thinkingExpanded,
-                      ),
-                    ),
-                  if (widget.content.isNotEmpty)
-                    MarkdownBody(
-                      data: widget.content,
-                      selectable: true,
-                      styleSheet: _buildMarkdownStyleSheet(context),
-                      onTapLink: (text, href, title) {
-                        if (href != null) _openChatLink(widget.apiBaseUrl, href);
-                      },
-                    ),
-                  if (widget.agentEvents != null && widget.agentEvents!.isNotEmpty)
-                    _AgentStatusBar(events: widget.agentEvents!)
-                  else if (widget.content.isEmpty || widget.keepWorkingCue)
-                    // No live tool activity and no content yet — show an
-                    // animated cue so the wait feels alive. Normally skipped
-                    // once content is streaming (dots next to growing text
-                    // would be redundant) — except for CLI turns, which can
-                    // go quiet mid-reply with no other signal that it's
-                    // still working (see keepWorkingCue's doc comment).
-                    const _AgentWorkingIndicator(),
-                ],
-              ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -598,7 +672,7 @@ class _ThinkingToggle extends StatelessWidget {
   final bool expanded;
   final VoidCallback onToggle;
 
-   const _ThinkingToggle({
+  const _ThinkingToggle({
     required this.thinking,
     required this.expanded,
     required this.onToggle,
@@ -607,7 +681,7 @@ class _ThinkingToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:  EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -615,7 +689,7 @@ class _ThinkingToggle extends StatelessWidget {
           GestureDetector(
             onTap: onToggle,
             child: Container(
-              padding:  EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                 color: MemoTheme.of(context).bgElement,
                 borderRadius: BorderRadius.circular(8),
@@ -629,7 +703,7 @@ class _ThinkingToggle extends StatelessWidget {
                     size: 16,
                     color: MemoTheme.of(context).textMuted,
                   ),
-                   SizedBox(width: 4),
+                  SizedBox(width: 4),
                   Text(
                     expanded ? 'Düşünme gizle' : 'Düşünme göster',
                     style: TextStyle(
@@ -645,10 +719,10 @@ class _ThinkingToggle extends StatelessWidget {
 
           // Expanded thinking content
           if (expanded) ...[
-             SizedBox(height: 8),
+            SizedBox(height: 8),
             Container(
               width: double.infinity,
-              padding:  EdgeInsets.all(10),
+              padding: EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: MemoTheme.of(context).bgElement.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
@@ -664,7 +738,7 @@ class _ThinkingToggle extends StatelessWidget {
                 ),
               ),
             ),
-             SizedBox(height: 8),
+            SizedBox(height: 8),
           ],
         ],
       ),
@@ -760,7 +834,7 @@ class _TypingIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:  EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.only(bottom: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -769,7 +843,7 @@ class _TypingIndicator extends StatelessWidget {
           Container(
             width: 32,
             height: 32,
-            margin:  EdgeInsets.only(right: 10, top: 2),
+            margin: EdgeInsets.only(right: 10, top: 2),
             decoration: BoxDecoration(
               color: MemoTheme.accentPale,
               borderRadius: BorderRadius.circular(10),
@@ -777,7 +851,7 @@ class _TypingIndicator extends StatelessWidget {
                 color: MemoTheme.accent.withValues(alpha: 0.3),
               ),
             ),
-            child:  Center(
+            child: Center(
               child: Text(
                 'M',
                 style: TextStyle(
@@ -790,7 +864,7 @@ class _TypingIndicator extends StatelessWidget {
           ),
           // Bubble
           Container(
-            padding:  EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: MemoTheme.of(context).bgPanel,
               borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -807,13 +881,13 @@ class _TypingIndicator extends StatelessWidget {
                     color: MemoTheme.accent,
                   ),
                 ),
-                 SizedBox(width: 10),
+                SizedBox(width: 10),
                 Text(
                   statusText == 'web_search'
                       ? L10n.t('searching_web')
                       : (statusText == 'fetch_page'
-                          ? L10n.t('reading_page')
-                          : L10n.t('thinking')),
+                            ? L10n.t('reading_page')
+                            : L10n.t('thinking')),
                   style: TextStyle(
                     fontSize: 13,
                     fontStyle: FontStyle.italic,
@@ -909,7 +983,9 @@ class _AgentStatusBar extends StatelessWidget {
     final isError = lastEvent.type == 'tool_error';
 
     final iconColor = isError ? MemoTheme.red : MemoTheme.accent;
-    final statusIcon = isExecuting ? Icons.sync : (isError ? Icons.error_outline : Icons.check_circle_outline);
+    final statusIcon = isExecuting
+        ? Icons.sync
+        : (isError ? Icons.error_outline : Icons.check_circle_outline);
 
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 4),
@@ -950,7 +1026,7 @@ class _AgentStatusBar extends StatelessWidget {
                 '${lastEvent.durationMs}ms',
                 style: TextStyle(fontSize: 10, color: iconColor),
               ),
-          ),
+            ),
         ],
       ),
     );
@@ -989,10 +1065,7 @@ class _MemoryUsedIndicator extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 3),
-          Text(
-            '$count',
-            style: TextStyle(fontSize: 10, color: color),
-          ),
+          Text('$count', style: TextStyle(fontSize: 10, color: color)),
         ],
       ),
     );
@@ -1023,10 +1096,14 @@ List<dynamic> _visibleToolBadges(List<dynamic> raw) {
   final out = <dynamic>[];
   for (var i = 0; i < raw.length; i++) {
     final e = raw[i];
-    final type = e is AgentEvent ? e.type : (e is Map ? e['type'] as String? : null);
+    final type = e is AgentEvent
+        ? e.type
+        : (e is Map ? e['type'] as String? : null);
     if (type == 'tool_executing' && i + 1 < raw.length) {
       final next = raw[i + 1];
-      final nextType = next is AgentEvent ? next.type : (next is Map ? next['type'] as String? : null);
+      final nextType = next is AgentEvent
+          ? next.type
+          : (next is Map ? next['type'] as String? : null);
       if (completions.contains(nextType)) {
         continue; // the next iteration renders the real, final-state badge
       }
@@ -1043,34 +1120,44 @@ class _AgentStatusBadge extends StatelessWidget {
 
   String _label(String? toolName) {
     switch (toolName) {
-      case 'read_file': return 'Dosya okudu';
-      case 'write_file': return 'Dosya yazdi';
-      case 'edit_file': return 'Dosya duzenledi';
-      case 'insert_line': return 'Satir ekledi';
+      case 'read_file':
+        return 'Dosya okudu';
+      case 'write_file':
+        return 'Dosya yazdi';
+      case 'edit_file':
+        return 'Dosya duzenledi';
+      case 'insert_line':
+        return 'Satir ekledi';
       case 'delete_lines':
-      case 'delete_file': return 'Sildi';
-      case 'run_command': return 'Komut calistirdi';
-      case 'search_files': return 'Arama yapti';
-      default: return toolName ?? 'Arac';
+      case 'delete_file':
+        return 'Sildi';
+      case 'run_command':
+        return 'Komut calistirdi';
+      case 'search_files':
+        return 'Arama yapti';
+      default:
+        return toolName ?? 'Arac';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isError = event.type == 'tool_error' || event.type == 'permission_denied';
+    final isError =
+        event.type == 'tool_error' || event.type == 'permission_denied';
     // tool_executing in a historical message means the stream was interrupted before
     // the tool completed — show it as cancelled rather than successful.
-    final isInterrupted = event.type == 'tool_executing' || event.type == 'permission_request';
+    final isInterrupted =
+        event.type == 'tool_executing' || event.type == 'permission_request';
     final color = isError
         ? MemoTheme.red
         : isInterrupted
-            ? MemoTheme.of(context).textDim
-            : MemoTheme.accent;
+        ? MemoTheme.of(context).textDim
+        : MemoTheme.accent;
     final icon = isError
         ? Icons.error_outline
         : isInterrupted
-            ? Icons.cancel_outlined
-            : Icons.check_circle_outline;
+        ? Icons.cancel_outlined
+        : Icons.check_circle_outline;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1095,7 +1182,10 @@ class _AgentStatusBadge extends StatelessWidget {
             const SizedBox(width: 2),
             Text(
               '(${event.durationMs}ms)',
-              style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.7)),
+              style: TextStyle(
+                fontSize: 10,
+                color: color.withValues(alpha: 0.7),
+              ),
             ),
           ],
         ],

@@ -444,6 +444,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			if ev.Type == agent.EventToolResult && ev.ToolName == "save_code_plan" && ev.Error == "" {
 				planSaved.Store(true)
 			}
+			emitBrowserFrame(ctx, outCh, ev)
 			chunkData, _ := json.Marshal(ev)
 			trySend(ctx, outCh, api.StreamChunk{
 				Content:      string(chunkData),

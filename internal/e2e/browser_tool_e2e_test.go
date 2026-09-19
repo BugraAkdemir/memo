@@ -4,6 +4,8 @@ package e2e
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
@@ -476,5 +478,67 @@ func TestAgent_BrowserNavigate_EngineNotInstalled_GivesActionableMessage(t *test
 	defer fake.mu.Unlock()
 	if fake.starts != 0 {
 		t.Errorf("StartSession called %d times, want 0 — the missing-engine check must short-circuit before attempting to launch", fake.starts)
+	}
+}
+
+// TestAgent_BrowserScreenshot_EmitsLiveFrameOverSSE proves a successful
+// browser_screenshot tool call also pushes a separate "browser_frame" SSE
+// chunk (the mechanism a Flutter browser pane consumes to show a live
+// preview) carrying the same image bytes the tool handed back to the model
+// — not just the agent_event/tool_result chunk the model itself sees.
+func TestAgent_BrowserScreenshot_EmitsLiveFrameOverSSE(t *testing.T) {
+	h := NewHarness(t)
+	h.SetAgentEnabled(true)
+	fake := withFakeBrowser(t)
+	if _, err := fake.StartSession(context.Background()); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	callCount := 0
+	h.Fake.Script = func(callNum int, req FakeChatRequest) FakeChatResponse {
+		callCount++
+		if callCount == 1 {
+			return FakeChatResponse{ToolCalls: []FakeToolCall{{
+				ID:        "call_1",
+				Name:      "browser_screenshot",
+				Arguments: `{}`,
+			}}}
+		}
+		return FakeChatResponse{Text: "işte"}
+	}
+
+	chatID := h.NewAgentChat(t.TempDir())
+
+	var frames []struct {
+		Screenshot string `json:"screenshot_base64"`
+		Timestamp  int64  `json:"ts"`
+	}
+	for ev := range h.SendMessageStreamAsync(chatID, "ekran görüntüsü al") {
+		if ev.FinishReason != "browser_frame" {
+			continue
+		}
+		var f struct {
+			Screenshot string `json:"screenshot_base64"`
+			Timestamp  int64  `json:"ts"`
+		}
+		if err := json.Unmarshal([]byte(ev.Content), &f); err != nil {
+			t.Fatalf("browser_frame chunk did not decode as JSON: %v (content=%q)", err, ev.Content)
+		}
+		frames = append(frames, f)
+	}
+
+	if len(frames) != 1 {
+		t.Fatalf("got %d browser_frame chunks, want exactly 1", len(frames))
+	}
+	if frames[0].Timestamp == 0 {
+		t.Error("browser_frame.ts is zero, want a real unix-millis timestamp")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(frames[0].Screenshot)
+	if err != nil {
+		t.Fatalf("browser_frame.screenshot_base64 is not valid base64: %v", err)
+	}
+	wantPNG := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A} // fakeBrowserSession.Screenshot's canned bytes
+	if string(decoded) != string(wantPNG) {
+		t.Errorf("decoded browser_frame bytes = %x, want %x (the fake session's own screenshot bytes)", decoded, wantPNG)
 	}
 }

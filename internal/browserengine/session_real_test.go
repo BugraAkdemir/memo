@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -133,5 +134,78 @@ func TestSession_Real_ClickTypeScroll(t *testing.T) {
 	}
 	if url != srv.URL+"/" {
 		t.Errorf("CurrentURL() = %q, want %q", url, srv.URL+"/")
+	}
+}
+
+// TestSession_Real_PageTextListsClickablesAndTheirSelectorsActuallyWork is
+// the real fix for a live, reported bug: the agent kept calling
+// browser_screenshot in a loop and never once called browser_click,
+// because it had no reliable way to know what CSS selector would hit a
+// given button. This test proves the actual mechanism that closes that
+// gap: PageText's clickable-elements list gives back a selector
+// (data-memo-ref, injected by findClickablesJS) that — unlike a selector
+// the model would have to guess from a screenshot or assumed markup —
+// really does resolve to the intended element on a real page, even one
+// with no meaningful id/class to guess from.
+func TestSession_Real_PageTextListsClickablesAndTheirSelectorsActuallyWork(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping real-Chromium test in -short mode")
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// Deliberately no id, no meaningful class — a selector like
+		// "#submit" or "button.primary" (the kind a model without this
+		// tool tends to guess) would not match anything here.
+		_, _ = w.Write([]byte(`<html><body>
+			<div class="xj9f2 q7">
+				<button onclick="document.title='language-switched'">EN</button>
+			</div>
+		</body></html>`))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	s, err := startSession(ctx, func(*Session) {})
+	if err != nil {
+		t.Skipf("no usable Chromium found, skipping real-browser test: %v", err)
+	}
+	defer s.Close()
+
+	if err := s.Navigate(ctx, srv.URL); err != nil {
+		t.Fatalf("Navigate: %v", err)
+	}
+
+	text, err := s.PageText(ctx)
+	if err != nil {
+		t.Fatalf("PageText: %v", err)
+	}
+	if !strings.Contains(text, "Clickable elements") {
+		t.Fatalf("PageText() did not include a clickable-elements section: %q", text)
+	}
+	if !strings.Contains(text, `"EN"`) {
+		t.Errorf("PageText() clickable list did not mention the button's label \"EN\": %q", text)
+	}
+
+	// Extract the selector exactly the way a model would have to: find the
+	// line naming the button, pull out the [data-memo-ref="N"] selector.
+	selRe := regexp.MustCompile(`<button> "EN" -> (\[data-memo-ref="\d+"\])`)
+	m := selRe.FindStringSubmatch(text)
+	if m == nil {
+		t.Fatalf("could not find a selector for the EN button in PageText() output: %q", text)
+	}
+	selector := m[1]
+
+	if err := s.Click(ctx, selector); err != nil {
+		t.Fatalf("Click(%q): %v", selector, err)
+	}
+	var title string
+	if err := chromedp.Run(s.tabCtx, chromedp.Title(&title)); err != nil {
+		t.Fatalf("read back document.title: %v", err)
+	}
+	if title != "language-switched" {
+		t.Errorf("document.title = %q after clicking the found selector, want %q — the selector from PageText did not actually hit the button", title, "language-switched")
 	}
 }

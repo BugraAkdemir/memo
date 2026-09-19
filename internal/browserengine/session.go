@@ -343,16 +343,49 @@ func (s *Session) CurrentURL(ctx context.Context) (string, error) {
 	return url, nil
 }
 
-// maxPageTextRunes bounds PageText's return value — same order of
-// magnitude as websearch's own maxFetchContentRunes (8000), just enough for
-// the model to know what's on a page without itself becoming a second
-// context-bloat source (see BrowserScreenshot's doc comment in
-// internal/agent/tools/browser.go for the first one, and why it mattered).
+// maxPageTextRunes bounds the visible-text portion of PageText's return
+// value — same order of magnitude as websearch's own maxFetchContentRunes
+// (8000), just enough for the model to know what's on a page without
+// itself becoming a second context-bloat source (see
+// tools.BrowserScreenshot's doc comment for the first one, and why it
+// mattered). Deliberately does NOT bound the clickable-elements list below
+// it — that list is what the model actually needs to reliably act, so a
+// long page trimming its prose must never also eat into it.
 const maxPageTextRunes = 6000
 
-// PageText returns the tab's visible text (document.body.innerText),
-// truncated — the model's only real grounding for what's on a page given
-// there is no visual/multimodal channel wired up (see
+// findClickablesJS queries a reasonable set of interactive elements,
+// skips anything not actually visible, and stamps each survivor with a
+// data-memo-ref attribute — a real, unique attribute this call just wrote
+// onto the live DOM, not a description or a guess. Returns one line per
+// element: its tag, its visible label, and the exact CSS selector
+// (`[data-memo-ref="N"]`) that will hit it. This is the actual fix for "the
+// agent never clicks anything": browser_get_text alone gives prose, which
+// is not something a model can turn into a reliable CSS selector — Click
+// #email or button.submit is a guess at best on a real page's class
+// soup. Handing back a selector guaranteed to resolve to the exact element
+// the model just read the label of closes that gap directly.
+const findClickablesJS = `(function() {
+	var els = document.querySelectorAll('a, button, input, select, textarea, [role="button"], [onclick]');
+	var lines = [];
+	var i = 0;
+	els.forEach(function(el) {
+		var rect = el.getBoundingClientRect();
+		var style = window.getComputedStyle(el);
+		if (rect.width === 0 || rect.height === 0) return;
+		if (style.visibility === 'hidden' || style.display === 'none') return;
+		i++;
+		el.setAttribute('data-memo-ref', String(i));
+		var label = (el.innerText || el.value || el.placeholder || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+		lines.push(i + '. <' + el.tagName.toLowerCase() + '> "' + label + '" -> [data-memo-ref="' + i + '"]');
+	});
+	return lines.join('\n');
+})()`
+
+// PageText returns the tab's visible text (document.body.innerText,
+// truncated) plus a list of every visible clickable element with a
+// ready-to-use CSS selector — see findClickablesJS's doc comment. This is
+// the model's only real grounding for what's on a page AND what it can
+// act on, given there is no visual/multimodal channel wired up (see
 // tools.BrowserScreenshot's doc comment).
 func (s *Session) PageText(ctx context.Context) (string, error) {
 	if err := s.checkOpen(); err != nil {
@@ -360,11 +393,18 @@ func (s *Session) PageText(ctx context.Context) (string, error) {
 	}
 	runCtx, cancel := s.runCtx(ctx)
 	defer cancel()
-	var text string
-	if err := chromedp.Run(runCtx, chromedp.Evaluate("document.body.innerText", &text)); err != nil {
+	var bodyText, clickables string
+	if err := chromedp.Run(runCtx,
+		chromedp.Evaluate("document.body.innerText", &bodyText),
+		chromedp.Evaluate(findClickablesJS, &clickables),
+	); err != nil {
 		return "", fmt.Errorf("browsersession: page text: %w", err)
 	}
-	return truncate.Text(text, maxPageTextRunes), nil
+	bodyText = truncate.Text(bodyText, maxPageTextRunes)
+	if clickables == "" {
+		return bodyText, nil
+	}
+	return bodyText + "\n\n--- Clickable elements on this page (use the exact selector shown to click one with browser_click) ---\n" + clickables, nil
 }
 
 // Close tears the session down: cancels the tab and allocator contexts

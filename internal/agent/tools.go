@@ -383,14 +383,14 @@ func (r *ToolRegistry) registerOpenAppTool() {
 func (r *ToolRegistry) registerBrowserTools() {
 	r.Register(ToolDef{
 		Name:        "browser_navigate",
-		Description: "Opens a URL in Memo's own sandboxed, interactive browser session (a dedicated, disposable Chromium process — never the user's real browser or accounts) so you can click/type/scroll through and test a live page, e.g. a site you just built. Do NOT use this for a plain \"read/summarize this page\" or \"what does this site say\" request — that's fetch_page (much faster, no browser launch); reach for this tool only when the task genuinely needs interaction (click a button, fill a form, verify something visually) or the user explicitly asks you to open/use a browser. Starts a session on first use; a later call reuses it, loading a new URL in the same tab. Does not return a screenshot itself — call browser_screenshot afterward to see the page.",
+		Description: "Opens a URL in Memo's own sandboxed, interactive browser session (a dedicated, disposable Chromium process — never the user's real browser or accounts) so you can click/type/scroll through and test a live page, e.g. a site you just built. Do NOT use this for a plain \"read/summarize this page\" or \"what does this site say\" request — that's fetch_page (much faster, no browser launch); reach for this tool only when the task genuinely needs interaction (click a button, fill a form, verify something visually) or the user explicitly asks you to open/use a browser. Starts a session on first use; a later call reuses it, loading a new URL in the same tab. Does not return a screenshot or the page's content itself — call browser_get_text next to see what's on the page and get real selectors for anything you need to click, or browser_screenshot to show the user (not yourself) what it looks like.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"url":{"type":"string","description":"The URL to open"}},"required":["url"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.BrowserNavigate,
 	})
 	r.Register(ToolDef{
 		Name:        "browser_click",
-		Description: "Clicks an element in the active interactive browser session — either by CSS selector, or by exact viewport coordinates if there's no stable selector to target (e.g. canvas content). Provide exactly one of selector or (x and y). Requires an existing session (call browser_navigate first).",
+		Description: "Clicks an element in the active interactive browser session — either by CSS selector, or by exact viewport coordinates if there's no stable selector to target (e.g. canvas content). Provide exactly one of selector or (x and y). Do NOT guess a selector from a screenshot or assumed markup — call browser_get_text first, which lists every clickable element with a selector GUARANTEED to hit it; use that exact string. Requires an existing session (call browser_navigate first).",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector of the element to click"},"x":{"type":"number","description":"Viewport x coordinate (use together with y instead of selector)"},"y":{"type":"number","description":"Viewport y coordinate (use together with x instead of selector)"}}}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.BrowserClick,
@@ -418,7 +418,7 @@ func (r *ToolRegistry) registerBrowserTools() {
 	})
 	r.Register(ToolDef{
 		Name:        "browser_get_text",
-		Description: "Reads the active interactive browser session's page as plain visible text. Since you cannot see screenshots yourself, this is your real way to know what's on a page — use it to find button/link text, form field labels, or confirm what actually rendered, before deciding what to click or type. Requires an existing session (call browser_navigate first).",
+		Description: "Reads the active interactive browser session's page: its visible text, AND a list of every clickable element (links, buttons, inputs) with a ready-to-use CSS selector for each. Since you cannot see screenshots yourself, this is your real way to know what's on a page and what you can act on — call this right after browser_navigate, before trying to click or type anything, and reuse the exact selector strings it gives you (do not write your own guesses like '#submit' or 'button.primary' — they usually don't match the real page and will fail). Call it again after a click/navigate if the page changed.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.BrowserGetText,

@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	dataDirOnce sync.Once
-	dataDirVal  string
+	dataDirMu     sync.Mutex
+	dataDirCached bool
+	dataDirVal    string
 )
 
 // DataDir returns the writable base directory for Memo's persistent data
@@ -33,10 +34,44 @@ var (
 //
 // The MEMO_DATA_DIR environment variable overrides the resolved location.
 func DataDir() string {
-	dataDirOnce.Do(func() {
+	dataDirMu.Lock()
+	defer dataDirMu.Unlock()
+	if !dataDirCached {
 		dataDirVal = resolveDataDir()
-	})
+		dataDirCached = true
+	}
 	return dataDirVal
+}
+
+// ResetForTests drops every piece of process-global state this package
+// caches — the resolved data directory, the loaded config instance, and the
+// config file path Save() writes back to — so the next DataDir()/Load()
+// re-resolves from the current MEMO_DATA_DIR. Test-only; call it after
+// pointing MEMO_DATA_DIR at a fresh directory.
+//
+// Both caches made a test's own environment silently ineffective unless it
+// happened to run FIRST in its binary:
+//
+//   - DataDir was a sync.Once, so a test setting MEMO_DATA_DIR to its own
+//     t.TempDir() still got the first test's directory.
+//   - cfgPath is sticky from the first Load, so a later test's Save() wrote
+//     its settings to the earlier test's (by then deleted) config path,
+//     while its own app loaded an empty config dir and fell back to
+//     Default() — i.e. the opposite of what the test asked for.
+//
+// The e2e harness documented per-test isolation on exactly this basis, so
+// the whole suite was in fact sharing one data dir and running against
+// default config from the second test onward.
+func ResetForTests() {
+	mu.Lock()
+	instance = nil
+	cfgPath = ""
+	mu.Unlock()
+
+	dataDirMu.Lock()
+	dataDirCached = false
+	dataDirVal = ""
+	dataDirMu.Unlock()
 }
 
 // DataPath joins one or more elements onto the resolved data directory.

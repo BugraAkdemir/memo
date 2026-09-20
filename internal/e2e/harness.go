@@ -54,6 +54,16 @@ type Harness struct {
 func NewHarness(t *testing.T) *Harness {
 	t.Helper()
 	t.Setenv("MEMO_DATA_DIR", t.TempDir())
+	// The config package caches the resolved data dir, the loaded config and
+	// the path Save() writes to, all process-wide, so setting the env var is
+	// not by itself enough to isolate a test: without these resets every
+	// Harness after the first in this binary quietly reused the first one's
+	// data directory, and the cfg written just below landed on the first
+	// test's config path while this app loaded plain config.Default()
+	// instead — which is why the "off by default" subsystems below were in
+	// fact running (a real WhatsApp connect attempt added ~5s per test).
+	config.ResetForTests()
+	t.Cleanup(config.ResetForTests)
 
 	// Written before Startup so config.Load picks it up on first read —
 	// keeps every test fast and its provider-call count predictable by

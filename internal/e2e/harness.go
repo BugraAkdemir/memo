@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -565,4 +566,52 @@ func (h *Harness) WaitForTaskStatus(id string, timeout time.Duration, want ...st
 	}
 	h.t.Fatalf("task list %s never reached status %v, stuck at %q (items=%+v)", id, want, last.Status, last.Items)
 	return last
+}
+
+// --- skill helpers ---
+
+// InstallSkill installs a skill directory (one holding a SKILL.md) through
+// the real POST /api/skills/install, the same call the Flutter client's
+// "install skill" button makes, and returns the installed manifest name.
+func (h *Harness) InstallSkill(sourceDir string) string {
+	h.t.Helper()
+	resp := h.postJSON("/api/skills/install", map[string]string{"path": sourceDir})
+	var out struct {
+		Manifest struct {
+			Name string `json:"name"`
+		} `json:"Manifest"`
+		Error string `json:"error"`
+	}
+	decodeInto(h.t, resp, &out)
+	if out.Error != "" {
+		h.t.Fatalf("POST /api/skills/install(%s): %s", sourceDir, out.Error)
+	}
+	if out.Manifest.Name == "" {
+		h.t.Fatalf("POST /api/skills/install(%s) returned an empty manifest name", sourceDir)
+	}
+	return out.Manifest.Name
+}
+
+// SetChatActiveSkills sets which skills are active for one chat via PUT
+// /api/skills/active. Skill activation is per-chat (v4.5.0) — there is no
+// global active-skill list any more, so the chat id is not optional.
+func (h *Harness) SetChatActiveSkills(chatID string, names []string) {
+	h.t.Helper()
+	resp := h.putJSON("/api/skills/active", map[string]any{"chat_id": chatID, "names": names})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.t.Fatalf("PUT /api/skills/active(%s, %v): status %d", chatID, names, resp.StatusCode)
+	}
+}
+
+// GetChatActiveSkills reads one chat's active skills back via GET
+// /api/skills/active-list?chat_id=...
+func (h *Harness) GetChatActiveSkills(chatID string) []string {
+	h.t.Helper()
+	resp := h.getJSON("/api/skills/active-list?chat_id=" + url.QueryEscape(chatID))
+	var out struct {
+		Names []string `json:"names"`
+	}
+	decodeInto(h.t, resp, &out)
+	return out.Names
 }

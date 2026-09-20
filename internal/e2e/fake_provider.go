@@ -24,6 +24,7 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -135,8 +136,17 @@ func decodeChatRequest(r *http.Request) (FakeChatRequest, error) {
 		Messages []json.RawMessage `json:"messages"`
 		Tools    []json.RawMessage `json:"tools"`
 	}
-	dec := json.NewDecoder(r.Body)
-	if err := dec.Decode(&raw); err != nil {
+	// Read the body whole rather than decoding straight off r.Body: Raw is
+	// part of this struct's contract (tests assert on the exact bytes the
+	// app sent, e.g. whether a prior assistant tool_calls message made it
+	// into the follow-up request), and a streaming decoder consumes the
+	// body without ever keeping them. Leaving Raw nil made it silently
+	// report "no match" for every such assertion instead of failing.
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return FakeChatRequest{}, fmt.Errorf("fake provider: read request body: %w", err)
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
 		return FakeChatRequest{}, fmt.Errorf("fake provider: decode request: %w", err)
 	}
 	return FakeChatRequest{
@@ -144,6 +154,7 @@ func decodeChatRequest(r *http.Request) (FakeChatRequest, error) {
 		Stream:   raw.Stream,
 		Messages: raw.Messages,
 		Tools:    raw.Tools,
+		Raw:      body,
 	}, nil
 }
 

@@ -1,3 +1,119 @@
+# Handoff — 2026-09-21 — Sohbet-bazlı skill aktivasyonunun gerçek doğrulaması + e2e izolasyon kusuru
+
+## Oturum Özeti
+
+Önceki oturumun açık bıraktığı 1. madde ele alındı: per-chat skill
+aktivasyonunun **manuel/gerçek doğrulaması**. Flutter UI'da elle
+tıklamak yerine `internal/e2e/` harness'ı kullanıldı (AGENTS.md'nin
+kendi tavsiyesi: "gerçek backend + gerçek API key aramak yerine buraya
+senaryo ekle") — gerçek `app.App`, gerçek HTTP sunucu, gerçek REST API,
+sadece LLM yerine `FakeProvider`.
+
+Doğrulama sırasında **üç ayrı gerçek kusur** ortaya çıktı; üçü de
+düzeltildi. İkisi test altyapısında, biri benim ilk test taslağımdaydı.
+
+## Yapılanlar (3 commit, hepsi doğrulanıp yeşil)
+
+1. **`5d0b6ba7`** — `FakeChatRequest.Raw` hiç doldurulmuyordu.
+   `decodeChatRequest` gövdeyi `json.Decoder` ile doğrudan okuyup
+   atıyordu, dolayısıyla dokümante edilmiş `Raw` alanı her zaman `nil`
+   dönüyordu ve ona bakan her `strings.Contains` sessizce "eşleşme yok"
+   diyordu — yani onun üzerine yazılan bir test **yanlış sebepten**
+   geçerdi. `io.ReadAll` + `json.Unmarshal` ile düzeltildi. (Mevcut
+   hiçbir test bu alanı kullanmıyordu.)
+
+2. **`ac3c9f0b`** — e2e harness'ın "her testin kendi MEMO_DATA_DIR'ı
+   var, testler arası sızıntı yok" doküman iddiası **gerçekte
+   tutmuyordu**. `config` paketi üç şeyi süreç-global cache'liyor:
+   - `DataDir()` bir `sync.Once` idi → sadece binary'deki **ilk**
+     Harness kendi TempDir'ini alıyordu, sonrakiler sessizce ilkinin
+     data dizinini (skill'leri, session'ları, DB'leri ile birlikte)
+     yeniden kullanıyordu.
+   - `cfgPath` ilk `Load`'dan yapışkan kalıyor ve `Save()` oraya geri
+     yazıyor → sonraki her testin `config.Save(cfg)`'si (harness'ın
+     memory/WhatsApp/proactive/dream'i **kapatma** yöntemi) ilk testin
+     artık silinmiş yoluna yazıyordu; test kendi boş config dizinini
+     okuyup `config.Default()`'a düşüyordu. Yani **ikinci testten
+     itibaren harness'ın kapattığını sandığı her alt sistem açıktı** —
+     gerçek bir WhatsApp bağlantı denemesi düz-sohbet testi başına ~5s
+     ekliyordu.
+   - `instance`, aynı sebeple.
+   `sync.Once` → mutex + bayrak, ve üçünü birlikte temizleyen
+   `config.ResetForTests()`; `NewHarness` bunu MEMO_DATA_DIR'i
+   ayarladıktan hemen sonra ve cleanup'ta çağırıyor.
+   **Sonuç: e2e suite 19.5s → 0.72s**, ve AGENTS.md'nin "tüm suite 2s
+   altında" ifadesi yeniden doğru.
+
+3. **`03514ca9`** — Asıl iş: iki yeni e2e testi.
+   - `TestSkill_ActivationIsScopedToOneChat`: gerçek skill gerçek REST
+     API'den kurulur, tek sohbette aktive edilir; yeni sohbetin sıfır
+     aktif skill ile başladığı, aktivasyonun diğer sohbete sızmadığı,
+     tool'un **sadece** aktif sohbette LLM'e sunulduğu, ve model tool'u
+     yine de çağırsa bile (senaryo bunu bilerek zorluyor) dispatch
+     kapısının diğer sohbette reddettiği ve tool'un gerçek yan
+     etkisinin (marker dosyası) **oluşmadığı** doğrulanıyor.
+   - `TestSkill_InstructionsReachOnlyTheActivatedChat`: system prompt
+     yarısı — eski global listenin en görünür şekilde bozduğu kısım.
+   - `Harness.InstallSkill` / `SetChatActiveSkills` /
+     `GetChatActiveSkills` eklendi (Flutter'ın gittiği endpoint'ler).
+
+## Önemli: testler mutasyonla sınandı
+
+Testler commit'lenmeden önce **bilerek bozulmuş derlemelere karşı**
+koşuldu: advertise filtresi + dispatch kapısı devre dışı bırakılınca
+birinci test düşüyor, skill prompt'u tekrar global yapılınca ikinci test
+düşüyor. İlk taslak bu sınavı **geçemedi**: bir tur = bir provider
+isteği değil (uygulama turun etrafında kendi yardımcı çağrılarını
+yapıyor, bunlar FakeProvider'ın kaydına karışıyor), ve taslak doğrudan
+indeksleyip yanlış isteğe bakıyordu — yakalaması gereken mutasyonun
+altından geçmişti. Artık her iddia o turun **tüm** isteklerini tarıyor.
+
+## Bulgu (açık, düzeltilmedi — tasarım kararı senin)
+
+**Code Mode sohbetlerinde skill talimatları system prompt'a hiç
+girmiyor.** `resolveCodeMode` bir proje/agent sohbetini varsayılan
+olarak Code Mode'a alıyor; `buildMessagesForSession`'daki `case code:`
+dalı persona/memory/skill yığınının tamamını tek bir kodlama
+direktifiyle değiştiriyor. Sonuç: bir proje sohbetinde skill'i açarsan
+**tool'u çalışıyor** (yeni test bunu kanıtlıyor) ama skill'in o tool'u
+ne zaman/nasıl kullanacağını anlatan talimatları modele hiç
+ulaşmıyor.
+
+Bu önceki oturumun getirdiği bir regresyon **değil** — `case code:`
+dalı ondan eski ve skill'leri bilinçli olarak saymıyor (yorumu
+persona/origin/style/passive/capabilities/memory'yi sayıyor, skill'den
+hiç söz etmiyor; yani eleme yapısal bir yan etki gibi duruyor).
+Prompt davranışını tek taraflı değiştirmedim. İki seçenek: (a) Code
+Mode'da da aktif skill bloğunu enjekte et (bütçeli), (b) kasıtlıysa
+`case code:` yorumuna bunu açıkça yaz. İkinci test bu yüzden düz
+sohbet kullanıyor, sebebi test yorumunda da yazılı.
+
+## Doğrulama
+
+- `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...` — **BUILD OK**
+- `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...` — **VET OK**
+- `CGO_ENABLED=1 go test -tags "sqlite_fts5" -count=1 ./... -race` —
+  **tüm paketler yeşil, 0 FAIL** (tam repo taraması).
+- Rule #8 L10n grep — bu oturumda hiç `.dart` dosyasına dokunulmadı,
+  sonuç boş.
+- Flutter tarafı çalıştırılmadı (değişiklik tamamen Go tarafında).
+
+## Sıradaki (yapılmadı, açık)
+
+- Yukarıdaki **Code Mode / skill talimatı** bulgusu için karar.
+- Kullanıcının orijinal önceliklendirmesinin 2. ve 3. maddeleri hâlâ
+  açık: (2) Claude prompt caching'in hangi oturumlarda gerçekten aktif
+  olduğunu doğrulamak + cache hit/miss logu, (3) `browser_get_text`'in
+  tıklanabilir-öğe listesine üst sınır koymak.
+- Flutter UI'da gözle son bir kontrol (Settings > Skills'te toggle yok,
+  dialog ipucu görünüyor) hâlâ yapılmadı — backend davranışı artık
+  otomatik kanıtlı, kalan kısım tamamen görsel.
+- Çalışma ağacında bu oturumdan **önce** var olan, bana ait olmayan
+  değişiklikler duruyor: `agent-templates/README.md` → `setup.md`
+  rename'i ve takip edilmeyen `internal/browserengine/data/`.
+
+---
+
 # Handoff — 2026-09-19 — Skill aktivasyonu artık sohbet bazlı (agent tool'lar dahil)
 
 ## Oturum Özeti

@@ -118,3 +118,9 @@ internal/geminisub/data/
 data/tasklists/
 .gitignore
 .freebuff/
+
+# Kişisel fikir notları — git'e gitmez
+not.md
+
+# Chromium oturum verisi — runtime, git'e gitmez
+internal/browserengine/data/

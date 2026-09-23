@@ -122,10 +122,17 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 // for it.
 func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg string, extraImageB64 []string, retrievedCountOut *int) []api.Message {
 	// Code Mode (per-chat, resolved in sendMessageStreamCore) is a
-	// coding-tuned preset: no persona / mood / skill / time block / personal
-	// memory / background LLM calls, but the agent tool loop, the working-set
-	// digest and conversation compaction all stay, and the persona is
-	// replaced by one compact coding directive.
+	// coding-tuned preset: no persona / mood / time block / personal memory /
+	// background LLM calls, but the agent tool loop, the working-set digest
+	// and conversation compaction all stay, and the persona is replaced by
+	// one compact coding directive. A chat's explicitly activated skills
+	// still get their instructions injected here too (budgeted, see
+	// skillBudget below) — this comment used to say "no skill" as well, from
+	// when Code Mode was added while skill activation was still a single
+	// global always-on list; now that activation is per-chat and opt-in
+	// (2026-09-19), silently dropping the instructions while still letting
+	// the skill's tool dispatch in this chat left the model with a callable
+	// tool and no idea when/how to use it.
 	code := codeModeActive(ctx)
 
 	var memories []memory.MemoryResult
@@ -280,6 +287,17 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		am := a.cfg.AgentMode
 		a.cfgMu.RUnlock()
 		systemPrompt = codeSubModeDirective(am, codeSubModeFromCtx(ctx))
+		// A skill the user explicitly activated in this chat still needs to
+		// reach the model in Code Mode — the tool itself was already
+		// dispatch-gated per chat (see skill.go), but until now nothing told
+		// the model when/how to use it here: the whole persona/skill stack
+		// this case replaces was silently taking the skill block with it.
+		// Same budget and Minimal Mode gating as the default branch below.
+		if !minimal {
+			if skillPrompt := a.buildActiveSkillPrompt(chatID, skillBudget); skillPrompt != "" {
+				systemPrompt += skillPrompt
+			}
+		}
 	default:
 		systemPrompt = a.identity.BuildSystemPrompt(memories, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable(), memoryBudget)
 		if !minimal {

@@ -2,12 +2,15 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"memo/internal/config"
 	"memo/internal/identity"
 	"memo/internal/sessions"
+	"memo/internal/skill"
 )
 
 func newCodeModeApp(t *testing.T) (*App, *sessions.Manager) {
@@ -122,6 +125,72 @@ func TestBuildMessagesForSession_CodeMode(t *testing.T) {
 	for _, banned := range []string{"You are Memo", "AI friend", "[Time context]", "RELEVANT MEMORIES", "Communication Style"} {
 		if strings.Contains(all, banned) {
 			t.Errorf("Code Mode leaked chat-mode content: %q", banned)
+		}
+	}
+}
+
+// installGreeterSkill discovers a single-instruction "greeter" skill into a
+// fresh manager and returns it, for tests that just need one active skill
+// with a distinctive, greppable instruction string.
+func installGreeterSkill(t *testing.T) *skill.Manager {
+	t.Helper()
+	skillMgr := skill.NewManager(t.TempDir())
+	skillDir := filepath.Join(skillMgr.SkillsDir(), "greeter")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: greeter\ndescription: \"test skill\"\n---\n" +
+		"Always greet the user by name before answering.\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := skillMgr.Discover(); err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	return skillMgr
+}
+
+func TestBuildMessagesForSession_CodeModeIncludesActiveSkillInstructions(t *testing.T) {
+	a, sm := newCodeModeApp(t)
+	chat := sm.NewAgentChat("/tmp/proj") // Code Mode on by default
+
+	a.skillManager = installGreeterSkill(t)
+	if err := sm.SetActiveSkills(chat, []string{"greeter"}); err != nil {
+		t.Fatalf("SetActiveSkills() error = %v", err)
+	}
+
+	ctx := withCodeMode(context.Background())
+	msgs := a.buildMessagesForSession(ctx, chat, "add a --verbose flag", nil, nil)
+
+	var found bool
+	for _, m := range msgs {
+		if s, ok := m.Content.(string); ok &&
+			strings.Contains(s, "Always greet the user by name before answering.") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("Code Mode must still inject an explicitly activated skill's instructions — the tool already dispatches in this chat, the model needs to know how to use it")
+	}
+}
+
+func TestBuildMessagesForSession_CodeModeMinimalModeStillOmitsSkill(t *testing.T) {
+	a, sm := newCodeModeApp(t)
+	chat := sm.NewAgentChat("/tmp/proj")
+
+	a.skillManager = installGreeterSkill(t)
+	if err := sm.SetActiveSkills(chat, []string{"greeter"}); err != nil {
+		t.Fatalf("SetActiveSkills() error = %v", err)
+	}
+	a.identity.SetMinimalMode(true)
+
+	ctx := withCodeMode(context.Background())
+	msgs := a.buildMessagesForSession(ctx, chat, "add a --verbose flag", nil, nil)
+
+	for _, m := range msgs {
+		if s, ok := m.Content.(string); ok &&
+			strings.Contains(s, "Always greet the user by name before answering.") {
+			t.Error("Minimal Mode must still strip skill instructions even in Code Mode")
 		}
 	}
 }

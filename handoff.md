@@ -1,3 +1,72 @@
+# Handoff — 2026-09-23 — Önceki oturumun 3 açık maddesi sırayla kapatıldı
+
+## Oturum Özeti
+
+Önceki oturumun (2026-09-21) "Sıradaki" listesindeki ilk üç madde
+`/codebase-memory` ile araştırılıp sırayla düzeltildi, her biri kendi
+commit'inde, hepsi build+vet+race testleriyle doğrulandı.
+
+## Yapılanlar (3 commit, hepsi doğrulanıp yeşil)
+
+1. **`e799e105`** — Code Mode (proje/agent sohbetlerinin varsayılanı)
+   aktif skill talimatlarını system prompt'a hiç enjekte etmiyordu.
+   `buildMessagesForSession`'daki `case code:` dalı persona/mood/memory
+   yığınının tamamını tek bir coding directive'le değiştirirken skill
+   bloğunu da yanında götürüyordu. Kök sebep: bu davranış Code Mode ilk
+   eklendiğinde (`f969379d`) skill aktivasyonu hâlâ global/kalıcıyken
+   yazılmıştı; 19 Eylül'deki sohbet-bazlı skill değişikliğinden sonra
+   bu varsayım güncellenmemişti — tool zaten sohbet bazlı dispatch
+   oluyordu ama modele "ne zaman/nasıl kullan" hiç ulaşmıyordu. Fix:
+   aynı `skillBudget`/`!minimal` kuralıyla `case code:` dalına da
+   `buildActiveSkillPrompt` çağrısı eklendi; üst fonksiyon yorumu da
+   güncellendi. 2 yeni test (`internal/app/code_mode_test.go`).
+
+2. **`6e090d05`** — Claude prompt caching'in isteği doğru
+   kuruyordu (`buildClaudeRequest`, test edilmiş, BUG-SCAN15 zaten
+   kapatılmış) ama yanıttaki `cache_creation_input_tokens`/
+   `cache_read_input_tokens` alanları hiç okunmuyordu — `claudeUsage`
+   struct'ında bu alanlar yoktu, `json.Unmarshal` sessizce atıyordu.
+   Streaming tarafında ek bir boşluk daha vardı: `processSSE`
+   `message_start` event'ini (cache bilgisinin tek göründüğü yer) hiç
+   işlemiyordu. Fix: `claudeUsage`'a iki alan eklendi,
+   `logClaudeCachePerformance` helper'ı HIT/MISS/none logu basıyor,
+   hem `ChatCompletion` hem `processSSE`'den çağrılıyor. Bilinçli
+   olarak sadece log — stats DB/UI'a dokunulmadı (istenen kapsam
+   "doğrulama + log"tu). 4 yeni test (`internal/provider/claude_test.go`).
+
+3. **`5ce45e52`** — `browser_get_text`'in tıklanabilir-öğe listesi
+   (`findClickablesJS`) sınırsızdı — yorum bunu bilinçli tasarım olarak
+   işaretlemişti ("model'in gerçekten ihtiyacı olan şey, asla
+   kırpılmamalı") ama listenin kendisinin küçük kalacağı varsayımına
+   dayanıyordu. Veri yoğun bir sayfa (büyük tablo, uzun nav, sonsuz
+   kaydırma) binlerce eşleşen eleman verebilir — tam olarak
+   `maxPageTextRunes`'un zaten önlediği bağlam şişkinliği, üstelik
+   satır başına daha pahalı. Fix: `maxClickableElements = 200` eklendi,
+   `findClickablesJS` const'tan var'a çevrildi (cap değerini
+   `fmt.Sprintf` ile enjekte etmek gerekti — const initializer fonksiyon
+   çağıramıyor), cap aşılınca "N more not shown" notu ekleniyor. 1 yeni
+   gerçek-Chromium testi (`internal/browserengine/session_real_test.go`).
+
+## Doğrulama
+
+- `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...` — **BUILD OK** (her commit'ten önce)
+- `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...` — **VET OK** (her commit'ten önce)
+- `CGO_ENABLED=1 go test -tags "sqlite_fts5" -count=1 ./... -race` — **tüm paketler yeşil** (her commit'ten önce; bir run'da `internal/app` flaky FAIL görüldü — `TestRunLockedStreamSetup_PanicReleasesLockAndDoesNotPropagate`'in panic-recovery testi ile race dedektörü arası zamanlama, 2 tekrar koşuda geçti, bu oturumun değişikliğiyle ilgisiz)
+- Rule #8 L10n grep — bu oturumda hiç `.dart` dosyasına dokunulmadı, sonuç boş.
+
+## Sıradaki (yapılmadı, açık)
+
+- Önceki oturumun 4. maddesi: Flutter UI'da Settings > Skills'te elle
+  görsel kontrol (Code Mode'da artık tool + talimat ikisi de var,
+  backend otomatik kanıtlı ama masaüstü native pencere olduğu için bu
+  oturumun Browser pane araçlarıyla sürülemedi).
+- Önceki oturumun Code Mode/skill bulgusu artık kapalı (madde 1 ile).
+- Önceki oturumun 5. maddesi (bana ait olmayan çalışma ağacı
+  değişiklikleri) oturum başlamadan önce zaten commit'lenmişti
+  (`2f6223cf`, `51e90cc6`) — ek işlem gerekmedi.
+
+---
+
 # Handoff — 2026-09-21 — Sohbet-bazlı skill aktivasyonunun gerçek doğrulaması + e2e izolasyon kusuru
 
 ## Oturum Özeti

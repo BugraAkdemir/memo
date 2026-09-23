@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -207,5 +208,65 @@ func TestSession_Real_PageTextListsClickablesAndTheirSelectorsActuallyWork(t *te
 	}
 	if title != "language-switched" {
 		t.Errorf("document.title = %q after clicking the found selector, want %q — the selector from PageText did not actually hit the button", title, "language-switched")
+	}
+}
+
+// TestSession_Real_PageTextCapsClickableElementList is the regression test
+// for the clickable-elements list's unbounded size: findClickablesJS used to
+// have no upper bound at all, so a data-heavy page (a big table, a long
+// nav) could dump thousands of lines into the tool result — the exact
+// context-bloat problem maxPageTextRunes already guards against for the
+// page's prose, just left open on the (more expensive per line) clickable
+// list. Serves a page with well over maxClickableElements buttons and
+// checks the list stops at the cap and says so instead of listing them all.
+func TestSession_Real_PageTextCapsClickableElementList(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping real-Chromium test in -short mode")
+	}
+
+	const totalButtons = maxClickableElements + 50
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		var b strings.Builder
+		b.WriteString("<html><body>")
+		for i := 0; i < totalButtons; i++ {
+			b.WriteString("<button>btn</button>")
+		}
+		b.WriteString("</body></html>")
+		_, _ = w.Write([]byte(b.String()))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	s, err := startSession(ctx, func(*Session) {})
+	if err != nil {
+		t.Skipf("no usable Chromium found, skipping real-browser test: %v", err)
+	}
+	defer s.Close()
+
+	if err := s.Navigate(ctx, srv.URL); err != nil {
+		t.Fatalf("Navigate: %v", err)
+	}
+
+	text, err := s.PageText(ctx)
+	if err != nil {
+		t.Fatalf("PageText: %v", err)
+	}
+
+	refRe := regexp.MustCompile(`data-memo-ref="(\d+)"`)
+	matches := refRe.FindAllStringSubmatch(text, -1)
+	if len(matches) != maxClickableElements {
+		t.Errorf("PageText() listed %d clickable elements for a %d-button page, want exactly the cap of %d", len(matches), totalButtons, maxClickableElements)
+	}
+
+	wantOmitted := totalButtons - maxClickableElements
+	if !strings.Contains(text, "more visible interactive element(s) not shown") {
+		t.Fatalf("PageText() did not note the omitted elements past the cap: %q", text)
+	}
+	if !strings.Contains(text, strconv.Itoa(wantOmitted)) {
+		t.Errorf("PageText() omission note did not mention the expected omitted count %d: %q", wantOmitted, text)
 	}
 }

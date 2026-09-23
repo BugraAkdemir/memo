@@ -348,38 +348,56 @@ func (s *Session) CurrentURL(ctx context.Context) (string, error) {
 // (8000), just enough for the model to know what's on a page without
 // itself becoming a second context-bloat source (see
 // tools.BrowserScreenshot's doc comment for the first one, and why it
-// mattered). Deliberately does NOT bound the clickable-elements list below
-// it — that list is what the model actually needs to reliably act, so a
-// long page trimming its prose must never also eat into it.
+// mattered).
 const maxPageTextRunes = 6000
 
+// maxClickableElements bounds how many entries findClickablesJS will emit.
+// This list used to be deliberately unbounded — the reasoning was that,
+// unlike the prose above it, this is what the model actually needs to
+// reliably act, so trimming a long page's text must never also eat into it.
+// That's still true for an ordinary page, but it assumed the list itself
+// stayed small; a data-heavy page (a big table, a long nav, an infinite-
+// scroll feed) can have thousands of matching elements, and at that point
+// the list becomes exactly the same context-bloat problem the prose bound
+// above already guards against — worse, since each entry costs more tokens
+// than a line of prose. 200 is generously above what a real page needs a
+// model to act on in one turn; a page with more just says so instead of
+// dumping all of them.
+const maxClickableElements = 200
+
 // findClickablesJS queries a reasonable set of interactive elements,
-// skips anything not actually visible, and stamps each survivor with a
-// data-memo-ref attribute — a real, unique attribute this call just wrote
-// onto the live DOM, not a description or a guess. Returns one line per
-// element: its tag, its visible label, and the exact CSS selector
-// (`[data-memo-ref="N"]`) that will hit it. This is the actual fix for "the
-// agent never clicks anything": browser_get_text alone gives prose, which
-// is not something a model can turn into a reliable CSS selector — Click
-// #email or button.submit is a guess at best on a real page's class
-// soup. Handing back a selector guaranteed to resolve to the exact element
-// the model just read the label of closes that gap directly.
-const findClickablesJS = `(function() {
+// skips anything not actually visible, and stamps each survivor (up to
+// maxClickableElements) with a data-memo-ref attribute — a real, unique
+// attribute this call just wrote onto the live DOM, not a description or a
+// guess. Returns one line per element: its tag, its visible label, and the
+// exact CSS selector (`[data-memo-ref="N"]`) that will hit it. This is the
+// actual fix for "the agent never clicks anything": browser_get_text alone
+// gives prose, which is not something a model can turn into a reliable CSS
+// selector — Click #email or button.submit is a guess at best on a real
+// page's class soup. Handing back a selector guaranteed to resolve to the
+// exact element the model just read the label of closes that gap directly.
+var findClickablesJS = fmt.Sprintf(`(function() {
+	var MAX = %d;
 	var els = document.querySelectorAll('a, button, input, select, textarea, [role="button"], [onclick]');
 	var lines = [];
 	var i = 0;
+	var omitted = 0;
 	els.forEach(function(el) {
 		var rect = el.getBoundingClientRect();
 		var style = window.getComputedStyle(el);
 		if (rect.width === 0 || rect.height === 0) return;
 		if (style.visibility === 'hidden' || style.display === 'none') return;
+		if (i >= MAX) { omitted++; return; }
 		i++;
 		el.setAttribute('data-memo-ref', String(i));
 		var label = (el.innerText || el.value || el.placeholder || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 60);
 		lines.push(i + '. <' + el.tagName.toLowerCase() + '> "' + label + '" -> [data-memo-ref="' + i + '"]');
 	});
+	if (omitted > 0) {
+		lines.push('... and ' + omitted + ' more visible interactive element(s) not shown (cap: ' + MAX + ') — narrow your search or scroll before relying on this list.');
+	}
 	return lines.join('\n');
-})()`
+})()`, maxClickableElements)
 
 // PageText returns the tab's visible text (document.body.innerText,
 // truncated) plus a list of every visible clickable element with a

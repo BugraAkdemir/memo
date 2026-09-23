@@ -144,6 +144,25 @@ func (a *App) StartTaskList(ctx context.Context, listID string) error {
 	if sm == nil || !sm.IsAgentChat(tl.ChatID) {
 		return fmt.Errorf("bu listenin bağlı olduğu sohbet artık bir ajan sohbeti değil (silinmiş olabilir); listeyi yeniden oluşturun")
 	}
+	// Every consumer downstream of "which task is this chat's" assumes at
+	// most one: chatBoundTaskID (taskstatus_tool.go, backs get_task_status/
+	// pause_task/resume_task) picks the first RunningTasks() match for a
+	// chatID with no tie-break at all, and the in-chat TaskActivityBlock
+	// (frontend) keys its live state by chatId alone, not (chatId, listId)
+	// — a second list bound to the same chat would blend both lists'
+	// progress into one card and could point Pause/Resume at the wrong
+	// list (found in a 2026-09-23 reliability audit). Refuse it here, the
+	// one choke point every start path (Tasks tab REST, the
+	// start_self_driving_task chat tool) already goes through, rather than
+	// trying to correctly support two concurrent bindings across every
+	// consumer that currently assumes a single one.
+	for _, r := range a.taskloopEngine.RunningTasks() {
+		if r.ChatID == tl.ChatID && r.ID != listID {
+			return fmt.Errorf(a.t(
+				"bu sohbete zaten çalışan bir otonom görev bağlı: %q — önce onu durdurun ya da bitmesini bekleyin",
+				"this chat already has a Self-Driving task running: %q — stop it or wait for it to finish first"), r.Title)
+		}
+	}
 	if a.taskNotifyBus != nil {
 		a.taskNotifyBus.SetLevel(listID, tl.NotifyLevel)
 	}

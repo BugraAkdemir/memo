@@ -11,12 +11,13 @@ import (
 )
 
 type fakeRunner struct {
-	mu        sync.Mutex
-	order     []SubRole
-	inFlight  atomic.Int32
-	maxSeen   atomic.Int32
-	delay     time.Duration
-	failRoles map[SubRole]bool
+	mu         sync.Mutex
+	order      []SubRole
+	inFlight   atomic.Int32
+	maxSeen    atomic.Int32
+	delay      time.Duration
+	failRoles  map[SubRole]bool
+	panicRoles map[SubRole]bool
 }
 
 func (f *fakeRunner) Run(ctx context.Context, spec SubAgentSpec, writeCapable bool) (string, error) {
@@ -35,6 +36,9 @@ func (f *fakeRunner) Run(ctx context.Context, spec SubAgentSpec, writeCapable bo
 
 	if f.delay > 0 {
 		time.Sleep(f.delay)
+	}
+	if f.panicRoles[spec.Role] {
+		panic("boom: " + string(spec.Role))
 	}
 	if f.failRoles[spec.Role] {
 		return "", errors.New(string(spec.Role) + " failed")
@@ -115,6 +119,51 @@ func TestSpawn_CollectsPerResultErrors(t *testing.T) {
 	}
 	if !coderOK {
 		t.Error("coder result lost when a sibling failed")
+	}
+}
+
+// TestSpawn_ReaderPanicDoesNotCrashProcessAndIsRecordedAsAnError is the
+// regression test for a real P0 found in a 2026-09-23 security audit:
+// Spawn's read-only fan-out goroutine had no panic recovery at all — a
+// panic anywhere inside o.runner.Run (provider response parsing, tool
+// execution, ...) would crash the entire memo process, not just this task,
+// taking down every concurrently active chat/WhatsApp/Telegram session with
+// it. Same class of bug BUG_REPORT.md's P0-2 already found (and fixed
+// twice) in Live Mode's tool-call goroutines. If this test's recover were
+// removed from subagent.go, the panic below would crash the whole `go test`
+// binary rather than being caught by `recover()` in this test function —
+// that is the actual proof the fix works, not just an assertion.
+func TestSpawn_ReaderPanicDoesNotCrashProcessAndIsRecordedAsAnError(t *testing.T) {
+	f := &fakeRunner{panicRoles: map[SubRole]bool{SubRoleReviewer: true}}
+	o := NewSubAgentOrchestrator(f, 3)
+	res, err := o.Spawn(context.Background(), "big", specsFor(SubRoleCoder, SubRoleAnalyzer, SubRoleReviewer, SubRoleTester))
+	if err != nil {
+		t.Fatalf("Spawn returned a hard error for a per-spec panic: %v", err)
+	}
+	if len(res) != 4 {
+		t.Fatalf("got %d results, want 4 (siblings must not be lost)", len(res))
+	}
+
+	var reviewerPanicked, coderOK, analyzerOK, testerOK bool
+	for _, r := range res {
+		switch r.Role {
+		case SubRoleReviewer:
+			if r.Err != nil && strings.Contains(r.Err.Error(), "panicked") {
+				reviewerPanicked = true
+			}
+		case SubRoleCoder:
+			coderOK = r.Err == nil && r.Output != ""
+		case SubRoleAnalyzer:
+			analyzerOK = r.Err == nil && r.Output != ""
+		case SubRoleTester:
+			testerOK = r.Err == nil && r.Output != ""
+		}
+	}
+	if !reviewerPanicked {
+		t.Errorf("panicking reviewer's result did not record a panic error: %+v", res)
+	}
+	if !coderOK || !analyzerOK || !testerOK {
+		t.Errorf("a sibling's real result was lost when reviewer panicked: %+v", res)
 	}
 }
 

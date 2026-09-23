@@ -3,6 +3,7 @@ package taskloop
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -91,6 +92,25 @@ func (o *SubAgentOrchestrator) Spawn(ctx context.Context, itemText string, specs
 		wg.Add(1)
 		go func(i int, s SubAgentSpec) {
 			defer wg.Done()
+			// A panic anywhere inside o.runner.Run (provider response
+			// parsing, tool execution, ...) used to have nothing between
+			// it and the top of the goroutine stack — Go's default
+			// behavior for an unrecovered panic in ANY goroutine is to
+			// crash the entire process, taking down every concurrently
+			// active chat/WhatsApp/Telegram session with it, not just this
+			// task. Same class of bug BUG_REPORT.md's P0-2 found (and
+			// fixed twice) in Live Mode's tool-call goroutines. Recovered
+			// here instead of via logx.GoRecover so the panic also lands
+			// in this spec's own result as a normal per-spec error — one
+			// sub-agent panicking still shouldn't cancel its siblings,
+			// matching SubAgentResult's existing "one failing sibling does
+			// not cancel the others" contract.
+			defer func() {
+				if r := recover(); r != nil {
+					logx.Printf("PANIC in taskloop.SubAgentOrchestrator.Spawn (role=%s): %v\n%s", s.Role, r, string(debug.Stack()))
+					results[i] = SubAgentResult{Role: s.Role, Err: fmt.Errorf("sub-agent %s panicked: %v", s.Role, r)}
+				}
+			}()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			out, err := o.runner.Run(ctx, s, false)

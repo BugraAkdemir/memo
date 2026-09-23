@@ -1,11 +1,14 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"memo/internal/logx"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -174,6 +177,52 @@ func TestClaudeProvider_ChatCompletion_ParsesTextBlocksAndUsage(t *testing.T) {
 	}
 }
 
+// TestClaudeUsage_ParsesCacheTokenFields is the request-side counterpart to
+// TestBuildClaudeRequest_PromptCachingOnAnthropicOnly: that test proves Memo
+// asks Anthropic to cache; this proves Memo can actually read back whether
+// it worked. cache_creation_input_tokens/cache_read_input_tokens were
+// missing from claudeUsage entirely before — json.Unmarshal silently drops
+// unknown fields, so the API's answer was being thrown away with no error.
+func TestClaudeUsage_ParsesCacheTokenFields(t *testing.T) {
+	raw := `{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":20,"cache_read_input_tokens":80}`
+	var u claudeUsage
+	if err := json.Unmarshal([]byte(raw), &u); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if u.InputTokens != 100 || u.OutputTokens != 50 || u.CacheCreationInputTokens != 20 || u.CacheReadInputTokens != 80 {
+		t.Errorf("claudeUsage = %+v, want all four Anthropic usage fields to round-trip", u)
+	}
+}
+
+// TestClaudeProvider_ChatCompletion_LogsCacheHitOnCacheRead verifies the new
+// cache hit/miss log line actually fires from a real ChatCompletion response
+// carrying cache_read_input_tokens > 0 — the only way to confirm from a
+// running Memo instance's logs which turns are actually served from cache.
+func TestClaudeProvider_ChatCompletion_LogsCacheHitOnCacheRead(t *testing.T) {
+	var buf bytes.Buffer
+	logx.SetOutput(&buf)
+	defer logx.SetOutput(os.Stderr)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(claudeResponse{
+			Content: []claudeBlock{{Type: "text", Text: "ok"}},
+			Usage: &claudeUsage{
+				InputTokens: 5, OutputTokens: 3,
+				CacheReadInputTokens: 1200,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	p := newTestClaudeProvider(t, srv, "claude-3-5-sonnet-20241022")
+	if _, err := p.ChatCompletion(context.Background(), ChatRequest{Messages: []Message{TextMessage("user", "hi")}}); err != nil {
+		t.Fatalf("ChatCompletion() error = %v", err)
+	}
+	if !strings.Contains(buf.String(), "CLAUDE CACHE: HIT") || !strings.Contains(buf.String(), "cache_read=1200") {
+		t.Errorf("expected a cache HIT log line with cache_read=1200, got: %s", buf.String())
+	}
+}
+
 // TestClaudeProvider_ChatCompletion_ParsesThinkingBlock is the BUG-THINK1
 // regression: a "thinking" content block used to fall straight through
 // ChatCompletion's switch (it only handled "text"/"tool_use"), so
@@ -250,6 +299,54 @@ func TestClaudeProvider_ChatCompletionStream_ParsesContentBlockDeltasAndMessageS
 	}
 	if !sawDone {
 		t.Error("expected a Done chunk after message_stop")
+	}
+}
+
+// TestClaudeProvider_ChatCompletionStream_LogsCachePerformanceFromMessageStart
+// is the streaming half of the cache-visibility fix: processSSE used to
+// handle only content_block_delta/message_stop/error, silently ignoring
+// message_start — the only SSE event that ever carries
+// cache_creation_input_tokens/cache_read_input_tokens on a streamed
+// response. A streamed chat turn (the normal plain-chat path) therefore had
+// zero cache visibility even though ChatCompletion's non-streaming path
+// (used by agent-mode iterations) did. Also checks the pre-existing
+// content/message_stop behavior still works with a message_start event now
+// present ahead of it.
+func TestClaudeProvider_ChatCompletionStream_LogsCachePerformanceFromMessageStart(t *testing.T) {
+	var buf bytes.Buffer
+	logx.SetOutput(&buf)
+	defer logx.SetOutput(os.Stderr)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		lines := []string{
+			`data: {"type":"message_start","message":{"usage":{"input_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":1200,"output_tokens":1}}}`,
+			`data: {"type":"content_block_delta","delta":{"text":"me"}}`,
+			`data: {"type":"content_block_delta","delta":{"text":"rhaba"}}`,
+			`data: {"type":"message_stop"}`,
+		}
+		for _, l := range lines {
+			w.Write([]byte(l + "\n\n"))
+			flusher.Flush()
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestClaudeProvider(t, srv, "claude-3-5-sonnet-20241022")
+	ch, err := p.ChatCompletionStream(context.Background(), ChatRequest{Messages: []Message{TextMessage("user", "hi")}})
+	if err != nil {
+		t.Fatalf("ChatCompletionStream() error = %v", err)
+	}
+	content, sawDone := drainStream(t, ch)
+	if content != "merhaba" {
+		t.Errorf("accumulated content = %q, want %q (message_start must not disturb content parsing)", content, "merhaba")
+	}
+	if !sawDone {
+		t.Error("expected a Done chunk after message_stop")
+	}
+	if !strings.Contains(buf.String(), "CLAUDE CACHE: HIT") || !strings.Contains(buf.String(), "cache_read=1200") {
+		t.Errorf("expected a cache HIT log line with cache_read=1200 from message_start, got: %s", buf.String())
 	}
 }
 

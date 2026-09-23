@@ -217,6 +217,36 @@ type claudeResponse struct {
 type claudeUsage struct {
 	InputTokens  int `json:"input_tokens"`
 	OutputTokens int `json:"output_tokens"`
+	// CacheCreationInputTokens/CacheReadInputTokens are only ever non-zero
+	// when buildClaudeRequest actually marked something cacheable (see its
+	// doc comment — anthropic.com + a tool-carrying turn only). Both were
+	// missing from this struct entirely until now: Anthropic has reported
+	// them on every response since prompt caching launched, but nothing
+	// here ever read them, so there was no way to tell a cache hit from a
+	// cache miss from a cache write that never happens — the request-side
+	// logic was tested and correct, but its effect was unobservable.
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+}
+
+// logClaudeCachePerformance writes one log line classifying this response's
+// usage as a cache hit, a cache write (first turn of a new 5-minute TTL
+// window), or no cache breakpoint at all (plain chat, or a non-anthropic.com
+// endpoint) — the only way to verify from the running app which turns are
+// actually benefiting from prompt caching. See buildClaudeRequest for what
+// makes a request cacheable in the first place.
+func logClaudeCachePerformance(u claudeUsage) {
+	switch {
+	case u.CacheReadInputTokens > 0:
+		logx.Printf("CLAUDE CACHE: HIT — cache_read=%d cache_creation=%d fresh_input=%d output=%d",
+			u.CacheReadInputTokens, u.CacheCreationInputTokens, u.InputTokens, u.OutputTokens)
+	case u.CacheCreationInputTokens > 0:
+		logx.Printf("CLAUDE CACHE: MISS (wrote a new cache entry) — cache_creation=%d fresh_input=%d output=%d",
+			u.CacheCreationInputTokens, u.InputTokens, u.OutputTokens)
+	default:
+		logx.Printf("CLAUDE CACHE: none — no cache breakpoint on this request — input=%d output=%d",
+			u.InputTokens, u.OutputTokens)
+	}
 }
 
 func (p *claudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
@@ -288,6 +318,7 @@ func (p *claudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 			CompletionTokens: result.Usage.OutputTokens,
 			TotalTokens:      result.Usage.InputTokens + result.Usage.OutputTokens,
 		}
+		logClaudeCachePerformance(*result.Usage)
 	}
 
 	return &ChatResponse{
@@ -369,6 +400,24 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		}
 
 		switch event.Type {
+		case "message_start":
+			// The only place cache_creation/cache_read_input_tokens appear
+			// on a streamed response — message_delta's usage only ever
+			// carries the running output_tokens count, and message_stop
+			// carries no usage at all. Logged as soon as it arrives (the
+			// cache figures are already final here; only output_tokens
+			// still grows) so streamed chat turns are visible in the same
+			// cache hit/miss log as non-streaming ChatCompletion, which
+			// previously had no visibility into caching whatsoever.
+			var ms struct {
+				Message struct {
+					Usage claudeUsage `json:"usage"`
+				} `json:"message"`
+			}
+			if err := json.Unmarshal([]byte(data), &ms); err == nil {
+				logClaudeCachePerformance(ms.Message.Usage)
+			}
+
 		case "content_block_delta":
 			// BUG-THINK1: a thinking_delta event's payload used to be
 			// silently dropped — this struct only ever had a Text field, so

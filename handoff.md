@@ -1,3 +1,65 @@
+# Handoff — 2026-09-23 (devam) — Kullanıcının taskloop canlı-test notları: 3/4 zaten çözülmüş, 1 gerçek
+
+## Oturum Özeti
+
+Aynı günün devamı. Önceki 4 maddeyi kapattıktan sonra kullanıcıya "ne
+kaldı" diye soruldu; kullanıcı kendi elle tuttuğu notları verdi (Self-
+Driving'i gerçek görevlerle çalıştırırken bulunmuş, 4 madde). `/codebase-
+memory` ile her biri tek tek araştırıldı — **3'ü artık eskimiş çıktı**
+(kod notlardan sonra ilerlemiş), **1'i gerçek ve düzeltildi**.
+
+## Bulgular
+
+1. **Plan onayı sadece Tasks sekmesinde** → ❌ artık doğru değil.
+   `frontend/lib/widgets/agent/task_activity_block.dart:567` sohbetin
+   içinden doğrudan `api.approveTaskPlan()` çağırıyor — kod yorumunda
+   "v4.6.0" diye işaretli, `chat_message_list.dart`'ın son öğesi olarak
+   render ediliyor.
+2. **Sohbet modeli görev durumunu güvenilir okuyamıyor** → ✅ **gerçek,
+   düzeltildi (`848ca4d0`).** `get_task_status`/`pause_task`/
+   `resume_task` (`internal/agent/tools.go`) zaten kayıtlıydı,
+   `TaskStatusForChat` zaten "asla durum uydurma" diye yazılmıştı
+   (BUG-PLAN10) — ama Code Mode'un üç direktifi
+   (`codingDirective`/`codePlanDirective`/`codeBuildDirective`,
+   `internal/app/agent_chat_context.go`) bu tool'lardan hiç
+   bahsetmiyordu. Görev listeleri tam olarak Code Mode'un varsayılan
+   olduğu proje/agent sohbetlerine bağlanıyor — model tool'u
+   çağırabiliyordu ama ne zaman çağıracağına dair hiç talimat yoktu.
+   **Bugünkü erken oturumdaki skill-enjeksiyon fix'iyle (`e799e105`)
+   birebir aynı desen.** Fix: üç direktife de ortak bir
+   `taskToolReminder` cümlesi eklendi. Yeni test:
+   `TestCodeModeDirectives_MentionTaskStatusTools`.
+3. **Escalation'la büyüyen adım sayısı ekranlar arası farklı
+   hesaplanıyor** → ❌ yapısal olarak doğru değil. Hem Tasks sekmesi
+   (REST polling) hem sohbet widget'ı (SSE) **aynı** backend alanından
+   besleniyor: `RunningTaskInfo.PlanStepsDone`/`PlanSteps`, tek yerde
+   (`internal/app/task_events.go`'un `fillTaskEventSnapshot`/
+   `RunningTaskEventSnapshot`'ı) dolduruluyor. Olsa olsa polling/SSE
+   arası birkaç saniyelik gecikme farkı, gerçek hesaplama farkı değil.
+4. **Canlı aktivite sadece Tasks sekmesinde** → ❌ artık doğru değil,
+   aynı `task_activity_block.dart` widget'ı (madde 1) ilerleme çubuğu +
+   adım/madde sayacı + geçen süre + canlı log'u sohbette de gösteriyor.
+
+## Doğrulama
+
+- `CGO_ENABLED=1 go build/vet -tags "sqlite_fts5" ./...` — OK
+- `CGO_ENABLED=1 go test -tags "sqlite_fts5" -count=1 ./... -race` —
+  tüm paketler yeşil
+- Rule #8 L10n grep — bu değişiklikte `.dart` dosyasına dokunulmadı,
+  gerekmedi.
+- Hafızaya kaydedildi:
+  `project_memo_taskloop_live_test_gaps.md` (4 maddenin tam dökümü,
+  kanıtlı).
+
+## Ders
+
+Kullanıcının elle tuttuğu canlı-test notları bile bayatlayabiliyor —
+hızlı ilerleyen bir repo'da "not edilmiş" ile "hâlâ doğru" aynı şey
+değil. Kod her zaman gerçek kaynak; yeni bir "açık madde" iddiasıyla
+karşılaşınca önce `/codebase-memory` ile doğrula, sonra düzelt.
+
+---
+
 # Handoff — 2026-09-23 — Önceki oturumun 3 açık maddesi sırayla kapatıldı
 
 ## Oturum Özeti

@@ -411,26 +411,20 @@ func validatePath(targetPath, basePath string) (string, error) {
 		fullPath = filepath.Join(basePath, targetPath)
 	}
 
-	// Resolve symlinks
-	realPath, err := filepath.EvalSymlinks(fullPath)
+	// Resolve symlinks. File might not exist yet (e.g. for write_file) —
+	// resolveRealPath falls back to resolving as much of the path as
+	// actually exists instead of the raw, unresolved path (BUG-C1):
+	// EvalSymlinks fails with IsNotExist as soon as the FINAL component is
+	// missing, even if an EXISTING ancestor directory earlier in the path
+	// is itself a symlink pointing outside basePath. Falling back to
+	// fullPath verbatim left that ancestor symlink completely unresolved,
+	// so the inside-basePath check a few lines down saw only the
+	// project-relative-looking literal path — while the actual write
+	// (os.WriteFile, etc.) transparently follows the real, unresolved
+	// symlink and lands wherever it points, outside the sandbox entirely.
+	realPath, err := resolveRealPath(fullPath)
 	if err != nil {
-		// File might not exist yet (e.g. for write_file) — resolve as much
-		// of the path as actually exists instead of falling back to the
-		// raw, unresolved path (BUG-C1): EvalSymlinks fails with
-		// IsNotExist as soon as the FINAL component is missing, even if an
-		// EXISTING ancestor directory earlier in the path is itself a
-		// symlink pointing outside basePath. Falling back to fullPath
-		// verbatim left that ancestor symlink completely unresolved, so
-		// the inside-basePath check a few lines down saw only the
-		// project-relative-looking literal path — while the actual
-		// write (os.WriteFile, etc.) transparently follows the real,
-		// unresolved symlink and lands wherever it points, outside the
-		// sandbox entirely.
-		if os.IsNotExist(err) {
-			realPath = resolveExistingAncestor(fullPath)
-		} else {
-			return "", fmt.Errorf("failed to resolve path: %w", err)
-		}
+		return "", err
 	}
 
 	// Ensure the path is within basePath.
@@ -450,21 +444,53 @@ func validatePath(targetPath, basePath string) (string, error) {
 		// itself retrying) had nothing to correct toward and would often
 		// blindly retry with a different tool/path instead of the one path
 		// that was actually allowed.
-		cmpPath := realPath
-		if runtime.GOOS == "windows" {
-			cmpPath = strings.ToLower(realPath)
-		}
-		for _, protected := range defaultProtectedPaths() {
-			needle := protected
-			if runtime.GOOS == "windows" {
-				needle = strings.ToLower(protected)
-			}
-			if strings.HasPrefix(cmpPath, needle) {
-				return "", fmt.Errorf("access denied: %q is within a protected system directory (%s) — only files inside %s are accessible.%s", targetPath, protected, basePath, OutsideSandboxHint)
-			}
+		if protected, ok := isUnderProtectedSystemPath(realPath, defaultProtectedPaths()); ok {
+			return "", fmt.Errorf("access denied: %q is within a protected system directory (%s) — only files inside %s are accessible.%s", targetPath, protected, basePath, OutsideSandboxHint)
 		}
 		return "", fmt.Errorf("%q is outside the project directory — only files inside %s are accessible.%s", targetPath, basePath, OutsideSandboxHint)
 	}
 
+	return realPath, nil
+}
+
+// isUnderProtectedSystemPath reports whether realPath (already symlink-
+// resolved and cleaned) falls under one of protectedPaths, comparing case-
+// insensitively on Windows. Shared between validatePath above (which
+// rejects every path outside basePath regardless — this only picks which
+// error message to show) and SelfClone (selfclone.go), which legitimately
+// needs to write outside basePath and so calls this with its own, narrower
+// list rather than defaultProtectedPaths() — see selfCloneProtectedPaths's
+// doc comment for why the two lists differ.
+func isUnderProtectedSystemPath(realPath string, protectedPaths []string) (string, bool) {
+	cmpPath := realPath
+	if runtime.GOOS == "windows" {
+		cmpPath = strings.ToLower(realPath)
+	}
+	for _, protected := range protectedPaths {
+		needle := protected
+		if runtime.GOOS == "windows" {
+			needle = strings.ToLower(protected)
+		}
+		if strings.HasPrefix(cmpPath, needle) {
+			return protected, true
+		}
+	}
+	return "", false
+}
+
+// resolveRealPath resolves path's symlinks, falling back to resolving as
+// much of an existing ancestor as it can when the final component doesn't
+// exist yet — the same BUG-C1 fallback validatePath above uses inline,
+// extracted here so SelfClone (which also needs to resolve a not-yet-
+// existing destination before deciding whether it's safe) doesn't have to
+// duplicate it.
+func resolveRealPath(path string) (string, error) {
+	realPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return resolveExistingAncestor(path), nil
+		}
+		return "", fmt.Errorf("failed to resolve path: %w", err)
+	}
 	return realPath, nil
 }

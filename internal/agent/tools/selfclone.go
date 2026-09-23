@@ -15,6 +15,52 @@ type SelfCloneArgs struct {
 	Dest string `json:"dest"`
 }
 
+// selfCloneProtectedPaths mirrors defaultProtectedPaths()'s OS-critical
+// entries but excludes Linux's "/home/" and "/tmp/": unlike validatePath's
+// callers (write_file/edit_file/etc., which must ALWAYS stay inside
+// basePath, protected-or-not), SelfClone's entire purpose is writing the
+// project to a destination OUTSIDE basePath — and for an ordinary non-root
+// desktop user, /home/<user>/... and /tmp/ are the only realistic writable
+// locations at all. Blocking them wholesale wouldn't harden anything, it
+// would just disable the tool. selfCloneHasDotComponent below is what
+// actually keeps a destination under /home/ from reaching a credential or
+// persistence location.
+func selfCloneProtectedPaths() []string {
+	all := defaultProtectedPaths()
+	blocked := make([]string, 0, len(all))
+	for _, p := range all {
+		if p == "/home/" || p == "/tmp/" {
+			continue
+		}
+		blocked = append(blocked, p)
+	}
+	return blocked
+}
+
+// selfCloneHasDotComponent reports whether any path segment of realDest
+// starts with "." (and isn't "." or ".." itself). Found in a 2026-09-23
+// security audit: SelfClone had no protected-path check of ANY kind before
+// this, so an unattended (bypass-permissions) Self-Driving task could
+// write_file a malicious file inside the sandbox, then call self_clone with
+// dest=~/.ssh to silently overwrite the real ~/.ssh/authorized_keys with
+// it — zero permission prompt, zero user visibility, full sandbox escape to
+// persistent host compromise. Rather than enumerate every dangerous name
+// (the exact mistake the old run_command blacklist made — see
+// BUG_REPORT.md's P0-4/P2-4), this blocks by SHAPE: virtually every
+// credential/persistence target on a real system lives inside a dotfile or
+// dot-directory (~/.ssh, ~/.gnupg, ~/.aws, ~/.kube, ~/.config/systemd,
+// ~/.bashrc, ~/.profile, ~/.local/share/...), so refusing any destination
+// with a dot-prefixed path component closes that whole class at once
+// instead of chasing individual names one incident at a time.
+func selfCloneHasDotComponent(realDest string) bool {
+	for _, part := range strings.Split(realDest, string(filepath.Separator)) {
+		if part != "." && part != ".." && strings.HasPrefix(part, ".") {
+			return true
+		}
+	}
+	return false
+}
+
 // SelfClone projenin tamamını local'de başka bir dizine kopyalar.
 // Binary + çalışma dizini içeriğini hedef path'e yazar.
 func SelfClone(ctx context.Context, argsJSON json.RawMessage, basePath string, _ func(string) error) (string, error) {
@@ -35,12 +81,28 @@ func SelfClone(ctx context.Context, argsJSON json.RawMessage, basePath string, _
 		return "", fmt.Errorf("destination cannot be inside source directory")
 	}
 
+	// Resolve symlinks (a not-yet-existing dest resolves as far as its real
+	// ancestors go, same BUG-C1 fallback validatePath uses) before deciding
+	// whether it's safe to write to — checking the raw, unresolved
+	// absDest would let a symlink at any ancestor silently redirect the
+	// whole clone into a protected/dotfile location undetected.
+	realDest, err := resolveRealPath(absDest)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve destination: %w", err)
+	}
+	if protected, ok := isUnderProtectedSystemPath(realDest, selfCloneProtectedPaths()); ok {
+		return "", fmt.Errorf("access denied: %q is within a protected system directory (%s) — self_clone refuses to write there", args.Dest, protected)
+	}
+	if selfCloneHasDotComponent(realDest) {
+		return "", fmt.Errorf("access denied: %q resolves to %q, a hidden/dotfile path — self_clone refuses to write into a dotfile or dotfile-named directory, since that is where credentials and persistence configs (~/.ssh, ~/.config, ~/.bashrc, ...) live", args.Dest, realDest)
+	}
+
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		return "", fmt.Errorf("cannot create dest dir: %w", err)
 	}
 
 	copied := 0
-	err := filepath.WalkDir(basePath, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(basePath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}

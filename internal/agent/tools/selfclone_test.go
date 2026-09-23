@@ -119,6 +119,95 @@ func TestSelfCloneMissingDest(t *testing.T) {
 	}
 }
 
+// TestSelfCloneBlocksDotfileDestination is the regression test for a real
+// P0 found in a 2026-09-23 security audit: SelfClone had NO protected-path
+// check at all before this — only "destination isn't inside the source
+// directory." An unattended (bypass-permissions) Self-Driving task could
+// write_file a malicious file inside the sandbox, then call self_clone with
+// dest=~/.ssh to silently overwrite the real ~/.ssh/authorized_keys with
+// it. This test simulates that shape without touching a real home
+// directory: a source tree containing a file that would land at
+// <dest>/authorized_keys, and a dest resolving into a dotfile directory.
+func TestSelfCloneBlocksDotfileDestination(t *testing.T) {
+	parent := t.TempDir()
+	src := filepath.Join(parent, "project")
+	if err := os.MkdirAll(src, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "authorized_keys"), []byte("ssh-ed25519 AAAA...attacker"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dest := range []string{
+		filepath.Join(parent, ".ssh"),
+		filepath.Join(parent, ".ssh", "nested"),
+		filepath.Join(parent, ".config", "systemd", "user"),
+		filepath.Join(parent, ".bashrc-lookalike-dir"), // still dot-prefixed
+	} {
+		args, _ := json.Marshal(map[string]string{"dest": dest})
+		out, err := SelfClone(context.Background(), args, src, nil)
+		if err == nil || !strings.Contains(err.Error(), "hidden/dotfile") {
+			t.Errorf("dest=%q: expected a hidden/dotfile rejection, got out=%q err=%v", dest, out, err)
+		}
+		if _, statErr := os.Stat(filepath.Join(dest, "authorized_keys")); !os.IsNotExist(statErr) {
+			t.Errorf("dest=%q: authorized_keys must not have been written", dest)
+		}
+	}
+}
+
+// TestSelfCloneBlocksProtectedSystemPath verifies the narrower, self_clone-
+// specific protected list (selfCloneProtectedPaths) still refuses true
+// system directories — the ones excluded from that list are /home/ and
+// /tmp/ specifically (see its doc comment), not everything.
+func TestSelfCloneBlocksProtectedSystemPath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("touches real absolute system paths, skip in -short")
+	}
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "x.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dest := range []string{"/etc/memo-selfclone-test", "/var/memo-selfclone-test"} {
+		args, _ := json.Marshal(map[string]string{"dest": dest})
+		_, err := SelfClone(context.Background(), args, src, nil)
+		// Assert on the exact rejection reason, not just "any error" — a
+		// non-root test process would ALSO fail to os.MkdirAll under /etc
+		// or /var for plain OS-permission reasons, which would pass this
+		// test for the wrong reason (not proving the new check fired at
+		// all, since it runs before MkdirAll would even be attempted).
+		if err == nil || !strings.Contains(err.Error(), "protected system directory") {
+			t.Errorf("dest=%q: expected a protected-system-directory rejection, got: %v", dest, err)
+			_ = os.RemoveAll(dest)
+		}
+	}
+}
+
+// TestSelfCloneAllowsPlainHomeSubdirectory is the flip side of the two
+// tests above: selfCloneProtectedPaths deliberately excludes /home/ and
+// /tmp/ (the only realistic writable locations for a non-root desktop
+// user) — an ordinary, non-dotfile destination under one must still work.
+func TestSelfCloneAllowsPlainHomeSubdirectory(t *testing.T) {
+	parent := t.TempDir() // stands in for a home-directory-like writable tree
+	src := filepath.Join(parent, "project")
+	dest := filepath.Join(parent, "backups", "project-copy")
+	if err := os.MkdirAll(src, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "main.go"), []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	args, _ := json.Marshal(map[string]string{"dest": dest})
+	out, err := SelfClone(context.Background(), args, src, nil)
+	if err != nil {
+		t.Fatalf("plain non-dotfile destination should be allowed, got error: %v", err)
+	}
+	if !strings.Contains(out, "Cloned") {
+		t.Errorf("expected a success message, got: %q", out)
+	}
+}
+
 func TestSelfCloneContextCancel(t *testing.T) {
 	src := t.TempDir()
 	dest := t.TempDir()

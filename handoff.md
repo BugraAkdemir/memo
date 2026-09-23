@@ -54,16 +54,39 @@ commit'inde, hepsi build+vet+race testleriyle doğrulandı.
 - `CGO_ENABLED=1 go test -tags "sqlite_fts5" -count=1 ./... -race` — **tüm paketler yeşil** (her commit'ten önce; bir run'da `internal/app` flaky FAIL görüldü — `TestRunLockedStreamSetup_PanicReleasesLockAndDoesNotPropagate`'in panic-recovery testi ile race dedektörü arası zamanlama, 2 tekrar koşuda geçti, bu oturumun değişikliğiyle ilgisiz)
 - Rule #8 L10n grep — bu oturumda hiç `.dart` dosyasına dokunulmadı, sonuç boş.
 
+4. **`477da1ac`** — Önceki oturumun 4. maddesi (Settings > Skills'te
+   elle görsel kontrol) native masaüstü pencere olduğu için bu
+   oturumun Browser pane araçlarıyla sürülemedi; kullanıcı onayıyla
+   otomatik Flutter widget testine çevrildi. `SkillConfigDialog`'un
+   `chatId`'ye göre dallanması (`skill_config_dialog_test.dart`):
+   `chatId=null` (Settings) → `skill_activation_hint_settings` ipucu
+   var, `Switch` yok; `chatId` dolu (sohbet içi) → `Switch` var, ipucu
+   yok. `skills_tab.dart`'ın kendisi de ayrıca test edildi
+   (`skills_tab_test.dart`): kurulu skill listesi gösteriyor ama hiç
+   `Switch`/`Checkbox` yok. `skillListProvider`'ı gerçek HTTP yerine
+   `SkillListNotifier` alt sınıfıyla sahteleyerek izole edildi.
+
+Artık önceki oturumun "Sıradaki" listesindeki **tüm maddeler kapalı**.
+
+## Doğrulama (Flutter tarafı, madde 4 için ek olarak)
+
+- `flutter analyze lib/ test/` — sadece önceden var olan 7 info-seviye
+  bulgu (AGENTS.md'nin kabul ettiği noise), yeni dosyalardan hiçbiri
+  değil.
+- `flutter test` — **353/353 yeşil, "All tests passed!"** (tam suite;
+  konsol çıktısında aynı test adının onlarca kez tekrarlandığı
+  görüldü — `flutter test`'in paralel reporter'ının non-TTY'ye pipe
+  edilince kozmetik olarak tekrar bastığı bir durum, tek dosya
+  çalıştırıldığında net 3/3 geçiyor, gerçek bir tekrar-çalıştırma
+  değil).
+- Rule #8 L10n grep (dokunulan `.dart` dosyaları) — boş, hardcoded
+  string yok.
+
 ## Sıradaki (yapılmadı, açık)
 
-- Önceki oturumun 4. maddesi: Flutter UI'da Settings > Skills'te elle
-  görsel kontrol (Code Mode'da artık tool + talimat ikisi de var,
-  backend otomatik kanıtlı ama masaüstü native pencere olduğu için bu
-  oturumun Browser pane araçlarıyla sürülemedi).
-- Önceki oturumun Code Mode/skill bulgusu artık kapalı (madde 1 ile).
-- Önceki oturumun 5. maddesi (bana ait olmayan çalışma ağacı
-  değişiklikleri) oturum başlamadan önce zaten commit'lenmişti
-  (`2f6223cf`, `51e90cc6`) — ek işlem gerekmedi.
+- Şu an için yeni bir açık madde yok — bu oturumun kapsamı tamamlandı.
+  `git push` yapılmadı (main origin'in 5 commit ilerisinde) — kullanıcı
+  istemeden push edilmiyor.
 
 ---
 

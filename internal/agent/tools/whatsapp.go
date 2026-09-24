@@ -57,6 +57,15 @@ type WhatsAppMessagesArgs struct {
 	Limit int    `json:"limit"`
 }
 
+// maxWhatsAppResultLimit caps how many messages a single search_whatsapp/
+// whatsapp_messages call can pull into the model's context. Both tools only
+// ever clamped a non-positive Limit up to a default (10/20) — nothing capped
+// a large one, so a model-requested (or prompt-injected) limit of e.g.
+// 100000 would pull that many rows straight into the tool result and from
+// there into the LLM context: a self-inflicted context/token-size DoS.
+// Found in a 2026-09-23 security audit.
+const maxWhatsAppResultLimit = 200
+
 func SendWhatsApp(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args WhatsAppSendArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
@@ -66,7 +75,7 @@ func SendWhatsApp(ctx context.Context, argsJSON json.RawMessage, basePath string
 		return T("WhatsApp bağlı değil (config.yaml'de whatsapp.enabled: true olmalı)", "WhatsApp not connected (whatsapp.enabled: true required in config.yaml)"), nil
 	}
 	jid := resolveWhatsAppJID(args.JID)
-	msgID, err := WhatsAppClient.SendMessage(context.Background(), jid, args.Text)
+	msgID, err := WhatsAppClient.SendMessage(ctx, jid, args.Text)
 	if err != nil {
 		return "", fmt.Errorf(T("WhatsApp gönderilemedi: ", "could not send WhatsApp message: ")+"%w", err)
 	}
@@ -80,6 +89,9 @@ func SearchWhatsApp(ctx context.Context, argsJSON json.RawMessage, basePath stri
 	}
 	if args.Limit <= 0 {
 		args.Limit = 10
+	}
+	if args.Limit > maxWhatsAppResultLimit {
+		args.Limit = maxWhatsAppResultLimit
 	}
 	if WhatsAppClient == nil {
 		return T("WhatsApp bağlı değil", "WhatsApp not connected"), nil
@@ -110,6 +122,9 @@ func LatestWhatsAppChats(ctx context.Context, argsJSON json.RawMessage, basePath
 	}
 	if args.Limit <= 0 {
 		args.Limit = 10
+	}
+	if args.Limit > maxWhatsAppResultLimit {
+		args.Limit = maxWhatsAppResultLimit
 	}
 	if WhatsAppClient == nil {
 		return T("WhatsApp bağlı değil", "WhatsApp not connected"), nil
@@ -146,6 +161,9 @@ func GetWhatsAppMessages(ctx context.Context, argsJSON json.RawMessage, basePath
 	}
 	if args.Limit <= 0 {
 		args.Limit = 20
+	}
+	if args.Limit > maxWhatsAppResultLimit {
+		args.Limit = maxWhatsAppResultLimit
 	}
 	if WhatsAppClient == nil {
 		return T("WhatsApp bağlı değil", "WhatsApp not connected"), nil

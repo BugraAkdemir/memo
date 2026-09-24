@@ -675,8 +675,20 @@ func (s *session) handleChunk(chunk api.StreamChunk) error {
 			return nil // malformed event payload — skip, matches SSE tolerance
 		}
 		return s.handleAgentEvent(ev)
-	case "usage", "activity":
-		// structured payloads not needed by the terminal REPL — ignored.
+	case "generated_image":
+		// Image-generation turn (see internal/app/imagegen.go) — Content is
+		// the saved file's absolute path. A terminal can't show the image,
+		// so print where it landed.
+		s.stopSpinner()
+		s.aiTurnStarted = true
+		fmt.Fprintln(s.out, dim(fmt.Sprintf(t("image_saved"), chunk.Content)))
+	case "usage", "activity", "memory_used", "browser_frame":
+		// Structured/metadata payloads not needed by the terminal REPL —
+		// ignored. memory_used and browser_frame belong here too: falling
+		// through to default below typewriter-printed their raw Content
+		// (a bare memory count like "9", a JSON browser frame) straight
+		// into the reply text, the same leak drainToReply's doc comment
+		// (internal/app/chat.go) describes for the WhatsApp path.
 	default:
 		// "" (plain streamed token) or "stop" (may carry trailing text).
 		// Agent mode isn't truly token-streamed backend-side (the whole

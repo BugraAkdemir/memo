@@ -294,6 +294,21 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 		agentActive = true
 	}
 
+	// An image-output-only active model (see imagegen.go) can neither run a
+	// tool loop nor a web-search turn: both are /chat/completions calls that
+	// such a model answers with a 404, and neither has anywhere to put an
+	// image if it somehow succeeded. Force the plain path, which is the one
+	// that routes the turn to the images endpoint. Checked before the agent
+	// system prompt is appended below so an image prompt isn't padded with
+	// tool instructions the model will never use.
+	imageOnlyModel := false
+	if router, activeName, _ := a.ensureProviderRouter(); activeName != "" && router != nil {
+		if _, _, ok := a.imageRoute(ctx, router); ok {
+			imageOnlyModel = true
+			agentActive = false
+		}
+	}
+
 	if agentActive {
 		for i, msg := range messages {
 			if msg.Role == "system" {
@@ -336,7 +351,7 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 	// request is the same category of overhead as the old injected results
 	// text, so it must be gated the same way here now that the decision
 	// lives in routeStream instead of buildMessagesForSession.
-	if a.GetWebSearchEnabled() && !orchestraEnabled && !a.identity.GetMinimalMode() && (hasProvider || localModelRunning) {
+	if a.GetWebSearchEnabled() && !orchestraEnabled && !imageOnlyModel && !a.identity.GetMinimalMode() && (hasProvider || localModelRunning) {
 		return a.callWebSearchAgentStream(ctx, messages, userMsg, sessionID)
 	}
 	return activityRelay(a.callLLMStream(ctx, messages, userMsg, imagePath, filePath, sessionID))

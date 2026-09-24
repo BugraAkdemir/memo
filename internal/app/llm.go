@@ -1188,6 +1188,14 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			defer close(outCh)
 			defer recoverStreamPanic(ctx, outCh, "callLLMStream/external-provider")
 
+			// An image-output-only model can't answer /chat/completions at
+			// all (see imagegen.go) — route the turn to the images endpoint
+			// instead of letting the whole fallback chain 404.
+			if gen, imgModel, ok := a.imageRoute(ctx, providerRouter); ok {
+				a.streamImageGeneration(ctx, gen, imgModel, userMsg, userMsg, sessionID, outCh)
+				return
+			}
+
 			providerCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
 			defer cancel()
 
@@ -1645,11 +1653,14 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 	// generation, mood update, personal-memory save + fact extraction, and
 	// the ambient-nudge surfaced check. The reply itself is still persisted.
 	code := codeModeActive(ctx)
+	// Non-empty only on an image-generation turn (see imagegen.go) — every
+	// chat path leaves it empty and persists no image, exactly as before.
+	genImage := generatedImageFromContext(ctx)
 	if !incog {
 		sm := a.getSessionManager()
 		if sm != nil {
 			if sessionID != "" {
-				sm.AddMessageToSession(sessionID, "assistant", reply, "", "", agentEvents...)
+				sm.AddMessageToSession(sessionID, "assistant", reply, genImage, "", agentEvents...)
 				if memUsed, ok := ctx.Value(memoryUsedCtxKey{}).(int); ok && memUsed > 0 {
 					sm.SetLastMessageMemoryUsed(sessionID, memUsed)
 				}
@@ -1660,7 +1671,7 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 					goRecover("generateChatTitleForSession", func() { a.generateChatTitleForSession(sessionID) })
 				}
 			} else {
-				sm.AddMessage("assistant", reply, "", "", agentEvents...)
+				sm.AddMessage("assistant", reply, genImage, "", agentEvents...)
 				if !code && len(sm.GetActiveMessages()) == 2 {
 					goRecover("GenerateChatTitle", func() { a.GenerateChatTitle() })
 				}
@@ -1763,6 +1774,19 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 	// comment for the confusing-error-message this used to produce here.
 	providerRouter, activeName, _ := a.ensureProviderRouter()
 	if activeName != "" && providerRouter != nil {
+		// Every caller of callLLM wants *text* (chat titles, fact
+		// extraction, mood, proactive checks — see the category constants).
+		// When the active model only emits images there is no text model to
+		// ask, and sending anyway produced a steady background drip of
+		// "status 404: ... is an image generation model" in the log, one per
+		// utility call, with each caller then reporting its own downstream
+		// failure. Skipping is the honest answer; every caller already
+		// treats an empty result as "nothing came back".
+		if _, imgModel, ok := a.imageRoute(ctx, providerRouter); ok {
+			logx.Printf("LLM: skipping %s call — active model %q generates images only, no text model available", category, imgModel)
+			return ""
+		}
+
 		pctx, cancel := context.WithTimeout(ctx, 300*time.Second)
 		defer cancel()
 

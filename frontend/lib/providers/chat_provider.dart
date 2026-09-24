@@ -657,6 +657,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       String fullThinking = '';
       List<AgentEvent> finalAgentEvents = [];
       int memoryUsed = 0;
+      // Absolute path of an image this turn generated, carried on a
+      // 'generated_image' marker chunk. Null on every ordinary text turn.
+      String? generatedImagePath;
 
       final activeChatId = ref.read(activeChatIdProvider).valueOrNull;
       final cliProvider = activeChatId != null
@@ -772,6 +775,13 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
             }
           } else if (chunk.finishReason == 'memory_used') {
             memoryUsed = int.tryParse(chunk.content) ?? 0;
+          } else if (chunk.finishReason == 'generated_image') {
+            // Image-generation turn (image-output-only model): the content
+            // is the saved file's absolute path, not reply text. The
+            // backend persists it as the message's image_path too, so a
+            // later reload shows the same bubble — this is just what makes
+            // it appear without waiting for one.
+            generatedImagePath = chunk.content;
           } else {
             // First real content — clear any pre-token status (e.g. web_search).
             if (ref.read(streamingStatusProvider).isNotEmpty) {
@@ -815,14 +825,20 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
       // Append final assistant message to the list
       final list = [...(state.valueOrNull ?? <ChatMessage>[])];
+      // generatedImagePath is checked alongside the text/thinking/event
+      // conditions because an image turn legitimately has an empty body —
+      // the image is the whole message — and without it the bubble was
+      // dropped here and only reappeared after a full reload.
       if (fullReply.isNotEmpty ||
           fullThinking.isNotEmpty ||
-          finalAgentEvents.isNotEmpty) {
+          finalAgentEvents.isNotEmpty ||
+          generatedImagePath != null) {
         list.add(
           ChatMessage(
             role: 'assistant',
             content: fullReply,
             thinking: fullThinking.isNotEmpty ? fullThinking : null,
+            imagePath: generatedImagePath,
             timestamp: timestamp,
             agentEvents: finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
             memoryUsed: memoryUsed,

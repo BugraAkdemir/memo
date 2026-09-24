@@ -454,6 +454,24 @@ func TestClaudeProvider_ListModels_FiltersToModelTypeOnly(t *testing.T) {
 	}
 }
 
+// TestClaudeProvider_ListModels_Returns401AsErrorNotEmptySuccess mirrors
+// TestOpenAIProvider_ListModels_Returns401AsErrorNotEmptySuccess — same P2
+// found in a 2026-09-23 audit, same fix (a status check before decoding),
+// pre-existing in this file independent of the openAIProvider family.
+func TestClaudeProvider_ListModels_Returns401AsErrorNotEmptySuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"message": "invalid x-api-key"}})
+	}))
+	defer srv.Close()
+
+	p := newTestClaudeProvider(t, srv, "claude-3-5-sonnet-20241022")
+	models, err := p.ListModels(context.Background())
+	if err == nil {
+		t.Fatalf("ListModels() error = nil, models = %v, want an error for a 401 response", models)
+	}
+}
+
 func TestClaudeProvider_ChatCompletion_TimeoutWrapsErrTimeout(t *testing.T) {
 	p := &claudeProvider{}
 	err := p.wrapError(errors.New("context deadline exceeded"))

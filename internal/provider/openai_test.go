@@ -319,6 +319,34 @@ func TestOpenAIProvider_ListModels_ParsesModelIDs(t *testing.T) {
 	}
 }
 
+// TestOpenAIProvider_ListModels_Returns401AsErrorNotEmptySuccess is the
+// regression test for a real P2 found in a 2026-09-23 audit: ListModels
+// never checked resp.StatusCode before decoding — a 401/403 (bad/expired
+// key) returns a well-formed JSON error body ({"error":{...}}), which used
+// to decode "successfully" into a zero-value result (no "data" key
+// present), so ListModels returned (empty slice, nil) instead of an error.
+// Router.CheckConnection treats a nil ListModels error as Connected=true,
+// so a provider with a bad key showed as "Connected" with an empty model
+// list in the UI instead of surfacing the real auth error. This inherited
+// implementation is shared by grok/groq/openrouter/ollama/llamacpp/
+// opencode_zen/opencode_go — fixed once here for all of them.
+func TestOpenAIProvider_ListModels_Returns401AsErrorNotEmptySuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"message": "invalid api key"}})
+	}))
+	defer srv.Close()
+
+	p := newTestOpenAIProvider(t, srv)
+	models, err := p.ListModels(context.Background())
+	if err == nil {
+		t.Fatalf("ListModels() error = nil, models = %v, want an error for a 401 response", models)
+	}
+	if !strings.Contains(err.Error(), "401") && !strings.Contains(err.Error(), "authentication") {
+		t.Errorf("error = %v, want it to reference the 401/auth condition", err)
+	}
+}
+
 func TestOpenAIProvider_ToOpenAIMessages_PreservesToolCallFields(t *testing.T) {
 	p := &openAIProvider{}
 	msgs := []Message{

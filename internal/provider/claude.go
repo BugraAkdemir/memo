@@ -71,6 +71,16 @@ func (p *claudeProvider) ListModels(ctx context.Context) ([]string, error) {
 	}
 	defer resp.Body.Close()
 
+	// A 401/403 (bad/expired key) returns a well-formed JSON error body,
+	// which used to decode "successfully" into a zero-value result (no
+	// "data" key present) — CheckConnection (router.go) reads a nil error
+	// from ListModels as Connected=true, so a provider with a bad key was
+	// showing as "Connected" with an empty model list instead of surfacing
+	// the real auth error. Found in a 2026-09-23 audit.
+	if resp.StatusCode != http.StatusOK {
+		return nil, p.parseError(resp)
+	}
+
 	var result struct {
 		Data []struct {
 			Type string `json:"type"`

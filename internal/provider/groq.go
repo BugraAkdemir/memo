@@ -1,9 +1,6 @@
 package provider
 
 import (
-	"context"
-	"encoding/json"
-	"net/http"
 	"strings"
 )
 
@@ -30,33 +27,12 @@ func newGroqProvider(cfg ProviderConfig) (*groqProvider, error) {
 	return &groqProvider{openAIProvider: p}, nil
 }
 
-func (p *groqProvider) Name() ProviderType    { return ProviderGroq }
-func (p *groqProvider) DisplayName() string    { return "Groq" }
+func (p *groqProvider) Name() ProviderType  { return ProviderGroq }
+func (p *groqProvider) DisplayName() string { return "Groq" }
 
-func (p *groqProvider) ListModels(ctx context.Context) ([]string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/models", nil)
-	if err != nil {
-		return nil, err
-	}
-	p.setAuth(req)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-	models := make([]string, 0, len(result.Data))
-	for _, m := range result.Data {
-		models = append(models, m.ID)
-	}
-	return models, nil
-}
+// ListModels is inherited from openAIProvider — groqProvider used to
+// re-implement it with byte-for-byte identical logic (same request, same
+// auth, same decode), which meant a fix to the shared implementation (e.g.
+// the 2026-09-23 HTTP-status-check fix) had to be applied twice and could
+// easily be missed here. Removed as dead/duplicate code; behavior is
+// unchanged.

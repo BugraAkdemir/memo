@@ -4,6 +4,7 @@ package intent
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -300,6 +301,32 @@ func TestExtractHabit_HabitDaysAsStringArray(t *testing.T) {
 	}
 	if len(res.HabitDays) != 2 || res.HabitDays[0] != time.Monday || res.HabitDays[1] != time.Wednesday {
 		t.Errorf("HabitDays = %v, want [Monday Wednesday]", res.HabitDays)
+	}
+}
+
+// TestExtractorSystemPrompt_DocumentsHabitDaysFormat is the regression test
+// for a real P2 found in a 2026-09-23 audit: extractorSystemPrompt's JSON
+// schema showed "habit_days": [] with zero explanation of the expected
+// encoding — unlike depends_on elsewhere in this codebase's prompts, which
+// spells its shape out explicitly. parseHabitDays tries []int, then
+// []string, then a single phrase, and silently returns nil (parsed
+// downstream as observer.DeclaredHabitPattern's "every day" default) for
+// ANY other shape the model might return when given no format hint — a
+// habit declared for specific days only (e.g. "Monday and Wednesday") could
+// silently widen to every day if the model's output happened not to match
+// one of the three tolerated shapes. This only asserts the format is
+// documented, not that every possible model failure mode is now
+// impossible — see parseHabitDays's own tests for shape-tolerance coverage.
+func TestExtractorSystemPrompt_DocumentsHabitDaysFormat(t *testing.T) {
+	p := extractorSystemPrompt
+	if !strings.Contains(p, "habit_days") {
+		t.Fatal("prompt does not mention habit_days at all")
+	}
+	if !strings.Contains(p, "0=Sunday") || !strings.Contains(p, "6=Saturday") {
+		t.Errorf("prompt does not spell out the expected 0=Sunday..6=Saturday integer encoding: %q", p)
+	}
+	if !strings.Contains(p, "every day") {
+		t.Errorf("prompt does not explain what an empty habit_days array means: %q", p)
 	}
 }
 

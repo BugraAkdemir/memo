@@ -72,6 +72,7 @@ Rules:
 - Vague wishes are NOT events ("bir gün spor yapmak istiyorum", "I want to learn guitar someday" → has_intent: false)
 - Use ISO 8601 for event_time_iso and HH:MM for habit_time_hhmm
 - The current date/time AND day-of-week are provided in the user prompt — resolve relative expressions against them
+- habit_days: a JSON array of integers, 0=Sunday .. 6=Saturday (e.g. "Monday and Wednesday" = [1, 3]). An empty array [] is read as "every day" downstream — only return [] when the user actually said "every day"/"her gün"/similar. When the user named specific days, always resolve them into this exact integer scheme; never return them as day-name strings or a free-text phrase.
 
 TIME RESOLUTION (CRITICAL — works for ALL languages):
 - Explicit time mentioned: "at 5", "11'de", "saat 14", "akşam 8", "14:00", "3pm", "14h", "um 3", "à 5h" → use that time, time_explicit=true

@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:cross_file/cross_file.dart';
+import 'package:file_picker_platform_interface/file_picker_platform_interface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,32 +38,67 @@ class _UnauthorizedAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-/// Stands in for FilePicker.platform — swappable via MockPlatformInterfaceMixin
-/// (the same escape hatch the file_picker package itself uses to let each
-/// platform implementation replace FilePicker.platform without needing the
-/// real PlatformInterface token). Always returns [result], regardless of
-/// what pickFiles() was called with.
-class _FakeFilePicker extends FilePicker with MockPlatformInterfaceMixin {
-  _FakeFilePicker(this.result);
-  final FilePickerResult? result;
+/// Stands in for the platform implementation behind FilePicker's static
+/// methods — swappable via MockPlatformInterfaceMixin (the same escape hatch
+/// the package itself uses to let each platform package install its own
+/// implementation without holding the real PlatformInterface token).
+///
+/// file_picker 13's FilePicker is a final class with static methods, so the
+/// old `FilePicker.platform = fake` seam is gone; `FilePickerPlatform.instance`
+/// is the replacement. Always returns [file], regardless of the arguments.
+class _FakeFilePickerPlatform extends FilePickerPlatform
+    with MockPlatformInterfaceMixin {
+  _FakeFilePickerPlatform(this.file);
+  final PlatformFile? file;
 
   @override
-  Future<FilePickerResult?> pickFiles({
+  Future<PlatformFile?> pickFile({
     String? dialogTitle,
     String? initialDirectory,
     FileType type = FileType.any,
     List<String>? allowedExtensions,
-    bool allowMultiple = false,
-    void Function(FilePickerStatus)? onFileLoading,
-    bool allowCompression = true,
-    int compressionQuality = 20,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
   }) async {
-    return result;
+    return file;
   }
+}
+
+/// A picked file that lives only in memory, with no path — the shape
+/// file_picker's web backend produces (and, since 13, an Android
+/// content:// pick too). PlatformFile is abstract now, so the test has to
+/// bring its own instead of constructing one with a `bytes:` argument.
+final class _InMemoryPlatformFile extends PlatformFile {
+  _InMemoryPlatformFile({required this.name, required this.bytes});
+
+  @override
+  final String name;
+  final Uint8List bytes;
+
+  /// A data: URI, so `path` (which is `uri.scheme == 'file' ? ... : null`)
+  /// correctly reports null — exactly the no-path case under test.
+  @override
+  Uri get uri => Uri.dataFromBytes(bytes);
+
+  @override
+  XFile get xFile => XFile.fromData(bytes, name: name, length: bytes.length);
+
+  @override
+  int? lengthSync() => bytes.length;
+
+  @override
+  Future<int?> length() async => bytes.length;
+
+  @override
+  Future<Uint8List> readAsBytes() async => bytes;
+
+  @override
+  Stream<Uint8List> readAsByteStream() => Stream.value(bytes);
 }
 
 // A 1x1 red PNG — enough for Image.memory to decode without error.
@@ -83,8 +120,8 @@ final _tinyPngBytes = Uint8List.fromList([
 /// silently discarded before ever reaching the composer's state. This
 /// test simulates exactly that shape — a PlatformFile with real bytes and
 /// no path — without needing a real browser or native file dialog, via
-/// MockPlatformInterfaceMixin swapping FilePicker.platform for a fake
-/// that hands back a fixed result.
+/// MockPlatformInterfaceMixin swapping FilePickerPlatform.instance for a
+/// fake that hands back a fixed result.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -121,17 +158,10 @@ void main() {
   testWidgets(
       'picking a bytes-only file (web shape — no path) shows the attach '
       'preview instead of silently doing nothing', (tester) async {
-    FilePicker.platform = _FakeFilePicker(
-      FilePickerResult([
-        PlatformFile(
-          name: 'screenshot.png',
-          size: _tinyPngBytes.length,
-          bytes: _tinyPngBytes,
-          // path deliberately omitted — this is exactly what file_picker's
-          // web backend hands back, and what the old path-only gate in
-          // chat_input.dart silently dropped.
-        ),
-      ]),
+    // No path, bytes only — exactly what file_picker's web backend hands
+    // back, and what the old path-only gate in chat_input.dart dropped.
+    FilePickerPlatform.instance = _FakeFilePickerPlatform(
+      _InMemoryPlatformFile(name: 'screenshot.png', bytes: _tinyPngBytes),
     );
 
     await pumpChatInput(tester);
@@ -149,8 +179,8 @@ void main() {
       'picking a file with neither path nor bytes shows no preview '
       '(nothing usable came back — should no-op, not crash)',
       (tester) async {
-    FilePicker.platform = _FakeFilePicker(
-      FilePickerResult([PlatformFile(name: 'empty.png', size: 0)]),
+    FilePickerPlatform.instance = _FakeFilePickerPlatform(
+      _InMemoryPlatformFile(name: 'empty.png', bytes: Uint8List(0)),
     );
 
     await pumpChatInput(tester);

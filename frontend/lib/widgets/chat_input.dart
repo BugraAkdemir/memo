@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1217,26 +1216,23 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   final isSending = ref.read(isSendingProvider);
                   if (isSending || orchestraEnabled) return;
 
-                  final result = await FilePicker.platform.pickFiles(
-                    type: FileType.image,
-                    allowMultiple: false,
-                    // Desktop never needs the bytes (it has a real path,
-                    // and loading a whole image into memory just to
-                    // discard it would be wasteful); web has no path at
-                    // all, so it's the only way to get the file there.
-                    withData: kIsWeb,
-                  );
-                  if (result == null) return;
-                  final file = result.files.single;
-                  // PlatformFile.path's getter unconditionally throws on
-                  // web (see file_picker's platform_file.dart) — it's not
-                  // simply null there, so it must never be READ at all
-                  // under kIsWeb, not just null-checked.
-                  final path = kIsWeb ? null : file.path;
-                  if (path == null && file.bytes == null) return;
+                  // pickFile (singular) replaces pickFiles + allowMultiple:
+                  // false. PlatformFile.path is now null — rather than
+                  // throwing — whenever the file is not on local disk, which
+                  // covers web blobs and Android content:// URIs alike, so
+                  // the old kIsWeb special-case is no longer needed.
+                  final file = await FilePicker.pickFile(type: FileType.image);
+                  if (file == null) return;
+                  final path = file.path;
+                  // Only read the bytes when there is no path to hand the
+                  // backend instead: loading a whole image into memory just
+                  // to discard it would be wasteful on desktop. withData is
+                  // gone from the API; readAsBytes() is the replacement.
+                  final bytes = path == null ? await file.readAsBytes() : null;
+                  if (path == null && (bytes == null || bytes.isEmpty)) return;
                   setState(() {
                     _pickedImagePath = path;
-                    _pickedImageBytes = file.bytes;
+                    _pickedImageBytes = bytes;
                     _pickedFileName = file.name;
                   });
                   _focusNode.requestFocus();
@@ -1253,15 +1249,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   final isSending = ref.read(isSendingProvider);
                   if (isSending || orchestraEnabled) return;
 
-                  final result = await FilePicker.platform.pickFiles(
-                    type: FileType.any,
-                    allowMultiple: false,
-                    withData: kIsWeb,
-                  );
-                  if (result == null) return;
-                  final file = result.files.single;
-                  final path = kIsWeb ? null : file.path;
-                  if (path == null && file.bytes == null) return;
+                  final file = await FilePicker.pickFile(type: FileType.any);
+                  if (file == null) return;
+                  final path = file.path;
+                  final bytes = path == null ? await file.readAsBytes() : null;
+                  if (path == null && (bytes == null || bytes.isEmpty)) return;
                   final text = _controller.text.trim();
                   _controller.clear();
                   _dismissPopup();
@@ -1269,7 +1261,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     await ref.read(messagesProvider.notifier).sendFile(
                           text,
                           filePath: path,
-                          fileBytes: file.bytes,
+                          fileBytes: bytes,
                           fileName: file.name,
                         );
                   } catch (e) {

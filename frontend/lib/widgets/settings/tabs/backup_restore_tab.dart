@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
@@ -313,17 +314,23 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       final data = await api.exportData(includeModels: _includeModels);
       if (!mounted) return;
 
-      final path = await FilePicker.platform.saveFile(
+      // saveFile writes the bytes itself now and returns where they landed
+      // instead of a path to write to — which is also what makes this work
+      // on Android/iOS, where the old path-returning shape was simply
+      // unimplemented. The Uri is not necessarily a file:// path there
+      // (content:// on Android), so don't assume one for the message.
+      final saved = await FilePicker.saveFile(
         dialogTitle: L10n.t('backup_export_dialog_title'),
         fileName: 'memo_backup.memo',
+        bytes: Uint8List.fromList(data),
         type: FileType.any,
       );
-      if (path != null) {
-        await File(path).writeAsBytes(data);
+      if (saved != null) {
         if (mounted) {
+          final where = saved.scheme == 'file' ? saved.toFilePath() : saved.toString();
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text(L10n.t('backup_export_saved', {'path': path}))));
+          ).showSnackBar(SnackBar(content: Text(L10n.t('backup_export_saved', {'path': where}))));
         }
       }
     } catch (e) {
@@ -341,23 +348,20 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     if (_importing) return;
     setState(() => _importing = true);
     try {
-      final result = await FilePicker.platform.pickFiles(
+      // pickFile (singular) replaces pickFiles + taking .files.first:
+      // pickFiles now defaults to allowMultiple and returns a plain List.
+      // readAsBytes() also replaces the old withData/bytes-vs-path dance —
+      // it loads from wherever the file actually lives, which on web is a
+      // blob with no path at all and on Android may be a content:// URI.
+      final picked = await FilePicker.pickFile(
         dialogTitle: L10n.t('backup_import_dialog_title'),
         type: FileType.any,
       );
-      if (result == null || result.files.isEmpty) return;
+      if (picked == null) return;
 
-      final bytes = result.files.first.bytes;
-      if (bytes == null) {
-        final path = result.files.first.path;
-        if (path == null) return;
-        final file = File(path);
-        if (!await file.exists()) return;
-        final data = await file.readAsBytes();
-        await ref.read(apiClientProvider).importData(data);
-      } else {
-        await ref.read(apiClientProvider).importData(bytes);
-      }
+      final data = await picked.readAsBytes();
+      if (data.isEmpty) return;
+      await ref.read(apiClientProvider).importData(data);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

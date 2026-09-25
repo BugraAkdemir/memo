@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
-import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -992,17 +993,26 @@ class _ChatTopBar extends ConsumerWidget {
         final api = ref.read(apiClientProvider);
         final md = await api.exportChat();
         if (md.isEmpty || !context.mounted) return;
-        final path = await FilePicker.platform.saveFile(
+        // saveFile writes the bytes itself and returns where they landed —
+        // it no longer hands back a path for the caller to write to. That
+        // matters beyond tidiness: the old shape was implemented only on
+        // desktop and web, so this threw UnimplementedError on Android/iOS.
+        // The returned Uri is not always a file:// path (content:// on
+        // Android, blob:/data: on web), hence .path ?? .toString() for the
+        // confirmation message rather than assuming a filesystem path.
+        final saved = await FilePicker.saveFile(
           dialogTitle: L10n.t('export_chat'),
           fileName: 'chat_export.md',
+          bytes: Uint8List.fromList(utf8.encode(md)),
+          mimeType: 'text/markdown',
           type: FileType.custom,
           allowedExtensions: ['md'],
         );
-        if (path != null) {
-          await File(path).writeAsString(md);
+        if (saved != null) {
           if (context.mounted) {
+            final where = saved.scheme == 'file' ? saved.toFilePath() : saved.toString();
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(L10n.t('chat_exported', {'path': path}))),
+              SnackBar(content: Text(L10n.t('chat_exported', {'path': where}))),
             );
           }
         }

@@ -37,7 +37,7 @@ dependencies:
   url_launcher: ^6.2.4
   
   # File picker
-  file_picker: ^6.1.1
+  file_picker: ^13.1.0
   
   # Shared preferences (for local settings like lang, setup_complete)
   shared_preferences: ^2.2.2
@@ -92,12 +92,16 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  # Only used to swap FilePicker.platform for a fake in
-  # chat_input_web_file_attach_test.dart (MockPlatformInterfaceMixin) —
-  # already pulled in transitively by file_picker, declared directly so
-  # that import doesn't silently depend on file_picker's own dependency
-  # graph never changing.
+  # The three below are only used by chat_input_web_file_attach_test.dart,
+  # which fakes the picker: MockPlatformInterfaceMixin to install a fake
+  # FilePickerPlatform.instance, the platform interface for that class and
+  # PlatformFile, and cross_file for PlatformFile's own xFile getter. All
+  # three arrive transitively via file_picker anyway; declared directly so
+  # those imports don't silently depend on file_picker's dependency graph
+  # never changing.
   plugin_platform_interface: ^2.1.8
+  file_picker_platform_interface: ^4.0.0
+  cross_file: ^0.3.4
 
 flutter:
   uses-material-design: true

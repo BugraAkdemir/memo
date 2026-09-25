@@ -1,3 +1,175 @@
+# Handoff — 2026-09-26 — Tek istemci: `mobile/` emekliye ayrıldı, `frontend/` Android+iOS'a derleniyor
+
+## Oturum Özeti
+
+`yapacam.md` madde 2 tamamlandı. Ayrı `mobile/` Flutter projesi silindi (158
+takipli dosya, 13.444 satır), `frontend/`'e `android/` + `ios/` platform
+hedefleri eklendi. **13 commit, her biri kendi doğrulamasıyla; beş platformun
+tamamı CI'da yeşil** (android, ios, linux, macos, windows).
+
+Oturumun başında kullanıcının verdiği kararlar: hem Android hem iOS eklenecek
+ve **doğrulama yalnızca CI** (bu makinede Android SDK yok — `flutter doctor`
+"Unable to locate Android SDK", Java 8 var; Linux olduğu için Xcode hiç
+olmayacak), ses **gerçekten** port edilecek, bildirim servisi bu işin içinde
+port edilecek, bağlanma akışı minimum tutulacak, çöken/anlamsız masaüstü UI'ı
+gizlenecek, `mobile/` en sonda ayrı commit'te silinecek.
+
+## Commit'ler (sırayla, hepsi yeşil)
+
+| Commit | Ne |
+|---|---|
+| `e793bf71` | `flutter create --platforms=android,ios` |
+| `60170571` | `build-android.yml` + `build-ios.yml`, `build-mobile.yml` silindi |
+| `da11e351` | `file_picker` 6.2.1 → 13.1.0 (Android'in sert blokörü) |
+| `39eb75f0` | Native config: cleartext HTTP, mikrofon, bildirim izinleri, signing fallback |
+| `674d5b25` | `normalizeBackendUrl`: `*.ts.net` → https, mobilde loopback varsayılanı yok |
+| `566cbaec` | CLI aksiyonları mobilde gizli + `core/platform_capabilities.dart` |
+| `63b027cc` | Setup wizard'a sunucu adresi adımı + overlay önceliği |
+| `e1d40ec7` | `just_audio` ile mobil WAV çalma |
+| `0d7ea901` | OS seviyesi takvim hatırlatıcıları (`NotificationService` portu) |
+| `73950ba9` | `jni: 1.0.0` pin'inin Android'de ne anlama geldiği kaydedildi |
+| `e8bf9491` | Android system chrome (tema-duyarlı) + geri tuşu |
+| `bca2d2ea` | `mobile/` silindi |
+| `c9c6df2a` | Doküman süpürmesi (25 dosya, iki Obsidian kasası dahil) |
+
+## Planın yanıldığı yerler (önemli)
+
+1. **`flutter create`, `--no-pub`'a rağmen `pubspec.lock`'u ezdi** — 897 satır
+   gerçek çözümü 53 satırlık template lock ile değiştirdi. Ayrıca
+   `.metadata`'nın migration listesinden linux/windows/macos/web girdilerini
+   sildi. İkisi de commit öncesi `git diff` incelemesiyle yakalandı ve
+   onarıldı. **Ders: bu komutun çıktısına güvenilmez, diff'i okunur.**
+
+2. **`file_picker` bump'ı kolaylık değil, Android'in sert blokörüydü.** Planda
+   `saveFile()` için geç sıraya konmuş izole bir checkpoint'ti; ilk CI Android
+   build'i 6.2.1'in Android kaynağının kaldırılmış v1 embedding'ini
+   (`PluginRegistry.Registrar`) kullandığını gösterdi —
+   `:file_picker:compileDebugJavaWithJavac` "cannot find symbol" ile
+   patlıyordu. 7 major atlama gerekti: `FilePicker` statik oldu (11.0.0),
+   `FilePickerResult` kalktı ve `saveFile` `bytes` alıp dosyayı kendisi
+   yazıyor (12.0.0 — mobilde çalışmasının sebebi tam olarak bu),
+   `withData`/`allowMultiple`/`PlatformFile.bytes` kaldırıldı (13.0.0).
+   Web attach testinin enjeksiyon noktası (`FilePicker.platform`) yok olduğu
+   için test baştan yazıldı (`FilePickerPlatform.instance` + kendi
+   `PlatformFile`'ı). **Taban build'inin en başta koşulması tam bu sinyali
+   vermek içindi ve işe yaradı.**
+
+3. **Keşif ajanının "tray/maskot guard'sız" iddiası yanlıştı.** İkisi de
+   `general_tab.dart:58`'de `if (trayFeatureSupported)` ile bölüm listesinden
+   çıkarılıyor. Gerçekten açık olan tek madde `showCliActions`'dı
+   (`!kIsWeb && !Platform.isWindows` → Android/iOS'ta `true`).
+
+## `flutter_test` tuzağı (bundan sonra herkesi etkiler)
+
+**`flutter_test`, `defaultTargetPlatform`'u her testte `android`'e override
+ediyor.** Yani platforma bağlı her karar testte mobil dalı seçiyor. Bu oturumda
+üç ayrı yerde kırmızı yandı (`normalizeBackendUrl('')`, `WavPlayer`'ın
+subprocess testleri, "bu bilgisayarın backend'ine dön" butonu). İki kalıcı
+sonuç:
+
+1. Platform kararları **saf fonksiyon** olarak da açılıyor
+   (`isMobilePlatformFor(isWeb:, platform:)` gibi) ve exhaustive test ediliyor
+   — getter'lar tek başına harness'ın içinde bulunduğu durumdan başkasını
+   gösteremiyor.
+2. `WavPlayer`'a açık bir `backend` override'ı eklendi; yoksa Linux makinede
+   her subprocess testi plugin dalına giderdi.
+3. `testWidgets` içinde `debugDefaultTargetPlatformOverride` **gövde içinde**
+   sıfırlanmalı, `addTearDown`'da değil: testWidgets kendi tear-down'larından
+   önce tüm foundation debug değişkenlerinin null olmasını assert ediyor.
+
+Ayrıca: `BackendUnreachableOverlay`'e `setupCompleteProvider` guard'ı eklemek
+dört mevcut testi "A Timer is still pending" ile kırdı — notifier yapıcıda
+`GET /api/onboarding` atıyor ve `testWidgets`'in fake-async bölgesinde Dio'nun
+timeout timer'ları hiç ateşlenmiyor (stub adapter de kurtarmıyor, timer'lar yine
+kuruluyor). `SetupCompleteNotifier` artık `confirmWithBackend` bayrağı alıyor
+(varsayılan `true`), testler kapatıyor.
+
+## Bilinçli olarak port EDİLMEYENLER
+
+- **`ConnectScreen` (711 satır) + 254 host paralel LAN taraması + ngrok
+  otomatik eşleşmesi.** Setup wizard'ın sunucu adresi adımı asıl ihtiyacı
+  karşılıyor; keşif çok daha büyük bir yüzey ve iOS 14+'ta LAN taraması
+  `mobile/`'ın hiç beyan etmediği izinler istiyor — yani orada da bozuk
+  olabilirdi.
+- **Rutin bildirimleri** — zaten ölüydü, `/api/routines/mobile-ready` v3.9.0'da
+  backend'den kaldırılmış.
+- **`mobile/lib/core/api_client.dart`** — 119 `/api/...` yolu frontend'in
+  226'sının strict subset'i (tek istisna o ölü endpoint), hand-rolled SSE'si
+  `core/sse_stream{,_stub,_web}.dart` tarafından aşılmış, ~20 inline DTO'su
+  `lib/models/`'un kopyası.
+- **Haptics** (~15 çağrı yeri), code-drawn branding widget'ı, README
+  screenshot'ları.
+
+## Doğrulama
+
+- `flutter analyze lib/ test/` — sadece önceden var olan info bulguları
+  (4× `use_build_context_synchronously`, 1× `use_null_aware_elements`,
+  2× test'te `unnecessary_underscores`)
+- `flutter test` — **399/399 yeşil** (oturum başında 353; +46 yeni test)
+- `CGO_ENABLED=1 go build/vet -tags "sqlite_fts5" ./...` — OK
+- `CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race` — tüm paketler yeşil
+- Rule #8 L10n grep — her commit'te boş; 15 yeni anahtar (9 sunucu adımı +
+  6 bildirim) TR ve EN'de birlikte eklendi
+- **CI: android ✅ ios ✅ linux ✅ macos ✅ windows ✅** (son koşu `c9c6df2a`)
+
+## Kapsam DIŞI — takip işleri
+
+1. **Gerçek cihaz testi (en büyük artık risk).** CI derlendiğini ve link
+   olduğunu kanıtlıyor, çalıştığını değil. Kanıtlanmayanlar: ilk açılış
+   mikrofon izni, `record_android` 1.5.2'de `AudioEncoder.wav`, bildirim
+   teslimi + reboot'tan sağ çıkması, `just_audio` çalma + barge-in, Android
+   SAF kaydetme, geri tuşu, klavye inset'leri, dar düzenin tamamı. iOS için
+   Mac + iPhone gerekiyor.
+2. **Store yayını** — imzalama anahtarları, hesaplar, release hattında APK/IPA
+   yuvası (hiç yok). Nihai bundle kimliği açık karar (şu an
+   `com.memo.memo_flutter` / `com.memo.memoFlutter`; `mobile/`'ın
+   `com.memo.memo_mobile`'ı hiç yayınlanmadı, yani süreklilik yok).
+3. **iOS yerel ağ izni doğrulanmamış** — `NSAllowsArbitraryLoads` altında LAN
+   IP'sine düz HTTP genelde izinli, ama iOS 17/18'in onay diyaloğu kaldırıp
+   kaldırmadığı kesin değil. Soruyorsa `NSLocalNetworkUsageDescription`.
+4. **`IndexedStack` soğuk açılışı** (KNOWN_ISSUES M04) — artık yedi ekran,
+   telefonda hücresel bağlantı + pil üstünde ciddi. Lazy tab kurulumu kendi
+   işi (BUG-ONB4/5/6/11 hep bu kodda).
+5. **Mobilde Live Mode realtime** (M31) ve **bant dışı etkinlik
+   hatırlatıcıları** (M32) — ikisi de KNOWN_ISSUES'a yazıldı.
+6. **Masaüstü bildirimleri** artık `flutter_local_notifications` ağaçta olduğu
+   için mümkün (macOS imzalı uygulama + entitlement gerektiriyor).
+7. **Ertelenen bump'lar:** FLN 17 → 22, `timezone` 0.9 → 0.11, `audio_session`
+   0.1 → 0.2.
+8. **CI'da Android release build'i** — şu an sadece debug (keystore yok).
+9. **iOS `Podfile.lock` commit'lenmedi** — bu makinede üretilemiyor; CI'ın
+   ürettiğini commit'lemek ayrı bir iş.
+10. **Yol üstünde bulunan, bu işin yaratmadığı Rule #8 borcu:**
+    `frontend/lib/providers/recording_provider.dart:54` ve `:89`
+    `errorMessageProvider`'a ham Türkçe literal basıyor. `Text(`/`SnackBar(`
+    içinde olmadığı için Rule #8 grep'ine görünmüyor. Mobil geldiği için artık
+    daha önemli — telefonda mikrofon birincil girdi.
+
+## Repo hijyeni notları
+
+- **`.claude/skills/memo-release/SKILL.md:45`** "Do NOT touch
+  `frontend/pubspec.yaml` or `mobile/pubspec.yaml`" diyordu; mobil yarısı
+  düşürüldü. `.claude/` gitignore'lu olduğu için hiçbir commit'te görünmüyor,
+  bu yüzden buraya yazıldı.
+- **`yapacam.md` madde 2 ✅ TAMAMLANDI olarak işaretlendi** (o dosya da
+  gitignore'lu).
+- **`internal/app/config/config.yaml` tekrar eden tuzak:** `go test` bu takipli
+  dosyayı yeniden yazıyor (`user_name: Test`, `min_similarity`, `engine_mode:
+  cpu`…). Bu oturumda iki kez commit'e karışmak üzereydi, ikisinde de geri
+  alındı (biri `git commit --amend` ile). **Testlerin repo içindeki config'i
+  yazması gerçek bir kusur — kendi işi olarak açık.**
+
+## Sıradaki (öneri)
+
+- **v4.6.0 release'i** hâlâ kesilmedi (`version` dosyası `V4.5.0`) ve **EN
+  release notes ilk taslak halinde, 43+ commit geride** — TR'si `ac832389` ile
+  güncellendi, EN'e dokunulmadı. Artık bu oturumun 13 commit'i de eklenmesi
+  gereken malzeme.
+- `yapacam.md` madde 1 (canlı doğrulama turu) ve madde 3 (Live Mode Faz 3/4,
+  artık Faz 5'in önündeki engel kalktı).
+
+---
+
 # Handoff — 2026-09-25 — Belgelenmeyen 8 commit'in kaydı + doğrulama + push
 
 ## Oturum Özeti

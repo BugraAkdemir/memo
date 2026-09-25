@@ -7,7 +7,24 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Memo Flutter</string>
+	<string>Memo</string>
+	<!-- Memo's backend speaks plain HTTP over the LAN and has no TLS at all
+	     (see AGENTS.md), so App Transport Security has to allow cleartext or
+	     the app cannot reach a server at all. The iOS twin of Android's
+	     usesCleartextTraffic. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<!-- Shown in the system microphone permission prompt. Voice input
+	     records here and is transcribed by the backend (see
+	     providers/recording_provider.dart); without this string iOS kills
+	     the app the moment the mic is touched. Not localized through
+	     L10n — Info.plist is outside that mechanism; per-language
+	     InfoPlist.strings is follow-up work. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Memo uses the microphone to record what you say so it can be transcribed into your chat.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

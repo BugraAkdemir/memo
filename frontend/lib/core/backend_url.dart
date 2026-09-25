@@ -1,22 +1,6 @@
-import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
-/// Whether this build runs on a phone/tablet, where no local Memo backend
-/// can possibly exist.
-///
-/// `kIsWeb` has to be tested first and cannot be skipped: on web
-/// `defaultTargetPlatform` reports the *browser's* platform, so a page
-/// opened in Chrome on an Android phone answers `TargetPlatform.android`
-/// while still being the web build — which is served BY the backend it
-/// talks to and therefore wants the page-origin default, not the
-/// mobile one. Same ordering rule app_shell.dart documents for `Platform.*`.
-///
-/// Uses `defaultTargetPlatform` rather than `dart:io`'s `Platform` so this
-/// file stays importable from the web build.
-bool get isMobilePlatform =>
-    !kIsWeb &&
-    (defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS);
+import 'platform_capabilities.dart';
 
 /// The address to fall back on when nothing has been configured yet.
 ///

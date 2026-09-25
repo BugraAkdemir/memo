@@ -1,9 +1,9 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
+import '../../../core/platform_capabilities.dart';
 import '../../../core/tray_controller.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/mascot_provider.dart';
@@ -1302,7 +1302,11 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
   @override
   Widget build(BuildContext context) {
     final theme = MemoTheme.of(context);
-    final showCliActions = !kIsWeb && !Platform.isWindows;
+    // Was `!kIsWeb && !Platform.isWindows`, which is true on Android and
+    // iOS — so a phone showed "reinstall the CLI" for a binary that has no
+    // home directory to live in and no terminal to run it from. See
+    // cliInstallSupported.
+    final showCliActions = cliInstallSupported;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

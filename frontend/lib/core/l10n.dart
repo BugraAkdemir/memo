@@ -1427,6 +1427,16 @@ class L10n {
 
     // Mobil kurulumun ilk adımı — telefonda yerel backend olmadığı için
     // adresi kullanıcı girmek zorunda (bkz. core/platform_capabilities.dart).
+    // Mobil bildirimler (core/notification_service.dart) — kanal adı/açıklaması
+    // Android'in bildirim ayarları ekranında görünüyor.
+    'notif_channel_reminders': 'Takvim hatırlatıcıları',
+    'notif_channel_reminders_desc': 'Yaklaşan etkinlikler için hatırlatmalar',
+    'notif_starts_in_min': '{n} dakika içinde başlıyor',
+    'notif_starts_soon': 'Birazdan başlıyor',
+    'notif_permission_title': 'Hatırlatma bildirimleri',
+    'notif_permission_desc':
+        'Takvim etkinliklerin için, Memo kapalıyken bile telefonuna bildirim gelsin.',
+
     'setup_step_server': 'Sunucuya Bağlan',
     'setup_step_server_desc':
         'Memo\'nun beyni bilgisayarında çalışıyor; telefon ona bağlanıyor. Bilgisayarındaki Memo\'nun adresini gir.',
@@ -3645,6 +3655,14 @@ class L10n {
     'setup_wizard_title': 'An AI that runs on your own computer',
     'setup_subtitle':
         'A few short steps, then you\'re chatting. If you want, it can run without anything ever leaving your computer.',
+
+    'notif_channel_reminders': 'Calendar reminders',
+    'notif_channel_reminders_desc': 'Reminders for upcoming events',
+    'notif_starts_in_min': 'Starts in {n} minutes',
+    'notif_starts_soon': 'Starting soon',
+    'notif_permission_title': 'Reminder notifications',
+    'notif_permission_desc':
+        'Let Memo notify your phone about calendar events, even when Memo is closed.',
 
     'setup_step_server': 'Connect to your server',
     'setup_step_server_desc':

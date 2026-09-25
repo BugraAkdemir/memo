@@ -83,3 +83,12 @@ bool liveRealtimePlaybackSupportedFor({
   required TargetPlatform platform,
 }) =>
     !isWeb && platform == TargetPlatform.linux;
+
+/// Whether OS-scheduled local notifications are used on this platform.
+///
+/// Android and iOS only, deliberately: flutter_local_notifications also
+/// supports Linux and macOS, but macOS needs a signed app with the right
+/// entitlement and none of it can be verified from this development setup —
+/// see core/notification_service.dart.
+bool get notificationsSupported =>
+    isMobilePlatformFor(isWeb: kIsWeb, platform: defaultTargetPlatform);

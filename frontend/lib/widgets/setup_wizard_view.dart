@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/friendly_error.dart';
 import '../core/l10n.dart';
+import '../core/notification_service.dart';
 import '../core/platform_capabilities.dart';
 import '../core/theme.dart';
 import '../models/curated_models.dart';
@@ -47,6 +48,8 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   final _serverUrlController = TextEditingController();
   final _serverTokenController = TextEditingController();
   bool _serverTesting = false;
+  bool _notifPermissionGranted = false;
+  bool _notifPermissionAsking = false;
   // null = not tried yet, so the step shows neither a tick nor an error.
   bool? _serverOk;
 
@@ -136,6 +139,24 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
       _modelsOk = false;
     }
     if (mounted) setState(() => _checking = false);
+  }
+
+  /// Asks the OS for notification permission, from a place where the user
+  /// can see what it is for.
+  ///
+  /// Both platforms return the already-granted answer instead of prompting
+  /// again, so tapping this twice is harmless. There is no way to *revoke*
+  /// it from inside the app — that lives in system settings — so the toggle
+  /// only ever moves one way here.
+  Future<void> _askNotificationPermission() async {
+    if (_notifPermissionAsking) return;
+    setState(() => _notifPermissionAsking = true);
+    try {
+      final granted = await NotificationService.requestPermission();
+      if (mounted) setState(() => _notifPermissionGranted = granted);
+    } finally {
+      if (mounted) setState(() => _notifPermissionAsking = false);
+    }
   }
 
   /// Saves the typed address/token, rebuilds the API client against it and
@@ -765,6 +786,26 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                                             ? null
                                             : (_) => ref.read(minimalModeProvider.notifier).toggle(),
                                       ),
+                                      // Mobile only: asking for the OS
+                                      // notification permission here, rather
+                                      // than inside NotificationService.init(),
+                                      // is the whole point — init() at launch
+                                      // would fire a system prompt before the
+                                      // user had seen any of Memo's own UI or
+                                      // any reason for it.
+                                      if (notificationsSupported) ...[
+                                        SizedBox(height: 10),
+                                        _PreferenceToggle(
+                                          icon: Icons.notifications_active_outlined,
+                                          title: L10n.t('notif_permission_title'),
+                                          desc: L10n.t('notif_permission_desc'),
+                                          value: _notifPermissionGranted,
+                                          color: c,
+                                          onChanged: _notifPermissionAsking
+                                              ? null
+                                              : (_) => _askNotificationPermission(),
+                                        ),
+                                      ],
                                     ],
                                   );
                                 },

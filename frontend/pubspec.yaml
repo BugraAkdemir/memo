@@ -76,6 +76,15 @@ dependencies:
   # implementation, so those desktop builds gain no new native code from it.
   just_audio: ^0.10.6
 
+  # OS-scheduled local notifications, used for calendar reminders on Android
+  # and iOS (see core/notification_service.dart). Ported from the retired
+  # mobile client together with the same version constraints it used: those
+  # are the versions the ported code is known to work against, and 18/19
+  # changed zonedSchedule's argument surface. On Linux this resolves a pure
+  # Dart dbus implementation (no native code); Windows has none at all.
+  flutter_local_notifications: ^17.0.0
+  timezone: ^0.9.4
+
   # Charts (Settings usage-stats tab)
   fl_chart: ^0.68.0
 

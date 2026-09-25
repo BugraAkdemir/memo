@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/notification_service.dart';
+import '../core/platform_capabilities.dart';
 import '../core/theme.dart';
 import '../core/l10n.dart';
 import '../providers/auth_gate_provider.dart';
@@ -82,10 +84,19 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   bool _loading = true;
   String? _error;
   Timer? _refreshTimer;
+  AppLifecycleListener? _lifecycleListener;
 
   @override
   void initState() {
     super.initState();
+    // A phone that has been closed for days comes back with alarms that may
+    // no longer match the calendar. Cheaper than any poller: one reload when
+    // the app is actually brought back, nothing while it sleeps.
+    if (notificationsSupported) {
+      _lifecycleListener = AppLifecycleListener(
+        onResume: () => _load(silent: true),
+      );
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _load();
       // Start timer only if calendar tab is already active, then keep it
@@ -97,6 +108,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _lifecycleListener?.dispose();
     super.dispose();
   }
 
@@ -132,16 +144,68 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       final to = DateTime(_focused.year, _focused.month + 2, 0);
       final raw = await api.getCalendarEvents(from: from, to: to);
       if (!mounted) return;
+      final events = raw.map(_Event.fromJson).toList();
       setState(() {
-        _events = raw.map(_Event.fromJson).toList();
+        _events = events;
         _loading = false;
       });
+      await _rescheduleReminders(events);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = FriendlyError.describeGeneric(e);
         _loading = false;
       });
+    }
+  }
+
+  /// Re-arms the OS-level reminders for [events] on mobile.
+  ///
+  /// Deliberately driven off the calendar load rather than a poller: OS
+  /// alarms fire whether the app is running or not, so nothing needs to be
+  /// watching for them. The retired mobile client polled /api/events every
+  /// 30s to *notice* out-of-band changes, which in this app would mean an
+  /// always-on timer behind an IndexedStack that keeps every screen mounted
+  /// forever — exactly what AGENTS.md forbids. The cost of not polling is
+  /// that an event added while the calendar tab was never opened is not
+  /// armed until it is; that gap needs a real event stream, not a timer.
+  ///
+  /// A no-op off mobile: every NotificationService method early-returns
+  /// while uninitialized, and init() only runs where notifications are
+  /// supported.
+  Future<void> _rescheduleReminders(List<_Event> events) async {
+    if (!notificationsSupported) return;
+    try {
+      final settings = await ref.read(apiClientProvider).getCalendarSettings();
+      final lead = settings['reminder_lead_minutes'] as int? ?? 30;
+      final now = DateTime.now().toUtc();
+      for (final event in events) {
+        // A guessed start time is not worth waking someone up for.
+        if (event.hasInvalidDate) continue;
+        if (NotificationService.shouldSchedule(
+          startUtc: event.startTime,
+          leadMinutes: lead,
+          nowUtc: now,
+        )) {
+          await NotificationService.scheduleReminder(
+            eventId: event.id,
+            title: event.title,
+            whenUtc: NotificationService.fireTimeUtc(
+              startUtc: event.startTime,
+              leadMinutes: lead,
+            ),
+            minutesBefore: lead,
+          );
+        } else {
+          // Cancel rather than leave a stale alarm armed: an event whose
+          // time moved back, or that already happened, must not fire.
+          await NotificationService.cancelReminder(event.id);
+        }
+      }
+    } catch (e) {
+      // Reminders are a convenience layered on top of the calendar; a
+      // failure here must never surface as a calendar error.
+      debugPrint('calendar: reminder reschedule failed: $e');
     }
   }
 
@@ -178,6 +242,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     if (confirmed != true) return;
     try {
       await ref.read(apiClientProvider).deleteCalendarEvent(id);
+      // Drop the OS alarm too — _load's reschedule pass only sees events
+      // that still exist, so a deleted one would otherwise stay armed and
+      // fire for something that is gone.
+      await NotificationService.cancelReminder(id);
       await _load();
     } catch (e) {
       if (mounted) {

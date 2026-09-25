@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/l10n.dart';
+import 'core/notification_service.dart';
 import 'core/theme.dart';
 import 'core/tray_controller.dart';
 import 'providers/settings_provider.dart';
@@ -47,6 +48,11 @@ void main(List<String> args) async {
   };
 
   final prefs = await SharedPreferences.getInstance();
+  // Mobile only, and a no-op elsewhere — NotificationService.init() checks
+  // notificationsSupported itself, so this costs desktop and web a single
+  // boolean. Before runApp so a reminder tapped from the notification
+  // shade has a fully initialized plugin to report itself to.
+  await NotificationService.init();
   runApp(ProviderScope(
     overrides: [
       prefsProvider.overrideWithValue(prefs),

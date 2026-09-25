@@ -1,0 +1,72 @@
+name: Build Android
+
+# Replaces the old build-mobile.yml, which built the standalone mobile/
+# client. That project is being retired in favour of a single Flutter client,
+# so the Android APK now comes from frontend/ (yapacam.md item 2).
+on:
+  push:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/build-android.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/build-android.yml"]
+  workflow_dispatch:
+
+env:
+  FLUTTER_CHANNEL: stable
+
+jobs:
+  build:
+    name: Android (debug)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # subosito/flutter-action does not install a JDK, and AGP 8.x / Gradle
+      # 8.x need Java 17 — the runner's default JDK is not guaranteed to be
+      # one. This is the only setup-java in the repo, inherited from the
+      # workflow this file replaces.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: "${{ env.FLUTTER_CHANNEL }}"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /opt/hostedtoolcache/flutter
+            /home/runner/.pub-cache
+          key: flutter-${{ runner.os }}-android-${{ hashFiles('frontend/pubspec.lock') }}
+          restore-keys: flutter-${{ runner.os }}-android-
+
+      # Without this every run re-downloads AGP and vad's onnxruntime-android
+      # AAR (~100MB of Maven traffic), which dominates the job's runtime.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('frontend/android/**/*.gradle*', 'frontend/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Get dependencies
+        run: flutter pub get
+        working-directory: frontend
+
+      # No key.properties in this repo, so the release variant would fall back
+      # to the debug key anyway. Building debug explicitly keeps signing out of
+      # the picture entirely rather than relying on that fallback — same
+      # reasoning as the workflow this replaces.
+      - name: Build debug APK
+        run: flutter build apk --debug
+        working-directory: frontend
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: memo-frontend-android-debug-apk
+          path: frontend/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7

@@ -1,0 +1,54 @@
+name: Build iOS
+
+# There is no macOS or iOS hardware in this project's development setup, so
+# this workflow is the ONLY thing that ever compiles the iOS target. Kept in
+# its own file (matching build-linux/macos/windows.yml) so its trigger can be
+# narrowed independently — macOS runner minutes bill at a 10x multiplier.
+on:
+  push:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/build-ios.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/build-ios.yml"]
+  workflow_dispatch:
+
+env:
+  FLUTTER_CHANNEL: stable
+
+jobs:
+  build:
+    name: iOS (unsigned)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: "${{ env.FLUTTER_CHANNEL }}"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /Users/runner/hostedtoolcache/flutter
+            /Users/runner/.pub-cache
+          key: flutter-${{ runner.os }}-ios-${{ hashFiles('frontend/pubspec.lock') }}
+          restore-keys: flutter-${{ runner.os }}-ios-
+
+      - name: Get dependencies
+        run: flutter pub get
+        working-directory: frontend
+
+      # --no-codesign because there are no signing certificates and there is
+      # no plan to add any here; this proves the target compiles and links
+      # (pod install, including vad's onnxruntime-objc, runs as part of it).
+      # The result is not installable — no .ipa is possible without signing.
+      - name: Build iOS (no codesign)
+        run: flutter build ios --no-codesign
+        working-directory: frontend
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: memo-frontend-ios-app-unsigned
+          path: frontend/build/ios/iphoneos/Runner.app
+          retention-days: 7

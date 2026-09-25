@@ -1242,9 +1242,13 @@ class BackendUrlNotifier extends StateNotifier<String> {
   Future<void> save(String url) async {
     final trimmed = url.trim();
     if (trimmed.isEmpty) {
-      // Reset to default
+      // Reset to default. Goes through normalizeBackendUrl rather than
+      // repeating a literal, because the default is platform-dependent:
+      // on mobile there is no local backend to fall back to, so it is
+      // empty there (see defaultBackendUrl) — hardcoding loopback here
+      // would hand a phone an address that can never answer.
       await _prefs.remove('memo_api_base_url');
-      state = 'http://127.0.0.1:8090';
+      state = normalizeBackendUrl('');
       return;
     }
     // normalizeBackendUrl adds a scheme/port if missing (e.g. "127.0.0.1"

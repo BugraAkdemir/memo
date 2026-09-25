@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -148,6 +150,13 @@ void main() {
 
     testWidgets('"Bu Bilgisayarın Backend\'ine Dön" resets both fields to the local default',
         (tester) async {
+      // Desktop-only behaviour by definition: this button is hidden on
+      // mobile, where "this computer's backend" cannot exist. flutter_test
+      // reports android by default, so pin the platform explicitly — and
+      // clear it again inside the body rather than in addTearDown, because
+      // testWidgets asserts every foundation debug variable is back to null
+      // before its own tear-downs run.
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
       await pump(tester);
       await tester.tap(find.text(L10n.t('backend_unreachable_change_server')));
       await tester.pumpAndSettle();
@@ -158,6 +167,7 @@ void main() {
       );
       await tester.tap(find.text(L10n.t('reset_to_local_backend')));
       await tester.pumpAndSettle();
+      debugDefaultTargetPlatformOverride = null;
 
       expect(find.text(L10n.t('restart_required_title')), findsOneWidget);
       final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));

@@ -1,4 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -91,6 +93,12 @@ void main() {
     });
 
     test('save("") clears the pref entirely and resets to the local default', () async {
+      // The "local default" is platform-dependent — empty on mobile, where
+      // no local backend can exist (see defaultBackendUrl). flutter_test
+      // reports android by default, so pin the platform this case is
+      // actually about rather than asserting the harness's accident.
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
       final container = await _containerWith({'memo_api_base_url': 'http://192.168.1.106:8090'});
       addTearDown(container.dispose);
 

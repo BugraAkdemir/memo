@@ -1,4 +1,49 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+
+/// Whether this build runs on a phone/tablet, where no local Memo backend
+/// can possibly exist.
+///
+/// `kIsWeb` has to be tested first and cannot be skipped: on web
+/// `defaultTargetPlatform` reports the *browser's* platform, so a page
+/// opened in Chrome on an Android phone answers `TargetPlatform.android`
+/// while still being the web build — which is served BY the backend it
+/// talks to and therefore wants the page-origin default, not the
+/// mobile one. Same ordering rule app_shell.dart documents for `Platform.*`.
+///
+/// Uses `defaultTargetPlatform` rather than `dart:io`'s `Platform` so this
+/// file stays importable from the web build.
+bool get isMobilePlatform =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS);
+
+/// The address to fall back on when nothing has been configured yet.
+///
+/// Takes its inputs as explicit parameters instead of reading `kIsWeb` /
+/// `defaultTargetPlatform` / `Uri.base` internally so every combination is
+/// unit-testable under `flutter test` (which runs on the VM, where the app
+/// is neither web nor mobile) — the same reason [webBackendUrl] below takes
+/// its origins as parameters.
+///
+/// - **web** → [pageOrigin]. The embedded web app is always served BY the
+///   exact backend it must talk to (see internal/webserver), so the page's
+///   own origin is always right.
+/// - **mobile** → empty. A phone never runs Memo's Go backend, so there is
+///   no defensible guess at all: 127.0.0.1 would point at the phone itself
+///   and guarantee a broken state. Empty means "the user has to tell us",
+///   which is what the setup wizard's server-address step is for.
+/// - **desktop** → `http://127.0.0.1:8090`, where the user plausibly
+///   started a backend themselves.
+String defaultBackendUrl({
+  required bool isWeb,
+  required bool isMobile,
+  required String pageOrigin,
+}) {
+  if (isWeb) return pageOrigin;
+  if (isMobile) return '';
+  return 'http://127.0.0.1:8090';
+}
 
 /// Normalizes a user-typed backend address into a full URL Dio's
 /// `BaseOptions` will accept without throwing.
@@ -18,30 +63,41 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 /// before this existed.
 ///
 /// - Missing scheme ("127.0.0.1", "192.168.1.50:9000") gets "http://"
-///   prepended — Memo's backend is plain HTTP, never TLS (see AGENTS.md).
+///   prepended — Memo's backend is plain HTTP, never TLS (see AGENTS.md) —
+///   *except* a Tailscale Funnel host ("*.ts.net"), which gets "https://".
 ///   A scheme the user *did* type (http:// or https://) is left alone.
-/// - Missing port gets Memo's own default (8090) appended, so
-///   "192.168.1.50" and "192.168.1.50:8090" behave identically; an
-///   explicit port (e.g. ":1234") is always respected.
+/// - Missing port gets Memo's own default (8090) appended **only for
+///   http**, so "192.168.1.50" and "192.168.1.50:8090" behave identically;
+///   an explicit port (e.g. ":1234") is always respected. An https URL
+///   never gets a port forced onto it: Funnel serves over standard,
+///   implicit 443, and ":8090" there breaks the connection outright. That
+///   rule (and the *.ts.net one above) came from the retired mobile client,
+///   which reached Memo over Funnel routinely and had them from the start;
+///   this copy used to force 8090 onto every scheme and so could not talk
+///   to a Funnel address at all.
+/// - Empty/unparseable input falls back to [defaultBackendUrl], which is
+///   platform-dependent — notably empty on mobile.
 String normalizeBackendUrl(String input) {
-  // On web, this app is always served BY the exact Memo backend it needs
-  // to talk to (embedded into the Go binary, see internal/webserver) —
-  // the page's own origin is always the right default, unlike desktop
-  // where 127.0.0.1 is a reasonable guess for "the backend I might have
-  // started myself." Hardcoding 127.0.0.1:8090 here for web was actively
-  // wrong the moment the page is loaded from any address other than
-  // localhost (e.g. a phone/laptop opening http://192.168.1.106:8090/ on
-  // the LAN) — every API call would try to reach that *client's own*
-  // loopback address instead of the server that served the page, the
-  // same client/server confusion class as the file-picker bug fixed
-  // earlier this session. Uri.base is meaningless on non-web platforms
-  // (resolves to a file:// URI or the process cwd), so this is
-  // deliberately gated on kIsWeb rather than applied universally.
-  final fallback = kIsWeb ? Uri.base.origin : 'http://127.0.0.1:8090';
-  final trimmed = input.trim();
+  // Uri.base is meaningless on non-web platforms (resolves to a file:// URI
+  // or the process cwd), so it is only read when kIsWeb is already true.
+  final fallback = defaultBackendUrl(
+    isWeb: kIsWeb,
+    isMobile: isMobilePlatform,
+    pageOrigin: kIsWeb ? Uri.base.origin : '',
+  );
+  final trimmed = input.trim().replaceAll(RegExp(r'/+$'), '');
   if (trimmed.isEmpty) return fallback;
 
-  final withScheme = trimmed.contains('://') ? trimmed : 'http://$trimmed';
+  final String withScheme;
+  if (trimmed.contains('://')) {
+    withScheme = trimmed;
+  } else {
+    // Split on ':' to look at the host alone — "myhost.ts.net:8443" must
+    // still be recognised as a Funnel host.
+    final host = trimmed.split(':').first;
+    withScheme =
+        (host.endsWith('.ts.net') ? 'https://' : 'http://') + trimmed;
+  }
   final uri = Uri.tryParse(withScheme);
   if (uri == null || uri.host.isEmpty) {
     // Never seen a genuinely unparseable host in practice, but this must
@@ -50,7 +106,8 @@ String normalizeBackendUrl(String input) {
     return fallback;
   }
 
-  final normalized = uri.replace(port: uri.hasPort ? uri.port : 8090);
+  final normalized =
+      (!uri.hasPort && uri.scheme == 'http') ? uri.replace(port: 8090) : uri;
   final result = normalized.toString();
   return result.endsWith('/') ? result.substring(0, result.length - 1) : result;
 }

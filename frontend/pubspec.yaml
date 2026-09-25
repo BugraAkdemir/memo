@@ -102,6 +102,18 @@ dependencies:
 # which clang>=16 rejects as a hard error (incompatible-pointer-types);
 # 1.0.3 entered the lockfile collaterally via pub get and broke every
 # desktop build. Pin the last compiling version until upstream fixes it.
+#
+# Since android/ became a real target this pin is no longer only a desktop
+# build shim: jni is on the tree solely because path_provider_android 2.3.1
+# depends on jni + jni_flutter (verified with `flutter pub deps`), and
+# path_provider on Android is implemented in Dart over those bindings — so
+# 1.0.0 is the JNI bridge actually running inside the APK, not just a
+# compile-time detail. If anything the pin matters MORE there: jni's native
+# .so is built by the NDK's clang, and NDK r26/r27 ship clang 17/18, the same
+# generation that rejects the missing cast. The first Android CI build ran
+# with this pin in place and was green, so it stays. There is no per-platform
+# dependency_overrides, so if it ever becomes wrong for Android while still
+# required on desktop, the only real fix is moving path_provider_android.
 dependency_overrides:
   jni: 1.0.0
   record_linux: ^1.0.0

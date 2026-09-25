@@ -31,6 +31,8 @@ gizlenecek, `mobile/` en sonda ayrı commit'te silinecek.
 | `e8bf9491` | Android system chrome (tema-duyarlı) + geri tuşu |
 | `bca2d2ea` | `mobile/` silindi |
 | `c9c6df2a` | Doküman süpürmesi (25 dosya, iki Obsidian kasası dahil) |
+| `ceee22d3` | Bu handoff girdisi |
+| `e1c06831` | Kendi kodumun düzeltmesi: hatırlatıcılar 20 saniyede bir yeniden kurulmuyor |
 
 ## Planın yanıldığı yerler (önemli)
 
@@ -158,6 +160,20 @@ kuruluyor). `SetupCompleteNotifier` artık `confirmWithBackend` bayrağı alıyo
   cpu`…). Bu oturumda iki kez commit'e karışmak üzereydi, ikisinde de geri
   alındı (biri `git commit --amend` ile). **Testlerin repo içindeki config'i
   yazması gerçek bir kusur — kendi işi olarak açık.**
+
+## Oturum sonu öz-denetimi (bir gerçek bulgu)
+
+Commit'ler bittikten sonra kendi kodum gözden geçirildi ve bir verimsizlik
+bulundu: hatırlatıcı yeniden-kurma turu `calendar_screen`'in `_load`'undan
+çağrılıyor, o da takvim sekmesi açıkken 20 saniyede bir koşuyor — yani telefonda
+dakikada dört kez, hiç değişmemiş alarmlar için etkinlik başına bir
+`zonedSchedule` platform çağrısı. `e1c06831` bunu etkinlik id'leri + başlangıç
+saatleri + kurşun süresinden oluşan bir fingerprint'e bağladı. Kurşun süresi
+bilinçli olarak fingerprint'in içinde: dışında bıraksaydım Ayarlar'dan süreyi
+değiştirmek "değişmedi" diye atlanırdı, ki bu kaldırdığım fazla işten daha kötü
+bir hata olurdu. Resume hook'u fingerprint'i sıfırlıyor (o hook'un tüm amacı
+alarmların şüpheli olduğu durum), ve fingerprint ancak ayar çekimi başarılı
+olduktan sonra kaydediliyor ki geçici bir hata "yapıldı" diye hatırlanmasın.
 
 ## Sıradaki (öneri)
 

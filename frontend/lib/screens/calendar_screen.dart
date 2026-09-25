@@ -94,7 +94,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     // the app is actually brought back, nothing while it sleeps.
     if (notificationsSupported) {
       _lifecycleListener = AppLifecycleListener(
-        onResume: () => _load(silent: true),
+        onResume: () {
+          // Drop the fingerprint so the reload genuinely re-arms rather than
+          // deciding nothing changed: the point of the resume hook is a phone
+          // that has been closed long enough for its alarms to be in doubt.
+          _remindersFingerprint = null;
+          _load(silent: true);
+        },
       );
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -173,11 +179,25 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   /// A no-op off mobile: every NotificationService method early-returns
   /// while uninitialized, and init() only runs where notifications are
   /// supported.
+  /// Fingerprint of what reminders were last armed for, so the 20s refresh
+  /// while the calendar tab is open doesn't re-arm every alarm on every tick.
+  /// The settings fetch still happens each time — it is one local GET, while
+  /// the part worth skipping is N platform-channel calls on a phone. Folding
+  /// the lead time into the fingerprint is what makes changing it in Settings
+  /// actually take effect rather than being skipped as "unchanged".
+  String? _remindersFingerprint;
+
   Future<void> _rescheduleReminders(List<_Event> events) async {
     if (!notificationsSupported) return;
     try {
       final settings = await ref.read(apiClientProvider).getCalendarSettings();
       final lead = settings['reminder_lead_minutes'] as int? ?? 30;
+      final fingerprint = [
+        'lead=$lead',
+        ...events.map((e) => '${e.id}|${e.startTime.toUtc().toIso8601String()}'),
+      ].join(';');
+      if (fingerprint == _remindersFingerprint) return;
+      _remindersFingerprint = fingerprint;
       final now = DateTime.now().toUtc();
       for (final event in events) {
         // A guessed start time is not worth waking someone up for.

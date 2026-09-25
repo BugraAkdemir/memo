@@ -62,3 +62,24 @@ bool cliInstallSupportedFor({
 }) =>
     !isWeb &&
     (platform == TargetPlatform.linux || platform == TargetPlatform.macOS);
+
+/// Whether Live Mode's *native realtime* engines (Google Live, OpenAI
+/// Realtime) can actually play their audio here.
+///
+/// Those engines stream small PCM chunks into a long-lived sink, which
+/// core/live_pcm_player.dart implements by piping into `paplay`/`aplay` —
+/// Linux only, and already throwing UnsupportedError on macOS and Windows
+/// long before mobile existed. Rather than let a phone tap into a guaranteed
+/// exception, callers use this to fall back to the discrete
+/// VAD -> transcribe -> chat -> synthesize loop, whose playback (WavPlayer)
+/// does work on mobile.
+bool get liveRealtimePlaybackSupported => liveRealtimePlaybackSupportedFor(
+      isWeb: kIsWeb,
+      platform: defaultTargetPlatform,
+    );
+
+bool liveRealtimePlaybackSupportedFor({
+  required bool isWeb,
+  required TargetPlatform platform,
+}) =>
+    !isWeb && platform == TargetPlatform.linux;

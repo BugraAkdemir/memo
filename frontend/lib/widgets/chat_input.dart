@@ -10,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/l10n.dart';
+import '../core/platform_capabilities.dart';
 import '../core/theme.dart';
 import 'glass_surface.dart';
 import '../models/agent.dart';
@@ -1394,8 +1395,18 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                 // selected engine, so native engines silently fell back to
                 // local whisper.cpp transcription instead of ever opening
                 // their own session.
-                if (const {'google_live', 'openai_realtime'}
-                    .contains(ref.watch(liveModeConfigProvider).valueOrNull?.activeEngine))
+                // liveRealtimePlaybackSupported gates this too: the native
+                // engines' streaming PCM playback (core/live_pcm_player.dart)
+                // is Linux-only — it already threw UnsupportedError on macOS
+                // and Windows before mobile was a target. Falling through to
+                // the discrete loop is a deliberate fallback here, not the
+                // silent one described above: that one happened regardless of
+                // platform and lost a working native session, while this one
+                // only fires where the native session cannot produce sound at
+                // all, and the discrete loop's playback (WavPlayer) does work.
+                if (liveRealtimePlaybackSupported &&
+                    const {'google_live', 'openai_realtime'}
+                        .contains(ref.watch(liveModeConfigProvider).valueOrNull?.activeEngine))
                   ..._buildRealtimeVoiceControls(ref)
                 else
                   ..._buildDiscreteVoiceControls(ref),

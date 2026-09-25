@@ -67,6 +67,15 @@ dependencies:
   # 1.5 for why this package was picked over alternatives.
   vad: ^0.0.8
 
+  # TTS/clip playback on Android and iOS only. Desktop keeps playing WAVs
+  # through platform subprocesses (paplay/afplay/PowerShell) — see
+  # core/wav_player.dart, which exists precisely BECAUSE audioplayers was
+  # removed: audioplayers_linux needs GStreamer (gst-plugins-good), a
+  # widespread missing dependency on minimal/headless Linux installs.
+  # just_audio endorses android/ios/macos/web only, with no Linux or Windows
+  # implementation, so those desktop builds gain no new native code from it.
+  just_audio: ^0.10.6
+
   # Charts (Settings usage-stats tab)
   fl_chart: ^0.68.0
 

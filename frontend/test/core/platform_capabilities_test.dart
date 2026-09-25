@@ -100,4 +100,33 @@ void main() {
       );
     });
   });
+
+  group('liveRealtimePlaybackSupportedFor', () {
+    test('linux only — live_pcm_player.dart has no other implementation', () {
+      expect(
+        liveRealtimePlaybackSupportedFor(
+            isWeb: false, platform: TargetPlatform.linux),
+        isTrue,
+      );
+      for (final p in [
+        TargetPlatform.macOS,
+        TargetPlatform.windows,
+        ...mobile,
+      ]) {
+        expect(
+          liveRealtimePlaybackSupportedFor(isWeb: false, platform: p),
+          isFalse,
+          reason: '$p has no streaming PCM playback path',
+        );
+      }
+    });
+
+    test('false on web', () {
+      expect(
+        liveRealtimePlaybackSupportedFor(
+            isWeb: true, platform: TargetPlatform.linux),
+        isFalse,
+      );
+    });
+  });
 }

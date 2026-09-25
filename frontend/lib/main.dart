@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -76,14 +77,38 @@ class MemoApp extends ConsumerWidget {
       _ => ThemeMode.system,
     };
 
-    return TrayController(
-      child: MaterialApp(
-        title: 'Memo',
-        debugShowCheckedModeBanner: false,
-        theme: MemoTheme.themeData,
-        darkTheme: MemoTheme.darkThemeData,
-        themeMode: themeMode,
-        home: AppShell(),
+    // Status bar / navigation bar styling on Android. Ported from the retired
+    // mobile client, but theme-aware rather than a fixed dark style set once
+    // in main(): this app has light and dark themes, and mobile/ only ever had
+    // one. AnnotatedRegion re-applies it whenever the resolved brightness
+    // changes, including a live system-theme switch under ThemeMode.system.
+    // A harmless no-op off Android.
+    final brightness = switch (themeMode) {
+      ThemeMode.light => Brightness.light,
+      ThemeMode.dark => Brightness.dark,
+      ThemeMode.system => MediaQuery.platformBrightnessOf(context),
+    };
+    final darkUi = brightness == Brightness.dark;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: darkUi ? Brightness.light : Brightness.dark,
+        statusBarBrightness: brightness,
+        systemNavigationBarColor:
+            darkUi ? MemoTheme.dark.bgApp : MemoTheme.light.bgApp,
+        systemNavigationBarIconBrightness:
+            darkUi ? Brightness.light : Brightness.dark,
+      ),
+      child: TrayController(
+        child: MaterialApp(
+          title: 'Memo',
+          debugShowCheckedModeBanner: false,
+          theme: MemoTheme.themeData,
+          darkTheme: MemoTheme.darkThemeData,
+          themeMode: themeMode,
+          home: AppShell(),
+        ),
       ),
     );
   }

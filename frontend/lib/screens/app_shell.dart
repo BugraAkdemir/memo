@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
 
 import '../core/l10n.dart';
+import '../core/platform_capabilities.dart';
 import '../core/theme.dart';
 import '../models/agent.dart';
 import '../providers/settings_provider.dart';
@@ -316,100 +317,123 @@ class _AppShellState extends ConsumerState<AppShell> {
     // the inline task card in chat can render without a screen owning it.
     ref.watch(chatTasksProvider);
 
-    return Shortcuts(
-      shortcuts: {
-        const SingleActivator(LogicalKeyboardKey.tab, shift: true):
-            _ToggleAutoPermissionIntent(),
+    // The tabs are an IndexedStack, not Navigator routes, so Android's system
+    // back gesture has nothing to pop and would exit the app from any tab —
+    // the single most obviously-broken-feeling thing about a phone build.
+    // Handle the two things back should mean here (close the drawer, then
+    // return to chat) and only let it exit from chat itself with nothing open.
+    return PopScope(
+      canPop: !isMobilePlatform,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || !isMobilePlatform) return;
+        final scaffold = _scaffoldKey.currentState;
+        if (scaffold?.isDrawerOpen ?? false) {
+          scaffold!.closeDrawer();
+          return;
+        }
+        if (ref.read(activeTabProvider) != 0) {
+          _handleTabChange(0);
+          return;
+        }
+        // Nothing left to go back to: hand the gesture to the OS, which is
+        // what canPop:false otherwise suppresses.
+        SystemNavigator.pop();
       },
-      child: Actions(
-        actions: {
-          _ToggleAutoPermissionIntent: CallbackAction<_ToggleAutoPermissionIntent>(
-            onInvoke: (intent) {
-              ref.read(agentAutoPermissionProvider.notifier).toggle();
-              return null;
-            },
-          ),
+      child: Shortcuts(
+        shortcuts: {
+          const SingleActivator(LogicalKeyboardKey.tab, shift: true):
+              _ToggleAutoPermissionIntent(),
         },
-        child: Scaffold(
-          key: _scaffoldKey,
-          backgroundColor: MemoTheme.of(context).bgApp,
-          drawer: narrow ? _buildMobileNavDrawer() : null,
-          body: Stack(
-            children: [
-              // Glass Light paints a soft gradient behind everything so the
-              // frosted surfaces have something to diffuse. Dark themes have no
-              // gradient and fall through to the solid scaffold background.
-              if (MemoTheme.of(context).backgroundGradient != null)
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: MemoTheme.of(context).backgroundGradient,
+        child: Actions(
+          actions: {
+            _ToggleAutoPermissionIntent: CallbackAction<_ToggleAutoPermissionIntent>(
+              onInvoke: (intent) {
+                ref.read(agentAutoPermissionProvider.notifier).toggle();
+                return null;
+              },
+            ),
+          },
+          child: Scaffold(
+            key: _scaffoldKey,
+            backgroundColor: MemoTheme.of(context).bgApp,
+            drawer: narrow ? _buildMobileNavDrawer() : null,
+            body: Stack(
+              children: [
+                // Glass Light paints a soft gradient behind everything so the
+                // frosted surfaces have something to diffuse. Dark themes have no
+                // gradient and fall through to the solid scaffold background.
+                if (MemoTheme.of(context).backgroundGradient != null)
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: MemoTheme.of(context).backgroundGradient,
+                      ),
                     ),
                   ),
-                ),
-              // Keeps every screen's content — top bars, the composer's
-              // bottom edge, the NavRail in landscape — clear of the status
-              // bar / display cutout / home indicator on mobile and mobile
-              // web. Every inset is 0 on desktop, so it is a no-op there.
-              // The background gradient above is a separate Stack child and
-              // still paints edge-to-edge behind the inset content.
-              SafeArea(
-                child: Row(
-                children: [
-                  if (!narrow) _buildNavRail(),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: IndexedStack(
-                            index: _currentIndex,
-                            children: [
-                              ChatScreen(key: ValueKey('chat_$locale')),
-                              const AgentScreen(),
-                              ModelStoreScreen(
-                                  key: ValueKey('models_$locale')),
-                              const CalendarScreen(),
-                              const RoutinesScreen(),
-                              const DeveloperScreen(),
-                              // Always present in the stack so index 6 stays
-                              // stable; the nav button is gated separately
-                              // (Beta + !macOS). IndexedStack keeps this
-                              // mounted forever — polling is started/stopped
-                              // in _handleTabChange (KNOWN_ISSUES M04).
-                              const SwarmScreen(),
-                            ],
+                // Keeps every screen's content — top bars, the composer's
+                // bottom edge, the NavRail in landscape — clear of the status
+                // bar / display cutout / home indicator on mobile and mobile
+                // web. Every inset is 0 on desktop, so it is a no-op there.
+                // The background gradient above is a separate Stack child and
+                // still paints edge-to-edge behind the inset content.
+                SafeArea(
+                  child: Row(
+                  children: [
+                    if (!narrow) _buildNavRail(),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: IndexedStack(
+                              index: _currentIndex,
+                              children: [
+                                ChatScreen(key: ValueKey('chat_$locale')),
+                                const AgentScreen(),
+                                ModelStoreScreen(
+                                    key: ValueKey('models_$locale')),
+                                const CalendarScreen(),
+                                const RoutinesScreen(),
+                                const DeveloperScreen(),
+                                // Always present in the stack so index 6 stays
+                                // stable; the nav button is gated separately
+                                // (Beta + !macOS). IndexedStack keeps this
+                                // mounted forever — polling is started/stopped
+                                // in _handleTabChange (KNOWN_ISSUES M04).
+                                const SwarmScreen(),
+                              ],
+                            ),
                           ),
-                        ),
-                        // Hidden on mobile — the model/memory status strip
-                        // reads as clutter at phone width and its info is
-                        // secondary to the actual conversation there.
-                        if (!narrow)
-                          EngineStrip(
-                            onOpenModels: () => _handleTabChange(2),
-                          ),
-                      ],
+                          // Hidden on mobile — the model/memory status strip
+                          // reads as clutter at phone width and its info is
+                          // secondary to the actual conversation there.
+                          if (!narrow)
+                            EngineStrip(
+                              onOpenModels: () => _handleTabChange(2),
+                            ),
+                        ],
+                      ),
                     ),
+                  ],
                   ),
-                ],
                 ),
-              ),
-              // One floating hamburger, present on every screen regardless
-              // of whether that screen has its own header — Developer/
-              // Models/Calendar/Routines/Swarm never had a menu
-              // button of their own (only Chat/Agent did, for their own
-              // sidebars), so without this a mobile user navigating there
-              // from _buildMobileNavDrawer had no way back. Replaces the
-              // per-screen menu buttons Chat/Agent used to render.
-              if (narrow) _buildMobileNavButton(),
-              SetupWizardOverlay(),
-              if (_showLaunchpad) _buildLaunchpadOverlay(),
-              if (_showTour) _buildTourOverlay(),
-              LlamaInstallerOverlay(),
-              const BackendUnreachableOverlay(),
-              const AuthGateOverlay(),
-              const VersionBanner(),
-              const ProactiveSuggestionBanner(),
-            ],
+                // One floating hamburger, present on every screen regardless
+                // of whether that screen has its own header — Developer/
+                // Models/Calendar/Routines/Swarm never had a menu
+                // button of their own (only Chat/Agent did, for their own
+                // sidebars), so without this a mobile user navigating there
+                // from _buildMobileNavDrawer had no way back. Replaces the
+                // per-screen menu buttons Chat/Agent used to render.
+                if (narrow) _buildMobileNavButton(),
+                SetupWizardOverlay(),
+                if (_showLaunchpad) _buildLaunchpadOverlay(),
+                if (_showTour) _buildTourOverlay(),
+                LlamaInstallerOverlay(),
+                const BackendUnreachableOverlay(),
+                const AuthGateOverlay(),
+                const VersionBanner(),
+                const ProactiveSuggestionBanner(),
+              ],
+            ),
           ),
         ),
       ),

@@ -14,7 +14,7 @@ Sidebar → **Routines** lets you describe, in plain language, something Memo sh
 
 - **Two execution paths**, chosen by `Routine.AgentMode`: a plain LLM call with deterministically pre-fetched context (`ContextSource` — `none`/`calendar`/`whatsapp`/`insight`, fetched in Go rather than trusting an unattended tool call), or the full agent/tool pipeline for tasks like "git pull and report status" — the latter requires `AutoApproveTools` set at creation time, since there's no human present to answer a permission prompt when it fires.
 - **Per-device timezone.** `Schedule.UTCOffsetMinutes` captures the creating device's UTC offset at creation time (not the backend host's local time) — `ParseFireTime` interprets `TimeOfDay` against that offset, and the offset **automatically resyncs on every (re)connect** (`/api/routines/sync-offset`) so travel or a DST change corrects itself instead of staying frozen at whatever was true the day the routine was created. A routine created before this field existed (nil offset) falls back to the previous host-local-time behavior.
-- **Works on desktop and mobile.** The mobile app has no push channel, so `RoutineLoop` pre-generates content ahead of the fire time and the mobile app polls `/api/routines/mobile-ready` to pre-schedule a real local notification — it still arrives even if the app isn't open.
+- **Works on desktop and mobile.** Routine *delivery to the phone* was removed in v3.9.0 along with the `/api/routines/mobile-ready` endpoint it relied on; routines now reach you through WhatsApp/Telegram self-chat. Calendar reminders are unaffected and, on a phone, are scheduled with the OS itself, so they arrive even when the app is closed.
 - **Language-aware output.** `Routine.Language` (captured client-side at creation) drives the notification title, the "nothing due today" filler text, and the system prompt used for the non-agent path — previously this always came out in Turkish regardless of the user's setting.
 - **Delivery:** in-chat, and optionally to a WhatsApp target JID (`DeliveryWhatsApp`) or as a mobile notification (`DeliveryMobile`).
 
@@ -25,7 +25,6 @@ Sidebar → **Routines** lets you describe, in plain language, something Memo sh
 | `GET`/`POST` | `/api/routines` | List / create routines |
 | `POST` | `/api/routines/parse` | Turn plain-language text into a draft routine |
 | `GET`/`PUT`/`DELETE` | `/api/routines/{id}` | Get/update/delete a routine |
-| `GET` | `/api/routines/mobile-ready` | Mobile polling endpoint for pre-scheduling local notifications |
 | `POST` | `/api/routines/sync-offset` | Resync a client's UTC offset against its routines |
 
 ---
@@ -78,7 +77,7 @@ Calendar      Observer
 (event)       (habit/declaration)
     │
     ▼
-ReminderLoop → AppEvent → Mobile Local Notification
+ReminderLoop → AppEvent → OS notification on the phone
 ```
 
 ---
@@ -135,7 +134,7 @@ When an event is detected (e.g. WhatsApp "football tomorrow at 11") it is immedi
 Lead time is user-configurable: **10 min / 15 min / 30 min / 1 hour / 2 hours**.
 
 ### Mobile Calendar Tab
-The mobile app ([[Mobile App]]) has a new **Calendar** tab:
+On a phone ([[Mobile App]]) the **Calendar** tab offers:
 - Monthly grid with event dots
 - Tap a day to see that day's events
 - Manual event creation

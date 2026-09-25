@@ -1,5 +1,9 @@
 # PLAN — Sesli Live Mod ("Hey Memo")
 
+> **2026-09-26 — kısmen aşıldı:** bu plan yazıldığında Android hedefi ayrı
+> `mobile/` projesiydi. `mobile/` emekliye ayrıldı; "Android" bu plan boyunca
+> artık `frontend/`'in Android build'i demek. Fazların içeriği değişmedi.
+
 > **Durum: FİKİR AŞAMASI.** Bu dosya henüz kod yazılmamış, kapsamı
 > netleşmemiş, hangi sürümde (v3.3.4 sonrası mı, ayrı bir majör mü)
 > gireceği belirlenmemiş bir özelliğin beyin fırtınası kaydıdır — bir

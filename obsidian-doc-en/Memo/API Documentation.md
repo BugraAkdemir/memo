@@ -101,7 +101,6 @@ Details: [[Telegram Integration]]
 | `GET`/`POST` | `/api/routines` | List / create routines |
 | `POST` | `/api/routines/parse` | Turn plain-language text into a draft routine |
 | `GET`/`PUT`/`DELETE` | `/api/routines/{id}` | Get/update/delete a routine |
-| `GET` | `/api/routines/mobile-ready` | Mobile polling endpoint for pre-scheduled local notifications |
 | `POST` | `/api/routines/sync-offset` | Resync a client's UTC offset |
 
 Details: [[Proactive Learning and Calendar]]

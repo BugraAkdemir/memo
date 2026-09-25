@@ -66,20 +66,32 @@ varsayımsal değil:
 
 ## Mobil
 
-`mobile/` (ayrı, daha küçük bir Flutter projesi — 26 dart dosyası,
-`frontend/`'in 190'ına karşı) bu geçiş itibarıyla hâlâ aktif geliştiriliyor
-(yakın `fix(mobile)`/`feat(mobile)` commit'lerine bakın) — `frontend/`'e
-Android/iOS hedefi eklenip `mobile/`'ın kaldırılması yönündeki önceki bir
-iç plan (henüz) gerçekleşmedi; kontrol etmeden gerçekleştiğini varsayma.
+**Tamamlandı (2026-09-26): artık tek bir Flutter istemcisi var.** Ayrı
+`mobile/` projesi emekliye ayrıldı; `frontend/` artık `android/` ve `ios/`
+hedeflerine sahip ve telefona giden o. Yani özellik paritesi denetlenecek
+bir şey değil, yapısal olarak sağlanıyor. İki hedef de CI'da derleniyor
+(`build-android.yml`, `build-ios.yml`) — Android debug APK, iOS imzasız;
+çünkü bu projenin ne macOS/iOS donanımı ne de imzalama sertifikası var.
 
-- **CI'da iOS build doğrulaması** — `mobile/ios/` tam bir Xcode proje
-  iskeletine sahip ama şu an CI'da hiçbir şey onu derlemiyor.
-- **Uzaktan backend bağlantısı** — masaüstü istemcideki aynı "Backend
-  URL + Token" akışının `mobile/`'a getirilmesi.
-- **Masaüstüne karşı özellik paritesi denetimi** — ajan modu, hafıza
-  görünümü ve diğer masaüstüne özel yüzeylerin gerçekten eksik mi yoksa
-  bilinçli olarak dışarıda mı bırakıldığına karar vermek için açık bir
-  geçiş gerekiyor.
+Bunun açık bıraktıkları:
+
+- **Gerçek cihaz doğrulaması** — CI yalnızca derlendiğini ve link olduğunu
+  kanıtlıyor. Gerçek donanımda kanıtlanmayanlar: ilk açılış mikrofon izni,
+  Android'de `record`'un WAV yolu, bildirim teslimi ve reboot'tan sağ
+  çıkması, `just_audio` çalma + sesli modda sözü kesme, Android kaydet/
+  paylaş diyaloğu, geri tuşu, klavye inset'leri ve dar düzenin tamamı. iOS
+  için Mac + iPhone gerekiyor, ikisi de bu kurulumda yok.
+- **Store yayını** — imzalama anahtarları, Play Console / App Store
+  hesapları ve release hattında APK/IPA yuvası (şu an hiç yok). Nihai store
+  bundle kimliği hâlâ açık bir karar.
+- **Live Mode'un native realtime motorları mobilde** —
+  `live_pcm_player.dart` PCM'i uzun ömürlü bir sink'e akıtıyor ve sadece
+  Linux (mobil var olmadan önce de macOS/Windows'ta hata veriyordu).
+  Telefonlar ayrık transcribe/synthesize döngüsüne düşüyor.
+- **Bant dışı eklenen etkinliklerin hatırlatıcıları** — takvim sekmesi hiç
+  açılmamışken LLM'in eklediği bir etkinlik, sekme açılana kadar
+  zamanlanmıyor. Bunu kapatmak gerçek bir event stream gerektiriyor, poller
+  değil.
 
 ## Platform Erişimi
 

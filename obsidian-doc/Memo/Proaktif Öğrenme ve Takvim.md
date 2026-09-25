@@ -10,13 +10,13 @@
 
 ## 🔁 Routines — Zamanlanmış Otomasyonlar (v3.3.3)
 
-> **Paket:** `internal/routine/` (extractor, loop, store) · **UI:** Yan menü (masaüstü) / ayrı sekme (mobil) → **Rutinler**
+> **Paket:** `internal/routine/` (extractor, loop, store) · **UI:** Yan menü → **Rutinler** (her platformda aynı ekran)
 
 Klasik takvim sistemi kullanıcının niyetini *tespit ediyordu* (aşağıya bkz.); Routines bunun tersini yapıyor — kullanıcı Memo'ya doğrudan ne yapmasını istediğini söylüyor ve bir zamanlama veriyor:
 
 - **Doğal dilde tanım.** "Her sabah 8'de günü özetle" gibi bir cümle yeterli; `internal/routine/extractor.go` bunu yapılandırılmış bir zamanlamaya çevirir.
 - **Basit prompt ya da tam agent.** Bir routine ya arka planda tek seferlik bir LLM çağrısı olarak, ya da (kullanıcı açarsa) araç kullanan tam bir agent çalışması olarak tetiklenebilir.
-- **Masaüstü + Mobil.** Mobil uygulama routine hatırlatmalarını gerçek, önceden zamanlanmış yerel bildirimler olarak teslim eder — uygulama o an açık olmasa bile ulaşır.
+- **Masaüstü + Mobil.** Rutinlerin *telefona teslimi* v3.9.0'da, dayandığı `/api/routines/mobile-ready` endpoint'iyle birlikte kaldırıldı; rutinler artık WhatsApp/Telegram kendine-sohbet üzerinden geliyor. Takvim hatırlatmaları bundan etkilenmedi ve telefonda doğrudan işletim sistemine zamanlanıyor, yani uygulama kapalıyken de geliyor.
 - **Cihaz saat dilimi.** Routine'ler, oluşturuldukları cihazın saat diliminde tetiklenir; bu offset artık her (yeniden) bağlantıda otomatik resenkronize oluyor (`POST /api/routines/sync-offset`) — seyahat veya DST değişimi bir sonraki bağlantıda kendini düzeltiyor, donmuş offset sorunu pratikte kapandı.
 - **Dile duyarlı üretim.** Routine'in kendi system prompt'u, "bugün için bir şey yok" dolgu metni ve bildirim başlıkları artık her zaman Türkçe yerine uygulama dilini takip ediyor.
 
@@ -60,7 +60,7 @@ Takvim        Observer
 (etkinlik)    (alışkanlık/beyan)
     │
     ▼
-ReminderLoop → AppEvent → Mobil Yerel Bildirim
+ReminderLoop → AppEvent → telefonda OS bildirimi
 ```
 
 ---
@@ -116,7 +116,7 @@ Bir etkinlik tespit edildiğinde (örn. WhatsApp'ta "yarın 11'de halısaha" dey
 Lead süresi kullanıcı tarafından seçilir: **10 dk / 15 dk / 30 dk / 1 saat / 2 saat**.
 
 ### Mobil Takvim Sekmesi
-Mobil uygulamada ([[Mobil Uygulama]]) yeni **Takvim** sekmesi:
+Telefonda ([[Mobil Uygulama]]) **Takvim** sekmesi:
 - Etkinlik noktalı aylık ızgara görünümü
 - Güne dokununca o günün etkinlikleri
 - Manuel etkinlik ekleme

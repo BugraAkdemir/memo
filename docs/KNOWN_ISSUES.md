@@ -357,6 +357,7 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 ### M04. Flutter: `IndexedStack` Keeps All Screens Alive Unnecessarily
 - **File:** `frontend/lib/screens/app_shell.dart:46-57`
 - **Detail:** `IndexedStack` keeps `ChatScreen`, `AgentScreen`, `ModelStoreScreen` alive simultaneously. All three providers are active at once, causing redundant network calls.
+- **2026-09-26 update — now seven screens, and it matters more on a phone.** The stack builds `ChatScreen`, `AgentScreen`, `ModelStoreScreen`, `CalendarScreen`, `RoutinesScreen`, `DeveloperScreen` and `SwarmScreen` at app start. On desktop that is a tolerable wart; since `frontend/` also ships to Android/iOS it is seven screens' worth of build plus their first fetches on a cold start, over cellular, on battery. The real fix is lazy tab construction, which is a refactor of a hot shared path with its own auth-gate-race implications (BUG-ONB4/5/6/11 all live in this code) — its own task, not a drive-by.
 
 ### M05. Flutter: `_StreamingBubble` Unnecessary Timestamp Rebuild
 - **File:** `frontend/lib/widgets/chat_message_list.dart:496`
@@ -488,6 +489,14 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 
 ---
 
+### M31. Mobile: Live Mode's native realtime engines are unavailable
+- **File:** `frontend/lib/core/live_pcm_player.dart:68-73`, gated at `frontend/lib/widgets/chat_input.dart`
+- **Detail:** Google Live / OpenAI Realtime stream small PCM chunks into a long-lived sink, which is implemented by piping into `paplay`/`aplay` — Linux only. It already threw `UnsupportedError` on macOS and Windows before mobile existed, so this is a pre-existing gap widening rather than a mobile regression. Phones now fall back to the discrete VAD → transcribe → chat → synthesize loop (whose playback does work there) instead of tapping into a guaranteed exception. Fixing it properly needs a streaming-PCM plugin and real latency tuning on a device.
+
+### M32. Mobile: an event added out of band is not reminded until the calendar tab is opened
+- **File:** `frontend/lib/screens/calendar_screen.dart` (`_rescheduleReminders`)
+- **Detail:** OS-level reminders are re-armed when the calendar loads (on mount, on the 20s refresh while that tab is active, and on app resume). An event the LLM adds while the calendar tab was never opened is therefore not armed until it is. Deliberate: the alternative is an always-on poller behind an `IndexedStack` that never disposes (see M04), which AGENTS.md forbids. Closing it properly needs a real event stream/SSE subscription.
+
 ## ⚪ Low
 
 ### L01. `api/streaming.go`: `scanner.Err()` Is Checked (Confirmation)
@@ -526,9 +535,9 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **File:** `frontend/lib/widgets/version_banner.dart:115-119`
 - **Detail:** `WidgetsBinding.instance.addPostFrameCallback` called inside `build()`. Each rebuild registers a new callback. Since `_AnimatedBanner` is a `StatelessWidget`, it rebuilds on every parent rebuild.
 
-### L10. Mobile: Default URL Leaks Home Network IP
-- **File:** `mobile/lib/core/api_client.dart:68`
-- **Detail:** Default URL hardcoded to `http://192.168.1.100:8090` — leaks the developer's internal network topology.
+### ~~L10. Mobile: Default URL Leaks Home Network IP~~ — closed by deletion (2026-09-26)
+- **File:** `mobile/lib/core/api_client.dart:68` — the file, and the whole `mobile/` project, no longer exist.
+- **Detail:** Default URL was hardcoded to `http://192.168.1.100:8090`, leaking the developer's internal network topology. `frontend/`, which replaces that client, has no baked-in address at all on mobile: `normalizeBackendUrl` returns empty there and the setup wizard asks for one.
 
 ### L11. `unsanitizePath` 64-bit Integer Overflow Risk
 - **File:** `internal/modelstore/modelstore.go` (relevant lines)

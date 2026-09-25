@@ -1,4 +1,11 @@
-# 📱 Memo Mobile App — Step-by-Step Guide
+# 📱 Memo on Your Phone — Step-by-Step Guide
+
+> **Changed in 2026-09:** there is no separate mobile app any more. The
+> standalone `mobile/` project was retired and the **same** Flutter client as
+> the desktop build (`frontend/`) now has Android and iOS targets, so the phone
+> gets the real screens — chat, agent mode, calendar, routines, the model
+> store, settings — laid out for a narrow viewport. Everything below describes
+> that client.
 
 > **What is this?** Connect to Memo from your phone. Chat, check your calendar, get reminders. All AI processing happens on your desktop — the phone is just a "remote control." Your phone won't heat up, drain battery, or eat mobile data.
 
@@ -39,27 +46,39 @@ Example output: `192.168.1.42` — this is your computer's IP address.
 
 If connecting remotely, go to Settings → Remote Access and enable ngrok or Tailscale.
 
-### 2. Build & Run Mobile App
+### 2. Build & Run on the Phone
 
 ```bash
-cd mobile
-flutter run
+cd frontend
+flutter run          # phone connected via USB, developer mode on
+# or, to build an installable debug APK:
+flutter build apk --debug
 ```
 
-Your phone must be connected via USB with developer mode enabled.
+CI also builds both targets on every push (`build-android.yml` produces a debug
+APK artifact; `build-ios.yml` builds iOS unsigned, since this project has no
+signing certificates).
 
-### 3. Connection Screen
+### 3. First Run — Server Address
 
-When the app opens, you'll see a connection screen:
+On a phone the setup wizard opens with a **Connect to your server** step first,
+because a phone never runs Memo's backend itself and so has no address to
+default to:
 
 | Field | What to Enter |
 |-------|--------------|
-| **Server Address** | Your computer's IP + port: `http://192.168.1.42:8090` |
-| **Token (optional)** | The access token if you set one in Settings |
+| **Server address** | Your computer's IP + port: `192.168.1.42:8090` (the scheme is filled in for you) |
+| **Access token** | The token if you set one in Settings → Remote Access |
 
-**LAN Auto-Discovery:** If you don't know the IP, tap the **Scan** button. The phone scans all addresses on your network, finds Memo, and fills in the address automatically.
+Tap **Test connection** — a green line means Memo answered, and the rest of the
+wizard (persona, model, preferences) then works normally.
 
-4. Tap **Connect**.
+A Tailscale address can be entered directly: a `*.ts.net` host is recognised and
+gets `https://` with no port appended, since Funnel serves over standard 443.
+
+**No LAN auto-discovery.** The retired client had a "Scan" button that probed
+every address on the subnet; it was not carried over. Type the address, or use a
+Tailscale name that doesn't change.
 
 ---
 
@@ -122,7 +141,7 @@ Phone ←── Tailscale network ──→ Computer
 
 ## 🎯 Calendar Tab
 
-The mobile app has a calendar tab. It shows:
+The calendar tab shows:
 
 - **Monthly grid view** — days with events have dots
 - Tap a day to see its events
@@ -130,15 +149,39 @@ The mobile app has a calendar tab. It shows:
 - Long-press an event to delete it
 - Change the reminder lead time
 
-## ⏰ Routines on Mobile (v3.3.3) — REMOVED in v3.9.0
+## 🔔 Notifications
 
-> **⚠️ Out of date as of v3.9.0:** routine delivery to the phone was removed entirely. The mobile app no longer polls `/api/routines/mobile-ready` — the endpoint was deleted from the backend because there is no actively used mobile app to receive it, and it now returns 404. Routines are now created, managed, and delivered through **WhatsApp or Telegram self-chat** instead (see [[WhatsApp Entegrasyonu]] / the Telegram page). Calendar reminders are unaffected — they come from the calendar system and still arrive as locally pre-scheduled notifications.
+**Calendar reminders arrive as real notifications**, scheduled with the OS
+itself rather than pushed over a connection — so they fire even when Memo is
+closed and the phone hasn't heard from the backend since. They are re-armed
+whenever the calendar loads and when the app is brought back to the foreground.
+Permission is asked for from the setup wizard's preferences step, not silently
+at first launch.
 
-Routines work on mobile too, not just desktop. Since the mobile app has no push channel, it polls `/api/routines/mobile-ready` to pre-schedule a **real, pre-scheduled local notification** ahead of a routine's fire time — it still arrives even if the app isn't open. Notification text follows the language the routine was created in (fixed in v3.3.3 — it previously always came out in Turkish regardless of the app's own language setting). See [[Proactive Learning and Calendar]].
+One known gap: an event the assistant adds while you never opened the calendar
+tab is not armed until you do (see KNOWN_ISSUES M32).
 
-## 🌍 Full Localization (v3.3.3)
+**Routine notifications do not exist** — that path was removed in v3.9.0 along
+with the `/api/routines/mobile-ready` endpoint it polled. Routines are created,
+managed and delivered through **WhatsApp or Telegram self-chat** instead (see
+[[WhatsApp Integration]]).
 
-The mobile app is now fully localized (Turkish/English), matching the desktop app, with a language toggle available both in Settings and on the pre-pairing connect screen.
+## 🌍 Localization
+
+Fully localized (Turkish/English) — it is the same `l10n.dart` the desktop
+build uses, so the two cannot drift apart.
+
+## 🚫 What Isn't on a Phone
+
+- **Live Mode's native realtime engines** (Google Live, OpenAI Realtime) — their
+  streaming audio playback is Linux-only. The voice button falls back to the
+  discrete record → transcribe → reply → speak loop, which does work.
+- **The desktop mascot** and the **system tray**, neither of which a phone has.
+- **CLI installation** — no shell, no home directory to install into.
+
+Things that *look* desktop-only but work fine, because they are server-side
+REST calls: the model store (the server downloads the GGUF onto its own disk),
+GPU info (it reports the server's GPU), and the llama.cpp installer.
 
 ---
 

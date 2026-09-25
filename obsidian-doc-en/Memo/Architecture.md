@@ -9,10 +9,9 @@ Memo is a **two-process, local-first application**. The Go backend and Flutter f
 ## Process Architecture
 
 ```
-Flutter Desktop (Linux/Windows/macOS)     Flutter Mobile (Android/iOS)
-         │                                    │
-         │  REST + SSE (:8090)                 │  LAN / ngrok / Tailscale
-         └──────────────┬─────────────────────┘
+Flutter client — Linux/Windows/macOS · Android/iOS · web
+                        │
+     REST + SSE (:8090 local, or LAN / ngrok / Tailscale)
                         │
               ┌─────────┴──────────────────────────────────┐
               │            Go Backend (41 packages)         │

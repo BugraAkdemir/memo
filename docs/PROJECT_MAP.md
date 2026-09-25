@@ -659,7 +659,7 @@ internal/whisper/
 
 ---
 
-## 2. Flutter Masaüstü Uygulaması (`frontend/`)
+## 2. Flutter İstemcisi (`frontend/`)
 
 ```
 frontend/lib/
@@ -762,43 +762,7 @@ frontend/lib/utils/
 
 ---
 
-## 3. Flutter Mobil Uygulaması (`mobile/`)
-
-Masaüstü backend'ine ağ/Tailscale/ngrok tüneli üzerinden bağlanan uzaktan-kumanda istemcisi.
-
-```
-mobile/lib/
-  main.dart — uygulama giriş noktası; provider'ları kurar, event polling yapar, alt gezinme kabuğu (Sohbet/Takvim)
-
-mobile/lib/core/
-  api_client.dart          — masaüstü backend REST API'siyle konuşan HTTP/SSE istemcisi (dio)
-  notification_service.dart — takvim hatırlatmaları için flutter_local_notifications sarmalayıcısı
-  theme.dart               — masaüstü uygulamasıyla paylaşılan "Pewter Study" tasarım tokenları/renkler/tipografi
-
-mobile/lib/models/
-  calendar_event.dart — JSON (de)serileştirmeli CalendarEvent veri modeli
-
-mobile/lib/providers/
-  chat_provider.dart       — sohbet mesajları, streaming ve agent-enabled bayrağı için Riverpod durumu
-  calendar_provider.dart   — takvim olayları/ayarları/yükleme durumu için Riverpod state notifier
-  connection_provider.dart — backend bağlantısı (LAN/Tailscale/ngrok) ve uzak erişim için Riverpod durumu
-
-mobile/lib/screens/
-  connect_screen.dart  — ilk bağlanma/eşleştirme ekranı (LAN, Tailscale, uzak/ngrok modları)
-  chat_screen.dart      — mesaj listesi, izin dialogları, oturum çekmecesiyle ana sohbet sekmesi
-  calendar_screen.dart  — takvim sekmesi arayüzü (ay görünümü, olay listesi, olay ekle/düzenle)
-  settings_screen.dart  — bağlantı/uygulama tercihleri için 4 sekmeli ayarlar ekranı
-
-mobile/lib/widgets/
-  branding.dart      — MemoLogo widget'ı — uygulama içinde çizilen bronz "M" simgesi
-  chat_bubble.dart   — markdown render eden, panoya kopyalamalı sohbet mesajı balonu
-  message_input.dart — gönder/streaming durdur kontrollü sohbet metin giriş çubuğu
-  session_drawer.dart — sohbet oturumlarını ve bağlantı/sunucu bilgisini listeleyen yan çekmece
-```
-
----
-
-## 4. Paketleme / Build / Kurulum Script'leri (`scripts/`)
+## 3. Paketleme / Build / Kurulum Script'leri (`scripts/`)
 
 Root'un kalabalıklaşmaması için `.sh`/`.ps1`/`.bat` script'lerinin çoğu
 `scripts/` altında toplandı (2026-08-09) — hiçbiri kendi dosya konumuna
@@ -833,7 +797,7 @@ get-memo-server-beta.sh — get-memo-server.sh'in beta kanalı
 bırakıldı — `build-windows.yml` CI workflow'u onu sabit bir yoldan
 referans alıyor, taşımak CI'a ek bir değişiklik gerektirirdi.
 
-## 5. CI/CD (`.github/workflows/`)
+## 4. CI/CD (`.github/workflows/`)
 
 ```
 ci.yml             — main'e her push/PR'da Go testlerini çalıştırır (SQLite bağımlılığıyla)
@@ -843,7 +807,7 @@ build-windows.yml   — push/PR/dispatch'te Windows x86_64 release'i derler
 upload-r2.yml       — Linux/macOS/Windows release'lerini derleyip Cloudflare R2'ye yükleyen elle-tetiklenen workflow
 ```
 
-## 6. Yapılandırma, Yardımcı Script'ler, Skill'ler
+## 5. Yapılandırma, Yardımcı Script'ler, Skill'ler
 
 ```
 config/
@@ -859,7 +823,7 @@ skills/
   memo-project/SKILL.md  — "memo-project" skill'i: mimari/konvansiyonlar için hızlı üst-düzey harita
 ```
 
-## 7. Üst Düzey Dokümantasyon
+## 6. Üst Düzey Dokümantasyon
 
 ```
 AGENTS.md                 — AI kodlama ajanları için Memo'nun teknoloji yığını/mimarisi özeti (ana referans doküman)
@@ -880,13 +844,13 @@ obsidian-doc/, obsidian-doc-en/ — Obsidian vault olarak dışa aktarılmış T
 versinNote/           — sürüm notları (V1.0.0 → v3.3.3 yayınlandı, v3.3.4 geliştirmede) ve tr/ altında Türkçe çevirileri
 ```
 
-## 8. Çalışma Zamanı / Üretilen Dizinler (kaynak kodu değil, açıklanmadı)
+## 7. Çalışma Zamanı / Üretilen Dizinler (kaynak kodu değil, açıklanmadı)
 
 ```
 data/          — çalışma zamanı verisi: hafıza DB, sohbet oturumları, modeller, takvim, mood, WhatsApp, rutinler, kullanım istatistikleri (usage.db), Piper sesleri (tts/voices/), config anahtarları
 binaries/      — platforma özel llama.cpp/vec0/whisper binary'leri (bundling için)
 build/, build_output/ — derleme çıktıları ve paketleme sahne alanları
-frontend/build/, frontend/.dart_tool/, mobile/build/, mobile/.dart_tool/ — Flutter derleme önbellekleri
+frontend/build/, frontend/.dart_tool/ — Flutter derleme önbellekleri
 .git/, .github/, .claude/, .kimchi/, .mimocode/, .opencode/, .superpowers/ — VCS ve araç/ajan meta verisi
 ```
 
@@ -894,61 +858,50 @@ frontend/build/, frontend/.dart_tool/, mobile/build/, mobile/.dart_tool/ — Flu
 
 ## İstatistikler
 
-> **2026-09-01'de yeniden sayıldı** (`find`/`wc` ile) — v4.4.0 (Self-Driving
-> branch) sonrası, PROJECT_MAP.md dokümantasyon denetimiyle birlikte. Bir
-> önceki sayım 2026-08-05'ten kalmıştı (v3.3.3/v3.3.4 dönemi) — aşağıdaki
-> sayılar da bir sonraki büyük değişiklikte yine bayatlayacak, elle güncel
-> tutulur.
+> **2026-09-26'da yeniden sayıldı** (`find`/`wc` ile) — `mobile/`'ın emekliye
+> ayrılıp `frontend/`'e Android/iOS hedeflerinin eklenmesinden sonra. Bir
+> önceki sayım 2026-09-01'den kalmıştı (v4.4.0 dönemi) — aşağıdaki sayılar da
+> bir sonraki büyük değişiklikte yine bayatlayacak, elle güncel tutulur.
 
 ### Go (backend)
 
-| Metrik | Değer (2026-08-05 → 2026-09-01) |
+| Metrik | Değer (2026-09-01 → 2026-09-26) |
 |---|---|
-| Toplam `.go` dosyası (test hariç) | 220 → **327** |
-| Test dosyası (`_test.go`) | 161 → **276** |
-| `internal/` alt paket sayısı | 41 → **48** |
-| Kaynak kod satırı (test hariç) | 53.292 → **79.180** |
-| Test kodu satırı | 30.946 → **53.172** |
-| **Toplam Go satırı** | 84.238 → **132.352** |
-| En büyük dosya | `internal/webserver/handlers_flutter.go` (3.129 satır) |
-| 2. en büyük | `internal/memory/store.go` (2.624 satır) |
-| 3. en büyük | `internal/taskloop/engine.go` (1.626 satır, yeni — v4.4.0) |
-| 4. en büyük | `internal/app/llm.go` (1.573 satır) |
+| Toplam `.go` dosyası (test hariç) | 327 → **364** |
+| Test dosyası (`_test.go`) | 276 → **329** |
+| `internal/` alt paket sayısı | 48 → **50** |
+| Kaynak kod satırı (test hariç) | 79.180 → **90.072** |
+| Test kodu satırı | 53.172 → **66.028** |
+| **Toplam Go satırı** | 132.352 → **156.100** |
+| En büyük dosya | `internal/webserver/handlers_flutter.go` (3.368 satır) |
+| 2. en büyük | `internal/memory/store.go` (3.057 satır) |
+| 3. en büyük | `internal/app/llm.go` (1.982 satır) |
+| 4. en büyük | `internal/taskloop/engine.go` (1.759 satır) |
 
-### Flutter — Masaüstü (`frontend/`)
+### Flutter (`frontend/`) — tüm platformlar
 
-| Metrik | Değer (2026-08-05 → 2026-09-01) |
+| Metrik | Değer (2026-09-01 → 2026-09-26) |
 |---|---|
-| Toplam `.dart` dosyası (lib/, test hariç) | 105 → **133** |
-| Test dosyası | 17 → **45** |
-| Kaynak kod satırı (lib/) | 40.341 → **53.316** |
-| Test kodu satırı | 2.786 → **7.130** |
-| En büyük dosya | `core/l10n.dart` (4.159 satır) |
-| 2. en büyük | `core/api_client.dart` (2.778 satır) |
-| 3. en büyük | `widgets/chat_input.dart` (2.223 satır) |
+| Toplam `.dart` dosyası (lib/, test hariç) | 133 → **152** |
+| Test dosyası | 45 → **57** |
+| Kaynak kod satırı (lib/) | 53.316 → **61.099** |
+| Test kodu satırı | 7.130 → **9.040** |
+| En büyük dosya | `core/l10n.dart` (4.543 satır) |
+| 2. en büyük | `core/api_client.dart` (3.143 satır) |
+| 3. en büyük | `widgets/chat_input.dart` (2.350 satır) |
+| Platform hedefi | linux, windows, macos, web, **android, ios** |
 
 > `model_store_screen.dart` artık tek dev dosya değil — `settings/tabs/`'a paralel bir desenle bölündü (bkz. handoff.md, BUG-M1).
-
-### Flutter — Mobil (`mobile/`)
-
-| Metrik | Değer (2026-08-05 → 2026-09-01) |
-|---|---|
-| Toplam `.dart` dosyası (lib/, test hariç) | 21 → **22** |
-| Test dosyası | 1 → **2** |
-| Kaynak kod satırı (lib/) | 7.848 → **7.888** |
-| En büyük dosya | `core/api_client.dart` (1.928 satır) |
-
-> `mobile/` hâlâ ayrı, aktif geliştirilen bir proje — `frontend/`'e Android/iOS hedefi eklenip `mobile/`'ın kaldırılması yönündeki bir önceki plan (bkz. ROADMAP.md) henüz gerçekleşmedi.
 
 ### Genel Toplamlar
 
 | Metrik | Değer |
 |---|---|
-| **Toplam kaynak dosyası** (Go + Dart, test dahil) | **~805** |
-| **Toplam kaynak kodu satırı** (Go + Dart, test dahil) | **~200.686** |
+| **Toplam kaynak dosyası** (Go + Dart, test dahil) | **902** |
+| **Toplam kaynak kodu satırı** (Go + Dart, test dahil) | **226.239** |
 | Shell/bat/ps1 script sayısı (kök dizin) | 1 (`build_releases.sh`) — geri kalan **20 script `scripts/`'e taşınmış** (3.633 satır) |
 | Markdown doküman sayısı (repo genelinde) | 238 |
-| `.github/workflows/` sayısı | 6 |
+| `.github/workflows/` sayısı | 9 |
 | `skills/` altındaki skill sayısı | 2 |
 | Git commit sayısı | 1.156 |
 

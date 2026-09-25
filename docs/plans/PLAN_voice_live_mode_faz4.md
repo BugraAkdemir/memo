@@ -9,10 +9,16 @@ kullanıcının gerçek konuşmasının güvenle barge-in yapabilmesidir. Bu, Fa
 1'deki tek-yönlü barge-in'i güvenilir hale getirir ve ileride gerçek zamanlı
 backchannel için ses altyapısını sağlar.
 
-Bu faz **masaüstü Voice Live Mode** içindir (`frontend/`). Android'deki ayrı
-`mobile/` uygulaması ve arka plan/wake-word yaşam döngüsü Faz 5'in kapsamıdır.
-Faz 4 Android API'lerinin araştırma bulgularını kullanabilir, ancak mobile
-uygulamaya özellik taşımak veya foreground service eklemek bu planda yoktur.
+Bu faz **masaüstü Voice Live Mode** içindir. Android arka plan/wake-word yaşam
+döngüsü Faz 5'in kapsamıdır. Faz 4 Android API'lerinin araştırma bulgularını
+kullanabilir, ancak mobil tarafa özellik taşımak veya foreground service
+eklemek bu planda yoktur.
+
+> **2026-09-26 düzeltmesi:** bu paragraf eskiden Faz 5'in hedefini "Android'deki
+> ayrı `mobile/` uygulaması" diye tarif ediyordu; bu `yapacam.md`'nin Faz 5'i
+> `frontend/`'e bağlayan maddesiyle çelişiyordu. Çelişki artık yok: `mobile/`
+> emekliye ayrıldı ve `frontend/` Android/iOS'a derleniyor, dolayısıyla Faz 5
+> de `frontend/` üzerinde yapılacak.
 
 ## Kod okunarak doğrulanan mevcut durum (2026-07-29)
 

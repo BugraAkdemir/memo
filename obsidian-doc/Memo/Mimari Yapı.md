@@ -9,10 +9,9 @@ Memo **iki süreçli, yerel-öncelikli** bir uygulamadır. Go backend ve Flutter
 ## Süreç Mimarisi
 
 ```
-Flutter Masaüstü (Linux/Windows)    Flutter Mobil (Android/iOS)
-         │                                    │
-         │  REST + SSE (:8090)                 │  LAN / ngrok tünel
-         └──────────────┬─────────────────────┘
+Flutter istemcisi — Linux/Windows/macOS · Android/iOS · web
+                        │
+    REST + SSE (:8090 yerel, ya da LAN / ngrok / Tailscale)
                         │
               ┌─────────┴──────────────────────────────────┐
               │           Go Backend (29 paket)             │

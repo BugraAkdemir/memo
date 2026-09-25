@@ -119,7 +119,6 @@ Detay: [[Özellik Kataloğu]]
 | `GET`/`POST` | `/api/routines` | Rutinleri listele/oluştur |
 | `POST` | `/api/routines/parse` | Doğal dil metnini yapılandırılmış bir rutin tanımına çevir |
 | `GET`/`PUT`/`DELETE` | `/api/routines/{id}` | Tek bir rutini getir/güncelle/sil |
-| `GET` | `/api/routines/mobile-ready` | Mobil bildirim olarak zamanlanmaya hazır rutinler |
 | `POST` | `/api/routines/sync-offset` | İstemcinin güncel saat dilimi offset'ini gönderir (bkz. [[Proaktif Öğrenme ve Takvim]]) |
 
 ### Self-Insight ve Hafıza İçe Aktarma (v3.3.3)

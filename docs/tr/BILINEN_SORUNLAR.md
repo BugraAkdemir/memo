@@ -379,6 +379,7 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 ### M04. Flutter: `IndexedStack` Gereksiz Provider Çalıştırması
 - **Dosya:** `frontend/lib/screens/app_shell.dart:46-57`
 - **Detay:** `IndexedStack` ile tüm ekranlar aynı anda canlı tutulur. `ChatScreen`, `AgentScreen`, `ModelStoreScreen` aynı anda aktif provider'lara sahiptir, gereksiz ağ çağrılarına neden olur.
+- **2026-09-26 güncellemesi — artık yedi ekran ve telefonda daha çok önemli.** Stack açılışta `ChatScreen`, `AgentScreen`, `ModelStoreScreen`, `CalendarScreen`, `RoutinesScreen`, `DeveloperScreen` ve `SwarmScreen`'i kuruyor. Masaüstünde katlanılır bir kusur; `frontend/` artık Android/iOS'a da derlendiği için soğuk açılışta yedi ekranlık build + ilk fetch'leri demek — hücresel bağlantıda, pil üstünde. Gerçek çözüm lazy tab kurulumu: sıcak ve paylaşılan bir kod yolunda refactor, kendi auth-gate yarışı çıkarımları var (BUG-ONB4/5/6/11 hep bu kodda yaşıyor). Kendi işi, geçerken yapılacak bir şey değil.
 
 ### M05. Flutter: `_StreamingBubble` Gereksiz Zaman Damgası Güncellemesi
 - **Dosya:** `frontend/lib/widgets/chat_message_list.dart:496`
@@ -568,6 +569,16 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 
 ---
 
+### M45. Mobil: Live Mode'un native realtime motorları kullanılamıyor
+- **Dosya:** `frontend/lib/core/live_pcm_player.dart:68-73`, guard `frontend/lib/widgets/chat_input.dart`'ta
+- **Detay:** Google Live / OpenAI Realtime küçük PCM parçalarını uzun ömürlü bir sink'e akıtıyor; bu `paplay`/`aplay`'e pipe ederek uygulanmış, yani sadece Linux. Mobil var olmadan önce de macOS ve Windows'ta `UnsupportedError` atıyordu, dolayısıyla bu bir mobil regresyonu değil, var olan boşluğun genişlemesi. Telefonlar artık garantili bir exception'a girmek yerine ayrık VAD → yazıya çevir → sohbet → seslendir döngüsüne düşüyor (onun çalma yolu telefonda çalışıyor). Doğru çözüm akış-PCM eklentisi + cihazda gerçek gecikme ayarı gerektiriyor.
+- **Kategori:** Eksik platform desteği (bilinçli)
+
+### M46. Mobil: Bant dışı eklenen etkinlik, takvim sekmesi açılana kadar hatırlatılmıyor
+- **Dosya:** `frontend/lib/screens/calendar_screen.dart` (`_rescheduleReminders`)
+- **Detay:** OS seviyesi hatırlatıcılar takvim yüklendiğinde yeniden kuruluyor (mount'ta, o sekme aktifken 20 saniyelik yenilemede ve uygulama ön plana döndüğünde). Takvim sekmesi hiç açılmamışken LLM'in eklediği bir etkinlik, sekme açılana kadar zamanlanmıyor. Bilinçli: alternatifi, hiç dispose olmayan bir `IndexedStack` arkasında sürekli çalışan bir poller (bkz. M04) — AGENTS.md bunu yasaklıyor. Kapatmak gerçek bir event stream/SSE aboneliği gerektiriyor.
+- **Kategori:** Eksik kapsam (bilinçli)
+
 ## ⚪ Düşük
 
 ### L01. `api/streaming.go` `scanner.Err()` Kontrolü Mevcut
@@ -606,9 +617,9 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Dosya:** `frontend/lib/widgets/version_banner.dart:115-119`
 - **Detay:** `WidgetsBinding.instance.addPostFrameCallback` `build()` içinde çağrılır. Her yeniden derlemede yeni bir post-frame callback kaydedilir. `_AnimatedBanner` bir `StatelessWidget` olduğundan, parent her yeniden derlediğinde gereksiz callback'ler birikir.
 
-### L10. Mobil: Varsayılan URL Ev Ağı IP'si Sızdırıyor
-- **Dosya:** `mobile/lib/core/api_client.dart:68`
-- **Detay:** Varsayılan URL `http://192.168.1.100:8090` olarak sabit kodlanmış — geliştiricinin iç ağ topolojisini sızdırır.
+### ~~L10. Mobil: Varsayılan URL Ev Ağı IP'si Sızdırıyor~~ — silinerek kapandı (2026-09-26)
+- **Dosya:** `mobile/lib/core/api_client.dart:68` — dosya da, `mobile/` projesinin tamamı da artık yok.
+- **Detay:** Varsayılan URL `http://192.168.1.100:8090` olarak sabit kodlanmıştı ve geliştiricinin iç ağ topolojisini sızdırıyordu. Onun yerini alan `frontend/`'te mobilde gömülü hiçbir adres yok: `normalizeBackendUrl` orada boş dönüyor ve adresi setup wizard soruyor.
 
 ### L11. `unsanitizePath` 64-bit `int` Taşması Riski
 - **Dosya:** `internal/modelstore/modelstore.go` (ilgili satır)

@@ -394,13 +394,13 @@ Two decoupled processes talk over plain HTTP/SSE on `localhost:8090`. No TLS (lo
 <br/>
 
 ```
-┌─────────────────────────────────┐    ┌──────────────────────────┐
-│  Flutter Desktop (Linux/Windows) │    │  Flutter Mobile           │
-│  Chat · Agent · Orchestra        │    │  Chat · Notifications     │
-│  Settings · Model Store          │    │  Remote connect           │
-└──────────────┬───────────────────┘    └───────────┬──────────────┘
-               │  REST + SSE (:8090)                 │  LAN / ngrok
-               └──────────────┬──────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Flutter client — one app, every platform                 │
+│  Linux · Windows · macOS · Android · iOS · web            │
+│  Chat · Agent · Orchestra · Settings · Model Store         │
+└──────────────────────────────┬───────────────────────────┘
+       REST + SSE (:8090 local, or LAN / ngrok / Tailscale)
+                               │
 ┌──────────────────────────────┴──────────────────────────────────┐
 │              Go Backend — 40+ packages, 180+ endpoints           │
 │  ┌─────────┐ ┌──────┐ ┌──────┐ ┌────────┐ ┌──────┐ ┌────────┐  │

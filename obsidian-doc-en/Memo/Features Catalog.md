@@ -213,7 +213,7 @@ See [[Telegram Integration]].
 | Multi-language (TR/EN) | ✅ |
 | Settings reorganized into a searchable rail | ✅ (v3.3.4) — replaces ~20 flat tabs |
 | Greige theme, Material 3 | ✅ |
-| Mobile companion app | ✅ — now fully localized (TR/EN), Routines support |
+| Memo on a phone | ✅ — the same `frontend/` client, built for Android/iOS (the separate mobile app was retired in 2026-09); OS-level calendar reminders |
 | Dark mode | ✅ |
 
 ## 🎵 Voice & Multimodal

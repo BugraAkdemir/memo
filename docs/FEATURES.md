@@ -51,11 +51,13 @@ Memo isn't just a chat; it's a "Second Brain."
 - **Full Import**: `POST /api/import` — restore from .memo zip. Optional model inclusion.
 - **Wipe All Data**: `POST /api/wipe` — double-confirmation dialog, config file persists. Now reliably closes every internal database (memory, stats, calendar, mood, WhatsApp) before removing files, fixing a Windows-only failure.
 
-### Mobile Companion App
-- **Thin Client**: Android/iOS Flutter app connecting over LAN or remote tunnel.
-- **Zero Processing**: All AI stays on desktop — mobile is a secure remote viewport.
-- **Features**: Chat (SSE streaming), settings (provider/model control), session management.
-- **Planned (v3.3.0)**: Full feature parity, biometric auth, offline queue, voice input.
+### Memo on a Phone
+- **One client, built for mobile**: the same Flutter app as the desktop build (`frontend/`), with Android and iOS targets — not a separate, smaller companion project. The standalone `mobile/` client it replaces was retired in 2026-09.
+- **Zero processing on the phone**: all AI stays on the machine running Memo; the phone is a remote viewport that connects over LAN, ngrok or Tailscale.
+- **Feature parity by construction**: chat, agent mode, calendar, routines, the model store and settings are the desktop screens, laid out for a narrow viewport rather than reimplemented.
+- **OS-level calendar reminders**: scheduled with the OS, so they fire even when the app is closed and the phone hasn't heard from the backend since.
+- **Voice input**: the phone records, the backend transcribes. TTS replies play through a native audio plugin.
+- **Not on a phone**: Live Mode's native realtime engines (they fall back to the discrete transcribe/synthesize loop), the desktop mascot, the system tray, and CLI installation.
 
 ---
 
@@ -262,7 +264,7 @@ Multiple AI models collaborate as a team:
 - Describe a task and a schedule in plain language; Memo turns it into a routine that fires on schedule as a simple prompt or a full tool-using agent run.
 - **Create from chat, not just the Routines tab**: ask for a routine in plain language from a normal chat, or from the WhatsApp/Telegram self-chat assistant, and the `create_routine`/`list_routines`/`cancel_routine` agent tools handle it — no need to open the dedicated Routines screen.
 - A routine always has full agent + web-search tool access when it fires, regardless of how it was created — an earlier bug tied that access to a one-shot classification made at creation time, so it could silently "turn off" later; fixed to be unconditional.
-- Works on **desktop and mobile** — mobile delivers real, pre-scheduled local notifications so reminders arrive even if the app isn't open.
+- Works on **desktop and mobile** — on a phone, reminders are scheduled with the OS itself, so they arrive even if the app isn't open.
 - Fires in **your own device's timezone** (captured at creation, resynced on every reconnect), so travel/DST corrects itself instead of staying frozen.
 
 ### Proactive Learning & Ambient Nudges

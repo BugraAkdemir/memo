@@ -65,20 +65,32 @@ hypothetical:
 
 ## Mobile
 
-`mobile/` (a separate, smaller Flutter project — 26 dart files vs.
-`frontend/`'s 190) is still actively developed as of this pass (see recent
-`fix(mobile)`/`feat(mobile)` commits) rather than merged into `frontend/`
-— an earlier internal plan to retire it in favor of adding Android/iOS
-targets to `frontend/` has not (yet) happened; don't assume it has without
-checking `git log -- mobile/` first.
+**Done (2026-09-26): there is one Flutter client.** The separate `mobile/`
+project is retired; `frontend/` now has `android/` and `ios/` targets and is
+what ships to a phone, so feature parity is structural rather than something
+to audit. Both targets are built in CI (`build-android.yml`,
+`build-ios.yml`) — Android as a debug APK, iOS unsigned, since this project
+has no macOS or iOS hardware and no signing certificates.
 
-- **iOS build verification in CI** — `mobile/ios/` has a full Xcode
-  project scaffold, but nothing currently builds it in CI.
-- **Remote backend connection** — bringing the same "Backend URL + Token"
-  flow the desktop client has to `mobile/`.
-- **Feature parity audit against desktop** — agent mode, the memory view,
-  and other desktop-only surfaces need an explicit pass to decide what's
-  actually missing on mobile vs. intentionally left out.
+What that leaves open:
+
+- **On-device verification** — CI proves the targets compile and link,
+  nothing more. Unproven on real hardware: first-run mic permission,
+  `record`'s WAV path on Android, notification delivery and its survival
+  across a reboot, `just_audio` playback plus voice-mode barge-in, the
+  Android save/share dialog, the back button, keyboard insets, and the
+  narrow layout as a whole. iOS needs a Mac and an iPhone, neither of which
+  this setup has.
+- **Store publishing** — signing keys, Play Console / App Store accounts,
+  and a release pipeline that has an APK/IPA slot at all (today's has
+  none). The final store bundle identifier is still an open decision.
+- **Live Mode's native realtime engines on mobile** — `live_pcm_player.dart`
+  streams PCM into a long-lived sink and is Linux-only (it already threw on
+  macOS and Windows before mobile existed). Phones fall back to the discrete
+  transcribe/synthesize loop instead.
+- **Reminders for events added out of band** — an event the LLM adds while
+  the calendar tab was never opened is not armed until it is. Closing that
+  needs a real event stream, not a poller.
 
 ## Platform Reach
 

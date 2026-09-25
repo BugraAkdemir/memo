@@ -181,7 +181,26 @@ static page would otherwise have to duplicate.
 
 ---
 
-## 5. Known limitations
+## 5. Connecting a client to it
+
+The same Flutter client runs on desktop, in a browser, and on Android/iOS —
+there is no separate mobile app (the standalone `mobile/` project was retired
+in 2026-09). Whichever one you use, it points at the server the same three ways:
+
+| Mode | How it works | Best for |
+|------|-------------|----------|
+| **Local (LAN)** | Direct `ip:port` — `:8090` is filled in for you when you omit it | Home/office, same network |
+| **Tailscale** | A fixed `*.ts.net` address from the backend's embedded tsnet tunnel, entered once. Recognised by name: it gets `https://` and no port, since Funnel serves over standard 443 | Anywhere, with no re-pairing — the backend self-heals a dropped tunnel |
+| **ngrok** | The tunnel URL the backend's ngrok integration reports | Anywhere, without setting Tailscale up |
+
+An `X-Memo-Token` header is sent with every request when an access token is
+configured (Settings → Remote Access). On a phone the setup wizard asks for the
+address and token up front, because a phone has no local backend to fall back
+to — see [Memo on your phone](../obsidian-doc-en/Memo/Mobile%20App.md).
+
+---
+
+## 6. Known limitations
 
 - **No built-in TLS yet.** Memo's own listener is plain HTTP. For traffic
   leaving your LAN, put it behind something that terminates TLS — your own

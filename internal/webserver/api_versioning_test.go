@@ -44,7 +44,7 @@ func waitForListening(t *testing.T, port int) {
 // StartHTTPWithAddr must also answer under the mirrored "/api/v1/..."
 // path — this is the actual "versioning strategy" that was missing, added
 // without moving or renaming a single existing route (zero risk to the
-// three existing clients: Flutter desktop, mobile, the Go CLI).
+// two existing clients: the Flutter app (desktop, mobile and web) and the Go CLI).
 func TestAPIVersioning_V1AliasesMirrorUnversionedRoutes(t *testing.T) {
 	port := freePort(t)
 	s := New(&mockBridge{})

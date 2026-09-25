@@ -51,7 +51,7 @@ Router özellikleri: fallback zinciri, 3 hatada otomatik devre dışı bırakma,
 | Özellik | Durum | Açıklama |
 |---------|-------|----------|
 | Doğal dilde tanım | ✅ | "Her sabah 8'de günü özetle" gibi bir cümle yeterli |
-| Masaüstü + Mobil | ✅ | Mobilde gerçek, önceden zamanlanmış yerel bildirimler |
+| Masaüstü + Mobil | ✅ | Telefonda takvim hatırlatmaları doğrudan işletim sistemine zamanlanır |
 | Cihaz saat dilimi | ✅ | Oluşturulduğu cihazın saat diliminde tetiklenir, her (yeniden) bağlantıda resenkronize olur |
 | Basit prompt / tam agent | ✅ | İsteğe bağlı olarak araç kullanan tam bir agent çalışması olarak da tetiklenebilir |
 | Dil desteği | ✅ | Routine metinleri (sistem promptu, bildirim başlıkları) artık uygulama dilini takip ediyor |
@@ -242,7 +242,7 @@ Detay: [[Telegram Entegrasyonu]]
 | Kurulum sihirbazı (6 kişilik) | ✅ |
 | Çoklu dil (TR/EN) | ✅ (924 anahtar) |
 | Greige teması, Material 3 | ✅ |
-| Mobil eşlikçi uygulama | ✅ (v3.3.3: tam TR/EN yerelleştirme + bağlantı ekranında dil seçici) |
+| Telefonda Memo | ✅ — Android/iOS için derlenen aynı `frontend/` istemcisi (ayrı mobil uygulama 2026-09'da emekliye ayrıldı); OS seviyesi takvim hatırlatıcıları |
 | Karanlık mod | ✅ |
 | Sohbette `@` dosya bahsetme | ✅ (v3.3.4) |
 | Aktif model/sağlayıcı pill'i | ✅ (v3.3.4) — sohbet üst çubuğunda tıkla-değiştir |

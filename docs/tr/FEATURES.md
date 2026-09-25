@@ -51,10 +51,13 @@ Memo sadece bir sohbet değil, bir "İkinci Beyin"dir.
 - **Tam İçe Aktarma**: `POST /api/import` — .memo zip'inden geri yükleme. Opsiyonel model dahil etme.
 - **Tüm Veriyi Sil**: `POST /api/wipe` — çift onay dialog'u, config dosyası kalıcı kalır. Artık dosyaları silmeden önce her dahili veritabanını (hafıza, istatistik, takvim, mood, WhatsApp) güvenilir şekilde kapatıyor, sadece Windows'ta yaşanan bir hatayı düzeltti.
 
-### Mobil Companion Uygulaması
-- **İnce İstemci**: LAN veya uzak tünel üzerinden bağlanan Android/iOS Flutter uygulaması.
-- **Sıfır İşlem Yükü**: Tüm yapay zeka masaüstünde kalır — mobil güvenli bir uzak görüntüleyicidir.
-- **Özellikler**: Sohbet (SSE streaming), ayarlar (sağlayıcı/model kontrolü), oturum yönetimi.
+### Telefonda Memo
+- **Tek istemci, mobil için derlenmiş**: masaüstüyle aynı Flutter uygulaması (`frontend/`), Android ve iOS hedefleriyle — ayrı, daha küçük bir companion projesi değil. Yerini aldığı bağımsız `mobile/` istemcisi 2026-09'da emekliye ayrıldı.
+- **Telefonda sıfır işlem yükü**: tüm yapay zeka Memo'yu çalıştıran makinede kalır; telefon LAN, ngrok ya da Tailscale üzerinden bağlanan bir uzak görüntüleyicidir.
+- **Yapısal özellik paritesi**: sohbet, ajan modu, takvim, rutinler, model deposu ve ayarlar masaüstü ekranlarının kendisidir — yeniden yazılmadı, dar ekran için yerleştirildi.
+- **OS seviyesi takvim hatırlatıcıları**: işletim sistemine zamanlanır, böylece uygulama kapalı ve telefon o günden beri backend'i hiç duymamış olsa bile ateşlenir.
+- **Sesli giriş**: telefon kaydeder, backend yazıya çevirir. TTS yanıtları native bir ses eklentisiyle çalınır.
+- **Telefonda olmayanlar**: Live Mode'un native realtime motorları (ayrık transcribe/synthesize döngüsüne düşer), masaüstü maskotu, sistem tepsisi ve CLI kurulumu.
 
 ---
 
@@ -261,7 +264,7 @@ Birden fazla yapay zeka modeli bir takım olarak işbirliği yapar:
 - Bir görevi ve bir zamanlamayı sade dilde tarif edin; Memo bunu zamanında ateşlenen, basit bir prompt ya da tam bir tool-kullanan ajan çalıştırması olarak bir rutine çevirir.
 - **Sadece Rutinler sekmesinden değil, sohbetten de oluşturun**: normal bir sohbetten ya da WhatsApp/Telegram kendine-sohbet asistanından sade dilde bir rutin isteyin, `create_routine`/`list_routines`/`cancel_routine` ajan araçları hallederi — özel Rutinler ekranını açmaya gerek yok.
 - Bir rutin, nasıl oluşturulduğundan bağımsız olarak ateşlendiğinde her zaman tam ajan + web-arama tool erişimine sahiptir — önceki bir hata bu erişimi oluşturma anında yapılan tek-seferlik bir sınıflandırmaya bağlıyordu, bu yüzden daha sonra sessizce "kapanabiliyordu"; koşulsuz olacak şekilde düzeltildi.
-- **Masaüstü ve mobilde** çalışır — mobil, uygulama açık olmasa bile hatırlatmaların gelmesi için gerçek, önceden-zamanlanmış yerel bildirimler sunar.
+- **Masaüstü ve mobilde** çalışır — telefonda hatırlatmalar doğrudan işletim sistemine zamanlanır, böylece uygulama açık olmasa bile gelir.
 - **Kendi cihazınızın saat diliminde** ateşlenir (oluşturulurken yakalanır, her yeniden bağlantıda yeniden senkronlanır), böylece seyahat/DST dondurulmuş kalmak yerine kendini düzeltir.
 
 ### Proaktif Öğrenme ve Ortamsal Dürtüler

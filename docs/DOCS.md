@@ -76,13 +76,13 @@ Memo is not just another chat UI. It is a full AI companion that runs entirely o
 **Two-process decoupled design:** Go backend (headless REST API, port `:8090`) + Flutter desktop UI, plus an optional third window (the mascot) sharing the same process/state. Communication is plain HTTP/JSON + SSE streaming — no TLS on localhost.
 
 ```
-┌──────────────────────────────────┐    ┌───────────────────────┐    ┌──────────────┐
-│  Flutter Desktop (Linux/Win/Mac)  │    │  Flutter Mobile        │    │  Mascot      │
-│  Chat · Agent · Code Mode         │    │  Chat · Calendar       │    │  window      │
-│  Orchestra · Settings · Models    │    │  Remote connect        │    │  (same proc) │
-└──────────────┬───────────────────┘    └───────────┬───────────┘    └──────┬───────┘
-               │  REST + SSE (:8090)                │  LAN / ngrok / Tailscale     │
-               └──────────────┬─────────────────────┴──────────────────────────────┘
+┌────────────────────────────────────────────────────────┐    ┌──────────────┐
+│  Flutter client (Linux/Win/Mac · Android/iOS · web)     │    │  Mascot      │
+│  Chat · Agent · Code Mode · Calendar · Routines         │    │  window      │
+│  Orchestra · Settings · Models                          │    │  (same proc) │
+└──────────────────────────┬─────────────────────────────┘    └──────┬───────┘
+          REST + SSE (:8090 local, or LAN / ngrok / Tailscale)       │
+                           └─────────────────────────────────────────┘
 ┌──────────────────────────────┴─────────────────────────────────────────────────┐
 │                 Go Backend — 40+ packages, 180+ endpoints                        │
 │  Memory(vec0+FTS5) · Sessions · Llama · WhatsApp/Telegram · Agent · TaskLoop     │

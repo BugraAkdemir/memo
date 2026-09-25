@@ -395,13 +395,13 @@ Sürüm paketleri:
 <br/>
 
 ```
-┌─────────────────────────────────┐    ┌──────────────────────────┐
-│  Flutter Masaüstü (Linux/Win)    │    │  Flutter Mobil            │
-│  Sohbet · Ajan · Orkestra        │    │  Sohbet · Bildirimler     │
-│  Ayarlar · Model Mağazası        │    │  Uzak bağlantı            │
-└──────────────┬───────────────────┘    └───────────┬──────────────┘
-               │  REST + SSE (:8090)                 │  LAN / ngrok
-               └──────────────┬──────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Flutter istemcisi — tek uygulama, her platform            │
+│  Linux · Windows · macOS · Android · iOS · web             │
+│  Sohbet · Ajan · Orkestra · Ayarlar · Model Mağazası       │
+└──────────────────────────────┬───────────────────────────┘
+    REST + SSE (:8090 yerel, ya da LAN / ngrok / Tailscale)
+                               │
 ┌──────────────────────────────┴──────────────────────────────────┐
 │              Go Backend — 40+ paket, 180+ endpoint                │
 │  ┌─────────┐ ┌──────┐ ┌──────┐ ┌────────┐ ┌──────┐ ┌────────┐  │

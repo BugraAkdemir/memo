@@ -173,7 +173,7 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET`/`PUT` | `/api/proactive/settings` | Get/update proactive learning level |
-| `GET` | `/api/proactive/pending` | Poll for a pending suggestion (used by mobile) |
+| `GET` | `/api/proactive/pending` | Poll for a pending suggestion |
 | `POST` | `/api/proactive/respond` | Accept/dismiss/suppress a suggestion |
 | `GET` | `/api/proactive/patterns` | List learned patterns |
 | `POST` | `/api/proactive/patterns/forget` | Forget one pattern |

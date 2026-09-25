@@ -1,3 +1,125 @@
+# Handoff — 2026-09-25 — Belgelenmeyen 8 commit'in kaydı + doğrulama + push
+
+## Oturum Özeti
+
+Oturum açılışında AGENTS.md + `handoff.md` okunduğunda **handoff ile git
+geçmişi arasında boşluk** bulundu: son girdi 2026-09-23'tü, ama o
+girdiden sonra 8 commit gelmiş ve hiçbiri handoff'a yazılmamıştı.
+Commit'lerin kendi gövdeleri ayrıntılıydı (kök sebep + saldırı/başarısızlık
+senaryosu + test), yani iş gerçekten yapılmıştı — eksik olan sadece
+handoff kaydıydı. Bu oturumda **yeni kod yazılmadı**: o 8 commit'in ne
+olduğu belgelendi, tüm doğrulama komutları baştan koşuldu ve `main`
+push edildi.
+
+## Belgelenen commit'ler (7'si zaten push'lu, 1'i bu oturumda push edildi)
+
+Hepsi **2026-09-23 güvenlik/kod denetiminden** (4 paralel scoped
+codebase-memory audit, daha önce hiç okunmamış agent tool dosyaları)
+çıkan maddeler — P0'dan P2'ye sırayla:
+
+1. **`5bc23762` (P0)** — `self_clone`'un arbitrary-file-overwrite sandbox
+   escape'i kapatıldı. Tool'un hiçbir protected-path kontrolü yoktu
+   (tek guard: "hedef kaynağın içinde olmasın"); `validatePath`'ten
+   geçmiyordu. Somut yol: Self-Driving worker'ı kendi executor'ında
+   `SetBypassPermissions(true)` çağırıyor (BUG_REPORT.md P0-3, hâlâ
+   shipping), bypass modu DangerLevel'a bakmadan `Allowed=true` veriyor →
+   gözetimsiz bir görev `write_file` ile sandbox'a `authorized_keys`
+   yazıp `self_clone dest="~/.ssh"` ile gerçek dosyanın üzerine
+   yazabilirdi, tek onay istemi olmadan. Fix iki katman:
+   `selfCloneProtectedPaths()` (= `defaultProtectedPaths()` eksi `/home/`
+   ve `/tmp/` — yoksa tool masaüstü kullanıcısı için işlevsiz kalır) +
+   `selfCloneHasDotComponent()` (dosya adı kara listesi yerine **şekle**
+   göre: nokta ile başlayan herhangi bir yol bileşeni reddediliyor →
+   ~/.ssh, ~/.gnupg, ~/.aws, ~/.bashrc … sınıfın tamamı kapanıyor).
+   İkisi de symlink çözülmüş gerçek yola karşı çalışıyor
+   (`resolveRealPath` helper'ı çıkarıldı, `validatePath` de artık onu
+   kullanıyor, davranış değişmedi). 4 yeni test.
+2. **`f3d8b4a3` (P0)** — `SubAgentOrchestrator.Spawn`'ın goroutine'inde
+   panic recovery yoktu; `internal/taskloop/` içinde hiç `logx.GoRecover`
+   kullanımı yoktu. `o.runner.Run` içinde bir panic tüm memo sürecini
+   düşürürdü (aktif her chat/WhatsApp/Telegram oturumu dahil) — Live
+   Mode'da iki kez düzeltilmiş P0-2 sınıfının aynısı, ama bu nadir bir
+   yarış değil: `shouldSpawn` orta karmaşıklıktaki her görev maddesinde
+   tetikleniyor. `logx.GoRecover` yerine yerel `defer recover()`:
+   panic ilgili spec'in `SubAgentResult.Err`'ine düşüyor, "bir kardeş
+   başarısız olursa diğerleri iptal olmaz" sözleşmesi korunuyor.
+3. **`357ee843` (P1)** — Zaten bir görev listesine bağlı chat'e ikinci
+   liste bağlanması reddediliyor. "Bu chat'in görevi hangisi" diyen her
+   tüketici tek bağ varsayıyordu: `chatBoundTaskID` ilk eşleşmeyi
+   alıyor (Go map sırası rastgele → çağrı başına farklı kazanan),
+   in-chat `TaskActivityBlock` state'ini sadece `chatId` ile
+   anahtarlıyor. Yazma tarafında hiçbir zorlama yoktu. Fix tek boğaz
+   noktasında: `StartTaskList`, aynı `ChatID` için **farklı** bir liste
+   koşuyorsa reddediyor (`r.ID != listID`, aynı listeyi yeniden
+   başlatmak etkilenmiyor). 2 yeni test (bloklayan fake worker ile,
+   zamanlama tahmini değil).
+4. **`00ca0356` (2×P2)** — `whatsapp.go`: (a) `SendWhatsApp` tool'un
+   kendi `ctx`'ini atıp `context.Background()` koyuyordu — denetlenen
+   dosyalardaki tek örnek; sohbeti durdurmak gönderimi iptal
+   etmiyordu. (b) `search_whatsapp`/`whatsapp_messages`/`whatsapp_chats`
+   yalnızca küçük limiti yukarı çekiyordu, büyüğünü kırpmıyordu →
+   `limit=100000` bağlam/token DoS'u. `maxWhatsAppResultLimit = 200`.
+   Paketin ilk testleri (`whatsapp_test.go`) de bu commit'te geldi.
+5. **`cf2baa04` (P2)** — `extractorSystemPrompt`'ta `habit_days` şeması
+   açıklamasızdı; `parseHabitDays` üç şekli tolere edip gerisinde
+   sessizce `nil` dönüyor, `nil` ise downstream'de "her gün" demek.
+   Yani "Pazartesi ve Çarşamba" her güne genişleyebilirdi. Prompt'a
+   0=Pazar..6=Cumartesi kodlaması ve boş dizinin anlamı yazıldı.
+6. **`7031a859` (P2)** — `ListModels` gövdeyi decode etmeden önce HTTP
+   status'e bakmıyordu: 401/403'ün düzgün JSON hata gövdesi sıfır
+   değerli sonuca decode oluyor, `nil` hata dönüyordu →
+   `Router.CheckConnection` bunu `Connected=true` okuyor, bozuk key'li
+   sağlayıcı UI'da "bağlı" ama model listesi boş görünüyordu. Hem
+   `openAIProvider` (openai/grok/openrouter/ollama/llamacpp/
+   opencode_zen/opencode_go miras alıyor) hem `claude.go`'nun kendi
+   kopyası düzeltildi. `groq.go`'daki byte-be-byte duplike `ListModels`
+   (ölü kod, `*openAIProvider` gömülü olduğu için zaten miras) silindi.
+7. **`ac832389`** — v4.6.0 TR release notes taslağı (`1173f53c`) 40
+   commit geride kalmıştı; en büyük boşluk **interaktif browser pane**
+   özelliğinin tamamıydı (9 checkpoint, hiç anılmamış). Per-chat skill
+   aktivasyonu da eklendi.
+8. **`f20c5af5`** (bu oturumda push edilen tek commit) — image-output-only
+   modeller OpenRouter'ın `/images` endpoint'ine yönlendiriliyor. Aktif
+   model olarak bir görsel modeli seçmek her turu bozuyordu (OpenRouter
+   `/chat/completions`'ta HTTP 404 veriyor, router tüm fallback zincirini
+   tüketiyordu; proactive engine aynı hatayı arka planda kendi
+   takviminde logluyordu). Tespit **katalog tabanlı**, model id tahmini
+   değil: bu modeller varsayılan `/models` yanıtında hiç yok (458 kayıt),
+   yalnızca `?output_modalities=image` filtresinde çıkıyor (57 kayıt,
+   canlı doğrulanmış), saat başına bir kez cache'leniyor.
+   `ImageGenerator` opsiyonel arayüzü + `Router.ImageGenerator` (sadece
+   turun gerçekten gideceği en yüksek öncelikli canlı kayıt için cevap
+   veriyor), görsel `<data>/generated-images/` altına yazılıp
+   `generated_image` FinishReason marker'ı ile UI'a taşınıyor, agent ve
+   web-search modları düz yola zorlanıyor, `callLLM` (başlık/fact/mood/
+   proactive) metinsiz modeli hiç aramıyor.
+
+## Doğrulama (bu oturumda baştan koşuldu, push öncesi)
+
+- `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...` — **BUILD OK**
+- `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...` — **VET OK**
+- `CGO_ENABLED=1 go test -tags "sqlite_fts5" -count=1 ./... -race` —
+  **tüm paketler yeşil**, tek FAIL yok (bu kez flaky
+  `TestRunLockedStreamSetup_...` da görülmedi)
+- `flutter analyze lib/` — **5 issue, hepsi info seviyesi ve önceden
+  var** (4× `use_build_context_synchronously`: calendar_screen:583,
+  chat_input:1277/1305, chat_sidebar:453 + 1× `use_null_aware_elements`:
+  chat_input:1116). AGENTS.md'nin kabul ettiği noise.
+- `flutter test` — **353/353 yeşil, "All tests passed!"**
+- Rule #8 L10n grep (`3219c80e..HEAD` arası `.dart` dosyaları =
+  `chat_provider.dart`) — **boş**, hardcoded UI string yok.
+- `git push origin main` — yapıldı, `main` artık origin ile eşit.
+
+## Ders
+
+Handoff girdisi ile commit akışı ayrı ayrı bozulabiliyor: bu 8 commit
+doğrulanmış ve (7'si) push edilmiş haldeydi ama handoff'ta hiç yoktu —
+yani "handoff ne diyorsa o" varsayımı tek başına yeterli değil. Oturum
+açılışında `handoff.md`'nin en üst girdisinin tarihini **`git log` ile
+karşılaştırmak** ucuz ve bu boşluğu anında yakalıyor.
+
+---
+
 # Handoff — 2026-09-23 (devam) — Kullanıcının taskloop canlı-test notları: 3/4 zaten çözülmüş, 1 gerçek
 
 ## Oturum Özeti

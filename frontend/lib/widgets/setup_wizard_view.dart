@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/friendly_error.dart';
 import '../core/l10n.dart';
+import '../core/platform_capabilities.dart';
 import '../core/theme.dart';
 import '../models/curated_models.dart';
 import '../models/gpu_info.dart';
@@ -41,6 +42,13 @@ class _SetupWizardScreen extends ConsumerStatefulWidget {
 class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   final _nameController = TextEditingController();
   final _customPromptController = TextEditingController();
+  // Only used by the mobile-only server step; created unconditionally so
+  // dispose() stays simple.
+  final _serverUrlController = TextEditingController();
+  final _serverTokenController = TextEditingController();
+  bool _serverTesting = false;
+  // null = not tried yet, so the step shows neither a tick nor an error.
+  bool? _serverOk;
 
   String _selectedTheme = 'light';
   String _selectedPrompt = personaPresets.first.key;
@@ -104,6 +112,8 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   void dispose() {
     _nameController.dispose();
     _customPromptController.dispose();
+    _serverUrlController.dispose();
+    _serverTokenController.dispose();
     super.dispose();
   }
 
@@ -126,6 +136,38 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
       _modelsOk = false;
     }
     if (mounted) setState(() => _checking = false);
+  }
+
+  /// Saves the typed address/token, rebuilds the API client against it and
+  /// probes the backend — the mobile-only counterpart to the final step's
+  /// diagnostics, which cannot tell the user anything useful while there is
+  /// no address to check at all.
+  Future<void> _testServerConnection() async {
+    final url = _serverUrlController.text.trim();
+    if (url.isEmpty || _serverTesting) return;
+    setState(() {
+      _serverTesting = true;
+      _serverOk = null;
+    });
+    try {
+      await ref.read(backendUrlProvider.notifier).save(url);
+      await ref
+          .read(backendTokenProvider.notifier)
+          .save(_serverTokenController.text.trim());
+      // The client is built from those two values, so it has to be rebuilt
+      // before the probe reaches the new address.
+      ref.invalidate(apiClientProvider);
+      final ok = await ref.read(apiClientProvider).isAlive();
+      if (!mounted) return;
+      setState(() => _serverOk = ok);
+      // A reachable server makes the later diagnostics meaningful, so run
+      // them now rather than leaving the last step stale.
+      if (ok) await _checkDiagnostics();
+    } catch (_) {
+      if (mounted) setState(() => _serverOk = false);
+    } finally {
+      if (mounted) setState(() => _serverTesting = false);
+    }
   }
 
   /// Lets the user skip the local-model download entirely and connect an API
@@ -274,6 +316,13 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The server step only exists on mobile, so the visible step numbers
+    // have to close up behind it rather than being hardcoded 1..5. Locals
+    // inside build(), not fields: the counter must restart from 1 on every
+    // rebuild, and a field would keep climbing.
+    final showServerStep = isMobilePlatform;
+    var stepsSoFar = 0;
+    String stepNumber() => '${++stepsSoFar}';
     return Theme(
       data: Theme.of(context).copyWith(
         brightness: _brightness,
@@ -401,9 +450,100 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            // ─── Step 1 — Language & Theme ────
+                            // ─── Step 1 (mobile only) — Server ───
+                            //
+                            // First, not last: every other step talks to the
+                            // backend (persona save, model list, diagnostics),
+                            // and on a phone there is no local backend to fall
+                            // back to — normalizeBackendUrl returns empty
+                            // there — so without an address none of them can
+                            // do anything. On desktop and web the address is
+                            // already known, so the step is not shown at all
+                            // and the numbering closes up behind it.
+                            if (showServerStep)
+                              _TimelineStep(
+                                number: stepNumber(),
+                                title: L10n.t('setup_step_server'),
+                                subtitle: L10n.t('setup_step_server_desc'),
+                                color: c,
+                                child: _Card(
+                                  color: c,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _Label(text: L10n.t('setup_server_url_label'), color: c),
+                                      SizedBox(height: 8),
+                                      TextField(
+                                        controller: _serverUrlController,
+                                        keyboardType: TextInputType.url,
+                                        autocorrect: false,
+                                        style: TextStyle(color: c.textMain, fontSize: 14),
+                                        decoration: InputDecoration(
+                                          // An example address, not prose:
+                                          // deliberately not an L10n key, same
+                                          // as the token hint below it.
+                                          hintText: '192.168.1.50:8090',
+                                          hintStyle: TextStyle(color: c.textDim),
+                                          isDense: true,
+                                        ),
+                                      ),
+                                      SizedBox(height: 16),
+                                      _Label(text: L10n.t('setup_server_token_label'), color: c),
+                                      SizedBox(height: 8),
+                                      TextField(
+                                        controller: _serverTokenController,
+                                        autocorrect: false,
+                                        style: TextStyle(color: c.textMain, fontSize: 14),
+                                        decoration: InputDecoration(
+                                          hintText: 'memo-...',
+                                          hintStyle: TextStyle(color: c.textDim),
+                                          isDense: true,
+                                        ),
+                                      ),
+                                      SizedBox(height: 16),
+                                      Text(
+                                        L10n.t('setup_server_help'),
+                                        style: TextStyle(fontSize: 12, color: c.textDim, height: 1.5),
+                                      ),
+                                      SizedBox(height: 16),
+                                      Row(
+                                        children: [
+                                          _Pill(
+                                            label: _serverTesting
+                                                ? L10n.t('setup_server_testing')
+                                                : L10n.t('setup_server_test'),
+                                            selected: false,
+                                            accent: MemoTheme.accent,
+                                            color: c,
+                                            // _Pill.onTap is a non-null
+                                            // VoidCallback; the guard against
+                                            // re-entry lives inside
+                                            // _testServerConnection too.
+                                            onTap: () => _testServerConnection(),
+                                          ),
+                                          SizedBox(width: 12),
+                                          if (_serverOk != null)
+                                            Expanded(
+                                              child: Text(
+                                                _serverOk!
+                                                    ? L10n.t('setup_server_ok')
+                                                    : L10n.t('setup_server_fail'),
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: _serverOk! ? MemoTheme.green : MemoTheme.red,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                            // ─── Language & Theme ─────────────
                             _TimelineStep(
-                              number: '1',
+                              number: stepNumber(),
                               title: L10n.t('setup_step_language_theme'),
                               color: c,
                               child: Builder(builder: (context) {
@@ -521,7 +661,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
 
                             // ─── Step 2 — Persona ──────────────
                             _TimelineStep(
-                              number: '2',
+                              number: stepNumber(),
                               title: L10n.t('setup_step_persona'),
                               subtitle: L10n.t('setup_step_persona_desc'),
                               color: c,
@@ -544,7 +684,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
 
                             // ─── Step 3 — Model Recommendation ─
                             _TimelineStep(
-                              number: '3',
+                              number: stepNumber(),
                               title: L10n.t('setup_step_model'),
                               color: c,
                               child: Consumer(
@@ -586,7 +726,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
 
                             // ─── Step 4 — Starting Preferences ─
                             _TimelineStep(
-                              number: '4',
+                              number: stepNumber(),
                               title: L10n.t('setup_step_preferences'),
                               subtitle: L10n.t('setup_step_preferences_desc'),
                               color: c,
@@ -633,7 +773,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
 
                             // ─── Step 5 — System Check ─────────
                             _TimelineStep(
-                              number: '5',
+                              number: stepNumber(),
                               title: L10n.t('setup_step_check'),
                               color: c,
                               isLast: true,

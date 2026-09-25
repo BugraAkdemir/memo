@@ -181,12 +181,26 @@ void main() {
       WidgetTester tester, {
       required bool? connected,
       Stream<AuthGateInfo>? gate,
+      bool setupComplete = true,
     }) async {
-      SharedPreferences.setMockInitialValues({});
+      // Setup marked complete because the overlay deliberately stands down
+      // during first run — the setup wizard owns the screen then, and on
+      // mobile it is the only place a server address can be entered at all.
+      SharedPreferences.setMockInitialValues({'memo_setup_complete': setupComplete});
       final prefs = await SharedPreferences.getInstance();
       final container = ProviderContainer(overrides: [
         prefsProvider.overrideWithValue(prefs),
         apiClientProvider.overrideWithValue(MemoApiClient(baseUrl: 'http://127.0.0.1:8090')),
+        // The overlay stands down during first-run setup (the wizard owns the
+        // screen then), so it reads this provider — whose notifier otherwise
+        // confirms the flag against GET /api/onboarding on construction.
+        // Inside testWidgets' fake-async zone Dio's timeout timers never fire
+        // and flutter_test fails the test for leaking them, so take the
+        // prefs-only path; the mocked flag above is what these tests assert
+        // against anyway.
+        setupCompleteProvider.overrideWith(
+          (ref) => SetupCompleteNotifier(ref, prefs, confirmWithBackend: false),
+        ),
         connectionStatusProvider.overrideWith(
           (ref) => connected == null ? const Stream.empty() : Stream.value(connected),
         ),
@@ -231,6 +245,27 @@ void main() {
         gate: Stream.value(const AuthGateInfo(AuthGateState.ok)),
       );
       expect(find.byType(BackendUnreachableView), findsOneWidget);
+    });
+
+    // The setup wizard sits EARLIER in app_shell.dart's Stack, so without
+    // this guard the overlay paints over it. On mobile that is not cosmetic:
+    // a fresh install has no reachable backend by definition (there is no
+    // local one to default to), so the single screen that asks for a server
+    // address would be buried under an overlay suggesting a loopback address
+    // that cannot work on a phone.
+    testWidgets('renders nothing during first-run setup, whatever the connection says',
+        (tester) async {
+      // Same inputs as the "covers the screen" case above — confirmed
+      // unreachable AND a healthy auth gate — so the setup flag is the only
+      // thing that can suppress the overlay here. Without it the test would
+      // pass for the wrong reason: a null gate already short-circuits.
+      await pumpApp(
+        tester,
+        connected: false,
+        gate: Stream.value(const AuthGateInfo(AuthGateState.ok)),
+        setupComplete: false,
+      );
+      expect(find.byType(BackendUnreachableView), findsNothing);
     });
 
     testWidgets(

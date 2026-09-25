@@ -160,9 +160,14 @@ class SetupCompleteNotifier extends StateNotifier<bool> {
   // every origin that hadn't independently completed it there, even
   // though the backend itself was already fully configured. See
   // config.OnboardingConfig's doc comment on the backend side.
-  SetupCompleteNotifier(this._ref, this._prefs)
+  /// [confirmWithBackend] exists only so widget tests can construct this
+  /// without a request: inside testWidgets' fake-async zone Dio's timeout
+  /// timers never fire and are reported as leaked pending timers, which
+  /// fails any test that merely reads this provider. Production always
+  /// leaves it on — the backend flag is the durable one (see above).
+  SetupCompleteNotifier(this._ref, this._prefs, {bool confirmWithBackend = true})
       : super(_prefs.getBool('memo_setup_complete') ?? false) {
-    _init();
+    if (confirmWithBackend) _init();
   }
 
   Future<void> _init() async {

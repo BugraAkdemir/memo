@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
+import '../core/platform_capabilities.dart';
 import '../core/theme.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
@@ -40,6 +41,16 @@ class BackendUnreachableOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // First run belongs entirely to the setup wizard, which sits EARLIER in
+    // app_shell.dart's Stack and would therefore be painted over by this.
+    // On mobile that is fatal rather than cosmetic: there is no local
+    // backend to fall back to, so a fresh install genuinely has no
+    // reachable server, and the one screen that asks for an address would
+    // be buried under this overlay — which suggests a loopback address that
+    // cannot work on a phone. Correct on every platform, not just mobile:
+    // while the wizard is up, it owns the screen.
+    if (!ref.watch(setupCompleteProvider)) return const SizedBox.shrink();
+
     final connected = ref.watch(connectionStatusProvider).valueOrNull;
     // null covers both "still loading the first check" and "stream errored"
     // (isAlive() itself never throws, but valueOrNull is null either way) —
@@ -278,7 +289,13 @@ class ChangeServerDialogState extends ConsumerState<ChangeServerDialog> {
               autofocus: true,
               decoration: InputDecoration(
                 labelText: L10n.t('remote_backend_url_field_label'),
-                hintText: 'http://127.0.0.1:8090',
+                // An example address, not translatable prose (same as the
+                // token field's 'memo-...' hint below), so it stays a plain
+                // literal rather than an L10n key. Loopback is a useless
+                // suggestion on a phone, where nothing listens on it.
+                hintText: localBackendPossible
+                    ? 'http://127.0.0.1:8090'
+                    : '192.168.1.50:8090',
                 prefixIcon: const Icon(Icons.link, size: 18),
               ),
               style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 14),
@@ -302,10 +319,14 @@ class ChangeServerDialogState extends ConsumerState<ChangeServerDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: _resetToLocal,
-          child: Text(L10n.t('reset_to_local_backend')),
-        ),
+        // Hidden on mobile: "go back to this computer's backend" would reset
+        // the address to a loopback that can never answer on a phone, i.e. a
+        // button whose only outcome is a broken state.
+        if (localBackendPossible)
+          TextButton(
+            onPressed: _resetToLocal,
+            child: Text(L10n.t('reset_to_local_backend')),
+          ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: Text(L10n.t('cancel')),

@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -296,9 +298,16 @@ void main() {
     final adapter = _StatefulAuthAdapter({
       '/api/setup/status': (200, {'needs_setup': false, 'auth_mode': 'password'}),
     });
+    // "Return to this computer's backend" is desktop-only — on a phone it
+    // would reset to a loopback address that cannot answer. flutter_test
+    // reports android by default, so pin the platform this case is about,
+    // and clear it inside the body (testWidgets asserts every foundation
+    // debug variable is null again before its own tear-downs run).
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
     await pump(tester, adapter);
     await tester.tap(find.text(L10n.t('backend_unreachable_change_server')));
     await tester.pumpAndSettle();
+    debugDefaultTargetPlatformOverride = null;
     // The dialog (reused from BackendUnreachableView) is open — its
     // "return to local backend" action only exists there.
     expect(find.text(L10n.t('reset_to_local_backend')), findsOneWidget);

@@ -200,6 +200,42 @@ type openAIUsage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+	// PromptTokensDetails carries OpenAI's automatic prompt-cache accounting.
+	// Nothing has to be sent to earn it — any prompt whose stable prefix is
+	// long enough is cached server-side — but it is only *observable* through
+	// this field, which nothing here read until now. Every OpenAI-compatible
+	// provider in this package (grok, groq, openrouter, ollama, llamacpp,
+	// opencode, kilo, cline) shares this struct; the ones whose backends
+	// don't report it simply leave it nil, which reads as zero.
+	PromptTokensDetails *openAIPromptTokensDetails `json:"prompt_tokens_details,omitempty"`
+}
+
+// openAIPromptTokensDetails is the breakdown OpenAI (and the vendors that
+// copy its schema) attaches to usage.prompt_tokens. CachedTokens is a SUBSET
+// of prompt_tokens, not an addition to it — see provider.Usage's doc comment
+// for why that distinction matters when comparing against Anthropic.
+type openAIPromptTokensDetails struct {
+	CachedTokens int `json:"cached_tokens"`
+}
+
+// cachedTokens reports the cache-hit portion of this usage, clamped to the
+// prompt total. A provider that omits the details object (most
+// OpenAI-compatible backends) yields 0.
+func (u openAIUsage) cachedTokens() int {
+	if u.PromptTokensDetails == nil {
+		return 0
+	}
+	c := u.PromptTokensDetails.CachedTokens
+	if c < 0 {
+		return 0
+	}
+	if c > u.PromptTokens {
+		// A cache figure larger than the input it belongs to is nonsense;
+		// trusting it would make FreshPromptTokens clamp to 0 and report a
+		// free turn. Cap instead of propagating the contradiction.
+		return u.PromptTokens
+	}
+	return c
 }
 
 type openAIResponse struct {
@@ -300,6 +336,11 @@ func (p *openAIProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 			PromptTokens:     result.Usage.PromptTokens,
 			CompletionTokens: result.Usage.CompletionTokens,
 			TotalTokens:      result.Usage.TotalTokens,
+			// OpenAI reports cached tokens as a subset of prompt_tokens, which
+			// is already provider.Usage's contract — pass it through as-is, no
+			// arithmetic. There is no cache-write figure to report: automatic
+			// caching carries no write premium.
+			CachedPromptTokens: result.Usage.cachedTokens(),
 		},
 	}, nil
 }

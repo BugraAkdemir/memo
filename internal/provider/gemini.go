@@ -187,6 +187,24 @@ type geminiUsage struct {
 	PromptTokenCount     int `json:"promptTokenCount"`
 	CandidatesTokenCount int `json:"candidatesTokenCount"`
 	TotalTokenCount      int `json:"totalTokenCount"`
+	// CachedContentTokenCount is Gemini's prompt-cache accounting. It covers
+	// both implicit caching (automatic on 2.5-generation models, nothing to
+	// send) and explicit cachedContent handles, and — like OpenAI, unlike
+	// Anthropic — it is a SUBSET of promptTokenCount, so it needs no
+	// arithmetic to satisfy provider.Usage's contract.
+	CachedContentTokenCount int `json:"cachedContentTokenCount"`
+}
+
+// cachedTokens reports the cache-hit portion of this usage, clamped to the
+// prompt total for the same reason openAIUsage.cachedTokens clamps.
+func (u geminiUsage) cachedTokens() int {
+	if u.CachedContentTokenCount < 0 {
+		return 0
+	}
+	if u.CachedContentTokenCount > u.PromptTokenCount {
+		return u.PromptTokenCount
+	}
+	return u.CachedContentTokenCount
 }
 
 func (p *geminiProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
@@ -257,9 +275,10 @@ func (p *geminiProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 	var usage *Usage
 	if result.Usage != nil {
 		usage = &Usage{
-			PromptTokens:     result.Usage.PromptTokenCount,
-			CompletionTokens: result.Usage.CandidatesTokenCount,
-			TotalTokens:      result.Usage.TotalTokenCount,
+			PromptTokens:       result.Usage.PromptTokenCount,
+			CompletionTokens:   result.Usage.CandidatesTokenCount,
+			TotalTokens:        result.Usage.TotalTokenCount,
+			CachedPromptTokens: result.Usage.cachedTokens(),
 		}
 	}
 

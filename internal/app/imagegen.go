@@ -176,6 +176,7 @@ func (a *App) streamImageGeneration(ctx context.Context, gen provider.ImageGener
 	}
 	if resp.Usage != nil {
 		meta.PromptTokens = resp.Usage.PromptTokens
+		meta.Cache = usageCacheTokens(resp.Usage)
 	}
 	// The reply body stays empty on purpose — the image *is* the message, and
 	// a synthetic caption would be indistinguishable from something the

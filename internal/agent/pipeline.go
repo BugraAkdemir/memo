@@ -164,8 +164,9 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		// so it undercounts the real prefill by thousands of tokens; this one
 		// is measured from what the provider actually billed.
 		logContext := func(end string) {
-			logx.Printf("AGENT-CONTEXT: end=%s iters=%d msgs=%d first_prompt_tok=%d total_prompt_tok=%d completion_tok=%d",
-				end, iters, len(currentMessages), firstPromptTok, totalUsage.PromptTokens, totalUsage.CompletionTokens)
+			logx.Printf("AGENT-CONTEXT: end=%s iters=%d msgs=%d first_prompt_tok=%d total_prompt_tok=%d cached_tok=%d cache_write_tok=%d completion_tok=%d",
+				end, iters, len(currentMessages), firstPromptTok, totalUsage.PromptTokens,
+				totalUsage.CachedPromptTokens, totalUsage.CacheWriteTokens, totalUsage.CompletionTokens)
 		}
 
 		continuations := 0
@@ -204,6 +205,15 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				totalUsage.PromptTokens += resp.Usage.PromptTokens
 				totalUsage.CompletionTokens += resp.Usage.CompletionTokens
 				totalUsage.TotalTokens += resp.Usage.TotalTokens
+				// The cache figures accumulate exactly like the rest: each
+				// iteration is a separately billed call, and iterations 2..N
+				// are precisely where the prompt cache earns its keep (the
+				// system + tool-schema prefix is byte-identical, only the
+				// growing tool-result tail differs). Summing them is what
+				// makes an agent turn's cache saving visible at all — a
+				// per-iteration figure is never recorded anywhere.
+				totalUsage.CachedPromptTokens += resp.Usage.CachedPromptTokens
+				totalUsage.CacheWriteTokens += resp.Usage.CacheWriteTokens
 				if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 {
 					sawUsage = true
 				}

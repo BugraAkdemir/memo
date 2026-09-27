@@ -367,6 +367,71 @@ func TestRunStream_AccumulatesUsageOntoTerminalChunk(t *testing.T) {
 	}
 }
 
+// TestRunStream_AccumulatesCacheSplitOntoTerminalChunk is the cache half of
+// the test above, and the scripted numbers are the shape a real Anthropic
+// agent turn produces: iteration 0 pays to WRITE the system+tool prefix into
+// the cache, iteration 1 READS the same prefix back. Summing is the only way
+// that saving is ever visible — nothing records per-iteration usage.
+func TestRunStream_AccumulatesCacheSplitOntoTerminalChunk(t *testing.T) {
+	registry := NewRegistry() // has read_file
+	permissions := NewPermissionManager(t.TempDir())
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hi"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sandbox := NewSandbox(DefaultSandboxConfig(dir))
+
+	prov := &scriptedProvider{responses: []provider.ChatResponse{
+		{
+			ToolCalls: []provider.ToolCall{mustToolCall(t, "c1", "read_file", map[string]string{"path": "a.txt"})},
+			Usage: &provider.Usage{
+				PromptTokens: 8000, CompletionTokens: 40, TotalTokens: 8040,
+				CacheWriteTokens: 7500,
+			},
+		},
+		{
+			Content: "done",
+			Usage: &provider.Usage{
+				PromptTokens: 8200, CompletionTokens: 15, TotalTokens: 8215,
+				CachedPromptTokens: 7500,
+			},
+		},
+	}}
+
+	pipeline := NewPipeline(registry, permissions, sandbox, prov, nil)
+	pipeline.autoPermission = true
+
+	ch, err := pipeline.RunStream(context.Background(), nil, "test-model", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream() error = %v", err)
+	}
+
+	var terminal *provider.StreamChunk
+	for chunk := range ch {
+		c := chunk
+		if c.Done {
+			terminal = &c
+		}
+	}
+	if terminal == nil || terminal.Usage == nil {
+		t.Fatal("no terminal chunk with Usage received")
+	}
+	if terminal.Usage.CachedPromptTokens != 7500 {
+		t.Errorf("CachedPromptTokens = %d, want 7500", terminal.Usage.CachedPromptTokens)
+	}
+	if terminal.Usage.CacheWriteTokens != 7500 {
+		t.Errorf("CacheWriteTokens = %d, want 7500", terminal.Usage.CacheWriteTokens)
+	}
+	if terminal.Usage.PromptTokens != 16200 {
+		t.Errorf("PromptTokens = %d, want 16200 (8000+8200)", terminal.Usage.PromptTokens)
+	}
+	// 16200 total input, 15000 of it cache traffic: the turn only paid full
+	// input price on 1200 tokens.
+	if got := terminal.Usage.FreshPromptTokens(); got != 1200 {
+		t.Errorf("FreshPromptTokens() = %d, want 1200", got)
+	}
+}
+
 // TestRunStream_NoUsageLeavesTerminalChunkUsageNil confirms the fallback
 // path stays intact: a provider that reports no usage must not cause a
 // zero-valued Usage to be attached (which callAgentStream would misread as

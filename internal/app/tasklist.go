@@ -530,6 +530,8 @@ func (a *App) callLLMForReviewWith(ctx context.Context, messages []api.Message, 
 	reply := resp.Choices[0].Message.GetTextContent()
 	var usage *provider.Usage
 	if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 {
+		// No cache fields: this is the local llama-server branch, whose
+		// OpenAI-shaped usage carries no prompt-cache accounting at all.
 		usage = &provider.Usage{PromptTokens: resp.Usage.PromptTokens, CompletionTokens: resp.Usage.CompletionTokens}
 	}
 	a.recordReviewUsage(start, "local", a.localModelName(), category, messages, usage, reply)
@@ -544,7 +546,7 @@ func (a *App) recordReviewUsage(start time.Time, providerName, model, category s
 	if usage != nil && (usage.PromptTokens > 0 || usage.CompletionTokens > 0) {
 		prompt, completion = usage.PromptTokens, usage.CompletionTokens
 	}
-	a.recordCallLLMUsage(start, providerName, model, category, prompt, completion)
+	a.recordCallLLMUsage(start, providerName, model, category, prompt, completion, usageCacheTokens(usage))
 }
 
 // recordTaskStreamUsage is recordReviewUsage for the streaming sub-agent
@@ -557,7 +559,7 @@ func (a *App) recordTaskStreamUsage(start time.Time, providerName, model, catego
 	if usage != nil && (usage.PromptTokens > 0 || usage.CompletionTokens > 0) {
 		prompt, completion = usage.PromptTokens, usage.CompletionTokens
 	}
-	a.recordCallLLMUsage(start, providerName, model, category, prompt, completion)
+	a.recordCallLLMUsage(start, providerName, model, category, prompt, completion, usageCacheTokens(usage))
 }
 
 // routerProviderName is a best-effort label for a role router whose active

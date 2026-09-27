@@ -132,11 +132,12 @@ type openRouterImageResponse struct {
 		B64JSON   string `json:"b64_json"`
 		MediaType string `json:"media_type"`
 	} `json:"data"`
-	Usage struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-		TotalTokens      int `json:"total_tokens"`
-	} `json:"usage"`
+	// Reuses openAIUsage (openai.go) rather than redeclaring the same three
+	// fields inline, so this endpoint picks up prompt_tokens_details parsing
+	// for free — image requests aren't a caching workload, but a text prompt
+	// long enough to be cached is not impossible and silently dropping the
+	// figure would be a second place to fix later.
+	Usage openAIUsage `json:"usage"`
 }
 
 // GenerateImage implements ImageGenerator against POST {base}/images.
@@ -195,9 +196,10 @@ func (p *openRouterProvider) GenerateImage(ctx context.Context, req ImageRequest
 		Model:  model,
 		Images: make([]GeneratedImage, 0, len(result.Data)),
 		Usage: &Usage{
-			PromptTokens:     result.Usage.PromptTokens,
-			CompletionTokens: result.Usage.CompletionTokens,
-			TotalTokens:      result.Usage.TotalTokens,
+			PromptTokens:       result.Usage.PromptTokens,
+			CompletionTokens:   result.Usage.CompletionTokens,
+			TotalTokens:        result.Usage.TotalTokens,
+			CachedPromptTokens: result.Usage.cachedTokens(),
 		},
 	}
 	for _, d := range result.Data {

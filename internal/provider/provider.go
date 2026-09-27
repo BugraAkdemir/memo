@@ -167,10 +167,47 @@ type ChatResponse struct {
 	Model     string
 }
 
+// Usage is one call's token accounting, normalized across every provider.
+//
+// PromptTokens is always the FULL input size — fresh plus cached. Providers
+// disagree on this: OpenAI-compatible APIs report cached tokens as a subset
+// of prompt_tokens (prompt_tokens_details.cached_tokens), while Anthropic
+// reports cache_read_input_tokens / cache_creation_input_tokens *alongside*
+// (not inside) input_tokens. Each parser normalizes to the OpenAI reading —
+// the Anthropic one adds the cache figures back into PromptTokens — so a
+// caller can always compare PromptTokens across providers, and
+// `PromptTokens - CachedPromptTokens - CacheWriteTokens` is the number of
+// tokens that were actually paid for at full input price.
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+	// CachedPromptTokens is the part of PromptTokens that was served from
+	// the provider's prompt cache — billed at a large discount (Anthropic
+	// 0.1x, OpenAI/Gemini typically 0.25x) and processed without a prefill.
+	// Zero when the provider reports no cache figure, which is not the same
+	// as "no cache happened": a provider with automatic caching and no usage
+	// reporting on the path in question is indistinguishable from a miss.
+	CachedPromptTokens int `json:"cached_prompt_tokens,omitempty"`
+	// CacheWriteTokens is the part of PromptTokens that was written INTO the
+	// cache by this call (Anthropic's cache_creation_input_tokens, billed at
+	// a 1.25x premium). Only Anthropic's explicit cache_control breakpoints
+	// produce this; providers with automatic caching never charge or report a
+	// write, so it stays 0 there.
+	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
+}
+
+// FreshPromptTokens is the part of the input that was neither served from
+// cache nor written to it — the tokens billed at plain input price.
+// Defensive against a provider reporting cache figures that exceed the
+// input it also reported (never observed, but a negative "fresh" count
+// displayed to the user would be worse than a clamped zero).
+func (u Usage) FreshPromptTokens() int {
+	fresh := u.PromptTokens - u.CachedPromptTokens - u.CacheWriteTokens
+	if fresh < 0 {
+		return 0
+	}
+	return fresh
 }
 
 // StreamChunk is a single chunk in a streaming response.

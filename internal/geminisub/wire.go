@@ -86,6 +86,24 @@ type geminiUsage struct {
 	PromptTokenCount     int `json:"promptTokenCount"`
 	CandidatesTokenCount int `json:"candidatesTokenCount"`
 	TotalTokenCount      int `json:"totalTokenCount"`
+	// CachedContentTokenCount mirrors internal/provider/gemini.go's field of
+	// the same name: a SUBSET of promptTokenCount, populated by Gemini's
+	// implicit caching on 2.5-generation models. Code Assist returns the
+	// ordinary GenerateContentResponse shape, so whatever the upstream model
+	// reports arrives here unchanged.
+	CachedContentTokenCount int `json:"cachedContentTokenCount"`
+}
+
+// cachedTokens clamps the reported cache hit to the prompt total — see
+// internal/provider/gemini.go's identical helper.
+func (u geminiUsage) cachedTokens() int {
+	if u.CachedContentTokenCount < 0 {
+		return 0
+	}
+	if u.CachedContentTokenCount > u.PromptTokenCount {
+		return u.PromptTokenCount
+	}
+	return u.CachedContentTokenCount
 }
 
 // ── Code Assist envelopes ───────────────────────────────────────────────────
@@ -264,9 +282,10 @@ func parseGenerateResponse(body []byte, model string) (*provider.ChatResponse, e
 	var usage *provider.Usage
 	if r.Usage != nil {
 		usage = &provider.Usage{
-			PromptTokens:     r.Usage.PromptTokenCount,
-			CompletionTokens: r.Usage.CandidatesTokenCount,
-			TotalTokens:      r.Usage.TotalTokenCount,
+			PromptTokens:       r.Usage.PromptTokenCount,
+			CompletionTokens:   r.Usage.CandidatesTokenCount,
+			TotalTokens:        r.Usage.TotalTokenCount,
+			CachedPromptTokens: r.Usage.cachedTokens(),
 		}
 	}
 

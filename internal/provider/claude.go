@@ -259,6 +259,31 @@ func logClaudeCachePerformance(u claudeUsage) {
 	}
 }
 
+// toUsage normalizes Anthropic's accounting into provider.Usage's contract.
+//
+// The arithmetic is the whole point: Anthropic reports input_tokens as the
+// tokens it actually *prefilled*, with cache_read_input_tokens and
+// cache_creation_input_tokens listed SEPARATELY rather than included — so the
+// better the cache performs, the smaller input_tokens gets. Copying it
+// straight into PromptTokens (which is what happened before) meant a turn
+// whose 8k-token system+tool prefix came entirely from cache was recorded as
+// a few hundred prompt tokens, i.e. the usage stats under-reported exactly
+// the turns where caching worked, and a cache-enabled agent turn looked
+// *cheaper in input size* than the same turn with caching off. Adding both
+// cache figures back in restores "PromptTokens = the whole input", which is
+// what every OpenAI-compatible provider here already reports and what the
+// stats screen's per-model totals assume.
+func (u claudeUsage) toUsage() Usage {
+	prompt := u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+	return Usage{
+		PromptTokens:       prompt,
+		CompletionTokens:   u.OutputTokens,
+		TotalTokens:        prompt + u.OutputTokens,
+		CachedPromptTokens: u.CacheReadInputTokens,
+		CacheWriteTokens:   u.CacheCreationInputTokens,
+	}
+}
+
 func (p *claudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	model := req.Model
 	if model == "" {
@@ -323,11 +348,8 @@ func (p *claudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 
 	var usage *Usage
 	if result.Usage != nil {
-		usage = &Usage{
-			PromptTokens:     result.Usage.InputTokens,
-			CompletionTokens: result.Usage.OutputTokens,
-			TotalTokens:      result.Usage.InputTokens + result.Usage.OutputTokens,
-		}
+		u := result.Usage.toUsage()
+		usage = &u
 		logClaudeCachePerformance(*result.Usage)
 	}
 

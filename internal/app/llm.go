@@ -52,6 +52,41 @@ type usageMeta struct {
 	Model        string
 	Category     string
 	PromptTokens int
+	// Cache is the prompt-cache split of PromptTokens for this turn, when the
+	// provider reported one. Zero-valued on every path that falls back to the
+	// len/3 estimate (no provider figure to split) and on providers that
+	// report no cache accounting at all — see cacheTokens' doc comment for
+	// why that is not the same as "nothing was cached".
+	Cache cacheTokens
+}
+
+// cacheTokens carries the two prompt-cache figures a provider can report for
+// one call, kept together so every accounting path threads them as a unit
+// instead of growing two more int parameters.
+//
+// Read is the part of the prompt served from cache (cheap, no prefill);
+// Write is the part this call stored into the cache (Anthropic only, and
+// billed at a premium). Both are subsets of the same PromptTokens total —
+// see provider.Usage's doc comment for how each provider's native shape is
+// normalized before it gets here.
+//
+// A zero pair means "the provider reported no cache figures", which is
+// deliberately indistinguishable from a genuine miss: an OpenAI-compatible
+// backend that caches automatically but omits prompt_tokens_details, and one
+// that never cached anything, look identical over the wire. Don't present a
+// zero as proof that caching is off.
+type cacheTokens struct {
+	Read  int
+	Write int
+}
+
+// usageCacheTokens extracts the cache split from a provider usage report,
+// tolerating nil (every "the provider told us nothing" path).
+func usageCacheTokens(u *provider.Usage) cacheTokens {
+	if u == nil {
+		return cacheTokens{}
+	}
+	return cacheTokens{Read: u.CachedPromptTokens, Write: u.CacheWriteTokens}
 }
 
 // Usage event categories — see stats.Event.Category's doc comment. Every
@@ -651,6 +686,13 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		}
 		if u.PromptTokens > 0 && usageMetaVal != nil {
 			usageMetaVal.PromptTokens = u.PromptTokens
+			// The cache split belongs to the same report as PromptTokens and
+			// must move with it: assigned here rather than in its own
+			// `if u.CachedPromptTokens > 0` block, so a later usage report
+			// with a real prompt total but no cache hit (a fresh window, a
+			// provider that stopped reporting) overwrites a stale split
+			// instead of leaving the previous turn's figures attached to it.
+			usageMetaVal.Cache = usageCacheTokens(u)
 		}
 		if u.CompletionTokens > 0 {
 			completionTokens = u.CompletionTokens
@@ -1589,13 +1631,15 @@ func (a *App) recordUsageEvent(meta usageMeta, completionTokens int, durationSec
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := a.statsStore.RecordEvent(ctx, stats.Event{
-		Provider:         meta.Provider,
-		Model:            meta.Model,
-		Category:         meta.Category,
-		PromptTokens:     meta.PromptTokens,
-		CompletionTokens: completionTokens,
-		DurationSecs:     durationSecs,
-		TokensPerSecond:  tokensPerSecond,
+		Provider:           meta.Provider,
+		Model:              meta.Model,
+		Category:           meta.Category,
+		PromptTokens:       meta.PromptTokens,
+		CachedPromptTokens: meta.Cache.Read,
+		CacheWriteTokens:   meta.Cache.Write,
+		CompletionTokens:   completionTokens,
+		DurationSecs:       durationSecs,
+		TokensPerSecond:    tokensPerSecond,
 	}); err != nil {
 		logx.Printf("WARN: record usage event: %v", err)
 	}
@@ -1763,7 +1807,9 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 		}
 		// Orchestra's RunSingle exposes no usage info — estimate both sides
 		// the same way the orchestra branch of callLLMStream already does.
-		a.recordCallLLMUsage(start, "orchestra", "", category, estimateContentTokens(systemPrompt+" "+userPrompt), estimateContentTokens(finalResponse))
+		// Orchestra's own multi-model fan-out reports no per-call usage at
+		// this layer, so there is nothing to split — estimate only.
+		a.recordCallLLMUsage(start, "orchestra", "", category, estimateContentTokens(systemPrompt+" "+userPrompt), estimateContentTokens(finalResponse), cacheTokens{})
 		return finalResponse
 	}
 
@@ -1825,7 +1871,7 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 		if resp.Usage != nil {
 			promptTokens, completionTokens = resp.Usage.PromptTokens, resp.Usage.CompletionTokens
 		}
-		a.recordCallLLMUsage(start, activeName, model, category, promptTokens, completionTokens)
+		a.recordCallLLMUsage(start, activeName, model, category, promptTokens, completionTokens, usageCacheTokens(resp.Usage))
 		return resp.Content
 	}
 
@@ -1865,7 +1911,10 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 	if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 {
 		promptTokens, completionTokens = resp.Usage.PromptTokens, resp.Usage.CompletionTokens
 	}
-	a.recordCallLLMUsage(start, "local", a.localModelName(), category, promptTokens, completionTokens)
+	// The local llama-server reuses its KV cache aggressively (see
+	// internal/llama/llama.go's --cache-reuse) but reports nothing about it in
+	// the OpenAI usage shape, so there is no split to record here.
+	a.recordCallLLMUsage(start, "local", a.localModelName(), category, promptTokens, completionTokens, cacheTokens{})
 	return reply
 }
 
@@ -1876,7 +1925,7 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 // entirely, same privacy invariant finishStream applies to the streaming
 // path — token *counts* are still session content in aggregate, not just
 // message text.
-func (a *App) recordCallLLMUsage(start time.Time, provider, model, category string, promptTokens, completionTokens int) {
+func (a *App) recordCallLLMUsage(start time.Time, provider, model, category string, promptTokens, completionTokens int, cache cacheTokens) {
 	a.incognitoMu.RLock()
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
@@ -1889,7 +1938,7 @@ func (a *App) recordCallLLMUsage(start time.Time, provider, model, category stri
 		tps = float64(completionTokens) / duration
 	}
 	goRecover("recordUsageEvent", func() {
-		a.recordUsageEvent(usageMeta{Provider: provider, Model: model, Category: category, PromptTokens: promptTokens}, completionTokens, duration, tps)
+		a.recordUsageEvent(usageMeta{Provider: provider, Model: model, Category: category, PromptTokens: promptTokens, Cache: cache}, completionTokens, duration, tps)
 	})
 }
 

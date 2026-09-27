@@ -1,3 +1,165 @@
+# Handoff — 2026-09-27 — Prompt önbelleği muhasebesi: her sağlayıcıda, uçtan uca
+
+## Oturum Özeti
+
+Kullanıcının sorusu ("Memo'da cached token var mı, hem llama.cpp hem API
+tarafında?") bir denetimle başladı, denetim iki gerçek kusur buldu, sonra
+üç maddelik bir iş listesine ve **6 commit'e** dönüştü. Yeni kod yazıldı,
+her checkpoint kendi doğrulamasıyla commit'lendi.
+
+**Denetimin bulguları (kod okunarak, tahminsiz):**
+- llama.cpp tarafı: prompt cache **zaten çalışıyor** — `--cache-reuse 256` +
+  `--no-context-shift` (probe'lu, `llama.go:258`/`flag_probe.go:26`) ve asıl
+  iş `helpers.go:319-341`: zaman bloğu + working-set digest bilinçli olarak
+  system prompt'tan çıkarılıp **güncel user mesajının sonuna** taşınmış, böylece
+  öncesi turdan tura byte-identical kalıyor. `cache_prompt` açıkça
+  gönderilmiyor (llama-server default'una bırakılmış).
+- API tarafı: **yalnızca Claude**, yalnızca `anthropic.com` + tool taşıyan
+  turlarda. Diğer 12 sağlayıcıda tek satır cache kodu yok.
+- **Hiçbir yerde sayılmıyordu** — ve Claude'da bu aktif bir hataydı (aşağıda).
+
+## Commit'ler (sırayla, hepsi yeşil)
+
+| Commit | Ne |
+|---|---|
+| `dfb7fd7a` | (oturum açılışı) release skill'indeki ölü `mobile/pubspec.yaml` atfı |
+| `fc195e2e` | `provider.Usage`'a cache alanları + **her sağlayıcının** parser'ı + stats şeması/migration |
+| `64546e05` | Streaming turlarda gerçek usage: `stream_options.include_usage`, Claude `message_start`+`message_delta`, Gemini `usageMetadata` |
+| `6af87e96` | Stats sekmesinde Prompt Önbelleği paneli + e2e kanıt testi |
+| `daef4bc8` | Claude cache_control'ün `anthropic.com` kilidi kaldırıldı (retry-and-latch) |
+| `36315b79` | Öz-denetim bulgusu: dev gateway'lerin usage çıktısı |
+| `05a1a826` | AGENTS.md'ye 7 tuzak maddesi |
+
+## Düzeltilen gerçek hata (yeni özellik değil)
+
+**Anthropic cache figürlerini `input_tokens`'ın DIŞINDA raporluyor.** Yani
+önbellek ne kadar iyi çalışırsa `input_tokens` o kadar *küçülüyor*.
+`claude.go` bunu doğrudan `Usage.PromptTokens`'a kopyalıyordu ve
+`drainAgentStream` kendi tahminini bu sayıyla eziyor — sonuç: 8k'lık
+system+tool prefix'i tamamen önbellekten gelen bir agent turu **birkaç yüz
+prompt token** olarak kaydediliyordu. Önbellek girdiyi *daha küçük*
+gösteriyordu, daha ucuz değil; ve istatistikler tam olarak önbelleğin
+çalıştığı turları eksik raporluyordu. `toUsage()` iki figürü geri ekliyor.
+
+## Kapsam: "her sağlayıcıda" gerçekten her sağlayıcı
+
+- `openai.go` → **9 sağlayıcı birden** (grok, groq, openrouter, ollama,
+  llamacpp, opencode-zen, opencode-go, kilo, cline hepsi `*openAIProvider`
+  gömüyor). `prompt_tokens_details.cached_tokens`.
+- `claude.go` → claude + custom-anthropic (`*claudeProvider` gömüyor).
+- `gemini.go` + `internal/geminisub/wire.go` → `cachedContentTokenCount`.
+- `openrouter_images.go` artık kendi üç alanını tekrar tanımlamak yerine
+  `openAIUsage`'ı kullanıyor.
+- Alan bildirmeyen backend'ler sıfıra decode ediyor, hata vermiyor.
+
+## İki kritik tasarım kararı
+
+1. **Sıfır = "bildirilmedi", "önbellek yok" DEĞİL.** Yerel llama-server her
+   turda KV cache kullanıyor ve hiçbir şey bildirmiyor; otomatik önbellekleyen
+   ama `prompt_tokens_details` göndermeyen bir OpenAI-uyumlu backend, gerçek
+   bir miss'ten tel üzerinde ayırt edilemez; özellik öncesi satırlar yapısal
+   olarak sıfır. UI `hasCacheReporting`'e göre dallanıyor ve "bu dönemde
+   hiçbir sağlayıcı bildirmedi" diyor — asla ölçülmüş %0 hit oranı
+   göstermiyor. Widget testi bunu koruyor.
+2. **Bilinmeyen alan için retry-and-latch, hostname allowlist değil.**
+   `stream_options.include_usage` ve `cache_control` her yerde deneniyor,
+   reddedilirse geri çekilip provider instance'ında latch'leniyor.
+   Tetikleyici **sadece 400/422** — 401 anahtar, 404 route, 429 kota, 5xx
+   sunucu; onlarda retry hem her başarısız isteği ikiye katlar hem de süresi
+   geçmiş bir anahtar yüzünden özelliği tüm oturum boyunca kapatır. Retry de
+   başarısızsa **orijinal** hata raporlanıyor ve latch olmuyor.
+
+## Zor kısım: streaming
+
+Önceki durumda düz sohbet turlarında **hiçbir sağlayıcı usage
+raporlamıyordu** — len/3 tahminine düşülüyordu, ki tahmin tanım gereği cache
+split taşıyamaz. Yani muhasebe en çok kullanılan yolda boştu. Agent modu
+tesadüfen sağlamdı (`pipeline.go` non-streaming `ChatCompletion` kullanıyor).
+
+**OpenAI'nin usage chunk'ı `finish_reason` chunk'ından SONRA gelir ve
+`choices` dizisi BOŞtur.** `processSSE`'nin iki kestirmesi (`finish_reason`'da
+`return`, sıfır choices'ta `continue`) birlikte bu chunk'ın hiç görülmemesini
+garanti ediyordu. Artık terminal `Done`, usage chunk'ı / `[DONE]` / stream
+sonuna kadar bekletiliyor — **2 saniyelik watchdog** body'yi kapatarak
+(net/http, bloke bir `Read` ile eşzamanlı `Close`'u tam bu iş için destekler)
+"alanı kabul edip chunk'ı hiç göndermeyen" endpoint'in turu askıda
+bırakmasını engelliyor. Finish beklemedeyken oluşan scanner hatası bilinçli
+olarak **yüzeye çıkarılmıyor**, yoksa watchdog doğru bir cevabı görünür bir
+hataya çevirirdi.
+
+`StreamChunk` kanalının her tüketicisi ilk `Done`'da okumayı bırakıyor —
+dolayısıyla usage o chunk'ın **üstünde** gitmek zorunda, sonrasında
+gönderilen chunk atılır.
+
+## Öz-denetim bulgusu (commit'ler bittikten sonra)
+
+`PromptTokens`'ı tam girdiye normalize etmek **dev gateway'in dış
+sözleşmesini sessizce değiştirmişti**: `anthropicapi.WriteNonStream` o alanı
+doğrudan `input_tokens`'a kopyalıyor, yani Memo'yu Anthropic API'si sanan bir
+istemci (Cline, Claude Code) çoğu önbellekten gelen bir turda kendi maliyetini
+**~10x fazla** hesaplayacaktı. İki gateway'in **zıt** muamele gerektirdiği
+ortaya çıktı:
+- `internal/anthropicapi`: normalizasyonu geri alıyor (`input_tokens` =
+  `FreshPromptTokens()`, iki cache anahtarı ayrı, sıfırken tamamen atlanıyor).
+- `internal/openaiapi`: hiç aritmetik gerekmiyor (OpenAI'de cached zaten
+  subset) — sadece sayıyı düşürmeyi bırakması gerekiyordu.
+
+## Doğrulama
+
+- `CGO_ENABLED=1 go build/vet -tags "sqlite_fts5" ./...` — temiz
+- `CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race` — tüm paketler yeşil
+- `flutter analyze lib/ test/` — 7 bulgu, **hepsi önceden var olan** info
+  seviyesi (5 lib + 2 test)
+- `flutter test` — **406/406** (oturum başında 399; +4 model, +3 widget)
+- Rule #8 L10n grep — dokunulan her `.dart` dosyasında boş; **10 yeni anahtar
+  TR ve EN birlikte**
+- **e2e (asıl kanıt):** `FakeProvider` artık gerçek endpoint gibi usage
+  raporluyor (trailing SSE chunk + `prompt_tokens_details`, **yalnızca** app
+  gerçekten `include_usage` istediyse — böylece o alandaki bir regresyon testi
+  kırar, üstünü örtmez). Test gerçek bir streaming sohbet turu sürüyor, sonra
+  `GET /api/stats/usage` okuyup cache figürünün toplamlara **ve iki ayrı SQL
+  aggregate olan her iki breakdown'a** ulaştığını doğruluyor.
+
+## Yol üstünde öğrenilen (e2e'de bir tur debug'a mal oldu)
+
+**Düz bir sohbet turu, agent modu VE web arama ikisi de kapalı olmadıkça
+provider'ın SSE yoluna hiç ulaşmıyor.** `routeStream`, web arama açıkken turu
+`callWebSearchAgentStream`'e yönlendiriyor — agent modunun kullandığı aynı
+native tool-calling makinesi, yani non-streaming `ChatCompletion`. Bunun için
+`Harness.SetWebSearchEnabled` eklendi, açıklaması helper'ın üstünde.
+
+## Kapsam DIŞI — takip işleri
+
+1. **Düz sohbette Anthropic önbelleği** (BUG-SCAN15 gerekçesi hâlâ geçerli:
+   memory bloğu system prompt'un sonuna ekleniyor → ~%0 hit, ama 1.25x write
+   premium ödenir). **Gerçek çözüm gate'i taşımak değil**, system prompt'u iki
+   bloğa ayırmak: stabil persona/capabilities prefix'i (cacheable) + volatile
+   memory bloğu (cachesiz). Anthropic çoklu system bloğunu ve prefix
+   sınırında `cache_control`'ü destekliyor. Düz sohbet en sık kullanılan yol
+   olduğu için bu en büyük kalan kazanç.
+2. **OpenAI-şeklindeki gateway'in streaming yolu hâlâ hiç usage yayınlamıyor.**
+   Hiç yayınlamıyordu, yani regresyon değil; doğru yapmak istemcinin kendi
+   `stream_options.include_usage` isteğini onurlandırmak demek (kimsenin
+   istemediği bir alanı gönüllü eklemek değil).
+3. **Orchestra modu** hâlâ tahmin kaydediyor (`llm.go`'daki
+   `cacheTokens{}` + `estimateContentTokens`) — conductor'ın per-call usage'ı
+   bu katmana taşımıyor, ayrı bir iş.
+4. **`cache_prompt`'un llama-server'a açıkça gönderilmesi** — şu an default'a
+   bırakılmış; bundled binary'nin default'u repodan doğrulanamıyor.
+5. **Maliyet tahmini** — cache okuması ~0.1x, yazma ~1.25x. Artık token
+   ayrımı elde olduğu için para cinsinden tasarruf gösterilebilir; sağlayıcı
+   başına fiyat tablosu gerekiyor (repoda yok).
+
+## Sıradaki (öneri, değişmedi)
+
+- **v4.6.0 release'i** hâlâ kesilmedi (`version` dosyası `V4.5.0`) ve EN
+  release notes geride — artık bu oturumun 6 commit'i de eklenmesi gereken
+  malzeme (kullanıcıya görünür kısım: stats sekmesindeki Prompt Önbelleği
+  paneli).
+- `yapacam.md` madde 1 (canlı doğrulama turu) ve madde 3 (Live Mode Faz 3/4).
+
+---
+
 # Handoff — 2026-09-26 — Tek istemci: `mobile/` emekliye ayrıldı, `frontend/` Android+iOS'a derleniyor
 
 ## Oturum Özeti

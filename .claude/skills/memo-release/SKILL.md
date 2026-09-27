@@ -42,8 +42,8 @@ version (e.g. `3.1.3`):
 | 3 | `README.md` | Version badge (~line 16, `Version-v<NEW>`) AND the changelog link (~line 371) → `versinNote/v<NEW>.md` |
 | 4 | `READmeTR.md` | Same two spots: `Sürüm-v<NEW>` badge and `versinNote/tr/v<NEW>.md` link |
 
-Do NOT touch `frontend/pubspec.yaml` or `mobile/pubspec.yaml` — their
-versions are independent of the app version by design.
+Do NOT touch `frontend/pubspec.yaml` — its version is independent of the
+app version by design.
 
 Verify nothing is left behind, expect ZERO hits for the old version:
 

@@ -504,7 +504,7 @@ func drainStream(t *testing.T, ch <-chan StreamChunk) (string, bool) {
 	}
 }
 
-func TestBuildClaudeRequest_PromptCachingOnAnthropicOnly(t *testing.T) {
+func TestBuildClaudeRequest_PromptCachingOnToolCarryingTurns(t *testing.T) {
 	req := ChatRequest{
 		Messages: []Message{
 			TextMessage("system", "you are a long system prompt worth caching"),
@@ -529,31 +529,86 @@ func TestBuildClaudeRequest_PromptCachingOnAnthropicOnly(t *testing.T) {
 		t.Errorf("anthropic: only the LAST tool should carry cache_control")
 	}
 
+	// A custom Anthropic-compatible endpoint now gets the same treatment. This
+	// used to be gated on the hostname containing "anthropic.com", which meant
+	// anyone pointing Memo at a Claude proxy silently got no caching at all —
+	// for a class of endpoint where a 90% input discount matters just as much.
+	// Compatibility is handled by withdrawing the field on refusal instead
+	// (postMessages / noCacheControl), not by never trying.
 	custom := &claudeProvider{baseURL: "https://my-proxy.example.com/v1"}
 	got2 := custom.buildClaudeRequest(req, "claude-x", false)
-	if _, isBlocks := got2.System.([]claudeSystemBlock); isBlocks {
-		t.Errorf("custom endpoint: system must stay a plain string, got %#v", got2.System)
+	if blocks, isBlocks := got2.System.([]claudeSystemBlock); !isBlocks || blocks[0].CacheControl == nil {
+		t.Errorf("custom endpoint: system should also be a cache-controlled block, got %#v", got2.System)
 	}
-	if s, _ := got2.System.(string); s != "you are a long system prompt worth caching" {
-		t.Errorf("custom endpoint: system string = %q", s)
+	if got2.Tools[len(got2.Tools)-1].CacheControl == nil {
+		t.Errorf("custom endpoint: last tool should carry cache_control")
 	}
-	for i, tl := range got2.Tools {
+
+	// ...unless the endpoint has already refused it once, in which case the
+	// latch keeps every later request clean.
+	refused := &claudeProvider{baseURL: "https://my-proxy.example.com/v1"}
+	refused.noCacheControl.Store(true)
+	got3 := refused.buildClaudeRequest(req, "claude-x", false)
+	if _, isBlocks := got3.System.([]claudeSystemBlock); isBlocks {
+		t.Errorf("after a refusal: system must go back to a plain string, got %#v", got3.System)
+	}
+	for i, tl := range got3.Tools {
 		if tl.CacheControl != nil {
-			t.Errorf("custom endpoint: tool %d must not carry cache_control", i)
+			t.Errorf("after a refusal: tool %d must not carry cache_control", i)
 		}
 	}
 
-	// BUG-SCAN15: a plain chat turn (no Tools) on anthropic.com must NOT get
-	// a system cache breakpoint — its system prompt is rebuilt with a fresh
-	// memory block every turn, so it never hits and only pays the write
-	// premium.
+	// BUG-SCAN15: a plain chat turn (no Tools) must NOT get a system cache
+	// breakpoint — its system prompt is rebuilt with a fresh memory block
+	// every turn, so it never hits and only pays the write premium.
 	noTools := ChatRequest{Messages: []Message{
 		TextMessage("system", "you are a long system prompt worth caching"),
 		TextMessage("user", "hi"),
 	}}
-	got3 := anth.buildClaudeRequest(noTools, "claude-x", false)
-	if _, isBlocks := got3.System.([]claudeSystemBlock); isBlocks {
-		t.Errorf("no-tools turn: system must stay a plain string (no cache_control), got %#v", got3.System)
+	got4 := anth.buildClaudeRequest(noTools, "claude-x", false)
+	if _, isBlocks := got4.System.([]claudeSystemBlock); isBlocks {
+		t.Errorf("no-tools turn: system must stay a plain string (no cache_control), got %#v", got4.System)
+	}
+}
+
+// TestStripCacheControl_CollapsesSystemBackToString covers the retry's payload
+// transform on its own: an endpoint that rejected cache_control gets the shape
+// it expects — a plain system string, no markers on any tool — and the system
+// TEXT must survive, since dropping it would silently send a personaless
+// request that still looks successful.
+func TestStripCacheControl_CollapsesSystemBackToString(t *testing.T) {
+	original := claudeRequest{
+		System: []claudeSystemBlock{{
+			Type:         "text",
+			Text:         "persona text",
+			CacheControl: &claudeCacheControl{Type: "ephemeral"},
+		}},
+		Tools: []claudeTool{
+			{Name: "a"},
+			{Name: "b", CacheControl: &claudeCacheControl{Type: "ephemeral"}},
+		},
+	}
+	if !carriesCacheControl(original) {
+		t.Fatal("carriesCacheControl said no on a request that clearly does")
+	}
+
+	stripped := stripCacheControl(original)
+	if got, _ := stripped.System.(string); got != "persona text" {
+		t.Errorf("System = %#v, want the plain string \"persona text\"", stripped.System)
+	}
+	for i, tl := range stripped.Tools {
+		if tl.CacheControl != nil {
+			t.Errorf("tool %d still carries cache_control", i)
+		}
+	}
+	if carriesCacheControl(stripped) {
+		t.Error("carriesCacheControl still true after stripping")
+	}
+	// The original must be untouched — it is the payload the first attempt
+	// already used, and mutating it in place would corrupt a retry's error
+	// reporting (and anything else holding it).
+	if original.Tools[1].CacheControl == nil {
+		t.Error("stripCacheControl mutated the caller's tool slice in place")
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"memo/internal/logx"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,6 +21,12 @@ type claudeProvider struct {
 	apiKey   string
 	client   *http.Client
 	streamCl *http.Client
+	// noCacheControl latches when this endpoint has rejected a request
+	// carrying cache_control, so the retry costs one wasted request per
+	// process rather than one per message. Only reachable for a
+	// custom-anthropic endpoint — api.anthropic.com defines the field.
+	// Atomic because one provider instance serves concurrent streams.
+	noCacheControl atomic.Bool
 }
 
 func newClaudeProvider(cfg ProviderConfig) (*claudeProvider, error) {
@@ -284,29 +291,127 @@ func (u claudeUsage) toUsage() Usage {
 	}
 }
 
-func (p *claudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
-	model := req.Model
-	if model == "" {
-		model = p.model
+// carriesCacheControl reports whether clReq asks for prompt caching anywhere —
+// the system block or the last tool. Used to decide whether a rejection could
+// plausibly be about that field at all.
+func carriesCacheControl(clReq claudeRequest) bool {
+	if blocks, ok := clReq.System.([]claudeSystemBlock); ok {
+		for _, b := range blocks {
+			if b.CacheControl != nil {
+				return true
+			}
+		}
+	}
+	for _, t := range clReq.Tools {
+		if t.CacheControl != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// stripCacheControl returns clReq with every cache_control marker removed and
+// the system field collapsed back to a plain string — the shape an endpoint
+// that predates prompt caching expects.
+func stripCacheControl(clReq claudeRequest) claudeRequest {
+	if blocks, ok := clReq.System.([]claudeSystemBlock); ok {
+		var sb strings.Builder
+		for _, b := range blocks {
+			sb.WriteString(b.Text)
+		}
+		if sb.Len() > 0 {
+			clReq.System = sb.String()
+		} else {
+			clReq.System = nil
+		}
+	}
+	// Tools is a fresh slice per request (toClaudeTools allocates), but copy
+	// anyway: mutating a caller's slice in place to un-ask for caching would be
+	// a nasty surprise if that ever stops being true.
+	if len(clReq.Tools) > 0 {
+		tools := make([]claudeTool, len(clReq.Tools))
+		copy(tools, clReq.Tools)
+		for i := range tools {
+			tools[i].CacheControl = nil
+		}
+		clReq.Tools = tools
+	}
+	return clReq
+}
+
+// postMessages sends one /messages request, retrying once without
+// cache_control when that is what the endpoint rejected.
+//
+// Same compatibility valve, and the same narrow trigger, as openai.go's
+// doStreamRequest: only 400/422 can mean "I don't understand this request", so
+// a 401 (key), 404 (route), 429 (quota) or 5xx (server) is returned as-is
+// rather than being misread as a field problem — which would both double every
+// failed request and permanently disable caching because of an expired key. If
+// the retry also fails, the ORIGINAL error is reported and nothing latches.
+func (p *claudeProvider) postMessages(ctx context.Context, cl *http.Client, clReq claudeRequest, stream bool) (*http.Response, error) {
+	resp, err := p.sendMessages(ctx, cl, clReq, stream)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusOK || !carriesCacheControl(clReq) {
+		return resp, nil
+	}
+	if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnprocessableEntity {
+		return resp, nil
 	}
 
-	clReq := p.buildClaudeRequest(req, model, false)
+	firstErr := p.parseError(resp)
+	resp.Body.Close()
+
+	retry, retryErr := p.sendMessages(ctx, cl, stripCacheControl(clReq), stream)
+	if retryErr != nil {
+		return nil, retryErr
+	}
+	if retry.StatusCode != http.StatusOK {
+		// cache_control wasn't the problem; hand back the error describing the
+		// request the caller actually made, and don't latch.
+		retry.Body.Close()
+		return nil, firstErr
+	}
+
+	p.noCacheControl.Store(true)
+	logx.Printf("PROVIDER: %s rejected cache_control (%v) — prompt caching disabled for this session on %s",
+		p.Name(), firstErr, p.baseURL)
+	return retry, nil
+}
+
+func (p *claudeProvider) sendMessages(ctx context.Context, cl *http.Client, clReq claudeRequest, stream bool) (*http.Response, error) {
 	jsonBody, err := json.Marshal(clReq)
 	if err != nil {
 		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("marshal: %w", err)}
 	}
-
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/messages", bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("request: %w", err)}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
+	if stream {
+		httpReq.Header.Set("Accept", "text/event-stream")
+	}
 	p.setAuth(httpReq)
 
-	resp, err := p.client.Do(httpReq)
+	resp, err := cl.Do(httpReq)
 	if err != nil {
 		return nil, p.wrapError(err)
+	}
+	return resp, nil
+}
+
+func (p *claudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	model := req.Model
+	if model == "" {
+		model = p.model
+	}
+
+	resp, err := p.postMessages(ctx, p.client, p.buildClaudeRequest(req, model, false), false)
+	if err != nil {
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -368,24 +473,9 @@ func (p *claudeProvider) ChatCompletionStream(ctx context.Context, req ChatReque
 		model = p.model
 	}
 
-	clReq := p.buildClaudeRequest(req, model, true)
-	jsonBody, err := json.Marshal(clReq)
+	resp, err := p.postMessages(ctx, p.streamCl, p.buildClaudeRequest(req, model, true), true)
 	if err != nil {
-		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("marshal: %w", err)}
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/messages", bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("request: %w", err)}
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "text/event-stream")
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-	p.setAuth(httpReq)
-
-	resp, err := p.streamCl.Do(httpReq)
-	if err != nil {
-		return nil, p.wrapError(err)
+		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -673,20 +763,26 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 		Tools:       toClaudeTools(req.Tools),
 	}
 
-	// Prompt caching: on the real Anthropic API, mark the system prompt and
-	// the tail of the tool list as a cacheable prefix so an agent turn's
-	// later iterations don't re-pay full input price for the (unchanging)
-	// system + tool schema. Gated to api.anthropic.com — a custom
-	// Anthropic-compatible endpoint may not accept the cache_control field.
+	// Prompt caching: mark the system prompt and the tail of the tool list as
+	// a cacheable prefix so an agent turn's later iterations don't re-pay full
+	// input price for the (unchanging) system + tool schema.
 	//
-	// Also gated to tool-carrying (agent) turns: only there is the same
+	// This used to be gated to api.anthropic.com on the theory that a custom
+	// Anthropic-compatible endpoint might not accept cache_control — which
+	// meant a user pointing Memo at a Claude proxy got no caching at all, for
+	// the whole class of endpoint where the saving matters just as much. It is
+	// now attempted everywhere and withdrawn on refusal (see
+	// cacheControlRejected / p.noCacheControl), the same compatibility valve
+	// openai.go uses for stream_options.
+	//
+	// Still gated to tool-carrying (agent) turns: only there is the same
 	// system prefix reused inside the 5-minute TTL (iterations 2..N of one
 	// turn, system built once). On the plain chat path every turn rebuilds
 	// the system prompt with a freshly retrieved memory block appended last,
 	// so a breakpoint there would score ~0% hits while still paying the
 	// 1.25x cache-write premium on a multi-KB prompt (BUG-SCAN15).
 	sys := strings.TrimSpace(systemText)
-	cacheable := strings.Contains(p.baseURL, "anthropic.com") && len(clReq.Tools) > 0
+	cacheable := len(clReq.Tools) > 0 && !p.noCacheControl.Load()
 	if sys != "" {
 		if cacheable {
 			clReq.System = []claudeSystemBlock{{

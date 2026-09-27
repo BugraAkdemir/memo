@@ -354,3 +354,99 @@ func TestGeminiStream_EmitsUsageFromUsageMetadata(t *testing.T) {
 		t.Errorf("FreshPromptTokens() = %d, want 800", got)
 	}
 }
+
+// TestClaude_RetriesWithoutCacheControlOn400 is the compatibility valve that
+// replaced the old "only api.anthropic.com gets cache_control" hostname gate.
+// A custom Anthropic-compatible endpoint that predates prompt caching must
+// still work — the field is withdrawn and latched off, not left to break every
+// message.
+func TestClaude_RetriesWithoutCacheControlOn400(t *testing.T) {
+	var bodies [][]byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, raw)
+		if strings.Contains(string(raw), "cache_control") {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"unexpected field: cache_control"}}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"model":"claude-x","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":10,"output_tokens":2}}`))
+	}))
+	defer srv.Close()
+
+	p := newTestClaudeProvider(t, srv, "claude-x")
+	req := ChatRequest{
+		Messages: []Message{TextMessage("system", "persona"), TextMessage("user", "hi")},
+		Tools: []ToolDefinition{
+			{Type: "function", Function: ToolFunction{Name: "a", Description: "d", Parameters: []byte(`{"type":"object"}`)}},
+		},
+	}
+
+	resp, err := p.ChatCompletion(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ChatCompletion() error = %v — a rejected cache_control must be retried, not surfaced", err)
+	}
+	if resp.Content != "ok" {
+		t.Errorf("Content = %q, want %q", resp.Content, "ok")
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("server saw %d requests, want 2 (one rejected, one retried)", len(bodies))
+	}
+	if !strings.Contains(string(bodies[0]), "cache_control") {
+		t.Error("the first request did not attempt cache_control at all")
+	}
+	if strings.Contains(string(bodies[1]), "cache_control") {
+		t.Error("the retry still carried cache_control")
+	}
+	// The retry must not have dropped the system prompt while collapsing the
+	// block form back to a string.
+	if !strings.Contains(string(bodies[1]), "persona") {
+		t.Errorf("the retry lost the system prompt: %s", bodies[1])
+	}
+	if !p.noCacheControl.Load() {
+		t.Error("the refusal did not latch — every later message would pay the same wasted round trip")
+	}
+
+	// And the next request goes out clean on the first try.
+	if _, err := p.ChatCompletion(context.Background(), req); err != nil {
+		t.Fatalf("second ChatCompletion() error = %v", err)
+	}
+	if len(bodies) != 3 {
+		t.Fatalf("server saw %d requests, want 3", len(bodies))
+	}
+	if strings.Contains(string(bodies[2]), "cache_control") {
+		t.Error("the third request still carried cache_control despite the latch")
+	}
+}
+
+// TestClaude_AuthErrorNeitherRetriesNorLatches keeps the valve narrow for the
+// same reason as its OpenAI counterpart: a 401 says nothing about field
+// support, and latching on it would disable caching for the session because of
+// an expired key.
+func TestClaude_AuthErrorNeitherRetriesNorLatches(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":{"message":"bad key"}}`))
+	}))
+	defer srv.Close()
+
+	p := newTestClaudeProvider(t, srv, "claude-x")
+	_, err := p.ChatCompletion(context.Background(), ChatRequest{
+		Messages: []Message{TextMessage("system", "persona"), TextMessage("user", "hi")},
+		Tools: []ToolDefinition{
+			{Type: "function", Function: ToolFunction{Name: "a", Description: "d", Parameters: []byte(`{"type":"object"}`)}},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if calls != 1 {
+		t.Errorf("server saw %d requests, want 1 (a 401 must not be retried)", calls)
+	}
+	if p.noCacheControl.Load() {
+		t.Error("an auth error latched prompt caching off")
+	}
+}

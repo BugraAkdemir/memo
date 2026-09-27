@@ -382,10 +382,40 @@ func toAnthropicContentBlocks(resp provider.ChatResponse) []map[string]any {
 // WriteNonStream writes a complete (non-streaming) Anthropic Messages API
 // response for a finished provider.ChatResponse, including any tool_use
 // blocks and the corresponding stop_reason.
+// anthropicUsage renders a provider.Usage in Anthropic's OWN usage shape,
+// which is not the shape provider.Usage uses internally.
+//
+// provider.Usage normalizes PromptTokens to the FULL input — cached tokens
+// included — so the number is comparable across providers (see its doc
+// comment). Anthropic's wire format does the opposite: input_tokens counts
+// only what was actually prefilled, with cache_read_input_tokens and
+// cache_creation_input_tokens reported SEPARATELY alongside it. This gateway
+// claims to be the Anthropic API, so it has to undo the normalization —
+// otherwise a client computing cost from input_tokens over-charges itself for
+// every token that was really served from cache at a tenth of the price.
+//
+// The two cache keys are omitted entirely when zero, matching a real response
+// from a request that carried no cache_control.
+func anthropicUsage(u *provider.Usage, outputTokens int) map[string]int {
+	if u == nil {
+		return map[string]int{"input_tokens": 0, "output_tokens": outputTokens}
+	}
+	out := map[string]int{
+		"input_tokens":  u.FreshPromptTokens(),
+		"output_tokens": outputTokens,
+	}
+	if u.CachedPromptTokens > 0 {
+		out["cache_read_input_tokens"] = u.CachedPromptTokens
+	}
+	if u.CacheWriteTokens > 0 {
+		out["cache_creation_input_tokens"] = u.CacheWriteTokens
+	}
+	return out
+}
+
 func WriteNonStream(w http.ResponseWriter, model string, resp provider.ChatResponse, finishReason string) error {
-	inputTokens, outputTokens := 0, 0
+	outputTokens := 0
 	if resp.Usage != nil {
-		inputTokens = resp.Usage.PromptTokens
 		outputTokens = resp.Usage.CompletionTokens
 	}
 	body := map[string]any{
@@ -396,10 +426,7 @@ func WriteNonStream(w http.ResponseWriter, model string, resp provider.ChatRespo
 		"model":         model,
 		"stop_reason":   responseStopReason(resp, finishReason),
 		"stop_sequence": nil,
-		"usage": map[string]int{
-			"input_tokens":  inputTokens,
-			"output_tokens": outputTokens,
-		},
+		"usage":         anthropicUsage(resp.Usage, outputTokens),
 	}
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(body)
@@ -449,6 +476,13 @@ func StreamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher,
 	outputTokens := 0
 	finishReason := ""
 	var fullContent strings.Builder
+	// The provider's real accounting, when it reports any, arrives on the
+	// terminal chunk — after message_start has already gone out with the
+	// caller's estimate. Anthropic itself puts input_tokens on message_start,
+	// which we cannot do without the numbers yet, so the real figures (and the
+	// cache split) are reported on message_delta instead: additive for a client
+	// that only reads output_tokens there, and the only place they can go.
+	var streamUsage *provider.Usage
 
 	for {
 		var chunk provider.StreamChunk
@@ -481,6 +515,9 @@ func StreamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher,
 				"delta": map[string]string{"type": "text_delta", "text": chunk.Content},
 			})
 		}
+		if chunk.Usage != nil {
+			streamUsage = chunk.Usage
+		}
 		if chunk.Done {
 			finishReason = chunk.FinishReason
 			break
@@ -491,10 +528,16 @@ func StreamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher,
 		"type":  "content_block_stop",
 		"index": 0,
 	})
+	// outputTokens is a whitespace word count of what streamed past — the only
+	// figure available before providers reported usage on this path. Prefer the
+	// real count whenever one arrived.
+	if streamUsage != nil && streamUsage.CompletionTokens > 0 {
+		outputTokens = streamUsage.CompletionTokens
+	}
 	writeEvent("message_delta", map[string]any{
 		"type":  "message_delta",
 		"delta": map[string]any{"stop_reason": stopReason(finishReason), "stop_sequence": nil},
-		"usage": map[string]int{"output_tokens": outputTokens},
+		"usage": anthropicUsage(streamUsage, outputTokens),
 	})
 	writeEvent("message_stop", map[string]any{
 		"type": "message_stop",
@@ -540,7 +583,12 @@ func StreamSSEFromResponse(w http.ResponseWriter, flusher http.Flusher, model st
 			"model":         model,
 			"stop_reason":   nil,
 			"stop_sequence": nil,
-			"usage":         map[string]int{"input_tokens": promptTokens, "output_tokens": 0},
+			// input_tokens here is the caller's pre-call figure; the real
+			// accounting (with its cache split) goes out on message_delta
+			// below, same as StreamSSE. Anthropic puts it on message_start,
+			// but resp.Usage is the authority and a client merging the two
+			// usage objects ends up with the right numbers either way.
+			"usage": map[string]int{"input_tokens": promptTokens, "output_tokens": 0},
 		},
 	})
 
@@ -583,7 +631,7 @@ func StreamSSEFromResponse(w http.ResponseWriter, flusher http.Flusher, model st
 	writeEvent("message_delta", map[string]any{
 		"type":  "message_delta",
 		"delta": map[string]any{"stop_reason": responseStopReason(resp, finishReason), "stop_sequence": nil},
-		"usage": map[string]int{"output_tokens": outputTokens},
+		"usage": anthropicUsage(resp.Usage, outputTokens),
 	})
 	writeEvent("message_stop", map[string]any{"type": "message_stop"})
 

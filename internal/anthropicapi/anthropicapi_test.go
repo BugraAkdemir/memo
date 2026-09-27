@@ -509,3 +509,127 @@ func TestToolArgumentsRoundTrip(t *testing.T) {
 		t.Errorf("round-tripped object = %+v, want the original fields preserved", obj)
 	}
 }
+
+// TestWriteNonStream_CacheSplitUsesAnthropicNativeShape pins the direction of
+// the arithmetic at this boundary, which is the opposite of everywhere else in
+// the codebase.
+//
+// provider.Usage normalizes PromptTokens to the full input (cached included)
+// so the number compares across providers. Anthropic's own wire format counts
+// only what it prefilled, with the cache figures reported separately — and this
+// gateway claims to BE that API. Reporting the normalized total as input_tokens
+// would make a client compute a cost as if nothing had been cached, which for
+// a mostly-cached agent turn over-charges it by roughly 10x on input.
+func TestWriteNonStream_CacheSplitUsesAnthropicNativeShape(t *testing.T) {
+	rec := httptest.NewRecorder()
+	resp := provider.ChatResponse{
+		Content: "cached",
+		Usage: &provider.Usage{
+			PromptTokens:       8100, // normalized total: 300 fresh + 7800 cached
+			CompletionTokens:   12,
+			CachedPromptTokens: 7800,
+			CacheWriteTokens:   0,
+		},
+	}
+	if err := WriteNonStream(rec, "claude-x", resp, "stop"); err != nil {
+		t.Fatalf("WriteNonStream: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	usage := decoded["usage"].(map[string]any)
+	if usage["input_tokens"] != float64(300) {
+		t.Errorf("input_tokens = %v, want 300 — Anthropic reports only what it prefilled", usage["input_tokens"])
+	}
+	if usage["cache_read_input_tokens"] != float64(7800) {
+		t.Errorf("cache_read_input_tokens = %v, want 7800", usage["cache_read_input_tokens"])
+	}
+	if _, present := usage["cache_creation_input_tokens"]; present {
+		t.Errorf("cache_creation_input_tokens should be omitted when nothing was written: %+v", usage)
+	}
+	if usage["output_tokens"] != float64(12) {
+		t.Errorf("output_tokens = %v, want 12", usage["output_tokens"])
+	}
+}
+
+// TestWriteNonStream_NoCacheSplitOmitsCacheKeys keeps the common case byte-
+// identical to what a real Anthropic response looks like for a request that
+// carried no cache_control: the two cache keys simply absent.
+func TestWriteNonStream_NoCacheSplitOmitsCacheKeys(t *testing.T) {
+	rec := httptest.NewRecorder()
+	resp := provider.ChatResponse{
+		Content: "plain",
+		Usage:   &provider.Usage{PromptTokens: 1200, CompletionTokens: 40},
+	}
+	if err := WriteNonStream(rec, "claude-x", resp, "stop"); err != nil {
+		t.Fatalf("WriteNonStream: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	usage := decoded["usage"].(map[string]any)
+	if usage["input_tokens"] != float64(1200) {
+		t.Errorf("input_tokens = %v, want the whole 1200 when none of it was cached", usage["input_tokens"])
+	}
+	if _, present := usage["cache_read_input_tokens"]; present {
+		t.Errorf("cache_read_input_tokens should be omitted: %+v", usage)
+	}
+	if _, present := usage["cache_creation_input_tokens"]; present {
+		t.Errorf("cache_creation_input_tokens should be omitted: %+v", usage)
+	}
+}
+
+// TestStreamSSE_ReportsProviderUsageOnMessageDelta: message_start goes out
+// before any usage is known, so the real accounting has to ride on
+// message_delta — including the cache split, and the provider's real output
+// count in place of the whitespace word count this function falls back to.
+func TestStreamSSE_ReportsProviderUsageOnMessageDelta(t *testing.T) {
+	ch := make(chan provider.StreamChunk, 4)
+	ch <- provider.StreamChunk{Content: "one two three"}
+	ch <- provider.StreamChunk{
+		Done:         true,
+		FinishReason: "stop",
+		Usage: &provider.Usage{
+			PromptTokens:       6000,
+			CompletionTokens:   99,
+			CachedPromptTokens: 5000,
+			CacheWriteTokens:   500,
+		},
+	}
+	close(ch)
+
+	rec := httptest.NewRecorder()
+	StreamSSE(context.Background(), rec, rec, "claude-x", 123, ch)
+
+	var delta map[string]any
+	for _, line := range strings.Split(rec.Body.String(), "\n") {
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		var ev map[string]any
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev); err != nil {
+			continue
+		}
+		if ev["type"] == "message_delta" {
+			delta = ev
+		}
+	}
+	if delta == nil {
+		t.Fatalf("no message_delta event in stream:\n%s", rec.Body.String())
+	}
+	usage := delta["usage"].(map[string]any)
+	if usage["output_tokens"] != float64(99) {
+		t.Errorf("output_tokens = %v, want 99 (the provider's count, not the 3-word fallback)", usage["output_tokens"])
+	}
+	if usage["input_tokens"] != float64(500) {
+		t.Errorf("input_tokens = %v, want 500 (6000 total - 5000 read - 500 written)", usage["input_tokens"])
+	}
+	if usage["cache_read_input_tokens"] != float64(5000) {
+		t.Errorf("cache_read_input_tokens = %v, want 5000", usage["cache_read_input_tokens"])
+	}
+	if usage["cache_creation_input_tokens"] != float64(500) {
+		t.Errorf("cache_creation_input_tokens = %v, want 500", usage["cache_creation_input_tokens"])
+	}
+}

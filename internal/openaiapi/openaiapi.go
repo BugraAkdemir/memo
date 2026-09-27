@@ -321,14 +321,32 @@ func WriteNonStream(w http.ResponseWriter, model string, resp provider.ChatRespo
 				"finish_reason": finishReasonOrDefault(finishReason, len(resp.ToolCalls) > 0),
 			},
 		},
-		"usage": map[string]int{
-			"prompt_tokens":     promptTokens,
-			"completion_tokens": completionTokens,
-			"total_tokens":      promptTokens + completionTokens,
-		},
+		"usage": openAIUsageBody(resp.Usage, promptTokens, completionTokens),
 	}
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(body)
+}
+
+// openAIUsageBody renders the usage object, adding
+// prompt_tokens_details.cached_tokens when the upstream provider reported a
+// prompt-cache hit.
+//
+// No arithmetic is needed in this direction: OpenAI counts cached tokens as a
+// SUBSET of prompt_tokens, which is exactly provider.Usage's own contract (the
+// Anthropic-shaped gateway is the one that has to undo the normalization — see
+// internal/anthropicapi's anthropicUsage). The details object is omitted
+// entirely when nothing was cached, matching a real response from a
+// short-prompt request.
+func openAIUsageBody(u *provider.Usage, promptTokens, completionTokens int) map[string]any {
+	body := map[string]any{
+		"prompt_tokens":     promptTokens,
+		"completion_tokens": completionTokens,
+		"total_tokens":      promptTokens + completionTokens,
+	}
+	if u != nil && u.CachedPromptTokens > 0 {
+		body["prompt_tokens_details"] = map[string]int{"cached_tokens": u.CachedPromptTokens}
+	}
+	return body
 }
 
 // StreamSSE drains ch, translating Memo's internal provider.StreamChunk

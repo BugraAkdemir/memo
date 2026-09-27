@@ -441,3 +441,57 @@ func TestWriteModelList(t *testing.T) {
 		t.Errorf("first entry = %+v", first)
 	}
 }
+
+// TestWriteNonStream_ReportsCachedTokens: unlike the Anthropic-shaped gateway,
+// this one needs no arithmetic — OpenAI counts cached tokens as a subset of
+// prompt_tokens, which is already provider.Usage's contract. The only job is
+// not to drop the figure, and to omit the details object when there is nothing
+// to report.
+func TestWriteNonStream_ReportsCachedTokens(t *testing.T) {
+	rec := httptest.NewRecorder()
+	resp := provider.ChatResponse{
+		Content: "cached",
+		Usage: &provider.Usage{
+			PromptTokens:       5120,
+			CompletionTokens:   12,
+			CachedPromptTokens: 4096,
+		},
+	}
+	if err := WriteNonStream(rec, "gpt-4o", resp, "stop"); err != nil {
+		t.Fatalf("WriteNonStream: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	usage := decoded["usage"].(map[string]any)
+	if usage["prompt_tokens"] != float64(5120) {
+		t.Errorf("prompt_tokens = %v, want the full 5120 (cached tokens are a subset here)", usage["prompt_tokens"])
+	}
+	details, ok := usage["prompt_tokens_details"].(map[string]any)
+	if !ok {
+		t.Fatalf("prompt_tokens_details missing: %+v", usage)
+	}
+	if details["cached_tokens"] != float64(4096) {
+		t.Errorf("cached_tokens = %v, want 4096", details["cached_tokens"])
+	}
+}
+
+func TestWriteNonStream_OmitsCachedTokensWhenNoneReported(t *testing.T) {
+	rec := httptest.NewRecorder()
+	resp := provider.ChatResponse{
+		Content: "plain",
+		Usage:   &provider.Usage{PromptTokens: 900, CompletionTokens: 7},
+	}
+	if err := WriteNonStream(rec, "gpt-4o", resp, "stop"); err != nil {
+		t.Fatalf("WriteNonStream: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	usage := decoded["usage"].(map[string]any)
+	if _, present := usage["prompt_tokens_details"]; present {
+		t.Errorf("prompt_tokens_details should be omitted when nothing was cached: %+v", usage)
+	}
+}

@@ -407,6 +407,25 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 	scanner.Buffer(make([]byte, 0, 65536), 10*1024*1024)
 
 	var fullContent strings.Builder
+	// streamUsage accumulates this stream's accounting so the terminal chunk
+	// can carry it. Anthropic splits it across two events: message_start
+	// carries input_tokens plus the (already final) cache figures, and each
+	// message_delta carries the running output_tokens. Every terminal path
+	// below attaches it via usageChunk() — without this, a streamed chat turn
+	// (the plain non-agent path, which never goes through
+	// agent/pipeline.go's own accounting) reported no usage at all and the
+	// stats store fell back to a len/3 estimate that knows nothing about
+	// caching.
+	var streamUsage claudeUsage
+	sawUsage := false
+	usageChunk := func(c StreamChunk) StreamChunk {
+		if !sawUsage {
+			return c
+		}
+		u := streamUsage.toUsage()
+		c.Usage = &u
+		return c
+	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -420,7 +439,7 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		data := strings.TrimPrefix(line, "data: ")
 
 		if data == "[DONE]" {
-			trySend(ctx, ch, StreamChunk{Done: true})
+			trySend(ctx, ch, usageChunk(StreamChunk{Done: true}))
 			return
 		}
 
@@ -447,6 +466,8 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 				} `json:"message"`
 			}
 			if err := json.Unmarshal([]byte(data), &ms); err == nil {
+				streamUsage = ms.Message.Usage
+				sawUsage = true
 				logClaudeCachePerformance(ms.Message.Usage)
 			}
 
@@ -477,8 +498,22 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 				}
 			}
 
+		case "message_delta":
+			// Carries the running output_tokens (and, on the final delta, the
+			// total for the message). Assigned rather than accumulated: it is
+			// a running total, so summing would multiply it.
+			var md struct {
+				Usage struct {
+					OutputTokens int `json:"output_tokens"`
+				} `json:"usage"`
+			}
+			if err := json.Unmarshal([]byte(data), &md); err == nil && md.Usage.OutputTokens > 0 {
+				streamUsage.OutputTokens = md.Usage.OutputTokens
+				sawUsage = true
+			}
+
 		case "message_stop":
-			trySend(ctx, ch, StreamChunk{Done: true, FinishReason: "stop"})
+			trySend(ctx, ch, usageChunk(StreamChunk{Done: true, FinishReason: "stop"}))
 			return
 
 		case "error":
@@ -491,18 +526,23 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 			if err := json.Unmarshal([]byte(data), &errEvent); err != nil {
 				continue
 			}
-			trySend(ctx, ch, StreamChunk{Error: errEvent.Error.Message, Done: true})
+			// Usage rides along on the error chunk too: whatever
+			// message_start already reported was billed regardless of how the
+			// stream ended, and drainAgentStream reads chunk.Usage before it
+			// looks at chunk.Error, so dropping it here would silently
+			// undercount every failed turn.
+			trySend(ctx, ch, usageChunk(StreamChunk{Error: errEvent.Error.Message, Done: true}))
 			return
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		trySend(ctx, ch, StreamChunk{Error: err.Error(), Done: true})
+		trySend(ctx, ch, usageChunk(StreamChunk{Error: err.Error(), Done: true}))
 		return
 	}
 
 	if fullContent.Len() > 0 {
-		trySend(ctx, ch, StreamChunk{Done: true})
+		trySend(ctx, ch, usageChunk(StreamChunk{Done: true}))
 	}
 }
 

@@ -225,12 +225,23 @@ type StreamChunk struct {
 	CLISessionID string `json:"cli_session_id,omitempty"`
 
 	// Usage, when non-nil, carries a token accounting for the stream that just
-	// finished. HTTP providers' own ChatCompletionStream implementations don't
-	// set it (their SSE format rarely reports usage); it's the agent pipeline
-	// (internal/agent/pipeline.go) that attaches it to its terminal chunk,
-	// summed across every non-streaming ChatCompletion iteration the turn made,
-	// so callAgentStream can record real prompt/completion counts instead of a
-	// word-count estimate of the first request only.
+	// finished, and is only ever set on a terminal (Done or Error) chunk —
+	// every consumer stops reading at the first Done, so a usage-only chunk
+	// sent afterwards would be thrown away.
+	//
+	// Two independent producers set it. The agent pipeline
+	// (internal/agent/pipeline.go) attaches it to its terminal chunk, summed
+	// across every non-streaming ChatCompletion iteration the turn made. The
+	// HTTP providers now also attach their own: OpenAI-compatible endpoints via
+	// the trailing chunk that stream_options.include_usage produces, Anthropic
+	// from message_start (input + cache figures) plus message_delta (running
+	// output), and Gemini from the usageMetadata it repeats on every chunk.
+	// Before that, a streaming plain-chat turn reported nothing and its stats
+	// row was a len/3 estimate — which by construction could not carry a
+	// prompt-cache split, so caching was unmeasurable outside agent mode.
+	//
+	// Still nil for a provider or endpoint that reports no usage at all; a
+	// caller must keep its estimate fallback rather than reading nil as zero.
 	Usage *Usage `json:"usage,omitempty"`
 }
 

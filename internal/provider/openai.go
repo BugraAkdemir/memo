@@ -10,6 +10,7 @@ import (
 	"memo/internal/logx"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,6 +22,11 @@ type openAIProvider struct {
 	apiKey   string
 	client   *http.Client
 	streamCl *http.Client
+	// noStreamUsage latches when this endpoint has rejected
+	// stream_options.include_usage, so the retry happens once per provider
+	// instance instead of on every message. Atomic because a provider is
+	// shared across concurrent streams (chat + background calls).
+	noStreamUsage atomic.Bool
 }
 
 func newOpenAIProvider(cfg ProviderConfig) (*openAIProvider, error) {
@@ -171,10 +177,24 @@ type openAIChatRequest struct {
 	// (see buildOpenAIChatRequest below); every other OpenAI-compatible
 	// wrapper leaves this nil.
 	Reasoning *openAIReasoning `json:"reasoning,omitempty"`
+	// StreamOptions asks the server to append a final chunk carrying this
+	// stream's usage — including prompt_tokens_details.cached_tokens, which is
+	// the only way a *streaming* turn can report its prompt-cache hit. Sent
+	// only on streaming requests, and dropped for the rest of the process's
+	// life if the endpoint rejects it (see streamUsageUnsupported): it is a
+	// standard OpenAI field that OpenRouter, Groq, xAI, Ollama and
+	// llama-server all accept, but this package also talks to arbitrary
+	// user-configured "custom" endpoints, and a hard 400 on every chat
+	// message would be a far worse outcome than missing a cache figure.
+	StreamOptions *openAIStreamOptions `json:"stream_options,omitempty"`
 }
 
 type openAIReasoning struct {
 	Effort string `json:"effort,omitempty"`
+}
+
+type openAIStreamOptions struct {
+	IncludeUsage bool `json:"include_usage,omitempty"`
 }
 
 type openAIMessage struct {
@@ -362,6 +382,88 @@ func (p *openAIProvider) ChatCompletionStream(ctx context.Context, req ChatReque
 	p.applyEffortLevel(&body, req.EffortLevel)
 	body.Messages = p.toOpenAIMessages(req.Messages)
 
+	// Ask for the trailing usage chunk unless this endpoint has already
+	// refused it once. Without this, a streaming (plain chat) turn reports no
+	// usage at all and the stats store falls back to a len/3 estimate — which
+	// can't know anything about prompt caching, so a cached turn and an
+	// uncached one look identical.
+	wantUsage := !p.noStreamUsage.Load()
+	if wantUsage {
+		body.StreamOptions = &openAIStreamOptions{IncludeUsage: true}
+	}
+
+	resp, err := p.doStreamRequest(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+
+	ch := make(chan StreamChunk, 128)
+	go p.processSSE(ctx, resp.Body, ch, wantUsage)
+	return ch, nil
+}
+
+// doStreamRequest posts one streaming chat request, retrying once without
+// stream_options when that field is what the endpoint rejected.
+//
+// The retry exists because this code path serves arbitrary user-configured
+// "custom" OpenAI-compatible endpoints alongside the vendors that certainly
+// support the field. A gateway that validates unknown parameters strictly
+// would otherwise 400 on every single chat message the moment this feature
+// shipped — trading "no cache figure" for "the app is broken". The refusal is
+// latched on the provider instance, so the cost is one wasted request per
+// process, not per message.
+func (p *openAIProvider) doStreamRequest(ctx context.Context, body openAIChatRequest) (*http.Response, error) {
+	resp, err := p.postStream(ctx, body)
+	if err == nil && resp.StatusCode == http.StatusOK {
+		return resp, nil
+	}
+
+	// A transport/marshal error tells us nothing about field support — never
+	// latch on it, or one flaky connection would permanently disable usage
+	// reporting.
+	if err != nil {
+		return nil, err
+	}
+
+	if body.StreamOptions == nil {
+		defer resp.Body.Close()
+		return nil, p.parseError(resp)
+	}
+
+	// Only 400 and 422 mean "I don't understand this request". 401/403 is the
+	// API key, 404 is the route, 429 is the quota, 5xx is the server — none of
+	// them say anything about field support, and retrying on them would both
+	// double every failed request and permanently disable usage reporting
+	// because of, say, an expired key.
+	if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnprocessableEntity {
+		defer resp.Body.Close()
+		return nil, p.parseError(resp)
+	}
+
+	firstErr := p.parseError(resp)
+	resp.Body.Close()
+
+	body.StreamOptions = nil
+	retry, retryErr := p.postStream(ctx, body)
+	if retryErr != nil {
+		return nil, retryErr
+	}
+	if retry.StatusCode != http.StatusOK {
+		// The field wasn't the problem after all — report the ORIGINAL error,
+		// which is the one describing the request the caller actually made,
+		// and don't latch: a bad API key must not also disable usage
+		// reporting for the rest of the session.
+		defer retry.Body.Close()
+		return nil, firstErr
+	}
+
+	p.noStreamUsage.Store(true)
+	logx.Printf("PROVIDER: %s rejected stream_options.include_usage (%v) — streaming turns will fall back to estimated token counts for this session",
+		p.Name(), firstErr)
+	return retry, nil
+}
+
+func (p *openAIProvider) postStream(ctx context.Context, body openAIChatRequest) (*http.Response, error) {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("marshal: %w", err)}
@@ -381,18 +483,28 @@ func (p *openAIProvider) ChatCompletionStream(ctx context.Context, req ChatReque
 	if err != nil {
 		return nil, p.wrapError(err)
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
-		return nil, p.parseError(resp)
-	}
-
-	ch := make(chan StreamChunk, 128)
-	go p.processSSE(ctx, resp.Body, ch)
-	return ch, nil
+	return resp, nil
 }
 
-func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch chan<- StreamChunk) {
+// streamUsageGrace bounds how long processSSE will keep reading after the
+// model's final content chunk, waiting for the separate usage chunk that
+// stream_options.include_usage produces. A conforming server sends it
+// immediately (same TCP burst, typically sub-millisecond); the timer exists
+// only so an endpoint that accepted the field but never emits the chunk — and
+// also never sends [DONE] nor closes the connection — can't hold the reply's
+// completion open. On expiry the body is closed, which unblocks the scanner
+// and lets the tail path finish the turn normally.
+// A var, not a const, only so the watchdog test doesn't have to sleep for two
+// seconds. Never reassigned in production code.
+var streamUsageGrace = 2 * time.Second
+
+// processSSE translates an OpenAI-compatible SSE stream into StreamChunks.
+// wantUsage tells it whether this request asked for the trailing usage chunk;
+// when it did, the terminal Done is held back until that chunk (or [DONE], or
+// end of stream) arrives, so the usage can ride on it — every consumer of this
+// channel stops reading at the first Done, so a usage chunk sent afterwards
+// would be discarded.
+func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch chan<- StreamChunk, wantUsage bool) {
 	defer body.Close()
 	defer close(ch)
 	defer logx.Recover("openAIProvider.processSSE")
@@ -401,6 +513,25 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 	scanner.Buffer(make([]byte, 0, 65536), 10*1024*1024)
 
 	var fullContent strings.Builder
+	var usage *Usage
+	// pendingFinish holds the finish_reason of a stream whose content is done
+	// but whose usage chunk hasn't arrived yet; empty means nothing pending.
+	// A separate bool would be redundant — finish_reason is never empty when a
+	// choice reports one.
+	pendingFinish := ""
+	var graceTimer *time.Timer
+	stopGrace := func() {
+		if graceTimer != nil {
+			graceTimer.Stop()
+			graceTimer = nil
+		}
+	}
+	defer stopGrace()
+
+	// terminal builds the final chunk, attaching usage if any was reported.
+	terminal := func(finishReason string) StreamChunk {
+		return StreamChunk{Done: true, FinishReason: finishReason, Usage: usage}
+	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -412,13 +543,32 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
-			trySend(ctx, ch, StreamChunk{Done: true})
+			stopGrace()
+			trySend(ctx, ch, terminal(pendingFinish))
 			return
 		}
 
 		var chunk openAIStreamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			continue
+		}
+
+		// Read usage BEFORE the empty-choices guard: the include_usage chunk
+		// is defined to carry an empty choices array, so checking choices
+		// first would skip the only chunk that has the numbers on it.
+		if chunk.Usage != nil && (chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0) {
+			usage = &Usage{
+				PromptTokens:       chunk.Usage.PromptTokens,
+				CompletionTokens:   chunk.Usage.CompletionTokens,
+				TotalTokens:        chunk.Usage.TotalTokens,
+				CachedPromptTokens: chunk.Usage.cachedTokens(),
+			}
+			if pendingFinish != "" {
+				// This is what the grace period was waiting for.
+				stopGrace()
+				trySend(ctx, ch, terminal(pendingFinish))
+				return
+			}
 		}
 
 		if len(chunk.Choices) == 0 {
@@ -435,12 +585,33 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		}
 
 		if chunk.Choices[0].FinishReason != nil {
-			trySend(ctx, ch, StreamChunk{Done: true, FinishReason: *chunk.Choices[0].FinishReason})
-			return
+			finish := *chunk.Choices[0].FinishReason
+			if !wantUsage || usage != nil {
+				trySend(ctx, ch, terminal(finish))
+				return
+			}
+			// Hold the Done back for the trailing usage chunk, under a
+			// watchdog so a server that promised usage and never delivers it
+			// can't stall the turn. Closing the body is what unblocks the
+			// scanner below; net/http supports Close concurrent with a
+			// blocked Read precisely for this.
+			pendingFinish = finish
+			graceTimer = time.AfterFunc(streamUsageGrace, func() { body.Close() })
+			continue
 		}
 	}
 
+	stopGrace()
+
 	if err := scanner.Err(); err != nil {
+		// A pending finish means the content already arrived in full and this
+		// error is from the post-content wait (very likely our own watchdog
+		// closing the body). Reporting it as a stream error would turn a
+		// complete, correct answer into a visible failure.
+		if pendingFinish != "" {
+			trySend(ctx, ch, terminal(pendingFinish))
+			return
+		}
 		trySend(ctx, ch, StreamChunk{Error: err.Error(), Done: true})
 		return
 	}
@@ -448,7 +619,7 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 	// Always send Done when the stream ends without [DONE] or FinishReason —
 	// tool-use-only responses produce empty fullContent but still need to
 	// unblock the consumer.
-	trySend(ctx, ch, StreamChunk{Done: true})
+	trySend(ctx, ch, terminal(pendingFinish))
 }
 
 type openAIStreamChunk struct {
@@ -457,6 +628,11 @@ type openAIStreamChunk struct {
 	Created int64                `json:"created"`
 	Model   string               `json:"model"`
 	Choices []openAIStreamChoice `json:"choices"`
+	// Usage is present only on the extra final chunk emitted when the request
+	// asked for stream_options.include_usage. That chunk carries an EMPTY
+	// choices array, which is why processSSE must read usage before its
+	// len(Choices) == 0 guard rather than after.
+	Usage *openAIUsage `json:"usage,omitempty"`
 }
 
 type openAIStreamChoice struct {

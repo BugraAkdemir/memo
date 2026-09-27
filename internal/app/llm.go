@@ -80,6 +80,18 @@ type cacheTokens struct {
 	Write int
 }
 
+// completionCount prefers the provider's own completion-token count over the
+// received-chunk count. tokenCount is the number of SSE content chunks the
+// stream delivered, which has never been a token count — it was simply the
+// only number available on this path. Falls back to it when the provider
+// reported nothing, so behaviour on a silent endpoint is unchanged.
+func completionCount(reported, chunkCount int) int {
+	if reported > 0 {
+		return reported
+	}
+	return chunkCount
+}
+
 // usageCacheTokens extracts the cache split from a provider usage report,
 // tolerating nil (every "the provider told us nothing" path).
 func usageCacheTokens(u *provider.Usage) cacheTokens {
@@ -1276,6 +1288,33 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 			start := time.Now()
 			usageMetaVal := usageMeta{Provider: activeName, Model: a.activeProviderModel(activeName), Category: categoryChat, PromptTokens: estimateMessagesTokens(messages)}
+			// providerCompletionTokens holds the provider's own completion
+			// count when it reported one. Kept separate from tokenCount (which
+			// counts received SSE content chunks, not tokens) so the
+			// tokens/second figure and the stats row use the real number when
+			// it exists and the chunk count only as a fallback.
+			providerCompletionTokens := 0
+			// Providers now report real usage on the streaming path too
+			// (OpenAI-compatible via stream_options.include_usage, Anthropic
+			// from message_start + message_delta, Gemini from usageMetadata),
+			// so this branch no longer has to settle for the len/3 estimate it
+			// seeds above — and the estimate could never carry a prompt-cache
+			// split, which is the whole point. Same overwrite discipline as
+			// drainAgentStream's applyUsage: the cache figures move together
+			// with PromptTokens so a later report can't leave a stale split
+			// attached.
+			applyUsage := func(u *provider.Usage) {
+				if u == nil {
+					return
+				}
+				if u.PromptTokens > 0 {
+					usageMetaVal.PromptTokens = u.PromptTokens
+					usageMetaVal.Cache = usageCacheTokens(u)
+				}
+				if u.CompletionTokens > 0 {
+					providerCompletionTokens = u.CompletionTokens
+				}
+			}
 			var fullReply strings.Builder
 			var fullThinking strings.Builder
 			tokenCount := 0
@@ -1284,13 +1323,18 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			for {
 				chunk, ok, ctxDone := recvChunk(providerCtx, ch)
 				if ctxDone {
-					a.persistInterruptedTurn(ctx, start, tokenCount, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+					a.persistInterruptedTurn(ctx, start, completionCount(providerCompletionTokens, tokenCount), fullReply.String(), userMsg, sessionID, &usageMetaVal)
 					trySend(providerCtx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 					return
 				}
 				if !ok {
 					break
 				}
+
+				// Before the error check, for the same reason claude.go
+				// attaches usage to its error chunk: a turn that failed
+				// mid-stream still consumed the input it was billed for.
+				applyUsage(chunk.Usage)
 
 				if chunk.Error != "" {
 					var errMsg string
@@ -1327,14 +1371,14 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 
 				if chunk.Done {
-					a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+					a.finishStream(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 					trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 					return
 				}
 			}
 
 			if fullReply.Len() > 0 {
-				a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				a.finishStream(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 			} else {
 				errMsg := "⚠️ Provider returned empty response"

@@ -201,6 +201,13 @@ func (p *geminiSubProvider) processSSE(ctx context.Context, body io.ReadCloser, 
 	scanner.Buffer(make([]byte, 0, 65536), 10*1024*1024)
 
 	var any bool
+	// Last usageMetadata seen wins — Gemini repeats it per chunk with growing
+	// counts, so the final one is this request's total. Attached to whichever
+	// terminal chunk ends the stream.
+	var usage *provider.Usage
+	terminal := func(finishReason string) provider.StreamChunk {
+		return provider.StreamChunk{Done: true, FinishReason: finishReason, Usage: usage}
+	}
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
@@ -208,12 +215,15 @@ func (p *geminiSubProvider) processSSE(ctx context.Context, body io.ReadCloser, 
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
-			trySend(ctx, ch, provider.StreamChunk{Done: true})
+			trySend(ctx, ch, terminal(""))
 			return
 		}
 		ev, ok := parseSSELine(data)
 		if !ok {
 			continue
+		}
+		if ev.Usage != nil {
+			usage = ev.Usage
 		}
 		if ev.Text != "" {
 			any = true
@@ -223,17 +233,17 @@ func (p *geminiSubProvider) processSSE(ctx context.Context, body io.ReadCloser, 
 			}
 		}
 		if ev.FinishReason != "" && ev.FinishReason != "STOP" {
-			trySend(ctx, ch, provider.StreamChunk{Done: true, FinishReason: ev.FinishReason})
+			trySend(ctx, ch, terminal(ev.FinishReason))
 			return
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		trySend(ctx, ch, provider.StreamChunk{Error: err.Error(), Done: true})
+		trySend(ctx, ch, provider.StreamChunk{Error: err.Error(), Done: true, Usage: usage})
 		return
 	}
 	if any {
-		trySend(ctx, ch, provider.StreamChunk{Done: true})
+		trySend(ctx, ch, terminal(""))
 	}
 }
 

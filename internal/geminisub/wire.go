@@ -301,6 +301,12 @@ func parseGenerateResponse(body []byte, model string) (*provider.ChatResponse, e
 type sseEvent struct {
 	Text         string
 	FinishReason string
+	// Usage is the chunk's usageMetadata when it carried one. Gemini repeats
+	// it on every streamed chunk with growing counts, so the caller keeps the
+	// last one it saw and attaches it to the terminal chunk — otherwise a
+	// streamed turn through this provider reports no tokens at all and the
+	// stats store falls back to an estimate that can't see prompt caching.
+	Usage *provider.Usage
 }
 
 // parseSSELine unwraps one `data: {...}` line (already stripped of the
@@ -318,8 +324,18 @@ func parseSSELine(data string) (ev sseEvent, ok bool) {
 		return sseEvent{}, false
 	}
 	r := env.Response
+	if r.Usage != nil && r.Usage.TotalTokenCount > 0 {
+		ev.Usage = &provider.Usage{
+			PromptTokens:       r.Usage.PromptTokenCount,
+			CompletionTokens:   r.Usage.CandidatesTokenCount,
+			TotalTokens:        r.Usage.TotalTokenCount,
+			CachedPromptTokens: r.Usage.cachedTokens(),
+		}
+	}
 	if len(r.Candidates) == 0 {
-		return sseEvent{}, false
+		// A usage-only chunk (no candidate) is still worth returning so the
+		// caller can keep the accounting; it just has no text to emit.
+		return ev, ev.Usage != nil
 	}
 	for _, part := range r.Candidates[0].Content.Parts {
 		if part.Text != "" {

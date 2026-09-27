@@ -337,6 +337,16 @@ func (p *geminiProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 	scanner.Buffer(make([]byte, 0, 65536), 10*1024*1024)
 
 	var fullContent strings.Builder
+	// Gemini repeats usageMetadata on every streamed chunk, with the counts
+	// growing as generation proceeds — so the LAST one seen is the total for
+	// the request, and every terminal path below attaches it. Unlike OpenAI's
+	// include_usage there is no separate trailing chunk to wait for and
+	// nothing to request: it is simply present, and until now it was thrown
+	// away on the streaming path (only ChatCompletion read it).
+	var usage *Usage
+	terminal := func(finishReason string) StreamChunk {
+		return StreamChunk{Done: true, FinishReason: finishReason, Usage: usage}
+	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -348,13 +358,24 @@ func (p *geminiProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
-			trySend(ctx, ch, StreamChunk{Done: true})
+			trySend(ctx, ch, terminal(""))
 			return
 		}
 
 		var result geminiResponse
 		if err := json.Unmarshal([]byte(data), &result); err != nil {
 			continue
+		}
+
+		// Before the candidates guard: a chunk can legitimately carry
+		// usageMetadata with no candidates (the final accounting chunk).
+		if result.Usage != nil && result.Usage.TotalTokenCount > 0 {
+			usage = &Usage{
+				PromptTokens:       result.Usage.PromptTokenCount,
+				CompletionTokens:   result.Usage.CandidatesTokenCount,
+				TotalTokens:        result.Usage.TotalTokenCount,
+				CachedPromptTokens: result.Usage.cachedTokens(),
+			}
 		}
 
 		if len(result.Candidates) == 0 {
@@ -373,18 +394,18 @@ func (p *geminiProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 
 		fr := result.Candidates[0].FinishReason
 		if fr != "" && fr != "STOP" {
-			trySend(ctx, ch, StreamChunk{Done: true, FinishReason: fr})
+			trySend(ctx, ch, terminal(fr))
 			return
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		trySend(ctx, ch, StreamChunk{Error: err.Error(), Done: true})
+		trySend(ctx, ch, StreamChunk{Error: err.Error(), Done: true, Usage: usage})
 		return
 	}
 
 	if fullContent.Len() > 0 {
-		trySend(ctx, ch, StreamChunk{Done: true})
+		trySend(ctx, ch, terminal(""))
 	}
 }
 

@@ -408,6 +408,17 @@ class L10n {
     'stats_chart_title': 'Zaman İçinde Token Kullanımı',
     'stats_chart_legend_input': 'Girdi',
     'stats_chart_legend_output': 'Çıktı',
+    'stats_cached_tokens': 'Önbellekten Gelen',
+    'stats_cache_title': 'Prompt Önbelleği',
+    'stats_cache_subtitle':
+        'Girdinin ne kadarı sağlayıcının prompt önbelleğinden geldi. Önbellekten okunan tokenlar tam ücretin küçük bir kısmına mal olur; önbelleğe yazmak bir kerelik küçük bir ek ücrettir.',
+    'stats_cache_read': 'Önbellekten okunan',
+    'stats_cache_write': 'Önbelleğe yazılan',
+    'stats_cache_fresh': 'Tam ücretli girdi',
+    'stats_cache_hit_ratio': 'Girdinin %\${pct}\'i önbellekten geldi',
+    'stats_cache_not_reported':
+        'Bu dönemde hiçbir sağlayıcı önbellek bilgisi bildirmedi. Bu, önbelleğin kapalı olduğu anlamına gelmez: yerel llama.cpp KV önbelleğini bildirmeden kullanır, bazı OpenAI uyumlu sunucular da alanı hiç göndermez.',
+    'stats_cache_badge': '\${tokens} önbellekten',
     'stats_model_breakdown_title': 'Model Dağılımı',
     'stats_category_breakdown_title': 'Ne İçin Kullanılıyor',
     'stats_category_breakdown_subtitle':
@@ -2663,6 +2674,17 @@ class L10n {
     'stats_chart_title': 'Token Usage Over Time',
     'stats_chart_legend_input': 'Input',
     'stats_chart_legend_output': 'Output',
+    'stats_cached_tokens': 'From Cache',
+    'stats_cache_title': 'Prompt Cache',
+    'stats_cache_subtitle':
+        'How much of the input was served from the provider\'s prompt cache. Cache reads cost a fraction of full input price; writing to the cache costs a small one-time premium.',
+    'stats_cache_read': 'Read from cache',
+    'stats_cache_write': 'Written to cache',
+    'stats_cache_fresh': 'Full-price input',
+    'stats_cache_hit_ratio': '\${pct}% of input came from cache',
+    'stats_cache_not_reported':
+        'No provider reported cache figures in this period. That does not mean caching is off: the local llama.cpp reuses its KV cache without reporting it, and some OpenAI-compatible servers never send the field.',
+    'stats_cache_badge': '\${tokens} cached',
     'stats_model_breakdown_title': 'Model Breakdown',
     'stats_category_breakdown_title': 'What It\'s Being Used For',
     'stats_category_breakdown_subtitle':

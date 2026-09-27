@@ -44,10 +44,43 @@ type FakeToolCall struct {
 }
 
 // FakeChatResponse is what FakeProvider's script returns for one call. Set
-// exactly one of Text or ToolCalls.
+// exactly one of Text or ToolCalls; Usage is optional.
 type FakeChatResponse struct {
 	Text      string
 	ToolCalls []FakeToolCall
+	// Usage, when non-nil, makes the fake report token usage the way a real
+	// OpenAI-compatible endpoint does — on the response body for a
+	// non-streaming call, and on the extra trailing SSE chunk for a streaming
+	// one (only when the app actually asked for it via
+	// stream_options.include_usage; a fake that volunteered usage nobody
+	// requested would hide a regression in that request field).
+	Usage *FakeUsage
+}
+
+// FakeUsage is the token accounting a scripted response reports. CachedTokens
+// becomes usage.prompt_tokens_details.cached_tokens — a SUBSET of
+// PromptTokens, matching OpenAI's real shape, so an e2e test can prove the
+// prompt-cache split survives the whole path from wire format to
+// GET /api/stats/usage.
+type FakeUsage struct {
+	PromptTokens     int
+	CompletionTokens int
+	CachedTokens     int
+}
+
+// usageJSON renders this usage in the OpenAI wire shape. prompt_tokens_details
+// is omitted entirely when CachedTokens is 0, matching the many
+// OpenAI-compatible backends that never send the object at all.
+func (u FakeUsage) usageJSON() map[string]any {
+	out := map[string]any{
+		"prompt_tokens":     u.PromptTokens,
+		"completion_tokens": u.CompletionTokens,
+		"total_tokens":      u.PromptTokens + u.CompletionTokens,
+	}
+	if u.CachedTokens > 0 {
+		out["prompt_tokens_details"] = map[string]any{"cached_tokens": u.CachedTokens}
+	}
+	return out
 }
 
 // FakeChatRequest is the decoded request body FakeProvider hands to the
@@ -59,6 +92,11 @@ type FakeChatRequest struct {
 	Messages []json.RawMessage
 	Tools    []json.RawMessage
 	Raw      []byte
+	// WantsUsage reports whether the request carried
+	// stream_options.include_usage — the field that makes a streaming turn
+	// report real tokens (and its prompt-cache split) instead of falling back
+	// to a word-count estimate.
+	WantsUsage bool
 }
 
 // FakeProvider is an httptest.Server speaking just enough of the
@@ -123,7 +161,7 @@ func (fp *FakeProvider) handle(w http.ResponseWriter, r *http.Request) {
 	resp := fp.Script(callNum, body)
 
 	if body.Stream {
-		writeStreamingResponse(w, resp)
+		writeStreamingResponse(w, resp, body.WantsUsage)
 		return
 	}
 	writeNonStreamingResponse(w, resp)
@@ -131,10 +169,13 @@ func (fp *FakeProvider) handle(w http.ResponseWriter, r *http.Request) {
 
 func decodeChatRequest(r *http.Request) (FakeChatRequest, error) {
 	var raw struct {
-		Model    string            `json:"model"`
-		Stream   bool              `json:"stream"`
-		Messages []json.RawMessage `json:"messages"`
-		Tools    []json.RawMessage `json:"tools"`
+		Model         string            `json:"model"`
+		Stream        bool              `json:"stream"`
+		Messages      []json.RawMessage `json:"messages"`
+		Tools         []json.RawMessage `json:"tools"`
+		StreamOptions *struct {
+			IncludeUsage bool `json:"include_usage"`
+		} `json:"stream_options"`
 	}
 	// Read the body whole rather than decoding straight off r.Body: Raw is
 	// part of this struct's contract (tests assert on the exact bytes the
@@ -150,11 +191,12 @@ func decodeChatRequest(r *http.Request) (FakeChatRequest, error) {
 		return FakeChatRequest{}, fmt.Errorf("fake provider: decode request: %w", err)
 	}
 	return FakeChatRequest{
-		Model:    raw.Model,
-		Stream:   raw.Stream,
-		Messages: raw.Messages,
-		Tools:    raw.Tools,
-		Raw:      body,
+		Model:      raw.Model,
+		Stream:     raw.Stream,
+		Messages:   raw.Messages,
+		Tools:      raw.Tools,
+		Raw:        body,
+		WantsUsage: raw.StreamOptions != nil && raw.StreamOptions.IncludeUsage,
 	}, nil
 }
 
@@ -198,19 +240,24 @@ func writeNonStreamingResponse(w http.ResponseWriter, resp FakeChatResponse) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	out := map[string]any{
 		"id":      "fake-resp",
 		"object":  "chat.completion",
 		"choices": []choice{{Message: msg, FinishReason: finish}},
-	})
+	}
+	if resp.Usage != nil {
+		out["usage"] = resp.Usage.usageJSON()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 // --- streaming response, matching openai.go's SSE `data: {...}` /
 // `data: [DONE]` shape exactly (openAIStreamChunk/openAIStreamChoice/
 // openAIStreamDelta) ---
 
-func writeStreamingResponse(w http.ResponseWriter, resp FakeChatResponse) {
+func writeStreamingResponse(w http.ResponseWriter, resp FakeChatResponse, wantsUsage bool) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
@@ -242,6 +289,16 @@ func writeStreamingResponse(w http.ResponseWriter, resp FakeChatResponse) {
 	}
 	stop := "stop"
 	writeChunk(map[string]any{"choices": []streamChoice{{FinishReason: &stop}}})
+	// The usage chunk goes AFTER the finish_reason chunk and carries an empty
+	// choices array — that ordering is the whole reason processSSE has to hold
+	// its terminal Done back, so the fake reproduces it exactly rather than
+	// folding usage into the finish chunk.
+	if wantsUsage && resp.Usage != nil {
+		writeChunk(map[string]any{
+			"choices": []streamChoice{},
+			"usage":   resp.Usage.usageJSON(),
+		})
+	}
 	fmt.Fprint(w, "data: [DONE]\n\n")
 	flusher.Flush()
 }

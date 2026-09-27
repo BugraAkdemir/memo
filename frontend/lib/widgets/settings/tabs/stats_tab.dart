@@ -110,6 +110,8 @@ class _StatsTabState extends ConsumerState<StatsTab> {
               children: [
                 _StatCardsRow(stats: stats, memoryStats: _memoryStats),
                 SizedBox(height: 24),
+                _CachePanel(stats: stats),
+                SizedBox(height: 24),
                 _UsageChart(stats: stats, days: selectedDays),
                 SizedBox(height: 24),
                 _CategoryBreakdown(stats: stats),
@@ -244,6 +246,15 @@ class _StatCardsRow extends StatelessWidget {
           value: _formatTokens(stats.totalCompletionTokens),
           color: MemoTheme.green,
         ),
+        // Only when a provider actually reported a cache figure. A card
+        // reading "0" would be read as "caching isn't working", which the
+        // data cannot support — see UsageStatsSummary.totalCachedPromptTokens.
+        if (stats.hasCacheReporting)
+          _StatCard(
+            label: L10n.t('stats_cached_tokens'),
+            value: _formatTokens(stats.totalCachedPromptTokens),
+            color: MemoTheme.accent,
+          ),
         _StatCard(
           label: L10n.t('stats_avg_speed'),
           value: L10n.t('stats_speed_unit', {'speed': stats.avgTokensPerSecond.toStringAsFixed(1)}),
@@ -337,6 +348,183 @@ List<DailyUsage> _fillDailySeries(List<DailyUsage> daily, int days) {
         DailyUsage(date: key, promptTokens: 0, completionTokens: 0, requests: 0));
   }
   return filled;
+}
+
+/// Prompt-cache panel: the split of input tokens into cache reads, cache
+/// writes and full-price input, plus the share that came from cache.
+///
+/// When nothing reported a figure it says exactly that instead of drawing an
+/// empty bar — a zeroed split is indistinguishable from "this provider does
+/// not report caching", and presenting it as a measured 0% hit rate would be
+/// wrong (the local llama-server, for one, reuses its KV cache on every turn
+/// and reports nothing at all).
+class _CachePanel extends StatelessWidget {
+  final UsageStatsSummary stats;
+  const _CachePanel({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.bgPanel,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            L10n.t('stats_cache_title'),
+            style: TextStyle(fontWeight: FontWeight.w600, color: theme.textMain),
+          ),
+          SizedBox(height: 4),
+          Text(
+            L10n.t('stats_cache_subtitle'),
+            style: TextStyle(fontSize: 12, color: theme.textDim),
+          ),
+          SizedBox(height: 12),
+          if (!stats.hasCacheReporting)
+            Text(
+              L10n.t('stats_cache_not_reported'),
+              style: TextStyle(fontSize: 12, color: theme.textDim),
+            )
+          else ...[
+            Text(
+              L10n.t('stats_cache_hit_ratio', {
+                'pct': (stats.cacheHitRatio * 100).toStringAsFixed(1),
+              }),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: MemoTheme.accent,
+              ),
+            ),
+            SizedBox(height: 10),
+            _CacheSplitBar(stats: stats),
+            SizedBox(height: 12),
+            // Wrap, not Row: these three labels are localized and Turkish
+            // runs longer than English (see the Flutter gotchas in AGENTS.md
+            // — a Row of localized labels that fits in one language overflows
+            // in the other).
+            Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              children: [
+                _CacheLegend(
+                  color: MemoTheme.accent,
+                  label: L10n.t('stats_cache_read'),
+                  value: _formatTokens(stats.totalCachedPromptTokens),
+                ),
+                _CacheLegend(
+                  color: MemoTheme.green,
+                  label: L10n.t('stats_cache_write'),
+                  value: _formatTokens(stats.totalCacheWriteTokens),
+                ),
+                _CacheLegend(
+                  color: theme.textDim,
+                  label: L10n.t('stats_cache_fresh'),
+                  value: _formatTokens(stats.freshPromptTokens),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A single horizontal bar split into cache-read / cache-write / full-price
+/// segments. Uses Expanded flex factors rather than fractional widths so it
+/// needs no LayoutBuilder and adapts to any panel width.
+class _CacheSplitBar extends StatelessWidget {
+  final UsageStatsSummary stats;
+  const _CacheSplitBar({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    final read = stats.totalCachedPromptTokens;
+    final write = stats.totalCacheWriteTokens;
+    final fresh = stats.freshPromptTokens;
+    final total = read + write + fresh;
+    if (total <= 0) return SizedBox.shrink();
+
+    // flex must be a positive int for Expanded, so a segment that rounds to
+    // nothing is dropped entirely instead of rendering a zero-width sliver.
+    final segments = <Widget>[];
+    void addSegment(int value, Color color) {
+      if (value <= 0) return;
+      segments.add(Expanded(flex: value, child: ColoredBox(color: color)));
+    }
+
+    addSegment(read, MemoTheme.accent);
+    addSegment(write, MemoTheme.green);
+    addSegment(fresh, theme.borderSoft);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(3),
+      child: SizedBox(height: 8, child: Row(children: segments)),
+    );
+  }
+}
+
+class _CacheLegend extends StatelessWidget {
+  final Color color;
+  final String label;
+  final String value;
+  const _CacheLegend({required this.color, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+        ),
+        SizedBox(width: 6),
+        Text(label, style: TextStyle(fontSize: 12, color: theme.textDim)),
+        SizedBox(width: 6),
+        Text(
+          value,
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.textMain),
+        ),
+      ],
+    );
+  }
+}
+
+/// Inline "N cached" marker for a breakdown row. Rendered only for rows that
+/// reported a cache read, so a row without one stays visually unchanged rather
+/// than displaying a zero.
+class _CachedBadge extends StatelessWidget {
+  final int cachedTokens;
+  const _CachedBadge({required this.cachedTokens});
+
+  @override
+  Widget build(BuildContext context) {
+    if (cachedTokens <= 0) return SizedBox.shrink();
+    return Padding(
+      padding: EdgeInsets.only(left: 6),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(
+          color: MemoTheme.accent.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          L10n.t('stats_cache_badge', {'tokens': _formatTokens(cachedTokens)}),
+          style: TextStyle(fontSize: 11, color: MemoTheme.accent, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
 }
 
 class _UsageChart extends StatelessWidget {
@@ -573,6 +761,7 @@ class _CategoryBreakdown extends StatelessWidget {
                           color: MemoTheme.accent,
                         ),
                       ),
+                      _CachedBadge(cachedTokens: c.cachedPromptTokens),
                       SizedBox(width: 6),
                       Text(
                         L10n.t('stats_model_requests', {'count': '${c.requests}'}),
@@ -642,6 +831,8 @@ class _ModelBreakdown extends StatelessWidget {
                           style: TextStyle(fontSize: 13, color: MemoTheme.of(context).textMain),
                         ),
                       ),
+                      _CachedBadge(cachedTokens: m.cachedPromptTokens),
+                      SizedBox(width: 6),
                       Text(
                         L10n.t('stats_model_requests', {'count': '${m.requests}'}),
                         style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim),

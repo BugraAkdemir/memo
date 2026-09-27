@@ -288,6 +288,22 @@ func (h *Harness) GetChatCodeSubMode(chatID string) (subMode string, pinned bool
 	return out.SubMode, out.Pinned
 }
 
+// SetWebSearchEnabled toggles the global web-search flag via POST
+// /api/websearch. Worth a helper because it changes which code path a plain
+// (non-agent) chat turn takes at all: with web search on, routeStream sends
+// the turn through callWebSearchAgentStream — the same native tool-calling
+// machinery agent mode uses, i.e. NON-streaming ChatCompletion calls. Only
+// with both agent mode and web search off does a chat message actually reach
+// the provider's SSE streaming path.
+func (h *Harness) SetWebSearchEnabled(enabled bool) {
+	h.t.Helper()
+	resp := h.postJSON("/api/websearch", map[string]bool{"enabled": enabled})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.t.Fatalf("POST /api/websearch(%v): status %d", enabled, resp.StatusCode)
+	}
+}
+
 // SetAutoPermission toggles the global "Shift+Tab" auto-permission flag via
 // PUT /api/agent/auto-permission.
 func (h *Harness) SetAutoPermission(enabled bool) {

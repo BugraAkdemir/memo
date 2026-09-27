@@ -10,6 +10,7 @@ import 'package:memo_flutter/models/token_usage.dart';
 import 'package:memo_flutter/models/provider_config.dart';
 import 'package:memo_flutter/models/orchestra_config.dart';
 import 'package:memo_flutter/models/task_list.dart';
+import 'package:memo_flutter/models/usage_stats.dart';
 
 void main() {
   group('ChatTaskState.fold (v4.6.0 Faz D/E)', () {
@@ -881,6 +882,90 @@ void main() {
     test('labelForRole returns label for known roles', () {
       expect(OrchestraDefaults.labelForRole('planner'), 'Planner');
       expect(OrchestraDefaults.labelForRole('unknown'), 'unknown');
+    });
+  });
+
+  group('UsageStatsSummary prompt-cache split', () {
+    test('parses the cache fields the backend now sends', () {
+      final s = UsageStatsSummary.fromJson(const {
+        'total_requests': 3,
+        'total_prompt_tokens': 20000,
+        'total_completion_tokens': 500,
+        'total_cached_prompt_tokens': 15000,
+        'total_cache_write_tokens': 2000,
+        'model_breakdown': [
+          {
+            'model': 'claude-opus',
+            'requests': 3,
+            'prompt_tokens': 20000,
+            'completion_tokens': 500,
+            'cached_prompt_tokens': 15000,
+            'cache_write_tokens': 2000,
+          },
+        ],
+        'category_breakdown': [
+          {
+            'category': 'agent',
+            'requests': 3,
+            'prompt_tokens': 20000,
+            'completion_tokens': 500,
+            'cached_prompt_tokens': 15000,
+            'cache_write_tokens': 2000,
+          },
+        ],
+        'daily': [
+          {
+            'date': '2026-09-27',
+            'prompt_tokens': 20000,
+            'completion_tokens': 500,
+            'cached_prompt_tokens': 15000,
+            'cache_write_tokens': 2000,
+            'requests': 3,
+          },
+        ],
+      });
+      expect(s.totalCachedPromptTokens, 15000);
+      expect(s.totalCacheWriteTokens, 2000);
+      expect(s.freshPromptTokens, 3000);
+      expect(s.hasCacheReporting, true);
+      expect(s.cacheHitRatio, closeTo(0.75, 0.0001));
+      expect(s.modelBreakdown.first.cachedPromptTokens, 15000);
+      expect(s.modelBreakdown.first.freshPromptTokens, 3000);
+      expect(s.categoryBreakdown.first.cacheWriteTokens, 2000);
+      expect(s.daily.first.cachedPromptTokens, 15000);
+    });
+
+    test('an older backend that omits the fields reads as not-reported, not zero-hit', () {
+      final s = UsageStatsSummary.fromJson(const {
+        'total_requests': 2,
+        'total_prompt_tokens': 5000,
+        'total_completion_tokens': 200,
+        'model_breakdown': [
+          {'model': 'llama-3-8b', 'requests': 2, 'prompt_tokens': 5000, 'completion_tokens': 200},
+        ],
+      });
+      // hasCacheReporting is what the UI branches on: false means "say
+      // nothing was reported", which is the only honest reading when a
+      // provider (or an older backend) sends no figure at all.
+      expect(s.hasCacheReporting, false);
+      expect(s.totalCachedPromptTokens, 0);
+      expect(s.freshPromptTokens, 5000);
+      expect(s.modelBreakdown.first.freshPromptTokens, 5000);
+    });
+
+    test('a contradictory split never renders a negative full-price count', () {
+      // The backend clamps each provider's report, but a mixed aggregate
+      // (cache figures recorded against rows whose prompt totals predate
+      // them) could still add up past the total. Clamp, do not go negative.
+      expect(cacheSplit(100, 90, 90), 0);
+      expect(cacheSplit(0, 0, 0), 0);
+      expect(cacheSplit(500, 100, 50), 350);
+    });
+
+    test('cacheHitRatio is zero rather than NaN when nothing was sent', () {
+      const s = UsageStatsSummary();
+      expect(s.cacheHitRatio, 0);
+      expect(s.freshPromptTokens, 0);
     });
   });
 }

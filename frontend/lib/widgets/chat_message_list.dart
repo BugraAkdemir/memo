@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -13,6 +12,7 @@ import '../models/agent.dart';
 import '../models/task_list.dart';
 import '../core/l10n.dart';
 import 'agent/task_activity_block.dart';
+import 'chat_image.dart';
 
 /// Max width for a message bubble's content, given the ACTUAL width this
 /// Row was laid out at (from a LayoutBuilder — see both call sites' doc
@@ -466,12 +466,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                               padding: EdgeInsets.only(bottom: 8),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                                child: Image.file(
-                                  File(widget.message.imagePath!),
-                                  width: 480,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (_, _, _) => SizedBox.shrink(),
-                                ),
+                                child: ChatImage(path: widget.message.imagePath!),
                               ),
                             ),
                           if (widget.message.content.isNotEmpty)

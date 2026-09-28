@@ -1691,9 +1691,13 @@ class MemoApiClient {
 
   // ─── Image ──────────────────────────────────────────────────────
 
+  /// A chat image as a `data:` URI, read by the backend from its own disk —
+  /// see ChatImage for why clients must not read the path themselves.
   Future<String> getImageBase64(String path) async {
     final res = await _dio.get('/api/image', queryParameters: {'path': path});
-    return res.data['data'] as String? ?? '';
+    final data = res.data;
+    if (data is Map && data['data'] is String) return data['data'] as String;
+    return '';
   }
 
   // ─── File Upload ────────────────────────────────────────────────

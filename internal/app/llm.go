@@ -722,7 +722,7 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		}
 		applyUsage(chunk.Usage)
 		if chunk.Error != "" {
-			a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
+			a.recordFailedTurn(userMsg, fullReply.String(), "⚠️ "+chunk.Error, sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 			return "", false
 		}
@@ -1346,7 +1346,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 							errMsg += "\n\n" + hint
 						}
 					}
-					a.recordStreamError(userMsg, errMsg, sessionID)
+					a.recordFailedTurn(userMsg, fullReply.String(), errMsg, sessionID)
 					trySend(providerCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 					return
 				}
@@ -1371,6 +1371,15 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 
 				if chunk.Done {
+					// A clean finish with no text and no thinking used to be
+					// saved as an empty assistant bubble with no explanation
+					// (found live). Same notice the stream-closed-empty branch
+					// below already gives.
+					if fullReply.Len() == 0 && fullThinking.Len() == 0 {
+						a.recordStreamError(userMsg, a.emptyReplyMsg(), sessionID)
+						trySend(providerCtx, outCh, api.StreamChunk{Error: a.emptyReplyMsg(), Done: true})
+						return
+					}
 					a.finishStream(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 					trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 					return
@@ -1467,7 +1476,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				if a.clientSwapped(streamClient) {
 					errMsg = a.modelSwappedMidStreamMsg()
 				}
-				a.recordStreamError(userMsg, errMsg, sessionID)
+				a.recordFailedTurn(userMsg, fullReply.String(), errMsg, sessionID)
 				trySend(streamCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 				return
 			}
@@ -1497,6 +1506,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 			if chunk.Done {
 				logx.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
+				if fullReply.Len() == 0 && fullThinking.Len() == 0 {
+					a.recordStreamError(userMsg, a.emptyReplyMsg(), sessionID)
+					trySend(streamCtx, outCh, api.StreamChunk{Error: a.emptyReplyMsg(), Done: true})
+					return
+				}
 				a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(streamCtx, outCh, chunk)
 				return
@@ -1509,8 +1523,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		} else {
 			logx.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
-			a.recordStreamError(userMsg, a.t("⚠️ Model boş yanıt döndürdü", "⚠️ Model returned an empty response"), sessionID)
-			trySend(streamCtx, outCh, api.StreamChunk{Error: a.t("⚠️ Model boş yanıt döndürdü", "⚠️ Model returned an empty response"), Done: true})
+			a.recordStreamError(userMsg, a.emptyReplyMsg(), sessionID)
+			trySend(streamCtx, outCh, api.StreamChunk{Error: a.emptyReplyMsg(), Done: true})
 		}
 	}()
 
@@ -1643,6 +1657,30 @@ func (a *App) recordStreamError(userMsg, errReply, sessionID string) {
 		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", errReply))
 		a.incognitoMu.Unlock()
 	}
+}
+
+// recordFailedTurn persists a turn whose stream failed after part of the
+// answer had already reached the user: the partial text is kept, with the
+// error appended, instead of being replaced by the bare error. Before this,
+// a stream cut mid-answer (upstream crash, network drop, a provider error
+// event) showed the user the text as it arrived and then saved only
+// "⚠️ unexpected EOF" — so the part they had read vanished on the next
+// reload. Found live against a fake provider that drops the connection
+// mid-stream. With nothing received it is exactly recordStreamError.
+//
+// Deliberately not finishStream: a failed turn should not feed memory/fact
+// extraction or mood with a truncated answer plus an error line.
+func (a *App) recordFailedTurn(userMsg, partial, errMsg, sessionID string) {
+	if strings.TrimSpace(partial) != "" {
+		errMsg = partial + "\n\n" + errMsg
+	}
+	a.recordStreamError(userMsg, errMsg, sessionID)
+}
+
+// emptyReplyMsg is the notice recorded when a provider finished a turn
+// normally but sent no text at all.
+func (a *App) emptyReplyMsg() string {
+	return a.t("⚠️ Model boş yanıt döndürdü", "⚠️ Model returned an empty response")
 }
 
 // stopMarker is the notice appended to a turn the user stopped mid-generation.

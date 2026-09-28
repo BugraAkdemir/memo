@@ -71,7 +71,15 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	var ch <-chan api.StreamChunk
-	if req.ChatID != "" {
+	// Incognito is a client-facing mode, so it is honoured here rather than
+	// inside SendMessageStreamTo (which task-list workers and the
+	// WhatsApp/Telegram bridges also use, and which a global UI toggle must
+	// not reroute). Only SendMessageStream checks it: the chat_id path
+	// used to go straight to the chat, so with incognito on every message
+	// the app sent — the Flutter client always sends chat_id — was written
+	// to the chat's history on disk and the model saw that chat's full
+	// context (found live).
+	if req.ChatID != "" && !s.fullBridge.GetIncognito() {
 		ch = s.fullBridge.SendMessageStreamTo(ctx, req.ChatID, req.Message)
 	} else {
 		ch = s.fullBridge.SendMessageStream(ctx, req.Message)

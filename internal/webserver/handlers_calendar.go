@@ -36,8 +36,8 @@ func (s *Server) handleCalendarEvents(w http.ResponseWriter, r *http.Request) {
 		fromStr := r.URL.Query().Get("from")
 		toStr := r.URL.Query().Get("to")
 
-		from := time.Now().Truncate(24 * time.Hour)
-		to := from.Add(30 * 24 * time.Hour)
+		from := startOfLocalDay(time.Now())
+		to := from.AddDate(0, 0, 30)
 
 		if fromStr != "" {
 			if t, err := time.Parse(time.RFC3339, fromStr); err == nil {
@@ -71,7 +71,10 @@ func (s *Server) handleCalendarEvents(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
+		body.Title = strings.TrimSpace(body.Title)
 		if body.Title == "" {
+			// Whitespace-only used to pass and create an event with an
+			// invisible title (found live).
 			jsonError(w, "title is required", http.StatusBadRequest)
 			return
 		}
@@ -192,4 +195,13 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// startOfLocalDay is midnight of t's day in t's own location. The default
+// listing window used time.Now().Truncate(24*time.Hour), which truncates to
+// midnight *UTC* — in Turkey (UTC+3) that is 03:00 local, so after 03:00 a
+// client relying on the default window lost that day's 00:00–03:00 events.
+func startOfLocalDay(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
 }

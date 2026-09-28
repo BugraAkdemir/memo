@@ -142,7 +142,7 @@ func (s *Server) handleSendFileStream(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	tmpFile, err := os.CreateTemp("", "memo_web_*_"+header.Filename)
+	tmpFile, err := os.CreateTemp("", "memo_web_*_"+filepath.Base(header.Filename))
 	if err != nil {
 		http.Error(w, "tmp error", http.StatusInternalServerError)
 		return
@@ -886,25 +886,14 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	if filepath.IsAbs(decoded) {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-
+	// Which directories may be served is decided by GetImageBase64 against
+	// the real, resolved path. This handler used to reject absolute paths and
+	// allow only the literal prefixes "data/images|avatars|attachments" —
+	// but every image path a chat message actually stores is absolute and
+	// under the configured data dir (and generated images live in
+	// generated-images/), so no stored image could ever be fetched here.
 	cleaned := filepath.Clean(decoded)
-	if cleaned == "." || cleaned == ".." {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-
-	allowed := false
-	for _, prefix := range []string{"data/images", "data/avatars", "data/attachments"} {
-		if cleaned == prefix || strings.HasPrefix(cleaned, prefix+"/") {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
+	if cleaned == "." || cleaned == string(filepath.Separator) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}

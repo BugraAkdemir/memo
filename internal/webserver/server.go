@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -647,7 +648,7 @@ func (s *Server) handleSendFile(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "memo_web_*_"+header.Filename)
+	tmpFile, err := os.CreateTemp("", "memo_web_*_"+filepath.Base(header.Filename))
 	if err != nil {
 		http.Error(w, "tmp error", http.StatusInternalServerError)
 		return

@@ -619,10 +619,11 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		// token-aware history truncation as plain text ones — the manual
 		// construction this replaced skipped all three (BUG-QL5).
 		msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64}, nil)
+		stored := persistChatImage(imagePath, imgData)
 		if sm != nil {
-			sm.AddMessageToSession(chatID, "user", userMsg, imagePath, "")
+			sm.AddMessageToSession(chatID, "user", userMsg, stored, "")
 		}
-		return a.routeStream(ctx, msgs, userMsg, imagePath, "", chatID, false)
+		return a.routeStream(ctx, msgs, userMsg, stored, "", chatID, false)
 	})
 	if !ok {
 		return busyStreamChan(a.busyNotice())
@@ -758,11 +759,12 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	defer release()
 
 	msgs := a.buildMessagesForSession(context.Background(), chatID, userMsg, []string{b64}, nil)
+	stored := persistChatImage(imagePath, imgData)
 	if sm != nil {
-		sm.AddMessageToSession(chatID, "user", userMsg, imagePath, "")
+		sm.AddMessageToSession(chatID, "user", userMsg, stored, "")
 	}
 
-	ch := a.routeStream(context.Background(), msgs, userMsg, imagePath, "", chatID, false)
+	ch := a.routeStream(context.Background(), msgs, userMsg, stored, "", chatID, false)
 	reply := drainToReply(ch)
 
 	// Cosmetic only: finishStream (inside the drain above) already recorded

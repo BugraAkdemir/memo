@@ -633,8 +633,12 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 			}
 		}
 
-		if chunk.Choices[0].FinishReason != nil {
-			finish := *chunk.Choices[0].FinishReason
+		// An empty string is "not finished", same as null: some servers send
+		// `"finish_reason": ""` on every content chunk, and reading that as a
+		// finish armed the usage watchdog mid-answer (S6, BUG_REPORT
+		// 2026-09-28).
+		if fr := chunk.Choices[0].FinishReason; fr != nil && *fr != "" {
+			finish := *fr
 			if !wantUsage || usage != nil {
 				trySend(ctx, ch, terminal(finish))
 				return
@@ -645,6 +649,7 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 			// scanner below; net/http supports Close concurrent with a
 			// blocked Read precisely for this.
 			pendingFinish = finish
+			stopGrace() // a repeated finish must not leave an older timer armed
 			graceTimer = time.AfterFunc(streamUsageGrace, func() { body.Close() })
 			continue
 		}

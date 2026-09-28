@@ -273,17 +273,17 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/chats/code-submode", s.handleChatCodeSubMode)
 	route("/api/cli/model-options", s.handleCLIModelOptions)
 	route("/api/send/cli-stream", s.handleSendCLIStream)
-	route("/api/sync/settings", s.handleSyncSettings)
-	route("/api/sync/auth", s.handleSyncAuth)
-	route("/api/sync/account", s.handleSyncAccount)
-	route("/api/sync/trigger", s.handleSyncTrigger)
-	route("/api/sync/pull", s.handleSyncPull)
-	route("/api/sync/now", s.handleSyncNow)
-	route("/api/sync/disconnect", s.handleSyncDisconnect)
+	route("/api/sync/settings", s.adminWrites(s.handleSyncSettings))
+	route("/api/sync/auth", s.adminOnly(s.handleSyncAuth))
+	route("/api/sync/account", s.adminWrites(s.handleSyncAccount))
+	route("/api/sync/trigger", s.adminOnly(s.handleSyncTrigger))
+	route("/api/sync/pull", s.adminOnly(s.handleSyncPull))
+	route("/api/sync/now", s.adminOnly(s.handleSyncNow))
+	route("/api/sync/disconnect", s.adminOnly(s.handleSyncDisconnect))
 	route("/api/events", s.handleEvents)
 
 	// Shutdown via HTTP
-	route("/api/shutdown", s.handleShutdown)
+	route("/api/shutdown", s.adminOnly(s.handleShutdown))
 
 	// Client tracking (auto-shutdown when no CLI/GUI clients remain)
 	route("/api/clients/register", s.handleClientRegister)
@@ -407,7 +407,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/telegram/stop", s.requirePermission(s.handleTelegramStop, hasTelegramPerm))
 	route("/api/telegram/disconnect", s.requirePermission(s.handleTelegramDisconnect, hasTelegramPerm))
 
-	route("/api/export", s.handleExport)
+	route("/api/export", s.adminOnly(s.handleExport))
 
 	// Skills
 	route("/api/skills/list", s.handleListSkills)
@@ -416,11 +416,11 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/skills/get/{name}", s.handleGetSkill)
 	route("/api/skills/active", s.handleSetActiveSkills)
 	route("/api/skills/active-list", s.handleGetActiveSkills)
-	route("/api/import", s.handleImport)
-	route("/api/wipe", s.handleWipe)
-	route("/api/cli/remove", s.handleCLIRemove)
-	route("/api/cli/reinstall", s.handleCLIReinstall)
-	route("/api/uninstall", s.handleUninstall)
+	route("/api/import", s.adminOnly(s.handleImport))
+	route("/api/wipe", s.adminOnly(s.handleWipe))
+	route("/api/cli/remove", s.adminOnly(s.handleCLIRemove))
+	route("/api/cli/reinstall", s.adminOnly(s.handleCLIReinstall))
+	route("/api/uninstall", s.adminOnly(s.handleUninstall))
 
 	// Calendar
 	// Calendar permission (Faz 5.1.1, yapacam.md), lenient-gated.
@@ -443,12 +443,12 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// NOT under /api/ — they must match Anthropic's and OpenAI's real paths
 	// exactly so pointing a client's ANTHROPIC_BASE_URL/OPENAI_BASE_URL at
 	// Memo works unmodified.
-	route("/api/dev-gateway/config", s.handleDevGatewayConfig)
-	route("/api/dev-gateway/token/rotate", s.handleDevGatewayRotateToken)
+	route("/api/dev-gateway/config", s.adminWrites(s.handleDevGatewayConfig))
+	route("/api/dev-gateway/token/rotate", s.adminOnly(s.handleDevGatewayRotateToken))
 	route("/api/dev-gateway/models", s.handleDevGatewayModels)
-	route("/api/dev-gateway/logs", s.handleDevGatewayLogs)
-	route("/api/dev-gateway/claude-code-cli", s.handleClaudeCodeCLIConnection)
-	route("/api/dev-gateway/google-account", s.handleGoogleAccountConnection)
+	route("/api/dev-gateway/logs", s.adminOnly(s.handleDevGatewayLogs))
+	route("/api/dev-gateway/claude-code-cli", s.adminWrites(s.handleClaudeCodeCLIConnection))
+	route("/api/dev-gateway/google-account", s.adminWrites(s.handleGoogleAccountConnection))
 	mux.HandleFunc("/v1/messages", s.handleAnthropicMessages)
 	mux.HandleFunc("/v1/chat/completions", s.handleOpenAIChatCompletions)
 	mux.HandleFunc("/v1/models", s.handleOpenAIModels)

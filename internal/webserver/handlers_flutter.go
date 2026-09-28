@@ -1260,6 +1260,21 @@ func (s *Server) handleRemoteAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
+		// A non-admin gets the status without its secrets — the ngrok
+		// authtoken, a pending Tailscale login link, and above all a freshly
+		// minted device token, which is full access (callerIsAdmin treats
+		// device tokens as admin). Reading the full status also *consumes*
+		// that one-time token, so a restricted account polling this used to
+		// be able to both take it and make it vanish before the admin who
+		// created it could read it; the peek form leaves it pending.
+		if !s.callerIsAdmin(r) {
+			if p, ok := s.fullBridge.(interface{ PeekRemoteAccessStatus() interface{} }); ok {
+				writeJSON(w, redactSecrets(p.PeekRemoteAccessStatus()))
+				return
+			}
+			writeJSON(w, redactSecrets(s.fullBridge.GetRemoteAccessStatus()))
+			return
+		}
 		writeJSON(w, s.fullBridge.GetRemoteAccessStatus())
 	case http.MethodPut:
 		if !s.callerIsAdmin(r) {
@@ -1373,6 +1388,10 @@ func (s *Server) handleSyncSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
+		if !s.callerIsAdmin(r) {
+			writeJSON(w, redactSecrets(s.fullBridge.GetSyncSettings())) // OAuth client secret, backup passphrase
+			return
+		}
 		writeJSON(w, s.fullBridge.GetSyncSettings())
 	case http.MethodPut:
 		var req struct {
@@ -1750,6 +1769,14 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		providers := s.fullBridge.GetProviders()
+		// The list is watched ambiently (the chat header's model picker),
+		// so every account may read it — but only an account allowed to
+		// manage providers may see their API keys. It used to hand every
+		// key out in plaintext to any signed-in account.
+		if !s.callerHasPermission(r, hasModelsPerm) {
+			writeJSON(w, redactSecrets(providers))
+			return
+		}
 		writeJSON(w, providers)
 	case http.MethodPut:
 		var req struct {
@@ -1865,6 +1892,10 @@ func (s *Server) handleTTSProviders(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		providers := s.fullBridge.GetTTSProviders()
+		if !s.callerHasPermission(r, hasModelsPerm) {
+			writeJSON(w, redactSecrets(providers)) // see handleProviders
+			return
+		}
 		writeJSON(w, providers)
 	case http.MethodPut:
 		var req struct {
@@ -2017,6 +2048,10 @@ func (s *Server) handleSTTProviders(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		providers := s.fullBridge.GetSTTProviders()
+		if !s.callerHasPermission(r, hasModelsPerm) {
+			writeJSON(w, redactSecrets(providers)) // see handleProviders
+			return
+		}
 		writeJSON(w, providers)
 	case http.MethodPut:
 		var req struct {
@@ -2620,6 +2655,10 @@ func (s *Server) handleLiveModeEngines(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
+		if !s.callerHasPermission(r, hasModelsPerm) {
+			writeJSON(w, redactSecrets(s.fullBridge.GetLiveModeEngines())) // see handleProviders
+			return
+		}
 		writeJSON(w, s.fullBridge.GetLiveModeEngines())
 	case http.MethodPut:
 		var req livemode.EngineConfig

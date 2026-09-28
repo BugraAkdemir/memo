@@ -2045,18 +2045,28 @@ func FormatMemoriesUserOnly(memories []MemoryResult) string {
 }
 
 func (s *Store) SaveExplicit(ctx context.Context, content, tags string) error {
-	embedText := content
-	embedding, err := s.embed(ctx, embedText)
-	if err != nil {
-		return fmt.Errorf("memory.SaveExplicit: embed: %w", err)
-	}
-	if len(embedding) != s.dim {
-		return fmt.Errorf("memory.SaveExplicit: dimension mismatch: got %d want %d", len(embedding), s.dim)
-	}
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	uuid := fmt.Sprintf("explicit_%d", time.Now().UnixNano())
+
+	// Without an embedding the fact is still saved — the same choice
+	// saveMergedAs makes. An explicit memory is a pinned fact, and pinned
+	// facts reach every turn through GetPinnedFactsRanked, which already
+	// falls back to recency when it can't embed; keyword (FTS) search finds
+	// it too. Refusing the save instead (what this did) meant a user with
+	// only cloud providers and no local embedding model could not save a
+	// single "remember this" — the request failed with a raw
+	// "connection refused" to a local server they never set up (found live).
+	var embedding []float32
+	var embedBlob []byte
+	if emb, err := s.embed(ctx, content); err != nil {
+		logx.Printf("MEMORY: SaveExplicit embed failed (uuid=%s): %v — saved without a vector (pinned-fact recency and keyword search still find it)", uuid, err)
+	} else if len(emb) != s.dim {
+		logx.Printf("MEMORY: SaveExplicit embed dimension mismatch (uuid=%s): got %d, want %d — saved without a vector", uuid, len(emb), s.dim)
+	} else {
+		embedding = emb
+		embedBlob = floatsToBlob(emb)
+	}
 	return s.db.Write(ctx, func(tx *sql.Tx) error {
-		embedBlob := floatsToBlob(embedding)
 		res, err := tx.Exec(
 			`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding,
 			                      chunk_index, parent_uuid, total_chunks,
@@ -2071,7 +2081,7 @@ func (s *Store) SaveExplicit(ctx context.Context, content, tags string) error {
 		if err != nil {
 			return err
 		}
-		if s.useVec {
+		if s.useVec && embedding != nil {
 			vecJSON, _ := json.Marshal(embedding)
 			if _, err := tx.Exec("INSERT INTO vec_memories(rowid, embedding) VALUES (?, ?)", rowID, string(vecJSON)); err != nil {
 				return fmt.Errorf("insert vec: %w", err)

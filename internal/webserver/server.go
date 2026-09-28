@@ -389,11 +389,17 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/browser", s.handleBrowserSettings)
 	route("/api/browser/install", s.handleBrowserInstall)
 	route("/api/browser/install/progress", s.handleBrowserInstallProgress)
-	route("/api/browser/session/navigate", s.handleBrowserSessionNavigate)
-	route("/api/browser/session/click", s.handleBrowserSessionClick)
-	route("/api/browser/session/scroll", s.handleBrowserSessionScroll)
-	route("/api/browser/session/close", s.handleBrowserSessionClose)
-	route("/api/browser/session/status", s.handleBrowserSessionStatus)
+	// Agent-gated: the interactive browser runs as the server's own OS
+	// user on the server's own network, so an account denied agent (tool
+	// execution) access must not be able to drive it directly either —
+	// that would reach LAN hosts and this backend's own loopback-trusted
+	// API (remoteAuthOK) on its behalf. Lenient gate: status (GET) stays
+	// readable for ambient polling; every action is a POST.
+	route("/api/browser/session/navigate", s.requirePermission(s.handleBrowserSessionNavigate, hasAgentPerm))
+	route("/api/browser/session/click", s.requirePermission(s.handleBrowserSessionClick, hasAgentPerm))
+	route("/api/browser/session/scroll", s.requirePermission(s.handleBrowserSessionScroll, hasAgentPerm))
+	route("/api/browser/session/close", s.requirePermission(s.handleBrowserSessionClose, hasAgentPerm))
+	route("/api/browser/session/status", s.requirePermission(s.handleBrowserSessionStatus, hasAgentPerm))
 	route("/api/whatsapp/stats", s.handleWhatsAppStats)
 	route("/api/whatsapp/chat-mode", s.requirePermission(s.handleWhatsAppChatMode, hasWhatsAppPerm))
 	route("/api/whatsapp/chat-stream", s.requirePermission(s.handleWhatsAppChatStream, hasWhatsAppPerm))

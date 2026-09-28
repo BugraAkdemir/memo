@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"memo/internal/config"
 )
 
 func TestHandleBrowserSessionNavigate_RoundTrip(t *testing.T) {
@@ -192,5 +195,54 @@ func TestHandleBrowserSessionStatus_NoFullBridge_ReportsInactive(t *testing.T) {
 	}
 	if resp.Active {
 		t.Error("resp.Active = true with no fullBridge configured, want false")
+	}
+}
+
+// TestBrowserSessionRoutes_GatedByAgentPermission goes through the real
+// route table (StartHTTPWithAddr), not the handler directly: the bug was in
+// the wiring — these routes were registered with no permission wrapper at
+// all, so an account denied agent access could still drive the server's
+// own browser (and, before the scheme allowlist, read its filesystem via
+// file:// screenshots).
+func TestBrowserSessionRoutes_GatedByAgentPermission(t *testing.T) {
+	navigated := false
+	stub := &swarmStubBridge{
+		sessionPermissions: func(token string) (config.AccountPermissions, bool) {
+			return config.AccountPermissions{Agent: false}, true
+		},
+		navigateBrowserSession: func(ctx context.Context, rawURL string) ([]byte, string, error) {
+			navigated = true
+			return nil, rawURL, nil
+		},
+	}
+	port := freePort(t)
+	s := New(stub)
+	if err := s.StartHTTPWithAddr(port, "127.0.0.1"); err != nil {
+		t.Fatalf("StartHTTPWithAddr() error = %v", err)
+	}
+	defer s.Stop()
+	waitForListening(t, port)
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+
+	for _, path := range []string{
+		"/api/browser/session/navigate",
+		"/api/browser/session/click",
+		"/api/browser/session/scroll",
+		"/api/browser/session/close",
+		"/api/v1/browser/session/navigate",
+	} {
+		req, _ := http.NewRequest(http.MethodPost, base+path, strings.NewReader(`{"url":"https://example.com"}`))
+		req.Header.Set("X-Memo-Token", "restricted-user-session")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("POST %s: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("POST %s as a user without agent permission: status = %d, want 403", path, resp.StatusCode)
+		}
+	}
+	if navigated {
+		t.Error("the bridge's NavigateBrowserSession ran for a caller without agent permission")
 	}
 }

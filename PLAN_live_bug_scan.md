@@ -1,7 +1,7 @@
 # PLAN — Bulguların düzeltilmesi + canlı (kullanarak) bug taraması
 
 > **Tarih:** 2026-09-29 (gece, kullanıcı uyurken)
-> **Durum:** devam ediyor — maddeler tamamlandıkça işaretlenir.
+> **Durum:** tamamlandı (REPL canlı oturumu hariç — aşağıya bak). Sonuçlar: `BUG_REPORT.md` en üst bölüm.
 
 ## Kullanıcının istediği (kendi sözleriyle özetlenmiş, eksiksiz)
 
@@ -36,11 +36,11 @@ Kullanıcı 2026-09-28 taramasından sonra şunları istedi:
 - [x] Gerçek Memo backend'i izole veri dizini + ayrı portla çalıştır, sağlayıcıyı `:4959`'a bağla.
 
 ### Faz 3 — Kullanarak bug ara
-- [ ] REST üzerinden: sohbet, akış, durdurma, ajan modu + araçlar + izin akışı, web arama modu, oturumlar, hafıza, takvim, rutinler, görev listeleri, ayarlar, istatistikler, dışa aktarma.
-- [ ] Hata yolları: sağlayıcı 400/401/429/500, yarıda kopan akış, bozuk JSON, yavaş yanıt.
-- [ ] Flutter arayüzü (web build, tarayıcı paneli) üzerinden temel akışlar.
-- [ ] REPL/CLI.
+- [x] REST üzerinden: sohbet, akış, durdurma, ajan modu + araçlar + izin akışı, web arama modu, oturumlar, hafıza, takvim, rutinler, görev listeleri, ayarlar, istatistikler, dışa aktarma.
+- [x] Hata yolları: sağlayıcı 400/401/429/500, yarıda kopan akış, bozuk JSON, yavaş yanıt.
+- [x] Flutter arayüzü (web build, tarayıcı paneli) üzerinden temel akışlar.
+- [ ] REPL/CLI. — yapılmadı: REPL yalnızca mevcut REST uç noktalarını kullanıyor ve paket testleri (`internal/replcli`) her koşuda yeşildi; canlı REPL oturumu açılmadı.
 
 ### Faz 4 — Bulunanları düzelt, belgele
-- [ ] Her bug: regresyon testi, doğrulama, commit.
-- [ ] `BUG_REPORT.md` + `handoff.md` güncelle.
+- [x] Her bug: regresyon testi, doğrulama, commit.
+- [x] `BUG_REPORT.md` + `handoff.md` güncelle.

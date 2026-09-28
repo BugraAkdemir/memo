@@ -1,3 +1,45 @@
+# Memo — Canlı (Kullanarak) Bug Taraması (2026-09-29)
+
+> **İstek:** kullanıcı uyurken: 2026-09-28 bulgularının (S3–S7) hepsini düzelt, sonra uygulamayı gerçekten **kullanarak** daha kapsamlı bir tarama yap; API gerekirse sahte bir sağlayıcı kur (ör. `:4959`); bulunanları da düzelt; AGENTS.md kurallarına uy; commit'leri unutma. İsteğin tam hâli: `PLAN_live_bug_scan.md`.
+> **Yöntem:** Gerçek `memo` backend'i **izole bir veri dizininde** (`MEMO_DATA_DIR`, ayrı port 18090) çalıştırıldı ve **`cmd/fakeprovider`** (bu oturumda yazıldı, `:4959`) ile konuşturuldu. Sahte sağlayıcı OpenAI + Anthropic tel formatlarını konuşuyor, yanıtları mesajdaki direktiflerle (`[[tool …]]`, `[[error 429]]`, `[[cut]]`, `[[slow N]]`…) yönetiliyor ve gerçek API'lerin istek kurallarını (rol sırası, tool eşleşmesi, Opus 4.7+ sampling yasağı, thinking-bloğu geri gönderme) **uygulayıp** ihlalde 400 dönüyor. Backend REST (Python sürücüsü) ve **gerçek Flutter web arayüzü** (tarayıcı paneli) ile kullanıldı; çok hesaplı yetki testleri gerçek bir admin + izinsiz `user` hesabıyla yapıldı. Hiçbir gerçek sağlayıcıya istek atılmadı, kullanıcının gerçek verisine dokunulmadı.
+> **Sonuç:** 2026-09-28'in açık S3–S7'sinin hepsi + canlı kullanımda bulunan **15 bug** düzeltildi. Her biri regresyon testli ve testin eski koda karşı kırmızı yandığı doğrulandı (mekanizma yoksa derleme hatasıyla). Toplam 25 commit.
+
+## Bulgular (hepsi ✅ düzeltildi)
+
+| # | Bulgu (canlı nasıl görüldü) | Commit |
+|---|---|---|
+| L1 | 🔴 **İzinsiz `user` hesabı yıkıcı uç noktaları çağırabiliyordu.** `POST /api/shutdown` ile backend'i kapattı (canlı). Aynı şekilde `/api/wipe`, `/api/import`, `/api/uninstall`, `/api/cli/*` açıktı. `GET /api/export` tüm sohbetleri, hafıza DB'sini (Memory izninin katı kontrolünü atlayarak) ve `providers.json`'ı **onu çözen `machine.key` ile birlikte** veriyordu. Artık `adminOnly`/`adminWrites` ile korunuyor. | `5c3323bf` |
+| L2 | 🔴 **Sırlar kısıtlı hesaplara düz metin gidiyordu.** Sağlayıcı/TTS/STT/Live Mode API anahtarları, dev-gateway token'ı, sync `client_secret`'ı. `GET /api/remote-access` yeni cihaz token'ını (tam yetki) veriyor ve okurken **tüketiyordu**. Artık `redactSecrets` ile maskeleniyor ve admin olmayana tüketmeyen "peek" dönülüyor. | `5c3323bf` |
+| L3 | 🔴 **Gizli mod gerçek uygulamada çalışmıyordu.** Flutter her mesajı `chat_id` ile gönderiyor; bu yol gizli modu hiç kontrol etmiyordu. "Gizli" mesaj sohbet dosyasına diske yazıldı (canlı, `grep` ile). | `49dbf3fe` |
+| L4 | 🟠 **Tek aktif sağlayıcı 3 hatadan sonra kilitleniyordu.** Ardışık 429/401/500 sonrası 5 dk boyunca her mesaj istek bile atılmadan "no provider configured" ile reddedildi. Ücretsiz modellerde 3×429 rutin bir durum. | `fc39df38` |
+| L5 | 🟠 **`/api/messages` `chat_id`'yi yok sayıyordu.** Global aktif sohbeti döndürüyordu; indeksle düzenleme/silme de aktif sohbette çalışıyordu. İki istemci (masaüstü + telefon) yanlış sohbeti görebilir ya da yanlış sohbetten silebilirdi. Silinmiş sohbet başka sohbetin geçmişini döndürüyordu. | `c538c651`, `ee504438` |
+| L6 | 🟠 **Gönderilen görseller kayboluyordu, gösterilemiyordu.** Web/mobil yüklemesi geçici dosyaya yazılıp siliniyor ama mesaj o yolu tutuyordu. `/api/image` hiçbir kayıtlı yolu (mutlak yol, `generated-images/`) kabul etmiyordu. İstemci `Image.file` ile backend'in yerel yolunu okuduğundan web/Android/uzak erişimde görseller hiç görünmüyordu. | `d18bde40`, `ab02d708` |
+| L7 | 🟠 **Web'de "Memo'yu yeniden başlat" bozuktu.** Sayaç "-6s, -7s…" diye eksiye iniyordu (canlı ekran görüntüsü). Nedeni: `dart:io exit(0)` web'de istisna fırlatıyor. Artık web'de sayfa yenileniyor. | `8aca0315` |
+| L8 | 🟠 **Kopan akışta görülen metin kayboluyordu.** Kullanıcı 45 kelime gördü, kaydedilen yalnızca "⚠️ unexpected EOF" idi. Boş yanıt da açıklamasız boş balon olarak kaydediliyordu. | `45e47c3d` |
+| L9 | 🟠 **Açık hafıza ("bunu hatırla") yerel embedding modeli olmadan tamamen başarısız oluyordu** (500, `dial tcp 127.0.0.1:8081`). Bu kullanıcının kendi kurulumu (yalnızca bulut sağlayıcılar). Artık vektörsüz kaydediliyor; pinned-fact yedeğiyle geri çağrılıyor. | `1648090b` |
+| L10 | 🟡 Otomatik sohbet başlığı, üretim sürerken kullanıcının verdiği adı eziyordu (canlı). | `f0597d65` |
+| L11 | 🟡 Geçersiz rutinler (`25:99`, hafta günü 9, boş saat/istem) etkin olarak kaydediliyor, hiç tetiklenmiyordu. Doğrulama eklendi. Canlı UI testi bu doğrulamanın eski bozuk rutinlerin **kapatılmasını** da engellediğini yakaladı; o da düzeltildi. | `b10358c2`, `b8bf16ec` |
+| L12 | 🟡 Boş/boşluk mesaj kaydediliyor ve bir LLM turu harcıyordu. | `3bcc6a14` |
+| L13 | 🟢 Takvim varsayılan penceresi UTC gece yarısından başlıyordu (TR'de 03:00, o günün 00:00–03:00 etkinlikleri düşüyordu). Boşluk başlık kabul ediliyordu. | `cdd04abc` |
+| L14 | 🟢 Rule #8 ihlali: mesaj düzenleme/silme hatasında sabit Türkçe metin vardı (enterpolasyonla kurulduğu için grep'e takılmamıştı). | `ee504438` |
+| L15 | 🟢 Test izolasyonu: `TestAgentWrappers_WithExecutor` kararsızdı (oturum öncesi `a28b3c2e`'de de `-count=2` ile kırılıyor, doğrulandı). `internal/app` testleri kaynak ağacına `internal/app/data/machine.key` yazıyordu. | `473cdd46`, `ced703fe` |
+
+## Canlıda doğrulanan (düzeltme sonrası) önceki düzeltmeler
+S1 (`file://` reddi), S3 (Claude sampling: ilk istek 400, geri çekilip latch'lendi), S4 (Opus 5 + araç döngüsünde thinking replay: sıfır ihlal), durdurma (web'de kısmi yanıt + "⏹️ Response stopped."), eşzamanlılık (aynı sohbet → "meşgul", farklı sohbetler paralel), dışa/içe aktarma döngüsü, Self-Driving döngüsünün bozuk JSON'da takılmadan düzgün hata vermesi.
+
+## Bug olmadığına karar verilenler / tasarım gözlemleri
+- Router `SetActiveProvider` ile tek sağlayıcıya kısıtlı; "falling back" logu yanıltıcı ama davranış tasarım gereği.
+- Code Mode "auto" alt modunda dosya düzenlemeleri izin sormadan geçiyor: tasarım gereği (yedekli, geri alınabilir).
+- Görev döngüsü memo-system rehberini (5 KB) **her** işçi turuna ekliyor ve bu sohbete kullanıcı mesajı olarak yazılıyor. `f82d2121`'de bilinçli karar olarak belgelenmiş. Dokunulmadı; maliyet ve UI gürültüsü olarak not edildi.
+- İstatistiklerde ortalama tok/s tur başına oranların ortalaması. Sahte sağlayıcının anında yanıtlarında absürt çıkıyor; gerçek veride fark küçük (44,4 vs 35,4). Değiştirilmedi.
+- Ortam: `flutter build web` eski `.dart_tool/flutter_build` önbelleği yüzünden (`file_picker` 13.x web kaydı) başarısız oluyordu. Önbellek silinince derlendi; kod hatası değil. `~/go/bin/golangci-lint`/`govulncheck` Go 1.26 ile derlenmiş, sistem Go 1.27 olduğu için çöküyor.
+- Doğrulanamadı: web arayüzünde "Change Server" diyaloğu bazen 3–5 sn gecikmeli açıldı. Handler'da asenkron iş yok; ana-thread yoğunluğu ya da panel gecikmesi olabilir.
+
+## Doğrulama (son durum)
+`go build`/`go vet` (`-tags sqlite_fts5`) temiz · `go test ./... -race -count=1` **54 paket, hiç FAIL yok** · `flutter analyze lib/ test/` yalnızca bilinen 7 info · `flutter test` **412/412** · Rule #8 grep (oturumda dokunulan tüm `.dart`) boş.
+
+---
+
 # Memo — Genel Bug Taraması (2026-09-28)
 
 > **Kapsam:** 2026-09-14 denetiminden (aşağıda) bu yana eklenen/değişen kod öncelikli (65 Go dosyası, +4987 satır: prompt-cache muhasebesi, etkileşimli tarayıcı oturumu, görsel üretimi, per-chat stream kilitleri, Code Mode alt-modları) + tüm repo için mekanik taramalar.
@@ -32,7 +74,7 @@ Beş rota da çıplak `route(...)` ile kayıtlıydı. Aynı hassasiyetteki `/api
 **Düzeltme:** beş rota da `requirePermission(…, hasAgentPerm)` ile sarıldı. POST'lar kapalı; `status` (GET) ambient polling için açık kalıyor. Masaüstü ve hesapsız kurulumlar değişmedi (`callerHasPermission` fail-open).
 **Regresyon:** `TestBrowserSessionRoutes_GatedByAgentPermission` testi gerçek route tablosu üzerinden, gerçek HTTP ile koşuyor. Eski wiring'e karşı 5/5 rota `200` döndü ve bridge'in `NavigateBrowserSession`'ı çalıştı.
 
-### S3 — 🔴 Açık (karar gerekiyor) — Claude sağlayıcısı her istekte `temperature` gönderiyor → Opus 4.7+ / Sonnet 5 / Opus 5 / Fable'da her istek 400
+### S3 — ✅ Düzeltildi (`b6dc9bfb`) — Claude sağlayıcısı her istekte `temperature` gönderiyor → Opus 4.7+ / Sonnet 5 / Opus 5 / Fable'da her istek 400
 **Dosyalar:** `internal/provider/claude.go:760-761` (`buildClaudeRequest`), çağıranlar `internal/agent/pipeline.go:189` (`Temperature: 0.2`), `internal/app/llm.go:1264,1891` (`cfg.Llama.Temperature`)
 
 Anthropic dokümanına göre (claude-api skill, `shared/model-migration.md` "Migrating to Opus 4.7"): `temperature`/`top_p`/`top_k` Opus 4.7'den itibaren kaldırıldı ve **400 döndürüyor**. Aynı durum Opus 4.8/5/5.5, Sonnet 5 ve Fable 5/5.1 için de geçerli. `buildClaudeRequest` `req.Temperature`'ı koşulsuz kopyalıyor (`omitempty` yalnızca 0'ı atlıyor). Ajan hattı her zaman 0.2, sohbet hattı config'teki sıcaklığı gönderiyor. **Sonuç:** kullanıcı `ListModels`'ın canlı döndürdüğü güncel bir Claude modelini seçerse hem düz sohbet hem ajan modu her turda başarısız oluyor. Ajan turlarında ayrıca 400, cache_control retry valfini de tetikliyor, yani her başarısız tur iki istek harcıyor. UI'nin sunduğu `xhigh` efor seviyesi (`handlers_oauth.go`) tam olarak bu modellere özgü, yani özellik fiilen bu modeller için tasarlanmış.
@@ -40,22 +82,22 @@ Anthropic dokümanına göre (claude-api skill, `shared/model-migration.md` "Mig
 **Seçenekler:** (a) model adına göre sampling alanlarını atlamak: kısa ama yeni model çıktıkça bakım istiyor; (b) `cache_control`/`include_usage` ile aynı retry-and-latch valfi: 400 gövdesinde `temperature`/`top_p` geçiyorsa alanları çıkarıp bir kez yeniden dene, provider instance'ında latch'le. Model listesi tutmadan her yeni modelde çalışır. Öneri (b), çünkü repo bu deseni zaten iki kez benimsemiş.
 **Aynı sınıf, doğrulanmadı:** OpenAI akıl yürütme modelleri (o-serisi, gpt-5) de benim bilgime göre `temperature≠1`'i ve `max_tokens`'ı (bunun yerine `max_completion_tokens`) reddediyor. `openai.go` ikisini de koşulsuz gönderiyor. Bu oturumda dokümandan teyit edilmedi.
 
-### S4 — 🟡 Açık, doğrulanmadı — Claude + düşünme + araç döngüsünde thinking blokları geri gönderilmiyor
+### S4 — ✅ Düzeltildi (`251c7238`) — Claude + düşünme + araç döngüsünde thinking blokları geri gönderilmiyor
 **Dosyalar:** `internal/provider/claude.go` (`ChatCompletion` `thinking` bloklarını yalnızca metin olarak topluyor, `signature`'ı atıyor; `buildClaudeRequest` asistan turunu yalnızca `text` + `tool_use` ile yeniden kuruyor)
 
 Efor seviyesi seçiliyken (`thinking: adaptive`) ya da düşünmenin varsayılan açık olduğu Opus 5'te, bir araç turunun asistan mesajı bir sonraki istekte thinking bloğu olmadan geri gönderiliyor. Anthropic dokümanı aynı modelde "thinking bloklarını değiştirmeden geri gönder" diyor. Bunun 400 mü ürettiği, yoksa yalnızca kalite/cache kaybı mı olduğu bu oturumda **teyit edilemedi**; skill dokümanı bu durumu açıkça kapsamıyor. S3 düzeltildikten sonra gerçek bir anahtarla bir ajan turunda test edilmeli.
 
-### S5 — 🟢 Açık, P3 — `GetStreamingChatIDs` her yoklamada gerçek kilitleri anlık tutuyor → nadiren sahte "lütfen bekleyin"
+### S5 — ✅ Düzeltildi (`d1be2da9`) — `GetStreamingChatIDs` her yoklamada gerçek kilitleri anlık tutuyor → nadiren sahte "lütfen bekleyin"
 **Dosya:** `internal/app/chat_locks.go` (`GetStreamingChatIDs`, `lockChatStream`)
 
 Kenar çubuğu her istemciden 2 sn'de bir `/api/chats/streaming`'i yokluyor (`chat_provider.dart:81-97`). Handler her sohbetin mutex'ini `TryLock()`+`Unlock()` ile yokluyor. `lockChatStream` ise `cl.TryLock()`'u `chatStreamMu` dışında çağırıyor. Yoklamanın kilidi tuttuğu anda gelen gerçek bir gönderim `busyNotice` alıyor. Pencere nanosaniye mertebesinde, olasılık düşük. Düzeltme: kilit/serbest bırakma sırasında ayrı bir `inFlight` sayacı/set'i güncellemek ve yoklamada onu okumak.
 
-### S6 — 🟢 Açık, P3 (sağlamlaştırma) — `openai.go processSSE`: boş string `finish_reason` sahte "bitti" gibi işleniyor
+### S6 — ✅ Düzeltildi (`3a789865`) — `openai.go processSSE`: boş string `finish_reason` sahte "bitti" gibi işleniyor
 **Dosya:** `internal/provider/openai.go:587-600`
 
 `FinishReason != nil` kontrolü `"finish_reason": ""` gönderen bir sunucuyu bitmiş sayıyor: `pendingFinish = ""`, 2 sn'lik watchdog kuruluyor, her sonraki chunk öncekini durdurmadan yeni bir timer kuruyor. İlk timer ateşlenince body kapanıyor, `pendingFinish` boş olduğu için tur **hata** ile bitiyor. Bunu yapan bir sunucu bilmiyorum, doğrulanmadı. Tek satırlık koruma: `*FinishReason == ""` değerini yok sayılmış gibi ele almak.
 
-### S7 — 🟢 P3 — Küçük notlar
+### S7 — ✅ Düzeltildi (`ad941f36`, `d7536b96`) — Küçük notlar
 - `internal/websearch/fetch.go`: getirilen her sayfanın **tam içeriği** Info seviyesinde loglanıyor (yorumda "geçici debug" olarak işaretli). Log boyutu ve gizlilik açısından bir debug bayrağına alınmalı.
 - `internal/browserengine/data/browsersession/`'da eski test koşularından 14 öksüz profil dizini var (gitignore'lu). Üretim veri dizininde (`data/browsersession/`) ise yok, yani üretimde `close()` temizliği çalışıyor.
 - `staticcheck` ölü kod listesi: `startWebServerForRemote`, `findPath`, `pidOnPort`, `geminiProvider.setAuth`, `authHeader`, `generateSelfSignedCert`, `config.once`, `database.defaultDriver`.

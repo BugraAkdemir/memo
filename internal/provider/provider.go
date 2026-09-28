@@ -115,6 +115,13 @@ type Message struct {
 	Content    interface{} `json:"content"`
 	ToolCallID string      `json:"tool_call_id,omitempty"`
 	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
+	// Native carries a provider's own verbatim representation of an
+	// assistant turn it produced (ChatResponse.Native), for the provider
+	// to replay unchanged when the conversation continues. Opaque to
+	// everything else and never serialized: a provider that doesn't
+	// recognize the concrete type ignores it and rebuilds the turn from
+	// Content/ToolCalls as always. See claude.go for the one user today.
+	Native any `json:"-"`
 }
 
 func TextMessage(role, text string) Message {
@@ -165,6 +172,11 @@ type ChatResponse struct {
 	ToolCalls []ToolCall
 	Usage     *Usage
 	Model     string
+	// Native is the provider's verbatim form of this turn, set only when
+	// replaying Content/ToolCalls alone would lose something the provider
+	// requires back. Callers that append this turn to history must copy it
+	// onto the assistant Message's Native field.
+	Native any
 }
 
 // Usage is one call's token accounting, normalized across every provider.

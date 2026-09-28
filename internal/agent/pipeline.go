@@ -269,6 +269,9 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				Role:      "assistant",
 				Content:   resp.Content,
 				ToolCalls: resp.ToolCalls,
+				// Claude's thinking blocks (with their signatures) must go
+				// back unchanged on the next iteration of this same turn.
+				Native: resp.Native,
 			}
 			currentMessages = append(currentMessages, assistantMsg)
 

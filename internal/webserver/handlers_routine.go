@@ -5,6 +5,7 @@ package webserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -65,7 +66,7 @@ func (s *Server) handleRoutines(w http.ResponseWriter, r *http.Request) {
 		}
 		created, err := bridge.CreateRoutineFromDraft(body.OriginalText, body.Draft, body.WhatsAppTargetJID, body.AutoApproveTools, body.Language, body.UTCOffsetMinutes)
 		if err != nil {
-			jsonError(w, err.Error(), http.StatusInternalServerError)
+			jsonError(w, err.Error(), routineErrStatus(err))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -144,7 +145,7 @@ func (s *Server) handleRoutine(w http.ResponseWriter, r *http.Request) {
 		rt.ID = id
 		updated, err := bridge.UpdateRoutine(rt)
 		if err != nil {
-			jsonError(w, err.Error(), http.StatusInternalServerError)
+			jsonError(w, err.Error(), routineErrStatus(err))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -196,4 +197,13 @@ func (s *Server) handleRoutinesSyncOffset(w http.ResponseWriter, r *http.Request
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{"changed": changed})
+}
+
+// routineErrStatus maps a create/update error to its HTTP status: invalid
+// input (routine.ErrInvalid) is the caller's to fix, anything else is ours.
+func routineErrStatus(err error) int {
+	if errors.Is(err, routine.ErrInvalid) {
+		return http.StatusBadRequest
+	}
+	return http.StatusInternalServerError
 }

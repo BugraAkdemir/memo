@@ -309,7 +309,7 @@ func TestCreateRoutineFromDraft_AgentModeAlwaysOnAutoApprovePassesThrough(t *tes
 	}
 	a.routineStore = st
 
-	notNeeded, err := a.CreateRoutineFromDraft("x", routine.Draft{TimeOfDay: "09:00", NeedsAgentMode: false}, "", true, "tr", nil)
+	notNeeded, err := a.CreateRoutineFromDraft("x", routine.Draft{TimeOfDay: "09:00", Prompt: "p", NeedsAgentMode: false}, "", true, "tr", nil)
 	if err != nil {
 		t.Fatalf("CreateRoutineFromDraft: %v", err)
 	}
@@ -320,7 +320,7 @@ func TestCreateRoutineFromDraft_AgentModeAlwaysOnAutoApprovePassesThrough(t *tes
 		t.Error("AutoApproveTools should pass through true from the caller regardless of NeedsAgentMode")
 	}
 
-	needed, err := a.CreateRoutineFromDraft("x", routine.Draft{TimeOfDay: "09:00", NeedsAgentMode: true}, "", false, "tr", nil)
+	needed, err := a.CreateRoutineFromDraft("x", routine.Draft{TimeOfDay: "09:00", Prompt: "p", NeedsAgentMode: true}, "", false, "tr", nil)
 	if err != nil {
 		t.Fatalf("CreateRoutineFromDraft: %v", err)
 	}

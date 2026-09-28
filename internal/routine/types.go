@@ -3,7 +3,10 @@
 package routine
 
 import (
+	"errors"
+	"fmt"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -60,6 +63,40 @@ type Schedule struct {
 }
 
 // FiresOn reports whether the schedule includes the given weekday.
+// ErrInvalid marks a routine that could never fire as specified — returned
+// (wrapped) by Validate so a caller can tell "fix your input" from a
+// storage failure.
+var ErrInvalid = errors.New("routine: invalid")
+
+// Validate reports whether the schedule can fire: TimeOfDay in the exact
+// "HH:MM" form ParseFireTime reads, every weekday 0 (Sunday)..6. Without
+// this, a routine created with "25:99", "20.00", "8 PM", weekday 9 or no
+// time at all was stored as enabled, never fired, and only left a
+// "bad schedule" log line on every scheduler tick (found live).
+func (s Schedule) Validate() error {
+	if _, err := time.Parse("15:04", s.TimeOfDay); err != nil {
+		return fmt.Errorf("%w: time_of_day %q is not HH:MM", ErrInvalid, s.TimeOfDay)
+	}
+	for _, d := range s.Weekdays {
+		if d < time.Sunday || d > time.Saturday {
+			return fmt.Errorf("%w: weekday %d is not 0 (Sunday) to 6 (Saturday)", ErrInvalid, int(d))
+		}
+	}
+	return nil
+}
+
+// Validate reports whether r can run: a valid schedule and a non-empty
+// prompt (an empty one runs a turn with nothing to do).
+func (r Routine) Validate() error {
+	if err := r.Schedule.Validate(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(r.Prompt) == "" {
+		return fmt.Errorf("%w: prompt is empty", ErrInvalid)
+	}
+	return nil
+}
+
 func (s Schedule) FiresOn(day time.Weekday) bool {
 	if len(s.Weekdays) == 0 {
 		return true

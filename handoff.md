@@ -1,3 +1,35 @@
+# Handoff — 2026-09-28 — Genel bug taraması: 2 güvenlik açığı kapatıldı, Claude sampling hatası açık
+
+## Oturum Özeti
+
+Kullanıcı genel bir bug taraması istedi. Bulguların tamamı `BUG_REPORT.md`'nin
+en üstündeki yeni bölümde (S1–S7). Öncelik 2026-09-14 denetiminden sonra
+değişen koddaydı (65 Go dosyası); bunun yanında tüm repo için mekanik
+taramalar yapıldı.
+
+| Commit | Ne |
+|---|---|
+| `ff44d7e6` | **S1**: tarayıcı oturumu `file://` açıyordu. `browser_navigate` + `browser_get_text`, `read_file` sandbox'ını tamamen atlıyordu (gerçek Chromium ile kanıtlandı). Artık yalnızca http/https + about:blank kabul ediliyor |
+| `48a8b6fb` | **S2**: `/api/browser/session/*` izinsizdi. Artık `requirePermission(…, hasAgentPerm)` ile korunuyor (gerçek route tablosu testi eski koda karşı 5/5 → 200 verdi) |
+
+## Açık kalanlar (karar/iş bekliyor)
+
+- **S3 (en önemlisi):** `claude.go` her istekte `temperature` gönderiyor. Opus 4.7+ / Sonnet 5 / Opus 5 / Fable'da bu 400 demek (Anthropic dokümanıyla teyitli). Güncel bir Claude modeli seçilirse sohbet de ajan da her turda kırılıyor. Önerilen düzeltme: mevcut retry-and-latch deseni (400 gövdesinde temperature/top_p geçiyorsa alanları çıkar, yeniden dene, latch'le). OpenAI reasoning modelleri için de aynı sınıf muhtemel ama teyit edilmedi.
+- **S4:** Claude + thinking + araç döngüsünde thinking blokları geri gönderilmiyor. 400 mü üretiyor, teyit edilemedi; S3'ten sonra gerçek anahtarla denenmeli.
+- **S5/S6/S7:** P3. Sahte "lütfen bekleyin" yarışı (`GetStreamingChatIDs`), boş `finish_reason` sağlamlaştırması, tam sayfa içeriği loglama, ölü kod.
+
+## Doğrulama
+
+- Tarama öncesi temel durum: `go build`/`vet` temiz, `go test -race` 54 paket yeşil, `flutter analyze` 7 bilinen info, `flutter test` 406/406, `govulncheck` 0 zafiyet, `staticcheck`'te gerçek hata yok.
+- Düzeltmelerden sonra: `CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` temiz, `go test ./... -race -count=1` hiç FAIL yok. Flutter koduna dokunulmadı.
+- Her iki regresyon testinin eski koda karşı kırmızı yandığı doğrulandı.
+
+## Ortam notu
+
+`~/go/bin/golangci-lint` ve `govulncheck` Go 1.26 ile derlenmiş, sistem Go'su 1.27 olduğu için ikisi de çöküyor. Bu oturumda `go run honnef.co/go/tools/cmd/staticcheck@latest` ve `go run golang.org/x/vuln/cmd/govulncheck@latest` kullanıldı. İstenirse `go install …@latest` ile yeniden derlenebilirler.
+
+---
+
 # Handoff — 2026-09-28 — Mobil CI: imzalı APK + imzasız IPA R2'ye yayınlanıyor
 
 ## Oturum Özeti

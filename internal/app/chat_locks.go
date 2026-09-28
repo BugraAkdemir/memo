@@ -70,13 +70,29 @@ func (a *App) lockChatStream(chatID string) (release func(), ok bool) {
 		a.streamMu.RUnlock()
 		return nil, false
 	}
+	a.markChatStreaming(chatID, 1)
 	var once sync.Once
 	return func() {
 		once.Do(func() {
+			a.markChatStreaming(chatID, -1)
 			cl.Unlock()
 			a.streamMu.RUnlock()
 		})
 	}, true
+}
+
+// markChatStreaming adjusts chatID's held-lock count (see chatStreamActive).
+func (a *App) markChatStreaming(chatID string, delta int) {
+	a.chatStreamMu.Lock()
+	defer a.chatStreamMu.Unlock()
+	if a.chatStreamActive == nil {
+		a.chatStreamActive = make(map[string]int)
+	}
+	if n := a.chatStreamActive[chatID] + delta; n > 0 {
+		a.chatStreamActive[chatID] = n
+	} else {
+		delete(a.chatStreamActive, chatID)
+	}
 }
 
 // runLockedStreamSetup runs fn — the synchronous work between acquiring a
@@ -185,25 +201,24 @@ func (a *App) lockChatStreamWait(ctx context.Context, chatID string) (release fu
 // Telegram bridge reply, or another browser tab/window entirely). Polled by
 // the chat sidebar for a "still working" indicator on chats other than
 // whichever one the client currently has open — same shape and purpose as
-// GetRunningCLIChats (cli_stream.go), just backed by chatStreamLocks
+// GetRunningCLIChats (cli_stream.go), just backed by the per-chat stream locks
 // instead of the separate cliJobs map since ordinary (non-CLI) streams
 // never registered themselves anywhere queryable before this.
 //
-// Checking lock state via TryLock+Unlock rather than a separate "is
-// streaming" bool avoids a second piece of state that could drift out of
-// sync with the lock itself — the lock IS the source of truth for "this
-// chat has a turn in flight" (see lockChatStream's doc comment).
+// It reads chatStreamActive, which lockChatStream and its release keep in
+// step with the lock itself, rather than probing each chat's mutex with
+// TryLock+Unlock. That probe used to be the implementation, and it held a
+// free chat's real lock for a moment on every poll — the sidebar polls every
+// 2s per client — so a send landing in that window was refused with
+// busyNotice for a chat nothing was streaming in (S5, BUG_REPORT
+// 2026-09-28).
 func (a *App) GetStreamingChatIDs() []string {
 	a.chatStreamMu.Lock()
 	defer a.chatStreamMu.Unlock()
-	ids := make([]string, 0, len(a.chatStreamLocks))
-	for chatID, l := range a.chatStreamLocks {
+	ids := make([]string, 0, len(a.chatStreamActive))
+	for chatID := range a.chatStreamActive {
 		if chatID == "" {
 			continue // shared by sends with no resolvable active chat — not a real chat id
-		}
-		if l.TryLock() {
-			l.Unlock()
-			continue
 		}
 		ids = append(ids, chatID)
 	}

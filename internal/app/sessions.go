@@ -246,6 +246,9 @@ func (a *App) generateChatTitleForSession(sessionID string) string {
 	if len(msgs) < 2 {
 		return ""
 	}
+	// Snapshot before the (possibly multi-second) LLM call — see the
+	// compare-and-swap below.
+	titleBefore := sm.GetTitle(sessionID)
 
 	first := msgs[0].Content
 	if len(first) > 300 {
@@ -273,8 +276,18 @@ func (a *App) generateChatTitleForSession(sessionID string) string {
 		title = string(runes[:60])
 	}
 
-	if err := sm.RenameChat(sessionID, title); err != nil {
+	// Only if nobody renamed the chat while the title was being generated.
+	// This used to be an unconditional RenameChat: a user who named a new
+	// chat right after its first reply — while the title request was still
+	// in flight — had their name silently replaced by the generated one a
+	// moment later (found live against a fake provider).
+	renamed, err := sm.RenameChatIfTitle(sessionID, titleBefore, title)
+	if err != nil {
 		logx.Printf("auto-title rename: %v", err)
+		return ""
+	}
+	if !renamed {
+		logx.Printf("auto-title: chat %s was renamed meanwhile, keeping the user's title", sessionID)
 		return ""
 	}
 	return title

@@ -486,13 +486,3 @@ func NewProvider(cfg ProviderConfig) (Provider, error) {
 		return nil, fmt.Errorf("unsupported provider type: %s", cfg.Type)
 	}
 }
-
-// authHeader sets the Authorization header for the given provider.
-func authHeader(pt ProviderType, apiKey string) string {
-	switch pt {
-	case ProviderClaude, ProviderCustomAnthropic:
-		return "x-api-key " + apiKey
-	default:
-		return "Bearer " + apiKey
-	}
-}

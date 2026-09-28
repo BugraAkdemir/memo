@@ -131,9 +131,7 @@ func (r *Router) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResp
 			}
 		}
 
-		if pErr != nil {
-			logx.Printf("PROVIDER: %v", pErr)
-		}
+		logx.Printf("PROVIDER: %v", pErr)
 	}
 
 	return nil, fmt.Errorf("all providers failed: %w", lastErr)

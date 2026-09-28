@@ -6,7 +6,6 @@ import (
 
 	"memo/internal/config"
 	"memo/internal/ngrok"
-	"memo/internal/webserver"
 )
 
 // RemoteAccessStatus holds the current remote access configuration and state.
@@ -234,14 +233,3 @@ func (a *App) SetNgrokAutoStart(autoStart bool) {
 	}
 }
 
-// startWebServerForRemote is the internal helper used during startup for TLS remote access.
-func (a *App) startWebServerForRemote(port int) {
-	ws := a.getWebServer()
-	if ws == nil {
-		ws = webserver.New(a)
-		a.setWebServer(ws)
-	}
-	if err := ws.Start(port); err != nil {
-		logx.Printf("Remote access server: %v", err)
-	}
-}

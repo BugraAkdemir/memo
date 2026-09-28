@@ -423,20 +423,3 @@ func (a *App) WebGetActiveMessages() interface{} { return a.GetActiveMessages() 
 
 // WebCheckConnection wraps CheckConnection for the webserver bridge.
 func (a *App) WebCheckConnection() interface{} { return a.CheckConnection() }
-
-// findPath resolves a relative path, first against the working directory,
-// then against the binary location.
-func (a *App) findPath(relative string) string {
-	if _, err := os.Stat(relative); err == nil {
-		return relative
-	}
-	exePath, err := os.Executable()
-	if err != nil {
-		exePath = os.Args[0]
-	}
-	full := filepath.Join(filepath.Dir(exePath), relative)
-	if _, err := os.Stat(full); err == nil {
-		return full
-	}
-	return ""
-}

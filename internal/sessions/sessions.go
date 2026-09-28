@@ -402,9 +402,20 @@ func (m *Manager) AddMessage(role, content, imagePath, filePath string, agentEve
 func (m *Manager) UpdateMessage(index int, content string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[m.active]
+	return m.updateMessageLocked(m.sessions[m.active], index, content)
+}
+
+// UpdateMessageInSession is UpdateMessage for a chat named by id rather than
+// whichever chat is globally active.
+func (m *Manager) UpdateMessageInSession(id string, index int, content string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.updateMessageLocked(m.sessions[id], index, content)
+}
+
+func (m *Manager) updateMessageLocked(s *Session, index int, content string) error {
 	if s == nil {
-		return fmt.Errorf("no active session")
+		return fmt.Errorf("session not found")
 	}
 	if index < 0 || index >= len(s.Messages) {
 		return fmt.Errorf("message index %d out of range", index)
@@ -418,9 +429,20 @@ func (m *Manager) UpdateMessage(index int, content string) error {
 func (m *Manager) DeleteMessage(index int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[m.active]
+	return m.deleteMessageLocked(m.sessions[m.active], index)
+}
+
+// DeleteMessageInSession is DeleteMessage for a chat named by id rather than
+// whichever chat is globally active.
+func (m *Manager) DeleteMessageInSession(id string, index int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.deleteMessageLocked(m.sessions[id], index)
+}
+
+func (m *Manager) deleteMessageLocked(s *Session, index int) error {
 	if s == nil {
-		return fmt.Errorf("no active session")
+		return fmt.Errorf("session not found")
 	}
 	if index < 0 || index >= len(s.Messages) {
 		return fmt.Errorf("message index %d out of range", index)

@@ -81,6 +81,34 @@ func (a *App) UpdateMessage(index int, content string) error {
 	return sm.UpdateMessage(index, content)
 }
 
+// GetMessagesForChat returns chatID's messages; ok is false when no such
+// chat exists (e.g. another device deleted it).
+func (a *App) GetMessagesForChat(chatID string) (msgs []sessions.ChatMessage, ok bool) {
+	sm := a.getSessionManager()
+	if sm == nil || !sm.SessionExists(chatID) {
+		return nil, false
+	}
+	return sm.GetActiveMessagesForSession(chatID), true
+}
+
+// UpdateMessageInChat is UpdateMessage for an explicit chat.
+func (a *App) UpdateMessageInChat(chatID string, index int, content string) error {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return fmt.Errorf("no session manager")
+	}
+	return sm.UpdateMessageInSession(chatID, index, content)
+}
+
+// DeleteMessageInChat is DeleteMessage for an explicit chat.
+func (a *App) DeleteMessageInChat(chatID string, index int) error {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return fmt.Errorf("no session manager")
+	}
+	return sm.DeleteMessageInSession(chatID, index)
+}
+
 // DeleteMessage removes a message from the active session.
 func (a *App) DeleteMessage(index int) error {
 	sm := a.getSessionManager()

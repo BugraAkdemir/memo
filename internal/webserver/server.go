@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"memo/internal/logx"
+	"memo/internal/sessions"
 )
 
 // AppBridge defines the interface that the main App must implement
@@ -758,9 +759,47 @@ func (s *Server) handleActiveChat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"id": s.bridge.GetActiveChatID()})
 }
 
+// chatScopedMessages is implemented by *app.App: the message endpoints'
+// explicit-chat forms. Asserted rather than added to AppBridge so the many
+// test bridges that never touch these routes stay unchanged.
+type chatScopedMessages interface {
+	GetMessagesForChat(chatID string) ([]sessions.ChatMessage, bool)
+	UpdateMessageInChat(chatID string, index int, content string) error
+	DeleteMessageInChat(chatID string, index int) error
+}
+
+// handleMessages implements GET /api/messages[?chat_id=…].
+//
+// With chat_id it returns that chat's messages (404 if the chat is gone).
+// It used to ignore chat_id entirely and always answer with the globally
+// active chat, so a client could only read a chat by first switching the
+// whole backend to it — two separate requests, with nothing stopping
+// another client (a second device, a Telegram/WhatsApp reply, a task-list
+// worker) from switching in between, and a client asking for a chat that
+// another device had just deleted silently got a different chat's
+// history. Without chat_id the old active-chat behavior is kept for older
+// clients.
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	if chatID := r.URL.Query().Get("chat_id"); chatID != "" {
+		cs, ok := s.bridge.(chatScopedMessages)
+		if !ok {
+			http.Error(w, "chat_id not supported", http.StatusNotImplemented)
+			return
+		}
+		msgs, exists := cs.GetMessagesForChat(chatID)
+		if !exists {
+			http.Error(w, "chat not found", http.StatusNotFound)
+			return
+		}
+		if msgs == nil {
+			writeJSON(w, []struct{}{})
+			return
+		}
+		writeJSON(w, msgs)
 		return
 	}
 	msgs := s.bridge.WebGetActiveMessages()
@@ -771,12 +810,18 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, msgs)
 }
 
+// handleUpdateMessage edits one message by index — in chat_id's chat when
+// given (see handleMessages for why), else in the active chat. Editing by
+// index in "whatever chat is active right now" meant an edit made on one
+// device could land on a different chat another device had just switched
+// to.
 func (s *Server) handleUpdateMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
 	var req struct {
+		ChatID  string `json:"chat_id"`
 		Index   int    `json:"index"`
 		Content string `json:"content"`
 	}
@@ -784,7 +829,18 @@ func (s *Server) handleUpdateMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if err := s.bridge.UpdateMessage(req.Index, req.Content); err != nil {
+	var err error
+	if req.ChatID != "" {
+		cs, ok := s.bridge.(chatScopedMessages)
+		if !ok {
+			http.Error(w, "chat_id not supported", http.StatusNotImplemented)
+			return
+		}
+		err = cs.UpdateMessageInChat(req.ChatID, req.Index, req.Content)
+	} else {
+		err = s.bridge.UpdateMessage(req.Index, req.Content)
+	}
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -827,13 +883,28 @@ func (s *Server) handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Index int `json:"index"`
+		ChatID string `json:"chat_id"`
+		Index  int    `json:"index"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if err := s.bridge.DeleteMessage(req.Index); err != nil {
+	// Same explicit-chat form as handleUpdateMessage, and for the same
+	// reason — a delete by index is the one that loses data when it lands
+	// on the wrong chat.
+	var err error
+	if req.ChatID != "" {
+		cs, ok := s.bridge.(chatScopedMessages)
+		if !ok {
+			http.Error(w, "chat_id not supported", http.StatusNotImplemented)
+			return
+		}
+		err = cs.DeleteMessageInChat(req.ChatID, req.Index)
+	} else {
+		err = s.bridge.DeleteMessage(req.Index)
+	}
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

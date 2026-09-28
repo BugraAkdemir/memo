@@ -93,6 +93,8 @@ class L10n {
     'disabled': 'Pasif',
     'copied': 'Kopyalandı',
     'error': 'Hata',
+    'message_update_failed': 'Mesaj güncellenemedi',
+    'message_delete_failed': 'Mesaj silinemedi',
     'connection_error': 'Bağlantı hatası',
     'engine_error': 'Hata: \${e}',
     'friendly_error_network':
@@ -2371,6 +2373,8 @@ class L10n {
     'disabled': 'Disabled',
     'copied': 'Copied',
     'error': 'Error',
+    'message_update_failed': 'Could not update the message',
+    'message_delete_failed': 'Could not delete the message',
     'connection_error': 'Connection error',
     'engine_error': 'Error: \${e}',
     'friendly_error_network':

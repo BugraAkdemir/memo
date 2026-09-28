@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -654,5 +655,32 @@ func TestRunAgentRoutine_BusyStreamFailsFastWithoutMutatingState(t *testing.T) {
 	}
 	if a.GetAgentAutoPermission() {
 		t.Error("busy path left auto-permission enabled")
+	}
+}
+
+// TestUpdateRoutine_InvalidScheduleCanBeDisabledButNotEnabled: found live —
+// a routine stored before schedule validation existed could not even be
+// switched off. Disabling must work; keeping it enabled must not.
+func TestUpdateRoutine_InvalidScheduleCanBeDisabledButNotEnabled(t *testing.T) {
+	a := newRoutineTestApp(t)
+	st, err := routine.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("routine.NewStore: %v", err)
+	}
+	a.routineStore = st
+	// Stored directly, bypassing validation — the legacy state.
+	legacy, err := st.Create(routine.Routine{Prompt: "p", Schedule: routine.Schedule{TimeOfDay: "25:99"}, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	enabled := *legacy
+	if _, err := a.UpdateRoutine(enabled); !errors.Is(err, routine.ErrInvalid) {
+		t.Errorf("UpdateRoutine(enabled, 25:99) = %v, want ErrInvalid", err)
+	}
+	disabled := *legacy
+	disabled.Enabled = false
+	if _, err := a.UpdateRoutine(disabled); err != nil {
+		t.Errorf("UpdateRoutine(disabled, 25:99) = %v, want the toggle to work", err)
 	}
 }

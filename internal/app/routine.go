@@ -412,8 +412,14 @@ func (a *App) UpdateRoutine(r routine.Routine) (*routine.Routine, error) {
 	if a.routineStore == nil {
 		return nil, fmt.Errorf("routine: store not initialized")
 	}
-	if err := r.Validate(); err != nil {
-		return nil, err
+	// Only an enabled routine has to be able to fire. Validating disabled
+	// ones too meant a routine stored before validation existed (e.g. at
+	// "25:99") could not even be switched off — the Routines tab showed
+	// "Could not update: routine: invalid" on its toggle (found live).
+	if r.Enabled {
+		if err := r.Validate(); err != nil {
+			return nil, err
+		}
 	}
 	return a.routineStore.Update(r)
 }

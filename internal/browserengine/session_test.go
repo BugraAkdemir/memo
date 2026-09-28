@@ -207,3 +207,48 @@ func TestLooksLikePNG(t *testing.T) {
 		t.Error("looksLikePNG(pngMagic) = false, want true")
 	}
 }
+
+// TestValidateNavigateURL pins the scheme allowlist. file:// is the case
+// that matters: Chromium renders a local file (or a directory listing) as
+// plain page text, so letting it through turned browser_navigate +
+// browser_get_text into an unsandboxed read_file.
+func TestValidateNavigateURL(t *testing.T) {
+	allowed := []string{
+		"https://example.com",
+		"http://localhost:3000/app",
+		"HTTP://127.0.0.1:8080",
+		"about:blank",
+	}
+	for _, u := range allowed {
+		if err := validateNavigateURL(u); err != nil {
+			t.Errorf("validateNavigateURL(%q) = %v, want nil", u, err)
+		}
+	}
+	rejected := []string{
+		"file:///etc/passwd",
+		"FILE:///home/user/.ssh/id_rsa",
+		"file:/etc/passwd",
+		"view-source:https://example.com",
+		"chrome://settings",
+		"data:text/html,<h1>x</h1>",
+		"javascript:alert(1)",
+		"example.com",
+		"http://",
+	}
+	for _, u := range rejected {
+		if err := validateNavigateURL(u); err == nil {
+			t.Errorf("validateNavigateURL(%q) = nil, want an error", u)
+		}
+	}
+}
+
+// TestSession_Navigate_RejectsFileURLBeforeTouchingChromium drives the real
+// Navigate method on a fake session (nil tabCtx): a disallowed URL must be
+// refused before any chromedp call — reaching one here would nil-panic.
+func TestSession_Navigate_RejectsFileURLBeforeTouchingChromium(t *testing.T) {
+	s := newFakeSession(func(*Session) {})
+	defer s.Close()
+	if err := s.Navigate(context.Background(), "file:///etc/passwd"); err == nil {
+		t.Fatal("Navigate(file:///etc/passwd) succeeded, want a refusal")
+	}
+}

@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -233,9 +235,46 @@ func (s *Session) runCtx(ctx context.Context) (context.Context, context.CancelFu
 	}
 }
 
+// validateNavigateURL admits only http(s) URLs (plus about:blank).
+//
+// This is the single choke point for both the agent's browser_navigate tool
+// and BrowserPane's own URL bar, and Chromium will happily render file://
+// — including directory listings — as ordinary page text. Without this,
+// browser_navigate + browser_get_text read any file the Memo process can
+// read, sidestepping read_file's project sandbox and protected-file
+// denylist entirely; and a restricted remote account could screenshot the
+// server's filesystem through /api/browser/session/navigate. Other schemes
+// (chrome://, view-source:, data:, javascript:) have no legitimate use in a
+// "test the site you just built" session either. Scheme-less input
+// ("example.com") was never navigable — Chromium rejects it as an invalid
+// URL — so requiring an explicit scheme takes nothing away.
+func validateNavigateURL(rawURL string) error {
+	if strings.TrimSpace(rawURL) == "about:blank" {
+		return nil
+	}
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return fmt.Errorf("browsersession: invalid url %q: %w", rawURL, err)
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+		if u.Host == "" {
+			return fmt.Errorf("browsersession: url %q has no host", rawURL)
+		}
+		return nil
+	case "":
+		return fmt.Errorf("browsersession: url %q has no scheme — use http:// or https://", rawURL)
+	default:
+		return fmt.Errorf("browsersession: %q URLs are not allowed — only http:// and https://", u.Scheme)
+	}
+}
+
 // Navigate loads url in the session's tab.
 func (s *Session) Navigate(ctx context.Context, rawURL string) error {
 	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	if err := validateNavigateURL(rawURL); err != nil {
 		return err
 	}
 	s.touch()

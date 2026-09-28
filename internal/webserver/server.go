@@ -623,6 +623,10 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
+	if strings.TrimSpace(req.Message) == "" {
+		http.Error(w, "message is empty", http.StatusBadRequest) // see handleSendStream
+		return
+	}
 	reply := s.bridge.SendMessage(req.Message)
 	writeJSON(w, map[string]string{"reply": reply})
 }

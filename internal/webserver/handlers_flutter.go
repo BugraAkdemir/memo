@@ -49,6 +49,13 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
+	// An empty or whitespace-only message used to go through: it was saved
+	// as an empty user bubble and spent a full LLM turn answering nothing
+	// (found live). Attachments go through /api/send_file*, not here.
+	if strings.TrimSpace(req.Message) == "" {
+		http.Error(w, "message is empty", http.StatusBadRequest)
+		return
+	}
 
 	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")

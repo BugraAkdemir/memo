@@ -4,10 +4,16 @@ name: Build iOS
 # this workflow is the ONLY thing that ever compiles the iOS target. Kept in
 # its own file (matching build-linux/macos/windows.yml) so its trigger can be
 # narrowed independently — macOS runner minutes bill at a 10x multiplier.
+#
+# Publishing mirrors the other build-*.yml files: every push to main
+# republishes a fixed-name beta IPA on R2, a v* tag republishes the stable
+# one and attaches it to the GitHub release. Path filters are not evaluated
+# for tag pushes, so a tag always builds even when frontend/ didn't change.
 on:
   push:
     branches: [main]
-    paths: ["frontend/**", ".github/workflows/build-ios.yml"]
+    tags: ["v*"]
+    paths: ["frontend/**", "version", ".github/workflows/build-ios.yml"]
   pull_request:
     branches: [main]
     paths: ["frontend/**", ".github/workflows/build-ios.yml"]
@@ -15,11 +21,16 @@ on:
 
 env:
   FLUTTER_CHANNEL: stable
+  APP_NAME: Memo
+  R2_ENDPOINT: https://ce4b56c11890013834d9c6a31568e3f9.r2.cloudflarestorage.com
+  R2_BUCKET: memo
 
 jobs:
   build:
-    name: iOS (unsigned)
+    name: iOS (unsigned IPA)
     runs-on: macos-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -39,16 +50,79 @@ jobs:
         run: flutter pub get
         working-directory: frontend
 
-      # --no-codesign because there are no signing certificates and there is
-      # no plan to add any here; this proves the target compiles and links
-      # (pod install, including vad's onnxruntime-objc, runs as part of it).
-      # The result is not installable — no .ipa is possible without signing.
+      # Same reasoning as build-android.yml: the repo-root `version` file is
+      # the app's real version, frontend/pubspec.yaml's is not maintained.
+      - name: Resolve version
+        id: ver
+        run: |
+          V=$(tr -d '[:space:]' < version)
+          echo "name=${V#[vV]}" >> "$GITHUB_OUTPUT"
+          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      # --no-codesign because there are no signing certificates (no paid
+      # Apple Developer account). The result is still useful: an unsigned
+      # .ipa is exactly what sideloading tools (AltStore, Sideloadly) take —
+      # they re-sign it with the tester's own Apple ID on install. It cannot
+      # be installed directly, and a free-account signature expires after 7
+      # days. pod install (including vad's onnxruntime-objc) runs as part of
+      # this build.
       - name: Build iOS (no codesign)
-        run: flutter build ios --no-codesign
+        run: flutter build ios --release --no-codesign --build-name=${{ steps.ver.outputs.name }} --build-number=${{ steps.ver.outputs.code }}
         working-directory: frontend
+
+      # An .ipa is just a zip with the .app under Payload/. `flutter build
+      # ipa` would need signing to export, so it's assembled by hand.
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p build_output/ipa/Payload build_output/dist
+          cp -R frontend/build/ios/iphoneos/Runner.app build_output/ipa/Payload/
+          cd build_output/ipa && zip -qry "../dist/${{ env.APP_NAME }}-ios-unsigned.ipa" Payload
 
       - uses: actions/upload-artifact@v4
         with:
-          name: memo-frontend-ios-app-unsigned
-          path: frontend/build/ios/iphoneos/Runner.app
+          name: Memo-ios-unsigned-ipa
+          path: build_output/dist/${{ env.APP_NAME }}-ios-unsigned.ipa
           retention-days: 7
+
+      # See build-linux.yml's identical step for the full explanation.
+      - name: Resolve release notes path
+        id: notes
+        run: |
+          F="versinNote/${{ github.ref_name }}.md"
+          if [ -f "$F" ]; then echo "path=$F" >> "$GITHUB_OUTPUT"; else echo "path=" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: false
+          body_path: ${{ steps.notes.outputs.path }}
+          files: build_output/dist/${{ env.APP_NAME }}-ios-unsigned.ipa
+
+      - name: Install rclone
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+
+      - name: Upload stable to R2
+        if: startsWith(github.ref, 'refs/tags/')
+        run: rclone copyto build_output/dist/${{ env.APP_NAME }}-ios-unsigned.ipa R2:${{ env.R2_BUCKET }}/memo-ios.ipa --progress
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+
+      # workflow_dispatch on main publishes a beta too — see
+      # build-android.yml's identical note (this workflow is path-filtered).
+      - name: Upload beta to R2
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        run: rclone copyto build_output/dist/${{ env.APP_NAME }}-ios-unsigned.ipa R2:${{ env.R2_BUCKET }}/memo-ios_beta.ipa --progress
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read

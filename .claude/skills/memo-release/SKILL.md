@@ -8,13 +8,17 @@ description: Use when releasing a new version of Memo, bumping the version numbe
 ## Overview
 
 **As of 2026-08-08, building and publishing is fully automated by CI** —
-`build-linux.yml`/`build-macos.yml`/`build-windows.yml` all trigger on any
+`build-linux.yml`/`build-macos.yml`/`build-windows.yml` (plus
+`build-android.yml`/`build-ios.yml` since 2026-09-28) all trigger on any
 `v*` tag push. Each platform's job downloads its engine binaries from R2,
 builds, packages, compiles the Windows Inno Setup installer, publishes a
 GitHub Release (not a prerelease — a tag push is now a real release), and
 republishes the fixed stable filenames `download.bugradev.com` actually
-serves (`memo.tar.gz`, `memo-mac.zip`, `memo.exe`, `memo_arm.zip`) straight
-to R2. **There is no more manual `build_releases.sh` + manual upload step
+serves (`memo.tar.gz`, `memo-mac.zip`, `memo.exe`, `memo_arm.zip`, and the
+mobile `memo-android.apk` / `memo-ios.ipa` — unsigned, sideload-only)
+straight to R2. The mobile APK/IPA take their version name from the
+root `version` file at build time, so `frontend/pubspec.yaml` still needs
+no bump. **There is no more manual `build_releases.sh` + manual upload step
 for a normal release** — cutting the tag is the publish step.
 
 What's still manual (this skill's actual job now): the version-number

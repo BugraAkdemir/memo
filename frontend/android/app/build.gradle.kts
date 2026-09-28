@@ -52,9 +52,10 @@ android {
     buildTypes {
         release {
             // Falls back to the debug key when key.properties isn't present
-            // (a fresh checkout, or CI) so `flutter run --release` still
-            // works there. CI builds the debug variant anyway, precisely so
-            // it never depends on this fallback.
+            // (a fresh checkout, or a PR build) so `flutter run --release`
+            // still works there. build-android.yml writes key.properties from
+            // repo secrets for every build it publishes, and refuses to
+            // publish without them.
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("release")
             } else {

@@ -3,10 +3,16 @@ name: Build Android
 # Replaces the old build-mobile.yml, which built the standalone mobile/
 # client. That project is being retired in favour of a single Flutter client,
 # so the Android APK now comes from frontend/ (yapacam.md item 2).
+#
+# Publishing mirrors build-linux/macos/windows.yml: every push to main
+# republishes a fixed-name beta APK on R2, a v* tag republishes the stable
+# one and attaches it to the GitHub release. Path filters are not evaluated
+# for tag pushes, so a tag always builds even when frontend/ didn't change.
 on:
   push:
     branches: [main]
-    paths: ["frontend/**", ".github/workflows/build-android.yml"]
+    tags: ["v*"]
+    paths: ["frontend/**", "version", ".github/workflows/build-android.yml"]
   pull_request:
     branches: [main]
     paths: ["frontend/**", ".github/workflows/build-android.yml"]
@@ -14,11 +20,18 @@ on:
 
 env:
   FLUTTER_CHANNEL: stable
+  APP_NAME: Memo
+  R2_ENDPOINT: https://ce4b56c11890013834d9c6a31568e3f9.r2.cloudflarestorage.com
+  R2_BUCKET: memo
 
 jobs:
   build:
-    name: Android (debug)
+    name: Android (release APK)
     runs-on: ubuntu-latest
+    # Only the release-publish step needs contents: write (see
+    # build-linux.yml's identical note).
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -57,16 +70,102 @@ jobs:
         run: flutter pub get
         working-directory: frontend
 
-      # No key.properties in this repo, so the release variant would fall back
-      # to the debug key anyway. Building debug explicitly keeps signing out of
-      # the picture entirely rather than relying on that fallback — same
-      # reasoning as the workflow this replaces.
-      - name: Build debug APK
-        run: flutter build apk --debug
+      # A published APK MUST carry the same signature every time, or Android
+      # refuses to install a new beta over the old one ("App not installed")
+      # and the tester has to uninstall — losing the saved server address and
+      # sign-in. Without key.properties, build.gradle.kts falls back to the
+      # debug key, and a hosted runner generates a FRESH debug keystore every
+      # run — so that fallback is only acceptable for PR builds, which are
+      # never published. Anything that publishes fails loudly instead of
+      # silently shipping an un-upgradeable APK.
+      - name: Set up release signing
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_PASSWORD / ANDROID_KEY_ALIAS secrets are missing — refusing to publish a debug-signed APK"
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > frontend/android/upload-keystore.jks
+          {
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyPassword=$KEY_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "storeFile=upload-keystore.jks"
+          } > frontend/android/key.properties
+
+      # frontend/pubspec.yaml's version is not maintained by the release
+      # process (the memo-release skill leaves it alone), so the app's real
+      # version comes from the repo-root `version` file instead. The run
+      # number is the versionCode: it only ever grows, which is what lets
+      # each new APK install as an update rather than a rejected downgrade.
+      - name: Resolve version
+        id: ver
+        run: |
+          V=$(tr -d '[:space:]' < version)
+          echo "name=${V#[vV]}" >> "$GITHUB_OUTPUT"
+          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release APK
+        run: flutter build apk --release --build-name=${{ steps.ver.outputs.name }} --build-number=${{ steps.ver.outputs.code }}
         working-directory: frontend
+
+      - name: Package
+        run: |
+          mkdir -p build_output/dist
+          cp frontend/build/app/outputs/flutter-apk/app-release.apk "build_output/dist/${{ env.APP_NAME }}-android.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: memo-frontend-android-debug-apk
-          path: frontend/build/app/outputs/flutter-apk/app-debug.apk
+          name: Memo-android-apk
+          path: build_output/dist/${{ env.APP_NAME }}-android.apk
           retention-days: 7
+
+      # See build-linux.yml's identical step for the full explanation.
+      - name: Resolve release notes path
+        id: notes
+        run: |
+          F="versinNote/${{ github.ref_name }}.md"
+          if [ -f "$F" ]; then echo "path=$F" >> "$GITHUB_OUTPUT"; else echo "path=" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: false
+          body_path: ${{ steps.notes.outputs.path }}
+          files: build_output/dist/${{ env.APP_NAME }}-android.apk
+
+      - name: Install rclone
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+
+      - name: Upload stable to R2
+        if: startsWith(github.ref, 'refs/tags/')
+        run: rclone copyto build_output/dist/${{ env.APP_NAME }}-android.apk R2:${{ env.R2_BUCKET }}/memo-android.apk --progress
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+
+      # Unlike the desktop workflows, workflow_dispatch on main publishes a
+      # beta too — this workflow is path-filtered, so a manual run is the way
+      # to refresh the beta APK after a push that didn't touch frontend/.
+      - name: Upload beta to R2
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        run: rclone copyto build_output/dist/${{ env.APP_NAME }}-android.apk R2:${{ env.R2_BUCKET }}/memo-android_beta.apk --progress
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read

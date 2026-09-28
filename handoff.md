@@ -1,3 +1,65 @@
+# Handoff — 2026-09-28 — Mobil CI: imzalı APK + imzasız IPA R2'ye yayınlanıyor
+
+## Oturum Özeti
+
+Kullanıcı mobili cihazda test etmek istedi. `build-android.yml` / `build-ios.yml`
+yalnızca derlenebildiğini kanıtlıyordu (debug APK + kurulamaz `Runner.app`,
+7 günlük artifact); hiçbir şey R2'ye ya da GitHub Release'e gitmiyordu. İkisi
+de artık masaüstü workflow'larının desenini izliyor. Commit `60b9bdba`.
+
+| | main push → beta (R2) | `v*` tag → R2 stable + GitHub Release |
+|---|---|---|
+| Android | `memo-android_beta.apk` | `memo-android.apk` |
+| iOS | `memo-ios_beta.ipa` | `memo-ios.ipa` |
+
+- **Android release APK, sabit keystore ile imzalı.** Keystore bu oturumda
+  üretildi (kullanıcı onayıyla): PKCS12, alias `upload`, RSA 4096, SHA-256
+  `1D:36:B4:88:…:AF:0B`. Asıl kopya `~/.memo-android-signing/`, bir kopya
+  kullanıcının masaüstünde (`Memo Android Keystore/`). Repo secret'ları:
+  `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+  `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_ALIAS`. **Neden zorunlu:** hosted
+  runner her koşuda YENİ bir debug keystore üretiyor → debug-fallback imzalı
+  her beta bir öncekinin üstüne kurulmaz. Workflow secret yoksa yayınlamayı
+  reddediyor; sadece PR build'leri (yayınlanmaz) fallback kullanıyor.
+- **Sürüm:** `--build-name` kökteki `version` dosyasından (`V4.5.0` → `4.5.0`;
+  `frontend/pubspec.yaml`'ın `2.5.0`'ı bakımsız), `--build-number` =
+  `github.run_number` (monoton → her APK güncelleme olarak kurulur).
+- **iOS:** imza sertifikası yok → `Payload/Runner.app` elle zip'lenip imzasız
+  `.ipa`. AltStore/Sideloadly kullanıcının Apple ID'siyle yeniden imzalar
+  (ücretsiz hesapta 7 gün).
+- Mobil workflow'lar `frontend/**` + `version` ile path-filtreli; tag push'ta
+  path filtresi değerlendirilmez. Filtre yüzünden beta'yı elle tazelemek için
+  `workflow_dispatch` main'de de beta yayınlıyor (masaüstü workflow'larından
+  bilinçli fark).
+
+## Doğrulama
+
+- `actionlint` iki workflow'da temiz; YAML parse OK.
+- **CI (asıl kanıt):** Build Android ✅ (imzalama adımı secret'larla geçti,
+  `Upload beta to R2` success), Build iOS ✅ (`Upload beta to R2` success).
+- `download.bugradev.com/memo-android_beta.apk` → 200, 127.444.471 bayt;
+  `memo-ios_beta.ipa` → 200, 19.368.807 bayt.
+- İndirilen APK'nın v2 imza bloğu Python ile ayrıştırıldı (v1 imza yok,
+  `keytool -printcert -jarfile` okuyamıyor): sertifika SHA-256'sı keystore'la
+  birebir aynı.
+- Go/Flutter kodu değişmedi (tek kod dışı dosya `build.gradle.kts`'te yorum),
+  bu yüzden go/flutter test takımı koşulmadı.
+
+## Commit'e girmeyen
+
+- `.claude/skills/memo-release/SKILL.md` — mobil artifact'lar (`memo-android.apk`,
+  `memo-ios.ipa`) ve "pubspec bump gerekmez" notu eklendi; `.claude/` gitignore'lu.
+
+## Sıradaki
+
+- **Gerçek cihaz testi** — kullanıcı Android'de test edecek. 2026-09-26
+  entry'sindeki "Kapsam DIŞI" #1 listesi kontrol listesi olarak kullanılabilir
+  (mikrofon izni, WAV kayıt, bildirimler, geri tuşu, klavye inset'leri, dar düzen).
+- Universal APK 127 MB (3 ABI). Gerekirse `--split-per-abi` ile arm64-only beta.
+- iOS için hâlâ: `NSLocalNetworkUsageDescription`, `Podfile.lock` commit'i.
+
+---
+
 # Handoff — 2026-09-27 — Prompt önbelleği muhasebesi: her sağlayıcıda, uçtan uca
 
 ## Oturum Özeti

@@ -25,15 +25,15 @@ Kullanıcı 2026-09-28 taramasından sonra şunları istedi:
 ## Adımlar
 
 ### Faz 1 — 2026-09-28 bulgularını düzelt
-- [ ] S3 — Claude `temperature`/`top_p` → 400 (retry-and-latch). OpenAI reasoning modelleri için aynı sınıfı incele.
-- [ ] S4 — Claude thinking + tool döngüsü: thinking bloklarını (signature ile) geri gönder.
-- [ ] S5 — `GetStreamingChatIDs` sahte-busy yarışı.
-- [ ] S6 — `openai.go` boş `finish_reason` sağlamlaştırması.
-- [ ] S7 — tam sayfa içeriği loglaması, ölü kod temizliği.
+- [x] S3 — Claude `temperature`/`top_p` → 400 (retry-and-latch). OpenAI reasoning modelleri için aynı sınıfı incele.
+- [x] S4 — Claude thinking + tool döngüsü: thinking bloklarını (signature ile) geri gönder.
+- [x] S5 — `GetStreamingChatIDs` sahte-busy yarışı.
+- [x] S6 — `openai.go` boş `finish_reason` sağlamlaştırması.
+- [x] S7 — tam sayfa içeriği loglaması, ölü kod temizliği.
 
 ### Faz 2 — Canlı test altyapısı
-- [ ] Sahte sağlayıcı sunucusu (`:4959`): OpenAI-uyumlu (`/v1/models`, `/v1/chat/completions` stream + non-stream, tool calls, usage) ve Anthropic-uyumlu (`/v1/messages`, gerçek API'nin kurallarını uygulayan doğrulamayla).
-- [ ] Gerçek Memo backend'i izole veri dizini + ayrı portla çalıştır, sağlayıcıyı `:4959`'a bağla.
+- [x] Sahte sağlayıcı sunucusu (`:4959`): OpenAI-uyumlu (`/v1/models`, `/v1/chat/completions` stream + non-stream, tool calls, usage) ve Anthropic-uyumlu (`/v1/messages`, gerçek API'nin kurallarını uygulayan doğrulamayla).
+- [x] Gerçek Memo backend'i izole veri dizini + ayrı portla çalıştır, sağlayıcıyı `:4959`'a bağla.
 
 ### Faz 3 — Kullanarak bug ara
 - [ ] REST üzerinden: sohbet, akış, durdurma, ajan modu + araçlar + izin akışı, web arama modu, oturumlar, hafıza, takvim, rutinler, görev listeleri, ayarlar, istatistikler, dışa aktarma.

@@ -552,9 +552,10 @@ func lastAnthropicTurn(msgs []any) (userText, toolResult string) {
 		bm, _ := b.(map[string]any)
 		switch bm["type"] {
 		case "tool_result":
-			toolResult += contentText(bm["content"])
 			if s, ok := bm["content"].(string); ok {
 				toolResult += s
+			} else {
+				toolResult += contentText(bm["content"])
 			}
 		case "text":
 			t, _ := bm["text"].(string)

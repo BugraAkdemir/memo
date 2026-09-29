@@ -44,3 +44,19 @@ Kullanıcı 2026-09-28 taramasından sonra şunları istedi:
 ### Faz 4 — Bulunanları düzelt, belgele
 - [x] Her bug: regresyon testi, doğrulama, commit.
 - [x] `BUG_REPORT.md` + `handoff.md` güncelle.
+
+---
+
+## Ek istek (2026-09-29, sabah) — uzun işlemler ve uzun oturumlar
+
+Kullanıcının sözleriyle özet:
+- **Uzun işlemlerde bir noktadan sonra arayüz hiç güven vermiyor.** Takıldı mı, devam mı ediyor anlaşılmıyor. **Bunu GUI'de düzelt.**
+- **Gerçekten de bir noktadan sonra takılıyor.** Uzun oturumlarda sorun oluyor. Araştır, nedenini bul, düzelt.
+- Gerekirse sahte sağlayıcıyı kullan (Claude kendisi sahte sağlayıcı rolünü üstlenebilir).
+
+### Adımlar
+- [ ] Uzun işlem yollarını incele: ajan turu (akışsız LLM çağrıları + araçlar), uzun ilk-token beklemesi, uzun sohbet geçmişi, zaman aşımları (backend 300 sn, frontend 300 sn).
+- [ ] Sahte sağlayıcıyla yeniden üret: yavaş ilk token, çok iterasyonlu ajan turu, uzun süren araç, çok mesajlı oturum.
+- [ ] Gerçek takılmaların kök nedenini bul, düzelt, test et.
+- [ ] GUI: uzun işlemde canlı ilerleme (ne yapıyor + geçen süre) göster; kalp atışı ile "hâlâ çalışıyor" sinyali.
+- [ ] Doğrula, commit'le, BUG_REPORT + handoff güncelle.

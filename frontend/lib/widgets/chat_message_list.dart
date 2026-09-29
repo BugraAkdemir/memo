@@ -13,6 +13,8 @@ import '../models/task_list.dart';
 import '../core/l10n.dart';
 import 'agent/task_activity_block.dart';
 import 'chat_image.dart';
+import 'stream_progress.dart';
+import '../models/stream_timing.dart';
 
 /// Max width for a message bubble's content, given the ACTUAL width this
 /// Row was laid out at (from a LayoutBuilder — see both call sites' doc
@@ -111,6 +113,12 @@ class ChatMessageList extends StatefulWidget {
   /// item, styled like an assistant turn (v4.6.0 in-chat task block).
   final ChatTaskState? taskActivity;
 
+  /// Timing of the in-flight turn (streamTimingProvider), or null. When set,
+  /// the streaming bubble / typing indicator show a live progress line:
+  /// what the turn is doing, how long it has run, and a warning if the
+  /// backend has gone silent.
+  final StreamTiming? streamTiming;
+
   const ChatMessageList({
     super.key,
     required this.messages,
@@ -124,6 +132,7 @@ class ChatMessageList extends StatefulWidget {
     this.onEdit,
     this.onDelete,
     this.taskActivity,
+    this.streamTiming,
   });
 
   @override
@@ -222,12 +231,19 @@ class _ChatMessageListState extends State<ChatMessageList> {
               agentEvents: widget.streamingAgentEvents,
               keepWorkingCue: widget.isCLIChat,
               apiBaseUrl: widget.apiBaseUrl,
+              timing: widget.streamTiming,
+              statusText: widget.statusText,
             );
           }
           rest -= 1;
         }
         if (showTyping) {
-          if (rest == 0) return _TypingIndicator(statusText: widget.statusText);
+          if (rest == 0) {
+            return _TypingIndicator(
+              statusText: widget.statusText,
+              timing: widget.streamTiming,
+            );
+          }
           rest -= 1;
         }
         // Live task block — always last
@@ -466,7 +482,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                               padding: EdgeInsets.only(bottom: 8),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                                child: ChatImage(path: widget.message.imagePath!),
+                                child: ChatImage(
+                                  path: widget.message.imagePath!,
+                                ),
                               ),
                             ),
                           if (widget.message.content.isNotEmpty)
@@ -557,6 +575,8 @@ class _StreamingBubble extends StatefulWidget {
   // alongside content for CLI turns instead of hiding it after first token.
   final bool keepWorkingCue;
   final String apiBaseUrl;
+  final StreamTiming? timing;
+  final String statusText;
 
   const _StreamingBubble({
     required this.content,
@@ -564,6 +584,8 @@ class _StreamingBubble extends StatefulWidget {
     this.agentEvents,
     this.keepWorkingCue = false,
     required this.apiBaseUrl,
+    this.timing,
+    this.statusText = '',
   });
 
   @override
@@ -640,8 +662,24 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                         ),
                       if (widget.agentEvents != null &&
                           widget.agentEvents!.isNotEmpty)
-                        _AgentStatusBar(events: widget.agentEvents!)
-                      else if (widget.content.isEmpty || widget.keepWorkingCue)
+                        _AgentStatusBar(events: widget.agentEvents!),
+                      // The live progress line replaces the plain working
+                      // cue whenever timing is known: it keeps moving (phase
+                      // + elapsed) for the whole turn, including the long
+                      // gap after a tool finished while the model works out
+                      // its next step.
+                      if (widget.timing != null)
+                        StreamProgressLine(
+                          timing: widget.timing!,
+                          phase: streamPhaseLabel(
+                            events: widget.agentEvents,
+                            statusText: widget.statusText,
+                            content: widget.content,
+                          ),
+                        )
+                      else if ((widget.agentEvents == null ||
+                              widget.agentEvents!.isEmpty) &&
+                          (widget.content.isEmpty || widget.keepWorkingCue))
                         // No live tool activity and no content yet — show an
                         // animated cue so the wait feels alive. Normally skipped
                         // once content is streaming (dots next to growing text
@@ -809,7 +847,7 @@ class _AgentWorkingIndicatorState extends State<_AgentWorkingIndicator>
           ),
           const SizedBox(width: 8),
           Text(
-            'Memo çalışıyor…',
+            L10n.t('memo_working'),
             style: TextStyle(
               fontSize: 12,
               fontStyle: FontStyle.italic,
@@ -824,7 +862,8 @@ class _AgentWorkingIndicatorState extends State<_AgentWorkingIndicator>
 
 class _TypingIndicator extends StatelessWidget {
   final String statusText;
-  const _TypingIndicator({this.statusText = ''});
+  final StreamTiming? timing;
+  const _TypingIndicator({this.statusText = '', this.timing});
 
   @override
   Widget build(BuildContext context) {
@@ -865,32 +904,37 @@ class _TypingIndicator extends StatelessWidget {
               borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
               border: Border.all(color: MemoTheme.of(context).borderSoft),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: MemoTheme.accent,
+            child: timing != null
+                ? StreamProgressLine(
+                    timing: timing!,
+                    phase: streamPhaseLabel(statusText: statusText),
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: MemoTheme.accent,
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        statusText == 'web_search'
+                            ? L10n.t('searching_web')
+                            : (statusText == 'fetch_page'
+                                  ? L10n.t('reading_page')
+                                  : L10n.t('thinking')),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                          color: MemoTheme.of(context).textMuted,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                SizedBox(width: 10),
-                Text(
-                  statusText == 'web_search'
-                      ? L10n.t('searching_web')
-                      : (statusText == 'fetch_page'
-                            ? L10n.t('reading_page')
-                            : L10n.t('thinking')),
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontStyle: FontStyle.italic,
-                    color: MemoTheme.of(context).textMuted,
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -906,43 +950,19 @@ class _AgentStatusBar extends StatelessWidget {
   const _AgentStatusBar({required this.events});
 
   String _statusText(AgentEvent? last) {
-    if (last == null) return 'Hazirlaniyor...';
-
+    if (last == null) return L10n.t('agent_status_preparing');
+    final tool = toolLabel(last.toolName);
     switch (last.type) {
       case 'tool_executing':
-        return '${_actionLabel(last.toolName)} isleniyor...';
+        return L10n.t('agent_status_running', {'tool': tool});
       case 'tool_result':
-        return '${_actionLabel(last.toolName)} tamam';
+        return L10n.t('agent_status_done', {'tool': tool});
       case 'tool_error':
-        return '${_actionLabel(last.toolName)} hata';
+        return L10n.t('agent_status_error', {'tool': tool});
       case 'permission_denied':
-        return '${_actionLabel(last.toolName)} reddedildi';
+        return L10n.t('agent_status_denied', {'tool': tool});
       default:
-        return 'Calisiyor...';
-    }
-  }
-
-  String _actionLabel(String? toolName) {
-    switch (toolName) {
-      case 'read_file':
-        return 'Dosya';
-      case 'write_file':
-      case 'edit_file':
-      case 'insert_line':
-      case 'delete_lines':
-        return 'Duzenleme';
-      case 'delete_file':
-        return 'Silme';
-      case 'run_command':
-        return 'Komut';
-      case 'search_files':
-        return 'Arama';
-      case 'whatsapp_send':
-        return 'Mesaj';
-      case 'whatsapp_search':
-        return 'Mesaj ara';
-      default:
-        return toolName ?? 'Arac';
+        return L10n.t('agent_status_working');
     }
   }
 

@@ -24,6 +24,21 @@
 | L14 | 🟢 Rule #8 ihlali: mesaj düzenleme/silme hatasında sabit Türkçe metin vardı (enterpolasyonla kurulduğu için grep'e takılmamıştı). | `ee504438` |
 | L15 | 🟢 Test izolasyonu: `TestAgentWrappers_WithExecutor` kararsızdı (oturum öncesi `a28b3c2e`'de de `-count=2` ile kırılıyor, doğrulandı). `internal/app` testleri kaynak ağacına `internal/app/data/machine.key` yazıyordu. | `473cdd46`, `ced703fe` |
 
+### Ek (2026-09-29 öğleden sonra) — uzun işlemler ve uzun oturumlar
+
+Kullanıcı bildirimi: "uzun işlemlerde arayüz güven vermiyor, takıldı mı devam mı ediyor anlaşılmıyor; uzun oturumlarda gerçekten takılıyor." Sahte sağlayıcıya `[[delay N]]`/`[[loop N]]` eklenip ölçüldü.
+
+| # | Bulgu (canlı ölçüm) | Commit |
+|---|---|---|
+| L16 | 🔴 **Düz sohbet 300 sn'lik TOPLAM sınırla kesiliyordu.** Eski backend'de cevap saniyede bir kelime gelirken tam **300.0 sn**'de kesildi ve kimse durdurmadığı hâlde sohbete "⏹️ Cevap durduruldu." yazıldı. Uzun oturum = büyük istem (yavaş ön-işleme) + uzun cevap; yavaş yerel modelde 300 sn'yi aşmak kolay. Kullanıcının "bir yerden sonra takılıyor" dediği şey bu. Artık **boşta kalma** zaman aşımı var (300 sn hiçbir şey gelmezse) + 30 dk tavan; zaman aşımı "⏱️" ile açıkça bildiriliyor, yarım metin korunuyor. | `30f2ae97` |
+| L17 | 🟠 **Uzun işlemde istemciye hiçbir sinyal gitmiyordu.** Ajan modunda her model çağrısı süresince 0 olay (ölçüm: her çağrıda 20 sn sessizlik; gerçek modelde dakikalar). İlk token öncesi 200–250 sn boyunca da hiçbir şey yoktu. `streamSSE` artık 10 sn sessizlikte boş içerikli bir `heartbeat` olayı yazıyor. | `3b179166` |
+| L18 | 🟠 **Arayüz "bitti" gibi donuyordu.** Bir araç bittikten sonra durum çubuğu statik bir "X tamam ✓"de kalıyordu; model sonraki adımı düşünürken ekranda hiçbir şey kıpırdamıyordu. Yeni canlı ilerleme satırı: ne yapıyor (model düşünüyor / X çalışıyor / izin bekleniyor / web'de arıyor / yazıyor) + her saniye ilerleyen süre. Sunucu 30 sn tamamen sessizse turuncu "sunucudan haber yok — bağlantı kopmuş olabilir" uyarısı. Canlı: "list_directory done" → "The model is thinking · 0:45". | `9243e97d` |
+| L19 | 🟢 Rule #8: ajan durum çubuğu ("Hazirlaniyor...", "isleniyor...", araç adları), çok satıra bölündüğü için grep'e takılmayan "Memo çalışıyor…" ve dosya gönderimindeki "(Dosya gönderildi: …)" sabit Türkçeydi. | `9243e97d` |
+
+Canlı doğrulama (düzeltilmiş backend, aynı senaryo): cevap **350,6 sn**'de sonuna kadar tamamlandı ve eksiksiz kaydedildi. En uzun sessizlik 20 sn oldu (bekleme boyunca 14 kalp atışı, 10 sn arayla). Eski backend'de aynı istek 300,0 sn'de kesilmişti.
+
+Ölçülen ama bug çıkmayan: aynı sohbette 150 tur / 300 mesaj / ~23k token geçmişte backend'in tur başı ek yükü 1 ms'den 3 ms'ye çıktı. Geçmiş büyümesi kendi başına bir takılma yaratmıyor. Backend donduğunda (SIGSTOP) uygulamanın genel "backend yanıt vermiyor" algılaması ~38 sn'de devreye girdi.
+
 ## Canlıda doğrulanan (düzeltme sonrası) önceki düzeltmeler
 S1 (`file://` reddi), S3 (Claude sampling: ilk istek 400, geri çekilip latch'lendi), S4 (Opus 5 + araç döngüsünde thinking replay: sıfır ihlal), durdurma (web'de kısmi yanıt + "⏹️ Response stopped."), eşzamanlılık (aynı sohbet → "meşgul", farklı sohbetler paralel), dışa/içe aktarma döngüsü, Self-Driving döngüsünün bozuk JSON'da takılmadan düzgün hata vermesi.
 

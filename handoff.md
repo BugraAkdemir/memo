@@ -1,3 +1,49 @@
+# Handoff — 2026-09-29 (öğleden sonra) — Uzun işlemler: gerçek takılma + "takıldı mı?" arayüzü
+
+## Ne istendi
+"Uzun işlemlerde arayüz güven vermiyor, takıldı mı devam mı ediyor anlaşılmıyor; uzun oturumlarda
+gerçekten takılıyor." İstek `PLAN_live_bug_scan.md`'de "Ek istek" başlığı altında.
+
+## Kök nedenler (sahte sağlayıcıyla canlı ölçüldü)
+1. **Gerçek takılma (L16):** düz sohbet 300 sn'lik TOPLAM süreyle sınırlıydı. Eski backend'de cevap
+   saniyede bir kelime gelirken tam 300,0 sn'de kesildi ve "⏹️ Cevap durduruldu." diye kaydedildi.
+   Uzun oturum = büyük istem (yavaş ön-işleme) + uzun cevap; yavaş yerel modelde bu sınır kolay aşılır.
+2. **Sinyal yokluğu (L17):** ajan modunda her model çağrısı boyunca istemciye hiçbir olay gitmiyordu
+   (ölçüm: her çağrıda 20 sn sessizlik; ilk token öncesinde 200–250 sn).
+3. **Donmuş görünen arayüz (L18):** araç bittikten sonra durum çubuğu statik "X tamam ✓"de kalıyordu.
+
+## Commit'ler
+| Commit | Ne |
+|---|---|
+| `8f136548` | İsteğin plan dosyasına kaydı |
+| `9dccc6b9` | Sahte sağlayıcıya `[[delay N]]` / `[[loop N]]` |
+| `30f2ae97` | Boşta kalma zaman aşımı (300 sn sessizlik) + 30 dk tavan; zaman aşımı "⏱️" ile açıkça bildiriliyor, yarım metin korunuyor |
+| `3b179166` | `streamSSE` 10 sn sessizlikte boş içerikli `heartbeat` olayı yazıyor |
+| `9243e97d` | Canlı ilerleme satırı (evre + her saniye ilerleyen süre), 30 sn tam sessizlikte turuncu "sunucudan haber yok" uyarısı; Rule #8 düzeltmeleri |
+| (bu commit) | BUG_REPORT L16–L19, AGENTS.md zaman aşımı sözleşmesi, plan, handoff |
+
+## Doğrulama
+- Canlı: düzeltilmiş backend'de aynı istek **350,6 sn**'de eksiksiz tamamlandı, en uzun sessizlik 20 sn
+  (14 kalp atışı). Web arayüzünde "list_directory done" → "The model is thinking · 0:45" canlı ilerledi.
+  Backend dondurulunca (SIGSTOP) uygulamanın "backend yanıt vermiyor" uyarısı ~38 sn'de çıktı.
+- 150 tur / 300 mesajlık oturumda backend tur başı ek yükü 1 ms → 3 ms; geçmiş büyümesi takılma yaratmıyor.
+- `go vet` temiz; app/webserver/e2e/replcli/provider `-race` yeşil. `flutter analyze` yalnızca bilinen
+  7 info; `flutter test` 417/417; Rule #8 grep dokunulan dosyalarda boş.
+
+## Kapsam dışı / karar
+- Kullanıcı `~/Documents/claude-code-proxy` benzeri bir Claude abonelik girişinin (Claude Code OAuth
+  kimliğiyle) Memo'ya eklenmesini istedi. **Yapılmadı**: Claude Code'un giriş kimliğini başka bir uygulamada
+  kullanmak Anthropic'in erişim kurallarını dolanmak demek. Kullanıcıya, Anthropic'in vereceği resmi bir
+  entegrasyon (Memo'ya özel OAuth client / belgelenmiş API) olursa ona göre ekleneceği; o zamana kadar
+  meşru yolun resmi `claude` CLI'ı (`internal/agentcli/claude_code.go`) olduğu söylendi.
+
+## Sıradaki
+- İstenirse Claude Code CLI sağlayıcısını iyileştirmek (giriş durumu arayüzde, normal sohbette seçilebilir).
+- Android'de gerçek cihaz testi (önceki girdilerdeki liste).
+- Push edilmedi, tag atılmadı.
+
+---
+
 # Handoff — 2026-09-29 (gece) — Tüm bulgular düzeltildi + canlı (kullanarak) bug taraması
 
 ## Oturum Özeti

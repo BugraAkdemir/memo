@@ -55,8 +55,8 @@ Kullanıcının sözleriyle özet:
 - Gerekirse sahte sağlayıcıyı kullan (Claude kendisi sahte sağlayıcı rolünü üstlenebilir).
 
 ### Adımlar
-- [ ] Uzun işlem yollarını incele: ajan turu (akışsız LLM çağrıları + araçlar), uzun ilk-token beklemesi, uzun sohbet geçmişi, zaman aşımları (backend 300 sn, frontend 300 sn).
-- [ ] Sahte sağlayıcıyla yeniden üret: yavaş ilk token, çok iterasyonlu ajan turu, uzun süren araç, çok mesajlı oturum.
-- [ ] Gerçek takılmaların kök nedenini bul, düzelt, test et.
-- [ ] GUI: uzun işlemde canlı ilerleme (ne yapıyor + geçen süre) göster; kalp atışı ile "hâlâ çalışıyor" sinyali.
-- [ ] Doğrula, commit'le, BUG_REPORT + handoff güncelle.
+- [x] Uzun işlem yollarını incele: ajan turu (akışsız LLM çağrıları + araçlar), uzun ilk-token beklemesi, uzun sohbet geçmişi, zaman aşımları (backend 300 sn, frontend 300 sn).
+- [x] Sahte sağlayıcıyla yeniden üret: yavaş ilk token, çok iterasyonlu ajan turu, uzun süren araç, çok mesajlı oturum.
+- [x] Gerçek takılmaların kök nedenini bul, düzelt, test et.
+- [x] GUI: uzun işlemde canlı ilerleme (ne yapıyor + geçen süre) göster; kalp atışı ile "hâlâ çalışıyor" sinyali.
+- [x] Doğrula, commit'le, BUG_REPORT + handoff güncelle.

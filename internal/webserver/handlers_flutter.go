@@ -99,14 +99,42 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 // the matching fix on trySend/recvChunk in internal/app/llm.go and
 // forwardStream in internal/app/chat.go — this is the outermost, last-hop
 // layer of the same bug).
+// sseHeartbeatInterval is how long streamSSE lets a stream stay silent before
+// it writes a heartbeat chunk. A var only so tests don't have to wait.
+var sseHeartbeatInterval = 10 * time.Second
+
+// heartbeatFinishReason marks a chunk that carries nothing but "the backend
+// is alive and this turn is still running". Its Content is always empty, so
+// a client that doesn't know the marker (an older app, the REPL) folds an
+// empty string into its reply and is unaffected.
+const heartbeatFinishReason = "heartbeat"
+
+// streamSSE forwards ch to the client as SSE, and writes a heartbeat chunk
+// whenever the stream has been silent for sseHeartbeatInterval.
+//
+// Without it a turn could legitimately send nothing for minutes: every model
+// call in agent mode is a single non-streaming request (a reasoning model on
+// a long context takes 30s–3min), a tool can run for up to two minutes, and
+// a slow local model can prefill a long session for minutes before its first
+// token. Measured live against a fake provider: the client received nothing
+// at all for the full length of each model call. The app had no way to tell
+// "still working" from "dead", and its 300s idle guard fired on turns the
+// backend was still happily running.
 func streamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, ch <-chan api.StreamChunk) {
+	ticker := time.NewTicker(sseHeartbeatInterval)
+	defer ticker.Stop()
+	lastWrite := time.Now()
+	write := func(chunk api.StreamChunk) bool {
+		lastWrite = time.Now()
+		return writeSSEChunk(w, flusher, chunk)
+	}
 	for {
 		select {
 		case chunk, ok := <-ch:
 			if !ok {
 				return
 			}
-			if writeSSEChunk(w, flusher, chunk) {
+			if write(chunk) {
 				return
 			}
 			continue
@@ -119,8 +147,12 @@ func streamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher,
 			if !ok {
 				return
 			}
-			if writeSSEChunk(w, flusher, chunk) {
+			if write(chunk) {
 				return
+			}
+		case <-ticker.C:
+			if time.Since(lastWrite) >= sseHeartbeatInterval {
+				write(api.StreamChunk{FinishReason: heartbeatFinishReason})
 			}
 		}
 	}

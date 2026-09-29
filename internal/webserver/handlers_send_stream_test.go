@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"memo/internal/api"
 )
@@ -102,5 +103,35 @@ func TestHandleSendStream_WithoutChatID_FallsBackToImplicitActive(t *testing.T) 
 	}
 	if !strings.Contains(rec.Body.String(), `"content":"legacy path"`) {
 		t.Errorf("response body missing expected content, got: %s", rec.Body.String())
+	}
+}
+
+// TestStreamSSE_HeartbeatsDuringSilence: a turn can legitimately produce
+// nothing for minutes (a non-streaming agent model call, a long tool, a slow
+// prefill); the client must still hear that the backend is alive.
+func TestStreamSSE_HeartbeatsDuringSilence(t *testing.T) {
+	old := sseHeartbeatInterval
+	sseHeartbeatInterval = 40 * time.Millisecond
+	defer func() { sseHeartbeatInterval = old }()
+
+	ch := make(chan api.StreamChunk)
+	go func() {
+		time.Sleep(200 * time.Millisecond) // silence
+		ch <- api.StreamChunk{Content: "hi", Done: true}
+		close(ch)
+	}()
+	rec := httptest.NewRecorder()
+	streamSSE(context.Background(), rec, rec, ch)
+
+	body := rec.Body.String()
+	beats := strings.Count(body, `"finish_reason":"heartbeat"`)
+	if beats < 2 {
+		t.Fatalf("got %d heartbeats during 200ms of silence (interval 40ms), want several:\n%s", beats, body)
+	}
+	if strings.Contains(body, `"content":"hi","done":false,"finish_reason":"heartbeat"`) {
+		t.Error("a heartbeat carried content — older clients append content to the reply")
+	}
+	if !strings.HasSuffix(strings.TrimSpace(body), `"done":true}`) {
+		t.Errorf("the real terminal chunk must still end the stream:\n%s", body)
 	}
 }

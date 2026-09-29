@@ -24,6 +24,9 @@
 //	[[long N]]                 answer with N words
 //	[[think]]                  (Anthropic) lead with a signed thinking block
 //	[[say TEXT]]               answer exactly TEXT
+//	[[delay N]]                wait N seconds before answering (any request)
+//	[[loop N]]                 keep calling list_directory until N tool
+//	                           results are in the conversation (long agent turn)
 //
 // Without a directive the reply echoes the user message. Once a tool result
 // comes back, the reply reports it, so an agent loop terminates.
@@ -109,7 +112,7 @@ func handleModels(w http.ResponseWriter, r *http.Request) {
 
 // ---------------------------------------------------------------- directives
 
-var directiveRe = regexp.MustCompile(`\[\[(tool|error|slow|cut|badjson|empty|long|think|say)\b\s*(.*?)\]\]`)
+var directiveRe = regexp.MustCompile(`\[\[(tool|error|slow|cut|badjson|empty|long|think|say|delay|loop)\b\s*(.*?)\]\]`)
 
 type toolDirective struct {
 	Name string
@@ -127,6 +130,8 @@ type plan struct {
 	think   bool
 	say     string
 	hasSay  bool
+	delay   int
+	loop    int
 }
 
 func parseDirectives(text string) plan {
@@ -157,6 +162,10 @@ func parseDirectives(text string) plan {
 			p.think = true
 		case "say":
 			p.say, p.hasSay = arg, true
+		case "delay":
+			p.delay, _ = strconv.Atoi(arg)
+		case "loop":
+			p.loop, _ = strconv.Atoi(arg)
 		}
 	}
 	return p
@@ -247,6 +256,17 @@ func handleOpenAI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	record("/v1/chat/completions", body, nil, 200)
+	// Like a real server: a streaming reply sends its headers at once and
+	// only then spends the delay (prefill / hidden thinking) before the
+	// first token; a non-streaming one just takes that long to answer.
+	if p.delay > 0 && !stream {
+		time.Sleep(time.Duration(p.delay) * time.Second)
+	}
+	// [[loop N]]: keep the agent busy until N tool results are present.
+	if p.loop > 0 && countOpenAIToolResults(msgs) < p.loop {
+		toolResult = ""
+		p.tools = []toolDirective{{Name: "list_directory", Args: `{"path":"."}`}}
+	}
 
 	promptTok := approxTokens(msgs)
 	var toolCalls []map[string]any
@@ -295,6 +315,9 @@ func handleOpenAI(w http.ResponseWriter, r *http.Request) {
 			"choices": []any{map[string]any{"index": 0, "delta": d, "finish_reason": fin}}}
 	}
 	send(delta(map[string]any{"role": "assistant"}, nil))
+	if p.delay > 0 {
+		time.Sleep(time.Duration(p.delay) * time.Second)
+	}
 	if len(toolCalls) > 0 {
 		for i, tc := range toolCalls {
 			tc["index"] = i
@@ -340,6 +363,16 @@ func lastOpenAITurn(msgs []any) (userText, toolResult string) {
 		}
 	}
 	return "", toolResult
+}
+
+func countOpenAIToolResults(msgs []any) int {
+	n := 0
+	for _, x := range msgs {
+		if m, _ := x.(map[string]any); m["role"] == "tool" {
+			n++
+		}
+	}
+	return n
 }
 
 func contentText(c any) string {
@@ -469,6 +502,9 @@ func handleAnthropic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	record("/v1/messages", body, nil, 200)
+	if p.delay > 0 {
+		time.Sleep(time.Duration(p.delay) * time.Second)
+	}
 
 	thinkingOn := body["thinking"] != nil || strings.HasPrefix(fmt.Sprint(body["model"]), "claude-opus-5")
 	var content []map[string]any

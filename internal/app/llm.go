@@ -1250,8 +1250,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				return
 			}
 
-			providerCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
-			defer cancel()
+			providerCtx, touch, stopWatch := streamWatchdogCtx(ctx)
+			defer stopWatch()
 
 			pMsgs := make([]provider.Message, len(messages))
 			for i, m := range messages {
@@ -1273,7 +1273,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			if err != nil {
 				logx.Printf("Provider stream error: %v", err)
 				var errMsg string
-				if a.providerSwapped(providerRouter) {
+				if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
+					errMsg = tm
+				} else if a.providerSwapped(providerRouter) {
 					errMsg = a.modelSwappedMidStreamMsg()
 				} else {
 					errMsg = "⚠️ " + err.Error()
@@ -1323,6 +1325,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			for {
 				chunk, ok, ctxDone := recvChunk(providerCtx, ch)
 				if ctxDone {
+					if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
+						a.recordFailedTurn(userMsg, fullReply.String(), tm, sessionID)
+						trySend(ctx, outCh, api.StreamChunk{Error: tm, Done: true})
+						return
+					}
 					a.persistInterruptedTurn(ctx, start, completionCount(providerCompletionTokens, tokenCount), fullReply.String(), userMsg, sessionID, &usageMetaVal)
 					trySend(providerCtx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 					return
@@ -1330,6 +1337,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				if !ok {
 					break
 				}
+				touch()
 
 				// Before the error check, for the same reason claude.go
 				// attaches usage to its error chunk: a turn that failed
@@ -1338,7 +1346,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 				if chunk.Error != "" {
 					var errMsg string
-					if a.providerSwapped(providerRouter) {
+					if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
+						errMsg = tm // the watchdog's cancel surfaced as a read error
+					} else if a.providerSwapped(providerRouter) {
 						errMsg = a.modelSwappedMidStreamMsg()
 					} else {
 						errMsg = "⚠️ " + chunk.Error
@@ -1386,6 +1396,14 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 			}
 
+			// The watchdog's cancel can also end the provider's stream by just
+			// closing it (no error chunk) — never let that pass as a complete
+			// reply.
+			if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
+				a.recordFailedTurn(userMsg, fullReply.String(), tm, sessionID)
+				trySend(ctx, outCh, api.StreamChunk{Error: tm, Done: true})
+				return
+			}
 			if fullReply.Len() > 0 {
 				a.finishStream(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
@@ -1430,8 +1448,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		defer close(outCh)
 		defer recoverStreamPanic(ctx, outCh, "callLLMStream/local-model")
 
-		streamCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
-		defer cancel()
+		streamCtx, touch, stopWatch := streamWatchdogCtx(ctx)
+		defer stopWatch()
 
 		requestStart := time.Now()
 		a.cfgMu.RLock()
@@ -1461,6 +1479,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		for {
 			chunk, ok, ctxDone := recvChunk(streamCtx, ch)
 			if ctxDone {
+				if tm := a.streamTimeoutMsg(ctx, streamCtx); tm != "" {
+					a.recordFailedTurn(userMsg, fullReply.String(), tm, sessionID)
+					trySend(ctx, outCh, api.StreamChunk{Error: tm, Done: true})
+					return
+				}
 				a.persistInterruptedTurn(ctx, start, tokenCount, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(streamCtx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 				return
@@ -1468,12 +1491,15 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			if !ok {
 				break
 			}
+			touch()
 
 			if chunk.Error != "" {
 				logx.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
 				logx.Printf("Stream chunk error: %s", chunk.Error)
 				errMsg := "⚠️ " + chunk.Error
-				if a.clientSwapped(streamClient) {
+				if tm := a.streamTimeoutMsg(ctx, streamCtx); tm != "" {
+					errMsg = tm
+				} else if a.clientSwapped(streamClient) {
 					errMsg = a.modelSwappedMidStreamMsg()
 				}
 				a.recordFailedTurn(userMsg, fullReply.String(), errMsg, sessionID)
@@ -1517,6 +1543,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			}
 		}
 
+		if tm := a.streamTimeoutMsg(ctx, streamCtx); tm != "" {
+			a.recordFailedTurn(userMsg, fullReply.String(), tm, sessionID)
+			trySend(ctx, outCh, api.StreamChunk{Error: tm, Done: true})
+			return
+		}
 		if fullReply.Len() > 0 {
 			logx.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
 			a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)

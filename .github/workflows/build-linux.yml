@@ -183,6 +183,60 @@ jobs:
           zip -r "../dist/${{ env.APP_NAME }}-linux-x64.zip" "${{ env.APP_NAME }}/"
           tar czf "../dist/memo_beta.tar.gz" "${{ env.APP_NAME }}/"
 
+      - name: Build AppImage
+        run: |
+          set -euo pipefail
+          S="build_output/stage/${{ env.APP_NAME }}"
+          APPDIR="build_output/stage/${{ env.APP_NAME }}.AppDir"
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
+            VERSION="$(cat version 2>/dev/null || echo "0.0.0")"
+          fi
+
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr/share/metainfo"
+          cp -a "$S/." "$APPDIR/"
+
+          ln -sf "run_memo.sh" "$APPDIR/AppRun"
+          chmod +x "$APPDIR/AppRun"
+
+          cat > "$APPDIR/Memo.desktop" <<EOF
+          [Desktop Entry]
+          Name=Memo
+          Comment=Privacy-first local AI assistant with persistent memory
+          Exec=run_memo.sh
+          Icon=Memo
+          Type=Application
+          Terminal=false
+          Categories=Utility;
+          X-AppImage-Name=Memo
+          X-AppImage-Version=$VERSION
+          X-AppImage-Arch=x86_64
+          EOF
+
+          if [ -f "$APPDIR/icon.png" ]; then
+            cp -f "$APPDIR/icon.png" "$APPDIR/Memo.png"
+            ln -sf "Memo.png" "$APPDIR/.DirIcon"
+          fi
+
+          sed -e "s/@VERSION@/$VERSION/g" \
+              -e "s/@DATE@/$(date -u +%Y-%m-%d)/g" \
+              packaging/com.memo.memo_flutter.metainfo.xml.in \
+              > "$APPDIR/usr/share/metainfo/com.memo.memo_flutter.metainfo.xml"
+
+          curl -fsSL -o appimagetool-x86_64.AppImage \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run \
+            "$APPDIR" "build_output/dist/Memo-v${VERSION}-x86_64.AppImage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Memo-linux-x64-appimage
+          path: build_output/dist/Memo-v*-x86_64.AppImage
+          retention-days: 7
+
       - uses: actions/upload-artifact@v4
         with:
           name: Memo-linux-x64
@@ -224,7 +278,9 @@ jobs:
         with:
           prerelease: false
           body_path: ${{ steps.notes.outputs.path }}
-          files: build_output/dist/${{ env.APP_NAME }}-linux-x64.zip
+          files: |
+            build_output/dist/${{ env.APP_NAME }}-linux-x64.zip
+            build_output/dist/Memo-v*-x86_64.AppImage
 
       # A real tag push (a cut version, not a main push) republishes the
       # SAME tar.gz under the stable filename get-memo.sh already expects —

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.memo.memo_flutter</id>
+  <name>Memo</name>
+  <summary>Privacy-first local AI assistant with persistent memory</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+  <developer id="com.memo">
+    <name>Bugra Akdemir</name>
+  </developer>
+  <description>
+    <p>Memo is a local-first AI assistant with persistent memory, RAG, agent tools, and a Flutter desktop interface. It can run fully offline with local models and keeps user data on the local machine.</p>
+  </description>
+  <homepage>https://memocpp.com</homepage>
+  <url type="bugtracker">https://github.com/BugraAkdemir/memo/issues</url>
+  <url type="vcs-browser">https://github.com/BugraAkdemir/memo</url>
+  <launchable type="desktop-id">Memo.desktop</launchable>
+  <icon type="cached">Memo</icon>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>

@@ -277,15 +277,29 @@ RUNNER
         cat << DESKTOP > "$APPDIR/${APP_NAME}.desktop"
 [Desktop Entry]
 Name=${APP_NAME}
+Comment=Privacy-first local AI assistant with persistent memory
 Exec=run_memo.sh
 Icon=${APP_NAME}
 Type=Application
+Terminal=false
 Categories=Utility;
+X-AppImage-Name=${APP_NAME}
+X-AppImage-Version=${VERSION}
+X-AppImage-Arch=x86_64
 DESKTOP
 
         # Copy app icon
         if [ -f "$APPDIR/icon.png" ]; then
             cp "$APPDIR/icon.png" "$APPDIR/${APP_NAME}.png"
+        fi
+
+        # AppStream metadata required/recommended by the AppImage catalog.
+        mkdir -p "$APPDIR/usr/share/metainfo"
+        if [ -f "packaging/com.memo.memo_flutter.metainfo.xml.in" ]; then
+            sed -e "s/@VERSION@/${VERSION}/g" \\
+                -e "s/@DATE@/$(date -u +%Y-%m-%d)/g" \\
+                "packaging/com.memo.memo_flutter.metainfo.xml.in" \\
+                > "$APPDIR/usr/share/metainfo/com.memo.memo_flutter.metainfo.xml"
         fi
 
         # Download appimagetool if not exists or is empty
@@ -296,7 +310,7 @@ DESKTOP
             chmod +x appimagetool-x86_64.AppImage
         fi
         # Try with --appimage-extract-and-run for systems without FUSE
-        ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run "$APPDIR" "build_output/dist/${APP_NAME}-linux-x64-v${VERSION}.AppImage" 2>&1 || echo "⚠️ AppImage oluşturulamadı."
+        ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run "$APPDIR" "build_output/dist/${APP_NAME}-v${VERSION}-x86_64.AppImage" 2>&1 || echo "⚠️ AppImage oluşturulamadı."
     fi
 
     # --- DEB ---

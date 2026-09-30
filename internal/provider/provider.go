@@ -57,6 +57,15 @@ const (
 	// per-session choice, not a sticky default (see isSessionProviderName in
 	// internal/app). First of a planned "subscription providers" family.
 	ProviderGeminiSub ProviderType = "gemini-sub"
+	// ProviderClaudeSub reaches Claude through the user's own Claude
+	// subscription (Pro/Max) instead of a pay-per-token API key, using
+	// Anthropic's public Claude Code OAuth client. Implemented in
+	// internal/claudesub, registered through RegisterConstructor like
+	// ProviderGeminiSub, and — unlike it — this type does NOT need its own wire
+	// translation: it reuses claude.go's verbatim through
+	// NewClaudeProviderWith, because the endpoint really is the Messages API.
+	// Also a per-session choice, not a sticky default.
+	ProviderClaudeSub ProviderType = "claude-sub"
 	// ProviderCustom is any OpenAI-compatible endpoint the user points at via a
 	// custom Base URL (self-hosted, proxies, providers we don't list natively).
 	ProviderCustom ProviderType = "custom"

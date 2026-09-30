@@ -35,6 +35,33 @@ type claudeProvider struct {
 	// against a current Claude model failed. Latched per provider instance —
 	// one wasted request per process, not one per message.
 	noSampling atomic.Bool
+
+	// ── ClaudeOverrides seam (see claude_overrides.go) ──────────────────
+	// All five are zero for every provider built by newClaudeProvider, and
+	// every read of them is written to mean "unchanged behaviour" at its zero
+	// value, so nothing below changes the shipped Claude / custom-anthropic
+	// path. They exist so a DIFFERENT provider type can reuse this file's wire
+	// format verbatim instead of copying 950 lines of translation and losing
+	// every fix made here since — the reason internal/claudesub exists.
+	//
+	// name/displayName let the embedded instance report its own identity
+	// (Name() feeds Router matching, ProviderError, and the marker-provider
+	// lookup; DisplayName is what the provider list shows).
+	name        ProviderType
+	displayName string
+	// systemPrepend is emitted as the FIRST system block when set. Anthropic's
+	// subscription-OAuth endpoint requires the literal Claude Code identity
+	// sentence there and rejects everything else with an opaque 400/429.
+	systemPrepend string
+	// suppressSampling forces temperature/top_p off at build time rather than
+	// waiting for the noSampling latch: the OAuth endpoint refuses a non-1.0
+	// temperature with a generic "Error" body that names no parameter, so
+	// mentionsSampling can never fire.
+	suppressSampling bool
+	// decorateAuth replaces the x-api-key header entirely (Bearer token plus
+	// the beta/user-agent set) for the subscription endpoint. Non-nil means
+	// apiKey is never sent.
+	decorateAuth func(ctx context.Context, req *http.Request) error
 }
 
 func newClaudeProvider(cfg ProviderConfig) (*claudeProvider, error) {
@@ -70,15 +97,26 @@ func newClaudeProvider(cfg ProviderConfig) (*claudeProvider, error) {
 	}, nil
 }
 
-func (p *claudeProvider) Name() ProviderType  { return ProviderClaude }
-func (p *claudeProvider) DisplayName() string { return "Anthropic Claude" }
+func (p *claudeProvider) Name() ProviderType {
+	if p.name != "" {
+		return p.name
+	}
+	return ProviderClaude
+}
+
+func (p *claudeProvider) DisplayName() string {
+	if p.displayName != "" {
+		return p.displayName
+	}
+	return "Anthropic Claude"
+}
 
 func (p *claudeProvider) ListModels(ctx context.Context) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/models", nil)
 	if err != nil {
 		return nil, err
 	}
-	p.setAuth(req)
+	p.setAuth(ctx, req)
 
 	resp, err := p.client.Do(req)
 	if err != nil {
@@ -476,7 +514,9 @@ func (p *claudeProvider) sendMessages(ctx context.Context, cl *http.Client, clRe
 	if stream {
 		httpReq.Header.Set("Accept", "text/event-stream")
 	}
-	p.setAuth(httpReq)
+	if err := p.setAuth(ctx, httpReq); err != nil {
+		return nil, err
+	}
 
 	resp, err := cl.Do(httpReq)
 	if err != nil {
@@ -863,7 +903,7 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 		Stream:      stream,
 		Tools:       toClaudeTools(req.Tools),
 	}
-	if p.noSampling.Load() {
+	if p.noSampling.Load() || p.suppressSampling {
 		clReq = stripSampling(clReq)
 	}
 
@@ -887,7 +927,28 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 	// 1.25x cache-write premium on a multi-KB prompt (BUG-SCAN15).
 	sys := strings.TrimSpace(systemText)
 	cacheable := len(clReq.Tools) > 0 && !p.noCacheControl.Load()
-	if sys != "" {
+	if p.systemPrepend != "" {
+		// Subscription shape. Anthropic validates the Claude Code identity
+		// POSITIONALLY — it must be the first system block, and nothing may
+		// precede it — so it gets its own block ahead of Memo's prompt
+		// rather than being concatenated onto the front of one string. The
+		// cache breakpoint still goes on the LAST block: everything before it
+		// is the stable prefix.
+		//
+		// If this turn's cache_control is later withdrawn (postMessages'
+		// retry valve), stripCacheControl collapses the blocks into a plain
+		// string with no separator — which still keeps the identity at the
+		// start, and a plain system *string* starting with it is accepted.
+		blocks := make([]claudeSystemBlock, 0, 2)
+		blocks = append(blocks, claudeSystemBlock{Type: "text", Text: p.systemPrepend})
+		if sys != "" {
+			blocks = append(blocks, claudeSystemBlock{Type: "text", Text: sys})
+		}
+		if cacheable {
+			blocks[len(blocks)-1].CacheControl = &claudeCacheControl{Type: "ephemeral"}
+		}
+		clReq.System = blocks
+	} else if sys != "" {
 		if cacheable {
 			clReq.System = []claudeSystemBlock{{
 				Type:         "text",
@@ -932,10 +993,19 @@ func toClaudeTools(defs []ToolDefinition) []claudeTool {
 	return out
 }
 
-func (p *claudeProvider) setAuth(req *http.Request) {
+// setAuth attaches credentials. It delegates to the ClaudeOverrides
+// decorateAuth hook when one is set (the subscription provider supplies a
+// Bearer token + beta headers that can themselves fail, since they resolve a
+// refreshable OAuth token); otherwise it falls back to the x-api-key header
+// this file has always sent.
+func (p *claudeProvider) setAuth(ctx context.Context, req *http.Request) error {
+	if p.decorateAuth != nil {
+		return p.decorateAuth(ctx, req)
+	}
 	if p.apiKey != "" {
 		req.Header.Set("x-api-key", p.apiKey)
 	}
+	return nil
 }
 
 func (p *claudeProvider) wrapError(err error) error {

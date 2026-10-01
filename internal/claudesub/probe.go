@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -285,9 +286,25 @@ func probeBody(r probeReq) ([]byte, string, error) {
 	return body, betas, nil
 }
 
-// probeEndpoint is the API base. A var so a test can point the probe at an
-// httptest server instead of making real requests.
-var probeEndpoint = "https://api.anthropic.com/"
+// probeEndpoint is the API base the probe talks to. A var so a test can point
+// it at an httptest server, and overridable in the environment so a test binary
+// that forgets to is still safe: TestMain in internal/app and NewHarness in
+// internal/e2e both point it at an unreachable port, because a probe that escapes
+// to the real api.anthropic.com from a unit test is real network I/O against a
+// real account's endpoint, made with whatever token happens to be in the temp
+// data dir.
+var probeEndpoint = apiURL()
+
+const envAPIURL = "MEMO_CLAUDE_API_URL"
+
+// apiURL returns the Messages API base, trailing slash included so callers can
+// concatenate "v1/messages".
+func apiURL() string {
+	if v := strings.TrimSpace(os.Getenv(envAPIURL)); v != "" {
+		return strings.TrimRight(v, "/") + "/"
+	}
+	return "https://api.anthropic.com/"
+}
 
 var probeClient = &http.Client{Timeout: 20 * time.Second}
 

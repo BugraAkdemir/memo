@@ -55,6 +55,11 @@ type Harness struct {
 func NewHarness(t *testing.T) *Harness {
 	t.Helper()
 	t.Setenv("MEMO_DATA_DIR", t.TempDir())
+	// Same reason as internal/app's TestMain: the claude-sub capability probe
+	// targets the real API by default and fires in the BACKGROUND after a
+	// connect, so a test that connects would otherwise make real network calls
+	// with a stub token.
+	t.Setenv("MEMO_CLAUDE_API_URL", "http://127.0.0.1:1")
 	// The config package caches the resolved data dir, the loaded config and
 	// the path Save() writes to, all process-wide, so setting the env var is
 	// not by itself enough to isolate a test: without these resets every

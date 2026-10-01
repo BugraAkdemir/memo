@@ -1,3 +1,93 @@
+# Handoff — 2026-09-30/10-01 — `claude-sub`: Claude aboneliğini Memo'da kullanma
+
+## Oturum Özeti
+
+Kullanıcının isteği: `~/Documents/claude-code-proxy`'un yaptığı işi Go'da,
+Memo'ya uygun şekilde yapmak — yani **Memo'da kendi Claude aboneliğini
+API anahtarı yerine kullanabilmek**. Üç sert istek vardı ve üçü de karşılandı.
+
+İki oturum, **6 commit**, `feature/claude-sub` branch'inde (push edilmedi, tag
+atılmadı).
+
+| Commit | Ne |
+|---|---|
+| `adefdb69` | `provider.NewClaudeProviderWith` + `ClaudeOverrides` kancası (hot file'a ~20 satır) |
+| `c80663f7` | `internal/claudesub` — OAuth, şifreli token, otomatik benimseme, canlı model listesi |
+| `59300c84` | `claudeauth.go` + config + `/api/dev-gateway/claude-account` + executor bütçesi |
+| `31307a5b` | Flutter sekmesi + 34 l10n anahtarı (TR+EN) + widget testleri |
+| `b88b9c64` | Yetenek probu (plain/tools/thinking/1M ölçülüyor) + 1M beta kararı |
+| `e00c8d3d` | e2e: gerçek App + gerçek HTTP, dört senaryo |
+
+## Üç sert istek nasıl karşılandı
+
+1. **Claude Code girişliyse Bağla'ya basınca otomatik girsin, tarayıcı açılmasın.**
+   Kaynak sırası: `MEMO_CLAUDE_TOKEN`/`CLAUDE_CODE_OAUTH_TOKEN` →
+   `~/.claude/.credentials.json` → macOS Keychain. Bulunamazsa tarayıcı akışı.
+   `TestClaudeSub_PicksUpALoginThatAppearedAfterStartup` bunu süreç-başında
+   oluşmuş Manager'a rağmen yakalıyor.
+2. **Modeller hardcoded olmasın.** `claudeProvider.ListModels` zaten
+   `GET /v1/models` çağırıyor; kancalama bunu bedava miras alıyor. Statik liste
+   yalnızca uç nokta tamamen erişilemezse ve daha önce hiç başarılı fetch
+   olmamışsa devreye giriyor.
+3. **Her özelliğin çalışması.** Bu garanti **koda** değil **ölçüme** bırakıldı:
+   bağlantı sonrası arka planda dört küçük istek atılıyor (plain / tools /
+   thinking / 1M) ve sonuç `capabilities` olarak GET'te görünüyor. 1M ölçülürse
+   marker `ContextTokens = 1M` ile yeniden yazılıyor.
+
+## Kullanıcının istediği 3. şeyin dürüst riski
+
+Anthropic abonelik trafiğine **istek şekline dayalı bir geçit** koyuyor ve bu
+2026'da en az üç kez genişledi. Bilinen ayrım noktaları: kimlik cümlesi
+**konum** olarak ilk system bloğunda olmalı; `temperature != 1.0` reddediliyor;
+gövdenin Claude Code'un gönderdiği şekle benzemesi gerekiyor. Başarısızlık
+**başsız 429** — yani gerçek kota gibi görünüyor. `claudesub.isEntitlementRefusal`
+ikisini `anthropic-ratelimit-*` **veya `Retry-After` yokluğuyla** ayırıyor.
+
+**TLS fingerprint'i** ayrıca ayırt ediliyor olabilir ([#17169] hipotezi). Go'nun
+TLS izi Claude Code'unkinden farklıdır ve bu Go'dan düzeltilemez. Ölçüm bunu
+ortaya çıkarırsa tek çalışan sınıf Haiku olur.
+
+## Claude Desktop HAKKINDA dürüstlük notu
+
+Kullanıcı "Claude Desktop girişliyse de otomatik girsin" dedi; **bu kısmı
+yapamıyorum ve sebebi doğrulandı**: `~/.config/Claude/config.json` içindeki
+`oauth:tokenCache(V2)` base64 → decode → Electron `safeStorage` `v11` prefix'li
+şifreli blob (bu makinede 1251/1571 bayt). OS anahtar deposundan türeyen bir
+anahtarla AES, düz JSON değil. Bu, platform anahtarlığını geri çözmek demek —
+kırılgan, OS'e özgü ve Electron şemayı değiştirdiğinde ilk seferde bozulur.
+Desktop ve Claude Code **aynı hesap**, dolayısıyla Code'da bir kez
+`claude setup-token` çalıştırmak bu özelliği de açar; UI bunu söylüyor.
+
+## Kendi hâlinde bulunan gerçek hatalar (hepsi testle sabitlendi)
+
+| Bulgu | Nerede |
+|---|---|
+| `ClaudeAccountState` config bayrağına güveniyordu; token silinince "bağlı" görünüyordu sonsuza dek | `claudeauth.go` |
+| "Zaten bağlı" dalı kaynağı hep `"browser"` diye sabitliyordu; benimsenen oturum yanlış etiketleniyordu | `claudeauth.go` |
+| Test gerçek `anthropic.com`'a istek atıp **yanlış sebeple** geçiyordu (endpoint yönlendirilmemişti) | `claudesub_test.go` |
+| `isEntitlementRefusal` `Retry-After`'ı kontrol etmiyordu — gerçek bir kotayı entitlement sanıyordu | `probe.go` |
+| `decodeInto` harita yeniden kullanınca **birleştiriyor**, temizlemiyor (`encoding/json`) — eski `auth_url` ikinci cevaptan kalıyordu | `claude_sub_test.go` |
+
+## Doğrulama
+
+- `CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` — temiz
+- `go test -tags sqlite_fts5 ./... -race -count=1` — **55 paket, 0 FAIL**
+- `flutter analyze lib/ test/` — **7 bulgu, hepsi önceden var olan info** (5 lib + 2 test)
+- `flutter test` — **424/424** (oturum başında 412; +12)
+- Rule #8 grep — dokunulan 7 `.dart` dosyasında **boş**; yeni (untracked) sekme
+  dosyası ayrıca kontrol edildi, çünkü `git diff --name-only` yeni dosyaları
+  listelemiyor
+- **18 mutasyon** uygulandı, hepsi ilgili testi kırmızı yaptı (4 provider kancası,
+  6 claudesub, 5 claudeauth/app, 4 e2e… toplam 19; her biri tek tek doğrulandı)
+
+## Repo hijyeni
+
+`gofmt -w internal/app/` (göreli dizin) 4 dokunulmamış dosyayı bozdu — bir yorum
+içinde `s''udo` → `s”udo` dönüşmüştü. `git checkout` ile geri alındı. **Bundan
+sonra `gofmt -w` yerine dosya listesi verin.**
+
+---
+
 # Handoff — 2026-09-29 (öğleden sonra) — Uzun işlemler: gerçek takılma + "takıldı mı?" arayüzü
 
 ## Ne istendi

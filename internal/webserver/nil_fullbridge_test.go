@@ -73,6 +73,11 @@ func TestHandlers_NoFullBridge(t *testing.T) {
 		{"DevGatewayRotateToken", http.MethodPost, "/api/dev-gateway/token/rotate", s.handleDevGatewayRotateToken, http.StatusMethodNotAllowed},
 		{"AnthropicMessages", http.MethodPost, "/v1/messages", s.handleAnthropicMessages, http.StatusServiceUnavailable},
 		{"DevGatewayLogs", http.MethodGet, "/api/dev-gateway/logs", s.handleDevGatewayLogs, http.StatusMethodNotAllowed},
+		// The two subscription-account connect surfaces. google-account was
+		// missing here when gemini-sub shipped — its nil-bridge guard was
+		// correct but untested, so a refactor could have dropped it silently.
+		{"DevGatewayGoogleAccount", http.MethodGet, "/api/dev-gateway/google-account", s.handleGoogleAccountConnection, http.StatusServiceUnavailable},
+		{"DevGatewayClaudeAccount", http.MethodGet, "/api/dev-gateway/claude-account", s.handleClaudeAccountConnection, http.StatusServiceUnavailable},
 		{"FileBrowse", http.MethodGet, "/api/files/browse", s.handleFileBrowse, http.StatusNotImplemented},
 		{"OutboxDownload", http.MethodGet, "/api/files/outbox/x", s.handleOutboxDownload, http.StatusNotFound},
 	}

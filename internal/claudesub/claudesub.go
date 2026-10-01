@@ -25,6 +25,7 @@ package claudesub
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	"memo/internal/logx"
@@ -51,7 +52,14 @@ type Manager struct {
 	mu    sync.Mutex
 	tok   *tokenStore
 	token *oauth2.Token // nil == not connected
-	flow  *authFlow     // in-progress OAuth flow, if any
+	// source records how the current token was obtained — one of the
+	// AdoptResult.Source values, or "browser" for our own OAuth flow. It is
+	// NOT cosmetic: the connect surface reports it, and a user who is
+	// connected because we adopted their Claude Code login needs to be told
+	// that, not shown a "signed in through the browser" story that never
+	// happened. Empty only before any token exists.
+	source string
+	flow   *authFlow // in-progress OAuth flow, if any
 
 	// refreshMu serializes the actual "refresh the access token with Anthropic"
 	// step across every persistingTokenSource — see TokenSource's doc comment.
@@ -83,7 +91,7 @@ func Default() *Manager {
 		// to Claude Code's file on adopt — only when a refresh rotates the token
 		// (adopt.go's writeBackRefreshed).
 		if res := AdoptLocal(); res.Token != nil {
-			m.token = res.Token
+			m.token, m.source = res.Token, res.Source
 			logx.Printf("claudesub: adopted an existing Claude Code login from %s", res.Source)
 		}
 		defaultMgr = m
@@ -99,8 +107,31 @@ func newManager(ts *tokenStore) *Manager {
 	m := &Manager{tok: ts}
 	if t, ok := ts.load(); ok {
 		m.token = t
+		// A token we persisted earlier came from our own OAuth flow; adoption
+		// always writes through Adopt, which sets the real source.
+		m.source = "browser"
 	}
 	return m
+}
+
+// ResetForTests drops the process-wide Manager so the next Default() rebuilds
+// it. Exists for the same reason config.ResetForTests does: Default() caches a
+// singleton, so one test's adopted token would otherwise leak into the next
+// test and make an unrelated assertion pass or fail for the wrong reason.
+// Not a production API — nothing outside tests should call it.
+func ResetForTests() {
+	defaultMu.Lock()
+	defaultMgr = nil
+	defaultMu.Unlock()
+}
+
+// Source reports how the current token was obtained: an AdoptResult.Source
+// value ("env", "claude-code-file", "macos-keychain") or "browser" for our own
+// OAuth flow. Empty when nothing is connected.
+func (m *Manager) Source() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.source
 }
 
 // Connected reports whether a token is present. It does not verify the token
@@ -110,4 +141,29 @@ func (m *Manager) Connected() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.token != nil
+}
+
+// Adopt installs a token that came from somewhere other than our own OAuth
+// flow — a Claude Code login found on this machine, or a setup token the user
+// pasted in. It replaces whatever was there and persists encrypted, so the
+// refresh path works exactly as it does for a token we obtained ourselves.
+//
+// source is recorded so the UI can report what actually happened; it is
+// informational only.
+func (m *Manager) Adopt(res AdoptResult) error {
+	if res.Token == nil || res.Token.AccessToken == "" {
+		return fmt.Errorf("claudesub: nothing to adopt")
+	}
+	m.mu.Lock()
+	m.token = res.Token
+	m.source = res.Source
+	m.mu.Unlock()
+	if err := m.tok.save(res.Token); err != nil {
+		// Not fatal: the token works for this session either way, and losing
+		// it on restart is a re-adoption the user can trigger by clicking
+		// Connect again.
+		logx.Printf("claudesub: persist adopted token: %v", err)
+	}
+	m.invalidateModels()
+	return nil
 }

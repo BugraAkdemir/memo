@@ -228,6 +228,7 @@ func (m *Manager) CompleteAuth(ctx context.Context, code, state string) error {
 
 	m.mu.Lock()
 	m.token = t
+	m.source = "browser"
 	m.flow = nil
 	m.mu.Unlock()
 	if err := m.tok.save(t); err != nil {
@@ -566,6 +567,7 @@ func refresh(ctx context.Context, tok *oauth2.Token) (*oauth2.Token, bool, error
 func (m *Manager) Disconnect() error {
 	m.mu.Lock()
 	m.token = nil
+	m.source = ""
 	m.flow = nil
 	m.mu.Unlock()
 	m.invalidateModels()

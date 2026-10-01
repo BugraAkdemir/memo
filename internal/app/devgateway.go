@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"memo/internal/claudesub"
 	"memo/internal/config"
 	"memo/internal/geminisub"
 	"memo/internal/memory"
@@ -105,6 +106,16 @@ func (a *App) ListGatewayModels() []models.GatewayModel {
 			// model, not just the marker's default.
 			if p.Type == provider.ProviderGeminiSub {
 				if live := geminisub.Default().CachedModels(); len(live) > 0 {
+					for _, id := range live {
+						out = append(out, models.GatewayModel{ID: string(p.Type) + "/" + id, Type: string(p.Type)})
+					}
+					continue
+				}
+			}
+			// claude-sub: same expansion, over the account's live
+			// GET /v1/models list rather than a hand-kept catalogue.
+			if p.Type == provider.ProviderClaudeSub {
+				if live := claudesub.Default().CachedModels(); len(live) > 0 {
 					for _, id := range live {
 						out = append(out, models.GatewayModel{ID: string(p.Type) + "/" + id, Type: string(p.Type)})
 					}

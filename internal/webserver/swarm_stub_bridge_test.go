@@ -467,16 +467,25 @@ func (b *swarmStubBridge) DevGatewayChat(ctx context.Context, modelSpec string, 
 }
 func (b *swarmStubBridge) RecordGatewayLog(modelSpec string, stream, hasTools bool, requestText, responseText, errMsg string, duration time.Duration) {
 }
-func (b *swarmStubBridge) GetGatewayLogs() []models.GatewayLogEntry                      { return nil }
-func (b *swarmStubBridge) MaybeSaveGatewayMemory(userMsg, reply string)                  {}
-func (b *swarmStubBridge) GetClaudeCodeCLIConnected() bool                               { return false }
-func (b *swarmStubBridge) GetClaudeCodeCLIModel() string                                 { return "" }
-func (b *swarmStubBridge) ConnectClaudeCodeCLI(baseURL, model string) error              { return nil }
-func (b *swarmStubBridge) DisconnectClaudeCodeCLI() error                                { return nil }
-func (b *swarmStubBridge) GoogleAccountState() (bool, string, string)                    { return false, "", "" }
-func (b *swarmStubBridge) StartGoogleAuth() (string, error)                              { return "", nil }
-func (b *swarmStubBridge) SetGoogleAccountModel(model string) error                      { return nil }
-func (b *swarmStubBridge) DisconnectGoogleAccount() error                                { return nil }
+func (b *swarmStubBridge) GetGatewayLogs() []models.GatewayLogEntry         { return nil }
+func (b *swarmStubBridge) MaybeSaveGatewayMemory(userMsg, reply string)     {}
+func (b *swarmStubBridge) GetClaudeCodeCLIConnected() bool                  { return false }
+func (b *swarmStubBridge) GetClaudeCodeCLIModel() string                    { return "" }
+func (b *swarmStubBridge) ConnectClaudeCodeCLI(baseURL, model string) error { return nil }
+func (b *swarmStubBridge) DisconnectClaudeCodeCLI() error                   { return nil }
+func (b *swarmStubBridge) GoogleAccountState() (bool, string, string)       { return false, "", "" }
+func (b *swarmStubBridge) StartGoogleAuth() (string, error)                 { return "", nil }
+func (b *swarmStubBridge) SetGoogleAccountModel(model string) error         { return nil }
+func (b *swarmStubBridge) DisconnectGoogleAccount() error                   { return nil }
+func (b *swarmStubBridge) ClaudeAccountState() (bool, string, string, string) {
+	return false, "", "", ""
+}
+func (b *swarmStubBridge) ConnectClaudeAccount() (bool, string, string, string, error) {
+	return false, "", "", "", nil
+}
+func (b *swarmStubBridge) CompleteClaudeAuth(code, state string) error                   { return nil }
+func (b *swarmStubBridge) SetClaudeAccountModel(model string) error                      { return nil }
+func (b *swarmStubBridge) DisconnectClaudeAccount() error                                { return nil }
 func (b *swarmStubBridge) GetProviders() []provider.ProviderConfig                       { return nil }
 func (b *swarmStubBridge) UpdateProvider(cfg provider.ProviderConfig) error              { return nil }
 func (b *swarmStubBridge) DeleteProvider(pt provider.ProviderType, name ...string) error { return nil }

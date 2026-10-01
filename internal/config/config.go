@@ -508,6 +508,33 @@ type DevGatewayConfig struct {
 	// display email. The token itself lives encrypted under
 	// DataDir()/geminisub/, never here.
 	GeminiSub GeminiSubState `yaml:"gemini_sub" json:"gemini_sub"`
+
+	// ClaudeSub tracks the "connect Claude account" flow in Settings (see
+	// internal/app/claudeauth.go) — whether Memo holds a valid OAuth token for
+	// the claude-sub subscription provider, and a cached display label. The
+	// token itself lives encrypted under DataDir()/claudesub/, never here.
+	ClaudeSub ClaudeSubState `yaml:"claude_sub" json:"claude_sub"`
+}
+
+// ClaudeSubState is the frontend-facing state of the claude-sub connection.
+// All fields are display-only; the OAuth token is kept (encrypted) under
+// DataDir()/claudesub/, not in config.
+type ClaudeSubState struct {
+	Connected bool `yaml:"connected" json:"connected"`
+	// Account is a human-readable label for the connected subscription, e.g.
+	// the subscription tier or plan name Anthropic reports. Empty when
+	// unknown — unlike a Gemini account there is no email to show here, since
+	// the OAuth scope set this uses does not include a userinfo endpoint.
+	Account string `yaml:"account" json:"account"`
+	// Source records HOW the account was connected, so the UI can say what
+	// actually happened instead of a bare "connected": "env",
+	// "claude-code-file", "macos-keychain", or "" when the browser flow was
+	// used. Purely informational.
+	Source string `yaml:"source" json:"source"`
+	// Model is the currently selected model id for the claude-sub marker
+	// provider (e.g. "claude-sonnet-5"). The user picks it in the Claude
+	// Subscription settings tab from the account's live model list.
+	Model string `yaml:"model" json:"model"`
 }
 
 // GeminiSubState is the frontend-facing state of the gemini-sub Google

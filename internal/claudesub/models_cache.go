@@ -61,6 +61,19 @@ const modelsTTL = 15 * time.Minute
 // the account may use, and the first successful fetch discards it.
 var fallbackModels = []string{"claude-haiku-4-5-20251001"}
 
+// CachedModels returns the live list if one has been fetched this process, with
+// no TTL check — this is what ListGatewayModels wants, since it is showing
+// models to an external tool on a UI refresh rather than answering "is this
+// dropdown stale?". Returns nil when nothing has been fetched yet.
+func (m *Manager) CachedModels() []string {
+	m.models.mu.Lock()
+	defer m.models.mu.Unlock()
+	if len(m.models.models) == 0 {
+		return nil
+	}
+	return append([]string(nil), m.models.models...)
+}
+
 // cachedModels returns the live list if it has been fetched within modelsTTL.
 func (m *Manager) cachedModels() ([]string, bool) {
 	m.models.mu.Lock()

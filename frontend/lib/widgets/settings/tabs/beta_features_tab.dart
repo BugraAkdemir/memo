@@ -140,6 +140,14 @@ class _BetaFeaturesTabState extends ConsumerState<BetaFeaturesTab> {
               body: L10n.t('beta_item_gemini_sub_desc'),
               enabled: beta,
             ),
+            // Same gate, same reason: listed here because this page promises
+            // that everything the switch unlocks is named on it.
+            _BetaFeatureRow(
+              icon: Icons.key_outlined,
+              title: L10n.t('beta_item_claude_sub_title'),
+              body: L10n.t('beta_item_claude_sub_desc'),
+              enabled: beta,
+            ),
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(12),

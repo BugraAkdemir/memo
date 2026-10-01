@@ -277,7 +277,8 @@ class _AppShellState extends ConsumerState<AppShell> {
         ref.invalidate(incognitoProvider);
         ref.invalidate(agentAutoPermissionProvider);
         // ClaudeCodeCLIConnectedNotifier/googleAccountProvider/
-        // DreamSettingsNotifier are all already correctly gated in their
+        // claudeAccountProvider/DreamSettingsNotifier are all already
+        // correctly gated in their
         // own build() (authGateBlocked -> safe default, same as every
         // other AsyncNotifier in this list) but were never invalidated
         // here, so a build() landing during the gate window stayed on
@@ -287,6 +288,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         // always-visible chat UI, but the same class of bug.
         ref.invalidate(claudeCodeCLIConnectedProvider);
         ref.invalidate(googleAccountProvider);
+        ref.invalidate(claudeAccountProvider);
         ref.invalidate(dreamSettingsProvider);
         // Same shape, lowest risk of the three (autoDispose + only mounted
         // while the Task Loop settings tab is actually open) — added for

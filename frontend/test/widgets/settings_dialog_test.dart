@@ -245,4 +245,25 @@ void main() {
     expect(find.text(L10n.t('tab_gemini_subscription')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+      'Claude Subscription tab is hidden when beta features are off',
+      (tester) async {
+    await _pumpSettingsDialog(tester);
+    expect(find.text(L10n.t('tab_claude_subscription')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'Claude Subscription tab appears once beta features are turned on',
+      (tester) async {
+    await _pumpSettingsDialog(tester, initialPrefs: {
+      'memo_beta_features': true,
+    });
+    await tester.scrollUntilVisible(
+        find.text(L10n.t('tab_claude_subscription')), 150,
+        scrollable: _railScrollable);
+    expect(find.text(L10n.t('tab_claude_subscription')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

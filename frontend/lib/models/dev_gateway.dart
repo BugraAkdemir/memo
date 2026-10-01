@@ -63,6 +63,64 @@ class GoogleAccountState {
   }
 }
 
+/// State of the Settings → Claude Subscription "connect Claude account" flow
+/// for the claude-sub provider — mirrors the {"connected", "account",
+/// "source", "model"} response from GET/POST
+/// /api/dev-gateway/claude-account.
+///
+/// Unlike [GoogleAccountState] there is no email to show: the OAuth scope set
+/// claude-sub uses has no userinfo endpoint. `source` says how the connection
+/// happened instead ("env", "claude-code-file", "macos-keychain", "browser",
+/// "adopted"), which is the only thing that explains to a user why clicking
+/// Connect did or did not open a browser.
+class ClaudeAccountState {
+  final bool connected;
+  final String account;
+  final String source;
+  final String model;
+
+  const ClaudeAccountState({
+    this.connected = false,
+    this.account = '',
+    this.source = '',
+    this.model = '',
+  });
+
+  factory ClaudeAccountState.fromJson(Map<String, dynamic> json) {
+    return ClaudeAccountState(
+      connected: json['connected'] as bool? ?? false,
+      account: json['account'] as String? ?? '',
+      source: json['source'] as String? ?? '',
+      model: json['model'] as String? ?? '',
+    );
+  }
+
+  /// True when the connection came from a Claude Code login already on this
+  /// machine rather than from the browser flow — the case where no browser
+  /// opened, and the UI should say so rather than look broken.
+  bool get adoptedLocally => source == 'env' || source == 'claude-code-file' || source == 'macos-keychain';
+}
+
+/// Result of one POST {"connect": true} to /api/dev-gateway/claude-account.
+///
+/// Exactly one of the two outcomes is meaningful: either `connected` is true
+/// (a local Claude Code login was adopted and nothing else has to happen), or
+/// `authUrl` + `state` are set and the user has to complete the hosted flow by
+/// hand. `source` is informational either way.
+class ClaudeConnectAttempt {
+  final bool connected;
+  final String source;
+  final String authUrl;
+  final String state;
+
+  const ClaudeConnectAttempt({
+    this.connected = false,
+    this.source = '',
+    this.authUrl = '',
+    this.state = '',
+  });
+}
+
 class GatewayModel {
   final String id;
   final String type;

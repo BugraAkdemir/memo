@@ -31,12 +31,18 @@ func (s *Server) handleClaudeAccountConnection(w http.ResponseWriter, r *http.Re
 	}
 	writeState := func() {
 		connected, account, source, model := s.fullBridge.ClaudeAccountState()
-		writeJSON(w, map[string]any{
+		body := map[string]any{
 			"connected": connected,
 			"account":   account,
 			"source":    source,
 			"model":     model,
-		})
+		}
+		// May legitimately be absent: the probe runs in the background after
+		// connecting, so the first GET after a connect has no table yet.
+		if caps := s.fullBridge.ClaudeCapabilities(); caps != nil {
+			body["capabilities"] = caps
+		}
+		writeJSON(w, body)
 	}
 
 	switch r.Method {

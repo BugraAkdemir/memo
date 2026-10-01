@@ -69,6 +69,7 @@ type Manager struct {
 	refreshMu sync.Mutex
 
 	models modelsCache // cached live model list (see models.go)
+	probe  probeCache  // last capability measurement (see probe.go)
 }
 
 var (
@@ -165,5 +166,6 @@ func (m *Manager) Adopt(res AdoptResult) error {
 		logx.Printf("claudesub: persist adopted token: %v", err)
 	}
 	m.invalidateModels()
+	m.invalidateProbe()
 	return nil
 }

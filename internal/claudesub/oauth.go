@@ -235,6 +235,7 @@ func (m *Manager) CompleteAuth(ctx context.Context, code, state string) error {
 		logx.Printf("claudesub: save token after exchange: %v", err)
 	}
 	m.invalidateModels()
+	m.invalidateProbe()
 	f.finish(t, nil)
 	return nil
 }
@@ -571,6 +572,7 @@ func (m *Manager) Disconnect() error {
 	m.flow = nil
 	m.mu.Unlock()
 	m.invalidateModels()
+	m.invalidateProbe()
 	return m.tok.clear()
 }
 

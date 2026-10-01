@@ -150,7 +150,52 @@ func (a *App) finalizeClaudeConnect(source string) error {
 	}
 	cfg := a.cfg
 	a.cfgMu.Unlock()
-	return config.Save(cfg)
+	if err := config.Save(cfg); err != nil {
+		return err
+	}
+
+	a.measureClaudeCapabilities(marker.Model)
+	return nil
+}
+
+// measureClaudeCapabilities probes what the account can actually do and, when
+// it turns out to serve the 1M window, raises the marker provider's context
+// budget to match.
+//
+// This runs in the background on purpose: it is four tiny requests, and the
+// user has just finished a connect flow they are waiting to see the result of.
+// Blocking that on 45s of network is not acceptable, and nothing downstream
+// depends on the answer — the first real turn uses the conservative 200K budget
+// either way. The probe's real job is to make the NEXT turn correct and to give
+// the user a table explaining a class of otherwise inexplicable failures.
+func (a *App) measureClaudeCapabilities(model string) {
+	parent := a.lifecycleCtx
+	if parent == nil {
+		parent = context.Background()
+	}
+	goRecover("claudeauth.probe", func() {
+		ctx, cancel := context.WithTimeout(parent, 60*time.Second)
+		defer cancel()
+		caps := claudesub.Default().Probe(ctx, model)
+		if !caps.OneMContext || caps.Model != model {
+			return
+		}
+		// Re-write the marker with a 1M budget. modelContextWindow consults
+		// ContextTokens before its per-type fallbacks, so this is the only
+		// thing that has to change for the agent's truncation to stop
+		// compacting a conversation that had room to spare.
+		a.cfgMu.RLock()
+		cfgMgr := a.providerCfgMgr
+		a.cfgMu.RUnlock()
+		if cfgMgr == nil {
+			return
+		}
+		marker := claudeSubMarkerConfig(model)
+		marker.ContextTokens = 1024 * 1024
+		if err := a.UpdateProvider(marker); err != nil {
+			logx.Printf("claudeauth: raise context budget after 1M probe: %v", err)
+		}
+	})
 }
 
 // claudeSubAccountLabel is what the settings tab shows as the connected
@@ -234,4 +279,25 @@ func (a *App) DisconnectClaudeAccount() error {
 	cfg := a.cfg
 	a.cfgMu.Unlock()
 	return config.Save(cfg)
+}
+
+// ClaudeCapabilities exposes the measured capability table to the REST surface.
+// Returns nil before the first probe finishes, which is the honest answer: the
+// probe fires in the background after connecting, so "not measured yet" and
+// "measured, nothing works" must not look the same to a caller.
+func (a *App) ClaudeCapabilities() map[string]any {
+	caps := claudesub.Default().LastCapabilities()
+	if caps == nil {
+		return nil
+	}
+	return map[string]any{
+		"model":               caps.Model,
+		"plain":               caps.Plain,
+		"tools":               caps.Tools,
+		"thinking":            caps.Thinking,
+		"one_m_context":       caps.OneMContext,
+		"entitlement_blocked": caps.EntitlementBlocked,
+		"detail":              caps.Detail,
+		"measured_at":         caps.MeasuredAt.UTC().Format(time.RFC3339),
+	}
 }

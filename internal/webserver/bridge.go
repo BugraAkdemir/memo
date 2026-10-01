@@ -276,6 +276,10 @@ type FullBridge interface {
 	CompleteClaudeAuth(code, state string) error
 	SetClaudeAccountModel(model string) error
 	DisconnectClaudeAccount() error
+	// ClaudeCapabilities returns the measured capability table, or nil if no
+	// probe has run yet. The probe fires in the background after a connect, so
+	// the first GET after connecting legitimately returns null.
+	ClaudeCapabilities() map[string]any
 
 	// Providers
 	GetProviders() []provider.ProviderConfig

@@ -48,6 +48,12 @@ const requiredBetas = "oauth-2025-04-20," +
 	"advanced-tool-use-2025-11-20," +
 	"effort-2025-11-24"
 
+// oneMBeta is the 1M-context flag. It is sent only on requests whose capability
+// the probe measured as supported, so an account without 1M access is never
+// asked for it — see oneMContextSupported in probe.go for why the reactive
+// alternative is worse here.
+const oneMBeta = "context-1m-2025-08-07"
+
 // claudeSubProvider is the provider.Provider for ProviderClaudeSub.
 //
 // It owns NO wire translation. Every call is carried by a claude.go-derived
@@ -154,10 +160,21 @@ func (m *Manager) decorateRequest(ctx context.Context, req *http.Request) error 
 		return &provider.ProviderError{Provider: provider.ProviderClaudeSub, Err: err}
 	}
 	req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
-	req.Header.Set("anthropic-beta", requiredBetas)
+	req.Header.Set("anthropic-beta", m.betasForRequest())
 	req.Header.Set("user-agent", userAgent())
 	req.Header.Set("x-app", "cli")
 	return nil
+}
+
+// betasForRequest is the beta set for a real request: the required flags, plus
+// the 1M-context flag only when a probe measured this account as entitled to
+// it. Sending the 1M beta speculatively is what hermes-agent does with a
+// reactive recovery attached; there is no such recovery to attach it to here.
+func (m *Manager) betasForRequest() string {
+	if m.oneMContextSupported() {
+		return requiredBetas + "," + oneMBeta
+	}
+	return requiredBetas
 }
 
 // userAgent identifies the request as the Claude Code client, which is part of

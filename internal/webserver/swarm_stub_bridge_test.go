@@ -486,6 +486,7 @@ func (b *swarmStubBridge) ConnectClaudeAccount() (bool, string, string, string, 
 func (b *swarmStubBridge) CompleteClaudeAuth(code, state string) error                   { return nil }
 func (b *swarmStubBridge) SetClaudeAccountModel(model string) error                      { return nil }
 func (b *swarmStubBridge) DisconnectClaudeAccount() error                                { return nil }
+func (b *swarmStubBridge) ClaudeCapabilities() map[string]any                            { return nil }
 func (b *swarmStubBridge) GetProviders() []provider.ProviderConfig                       { return nil }
 func (b *swarmStubBridge) UpdateProvider(cfg provider.ProviderConfig) error              { return nil }
 func (b *swarmStubBridge) DeleteProvider(pt provider.ProviderType, name ...string) error { return nil }

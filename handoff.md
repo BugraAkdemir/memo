@@ -1,3 +1,47 @@
+# Handoff — 2026-10-05 (gece) — "Uygulama açma" ve "canlı tarayıcı paneli" baştan test edildi, düzeltildi
+
+## İstek
+Kullanıcı: v4.6.0'ın bu iki özelliği "hiç biri doğru çalışmıyor" — detaylı analiz, kapsamlı test.
+
+## Nasıl test edildi
+İzole backend + `cmd/fakeprovider` (`[[tool …]]` direktifleriyle gerçek tool çağrıları) + yerel test sayfası
+(sayaç düğmesi, input, link, uzun içerik) + gerçek Chromium. Her hata önce ESKİ kodda canlı üretildi, sonra
+düzeltildi, sonra aynı senaryo + web arayüzünde (tarayıcı panesinde gerçek fare/klavye) tekrarlandı.
+
+## Bulunan ve düzeltilen hatalar
+| # | Hata (canlı kanıt) | Commit |
+|---|---|---|
+| 1 | Linux'ta "Spotify", "VS Code", "Discord", "Steam" → hepsi `executable file not found` | `f745d3f9` |
+| 2 | "Tarayıcıyı aç" → `xdg-open about:blank` exit 4 / takıldı, ama tool "açıldı" dedi + zombi süreç | `f745d3f9` |
+| 3 | Ekran görüntüsü 500x757, panel 420x900 varsayıyor → elle tıklama düğmeyi ıskalıyor (sayaç 0 kaldı) | `17e41b79`, `7f2d35dc` |
+| 4 | Adres çubuğunda `example.com` reddediliyor (ipucu metni tam bunu öneriyor) | `17e41b79` |
+| 5 | Chromium ölünce oturum sonsuza dek "context canceled", status yine active:true | `17e41b79` |
+| 6 | Panel yalnızca `browser_screenshot`'ta güncelleniyor; navigate/click/type/scroll → 0 kare | `ae90de66` |
+| 7 | Elle tıklamada ekran görüntüsü navigasyondan önce alınabiliyor | `22a178f2` |
+| 8 | Kullanıcı paneldeki sayfaya hiç yazamıyor → klavye satırı + `/api/browser/session/type` | `22a178f2`, `7f2d35dc` |
+
+## Doğrulama
+- `go build`/`vet` temiz; `go test ./... -race -count=1`: **55 paket, 0 FAIL**
+- `flutter analyze lib/ test/`: bilinen 7 info · `flutter test`: **434/434** · Rule #8 grep: temiz
+- 7 yeni gerçek-Chromium testi (hiçbiri skip değil) + launcher/applaunch birim testleri + e2e frame sayımı
+  + panel widget testi (gerçek 500x757 PNG'ye dokunuş). **13 mutasyon**, hepsi kırmızı (ikisi ilk turda kaçtı →
+  test eklendi).
+- Canlı: KCalc "Hesap Makinesi" adıyla açıldı (sonra kapatıldı), "tarayıcı" Firefox'u açtı, zombi yok; web
+  arayüzünde panelde şemasız adres, düğmeye tıklama (0→1), klavyeden yazma, link takibi, ajanın sohbetten paneli
+  sürmesi — hepsi çalıştı.
+
+## Dürüstlük notları / açık işler
+- **Windows ve macOS yolları test edilmedi** (bu makine Linux). `open_app`'in oradaki kodu değiştirilmedi;
+  tarayıcı takma adı orada hâlâ `about:blank` açıyor — çalışıp çalışmadığı bilinmiyor.
+- Otomatik izin (`/api/agent/auto-permission`) backend yeniden başlayınca kapanıyor (bellekte tutulan ayar —
+  `project_memo_nonpersisted_toggle_desync` sınıfı). Bu oturumda düzeltilmedi.
+- Panelin adres çubuğu ajanın verdiği ham adresi gösteriyor (normalize edilmiş hali değil) — kozmetik.
+- Test sırasında kullanıcının ekranında bir Firefox penceresi açıldı; `xdg-open about:blank` denemeleri KDE hata
+  penceresi bırakmış olabilir.
+- `internal/webserver/webapp/` (gitignore'lu) güncel web build ile yenilendi.
+
+---
+
 # Handoff — 2026-10-05 (akşam) — PR #20 incelemesi, kilit yarışı, v4.6.0 notları, iki PR merge
 
 ## Ne yapıldı

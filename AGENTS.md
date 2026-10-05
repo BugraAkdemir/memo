@@ -339,6 +339,22 @@ confirm every single time before tagging or pushing a tag.
   `oauth:tokenCache` is base64 around Electron `safeStorage` (`v11`-prefixed) ciphertext keyed by the OS keyring —
   verified on this machine. Desktop and Code are the same account, so signing into Code once covers it; the UI says so.
 
+**open_app and the interactive browser pane (2026-10-05 — all four found broken live, then fixed)**
+- **On Linux, never exec the app name the model gives you.** It is a display name ("Spotify", "VS Code"); binaries
+  are lowercase and Flatpak/Snap apps are not on PATH. `open_app` resolves it through the Desktop Entry registry
+  (`internal/agent/tools/applaunch.go`) and starts it with `startDetached` (Setsid, always reaped, an immediate
+  non-zero exit is an error). `xdg-open about:blank` is NOT "open the browser" — about: has no handler on a normal
+  desktop; the default browser's own entry is started instead. Anything Started must be Waited on, or it is a zombie.
+- **Every screenshot is exactly `browserengine.ViewportWidth x ViewportHeight` because of `EmulateViewport`, not
+  `WindowSize`.** Headless Chromium turned WindowSize(420, 900) into 500x757 screenshots and every pane click missed.
+  The pane maps taps through the PNG's real size (`pngPixelSize`), with the constant only as a fallback — keep both.
+- **Every page-changing browser tool pushes a frame itself** (`tools.pushFrame` + `framePushingTools` in
+  `internal/app/browser_frame.go`). The pane used to depend on the model calling `browser_screenshot`, which it rarely
+  did. A new page-changing tool must be added to both.
+- **A session whose Chromium died must be dropped, not reused.** `Session.dead()` (its contexts are cancelled);
+  `GetSession`/`StartSession` replace it. Before this, a dead session failed every action forever and kept its idle
+  timer alive by being touched.
+
 **Riverpod / async notifiers**
 - Riverpod can rebuild the **same `Notifier`/`AsyncNotifier` class instance** (not a fresh one) when a provider is invalidated while something is still watching it — confirmed empirically in this codebase (`build()` → `onDispose` → `build()` again, same object), not just a theoretical edge case. **Never use a plain `bool` "am I disposed" flag that's only initialized once in a field declaration or reset unconditionally in `build()`** — both are wrong: never resetting it means it stays permanently `true` after the *first* such cycle (poisoning every future call for the rest of the session — this was the real, final root cause of the 2026-07-14 "durdur" button bug, three fix-attempts deep); resetting it unconditionally in `build()` "un-disposes" an *old*, still-running, abandoned call from the previous generation, letting it clobber shared state meant for the new one (this is what BUG-H2 already guards against — see `messages_notifier_dispose_test.dart`). **Use a monotonically-incrementing `int _generation` counter instead**: bump it once per `build()`; every async method captures `final myGeneration = _generation;` at its own entry and only touches shared state while `_generation == myGeneration` still holds. See `MessagesNotifier` in `frontend/lib/providers/chat_provider.dart` for the reference implementation, and `messages_notifier_stale_disposed_flag_test.dart` for the regression test that forces this exact instance-reuse cycle.
 

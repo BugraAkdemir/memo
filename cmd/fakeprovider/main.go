@@ -28,6 +28,10 @@
 //	[[loop N]]                 keep calling list_directory until N tool
 //	                           results are in the conversation (long agent turn)
 //
+// It also stands in for a Claude subscription (claude-sub): a hosted OAuth
+// authorize page, the token endpoint, and the subscription gate on Bearer
+// traffic — see claudesub.go.
+//
 // Without a directive the reply echoes the user message. Once a tool result
 // comes back, the reply reports it, so an agent loop terminates.
 //
@@ -75,6 +79,8 @@ func main() {
 	mux.HandleFunc("/v1/models", handleModels)
 	mux.HandleFunc("/v1/chat/completions", handleOpenAI)
 	mux.HandleFunc("/v1/messages", handleAnthropic)
+	mux.HandleFunc("/oauth/authorize", handleSubAuthorize)
+	mux.HandleFunc("/v1/oauth/token", handleSubToken)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		record(r.URL.Path, nil, []string{"unknown route " + r.Method + " " + r.URL.Path}, 404)
 		http.Error(w, `{"error":{"message":"unknown route"}}`, http.StatusNotFound)
@@ -101,13 +107,17 @@ func record(route string, body map[string]any, violations []string, status int) 
 }
 
 func handleModels(w http.ResponseWriter, r *http.Request) {
+	if subBearer(r) != "" && !subAuthOK(w, r, "/v1/models", nil) {
+		return
+	}
 	record("/v1/models", nil, nil, 200)
 	w.Header().Set("Content-Type", "application/json")
 	io.WriteString(w, `{"object":"list","data":[`+
 		`{"id":"fake-chat","object":"model","type":"model"},`+
 		`{"id":"fake-reasoner","object":"model","type":"model"},`+
 		`{"id":"claude-opus-5","object":"model","type":"model"},`+
-		`{"id":"claude-sonnet-4-20250514","object":"model","type":"model"}]}`)
+		`{"id":"claude-sonnet-4-20250514","object":"model","type":"model"},`+
+		`{"id":"claude-haiku-4-5-20251001","object":"model","type":"model"}]}`)
 }
 
 // ---------------------------------------------------------------- directives
@@ -484,6 +494,9 @@ func handleAnthropic(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("anthropic-version") == "" {
 		record("/v1/messages", body, []string{"missing anthropic-version header"}, 400)
 		anError(w, 400, "anthropic-version header is required")
+		return
+	}
+	if subGate(w, r, body) {
 		return
 	}
 	violations := validateAnthropic(body)

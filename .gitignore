@@ -42,6 +42,7 @@ data/machine.key
 
 # gemini-sub OAuth token — CONTAINS A LIVE (encrypted) CREDENTIAL, never commit
 data/geminisub/
+data/claudesub/
 
 # Config (user-specific, never commit)
 config/config.yaml
@@ -115,6 +116,7 @@ internal/app/data/machine.key
 internal/app/data/agent-audit.jsonl
 internal/agent/data/agent-backups/history.json
 internal/geminisub/data/
+internal/claudesub/data/
 data/tasklists/
 .gitignore
 .freebuff/

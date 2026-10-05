@@ -1156,6 +1156,72 @@ class MemoApiClient {
     return GoogleAccountState.fromJson(data);
   }
 
+  // ── claude-sub ────────────────────────────────────────────────────────────
+
+  Future<ClaudeAccountState> getClaudeAccountState() async {
+    final res = await _dio.get('/api/dev-gateway/claude-account');
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return ClaudeAccountState.fromJson(data);
+  }
+
+  /// Tries to sign in WITHOUT a browser.
+  ///
+  /// When the machine already holds a Claude Code login (or a
+  /// CLAUDE_CODE_OAUTH_TOKEN), that IS the connection and [ClaudeConnectAttempt.connected]
+  /// comes back true — no browser, nothing to paste. Only when nothing local
+  /// was found does the backend start Anthropic's hosted flow, and then
+  /// `authUrl` and `state` are populated and the user has to paste a code back
+  /// via [completeClaudeAuth].
+  ///
+  /// There is no polling here, deliberately: Anthropic's OAuth is not a
+  /// loopback flow, so there is no callback to arrive on and nothing would ever
+  /// change while the user is away.
+  Future<ClaudeConnectAttempt> connectClaudeAccount() async {
+    final res = await _dio.post(
+      '/api/dev-gateway/claude-account',
+      data: {'connect': true},
+    );
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return ClaudeConnectAttempt(
+      connected: data['connected'] as bool? ?? false,
+      source: data['source'] as String? ?? '',
+      authUrl: data['auth_url'] as String? ?? '',
+      state: data['state'] as String? ?? '',
+    );
+  }
+
+  /// Finishes the hosted flow with the code Anthropic's callback page showed.
+  ///
+  /// [code] may be the bare code or the whole URL the browser ended on — the
+  /// state is read out of the latter, so there is nothing else to copy.
+  Future<ClaudeAccountState> completeClaudeAuth(String code, {String state = ''}) async {
+    final res = await _dio.post(
+      '/api/dev-gateway/claude-account',
+      data: {'code': code, 'state': state},
+    );
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return ClaudeAccountState.fromJson(data);
+  }
+
+  Future<ClaudeAccountState> disconnectClaudeAccount() async {
+    final res = await _dio.post(
+      '/api/dev-gateway/claude-account',
+      data: {'connect': false},
+    );
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return ClaudeAccountState.fromJson(data);
+  }
+
+  /// Switch which Claude model the claude-sub provider uses.
+  Future<ClaudeAccountState> setClaudeAccountModel(String model) async {
+    final res = await _dio.post(
+      '/api/dev-gateway/claude-account',
+      data: {'model': model},
+    );
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return ClaudeAccountState.fromJson(data);
+  }
+
   Future<List<GatewayModel>> getGatewayModels() async {
     final res = await _dio.get('/api/dev-gateway/models');
     final list = res.data;

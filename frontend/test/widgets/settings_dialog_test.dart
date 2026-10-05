@@ -245,4 +245,24 @@ void main() {
     expect(find.text(L10n.t('tab_gemini_subscription')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  // Claude Subscription is a Beta feature whose controls live INSIDE the Beta
+  // tab (beta_features_tab_test.dart), not a rail entry of its own. When it was
+  // a tab, its label/icon were inserted at index 26 while its content was
+  // `case 27`, so the rail said "Claude Subscription" and opened Code Mode
+  // Prompts (and the other way round). Guard that no such entry comes back.
+  testWidgets('Claude Subscription is not a settings tab of its own',
+      (tester) async {
+    await _pumpSettingsDialog(tester, initialPrefs: {
+      'memo_beta_features': true,
+    });
+    expect(find.text(L10n.t('beta_item_claude_sub_title')), findsNothing);
+    await tester.scrollUntilVisible(
+        find.text(L10n.t('code_submode_prompts_tab_title')), 150,
+        scrollable: _railScrollable);
+    await tester.tap(find.text(L10n.t('code_submode_prompts_tab_title')));
+    await tester.pumpAndSettle();
+    expect(find.text(L10n.t('claude_account_connect_desc')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }

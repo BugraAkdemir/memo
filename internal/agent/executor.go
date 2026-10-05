@@ -60,8 +60,8 @@ type Executor struct {
 	// skipped, not an error.
 	sessionManager *sessions.Manager
 
-	mu                sync.Mutex
-	pendingPerms      map[string]*PermissionRequest
+	mu           sync.Mutex
+	pendingPerms map[string]*PermissionRequest
 	// logs holds the most recent entries in memory (see logEvent's H10 doc
 	// comment for why they're also written to auditLogFile) — a cap here
 	// is fine precisely because the file is now the durable copy; nothing
@@ -70,8 +70,8 @@ type Executor struct {
 	// the file.
 	logs              []AgentLogEntry
 	auditLogFile      *os.File // nil if it couldn't be opened; logging then falls back to logx only
-	bypassPermissions bool // sistem yönetimi açıkken true
-	autoPermission    bool // kullanıcı Shift+Tab ile açtığında tüm izinleri otomatik onayla
+	bypassPermissions bool     // sistem yönetimi açıkken true
+	autoPermission    bool     // kullanıcı Shift+Tab ile açtığında tüm izinleri otomatik onayla
 	// maxIters overrides the pipeline's default per-turn tool-call ceiling
 	// when > 0 (config.AgentMode.MaxIterations, set by the app at startup).
 	maxIters int
@@ -292,6 +292,16 @@ func modelContextWindow(router *provider.Router, modelName string) int {
 			switch p.Type {
 			case provider.ProviderGemini:
 				return 1024 * 1024
+			case provider.ProviderClaudeSub:
+				// The subscription endpoint can serve a 1M window, but only
+				// when the context-1m beta is sent AND the plan is entitled
+				// to it; without the beta it silently serves 200K. Budgeting
+				// 200K is the honest floor — truncation then errs toward
+				// compacting a conversation that did not need it, which is
+				// recoverable, rather than sending a request that overflows
+				// and losing the turn. Raised once the capability probe
+				// confirms the account's window.
+				return 200 * 1024
 			case provider.ProviderClaude, provider.ProviderCustomAnthropic:
 				return 200 * 1024
 			}

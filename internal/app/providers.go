@@ -13,6 +13,9 @@ import (
 	// Blank-imported for its init(), which registers gemini-sub with
 	// provider.RegisterConstructor — same import-cycle reason as agentcli.
 	_ "memo/internal/geminisub"
+	// Blank-imported for its init(), which registers claude-sub with
+	// provider.RegisterConstructor — same import-cycle reason as agentcli.
+	_ "memo/internal/claudesub"
 	"memo/internal/config"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
@@ -242,7 +245,8 @@ func (a *App) reinitProviderAndOrchestra() {
 // cfg.ActiveProvider) refers to a per-session provider that must not be
 // auto-restored as the sticky global active provider on startup — the
 // CLI-backed agents (Claude Code CLI, Codex CLI) and the subscription
-// provider gemini-sub. Unknown names report false rather than erroring;
+// providers gemini-sub / claude-sub. Unknown names report false rather than
+// erroring;
 // callers only use this to decide whether to keep an active-provider
 // selection, not to validate it.
 func isSessionProviderName(name string, configs []provider.ProviderConfig) bool {
@@ -250,7 +254,8 @@ func isSessionProviderName(name string, configs []provider.ProviderConfig) bool 
 		if p.Name == name {
 			return p.Type == provider.ProviderClaudeCodeCLI ||
 				p.Type == provider.ProviderCodexCLI ||
-				p.Type == provider.ProviderGeminiSub
+				p.Type == provider.ProviderGeminiSub ||
+				p.Type == provider.ProviderClaudeSub
 		}
 	}
 	return false

@@ -530,6 +530,34 @@ class L10n {
     'google_account_timeout':
         'Yetkilendirme zaman aşımına uğradı. Tekrar dene.',
     'google_account_error': 'Google hesabı işlemi başarısız: \${e}',
+    'claude_account_connect_desc':
+        'Claude modelleri hem Memo sohbetinde hem de yerel ağ geçidinde (localhost:8090/v1) "claude-sub/model" olarak kullanılabilir. Kayıt/anahtar gerekmez. Bu bilgisayarda Claude Code ile giriş yapmışsan butona basınca doğrudan bağlanır, tarayıcı açılmaz.',
+    'claude_account_connect_cta': 'Claude Hesabını Bağla',
+    'claude_account_connecting': 'Bağlanıyor…',
+    'claude_account_disconnect_cta': 'Çıkış Yap',
+    'claude_account_connected': 'Claude aboneliği bağlı',
+    'claude_account_adopted':
+        'Bu bilgisayardaki Claude Code oturumundan bağlandı, tarayıcı açılmadı.',
+    'claude_account_browser_needed':
+        'Claude Code oturumu bulunamadı. Aşağıdaki bağlantıyı aç ve kodu geri yapıştır.',
+    'claude_account_paste_label': 'Yetkilendirme kodu',
+    'claude_account_paste_hint':
+        'Tarayıcıda gördüğün kodu ya da adres çubuğundaki tüm bağlantıyı buraya yapıştır.',
+    'claude_account_paste_cta': 'Kodu Gönder',
+    'claude_account_usage_hint':
+        'Sohbette sağlayıcı olarak "Anthropic — Claude (subscription)" seç, ya da dışarıdan model adı olarak "claude-sub/<model>" kullan.',
+    'claude_account_model_label': 'Kullanılacak Model',
+    'claude_account_manual_link_hint':
+        'Tarayıcı açılmadıysa bu bağlantıyı elle aç:',
+    'claude_account_error': 'Claude hesabı işlemi başarısız: \${e}',
+    'claude_caps_title': 'Ölçülen yetenekler',
+    'claude_caps_measuring': 'Bu hesabın neler yapabildiği ölçülüyor…',
+    'claude_caps_plain': 'Sohbet',
+    'claude_caps_tools': 'Araçlar (ajan modu)',
+    'claude_caps_thinking': 'Düşünme',
+    'claude_caps_one_m': '1M token bağlam',
+    'claude_caps_blocked':
+        'Anthropic\'in abonelik geçidi bu hesapta bazı istekleri reddediyor. Bu bir kota sınırı değil; daha hafif bir model (ör. Haiku) dene.',
     'dev_gateway_settings_title': 'Ağ Geçidi Ayarları',
     'dev_gateway_system_prompt_label': 'Ek Sistem Talimatı',
     'dev_gateway_system_prompt_desc':
@@ -1037,6 +1065,9 @@ class L10n {
     'beta_item_gemini_sub_title': 'Gemini Aboneliği',
     'beta_item_gemini_sub_desc':
         'Google hesabınla giriş yapıp Gemini\'yi kendi aboneliğinle kullan (Ayarlar → Gemini Aboneliği).',
+    'beta_item_claude_sub_title': 'Claude Aboneliği',
+    'beta_item_claude_sub_desc':
+        'Claude Pro/Max aboneliğini Memo\'da kullan. Beta açıkken bağlantı ayarları hemen aşağıda görünür.',
     'tab_live_mode': 'Sesli Mod',
     'live_mode_tab_title': 'Sesli Mod',
     'live_mode_tab_desc':
@@ -2819,6 +2850,33 @@ class L10n {
     'google_account_manual_link_hint': "If the browser didn't open, open this link manually:",
     'google_account_timeout': 'Authorization timed out. Try again.',
     'google_account_error': 'Google account action failed: \${e}',
+    'claude_account_connect_desc':
+        'Claude models become usable as "claude-sub/model" both in Memo chat and on the local gateway (localhost:8090/v1). Nothing to register, no key. If Claude Code is already signed in on this machine, pressing the button connects straight away — no browser.',
+    'claude_account_connect_cta': 'Connect Claude Account',
+    'claude_account_connecting': 'Connecting…',
+    'claude_account_disconnect_cta': 'Sign Out',
+    'claude_account_connected': 'Claude subscription connected',
+    'claude_account_adopted':
+        'Connected from the Claude Code session on this machine — no browser was opened.',
+    'claude_account_browser_needed':
+        'No Claude Code session found. Open the link below and paste the code back here.',
+    'claude_account_paste_label': 'Authorization code',
+    'claude_account_paste_hint':
+        'Paste the code the page shows, or the whole URL from your address bar.',
+    'claude_account_paste_cta': 'Submit Code',
+    'claude_account_usage_hint':
+        'In chat, pick "Anthropic — Claude (subscription)" as the provider, or use the model name "claude-sub/<model>" from an external tool.',
+    'claude_account_model_label': 'Model to use',
+    'claude_account_manual_link_hint': "If the browser didn't open, open this link manually:",
+    'claude_account_error': 'Claude account action failed: \${e}',
+    'claude_caps_title': 'Measured capabilities',
+    'claude_caps_measuring': 'Measuring what this account can do…',
+    'claude_caps_plain': 'Chat',
+    'claude_caps_tools': 'Tools (agent mode)',
+    'claude_caps_thinking': 'Thinking',
+    'claude_caps_one_m': '1M-token context',
+    'claude_caps_blocked':
+        "Anthropic's subscription gate is refusing some requests on this account. This is not a quota limit; try a lighter model (e.g. Haiku).",
     'dev_gateway_settings_title': 'Gateway Settings',
     'dev_gateway_system_prompt_label': 'Extra System Instruction',
     'dev_gateway_system_prompt_desc':
@@ -3323,6 +3381,9 @@ class L10n {
     'beta_item_gemini_sub_title': 'Gemini Subscription',
     'beta_item_gemini_sub_desc':
         'Sign in with your Google account and use Gemini on your own subscription (Settings → Gemini Subscription).',
+    'beta_item_claude_sub_title': 'Claude Subscription',
+    'beta_item_claude_sub_desc':
+        'Use your Claude Pro/Max subscription inside Memo. While Beta is on, its connection settings appear right below.',
     'tab_live_mode': 'Live Mode',
     'live_mode_tab_title': 'Live Mode',
     'live_mode_tab_desc':

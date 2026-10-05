@@ -252,3 +252,32 @@ func TestSession_Navigate_RejectsFileURLBeforeTouchingChromium(t *testing.T) {
 		t.Fatal("Navigate(file:///etc/passwd) succeeded, want a refusal")
 	}
 }
+
+func TestNormalizeNavigateURL(t *testing.T) {
+	cases := map[string]string{
+		"example.com":               "https://example.com",
+		"  example.com/path?q=1  ":  "https://example.com/path?q=1",
+		"www.google.com":            "https://www.google.com",
+		"localhost:3000":            "http://localhost:3000",
+		"localhost":                 "http://localhost",
+		"127.0.0.1:8765/index.html": "http://127.0.0.1:8765/index.html",
+		"192.168.1.10":              "http://192.168.1.10",
+		"https://example.com":       "https://example.com",
+		"http://x.test":             "http://x.test",
+		"about:blank":               "about:blank",
+		"javascript:alert(1)":       "javascript:alert(1)", // left for validation to refuse
+		"file:///etc/passwd":        "file:///etc/passwd",  // likewise
+		"just words":                "just words",
+	}
+	for in, want := range cases {
+		if got := normalizeNavigateURL(in); got != want {
+			t.Errorf("normalizeNavigateURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+	// Normalizing must never turn a refused scheme into an accepted one.
+	for _, bad := range []string{"javascript:alert(1)", "file:///etc/passwd", "data:text/html,x"} {
+		if err := validateNavigateURL(normalizeNavigateURL(bad)); err == nil {
+			t.Errorf("%q became navigable after normalization", bad)
+		}
+	}
+}

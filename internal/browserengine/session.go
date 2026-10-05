@@ -41,6 +41,29 @@ var actionTimeout = 30 * time.Second
 
 var errSessionClosed = errors.New("browsersession: session is closed")
 
+// ViewportWidth/ViewportHeight are the exact CSS-pixel size every screenshot
+// has. BrowserPane maps a tap on the displayed image back to page
+// coordinates through this size, so it must hold exactly — and a window size
+// alone does not give that: with WindowSize(420, 900), headless Chromium
+// produced 500x757 screenshots (a 500px minimum window width, and the
+// height minus simulated browser chrome), so every manual click in the pane
+// landed ~50-70px off and missed what the user tapped (measured live: a tap
+// on a button's centre arrived at (11, 219), below the button).
+// EmulateViewport overrides the device metrics instead, which is exact.
+const (
+	ViewportWidth  = 420
+	ViewportHeight = 900
+)
+
+// settleDelay / settleTimeout bound how long an action that can navigate (a
+// click, Enter in a form) waits before its screenshot: a short pause for the
+// navigation to begin, then until the document reports complete. Without it
+// the screenshot raced the click and could show the page as it was before.
+var (
+	settleDelay   = 300 * time.Millisecond
+	settleTimeout = 3 * time.Second
+)
+
 // ErrBrowserNotInstalled wraps a resolveExecutable failure — no
 // Chromium-family browser could be found at all (system discovery came up
 // empty, and nothing was installed via Settings' one-click browser-engine
@@ -133,7 +156,7 @@ func startSession(ctx context.Context, onIdle func(*Session)) (*Session, error) 
 		// one. Matching the aspect ratio here means a responsive site
 		// renders the same narrow layout the pane actually shows, and fills
 		// the available space instead of shrinking into a corner of it.
-		chromedp.WindowSize(420, 900),
+		chromedp.WindowSize(ViewportWidth, ViewportHeight),
 		chromedp.Flag("disable-extensions", true),
 	)
 	// allocCtx is deliberately NOT derived from ctx as-is (ctx is normally an
@@ -154,7 +177,7 @@ func startSession(ctx context.Context, onIdle func(*Session)) (*Session, error) 
 	// "context canceled" despite tabCtx itself being untouched. Caught
 	// empirically: an earlier version of this function bounded this exact
 	// call and broke every real-Chromium test that followed it.
-	if err := chromedp.Run(tabCtx); err != nil {
+	if err := chromedp.Run(tabCtx, chromedp.EmulateViewport(ViewportWidth, ViewportHeight)); err != nil {
 		tabCancel()
 		allocCancel()
 		_ = os.RemoveAll(profileDir)
@@ -212,11 +235,24 @@ func (s *Session) touch() {
 
 func (s *Session) checkOpen() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
+	closed := s.closed
+	s.mu.Unlock()
+	if closed || s.dead() {
 		return errSessionClosed
 	}
 	return nil
+}
+
+// dead reports that the Chromium process behind this session is gone — it
+// crashed, was killed, or the user closed it — even though nothing here
+// called Close. chromedp cancels the tab and allocator contexts when the
+// browser's connection drops, so their Err is the signal. Without this the
+// Manager kept handing out the dead session forever: every action failed
+// with "context canceled", every failed action reset the idle timer so it
+// never expired, and status kept reporting active:true (reproduced live by
+// killing the session's Chromium).
+func (s *Session) dead() bool {
+	return (s.tabCtx != nil && s.tabCtx.Err() != nil) || (s.allocCtx != nil && s.allocCtx.Err() != nil)
 }
 
 // runCtx builds the context a single chromedp action actually runs under:
@@ -248,6 +284,55 @@ func (s *Session) runCtx(ctx context.Context) (context.Context, context.CancelFu
 // "test the site you just built" session either. Scheme-less input
 // ("example.com") was never navigable — Chromium rejects it as an invalid
 // URL — so requiring an explicit scheme takes nothing away.
+// normalizeNavigateURL adds the scheme people leave out. Typing "example.com"
+// into the pane's address bar used to be rejected outright ("has no
+// scheme"), which is what nearly everyone types. A host-looking input gets
+// https://, or http:// for localhost and IP literals (a dev server is
+// almost never TLS). Anything with a scheme, or that does not look like a
+// host, is returned unchanged for validateNavigateURL to judge.
+func normalizeNavigateURL(rawURL string) string {
+	u := strings.TrimSpace(rawURL)
+	if u == "" || strings.Contains(u, "://") || strings.HasPrefix(strings.ToLower(u), "about:") {
+		return u
+	}
+	if i := strings.Index(u, ":"); i > 0 {
+		// "mailto:x", "javascript:..." — a scheme without "//". Leave it for
+		// validation to refuse, unless what follows the colon is a port.
+		rest := u[i+1:]
+		if j := strings.IndexAny(rest, "/?#"); j >= 0 {
+			rest = rest[:j]
+		}
+		if rest == "" || strings.Trim(rest, "0123456789") != "" {
+			return u
+		}
+	}
+	host := u
+	if i := strings.IndexAny(host, ":/?#"); i >= 0 {
+		host = host[:i]
+	}
+	lower := strings.ToLower(host)
+	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") || isIPLiteral(lower) {
+		return "http://" + u
+	}
+	if strings.Contains(host, ".") && !strings.ContainsAny(host, " \t") {
+		return "https://" + u
+	}
+	return u
+}
+
+func isIPLiteral(h string) bool {
+	parts := strings.Split(h, ".")
+	if len(parts) != 4 {
+		return false
+	}
+	for _, p := range parts {
+		if p == "" || strings.Trim(p, "0123456789") != "" {
+			return false
+		}
+	}
+	return true
+}
+
 func validateNavigateURL(rawURL string) error {
 	if strings.TrimSpace(rawURL) == "about:blank" {
 		return nil
@@ -269,11 +354,13 @@ func validateNavigateURL(rawURL string) error {
 	}
 }
 
-// Navigate loads url in the session's tab.
+// Navigate loads url in the session's tab, adding a missing scheme first
+// (see normalizeNavigateURL).
 func (s *Session) Navigate(ctx context.Context, rawURL string) error {
 	if err := s.checkOpen(); err != nil {
 		return err
 	}
+	rawURL = normalizeNavigateURL(rawURL)
 	if err := validateNavigateURL(rawURL); err != nil {
 		return err
 	}
@@ -347,6 +434,50 @@ func (s *Session) Scroll(ctx context.Context, dx, dy int) error {
 		return fmt.Errorf("browsersession: scroll: %w", err)
 	}
 	return nil
+}
+
+// TypeText sends text as key events to whatever element currently has focus
+// (the user clicked into a field on the screenshot first), optionally
+// followed by Enter. This is the pane's keyboard: the agent's Type targets a
+// selector, but a person typing into a page they are looking at has no
+// selector, only focus.
+func (s *Session) TypeText(ctx context.Context, text string, enter bool) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	s.touch()
+	runCtx, cancel := s.runCtx(ctx)
+	defer cancel()
+	actions := []chromedp.Action{}
+	if text != "" {
+		actions = append(actions, chromedp.KeyEvent(text))
+	}
+	if enter {
+		actions = append(actions, chromedp.KeyEvent("\r"))
+	}
+	if len(actions) == 0 {
+		return nil
+	}
+	if err := chromedp.Run(runCtx, actions...); err != nil {
+		return fmt.Errorf("browsersession: type: %w", err)
+	}
+	return nil
+}
+
+// Settle waits briefly for a navigation an action may have started (a link
+// click, Enter in a form) and then until the document reports complete,
+// bounded by settleTimeout. Best-effort: a page that never finishes loading
+// is not an error, the screenshot just shows it as it is.
+func (s *Session) Settle(ctx context.Context) {
+	if s.checkOpen() != nil {
+		return
+	}
+	runCtx, cancel := s.runCtx(ctx)
+	defer cancel()
+	_ = chromedp.Run(runCtx,
+		chromedp.Sleep(settleDelay),
+		chromedp.Poll("document.readyState === 'complete'", nil, chromedp.WithPollingTimeout(settleTimeout)),
+	)
 }
 
 // Screenshot captures the current viewport as PNG bytes.
@@ -516,7 +647,14 @@ func (m *Manager) StartSession(ctx context.Context) (*Session, error) {
 	m.sessionMu.Lock()
 	defer m.sessionMu.Unlock()
 	if m.session != nil {
-		return m.session, nil
+		if !m.session.dead() {
+			return m.session, nil
+		}
+		// The browser died under us; replace it rather than hand back a
+		// session every action on which fails.
+		logx.Info("BROWSERSESSION: previous session's browser is gone, starting a new one", "profile", m.session.profileDir)
+		_ = m.session.close()
+		m.session = nil
 	}
 	s, err := newSession(ctx, m.dropIdleSession)
 	if err != nil {
@@ -526,10 +664,17 @@ func (m *Manager) StartSession(ctx context.Context) (*Session, error) {
 	return s, nil
 }
 
-// GetSession returns the current interactive session, if one is running.
+// GetSession returns the current interactive session, if one is running. A
+// session whose browser has died is dropped here and reported as absent, so
+// status stops claiming active and the next navigate starts a fresh one.
 func (m *Manager) GetSession() (*Session, bool) {
 	m.sessionMu.Lock()
 	defer m.sessionMu.Unlock()
+	if m.session != nil && m.session.dead() {
+		logx.Info("BROWSERSESSION: session's browser is gone, dropping it", "profile", m.session.profileDir)
+		_ = m.session.close()
+		m.session = nil
+	}
 	return m.session, m.session != nil
 }
 

@@ -270,3 +270,169 @@ func TestSession_Real_PageTextCapsClickableElementList(t *testing.T) {
 		t.Errorf("PageText() omission note did not mention the expected omitted count %d: %q", wantOmitted, text)
 	}
 }
+
+// pngSize reads a PNG's pixel size from its IHDR chunk.
+func pngSize(t *testing.T, b []byte) (int, int) {
+	t.Helper()
+	if !looksLikePNG(b) || len(b) < 24 {
+		t.Fatalf("not a PNG (%d bytes)", len(b))
+	}
+	w := int(b[16])<<24 | int(b[17])<<16 | int(b[18])<<8 | int(b[19])
+	h := int(b[20])<<24 | int(b[21])<<16 | int(b[22])<<8 | int(b[23])
+	return w, h
+}
+
+// Every screenshot must be exactly ViewportWidth x ViewportHeight, because
+// BrowserPane maps a tap on the image back to page coordinates through that
+// size. A WindowSize alone produced 500x757 and every manual click missed.
+func TestSession_Real_ScreenshotIsExactlyTheViewport(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping real-Chromium test in -short mode")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<html><body><button style="position:absolute;left:16px;top:128px;width:74px;height:44px" onclick="document.title='hit'">B</button></body></html>`))
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s, err := startSession(ctx, func(*Session) {})
+	if err != nil {
+		t.Skipf("no usable Chromium found: %v", err)
+	}
+	defer s.Close()
+
+	if err := s.Navigate(ctx, srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	shot, err := s.Screenshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, h := pngSize(t, shot); w != ViewportWidth || h != ViewportHeight {
+		t.Fatalf("screenshot is %dx%d, want %dx%d — the pane's tap mapping would be off", w, h, ViewportWidth, ViewportHeight)
+	}
+	// And a click at the button's page coordinates, as the pane sends it, hits.
+	if err := s.ClickAt(ctx, 53, 150); err != nil {
+		t.Fatal(err)
+	}
+	var title string
+	if err := chromedp.Run(s.tabCtx, chromedp.Title(&title)); err != nil || title != "hit" {
+		t.Errorf("click at the button's page coordinates missed (title %q, err %v)", title, err)
+	}
+}
+
+// When the session's Chromium dies (crash, killed, closed by hand), the
+// Manager must notice, report no session, and start a fresh one on the next
+// navigate. It used to hand the dead session back forever: every action
+// failed with "context canceled" and status kept saying active.
+func TestManager_Real_DeadBrowserIsReplaced(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping real-Chromium test in -short mode")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<html><body>ok</body></html>`))
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	m := New(false)
+	defer m.StopSession()
+	s, err := m.StartSession(ctx)
+	if err != nil {
+		t.Skipf("no usable Chromium found: %v", err)
+	}
+	if err := s.Navigate(ctx, srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	proc := chromedp.FromContext(s.tabCtx).Browser.Process()
+	if proc == nil {
+		t.Fatal("no browser process to kill")
+	}
+	if err := proc.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for !s.dead() && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !s.dead() {
+		t.Fatal("the session did not notice its browser died")
+	}
+	if _, ok := m.GetSession(); ok {
+		t.Error("GetSession still reports the dead session as active")
+	}
+	s2, err := m.StartSession(ctx)
+	if err != nil {
+		t.Fatalf("StartSession after the browser died: %v", err)
+	}
+	if s2 == s {
+		t.Fatal("StartSession handed back the dead session")
+	}
+	if err := s2.Navigate(ctx, srv.URL); err != nil {
+		t.Errorf("the replacement session cannot navigate: %v", err)
+	}
+}
+
+// The pane's keyboard: text goes to whatever the user focused by clicking,
+// and Enter submits.
+func TestSession_Real_TypeTextGoesToTheFocusedElement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping real-Chromium test in -short mode")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/done" {
+			_, _ = w.Write([]byte(`<html><head><title>submitted:` + r.URL.Query().Get("q") + `</title></head></html>`))
+			return
+		}
+		_, _ = w.Write([]byte(`<html><body><form action="/done"><input id="q" name="q" style="position:absolute;left:10px;top:10px;width:200px;height:30px"></form></body></html>`))
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s, err := startSession(ctx, func(*Session) {})
+	if err != nil {
+		t.Skipf("no usable Chromium found: %v", err)
+	}
+	defer s.Close()
+	if err := s.Navigate(ctx, srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ClickAt(ctx, 50, 25); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TypeText(ctx, "merhaba", true); err != nil {
+		t.Fatal(err)
+	}
+	s.Settle(ctx)
+	var title string
+	if err := chromedp.Run(s.tabCtx, chromedp.Title(&title)); err != nil || title != "submitted:merhaba" {
+		t.Errorf("typed text + Enter did not submit the focused field (title %q, err %v)", title, err)
+	}
+}
+
+// What the pane's address bar actually receives: an address with no scheme.
+// It used to be refused outright ("has no scheme").
+func TestSession_Real_NavigateWithoutAScheme(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping real-Chromium test in -short mode")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<html><head><title>reached</title></head></html>`))
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s, err := startSession(ctx, func(*Session) {})
+	if err != nil {
+		t.Skipf("no usable Chromium found: %v", err)
+	}
+	defer s.Close()
+	if err := s.Navigate(ctx, strings.TrimPrefix(srv.URL, "http://")); err != nil {
+		t.Fatalf("a scheme-less address was refused: %v", err)
+	}
+	var title string
+	if err := chromedp.Run(s.tabCtx, chromedp.Title(&title)); err != nil || title != "reached" {
+		t.Errorf("title %q, err %v", title, err)
+	}
+}

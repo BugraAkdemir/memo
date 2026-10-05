@@ -11,11 +11,11 @@
   <description>
     <p>Memo is a local-first AI assistant with persistent memory, RAG, agent tools, and a Flutter desktop interface. It can run fully offline with local models and keeps user data on the local machine.</p>
   </description>
-  <homepage>https://memocpp.com</homepage>
+  <url type="homepage">https://memocpp.com</url>
   <url type="bugtracker">https://github.com/BugraAkdemir/memo/issues</url>
   <url type="vcs-browser">https://github.com/BugraAkdemir/memo</url>
   <launchable type="desktop-id">Memo.desktop</launchable>
-  <icon type="cached">Memo</icon>
+  <content_rating type="oars-1.1"/>
   <releases>
     <release version="@VERSION@" date="@DATE@"/>
   </releases>

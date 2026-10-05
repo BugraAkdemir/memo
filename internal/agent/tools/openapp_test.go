@@ -23,8 +23,11 @@ func TestBuildAppCommand_PerPlatform(t *testing.T) {
 	}{
 		{"windows", "cmd", []string{"/C", "start", "", "Spotify"}},
 		{"darwin", "open", []string{"-a", "Spotify"}},
-		{"linux", "Spotify", nil},
-		{"freebsd", "Spotify", nil}, // the default branch, any unlisted GOOS
+		// Linux and the other desktops have no launch-by-display-name call;
+		// exec'ing "Spotify" literally was the bug. They go through the
+		// desktop-entry registry instead (applaunch.go).
+		{"linux", "", nil},
+		{"freebsd", "", nil},
 	}
 	for _, c := range cases {
 		t.Run(c.goos, func(t *testing.T) {

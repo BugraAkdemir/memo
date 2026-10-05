@@ -1,3 +1,35 @@
+# Handoff — 2026-10-05 (akşam) — PR #20 incelemesi, kilit yarışı, v4.6.0 notları, iki PR merge
+
+## Ne yapıldı
+- **PR #20 (AppImage) incelendi.** "Test (Go)" kırmızısı PR'dan değil, main'deki bir yarıştan geliyordu:
+  per-chat stream kilidi Done chunk'ı iletildikten SONRA bırakılıyordu; Done'dan hemen sonra gelen mesaj
+  `busyNotice` alıyordu. `forwardStreamReleasing` kilidi Done'dan önce bırakıyor (`2968e901`). Güvenli,
+  çünkü her producer turu Done'dan önce kalıcı yazıyor. Incognito yolları (global `streamMu`, Once'sız
+  Unlock) eski sırada bırakıldı — açık iş.
+- PR #20'nin kendi hataları: `build_releases.sh` `\\` yüzünden **0 baytlık metainfo** üretiyordu;
+  metainfo `appstreamcli validate`'ten geçmiyordu (`icon type=cached` hata, `<homepage>` geçersiz etiket,
+  `content_rating` yok) → `3eaff6a2`. AppStream id `com.memocpp.Memo` oldu (`ce3b6c80`); Flutter
+  `APPLICATION_ID`/Android `applicationId` (`com.memo.memo_flutter`) **bilerek değiştirilmedi** (ayarlar ve
+  Android güncelleme yolu kırılırdı).
+- **v4.6.0 sürüm notları** (`46718ab6`): EN, TR'nin gerisindeydi; ikisi eşitlendi (14 bölüm, 46 madde),
+  24 Eylül sonrası her şey eklendi.
+- Kullanıcının onayıyla: `main` iki kez fast-forward push edildi; CI'lar tamamen yeşil olunca **PR #20
+  (`a7ebc9e7`) ve PR #21 (`5f108a59`) merge edildi** (merge commit, squash değil).
+
+## Doğrulama
+- Go: 55 paket 0 FAIL (main + race fix, ve birleşik PR #21 branch'i ayrı ayrı); plan alt modu e2e -race ×20.
+- Yeni test `TestForwardStreamReleasing_LockFreeWhenDoneArrives` eski koda karşı kırmızı (mutasyonla).
+- CI: PR #20 ve #21'de tüm kontroller pass (Go, Flutter, L10n, güvenlik, Linux/Win/macOS/Docker, Android, iOS).
+
+## Notlar / sıradaki
+- `origin`'in ikinci push adresi (`web.bugradev.com`, RPi) kapalı — her push'ta "not found" verir, zararsız.
+  Bu URL'de düz metin bir token var; değiştirilmesi önerildi.
+- Sıradaki: gerçek Pro/Max hesabıyla claude-sub denemesi; web'de `launchUrl`'in yetki sayfasını aynı
+  sekmede açıp açmadığı; incognito kilit sırası; Android'de gerçek cihaz testi.
+- Bu handoff girdisi yerel `main`'de commit'li, **push edilmedi**.
+
+---
+
 # Handoff — 2026-10-05 — claude-sub: elle test, 11 hata düzeltildi, Beta sekmesine taşındı
 
 ## İstek

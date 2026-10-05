@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.memo.memo_flutter</id>
+  <id>com.memocpp.Memo</id>
   <name>Memo</name>
   <summary>Privacy-first local AI assistant with persistent memory</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>AGPL-3.0-or-later</project_license>
-  <developer id="com.memo">
+  <developer id="com.memocpp">
     <name>Bugra Akdemir</name>
   </developer>
   <description>

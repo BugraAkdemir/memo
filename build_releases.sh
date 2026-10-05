@@ -295,11 +295,11 @@ DESKTOP
 
         # AppStream metadata required/recommended by the AppImage catalog.
         mkdir -p "$APPDIR/usr/share/metainfo"
-        if [ -f "packaging/com.memo.memo_flutter.metainfo.xml.in" ]; then
+        if [ -f "packaging/com.memocpp.Memo.metainfo.xml.in" ]; then
             sed -e "s/@VERSION@/${VERSION}/g" \
                 -e "s/@DATE@/$(date -u +%Y-%m-%d)/g" \
-                "packaging/com.memo.memo_flutter.metainfo.xml.in" \
-                > "$APPDIR/usr/share/metainfo/com.memo.memo_flutter.metainfo.xml"
+                "packaging/com.memocpp.Memo.metainfo.xml.in" \
+                > "$APPDIR/usr/share/metainfo/com.memocpp.Memo.metainfo.xml"
         fi
 
         # Download appimagetool if not exists or is empty

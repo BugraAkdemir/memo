@@ -221,8 +221,8 @@ jobs:
 
           sed -e "s/@VERSION@/$VERSION/g" \
               -e "s/@DATE@/$(date -u +%Y-%m-%d)/g" \
-              packaging/com.memo.memo_flutter.metainfo.xml.in \
-              > "$APPDIR/usr/share/metainfo/com.memo.memo_flutter.metainfo.xml"
+              packaging/com.memocpp.Memo.metainfo.xml.in \
+              > "$APPDIR/usr/share/metainfo/com.memocpp.Memo.metainfo.xml"
 
           curl -fsSL -o appimagetool-x86_64.AppImage \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage

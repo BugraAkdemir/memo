@@ -45,36 +45,45 @@ func newTokenStoreAt(path string, key []byte) *tokenStore {
 	return &tokenStore{path: path, key: key}
 }
 
-// load returns the stored token, or (nil, false) when there is no readable
+// storedToken is the on-disk payload: the token plus where it came from. The
+// embedded Token keeps the older token-only files readable (Source is then
+// simply empty).
+type storedToken struct {
+	oauth2.Token
+	Source string `json:"memo_source,omitempty"`
+}
+
+// load returns the stored token and its source, or ok=false when there is no readable
 // token — a missing file, an unreadable file, a decrypt failure, or a
 // malformed payload all read as "not connected" rather than an error, so a
 // corrupted token file never wedges startup.
-func (s *tokenStore) load() (*oauth2.Token, bool) {
+func (s *tokenStore) load() (*oauth2.Token, string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	data, err := os.ReadFile(s.path)
 	if err != nil {
-		return nil, false
+		return nil, "", false
 	}
 	plain, err := decrypt(s.key, string(data))
 	if err != nil {
 		logx.Printf("claudesub: stored token failed to decrypt, ignoring it: %v", err)
-		return nil, false
+		return nil, "", false
 	}
-	var t oauth2.Token
-	if err := json.Unmarshal([]byte(plain), &t); err != nil {
+	var st storedToken
+	if err := json.Unmarshal([]byte(plain), &st); err != nil {
 		logx.Printf("claudesub: stored token failed to parse, ignoring it: %v", err)
-		return nil, false
+		return nil, "", false
 	}
-	return &t, true
+	t := st.Token
+	return &t, st.Source, true
 }
 
-func (s *tokenStore) save(t *oauth2.Token) error {
+func (s *tokenStore) save(t *oauth2.Token, source string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	raw, err := json.Marshal(t)
+	raw, err := json.Marshal(storedToken{Token: *t, Source: source})
 	if err != nil {
 		return err
 	}

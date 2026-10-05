@@ -4,6 +4,7 @@ package claudesub
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"memo/internal/fileutil"
 	"memo/internal/logx"
 
 	"golang.org/x/oauth2"
@@ -74,7 +76,7 @@ type cliCredentials struct {
 // happened instead of a bare "connected".
 type AdoptResult struct {
 	Token *oauth2.Token
-	// Source is one of "env", "claude-code-file", "macos-keychain" — empty
+	// Source is SourceEnv, SourceClaudeCodeFile or SourceMacKeychain — empty
 	// means nothing was found.
 	Source string
 	// ExpiresAt is the CLI-reported expiry in Unix millis, zero when unknown.
@@ -87,14 +89,17 @@ type AdoptResult struct {
 // there is simply nothing to adopt — "not signed in" is the common case, not a
 // failure.
 func AdoptLocal() AdoptResult {
-	if tok, src := fromEnv(); tok != nil {
-		return AdoptResult{Token: tok, Source: src}
+	if tok := fromEnv(); tok != nil {
+		// "env", not the variable's name: the UI and config document the
+		// source as one of a fixed set of values, and the frontend's
+		// adoptedLocally check never matched "MEMO_CLAUDE_TOKEN".
+		return AdoptResult{Token: tok, Source: SourceEnv}
 	}
 	if tok, exp := fromClaudeCodeFile(); tok != nil {
-		return AdoptResult{Token: tok, Source: "claude-code-file", ExpiresAt: exp}
+		return AdoptResult{Token: tok, Source: SourceClaudeCodeFile, ExpiresAt: exp}
 	}
 	if tok := fromMacKeychain(); tok != nil {
-		return AdoptResult{Token: tok, Source: "macos-keychain"}
+		return AdoptResult{Token: tok, Source: SourceMacKeychain}
 	}
 	return AdoptResult{}
 }
@@ -102,7 +107,7 @@ func AdoptLocal() AdoptResult {
 // fromEnv reads a long-lived setup token. These have no refresh token — that
 // is the point of setup-token — so the token is stored with a far-future
 // expiry and, when it does eventually stop working, the user reconnects.
-func fromEnv() (*oauth2.Token, string) {
+func fromEnv() *oauth2.Token {
 	for _, name := range envTokenVars {
 		v := strings.TrimSpace(os.Getenv(name))
 		if v == "" {
@@ -115,9 +120,9 @@ func fromEnv() (*oauth2.Token, string) {
 			// past any realistic session; a wrong guess here costs one
 			// reconnect, never a wrong answer.
 			Expiry: time.Now().Add(365 * 24 * time.Hour),
-		}, name
+		}
 	}
-	return nil, ""
+	return nil
 }
 
 // fromClaudeCodeFile reads ~/.claude/.credentials.json.
@@ -186,27 +191,51 @@ func fromMacKeychain() *oauth2.Token {
 	return t
 }
 
-// adoptLocalToken is the startup-side convenience used by newManager: the same
-// search, reduced to a token.
-func adoptLocalToken() (*oauth2.Token, bool) {
-	res := AdoptLocal()
-	return res.Token, res.Token != nil
+// freshLocalLogin re-reads the store a shared token was adopted from and
+// returns its token when that one is still valid and differs from current —
+// i.e. when Claude Code itself has refreshed in the meantime.
+//
+// This is the common way a shared login goes stale. Claude Code and Memo hold
+// the same refresh token; whichever refreshes first gets a new one and, if
+// Anthropic rotates, kills the other's. Reading Claude Code's store before
+// spending our own refresh token (and again after a refused refresh) costs one
+// small file read and turns "sign-in expired — reconnect" into nothing at all.
+// Only for sources that ARE a shared store; an env token has nothing to re-read.
+func freshLocalLogin(source string, current *oauth2.Token) *oauth2.Token {
+	var t *oauth2.Token
+	switch source {
+	case SourceClaudeCodeFile:
+		t, _ = fromClaudeCodeFile()
+	case SourceMacKeychain:
+		t = fromMacKeychain()
+	default:
+		return nil
+	}
+	if t == nil || !t.Valid() {
+		return nil
+	}
+	if current != nil && t.AccessToken == current.AccessToken {
+		return nil
+	}
+	return t
 }
 
-// writeBackRefreshed informs the user's own Claude Code install that its
-// refresh token changed.
+// writeBackRefreshed hands a refreshed login back to the user's own Claude
+// Code install. The caller only does this for a token adopted FROM that file
+// (Source == SourceClaudeCodeFile) — a token from our own browser flow is a
+// different session and must never overwrite the CLI's.
 //
 // Anthropic does not document whether a refresh rotates the refresh token.
 // claude-code-proxy handles the rotating case (`response.refresh_token ||
 // tokens.refresh_token`), and this does too, because the failure is silent and
-// bad in a specific way: if Anthropic DOES rotate and we keep the old one, the
-// user's next `claude` invocation fails to refresh and they blame Claude Code
-// for a change Memo made.
+// bad in a specific way: if Anthropic DOES rotate and the file keeps the old
+// one, the user's next `claude` invocation fails to refresh and they blame
+// Claude Code for a change Memo made. The access token and its expiry are
+// written alongside it so the file never pairs a new refresh token with an
+// access token from the previous generation.
 //
-// Only the claudeAiOauth subtree is rewritten, every other key in the file is
-// preserved, and the write only happens when the refresh response actually
-// carried a different token. Tokens adopted from the environment have no file
-// to update and are silently skipped.
+// Only those three keys of the claudeAiOauth subtree are rewritten; every other
+// key in the file is preserved.
 func writeBackRefreshed(t *oauth2.Token) {
 	if t == nil || t.RefreshToken == "" {
 		return
@@ -235,11 +264,11 @@ func writeBackRefreshed(t *oauth2.Token) {
 	if cur, ok := oauth["refreshToken"]; ok && string(cur) == mustJSONString(t.RefreshToken) {
 		return
 	}
-	enc, err := json.Marshal(t.RefreshToken)
-	if err != nil {
-		return
+	oauth["refreshToken"] = json.RawMessage(mustJSONString(t.RefreshToken))
+	oauth["accessToken"] = json.RawMessage(mustJSONString(t.AccessToken))
+	if !t.Expiry.IsZero() {
+		oauth["expiresAt"] = json.RawMessage(fmt.Sprint(t.Expiry.UnixMilli()))
 	}
-	oauth["refreshToken"] = enc
 	newOAuth, err := json.Marshal(oauth)
 	if err != nil {
 		return
@@ -249,7 +278,7 @@ func writeBackRefreshed(t *oauth2.Token) {
 	if err != nil {
 		return
 	}
-	if err := os.WriteFile(path, out, 0600); err != nil {
+	if err := fileutil.AtomicWrite(path, out, 0600); err != nil {
 		logx.Printf("claudesub: could not update %s with a rotated refresh token: %v", path, err)
 		return
 	}

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"memo/internal/config"
 	"memo/internal/provider"
 
 	"golang.org/x/oauth2"
@@ -412,7 +413,7 @@ func TestDisconnect_ClearsEverything(t *testing.T) {
 	if _, ok := m.cachedModels(); ok {
 		t.Error("model cache survived Disconnect")
 	}
-	if _, ok := m.tok.load(); ok {
+	if _, _, ok := m.tok.load(); ok {
 		t.Error("token file survived Disconnect")
 	}
 }
@@ -461,8 +462,10 @@ func TestAdoptLocal_ReadsClaudeCodeCredentialsFile(t *testing.T) {
 func TestAdoptLocal_EnvTokenWinsAndIsLongLived(t *testing.T) {
 	t.Setenv("MEMO_CLAUDE_TOKEN", "sk-ant-oat01-fromenv")
 	res := AdoptLocal()
-	if res.Source != "MEMO_CLAUDE_TOKEN" {
-		t.Fatalf("source = %q", res.Source)
+	// "env", the documented value — not the variable's name, which the
+	// frontend's adoptedLocally check never matched.
+	if res.Source != SourceEnv {
+		t.Fatalf("source = %q, want %q", res.Source, SourceEnv)
 	}
 	if res.Token.AccessToken != "sk-ant-oat01-fromenv" {
 		t.Errorf("token = %q", res.Token.AccessToken)
@@ -491,7 +494,7 @@ func TestAdoptLocal_EnvBeatsAFileFoundOnDisk(t *testing.T) {
 	t.Setenv("MEMO_CLAUDE_TOKEN", "sk-ant-oat01-fromenv")
 
 	res := AdoptLocal()
-	if res.Source != "MEMO_CLAUDE_TOKEN" {
+	if res.Source != SourceEnv {
 		t.Fatalf("source = %q, want the explicit environment token", res.Source)
 	}
 	if res.Token.AccessToken != "sk-ant-oat01-fromenv" {
@@ -516,9 +519,10 @@ func TestAdoptLocal_NoLoginIsNotAnError(t *testing.T) {
 }
 
 // A rotated refresh token has to reach the user's own Claude Code install, or
-// their CLI breaks on a change Memo made — and nothing else in the file may be
-// disturbed.
-func TestWriteBackRefreshed_PreservesEverythingButTheToken(t *testing.T) {
+// their CLI breaks on a change Memo made. The access token and expiry travel
+// with it, so the file never pairs a new refresh token with an access token
+// from the previous generation — and nothing else in the file may be disturbed.
+func TestWriteBackRefreshed_UpdatesTheLoginAndPreservesEverythingElse(t *testing.T) {
 	home := t.TempDir()
 	dir := filepath.Join(home, ".claude")
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -532,7 +536,8 @@ func TestWriteBackRefreshed_PreservesEverythingButTheToken(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	writeBackRefreshed(refreshTokenOnly("NEW"))
+	expiry := time.UnixMilli(4102444800000)
+	writeBackRefreshed(&oauth2.Token{AccessToken: "A2", RefreshToken: "NEW", Expiry: expiry})
 
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -546,8 +551,11 @@ func TestWriteBackRefreshed_PreservesEverythingButTheToken(t *testing.T) {
 	if oauth["refreshToken"] != "NEW" {
 		t.Errorf("refreshToken = %v, want NEW", oauth["refreshToken"])
 	}
-	if oauth["accessToken"] != "a" {
-		t.Errorf("accessToken was disturbed: %v", oauth["accessToken"])
+	if oauth["accessToken"] != "A2" {
+		t.Errorf("accessToken = %v, want A2 (the refreshed one)", oauth["accessToken"])
+	}
+	if exp, _ := oauth["expiresAt"].(float64); int64(exp) != expiry.UnixMilli() {
+		t.Errorf("expiresAt = %v, want %d", oauth["expiresAt"], expiry.UnixMilli())
 	}
 	if oauth["scopes"] == nil {
 		t.Error("scopes were dropped")
@@ -590,4 +598,270 @@ func tokenAt(expiry time.Time) *oauth2.Token {
 // write-back tests.
 func refreshTokenOnly(refresh string) *oauth2.Token {
 	return &oauth2.Token{RefreshToken: refresh}
+}
+
+// Anthropic's hosted callback page DISPLAYS "code#state", so that is what a
+// user copies. Sending it whole as the code is an invalid_grant from the real
+// token endpoint — reproduced live against cmd/fakeprovider before this fix.
+func TestCompleteAuth_AcceptsTheCodeHashStateTheCallbackPageShows(t *testing.T) {
+	var gotCode, gotState string
+	tok := tokenServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var p map[string]any
+		_ = json.Unmarshal(body, &p)
+		gotCode, _ = p["code"].(string)
+		gotState, _ = p["state"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"a","refresh_token":"r","expires_in":3600}`))
+	})
+	withEndpoints(t, "https://claude.test/authorize", tok)
+
+	m := newTestManager(t)
+	_, state, _, err := m.StartAuth(0)
+	if err != nil {
+		t.Fatalf("StartAuth: %v", err)
+	}
+	// Exactly what the page shows, with the client also echoing its state the
+	// way the settings tab does.
+	if err := m.CompleteAuth(context.Background(), "  abc123#"+state+"\n", state); err != nil {
+		t.Fatalf("CompleteAuth with code#state: %v", err)
+	}
+	if gotCode != "abc123" {
+		t.Errorf("token request carried code %q, want abc123 (the part before '#')", gotCode)
+	}
+	if gotState != state {
+		t.Errorf("token request carried state %q, want %q", gotState, state)
+	}
+	if !m.Connected() {
+		t.Error("not connected after a successful code#state paste")
+	}
+}
+
+// The state after '#' is checked, not discarded: a code copied from an older
+// sign-in attempt must not be exchanged against this attempt's verifier.
+func TestCompleteAuth_RejectsAHashStateFromAnotherAttempt(t *testing.T) {
+	called := false
+	tok := tokenServer(t, func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"a","refresh_token":"r","expires_in":3600}`))
+	})
+	withEndpoints(t, "https://claude.test/authorize", tok)
+
+	m := newTestManager(t)
+	if _, _, _, err := m.StartAuth(0); err != nil {
+		t.Fatal(err)
+	}
+	err := m.CompleteAuth(context.Background(), "abc123#some-other-attempts-state", "")
+	if err == nil || !strings.Contains(err.Error(), "state mismatch") {
+		t.Fatalf("err = %v, want a state mismatch", err)
+	}
+	if called {
+		t.Error("the token endpoint was contacted for a code from another attempt")
+	}
+}
+
+// A disconnect that lands while a refresh is waiting must neither panic (the
+// old code dereferenced the nil token) nor bring the session back by writing
+// the refreshed token into a Manager the user just emptied.
+func TestTokenSource_DisconnectDuringRefreshDoesNotResurrect(t *testing.T) {
+	release := make(chan struct{})
+	tok := tokenServer(t, func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"sk-ant-oat01-refreshed","refresh_token":"r2","expires_in":3600}`))
+	})
+	withEndpoints(t, "https://claude.test/authorize", tok)
+
+	m := newTestManager(t)
+	m.token = tokenAt(time.Now().Add(-time.Hour))
+	ts, err := m.TokenSource(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := ts.Token()
+		done <- err
+	}()
+	// Disconnect while the refresh request is parked on the server.
+	time.Sleep(50 * time.Millisecond)
+	if err := m.Disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	if err := <-done; !errors.Is(err, ErrNotConnected) {
+		t.Errorf("Token() after a mid-refresh disconnect = %v, want ErrNotConnected", err)
+	}
+	if m.Connected() {
+		t.Error("the refresh resurrected a session the user disconnected")
+	}
+	if _, _, ok := m.tok.load(); ok {
+		t.Error("the refresh re-persisted a token after Disconnect")
+	}
+
+	// And a source taken before a disconnect, used after it, reports the same
+	// instead of panicking on the nil token.
+	if _, err := ts.Token(); !errors.Is(err, ErrNotConnected) {
+		t.Errorf("stale source after disconnect = %v, want ErrNotConnected", err)
+	}
+}
+
+// A login shared with Claude Code goes stale the moment the CLI refreshes it.
+// Re-reading the CLI's file must win over spending our own refresh token,
+// which the CLI's refresh may already have rotated away.
+func TestTokenSource_SharedLoginIsReReadBeforeRefreshing(t *testing.T) {
+	calls := 0
+	tok := tokenServer(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+	})
+	withEndpoints(t, "https://claude.test/authorize", tok)
+
+	home := t.TempDir()
+	dir := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	fresh := `{"claudeAiOauth":{"accessToken":"sk-ant-oat01-cli-refreshed","refreshToken":"r-cli-2","expiresAt":4102444800000}}`
+	if err := os.WriteFile(filepath.Join(dir, ".credentials.json"), []byte(fresh), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	m := newTestManager(t)
+	if err := m.Adopt(AdoptResult{Token: tokenAt(time.Now().Add(-time.Hour)), Source: SourceClaudeCodeFile}); err != nil {
+		t.Fatal(err)
+	}
+	ts, _ := m.TokenSource(context.Background())
+	got, err := ts.Token()
+	if err != nil {
+		t.Fatalf("Token(): %v — a valid login sitting in Claude Code's file was not used", err)
+	}
+	if got.AccessToken != "sk-ant-oat01-cli-refreshed" {
+		t.Errorf("token = %q, want the one Claude Code refreshed", got.AccessToken)
+	}
+	if calls != 0 {
+		t.Errorf("refresh endpoint called %d times; the file already held a valid token", calls)
+	}
+	if m.Source() != SourceClaudeCodeFile {
+		t.Errorf("source changed to %q", m.Source())
+	}
+}
+
+// Our own browser session is not Claude Code's. A rotated refresh token from it
+// must never be written into the CLI's credential file — that would sign the
+// user's CLI into whatever session Memo happens to hold.
+func TestTokenSource_BrowserSessionNeverWritesClaudeCodesFile(t *testing.T) {
+	tok := tokenServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"a2","refresh_token":"ROTATED","expires_in":3600}`))
+	})
+	withEndpoints(t, "https://claude.test/authorize", tok)
+
+	home := t.TempDir()
+	dir := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	path := filepath.Join(dir, ".credentials.json")
+	cli := `{"claudeAiOauth":{"accessToken":"cli","refreshToken":"cli-r","expiresAt":1}}`
+	if err := os.WriteFile(path, []byte(cli), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	m := newTestManager(t)
+	m.token, m.source = tokenAt(time.Now().Add(-time.Hour)), SourceBrowser
+	ts, _ := m.TokenSource(context.Background())
+	if _, err := ts.Token(); err != nil {
+		t.Fatalf("Token(): %v", err)
+	}
+	raw, _ := os.ReadFile(path)
+	if string(raw) != cli {
+		t.Errorf("Claude Code's file was rewritten from a browser session:\n%s", raw)
+	}
+}
+
+// The source survives a restart. Without it every reloaded token read as
+// "browser", which both mislabelled adopted logins and switched off the
+// shared-login re-read above for exactly the users who need it.
+func TestTokenStore_PersistsTheSource(t *testing.T) {
+	m := newTestManager(t)
+	if err := m.Adopt(AdoptResult{Token: tokenAt(time.Now().Add(time.Hour)), Source: SourceClaudeCodeFile}); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := newManager(newTokenStoreAt(m.tok.path, m.tok.key))
+	if got := reloaded.Source(); got != SourceClaudeCodeFile {
+		t.Errorf("source after reload = %q, want %q", got, SourceClaudeCodeFile)
+	}
+}
+
+// Default() must not adopt on its own. Adoption is the app's call — claude-sub
+// is a Beta feature, and a user who pressed Disconnect said no — and doing it
+// here reconnected them on every restart (reproduced live before this fix).
+func TestDefault_DoesNotAdoptALocalLogin(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	doc := `{"claudeAiOauth":{"accessToken":"sk-ant-oat01-local","refreshToken":"r","expiresAt":4102444800000}}`
+	if err := os.WriteFile(filepath.Join(dir, ".credentials.json"), []byte(doc), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("MEMO_DATA_DIR", t.TempDir())
+	config.ResetForTests()
+	t.Cleanup(config.ResetForTests)
+	ResetForTests()
+	t.Cleanup(ResetForTests)
+
+	if Default().Connected() {
+		t.Error("Default() adopted a local login by itself")
+	}
+}
+
+// The chat goes where the probe went. Before this, MEMO_CLAUDE_API_URL moved
+// only the probe, so a capability table could describe an endpoint the
+// conversation never reached — and nothing short of a real account could
+// exercise the chat path by hand.
+func TestNewProvider_ChatUsesTheSameEndpointAsTheProbe(t *testing.T) {
+	var gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"m","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("MEMO_CLAUDE_API_URL", srv.URL)
+	t.Setenv("MEMO_DATA_DIR", t.TempDir())
+	config.ResetForTests()
+	t.Cleanup(config.ResetForTests)
+	ResetForTests()
+	t.Cleanup(ResetForTests)
+	if err := Default().Adopt(AdoptResult{Token: tokenAt(time.Now().Add(time.Hour)), Source: SourceEnv}); err != nil {
+		t.Fatal(err)
+	}
+
+	p, err := NewProvider(provider.ProviderConfig{Type: provider.ProviderClaudeSub, Model: "claude-haiku-4-5-20251001"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.ChatCompletion(context.Background(), provider.ChatRequest{
+		Messages: []provider.Message{{Role: "user", Content: "hi"}},
+	}); err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+	if gotPath != "/v1/messages" {
+		t.Errorf("chat reached %q on the override host, want /v1/messages", gotPath)
+	}
+	if !strings.HasPrefix(gotAuth, "Bearer ") {
+		t.Errorf("Authorization = %q", gotAuth)
+	}
 }

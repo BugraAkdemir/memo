@@ -290,7 +290,7 @@ func TestProbe_CachesPerModel(t *testing.T) {
 func TestBetasForRequest_OneMOnlyAfterMeasurement(t *testing.T) {
 	m := connectedManager(t)
 
-	if strings.Contains(m.betasForRequest(), oneMBeta) {
+	if strings.Contains(m.betasForRequest("claude-sonnet-5"), oneMBeta) {
 		t.Error("the 1M beta was sent before anything was measured")
 	}
 
@@ -299,8 +299,8 @@ func TestBetasForRequest_OneMOnlyAfterMeasurement(t *testing.T) {
 	})
 	m.Probe(context.Background(), "claude-sonnet-5")
 
-	if !strings.Contains(m.betasForRequest(), oneMBeta) {
-		t.Errorf("the 1M beta is still withheld after it was measured as supported: %q", m.betasForRequest())
+	if !strings.Contains(m.betasForRequest("claude-sonnet-5"), oneMBeta) {
+		t.Errorf("the 1M beta is still withheld after it was measured as supported: %q", m.betasForRequest("claude-sonnet-5"))
 	}
 
 	// An account that does NOT get the 1M window must never be asked.
@@ -312,7 +312,7 @@ func TestBetasForRequest_OneMOnlyAfterMeasurement(t *testing.T) {
 		return http.StatusOK, nil, okBody()
 	})
 	noOneM.Probe(context.Background(), "claude-sonnet-5")
-	if strings.Contains(noOneM.betasForRequest(), oneMBeta) {
+	if strings.Contains(noOneM.betasForRequest("claude-sonnet-5"), oneMBeta) {
 		t.Error("the 1M beta is being sent to an account that refused it")
 	}
 }
@@ -336,5 +336,52 @@ func TestDefaultModelMatchesApp(t *testing.T) {
 	if claudeSubDefaultModelPublic != appDefault {
 		t.Fatalf("default model %q in claudesub != %q in internal/app",
 			claudeSubDefaultModelPublic, appDefault)
+	}
+}
+
+// A model that lacks a feature answers with a concrete, named 400. That is the
+// model, not the plan: Haiku 4.5 (the default claude-sub model) refuses
+// adaptive thinking this way, and the old probe reported every such account as
+// entitlement-blocked (reproduced live against cmd/fakeprovider).
+func TestProbe_AModelWithoutThinkingIsNotEntitlementBlocked(t *testing.T) {
+	newProbeStub(t, func(r recorded) (int, map[string]string, string) {
+		if _, ok := r.body["thinking"]; ok {
+			return http.StatusBadRequest, nil, `{"type":"error","error":{"type":"invalid_request_error","message":"thinking.type: adaptive thinking is not supported on this model"}}`
+		}
+		if strings.Contains(r.beta, oneMBeta) {
+			return http.StatusBadRequest, nil, `{"type":"error","error":{"type":"invalid_request_error","message":"The long context beta is not supported for this model."}}`
+		}
+		return http.StatusOK, nil, okBody()
+	})
+	caps := connectedManager(t).Probe(context.Background(), "claude-haiku-4-5-20251001")
+
+	if !caps.Plain || !caps.Tools || caps.Thinking || caps.OneMContext {
+		t.Fatalf("unexpected capabilities: %+v", caps)
+	}
+	if caps.EntitlementBlocked {
+		t.Errorf("a model capability refusal was reported as the entitlement gate: %+v", caps)
+	}
+	if strings.Contains(caps.Detail, "gate") {
+		t.Errorf("detail %q blames the subscription gate", caps.Detail)
+	}
+}
+
+// The 1M beta is decided per model. After switching from a model measured with
+// the 1M window to one that was never measured, the beta must stop.
+func TestBetasForRequest_OneMIsPerModel(t *testing.T) {
+	m := connectedManager(t)
+	newProbeStub(t, func(r recorded) (int, map[string]string, string) {
+		return http.StatusOK, nil, okBody()
+	})
+	m.Probe(context.Background(), "claude-sonnet-5")
+
+	if !strings.Contains(m.betasForRequest("claude-sonnet-5"), oneMBeta) {
+		t.Fatal("setup: the measured model did not get the 1M beta")
+	}
+	if strings.Contains(m.betasForRequest("claude-haiku-4-5-20251001"), oneMBeta) {
+		t.Error("the 1M beta was sent for a model the probe never measured")
+	}
+	if strings.Contains(m.betasForRequest(""), oneMBeta) {
+		t.Error("the 1M beta was sent for a request with no known model")
 	}
 }

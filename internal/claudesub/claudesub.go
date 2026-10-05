@@ -53,8 +53,7 @@ type Manager struct {
 	tok   *tokenStore
 	token *oauth2.Token // nil == not connected
 	// source records how the current token was obtained — one of the
-	// AdoptResult.Source values, or "browser" for our own OAuth flow. It is
-	// NOT cosmetic: the connect surface reports it, and a user who is
+	// Source* constants. It is NOT cosmetic: the connect surface reports it, and a user who is
 	// connected because we adopted their Claude Code login needs to be told
 	// that, not shown a "signed in through the browser" story that never
 	// happened. Empty only before any token exists.
@@ -77,40 +76,46 @@ var (
 	defaultMgr *Manager
 )
 
+// Where a connected token came from. Reported to the UI, which is the only
+// thing that explains to a user why clicking Connect did or did not open a
+// browser, and consulted by the refresh path: a token shared with Claude Code
+// is re-read from Claude Code's store before Memo spends its refresh token.
+const (
+	SourceBrowser        = "browser"
+	SourceEnv            = "env"
+	SourceClaudeCodeFile = "claude-code-file"
+	SourceMacKeychain    = "macos-keychain"
+)
+
 // Default returns the process-wide Manager, creating it on first use. It reads
-// any previously stored token from config.DataDir()/claudesub/, and otherwise
-// adopts a Claude Code login already present on this machine (see adopt.go)
-// so the feature is usable with no extra click.
+// any previously stored token from config.DataDir()/claudesub/.
+//
+// It deliberately does NOT adopt a Claude Code login found on the machine.
+// Whether to adopt is the app's decision, not this package's: claude-sub is a
+// Beta feature, and a user who pressed Disconnect has said no — adopting here
+// silently reconnected them on the next restart (internal/app's
+// syncClaudeSubWithBeta and ConnectClaudeAccount are the two places that
+// call AdoptLocal).
 func Default() *Manager {
 	defaultMu.Lock()
 	defer defaultMu.Unlock()
 	if defaultMgr == nil {
-		m := newManager(newTokenStore())
-		// Nothing of our own yet: fall back to a login the official Claude Code
-		// CLI already has. Same OAuth client, so our refresh works against that
-		// refresh token exactly as it would one of our own. We do not write back
-		// to Claude Code's file on adopt — only when a refresh rotates the token
-		// (adopt.go's writeBackRefreshed).
-		if res := AdoptLocal(); res.Token != nil {
-			m.token, m.source = res.Token, res.Source
-			logx.Printf("claudesub: adopted an existing Claude Code login from %s", res.Source)
-		}
-		defaultMgr = m
+		defaultMgr = newManager(newTokenStore())
 	}
 	return defaultMgr
 }
 
-// newManager loads the stored token only. Deliberately does NOT adopt a local
-// login: adoption is a process-startup decision that reads the user's home
-// directory, and tests must not silently pick up whatever Claude Code session
-// the developer happens to have.
+// newManager loads the stored token, with the source it was saved under.
 func newManager(ts *tokenStore) *Manager {
 	m := &Manager{tok: ts}
-	if t, ok := ts.load(); ok {
+	if t, src, ok := ts.load(); ok {
 		m.token = t
-		// A token we persisted earlier came from our own OAuth flow; adoption
-		// always writes through Adopt, which sets the real source.
-		m.source = "browser"
+		if src == "" {
+			// Written before the source was persisted; those only ever came
+			// from our own OAuth flow or an adoption the app re-runs anyway.
+			src = SourceBrowser
+		}
+		m.source = src
 	}
 	return m
 }
@@ -126,9 +131,8 @@ func ResetForTests() {
 	defaultMu.Unlock()
 }
 
-// Source reports how the current token was obtained: an AdoptResult.Source
-// value ("env", "claude-code-file", "macos-keychain") or "browser" for our own
-// OAuth flow. Empty when nothing is connected.
+// Source reports how the current token was obtained: one of the Source*
+// constants. Empty when nothing is connected.
 func (m *Manager) Source() string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -159,7 +163,7 @@ func (m *Manager) Adopt(res AdoptResult) error {
 	m.token = res.Token
 	m.source = res.Source
 	m.mu.Unlock()
-	if err := m.tok.save(res.Token); err != nil {
+	if err := m.tok.save(res.Token, res.Source); err != nil {
 		// Not fatal: the token works for this session either way, and losing
 		// it on restart is a re-adoption the user can trigger by clicking
 		// Connect again.

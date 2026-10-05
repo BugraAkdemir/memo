@@ -244,10 +244,133 @@ func newTestAppForAuth(t *testing.T) *App {
 	t.Cleanup(claudesub.ResetForTests)
 	dir := t.TempDir()
 	a := &App{
-		cfg:             &config.AppConfig{},
+		// claude-sub is a Beta feature; the connect surface refuses without it
+		// (TestClaudeSub_RefusedWhileBetaIsOff covers that side).
+		cfg:             &config.AppConfig{Beta: true},
 		providerCfgMgr:  provider.NewConfigManager(filepath.Join(dir, "providers.json"), make([]byte, 32)),
 		lifecycleCtx:    context.Background(),
 		lifecycleCancel: func() {},
 	}
 	return a
+}
+
+// writeClaudeCodeLogin puts a Claude Code credential file in a fresh HOME.
+func writeClaudeCodeLogin(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	dir := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	doc := `{"claudeAiOauth":{"accessToken":"sk-ant-oat01-local","refreshToken":"r","expiresAt":99999999999999}}`
+	if err := os.WriteFile(filepath.Join(dir, ".credentials.json"), []byte(doc), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	os.Unsetenv("MEMO_CLAUDE_TOKEN")
+	os.Unsetenv("CLAUDE_CODE_OAUTH_TOKEN")
+	return home
+}
+
+func hasEnabledClaudeSub(a *App) bool {
+	for _, p := range a.GetProviders() {
+		if p.Type == provider.ProviderClaudeSub && p.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
+// claude-sub is a Beta feature in the backend too, not only in the settings
+// UI: with Beta off nothing connects and nothing is adopted.
+func TestClaudeSub_RefusedWhileBetaIsOff(t *testing.T) {
+	writeClaudeCodeLogin(t)
+	a := newTestAppForAuth(t)
+	a.cfg.Beta = false
+
+	if _, _, _, _, err := a.ConnectClaudeAccount(); err == nil {
+		t.Error("ConnectClaudeAccount succeeded with Beta off")
+	}
+	if err := a.CompleteClaudeAuth("abc#def", ""); err == nil {
+		t.Error("CompleteClaudeAuth succeeded with Beta off")
+	}
+	a.syncClaudeSubWithBeta()
+	if hasEnabledClaudeSub(a) || a.cfg.DevGateway.ClaudeSub.Connected {
+		t.Error("a local Claude Code login was adopted while Beta is off")
+	}
+}
+
+// Switching Beta off removes the provider but keeps the account; switching it
+// back on restores it without another sign-in.
+func TestClaudeSub_BetaToggleRemovesAndRestoresTheProvider(t *testing.T) {
+	writeClaudeCodeLogin(t)
+	a := newTestAppForAuth(t)
+	if _, _, _, _, err := a.ConnectClaudeAccount(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if !hasEnabledClaudeSub(a) {
+		t.Fatal("setup: no claude-sub provider after connecting")
+	}
+
+	a.cfg.Beta = false
+	a.syncClaudeSubWithBeta()
+	if hasEnabledClaudeSub(a) {
+		t.Error("the claude-sub provider is still routable with Beta off")
+	}
+	if !claudesub.Default().Connected() {
+		t.Error("turning Beta off threw the token away")
+	}
+
+	a.cfg.Beta = true
+	a.syncClaudeSubWithBeta()
+	if !hasEnabledClaudeSub(a) {
+		t.Error("turning Beta back on did not restore the provider")
+	}
+	if c, _, src, _ := a.ClaudeAccountState(); !c || src != claudesub.SourceClaudeCodeFile {
+		t.Errorf("state after Beta on = connected:%v source:%q", c, src)
+	}
+}
+
+// Disconnect must survive a restart. Before, Default() adopted the very same
+// Claude Code login again on the next start and the account came back
+// (reproduced live against an isolated backend).
+func TestClaudeSub_DisconnectSurvivesARestart(t *testing.T) {
+	writeClaudeCodeLogin(t)
+	a := newTestAppForAuth(t)
+	if _, _, _, _, err := a.ConnectClaudeAccount(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if err := a.DisconnectClaudeAccount(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+
+	// A restart: fresh Manager over the same data dir, same config.
+	claudesub.ResetForTests()
+	a.syncClaudeSubWithBeta()
+
+	if c, _, _, _ := a.ClaudeAccountState(); c {
+		t.Error("the account came back after a restart although the user disconnected")
+	}
+	if hasEnabledClaudeSub(a) {
+		t.Error("the claude-sub provider came back after a restart")
+	}
+
+	// An explicit Connect is the user changing their mind.
+	if c, _, _, _, err := a.ConnectClaudeAccount(); err != nil || !c {
+		t.Fatalf("explicit reconnect: connected=%v err=%v", c, err)
+	}
+	if a.cfg.DevGateway.ClaudeSub.UserDisconnected {
+		t.Error("an explicit Connect left UserDisconnected set")
+	}
+}
+
+// Adoption at startup records where the login came from, not a generic label.
+func TestClaudeSub_StartupAdoptionRecordsTheRealSource(t *testing.T) {
+	writeClaudeCodeLogin(t)
+	a := newTestAppForAuth(t)
+	a.syncClaudeSubWithBeta()
+	if c, _, src, _ := a.ClaudeAccountState(); !c || src != claudesub.SourceClaudeCodeFile {
+		t.Errorf("after startup adoption: connected=%v source=%q, want %q", c, src, claudesub.SourceClaudeCodeFile)
+	}
 }

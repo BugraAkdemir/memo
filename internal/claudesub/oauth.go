@@ -186,13 +186,15 @@ func buildAuthorizeURL(f *authFlow, redirectIndex int) string {
 
 // CompleteAuth exchanges the code the user pasted for tokens, stores them
 // encrypted, and returns the account label Anthropic reports. It fails when no
-// flow is open, when the flow has expired, when the pasted state does not
-// match the one issued (CSRF), or when Anthropic rejects the exchange.
+// flow is open, when the flow has expired, when a state that came with the
+// code does not match the one issued (CSRF), or when Anthropic rejects the
+// exchange.
 //
-// The code may arrive alone or as the full redirect URL the browser ended on
-// — users paste whichever is in front of them, and the authorize page shows a
-// bare code while the address bar holds the long form.
-func (m *Manager) CompleteAuth(ctx context.Context, code, state string) error {
+// Users paste whatever is in front of them, and there are three shapes of it
+// (see parseCodePaste). state is the one the client received from StartAuth;
+// it may be empty. Every state that IS known — the client's and the one
+// pasted alongside the code — must match the flow's own.
+func (m *Manager) CompleteAuth(ctx context.Context, pasted, state string) error {
 	m.mu.Lock()
 	f := m.flow
 	m.mu.Unlock()
@@ -205,33 +207,27 @@ func (m *Manager) CompleteAuth(ctx context.Context, code, state string) error {
 		return fmt.Errorf("claudesub: sign-in expired, try again")
 	}
 
-	code, err := extractCode(code)
+	code, pastedState, err := parseCodePaste(pasted)
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(state) == "" {
-		// The user pasted the whole redirect URL the browser ended on; it
-		// carries the state, so they never have to copy that out separately.
-		state = stateFromURL(code)
-	}
-	if strings.TrimSpace(state) == "" {
-		state = f.state // a bare code was pasted; our own state is the only one
-	}
-	if state != f.state {
-		return fmt.Errorf("claudesub: state mismatch — this code came from a different sign-in attempt")
+	for _, s := range []string{strings.TrimSpace(state), pastedState} {
+		if s != "" && s != f.state {
+			return fmt.Errorf("claudesub: state mismatch — this code came from a different sign-in attempt")
+		}
 	}
 
-	t, err := exchange(ctx, f, code, state)
+	t, err := exchange(ctx, f, code, f.state)
 	if err != nil {
 		return err
 	}
 
 	m.mu.Lock()
 	m.token = t
-	m.source = "browser"
+	m.source = SourceBrowser
 	m.flow = nil
 	m.mu.Unlock()
-	if err := m.tok.save(t); err != nil {
+	if err := m.tok.save(t, SourceBrowser); err != nil {
 		logx.Printf("claudesub: save token after exchange: %v", err)
 	}
 	m.invalidateModels()
@@ -240,44 +236,46 @@ func (m *Manager) CompleteAuth(ctx context.Context, code, state string) error {
 	return nil
 }
 
-// extractCode accepts either the bare code or the whole URL the browser was
-// left on, and returns the code together with the state that came with it.
-// Anything else is an error rather than a silent empty exchange.
-func extractCode(raw string) (string, error) {
+// parseCodePaste accepts any of the three things a user can end up copying and
+// returns the authorization code plus the state that came with it ("" when
+// none did). Anything else is an error rather than a silent bad exchange.
+//
+//   - "code#state" — what Anthropic's hosted callback page DISPLAYS, and so by
+//     far the most common paste. Sending it whole as the code is rejected by
+//     the token endpoint (invalid_grant), which is how this was found:
+//     claude-code-proxy splits on '#' for exactly this reason.
+//   - the full callback URL from the address bar, ?code=...&state=...
+//   - a bare code.
+func parseCodePaste(raw string) (code, state string, err error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", fmt.Errorf("claudesub: paste the authorization code")
+		return "", "", fmt.Errorf("claudesub: paste the authorization code")
 	}
-	if !strings.Contains(raw, "?") && !strings.Contains(raw, "://") {
-		return raw, nil
+	if strings.Contains(raw, "://") || strings.HasPrefix(raw, "?") {
+		u, perr := url.Parse(raw)
+		if perr != nil {
+			return "", "", fmt.Errorf("claudesub: that does not look like a code or a redirect URL: %w", perr)
+		}
+		q := u.Query()
+		if e := q.Get("error"); e != "" {
+			return "", "", fmt.Errorf("claudesub: authorization denied: %s", e)
+		}
+		code, state = q.Get("code"), q.Get("state")
+		if code == "" {
+			return "", "", fmt.Errorf("claudesub: no authorization code found in that URL")
+		}
+		// Some callback pages carry the state in the fragment instead.
+		if state == "" && u.Fragment != "" {
+			state = u.Fragment
+		}
+		return code, state, nil
 	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", fmt.Errorf("claudesub: that does not look like a code or a redirect URL: %w", err)
+	code, state, _ = strings.Cut(raw, "#")
+	code, state = strings.TrimSpace(code), strings.TrimSpace(state)
+	if code == "" {
+		return "", "", fmt.Errorf("claudesub: paste the authorization code")
 	}
-	q := u.Query()
-	if e := q.Get("error"); e != "" {
-		return "", fmt.Errorf("claudesub: authorization denied: %s", e)
-	}
-	c := q.Get("code")
-	if c == "" {
-		return "", fmt.Errorf("claudesub: no authorization code found in that URL")
-	}
-	return c, nil
-}
-
-// stateFromURL lets CompleteAuth pick up the state the browser echoed back when
-// the user pastes the full redirect URL, so they don't have to copy it
-// separately. Returns "" when there is none to find.
-func stateFromURL(raw string) string {
-	if !strings.Contains(raw, "?") && !strings.Contains(raw, "://") {
-		return ""
-	}
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return ""
-	}
-	return u.Query().Get("state")
+	return code, state, nil
 }
 
 func exchange(ctx context.Context, f *authFlow, code, state string) (*oauth2.Token, error) {
@@ -457,10 +455,14 @@ func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
 
 	// Re-read the Manager's current token: another persistingTokenSource may
 	// have already refreshed (and persisted) a new one while this call was
-	// waiting for refreshMu.
+	// waiting for refreshMu — or the user may have disconnected, in which case
+	// there is nothing to refresh and refresh(nil) would panic.
 	p.m.mu.Lock()
-	current := p.m.token
+	current, source := p.m.token, p.m.source
 	p.m.mu.Unlock()
+	if current == nil {
+		return nil, ErrNotConnected
+	}
 	if current.Valid() {
 		p.mu.Lock()
 		p.last = current
@@ -468,31 +470,60 @@ func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
 		return current, nil
 	}
 
+	// A login shared with Claude Code may already have been refreshed THERE;
+	// using that costs a file read instead of our (possibly rotated-away)
+	// refresh token.
+	if t := freshLocalLogin(source, current); t != nil {
+		return p.install(current, t)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
 	defer cancel()
 	t, rotated, err := refresh(ctx, current)
 	if err != nil {
+		// Claude Code may have won a refresh race between our file read above
+		// and the request, rotating the token we just sent away.
+		if t := freshLocalLogin(source, current); t != nil {
+			return p.install(current, t)
+		}
 		return nil, err
 	}
-
-	p.mu.Lock()
-	p.last = t
-	p.mu.Unlock()
-
-	p.m.mu.Lock()
-	p.m.token = t
-	p.m.mu.Unlock()
-	if err := p.m.tok.save(t); err != nil {
-		logx.Printf("claudesub: persist refreshed token: %v", err)
+	out, err := p.install(current, t)
+	if err != nil {
+		return nil, err
 	}
 	// Anthropic is not documented as rotating refresh tokens, but claude-code-
 	// proxy handles a rotated one and this is free insurance: if the response
 	// carried a different refresh token, the old one is dead and Claude Code
-	// must be told or the user's own CLI breaks. See adopt.go's writeback note.
-	if rotated {
+	// must be told or the user's own CLI breaks. Only for a token that came
+	// from Claude Code's file — our own browser session is not the CLI's.
+	if rotated && source == SourceClaudeCodeFile {
 		writeBackRefreshed(t)
 	}
-	return t, nil
+	return out, nil
+}
+
+// install swaps the Manager's token from old to next and persists it. Reports
+// ErrNotConnected when the Manager no longer holds old — the user disconnected
+// (or connected a different account) while the refresh was in flight, and
+// writing next back would resurrect a session they just ended.
+func (p *persistingTokenSource) install(old, next *oauth2.Token) (*oauth2.Token, error) {
+	p.m.mu.Lock()
+	if p.m.token != old {
+		p.m.mu.Unlock()
+		return nil, ErrNotConnected
+	}
+	p.m.token = next
+	source := p.m.source
+	p.m.mu.Unlock()
+
+	p.mu.Lock()
+	p.last = next
+	p.mu.Unlock()
+	if err := p.m.tok.save(next, source); err != nil {
+		logx.Printf("claudesub: persist refreshed token: %v", err)
+	}
+	return next, nil
 }
 
 // refresh exchanges the stored refresh token for a fresh access token. Reports

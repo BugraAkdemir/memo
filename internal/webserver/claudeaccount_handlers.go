@@ -21,6 +21,10 @@ import (
 //     (the state is then read out of it, so nothing else has to be copied).
 //   - POST {"connect": false} -> clears the token, returns state.
 //   - POST {"model": "claude-..."} -> switches the model, returns state.
+//   - anything else -> 400. Never a disconnect.
+//
+// Connecting is refused while Beta is off (claude-sub is a Beta feature; see
+// App.requireClaudeSubBeta) — the GET still answers, so the UI can render.
 //
 // A separate file from devgateway_handlers.go on purpose: the claude-sub
 // feature is meant to be self-contained (see internal/claudesub).
@@ -108,6 +112,13 @@ func (s *Server) handleClaudeAccountConnection(w http.ResponseWriter, r *http.Re
 			return
 		}
 
+		// Disconnect only on an explicit {"connect": false}. Falling through to
+		// it for anything unrecognised meant an empty body, or {"model": ""},
+		// silently signed the account out and deleted its token.
+		if body.Connect == nil {
+			http.Error(w, `expected "connect", "code" or "model"`, http.StatusBadRequest)
+			return
+		}
 		if err := s.fullBridge.DisconnectClaudeAccount(); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

@@ -66,6 +66,9 @@ const oneMBeta = "context-1m-2025-08-07"
 type claudeSubProvider struct {
 	mgr   *Manager
 	inner provider.Provider
+	// model is the configured model, used when a request names none — the
+	// inner provider falls back to the same one.
+	model string
 }
 
 // NewProvider is the RegisterConstructor entry point. It never fails on a
@@ -75,10 +78,17 @@ type claudeSubProvider struct {
 // contract internal/geminisub settled on.
 func NewProvider(cfg provider.ProviderConfig) (provider.Provider, error) {
 	mgr := Default()
+	baseURL := cfg.BaseURL
+	if baseURL == "" {
+		// The same base the capability probe measures against. Before this,
+		// MEMO_CLAUDE_API_URL redirected the probe but not the chat, so the
+		// table could describe an endpoint the conversation never touched.
+		baseURL = apiURL() + "v1"
+	}
 	inner, err := provider.NewClaudeProviderWith(
 		// APIKey deliberately empty: the Auth hook fully replaces x-api-key, and
 		// a subscription account has no key to send anyway.
-		provider.ProviderConfig{Model: cfg.Model, BaseURL: cfg.BaseURL},
+		provider.ProviderConfig{Model: cfg.Model, BaseURL: baseURL},
 		provider.ClaudeOverrides{
 			Type:             provider.ProviderClaudeSub,
 			DisplayName:      "Anthropic Claude (subscription)",
@@ -90,7 +100,7 @@ func NewProvider(cfg provider.ProviderConfig) (provider.Provider, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &claudeSubProvider{mgr: mgr, inner: inner}, nil
+	return &claudeSubProvider{mgr: mgr, inner: inner, model: cfg.Model}, nil
 }
 
 func (p *claudeSubProvider) Name() provider.ProviderType { return provider.ProviderClaudeSub }
@@ -127,11 +137,25 @@ func (p *claudeSubProvider) ListModels(ctx context.Context) ([]string, error) {
 }
 
 func (p *claudeSubProvider) ChatCompletion(ctx context.Context, req provider.ChatRequest) (*provider.ChatResponse, error) {
-	return p.inner.ChatCompletion(ctx, withBareModel(req))
+	req = withBareModel(req)
+	return p.inner.ChatCompletion(p.withModel(ctx, req.Model), req)
 }
 
 func (p *claudeSubProvider) ChatCompletionStream(ctx context.Context, req provider.ChatRequest) (<-chan provider.StreamChunk, error) {
-	return p.inner.ChatCompletionStream(ctx, withBareModel(req))
+	req = withBareModel(req)
+	return p.inner.ChatCompletionStream(p.withModel(ctx, req.Model), req)
+}
+
+// requestModelKey carries the model a request is for down to decorateRequest,
+// which only sees the *http.Request and so cannot read it from the body. The
+// beta set depends on it (see oneMContextSupported).
+type requestModelKey struct{}
+
+func (p *claudeSubProvider) withModel(ctx context.Context, model string) context.Context {
+	if model == "" {
+		model = p.model
+	}
+	return context.WithValue(ctx, requestModelKey{}, model)
 }
 
 // withBareModel removes the "claude-sub/" qualifier the dev-gateway model list
@@ -160,7 +184,8 @@ func (m *Manager) decorateRequest(ctx context.Context, req *http.Request) error 
 		return &provider.ProviderError{Provider: provider.ProviderClaudeSub, Err: err}
 	}
 	req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
-	req.Header.Set("anthropic-beta", m.betasForRequest())
+	model, _ := ctx.Value(requestModelKey{}).(string)
+	req.Header.Set("anthropic-beta", m.betasForRequest(model))
 	req.Header.Set("user-agent", userAgent())
 	req.Header.Set("x-app", "cli")
 	return nil
@@ -168,10 +193,10 @@ func (m *Manager) decorateRequest(ctx context.Context, req *http.Request) error 
 
 // betasForRequest is the beta set for a real request: the required flags, plus
 // the 1M-context flag only when a probe measured this account as entitled to
-// it. Sending the 1M beta speculatively is what hermes-agent does with a
+// it on this very model. Sending the 1M beta speculatively is what hermes-agent does with a
 // reactive recovery attached; there is no such recovery to attach it to here.
-func (m *Manager) betasForRequest() string {
-	if m.oneMContextSupported() {
+func (m *Manager) betasForRequest(model string) string {
+	if m.oneMContextSupported(model) {
 		return requiredBetas + "," + oneMBeta
 	}
 	return requiredBetas

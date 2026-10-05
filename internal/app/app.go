@@ -702,9 +702,10 @@ func (a *App) Startup(ctx context.Context) {
 	// that token so gemini-sub works with no extra click (like
 	// claude-code-proxy's ~/.claude/.credentials.json fallback).
 	a.adoptGeminiCLILoginIfPresent()
-	// Same for a Claude Code / setup-token login that already exists on this
-	// machine: adopt it so claude-sub works with no click at all.
-	a.adoptClaudeLoginIfPresent()
+	// claude-sub is a Beta feature: its provider exists only while Beta is on,
+	// and only then is a Claude Code / setup-token login already on this
+	// machine adopted so it works with no click at all.
+	a.syncClaudeSubWithBeta()
 	tools.Configurator = a
 	tools.Routines = routineToolAdapter{a}
 	tools.FileSender = fileToolAdapter{a}

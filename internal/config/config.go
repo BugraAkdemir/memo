@@ -535,6 +535,12 @@ type ClaudeSubState struct {
 	// provider (e.g. "claude-sonnet-5"). The user picks it in the Claude
 	// Subscription settings tab from the account's live model list.
 	Model string `yaml:"model" json:"model"`
+	// UserDisconnected records that the user pressed Disconnect. Automatic
+	// adoption of a Claude Code login found on the machine (at startup, or
+	// when Beta is switched on) is skipped while it is set — without it,
+	// Disconnect lasted only until the next restart. An explicit Connect
+	// clears it.
+	UserDisconnected bool `yaml:"user_disconnected" json:"user_disconnected"`
 }
 
 // GeminiSubState is the frontend-facing state of the gemini-sub Google

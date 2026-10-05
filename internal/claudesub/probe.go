@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -141,39 +140,52 @@ func (m *Manager) runProbe(ctx context.Context, model string) Capabilities {
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 
-	caps.Plain = m.probeOnce(ctx, tok, probeReq{
-		model: model, tool: false, thinking: false, oneM: false,
-	})
-	if !caps.Plain {
+	plain := m.probeOnce(ctx, tok, probeReq{model: model})
+	caps.Plain = plain.ok
+	if !plain.ok {
+		caps.EntitlementBlocked = plain.gate
 		caps.Detail = "even a minimal request was refused"
+		if plain.gate {
+			caps.Detail += " by the subscription gate (not a quota limit)"
+		}
 		return caps
 	}
 
-	caps.Tools = m.probeOnce(ctx, tok, probeReq{
-		model: model, tool: true, thinking: false, oneM: false,
-	})
-	caps.Thinking = m.probeOnce(ctx, tok, probeReq{
-		model: model, tool: false, thinking: true, oneM: false,
-	})
-	caps.OneMContext = m.probeOnce(ctx, tok, probeReq{
-		model: model, tool: false, thinking: false, oneM: true,
-	})
+	tools := m.probeOnce(ctx, tok, probeReq{model: model, tool: true})
+	thinking := m.probeOnce(ctx, tok, probeReq{model: model, thinking: true})
+	oneM := m.probeOnce(ctx, tok, probeReq{model: model, oneM: true})
+	caps.Tools, caps.Thinking, caps.OneMContext = tools.ok, thinking.ok, oneM.ok
 
-	// EntitlementBlocked is only meaningful when something actually failed.
-	// Re-derive it from the worst class: if tools are refused but plain works,
-	// the account is entitled to the model but not to agent-mode traffic on it.
-	caps.EntitlementBlocked = !caps.Tools || !caps.Thinking
+	// EntitlementBlocked means the GATE refused something — the headerless
+	// 429 / opaque 400 shape — not merely that a class failed. A model that
+	// lacks a feature answers with a concrete, named 400 (Haiku 4.5 and
+	// adaptive thinking, Haiku and the 1M window): that is the model, not the
+	// plan, and reporting it as "blocked" told every user on the default model
+	// their account was being refused when it was not. The 1M probe is left
+	// out on purpose: an account without the long-context entitlement is the
+	// normal case, not a refusal worth flagging.
+	caps.EntitlementBlocked = tools.gate || thinking.gate
 	switch {
-	case caps.Plain && caps.Tools && caps.Thinking:
+	case caps.Tools && caps.Thinking:
 		caps.Detail = "all core features available"
-	case caps.Plain && caps.Tools:
-		caps.Detail = "thinking refused on this model; agent tools work"
-	case caps.Plain:
-		caps.Detail = "plain chat only — this account may not be entitled to agent traffic on " + model
+	case tools.gate:
+		caps.Detail = "plain chat only — the subscription gate refuses agent (tool) traffic on " + model
+	case !caps.Tools:
+		caps.Detail = "tool calls failed on " + model
+	case thinking.gate:
+		caps.Detail = "thinking refused by the subscription gate on " + model + "; agent tools work"
 	default:
-		caps.Detail = "unexpected: plain chat was refused"
+		caps.Detail = "this model does not support thinking; agent tools work"
 	}
 	return caps
+}
+
+// probeOutcome is one probe request's result. gate is true only for the
+// entitlement-refusal shape (see isEntitlementRefusal), never for a network
+// failure or a concrete validation error.
+type probeOutcome struct {
+	ok   bool
+	gate bool
 }
 
 type probeReq struct {
@@ -184,14 +196,14 @@ type probeReq struct {
 }
 
 // probeOnce sends one minimal request and classifies the outcome.
-func (m *Manager) probeOnce(ctx context.Context, tok *oauth2.Token, r probeReq) bool {
+func (m *Manager) probeOnce(ctx context.Context, tok *oauth2.Token, r probeReq) probeOutcome {
 	body, betas, err := probeBody(r)
 	if err != nil {
-		return false
+		return probeOutcome{}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, probeEndpoint+"v1/messages", bytes.NewReader(body))
 	if err != nil {
-		return false
+		return probeOutcome{}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
@@ -203,13 +215,13 @@ func (m *Manager) probeOnce(ctx context.Context, tok *oauth2.Token, r probeReq) 
 	resp, err := probeClient.Do(req)
 	if err != nil {
 		logx.Printf("claudesub: probe request failed: %v", err)
-		return false
+		return probeOutcome{}
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 
 	if resp.StatusCode == http.StatusOK {
-		return true
+		return probeOutcome{ok: true}
 	}
 
 	// The signature that matters: a refusal with NO anthropic-ratelimit-*
@@ -219,8 +231,11 @@ func (m *Manager) probeOnce(ctx context.Context, tok *oauth2.Token, r probeReq) 
 	if isEntitlementRefusal(resp, raw) {
 		logx.Printf("claudesub: probe refused (tools=%v thinking=%v 1m=%v) status=%d — entitlement gate, not quota",
 			r.tool, r.thinking, r.oneM, resp.StatusCode)
+		return probeOutcome{gate: true}
 	}
-	return false
+	logx.Printf("claudesub: probe (tools=%v thinking=%v 1m=%v) status=%d: %s",
+		r.tool, r.thinking, r.oneM, resp.StatusCode, provider_msg(raw))
+	return probeOutcome{}
 }
 
 // isEntitlementRefusal reports whether this response is the shape gate rather
@@ -309,7 +324,10 @@ func apiURL() string {
 var probeClient = &http.Client{Timeout: 20 * time.Second}
 
 // oneMContextSupported reports whether the measured account serves the 1M
-// window, so the beta is only sent where it is known to be accepted.
+// window ON THIS MODEL, so the beta is only sent where it is known to be
+// accepted. The measurement is per model: a switch from a model that has the
+// window to one that does not must not keep sending the beta (it 400s, and the
+// switch alone does not re-run the probe until the app asks it to).
 //
 // Sending it unconditionally is the other option, and hermes-agent chose that
 // (PR #99842) with a reactive recovery. The difference: their recovery existed
@@ -318,10 +336,10 @@ var probeClient = &http.Client{Timeout: 20 * time.Second}
 // beta rather than a parameter, so the valve would misread it and latch
 // temperature off for the process. Measuring first is both cheaper and
 // quieter.
-func (m *Manager) oneMContextSupported() bool {
+func (m *Manager) oneMContextSupported(model string) bool {
 	m.probe.mu.Lock()
 	defer m.probe.mu.Unlock()
-	return m.probe.caps != nil && m.probe.caps.OneMContext
+	return m.probe.caps != nil && m.probe.caps.OneMContext && m.probe.caps.Model == model
 }
 
 // invalidateProbe drops the measurement, on connect and disconnect.
@@ -330,5 +348,3 @@ func (m *Manager) invalidateProbe() {
 	m.probe.caps, m.probe.model = nil, ""
 	m.probe.mu.Unlock()
 }
-
-var _ = fmt.Sprintf

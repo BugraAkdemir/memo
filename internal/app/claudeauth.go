@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -46,20 +47,37 @@ func claudeSubMarkerConfig(model string) provider.ProviderConfig {
 	}
 }
 
+// requireClaudeSubBeta is the backend half of claude-sub being a Beta feature.
+// The settings UI only shows the panel while Beta is on, but the REST surface
+// is reachable without it, so every state-changing entry point checks here too.
+func (a *App) requireClaudeSubBeta() error {
+	if a.cfg == nil || !a.cfg.Beta {
+		return errors.New(a.t(
+			"Claude aboneliği bir beta özelliğidir; Ayarlar › Beta'dan Beta'yı açın",
+			"Claude Subscription is a beta feature; enable Beta in Settings › Beta",
+		))
+	}
+	return nil
+}
+
 // ClaudeAccountState reports whether a Claude subscription is connected, the
 // cached display label, how it was connected, and the selected model id.
 func (a *App) ClaudeAccountState() (connected bool, account, source, model string) {
-	// A token on disk is the ground truth, not the config flag: a user who
-	// deletes the data dir's token.enc behind our back would otherwise be told
-	// "connected" forever while every turn failed with ErrNotConnected. The
-	// config's Connected field still gates writes (see below), so this is a
-	// read-side correction rather than a second source of truth.
+	// Connected needs BOTH the token and the recorded connection. The token is
+	// the ground truth for "can a turn work": a user who deletes the data
+	// dir's token.enc behind our back would otherwise be told "connected"
+	// forever while every turn failed with ErrNotConnected. The config flag is
+	// the ground truth for "did the user connect": a token alone, with no
+	// recorded connection, has no marker provider behind it and no model.
 	if !claudesub.Default().Connected() {
 		return false, "", "", ""
 	}
 	a.cfgMu.RLock()
 	defer a.cfgMu.RUnlock()
 	st := a.cfg.DevGateway.ClaudeSub
+	if !st.Connected {
+		return false, "", "", ""
+	}
 	return true, st.Account, st.Source, st.Model
 }
 
@@ -76,6 +94,9 @@ func (a *App) ClaudeAccountState() (connected bool, account, source, model strin
 // browser lands on an Anthropic page that displays the code, and the user
 // brings it back to CompleteClaudeAuth themselves.
 func (a *App) ConnectClaudeAccount() (connected bool, source, authURL, state string, err error) {
+	if err := a.requireClaudeSubBeta(); err != nil {
+		return false, "", "", "", err
+	}
 	m := claudesub.Default()
 
 	if res := claudesub.AdoptLocal(); res.Token != nil {
@@ -88,8 +109,8 @@ func (a *App) ConnectClaudeAccount() (connected bool, source, authURL, state str
 		return true, res.Source, "", "", nil
 	}
 
-	// Already connected — most often because Default() adopted a local login at
-	// startup and adoptClaudeLoginIfPresent already wrote the marker. Report the
+	// Already connected — a token from an earlier browser sign-in, or a local
+	// login adopted earlier whose source has since gone away. Report the
 	// source the Manager actually recorded rather than assuming "browser":
 	// telling a user who was adopted from ~/.claude/.credentials.json that they
 	// signed in through the browser is a story that never happened, and it is
@@ -97,7 +118,7 @@ func (a *App) ConnectClaudeAccount() (connected bool, source, authURL, state str
 	if m.Connected() {
 		src := m.Source()
 		if src == "" {
-			src = "browser"
+			src = claudesub.SourceBrowser
 		}
 		if err := a.finalizeClaudeConnect(src); err != nil {
 			return false, "", "", "", err
@@ -109,13 +130,16 @@ func (a *App) ConnectClaudeAccount() (connected bool, source, authURL, state str
 	if err != nil {
 		return false, "", "", "", err
 	}
-	return false, "browser", authURL, state, nil
+	return false, claudesub.SourceBrowser, authURL, state, nil
 }
 
 // CompleteClaudeAuth finishes the browser flow with the code the user pasted
 // from Anthropic's callback page. code may be the bare code or the whole URL
 // the browser ended on.
 func (a *App) CompleteClaudeAuth(code, state string) error {
+	if err := a.requireClaudeSubBeta(); err != nil {
+		return err
+	}
 	parent := a.lifecycleCtx
 	if parent == nil {
 		parent = context.Background()
@@ -125,12 +149,13 @@ func (a *App) CompleteClaudeAuth(code, state string) error {
 	if err := claudesub.Default().CompleteAuth(ctx, code, state); err != nil {
 		return err
 	}
-	return a.finalizeClaudeConnect("browser")
+	return a.finalizeClaudeConnect(claudesub.SourceBrowser)
 }
 
 // finalizeClaudeConnect writes the enabled marker provider so the type is
 // reachable, then records the connected state. Keeps any model the user had
-// already selected on a reconnect.
+// already selected on a reconnect. Recording a fresh state also clears
+// UserDisconnected: connecting is the user taking that decision back.
 func (a *App) finalizeClaudeConnect(source string) error {
 	a.cfgMu.RLock()
 	model := a.cfg.DevGateway.ClaudeSub.Model
@@ -209,6 +234,11 @@ func claudeSubAccountLabel() string {
 // SetClaudeAccountModel changes which model the claude-sub marker provider
 // (and Memo's own chat, when this provider is active) uses. No-op if not
 // connected.
+//
+// Capability is a property of the model as much as of the account, so the
+// switch re-runs the probe. Without that the table kept describing the
+// previous model, and the 1M budget it raised stayed on the marker for a model
+// nobody had measured.
 func (a *App) SetClaudeAccountModel(model string) error {
 	model = strings.TrimSpace(model)
 	if model == "" {
@@ -219,6 +249,10 @@ func (a *App) SetClaudeAccountModel(model string) error {
 		a.cfgMu.Unlock()
 		return nil
 	}
+	if !a.cfg.Beta {
+		a.cfgMu.Unlock()
+		return a.requireClaudeSubBeta()
+	}
 	a.cfg.DevGateway.ClaudeSub.Model = model
 	cfg := a.cfg
 	a.cfgMu.Unlock()
@@ -226,30 +260,83 @@ func (a *App) SetClaudeAccountModel(model string) error {
 	if err := a.UpdateProvider(claudeSubMarkerConfig(model)); err != nil {
 		return err
 	}
-	return config.Save(cfg)
+	if err := config.Save(cfg); err != nil {
+		return err
+	}
+	a.measureClaudeCapabilities(model)
+	return nil
 }
 
-// adoptClaudeLoginIfPresent is called once at startup. If the user has not
-// connected in-app but Claude Code (or a CLAUDE_CODE_OAUTH_TOKEN in the
-// environment) already holds a usable login, write the marker provider and the
-// connected state so claude-sub works with no click at all.
+// syncClaudeSubWithBeta makes the claude-sub provider exist exactly when Beta
+// is on. Called at startup and whenever Beta is toggled.
 //
-// Mirrors adoptGeminiCLILoginIfPresent. Best-effort: nothing here can fail
-// startup — a dead or absent local login is silently ignored, and the user
-// still has the Settings tab.
-func (a *App) adoptClaudeLoginIfPresent() {
-	a.cfgMu.RLock()
-	already := a.cfg.DevGateway.ClaudeSub.Connected
-	a.cfgMu.RUnlock()
-	if already {
+//   - Beta off: the marker provider is removed so the type never reaches the
+//     router (DeleteProvider also drops it as the active provider). The token
+//     and the recorded connection are kept, so switching Beta back on restores
+//     the account without a second sign-in.
+//   - Beta on, connected: the marker is (re)written at the conservative context
+//     budget and the probe re-measures in the background. After a restart the
+//     probe cache is empty, so a 1M budget persisted in providers.json would
+//     otherwise outlive the measurement that justified it — the beta header is
+//     only sent while a measurement says so.
+//   - Beta on, not connected: a Claude Code login already on this machine is
+//     adopted so claude-sub works with no click — unless the user pressed
+//     Disconnect, which this respects across restarts.
+//
+// Best-effort: nothing here can fail startup or the Beta toggle.
+func (a *App) syncClaudeSubWithBeta() {
+	if a.cfg == nil {
 		return
 	}
-	if !claudesub.Default().Connected() {
-		return // nothing adopted at construction time
+	a.cfgMu.RLock()
+	beta := a.cfg.Beta
+	st := a.cfg.DevGateway.ClaudeSub
+	a.cfgMu.RUnlock()
+	m := claudesub.Default()
+
+	if !beta {
+		if a.hasClaudeSubMarker() {
+			if err := a.DeleteProvider(provider.ProviderClaudeSub, claudeSubProviderName); err != nil {
+				logx.Printf("claudeauth: remove marker while Beta is off: %v", err)
+			}
+		}
+		return
 	}
-	if err := a.finalizeClaudeConnect("adopted"); err != nil {
+	if st.Connected && m.Connected() {
+		marker := claudeSubMarkerConfig(st.Model)
+		if err := a.UpdateProvider(marker); err != nil {
+			logx.Printf("claudeauth: restore marker: %v", err)
+			return
+		}
+		a.measureClaudeCapabilities(marker.Model)
+		return
+	}
+	if st.UserDisconnected {
+		return
+	}
+	res := claudesub.AdoptLocal()
+	if res.Token == nil {
+		return
+	}
+	if err := m.Adopt(res); err != nil {
 		logx.Printf("claudeauth: adopt local Claude login: %v", err)
+		return
 	}
+	if err := a.finalizeClaudeConnect(res.Source); err != nil {
+		logx.Printf("claudeauth: adopt local Claude login: %v", err)
+		return
+	}
+	logx.Printf("claudeauth: adopted an existing Claude Code login from %s", res.Source)
+}
+
+// hasClaudeSubMarker reports whether the marker provider config exists.
+func (a *App) hasClaudeSubMarker() bool {
+	for _, p := range a.GetProviders() {
+		if p.Type == provider.ProviderClaudeSub {
+			return true
+		}
+	}
+	return false
 }
 
 // DisconnectClaudeAccount clears the stored token, removes the marker provider,
@@ -275,7 +362,9 @@ func (a *App) DisconnectClaudeAccount() error {
 	}
 
 	a.cfgMu.Lock()
-	a.cfg.DevGateway.ClaudeSub = config.ClaudeSubState{}
+	// Remembered, so the next startup does not quietly adopt the same
+	// Claude Code login the user just disconnected from.
+	a.cfg.DevGateway.ClaudeSub = config.ClaudeSubState{UserDisconnected: true}
 	cfg := a.cfg
 	a.cfgMu.Unlock()
 	return config.Save(cfg)

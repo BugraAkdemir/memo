@@ -69,6 +69,7 @@ func TestClaudeSub_ConnectOverHTTPAgainstNoLocalLogin(t *testing.T) {
 	})
 
 	h := NewHarness(t)
+	enableBeta(t, h)
 
 	// 1. GET: not connected, and no capabilities measured yet. The absence of
 	//    "capabilities" is honest — a probe has not run — rather than an empty
@@ -101,11 +102,12 @@ func TestClaudeSub_ConnectOverHTTPAgainstNoLocalLogin(t *testing.T) {
 		t.Errorf("authorize URL %q lost code=true, so Anthropic would display no code", authURL)
 	}
 
-	// 3. Complete with a code. The full redirect URL is what the browser leaves
-	//    behind, and the state must be picked out of it rather than demanded
-	//    separately.
-	pasted := "https://platform.claude.com/oauth/code/callback?code=the-code&state=" + stateTok
-	resp = h.postJSON("/api/dev-gateway/claude-account", map[string]any{"code": pasted})
+	// 3. Complete with a code, pasted the way a real user does: Anthropic's
+	//    callback page DISPLAYS "code#state", and the settings tab sends the
+	//    state it was handed alongside. Sending that string whole as the code
+	//    is what used to fail with invalid_grant.
+	pasted := "the-code#" + stateTok
+	resp = h.postJSON("/api/dev-gateway/claude-account", map[string]any{"code": pasted, "state": stateTok})
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
@@ -151,7 +153,23 @@ func TestClaudeSub_ConnectOverHTTPAgainstNoLocalLogin(t *testing.T) {
 		t.Fatalf("no claude-sub provider in %+v after connecting", providers)
 	}
 
-	// 5. Disconnect clears both the token and the marker.
+	// 5. A POST that says nothing must not be read as "disconnect" — an empty
+	//    body, or a model switch with an empty model, used to sign the account
+	//    out and delete its token.
+	for _, body := range []map[string]any{{}, {"model": ""}} {
+		resp = h.postJSON("/api/dev-gateway/claude-account", body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("POST %v: status %d, want 400", body, resp.StatusCode)
+		}
+	}
+	var still map[string]any
+	decodeInto(t, h.getJSON("/api/dev-gateway/claude-account"), &still)
+	if still["connected"] != true {
+		t.Fatalf("an empty POST disconnected the account: %v", still)
+	}
+
+	// 6. Disconnect clears both the token and the marker.
 	resp = h.postJSON("/api/dev-gateway/claude-account", map[string]any{"connect": false})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("disconnect: status %d", resp.StatusCode)
@@ -198,6 +216,7 @@ func TestClaudeSub_LocalLoginConnectsWithOneRequestAndNoBrowser(t *testing.T) {
 	t.Cleanup(claudesub.ResetForTests)
 
 	h := NewHarness(t)
+	enableBeta(t, h)
 
 	resp := h.postJSON("/api/dev-gateway/claude-account", map[string]any{"connect": true})
 	if resp.StatusCode != http.StatusOK {
@@ -226,10 +245,10 @@ func TestClaudeSub_LocalLoginConnectsWithOneRequestAndNoBrowser(t *testing.T) {
 	}
 }
 
-// Default() adopts a local login once, when the process constructs the Manager.
-// That is not enough on its own: a user who signs in to Claude Code while Memo
-// is already running would be stuck behind the browser flow until a restart.
-// Connect re-checks, which is why adoption lives in both places.
+// Startup (and switching Beta on) adopts a local login once. That is not enough
+// on its own: a user who signs in to Claude Code while Memo is already running
+// would be stuck behind the browser flow until a restart. Connect re-checks,
+// which is why adoption lives in both places.
 func TestClaudeSub_PicksUpALoginThatAppearedAfterStartup(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -239,9 +258,10 @@ func TestClaudeSub_PicksUpALoginThatAppearedAfterStartup(t *testing.T) {
 	claudesub.ResetForTests()
 	t.Cleanup(claudesub.ResetForTests)
 
-	// Boot the app with nothing to adopt — this constructs the Manager, so the
-	// startup adoption has already run and found nothing.
+	// Boot the app with nothing to adopt — the startup / Beta-on adoption has
+	// already run and found nothing.
 	h := NewHarness(t)
+	enableBeta(t, h)
 
 	// A fresh map per decode: encoding/json MERGES into a non-nil map rather
 	// than replacing it, so reusing one across two responses would leave the
@@ -284,6 +304,7 @@ func TestClaudeSub_PicksUpALoginThatAppearedAfterStartup(t *testing.T) {
 func TestClaudeSub_RouteIsAdminGated(t *testing.T) {
 	isolateClaudeEnv(t)
 	h := NewHarness(t)
+	enableBeta(t, h)
 
 	// A GET is readable before the gate resolves — the settings screen polls it
 	// while the user is still signing in.
@@ -296,5 +317,70 @@ func TestClaudeSub_RouteIsAdminGated(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("POST status %d — this Harness is loopback so it is trusted as admin, which is correct", resp.StatusCode)
+	}
+}
+
+// enableBeta switches Beta on through the same endpoint the settings UI uses.
+// claude-sub is a Beta feature; its connect surface refuses without it.
+func enableBeta(t *testing.T, h *Harness) {
+	t.Helper()
+	resp := h.putJSON("/api/remote-access", map[string]any{"beta": true})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("enable Beta: status %d", resp.StatusCode)
+	}
+}
+
+// With Beta off, the backend refuses to connect and adopts nothing — the
+// settings UI hiding the panel is not the only gate. Switching Beta on is then
+// enough by itself to pick up a Claude Code login already on the machine.
+func TestClaudeSub_IsABetaFeatureOverHTTP(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	doc := `{"claudeAiOauth":{"accessToken":"sk-ant-oat01-local","refreshToken":"r-local","expiresAt":99999999999999}}`
+	if err := os.WriteFile(filepath.Join(dir, ".credentials.json"), []byte(doc), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	os.Unsetenv("MEMO_CLAUDE_TOKEN")
+	os.Unsetenv("CLAUDE_CODE_OAUTH_TOKEN")
+	claudesub.ResetForTests()
+	t.Cleanup(claudesub.ResetForTests)
+
+	h := NewHarness(t) // Beta is off by default
+
+	resp := h.postJSON("/api/dev-gateway/claude-account", map[string]any{"connect": true})
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Error("connect succeeded with Beta off")
+	}
+	var state map[string]any
+	decodeInto(t, h.getJSON("/api/dev-gateway/claude-account"), &state)
+	if state["connected"] != false {
+		t.Errorf("a local login was adopted with Beta off: %v", state)
+	}
+
+	enableBeta(t, h)
+	var after map[string]any
+	decodeInto(t, h.getJSON("/api/dev-gateway/claude-account"), &after)
+	if after["connected"] != true || after["source"] != "claude-code-file" {
+		t.Errorf("switching Beta on did not adopt the local login: %v", after)
+	}
+
+	// And off again takes the provider away.
+	resp = h.putJSON("/api/remote-access", map[string]any{"beta": false})
+	resp.Body.Close()
+	var providers []struct {
+		Type string `json:"type"`
+	}
+	decodeInto(t, h.getJSON("/api/providers"), &providers)
+	for _, p := range providers {
+		if p.Type == "claude-sub" {
+			t.Error("the claude-sub provider is still configured with Beta off")
+		}
 	}
 }

@@ -34,7 +34,6 @@ import 'settings/tabs/whatsapp_tab.dart';
 import 'settings/tabs/telegram_tab.dart';
 import 'settings/tabs/live_mode_tab.dart';
 import 'settings/tabs/gemini_subscription_tab.dart';
-import 'settings/tabs/claude_subscription_tab.dart';
 import 'settings/tabs/code_submode_prompts_tab.dart';
 
 /// Settings dialog: a searchable, grouped rail on the left, tab content on
@@ -106,16 +105,15 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/telegram-logo.svg', // Telegram
     'lib/icon/slash/microphone.svg', // Live Mode
     'lib/icon/slash/key.svg', // Gemini Subscription
-    'lib/icon/slash/key.svg', // Claude Subscription
     'lib/icon/slash/code.svg', // Code Mode Prompts
   ];
 
   /// Tab indices grouped under an eyebrow header, in sidebar display order.
-  /// Every index 0..27 must appear exactly once — covered by
+  /// Every index 0..26 must appear exactly once — covered by
   /// settings_dialog_test.dart's group-coverage test.
   static const _groups = [
     ('settings_group_general', [0, 1, 2]),
-    ('settings_group_providers', [5, 6, 25, 27, 15, 22, 23, 24]),
+    ('settings_group_providers', [5, 6, 25, 15, 22, 23, 24]),
     ('settings_group_memory', [3, 4, 9, 10, 21]),
     ('settings_group_agents', [7, 8, 11, 18, 26]),
     ('settings_group_system', [12, 13, 14, 20]),
@@ -149,7 +147,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_telegram'),
     L10n.t('tab_live_mode'),
     L10n.t('tab_gemini_subscription'),
-    L10n.t('tab_claude_subscription'),
     L10n.t('code_submode_prompts_tab_title'),
   ];
 
@@ -166,10 +163,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     if (!perms.memory) hidden.addAll([3, 4, 21]); // Memory, Memory Import, Dream
     if (!perms.whatsapp) hidden.add(22);
     if (!perms.telegram) hidden.add(23);
-    if (!perms.models || !_betaEnabled()) {
-      hidden.add(25); // Gemini Subscription
-      hidden.add(27); // Claude Subscription
-    }
+    if (!perms.models || !_betaEnabled()) hidden.add(25); // Gemini Subscription
     return hidden;
   }
 
@@ -399,7 +393,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 24: return const LiveModeTab();
       case 25: return const GeminiSubscriptionTab();
       case 26: return const CodeSubModePromptsTab();
-      case 27: return const ClaudeSubscriptionTab();
       default: return const SizedBox.shrink();
     }
   }

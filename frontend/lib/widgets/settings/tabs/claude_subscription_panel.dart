@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,12 +9,18 @@ import '../../../core/friendly_error.dart';
 import '../../../core/l10n.dart';
 import '../../../core/theme.dart';
 import '../../../providers/provider_provider.dart';
+import '../../../models/dev_gateway.dart';
 import '../../../providers/settings_provider.dart';
 
-/// Settings → Claude Subscription. Use the Claude Pro/Max plan the user already
-/// pays for instead of a pay-per-token API key, both in Memo chat and on the
-/// local /v1 gateway. Backed by /api/dev-gateway/claude-account and
+/// Settings → Beta → Claude Subscription. Use the Claude Pro/Max plan the user
+/// already pays for instead of a pay-per-token API key, both in Memo chat and
+/// on the local /v1 gateway. Backed by /api/dev-gateway/claude-account and
 /// internal/app/claudeauth.go.
+///
+/// A Beta feature: BetaFeaturesTab mounts this only while Beta is on, and the
+/// backend refuses to connect without it. It used to be a settings tab of its
+/// own; it is an embeddable panel now (no page title, no scroll view of its
+/// own) because it lives inside the Beta tab's list.
 ///
 /// The flow has two shapes and which one you get is decided by the machine,
 /// not by you. If Claude Code (or a CLAUDE_CODE_OAUTH_TOKEN) is already signed
@@ -21,22 +29,49 @@ import '../../../providers/settings_provider.dart';
 /// Anthropic's hosted page, which *displays* a code rather than redirecting
 /// back to us, and you paste it below. There is no polling here and no timeout
 /// spinner: nothing is happening on the backend while you read the page.
-class ClaudeSubscriptionTab extends ConsumerStatefulWidget {
-  const ClaudeSubscriptionTab({super.key});
+class ClaudeSubscriptionPanel extends ConsumerStatefulWidget {
+  const ClaudeSubscriptionPanel({super.key});
 
   @override
-  ConsumerState<ClaudeSubscriptionTab> createState() => _ClaudeSubscriptionTabState();
+  ConsumerState<ClaudeSubscriptionPanel> createState() => _ClaudeSubscriptionPanelState();
 }
 
-class _ClaudeSubscriptionTabState extends ConsumerState<ClaudeSubscriptionTab> {
+class _ClaudeSubscriptionPanelState extends ConsumerState<ClaudeSubscriptionPanel> {
   bool _busy = false;
   String _authUrl = '';
   final TextEditingController _codeController = TextEditingController();
 
+  /// Re-reads the state while the backend's background capability probe is
+  /// still running (it starts after connect and after a model switch). Bounded,
+  /// and owned by this widget so it dies with it — never a free-running poll.
+  Timer? _capsPoll;
+  int _capsPollsLeft = 0;
+  static const _capsPollInterval = Duration(seconds: 2);
+  static const _capsPollMax = 15;
+
   @override
   void dispose() {
+    _capsPoll?.cancel();
     _codeController.dispose();
     super.dispose();
+  }
+
+  void _maybePollCapabilities(ClaudeAccountState st) {
+    if (!st.connected || st.capabilitiesCurrent) {
+      _capsPoll?.cancel();
+      _capsPoll = null;
+      return;
+    }
+    if (_capsPoll != null) return;
+    _capsPollsLeft = _capsPollMax;
+    _capsPoll = Timer.periodic(_capsPollInterval, (t) {
+      if (!mounted || _capsPollsLeft-- <= 0) {
+        t.cancel();
+        _capsPoll = null;
+        return;
+      }
+      ref.read(claudeAccountProvider.notifier).reload();
+    });
   }
 
   Future<void> _connect() async {
@@ -129,20 +164,22 @@ class _ClaudeSubscriptionTabState extends ConsumerState<ClaudeSubscriptionTab> {
   Widget build(BuildContext context) {
     final theme = MemoTheme.of(context);
     final stateAsync = ref.watch(claudeAccountProvider);
+    final st = stateAsync.valueOrNull;
+    if (st != null) {
+      // After the frame: starting/stopping a timer is not build work.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _maybePollCapabilities(st);
+      });
+    }
 
-    return ListView(
-      padding: const EdgeInsets.all(32),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          L10n.t('tab_claude_subscription'),
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: theme.textMain),
-        ),
-        const SizedBox(height: 8),
-        Text(
           L10n.t('claude_account_connect_desc'),
-          style: TextStyle(fontSize: 13, height: 1.45, color: theme.textDim),
+          style: TextStyle(fontSize: 12, height: 1.45, color: theme.textDim),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 12),
         stateAsync.when(
           loading: () => const Center(
             child: Padding(
@@ -197,6 +234,8 @@ class _ClaudeSubscriptionTabState extends ConsumerState<ClaudeSubscriptionTab> {
                   ),
                   const SizedBox(height: 6),
                   _ModelDropdown(current: st.model),
+                  const SizedBox(height: 16),
+                  _CapabilityTable(state: st),
                   const SizedBox(height: 16),
                   Align(
                     alignment: Alignment.centerLeft,
@@ -313,9 +352,21 @@ class _ModelDropdown extends ConsumerWidget {
             contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           ),
           items: [for (final m in items) DropdownMenuItem(value: m, child: Text(m))],
-          onChanged: (m) {
+          onChanged: (m) async {
             if (m == null || m == current) return;
-            ref.read(claudeAccountProvider.notifier).setModel(m);
+            try {
+              await ref.read(claudeAccountProvider.notifier).setModel(m);
+            } catch (e) {
+              // Unawaited before, so a refused switch (Beta turned off in
+              // another client, a backend error) was an unhandled async
+              // exception and the dropdown silently showed the new model.
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(L10n.t('claude_account_error', {'e': FriendlyError.describeGeneric(e)}))),
+                );
+              }
+              ref.invalidate(claudeAccountProvider);
+            }
           },
         );
       },
@@ -358,6 +409,70 @@ class _CopyableLink extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+/// What the account was measured to do on the selected model. Rendered from
+/// the booleans only — the backend's English `detail` string is never shown,
+/// so this stays localized.
+class _CapabilityTable extends StatelessWidget {
+  final ClaudeAccountState state;
+  const _CapabilityTable({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    final caps = state.capabilities;
+    if (caps == null || !state.capabilitiesCurrent) {
+      return Row(
+        children: [
+          const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              L10n.t('claude_caps_measuring'),
+              style: TextStyle(fontSize: 11, color: theme.textDim),
+            ),
+          ),
+        ],
+      );
+    }
+    Widget row(String label, bool ok) => Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Row(
+            children: [
+              Icon(
+                ok ? Icons.check_rounded : Icons.close_rounded,
+                size: 14,
+                color: ok ? MemoTheme.green : theme.textDim,
+              ),
+              const SizedBox(width: 6),
+              Expanded(child: Text(label, style: TextStyle(fontSize: 12, color: theme.textMain))),
+            ],
+          ),
+        );
+    return Column(
+      key: const Key('claude_caps_table'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          L10n.t('claude_caps_title'),
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.textMain),
+        ),
+        const SizedBox(height: 6),
+        row(L10n.t('claude_caps_plain'), caps.plain),
+        row(L10n.t('claude_caps_tools'), caps.tools),
+        row(L10n.t('claude_caps_thinking'), caps.thinking),
+        row(L10n.t('claude_caps_one_m'), caps.oneMContext),
+        if (caps.entitlementBlocked) ...[
+          const SizedBox(height: 6),
+          Text(
+            L10n.t('claude_caps_blocked'),
+            key: const Key('claude_caps_blocked'),
+            style: const TextStyle(fontSize: 11, height: 1.4, color: MemoTheme.warningOrange),
+          ),
+        ],
+      ],
     );
   }
 }

@@ -246,24 +246,23 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-      'Claude Subscription tab is hidden when beta features are off',
-      (tester) async {
-    await _pumpSettingsDialog(tester);
-    expect(find.text(L10n.t('tab_claude_subscription')), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets(
-      'Claude Subscription tab appears once beta features are turned on',
+  // Claude Subscription is a Beta feature whose controls live INSIDE the Beta
+  // tab (beta_features_tab_test.dart), not a rail entry of its own. When it was
+  // a tab, its label/icon were inserted at index 26 while its content was
+  // `case 27`, so the rail said "Claude Subscription" and opened Code Mode
+  // Prompts (and the other way round). Guard that no such entry comes back.
+  testWidgets('Claude Subscription is not a settings tab of its own',
       (tester) async {
     await _pumpSettingsDialog(tester, initialPrefs: {
       'memo_beta_features': true,
     });
+    expect(find.text(L10n.t('beta_item_claude_sub_title')), findsNothing);
     await tester.scrollUntilVisible(
-        find.text(L10n.t('tab_claude_subscription')), 150,
+        find.text(L10n.t('code_submode_prompts_tab_title')), 150,
         scrollable: _railScrollable);
-    expect(find.text(L10n.t('tab_claude_subscription')), findsOneWidget);
+    await tester.tap(find.text(L10n.t('code_submode_prompts_tab_title')));
+    await tester.pumpAndSettle();
+    expect(find.text(L10n.t('claude_account_connect_desc')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

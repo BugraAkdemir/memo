@@ -530,9 +530,8 @@ class L10n {
     'google_account_timeout':
         'Yetkilendirme zaman aşımına uğradı. Tekrar dene.',
     'google_account_error': 'Google hesabı işlemi başarısız: \${e}',
-    'tab_claude_subscription': 'Claude Aboneliği',
     'claude_account_connect_desc':
-        'Claude Pro/Max aboneliğini kullan; Claude modelleri hem Memo sohbetinde hem de yerel ağ geçidinde (localhost:8090/v1) "claude-sub/model" olarak kullanılabilir. Kayıt/anahtar gerekmez. Bu bilgisayarda Claude Code ile giriş yapmışsan butona basınca doğrudan bağlanır, tarayıcı açılmaz.',
+        'Claude modelleri hem Memo sohbetinde hem de yerel ağ geçidinde (localhost:8090/v1) "claude-sub/model" olarak kullanılabilir. Kayıt/anahtar gerekmez. Bu bilgisayarda Claude Code ile giriş yapmışsan butona basınca doğrudan bağlanır, tarayıcı açılmaz.',
     'claude_account_connect_cta': 'Claude Hesabını Bağla',
     'claude_account_connecting': 'Bağlanıyor…',
     'claude_account_disconnect_cta': 'Çıkış Yap',
@@ -551,6 +550,14 @@ class L10n {
     'claude_account_manual_link_hint':
         'Tarayıcı açılmadıysa bu bağlantıyı elle aç:',
     'claude_account_error': 'Claude hesabı işlemi başarısız: \${e}',
+    'claude_caps_title': 'Ölçülen yetenekler',
+    'claude_caps_measuring': 'Bu hesabın neler yapabildiği ölçülüyor…',
+    'claude_caps_plain': 'Sohbet',
+    'claude_caps_tools': 'Araçlar (ajan modu)',
+    'claude_caps_thinking': 'Düşünme',
+    'claude_caps_one_m': '1M token bağlam',
+    'claude_caps_blocked':
+        'Anthropic\'in abonelik geçidi bu hesapta bazı istekleri reddediyor. Bu bir kota sınırı değil; daha hafif bir model (ör. Haiku) dene.',
     'dev_gateway_settings_title': 'Ağ Geçidi Ayarları',
     'dev_gateway_system_prompt_label': 'Ek Sistem Talimatı',
     'dev_gateway_system_prompt_desc':
@@ -1060,7 +1067,7 @@ class L10n {
         'Google hesabınla giriş yapıp Gemini\'yi kendi aboneliğinle kullan (Ayarlar → Gemini Aboneliği).',
     'beta_item_claude_sub_title': 'Claude Aboneliği',
     'beta_item_claude_sub_desc':
-        'Claude Pro/Max aboneliğini Memo\'da kullan (Ayarlar → Claude Aboneliği).',
+        'Claude Pro/Max aboneliğini Memo\'da kullan. Beta açıkken bağlantı ayarları hemen aşağıda görünür.',
     'tab_live_mode': 'Sesli Mod',
     'live_mode_tab_title': 'Sesli Mod',
     'live_mode_tab_desc':
@@ -2843,9 +2850,8 @@ class L10n {
     'google_account_manual_link_hint': "If the browser didn't open, open this link manually:",
     'google_account_timeout': 'Authorization timed out. Try again.',
     'google_account_error': 'Google account action failed: \${e}',
-    'tab_claude_subscription': 'Claude Subscription',
     'claude_account_connect_desc':
-        'Use your Claude Pro/Max subscription; Claude models become usable as "claude-sub/model" both in Memo chat and on the local gateway (localhost:8090/v1). Nothing to register, no key. If Claude Code is already signed in on this machine, pressing the button connects straight away — no browser.',
+        'Claude models become usable as "claude-sub/model" both in Memo chat and on the local gateway (localhost:8090/v1). Nothing to register, no key. If Claude Code is already signed in on this machine, pressing the button connects straight away — no browser.',
     'claude_account_connect_cta': 'Connect Claude Account',
     'claude_account_connecting': 'Connecting…',
     'claude_account_disconnect_cta': 'Sign Out',
@@ -2863,6 +2869,14 @@ class L10n {
     'claude_account_model_label': 'Model to use',
     'claude_account_manual_link_hint': "If the browser didn't open, open this link manually:",
     'claude_account_error': 'Claude account action failed: \${e}',
+    'claude_caps_title': 'Measured capabilities',
+    'claude_caps_measuring': 'Measuring what this account can do…',
+    'claude_caps_plain': 'Chat',
+    'claude_caps_tools': 'Tools (agent mode)',
+    'claude_caps_thinking': 'Thinking',
+    'claude_caps_one_m': '1M-token context',
+    'claude_caps_blocked':
+        "Anthropic's subscription gate is refusing some requests on this account. This is not a quota limit; try a lighter model (e.g. Haiku).",
     'dev_gateway_settings_title': 'Gateway Settings',
     'dev_gateway_system_prompt_label': 'Extra System Instruction',
     'dev_gateway_system_prompt_desc':
@@ -3369,7 +3383,7 @@ class L10n {
         'Sign in with your Google account and use Gemini on your own subscription (Settings → Gemini Subscription).',
     'beta_item_claude_sub_title': 'Claude Subscription',
     'beta_item_claude_sub_desc':
-        'Use your Claude Pro/Max subscription inside Memo (Settings → Claude Subscription).',
+        'Use your Claude Pro/Max subscription inside Memo. While Beta is on, its connection settings appear right below.',
     'tab_live_mode': 'Live Mode',
     'live_mode_tab_title': 'Live Mode',
     'live_mode_tab_desc':

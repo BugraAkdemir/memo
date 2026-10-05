@@ -111,3 +111,29 @@ func (s *Server) handleBrowserSessionStatus(w http.ResponseWriter, r *http.Reque
 	active, url := s.fullBridge.BrowserSessionStatus(r.Context())
 	writeJSON(w, map[string]any{"active": active, "url": url})
 }
+
+// handleBrowserSessionType is BrowserPane's keyboard: text goes to whatever
+// the user focused by clicking on the screenshot, then optionally Enter.
+func (s *Server) handleBrowserSessionType(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Text  string `json:"text"`
+		Enter bool   `json:"enter"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || (req.Text == "" && !req.Enter) {
+		http.Error(w, "bad json (text or enter required)", http.StatusBadRequest)
+		return
+	}
+	shot, resolvedURL, err := s.fullBridge.TypeBrowserSession(r.Context(), req.Text, req.Enter)
+	if err != nil {
+		writeJSON(w, browserSessionActionResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, browserSessionActionResponse{
+		ScreenshotBase64: base64.StdEncoding.EncodeToString(shot),
+		URL:              resolvedURL,
+	})
+}

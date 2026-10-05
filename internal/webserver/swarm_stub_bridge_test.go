@@ -41,6 +41,7 @@ type swarmStubBridge struct {
 	navigateBrowserSession func(ctx context.Context, rawURL string) ([]byte, string, error)
 	clickBrowserSession    func(ctx context.Context, x, y float64) ([]byte, string, error)
 	scrollBrowserSession   func(ctx context.Context, dx, dy int) ([]byte, string, error)
+	typeBrowserSession     func(ctx context.Context, text string, enter bool) ([]byte, string, error)
 	closeBrowserSession    func() error
 	browserSessionStatus   func(ctx context.Context) (bool, string)
 
@@ -241,6 +242,12 @@ func (b *swarmStubBridge) ClickBrowserSession(ctx context.Context, x, y float64)
 func (b *swarmStubBridge) ScrollBrowserSession(ctx context.Context, dx, dy int) ([]byte, string, error) {
 	if b.scrollBrowserSession != nil {
 		return b.scrollBrowserSession(ctx, dx, dy)
+	}
+	return nil, "", nil
+}
+func (b *swarmStubBridge) TypeBrowserSession(ctx context.Context, text string, enter bool) ([]byte, string, error) {
+	if b.typeBrowserSession != nil {
+		return b.typeBrowserSession(ctx, text, enter)
 	}
 	return nil, "", nil
 }

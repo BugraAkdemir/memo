@@ -392,6 +392,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/browser/session/navigate", s.requirePermission(s.handleBrowserSessionNavigate, hasAgentPerm))
 	route("/api/browser/session/click", s.requirePermission(s.handleBrowserSessionClick, hasAgentPerm))
 	route("/api/browser/session/scroll", s.requirePermission(s.handleBrowserSessionScroll, hasAgentPerm))
+	route("/api/browser/session/type", s.requirePermission(s.handleBrowserSessionType, hasAgentPerm))
 	route("/api/browser/session/close", s.requirePermission(s.handleBrowserSessionClose, hasAgentPerm))
 	route("/api/browser/session/status", s.requirePermission(s.handleBrowserSessionStatus, hasAgentPerm))
 	route("/api/whatsapp/stats", s.handleWhatsAppStats)

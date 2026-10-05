@@ -82,6 +82,7 @@ type FullBridge interface {
 	NavigateBrowserSession(ctx context.Context, rawURL string) (screenshot []byte, resolvedURL string, err error)
 	ClickBrowserSession(ctx context.Context, x, y float64) (screenshot []byte, resolvedURL string, err error)
 	ScrollBrowserSession(ctx context.Context, dx, dy int) (screenshot []byte, resolvedURL string, err error)
+	TypeBrowserSession(ctx context.Context, text string, enter bool) (screenshot []byte, resolvedURL string, err error)
 	CloseBrowserSession() error
 	BrowserSessionStatus(ctx context.Context) (active bool, url string)
 	GetMemoryEnabled() bool

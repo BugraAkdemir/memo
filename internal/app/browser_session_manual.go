@@ -58,6 +58,9 @@ func (a *App) ClickBrowserSession(ctx context.Context, x, y float64) (screenshot
 	if err := sess.ClickAt(ctx, x, y); err != nil {
 		return nil, "", err
 	}
+	// A click can follow a link; without waiting, the screenshot raced the
+	// navigation and showed the page as it was before the click.
+	sess.Settle(ctx)
 	shot, err := sess.Screenshot(ctx)
 	if err != nil {
 		return nil, "", err
@@ -80,6 +83,30 @@ func (a *App) ScrollBrowserSession(ctx context.Context, dx, dy int) (screenshot 
 	if err := sess.Scroll(ctx, dx, dy); err != nil {
 		return nil, "", err
 	}
+	shot, err := sess.Screenshot(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	url, _ := sess.CurrentURL(ctx)
+	return shot, url, nil
+}
+
+// TypeBrowserSession types text into whatever the user focused by clicking
+// on the screenshot (optionally pressing Enter afterwards) and returns the
+// resulting screenshot + resolved URL — BrowserPane's keyboard row drives
+// this. Errors if no session is currently open.
+func (a *App) TypeBrowserSession(ctx context.Context, text string, enter bool) (screenshot []byte, resolvedURL string, err error) {
+	if a.browserMgr == nil {
+		return nil, "", fmt.Errorf("browser engine not initialized")
+	}
+	sess, ok := a.browserMgr.GetSession()
+	if !ok {
+		return nil, "", fmt.Errorf("no active browser session")
+	}
+	if err := sess.TypeText(ctx, text, enter); err != nil {
+		return nil, "", err
+	}
+	sess.Settle(ctx)
 	shot, err := sess.Screenshot(ctx)
 	if err != nil {
 		return nil, "", err

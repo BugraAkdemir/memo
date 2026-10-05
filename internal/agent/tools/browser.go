@@ -100,10 +100,42 @@ func BrowserNavigate(ctx context.Context, argsJSON json.RawMessage, _ string, _ 
 	if err := sess.Navigate(ctx, args.URL); err != nil {
 		return "", fmt.Errorf(T("sayfaya gidilemedi: %w", "could not navigate: %w"), err)
 	}
+	pushFrame(ctx, sess, false)
 	return fmt.Sprintf(T(
-		"Tarayıcı %s adresine gitti. Ne göründüğünü görmek için browser_screenshot çağır.",
-		"Browser navigated to %s. Call browser_screenshot to see what's currently displayed.",
+		"Tarayıcı %s adresine gitti; kullanıcının canlı panelinde görünüyor. Sayfada ne olduğunu ve neye tıklayabileceğini öğrenmek için browser_get_text çağır.",
+		"Browser navigated to %s; the user's live pane shows it. Call browser_get_text to learn what's on the page and what you can click.",
 	), args.URL), nil
+}
+
+// frameSettler is the optional capability pushFrame uses to wait out a
+// navigation an action may have started. *browserengine.Session has it; a
+// test fake need not.
+type frameSettler interface {
+	Settle(ctx context.Context)
+}
+
+// pushFrame captures the page after an action and leaves it for
+// emitBrowserFrame to send to the user's live pane (see lastFrameB64).
+//
+// Only browser_screenshot used to produce a frame, so the pane stayed empty
+// after the agent navigated and frozen after it clicked or typed unless the
+// model happened to call browser_screenshot as a separate step — which it
+// usually did not (verified live: navigate -> 0 frames, click -> 0 frames).
+// Every action that changes the page now refreshes the pane itself. Best
+// effort: a failed capture never fails the action.
+func pushFrame(ctx context.Context, sess BrowserSession, settle bool) {
+	if settle {
+		if s, ok := sess.(frameSettler); ok {
+			s.Settle(ctx)
+		}
+	}
+	shot, err := sess.Screenshot(ctx)
+	if err != nil {
+		return
+	}
+	lastFrameMu.Lock()
+	lastFrameB64 = base64.StdEncoding.EncodeToString(shot)
+	lastFrameMu.Unlock()
 }
 
 // activeSession returns the running session, or the same "no active
@@ -151,11 +183,13 @@ func BrowserClick(ctx context.Context, argsJSON json.RawMessage, _ string, _ fun
 		if err := sess.Click(ctx, args.Selector); err != nil {
 			return "", fmt.Errorf(T("tıklanamadı: %w", "could not click: %w"), err)
 		}
+		pushFrame(ctx, sess, true)
 		return fmt.Sprintf(T("%q öğesine tıklandı.", "Clicked %q."), args.Selector), nil
 	}
 	if err := sess.ClickAt(ctx, *args.X, *args.Y); err != nil {
 		return "", fmt.Errorf(T("tıklanamadı: %w", "could not click: %w"), err)
 	}
+	pushFrame(ctx, sess, true)
 	return fmt.Sprintf(T("(%.0f, %.0f) konumuna tıklandı.", "Clicked at (%.0f, %.0f)."), *args.X, *args.Y), nil
 }
 
@@ -184,6 +218,7 @@ func BrowserType(ctx context.Context, argsJSON json.RawMessage, _ string, _ func
 	if err := sess.Type(ctx, args.Selector, args.Text); err != nil {
 		return "", fmt.Errorf(T("yazılamadı: %w", "could not type: %w"), err)
 	}
+	pushFrame(ctx, sess, true)
 	return fmt.Sprintf(T("%q içine yazıldı.", "Typed into %q."), args.Selector), nil
 }
 
@@ -220,6 +255,7 @@ func BrowserScroll(ctx context.Context, argsJSON json.RawMessage, _ string, _ fu
 	if err := sess.Scroll(ctx, args.Dx, args.Dy); err != nil {
 		return "", fmt.Errorf(T("kaydırılamadı: %w", "could not scroll: %w"), err)
 	}
+	pushFrame(ctx, sess, false)
 	return T("Sayfa kaydırıldı.", "Scrolled the page."), nil
 }
 

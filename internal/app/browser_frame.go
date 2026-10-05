@@ -24,8 +24,19 @@ type BrowserFrame struct {
 	Timestamp  int64  `json:"ts"`
 }
 
+// framePushingTools are the browser tools whose successful result leaves a
+// fresh frame behind (tools.pushFrame): every action that changes the page,
+// not only an explicit screenshot.
+var framePushingTools = map[string]bool{
+	"browser_navigate":   true,
+	"browser_click":      true,
+	"browser_type":       true,
+	"browser_scroll":     true,
+	"browser_screenshot": true,
+}
+
 // emitBrowserFrame sends a browser_frame SSE chunk when ev is a successful
-// browser_screenshot tool result — a no-op for every other event. Called
+// result of one of framePushingTools — a no-op for every other event. Called
 // from the onEvent closure in llm.go, the same place agent_event chunks are
 // already built, so it shares that closure's ctx/outCh instead of needing
 // separate wiring.
@@ -39,7 +50,7 @@ type BrowserFrame struct {
 // numbers. This side-channel lets the tool's text result stay a short
 // confirmation while the live pane still gets every frame.
 func emitBrowserFrame(ctx context.Context, outCh chan<- api.StreamChunk, ev agent.AgentEvent) {
-	if ev.Type != agent.EventToolResult || ev.ToolName != "browser_screenshot" {
+	if ev.Type != agent.EventToolResult || !framePushingTools[ev.ToolName] {
 		return
 	}
 	b64, ok := tools.LastBrowserFrame()

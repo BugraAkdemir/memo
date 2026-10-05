@@ -394,7 +394,12 @@ func TestAgent_BrowserFullFlow_NavigateClickTypeScrollScreenshot(t *testing.T) {
 	chatID := h.NewAgentChat(t.TempDir())
 
 	mediumPrompts := 0
+	frames := 0
 	for ev := range h.SendMessageStreamAsync(chatID, "signup formunu test et") {
+		if ev.FinishReason == "browser_frame" {
+			frames++
+			continue
+		}
 		if ev.FinishReason != "agent_event" {
 			continue
 		}
@@ -440,8 +445,16 @@ func TestAgent_BrowserFullFlow_NavigateClickTypeScrollScreenshot(t *testing.T) {
 	if len(s.scrolls) != 1 || s.scrolls[0].dy != 400 {
 		t.Errorf("scrolls = %+v, want one call with dy=400", s.scrolls)
 	}
-	if s.screenshotN != 1 {
-		t.Errorf("screenshotN = %d, want 1", s.screenshotN)
+	// Every step that changes the page refreshes the user's live pane by
+	// itself — navigate, both clicks, type, scroll — plus the explicit
+	// screenshot: six captures, six frames. Only browser_screenshot used to
+	// produce one, so the pane stayed empty after a navigate and frozen
+	// after a click unless the model happened to call it (seen live).
+	if s.screenshotN != len(steps) {
+		t.Errorf("screenshotN = %d, want %d (one per page-changing step plus the explicit screenshot)", s.screenshotN, len(steps))
+	}
+	if frames != len(steps) {
+		t.Errorf("browser_frame events = %d, want %d — the pane must refresh after every step", frames, len(steps))
 	}
 }
 

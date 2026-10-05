@@ -129,3 +129,43 @@ func TestGetStreamingChatIDs_ReflectsHeldLocksOnly(t *testing.T) {
 		t.Fatalf("GetStreamingChatIDs() after releasing everything = %v, want empty", ids)
 	}
 }
+
+// TestGetStreamingChatIDs_PollingNeverMakesAFreeChatLookBusy is S5
+// (BUG_REPORT 2026-09-28): the sidebar polls /api/chats/streaming every 2s
+// per client, and the poll used to probe each chat's real stream mutex with
+// TryLock+Unlock — so a send landing inside that probe window saw the lock
+// held and got the "please wait" notice for a chat nothing was streaming in.
+func TestGetStreamingChatIDs_PollingNeverMakesAFreeChatLookBusy(t *testing.T) {
+	a := &App{}
+	// Register the chat's lock so the poller has something to probe.
+	if release, ok := a.lockChatStream("chat-x"); ok {
+		release()
+	}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				a.GetStreamingChatIDs()
+			}
+		}
+	}()
+	spurious := 0
+	for i := 0; i < 200000; i++ {
+		release, ok := a.lockChatStream("chat-x")
+		if !ok {
+			spurious++
+			continue
+		}
+		release()
+	}
+	close(stop)
+	<-done
+	if spurious > 0 {
+		t.Fatalf("%d sends to an idle chat were refused as busy while the sidebar was polling", spurious)
+	}
+}

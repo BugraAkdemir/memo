@@ -382,26 +382,55 @@ func (a *App) SetMinimalModeOverrides(keepPersona, keepCapabilities, keepPassive
 	return config.Save(a.cfg)
 }
 
-// GetImageBase64 reads an image file from within the data directory and returns it as base64.
+// chatImageDirs are the only directories GetImageBase64 serves from: where a
+// chat message's image can legitimately live. Resolved from config.DataDir
+// (never a hardcoded "data/"), so they follow MEMO_DATA_DIR and the Windows
+// %ProgramData% layout.
+func chatImageDirs() []string {
+	return []string{
+		config.DataPath("images"),           // images the user sent (persistChatImage)
+		config.DataPath(generatedImagesSub), // images a model generated (imagegen.go)
+		config.DataPath("avatars"),
+		config.DataPath("attachments"),
+	}
+}
+
+// GetImageBase64 reads a chat image and returns it as a data: URI — the way a
+// client that is not on the backend's machine (web, the mobile app, remote
+// access) displays one.
+//
+// Only files inside chatImageDirs are served. The check is on the resolved
+// real path (symlinks followed on both sides) and is separator-safe: the old
+// check was a bare string prefix against the data dir, which also admitted a
+// sibling like "<data>-backup/…", and it compared against an unresolved data
+// dir, so a data dir reached through a symlink blocked every legitimate file.
+// A relative path is taken as-is (relative to the working directory), which
+// keeps the historical "data/images/…" form working.
 func (a *App) GetImageBase64(path string) string {
-	dataDir := filepath.Dir(a.cfg.Memory.PersistDir)
-	absDataDir, err := filepath.Abs(dataDir)
+	realPath, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return ""
 	}
-
-	absPath, err := filepath.Abs(path)
+	realPath, err = filepath.Abs(realPath)
 	if err != nil {
 		return ""
 	}
-
-	realPath, err := filepath.EvalSymlinks(absPath)
-	if err != nil {
-		return ""
+	allowed := false
+	for _, dir := range chatImageDirs() {
+		root, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			continue // the directory doesn't exist yet — nothing in it to serve
+		}
+		if root, err = filepath.Abs(root); err != nil {
+			continue
+		}
+		if strings.HasPrefix(realPath, root+string(filepath.Separator)) {
+			allowed = true
+			break
+		}
 	}
-
-	if !strings.HasPrefix(realPath, absDataDir) {
-		logx.Printf("WARNING: Blocked attempt to read file outside data dir: %s", path)
+	if !allowed {
+		logx.Printf("WARNING: Blocked attempt to read a file outside the chat image directories: %s", path)
 		return ""
 	}
 
@@ -411,6 +440,31 @@ func (a *App) GetImageBase64(path string) string {
 	}
 	mime := detectMime(path, imgData)
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(imgData)
+}
+
+// persistChatImage keeps a copy of an image the user sent under
+// DataPath("images") and returns the copy's path, which is what the chat
+// message records. The path a send arrives with is often not durable: a web
+// or mobile upload is a temp file the upload handler deletes as soon as the
+// turn is set up, so the stored message pointed at a file that no longer
+// existed and the image could never be shown again, on any client. On
+// failure the original path is returned so the turn itself still goes ahead.
+func persistChatImage(src string, data []byte) string {
+	dir := config.DataPath("images")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		logx.Printf("WARN: persist chat image: %v", err)
+		return src
+	}
+	ext := strings.ToLower(filepath.Ext(src))
+	if ext == "" || len(ext) > 6 {
+		ext = ".img"
+	}
+	dst := filepath.Join(dir, fmt.Sprintf("memo-%d%s", time.Now().UnixNano(), ext))
+	if err := os.WriteFile(dst, data, 0o644); err != nil {
+		logx.Printf("WARN: persist chat image: %v", err)
+		return src
+	}
+	return dst
 }
 
 // ─── Web Bridge (interface adapters for webserver) ───────────────
@@ -423,20 +477,3 @@ func (a *App) WebGetActiveMessages() interface{} { return a.GetActiveMessages() 
 
 // WebCheckConnection wraps CheckConnection for the webserver bridge.
 func (a *App) WebCheckConnection() interface{} { return a.CheckConnection() }
-
-// findPath resolves a relative path, first against the working directory,
-// then against the binary location.
-func (a *App) findPath(relative string) string {
-	if _, err := os.Stat(relative); err == nil {
-		return relative
-	}
-	exePath, err := os.Executable()
-	if err != nil {
-		exePath = os.Args[0]
-	}
-	full := filepath.Join(filepath.Dir(exePath), relative)
-	if _, err := os.Stat(full); err == nil {
-		return full
-	}
-	return ""
-}

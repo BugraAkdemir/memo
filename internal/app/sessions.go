@@ -81,6 +81,34 @@ func (a *App) UpdateMessage(index int, content string) error {
 	return sm.UpdateMessage(index, content)
 }
 
+// GetMessagesForChat returns chatID's messages; ok is false when no such
+// chat exists (e.g. another device deleted it).
+func (a *App) GetMessagesForChat(chatID string) (msgs []sessions.ChatMessage, ok bool) {
+	sm := a.getSessionManager()
+	if sm == nil || !sm.SessionExists(chatID) {
+		return nil, false
+	}
+	return sm.GetActiveMessagesForSession(chatID), true
+}
+
+// UpdateMessageInChat is UpdateMessage for an explicit chat.
+func (a *App) UpdateMessageInChat(chatID string, index int, content string) error {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return fmt.Errorf("no session manager")
+	}
+	return sm.UpdateMessageInSession(chatID, index, content)
+}
+
+// DeleteMessageInChat is DeleteMessage for an explicit chat.
+func (a *App) DeleteMessageInChat(chatID string, index int) error {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return fmt.Errorf("no session manager")
+	}
+	return sm.DeleteMessageInSession(chatID, index)
+}
+
 // DeleteMessage removes a message from the active session.
 func (a *App) DeleteMessage(index int) error {
 	sm := a.getSessionManager()
@@ -218,6 +246,9 @@ func (a *App) generateChatTitleForSession(sessionID string) string {
 	if len(msgs) < 2 {
 		return ""
 	}
+	// Snapshot before the (possibly multi-second) LLM call — see the
+	// compare-and-swap below.
+	titleBefore := sm.GetTitle(sessionID)
 
 	first := msgs[0].Content
 	if len(first) > 300 {
@@ -245,8 +276,18 @@ func (a *App) generateChatTitleForSession(sessionID string) string {
 		title = string(runes[:60])
 	}
 
-	if err := sm.RenameChat(sessionID, title); err != nil {
+	// Only if nobody renamed the chat while the title was being generated.
+	// This used to be an unconditional RenameChat: a user who named a new
+	// chat right after its first reply — while the title request was still
+	// in flight — had their name silently replaced by the generated one a
+	// moment later (found live against a fake provider).
+	renamed, err := sm.RenameChatIfTitle(sessionID, titleBefore, title)
+	if err != nil {
 		logx.Printf("auto-title rename: %v", err)
+		return ""
+	}
+	if !renamed {
+		logx.Printf("auto-title: chat %s was renamed meanwhile, keeping the user's title", sessionID)
 		return ""
 	}
 	return title

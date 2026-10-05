@@ -363,6 +363,34 @@ func (m *Manager) RenameChat(id, title string) error {
 	return m.save(s)
 }
 
+// GetTitle returns id's current title ("" if there is no such chat).
+func (m *Manager) GetTitle(id string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if s, ok := m.sessions[id]; ok {
+		return s.Title
+	}
+	return ""
+}
+
+// RenameChatIfTitle renames id to title only if its title is still
+// expected — a compare-and-swap for automatic titling, which works from a
+// snapshot taken before a slow LLM call and must not overwrite a name the
+// user chose in the meantime. Reports whether it renamed.
+func (m *Manager) RenameChatIfTitle(id, expected, title string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return false, fmt.Errorf("session not found: %s", id)
+	}
+	if s.Title != expected {
+		return false, nil
+	}
+	s.Title = title
+	return true, m.save(s)
+}
+
 func (m *Manager) AddMessage(role, content, imagePath, filePath string, agentEvents ...[]interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -402,9 +430,20 @@ func (m *Manager) AddMessage(role, content, imagePath, filePath string, agentEve
 func (m *Manager) UpdateMessage(index int, content string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[m.active]
+	return m.updateMessageLocked(m.sessions[m.active], index, content)
+}
+
+// UpdateMessageInSession is UpdateMessage for a chat named by id rather than
+// whichever chat is globally active.
+func (m *Manager) UpdateMessageInSession(id string, index int, content string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.updateMessageLocked(m.sessions[id], index, content)
+}
+
+func (m *Manager) updateMessageLocked(s *Session, index int, content string) error {
 	if s == nil {
-		return fmt.Errorf("no active session")
+		return fmt.Errorf("session not found")
 	}
 	if index < 0 || index >= len(s.Messages) {
 		return fmt.Errorf("message index %d out of range", index)
@@ -418,9 +457,20 @@ func (m *Manager) UpdateMessage(index int, content string) error {
 func (m *Manager) DeleteMessage(index int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[m.active]
+	return m.deleteMessageLocked(m.sessions[m.active], index)
+}
+
+// DeleteMessageInSession is DeleteMessage for a chat named by id rather than
+// whichever chat is globally active.
+func (m *Manager) DeleteMessageInSession(id string, index int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.deleteMessageLocked(m.sessions[id], index)
+}
+
+func (m *Manager) deleteMessageLocked(s *Session, index int) error {
 	if s == nil {
-		return fmt.Errorf("no active session")
+		return fmt.Errorf("session not found")
 	}
 	if index < 0 || index >= len(s.Messages) {
 		return fmt.Errorf("message index %d out of range", index)

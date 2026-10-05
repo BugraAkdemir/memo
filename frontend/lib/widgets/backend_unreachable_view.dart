@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +11,7 @@ import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
 import 'clear_saved_sign_in_button.dart';
+import '../core/app_restart.dart';
 
 /// True when [error] means "couldn't reach the backend at all" (dead host,
 /// refused connection, timed out) rather than a real response the backend
@@ -348,7 +348,11 @@ class ChangeServerDialogState extends ConsumerState<ChangeServerDialog> {
 /// them actually picks up the new address, rather than trusting each
 /// provider individually got this right.
 class RestartRequiredDialog extends StatefulWidget {
-  const RestartRequiredDialog({super.key});
+  const RestartRequiredDialog({super.key, this.onRestart = restartApp});
+
+  /// What "restart" does — injectable so a test can observe it without the
+  /// real one quitting the test process.
+  final void Function() onRestart;
 
   @override
   State<RestartRequiredDialog> createState() => RestartRequiredDialogState();
@@ -362,9 +366,16 @@ class RestartRequiredDialogState extends State<RestartRequiredDialog> {
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (_remaining <= 1) {
+        // Fire once and stop: the countdown used to keep ticking (into
+        // negative numbers) whenever the restart itself failed to happen.
+        t.cancel();
+        setState(() => _remaining = 0);
+        widget.onRestart();
+        return;
+      }
       setState(() => _remaining--);
-      if (_remaining <= 0) _restartNow();
     });
   }
 
@@ -392,7 +403,7 @@ class RestartRequiredDialogState extends State<RestartRequiredDialog> {
       ),
       actions: [
         FilledButton(
-          onPressed: () => _restartNow(),
+          onPressed: widget.onRestart,
           child: Text(L10n.t('restart_now_button')),
         ),
       ],
@@ -409,4 +420,4 @@ class RestartRequiredDialogState extends State<RestartRequiredDialog> {
 // it through that same entry point — exactly like the sibling "backend died
 // mid-session" dialog (_showBackendDeadDialog in app_shell.dart) already
 // does.
-void _restartNow() => exit(0);
+void _restartNow() => restartApp();

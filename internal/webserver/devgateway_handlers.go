@@ -26,12 +26,19 @@ func (s *Server) handleDevGatewayConfig(w http.ResponseWriter, r *http.Request) 
 	switch r.Method {
 	case http.MethodGet:
 		requireAPIKey, useMemory, systemPrompt := s.fullBridge.GetDevGatewayConfig()
-		writeJSON(w, map[string]any{
+		out := map[string]any{
 			"require_api_key": requireAPIKey,
 			"use_memory":      useMemory,
 			"system_prompt":   systemPrompt,
 			"token":           s.fullBridge.GetDevGatewayToken(),
-		})
+		}
+		// The gateway token lets a client spend this backend's providers;
+		// only an admin gets it in the clear.
+		if !s.callerIsAdmin(r) {
+			writeJSON(w, redactSecrets(out))
+			return
+		}
+		writeJSON(w, out)
 	case http.MethodPut:
 		var body struct {
 			RequireAPIKey bool   `json:"require_api_key"`

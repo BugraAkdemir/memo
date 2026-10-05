@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
@@ -14,6 +13,7 @@ import '../../../providers/settings_provider.dart';
 import '../../../core/friendly_error.dart';
 import '../../error_retry.dart';
 import '../section_tab_bar.dart';
+import '../../../core/app_restart.dart';
 
 class _GeneralSection {
   final IconData icon;
@@ -1287,7 +1287,7 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
           TextButton(
             onPressed: () async {
               await ref.read(apiClientProvider).shutdown();
-              exit(0);
+              restartApp();
             },
             child: Text(
               L10n.t('close'),

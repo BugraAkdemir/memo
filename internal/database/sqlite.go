@@ -14,8 +14,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const defaultDriver = "sqlite3"
-
 type Config struct {
 	Path    string
 	MaxPool int

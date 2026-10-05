@@ -593,9 +593,8 @@ func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, 
 			completed[idx] = true
 
 			remaining = append(remaining[:i], remaining[i+1:]...)
-			i-- // adjust index after removal
 			progress = true
-			break
+			break // rescan from the start: the removal shifted remaining
 		}
 		if !progress {
 			// No task could be executed — circular dependency or unresolvable deps

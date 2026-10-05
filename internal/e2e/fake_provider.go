@@ -55,6 +55,10 @@ type FakeChatResponse struct {
 	// stream_options.include_usage; a fake that volunteered usage nobody
 	// requested would hide a regression in that request field).
 	Usage *FakeUsage
+	// CutAfterText, on a streaming call, drops the TCP connection right after
+	// the Text chunk — no finish_reason, no [DONE] — the way a crashed or
+	// network-cut upstream ends a stream.
+	CutAfterText bool
 }
 
 // FakeUsage is the token accounting a scripted response reports. CachedTokens
@@ -286,6 +290,14 @@ func writeStreamingResponse(w http.ResponseWriter, resp FakeChatResponse, wantsU
 	// plumbing end to end).
 	if resp.Text != "" {
 		writeChunk(map[string]any{"choices": []streamChoice{{Delta: delta{Content: resp.Text}}}})
+	}
+	if resp.CutAfterText {
+		if hj, ok := w.(http.Hijacker); ok {
+			if conn, _, err := hj.Hijack(); err == nil {
+				conn.Close()
+			}
+		}
+		return
 	}
 	stop := "stop"
 	writeChunk(map[string]any{"choices": []streamChoice{{FinishReason: &stop}}})

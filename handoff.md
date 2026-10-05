@@ -1,3 +1,110 @@
+# Handoff — 2026-09-29 (öğleden sonra) — Uzun işlemler: gerçek takılma + "takıldı mı?" arayüzü
+
+## Ne istendi
+"Uzun işlemlerde arayüz güven vermiyor, takıldı mı devam mı ediyor anlaşılmıyor; uzun oturumlarda
+gerçekten takılıyor." İstek `PLAN_live_bug_scan.md`'de "Ek istek" başlığı altında.
+
+## Kök nedenler (sahte sağlayıcıyla canlı ölçüldü)
+1. **Gerçek takılma (L16):** düz sohbet 300 sn'lik TOPLAM süreyle sınırlıydı. Eski backend'de cevap
+   saniyede bir kelime gelirken tam 300,0 sn'de kesildi ve "⏹️ Cevap durduruldu." diye kaydedildi.
+   Uzun oturum = büyük istem (yavaş ön-işleme) + uzun cevap; yavaş yerel modelde bu sınır kolay aşılır.
+2. **Sinyal yokluğu (L17):** ajan modunda her model çağrısı boyunca istemciye hiçbir olay gitmiyordu
+   (ölçüm: her çağrıda 20 sn sessizlik; ilk token öncesinde 200–250 sn).
+3. **Donmuş görünen arayüz (L18):** araç bittikten sonra durum çubuğu statik "X tamam ✓"de kalıyordu.
+
+## Commit'ler
+| Commit | Ne |
+|---|---|
+| `8f136548` | İsteğin plan dosyasına kaydı |
+| `9dccc6b9` | Sahte sağlayıcıya `[[delay N]]` / `[[loop N]]` |
+| `30f2ae97` | Boşta kalma zaman aşımı (300 sn sessizlik) + 30 dk tavan; zaman aşımı "⏱️" ile açıkça bildiriliyor, yarım metin korunuyor |
+| `3b179166` | `streamSSE` 10 sn sessizlikte boş içerikli `heartbeat` olayı yazıyor |
+| `9243e97d` | Canlı ilerleme satırı (evre + her saniye ilerleyen süre), 30 sn tam sessizlikte turuncu "sunucudan haber yok" uyarısı; Rule #8 düzeltmeleri |
+| (bu commit) | BUG_REPORT L16–L19, AGENTS.md zaman aşımı sözleşmesi, plan, handoff |
+
+## Doğrulama
+- Canlı: düzeltilmiş backend'de aynı istek **350,6 sn**'de eksiksiz tamamlandı, en uzun sessizlik 20 sn
+  (14 kalp atışı). Web arayüzünde "list_directory done" → "The model is thinking · 0:45" canlı ilerledi.
+  Backend dondurulunca (SIGSTOP) uygulamanın "backend yanıt vermiyor" uyarısı ~38 sn'de çıktı.
+- 150 tur / 300 mesajlık oturumda backend tur başı ek yükü 1 ms → 3 ms; geçmiş büyümesi takılma yaratmıyor.
+- `go vet` temiz; app/webserver/e2e/replcli/provider `-race` yeşil. `flutter analyze` yalnızca bilinen
+  7 info; `flutter test` 417/417; Rule #8 grep dokunulan dosyalarda boş.
+
+## Kapsam dışı / karar
+- Kullanıcı `~/Documents/claude-code-proxy` benzeri bir Claude abonelik girişinin (Claude Code OAuth
+  kimliğiyle) Memo'ya eklenmesini istedi. **Yapılmadı**: Claude Code'un giriş kimliğini başka bir uygulamada
+  kullanmak Anthropic'in erişim kurallarını dolanmak demek. Kullanıcıya, Anthropic'in vereceği resmi bir
+  entegrasyon (Memo'ya özel OAuth client / belgelenmiş API) olursa ona göre ekleneceği; o zamana kadar
+  meşru yolun resmi `claude` CLI'ı (`internal/agentcli/claude_code.go`) olduğu söylendi.
+
+## Sıradaki
+- İstenirse Claude Code CLI sağlayıcısını iyileştirmek (giriş durumu arayüzde, normal sohbette seçilebilir).
+- Android'de gerçek cihaz testi (önceki girdilerdeki liste).
+- Push edilmedi, tag atılmadı.
+
+---
+
+# Handoff — 2026-09-29 (gece) — Tüm bulgular düzeltildi + canlı (kullanarak) bug taraması
+
+## Oturum Özeti
+
+Kullanıcı uyurken istedi: 2026-09-28 bulgularının hepsini düzelt, sonra uygulamayı
+**gerçekten kullanarak** daha kapsamlı tara, gerekirse sahte bir API kur (`:4959`),
+bulunanları düzelt, AGENTS.md kurallarına uy, commit'le, söylediklerimi bir `.md`'ye yaz.
+İstek eksiksiz `PLAN_live_bug_scan.md`'de; sonuçlar `BUG_REPORT.md`'nin en üst bölümünde.
+
+**26 commit** (`7eb07748..`): S3–S7 (5 düzeltme + ölü kod temizliği) ve canlı kullanımda
+bulunan 15 bug (L1–L15). Her biri regresyon testli; testlerin eski koda karşı kırmızı
+yandığı tek tek doğrulandı.
+
+## En önemlileri
+
+- **Güvenlik (L1/L2/L3):** izinsiz `user` hesabı backend'i kapatabiliyor, silebiliyor,
+  içe aktarabiliyor, kaldırabiliyor, `machine.key` dahil tam yedek indirebiliyordu. Tüm API
+  anahtarlarını, gateway token'ını ve yeni cihaz token'ını okuyabiliyordu. Gizli mod,
+  Flutter'ın `chat_id`'li gönderiminde mesajları diske yazıyordu. Hepsi kapatıldı
+  (`5c3323bf`, `49dbf3fe`).
+- **Sağlayıcı:** Claude Opus 4.7+/5'te her istek 400 (`b6dc9bfb`). Thinking + araç
+  döngüsü (`251c7238`). Tek sağlayıcının 3 hatada 5 dk kilitlenmesi (`fc39df38`).
+- **Veri/istemci:** `chat_id` yok sayılıyordu (çoklu cihazda yanlış sohbetten silme);
+  görseller kayboluyor/web-mobilde görünmüyordu; kopan akışta metin kayboluyordu;
+  bulut-only kurulumda açık hafıza kaydı imkânsızdı; web'de yeniden başlatma bozuktu.
+
+## Canlı test altyapısı (yeniden kullanılabilir)
+
+`cmd/fakeprovider` (commit'li) + `MEMO_DATA_DIR` ile izole backend. Tarif AGENTS.md
+"Live-scan lessons" altında. Gerçek sağlayıcıya tek istek atılmadı; kullanıcının
+`data/` dizinine yalnızca salt-okur `sqlite3 -readonly` ile bakıldı (usage istatistiği).
+
+## Doğrulama
+
+- `CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` temiz
+- `go test ./... -race -count=1`: 54 paket, **hiç FAIL yok**
+- `flutter analyze lib/ test/`: yalnızca bilinen 7 info · `flutter test`: **412/412**
+- Rule #8 grep: bu oturumda dokunulan tüm `.dart` dosyalarında boş
+
+## Dürüstlük notları
+
+- `d18bde40` ve `ab02d708` commit'lendiği koşuda `internal/app`'te bir FAIL vardı:
+  `&& tail` zinciri çıkış kodunu yuttu. FAIL, oturum öncesinde de var olan kararsız bir
+  testti (`a28b3c2e`'de `-count=2` ile yeniden üretildi); `473cdd46` ile düzeltildi.
+  O andan sonra her commit öncesi FAIL satırları açıkça kontrol edildi.
+- Kara liste (`rm -rf`) canlı testi Claude Code'un güvenlik sınıflandırıcısı tarafından
+  engellendi. Birim testlerle (`TestIsBlacklisted_*`) zaten kapsanıyor, canlı denenmedi.
+- REPL canlı oturumu açılmadı (paket testleri yeşil).
+- Yan etki: yerel `frontend/build/web` güncel kodla yeniden derlendi ve bayat
+  `frontend/.dart_tool/flutter_build` silindi. İkisi de gitignore'lu derleme çıktısı.
+
+## Sıradaki
+
+- Android'de gerçek cihaz testi (önceki handoff'taki liste). Özellikle görsel gösterimi
+  (`ab02d708`) ve çoklu cihazda sohbet tutarlılığı (`ee504438`) artık test edilebilir.
+- Görev döngüsünün 5 KB'lık rehberi her tura eklemesi bilinçli bir karar (`f82d2121`) ama
+  maliyetli. Sistem istemine taşınması tartışılabilir.
+- Push edilmedi. Hiçbir tag atılmadı.
+
+---
+
 # Handoff — 2026-09-28 — Genel bug taraması: 2 güvenlik açığı kapatıldı, Claude sampling hatası açık
 
 ## Oturum Özeti

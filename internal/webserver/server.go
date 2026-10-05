@@ -2,27 +2,21 @@ package webserver
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"io/fs"
-	"math/big"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"memo/internal/logx"
+	"memo/internal/sessions"
 )
 
 // AppBridge defines the interface that the main App must implement
@@ -279,17 +273,17 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/chats/code-submode", s.handleChatCodeSubMode)
 	route("/api/cli/model-options", s.handleCLIModelOptions)
 	route("/api/send/cli-stream", s.handleSendCLIStream)
-	route("/api/sync/settings", s.handleSyncSettings)
-	route("/api/sync/auth", s.handleSyncAuth)
-	route("/api/sync/account", s.handleSyncAccount)
-	route("/api/sync/trigger", s.handleSyncTrigger)
-	route("/api/sync/pull", s.handleSyncPull)
-	route("/api/sync/now", s.handleSyncNow)
-	route("/api/sync/disconnect", s.handleSyncDisconnect)
+	route("/api/sync/settings", s.adminWrites(s.handleSyncSettings))
+	route("/api/sync/auth", s.adminOnly(s.handleSyncAuth))
+	route("/api/sync/account", s.adminWrites(s.handleSyncAccount))
+	route("/api/sync/trigger", s.adminOnly(s.handleSyncTrigger))
+	route("/api/sync/pull", s.adminOnly(s.handleSyncPull))
+	route("/api/sync/now", s.adminOnly(s.handleSyncNow))
+	route("/api/sync/disconnect", s.adminOnly(s.handleSyncDisconnect))
 	route("/api/events", s.handleEvents)
 
 	// Shutdown via HTTP
-	route("/api/shutdown", s.handleShutdown)
+	route("/api/shutdown", s.adminOnly(s.handleShutdown))
 
 	// Client tracking (auto-shutdown when no CLI/GUI clients remain)
 	route("/api/clients/register", s.handleClientRegister)
@@ -413,7 +407,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/telegram/stop", s.requirePermission(s.handleTelegramStop, hasTelegramPerm))
 	route("/api/telegram/disconnect", s.requirePermission(s.handleTelegramDisconnect, hasTelegramPerm))
 
-	route("/api/export", s.handleExport)
+	route("/api/export", s.adminOnly(s.handleExport))
 
 	// Skills
 	route("/api/skills/list", s.handleListSkills)
@@ -422,11 +416,11 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/skills/get/{name}", s.handleGetSkill)
 	route("/api/skills/active", s.handleSetActiveSkills)
 	route("/api/skills/active-list", s.handleGetActiveSkills)
-	route("/api/import", s.handleImport)
-	route("/api/wipe", s.handleWipe)
-	route("/api/cli/remove", s.handleCLIRemove)
-	route("/api/cli/reinstall", s.handleCLIReinstall)
-	route("/api/uninstall", s.handleUninstall)
+	route("/api/import", s.adminOnly(s.handleImport))
+	route("/api/wipe", s.adminOnly(s.handleWipe))
+	route("/api/cli/remove", s.adminOnly(s.handleCLIRemove))
+	route("/api/cli/reinstall", s.adminOnly(s.handleCLIReinstall))
+	route("/api/uninstall", s.adminOnly(s.handleUninstall))
 
 	// Calendar
 	// Calendar permission (Faz 5.1.1, yapacam.md), lenient-gated.
@@ -449,12 +443,12 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// NOT under /api/ — they must match Anthropic's and OpenAI's real paths
 	// exactly so pointing a client's ANTHROPIC_BASE_URL/OPENAI_BASE_URL at
 	// Memo works unmodified.
-	route("/api/dev-gateway/config", s.handleDevGatewayConfig)
-	route("/api/dev-gateway/token/rotate", s.handleDevGatewayRotateToken)
+	route("/api/dev-gateway/config", s.adminWrites(s.handleDevGatewayConfig))
+	route("/api/dev-gateway/token/rotate", s.adminOnly(s.handleDevGatewayRotateToken))
 	route("/api/dev-gateway/models", s.handleDevGatewayModels)
-	route("/api/dev-gateway/logs", s.handleDevGatewayLogs)
-	route("/api/dev-gateway/claude-code-cli", s.handleClaudeCodeCLIConnection)
-	route("/api/dev-gateway/google-account", s.handleGoogleAccountConnection)
+	route("/api/dev-gateway/logs", s.adminOnly(s.handleDevGatewayLogs))
+	route("/api/dev-gateway/claude-code-cli", s.adminWrites(s.handleClaudeCodeCLIConnection))
+	route("/api/dev-gateway/google-account", s.adminWrites(s.handleGoogleAccountConnection))
 	mux.HandleFunc("/v1/messages", s.handleAnthropicMessages)
 	mux.HandleFunc("/v1/chat/completions", s.handleOpenAIChatCompletions)
 	mux.HandleFunc("/v1/models", s.handleOpenAIModels)
@@ -629,6 +623,10 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
+	if strings.TrimSpace(req.Message) == "" {
+		http.Error(w, "message is empty", http.StatusBadRequest) // see handleSendStream
+		return
+	}
 	reply := s.bridge.SendMessage(req.Message)
 	writeJSON(w, map[string]string{"reply": reply})
 }
@@ -655,7 +653,7 @@ func (s *Server) handleSendFile(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "memo_web_*_"+header.Filename)
+	tmpFile, err := os.CreateTemp("", "memo_web_*_"+filepath.Base(header.Filename))
 	if err != nil {
 		http.Error(w, "tmp error", http.StatusInternalServerError)
 		return
@@ -765,9 +763,47 @@ func (s *Server) handleActiveChat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"id": s.bridge.GetActiveChatID()})
 }
 
+// chatScopedMessages is implemented by *app.App: the message endpoints'
+// explicit-chat forms. Asserted rather than added to AppBridge so the many
+// test bridges that never touch these routes stay unchanged.
+type chatScopedMessages interface {
+	GetMessagesForChat(chatID string) ([]sessions.ChatMessage, bool)
+	UpdateMessageInChat(chatID string, index int, content string) error
+	DeleteMessageInChat(chatID string, index int) error
+}
+
+// handleMessages implements GET /api/messages[?chat_id=…].
+//
+// With chat_id it returns that chat's messages (404 if the chat is gone).
+// It used to ignore chat_id entirely and always answer with the globally
+// active chat, so a client could only read a chat by first switching the
+// whole backend to it — two separate requests, with nothing stopping
+// another client (a second device, a Telegram/WhatsApp reply, a task-list
+// worker) from switching in between, and a client asking for a chat that
+// another device had just deleted silently got a different chat's
+// history. Without chat_id the old active-chat behavior is kept for older
+// clients.
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	if chatID := r.URL.Query().Get("chat_id"); chatID != "" {
+		cs, ok := s.bridge.(chatScopedMessages)
+		if !ok {
+			http.Error(w, "chat_id not supported", http.StatusNotImplemented)
+			return
+		}
+		msgs, exists := cs.GetMessagesForChat(chatID)
+		if !exists {
+			http.Error(w, "chat not found", http.StatusNotFound)
+			return
+		}
+		if msgs == nil {
+			writeJSON(w, []struct{}{})
+			return
+		}
+		writeJSON(w, msgs)
 		return
 	}
 	msgs := s.bridge.WebGetActiveMessages()
@@ -778,12 +814,18 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, msgs)
 }
 
+// handleUpdateMessage edits one message by index — in chat_id's chat when
+// given (see handleMessages for why), else in the active chat. Editing by
+// index in "whatever chat is active right now" meant an edit made on one
+// device could land on a different chat another device had just switched
+// to.
 func (s *Server) handleUpdateMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
 	var req struct {
+		ChatID  string `json:"chat_id"`
 		Index   int    `json:"index"`
 		Content string `json:"content"`
 	}
@@ -791,7 +833,18 @@ func (s *Server) handleUpdateMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if err := s.bridge.UpdateMessage(req.Index, req.Content); err != nil {
+	var err error
+	if req.ChatID != "" {
+		cs, ok := s.bridge.(chatScopedMessages)
+		if !ok {
+			http.Error(w, "chat_id not supported", http.StatusNotImplemented)
+			return
+		}
+		err = cs.UpdateMessageInChat(req.ChatID, req.Index, req.Content)
+	} else {
+		err = s.bridge.UpdateMessage(req.Index, req.Content)
+	}
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -834,13 +887,28 @@ func (s *Server) handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Index int `json:"index"`
+		ChatID string `json:"chat_id"`
+		Index  int    `json:"index"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if err := s.bridge.DeleteMessage(req.Index); err != nil {
+	// Same explicit-chat form as handleUpdateMessage, and for the same
+	// reason — a delete by index is the one that loses data when it lands
+	// on the wrong chat.
+	var err error
+	if req.ChatID != "" {
+		cs, ok := s.bridge.(chatScopedMessages)
+		if !ok {
+			http.Error(w, "chat_id not supported", http.StatusNotImplemented)
+			return
+		}
+		err = cs.DeleteMessageInChat(req.ChatID, req.Index)
+	} else {
+		err = s.bridge.DeleteMessage(req.Index)
+	}
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1273,54 +1341,4 @@ func getLocalIPs() []string {
 		}
 	}
 	return ips
-}
-
-func generateSelfSignedCert(ips []string) (tls.Certificate, error) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	notBefore := time.Now()
-	notAfter := notBefore.Add(365 * 24 * time.Hour)
-
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization: []string{"Memo Local Engine"},
-		},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-	}
-
-	for _, ip := range ips {
-		if parsedIP := net.ParseIP(ip); parsedIP != nil {
-			template.IPAddresses = append(template.IPAddresses, parsedIP)
-		}
-	}
-	template.DNSNames = append(template.DNSNames, "localhost")
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-
-	privBytes, err := x509.MarshalECPrivateKey(priv)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes})
-
-	return tls.X509KeyPair(certPEM, keyPEM)
 }

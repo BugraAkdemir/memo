@@ -49,6 +49,13 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
+	// An empty or whitespace-only message used to go through: it was saved
+	// as an empty user bubble and spent a full LLM turn answering nothing
+	// (found live). Attachments go through /api/send_file*, not here.
+	if strings.TrimSpace(req.Message) == "" {
+		http.Error(w, "message is empty", http.StatusBadRequest)
+		return
+	}
 
 	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -64,7 +71,15 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	var ch <-chan api.StreamChunk
-	if req.ChatID != "" {
+	// Incognito is a client-facing mode, so it is honoured here rather than
+	// inside SendMessageStreamTo (which task-list workers and the
+	// WhatsApp/Telegram bridges also use, and which a global UI toggle must
+	// not reroute). Only SendMessageStream checks it: the chat_id path
+	// used to go straight to the chat, so with incognito on every message
+	// the app sent — the Flutter client always sends chat_id — was written
+	// to the chat's history on disk and the model saw that chat's full
+	// context (found live).
+	if req.ChatID != "" && !s.fullBridge.GetIncognito() {
 		ch = s.fullBridge.SendMessageStreamTo(ctx, req.ChatID, req.Message)
 	} else {
 		ch = s.fullBridge.SendMessageStream(ctx, req.Message)
@@ -84,14 +99,42 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 // the matching fix on trySend/recvChunk in internal/app/llm.go and
 // forwardStream in internal/app/chat.go — this is the outermost, last-hop
 // layer of the same bug).
+// sseHeartbeatInterval is how long streamSSE lets a stream stay silent before
+// it writes a heartbeat chunk. A var only so tests don't have to wait.
+var sseHeartbeatInterval = 10 * time.Second
+
+// heartbeatFinishReason marks a chunk that carries nothing but "the backend
+// is alive and this turn is still running". Its Content is always empty, so
+// a client that doesn't know the marker (an older app, the REPL) folds an
+// empty string into its reply and is unaffected.
+const heartbeatFinishReason = "heartbeat"
+
+// streamSSE forwards ch to the client as SSE, and writes a heartbeat chunk
+// whenever the stream has been silent for sseHeartbeatInterval.
+//
+// Without it a turn could legitimately send nothing for minutes: every model
+// call in agent mode is a single non-streaming request (a reasoning model on
+// a long context takes 30s–3min), a tool can run for up to two minutes, and
+// a slow local model can prefill a long session for minutes before its first
+// token. Measured live against a fake provider: the client received nothing
+// at all for the full length of each model call. The app had no way to tell
+// "still working" from "dead", and its 300s idle guard fired on turns the
+// backend was still happily running.
 func streamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, ch <-chan api.StreamChunk) {
+	ticker := time.NewTicker(sseHeartbeatInterval)
+	defer ticker.Stop()
+	lastWrite := time.Now()
+	write := func(chunk api.StreamChunk) bool {
+		lastWrite = time.Now()
+		return writeSSEChunk(w, flusher, chunk)
+	}
 	for {
 		select {
 		case chunk, ok := <-ch:
 			if !ok {
 				return
 			}
-			if writeSSEChunk(w, flusher, chunk) {
+			if write(chunk) {
 				return
 			}
 			continue
@@ -104,8 +147,12 @@ func streamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher,
 			if !ok {
 				return
 			}
-			if writeSSEChunk(w, flusher, chunk) {
+			if write(chunk) {
 				return
+			}
+		case <-ticker.C:
+			if time.Since(lastWrite) >= sseHeartbeatInterval {
+				write(api.StreamChunk{FinishReason: heartbeatFinishReason})
 			}
 		}
 	}
@@ -142,7 +189,7 @@ func (s *Server) handleSendFileStream(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	tmpFile, err := os.CreateTemp("", "memo_web_*_"+header.Filename)
+	tmpFile, err := os.CreateTemp("", "memo_web_*_"+filepath.Base(header.Filename))
 	if err != nil {
 		http.Error(w, "tmp error", http.StatusInternalServerError)
 		return
@@ -886,25 +933,14 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	if filepath.IsAbs(decoded) {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-
+	// Which directories may be served is decided by GetImageBase64 against
+	// the real, resolved path. This handler used to reject absolute paths and
+	// allow only the literal prefixes "data/images|avatars|attachments" —
+	// but every image path a chat message actually stores is absolute and
+	// under the configured data dir (and generated images live in
+	// generated-images/), so no stored image could ever be fetched here.
 	cleaned := filepath.Clean(decoded)
-	if cleaned == "." || cleaned == ".." {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-
-	allowed := false
-	for _, prefix := range []string{"data/images", "data/avatars", "data/attachments"} {
-		if cleaned == prefix || strings.HasPrefix(cleaned, prefix+"/") {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
+	if cleaned == "." || cleaned == string(filepath.Separator) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -1271,6 +1307,21 @@ func (s *Server) handleRemoteAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
+		// A non-admin gets the status without its secrets — the ngrok
+		// authtoken, a pending Tailscale login link, and above all a freshly
+		// minted device token, which is full access (callerIsAdmin treats
+		// device tokens as admin). Reading the full status also *consumes*
+		// that one-time token, so a restricted account polling this used to
+		// be able to both take it and make it vanish before the admin who
+		// created it could read it; the peek form leaves it pending.
+		if !s.callerIsAdmin(r) {
+			if p, ok := s.fullBridge.(interface{ PeekRemoteAccessStatus() interface{} }); ok {
+				writeJSON(w, redactSecrets(p.PeekRemoteAccessStatus()))
+				return
+			}
+			writeJSON(w, redactSecrets(s.fullBridge.GetRemoteAccessStatus()))
+			return
+		}
 		writeJSON(w, s.fullBridge.GetRemoteAccessStatus())
 	case http.MethodPut:
 		if !s.callerIsAdmin(r) {
@@ -1384,6 +1435,10 @@ func (s *Server) handleSyncSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
+		if !s.callerIsAdmin(r) {
+			writeJSON(w, redactSecrets(s.fullBridge.GetSyncSettings())) // OAuth client secret, backup passphrase
+			return
+		}
 		writeJSON(w, s.fullBridge.GetSyncSettings())
 	case http.MethodPut:
 		var req struct {
@@ -1761,6 +1816,14 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		providers := s.fullBridge.GetProviders()
+		// The list is watched ambiently (the chat header's model picker),
+		// so every account may read it — but only an account allowed to
+		// manage providers may see their API keys. It used to hand every
+		// key out in plaintext to any signed-in account.
+		if !s.callerHasPermission(r, hasModelsPerm) {
+			writeJSON(w, redactSecrets(providers))
+			return
+		}
 		writeJSON(w, providers)
 	case http.MethodPut:
 		var req struct {
@@ -1876,6 +1939,10 @@ func (s *Server) handleTTSProviders(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		providers := s.fullBridge.GetTTSProviders()
+		if !s.callerHasPermission(r, hasModelsPerm) {
+			writeJSON(w, redactSecrets(providers)) // see handleProviders
+			return
+		}
 		writeJSON(w, providers)
 	case http.MethodPut:
 		var req struct {
@@ -2028,6 +2095,10 @@ func (s *Server) handleSTTProviders(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		providers := s.fullBridge.GetSTTProviders()
+		if !s.callerHasPermission(r, hasModelsPerm) {
+			writeJSON(w, redactSecrets(providers)) // see handleProviders
+			return
+		}
 		writeJSON(w, providers)
 	case http.MethodPut:
 		var req struct {
@@ -2631,6 +2702,10 @@ func (s *Server) handleLiveModeEngines(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
+		if !s.callerHasPermission(r, hasModelsPerm) {
+			writeJSON(w, redactSecrets(s.fullBridge.GetLiveModeEngines())) // see handleProviders
+			return
+		}
 		writeJSON(w, s.fullBridge.GetLiveModeEngines())
 	case http.MethodPut:
 		var req livemode.EngineConfig

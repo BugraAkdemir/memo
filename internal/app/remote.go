@@ -6,7 +6,6 @@ import (
 
 	"memo/internal/config"
 	"memo/internal/ngrok"
-	"memo/internal/webserver"
 )
 
 // RemoteAccessStatus holds the current remote access configuration and state.
@@ -56,12 +55,28 @@ type RemoteAccessStatus struct {
 	Beta bool `json:"beta"`
 }
 
-// GetRemoteAccessStatus returns the current state of the remote access server.
+// GetRemoteAccessStatus returns the current state of the remote access
+// server, handing over (and clearing) a freshly minted device token if one
+// is pending — see RemoteAccessStatus.Token.
 func (a *App) GetRemoteAccessStatus() interface{} {
-	a.remoteDevicesMu.Lock()
-	pendingToken := a.pendingDeviceToken
-	a.pendingDeviceToken = ""
-	a.remoteDevicesMu.Unlock()
+	return a.remoteAccessStatus(true)
+}
+
+// PeekRemoteAccessStatus is GetRemoteAccessStatus without taking the pending
+// device token: for callers that must not be given it (a non-admin account)
+// and must not make it vanish before the admin who asked for it reads it.
+func (a *App) PeekRemoteAccessStatus() interface{} {
+	return a.remoteAccessStatus(false)
+}
+
+func (a *App) remoteAccessStatus(takePending bool) RemoteAccessStatus {
+	var pendingToken string
+	if takePending {
+		a.remoteDevicesMu.Lock()
+		pendingToken = a.pendingDeviceToken
+		a.pendingDeviceToken = ""
+		a.remoteDevicesMu.Unlock()
+	}
 
 	status := RemoteAccessStatus{
 		Enabled:           a.cfg.RemoteAccess.Enabled,
@@ -234,14 +249,3 @@ func (a *App) SetNgrokAutoStart(autoStart bool) {
 	}
 }
 
-// startWebServerForRemote is the internal helper used during startup for TLS remote access.
-func (a *App) startWebServerForRemote(port int) {
-	ws := a.getWebServer()
-	if ws == nil {
-		ws = webserver.New(a)
-		a.setWebServer(ws)
-	}
-	if err := ws.Start(port); err != nil {
-		logx.Printf("Remote access server: %v", err)
-	}
-}

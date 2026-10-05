@@ -547,10 +547,6 @@ func toGeminiTools(defs []ToolDefinition) []geminiToolDecl {
 	return []geminiToolDecl{{FunctionDeclarations: decls}}
 }
 
-func (p *geminiProvider) setAuth(req *http.Request) {
-	// Gemini uses API key as query parameter, not header
-}
-
 func (p *geminiProvider) wrapError(err error) error {
 	if strings.Contains(err.Error(), "context deadline exceeded") || strings.Contains(err.Error(), "timeout") {
 		return &ProviderError{Provider: p.Name(), Err: ErrTimeout}

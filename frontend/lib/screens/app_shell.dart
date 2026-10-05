@@ -42,6 +42,7 @@ import 'calendar_screen.dart';
 import 'routines_screen.dart';
 import 'developer_screen.dart';
 import 'swarm_screen.dart';
+import '../core/app_restart.dart';
 
 /// Tracks which main tab is currently selected
 /// (0=chat 1=agent 2=models 3=calendar 4=routines 5=developer 6=swarm).
@@ -466,7 +467,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             child: Text(L10n.t('settings')),
           ),
           TextButton(
-            onPressed: () => exit(0),
+            onPressed: restartApp,
             child: Text(L10n.t('ok')),
           ),
         ],

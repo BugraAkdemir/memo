@@ -200,6 +200,20 @@ func TestHandleCalendarEvents_POST_MissingTitleReturns400(t *testing.T) {
 	}
 }
 
+// Found live: a whitespace-only title passed and created an event whose
+// title is invisible in every list.
+func TestHandleCalendarEvents_POST_WhitespaceTitleReturns400(t *testing.T) {
+	s := newCalendarMoodServer(&calendarMoodStubBridge{})
+	body := `{"title":"   ","start_time":"2026-08-01T10:00:00Z"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/calendar/events", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+	s.handleCalendarEvents(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for a whitespace-only title", w.Code)
+	}
+}
+
 func TestHandleCalendarEvents_POST_InvalidStartTimeReturns400(t *testing.T) {
 	s := newCalendarMoodServer(&calendarMoodStubBridge{})
 	body := `{"title":"Doktor","start_time":"not-a-real-time"}`

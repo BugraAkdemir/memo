@@ -27,6 +27,15 @@ type openAIProvider struct {
 	// instance instead of on every message. Atomic because a provider is
 	// shared across concurrent streams (chat + background calls).
 	noStreamUsage atomic.Bool
+	// noTemperature/noTopP/useMaxCompletionTokens latch the same way for
+	// parameters OpenAI's reasoning models (o-series, gpt-5) refuse: a
+	// non-default temperature/top_p is a 400, and max_tokens is a 400 telling
+	// the caller to send max_completion_tokens instead. Every caller here
+	// sends a temperature (the agent pipeline pins 0.2), so without this an
+	// agent turn against such a model could never succeed.
+	noTemperature          atomic.Bool
+	noTopP                 atomic.Bool
+	useMaxCompletionTokens atomic.Bool
 }
 
 func newOpenAIProvider(cfg ProviderConfig) (*openAIProvider, error) {
@@ -155,13 +164,16 @@ func (p *openAIProvider) ListModels(ctx context.Context) ([]string, error) {
 }
 
 type openAIChatRequest struct {
-	Model       string           `json:"model"`
-	Messages    []openAIMessage  `json:"messages"`
-	Temperature float64          `json:"temperature,omitempty"`
-	TopP        float64          `json:"top_p,omitempty"`
-	MaxTokens   int              `json:"max_tokens,omitempty"`
-	Stream      bool             `json:"stream"`
-	Tools       []ToolDefinition `json:"tools,omitempty"`
+	Model       string          `json:"model"`
+	Messages    []openAIMessage `json:"messages"`
+	Temperature float64         `json:"temperature,omitempty"`
+	TopP        float64         `json:"top_p,omitempty"`
+	MaxTokens   int             `json:"max_tokens,omitempty"`
+	// MaxCompletionTokens replaces MaxTokens for endpoints that have refused
+	// the older field (see useMaxCompletionTokens). Never both at once.
+	MaxCompletionTokens int              `json:"max_completion_tokens,omitempty"`
+	Stream              bool             `json:"stream"`
+	Tools               []ToolDefinition `json:"tools,omitempty"`
 	// ReasoningEffort is Chat Completions' flat "reasoning_effort" field
 	// (verified against current OpenAI API docs, 2026-08-18) — accepted,
 	// silently ignored by non-reasoning models. Same field name/shape also
@@ -181,7 +193,7 @@ type openAIChatRequest struct {
 	// stream's usage — including prompt_tokens_details.cached_tokens, which is
 	// the only way a *streaming* turn can report its prompt-cache hit. Sent
 	// only on streaming requests, and dropped for the rest of the process's
-	// life if the endpoint rejects it (see streamUsageUnsupported): it is a
+	// life if the endpoint rejects it (see doRequest): it is a
 	// standard OpenAI field that OpenRouter, Groq, xAI, Ollama and
 	// llama-server all accept, but this package also talks to arbitrary
 	// user-configured "custom" endpoints, and a hard 400 on every chat
@@ -283,28 +295,13 @@ func (p *openAIProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 	}
 	p.applyEffortLevel(&body, req.EffortLevel)
 	body.Messages = p.toOpenAIMessages(req.Messages)
+	p.applyParamLatches(&body)
 
-	jsonBody, err := json.Marshal(body)
+	resp, err := p.doRequest(ctx, p.client, body)
 	if err != nil {
-		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("marshal: %w", err)}
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("request: %w", err)}
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	p.setAuth(httpReq)
-
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return nil, p.wrapError(err)
+		return nil, err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, p.parseError(resp)
-	}
 
 	rawBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -381,6 +378,7 @@ func (p *openAIProvider) ChatCompletionStream(ctx context.Context, req ChatReque
 	}
 	p.applyEffortLevel(&body, req.EffortLevel)
 	body.Messages = p.toOpenAIMessages(req.Messages)
+	p.applyParamLatches(&body)
 
 	// Ask for the trailing usage chunk unless this endpoint has already
 	// refused it once. Without this, a streaming (plain chat) turn reports no
@@ -392,78 +390,127 @@ func (p *openAIProvider) ChatCompletionStream(ctx context.Context, req ChatReque
 		body.StreamOptions = &openAIStreamOptions{IncludeUsage: true}
 	}
 
-	resp, err := p.doStreamRequest(ctx, body)
+	resp, err := p.doRequest(ctx, p.streamCl, body)
 	if err != nil {
 		return nil, err
 	}
+	// The retry may have withdrawn stream_options; only hold the terminal
+	// chunk back for a usage chunk the final request actually asked for.
+	wantUsage = wantUsage && !p.noStreamUsage.Load()
 
 	ch := make(chan StreamChunk, 128)
 	go p.processSSE(ctx, resp.Body, ch, wantUsage)
 	return ch, nil
 }
 
-// doStreamRequest posts one streaming chat request, retrying once without
-// stream_options when that field is what the endpoint rejected.
-//
-// The retry exists because this code path serves arbitrary user-configured
-// "custom" OpenAI-compatible endpoints alongside the vendors that certainly
-// support the field. A gateway that validates unknown parameters strictly
-// would otherwise 400 on every single chat message the moment this feature
-// shipped — trading "no cache figure" for "the app is broken". The refusal is
-// latched on the provider instance, so the cost is one wasted request per
-// process, not per message.
-func (p *openAIProvider) doStreamRequest(ctx context.Context, body openAIChatRequest) (*http.Response, error) {
-	resp, err := p.postStream(ctx, body)
-	if err == nil && resp.StatusCode == http.StatusOK {
-		return resp, nil
+// applyParamLatches drops/renames every parameter this endpoint has already
+// refused once this process (see doRequest).
+func (p *openAIProvider) applyParamLatches(body *openAIChatRequest) {
+	if p.noTemperature.Load() {
+		body.Temperature = 0
 	}
-
-	// A transport/marshal error tells us nothing about field support — never
-	// latch on it, or one flaky connection would permanently disable usage
-	// reporting.
-	if err != nil {
-		return nil, err
+	if p.noTopP.Load() {
+		body.TopP = 0
 	}
-
-	if body.StreamOptions == nil {
-		defer resp.Body.Close()
-		return nil, p.parseError(resp)
+	if p.useMaxCompletionTokens.Load() && body.MaxTokens > 0 {
+		body.MaxCompletionTokens, body.MaxTokens = body.MaxTokens, 0
 	}
-
-	// Only 400 and 422 mean "I don't understand this request". 401/403 is the
-	// API key, 404 is the route, 429 is the quota, 5xx is the server — none of
-	// them say anything about field support, and retrying on them would both
-	// double every failed request and permanently disable usage reporting
-	// because of, say, an expired key.
-	if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnprocessableEntity {
-		defer resp.Body.Close()
-		return nil, p.parseError(resp)
-	}
-
-	firstErr := p.parseError(resp)
-	resp.Body.Close()
-
-	body.StreamOptions = nil
-	retry, retryErr := p.postStream(ctx, body)
-	if retryErr != nil {
-		return nil, retryErr
-	}
-	if retry.StatusCode != http.StatusOK {
-		// The field wasn't the problem after all — report the ORIGINAL error,
-		// which is the one describing the request the caller actually made,
-		// and don't latch: a bad API key must not also disable usage
-		// reporting for the rest of the session.
-		defer retry.Body.Close()
-		return nil, firstErr
-	}
-
-	p.noStreamUsage.Store(true)
-	logx.Printf("PROVIDER: %s rejected stream_options.include_usage (%v) — streaming turns will fall back to estimated token counts for this session",
-		p.Name(), firstErr)
-	return retry, nil
 }
 
-func (p *openAIProvider) postStream(ctx context.Context, body openAIChatRequest) (*http.Response, error) {
+// maxCompatRetries bounds doRequest's withdraw-and-retry loop: one step per
+// optional field it knows how to withdraw (temperature, top_p, max_tokens,
+// stream_options). Real endpoints name one offending parameter per error.
+const maxCompatRetries = 4
+
+// doRequest posts one chat request, withdrawing optional fields the endpoint
+// rejects and retrying.
+//
+// This code path serves OpenAI itself (whose reasoning models refuse
+// temperature/top_p and max_tokens) alongside arbitrary user-configured
+// "custom" OpenAI-compatible endpoints (some of which validate unknown
+// parameters like stream_options strictly). A hard 400 on every message would
+// be far worse than the missing feature, so a refused field is withdrawn and
+// the refusal latched on the provider instance — the cost is one wasted
+// request per field per process, not per message.
+//
+// Only 400 and 422 mean "I don't understand this request". 401/403 is the API
+// key, 404 the route, 429 the quota, 5xx the server — none of them say
+// anything about field support, and retrying on them would both double every
+// failed request and permanently disable a field because of, say, an expired
+// key. Which field to withdraw is read from the error text; stream_options is
+// the fallback for an unspecific 400, as before. If the final attempt still
+// fails, the ORIGINAL error is reported and nothing latches.
+func (p *openAIProvider) doRequest(ctx context.Context, cl *http.Client, body openAIChatRequest) (*http.Response, error) {
+	var firstErr error
+	var latches []func()
+	for attempt := 0; ; attempt++ {
+		resp, err := p.post(ctx, cl, body)
+		if err != nil {
+			// A transport/marshal error tells us nothing about field support.
+			if firstErr != nil {
+				return nil, firstErr
+			}
+			return nil, err
+		}
+		if resp.StatusCode == http.StatusOK {
+			for _, l := range latches {
+				l()
+			}
+			return resp, nil
+		}
+		status := resp.StatusCode
+		reqErr := p.parseError(resp)
+		resp.Body.Close()
+		if firstErr == nil {
+			firstErr = reqErr
+		}
+		if (status != http.StatusBadRequest && status != http.StatusUnprocessableEntity) || attempt >= maxCompatRetries {
+			return nil, firstErr
+		}
+		latch, ok := p.withdrawRejectedField(&body, reqErr.Error())
+		if !ok {
+			return nil, firstErr
+		}
+		latches = append(latches, latch)
+	}
+}
+
+// withdrawRejectedField removes (or renames) the one optional field errText
+// blames and returns the latch that remembers it, or ok=false when nothing
+// in body can be withdrawn.
+func (p *openAIProvider) withdrawRejectedField(body *openAIChatRequest, errText string) (latch func(), ok bool) {
+	t := strings.ToLower(errText)
+	name := p.Name()
+	switch {
+	case body.MaxTokens > 0 && strings.Contains(t, "max_completion_tokens"):
+		body.MaxCompletionTokens, body.MaxTokens = body.MaxTokens, 0
+		return func() {
+			p.useMaxCompletionTokens.Store(true)
+			logx.Printf("PROVIDER: %s refused max_tokens (%s) — sending max_completion_tokens for this session", name, errText)
+		}, true
+	case body.Temperature != 0 && strings.Contains(t, "temperature"):
+		body.Temperature = 0
+		return func() {
+			p.noTemperature.Store(true)
+			logx.Printf("PROVIDER: %s refused temperature (%s) — withdrawn for this session", name, errText)
+		}, true
+	case body.TopP != 0 && strings.Contains(t, "top_p"):
+		body.TopP = 0
+		return func() {
+			p.noTopP.Store(true)
+			logx.Printf("PROVIDER: %s refused top_p (%s) — withdrawn for this session", name, errText)
+		}, true
+	case body.StreamOptions != nil:
+		body.StreamOptions = nil
+		return func() {
+			p.noStreamUsage.Store(true)
+			logx.Printf("PROVIDER: %s rejected stream_options.include_usage (%s) — streaming turns will fall back to estimated token counts for this session", name, errText)
+		}, true
+	}
+	return nil, false
+}
+
+func (p *openAIProvider) post(ctx context.Context, cl *http.Client, body openAIChatRequest) (*http.Response, error) {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("marshal: %w", err)}
@@ -474,12 +521,14 @@ func (p *openAIProvider) postStream(ctx context.Context, body openAIChatRequest)
 		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("request: %w", err)}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "text/event-stream")
-	httpReq.Header.Set("Cache-Control", "no-cache")
-	httpReq.Header.Set("Connection", "keep-alive")
+	if body.Stream {
+		httpReq.Header.Set("Accept", "text/event-stream")
+		httpReq.Header.Set("Cache-Control", "no-cache")
+		httpReq.Header.Set("Connection", "keep-alive")
+	}
 	p.setAuth(httpReq)
 
-	resp, err := p.streamCl.Do(httpReq)
+	resp, err := cl.Do(httpReq)
 	if err != nil {
 		return nil, p.wrapError(err)
 	}
@@ -584,8 +633,12 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 			}
 		}
 
-		if chunk.Choices[0].FinishReason != nil {
-			finish := *chunk.Choices[0].FinishReason
+		// An empty string is "not finished", same as null: some servers send
+		// `"finish_reason": ""` on every content chunk, and reading that as a
+		// finish armed the usage watchdog mid-answer (S6, BUG_REPORT
+		// 2026-09-28).
+		if fr := chunk.Choices[0].FinishReason; fr != nil && *fr != "" {
+			finish := *fr
 			if !wantUsage || usage != nil {
 				trySend(ctx, ch, terminal(finish))
 				return
@@ -596,6 +649,7 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 			// scanner below; net/http supports Close concurrent with a
 			// blocked Read precisely for this.
 			pendingFinish = finish
+			stopGrace() // a repeated finish must not leave an older timer armed
 			graceTimer = time.AfterFunc(streamUsageGrace, func() { body.Close() })
 			continue
 		}

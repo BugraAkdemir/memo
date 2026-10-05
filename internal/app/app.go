@@ -327,6 +327,10 @@ type App struct {
 	streamMu        sync.RWMutex
 	chatStreamMu    sync.Mutex
 	chatStreamLocks map[string]*sync.Mutex
+	// chatStreamActive counts held per-chat stream locks, maintained by
+	// lockChatStream/its release under chatStreamMu, so GetStreamingChatIDs
+	// can answer without ever touching the locks themselves.
+	chatStreamActive map[string]int
 
 	// cliJobs tracks in-flight CLI-backed background streams (see
 	// cli_stream.go), keyed by chat id. Deliberately separate from streamMu

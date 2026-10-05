@@ -644,9 +644,16 @@ class MemoApiClient {
     return res.data['id'] as String? ?? '';
   }
 
-  /// Get messages of the active chat.
-  Future<List<ChatMessage>> getMessages() async {
-    final res = await _dio.get('/api/messages');
+  /// Get a chat's messages. [chatId] names the chat explicitly; without it
+  /// the backend answers with whichever chat is globally active, which
+  /// another client may have switched since this one last looked (see
+  /// handleMessages in internal/webserver/server.go). A chat that no longer
+  /// exists (deleted on another device) comes back as a 404.
+  Future<List<ChatMessage>> getMessages({String? chatId}) async {
+    final res = await _dio.get(
+      '/api/messages',
+      queryParameters: (chatId != null && chatId.isNotEmpty) ? {'chat_id': chatId} : null,
+    );
     if (res.data is List) {
       return (_guard<List>(
         res.data,
@@ -655,17 +662,24 @@ class MemoApiClient {
     return [];
   }
 
-  /// Update a message's content by index.
-  Future<void> updateMessage(int index, String content) async {
+  /// Update a message's content by index, in [chatId] when given.
+  Future<void> updateMessage(int index, String content, {String? chatId}) async {
     await _dio.post(
       '/api/messages/update',
-      data: {'index': index, 'content': content},
+      data: {
+        'index': index,
+        'content': content,
+        if (chatId != null && chatId.isNotEmpty) 'chat_id': chatId,
+      },
     );
   }
 
-  /// Delete a message by index.
-  Future<void> deleteMessage(int index) async {
-    await _dio.post('/api/messages/delete', data: {'index': index});
+  /// Delete a message by index, in [chatId] when given.
+  Future<void> deleteMessage(int index, {String? chatId}) async {
+    await _dio.post('/api/messages/delete', data: {
+      'index': index,
+      if (chatId != null && chatId.isNotEmpty) 'chat_id': chatId,
+    });
   }
 
   /// Appends role/content to the active session's history and persists it
@@ -1691,9 +1705,13 @@ class MemoApiClient {
 
   // ─── Image ──────────────────────────────────────────────────────
 
+  /// A chat image as a `data:` URI, read by the backend from its own disk —
+  /// see ChatImage for why clients must not read the path themselves.
   Future<String> getImageBase64(String path) async {
     final res = await _dio.get('/api/image', queryParameters: {'path': path});
-    return res.data['data'] as String? ?? '';
+    final data = res.data;
+    if (data is Map && data['data'] is String) return data['data'] as String;
+    return '';
   }
 
   // ─── File Upload ────────────────────────────────────────────────

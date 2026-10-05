@@ -910,7 +910,6 @@ type MemoryConfig struct {
 
 var (
 	instance *AppConfig
-	once     sync.Once
 	mu       sync.RWMutex
 	cfgPath  string
 )

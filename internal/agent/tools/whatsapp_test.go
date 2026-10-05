@@ -11,7 +11,6 @@ type fakeWhatsAppClient struct {
 	sendCtx       context.Context
 	searchLimit   int
 	messagesLimit int
-	chatsLimit    int
 	chats         []WhatsAppChat
 }
 

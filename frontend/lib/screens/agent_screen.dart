@@ -319,6 +319,7 @@ class _AgentContent extends ConsumerWidget {
                 streamingThinking: streamingThinking,
                 streamingAgentEvents: streamingAgentEvents,
                 statusText: streamingStatus,
+                streamTiming: ref.watch(streamTimingProvider),
                 apiBaseUrl: ref.watch(apiClientProvider).baseUrl,
                 taskActivity: ref.watch(chatTaskForProvider(activeChat.id)),
                 onEdit: (index, newContent) => ref.read(messagesProvider.notifier).updateMessage(index, newContent),

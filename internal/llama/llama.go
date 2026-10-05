@@ -444,11 +444,6 @@ func (s *Server) killByPort(port int) error {
 	return KillByPort(port)
 }
 
-// pidOnPort returns the PID of the process listening on the given TCP port, or 0.
-func (s *Server) pidOnPort(port int) int {
-	return pidListeningOnPort(port)
-}
-
 // forceKill sends SIGKILL to the process (and its group if possible).
 func (s *Server) forceKill() {
 	if s.cmd == nil || s.cmd.Process == nil {

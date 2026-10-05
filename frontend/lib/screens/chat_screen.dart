@@ -225,6 +225,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
                 streamingThinking: streamingThinking,
                 streamingAgentEvents: streamingAgentEvents,
                 statusText: streamingStatus,
+                streamTiming: ref.watch(streamTimingProvider),
                 isCLIChat: isCLIChat,
                 apiBaseUrl: ref.watch(apiClientProvider).baseUrl,
                 taskActivity: taskChatId.isEmpty

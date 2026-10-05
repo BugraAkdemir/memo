@@ -131,9 +131,7 @@ func (r *Router) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResp
 			}
 		}
 
-		if pErr != nil {
-			logx.Printf("PROVIDER: %v", pErr)
-		}
+		logx.Printf("PROVIDER: %v", pErr)
 	}
 
 	return nil, fmt.Errorf("all providers failed: %w", lastErr)
@@ -201,21 +199,36 @@ func (r *Router) SetActiveProvider(name string) {
 	r.activeName = name
 }
 
-// getActiveEntries returns non-disabled provider entries.
-// If activeName is set, only the matching provider (by Name) is returned.
+// getActiveEntries returns the provider entries to try, in fallback order.
+// If activeName is set, only the matching provider (by Name) is a candidate.
+//
+// Auto-disabled entries are skipped while at least one candidate is healthy —
+// that is what auto-disable is for: stop paying a failing provider's latency
+// when another can serve. When every candidate is disabled, they are all
+// returned anyway. Refusing to try then (the old behavior) turned three
+// consecutive failures of the only active provider — e.g. three 429s from a
+// busy free-tier model — into a lockout: every message failed instantly with
+// "no provider configured or all providers failed", without being sent,
+// until the 5-minute health check re-enabled it. Found live against a fake
+// provider.
 func (r *Router) getActiveEntries() []*providerEntry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	var entries []*providerEntry
+	var healthy, disabled []*providerEntry
 	for _, entry := range r.providers {
-		if entry.disabled {
-			continue
-		}
 		if r.activeName != "" && entry.cfg.Name != r.activeName {
 			continue
 		}
-		entries = append(entries, entry)
+		if entry.disabled {
+			disabled = append(disabled, entry)
+		} else {
+			healthy = append(healthy, entry)
+		}
+	}
+	entries := healthy
+	if len(entries) == 0 {
+		entries = disabled
 	}
 
 	// Sort by descending priority to preserve fallback ordering.
@@ -236,10 +249,17 @@ func (r *Router) recordFailure(entry *providerEntry) {
 	}
 }
 
+// resetFailCount records a success: the counter restarts and an entry that
+// had been auto-disabled is back in service (it just answered, so it has
+// recovered — waiting for the next health check would keep skipping it).
 func (r *Router) resetFailCount(entry *providerEntry) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	entry.failCount = 0
+	if entry.disabled {
+		entry.disabled = false
+		logx.Printf("PROVIDER: %s answered again — re-enabled", entry.Name())
+	}
 }
 
 // GetProvider returns an existing provider instance by name.

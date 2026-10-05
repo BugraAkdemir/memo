@@ -722,7 +722,7 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		}
 		applyUsage(chunk.Usage)
 		if chunk.Error != "" {
-			a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
+			a.recordFailedTurn(userMsg, fullReply.String(), "⚠️ "+chunk.Error, sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 			return "", false
 		}
@@ -1250,8 +1250,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				return
 			}
 
-			providerCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
-			defer cancel()
+			providerCtx, touch, stopWatch := streamWatchdogCtx(ctx)
+			defer stopWatch()
 
 			pMsgs := make([]provider.Message, len(messages))
 			for i, m := range messages {
@@ -1273,7 +1273,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			if err != nil {
 				logx.Printf("Provider stream error: %v", err)
 				var errMsg string
-				if a.providerSwapped(providerRouter) {
+				if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
+					errMsg = tm
+				} else if a.providerSwapped(providerRouter) {
 					errMsg = a.modelSwappedMidStreamMsg()
 				} else {
 					errMsg = "⚠️ " + err.Error()
@@ -1323,6 +1325,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			for {
 				chunk, ok, ctxDone := recvChunk(providerCtx, ch)
 				if ctxDone {
+					if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
+						a.recordFailedTurn(userMsg, fullReply.String(), tm, sessionID)
+						trySend(ctx, outCh, api.StreamChunk{Error: tm, Done: true})
+						return
+					}
 					a.persistInterruptedTurn(ctx, start, completionCount(providerCompletionTokens, tokenCount), fullReply.String(), userMsg, sessionID, &usageMetaVal)
 					trySend(providerCtx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 					return
@@ -1330,6 +1337,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				if !ok {
 					break
 				}
+				touch()
 
 				// Before the error check, for the same reason claude.go
 				// attaches usage to its error chunk: a turn that failed
@@ -1338,7 +1346,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 				if chunk.Error != "" {
 					var errMsg string
-					if a.providerSwapped(providerRouter) {
+					if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
+						errMsg = tm // the watchdog's cancel surfaced as a read error
+					} else if a.providerSwapped(providerRouter) {
 						errMsg = a.modelSwappedMidStreamMsg()
 					} else {
 						errMsg = "⚠️ " + chunk.Error
@@ -1346,7 +1356,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 							errMsg += "\n\n" + hint
 						}
 					}
-					a.recordStreamError(userMsg, errMsg, sessionID)
+					a.recordFailedTurn(userMsg, fullReply.String(), errMsg, sessionID)
 					trySend(providerCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 					return
 				}
@@ -1371,12 +1381,29 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 
 				if chunk.Done {
+					// A clean finish with no text and no thinking used to be
+					// saved as an empty assistant bubble with no explanation
+					// (found live). Same notice the stream-closed-empty branch
+					// below already gives.
+					if fullReply.Len() == 0 && fullThinking.Len() == 0 {
+						a.recordStreamError(userMsg, a.emptyReplyMsg(), sessionID)
+						trySend(providerCtx, outCh, api.StreamChunk{Error: a.emptyReplyMsg(), Done: true})
+						return
+					}
 					a.finishStream(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 					trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 					return
 				}
 			}
 
+			// The watchdog's cancel can also end the provider's stream by just
+			// closing it (no error chunk) — never let that pass as a complete
+			// reply.
+			if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
+				a.recordFailedTurn(userMsg, fullReply.String(), tm, sessionID)
+				trySend(ctx, outCh, api.StreamChunk{Error: tm, Done: true})
+				return
+			}
 			if fullReply.Len() > 0 {
 				a.finishStream(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
@@ -1421,8 +1448,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		defer close(outCh)
 		defer recoverStreamPanic(ctx, outCh, "callLLMStream/local-model")
 
-		streamCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
-		defer cancel()
+		streamCtx, touch, stopWatch := streamWatchdogCtx(ctx)
+		defer stopWatch()
 
 		requestStart := time.Now()
 		a.cfgMu.RLock()
@@ -1452,6 +1479,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		for {
 			chunk, ok, ctxDone := recvChunk(streamCtx, ch)
 			if ctxDone {
+				if tm := a.streamTimeoutMsg(ctx, streamCtx); tm != "" {
+					a.recordFailedTurn(userMsg, fullReply.String(), tm, sessionID)
+					trySend(ctx, outCh, api.StreamChunk{Error: tm, Done: true})
+					return
+				}
 				a.persistInterruptedTurn(ctx, start, tokenCount, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(streamCtx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 				return
@@ -1459,15 +1491,18 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			if !ok {
 				break
 			}
+			touch()
 
 			if chunk.Error != "" {
 				logx.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
 				logx.Printf("Stream chunk error: %s", chunk.Error)
 				errMsg := "⚠️ " + chunk.Error
-				if a.clientSwapped(streamClient) {
+				if tm := a.streamTimeoutMsg(ctx, streamCtx); tm != "" {
+					errMsg = tm
+				} else if a.clientSwapped(streamClient) {
 					errMsg = a.modelSwappedMidStreamMsg()
 				}
-				a.recordStreamError(userMsg, errMsg, sessionID)
+				a.recordFailedTurn(userMsg, fullReply.String(), errMsg, sessionID)
 				trySend(streamCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 				return
 			}
@@ -1497,20 +1532,30 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 			if chunk.Done {
 				logx.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
+				if fullReply.Len() == 0 && fullThinking.Len() == 0 {
+					a.recordStreamError(userMsg, a.emptyReplyMsg(), sessionID)
+					trySend(streamCtx, outCh, api.StreamChunk{Error: a.emptyReplyMsg(), Done: true})
+					return
+				}
 				a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(streamCtx, outCh, chunk)
 				return
 			}
 		}
 
+		if tm := a.streamTimeoutMsg(ctx, streamCtx); tm != "" {
+			a.recordFailedTurn(userMsg, fullReply.String(), tm, sessionID)
+			trySend(ctx, outCh, api.StreamChunk{Error: tm, Done: true})
+			return
+		}
 		if fullReply.Len() > 0 {
 			logx.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
 			a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
 			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		} else {
 			logx.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
-			a.recordStreamError(userMsg, a.t("⚠️ Model boş yanıt döndürdü", "⚠️ Model returned an empty response"), sessionID)
-			trySend(streamCtx, outCh, api.StreamChunk{Error: a.t("⚠️ Model boş yanıt döndürdü", "⚠️ Model returned an empty response"), Done: true})
+			a.recordStreamError(userMsg, a.emptyReplyMsg(), sessionID)
+			trySend(streamCtx, outCh, api.StreamChunk{Error: a.emptyReplyMsg(), Done: true})
 		}
 	}()
 
@@ -1643,6 +1688,30 @@ func (a *App) recordStreamError(userMsg, errReply, sessionID string) {
 		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", errReply))
 		a.incognitoMu.Unlock()
 	}
+}
+
+// recordFailedTurn persists a turn whose stream failed after part of the
+// answer had already reached the user: the partial text is kept, with the
+// error appended, instead of being replaced by the bare error. Before this,
+// a stream cut mid-answer (upstream crash, network drop, a provider error
+// event) showed the user the text as it arrived and then saved only
+// "⚠️ unexpected EOF" — so the part they had read vanished on the next
+// reload. Found live against a fake provider that drops the connection
+// mid-stream. With nothing received it is exactly recordStreamError.
+//
+// Deliberately not finishStream: a failed turn should not feed memory/fact
+// extraction or mood with a truncated answer plus an error line.
+func (a *App) recordFailedTurn(userMsg, partial, errMsg, sessionID string) {
+	if strings.TrimSpace(partial) != "" {
+		errMsg = partial + "\n\n" + errMsg
+	}
+	a.recordStreamError(userMsg, errMsg, sessionID)
+}
+
+// emptyReplyMsg is the notice recorded when a provider finished a turn
+// normally but sent no text at all.
+func (a *App) emptyReplyMsg() string {
+	return a.t("⚠️ Model boş yanıt döndürdü", "⚠️ Model returned an empty response")
 }
 
 // stopMarker is the notice appended to a turn the user stopped mid-generation.

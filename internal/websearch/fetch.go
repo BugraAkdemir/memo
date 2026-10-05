@@ -14,6 +14,10 @@ import (
 // context bütçesini tek bir sayfa yüzünden patlatmamak için.
 const maxFetchContentRunes = 8000
 
+// maxFetchLogPreviewRunes bounds how much of a fetched page Fetch writes to
+// the log.
+const maxFetchLogPreviewRunes = 300
+
 // Page, Fetch ile alınan bir sayfanın okunabilir içeriğidir.
 type Page struct {
 	URL     string
@@ -87,16 +91,14 @@ func Fetch(ctx context.Context, url string) (*Page, error) {
 	}
 
 	logx.Info("WEBSEARCH: fetch done", "url", url, "resolved_url", page.URL, "title", page.Title, "content_runes", len([]rune(content)), "content_empty", content == "", "used_browser", usedBrowser)
-	// Full Markdown content, separate from the summary line above so a log
-	// viewer can filter/skip it easily — this is the actual page text the
-	// model sees, useful for diagnosing "fetched but the content is garbage/
-	// irrelevant/JS-shell" cases that the one-line summary can't show.
-	// Deliberately at Info (not Debug — nothing in this app currently
-	// enables debug-level logging, so Debug here would be invisible) for
-	// this debugging pass; worth moving behind an actual debug flag once
-	// the current search-quality issue is understood, so it doesn't stay
-	// this verbose in normal use.
-	logx.Info("WEBSEARCH: fetch content", "url", url, "content", content)
+	// A short preview, separate from the summary line above so a log viewer
+	// can filter it easily — enough to diagnose "fetched but the content is
+	// garbage / a JS shell / irrelevant" from the log. This used to log the
+	// entire page (up to maxFetchContentRunes) at Info on every fetch,
+	// flagged in its own comment as a temporary debugging aid: every page
+	// the agent read landed verbatim in the backend log (and repl.log),
+	// growing it quickly and keeping copies of whatever the pages contained.
+	logx.Info("WEBSEARCH: fetch content preview", "url", url, "preview", truncate.Text(content, maxFetchLogPreviewRunes))
 
 	return &Page{URL: page.URL, Title: page.Title, Content: content, UsedBrowser: usedBrowser}, nil
 }

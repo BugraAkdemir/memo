@@ -295,10 +295,6 @@ func TestGetListenAddr(t *testing.T) {
 	}
 }
 
-type eventProvider interface {
-	snapshot() []AppEvent
-}
-
 func TestGetEvents(t *testing.T) {
 	a := &App{events: &eventRing{}}
 	events := a.GetEvents()

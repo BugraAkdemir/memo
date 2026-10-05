@@ -99,7 +99,14 @@ func TestAgentWrappers_NilExecutor(t *testing.T) {
 // With a real (but provider-less) executor wired in, the wrappers should
 // delegate to it instead of short-circuiting.
 func TestAgentWrappers_WithExecutor(t *testing.T) {
+	// NewExecutor keeps its undo history under config.DataDir(), which is
+	// cached per process: without the reset, this test inherited whichever
+	// data dir an earlier test in the package resolved first — including its
+	// agent-backups/history.json — and "nothing was ever edited" failed
+	// whenever an earlier test (or an earlier -count iteration) had edited.
 	t.Setenv("MEMO_DATA_DIR", t.TempDir())
+	config.ResetForTests()
+	t.Cleanup(config.ResetForTests)
 	exec := agent.NewExecutor(t.TempDir(), nil, nil, nil)
 	a := &App{agentExecutor: exec}
 

@@ -82,8 +82,11 @@ func (a *App) imageRoute(ctx context.Context, router *provider.Router) (provider
 // data directory (not a temp dir) because the path is persisted on the chat
 // message and re-read by the UI on every later reload of that chat.
 func generatedImagesDir() string {
-	return filepath.Join(config.DataDir(), "generated-images")
+	return config.DataPath(generatedImagesSub)
 }
+
+// generatedImagesSub is generatedImagesDir's name under the data directory.
+const generatedImagesSub = "generated-images"
 
 // imageExtension maps a response media type onto a file extension. Falls
 // back to .png — every provider in the catalog defaults to PNG, and a

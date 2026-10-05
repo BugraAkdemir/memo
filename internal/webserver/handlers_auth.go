@@ -304,6 +304,92 @@ func (s *Server) requirePermissionStrict(handler http.HandlerFunc, check func(co
 	}
 }
 
+// adminOnly wraps handler so only an admin caller reaches it, for every
+// method. Same fail-open notion of "admin" as callerIsAdmin: the desktop
+// app, account-less installs and device tokens are unaffected; a recognized
+// "user"-role session is refused. For the endpoints that export, overwrite,
+// wipe, uninstall or stop the whole backend — found live that any account,
+// including one with every permission box unchecked, could call all of them.
+func (s *Server) adminOnly(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.callerIsAdmin(r) {
+			http.Error(w, "forbidden: admin only", http.StatusForbidden)
+			return
+		}
+		handler(w, r)
+	}
+}
+
+// adminWrites is adminOnly for state-changing methods only: GET/HEAD pass
+// through (their handlers redact secrets for non-admins where needed), so a
+// screen a restricted account can still see keeps loading.
+func (s *Server) adminWrites(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && !s.callerIsAdmin(r) {
+			http.Error(w, "forbidden: admin only", http.StatusForbidden)
+			return
+		}
+		handler(w, r)
+	}
+}
+
+// secretJSONKeys are the response fields that carry credentials.
+var secretJSONKeys = map[string]bool{
+	"api_key":            true,
+	"client_secret":      true,
+	"passphrase":         true,
+	"token":              true,
+	"ngrok_token":        true,
+	"tailscale_auth_url": true,
+}
+
+// maskSecret keeps a secret's presence (and last four characters, for
+// recognition) without revealing it.
+func maskSecret(v string) string {
+	if v == "" {
+		return ""
+	}
+	r := []rune(v)
+	if len(r) <= 8 {
+		return "••••"
+	}
+	return "••••" + string(r[len(r)-4:])
+}
+
+// redactSecrets returns v with every secretJSONKeys field masked, at any
+// depth. It works on the JSON form, so one helper covers every response
+// type (provider lists, TTS/STT/Live Mode engines, remote-access status,
+// sync and dev-gateway settings) without each growing its own copy.
+func redactSecrets(v any) any {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return v
+	}
+	var generic any
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		return v
+	}
+	var walk func(x any)
+	walk = func(x any) {
+		switch t := x.(type) {
+		case map[string]any:
+			for k, val := range t {
+				if s, ok := val.(string); ok && secretJSONKeys[k] {
+					t[k] = maskSecret(s)
+					continue
+				}
+				walk(val)
+			}
+		case []any:
+			for _, e := range t {
+				walk(e)
+			}
+		}
+	}
+	walk(generic)
+	return generic
+}
+
 func hasModelsPerm(p config.AccountPermissions) bool   { return p.Models }
 func hasMemoryPerm(p config.AccountPermissions) bool   { return p.Memory }
 func hasAgentPerm(p config.AccountPermissions) bool    { return p.Agent }

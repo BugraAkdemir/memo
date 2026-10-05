@@ -30,7 +30,32 @@ import (
 // the non-blocking attempt below succeeds immediately in the overwhelming
 // majority of real cases, sidestepping the race entirely.
 func forwardStream(ctx context.Context, inner <-chan api.StreamChunk, out chan<- api.StreamChunk) {
+	forwardStreamReleasing(ctx, inner, out, nil)
+}
+
+// forwardStreamReleasing is forwardStream for a goroutine that holds a
+// per-chat stream lock: release runs just BEFORE the terminal Done chunk is
+// handed on, not after the forwarding returns.
+//
+// The order is the whole point. With release deferred until after the last
+// send, the client can read Done, post its next message, and have that
+// request reach lockChatStream while the previous turn still holds the lock
+// — answered with busyNotice ("please wait until the previous response
+// finishes") although the response it is waiting on visibly finished. That
+// failed TestAgent_PlanSubMode_TextConfirmFlow intermittently in CI under
+// -race, and it hits any client that sends a follow-up straight after Done.
+//
+// Releasing at Done is safe because every stream producer persists the turn
+// (finishStream / recordFailedTurn / recordStreamError) BEFORE it emits Done,
+// so the next turn always sees this one's reply in the session history. The
+// caller must still defer release as well — for a stream that ends without a
+// Done chunk — which is fine because lockChatStream's release is
+// sync.Once-guarded. release may be nil.
+func forwardStreamReleasing(ctx context.Context, inner <-chan api.StreamChunk, out chan<- api.StreamChunk, release func()) {
 	for chunk := range inner {
+		if chunk.Done && release != nil {
+			release()
+		}
 		select {
 		case out <- chunk:
 			continue
@@ -481,7 +506,7 @@ func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg stri
 		defer close(out)
 		defer release()
 		defer recoverPanic("forwardStream")
-		forwardStream(ctx, innerCh, out)
+		forwardStreamReleasing(ctx, innerCh, out, release)
 	}()
 	return out
 }
@@ -619,10 +644,11 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		// token-aware history truncation as plain text ones — the manual
 		// construction this replaced skipped all three (BUG-QL5).
 		msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64}, nil)
+		stored := persistChatImage(imagePath, imgData)
 		if sm != nil {
-			sm.AddMessageToSession(chatID, "user", userMsg, imagePath, "")
+			sm.AddMessageToSession(chatID, "user", userMsg, stored, "")
 		}
-		return a.routeStream(ctx, msgs, userMsg, imagePath, "", chatID, false)
+		return a.routeStream(ctx, msgs, userMsg, stored, "", chatID, false)
 	})
 	if !ok {
 		return busyStreamChan(a.busyNotice())
@@ -633,7 +659,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		defer close(out)
 		defer release()
 		defer recoverPanic("forwardStream")
-		forwardStream(ctx, innerCh, out)
+		forwardStreamReleasing(ctx, innerCh, out, release)
 	}()
 	return out
 }
@@ -705,7 +731,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		defer close(out)
 		defer release()
 		defer recoverPanic("forwardStream")
-		forwardStream(ctx, innerCh, out)
+		forwardStreamReleasing(ctx, innerCh, out, release)
 	}()
 	return out
 }
@@ -758,11 +784,12 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	defer release()
 
 	msgs := a.buildMessagesForSession(context.Background(), chatID, userMsg, []string{b64}, nil)
+	stored := persistChatImage(imagePath, imgData)
 	if sm != nil {
-		sm.AddMessageToSession(chatID, "user", userMsg, imagePath, "")
+		sm.AddMessageToSession(chatID, "user", userMsg, stored, "")
 	}
 
-	ch := a.routeStream(context.Background(), msgs, userMsg, imagePath, "", chatID, false)
+	ch := a.routeStream(context.Background(), msgs, userMsg, stored, "", chatID, false)
 	reply := drainToReply(ch)
 
 	// Cosmetic only: finishStream (inside the drain above) already recorded

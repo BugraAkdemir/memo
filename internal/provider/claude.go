@@ -27,6 +27,14 @@ type claudeProvider struct {
 	// custom-anthropic endpoint — api.anthropic.com defines the field.
 	// Atomic because one provider instance serves concurrent streams.
 	noCacheControl atomic.Bool
+	// noSampling latches when this endpoint has rejected temperature/top_p.
+	// Anthropic removed both on Opus 4.7 and every model since (Opus 4.8/5/
+	// 5.5, Sonnet 5, Fable): a request carrying either is a 400. Memo's
+	// callers always send them (the agent pipeline pins 0.2, the chat path
+	// forwards the configured llama temperature), so without this every turn
+	// against a current Claude model failed. Latched per provider instance —
+	// one wasted request per process, not one per message.
+	noSampling atomic.Bool
 }
 
 func newClaudeProvider(cfg ProviderConfig) (*claudeProvider, error) {
@@ -198,16 +206,11 @@ type claudeBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
 
-	// thinking (incoming only — BUG-THINK1). Anthropic requires a turn's
-	// thinking block to be echoed back verbatim (with its signature) on any
-	// follow-up request that continues that same turn's tool_use loop; this
-	// package's buildClaudeRequest never replays thinking or text blocks
-	// today, only tool_use ones (see its own doc comment), and the plain
-	// chat path that owns effort levels/thinking never sends req.Tools at
-	// all — so there is no such follow-up request to get wrong here. If
-	// Claude ever gets extended thinking + tool use on the same turn (agent
-	// pipeline, currently non-stream and out of this bug's scope), a
-	// Signature field and replay logic would need to be added then.
+	// thinking (incoming — BUG-THINK1). On the way back out, thinking and
+	// redacted_thinking blocks are replayed through raw (below), never
+	// rebuilt from these fields: the API requires them byte-for-byte,
+	// signature included, and a rebuilt block would also drop an empty
+	// "thinking" string (the default display mode on current models).
 	Thinking string `json:"thinking,omitempty"`
 
 	// tool_use (both directions: sent back when replaying an assistant
@@ -219,6 +222,31 @@ type claudeBlock struct {
 	// tool_result (outgoing only — Memo never receives one).
 	ToolUseID string `json:"tool_use_id,omitempty"`
 	Content   string `json:"content,omitempty"`
+
+	// raw is the block exactly as the API sent it, kept for replay. Set only
+	// by UnmarshalJSON; a block built in code marshals field by field.
+	raw json.RawMessage
+}
+
+// UnmarshalJSON decodes a block and remembers its original bytes.
+func (b *claudeBlock) UnmarshalJSON(data []byte) error {
+	type plain claudeBlock
+	var v plain
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*b = claudeBlock(v)
+	b.raw = append(json.RawMessage(nil), data...)
+	return nil
+}
+
+// MarshalJSON replays a decoded block verbatim, or encodes a built one.
+func (b claudeBlock) MarshalJSON() ([]byte, error) {
+	if len(b.raw) > 0 {
+		return b.raw, nil
+	}
+	type plain claudeBlock
+	return json.Marshal(plain(b))
 }
 
 type claudeResponse struct {
@@ -339,45 +367,99 @@ func stripCacheControl(clReq claudeRequest) claudeRequest {
 	return clReq
 }
 
-// postMessages sends one /messages request, retrying once without
-// cache_control when that is what the endpoint rejected.
+// postMessages sends one /messages request, retrying once without whichever
+// optional field the endpoint rejected: temperature/top_p (removed on Opus
+// 4.7 and later) or cache_control (unknown to some Anthropic-compatible
+// proxies).
 //
 // Same compatibility valve, and the same narrow trigger, as openai.go's
-// doStreamRequest: only 400/422 can mean "I don't understand this request", so
+// doRequest: only 400/422 can mean "I don't understand this request", so
 // a 401 (key), 404 (route), 429 (quota) or 5xx (server) is returned as-is
 // rather than being misread as a field problem — which would both double every
-// failed request and permanently disable caching because of an expired key. If
-// the retry also fails, the ORIGINAL error is reported and nothing latches.
+// failed request and permanently disable the field because of an expired key.
+// Which field to withdraw is decided from the error text: a rejection that
+// names temperature/top_p/top_k withdraws sampling; any other 400 on a
+// request carrying cache_control withdraws that (the original behavior); a
+// 400 naming neither on a request that still carries sampling withdraws
+// sampling, since that is then the only optional field left to blame. If the
+// retry also fails, the ORIGINAL error is reported and nothing latches.
 func (p *claudeProvider) postMessages(ctx context.Context, cl *http.Client, clReq claudeRequest, stream bool) (*http.Response, error) {
 	resp, err := p.sendMessages(ctx, cl, clReq, stream)
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode == http.StatusOK || !carriesCacheControl(clReq) {
+	if resp.StatusCode == http.StatusOK {
 		return resp, nil
 	}
 	if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnprocessableEntity {
+		return resp, nil
+	}
+	sampling := carriesSampling(clReq)
+	caching := carriesCacheControl(clReq)
+	if !sampling && !caching {
 		return resp, nil
 	}
 
 	firstErr := p.parseError(resp)
 	resp.Body.Close()
 
-	retry, retryErr := p.sendMessages(ctx, cl, stripCacheControl(clReq), stream)
+	var retryReq claudeRequest
+	var latch func()
+	switch {
+	case sampling && mentionsSampling(firstErr.Error()):
+		retryReq, latch = stripSampling(clReq), p.latchNoSampling(firstErr)
+	case caching:
+		retryReq, latch = stripCacheControl(clReq), p.latchNoCacheControl(firstErr)
+	default:
+		retryReq, latch = stripSampling(clReq), p.latchNoSampling(firstErr)
+	}
+
+	retry, retryErr := p.sendMessages(ctx, cl, retryReq, stream)
 	if retryErr != nil {
 		return nil, retryErr
 	}
 	if retry.StatusCode != http.StatusOK {
-		// cache_control wasn't the problem; hand back the error describing the
-		// request the caller actually made, and don't latch.
+		// The withdrawn field wasn't the problem; hand back the error
+		// describing the request the caller actually made, and don't latch.
 		retry.Body.Close()
 		return nil, firstErr
 	}
-
-	p.noCacheControl.Store(true)
-	logx.Printf("PROVIDER: %s rejected cache_control (%v) — prompt caching disabled for this session on %s",
-		p.Name(), firstErr, p.baseURL)
+	latch()
 	return retry, nil
+}
+
+func (p *claudeProvider) latchNoCacheControl(firstErr error) func() {
+	return func() {
+		p.noCacheControl.Store(true)
+		logx.Printf("PROVIDER: %s rejected cache_control (%v) — prompt caching disabled for this session on %s",
+			p.Name(), firstErr, p.baseURL)
+	}
+}
+
+func (p *claudeProvider) latchNoSampling(firstErr error) func() {
+	return func() {
+		p.noSampling.Store(true)
+		logx.Printf("PROVIDER: %s rejected temperature/top_p (%v) — sampling parameters withdrawn for this session on %s",
+			p.Name(), firstErr, p.baseURL)
+	}
+}
+
+// carriesSampling reports whether clReq sends temperature or top_p.
+func carriesSampling(clReq claudeRequest) bool {
+	return clReq.Temperature != 0 || clReq.TopP != 0
+}
+
+// mentionsSampling reports whether an error text blames a sampling parameter.
+func mentionsSampling(errText string) bool {
+	t := strings.ToLower(errText)
+	return strings.Contains(t, "temperature") || strings.Contains(t, "top_p") || strings.Contains(t, "top_k")
+}
+
+// stripSampling returns clReq without temperature/top_p.
+func stripSampling(clReq claudeRequest) claudeRequest {
+	clReq.Temperature = 0
+	clReq.TopP = 0
+	return clReq
 }
 
 func (p *claudeProvider) sendMessages(ctx context.Context, cl *http.Client, clReq claudeRequest, stream bool) (*http.Response, error) {
@@ -458,12 +540,27 @@ func (p *claudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 		logClaudeCachePerformance(*result.Usage)
 	}
 
+	// A turn that thought and then called tools must be echoed back with its
+	// thinking blocks, unchanged and in order, when the tool results go in —
+	// the agent pipeline's next iteration. Rebuilding it from text+tool_use
+	// (what buildClaudeRequest does for everything else) drops them. Only
+	// set when there is something to preserve, so every other turn keeps
+	// taking the ordinary path.
+	var native any
+	for _, block := range result.Content {
+		if block.Type == "thinking" || block.Type == "redacted_thinking" {
+			native = append([]claudeBlock(nil), result.Content...)
+			break
+		}
+	}
+
 	return &ChatResponse{
 		Content:   content,
 		Thinking:  thinking.String(),
 		ToolCalls: toolCalls,
 		Model:     result.Model,
 		Usage:     usage,
+		Native:    native,
 	}, nil
 }
 
@@ -718,6 +815,10 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 		flush()
 
 		role := m.Role
+		if native, ok := m.Native.([]claudeBlock); ok && role == "assistant" && len(native) > 0 {
+			msgs = append(msgs, claudeMsg{Role: role, Content: native})
+			continue
+		}
 		blocks := []claudeBlock{}
 		switch v := m.Content.(type) {
 		case string:
@@ -761,6 +862,9 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 		TopP:        req.TopP,
 		Stream:      stream,
 		Tools:       toClaudeTools(req.Tools),
+	}
+	if p.noSampling.Load() {
+		clReq = stripSampling(clReq)
 	}
 
 	// Prompt caching: mark the system prompt and the tail of the tool list as

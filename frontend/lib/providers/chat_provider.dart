@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/api_client.dart';
+import '../models/stream_timing.dart';
 import '../core/backend_url.dart';
 import '../core/l10n.dart';
 import '../models/agent.dart';
@@ -310,6 +311,8 @@ final streamingAgentEventsProvider = StateProvider<List<AgentEvent>>(
 /// while the backend works before the first content token arrives.
 final streamingStatusProvider = StateProvider<String>((ref) => '');
 
+final streamTimingProvider = StateProvider<StreamTiming?>((ref) => null);
+
 /// Live token usage for the current/last turn (Claude-Code-style counter).
 final tokenUsageProvider = StateProvider<TokenUsage?>((ref) => null);
 
@@ -448,6 +451,44 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   // rebuild captures the new generation and works normally.
   int _generation = 0;
 
+  /// The chat this notifier's messages belong to — the client's own
+  /// selection (activeChatIdProvider, set by switchTo), captured at build
+  /// time and sent with every read/edit/delete. Reading "the backend's
+  /// active chat" instead let another client's chat switch, landing between
+  /// this client's switch and its read, show — or delete from — the wrong
+  /// chat.
+  String _chatId = '';
+
+  void _timingStart() {
+    final now = DateTime.now();
+    ref.read(streamTimingProvider.notifier).state =
+        StreamTiming(startedAt: now, lastActivity: now);
+  }
+
+  /// Records that the backend just said something. Throttled to once a
+  /// second so a fast token stream doesn't rebuild the screen per token
+  /// just for this.
+  void _timingTouch() {
+    final t = ref.read(streamTimingProvider);
+    if (t == null) return;
+    final now = DateTime.now();
+    if (now.difference(t.lastActivity) < const Duration(seconds: 1)) return;
+    ref.read(streamTimingProvider.notifier).state =
+        StreamTiming(startedAt: t.startedAt, lastActivity: now);
+  }
+
+  void _timingEnd() => ref.read(streamTimingProvider.notifier).state = null;
+
+  Future<List<ChatMessage>> _fetch(MemoApiClient api) async {
+    try {
+      return await api.getMessages(chatId: _chatId);
+    } on DioException catch (e) {
+      // Deleted on another device: an empty chat, not someone else's.
+      if (e.response?.statusCode == 404) return const [];
+      rethrow;
+    }
+  }
+
   @override
   Future<List<ChatMessage>> build() async {
     _generation++;
@@ -466,7 +507,14 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     final gate = ref.read(authGateProvider).valueOrNull;
     if (authGateBlocked(gate)) return const [];
     try {
-      return await ref.read(apiClientProvider).getMessages();
+      try {
+        _chatId = await ref.read(activeChatIdProvider.future);
+      } catch (_) {
+        // Not knowing which chat is selected must not also fail loading
+        // it: fall back to the backend's active chat, as before.
+        _chatId = '';
+      }
+      return await _fetch(ref.read(apiClientProvider));
     } on DioException catch (e) {
       // A 401 despite a closed gate means the saved token went stale — the
       // gate's own probe is about to flip back to loginNeeded, which re-runs
@@ -487,6 +535,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     _cancelToken?.cancel();
     _cancelToken = null;
     ref.read(isSendingProvider.notifier).state = false;
+    _timingEnd();
     ref.read(streamingContentProvider.notifier).state = '';
     ref.read(streamingThinkingProvider.notifier).state = '';
     ref.read(streamingAgentEventsProvider.notifier).state = [];
@@ -496,7 +545,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   Future<void> refresh() async {
     final myGeneration = _generation;
     final result = await AsyncValue.guard(
-      () => ref.read(apiClientProvider).getMessages(),
+      () => _fetch(ref.read(apiClientProvider)),
     );
     // The await above can outlive this generation (chat switched away from —
     // see the BUG-H2 guards in sendMessage/sendFile, which are refresh()'s
@@ -509,7 +558,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   Future<void> updateMessage(int index, String newContent) async {
     final api = ref.read(apiClientProvider);
     try {
-      await api.updateMessage(index, newContent);
+      await api.updateMessage(index, newContent, chatId: _chatId);
       final current = [...(state.valueOrNull ?? <ChatMessage>[])];
       if (index >= 0 && index < current.length) {
         current[index] = ChatMessage(
@@ -525,14 +574,14 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       }
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Mesaj güncellenemedi (${FriendlyError.describeGeneric(e)})';
+          '${L10n.t('error')}: ${L10n.t('message_update_failed')} (${FriendlyError.describeGeneric(e)})';
     }
   }
 
   Future<void> deleteMessage(int index) async {
     final api = ref.read(apiClientProvider);
     try {
-      await api.deleteMessage(index);
+      await api.deleteMessage(index, chatId: _chatId);
       final current = [...(state.valueOrNull ?? <ChatMessage>[])];
       if (index >= 0 && index < current.length) {
         current.removeAt(index);
@@ -540,7 +589,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       }
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Mesaj silinemedi (${FriendlyError.describeGeneric(e)})';
+          '${L10n.t('error')}: ${L10n.t('message_delete_failed')} (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -626,6 +675,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     // race through, clobbering the shared _cancelToken field and appending
     // two user-message bubbles for what was a single send.
     ref.read(isSendingProvider.notifier).state = true;
+    _timingStart();
 
     _stopped = false;
     _cancelToken = CancelToken();
@@ -634,6 +684,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     // Intercept /remember and /forget before sending to AI
     if (await _handleMemoryCommand(message, api)) {
       ref.read(isSendingProvider.notifier).state = false;
+      _timingEnd();
       return;
     }
 
@@ -677,6 +728,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           cancelToken: _cancelToken,
         );
         await for (final chunk in stream) {
+          _timingTouch();
+          if (chunk.finishReason == 'heartbeat') continue;
           fullReply += chunk.content;
           ref.read(streamingContentProvider.notifier).state = fullReply;
         }
@@ -714,7 +767,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
                 : L10n.t('error_server_timeout')),
           ),
         )) {
-              if (chunk.finishReason == 'status') {
+          // Any chunk — the backend's periodic heartbeat included — proves
+          // the turn is alive; a heartbeat carries nothing else.
+          _timingTouch();
+          if (chunk.finishReason == 'heartbeat') continue;
+          if (chunk.finishReason == 'status') {
             // Pre-token status (e.g. web_search) — show in the typing line.
             ref.read(streamingStatusProvider.notifier).state = chunk.content;
           } else if (chunk.finishReason == 'activity') {
@@ -883,6 +940,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       _cancelToken = null;
       if (_generation == myGeneration) {
         ref.read(isSendingProvider.notifier).state = false;
+        _timingEnd();
       }
     }
   }
@@ -908,14 +966,15 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     final api = ref.read(apiClientProvider);
 
     ref.read(isSendingProvider.notifier).state = true;
+    _timingStart();
 
     final resolvedFileName =
         fileName ?? (filePath != null ? p.basename(filePath) : 'file');
     final ext = resolvedFileName.split('.').last.toLowerCase();
     final isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].contains(ext);
     final displayMsg = message.isEmpty
-        ? '*(Dosya gönderildi: $resolvedFileName)*'
-        : '$message\n*(Dosya: $resolvedFileName)*';
+        ? '*(${L10n.t('file_sent_marker', {'name': resolvedFileName})})*'
+        : '$message\n*(${L10n.t('file_attached_marker', {'name': resolvedFileName})})*';
 
     final userMsg = ChatMessage(
       role: 'user',
@@ -952,6 +1011,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
                 : L10n.t('error_server_timeout')),
           ),
         )) {
+          _timingTouch();
+          if (chunk.finishReason == 'heartbeat') continue;
           if (chunk.finishReason == 'status') {
             ref.read(streamingStatusProvider.notifier).state = chunk.content;
           } else if (chunk.finishReason == 'activity' || chunk.finishReason == 'usage') {
@@ -1075,6 +1136,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       _cancelToken = null;
       if (_generation == myGeneration) {
         ref.read(isSendingProvider.notifier).state = false;
+        _timingEnd();
       }
     }
   }

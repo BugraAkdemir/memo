@@ -12,15 +12,15 @@ import '../../core/theme.dart';
 import '../../models/browser_frame.dart';
 import '../../providers/chat_provider.dart';
 
-/// Default pane width, and the fixed size internal/browserengine/session.go
-/// launches its chromedp viewport at (WindowSize(420, 900) — its own
-/// comment explains why the two are picked to roughly aspect-ratio-match;
-/// Go and Dart can't share a literal). Matching them is what keeps a
-/// responsive page rendering the same narrow layout this pane actually
-/// displays, fills the available space instead of shrinking into a corner
-/// of it, AND is what makes _mapTapToViewport below correct — a tap on the
-/// displayed screenshot maps back to real page coordinates only because the
-/// screenshot's own pixel dimensions are this fixed, known size.
+/// Default pane width, and the viewport internal/browserengine/session.go
+/// emulates (ViewportWidth/ViewportHeight there — Go and Dart can't share a
+/// literal). Matching them keeps a responsive page rendering the same narrow
+/// layout this pane displays. _viewportSize is only the fallback for tap
+/// mapping, though: _mapTapToViewport uses the screenshot's REAL pixel size
+/// read from its PNG header, because assuming this constant is what broke
+/// every manual click — the backend actually produced 500x757 images while
+/// this side mapped taps as if they were 420x900, so a tap on a button's
+/// centre reached the page ~50-70px away from it.
 const _paneDefaultWidth = 420.0;
 const _paneMinWidth = 280.0;
 const _paneMaxWidth = 820.0;
@@ -177,6 +177,7 @@ class _BrowserPaneBody extends ConsumerStatefulWidget {
 
 class _BrowserPaneBodyState extends ConsumerState<_BrowserPaneBody> {
   late final TextEditingController _urlController;
+  final TextEditingController _typeController = TextEditingController();
   bool _busy = false;
   String? _error;
   Timer? _scrollDebounce;
@@ -191,6 +192,7 @@ class _BrowserPaneBodyState extends ConsumerState<_BrowserPaneBody> {
   @override
   void dispose() {
     _urlController.dispose();
+    _typeController.dispose();
     _scrollDebounce?.cancel();
     super.dispose();
   }
@@ -263,6 +265,24 @@ class _BrowserPaneBodyState extends ConsumerState<_BrowserPaneBody> {
         if (mounted) setState(() => _busy = false);
       }
     });
+  }
+
+  Future<void> _type(String text, {required bool enter}) async {
+    if (_busy || ref.read(browserFrameProvider) == null) return;
+    if (text.isEmpty && !enter) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final action = await ref.read(apiClientProvider).typeBrowserSession(text, enter: enter);
+      _applyAction(action);
+      if (action.error == null || action.error!.isEmpty) _typeController.clear();
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _close() async {
@@ -340,6 +360,36 @@ class _BrowserPaneBodyState extends ConsumerState<_BrowserPaneBody> {
                   ),
           ),
         ),
+        // The pane's keyboard: the user clicks a field on the screenshot to
+        // focus it, then types here. Without it a form on the page could be
+        // seen and clicked but never filled in.
+        if (frame != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+            child: TextField(
+              key: const Key('browser_pane_type_field'),
+              controller: _typeController,
+              onSubmitted: (t) => _type(t, enter: true),
+              style: TextStyle(fontSize: 12.5, color: colors.textMain),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: L10n.t('browser_pane_type_hint'),
+                hintStyle: TextStyle(fontSize: 12, color: colors.textDim),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                filled: true,
+                fillColor: colors.bgApp,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: colors.borderSoft),
+                ),
+                suffixIcon: IconButton(
+                  tooltip: L10n.t('browser_pane_type_send'),
+                  icon: Icon(Icons.keyboard_return, size: 16, color: colors.textDim),
+                  onPressed: () => _type(_typeController.text, enter: false),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -446,15 +496,35 @@ class _BrowserPaneEmpty extends StatelessWidget {
   }
 }
 
+/// The pixel size of a PNG, read from its IHDR chunk (bytes 16-23), or null
+/// for anything that is not a PNG. Cheap and synchronous, so the tap mapping
+/// can use the image's real size without decoding it.
+Size? pngPixelSize(Uint8List b) {
+  if (b.length < 24 || b[0] != 0x89 || b[1] != 0x50 || b[2] != 0x4E || b[3] != 0x47) {
+    return null;
+  }
+  final bd = ByteData.sublistView(b);
+  final w = bd.getUint32(16);
+  final h = bd.getUint32(20);
+  if (w == 0 || h == 0) return null;
+  return Size(w.toDouble(), h.toDouble());
+}
+
+/// Exposed for tests: the same mapping the pane applies to a tap.
+@visibleForTesting
+Offset? mapTapToViewportForTest(Offset local, Size box, Size? image) =>
+    _mapTapToViewport(local, box, image);
+
 /// Maps a tap position in the displayed (possibly letterboxed) image widget
 /// back to real page coordinates in the chromedp viewport — see
 /// _viewportSize's doc comment for why this is correct only because the
 /// screenshot's actual pixel size is that fixed, known constant. Returns
 /// null for a tap that landed in the letterbox padding around the image
 /// (box aspect ratio not exactly matching the viewport's), not on it.
-Offset? _mapTapToViewport(Offset local, Size box) {
-  final scale = math.min(box.width / _viewportSize.width, box.height / _viewportSize.height);
-  final displayed = Size(_viewportSize.width * scale, _viewportSize.height * scale);
+Offset? _mapTapToViewport(Offset local, Size box, [Size? image]) {
+  final src = image ?? _viewportSize;
+  final scale = math.min(box.width / src.width, box.height / src.height);
+  final displayed = Size(src.width * scale, src.height * scale);
   final offsetX = (box.width - displayed.width) / 2;
   final offsetY = (box.height - displayed.height) / 2;
   final x = local.dx - offsetX;
@@ -500,6 +570,7 @@ class _BrowserPaneFrame extends StatelessWidget {
     // builder below is one), even after an early-return null check right
     // above — a fresh non-nullable local sidesteps that entirely.
     final pngBytes = bytes;
+    final imageSize = pngPixelSize(pngBytes);
     return _FrameCard(
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -512,7 +583,7 @@ class _BrowserPaneFrame extends StatelessWidget {
               },
               child: GestureDetector(
                 onTapUp: (details) {
-                  final point = _mapTapToViewport(details.localPosition, box);
+                  final point = _mapTapToViewport(details.localPosition, box, imageSize);
                   if (point != null) onTapAt(point.dx, point.dy);
                 },
                 child: SizedBox.expand(

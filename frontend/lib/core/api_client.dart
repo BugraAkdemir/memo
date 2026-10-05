@@ -2662,6 +2662,13 @@ class MemoApiClient {
     return BrowserSessionAction.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
+  /// Types [text] into whatever the user focused by clicking on the
+  /// screenshot, then presses Enter when [enter] is set — the pane's keyboard.
+  Future<BrowserSessionAction> typeBrowserSession(String text, {bool enter = false}) async {
+    final res = await _dio.post('/api/browser/session/type', data: {'text': text, 'enter': enter});
+    return BrowserSessionAction.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
   Future<void> closeBrowserSession() async {
     await _dio.post('/api/browser/session/close');
   }

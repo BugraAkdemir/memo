@@ -1,3 +1,74 @@
+# Handoff — 2026-10-05 — claude-sub: elle test, 11 hata düzeltildi, Beta sekmesine taşındı
+
+## İstek
+"Son kod tabanını incele, manuel test yap (Claude hesabım yok), bugları düzelt, özelliği Beta
+sekmesine al (Beta açıkken gelsin), sonra PR aç."
+
+## Hesap olmadan nasıl test edildi
+`cmd/fakeprovider` artık bir Claude aboneliğini de taklit ediyor (`6c35bf04`): `code#state` gösteren
+sahte authorize sayfası, rotasyonlu token uç noktası, Bearer trafiğinde abonelik geçidinin bilinen
+kuralları. İzole backend + izole `HOME` (gerçek `~/.claude` girişi benimsenmesin diye). Her hata önce
+**eski kodda canlı yeniden üretildi**, sonra düzeltildi, sonra aynı senaryo yeni kodda tekrarlandı.
+Tarif AGENTS.md "Claude subscription" altında.
+
+## Commit'ler (`feature/claude-sub`)
+| Commit | Ne |
+|---|---|
+| `6c35bf04` | fakeprovider: abonelik taklidi |
+| `3e5b8bbf` | Backend: 11 düzeltme + backend'de Beta kapısı |
+| `623f8eee` | Frontend: panel Beta sekmesinde, yetenek tablosu, sekme indeksi hatası |
+| `f1f49378` | AGENTS.md |
+
+## Bulunan hatalar (hepsi canlı doğrulandı, hepsi testle sabitlendi)
+1. **Tarayıcıyla giriş hiç tamamlanamıyordu**: Anthropic sayfası `code#state` gösteriyor, bütünü kod
+   diye gidiyordu → `invalid_grant`.
+2. Boş `POST {}` / `{"model":""}` hesabın bağlantısını kesip token'ı siliyordu.
+3. "Bağlantıyı kes" yeniden başlatmaya dayanmıyordu (`Default()` aynı girişi tekrar benimsiyordu).
+4. Probe, varsayılan modelde (Haiku 4.5) her hesabı "yetki engelli" gösteriyordu.
+5. Model değişince yetenek tablosu eski modelde kalıyordu; 1M beta'sı ölçülmemiş modele de gidiyordu.
+6. Yeniden başlatmadan sonra 1M bağlam bütçesi, onu doğrulayan ölçüm olmadan kalıyordu.
+7. Yenileme sırasında bağlantı kesilirse nil dereference; yenileme kesilmiş oturumu geri yazıyordu.
+8. Claude Code ile paylaşılan giriş, CLI önce yenileyince bayatlıyordu; geri yazma tarayıcı oturumunu da
+   CLI dosyasına yazabiliyordu.
+9. Token kaynağı kalıcı değildi (yeniden yüklenen benimsenmiş giriş "browser" görünüyordu); başlangıç
+   benimsemesi "adopted" yazıyordu; env kaynağı UI'ın beklediği "env" değildi.
+10. `MEMO_CLAUDE_API_URL` yalnızca probe'u yönlendiriyordu, sohbeti değil.
+11. **Frontend**: ayar sekmesinde etiket 26. indekse, içerik `case 27`'ye eklenmişti → "Claude
+    Subscription" tıklanınca Code Mode Prompts açılıyordu (ve tersi). Ayrıca ölçülen yetenekler hiç
+    gösterilmiyordu (`capabilities` parse edilmiyordu).
+
+## Beta'ya taşıma
+Ayrı sekme kaldırıldı; panel Ayarlar › Beta içinde, Claude satırının altında, yalnızca Beta açıkken.
+Backend de kapılı: Beta kapalıyken bağlan/tamamla/model değiştir reddediliyor, yerel giriş benimsenmiyor,
+marker sağlayıcı kaldırılıyor (token + model korunuyor; Beta açılınca geri geliyor).
+
+## Doğrulama
+- `go build`/`go vet` temiz; `go test ./... -race -count=1`: **55 paket, 0 FAIL**
+- `flutter analyze lib/ test/`: bilinen 7 info (hiçbiri dokunulan dosyalarda)
+- `flutter test`: **430/430** (önce 424)
+- Rule #8 grep: dokunulan 8 `.dart` dosyasında (yeni/taşınan dahil) boş
+- **13 mutasyon**: her düzeltme tek tek geri alındı, ilgili test her seferinde kırmızı
+- Arayüz uçtan uca (web build, izole backend): Beta kapalı → kontrol yok; açık → panel; Bağlan →
+  sahte sayfa → `code#state` yapıştır → bağlandı → tablo (Haiku: düşünme ✗, uyarı yok) → opus-5'e geç →
+  yeniden ölçüldü → Beta kapat → sağlayıcı kalktı → aç → aynı hesap/model geri geldi.
+
+## Dürüstlük notları
+- **Gerçek bir Anthropic hesabıyla hiç denenmedi.** Fake, yalnızca bilinen kuralları taklit ediyor;
+  geçidin bilinmeyen kuralları (TLS parmak izi hipotezi dahil) hâlâ risk.
+- Uygulama içi tarayıcıda `launchUrl` yetki sayfasını yeni sekme yerine aynı sekmede açtı ve Memo sayfası
+  gitti. Gerçek tarayıcıda/masaüstünde böyle olup olmadığını doğrulamadım; testte `window.open`'ı
+  yakalayarak geçtim.
+- `gofmt -l` 4 dosya gösteriyor (`backup.go`, `remote.go`, iki test); önceden vardı, dokunulmadı.
+- `internal/webserver/webapp/` (gitignore'lu) güncel web build ile yenilendi.
+- Test sırasında öğrenilen: `config.Load`, config yoksa binary'nin yanındaki `config/config.yaml`'ı
+  tohum olarak kopyalıyor → izole testte binary'yi boş bir dizine koyun.
+
+## Sıradaki
+- Gerçek Pro/Max hesabıyla tek bir canlı deneme (en azından Haiku + bir premium model).
+- Yerel `main`, `origin/main`'den 33 commit önde (push edilmemiş); PR tabanı buna göre karar ister.
+
+---
+
 # Handoff — 2026-09-30/10-01 — `claude-sub`: Claude aboneliğini Memo'da kullanma
 
 ## Oturum Özeti

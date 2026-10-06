@@ -5,10 +5,14 @@
 # digests are the ones GitHub publishes for each release asset. To upgrade:
 # change `version` and the digests here, run vendor-cliproxy.yml, commit.
 #
-# asset <release asset> <sha256 of that asset> <dest dir under binaries/> <file name written there>
+# asset <release asset> <sha256 of that ARCHIVE> <dest dir under binaries/> <file name written there> <sha256 of that extracted BINARY>
+#
+# The archive digest is what GitHub publishes (checked when vendoring); the binary digest is
+# what ends up in each SHA256 file beside the executable and what the build workflows and the
+# running app verify (scripts/verify_cliproxy.sh, cliproxy.Binary).
 version v8.0.16
-asset CLIProxyAPI_8.0.16_linux_amd64_no-plugin.tar.gz 743d1172aecdab132f885e9b3dfdf45826d1b3358e5006861393e0d66ae71f92 linux/cliproxy cli-proxy-api
-asset CLIProxyAPI_8.0.16_linux_aarch64_no-plugin.tar.gz a7e8c7a693c3c3c1dfcbb75841c134b6b80bdde9aca4654000cb2ac3f5f95144 linux/cliproxy-arm64 cli-proxy-api
-asset CLIProxyAPI_8.0.16_windows_amd64.zip e0d999703c9af70067b15bf50e6521e76392da604d1543541361e6891c676c43 windows/cliproxy cli-proxy-api.exe
-asset CLIProxyAPI_8.0.16_darwin_aarch64.tar.gz b2c48e27b62bc94c71387e43be287c742b0336f21e2fe203568233593983d495 darwin/cliproxy cli-proxy-api-arm64
-asset CLIProxyAPI_8.0.16_darwin_amd64.tar.gz 2c5a7e73f31d784f5732b6d24998286706b0dd60e7c6c1724988d9aeae2a4a0e darwin/cliproxy cli-proxy-api-x64
+asset CLIProxyAPI_8.0.16_linux_amd64_no-plugin.tar.gz 743d1172aecdab132f885e9b3dfdf45826d1b3358e5006861393e0d66ae71f92 linux/cliproxy cli-proxy-api 22c0f0eaa461d31393f85b717d32348b5f14367f3a72c27588f059762607b142
+asset CLIProxyAPI_8.0.16_linux_aarch64_no-plugin.tar.gz a7e8c7a693c3c3c1dfcbb75841c134b6b80bdde9aca4654000cb2ac3f5f95144 linux/cliproxy-arm64 cli-proxy-api 18ea4b4a9ba1d3a7e5d208a35f33a2791b64b97d963605a095496bb0570f51e6
+asset CLIProxyAPI_8.0.16_windows_amd64.zip e0d999703c9af70067b15bf50e6521e76392da604d1543541361e6891c676c43 windows/cliproxy cli-proxy-api.exe ac12f37afda88d8fb0090b848569af6ff7ec74575393dec5e8ce49f3a97c2e7b
+asset CLIProxyAPI_8.0.16_darwin_aarch64.tar.gz b2c48e27b62bc94c71387e43be287c742b0336f21e2fe203568233593983d495 darwin/cliproxy cli-proxy-api-arm64 1b34b102f9f21911c3d261cbb714a24bc0d59408c3bde01999041adb9b9c8d1a
+asset CLIProxyAPI_8.0.16_darwin_amd64.tar.gz 2c5a7e73f31d784f5732b6d24998286706b0dd60e7c6c1724988d9aeae2a4a0e darwin/cliproxy cli-proxy-api-x64 ed6d56a0656f8d33b0cf55733198c33c670eac343cb36c89b5abead2167d20b5

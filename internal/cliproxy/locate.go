@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -99,6 +100,10 @@ func (m *Manager) Binary() (path, version string, err error) {
 		if b, rerr := os.ReadFile(filepath.Join(dir, "VERSION")); rerr == nil {
 			ver = strings.TrimSpace(string(b))
 		}
+		prepareExecutable(p, goos)
+		if st2, err := os.Stat(p); err == nil {
+			st = st2 // the chmod may have changed the mtime we cache on
+		}
 		m.binCache = &binInfo{Path: p, Version: ver, size: st.Size(), mtime: st.ModTime()}
 		return p, ver, nil
 	}
@@ -138,4 +143,25 @@ func verifyAgainstSidecarFile(p, dir, name string) error {
 		return fmt.Errorf("%w: %s is %s, expected %s", ErrUnverified, name, got, want)
 	}
 	return nil
+}
+
+// prepareExecutable makes a verified binary runnable, best effort.
+//
+// R2 and zip extraction do not carry the executable bit (rclone copy from S3
+// drops it), and macOS marks files that arrived in a downloaded archive with the
+// quarantine attribute, which makes Gatekeeper refuse to launch an unsigned
+// helper. Both are fixed AFTER the checksum passed, so only the bytes we shipped
+// are ever made executable. Failures are ignored on purpose: a read-only install
+// that was already executable must keep working, and a real problem shows up as
+// Start's own error.
+func prepareExecutable(p, goos string) {
+	if goos == "windows" {
+		return
+	}
+	if st, err := os.Stat(p); err == nil && st.Mode().Perm()&0o111 != 0o111 {
+		_ = os.Chmod(p, st.Mode().Perm()|0o755)
+	}
+	if goos == "darwin" {
+		_ = exec.Command("xattr", "-d", "com.apple.quarantine", p).Run()
+	}
 }

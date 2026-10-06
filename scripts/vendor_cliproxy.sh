@@ -31,7 +31,7 @@ wanted() {
   return 1
 }
 
-while read -r kind asset sha dest name; do
+while read -r kind asset sha dest name binsha; do
   [ "$kind" = "asset" ] || continue
   wanted "$dest" || continue
   echo "==> $asset -> $dest/$name"
@@ -44,6 +44,8 @@ while read -r kind asset sha dest name; do
     *)        tar -xzf "$WORK/$asset" -C "$X";  src="$X/cli-proxy-api" ;;
   esac
   [ -f "$src" ] || { echo "binary not found inside $asset" >&2; exit 1; }
+  got="$(sha256sum "$src" | cut -d' ' -f1)"
+  [ "$got" = "$binsha" ] || { echo "BINARY CHECKSUM MISMATCH for $name: got $got, PINNED.txt says $binsha" >&2; exit 1; }
 
   D="$OUT/$dest"; mkdir -p "$D"
   cp "$src" "$D/$name"; chmod +x "$D/$name"

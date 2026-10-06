@@ -54,6 +54,11 @@ COPY --from=builder /out/memo /app/memo
 COPY config/config.yaml.example /app/config.yaml.example
 COPY data/providers.example.json /app/providers.example.json
 COPY binaries/linux/cpu /app/binaries/linux/cpu
+# The CLIProxyAPI sidecar (Subscriptions). Verified against its SHA-256 file by
+# the app on start; the exec bit is set there too, but set it here so it is
+# right in the image regardless.
+COPY binaries/linux/cliproxy /app/binaries/linux/cliproxy
+RUN chmod +x /app/binaries/linux/cliproxy/cli-proxy-api
 
 # Trim the CPU engine bundle down to what a headless server actually runs:
 # llama-server + vec0 (the sqlite-vec extension memory retrieval needs) plus

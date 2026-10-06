@@ -172,12 +172,12 @@ func TestPinnedFileMatchesTheLayoutWeShip(t *testing.T) {
 	rows := 0
 	for _, line := range strings.Split(string(b), "\n") {
 		f := strings.Fields(line)
-		if len(f) != 5 || f[0] != "asset" {
+		if len(f) != 6 || f[0] != "asset" {
 			continue
 		}
 		rows++
-		if len(f[2]) != 64 {
-			t.Errorf("%s: sha256 %q is not 64 hex chars", f[1], f[2])
+		if len(f[2]) != 64 || len(f[5]) != 64 {
+			t.Errorf("%s: archive sha %q / binary sha %q are not 64 hex chars", f[1], f[2], f[5])
 		}
 		osName, sub, _ := strings.Cut(f[3], "/")
 		if !strings.HasPrefix(sub, "cliproxy") {
@@ -473,5 +473,42 @@ func TestLoginURL_PicksTheOAuthLink(t *testing.T) {
 	}
 	if got := redactLine("see https://a.test/o?state=SECRET&c=1 ok"); strings.Contains(got, "SECRET") {
 		t.Errorf("redactLine kept the query: %q", got)
+	}
+}
+
+// R2 and zip extraction drop the executable bit; Binary() must make a
+// VERIFIED binary runnable, and must not touch one that failed its checksum.
+func TestBinary_MakesAVerifiedBinaryExecutable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no executable bit on Windows")
+	}
+	root := bundle(t)
+	dir := filepath.Join(root, "binaries", runtime.GOOS, "cliproxy")
+	p := filepath.Join(dir, binaryFile(runtime.GOOS, runtime.GOARCH))
+	if err := os.Chmod(p, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := New(t.TempDir())
+	m.roots = []string{root}
+	if _, _, err := m.Binary(); err != nil {
+		t.Fatalf("Binary: %v", err)
+	}
+	if st, _ := os.Stat(p); st.Mode().Perm()&0o111 != 0o111 {
+		t.Errorf("mode %v after Binary(), want it made executable", st.Mode().Perm())
+	}
+
+	// A tampered one is refused and left exactly as it was.
+	os.Chmod(p, 0o644)
+	f, _ := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0)
+	f.WriteString("evil")
+	f.Close()
+	m2 := New(t.TempDir())
+	m2.roots = []string{root}
+	if _, _, err := m2.Binary(); !errors.Is(err, ErrUnverified) {
+		t.Fatalf("tampered: %v", err)
+	}
+	if st, _ := os.Stat(p); st.Mode().Perm()&0o111 != 0 {
+		t.Errorf("a binary that FAILED its checksum was made executable (%v)", st.Mode().Perm())
 	}
 }

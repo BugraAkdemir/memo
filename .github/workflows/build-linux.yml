@@ -95,13 +95,20 @@ jobs:
         run: curl -fsSL https://rclone.org/install.sh | sudo bash
 
       - name: Download engine binaries from R2
-        run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/linux/ binaries/linux/ --progress
+        run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/linux/ binaries/linux/ --exclude "cliproxy-arm64/**" --progress
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
           RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+
+      # CLIProxyAPI is bundled, never downloaded at run time (Memo's zero
+      # external dependency promise). Fail the build — before anything is
+      # compiled or packaged — if what R2 handed us is not byte-for-byte the
+      # release pinned in internal/cliproxy/PINNED.txt.
+      - name: Verify bundled CLIProxyAPI (pinned SHA-256)
+        run: scripts/verify_cliproxy.sh binaries linux/cliproxy
 
       # Must run BEFORE "Build Go backend" — internal/webserver/webapp.go's
       # //go:embed all:webapp reads whatever is physically in that
@@ -435,6 +442,25 @@ jobs:
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
 
+      # The arm64 sidecar lives in R2 as linux/cliproxy-arm64 (the x86_64 one is
+      # linux/cliproxy); stage it under linux/cliproxy so the app, which looks
+      # for binaries/<os>/cliproxy, needs no arch special-casing.
+      - name: Download CLIProxyAPI from R2 (arm64 build)
+        run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/linux/cliproxy-arm64/ binaries/linux/cliproxy/ --progress
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+
+      # CLIProxyAPI is bundled, never downloaded at run time (Memo's zero
+      # external dependency promise). Fail the build — before anything is
+      # compiled or packaged — if what R2 handed us is not byte-for-byte the
+      # release pinned in internal/cliproxy/PINNED.txt.
+      - name: Verify bundled CLIProxyAPI (pinned SHA-256)
+        run: scripts/verify_cliproxy.sh binaries linux/cliproxy=linux/cliproxy-arm64
+
       # Must run BEFORE "Build Go backend" — see the identical comment on
       # the x86_64 job's equivalent step above. Web output is
       # architecture-independent (JS/wasm), so this arm64 runner produces
@@ -466,6 +492,7 @@ jobs:
           cp -r frontend/build/linux/arm64/release/bundle/* "$S/"
           mkdir -p "$S/binaries/linux"
           cp -r binaries/linux/cpu "$S/binaries/linux/cpu"
+          cp -r binaries/linux/cliproxy "$S/binaries/linux/cliproxy"
           cp config/config.yaml.example "$S/config/config.yaml" 2>/dev/null || true
           cp config/config.yaml.example "$S/config/config.yaml.example" 2>/dev/null || true
           cp .env.example "$S/.env" 2>/dev/null || true

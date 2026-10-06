@@ -49,6 +49,22 @@ jobs:
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
 
+      - name: Download CLIProxyAPI from R2 (amd64)
+        run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/linux/cliproxy/ binaries/linux/cliproxy/ --progress
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+
+      # CLIProxyAPI is bundled, never downloaded at run time (Memo's zero
+      # external dependency promise). Fail the build — before anything is
+      # compiled or packaged — if what R2 handed us is not byte-for-byte the
+      # release pinned in internal/cliproxy/PINNED.txt.
+      - name: Verify bundled CLIProxyAPI (pinned SHA-256)
+        run: scripts/verify_cliproxy.sh binaries linux/cliproxy
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
@@ -109,6 +125,24 @@ jobs:
           RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+
+      # Same rename-on-stage trick: R2's linux/cliproxy-arm64 lands at
+      # linux/cliproxy so the Dockerfile never needs to know the architecture.
+      - name: Download CLIProxyAPI from R2 (arm64)
+        run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/linux/cliproxy-arm64/ binaries/linux/cliproxy/ --progress
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+
+      # CLIProxyAPI is bundled, never downloaded at run time (Memo's zero
+      # external dependency promise). Fail the build — before anything is
+      # compiled or packaged — if what R2 handed us is not byte-for-byte the
+      # release pinned in internal/cliproxy/PINNED.txt.
+      - name: Verify bundled CLIProxyAPI (pinned SHA-256)
+        run: scripts/verify_cliproxy.sh binaries linux/cliproxy=linux/cliproxy-arm64
 
       - uses: docker/setup-buildx-action@v3
 

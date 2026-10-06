@@ -84,6 +84,28 @@ jobs:
           CODE_SIGNING_ALLOWED: "NO"
         working-directory: frontend
 
+      # llama.cpp's darwin binaries are small enough to live in git, but the
+      # CLIProxyAPI sidecar (~60 MB per arch) is R2-only like the Linux/Windows
+      # engine builds. Both architectures ship; Memo picks by GOARCH at run time.
+      - name: Install rclone
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+
+      - name: Download CLIProxyAPI from R2
+        run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/darwin/cliproxy/ binaries/darwin/cliproxy/ --progress
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+
+      # CLIProxyAPI is bundled, never downloaded at run time (Memo's zero
+      # external dependency promise). Fail the build — before anything is
+      # compiled or packaged — if what R2 handed us is not byte-for-byte the
+      # release pinned in internal/cliproxy/PINNED.txt.
+      - name: Verify bundled CLIProxyAPI (pinned SHA-256)
+        run: scripts/verify_cliproxy.sh binaries darwin/cliproxy
+
       - name: Stage files (engine binaries embedded, already in git)
         run: |
           S="build_output/stage/${{ env.APP_NAME }}"

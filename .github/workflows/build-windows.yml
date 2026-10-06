@@ -73,6 +73,14 @@ jobs:
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
 
+      # CLIProxyAPI is bundled, never downloaded at run time (Memo's zero
+      # external dependency promise). Fail the build — before anything is
+      # compiled or packaged — if what R2 handed us is not byte-for-byte the
+      # release pinned in internal/cliproxy/PINNED.txt.
+      - name: Verify bundled CLIProxyAPI (pinned SHA-256)
+        shell: bash
+        run: scripts/verify_cliproxy.sh binaries windows/cliproxy
+
       # Must run BEFORE "Build Go backend" — see build-linux.yml's
       # identical comment for why (go:embed reads webapp/ at compile time).
       - name: Build Flutter web frontend

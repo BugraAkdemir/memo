@@ -63,10 +63,42 @@ type loadResponse struct {
 		ID string `json:"id"`
 	} `json:"currentTier"`
 	AllowedTiers []struct {
-		ID          string `json:"id"`
-		IsDefault   bool   `json:"isDefault"`
-		UserDefined bool   `json:"userDefined"`
+		ID        string `json:"id"`
+		IsDefault bool   `json:"isDefault"`
+		// UserDefinedProject is set on tiers that need the caller's OWN Google
+		// Cloud project (Code Assist Standard/Enterprise) — Google will not
+		// create one for them.
+		UserDefinedProject bool `json:"userDefinedCloudaicompanionProject"`
 	} `json:"allowedTiers"`
+	// IneligibleTiers explains why a tier the account might expect is closed.
+	IneligibleTiers []struct {
+		ReasonCode    string `json:"reasonCode"`
+		ReasonMessage string `json:"reasonMessage"`
+		TierID        string `json:"tierId"`
+	} `json:"ineligibleTiers"`
+}
+
+// envProject names a Google Cloud project to use, exactly as gemini-cli reads
+// it. Needed for paid Code Assist tiers, which do not get a project made for
+// them.
+func envProject() string {
+	for _, k := range []string{"GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_PROJECT_ID"} {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// ineligibleReason is Google's own explanation for a closed tier, or "".
+func (l *loadResponse) ineligibleReason() string {
+	var parts []string
+	for _, t := range l.IneligibleTiers {
+		if t.ReasonMessage != "" {
+			parts = append(parts, t.ReasonMessage)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 type onboardResponse struct {
@@ -103,22 +135,33 @@ func (m *Manager) ensureBootstrap(ctx context.Context) (bootstrap, error) {
 	}
 
 	tier := ""
+	needsOwnProject := false
 	if lr.CurrentTier != nil {
 		tier = lr.CurrentTier.ID
 	}
-	if tier == "" {
-		for _, t := range lr.AllowedTiers {
-			if t.IsDefault {
-				tier = t.ID
-				break
-			}
+	for _, t := range lr.AllowedTiers {
+		if (tier == "" && t.IsDefault) || (tier != "" && t.ID == tier) {
+			tier = t.ID
+			needsOwnProject = t.UserDefinedProject
+			break
 		}
 	}
 
 	project := lr.CloudaicompanionProject
 	if project == "" {
-		project, err = m.onboardUser(ctx, hc, tier)
+		// A tier that wants the caller's own Cloud project cannot be
+		// onboarded without one — calling onboardUser anyway only ever ended
+		// in a project-less "done" that told the user nothing. Say what
+		// Google said instead.
+		own := envProject()
+		if needsOwnProject && own == "" {
+			return bootstrap{}, fmt.Errorf("geminisub: Google will not serve this account through the Gemini sign-in: %s", lr.noProjectExplanation(tier))
+		}
+		project, err = m.onboardUser(ctx, hc, tier, own)
 		if err != nil {
+			if reason := lr.ineligibleReason(); reason != "" {
+				return bootstrap{}, fmt.Errorf("%w (Google says: %s)", err, reason)
+			}
 			return bootstrap{}, err
 		}
 	}
@@ -135,9 +178,22 @@ func (m *Manager) invalidateBootstrap() {
 	m.bootMu.Unlock()
 }
 
+// noProjectExplanation builds the message for an account whose only open
+// tier needs a Cloud project the user has not supplied.
+func (l *loadResponse) noProjectExplanation(tier string) string {
+	msg := "the only tier open to it (" + tier + ") needs your own Google Cloud project — set GOOGLE_CLOUD_PROJECT to one with the Gemini for Google Cloud API enabled"
+	if reason := l.ineligibleReason(); reason != "" {
+		msg = reason + " Also: " + msg
+	}
+	return msg
+}
+
 func (m *Manager) loadCodeAssist(ctx context.Context, hc *http.Client) (*loadResponse, error) {
 	body := map[string]any{
 		"metadata": clientMetadata,
+	}
+	if p := envProject(); p != "" {
+		body["cloudaicompanionProject"] = p
 	}
 	var out loadResponse
 	if err := postJSON(ctx, hc, codeAssistBase()+":loadCodeAssist", body, &out); err != nil {
@@ -154,13 +210,24 @@ func (m *Manager) loadCodeAssist(ctx context.Context, hc *http.Client) (*loadRes
 // gemini-cli does. Re-POSTing onboardUser to "poll" (what this used to do,
 // every 2s) re-submits the enrolment each time and ends in a 429
 // RESOURCE_EXHAUSTED before the first one has had time to finish.
-func (m *Manager) onboardUser(ctx context.Context, hc *http.Client, tierID string) (string, error) {
+func (m *Manager) onboardUser(ctx context.Context, hc *http.Client, tierID, project string) (string, error) {
 	if tierID == "" {
 		tierID = "free-tier"
 	}
 	body := map[string]any{
 		"tierId":   tierID,
 		"metadata": clientMetadata,
+	}
+	// Free tier gets a project made for it; every other tier names its own
+	// (gemini-cli sends it twice, as cloudaicompanionProject and duetProject).
+	if project != "" && tierID != "free-tier" {
+		body["cloudaicompanionProject"] = project
+		body["metadata"] = map[string]string{
+			"ideType":     clientMetadata["ideType"],
+			"platform":    clientMetadata["platform"],
+			"pluginType":  clientMetadata["pluginType"],
+			"duetProject": project,
+		}
 	}
 
 	var out onboardResponse
@@ -193,6 +260,11 @@ func (m *Manager) onboardUser(ctx context.Context, hc *http.Client, tierID strin
 		if id := out.Response.CloudaicompanionProject.ID; id != "" {
 			return id, nil
 		}
+	}
+	if project != "" && tierID != "free-tier" {
+		// gemini-cli does the same: a paid tier answers without echoing the
+		// project it was given.
+		return project, nil
 	}
 	return "", fmt.Errorf("geminisub: onboardUser finished without a project id")
 }

@@ -11,6 +11,18 @@ ile düşüyor; Claude bağlantısında tarayıcıda "OAuth request failed / Inv
 | 2 | Gemini: sadece 2.5 | Canlı liste (`generativelanguage …/models`) bu OAuth token'ıyla **403 ACCESS_TOKEN_SCOPE_INSUFFICIENT** veriyor (log'da kanıt) → her zaman `fallbackModels` (2.5) gösteriliyordu. | Önce Code Assist `retrieveUserQuota` (gemini-cli'nin kullandığı çağrı; bucket'lar model id'li) → ikinci olarak eski endpoint → son çare fallback. Fallback artık gemini-cli 0.53'ün güncel seti (3.x + 2.5). Liste yeni→eski sıralı. |
 | 3 | Gemini: `onboardUser … 429 RESOURCE_EXHAUSTED` | `onboardUser` operasyonu "poll" etmek için her 2 sn'de tekrar POST ediliyordu (log: ~25 sn sonra 429). gemini-cli bir kez POST eder, `done:false` ise `GET <base>/<operation name>` ile 5 sn aralıkla sorgular (bundle'dan okundu). | Tek POST + GET poll (`getJSON`), 5 sn, 90 sn tavan. Test: POST sayısı tam 1. |
 
+## Ek (aynı gün, 2. tur) — "onboardUser finished without a project id"
+**Gerçek kök neden koddan değil Google'dan:** Memo'nun kayıtlı token'ıyla salt-okunur `loadCodeAssist` çağrısının ham cevabı
+(2026-10-06): `ineligibleTiers: free-tier → UNSUPPORTED_CLIENT — "This client is no longer supported for Gemini Code Assist for
+individuals … migrate to the Antigravity suite"`; tek açık tier `standard-tier` + `userDefinedCloudaicompanionProject:true`
+(kullanıcının KENDİ Cloud projesi gerekir). gemini-cli'nin OAuth client'ı bireysel ücretsiz kota için kapatılmış — bu
+`project_memo_geminisub` notundaki "premise unresolved"ın cevabı. Kod bunu görmeyip `standard-tier`'a projesiz onboard
+oluyordu → projesiz "done". Düzeltme: `ineligibleTiers` + `userDefinedCloudaicompanionProject` ayrıştırılıyor; proje yoksa
+onboardUser HİÇ çağrılmıyor, Google'ın mesajı + "GOOGLE_CLOUD_PROJECT ayarla" hatası dönüyor; `GOOGLE_CLOUD_PROJECT(_ID)`
+varsa gemini-cli gibi `cloudaicompanionProject`+`duetProject` ile onboard ediliyor. Test: yakalanan gerçek cevap birebir.
+**Açık karar (kullanıcıya soruldu):** bireysel hesapla çalışmanın tek yolu Antigravity'nin OAuth client'ı/endpoint'i
+(`~/.gemini/antigravity-cli` makinede var) — ayrı, büyük iş; ToS/kimlik taklidi yönü değerlendirilmeden yapılmadı.
+
 ## Doğrulama
 - `go build`/`vet` temiz. `go test ./... -race`: tek koşuda `internal/e2e` `TestUsage_ProviderWithoutCacheReportingStaysZero`
   kırmızı verdi; tek başına, stash'li baseline'da ve 3 tam e2e koşusunda yeşil → yük altında flake, bu değişiklikle ilgisiz

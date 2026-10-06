@@ -4,6 +4,7 @@ package geminisub
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -154,5 +155,72 @@ func TestEnsureBootstrap_LoadError(t *testing.T) {
 	_, err := m.ensureBootstrap(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "loadCodeAssist") {
 		t.Errorf("err = %v, want a loadCodeAssist failure", err)
+	}
+}
+
+// The response below is what Google actually returned for a personal account
+// (captured 2026-10-06): the free tier is closed to this client, and the one
+// open tier needs the caller's own Cloud project. The old code onboarded to
+// that tier anyway and failed with a project-less "done".
+const unsupportedClientLoad = `{
+  "allowedTiers":[{"id":"standard-tier","name":"Gemini Code Assist","userDefinedCloudaicompanionProject":true,"isDefault":true}],
+  "ineligibleTiers":[{"reasonCode":"UNSUPPORTED_CLIENT","reasonMessage":"This client is no longer supported for Gemini Code Assist for individuals. To continue using Gemini, please migrate to the Antigravity suite of products: https://antigravity.google","tierId":"free-tier"}]
+}`
+
+func TestEnsureBootstrap_UnsupportedClientSaysSo(t *testing.T) {
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+	t.Setenv("GOOGLE_CLOUD_PROJECT_ID", "")
+	var onboards int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, ":loadCodeAssist"):
+			_, _ = w.Write([]byte(unsupportedClientLoad))
+		case strings.HasSuffix(r.URL.Path, ":onboardUser"):
+			atomic.AddInt32(&onboards, 1)
+			_, _ = w.Write([]byte(`{"done":true,"response":{}}`))
+		}
+	}))
+	defer srv.Close()
+	withEndpoint(t, srv.URL)
+
+	_, err := connectedManager(t).ensureBootstrap(context.Background())
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	for _, want := range []string{"no longer supported", "GOOGLE_CLOUD_PROJECT"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
+	}
+	if n := atomic.LoadInt32(&onboards); n != 0 {
+		t.Errorf("onboardUser called %d times for a tier that cannot be onboarded", n)
+	}
+}
+
+func TestEnsureBootstrap_OwnProjectFromEnv(t *testing.T) {
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "my-gcp")
+	var onboardBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, ":loadCodeAssist"):
+			_, _ = w.Write([]byte(unsupportedClientLoad))
+		case strings.HasSuffix(r.URL.Path, ":onboardUser"):
+			b, _ := io.ReadAll(r.Body)
+			onboardBody = string(b)
+			_, _ = w.Write([]byte(`{"done":true,"response":{}}`))
+		}
+	}))
+	defer srv.Close()
+	withEndpoint(t, srv.URL)
+
+	b, err := connectedManager(t).ensureBootstrap(context.Background())
+	if err != nil {
+		t.Fatalf("ensureBootstrap: %v", err)
+	}
+	if b.ProjectID != "my-gcp" || b.TierID != "standard-tier" {
+		t.Errorf("bootstrap = %+v", b)
+	}
+	if !strings.Contains(onboardBody, `"cloudaicompanionProject":"my-gcp"`) || !strings.Contains(onboardBody, `"duetProject":"my-gcp"`) {
+		t.Errorf("onboard body does not carry the project: %s", onboardBody)
 	}
 }

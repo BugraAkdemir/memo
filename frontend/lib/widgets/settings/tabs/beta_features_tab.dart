@@ -7,7 +7,6 @@ import '../../../providers/chat_provider.dart';
 import '../../../providers/provider_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../core/friendly_error.dart';
-import 'claude_subscription_panel.dart';
 
 /// Settings → Beta Features.
 ///
@@ -35,10 +34,6 @@ class _BetaFeaturesTabState extends ConsumerState<BetaFeaturesTab> {
       // back to betaFeaturesProvider don't lag or disagree with the backend.
       await ref.read(betaFeaturesProvider.notifier).setEnabled(enabled);
       ref.invalidate(remoteAccessProvider);
-      // The backend adds or removes the claude-sub provider on this toggle
-      // (and may adopt a Claude Code login it finds), so everything that
-      // shows it has to re-read.
-      ref.invalidate(claudeAccountProvider);
       ref.invalidate(providerListProvider);
       ref.invalidate(gatewayModelsProvider);
     } catch (e) {
@@ -136,30 +131,6 @@ class _BetaFeaturesTabState extends ConsumerState<BetaFeaturesTab> {
               body: L10n.t('beta_item_swarm_desc'),
               enabled: beta,
             ),
-            const SizedBox(height: 16),
-            // Gemini Subscription's Settings tab is also gated behind this
-            // same toggle (settings_dialog.dart's _betaEnabled() check) but
-            // wasn't listed here — this page's own description promised
-            // "her özellik kendi ekranında ayrıca yapılandırılır" for
-            // everything this switch unlocks, and this one was missing.
-            _BetaFeatureRow(
-              icon: Icons.key_outlined,
-              title: L10n.t('beta_item_gemini_sub_title'),
-              body: L10n.t('beta_item_gemini_sub_desc'),
-              enabled: beta,
-            ),
-            const SizedBox(height: 16),
-            // Claude Subscription lives HERE rather than in a settings tab of
-            // its own: it is a Beta feature, so its controls appear exactly
-            // when the switch above is on — and the backend refuses to connect
-            // while it is off, so there is nothing a hidden panel could do.
-            _BetaFeatureRow(
-              icon: Icons.key_outlined,
-              title: L10n.t('beta_item_claude_sub_title'),
-              body: L10n.t('beta_item_claude_sub_desc'),
-              enabled: beta,
-              child: beta ? const ClaudeSubscriptionPanel() : null,
-            ),
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(12),
@@ -202,16 +173,11 @@ class _BetaFeatureRow extends StatelessWidget {
   final String body;
   final bool enabled;
 
-  /// The feature's own controls, rendered under the description. Only passed
-  /// while Beta is on.
-  final Widget? child;
-
   const _BetaFeatureRow({
     required this.icon,
     required this.title,
     required this.body,
     required this.enabled,
-    this.child,
   });
 
   @override
@@ -259,10 +225,6 @@ class _BetaFeatureRow extends StatelessWidget {
                     color: theme.textDim,
                   ),
                 ),
-                if (child != null) ...[
-                  const SizedBox(height: 14),
-                  child!,
-                ],
               ],
             ),
           ),

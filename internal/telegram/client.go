@@ -26,8 +26,8 @@ import (
 )
 
 // apiBase is a var (not const) so tests can point it at an httptest.Server
-// instead of the real Telegram API — same pattern internal/geminisub uses
-// for its own endpoint constants.
+// instead of the real Telegram API — same pattern the other provider packages use
+// for their own endpoint constants.
 var apiBase = "https://api.telegram.org/bot"
 
 // Message is a simplified incoming Telegram message.

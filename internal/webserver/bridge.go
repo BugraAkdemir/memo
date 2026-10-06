@@ -262,26 +262,6 @@ type FullBridge interface {
 	GetClaudeCodeCLIModel() string
 	ConnectClaudeCodeCLI(baseURL, model string) error
 	DisconnectClaudeCodeCLI() error
-	GoogleAccountState() (connected bool, email, model string)
-	StartGoogleAuth() (string, error)
-	SetGoogleAccountModel(model string) error
-	DisconnectGoogleAccount() error
-
-	// claude-sub. Two more methods than the Gemini flow needs, and both
-	// because Anthropic's OAuth is not a loopback flow: the browser lands on
-	// an Anthropic-hosted page that displays the code rather than calling back
-	// into us, so the connection takes two round trips (start, then complete
-	// with the pasted code) instead of one plus a poll.
-	ClaudeAccountState() (connected bool, account, source, model string)
-	ConnectClaudeAccount() (connected bool, source, authURL, state string, err error)
-	CompleteClaudeAuth(code, state string) error
-	SetClaudeAccountModel(model string) error
-	DisconnectClaudeAccount() error
-	// ClaudeCapabilities returns the measured capability table, or nil if no
-	// probe has run yet. The probe fires in the background after a connect, so
-	// the first GET after connecting legitimately returns null.
-	ClaudeCapabilities() map[string]any
-
 	// Subscriptions: the bundled CLIProxyAPI sidecar that exposes
 	// Antigravity / Claude / Codex accounts as one OpenAI-compatible provider
 	// (internal/app/subs.go). SubscriptionsState never starts anything.

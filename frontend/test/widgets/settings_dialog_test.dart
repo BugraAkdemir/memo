@@ -244,23 +244,28 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // Claude Subscription is a Beta feature whose controls live INSIDE the Beta
-  // tab (beta_features_tab_test.dart), not a rail entry of its own. When it was
-  // a tab, its label/icon were inserted at index 26 while its content was
-  // `case 27`, so the rail said "Claude Subscription" and opened Code Mode
-  // Prompts (and the other way round). Guard that no such entry comes back.
-  testWidgets('Claude Subscription is not a settings tab of its own',
+  // The rail's labels, icons and `_buildTabContent` cases are parallel lists
+  // that must stay index-aligned. Once, an inserted tab shifted the labels but
+  // not the content, so the rail said one thing and opened another. Guard the
+  // two neighbours of the Subscriptions slot: each opens its OWN content.
+  testWidgets('the tabs around Subscriptions open their own content',
       (tester) async {
-    await _pumpSettingsDialog(tester, initialPrefs: {
-      'memo_beta_features': true,
-    });
-    expect(find.text(L10n.t('beta_item_claude_sub_title')), findsNothing);
+    await _pumpSettingsDialog(tester);
+    await tester.scrollUntilVisible(
+        find.text(L10n.t('tab_subscriptions')), 150,
+        scrollable: _railScrollable);
+    await tester.tap(find.text(L10n.t('tab_subscriptions')));
+    await tester.pumpAndSettle();
+    expect(find.text(L10n.t('subs_desc')), findsOneWidget,
+        reason: 'the Subscriptions row did not open the Subscriptions screen');
+
     await tester.scrollUntilVisible(
         find.text(L10n.t('code_submode_prompts_tab_title')), 150,
         scrollable: _railScrollable);
     await tester.tap(find.text(L10n.t('code_submode_prompts_tab_title')));
     await tester.pumpAndSettle();
-    expect(find.text(L10n.t('claude_account_connect_desc')), findsNothing);
+    expect(find.text(L10n.t('subs_desc')), findsNothing,
+        reason: 'Code Mode Prompts opened the Subscriptions screen');
     expect(tester.takeException(), isNull);
   });
 }

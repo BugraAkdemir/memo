@@ -95,7 +95,7 @@ func TestClaudeOverrides_SystemPrependIsFirstBlock(t *testing.T) {
 	const identity = "You are Claude Code, Anthropic's official CLI for Claude."
 	p, err := NewClaudeProviderWith(
 		ProviderConfig{BaseURL: "https://api.anthropic.com", Model: "m"},
-		ClaudeOverrides{Type: ProviderClaudeSub, SystemPrepend: identity},
+		ClaudeOverrides{Type: ProviderType("override-test"), SystemPrepend: identity},
 	)
 	if err != nil {
 		t.Fatalf("NewClaudeProviderWith: %v", err)
@@ -169,7 +169,7 @@ func TestClaudeOverrides_SuppressSamplingDropsTemperatureUpFront(t *testing.T) {
 
 	p, err := NewClaudeProviderWith(
 		ProviderConfig{BaseURL: "https://api.anthropic.com", Model: "m"},
-		ClaudeOverrides{Type: ProviderClaudeSub, SuppressSampling: true},
+		ClaudeOverrides{Type: ProviderType("override-test"), SuppressSampling: true},
 	)
 	if err != nil {
 		t.Fatalf("NewClaudeProviderWith: %v", err)
@@ -194,7 +194,7 @@ func TestClaudeOverrides_AuthHookReplacesAPIKey(t *testing.T) {
 	p, err := NewClaudeProviderWith(
 		ProviderConfig{BaseURL: "https://api.anthropic.com", Model: "m", APIKey: "sk-ant-should-never-be-sent"},
 		ClaudeOverrides{
-			Type: ProviderClaudeSub,
+			Type: ProviderType("override-test"),
 			Auth: func(ctx context.Context, req *http.Request) error {
 				req.Header.Set("Authorization", "Bearer sk-ant-oat01-test")
 				req.Header.Set("anthropic-beta", "oauth-2025-04-20,claude-code-20250219")
@@ -225,7 +225,7 @@ func TestClaudeOverrides_AuthHookErrorAbortsRequest(t *testing.T) {
 	p, err := NewClaudeProviderWith(
 		ProviderConfig{BaseURL: "https://api.anthropic.com", Model: "m"},
 		ClaudeOverrides{
-			Type: ProviderClaudeSub,
+			Type: ProviderType("override-test"),
 			Auth: func(context.Context, *http.Request) error { return context.DeadlineExceeded },
 		},
 	)
@@ -241,13 +241,13 @@ func TestClaudeOverrides_AuthHookErrorAbortsRequest(t *testing.T) {
 func TestClaudeOverrides_IdentityAndDisplayNameAreReported(t *testing.T) {
 	p, err := NewClaudeProviderWith(
 		ProviderConfig{BaseURL: "https://api.anthropic.com", Model: "m"},
-		ClaudeOverrides{Type: ProviderClaudeSub, DisplayName: "Anthropic Claude (subscription)"},
+		ClaudeOverrides{Type: ProviderType("override-test"), DisplayName: "Anthropic Claude (subscription)"},
 	)
 	if err != nil {
 		t.Fatalf("NewClaudeProviderWith: %v", err)
 	}
-	if p.Name() != ProviderClaudeSub {
-		t.Errorf("Name() = %q, want %q", p.Name(), ProviderClaudeSub)
+	if p.Name() != ProviderType("override-test") {
+		t.Errorf("Name() = %q, want %q", p.Name(), ProviderType("override-test"))
 	}
 	if p.DisplayName() != "Anthropic Claude (subscription)" {
 		t.Errorf("DisplayName() = %q", p.DisplayName())

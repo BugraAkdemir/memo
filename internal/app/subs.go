@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -404,4 +405,24 @@ func (a *App) ListProviderModels(ctx context.Context, name string) ([]models.Pro
 	a.provModels[key] = providerModelsEntry{at: time.Now(), list: out}
 	a.provModelsMu.Unlock()
 	return append([]models.ProviderModel(nil), out...), cfg.Model, nil
+}
+
+// purgeLegacySubscriptionData removes what the per-vendor subscription providers
+// (gemini-sub, claude-sub) left on disk: an encrypted OAuth token each, under
+// data/geminisub and data/claudesub. Nothing reads them any more, so keeping a
+// refresh token around would be a liability with no use. Idempotent and quiet
+// when there is nothing to remove. (The vendor grant itself is not revoked —
+// do that from the Google / Claude account pages if it matters.)
+func purgeLegacySubscriptionData() {
+	for _, dir := range []string{"geminisub", "claudesub"} {
+		p := config.DataPath(dir)
+		if _, err := os.Stat(p); err != nil {
+			continue
+		}
+		if err := os.RemoveAll(p); err != nil {
+			logx.Printf("subs: could not remove legacy %s data: %v", dir, err)
+			continue
+		}
+		logx.Printf("subs: removed legacy %s data (replaced by Settings > Subscriptions)", dir)
+	}
 }

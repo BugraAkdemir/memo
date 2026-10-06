@@ -492,7 +492,7 @@ func (dc *driveClient) saveToken(t *oauth2.Token) error {
 	}
 	// AtomicWrite (write-tmp-then-rename), not a plain os.WriteFile — every
 	// other credential file in this codebase (config.yaml, providers.json,
-	// geminisub's token store, ...) already writes this way. A crash/power
+	// the sidecar's state file, ...) already writes this way. A crash/power
 	// loss mid-write here previously left a truncated token.json that
 	// fails loadToken's json.Unmarshal on the next start, silently
 	// dropping Cloud Sync back to "not connected" with no error surfaced

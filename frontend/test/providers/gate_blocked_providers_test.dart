@@ -134,11 +134,9 @@ void main() {
     final codeMode =
         await container.read(chatCodeModeProvider('chat-abc').future);
     final taskLoopSettings = await container.read(taskLoopSettingsProvider.future);
-    // claude-sub: the same two shapes BUG-ONB6/BUG-ONB11 cover. Neither was
-    // listed for gemini-sub either, so nothing verified them — added for the
-    // Claude pair here.
-    final claudeAccount = await container.read(claudeAccountProvider.future);
-    final claudeSubModels = await container.read(claudeSubModelsProvider.future);
+    // Subscriptions (bundled CLIProxyAPI sidecar): an AsyncNotifier whose
+    // build() fetches, the BUG-ONB6 shape.
+    final subscriptions = await container.read(subscriptionsProvider.future);
 
     // Safe defaults, not errors.
     expect(llama.engineMode, 'auto');
@@ -162,9 +160,9 @@ void main() {
     expect(codeMode.enabled, false);
     expect(codeMode.pinned, false);
     expect(taskLoopSettings, isEmpty);
-    expect(claudeAccount.connected, false);
-    expect(claudeAccount.model, '');
-    expect(claudeSubModels, isEmpty);
+    expect(subscriptions.bundled, false);
+    expect(subscriptions.accounts, isEmpty);
+    expect(subscriptions.models, isEmpty);
 
     // The one and only assertion that actually matters: zero requests ever
     // reached the (401-answering) backend, for any of them.

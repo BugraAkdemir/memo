@@ -10,12 +10,6 @@ import (
 	// provider.RegisterConstructor — see internal/agentcli's package doc
 	// for why it can't be imported by internal/provider directly.
 	_ "memo/internal/agentcli"
-	// Blank-imported for its init(), which registers gemini-sub with
-	// provider.RegisterConstructor — same import-cycle reason as agentcli.
-	_ "memo/internal/geminisub"
-	// Blank-imported for its init(), which registers claude-sub with
-	// provider.RegisterConstructor — same import-cycle reason as agentcli.
-	_ "memo/internal/claudesub"
 	"memo/internal/config"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
@@ -170,15 +164,26 @@ func (a *App) reinitProviderAndOrchestra() {
 			}
 		}
 		if !matchesName {
+			matchedType := false
 			for _, p := range configs {
 				if string(p.Type) == activeProviderName {
 					activeProviderName = p.Name
 					a.cfg.ActiveProvider = p.Name
+					matchedType = true
 					break
 				}
 			}
+			// A name that matches no enabled provider — a legacy gemini-sub /
+			// claude-sub entry that was just dropped, or one the user deleted or
+			// disabled — must not stay "active": the router would be pointed at
+			// nothing and every chat would fail instead of using the local model.
+			if !matchedType {
+				logx.Printf("provider: active provider %q is not configured any more — falling back to the local model", activeProviderName)
+				activeProviderName = ""
+				a.cfg.ActiveProvider = ""
+			}
 		}
-		// Session providers (Claude Code CLI / Codex CLI / gemini-sub) are a
+		// Session providers (Claude Code CLI / Codex CLI / Subscriptions) are a
 		// per-session tool, not a sticky default the way an external API
 		// provider is — silently restoring one across an app restart routed
 		// every subsequent chat, including a brand new one, through that
@@ -244,10 +249,9 @@ func (a *App) reinitProviderAndOrchestra() {
 // isSessionProviderName reports whether name (a provider Name, as stored in
 // cfg.ActiveProvider) refers to a per-session provider that must not be
 // auto-restored as the sticky global active provider on startup — the
-// CLI-backed agents (Claude Code CLI, Codex CLI) and the subscription
-// providers gemini-sub / claude-sub. Unknown names report false rather than
-// erroring;
-// callers only use this to decide whether to keep an active-provider
+// CLI-backed agents (Claude Code CLI, Codex CLI) and the Subscriptions
+// provider (a signed-in vendor account's quota). Unknown names report false
+// rather than erroring; callers only use this to decide whether to keep an active-provider
 // selection, not to validate it.
 func isSessionProviderName(name string, configs []provider.ProviderConfig) bool {
 	for _, p := range configs {
@@ -260,9 +264,7 @@ func isSessionProviderName(name string, configs []provider.ProviderConfig) bool 
 				return true
 			}
 			return p.Type == provider.ProviderClaudeCodeCLI ||
-				p.Type == provider.ProviderCodexCLI ||
-				p.Type == provider.ProviderGeminiSub ||
-				p.Type == provider.ProviderClaudeSub
+				p.Type == provider.ProviderCodexCLI
 		}
 	}
 	return false

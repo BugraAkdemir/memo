@@ -90,13 +90,10 @@ func TestDestructiveEndpoints_AdminOnly(t *testing.T) {
 		{"POST", "/api/dev-gateway/token/rotate"},
 		{"GET", "/api/dev-gateway/logs"},
 		{"PUT", "/api/dev-gateway/config"},
-		// Connect / disconnect / model-switch are state-changing admin writes
-		// on both subscription-account routes. Their GET is deliberately open
-		// (the settings screen reads it before the gate resolves), which is
-		// only safe as long as the POSTs are listed here.
-		{"POST", "/api/dev-gateway/google-account"},
-		{"POST", "/api/dev-gateway/claude-account"},
-		// Signing a vendor account in or out of the bundled CLIProxyAPI sidecar.
+		// Signing a vendor account in or out of the bundled CLIProxyAPI sidecar
+		// is a state-changing admin write. Its GET is deliberately open (the
+		// settings screen reads it before the gate resolves), which is only safe
+		// as long as the POST is listed here.
 		{"POST", "/api/subscriptions"},
 		{"POST", "/api/v1/wipe"},
 	} {

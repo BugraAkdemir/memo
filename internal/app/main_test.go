@@ -22,13 +22,6 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("MEMO_DATA_DIR", dir)
-	// The claude-sub capability probe fires in the BACKGROUND whenever a test
-	// exercises the connect surface, and its default target is the real
-	// api.anthropic.com. Left alone that is real network I/O from a unit test,
-	// made with whatever token is in the throwaway data dir — and the goroutine
-	// outlives the test that started it, which is exactly the shape the race
-	// detector complains about. An unreachable port fails instantly instead.
-	os.Setenv("MEMO_CLAUDE_API_URL", "http://127.0.0.1:1")
 	config.ResetForTests()
 	code := m.Run()
 	os.RemoveAll(dir)

@@ -184,9 +184,6 @@ func (a *App) SetBeta(enabled bool) error {
 	if err := config.Save(a.cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
-	// After the save: sync may write config itself (adopting a local Claude
-	// Code login records the connection), and must see Beta already stored.
-	a.syncClaudeSubWithBeta()
 	return nil
 }
 

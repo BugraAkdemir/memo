@@ -707,15 +707,8 @@ func (a *App) Startup(ctx context.Context) {
 	// Shared with reinitProviderAndOrchestra (providers.go), which ImportData
 	// and cloud restore call after replacing providers.json/orchestra.json on
 	// disk — keeping this as one code path means the two can't drift apart.
+	purgeLegacySubscriptionData()
 	a.reinitProviderAndOrchestra()
-	// If the user is already signed in with the official gemini-cli, adopt
-	// that token so gemini-sub works with no extra click (like
-	// claude-code-proxy's ~/.claude/.credentials.json fallback).
-	a.adoptGeminiCLILoginIfPresent()
-	// claude-sub is a Beta feature: its provider exists only while Beta is on,
-	// and only then is a Claude Code / setup-token login already on this
-	// machine adopted so it works with no click at all.
-	a.syncClaudeSubWithBeta()
 	// Subscriptions: if a vendor account is already signed in, bring the
 	// bundled CLIProxyAPI sidecar up in the background and (re)register its
 	// provider with the sidecar's current port/key. Never blocks startup.

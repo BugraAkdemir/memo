@@ -10,16 +10,15 @@ import (
 
 // TestIsSessionProviderName covers the check reinitProviderAndOrchestra uses
 // to stop a previously-active per-session provider (Claude Code CLI / Codex
-// CLI / gemini-sub) from being silently restored across an app restart —
+// CLI / Subscriptions) from being silently restored across an app restart —
 // see BUG_REPORT: after using a CLI provider, closing and reopening Memo
 // kept routing every new chat through the same CLI subprocess instead of
-// defaulting back to the local model / no active provider. gemini-sub has
+// defaulting back to the local model / no active provider. Subscriptions has
 // the same "per session, not sticky" semantics.
 func TestIsSessionProviderName(t *testing.T) {
 	configs := []provider.ProviderConfig{
 		{Name: "Claude Code", Type: provider.ProviderClaudeCodeCLI},
 		{Name: "Codex", Type: provider.ProviderCodexCLI},
-		{Name: "Google — Gemini (subscription)", Type: provider.ProviderGeminiSub},
 		{Name: "My OpenAI", Type: provider.ProviderOpenAI},
 		// The Subscriptions provider is a plain custom type, told apart by
 		// name; a user's own custom provider with another name is not session.
@@ -33,7 +32,6 @@ func TestIsSessionProviderName(t *testing.T) {
 	}{
 		{"Claude Code", true},
 		{"Codex", true},
-		{"Google — Gemini (subscription)", true},
 		{"My OpenAI", false},
 		{subsProviderName, true},
 		{"My Own Endpoint", false},

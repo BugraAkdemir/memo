@@ -20,7 +20,7 @@ import "strings"
 // return 0, leaving the caller's default.
 func ContextWindowForModel(model string) int {
 	m := strings.ToLower(strings.TrimSpace(model))
-	// Gateways sometimes qualify ids ("claude-sub/claude-sonnet-4-6", "vendor/x").
+	// Gateways sometimes qualify ids ("subs/claude-sonnet-4-6", "vendor/x").
 	if i := strings.LastIndex(m, "/"); i >= 0 {
 		m = m[i+1:]
 	}

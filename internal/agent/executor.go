@@ -292,16 +292,6 @@ func modelContextWindow(router *provider.Router, modelName string) int {
 			switch p.Type {
 			case provider.ProviderGemini:
 				return 1024 * 1024
-			case provider.ProviderClaudeSub:
-				// The subscription endpoint can serve a 1M window, but only
-				// when the context-1m beta is sent AND the plan is entitled
-				// to it; without the beta it silently serves 200K. Budgeting
-				// 200K is the honest floor — truncation then errs toward
-				// compacting a conversation that did not need it, which is
-				// recoverable, rather than sending a request that overflows
-				// and losing the turn. Raised once the capability probe
-				// confirms the account's window.
-				return 200 * 1024
 			case provider.ProviderClaude, provider.ProviderCustomAnthropic:
 				return 200 * 1024
 			case provider.ProviderCustom:

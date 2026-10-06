@@ -501,58 +501,6 @@ type DevGatewayConfig struct {
 	// gateway, and what was there before, so disconnecting restores it
 	// exactly instead of just deleting the keys.
 	ClaudeCodeCLI ClaudeCodeCLIState `yaml:"claude_code_cli" json:"claude_code_cli"`
-
-	// GeminiSub tracks the "connect Google account" flow in the Developer
-	// screen (see internal/app/gemauth.go) — whether Memo holds a valid
-	// OAuth token for the gemini-sub subscription provider, plus a cached
-	// display email. The token itself lives encrypted under
-	// DataDir()/geminisub/, never here.
-	GeminiSub GeminiSubState `yaml:"gemini_sub" json:"gemini_sub"`
-
-	// ClaudeSub tracks the "connect Claude account" flow in Settings (see
-	// internal/app/claudeauth.go) — whether Memo holds a valid OAuth token for
-	// the claude-sub subscription provider, and a cached display label. The
-	// token itself lives encrypted under DataDir()/claudesub/, never here.
-	ClaudeSub ClaudeSubState `yaml:"claude_sub" json:"claude_sub"`
-}
-
-// ClaudeSubState is the frontend-facing state of the claude-sub connection.
-// All fields are display-only; the OAuth token is kept (encrypted) under
-// DataDir()/claudesub/, not in config.
-type ClaudeSubState struct {
-	Connected bool `yaml:"connected" json:"connected"`
-	// Account is a human-readable label for the connected subscription, e.g.
-	// the subscription tier or plan name Anthropic reports. Empty when
-	// unknown — unlike a Gemini account there is no email to show here, since
-	// the OAuth scope set this uses does not include a userinfo endpoint.
-	Account string `yaml:"account" json:"account"`
-	// Source records HOW the account was connected, so the UI can say what
-	// actually happened instead of a bare "connected": "env",
-	// "claude-code-file", "macos-keychain", or "" when the browser flow was
-	// used. Purely informational.
-	Source string `yaml:"source" json:"source"`
-	// Model is the currently selected model id for the claude-sub marker
-	// provider (e.g. "claude-sonnet-5"). The user picks it in the Claude
-	// Subscription settings tab from the account's live model list.
-	Model string `yaml:"model" json:"model"`
-	// UserDisconnected records that the user pressed Disconnect. Automatic
-	// adoption of a Claude Code login found on the machine (at startup, or
-	// when Beta is switched on) is skipped while it is set — without it,
-	// Disconnect lasted only until the next restart. An explicit Connect
-	// clears it.
-	UserDisconnected bool `yaml:"user_disconnected" json:"user_disconnected"`
-}
-
-// GeminiSubState is the frontend-facing state of the gemini-sub Google
-// account connection. Both fields are display-only; the OAuth token is kept
-// (encrypted) under DataDir()/geminisub/, not in config.
-type GeminiSubState struct {
-	Connected bool   `yaml:"connected" json:"connected"`
-	Email     string `yaml:"email" json:"email"`
-	// Model is the currently selected model id for the gemini-sub marker
-	// provider (e.g. "gemini-2.5-pro"). The user picks it in the Gemini
-	// Subscription settings tab from the account's live model list.
-	Model string `yaml:"model" json:"model"`
 }
 
 // ClaudeCodeCLIState is internal bookkeeping for

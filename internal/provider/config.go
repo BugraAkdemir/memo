@@ -77,7 +77,12 @@ func (cm *ConfigManager) Load() {
 	}
 
 	cm.configs = make([]ProviderConfig, 0, len(stored.Configs))
+	droppedLegacy := 0
 	for _, s := range stored.Configs {
+		if legacySubscriptionTypes[s.Type] {
+			droppedLegacy++
+			continue
+		}
 		apiKey, err := cm.decrypt(s.APIKeyEncrypted)
 		if err != nil {
 			logx.Printf("PROVIDER: failed to decrypt key for %s: %v", s.Type, err)
@@ -96,6 +101,23 @@ func (cm *ConfigManager) Load() {
 			MaxTokens:   s.MaxTokens,
 		})
 	}
+	if droppedLegacy > 0 {
+		// Persist the cleanup now, so a stale entry cannot come back on the next
+		// load (or ride along into a backup) once nothing reads it any more.
+		logx.Printf("PROVIDER: removed %d legacy subscription provider(s) (gemini-sub / claude-sub); sign in under Settings > Subscriptions instead", droppedLegacy)
+		cm.saveLocked()
+	}
+}
+
+// legacySubscriptionTypes are provider types that no longer exist: the per-vendor
+// subscription providers were replaced by the single "Subscriptions" provider that
+// fronts the bundled CLIProxyAPI sidecar. A providers.json written by an older
+// build (or restored from a backup) can still carry them; they are dropped on load
+// rather than left as dead entries that fail with "unsupported provider type" and
+// that routing, the gateway model list and the UI would all still see.
+var legacySubscriptionTypes = map[ProviderType]bool{
+	"gemini-sub": true,
+	"claude-sub": true,
 }
 
 // Save persists provider configs to the JSON file with encrypted API keys.

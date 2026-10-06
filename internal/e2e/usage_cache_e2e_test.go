@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"testing"
+	"time"
 )
 
 // usageSummary mirrors the fields of internal/stats.Summary this test asserts
@@ -32,6 +33,25 @@ func (h *Harness) usageStats(t *testing.T) usageSummary {
 	var sum usageSummary
 	decodeInto(t, h.getJSON("/api/stats/usage?days=1"), &sum)
 	return sum
+}
+
+// usageStatsAfterTurn is usageStats for a test that has just finished a chat
+// turn. The app records the usage event fire-and-forget (llm.go: `go
+// recordUsageEvent`) so a slow stats write can never hold up the reply, which
+// means the row can land a moment AFTER the SSE stream ends. Reading
+// immediately raced it and failed on a loaded CI runner ("reported no requests
+// at all"); poll until the first request shows up instead of asserting on the
+// instant. Still fails, with the last summary, if no event ever arrives.
+func (h *Harness) usageStatsAfterTurn(t *testing.T) usageSummary {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		sum := h.usageStats(t)
+		if sum.TotalRequests > 0 || time.Now().After(deadline) {
+			return sum
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 }
 
 // TestUsage_StreamingChatRecordsCacheSplit is the end-to-end proof for the
@@ -93,7 +113,7 @@ func TestUsage_StreamingChatRecordsCacheSplit(t *testing.T) {
 		t.Fatal("no streaming request reached the provider — this test is not exercising the SSE path")
 	}
 
-	sum := h.usageStats(t)
+	sum := h.usageStatsAfterTurn(t)
 	if sum.TotalRequests == 0 {
 		t.Fatal("GET /api/stats/usage reported no requests at all")
 	}
@@ -144,7 +164,7 @@ func TestUsage_ProviderWithoutCacheReportingStaysZero(t *testing.T) {
 	chatID := h.NewChat()
 	h.SendMessageStream(chatID, "selam")
 
-	sum := h.usageStats(t)
+	sum := h.usageStatsAfterTurn(t)
 	if sum.TotalPromptTokens < 900 {
 		t.Errorf("total_prompt_tokens = %d, want at least 900", sum.TotalPromptTokens)
 	}

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Memo — one-line installer / updater for Linux / macOS.
 #
-#   curl -fsSL https://download.bugradev.com/get-memo.sh | bash
+#   curl -fsSL https://data.memocpp.com/get-memo.sh | bash
 #
 # Auto-detects existing installs:
 #   • Fresh install — seeds configs, copies engine binaries, sets up PATH & app menu
@@ -33,11 +33,11 @@ echo " | |  | | |___| |  | | |_| |"
 echo " |_|  |_|_____|_|  |_|\\___/ "
 echo -e "${NC}"
 echo -e "${BOLD}  Local-first, privacy-focused AI assistant${NC}"
-echo -e "  ${BLUE}https://memo.bugradev.com/guide${NC}"
+echo -e "  ${BLUE}https://memocpp.com/guide${NC}"
 echo ""
 
 # ── os detection ─────────────────────────────────────────────────────────────
-DOMAIN="https://download.bugradev.com"
+DOMAIN="https://data.memocpp.com"
 APP_NAME="Memo"
 MEMO_HOME="$HOME/.memo"
 
@@ -264,7 +264,7 @@ else
     echo -e "  ${BOLD}Terminal:${NC}  ${CYAN}memo${NC}"
     echo -e "  ${BOLD}Desktop:${NC}   find ${CYAN}Memo${NC} in your app menu"
 fi
-echo -e "  ${BOLD}Guide:${NC}     ${BLUE}https://memo.bugradev.com/guide${NC}"
+echo -e "  ${BOLD}Guide:${NC}     ${BLUE}https://memocpp.com/guide${NC}"
 
 if command -v memo >/dev/null 2>&1; then
     echo ""

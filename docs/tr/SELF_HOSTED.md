@@ -21,7 +21,7 @@ almanın iki yolu:
 ### Native kurulum
 
 ```bash
-curl -fsSL https://download.bugradev.com/get-memo-server.sh | bash
+curl -fsSL https://data.memocpp.com/get-memo-server.sh | bash
 ```
 
 Linux x86_64, Linux arm64 (Raspberry Pi ve diğer ARM kartlar) ve macOS'u

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Memo — self-hosted SERVER uninstaller (no desktop app).
 #
-#   curl -fsSL https://download.bugradev.com/uninstall-selfhosted.sh | bash
+#   curl -fsSL https://data.memocpp.com/uninstall-selfhosted.sh | bash
 #   bash uninstall-selfhosted.sh [-y|--yes]   # skip the confirmation prompt
 #
 # Removes everything the self-hosted installer (get-memo-server.sh /

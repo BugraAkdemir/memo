@@ -201,14 +201,14 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 Never release from memory — use the **memo-release skill**
 (`.claude/skills/memo-release/SKILL.md`). It carries the full checklist:
 seven version locations, EN+TR release notes, per-platform build commands,
-the versioned→generic artifact rename for `download.bugradev.com`, and the
+the versioned→generic artifact rename for `data.memocpp.com`, and the
 `version.json` update beacon that must be bumped LAST.
 
 ### Checkpoint / pre-release tags (lightweight, NOT the same as a release)
 
 Separate from the full release process above — this is for snapshotting a
 point in history (e.g. to hand a build to friends/testers) without going
-through version bumps, changelog files, or the download.bugradev.com/
+through version bumps, changelog files, or the data.memocpp.com/
 version.json publish targets. Added 2026-07-21 (`b50f481`, tag `v3.2.1`).
 
 **How it works:** `build-linux.yml`/`build-windows.yml`/`build-macos.yml`

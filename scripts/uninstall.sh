@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Memo — uninstaller for Linux / macOS.
 #
-#   curl -fsSL https://download.bugradev.com/uninstall.sh | bash
+#   curl -fsSL https://data.memocpp.com/uninstall.sh | bash
 #
 # Removes all Memo files. Optionally backs up your memory data before removal.
 set -euo pipefail
@@ -177,7 +177,7 @@ command -v update-desktop-database >/dev/null 2>&1 && \
 echo ""
 echo -e "${GREEN}${BOLD}  Memo has been uninstalled.${NC}"
 echo ""
-echo -e "  ${BOLD}Guide:${NC}  ${BLUE}https://memo.bugradev.com/guide${NC}"
+echo -e "  ${BOLD}Guide:${NC}  ${BLUE}https://memocpp.com/guide${NC}"
 
 if $DO_BACKUP && [ -f "$BACKUP_FILE" ]; then
     echo -e "  ${BOLD}Memory:${NC} $BACKUP_FILE"

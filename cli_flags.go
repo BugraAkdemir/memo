@@ -24,9 +24,9 @@ import (
 const (
 	githubURL     = "https://github.com/BugraAkdemir/memo"
 	issuesNewURL  = "https://github.com/BugraAkdemir/memo/issues/new"
-	guideURL      = "https://memo.bugradev.com/guide"
-	installShURL  = "https://download.bugradev.com/get-memo.sh"
-	installPS1URL = "https://download.bugradev.com/get-memo.ps1"
+	guideURL      = "https://memocpp.com/guide"
+	installShURL  = "https://data.memocpp.com/get-memo.sh"
+	installPS1URL = "https://data.memocpp.com/get-memo.ps1"
 )
 
 // standaloneCommandFlags are the flags that make Memo do one thing and exit

@@ -30,7 +30,7 @@ DeepSeek gibi tüm provider'lara erişir.
 ### Mimari
 
 ```
-Kullanıcı → api.bugradev.com/v1/chat/completions
+Kullanıcı → api.memocpp.com/v1/chat/completions
                 │
         ┌───────┴────────┐
         │  Auth Middleware │  (API key → user_id → kredi kontrolü)
@@ -301,7 +301,7 @@ Pay-as-you-go seçeneği de olacak (abonelik istemeyenler için):
 
 ```bash
 # Quickstart örneği
-curl https://api.bugradev.com/v1/chat/completions \
+curl https://api.memocpp.com/v1/chat/completions \
   -H "Authorization: Bearer memo_xxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -351,7 +351,7 @@ Sağ tarafa:
 Alt başlığa ek:
 > "Use our **privacy-first API** — one key, all models, zero prompt logging. Starting at $0/mo."
 
-Küçük stat pill: `api.bugradev.com` · `OpenAI-compatible` · `no logs`
+Küçük stat pill: `api.memocpp.com` · `OpenAI-compatible` · `no logs`
 
 #### Yeni HomePage section: Pricing (Hero'dan hemen sonra)
 3 tier kart, sayfanın üst kısmında. "Explore pricing →" linki `/pricing` sayfasına.
@@ -434,7 +434,7 @@ import (
     "memo/internal/logx"
 )
 
-const BugradevDefaultBaseURL = "https://api.bugradev.com"
+const BugradevDefaultBaseURL = "https://api.memocpp.com"
 
 type BugradevProvider struct {
     apiKey  string

@@ -20,7 +20,7 @@ on the machine:
 ### Native install
 
 ```bash
-curl -fsSL https://download.bugradev.com/get-memo-server.sh | bash
+curl -fsSL https://data.memocpp.com/get-memo-server.sh | bash
 ```
 
 Auto-detects Linux x86_64, Linux arm64 (Raspberry Pi and other ARM boards),

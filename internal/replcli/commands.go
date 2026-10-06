@@ -825,10 +825,10 @@ func (s *session) findModel(name string, wantEmbedding bool) (*LocalModel, error
 // /remote's ngrok-token prompt and every agent tool permission prompt in
 // this codebase already treat carefully, never silently.
 func (s *session) cmdUpdate() {
-	script := "curl -fsSL https://download.bugradev.com/get-memo.sh | bash"
+	script := "curl -fsSL https://data.memocpp.com/get-memo.sh | bash"
 	shellCmd, shellArgs := "bash", []string{"-c", script}
 	if runtime.GOOS == "windows" {
-		script = "irm https://download.bugradev.com/get-memo.ps1 | iex"
+		script = "irm https://data.memocpp.com/get-memo.ps1 | iex"
 		shellCmd, shellArgs = "powershell", []string{"-Command", script}
 	}
 

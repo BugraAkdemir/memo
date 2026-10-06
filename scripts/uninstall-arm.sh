@@ -6,7 +6,7 @@
 # Memo there, and someone who tried the native install then switched to
 # Docker (or vice versa) shouldn't need to know which cleanup script to run.
 #
-#   curl -fsSL https://download.bugradev.com/uninstall-arm.sh | bash
+#   curl -fsSL https://data.memocpp.com/uninstall-arm.sh | bash
 #
 # Optionally backs up your memory data (from either source) before removal.
 set -euo pipefail
@@ -281,6 +281,6 @@ fi
 echo ""
 echo -e "${GREEN}${BOLD}  Memo has been uninstalled.${NC}"
 echo ""
-echo -e "  ${BOLD}Guide:${NC}  ${BLUE}https://memo.bugradev.com/guide${NC}"
+echo -e "  ${BOLD}Guide:${NC}  ${BLUE}https://memocpp.com/guide${NC}"
 echo ""
 echo -e "  ${BOLD}Thank you for using Memo. See you again!${NC}"

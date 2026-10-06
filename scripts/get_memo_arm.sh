@@ -2,7 +2,7 @@
 # Memo — one-line installer / updater for Linux arm64 (Raspberry Pi, ARM
 # NAS/CasaOS boxes, ARM cloud servers).
 #
-#   curl -fsSL https://download.bugradev.com/get_memo_arm.sh | bash
+#   curl -fsSL https://data.memocpp.com/get_memo_arm.sh | bash
 #
 # This is get-memo.sh's arm64 sibling, not a rewrite — same install/update
 # logic, same $MEMO_HOME layout, same PATH wrapper and desktop entry. The
@@ -42,11 +42,11 @@ echo " | |  | | |___| |  | | |_| |"
 echo " |_|  |_|_____|_|  |_|\\___/ "
 echo -e "${NC}"
 echo -e "${BOLD}  Local-first, privacy-focused AI assistant (Linux arm64)${NC}"
-echo -e "  ${BLUE}https://memo.bugradev.com/guide${NC}"
+echo -e "  ${BLUE}https://memocpp.com/guide${NC}"
 echo ""
 
 # ── arch guard ───────────────────────────────────────────────────────────────
-DOMAIN="https://download.bugradev.com"
+DOMAIN="https://data.memocpp.com"
 APP_NAME="Memo"
 MEMO_HOME="$HOME/.memo"
 
@@ -320,7 +320,7 @@ fi
 echo ""
 echo -e "  ${BOLD}Web UI:${NC}    ${CYAN}http://$(hostname -I 2>/dev/null | awk '{print $1}'):$SERVICE_PORT${NC} (or this box's IP)"
 echo -e "  ${BOLD}Terminal:${NC}  ${CYAN}memo${NC} (attaches to the running service instead of starting a second one)"
-echo -e "  ${BOLD}Guide:${NC}     ${BLUE}https://memo.bugradev.com/guide${NC}"
+echo -e "  ${BOLD}Guide:${NC}     ${BLUE}https://memocpp.com/guide${NC}"
 echo ""
 echo -e "  This box now requires a token on every request (LAN mode). Get it with:"
 echo -e "  ${CYAN}journalctl --user -u memo -n 50 --no-pager | grep 'X-Memo-Token'${NC}"

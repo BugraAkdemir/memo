@@ -13,7 +13,7 @@ description: Use when releasing a new version of Memo, bumping the version numbe
 `v*` tag push. Each platform's job downloads its engine binaries from R2,
 builds, packages, compiles the Windows Inno Setup installer, publishes a
 GitHub Release (not a prerelease — a tag push is now a real release), and
-republishes the fixed stable filenames `download.bugradev.com` actually
+republishes the fixed stable filenames `data.memocpp.com` actually
 serves (`memo.tar.gz`, `memo-mac.zip`, `memo.exe`, `memo_arm.zip`, and the
 mobile `memo-android.apk` / `memo-ios.ipa` — unsigned, sideload-only)
 straight to R2. The mobile APK/IPA take their version name from the
@@ -69,7 +69,7 @@ Format (copy the structure of the previous release's file):
 ```markdown
 # Memo v<NEW> — Release Notes
 
-> <Month Day, Year> · [Download](https://memo.bugradev.com)
+> <Month Day, Year> · [Download](https://memocpp.com)
 > One-line summary of the release.
 
 ---
@@ -102,13 +102,13 @@ visible, and triggers binaries going out to actual users.
 
 Then watch CI go green on all three platform workflows
 (`gh run list --branch main` or the Actions tab) before telling the user
-the release is out — a red run here means `download.bugradev.com` did NOT
+the release is out — a red run here means `data.memocpp.com` did NOT
 get updated, only whichever platforms did finish did.
 
 Sanity-check after CI succeeds — two checks, not one:
 
 ```bash
-curl -fsSL https://download.bugradev.com/memo.tar.gz | tar tz | head -3
+curl -fsSL https://data.memocpp.com/memo.tar.gz | tar tz | head -3
 ```
 
 That alone only proves *a* tarball is being served — it does not prove
@@ -119,7 +119,7 @@ push's CI runs finished — it should be within a couple of minutes, not
 hours or days old:
 
 ```bash
-curl -sI https://download.bugradev.com/memo.tar.gz | grep -i last-modified
+curl -sI https://data.memocpp.com/memo.tar.gz | grep -i last-modified
 ```
 
 Downloading the full ~750MB tarball just to peek inside it (`tar tz` on a
@@ -183,7 +183,7 @@ AGENTS.md separately documents a lightweight "checkpoint tag" mechanism
 (any `v*` tag, cut without going through this skill at all, meant for
 handing an informal build to testers). Since 2026-08-08 the CI publish
 step doesn't distinguish a checkpoint tag from a real one — **any** `v*`
-push now also overwrites the stable `download.bugradev.com` files and
+push now also overwrites the stable `data.memocpp.com` files and
 creates a non-prerelease GitHub release. A checkpoint tag cut casually is
 therefore no longer "safely separate" from a real release the way AGENTS.md
 originally described. Not resolved — flag it to the user if a checkpoint

@@ -250,7 +250,7 @@ jobs:
       # tag name) — softprops/action-gh-release upserts rather than failing
       # if the release already exists from another platform's job finishing
       # first. prerelease: false (2026-08-08) — a tag push now also
-      # republishes the stable download.bugradev.com channel (see "Upload
+      # republishes the stable data.memocpp.com channel (see "Upload
       # stable to R2" below), so it's a real release, not a lightweight
       # checkpoint anymore. NOTE: this means AGENTS.md's "checkpoint tag"
       # mechanism (any v* tag, cut without going through this repo's actual
@@ -315,14 +315,14 @@ jobs:
       # TD-3 (BUG_REPORT.md): before this step, NOTHING in CI ever published
       # the end-user install/update/uninstall scripts themselves — only the
       # compiled release archives above. A fix landed in scripts/*.sh sat
-      # unreachable on download.bugradev.com until someone remembered to
+      # unreachable on data.memocpp.com until someone remembered to
       # upload it to R2 by hand; the concrete case that surfaced this was
       # commit 1fbaec6 (a token-bootstrap circular-dependency fix) staying
       # live-broken for the reporting user's RPi months after it was fixed
       # in the repo. Every one of these is a small static text file with no
       # build step or architecture dependency, so publishing on every main
       # push (same trigger as the beta tarball above) keeps
-      # download.bugradev.com byte-identical to the repo with no manual
+      # data.memocpp.com byte-identical to the repo with no manual
       # step to forget. Filenames match scripts/README.md's "End-user
       # installers" table 1:1 — update both if a script is renamed/added.
       - name: Upload install/update/uninstall scripts to R2

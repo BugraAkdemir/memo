@@ -13,7 +13,7 @@ import '../../../core/friendly_error.dart';
 /// the browser, so the report is only actually transmitted once the user
 /// reviews it there and clicks GitHub's own submit button. No screenshot is
 /// attached (screen content could contain private chat text). Deliberately
-/// does not use any bugradev-controlled backend, so "we collect zero data"
+/// does not use any Memo-operated backend, so "we collect zero data"
 /// stays true — the report goes to GitHub, sent by the user's own account,
 /// not to us.
 class ReportBugTab extends ConsumerStatefulWidget {

@@ -25,12 +25,12 @@ That's exactly what this page is about: installing Memo as **just the server** (
 On the machine that will act as the server (connect to it via SSH), run this one command:
 
 ```bash
-curl -fsSL https://download.bugradev.com/get-memo-server.sh | bash
+curl -fsSL https://data.memocpp.com/get-memo-server.sh | bash
 ```
 
 It figures out which processor architecture you're on (a Raspberry Pi's ARM chip vs. a regular PC's x86) and grabs the right build automatically. It does **not** install a desktop window — just the background piece.
 
-> 💡 **Want the newest self-hosting features right away?** Everything on this page (the four auth modes, `memo remote`/`memo config`/`memo service`) may not have reached an official release yet — it always lands on the "beta" channel first. To get it immediately, use this instead of the command above: `curl -fsSL https://download.bugradev.com/get-memo-server-beta.sh | bash`. If you're not sure, stick with the regular (stable) command — beta is for testing.
+> 💡 **Want the newest self-hosting features right away?** Everything on this page (the four auth modes, `memo remote`/`memo config`/`memo service`) may not have reached an official release yet — it always lands on the "beta" channel first. To get it immediately, use this instead of the command above: `curl -fsSL https://data.memocpp.com/get-memo-server-beta.sh | bash`. If you're not sure, stick with the regular (stable) command — beta is for testing.
 
 ### Option 2: Docker (if you use CasaOS or a similar NAS/home-server dashboard)
 

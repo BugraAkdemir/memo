@@ -10,7 +10,7 @@
 
   <br/>
 
-  <a href="https://memo.bugradev.com"><img src="https://img.shields.io/badge/⬇_Hemen_İndir-memo.bugradev.com-B08D57?style=for-the-badge&logoColor=white" alt="İndir"/></a>
+  <a href="https://memocpp.com"><img src="https://img.shields.io/badge/⬇_Hemen_İndir-memocpp.com-B08D57?style=for-the-badge&logoColor=white" alt="İndir"/></a>
   <a href="https://memocpp.com/tr/guide"><img src="https://img.shields.io/badge/📖_Kılavuzu_Oku-memocpp.com-1b1916?style=for-the-badge&logoColor=white" alt="Kılavuz"/></a>
   <a href="https://github.com/BugraAkdemir/memo/stargazers"><img src="https://img.shields.io/github/stars/BugraAkdemir/memo?style=for-the-badge&color=B08D57&logo=github&logoColor=white" alt="Yıldız"/></a>
   <img src="https://img.shields.io/badge/Lisans-AGPL_v3-0a0a0a?style=for-the-badge" alt="Lisans"/>
@@ -276,8 +276,8 @@ Bir **Şef** model karmaşık görevi parçalara böler, 8 uzman role dağıtır
 
 | Platform | Komut |
 |----------|-------|
-| **Linux / macOS** | `curl -fsSL https://download.bugradev.com/get-memo.sh \| bash` |
-| **Windows** | `irm https://download.bugradev.com/get-memo.ps1 \| iex` |
+| **Linux / macOS** | `curl -fsSL https://data.memocpp.com/get-memo.sh \| bash` |
+| **Windows** | `irm https://data.memocpp.com/get-memo.ps1 \| iex` |
 
 <details>
 <summary><b>📦 Kurulum ne yapıyor?</b></summary>
@@ -295,16 +295,16 @@ Bir **Şef** model karmaşık görevi parçalara böler, 8 uzman role dağıtır
 
 ```bash
 # Kurulum script'ini tekrar çalıştır — mevcut kurulumu algılar, günceller
-curl -fsSL https://download.bugradev.com/get-memo.sh | bash
+curl -fsSL https://data.memocpp.com/get-memo.sh | bash
 # Ya da sadece güncelleyiciyi kullan
-curl -fsSL https://download.bugradev.com/update.sh | bash
+curl -fsSL https://data.memocpp.com/update.sh | bash
 # Kaldır (istersen hafızanı yedekler)
-curl -fsSL https://download.bugradev.com/uninstall.sh | bash
+curl -fsSL https://data.memocpp.com/uninstall.sh | bash
 ```
 
 ### Alternatif: manuel indirme
 
-Son sürümü **[memo.bugradev.com](https://memo.bugradev.com)** adresinden indirip çalıştır:
+Son sürümü **[memocpp.com](https://memocpp.com)** adresinden indirip çalıştır:
 
 | Platform | Nasıl |
 |----------|-------|
@@ -321,7 +321,7 @@ Son sürümü **[memo.bugradev.com](https://memo.bugradev.com)** adresinden indi
 
 <div align="center">
   <br/>
-  <a href="https://memo.bugradev.com"><img src="https://img.shields.io/badge/⬇_Memo'yu_İndir-memo.bugradev.com-B08D57?style=for-the-badge" alt="İndir"/></a>
+  <a href="https://memocpp.com"><img src="https://img.shields.io/badge/⬇_Memo'yu_İndir-memocpp.com-B08D57?style=for-the-badge" alt="İndir"/></a>
 </div>
 
 ### 🏠 Self-Hosted Kurulum (masaüstü yok — Raspberry Pi, ev sunucusu, VPS)
@@ -333,7 +333,7 @@ kurmadan, sadece headless sunucuyu kurmanın iki yolu:
 
 ```bash
 # Native kurulum (Linux x86_64/arm64 — Raspberry Pi dahil — ya da macOS)
-curl -fsSL https://download.bugradev.com/get-memo-server.sh | bash
+curl -fsSL https://data.memocpp.com/get-memo-server.sh | bash
 
 # Ya da Docker / CasaOS (çoklu mimari: amd64 + arm64)
 docker compose -f docker/docker-compose.yml up -d   # bkz. docker/README.md
@@ -357,7 +357,7 @@ Self-hosting aktif olarak geliştiriliyor — yeni parçalar önce `main`'e
 düşer, etiketli bir release'e ancak sonra ulaşır. En yeni özellikleri
 hemen denemek için `get-memo-server-beta.sh`'ı kullan (her push'ta
 güncellenir, sadece release'lerde değil):
-`curl -fsSL https://download.bugradev.com/get-memo-server-beta.sh | bash`.
+`curl -fsSL https://data.memocpp.com/get-memo-server-beta.sh | bash`.
 Tam tablo için [Self-Hosting](docs/tr/SELF_HOSTED.md)'e bak.
 
 <details>
@@ -439,7 +439,7 @@ Memo **AGPL-3.0** lisanslıdır ve katkılar memnuniyetle karşılanır.
   <h3>Senin zihnin. Senin verin. Senin makinen.</h3>
   <p><a href="https://github.com/BugraAkdemir">Buğra Akdemir</a> tarafından tutkuyla geliştirildi</p>
   <br/>
-  <a href="https://memo.bugradev.com"><img src="https://img.shields.io/badge/⬇_İndir-B08D57?style=for-the-badge" alt="İndir"/></a>
+  <a href="https://memocpp.com"><img src="https://img.shields.io/badge/⬇_İndir-B08D57?style=for-the-badge" alt="İndir"/></a>
   &nbsp;
   <a href="https://github.com/BugraAkdemir/memo/stargazers"><img src="https://img.shields.io/badge/⭐_Bu_repoyu_yıldızla-0a0a0a?style=for-the-badge" alt="Yıldız"/></a>
   <br/><br/>

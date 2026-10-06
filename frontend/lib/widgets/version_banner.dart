@@ -60,7 +60,7 @@ class _VersionBannerState extends ConsumerState<VersionBanner>
   }
 
   Future<void> _openDownloadPage() async {
-    final uri = Uri.parse('https://memo.bugradev.com');
+    final uri = Uri.parse('https://memocpp.com');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }

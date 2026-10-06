@@ -10,7 +10,7 @@
 
   <br/>
 
-  <a href="https://memo.bugradev.com"><img src="https://img.shields.io/badge/⬇_Download_Now-memo.bugradev.com-B08D57?style=for-the-badge&logoColor=white" alt="Download"/></a>
+  <a href="https://memocpp.com"><img src="https://img.shields.io/badge/⬇_Download_Now-memocpp.com-B08D57?style=for-the-badge&logoColor=white" alt="Download"/></a>
   <a href="https://memocpp.com/guide"><img src="https://img.shields.io/badge/📖_Read_the_Guide-memocpp.com-1b1916?style=for-the-badge&logoColor=white" alt="Guide"/></a>
   <a href="https://github.com/BugraAkdemir/memo/stargazers"><img src="https://img.shields.io/github/stars/BugraAkdemir/memo?style=for-the-badge&color=B08D57&logo=github&logoColor=white" alt="Stars"/></a>
   <img src="https://img.shields.io/badge/License-AGPL_v3-0a0a0a?style=for-the-badge" alt="License"/>
@@ -276,8 +276,8 @@ A **Chief** model decomposes a complex task and delegates to 8 specialist roles,
 
 | Platform | Command |
 |----------|---------|
-| **Linux / macOS** | `curl -fsSL https://download.bugradev.com/get-memo.sh \| bash` |
-| **Windows** | `irm https://download.bugradev.com/get-memo.ps1 \| iex` |
+| **Linux / macOS** | `curl -fsSL https://data.memocpp.com/get-memo.sh \| bash` |
+| **Windows** | `irm https://data.memocpp.com/get-memo.ps1 \| iex` |
 
 <details>
 <summary><b>📦 What the installer does</b></summary>
@@ -295,16 +295,16 @@ A **Chief** model decomposes a complex task and delegates to 8 specialist roles,
 
 ```bash
 # Re-run the installer — auto-detects existing install and updates instead
-curl -fsSL https://download.bugradev.com/get-memo.sh | bash
+curl -fsSL https://data.memocpp.com/get-memo.sh | bash
 # Or use the dedicated updater
-curl -fsSL https://download.bugradev.com/update.sh | bash
+curl -fsSL https://data.memocpp.com/update.sh | bash
 # Uninstall (optionally backs up your memory first)
-curl -fsSL https://download.bugradev.com/uninstall.sh | bash
+curl -fsSL https://data.memocpp.com/uninstall.sh | bash
 ```
 
 ### Alternative: manual download
 
-Download the latest release from **[memo.bugradev.com](https://memo.bugradev.com)** and run:
+Download the latest release from **[memocpp.com](https://memocpp.com)** and run:
 
 | Platform | Instructions |
 |----------|-------------|
@@ -321,7 +321,7 @@ Download the latest release from **[memo.bugradev.com](https://memo.bugradev.com
 
 <div align="center">
   <br/>
-  <a href="https://memo.bugradev.com"><img src="https://img.shields.io/badge/⬇_Download_Memo-memo.bugradev.com-B08D57?style=for-the-badge" alt="Download"/></a>
+  <a href="https://memocpp.com"><img src="https://img.shields.io/badge/⬇_Download_Memo-memocpp.com-B08D57?style=for-the-badge" alt="Download"/></a>
 </div>
 
 ### 🏠 Self-Hosting (no desktop app — Raspberry Pi, home server, VPS)
@@ -333,7 +333,7 @@ Flutter GUI installed on the machine itself:
 
 ```bash
 # Native install (Linux x86_64/arm64 — Raspberry Pi included — or macOS)
-curl -fsSL https://download.bugradev.com/get-memo-server.sh | bash
+curl -fsSL https://data.memocpp.com/get-memo-server.sh | bash
 
 # Or Docker / CasaOS (multi-arch: amd64 + arm64)
 docker compose -f docker/docker-compose.yml up -d   # see docker/README.md
@@ -356,7 +356,7 @@ memo config get llama.port   # edit config.yaml from the command line
 Self-hosting is under active development — new pieces land on `main`
 first and only reach a tagged release later. For the newest features
 immediately, use `get-memo-server-beta.sh` instead (updated on every
-push, not just releases): `curl -fsSL https://download.bugradev.com/get-memo-server-beta.sh | bash`.
+push, not just releases): `curl -fsSL https://data.memocpp.com/get-memo-server-beta.sh | bash`.
 See [Self-Hosting](docs/SELF_HOSTED.md) for the full picture.
 
 <details>
@@ -438,7 +438,7 @@ Memo is **AGPL-3.0** and contributions are welcome.
   <h3>Your mind. Your data. Your machine.</h3>
   <p>Built with obsession by <a href="https://github.com/BugraAkdemir">Buğra Akdemir</a></p>
   <br/>
-  <a href="https://memo.bugradev.com"><img src="https://img.shields.io/badge/⬇_Download-B08D57?style=for-the-badge" alt="Download"/></a>
+  <a href="https://memocpp.com"><img src="https://img.shields.io/badge/⬇_Download-B08D57?style=for-the-badge" alt="Download"/></a>
   &nbsp;
   <a href="https://github.com/BugraAkdemir/memo/stargazers"><img src="https://img.shields.io/badge/⭐_Star_this_repo-0a0a0a?style=for-the-badge" alt="Star"/></a>
   <br/><br/>

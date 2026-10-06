@@ -28,15 +28,15 @@ see `.github/workflows/`) — they're for local/manual use only.
 | `download_binaries.sh` | Pulls the llama.cpp `llama-server` + `vec0` binaries (Linux CPU/NVIDIA/AMD) that get bundled into a release. Run once before the packaging scripts if `binaries/` is empty. |
 | `patch.sh` | A one-off `sed` patch from a specific past refactor (three `App` method return types → `interface{}`). Not a general-purpose tool — kept for reference, not something you'd normally run today. |
 
-## End-user installers (published to `download.bugradev.com`)
+## End-user installers (published to `data.memocpp.com`)
 
-These are what `curl -fsSL https://download.bugradev.com/<name> | bash`
+These are what `curl -fsSL https://data.memocpp.com/<name> | bash`
 actually downloads and runs on someone else's machine — **not** meant to
 be run from a repo checkout. They're tracked here as the source of truth;
 `.github/workflows/build-linux.yml`'s "Upload install/update/uninstall
 scripts to R2" step (added to close TD-3, `BUG_REPORT.md`) republishes
 every one of them verbatim on every push to `main`, so a fix merged here
-reaches `download.bugradev.com` on the next push, not on the next time
+reaches `data.memocpp.com` on the next push, not on the next time
 someone remembers to upload by hand. Add new filenames to that step's
 list too if a script here is renamed or a new one is added.
 

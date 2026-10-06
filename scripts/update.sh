@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Memo — updater for Linux / macOS.
 #
-#   curl -fsSL https://download.bugradev.com/update.sh | bash
+#   curl -fsSL https://data.memocpp.com/update.sh | bash
 #
 # Downloads the latest build and refreshes all binaries while keeping your
 # data intact — configs, memory, models, sessions, providers are never touched.
@@ -39,12 +39,12 @@ MEMO_HOME="$HOME/.memo"
 
 if [ ! -d "$MEMO_HOME" ]; then
     echo -e "${YELLOW}Memo is not installed. Run the installer first:${NC}"
-    echo -e "  ${CYAN}curl -fsSL https://download.bugradev.com/get-memo.sh | bash${NC}"
+    echo -e "  ${CYAN}curl -fsSL https://data.memocpp.com/get-memo.sh | bash${NC}"
     exit 1
 fi
 
 # ── os detection ─────────────────────────────────────────────────────────────
-DOMAIN="https://download.bugradev.com"
+DOMAIN="https://data.memocpp.com"
 APP_NAME="Memo"
 
 os="$(uname -s)"
@@ -179,7 +179,7 @@ echo -e "${GREEN}${BOLD}  Update complete!${NC}"
 echo ""
 echo -e "  ${BOLD}Updated:${NC}     binaries, engine, launcher, CLI"
 echo -e "  ${BOLD}Preserved:${NC}   config, memory, models, sessions, providers, skills, WhatsApp data"
-echo -e "  ${BOLD}Guide:${NC}      ${BLUE}https://memo.bugradev.com/guide${NC}"
+echo -e "  ${BOLD}Guide:${NC}      ${BLUE}https://memocpp.com/guide${NC}"
 echo ""
 echo -e "  Run ${CYAN}memo${NC} to launch the updated version."
 echo ""

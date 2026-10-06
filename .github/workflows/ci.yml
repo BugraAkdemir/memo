@@ -148,3 +148,26 @@ jobs:
             exit 1
           fi
           echo "OK — no hardcoded UI literals in changed Dart files."
+
+  # The old domain was sold (2026-10): anything that still points at it hands
+  # the new owner a `curl | bash` into our users' machines. Every install URL,
+  # guide link and doc now lives on memocpp.com / data.memocpp.com — fail the
+  # build if the old host creeps back. handoff.md (a historical log of what was
+  # true at the time) and this file (the guard has to name the host) are the
+  # only files allowed to mention it.
+  domain-guard:
+    name: Old-domain Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No tracked file may reference bugradev.com
+        run: |
+          set -euo pipefail
+          HITS=$(git -c core.quotepath=off grep -I -n -i 'bugradev\.com' -- . ':!handoff.md' ':!.github/workflows/ci.yml' || true)
+          if [ -n "$HITS" ]; then
+            echo "$HITS"
+            echo "::error title=Old-domain Guard::bugradev.com was sold. Use memocpp.com (site) or data.memocpp.com (R2 downloads) instead."
+            exit 1
+          fi
+          echo "OK — no references to the old domain."

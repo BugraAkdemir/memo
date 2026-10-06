@@ -99,7 +99,7 @@ func TestCmdUpdate_DeclineDoesNotRunAnything(tt *testing.T) {
 	s.cmdUpdate()
 
 	got := out.String()
-	if !strings.Contains(got, "download.bugradev.com") {
+	if !strings.Contains(got, "data.memocpp.com") {
 		tt.Errorf("cmdUpdate should show the exact command before asking, got:\n%s", got)
 	}
 	if !strings.Contains(got, t("cancelled_dot")) {

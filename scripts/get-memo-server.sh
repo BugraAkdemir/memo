@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Memo — self-hosted SERVER-ONLY installer for Linux (x86_64/arm64) / macOS.
 #
-#   curl -fsSL https://download.bugradev.com/get-memo-server.sh | bash
+#   curl -fsSL https://data.memocpp.com/get-memo-server.sh | bash
 #
 # This is get-memo.sh's headless sibling, not a rewrite: same release
 # archives (memo.tar.gz / memo_arm.zip / memo-mac.zip already bundle both
@@ -46,11 +46,11 @@ echo " | |  | | |___| |  | | |_| |"
 echo " |_|  |_|_____|_|  |_|\\___/ "
 echo -e "${NC}"
 echo -e "${BOLD}  Self-hosted server install — no desktop app, SSH/CLI-managed${NC}"
-echo -e "  ${BLUE}https://memo.bugradev.com/guide${NC}"
+echo -e "  ${BLUE}https://memocpp.com/guide${NC}"
 echo ""
 
 # ── os/arch detection ────────────────────────────────────────────────────────
-DOMAIN="https://download.bugradev.com"
+DOMAIN="https://data.memocpp.com"
 APP_NAME="Memo"
 MEMO_HOME="$HOME/.memo"
 
@@ -337,7 +337,7 @@ echo -e "    ${CYAN}memo config get/set <key>${NC}    — edit config.yaml from 
 echo -e "    ${YELLOW}Note:${NC} the service is a systemd ${CYAN}--user${NC} unit (no root/sudo) — if you use"
 echo -e "    plain systemctl yourself, include ${CYAN}--user${NC} too (bare/sudo systemctl targets"
 echo -e "    system-wide units and will fail with 'Unit memo.service not found')."
-echo -e "  ${BOLD}Guide:${NC}     ${BLUE}https://memo.bugradev.com/guide${NC}"
+echo -e "  ${BOLD}Guide:${NC}     ${BLUE}https://memocpp.com/guide${NC}"
 echo ""
 
 if command -v memo >/dev/null 2>&1; then

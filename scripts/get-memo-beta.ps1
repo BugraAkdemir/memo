@@ -1,6 +1,6 @@
 # Memo BETA — one-line installer for Windows.
 #
-#   irm https://download.bugradev.com/get-memo-beta.ps1 | iex
+#   irm https://data.memocpp.com/get-memo-beta.ps1 | iex
 #
 # Downloads the Memo Setup installer and launches it. The Inno Setup
 # installer handles everything: data dirs, config seeding, desktop/start-menu
@@ -25,11 +25,11 @@ Write-Host " |_|  |_|_____|_|  |_|\___/ " -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Local-first, privacy-focused AI assistant " -NoNewline
 Write-Host "(BETA)" -ForegroundColor Yellow
-Write-Host "  https://memo.bugradev.com/guide" -ForegroundColor Blue
+Write-Host "  https://memocpp.com/guide" -ForegroundColor Blue
 Write-Host ""
 
 # ── download ─────────────────────────────────────────────────────────────────
-$domain = "https://download.bugradev.com"
+$domain = "https://data.memocpp.com"
 $url = "$domain/memo-beta.exe"
 $dest = Join-Path $env:TEMP "Memo-Beta-Setup.exe"
 
@@ -55,7 +55,7 @@ if ($proc.ExitCode -eq 0) {
     Write-Host "  Installation complete! (BETA)" -ForegroundColor Green
     Write-Host ""
     Write-Host "  Guide: " -NoNewline
-    Write-Host "https://memo.bugradev.com/guide" -ForegroundColor Blue
+    Write-Host "https://memocpp.com/guide" -ForegroundColor Blue
     Write-Host ""
     Write-Host "  Thank you for trying the Memo BETA!" -ForegroundColor White
 } else {

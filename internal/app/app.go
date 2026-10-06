@@ -306,6 +306,11 @@ type App struct {
 	subs   *cliproxy.Manager
 	subsMu sync.Mutex
 
+	// provModels briefly caches each provider's live model list for the model
+	// selectors (see ListProviderModels).
+	provModelsMu sync.Mutex
+	provModels   map[string]providerModelsEntry
+
 	whatsappChatMode    atomic.Bool
 	whatsAppSessionID   string     // dedicated session for WhatsApp chat context
 	waSelfChatSessionID string     // dedicated session for the WhatsApp self-chat assistant (see runWhatsAppIntentLoop)

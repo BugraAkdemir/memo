@@ -296,6 +296,8 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/providers", s.requirePermission(s.handleProviders, hasModelsPerm))
 	route("/api/providers/test", s.requirePermission(s.handleProviderTest, hasModelsPerm))
 	route("/api/providers/models", s.handleProviderModels)
+	// Strict (GET too): listing models spends the provider's STORED key.
+	route("/api/providers/model", s.requirePermissionStrict(s.handleProviderModel, hasModelsPerm))
 	route("/api/providers/active", s.requirePermission(s.handleActiveProvider, hasModelsPerm))
 	route("/api/providers/effort-levels", s.requirePermission(s.handleProviderEffortLevels, hasModelsPerm))
 

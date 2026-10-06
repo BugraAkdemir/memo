@@ -323,3 +323,85 @@ func (a *App) SetProviderModel(name, model string) error {
 	}
 	return fmt.Errorf("provider %q not found", name)
 }
+
+// providerModelsTTL bounds how often a model selector being opened repeatedly
+// hits a provider's /models endpoint.
+const providerModelsTTL = 60 * time.Second
+
+type providerModelsEntry struct {
+	at   time.Time
+	list []models.ProviderModel
+}
+
+// ListProviderModels lists the models a configured provider offers (by Name)
+// and the one it currently uses. For the Subscriptions provider that is the
+// sidecar's list with vendor grouping; for any other provider it is that
+// provider's own live /models, cached briefly. The stored API key is used on
+// the server and never returned, which is why the REST route behind this is
+// gated on the models permission.
+func (a *App) ListProviderModels(ctx context.Context, name string) ([]models.ProviderModel, string, error) {
+	if a.providerCfgMgr == nil {
+		return nil, "", errors.New("provider system not initialized")
+	}
+	var cfg provider.ProviderConfig
+	found := false
+	for _, p := range a.providerCfgMgr.GetAll() {
+		if p.Name == name {
+			cfg, found = p, true
+			break
+		}
+	}
+	if !found {
+		return nil, "", fmt.Errorf("provider %q not found", name)
+	}
+
+	if isSubsMarker(cfg) {
+		m := a.subsManager()
+		var list []cliproxy.Model
+		if m.Running() {
+			l, err := m.Models(ctx)
+			if err != nil {
+				return nil, cfg.Model, err
+			}
+			list = l
+		} else {
+			list = m.CachedModels()
+		}
+		out := make([]models.ProviderModel, 0, len(list))
+		for _, md := range list {
+			out = append(out, models.ProviderModel{ID: md.ID, OwnedBy: md.OwnedBy})
+		}
+		return out, cfg.Model, nil
+	}
+
+	key := name + "|" + string(cfg.Type) + "|" + cfg.BaseURL
+	a.provModelsMu.Lock()
+	if e, ok := a.provModels[key]; ok && time.Since(e.at) < providerModelsTTL {
+		out := append([]models.ProviderModel(nil), e.list...)
+		a.provModelsMu.Unlock()
+		return out, cfg.Model, nil
+	}
+	a.provModelsMu.Unlock()
+
+	prov, err := provider.NewProvider(cfg)
+	if err != nil {
+		return nil, cfg.Model, err
+	}
+	lctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	ids, err := prov.ListModels(lctx)
+	if err != nil {
+		return nil, cfg.Model, err
+	}
+	out := make([]models.ProviderModel, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, models.ProviderModel{ID: id})
+	}
+	a.provModelsMu.Lock()
+	if a.provModels == nil {
+		a.provModels = map[string]providerModelsEntry{}
+	}
+	a.provModels[key] = providerModelsEntry{at: time.Now(), list: out}
+	a.provModelsMu.Unlock()
+	return append([]models.ProviderModel(nil), out...), cfg.Model, nil
+}

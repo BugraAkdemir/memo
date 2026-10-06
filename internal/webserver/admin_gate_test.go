@@ -96,6 +96,8 @@ func TestDestructiveEndpoints_AdminOnly(t *testing.T) {
 		// only safe as long as the POSTs are listed here.
 		{"POST", "/api/dev-gateway/google-account"},
 		{"POST", "/api/dev-gateway/claude-account"},
+		// Signing a vendor account in or out of the bundled CLIProxyAPI sidecar.
+		{"POST", "/api/subscriptions"},
 		{"POST", "/api/v1/wipe"},
 	} {
 		if st, _ := do(t, c.method, base+c.path, "user-session", "{}"); st != http.StatusForbidden {
@@ -143,5 +145,30 @@ func TestRedactSecrets_NestedAndShortValues(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("redactSecrets = %s, missing %s", got, want)
 		}
+	}
+}
+
+// The model selector's endpoint spends a STORED provider key (it lists models
+// and switches the model server-side), so it must be gated like the provider
+// list itself — unlike /api/providers/models, which only uses a key the caller
+// supplies.
+func TestProviderModelEndpoint_NeedsTheModelsPermission(t *testing.T) {
+	base := startRestricted(t)
+	for _, c := range []struct{ method, path, body string }{
+		{"GET", "/api/providers/model?name=p", ""},
+		{"PUT", "/api/providers/model", `{"name":"p","model":"x"}`},
+	} {
+		if st, _ := do(t, c.method, base+c.path, "user-session", c.body); st != http.StatusForbidden {
+			t.Errorf("%s %s without the models permission: status %d, want 403", c.method, c.path, st)
+		}
+	}
+	if st, body := do(t, "GET", base+"/api/providers/model?name=p", "admin-session", ""); st != http.StatusOK {
+		t.Errorf("GET as an account that has the permission: status %d (%s), want 200", st, body)
+	}
+	if st, _ := do(t, "GET", base+"/api/providers/model", "admin-session", ""); st != http.StatusBadRequest {
+		t.Errorf("GET without ?name: status %d, want 400", st)
+	}
+	if st, _ := do(t, "PUT", base+"/api/providers/model", "admin-session", `{"name":"p"}`); st != http.StatusBadRequest {
+		t.Errorf("PUT without a model: status %d, want 400", st)
 	}
 }

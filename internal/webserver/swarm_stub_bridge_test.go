@@ -487,10 +487,13 @@ func (b *swarmStubBridge) StartSubscriptionLogin(provider string) (string, error
 func (b *swarmStubBridge) CancelSubscriptionLogin()                               {}
 func (b *swarmStubBridge) LogoutSubscription(provider string) error               { return nil }
 func (b *swarmStubBridge) SetProviderModel(name, model string) error              { return nil }
-func (b *swarmStubBridge) GoogleAccountState() (bool, string, string)             { return false, "", "" }
-func (b *swarmStubBridge) StartGoogleAuth() (string, error)                       { return "", nil }
-func (b *swarmStubBridge) SetGoogleAccountModel(model string) error               { return nil }
-func (b *swarmStubBridge) DisconnectGoogleAccount() error                         { return nil }
+func (b *swarmStubBridge) ListProviderModels(ctx context.Context, name string) ([]models.ProviderModel, string, error) {
+	return nil, "", nil
+}
+func (b *swarmStubBridge) GoogleAccountState() (bool, string, string) { return false, "", "" }
+func (b *swarmStubBridge) StartGoogleAuth() (string, error)           { return "", nil }
+func (b *swarmStubBridge) SetGoogleAccountModel(model string) error   { return nil }
+func (b *swarmStubBridge) DisconnectGoogleAccount() error             { return nil }
 func (b *swarmStubBridge) ClaudeAccountState() (bool, string, string, string) {
 	return false, "", "", ""
 }

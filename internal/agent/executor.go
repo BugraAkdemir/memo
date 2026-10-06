@@ -304,6 +304,16 @@ func modelContextWindow(router *provider.Router, modelName string) int {
 				return 200 * 1024
 			case provider.ProviderClaude, provider.ProviderCustomAnthropic:
 				return 200 * 1024
+			case provider.ProviderCustom:
+				// An OpenAI-compatible gateway can front any family, so the
+				// type says nothing; the model id does (Claude 200K, Gemini 1M).
+				name := modelName
+				if name == "" {
+					name = p.Model
+				}
+				if w := provider.ContextWindowForModel(name); w > 0 {
+					return w
+				}
 			}
 		}
 	}

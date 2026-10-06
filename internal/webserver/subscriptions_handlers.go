@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"memo/internal/models"
 )
 
 // handleSubscriptions serves Settings -> Subscriptions, the bundled
@@ -63,5 +65,66 @@ func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 
 	default:
 		http.Error(w, "GET or POST only", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleProviderModel is the model selector's endpoint (chat top bar, /model).
+//
+//   - GET ?name=<provider> -> {"models":[{id,owned_by}], "current": "<model>"}
+//     the provider's live model list; the stored key is used on the server and
+//     never returned.
+//   - PUT {"name","model","activate"} -> switches that provider's model,
+//     rewriting only Model (every other setting survives); with activate it
+//     also makes the provider the active one, so a selector needs one call.
+//
+// Gated on the models permission at the route: unlike /api/providers/models
+// (which takes a key from the caller), this one spends a STORED key.
+func (s *Server) handleProviderModel(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		name := strings.TrimSpace(r.URL.Query().Get("name"))
+		if name == "" {
+			http.Error(w, "name is required", http.StatusBadRequest)
+			return
+		}
+		list, current, err := s.fullBridge.ListProviderModels(r.Context(), name)
+		if err != nil {
+			writeJSON(w, map[string]any{"models": []models.ProviderModel{}, "current": current, "error": err.Error()})
+			return
+		}
+		if list == nil {
+			list = []models.ProviderModel{}
+		}
+		writeJSON(w, map[string]any{"models": list, "current": current})
+
+	case http.MethodPut:
+		var body struct {
+			Name     string `json:"name"`
+			Model    string `json:"model"`
+			Activate bool   `json:"activate"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(body.Name) == "" || strings.TrimSpace(body.Model) == "" {
+			http.Error(w, "name and model are required", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetProviderModel(body.Name, body.Model); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body.Activate {
+			s.fullBridge.SetActiveProvider(body.Name)
+		}
+		writeJSON(w, map[string]any{"ok": true})
+
+	default:
+		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
 	}
 }

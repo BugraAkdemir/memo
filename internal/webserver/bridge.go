@@ -292,6 +292,10 @@ type FullBridge interface {
 	// SetProviderModel changes one configured provider's model by Name,
 	// preserving the rest of its config (the model selectors use this).
 	SetProviderModel(name, model string) error
+	// ListProviderModels lists the models a configured provider (by Name)
+	// offers live, plus the one it currently uses. The stored key is used
+	// server-side and never returned.
+	ListProviderModels(ctx context.Context, name string) ([]models.ProviderModel, string, error)
 
 	// Providers
 	GetProviders() []provider.ProviderConfig

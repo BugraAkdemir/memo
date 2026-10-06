@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"memo/internal/logx"
+	"memo/internal/provider"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -46,6 +47,16 @@ func (a *App) contextBudgetFor(providerName string) int {
 		for _, p := range a.providerCfgMgr.GetEnabled() {
 			if p.Name == providerName && p.ContextTokens > 0 {
 				return p.ContextTokens
+			}
+		}
+		// An OpenAI-compatible gateway (custom) can front any model family, so
+		// the model id decides when nothing was configured (see
+		// provider.ContextWindowForModel).
+		for _, p := range a.providerCfgMgr.GetEnabled() {
+			if p.Name == providerName && p.Type == provider.ProviderCustom {
+				if w := provider.ContextWindowForModel(p.Model); w > 0 {
+					return w
+				}
 			}
 		}
 	}

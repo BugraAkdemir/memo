@@ -6,6 +6,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -182,6 +184,25 @@ func TestSubscriptions_LoginToChat(t *testing.T) {
 		t.Errorf("sidecar model leaked into the custom/ namespace: %v", gw)
 	}
 
+	// 4b. The selectors read the live list over REST, grouped by vendor, and
+	// never see the stored key.
+	var listed struct {
+		Models  []models.ProviderModel `json:"models"`
+		Current string                 `json:"current"`
+	}
+	lresp := h.getJSON("/api/providers/model?name=Subscriptions")
+	raw, _ := io.ReadAll(lresp.Body)
+	lresp.Body.Close()
+	if strings.Contains(string(raw), "api_key") || strings.Contains(string(raw), p.APIKey) {
+		t.Errorf("model list response leaks the stored key: %s", raw)
+	}
+	if err := json.Unmarshal(raw, &listed); err != nil {
+		t.Fatalf("model list JSON: %v (%s)", err, raw)
+	}
+	if listed.Current != "antigravity-model-b" || len(listed.Models) != 2 || listed.Models[0].OwnedBy != "antigravity" {
+		t.Errorf("model list = %+v", listed)
+	}
+
 	// 5. A real chat turn through the Subscriptions provider.
 	h.SetAgentEnabled(false)
 	h.SetWebSearchEnabled(false)
@@ -194,9 +215,20 @@ func TestSubscriptions_LoginToChat(t *testing.T) {
 
 	// 6. Switching the model rewrites the provider's model and the NEXT turn
 	// uses it — without touching the rest of the config.
-	if err := h.App.SetProviderModel("Subscriptions", "antigravity-model-a"); err != nil {
-		t.Fatal(err)
+	h.App.SetActiveProvider("") // so the PUT below has to activate it itself
+	sresp := h.putJSON("/api/providers/model", map[string]any{"name": "Subscriptions", "model": "antigravity-model-a", "activate": true})
+	if sresp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT /api/providers/model = %d", sresp.StatusCode)
 	}
+	sresp.Body.Close()
+	if got := h.App.GetActiveProvider(); got != "Subscriptions" {
+		t.Errorf("active provider after activate = %q", got)
+	}
+	bad := h.putJSON("/api/providers/model", map[string]any{"name": "no-such-provider", "model": "x"})
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Errorf("switching an unknown provider = %d, want 400", bad.StatusCode)
+	}
+	bad.Body.Close()
 	p2, _ := h.providerNamed(t, "Subscriptions")
 	if p2.Model != "antigravity-model-a" || p2.BaseURL != p.BaseURL || p2.APIKey != p.APIKey {
 		t.Errorf("after switch: %+v (was %+v)", p2, p)

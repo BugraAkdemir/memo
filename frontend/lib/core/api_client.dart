@@ -19,6 +19,7 @@ import '../models/minimal_mode_overrides.dart';
 import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
 import '../models/provider_models.dart';
+import '../models/subscriptions.dart';
 import '../models/server_browse_entry.dart';
 import '../models/dev_gateway.dart';
 import '../models/dream.dart';
@@ -2173,6 +2174,35 @@ class MemoApiClient {
       data: {'type': type, 'api_key': apiKey, 'base_url': baseUrl ?? ''},
     );
     return _guard<Map<String, dynamic>>(res.data);
+  }
+
+  // ─── Subscriptions (bundled CLIProxyAPI sidecar) ─────────────────
+
+  /// Settings → Subscriptions state. Side-effect free: it never starts the
+  /// sidecar, so reading it is always safe.
+  Future<SubscriptionsState> getSubscriptions() async {
+    final res = await _dio.get('/api/subscriptions');
+    return SubscriptionsState.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  /// Begins a browser sign-in for [provider] (antigravity | claude | codex) and
+  /// returns the vendor URL. The sidecar opens the browser itself; the URL is
+  /// the copyable fallback. Poll [getSubscriptions] until the account appears.
+  Future<String> startSubscriptionLogin(String provider) async {
+    final res = await _dio.post('/api/subscriptions', data: {'action': 'login', 'provider': provider});
+    return _guard<Map<String, dynamic>>(res.data)['auth_url'] as String? ?? '';
+  }
+
+  Future<SubscriptionsState> cancelSubscriptionLogin() async {
+    final res = await _dio.post('/api/subscriptions', data: {'action': 'cancel_login'});
+    return SubscriptionsState.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  /// Removes [provider]'s stored credential; with no account left the backend
+  /// also stops the sidecar and removes the Subscriptions provider.
+  Future<SubscriptionsState> logoutSubscription(String provider) async {
+    final res = await _dio.post('/api/subscriptions', data: {'action': 'logout', 'provider': provider});
+    return SubscriptionsState.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   /// The live model list of a CONFIGURED provider (by name) plus the model it

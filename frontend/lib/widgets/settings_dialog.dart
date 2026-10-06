@@ -33,7 +33,7 @@ import 'settings/tabs/report_bug_tab.dart';
 import 'settings/tabs/whatsapp_tab.dart';
 import 'settings/tabs/telegram_tab.dart';
 import 'settings/tabs/live_mode_tab.dart';
-import 'settings/tabs/gemini_subscription_tab.dart';
+import 'settings/tabs/subscriptions_tab.dart';
 import 'settings/tabs/code_submode_prompts_tab.dart';
 
 /// Settings dialog: a searchable, grouped rail on the left, tab content on
@@ -104,7 +104,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/whatsapp-logo.svg', // WhatsApp
     'lib/icon/slash/telegram-logo.svg', // Telegram
     'lib/icon/slash/microphone.svg', // Live Mode
-    'lib/icon/slash/key.svg', // Gemini Subscription
+    'lib/icon/slash/key.svg', // Subscriptions
     'lib/icon/slash/code.svg', // Code Mode Prompts
   ];
 
@@ -146,7 +146,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_whatsapp'),
     L10n.t('tab_telegram'),
     L10n.t('tab_live_mode'),
-    L10n.t('tab_gemini_subscription'),
+    L10n.t('tab_subscriptions'),
     L10n.t('code_submode_prompts_tab_title'),
   ];
 
@@ -163,19 +163,8 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     if (!perms.memory) hidden.addAll([3, 4, 21]); // Memory, Memory Import, Dream
     if (!perms.whatsapp) hidden.add(22);
     if (!perms.telegram) hidden.add(23);
-    if (!perms.models || !_betaEnabled()) hidden.add(25); // Gemini Subscription
+    if (!perms.models) hidden.add(25); // Subscriptions
     return hidden;
-  }
-
-  /// Same backend-truth-first pattern as app_shell.dart's _showSwarmNav():
-  /// the backend's cfg.Beta (via remoteAccessProvider's "beta" key) is
-  /// authoritative once it has actually answered — tested by key presence,
-  /// not by non-null, since a swallowed provider failure also resolves to a
-  /// non-null map. Falls back to the local mirror only while waiting.
-  bool _betaEnabled() {
-    final ra = ref.watch(remoteAccessProvider).valueOrNull;
-    if (ra != null && ra.containsKey('beta')) return ra['beta'] == true;
-    return ref.watch(betaFeaturesProvider);
   }
 
   @override
@@ -391,7 +380,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 22: return const WhatsAppTab();
       case 23: return const TelegramTab();
       case 24: return const LiveModeTab();
-      case 25: return const GeminiSubscriptionTab();
+      case 25: return const SubscriptionsTab();
       case 26: return const CodeSubModePromptsTab();
       default: return const SizedBox.shrink();
     }

@@ -14,6 +14,7 @@ import '../models/gpu_info.dart';
 import '../models/live_mode_config.dart';
 import '../models/live_mode_engine_config.dart';
 import '../models/minimal_mode_overrides.dart';
+import '../models/subscriptions.dart';
 import '../models/usage_stats.dart';
 import 'auth_gate_provider.dart';
 import 'chat_provider.dart';
@@ -586,6 +587,42 @@ class ClaudeCodeCLIConnectedNotifier extends AsyncNotifier<ClaudeCodeCLIState> {
           baseUrl: baseUrl,
           model: model,
         );
+    state = AsyncValue.data(next);
+  }
+}
+
+// ── Subscriptions (bundled CLIProxyAPI sidecar) ─────────────────────────────
+
+final subscriptionsProvider =
+    AsyncNotifierProvider<SubscriptionsNotifier, SubscriptionsState>(
+      SubscriptionsNotifier.new,
+    );
+
+/// Settings → Subscriptions. Holds the sidecar's state (accounts, models, the
+/// sign-in in flight); the widget drives the sign-in dance (start, poll) and
+/// this notifier loads state and performs sign-out. Mounted only while that
+/// tab is open, but still degrades quietly behind a blocked auth gate like
+/// every other settings provider.
+class SubscriptionsNotifier extends AsyncNotifier<SubscriptionsState> {
+  @override
+  Future<SubscriptionsState> build() async {
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      return const SubscriptionsState();
+    }
+    return ref.read(apiClientProvider).getSubscriptions();
+  }
+
+  Future<void> reload() async {
+    state = await AsyncValue.guard(() => ref.read(apiClientProvider).getSubscriptions());
+  }
+
+  Future<void> logout(String provider) async {
+    final next = await ref.read(apiClientProvider).logoutSubscription(provider);
+    state = AsyncValue.data(next);
+  }
+
+  Future<void> cancelLogin() async {
+    final next = await ref.read(apiClientProvider).cancelSubscriptionLogin();
     state = AsyncValue.data(next);
   }
 }

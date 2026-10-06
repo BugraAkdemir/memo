@@ -515,6 +515,29 @@ class L10n {
     'dev_gateway_claude_cli_model_disabled_hint':
         'Model seçmeden önce yukarıdan bağlan.',
     'tab_gemini_subscription': 'Gemini Aboneliği',
+    'tab_subscriptions': 'Abonelikler',
+    'subs_desc':
+        "Antigravity, Claude veya Codex hesabınla giriş yap; o hesabın bütün modelleri sohbetteki model seçicide, /model komutunda ve yerel :8090/v1 geçidinde kullanılabilir olur. İşi Memo'nun içinde gelen CLIProxyAPI yapar; internetten bir şey indirilmez.",
+    'subs_risk_note':
+        'Bu hesaplar üçüncü taraf bir istemci üzerinden kullanılır; sağlayıcılar buna izin vermeyebilir ve hesabını kısıtlayabilir. Kendi sorumluluğunda kullan.',
+    'subs_not_bundled': "Bu sürüm CLIProxyAPI'yi içermiyor.",
+    'subs_sidecar_version': 'CLIProxyAPI {version}',
+    'subs_running': 'çalışıyor',
+    'subs_stopped': 'durdu',
+    'subs_signed_in': 'Giriş yapıldı',
+    'subs_signed_in_as': '{email} olarak giriş yapıldı',
+    'subs_not_signed_in': 'Giriş yapılmadı',
+    'subs_sign_in': 'Giriş yap',
+    'subs_sign_out': 'Çıkış yap',
+    'subs_waiting': 'Tarayıcıda girişi tamamlamanı bekliyorum…',
+    'subs_link_hint': 'Tarayıcı açılmadıysa bu bağlantıyı kopyalayıp aç:',
+    'subs_login_failed': 'Giriş tamamlanamadı: {e}',
+    'subs_error': 'Abonelik hatası: {e}',
+    'subs_models_title': 'Kullanılabilir modeller',
+    'subs_models_none': 'Henüz model yok — giriş yapınca burada listelenir.',
+    'subs_models_count': '{n} model kullanılabilir',
+    'subs_models_hint':
+        'Modeli sohbetin sağ üstündeki model seçiciden veya /model komutuyla seç. Geliştirici sekmesindeki :8090/v1 geçidinde "subs/<model>" olarak görünür.',
     'google_account_connect_label': 'Google Hesabını Bağla (Gemini aboneliği)',
     'google_account_connect_desc':
         'Google AI Pro/Ultra aboneliğine sahip bir hesabı bağla; Gemini modelleri hem Memo sohbetinde hem de yerel ağ geçidinde (localhost:8090/v1) "gemini-sub/model" olarak kullanılabilir. Tarayıcıda giriş yaparsın, kayıt/anahtar gerekmez.',
@@ -2838,6 +2861,29 @@ class L10n {
     'dev_gateway_claude_cli_model_disabled_hint':
         'Connect above before picking a model.',
     'tab_gemini_subscription': 'Gemini Subscription',
+    'tab_subscriptions': 'Subscriptions',
+    'subs_desc':
+        "Sign in with an Antigravity, Claude or Codex account and every model that account offers becomes available in the chat's model selector, the /model command and the local :8090/v1 gateway. CLIProxyAPI, which ships inside Memo, does the work; nothing is downloaded from the internet.",
+    'subs_risk_note':
+        "These accounts are used through a third-party client. The providers may not allow that and could restrict your account. Use at your own risk.",
+    'subs_not_bundled': 'This build does not include CLIProxyAPI.',
+    'subs_sidecar_version': 'CLIProxyAPI {version}',
+    'subs_running': 'running',
+    'subs_stopped': 'stopped',
+    'subs_signed_in': 'Signed in',
+    'subs_signed_in_as': 'Signed in as {email}',
+    'subs_not_signed_in': 'Not signed in',
+    'subs_sign_in': 'Sign in',
+    'subs_sign_out': 'Sign out',
+    'subs_waiting': 'Waiting for you to finish signing in in the browser…',
+    'subs_link_hint': 'If the browser did not open, copy this link and open it:',
+    'subs_login_failed': 'Sign-in did not complete: {e}',
+    'subs_error': 'Subscription error: {e}',
+    'subs_models_title': 'Available models',
+    'subs_models_none': 'No models yet — they are listed here once you sign in.',
+    'subs_models_count': '{n} models available',
+    'subs_models_hint':
+        'Pick the model in the chat\'s model selector (top right) or with /model. In the :8090/v1 gateway on the Developer tab they appear as "subs/<model>".',
     'google_account_connect_label': 'Connect Google Account (Gemini subscription)',
     'google_account_connect_desc':
         'Connect an account with a Google AI Pro/Ultra subscription; Gemini models become usable as "gemini-sub/model" both in Memo chat and on the local gateway (localhost:8090/v1). You sign in in the browser — nothing to register, no key.',

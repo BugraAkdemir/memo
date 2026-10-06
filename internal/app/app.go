@@ -20,6 +20,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/browserengine"
 	"memo/internal/calendar"
+	"memo/internal/cliproxy"
 	"memo/internal/cloudsync"
 	"memo/internal/config"
 	"memo/internal/database"
@@ -300,6 +301,10 @@ type App struct {
 	remoteAccessEnabled bool
 	ngrokServer         *ngrok.Manager
 	tailscaleTunnel     *tunnel.Tailscale
+
+	// subs is the CLIProxyAPI sidecar manager (see subs.go), created lazily.
+	subs   *cliproxy.Manager
+	subsMu sync.Mutex
 
 	whatsappChatMode    atomic.Bool
 	whatsAppSessionID   string     // dedicated session for WhatsApp chat context
@@ -706,6 +711,10 @@ func (a *App) Startup(ctx context.Context) {
 	// and only then is a Claude Code / setup-token login already on this
 	// machine adopted so it works with no click at all.
 	a.syncClaudeSubWithBeta()
+	// Subscriptions: if a vendor account is already signed in, bring the
+	// bundled CLIProxyAPI sidecar up in the background and (re)register its
+	// provider with the sidecar's current port/key. Never blocks startup.
+	goRecover("startSubscriptions", a.startSubscriptions)
 	tools.Configurator = a
 	tools.Routines = routineToolAdapter{a}
 	tools.FileSender = fileToolAdapter{a}
@@ -1038,6 +1047,7 @@ func (a *App) shutdownSync(ctx context.Context) {
 		a.ngrokServer = nil
 		stop("ngrok", ngrokServer.Stop)
 	}
+	stop("subscriptions sidecar", func() error { a.stopSubscriptions(); return nil })
 	if a.tailscaleTunnel != nil {
 		stop("tailscale", func() error { a.tailscaleTunnel.Stop(); return nil })
 	}

@@ -21,6 +21,10 @@ func TestIsSessionProviderName(t *testing.T) {
 		{Name: "Codex", Type: provider.ProviderCodexCLI},
 		{Name: "Google — Gemini (subscription)", Type: provider.ProviderGeminiSub},
 		{Name: "My OpenAI", Type: provider.ProviderOpenAI},
+		// The Subscriptions provider is a plain custom type, told apart by
+		// name; a user's own custom provider with another name is not session.
+		{Name: subsProviderName, Type: provider.ProviderCustom},
+		{Name: "My Own Endpoint", Type: provider.ProviderCustom},
 	}
 
 	tests := []struct {
@@ -31,6 +35,8 @@ func TestIsSessionProviderName(t *testing.T) {
 		{"Codex", true},
 		{"Google — Gemini (subscription)", true},
 		{"My OpenAI", false},
+		{subsProviderName, true},
+		{"My Own Endpoint", false},
 		{"unknown-provider", false},
 		{"", false},
 	}

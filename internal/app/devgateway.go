@@ -101,6 +101,17 @@ func (a *App) ListGatewayModels() []models.GatewayModel {
 	a.providerMu.RUnlock()
 	if cfgMgr != nil {
 		for _, p := range cfgMgr.GetEnabled() {
+			// Subscriptions: expand to every model the signed-in vendor accounts
+			// expose through the bundled sidecar, so external tools see the
+			// same list the model selector does ("subs/<model-id>").
+			if isSubsMarker(p) {
+				for _, md := range a.subsManager().CachedModels() {
+					out = append(out, models.GatewayModel{ID: subsGatewayPrefix + "/" + md.ID, Type: subsGatewayPrefix})
+				}
+				// Never list it as "custom/<model>": that spelling is for the
+				// user's own custom providers and would route to the wrong one.
+				continue
+			}
 			// gemini-sub: expand to the account's real (cached) model list
 			// when we have one, so external tools see every usable Gemini
 			// model, not just the marker's default.
@@ -163,6 +174,19 @@ func (a *App) resolveGatewayProvider(typ, modelID string) (provider.Provider, pr
 	}
 	var matched *provider.ProviderConfig
 	for _, p := range cfgMgr.GetEnabled() {
+		// "subs/<model>" is not a provider type: it names the Subscriptions
+		// provider (a custom config) by its Name.
+		if strings.EqualFold(typ, subsGatewayPrefix) {
+			if isSubsMarker(p) {
+				pc := p
+				matched = &pc
+				break
+			}
+			continue
+		}
+		if isSubsMarker(p) {
+			continue // reachable only as "subs/<model>", never as "custom/<model>"
+		}
 		if strings.EqualFold(string(p.Type), typ) {
 			pc := p
 			matched = &pc

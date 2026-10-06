@@ -449,6 +449,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/dev-gateway/models", s.handleDevGatewayModels)
 	route("/api/dev-gateway/logs", s.adminOnly(s.handleDevGatewayLogs))
 	route("/api/dev-gateway/claude-code-cli", s.adminWrites(s.handleClaudeCodeCLIConnection))
+	route("/api/subscriptions", s.adminWrites(s.handleSubscriptions))
 	route("/api/dev-gateway/google-account", s.adminWrites(s.handleGoogleAccountConnection))
 	route("/api/dev-gateway/claude-account", s.adminWrites(s.handleClaudeAccountConnection))
 	mux.HandleFunc("/v1/messages", s.handleAnthropicMessages)

@@ -252,6 +252,13 @@ func (a *App) reinitProviderAndOrchestra() {
 func isSessionProviderName(name string, configs []provider.ProviderConfig) bool {
 	for _, p := range configs {
 		if p.Name == name {
+			// The Subscriptions provider is a plain custom type, so it is told
+			// apart by name: like the old per-vendor subscription providers it
+			// spends a signed-in account's quota, so it must be re-selected on
+			// purpose rather than silently restored for a brand-new chat.
+			if isSubsMarker(p) {
+				return true
+			}
 			return p.Type == provider.ProviderClaudeCodeCLI ||
 				p.Type == provider.ProviderCodexCLI ||
 				p.Type == provider.ProviderGeminiSub ||

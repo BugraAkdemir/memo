@@ -480,10 +480,17 @@ func (b *swarmStubBridge) GetClaudeCodeCLIConnected() bool                  { re
 func (b *swarmStubBridge) GetClaudeCodeCLIModel() string                    { return "" }
 func (b *swarmStubBridge) ConnectClaudeCodeCLI(baseURL, model string) error { return nil }
 func (b *swarmStubBridge) DisconnectClaudeCodeCLI() error                   { return nil }
-func (b *swarmStubBridge) GoogleAccountState() (bool, string, string)       { return false, "", "" }
-func (b *swarmStubBridge) StartGoogleAuth() (string, error)                 { return "", nil }
-func (b *swarmStubBridge) SetGoogleAccountModel(model string) error         { return nil }
-func (b *swarmStubBridge) DisconnectGoogleAccount() error                   { return nil }
+func (b *swarmStubBridge) SubscriptionsState(ctx context.Context) models.SubscriptionsState {
+	return models.SubscriptionsState{}
+}
+func (b *swarmStubBridge) StartSubscriptionLogin(provider string) (string, error) { return "", nil }
+func (b *swarmStubBridge) CancelSubscriptionLogin()                               {}
+func (b *swarmStubBridge) LogoutSubscription(provider string) error               { return nil }
+func (b *swarmStubBridge) SetProviderModel(name, model string) error              { return nil }
+func (b *swarmStubBridge) GoogleAccountState() (bool, string, string)             { return false, "", "" }
+func (b *swarmStubBridge) StartGoogleAuth() (string, error)                       { return "", nil }
+func (b *swarmStubBridge) SetGoogleAccountModel(model string) error               { return nil }
+func (b *swarmStubBridge) DisconnectGoogleAccount() error                         { return nil }
 func (b *swarmStubBridge) ClaudeAccountState() (bool, string, string, string) {
 	return false, "", "", ""
 }

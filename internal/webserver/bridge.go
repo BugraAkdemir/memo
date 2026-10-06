@@ -282,6 +282,17 @@ type FullBridge interface {
 	// the first GET after connecting legitimately returns null.
 	ClaudeCapabilities() map[string]any
 
+	// Subscriptions: the bundled CLIProxyAPI sidecar that exposes
+	// Antigravity / Claude / Codex accounts as one OpenAI-compatible provider
+	// (internal/app/subs.go). SubscriptionsState never starts anything.
+	SubscriptionsState(ctx context.Context) models.SubscriptionsState
+	StartSubscriptionLogin(provider string) (string, error)
+	CancelSubscriptionLogin()
+	LogoutSubscription(provider string) error
+	// SetProviderModel changes one configured provider's model by Name,
+	// preserving the rest of its config (the model selectors use this).
+	SetProviderModel(name, model string) error
+
 	// Providers
 	GetProviders() []provider.ProviderConfig
 	UpdateProvider(cfg provider.ProviderConfig) error

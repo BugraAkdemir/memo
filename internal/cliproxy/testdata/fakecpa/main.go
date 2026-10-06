@@ -1,7 +1,7 @@
 // fakecpa stands in for the CLIProxyAPI binary in Memo's tests. It speaks just
 // enough of the real one's surface to exercise the lifecycle code:
 //
-//	fakecpa -config cfg.yaml                 serve /v1/models (Bearer-key gated)
+//	fakecpa -config cfg.yaml                 serve /v1/models + /v1/chat/completions (Bearer-key gated)
 //	fakecpa -config cfg.yaml -<p>-login      print an authorize URL, write a credential, exit
 //
 // Knobs (env): FAKECPA_LOGIN_DELAY_MS, FAKECPA_LOGIN_FAIL=1, FAKECPA_CRASH_ONCE_MS.
@@ -78,6 +78,45 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": out})
+	})
+	// Just enough of chat/completions to prove a client sends the right model and
+	// key: the reply names the model it was asked for.
+	http.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+key {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		var req struct {
+			Model  string `json:"model"`
+			Stream bool   `json:"stream"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		text := "pong from " + req.Model
+		if !req.Stream {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "x", "object": "chat.completion", "model": req.Model,
+				"choices": []map[string]any{{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": text}}},
+				"usage":   map[string]any{"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10},
+			})
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		chunk := func(delta map[string]any, finish any, usage any) {
+			c := map[string]any{"id": "x", "object": "chat.completion.chunk", "model": req.Model,
+				"choices": []map[string]any{{"index": 0, "delta": delta, "finish_reason": finish}}}
+			if usage != nil {
+				c["usage"] = usage
+			}
+			b, _ := json.Marshal(c)
+			fmt.Fprintf(w, "data: %s\n\n", b)
+			fl.Flush()
+		}
+		chunk(map[string]any{"role": "assistant", "content": text}, nil, nil)
+		chunk(map[string]any{}, "stop", map[string]any{"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10})
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		fl.Flush()
 	})
 	fmt.Println("API server started successfully on: 127.0.0.1:" + port)
 	if err := http.ListenAndServe("127.0.0.1:"+port, nil); err != nil {

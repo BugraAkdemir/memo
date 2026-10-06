@@ -345,7 +345,10 @@ func firstAgentReq(t *testing.T, bodies []string) capturedReq {
 // category exists (async fire-and-forget write from finishStream).
 func (h *lsHarness) waitUsageCategory(t *testing.T, category string) stats.CategoryUsage {
 	t.Helper()
-	deadline := time.After(3 * time.Second)
+	// The usage row is written fire-and-forget (`go recordUsageEvent`), so on a
+	// loaded runner it can trail the turn by well over a few ticks — 3s flaked
+	// once under a full -race suite. Waiting longer costs nothing when it lands.
+	deadline := time.After(15 * time.Second)
 	for {
 		sum := h.usageSummary(t)
 		for _, c := range sum.CategoryBreakdown {
@@ -355,7 +358,7 @@ func (h *lsHarness) waitUsageCategory(t *testing.T, category string) stats.Categ
 		}
 		select {
 		case <-deadline:
-			t.Fatalf("no %q usage row after 3s; breakdown=%+v", category, sum.CategoryBreakdown)
+			t.Fatalf("no %q usage row after 15s; breakdown=%+v", category, sum.CategoryBreakdown)
 		case <-time.After(20 * time.Millisecond):
 		}
 	}

@@ -126,6 +126,37 @@ func (c *Client) ListProviders(ctx context.Context) ([]ProviderConfig, error) {
 	return providers, nil
 }
 
+// ProviderModel is one model an external provider offers (GET
+// /api/providers/model). OwnedBy is set only when the provider says whose model
+// it is — the Subscriptions sidecar does (antigravity, claude, codex).
+type ProviderModel struct {
+	ID      string `json:"id"`
+	OwnedBy string `json:"owned_by"`
+}
+
+// ProviderModelList is a provider's live model list plus the model it uses now.
+type ProviderModelList struct {
+	Models  []ProviderModel `json:"models"`
+	Current string          `json:"current"`
+	Error   string          `json:"error"`
+}
+
+// ListProviderModels returns the live models of a CONFIGURED provider (by
+// name). The backend uses the stored key; it is never sent back.
+func (c *Client) ListProviderModels(ctx context.Context, name string) (ProviderModelList, error) {
+	var list ProviderModelList
+	err := c.doJSON(ctx, http.MethodGet, "/api/providers/model?name="+url.QueryEscape(name), nil, &list)
+	return list, err
+}
+
+// SetProviderModel switches one provider's model and nothing else about it.
+// Prefer this over UpdateProvider for a model change: UpdateProvider rebuilds
+// the config from this package's partial ProviderConfig mirror and would zero
+// temperature, top_p and max_tokens.
+func (c *Client) SetProviderModel(ctx context.Context, name, model string) error {
+	return c.doJSON(ctx, http.MethodPut, "/api/providers/model", map[string]any{"name": name, "model": model}, nil)
+}
+
 // ActiveProviderName returns the name of the currently active external
 // provider, or "" if none is active (routing to the local model instead).
 func (c *Client) ActiveProviderName(ctx context.Context) (string, error) {

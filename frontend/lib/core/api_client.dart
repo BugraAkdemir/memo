@@ -18,6 +18,7 @@ import '../models/local_model.dart';
 import '../models/minimal_mode_overrides.dart';
 import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
+import '../models/provider_models.dart';
 import '../models/server_browse_entry.dart';
 import '../models/dev_gateway.dart';
 import '../models/dream.dart';
@@ -2172,6 +2173,20 @@ class MemoApiClient {
       data: {'type': type, 'api_key': apiKey, 'base_url': baseUrl ?? ''},
     );
     return _guard<Map<String, dynamic>>(res.data);
+  }
+
+  /// The live model list of a CONFIGURED provider (by name) plus the model it
+  /// currently uses. The stored API key is used on the backend and never comes
+  /// back. [ProviderModelList.error] says why the list is empty when it failed.
+  Future<ProviderModelList> listProviderModels(String name) async {
+    final res = await _dio.get('/api/providers/model', queryParameters: {'name': name});
+    return ProviderModelList.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  /// Switch one provider's model, changing nothing else about its config. With
+  /// [activate] it also becomes the active provider — a selector needs one call.
+  Future<void> setProviderModel(String name, String model, {bool activate = false}) async {
+    await _dio.put('/api/providers/model', data: {'name': name, 'model': model, 'activate': activate});
   }
 
   /// Get active provider.

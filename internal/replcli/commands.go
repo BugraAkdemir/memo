@@ -86,7 +86,7 @@ func (s *session) showCommandMenu() bool {
 	case "/models":
 		s.cmdModels()
 	case "/model":
-		s.pickAndStartModel(false)
+		s.cmdModel(nil)
 	case "/embedding":
 		s.pickAndStartModel(true)
 	case "/model-download":
@@ -462,7 +462,79 @@ func (s *session) cmdModels() {
 	}
 }
 
+// pickExternalModel handles /model while an external provider is active and
+// offers a model list — the Subscriptions provider fronts every signed-in
+// vendor account, so "/model" must list THOSE models, not local GGUF files.
+// It reports whether it dealt with the command; false means "not applicable,
+// carry on with the local-model behavior" (no external provider, no list, no
+// terminal for a menu, or a typed name that matches none of its models).
+func (s *session) pickExternalModel(args []string) bool {
+	active, err := s.client.ActiveProviderName(s.ctx)
+	if err != nil || active == "" {
+		return false
+	}
+	list, err := s.client.ListProviderModels(s.ctx, active)
+	if err != nil || len(list.Models) == 0 {
+		return false
+	}
+
+	if len(args) == 0 {
+		if s.keys == nil {
+			return false
+		}
+		items := make([]menuItem, len(list.Models))
+		for i, m := range list.Models {
+			hint := m.OwnedBy
+			if m.ID == list.Current {
+				if hint != "" {
+					hint += " · "
+				}
+				hint += t("current_marker")
+			}
+			items[i] = menuItem{Label: m.ID, Hint: hint}
+		}
+		idx := selectFromMenu(s.out, s.keys, fmt.Sprintf(t("menu_title_pick_provider_model"), active), items)
+		if idx < 0 {
+			fmt.Fprintln(s.out, dim(t("cancelled_dot")))
+			return true
+		}
+		s.switchProviderModel(active, list.Models[idx].ID)
+		return true
+	}
+
+	// A typed name: an exact id wins, otherwise a substring that matches
+	// exactly one model. Anything else is not ours to guess at.
+	query := strings.ToLower(strings.TrimSpace(strings.Join(args, " ")))
+	var partial []string
+	for _, m := range list.Models {
+		id := strings.ToLower(m.ID)
+		if id == query {
+			s.switchProviderModel(active, m.ID)
+			return true
+		}
+		if strings.Contains(id, query) {
+			partial = append(partial, m.ID)
+		}
+	}
+	if len(partial) == 1 {
+		s.switchProviderModel(active, partial[0])
+		return true
+	}
+	return false
+}
+
+func (s *session) switchProviderModel(provider, model string) {
+	if err := s.client.SetProviderModel(s.ctx, provider, model); err != nil {
+		fmt.Fprintln(s.out, errorf(t("provider_model_switch_failed"), err))
+		return
+	}
+	fmt.Fprintln(s.out, green(fmt.Sprintf(t("provider_model_switched"), model, provider)))
+}
+
 func (s *session) cmdModel(args []string) {
+	if s.pickExternalModel(args) {
+		return
+	}
 	if len(args) == 0 {
 		// On a real terminal a bare /model opens the arrow-key picker (the
 		// natural follow-up when it was chosen from the live dropdown);

@@ -17,6 +17,7 @@ import '../models/agent.dart';
 import '../models/chat.dart';
 import '../models/cli_command.dart';
 import '../models/provider_config.dart';
+import '../models/provider_models.dart';
 import '../providers/agent_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
@@ -828,23 +829,54 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       ),
     );
     for (final p in providers) {
-      if (p.enabled) {
-        options.add(
-          _ModelOption(
-            type: p.name,
-            name: p.name,
-            icon: providerIcon(p.type),
-            subtitle: p.model,
-          ),
-        );
+      if (!p.enabled) continue;
+      // The Subscriptions provider fronts every signed-in vendor account: show
+      // one row per model it offers (grouped by vendor in the subtitle) so the
+      // user picks the model directly. If the list cannot be fetched it stays
+      // a single row, and switching still works.
+      if (p.name == kSubscriptionsProviderName) {
+        try {
+          final models = (await api.listProviderModels(p.name)).models;
+          if (models.isNotEmpty) {
+            for (final m in models) {
+              options.add(
+                _ModelOption(
+                  type: encodeModelSelection(p.name, m.id),
+                  name: m.id,
+                  icon: providerIcon(p.type),
+                  subtitle: vendorLabel(m.ownedBy).isEmpty ? p.name : '${p.name} · ${vendorLabel(m.ownedBy)}',
+                  logoType: p.type,
+                ),
+              );
+            }
+            continue;
+          }
+        } catch (e) {
+          debugPrint('chat_input: subscription model list unavailable, showing one row: $e');
+        }
       }
+      options.add(
+        _ModelOption(
+          type: p.name,
+          name: p.name,
+          icon: providerIcon(p.type),
+          subtitle: p.model,
+        ),
+      );
     }
+    if (!mounted) return;
+    // A provider-with-model entry is "active" only when that provider is the
+    // active one AND it is using that model.
+    final activeProviderCfg = providers.where((p) => p.name == activeProvider).firstOrNull;
+    final activeKey = (activeProviderCfg != null && activeProvider == kSubscriptionsProviderName)
+        ? encodeModelSelection(activeProviderCfg.name, activeProviderCfg.model)
+        : (activeProvider.isEmpty ? 'local' : activeProvider);
 
     final selected = await showDialog<String>(
       context: context,
       builder: (ctx) => _ModelSwitcherDialog(
         options: options,
-        activeType: activeProvider.isEmpty ? 'local' : activeProvider,
+        activeType: activeKey,
         onOpenRouterOAuth: () {
           Navigator.of(ctx).pop('__openrouter_oauth__');
         },
@@ -859,6 +891,21 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     }
 
     try {
+      final pickedModel = decodeModelSelection(selected);
+      if (pickedModel != null) {
+        await api.setProviderModel(pickedModel.provider, pickedModel.model, activate: true);
+        ref.read(activeProviderTypeProvider.notifier).setActive(pickedModel.provider);
+        ref.invalidate(providerListProvider);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(L10n.t('switched_to', {'name': pickedModel.model})),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
       if (selected == 'local') {
         await api.setActiveProvider('');
         ref.read(activeProviderTypeProvider.notifier).setActive('');
@@ -1814,11 +1861,16 @@ class _ModelOption {
   final String icon;
   final String subtitle;
 
+  /// Provider type whose logo to show, when [type] is a selection key (a
+  /// provider+model pair) rather than a provider name.
+  final String? logoType;
+
   const _ModelOption({
     required this.type,
     required this.name,
     required this.icon,
     required this.subtitle,
+    this.logoType,
   });
 }
 
@@ -1900,7 +1952,7 @@ class _ModelOptionTile extends StatelessWidget {
           height: 32,
           child: option.type == 'local'
               ? Icon(Icons.computer_outlined, size: 24, color: MemoTheme.of(context).textMuted)
-              : providerLogoWidget(option.type, size: 28),
+              : providerLogoWidget(option.logoType ?? option.type, size: 28),
         ),
         title: Text(
           option.name,

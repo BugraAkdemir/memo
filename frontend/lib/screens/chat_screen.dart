@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/provider_config.dart';
+import '../models/provider_models.dart';
 import '../providers/chat_provider.dart';
 import '../providers/provider_provider.dart';
 import '../providers/whatsapp_provider.dart';
@@ -573,6 +574,20 @@ class _QuickModelDropdown extends ConsumerWidget {
     final enabledProviders = providers.where((p) => p.enabled).toList();
     final c = MemoTheme.of(context);
 
+    // The Subscriptions provider fronts every signed-in vendor account, so it
+    // expands into the account's live model list instead of being one row.
+    // A failed fetch just leaves it as a single row (switching still works).
+    final subs = enabledProviders.where((p) => p.name == kSubscriptionsProviderName).firstOrNull;
+    var subsModels = const <ProviderModel>[];
+    if (subs != null) {
+      try {
+        subsModels = (await ref.read(apiClientProvider).listProviderModels(subs.name)).models;
+      } catch (e) {
+        debugPrint('chat_screen: subscription model list unavailable, showing one row: $e');
+      }
+      if (!context.mounted) return;
+    }
+
     final selected = await showMenu<String>(
       context: context,
       position: position,
@@ -586,14 +601,17 @@ class _QuickModelDropdown extends ConsumerWidget {
           ),
         ),
         for (final p in enabledProviders)
-          PopupMenuItem(
-            value: p.name,
-            child: _QuickModelMenuRow(
-              leading: providerLogoWidget(p.type, size: 18),
-              label: p.name,
-              isActive: effectiveActive == p.name,
+          if (p.name == kSubscriptionsProviderName && subsModels.isNotEmpty)
+            ..._subscriptionModelItems(context, p, subsModels, effectiveActive == p.name)
+          else
+            PopupMenuItem(
+              value: p.name,
+              child: _QuickModelMenuRow(
+                leading: providerLogoWidget(p.type, size: 18),
+                label: p.name,
+                isActive: effectiveActive == p.name,
+              ),
             ),
-          ),
         const PopupMenuDivider(),
         PopupMenuItem(
           value: '__add_provider__',
@@ -615,6 +633,27 @@ class _QuickModelDropdown extends ConsumerWidget {
       );
       if (added == true) {
         ref.invalidate(providerListProvider);
+      }
+      return;
+    }
+
+    final pickedModel = decodeModelSelection(selected);
+    if (pickedModel != null) {
+      try {
+        await ref.read(apiClientProvider).setProviderModel(pickedModel.provider, pickedModel.model, activate: true);
+        ref.read(activeProviderTypeProvider.notifier).setActive(pickedModel.provider);
+        ref.invalidate(providerListProvider);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(L10n.t('switched_to', {'name': pickedModel.model})),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        ref.read(errorMessageProvider.notifier).state =
+            L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)});
       }
       return;
     }
@@ -663,6 +702,51 @@ class _QuickModelDropdown extends ConsumerWidget {
         );
       }
     }
+  }
+
+  /// The Subscriptions provider as a section of the menu: one entry per model,
+  /// grouped by the vendor that owns it (a header row per vendor). Values are
+  /// [encodeModelSelection] strings, so picking one switches model AND provider
+  /// in a single step.
+  List<PopupMenuEntry<String>> _subscriptionModelItems(
+    BuildContext context,
+    ProviderConfig provider,
+    List<ProviderModel> models,
+    bool providerIsActive,
+  ) {
+    final c = MemoTheme.of(context);
+    final items = <PopupMenuEntry<String>>[];
+    String? lastVendor;
+    for (final m in models) {
+      if (m.ownedBy != lastVendor) {
+        lastVendor = m.ownedBy;
+        final label = vendorLabel(m.ownedBy);
+        items.add(PopupMenuItem<String>(
+          enabled: false,
+          height: 30,
+          child: Row(
+            children: [
+              providerLogoWidget(provider.type, size: 14),
+              const SizedBox(width: 8),
+              Text(
+                label.isEmpty ? provider.name : '${provider.name} · $label',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: c.textDim),
+              ),
+            ],
+          ),
+        ));
+      }
+      items.add(PopupMenuItem<String>(
+        value: encodeModelSelection(provider.name, m.id),
+        height: 36,
+        child: _QuickModelMenuRow(
+          leading: const SizedBox(width: 18),
+          label: m.id,
+          isActive: providerIsActive && provider.model == m.id,
+        ),
+      ));
+    }
+    return items;
   }
 
   /// First time a chat is pointed at a CLI provider: warns the user this is
@@ -734,7 +818,11 @@ class _QuickModelDropdown extends ConsumerWidget {
     } else {
       final match = providers.where((p) => p.name == activeType);
       final providerType = match.isNotEmpty ? match.first.type : activeType;
-      label = activeType;
+      // The Subscriptions provider IS its model (one provider, many models), so
+      // the button names the model rather than the constant provider name.
+      label = (activeType == kSubscriptionsProviderName && match.isNotEmpty && match.first.model.isNotEmpty)
+          ? match.first.model
+          : activeType;
       leadingIcon = providerLogoWidget(providerType, size: 15);
     }
 

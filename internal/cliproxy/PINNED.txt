@@ -1,0 +1,14 @@
+# CLIProxyAPI (github.com/router-for-me/CLIProxyAPI, MIT) — the release Memo bundles.
+#
+# Single source of truth for scripts/vendor_cliproxy.sh, the vendor-cliproxy.yml
+# workflow, the build workflows' sha check and the upstream drift probes. The
+# digests are the ones GitHub publishes for each release asset. To upgrade:
+# change `version` and the digests here, run vendor-cliproxy.yml, commit.
+#
+# asset <release asset> <sha256 of that asset> <dest dir under binaries/> <file name written there>
+version v8.0.16
+asset CLIProxyAPI_8.0.16_linux_amd64_no-plugin.tar.gz 743d1172aecdab132f885e9b3dfdf45826d1b3358e5006861393e0d66ae71f92 linux/cliproxy cli-proxy-api
+asset CLIProxyAPI_8.0.16_linux_aarch64_no-plugin.tar.gz a7e8c7a693c3c3c1dfcbb75841c134b6b80bdde9aca4654000cb2ac3f5f95144 linux/cliproxy-arm64 cli-proxy-api
+asset CLIProxyAPI_8.0.16_windows_amd64.zip e0d999703c9af70067b15bf50e6521e76392da604d1543541361e6891c676c43 windows/cliproxy cli-proxy-api.exe
+asset CLIProxyAPI_8.0.16_darwin_aarch64.tar.gz b2c48e27b62bc94c71387e43be287c742b0336f21e2fe203568233593983d495 darwin/cliproxy cli-proxy-api-arm64
+asset CLIProxyAPI_8.0.16_darwin_amd64.tar.gz 2c5a7e73f31d784f5732b6d24998286706b0dd60e7c6c1724988d9aeae2a4a0e darwin/cliproxy cli-proxy-api-x64

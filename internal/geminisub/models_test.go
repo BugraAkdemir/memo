@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -31,6 +32,23 @@ func modelsServer(t *testing.T, pages ...string) (*httptest.Server, *int32) {
 		srv.Close()
 	})
 	return srv, &hits
+}
+
+// noCodeAssist points the Code Assist endpoint at a server that has a project
+// but no quota buckets, so Models() falls through to the models endpoint under
+// test without ever touching the real network.
+func noCodeAssist(t *testing.T) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, ":loadCodeAssist"):
+			_, _ = w.Write([]byte(`{"cloudaicompanionProject":"proj","currentTier":{"id":"free-tier"}}`))
+		default:
+			http.Error(w, `{"error":{"status":"PERMISSION_DENIED"}}`, http.StatusForbidden)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	withEndpoint(t, srv.URL)
 }
 
 func connectedMgr(t *testing.T) *Manager {
@@ -58,7 +76,8 @@ func TestFetchModels_FilterAndPaginate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fetchModels: %v", err)
 	}
-	want := []string{"gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"}
+	// Newest-looking first.
+	want := []string{"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("fetchModels = %v, want %v", got, want)
 	}
@@ -68,6 +87,7 @@ func TestFetchModels_FilterAndPaginate(t *testing.T) {
 }
 
 func TestModels_CachesAndRefreshes(t *testing.T) {
+	noCodeAssist(t)
 	body := `{"models":[{"name":"models/gemini-2.5-pro","supportedGenerationMethods":["generateContent"]}]}`
 	_, hits := modelsServer(t, body)
 
@@ -95,6 +115,7 @@ func TestModels_CachesAndRefreshes(t *testing.T) {
 }
 
 func TestModels_FallbackOnError(t *testing.T) {
+	noCodeAssist(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"SERVICE_DISABLED"}`, http.StatusForbidden)
 	}))
@@ -119,6 +140,7 @@ func TestModels_NotConnected(t *testing.T) {
 }
 
 func TestCachedModelsAndInvalidate(t *testing.T) {
+	noCodeAssist(t)
 	body := `{"models":[{"name":"models/gemini-2.5-flash","supportedGenerationMethods":["generateContent"]}]}`
 	modelsServer(t, body)
 	m := connectedMgr(t)
@@ -138,3 +160,46 @@ func TestCachedModelsAndInvalidate(t *testing.T) {
 	}
 }
 
+func TestModels_PrefersCodeAssistQuota(t *testing.T) {
+	// The Generative Language endpoint is a trap here: it must never be asked
+	// when the quota call already answered.
+	_, glHits := modelsServer(t, `{"models":[{"name":"models/gemini-1.5-pro","supportedGenerationMethods":["generateContent"]}]}`)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, ":loadCodeAssist"):
+			_, _ = w.Write([]byte(`{"cloudaicompanionProject":"proj","currentTier":{"id":"free-tier"}}`))
+		case strings.HasSuffix(r.URL.Path, ":retrieveUserQuota"):
+			_, _ = w.Write([]byte(`{"buckets":[
+				{"modelId":"gemini-2.5-flash","tokenType":"REQUESTS"},
+				{"modelId":"gemini-3-pro-preview","tokenType":"REQUESTS"},
+				{"modelId":"gemini-2.5-flash","tokenType":"INPUT"},
+				{"modelId":"gemini-embedding-001"},
+				{"modelId":"gemini-3.5-flash"}
+			]}`))
+		default:
+			http.Error(w, "no", http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	withEndpoint(t, srv.URL)
+
+	got, err := connectedMgr(t).Models(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"gemini-3.5-flash", "gemini-3-pro-preview", "gemini-2.5-flash"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Models = %v, want %v (deduped, chat-only, newest first)", got, want)
+	}
+	if n := atomic.LoadInt32(glHits); n != 0 {
+		t.Errorf("models.list was hit %d times though retrieveUserQuota answered", n)
+	}
+}
+
+func TestModels_FallbackIsNotAllTwoPointFive(t *testing.T) {
+	// The fallback must not pin the picker to the 2.5 generation.
+	if !strings.Contains(strings.Join(fallbackModels, ","), "gemini-3") {
+		t.Errorf("fallbackModels has no Gemini 3 entry: %v", fallbackModels)
+	}
+}

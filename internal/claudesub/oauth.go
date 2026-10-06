@@ -33,7 +33,7 @@ import (
 // of anything sensitive — decode with `base64 -d` to check it against
 // claude-code-proxy/server/OAuthManager.js.
 const (
-	builtinClientIDB64 = "OWQxYzI1MGEtZTYxYi00NGQ5LThiZWQtNTk0NGQxOTYyZjVl"
+	builtinClientIDB64 = "OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl"
 
 	envClientID = "MEMO_CLAUDE_CLIENT_ID"
 )

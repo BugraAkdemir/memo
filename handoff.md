@@ -1,3 +1,34 @@
+# Handoff — 2026-10-06 — gemini-sub 429 + eski 2.5 listesi, claude-sub "Invalid client id"
+
+## İstek
+Gemini-sub testinde sadece 2.5 modelleri çıkıyor (güncel liste internetten gelmeli), sohbet `onboardUser: status 429`
+ile düşüyor; Claude bağlantısında tarayıcıda "OAuth request failed / Invalid client id provided".
+
+## Kök nedenler (kanıtlı)
+| # | Belirti | Neden | Düzeltme |
+|---|---|---|---|
+| 1 | Claude: "Invalid client id provided" | `internal/claudesub/oauth.go`'daki base64 client id `…44d9-8bed-…` olarak çıkıyordu; gerçek (kurulu Claude Code 2.1.280 binary'sindeki `CLIENT_ID`) `…44d9-88ed-…`. Tek harf. | base64 düzeltildi + `clientid_test.go` (UUID iki parçaya bölünmüş, secret scanner için). Mutasyon (eski değeri geri koy) → kırmızı. |
+| 2 | Gemini: sadece 2.5 | Canlı liste (`generativelanguage …/models`) bu OAuth token'ıyla **403 ACCESS_TOKEN_SCOPE_INSUFFICIENT** veriyor (log'da kanıt) → her zaman `fallbackModels` (2.5) gösteriliyordu. | Önce Code Assist `retrieveUserQuota` (gemini-cli'nin kullandığı çağrı; bucket'lar model id'li) → ikinci olarak eski endpoint → son çare fallback. Fallback artık gemini-cli 0.53'ün güncel seti (3.x + 2.5). Liste yeni→eski sıralı. |
+| 3 | Gemini: `onboardUser … 429 RESOURCE_EXHAUSTED` | `onboardUser` operasyonu "poll" etmek için her 2 sn'de tekrar POST ediliyordu (log: ~25 sn sonra 429). gemini-cli bir kez POST eder, `done:false` ise `GET <base>/<operation name>` ile 5 sn aralıkla sorgular (bundle'dan okundu). | Tek POST + GET poll (`getJSON`), 5 sn, 90 sn tavan. Test: POST sayısı tam 1. |
+
+## Doğrulama
+- `go build`/`vet` temiz. `go test ./... -race`: tek koşuda `internal/e2e` `TestUsage_ProviderWithoutCacheReportingStaysZero`
+  kırmızı verdi; tek başına, stash'li baseline'da ve 3 tam e2e koşusunda yeşil → yük altında flake, bu değişiklikle ilgisiz
+  (geminisub/claudesub'a dokunmuyor). Kök nedeni araştırılmadı.
+- geminisub + claudesub: `-race` yeşil.
+
+## Dürüstlük notları / açık işler
+- **Canlı doğrulanamadı:** (a) Claude authorize sayfası — panedeki tarayıcı Claude'a giriş yapmamış, login sayfasına düşüyor,
+  "Invalid client id" ekranı yeniden üretilemedi; kanıt binary'deki değer. (b) Gemini 429'un asıl sebebinin tekrar-POST olması
+  *güçlü varsayım* (süre/sayı örtüşüyor, gemini-cli davranışı farklı) ama gerçek Google hesabıyla test edilmedi; hesap
+  daha önce onboard denemeleriyle kota yemiş olabilir, birkaç dakika bekleyip yeniden denemek gerekebilir.
+- `retrieveUserQuota`'nın gerçek yanıtı bu makinede görülmedi; şekil gemini-cli kaynağından (`buckets[].modelId`).
+- Gemini varsayılan model hâlâ `gemini-2.5-pro` (`internal/app/gemauth.go`, gemini-cli'nin kendi varsayılanı; her hesapta
+  var). Kullanıcı listeden yeni modeli seçer. Claude varsayılanı `claude-haiku-4-5-…`; Claude listesi zaten canlı `/v1/models`
+  (client id düzelince çalışır), yedek liste tek model.
+
+---
+
 # Handoff — 2026-10-05 (gece) — "Uygulama açma" ve "canlı tarayıcı paneli" baştan test edildi, düzeltildi
 
 ## İstek

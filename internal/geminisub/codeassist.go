@@ -47,8 +47,9 @@ func codeAssistBase() string {
 }
 
 // onboardPollInterval is how long onboardUser waits between polls of the
-// long-running operation. A package var so tests can shorten it.
-var onboardPollInterval = 2 * time.Second
+// long-running operation (gemini-cli waits 5s). A package var so tests can
+// shorten it.
+var onboardPollInterval = 5 * time.Second
 
 // bootstrap is the resolved result of the Code Assist handshake.
 type bootstrap struct {
@@ -62,14 +63,17 @@ type loadResponse struct {
 		ID string `json:"id"`
 	} `json:"currentTier"`
 	AllowedTiers []struct {
-		ID           string `json:"id"`
-		IsDefault    bool   `json:"isDefault"`
-		UserDefined  bool   `json:"userDefined"`
+		ID          string `json:"id"`
+		IsDefault   bool   `json:"isDefault"`
+		UserDefined bool   `json:"userDefined"`
 	} `json:"allowedTiers"`
 }
 
 type onboardResponse struct {
-	Done     bool `json:"done"`
+	// Name is the long-running operation's resource name ("operations/..."),
+	// polled with a GET until Done. Absent when the call finished inline.
+	Name     string `json:"name"`
+	Done     bool   `json:"done"`
 	Response *struct {
 		CloudaicompanionProject *struct {
 			ID string `json:"id"`
@@ -143,7 +147,13 @@ func (m *Manager) loadCodeAssist(ctx context.Context, hc *http.Client) (*loadRes
 }
 
 // onboardUser enrols the account in Code Assist and waits for the
-// long-running operation to report a project id. Bounded retry.
+// long-running operation to report a project id.
+//
+// onboardUser is sent exactly ONCE. If it answers with an unfinished
+// operation, that operation is polled with GET <base>/<name> — the way
+// gemini-cli does. Re-POSTing onboardUser to "poll" (what this used to do,
+// every 2s) re-submits the enrolment each time and ends in a 429
+// RESOURCE_EXHAUSTED before the first one has had time to finish.
 func (m *Manager) onboardUser(ctx context.Context, hc *http.Client, tierID string) (string, error) {
 	if tierID == "" {
 		tierID = "free-tier"
@@ -153,27 +163,38 @@ func (m *Manager) onboardUser(ctx context.Context, hc *http.Client, tierID strin
 		"metadata": clientMetadata,
 	}
 
-	deadline := time.Now().Add(60 * time.Second)
-	for attempt := 0; ; attempt++ {
-		var out onboardResponse
-		if err := postJSON(ctx, hc, codeAssistBase()+":onboardUser", body, &out); err != nil {
-			return "", fmt.Errorf("geminisub: onboardUser: %w", err)
-		}
-		if out.Done && out.Response != nil && out.Response.CloudaicompanionProject != nil {
-			id := out.Response.CloudaicompanionProject.ID
-			if id != "" {
-				return id, nil
-			}
+	var out onboardResponse
+	if err := postJSON(ctx, hc, codeAssistBase()+":onboardUser", body, &out); err != nil {
+		return "", fmt.Errorf("geminisub: onboardUser: %w", err)
+	}
+
+	opName := out.Name
+	deadline := time.Now().Add(90 * time.Second)
+	for !out.Done {
+		if opName == "" {
+			// Neither done nor pollable: nothing to wait for.
+			return "", fmt.Errorf("geminisub: onboardUser returned an unfinished operation with no name")
 		}
 		if time.Now().After(deadline) {
-			return "", fmt.Errorf("geminisub: onboardUser did not complete within 60s")
+			return "", fmt.Errorf("geminisub: onboardUser did not complete within 90s")
 		}
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
 		case <-time.After(onboardPollInterval):
 		}
+		out = onboardResponse{}
+		if err := getJSON(ctx, hc, codeAssistBase()+"/"+strings.TrimLeft(opName, "/"), &out); err != nil {
+			return "", fmt.Errorf("geminisub: onboardUser: poll operation: %w", err)
+		}
 	}
+
+	if out.Response != nil && out.Response.CloudaicompanionProject != nil {
+		if id := out.Response.CloudaicompanionProject.ID; id != "" {
+			return id, nil
+		}
+	}
+	return "", fmt.Errorf("geminisub: onboardUser finished without a project id")
 }
 
 func postJSON(ctx context.Context, hc *http.Client, url string, in, out any) error {
@@ -186,6 +207,18 @@ func postJSON(ctx context.Context, hc *http.Client, url string, in, out any) err
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	return doJSON(hc, req, out)
+}
+
+func getJSON(ctx context.Context, hc *http.Client, url string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	return doJSON(hc, req, out)
+}
+
+func doJSON(hc *http.Client, req *http.Request, out any) error {
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := hc.Do(req)

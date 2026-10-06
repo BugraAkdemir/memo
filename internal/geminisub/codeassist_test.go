@@ -73,16 +73,18 @@ func TestEnsureBootstrap_OnboardFlow(t *testing.T) {
 	onboardPollInterval = 10 * time.Millisecond
 	defer func() { onboardPollInterval = prev }()
 
-	var onboards int32
+	var onboards, polls int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, ":loadCodeAssist"):
 			// No project yet -> caller must onboard.
 			_, _ = w.Write([]byte(`{"allowedTiers":[{"id":"free-tier","isDefault":true}]}`))
 		case strings.HasSuffix(r.URL.Path, ":onboardUser"):
-			n := atomic.AddInt32(&onboards, 1)
-			if n < 2 {
-				_, _ = w.Write([]byte(`{"done":false}`))
+			atomic.AddInt32(&onboards, 1)
+			_, _ = w.Write([]byte(`{"name":"operations/op-1","done":false}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1internal/operations/op-1":
+			if atomic.AddInt32(&polls, 1) < 2 {
+				_, _ = w.Write([]byte(`{"name":"operations/op-1","done":false}`))
 				return
 			}
 			_, _ = w.Write([]byte(`{"done":true,"response":{"cloudaicompanionProject":{"id":"proj-onboarded"}}}`))
@@ -104,8 +106,33 @@ func TestEnsureBootstrap_OnboardFlow(t *testing.T) {
 	if b.TierID != "free-tier" {
 		t.Errorf("tier = %q, want free-tier (from default allowedTier)", b.TierID)
 	}
-	if n := atomic.LoadInt32(&onboards); n < 2 {
-		t.Errorf("onboardUser polled %d times, want >= 2", n)
+	// The regression: onboardUser used to be re-POSTed to "poll", which ends in
+	// a 429 RESOURCE_EXHAUSTED. It must be sent once and the operation GET-polled.
+	if n := atomic.LoadInt32(&onboards); n != 1 {
+		t.Errorf("onboardUser POSTed %d times, want exactly 1", n)
+	}
+	if n := atomic.LoadInt32(&polls); n < 2 {
+		t.Errorf("operation polled %d times, want >= 2", n)
+	}
+}
+
+func TestEnsureBootstrap_OnboardInline(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, ":loadCodeAssist"):
+			_, _ = w.Write([]byte(`{"allowedTiers":[{"id":"free-tier","isDefault":true}]}`))
+		case strings.HasSuffix(r.URL.Path, ":onboardUser"):
+			_, _ = w.Write([]byte(`{"done":true,"response":{"cloudaicompanionProject":{"id":"proj-inline"}}}`))
+		default:
+			http.Error(w, "no", http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	withEndpoint(t, srv.URL)
+
+	b, err := connectedManager(t).ensureBootstrap(context.Background())
+	if err != nil || b.ProjectID != "proj-inline" {
+		t.Fatalf("bootstrap = %+v, err = %v", b, err)
 	}
 }
 

@@ -36,6 +36,7 @@ type swarmStubBridge struct {
 
 	// quota awareness for the chat stream
 	quotaForError func(errText string) *models.QuotaSignal
+	friendly      func(raw string) string
 	quotaLow      func() *models.QuotaSignal
 	warmed        int
 
@@ -357,8 +358,17 @@ func (b *swarmStubBridge) SendCLIMessageStream(ctx context.Context, chatID, user
 	close(ch)
 	return ch
 }
-func (b *swarmStubBridge) GetRunningCLIChats() []string                                 { return nil }
-func (b *swarmStubBridge) GetStreamingChatIDs() []string                                { return nil }
+func (b *swarmStubBridge) GetRunningCLIChats() []string  { return nil }
+func (b *swarmStubBridge) GetStreamingChatIDs() []string { return nil }
+func (b *swarmStubBridge) FriendlyError(raw string) string {
+	if b.friendly != nil {
+		return b.friendly(raw)
+	}
+	return raw
+}
+func (b *swarmStubBridge) ContextReport(chatID string) models.ContextReport {
+	return models.ContextReport{Window: 1000, Used: 250, Percent: 25, Categories: []models.ContextCategory{{Key: "messages", Tokens: 250}}, Limits: []models.QuotaMeter{}}
+}
 func (b *swarmStubBridge) ListProjectFiles(root, query string) []string                 { return nil }
 func (b *swarmStubBridge) ListCLICommands(cliType, chatID string) []agentcli.Command    { return nil }
 func (b *swarmStubBridge) SetChatCLIModel(chatID, model string) error                   { return nil }

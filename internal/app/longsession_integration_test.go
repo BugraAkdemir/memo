@@ -460,10 +460,14 @@ func TestIntegration_LongHistoryGetsCompacted(t *testing.T) {
 	})
 	h := newLongSessionApp(t, fp, false)
 
-	// A budget big enough that many turns survive the token-aware fetch, but
-	// small enough that their combined size crosses CompactThresholdPct (60%).
+	// A window big enough that many turns survive the token-aware fetch, but
+	// small enough that their combined size crosses CompactThresholdPct (90% of
+	// the window, whole prompt). The tool schema rides on every agent request and
+	// is real context, so the window is the 3500 tokens of conversation PLUS it —
+	// a 3500-token window would leave the history nothing at all.
 	h.a.cfgMu.Lock()
-	h.a.cfg.Llama.MaxContextTokens = 3500
+	h.a.cfg.AgentMode.CompactThresholdPct = 90
+	h.a.cfg.Llama.MaxContextTokens = 3500 + h.a.agentToolTokens("")
 	h.a.cfgMu.Unlock()
 
 	filler := strings.Repeat("word ", 60) // ~100 tok/message

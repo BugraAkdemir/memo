@@ -165,6 +165,15 @@ type FullBridge interface {
 	SendCLIMessageStream(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk
 	GetRunningCLIChats() []string
 	GetStreamingChatIDs() []string
+	// FriendlyError rewrites a raw provider/transport failure text into a sentence
+	// in the UI language that says what happened and what to try (the raw text is
+	// logged). Text it does not recognise is returned unchanged.
+	FriendlyError(raw string) string
+	// ContextReport is the gauge behind the ring at the bottom of the chat: how
+	// full chatID's context window is, what it is made of, the auto-compact
+	// threshold, and — for a Subscriptions model — the account's allowance meters.
+	// It never calls a model and never waits on the network.
+	ContextReport(chatID string) models.ContextReport
 	ListProjectFiles(root, query string) []string
 	ListCLICommands(cliType, chatID string) []agentcli.Command
 	SetChatCLIModel(chatID, model string) error

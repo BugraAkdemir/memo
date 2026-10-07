@@ -901,9 +901,9 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 			}
 			if chunk.Error != "" {
 				if sm != nil && waSessionID != "" {
-					sm.AddMessageToSession(waSessionID, "assistant", "⚠️ "+chunk.Error, "", "", agentEvents)
+					sm.AddMessageToSession(waSessionID, "assistant", a.FriendlyError("⚠️ "+chunk.Error), "", "", agentEvents)
 				}
-				localTrySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+				localTrySend(ctx, outCh, api.StreamChunk{Error: a.FriendlyError("⚠️ " + chunk.Error), Done: true})
 				return
 			}
 			if chunk.Content != "" {

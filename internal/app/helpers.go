@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"memo/internal/logx"
@@ -196,34 +195,25 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// memories, so hoisting it earlier changes nothing about what it
 	// computes.
 	var tokenBudget int
+	// window is the model's real context window; tokenBudget is what the
+	// prompt may take of it (a local turn keeps a margin below the wall and
+	// leaves room for the tool schema). The gauge reports against window.
+	var window int
+	// toolTokens is the agent tool schema riding alongside the messages (see
+	// agentToolTokens) — context the history may not claim.
+	var toolTokens int
 	if a.llamaServer != nil && a.llamaServer.IsRunning() {
-		a.cfgMu.RLock()
-		maxLocal := a.cfg.Llama.CtxSize
-		maxContextTokens := a.cfg.Llama.MaxContextTokens
-		a.cfgMu.RUnlock()
-		if maxLocal <= 0 {
-			maxLocal = 8192
-		}
-		// The server was launched with clampContextSize(cfg.CtxSize) — reduced
-		// to the model's trained max whenever the configured value was too
-		// large. Budget against THAT real window, not the config: with
-		// --no-context-shift an over-window request is a hard error, not a
-		// silent truncation, and cfg.CtxSize can legitimately exceed it (a
-		// global setting kept while a smaller model is loaded).
-		if realCtx := a.llamaServer.CtxSize(); realCtx > 0 && realCtx < maxLocal {
-			maxLocal = realCtx
-		}
-		if maxContextTokens > 0 && maxContextTokens < maxLocal {
-			tokenBudget = maxContextTokens
-		} else {
-			tokenBudget = maxLocal
-		}
+		// The window the server was really launched with — see
+		// localContextWindow for why this is not simply cfg.CtxSize.
+		window = a.localContextWindow()
+		maxLocal := window
 		// Keep the assembled prompt a margin below that wall: truncate.
 		// EstimateTokens is len/3, which slightly UNDER-counts token-dense
 		// text (Turkish, code), so a request this budget rates as "exactly
 		// fits" can still cross n_ctx once the server really tokenizes it —
 		// and under --no-context-shift that is a hard failure, not a silent
 		// trim. ~5%, min 256 tokens.
+		tokenBudget = maxLocal
 		tokenBudget -= max(maxLocal/20, 256)
 		// Agent mode sends the tool schema (agent.ToOpenAITools) alongside
 		// every request as a separate "tools" field, which the model's chat
@@ -235,18 +225,19 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		// live: "selam" with agent mode on and a 32B local model produced a
 		// ~4800-token request against a 4096 ctx-size — the visible message
 		// content was a handful of tokens, the rest was this unbudgeted gap.
-		if a.GetAgentEnabled() && a.agentExecutor != nil {
-			if toolDefs := a.agentExecutor.Registry().ToOpenAITools(a.activeSkillSet(chatID)); len(toolDefs) > 0 {
-				if raw, err := json.Marshal(toolDefs); err == nil {
-					tokenBudget -= truncate.EstimateTokens(string(raw))
-				}
-			}
-		}
+		toolTokens = a.agentToolTokens(chatID)
+		tokenBudget -= toolTokens
 		if tokenBudget < 512 {
 			tokenBudget = 512
 		}
 	} else {
 		tokenBudget = a.apiContextBudget()
+		window = tokenBudget
+		// The local branch above takes the tool schema off the budget itself.
+		// An API turn used to ignore it, so a long agent chat could send
+		// window − tools + tools… i.e. a request the provider rejects as too
+		// long; it is now taken off the history's share below.
+		toolTokens = a.agentToolTokens(chatID)
 	}
 
 	// Memory-block budget: a fraction of this turn's real tokenBudget on a
@@ -287,6 +278,9 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	}
 
 	var systemPrompt string
+	// skillTokens is the part of systemPrompt that is active-skill instructions,
+	// tracked only so the context gauge can show it apart from the persona.
+	skillTokens := 0
 	switch {
 	case code:
 		// One compact directive replaces the whole persona / style / memory
@@ -307,6 +301,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		if !minimal {
 			if skillPrompt := a.buildActiveSkillPrompt(chatID, skillBudget); skillPrompt != "" {
 				systemPrompt += skillPrompt
+				skillTokens = truncate.EstimateTokens(skillPrompt)
 			}
 		}
 	default:
@@ -324,6 +319,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 			// Mode strips it too (previously it did not).
 			if skillPrompt := a.buildActiveSkillPrompt(chatID, skillBudget); skillPrompt != "" {
 				systemPrompt += skillPrompt
+				skillTokens = truncate.EstimateTokens(skillPrompt)
 			}
 		}
 	}
@@ -355,6 +351,11 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	systemTokens := truncate.EstimateTokens(systemPrompt)
 	userTokens := truncate.EstimateTokens(effectiveUserMsg)
 	historyBudget := tokenBudget - systemTokens - userTokens
+	if a.llamaServer == nil || !a.llamaServer.IsRunning() {
+		// API path: tokenBudget is the whole window, so the tool schema (already
+		// off the budget on the local path) comes off the history's share here.
+		historyBudget -= toolTokens
+	}
 	// Only lift a small/negative remainder up to a workable minimum — if
 	// systemTokens+userTokens have already blown well past tokenBudget (the
 	// exact failure mode identity.MaxMemoryContextTokens's fix above closes
@@ -386,7 +387,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// Skipped under Minimal Mode — it is a Memo-initiated LLM call, exactly
 	// the kind of extra work Minimal Mode promises not to do.
 	if !minimal {
-		history = a.maybeCompactHistory(ctx, chatID, history, tokenBudget)
+		history = a.maybeCompactHistory(ctx, chatID, history, window, systemTokens+userTokens+toolTokens)
 	}
 	history = append([]api.Message{}, history...)
 	var msgs []api.Message
@@ -439,6 +440,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	for _, h := range history {
 		histUsed += truncate.EstimateTokens(h.GetTextContent())
 	}
+	a.noteContextSnap(chatID, window, history, memories, systemTokens, skillTokens, toolTokens, userTokens)
 	logx.Printf("CONTEXT: minimal=%v budget=%d system=%d user=%d hist_budget=%d hist_used=%d history_msgs=%d total_msgs=%d",
 		minimal, tokenBudget, systemTokens, userTokens, historyBudget, histUsed, len(history), len(msgs))
 	return msgs

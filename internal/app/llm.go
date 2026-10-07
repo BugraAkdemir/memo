@@ -52,6 +52,10 @@ type usageMeta struct {
 	Model        string
 	Category     string
 	PromptTokens int
+	// PromptReal is true when PromptTokens is the provider's own count rather
+	// than the len/3 estimate it is seeded with — the context gauge only trusts
+	// a real figure as the conversation's size.
+	PromptReal bool
 	// Cache is the prompt-cache split of PromptTokens for this turn, when the
 	// provider reported one. Zero-valued on every path that falls back to the
 	// len/3 estimate (no provider figure to split) and on providers that
@@ -698,6 +702,7 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		}
 		if u.PromptTokens > 0 && usageMetaVal != nil {
 			usageMetaVal.PromptTokens = u.PromptTokens
+			usageMetaVal.PromptReal = true
 			// The cache split belongs to the same report as PromptTokens and
 			// must move with it: assigned here rather than in its own
 			// `if u.CachedPromptTokens > 0` block, so a later usage report
@@ -1311,6 +1316,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 				if u.PromptTokens > 0 {
 					usageMetaVal.PromptTokens = u.PromptTokens
+					usageMetaVal.PromptReal = true
 					usageMetaVal.Cache = usageCacheTokens(u)
 				}
 				if u.CompletionTokens > 0 {
@@ -1671,6 +1677,11 @@ func recoverStreamPanic(ctx context.Context, outCh chan<- api.StreamChunk, label
 // recordStreamError saves an error reply to the session to prevent dangling user
 // messages. Called on all stream error paths where finishStream is not invoked.
 func (a *App) recordStreamError(userMsg, errReply, sessionID string) {
+	// A provider failure is saved in words the user can act on (see
+	// FriendlyError); a reply that starts with partial answer text is not one.
+	if strings.HasPrefix(errReply, "⚠️") {
+		errReply = a.FriendlyError(errReply)
+	}
 	a.incognitoMu.RLock()
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
@@ -1702,6 +1713,7 @@ func (a *App) recordStreamError(userMsg, errReply, sessionID string) {
 // Deliberately not finishStream: a failed turn should not feed memory/fact
 // extraction or mood with a truncated answer plus an error line.
 func (a *App) recordFailedTurn(userMsg, partial, errMsg, sessionID string) {
+	errMsg = a.FriendlyError(errMsg)
 	if strings.TrimSpace(partial) != "" {
 		errMsg = partial + "\n\n" + errMsg
 	}
@@ -1802,6 +1814,20 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 			StopReason:       finishReason,
 		},
 	})
+
+	// What this turn cost in context, for the gauge — in memory only, so it is
+	// recorded in Incognito too (nothing about it reaches disk).
+	gaugeChat := sessionID
+	if gaugeChat == "" {
+		if sm := a.getSessionManager(); sm != nil {
+			gaugeChat = sm.GetActiveID()
+		}
+	}
+	gaugeCompletion := tokenCount
+	if gaugeCompletion == 0 {
+		gaugeCompletion = estimateContentTokens(reply)
+	}
+	a.noteTurnUsage(gaugeChat, meta, gaugeCompletion)
 
 	a.incognitoMu.RLock()
 	incog := a.isIncognito

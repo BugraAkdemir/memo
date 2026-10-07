@@ -216,6 +216,10 @@ type App struct {
 	convSummaryMu sync.Mutex
 	convSummaries map[string]*convSummary
 
+	// ctxState backs the context gauge (context_report.go): per chat, how the
+	// last prompt was made up and what the provider reported for the last turn.
+	ctxState contextState
+
 	providerCfgMgr     *provider.ConfigManager
 	providerRouter     *provider.Router
 	activeProviderName string // which provider is currently active (by Name)

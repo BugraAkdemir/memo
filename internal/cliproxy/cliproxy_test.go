@@ -944,3 +944,41 @@ func TestQuotaSnapshot_NoVendorAccountMeansAnEmptyAnswerNotAnError(t *testing.T)
 		t.Errorf("got %+v", set)
 	}
 }
+
+// The context popover shows the 5-hour and the weekly meter side by side, so a
+// Quota must keep every window, shortest first — not just the tightest one.
+func TestParseCodexUsage_KeepsEveryWindowShortestFirst(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	body := []byte(`{"rate_limit":{
+		"secondary_window":{"limit_window_seconds":604800,"reset_after_seconds":86400,"used_percent":85},
+		"primary_window":{"limit_window_seconds":18000,"reset_after_seconds":3600,"used_percent":40}}}`)
+	q, ok := parseCodexUsage(body, now)
+	if !ok || len(q.Windows) != 2 {
+		t.Fatalf("got %+v ok=%v, want two windows", q, ok)
+	}
+	if q.Windows[0].Label != "5h" || q.Windows[1].Label != "7d" {
+		t.Errorf("order = %q,%q, want 5h then 7d regardless of map order", q.Windows[0].Label, q.Windows[1].Label)
+	}
+	if got := q.Windows[0].Remaining; got < 0.5999 || got > 0.6001 {
+		t.Errorf("5h remaining = %v, want 0.6", got)
+	}
+	if q.Windows[0].ResetAt != now.Add(time.Hour).Format(time.RFC3339) {
+		t.Errorf("5h reset = %q", q.Windows[0].ResetAt)
+	}
+	// The headline figure is unchanged: still the most limiting window.
+	if q.Window != "7d" {
+		t.Errorf("headline window = %q, want 7d", q.Window)
+	}
+}
+
+func TestParseClaudeUsage_OneFigurePerWindowLength(t *testing.T) {
+	q, ok := parseClaudeUsage([]byte(`{"five_hour":{"utilization":10,"resets_at":"2026-10-07T15:00:00Z"},
+		"seven_day":{"utilization":20,"resets_at":"2026-10-12T00:00:00Z"},
+		"seven_day_opus":{"utilization":70,"resets_at":"2026-10-12T00:00:00Z"}}`), time.Now())
+	if !ok || len(q.Windows) != 2 {
+		t.Fatalf("got %+v ok=%v, want 5h and 7d only", q, ok)
+	}
+	if q.Windows[1].Label != "7d" || q.Windows[1].Remaining < 0.2999 || q.Windows[1].Remaining > 0.3001 {
+		t.Errorf("7d = %+v, want the tighter opus figure (30%% left)", q.Windows[1])
+	}
+}

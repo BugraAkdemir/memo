@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -295,7 +297,52 @@ func mostLimiting(ws []windowFigure) (Quota, bool) {
 	if !best.resetAt.IsZero() {
 		q.ResetAt = best.resetAt.UTC().Format(time.RFC3339)
 	}
+	q.Windows = windowsByLength(ws)
 	return q, true
+}
+
+// windowsByLength keeps one figure per window length (the tightest when several
+// share a length — Claude meters the weekly window per model family too) and
+// orders them shortest first. Windows with no label are dropped: without a
+// length there is nothing to call them.
+func windowsByLength(ws []windowFigure) []QuotaWindow {
+	best := map[string]windowFigure{}
+	for _, w := range ws {
+		if w.label == "" {
+			continue
+		}
+		if cur, ok := best[w.label]; !ok || w.remaining < cur.remaining {
+			best[w.label] = w
+		}
+	}
+	out := make([]QuotaWindow, 0, len(best))
+	for label, w := range best {
+		qw := QuotaWindow{Label: label, Remaining: clamp01(w.remaining)}
+		if !w.resetAt.IsZero() {
+			qw.ResetAt = w.resetAt.UTC().Format(time.RFC3339)
+		}
+		out = append(out, qw)
+	}
+	sort.Slice(out, func(i, j int) bool { return windowMinutes(out[i].Label) < windowMinutes(out[j].Label) })
+	return out
+}
+
+// windowMinutes is windowLabel's inverse, for ordering ("5h" < "7d").
+func windowMinutes(label string) int {
+	if len(label) < 2 {
+		return 0
+	}
+	n, err := strconv.Atoi(label[:len(label)-1])
+	if err != nil {
+		return 0
+	}
+	switch label[len(label)-1] {
+	case 'h':
+		return n * 60
+	case 'd':
+		return n * 60 * 24
+	}
+	return n
 }
 
 func clamp01(f float64) float64 {

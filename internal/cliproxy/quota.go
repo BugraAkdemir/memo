@@ -28,6 +28,23 @@ type Quota struct {
 	// Window names the allowance window this figure is for when the vendor has
 	// several ("5h", "7d"): the most limiting one is reported.
 	Window string `json:"window,omitempty"`
+	// Windows lists every allowance window the vendor reports, shortest first,
+	// one per window length (the tightest figure when a vendor splits one length
+	// by model family). Remaining/ResetAt/Window above are the most limiting of
+	// them; this is for a view that wants the whole picture (the chat's context
+	// popover shows the 5-hour and the weekly meter side by side). Empty for a
+	// source that has a single figure (Antigravity, per model).
+	Windows []QuotaWindow `json:"windows,omitempty"`
+}
+
+// QuotaWindow is one allowance window of a Quota.
+type QuotaWindow struct {
+	// Label is the window length ("5h", "7d").
+	Label string `json:"label"`
+	// Remaining is the fraction left, 0..1.
+	Remaining float64 `json:"remaining"`
+	// ResetAt is when this window refills (RFC 3339), when the vendor says.
+	ResetAt string `json:"reset_at,omitempty"`
 }
 
 // Antigravity's catalogue endpoint — the same call the sidecar makes for its own

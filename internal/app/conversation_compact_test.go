@@ -43,7 +43,7 @@ func TestMaybeCompactHistory_BelowThresholdIsNoop(t *testing.T) {
 	a.cfg.AgentMode.CompactThresholdPct = 60
 
 	h := longHistory(10)
-	got := a.maybeCompactHistory(context.Background(), "c1", h, 1_000_000) // huge budget
+	got := a.maybeCompactHistory(context.Background(), "c1", h, 1_000_000, 0) // huge window
 	if len(got) != len(h) {
 		t.Fatalf("expected history untouched below threshold, got %d want %d", len(got), len(h))
 	}
@@ -53,7 +53,7 @@ func TestMaybeCompactHistory_DisabledIsNoop(t *testing.T) {
 	a := &App{cfg: &config.AppConfig{}}
 	a.cfg.AgentMode.ConversationCompactEnabled = false
 	h := longHistory(20)
-	got := a.maybeCompactHistory(context.Background(), "c1", h, 100)
+	got := a.maybeCompactHistory(context.Background(), "c1", h, 100, 0)
 	if len(got) != len(h) {
 		t.Fatalf("disabled: history should be untouched, got %d want %d", len(got), len(h))
 	}
@@ -74,7 +74,7 @@ func TestMaybeCompactHistory_UsesCachedSummary(t *testing.T) {
 	}
 
 	// Budget small enough that the ~20*~31-token history is well over 60%.
-	got := a.maybeCompactHistory(context.Background(), "c1", h, 400)
+	got := a.maybeCompactHistory(context.Background(), "c1", h, 400, 0)
 
 	if len(got) != (len(h)-cut)+1 {
 		t.Fatalf("compacted length = %d, want %d (recent tail + 1 summary)", len(got), (len(h)-cut)+1)
@@ -130,11 +130,87 @@ func TestMaybeCompactHistory_CachedSummaryKeepsMinTail(t *testing.T) {
 
 	// ...then the user trims recent turns so only those first 18 remain.
 	shrunk := full[:18]
-	got := a.maybeCompactHistory(context.Background(), "c1", shrunk, 400)
+	got := a.maybeCompactHistory(context.Background(), "c1", shrunk, 400, 0)
 
 	if len(got) != len(shrunk) {
 		t.Fatalf("history collapsed to %d messages (summary=%v); the whole visible "+
 			"conversation was replaced by the cached summary", len(got),
 			len(got) > 0 && got[0].Role == "system")
+	}
+}
+
+// cachedSummaryFor seeds the summary cache so a compaction that fires can be
+// observed without a provider: the result starts with the cached summary.
+func cachedSummaryFor(a *App, h []api.Message) {
+	cut := len(h) * 6 / 10
+	a.convSummaries = map[string]*convSummary{
+		"c1": {coveredCount: cut, prefixSig: conversationSig(h[:cut]), text: "- did X"},
+	}
+}
+
+func compacted(got []api.Message) bool {
+	return len(got) > 0 && got[0].Role == "system" && strings.Contains(got[0].GetTextContent(), "did X")
+}
+
+// longHistory(20) is 1000 estimated tokens (20 × 151 chars / 3). The threshold
+// is a share of the WINDOW, over the whole prompt.
+func TestMaybeCompactHistory_NinetyPercentOfTheWindow(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{}}
+	a.cfg.AgentMode.ConversationCompactEnabled = true
+	a.cfg.AgentMode.CompactThresholdPct = 90
+	h := longHistory(20)
+	cachedSummaryFor(a, h)
+
+	if got := a.maybeCompactHistory(context.Background(), "c1", h, 1300, 0); compacted(got) {
+		t.Fatal("history at ~77% of the window must not be compacted at a 90% threshold")
+	}
+	if got := a.maybeCompactHistory(context.Background(), "c1", h, 1050, 0); !compacted(got) {
+		t.Fatal("history at ~95% of the window must be compacted")
+	}
+}
+
+// The system prompt, the tool schema and the new message take context too: a
+// history that would fit alone still has to be condensed when they push the
+// whole prompt past the threshold.
+func TestMaybeCompactHistory_CountsTheFixedPartOfThePrompt(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{}}
+	a.cfg.AgentMode.ConversationCompactEnabled = true
+	a.cfg.AgentMode.CompactThresholdPct = 90
+	h := longHistory(20)
+	cachedSummaryFor(a, h)
+
+	if got := a.maybeCompactHistory(context.Background(), "c1", h, 1500, 0); compacted(got) {
+		t.Fatal("history alone (~67%) is under the threshold")
+	}
+	if got := a.maybeCompactHistory(context.Background(), "c1", h, 1500, 400); !compacted(got) {
+		t.Fatal("history + 400 tokens of system/tools/message (~93%) must be compacted")
+	}
+}
+
+// The provider's own count from the previous turn catches what len/3
+// under-counts: the estimate says 50%, the provider said the conversation
+// already stood at 90%.
+func TestMaybeCompactHistory_TrustsTheProvidersLastCount(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{}}
+	a.cfg.AgentMode.ConversationCompactEnabled = true
+	a.cfg.AgentMode.CompactThresholdPct = 90
+	h := longHistory(20)
+	cachedSummaryFor(a, h)
+	providerName, model := a.activeModelIdentity()
+
+	a.ctxState.usage = map[string]turnUsage{"c1": {prompt: 1700, completion: 100, real: true, provider: providerName, model: model, window: 2000}}
+	if got := a.maybeCompactHistory(context.Background(), "c1", h, 2000, 0); !compacted(got) {
+		t.Fatal("a real 1800-token conversation in a 2000-token window must be compacted")
+	}
+
+	// A count the provider did not report is only an estimate: not trusted.
+	a.ctxState.usage["c1"] = turnUsage{prompt: 1700, completion: 100, real: false, provider: providerName, model: model, window: 2000}
+	if got := a.maybeCompactHistory(context.Background(), "c1", h, 2000, 0); compacted(got) {
+		t.Fatal("an estimated count must not trigger compaction by itself")
+	}
+	// Another model's tokens say nothing about this one.
+	a.ctxState.usage["c1"] = turnUsage{prompt: 1700, completion: 100, real: true, provider: "other", model: "x", window: 2000}
+	if got := a.maybeCompactHistory(context.Background(), "c1", h, 2000, 0); compacted(got) {
+		t.Fatal("a count from a different model must be ignored")
 	}
 }

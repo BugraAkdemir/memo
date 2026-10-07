@@ -295,4 +295,5 @@ func (a *App) clearWorkingSet(chatID string) {
 	a.convSummaryMu.Lock()
 	delete(a.convSummaries, chatID)
 	a.convSummaryMu.Unlock()
+	a.forgetContext(chatID)
 }

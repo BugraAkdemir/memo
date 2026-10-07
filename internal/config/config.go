@@ -15,6 +15,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// defaultCompactThresholdPct is the share of the context window at which a
+// chat's older turns are condensed; legacyCompactThresholdPct was the default
+// before the context gauge existed (it measured history alone, against a
+// reduced budget) and is the one value migrated on load.
+const (
+	defaultCompactThresholdPct = 90
+	legacyCompactThresholdPct  = 60
+)
+
 var (
 	dataDirMu     sync.Mutex
 	dataDirCached bool
@@ -316,14 +325,17 @@ type AgentModeConfig struct {
 	// WorkingSetMaxTokens hard-caps that injected digest. Default 600.
 	WorkingSetMaxTokens int `yaml:"working_set_max_tokens" json:"working_set_max_tokens"`
 
-	// ConversationCompactEnabled: once a chat's history passes
-	// CompactThresholdPct of the model's context budget, condense the oldest
-	// ~60% of it into a single summary system message and keep the rest
-	// verbatim, instead of letting drop-oldest silently discard early turns.
-	// Default on.
+	// ConversationCompactEnabled: once a chat's whole prompt (system prompt,
+	// tool schema, history and the new message) passes CompactThresholdPct of
+	// the model's context window, condense the oldest ~60% of the history into a
+	// single summary system message and keep the rest verbatim, instead of
+	// letting drop-oldest silently discard early turns. Applies to every
+	// provider — local, API and Subscriptions. Default on.
 	ConversationCompactEnabled bool `yaml:"conversation_compact_enabled" json:"conversation_compact_enabled"`
-	// CompactThresholdPct is the history-vs-context-budget percentage that
-	// triggers the summarization above. Default 60.
+	// CompactThresholdPct is the share of the context window (percent) at which
+	// the summarization above fires. Default 90 (it was 60 and measured only the
+	// history against a reduced budget; 60 in an existing config.yaml is the old
+	// default and is moved to 90 on load).
 	CompactThresholdPct int `yaml:"compact_threshold_pct" json:"compact_threshold_pct"`
 
 	// MaxIterations is the per-turn tool-call ceiling for one agent turn.
@@ -1026,7 +1038,7 @@ func Default() *AppConfig {
 			WorkingSetEnabled:          true,
 			WorkingSetMaxTokens:        600,
 			ConversationCompactEnabled: true,
-			CompactThresholdPct:        60,
+			CompactThresholdPct:        defaultCompactThresholdPct,
 			MaxIterations:              40,
 			TurnBudgetSecs:             1200,
 			MaxContinuations:           2,
@@ -1273,7 +1285,7 @@ func (c *AppConfig) validate() []string {
 		c.AgentMode.WorkingSetMaxTokens = 600
 		c.AgentMode.WorkingSetEnabled = true
 		c.AgentMode.ConversationCompactEnabled = true
-		c.AgentMode.CompactThresholdPct = 60
+		c.AgentMode.CompactThresholdPct = defaultCompactThresholdPct
 		c.AgentMode.TurnBudgetSecs = 1200
 		c.AgentMode.MaxContinuations = 2
 		c.AgentMode.CodeModeMaxIterations = 80
@@ -1285,8 +1297,9 @@ func (c *AppConfig) validate() []string {
 		c.AgentMode.MaxContinuations = 2
 		fixes = append(fixes, "AgentMode.MaxContinuations")
 	}
-	if c.AgentMode.CompactThresholdPct <= 0 || c.AgentMode.CompactThresholdPct > 95 {
-		c.AgentMode.CompactThresholdPct = 60
+	if c.AgentMode.CompactThresholdPct <= 0 || c.AgentMode.CompactThresholdPct > 95 ||
+		c.AgentMode.CompactThresholdPct == legacyCompactThresholdPct {
+		c.AgentMode.CompactThresholdPct = defaultCompactThresholdPct
 		fixes = append(fixes, "AgentMode.CompactThresholdPct")
 	}
 	if c.AgentMode.MaxIterations <= 0 {

@@ -47,30 +47,31 @@ const compactSummaryHeader = "[Earlier conversation summary — the turns before
 // letting the token-aware fetch silently drop early turns. Interactive chat
 // and agent mode had no equivalent of the task loop's compactPlanState.
 //
-// It fires only when history already occupies >= CompactThresholdPct of the
-// turn's context budget, and the summarization LLM call is skipped whenever
-// the region being condensed is unchanged from the last call for this chat
-// (the common case: a long session growing one turn at a time). On any
-// failure it returns the history untouched.
-func (a *App) maybeCompactHistory(ctx context.Context, chatID string, history []api.Message, tokenBudget int) []api.Message {
-	a.cfgMu.RLock()
-	enabled := a.cfg.AgentMode.ConversationCompactEnabled
-	thresholdPct := a.cfg.AgentMode.CompactThresholdPct
-	a.cfgMu.RUnlock()
+// It fires once the whole prompt — fixedTokens (system prompt, tool schema and
+// the new message) plus the history — reaches CompactThresholdPct (default 90)
+// of window, the model's real context window. That is the same for a local
+// model, an API provider and a Subscriptions model: the window differs, the
+// rule does not. It also fires when the provider's own count from the previous
+// turn (plus the reply it wrote) is already at the threshold, which catches
+// what the len/3 estimate under-counts (Turkish, code, images).
+//
+// The summarization LLM call is skipped whenever the region being condensed is
+// unchanged from the last call for this chat (the common case: a long session
+// growing one turn at a time). On any failure it returns the history untouched.
+func (a *App) maybeCompactHistory(ctx context.Context, chatID string, history []api.Message, window, fixedTokens int) []api.Message {
+	enabled, thresholdPct := a.compactionSettings()
 
-	if !enabled || chatID == "" || tokenBudget <= 0 || len(history) < 8 {
+	if !enabled || chatID == "" || window <= 0 || len(history) < 8 {
 		return history
 	}
-	if thresholdPct <= 0 || thresholdPct > 95 {
-		thresholdPct = 60
-	}
 
-	used := 0
-	for _, h := range history {
-		used += truncate.EstimateTokens(h.GetTextContent())
-	}
-	if used*100 < thresholdPct*tokenBudget {
-		return history
+	used := fixedTokens + estimateHistoryTokens(history)
+	if used*100 < thresholdPct*window {
+		providerName, model := a.activeModelIdentity()
+		real, ok := a.realContextUsed(chatID, providerName, model, window)
+		if !ok || real*100 < thresholdPct*window {
+			return history
+		}
 	}
 
 	// Condense the oldest ~60% on a message boundary, keep the newest ~40%.

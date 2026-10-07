@@ -143,3 +143,38 @@ func TestWithQuotaSignals_ADisconnectedClientDoesNotLeakTheGoroutine(t *testing.
 		}
 	}
 }
+
+// The quota card needs the vendor's own wording and reset time, so the error is
+// classified on the RAW text — the person then reads the friendly rewrite.
+func TestWithQuotaSignals_ClassifiesTheRawErrorThenShowsTheFriendlyOne(t *testing.T) {
+	var classified string
+	b := &swarmStubBridge{
+		quotaForError: func(errText string) *models.QuotaSignal {
+			classified = errText
+			return nil
+		},
+		friendly: func(raw string) string { return "friendly" },
+	}
+	s := &Server{fullBridge: b}
+	got := drain(t, s.withQuotaSignals(context.Background(), feed(
+		api.StreamChunk{Error: "⚠️ [custom] status 429: usage limit reached (resets in 1h0m0s)", Done: true},
+	)))
+	if classified != "⚠️ [custom] status 429: usage limit reached (resets in 1h0m0s)" {
+		t.Errorf("the quota check saw %q, want the raw error text (it parses the reset time out of it)", classified)
+	}
+	if len(got) != 1 || got[0].Error != "friendly" {
+		t.Errorf("client got %+v, want the friendly rewrite", got)
+	}
+}
+
+func TestWithFriendlyErrors_RewritesOnlyTheErrorChunk(t *testing.T) {
+	b := &swarmStubBridge{friendly: func(raw string) string { return "friendly" }}
+	s := &Server{fullBridge: b}
+	got := drain(t, s.withFriendlyErrors(context.Background(), feed(
+		api.StreamChunk{Content: "text with status 500 in it"},
+		api.StreamChunk{Error: "⚠️ raw", Done: true},
+	)))
+	if len(got) != 2 || got[0].Content != "text with status 500 in it" || got[1].Error != "friendly" || !got[1].Done {
+		t.Errorf("got %+v", got)
+	}
+}

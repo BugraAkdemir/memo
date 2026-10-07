@@ -136,7 +136,36 @@ func (s *Server) withQuotaSignals(ctx context.Context, ch <-chan api.StreamChunk
 					}
 				}
 			}
+			// Classified above on the raw text (the quota card needs the vendor's own
+			// wording and reset time); what the person reads is the friendly one.
+			if c.Error != "" {
+				c.Error = s.fullBridge.FriendlyError(c.Error)
+			}
 			if !send(c) {
+				return
+			}
+		}
+	}()
+	return out
+}
+
+// withFriendlyErrors is withQuotaSignals' error half for the streams that carry
+// no quota markers (the WhatsApp chat stream, the CLI-provider stream): a failure
+// reaches the client as a sentence a person can act on, not a vendor status line.
+func (s *Server) withFriendlyErrors(ctx context.Context, ch <-chan api.StreamChunk) <-chan api.StreamChunk {
+	if s.fullBridge == nil || ch == nil {
+		return ch
+	}
+	out := make(chan api.StreamChunk, 128)
+	go func() {
+		defer close(out)
+		for c := range ch {
+			if c.Error != "" {
+				c.Error = s.fullBridge.FriendlyError(c.Error)
+			}
+			select {
+			case out <- c:
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -1226,7 +1255,7 @@ func (s *Server) handleSendCLIStream(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	ch := s.fullBridge.SendCLIMessageStream(ctx, req.ChatID, req.Message)
-	streamSSE(ctx, w, flusher, ch)
+	streamSSE(ctx, w, flusher, s.withFriendlyErrors(ctx, ch))
 }
 
 func (s *Server) handleCLIRunning(w http.ResponseWriter, r *http.Request) {
@@ -1239,6 +1268,22 @@ func (s *Server) handleCLIRunning(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string][]string{"chat_ids": s.fullBridge.GetRunningCLIChats()})
+}
+
+// handleContext serves GET /api/context?chat_id=… — the context gauge behind the
+// ring at the bottom of the chat (see App.ContextReport). Read-only and cheap: it
+// answers from what the last turn recorded and the quota cache, so the app can
+// call it after every turn and whenever the popover opens.
+func (s *Server) handleContext(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, s.fullBridge.ContextReport(r.URL.Query().Get("chat_id")))
 }
 
 // handleStreamingChats serves GetStreamingChatIDs (chat_locks.go) — the
@@ -2975,7 +3020,7 @@ func (s *Server) handleWhatsAppChatStream(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Connection", "keep-alive")
 	ctx := r.Context()
 	streamCh := s.fullBridge.WhatsAppChatStream(ctx, req.Message)
-	streamSSE(ctx, w, flusher, streamCh)
+	streamSSE(ctx, w, flusher, s.withFriendlyErrors(ctx, streamCh))
 }
 
 // ─── Skill Handlers ──────────────────────────────────────────────

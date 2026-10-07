@@ -9,6 +9,7 @@ import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
 import '../providers/agent_provider.dart';
+import 'context_ring.dart';
 import 'mood_gauge.dart';
 import 'svg_icon.dart';
 import '../providers/mood_provider.dart';
@@ -215,7 +216,11 @@ class EngineStrip extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
+          // How full the model's context window is — tap for the breakdown and,
+          // on a Subscriptions model, the account's usage limits.
+          const ContextRing(),
+          const SizedBox(width: 4),
           MouseRegion(
             cursor: SystemMouseCursors.click,
             child: GestureDetector(

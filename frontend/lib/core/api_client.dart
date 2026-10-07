@@ -18,6 +18,7 @@ import '../models/local_model.dart';
 import '../models/minimal_mode_overrides.dart';
 import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
+import '../models/context_report.dart';
 import '../models/provider_models.dart';
 import '../models/subscriptions.dart';
 import '../models/server_browse_entry.dart';
@@ -2110,6 +2111,15 @@ class MemoApiClient {
   Future<ProviderModelList> listProviderModels(String name, {bool fresh = false}) async {
     final res = await _dio.get('/api/providers/model', queryParameters: {'name': name, if (fresh) 'fresh': '1'});
     return ProviderModelList.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  /// How full [chatId]'s context window is, what it is made of, and — for a
+  /// Subscriptions model — the account's allowance meters (GET /api/context).
+  /// Cheap: the backend answers from what the last turn recorded and its quota
+  /// cache, never from a model call.
+  Future<ContextReport> getContextReport(String chatId) async {
+    final res = await _dio.get('/api/context', queryParameters: {'chat_id': chatId});
+    return ContextReport.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   /// Switch one provider's model, changing nothing else about its config. With

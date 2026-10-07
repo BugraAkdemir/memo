@@ -1,6 +1,8 @@
 package whatsapp
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,5 +90,74 @@ func TestHandleMessage_NoTextAtAllIsIgnored(t *testing.T) {
 	case msg := <-c.msgCh:
 		t.Fatalf("expected no message on msgCh for an empty message, got %+v", msg)
 	default:
+	}
+}
+
+func imageEvent(id, caption string) *waEvent.Message {
+	im := &waE2E.ImageMessage{Mimetype: proto.String("image/jpeg"), FileLength: proto.Uint64(1234)}
+	if caption != "" {
+		im.Caption = proto.String(caption)
+	}
+	return &waEvent.Message{
+		Info: types.MessageInfo{
+			MessageSource: types.MessageSource{
+				Chat:   types.NewJID("123", types.DefaultUserServer),
+				Sender: types.NewJID("456", types.DefaultUserServer),
+			},
+			ID:        id,
+			PushName:  "Ali",
+			Timestamp: time.Now(),
+		},
+		Message: &waE2E.Message{ImageMessage: im},
+	}
+}
+
+// A picture with no caption used to be dropped (no text to extract). It must now
+// reach the consumer carrying its image handle, but leave nothing in the text
+// store (an empty row would be noise in search).
+func TestHandleMessage_PictureWithoutCaptionIsDeliveredButNotStored(t *testing.T) {
+	store := newTestStore(t)
+	c := &Client{store: store, msgCh: make(chan Message, 1)}
+
+	c.handleMessage(imageEvent("pic-1", ""))
+
+	select {
+	case msg := <-c.msgCh:
+		if msg.Image == nil || msg.Image.MimeType != "image/jpeg" || msg.Image.Size != 1234 {
+			t.Fatalf("image handle = %+v", msg.Image)
+		}
+		if msg.Text != "" {
+			t.Errorf("Text = %q, want empty", msg.Text)
+		}
+	default:
+		t.Fatal("a caption-less picture was dropped")
+	}
+	saved, _ := store.GetChatMessages(types.NewJID("123", types.DefaultUserServer).String(), 10)
+	if len(saved) != 0 {
+		t.Fatalf("a caption-less picture left %d row(s) in the text store", len(saved))
+	}
+}
+
+func TestHandleMessage_PictureWithCaptionKeepsBoth(t *testing.T) {
+	c := &Client{msgCh: make(chan Message, 1)}
+	c.handleMessage(imageEvent("pic-2", "make it a cartoon"))
+	select {
+	case msg := <-c.msgCh:
+		if msg.Text != "make it a cartoon" || msg.Image == nil {
+			t.Fatalf("got %+v", msg)
+		}
+	default:
+		t.Fatal("captioned picture dropped")
+	}
+}
+
+func TestDownloadImage_RefusesWhatHasNoImageOrIsTooBig(t *testing.T) {
+	c := &Client{}
+	if _, _, err := c.DownloadImage(context.Background(), Message{}); err == nil {
+		t.Fatal("a message without an image must be an error")
+	}
+	big := Message{Image: &ImageRef{Size: MaxImageBytes + 1, msg: &waE2E.ImageMessage{}}}
+	if _, _, err := c.DownloadImage(context.Background(), big); err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Fatalf("oversized image: %v", err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"memo/internal/logx"
+	"net/http"
 	"strings"
 	"time"
 
@@ -157,34 +158,73 @@ func isTelegramOwnerMessage(chatID, ownerChatID int64) bool {
 // collides with the chat open in the UI.
 func (a *App) handleTelegramMessage(msg telegram.Message) {
 	text := strings.TrimSpace(msg.Text)
-	if text == "" {
-		return
+	lang := tgLang(a.GetUILanguage())
+
+	reply := func(body string) {
+		ctx, cancel := context.WithTimeout(a.lifecycleCtx, 300*time.Second)
+		defer cancel()
+		if err := a.TelegramSend(ctx, msg.ChatID, body); err != nil {
+			logx.Printf("Telegram: send reply error: %v", err)
+		}
 	}
 
-	if reply, handled := a.handleTelegramCommand(text); handled {
-		if reply == "" {
+	// "/image <prompt>" is an explicit request for a picture: it goes to the
+	// image model whatever the wording, with the photo (if one came along) as the
+	// source to edit.
+	prompt, forced := parseImageCommand(text)
+	if forced {
+		text = prompt
+		if text == "" && msg.Image == nil {
+			reply(scT(lang, "sc_img_usage"))
 			return
 		}
-		ctx, cancel := context.WithTimeout(a.lifecycleCtx, 15*time.Second)
-		defer cancel()
-		if err := a.TelegramSend(ctx, msg.ChatID, reply); err != nil {
-			logx.Printf("Telegram: send command reply error: %v", err)
-		}
-		return
 	}
 
-	// Task-loop control: task_list / task_change / dur|devam|atla while
-	// focused, or a natural-language instruction for the focused task.
-	// Falls through to the normal assistant when nothing is focused.
-	if reply, handled := a.handleTaskControl(a.lifecycleCtx, taskSurfaceTelegram, text); handled {
-		if reply != "" {
-			ctx, cancel := context.WithTimeout(a.lifecycleCtx, 300*time.Second)
-			defer cancel()
-			if err := a.TelegramSend(ctx, msg.ChatID, reply); err != nil {
-				logx.Printf("Telegram: send task-control reply error: %v", err)
+	if msg.Image == nil {
+		if text == "" {
+			return
+		}
+
+		if !forced {
+			if body, handled := a.handleTelegramCommand(text); handled {
+				if body != "" {
+					reply(body)
+				}
+				return
+			}
+
+			// Task-loop control: task_list / task_change / dur|devam|atla while
+			// focused, or a natural-language instruction for the focused task.
+			// Falls through to the normal assistant when nothing is focused.
+			if body, handled := a.handleTaskControl(a.lifecycleCtx, taskSurfaceTelegram, text); handled {
+				if body != "" {
+					reply(body)
+				}
+				return
 			}
 		}
-		return
+	}
+
+	// A photo: fetch it first, so a failed download is said out loud instead of
+	// the message vanishing.
+	var img *inboundImage
+	if msg.Image != nil {
+		client := a.telegramClient()
+		if client == nil {
+			return
+		}
+		dctx, cancel := context.WithTimeout(a.lifecycleCtx, 60*time.Second)
+		data, err := client.DownloadFile(dctx, msg.Image.FileID)
+		cancel()
+		if err != nil {
+			logx.Printf("Telegram: download photo: %v", err)
+			reply(fmt.Sprintf(scT(lang, "sc_img_download_fail"), err))
+			return
+		}
+		img = &inboundImage{Data: data, MIME: sniffImageMIME(data, msg.Image.MimeType)}
+		if text == "" {
+			text = scT(lang, "sc_img_default_prompt")
+		}
 	}
 
 	sm := a.getSessionManager()
@@ -214,8 +254,8 @@ func (a *App) handleTelegramMessage(msg telegram.Message) {
 	stopComposing := a.startTelegramComposing(ctx, msg.ChatID)
 	defer stopComposing()
 
-	reply := a.drainSelfChatReply(
-		a.SendMessageStreamToAsAgent(ctx, chatID, text),
+	turn := a.drainSelfChatTurn(
+		a.selfChatStream(ctx, chatID, text, img, forced),
 		a.GetTelegramAutoApprovePermissions(),
 		a.telegramPermissionQuestion,
 		func(q string) error { return a.TelegramSend(ctx, msg.ChatID, q) },
@@ -223,14 +263,33 @@ func (a *App) handleTelegramMessage(msg telegram.Message) {
 			return a.awaitTelegramPermissionAnswer(waitCtx, msg.ChatID)
 		},
 	)
-	reply = strings.TrimSpace(reply)
-	if reply == "" {
-		return
-	}
+	a.deliverSelfChatReply(lang, turn,
+		func(body string) error { return a.TelegramSend(ctx, msg.ChatID, body) },
+		func(data []byte) error { return a.telegramSendImage(ctx, msg.ChatID, data) },
+	)
+}
 
-	if err := a.TelegramSend(ctx, msg.ChatID, reply); err != nil {
-		logx.Printf("Telegram: send reply error: %v", err)
+// telegramClient returns the live bot client, or nil.
+func (a *App) telegramClient() *telegram.Client {
+	a.tgMu.Lock()
+	defer a.tgMu.Unlock()
+	return a.tgClient
+}
+
+// telegramSendImage sends a picture as a photo; Telegram rejects some sizes and
+// proportions for photos, so on a refusal it goes again as a file (no
+// recompression, always accepted).
+func (a *App) telegramSendImage(ctx context.Context, chatID int64, data []byte) error {
+	client := a.telegramClient()
+	if client == nil {
+		return fmt.Errorf("Telegram not initialized")
 	}
+	name := "memo" + imageExtension(http.DetectContentType(data))
+	if err := client.SendPhoto(ctx, chatID, data, name, ""); err != nil {
+		logx.Printf("Telegram: sendPhoto refused (%v); sending as a file", err)
+		return client.SendDocumentBytes(ctx, chatID, data, name, "")
+	}
+	return nil
 }
 
 // handleTelegramCommand mirrors handleWhatsAppSelfChatCommand — same
@@ -308,6 +367,11 @@ func (a *App) handleTelegramCommand(text string) (reply string, handled bool) {
 			return fmt.Sprintf(tgT(lang, "tg_autoperm_status"), tgOnOff(lang, a.GetTelegramAutoApprovePermissions())), true
 		}
 
+	case "/model", "/models":
+		ctx, cancel := context.WithTimeout(a.lifecycle(), 30*time.Second)
+		defer cancel()
+		return a.selfChatModelCommand(ctx, lang, strings.TrimSpace(strings.TrimPrefix(text, fields[0]))), true
+
 	case "/status":
 		return a.telegramStatusText(lang), true
 
@@ -334,7 +398,7 @@ func (a *App) telegramStatusText(lang string) string {
 	var model string
 	switch {
 	case activeProvider != "":
-		model = fmt.Sprintf(tgT(lang, "tg_model_cloud"), activeProvider)
+		model = fmt.Sprintf(tgT(lang, "tg_model_cloud"), a.activeModelLabel())
 	case localRunning:
 		model = tgT(lang, "tg_model_local")
 	default:

@@ -42,6 +42,18 @@ type Message struct {
 	Text       string    `json:"text"`
 	Timestamp  time.Time `json:"timestamp"`
 	FromMe     bool      `json:"from_me"`
+
+	// Image is set when the message carries a picture. It is a live handle on
+	// WhatsApp's media servers, never stored: fetch the bytes with
+	// Client.DownloadImage while the message is in hand.
+	Image *ImageRef `json:"-"`
+}
+
+// ImageRef points at a picture WhatsApp holds.
+type ImageRef struct {
+	MimeType string
+	Size     uint64
+	msg      *waE2E.ImageMessage
 }
 
 // Client manages the WhatsApp Web connection.
@@ -419,6 +431,80 @@ func (c *Client) SendDocument(ctx context.Context, jid, filePath, filename strin
 		return "", fmt.Errorf("whatsapp: send document: %w", err)
 	}
 
+	c.markSelfSent(resp.ID)
+	return resp.ID, nil
+}
+
+// MaxImageBytes caps a picture fetched from or sent to WhatsApp.
+const MaxImageBytes = 20 << 20
+
+// DownloadImage fetches the picture a message carries and returns its bytes and
+// MIME type.
+func (c *Client) DownloadImage(ctx context.Context, m Message) ([]byte, string, error) {
+	if m.Image == nil || m.Image.msg == nil {
+		return nil, "", fmt.Errorf("whatsapp: message has no image")
+	}
+	if m.Image.Size > MaxImageBytes {
+		return nil, "", fmt.Errorf("whatsapp: image is %d bytes, over the %d byte limit", m.Image.Size, MaxImageBytes)
+	}
+	c.startMu.Lock()
+	wa := c.waClient
+	c.startMu.Unlock()
+	if wa == nil || !wa.IsConnected() || !wa.IsLoggedIn() {
+		return nil, "", fmt.Errorf("whatsapp: not connected")
+	}
+	data, err := wa.Download(ctx, m.Image.msg)
+	if err != nil {
+		return nil, "", fmt.Errorf("whatsapp: download image: %w", err)
+	}
+	mt := m.Image.MimeType
+	if mt == "" {
+		mt = http.DetectContentType(data)
+	}
+	return data, mt, nil
+}
+
+// SendImage uploads picture bytes to WhatsApp's media servers and sends them to
+// jid as an image message with an optional caption. Returns the sent message's
+// ID, like SendMessage.
+func (c *Client) SendImage(ctx context.Context, jid string, data []byte, caption string) (string, error) {
+	c.startMu.Lock()
+	wa := c.waClient
+	c.startMu.Unlock()
+	if wa == nil || !wa.IsConnected() || !wa.IsLoggedIn() {
+		return "", fmt.Errorf("whatsapp: not connected")
+	}
+	if len(data) > MaxImageBytes {
+		return "", fmt.Errorf("whatsapp: image is %d bytes, over the %d byte limit", len(data), MaxImageBytes)
+	}
+	parsedJID, err := types.ParseJID(jid)
+	if err != nil {
+		return "", fmt.Errorf("whatsapp: invalid JID: %w", err)
+	}
+	mimeType := http.DetectContentType(data)
+	if !strings.HasPrefix(mimeType, "image/") {
+		mimeType = "image/png"
+	}
+	uploaded, err := wa.Upload(ctx, data, whatsmeow.MediaImage)
+	if err != nil {
+		return "", fmt.Errorf("whatsapp: upload image: %w", err)
+	}
+	img := &waE2E.ImageMessage{
+		URL:           proto.String(uploaded.URL),
+		DirectPath:    proto.String(uploaded.DirectPath),
+		MediaKey:      uploaded.MediaKey,
+		FileEncSHA256: uploaded.FileEncSHA256,
+		FileSHA256:    uploaded.FileSHA256,
+		FileLength:    proto.Uint64(uploaded.FileLength),
+		Mimetype:      proto.String(mimeType),
+	}
+	if caption != "" {
+		img.Caption = proto.String(caption)
+	}
+	resp, err := wa.SendMessage(ctx, parsedJID, &waE2E.Message{ImageMessage: img})
+	if err != nil {
+		return "", fmt.Errorf("whatsapp: send image: %w", err)
+	}
 	c.markSelfSent(resp.ID)
 	return resp.ID, nil
 }
@@ -902,7 +988,11 @@ func (c *Client) handleMessage(evt *waEvent.Message) {
 	// through it, so the exact same message arriving live vs. via a
 	// post-reconnect history sync behaved completely differently.
 	text := extractText(evt.Message)
-	if text == "" {
+	var image *ImageRef
+	if im := evt.Message.GetImageMessage(); im != nil {
+		image = &ImageRef{MimeType: im.GetMimetype(), Size: im.GetFileLength(), msg: im}
+	}
+	if text == "" && image == nil {
 		return
 	}
 
@@ -933,9 +1023,11 @@ func (c *Client) handleMessage(evt *waEvent.Message) {
 		Text:       text,
 		Timestamp:  info.Timestamp,
 		FromMe:     info.IsFromMe,
+		Image:      image,
 	}
 
-	if c.store != nil {
+	// A picture with no caption has no text to index or search.
+	if c.store != nil && text != "" {
 		if err := c.store.SaveMessage(msg); err != nil {
 			logx.Printf("WhatsApp: save message error: %v", err)
 		}

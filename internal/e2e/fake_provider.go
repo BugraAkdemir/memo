@@ -127,6 +127,85 @@ type FakeProvider struct {
 	mu       sync.Mutex
 	callNum  int
 	requests []FakeChatRequest
+
+	// ImageModels are the model ids the images endpoint serves, as a real
+	// Subscriptions sidecar or image-capable provider would: a request for any
+	// other model is refused "is not supported". ImageStatus, when set, makes every
+	// real (prompt-carrying) image request fail with that HTTP status and
+	// ImageErrorBody, to test how a failed picture is worded.
+	ImageModels    map[string]bool
+	ImageStatus    int
+	ImageErrorBody string
+	imageRequests  []FakeImageRequest
+}
+
+// FakeImageRequest is one real (prompt-carrying) call to the images endpoint.
+type FakeImageRequest struct {
+	Path   string // "/images/generations" or "/images/edits"
+	Model  string
+	Prompt string
+	Images int // how many source pictures came with it (image-to-image)
+}
+
+// ImageRequests returns every prompt-carrying image request received so far.
+func (fp *FakeProvider) ImageRequests() []FakeImageRequest {
+	fp.mu.Lock()
+	defer fp.mu.Unlock()
+	return append([]FakeImageRequest(nil), fp.imageRequests...)
+}
+
+// SetImageModels declares which models draw pictures.
+func (fp *FakeProvider) SetImageModels(ids ...string) {
+	fp.mu.Lock()
+	defer fp.mu.Unlock()
+	fp.ImageModels = map[string]bool{}
+	for _, id := range ids {
+		fp.ImageModels[id] = true
+	}
+}
+
+// fakePNG is a valid 1x1 PNG the fake images endpoint "draws".
+const fakePNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+
+// handleImages answers /images/generations and /images/edits the way the real
+// sidecar does: a request with no prompt is the cheap probe ("prompt is required"
+// for a model it serves, "is not supported" for the rest).
+func (fp *FakeProvider) handleImages(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Model  string            `json:"model"`
+		Prompt string            `json:"prompt"`
+		Images []json.RawMessage `json:"images"`
+	}
+	raw, _ := io.ReadAll(r.Body)
+	_ = json.Unmarshal(raw, &body)
+
+	fp.mu.Lock()
+	served := fp.ImageModels[body.Model]
+	status, errBody := fp.ImageStatus, fp.ImageErrorBody
+	fp.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if !served {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, `{"error":{"message":"model %q is not supported"}}`, body.Model)
+		return
+	}
+	if strings.TrimSpace(body.Prompt) == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"prompt is required"}}`))
+		return
+	}
+	fp.mu.Lock()
+	fp.imageRequests = append(fp.imageRequests, FakeImageRequest{
+		Path: r.URL.Path, Model: body.Model, Prompt: body.Prompt, Images: len(body.Images),
+	})
+	fp.mu.Unlock()
+	if status != 0 {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(errBody))
+		return
+	}
+	_, _ = fmt.Fprintf(w, `{"data":[{"b64_json":%q}],"output_format":"png"}`, fakePNG)
 }
 
 // NewFakeProvider starts the server. Script defaults to always replying
@@ -160,6 +239,10 @@ func (fp *FakeProvider) handle(w http.ResponseWriter, r *http.Request) {
 	// probe Memo sends to a custom provider to learn whether a model makes
 	// pictures, a catalogue lookup — is a 404, as on a real chat-only server,
 	// instead of being counted as a chat call that eats a scripted response.
+	if strings.HasSuffix(r.URL.Path, "/images/generations") || strings.HasSuffix(r.URL.Path, "/images/edits") {
+		fp.handleImages(w, r)
+		return
+	}
 	if !strings.HasSuffix(r.URL.Path, "/chat/completions") {
 		http.NotFound(w, r)
 		return

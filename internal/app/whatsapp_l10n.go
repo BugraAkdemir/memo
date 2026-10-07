@@ -83,10 +83,12 @@ var waTr = map[string]string{
 /auto-perm on — Agent araçlarını sormadan onayla
 /auto-perm off — Agent araçları için onay sor (varsayılan)
 /auto-perm — Otomatik izin durumunu göster
+/model — Modelleri listele ve değiştir (/model 3, /model gemini)
+/image <açıklama> — Görsel çiz; bir görsele yazarsan onu düzenler
 /status — Memo'nun anlık durumunu göster
 /help — Bu listeyi göster
 
-Komut değilse yazdığın her şey normal bir sohbet mesajı olarak Memo'ya gider.`,
+Komut değilse yazdığın her şey normal bir sohbet mesajı olarak Memo'ya gider. "Bir kedi çiz" gibi görsel isteklerini kendim anlayıp görsel modeline yönlendiririm; bir fotoğraf gönderirsen ne olduğunu anlatırım ya da "bunu anime yap" dersen düzenlerim.`,
 }
 
 var waEn = map[string]string{
@@ -134,8 +136,10 @@ var waEn = map[string]string{
 /auto-perm on — Approve agent tools without asking
 /auto-perm off — Ask for confirmation before agent tools (default)
 /auto-perm — Show auto-approve's status
+/model — List and switch models (/model 3, /model gemini)
+/image <prompt> — Draw a picture; captioning a photo edits it
 /status — Show Memo's current status
 /help — Show this list
 
-Anything that isn't a command is sent to Memo as a normal chat message.`,
+Anything that isn't a command is sent to Memo as a normal chat message. If you ask for a picture ("draw a cat") I notice and use an image model for that message; send a photo and I'll describe it, or say "make it anime" and I'll edit it.`,
 }

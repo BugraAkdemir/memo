@@ -143,6 +143,7 @@ type AppConfig struct {
 	Onboarding     OnboardingConfig   `yaml:"onboarding" json:"onboarding"`
 	LiveMode       LiveModeConfig     `yaml:"live_mode" json:"live_mode"`
 	TaskLoop       TaskLoopConfig     `yaml:"task_loop" json:"task_loop"`
+	Image          ImageConfig        `yaml:"image" json:"image"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
 
 	// Beta gates genuinely experimental features (e.g. Memo Swarm). Off by
@@ -152,6 +153,21 @@ type AppConfig struct {
 	// this flag. Live Mode graduated the same way (see LiveModeConfig) —
 	// its own Enabled toggle, no longer gated by Beta.
 	Beta bool `yaml:"beta" json:"beta"`
+}
+
+// ImageConfig drives automatic image routing: a plain text-model chat turn that
+// asks for a picture ("draw a cat", "make this photo black and white") is sent
+// to an image model for that one turn and the chat carries on with the text
+// model afterwards.
+//
+// A Subscriptions account answers with ITS OWN image model (the one its vendor
+// serves), never with DefaultProvider. DefaultProvider/DefaultModel is the
+// fallback for every other provider: the model an API-key provider (OpenCode
+// Go, OpenRouter, a custom endpoint …) has no image model of its own to offer.
+type ImageConfig struct {
+	AutoRoute       bool   `yaml:"auto_route" json:"auto_route"`
+	DefaultProvider string `yaml:"default_provider" json:"default_provider"`
+	DefaultModel    string `yaml:"default_model" json:"default_model"`
 }
 
 // TaskLoopConfig tunes the Self-Driving task loop (v4.4.0). Both switches
@@ -1056,6 +1072,7 @@ func Default() *AppConfig {
 			RPCPort: 50052,
 			Role:    "none",
 		},
+		Image: ImageConfig{AutoRoute: true},
 		TaskLoop: TaskLoopConfig{
 			PlanningSelfConfig:          true,
 			SubAgents:                   true,

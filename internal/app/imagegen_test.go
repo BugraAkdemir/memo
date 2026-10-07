@@ -101,7 +101,9 @@ func TestSaveGeneratedImage_WritesDecodedBytes(t *testing.T) {
 	if filepath.Ext(path) != ".png" {
 		t.Errorf("saved path %q has extension %q, want .png", path, filepath.Ext(path))
 	}
-	got, err := os.ReadFile(path)
+	// The file on disk is sealed (image_store_test.go checks that it is ciphertext);
+	// what comes back through the store is what was drawn.
+	got, err := readImageFile(path)
 	if err != nil {
 		t.Fatalf("read saved image: %v", err)
 	}

@@ -119,17 +119,21 @@ func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
 			// message must not permanently kill this loop for the rest of
 			// the process's life — every future WhatsApp message would
 			// silently stop reaching the observer/intent pipeline.
-			func() {
-				defer recoverPanic("runWhatsAppIntentLoop/RecordWhatsAppMessage")
-				// Record in observer regardless of intent.
-				if a.observerRecorder != nil {
-					a.observerRecorder.RecordWhatsAppMessage(msg.Text, msg.FromMe, msg.Timestamp)
-				}
-			}()
-			// Run intent extraction asynchronously so the channel never blocks.
-			goRecover("processMessageIntent", func() {
-				a.processMessageIntent(msg.Text, "whatsapp", msg.SenderName, msg.Timestamp)
-			})
+			// A picture with no caption has no text for the observer or intent
+			// extraction to look at; it still reaches the self-chat reply below.
+			if strings.TrimSpace(msg.Text) != "" {
+				func() {
+					defer recoverPanic("runWhatsAppIntentLoop/RecordWhatsAppMessage")
+					// Record in observer regardless of intent.
+					if a.observerRecorder != nil {
+						a.observerRecorder.RecordWhatsAppMessage(msg.Text, msg.FromMe, msg.Timestamp)
+					}
+				}()
+				// Run intent extraction asynchronously so the channel never blocks.
+				goRecover("processMessageIntent", func() {
+					a.processMessageIntent(msg.Text, "whatsapp", msg.SenderName, msg.Timestamp)
+				})
+			}
 			if a.shouldAutoReplyToWhatsApp(msg) {
 				goRecover("whatsAppSelfChatReply", func() {
 					a.handleWhatsAppSelfChatMessage(msg)
@@ -171,7 +175,7 @@ func (a *App) shouldAutoReplyToWhatsApp(msg whatsapp.Message) bool {
 // Client.OwnJIDs — see whatsapp_test.go's TestShouldAutoReplyToWhatsApp_Guards
 // doc comment). ownJIDs is exactly what Client.OwnJIDs returns.
 func isSelfChatMessage(msg whatsapp.Message, ownJIDs []string) bool {
-	if !msg.FromMe || strings.TrimSpace(msg.Text) == "" {
+	if !msg.FromMe || (strings.TrimSpace(msg.Text) == "" && msg.Image == nil) {
 		return false
 	}
 	for _, jid := range ownJIDs {
@@ -198,29 +202,65 @@ func isSelfChatMessage(msg whatsapp.Message, ownJIDs []string) bool {
 // inside Memo itself.
 func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 	text := strings.TrimSpace(msg.Text)
+	lang := waLang(a.GetUILanguage())
 
-	if reply, handled := a.handleWhatsAppSelfChatCommand(text); handled {
-		if reply == "" {
-			return
-		}
-		ctx, cancel := context.WithTimeout(a.lifecycleCtx, 15*time.Second)
+	reply := func(body string) {
+		ctx, cancel := context.WithTimeout(a.lifecycleCtx, 300*time.Second)
 		defer cancel()
-		if _, err := a.WhatsAppSend(ctx, msg.ChatJID, reply); err != nil {
-			logx.Printf("WhatsApp self-chat: send command reply error: %v", err)
+		if _, err := a.WhatsAppSend(ctx, msg.ChatJID, body); err != nil {
+			logx.Printf("WhatsApp self-chat: send reply error: %v", err)
 		}
-		return
 	}
 
-	// Task-loop control (see the Telegram mirror for the contract).
-	if reply, handled := a.handleTaskControl(a.lifecycleCtx, taskSurfaceWhatsApp, text); handled {
-		if reply != "" {
-			ctx, cancel := context.WithTimeout(a.lifecycleCtx, 300*time.Second)
-			defer cancel()
-			if _, err := a.WhatsAppSend(ctx, msg.ChatJID, reply); err != nil {
-				logx.Printf("WhatsApp self-chat: send task-control reply error: %v", err)
-			}
+	// "/image <prompt>": an explicit request for a picture (see the Telegram
+	// mirror for the contract).
+	prompt, forced := parseImageCommand(text)
+	if forced {
+		text = prompt
+		if text == "" && msg.Image == nil {
+			reply(scT(lang, "sc_img_usage"))
+			return
 		}
-		return
+	}
+
+	if msg.Image == nil && !forced {
+		if body, handled := a.handleWhatsAppSelfChatCommand(text); handled {
+			if body != "" {
+				reply(body)
+			}
+			return
+		}
+
+		// Task-loop control (see the Telegram mirror for the contract).
+		if body, handled := a.handleTaskControl(a.lifecycleCtx, taskSurfaceWhatsApp, text); handled {
+			if body != "" {
+				reply(body)
+			}
+			return
+		}
+	}
+
+	// A photo: fetch it first, so a failed download is said out loud.
+	var img *inboundImage
+	if msg.Image != nil {
+		a.waMu.Lock()
+		client := a.waClient
+		a.waMu.Unlock()
+		if client == nil {
+			return
+		}
+		dctx, cancel := context.WithTimeout(a.lifecycleCtx, 60*time.Second)
+		data, mime, err := client.DownloadImage(dctx, msg)
+		cancel()
+		if err != nil {
+			logx.Printf("WhatsApp self-chat: download picture: %v", err)
+			reply(fmt.Sprintf(scT(lang, "sc_img_download_fail"), err))
+			return
+		}
+		img = &inboundImage{Data: data, MIME: sniffImageMIME(data, mime)}
+		if text == "" {
+			text = scT(lang, "sc_img_default_prompt")
+		}
 	}
 
 	sm := a.getSessionManager()
@@ -255,8 +295,8 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 	stopComposing := a.startWhatsAppComposing(ctx, msg.ChatJID)
 	defer stopComposing()
 
-	reply := a.drainSelfChatReply(
-		a.SendMessageStreamToAsAgent(ctx, chatID, text),
+	turn := a.drainSelfChatTurn(
+		a.selfChatStream(ctx, chatID, text, img, forced),
 		a.GetWhatsAppAutoApprovePermissions(),
 		a.whatsAppPermissionQuestion,
 		func(q string) error {
@@ -267,14 +307,22 @@ func (a *App) handleWhatsAppSelfChatMessage(msg whatsapp.Message) {
 			return a.awaitWhatsAppPermissionAnswer(waitCtx, msg.ChatJID)
 		},
 	)
-	reply = strings.TrimSpace(reply)
-	if reply == "" {
-		return
-	}
-
-	if _, err := a.WhatsAppSend(ctx, msg.ChatJID, reply); err != nil {
-		logx.Printf("WhatsApp self-chat: send reply error: %v", err)
-	}
+	a.deliverSelfChatReply(lang, turn,
+		func(body string) error {
+			_, err := a.WhatsAppSend(ctx, msg.ChatJID, body)
+			return err
+		},
+		func(data []byte) error {
+			a.waMu.Lock()
+			client := a.waClient
+			a.waMu.Unlock()
+			if client == nil {
+				return fmt.Errorf("WhatsApp not initialized")
+			}
+			_, err := client.SendImage(ctx, msg.ChatJID, data, "")
+			return err
+		},
+	)
 }
 
 // handleWhatsAppSelfChatCommand recognizes a leading-slash command in a
@@ -362,6 +410,11 @@ func (a *App) handleWhatsAppSelfChatCommand(text string) (reply string, handled 
 			return fmt.Sprintf(waT(lang, "wa_autoperm_status"), waOnOff(lang, a.GetWhatsAppAutoApprovePermissions())), true
 		}
 
+	case "/model", "/models":
+		ctx, cancel := context.WithTimeout(a.lifecycle(), 30*time.Second)
+		defer cancel()
+		return a.selfChatModelCommand(ctx, lang, strings.TrimSpace(strings.TrimPrefix(text, fields[0]))), true
+
 	case "/status":
 		return a.whatsAppSelfChatStatusText(lang), true
 
@@ -390,7 +443,7 @@ func (a *App) whatsAppSelfChatStatusText(lang string) string {
 	var model string
 	switch {
 	case activeProvider != "":
-		model = fmt.Sprintf(waT(lang, "wa_model_cloud"), activeProvider)
+		model = fmt.Sprintf(waT(lang, "wa_model_cloud"), a.activeModelLabel())
 	case localRunning:
 		model = waT(lang, "wa_model_local")
 	default:

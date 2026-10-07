@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"memo/internal/config"
+	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/whatsapp"
 )
@@ -409,4 +410,45 @@ func TestHandleWhatsAppSelfChatCommand_FollowsUILanguage(t *testing.T) {
 			t.Errorf("expected an unset UILanguage to default to English, got %q", reply)
 		}
 	})
+}
+
+// A picture sent with no caption is a turn too (the assistant describes it); an
+// empty message with no picture is still nothing.
+func TestIsSelfChatMessage_APictureWithoutACaptionCounts(t *testing.T) {
+	own := []string{"905373154237@s.whatsapp.net"}
+	pic := whatsapp.Message{ChatJID: own[0], FromMe: true, Image: &whatsapp.ImageRef{MimeType: "image/jpeg"}}
+	if !isSelfChatMessage(pic, own) {
+		t.Error("a caption-less picture in the self-chat must be handled")
+	}
+	if isSelfChatMessage(whatsapp.Message{ChatJID: own[0], FromMe: true}, own) {
+		t.Error("a message with neither text nor picture must be ignored")
+	}
+	elsewhere := whatsapp.Message{ChatJID: "905555555555@s.whatsapp.net", FromMe: true, Image: &whatsapp.ImageRef{}}
+	if isSelfChatMessage(elsewhere, own) {
+		t.Error("a picture sent to someone else must never be picked up")
+	}
+}
+
+func TestHandleWhatsAppSelfChatCommand_ModelAndHelp(t *testing.T) {
+	mgr := provider.NewConfigManager(t.TempDir()+"/providers.json", nil)
+	mgr.Set(provider.ProviderConfig{Type: provider.ProviderCustom, Name: "alpha", BaseURL: "http://127.0.0.1:1/v1", Model: "a-1", Enabled: true})
+	a := &App{cfg: &config.AppConfig{}, providerCfgMgr: mgr, activeProviderName: "alpha"}
+
+	reply, handled := a.handleWhatsAppSelfChatCommand("/model")
+	if !handled || !strings.Contains(reply, "1. a-1 ✅") {
+		t.Errorf("/model = (%q, %v)", reply, handled)
+	}
+	if reply, handled := a.handleWhatsAppSelfChatCommand("/model 5"); !handled || !strings.Contains(reply, "Invalid number") {
+		t.Errorf("/model 5 = (%q, %v)", reply, handled)
+	}
+	help, _ := a.handleWhatsAppSelfChatCommand("/help")
+	for _, want := range []string{"/model", "/image"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("/help does not mention %s:\n%s", want, help)
+		}
+	}
+	// The status line names the model, not just the provider.
+	if st := a.whatsAppSelfChatStatusText("en"); !strings.Contains(st, "alpha · a-1") {
+		t.Errorf("status lacks the model:\n%s", st)
+	}
 }

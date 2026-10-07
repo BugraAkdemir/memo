@@ -5,7 +5,8 @@
 //	fakecpa -config cfg.yaml -<p>-login      print an authorize URL, write a credential, exit
 //
 // Knobs (env): FAKECPA_LOGIN_DELAY_MS, FAKECPA_LOGIN_FAIL=1, FAKECPA_CRASH_ONCE_MS,
-// FAKECPA_MODELS_DELAY_MS (the real binary lists no models for ~30s after start).
+// FAKECPA_MODELS_DELAY_MS (the real binary lists no models for ~30s after start),
+// FAKECPA_IMAGE_MODELS=1 (one "<vendor>-image" model each, plus /v1/images/*).
 package main
 
 import (
@@ -56,6 +57,44 @@ func main() {
 		}
 	}
 
+	// FAKECPA_IMAGE_MODELS=1 adds one image model per signed-in vendor
+	// ("<vendor>-image") and serves /v1/images/{generations,edits} for exactly
+	// those, the way the real sidecar does: a request with no prompt is the cheap
+	// probe ("prompt is required" for a model it serves, "is not supported" for the
+	// rest), and every real request is appended to <data>/cliproxy/image_requests.log
+	// as "model path source-images" so a test can see where a picture went.
+	imageModels := os.Getenv("FAKECPA_IMAGE_MODELS") == "1"
+	images := func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+key {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		var req struct {
+			Model  string            `json:"model"`
+			Prompt string            `json:"prompt"`
+			Images []json.RawMessage `json:"images"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "application/json")
+		if !imageModels || !strings.HasSuffix(req.Model, "-image") {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":{"message":"model %s is not supported"}}`, req.Model)
+			return
+		}
+		if strings.TrimSpace(req.Prompt) == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"prompt is required"}}`))
+			return
+		}
+		if f, err := os.OpenFile(filepath.Join(filepath.Dir(authDir), "image_requests.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+			fmt.Fprintf(f, "%s %s %d\n", req.Model, r.URL.Path, len(req.Images))
+			f.Close()
+		}
+		fmt.Fprintf(w, `{"data":[{"b64_json":%q}],"output_format":"png"}`, "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+	}
+	http.HandleFunc("/v1/images/generations", images)
+	http.HandleFunc("/v1/images/edits", images)
+
 	started := time.Now()
 	modelsDelay, _ := strconv.Atoi(os.Getenv("FAKECPA_MODELS_DELAY_MS"))
 	http.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +121,9 @@ func main() {
 				continue
 			}
 			out = append(out, model{c.Type + "-model-a", "model", c.Type}, model{c.Type + "-model-b", "model", c.Type})
+			if imageModels {
+				out = append(out, model{c.Type + "-image", "model", c.Type})
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": out})

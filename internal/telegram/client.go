@@ -30,6 +30,22 @@ import (
 // for their own endpoint constants.
 var apiBase = "https://api.telegram.org/bot"
 
+// fileBase is where getFile's file_path is downloaded from (the Bot API serves
+// file bytes from a different path than its methods). A var for the same reason
+// as apiBase.
+var fileBase = "https://api.telegram.org/file/bot"
+
+// EnvAPIBase points the client at another Bot API server instead of
+// api.telegram.org — a self-hosted telegram-bot-api (which lifts the 20 MB file
+// limit), or a fake one in an end-to-end test. The value is the server's origin,
+// e.g. "http://127.0.0.1:8081"; the "/bot<token>" and "/file/bot<token>" parts
+// are added here.
+const EnvAPIBase = "MEMO_TELEGRAM_API_BASE"
+
+// MaxDownloadBytes caps a file fetched from Telegram. The Bot API itself refuses
+// files over 20 MB through getFile.
+const MaxDownloadBytes = 20 << 20
+
 // Message is a simplified incoming Telegram message.
 type Message struct {
 	ID        int64
@@ -37,8 +53,18 @@ type Message struct {
 	FromID    int64
 	FromName  string // "First Last", falling back to "@username" or the numeric ID
 	Username  string
-	Text      string
+	Text      string // the message text, or the caption of a photo/image file
 	Timestamp time.Time
+	// Image is set when the message carries a picture (a photo, or a file sent as
+	// an image document). Fetch its bytes with Client.DownloadFile.
+	Image *Media
+}
+
+// Media points at a file held by Telegram.
+type Media struct {
+	FileID   string
+	MimeType string // "image/jpeg" for a photo; the document's own type otherwise
+	Size     int64
 }
 
 // BotInfo is the subset of Telegram's getMe response Memo cares about.
@@ -51,6 +77,11 @@ type BotInfo struct {
 type Client struct {
 	token      string
 	httpClient *http.Client
+
+	// apiOverride/fileOverride replace the package-level bases for this client
+	// (see EnvAPIBase); empty means "use apiBase / fileBase".
+	apiOverride  string
+	fileOverride string
 
 	msgCh chan Message
 	errCh chan error
@@ -72,7 +103,7 @@ type Client struct {
 // NewClient creates a client for the given bot token. The token is not
 // validated until Start (or GetMe) is called.
 func NewClient(token string) *Client {
-	return &Client{
+	c := &Client{
 		token:      token,
 		httpClient: &http.Client{},
 		// Channels are never closed so Start() can be called again after Stop().
@@ -80,6 +111,25 @@ func NewClient(token string) *Client {
 		errCh:  make(chan error, 4),
 		stopCh: make(chan struct{}),
 	}
+	if origin := strings.TrimRight(strings.TrimSpace(os.Getenv(EnvAPIBase)), "/"); origin != "" {
+		c.apiOverride = origin + "/bot"
+		c.fileOverride = origin + "/file/bot"
+	}
+	return c
+}
+
+func (c *Client) apiURL() string {
+	if c.apiOverride != "" {
+		return c.apiOverride
+	}
+	return apiBase
+}
+
+func (c *Client) fileURL() string {
+	if c.fileOverride != "" {
+		return c.fileOverride
+	}
+	return fileBase
 }
 
 // MessageChannel returns the channel that receives incoming messages.
@@ -246,7 +296,15 @@ func (c *Client) pollLoop() {
 			}
 			c.mu.Unlock()
 
-			if u.Message == nil || u.Message.From == nil || strings.TrimSpace(u.Message.Text) == "" {
+			if u.Message == nil || u.Message.From == nil {
+				continue
+			}
+			text := u.Message.Text
+			if strings.TrimSpace(text) == "" {
+				text = u.Message.Caption
+			}
+			image := imageOf(u.Message)
+			if strings.TrimSpace(text) == "" && image == nil {
 				continue
 			}
 			msg := Message{
@@ -255,8 +313,9 @@ func (c *Client) pollLoop() {
 				FromID:    u.Message.From.ID,
 				FromName:  displayName(u.Message.From),
 				Username:  u.Message.From.Username,
-				Text:      u.Message.Text,
+				Text:      text,
 				Timestamp: time.Unix(u.Message.Date, 0),
+				Image:     image,
 			}
 			select {
 			case c.msgCh <- msg:
@@ -332,7 +391,7 @@ func (c *Client) SendDocument(ctx context.Context, chatID int64, filePath, filen
 		return fmt.Errorf("telegram: close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiBase+c.token+"/sendDocument", &body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL()+c.token+"/sendDocument", &body)
 	if err != nil {
 		return err
 	}
@@ -357,6 +416,114 @@ func (c *Client) SendDocument(ctx context.Context, chatID int64, filePath, filen
 	}
 	if !out.OK {
 		return fmt.Errorf("telegram sendDocument: %s", out.Description)
+	}
+	return nil
+}
+
+// DownloadFile fetches a file Telegram holds (getFile, then the file URL) and
+// returns its bytes, refusing anything over MaxDownloadBytes.
+func (c *Client) DownloadFile(ctx context.Context, fileID string) ([]byte, error) {
+	var resp struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+		Result      struct {
+			FilePath string `json:"file_path"`
+			FileSize int64  `json:"file_size"`
+		} `json:"result"`
+	}
+	if err := c.call(ctx, "getFile", map[string]any{"file_id": fileID}, &resp); err != nil {
+		return nil, err
+	}
+	if !resp.OK || resp.Result.FilePath == "" {
+		return nil, fmt.Errorf("telegram getFile: %s", resp.Description)
+	}
+	if resp.Result.FileSize > MaxDownloadBytes {
+		return nil, fmt.Errorf("telegram: file is %d bytes, over the %d byte limit", resp.Result.FileSize, MaxDownloadBytes)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.fileURL()+c.token+"/"+resp.Result.FilePath, nil)
+	if err != nil {
+		return nil, err
+	}
+	r, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("telegram: file download answered %d", r.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(r.Body, MaxDownloadBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > MaxDownloadBytes {
+		return nil, fmt.Errorf("telegram: file is over the %d byte limit", MaxDownloadBytes)
+	}
+	return data, nil
+}
+
+// SendPhoto uploads image bytes to chatID as a photo (sendPhoto), with an
+// optional caption. Telegram recompresses photos and rejects extreme sizes or
+// proportions; a caller that wants the picture to arrive regardless falls back
+// to SendDocumentBytes on error.
+func (c *Client) SendPhoto(ctx context.Context, chatID int64, data []byte, filename, caption string) error {
+	return c.sendUpload(ctx, "sendPhoto", "photo", chatID, data, filename, caption)
+}
+
+// SendDocumentBytes uploads in-memory bytes as a document (no recompression).
+func (c *Client) SendDocumentBytes(ctx context.Context, chatID int64, data []byte, filename, caption string) error {
+	return c.sendUpload(ctx, "sendDocument", "document", chatID, data, filename, caption)
+}
+
+func (c *Client) sendUpload(ctx context.Context, method, field string, chatID int64, data []byte, filename, caption string) error {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("chat_id", strconv.FormatInt(chatID, 10)); err != nil {
+		return err
+	}
+	if caption != "" {
+		// Telegram caps a caption at 1024 characters.
+		if r := []rune(caption); len(r) > 1000 {
+			caption = string(r[:1000])
+		}
+		if err := writer.WriteField("caption", caption); err != nil {
+			return err
+		}
+	}
+	part, err := writer.CreateFormFile(field, filename)
+	if err != nil {
+		return err
+	}
+	if _, err := part.Write(data); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL()+c.token+"/"+method, &body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	var out struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return fmt.Errorf("telegram: decode %s response: %w", method, err)
+	}
+	if !out.OK {
+		return fmt.Errorf("telegram %s: %s", method, out.Description)
 	}
 	return nil
 }
@@ -419,7 +586,7 @@ func (c *Client) call(ctx context.Context, method string, params map[string]any,
 		}
 		body = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiBase+c.token+"/"+method, body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL()+c.token+"/"+method, body)
 	if err != nil {
 		return err
 	}
@@ -447,11 +614,47 @@ type tgUpdate struct {
 }
 
 type tgMessage struct {
-	MessageID int64   `json:"message_id"`
-	From      *tgUser `json:"from"`
-	Chat      tgChat  `json:"chat"`
-	Date      int64   `json:"date"`
-	Text      string  `json:"text"`
+	MessageID int64         `json:"message_id"`
+	From      *tgUser       `json:"from"`
+	Chat      tgChat        `json:"chat"`
+	Date      int64         `json:"date"`
+	Text      string        `json:"text"`
+	Caption   string        `json:"caption"`
+	Photo     []tgPhotoSize `json:"photo"`
+	Document  *tgDocument   `json:"document"`
+}
+
+type tgPhotoSize struct {
+	FileID   string `json:"file_id"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	FileSize int64  `json:"file_size"`
+}
+
+type tgDocument struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MimeType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
+}
+
+// imageOf returns the picture a message carries, if any: the largest size of a
+// photo, or a document whose type says it is an image (a picture sent "as a
+// file" to keep it uncompressed).
+func imageOf(m *tgMessage) *Media {
+	if len(m.Photo) > 0 {
+		best := m.Photo[0]
+		for _, p := range m.Photo[1:] {
+			if p.Width*p.Height > best.Width*best.Height {
+				best = p
+			}
+		}
+		return &Media{FileID: best.FileID, MimeType: "image/jpeg", Size: best.FileSize}
+	}
+	if d := m.Document; d != nil && strings.HasPrefix(strings.ToLower(d.MimeType), "image/") {
+		return &Media{FileID: d.FileID, MimeType: strings.ToLower(d.MimeType), Size: d.FileSize}
+	}
+	return nil
 }
 
 type tgUser struct {

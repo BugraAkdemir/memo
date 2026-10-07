@@ -334,6 +334,16 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 		}
 	}
 
+	// A picture asked for in words ("draw a cat", "make this photo black and
+	// white") goes to an image model for this one turn — the chat's own model is
+	// left alone (image_route.go). Decided before the agent prompt is appended so
+	// an image prompt isn't padded with tool instructions.
+	if !imageOnlyModel {
+		if ch, ok := a.autoRouteImageTurn(ctx, messages, userMsg, sessionID); ok {
+			return activityRelay(ch)
+		}
+	}
+
 	if agentActive {
 		for i, msg := range messages {
 			if msg.Role == "system" {

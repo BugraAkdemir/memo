@@ -6,7 +6,7 @@ oluşturulması gerekebilir.
 
 > **v4.5.0'a göre güncellendi** (2026-09-15): masaüstü maskotu, Code Mode
 > Plan/Auto/Build alt-modları, ve `internal/livemode/`, `internal/openaiapi/`,
-> `internal/remoteauth/`, `internal/browserengine/`, `internal/geminisub/`,
+> `internal/remoteauth/`, `internal/browserengine/`, `internal/cliproxy/`,
 > `internal/stt/` paketleri eklendi.
 
 ---
@@ -414,19 +414,18 @@ internal/browserengine/
   browserengine_test.go  — testler
 ```
 
-### internal/geminisub/ — "gemini-sub" abonelik sağlayıcısı (Beta)
+### internal/cliproxy/ — Subscriptions (CLIProxyAPI sidecar)
 
 ```
-internal/geminisub/
-  oauth.go        — kişisel Google hesabıyla tarayıcı OAuth girişi (gemini-cli'nin genel istemcisi gömülü)
-  geminicli.go     — gemini-cli protokolüyle uyumlu istemci katmanı
-  codeassist.go    — Google Code Assist endpoint'i üzerinden Gemini'ye erişim (AI Pro/Ultra kotası)
-  token.go         — token yenileme/saklama
-  models.go        — model listesi
-  wire.go          — internal/provider'a ProviderType kaydı + blank import bağlaması
-  provider.go      — Provider arayüzü implementasyonu
-  data/            — ~/.gemini/oauth_creds.json'dan otomatik login desteği
-  *_test.go        — testler
+internal/cliproxy/
+  cliproxy.go     — Manager: durum (loopback port + rastgele istemci anahtarı), sağlayıcı sabitleri
+  locate.go       — gömülü binary'yi bulur, yanındaki SHA256 ile doğrular, çalıştırılabilir yapar
+  run.go          — süreci başlatır/izler (sınırlı yeniden başlatma), sağlık bekler, Stop
+  login.go        — -antigravity/-claude/-codex-login; yetkilendirme URL'sini yakalar
+  accounts.go     — kimlik (e-posta/proje) listesi, Logout (token asla dışarı çıkmaz)
+  models.go       — /v1/models (id + owned_by), boş cevabı önbelleğe almaz
+  PINNED.txt      — sabitlenmiş CLIProxyAPI sürümü + arşiv ve binary SHA-256'ları
+  testdata/fakecpa/ — testlerde binary'nin yerine geçen sahte sidecar
 ```
 
 ### internal/stt/ — Live Mode konuşma-metin sağlayıcıları
@@ -627,7 +626,7 @@ internal/webserver/
   handlers_swarm.go            — Memo Swarm (beta) host/join/durum handler'ları
   handlers_tasks.go            — Self-Driving görev listesi CRUD + /api/tasks/running + pause/resume/cancel/skip/inject handler'ları
   devgateway_handlers.go       — Geliştirici API Ağ Geçidi (Sidebar → Developer) config + canlı istek/yanıt günlüğü handler'ları
-  googleauth_handlers.go       — gemini-sub Google hesabı OAuth bağlama handler'ı
+  subscriptions_handlers.go    — Subscriptions (/api/subscriptions) ve model seçici (/api/providers/model) handler'ları
   openai_handlers.go           — Developer Gateway'in OpenAI-uyumlu ikizi: GET /v1/models, POST /v1/chat/completions (internal/openaiapi'yi sarar)
   mime.go                      — dosya yükleme MIME tespiti (istemci header'ına değil içeriğe göre)
   webapp.go                    — Flutter web build'inin (internal/webserver/webapp/) statik dosya servisi

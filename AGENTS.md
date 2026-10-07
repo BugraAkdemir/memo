@@ -77,8 +77,7 @@ Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-
 | `internal/memory/` | Vector store (SQLite + sqlite-vec) | `store.go`, `embedder.go` |
 | `internal/database/` | SQLite connection management | `sqlite.go`, `vec_register.go` |
 | `internal/provider/` | External LLM providers (9 types) | `provider.go`, `router.go`, `openai.go`, `gemini.go`, `claude.go`, `grok.go`, `groq.go`, `openrouter.go`, `ollama.go`, `llamacpp.go`, `opencode_zen.go`, `opencode_go.go` |
-| `internal/geminisub/` | "gemini-sub" subscription provider: sign in with a personal Google account (browser OAuth, **gemini-cli's own public client baked in — nothing to register**) and reach Gemini on the user's Google AI Pro/Ultra quota via Google's Code Assist endpoint. Same idea as `~/Documents/claude-code-proxy` but for Gemini and in Go. Also adopts an existing `~/.gemini/oauth_creds.json` login automatically at startup. Self-contained on purpose (isolation); wired in via one `ProviderType` const + `RegisterConstructor` + a blank import in `internal/app`. Connect surface: `internal/app/gemauth.go`, `/api/dev-gateway/google-account`. Optional env overrides: `MEMO_GOOGLE_GEMINI_CLIENT_ID`/`_SECRET`, `MEMO_GEMINI_SUB_ENDPOINT`. | `oauth.go`, `geminicli.go`, `token.go`, `codeassist.go`, `wire.go`, `provider.go` |
-| `internal/claudesub/` | "claude-sub" subscription provider: sign in with the user's own Claude Pro/Max plan (Anthropic's public Claude Code OAuth client — nothing to register) and run Claude on their existing plan quota instead of a pay-per-token API key. Same family idea as `~/Documents/claude-code-proxy` and `internal/geminisub`, but with one crucial difference: the subscription endpoint IS api.anthropic.com's Messages API, so this package does **not** reimplement the wire format — it gets a `claude.go`-derived provider through `provider.NewClaudeProviderWith` (see `claude_overrides.go`) and only owns the account lifecycle. Do not copy `claude.go` here; see that file's doc comment for why `geminisub` copying `gemini.go` was correct and this would not be. **A Beta feature, gated in the backend too** (`App.requireClaudeSubBeta`/`syncClaudeSubWithBeta`); its UI is a panel inside Settings › Beta, not a tab of its own. Adopts a Claude Code login already on the machine (env → `~/.claude/.credentials.json` → macOS Keychain) so Connect needs no browser at all; the hosted flow is a code-paste two-step because Anthropic does not redirect to loopback. Owns a capability probe (`probe.go`) that measures plain/tools/thinking/1M instead of guessing, and is the only place that tells an entitlement refusal apart from a quota wall. Connect surface: `internal/app/claudeauth.go`, `/api/dev-gateway/claude-account`. Optional env overrides: `MEMO_CLAUDE_CLIENT_ID`/`MEMO_CLAUDE_AUTH_URL`/`MEMO_CLAUDE_TOKEN_URL`/`MEMO_CLAUDE_REDIRECT_URI`/`MEMO_CLAUDE_TOKEN`/`MEMO_CLAUDE_API_URL` (probe AND chat). | `oauth.go`, `adopt.go`, `token.go`, `probe.go`, `provider.go`, `models_cache.go` |
+| `internal/cliproxy/` | The **Subscriptions** sidecar: runs CLIProxyAPI (`router-for-me/CLIProxyAPI`, MIT) as a loopback-only child process so one sign-in per vendor (Antigravity, Claude, Codex — the same accounts/quota the vendors' own CLIs use) exposes ALL of that account's models as one OpenAI-compatible endpoint. Memo carries no OAuth client of its own. From the rest of the app it is an ordinary `custom` provider named `Subscriptions` (`internal/app/subs.go`). The binary is **bundled, never downloaded at run time** (see the Subscriptions gotchas); `Binary()` refuses anything that fails the SHA-256 shipped beside it. Connect surface: `/api/subscriptions`; model switching: `/api/providers/model`. | `cliproxy.go`, `locate.go`, `run.go`, `login.go`, `accounts.go`, `models.go`, `PINNED.txt`, `testdata/fakecpa/` |
 | `internal/orchestra/` | Multi-model orchestration | `conductor.go`, `roles.go`, `types.go` |
 | `internal/agent/` | Agent / tool execution sandbox | `executor.go`, `pipeline.go`, `sandbox.go`, `permissions.go`, `tools.go`, `tools/` |
 | `internal/cloudsync/` | Google Drive E2E encrypted backup | `drive.go`, `crypto.go`, `sync_manager.go` |
@@ -132,7 +131,7 @@ Defined in `internal/app/llm.go` `callLLMStream()`:
 | `data/whatsapp/` | WhatsApp SQLite message store + whatsmeow session |
 | `data/calendar/` | Calendar events SQLite DB |
 | `data/permissions.json` | Agent tool permission policies |
-| `data/claudesub/` | Encrypted Claude subscription OAuth token (AES-256-GCM, machine key) |
+| `data/cliproxy/` | Subscriptions sidecar: `auth/` (vendor OAuth credentials CLIProxyAPI wrote — never leave this machine, git-ignored), `state.json` + `config.yaml` (loopback client key and port, 0600) |
 | `.env` | Optional environment overrides (OAuth creds, API keys) |
 | `binaries/` | Platform-specific binaries (llama-server, vec0 extension) |
 
@@ -284,60 +283,49 @@ confirm every single time before tagging or pushing a tag.
 - **`internal/app` tests share one throwaway data dir (`main_test.go`).** A test that sets `MEMO_DATA_DIR` must also call `config.ResetForTests()` (and again on cleanup) — `DataDir()` is cached per process.
 - **Live testing without spending money:** `go build -o /tmp/x/fakeprovider ./cmd/fakeprovider && /tmp/x/fakeprovider -addr 127.0.0.1:4959 -log /tmp/x/fake.jsonl`, then run a real backend in isolation — `MEMO_DATA_DIR=/tmp/x/data memo --headless --port 18090` — and add a `custom` (or `custom-anthropic`) provider with base URL `http://127.0.0.1:4959/v1`. Replies are steered by directives in the message (`[[tool NAME {json}]]`, `[[error 429]]`, `[[cut]]`, `[[slow N]]`, `[[empty]]`, `[[think]]`; see the file's doc comment); malformed requests Memo builds come back as the real API's 400 and are logged with their violations. Model names `claude-opus-5` / `fake-reasoner` enforce the Opus-4.7+/reasoning-model parameter rules.
 
-**Claude subscription (claude-sub) — the entitlement gate is a moving target**
-- **The wire format is NOT reimplemented.** `internal/claudesub` reuses `claude.go` via `provider.ClaudeOverrides`
-  (`internal/provider/claude_overrides.go`). Five unexported fields on `claudeProvider`, every one of which means
-  "unchanged" at its zero value, plus a test asserting a zero-value override builds a byte-identical request. That is
-  the whole justification for touching a hot file. `internal/geminisub` copying `gemini.go` was correct — Google's Code
-  Assist wraps the payload in an envelope — so do not read one case as the other.
-- **Anthropic's subscription OAuth is NOT a loopback flow.** The only registered `redirect_uri` is a hosted Anthropic
-  page, so the browser lands there, that page DISPLAYS the code, and the user copies it back. Hence `StartAuth` /
-  `CompleteAuth` and a `code=true` authorize parameter (without which no code is displayed at all) — there is no
-  callback to poll and no point in a polling loop. Two redirect paths are in circulation and which one the server has
-  registered has flipped at least once (`anthropics/claude-code#88877`).
-- **The request must carry a literal Claude Code identity sentence as the FIRST system block**, ahead of Memo's prompt
-  and with no separator — position, not presence. Failure is a bare 400 `{"message":"Error"}` or, on current accounts, a
-  **429 with no `anthropic-ratelimit-*` headers and no `Retry-After`**, which is indistinguishable from a real quota wall.
-  `anthropics/claude-code#87420` documents that confusion producing a cascade of false back-offs on healthy accounts.
-  `claudesub.isEntitlementRefusal` keys on the ABSENCE of those headers to tell them apart; anything you add to the
-  error path must preserve that distinction or the router will back off against accounts that were serving 200s.
-- **Do not rely on `claude.go`'s `noSampling` valve for a subscription.** That valve decides what to withdraw by looking
-  for the parameter name in the error text; this endpoint's refusal of `temperature != 1.0` names nothing, so the valve
-  never fires and every turn 400s forever. `SuppressSampling` withholds the fields up front instead.
-- **The 1M-context beta is sent only after the probe measured it as accepted.** Sending it speculatively (what
-  hermes-agent does) needs a reactive recovery, and there is none here: the rejection names a beta rather than a
-  parameter, so the 400-valve would misread it and latch temperature off for the process. `modelContextWindow` stays at
-  200K for `claude-sub` until `measureClaudeCapabilities` rewrites the marker with `ContextTokens = 1M`.
-- **Capability is measured, not assumed — and the probe fires in the background after connect.** Nothing downstream
-  depends on the answer, so the first real turn uses the conservative budget either way. The `capabilities` object is
-  legitimately ABSENT from the GET until the first probe finishes; do not default it to an empty table, which reads as
-  "nothing works".
-- **`claudesub.Default()` must NOT adopt a local login — the app decides.** Adoption happens in `syncClaudeSubWithBeta`
-  (startup and every Beta toggle; only with Beta on, never while `ClaudeSubState.UserDisconnected` is set) and in
-  `ConnectClaudeAccount` (an explicit click, which also picks up a Claude Code login created while Memo was running —
-  `TestClaudeSub_PicksUpALoginThatAppearedAfterStartup`). `Default()` used to adopt by itself, which silently undid
-  Disconnect on every restart and ignored Beta.
-- **Anthropic's callback page displays `code#state`, and that is what users paste.** `parseCodePaste` splits it (bare
-  code and the full callback URL are also accepted). Sending it whole is an `invalid_grant` — the browser path was
-  unusable until this was caught against `cmd/fakeprovider`.
-- **A login shared with Claude Code goes stale whenever the CLI refreshes first** (and, if Anthropic rotates, kills our
-  refresh token). The token source re-reads Claude Code's store before and after a refresh, and writes a rotated token
-  back (access + refresh + expiry) ONLY for a token whose persisted source is `claude-code-file` — never from our own
-  browser session. The source is persisted with the token for this reason.
-- **`EntitlementBlocked` comes from the gate's response SHAPE, not from a capability failing.** Haiku 4.5 (the default
-  model) refuses adaptive thinking with a concrete, named 400; counting that as a refusal flagged every default account as
-  blocked. The 1M beta is decided per model (the request's model rides on ctx into `decorateRequest`), and a model switch
-  re-probes.
-- **Testing by hand without an account:** `cmd/fakeprovider` also stands in for the subscription — hosted authorize page
-  that shows `code#state`, token endpoint with rotation (`-sub-rotate`, `-sub-expires`), and the gate's known rules on
-  Bearer traffic. Point Memo at it with `MEMO_CLAUDE_AUTH_URL=http://127.0.0.1:4959/oauth/authorize`,
-  `MEMO_CLAUDE_TOKEN_URL=http://127.0.0.1:4959/v1/oauth/token`, `MEMO_CLAUDE_API_URL=http://127.0.0.1:4959`, and isolate
-  `HOME` so the backend cannot adopt your real `~/.claude` login. `fake-setup-*` Bearer values act as setup tokens.
-- **Disconnect deliberately does NOT revoke with Anthropic.** The token may be shared with the user's own Claude Code
-  install, and revoking it there signs the CLI out of their account because they clicked something in Memo.
-- **Claude Desktop is not an adoption source and cannot become one.** `~/.config/Claude/config.json`'s
-  `oauth:tokenCache` is base64 around Electron `safeStorage` (`v11`-prefixed) ciphertext keyed by the OS keyring —
-  verified on this machine. Desktop and Code are the same account, so signing into Code once covers it; the UI says so.
+**Subscriptions (Antigravity / Claude / Codex via the bundled CLIProxyAPI sidecar)**
+- **This replaced `internal/claudesub` and `internal/geminisub` (both deleted).** Those carried Memo's own OAuth clients,
+  identity blocks and beta headers, which vendors change constantly (and Google closed gemini-cli's client for personal
+  accounts: `UNSUPPORTED_CLIENT`). CLIProxyAPI owns that moving target; Memo owns only the lifecycle. If you are tempted to
+  re-add a vendor's OAuth client or request shape to Memo, don't — bump the pinned sidecar instead.
+- **The binary is bundled, never downloaded at run time** (Memo's zero-external-dependency promise). Source of truth:
+  `internal/cliproxy/PINNED.txt` (release + archive digest + extracted-binary digest per platform). `scripts/vendor_cliproxy.sh`
+  downloads, verifies both digests and lays out `binaries/<os>/cliproxy[-arm64]/`; the same files go to R2 (via
+  `r2-memo-push`) and the build workflows pull them like llama.cpp and run `scripts/verify_cliproxy.sh` — a build fails if the
+  bytes are not the pinned release. `cliproxy.Binary()` re-verifies against the `SHA256` file beside the executable and only
+  then chmods it (R2/zip drop the exec bit) and clears macOS quarantine. **To upgrade:** edit `PINNED.txt`, run the vendor
+  script, upload to R2, push. Windows/macOS/arm64 paths are not exercised by this repo's tests.
+- **Search roots matter** (`Binary()`): exe dir, ITS PARENT (`~/.memo/bin/memo`), `.` and `DataDir()`. Paths are made
+  absolute — `Start` runs the child with `cmd.Dir` = the data dir, so a relative path from the `"."` root failed to exec
+  (found by the first real run).
+- **One provider, many models.** The `Subscriptions` provider is a plain `custom` config (BaseURL = the sidecar's loopback
+  port, APIKey = a random client key). Switching model = rewriting `ProviderConfig.Model` via `App.SetProviderModel`
+  (`PUT /api/providers/model`) — never PUT a whole partial config (the REPL's mirror would zero temperature/top_p). It is told
+  apart from the user's own `custom` providers **by name** (`subsProviderName`, `isSubsMarker`): it is a *session* provider
+  (not restored as the sticky active one), is excluded from the generic `custom/<model>` gateway spelling, and appears as
+  `subs/<model>` in the dev gateway.
+- **`syncSubscriptions` is the single place that starts the sidecar and writes the provider.** The real sidecar lists NO models
+  for ~30s after a start; so the previous session's model is registered immediately with the sidecar's CURRENT port/key, the
+  list is awaited up to 120s (empty answers are never cached), and `startSubscriptions` retries. Don't "simplify" the early
+  registration away.
+- **Never use `-no-browser` for logins**: that mode looks up the machine's public IP on an external service to print an SSH
+  hint. The sidecar opens the browser itself; the URL is returned for a copyable fallback and stripped of query strings in
+  anything reported (state/PKCE).
+- **Tokens never leave `internal/cliproxy`.** `Accounts()` returns identity only. `data/cliproxy/` is git-ignored. Logout
+  deletes the credential file and does NOT revoke the vendor grant (the same login may be shared with the user's own CLI).
+- **Migration:** `provider.ConfigManager.Load` drops `gemini-sub`/`claude-sub` entries and rewrites providers.json;
+  `reinitProviderAndOrchestra` clears an active provider that names nothing configured; startup removes `data/geminisub`,
+  `data/claudesub`.
+- **Model selectors:** the chat top bar and `/model` expand the Subscriptions provider into its live model list (grouped by
+  `owned_by`); `provider.ContextWindowForModel` gives a `custom` gateway's models their real window (claude-* 200K, gemini* 1M)
+  unless `ContextTokens` is set.
+- **`GET /api/providers/model` spends a STORED key**, so it is `requirePermissionStrict` (GET too) — unlike
+  `/api/providers/models`, which only uses a key the caller supplies.
+- **Testing without an account:** `internal/cliproxy/testdata/fakecpa` stands in for the binary (key-gated `/v1/models`,
+  `/v1/chat/completions`, `-<provider>-login`, a delayed model list, a one-shot crash). The e2e suite
+  (`internal/e2e/subscriptions_e2e_test.go`) drives login → models → chat → switch → gateway → logout through a real `App`.
+  A real sign-in needs a browser and your own account.
+- **Upstream drift** is watched by the scheduled `upstream` workflow (see below), not by hand.
 
 **open_app and the interactive browser pane (2026-10-05 — all four found broken live, then fixed)**
 - **On Linux, never exec the app name the model gives you.** It is a display name ("Spotify", "VS Code"); binaries

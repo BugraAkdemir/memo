@@ -125,19 +125,14 @@ Architecturally unlike the other providers: instead of calling an HTTP API, it s
 
 A thin wrapper (`customAnthropicProvider{*claudeProvider}`) — same pattern as `grok.go`/`openrouter.go` wrapping `openAIProvider`, but for the Anthropic Messages API shape instead. Exists so a user whose own proxy speaks Anthropic's wire format (not OpenAI's) can still point Memo at it and get the same tool-calling support `claude.go` has, without Memo assuming it's talking to `api.anthropic.com` itself — `BaseURL` is required (`Validate()` rejects an empty one, same rule as plain `custom`). Verified end-to-end (tool send, parse, round-trip) against a local `httptest` server standing in for a real proxy.
 
-### 11. gemini-sub (`internal/geminisub/`, Beta, added v4.4.0)
+### 11. Subscriptions (`internal/cliproxy/`, added v4.6.0)
 
-Sign in with a **personal Google account** (browser OAuth, using gemini-cli's own public client — nothing to register yourself) and reach Gemini through Google's **Code Assist** endpoint on your own AI Pro/Ultra subscription quota, instead of a separate API key. Also adopts an existing `~/.gemini/oauth_creds.json` login automatically at startup, if present.
+One sign-in per vendor — **Antigravity, Claude, Codex** — and every model that account offers becomes selectable in Memo. The work is done by **CLIProxyAPI** (`router-for-me/CLIProxyAPI`, MIT), which ships *inside* Memo and is never downloaded at run time; Memo only runs it as a loopback-only child process with a random client key and registers it as an ordinary `custom` provider named `Subscriptions`.
 
-Self-contained by design (isolation from the rest of `internal/provider/`): wired in via one `ProviderType` const + `RegisterConstructor` + a blank import in `internal/app`, the same registration pattern `internal/agentcli`'s CLI providers use. Connect surface: `internal/app/gemauth.go`, `POST /api/dev-gateway/google-account`. Optional env overrides: `MEMO_GOOGLE_GEMINI_CLIENT_ID`/`_SECRET`, `MEMO_GEMINI_SUB_ENDPOINT`.
-
-Gated behind Beta — a live test found the free-tier subscription quota rejected by Google (`UNSUPPORTED_CLIENT`), so the premise (using a free/non-paid Google AI subscription this way) is not yet fully resolved; a paid AI Pro/Ultra subscription is the tested-working path.
-
----
-
-## Router & Fallback System
-
-**File:** `internal/provider/router.go` (282 lines)
+- **Where you use it:** the chat's top-right model selector and `/model` list the account's live models (grouped by vendor); the dev gateway lists them as `subs/<model>`. Settings › Subscriptions handles sign-in/out.
+- **Integrity:** the pinned release and per-platform SHA-256s live in `internal/cliproxy/PINNED.txt`; builds verify them, and the app re-verifies the binary before every start.
+- **Replaced** the Beta `gemini-sub` and `claude-sub` providers (their own OAuth clients kept being broken by the vendors; Google closed gemini-cli's client for personal accounts).
+- **Risk:** the accounts are used through a third-party client; vendors may restrict them. The Settings page says so.
 
 ### How it works
 

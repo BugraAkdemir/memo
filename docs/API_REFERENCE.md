@@ -222,7 +222,8 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 | `GET` | `/api/dev-gateway/logs` | Live request log |
 | `GET` | `/api/dev-gateway/claude-code-cli` | Claude Code CLI connection helper/status |
 | `POST` | `/api/dev-gateway/token/rotate` | Rotate the gateway's API key |
-| `POST` | `/api/dev-gateway/google-account` | Connect a personal Google account for the "gemini-sub" provider (Beta) — OAuth handled by `internal/geminisub/` |
+| `GET` / `POST` | `/api/subscriptions` | Subscriptions (bundled CLIProxyAPI sidecar): state (bundled?, running?, accounts, models, sign-in in flight) and the actions `login` (`provider`: antigravity \| claude \| codex), `cancel_login`, `logout`. POST is admin-only; GET never starts the sidecar |
+| `GET` / `PUT` | `/api/providers/model` | Model selector: `GET ?name=<provider>` lists that provider's live models; `PUT {name, model, activate}` switches only its model. Needs the models permission (it spends a stored key) |
 
 ### 🗂️ Skills
 | Method | Endpoint | Description |

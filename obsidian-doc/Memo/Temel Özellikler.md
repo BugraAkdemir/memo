@@ -24,7 +24,7 @@ Bu sayfa, Memo'nun temel özellik dokümantasyonu için bir İçerik Haritasıd�
 
 | Sayfa | Açıklama |
 |-------|----------|
-| [[Harici Sağlayıcılar]] | 16 sağlayıcı tipi — OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama, Custom (OpenAI/Anthropic-uyumlu), OpenCode Zen/Go, Kilo Code, gemini-sub |
+| [[Harici Sağlayıcılar]] | 16 sağlayıcı tipi — OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama, Custom (OpenAI/Anthropic-uyumlu), OpenCode Zen/Go, Kilo Code, Abonelikler (Antigravity / Claude / Codex hesapları) |
 | [[WhatsApp Entegrasyonu]] | QR eşleştirme, çift yönlü mesajlaşma, dosya transferi, kendine-sohbet asistanı |
 | [[Telegram Entegrasyonu]] | Bot eşleştirme, sahip kilidi, kendine-sohbet asistanı |
 | [[Yedekleme & Restore]] | `.memo` zip tabanlı dışa/içe aktarma, şifreleme |

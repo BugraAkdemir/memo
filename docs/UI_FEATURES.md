@@ -158,7 +158,7 @@
 
 - Developer API Gateway, both wire formats: Anthropic-compatible (for Claude Code) and OpenAI-compatible (`GET /v1/models`, `POST /v1/chat/completions`) — Base URL, model list (`type/model-id`), token, live request log
 - API key requirement now **enforced** for any non-loopback caller on both endpoints (v4.5.0); optional memory integration
-- **gemini-sub connect (Beta)**: sign in with a personal Google account to reach Gemini via Code Assist on your own AI Pro/Ultra quota, no separate API key
+- **Settings › Subscriptions**: sign in with an Antigravity, Claude or Codex account; every model the account offers appears in the chat's top-right model selector, `/model` and the local `/v1` gateway (`subs/<model>`), no separate API key
 
 ## 5.4 SWARM SCREEN (swarm_screen.dart) — BETA
 

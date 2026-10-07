@@ -36,7 +36,7 @@ Flutter client — Linux/Windows/macOS · Android/iOS · web
               │  Whisper · STT · TTS · Skills · Mood        │
               │  ModelStore · Intent · ngrok · Tunnel       │
               │  Routine · Stats · Swarm · AgentCLI         │
-              │  GeminiSub · RemoteAuth · BrowserEngine     │
+              │  CLIProxy · RemoteAuth · BrowserEngine     │
               │  AnthropicAPI/OpenAIAPI (Dev Gateway)       │
               │  GGUF · Models · Sessions · Config · Logx   │
               └────────────────────────────────────────────┘
@@ -53,7 +53,7 @@ Flutter client — Linux/Windows/macOS · Android/iOS · web
 | `internal/agent/` | Agent pipeline, sandbox, permissions, 27 built-in tools, Code Mode sub-mode tool set (`save_code_plan`) |
 | `internal/taskloop/` | Self-Driving task loop engine — `Task.md` schema, planner/executor, sub-agent orchestration, escalating retry — see [[Self-Driving Task Loop]] |
 | `internal/agentcli/` | Claude Code CLI / Codex CLI as chat providers (Beta) — subprocess-based, registers into `provider` via `RegisterConstructor` |
-| `internal/geminisub/` | "gemini-sub" — personal Google account sign-in, Gemini via Code Assist (Beta) |
+| `internal/cliproxy/` | Subscriptions — runs the bundled CLIProxyAPI sidecar so an Antigravity / Claude / Codex sign-in exposes all of that account's models as one OpenAI-compatible provider |
 | `internal/anthropicapi/`, `internal/openaiapi/` | Developer API Gateway wire-format translation — Anthropic- and OpenAI-compatible, both key-enforced for non-loopback callers (v4.5.0) |
 | `internal/livemode/` | Live Mode v2 engine — Google Live / OpenAI Realtime session management, reconnect, transcript, delegate mode |
 | `internal/telegram/` | Telegram bot bridge — mirrors `internal/whatsapp/`'s shape, isolated SQLite store |

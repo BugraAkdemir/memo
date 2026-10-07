@@ -55,7 +55,7 @@ Complete feature-by-feature listing of Memo. Full detail: `docs/FEATURES.md`.
 | Kilo Code | ✅ (v3.9.0) | API key — app.kilo.ai, pay-as-you-go, some models free, live model browser with free models sorted to the top |
 | Claude Code (CLI) | ✅ Beta (v3.3.4) | Shells out to the locally installed `claude` CLI, per-chat, real background job |
 | Codex (CLI) | ✅ Beta (v3.3.4) | Shells out to the locally installed `codex` CLI, per-chat, real background job |
-| gemini-sub | ✅ Beta (v4.4.0) | Sign in with a personal Google account, reach Gemini via Google's Code Assist endpoint on your own AI Pro/Ultra quota — no separate API key |
+| Subscriptions | ✅ (v4.6.0) | Sign in once with an Antigravity, Claude or Codex account (via the CLIProxyAPI helper bundled in Memo); every model that account offers shows in the model selector, `/model` and the local `/v1` gateway — no separate API key. Replaced the Beta gemini-sub / claude-sub providers |
 
 Router features: fallback chain, auto-disable after 3 failures, health check goroutine. **Claude and Gemini tool-calling** (previously entirely missing on both) fixed this branch — see [[External Providers]] for detail.
 

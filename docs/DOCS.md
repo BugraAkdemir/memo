@@ -46,7 +46,7 @@ Memo is not just another chat UI. It is a full AI companion that runs entirely o
 | **Voice** | Live Mode v2: native audio-to-audio conversation (Google Live / OpenAI Realtime), barge-in, delegate/standalone modes, plus a local Piper/whisper.cpp fallback path. |
 | **Presence** | A small animated desktop mascot (two selectable skins) shows Memo's live activity — thinking, writing, running a tool — with a plain-language status bubble, independent of the chat window. |
 | **Learning** | Background observer tracks *when* you work (not *what*), learns rhythms, and proactively nudges you about patterns — on by default, fully controllable per sub-feature. |
-| **Offline** | Works 100% offline with bundled llama.cpp. External providers, including Claude Code/Codex CLI and a Google-account "gemini-sub" (Beta) as chat providers, are optional. |
+| **Offline** | Works 100% offline with bundled llama.cpp. External providers, including Claude Code/Codex CLI and the Subscriptions provider (Antigravity / Claude / Codex accounts through the bundled CLIProxyAPI) as chat providers, are optional. |
 | **Developer-friendly** | Sidebar → Developer exposes both an Anthropic-compatible and an OpenAI-compatible local API gateway, so tools like Claude Code can run against your own local model or API keys. |
 | **Private** | No telemetry, no analytics, no cloud dependency. API keys and the `.memo` backup are encrypted; remote access requires a token, and every gateway endpoint now enforces it. |
 
@@ -107,7 +107,7 @@ See [`PROJECT_MAP.md`](PROJECT_MAP.md) for a file-by-file breakdown. Package-lev
 | `internal/taskloop/` | Self-Driving task loop: `Task.md` schema, planner/executor engine, sub-agent orchestration, retry/escalation |
 | `internal/provider/` | External LLM providers (15 `ProviderType` values, incl. Custom Anthropic-compatible, OpenCode Zen/Go, Kilo Code) |
 | `internal/agentcli/` | Claude Code / Codex CLI as chat providers (Beta) |
-| `internal/geminisub/` | "gemini-sub" — sign in with a personal Google account, reach Gemini via Code Assist on your own quota (Beta) |
+| `internal/cliproxy/` | Subscriptions — runs the bundled CLIProxyAPI sidecar so an Antigravity / Claude / Codex sign-in exposes all of that account's models as one OpenAI-compatible provider |
 | `internal/anthropicapi/`, `internal/openaiapi/` | Developer API Gateway — local Anthropic- and OpenAI-compatible endpoints, both key-enforced |
 | `internal/livemode/` | Live Mode v2 engine: Google Live / OpenAI Realtime session management, reconnect, transcript, delegate mode |
 | `internal/tts/`, `internal/stt/` | Local Piper TTS + whisper.cpp STT, plus optional external TTS/STT (OpenAI, ElevenLabs, custom) |

@@ -24,7 +24,7 @@ This is a Map of Content (MOC) for Memo's core feature documentation. Each linke
 
 | Page | Description |
 |------|-------------|
-| [[External Providers]] | 16 provider types — OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama, Custom (OpenAI/Anthropic-compatible), OpenCode Zen/Go, Kilo Code, gemini-sub |
+| [[External Providers]] | 16 provider types — OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama, Custom (OpenAI/Anthropic-compatible), OpenCode Zen/Go, Kilo Code, Subscriptions (Antigravity / Claude / Codex accounts) |
 | [[WhatsApp Integration]] | QR pairing, bidirectional messaging, file transfer, self-chat assistant |
 | [[Telegram Integration]] | Bot pairing, owner lock, self-chat assistant |
 | [[Backup & Restore]] | `.memo` zip-based export/import with encryption |

@@ -42,7 +42,7 @@ Memo'nun özellik-özellik tam listesi. Tam detay: `docs/tr/FEATURES.md`.
 | Kilo Code (v3.9.0) | ✅ | API anahtarı — app.kilo.ai, pay-as-you-go, bazı modeller ücretsiz, ücretsiz modeller en üstte canlı model tarayıcı |
 | Claude Code CLI (Beta, v3.3.4) | ✅ | Yok — kurulu `claude` CLI'ını subprocess olarak çalıştırır |
 | Codex CLI (Beta, v3.3.4) | ✅ | Yok — kurulu `codex` CLI'ını subprocess olarak çalıştırır |
-| gemini-sub (Beta, v4.4.0) | ✅ | Kişisel bir Google hesabıyla giriş — Google'ın Code Assist endpoint'i üzerinden kendi AI Pro/Ultra kotanızla Gemini'ye erişim, ayrı bir API anahtarı yok |
+| Abonelikler (v4.6.0) | ✅ | Antigravity, Claude ya da Codex hesabınla bir kez giriş (Memo'nun içindeki CLIProxyAPI yardımcısı); hesabın sunduğu her model model seçicide, `/model`'de ve yerel `/v1` ağ geçidinde görünür — ayrı API anahtarı yok. Beta gemini-sub / claude-sub sağlayıcılarının yerini aldı |
 
 Router özellikleri: fallback zinciri, 3 hatada otomatik devre dışı bırakma, sağlık kontrolü goroutine'i. OpenCode Zen/Go, OpenRouter gibi model adını elle yazmak yerine sağlayıcının canlı model listesinden seçtiriyor. **Claude ve Gemini tool-calling** (öncesinde ikisinde de tamamen yoktu) bu branch'te düzeltildi. Claude Code/Codex CLI mimari olarak bambaşka — bkz. [[Harici Sağlayıcılar]].
 

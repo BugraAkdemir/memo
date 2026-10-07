@@ -110,6 +110,10 @@ func (a *App) subsImageModels(ctx context.Context, cfg provider.ProviderConfig, 
 	if !ok {
 		return nil
 	}
+	// The probes are local and instant when the sidecar is up (see
+	// openai_images.go); a bound keeps a hung one from stalling a turn for 3s per model.
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
 	var out []cliproxy.Model
 	for _, m := range list {
 		if gen.IsImageOnlyModel(ctx, m.ID) {

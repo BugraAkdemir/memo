@@ -53,6 +53,17 @@ func TestClassifyImageIntent_NotAPictureRequest(t *testing.T) {
 		"yarın hava nasıl olacak",
 		"resimlerim nerede",
 		strings.Repeat("uzun bir belge ", 80) + " resim çiz",
+		// What a coding assistant is asked all day.
+		"kapak sayfası yap",
+		"I need an icon for the settings page",
+		"mimariyi çiz",
+		"draw the architecture of this service",
+		"create a banner component in React",
+		"make a thumbnail generator script",
+		"akış şemasını çiz",
+		"create a state machine for the login flow",
+		"README'ye logo ekle",
+		"bir buton tasarla",
 	} {
 		if got := classifyImageIntent(text, false); got != imageIntentNone {
 			t.Errorf("%q: got %v, want none", text, got)

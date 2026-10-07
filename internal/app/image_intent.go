@@ -81,7 +81,7 @@ func isHowToQuestion(t string) bool {
 
 var (
 	// Words that put a "draw/make/create" request in another world than pictures.
-	notAPictureRe = regexp.MustCompile(`\b(python|javascript|typescript|java|golang|rust|c\+\+|html|css|svg|canvas|matplotlib|plot|plt|chart|graph|grafik|diagram|diyagram|flowchart|mermaid|ascii|table|tablo|tablosu|cizelge|excel|sheet|csv|markdown|sql|query|sorgu|kod|code|script|function|fonksiyon|library|kutuphane|framework|api|docker|container|konteyner|iso|disk|usb|partition|virtual machine|opencv|pillow|pil|react|flutter|widget|compose|dockerfile|sema|schema|uml|erd|wireframe|conclusion|comparison|analogy|attention|breath|salary|straw)\b`)
+	notAPictureRe = regexp.MustCompile(`\b(python|javascript|typescript|java|golang|rust|c\+\+|html|css|svg|canvas|matplotlib|plot|plt|chart|graph|grafik|diagram|diyagram|flowchart|mermaid|ascii|table|tablo|tablosu|cizelge|excel|sheet|csv|markdown|sql|query|sorgu|kod|code|script|function|fonksiyon|library|kutuphane|framework|api|docker|container|konteyner|iso|disk|usb|partition|virtual machine|opencv|pillow|pil|react|flutter|widget|compose|dockerfile|sema|schema|uml|erd|wireframe|component|bilesen|button|buton|mimari|mimariyi|architecture|akis|flow|sequence|state machine|workflow|iliski|relationship|agac|hiyerarsi|hierarchy|conclusion|comparison|analogy|attention|breath|salary|straw)\b`)
 
 	howToStartRe = regexp.MustCompile(`^(how|what|why|where|when|which|who|nasil|neden|nicin|nerede|ne zaman|hangi|kim|ne )\b`)
 	politeRe     = regexp.MustCompile(`\b(can you|could you|would you|will you|please|pls|lutfen|misin|musun|misiniz|musunuz|mi sin|mu sun|rica)\b`)
@@ -92,7 +92,7 @@ var (
 	drawVerbRe = regexp.MustCompile(`\b(draw|paint|sketch|illustrate|doodle) (me|us|a|an|the|my|our|some|this|that)\b|\bimagine (a|an|the)\b|\b(ciz|cizer|cizsene|cizebilir|cizip|cizin|boya|boyar)\b`)
 
 	// Things that are pictures.
-	pictureNounRe = regexp.MustCompile(`\b(resim|resmi|resmini|resimi|resimler|gorsel|gorseli|gorselini|gorseller|foto|fotoyu|fotograf|fotografi|fotografini|illustrasyon|cizim|cizimi|logo|logosu|logoyu|poster|posteri|afis|afisi|manzara|manzarasi|karikatur|karikaturu|avatar|avatari|ikon|ikonu|duvar kagidi|wallpaper|sticker|banner|kapak|image|images|picture|pictures|photo|photos|pic|illustration|drawing|painting|portrait|artwork|thumbnail|cover art|mockup|render|icon|selfie)\b`)
+	pictureNounRe = regexp.MustCompile(`\b(resim|resmi|resmini|resimi|resimler|gorsel|gorseli|gorselini|gorseller|foto|fotoyu|fotograf|fotografi|fotografini|illustrasyon|cizim|cizimi|logo|logosu|logoyu|poster|posteri|afis|afisi|manzara|manzarasi|karikatur|karikaturu|avatar|avatari|duvar kagidi|wallpaper|sticker|banner|image|images|picture|pictures|photo|photos|pic|illustration|drawing|painting|portrait|artwork|thumbnail|cover art|mockup|render|selfie)\b`)
 
 	// Words that ask for one to be made.
 	makeVerbRe = regexp.MustCompile(`\b(yap|yapar misin|yapsana|yapabilir misin|uret|uretir misin|olustur|olusturur musun|tasarla|tasarlar misin|hazirla|yarat|goster|gosterir misin|cikar|istiyorum|isterim|lazim|olsun|ver|generate|create|make|design|produce|render|show me|give me|i need|i want|need|want|get me|build)\b`)

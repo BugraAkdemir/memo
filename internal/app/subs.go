@@ -102,7 +102,52 @@ func pickDefaultSubscriptionModel(list []cliproxy.Model, prev string) string {
 			}
 		}
 	}
+	// Whatever is first — but never an image-only model: it cannot chat, and
+	// picking one made the first message after a restart draw a picture.
+	for _, m := range list {
+		if !strings.Contains(m.ID, "image") {
+			return m.ID
+		}
+	}
 	return list[0].ID
+}
+
+// modelListed reports whether id is one of list's models.
+func modelListed(list []cliproxy.Model, id string) bool {
+	for _, m := range list {
+		if m.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// subsVendorOf is the owned_by a sign-in's models carry in the sidecar's list.
+var subsVendorOf = map[string]string{
+	cliproxy.ProviderAntigravity: "antigravity",
+	cliproxy.ProviderCodex:       "openai",
+	cliproxy.ProviderClaude:      "anthropic",
+}
+
+// subsListComplete reports whether list has at least one model for every
+// account that is signed in. The sidecar fills its list vendor by vendor while
+// it warms up — a restart can see the Codex models for a while before the
+// Antigravity ones — and a list missing a whole vendor says nothing about
+// whether the user's previous pick (a Claude on Antigravity, say) is gone.
+func subsListComplete(list []cliproxy.Model, accounts []cliproxy.Account) bool {
+	have := map[string]bool{}
+	for _, md := range list {
+		have[md.OwnedBy] = true
+	}
+	for _, ac := range accounts {
+		if ac.Disabled {
+			continue
+		}
+		if vendor, ok := subsVendorOf[ac.Provider]; ok && !have[vendor] {
+			return false
+		}
+	}
+	return true
 }
 
 // SubscriptionsState describes the sidecar for Settings. It never starts
@@ -284,9 +329,14 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 		l, err := m.Models(sctx)
 		if err == nil && len(l) > 0 {
 			list = l
-			break
-		}
-		if time.Now().After(deadline) {
+			// A user's earlier pick that is not in this list may simply not have
+			// been listed yet: keep waiting while a signed-in vendor is missing,
+			// instead of replacing the choice (and saving the replacement).
+			stillWarming := prev != "" && !subsListComplete(l, m.Accounts()) && !modelListed(l, prev)
+			if !stillWarming || time.Now().After(deadline) {
+				break
+			}
+		} else if time.Now().After(deadline) {
 			if err != nil {
 				return fmt.Errorf("%w: %v", errSubsNoModelsYet, err)
 			}

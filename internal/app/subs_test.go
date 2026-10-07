@@ -71,3 +71,33 @@ func TestContextBudgetFor_CustomGatewayFollowsTheModel(t *testing.T) {
 		}
 	}
 }
+
+// Found live: a restart listed the Codex models first, the user's earlier pick
+// (a Claude on Antigravity) was "missing", and the fallback took list[0] — an
+// image model — so the next message drew a picture.
+func TestPickDefaultSubscriptionModel_NeverFallsBackToAnImageModel(t *testing.T) {
+	list := []cliproxy.Model{{ID: "gpt-image-2.5-sunburst", OwnedBy: "openai"}, {ID: "gpt-5.6-luna", OwnedBy: "openai"}}
+	if got := pickDefaultSubscriptionModel(list, "claude-sonnet-4-6"); got != "gpt-5.6-luna" {
+		t.Errorf("picked %q, want the first model that can chat", got)
+	}
+	onlyImages := []cliproxy.Model{{ID: "gpt-image-2", OwnedBy: "openai"}}
+	if got := pickDefaultSubscriptionModel(onlyImages, ""); got != "gpt-image-2" {
+		t.Errorf("picked %q: with nothing else to pick an image model is better than none", got)
+	}
+}
+
+func TestSubsListComplete_NeedsAModelFromEverySignedInVendor(t *testing.T) {
+	accts := []cliproxy.Account{{Provider: cliproxy.ProviderAntigravity}, {Provider: cliproxy.ProviderCodex}}
+	codexOnly := []cliproxy.Model{{ID: "gpt-5.5", OwnedBy: "openai"}}
+	both := append(append([]cliproxy.Model{}, codexOnly...), cliproxy.Model{ID: "claude-sonnet-4-6", OwnedBy: "antigravity"})
+	if subsListComplete(codexOnly, accts) {
+		t.Error("a list with no Antigravity model while Antigravity is signed in is still warming up")
+	}
+	if !subsListComplete(both, accts) {
+		t.Error("a model from each signed-in vendor is a complete list")
+	}
+	disabled := []cliproxy.Account{{Provider: cliproxy.ProviderAntigravity, Disabled: true}, {Provider: cliproxy.ProviderCodex}}
+	if !subsListComplete(codexOnly, disabled) {
+		t.Error("a disabled account is not waited for")
+	}
+}

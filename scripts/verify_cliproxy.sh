@@ -28,6 +28,9 @@ for spec in "$@"; do
   pinned="${spec#*=}"           # which PINNED.txt dest it must match
   found=0
   while read -r kind asset asum dest name binsha; do
+    # Git on Windows can check PINNED.txt out with CRLF line endings; without
+    # this the last column carries a trailing \r and no hash ever matches.
+    binsha="${binsha%$'\r'}"
     [ "$kind" = "asset" ] && [ "$dest" = "$pinned" ] || continue
     found=1
     f="$BIN_ROOT/$staged/$name"

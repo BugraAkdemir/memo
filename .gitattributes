@@ -1,0 +1,4 @@
+# CLIProxyAPI pin: parsed by bash scripts and CI on every OS; a CRLF checkout (Git on
+# Windows) would corrupt its last column, so it is always LF.
+internal/cliproxy/PINNED.txt text eol=lf
+scripts/*.sh text eol=lf

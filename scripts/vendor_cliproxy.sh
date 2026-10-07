@@ -32,6 +32,7 @@ wanted() {
 }
 
 while read -r kind asset sha dest name binsha; do
+  binsha="${binsha%$'\r'}" # tolerate a CRLF checkout of PINNED.txt
   [ "$kind" = "asset" ] || continue
   wanted "$dest" || continue
   echo "==> $asset -> $dest/$name"

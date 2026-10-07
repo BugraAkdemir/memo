@@ -128,6 +128,9 @@ func (r *eventRing) snapshot() []AppEvent {
 
 // App is the central application object.
 type App struct {
+	// quotaSource replaces the sidecar's quota snapshot; tests only (see quotasignal.go).
+	quotaSource func() cliproxy.QuotaSet
+
 	shutdownOnce         sync.Once          // guards Shutdown() against double-call
 	lifecycleCtx         context.Context    // goroutine lifecycle only — NOT for request-scoped operations
 	lifecycleCancel      context.CancelFunc // cancels lifecycleCtx on shutdown

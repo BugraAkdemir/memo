@@ -11,6 +11,7 @@ import (
 	"memo/internal/config"
 	"memo/internal/livemode"
 	"memo/internal/logx"
+	"memo/internal/models"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/shutdown"
@@ -84,7 +85,63 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 	} else {
 		ch = s.fullBridge.SendMessageStream(ctx, req.Message)
 	}
-	streamSSE(ctx, w, flusher, ch)
+	streamSSE(ctx, w, flusher, s.withQuotaSignals(ctx, ch))
+}
+
+// withQuotaSignals passes a chat stream through unchanged except for two
+// inserted marker chunks:
+//
+//   - just before an error chunk, a "quota_exhausted" marker when that error is
+//     the allowance running out — so the app can show a card with the refill time
+//     and offer to continue by itself afterwards;
+//   - just before a clean terminal chunk, a "quota_low" marker when little is
+//     left (once per allowance window).
+//
+// It sits here, at the one place every chat turn's chunks pass, rather than in
+// the nine branches that turn a provider error into a chunk. A marker carries
+// JSON and is never reply text; a client that does not know the marker ignores it.
+func (s *Server) withQuotaSignals(ctx context.Context, ch <-chan api.StreamChunk) <-chan api.StreamChunk {
+	if s.fullBridge == nil || ch == nil {
+		return ch
+	}
+	s.fullBridge.WarmQuota()
+	out := make(chan api.StreamChunk, 128)
+	go func() {
+		defer close(out)
+		send := func(c api.StreamChunk) bool {
+			select {
+			case out <- c:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+		for c := range ch {
+			var sig *models.QuotaSignal
+			marker := ""
+			switch {
+			case c.Error != "":
+				if sig = s.fullBridge.QuotaSignalForError(c.Error); sig != nil {
+					marker = models.QuotaExhaustedMarker
+				}
+			case c.Done:
+				if sig = s.fullBridge.QuotaLowSignal(); sig != nil {
+					marker = models.QuotaLowMarker
+				}
+			}
+			if sig != nil {
+				if b, err := json.Marshal(sig); err == nil {
+					if !send(api.StreamChunk{FinishReason: marker, Content: string(b)}) {
+						return
+					}
+				}
+			}
+			if !send(c) {
+				return
+			}
+		}
+	}()
+	return out
 }
 
 // streamSSE drains ch, writing each chunk to w as an SSE `data: {...}` line
@@ -230,7 +287,7 @@ func (s *Server) handleSendFileStream(w http.ResponseWriter, r *http.Request) {
 		ch = s.fullBridge.SendMessageWithFileStream(ctx, msg, tmpFilePath)
 	}
 
-	streamSSE(ctx, w, flusher, ch)
+	streamSSE(ctx, w, flusher, s.withQuotaSignals(ctx, ch))
 }
 
 // ─── Backup / Restore (.memo) ─────────────────────────────────────────────────

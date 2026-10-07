@@ -266,6 +266,14 @@ type FullBridge interface {
 	// Antigravity / Claude / Codex accounts as one OpenAI-compatible provider
 	// (internal/app/subs.go). SubscriptionsState never starts anything.
 	SubscriptionsState(ctx context.Context) models.SubscriptionsState
+	// Quota awareness for the chat stream (internal/app/quotasignal.go):
+	// QuotaSignalForError says whether a failed turn's error is the allowance
+	// running out (nil when it is anything else), QuotaLowSignal warns once per
+	// window when little is left after a good turn, WarmQuota starts a background
+	// refresh of the figures so the latter reads fresh numbers. None of them waits.
+	QuotaSignalForError(errText string) *models.QuotaSignal
+	QuotaLowSignal() *models.QuotaSignal
+	WarmQuota()
 	StartSubscriptionLogin(provider string) (string, error)
 	CancelSubscriptionLogin()
 	LogoutSubscription(provider string) error

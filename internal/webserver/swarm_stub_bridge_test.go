@@ -34,6 +34,11 @@ type swarmStubBridge struct {
 	token      string
 	uiLanguage string
 
+	// quota awareness for the chat stream
+	quotaForError func(errText string) *models.QuotaSignal
+	quotaLow      func() *models.QuotaSignal
+	warmed        int
+
 	injectTask        func(listID, text string) (string, error)
 	listRunningTasks  func() []taskloop.RunningTaskInfo
 	getActivityStatus func() models.ActivityStatus
@@ -483,6 +488,19 @@ func (b *swarmStubBridge) DisconnectClaudeCodeCLI() error                   { re
 func (b *swarmStubBridge) SubscriptionsState(ctx context.Context) models.SubscriptionsState {
 	return models.SubscriptionsState{}
 }
+func (b *swarmStubBridge) QuotaSignalForError(errText string) *models.QuotaSignal {
+	if b.quotaForError != nil {
+		return b.quotaForError(errText)
+	}
+	return nil
+}
+func (b *swarmStubBridge) QuotaLowSignal() *models.QuotaSignal {
+	if b.quotaLow != nil {
+		return b.quotaLow()
+	}
+	return nil
+}
+func (b *swarmStubBridge) WarmQuota()                                             { b.warmed++ }
 func (b *swarmStubBridge) StartSubscriptionLogin(provider string) (string, error) { return "", nil }
 func (b *swarmStubBridge) CancelSubscriptionLogin()                               {}
 func (b *swarmStubBridge) LogoutSubscription(provider string) error               { return nil }

@@ -1,0 +1,59 @@
+name: Upstream watch
+
+# Memo leans on things it does not control: vendor APIs and OAuth endpoints, the
+# Antigravity update manifest, the CLIProxyAPI release it bundles, and its own
+# download host. Vendors move these without notice. This job probes them on a
+# schedule — with NO credentials, every probe is an unauthenticated request whose
+# expected answer is a refusal — and opens an issue when the contract Memo was
+# built against has changed, so a human updates Memo on purpose.
+#
+# Not triggered by pushes: it talks to third parties, so it must not run (or fail)
+# on every commit. Drift vs. inconclusive is explained in internal/upstream/doc.go.
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  watch:
+    name: Probe upstreams
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+
+      - name: Run the probes
+        id: probe
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          UPSTREAM_DEEP: "1"
+        run: |
+          : > report.md
+          set +e
+          UPSTREAM_REPORT="$PWD/report.md" go test -tags "sqlite_fts5 upstream" \
+            ./internal/upstream/ ./internal/cliproxy/ -run 'TestUpstream' -count=1 -v 2>&1 | tee probe.log
+          echo "rc=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Show the report
+        if: always()
+        run: |
+          echo "## Upstream watch" >> "$GITHUB_STEP_SUMMARY"
+          if [ -s report.md ]; then cat report.md >> "$GITHUB_STEP_SUMMARY"; else echo "All probes answered as expected." >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Open, update or close issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/upstream_report.sh report.md "${{ steps.probe.outputs.rc }}"

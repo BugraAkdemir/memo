@@ -195,6 +195,18 @@ it works."
 
 CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/PR.
 
+**Upstream watch** (`.github/workflows/upstream.yml`, every 6 hours + manual): credential-free probes of everything outside this
+repo that Memo depends on — the vendors' API/OAuth endpoints (expected answer is a *refusal*, which still proves address, error
+shape and no block), the Antigravity update manifest CLIProxyAPI reads, the pinned CLIProxyAPI release (assets and digests still
+match `PINNED.txt`; R2 copies match the pin; the real linux binary, run through `cliproxy.Manager`, still honours our config, key
+gate and login flags), and Memo's own `data.memocpp.com` scripts/archives. Probe table: `internal/upstream/upstream_test.go` and
+`internal/cliproxy/upstream_test.go`, both behind `-tags upstream` so normal CI never touches the network. **DRIFT** (a
+conclusive answer that is not the one Memo was built against) opens/updates one `upstream-drift` issue and closes it when a run
+is clean; **inconclusive** (429/5xx/Cloudflare challenge/network) never alarms alone; a newer CLIProxyAPI opens an
+`upstream-notice` issue. Issue logic lives in `scripts/upstream_report.sh` (try it with `DRY_RUN=1`). When a probe moves
+legitimately, change it in the same commit that adapts Memo. `vendor-cliproxy.yml` (manual) re-verifies the pinned release and
+can publish it to R2.
+
 ### Release
 
 Never release from memory — use the **memo-release skill**

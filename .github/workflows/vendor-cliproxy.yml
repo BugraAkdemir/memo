@@ -1,0 +1,62 @@
+name: Vendor CLIProxyAPI
+
+# Manual. Downloads the CLIProxyAPI release pinned in internal/cliproxy/PINNED.txt,
+# checks every archive AND every extracted binary against the pinned SHA-256s, and
+# publishes the binaries to R2 where every release build picks them up (exactly how
+# llama.cpp reaches the builds). Memo never downloads the sidecar at run time.
+#
+# To upgrade CLIProxyAPI: edit PINNED.txt (version + the digests GitHub shows for
+# each asset), push, then run this workflow. A mismatch anywhere stops it before
+# anything is uploaded.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Verify only; do not upload to R2"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  R2_ENDPOINT: https://ce4b56c11890013834d9c6a31568e3f9.r2.cloudflarestorage.com
+  R2_BUCKET: memo
+
+jobs:
+  vendor:
+    name: Vendor and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and verify the pinned release
+        run: scripts/vendor_cliproxy.sh "$RUNNER_TEMP/out"
+
+      - name: Smoke-test the linux binary
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/out/linux/cliproxy/cli-proxy-api" -h 2>&1 | grep -E -- '-antigravity-login|-claude-login|-codex-login' | sort -u
+          scripts/verify_cliproxy.sh "$RUNNER_TEMP/out" linux/cliproxy linux/cliproxy-arm64 windows/cliproxy darwin/cliproxy
+
+      - name: Install rclone
+        if: ${{ !inputs.dry_run }}
+        run: command -v rclone >/dev/null 2>&1 || curl -fsSL https://rclone.org/install.sh | sudo bash
+
+      # Additive copy only — never sync/purge. R2 keeps whatever else lives in
+      # these folders; the four cliproxy directories are the only ones touched.
+      - name: Publish to R2
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          for d in linux/cliproxy linux/cliproxy-arm64 windows/cliproxy darwin/cliproxy; do
+            rclone copy "$RUNNER_TEMP/out/$d" "R2:${R2_BUCKET}/binaries/$d" --progress
+          done
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read

@@ -434,7 +434,7 @@ func (a *App) GetImageBase64(path string) string {
 		return ""
 	}
 
-	imgData, err := os.ReadFile(realPath)
+	imgData, err := readImageFile(realPath)
 	if err != nil {
 		return ""
 	}
@@ -460,7 +460,7 @@ func persistChatImage(src string, data []byte) string {
 		ext = ".img"
 	}
 	dst := filepath.Join(dir, fmt.Sprintf("memo-%d%s", time.Now().UnixNano(), ext))
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
+	if err := writeImageFile(dst, data); err != nil {
 		logx.Printf("WARN: persist chat image: %v", err)
 		return src
 	}

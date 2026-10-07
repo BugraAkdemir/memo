@@ -597,7 +597,7 @@ func (a *App) sendMessageStreamCore(ctx context.Context, chatID, userMsg string,
 func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, imagePath string) <-chan api.StreamChunk {
 	logx.Printf(">> VisionStream: %q with image %s", userMsg, imagePath)
 
-	imgData, err := os.ReadFile(imagePath)
+	imgData, err := readImageFile(imagePath)
 	if err != nil {
 		ch := make(chan api.StreamChunk, 1)
 		ch <- api.StreamChunk{Error: "⚠️ Cannot read image: " + err.Error(), Done: true}
@@ -757,7 +757,7 @@ func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 str
 func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	logx.Printf(">> Vision: %q with image %s", userMsg, imagePath)
 
-	imgData, err := os.ReadFile(imagePath)
+	imgData, err := readImageFile(imagePath)
 	if err != nil {
 		return "⚠️ Cannot read image: " + err.Error()
 	}

@@ -115,12 +115,12 @@ func saveGeneratedImage(img provider.GeneratedImage) (string, error) {
 		return "", fmt.Errorf("decode image: %w", err)
 	}
 	dir := generatedImagesDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create image dir: %w", err)
 	}
 	name := fmt.Sprintf("memo-%d%s", time.Now().UnixNano(), imageExtension(img.MediaType))
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, raw, 0o644); err != nil {
+	if err := writeImageFile(path, raw); err != nil {
 		return "", fmt.Errorf("write image: %w", err)
 	}
 	return path, nil

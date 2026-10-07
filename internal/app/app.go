@@ -659,6 +659,7 @@ func (a *App) Startup(ctx context.Context) {
 	}
 
 	goRecover("startSTTServer", a.startSTTServer)
+	goRecover("sealStoredImages", a.sealStoredImages)
 	a.initTTS()
 	a.initTTSProviders()
 	a.initSTTProviders()

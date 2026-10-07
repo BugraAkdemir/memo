@@ -10,6 +10,8 @@ import '../core/theme.dart';
 import '../models/provider_config.dart';
 import '../models/provider_models.dart';
 import '../widgets/quota_badge.dart';
+import '../widgets/model_picker.dart';
+import '../models/model_display.dart';
 import '../providers/chat_provider.dart';
 import '../providers/provider_provider.dart';
 import '../providers/whatsapp_provider.dart';
@@ -538,14 +540,7 @@ class _QuickModelDropdown extends ConsumerWidget {
 
   Future<void> _openMenu(BuildContext context, WidgetRef ref) async {
     final button = context.findRenderObject() as RenderBox;
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(button.size.bottomLeft(Offset.zero), ancestor: overlay),
-        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
-    );
+    final anchor = button.localToGlobal(Offset.zero) & button.size;
 
     String activeType;
     List<ProviderConfig> providers;
@@ -594,40 +589,33 @@ class _QuickModelDropdown extends ConsumerWidget {
       if (!context.mounted) return;
     }
 
-    final selected = await showMenu<String>(
+    final entries = <ModelPickerEntry>[
+      ModelPickerEntry.item(
+        value: 'local',
+        title: L10n.t('local_model'),
+        leading: Icon(Icons.computer_outlined, size: 16, color: c.textMuted),
+        active: effectiveActive == 'local',
+      ),
+      for (final p in enabledProviders)
+        if (p.name == kSubscriptionsProviderName && subsModels.isNotEmpty)
+          ..._subscriptionModelEntries(p, subsModels, effectiveActive == p.name)
+        else
+          ModelPickerEntry.item(
+            value: p.name,
+            title: p.name,
+            leading: providerLogoWidget(p.type, size: 16),
+            active: effectiveActive == p.name,
+          ),
+    ];
+    final selected = await showModelPicker(
       context: context,
-      position: position,
-      items: [
-        PopupMenuItem(
-          value: 'local',
-          child: _QuickModelMenuRow(
-            leading: Icon(Icons.computer_outlined, size: 18, color: c.textMuted),
-            label: L10n.t('local_model'),
-            isActive: effectiveActive == 'local',
-          ),
-        ),
-        for (final p in enabledProviders)
-          if (p.name == kSubscriptionsProviderName && subsModels.isNotEmpty)
-            ..._subscriptionModelItems(context, p, subsModels, effectiveActive == p.name)
-          else
-            PopupMenuItem(
-              value: p.name,
-              child: _QuickModelMenuRow(
-                leading: providerLogoWidget(p.type, size: 18),
-                label: p.name,
-                isActive: effectiveActive == p.name,
-              ),
-            ),
-        const PopupMenuDivider(),
-        PopupMenuItem(
-          value: '__add_provider__',
-          child: _QuickModelMenuRow(
-            leading: Icon(Icons.add, size: 18, color: MemoTheme.accent),
-            label: L10n.t('add_provider'),
-            labelColor: MemoTheme.accent,
-          ),
-        ),
-      ],
+      anchor: anchor,
+      entries: entries,
+      footer: ModelPickerEntry.item(
+        value: '__add_provider__',
+        title: L10n.t('add_provider'),
+        leading: Icon(Icons.add, size: 16, color: MemoTheme.accent),
+      ),
     );
 
     if (selected == null || !context.mounted) return;
@@ -710,50 +698,38 @@ class _QuickModelDropdown extends ConsumerWidget {
     }
   }
 
-  /// The Subscriptions provider as a section of the menu: one entry per model,
-  /// grouped by the vendor that owns it (a header row per vendor). Values are
-  /// [encodeModelSelection] strings, so picking one switches model AND provider
-  /// in a single step.
-  List<PopupMenuEntry<String>> _subscriptionModelItems(
-    BuildContext context,
+  /// The Subscriptions provider as sections of the picker: one header per vendor
+  /// (Antigravity, Claude, Codex) with its models under it, each shown by a short
+  /// readable name plus a tag and its family's logo. Values are
+  /// [encodeModelSelection] strings, so picking one switches model AND provider in
+  /// a single step.
+  List<ModelPickerEntry> _subscriptionModelEntries(
     ProviderConfig provider,
     List<ProviderModel> models,
     bool providerIsActive,
   ) {
-    final c = MemoTheme.of(context);
-    final items = <PopupMenuEntry<String>>[];
+    final out = <ModelPickerEntry>[];
     String? lastVendor;
     for (final m in models) {
       if (m.ownedBy != lastVendor) {
         lastVendor = m.ownedBy;
         final label = vendorLabel(m.ownedBy);
-        items.add(PopupMenuItem<String>(
-          enabled: false,
-          height: 30,
-          child: Row(
-            children: [
-              providerLogoWidget(provider.type, size: 14),
-              const SizedBox(width: 8),
-              Text(
-                label.isEmpty ? provider.name : '${provider.name} · $label',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: c.textDim),
-              ),
-            ],
-          ),
+        out.add(ModelPickerEntry.header(
+          label.isEmpty ? provider.name : label,
+          leading: vendorLogo(m.ownedBy, size: 14),
         ));
       }
-      items.add(PopupMenuItem<String>(
+      final d = prettyModelName(m.id);
+      out.add(ModelPickerEntry.item(
         value: encodeModelSelection(provider.name, m.id),
-        height: 36,
-        child: _QuickModelMenuRow(
-          leading: const SizedBox(width: 18),
-          label: m.id,
-          isActive: providerIsActive && provider.model == m.id,
-          trailing: QuotaBadge(model: m),
-        ),
+        title: d.title,
+        tag: d.tag,
+        leading: modelFamilyLogo(m.id, size: 16),
+        trailing: m.remainingPercent == null ? null : QuotaBadge(model: m, fontSize: 11),
+        active: providerIsActive && provider.model == m.id,
       ));
     }
-    return items;
+    return out;
   }
 
   /// First time a chat is pointed at a CLI provider: warns the user this is
@@ -827,10 +803,12 @@ class _QuickModelDropdown extends ConsumerWidget {
       final providerType = match.isNotEmpty ? match.first.type : activeType;
       // The Subscriptions provider IS its model (one provider, many models), so
       // the button names the model rather than the constant provider name.
-      label = (activeType == kSubscriptionsProviderName && match.isNotEmpty && match.first.model.isNotEmpty)
-          ? match.first.model
-          : activeType;
-      leadingIcon = providerLogoWidget(providerType, size: 15);
+      final isSubsModel =
+          activeType == kSubscriptionsProviderName && match.isNotEmpty && match.first.model.isNotEmpty;
+      label = isSubsModel ? prettyModelName(match.first.model).label : activeType;
+      leadingIcon = isSubsModel
+          ? modelFamilyLogo(match.first.model, size: 15)
+          : providerLogoWidget(providerType, size: 15);
     }
 
     return Builder(
@@ -843,7 +821,7 @@ class _QuickModelDropdown extends ConsumerWidget {
             child: Container(
               margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              constraints: const BoxConstraints(maxWidth: 170),
+              constraints: const BoxConstraints(maxWidth: 220),
               decoration: BoxDecoration(
                 color: c.bgElement,
                 borderRadius: BorderRadius.circular(8),
@@ -988,15 +966,11 @@ class _QuickModelMenuRow extends StatelessWidget {
   final bool isActive;
   final Color? labelColor;
 
-  /// Shown after the label (e.g. a model's remaining allowance).
-  final Widget? trailing;
-
   const _QuickModelMenuRow({
     required this.leading,
     required this.label,
     this.isActive = false,
     this.labelColor,
-    this.trailing,
   });
 
   @override
@@ -1015,10 +989,6 @@ class _QuickModelMenuRow extends StatelessWidget {
             ),
           ),
         ),
-        if (trailing != null) ...[
-          const SizedBox(width: 10),
-          trailing!,
-        ],
         if (isActive) ...[
           const SizedBox(width: 8),
           Icon(Icons.check, size: 16, color: MemoTheme.accent),

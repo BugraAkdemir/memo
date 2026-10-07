@@ -340,6 +340,11 @@ confirm every single time before tagging or pushing a tag.
   chat model menu re-fetches the provider list on every open — both used to cache the empty answer until a restart.
 - **The sidecar's own browser probe hangs under KDE** (`xdg-open about:blank` never returns, so it never prints the sign-in
   URL). The login process gets a no-op `xdg-open` first on PATH and Memo opens the printed URL itself (`browser.go`).
+- **The top-bar model picker is `frontend/lib/widgets/model_picker.dart`, not a `PopupMenu`.** A popup menu grew with the model
+  list and ran off the bottom of the window; the panel caps its height to what is below the button, scrolls inside, and
+  searches once there are >7 rows. Display names come from `prettyModelName` (`gemini-3.7-flash-high` → "Gemini 3.7 Flash" +
+  tag "High"), logos from `modelFamilyLogo` (Google/Claude/OpenAI by model family) — display only, the raw id is what is stored
+  and sent. `chat_input.dart`'s own switcher still lists raw ids.
 - **`GET /api/providers/model` spends a STORED key**, so it is `requirePermissionStrict` (GET too) — unlike
   `/api/providers/models`, which only uses a key the caller supplies.
 - **Testing without an account:** `internal/cliproxy/testdata/fakecpa` stands in for the binary (key-gated `/v1/models`,

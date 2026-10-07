@@ -1,3 +1,36 @@
+# Handoff — 2026-10-07 (akşam) — Subscriptions cilası: giriş, görüntü, kota, seçici, kota kartı
+
+## Bu oturumda yapılanlar (hepsi `main`'de, push'lu; son commit `97a5b537`)
+| Konu | Ne yapıldı | Nasıl doğrulandı |
+|---|---|---|
+| Giriş URL'si gelmiyordu | (1) göreli veri dizini (`data`) yüzünden sidecar config yolunu iki kez çözüyordu → `Manager.dir` artık mutlak; (2) sidecar'ın `xdg-open about:blank` yoklaması KDE'de hiç dönmüyordu → giriş sürecine anında dönen `xdg-open` veriliyor, tarayıcıyı Memo açıyor (`internal/cliproxy/browser.go`) | Gerçek binary + göreli dizinle URL 30 ms'de döndü; iki test, düzeltme çıkarılınca kırılıyor |
+| Model listesi/seçici | giriş sonrası ~30 sn boş liste önbelleğe alınıyordu → sekme gelene dek yeniden okuyor, menü her açılışta yeniden çekiyor; seçici `PopupMenu`'dan `widgets/model_picker.dart` paneline (yükseklik sınırlı, arama, katlanır satıcı başlıkları, aile logoları, okunur adlar) | testler + panel gerçek fontla PNG'ye çizilip gözle bakıldı (son katlanır hali yalnızca testle) |
+| Kota yüzdesi | Antigravity (model başına), Codex (`wham/usage`), Claude (`oauth/usage`); en sıkışık pencere o satıcının tüm modellerine; rozet + kalan süre; seçici açıkken 2,5 sn sonra ve 50 sn'de bir, Ayarlar sekmesi 50 sn'de bir | Antigravity ve Codex **gerçek hesapla** doğrulandı |
+| Menü açılınca takılma | `/api/providers/model` ilk çağrıda 1 sn, kota Google'ı bekliyordu → `Manager.QuotaSnapshot` bloklamaz (arka planda yenilenir), arayüz 4 isteği paralel yapıyor | zamanlamalı test (maxWait 0 < 150 ms) |
+| Seçilen model kayboluyordu | `Subscriptions` yanlışlıkla "oturum sağlayıcısı" sayılıp açılışta sıfırlanıyordu → `isSessionProviderName` yalnızca CLI ajanlarını sayar | `TestReinit_KeepsTheSubscriptionsProviderActiveAcrossARestart` (eski kural geri konunca kırılıyor) |
+| Görüntü modelleri | `custom` sağlayıcı `ImageGenerator`: metinden görüntü (`/images/generations`), ekli görselle görüntüden görüntü (`/images/edits`). **Model kimliği sabit değil**: prompt'suz `POST /images/generations` yoklaması (sidecar yerelde ~1 ms yanıtlar) + Gemini biçimli katalogda `supportedOutputModalities: image` | Codex `gpt-image-2.5` t2i **ve** i2i gerçek hesapla çalıştı (kırmızı daire→mavi daire); sözleşme testi gerçek pinli binary'ye karşı |
+| Kota kartı + otomatik devam | Tur kota yüzünden ölürse akışa `quota_exhausted`, temiz turdan sonra ≤%10 kalınca `quota_low` işaretçisi (`Server.withQuotaSignals`); Flutter'da kart: geri sayım, "Sıfırlanınca otomatik devam et" kutusu (varsayılan AÇIK, hatırlanır), "Şimdi devam et"; süre dolunca sohbete `continue` yazılır | Go birim + gerçek-HTTP e2e + Flutter widget/provider/akış testleri, 8 mutasyon yakalandı |
+
+## Doğrulama (bu oturumun son çalıştırması)
+`go build` / `go vet` temiz; `go test -tags sqlite_fts5 ./... -race` yeşil; `gofmt` dokunduğum dosyalarda temiz; `flutter analyze lib/ test/` 7 bulgu (hepsi eski `info` gürültüsü: `use_build_context_synchronously` vb.), yeni bulgu yok; `flutter test` 520 geçti; Kural #8 taraması (test dosyaları dahil) boş. **CI'ı henüz görmedim** (son push `97a5b537`). Bir kez `L10n Guard` kırmızı oldu: benim yerel taramam yalnızca `lib/` dosyalarına bakıyordu, kural değişen TÜM `.dart` dosyalarına (testler dahil) bakıyor → artık AGENTS.md'deki tam komutu kullanıyorum.
+
+## DOĞRULANMADI / bilinmesi gerekenler
+- **Claude kotası:** `api.anthropic.com/api/oauth/usage` ayrıştırıcısı uç noktanın bilinen biçiminden yazıldı; Claude girişi olmadığı için canlı denenmedi. Biçim farklıysa rozet görünmez, bir şey bozulmaz.
+- **Yenilenme zamanı biçimleri:** Codex `resets_at`/`resets_in_seconds` ve Antigravity "reset after 2h12m3s" ayrıştırıcıları yayınlanmış davranıştan; **gerçek bir kota dolmasında denenmedi**. Bilinmezse anlık görüntüdeki zamana, o da yoksa 5 dk / 10 dk geri çekilmeye düşer.
+- **Antigravity görüntü modeli (`gemini-3.1-flash-image`):** Memo tarafı hazır (katalogdan tanınıyor, `modalities` gönderiyor) ama Google bu hesapta "500 Internal error encountered" veriyor — sidecar'ı doğrudan çağırınca da aynı. Başarılı üretim doğrulanamadı. Başarısız 500'ler sidecar'ın o modeli geçici olarak katalogdan düşürmesine yol açıyor.
+- **Otomatik devam yalnız Memo açıkken** çalışır; kart bellekte, uygulama kapanınca kaybolur. Kapsam: `/api/send/stream` ve `/api/send/file/stream` (normal + ajan/kodlama sohbetleri). **Kapsam dışı:** CLI ajan sohbetleri, WhatsApp akışı ve Self-Driving döngüsü (döngü zaten görevi park edip kendi zamanlayıcısıyla yeniden dener).
+- Windows/macOS/arm64'te sidecar çalıştırma hâlâ denenmedi (yalnızca build adımları CI ile kanıtlı).
+- Girişten sonra açılan sayfalar (Antigravity'de çıplak "Login successful", Codex/Claude'da mor şablon) sidecar binary'sinin içinde; kullanıcı "şimdilik böyle kalsın" dedi. Değiştirmek = sidecar'ı yamayıp kaynaktan derlemek (kendi sha'larımız, R2'ye yeniden yükleme) ya da Memo'nun kendi "bağlanıyor" sayfası.
+- `chat_input.dart`'taki ikinci model değiştirici hâlâ ham kimlik listeliyor.
+
+## Hâlâ kullanıcıda (önceki girdiden)
+`origin`'in ikinci push URL'sinde düz metin token (`web.bugradev.com`) → sil + token'ı döndür. llama.cpp b9441→b11456 uygulanmadı. Claude/Codex girişi: Codex bağlı, Claude değil.
+
+## Sonraki adım önerisi
+CI sonucunu oku. Claude ile giriş yapıp kota biçimini ve `quota_exhausted` kartını gerçek bir doluşta gör. İstenirse: seçicide "Image" etiketi, ikinci model değiştiriciyi aynı panele taşıma, kartı uygulama kapanınca da kalıcı yapma.
+
+---
+
 # Handoff — 2026-10-07 — Subscriptions (bundled CLIProxyAPI), domain move, upstream watch
 
 ## İstek

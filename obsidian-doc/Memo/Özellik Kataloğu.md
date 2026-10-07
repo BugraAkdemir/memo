@@ -238,6 +238,9 @@ Detay: [[Telegram Entegrasyonu]]
 | Özellik | Durum |
 |---------|-------|
 | Akışlı SSE yanıtları | ✅ — sabit toplam süreyle değil sessizlikle (300 sn) biter; 10 sn'lik `heartbeat` parçaları (v4.6.0) |
+| Bağlam halkası + pencere (kullanılan / pencere, oluşum, boş alan, otomatik sıkıştırma payı, Abonelik kullanım limitleri) | ✅ (v4.6.0) — `GET /api/context`; bildirildiyse sağlayıcının gerçek sayısı, yoksa `~` tahmini |
+| Pencerenin %90'ında otomatik sıkıştırma, her sağlayıcıda (yerel, API, Abonelikler) | ✅ (v4.6.0) — araç şeması dahil tüm istem; sağlayıcının önceki kendi sayısında da tetiklenir |
+| Okunabilir sağlayıcı hataları (güvenlik, hak, hız sınırı, anahtar, model, bağlam, zaman aşımı, kesinti, ağ) | ✅ (v4.6.0) — arayüz dilinde cümle + `(HTTP n)`; ham metin günlükte |
 | Geçen süreli canlı ilerleme satırı ve 30 sn'lik "sunucudan haber yok" uyarısı | ✅ (v4.6.0) |
 | Hâlâ cevap üreten her sohbette kenar çubuğu döneni (arka plan görevleri, WhatsApp/Telegram, diğer sekmeler) | ✅ (v4.6.0) |
 | Model seçici paneli (arama, katlanır sağlayıcı bölümleri, logolar, kalan-hak rozetleri) | ✅ (v4.6.0) |

@@ -18,9 +18,12 @@ Aşağıdaki liste kapsayıcı değildir — v4.6.0 itibarıyla 180+ kayıtlı e
 | `/api/send` | `POST` | Standart bir JSON mesajı gönderin. |
 | `/api/send/stream` | `POST` | SSE (Server-Sent Events) akışlı yanıt. |
 | `/api/messages` | `GET` | Bir sohbetin geçmişini getir. `chat_id` gönder — göndermezsen çağrı, başka bir istemcinin her an değiştirebileceği genel aktif sohbete işler. `/api/messages/update` ve `/api/messages/delete` de `chat_id` alır. |
+| `/api/context?chat_id=` | `GET` | Bağlam göstergesi (v4.6.0): `{provider, model, window, used, used_real, percent, categories:[{key,tokens}], auto_compact_enabled, auto_compact_pct, summarized_messages, limits:[{label,remaining_percent,reset_at}], limits_vendor}`. `used`, sağlayıcı bildirdiyse onun istem + cevap token sayısıdır (`used_real`), yoksa len/3 tahmini; `categories` (`messages`, `summary`, `system`, `memory`, `skills`, `tools`, `current`) Memo'nun kurduğu son istemden gelir ve gerçek sayıya oranlanır. `limits`, bir Abonelikler modeli için hesabın hak pencerelerini listeler (`5h`, `7d` ya da etiketsiz tek bir model rakamı), aksi halde `[]`. Salt okunur; bellekten ve kota önbelleğinden cevap verir, model çağırmaz. |
 | `/api/chats/streaming` | `GET` | `{"chat_ids": [...]}` — şu anda cevap üreten her sohbet (kenar çubuğundaki "hâlâ çalışıyor" göstergesi; arka plan görevlerini, WhatsApp/Telegram cevaplarını ve başka tarayıcı sekmelerini kapsar). |
 | `/api/chats` | `GET` | Mevcut tüm oturumları listele. |
 | `/api/chats/new` | `POST` | Yeni bir oturum oluştur. |
+
+**Sağlayıcı hataları.** Bir `error` parçası (ve kaydedilen mesaj) sağlayıcının ham metni değil, arayüz dilinde düz bir cümledir; HTTP durumu sonda `(HTTP n)` etiketi olarak durur — `App.FriendlyError`, SSE sınırında ve mesaj kaydedilirken uygulanır. Ham metin önce sınıflandırılır (kota kartı yenilenme zamanını ondan okur) ve günlüğe yazılır.
 
 #### Sohbet SSE akışındaki işaretçi parçalar (`/api/send/stream`, `/api/send/file/stream`)
 Bir akış parçası, `finish_reason`'ı aşağıdaki işaretçilerden birini söylemiyorsa sıradan cevap metnidir. İstemciler bilinmeyen bir işaretçiyi "yok say" diye ele almalı, asla ekrana yazmamalı.

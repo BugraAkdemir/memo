@@ -64,3 +64,8 @@ Memo için yaygın sorunlar ve çözümleri.
 **Sorun:** Canlı tarayıcı paneli hiçbir şey göstermiyor ya da `browser_*` araçları başarısız oluyor.
 **Sebep:** Tarayıcı paneli, isteğe bağlı bir indirme olan yalıtılmış bir Chromium'u sürer. `http`, `https` ya da boş sayfa olmayan adresler de reddedilir (`file://` bilerek engellidir).
 **Çözüm:** Chromium'u Ayarlar › Genel içindeki Tarayıcı Motoru bölümünden kur (*Chromium'u İndir* düğmesi). Panelin oturum uç noktaları ajan izni ister; hesabının ajan izni varsa Ajan Modu kapalıyken de paneli elle sürebilirsin.
+
+## 11. "Sağlayıcının güvenlik filtresi bu isteği reddetti" / diğer sağlayıcı mesajları
+**Sorun:** Sohbette ham bir sağlayıcı hatası yerine "Sağlayıcı şu an yanıt veremiyor (HTTP 500)" ya da "…güvenlik filtresi bu isteği reddetti" gibi bir cümle görünüyor.
+**Sebep:** v4.6.0'dan beri Memo sağlayıcı hatalarını senin dilinde sade cümlelere çevirir; parantezdeki sayı sağlayıcının döndürdüğü HTTP durumudur. Sağlayıcının özgün metni backend günlüğündedir (`ERROR shown to the user as` diye ara).
+**Çözüm:** Cümleyi izle: reddedilen mesajı farklı yaz; hız sınırında ya da kesintide bekleyip tekrar dene; anahtarı Ayarlar › API Sağlayıcıları'ndan kontrol et (Abonelikler: Ayarlar › Abonelikler'den yeniden giriş yap); model bilinmiyorsa ya da hesaba kapalıysa başka model seç; konuşma artık sığmıyorsa yeni sohbet başlat (Memo normalde pencerenin %90'ında kendisi özetler — sohbetin altındaki bağlam halkasına bak).

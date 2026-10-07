@@ -10,6 +10,7 @@ The Memo Backend provides a comprehensive REST API for the Flutter Frontend or t
 | `POST` | `/api/send` | Standard message submission (non-streaming) |
 | `POST` | `/api/send/stream` | Streaming (SSE) message submission — see "Marker chunks" below |
 | `GET` | `/api/chats/streaming` | `{chat_ids}` — chats generating a reply right now (the sidebar spinner) (v4.6.0) |
+| `GET` | `/api/context?chat_id=` | The context gauge (v4.6.0): window, used (the provider's own prompt + reply count when reported, else a `~` estimate), the make-up (`messages`, `summary`, `system`, `memory`, `skills`, `tools`, `current`), the auto-compact threshold, how many messages a summary replaces, and a Subscriptions account's allowance meters (`limits`). Read-only, no model call |
 | `GET` | `/api/image?path=` | `{data: base64}` of a stored chat image; only the backend's own image folders are served (v4.6.0) |
 | `POST` | `/api/send_file` | File/image message submission (Multipart) |
 | `GET` | `/api/chats` | List all chat sessions |

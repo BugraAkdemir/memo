@@ -10,6 +10,7 @@ Memo Backend, Flutter Frontend veya üçüncü parti istemciler için kapsamlı 
 | `POST` | `/api/send` | Normal mesaj gönderimi (non-streaming) |
 | `POST` | `/api/send/stream` | Akışlı (SSE) mesaj gönderimi — aşağıdaki "İşaretçi parçalar"a bakın |
 | `GET` | `/api/chats/streaming` | `{chat_ids}` — şu an cevap üreten sohbetler (kenar çubuğu döneni) (v4.6.0) |
+| `GET` | `/api/context?chat_id=` | Bağlam göstergesi (v4.6.0): pencere, kullanılan (sağlayıcı bildirdiyse onun istem + cevap sayısı, yoksa `~` tahmini), oluşum (`messages`, `summary`, `system`, `memory`, `skills`, `tools`, `current`), otomatik sıkıştırma eşiği, bir özetin kaç mesajın yerini tuttuğu ve bir Abonelikler hesabının hak sayaçları (`limits`). Salt okunur, model çağırmaz |
 | `GET` | `/api/image?path=` | Saklı bir sohbet görselinin `{data: base64}`'ü; yalnızca backend'in kendi görsel klasörleri sunulur (v4.6.0) |
 | `POST` | `/api/send_file` | Dosya/görsel içeren mesaj (Multipart) |
 | `GET` | `/api/chats` | Tüm oturumları listele |

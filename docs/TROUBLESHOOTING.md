@@ -84,3 +84,8 @@ Common issues and their solutions for Memo.
 **Issue:** The live browser panel shows nothing, or `browser_*` tools fail.
 **Cause:** The browser panel drives an isolated Chromium that is an optional download. Pages are also refused if they are not `http`, `https` or a blank page (`file://` is blocked on purpose).
 **Solution:** Install Chromium from the Browser Engine section of Settings › General (the *Download Chromium* button). Agent permission is required for the panel's session endpoints; with Agent Mode off you can still drive the panel by hand if your account has the agent permission.
+
+## 14. "The provider's safety filter refused this request" / other provider messages
+**Issue:** The chat shows a sentence like "The provider can't answer right now (HTTP 500)" or "…safety filter refused this request" instead of a raw vendor error.
+**Cause:** Since v4.6.0 Memo translates provider failures into plain sentences in your language; the number in brackets is the HTTP status the provider returned. The vendor's original text is in the backend log (search for `ERROR shown to the user as`).
+**Solution:** Follow the sentence: reword a refused message; wait and retry on a rate limit or outage; check the key under Settings › API Providers (Subscriptions: sign in again under Settings › Subscriptions); pick another model if the model is unknown or not allowed for the account; start a new chat if it says the conversation no longer fits (Memo normally summarizes at 90% of the window by itself — see the context ring at the foot of the chat).

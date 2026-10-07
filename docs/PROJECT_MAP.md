@@ -225,6 +225,9 @@ internal/app/
   agent_chat_context.go / selfchat_context.go / selfchat_permission.go — hangi ajan sohbetinin/self-chat yüzeyinin (WhatsApp/Telegram) şu an aktif turu işlediğini taşıyan context anahtarları + self-chat'e özel izin/yanıt akışı
   chat_locks.go       — Sohbet-bazlı stream kilidi: busyStreamChan, withChatLockWait — bir Self-Driving turu meşgul bir sohbeti kuyruğa alıp bekleyebilir; GetStreamingChatIDs (/api/chats/streaming) kenar çubuğunun "hâlâ çalışıyor" göstergesini besler
   stream_watchdog.go  — düz sohbet akışının zamanlaması (v4.6.0): 300 sn sessizlik (ilk kelime dahil) + 30 dk üst sınır; sabit toplam süre değil. Zaman aşımı ⏱️ olarak işaretlenir, gelen metin saklanır
+  context_report.go   — bağlam göstergesi (v4.6.0): noteContextSnap (son kurulan istemin oluşumu), noteTurnUsage (sağlayıcının tur sonu sayısı), ContextReport (GET /api/context), contextLimits (Abonelik kota pencereleri); localContextWindow/currentContextWindow/agentToolTokens ortak yardımcıları
+  conversation_compact.go — maybeCompactHistory: tüm istem pencerenin %90'ına (ya da sağlayıcının önceki sayısı oraya) ulaşınca en eski ~%60'ı özetler; tüm sağlayıcılarda aynı kural
+  error_text.go       — FriendlyError: sağlayıcı/ağ hatalarını arayüz dilinde cümleye çevirir (SSE parçası + kaydedilen mesajda uygulanır; ham metin sınıflandırma için korunur ve günlüğe yazılır)
   quotasignal.go      — aktif modelin arkasındaki kullanım hakkı için quota_exhausted/quota_low sinyali: bitiş ve yenilenme zamanı (hata metninden, yoksa kota anlık görüntüsünden)
   browser_frame.go    — browser_frame SSE parçası: sayfayı değiştiren her tarayıcı aracından sonra panele canlı ekran görüntüsü (sohbet geçmişine girmez)
   subs.go             — Subscriptions sağlayıcısı: syncSubscriptions sidecar'ı başlatan ve "Subscriptions" custom sağlayıcısını yazan tek yer; SetProviderModel

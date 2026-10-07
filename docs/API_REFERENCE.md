@@ -31,6 +31,9 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 | `GET` | `/api/status` | System status + memory count |
 | `POST` | `/api/incognito` | Toggle incognito mode |
 | `GET`/`PUT` | `/api/system-prompt` | Get/update system prompt |
+| `GET` | `/api/context?chat_id=` | The context gauge (v4.6.0): `{provider, model, window, used, used_real, percent, categories:[{key,tokens}], auto_compact_enabled, auto_compact_pct, summarized_messages, limits:[{label,remaining_percent,reset_at}], limits_vendor}`. `used` is the provider's own prompt + reply token count when it reported one (`used_real`), a len/3 estimate otherwise; `categories` (`messages`, `summary`, `system`, `memory`, `skills`, `tools`, `current`) come from the last prompt Memo assembled and are scaled to the real count. `limits` lists the account's allowance windows for a Subscriptions model (`5h`, `7d`, or one unlabeled per-model figure) and is `[]` otherwise. Read-only; answers from memory and the quota cache, never a model call |
+
+**Provider errors.** An `error` chunk (and the saved message) is a plain sentence in the UI language with the HTTP status as a trailing `(HTTP n)` tag, not the vendor's raw text — `App.FriendlyError`, applied at the SSE boundary and when the message is saved. The raw text is classified first (the quota card parses its reset time) and logged.
 
 #### Marker chunks on a chat SSE stream (`/api/send/stream`, `/api/send/file/stream`)
 A streamed chunk is ordinary reply text unless its `finish_reason` names one of these markers. Clients must treat an unknown marker as "ignore", never print it.

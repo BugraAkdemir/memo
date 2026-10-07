@@ -1,3 +1,37 @@
+# Handoff — 2026-10-08 — Bağlam halkası, %90 otomatik sıkıştırma, okunabilir hatalar, docs/CI
+
+## İstekler
+1) Sohbetin altında (Abonelikler'de) Claude Code'daki gibi bir halka: tıklayınca bağlam dökümü + plan kullanım limitleri. 2) Abonelikte KV/prompt cache ve bağlam penceresinin tamamı doğru mu? 3) Her sağlayıcıda (API/yerel/abonelik) bağlam %90'a gelince otomatik sıkıştırma. 4) Ham sağlayıcı hataları (`⚠️ [custom] status 400 … safety_violations`) sohbette çıplak görünmesin; bilinen kodlara l10n'li metin. 5) CI: AppImage tar.gz ile aynı kanallarda (R2 stable/beta). 6) docs + iki Obsidian + v4.6.0 notları (TR/EN) güncel.
+
+## Yapılanlar (hepsi `main`'de)
+| Commit | Ne |
+|---|---|
+| `acf4db7a` | `build-linux.yml`: AppImage → R2 `memo.AppImage` (v* etiketi) / `memo_beta.AppImage` (main push); sürüm adında çift "v" düzeltildi |
+| `b1b6ffe6` | docs/, docs/tr, iki Obsidian kasası ve versinNote EN+TR v4.6.0'a göre güncellendi (37 dosya) |
+| `1e16aa42` | Abonelikler: yeniden başlatmada kısmi model listesi yüzünden kullanıcının Claude seçimi görüntü modeliyle değişiyordu → `subsListComplete` bekler, yedek seçim görüntü modeli olmaz |
+| `020220ec` | Bağlam halkası + `GET /api/context`, `cliproxy.Quota.Windows` (tüm kota pencereleri), %90 otomatik sıkıştırma (tüm istem/pencere; sağlayıcının kendi sayısı da tetikler; eski kayıtlı 60 → 90), API turunda araç şeması geçmiş bütçesinden düşülüyor, `App.FriendlyError` |
+| (bu giriş) | docs EN/TR + Obsidian + AGENTS.md tuzakları + handoff |
+
+## Doğrulama
+`go build` / `go vet` temiz; `go test -tags sqlite_fts5 ./... -race` yeşil; `flutter analyze lib/ test/` 7 eski `info`, yeni yok; `flutter test` 536 geçti; Kural #8 taraması boş. **Canlı** (izole backend, `MEMO_DATA_DIR`, gerçek Antigravity+Codex hesabı, `cmd/fakeprovider`): 6000 token'lık pencerede 9. turda %70 → 10. turda 10 mesaj özetlendi, %47; 429/500/401/403/404 okunabilir cümleye döndü (403'ün "anahtar geçersiz" sanılması canlıda yakalandı, düzeltildi + test); Subscriptions turu bağlam raporunda gerçek sayı döndü.
+**Ölçülen (abonelik):** sidecar hiçbir model için bağlam uzunluğu yayınlamıyor (`/v1/models`, `/v1beta/models`) → gpt-*/Codex 128K varsayılanı, claude 200K, gemini 1M hâlâ kural; Claude (Antigravity) tekrarlanan önekte 4942/4952 token cache'ledi; Codex birebir tekrarda 3840/4470, yalnızca öneki paylaşan istekte 0 — düzensiz.
+
+## DOĞRULANMADI / bilinmesi gerekenler
+- Halka/pencere **görsel olarak** (gerçek Flutter penceresinde) bakılmadı; yalnızca widget testleri. Pixel/yerleşim kontrolü kullanıcıda.
+- Codex pencereleri: bu hesapta (`-go` planı) tek bir `30d` penceresi geldi; 5s/7g ayrımı (Oturum/Haftalık) Codex Plus/Pro ve Claude'da beklenen biçimden, canlı görülmedi.
+- Sağlayıcı hata kalıpları (güvenlik reddi, kota, bağlam aşımı) yayınlanmış metinlerden; yalnızca fake sağlayıcıyla 4xx/5xx kodları canlı denendi. Tanınmayan metin olduğu gibi gösterilir.
+- Minimal Mod otomatik sıkıştırmayı atlıyor (Memo'nun kendi model çağrısı yapmama sözü) — küçük bir yerel pencerede taşma riski var.
+- Sıkıştırma özeti bellekte; yeniden başlatınca ilk mesajda yeniden üretilir.
+- `data/generated-images/*`, `data/images/` repoda izlenmeyen dosyalar kullanıcının kendi çalışan Memo'sundan; commit'lenmedi.
+
+## Hâlâ kullanıcıda
+`origin`'in ikinci push URL'sindeki düz metin token (`web.bugradev.com`) → sil + döndür. llama.cpp b9441→b11456 uygulanmadı. Claude girişi yok.
+
+## Sonraki adım önerisi
+Halkayı gerçek pencerede gör; istenirse "Şimdi sıkıştır" düğmesi (`POST /api/context/compact`), Minimal Mod için eşik üstünde zorunlu sıkıştırma, REPL'e `/context`.
+
+---
+
 # Handoff — 2026-10-07 (akşam) — Subscriptions cilası: giriş, görüntü, kota, seçici, kota kartı
 
 ## Bu oturumda yapılanlar (hepsi `main`'de, push'lu; son commit `97a5b537`)

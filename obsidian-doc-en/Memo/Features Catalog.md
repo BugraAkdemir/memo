@@ -204,6 +204,9 @@ See [[Telegram Integration]].
 | Feature | Status |
 |---------|--------|
 | Streaming SSE responses | ✅ — ended by silence (300 s) not a fixed total; 10 s `heartbeat` chunks (v4.6.0) |
+| Context ring + popover (used / window, make-up, free space, auto-compact buffer, Subscriptions usage limits) | ✅ (v4.6.0) — `GET /api/context`; the provider's real count when reported, else a `~` estimate |
+| Auto-compact at 90% of the window, every provider (local, API, Subscriptions) | ✅ (v4.6.0) — whole prompt incl. tool schema; also triggers on the provider's own previous count |
+| Readable provider errors (safety, allowance, rate limit, key, model, context, timeout, outage, network) | ✅ (v4.6.0) — sentence in the UI language + `(HTTP n)`; raw text logged |
 | Live progress line with elapsed timer and a 30 s "no word from the server" warning | ✅ (v4.6.0) |
 | Sidebar spinner on every chat still generating (background tasks, WhatsApp/Telegram, other tabs) | ✅ (v4.6.0) |
 | Model-picker panel (search, foldable vendor sections, logos, remaining-allowance badges) | ✅ (v4.6.0) |

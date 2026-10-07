@@ -416,7 +416,25 @@ func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Rou
 	pipeline.effortLevel = effortLevel
 	pipeline.activeSkills = e.resolveActiveSkillSet(sessionID)
 
+	// A permission request must be registered BEFORE the event that asks for it
+	// reaches the client: a fast client (a script, the web UI under load, a CI
+	// runner) can answer within microseconds, and an answer that arrives before
+	// the request exists is rejected with "not found or already answered" while
+	// the agent keeps waiting out its 60s timeout. ExecuteToolCall already orders
+	// it this way (registerPending before emitting); this path did the reverse,
+	// emitting from the pipeline and only registering when waitFn ran.
+	var (
+		earlyMu sync.Mutex
+		early   = map[string]<-chan PermissionPolicy{}
+	)
+
 	wrappedOnEvent := func(ev AgentEvent) {
+		if ev.Type == EventPermissionRequest && ev.RequestID != "" {
+			ch := e.registerPending(ev.RequestID, ev)
+			earlyMu.Lock()
+			early[ev.RequestID] = ch
+			earlyMu.Unlock()
+		}
 		// Log the event
 		e.logEvent(sessionID, ev)
 		if GlobalActivityHook != nil {
@@ -427,35 +445,21 @@ func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Rou
 	}
 
 	waitFn := func(requestID string, ev AgentEvent) (PermissionPolicy, error) {
-		resCh := make(chan PermissionPolicy, 1)
-
-		e.mu.Lock()
-		e.pendingPerms[requestID] = &PermissionRequest{
-			ID:    requestID,
-			Event: ev,
-			ResCh: resCh,
+		earlyMu.Lock()
+		resCh, ok := early[requestID]
+		delete(early, requestID)
+		earlyMu.Unlock()
+		if !ok { // the event was not routed through wrappedOnEvent: register now
+			resCh = e.registerPending(requestID, ev)
 		}
-		e.mu.Unlock()
-
-		defer func() {
-			e.mu.Lock()
-			delete(e.pendingPerms, requestID)
-			e.mu.Unlock()
-		}()
+		defer e.unregisterPending(requestID)
 
 		// Auto-deny after 60 seconds if the user doesn't respond.
-		permTimer := time.NewTimer(60 * time.Second)
-		defer permTimer.Stop()
-
-		select {
-		case <-ctx.Done():
-			return DenyOnce, ctx.Err()
-		case <-permTimer.C:
+		policy, err := e.awaitPermission(ctx, resCh)
+		if err != nil && ctx.Err() == nil {
 			logx.Printf("AGENT: permission request %s timed out (60s), auto-denied", requestID)
-			return DenyOnce, fmt.Errorf("permission timed out")
-		case policy := <-resCh:
-			return policy, nil
 		}
+		return policy, err
 	}
 
 	// Let change_directory persist a directory switch past this turn (see

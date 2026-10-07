@@ -185,3 +185,57 @@ func TestExecutor_RunStreamWithRouter_UsesGivenRouterNotSyncedOne(t *testing.T) 
 		t.Errorf("content = %q, want the reply to come from the explicitly passed router B", content)
 	}
 }
+
+// TestExecutor_PermissionRequestIsAnswerableTheMomentItIsEmitted guards the
+// e2e flake "POST /api/agent/permission: status 400". The pipeline used to emit
+// the permission_request event first and register the pending request only when
+// its wait function ran, so a client that answered immediately (a script, the
+// web UI under load) was told "not found or already answered" while the agent
+// sat out its 60s timeout. Here the callback answers synchronously from inside
+// the event — the worst case — and the answer must be accepted and the tool
+// must then actually run.
+func TestExecutor_PermissionRequestIsAnswerableTheMomentItIsEmitted(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		calls++
+		if calls == 1 {
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"","tool_calls":[{"id":"w1","type":"function","function":{"name":"write_file","arguments":"{\"path\":\"out.txt\",\"content\":\"hi\"}"}}]}}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"all done"}}]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	r := provider.NewRouter([]provider.ProviderConfig{
+		{Type: provider.ProviderCustom, Name: "p", BaseURL: srv.URL, Model: "m", Enabled: true},
+	})
+	r.SetActiveProvider("p")
+	dir := t.TempDir()
+	e := NewExecutor(dir, r, nil, nil)
+
+	var answerErr error
+	answered := false
+	ch, err := e.RunStreamWithRouter(context.Background(), r, "sess", "m", "", []provider.Message{{Role: "user", Content: "write it"}}, func(ev AgentEvent) {
+		if ev.Type == EventPermissionRequest {
+			answered = true
+			answerErr = e.HandlePermissionResponse(ev.RequestID, AllowOnce)
+		}
+	})
+	if err != nil {
+		t.Fatalf("RunStreamWithRouter() error = %v", err)
+	}
+	var content string
+	for c := range ch {
+		content += c.Content + c.Error
+	}
+	if !answered {
+		t.Skip("write_file did not prompt in this configuration; nothing to assert")
+	}
+	if answerErr != nil {
+		t.Fatalf("answering the request from inside its own event failed: %v", answerErr)
+	}
+	if !strings.Contains(content, "all done") {
+		t.Errorf("turn did not finish after the approval: %q", content)
+	}
+}

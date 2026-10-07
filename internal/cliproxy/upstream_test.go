@@ -247,4 +247,31 @@ func TestUpstream_RealBinaryHonoursOurContract(t *testing.T) {
 	if _, err := m.Models(context.Background()); err != nil {
 		t.Errorf("authenticated /v1/models failed: %v", err)
 	}
+
+	// Memo recognises image models by asking the images endpoint, with no prompt,
+	// whether it serves the model (internal/provider/openai_images.go): a model it
+	// serves answers "prompt is required", any other "is not supported". That is
+	// the sidecar's wording, not an API contract — if it changes, image models
+	// silently fall back to the chat path and fail there, so watch it.
+	probe := func(model string) (int, string) {
+		body := strings.NewReader(`{"model":"` + model + `"}`)
+		req, _ := http.NewRequest(http.MethodPost, m.BaseURL()+"/images/generations", body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+m.APIKey())
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return resp.StatusCode, strings.ToLower(string(b))
+	}
+	if code, body := probe("gpt-image-2.5"); code != http.StatusBadRequest || !strings.Contains(body, "prompt is required") {
+		note(t, fmt.Sprintf("- **DRIFT** — the images endpoint no longer answers a prompt-less image-model request with `prompt is required` (got %d: %.120s); Memo's dynamic image-model detection would stop working", code, body))
+		t.Errorf("image-model probe: %d %s", code, body)
+	}
+	if code, body := probe("claude-sonnet-4-6"); code != http.StatusBadRequest || strings.Contains(body, "prompt is required") {
+		note(t, fmt.Sprintf("- **DRIFT** — the images endpoint answered a chat model with %d %.120s; Memo would treat chat models as image models", code, body))
+		t.Errorf("chat-model probe: %d %s", code, body)
+	}
 }

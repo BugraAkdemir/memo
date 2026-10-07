@@ -1,6 +1,9 @@
 package provider
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // ImageRequest is a text-to-image generation call. Deliberately a separate
 // type from ChatRequest: image models are not chat models — several of them
@@ -20,6 +23,53 @@ type ImageRequest struct {
 	Size         string
 	AspectRatio  string
 	OutputFormat string
+	// Images are source pictures for an image-to-image (edit) call. Empty means
+	// plain text-to-image. A provider that cannot edit ignores them.
+	Images []ImageInput
+}
+
+// ImageInput is one source picture, as raw base64 plus its MIME type.
+type ImageInput struct {
+	B64JSON   string
+	MediaType string
+}
+
+// DataURL renders the input as a data: URL, the form OpenAI-compatible image
+// endpoints take.
+func (i ImageInput) DataURL() string {
+	mt := i.MediaType
+	if mt == "" {
+		mt = "image/png"
+	}
+	return "data:" + mt + ";base64," + i.B64JSON
+}
+
+// ParseImageInput turns an attached image — a data: URL, or bare base64 — into
+// an ImageInput. ok is false for anything else (an http URL, empty), which an
+// edit call cannot use.
+func ParseImageInput(s string) (ImageInput, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ImageInput{}, false
+	}
+	if !strings.HasPrefix(s, "data:") {
+		if strings.Contains(s, "://") {
+			return ImageInput{}, false
+		}
+		return ImageInput{B64JSON: s, MediaType: "image/png"}, true
+	}
+	head, body, found := strings.Cut(s[len("data:"):], ",")
+	if !found || body == "" {
+		return ImageInput{}, false
+	}
+	mt, _, _ := strings.Cut(head, ";")
+	if !strings.HasSuffix(head, "base64") {
+		return ImageInput{}, false
+	}
+	if !strings.HasPrefix(mt, "image/") {
+		mt = "image/png"
+	}
+	return ImageInput{B64JSON: body, MediaType: mt}, true
 }
 
 // GeneratedImage is one image returned by ImageGenerator.GenerateImage.

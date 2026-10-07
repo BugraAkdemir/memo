@@ -44,6 +44,13 @@ func newFakeProvider(t *testing.T, script func(n int, req map[string]any) map[st
 	t.Helper()
 	fp := &fakeProvider{script: script}
 	fp.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only chat completions are recorded and scripted; a real chat-only
+		// server 404s everything else (Memo probes a custom provider's images
+		// endpoint and catalogue to learn whether a model draws).
+		if !strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			http.NotFound(w, r)
+			return
+		}
 		raw, _ := io.ReadAll(r.Body)
 		var body map[string]any
 		_ = json.Unmarshal(raw, &body)

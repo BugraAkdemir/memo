@@ -1246,7 +1246,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			// all (see imagegen.go) — route the turn to the images endpoint
 			// instead of letting the whole fallback chain 404.
 			if gen, imgModel, ok := a.imageRoute(ctx, providerRouter); ok {
-				a.streamImageGeneration(ctx, gen, imgModel, userMsg, userMsg, sessionID, outCh)
+				a.streamImageGeneration(ctx, gen, imgModel, userMsg, userMsg, sessionID, imageInputsFromMessages(messages), outCh)
 				return
 			}
 

@@ -153,7 +153,9 @@ func TestOpenRouterProvider_IsImageOnlyModel_UnreachableCatalogReportsFalse(t *t
 // sitting further down the fallback chain.
 func TestRouter_ImageGenerator_OnlyConsidersTheFirstEntry(t *testing.T) {
 	r := NewRouter([]ProviderConfig{
-		{Type: ProviderOpenAI, Name: "openai", Model: "gpt-4o", APIKey: "k", Enabled: true, Priority: 10},
+		// A provider with no image support at all (Claude), so the top entry
+		// answering "no" is about capability, not about the model it is set to.
+		{Type: ProviderClaude, Name: "claude", Model: "claude-sonnet-4-6", APIKey: "k", Enabled: true, Priority: 10},
 		{Type: ProviderOpenRouter, Name: "openrouter", Model: "inclusionai/ming-image-0.1-design", APIKey: "k", Enabled: true, Priority: 1},
 	})
 	if _, _, ok := r.ImageGenerator(); ok {

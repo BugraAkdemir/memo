@@ -27,6 +27,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -150,6 +151,14 @@ func (fp *FakeProvider) Requests() []FakeChatRequest {
 }
 
 func (fp *FakeProvider) handle(w http.ResponseWriter, r *http.Request) {
+	// Only /chat/completions is scripted. Anything else — the images-endpoint
+	// probe Memo sends to a custom provider to learn whether a model makes
+	// pictures, a catalogue lookup — is a 404, as on a real chat-only server,
+	// instead of being counted as a chat call that eats a scripted response.
+	if !strings.HasSuffix(r.URL.Path, "/chat/completions") {
+		http.NotFound(w, r)
+		return
+	}
 	body, err := decodeChatRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

@@ -345,6 +345,16 @@ confirm every single time before tagging or pushing a tag.
   searches once there are >7 rows. Display names come from `prettyModelName` (`gemini-3.7-flash-high` → "Gemini 3.7 Flash" +
   tag "High"), logos from `modelFamilyLogo` (Google/Claude/OpenAI by model family) — display only, the raw id is what is stored
   and sent. `chat_input.dart`'s own switcher still lists raw ids.
+- **Image models are detected by asking the endpoint, never by id** (`internal/provider/openai_images.go`). A `custom`
+  provider is probed with a prompt-less `POST /images/generations`: the sidecar answers locally in ~1ms — "prompt is required"
+  for a model it serves (Codex `gpt-image-*`), "is not supported" for the rest — so it costs nothing and never reaches a vendor
+  (probing `/chat/completions` does, and a Google 500 put that model into cooldown, even dropping it from the catalogue). A
+  model it rejects is then checked against the Gemini-style catalogue (`GET /v1beta/models`, `x-goog-api-key` ONLY — with a
+  Bearer header too the sidecar answers in OpenAI shape, without modalities): `supportedOutputModalities` containing "image"
+  means a chat model that draws with `modalities=[image,text]` (Antigravity's Gemini image model). Pictures attached to the
+  turn become `images[]` of `/images/edits` (image-to-image). Results are cached (30/10 min, a failed probe 30s) and the
+  wording the probe relies on is watched by `TestUpstream_RealBinaryHonoursOurContract`. Test fakes of a chat server must
+  404 everything but `/chat/completions`, or the probe eats a scripted reply.
 - **`GET /api/providers/model` spends a STORED key**, so it is `requirePermissionStrict` (GET too) — unlike
   `/api/providers/models`, which only uses a key the caller supplies.
 - **Testing without an account:** `internal/cliproxy/testdata/fakecpa` stands in for the binary (key-gated `/v1/models`,

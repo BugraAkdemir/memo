@@ -85,7 +85,7 @@ Widget vendorLogo(String ownedBy, {double size = 16}) {
   final type = switch (ownedBy) {
     'antigravity' => 'gemini',
     'claude' => 'claude',
-    'codex' => 'openai',
+    'codex' || 'openai' => 'openai',
     _ => '',
   };
   return type.isEmpty ? SizedBox(width: size, height: size) : providerLogoWidget(type, size: size);

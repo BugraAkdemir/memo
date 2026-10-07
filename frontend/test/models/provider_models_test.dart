@@ -90,4 +90,13 @@ void main() {
       expect(ProviderModel.fromJson({'id': 'x', 'remaining': -0.3}).remainingPercent, 0);
     });
   });
+
+  group('vendor labels', () {
+    test('the sidecar lists Codex models under owned_by "openai"', () {
+      expect(vendorLabel('openai'), 'Codex');
+      expect(vendorLabel('codex'), 'Codex');
+      expect(vendorLabel('antigravity'), 'Antigravity');
+      expect(vendorLabel(''), '');
+    });
+  });
 }

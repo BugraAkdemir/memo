@@ -88,6 +88,7 @@ String vendorLabel(String ownedBy) {
     case 'claude':
       return 'Claude';
     case 'codex':
+    case 'openai': // the sidecar's Codex accounts list their models as owned by openai
       return 'Codex';
     case '':
       return '';

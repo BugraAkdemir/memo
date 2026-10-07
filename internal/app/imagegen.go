@@ -131,7 +131,7 @@ func saveGeneratedImage(img provider.GeneratedImage) (string, error) {
 // terminal Done (or Error) chunk, and exactly one finishStream/
 // recordStreamError call so the turn is persisted either way. outCh is
 // owned and closed by the caller.
-func (a *App) streamImageGeneration(ctx context.Context, gen provider.ImageGenerator, model, prompt, userMsg, sessionID string, outCh chan<- api.StreamChunk) {
+func (a *App) streamImageGeneration(ctx context.Context, gen provider.ImageGenerator, model, prompt, userMsg, sessionID string, images []provider.ImageInput, outCh chan<- api.StreamChunk) {
 	if prompt == "" {
 		prompt = userMsg
 	}
@@ -143,7 +143,7 @@ func (a *App) streamImageGeneration(ctx context.Context, gen provider.ImageGener
 	}
 
 	setActivity(models.ActivityGenerating, "")
-	logx.Printf("IMAGE: generating with %s (prompt %d chars)", model, len(prompt))
+	logx.Printf("IMAGE: generating with %s (prompt %d chars, %d source image(s))", model, len(prompt), len(images))
 
 	start := time.Now()
 	// Image generation is a single long request with no progress signal —
@@ -152,7 +152,7 @@ func (a *App) streamImageGeneration(ctx context.Context, gen provider.ImageGener
 	genCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
 	defer cancel()
 
-	resp, err := gen.GenerateImage(genCtx, provider.ImageRequest{Model: model, Prompt: prompt})
+	resp, err := gen.GenerateImage(genCtx, provider.ImageRequest{Model: model, Prompt: prompt, Images: images})
 	if err != nil {
 		errMsg := "⚠️ " + err.Error()
 		a.recordStreamError(userMsg, errMsg, sessionID)
@@ -172,8 +172,14 @@ func (a *App) streamImageGeneration(ctx context.Context, gen provider.ImageGener
 
 	trySend(ctx, outCh, api.StreamChunk{FinishReason: imageGenerationMarker, Content: path})
 
+	// Which provider actually drew it (OpenRouter, a custom endpoint, …) — the
+	// generator is the provider itself.
+	providerName := string(provider.ProviderOpenRouter)
+	if n, ok := gen.(interface{ Name() provider.ProviderType }); ok {
+		providerName = string(n.Name())
+	}
 	meta := usageMeta{
-		Provider: string(provider.ProviderOpenRouter),
+		Provider: providerName,
 		Model:    model,
 		Category: categoryChat,
 	}
@@ -190,4 +196,44 @@ func (a *App) streamImageGeneration(ctx context.Context, gen provider.ImageGener
 	}
 	a.finishStream(withGeneratedImage(ctx, path), start, completionTokens, "stop", "", userMsg, sessionID, &meta)
 	trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
+}
+
+// imageInputsFromMessages collects the pictures the user attached to this turn
+// (the last user message) as source images for an image-to-image call. Only
+// inline images count: an http(s) link cannot be handed to an edit endpoint.
+func imageInputsFromMessages(msgs []api.Message) []provider.ImageInput {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role != "user" {
+			continue
+		}
+		var urls []string
+		switch c := msgs[i].Content.(type) {
+		case []api.ContentPart:
+			for _, p := range c {
+				if p.Type == "image_url" && p.ImageURL != nil {
+					urls = append(urls, p.ImageURL.URL)
+				}
+			}
+		case []interface{}:
+			for _, item := range c {
+				m, ok := item.(map[string]interface{})
+				if !ok || m["type"] != "image_url" {
+					continue
+				}
+				if iu, ok := m["image_url"].(map[string]interface{}); ok {
+					if u, ok := iu["url"].(string); ok {
+						urls = append(urls, u)
+					}
+				}
+			}
+		}
+		var out []provider.ImageInput
+		for _, u := range urls {
+			if in, ok := provider.ParseImageInput(u); ok {
+				out = append(out, in)
+			}
+		}
+		return out
+	}
+	return nil
 }

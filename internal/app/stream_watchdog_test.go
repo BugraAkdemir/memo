@@ -23,7 +23,15 @@ func shortenStreamTimers(t *testing.T, idle, total time.Duration) {
 
 func providerApp(t *testing.T, h http.HandlerFunc) *App {
 	t.Helper()
-	srv := httptest.NewServer(h)
+	// Like a real chat-only server: only chat completions reach h; the probes
+	// Memo sends a custom provider (images endpoint, model catalogue) get a 404.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			http.NotFound(w, r)
+			return
+		}
+		h(w, r)
+	}))
 	t.Cleanup(srv.Close)
 	router := provider.NewRouter([]provider.ProviderConfig{{
 		Type: provider.ProviderCustom, Name: "test", BaseURL: srv.URL, Model: "m", Enabled: true,

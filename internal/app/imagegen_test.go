@@ -22,6 +22,7 @@ type fakeImageGenerator struct {
 	imageOnly  bool
 	gotPrompt  string
 	gotModel   string
+	gotImages  []provider.ImageInput
 	resp       *provider.ImageResponse
 	err        error
 	generateHz int
@@ -35,6 +36,7 @@ func (f *fakeImageGenerator) GenerateImage(ctx context.Context, req provider.Ima
 	f.generateHz++
 	f.gotPrompt = req.Prompt
 	f.gotModel = req.Model
+	f.gotImages = req.Images
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -138,7 +140,8 @@ func TestStreamImageGeneration_EmitsMarkerAndPersistsImagePath(t *testing.T) {
 
 	out := make(chan api.StreamChunk, 8)
 	a.streamImageGeneration(context.Background(), gen, "inclusionai/ming-image-0.1-design",
-		"uzayda uçan kedi resmi çiz", "uzayda uçan kedi resmi çiz", chatID, out)
+		"uzayda uçan kedi resmi çiz", "uzayda uçan kedi resmi çiz", chatID,
+		[]provider.ImageInput{{B64JSON: "SRC", MediaType: "image/jpeg"}}, out)
 	close(out)
 
 	var markerPath string
@@ -167,6 +170,9 @@ func TestStreamImageGeneration_EmitsMarkerAndPersistsImagePath(t *testing.T) {
 	if gen.gotPrompt != "uzayda uçan kedi resmi çiz" {
 		t.Errorf("prompt sent = %q, want the user's message", gen.gotPrompt)
 	}
+	if len(gen.gotImages) != 1 || gen.gotImages[0].B64JSON != "SRC" {
+		t.Errorf("source images sent = %+v, want the attached picture (image-to-image)", gen.gotImages)
+	}
 	if gen.gotModel != "inclusionai/ming-image-0.1-design" {
 		t.Errorf("model sent = %q, want the configured image model", gen.gotModel)
 	}
@@ -189,7 +195,7 @@ func TestStreamImageGeneration_BlankPromptDoesNotCallTheProvider(t *testing.T) {
 
 	gen := &fakeImageGenerator{imageOnly: true}
 	out := make(chan api.StreamChunk, 8)
-	a.streamImageGeneration(context.Background(), gen, "some/image-model", "   ", "   ", chatID, out)
+	a.streamImageGeneration(context.Background(), gen, "some/image-model", "   ", "   ", chatID, nil, out)
 	close(out)
 
 	var sawError bool
@@ -203,5 +209,37 @@ func TestStreamImageGeneration_BlankPromptDoesNotCallTheProvider(t *testing.T) {
 	}
 	if gen.generateHz != 0 {
 		t.Errorf("GenerateImage called %d times for a blank prompt, want 0 — that's a paid call", gen.generateHz)
+	}
+}
+
+// The pictures a user attaches to a turn become the source images of an edit.
+func TestImageInputsFromMessages(t *testing.T) {
+	msgs := []api.Message{
+		api.NewMultimodalMessage("user", "old", "data:image/png;base64,OLD"),
+		api.NewTextMessage("assistant", "ok"),
+		api.NewMultimodalMessage("user", "edit this", "data:image/jpeg;base64,AAA", "data:image/webp;base64,BBB", "https://example.test/x.png"),
+	}
+	got := imageInputsFromMessages(msgs)
+	if len(got) != 2 {
+		t.Fatalf("got %d inputs, want the 2 inline pictures of the LAST user message (a link cannot be sent to an edit endpoint): %+v", len(got), got)
+	}
+	if got[0].B64JSON != "AAA" || got[0].MediaType != "image/jpeg" || got[1].MediaType != "image/webp" {
+		t.Errorf("inputs = %+v", got)
+	}
+
+	// Decoded JSON arrives as []interface{} of maps, not []api.ContentPart.
+	decoded := []api.Message{{Role: "user", Content: []interface{}{
+		map[string]interface{}{"type": "text", "text": "hi"},
+		map[string]interface{}{"type": "image_url", "image_url": map[string]interface{}{"url": "data:image/png;base64,ZZZ"}},
+	}}}
+	if got := imageInputsFromMessages(decoded); len(got) != 1 || got[0].B64JSON != "ZZZ" {
+		t.Errorf("decoded-JSON message: %+v", got)
+	}
+
+	if got := imageInputsFromMessages([]api.Message{api.NewTextMessage("user", "just text")}); len(got) != 0 {
+		t.Errorf("a text-only turn must yield no source images, got %+v", got)
+	}
+	if got := imageInputsFromMessages(nil); got != nil {
+		t.Errorf("no messages: %+v", got)
 	}
 }

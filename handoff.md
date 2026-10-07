@@ -1,3 +1,45 @@
+# Handoff — 2026-10-07 — Subscriptions (bundled CLIProxyAPI), domain move, upstream watch
+
+## İstek
+claude-sub + gemini-sub kaldırılsın; yerine Antigravity CLI gibi davranan, release'e gömülü **CLIProxyAPI** sidecar'ı
+("Subscriptions"): bir kez login → tüm modeller sağ üst seçicide, `/model`'de ve Developer sekmesindeki `:8090/v1` gateway'inde.
+Ek: `bugradev.com` → `memocpp.com` / `data.memocpp.com` taşıması + CI bekçisi, vendor/URL drift izleyen zamanlanmış CI,
+llama.cpp güncelleme araştırması. Gece boyu main'e push + R2'ye ekleyici push yetkisi verilmişti (v* tag / release / version dosyası yok).
+
+## Yapılan ve doğrulanan
+- `internal/cliproxy` (Locate/Binary sha doğrulama, run, login, accounts, models, sahte binary testleri), `internal/app/subs.go`,
+  `/api/subscriptions`, `/api/providers/model`, dev gateway `subs/<model>`, Flutter Subscriptions sekmesi (index 25, Beta DEĞİL),
+  model seçici + REPL `/model`, eski gemini-sub/claude-sub kodu ve verisi silindi (migrasyon `provider/config.go` Load).
+- **Gerçek binary + gerçek Antigravity hesabıyla canlı doğrulandı:** sidecar Memo altında kalkıyor, provider ~9 sn'de kayıtlı,
+  claude-sonnet-4-6 ve gemini-3-flash ile sohbet, `:8090/v1/models` (12 `subs/*`), `/v1/chat/completions` ve `/v1/messages`,
+  model listesi uç noktası api_key sızdırmıyor, memo kapanınca sidecar ölüyor.
+- Binary gömme: `internal/cliproxy/PINNED.txt` + `scripts/vendor_cliproxy.sh` + `scripts/verify_cliproxy.sh`; R2'de
+  `binaries/{linux/cliproxy,linux/cliproxy-arm64,windows/cliproxy,darwin/cliproxy}`; build-linux/windows/macos/docker.yml indirip doğruluyor.
+  Windows/macOS/Linux/Docker build'leri CI'da yeşil görüldü (85eb4e3b).
+- Domain: 176 geçiş taşındı; `ci.yml` "Old-domain Guard" eski alan adı sızarsa kırar (handoff.md hariç). 11 betik R2'ye yüklendi (ekleyici).
+- Upstream watch: `internal/upstream`, `internal/cliproxy/upstream_test.go` (`-tags upstream`), `scripts/upstream_report.sh`,
+  `.github/workflows/upstream.yml` (6 saatte bir, issue açar) ve `vendor-cliproxy.yml` (elle).
+- Gerçek bir yarış bulundu ve düzeltildi (736bc926): `permission_request` event'i istemciye gitmeden ÖNCE kaydedilmiyordu →
+  hızlı istemcide `POST /api/agent/permission 400` + agent'ın 60 sn beklemesi (e2e flake'lerinin kök nedeni). Test mutasyonla doğrulandı.
+
+## Doğrulanmadı / bilinmesi gerekenler
+- Windows/macOS/arm64 yollarında sidecar'ı **çalıştırma** denenmedi; yalnız build adımları (indirme + sha doğrulama) CI ile kanıtlı.
+- Sidecar `/v1/models` listesini soğuk başlangıçtan ~30 sn sonra veriyor; Memo erken kayıt + yeniden deneme ile bunu tolere ediyor.
+- Claude ve Codex girişi tarayıcı gerektirir → sabah kullanıcıyla. Antigravity girişi `data/cliproxy/auth/` altına önceden konmuş (gitignore'lu).
+- **llama.cpp b9441→b11456 UYGULANMADI.** Sebep: yardımcı binary'ler (whisper-server, memo-lora-train) yeni ggml ile yeniden
+  derlenmeli/izole edilmeli, Windows/macOS/arm64 başlatma testleri bu makinede yapılamıyor. Hazır olanlar: `--flash-attn`
+  yazım yoklaması, `ggml-rpc-server` adı, güvenli staging (`internal/llama`, AGENTS.md "llama.cpp upgrade traps"). Karar kullanıcıda.
+- Kalan flake adayları: `TestBootstrapTokenAuth_Succeeds` (TempDir temizliği), `TestIntegration_MemoryBlock_CappedAndUserOnly`, canary DuckDuckGo captcha.
+
+## ⚠ Güvenlik — kullanıcı yapmalı
+`git remote -v`: `origin`'in ikinci **push URL'si** `http://BugraAkdemir:<token>@web.bugradev.com/...` (satılan alan adı, düz metin token).
+`git push origin` token'ı yeni alan sahibine sızdırır. Bu yüzden push'lar açık GitHub URL'siyle yapıldı. Yapılacak:
+`git remote set-url --delete --push origin 'http://*web.bugradev.com*'` (veya `.git/config`'ten sil) ve **o token'ı döndür**.
+Ayrıca eski sürümlerin REPL `update` komutu ve kopyalanmış `curl … download.bugradev.com/get-memo.sh | bash` satırları artık
+başkasının sunucusuna gidiyor — yeni sürümü duyurmak ve eski satırları kaldırmak öncelikli.
+
+---
+
 # Handoff — 2026-10-06 — gemini-sub 429 + eski 2.5 listesi, claude-sub "Invalid client id"
 
 ## İstek

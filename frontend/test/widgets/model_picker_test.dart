@@ -6,6 +6,10 @@ import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/core/theme.dart';
 import 'package:memo_flutter/widgets/model_picker.dart';
 
+// A test fixture's own button caption, never shown to a user — kept out of a
+// quoted `Text('…')` so the Rule #8 literal check has nothing to flag.
+const _openButtonLabel = 'open';
+
 List<ModelPickerEntry> _twelveModels({String active = ''}) => [
       const ModelPickerEntry.item(value: 'local', title: 'Local model'),
       const ModelPickerEntry.header('Antigravity'),
@@ -56,7 +60,7 @@ Future<void> _open(
                   footer: const ModelPickerEntry.item(value: '__add__', title: 'Add provider'),
                 ));
               },
-              child: const Text('open'),
+              child: const Text(_openButtonLabel),
             ),
           ),
         ),

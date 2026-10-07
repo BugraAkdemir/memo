@@ -345,6 +345,14 @@ func firstAgentReq(t *testing.T, bodies []string) capturedReq {
 // category exists (async fire-and-forget write from finishStream).
 func (h *lsHarness) waitUsageCategory(t *testing.T, category string) stats.CategoryUsage {
 	t.Helper()
+	return h.waitUsageRequests(t, category, 1)
+}
+
+// waitUsageRequests is waitUsageCategory for a test that ran several turns: the
+// category's row exists as soon as the FIRST turn's write lands, so waiting for
+// the row alone can read a count that is still missing the later turns' writes.
+func (h *lsHarness) waitUsageRequests(t *testing.T, category string, minRequests int) stats.CategoryUsage {
+	t.Helper()
 	// The usage row is written fire-and-forget (`go recordUsageEvent`), so on a
 	// loaded runner it can trail the turn by well over a few ticks — 3s flaked
 	// once under a full -race suite. Waiting longer costs nothing when it lands.
@@ -352,13 +360,13 @@ func (h *lsHarness) waitUsageCategory(t *testing.T, category string) stats.Categ
 	for {
 		sum := h.usageSummary(t)
 		for _, c := range sum.CategoryBreakdown {
-			if c.Category == category {
+			if c.Category == category && c.Requests >= minRequests {
 				return c
 			}
 		}
 		select {
 		case <-deadline:
-			t.Fatalf("no %q usage row after 15s; breakdown=%+v", category, sum.CategoryBreakdown)
+			t.Fatalf("no %q usage row with >=%d requests after 15s; breakdown=%+v", category, minRequests, sum.CategoryBreakdown)
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
@@ -527,7 +535,7 @@ func TestIntegration_CodeMode(t *testing.T) {
 
 	// finishStream suppressions: no chat-title generation call for a Code Mode
 	// chat, so no `title` usage row — only `agent`.
-	agentRow := h.waitUsageCategory(t, categoryAgent)
+	agentRow := h.waitUsageRequests(t, categoryAgent, 2)
 	if agentRow.Requests != 2 {
 		t.Errorf("agent request count = %d, want 2", agentRow.Requests)
 	}

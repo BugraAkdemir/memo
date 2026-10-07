@@ -18,6 +18,7 @@ import 'agent_provider.dart';
 import 'auth_gate_provider.dart';
 import 'gate_guard.dart';
 import 'settings_provider.dart';
+import 'quota_notice_provider.dart';
 import '../core/friendly_error.dart';
 
 /// Global API client instance. Reads the backend URL from SharedPreferences
@@ -675,6 +676,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     // race through, clobbering the shared _cancelToken field and appending
     // two user-message bubbles for what was a single send.
     ref.read(isSendingProvider.notifier).state = true;
+    // Whatever the quota card was saying is about the previous turn: the
+    // conversation has moved on (an automatic "continue" lands here too).
+    ref.read(quotaNoticeProvider.notifier).dismissActive();
     _timingStart();
 
     _stopped = false;
@@ -771,6 +775,15 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           // the turn is alive; a heartbeat carries nothing else.
           _timingTouch();
           if (chunk.finishReason == 'heartbeat') continue;
+          // The allowance ran out / is running low: a metadata marker, never
+          // reply text (see internal/models/quota_signal.go).
+          if (chunk.finishReason == 'quota_exhausted' || chunk.finishReason == 'quota_low') {
+            ref.read(quotaNoticeProvider.notifier).showFromMarker(
+                  ref.read(activeChatIdProvider).valueOrNull ?? '',
+                  chunk.content,
+                );
+            continue;
+          }
           if (chunk.finishReason == 'status') {
             // Pre-token status (e.g. web_search) — show in the typing line.
             ref.read(streamingStatusProvider.notifier).state = chunk.content;
@@ -966,6 +979,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     final api = ref.read(apiClientProvider);
 
     ref.read(isSendingProvider.notifier).state = true;
+    // Whatever the quota card was saying is about the previous turn: the
+    // conversation has moved on (an automatic "continue" lands here too).
+    ref.read(quotaNoticeProvider.notifier).dismissActive();
     _timingStart();
 
     final resolvedFileName =
@@ -1013,6 +1029,15 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         )) {
           _timingTouch();
           if (chunk.finishReason == 'heartbeat') continue;
+          // The allowance ran out / is running low: a metadata marker, never
+          // reply text (see internal/models/quota_signal.go).
+          if (chunk.finishReason == 'quota_exhausted' || chunk.finishReason == 'quota_low') {
+            ref.read(quotaNoticeProvider.notifier).showFromMarker(
+                  ref.read(activeChatIdProvider).valueOrNull ?? '',
+                  chunk.content,
+                );
+            continue;
+          }
           if (chunk.finishReason == 'status') {
             ref.read(streamingStatusProvider.notifier).state = chunk.content;
           } else if (chunk.finishReason == 'activity' || chunk.finishReason == 'usage') {

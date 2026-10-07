@@ -313,9 +313,10 @@ confirm every single time before tagging or pushing a tag.
 - **One provider, many models.** The `Subscriptions` provider is a plain `custom` config (BaseURL = the sidecar's loopback
   port, APIKey = a random client key). Switching model = rewriting `ProviderConfig.Model` via `App.SetProviderModel`
   (`PUT /api/providers/model`) — never PUT a whole partial config (the REPL's mirror would zero temperature/top_p). It is told
-  apart from the user's own `custom` providers **by name** (`subsProviderName`, `isSubsMarker`): it is a *session* provider
-  (not restored as the sticky active one), is excluded from the generic `custom/<model>` gateway spelling, and appears as
-  `subs/<model>` in the dev gateway.
+  apart from the user's own `custom` providers **by name** (`subsProviderName`, `isSubsMarker`): it is excluded from the
+  generic `custom/<model>` gateway spelling and appears as `subs/<model>` in the dev gateway. It is **sticky like any custom
+  provider** — the model picked in the selector is still active after a restart. It was briefly classed with the CLI agents as a
+  "session provider" and dropped to the local model on every start; `isSessionProviderName` must keep naming only the CLI agents.
 - **`syncSubscriptions` is the single place that starts the sidecar and writes the provider.** The real sidecar lists NO models
   for ~30s after a start; so the previous session's model is registered immediately with the sidecar's CURRENT port/key, the
   list is awaited up to 120s (empty answers are never cached), and `startSubscriptions` retries. Don't "simplify" the early
@@ -345,6 +346,22 @@ confirm every single time before tagging or pushing a tag.
   `?fresh=1` (≤3s wait) and the Settings tab's GET waits ≤2s. Do not add a synchronous vendor call to `ListProviderModels`:
   that is what made opening the picker freeze Memo (~1s, up to several on a slow link). The picker refreshes itself 2.5s after
   opening and then every 50s; the Settings tab every 50s.
+- **Quota card and automatic continue.** When a chat turn fails because the allowance ran out, the stream carries a
+  `quota_exhausted` marker chunk (JSON `models.QuotaSignal`) just before the error chunk; after a clean turn with ≤10% left, a
+  `quota_low` marker once per allowance window. Both are inserted by `Server.withQuotaSignals` — the one place every
+  `/api/send/stream` and `/api/send/file/stream` chunk passes — not in the nine branches that turn a provider error into a chunk.
+  CLI-agent streams, WhatsApp streams and the Self-Driving loop are NOT wrapped (the loop already parks a task and retries on its
+  own timer). "Allowance ran out" needs allowance wording (quota / usage limit / resource_exhausted …) or a quota figure near zero
+  for the model — a plain 429 or an overloaded server is NOT, because waiting for a refill that never comes is the wrong offer.
+  The refill time comes from the error text (`provider.ExtractErrorMessage` keeps Codex's `resets_in_seconds` / `resets_at` as
+  "(resets in 1h0m0s)" / "(resets at …)"; Antigravity's "reset after 2h12m3s" is parsed too) and else from the quota snapshot;
+  those textual shapes are from the vendors' published behaviour and NOT verified against a live exhaustion. In Flutter
+  `quotaNoticeProvider` keeps one `QuotaNotice` per chat and a one-second ticker types `kQuotaContinueMessage` ("continue", English
+  on purpose — it is chat content, not UI text) into the chat on screen once `resumeAt` has passed and nothing is streaming; with
+  no known refill time it backs off 5 min, then 10. The checkbox (`memo_quota_auto_continue`, default ON) is a device preference.
+  `resumeAt` is fixed when the notice is made — recomputing it against a moving clock never fires. The card is in memory only: it
+  does not survive closing the app. A send must not read `activeChatIdProvider` for the card's sake (`dismissActive()` reads nothing
+  while no card exists) — doing so at the start of `sendMessage` hung an existing notifier test.
 - **Right after a sign-in the model list is empty for ~30s.** The Settings tab keeps re-reading until models arrive, and the
   chat model menu re-fetches the provider list on every open — both used to cache the empty answer until a restart.
 - **The sidecar's own browser probe hangs under KDE** (`xdg-open about:blank` never returns, so it never prints the sign-in

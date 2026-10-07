@@ -10,6 +10,7 @@ import '../core/theme.dart';
 import '../models/provider_config.dart';
 import '../models/provider_models.dart';
 import '../widgets/quota_badge.dart';
+import '../widgets/quota_notice_card.dart';
 import '../widgets/model_picker.dart';
 import '../models/model_display.dart';
 import '../providers/chat_provider.dart';
@@ -245,6 +246,9 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
             },
           ),
         ),
+
+        // Quota notice (allowance ran out / running low) — only when there is one.
+        const QuotaNoticeCard(),
 
         // ─── Input ────────────────────────────────
          ChatInput(),

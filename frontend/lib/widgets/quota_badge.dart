@@ -29,10 +29,15 @@ class QuotaBadge extends StatelessWidget {
 
   /// "13.10 23:54" in local time, or '' when [rfc3339] does not parse.
   static String formatReset(String rfc3339) {
-    final t = DateTime.tryParse(rfc3339)?.toLocal();
-    if (t == null) return '';
+    final t = DateTime.tryParse(rfc3339);
+    return t == null ? '' : formatAt(t);
+  }
+
+  /// [t] as "13.10 23:54" in local time.
+  static String formatAt(DateTime t) {
+    final l = t.toLocal();
     String two(int n) => n.toString().padLeft(2, '0');
-    return '${two(t.day)}.${two(t.month)} ${two(t.hour)}:${two(t.minute)}';
+    return '${two(l.day)}.${two(l.month)} ${two(l.hour)}:${two(l.minute)}';
   }
 
   /// Time from [now] until [rfc3339], as the two largest non-zero units: "6d 2h",
@@ -41,7 +46,12 @@ class QuotaBadge extends StatelessWidget {
   static String formatRemaining(String rfc3339, {DateTime? now}) {
     final t = DateTime.tryParse(rfc3339);
     if (t == null) return '';
-    final left = t.difference(now ?? DateTime.now());
+    return formatDuration(t.difference(now ?? DateTime.now()));
+  }
+
+  /// [left] as the two largest non-zero units ("6d 2h", "3h 20m", "12m"); the
+  /// "refilling" word once it is zero or negative.
+  static String formatDuration(Duration left) {
     if (left.inSeconds <= 0) return L10n.t('quota_resets_now');
     final d = left.inDays, h = left.inHours % 24, m = left.inMinutes % 60;
     final u = (d: L10n.t('quota_unit_d'), h: L10n.t('quota_unit_h'), m: L10n.t('quota_unit_m'));

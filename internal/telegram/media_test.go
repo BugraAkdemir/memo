@@ -179,3 +179,32 @@ func TestSendPhoto_APIRefusalIsAnError(t *testing.T) {
 		t.Fatalf("got %v, want the API's own reason", err)
 	}
 }
+
+func TestSetCommands_SendsTheMenuAndReportsARefusal(t *testing.T) {
+	var got []BotCommand
+	withFakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		if methodFromPath(r.URL.Path) != "setMyCommands" {
+			t.Errorf("method %q", r.URL.Path)
+		}
+		var body struct {
+			Commands []BotCommand `json:"commands"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		got = body.Commands
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": true})
+	})
+	c := NewClient("tok")
+	if err := c.SetCommands(context.Background(), []BotCommand{{Command: "model", Description: "Switch"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Command != "model" || got[0].Description != "Switch" {
+		t.Fatalf("sent %+v", got)
+	}
+
+	withFakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "description": "Bad Request: BOT_COMMAND_INVALID"})
+	})
+	if err := NewClient("tok").SetCommands(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "BOT_COMMAND_INVALID") {
+		t.Fatalf("err = %v", err)
+	}
+}

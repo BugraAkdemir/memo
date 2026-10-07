@@ -29,6 +29,12 @@ var scTr = map[string]string{
 	"sc_model_switched":     "✅ Model değişti: %s",
 	"sc_model_switch_err":   "⚠️ Model değiştirilemedi: %s",
 
+	"sc_menu_model":  "Modelleri listele ve değiştir",
+	"sc_menu_image":  "Görsel çiz (açıklamayla)",
+	"sc_menu_new":    "Yeni sohbet başlat",
+	"sc_menu_status": "Memo'nun durumunu göster",
+	"sc_menu_help":   "Komutları göster",
+
 	"sc_img_default_prompt": "Bu görselde ne var? Kısaca anlat.",
 	"sc_img_usage":          "🎨 Kullanım: /image <ne çizilsin>\nBir görsel gönderip açıklamasına /image <ne değişsin> yazarsan o görseli düzenlerim. Düz bir görsel gönderirsen ne olduğunu anlatırım.",
 	"sc_img_download_fail":  "⚠️ Gönderdiğin görseli alamadım: %s",
@@ -48,6 +54,12 @@ var scEn = map[string]string{
 	"sc_model_not_found":    "❓ No model matches \"%s\". Type /model for the list.",
 	"sc_model_switched":     "✅ Model switched: %s",
 	"sc_model_switch_err":   "⚠️ Couldn't switch the model: %s",
+
+	"sc_menu_model":  "List and switch models",
+	"sc_menu_image":  "Draw a picture (with a prompt)",
+	"sc_menu_new":    "Start a new chat",
+	"sc_menu_status": "Show Memo's status",
+	"sc_menu_help":   "Show the commands",
 
 	"sc_img_default_prompt": "What is in this image? Describe it briefly.",
 	"sc_img_usage":          "🎨 Usage: /image <what to draw>\nSend a picture with the caption /image <what to change> and I'll edit it. Send a plain picture and I'll tell you what it shows.",

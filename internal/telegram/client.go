@@ -528,6 +528,28 @@ func (c *Client) sendUpload(ctx context.Context, method, field string, chatID in
 	return nil
 }
 
+// BotCommand is one entry of the bot's command menu.
+type BotCommand struct {
+	Command     string `json:"command"`
+	Description string `json:"description"`
+}
+
+// SetCommands publishes the bot's command menu (the "/" list Telegram shows in the
+// chat), so /model and /image can be found without remembering them.
+func (c *Client) SetCommands(ctx context.Context, cmds []BotCommand) error {
+	var resp struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	if err := c.call(ctx, "setMyCommands", map[string]any{"commands": cmds}, &resp); err != nil {
+		return err
+	}
+	if !resp.OK {
+		return fmt.Errorf("telegram setMyCommands: %s", resp.Description)
+	}
+	return nil
+}
+
 // SetTyping sends Telegram's "typing…" chat action. Telegram clears it
 // client-side after ~5s if not refreshed, so a caller wanting a longer-lived
 // indicator (see startTelegramComposing in internal/app) must resend it

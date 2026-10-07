@@ -302,6 +302,10 @@ func (a *App) handleTelegramCommand(text string) (reply string, handled bool) {
 		return "", false
 	}
 	cmd := strings.ToLower(fields[0])
+	// A command picked from Telegram's menu in a group carries the bot's name.
+	if i := strings.Index(cmd, "@"); i > 0 {
+		cmd = cmd[:i]
+	}
 	arg := ""
 	if len(fields) > 1 {
 		arg = strings.ToLower(fields[1])
@@ -527,8 +531,32 @@ func (a *App) connectTelegramLocked(ctx context.Context, botToken string) error 
 
 	a.tgClient = client
 	goRecover("runTelegramIntentLoop", func() { a.runTelegramIntentLoop(a.lifecycleCtx) })
+	goRecover("telegramPublishCommands", func() { a.publishTelegramCommands(client) })
 	logx.Printf("Telegram: connected as @%s", info.Username)
 	return nil
+}
+
+// telegramCommandMenu is the "/" menu shown in the Telegram chat, in the UI
+// language. Only the commands worth finding by browsing; /help lists the rest.
+func (a *App) telegramCommandMenu() []telegram.BotCommand {
+	lang := tgLang(a.GetUILanguage())
+	return []telegram.BotCommand{
+		{Command: "model", Description: scT(lang, "sc_menu_model")},
+		{Command: "image", Description: scT(lang, "sc_menu_image")},
+		{Command: "new", Description: scT(lang, "sc_menu_new")},
+		{Command: "status", Description: scT(lang, "sc_menu_status")},
+		{Command: "help", Description: scT(lang, "sc_menu_help")},
+	}
+}
+
+// publishTelegramCommands sets the bot's command menu. Best effort: a refusal
+// only means the menu is missing, never that the bot is.
+func (a *App) publishTelegramCommands(client *telegram.Client) {
+	ctx, cancel := context.WithTimeout(a.lifecycle(), 20*time.Second)
+	defer cancel()
+	if err := client.SetCommands(ctx, a.telegramCommandMenu()); err != nil {
+		logx.Printf("Telegram: could not publish the command menu: %v", err)
+	}
 }
 
 // StopTelegram pauses polling. The bot token and any linked owner are kept

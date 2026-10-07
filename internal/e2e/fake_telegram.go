@@ -32,6 +32,7 @@ type FakeTelegram struct {
 	texts   []TGText
 	uploads []TGUpload
 	files   map[string][]byte
+	menu    []string
 }
 
 // TGText is a text message the bot sent.
@@ -134,6 +135,13 @@ func (f *FakeTelegram) WaitUploads(t *testing.T, n int, timeout time.Duration) [
 	}
 }
 
+// Menu returns the command names the bot last published with setMyCommands.
+func (f *FakeTelegram) Menu() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.menu...)
+}
+
 // Texts returns the text messages sent so far.
 func (f *FakeTelegram) Texts() []TGText {
 	f.mu.Lock()
@@ -196,6 +204,20 @@ func (f *FakeTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		f.texts = append(f.texts, TGText{ChatID: p.ChatID, Text: p.Text})
 		f.mu.Unlock()
 		_, _ = w.Write([]byte(`{"ok":true,"result":{}}`))
+	case "setMyCommands":
+		var p struct {
+			Commands []struct {
+				Command string `json:"command"`
+			} `json:"commands"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&p)
+		f.mu.Lock()
+		f.menu = nil
+		for _, c := range p.Commands {
+			f.menu = append(f.menu, c.Command)
+		}
+		f.mu.Unlock()
+		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 	case "sendChatAction":
 		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 	case "getFile":

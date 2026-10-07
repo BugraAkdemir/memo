@@ -244,3 +244,21 @@ func TestTelegram_PicturesAreCiphertextOnDisk(t *testing.T) {
 		}
 	}
 }
+
+func TestTelegram_PublishesItsCommandMenuAndAcceptsTheBotSuffix(t *testing.T) {
+	h, ft := telegramHarness(t)
+	waitFor(t, "the command menu to be published", 10*time.Second, func() bool { return len(ft.Menu()) > 0 })
+	menu := strings.Join(ft.Menu(), ",")
+	for _, want := range []string{"model", "image", "new", "status", "help"} {
+		if !strings.Contains(menu, want) {
+			t.Errorf("menu %q lacks /%s", menu, want)
+		}
+	}
+
+	// A command picked from the menu in a group carries the bot's name.
+	ft.QueueText(ownerChat, "/status@memo_e2e_bot")
+	if got := lastText(t, ft, 2); !strings.Contains(got, "Memo Status") {
+		t.Errorf("/status@bot = %q, want the status", got)
+	}
+	_ = h
+}

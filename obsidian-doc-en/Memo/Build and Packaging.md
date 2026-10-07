@@ -32,9 +32,20 @@ If you're debugging a macOS-only "can't connect to backend" or "mic doesn't work
 
 `get-memo-beta.sh` / `get-memo-beta.ps1` — dedicated installer scripts for anyone who wants to track beta builds specifically, kept separate from the stable installer.
 
+## AppImage and the CI release channels
+
+The Linux x86_64 job in `.github/workflows/build-linux.yml` builds a **tar.gz** and an **AppImage** from the same staged folder (`run_memo.sh` is the AppImage's `AppRun`). The AppImage carries AppStream metadata (`com.memocpp.Memo`, rendered from `packaging/com.memocpp.Memo.metainfo.xml.in`) and desktop-entry metadata, and is named `Memo-v<version>-x86_64.AppImage`.
+
+| Trigger | GitHub Release | `data.memocpp.com` |
+|---|---|---|
+| A `v*` tag push | zip + `Memo-v<version>-x86_64.AppImage` | `memo.tar.gz`, `memo.AppImage` (stable) |
+| Every push to `main` | — | `memo_beta.tar.gz`, `memo_beta.AppImage` (beta) |
+
+The AppImage follows exactly the tar.gz's channel logic. Linux arm64 still ships as a zip (`memo_arm.zip` / `memo_arm_beta.zip`) without an AppImage. A non-tag build takes its version from the `version` file with the leading `V` stripped.
+
 ## Distribution Formats
 - **Portable Folder:** A folder containing all dependencies.
-- **AppImage (Planned):** A Linux package that runs in a single file.
+- **AppImage:** A Linux package that runs in a single file — see above.
 
 ### Linked Notes:
 - [[Developer Setup Guide]]

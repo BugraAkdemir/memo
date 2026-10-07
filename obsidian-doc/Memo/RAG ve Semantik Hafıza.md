@@ -25,6 +25,10 @@ Salt vektör benzerliği, çok-konulu bir soruda ("adımı, doğum günümü ve 
 - **Disk Tabanlı Arama:** Her arama doğrudan SQLite'a sorgu atar — RAM'de ayrı bir vektör önbelleği tutulmaz (bkz. [[Veri Katmanı ve Kalıcılık]]).
 - **Context bütçesi (v3.3.4, geliştirme aşamasında):** Her prompt'a enjekte edilen hafıza bloğu artık ~4096 token'a sabitlendi (önceki 16K bütçe gerçekçi bir tavan değildi). Embedding sunucusu da artık varsayılan olarak sadece-CPU çalışıyor — sohbet modeliyle VRAM için yarışmasın diye; bu ikisi birlikte hafıza açıkken yerel üretim hızının 4-5 kat düşmesi sorununu çözdü (bkz. [[Gelişmiş Ayarlar]]).
 
+## Memo'nun hatırladığını görmek, düzenlemek ve silmek (v4.6.0)
+
+Ayarlar › Hafıza, bir pill çubuğuyla değiştirilen beş bölümdür — **Ayarlar**, **Bilinen Bilgiler**, **Sohbet Geçmişi**, **Analiz**, **Hata Ayıklama** — her pill canlı bir sayı gösterir. *Bilinen Bilgiler* her sabitlenmiş bilgiyi listeler (yerinde düzenlenebilir); *Sohbet Geçmişi* sıradan, sabitlenmemiş hafızaları listeler (sayfalı). İkisinde de onay kutuları ve tümünü seç / seçimi kaldır çubuğu vardır; böylece sabitlenmiş bilgiler ve sohbet geçmişi birbirinden bağımsız temizlenebilir. Her silme önce onay ister ve kaç kayıt sildiğini bildirir; silme kesin kayıt kimliğiyledir (`POST /api/memory/delete-by-ids`), asla desenle değil. **Dream** — eski, ilişkili sabitlenmiş bilgileri sıkıştıran arka plan geçişi — artık Memo'yla birlikte başlıyor (öncesinde alakasız bir eylem onu uyandırana kadar uyuyordu) ve "Bunu hatırla" gömme modeli olmadan da çalışıyor. Bkz. [[API Dökümantasyonu]].
+
 ### Bağlantılı Notlar:
 - [[Vektör Arama Mantığı]]
 - [[Hafıza Deposu (SQLite + vec0)]]

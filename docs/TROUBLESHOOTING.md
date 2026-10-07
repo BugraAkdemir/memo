@@ -64,3 +64,23 @@ Common issues and their solutions for Memo.
 ## 10. Windows: Missing `msvcp140.dll` on Launch
 **Issue:** A clean Windows install (common on fresh VMs) fails to start Memo at all with a missing DLL error.
 **Solution:** Fixed in v3.3.4 — the installer now bundles and silently installs the Visual C++ Redistributable. Update to a current installer, or install the VC++ Redistributable manually as a workaround on an older build.
+
+## 11. Subscriptions: empty model list, sign-in page, usage limit
+**Issue:** After signing in under Settings › Subscriptions the model list is empty, or no browser page opens, or a chat stops with a "usage limit reached" card.
+**Cause / Solution:**
+- *Empty list right after sign-in* — the bundled CLIProxyAPI helper lists no models for about 30 seconds after it starts. Memo registers the previous session's model immediately and the tab keeps re-reading until the list arrives; wait a moment, the picker re-fetches on every open.
+- *Sign-in page never opens* — fixed in v4.6.0 (a relative data folder and a hanging `xdg-open` under KDE). Memo opens the browser itself and also returns the sign-in address so it can be copied by hand. Update if you see it on an older build.
+- *"Usage limit reached" card* — the account's allowance for that model ran out. The card counts down to the refill and, with "automatically continue when it resets" on (the default), types `continue` into the chat by itself — only while Memo is open. Pick another model in the top-right selector to carry on immediately.
+- *No remaining-percentage badge* — Antigravity and Codex report one; Claude's parser is built from the endpoint's known shape and was not verified against a live Claude sign-in, so a different shape just means no badge.
+- *An image model returns an error* — Antigravity's own image model currently answers 500 from Google on the account it was tried with; Codex's image models work.
+- Signing out deletes the credential file but does not revoke the vendor grant (the same login may be shared with the vendor's own CLI).
+
+## 12. A long answer shows "no word from the server"
+**Issue:** The progress line under the chat turns orange after 30 seconds.
+**Cause:** Nothing at all (not even the backend's 10-second `heartbeat`) has arrived for 30 seconds — a dropped connection to a remote Memo, or a stalled backend. A slow but alive model does not trigger it, because the heartbeat keeps the line green.
+**Solution:** Check that the backend is running and reachable. A reply is only cut after 300 seconds of true silence (30 minutes in total at most); it is then marked as a timeout and the text received so far is kept.
+
+## 13. The browser panel stays blank or Memo cannot open it
+**Issue:** The live browser panel shows nothing, or `browser_*` tools fail.
+**Cause:** The browser panel drives an isolated Chromium that is an optional download. Pages are also refused if they are not `http`, `https` or a blank page (`file://` is blocked on purpose).
+**Solution:** Install Chromium from the Browser Engine section of Settings › General (the *Download Chromium* button). Agent permission is required for the panel's session endpoints; with Agent Mode off you can still drive the panel by hand if your account has the agent permission.

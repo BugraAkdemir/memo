@@ -27,6 +27,9 @@ Claude Code gibi araçlar sadece Anthropic'in Messages API formatını (`POST /v
 | `local/qwen2.5`  | Yüklü olan yerel llama.cpp modeli kullanılır (model-id kısmı sadece etiket, gerçek model zaten yüklü olan)                     |
 | `openai/gpt-4o`  | Ayarlar → API Providers'da **tipi `openai` olan ve etkin (enabled)** ilk sağlayıcı kullanılır, model `gpt-4o` olarak ayarlanır |
 | `custom/qwen2.5` | Tipi `custom` (kendi OpenAI-uyumlu endpoint'in — LM Studio, vLLM, vb.) olan etkin sağlayıcı                                    |
+| `subs/claude-sonnet-4-6` | **Abonelikler** sağlayıcısının bir modeli (v4.6.0 — Antigravity / Claude / Codex girişi). Adlandırılmış bir `custom` sağlayıcı olduğundan genel `custom/<model>` yazımından hariç tutulur ve `subs/<model>` olarak görünür |
+
+Ağ geçidi istemcilerine bildirilen token kullanımı her protokolün kendi önbellek anlamını korur: Anthropic uç noktası `input_tokens`'ı taze kısım olarak, `cache_read_input_tokens`/`cache_creation_input_tokens`'ı ayrı verir; OpenAI uç noktası önbellekteki token'ları `prompt_tokens`'ın alt kümesi olarak bildirir. (v4.6.0 öncesinde önbellekli bir ajan turu istemciye ~10 kat pahalı görünebiliyordu.)
 
 Aynı tipten birden fazla sağlayıcı tanımlıysa **etkin (enabled) olan** kullanılır — hangisinin kullanılacağını seçmek için ayrı bir arayüz yok (bilinçli basitleştirme).
 

@@ -82,3 +82,26 @@ Memo için yaygın sorunlar ve çözümleri.
 - Sebep, embedding sunucusunun sohbet modeliyle aynı anda VRAM için yarışması ve her prompt'a enjekte edilen hafıza bloğunun gereğinden büyük bir bütçeye (16K token) sahip olmasıydı
 - Embedding sunucusu artık varsayılan olarak sadece-CPU çalışıyor; gerçekten boş VRAM'in varsa `embedding_gpu_layers` ile tekrar GPU'ya alabilirsiniz (bkz. [[Gelişmiş Ayarlar]])
 - Hafıza context bütçesi artık ~4096 token'a sabitlendi
+
+## Abonelikler: boş model listesi, giriş sayfası, kullanım sınırı (v4.6.0)
+
+**Sorun**: Ayarlar › Abonelikler'den giriş yaptıktan sonra model listesi boş, tarayıcı sayfası açılmıyor ya da bir sohbet "kullanım sınırına ulaşıldı" kartıyla duruyor.
+
+**Çözüm**:
+- *Girişten hemen sonra boş liste* — gömülü CLIProxyAPI yardımcısı başladıktan ~30 sn model listelemez. Memo önceki oturumun modelini hemen kaydeder ve sekme yeniden okumaya devam eder; seçici her açılışta yeniden çeker.
+- *Giriş sayfası açılmıyor* — v4.6.0'da düzeltildi (göreli veri klasörü ve KDE'de askıda kalan `xdg-open`). Memo tarayıcıyı kendisi açar ve adresi kopyalamak için de döndürür.
+- *"Kullanım sınırına ulaşıldı" kartı* — hesabın o model için hakkı bitti. Kart yenilenmeye geri sayar; "sıfırlanınca otomatik devam et" açıkken (varsayılan) kendiliğinden `continue` yazar — yalnızca Memo açıkken. Hemen sürmek için başka bir model seç.
+- *Kalan-yüzde rozeti yok* — Antigravity ve Codex bildirir; Claude ayrıştırıcısı uç noktanın bilinen biçiminden yazıldı, canlı girişle doğrulanmadı.
+- *Bir görüntü modeli hata veriyor* — Antigravity'nin görüntü modeline Google denenen hesapta şu an 500 dönüyor; Codex'inki çalışıyor. Bkz. [[Harici Sağlayıcılar]].
+
+## Uzun bir cevapta "sunucudan haber yok" uyarısı (v4.6.0)
+
+**Sorun**: Sohbetin altındaki ilerleme satırı 30 sn sonra turuncuya dönüyor.
+
+**Çözüm**: 30 sn'dir hiçbir şey (backend'in 10 sn'lik `heartbeat`'i bile) gelmedi — uzak bir Memo'ya bağlantı koptu ya da backend takıldı. Yavaş ama canlı bir model satırı yeşil tutar. Bir cevap yalnızca 300 sn gerçek sessizlikte (toplam 30 dk) kesilir, zaman aşımı diye işaretlenir ve gelen metin saklanır.
+
+## Tarayıcı paneli boş kalıyor (v4.6.0)
+
+**Sorun**: Canlı tarayıcı paneli hiçbir şey göstermiyor ya da `browser_*` araçları başarısız oluyor.
+
+**Çözüm**: Panel, isteğe bağlı bir indirme olan yalıtılmış bir Chromium'u sürer — Ayarlar › Genel içindeki Tarayıcı Motoru bölümünden kur. `file://` ve `http(s)` olmayan adresler bilerek reddedilir. Bkz. [[Ajan Modu]].

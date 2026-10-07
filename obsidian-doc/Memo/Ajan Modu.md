@@ -1,6 +1,6 @@
 # 🤖 Ajan Modu
 
-> **Paket:** `internal/agent/` (ana registry'de 27 yerleşik araç — `registerBuiltins()`'e karşı doğrulandı, başlangıçtaki 8'den; 4 `whatsapp_*` aracı bu sayıya dahil değil, aşağıdaki nota bakın)
+> **Paket:** `internal/agent/` (**v4.6.0'da ana registry'de 40 araç** — `NewRegistry()` sayılarak doğrulandı; eski metin: 27 yerleşik araç — `registerBuiltins()`'e karşı doğrulandı, başlangıçtaki 8'den; 4 `whatsapp_*` aracı bu sayıya dahil değil, aşağıdaki nota bakın)
 > **Yapılandırma dosyası:** `data/permissions.json`
 > **API endpoint'leri:** `/api/agent/enabled`, `/api/agent/permission`, `/api/agent/permissions`
 > **Gereksinim:** Aktif bir harici sağlayıcı YA DA çalışan bir yerel llama.cpp modeli — `resolveAgentProvider()` ikisini de aynı `provider.Router` tabanlı tool-calling isteğine sarıyor, yani ajan modu sadece harici sağlayıcıya bağlı değil. Yerel modellerde gerçek tool-calling *kalitesi* modelden modele büyük fark gösteriyor (bkz. Bilinen Sorunlar).
@@ -51,7 +51,9 @@ Kullanıcı Mesajı
 
 ## Araç Sistemi
 
-### Yerleşik Araçlar (27 adet, ana registry)
+### Yerleşik Araçlar (v4.6.0'da ana registry'de 40 adet — `NewRegistry()` sayılarak doğrulandı)
+
+> Aşağıdaki tablo 27 araçlık döneme ait; sonrasında eklenenler tablonun sonundaki "v4.6.0 araçları" bölümünde.
 
 `internal/agent/tools.go`'daki `registerBuiltins()`'te kayıtlı — ilk
 sürümdeki 8 araçtan büyüdü. Bunun üstüne, **skill araçları da artık gerçek**
@@ -84,7 +86,23 @@ ve bu tam olarak aynı pipeline ve izin UI'ından çalışıyor.
 | `create_routine` / `list_routines` / `cancel_routine` | ⚠️ Medium / ✅ Safe / ⚠️ Medium | Serbest metinden zamanlanmış bir rutin oluşturur/listeler/iptal eder |
 | `fetch_page` | ✅ Safe | Bir URL'nin tam içeriğini Markdown olarak getirir (web_search'ün kısa özetinden farklı olarak) |
 
-**Not — WhatsApp araçları bu registry'de DEĞİL:** `whatsapp_send`/`whatsapp_search`/`whatsapp_latest`/`whatsapp_messages` kodda var ama yalnızca ayrı, kapsamlandırılmış `NewWhatsAppRegistry()`/`NewWhatsAppExecutor()`'da yaşıyor (aşağıya bakın) — normal bir sohbetin Ajan Modu'nun kullandığı 27 araçlık ana registry'nin parçası değiller. Bu sayfanın önceki bir sürümü bunları yanlışlıkla ana listeye dahil ediyordu.
+#### v4.6.0 araçları
+
+| Araç | Tehlike | Ne yapar |
+|---|---|---|
+| `save_code_plan` | — | Code Mode Plan alt-modunun çıktısını yazar (aşağıdaki Code Mode bölümüne bakın) |
+| `open_app` | ⚠️ Medium | Adı verilen masaüstü uygulamasını ya da boş sekmeli varsayılan tarayıcıyı Windows/macOS/Linux'ta başlatır. Parametre `app_name` — yalnızca uygulamanın adı, ham cümle değil. Linux'ta model görünen bir ad verir; Desktop Entry kayıt defteri üzerinden çözülür (Flatpak/Snap dahil) ve `startDetached` ile başlatılır. Tool açıklaması `web_search`'ten ayrımı sağlar: yalnızca açık bir başlatma komutunda çağrılır, "en son haberler ne" bir web aramasıdır |
+| `browser_navigate` / `browser_click` / `browser_type` | ⚠️ Medium | Yalıtılmış tek bir Chromium sekmesini sürer (kendi profili; kullanıcının tarayıcısına/hesaplarına asla dokunmaz). Tıklama bir CSS `selector` ya da `x`/`y` alır; yazma `selector` + `text` |
+| `browser_scroll` / `browser_screenshot` / `browser_get_text` / `browser_close` | ✅ Safe | `browser_get_text` sayfa metnini **ve çalışacağı garanti seçicilerle tıklanabilir her öğenin listesini** döner (devasa sayfa istemi boğmasın diye sınırlı) |
+
+- `browser_navigate` bilerek Medium (Dangerous değil): oturum yalıtılmış, tek kullanımlık bir süreçtir ve Dangerous, "bu oturum için izin ver"i engelleyip çok adımlı bir UI testinde her çağrıda yeni bir soru zorlardı.
+- Yalnızca `http`, `https` ve boş sayfa kabul edilir — `file://` tarayıcının makinedeki her dosyayı okuyup dosya araçlarının kısıtlarını aşmasına yol açıyordu.
+- Sayfayı değiştiren her tarayıcı aracı kendi karesini `browser_frame` SSE parçası olarak iter (`internal/app/browser_frame.go`), böylece canlı panel modelin `browser_screenshot` çağırmasına bağlı kalmadan güncellenir. Kareler yalnızca panele akar, sohbet geçmişine girmez. Ölü bir Chromium oturumu atılır, yeniden kullanılmaz.
+- Kullanıcı aynı oturumu panelden `/api/browser/session/*` ile elle de sürebilir (ajan izni gerekir, Ajan Modu açık olmak zorunda değil) — bkz. [[API Dökümantasyonu]].
+
+**WhatsApp araçları (güncelleme):** v4.6.0'da `NewRegistry()` sayıldığında dördü de ana registry'de bulunuyor (`registerWhatsAppTools()` `registerBuiltins()`'ten çağrılıyor) ve ayrıca WhatsApp'ın kapsamlı registry'sinde de var. Aşağıdaki not eski durumu anlatıyor.
+
+**Not — WhatsApp araçları bu registry'de DEĞİL (eski, artık geçerli değil):** `whatsapp_send`/`whatsapp_search`/`whatsapp_latest`/`whatsapp_messages` kodda var ama yalnızca ayrı, kapsamlandırılmış `NewWhatsAppRegistry()`/`NewWhatsAppExecutor()`'da yaşıyor (aşağıya bakın) — normal bir sohbetin Ajan Modu'nun kullandığı 27 araçlık ana registry'nin parçası değiller. Bu sayfanın önceki bir sürümü bunları yanlışlıkla ana listeye dahil ediyordu.
 
 ### Kapsamlandırılmış Registry'ler (Scoped Registries)
 

@@ -1,5 +1,7 @@
 # Architecture — Memo v4.5.0
 
+> **v4.6.0 addendum (on `main`).** New since the v4.5.0 pass: `internal/cliproxy/` (the Subscriptions sidecar, with quota in `quota*.go`), `internal/upstream/` (credential-free probes of everything outside the repo, run by `upstream.yml`), `internal/browserengine/session.go` (the interactive browser), `internal/app/{subs,quotasignal,stream_watchdog,browser_frame}.go`, image generation in `internal/provider/*_images.go`, the Cline provider, and Android/iOS targets of the single Flutter client. `internal/geminisub/` and `internal/claudesub/` are deleted. See [[External Providers]], [[Agent Mode]].
+>
 > **Updated for v4.5.0.** Since the v3.3.4 baseline this page was last fully written for, four more releases shipped: v4.0.0 (real time-awareness, WhatsApp takeover), v4.3.0 (Live Mode v2 native audio, Telegram bridge), v4.4.0 (the Self-Driving task loop's major expansion, real Claude/Gemini tool-calling, the OpenAI-compatible Developer Gateway sibling, gemini-sub), and v4.5.0 (the desktop mascot, Code Mode's Plan/Auto/Build sub-modes). The module map and data-flow list below have been updated to match; the ASCII diagram and per-module descriptions elsewhere on this page may still read slightly foundational — see [[Self-Driving Task Loop]] and [[Desktop Mascot]] for the two newest subsystems in full depth.
 
 ## Overview

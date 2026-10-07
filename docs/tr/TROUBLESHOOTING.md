@@ -44,3 +44,23 @@ Memo için yaygın sorunlar ve çözümleri.
 **Sorun:** Yerel bir modelde hafıza/RAG'ı açmak üretim hızını ciddi düşürüyor (örn. ~10 tok/sn'den 2-3'e).
 **Sebep (v3.3.4'te düzeltildi):** Embedding sunucusu, sanki tek çalışan model kendisiymiş gibi GPU'ya yerleşiyor, sohbet modelinin kendi sunucusuyla VRAM'i aşırı taahhüt edip onu kısmi CPU fallback'ine itiyordu.
 **Çözüm:** Düzeltmeyi içeren bir sürüme güncelleyin — embedding sunucusu artık varsayılan olarak sadece-CPU çalışıyor. Gerçekten boş VRAM'iniz varsa config'teki `embedding_gpu_layers` ile tekrar GPU'ya alabilirsiniz.
+
+## 8. Abonelikler: boş model listesi, giriş sayfası, kullanım sınırı
+**Sorun:** Ayarlar › Abonelikler'den giriş yaptıktan sonra model listesi boş, tarayıcı sayfası açılmıyor ya da bir sohbet "kullanım sınırına ulaşıldı" kartıyla duruyor.
+**Sebep / Çözüm:**
+- *Girişten hemen sonra boş liste* — gömülü CLIProxyAPI yardımcısı başladıktan sonra yaklaşık 30 saniye model listelemiyor. Memo bir önceki oturumun modelini hemen kaydeder ve sekme liste gelene kadar yeniden okur; biraz bekle, seçici her açılışta yeniden çeker.
+- *Giriş sayfası hiç açılmıyor* — v4.6.0'da düzeltildi (göreli bir veri klasörü ve KDE'de askıda kalan `xdg-open`). Memo tarayıcıyı kendisi açar ve giriş adresini elle kopyalanabilsin diye de döndürür. Eski bir sürümde görüyorsan güncelle.
+- *"Kullanım sınırına ulaşıldı" kartı* — hesabın o model için hakkı bitti. Kart yenilenmeye geri sayar ve "sıfırlanınca otomatik devam et" açıkken (varsayılan) sohbete kendiliğinden `continue` yazar — yalnızca Memo açıkken. Hemen devam etmek için sağ üstteki seçiciden başka bir model seç.
+- *Kalan-yüzde rozeti yok* — Antigravity ve Codex bildirir; Claude ayrıştırıcısı uç noktanın bilinen biçiminden yazıldı ve canlı bir Claude girişine karşı doğrulanmadı, farklı bir biçim sadece rozetin görünmemesi demektir.
+- *Bir görüntü modeli hata veriyor* — Antigravity'nin kendi görüntü modeline denenen hesapta Google şu an 500 dönüyor; Codex'in görüntü modelleri çalışıyor.
+- Çıkış yapmak kimlik bilgisi dosyasını siler ama sağlayıcıdaki izni iptal etmez (aynı giriş sağlayıcının kendi CLI'siyle paylaşılıyor olabilir).
+
+## 9. Uzun bir cevapta "sunucudan haber yok" uyarısı
+**Sorun:** Sohbetin altındaki ilerleme satırı 30 saniye sonra turuncuya dönüyor.
+**Sebep:** 30 saniyedir hiçbir şey (backend'in 10 saniyelik `heartbeat`'i bile) gelmedi — uzak bir Memo'ya bağlantı koptu ya da backend takıldı. Yavaş ama canlı bir model bunu tetiklemez, çünkü heartbeat satırı yeşil tutar.
+**Çözüm:** Backend'in çalıştığını ve erişilebilir olduğunu kontrol et. Bir cevap yalnızca 300 saniye gerçek sessizlikten sonra kesilir (en çok toplam 30 dakika); o zaman zaman aşımı olarak işaretlenir ve o ana kadar gelen metin saklanır.
+
+## 10. Tarayıcı paneli boş kalıyor ya da Memo açamıyor
+**Sorun:** Canlı tarayıcı paneli hiçbir şey göstermiyor ya da `browser_*` araçları başarısız oluyor.
+**Sebep:** Tarayıcı paneli, isteğe bağlı bir indirme olan yalıtılmış bir Chromium'u sürer. `http`, `https` ya da boş sayfa olmayan adresler de reddedilir (`file://` bilerek engellidir).
+**Çözüm:** Chromium'u Ayarlar › Genel içindeki Tarayıcı Motoru bölümünden kur (*Chromium'u İndir* düğmesi). Panelin oturum uç noktaları ajan izni ister; hesabının ajan izni varsa Ajan Modu kapalıyken de paneli elle sürebilirsin.

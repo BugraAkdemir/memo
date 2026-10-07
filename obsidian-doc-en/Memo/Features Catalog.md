@@ -53,6 +53,7 @@ Complete feature-by-feature listing of Memo. Full detail: `docs/FEATURES.md`.
 | OpenCode Zen | ✅ (v3.3.3) | API key — pay-as-you-go, some models free; free-sorted model browser (v3.9.0) |
 | OpenCode Go | ✅ (v3.3.3) | API key — subscription-based |
 | Kilo Code | ✅ (v3.9.0) | API key — app.kilo.ai, pay-as-you-go, some models free, live model browser with free models sorted to the top |
+| Cline | ✅ (v4.6.0) | API key — api.cline.bot, OpenAI-compatible, per-model free/paid catalog; Add Provider groups providers with a free tier under a green badge and offers a **Pick a free model** button (OpenRouter, Kilo Code, OpenCode Zen, Cline) |
 | Claude Code (CLI) | ✅ Beta (v3.3.4) | Shells out to the locally installed `claude` CLI, per-chat, real background job |
 | Codex (CLI) | ✅ Beta (v3.3.4) | Shells out to the locally installed `codex` CLI, per-chat, real background job |
 | Subscriptions | ✅ (v4.6.0) | Sign in once with an Antigravity, Claude or Codex account (via the CLIProxyAPI helper bundled in Memo); every model that account offers shows in the model selector, `/model` and the local `/v1` gateway — no separate API key. Replaced the Beta gemini-sub / claude-sub providers |
@@ -83,8 +84,11 @@ Plain-language guide: [[Memo Swarm]].
 
 | Feature | Status |
 |---------|--------|
-| 27 built-in tools in the main registry (file/edit/command/search/calendar/routines/web-search/fetch-page/provider-config/self-clone/task-loop-control — verified against `registerBuiltins()`, up from an earlier "22") | ✅ |
-| WhatsApp's 4 tools | ✅ — separate scoped registry, not part of the 27 above |
+| 40 built-in tools in the main registry (counted from `NewRegistry()`, up from an earlier "27"): file/edit/command/search/calendar/routines/web-search/fetch-page/provider-config/self-clone/task-loop-control, `save_code_plan`, `open_app`, the seven `browser_*` tools and WhatsApp's four | ✅ |
+| `open_app` — "open Spotify / the browser" launches a desktop app on Windows/macOS/Linux | ✅ (v4.6.0) — Medium danger level; Linux names resolved through Desktop Entries |
+| Live interactive browser panel — Memo (or you, by hand) drives an isolated Chromium tab next to the chat | ✅ (v4.6.0) — `browser_*` tools, `browser_frame` SSE chunks, screenshots never enter chat history, only `http(s)` accepted |
+| Skills active per chat | ✅ (v4.6.0) — a new chat starts with none; Settings › Skills only lists/installs/removes |
+| WhatsApp's 4 tools | ✅ — in the main registry and also in a separate scoped registry |
 | `create_routine`/`list_routines`/`cancel_routine` | ✅ (v3.9.0) — usable from normal chat or the WhatsApp/Telegram self-chat assistant |
 | Skill tools actually executable | ✅ (v3.3.3) — a skill's `SKILL.md` `command:` field now runs through the same tool pipeline and permission UI |
 | 3-tier danger level | ✅ |
@@ -199,7 +203,13 @@ See [[Telegram Integration]].
 
 | Feature | Status |
 |---------|--------|
-| Streaming SSE responses | ✅ |
+| Streaming SSE responses | ✅ — ended by silence (300 s) not a fixed total; 10 s `heartbeat` chunks (v4.6.0) |
+| Live progress line with elapsed timer and a 30 s "no word from the server" warning | ✅ (v4.6.0) |
+| Sidebar spinner on every chat still generating (background tasks, WhatsApp/Telegram, other tabs) | ✅ (v4.6.0) |
+| Model-picker panel (search, foldable vendor sections, logos, remaining-allowance badges) | ✅ (v4.6.0) |
+| Usage-limit card with countdown and automatic continue | ✅ (v4.6.0) — Subscriptions; in memory only, works while Memo is open |
+| Memory tab: Known Facts / Conversation History with edit and selective delete | ✅ (v4.6.0) |
+| Usage Stats: Prompt Cache panel | ✅ (v4.6.0) — "not reported" when a provider sends no cache figure |
 | Markdown rendering | ✅ |
 | Image attach (vision) | ✅ |
 | File context attach | ✅ |

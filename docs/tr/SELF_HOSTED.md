@@ -45,6 +45,8 @@ birebir aynı mantıkla, iki ayrı script/arşiv çifti var:
 | `get-memo-server.sh` (stable) | `memo.tar.gz` / `memo_arm.zip` / `memo-mac.zip` | Bir `vX.Y.Z` tag'i açıldığında (gerçek, etiketli bir release) |
 | `get-memo-server-beta.sh` | `memo_beta.tar.gz` / `memo_arm_beta.zip` / `memo-mac_beta.zip` | **`main`'e yapılan her push'ta** |
 
+Linux x86_64 **AppImage** aynı iki kanalı izler ama bu betiklerin kurduğu bir şey değil, doğrudan indirmedir: `memo.AppImage` (kararlı, etiket push'unda güncellenir) ve `memo_beta.AppImage` (`main`'e her push'ta), ikisi de `data.memocpp.com` altında. ARM64 derlemesinin henüz AppImage'ı yok.
+
 Bu sadece bir dokümantasyon ayrıntısı değil — hangisini gerçekten istediğini
 değiştiriyor. Self-hosting'e özgü işler (Docker/ARM CI, bu dört-modlu auth
 sistemi, `memo config`/`memo remote`/`memo service` komutları) önce

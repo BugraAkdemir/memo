@@ -88,3 +88,26 @@ Common issues and their solutions for Memo.
 **Issue**: Settings → Backup's factory reset works on Linux but fails on Windows.
 
 **Solution**: Fixed in v3.3.4 — several internal databases (memory, usage stats, calendar, mood, WhatsApp) were still open when the wipe tried to delete their files, which Windows refuses for a file still in use by the same process. Update to v3.3.4+.
+
+## 11. Subscriptions: empty model list, sign-in page, usage limit
+
+**Issue**: After signing in under Settings › Subscriptions the model list is empty, no browser page opens, or a chat stops on a "usage limit reached" card.
+
+**Solution**:
+- *Empty list right after sign-in* — the bundled CLIProxyAPI helper lists no models for ~30 s after starting. Memo registers the previous session's model immediately and the tab keeps re-reading; the picker re-fetches on every open.
+- *Sign-in page never opens* — fixed in v4.6.0 (a relative data folder, and a hanging `xdg-open` probe under KDE). Memo opens the browser itself and also returns the address for copy-paste.
+- *"Usage limit reached" card* — the account's allowance for that model ran out. The card counts down to the refill and, with "automatically continue when it resets" on (default), types `continue` itself — only while Memo is open. Pick another model to go on at once.
+- *No remaining-percentage badge* — Antigravity and Codex report one; the Claude parser was built from the endpoint's known shape and not verified against a live sign-in.
+- *An image model errors* — Antigravity's image model currently gets a 500 from Google on the account tried; Codex's works. See [[External Providers]].
+
+## 12. A long answer shows "no word from the server"
+
+**Issue**: The progress line under the chat turns orange after 30 s.
+
+**Solution**: Nothing, not even the backend's 10 s `heartbeat`, has arrived for 30 s — a dropped connection to a remote Memo or a stalled backend. A slow but alive model keeps the line green. A reply is cut only after 300 s of true silence (30 min total), marked as a timeout, with the text so far kept.
+
+## 13. The browser pane stays blank
+
+**Issue**: The live browser panel shows nothing or `browser_*` tools fail.
+
+**Solution**: The panel drives an isolated Chromium that is an optional download — install it from the Browser Engine section of Settings › General. `file://` and other non-`http(s)` addresses are refused on purpose. See [[Agent Mode]].

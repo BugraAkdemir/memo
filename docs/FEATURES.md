@@ -15,6 +15,14 @@ Memo isn't just a chat; it's a "Second Brain."
 - **Pinned Facts (2026-07-15)**: Durable personal facts (name, birthday, pets, etc.) — whether saved via `/remember` or automatically detected from ordinary conversation — are injected into every prompt unconditionally, bypassing retrieval ranking entirely, so they're never crowded out by routine chat.
 - **Infinite Context**: Long-term memory allows the AI to remember details from weeks or months ago, regardless of the current model's window.
 
+### Memory Settings — see, edit and delete what Memo remembers (v4.6.0)
+Settings › Memory is five focused sections switched with a pill bar (each pill carries a live count): **Settings** (retrieval options and memory files), **Known Facts**, **Conversation History**, **Analytics** and **Debug**.
+- **Known Facts** — every pinned fact Memo holds about you, always visible. Edit one in place, or delete one or several with checkboxes and a select-all / deselect-all bar.
+- **Conversation History** — the ordinary (non-pinned) conversation memories, paginated, with the same selection tools. Pinned facts and chat history are managed completely independently: clear one and keep the other.
+- Every delete — one row or a selection — asks for confirmation first and reports how many records it removed. Deletion is by exact record id, never by pattern.
+- **Dream** (the background pass that compresses old, related pinned facts into cleaner summaries) now starts with Memo; before this it stayed dormant on a fresh launch until an unrelated action happened to wake it.
+- "Remember this" works on every setup, including a cloud-only one with no embedding model.
+
 ### Model-Agnostic Engine
 - **Internal Llama-Server**: Powered by `llama.cpp` for high-performance GGUF inference.
 - **Dedicated Embedding Server**: A second internal server runs specifically for memory indexing, ensuring chat performance remains untouched.
@@ -88,6 +96,10 @@ Memo isn't just a chat; it's a "Second Brain."
 - **Token-by-Token Rendering**: Watch the AI "type" its responses in real-time.
 - **Thinking State**: A pulsing "Memo is thinking..." status provides visual feedback before the first token arrives.
 - **Cursor UI**: A blinking terminal-style cursor (`▊`) follows the stream.
+- **Never looks frozen (v4.6.0)**: while a turn runs, a progress line at the bottom shows the current phase and an elapsed timer that ticks every second ("The model is thinking · 0:45"), and keeps moving after a tool finishes. If nothing at all has arrived for 30 seconds it turns into an orange "no word from the server" warning. The backend sends a `heartbeat` chunk after every 10 quiet seconds, so a long silent thinking phase is not mistaken for a dropped connection.
+- **Ended by silence, not length (v4.6.0)**: a plain chat reply is cut only after 300 seconds with nothing arriving (the wait for the first word included) or a 30-minute safety cap — not at a fixed 300 s total, which used to cut still-flowing long answers and save them as "stopped". A timeout is marked as such and the text received so far is kept. Agent turns keep their own 1200 s budget.
+- **Other chats that are still working** show the same small spinner (and a "just finished" mark) in the sidebar — background tasks, WhatsApp/Telegram replies and a second browser tab included.
+- **Images in chat** are stored on the server and loaded through it, so they show up in the web build and on phones too, not only in the desktop app next to the server.
 
 ### Live Mode v2 — Native Audio-to-Audio Voice
 - A small voice icon next to the chat input box — not a separate sidebar tab. Real native audio-to-audio conversation via **Google Live** or **OpenAI Realtime**, not a transcribe-then-TTS round trip.
@@ -142,7 +154,13 @@ Memo isn't just a chat; it's a "Second Brain."
 
 ### Multi-Provider Architecture
 Memo connects to external LLM APIs alongside local models:
-- **Supported Providers (16 `ProviderType` values):** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, a generic **Custom** (any OpenAI-compatible endpoint), **Custom (Anthropic-compatible)** (any Anthropic Messages API-shaped endpoint — e.g. your own proxy), **OpenCode Zen** (pay-as-you-go, some models free), **OpenCode Go** (subscription), **Kilo Code** (app.kilo.ai — pay-as-you-go, some models free), and **Subscriptions** — sign in with an Antigravity, Claude or Codex account (through the CLIProxyAPI helper bundled inside Memo) and every model that account offers is selectable in the chat's model selector, `/model` and the local `/v1` gateway, no separate API key. The gateway-style providers let you pick from a live model list instead of typing a model name by hand, with free models sorted to the top and marked with a green checkmark.
+- **Supported Providers (16 `ProviderType` values):** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, bundled `llama.cpp`, a generic **Custom** (any OpenAI-compatible endpoint), **Custom (Anthropic-compatible)** (any Anthropic Messages API-shaped endpoint — e.g. your own proxy), **OpenCode Zen** (pay-as-you-go, some models free), **OpenCode Go** (subscription), **Kilo Code** (app.kilo.ai — pay-as-you-go, some models free), **Cline** (api.cline.bot, new in v4.6.0 — OpenAI-compatible, with a per-model free/paid catalog like OpenRouter, Kilo and OpenCode Zen), and the two CLI providers (Claude Code, Codex). The gateway-style providers let you pick from a live model list instead of typing a model name by hand, with free models sorted to the top and marked with a green checkmark.
+- **Add Provider, organized around cost (v4.6.0):** providers with a genuine free tier carry a green badge and sit in their own group, apart from paid ones. For the four providers with a real free-model catalog (OpenRouter, Kilo Code, OpenCode Zen, Cline) a **Pick a free model** button picks a working $0 model in one click.
+- **Subscriptions (v4.6.0)** — not a separate provider type but a pre-configured `custom` provider named *Subscriptions* (`internal/app/subs.go`): sign in once under Settings › Subscriptions with an **Antigravity, Claude or Codex** account and every model that account offers is selectable in the chat's model selector, `/model` and the local `/v1` gateway (`subs/<model>`), no API key. The work is done by **CLIProxyAPI** (MIT), bundled inside Memo and never downloaded at run time: its pinned release and SHA-256s live in `internal/cliproxy/PINNED.txt`, are checked at build time and again before every start, and it listens on loopback only with a random key. It replaces the Beta `gemini-sub` / `claude-sub` providers, whose own OAuth clients the vendors kept breaking. Vendors may not allow third-party clients on these accounts — the page says so.
+  - **Model picker** (`widgets/model_picker.dart`): a height-capped, scrolling panel with search (over seven rows), foldable vendor sections, family logos and readable names ("Gemini 3.7 Flash" + a "High" tag); the raw id is what is stored. The chosen model survives a restart.
+  - **Remaining allowance**: a percentage badge and time-to-refill per model. Antigravity reports it per model; Codex and Claude meter the account in windows (Claude 5 h / 7 d) and the tightest window applies to all of that vendor's models. Quota never blocks a request — figures come from a cache and refresh in the background.
+  - **Usage-limit card**: when a turn dies because the allowance ran out, the chat shows a card with a countdown, an "automatically continue when it resets" checkbox (default on, remembered per device) and "Continue now"; at the refill time Memo types `continue` for you. A `quota_low` warning appears once per window when 10% or less is left. Works while Memo is open; the card is not persisted, and CLI-agent chats, WhatsApp and the task loop are not covered (the loop retries on its own timer).
+  - **Images**: image models are found by asking the endpoint, not by id — `POST /images/generations` for text-to-image, `/images/edits` when you attach a picture.
 - **Claude and Gemini now support real tool-calling** (previously entirely missing on both — an agent/task-loop turn on either provider silently couldn't use tools at all). Both round-trip single and parallel tool calls correctly per each vendor's own wire format.
 - **Claude Code / Codex CLI as chat providers (beta):** instead of an API call, Memo shells out to a locally installed `claude`/`codex` CLI. Per-chat (not app-wide), runs as a real untimed background job, uses the CLI's own no-prompt permission mode, and its own `/` slash commands surface in Memo's command popup. No memory/identity context is sent — the CLI manages its own session.
 - **Provider Interface:** Common `Provider` interface with `ChatCompletion`, `ChatCompletionStream`, `ListModels`
@@ -157,6 +175,9 @@ Memo connects to external LLM APIs alongside local models:
 - **API Providers Tab:** Settings tab for adding/editing providers
 - **Configuration Dialog:** Provider type selector, API key input (masked), base URL, model dropdown
 - **Active Provider Selection:** Choose which provider is active for chat
+- **Image-output models on OpenRouter (v4.6.0):** a model that only produces images is routed to OpenRouter's image endpoint and the picture arrives as the reply (before, every turn 404'd into "all providers failed"). Which models are image models is read from OpenRouter's own catalog; background jobs that need text (chat titles, memory extraction) never call them.
+- **A bad key no longer shows "connected"**, and a lone active provider is never locked out for 5 minutes after three errors — back-off only applies when there is another provider to fall back to.
+- **Sampling parameters are withdrawn when refused:** Claude Opus 4.7+ rejects `temperature` and friends; Memo notices the refusal once and stops sending them for that provider. The same retry-and-latch valve handles `stream_options.include_usage` and `cache_control` on endpoints that do not know them.
 
 ---
 
@@ -164,8 +185,9 @@ Memo connects to external LLM APIs alongside local models:
 
 ### Tool Execution Engine
 Memo acts as an AI agent with full computer control:
-- **27 Built-in Tools** (verified against `registerBuiltins()`, `internal/agent/tools.go` — up from an earlier "22"): file I/O (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`, `change_directory`), `run_command`, `read_env`, `web_search`, `fetch_page`, `self_clone`, `configure_provider`, `get_calendar_events`, task-loop control (`get_task_status`, `pause_task`, `resume_task`, `create_task_md`, `edit_task_md`, `start_self_driving_task` — see §6.5 below), routines (`create_routine`, `list_routines`, `cancel_routine`), `share_file`. WhatsApp's 4 tools (`whatsapp_send`/`search`/`latest`/`messages`) live in a *separate* scoped registry, not this main one.
+- **40 Built-in Tools** in the main registry (counted from `NewRegistry()`, `internal/agent/tools.go` — up from an earlier "27"): file I/O (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`, `change_directory`), `run_command`, `read_env`, `web_search`, `fetch_page`, `self_clone`, `configure_provider`, `get_calendar_events`, task-loop control (`get_task_status`, `pause_task`, `resume_task`, `create_task_md`, `edit_task_md`, `start_self_driving_task` — see §6.5 below), routines (`create_routine`, `list_routines`, `cancel_routine`), `share_file`, `save_code_plan` (see Code Mode below), `open_app` and the seven `browser_*` tools (see the next section), and WhatsApp's four (`whatsapp_send`/`search`/`latest`/`messages`, which also exist in a separate scoped registry).
 - **Skill tools now actually execute.** A skill's `SKILL.md` can define a `command:` field, wired into the exact same tool pipeline and permission-prompt UI as built-in tools — previously this was declaration-only and never ran anything.
+- **Skills are active per chat (v4.6.0).** Turning a skill on affects only the chat you turned it on in; every new chat starts with none (before, activation was global and old imported skills could keep running unnoticed). Settings › Skills only lists, installs and removes; switching one on or off happens inside the chat.
 - **Imported skills no longer auto-activate (v4.5.0 security fix).** Memo still automatically picks up skills from other tools' skill folders (e.g. Claude Code's) — but a newly-discovered skill now waits for you to turn it on instead of getting instant system-prompt authority the moment it's found.
 - **Tool Registry:** Thread-safe registry with JSON Schema parameter definitions
 - **Danger Level System:** `safe` (auto-allowed), `medium` (prompt user), `dangerous` (prompt + delay)
@@ -186,6 +208,13 @@ Memo acts as an AI agent with full computer control:
 - **Audit Log:** Last 1000 tool executions logged with timestamps
 
 > **Note:** Agent frontend UI (permission dialogs, tool call cards, mode toggle) shipped some time ago and is fully live — the toggle sits directly in Chat's top bar next to the web-search toggle, no separate Agent-only screen needed.
+
+### Opening apps and driving a browser (new in v4.6.0)
+- **`open_app`** — "open Spotify", "start Steam", "open the browser" launches the named desktop app (or the default browser with a blank tab) on Windows, macOS and Linux. It is a real side effect, so it goes through the permission system at the *medium* level, one notch below a shell command. On Linux the name the model gives is a display name, so it is resolved through the Desktop Entry registry (Flatpak/Snap apps included) rather than exec'd. The tool description is written to keep it from firing on a question like "what's the latest news" — that is a web search.
+- **Live browser panel** — a panel next to the chat shows a real but isolated Chromium tab (`internal/browserengine/`, a separate profile that never touches your own browser or accounts). Memo drives it with `browser_navigate`, `browser_click`, `browser_type`, `browser_scroll`, `browser_screenshot`, `browser_get_text` and `browser_close`, and the panel repaints after every page-changing step. You can drive it too, with Agent Mode off: type an address (no `https://` needed), click on the screenshot to click the same spot on the page, and type into a focused field from the row underneath. Drag to resize; full width on a phone.
+- **Clicks use real selectors**: `browser_get_text` first lists every clickable element with a selector that is guaranteed to work (capped so a huge page cannot flood the prompt), then the click uses one of those instead of a guessed CSS selector.
+- **Screenshots never enter the chat history** — they stream to the panel only (`browser_frame` chunks), so they cost no tokens; what a page says is read through the text path. A plain "summarize this site" still takes the fast page-fetch path.
+- **Safe by construction**: only `http`, `https` and a blank page are accepted (no `file://`), and the session endpoints need agent permission.
 
 ### Code Mode: Plan / Auto / Build (new in v4.5.0)
 Code Mode used to be a single on/off switch. It's now three presets, cycled with **Ctrl+Tab** in the message box (or a tap on the chip in the bottom engine strip), each with its own editable system prompt (Settings):
@@ -299,6 +328,7 @@ Multiple AI models collaborate as a team:
 
 ### Usage Stats (Settings → Stats)
 - KPI cards (total requests, input/output tokens, avg tok/s, most-used model), a 30-day stacked daily-usage chart, and a per-model breakdown — recorded for every completed turn (local, agent, orchestra, or external provider) except in Incognito mode.
+- **Prompt Cache panel (v4.6.0)**: how much input was read from cache, how much was written to it and how much went at full price, the share served from cache, and "N cached" badges on the per-model and per-category rows. Streaming chat now uses the provider's real token counts instead of a word-count estimate, Anthropic's separately reported cache tokens are added back (so input no longer looks *smaller* the better the cache works), and custom Anthropic-compatible endpoints get caching too. A provider that reports nothing shows "not reported", never a measured 0%. Caching is requested on tool-carrying (agent) turns only — on a plain chat turn the retrieved-memory block changes every time and would cost the write premium for no hits.
 
 ### Import Memory From Another AI (Settings)
 - Paste a structured description from another AI assistant (ChatGPT, Gemini, Claude, ...) and Memo breaks it into atomic facts saved the same way `/remember` does, plus a communication-style summary folded into its own system prompt.
@@ -307,7 +337,7 @@ Multiple AI models collaborate as a team:
 - Prefills a GitHub issue in your browser (with an optional attachment of your last 10 background error events) — nothing is sent anywhere until you review and submit it yourself on GitHub.
 
 ### Settings, Reorganized
-- Settings moved from ~20 flat tabs into a searchable, grouped rail with a search box.
+- Settings moved from ~20 flat tabs into a searchable, grouped rail with a search box. The General tab is split into General, Features, Reset, and CLI & Uninstall.
 
 ---
 

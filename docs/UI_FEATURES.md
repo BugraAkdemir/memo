@@ -22,16 +22,20 @@
 - "New Chat" button
 - Chat list: title, preview, timestamp, delete on hover
 - Active chat highlight
+- A small spinner on every chat that is generating a reply right now (and a "just finished" mark right after) — background tasks, WhatsApp/Telegram replies, other browser tabs and Claude Code/Codex sessions included (v4.6.0, `GET /api/chats/streaming`)
 - Empty state: "No chats yet"
 
 ### 2.2 Top Bar (_ChatTopBar)
 - Title + badges (incognito, agent, agent project)
 - Badge styles: icon + label, colored bg 12% alpha
 - Action buttons: Undo (agent), WhatsApp toggle, Export (markdown)
+- **Model picker** (`widgets/model_picker.dart`, v4.6.0): a panel, not a popup menu. Height capped to the room below the button, scrolls inside, search box once there are more than seven rows, foldable vendor sections, model-family logos, readable names from `prettyModelName` ("Gemini 3.7 Flash" + a "High" tag; the raw id is what is stored and sent). Subscriptions models carry a remaining-allowance badge (`quota_badge.dart`) and time to refill; the picker re-reads quota 2.5 s after opening and every 50 s. `chat_input.dart`'s own switcher still lists raw ids
 
 ### 2.3 Messages Area
 - WelcomeView (empty state): Logo, tagline, feature cards, quick actions
 - ChatMessageList: scrollable, auto-scroll, RepaintBoundary per bubble
+- **Live progress line** (`stream_progress.dart`, v4.6.0): while a turn runs, the current phase and a one-second elapsed timer ("The model is thinking · 0:45"); orange "no word from the server" after 30 s of silence. The backend's 10-second `heartbeat` chunks keep the idle timeout from firing during a quiet thinking phase
+- **Usage-limit card** (`quota_notice_card.dart`, v4.6.0): shown when a turn failed because the allowance ran out — countdown to the refill, an "automatically continue when it resets" checkbox (default on, device preference `memo_quota_auto_continue`) and "Continue now"; at the refill time `continue` is typed into the chat. A `quota_low` marker shows a one-off low-allowance warning. In memory only, one card per chat
 
 ### 2.4 Message Bubbles (chat_message_list.dart)
 
@@ -160,6 +164,13 @@
 - API key requirement now **enforced** for any non-loopback caller on both endpoints (v4.5.0); optional memory integration
 - **Settings › Subscriptions**: sign in with an Antigravity, Claude or Codex account; every model the account offers appears in the chat's top-right model selector, `/model` and the local `/v1` gateway (`subs/<model>`), no separate API key
 
+## 5.3.1 BROWSER PANE (widgets/agent/browser_pane.dart) — new in v4.6.0
+
+- Opens next to the chat; shows the live screenshot of the isolated Chromium session Memo drives (`browser_*` tools), repainted after every page-changing step
+- Works both ways, with Agent Mode off too: an address bar (no `https://` needed), a click on the screenshot clicks the same spot on the page (mapped through the PNG's real pixel size), a keyboard row to type into the focused field, scroll
+- Resizable by dragging; full width on narrow (phone-width) screens
+- Frames arrive as `browser_frame` SSE chunks and are never part of the chat history; the session endpoints are `/api/browser/session/*`
+
 ## 5.4 SWARM SCREEN (swarm_screen.dart) — BETA
 
 - Host: create room, room code, add/reorder/remove joined workers, set each worker's compute share
@@ -203,7 +214,7 @@
 ### Providers
 - Provider cards: name, active status
 - Configure, Test, Delete buttons
-- Add Provider button
+- Add Provider button — providers with a genuine free tier carry a green badge and sit in their own group ("Have a free model"); OpenRouter, Kilo Code, OpenCode Zen and Cline offer a **Pick a free model** button that selects a working $0 model in one click (v4.6.0). Cline is new in v4.6.0
 - Active provider indicator
 
 ### Llama
@@ -215,10 +226,24 @@
 - Temperature (slider)
 
 ### Memory
-- Memory enabled toggle
-- Top K results (slider/field)
-- Min similarity (slider)
-- Memory files list + delete
+Five sections switched with a pill bar, each pill carrying a live count (v4.6.0):
+- **Settings** — memory enabled toggle, Top K results, min similarity, memory files list + delete
+- **Known Facts** — every pinned fact, editable in place; checkboxes plus a select-all / deselect-all bar for bulk delete
+- **Conversation History** — the ordinary (non-pinned) memories, paginated, same selection tools
+- **Analytics** — usage analytics
+- **Debug** — debug search
+- Every delete asks for confirmation and reports how many records it removed
+
+### Subscriptions (`subscriptions_tab.dart`, v4.6.0)
+- One sign-in per vendor — Antigravity, Claude, Codex; the browser opens (Memo opens it itself), the account's email is shown, sign out any time
+- The account's live model list grouped by vendor, with a remaining-allowance badge and time to refill; re-read every 50 s while the tab is open. The list stays empty for ~30 s after a sign-in, so the tab keeps re-reading until models arrive
+- A note about third-party-client risk is shown on the page
+
+### Skills (`skills_tab.dart`)
+- Lists, installs and removes skills. Turning a skill on or off happens inside the chat — activation is per chat (v4.6.0)
+
+### Usage Stats (`stats_tab.dart`)
+- KPI cards, 30-day chart, per-model breakdown, and the **Prompt Cache** panel (v4.6.0): read from cache / written to cache / full-price input, hit ratio, "N cached" badges per model and category; "not reported" when the provider sends no cache figure
 
 ### Cloud Sync
 - Google Drive auth status

@@ -44,6 +44,8 @@ own `get-memo.sh` / `get-memo-beta.sh` split:
 | `get-memo-server.sh` (stable) | `memo.tar.gz` / `memo_arm.zip` / `memo-mac.zip` | A `vX.Y.Z` tag push (a real, tagged release) |
 | `get-memo-server-beta.sh` | `memo_beta.tar.gz` / `memo_arm_beta.zip` / `memo-mac_beta.zip` | **Every push to `main`** |
 
+The Linux x86_64 **AppImage** follows the same two channels but is a direct download, not something these scripts install: `memo.AppImage` (stable, updated on a tag push) and `memo_beta.AppImage` (every push to `main`), both under `data.memocpp.com`. The ARM64 build has no AppImage yet.
+
 This isn't a documentation detail — it changes which one you actually want.
 Self-hosting-specific work (Docker/ARM CI, this four-mode auth system, the
 `memo config`/`memo remote`/`memo service` commands) lands on `main` first

@@ -37,11 +37,11 @@ internal/agent/
   sandbox.go          — SandboxConfig: rate limit, timeout, korumalı yollar (tool güvenliği)
   permissions.go      — PermissionManager: tool+argüman bazlı izin politikalarını diske kaydeder
   permissions_test.go — izin politikası wildcard eşleşmesi ve tek seferlik reddin temizlenmesi testleri
-  tools.go            — ToolDef/ToolRegistry ve DangerLevel sınıflandırması; registerBuiltins()'te 27 yerleşik tool kayıtlı (bkz. Ajan Modu doc'undaki tam liste)
+  tools.go            — ToolDef/ToolRegistry ve DangerLevel sınıflandırması; NewRegistry()'de 40 yerleşik tool kayıtlı (v4.6.0: open_app + 7 browser_* eklendi; 4'ü WhatsApp) (bkz. Ajan Modu doc'undaki tam liste)
   backup.go           — BackupManager: agent dosya düzenlemelerinden önce anlık yedek alır, geri yükler
   backup_test.go      — BackupManager oluşturma/geri yükleme round-trip testleri
 
-internal/agent/tools/  — 27 yerleşik tool'un implementasyonları (internal/agent/tools.go'daki registerBuiltins() kayıtlarının ExecuteFn'leri), aşağıdaki dosyalara dağılmış
+internal/agent/tools/  — yerleşik tool'ların implementasyonları (internal/agent/tools.go'daki registerBuiltins() kayıtlarının ExecuteFn'leri), aşağıdaki dosyalara dağılmış
   file.go             — read_file/write_file/delete_file/list_directory/get_file_info tool'ları: sandbox'lanmış taban yol içinde dosya G/Ç
   edit.go             — edit_file/insert_line/delete_lines tool'ları: mevcut dosyalara string/satır aralığı değişikliği uygular
   edit_test.go        — EditFile satır ve string-replace davranışı testleri
@@ -61,6 +61,9 @@ internal/agent/tools/  — 27 yerleşik tool'un implementasyonları (internal/ag
   sendfile.go         — share_file tool'u: bir dosya/klasörü (klasörse zip'leyerek) bu konuşmaya geri gönderir
   plan.go             — save_code_plan tool'u: Code Mode Plan alt-modunun çıktısını data/plans/<proje-slug>/plan.md'ye yazar (write_file'ın proje-dizini sandbox'ından bağımsız, ayrı bir yol doğrulaması kullanır)
   plan_test.go        — save_code_plan'ın path-traversal korumasının testi
+  openapp.go          — open_app tool'u (v4.6.0): adı verilen masaüstü uygulamasını ya da boş sekmeli varsayılan tarayıcıyı başlatır; Medium tehlike seviyesi
+  applaunch.go / applaunch_unix.go / applaunch_windows.go — open_app'in Linux uygulama araması: görünen adı Desktop Entry kayıt defterinden (Flatpak/Snap dahil) çözer, startDetached ile başlatır
+  browser.go          — browser_navigate/click/type/scroll/screenshot/get_text/close tool'ları (v4.6.0): etkileşimli tarayıcı oturumuna bağlanır; get_text tıklanabilir öğeleri gerçek seçicilerle listeler
   taskmd_tools.go     — create_task_md/edit_task_md tool'ları
   taskstatus.go       — get_task_status/pause_task/resume_task tool'ları
   selfdrivingtask.go  — start_self_driving_task tool'u
@@ -220,7 +223,11 @@ internal/app/
   claudecodecli.go / cli_status.go / cli_stream.go — Claude Code/Codex CLI sağlayıcı köprüsü: bağlantı durumu, sohbet-bazlı CLI provider/workdir ayarları, CLI stream başlatma
   devgateway.go / devgatewaylog.go — Geliştirici API Ağ Geçidi (Sidebar → Developer) config'i + canlı istek/yanıt günlüğü
   agent_chat_context.go / selfchat_context.go / selfchat_permission.go — hangi ajan sohbetinin/self-chat yüzeyinin (WhatsApp/Telegram) şu an aktif turu işlediğini taşıyan context anahtarları + self-chat'e özel izin/yanıt akışı
-  chat_locks.go       — Sohbet-bazlı stream kilidi: busyStreamChan, withChatLockWait — bir Self-Driving turu meşgul bir sohbeti kuyruğa alıp bekleyebilir
+  chat_locks.go       — Sohbet-bazlı stream kilidi: busyStreamChan, withChatLockWait — bir Self-Driving turu meşgul bir sohbeti kuyruğa alıp bekleyebilir; GetStreamingChatIDs (/api/chats/streaming) kenar çubuğunun "hâlâ çalışıyor" göstergesini besler
+  stream_watchdog.go  — düz sohbet akışının zamanlaması (v4.6.0): 300 sn sessizlik (ilk kelime dahil) + 30 dk üst sınır; sabit toplam süre değil. Zaman aşımı ⏱️ olarak işaretlenir, gelen metin saklanır
+  quotasignal.go      — aktif modelin arkasındaki kullanım hakkı için quota_exhausted/quota_low sinyali: bitiş ve yenilenme zamanı (hata metninden, yoksa kota anlık görüntüsünden)
+  browser_frame.go    — browser_frame SSE parçası: sayfayı değiştiren her tarayıcı aracından sonra panele canlı ekran görüntüsü (sohbet geçmişine girmez)
+  subs.go             — Subscriptions sağlayıcısı: syncSubscriptions sidecar'ı başlatan ve "Subscriptions" custom sağlayıcısını yazan tek yer; SetProviderModel
   retry.go            — retryWithBackoff: genel amaçlı, anında+tekrarlı geri çağırma yardımcı fonksiyonu
   livemode.go / livemode_delegate.go / livemode_session.go / livemode_session_wrapper.go / livemode_voice.go — Live Mode v2 (native audio-to-audio): motor/mod/izin doğrulama, delegate sohbeti, gerçek livemode.Session kurulumu, sesli izin-onay sarmalayıcısı, motor bazlı sentezleme/transkripsiyon
   memory_import.go    — "Hafızayı İçe Aktar": başka bir AI'ın özetini atomik gerçeklere bölen JSON çıkarma yardımcıları
@@ -411,6 +418,8 @@ internal/remoteauth/
 ```
 internal/browserengine/
   browserengine.go       — internal/websearch'ün JS-ağırlıklı sayfalar için kullandığı opsiyonel headless tarayıcının (gosearch/browser) yaşam döngüsü
+  session.go             — etkileşimli Session (v4.6.0): ajanın ve canlı panelin sürdüğü yalıtılmış Chromium sekmesi; her ekran görüntüsü tam ViewportWidth×ViewportHeight; ölü oturum atılıp yenisi açılır
+  session_test.go / session_real_test.go — oturum testleri (sahte ve gerçek Chromium)
   browserengine_test.go  — testler
 ```
 
@@ -424,6 +433,9 @@ internal/cliproxy/
   login.go        — -antigravity/-claude/-codex-login; yetkilendirme URL'sini yakalar
   accounts.go     — kimlik (e-posta/proje) listesi, Logout (token asla dışarı çıkmaz)
   models.go       — /v1/models (id + owned_by), boş cevabı önbelleğe almaz
+  browser.go      — giriş sayfasını kullanıcının tarayıcısında açar; sidecar'ın askıda kalan xdg-open yoklaması yerine anında dönen bir xdg-open sunulur
+  quota.go / quota_accounts.go — kalan hak yüzdesi: Antigravity (model başına), Codex (wham/usage) ve Claude (oauth/usage) hesap sayaçları; QuotaSet.For en sıkışık pencereyi o sağlayıcının tüm modellerine uygular; QuotaSnapshot engellemez, arka planda yeniler
+  proc_unix.go / proc_windows.go — platform-özel süreç ayarı
   PINNED.txt      — sabitlenmiş CLIProxyAPI sürümü + arşiv ve binary SHA-256'ları
   testdata/fakecpa/ — testlerde binary'nin yerine geçen sahte sidecar
 ```
@@ -535,6 +547,11 @@ internal/provider/
   custom_anthropic.go — Özel (Anthropic uyumlu) sağlayıcı: *claudeProvider'ı saran ince sarmalayıcı, kullanıcının kendi Anthropic-şekilli proxy'si için (v4.4.0'da eklendi)
   opencode_zen.go / opencode_go.go — OpenCode Zen/Go sağlayıcıları, canlı model listeli gateway'ler
   kilo.go           — Kilo Code sağlayıcısı (app.kilo.ai), canlı model listeli gateway
+  cline.go          — Cline sağlayıcısı (api.cline.bot, v4.6.0), OpenAI-uyumlu istemcinin ince sarmalayıcısı; model başına ücretsiz/ücretli katalog
+  images.go         — ImageRequest: metinden-resim çağrısı, sohbet isteğinden bilerek ayrı tip
+  openrouter_images.go — OpenRouter'ın görüntü-çıkışlı modelleri (POST {base}/images); hangi modelin görüntü modeli olduğu OpenRouter kataloğundan okunur
+  openai_images.go  — OpenAI-uyumlu "custom" uç noktalar için görüntü üretimi/düzenleme (Subscriptions'ta Codex gpt-image-*); model, uç noktaya sorularak (prompt'suz yoklama) tanınır
+  model_context.go  — ContextWindowForModel: model kimliğinin ailesinden bağlam penceresi (claude-* 200K, gemini* 1M)
   effort.go         — GeminiThinkingBudgetForLevel + EffortLevelsFor*: "effort level" (minimal/low/medium/high/max) etiketlerinin vendor-özel parametrelere çevrimi (Gemini thinkingBudget, Claude adaptive thinking)
 ```
 
@@ -626,7 +643,9 @@ internal/webserver/
   handlers_swarm.go            — Memo Swarm (beta) host/join/durum handler'ları
   handlers_tasks.go            — Self-Driving görev listesi CRUD + /api/tasks/running + pause/resume/cancel/skip/inject handler'ları
   devgateway_handlers.go       — Geliştirici API Ağ Geçidi (Sidebar → Developer) config + canlı istek/yanıt günlüğü handler'ları
-  subscriptions_handlers.go    — Subscriptions (/api/subscriptions) ve model seçici (/api/providers/model) handler'ları
+  subscriptions_handlers.go    — Subscriptions (/api/subscriptions) ve model seçici (/api/providers/model) handler'ları; ?fresh=1 kota için en fazla 3 sn bekler
+  handlers_browser_session.go  — canlı tarayıcı panelinin doğrudan uç noktaları (/api/browser/session/*): navigate/click/type/scroll/status/close; ajan izni ister
+  (handlers_flutter.go içinde)   — Server.withQuotaSignals: /api/send/stream ve /api/send/file/stream'den geçen her parçaya quota_exhausted / quota_low işaretçilerini ekleyen tek yer
   openai_handlers.go           — Developer Gateway'in OpenAI-uyumlu ikizi: GET /v1/models, POST /v1/chat/completions (internal/openaiapi'yi sarar)
   mime.go                      — dosya yükleme MIME tespiti (istemci header'ına değil içeriğe göre)
   webapp.go                    — Flutter web build'inin (internal/webserver/webapp/) statik dosya servisi
@@ -799,11 +818,17 @@ referans alıyor, taşımak CI'a ek bir değişiklik gerektirirdi.
 ## 4. CI/CD (`.github/workflows/`)
 
 ```
-ci.yml             — main'e her push/PR'da Go testlerini çalıştırır (SQLite bağımlılığıyla)
-build-linux.yml     — push/PR/dispatch'te Linux x86_64 release'i derler (Go backend + Flutter)
-build-macos.yml     — push/PR/dispatch'te macOS arm64+x86_64 release'i derler
-build-windows.yml   — push/PR/dispatch'te Windows x86_64 release'i derler
-upload-r2.yml       — Linux/macOS/Windows release'lerini derleyip Cloudflare R2'ye yükleyen elle-tetiklenen workflow
+ci.yml              — main'e her push/PR'da Go vet/test, Flutter analyze/test ve L10n / eski-alan-adı korumaları
+build-linux.yml     — push/PR/dispatch/v* etiketinde Linux x86_64 (zip, tar.gz, AppImage) ve arm64 (zip) derler. Etikette GitHub Release'e ve R2'nin kararlı adlarına (memo.tar.gz, memo.AppImage, memo_arm.zip); main push'unda beta adlarına (memo_beta.tar.gz, memo_beta.AppImage, memo_arm_beta.zip) yükler
+build-macos.yml     — macOS derlemesi; etikette GitHub Release + memo-mac.zip
+build-windows.yml   — Windows derlemesi + Inno Setup kurulumcusu; etikette GitHub Release + memo.exe
+build-android.yml   — imzalı APK (R2: memo-android.apk)
+build-ios.yml       — imzasız IPA (R2: memo-ios.ipa)
+build-docker.yml    — yalnızca-backend Docker imajını derler ve yayınlar
+upload-r2.yml       — elle tetiklenen beta R2 yüklemesi
+upstream.yml        — her 6 saatte bir: sağlayıcı API/OAuth uç noktaları, CLIProxyAPI sürümü ve data.memocpp.com betikleri için kimlik bilgisiz yoklamalar; sapma `upstream-drift` issue'su açar
+vendor-cliproxy.yml — elle: sabitlenmiş CLIProxyAPI sürümünü yeniden doğrular, istenirse R2'ye yayınlar
+canary.yml          — dış bağımlılıklar için canary'ler (gosearch kazıması, WhatsApp el sıkışması)
 ```
 
 ## 5. Yapılandırma, Yardımcı Script'ler, Skill'ler

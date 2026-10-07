@@ -26,8 +26,9 @@ live testing.
   for the Claude and Gemini providers (previously entirely missing), a
   new Anthropic-compatible custom provider type, an OpenAI-compatible
   Developer Gateway sibling, and an experimental "gemini-sub" provider
-  (sign in with a personal Google account, Beta).
-- **v4.5.0 (this branch)** — the desktop mascot: a second, always-on-top
+  (sign in with a personal Google account, Beta — removed in v4.6.0 in
+  favour of Subscriptions).
+- **v4.5.0** — the desktop mascot: a second, always-on-top
   window (same process) that reflects Memo's live activity across every
   channel, with two selectable skins and idle animation; Code Mode split
   into three cycled sub-modes (Plan/Auto/Build) with per-mode system
@@ -36,11 +37,33 @@ live testing.
   for non-loopback callers; imported skills no longer auto-activate;
   clearer Live Mode failure messages and a fixed HuggingFace avatar
   404 spam in the Model Store.
+- **v4.6.0 (this branch)** — Memo can open desktop apps (`open_app`) and
+  drive an isolated Chromium tab shown live in a panel next to the chat,
+  which you can use by hand too; long replies are ended by silence, not a
+  fixed 300 s, with a live progress line and heartbeat; **Subscriptions**
+  (Antigravity / Claude / Codex through the bundled CLIProxyAPI sidecar)
+  replaces `gemini-sub`/`claude-sub`, with a new model-picker panel,
+  per-model remaining-allowance badges, a usage-limit card that continues
+  by itself, and image generation/editing; one Flutter app for Android and
+  iOS (the standalone `mobile/` client is retired); a rebuilt Memory tab
+  (see, edit, selectively delete); prompt-cache accounting in Usage Stats;
+  the Cline provider and a cost-organized Add Provider; skills active per
+  chat; an internal security audit (admin-gated destructive routes,
+  `file://` refused in the browser, incognito honoured on chat-addressed
+  sends); the AppImage published to R2 on the same stable/beta channels as
+  the tar.gz.
 
-## Near-term — open items from live testing (see `BUG_REPORT.md`)
+## Near-term — items from live testing
 
 These were found running the Self-Driving loop against real tasks, not
-hypothetical:
+hypothetical. **Status update (v4.6.0):** BUG-PLAN9, 11 and 12 are implemented
+(the pinned task-activity card above the composer with inline plan approval,
+one canonical progress line, incremental plan-item marking), and the
+`get_task_status`/`pause_task`/`resume_task` tools are now also described in
+Code Mode's prompt. BUG-THINK1 is partly addressed — Claude's thinking blocks
+are now replayed across the agent tool loop — but feeding the existing
+"thinking" UI was not re-verified. The original descriptions are kept below
+as history:
 
 - **BUG-PLAN9** — a ready plan can only be approved from the Tasks tab,
   not inline in the chat that launched it.
@@ -69,7 +92,7 @@ hypothetical:
 project is retired; `frontend/` now has `android/` and `ios/` targets and is
 what ships to a phone, so feature parity is structural rather than something
 to audit. Both targets are built in CI (`build-android.yml`,
-`build-ios.yml`) — Android as a debug APK, iOS unsigned, since this project
+`build-ios.yml`) — Android as an APK (signed on release), iOS unsigned, since this project
 has no macOS or iOS hardware and no signing certificates.
 
 What that leaves open:
@@ -81,9 +104,10 @@ What that leaves open:
   Android save/share dialog, the back button, keyboard insets, and the
   narrow layout as a whole. iOS needs a Mac and an iPhone, neither of which
   this setup has.
-- **Store publishing** — signing keys, Play Console / App Store accounts,
-  and a release pipeline that has an APK/IPA slot at all (today's has
-  none). The final store bundle identifier is still an open decision.
+- **Store publishing** — Play Console / App Store accounts and the final
+  store bundle identifier are still open. CI already publishes a signed
+  APK (`memo-android.apk`) and an unsigned IPA (`memo-ios.ipa`, sideload
+  only) to `data.memocpp.com` on every release.
 - **Live Mode's native realtime engines on mobile** — `live_pcm_player.dart`
   streams PCM into a long-lived sink and is Linux-only (it already threw on
   macOS and Windows before mobile existed). Phones fall back to the discrete

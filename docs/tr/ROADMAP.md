@@ -26,8 +26,9 @@ bug/tasarım eksiklerini görmek için repo'nun `BUG_REPORT.md`'sine bakın.
   Gemini provider'ları için gerçek tool-calling (öncesinde hiç yoktu),
   yeni bir Anthropic-uyumlu özel provider tipi, OpenAI-uyumlu bir
   Developer Gateway kardeşi, ve deneysel "gemini-sub" provider'ı
-  (kişisel Google hesabıyla giriş, Beta).
-- **v4.5.0 (bu branch)** — masaüstü maskotu: aynı süreci paylaşan, her
+  (kişisel Google hesabıyla giriş, Beta — v4.6.0'da Abonelikler lehine
+  kaldırıldı).
+- **v4.5.0** — masaüstü maskotu: aynı süreci paylaşan, her
   kanalda Memo'nun canlı aktivitesini yansıtan, iki seçilebilir cilti ve
   boşta animasyonu olan her-zaman-üstte ikinci bir pencere; Code Mode'un
   mod-başı sistem promptları ve auto-permission ile Build'e zincirlemesi
@@ -37,11 +38,34 @@ bug/tasarım eksiklerini görmek için repo'nun `BUG_REPORT.md`'sine bakın.
   aktarılan skill'lerin artık kendi kendine aktive olmaması; daha net
   Live Mode hata mesajları; ve Model Mağazası'nda düzeltilen bir
   HuggingFace avatar 404 seli.
+- **v4.6.0 (bu branch)** — Memo masaüstü uygulamaları açabiliyor
+  (`open_app`) ve sohbetin yanındaki bir panelde canlı gösterilen yalıtılmış
+  bir Chromium sekmesini sürebiliyor, istersen sen de elle kullanabiliyorsun;
+  uzun cevaplar sabit 300 sn ile değil sessizlikle bitiyor, canlı ilerleme
+  satırı ve heartbeat ile; **Abonelikler** (Antigravity / Claude / Codex,
+  gömülü CLIProxyAPI yardımcısı üzerinden) `gemini-sub`/`claude-sub`'ın
+  yerini alıyor — yeni model seçici paneli, model başına kalan hak
+  rozetleri, kendi kendine devam eden kullanım-sınırı kartı ve resim
+  üretme/düzenleme ile; Android ve iOS için tek Flutter uygulaması (ayrı
+  `mobile/` istemcisi emekli); baştan yapılan Hafıza sekmesi (gör, düzenle,
+  seçerek sil); Kullanım İstatistikleri'nde prompt-önbelleği muhasebesi;
+  Cline sağlayıcısı ve maliyete göre düzenlenmiş Sağlayıcı Ekle; sohbet
+  başına aktif skill'ler; dahili bir güvenlik denetimi (yönetici-kapılı
+  yıkıcı rotalar, tarayıcıda reddedilen `file://`, sohbete adreslenen
+  gönderimlerde saygı gören gizli mod); AppImage'ın tar.gz ile aynı
+  kararlı/beta R2 kanallarında yayınlanması.
 
-## Yakın vadeli — canlı testten açık maddeler (bkz. `BUG_REPORT.md`)
+## Yakın vadeli — canlı testten maddeler
 
 Bunlar Self-Driving döngüsünü gerçek görevlerle çalıştırırken bulundu,
-varsayımsal değil:
+varsayımsal değil. **Durum güncellemesi (v4.6.0):** BUG-PLAN9, 11 ve 12
+uygulandı (yazı kutusunun üstünde sabit görev-aktivite kartı ve satır içi plan
+onayı, tek kanonik ilerleme satırı, plan maddelerinin artımlı işaretlenmesi) ve
+`get_task_status`/`pause_task`/`resume_task` araçları artık Code Mode'un
+promptunda da anlatılıyor. BUG-THINK1 kısmen ele alındı — Claude'un thinking
+blokları artık ajan tool döngüsü boyunca geri oynatılıyor — ama mevcut "düşünme"
+arayüzünün beslenmesi yeniden doğrulanmadı. Özgün açıklamalar tarihçe olarak
+aşağıda duruyor:
 
 - **BUG-PLAN9** — hazır bir plan yalnızca Görevler sekmesinden
   onaylanabiliyor, planı başlatan sohbetten değil.
@@ -70,7 +94,7 @@ varsayımsal değil:
 `mobile/` projesi emekliye ayrıldı; `frontend/` artık `android/` ve `ios/`
 hedeflerine sahip ve telefona giden o. Yani özellik paritesi denetlenecek
 bir şey değil, yapısal olarak sağlanıyor. İki hedef de CI'da derleniyor
-(`build-android.yml`, `build-ios.yml`) — Android debug APK, iOS imzasız;
+(`build-android.yml`, `build-ios.yml`) — Android APK (sürümde imzalı), iOS imzasız;
 çünkü bu projenin ne macOS/iOS donanımı ne de imzalama sertifikası var.
 
 Bunun açık bıraktıkları:
@@ -81,9 +105,10 @@ Bunun açık bıraktıkları:
   çıkması, `just_audio` çalma + sesli modda sözü kesme, Android kaydet/
   paylaş diyaloğu, geri tuşu, klavye inset'leri ve dar düzenin tamamı. iOS
   için Mac + iPhone gerekiyor, ikisi de bu kurulumda yok.
-- **Store yayını** — imzalama anahtarları, Play Console / App Store
-  hesapları ve release hattında APK/IPA yuvası (şu an hiç yok). Nihai store
-  bundle kimliği hâlâ açık bir karar.
+- **Store yayını** — Play Console / App Store hesapları ve nihai store
+  bundle kimliği hâlâ açık. CI her sürümde `data.memocpp.com`'a imzalı bir
+  APK (`memo-android.apk`) ve imzasız bir IPA (`memo-ios.ipa`, yalnızca
+  sideload) yayınlıyor.
 - **Live Mode'un native realtime motorları mobilde** —
   `live_pcm_player.dart` PCM'i uzun ömürlü bir sink'e akıtıyor ve sadece
   Linux (mobil var olmadan önce de macOS/Windows'ta hata veriyordu).

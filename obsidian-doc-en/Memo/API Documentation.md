@@ -8,13 +8,17 @@ The Memo Backend provides a comprehensive REST API for the Flutter Frontend or t
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/send` | Standard message submission (non-streaming) |
-| `POST` | `/api/send/stream` | Streaming (SSE) message submission |
+| `POST` | `/api/send/stream` | Streaming (SSE) message submission — see "Marker chunks" below |
+| `GET` | `/api/chats/streaming` | `{chat_ids}` — chats generating a reply right now (the sidebar spinner) (v4.6.0) |
+| `GET` | `/api/image?path=` | `{data: base64}` of a stored chat image; only the backend's own image folders are served (v4.6.0) |
 | `POST` | `/api/send_file` | File/image message submission (Multipart) |
 | `GET` | `/api/chats` | List all chat sessions |
 | `POST` | `/api/chats/new` | Create new chat session |
 | `POST` | `/api/chats/switch` | Switch active session |
 | `POST` | `/api/chats/delete` | Delete session |
 | `GET` | `/api/messages` | Get active chat history |
+
+**Marker chunks on a chat SSE stream (v4.6.0).** A chunk is reply text unless its `finish_reason` is a marker; clients ignore unknown markers and never print them. `heartbeat` (empty, every 10 s of silence, keeps the client's idle timeout from firing), `agent_event` (JSON tool event), `browser_frame` (JSON `{screenshot, timestamp}`, live pane only, never saved to history), `quota_exhausted` / `quota_low` (JSON `QuotaSignal`: `kind`, `provider`, `model`, `vendor`, `remaining_percent`, `reset_at`, `window`). A plain chat turn ends after 300 s of silence or 30 min in total — not after a fixed 300 s. `GET /api/messages` and its update/delete siblings take `chat_id`; without it they act on the global active chat.
 
 ### Memory Management
 | Method | Endpoint | Description |
@@ -23,6 +27,11 @@ The Memo Backend provides a comprehensive REST API for the Flutter Frontend or t
 | `POST` | `/api/incognito` | Toggle incognito mode |
 | `GET`/`DELETE` | `/api/memory/files` | List/delete memory files |
 | `POST` | `/api/memory/clear` | Clear all memory |
+| `GET` | `/api/memory/known-facts` | Every pinned fact ("what Memo knows about you"), no query needed (v4.6.0) |
+| `GET` | `/api/memory/conversation?limit=&offset=` | A page of ordinary conversation memories: `{results, total}` (v4.6.0) |
+| `POST` | `/api/memory/delete-by-ids` | `{ids}` — delete exactly those records, never a pattern; returns `{deleted}` (v4.6.0) |
+| `POST` | `/api/memory/pinned/update` | `{id, content, tags}` — rewrite one pinned fact (v4.6.0) |
+| `POST` | `/api/memory/explicit/save`, `/api/memory/explicit/delete` | Save / remove an explicit "remember this" memory |
 | `GET`/`PUT` | `/api/system-prompt` | Get/update system prompt |
 
 ### Model Control
@@ -46,6 +55,9 @@ The Memo Backend provides a comprehensive REST API for the Flutter Frontend or t
 | `GET`/`PUT` | `/api/providers/active` | Get/set active provider |
 | `GET` | `/api/kilo/models` | Live model list from Kilo Code, free models flagged (v3.9.0) |
 | `GET` | `/api/opencode-zen/models` | Live model list from OpenCode Zen, free models flagged by `-free` id suffix (v3.9.0) |
+| `GET`/`PUT` | `/api/providers/model` | Model selector (v4.6.0): `GET ?name=` lists the provider's live models (Subscriptions models carry `remaining`, `reset_at`, `quota_window`; `fresh=1` waits ≤3 s for current quota), `PUT {name, model, activate}` switches only its model. Spends a stored key, so it needs the models permission |
+| `GET` | `/api/providers/models` | Model list for a key the caller supplies |
+| `GET`/`POST` | `/api/subscriptions` | Subscriptions sidecar (v4.6.0): state + `login` (`antigravity` \| `claude` \| `codex`) / `cancel_login` / `logout`. POST is admin-only; GET never starts the sidecar |
 
 ### Accounts & Permissions (self-hosted, v3.5.5 + v3.9.0)
 | Method | Endpoint | Description |
@@ -148,7 +160,7 @@ Details: [[External Providers]]
 ### Usage Stats (v3.3.3)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/stats/usage?days=N` | Usage stats (tokens, speed, model breakdown, daily series) — defaults to 30 days |
+| `GET` | `/api/stats/usage?days=N` | Usage stats (tokens, speed, model breakdown, daily series) — defaults to 30 days. v4.6.0 adds the prompt-cache split: `total_cached_prompt_tokens`, `total_cache_write_tokens`, and `cached_prompt_tokens` / `cache_write_tokens` per model and per category; zero means "not reported", not a measured 0% |
 
 Details: [[Features Catalog]]
 
@@ -190,6 +202,24 @@ Details: [[Developer API Gateway]]
 | `GET`/`PUT` | `/api/taskloop/settings` | Persistent task-loop configuration |
 
 Details: [[Self-Driving Task Loop]]
+
+### Interactive Browser Pane (v4.6.0)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/browser/session/navigate` | `{url}` (scheme optional) |
+| `POST` | `/api/browser/session/click` | `{x, y}` in the screenshot's pixel space |
+| `POST` | `/api/browser/session/type` | `{text, enter}` |
+| `POST` | `/api/browser/session/scroll` | `{dx, dy}` |
+| `GET` | `/api/browser/session/status` | `{active, url}` |
+| `POST` | `/api/browser/session/close` | End the session |
+
+All need the agent permission, accept only `http`/`https`/blank, and answer `{screenshot_base64, url, error}`. Details: [[Agent Mode]]
+
+### Skills (per chat, v4.6.0)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/skills/active-list?chat_id=` | Skills active in one chat |
+| `PUT` | `/api/skills/active` | `{chat_id, names}` — set that chat's active skills; a new chat starts with none |
 
 ### Code Mode (v4.5.0)
 | Method | Endpoint | Description |

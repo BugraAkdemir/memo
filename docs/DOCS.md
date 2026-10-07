@@ -256,6 +256,8 @@ cd frontend && flutter build linux --release       # frontend binary
 ./build_releases.sh                                # dist packages (tar.gz, AppImage, deb)
 ```
 
+CI does the same for you (`build-linux.yml`): a `v*` tag push attaches the zip and `Memo-v<version>-x86_64.AppImage` to the GitHub release and uploads `memo.tar.gz` / `memo.AppImage` to `data.memocpp.com`; every push to `main` uploads `memo_beta.tar.gz` / `memo_beta.AppImage` (the beta channel). The AppImage carries AppStream metadata (`com.memocpp.Memo`, from `packaging/`).
+
 ### Testing
 
 ```bash

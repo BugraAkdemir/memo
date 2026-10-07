@@ -12,7 +12,7 @@
 Download `Memo-Setup-v$VERSION.exe` and run the installer. The setup wizard will guide you through installation.
 
 ### Linux
-- **AppImage**: Download `Memo-v$VERSION-x86_64.AppImage`, make executable (`chmod +x`), and run.
+- **AppImage**: Download `Memo-v$VERSION-x86_64.AppImage` (or the always-current `memo.AppImage` from `data.memocpp.com`; `memo_beta.AppImage` tracks `main`), make executable (`chmod +x`), and run.
 - **tar.gz**: Extract and run `./run_memo.sh`.
 
 ### First Run

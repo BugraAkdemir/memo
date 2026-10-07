@@ -27,6 +27,10 @@ Pure vector similarity blends every topic of a multi-part question ("do you know
 - **Local-generation performance (v3.3.4):** the dedicated embedding server now defaults to CPU-only instead of GPU auto-detect, fixing a case where it fought the chat model's own server for VRAM and could cut local generation speed 4-5x. `embedding_gpu_layers` opts it back onto the GPU if there's real headroom.
 - **Import Memory From Another AI (v3.3.3):** Settings → Import Memory lets Memo ingest a structured description another AI assistant gives back about the user, breaking it into atomic facts saved the same way `/remember` does — see [[Proactive Learning and Calendar]] and [[Advanced Settings]].
 
+## Seeing, editing and deleting what Memo remembers (v4.6.0)
+
+Settings › Memory is five pill-switched sections — **Settings**, **Known Facts**, **Conversation History**, **Analytics**, **Debug** — each pill showing a live count. *Known Facts* lists every pinned fact (editable in place); *Conversation History* lists the ordinary, non-pinned memories (paginated). Both have checkboxes with a select-all / deselect-all bar, so pinned facts and chat history can be cleared independently of each other. Every delete asks for confirmation and reports how many records it removed; deletion is by exact record id (`POST /api/memory/delete-by-ids`), never by pattern. **Dream** — the background pass that compresses old, related pinned facts — now starts with Memo (it used to stay dormant until an unrelated action woke it), and "Remember this" works with no embedding model configured. See [[API Documentation]].
+
 ### Linked Notes:
 - [[Vector Search Logic]]
 - [[Data Layer and Persistence]]

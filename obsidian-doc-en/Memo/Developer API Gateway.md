@@ -28,6 +28,9 @@ The request's `"model"` field must be `<type>/<model-id>`:
 | `local/qwen2.5` | Routes to whatever local llama.cpp model is loaded (the model-id part is just a label — the real model is whatever's already running) |
 | `openai/gpt-4o` | Uses the first **enabled** provider under Settings → API Providers whose type is `openai`, with model set to `gpt-4o` |
 | `custom/qwen2.5` | The enabled provider of type `custom` (your own OpenAI-compatible endpoint — LM Studio, vLLM, etc.) |
+| `subs/claude-sonnet-4-6` | A model of the **Subscriptions** provider (v4.6.0 — sign-in via Antigravity / Claude / Codex). It is a named `custom` provider, so it is excluded from the generic `custom/<model>` spelling and shown as `subs/<model>` |
+
+Token usage reported back to gateway clients keeps each wire format's own cache semantics: the Anthropic endpoint emits `input_tokens` as the fresh part with `cache_read_input_tokens`/`cache_creation_input_tokens` separately; the OpenAI endpoint reports cached tokens as a subset of `prompt_tokens`. (Before v4.6.0 a cached agent turn could look ~10x more expensive to a client.)
 
 If more than one provider shares a type, the **enabled** one wins — there's no separate UI to disambiguate further (a deliberate simplification).
 

@@ -1,6 +1,6 @@
 # 🤖 Agent Mode
 
-> **Package:** `internal/agent/` (27 built-in tools in the main registry as of this pass — verified against `registerBuiltins()`, `internal/agent/tools.go` — up from the original 8; the 4 `whatsapp_*` tools are NOT in this count, see the note under "16-19" below)
+> **Package:** `internal/agent/` (**40 tools** in the main registry as of v4.6.0 — counted from `NewRegistry()`, `internal/agent/tools.go`; 36 plus WhatsApp's four, see "WhatsApp tools" below)
 > **Config file:** `data/permissions.json`
 > **API endpoints:** `/api/agent/enabled`, `/api/agent/permission`, `/api/agent/permissions`
 > **Requires:** An active external provider, or a running local llama.cpp model — `resolveAgentProvider()` wraps either one into the same `provider.Router`-based tool-calling request, so agent mode isn't external-provider-only. Real-world tool-calling *quality* on local models varies a lot by model (see Known Issues).
@@ -103,7 +103,7 @@ This is how a feature gets native tool-calling's "model decides, single request,
 
 ## Built-in Tools
 
-Registered in `internal/agent/tools.go`'s `registerBuiltins()` — **27 tools** in the main registry (verified by grep, not the stale "19" this doc used to claim), up from the original 8. On top of these, **skill tools are now real** (v3.3.3): a skill's `SKILL.md` can declare a `command:` field, and it executes through this exact same pipeline and permission UI — see [[Guides]].
+Registered in `internal/agent/tools.go`'s `registerBuiltins()` — **40 tools** in the main registry (counted by instantiating `NewRegistry()`; the numbered headings below were written when it held 27, and §28–36 add what came later), up from the original 8. On top of these, **skill tools are now real** (v3.3.3): a skill's `SKILL.md` can declare a `command:` field, and it executes through this exact same pipeline and permission UI — see [[Guides]].
 
 ### 1. `read_file` — Safe
 ```json
@@ -209,11 +209,28 @@ Registered in `internal/agent/tools.go`'s `registerBuiltins()` — **27 tools** 
 ### 27. `fetch_page` — Safe
 - Fetches a URL's full content as Markdown (not just `web_search`'s snippet) — up to 5 attempts across different domains per request
 
+### 28. `save_code_plan` — see [[#Code Mode: Plan / Auto / Build sub-modes (new in v4.5.0)]]
+
+### 29. `open_app` — Medium (v4.6.0)
+- Launches a named desktop application, or the default browser with a blank tab, on Windows, macOS and Linux. Parameter: `app_name` — just the application's name ("Spotify", "Steam", "tarayıcı"/"browser", "VS Code"), never the raw sentence. Implementation: `internal/agent/tools/openapp.go` + `applaunch*.go`.
+- A real side effect, hence **Medium** — one notch lighter than `run_command` (Dangerous) so it can still be allowed for the session.
+- **Linux:** the name the model gives is a display name, not a binary; it is resolved through the Desktop Entry registry (so Flatpak/Snap apps work) and started with `startDetached` (own session, always reaped; an immediate non-zero exit is an error). `xdg-open about:blank` is *not* "open the browser" — `about:` has no handler on a normal desktop, so the default browser's own entry is started instead.
+- **The description is the disambiguation mechanism against `web_search`:** it says to call this *only* for an explicit launch command and never for a question or information request, so "what's the latest news" searches the web instead of opening a browser.
+
+### 30–36. The interactive browser tools — `browser_navigate` (Medium), `browser_click` (Medium), `browser_type` (Medium), `browser_scroll` / `browser_screenshot` / `browser_get_text` / `browser_close` (Safe) (v4.6.0)
+- Drive one real but isolated Chromium tab (`internal/browserengine/session.go`, a dedicated profile — never the user's own browser, cookies or accounts). They live only in the main/full registry, not in the web-search, WhatsApp or read-only registries.
+- `browser_click` takes a CSS `selector` or viewport `x`/`y`; `browser_type` takes a `selector` and `text`. `browser_get_text` returns the page's text **and a list of every clickable element with a selector that is guaranteed to work** (capped so a huge page cannot flood the prompt) — so Memo clicks one of those instead of guessing.
+- `browser_navigate` is Medium rather than Dangerous on purpose: the session is a sandboxed throwaway process, and Dangerous would deny "allow for this session", forcing a fresh prompt on every call of a multi-step UI test.
+- Only `http`, `https` and a blank page are accepted — `file://` would have let the browser read any file on the machine and bypass the file tools' restrictions.
+- **Every page-changing tool pushes a frame itself** (`tools.pushFrame` + `framePushingTools` in `internal/app/browser_frame.go`) as a `browser_frame` SSE chunk, so the live pane updates without the model ever calling `browser_screenshot`. Frames go to the pane only and never enter the chat history. A new page-changing tool must be added to both.
+- A session whose Chromium died is dropped, not reused (`Session.dead()`); each screenshot is exactly `ViewportWidth × ViewportHeight` because the viewport is emulated, so the pane maps taps through the PNG's real size.
+- The user can drive the same session by hand from the pane through `/api/browser/session/*` (agent permission required, Agent Mode need not be on) — see [[API Documentation]].
+
 ---
 
-### WhatsApp tools are NOT in this registry
+### WhatsApp tools
 
-`whatsapp_send` (Medium), `whatsapp_search` (Safe), `whatsapp_latest` (Safe), `whatsapp_messages` (Safe) exist in the codebase but live **only** in the separate scoped `NewWhatsAppRegistry()`/`NewWhatsAppExecutor()` (see "Scoped Registries" above, `internal/app/whatsapp.go`) — used exclusively for WhatsApp-triggered agent runs. They are **not** part of the 27-tool main registry a normal chat's Agent Mode uses; a previous version of this doc listed them here as tools "16-19" of the main set, which contradicted this page's own Scoped Registries section. See [[WhatsApp Integration]].
+`whatsapp_send` (Medium), `whatsapp_search` (Safe), `whatsapp_latest` (Safe), `whatsapp_messages` (Safe) are registered in the main registry too (`registerWhatsAppTools()` is called from `registerBuiltins()` — a count of `NewRegistry()` finds all four), and additionally exist in the separate scoped `NewWhatsAppRegistry()`/`NewWhatsAppExecutor()` used for WhatsApp-triggered agent runs (see "Scoped Registries" above, `internal/app/whatsapp.go`). An earlier version of this page claimed they were *only* in the scoped registry; that stopped being true.
 
 ---
 

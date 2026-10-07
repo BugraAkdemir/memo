@@ -15,6 +15,14 @@ Memo sadece bir sohbet değil, bir "İkinci Beyin"dir.
 - **Sabitlenmiş Gerçekler (2026-07-15)**: Kalıcı kişisel gerçekler (isim, doğum günü, evcil hayvan vb.) — ister `/remember` ile kaydedilsin ister normal sohbetten otomatik tespit edilsin — her promptta koşulsuz olarak enjekte edilir, arama sıralamasını tamamen atlar, böylece rutin sohbet arasında asla kaybolmaz.
 - **Sonsuz Bağlam**: Uzun süreli hafıza, yapay zekanın haftalar veya aylar önceki detayları, mevcut modelin pencere sınırından bağımsız olarak hatırlamasını sağlar.
 
+### Hafıza Ayarları — Memo'nun neyi hatırladığını gör, düzenle, sil (v4.6.0)
+Ayarlar › Hafıza, bir pill çubuğuyla değiştirilen beş odaklı bölümdür (her pill canlı bir sayı taşır): **Ayarlar** (getirme seçenekleri ve hafıza dosyaları), **Bilinen Bilgiler**, **Sohbet Geçmişi**, **Analiz** ve **Hata Ayıklama**.
+- **Bilinen Bilgiler** — Memo'nun senin hakkında tuttuğu her sabitlenmiş bilgi, her zaman görünür. Birini yerinde düzenle ya da bir ya da birkaçını onay kutularıyla ve tümünü seç / seçimi kaldır çubuğuyla sil.
+- **Sohbet Geçmişi** — sıradan (sabitlenmemiş) sohbet hafızaları, sayfalı, aynı seçim araçlarıyla. Sabitlenmiş bilgiler ve sohbet geçmişi tamamen birbirinden bağımsız yönetilir: birini temizle, ötekini koru.
+- Her silme — tek satır ya da bir seçim — önce onay ister ve kaç kaydı sildiğini bildirir. Silme kesin kayıt kimliğiyledir, asla bir desenle değil.
+- **Dream** (eski, ilişkili sabitlenmiş bilgileri daha temiz özetlere sıkıştıran arka plan geçişi) artık Memo'yla birlikte başlıyor; öncesinde taze bir açılışta, alakasız bir eylem onu uyandırana kadar uyuyordu.
+- "Bunu hatırla", gömme modeli olmayan yalnızca-bulut kurulum dahil her kurulumda çalışır.
+
 ### Modelden Bağımsız Motor
 - **Dahili Llama-Server**: Yüksek performanslı GGUF çıkarımı için `llama.cpp` tarafından desteklenir.
 - **Özel Embedding Sunucusu**: Hafıza indeksleme için özel çalışan ikinci bir dahili sunucu, ana sohbet performansını hiç etkilemez.
@@ -88,6 +96,10 @@ Memo sadece bir sohbet değil, bir "İkinci Beyin"dir.
 - **Token-Token Render**: Yapay zekanın yanıtını gerçek zamanlı "yazmasını" izleyin.
 - **Düşünme Durumu**: İlk token gelmeden önce görsel geri bildirim sağlayan nabız atan bir "Memo düşünüyor..." durumu.
 - **İmleç Arayüzü**: Stream'i takip eden yanıp sönen terminal-tarzı bir imleç (`▊`).
+- **Asla donmuş görünmez (v4.6.0)**: bir tur sürerken altta, geçerli evreyi ve her saniye ilerleyen bir süreyi gösteren bir ilerleme satırı durur ("Model düşünüyor · 0:45") ve bir araç bittikten sonra da hareket etmeye devam eder. 30 saniye boyunca hiçbir şey gelmezse turuncu bir "sunucudan haber yok" uyarısına döner. Backend, sessiz kaldığı her 10 saniyede bir `heartbeat` parçası gönderir; böylece uzun, sessiz bir düşünme evresi kopmuş bağlantı sanılmaz.
+- **Uzunlukla değil sessizlikle biter (v4.6.0)**: düz bir sohbet cevabı yalnızca hiçbir şey gelmeden 300 saniye geçince (ilk kelimeyi beklemek dahil) ya da 30 dakikalık bir güvenlik sınırında kesilir — hâlâ akan uzun cevapları kesip "durduruldu" diye kaydeden sabit 300 sn toplam sınırıyla değil. Zaman aşımı olarak işaretlenir ve o ana kadar gelen metin saklanır. Ajan turları kendi 1200 sn bütçesini korur.
+- **Hâlâ çalışan diğer sohbetler** kenar çubuğunda aynı küçük döneni (ve bir "az önce bitti" işaretini) gösterir — arka plan görevleri, WhatsApp/Telegram cevapları ve ikinci bir tarayıcı sekmesi dahil.
+- **Sohbetteki görseller** sunucuda saklanır ve sunucu üzerinden yüklenir; yalnızca sunucunun yanındaki masaüstü uygulamada değil, web sürümünde ve telefonlarda da görünür.
 
 ### Live Mode v2 — Native Sesten-Sese Konuşma
 - Sohbet giriş kutusunun yanında küçük bir ses ikonu — ayrı bir kenar çubuğu sekmesi değil. **Google Live** ya da **OpenAI Realtime** üzerinden gerçek native sesten-sese konuşma — transkribe-sonra-TTS akışı değil.
@@ -142,7 +154,13 @@ Memo sadece bir sohbet değil, bir "İkinci Beyin"dir.
 
 ### Çoklu-Sağlayıcı Mimarisi
 Memo, yerel modellerin yanı sıra harici LLM API'lerine bağlanır:
-- **Desteklenen Sağlayıcılar (16 `ProviderType` değeri):** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, genel bir **Custom** (herhangi bir OpenAI-uyumlu endpoint), **Custom (Anthropic-uyumlu)** (herhangi bir Anthropic Messages API-şekilli endpoint — ör. kendi proxy'niz), **OpenCode Zen** (kullandıkça öde, bazı modeller ücretsiz), **OpenCode Go** (abonelik), **Kilo Code** (app.kilo.ai — kullandıkça öde, bazı modeller ücretsiz), ve **Abonelikler** — Antigravity, Claude ya da Codex hesabınla (Memo'nun içinde gelen CLIProxyAPI yardımcısı üzerinden) giriş yap; hesabın sunduğu her model sohbetin model seçicisinde, `/model`'de ve yerel `/v1` ağ geçidinde seçilebilir, ayrı bir API anahtarı yok. Gateway-tarzı sağlayıcılar, bir model adını elle yazmak yerine canlı bir model listesinden seçmenize izin verir, ücretsiz modeller yeşil tikle üstte sıralanır.
+- **Desteklenen Sağlayıcılar (16 `ProviderType` değeri):** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, gömülü `llama.cpp`, genel bir **Custom** (herhangi bir OpenAI-uyumlu endpoint), **Custom (Anthropic-uyumlu)** (herhangi bir Anthropic Messages API-şekilli endpoint — ör. kendi proxy'niz), **OpenCode Zen** (kullandıkça öde, bazı modeller ücretsiz), **OpenCode Go** (abonelik), **Kilo Code** (app.kilo.ai — kullandıkça öde, bazı modeller ücretsiz), **Cline** (api.cline.bot, v4.6.0'da yeni — OpenAI-uyumlu; OpenRouter, Kilo ve OpenCode Zen gibi model başına ücretsiz/ücretli katalogla) ve iki CLI sağlayıcısı (Claude Code, Codex). Gateway-tarzı sağlayıcılar, bir model adını elle yazmak yerine canlı bir model listesinden seçmenize izin verir, ücretsiz modeller yeşil tikle üstte sıralanır.
+- **Sağlayıcı Ekle, maliyet etrafında düzenlendi (v4.6.0):** gerçek bir ücretsiz katmanı olan sağlayıcılar yeşil bir rozet taşır ve ücretlilerden ayrı kendi grubunda durur. Gerçek bir ücretsiz-model kataloğu olan dört sağlayıcıda (OpenRouter, Kilo Code, OpenCode Zen, Cline) **Ücretsiz model seç** düğmesi tek tıkla çalışan bir 0 TL'lik modeli seçer.
+- **Abonelikler (v4.6.0)** — ayrı bir sağlayıcı türü değil, *Subscriptions* adlı önceden yapılandırılmış bir `custom` sağlayıcı (`internal/app/subs.go`): Ayarlar › Abonelikler'den bir **Antigravity, Claude ya da Codex** hesabıyla bir kez giriş yap; hesabın sunduğu her model sohbetin model seçicisinde, `/model`'de ve yerel `/v1` ağ geçidinde (`subs/<model>`) seçilebilir, API anahtarı yok. İşi Memo'nun içine gömülü **CLIProxyAPI** (MIT) yapar ve çalışma zamanında asla indirilmez: sabitlenmiş sürümü ve SHA-256'ları `internal/cliproxy/PINNED.txt`'te durur, derlemede ve her başlatmadan önce yeniden doğrulanır; yalnızca loopback'te, rastgele bir anahtarla dinler. Sağlayıcıların kendi OAuth istemcilerini sürekli bozduğu Beta `gemini-sub` / `claude-sub` sağlayıcılarının yerini alır. Sağlayıcılar bu hesaplarda üçüncü taraf istemcilere izin vermeyebilir — sayfa bunu söyler.
+  - **Model seçici** (`widgets/model_picker.dart`): yüksekliği sınırlı, kendi içinde kayan; yedi satırdan fazlada arama, katlanabilir sağlayıcı bölümleri, aile logoları ve okunur adlar ("Gemini 3.7 Flash" + bir "High" etiketi) olan bir panel; saklanan ham kimliktir. Seçilen model yeniden başlatmadan sonra da kalır.
+  - **Kalan hak**: model başına yüzde rozeti ve yenilenmeye kalan süre. Antigravity bunu model başına bildirir; Codex ve Claude hesabı pencerelerle ölçer (Claude 5 sa / 7 gün) ve en sıkışık pencere o sağlayıcının tüm modellerine uygulanır. Kota hiçbir isteği engellemez — rakamlar bir önbellekten gelir ve arka planda yenilenir.
+  - **Kullanım sınırı kartı**: hak bittiği için bir tur ölürse sohbet geri sayımlı bir kart gösterir; "sıfırlanınca otomatik devam et" kutusu (varsayılan açık, cihaz başına hatırlanır) ve "Şimdi devam et" düğmesi; yenilenme anında Memo senin yerine `continue` yazar. Hakkın %10 ve altı kaldığı her pencerede bir kez `quota_low` uyarısı çıkar. Memo açıkken çalışır; kart kalıcı değildir ve CLI ajan sohbetleri, WhatsApp ve görev döngüsü kapsam dışıdır (döngü kendi zamanlayıcısıyla yeniden dener).
+  - **Görseller**: görüntü modelleri kimliğine bakılarak değil, uç noktaya sorularak bulunur — metinden resim için `POST /images/generations`, bir resim eklediğinde `/images/edits`.
 - **Claude ve Gemini artık gerçek tool-calling destekliyor** (önceden ikisinde de tamamen eksikti — herhangi birinde bir ajan/görev-döngüsü turu sessizce tool kullanamıyordu). İkisi de tekli ve paralel tool çağrılarını her sağlayıcının kendi wire formatına göre doğru round-trip ediyor.
 - **Claude Code / Codex CLI sohbet sağlayıcısı olarak (beta):** bir API çağrısı yerine, Memo yerel kurulu bir `claude`/`codex` CLI'sini alt-süreç olarak çalıştırır. Sohbet-başına (uygulama-geneli değil), gerçek zaman-sınırsız bir arkaplan işi olarak çalışır, CLI'nin kendi prompt'suz izin modunu kullanır, ve CLI'nin kendi `/` slash komutları Memo'nun komut popup'ında görünür. Hafıza/kimlik bağlamı gönderilmez — CLI kendi oturumunu yönetir.
 - **Sağlayıcı Arayüzü:** `ChatCompletion`, `ChatCompletionStream`, `ListModels` ile ortak `Provider` arayüzü.
@@ -157,6 +175,9 @@ Memo, yerel modellerin yanı sıra harici LLM API'lerine bağlanır:
 - **API Sağlayıcıları Sekmesi:** Sağlayıcı ekleme/düzenleme için Ayarlar sekmesi.
 - **Yapılandırma Dialog'u:** Sağlayıcı tipi seçici, API anahtarı girişi (maskeli), base URL, model açılır listesi.
 - **Aktif Sağlayıcı Seçimi:** Sohbet için hangi sağlayıcının aktif olduğunu seçin.
+- **OpenRouter'daki görüntü-çıkışlı modeller (v4.6.0):** yalnızca resim üreten bir model OpenRouter'ın görüntü uç noktasına yönlendirilir ve resim cevap olarak gelir (öncesinde her tur 404 alıp "tüm sağlayıcılar başarısız" oluyordu). Hangi modellerin görüntü modeli olduğu OpenRouter'ın kendi kataloğundan okunur; metin gereken arka plan işleri (sohbet başlıkları, hafıza çıkarımı) onları hiç çağırmaz.
+- **Geçersiz anahtar artık "bağlı" görünmez** ve tek aktif sağlayıcı üç hatadan sonra 5 dakika kilitlenmez — geri çekilme yalnızca geri dönülecek başka bir sağlayıcı olduğunda anlamlıdır.
+- **Reddedilen örnekleme parametreleri geri çekilir:** Claude Opus 4.7+ `temperature` ve benzerlerini reddeder; Memo reddi bir kez fark eder ve o sağlayıcı için göndermeyi bırakır. Aynı dene-ve-kilitle valfi, `stream_options.include_usage` ve `cache_control` alanlarını bilmeyen uç noktalar için de çalışır.
 
 ---
 
@@ -164,8 +185,9 @@ Memo, yerel modellerin yanı sıra harici LLM API'lerine bağlanır:
 
 ### Tool Çalıştırma Motoru
 Memo, tam bilgisayar kontrolüne sahip bir yapay zeka ajanı olarak davranır:
-- **27 Yerleşik Tool** (`internal/agent/tools.go`'daki `registerBuiltins()`'e karşı doğrulandı): dosya G/Ç (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`, `change_directory`), `run_command`, `read_env`, `web_search`, `fetch_page`, `self_clone`, `configure_provider`, `get_calendar_events`, görev-döngüsü kontrolü (`get_task_status`, `pause_task`, `resume_task`, `create_task_md`, `edit_task_md`, `start_self_driving_task` — aşağıda §6.5'e bakın), rutinler (`create_routine`, `list_routines`, `cancel_routine`), `share_file`. WhatsApp'ın 4 aracı (`whatsapp_send`/`search`/`latest`/`messages`) bu ana registry'de değil, *ayrı*, kapsamlandırılmış bir registry'de yaşar.
+- **Ana registry'de 40 Yerleşik Tool** (`internal/agent/tools.go`'daki `NewRegistry()` sayılarak doğrulandı — önceki "27"den yukarı): dosya G/Ç (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`, `change_directory`), `run_command`, `read_env`, `web_search`, `fetch_page`, `self_clone`, `configure_provider`, `get_calendar_events`, görev-döngüsü kontrolü (`get_task_status`, `pause_task`, `resume_task`, `create_task_md`, `edit_task_md`, `start_self_driving_task` — aşağıda §6.5'e bakın), rutinler (`create_routine`, `list_routines`, `cancel_routine`), `share_file`, `save_code_plan` (aşağıda Code Mode'a bakın), `open_app` ve yedi `browser_*` tool'u (sonraki bölüme bakın) ve WhatsApp'ın dördü (`whatsapp_send`/`search`/`latest`/`messages`; ayrıca ayrı, kapsamlı bir registry'de de bulunurlar).
 - **Skill tool'ları artık gerçekten çalışıyor.** Bir skill'in `SKILL.md`'si bir `command:` alanı tanımlayabilir, yerleşik tool'larla tamamen aynı tool pipeline'ına ve izin-sorusu arayüzüne bağlanır — önceden bu sadece bir bildirimdi ve hiçbir şey çalıştırmıyordu.
+- **Skill'ler sohbet başına aktiftir (v4.6.0).** Bir skill'i açmak yalnızca onu açtığın sohbeti etkiler; her yeni sohbet hiçbiri olmadan başlar (öncesinde etkinleştirme geneldi ve geçmişte içe aktarılmış skill'ler fark edilmeden çalışmaya devam edebiliyordu). Ayarlar › Skill'ler yalnızca listeler, kurar ve kaldırır; açıp kapatma sohbetin içinde yapılır.
 - **İçe aktarılan skill'ler artık kendi kendine aktive olmuyor (v4.5.0 güvenlik düzeltmesi).** Memo hâlâ başka araçların skill klasörlerinden (ör. Claude Code'unkinden) otomatik olarak skill'leri alıyor — ama yeni keşfedilen bir skill artık bulunduğu anda sistem-promptu yetkisi kazanmak yerine sizin açmanızı bekliyor.
 - **Tool Registry:** JSON Schema parametre tanımlarıyla thread-safe registry.
 - **Tehlike Seviyesi Sistemi:** `safe` (otomatik izinli), `medium` (kullanıcıya sor), `dangerous` (sor + gecikme).
@@ -186,6 +208,13 @@ Memo, tam bilgisayar kontrolüne sahip bir yapay zeka ajanı olarak davranır:
 - **Denetim Kaydı:** Son 1000 tool çalıştırması zaman damgasıyla loglanır.
 
 > **Not:** Ajan frontend arayüzü (izin dialogları, tool çağrı kartları, mod anahtarı) bir süredir yayında ve tamamen çalışıyor — anahtar doğrudan Sohbet'in üst çubuğunda web-arama anahtarının yanında, ayrı bir Ajan-özel ekrana gerek yok.
+
+### Uygulama açma ve tarayıcı sürme (v4.6.0'da yeni)
+- **`open_app`** — "Spotify'ı aç", "Steam'i başlat", "tarayıcıyı aç" adı verilen masaüstü uygulamasını (ya da boş sekmeli varsayılan tarayıcıyı) Windows, macOS ve Linux'ta başlatır. Gerçek bir yan etkidir, bu yüzden izin sisteminden *orta* seviyede geçer; bir kabuk komutunun bir kademe altında. Linux'ta modelin verdiği ad bir görünen addır, bu yüzden exec edilmek yerine Desktop Entry kayıt defteri üzerinden çözülür (Flatpak/Snap uygulamaları dahil). Tool açıklaması, "en son haberler ne" gibi bir soruda tetiklenmesin diye yazılmıştır — o bir web aramasıdır.
+- **Canlı tarayıcı paneli** — sohbetin yanındaki bir panel gerçek ama yalıtılmış bir Chromium sekmesi gösterir (`internal/browserengine/`, kendi profili; kendi tarayıcına ya da hesaplarına asla dokunmaz). Memo onu `browser_navigate`, `browser_click`, `browser_type`, `browser_scroll`, `browser_screenshot`, `browser_get_text` ve `browser_close` ile sürer; panel sayfayı değiştiren her adımdan sonra yeniden çizilir. Sen de Ajan Modu kapalıyken sürebilirsin: bir adres yaz (`https://` gerekmez), ekran görüntüsüne tıklayarak sayfada aynı noktaya tıkla, alttaki satırdan odaklanan alana yaz. Sürükleyerek yeniden boyutlandır; telefonda tam genişlik.
+- **Tıklamalar gerçek seçiciler kullanır**: `browser_get_text` önce tıklanabilir her öğeyi çalışacağı garanti bir seçiciyle listeler (devasa bir sayfa istemi boğmasın diye sınırlı), tıklama tahmin edilmiş bir CSS seçicisi yerine bunlardan birini kullanır.
+- **Ekran görüntüleri sohbet geçmişine asla girmez** — yalnızca panele akar (`browser_frame` parçaları), bu yüzden token harcamaz; bir sayfanın ne dediği metin yolundan okunur. Düz bir "bu siteyi özetle" yine hızlı sayfa-getirme yolundan gider.
+- **Yapısı gereği güvenli**: yalnızca `http`, `https` ve boş sayfa kabul edilir (`file://` yok) ve oturum uç noktaları ajan izni ister.
 
 ### Code Mode: Plan / Auto / Build (v4.5.0'da yeni)
 Code Mode eskiden tek bir aç/kapa anahtarıydı. Artık mesaj kutusunda **Ctrl+Tab** ile (ya da alt durum çubuğundaki çip'e dokunarak) döngülenen, her biri kendi düzenlenebilir sistem promptuna sahip (Ayarlar) üç preset:
@@ -299,6 +328,7 @@ Birden fazla yapay zeka modeli bir takım olarak işbirliği yapar:
 
 ### Kullanım İstatistikleri (Ayarlar → Stats)
 - KPI kartları (toplam istek, giriş/çıkış token'ları, ort. tok/s, en çok kullanılan model), 30 günlük yığılmış günlük-kullanım grafiği ve model-başı döküm — Incognito modu hariç tamamlanan her tur için (yerel, ajan, orchestra ya da harici sağlayıcı) kaydedilir.
+- **Prompt Önbelleği paneli (v4.6.0)**: girdinin ne kadarı önbellekten okundu, ne kadarı ona yazıldı, ne kadarı tam fiyattan gitti, önbellekten sunulan pay ve model/kategori satırlarında "N önbellekten" rozetleri. Akışlı sohbet artık kelime sayısı tahmini yerine sağlayıcının gerçek token sayılarını kullanıyor, Anthropic'in ayrı bildirdiği önbellek token'ları geri ekleniyor (böylece önbellek iyi çalıştıkça girdi *küçük* görünmüyor) ve özel Anthropic-uyumlu uç noktalar da önbellek alıyor. Hiçbir şey bildirmeyen sağlayıcı "bildirilmedi" gösterir, asla ölçülmüş %0 değil. Önbellek yalnızca tool taşıyan (ajan) turlarda istenir — düz bir sohbet turunda getirilen hafıza bloğu her seferinde değişir ve isabet olmadan yazma primini ödetir.
 
 ### Başka Bir Yapay Zekadan Hafıza İçe Aktar (Ayarlar)
 - Başka bir AI asistanından (ChatGPT, Gemini, Claude, ...) yapılandırılmış bir açıklama yapıştırın, Memo bunu `/remember`'ın yaptığı gibi atomik gerçeklere böler, artı kendi sistem promptuna katılan bir iletişim-stili özeti.
@@ -307,7 +337,7 @@ Birden fazla yapay zeka modeli bir takım olarak işbirliği yapar:
 - Tarayıcınızda bir GitHub issue'sunu önceden doldurur (son 10 arkaplan hata olayının opsiyonel bir eki ile) — siz GitHub'da gözden geçirip göndermeden hiçbir şey hiçbir yere gönderilmez.
 
 ### Yeniden Düzenlenmiş Ayarlar
-- Ayarlar ~20 düz sekmeden aranabilir, gruplanmış bir rafa, üstte bir arama kutusuyla taşındı.
+- Ayarlar ~20 düz sekmeden aranabilir, gruplanmış bir rafa, üstte bir arama kutusuyla taşındı. Genel sekmesi Genel, Özellikler, Sıfırlama ve CLI & Kaldırma olarak bölündü.
 
 ---
 

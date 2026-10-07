@@ -87,6 +87,7 @@ type Provider interface {
 - **API Stili:** OpenAI uyumlu
 - **Base URL:** `https://openrouter.ai/api/v1`
 - **Değer:** Tek API ile 200+ model
+- **Görüntü-çıkışlı modeller (v4.6.0):** yalnızca resim üreten bir model eskiden her turu bozuyordu (istek sohbet uç noktasına gidip 404 alıyordu). `openrouter_images.go` bunları OpenRouter'ın özel `POST {base}/images` uç noktasına yönlendirir ve resim cevap olarak gelir; hangi modelin görüntü modeli olduğu model adından değil OpenRouter'ın kendi kataloğundan okunur. Metin gereken arka plan işleri (sohbet başlığı, hafıza çıkarımı) bunları hiç çağırmaz.
 
 ### 7. Ollama (`ollama.go`, 28 satır)
 - **API Stili:** OpenAI uyumlu
@@ -113,6 +114,31 @@ type Provider interface {
 
 ### 11. Özel (Anthropic uyumlu) (`custom_anthropic.go`, bu branch'te eklendi)
 - `*claudeProvider`'ı saran ince bir sarmalayıcı (`grok.go`/`openrouter.go`'nun `openAIProvider`'ı sardığı desenin aynısı, ama Anthropic wire formatı için). Kullanıcının kendi Anthropic-uyumlu proxy'sini (OpenAI base URL değil) bağlayabilmesi için — `claude.go`'nun tool-calling desteğinin tamamını bedavaya miras alıyor. `BaseURL` zorunlu (boşsa `Validate()` reddediyor, `custom` ile aynı kural).
+
+### Cline (`cline.go`, v4.6.0)
+
+Cline'ın barındırılan geçidi `https://api.cline.bot` için ince bir OpenAI-uyumlu sarmalayıcı (`clineProvider{*openAIProvider}`) — `openrouter.go` ve `kilo.go` ile aynı şekil. Seçicide kendi logosu var ve OpenRouter / Kilo / OpenCode Zen gibi model başına gerçek bir ücretsiz/ücretli kataloğu taşır. Sağlayıcı Ekle'de gerçek bir ücretsiz katmanı olan sağlayıcılar yeşil rozetle kendi grubunda durur; bu dördü (OpenRouter, Kilo Code, OpenCode Zen, Cline) tek tıkla çalışan bir 0 TL'lik model seçen **Ücretsiz model seç** düğmesini sunar.
+
+### Abonelikler (`internal/cliproxy/`, v4.6.0)
+
+Sağlayıcı başına tek giriş — **Antigravity, Claude, Codex** — ve hesabın sunduğu her model Memo'da seçilebilir olur. İşi, Memo'nun *içinde* gelen ve çalışma zamanında asla indirilmeyen **CLIProxyAPI** (`router-for-me/CLIProxyAPI`, MIT) yapar; Memo onu yalnızca loopback'te, rastgele istemci anahtarıyla bir alt süreç olarak çalıştırır ve `Subscriptions` adlı sıradan bir `custom` sağlayıcı olarak kaydeder (`internal/app/subs.go`). Yeni bir `ProviderType` değildir; kullanıcının kendi `custom` sağlayıcılarından adıyla ayrılır ve geliştirici ağ geçidinde `subs/<model>` görünür.
+
+- **Nerede kullanılır:** sohbetin sağ üstteki model seçicisi ve `/model` hesabın canlı modellerini listeler (sağlayıcıya göre gruplu). Giriş/çıkış Ayarlar › Abonelikler'de. Model değiştirmek yalnızca `ProviderConfig.Model`'i yeniden yazar (`PUT /api/providers/model`). Seçilen model yeniden başlatmadan sonra da kalır.
+- **Bütünlük:** sabitlenmiş sürüm ve platform başına SHA-256'lar `internal/cliproxy/PINNED.txt`'te; derleme doğrular, uygulama da her başlatmadan önce yeniden doğrular.
+- **Yerini aldı:** Beta `gemini-sub` ve `claude-sub` sağlayıcıları (kendi OAuth istemcilerini sağlayıcılar sürekli bozuyordu). Kalıntı bir kayıt ilk açılışta silinir, token'ları da silinir.
+- **Yavaş başlangıç tolere edilir:** gerçek yardımcı başladıktan ~30 sn model listelemez; `syncSubscriptions` önceki oturumun modelini hemen kaydeder, listeyi 120 sn'ye kadar bekler ve boş cevabı asla önbelleğe almaz.
+- **Model seçici (`widgets/model_picker.dart`):** yüksekliği sınırlı, kayan panel; yedi satırdan fazlada arama, katlanabilir sağlayıcı bölümleri, aile logoları, okunur adlar. Açıldıktan 2,5 sn sonra ve her 50 sn'de yenilenir.
+- **Kalan hak:** Antigravity model başına bildirir; Codex (`wham/usage`) ve Claude (`oauth/usage`) hesabı pencerelerle ölçer ve en sıkışık pencere o sağlayıcının tüm modellerine uygulanır. Token `internal/cliproxy` dışına çıkmaz. `Manager.QuotaSnapshot` asla bloklamaz (önbellek, 30 sn, arka planda yenileme). Claude ayrıştırıcısı uç noktanın bilinen biçiminden yazıldı, canlı girişle **doğrulanmadı**.
+- **Kullanım-sınırı kartı + otomatik devam:** hak bittiği için ölen tur, hata parçasından hemen önce `quota_exhausted` işaretçisi taşır; temiz bir turdan sonra ≤%10 kalınca `quota_low` (pencere başına bir kez) — ikisi de `Server.withQuotaSignals`'ta eklenir. Yenilenme zamanı hata metninden (Codex `resets_in_seconds`/`resets_at`, Antigravity "reset after 2h12m3s" — yayınlanmış davranıştan, canlı doluşta doğrulanmadı), yoksa kota anlık görüntüsünden gelir. Flutter kartı geri sayar ve cihaz tercihi `memo_quota_auto_continue` açıksa (varsayılan) `resumeAt` geçince `continue` gönderir. Yalnızca bellekte; CLI ajan akışları, WhatsApp ve Self-Driving döngüsü sarılmaz.
+- **Görseller (`provider/openai_images.go`):** görüntü modelleri kimliğe bakılarak değil uç noktaya sorularak bulunur. Prompt'suz bir `POST /images/generations`'ı yardımcı yerelde ~1 ms'de cevaplar; reddettiği model Gemini-biçimli katalogdaki `supportedOutputModalities` ile denetlenir. Eklenen resimler `/images/edits`'in `images[]`'ine dönüşür. Codex'in görüntü modeliyle doğrulandı (metinden-resme ve resimden-resme); Antigravity'nin görüntü modeline Google denenen hesapta şu an 500 dönüyor.
+- **Risk:** hesaplar üçüncü taraf bir istemci üzerinden kullanılır; sağlayıcılar kısıtlayabilir. Ayarlar sayfası bunu söyler.
+
+### Sağlayıcı katmanında v4.6.0'da eklenenler
+
+- **Token muhasebesi.** `provider.Usage.PromptTokens` her zaman *tam* girdidir, önbellektekiler dahil. OpenAI-uyumlu API'ler `cached_tokens`'ı alt küme olarak bildirir; Anthropic `cache_read_input_tokens`/`cache_creation_input_tokens`'ı `input_tokens`'ın *yanında* bildirir (önbellek iyi çalıştıkça `input_tokens` küçülür) — `claude.go`'daki `toUsage()` bunları geri ekler. Sıfır önbellek rakamı "bildirilmedi" demektir, ölçülmüş %0 değil.
+- **Prompt önbelleği** yalnızca tool taşıyan (ajan) turlarda istenir; düz sohbet hafıza bloğunu her tur yeniden kurar ve isabet olmadan yazma primi öder. Özel Anthropic-uyumlu uç noktalar da artık önbellek alıyor (eskiden `api.anthropic.com`'a kapılıydı).
+- **Bilinmeyen istek alanları için dene-ve-kilitle valfi:** `stream_options.include_usage` ve `cache_control` her yerde denenir, 400/422 reddinde geri çekilir (401/404/429/5xx'te değil), süreç boyunca sağlayıcı başına kilitlenir. Claude Opus 4.7+ `temperature` ve benzerlerini reddeder — aynı valf onları göndermeyi bırakır.
+- Claude thinking blokları ajan tool döngüsü boyunca geri oynatılır; boş `finish_reason` "bitmedi" sayılır; `ListModels` gövdeyi çözmeden önce HTTP durumuna bakar; geçersiz anahtar artık "bağlı" görünmez.
 
 ### 12-13. Claude Code CLI ve Codex CLI (`internal/agentcli/`, CLI tabanlı — v3.3.4)
 
@@ -199,8 +225,8 @@ func deriveKey() []byte {
 
 | Özellik | Implementasyon |
 |---------|---------------|
-| **Sıralama** | Sağlayıcılar ekleme sırasına göre döner (`Priority` alanı kullanılmaz) |
-| **Auto-disable** | 3 ardışık başarısızlıkta sağlayıcı otomatik devre dışı bırakılır |
+| **Sıralama** | Adaylar `Priority` değerine göre azalan sıralanır (kararlı sıralama; eşit önceliklerde ekleme sırası korunur) |
+| **Auto-disable** | 3 ardışık başarısızlıktan sonra sağlayıcı atlanır — ama yalnızca başka bir aday sağlıklıyken. *Her* aday devre dışıysa hepsi yine de denenir; böylece tek aktif sağlayıcı üç 429 yüzünden 5 dakika kilitlenmez (v4.6.0). Bir başarı onu anında geri açar |
 | **Health check** | Arka plan goroutine (5 dk aralıkla) disabled sağlayıcıları test eder |
 | **Hata sınıflandırma** | Rate limiting (429), auth (401/403), timeout — hepsi fallback tetikler |
 

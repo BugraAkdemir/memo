@@ -40,6 +40,7 @@ Memo'nun özellik-özellik tam listesi. Tam detay: `docs/tr/FEATURES.md`.
 | OpenCode Zen (v3.3.3) | ✅ | API anahtarı — pay-as-you-go, bazı modeller ücretsiz; ücretsiz-sıralı model tarayıcı (v3.9.0) |
 | OpenCode Go (v3.3.3) | ✅ | API anahtarı — abonelik tabanlı |
 | Kilo Code (v3.9.0) | ✅ | API anahtarı — app.kilo.ai, pay-as-you-go, bazı modeller ücretsiz, ücretsiz modeller en üstte canlı model tarayıcı |
+| Cline (v4.6.0) | ✅ | API anahtarı — api.cline.bot, OpenAI-uyumlu, model başına ücretsiz/ücretli katalog; Sağlayıcı Ekle ücretsiz katmanı olan sağlayıcıları yeşil rozetle gruplar ve **Ücretsiz model seç** düğmesi sunar (OpenRouter, Kilo Code, OpenCode Zen, Cline) |
 | Claude Code CLI (Beta, v3.3.4) | ✅ | Yok — kurulu `claude` CLI'ını subprocess olarak çalıştırır |
 | Codex CLI (Beta, v3.3.4) | ✅ | Yok — kurulu `codex` CLI'ını subprocess olarak çalıştırır |
 | Abonelikler (v4.6.0) | ✅ | Antigravity, Claude ya da Codex hesabınla bir kez giriş (Memo'nun içindeki CLIProxyAPI yardımcısı); hesabın sunduğu her model model seçicide, `/model`'de ve yerel `/v1` ağ geçidinde görünür — ayrı API anahtarı yok. Beta gemini-sub / claude-sub sağlayıcılarının yerini aldı |
@@ -121,8 +122,11 @@ Sade dil + kurulum: [[Memo Swarm]].
 
 | Özellik                       | Durum      |
 | ----------------------------- | ---------- |
-| 27 yerleşik araç, ana registry (`registerBuiltins()`'e karşı doğrulandı, eski "22"den büyüdü) | ✅          |
-| WhatsApp'ın 4 aracı — ayrı, kapsamlandırılmış registry, 27'nin parçası değil | ✅ |
+| Ana registry'de 40 yerleşik araç (`NewRegistry()` sayılarak doğrulandı, eski "27"den büyüdü): dosya/düzenleme/komut/arama/takvim/rutin/web-arama/fetch-page/sağlayıcı-ayarı/self-clone/görev-döngüsü, `save_code_plan`, `open_app`, yedi `browser_*` ve WhatsApp'ın dördü | ✅          |
+| `open_app` — "Spotify'ı aç / tarayıcıyı aç" Windows/macOS/Linux'ta masaüstü uygulaması başlatır | ✅ (v4.6.0) — Medium tehlike seviyesi; Linux adları Desktop Entry üzerinden çözülür |
+| Canlı etkileşimli tarayıcı paneli — Memo (ya da sen elle) sohbetin yanında yalıtılmış bir Chromium sekmesini sürer | ✅ (v4.6.0) — `browser_*` araçları, `browser_frame` SSE parçaları, ekran görüntüleri sohbet geçmişine girmez, yalnızca `http(s)` kabul edilir |
+| Sohbet başına aktif skill'ler | ✅ (v4.6.0) — yeni sohbet hiçbiri olmadan başlar; Ayarlar › Skill'ler yalnızca listeler/kurar/kaldırır |
+| WhatsApp'ın 4 aracı | ✅ — ana registry'de ve ayrıca kapsamlandırılmış ayrı bir registry'de |
 | `create_routine`/`list_routines`/`cancel_routine` | ✅ (v3.9.0) — normal sohbetten ya da WhatsApp/Telegram kendine-sohbet asistanından kullanılabilir |
 | Görev döngüsü kontrolü: `get_task_status`/`pause_task`/`resume_task`/`create_task_md`/`edit_task_md`/`start_self_driving_task` | ✅ (v4.4.0, bkz. aşağıdaki Self-Driving bölümü) |
 | 3 seviyeli tehlike            | ✅          |
@@ -233,7 +237,13 @@ Detay: [[Telegram Entegrasyonu]]
 
 | Özellik | Durum |
 |---------|-------|
-| Akışlı SSE yanıtları | ✅ |
+| Akışlı SSE yanıtları | ✅ — sabit toplam süreyle değil sessizlikle (300 sn) biter; 10 sn'lik `heartbeat` parçaları (v4.6.0) |
+| Geçen süreli canlı ilerleme satırı ve 30 sn'lik "sunucudan haber yok" uyarısı | ✅ (v4.6.0) |
+| Hâlâ cevap üreten her sohbette kenar çubuğu döneni (arka plan görevleri, WhatsApp/Telegram, diğer sekmeler) | ✅ (v4.6.0) |
+| Model seçici paneli (arama, katlanır sağlayıcı bölümleri, logolar, kalan-hak rozetleri) | ✅ (v4.6.0) |
+| Geri sayımlı ve otomatik devam eden kullanım-sınırı kartı | ✅ (v4.6.0) — Abonelikler; yalnızca bellekte, Memo açıkken çalışır |
+| Hafıza sekmesi: Bilinen Bilgiler / Sohbet Geçmişi, düzenleme ve seçerek silme | ✅ (v4.6.0) |
+| Kullanım İstatistikleri: Prompt Önbelleği paneli | ✅ (v4.6.0) — sağlayıcı önbellek rakamı göndermezse "bildirilmedi" |
 | Markdown işleme | ✅ |
 | Görsel ekleme (vision) | ✅ |
 | Dosya bağlamı ekleme | ✅ |

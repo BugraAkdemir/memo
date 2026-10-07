@@ -8,13 +8,17 @@ Memo Backend, Flutter Frontend veya üçüncü parti istemciler için kapsamlı 
 | Metot | Endpoint | Açıklama |
 |--------|----------|----------|
 | `POST` | `/api/send` | Normal mesaj gönderimi (non-streaming) |
-| `POST` | `/api/send/stream` | Akışlı (SSE) mesaj gönderimi |
+| `POST` | `/api/send/stream` | Akışlı (SSE) mesaj gönderimi — aşağıdaki "İşaretçi parçalar"a bakın |
+| `GET` | `/api/chats/streaming` | `{chat_ids}` — şu an cevap üreten sohbetler (kenar çubuğu döneni) (v4.6.0) |
+| `GET` | `/api/image?path=` | Saklı bir sohbet görselinin `{data: base64}`'ü; yalnızca backend'in kendi görsel klasörleri sunulur (v4.6.0) |
 | `POST` | `/api/send_file` | Dosya/görsel içeren mesaj (Multipart) |
 | `GET` | `/api/chats` | Tüm oturumları listele |
 | `POST` | `/api/chats/new` | Yeni oturum oluştur |
 | `POST` | `/api/chats/switch` | Aktif oturumu değiştir |
 | `POST` | `/api/chats/delete` | Oturumu sil |
 | `GET` | `/api/messages` | Aktif oturum geçmişini getir |
+
+**Sohbet SSE akışındaki işaretçi parçalar (v4.6.0).** Bir parça, `finish_reason`'ı bir işaretçi değilse cevap metnidir; istemciler bilinmeyen işaretçiyi yok sayar, asla yazdırmaz. `heartbeat` (boş; 10 sn sessizlikte, istemcinin boşta kalma zaman aşımını sıfırlar), `agent_event` (JSON araç olayı), `browser_frame` (JSON `{screenshot, timestamp}`, yalnızca canlı panel, geçmişe kaydedilmez), `quota_exhausted` / `quota_low` (JSON `QuotaSignal`: `kind`, `provider`, `model`, `vendor`, `remaining_percent`, `reset_at`, `window`). Düz bir sohbet turu 300 sn sessizlikten ya da toplam 30 dk'dan sonra biter — sabit 300 sn'den sonra değil. `GET /api/messages` ve update/delete kardeşleri `chat_id` alır; almazsa genel aktif sohbete işler.
 
 ### Hafıza Yönetimi
 | Metot | Endpoint | Açıklama |
@@ -23,6 +27,11 @@ Memo Backend, Flutter Frontend veya üçüncü parti istemciler için kapsamlı 
 | `POST` | `/api/incognito` | Gizli modu aç/kapat |
 | `GET`/`DELETE` | `/api/memory/files` | Hafıza dosyalarını listele/sil |
 | `POST` | `/api/memory/clear` | Tüm hafızayı sıfırla |
+| `GET` | `/api/memory/known-facts` | Sabitlenmiş her bilgi ("Memo senin hakkında ne biliyor"), sorgu gerekmez (v4.6.0) |
+| `GET` | `/api/memory/conversation?limit=&offset=` | Sıradan sohbet hafızalarından bir sayfa: `{results, total}` (v4.6.0) |
+| `POST` | `/api/memory/delete-by-ids` | `{ids}` — tam olarak bu kayıtları sil, asla bir desen değil; `{deleted}` döner (v4.6.0) |
+| `POST` | `/api/memory/pinned/update` | `{id, content, tags}` — tek bir sabitlenmiş bilgiyi yeniden yaz (v4.6.0) |
+| `POST` | `/api/memory/explicit/save`, `/api/memory/explicit/delete` | Açık bir "bunu hatırla" hafızasını kaydet / kaldır |
 | `GET`/`PUT` | `/api/system-prompt` | Sistem promptunu getir/güncelle |
 
 ### Model Kontrolü
@@ -45,6 +54,9 @@ Memo Backend, Flutter Frontend veya üçüncü parti istemciler için kapsamlı 
 | `POST` | `/api/providers/test` | Sağlayıcı bağlantısını test et |
 | `GET`/`PUT` | `/api/providers/active` | Aktif sağlayıcıyı getir/ayarla |
 | `GET` | `/api/kilo/models` | Kilo Code'dan canlı model listesi, ücretsiz modeller işaretli (v3.9.0) |
+| `GET`/`PUT` | `/api/providers/model` | Model seçici (v4.6.0): `GET ?name=` sağlayıcının canlı modellerini listeler (Abonelik modelleri `remaining`, `reset_at`, `quota_window` taşır; `fresh=1` güncel kota için ≤3 sn bekler), `PUT {name, model, activate}` yalnızca modelini değiştirir. Saklı bir anahtar harcar, bu yüzden modeller izni ister |
+| `GET` | `/api/providers/models` | Çağıranın verdiği bir anahtar için model listesi |
+| `GET`/`POST` | `/api/subscriptions` | Abonelikler yardımcısı (v4.6.0): durum + `login` (`antigravity` \| `claude` \| `codex`) / `cancel_login` / `logout`. POST yalnızca yöneticiye açık; GET yardımcıyı asla başlatmaz |
 | `GET` | `/api/opencode-zen/models` | OpenCode Zen'den canlı model listesi, ücretsiz modeller `-free` id son ekiyle işaretli (v3.9.0) |
 
 ### Hesaplar ve İzinler (self-hosted, v3.5.5 + v3.9.0)
@@ -109,7 +121,25 @@ Detay: [[Proaktif Öğrenme ve Takvim]]
 ### İstatistikler (v3.3.3)
 | Metot | Endpoint | Açıklama |
 |--------|----------|----------|
-| `GET` | `/api/stats/usage?days=N` | Kullanım istatistikleri (token, hız, model dağılımı, günlük seri) — varsayılan 30 gün |
+| `GET` | `/api/stats/usage?days=N` | Kullanım istatistikleri (token, hız, model dağılımı, günlük seri) — varsayılan 30 gün. v4.6.0 prompt-önbelleği ayrımını ekler: `total_cached_prompt_tokens`, `total_cache_write_tokens` ve model/kategori başına `cached_prompt_tokens` / `cache_write_tokens`; sıfır "bildirilmedi" demektir, ölçülmüş %0 değil |
+
+### Etkileşimli Tarayıcı Paneli (v4.6.0)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `POST` | `/api/browser/session/navigate` | `{url}` (şema isteğe bağlı) |
+| `POST` | `/api/browser/session/click` | `{x, y}`, ekran görüntüsünün piksel uzayında |
+| `POST` | `/api/browser/session/type` | `{text, enter}` |
+| `POST` | `/api/browser/session/scroll` | `{dx, dy}` |
+| `GET` | `/api/browser/session/status` | `{active, url}` |
+| `POST` | `/api/browser/session/close` | Oturumu bitir |
+
+Hepsi ajan izni ister, yalnızca `http`/`https`/boş sayfa kabul eder ve `{screenshot_base64, url, error}` döner. Ayrıntı: [[Ajan Modu]]
+
+### Skill'ler (sohbet başına, v4.6.0)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `GET` | `/api/skills/active-list?chat_id=` | Bir sohbette aktif skill'ler |
+| `PUT` | `/api/skills/active` | `{chat_id, names}` — o sohbetin aktif skill'lerini ayarla; yeni sohbet hiçbiri olmadan başlar |
 
 Detay: [[Özellik Kataloğu]]
 

@@ -22,6 +22,17 @@ Beta build'leri stable'dan ayrı takip etmek isteyenler için ayrı, dedike beti
 ## macOS Sandbox Entitlement'ları (2026-08-05, aynı oturumda düzeltildi)
 `frontend/macos/Runner/{Release,DebugProfile}.entitlements` dosyalarında `com.apple.security.network.client` eksikti — bu, macOS'ta yerel backend'e giden Dio çağrılarını App Sandbox seviyesinde engelliyordu ve gerçek bir kullanıcının bildirdiği "connection error" şikayetinin sebebiydi. Aynı zamanda `device.audio-input` (`record` paketi için mikrofon erişimi — Sesli Mod/STT'nin macOS'ta çalışması için gerekli) ve `files.user-selected.read-write` (`file_picker` için) de eksikti; `Info.plist`'te `NSMicrophoneUsageDescription` yoktu. Hepsi düzeltildi (commit `420e6a5`).
 
+## AppImage ve CI yayın kanalları (v4.6.0)
+
+`.github/workflows/build-linux.yml` içindeki Linux x86_64 job'u aynı hazırlanmış klasörden bir **tar.gz** ve bir **AppImage** üretir (`run_memo.sh` AppImage'ın `AppRun`'ıdır). AppImage, AppStream bilgisi (`com.memocpp.Memo`, `packaging/com.memocpp.Memo.metainfo.xml.in`'den üretilir) ve masaüstü kısayol bilgisi taşır; adı `Memo-v<sürüm>-x86_64.AppImage`.
+
+| Tetikleyici | GitHub Release | `data.memocpp.com` |
+|---|---|---|
+| `v*` etiketi push'u | zip + `Memo-v<sürüm>-x86_64.AppImage` | `memo.tar.gz`, `memo.AppImage` (kararlı) |
+| `main`'e her push | — | `memo_beta.tar.gz`, `memo_beta.AppImage` (beta) |
+
+AppImage, tar.gz'nin kanal mantığını birebir izler. Linux arm64 hâlâ AppImage'sız zip olarak çıkar (`memo_arm.zip` / `memo_arm_beta.zip`). Etiketsiz bir derleme sürümünü `version` dosyasından, baştaki `V` atılarak alır.
+
 ## Dağıtım Formatları
 - **Portable Folder / tar.gz:** Tüm bağımlılıkların içinde olduğu klasör/arşiv.
 - **AppImage:** Tek dosyada çalışan Linux paketi — üretiliyor.

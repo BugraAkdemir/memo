@@ -1,19 +1,20 @@
-# Memo v4.5.0
+# Memo v4.6.0
 
 **Alışkanlıklarını öğrenen ve sen sormadan harekete geçen yapay zeka asistanı.**
 
 Yerel-öncelikli · Gizlilik-öncelikli · Sıfır bulut bağımlısı · Tamamen çevrimdışı
 
-> **Güncel sürüm: v4.5.0.** Bu sürümün iki başlıca eklemesi: Memo'nun gerçekte ne yaptığını gerçek zamanlı gösteren küçük animasyonlu bir **masaüstü maskotu** (kendi her-zaman-üstte penceresi, iki seçilebilir cilt), ve **üç vitese bölünen Code Mode** — Plan / Auto / Build, Ctrl+Tab ile döngülenir, her birinin kendi düzenlenebilir sistem promptu. Bunların yanında: her iki Geliştirici Ağ Geçidi endpoint'i de (Anthropic- ve OpenAI-uyumlu) artık loopback-olmayan çağıranlar için API anahtarını zorunlu kılıyor, içe aktarılan skill'ler artık kendi kendine aktive olmuyor, Live Mode sessizce kendi sesini yankılamak yerine gerçek hata nedenlerini bildiriyor, ve bir güvenilirlik turu (önceden ölü ~20 hata ekranına yeniden-dene düğmesi, daha dostane hata çevirisi, düzeltilen bir HuggingFace avatar 404 seli). Değişiklik günlüğü: `versinNote/tr/v4.5.0.md`.
+> **Son etiketli sürüm: v4.5.0** (v4.6.0 `main`'de derleniyor; başlıca özellikleri aşağıdaki listede). Bu sürümün iki başlıca eklemesi: Memo'nun gerçekte ne yaptığını gerçek zamanlı gösteren küçük animasyonlu bir **masaüstü maskotu** (kendi her-zaman-üstte penceresi, iki seçilebilir cilt), ve **üç vitese bölünen Code Mode** — Plan / Auto / Build, Ctrl+Tab ile döngülenir, her birinin kendi düzenlenebilir sistem promptu. Bunların yanında: her iki Geliştirici Ağ Geçidi endpoint'i de (Anthropic- ve OpenAI-uyumlu) artık loopback-olmayan çağıranlar için API anahtarını zorunlu kılıyor, içe aktarılan skill'ler artık kendi kendine aktive olmuyor, Live Mode sessizce kendi sesini yankılamak yerine gerçek hata nedenlerini bildiriyor, ve bir güvenilirlik turu (önceden ölü ~20 hata ekranına yeniden-dene düğmesi, daha dostane hata çevirisi, düzeltilen bir HuggingFace avatar 404 seli). Değişiklik günlüğü: `versinNote/tr/v4.5.0.md`.
 
 ---
 
-## Bu döngüde yayınlananlar (v4.0.0 → v4.5.0)
+## Bu döngüde yayınlananlar (v4.0.0 → v4.6.0)
 
 - **v4.0.0** — sistem promptunda gerçek zaman farkındalığı ("son mesajdan bu yana ne kadar geçti"), WhatsApp üçüncü kişi sohbet devralma.
 - **v4.3.0** — **[[Multimodal Yetenekler (Görsel ve Ses)|Live Mode v2]]**: native audio-to-audio ses (Google Live / OpenAI Realtime), delegate/standalone modlar, barge-in, ElevenLabs + özel motorlar; WhatsApp'ın yanına ikinci bir mesajlaşma köprüsü olarak **[[Telegram Entegrasyonu|Telegram]]** eklendi.
 - **v4.4.0** — **Self-Driving Görev Döngüsü**: bir `Task.md` kontrol listesi gözetimsiz, çok-adımlı bir çalıştırmaya dönüşüyor — plan onaylı planlayıcı/uygulayıcı modu, en fazla 3 paralel alt-ajan (coder + analyzer/reviewer/test-runner), artan tekrar deneme, sohbet içi canlı aktivite; Claude ve Gemini sağlayıcıları için gerçek tool-calling (önceden tamamen eksikti); yeni bir Anthropic-uyumlu Custom sağlayıcı tipi; OpenAI-uyumlu bir Geliştirici Ağ Geçidi kardeşi; **gemini-sub** (Beta) — kişisel bir Google hesabıyla giriş yap, kendi kotanla Gemini'ye eriş.
-- **v4.5.0 (güncel)** — **masaüstü maskotu**; **Code Mode'un Plan/Auto/Build alt-modları**; her iki Geliştirici Ağ Geçidi endpoint'i de artık loopback-olmayan çağıranlar için anahtar zorunlu kılıyor; içe aktarılan skill'ler artık kendi kendine aktive olmuyor; daha net Live Mode hata mesajları; ~20 ölü hata ekranı genelinde bir güvenilirlik turu; düzeltilen bir Model Mağazası avatar 404 seli.
+- **v4.6.0 (`main`'de, sürüm notları yazıldı, `version` henüz yükseltilmedi)** — Memo **uygulama açabiliyor** ve sohbetin yanındaki bir panelde canlı gösterilen **yalıtılmış bir tarayıcıyı sürebiliyor** (sen de elle kullanabilirsin); uzun cevaplar uzunlukla değil sessizlikle bitiyor, canlı ilerleme satırıyla; **Abonelikler** — Antigravity / Claude / Codex hesabıyla bir kez giriş, bütün modeller yeni model seçici panelinde, kalan hak rozetleri, kendi kendine devam eden kullanım-sınırı kartı ve resim üretme/düzenleme ile; **Android ve iOS** için tek Flutter uygulaması; baştan yapılan **Hafıza** sekmesi (gör, düzenle, seçerek sil); Kullanım İstatistikleri'nde prompt-önbelleği muhasebesi; **Cline** sağlayıcısı; sohbet başına skill; güvenlik turu; AppImage'ın tar.gz ile aynı kararlı/beta indirme kanallarında yayını. Bkz. [[Harici Sağlayıcılar]], [[Ajan Modu]], [[Mobil Uygulama]].
+- **v4.5.0 (son etiketli sürüm)** — **masaüstü maskotu**; **Code Mode'un Plan/Auto/Build alt-modları**; her iki Geliştirici Ağ Geçidi endpoint'i de artık loopback-olmayan çağıranlar için anahtar zorunlu kılıyor; içe aktarılan skill'ler artık kendi kendine aktive olmuyor; daha net Live Mode hata mesajları; ~20 ölü hata ekranı genelinde bir güvenilirlik turu; düzeltilen bir Model Mağazası avatar 404 seli.
 
 ---
 
@@ -43,4 +44,4 @@ Yerel-öncelikli · Gizlilik-öncelikli · Sıfır bulut bağımlısı · Tamame
 
 ---
 
-**Sürüm**: v4.5.0 · **Lisans**: AGPL v3 · **Teknoloji**: Go 1.26 + Flutter 3.10
+**Sürüm**: v4.5.0 etiketli, v4.6.0 sürüyor · **Lisans**: AGPL v3 · **Teknoloji**: Go 1.26 + Flutter 3.10

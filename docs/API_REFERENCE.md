@@ -12,7 +12,7 @@ For a self-hosted server, this token model sits alongside a full **account syste
 
 `POST /v1/models` and `POST /v1/chat/completions` (`internal/openaiapi/`) are the OpenAI-compatible sibling of the same gateway, for tools that only speak OpenAI's wire format. Both this and the Anthropic-compatible endpoint above now **enforce the configured API key for any non-loopback caller** (v4.5.0 security fix) — previously, with "Require API Key" left off and remote access on, either could be reached by anything else able to reach the port, no credential at all.
 
-This list below is not exhaustive — there are 180+ registered endpoints as of v4.5.0. It groups the major ones by area; see `internal/webserver/server.go`'s `route(...)` calls for the full, current list.
+This list below is not exhaustive — there are 180+ registered endpoints as of v4.6.0. It groups the major ones by area; see `internal/webserver/server.go`'s `route(...)` calls for the full, current list.
 
 ## Endpoints
 
@@ -26,10 +26,24 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 | `POST` | `/api/chats/new` | Create new session |
 | `POST` | `/api/chats/switch` | Switch active session |
 | `POST` | `/api/chats/delete` | Delete session |
-| `GET` | `/api/messages` | Get active chat history |
+| `GET` | `/api/messages` | Get a chat's history. Pass `chat_id` — without it the call acts on the global active chat, which another client can switch at any moment. `/api/messages/update` and `/api/messages/delete` take `chat_id` too |
+| `GET` | `/api/chats/streaming` | `{"chat_ids": [...]}` — every chat that is generating a reply right now (the sidebar's "still working" spinner; covers background tasks, WhatsApp/Telegram replies and other browser tabs) |
 | `GET` | `/api/status` | System status + memory count |
 | `POST` | `/api/incognito` | Toggle incognito mode |
 | `GET`/`PUT` | `/api/system-prompt` | Get/update system prompt |
+
+#### Marker chunks on a chat SSE stream (`/api/send/stream`, `/api/send/file/stream`)
+A streamed chunk is ordinary reply text unless its `finish_reason` names one of these markers. Clients must treat an unknown marker as "ignore", never print it.
+
+| `finish_reason` | `content` | Meaning |
+| :--- | :--- | :--- |
+| `heartbeat` | empty | Sent after 10 s of silence so a long, quiet thinking phase is not mistaken for a dropped connection. A client's own timeout should be an *idle* timeout that these reset |
+| `agent_event` | JSON | A tool event (call, result, permission request) — render as a badge, never as text. Parse defensively |
+| `browser_frame` | JSON `{screenshot, timestamp}` | A fresh screenshot of the interactive browser after a page-changing tool. Streams to the live panel only and is never saved into the chat history |
+| `quota_exhausted` | JSON `QuotaSignal` | The turn failed because the allowance behind the model ran out; arrives just before the error chunk |
+| `quota_low` | JSON `QuotaSignal` | The turn worked but 10% or less is left; sent once per allowance window |
+
+`QuotaSignal` (`internal/models/quota_signal.go`): `kind` (`exhausted` \| `low`), `provider`, `model`, `vendor`, `remaining_percent` (0–100, `-1` unknown), `reset_at` (RFC 3339, empty when unknown), `window` (`5h`, `7d` …). The quota markers are added in one place, `Server.withQuotaSignals`; CLI-agent streams, WhatsApp streams and the Self-Driving loop are not wrapped. A plain chat turn is ended by *silence* (300 s with no chunk, first word included) plus a 30-minute cap, not by a fixed total length.
 
 ### 🧠 Memory
 | Method | Endpoint | Description |
@@ -37,6 +51,11 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 | `GET` | `/api/memory/files` | List memory files |
 | `DELETE` | `/api/memory/files` | Delete a memory file |
 | `POST` | `/api/memory/clear` | Clear all memory |
+| `GET` | `/api/memory/known-facts` | Every currently pinned fact ("what Memo knows about you") — same shape as the debug-search results, no query needed |
+| `GET` | `/api/memory/conversation?limit=&offset=` | A page of ordinary (non-pinned) conversation memories: `{results, total}` |
+| `POST` | `/api/memory/delete-by-ids` | `{ids: [...]}` — delete exactly those records (never a pattern); returns `{deleted: n}` |
+| `POST` | `/api/memory/pinned/update` | `{id, content, tags}` — rewrite one pinned fact |
+| `POST` | `/api/memory/explicit/save`, `/api/memory/explicit/delete` | Save / remove an explicit "remember this" memory (works with no embedding model configured) |
 
 ### 🏭 Models
 | Method | Endpoint | Description |
@@ -157,7 +176,7 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET`/`PUT` | `/api/config/llama` | Get/update llama configuration |
-| `POST` | `/api/image` | Read image (⚠️ path-restricted to `data/`) |
+| `GET` | `/api/image?path=` | `{data: <base64>}` for an image a chat message stored. Only files under the backend's own image directories are served (`..` and everything else is refused). Clients must load chat images through this, never from a local path — the file is on the backend's disk |
 | `POST` | `/api/models/embedding/start` | Start embedding server |
 | `POST` | `/api/models/embedding/stop` | Stop embedding server |
 
@@ -203,7 +222,7 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 ### 📊 Usage Stats
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/stats/usage` | Requests, tokens, avg tok/s, per-model breakdown, 30-day history |
+| `GET` | `/api/stats/usage` | Requests, tokens, avg tok/s, per-model breakdown, 30-day history, and the prompt-cache split: `total_cached_prompt_tokens`, `total_cache_write_tokens` plus `cached_prompt_tokens` / `cache_write_tokens` on each per-model and per-category row. A zero means "the provider reported nothing", not a measured 0% |
 
 ### 🖥️ Claude Code / Codex CLI Providers (beta)
 | Method | Endpoint | Description |
@@ -222,8 +241,16 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 | `GET` | `/api/dev-gateway/logs` | Live request log |
 | `GET` | `/api/dev-gateway/claude-code-cli` | Claude Code CLI connection helper/status |
 | `POST` | `/api/dev-gateway/token/rotate` | Rotate the gateway's API key |
-| `GET` / `POST` | `/api/subscriptions` | Subscriptions (bundled CLIProxyAPI sidecar): state (bundled?, running?, accounts, models, sign-in in flight) and the actions `login` (`provider`: antigravity \| claude \| codex), `cancel_login`, `logout`. POST is admin-only; GET never starts the sidecar |
-| `GET` / `PUT` | `/api/providers/model` | Model selector: `GET ?name=<provider>` lists that provider's live models; `PUT {name, model, activate}` switches only its model. Needs the models permission (it spends a stored key) |
+
+### 🔑 Subscriptions & model selector
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` / `POST` | `/api/subscriptions` | Subscriptions (the bundled CLIProxyAPI sidecar): state (bundled?, running?, accounts, models, sign-in in flight) and the actions `login` (`provider`: `antigravity` \| `claude` \| `codex`), `cancel_login`, `logout`. POST is admin-only; GET never starts the sidecar and waits at most ~2 s for quota figures |
+| `GET` | `/api/providers/model?name=<provider>` | That provider's live models. For `Subscriptions` each model may carry `remaining` (0–1), `reset_at` and `quota_window`. Answers from a quota cache at once; add `fresh=1` (the picker's background refresh) to wait up to 3 s for current figures. Needs the models permission — it spends a stored key |
+| `PUT` | `/api/providers/model` | `{name, model, activate}` — switch only that provider's model (every other setting survives); `activate` also makes it the active provider, so a selector needs one call |
+| `GET` | `/api/providers/models` | Model list for a key the *caller* supplies (never a stored one) |
+
+Quota comes from the vendor with the token in the credential file, which goes only to the vendor — never to this API, logs or UI. Antigravity reports it per model; Codex and Claude meter the account in windows, so the tightest window is applied to all of that vendor's models. The Claude parser is written from the endpoint's known shape and has not been verified against a live Claude sign-in.
 
 ### 🗂️ Skills
 | Method | Endpoint | Description |
@@ -232,7 +259,19 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 | `POST` | `/api/skills/install` | Install a skill |
 | `DELETE` | `/api/skills/remove/{name}` | Remove a skill |
 | `GET` | `/api/skills/get/{name}` | Get one skill's manifest |
-| `GET`/`PUT` | `/api/skills/active-list`, `/api/skills/active` | Get/set active skills |
+| `GET` / `PUT` | `/api/skills/active-list?chat_id=`, `/api/skills/active` (`{chat_id, names}`) | Get/set the skills active **in one chat**. Activation is per chat; a new chat starts with none |
+
+### 🌐 Interactive Browser Pane
+The live browser panel next to the chat drives one isolated Chromium session (`internal/browserengine/`). All session routes need the agent (tool-execution) permission, accept only `http`, `https` and a blank page (no `file://`), and answer `{screenshot_base64, url, error}` so the panel can repaint from a single round trip. `GET`/`PUT /api/browser`, `POST /api/browser/install` and `GET /api/browser/install/progress` manage the optional browser install.
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/browser/session/navigate` | `{url}` — an address without a scheme is accepted |
+| `POST` | `/api/browser/session/click` | `{x, y}` in the screenshot's pixel space |
+| `POST` | `/api/browser/session/type` | `{text, enter}` — typed into whatever the last click focused |
+| `POST` | `/api/browser/session/scroll` | `{dx, dy}` |
+| `GET` | `/api/browser/session/status` | `{active, url}` |
+| `POST` | `/api/browser/session/close` | End the session |
 
 ### 💾 Backup / Export / Wipe
 | Method | Endpoint | Description |
@@ -247,5 +286,7 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 | `GET`/`PUT` | `/api/remote-access` | LAN/ngrok/Tailscale config, requires the access token on remote requests |
 
 ---
+
+**Gating.** Every new route needs an explicit decision: destructive actions (export, import, wipe, uninstall, shutdown) are admin-only; state-changing admin settings whose GET is read ambiently are admin-write with a redacted GET; a GET that carries a credential is redacted for callers without the permission. The single-user desktop (no credential) is never affected.
 
 *For detailed JSON payloads, refer to `internal/webserver/handlers_flutter.go`, the other `handlers_*.go` files, and `internal/webserver/server.go`.*

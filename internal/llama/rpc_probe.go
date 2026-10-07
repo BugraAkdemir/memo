@@ -102,11 +102,16 @@ func resolveCoordinatorBinary(configured, mode string) (string, error) {
 	return bin, nil
 }
 
-func rpcServerBinary() string {
+// rpcServerBinaries lists the file names the RPC worker has shipped under,
+// preferred first. llama.cpp renamed it from rpc-server to ggml-rpc-server
+// (releases from b11xxx on); the bundled tree can hold either depending on which
+// release a given platform's folder was last refreshed from, so both are looked
+// for rather than one being hard-coded.
+func rpcServerBinaries() []string {
 	if runtime.GOOS == "windows" {
-		return "rpc-server.exe"
+		return []string{"ggml-rpc-server.exe", "rpc-server.exe"}
 	}
-	return "rpc-server"
+	return []string{"ggml-rpc-server", "rpc-server"}
 }
 
 // ResolveRPCServerBinary mirrors resolveBinary's bundled-path search
@@ -121,9 +126,11 @@ func ResolveRPCServerBinary(mode string) (string, error) {
 	}
 	for _, base := range binarySearchBases() {
 		for _, flavor := range flavors {
-			p := filepath.Join(base, "binaries", currentOS, flavor, rpcServerBinary())
-			if _, err := os.Stat(p); err == nil {
-				return p, nil
+			for _, name := range rpcServerBinaries() {
+				p := filepath.Join(base, "binaries", currentOS, flavor, name)
+				if _, err := os.Stat(p); err == nil {
+					return p, nil
+				}
 			}
 		}
 	}

@@ -14,6 +14,12 @@ mkdir -p "$(dirname "$VAD_DEST")"
 curl --fail --location --retry 3 "$VAD_URL" --output "$VAD_DEST"
 echo "$VAD_SHA256  $VAD_DEST" | sha256sum --check --status
 
+# NOTE (2026-10-07): newer llama.cpp releases changed asset names, wrap tarballs in
+# llama-<tag>/, ship lib symlinks and renamed rpc-server -> ggml-rpc-server, and the
+# folders also hold Memo's own whisper-server/memo-lora-train that break if ggml is
+# swapped under them. Upgrade with scripts/vendor_llama.sh (it stages and checks);
+# do not just bump VERSION here. See AGENTS.md "Upgrading the bundled llama.cpp".
+#
 # Base URL for latest stable binaries (b9441 as seen in earlier logs)
 VERSION="b9441"
 BASE_URL="https://github.com/ggerganov/llama.cpp/releases/download/$VERSION"

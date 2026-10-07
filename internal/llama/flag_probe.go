@@ -25,9 +25,71 @@ const tuningProbeModel = "__memo_tuning_probe_nonexistent__.gguf"
 // at arg-parsing before model load, and Memo then passes NONE of them —
 // slower, but the server still starts. See tuningFlagsSupported.
 var tuningProbeFlags = []string{
-	"--flash-attn",
 	"--no-context-shift",
 	"--cache-reuse", "256",
+}
+
+// flashAttnSpellings are the ways llama-server has spelled the flash-attention
+// switch, newest first. It used to be a bare boolean (`--flash-attn`); current
+// builds (b11456 checked) REQUIRE a value (`--flash-attn on|off|auto`) and
+// reject the bare form with "expected value for argument". The two are
+// mutually exclusive — each build accepts exactly one — so the spelling is
+// probed per binary instead of assumed, and kept apart from the other tuning
+// flags: tying them together meant the new spelling rule silently disabled
+// --no-context-shift and --cache-reuse as well.
+var flashAttnSpellings = [][]string{
+	{"--flash-attn", "on"},
+	{"--flash-attn"},
+}
+
+// flashAttnCache maps the same path@mtime key as tuningFlagCache to the
+// spelling this build accepts ([]string(nil) = it accepts none).
+var flashAttnCache sync.Map // map[string][]string
+
+// flashAttnArgs returns the flash-attention arguments this llama-server build
+// understands, or nil when it understands none. Like tuningFlagsSupported, a
+// probe that never ran the binary to an arg-parse verdict is not cached.
+func flashAttnArgs(bin string) []string {
+	abs, err := filepath.Abs(bin)
+	if err != nil {
+		abs = bin
+	}
+	key := abs
+	if fi, statErr := os.Stat(abs); statErr == nil {
+		key = abs + "@" + fi.ModTime().UTC().Format(time.RFC3339Nano)
+	}
+	if cached, ok := flashAttnCache.Load(key); ok {
+		return cached.([]string)
+	}
+	for _, spelling := range flashAttnSpellings {
+		supported, concluded := probeFlags(bin, spelling)
+		if !concluded {
+			logx.Printf("llama: flash-attention probe of %s did not complete; not passing it this start, will re-probe next start", filepath.Base(abs))
+			return nil
+		}
+		if supported {
+			flashAttnCache.Store(key, spelling)
+			return spelling
+		}
+	}
+	logx.Printf("llama: %s accepts no spelling of --flash-attn — running without it", filepath.Base(abs))
+	flashAttnCache.Store(key, []string(nil))
+	return nil
+}
+
+// probeFlags runs bin with flags plus a deliberately nonexistent model and
+// reports whether it got past argument parsing (supported), and whether the run
+// reached an arg-parse verdict at all (concluded). A timeout, or a binary that
+// would not even start, is NOT a verdict.
+func probeFlags(bin string, flags []string) (supported, concluded bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	args := append(append([]string{}, flags...), "--model", tuningProbeModel)
+	out, runErr := exec.CommandContext(ctx, bin, args...).CombinedOutput()
+	if ctx.Err() != nil || (runErr != nil && !ranToVerdict(runErr)) {
+		return false, false
+	}
+	return probeReachedModelLoad(string(out)), true
 }
 
 // tuningFlagCache maps a cache key (absolute binary path + "@" + mtime) to

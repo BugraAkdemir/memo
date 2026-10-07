@@ -355,6 +355,25 @@ confirm every single time before tagging or pushing a tag.
   `GetSession`/`StartSession` replace it. Before this, a dead session failed every action forever and kept its idle
   timer alive by being touched.
 
+**Upgrading the bundled llama.cpp (traps found 2026-10-07, b9441 -> b11456 — NOT yet applied to binaries/ or R2)**
+- **The engine folders are not pure llama.cpp.** `linux/cpu` also holds `whisper-server` + `libwhisper.so.1` (speech-to-text) and
+  `memo-lora-train`; `linux/amd` and `linux/nvidia` hold `memo-lora-train`. These are Memo's own builds, LINKED to the folder's
+  own `libggml*.so.0`/`libllama*.so.0`. Verified: dropping b11456's libs next to them kills both at load
+  (`libggml-cpu.so.0: cannot open shared object file`; the new build has no `libggml-cpu.so.0`, only per-CPU `libggml-cpu-*.so`).
+  `scripts/vendor_llama.sh` stages an upgrade WITHOUT touching `binaries/` and REFUSES a folder where a helper would lose a
+  library. Before applying to Linux: rebuild the helpers against the new ggml, or give them a folder of their own (then
+  `internal/whisper` and the lora trainer must look there). Windows/macOS/arm64 folders have no such helpers and stage cleanly, but
+  nothing on this machine can run them — do not ship them untested.
+- **`--flash-attn` now needs a value** (`on|off|auto`); the bare form is rejected ("expected value for argument"), the old builds
+  reject `--flash-attn on`. Memo probes the spelling per binary (`flashAttnArgs`) and no longer ties it to
+  `--no-context-shift`/`--cache-reuse` (a shared probe silently disabled all three). Verified against a real b11456 llama-server
+  with Phi-3 + nomic-embed through the real backend.
+- **`rpc-server` is now `ggml-rpc-server`**; `ResolveRPCServerBinary` accepts both.
+- Release tarballs wrap everything in `llama-<tag>/`, and libs are symlinks — the bundle is plain files (R2/zip drop links), so
+  extract with `cp -L`. NVIDIA stays on b9441: CUDA 12.2 is no longer published (12.8 needs driver >= 570); ROCm moved 7.2 -> 10.0,
+  Windows `win-avx2` -> `win-cpu`, `win-cuda-cu12.2.0` -> `win-cuda-12.4` (+ separate `cudart` archive). R2 `copy` OVERWRITES
+  same-named files and never deletes: back up `binaries/` inside the bucket first.
+
 **Riverpod / async notifiers**
 - Riverpod can rebuild the **same `Notifier`/`AsyncNotifier` class instance** (not a fresh one) when a provider is invalidated while something is still watching it — confirmed empirically in this codebase (`build()` → `onDispose` → `build()` again, same object), not just a theoretical edge case. **Never use a plain `bool` "am I disposed" flag that's only initialized once in a field declaration or reset unconditionally in `build()`** — both are wrong: never resetting it means it stays permanently `true` after the *first* such cycle (poisoning every future call for the rest of the session — this was the real, final root cause of the 2026-07-14 "durdur" button bug, three fix-attempts deep); resetting it unconditionally in `build()` "un-disposes" an *old*, still-running, abandoned call from the previous generation, letting it clobber shared state meant for the new one (this is what BUG-H2 already guards against — see `messages_notifier_dispose_test.dart`). **Use a monotonically-incrementing `int _generation` counter instead**: bump it once per `build()`; every async method captures `final myGeneration = _generation;` at its own entry and only touches shared state while `_generation == myGeneration` still holds. See `MessagesNotifier` in `frontend/lib/providers/chat_provider.dart` for the reference implementation, and `messages_notifier_stale_disposed_flag_test.dart` for the regression test that forces this exact instance-reuse cycle.
 

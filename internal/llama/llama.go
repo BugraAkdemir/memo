@@ -256,15 +256,16 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 			// minimum reuse chunk. Pure upside for prompt-processing latency
 			// on repeated turns.
 			args = append(args, "--cache-reuse", "256")
-
-			// Flash attention: a large, free speedup on GPU and roughly
-			// halves KV-cache memory (which in turn lets more layers fit —
-			// see autoGPULayers). Only when layers are actually offloaded
-			// (pointless, occasionally slower, on pure CPU) and not on the
-			// swarm/RPC path, which has its own tuned invocation.
-			if rpc == nil && actualGPU > 0 {
-				args = append(args, "--flash-attn")
-			}
+		}
+		// Flash attention: a large, free speedup on GPU and roughly halves
+		// KV-cache memory (which in turn lets more layers fit — see
+		// autoGPULayers). Only when layers are actually offloaded (pointless,
+		// occasionally slower, on pure CPU) and not on the swarm/RPC path, which
+		// has its own tuned invocation. Its spelling differs between llama.cpp
+		// releases (bare flag vs `--flash-attn on`), so it is probed on its own
+		// rather than riding on the other tuning flags' verdict.
+		if rpc == nil && actualGPU > 0 {
+			args = append(args, flashAttnArgs(bin)...)
 		}
 	}
 

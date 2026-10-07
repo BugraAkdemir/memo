@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -132,6 +133,12 @@ func main() {
 }
 
 func login(provider, authDir string) {
+	// The real sidecar probes for a browser by running `xdg-open about:blank`
+	// and WAITING for it before it prints any URL (see internal/cliproxy/browser.go).
+	if os.Getenv("FAKECPA_PROBE_BROWSER") == "1" {
+		fmt.Println("Opening browser for " + provider + " authentication")
+		_ = exec.Command("xdg-open", "about:blank").Run()
+	}
 	// The real binary prints other https links too; only the OAuth one counts.
 	fmt.Println("See https://example.test/docs for help")
 	fmt.Println("Attempting to open URL in browser: https://example.test/oauth/authorize?client_id=fake&state=SECRETSTATE&code_challenge=SECRETCHALLENGE")

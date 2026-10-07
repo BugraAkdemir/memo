@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -66,14 +67,44 @@ func bundle(t *testing.T) string {
 // state under a temp dir. It is stopped when the test ends.
 func newMgr(t *testing.T) *Manager {
 	t.Helper()
+	noBrowser(t)
 	m := New(filepath.Join(t.TempDir(), "cliproxy"))
 	m.roots = []string{bundle(t)}
 	t.Cleanup(m.Stop)
 	return m
 }
 
+var (
+	openedMu   sync.Mutex
+	openedList []string
+)
+
+// noBrowser keeps login tests from launching the developer's real browser and
+// records what would have been opened (see openedURLs). Safe to call repeatedly.
+func noBrowser(t *testing.T) {
+	t.Helper()
+	openedMu.Lock()
+	openedList = nil
+	openedMu.Unlock()
+	prev := openURL
+	openURL = func(u string) error {
+		openedMu.Lock()
+		openedList = append(openedList, u)
+		openedMu.Unlock()
+		return nil
+	}
+	t.Cleanup(func() { openURL = prev })
+}
+
+func openedURLs() []string {
+	openedMu.Lock()
+	defer openedMu.Unlock()
+	return append([]string(nil), openedList...)
+}
+
 func fast(t *testing.T) {
 	t.Helper()
+	noBrowser(t)
 	pb, pr, ph := restartBackoff, healthTimeout, loginURLTimeout
 	restartBackoff, healthTimeout, loginURLTimeout = 150*time.Millisecond, 15*time.Second, 8*time.Second
 	t.Cleanup(func() { restartBackoff, healthTimeout, loginURLTimeout = pb, pr, ph })
@@ -560,4 +591,61 @@ func TestModels_AnEmptyAnswerIsNotCached(t *testing.T) {
 		l, err := m.Models(context.Background())
 		return err == nil && len(l) == 2
 	})
+}
+
+// Memo's default data dir is the RELATIVE "data". The sidecar runs with its
+// working directory set to the manager's dir, so a relative dir made the
+// config path resolve twice ("data/cliproxy/data/cliproxy/config.yaml"): the
+// login died with "failed to read config file" before printing any URL, and
+// the UI just kept saying "waiting for the browser". Only the real app (not a
+// test with an absolute TempDir) ever ran with a relative dir.
+func TestLogin_WorksWithARelativeDataDir(t *testing.T) {
+	fast(t)
+	t.Chdir(t.TempDir())
+	m := New(filepath.Join("data", "cliproxy"))
+	m.roots = []string{bundle(t)}
+	t.Cleanup(m.Stop)
+
+	if !filepath.IsAbs(m.dir) {
+		t.Fatalf("manager dir %q must be absolute", m.dir)
+	}
+	u, err := m.StartLogin(context.Background(), ProviderAntigravity)
+	if err != nil {
+		t.Fatalf("StartLogin with a relative data dir: %v", err)
+	}
+	if !strings.HasPrefix(u, "https://example.test/oauth/authorize?") {
+		t.Errorf("url = %q", u)
+	}
+	eventually(t, "login to finish", 8*time.Second, func() bool { return m.LoginStatus().Done })
+	if len(m.Accounts()) != 1 {
+		t.Errorf("accounts = %v, want the one the login wrote", m.Accounts())
+	}
+}
+
+// On KDE the sidecar's own browser probe (`xdg-open about:blank`) never returns,
+// so it never printed the sign-in URL and the UI waited on a page that was never
+// opened. The login process must get a PATH whose xdg-open returns at once, and
+// Memo must open the printed URL itself.
+func TestLogin_ABrowserProbeThatHangsDoesNotBlockTheURL(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the xdg-open shim is Linux-only")
+	}
+	fast(t)
+
+	hang := t.TempDir()
+	if err := os.WriteFile(filepath.Join(hang, "xdg-open"), []byte("#!/bin/sh\nsleep 600\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", hang+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKECPA_PROBE_BROWSER", "1")
+
+	m := newMgr(t)
+	u, err := m.StartLogin(context.Background(), ProviderAntigravity)
+	if err != nil {
+		t.Fatalf("StartLogin with a hanging xdg-open on PATH: %v", err)
+	}
+	eventually(t, "Memo to open the sign-in page itself", 3*time.Second, func() bool { return len(openedURLs()) == 1 })
+	if got := openedURLs()[0]; got != u {
+		t.Errorf("opened %q, want the sign-in URL %q", got, u)
+	}
 }

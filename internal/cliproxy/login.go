@@ -110,6 +110,7 @@ func (m *Manager) StartLogin(ctx context.Context, provider string) (string, erro
 	lctx, cancel := context.WithTimeout(context.Background(), loginTimeout)
 	cmd := exec.CommandContext(lctx, bin, "-config", m.configPath(), flag)
 	cmd.Dir = m.dir
+	cmd.Env = m.loginEnv()
 	cmd.SysProcAttr = sysProcAttr()
 	cmd.Cancel = func() error { killTree(cmd); return nil }
 
@@ -167,6 +168,7 @@ func (m *Manager) StartLogin(ctx context.Context, provider string) (string, erro
 
 	select {
 	case u := <-urlCh:
+		openLoginPage(u)
 		return u, nil
 	case <-time.After(loginURLTimeout):
 		cancel()

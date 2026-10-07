@@ -92,7 +92,16 @@ type state struct {
 }
 
 // New returns a Manager rooted at dir. It creates nothing until asked to.
+//
+// dir is made absolute here: the sidecar is started with its working directory
+// set to dir, so a relative dir (Memo's default data dir is just "data") would
+// make the config path it is handed resolve a second time inside itself
+// ("data/cliproxy/data/cliproxy/config.yaml"), and the login would fail with
+// "failed to read config file" before printing any URL.
 func New(dir string) *Manager {
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
 	m := &Manager{dir: dir}
 	m.loadState()
 	return m

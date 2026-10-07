@@ -61,6 +61,9 @@ var (
 	resetsAtRe = regexp.MustCompile(`resets?_at"?\s*[:=]\s*"?(\d{9,11})`)
 	// "resets_in_seconds": 12345   (Codex)
 	resetsInRe = regexp.MustCompile(`resets?_in_seconds"?\s*[:=]\s*"?(\d+)`)
+	// "(resets at 2026-10-07T20:00:00Z)" — what provider.ExtractErrorMessage writes
+	// when a usage-limit body carried a unix resets_at.
+	resetsAtRFC3339Re = regexp.MustCompile(`resets? at\s*:?\s*(\d{4}-\d{2}-\d{2}t[0-9:.]+(?:z|[+-]\d{2}:\d{2}))`)
 	// "quota will reset after 2h12m3s", "try again in 45s", "retry after 1.5s"
 	afterDurationRe = regexp.MustCompile(`(?:reset(?:s)?(?: after| in)?|retry(?: in| after)|try again in|available again in)\s*:?\s*((?:\d+(?:\.\d+)?[hms]\s*)+)`)
 )
@@ -80,6 +83,11 @@ func parseResetFromError(text string, now time.Time) (time.Time, bool) {
 	if m := resetsInRe.FindStringSubmatch(lower); m != nil {
 		if sec, err := strconv.ParseInt(m[1], 10, 64); err == nil && sec >= 0 {
 			return now.Add(time.Duration(sec) * time.Second), true
+		}
+	}
+	if m := resetsAtRFC3339Re.FindStringSubmatch(lower); m != nil {
+		if t, err := time.Parse(time.RFC3339, strings.ToUpper(m[1])); err == nil && t.After(now.Add(-time.Hour)) {
+			return t, true
 		}
 	}
 	if m := afterDurationRe.FindStringSubmatch(lower); m != nil {

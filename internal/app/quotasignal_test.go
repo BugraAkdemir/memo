@@ -35,6 +35,10 @@ func TestParseResetFromError(t *testing.T) {
 		{"retry in seconds", `Please retry in 45s`, qNow.Add(45 * time.Second), true},
 		{"try again in", `rate limited, try again in 30s`, qNow.Add(30 * time.Second), true},
 		{"retry after fractional", `retry after 1.5s`, qNow.Add(1500 * time.Millisecond), true},
+		{"resets at, as ExtractErrorMessage writes it",
+			`The usage limit has been reached (resets at ` + qNow.Add(2*time.Hour).Format(time.RFC3339) + `)`,
+			qNow.Add(2 * time.Hour), true},
+		{"resets in, as ExtractErrorMessage writes it", `The usage limit has been reached (resets in 1h30m0s)`, qNow.Add(90 * time.Minute), true},
 		{"nothing to read", `status 429: too many requests`, time.Time{}, false},
 		{"a stale unix stamp is not a reset", `"resets_at": 1000000000`, time.Time{}, false},
 	}

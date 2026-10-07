@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // ProviderType enumerates supported LLM providers.
@@ -352,9 +353,29 @@ func ExtractErrorMessage(body []byte) string {
 	var parsed struct {
 		Error struct {
 			Message string `json:"message"`
+			// A usage-limit refusal says when the allowance is back (Codex:
+			// resets_at as unix seconds, resets_in_seconds). Keeping it is what
+			// lets the app offer to continue by itself at that moment.
+			ResetsAt        float64 `json:"resets_at"`
+			ResetsInSeconds float64 `json:"resets_in_seconds"`
 		} `json:"error"`
+		ResetsAt        float64 `json:"resets_at"`
+		ResetsInSeconds float64 `json:"resets_in_seconds"`
 	}
 	if err := json.Unmarshal(body, &parsed); err == nil && parsed.Error.Message != "" {
+		in, at := parsed.Error.ResetsInSeconds, parsed.Error.ResetsAt
+		if in <= 0 {
+			in = parsed.ResetsInSeconds
+		}
+		if at <= 0 {
+			at = parsed.ResetsAt
+		}
+		switch {
+		case in > 0:
+			return parsed.Error.Message + " (resets in " + (time.Duration(in) * time.Second).String() + ")"
+		case at > 1e9:
+			return parsed.Error.Message + " (resets at " + time.Unix(int64(at), 0).UTC().Format(time.RFC3339) + ")"
+		}
 		return parsed.Error.Message
 	}
 	return string(body)

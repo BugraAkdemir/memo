@@ -60,6 +60,11 @@ type FakeChatResponse struct {
 	// the Text chunk — no finish_reason, no [DONE] — the way a crashed or
 	// network-cut upstream ends a stream.
 	CutAfterText bool
+	// Status, when non-zero, makes the fake answer with that HTTP status and
+	// RawBody instead of a completion — how a real endpoint refuses a request
+	// (429 with a usage-limit body, 401 …).
+	Status  int
+	RawBody string
 }
 
 // FakeUsage is the token accounting a scripted response reports. CachedTokens
@@ -173,6 +178,12 @@ func (fp *FakeProvider) handle(w http.ResponseWriter, r *http.Request) {
 
 	resp := fp.Script(callNum, body)
 
+	if resp.Status != 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.Status)
+		_, _ = w.Write([]byte(resp.RawBody))
+		return
+	}
 	if body.Stream {
 		writeStreamingResponse(w, resp, body.WantsUsage)
 		return

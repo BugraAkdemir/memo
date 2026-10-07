@@ -130,3 +130,7 @@ internal/browserengine/data/
 # Subscriptions sidecar (CLIProxyAPI): its auth/ dir holds vendor OAuth tokens, state.json the
 # loopback client key, config.yaml the same key. Never commit any of it.
 data/cliproxy/
+
+# Images Memo generated or received at run time (chat attachments, generated pictures)
+data/generated-images/
+data/images/

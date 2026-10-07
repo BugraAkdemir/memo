@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -737,5 +738,209 @@ func TestQuotas_NoAntigravityAccountMeansNoQuota(t *testing.T) {
 	m := newMgr(t)
 	if _, err := m.Quotas(context.Background()); !errors.Is(err, ErrQuotaUnavailable) {
 		t.Fatalf("err = %v, want ErrQuotaUnavailable", err)
+	}
+}
+
+// ── account-wide quota (Codex, Claude) and the non-blocking snapshot ─────────
+
+func TestParseCodexUsage_PicksTheMostLimitingWindow(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	// Shape measured live on 2026-10-07 (field names only; values are made up).
+	body := []byte(`{"plan_type":"plus","rate_limit":{"allowed":true,"limit_reached":false,
+		"primary_window":{"limit_window_seconds":18000,"reset_after_seconds":3600,"reset_at":0,"used_percent":40},
+		"secondary_window":{"limit_window_seconds":604800,"reset_after_seconds":86400,"reset_at":1792000000,"used_percent":85}}}`)
+	q, ok := parseCodexUsage(body, now)
+	if !ok {
+		t.Fatal("not parsed")
+	}
+	if q.Remaining < 0.1499 || q.Remaining > 0.1501 {
+		t.Errorf("Remaining = %v, want 0.15 (the weekly window is the tighter one)", q.Remaining)
+	}
+	if q.Window != "7d" {
+		t.Errorf("Window = %q, want 7d", q.Window)
+	}
+	if q.ResetAt != time.Unix(1792000000, 0).UTC().Format(time.RFC3339) {
+		t.Errorf("ResetAt = %q, want the window's own reset_at", q.ResetAt)
+	}
+
+	// reset_after_seconds alone is enough, and a single window works.
+	q, ok = parseCodexUsage([]byte(`{"rate_limit":{"primary_window":{"limit_window_seconds":18000,"reset_after_seconds":600,"used_percent":10}}}`), now)
+	if !ok || q.Window != "5h" || q.ResetAt != now.Add(10*time.Minute).Format(time.RFC3339) {
+		t.Errorf("single window: %+v ok=%v", q, ok)
+	}
+	// The websocket spelling (primary/secondary, window_minutes) is accepted too.
+	q, ok = parseCodexUsage([]byte(`{"rate_limits":{"primary":{"used_percent":25,"window_minutes":300,"reset_after_seconds":60}}}`), now)
+	if !ok || q.Remaining != 0.75 || q.Window != "5h" {
+		t.Errorf("websocket spelling: %+v ok=%v", q, ok)
+	}
+}
+
+func TestParseCodexUsage_RejectsWhatItCannotRead(t *testing.T) {
+	for _, body := range []string{``, `not json`, `{}`, `{"rate_limit":{"primary_window":null,"secondary_window":null}}`,
+		`{"rate_limit":{"primary_window":{"used_percent":140}}}`, `{"rate_limit":{"primary_window":{"used_percent":"lots"}}}`} {
+		if q, ok := parseCodexUsage([]byte(body), time.Now()); ok {
+			t.Errorf("parseCodexUsage(%q) = %+v, want not ok", body, q)
+		}
+	}
+}
+
+func TestParseClaudeUsage(t *testing.T) {
+	q, ok := parseClaudeUsage([]byte(`{"five_hour":{"utilization":30.5,"resets_at":"2026-10-07T15:00:00Z"},
+		"seven_day":{"utilization":60,"resets_at":"2026-10-12T00:00:00Z"},"seven_day_opus":null}`), time.Now())
+	if !ok || q.Window != "7d" || q.Remaining != 0.4 || q.ResetAt != "2026-10-12T00:00:00Z" {
+		t.Errorf("got %+v ok=%v, want the 7d window at 40%% left", q, ok)
+	}
+	if _, ok := parseClaudeUsage([]byte(`{"five_hour":null}`), time.Now()); ok {
+		t.Error("a response with no window must not parse")
+	}
+	if _, ok := parseClaudeUsage([]byte(`nope`), time.Now()); ok {
+		t.Error("garbage must not parse")
+	}
+}
+
+func TestQuotaSet_ForPrefersTheModelsOwnFigureThenItsVendors(t *testing.T) {
+	s := QuotaSet{
+		Models:  map[string]Quota{"gemini-3-flash": {Remaining: 0.9}},
+		Vendors: map[string]Quota{"openai": {Remaining: 0.2}},
+	}
+	if q, ok := s.For("gemini-3-flash", "antigravity"); !ok || q.Remaining != 0.9 {
+		t.Errorf("per-model: %+v %v", q, ok)
+	}
+	if q, ok := s.For("gpt-5.5", "openai"); !ok || q.Remaining != 0.2 {
+		t.Errorf("vendor-wide: %+v %v", q, ok)
+	}
+	if _, ok := s.For("claude-sonnet-4-6", "antigravity"); ok {
+		t.Error("a model with neither figure must have none")
+	}
+}
+
+// vendorQuotaFixture signs in a Codex and a Claude account against local servers
+// and counts how often each vendor is asked.
+func vendorQuotaFixture(t *testing.T, delay time.Duration) (m *Manager, codexHits, claudeHits *atomic.Int32) {
+	t.Helper()
+	codexHits, claudeHits = new(atomic.Int32), new(atomic.Int32)
+	codex := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		codexHits.Add(1)
+		time.Sleep(delay)
+		if r.Header.Get("Authorization") != "Bearer CODEX-TOKEN" || r.Header.Get("chatgpt-account-id") != "acct-1" {
+			http.Error(w, "no", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"rate_limit":{"primary_window":{"limit_window_seconds":18000,"reset_after_seconds":120,"used_percent":50}}}`))
+	}))
+	claude := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claudeHits.Add(1)
+		if r.Header.Get("Authorization") != "Bearer CLAUDE-TOKEN" || r.Header.Get("anthropic-beta") != "oauth-2025-04-20" {
+			http.Error(w, "no", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"five_hour":{"utilization":10,"resets_at":"2026-10-07T15:00:00Z"}}`))
+	}))
+	t.Cleanup(codex.Close)
+	t.Cleanup(claude.Close)
+	pc, pl := codexUsageURL, claudeUsageURL
+	codexUsageURL, claudeUsageURL = codex.URL, claude.URL
+	t.Cleanup(func() { codexUsageURL, claudeUsageURL = pc, pl })
+
+	m = newMgr(t)
+	// Cleanups run last-in-first-out: this one runs BEFORE the URLs are restored,
+	// so a background refresh still in flight never reads them mid-restore.
+	t.Cleanup(func() {
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			m.snap.mu.Lock()
+			idle := m.snap.busy == nil
+			m.snap.mu.Unlock()
+			if idle {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	})
+	if err := os.MkdirAll(m.authDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(m.authDir(), name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("codex-a@b.c.json", `{"type":"codex","email":"a@b.c","access_token":"CODEX-TOKEN","account_id":"acct-1"}`)
+	write("claude-a@b.c.json", `{"type":"claude","email":"a@b.c","access_token":"CLAUDE-TOKEN"}`)
+	return m, codexHits, claudeHits
+}
+
+func TestQuotaSnapshot_ReadsCodexAndClaudeAccountsAndCaches(t *testing.T) {
+	m, codexHits, claudeHits := vendorQuotaFixture(t, 0)
+	set := m.QuotaSnapshot(context.Background(), 3*time.Second)
+	if q := set.Vendors["openai"]; q.Remaining != 0.5 || q.Window != "5h" || q.ResetAt == "" {
+		t.Errorf("openai = %+v", q)
+	}
+	if q := set.Vendors["anthropic"]; q.Remaining != 0.9 || q.Window != "5h" {
+		t.Errorf("anthropic = %+v", q)
+	}
+	for i := 0; i < 5; i++ {
+		m.QuotaSnapshot(context.Background(), 0)
+	}
+	if codexHits.Load() != 1 || claudeHits.Load() != 1 {
+		t.Errorf("vendors were asked %d/%d times for 6 snapshots, want 1/1 (cached)", codexHits.Load(), claudeHits.Load())
+	}
+}
+
+// The reason this exists: opening the model picker used to wait on the vendor.
+func TestQuotaSnapshot_NeverHoldsTheCallerWhenAskedNotTo(t *testing.T) {
+	m, _, _ := vendorQuotaFixture(t, 400*time.Millisecond)
+	start := time.Now()
+	set := m.QuotaSnapshot(context.Background(), 0)
+	if took := time.Since(start); took > 150*time.Millisecond {
+		t.Errorf("a snapshot with maxWait 0 took %v — it waited on the vendor", took)
+	}
+	if len(set.Vendors) != 0 {
+		t.Errorf("nothing is cached yet, got %+v", set)
+	}
+	// The refresh it started lands in the background; the next call has the figures.
+	eventually(t, "the background refresh to land", 3*time.Second, func() bool {
+		return len(m.QuotaSnapshot(context.Background(), 0).Vendors) > 0
+	})
+}
+
+func TestQuotaSnapshot_WaitsOnlyAsLongAsAskedForAFreshFigure(t *testing.T) {
+	m, _, _ := vendorQuotaFixture(t, 1500*time.Millisecond)
+	start := time.Now()
+	m.QuotaSnapshot(context.Background(), 200*time.Millisecond)
+	if took := time.Since(start); took < 150*time.Millisecond || took > 900*time.Millisecond {
+		t.Errorf("waited %v, want about the 200ms asked for", took)
+	}
+}
+
+func TestQuotaSnapshot_KeepsTheLastFiguresWhenARefreshFails(t *testing.T) {
+	m, codexHits, _ := vendorQuotaFixture(t, 0)
+	old := quotaTTL
+	quotaTTL = 50 * time.Millisecond
+	t.Cleanup(func() { quotaTTL = old })
+
+	if q := m.QuotaSnapshot(context.Background(), 2*time.Second).Vendors["openai"]; q.Remaining != 0.5 {
+		t.Fatalf("first read: %+v", q)
+	}
+	// Codex now refuses (an expired token) while Claude keeps answering: the
+	// Codex figure from a moment ago is better than nothing, and Claude's is
+	// still refreshed.
+	codexUsageURL = "http://127.0.0.1:1/" // nothing listens
+	time.Sleep(80 * time.Millisecond)
+	set := m.QuotaSnapshot(context.Background(), 2*time.Second)
+	if q := set.Vendors["openai"]; q.Remaining != 0.5 {
+		t.Errorf("after a failed refresh the previous Codex figure must stay, got %+v", q)
+	}
+	if q := set.Vendors["anthropic"]; q.Remaining != 0.9 {
+		t.Errorf("one vendor failing must not drop the other: %+v", set.Vendors)
+	}
+	_ = codexHits
+}
+
+func TestQuotaSnapshot_NoVendorAccountMeansAnEmptyAnswerNotAnError(t *testing.T) {
+	m := newMgr(t)
+	set := m.QuotaSnapshot(context.Background(), time.Second)
+	if len(set.Vendors) != 0 || len(set.Models) != 0 {
+		t.Errorf("got %+v", set)
 	}
 }

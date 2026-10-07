@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"memo/internal/models"
 )
@@ -91,7 +92,13 @@ func (s *Server) handleProviderModel(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "name is required", http.StatusBadRequest)
 			return
 		}
-		list, current, err := s.fullBridge.ListProviderModels(r.Context(), name)
+		ctx := r.Context()
+		// ?fresh=1 is the picker's background refresh: it may wait a moment for
+		// current quota figures. A plain open answers from the cache at once.
+		if r.URL.Query().Get("fresh") == "1" {
+			ctx = models.WithQuotaWait(ctx, 3*time.Second)
+		}
+		list, current, err := s.fullBridge.ListProviderModels(ctx, name)
 		if err != nil {
 			writeJSON(w, map[string]any{"models": []models.ProviderModel{}, "current": current, "error": err.Error()})
 			return

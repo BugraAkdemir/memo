@@ -535,6 +535,20 @@ class _CLIModelBadge extends ConsumerWidget {
   }
 }
 
+/// What one load of the model picker's data returns.
+class _PickerData {
+  final String activeType;
+  final List<ProviderConfig> providers;
+  final String cliType;
+  final List<ProviderModel> subsModels;
+  const _PickerData({
+    required this.activeType,
+    required this.providers,
+    required this.cliType,
+    required this.subsModels,
+  });
+}
+
 class _QuickModelDropdown extends ConsumerWidget {
   const _QuickModelDropdown();
 
@@ -542,21 +556,68 @@ class _QuickModelDropdown extends ConsumerWidget {
     final button = context.findRenderObject() as RenderBox;
     final anchor = button.localToGlobal(Offset.zero) & button.size;
 
-    String activeType;
-    List<ProviderConfig> providers;
-    String cliType = '';
-    try {
-      activeType = await ref.read(activeProviderTypeProvider.future);
-      // Always ask again: the list is cached from app start, and a provider
-      // registered since (Subscriptions appears only after a sign-in and the
-      // sidecar's ~30 s model delay) would otherwise be missing from the menu
-      // until the app was restarted.
-      ref.invalidate(providerListProvider);
-      providers = await ref.read(providerListProvider.future);
+    final api = ref.read(apiClientProvider);
+    final c = MemoTheme.of(context);
+
+    // Everything the picker shows is fetched at once, never one request after
+    // another, and the provider list is read straight from the backend (it is
+    // millisecond-fast) so a provider registered since app start still shows up.
+    // The model list answers from the backend's cache; fresh quota figures come
+    // later, from the picker's own background refresh — opening it never waits
+    // on a vendor (it used to, and the whole app seemed to freeze).
+    Future<_PickerData> load({required bool fresh}) async {
       final chatId = ref.read(activeChatIdProvider).valueOrNull;
-      if (chatId != null) {
-        cliType = await ref.read(apiClientProvider).getChatCLIProvider(chatId);
-      }
+      final results = await Future.wait<Object?>([
+        ref.read(activeProviderTypeProvider.future),
+        api.getProviders(),
+        chatId == null ? Future<String>.value('') : api.getChatCLIProvider(chatId),
+        // The Subscriptions provider fronts every signed-in vendor account, so
+        // it expands into that account's live models. A failed fetch just leaves
+        // it as a single row (switching still works).
+        api
+            .listProviderModels(kSubscriptionsProviderName, fresh: fresh)
+            .then<List<ProviderModel>>((l) => l.models)
+            .catchError((Object e) {
+          debugPrint('chat_screen: subscription model list unavailable, showing one row: $e');
+          return const <ProviderModel>[];
+        }),
+      ]);
+      return _PickerData(
+        activeType: results[0] as String,
+        providers: results[1] as List<ProviderConfig>,
+        cliType: results[2] as String,
+        subsModels: results[3] as List<ProviderModel>,
+      );
+    }
+
+    List<ModelPickerEntry> entriesFor(_PickerData d) {
+      final activeCLIName =
+          d.cliType.isEmpty ? '' : (d.providers.where((p) => p.type == d.cliType).firstOrNull?.name ?? d.cliType);
+      final effectiveActive =
+          activeCLIName.isNotEmpty ? activeCLIName : (d.activeType.isEmpty ? 'local' : d.activeType);
+      return [
+        ModelPickerEntry.item(
+          value: 'local',
+          title: L10n.t('local_model'),
+          leading: Icon(Icons.computer_outlined, size: 16, color: c.textMuted),
+          active: effectiveActive == 'local',
+        ),
+        for (final p in d.providers.where((p) => p.enabled))
+          if (p.name == kSubscriptionsProviderName && d.subsModels.isNotEmpty)
+            ..._subscriptionModelEntries(p, d.subsModels, effectiveActive == p.name)
+          else
+            ModelPickerEntry.item(
+              value: p.name,
+              title: p.name,
+              leading: providerLogoWidget(p.type, size: 16),
+              active: effectiveActive == p.name,
+            ),
+      ];
+    }
+
+    final _PickerData first;
+    try {
+      first = await load(fresh: false);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -566,51 +627,20 @@ class _QuickModelDropdown extends ConsumerWidget {
       return;
     }
     if (!context.mounted) return;
+    final enabledProviders = first.providers.where((p) => p.enabled).toList();
+    // Keep the top-bar button's own provider list in step with what was just read.
+    ref.invalidate(providerListProvider);
 
-    final activeCLIName = cliType.isEmpty
-        ? ''
-        : (providers.where((p) => p.type == cliType).firstOrNull?.name ?? cliType);
-    final effectiveActive =
-        activeCLIName.isNotEmpty ? activeCLIName : (activeType.isEmpty ? 'local' : activeType);
-    final enabledProviders = providers.where((p) => p.enabled).toList();
-    final c = MemoTheme.of(context);
-
-    // The Subscriptions provider fronts every signed-in vendor account, so it
-    // expands into the account's live model list instead of being one row.
-    // A failed fetch just leaves it as a single row (switching still works).
-    final subs = enabledProviders.where((p) => p.name == kSubscriptionsProviderName).firstOrNull;
-    var subsModels = const <ProviderModel>[];
-    if (subs != null) {
-      try {
-        subsModels = (await ref.read(apiClientProvider).listProviderModels(subs.name)).models;
-      } catch (e) {
-        debugPrint('chat_screen: subscription model list unavailable, showing one row: $e');
-      }
-      if (!context.mounted) return;
-    }
-
-    final entries = <ModelPickerEntry>[
-      ModelPickerEntry.item(
-        value: 'local',
-        title: L10n.t('local_model'),
-        leading: Icon(Icons.computer_outlined, size: 16, color: c.textMuted),
-        active: effectiveActive == 'local',
-      ),
-      for (final p in enabledProviders)
-        if (p.name == kSubscriptionsProviderName && subsModels.isNotEmpty)
-          ..._subscriptionModelEntries(p, subsModels, effectiveActive == p.name)
-        else
-          ModelPickerEntry.item(
-            value: p.name,
-            title: p.name,
-            leading: providerLogoWidget(p.type, size: 16),
-            active: effectiveActive == p.name,
-          ),
-    ];
     final selected = await showModelPicker(
       context: context,
       anchor: anchor,
-      entries: entries,
+      entries: entriesFor(first),
+      // The remaining-allowance figures follow usage: once soon after opening
+      // (the first open may have had none cached yet), then every 50 seconds
+      // while the picker stays open.
+      refresh: () async => entriesFor(await load(fresh: true)),
+      firstRefreshAfter: const Duration(milliseconds: 2500),
+      refreshEvery: const Duration(seconds: 50),
       footer: ModelPickerEntry.item(
         value: '__add_provider__',
         title: L10n.t('add_provider'),

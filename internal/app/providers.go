@@ -183,13 +183,15 @@ func (a *App) reinitProviderAndOrchestra() {
 				a.cfg.ActiveProvider = ""
 			}
 		}
-		// Session providers (Claude Code CLI / Codex CLI / Subscriptions) are a
-		// per-session tool, not a sticky default the way an external API
-		// provider is — silently restoring one across an app restart routed
-		// every subsequent chat, including a brand new one, through that
-		// subprocess / subscription account. Startup always treats a
-		// previously-active session provider as unset; the user reselects it
-		// explicitly to keep working that way.
+		// Session providers (Claude Code CLI / Codex CLI) are a per-session
+		// tool, not a sticky default the way an external API provider is —
+		// silently restoring one across an app restart routed every
+		// subsequent chat, including a brand new one, through that
+		// subprocess. Startup always treats a previously-active session
+		// provider as unset; the user reselects it explicitly to keep working
+		// that way. The Subscriptions provider is NOT one of them: the model
+		// the user picked in the top-bar selector must still be the model
+		// after a restart (it used to fall back to the local model).
 		if isSessionProviderName(activeProviderName, configs) {
 			activeProviderName = ""
 			a.cfg.ActiveProvider = ""
@@ -249,20 +251,12 @@ func (a *App) reinitProviderAndOrchestra() {
 // isSessionProviderName reports whether name (a provider Name, as stored in
 // cfg.ActiveProvider) refers to a per-session provider that must not be
 // auto-restored as the sticky global active provider on startup — the
-// CLI-backed agents (Claude Code CLI, Codex CLI) and the Subscriptions
-// provider (a signed-in vendor account's quota). Unknown names report false
-// rather than erroring; callers only use this to decide whether to keep an active-provider
-// selection, not to validate it.
+// CLI-backed agents (Claude Code CLI, Codex CLI). Unknown names report false
+// rather than erroring; callers only use this to decide whether to keep an
+// active-provider selection, not to validate it.
 func isSessionProviderName(name string, configs []provider.ProviderConfig) bool {
 	for _, p := range configs {
 		if p.Name == name {
-			// The Subscriptions provider is a plain custom type, so it is told
-			// apart by name: like the old per-vendor subscription providers it
-			// spends a signed-in account's quota, so it must be re-selected on
-			// purpose rather than silently restored for a brand-new chat.
-			if isSubsMarker(p) {
-				return true
-			}
 			return p.Type == provider.ProviderClaudeCodeCLI ||
 				p.Type == provider.ProviderCodexCLI
 		}

@@ -21,7 +21,11 @@ class _FakeSubscriptions extends SubscriptionsNotifier {
   Future<SubscriptionsState> build() async => initial;
 
   @override
-  Future<void> reload() async {}
+  Future<void> reload() async {
+    reloads++;
+  }
+
+  int reloads = 0;
 
   @override
   Future<void> logout(String provider) async {
@@ -200,5 +204,60 @@ void main() {
     await tester.pump(const Duration(seconds: 9));
     expect(notifier.reloads, 1);
     expect(tester.takeException(), isNull);
+  });
+
+  // The allowance left changes as it is used: while the tab is open it re-reads
+  // every 50 seconds. Signed out, there is nothing to measure and it stays quiet.
+  testWidgets('re-reads every 50 seconds while an account is signed in', (tester) async {
+    L10n.setLocale(MemoLocale.en);
+    tester.view.physicalSize = const Size(1000, 1800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final fake = _FakeSubscriptions(
+      const SubscriptionsState(
+        bundled: true,
+        running: true,
+        providers: ['antigravity', 'claude', 'codex'],
+        accounts: [SubscriptionAccount(provider: 'antigravity', email: 'me@example.com')],
+        models: [ProviderModel(id: 'claude-sonnet-4-6', ownedBy: 'antigravity', remaining: 0.5)],
+      ),
+      [],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(MemoApiClient(baseUrl: 'http://127.0.0.1:1')),
+          subscriptionsProvider.overrideWith(() => fake),
+        ],
+        child: const MaterialApp(home: Scaffold(body: SubscriptionsTab())),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 49));
+    expect(fake.reloads, 0);
+    await tester.pump(const Duration(seconds: 1));
+    expect(fake.reloads, 1);
+    await tester.pump(const Duration(seconds: 50));
+    expect(fake.reloads, 2);
+  });
+
+  testWidgets('signed out, the quota timer has nothing to refresh', (tester) async {
+    L10n.setLocale(MemoLocale.en);
+    tester.view.physicalSize = const Size(1000, 1800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final fake = _FakeSubscriptions(_bundled, []);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(MemoApiClient(baseUrl: 'http://127.0.0.1:1')),
+          subscriptionsProvider.overrideWith(() => fake),
+        ],
+        child: const MaterialApp(home: Scaffold(body: SubscriptionsTab())),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 120));
+    expect(fake.reloads, 0);
   });
 }

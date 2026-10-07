@@ -108,4 +108,5 @@ func (m *Manager) invalidateModels() {
 	m.modelsMem = nil
 	m.quotaMem = nil
 	m.modelsMu.Unlock()
+	m.resetQuotaSnapshot()
 }

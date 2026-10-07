@@ -331,11 +331,20 @@ confirm every single time before tagging or pushing a tag.
 - **Model selectors:** the chat top bar and `/model` expand the Subscriptions provider into its live model list (grouped by
   `owned_by`); `provider.ContextWindowForModel` gives a `custom` gateway's models their real window (claude-* 200K, gemini* 1M)
   unless `ContextTokens` is set.
-- **Per-model quota (`remaining`, `reset_at` on each model)** comes from Antigravity's own catalogue call
-  (`fetchAvailableModels` → `quotaInfo.remainingFraction`), made by `cliproxy.Quotas` with the token read from the credential
-  file — the sidecar itself only knows "exceeded", never a percentage. Best effort and cached (30s; failures 30s), refreshed whenever the model list is read (picker open, Settings tab): no figure
-  means no badge, never a failed model list. Claude and Codex report nothing to a third-party client, so they have no badge.
-  The client-identity string in `quota.go` mirrors the sidecar's; if Google starts refusing it the badges just disappear.
+- **Quota (`remaining`, `reset_at`, `quota_window` on each model)** has two sources, both read with the token from the
+  credential file (it goes only to the vendor, never to the API, logs or UI): Antigravity's catalogue call
+  (`fetchAvailableModels` → `quotaInfo.remainingFraction`, per model) and the account meters of Codex
+  (`chatgpt.com/backend-api/wham/usage` → `rate_limit.primary_window/secondary_window`) and Claude
+  (`api.anthropic.com/api/oauth/usage` → `five_hour`/`seven_day`). Codex and Claude meter the ACCOUNT in windows, so the most
+  limiting window's figure is applied to every model of that vendor (`owned_by` openai / anthropic) via `QuotaSet.For`.
+  Codex was verified live; the Claude parser is written from the endpoint's known shape and is NOT verified (no Claude login
+  was available) — a wrong shape just means no badge. The sidecar itself only knows "exceeded", never a percentage.
+- **Quota never blocks a request.** `Manager.QuotaSnapshot(ctx, maxWait)` answers from the cache and refreshes in the
+  background (one at a time, 30s TTL, failures retried after 30s); each source keeps its own last good figure and age, so one
+  vendor failing does not erase another's. Plain model-list calls pass maxWait 0; the picker's background refresh sends
+  `?fresh=1` (≤3s wait) and the Settings tab's GET waits ≤2s. Do not add a synchronous vendor call to `ListProviderModels`:
+  that is what made opening the picker freeze Memo (~1s, up to several on a slow link). The picker refreshes itself 2.5s after
+  opening and then every 50s; the Settings tab every 50s.
 - **Right after a sign-in the model list is empty for ~30s.** The Settings tab keeps re-reading until models arrive, and the
   chat model menu re-fetches the provider list on every open — both used to cache the empty answer until a restart.
 - **The sidecar's own browser probe hangs under KDE** (`xdg-open about:blank` never returns, so it never prints the sign-in

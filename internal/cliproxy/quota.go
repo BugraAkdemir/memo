@@ -25,6 +25,9 @@ type Quota struct {
 	Remaining float64 `json:"remaining"`
 	// ResetAt is when the allowance refills (RFC 3339), when the vendor says.
 	ResetAt string `json:"reset_at,omitempty"`
+	// Window names the allowance window this figure is for when the vendor has
+	// several ("5h", "7d"): the most limiting one is reported.
+	Window string `json:"window,omitempty"`
 }
 
 // Antigravity's catalogue endpoint — the same call the sidecar makes for its own

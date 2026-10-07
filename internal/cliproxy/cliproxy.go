@@ -82,6 +82,7 @@ type Manager struct {
 	modelsMu  sync.Mutex
 	modelsMem *modelsMemo
 	quotaMem  *quotaMemo
+	snap      quotaSnapshot
 }
 
 // state is what must survive a restart: the API key the provider entry carries

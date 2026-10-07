@@ -13,15 +13,16 @@ import (
 // CLI / Subscriptions) from being silently restored across an app restart —
 // see BUG_REPORT: after using a CLI provider, closing and reopening Memo
 // kept routing every new chat through the same CLI subprocess instead of
-// defaulting back to the local model / no active provider. Subscriptions has
-// the same "per session, not sticky" semantics.
+// defaulting back to the local model / no active provider. Subscriptions is
+// deliberately NOT session: the model picked in the top-bar selector must
+// survive a restart.
 func TestIsSessionProviderName(t *testing.T) {
 	configs := []provider.ProviderConfig{
 		{Name: "Claude Code", Type: provider.ProviderClaudeCodeCLI},
 		{Name: "Codex", Type: provider.ProviderCodexCLI},
 		{Name: "My OpenAI", Type: provider.ProviderOpenAI},
 		// The Subscriptions provider is a plain custom type, told apart by
-		// name; a user's own custom provider with another name is not session.
+		// name — and it is sticky, like any custom provider.
 		{Name: subsProviderName, Type: provider.ProviderCustom},
 		{Name: "My Own Endpoint", Type: provider.ProviderCustom},
 	}
@@ -33,7 +34,7 @@ func TestIsSessionProviderName(t *testing.T) {
 		{"Claude Code", true},
 		{"Codex", true},
 		{"My OpenAI", false},
-		{subsProviderName, true},
+		{subsProviderName, false},
 		{"My Own Endpoint", false},
 		{"unknown-provider", false},
 		{"", false},

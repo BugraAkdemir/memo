@@ -135,12 +135,12 @@ func (a *App) SubscriptionsState(ctx context.Context) models.SubscriptionsState 
 	if list == nil {
 		list = m.CachedModels()
 	}
-	quotas := a.subsQuotas(ctx, len(list) > 0)
+	quotas := a.subsQuotas(ctx, len(list) > 0, 2*time.Second)
 	for _, md := range list {
 		sm := models.SubscriptionModel{ID: md.ID, OwnedBy: md.OwnedBy}
-		if q, ok := quotas[md.ID]; ok {
+		if q, ok := quotas.For(md.ID, md.OwnedBy); ok {
 			r := q.Remaining
-			sm.Remaining, sm.ResetAt = &r, q.ResetAt
+			sm.Remaining, sm.ResetAt, sm.QuotaWindow = &r, q.ResetAt, q.Window
 		}
 		st.Models = append(st.Models, sm)
 	}
@@ -153,20 +153,16 @@ func (a *App) SubscriptionsState(ctx context.Context) models.SubscriptionsState 
 	return st
 }
 
-// subsQuotas reads the per-model allowance left, best effort: a vendor that
-// reports none, an expired token or a slow network just means no percentages —
-// the model list itself never waits long for it or fails because of it.
-func (a *App) subsQuotas(ctx context.Context, haveModels bool) map[string]cliproxy.Quota {
+// subsQuotas returns the allowance figures, never failing and never holding the
+// caller for more than maxWait: a vendor that reports none, an expired token or a
+// slow network just means no percentages (or the previous ones). With maxWait 0
+// it returns what is cached at once and refreshes in the background — what keeps
+// opening the model picker instant.
+func (a *App) subsQuotas(ctx context.Context, haveModels bool, maxWait time.Duration) cliproxy.QuotaSet {
 	if !haveModels {
-		return nil
+		return cliproxy.QuotaSet{}
 	}
-	qctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-	defer cancel()
-	q, err := a.subsManager().Quotas(qctx)
-	if err != nil {
-		return nil
-	}
-	return q
+	return a.subsManager().QuotaSnapshot(ctx, maxWait)
 }
 
 func (a *App) subsProblemText(err error) string {
@@ -426,13 +422,13 @@ func (a *App) ListProviderModels(ctx context.Context, name string) ([]models.Pro
 		} else {
 			list = m.CachedModels()
 		}
-		quotas := a.subsQuotas(ctx, len(list) > 0)
+		quotas := a.subsQuotas(ctx, len(list) > 0, models.QuotaWaitFromContext(ctx))
 		out := make([]models.ProviderModel, 0, len(list))
 		for _, md := range list {
 			pm := models.ProviderModel{ID: md.ID, OwnedBy: md.OwnedBy}
-			if q, ok := quotas[md.ID]; ok {
+			if q, ok := quotas.For(md.ID, md.OwnedBy); ok {
 				r := q.Remaining
-				pm.Remaining, pm.ResetAt = &r, q.ResetAt
+				pm.Remaining, pm.ResetAt, pm.QuotaWindow = &r, q.ResetAt, q.Window
 			}
 			out = append(out, pm)
 		}

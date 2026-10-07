@@ -2104,8 +2104,11 @@ class MemoApiClient {
   /// The live model list of a CONFIGURED provider (by name) plus the model it
   /// currently uses. The stored API key is used on the backend and never comes
   /// back. [ProviderModelList.error] says why the list is empty when it failed.
-  Future<ProviderModelList> listProviderModels(String name) async {
-    final res = await _dio.get('/api/providers/model', queryParameters: {'name': name});
+  ///
+  /// [fresh] lets the backend wait a moment for current quota figures instead of
+  /// answering from its cache — for a background refresh, never for opening a UI.
+  Future<ProviderModelList> listProviderModels(String name, {bool fresh = false}) async {
+    final res = await _dio.get('/api/providers/model', queryParameters: {'name': name, if (fresh) 'fresh': '1'});
     return ProviderModelList.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 

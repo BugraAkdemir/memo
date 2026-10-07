@@ -40,6 +40,9 @@ type SubscriptionModel struct {
 	// reports one (Antigravity does); absent otherwise. ResetAt is when it refills.
 	Remaining *float64 `json:"remaining,omitempty"`
 	ResetAt   string   `json:"reset_at,omitempty"`
+	// QuotaWindow names the allowance window the figure is for when the vendor
+	// has several ("5h", "7d"); the most limiting one is reported.
+	QuotaWindow string `json:"quota_window,omitempty"`
 }
 
 // SubscriptionLogin mirrors cliproxy.LoginState for the REST response.

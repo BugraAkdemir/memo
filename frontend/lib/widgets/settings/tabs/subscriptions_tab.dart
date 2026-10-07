@@ -32,14 +32,32 @@ class SubscriptionsTab extends ConsumerStatefulWidget {
 class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
   Timer? _poll;
   Timer? _modelsPoll; // waits for the sidecar's model list after a sign-in
+  Timer? _quotaTimer; // keeps the remaining-allowance figures current
   String _loginFor = ''; // provider whose sign-in this tab is waiting on
   String _authUrl = '';
   bool _starting = false;
 
   @override
+  void initState() {
+    super.initState();
+    // The allowance left changes as it is used: re-read every 50 seconds while
+    // this tab is open (the backend waits briefly for fresh figures on this call).
+    _quotaTimer = Timer.periodic(const Duration(seconds: 50), (_) async {
+      final st = ref.read(subscriptionsProvider).valueOrNull;
+      if (st == null || !st.bundled || st.accounts.isEmpty) return;
+      try {
+        await ref.read(subscriptionsProvider.notifier).reload();
+      } catch (e) {
+        debugPrint('subscriptions_tab: quota refresh failed, will retry: $e');
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _poll?.cancel();
     _modelsPoll?.cancel();
+    _quotaTimer?.cancel();
     super.dispose();
   }
 

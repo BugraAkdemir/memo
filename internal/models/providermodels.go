@@ -9,6 +9,7 @@ type ProviderModel struct {
 	OwnedBy string `json:"owned_by,omitempty"`
 	// Remaining / ResetAt: the share of the model's allowance left (0..1) and when
 	// it refills, for the Subscriptions provider when the vendor reports it.
-	Remaining *float64 `json:"remaining,omitempty"`
-	ResetAt   string   `json:"reset_at,omitempty"`
+	Remaining   *float64 `json:"remaining,omitempty"`
+	ResetAt     string   `json:"reset_at,omitempty"`
+	QuotaWindow string   `json:"quota_window,omitempty"`
 }

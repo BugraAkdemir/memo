@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/l10n.dart';
@@ -39,11 +40,19 @@ class ModelPickerEntry {
 /// button and it scrolls inside that, so a long model list can no longer run off
 /// the bottom of the window; and it can search, which a dozen-plus models need.
 /// [footer] is pinned under the scrolling list (the "add provider" row).
+///
+/// [refresh], when given, is called once after [firstRefreshAfter] (if set) and
+/// then every [refreshEvery] while the panel stays open and its result replaces the rows — how the remaining-allowance
+/// percentages keep up without closing and reopening the picker. A call that
+/// fails or returns null leaves the rows as they are.
 Future<String?> showModelPicker({
   required BuildContext context,
   required Rect anchor,
   required List<ModelPickerEntry> entries,
   ModelPickerEntry? footer,
+  Future<List<ModelPickerEntry>?> Function()? refresh,
+  Duration refreshEvery = const Duration(seconds: 50),
+  Duration? firstRefreshAfter,
 }) {
   return showGeneralDialog<String>(
     context: context,
@@ -55,7 +64,14 @@ Future<String?> showModelPicker({
       opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
       child: child,
     ),
-    pageBuilder: (ctx, _, _) => _ModelPickerPanel(anchor: anchor, entries: entries, footer: footer),
+    pageBuilder: (ctx, _, _) => _ModelPickerPanel(
+      anchor: anchor,
+      entries: entries,
+      footer: footer,
+      refresh: refresh,
+      refreshEvery: refreshEvery,
+      firstRefreshAfter: firstRefreshAfter,
+    ),
   );
 }
 
@@ -63,7 +79,17 @@ class _ModelPickerPanel extends StatefulWidget {
   final Rect anchor;
   final List<ModelPickerEntry> entries;
   final ModelPickerEntry? footer;
-  const _ModelPickerPanel({required this.anchor, required this.entries, this.footer});
+  final Future<List<ModelPickerEntry>?> Function()? refresh;
+  final Duration refreshEvery;
+  final Duration? firstRefreshAfter;
+  const _ModelPickerPanel({
+    required this.anchor,
+    required this.entries,
+    this.footer,
+    this.refresh,
+    required this.refreshEvery,
+    this.firstRefreshAfter,
+  });
 
   @override
   State<_ModelPickerPanel> createState() => _ModelPickerPanelState();
@@ -80,12 +106,39 @@ void resetModelPickerFolds() => _collapsedSections.clear();
 class _ModelPickerPanelState extends State<_ModelPickerPanel> {
   final _search = TextEditingController();
   String _q = '';
+  late List<ModelPickerEntry> _entries = widget.entries;
+  Timer? _refreshTimer;
+  Timer? _firstRefreshTimer;
+  bool _refreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.refresh != null) {
+      _refreshTimer = Timer.periodic(widget.refreshEvery, (_) => _refreshNow());
+      final first = widget.firstRefreshAfter;
+      if (first != null) _firstRefreshTimer = Timer(first, _refreshNow);
+    }
+  }
+
+  Future<void> _refreshNow() async {
+    if (_refreshing || widget.refresh == null) return;
+    _refreshing = true;
+    try {
+      final next = await widget.refresh!();
+      if (next != null && mounted) setState(() => _entries = next);
+    } catch (e) {
+      debugPrint('model_picker: refresh failed, keeping the current rows: $e');
+    } finally {
+      _refreshing = false;
+    }
+  }
 
   /// How many selectable rows each section header has under it.
-  late final Map<String, int> _sectionSize = () {
+  Map<String, int> get _sectionSize {
     final sizes = <String, int>{};
     String? current;
-    for (final e in widget.entries) {
+    for (final e in _entries) {
       if (e.isHeader) {
         current = e.title;
         sizes[current] = 0;
@@ -94,7 +147,7 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
       }
     }
     return sizes;
-  }();
+  }
 
   void _toggle(String section) => setState(() {
         if (!_collapsedSections.remove(section)) _collapsedSections.add(section);
@@ -102,6 +155,8 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
+    _firstRefreshTimer?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -114,7 +169,7 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
       // Folded sections keep their header and drop their rows.
       final out = <ModelPickerEntry>[];
       var folded = false;
-      for (final e in widget.entries) {
+      for (final e in _entries) {
         if (e.isHeader) folded = _collapsedSections.contains(e.title);
         if (e.isHeader || !folded) out.add(e);
       }
@@ -123,7 +178,7 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
     // A search looks inside folded sections too: what you typed should be found.
     final out = <ModelPickerEntry>[];
     ModelPickerEntry? pendingHeader;
-    for (final e in widget.entries) {
+    for (final e in _entries) {
       if (e.isHeader) {
         pendingHeader = e;
         continue;
@@ -151,7 +206,7 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
     // so short the list is unusable.
     final maxHeight = (size.height - top - margin).clamp(220.0, 560.0);
 
-    final selectable = widget.entries.where((e) => !e.isHeader).length;
+    final selectable = _entries.where((e) => !e.isHeader).length;
     final visible = _visible;
 
     return Stack(

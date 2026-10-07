@@ -92,3 +92,35 @@ func TestReinit_KeepsAnActiveProviderThatExists(t *testing.T) {
 		t.Errorf("active provider = %q, want My OpenAI kept", got)
 	}
 }
+
+// The model picked in the top-bar selector is still the active model after a
+// restart. It used to be dropped to the local model because Subscriptions was
+// classed as a per-session provider.
+func TestReinit_KeepsTheSubscriptionsProviderActiveAcrossARestart(t *testing.T) {
+	isolatedDataDir(t)
+
+	seed := provider.NewConfigManager(config.DataPath("providers.json"), nil)
+	seed.Set(provider.ProviderConfig{Type: provider.ProviderCustom, Name: subsProviderName, BaseURL: "http://127.0.0.1:46509/v1", APIKey: "memo-k", Model: "claude-sonnet-4-6", Enabled: true})
+	seed.Save()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := &App{cfg: &config.AppConfig{ActiveProvider: subsProviderName}, lifecycleCtx: ctx}
+	a.reinitProviderAndOrchestra()
+
+	if got := a.GetActiveProvider(); got != subsProviderName {
+		t.Errorf("active provider after a restart = %q, want %q kept", got, subsProviderName)
+	}
+	if a.cfg.ActiveProvider != subsProviderName {
+		t.Errorf("cfg.ActiveProvider = %q, want it kept", a.cfg.ActiveProvider)
+	}
+	model := ""
+	for _, p := range a.providerCfgMgr.GetAll() {
+		if p.Name == subsProviderName {
+			model = p.Model
+		}
+	}
+	if model != "claude-sonnet-4-6" {
+		t.Errorf("the chosen model did not survive: %q", model)
+	}
+}

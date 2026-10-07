@@ -13,13 +13,24 @@ class ProviderModel {
   /// When that allowance refills (RFC 3339), if the vendor says.
   final String resetAt;
 
-  const ProviderModel({required this.id, this.ownedBy = '', this.remaining, this.resetAt = ''});
+  /// Which allowance window the figure is for when the vendor has several
+  /// ("5h", "7d" — the most limiting one is reported); '' when it has just one.
+  final String quotaWindow;
+
+  const ProviderModel({
+    required this.id,
+    this.ownedBy = '',
+    this.remaining,
+    this.resetAt = '',
+    this.quotaWindow = '',
+  });
 
   factory ProviderModel.fromJson(Map<String, dynamic> json) => ProviderModel(
         id: json['id'] as String? ?? '',
         ownedBy: json['owned_by'] as String? ?? '',
         remaining: (json['remaining'] as num?)?.toDouble(),
         resetAt: json['reset_at'] as String? ?? '',
+        quotaWindow: json['quota_window'] as String? ?? '',
       );
 
   /// [remaining] as a whole percentage, or null when unknown. A sliver that

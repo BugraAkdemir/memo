@@ -185,8 +185,12 @@ void main() {
 
   testWidgets('renders in Turkish too', (tester) async {
     await _pump(tester, _Backend(), locale: MemoLocale.tr);
-    expect(find.text('Görsel üretimi'), findsOneWidget);
-    expect(find.text('Varsayılan görsel modeli'), findsOneWidget);
+    final title = L10n.t('image_section_title');
+    final hint = L10n.t('image_default_title');
+    expect(find.text(title), findsOneWidget);
+    expect(find.text(hint), findsOneWidget);
     L10n.setLocale(MemoLocale.en);
+    expect(L10n.t('image_section_title'), isNot(title), reason: 'the two languages must differ');
+    expect(L10n.t('image_default_title'), isNot(hint));
   });
 }

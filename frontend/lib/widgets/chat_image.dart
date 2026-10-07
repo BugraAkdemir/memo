@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/l10n.dart';
 import '../providers/chat_provider.dart';
+import 'image_viewer.dart';
 
 /// A chat message's image, loaded through the backend (`GET /api/image`).
 ///
@@ -66,6 +68,50 @@ class _ChatImageState extends ConsumerState<ChatImage> {
     }
   }
 
+  /// Tap to open the viewer (zoom, details, download); the two corner buttons do
+  /// the same for people who do not know a picture can be tapped.
+  Widget _withActions(BuildContext context, Uint8List bytes, Widget image) {
+    Widget corner(String key, IconData icon, String tip, VoidCallback onTap) => Tooltip(
+          message: tip,
+          child: InkWell(
+            key: Key(key),
+            borderRadius: BorderRadius.circular(16),
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.all(5),
+              decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+              child: Icon(icon, size: 16, color: Colors.white),
+            ),
+          ),
+        );
+    return Stack(
+      children: [
+        MouseRegion(
+          cursor: SystemMouseCursors.zoomIn,
+          child: GestureDetector(
+            key: const Key('chat_image_tap'),
+            onTap: () => showImageViewer(context, bytes),
+            child: image,
+          ),
+        ),
+        Positioned(
+          top: 6,
+          right: 6,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              corner('chat_image_enlarge', Icons.zoom_out_map, L10n.t('image_enlarge'),
+                  () => showImageViewer(context, bytes)),
+              const SizedBox(width: 6),
+              corner('chat_image_download', Icons.download, L10n.t('image_download'),
+                  () => saveImageBytes(context, bytes)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   bool get _localFileExists {
     if (kIsWeb) return false;
     try {
@@ -82,11 +128,15 @@ class _ChatImageState extends ConsumerState<ChatImage> {
       builder: (context, snap) {
         final bytes = snap.data;
         if (bytes != null) {
-          return Image.memory(
+          return _withActions(
+            context,
             bytes,
-            width: widget.width,
-            fit: BoxFit.contain,
-            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            Image.memory(
+              bytes,
+              width: widget.width,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
           );
         }
         if (snap.connectionState != ConnectionState.done) {

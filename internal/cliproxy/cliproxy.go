@@ -81,6 +81,7 @@ type Manager struct {
 	goarch    string
 	modelsMu  sync.Mutex
 	modelsMem *modelsMemo
+	quotaMem  *quotaMemo
 }
 
 // state is what must survive a restart: the API key the provider entry carries

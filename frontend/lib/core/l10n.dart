@@ -537,6 +537,9 @@ class L10n {
     'subs_models_count': '{n} model kullanılabilir',
     'subs_models_hint':
         'Modeli sohbetin sağ üstündeki model seçiciden veya /model komutuyla seç. Geliştirici sekmesindeki :8090/v1 geçidinde "subs/<model>" olarak görünür.',
+    'subs_quota_left': 'Kalan kullanım hakkı: {pct}%',
+    'subs_quota_resets': 'Yenilenme: {when}',
+    'subs_quota_hint': 'Yüzdeler, hesabının model başına kalan kullanım hakkıdır (şu an yalnızca Antigravity bildirir).',
     'dev_gateway_settings_title': 'Ağ Geçidi Ayarları',
     'dev_gateway_system_prompt_label': 'Ek Sistem Talimatı',
     'dev_gateway_system_prompt_desc':
@@ -2833,6 +2836,9 @@ class L10n {
     'subs_models_count': '{n} models available',
     'subs_models_hint':
         'Pick the model in the chat\'s model selector (top right) or with /model. In the :8090/v1 gateway on the Developer tab they appear as "subs/<model>".',
+    'subs_quota_left': 'Allowance left: {pct}%',
+    'subs_quota_resets': 'Refills: {when}',
+    'subs_quota_hint': 'Percentages are the allowance your account has left per model (only Antigravity reports it for now).',
     'dev_gateway_settings_title': 'Gateway Settings',
     'dev_gateway_system_prompt_label': 'Extra System Instruction',
     'dev_gateway_system_prompt_desc':

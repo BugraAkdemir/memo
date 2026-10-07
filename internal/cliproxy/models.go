@@ -106,5 +106,6 @@ func (m *Manager) CachedModels() []Model {
 func (m *Manager) invalidateModels() {
 	m.modelsMu.Lock()
 	m.modelsMem = nil
+	m.quotaMem = nil
 	m.modelsMu.Unlock()
 }

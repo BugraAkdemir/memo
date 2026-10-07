@@ -6,12 +6,30 @@ class ProviderModel {
   final String id;
   final String ownedBy;
 
-  const ProviderModel({required this.id, this.ownedBy = ''});
+  /// Share of the model's allowance left, 0..1, when the vendor reports one
+  /// (Antigravity does). Null = unknown, which is not the same as empty.
+  final double? remaining;
+
+  /// When that allowance refills (RFC 3339), if the vendor says.
+  final String resetAt;
+
+  const ProviderModel({required this.id, this.ownedBy = '', this.remaining, this.resetAt = ''});
 
   factory ProviderModel.fromJson(Map<String, dynamic> json) => ProviderModel(
         id: json['id'] as String? ?? '',
         ownedBy: json['owned_by'] as String? ?? '',
+        remaining: (json['remaining'] as num?)?.toDouble(),
+        resetAt: json['reset_at'] as String? ?? '',
       );
+
+  /// [remaining] as a whole percentage, or null when unknown. A sliver that
+  /// would round to 0 still shows as 1 so "almost out" is not read as "out".
+  int? get remainingPercent {
+    final r = remaining;
+    if (r == null) return null;
+    final pct = (r * 100).round();
+    return pct == 0 && r > 0 ? 1 : pct.clamp(0, 100);
+  }
 }
 
 /// The live list for one provider plus the model it currently uses.

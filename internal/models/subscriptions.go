@@ -36,6 +36,10 @@ type SubscriptionAccount struct {
 type SubscriptionModel struct {
 	ID      string `json:"id"`
 	OwnedBy string `json:"owned_by"`
+	// Remaining is the share of the model's allowance left (0..1) when the vendor
+	// reports one (Antigravity does); absent otherwise. ResetAt is when it refills.
+	Remaining *float64 `json:"remaining,omitempty"`
+	ResetAt   string   `json:"reset_at,omitempty"`
 }
 
 // SubscriptionLogin mirrors cliproxy.LoginState for the REST response.

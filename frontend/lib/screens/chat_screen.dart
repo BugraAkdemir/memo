@@ -9,6 +9,7 @@ import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/provider_config.dart';
 import '../models/provider_models.dart';
+import '../widgets/quota_badge.dart';
 import '../providers/chat_provider.dart';
 import '../providers/provider_provider.dart';
 import '../providers/whatsapp_provider.dart';
@@ -551,6 +552,11 @@ class _QuickModelDropdown extends ConsumerWidget {
     String cliType = '';
     try {
       activeType = await ref.read(activeProviderTypeProvider.future);
+      // Always ask again: the list is cached from app start, and a provider
+      // registered since (Subscriptions appears only after a sign-in and the
+      // sidecar's ~30 s model delay) would otherwise be missing from the menu
+      // until the app was restarted.
+      ref.invalidate(providerListProvider);
       providers = await ref.read(providerListProvider.future);
       final chatId = ref.read(activeChatIdProvider).valueOrNull;
       if (chatId != null) {
@@ -743,6 +749,7 @@ class _QuickModelDropdown extends ConsumerWidget {
           leading: const SizedBox(width: 18),
           label: m.id,
           isActive: providerIsActive && provider.model == m.id,
+          trailing: QuotaBadge(model: m),
         ),
       ));
     }
@@ -981,11 +988,15 @@ class _QuickModelMenuRow extends StatelessWidget {
   final bool isActive;
   final Color? labelColor;
 
+  /// Shown after the label (e.g. a model's remaining allowance).
+  final Widget? trailing;
+
   const _QuickModelMenuRow({
     required this.leading,
     required this.label,
     this.isActive = false,
     this.labelColor,
+    this.trailing,
   });
 
   @override
@@ -1004,6 +1015,10 @@ class _QuickModelMenuRow extends StatelessWidget {
             ),
           ),
         ),
+        if (trailing != null) ...[
+          const SizedBox(width: 10),
+          trailing!,
+        ],
         if (isActive) ...[
           const SizedBox(width: 8),
           Icon(Icons.check, size: 16, color: MemoTheme.accent),

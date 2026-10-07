@@ -135,8 +135,14 @@ func (a *App) SubscriptionsState(ctx context.Context) models.SubscriptionsState 
 	if list == nil {
 		list = m.CachedModels()
 	}
+	quotas := a.subsQuotas(ctx, len(list) > 0)
 	for _, md := range list {
-		st.Models = append(st.Models, models.SubscriptionModel{ID: md.ID, OwnedBy: md.OwnedBy})
+		sm := models.SubscriptionModel{ID: md.ID, OwnedBy: md.OwnedBy}
+		if q, ok := quotas[md.ID]; ok {
+			r := q.Remaining
+			sm.Remaining, sm.ResetAt = &r, q.ResetAt
+		}
+		st.Models = append(st.Models, sm)
 	}
 
 	if p, ok := a.subsMarkerConfig(); ok {
@@ -145,6 +151,22 @@ func (a *App) SubscriptionsState(ctx context.Context) models.SubscriptionsState 
 	ls := m.LoginStatus()
 	st.Login = models.SubscriptionLogin{Provider: ls.Provider, Running: ls.Running, URL: ls.URL, Done: ls.Done, Error: ls.Error}
 	return st
+}
+
+// subsQuotas reads the per-model allowance left, best effort: a vendor that
+// reports none, an expired token or a slow network just means no percentages —
+// the model list itself never waits long for it or fails because of it.
+func (a *App) subsQuotas(ctx context.Context, haveModels bool) map[string]cliproxy.Quota {
+	if !haveModels {
+		return nil
+	}
+	qctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	q, err := a.subsManager().Quotas(qctx)
+	if err != nil {
+		return nil
+	}
+	return q
 }
 
 func (a *App) subsProblemText(err error) string {
@@ -404,9 +426,15 @@ func (a *App) ListProviderModels(ctx context.Context, name string) ([]models.Pro
 		} else {
 			list = m.CachedModels()
 		}
+		quotas := a.subsQuotas(ctx, len(list) > 0)
 		out := make([]models.ProviderModel, 0, len(list))
 		for _, md := range list {
-			out = append(out, models.ProviderModel{ID: md.ID, OwnedBy: md.OwnedBy})
+			pm := models.ProviderModel{ID: md.ID, OwnedBy: md.OwnedBy}
+			if q, ok := quotas[md.ID]; ok {
+				r := q.Remaining
+				pm.Remaining, pm.ResetAt = &r, q.ResetAt
+			}
+			out = append(out, pm)
 		}
 		return out, cfg.Model, nil
 	}

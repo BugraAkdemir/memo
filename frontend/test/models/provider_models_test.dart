@@ -64,4 +64,30 @@ void main() {
     expect(vendorLabel('xai'), 'Xai');
     expect(vendorLabel(''), '');
   });
+
+  group('remaining allowance', () {
+    test('is parsed from the model list and shown as a whole percentage', () {
+      final m = ProviderModel.fromJson({
+        'id': 'claude-sonnet-4-6',
+        'remaining': 0.2549,
+        'reset_at': '2026-10-13T20:54:16Z',
+      });
+      expect(m.remaining, closeTo(0.2549, 1e-9));
+      expect(m.remainingPercent, 25);
+      expect(m.resetAt, '2026-10-13T20:54:16Z');
+    });
+
+    test('absent means unknown, which is not the same as empty', () {
+      final m = ProviderModel.fromJson({'id': 'gpt-5'});
+      expect(m.remaining, isNull);
+      expect(m.remainingPercent, isNull);
+      expect(ProviderModel.fromJson({'id': 'x', 'remaining': 0}).remainingPercent, 0);
+    });
+
+    test('a sliver left never rounds down to "0%" and the value is clamped', () {
+      expect(ProviderModel.fromJson({'id': 'x', 'remaining': 0.002}).remainingPercent, 1);
+      expect(ProviderModel.fromJson({'id': 'x', 'remaining': 1.4}).remainingPercent, 100);
+      expect(ProviderModel.fromJson({'id': 'x', 'remaining': -0.3}).remainingPercent, 0);
+    });
+  });
 }

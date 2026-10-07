@@ -34,6 +34,31 @@ class _FakeSubscriptions extends SubscriptionsNotifier {
   }
 }
 
+/// Starts with the account but no models (the sidecar serves none for ~30 s after
+/// a sign-in) and "receives" them on the first reload.
+class _LateModels extends SubscriptionsNotifier {
+  int reloads = 0;
+  @override
+  Future<SubscriptionsState> build() async => const SubscriptionsState(
+        bundled: true,
+        running: true,
+        providers: ['antigravity', 'claude', 'codex'],
+        accounts: [SubscriptionAccount(provider: 'antigravity', email: 'me@example.com')],
+      );
+
+  @override
+  Future<void> reload() async {
+    reloads++;
+    state = const AsyncValue.data(SubscriptionsState(
+      bundled: true,
+      running: true,
+      providers: ['antigravity', 'claude', 'codex'],
+      accounts: [SubscriptionAccount(provider: 'antigravity', email: 'me@example.com')],
+      models: [ProviderModel(id: 'claude-sonnet-4-6', ownedBy: 'antigravity', remaining: 0.25)],
+    ));
+  }
+}
+
 const _bundled = SubscriptionsState(
   bundled: true,
   version: 'v8.0.16',
@@ -138,6 +163,42 @@ void main() {
       locale: MemoLocale.tr,
       size: const Size(360, 1400),
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  // Signing in restarts the sidecar and it answers /v1/models with nothing for
+  // ~30 s. The tab used to read that empty list once and keep showing "no models
+  // yet" (and the model menus kept their cached, Subscriptions-less list) until
+  // the app was reopened.
+  testWidgets('keeps asking while an account has no models yet, then shows them', (tester) async {
+    L10n.setLocale(MemoLocale.en);
+    tester.view.physicalSize = const Size(1000, 1800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final notifier = _LateModels();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(MemoApiClient(baseUrl: 'http://127.0.0.1:1')),
+          subscriptionsProvider.overrideWith(() => notifier),
+        ],
+        child: const MaterialApp(home: Scaffold(body: SubscriptionsTab())),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text(L10n.t('subs_models_none')), findsOneWidget);
+    expect(find.text('claude-sonnet-4-6'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    expect(notifier.reloads, 1);
+    expect(find.text('claude-sonnet-4-6'), findsOneWidget);
+    expect(find.text('25%'), findsOneWidget, reason: 'the remaining allowance is shown beside the model');
+
+    // Once the models are here it stops asking.
+    await tester.pump(const Duration(seconds: 9));
+    expect(notifier.reloads, 1);
     expect(tester.takeException(), isNull);
   });
 }

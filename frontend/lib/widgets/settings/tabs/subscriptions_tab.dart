@@ -9,6 +9,7 @@ import '../../../core/l10n.dart';
 import '../../../core/theme.dart';
 import '../../../models/provider_models.dart';
 import '../../../models/subscriptions.dart';
+import '../../quota_badge.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/provider_provider.dart';
 import '../../../providers/settings_provider.dart';
@@ -30,6 +31,7 @@ class SubscriptionsTab extends ConsumerStatefulWidget {
 
 class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
   Timer? _poll;
+  Timer? _modelsPoll; // waits for the sidecar's model list after a sign-in
   String _loginFor = ''; // provider whose sign-in this tab is waiting on
   String _authUrl = '';
   bool _starting = false;
@@ -37,7 +39,35 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
   @override
   void dispose() {
     _poll?.cancel();
+    _modelsPoll?.cancel();
     super.dispose();
+  }
+
+  /// The sidecar serves no model list until ~30 s after it (re)starts, and a
+  /// sign-in restarts it — so right after signing in the account is there but
+  /// the list is still empty. Nothing else would ask again, which left "no
+  /// models yet" on screen (and the model menus without the Subscriptions
+  /// section) until the app was reopened. Re-read every few seconds until the
+  /// models arrive, then refresh the selectors that cached the empty answer.
+  void _watchForModels(SubscriptionsState st) {
+    final waiting = st.bundled && st.accounts.isNotEmpty && st.models.isEmpty;
+    if (!waiting || _modelsPoll != null) return;
+    var ticks = 0;
+    _modelsPoll = Timer.periodic(const Duration(seconds: 3), (t) async {
+      ticks++;
+      try {
+        await ref.read(subscriptionsProvider.notifier).reload();
+      } catch (e) {
+        debugPrint('subscriptions_tab: waiting for models, will retry: $e');
+      }
+      final now = ref.read(subscriptionsProvider).valueOrNull;
+      final arrived = now != null && now.models.isNotEmpty;
+      if (arrived || now == null || now.accounts.isEmpty || ticks >= 60) {
+        t.cancel();
+        _modelsPoll = null;
+        if (arrived) _refreshModelSelectors();
+      }
+    });
   }
 
   void _toast(String text) {
@@ -170,7 +200,12 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
             L10n.t('subs_error', {'e': FriendlyError.describeGeneric(e)}),
             style: const TextStyle(color: MemoTheme.red, fontSize: 12),
           ),
-          data: (st) => _body(context, st),
+          data: (st) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _watchForModels(st);
+            });
+            return _body(context, st);
+          },
         ),
       ],
     );
@@ -329,15 +364,30 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(color: m.id == st.model ? MemoTheme.accent : theme.borderSoft),
                     ),
-                    child: Text(
-                      m.id,
-                      style: TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11, color: theme.textMain),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            m.id,
+                            style: TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11, color: theme.textMain),
+                          ),
+                        ),
+                        if (m.remainingPercent != null) ...[
+                          const SizedBox(width: 8),
+                          QuotaBadge(model: m, fontSize: 11),
+                        ],
+                      ],
                     ),
                   ),
               ],
             ),
             const SizedBox(height: 10),
             Text(L10n.t('subs_models_hint'), style: TextStyle(fontSize: 11, color: theme.textDim, height: 1.4)),
+            if (st.models.any((m) => m.remainingPercent != null)) ...[
+              const SizedBox(height: 4),
+              Text(L10n.t('subs_quota_hint'), style: TextStyle(fontSize: 11, color: theme.textDim, height: 1.4)),
+            ],
           ],
         ],
       ),

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -647,5 +648,94 @@ func TestLogin_ABrowserProbeThatHangsDoesNotBlockTheURL(t *testing.T) {
 	eventually(t, "Memo to open the sign-in page itself", 3*time.Second, func() bool { return len(openedURLs()) == 1 })
 	if got := openedURLs()[0]; got != u {
 		t.Errorf("opened %q, want the sign-in URL %q", got, u)
+	}
+}
+
+// ── per-model quota ─────────────────────────────────────────────────────────
+
+func quotaFixture(t *testing.T, status int, body string) (*Manager, *int) {
+	t.Helper()
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if r.Header.Get("Authorization") != "Bearer SECRET-TOKEN" {
+			http.Error(w, "bad token", http.StatusUnauthorized)
+			return
+		}
+		var req map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req["project"] != "proj-1" {
+			http.Error(w, "bad project", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	prev := antigravityQuotaURL
+	antigravityQuotaURL = srv.URL
+	t.Cleanup(func() { antigravityQuotaURL = prev })
+
+	m := newMgr(t)
+	if err := os.MkdirAll(m.authDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cred := `{"type":"antigravity","email":"a@b.c","project_id":"proj-1","access_token":"SECRET-TOKEN"}`
+	if err := os.WriteFile(filepath.Join(m.authDir(), "antigravity-a@b.c.json"), []byte(cred), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return m, &hits
+}
+
+func TestQuotas_ReadsRemainingFractionPerModelAndCaches(t *testing.T) {
+	m, hits := quotaFixture(t, 200, `{"models":{
+		"claude-sonnet-4-6":{"quotaInfo":{"remainingFraction":0.25,"resetTime":"2026-10-13T20:54:16Z"}},
+		"gemini-3-flash":{"quotaInfo":{"remainingFraction":1}},
+		"used-up":{"quotaInfo":{"resetTime":"2026-10-08T00:00:00Z"}},
+		"no-quota-info":{"displayName":"x"}}}`)
+
+	q, err := m.Quotas(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := q["claude-sonnet-4-6"]; got.Remaining != 0.25 || got.ResetAt != "2026-10-13T20:54:16Z" {
+		t.Errorf("claude-sonnet-4-6 = %+v", got)
+	}
+	if got := q["gemini-3-flash"]; got.Remaining != 1 {
+		t.Errorf("gemini-3-flash = %+v", got)
+	}
+	if got, ok := q["used-up"]; !ok || got.Remaining != 0 {
+		t.Errorf("a model with only a reset time is used up (0 left), got %+v ok=%v", got, ok)
+	}
+	if _, ok := q["no-quota-info"]; ok {
+		t.Error("a model without quotaInfo must have no entry")
+	}
+	if _, err := m.Quotas(context.Background()); err != nil || *hits != 1 {
+		t.Errorf("second call must come from the cache: err=%v hits=%d", err, *hits)
+	}
+	m.invalidateModels()
+	if _, err := m.Quotas(context.Background()); err != nil || *hits != 2 {
+		t.Errorf("a model-cache reset (sign-in/out) must refetch: err=%v hits=%d", err, *hits)
+	}
+}
+
+func TestQuotas_FailureIsUnavailableNotFatalAndNeverLeaksTheToken(t *testing.T) {
+	m, hits := quotaFixture(t, 500, `boom SECRET-TOKEN`)
+	_, err := m.Quotas(context.Background())
+	if !errors.Is(err, ErrQuotaUnavailable) {
+		t.Fatalf("err = %v, want ErrQuotaUnavailable", err)
+	}
+	if strings.Contains(err.Error(), "SECRET-TOKEN") {
+		t.Errorf("error leaks the token: %v", err)
+	}
+	if _, err := m.Quotas(context.Background()); err == nil || *hits != 1 {
+		t.Errorf("a failure must be remembered briefly instead of hammering the vendor: hits=%d", *hits)
+	}
+}
+
+func TestQuotas_NoAntigravityAccountMeansNoQuota(t *testing.T) {
+	m := newMgr(t)
+	if _, err := m.Quotas(context.Background()); !errors.Is(err, ErrQuotaUnavailable) {
+		t.Fatalf("err = %v, want ErrQuotaUnavailable", err)
 	}
 }

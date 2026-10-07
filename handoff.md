@@ -1,3 +1,44 @@
+# Handoff — 2026-10-08 (gece) — Telegram/WhatsApp: /model, görsel gir/çık, otomatik görsel yönlendirme, şifreli görseller
+
+## İstekler
+1) Telegram + WhatsApp'ta `/model` ile eklenmiş modeller arasında geçiş. 2) Bu botlardan text2img / img2img / img2text. 3) 400/500/404 gibi bilinen hatalar sohbette saçma değil açıklayıcı. 4) **Otomatik yönlendirme**: Codex/Antigravity'de metin modelini kullanırken "resim üret" denince kullanıcı elini sürmeden o hesabın görsel modeline geçsin, sonra yazı yazınca yine metin modelinden devam etsin. 5) API sağlayıcılar için ayarlarda varsayılan görsel modeli; abonelikte varsayılana değil O ABONELİĞİN görsel modeline gitsin. 6) Görsel büyütme / inceleme / indirme. 7) Gönderilen ve üretilen görseller **şifreli** saklansın (dosya sızsa bile görünmesin). 8) **Push yok.**
+
+## Yapılanlar (hepsi `main`'de, **PUSH EDİLMEDİ** — `git log origin/main..HEAD`)
+| Commit | Ne |
+|---|---|
+| `1e0580a8` | `internal/imgvault`: XChaCha20-Poly1305, dosya başına HKDF anahtarı, rastgele 192-bit nonce, kimlik doğrulamalı, atomik yazma, 0600. `data/images` + `data/generated-images` şifreli; eski düz dosyalar açılışta bir kez mühürlenir (`sealStoredImages`). Ana anahtar **veri klasörünün dışında**: `~/.config/Memo/image.key` (`MEMO_IMAGE_KEY` parola / `MEMO_IMAGE_KEY_FILE` / `MEMO_DATA_DIR` varsa veriyle birlikte) |
+| `8aed69f2` | Telegram+WhatsApp: `/model` (liste/numara/ad/`<sağlayıcı> <model>`), gelen fotoğraf (anlat / altındaki yazı değişiklikse düzenle), giden çizilmiş görsel (Telegram `sendPhoto`→ret olursa `sendDocument`), `/image`, otomatik yönlendirme (`routeStream` kancası; tüm yüzeylerde), hatalar `FriendlyError`'dan geçer. WhatsApp'ta açıklamasız görsel artık düşmüyor |
+| `9074a61d` | `GET/PUT /api/image/config` + Flutter **Ayarlar › API Sağlayıcıları › Görsel üretimi** kartı (otomatik yönlendirme anahtarı + varsayılan görsel modeli sağlayıcı/model) |
+| `e88af4e5` | Sohbet görselini tam pencerede aç: yakınlaştır (düğme/tekerlek/çimdik/çift dokunuş/`+ - 0`), kaydır, ayrıntılar (çözünürlük, oran, biçim, boyut), indir |
+| `01d68212` | Akışsız uç noktalar (`SendMessage*`) ve Canlı Mod da ham sağlayıcı hatası yerine cümle söyler |
+| (bu giriş) | docs EN/TR, iki Obsidian kasası, v4.6.0 notları EN/TR, AGENTS.md tuzakları, Telegram komut menüsü (`setMyCommands`) + `/komut@bot` soneki |
+
+## Doğrulama (çıktılar)
+`go build` / `go vet` temiz; `go test -tags sqlite_fts5 ./... -race -count=1` **56 paket ok, 0 FAIL, çıkış 0** (komut menüsü + `/komut@bot` dâhil son hâl üzerinde). `flutter analyze lib/ test/` 7 eski `info`, yeni yok; `flutter test` 551 geçti; Kural #8 taraması (yeni/değişen tüm .dart + testler) boş.
+**Uçtan uca (gerçek HTTP, gerçek `App`):** sahte Telegram Bot API (`internal/e2e/fake_telegram.go`) + sahte sağlayıcı (artık `/images/generations|edits` sunar) + sahte sidecar (`FAKECPA_IMAGE_MODELS=1`): `/model` liste+numara+ad+hatalı numara, "bana bir kedi resmi çiz" → fotoğraf döner, **sohbet modeli o tur çağrılmaz**, ertesi mesaj yine metin modeli; fotoğraf+"make it black and white" → `/images/edits` 1 kaynak resimle; açıklamasız fotoğraf → sohbet modeli `image_url` ile görür; `/image` (kullanım, model yokken açıklama, kapalı otomatik modda bile çizer); 500 → "(HTTP 500)" cümlesi, ham metin yok; diskteki görseller `MEMOIMG1` başlıklı şifreli. **Abonelik:** Codex sohbeti `codex-image`, Antigravity sohbeti `antigravity-image` çizer, varsayılan görsel modeline **hiç** gitmez; düzenleme `/v1/images/edits`. Mutasyon: yönlendirme kancası devre dışı → 5 e2e kırmızı. Zoom-out hatası (aşağıda) widget testiyle yakalandı.
+
+## DOĞRULANMADI / bilinmesi gerekenler
+- **Gerçek Telegram ve WhatsApp uygulamalarıyla denenmedi.** Telegram yalnızca sahte Bot API'ye karşı; **WhatsApp'ın sahte aktarımı yok**, görsel indirme/gönderme (`Download`/`Upload`) yalnızca birim testli, kablo hâli (whatsmeow) hiç çalışmadı.
+- **Gerçek bir satıcı hesabıyla görsel üretilmedi** (kullanıcı uyurken kimlik bilgilerine dokunmamak için; token yenilemesi orijinali bozabilir). Abonelik yolu sahte sidecar'a karşı.
+- Flutter görüntüleyici/kart **gerçek pencerede görsel olarak bakılmadı**; yalnızca widget testleri. `FilePicker.saveFile` (kaydet penceresi) gerçek cihazda denenmedi (testlerde enjekte edilen kaydedici).
+- **Niyet sezgisi anahtar sözcüğe dayalı** (TR+EN): yanlış pozitif/negatif olabilir; temkinli ayarlandı. Yanlış tetikleme bildirilirse `image_intent_test.go`'ya negatif ekle. Kullanıcı `/image` ile zorlayabilir.
+- **Anahtar dosyası kritik:** `~/.config/Memo/image.key` kaybolursa şifreli görseller geri gelmez (sohbet metinleri etkilenmez). İlk açılışta mevcut `data/images`, `data/generated-images` içeriği mühürlenir. Yedeklemeye (`ExportData`) görsel klasörleri **hiç girmiyordu**, hâlâ girmiyor. Windows/macOS yolları (`os.UserConfigDir`) bu makinede denenmedi; HOME'u olmayan ortamda veri klasörüne düşer.
+- Şifreleme **bellekteki** görseli ve model sağlayıcısının/Telegram'ın/WhatsApp'ın aldığı kopyayı kapsayamaz (doküman da öyle diyor).
+- Komut menüsü (`setMyCommands`) yalnızca sahte API'de görüldü.
+- Görsel modeli **seçicide** işaretli değil (Flutter model seçicide 🎨 etiketi yok); botların `/model` listesinde var.
+
+## Bu oturumda bulunan gerçek hatalar
+- `Matrix4.getMaxScaleOnAxis()` z'yi de sayar (hiç ölçeklenmez) → yakınlaştırma <%100'de hep %100 okundu; x sütununun uzunluğuna geçildi.
+- Test yarışı: sahte sağlayıcının `Script`'i test goroutine'inde atomik olmadan değiştiriliyordu (race detector yakaladı).
+
+## Hâlâ kullanıcıda (önceki girdilerden)
+`origin`'in ikinci push URL'sindeki düz metin token (`web.bugradev.com`) → sil + döndür. llama.cpp b9441→b11456 uygulanmadı. Claude girişi yok.
+
+## Sonraki adım önerisi
+Gerçek Telegram botuyla `/model`, bir fotoğraf, "bir kedi çiz", `/image …` dene; WhatsApp self-chat'te aynısı. Flutter'da görüntüleyiciyi gör. İstenirse: seçicide görsel etiketi, REPL'e `/image`, görseli panoya kopyala, anahtar için "yedekle/dışa aktar" düğmesi.
+
+---
+
 # Handoff — 2026-10-08 — Bağlam halkası, %90 otomatik sıkıştırma, okunabilir hatalar, docs/CI
 
 ## İstekler

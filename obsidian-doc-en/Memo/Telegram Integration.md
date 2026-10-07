@@ -23,6 +23,20 @@ Once the owner is linked, messaging the bot gets you the same assistant capabili
 - **Routines via chat**: ask in plain language and Memo creates/lists/cancels a routine with the same `create_routine`/`list_routines`/`cancel_routine` agent tools available in-app.
 - **Permission answers**: `routeTelegramPermissionAnswer` intercepts replies to a pending agent-tool permission prompt sent as a Telegram message, same idea as WhatsApp's flow.
 
+## Models, pictures and readable errors (v4.6.0)
+
+The same three additions exist on WhatsApp's self-chat (they share `internal/app/model_switch.go`, `selfchat_turn.go` and `selfchat_l10n.go`, so the bots cannot drift apart).
+
+- **`/model`** lists every model one message away (each enabled provider's model, every live model of the Subscriptions accounts grouped by vendor, the local model), numbered, active one ✅, image models 🎨. `/model 3`, `/model gemini` or `/model <provider> <model>` switches; a search keeps the numbers of the full list. `/status` names the model.
+- **Pictures in:** `client.go` now reads `photo` (largest size) and image `document`s plus their `caption`; `Client.DownloadFile` does `getFile` + the file URL (20 MB cap). A photo goes to `App.SendMessageWithImageStreamTo` — the by-chat-ID twin of the app's image send — so it is described by the chat model, or edited when the caption asks for a change.
+- **Pictures out:** a picture the turn drew (the `generated_image` marker) is read through the vault and sent with `sendPhoto`; Telegram recompresses photos and rejects some sizes, so a refusal falls back to `sendDocument`.
+- **`/image <prompt>`** forces a picture whatever the wording (`parseImageCommand`; also `/img`, `/resim`, `/görsel`, and `@botname` suffixes are stripped). With a photo it edits the photo. With no image model set it says so.
+- **Automatic routing:** "bana bir kedi resmi çiz" / "draw me a cat" is noticed (`image_intent.go`, conservative) and goes to an image model for that message only — the next one is chat again. A Subscriptions account draws with its own account's image model; other providers use the default image model (Settings › API Providers › Image generation). See `docs/FEATURES.md` › External Provider Support › Automatic picture routing.
+- **Readable errors:** the turn's error text goes through `App.FriendlyError` before it is sent, so a 400/401/403/404/429/5xx reads as a sentence.
+- **Self-hosted Bot API / tests:** `MEMO_TELEGRAM_API_BASE=http://127.0.0.1:8081` points the client at another Bot API server (the e2e suite's `FakeTelegram` uses it).
+
+Verified end to end through a fake Bot API (`internal/e2e/telegram_media_e2e_test.go`): `/model` list and switch, a picture request drawn and the next message plain chat, a photo edited, a plain photo described, `/image` and its no-model answer, a 500 explained, and the stored pictures being ciphertext. **Not verified against the real Telegram app.**
+
 ## Technical
 
 - **Storage**: `internal/telegram/store.go` — `OwnerChatID` (0 = not yet linked) plus message history, isolated from WhatsApp's own SQLite database.

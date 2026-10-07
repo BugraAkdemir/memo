@@ -133,6 +133,12 @@ A streamed chunk is ordinary reply text unless its `finish_reason` names one of 
 | `POST` | `/api/telegram/stop` | Stop the client without clearing the token |
 | `POST` | `/api/telegram/disconnect` | Disconnect and clear the stored token/owner link |
 
+### 🎨 Image generation
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/image/config` | `{"auto_route": bool, "default_provider": "", "default_model": ""}` — whether a picture asked for in chat goes to an image model on its own, and the default image model API-key providers use (a Subscriptions account always uses its own account's image model) |
+| `PUT`/`POST` | `/api/image/config` | Change any of those; omitted fields keep their value. A default image model needs both a provider and a model (or neither) and the provider must be configured — otherwise `400` with the reason. Admin-only write. |
+
 ### 🚗 Self-Driving Task Loop
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |

@@ -29,6 +29,20 @@ Sahip bağlandıktan sonra, bot'a mesaj atmak WhatsApp'ın kendine-sohbetiyle ay
 - **Long-polling, webhook değil**: self-host etmesi daha basit (herkese açık HTTPS endpoint gerekmez), bedeli webhook push'a göre biraz daha yüksek gecikme.
 - **Durum**: işlevsellik unit testlerle kapsanıyor (`client_test.go`, `store_test.go`); kullanıcının gerçek Telegram uygulamasında uçtan uca tıklayarak canlı bir bot'a karşı henüz doğrulamadığı bir özellik.
 
+## Modeller, görseller ve okunabilir hatalar (v4.6.0)
+
+WhatsApp kendine-sohbetiyle aynı üç ek (`internal/app/model_switch.go`, `selfchat_turn.go`, `selfchat_l10n.go` ortak, iki bot birbirinden ayrışamaz).
+
+- **`/model`**: bir mesaj uzağındaki her modeli listeler (açık sağlayıcıların modeli, Abonelik hesaplarının canlı modelleri sağlayıcıya göre gruplu, yerel model), numaralı; aktif ✅, görsel modeli 🎨. `/model 3`, `/model gemini` ya da `/model <sağlayıcı> <model>` değiştirir; arama tam listenin numaralarını korur. `/status` modeli de söyler.
+- **Gelen görsel:** `client.go` artık `photo` (en büyük boyut) ve görsel `document`'leri ile `caption`'ı okur; `Client.DownloadFile` `getFile` + dosya adresini kullanır (20 MB sınırı). Fotoğraf, uygulamanın görsel gönderiminin sohbet-kimlikli ikizi `App.SendMessageWithImageStreamTo`'ya gider; sohbet modeli anlatır, altındaki yazı değişiklik istiyorsa düzenlenir.
+- **Giden görsel:** turun çizdiği görsel (`generated_image` işaretçisi) kasadan okunup `sendPhoto` ile gönderilir; Telegram fotoğrafı yeniden sıkıştırır ve bazı boyutları reddeder, ret olursa `sendDocument`'a düşülür.
+- **`/image <açıklama>`** ifade nasıl olursa olsun görsel zorlar (`parseImageCommand`; `/img`, `/resim`, `/görsel` ve `@botadı` eki de tanınır). Fotoğrafla birlikte fotoğrafı düzenler. Görsel modeli yoksa bunu söyler.
+- **Otomatik yönlendirme:** "bana bir kedi resmi çiz" / "draw me a cat" fark edilir (`image_intent.go`, temkinli) ve yalnızca o mesaj için bir görsel modeline gider; sonraki mesaj yine sohbettir. Abonelik hesabı kendi hesabının görsel modeliyle çizer; diğer sağlayıcılar varsayılan görsel modelini kullanır (Ayarlar › API Sağlayıcıları › Görsel üretimi).
+- **Okunabilir hatalar:** turun hata metni gönderilmeden önce `App.FriendlyError`'dan geçer; 400/401/403/404/429/5xx bir cümle olarak okunur.
+- **Kendi barındırdığın Bot API / testler:** `MEMO_TELEGRAM_API_BASE=http://127.0.0.1:8081` istemciyi başka bir Bot API sunucusuna yönlendirir (e2e takımındaki `FakeTelegram` bunu kullanır).
+
+Sahte bir Bot API üzerinden uçtan uca doğrulandı (`internal/e2e/telegram_media_e2e_test.go`). **Gerçek Telegram uygulamasıyla doğrulanmadı.**
+
 ## Bağlantılı Notlar:
 - [[WhatsApp Entegrasyonu]] — diğer kendine-sohbet yüzeyi, aynı asistan deseni
 - [[Ajan Modu]] — her iki kendine-sohbet yüzeyinin de yönlendiği tool-calling döngüsü

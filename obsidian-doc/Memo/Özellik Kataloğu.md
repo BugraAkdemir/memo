@@ -215,6 +215,10 @@ Detay: [[Otonom Görev Döngüsü]] ve repo'nun `BUG_REPORT.md`'si.
 | Kendine-sohbet asistanı | ✅ |
 | Sohbetten rutin oluşturma | ✅ |
 | Yerel SQLite depolama, WhatsApp'tan izole | ✅ |
+| `/model` ile modelleri listele ve değiştir (WhatsApp'ta da) | ✅ (v4.6.0) |
+| Fotoğraf gönder → anlatır / altına değişiklik yaz → düzenler (görselden görsele) | ✅ (v4.6.0) |
+| Sözle görsel iste → çizilip fotoğraf olarak döner (metinden görsele); `/image` ile zorla | ✅ (v4.6.0) |
+| Hatalar sade cümleyle (400/401/403/404/429/5xx) | ✅ (v4.6.0) |
 | `telegram_send` agent aracı | ❌ — WhatsApp'ın send/search/latest/messages araçlarının eşdeğeri henüz yok |
 
 Detay: [[Telegram Entegrasyonu]]

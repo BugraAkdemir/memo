@@ -291,7 +291,8 @@ func (a *App) drainLiveDelegatedReplyUntilMarker(
 	var b strings.Builder
 	for chunk := range ch {
 		if chunk.Error != "" {
-			return chunk.Error, false
+			// Spoken aloud by Live Mode: a sentence, not a provider's status dump.
+			return a.FriendlyError(chunk.Error), false
 		}
 		if chunk.FinishReason == "agent_event" {
 			var ev agent.AgentEvent

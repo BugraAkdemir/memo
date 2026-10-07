@@ -137,9 +137,19 @@ func (a *App) handleIncognito(userMsg string, b64 string) string {
 // file) without draining further, mirroring how callLLM/callLLMStream
 // treat a stream error as terminal.
 func drainToReply(ch <-chan api.StreamChunk) string {
+	return drainToReplyWith(ch, nil)
+}
+
+// drainToReplyWith is drainToReply with the error text passed through friendly
+// first — the non-streaming endpoints hand that string straight to a person, and
+// a provider's raw "status 400 … request id …" is not something they can act on.
+func drainToReplyWith(ch <-chan api.StreamChunk, friendly func(string) string) string {
 	var reply strings.Builder
 	for chunk := range ch {
 		if chunk.Error != "" {
+			if friendly != nil {
+				return friendly(chunk.Error)
+			}
 			return chunk.Error
 		}
 		if chunk.FinishReason != "" {
@@ -198,7 +208,7 @@ func (a *App) SendMessage(userMsg string) string {
 	// existing agent chat.
 	forceAgent := sm != nil && sm.IsAgentChat(chatID)
 	ch := a.sendMessageStreamCore(context.Background(), chatID, userMsg, forceAgent)
-	return drainToReply(ch)
+	return drainToReplyWith(ch, a.FriendlyError)
 }
 
 // SendMessageStream sends a user message and streams the reply token by token.
@@ -800,7 +810,7 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	}
 
 	ch := a.routeStream(context.Background(), msgs, userMsg, stored, "", chatID, false)
-	reply := drainToReply(ch)
+	reply := drainToReplyWith(ch, a.FriendlyError)
 
 	// Cosmetic only: finishStream (inside the drain above) already recorded
 	// the raw reply to session history/memory before this substitution runs,
@@ -858,7 +868,7 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 	}
 
 	ch := a.routeStream(context.Background(), messages, userMsg, "", filePath, chatID, false)
-	return drainToReply(ch)
+	return drainToReplyWith(ch, a.FriendlyError)
 }
 
 // updateMoodAsync duygu skorunu arka planda asenkron günceller.

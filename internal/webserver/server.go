@@ -383,6 +383,10 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/whatsapp/messages", s.handleWhatsAppMessages)
 	route("/api/whatsapp/avatar", s.handleWhatsAppAvatar)
 	route("/api/websearch", s.handleWebSearchSettings)
+	// Automatic image routing + the default image model. Changing it decides
+	// which provider a picture request is sent to (and paid by), so it is an
+	// admin write; reading it is ambient.
+	route("/api/image/config", s.adminWrites(s.handleImageConfig))
 	route("/api/browser", s.handleBrowserSettings)
 	route("/api/browser/install", s.handleBrowserInstall)
 	route("/api/browser/install/progress", s.handleBrowserInstallProgress)

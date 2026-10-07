@@ -12,6 +12,7 @@ import '../providers/settings_provider.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/gate_guard.dart';
+import '../providers/image_config_provider.dart';
 import '../providers/learning_provider.dart';
 import '../providers/models_provider.dart';
 import '../providers/orchestra_provider.dart';
@@ -235,6 +236,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         ref.invalidate(taskListsProvider);
         ref.invalidate(runningTasksProvider);
         ref.invalidate(providerListProvider);
+        ref.invalidate(imageConfigProvider);
         ref.invalidate(activeProviderTypeProvider);
         ref.invalidate(orchestraConfigProvider);
         ref.invalidate(swarmStatusProvider);

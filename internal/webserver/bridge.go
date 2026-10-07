@@ -70,6 +70,9 @@ type FullBridge interface {
 	UpdateMemorySettings(topK int, minSimilarity float32) error
 	GetWebSearchEnabled() bool
 	UpdateWebSearchConfig(enabled bool) error
+	// Automatic image routing + the default image model (config.ImageConfig).
+	GetImageConfig() config.ImageConfig
+	SetImageConfig(c config.ImageConfig) error
 	GetBrowserKeepAlive() bool
 	SetBrowserKeepAlive(keepAlive bool) error
 	GetBrowserInstalled(ctx context.Context) bool

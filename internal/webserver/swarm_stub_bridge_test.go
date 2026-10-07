@@ -225,6 +225,8 @@ func (b *swarmStubBridge) DeleteMemoryFile(relPath string) error                
 func (b *swarmStubBridge) GetMemorySettings() config.MemoryConfig                     { return config.MemoryConfig{} }
 func (b *swarmStubBridge) UpdateMemorySettings(topK int, minSimilarity float32) error { return nil }
 func (b *swarmStubBridge) GetWebSearchEnabled() bool                                  { return false }
+func (b *swarmStubBridge) GetImageConfig() config.ImageConfig                         { return config.ImageConfig{} }
+func (b *swarmStubBridge) SetImageConfig(config.ImageConfig) error                    { return nil }
 func (b *swarmStubBridge) UpdateWebSearchConfig(enabled bool) error                   { return nil }
 func (b *swarmStubBridge) GetBrowserKeepAlive() bool                                  { return false }
 func (b *swarmStubBridge) SetBrowserKeepAlive(keepAlive bool) error                   { return nil }

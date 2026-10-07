@@ -2763,6 +2763,47 @@ func (s *Server) handleWebSearchSettings(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// handleImageConfig: GET reports whether pictures asked for in chat are routed
+// to an image model automatically and which default image model API providers
+// use; PUT/POST changes any of those (omitted fields keep their value).
+func (s *Server) handleImageConfig(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusServiceUnavailable)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, s.fullBridge.GetImageConfig())
+	case http.MethodPut, http.MethodPost:
+		var req struct {
+			AutoRoute       *bool   `json:"auto_route"`
+			DefaultProvider *string `json:"default_provider"`
+			DefaultModel    *string `json:"default_model"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		cur := s.fullBridge.GetImageConfig()
+		if req.AutoRoute != nil {
+			cur.AutoRoute = *req.AutoRoute
+		}
+		if req.DefaultProvider != nil {
+			cur.DefaultProvider = *req.DefaultProvider
+		}
+		if req.DefaultModel != nil {
+			cur.DefaultModel = *req.DefaultModel
+		}
+		if err := s.fullBridge.SetImageConfig(cur); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, s.fullBridge.GetImageConfig())
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 // handleBrowserSettings: GET reports install status + current keep-alive
 // mode; PUT changes the keep-alive mode. Mirrors handleWebSearchSettings.
 func (s *Server) handleBrowserSettings(w http.ResponseWriter, r *http.Request) {

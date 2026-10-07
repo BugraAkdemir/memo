@@ -12,6 +12,7 @@ import '../models/browser_install_progress.dart';
 import '../models/chat.dart';
 import '../models/cli_command.dart';
 import '../models/gpu_info.dart';
+import '../models/image_config.dart';
 import '../models/live_mode_config.dart';
 import '../models/live_mode_engine_config.dart';
 import '../models/local_model.dart';
@@ -2562,6 +2563,30 @@ class MemoApiClient {
   /// Enable/disable web-search mode.
   Future<void> setWebSearchEnabled(bool enabled) async {
     await _dio.post('/api/websearch', data: {'enabled': enabled});
+  }
+
+  // ─── Image routing ───────────────────────────────────────────────
+
+  /// Whether a picture asked for in chat is routed to an image model on its own,
+  /// and which default image model API providers use.
+  Future<ImageConfig> getImageConfig() async {
+    final res = await _dio.get('/api/image/config');
+    return ImageConfig.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  /// Change any of the image routing settings; omitted ones keep their value.
+  /// A default image model needs both a provider and a model (or neither).
+  Future<ImageConfig> setImageConfig({
+    bool? autoRoute,
+    String? defaultProvider,
+    String? defaultModel,
+  }) async {
+    final res = await _dio.put('/api/image/config', data: {
+      'auto_route': ?autoRoute,
+      'default_provider': ?defaultProvider,
+      'default_model': ?defaultModel,
+    });
+    return ImageConfig.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   // ─── Browser Engine ──────────────────────────────────────────────

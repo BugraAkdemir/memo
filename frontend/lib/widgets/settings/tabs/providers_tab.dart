@@ -5,6 +5,7 @@ import '../../../core/l10n.dart';
 import '../../../models/provider_config.dart';
 import '../../../providers/provider_provider.dart';
 import '../../provider_config_dialog.dart';
+import '../image_model_section.dart';
 import '../../../core/friendly_error.dart';
 
 /// Filters out untouched placeholder entries — installs from before
@@ -109,6 +110,8 @@ class ProvidersTab extends ConsumerWidget {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Text(L10n.t('providers_error', {'e': FriendlyError.describeGeneric(e)})),
         ),
+
+        const ImageModelSection(),
       ],
     );
   }

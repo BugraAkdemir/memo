@@ -883,6 +883,21 @@ class L10n {
     'providers_title': 'API Sağlayıcıları',
     'add_provider': 'Sağlayıcı Ekle',
     'add_provider_title': 'API Sağlayıcı Ekle',
+    'image_section_title': 'Görsel üretimi',
+    'image_section_desc':
+        'Sohbette "bir kedi resmi çiz" ya da bir fotoğrafa "bunu siyah beyaz yap" dediğinde Memo bu mesajı bir görsel modeline gönderir; sonraki mesaj yine seçili metin modeliyle devam eder. Telegram ve WhatsApp için de geçerlidir.',
+    'image_auto_route': 'Görsel isteklerini otomatik yönlendir',
+    'image_auto_route_hint':
+        'Kapalıyken görsel modeli yalnızca /image komutuyla ya da modeli elle seçince kullanılır.',
+    'image_default_title': 'Varsayılan görsel modeli',
+    'image_default_hint':
+        'Abonelik hesabı kullanıyorsan görseli o hesabın kendi görsel modeli çizer. Bu ayar, API anahtarlı sağlayıcılar (OpenCode Go, OpenRouter, özel adres…) için kullanılır.',
+    'image_default_provider': 'Sağlayıcı',
+    'image_default_none': 'Seçilmedi',
+    'image_default_model': 'Görsel modeli',
+    'image_default_model_hint': 'örn. gpt-image-1',
+    'image_save': 'Kaydet',
+    'image_saved': 'Kaydedildi.',
     'providers_description':
         'Dış LLM sağlayıcılarını yapılandır (OpenAI, Claude, Gemini vb.)',
     'no_providers': 'Henüz sağlayıcı yapılandırılmadı.',
@@ -3225,6 +3240,21 @@ class L10n {
     'providers_title': 'API Providers',
     'add_provider': 'Add Provider',
     'add_provider_title': 'Add API Provider',
+    'image_section_title': 'Image generation',
+    'image_section_desc':
+        'When you ask a chat for "a picture of a cat" or tell a photo "make it black and white", Memo sends that message to an image model and the next one carries on with your selected text model. This also applies to Telegram and WhatsApp.',
+    'image_auto_route': 'Route picture requests automatically',
+    'image_auto_route_hint':
+        'When off, an image model is only used through the /image command or by selecting it yourself.',
+    'image_default_title': 'Default image model',
+    'image_default_hint':
+        'On a subscription account the picture is drawn by that account\'s own image model. This setting is used for API-key providers (OpenCode Go, OpenRouter, a custom endpoint…).',
+    'image_default_provider': 'Provider',
+    'image_default_none': 'Not set',
+    'image_default_model': 'Image model',
+    'image_default_model_hint': 'e.g. gpt-image-1',
+    'image_save': 'Save',
+    'image_saved': 'Saved.',
     'providers_description':
         'Configure external LLM providers (OpenAI, Claude, Gemini, etc.)',
     'no_providers': 'No providers configured yet.',

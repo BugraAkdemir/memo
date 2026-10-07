@@ -33,7 +33,7 @@ type Quota struct {
 var (
 	antigravityQuotaURL = "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels"
 	antigravityQuotaUA  = "antigravity/hub/2.9.1 linux/amd64"
-	quotaTTL            = 60 * time.Second
+	quotaTTL            = 30 * time.Second
 )
 
 // ErrQuotaUnavailable means no quota could be read; the models list is still

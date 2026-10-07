@@ -333,7 +333,7 @@ confirm every single time before tagging or pushing a tag.
   unless `ContextTokens` is set.
 - **Per-model quota (`remaining`, `reset_at` on each model)** comes from Antigravity's own catalogue call
   (`fetchAvailableModels` → `quotaInfo.remainingFraction`), made by `cliproxy.Quotas` with the token read from the credential
-  file — the sidecar itself only knows "exceeded", never a percentage. Best effort and cached (60s; failures 30s): no figure
+  file — the sidecar itself only knows "exceeded", never a percentage. Best effort and cached (30s; failures 30s), refreshed whenever the model list is read (picker open, Settings tab): no figure
   means no badge, never a failed model list. Claude and Codex report nothing to a third-party client, so they have no badge.
   The client-identity string in `quota.go` mirrors the sidecar's; if Google starts refusing it the badges just disappear.
 - **Right after a sign-in the model list is empty for ~30s.** The Settings tab keeps re-reading until models arrive, and the

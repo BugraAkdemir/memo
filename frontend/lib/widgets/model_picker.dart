@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 
 import '../core/l10n.dart';
@@ -68,9 +69,36 @@ class _ModelPickerPanel extends StatefulWidget {
   State<_ModelPickerPanel> createState() => _ModelPickerPanelState();
 }
 
+/// Sections the user folded, remembered while the app runs so the picker opens
+/// the way it was left.
+final Set<String> _collapsedSections = <String>{};
+
+/// Forgets which sections were folded. Tests only: the state is per app run.
+@visibleForTesting
+void resetModelPickerFolds() => _collapsedSections.clear();
+
 class _ModelPickerPanelState extends State<_ModelPickerPanel> {
   final _search = TextEditingController();
   String _q = '';
+
+  /// How many selectable rows each section header has under it.
+  late final Map<String, int> _sectionSize = () {
+    final sizes = <String, int>{};
+    String? current;
+    for (final e in widget.entries) {
+      if (e.isHeader) {
+        current = e.title;
+        sizes[current] = 0;
+      } else if (current != null) {
+        sizes[current] = sizes[current]! + 1;
+      }
+    }
+    return sizes;
+  }();
+
+  void _toggle(String section) => setState(() {
+        if (!_collapsedSections.remove(section)) _collapsedSections.add(section);
+      });
 
   @override
   void dispose() {
@@ -82,7 +110,17 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
   /// matches.
   List<ModelPickerEntry> get _visible {
     final q = _q.trim().toLowerCase();
-    if (q.isEmpty) return widget.entries;
+    if (q.isEmpty) {
+      // Folded sections keep their header and drop their rows.
+      final out = <ModelPickerEntry>[];
+      var folded = false;
+      for (final e in widget.entries) {
+        if (e.isHeader) folded = _collapsedSections.contains(e.title);
+        if (e.isHeader || !folded) out.add(e);
+      }
+      return out;
+    }
+    // A search looks inside folded sections too: what you typed should be found.
     final out = <ModelPickerEntry>[];
     ModelPickerEntry? pendingHeader;
     for (final e in widget.entries) {
@@ -188,11 +226,23 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
     );
   }
 
-  Widget _header(ThemeColors c, ModelPickerEntry e) => Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+  Widget _header(ThemeColors c, ModelPickerEntry e) {
+    final searching = _q.trim().isNotEmpty;
+    final open = searching || !_collapsedSections.contains(e.title);
+    return InkWell(
+      onTap: searching ? null : () => _toggle(e.title),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 9, 14, 6),
         child: Row(
           children: [
-            if (e.leading != null) ...[e.leading!, const SizedBox(width: 8)],
+            // A chevron that points right when folded and down when open.
+            AnimatedRotation(
+              turns: open ? 0.25 : 0,
+              duration: const Duration(milliseconds: 120),
+              child: Icon(Icons.chevron_right, size: 16, color: c.textDim),
+            ),
+            const SizedBox(width: 4),
+            if (e.leading != null) ...[e.leading!, const SizedBox(width: 7)],
             Expanded(
               child: Text(
                 e.title.toUpperCase(),
@@ -200,9 +250,16 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
                 style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: c.textDim),
               ),
             ),
+            if (!open)
+              Text(
+                '${_sectionSize[e.title] ?? 0}',
+                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: c.textDim),
+              ),
           ],
         ),
-      );
+      ),
+    );
+  }
 
   Widget _row(BuildContext context, ThemeColors c, ModelPickerEntry e, {bool accent = false}) {
     final color = accent ? MemoTheme.accent : c.textMain;

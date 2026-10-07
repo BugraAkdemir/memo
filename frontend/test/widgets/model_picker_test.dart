@@ -62,6 +62,8 @@ Future<void> _open(
 }
 
 void main() {
+  setUp(resetModelPickerFolds);
+
   testWidgets('a long list stays inside the window and scrolls instead of running off the bottom',
       (tester) async {
     await _open(tester, entries: _twelveModels(), onResult: (_) {}, size: const Size(1000, 480));
@@ -138,5 +140,46 @@ void main() {
     expect(panel.left, greaterThanOrEqualTo(0));
     expect(panel.right, lessThanOrEqualTo(360));
     expect(tester.takeException(), isNull);
+  });
+
+  group('foldable sections', () {
+    testWidgets('tapping a header folds its rows, shows the count, and tapping again opens it', (tester) async {
+      await _open(tester, entries: _twelveModels(), onResult: (_) {});
+      expect(find.text('Gemini 3.1 Flash'), findsOneWidget);
+
+      await tester.tap(find.text('ANTIGRAVITY'));
+      await tester.pumpAndSettle();
+      expect(find.text('Gemini 3.1 Flash'), findsNothing);
+      expect(find.text('ANTIGRAVITY'), findsOneWidget, reason: 'the header stays so it can be opened again');
+      expect(find.text('12'), findsOneWidget, reason: 'a folded section shows how many models it holds');
+      expect(find.text('Local model'), findsOneWidget, reason: 'rows outside any section are never folded');
+
+      await tester.tap(find.text('ANTIGRAVITY'));
+      await tester.pumpAndSettle();
+      expect(find.text('Gemini 3.1 Flash'), findsOneWidget);
+      expect(find.text('12'), findsNothing);
+    });
+
+    testWidgets('a search looks inside folded sections', (tester) async {
+      await _open(tester, entries: _twelveModels(), onResult: (_) {});
+      await tester.tap(find.text('ANTIGRAVITY'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '3.5');
+      await tester.pump();
+      expect(find.text('Gemini 3.5 Flash'), findsOneWidget);
+    });
+
+    testWidgets('the picker reopens the way it was left', (tester) async {
+      await _open(tester, entries: _twelveModels(), onResult: (_) {});
+      await tester.tap(find.text('ANTIGRAVITY'));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(5, 690)); // dismiss
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('btn')));
+      await tester.pumpAndSettle();
+      expect(find.text('Gemini 3.1 Flash'), findsNothing);
+      expect(find.text('ANTIGRAVITY'), findsOneWidget);
+    });
   });
 }

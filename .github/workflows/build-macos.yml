@@ -88,7 +88,9 @@ jobs:
       # CLIProxyAPI sidecar (~60 MB per arch) is R2-only like the Linux/Windows
       # engine builds. Both architectures ship; Memo picks by GOARCH at run time.
       - name: Install rclone
-        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+        # rclone's installer exits 3 when it is already installed, which would fail
+        # a second install step in the same job — so only install when missing.
+        run: command -v rclone >/dev/null 2>&1 || curl -fsSL https://rclone.org/install.sh | sudo bash
 
       - name: Download CLIProxyAPI from R2
         run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/darwin/cliproxy/ binaries/darwin/cliproxy/ --progress
@@ -218,7 +220,9 @@ jobs:
       # get-memo-beta.sh already expects for Darwin.
       - name: Install rclone
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
-        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+        # rclone's installer exits 3 when it is already installed, which would fail
+        # a second install step in the same job — so only install when missing.
+        run: command -v rclone >/dev/null 2>&1 || curl -fsSL https://rclone.org/install.sh | sudo bash
 
       # A real tag push republishes the same zip under the stable filename
       # get-memo.sh already expects (see build-linux.yml's identical step).

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -96,5 +97,57 @@ func TestImageEndpoint_RefusesFilesOutsideTheImageDirectories(t *testing.T) {
 		if r.StatusCode == http.StatusOK {
 			t.Errorf("GET /api/image?path=%s = 200, want it refused", p)
 		}
+	}
+}
+
+// A picture a person uploads must never sit in the OS temp directory in the clear:
+// the handler used to copy it there and keep it for the whole turn. It is read into
+// memory and only the sealed copy is ever written.
+func TestChat_UploadedPictureNeverTouchesTheTempDirInTheClear(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	h := NewHarness(t)
+	h.SetWebSearchEnabled(false)
+
+	var mu sync.Mutex
+	var duringTurn []string
+	h.Fake.Script = func(callNum int, req FakeChatRequest) FakeChatResponse {
+		entries, _ := os.ReadDir(tmp)
+		mu.Lock()
+		for _, e := range entries {
+			duringTurn = append(duringTurn, e.Name())
+		}
+		mu.Unlock()
+		return FakeChatResponse{Text: "nice picture"}
+	}
+	chatID := h.NewChat()
+	h.postJSON("/api/chats/switch", map[string]string{"id": chatID}).Body.Close()
+
+	for _, endpoint := range []string{"/api/send_file/stream"} {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		mw.WriteField("message", "what is this?")
+		fw, _ := mw.CreateFormFile("file", "photo.png")
+		fw.Write(onePixelPNG)
+		mw.Close()
+		resp, err := http.Post(h.BaseURL+endpoint, mw.FormDataContentType(), &body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.ReadAll(resp.Body)
+		resp.Body.Close()
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	for _, name := range duringTurn {
+		if strings.HasPrefix(name, "memo_web_") {
+			t.Fatalf("the uploaded picture was in the temp directory during the turn: %s", name)
+		}
+	}
+	// And the model did get the picture.
+	reqs := h.Fake.Requests()
+	if len(reqs) == 0 || !strings.Contains(string(reqs[len(reqs)-1].Raw), "image_url") {
+		t.Fatal("the picture did not reach the model")
 	}
 }

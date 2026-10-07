@@ -10,6 +10,7 @@
 | `8aed69f2` | Telegram+WhatsApp: `/model` (liste/numara/ad/`<sağlayıcı> <model>`), gelen fotoğraf (anlat / altındaki yazı değişiklikse düzenle), giden çizilmiş görsel (Telegram `sendPhoto`→ret olursa `sendDocument`), `/image`, otomatik yönlendirme (`routeStream` kancası; tüm yüzeylerde), hatalar `FriendlyError`'dan geçer. WhatsApp'ta açıklamasız görsel artık düşmüyor |
 | `9074a61d` | `GET/PUT /api/image/config` + Flutter **Ayarlar › API Sağlayıcıları › Görsel üretimi** kartı (otomatik yönlendirme anahtarı + varsayılan görsel modeli sağlayıcı/model) |
 | `e88af4e5` | Sohbet görselini tam pencerede aç: yakınlaştır (düğme/tekerlek/çimdik/çift dokunuş/`+ - 0`), kaydır, ayrıntılar (çözünürlük, oran, biçim, boyut), indir |
+| (sonra) | Yüklenen görsel artık OS temp klasörüne düz yazılmıyor (yükleme belleğe okunur, `SendMessageWithImageData*`); temp'e düşen yalnızca görsel olmayan dosyalar |
 | `01d68212` | Akışsız uç noktalar (`SendMessage*`) ve Canlı Mod da ham sağlayıcı hatası yerine cümle söyler |
 | (bu giriş) | docs EN/TR, iki Obsidian kasası, v4.6.0 notları EN/TR, AGENTS.md tuzakları, Telegram komut menüsü (`setMyCommands`) + `/komut@bot` soneki |
 
@@ -30,6 +31,9 @@
 ## Bu oturumda bulunan gerçek hatalar
 - `Matrix4.getMaxScaleOnAxis()` z'yi de sayar (hiç ölçeklenmez) → yakınlaştırma <%100'de hep %100 okundu; x sütununun uzunluğuna geçildi.
 - Test yarışı: sahte sağlayıcının `Script`'i test goroutine'inde atomik olmadan değiştiriliyordu (race detector yakaladı).
+
+## Geri dönüş uyarısı
+Açılışta eski düz görseller mühürlenir; **eski bir Memo sürümüne dönersen** o görseller bozuk görünür (şifreli). Anahtar `~/.config/Memo/image.key`.
 
 ## Hâlâ kullanıcıda (önceki girdilerden)
 `origin`'in ikinci push URL'sindeki düz metin token (`web.bugradev.com`) → sil + döndür. llama.cpp b9441→b11456 uygulanmadı. Claude girişi yok.

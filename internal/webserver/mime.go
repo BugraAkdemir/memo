@@ -23,13 +23,27 @@ import (
 // format DetectContentType has no signature for) should fall through to the
 // filename.
 func detectIsImageFile(path, originalFilename string) bool {
-	sniffed := ""
+	var head []byte
 	if f, err := os.Open(path); err == nil {
 		buf := make([]byte, 512)
 		if n, _ := f.Read(buf); n > 0 {
-			sniffed = http.DetectContentType(buf[:n])
+			head = buf[:n]
 		}
 		f.Close()
+	}
+	return detectIsImageBytes(head, originalFilename)
+}
+
+// detectIsImageBytes is detectIsImageFile for content already in memory (only
+// the first 512 bytes are looked at) — the upload handlers read a picture
+// straight into memory so it never sits in the OS temp directory in the clear.
+func detectIsImageBytes(content []byte, originalFilename string) bool {
+	sniffed := ""
+	if len(content) > 512 {
+		content = content[:512]
+	}
+	if len(content) > 0 {
+		sniffed = http.DetectContentType(content)
 	}
 
 	if strings.HasPrefix(sniffed, "image") {

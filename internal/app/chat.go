@@ -624,6 +624,16 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		close(ch)
 		return ch
 	}
+	return a.SendMessageWithImageDataStream(ctx, userMsg, imagePath, imgData)
+}
+
+// SendMessageWithImageDataStream is SendMessageWithImageStream for a picture that
+// is already in memory — the upload handlers use it so a picture a person sends
+// never touches the disk in the clear (not even in the OS temp directory for the
+// length of the turn): the only copy written is the sealed one persistChatImage
+// keeps. name is the uploaded file's name (its extension names the stored copy).
+func (a *App) SendMessageWithImageDataStream(ctx context.Context, userMsg string, name string, imgData []byte) <-chan api.StreamChunk {
+	imagePath := name
 	mime := detectMime(imagePath, imgData)
 	b64 := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(imgData)
 
@@ -781,6 +791,13 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	if err != nil {
 		return "⚠️ Cannot read image: " + err.Error()
 	}
+	return a.SendMessageWithImageData(userMsg, imagePath, imgData)
+}
+
+// SendMessageWithImageData is SendMessageWithImage for a picture already in memory
+// (see SendMessageWithImageDataStream for why).
+func (a *App) SendMessageWithImageData(userMsg string, name string, imgData []byte) string {
+	imagePath := name
 	mime := detectMime(imagePath, imgData)
 	b64 := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(imgData)
 

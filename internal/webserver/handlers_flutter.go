@@ -254,6 +254,16 @@ func writeSSEChunk(w http.ResponseWriter, flusher http.Flusher, chunk api.Stream
 	return chunk.Done
 }
 
+// maxUploadBytes bounds a file upload read into memory (the multipart parser's own
+// limit is the same 50 MB).
+const maxUploadBytes = 50 << 20
+
+// imageDataStreamSender is implemented by bridges that can take a picture from
+// memory (App does); a bridge that cannot is given a temp file as before.
+type imageDataStreamSender interface {
+	SendMessageWithImageDataStream(ctx context.Context, userMsg, name string, data []byte) <-chan api.StreamChunk
+}
+
 func (s *Server) handleSendFileStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusMethodNotAllowed)
@@ -275,27 +285,41 @@ func (s *Server) handleSendFileStream(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	tmpFile, err := os.CreateTemp("", "memo_web_*_"+filepath.Base(header.Filename))
-	if err != nil {
-		http.Error(w, "tmp error", http.StatusInternalServerError)
-		return
-	}
-	tmpFilePath := tmpFile.Name()
-	defer os.Remove(tmpFilePath)
-	defer tmpFile.Close()
-
-	if _, err := io.Copy(tmpFile, file); err != nil {
+	// The upload is read into memory first. A picture is handed to the bridge from
+	// there (below) and never written to the OS temp directory in the clear; only
+	// other files, which the bridge reads from a path, get a temp file.
+	content, err := io.ReadAll(io.LimitReader(file, maxUploadBytes+1))
+	if err != nil || len(content) > maxUploadBytes {
 		http.Error(w, "copy error", http.StatusInternalServerError)
 		return
 	}
-	tmpFile.Close()
 
-	// detectIsImageFile sniffs actual file content rather than trusting the
+	// detectIsImageBytes sniffs actual file content rather than trusting the
 	// client-supplied Content-Type header (the non-streaming handleSendFile
 	// in server.go already does this) — a header alone lets a client label
 	// any file "image/png" and have it routed into the vision pipeline
 	// regardless of its actual content.
-	isImage := detectIsImageFile(tmpFilePath, header.Filename)
+	isImage := detectIsImageBytes(content, header.Filename)
+
+	imageSender, canSendInMemory := s.fullBridge.(imageDataStreamSender)
+	inMemory := isImage && canSendInMemory
+
+	tmpFilePath := ""
+	if !inMemory {
+		tmpFile, err := os.CreateTemp("", "memo_web_*_"+filepath.Base(header.Filename))
+		if err != nil {
+			http.Error(w, "tmp error", http.StatusInternalServerError)
+			return
+		}
+		tmpFilePath = tmpFile.Name()
+		defer os.Remove(tmpFilePath)
+		_, werr := tmpFile.Write(content)
+		cerr := tmpFile.Close()
+		if werr != nil || cerr != nil {
+			http.Error(w, "copy error", http.StatusInternalServerError)
+			return
+		}
+	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -310,7 +334,9 @@ func (s *Server) handleSendFileStream(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	var ch <-chan api.StreamChunk
-	if isImage {
+	if inMemory {
+		ch = imageSender.SendMessageWithImageDataStream(ctx, msg, header.Filename, content)
+	} else if isImage {
 		ch = s.fullBridge.SendMessageWithImageStream(ctx, msg, tmpFilePath)
 	} else {
 		ch = s.fullBridge.SendMessageWithFileStream(ctx, msg, tmpFilePath)

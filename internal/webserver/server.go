@@ -639,6 +639,12 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"reply": reply})
 }
 
+// imageDataSender is implemented by bridges that can take a picture from memory
+// (App does); a bridge that cannot is given a temp file as before.
+type imageDataSender interface {
+	SendMessageWithImageData(userMsg, name string, data []byte) string
+}
+
 func (s *Server) handleSendFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -660,23 +666,35 @@ func (s *Server) handleSendFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Write to temp file
+	// Read into memory: a picture is handed over from there and never written to
+	// the OS temp directory in the clear (see handleSendFileStream).
+	content, err := io.ReadAll(io.LimitReader(file, maxUploadBytes+1))
+	if err != nil || len(content) > maxUploadBytes {
+		http.Error(w, "copy error", http.StatusInternalServerError)
+		return
+	}
+	isImage := detectIsImageBytes(content, header.Filename)
+
+	if isImage {
+		if ds, ok := s.bridge.(imageDataSender); ok {
+			writeJSON(w, map[string]string{"reply": ds.SendMessageWithImageData(msg, header.Filename, content)})
+			return
+		}
+	}
+
 	tmpFile, err := os.CreateTemp("", "memo_web_*_"+filepath.Base(header.Filename))
 	if err != nil {
 		http.Error(w, "tmp error", http.StatusInternalServerError)
 		return
 	}
-	defer tmpFile.Close()
 	defer os.Remove(tmpFile.Name())
-
-	if _, err := io.Copy(tmpFile, file); err != nil {
+	_, werr := tmpFile.Write(content)
+	cerr := tmpFile.Close() // Close before sending to bridge
+	if werr != nil || cerr != nil {
 		http.Error(w, "copy error", http.StatusInternalServerError)
 		return
 	}
 	tmpFilePath := tmpFile.Name()
-	tmpFile.Close() // Close before sending to bridge
-
-	isImage := detectIsImageFile(tmpFilePath, header.Filename)
 
 	var reply string
 	if isImage {

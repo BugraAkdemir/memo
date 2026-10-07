@@ -512,3 +512,52 @@ func TestBinary_MakesAVerifiedBinaryExecutable(t *testing.T) {
 		t.Errorf("a binary that FAILED its checksum was made executable (%v)", st.Mode().Perm())
 	}
 }
+
+// A search root of "." (running from a checkout) must still yield a path that
+// works after the child's working directory changes: Start runs the sidecar
+// with cmd.Dir set to the data dir, so a relative path would fail to exec.
+func TestStart_WorksWhenTheBundleIsFoundThroughARelativeRoot(t *testing.T) {
+	fast(t)
+	root := bundle(t)
+	t.Chdir(root)
+
+	m := New(filepath.Join(t.TempDir(), "cliproxy"))
+	m.roots = []string{"."}
+	t.Cleanup(m.Stop)
+
+	p, _, err := m.Binary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(p) {
+		t.Fatalf("Binary() = %q, want an absolute path", p)
+	}
+	if err := m.Start(context.Background()); err != nil {
+		t.Fatalf("Start through a relative root: %v", err)
+	}
+}
+
+// A sidecar that has just started lists no models for a while. That empty answer
+// must not be cached, or the real list would stay hidden for a full TTL.
+func TestModels_AnEmptyAnswerIsNotCached(t *testing.T) {
+	fast(t)
+	t.Setenv("FAKECPA_MODELS_DELAY_MS", "700")
+	m := newMgr(t)
+	// A credential already on disk, as after a restart of Memo.
+	if err := os.MkdirAll(m.authDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(m.authDir(), "antigravity-x.json"), []byte(`{"type":"antigravity","email":"x@example.com"}`), 0o600)
+	if err := m.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := m.Models(context.Background())
+	if err != nil || len(first) != 0 {
+		t.Fatalf("early Models = %v, %v; want an empty list (the sidecar is still loading)", first, err)
+	}
+	eventually(t, "the real list to show through (despite the default 30s TTL)", 5*time.Second, func() bool {
+		l, err := m.Models(context.Background())
+		return err == nil && len(l) == 2
+	})
+}

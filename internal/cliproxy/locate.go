@@ -83,6 +83,13 @@ func (m *Manager) Binary() (path, version string, err error) {
 
 	var refused error
 	for _, root := range m.searchRoots() {
+		// Absolute, always: a root of "." (running from a checkout) would give a
+		// relative path, and Start runs the child with cmd.Dir set to the data
+		// directory, where that relative path no longer resolves ("fork/exec …:
+		// no such file or directory") — found by the first real run.
+		if abs, err := filepath.Abs(root); err == nil {
+			root = abs
+		}
 		dir := filepath.Join(root, "binaries", goos, "cliproxy")
 		p := filepath.Join(dir, name)
 		st, statErr := os.Stat(p)

@@ -4,7 +4,8 @@
 //	fakecpa -config cfg.yaml                 serve /v1/models + /v1/chat/completions (Bearer-key gated)
 //	fakecpa -config cfg.yaml -<p>-login      print an authorize URL, write a credential, exit
 //
-// Knobs (env): FAKECPA_LOGIN_DELAY_MS, FAKECPA_LOGIN_FAIL=1, FAKECPA_CRASH_ONCE_MS.
+// Knobs (env): FAKECPA_LOGIN_DELAY_MS, FAKECPA_LOGIN_FAIL=1, FAKECPA_CRASH_ONCE_MS,
+// FAKECPA_MODELS_DELAY_MS (the real binary lists no models for ~30s after start).
 package main
 
 import (
@@ -54,6 +55,8 @@ func main() {
 		}
 	}
 
+	started := time.Now()
+	modelsDelay, _ := strconv.Atoi(os.Getenv("FAKECPA_MODELS_DELAY_MS"))
 	http.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+key {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
@@ -66,6 +69,9 @@ func main() {
 		}
 		out := []model{}
 		ents, _ := os.ReadDir(authDir)
+		if time.Since(started) < time.Duration(modelsDelay)*time.Millisecond {
+			ents = nil
+		}
 		for _, e := range ents {
 			b, _ := os.ReadFile(filepath.Join(authDir, e.Name()))
 			var c struct {

@@ -240,14 +240,29 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 		return nil
 	}
 
-	sctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	// A cold sidecar takes ~30s before it lists a freshly started account's
+	// models (it refreshes the credential and its model catalogue first), so
+	// give it well over that.
+	sctx, cancel := context.WithTimeout(ctx, subsStartTimeout)
 	defer cancel()
 	if err := m.Start(sctx); err != nil {
 		return err
 	}
 
+	// If a previous session already chose a model, register the provider NOW,
+	// with the sidecar's current port and key: chat works the moment the
+	// process is healthy instead of 30s later. The wait below then only has to
+	// confirm (or replace) that choice once the list is known.
+	prev := ""
+	if p, ok := a.subsMarkerConfig(); ok && p.Model != "" {
+		prev = p.Model
+		if err := a.UpdateProvider(subsMarker(m, prev)); err != nil {
+			logx.Printf("subs: early provider registration: %v", err)
+		}
+	}
+
 	var list []cliproxy.Model
-	for deadline := time.Now().Add(20 * time.Second); ; {
+	for deadline := time.Now().Add(subsModelsTimeout); ; {
 		l, err := m.Models(sctx)
 		if err == nil && len(l) > 0 {
 			list = l
@@ -255,9 +270,9 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 		}
 		if time.Now().After(deadline) {
 			if err != nil {
-				return fmt.Errorf("sidecar is up but lists no models yet: %w", err)
+				return fmt.Errorf("%w: %v", errSubsNoModelsYet, err)
 			}
-			return errors.New("sidecar is up but lists no models yet")
+			return errSubsNoModelsYet
 		}
 		select {
 		case <-sctx.Done():
@@ -266,12 +281,20 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 		}
 	}
 
-	prev := ""
-	if p, ok := a.subsMarkerConfig(); ok {
-		prev = p.Model
-	}
 	return a.UpdateProvider(subsMarker(m, pickDefaultSubscriptionModel(list, prev)))
 }
+
+// Timing for syncSubscriptions — vars so tests can shorten them.
+var (
+	subsStartTimeout  = 150 * time.Second
+	subsModelsTimeout = 120 * time.Second
+	subsRetryEvery    = 45 * time.Second
+	subsRetryAttempts = 6
+)
+
+// errSubsNoModelsYet means the sidecar is up and signed in but has not listed any
+// model yet — worth retrying, unlike a failure to start at all.
+var errSubsNoModelsYet = errors.New("sidecar is up but lists no models yet")
 
 // startSubscriptions brings the sidecar up at startup when an account is
 // already signed in, and clears a stale provider entry when none is. Quiet on
@@ -285,7 +308,20 @@ func (a *App) startSubscriptions() {
 		logx.Printf("subs: signed-in accounts exist but the sidecar is unusable: %v", err)
 		return
 	}
-	if err := a.syncSubscriptions(a.lifecycle()); err != nil {
+	err := a.syncSubscriptions(a.lifecycle())
+	// A sidecar that is up but has not listed models yet is worth a few more
+	// tries (it settles by itself); anything else (cannot start, no binary) is
+	// reported once and left for the user, who can sign in again.
+	for attempt := 1; errors.Is(err, errSubsNoModelsYet) && attempt <= subsRetryAttempts; attempt++ {
+		logx.Printf("subs: startup sync: %v — retry %d/%d in %s", err, attempt, subsRetryAttempts, subsRetryEvery)
+		select {
+		case <-a.lifecycle().Done():
+			return
+		case <-time.After(subsRetryEvery):
+		}
+		err = a.syncSubscriptions(a.lifecycle())
+	}
+	if err != nil {
 		logx.Printf("subs: startup sync: %v", err)
 	}
 }

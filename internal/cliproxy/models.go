@@ -80,9 +80,14 @@ func (m *Manager) Models(ctx context.Context) ([]Model, error) {
 		return list[i].ID > list[j].ID // gemini-3 before gemini-2.5, opus-4-6 before opus-4-5
 	})
 
-	m.modelsMu.Lock()
-	m.modelsMem = &modelsMemo{at: time.Now(), list: list}
-	m.modelsMu.Unlock()
+	// An empty list is NOT cached: a freshly started sidecar answers /v1/models
+	// with nothing for the first ~30s while it loads the account, and caching
+	// that would hold the empty answer for a full TTL after the real one exists.
+	if len(list) > 0 {
+		m.modelsMu.Lock()
+		m.modelsMem = &modelsMemo{at: time.Now(), list: list}
+		m.modelsMu.Unlock()
+	}
 	return append([]Model(nil), list...), nil
 }
 

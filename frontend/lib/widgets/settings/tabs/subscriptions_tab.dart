@@ -36,6 +36,7 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
   String _loginFor = ''; // provider whose sign-in this tab is waiting on
   String _authUrl = '';
   bool _starting = false;
+  bool _pasteSent = false; // the callback URL was handed over; wait for the login
 
   @override
   void initState() {
@@ -103,6 +104,7 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
       _starting = true;
       _loginFor = provider;
       _authUrl = '';
+      _pasteSent = false;
     });
     try {
       final url = await ref.read(apiClientProvider).startSubscriptionLogin(provider);
@@ -159,11 +161,26 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
     setState(() {
       _loginFor = '';
       _authUrl = '';
+      _pasteSent = false;
     });
     try {
       await ref.read(subscriptionsProvider.notifier).cancelLogin();
     } catch (e) {
       debugPrint('subscriptions_tab: cancel failed: $e');
+    }
+  }
+
+  /// Hands the sidecar the callback URL copied off the browser's localhost
+  /// page. The box then disappears and the ordinary poll takes over, so the
+  /// account shows up the same way a desktop sign-in does.
+  Future<void> _submitCallback(String callbackUrl) async {
+    try {
+      await ref.read(apiClientProvider).submitSubscriptionCallback(callbackUrl);
+      if (!mounted) return;
+      setState(() => _pasteSent = true);
+    } catch (e) {
+      if (!mounted) return;
+      _toast(L10n.t('subs_login_failed', {'e': FriendlyError.describeGeneric(e)}));
     }
   }
 
@@ -345,6 +362,14 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
               const SizedBox(height: 4),
               _CopyableLink(url: _authUrl),
             ],
+            // The vendor sends the code to this server's own localhost, which
+            // the browser is not on, so the sidecar gives up waiting and asks
+            // for the callback URL to be handed back. Only then is a sign-in
+            // started here finishable.
+            if (st.login.needsPaste && !_pasteSent) ...[
+              const SizedBox(height: 12),
+              _PasteCallbackBox(onSubmit: _submitCallback),
+            ],
           ],
         ],
       ),
@@ -469,6 +494,101 @@ class _CopyableLink extends StatelessWidget {
                 ),
               );
             },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What a sign-in started away from the browser needs: the OAuth callback URL
+/// copied off the (empty) localhost page the vendor redirected to, pasted back
+/// so the sidecar can finish exchanging the code.
+///
+/// Every vendor registers a loopback `redirect_uri` and refuses any other —
+/// Google's authorize endpoint answers `redirect_uri_mismatch` for a public
+/// host and "device_id and device_name are required for private IP" for a LAN
+/// one (both verified live against the pinned binary's client id) — so the
+/// code can only ever arrive on the machine running the sidecar. The sidecar
+/// says as much itself: "To authenticate from a remote machine, an SSH tunnel
+/// may be required", then asks for the URL on stdin.
+class _PasteCallbackBox extends StatefulWidget {
+  final Future<void> Function(String callbackUrl) onSubmit;
+  const _PasteCallbackBox({required this.onSubmit});
+
+  @override
+  State<_PasteCallbackBox> createState() => _PasteCallbackBoxState();
+}
+
+class _PasteCallbackBoxState extends State<_PasteCallbackBox> {
+  final _ctrl = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final value = _ctrl.text.trim();
+    if (value.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    await widget.onSubmit(value);
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.bgHover,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            L10n.t('subs_paste_title'),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.textMain),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            L10n.t('subs_paste_body'),
+            style: TextStyle(fontSize: 11, color: theme.textDim, height: 1.4),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _ctrl,
+            enabled: !_busy,
+            minLines: 1,
+            maxLines: 3,
+            style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: L10n.t('subs_paste_field'),
+              hintStyle: TextStyle(fontSize: 11, color: theme.textDim),
+              border: const OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _send(),
+          ),
+          const SizedBox(height: 8),
+          // Wrap, not Row: Turkish runs longer than English and this button
+          // overflows the panel in one language but not the other.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: _busy ? null : _send,
+                icon: const Icon(Icons.login_rounded, size: 16),
+                label: Text(L10n.t('subs_paste_send')),
+              ),
+            ],
           ),
         ],
       ),

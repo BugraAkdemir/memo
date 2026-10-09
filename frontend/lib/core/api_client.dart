@@ -2091,6 +2091,16 @@ class MemoApiClient {
     return _guard<Map<String, dynamic>>(res.data)['auth_url'] as String? ?? '';
   }
 
+  /// Hands the sidecar the OAuth callback URL a browser on another machine
+  /// could not deliver (the sign-in ended on a localhost page). See
+  /// cliproxy.Manager.SubmitCallbackURL — the vendors' loopback redirect_uri
+  /// leaves no other way in.
+  Future<SubscriptionsState> submitSubscriptionCallback(String callbackUrl) async {
+    final res = await _dio.post('/api/subscriptions',
+        data: {'action': 'submit_callback', 'callback_url': callbackUrl});
+    return SubscriptionsState.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
   Future<SubscriptionsState> cancelSubscriptionLogin() async {
     final res = await _dio.post('/api/subscriptions', data: {'action': 'cancel_login'});
     return SubscriptionsState.fromJson(_guard<Map<String, dynamic>>(res.data));

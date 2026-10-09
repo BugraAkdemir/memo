@@ -30,6 +30,12 @@ class SubscriptionLogin {
   final String url;
   final bool done;
   final String error;
+  /// True when the sidecar is waiting for the OAuth callback URL to be handed
+  /// to it — the only way to finish a sign-in started on a machine that is not
+  /// the browser's (a Raspberry Pi, a VDS). The vendors register a loopback
+  /// redirect_uri and refuse any other, so the browser cannot deliver the code
+  /// itself; the user copies it off the (empty) localhost page instead.
+  final bool needsPaste;
 
   const SubscriptionLogin({
     this.provider = '',
@@ -37,6 +43,7 @@ class SubscriptionLogin {
     this.url = '',
     this.done = false,
     this.error = '',
+    this.needsPaste = false,
   });
 
   factory SubscriptionLogin.fromJson(Map<String, dynamic> json) => SubscriptionLogin(
@@ -45,6 +52,7 @@ class SubscriptionLogin {
         url: json['url'] as String? ?? '',
         done: json['done'] as bool? ?? false,
         error: json['error'] as String? ?? '',
+        needsPaste: json['needs_paste'] as bool? ?? false,
       );
 }
 

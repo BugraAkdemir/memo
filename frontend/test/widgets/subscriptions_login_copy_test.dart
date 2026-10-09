@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -21,13 +20,20 @@ class _FakeClipboard {
   int failures = 0;
 }
 
+/// Every callback URL the tab handed to the backend, in order.
+final List<String> submitted = [];
+
 class _FakeSubscriptions extends SubscriptionsNotifier {
-  @override
-  Future<SubscriptionsState> build() async => const SubscriptionsState(
+  _FakeSubscriptions([this.initial = const SubscriptionsState(
         bundled: true,
         running: true,
         providers: ['antigravity', 'claude', 'codex'],
-      );
+      )]);
+  // Not `state`: that is AsyncNotifierBase's own getter.
+  final SubscriptionsState initial;
+
+  @override
+  Future<SubscriptionsState> build() async => initial;
 
   @override
   Future<void> reload() async {}
@@ -37,8 +43,9 @@ class _FakeSubscriptions extends SubscriptionsNotifier {
 /// URL. Real sockets aren't usable under `flutter test` (see
 /// api_client_test.dart for why), so this hooks Dio's adapter layer.
 class _FakeSubscriptionsAdapter implements HttpClientAdapter {
-  _FakeSubscriptionsAdapter(this.authUrl);
+  _FakeSubscriptionsAdapter(this.authUrl, {this.login = const {}});
   final String authUrl;
+  final Map<String, dynamic> login;
 
   @override
   Future<ResponseBody> fetch(
@@ -46,8 +53,13 @@ class _FakeSubscriptionsAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    // The hand-back of the callback URL is what this test watches.
+    if ((options.data as Map?)?['action'] == 'submit_callback') {
+      submitted.add((options.data as Map)['callback_url'] as String? ?? '');
+    }
     return ResponseBody.fromString(
       jsonEncode({
+        ...login,
         'auth_url': authUrl,
         'bundled': true,
         'running': true,
@@ -83,6 +95,7 @@ void main() {
 
   setUp(() {
     clip = _FakeClipboard();
+    submitted.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform,
             (MethodCall call) async {
@@ -102,20 +115,34 @@ void main() {
         .setMockMethodCallHandler(SystemChannels.platform, null);
   });
 
-  Future<void> pumpLogin(WidgetTester tester, {MemoLocale locale = MemoLocale.en}) async {
+  Future<void> pumpLogin(
+    WidgetTester tester, {
+    MemoLocale locale = MemoLocale.en,
+    Map<String, dynamic> login = const {},
+  }) async {
     L10n.setLocale(locale);
     tester.view.physicalSize = const Size(1000, 1800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
     final client = MemoApiClient(baseUrl: 'http://memo.test');
-    client.dio.httpClientAdapter = _FakeSubscriptionsAdapter(authUrl);
+    client.dio.httpClientAdapter = _FakeSubscriptionsAdapter(authUrl, login: login);
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           apiClientProvider.overrideWithValue(client),
-          subscriptionsProvider.overrideWith(() => _FakeSubscriptions()),
+          subscriptionsProvider.overrideWith(() => _FakeSubscriptions(
+                login.isEmpty
+                    ? const SubscriptionsState(
+                        bundled: true, running: true, providers: ['antigravity', 'claude', 'codex'])
+                    : SubscriptionsState.fromJson({
+                        'bundled': true,
+                        'running': true,
+                        'providers': ['antigravity', 'claude', 'codex'],
+                        ...login,
+                      }),
+              )),
         ],
         child: const MaterialApp(home: Scaffold(body: SubscriptionsTab())),
       ),
@@ -181,5 +208,60 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(clip.writes.single, authUrl);
+  });
+
+  /// The reported bug: Memo runs on a Raspberry Pi / VDS and is driven from a
+  /// laptop. Every vendor registers a loopback `redirect_uri` and refuses any
+  /// other, so the browser ends up on a localhost page on the WRONG machine and
+  /// the code never reaches the sidecar. The sidecar gives up waiting and asks
+  /// for the callback URL on stdin — these drive that hand-back from the UI.
+  Future<void> pumpRemoteSignIn(
+    WidgetTester tester, {
+    MemoLocale locale = MemoLocale.en,
+  }) =>
+      pumpLogin(tester, locale: locale, login: const {
+        'login': {
+          'provider': 'codex',
+          'running': true,
+          'url': 'https://auth.openai.com/oauth/authorize?client_id=x&state=SECRET',
+          'needs_paste': true,
+        },
+      });
+
+  testWidgets('a plain desktop sign-in shows no paste box at all',
+      (tester) async {
+    await pumpLogin(tester);
+    expect(find.text(L10n.t('subs_paste_title')), findsNothing,
+        reason: 'nothing to hand back when the browser IS on this machine');
+  });
+
+  testWidgets('the paste box appears once the sidecar asks for the URL',
+      (tester) async {
+    await pumpRemoteSignIn(tester);
+    expect(find.text(L10n.t('subs_paste_title')), findsOneWidget,
+        reason: 'the only way in from a machine that is not the browser\'s');
+    expect(find.text(L10n.t('subs_paste_field')), findsOneWidget);
+  });
+
+  testWidgets('pasting the address bar URL hands it to the backend verbatim',
+      (tester) async {
+    await pumpRemoteSignIn(tester);
+
+    const pasted =
+        'http://localhost:1455/auth/callback?code=REALCODE&state=REALSTATE';
+    await tester.enterText(find.byType(TextField).last, pasted);
+    await tester.tap(find.text(L10n.t('subs_paste_send')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(submitted, [pasted],
+        reason: 'a trimmed or rewritten URL would exchange nothing');
+  });
+
+  testWidgets('the paste box works in Turkish too', (tester) async {
+    await pumpRemoteSignIn(tester, locale: MemoLocale.tr);
+
+    expect(find.text(L10n.t('subs_paste_title')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

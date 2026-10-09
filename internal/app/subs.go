@@ -194,7 +194,7 @@ func (a *App) SubscriptionsState(ctx context.Context) models.SubscriptionsState 
 		st.Model = p.Model
 	}
 	ls := m.LoginStatus()
-	st.Login = models.SubscriptionLogin{Provider: ls.Provider, Running: ls.Running, URL: ls.URL, Done: ls.Done, Error: ls.Error}
+		st.Login = models.SubscriptionLogin{Provider: ls.Provider, Running: ls.Running, URL: ls.URL, Done: ls.Done, Error: ls.Error, NeedsPaste: ls.NeedsPaste}
 	return st
 }
 
@@ -271,6 +271,13 @@ func (a *App) awaitSubscriptionLogin(provider string) {
 
 // CancelSubscriptionLogin abandons a sign-in in flight.
 func (a *App) CancelSubscriptionLogin() { a.subsManager().CancelLogin() }
+
+// SubmitSubscriptionCallback hands the sidecar the callback URL a browser on
+// another machine could not deliver — the sign-in's code + state, copied from
+// the address bar of the localhost page the vendor redirected to.
+func (a *App) SubmitSubscriptionCallback(callbackURL string) error {
+	return a.subsManager().SubmitCallbackURL(callbackURL)
+}
 
 // LogoutSubscription removes a vendor's stored credential. With no account left
 // the sidecar and its provider entry go too.

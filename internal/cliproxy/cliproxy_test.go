@@ -982,3 +982,130 @@ func TestParseClaudeUsage_OneFigurePerWindowLength(t *testing.T) {
 		t.Errorf("7d = %+v, want the tighter opus figure (30%% left)", q.Windows[1])
 	}
 }
+
+// ── signing in from a machine that is not the browser's ─────────────────────
+
+// The reported bug: Memo was installed on a Raspberry Pi / VDS and reached from
+// a laptop. The sign-in link opened, the user signed in, and the vendor sent
+// the browser to `http://localhost:<port>/…` — the laptop's own loopback, where
+// no sidecar is listening — so the login silently never completed.
+//
+// Every vendor checks redirect_uri against its own registered OAuth client, so
+// rewriting it is not an option: Google's authorize endpoint answers
+// `redirect_uri_mismatch` for a public host and
+// "device_id and device_name are required for private IP" for a LAN one
+// (verified live). What the sidecar does instead — it says so itself, in
+// "To authenticate from a remote machine, an SSH tunnel may be required" — is
+// ask for the callback URL on stdin once no browser turns up locally. This
+// covers that hand-off end to end: the login reaches the ask, reports it, takes
+// the pasted URL, and finishes.
+func TestLogin_APastedCallbackURLFinishesARemoteSignIn(t *testing.T) {
+	fast(t)
+	t.Setenv("FAKECPA_PASTE_CALLBACK", "1")
+	trace := t.TempDir()
+	t.Setenv("FAKECPA_AUTH_TRACE", trace)
+
+	m := newMgr(t)
+	if _, err := m.StartLogin(context.Background(), ProviderCodex); err != nil {
+		t.Fatalf("StartLogin: %v", err)
+	}
+
+	// The sidecar asks for the URL only after waiting for a browser that never
+	// comes; the UI must be able to see that it is waiting.
+	eventually(t, "the sidecar to ask for the callback URL", 10*time.Second, func() bool {
+		return m.LoginStatus().NeedsPaste
+	})
+
+	// What the browser's address bar holds after the vendor redirects to the
+	// (empty) localhost page: the whole URL, code and state included.
+	const pasted = "http://localhost:1455/auth/callback?code=REALCODE&state=REALSTATE"
+	if err := m.SubmitCallbackURL(pasted); err != nil {
+		t.Fatalf("SubmitCallbackURL: %v", err)
+	}
+
+	eventually(t, "the login to finish", 10*time.Second, func() bool { return m.LoginStatus().Done })
+	if st := m.LoginStatus(); st.Error != "" {
+		t.Fatalf("login error: %s", st.Error)
+	}
+
+	// The sidecar really received it, byte for byte — a mangled query would
+	// exchange nothing.
+	b, err := os.ReadFile(filepath.Join(trace, "pasted.txt"))
+	if err != nil {
+		t.Fatalf("the sidecar never recorded the pasted URL: %v (tail: %v)", err, m.LoginStatus())
+	}
+	if strings.TrimSpace(string(b)) != pasted {
+		t.Errorf("sidecar read %q, want %q", strings.TrimSpace(string(b)), pasted)
+	}
+	if len(m.Accounts()) != 1 {
+		t.Errorf("accounts = %v, want the one the completed login wrote", m.Accounts())
+	}
+}
+
+// The state the UI polls must not keep saying "paste this" once the login is
+// over, or the Settings tab would show the box forever.
+func TestLogin_NeedsPasteIsFalseOnceTheLoginIsDone(t *testing.T) {
+	fast(t)
+	t.Setenv("FAKECPA_PASTE_CALLBACK", "1")
+	t.Setenv("FAKECPA_AUTH_TRACE", t.TempDir())
+
+	m := newMgr(t)
+	if _, err := m.StartLogin(context.Background(), ProviderClaude); err != nil {
+		t.Fatalf("StartLogin: %v", err)
+	}
+	eventually(t, "the paste prompt", 10*time.Second, func() bool { return m.LoginStatus().NeedsPaste })
+	if err := m.SubmitCallbackURL("http://localhost:54545/callback?code=X&state=Y"); err != nil {
+		t.Fatalf("SubmitCallbackURL: %v", err)
+	}
+	eventually(t, "the login to finish", 10*time.Second, func() bool { return m.LoginStatus().Done })
+	if st := m.LoginStatus(); st.NeedsPaste {
+		t.Error("NeedsPaste is still set after the login finished")
+	}
+}
+
+// A paste with no login behind it must say so rather than write into the void,
+// and an empty paste is never a callback URL.
+func TestSubmitCallbackURL_ErrorsWithoutALiveLogin(t *testing.T) {
+	fast(t)
+	m := newMgr(t)
+
+	if err := m.SubmitCallbackURL("http://localhost:1455/auth/callback?code=X"); err == nil {
+		t.Error("a callback URL with no login in flight was accepted")
+	}
+	if err := m.SubmitCallbackURL("   "); err == nil {
+		t.Error("a blank callback URL was accepted")
+	}
+
+	if _, err := m.StartLogin(context.Background(), ProviderCodex); err != nil {
+		t.Fatalf("StartLogin: %v", err)
+	}
+	eventually(t, "the login to finish", 10*time.Second, func() bool { return m.LoginStatus().Done })
+	if err := m.SubmitCallbackURL("http://localhost:1455/auth/callback?code=X"); err == nil {
+		t.Error("a callback URL was accepted after the login had already finished")
+	}
+}
+
+// The three vendors print three different prompts ("Paste the Codex callback
+// URL…", "…Claude…", "…antigravity…"). Every one of them must be recognised, or
+// a vendor Memo already works with on a desktop would silently never offer the
+// paste box on a remote install.
+func TestWantsPaste_MatchesEveryVendorsPrompt(t *testing.T) {
+	for _, line := range []string{
+		"Paste the Codex callback URL (or press Enter to keep waiting): ",
+		"Paste the Claude callback URL (or press Enter to keep waiting): ",
+		"Paste the antigravity callback URL (or press Enter to keep waiting): ",
+	} {
+		if !wantsPaste(line) {
+			t.Errorf("wantsPaste(%q) = false, want true", line)
+		}
+	}
+	for _, line := range []string{
+		"Waiting for Codex authentication callback...",
+		"Attempting to open URL in browser: https://example.test/oauth/authorize?client_id=fake",
+		"To authenticate from a remote machine, an SSH tunnel may be required.",
+	} {
+		if wantsPaste(line) {
+			t.Errorf("wantsPaste(%q) = true, want false", line)
+		}
+	}
+}

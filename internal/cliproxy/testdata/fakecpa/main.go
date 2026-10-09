@@ -6,10 +6,14 @@
 //
 // Knobs (env): FAKECPA_LOGIN_DELAY_MS, FAKECPA_LOGIN_FAIL=1, FAKECPA_CRASH_ONCE_MS,
 // FAKECPA_MODELS_DELAY_MS (the real binary lists no models for ~30s after start),
-// FAKECPA_IMAGE_MODELS=1 (one "<vendor>-image" model each, plus /v1/images/*).
+// FAKECPA_IMAGE_MODELS=1 (one "<vendor>-image" model each, plus /v1/images/*),
+// FAKECPA_PASTE_CALLBACK=1 (ask for the callback URL on stdin, like the real
+// binary does when no browser turns up locally; the line it is given is
+// written to $FAKECPA_AUTH_TRACE/pasted.txt).
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -189,6 +193,27 @@ func login(provider, authDir string) {
 		ms = 250
 	}
 	time.Sleep(time.Duration(ms) * time.Millisecond)
+	if os.Getenv("FAKECPA_PASTE_CALLBACK") == "1" {
+		// What the real sidecar does once its loopback listener has waited
+		// without a browser: ask for the callback URL on stdin (Codex, Claude
+		// and Antigravity all print "Paste the … callback URL"). It is the
+		// only way in from a machine that is not the browser's.
+		fmt.Println("To authenticate from a remote machine, an SSH tunnel may be required.")
+		fmt.Print("Paste the " + provider + " callback URL (or press Enter to keep waiting): ")
+		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		if err != nil && strings.TrimSpace(line) == "" {
+			fmt.Println("authentication failed: no callback URL was provided")
+			os.Exit(1)
+		}
+		if !strings.Contains(line, "code=") {
+			fmt.Println("authentication failed: the pasted line carries no authorization code")
+			os.Exit(1)
+		}
+		if err := os.WriteFile(filepath.Join(os.Getenv("FAKECPA_AUTH_TRACE"), "pasted.txt"), []byte(line), 0o600); err != nil {
+			fmt.Println("could not record the pasted URL: " + err.Error())
+			os.Exit(1)
+		}
+	}
 	if os.Getenv("FAKECPA_LOGIN_FAIL") == "1" {
 		fmt.Println("authentication failed: access_denied for https://example.test/oauth/token?code=SECRETCODE")
 		os.Exit(1)
@@ -203,6 +228,7 @@ func login(provider, authDir string) {
 		os.Exit(1)
 	}
 	fmt.Println("Authentication successful")
+	fmt.Fprintln(os.Stderr, "EXITING NOW")
 	os.Exit(0)
 }
 

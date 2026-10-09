@@ -531,6 +531,13 @@ class L10n {
     'subs_sign_out': 'Çıkış yap',
     'subs_waiting': 'Tarayıcıda girişi tamamlamanı bekliyorum…',
     'subs_link_hint': 'Tarayıcı açılmadıysa bu bağlantıyı kopyalayıp aç:',
+    'subs_paste_title': 'Bu bilgisayardan giriş yapılamıyor',
+    'subs_paste_body': 'Giriş yaptığın tarayıcı başka bir bilgisayarda. Satıcı, giriş kodunu '
+        'yalnızca bu sunucunun kendi adresine gönderebiliyor; bağlantı koptuktan sonra '
+        'tarayıcının adres çubuğundaki adresi aşağıya yapıştır.',
+    'subs_paste_field': 'Adres çubuğundaki adres',
+    'subs_paste_send': 'Gönder ve girişi tamamla',
+    'subs_paste_sent': 'Gönderildi, giriş tamamlanıyor…',
     'subs_login_failed': 'Giriş tamamlanamadı: {e}',
     'subs_error': 'Abonelik hatası: {e}',
     'subs_models_title': 'Kullanılabilir modeller',
@@ -2904,6 +2911,13 @@ class L10n {
     'subs_sign_out': 'Sign out',
     'subs_waiting': 'Waiting for you to finish signing in in the browser…',
     'subs_link_hint': 'If the browser did not open, copy this link and open it:',
+    'subs_paste_title': 'This machine cannot complete the sign-in',
+    'subs_paste_body': 'The browser you sign in with is on another computer. The vendor can '
+        'only send the code back to this server, so once the connection fails, paste the '
+        'address from your browser\'s address bar below.',
+    'subs_paste_field': 'The address from your address bar',
+    'subs_paste_send': 'Send it and finish signing in',
+    'subs_paste_sent': 'Sent, finishing the sign-in…',
     'subs_login_failed': 'Sign-in did not complete: {e}',
     'subs_error': 'Subscription error: {e}',
     'subs_models_title': 'Available models',

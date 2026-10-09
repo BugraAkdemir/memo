@@ -52,4 +52,8 @@ type SubscriptionLogin struct {
 	URL      string `json:"url,omitempty"`
 	Done     bool   `json:"done"`
 	Error    string `json:"error,omitempty"`
+	// NeedsPaste means the sidecar is waiting for the callback URL to be
+	// handed to it — the only way to finish a sign-in started on a machine
+	// that is not the browser's. See cliproxy.Manager.SubmitCallbackURL.
+	NeedsPaste bool `json:"needs_paste,omitempty"`
 }

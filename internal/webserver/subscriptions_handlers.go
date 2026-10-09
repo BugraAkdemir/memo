@@ -21,6 +21,10 @@ import (
 //     fallback and polls GET until the account appears.
 //   - POST {"action":"cancel_login"} / {"action":"logout","provider":"..."}
 //     -> the new state.
+//   - POST {"action":"submit_callback","callback_url":"http://localhost:1455/
+//     auth/callback?code=…&state=…"} -> the new state. What makes a sign-in
+//     started on a remote server finishable from a browser on another
+//     machine; see cliproxy.Manager.SubmitCallbackURL.
 //
 // Wrapped in adminWrites at the route: signing an account in or out is an
 // admin action, while the read stays available to a restricted account's
@@ -53,6 +57,21 @@ func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, map[string]any{"auth_url": url})
 		case "cancel_login":
 			s.fullBridge.CancelSubscriptionLogin()
+			writeJSON(w, s.fullBridge.SubscriptionsState(r.Context()))
+		case "submit_callback":
+			// The sign-in's authorization code, which is a credential until it
+			// is exchanged: admin-only, like the login that produced it.
+			var cb struct {
+				CallbackURL string `json:"callback_url"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&cb); err != nil {
+				http.Error(w, "bad json", http.StatusBadRequest)
+				return
+			}
+			if err := s.fullBridge.SubmitSubscriptionCallback(cb.CallbackURL); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 			writeJSON(w, s.fullBridge.SubscriptionsState(r.Context()))
 		case "logout":
 			if err := s.fullBridge.LogoutSubscription(strings.ToLower(strings.TrimSpace(body.Provider))); err != nil {

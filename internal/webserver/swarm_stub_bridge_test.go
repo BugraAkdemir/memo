@@ -515,6 +515,7 @@ func (b *swarmStubBridge) QuotaLowSignal() *models.QuotaSignal {
 func (b *swarmStubBridge) WarmQuota()                                             { b.warmed++ }
 func (b *swarmStubBridge) StartSubscriptionLogin(provider string) (string, error) { return "", nil }
 func (b *swarmStubBridge) CancelSubscriptionLogin()                               {}
+func (b *swarmStubBridge) SubmitSubscriptionCallback(callbackURL string) error    { return nil }
 func (b *swarmStubBridge) LogoutSubscription(provider string) error               { return nil }
 func (b *swarmStubBridge) SetProviderModel(name, model string) error              { return nil }
 func (b *swarmStubBridge) ListProviderModels(ctx context.Context, name string) ([]models.ProviderModel, string, error) {

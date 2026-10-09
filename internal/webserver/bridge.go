@@ -288,6 +288,9 @@ type FullBridge interface {
 	WarmQuota()
 	StartSubscriptionLogin(provider string) (string, error)
 	CancelSubscriptionLogin()
+	// SubmitSubscriptionCallback hands back the OAuth callback URL a browser
+	// on another machine could not reach the sidecar's loopback listener with.
+	SubmitSubscriptionCallback(callbackURL string) error
 	LogoutSubscription(provider string) error
 	// SetProviderModel changes one configured provider's model by Name,
 	// preserving the rest of its config (the model selectors use this).

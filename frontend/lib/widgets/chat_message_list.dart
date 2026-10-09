@@ -1,11 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/clipboard_copy.dart';
 import '../core/theme.dart';
 import '../models/chat.dart';
 import '../models/agent.dart';
@@ -520,17 +520,18 @@ class _MessageBubbleState extends State<_MessageBubble> {
                                 if (_hovering && !isUser) ...[
                                   SizedBox(width: 8),
                                   GestureDetector(
-                                    onTap: () {
-                                      Clipboard.setData(
-                                        ClipboardData(
-                                          text: widget.message.content,
-                                        ),
+                                    onTap: () async {
+                                      final ok = await copyToClipboard(
+                                        widget.message.content,
                                       );
+                                      if (!context.mounted) return;
                                       ScaffoldMessenger.of(
                                         context,
                                       ).showSnackBar(
                                         SnackBar(
-                                          content: Text(L10n.t('copied')),
+                                          content: Text(
+                                            L10n.t(ok ? 'copied' : 'copy_failed'),
+                                          ),
                                           duration: const Duration(seconds: 1),
                                         ),
                                       );

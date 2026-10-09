@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/clipboard_copy.dart';
 import '../../../core/friendly_error.dart';
 import '../../../core/l10n.dart';
 import '../../../core/theme.dart';
@@ -459,10 +459,14 @@ class _CopyableLink extends StatelessWidget {
           IconButton(
             tooltip: L10n.t('copy'),
             icon: const Icon(Icons.copy_rounded, size: 15),
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: url));
+            onPressed: () async {
+              final ok = await copyToClipboard(url);
+              if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(L10n.t('copied')), duration: const Duration(seconds: 1)),
+                SnackBar(
+                  content: Text(L10n.t(ok ? 'copied' : 'copy_failed')),
+                  duration: const Duration(seconds: 1),
+                ),
               );
             },
           ),

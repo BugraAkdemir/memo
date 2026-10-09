@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/clipboard_copy.dart';
 import '../../../core/l10n.dart';
 import '../../../core/theme.dart';
 import '../../../providers/chat_provider.dart';
@@ -157,11 +157,12 @@ class _MemoryImportTabState extends ConsumerState<MemoryImportTab> {
                     shape: StadiumBorder(),
                     side: BorderSide(color: theme.borderSoft),
                   ),
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: _memoryImportPrompt));
+                  onPressed: () async {
+                    final ok = await copyToClipboard(_memoryImportPrompt);
+                    if (!mounted) return;
                     setState(() {
-                      _statusMessage = L10n.t('memory_import_prompt_copied');
-                      _statusIsError = false;
+                      _statusMessage = L10n.t(ok ? 'memory_import_prompt_copied' : 'copy_failed');
+                      _statusIsError = !ok;
                     });
                   },
                 ),

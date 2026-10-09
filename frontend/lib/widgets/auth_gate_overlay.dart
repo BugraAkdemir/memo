@@ -1,8 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/clipboard_copy.dart';
 import '../core/friendly_error.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -310,8 +310,9 @@ class _SetupGateViewState extends ConsumerState<_SetupGateView> {
   }
 
   Future<void> _copyToken() async {
-    await Clipboard.setData(ClipboardData(text: _generatedToken ?? ''));
-    setState(() => _copied = true);
+    final ok = await copyToClipboard(_generatedToken ?? '');
+    if (!mounted) return;
+    setState(() => _copied = ok);
   }
 
   @override

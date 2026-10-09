@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/clipboard_copy.dart';
 import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
 import 'dart:async';
@@ -193,10 +193,13 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: token));
+                    onTap: () async {
+                      final ok = await copyToClipboard(token);
+                      if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(L10n.t('remote_token_copied'))),
+                        SnackBar(
+                          content: Text(L10n.t(ok ? 'remote_token_copied' : 'copy_failed')),
+                        ),
                       );
                     },
                     child: Icon(
@@ -482,10 +485,11 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                   ),
                 ),
                 GestureDetector(
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: token));
+                  onTap: () async {
+                    final ok = await copyToClipboard(token);
+                    if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(L10n.t('remote_token_copied'))),
+                      SnackBar(content: Text(L10n.t(ok ? 'remote_token_copied' : 'copy_failed'))),
                     );
                   },
                   child: Icon(
@@ -988,10 +992,11 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                       ),
                     ),
                     GestureDetector(
-                      onTap: () {
-                        Clipboard.setData(ClipboardData(text: ngrokUrl));
+                      onTap: () async {
+                        final ok = await copyToClipboard(ngrokUrl);
+                        if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(L10n.t('remote_url_copied'))),
+                          SnackBar(content: Text(L10n.t(ok ? 'remote_url_copied' : 'copy_failed'))),
                         );
                       },
                       child: Icon(
@@ -1264,10 +1269,11 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: tsUrl));
+                    onTap: () async {
+                      final ok = await copyToClipboard(tsUrl);
+                      if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(L10n.t('remote_url_copied'))),
+                        SnackBar(content: Text(L10n.t(ok ? 'remote_url_copied' : 'copy_failed'))),
                       );
                     },
                     child: Icon(
@@ -1299,10 +1305,11 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: tsIp));
+                    onTap: () async {
+                      final ok = await copyToClipboard(tsIp);
+                      if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(L10n.t('remote_ip_copied'))),
+                        SnackBar(content: Text(L10n.t(ok ? 'remote_ip_copied' : 'copy_failed'))),
                       );
                     },
                     child: Icon(

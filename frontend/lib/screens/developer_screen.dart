@@ -1,8 +1,8 @@
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/clipboard_copy.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/dev_gateway.dart';
@@ -116,10 +116,11 @@ Widget sectionLabel(BuildContext context, String s) {
   );
 }
 
-void copyToClipboard(BuildContext context, String value) {
-  Clipboard.setData(ClipboardData(text: value));
+Future<void> copyAndNotify(BuildContext context, String value) async {
+  final ok = await copyToClipboard(value);
+  if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(L10n.t('copied'))),
+    SnackBar(content: Text(L10n.t(ok ? 'copied' : 'copy_failed'))),
   );
 }
 
@@ -146,7 +147,7 @@ Widget copyableValueBox(BuildContext context, String value, {bool monospace = fa
           ),
         ),
         GestureDetector(
-          onTap: () => copyToClipboard(context, value),
+          onTap: () => copyAndNotify(context, value),
           child: Icon(Icons.copy_rounded, size: 18, color: theme.textDim),
         ),
       ],
@@ -245,7 +246,7 @@ class _TopBar extends StatelessWidget {
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: theme.textMain),
                 ),
                 GestureDetector(
-                  onTap: () => copyToClipboard(context, baseUrl),
+                  onTap: () => copyAndNotify(context, baseUrl),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
@@ -705,7 +706,7 @@ class _ModelsPanel extends ConsumerWidget {
               children: [
                 for (final m in models)
                   GestureDetector(
-                    onTap: () => copyToClipboard(context, m.id),
+                    onTap: () => copyAndNotify(context, m.id),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(

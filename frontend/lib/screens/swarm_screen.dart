@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
+import '../core/clipboard_copy.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/local_model.dart';
@@ -483,11 +483,15 @@ class _HostSwarmViewState extends ConsumerState<_HostSwarmView> {
                     ),
                   ),
                   TextButton.icon(
-                    onPressed: () {
-                      Clipboard.setData(
-                          ClipboardData(text: status.roomCode));
+                    onPressed: () async {
+                      final ok = await copyToClipboard(status.roomCode);
+                      if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(L10n.t('swarm_code_copied'))),
+                        SnackBar(
+                          content: Text(
+                            L10n.t(ok ? 'swarm_code_copied' : 'copy_failed'),
+                          ),
+                        ),
                       );
                     },
                     icon: const Icon(Icons.copy, size: 16),

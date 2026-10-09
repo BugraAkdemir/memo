@@ -1,10 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/friendly_error.dart';
+import '../../core/clipboard_copy.dart';
 import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../models/curated_models.dart';
@@ -332,8 +332,7 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
               IconButton(
                 icon: Icon(Icons.copy_outlined, size: 15, color: c.textDim),
                 tooltip: 'Copy repo ID',
-                onPressed: () =>
-                    Clipboard.setData(ClipboardData(text: item.repoId)),
+                onPressed: () => copyToClipboard(item.repoId),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),

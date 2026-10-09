@@ -1,3 +1,49 @@
+# Handoff — 2026-10-10 — Uzak sunucuda abonelik girişi + kopyala butonu
+
+## İstekler
+Memo RPi/VDS'ye kurulup **başka bir bilgisayardan tarayıcıyla** kullanılınca:
+1) Abonelik giriş ekranındaki linkin **kopyala butonu** çalışmıyor, link panoya yazılmıyor.
+2) Linke tıklayıp giriş yapınca dönüş adresi **localhost**'ta kalıyor; oysa işlem uzak sunucuda.
+
+## Yapılanlar (2 commit, `main`'de, **PUSH EDİLMEDİ**)
+| Commit | Ne |
+|---|---|
+| `56c5c085` | **Kopyala.** Flutter web `Clipboard.setData` → `navigator.clipboard`, bu nesne **güvenli olmayan bağlamda (HTTP) yok** → engine `StateError` fırlatıyor. Çağrının Future'ı hiç await edilmediği için hata görünmüyor, UI "Kopyalandı" diyordu. `core/clipboard_copy.dart` (+`_io`/`_web`, mevcut `app_restart` conditional-export kalıbı): web'de async API → yoksa `execCommand('copy')` yedeği; native'de platform kanalı. **bool döner, fırlatmaz.** 13 `Clipboard.setData` çağrısı taşındı (Subscriptions linki, ngrok/Tailscale URL, uzak erişim token'ı, mesaj, model id, swarm kodu, auth token). `copy_failed` TR+EN eklendi. 6 `import 'package:flutter/services.dart'` gereksiz olduğu için kaldırıldı |
+| `edf81e2e` | **Uzak giriş.** `redirect_uri`'yi değiştirmek **çalışmıyor** (aşağıya kanıt). Sidecar'ın **kendi elinde** olan yol bağlandı: "Paste the Codex/Claude/antigravity callback URL" istemi stdin'den okunuyordu, Memo stdout-only besliyordu. Artık: `cmd.StdinPipe()` + `LoginState.NeedsPaste` + `Manager.SubmitCallbackURL` + `POST /api/subscriptions {"action":"submit_callback"}` + Flutter'da yapıştırma kutusu (6 yeni TR/EN anahtarı, `Wrap` ile taşma olmasın) |
+
+## DOĞRULANMAMIŞ YERİM — planımın bir kısmı yanlıştı, düzeltildi
+İlk tasarım: `redirect_uri`'yi `localhost` yerine sunucu adresiyle değiştir. **Gerçek sağlayıcılara test edildi ve yanlış çıktı:**
+| Deneme | Google'ın cevabı |
+|---|---|
+| `redirect_uri=192.168.1.50:51121` | `Invalid request. device_id and device_name are required for private IP` |
+| `redirect_uri=memo.example.com` | `redirect_uri_mismatch` (base64 decode edilerek doğrulandı: `ChVyZWRpcmVjdF91cmlfbWlzbWF0Y2g=`) |
+
+OAuth sağlayıcıları `redirect_uri`'yi **kayıtlı OAuth client'a karşı** denetliyor. O kod yazılıp **geri alındı** (`git checkout internal/cliproxy/login.go`), kalıcı olarak bırakılmadı.
+
+## Bulunan iki gerçek hata (bu oturumda, ikisi de ölçüldü)
+1. **Prompt satır sonu olmadan basılıyor.** Sidecar `fmt.Print` ile "Paste the …" yazıp **stdin'de bloklanıyor**; `bufio.Scanner`/`ReadString` newline bekleyip **sonsuza dek** kilitleniyor → UI "callback bekleniyor" durumunu hiç göremiyor. Çözüm: chunk chunk okuma + yarım satır prompt'a benzer görünür görünmez değerlendiriliyor. (Yanlışlıkla önce "tam satır bekliyorum" denendi, o da yetmiyordu — prompt zaten hiç tamamlanmıyor.)
+2. **`cmd.Wait()` hiç dönmüyordu — ÖNCEKİ KODDAN GELEN KİLİT.** `cmd.Stdin` bir `io.PipeReader` idi; bu `*os.File` **olmadığı** için `exec.Cmd` kendi kopyalama goroutine'ini başlatıyor ve `Wait` onu bekliyor; goroutine da kimsenin yazmadığı bir pipe'ta okumada blokli. Giriş **bitmiş** ("Authentication successful" basılmış) ama `Done` hiç `true` olmuyor, UI bitmiş bir girişi saatlerce yokluyor. Çözüm: `cmd.StdinPipe()` + çıktı için tek `os.Pipe` (`*os.File`) → kopyalama goroutine'i hiç oluşmuyor. **Bu kilit bu özellihten önce de vardı, her girişi etkiliyordu.** Nasıl bulundu: `waitprobe` adlı küçük programda `io.Pipe` → `cmd.StdinPipe()` değişimiyle `Wait` anında dönmeye başladı.
+
+## Doğrulama
+`CGO_ENABLED=1 go build/vet -tags sqlite_fts5 ./...` temiz; `go test -tags sqlite_fts5 ./... -race -count=1` **0 FAIL** (`cliproxy` 15.6 sn, `e2e` 33.4 sn, `app` 35.3 sn).
+`flutter analyze lib/ test/` **7 bulgu, hepsi dokunulmamış dosyalarda** (kabul edilebilir eski gürültü); `flutter test` **561 geçti** (551 → 561, +10). Kural #8 taraması boş (yeni/untracked `.dart` dosyaları ayrıca tarandı).
+**Mutasyonlar:** (a) io helper'ı fırlatıp `false` dönmeyince → "failed copy" testi kırmızı; (b) kutu `copied`'ı koşulsuz gösterince → kırmızı; (c) `needsPaste` yok sayılınca → **3 kırmızı**.
+**Gerçek sidecar binary'siyle (pinned v8.0.16, sha doğrulandı):** üç sağlayıcının da `redirect_uri`'si ölçüldü; callback portlarının **`*:<port>`**'a (tüm arayüzlere) bağlandığı `ss -ltn` ile görüldü; prompt'un ~15 sn sonra **newline'siz** geldiği doğrulandı; yapıştırılan URL'nin okunduğu (`GOT LINE`) görüldü.
+
+## DOĞRULANMADI
+- **Gerçek bir satıcı hesabıyla giriş YAPILMADI.** Yapıştırma yolunun son adımı (token değişimi) yalnızca sahte sidecar'a karşı kanıtlandı. Kullanıcının uyurken kimlik bilgilerine dokunulmadı.
+- **Flutter kutusunun gerçek tarayıcıda görünümü bakılmadı**, yalnızca widget testleri.
+- Yapıştırma kutusu yalnızca sidecar istemi gördüğünde çıkıyor (~15 sn gecikme). Sidecar bu istemi **her girişte** basıyor; masaüstünde de kutu belirebilir — istenirse yalnızca uzak bağlantılarda göstermek için bir koşul eklenebilir (karar kullanıcıda).
+- Windows/macOS'ta bu yol denenmedi.
+
+## Hâlâ kullanıcıda
+`origin`'in ikinci push URL'sindeki düz metin token (`web.bugradev.com`) → sil + döndür. llama.cpp b9441→b11456 uygulanmadı. Claude girişi yok.
+
+## Sonraki adım
+Uzak sunucuda gerçek bir hesapla: giriş başlat → linki aç → giriş yap → `localhost:1455` açılınca adres çubuğunu kopyala → Memo'sa yapıştır. Sonra: kutuyu yalnızca gerçekten uzak bağlantıda göstermek istersen `apiClientProvider`'ın base URL'ine bakıp `localhost` değilse göstermek; SSH tüneli komutunu giriş ekranında bir "Alternatif" olarak sunmak.
+
+---
+
 # Handoff — 2026-10-08 (gece) — Telegram/WhatsApp: /model, görsel gir/çık, otomatik görsel yönlendirme, şifreli görseller
 
 ## İstekler

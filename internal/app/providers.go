@@ -42,6 +42,21 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 	if a.providerCfgMgr == nil {
 		return fmt.Errorf("provider system not initialized")
 	}
+	// Older clients send only the active model. Preserve their earlier choices.
+	if cfg.Models == nil {
+		for _, old := range a.providerCfgMgr.GetAll() {
+			if old.Name == cfg.Name {
+				cfg.Models = append([]provider.ConfiguredModel(nil), old.Models...)
+				if old.Model != "" && (len(cfg.Models) == 0 || cfg.ModelKind(old.Model) == "") {
+					cfg.Models = append(cfg.Models, provider.ConfiguredModel{ID: old.Model})
+				}
+				if cfg.Model != "" && cfg.ModelKind(cfg.Model) == "" {
+					cfg.Models = append(cfg.Models, provider.ConfiguredModel{ID: cfg.Model})
+				}
+				break
+			}
+		}
+	}
 	if err := cfg.Validate(); err != nil {
 		return err
 	}

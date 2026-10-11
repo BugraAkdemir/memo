@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestConfiguredModelsPersistAndIsolateDecisionProviders(t *testing.T) {
+func TestConfiguredModelsPersistWithoutRoleRestrictions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "providers.json")
 	key := make([]byte, 32)
 	cm := NewConfigManager(path, key)
@@ -13,7 +13,7 @@ func TestConfiguredModelsPersistAndIsolateDecisionProviders(t *testing.T) {
 	cm.Set(cfg)
 	cfg.Models[0].ID = "mutated"
 	got := NewConfigManager(path, key).GetAll()[0]
-	if got.APIKey != "secret" || got.ModelKind("chat-two") != "chat" || got.ModelKind("review") != "decision" {
+	if got.APIKey != "secret" || got.ModelKind("chat-two") != "chat" || got.ModelKind("review") != "chat" {
 		t.Fatalf("lost configuration: %+v", got.Models)
 	}
 	copy := cm.GetAll()
@@ -25,12 +25,12 @@ func TestConfiguredModelsPersistAndIsolateDecisionProviders(t *testing.T) {
 	got.Model = "review"
 	got.Models = []ConfiguredModel{{ID: "review", Kind: "decision"}}
 	cm.Set(got)
-	if len(cm.GetEnabled()) != 1 {
-		t.Fatal("decision-only provider entered chat routing")
+	if len(cm.GetEnabled()) != 2 {
+		t.Fatal("legacy role blocked an enabled API provider")
 	}
 	rt := NewRouter(cm.GetAll())
-	if _, ok := rt.GetProvider("decision-only"); ok {
-		t.Fatal("decision-only provider available for chat fallback")
+	if _, ok := rt.GetProvider("decision-only"); !ok {
+		t.Fatal("legacy role excluded a valid provider")
 	}
 }
 
@@ -40,7 +40,7 @@ func TestConfiguredModelRoleValidationAndLegacy(t *testing.T) {
 		t.Fatal("legacy model migration")
 	}
 	for _, models := range [][]ConfiguredModel{
-		{{ID: "old", Kind: "invalid"}}, {{ID: "old", Kind: "chat"}, {ID: "old", Kind: "decision"}}, {{ID: "", Kind: "chat"}}, {{ID: "other", Kind: "chat"}},
+		{{ID: "old", Kind: "chat"}, {ID: "old", Kind: "decision"}}, {{ID: "", Kind: "chat"}}, {{ID: "other", Kind: "chat"}},
 	} {
 		cfg.Models = models
 		if cfg.Validate() == nil {

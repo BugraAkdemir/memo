@@ -201,7 +201,7 @@ func (cm *ConfigManager) GetEnabled() []ProviderConfig {
 
 	var enabled []ProviderConfig
 	for _, cfg := range cm.configs {
-		if cfg.Enabled && cfg.HasChatModel() {
+		if cfg.Enabled {
 			cfg.Models = append([]ConfiguredModel(nil), cfg.Models...)
 			enabled = append(enabled, cfg)
 		}

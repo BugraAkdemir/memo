@@ -274,10 +274,10 @@ func trySend(ctx context.Context, ch chan<- StreamChunk, chunk StreamChunk) {
 }
 
 // ProviderConfig holds configuration for a single provider instance.
-// ConfiguredModel is a user-assigned role, not an inferred capability.
+// ConfiguredModel stores a saved model ID. Kind is retained for old files only.
 type ConfiguredModel struct {
 	ID   string `json:"id"`
-	Kind string `json:"kind"` // chat or decision
+	Kind string `json:"kind,omitempty"` // Deprecated; no selection restrictions.
 }
 
 type ProviderConfig struct {
@@ -312,7 +312,7 @@ type ProviderConfig struct {
 func (c ProviderConfig) ModelKind(id string) string {
 	for _, m := range c.Models {
 		if m.ID == id {
-			return m.Kind
+			return "chat"
 		}
 	}
 	if len(c.Models) == 0 && id == c.Model {
@@ -320,16 +320,13 @@ func (c ProviderConfig) ModelKind(id string) string {
 	}
 	return ""
 }
-func (c ProviderConfig) HasChatModel() bool { return c.ModelKind(c.Model) == "chat" }
+func (c ProviderConfig) HasChatModel() bool { return strings.TrimSpace(c.Model) != "" }
 
 func (c ProviderConfig) Validate() error {
 	seen := map[string]bool{}
 	for _, m := range c.Models {
-		if strings.TrimSpace(m.ID) == "" || (m.Kind != "chat" && m.Kind != "decision") || seen[m.ID] {
-			return fmt.Errorf("models require unique IDs and chat or decision roles")
-		}
-		if m.Kind == "decision" && strings.HasSuffix(string(c.Type), "-cli") {
-			return fmt.Errorf("CLI agents cannot be decision models")
+		if strings.TrimSpace(m.ID) == "" || seen[m.ID] {
+			return fmt.Errorf("models require unique, non-empty IDs")
 		}
 		seen[m.ID] = true
 	}

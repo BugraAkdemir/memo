@@ -426,18 +426,14 @@ func (a *App) SetProviderModel(name, model string) error {
 	}
 	for _, p := range a.providerCfgMgr.GetAll() {
 		if p.Name == name {
-			if p.ModelKind(model) == "decision" {
-				return errors.New("decision models cannot be used for chat")
-			}
-			if len(p.Models) > 0 && p.ModelKind(model) == "" {
-				if !isSubsMarker(p) {
-					return errors.New("select a registered chat model")
-				}
-				// Subscription catalogs are dynamic; register the selected chat model.
-				p.Models = append(p.Models, provider.ConfiguredModel{ID: model, Kind: "chat"})
-			}
 			if p.Model == model {
 				return nil
+			}
+			if p.Model != "" && p.ModelKind(p.Model) == "" || len(p.Models) == 0 && p.Model != "" {
+				p.Models = append(p.Models, provider.ConfiguredModel{ID: p.Model})
+			}
+			if p.ModelKind(model) == "" {
+				p.Models = append(p.Models, provider.ConfiguredModel{ID: model})
 			}
 			p.Model = model
 			return a.UpdateProvider(p)
@@ -502,22 +498,12 @@ func (a *App) ListProviderModels(ctx context.Context, name string) ([]models.Pro
 		return out, cfg.Model, nil
 	}
 
-	if len(cfg.Models) > 0 {
-		out := make([]models.ProviderModel, 0, len(cfg.Models))
-		for _, m := range cfg.Models {
-			if m.Kind == "chat" {
-				out = append(out, models.ProviderModel{ID: m.ID})
-			}
-		}
-		return out, cfg.Model, nil
-	}
-
 	key := name + "|" + string(cfg.Type) + "|" + cfg.BaseURL
 	a.provModelsMu.Lock()
 	if e, ok := a.provModels[key]; ok && time.Since(e.at) < providerModelsTTL {
 		out := append([]models.ProviderModel(nil), e.list...)
 		a.provModelsMu.Unlock()
-		return out, cfg.Model, nil
+		return mergeConfiguredModels(out, cfg), cfg.Model, nil
 	}
 	a.provModelsMu.Unlock()
 
@@ -541,7 +527,7 @@ func (a *App) ListProviderModels(ctx context.Context, name string) ([]models.Pro
 	}
 	a.provModels[key] = providerModelsEntry{at: time.Now(), list: out}
 	a.provModelsMu.Unlock()
-	return append([]models.ProviderModel(nil), out...), cfg.Model, nil
+	return mergeConfiguredModels(out, cfg), cfg.Model, nil
 }
 
 // purgeLegacySubscriptionData removes what the per-vendor subscription providers
@@ -562,4 +548,22 @@ func purgeLegacySubscriptionData() {
 		}
 		logx.Printf("subs: removed legacy %s data (replaced by Settings > Subscriptions)", dir)
 	}
+}
+
+func mergeConfiguredModels(catalog []models.ProviderModel, cfg provider.ProviderConfig) []models.ProviderModel {
+	out := append([]models.ProviderModel(nil), catalog...)
+	seen := map[string]bool{}
+	for _, m := range out {
+		seen[m.ID] = true
+	}
+	for _, m := range cfg.Models {
+		if m.ID != "" && !seen[m.ID] {
+			out = append(out, models.ProviderModel{ID: m.ID})
+			seen[m.ID] = true
+		}
+	}
+	if cfg.Model != "" && !seen[cfg.Model] {
+		out = append(out, models.ProviderModel{ID: cfg.Model})
+	}
+	return out
 }

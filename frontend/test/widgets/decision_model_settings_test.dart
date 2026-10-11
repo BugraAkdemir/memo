@@ -6,6 +6,7 @@ import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/widgets/settings/decision_model_section.dart';
 import 'package:memo_flutter/models/provider_config.dart';
+import 'package:memo_flutter/models/provider_models.dart';
 import 'package:memo_flutter/providers/provider_provider.dart';
 
 class _ProviderList extends ProviderListNotifier {
@@ -18,8 +19,8 @@ class _ProviderList extends ProviderListNotifier {
       enabled: true,
       models: [
         ConfiguredModel(id: 'chat-llm'),
-        ConfiguredModel(id: 'tiny', kind: 'decision'),
-        ConfiguredModel(id: 'fast-model', kind: 'decision'),
+        ConfiguredModel(id: 'tiny'),
+        ConfiguredModel(id: 'fast-model'),
       ],
     ),
   ];
@@ -32,6 +33,11 @@ class _DecisionApi extends MemoApiClient {
   int? savedThreshold, savedRisk;
   String? savedProvider;
   String? savedModel;
+  @override
+  Future<ProviderModelList> listProviderModels(
+    String name, {
+    bool fresh = false,
+  }) async => const ProviderModelList();
   @override
   Future<Map<String, dynamic>> getLearningSettings() async => {
     'decision_enabled': true,
@@ -94,7 +100,7 @@ void main() {
       await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
       await tester.tap(find.byType(DropdownButtonFormField<String>));
       await tester.pumpAndSettle();
-      expect(find.text('cheap · chat-llm'), findsNothing);
+      expect(find.text('cheap · chat-llm'), findsWidgets);
       await tester.tap(
         find.text('cheap · fast-model').last);
       await tester.pumpAndSettle();

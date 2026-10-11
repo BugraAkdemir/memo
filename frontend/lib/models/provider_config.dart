@@ -1,13 +1,10 @@
 class ConfiguredModel {
   final String id;
-  final String kind;
-  const ConfiguredModel({required this.id, this.kind = 'chat'});
+  const ConfiguredModel({required this.id});
   factory ConfiguredModel.fromJson(Map<String, dynamic> json) =>
       ConfiguredModel(
-        id: json['id'] as String? ?? '',
-        kind: json['kind'] as String? ?? 'chat',
-      );
-  Map<String, dynamic> toJson() => {'id': id, 'kind': kind};
+        id: json['id'] as String? ?? '');
+  Map<String, dynamic> toJson() => {'id': id};
 }
 
 /// Provider configuration model — mirrors Go `provider.ProviderConfig`
@@ -23,7 +20,7 @@ class ProviderConfig {
       ? [ConfiguredModel(id: model)]
       : models;
   List<ConfiguredModel> get chatModels =>
-      configuredModels.where((m) => m.kind == 'chat').toList();
+      configuredModels;
   final bool enabled;
   final int priority;
   final double temperature;

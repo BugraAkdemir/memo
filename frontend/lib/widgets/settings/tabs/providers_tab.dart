@@ -257,7 +257,14 @@ class ProviderCard extends ConsumerWidget {
                         ),
                     ],
                   ),
-                ],
+                                  Align(alignment:Alignment.centerLeft,child:TextButton(
+                    onPressed:() async {
+                      final result=await showDialog<bool>(context:context,builder:(_)=>ProviderConfigDialog(existing:p));
+                      if(result==true)ref.invalidate(providerListProvider);
+                    },
+                    child:Text(L10n.t('provider_manage_models'),maxLines:1,overflow:TextOverflow.ellipsis),
+                  )),
+],
               ),
             ),
 

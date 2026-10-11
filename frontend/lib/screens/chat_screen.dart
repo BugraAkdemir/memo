@@ -548,11 +548,13 @@ class _PickerData {
   final List<ProviderConfig> providers;
   final String cliType;
   final List<ProviderModel> subsModels;
+  final Map<String, List<ProviderModel>> catalogs;
   const _PickerData({
     required this.activeType,
     required this.providers,
     required this.cliType,
     required this.subsModels,
+    this.catalogs = const {},
   });
 }
 
@@ -589,11 +591,34 @@ class _QuickModelDropdown extends ConsumerWidget {
           return const <ProviderModel>[];
         }),
       ]);
+      final providers = results[1] as List<ProviderConfig>;
+      final catalogs = <String, List<ProviderModel>>{};
+      if (fresh) {
+        await Future.wait(
+          providers
+              .where(
+                (p) =>
+                    p.enabled &&
+                    !ProviderDefaults.isCLIType(p.type) &&
+                    p.name != kSubscriptionsProviderName,
+              )
+              .map((p) async {
+                try {
+                  catalogs[p.name] = (await api.listProviderModels(
+                    p.name,
+                  )).models;
+                } catch (_) {
+                  /* Saved models stay visible. */
+                }
+              }),
+        );
+      }
       return _PickerData(
         activeType: results[0] as String,
         providers: results[1] as List<ProviderConfig>,
         cliType: results[2] as String,
         subsModels: results[3] as List<ProviderModel>,
+        catalogs: catalogs,
       );
     }
 
@@ -614,20 +639,12 @@ class _QuickModelDropdown extends ConsumerWidget {
         ))
           if (p.name == kSubscriptionsProviderName && d.subsModels.isNotEmpty)
             ..._subscriptionModelEntries(p, d.subsModels, effectiveActive == p.name)
-          else if (!ProviderDefaults.isCLIType(p.type) &&
-              p.models.isNotEmpty) ...[
-            ModelPickerEntry.header(
-              p.name,
-              leading: providerLogoWidget(p.type, size: 14),
-            ),
-            for (final m in p.chatModels)
-              ModelPickerEntry.item(
-                value: encodeModelSelection(p.name, m.id),
-                title: m.id,
-                leading: providerLogoWidget(p.type, size: 16),
-                active: effectiveActive == p.name && p.model == m.id,
-              ),
-          ] else
+          else if (!ProviderDefaults.isCLIType(p.type)) ...providerModelPickerEntries(
+              p,
+              catalog: d.catalogs[p.name] ?? const [],
+              isActive: effectiveActive == p.name,
+            )
+          else
             ModelPickerEntry.item(
               value: p.name,
               title: p.name,
@@ -762,7 +779,7 @@ class _QuickModelDropdown extends ConsumerWidget {
   ) {
     final out = <ModelPickerEntry>[];
     String? lastVendor;
-    for (final m in models.where((m) => !provider.models.any((configured) => configured.id == m.id && configured.kind == 'decision'))) {
+    for (final m in models) {
       if (m.ownedBy != lastVendor) {
         lastVendor = m.ownedBy;
         final label = vendorLabel(m.ownedBy);
@@ -1567,4 +1584,30 @@ class _ChatTopBar extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// The same group is used for legacy single-model and saved multi-model providers.
+List<ModelPickerEntry> providerModelPickerEntries(
+  ProviderConfig provider, {
+  List<ProviderModel> catalog = const [],
+  bool isActive = false,
+}) {
+  final ids = <String>{
+    ...provider.configuredModels.map((m) => m.id),
+    ...catalog.map((m) => m.id),
+  };
+  if (provider.model.isNotEmpty) ids.add(provider.model);
+  return [
+    ModelPickerEntry.header(
+      provider.name,
+      leading: providerLogoWidget(provider.type, size: 14),
+    ),
+    for (final id in ids.where((id) => id.isNotEmpty))
+      ModelPickerEntry.item(
+        value: encodeModelSelection(provider.name, id),
+        title: id,
+        leading: providerLogoWidget(provider.type, size: 16),
+        active: isActive && id == provider.model,
+      ),
+  ];
 }

@@ -825,8 +825,8 @@ ci.yml              — main'e her push/PR'da Go vet/test, Flutter analyze/test 
 build-linux.yml     — push/PR/dispatch/v* etiketinde Linux x86_64 (zip, tar.gz, AppImage) ve arm64 (zip) derler. Etikette GitHub Release'e ve R2'nin kararlı adlarına (memo.tar.gz, memo.AppImage, memo_arm.zip); main push'unda beta adlarına (memo_beta.tar.gz, memo_beta.AppImage, memo_arm_beta.zip) yükler
 build-macos.yml     — macOS derlemesi; etikette GitHub Release + memo-mac.zip
 build-windows.yml   — Windows derlemesi + Inno Setup kurulumcusu; etikette GitHub Release + memo.exe
-build-android.yml   — imzalı APK (R2: memo-android.apk)
-build-ios.yml       — imzasız IPA (R2: memo-ios.ipa)
+build-android.yml   — imzalı APK (R2: memo.apk)
+build-ios.yml       — imzasız IPA (R2: memo.ipa)
 build-docker.yml    — yalnızca-backend Docker imajını derler ve yayınlar
 upload-r2.yml       — elle tetiklenen beta R2 yüklemesi
 upstream.yml        — her 6 saatte bir: sağlayıcı API/OAuth uç noktaları, CLIProxyAPI sürümü ve data.memocpp.com betikleri için kimlik bilgisiz yoklamalar; sapma `upstream-drift` issue'su açar

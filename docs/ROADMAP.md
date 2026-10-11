@@ -106,7 +106,7 @@ What that leaves open:
   this setup has.
 - **Store publishing** — Play Console / App Store accounts and the final
   store bundle identifier are still open. CI already publishes a signed
-  APK (`memo-android.apk`) and an unsigned IPA (`memo-ios.ipa`, sideload
+  APK (`memo.apk`) and an unsigned IPA (`memo.ipa`, sideload
   only) to `data.memocpp.com` on every release.
 - **Live Mode's native realtime engines on mobile** — `live_pcm_player.dart`
   streams PCM into a long-lived sink and is Linux-only (it already threw on

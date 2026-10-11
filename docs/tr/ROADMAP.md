@@ -107,7 +107,7 @@ Bunun açık bıraktıkları:
   için Mac + iPhone gerekiyor, ikisi de bu kurulumda yok.
 - **Store yayını** — Play Console / App Store hesapları ve nihai store
   bundle kimliği hâlâ açık. CI her sürümde `data.memocpp.com`'a imzalı bir
-  APK (`memo-android.apk`) ve imzasız bir IPA (`memo-ios.ipa`, yalnızca
+  APK (`memo.apk`) ve imzasız bir IPA (`memo.ipa`, yalnızca
   sideload) yayınlıyor.
 - **Live Mode'un native realtime motorları mobilde** —
   `live_pcm_player.dart` PCM'i uzun ömürlü bir sink'e akıtıyor ve sadece

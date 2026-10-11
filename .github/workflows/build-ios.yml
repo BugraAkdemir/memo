@@ -105,7 +105,7 @@ jobs:
 
       - name: Upload stable to R2
         if: startsWith(github.ref, 'refs/tags/')
-        run: rclone copyto build_output/dist/${{ env.APP_NAME }}-ios-unsigned.ipa R2:${{ env.R2_BUCKET }}/memo-ios.ipa --progress
+        run: rclone copyto build_output/dist/${{ env.APP_NAME }}-ios-unsigned.ipa R2:${{ env.R2_BUCKET }}/memo.ipa --progress
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
@@ -118,7 +118,7 @@ jobs:
       # build-android.yml's identical note (this workflow is path-filtered).
       - name: Upload beta to R2
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
-        run: rclone copyto build_output/dist/${{ env.APP_NAME }}-ios-unsigned.ipa R2:${{ env.R2_BUCKET }}/memo-ios_beta.ipa --progress
+        run: rclone copyto build_output/dist/${{ env.APP_NAME }}-ios-unsigned.ipa R2:${{ env.R2_BUCKET }}/memo-beta.ipa --progress
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare

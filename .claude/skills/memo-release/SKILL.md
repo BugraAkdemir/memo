@@ -15,7 +15,7 @@ builds, packages, compiles the Windows Inno Setup installer, publishes a
 GitHub Release (not a prerelease — a tag push is now a real release), and
 republishes the fixed stable filenames `data.memocpp.com` actually
 serves (`memo.tar.gz`, `memo-mac.zip`, `memo.exe`, `memo_arm.zip`, and the
-mobile `memo-android.apk` / `memo-ios.ipa` — unsigned, sideload-only)
+mobile `memo.apk` / `memo.ipa` (betas: `memo-beta.apk` / `memo-beta.ipa`) — unsigned, sideload-only)
 straight to R2. The mobile APK/IPA take their version name from the
 root `version` file at build time, so `frontend/pubspec.yaml` still needs
 no bump. **There is no more manual `build_releases.sh` + manual upload step

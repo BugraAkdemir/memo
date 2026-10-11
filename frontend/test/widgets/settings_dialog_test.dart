@@ -12,6 +12,7 @@ import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/models_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
 import 'package:memo_flutter/widgets/settings_dialog.dart';
+import 'package:memo_flutter/widgets/settings/tabs/decision_model_tab.dart';
 
 // Regression coverage for the v3.3.4 Settings redesign: 20 flat, identically
 // weighted tabs became a searchable rail grouped under a handful of eyebrow
@@ -268,4 +269,15 @@ void main() {
         reason: 'Code Mode Prompts opened the Subscriptions screen');
     expect(tester.takeException(), isNull);
   });
+  testWidgets('decision and verification has its own settings tab', (tester) async {
+    await _pumpSettingsDialog(tester);
+    await tester.scrollUntilVisible(find.text(L10n.t('decision_tab_title')), 150, scrollable: _railScrollable);
+    await Scrollable.ensureVisible(tester.element(find.text(L10n.t('decision_tab_title'))), alignment: 0.5);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(L10n.t('decision_tab_title')));
+    await tester.pumpAndSettle();
+    expect(find.byType(DecisionModelTab), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
 }

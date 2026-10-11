@@ -230,9 +230,6 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
   bool _loading = true;
   String? _error;
   bool _singleModel = false;
-  bool _decisionEnabled = false;
-  final _decisionProviderCtrl = TextEditingController();
-  final _decisionModelCtrl = TextEditingController();
   final _modelCtrl = TextEditingController();
   int _reminderLead = 30;
   bool _guessTime = true;
@@ -249,8 +246,6 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
   @override
   void dispose() {
     _modelCtrl.dispose();
-    _decisionProviderCtrl.dispose();
-    _decisionModelCtrl.dispose();
     super.dispose();
   }
 
@@ -261,13 +256,6 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
       final calendar = await api.getCalendarSettings();
       if (!mounted) return;
       setState(() {
-        _decisionEnabled = learning['decision_enabled'] == true;
-        _decisionProviderCtrl.text = learning['decision_provider'] is String
-            ? learning['decision_provider'] as String
-            : '';
-        _decisionModelCtrl.text = learning['decision_model'] is String
-            ? learning['decision_model'] as String
-            : '';
         _singleModel = learning['single_model_enabled'] as bool? ?? false;
         _modelCtrl.text = learning['model_id'] as String? ?? '';
         final lead = calendar['reminder_lead_minutes'] as int? ?? 30;
@@ -288,31 +276,16 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
     setState(() => _saving = true);
     try {
       final api = ref.read(apiClientProvider);
-      await api.updateLearningSettings(
-        _singleModel,
-        _modelCtrl.text.trim(),
-        decisionEnabled: _decisionEnabled,
-        decisionProvider: _decisionProviderCtrl.text.trim(),
-        decisionModel: _decisionModelCtrl.text.trim(),
-      );
-      await api.updateCalendarSettings(
-        _reminderLead,
-        disableTimeGuess: !_guessTime,
-      );
+      await api.updateLearningSettings(_singleModel, _modelCtrl.text.trim());
+      await api.updateCalendarSettings(_reminderLead, disableTimeGuess: !_guessTime);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('learning_settings_saved'))),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(L10n.t('learning_settings_saved'))));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              L10n.t('learning_error', {'e': FriendlyError.describeGeneric(e)}),
-            ),
-          ),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(L10n.t('learning_error', {'e': FriendlyError.describeGeneric(e)}))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -325,18 +298,11 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.all(8),
-        child: SizedBox(
-          height: 18,
-          width: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)),
       );
     }
     if (_error != null) {
-      return Text(
-        L10n.t('learning_error', {'e': _error!}),
-        style: TextStyle(color: MemoTheme.red, fontSize: 12),
-      );
+      return Text(L10n.t('learning_error', {'e': _error!}), style: TextStyle(color: MemoTheme.red, fontSize: 12));
     }
 
     return Container(
@@ -346,134 +312,85 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
         borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
         border: Border.all(color: theme.borderSoft),
       ),
-      child: Material(
-        type: MaterialType.transparency,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SwitchListTile(
-              title: Text(L10n.t('decision_model_title')),
-              subtitle: Text(L10n.t('decision_model_desc')),
-              value: _decisionEnabled,
-              contentPadding: EdgeInsets.zero,
-              onChanged: (value) => setState(() => _decisionEnabled = value),
-            ),
-            if (_decisionEnabled) ...[
-              const SizedBox(height: 8),
-              TextField(
-                controller: _decisionProviderCtrl,
-                decoration: InputDecoration(
-                  labelText: L10n.t('decision_provider_label'),
-                  helperText: L10n.t('decision_provider_hint'),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _decisionModelCtrl,
-                decoration: InputDecoration(
-                  labelText: L10n.t('decision_model_label'),
-                ),
-              ),
-              const SizedBox(height: 14),
-            ],
-            Row(
-              children: [
-                Text(
-                  L10n.t('learning_single_model_title'),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w500,
-                    color: theme.textMain,
-                  ),
-                ),
-                const Spacer(),
-                Switch(
-                  value: _singleModel,
-                  activeThumbColor: MemoTheme.accent,
-                  onChanged: (v) => setState(() => _singleModel = v),
-                ),
-              ],
-            ),
-            Text(
-              L10n.t('learning_single_model_desc'),
-              style: TextStyle(fontSize: 12, color: theme.textDim),
-            ),
-            if (_singleModel) ...[
-              const SizedBox(height: 8),
-              TextField(
-                controller: _modelCtrl,
-                style: TextStyle(color: theme.textMain, fontSize: 13),
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: L10n.t('learning_model_id_hint'),
-                  hintStyle: TextStyle(color: theme.textDim, fontSize: 13),
-                  border: const OutlineInputBorder(),
-                ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(L10n.t('learning_single_model_title'),
+                  style: TextStyle(fontWeight: FontWeight.w500, color: theme.textMain)),
+              const Spacer(),
+              Switch(
+                value: _singleModel,
+                activeThumbColor: MemoTheme.accent,
+                onChanged: (v) => setState(() => _singleModel = v),
               ),
             ],
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Text(
-                  L10n.t('learning_calendar_reminder'),
-                  style: TextStyle(fontSize: 13, color: theme.textMain),
-                ),
-                const Spacer(),
-                DropdownButton<int>(
-                  value: _reminderLead,
-                  underline: const SizedBox.shrink(),
-                  style: TextStyle(fontSize: 13, color: theme.textMain),
-                  items: _leadOptions
-                      .map(
-                        (m) => DropdownMenuItem(
-                          value: m,
-                          child: Text(
-                            m < 60
-                                ? L10n.t('learning_reminder_min_before', {
-                                    'm': '$m',
-                                  })
-                                : L10n.t('learning_reminder_hour_before', {
-                                    'h': '${m ~/ 60}',
-                                  }),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => setState(() => _reminderLead = v ?? 30),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            SwitchListTile(
-              title: Text(
-                L10n.t('learning_guess_time_title'),
-                style: TextStyle(fontSize: 13, color: theme.textMain),
-              ),
-              subtitle: Text(
-                L10n.t('learning_guess_time_desc'),
-                style: TextStyle(fontSize: 11, color: theme.textDim),
-              ),
-              value: _guessTime,
-              onChanged: (v) => setState(() => _guessTime = v),
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              activeThumbColor: MemoTheme.accent,
-            ),
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: _saving ? null : _save,
-                child: _saving
-                    ? const SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(L10n.t('save')),
+          ),
+          Text(
+            L10n.t('learning_single_model_desc'),
+            style: TextStyle(fontSize: 12, color: theme.textDim),
+          ),
+          if (_singleModel) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _modelCtrl,
+              style: TextStyle(color: theme.textMain, fontSize: 13),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: L10n.t('learning_model_id_hint'),
+                hintStyle: TextStyle(color: theme.textDim, fontSize: 13),
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
-        ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Text(L10n.t('learning_calendar_reminder'),
+                  style: TextStyle(fontSize: 13, color: theme.textMain)),
+              const Spacer(),
+              DropdownButton<int>(
+                value: _reminderLead,
+                underline: const SizedBox.shrink(),
+                style: TextStyle(fontSize: 13, color: theme.textMain),
+                items: _leadOptions
+                    .map((m) => DropdownMenuItem(
+                          value: m,
+                          child: Text(m < 60
+                              ? L10n.t('learning_reminder_min_before', {'m': '$m'})
+                              : L10n.t('learning_reminder_hour_before', {'h': '${m ~/ 60}'})),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _reminderLead = v ?? 30),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SwitchListTile(
+            title: Text(L10n.t('learning_guess_time_title'),
+                style: TextStyle(fontSize: 13, color: theme.textMain)),
+            subtitle: Text(
+              L10n.t('learning_guess_time_desc'),
+              style: TextStyle(fontSize: 11, color: theme.textDim),
+            ),
+            value: _guessTime,
+            onChanged: (v) => setState(() => _guessTime = v),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            activeThumbColor: MemoTheme.accent,
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _saving ? null : _save,
+              child: _saving
+                  ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text(L10n.t('save')),
+            ),
+          ),
+        ],
       ),
     );
   }

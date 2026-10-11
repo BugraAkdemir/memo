@@ -824,6 +824,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
                 } else {
                   currentEvents.add(ev);
                 }
+              } else if (ev.type == 'verification') {
+                currentEvents.add(ev);
               } else if (ev.type == 'permission_request') {
                 currentEvents.add(ev);
                 ref.read(agentEventBusProvider).emit(ev);
@@ -1066,6 +1068,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
                 } else {
                   currentEvents.add(ev);
                 }
+              } else if (ev.type == 'verification') {
+                currentEvents.add(ev);
               } else if (ev.type == 'permission_request') {
                 currentEvents.add(ev);
                 ref.read(agentEventBusProvider).emit(ev);

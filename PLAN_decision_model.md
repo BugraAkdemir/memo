@@ -5,4 +5,4 @@
 
 ## Decision and verification extension
 - [x] Add optional structured completion review with satisfaction/risk scores and configurable thresholds; return feedback to the same tool loop, cap at three reviews and perform one main-model self-check on rejection/error exhaustion.
-- [ ] Move decision settings to a dedicated tab, add verification controls and TR/EN labels, verify the real wiring and bounded fallback, rotate handoff and commit checkpoints.
+- [x] Move decision settings to a dedicated tab, add verification controls and TR/EN labels, verify the real wiring and bounded fallback, rotate handoff and commit checkpoints.

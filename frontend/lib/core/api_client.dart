@@ -2898,12 +2898,20 @@ class MemoApiClient {
     bool? decisionEnabled,
     String decisionProvider = '',
     String decisionModel = '',
+    bool? verificationEnabled,
+    int verificationThreshold = 85,
+    int verificationMaxRisk = 20,
   }) async {
     await _dio.put(
       '/api/learning/settings',
       data: {
         'single_model_enabled': singleModelEnabled,
         'model_id': modelId,
+        if (verificationEnabled != null) ...{
+          'verification_enabled': verificationEnabled,
+          'verification_threshold': verificationThreshold,
+          'verification_max_risk': verificationMaxRisk,
+        },
         if (decisionEnabled != null) ...{
           'decision_enabled': decisionEnabled,
           'decision_provider': decisionProvider,

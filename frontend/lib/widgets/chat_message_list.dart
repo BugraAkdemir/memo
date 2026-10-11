@@ -960,6 +960,8 @@ class _AgentStatusBar extends StatelessWidget {
         return L10n.t('agent_status_done', {'tool': tool});
       case 'tool_error':
         return L10n.t('agent_status_error', {'tool': tool});
+      case 'verification':
+        return last.content ?? L10n.t('verification_event_title');
       case 'permission_denied':
         return L10n.t('agent_status_denied', {'tool': tool});
       default:
@@ -1158,6 +1160,13 @@ class _AgentStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (event.type == 'verification') {
+      return Container(
+        padding: const EdgeInsets.all(8),
+        child: Text(L10n.t('verification_event_detail', {'text': event.content ?? ''}),
+          style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim)),
+      );
+    }
     final isError =
         event.type == 'tool_error' || event.type == 'permission_denied';
     // tool_executing in a historical message means the stream was interrupted before

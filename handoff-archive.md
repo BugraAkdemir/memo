@@ -1,3 +1,11 @@
+# Son oturum — 2026-10-11 — Opsiyonel karar modeli
+- **`242a6015`** Backend: `Learning.DecisionEnabled/DecisionProvider/DecisionModel`; seçilen sağlayıcıya doğrudan, araçsız, 5 sn bütçeli çağrı. Otomatik hafıza kaydı YES/NO, sabit bilgi çıkarımı, niyet/proaktif kararlar ve global ajan açık normal sohbetlerde araç gerekliliği. Kesin NO dışında eski yönlendirme korunur; çıkarım/öğrenme hatasında eski modele dönülür. Açık ajan/proje sohbeti, Code Mode, görev işçisi ve ekli dosya/görsel atlanmaz; kapalı ajan açılmaz. Eski öğrenme API istemcileri seçimi silmez; PUT yöneticiye kapılı.
+- Bu oturumun ikinci commit'i: Ayarlar › Öğrenme'de TR/EN karar modeli anahtarı ve sağlayıcı/model alanları; `docs/DECISION_MODEL.md`; `PLAN_decision_model.md` tamamlandı. Varsayılan kapalı, seçim yeniden başlatmadan uygulanır; gerçek veriler/hesaplar değiştirilmedi, push yok.
+- Doğrulama: `CGO_ENABLED=1 go build -tags sqlite_fts5 ./...` / `go vet` temiz; `go test -tags sqlite_fts5 ./... -race` tüm paketler **ok**. `flutter test`: **570 passed** (yeni TR/EN widget testleri dahil). `flutter analyze lib/`: mevcut 5 info (4 async context + 1 null-aware elements; değiştirilmeyen dosyalarda), hata/uyarı yok; `--no-fatal-infos` exit 0. Dokunulan Dart dosyalarında L10n literal taraması ve `git diff --check` boş.
+- Sonraki adım: gerçek bir küçük karar modeliyle kalite/gecikme/maliyet ölçümü; daha önceki açık işler yukarıda korunuyor.
+
+---
+
 # Son oturum — 2026-10-11 — CI govulncheck + `submit_callback` + handoff küçültme
 Tam kayıt: `handoff-archive.md` (üstteki girdi).
 - **`bc41039c`** `GO_VERSION "1.26"`→`"1.26.9"` (7 workflow) + `go.mod` 1.26.9, `x/net` 0.60 vb. Sebep: `setup-go "1.26"` runner önbelleğindeki 1.26.8'e çözülüyordu → govulncheck 12 stdlib + 5 `x/net` bulgusu. Sonuç: push sonrası `Security Scan` yeşil.

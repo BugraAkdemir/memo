@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/provider_config.dart';
+import '../models/provider_models.dart';
 import '../providers/chat_provider.dart';
 import '../providers/provider_provider.dart';
 import '../core/friendly_error.dart';
@@ -111,8 +112,8 @@ class _ProviderConfigDialogState
   /// (handlers_oauth.go). Gates the manual refresh button, since these are
   /// the only types where re-checking after editing the model field
   /// matters.
-  static const _modelDependentEffortTypes = {'openrouter', 'claude', 'gemini', 'ollama'};
-  bool get _effortLevelsAreModelDependent => _modelDependentEffortTypes.contains(_type);
+  static const _modelDependentEffortTypes = {'openrouter', 'claude', 'gemini', 'ollama', 'subscriptions'};
+  bool get _effortLevelsAreModelDependent => widget.existing?.name == kSubscriptionsProviderName || _modelDependentEffortTypes.contains(_type);
 
   /// Refetches which effort labels _type + the current model field actually
   /// accepts — see MemoApiClient.getEffortLevels's doc comment. Called on
@@ -126,7 +127,7 @@ class _ProviderConfigDialogState
     try {
       levels = await ref
           .read(apiClientProvider)
-          .getEffortLevels(_type, model: _modelCtrl.text.trim());
+          .getEffortLevels(widget.existing?.name == kSubscriptionsProviderName ? 'subscriptions' : _type, model: _modelCtrl.text.trim());
     } catch (_) {
       levels = [];
     }

@@ -6,6 +6,10 @@ class ProviderModel {
   final String id;
   final String ownedBy;
 
+  /// Published per-model capabilities; zero/empty means unavailable.
+  final int contextLength;
+  final List<String> effortLevels;
+
   /// Share of the model's allowance left, 0..1, when the vendor reports one
   /// (Antigravity does). Null = unknown, which is not the same as empty.
   final double? remaining;
@@ -20,6 +24,8 @@ class ProviderModel {
   const ProviderModel({
     required this.id,
     this.ownedBy = '',
+    this.contextLength = 0,
+    this.effortLevels = const [],
     this.remaining,
     this.resetAt = '',
     this.quotaWindow = '',
@@ -28,6 +34,8 @@ class ProviderModel {
   factory ProviderModel.fromJson(Map<String, dynamic> json) => ProviderModel(
         id: json['id'] as String? ?? '',
         ownedBy: json['owned_by'] as String? ?? '',
+        contextLength: (json['context_length'] as num?)?.toInt() ?? 0,
+        effortLevels: (json['effort_levels'] as List? ?? []).whereType<String>().toList(),
         remaining: (json['remaining'] as num?)?.toDouble(),
         resetAt: json['reset_at'] as String? ?? '',
         quotaWindow: json['quota_window'] as String? ?? '',

@@ -930,7 +930,10 @@ _EffortState? _readEffort(WidgetRef ref) {
   // types whose discovery actually depends on it (openrouter/claude/
   // gemini/ollama) and ignores it otherwise; see effortLevelsProvider's
   // doc comment.
-  final levelsAsync = ref.watch(effortLevelsProvider((config.type, config.model)));
+  final effortType = config.name == kSubscriptionsProviderName
+      ? 'subscriptions'
+      : config.type;
+  final levelsAsync = ref.watch(effortLevelsProvider((effortType, config.model)));
   final levels = levelsAsync.valueOrNull ?? const <String>[];
   if (levels.isEmpty) return null;
   final current = levels.contains(config.effortLevel) ? config.effortLevel : '';

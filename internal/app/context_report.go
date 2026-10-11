@@ -238,6 +238,11 @@ func (a *App) ContextReport(chatID string) models.ContextReport {
 	use, haveUse := a.ctxState.usage[chatID]
 	a.ctxState.mu.Unlock()
 
+	if a.GetActiveProvider() == AutoRouteProvider && haveSnap {
+		providerName, model, window = snap.provider, snap.model, snap.window
+		rep.Provider, rep.Model, rep.Window = providerName, model, window
+	}
+
 	// A snapshot or usage figure from a different model describes a different
 	// window and tokenizer; keep the make-up (it is still what the chat holds)
 	// but do not present its real count as this model's.

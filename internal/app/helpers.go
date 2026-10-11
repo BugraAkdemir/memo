@@ -150,6 +150,9 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// the skill's tool dispatch in this chat left the model with a callable
 	// tool and no idea when/how to use it.
 	code := codeModeActive(ctx)
+	route := subscriptionTextRouteFromCtx(ctx)
+	localPrompt := route == nil && a.llamaServer != nil && a.llamaServer.IsRunning()
+	localBudget := localPrompt || (route != nil && route.auto && routeProvider(route) == "local")
 
 	var memories []memory.MemoryResult
 	// A Self-Driving task turn with "task memory" off — or any Code Mode turn
@@ -208,7 +211,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// toolTokens is the agent tool schema riding alongside the messages (see
 	// agentToolTokens) — context the history may not claim.
 	var toolTokens int
-	if a.llamaServer != nil && a.llamaServer.IsRunning() {
+	if localPrompt {
 		// The window the server was really launched with — see
 		// localContextWindow for why this is not simply cfg.CtxSize.
 		window = a.localContextWindow()
@@ -238,7 +241,28 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		}
 	} else {
 		tokenBudget = a.apiContextBudget()
+		if route != nil {
+			tokenBudget = route.window
+			if tokenBudget <= 0 {
+				tokenBudget = 128 * 1024
+			}
+		}
 		window = tokenBudget
+		if route != nil {
+			window = route.window
+			a.cfgMu.RLock()
+			limit := a.cfg.Llama.MaxContextTokens
+			a.cfgMu.RUnlock()
+			if limit > 0 && limit < tokenBudget {
+				tokenBudget = limit
+				if window > limit {
+					window = limit
+				}
+			}
+			if route.auto && routeProvider(route) == "local" {
+				tokenBudget -= max(tokenBudget/20, 256)
+			}
+		}
 		// The local branch above takes the tool schema off the budget itself.
 		// An API turn used to ignore it, so a long agent chat could send
 		// window − tools + tools… i.e. a request the provider rejects as too
@@ -255,7 +279,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// (API/orchestra) turn already relied on before this fix and is left
 	// unchanged here.
 	memoryBudget := 0
-	if a.llamaServer != nil && a.llamaServer.IsRunning() {
+	if localBudget {
 		memoryBudget = tokenBudget * 2 / 5
 		if memoryBudget > identity.MaxMemoryContextTokens {
 			memoryBudget = identity.MaxMemoryContextTokens
@@ -276,7 +300,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// 0 (every non-local turn) keeps buildActiveSkillPrompt's pre-existing
 	// unbounded behavior, which is fine against a huge API context window.
 	skillBudget := 0
-	if a.llamaServer != nil && a.llamaServer.IsRunning() {
+	if localBudget {
 		skillBudget = tokenBudget / 5
 		if skillBudget < 256 {
 			skillBudget = 256
@@ -357,7 +381,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	systemTokens := truncate.EstimateTokens(systemPrompt)
 	userTokens := truncate.EstimateTokens(effectiveUserMsg)
 	historyBudget := tokenBudget - systemTokens - userTokens
-	if a.llamaServer == nil || !a.llamaServer.IsRunning() {
+	if !localPrompt {
 		// API path: tokenBudget is the whole window, so the tool schema (already
 		// off the budget on the local path) comes off the history's share here.
 		historyBudget -= toolTokens
@@ -407,7 +431,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		}
 	}
 
-	if a.llamaServer != nil && a.llamaServer.IsRunning() {
+	if localPrompt {
 		if len(history) == 0 {
 			combined := effectiveUserMsg
 			if systemPrompt != "" {
@@ -447,6 +471,14 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		histUsed += truncate.EstimateTokens(h.GetTextContent())
 	}
 	a.noteContextSnap(chatID, window, history, memories, systemTokens, skillTokens, toolTokens, userTokens)
+	if route != nil && route.auto && chatID != "" {
+		a.ctxState.mu.Lock()
+		snap := a.ctxState.snaps[chatID]
+		snap.provider = routeProvider(route)
+		snap.model = route.model
+		a.ctxState.snaps[chatID] = snap
+		a.ctxState.mu.Unlock()
+	}
 	logx.Printf("CONTEXT: minimal=%v budget=%d system=%d user=%d hist_budget=%d hist_used=%d history_msgs=%d total_msgs=%d",
 		minimal, tokenBudget, systemTokens, userTokens, historyBudget, histUsed, len(history), len(msgs))
 	return msgs

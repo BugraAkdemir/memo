@@ -682,7 +682,7 @@ func (s *session) handleChunk(chunk api.StreamChunk) error {
 		s.stopSpinner()
 		s.aiTurnStarted = true
 		fmt.Fprintln(s.out, dim(fmt.Sprintf(t("image_saved"), chunk.Content)))
-	case "usage", "activity", "memory_used", "browser_frame":
+	case "usage", "activity", "memory_used", "browser_frame", "model_route":
 		// Structured/metadata payloads not needed by the terminal REPL —
 		// ignored. memory_used and browser_frame belong here too: falling
 		// through to default below typewriter-printed their raw Content

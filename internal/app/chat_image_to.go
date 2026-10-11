@@ -41,7 +41,12 @@ func (a *App) SendMessageWithImageStreamTo(ctx context.Context, chatID, userMsg 
 		return busyStreamChan(a.busyNotice())
 	}
 
-	innerCh, ok := runLockedStreamSetup("SendMessageWithImageStreamTo/setup", release, func() <-chan api.StreamChunk {
+	innerCh, ok := a.runLockedAutoRouteSetup(ctx, "SendMessageWithImageStreamTo/setup", release, func() <-chan api.StreamChunk {
+		var routeErr error
+		ctx, routeErr = a.prepareAutoRoute(ctx, chatID, userMsg, true, forceAgent)
+		if routeErr != nil {
+			return a.subscriptionTextRouteError(ctx, routeErr, userMsg, chatID)
+		}
 		msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64}, nil)
 		stored := persistChatImage("inbound"+imageExtension(mime), imgData)
 		sm.AddMessageToSession(chatID, "user", userMsg, stored, "")

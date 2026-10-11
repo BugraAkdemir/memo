@@ -33,6 +33,7 @@ type Server struct {
 	ctxSize   int
 	modelPath string
 	gpu       GPUInfo
+	isolated  bool // private per-turn server; never kill/discover processes by port
 	stopping  bool
 	waitDone  chan struct{} // Closed when the process actually exits
 	portPid   int           // Last known PID for the port (fallback when cmd is nil)
@@ -66,6 +67,13 @@ func NewServer(port, ctxSize int) *Server {
 		port:    port,
 		ctxSize: ctxSize,
 	}
+}
+
+// NewIsolatedServer owns only the process it starts, never another port owner.
+func NewIsolatedServer(port, ctxSize int) *Server {
+	s := NewServer(port, ctxSize)
+	s.isolated = true
+	return s
 }
 
 // Start launches llama-server with the given model file and configuration.
@@ -188,8 +196,11 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 	// reaches killByPort's port-discovery fallback. Every retry repeats the
 	// identical failure and the orphan is left running until reboot. Safe
 	// to call every time: killByPort is a no-op when the port is free.
-	if err := s.killByPort(actualPort); err != nil {
-		logx.Printf("llama: could not clear port %d before starting: %v", actualPort, err)
+	if !s.isolated {
+		if err := s.killByPort(actualPort); err != nil {
+			logx.Printf("llama: could not clear port %d before starting: %v", actualPort, err)
+		}
+
 	}
 
 	// Update active state
@@ -399,6 +410,9 @@ func (s *Server) Stop() error {
 	}()
 
 	if s.cmd == nil || s.cmd.Process == nil {
+		if s.isolated {
+			return nil
+		}
 		// No tracked cmd — try last known PID first, then port discovery.
 		if s.port > 0 {
 			if s.portPid > 0 {
@@ -532,7 +546,7 @@ func (s *Server) GetStatus() ServerStatus {
 	}
 
 	// No tracked process — ping the port to detect externally started servers.
-	if s.port > 0 && s.pingPort() {
+	if !s.isolated && s.port > 0 && s.pingPort() {
 		status.Running = true
 		status.ModelName = "llama-server (harici)"
 	}

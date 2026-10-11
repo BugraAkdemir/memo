@@ -37,7 +37,9 @@ type ChatMessage struct {
 	// starts), while AddMessageToSession for the assistant reply happens
 	// after it — see memoryUsedCtxKey in internal/app/llm.go for how it
 	// travels between the two.
-	MemoryUsed int `json:"memory_used,omitempty"`
+	MemoryUsed    int    `json:"memory_used,omitempty"`
+	RouteProvider string `json:"route_provider,omitempty"`
+	RouteModel    string `json:"route_model,omitempty"`
 }
 
 type Session struct {
@@ -872,4 +874,23 @@ func (m *Manager) loadAll() error {
 		m.sessions[s.ID] = &s
 	}
 	return nil
+}
+
+// SetLastMessageModelRoute stores attribution without altering shared history.
+func (m *Manager) SetLastMessageModelRoute(id, provider, model string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil || len(s.Messages) == 0 {
+		return
+	}
+	last := &s.Messages[len(s.Messages)-1]
+	if last.Role != "assistant" {
+		return
+	}
+	last.RouteProvider = provider
+	last.RouteModel = model
+	if err := m.save(s); err != nil {
+		logx.Printf("sessions: save model route %s: %v", id, err)
+	}
 }

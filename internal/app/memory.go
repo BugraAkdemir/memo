@@ -387,6 +387,53 @@ func stripFactListMarker(line string) string {
 	return line
 }
 
+// mergePinnedFirst puts the ranked pinned facts ahead of the similarity-search
+// results and removes from the latter whatever the former already says.
+//
+// Pinned facts go FIRST, not appended at the end: BuildSystemPrompt (internal/
+// identity) truncates the formatted memory block from the tail once it exceeds
+// its token budget — appending would make pinned facts the first thing dropped
+// for exactly the heavy users (large RAG history + many pinned facts) who most
+// need them protected.
+//
+// A search hit is dropped when it is the same row, when it only re-states a
+// pinned fact in different words (exact-ID was the only dedup once, so "kedimin
+// adı Zeytin" pinned and the conversational turn it came from both landed in
+// the prompt), or when it is itself a pinned fact. The last case is what holds
+// config.Memory.PinnedFactsPerTurn: the ranked list is already the top N of the
+// pinned facts for this query, so a pinned fact reaching us through the search
+// is one that list deliberately left out, and letting it back in made the
+// prompt carry N+1 (it showed up as a ~2% failure of
+// TestIntegration_MemoryBlock_CappedAndUserOnly, in every failing run and in no
+// passing one).
+func mergePinnedFirst(pinned, retrieved []memory.MemoryResult) []memory.MemoryResult {
+	seen := make(map[string]struct{}, len(pinned))
+	merged := make([]memory.MemoryResult, 0, len(pinned)+len(retrieved))
+	for _, p := range pinned {
+		merged = append(merged, p)
+		seen[p.ID] = struct{}{}
+	}
+	for _, r := range retrieved {
+		if _, dup := seen[r.ID]; dup {
+			continue
+		}
+		if r.Source == "explicit" && r.Importance >= 5 {
+			continue
+		}
+		nearDup := false
+		for _, p := range pinned {
+			if memory.NearDuplicateContent(p.Content, r.Content) {
+				nearDup = true
+				break
+			}
+		}
+		if !nearDup {
+			merged = append(merged, r)
+		}
+	}
+	return merged
+}
+
 func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryResult {
 	a.storeMu.RLock()
 	defer a.storeMu.RUnlock()
@@ -422,37 +469,7 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 	if pinErr != nil {
 		logx.Printf("MEMORY: GetPinnedFactsRanked: %v", pinErr)
 	} else if len(pinned) > 0 {
-		// Pinned facts go FIRST, not appended at the end: BuildSystemPrompt
-		// (internal/identity) truncates the formatted memory block from the
-		// tail once it exceeds its token budget — appending here would make
-		// pinned facts the first thing dropped for exactly the heavy users
-		// (large RAG history + many pinned facts) who most need them protected.
-		seen := make(map[string]struct{}, len(pinned))
-		merged := make([]memory.MemoryResult, 0, len(pinned)+len(m))
-		for _, p := range pinned {
-			merged = append(merged, p)
-			seen[p.ID] = struct{}{}
-		}
-		for _, r := range m {
-			if _, dup := seen[r.ID]; dup {
-				continue
-			}
-			// Drop a RAG hit that only re-states a pinned fact in different
-			// words — exact-ID was the only dedup here before, so "kedimin
-			// adı Zeytin" pinned and the conversational turn it came from
-			// both landed in the prompt.
-			nearDup := false
-			for _, p := range pinned {
-				if memory.NearDuplicateContent(p.Content, r.Content) {
-					nearDup = true
-					break
-				}
-			}
-			if !nearDup {
-				merged = append(merged, r)
-			}
-		}
-		m = merged
+		m = mergePinnedFirst(pinned, m)
 	}
 
 	logx.Printf("LATENCY app.retrieve_memory total_ms=%d returned=%d", time.Since(start).Milliseconds(), len(m))

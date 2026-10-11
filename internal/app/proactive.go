@@ -11,6 +11,7 @@ import (
 
 	"memo/internal/api"
 	"memo/internal/config"
+	"memo/internal/logx"
 	"memo/internal/observer"
 	"memo/internal/proactive"
 )
@@ -22,6 +23,13 @@ import (
 // proactiveDecide is the engine's Decider: it asks the main model (Chief),
 // routing through orchestra/provider/local exactly like a normal chat turn.
 func (a *App) proactiveDecide(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+	if a.decisionSettings().DecisionEnabled {
+		if result, err := a.callDecisionModel(ctx, systemPrompt, userPrompt, 512); err == nil {
+			return result, nil
+		} else {
+			logx.Printf("DECISION: proactive falling back: %v", err)
+		}
+	}
 	msgs := []api.Message{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userPrompt},

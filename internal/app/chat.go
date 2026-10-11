@@ -354,6 +354,10 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 		}
 	}
 
+	if agentActive && !forceAgent && !code && taskRunConfigFromCtx(ctx) == nil && imagePath == "" && filePath == "" {
+		agentActive = a.decisionAllows(ctx, agentDecisionPrompt, agentDecisionInput(messages, userMsg))
+	}
+
 	if agentActive {
 		for i, msg := range messages {
 			if msg.Role == "system" {

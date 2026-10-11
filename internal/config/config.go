@@ -297,8 +297,12 @@ type OnboardingConfig struct {
 
 // LearningConfig controls the learning system's model routing. When
 // SingleModelEnabled is true the intent extractor and proactive engine both use
-// ModelID directly instead of routing through Orchestra.
+// ModelID directly instead of routing through Orchestra. DecisionEnabled takes
+// precedence and selects an independent provider/model for narrow decisions.
 type LearningConfig struct {
+	DecisionEnabled    bool   `yaml:"decision_enabled" json:"decision_enabled"`
+	DecisionProvider   string `yaml:"decision_provider" json:"decision_provider"`
+	DecisionModel      string `yaml:"decision_model" json:"decision_model"`
 	SingleModelEnabled bool   `yaml:"single_model_enabled" json:"single_model_enabled"`
 	ModelID            string `yaml:"model_id" json:"model_id"`
 }

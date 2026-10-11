@@ -437,7 +437,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/calendar/settings", s.requirePermission(s.handleCalendarSettings, hasCalendarPerm))
 
 	// Learning settings
-	route("/api/learning/settings", s.handleLearningSettings)
+	route("/api/learning/settings", s.adminWrites(s.handleLearningSettings))
 
 	// Routines (scheduled automations)
 	// Routines permission (Faz 5.1.1, yapacam.md), lenient-gated.

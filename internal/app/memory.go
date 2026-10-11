@@ -99,6 +99,10 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 		return
 	}
 
+	if !a.decisionAllows(ctx, memoryDecisionPrompt, userMsg) {
+		return
+	}
+
 	// Hold the lock only long enough to grab the store reference so that the
 	// heavy embedding I/O below does not block concurrent memory reads/writes.
 	a.storeMu.RLock()
@@ -186,7 +190,9 @@ const (
 // stated casually has no way to stand out from routine chit-chat under pure
 // retrieval ranking.
 //
-// Routes through callLLM (Orchestra → external provider → local model, same
+// With a configured decision model, extraction uses that provider/model directly.
+// Otherwise (or after a decision-provider failure) it routes through callLLM
+// (Orchestra → external provider → local model, same
 // priority chain as regular chat) rather than reaching into a.providerRouter
 // directly — this exact shortcut was already found and fixed once in this
 // package (ImportMemoryFromText, memory_import.go, 2026-07-13): bypassing
@@ -262,7 +268,17 @@ func (a *App) extractAndPinFacts(ctx context.Context, userMsg string, turns int)
 		api.NewTextMessage("system", factExtractionSystemPrompt),
 		api.NewTextMessage("user", fmt.Sprintf("User messages:\n%s", userMsg)),
 	}
-	reply2 := a.callLLM(bgCtx, msgs, categoryFactExtraction)
+	var reply2 string
+	if a.decisionSettings().DecisionEnabled {
+		var err error
+		reply2, err = a.callDecisionModel(bgCtx, factExtractionSystemPrompt, fmt.Sprintf("User messages:\n%s", userMsg), 512)
+		if err != nil {
+			logx.Printf("MEMORY: decision extraction unavailable: %v", err)
+			reply2 = a.callLLM(bgCtx, msgs, categoryFactExtraction)
+		}
+	} else {
+		reply2 = a.callLLM(bgCtx, msgs, categoryFactExtraction)
+	}
 	if isLLMErrorReply(reply2) {
 		// Best-effort enhancement, not a core save path — log only, never
 		// surface as memory:error (that event means "a message may not be

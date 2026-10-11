@@ -423,3 +423,38 @@ func TestHandleMoodHandlers_InvalidJSONReturns400(t *testing.T) {
 type errPlain string
 
 func (e errPlain) Error() string { return string(e) }
+
+// The optional extension must preserve clients that send the old payload.
+type decisionSettingsBridge struct{ calendarMoodStubBridge }
+
+func (b *decisionSettingsBridge) UpdateDecisionSettings(enabled bool, name, model string) error {
+	if enabled && (name == "" || model == "") {
+		return errPlain("missing decision selection")
+	}
+	b.learnSettings.DecisionEnabled = enabled
+	b.learnSettings.DecisionProvider = name
+	b.learnSettings.DecisionModel = model
+	return nil
+}
+func TestHandleLearningSettings_DecisionSelection(t *testing.T) {
+	b := &decisionSettingsBridge{}
+	s := newCalendarMoodServer(&b.calendarMoodStubBridge)
+	s.bridge = b
+	for _, tc := range []struct {
+		body   string
+		status int
+	}{
+		{`{"decision_enabled":true,"decision_provider":"cheap","decision_model":"tiny"}`, 200},
+		{`{"single_model_enabled":true,"model_id":"legacy"}`, 200},
+		{`{"decision_enabled":true}`, 400},
+	} {
+		w := httptest.NewRecorder()
+		s.handleLearningSettings(w, httptest.NewRequest(http.MethodPut, "/api/learning/settings", bytes.NewBufferString(tc.body)))
+		if w.Code != tc.status {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+	}
+	if !b.learnSettings.DecisionEnabled || b.learnSettings.DecisionProvider != "cheap" || b.learnSettings.DecisionModel != "tiny" {
+		t.Fatalf("old client lost selection: %+v", b.learnSettings)
+	}
+}

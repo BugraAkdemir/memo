@@ -51,20 +51,25 @@ func (a *App) initLearning(ctx context.Context) {
 // (optionally) the proactive engine. When single model mode is enabled it calls
 // the chosen model directly; otherwise it routes through Orchestra/callLLM.
 func (a *App) buildLearningDecider() intent.Decider {
-	cfg := a.cfg.Learning
-	return intent.BuildDecider(
-		cfg,
-		func(ctx context.Context, prompt string) (string, error) {
-			msgs := []api.Message{
-				{Role: "user", Content: prompt},
+	return func(ctx context.Context, system, user string) (string, error) {
+		cfg := a.decisionSettings()
+		if cfg.DecisionEnabled {
+			if result, err := a.callDecisionModel(ctx, system, user, 512); err == nil {
+				return result, nil
+			} else {
+				logx.Printf("DECISION: intent falling back: %v", err)
 			}
-			result := a.callLLM(ctx, msgs, categoryLearning)
-			return result, nil
-		},
-		func(ctx context.Context, modelID, system, user string) (string, error) {
-			return a.callSingleModel(ctx, modelID, system, user)
-		},
-	)
+		}
+		decide := intent.BuildDecider(cfg,
+			func(ctx context.Context, prompt string) (string, error) {
+				result := a.callLLM(ctx, []api.Message{{Role: "user", Content: prompt}}, categoryLearning)
+				if isLLMErrorReply(result) {
+					return "", fmt.Errorf("learning model failed")
+				}
+				return result, nil
+			}, a.callSingleModel)
+		return decide(ctx, system, user)
+	}
 }
 
 // callSingleModel calls a specific model by ID, bypassing Orchestra and the
@@ -268,9 +273,12 @@ func (a *App) UpdateLearningSettings(singleModelEnabled bool, modelID string) er
 	if a.cfg == nil {
 		return fmt.Errorf("config not loaded")
 	}
+	a.cfgMu.Lock()
 	a.cfg.Learning.SingleModelEnabled = singleModelEnabled
 	a.cfg.Learning.ModelID = modelID
-	if err := config.Save(a.cfg); err != nil {
+	err := config.Save(a.cfg)
+	a.cfgMu.Unlock()
+	if err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
 	// Rebuild decider with new settings.
@@ -287,7 +295,7 @@ func (a *App) GetLearningSettings() config.LearningConfig {
 	if a.cfg == nil {
 		return config.LearningConfig{}
 	}
-	return a.cfg.Learning
+	return a.decisionSettings()
 }
 
 // GetCalendarSettings returns the current calendar configuration.

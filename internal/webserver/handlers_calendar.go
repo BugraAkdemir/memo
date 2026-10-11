@@ -172,12 +172,28 @@ func (s *Server) handleLearningSettings(w http.ResponseWriter, r *http.Request) 
 
 	case http.MethodPut:
 		var body struct {
+			DecisionEnabled    *bool  `json:"decision_enabled"`
+			DecisionProvider   string `json:"decision_provider"`
+			DecisionModel      string `json:"decision_model"`
 			SingleModelEnabled bool   `json:"single_model_enabled"`
 			ModelID            string `json:"model_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			jsonError(w, "invalid request body", http.StatusBadRequest)
 			return
+		}
+		if body.DecisionEnabled != nil {
+			decisions, ok := s.bridge.(interface {
+				UpdateDecisionSettings(bool, string, string) error
+			})
+			if !ok {
+				jsonError(w, "decision settings unavailable", http.StatusNotImplemented)
+				return
+			}
+			if err := decisions.UpdateDecisionSettings(*body.DecisionEnabled, body.DecisionProvider, body.DecisionModel); err != nil {
+				jsonError(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 		if err := bridge.UpdateLearningSettings(body.SingleModelEnabled, body.ModelID); err != nil {
 			jsonError(w, err.Error(), http.StatusInternalServerError)

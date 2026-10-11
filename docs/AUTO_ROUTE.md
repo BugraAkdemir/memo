@@ -1,6 +1,6 @@
 # Auto Route
 
-Select **Auto Route** in the chat model picker to choose a model for each request. This is a routing mode, not a downloaded model or an API connection. The actual provider/model appears above the streaming answer and remains attached to the saved assistant message. Selecting Auto Route leaves a chat's CLI provider mode; explicit API, local and CLI selections remain available.
+Select **Auto Route** in the chat model picker to choose a model for each request. This is a routing mode, not a downloaded model or an API connection. The actual provider/model appears above the streaming answer and remains attached to the saved assistant message. When token streaming is disabled, routing metadata still arrives over SSE while answer text is buffered until completion. Selecting Auto Route leaves a chat's CLI provider mode; explicit API, local and CLI selections remain available.
 
 ## Candidate pool and selection
 

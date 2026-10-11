@@ -118,6 +118,7 @@ class ChatMessageList extends StatefulWidget {
   /// what the turn is doing, how long it has run, and a warning if the
   /// backend has gone silent.
   final StreamTiming? streamTiming;
+  final ModelRoute? modelRoute;
 
   const ChatMessageList({
     super.key,
@@ -133,6 +134,7 @@ class ChatMessageList extends StatefulWidget {
     this.onDelete,
     this.taskActivity,
     this.streamTiming,
+    this.modelRoute,
   });
 
   @override
@@ -192,6 +194,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
   @override
   Widget build(BuildContext context) {
     final hasStreaming =
+        widget.modelRoute != null ||
         widget.streamingContent.isNotEmpty ||
         (widget.streamingAgentEvents != null &&
             widget.streamingAgentEvents!.isNotEmpty);
@@ -227,6 +230,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
           if (rest == 0) {
             return _StreamingBubble(
               content: widget.streamingContent,
+              modelRoute: widget.modelRoute,
               thinking: widget.streamingThinking,
               agentEvents: widget.streamingAgentEvents,
               keepWorkingCue: widget.isCLIChat,
@@ -402,7 +406,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                   ),
                   child: Center(
                     child: Text(
-                      'M',
+                      L10n.t('memo_monogram'),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
@@ -445,6 +449,10 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (!isUser && widget.message.routeModel.isNotEmpty)
+                            _ModelRouteLabel(
+                              route: ModelRoute(widget.message.routeProvider, widget.message.routeModel),
+                            ),
                           if (!isUser && widget.message.hasThinking)
                             _ThinkingToggle(
                               thinking: widget.message.thinking!,
@@ -578,6 +586,7 @@ class _StreamingBubble extends StatefulWidget {
   final String apiBaseUrl;
   final StreamTiming? timing;
   final String statusText;
+  final ModelRoute? modelRoute;
 
   const _StreamingBubble({
     required this.content,
@@ -587,6 +596,7 @@ class _StreamingBubble extends StatefulWidget {
     required this.apiBaseUrl,
     this.timing,
     this.statusText = '',
+    this.modelRoute,
   });
 
   @override
@@ -621,7 +631,7 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                 ),
                 child: Center(
                   child: Text(
-                    'M',
+                    L10n.t('memo_monogram'),
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -642,6 +652,7 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (widget.modelRoute != null) _ModelRouteLabel(route: widget.modelRoute!),
                       if (widget.thinking.isNotEmpty)
                         _ThinkingToggle(
                           thinking: widget.thinking,
@@ -888,7 +899,7 @@ class _TypingIndicator extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                'M',
+                L10n.t('memo_monogram'),
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -1214,6 +1225,36 @@ class _AgentStatusBadge extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _ModelRouteLabel extends StatelessWidget {
+  final ModelRoute route;
+  const _ModelRouteLabel({required this.route});
+  @override
+  Widget build(BuildContext context) {
+    final label = L10n.t('auto_route_used', {'provider': route.provider, 'model': route.model});
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Tooltip(
+        message: label,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.auto_awesome_outlined, size: 13, color: MemoTheme.accent),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textMuted),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

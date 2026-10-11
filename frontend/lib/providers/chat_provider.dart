@@ -13,6 +13,7 @@ import '../core/l10n.dart';
 import '../models/agent.dart';
 import '../models/browser_frame.dart';
 import '../models/chat.dart';
+import '../models/provider_models.dart';
 import '../models/token_usage.dart';
 import 'agent_provider.dart';
 import 'auth_gate_provider.dart';
@@ -299,6 +300,7 @@ class ActiveChatIdNotifier extends AsyncNotifier<String> {
 /// Holds the currently streaming assistant content (token by token).
 /// Resets to '' when streaming ends or on error.
 final streamingContentProvider = StateProvider<String>((ref) => '');
+final streamingModelRouteProvider = StateProvider<ModelRoute?>((ref) => null);
 
 /// Holds the currently streaming thinking content (token by token).
 final streamingThinkingProvider = StateProvider<String>((ref) => '');
@@ -422,6 +424,13 @@ final messagesProvider =
     );
 
 class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
+  // Keep routing metadata and cold-load heartbeats even when token-by-token
+  // display is disabled. The content remains buffered until completion.
+  Future<bool> _autoRouteActive(MemoApiClient api) async {
+    try { return await api.getActiveProvider() == kAutoRouteProviderName; }
+    catch (_) { return false; }
+  }
+
   CancelToken? _cancelToken;
   bool _stopped = false;
   Timer? _delayedRefreshTimer;
@@ -538,6 +547,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     ref.read(isSendingProvider.notifier).state = false;
     _timingEnd();
     ref.read(streamingContentProvider.notifier).state = '';
+    ref.read(streamingModelRouteProvider.notifier).state = null;
     ref.read(streamingThinkingProvider.notifier).state = '';
     ref.read(streamingAgentEventsProvider.notifier).state = [];
     ref.read(streamingStatusProvider.notifier).state = '';
@@ -570,6 +580,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           filePath: current[index].filePath,
           timestamp: current[index].timestamp,
           agentEvents: current[index].agentEvents,
+ memoryUsed: current[index].memoryUsed,
+ routeProvider: current[index].routeProvider,
+ routeModel: current[index].routeModel,
         );
         state = AsyncData(current);
       }
@@ -680,6 +693,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     // conversation has moved on (an automatic "continue" lands here too).
     ref.read(quotaNoticeProvider.notifier).dismissActive();
     _timingStart();
+    ref.read(streamingModelRouteProvider.notifier).state = null;
 
     _stopped = false;
     _cancelToken = CancelToken();
@@ -709,6 +723,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     try {
       final streamingEnabled = ref.read(streamingEnabledProvider);
       String fullReply = '';
+      ModelRoute? modelRoute;
       String fullThinking = '';
       List<AgentEvent> finalAgentEvents = [];
       int memoryUsed = 0;
@@ -745,10 +760,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           // instance. The backend now persists the partial reply (Faz G), so
           // refresh() repaints it from the message list.
           ref.read(streamingContentProvider.notifier).state = '';
+          ref.read(streamingModelRouteProvider.notifier).state = null;
           await refresh();
           return;
         }
-      } else if (streamingEnabled) {
+      } else if (streamingEnabled || await _autoRouteActive(api)) {
         final stream = api.sendMessageStream(
           message,
           chatId: activeChatId,
@@ -784,7 +800,18 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
                 );
             continue;
           }
-          if (chunk.finishReason == 'status') {
+          if (chunk.finishReason == 'model_route') {
+            try {
+              final data = json.decode(chunk.content);
+              if (data is Map<String, dynamic>) {
+                final parsed = ModelRoute.fromJson(data);
+                if (parsed.model.isNotEmpty) {
+                  modelRoute = parsed;
+                  ref.read(streamingModelRouteProvider.notifier).state = parsed;
+                }
+              }
+            } catch (_) {}
+          } else if (chunk.finishReason == 'status') {
             // Pre-token status (e.g. web_search) — show in the typing line.
             ref.read(streamingStatusProvider.notifier).state = chunk.content;
           } else if (chunk.finishReason == 'activity') {
@@ -863,8 +890,10 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
             fullThinking += chunk.thinking ?? '';
 
             // Update streaming providers instead of copying the entire message list
-            ref.read(streamingContentProvider.notifier).state = fullReply;
-            ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+            if (streamingEnabled) {
+              ref.read(streamingContentProvider.notifier).state = fullReply;
+              ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+            }
           }
         }
 
@@ -883,6 +912,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           // Clear synchronously before awaiting — see the matching comment in
           // the CLI branch above. Backend persists the partial (Faz G).
           ref.read(streamingContentProvider.notifier).state = '';
+          ref.read(streamingModelRouteProvider.notifier).state = null;
           ref.read(streamingThinkingProvider.notifier).state = '';
           ref.read(streamingAgentEventsProvider.notifier).state = [];
           ref.read(streamingStatusProvider.notifier).state = '';
@@ -910,6 +940,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
             role: 'assistant',
             content: fullReply,
             thinking: fullThinking.isNotEmpty ? fullThinking : null,
+            routeProvider: modelRoute?.provider ?? '',
+            routeModel: modelRoute?.model ?? '',
             imagePath: generatedImagePath,
             timestamp: timestamp,
             agentEvents: finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
@@ -921,6 +953,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
       // Clear streaming state before refresh to avoid stale UI
       ref.read(streamingContentProvider.notifier).state = '';
+      ref.read(streamingModelRouteProvider.notifier).state = null;
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
       ref.read(streamingStatusProvider.notifier).state = '';
@@ -937,6 +970,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Mesaj gönderilemedi (${FriendlyError.describeGeneric(e)})';
       ref.read(streamingContentProvider.notifier).state = '';
+      ref.read(streamingModelRouteProvider.notifier).state = null;
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
       ref.read(streamingStatusProvider.notifier).state = '';
@@ -985,6 +1019,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     // conversation has moved on (an automatic "continue" lands here too).
     ref.read(quotaNoticeProvider.notifier).dismissActive();
     _timingStart();
+    ref.read(streamingModelRouteProvider.notifier).state = null;
 
     final resolvedFileName =
         fileName ?? (filePath != null ? p.basename(filePath) : 'file');
@@ -1007,10 +1042,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     try {
       final streamingEnabled = ref.read(streamingEnabledProvider);
       String fullReply = '';
+      ModelRoute? modelRoute;
       String fullThinking = '';
       List<AgentEvent> finalAgentEvents = [];
 
-      if (streamingEnabled) {
+      if (streamingEnabled || await _autoRouteActive(api)) {
         final stream = api.sendFileStream(
           message,
           filePath: filePath,
@@ -1040,7 +1076,18 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
                 );
             continue;
           }
-          if (chunk.finishReason == 'status') {
+          if (chunk.finishReason == 'model_route') {
+            try {
+              final data = json.decode(chunk.content);
+              if (data is Map<String, dynamic>) {
+                final parsed = ModelRoute.fromJson(data);
+                if (parsed.model.isNotEmpty) {
+                  modelRoute = parsed;
+                  ref.read(streamingModelRouteProvider.notifier).state = parsed;
+                }
+              }
+            } catch (_) {}
+          } else if (chunk.finishReason == 'status') {
             ref.read(streamingStatusProvider.notifier).state = chunk.content;
           } else if (chunk.finishReason == 'activity' || chunk.finishReason == 'usage') {
             try {
@@ -1093,8 +1140,10 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
             }
             fullReply += chunk.content;
             fullThinking += chunk.thinking ?? '';
-            ref.read(streamingContentProvider.notifier).state = fullReply;
-            ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+            if (streamingEnabled) {
+              ref.read(streamingContentProvider.notifier).state = fullReply;
+              ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+            }
           }
         }
 
@@ -1108,6 +1157,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           // Clear synchronously before awaiting — see the matching comment in
           // the CLI branch above. Backend persists the partial (Faz G).
           ref.read(streamingContentProvider.notifier).state = '';
+          ref.read(streamingModelRouteProvider.notifier).state = null;
           ref.read(streamingThinkingProvider.notifier).state = '';
           ref.read(streamingAgentEventsProvider.notifier).state = [];
           ref.read(streamingStatusProvider.notifier).state = '';
@@ -1132,6 +1182,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
             role: 'assistant',
             content: fullReply,
             thinking: fullThinking.isNotEmpty ? fullThinking : null,
+            routeProvider: modelRoute?.provider ?? '',
+            routeModel: modelRoute?.model ?? '',
             timestamp: DateTime.now().toIso8601String().substring(11, 19),
             agentEvents: finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
           ),
@@ -1140,6 +1192,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       state = AsyncData(list);
 
       ref.read(streamingContentProvider.notifier).state = '';
+      ref.read(streamingModelRouteProvider.notifier).state = null;
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
       ref.read(streamingStatusProvider.notifier).state = '';
@@ -1152,6 +1205,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Dosya gönderilemedi (${FriendlyError.describeGeneric(e)})';
       ref.read(streamingContentProvider.notifier).state = '';
+      ref.read(streamingModelRouteProvider.notifier).state = null;
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
       ref.read(streamingStatusProvider.notifier).state = '';

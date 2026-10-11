@@ -253,6 +253,11 @@ type FullBridge interface {
 	// silently wrong against a remote self-hosted backend.
 	BrowseServerPath(path string) (interface{}, error)
 
+	// MakeServerDirectory creates one new folder inside parent on the
+	// backend's disk (the folder picker's "new folder" button). See
+	// App.MakeServerDirectory's doc comment.
+	MakeServerDirectory(parent, name string) (interface{}, error)
+
 	// GetOutboxFile resolves a share_file download token (see
 	// App.registerOutboxFile's doc comment, internal/app/sendfile.go) to
 	// the staged file's real path and display filename.

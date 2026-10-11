@@ -1697,6 +1697,10 @@ class L10n {
     'server_browse_load_error': 'Klasör okunamadı: \${e}',
     'server_browse_tap_file_hint': 'Seçmek için bir dosyaya dokun',
     'server_browse_up_tooltip': 'Üst klasöre git',
+    'server_browse_new_folder': 'Yeni klasör',
+    'server_browse_folder_name': 'Klasör adı',
+    'server_browse_create': 'Oluştur',
+    'server_browse_create_error': 'Klasör oluşturulamadı: \${e}',
 
     // Version
     'version': 'Versiyon',
@@ -4086,6 +4090,10 @@ class L10n {
     'server_browse_load_error': 'Could not read folder: \${e}',
     'server_browse_tap_file_hint': 'Tap a file to select it',
     'server_browse_up_tooltip': 'Go up one folder',
+    'server_browse_new_folder': 'New folder',
+    'server_browse_folder_name': 'Folder name',
+    'server_browse_create': 'Create',
+    'server_browse_create_error': 'Could not create folder: \${e}',
 
     'version': 'Version',
 

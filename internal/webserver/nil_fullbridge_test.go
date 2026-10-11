@@ -78,6 +78,7 @@ func TestHandlers_NoFullBridge(t *testing.T) {
 		{"Subscriptions", http.MethodGet, "/api/subscriptions", s.handleSubscriptions, http.StatusServiceUnavailable},
 		{"ProviderModel", http.MethodGet, "/api/providers/model?name=x", s.handleProviderModel, http.StatusServiceUnavailable},
 		{"FileBrowse", http.MethodGet, "/api/files/browse", s.handleFileBrowse, http.StatusNotImplemented},
+		{"FileMkdir", http.MethodPost, "/api/files/mkdir", s.handleFileMkdir, http.StatusNotImplemented},
 		{"OutboxDownload", http.MethodGet, "/api/files/outbox/x", s.handleOutboxDownload, http.StatusNotFound},
 	}
 

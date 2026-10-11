@@ -125,3 +125,67 @@ func TestBrowseServerPath_SubdirectoryReportsCorrectParent(t *testing.T) {
 		t.Errorf("Parent = %q, want %q", result.Parent, dir)
 	}
 }
+
+func TestMakeServerDirectory_CreatesOneChildAndReturnsIt(t *testing.T) {
+	parent := t.TempDir()
+	a := &App{}
+	res, err := a.MakeServerDirectory(parent, "  my-project  ")
+	if err != nil {
+		t.Fatalf("MakeServerDirectory: %v", err)
+	}
+	result, ok := res.(ServerBrowseResult)
+	if !ok {
+		t.Fatalf("expected ServerBrowseResult, got %T", res)
+	}
+	want := filepath.Join(parent, "my-project")
+	if result.Path != want || result.Parent != parent {
+		t.Errorf("got path %q parent %q, want %q / %q", result.Path, result.Parent, want, parent)
+	}
+	if len(result.Entries) != 0 {
+		t.Errorf("a new folder is empty, got %d entries", len(result.Entries))
+	}
+	if fi, err := os.Stat(want); err != nil || !fi.IsDir() {
+		t.Fatalf("folder was not created on disk: %v", err)
+	}
+}
+
+func TestMakeServerDirectory_RefusesNamesThatCouldEscapeTheParent(t *testing.T) {
+	parent := t.TempDir()
+	a := &App{}
+	for _, name := range []string{"", "   ", ".", "..", "a/b", "../x", `a\b`, "x\x00y", "/etc"} {
+		if _, err := a.MakeServerDirectory(parent, name); err == nil {
+			t.Errorf("name %q was accepted", name)
+		}
+	}
+	// Nothing was created next to or inside the parent.
+	if entries, _ := os.ReadDir(parent); len(entries) != 0 {
+		t.Errorf("rejected names still created %d entries", len(entries))
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(parent), "x")); err == nil {
+		t.Error("a name escaped the parent directory")
+	}
+}
+
+func TestMakeServerDirectory_ExistingNameParentAndFileParentAreErrors(t *testing.T) {
+	parent := t.TempDir()
+	a := &App{}
+	if _, err := a.MakeServerDirectory(parent, "dup"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.MakeServerDirectory(parent, "dup"); err == nil {
+		t.Error("creating an existing folder must fail, not silently succeed")
+	}
+	if _, err := a.MakeServerDirectory(filepath.Join(parent, "missing"), "x"); err == nil {
+		t.Error("a missing parent must fail (no implicit MkdirAll)")
+	}
+	file := filepath.Join(parent, "f.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.MakeServerDirectory(file, "x"); err == nil {
+		t.Error("a file as parent must fail")
+	}
+	if _, err := a.MakeServerDirectory("", "x"); err == nil {
+		t.Error("an empty parent must fail rather than guess a directory")
+	}
+}

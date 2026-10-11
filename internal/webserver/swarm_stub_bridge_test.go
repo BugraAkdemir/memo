@@ -466,6 +466,9 @@ func (b *swarmStubBridge) BrowseServerPath(path string) (interface{}, error) {
 	}
 	return nil, nil
 }
+func (b *swarmStubBridge) MakeServerDirectory(parent, name string) (interface{}, error) {
+	return nil, nil
+}
 func (b *swarmStubBridge) GetOutboxFile(token string) (string, string, bool) {
 	if b.getOutboxFile != nil {
 		return b.getOutboxFile(token)

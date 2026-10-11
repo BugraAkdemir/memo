@@ -549,6 +549,21 @@ class MemoApiClient {
     return ServerBrowseResult.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
+  /// Creates one new folder called [name] inside [parent] on the backend's
+  /// disk and returns it (empty), so the folder picker can step into it.
+  /// The backend refuses names that are not a single path element and
+  /// names that already exist; its message comes back as the error.
+  Future<ServerBrowseResult> makeServerDirectory(
+    String parent,
+    String name,
+  ) async {
+    final res = await _dio.post(
+      '/api/files/mkdir',
+      data: {'parent': parent, 'name': name},
+    );
+    return ServerBrowseResult.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
   /// Slash commands a CLI-backed chat can run — the CLI's own custom
   /// commands/prompts/skills plus its useful built-ins. Backend-sourced
   /// because these live on disk (.claude/commands, .codex/prompts) and the

@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"unicode/utf8"
 )
 
 // ServerBrowseEntry is one immediate child of a browsed directory.
@@ -102,4 +104,56 @@ func (a *App) BrowseServerPath(path string) (interface{}, error) {
 	}
 
 	return ServerBrowseResult{Path: absPath, Parent: parent, Entries: entries}, nil
+}
+
+// MakeServerDirectory creates ONE new directory called name inside parent and
+// returns it as a (still empty) ServerBrowseResult, so the in-app folder
+// picker can step straight into it.
+//
+// The picker used to be browse-only: a user choosing a project folder for an
+// agent chat on a remote server, with no folder yet for the new project, had
+// to leave Memo and make one over SSH. Creating it where the user is already
+// looking is the whole feature.
+//
+// name must be a single path element. A separator, "." / "..", a NUL byte or
+// an over-long name is refused so a name can never address anything but a
+// direct child of parent (MkdirAll is deliberately not used for the same
+// reason: no implicit parents, no silent success on an existing name).
+// parent must already be an existing directory. Like BrowseServerPath this
+// does no boundary check of its own; the route gates it the same way
+// (internal/webserver/server.go, requirePermissionStrict + hasModelsPerm).
+func (a *App) MakeServerDirectory(parent, name string) (interface{}, error) {
+	name = strings.TrimSpace(name)
+	switch {
+	case name == "":
+		return nil, fmt.Errorf("folder name is required")
+	case name == "." || name == "..":
+		return nil, fmt.Errorf("invalid folder name %q", name)
+	case strings.ContainsAny(name, "/\\\x00"):
+		return nil, fmt.Errorf("folder name cannot contain a path separator")
+	case !utf8.ValidString(name) || len(name) > 255:
+		return nil, fmt.Errorf("invalid folder name")
+	}
+	if parent == "" {
+		return nil, fmt.Errorf("parent folder is required")
+	}
+	absParent, err := filepath.Abs(parent)
+	if err != nil {
+		return nil, fmt.Errorf("resolve path: %w", err)
+	}
+	info, err := os.Stat(absParent)
+	if err != nil {
+		return nil, fmt.Errorf("stat: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("%s is not a folder", absParent)
+	}
+	target := filepath.Join(absParent, name)
+	if err := os.Mkdir(target, 0o755); err != nil {
+		if os.IsExist(err) {
+			return nil, fmt.Errorf("%q already exists", name)
+		}
+		return nil, fmt.Errorf("create folder: %w", err)
+	}
+	return ServerBrowseResult{Path: target, Parent: absParent, Entries: []ServerBrowseEntry{}}, nil
 }

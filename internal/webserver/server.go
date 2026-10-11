@@ -266,6 +266,11 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// callerHasPermission's doc comment.
 	route("/api/files/mentions", s.requirePermissionStrict(s.handleFileMentions, hasModelsPerm))
 	route("/api/files/browse", s.requirePermissionStrict(s.handleFileBrowse, hasModelsPerm))
+	// Same gate as browse: creating a folder is a write at an arbitrary path
+	// the caller names, so it must not be open to an account that may not
+	// even look at the disk. Models is the narrowest permission that already
+	// implies "may point the backend at an arbitrary local path".
+	route("/api/files/mkdir", s.requirePermissionStrict(s.handleFileMkdir, hasModelsPerm))
 	route("/api/files/outbox/{token}", s.handleOutboxDownload)
 	route("/api/chats/cli-provider", s.handleChatCLIProvider)
 	route("/api/chats/cli-workdir", s.handleChatCLIWorkdir)

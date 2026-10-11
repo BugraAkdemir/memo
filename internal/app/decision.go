@@ -31,18 +31,13 @@ func (a *App) callDecisionModel(ctx context.Context, system, user string, maxTok
 	if !cfg.DecisionEnabled && !cfg.VerificationEnabled {
 		return "", fmt.Errorf("decision model disabled")
 	}
-	a.providerMu.RLock()
-	router := a.providerRouter
-	a.providerMu.RUnlock()
-	if router == nil {
-		return "", fmt.Errorf("decision provider unavailable")
+	selected, err := a.decisionProviderConfig(cfg.DecisionProvider, cfg.DecisionModel)
+	if err != nil {
+		return "", err
 	}
-	p, ok := router.GetProvider(cfg.DecisionProvider)
-	if !ok {
-		return "", fmt.Errorf("decision provider unavailable")
-	}
-	if p.Name() == provider.ProviderClaudeCodeCLI || p.Name() == provider.ProviderCodexCLI {
-		return "", fmt.Errorf("CLI agents cannot be decision models")
+	p, err := provider.NewProvider(selected)
+	if err != nil {
+		return "", err
 	}
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -99,18 +94,8 @@ func (a *App) UpdateDecisionReviewSettings(enabled bool, providerName, model str
 		if providerName == "" || model == "" {
 			return fmt.Errorf("decision provider and model are required")
 		}
-		a.providerMu.RLock()
-		router := a.providerRouter
-		a.providerMu.RUnlock()
-		if router == nil {
-			return fmt.Errorf("decision provider unavailable")
-		}
-		p, ok := router.GetProvider(providerName)
-		if !ok {
-			return fmt.Errorf("decision provider unavailable")
-		}
-		if strings.HasSuffix(string(p.Name()), "-cli") {
-			return fmt.Errorf("CLI agents cannot be decision models")
+		if _, err := a.decisionProviderConfig(providerName, model); err != nil {
+			return err
 		}
 	}
 	a.cfgMu.Lock()
@@ -148,4 +133,17 @@ func agentDecisionInput(messages []api.Message, user string) string {
 	}
 	text.WriteString("Current user message: " + user)
 	return text.String()
+}
+
+// Revalidate roles on every call so deleted/reclassified models cannot be used.
+func (a *App) decisionProviderConfig(name, model string) (provider.ProviderConfig, error) {
+	if a.providerCfgMgr != nil {
+		for _, cfg := range a.providerCfgMgr.GetAll() {
+			if cfg.Name == name && cfg.Enabled && cfg.ModelKind(model) == "decision" && !strings.HasSuffix(string(cfg.Type), "-cli") {
+				cfg.Model = model
+				return cfg, nil
+			}
+		}
+	}
+	return provider.ProviderConfig{}, fmt.Errorf("select a registered decision model from an enabled API provider")
 }

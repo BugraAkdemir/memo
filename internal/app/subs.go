@@ -426,6 +426,16 @@ func (a *App) SetProviderModel(name, model string) error {
 	}
 	for _, p := range a.providerCfgMgr.GetAll() {
 		if p.Name == name {
+			if p.ModelKind(model) == "decision" {
+				return errors.New("decision models cannot be used for chat")
+			}
+			if len(p.Models) > 0 && p.ModelKind(model) == "" {
+				if !isSubsMarker(p) {
+					return errors.New("select a registered chat model")
+				}
+				// Subscription catalogs are dynamic; register the selected chat model.
+				p.Models = append(p.Models, provider.ConfiguredModel{ID: model, Kind: "chat"})
+			}
 			if p.Model == model {
 				return nil
 			}
@@ -488,6 +498,16 @@ func (a *App) ListProviderModels(ctx context.Context, name string) ([]models.Pro
 				pm.Remaining, pm.ResetAt, pm.QuotaWindow = &r, q.ResetAt, q.Window
 			}
 			out = append(out, pm)
+		}
+		return out, cfg.Model, nil
+	}
+
+	if len(cfg.Models) > 0 {
+		out := make([]models.ProviderModel, 0, len(cfg.Models))
+		for _, m := range cfg.Models {
+			if m.Kind == "chat" {
+				out = append(out, models.ProviderModel{ID: m.ID})
+			}
 		}
 		return out, cfg.Model, nil
 	}

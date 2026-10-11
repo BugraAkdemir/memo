@@ -44,9 +44,11 @@ func TestDecisionModelUsesSelectedProviderAndFailsOpen(t *testing.T) {
 				json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": tc.response}, "finish_reason": "stop"}}})
 			}))
 			defer server.Close()
+			manager := provider.NewConfigManager(t.TempDir()+"/providers.json", make([]byte, 32))
+			manager.Set(provider.ProviderConfig{Name: "cheap", Type: provider.ProviderCustom, BaseURL: server.URL, Model: "tiny-decision", Enabled: true, Models: []provider.ConfiguredModel{{ID: "tiny-decision", Kind: "decision"}}})
 			router := provider.NewRouter([]provider.ProviderConfig{{Name: "cheap", Type: provider.ProviderCustom, BaseURL: server.URL, Model: "default", Enabled: true}})
 			router.SetActiveProvider("different-chat-provider")
-			a := &App{cfg: &config.AppConfig{Learning: config.LearningConfig{DecisionEnabled: tc.enabled, DecisionProvider: "cheap", DecisionModel: "tiny-decision"}}, providerRouter: router}
+			a := &App{cfg: &config.AppConfig{Learning: config.LearningConfig{DecisionEnabled: tc.enabled, DecisionProvider: "cheap", DecisionModel: "tiny-decision"}}, providerRouter: router, providerCfgMgr: manager}
 			if got := a.decisionAllows(context.Background(), agentDecisionPrompt, "Explain recursion"); got != tc.want {
 				t.Fatalf("allows=%v want %v", got, tc.want)
 			}
@@ -89,7 +91,7 @@ func TestDecisionAgentRoutingPreservesExplicitAgentChats(t *testing.T) {
 				w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"NO"},"finish_reason":"stop"}]}`))
 			}))
 			t.Cleanup(srv.Close)
-			a.providerCfgMgr.Set(provider.ProviderConfig{Name: "decision", Type: provider.ProviderCustom, BaseURL: srv.URL, Model: "tiny", Enabled: true})
+			a.providerCfgMgr.Set(provider.ProviderConfig{Name: "decision", Type: provider.ProviderCustom, BaseURL: srv.URL, Model: "tiny", Enabled: true, Models: []provider.ConfiguredModel{{ID: "tiny", Kind: "decision"}}})
 			a.providerRouter = provider.NewRouter(a.providerCfgMgr.GetEnabled())
 			a.providerRouter.SetActiveProvider("test")
 			a.cfg.Learning = config.LearningConfig{DecisionEnabled: true, DecisionProvider: "decision", DecisionModel: "tiny"}

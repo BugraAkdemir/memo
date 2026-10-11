@@ -24,9 +24,9 @@ import (
 
 // ConfigManager manages provider configurations with encrypted API keys.
 type ConfigManager struct {
-	mu       sync.RWMutex
-	filePath string
-	configs  []ProviderConfig
+	mu        sync.RWMutex
+	filePath  string
+	configs   []ProviderConfig
 	masterKey []byte
 }
 
@@ -94,6 +94,7 @@ func (cm *ConfigManager) Load() {
 			APIKey:      apiKey,
 			BaseURL:     s.BaseURL,
 			Model:       s.Model,
+			Models:      append([]ConfiguredModel(nil), s.Models...),
 			Enabled:     s.Enabled,
 			Priority:    s.Priority,
 			Temperature: s.Temperature,
@@ -141,16 +142,17 @@ func (cm *ConfigManager) saveLocked() {
 			continue
 		}
 		stored.Configs = append(stored.Configs, providerConfigStored{
-			Type:           cfg.Type,
-			Name:           cfg.Name,
+			Type:            cfg.Type,
+			Name:            cfg.Name,
 			APIKeyEncrypted: encrypted,
-			BaseURL:        cfg.BaseURL,
-			Model:          cfg.Model,
-			Enabled:        cfg.Enabled,
-			Priority:       cfg.Priority,
-			Temperature:    cfg.Temperature,
-			TopP:           cfg.TopP,
-			MaxTokens:      cfg.MaxTokens,
+			BaseURL:         cfg.BaseURL,
+			Model:           cfg.Model,
+			Models:          cfg.Models,
+			Enabled:         cfg.Enabled,
+			Priority:        cfg.Priority,
+			Temperature:     cfg.Temperature,
+			TopP:            cfg.TopP,
+			MaxTokens:       cfg.MaxTokens,
 		})
 	}
 
@@ -178,6 +180,9 @@ func (cm *ConfigManager) GetAll() []ProviderConfig {
 
 	configs := make([]ProviderConfig, len(cm.configs))
 	copy(configs, cm.configs)
+	for i := range configs {
+		configs[i].Models = append([]ConfiguredModel(nil), configs[i].Models...)
+	}
 	return configs
 }
 
@@ -196,7 +201,8 @@ func (cm *ConfigManager) GetEnabled() []ProviderConfig {
 
 	var enabled []ProviderConfig
 	for _, cfg := range cm.configs {
-		if cfg.Enabled {
+		if cfg.Enabled && cfg.HasChatModel() {
+			cfg.Models = append([]ConfiguredModel(nil), cfg.Models...)
 			enabled = append(enabled, cfg)
 		}
 	}
@@ -210,6 +216,8 @@ func (cm *ConfigManager) GetEnabled() []ProviderConfig {
 func (cm *ConfigManager) Set(cfg ProviderConfig) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
+
+	cfg.Models = append([]ConfiguredModel(nil), cfg.Models...)
 
 	// Match on Name (user-facing unique label) first, fall back to Type for legacy.
 	key := cfg.Name
@@ -332,7 +340,7 @@ func (cm *ConfigManager) TestConnection(cfg *ProviderConfig) error {
 		Messages: []Message{
 			TextMessage("user", "Say exactly 'ok' and nothing else"),
 		},
-		MaxTokens: 10,
+		MaxTokens:   10,
 		Temperature: 0,
 	})
 	if err != nil {
@@ -348,16 +356,17 @@ func (cm *ConfigManager) TestConnection(cfg *ProviderConfig) error {
 }
 
 type providerConfigStored struct {
-	Type             ProviderType `json:"type"`
-	Name             string       `json:"name"`
-	APIKeyEncrypted  string       `json:"api_key_encrypted"`
-	BaseURL          string       `json:"base_url,omitempty"`
-	Model            string       `json:"model"`
-	Enabled          bool         `json:"enabled"`
-	Priority         int          `json:"priority"`
-	Temperature      float64      `json:"temperature,omitempty"`
-	TopP             float64      `json:"top_p,omitempty"`
-	MaxTokens        int          `json:"max_tokens,omitempty"`
+	Models          []ConfiguredModel `json:"models,omitempty"`
+	Type            ProviderType      `json:"type"`
+	Name            string            `json:"name"`
+	APIKeyEncrypted string            `json:"api_key_encrypted"`
+	BaseURL         string            `json:"base_url,omitempty"`
+	Model           string            `json:"model"`
+	Enabled         bool              `json:"enabled"`
+	Priority        int               `json:"priority"`
+	Temperature     float64           `json:"temperature,omitempty"`
+	TopP            float64           `json:"top_p,omitempty"`
+	MaxTokens       int               `json:"max_tokens,omitempty"`
 }
 
 // defaultConfigs is what a fresh install's providers.json starts as. Used

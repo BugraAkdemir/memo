@@ -274,17 +274,24 @@ func trySend(ctx context.Context, ch chan<- StreamChunk, chunk StreamChunk) {
 }
 
 // ProviderConfig holds configuration for a single provider instance.
+// ConfiguredModel is a user-assigned role, not an inferred capability.
+type ConfiguredModel struct {
+	ID   string `json:"id"`
+	Kind string `json:"kind"` // chat or decision
+}
+
 type ProviderConfig struct {
-	Type        ProviderType `json:"type"`
-	Name        string       `json:"name"`
-	APIKey      string       `json:"api_key,omitempty"`
-	BaseURL     string       `json:"base_url,omitempty"`
-	Model       string       `json:"model"`
-	Enabled     bool         `json:"enabled"`
-	Priority    int          `json:"priority"`
-	Temperature float64      `json:"temperature,omitempty"`
-	TopP        float64      `json:"top_p,omitempty"`
-	MaxTokens   int          `json:"max_tokens,omitempty"`
+	Models      []ConfiguredModel `json:"models,omitempty"`
+	Type        ProviderType      `json:"type"`
+	Name        string            `json:"name"`
+	APIKey      string            `json:"api_key,omitempty"`
+	BaseURL     string            `json:"base_url,omitempty"`
+	Model       string            `json:"model"`
+	Enabled     bool              `json:"enabled"`
+	Priority    int               `json:"priority"`
+	Temperature float64           `json:"temperature,omitempty"`
+	TopP        float64           `json:"top_p,omitempty"`
+	MaxTokens   int               `json:"max_tokens,omitempty"`
 	// EffortLevel controls reasoning/thinking depth on models that support
 	// it — deliberately per-provider, not a single global setting like
 	// Temperature/TopP effectively are today (see effort.go's package doc
@@ -302,7 +309,34 @@ type ProviderConfig struct {
 	Error     string `json:"error,omitempty"`
 }
 
+func (c ProviderConfig) ModelKind(id string) string {
+	for _, m := range c.Models {
+		if m.ID == id {
+			return m.Kind
+		}
+	}
+	if len(c.Models) == 0 && id == c.Model {
+		return "chat"
+	}
+	return ""
+}
+func (c ProviderConfig) HasChatModel() bool { return c.ModelKind(c.Model) == "chat" }
+
 func (c ProviderConfig) Validate() error {
+	seen := map[string]bool{}
+	for _, m := range c.Models {
+		if strings.TrimSpace(m.ID) == "" || (m.Kind != "chat" && m.Kind != "decision") || seen[m.ID] {
+			return fmt.Errorf("models require unique IDs and chat or decision roles")
+		}
+		if m.Kind == "decision" && strings.HasSuffix(string(c.Type), "-cli") {
+			return fmt.Errorf("CLI agents cannot be decision models")
+		}
+		seen[m.ID] = true
+	}
+	if len(c.Models) > 0 && !seen[c.Model] {
+		return fmt.Errorf("active model must be registered")
+	}
+
 	if c.Type == "" {
 		return fmt.Errorf("provider type is required")
 	}

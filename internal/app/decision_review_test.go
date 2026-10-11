@@ -52,7 +52,7 @@ func TestDecisionVerificationRealChatFallsBackAfterThreeReviews(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": `{"satisfaction":30,"bug_risk":60,"regression_risk":40,"evidence_sufficient":false,"issues":["Inspect the button width and tests"]}`}, "finish_reason": "stop"}}})
 	}))
 	t.Cleanup(srv.Close)
-	a.providerCfgMgr.Set(provider.ProviderConfig{Name: "reviewer", Type: provider.ProviderCustom, BaseURL: srv.URL, Model: "reviewer", Enabled: true})
+	a.providerCfgMgr.Set(provider.ProviderConfig{Name: "reviewer", Type: provider.ProviderCustom, BaseURL: srv.URL, Model: "reviewer", Enabled: true, Models: []provider.ConfiguredModel{{ID: "reviewer", Kind: "decision"}}})
 	a.providerRouter = provider.NewRouter(a.providerCfgMgr.GetEnabled())
 	a.providerRouter.SetActiveProvider("test")
 	a.cfg.Learning = config.LearningConfig{VerificationEnabled: true, DecisionProvider: "reviewer", DecisionModel: "reviewer", VerificationThreshold: 85, VerificationMaxRisk: 20}

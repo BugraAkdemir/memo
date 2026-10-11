@@ -42,7 +42,7 @@ func (r *Router) UpdateConfigs(configs []ProviderConfig) {
 	r.providers = nil
 
 	for _, cfg := range configs {
-		if !cfg.Enabled {
+		if !cfg.Enabled || !cfg.HasChatModel() {
 			continue
 		}
 		if err := cfg.Validate(); err != nil {

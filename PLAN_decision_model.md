@@ -6,3 +6,7 @@
 ## Decision and verification extension
 - [x] Add optional structured completion review with satisfaction/risk scores and configurable thresholds; return feedback to the same tool loop, cap at three reviews and perform one main-model self-check on rejection/error exhaustion.
 - [x] Move decision settings to a dedicated tab, add verification controls and TR/EN labels, verify the real wiring and bounded fallback, rotate handoff and commit checkpoints.
+
+## Provider model management redesign
+- [x] Persist per-provider model IDs with explicit chat/decision roles; restrict decision calls and chat model switches accordingly, verify and commit backend.
+- [ ] Manage multiple models in API Providers, embed decision/verification model picker there, remove separate tab and expand chat dropdown; localize, verify and commit with handoff.

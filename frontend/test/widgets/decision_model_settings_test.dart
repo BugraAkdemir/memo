@@ -4,7 +4,26 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memo_flutter/core/api_client.dart';
 import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
-import 'package:memo_flutter/widgets/settings/tabs/decision_model_tab.dart';
+import 'package:memo_flutter/widgets/settings/decision_model_section.dart';
+import 'package:memo_flutter/models/provider_config.dart';
+import 'package:memo_flutter/providers/provider_provider.dart';
+
+class _ProviderList extends ProviderListNotifier {
+  @override
+  Future<List<ProviderConfig>> build() async => [
+    const ProviderConfig(
+      type: 'custom',
+      name: 'cheap',
+      model: 'chat-llm',
+      enabled: true,
+      models: [
+        ConfiguredModel(id: 'chat-llm'),
+        ConfiguredModel(id: 'tiny', kind: 'decision'),
+        ConfiguredModel(id: 'fast-model', kind: 'decision'),
+      ],
+    ),
+  ];
+}
 
 class _DecisionApi extends MemoApiClient {
   _DecisionApi() : super(baseUrl: 'http://memo.test');
@@ -61,30 +80,26 @@ void main() {
       final api = _DecisionApi();
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [apiClientProvider.overrideWithValue(api)],
+          overrides: [apiClientProvider.overrideWithValue(api),
+            providerListProvider.overrideWith(_ProviderList.new),
+          ],
           child: const MaterialApp(
-            home: Scaffold(body: SizedBox(child: DecisionModelTab())),
+            home: Scaffold(body: SingleChildScrollView(child: DecisionModelSection())),
           ),
         ),
       );
       await tester.pumpAndSettle();
       expect(find.text(L10n.t('decision_model_title')), findsOneWidget);
-      expect(find.text('cheap'), findsOneWidget);
-      expect(find.text('tiny'), findsOneWidget);
-      await tester.enterText(
-        find.widgetWithText(TextField, 'tiny'),
-        'fast-model',
-      );
-      await tester.scrollUntilVisible(
-        find.text(L10n.t('save')),
-        200,
-        scrollable: find
-            .descendant(
-              of: find.byType(ListView),
-              matching: find.byType(Scrollable),
-            )
-            .first,
-      );
+      expect(find.text('cheap · tiny'), findsOneWidget);
+      await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      expect(find.text('cheap · chat-llm'), findsNothing);
+      await tester.tap(
+        find.text('cheap · fast-model').last);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.text(L10n.t('save')));
       await tester.pumpAndSettle();
       await tester.tap(find.text(L10n.t('save')));
       await tester.pumpAndSettle();

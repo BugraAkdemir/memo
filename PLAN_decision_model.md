@@ -9,4 +9,4 @@
 
 ## Provider model management redesign
 - [x] Persist per-provider model IDs with explicit chat/decision roles; restrict decision calls and chat model switches accordingly, verify and commit backend.
-- [ ] Manage multiple models in API Providers, embed decision/verification model picker there, remove separate tab and expand chat dropdown; localize, verify and commit with handoff.
+- [x] Manage multiple models in API Providers, embed decision/verification model picker there, remove separate tab and expand chat dropdown; localize, verify and commit with handoff.

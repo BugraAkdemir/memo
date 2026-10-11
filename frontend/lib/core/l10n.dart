@@ -2000,6 +2000,19 @@ class L10n {
     'verification_event_title': 'Doğrulama',
     'verification_event_detail': 'Doğrulama: \${text}',
     'decision_tab_title': 'Karar ve Doğrulama',
+    'provider_model_role': 'Model türü',
+    'provider_role_chat': 'Sohbet',
+    'provider_role_decision': 'Karar ve doğrulama',
+    'provider_models_hint':
+        'Aynı API bağlantısına birden fazla model ekleyebilirsin. Model kimliğini yaz veya listeden seç, türünü belirle ve ekle. Türü sen tanımlarsın; bu işlem modelin yeteneklerini değiştirmez.',
+    'provider_add_model': 'Modeli listeye ekle',
+    'decision_select_required':
+        'Etkin bir sağlayıcıdan kayıtlı karar modeli seç.',
+    'decision_select_model': 'Karar modeli seç',
+    'decision_registered_hint':
+        'Yalnız “Karar ve doğrulama” türünde eklediğin modeller gösterilir.',
+    'decision_no_models':
+        'Henüz karar modeli yok. Yukarıdan sağlayıcıyı düzenle ve bu türde bir model ekle.',
     'verification_overview': 'Ayrı bir modelle karar ver ve ajan çalışmalarını değerlendir. İsteğin karşılanması, olası bug ve diğer özelliklere etki incelenir. Yüzdeler model tahminidir; testlerin yerine geçmez.',
     'verification_enabled_title': 'Sonucu doğrula',
     'verification_enabled_desc': 'Ajanın son cevabını ve araç kayıtlarını incele; düşük puanlı veya riskli işi gerekçeleriyle ana modele geri gönder.',
@@ -4373,6 +4386,19 @@ class L10n {
     'verification_event_title': 'Verification',
     'verification_event_detail': 'Verification: \${text}',
     'decision_tab_title': 'Decision & Verification',
+    'provider_model_role': 'Model role',
+    'provider_role_chat': 'Chat',
+    'provider_role_decision': 'Decision & verification',
+    'provider_models_hint':
+        'Add multiple models to the same API connection. Enter a model ID or select from the catalog, choose its role and add it. You assign the role; this does not change model capabilities.',
+    'provider_add_model': 'Add model to list',
+    'decision_select_required':
+        'Select a registered decision model from an enabled provider.',
+    'decision_select_model': 'Select decision model',
+    'decision_registered_hint':
+        'Only models you added with the Decision & verification role appear here.',
+    'decision_no_models':
+        'No decision models yet. Edit a provider above and add a model with this role.',
     'verification_overview': 'Use a separate model for decisions and review of agent work. Assess requirement satisfaction, potential bugs and effects on other features. Percentages are model estimates and do not replace tests.',
     'verification_enabled_title': 'Verify results',
     'verification_enabled_desc': 'Review the final agent answer and tool transcript; return low-scoring or risky work to the main model with specific concerns.',

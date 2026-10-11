@@ -19,7 +19,6 @@ import 'settings/tabs/cli_connections_tab.dart';
 import 'settings/tabs/orchestra_tab.dart';
 import 'settings/tabs/agent_permissions_tab.dart';
 import 'settings/tabs/learning_tab.dart';
-import 'settings/tabs/decision_model_tab.dart';
 import 'settings/tabs/mood_tab.dart';
 import 'settings/tabs/skills_tab.dart';
 import 'settings/tabs/gpu_config_tab.dart';
@@ -107,17 +106,16 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/microphone.svg', // Live Mode
     'lib/icon/slash/key.svg', // Subscriptions
     'lib/icon/slash/code.svg', // Code Mode Prompts
-    'lib/icon/slash/shield-check.svg', // Decision and verification
   ];
 
   /// Tab indices grouped under an eyebrow header, in sidebar display order.
-  /// Every index 0..27 must appear exactly once — covered by
+  /// Every index 0..26 must appear exactly once — covered by
   /// settings_dialog_test.dart's group-coverage test.
   static const _groups = [
     ('settings_group_general', [0, 1, 2]),
     ('settings_group_providers', [5, 6, 25, 15, 22, 23, 24]),
     ('settings_group_memory', [3, 4, 9, 10, 21]),
-    ('settings_group_agents', [7, 8, 11, 18, 26, 27]),
+    ('settings_group_agents', [7, 8, 11, 18, 26]),
     ('settings_group_system', [12, 13, 14, 20]),
     ('settings_group_other', [16, 17, 19]),
   ];
@@ -150,7 +148,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_live_mode'),
     L10n.t('tab_subscriptions'),
     L10n.t('code_submode_prompts_tab_title'),
-    L10n.t('decision_tab_title'),
   ];
 
   /// Tab indices hidden for the current session's account permissions
@@ -163,7 +160,9 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     final perms = readMyPermissions(ref.read(prefsProvider));
     final hidden = <int>{};
     if (!perms.models) hidden.add(5); // Providers
-    if (!perms.memory) hidden.addAll([3, 4, 21]); // Memory, Memory Import, Dream
+    if (!perms.memory) {
+      hidden.addAll([3, 4, 21]);
+    } // Memory, Memory Import, Dream
     if (!perms.whatsapp) hidden.add(22);
     if (!perms.telegram) hidden.add(23);
     if (!perms.models) hidden.add(25); // Subscriptions
@@ -385,7 +384,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 24: return const LiveModeTab();
       case 25: return const SubscriptionsTab();
       case 26: return const CodeSubModePromptsTab();
-      case 27: return const DecisionModelTab();
       default: return const SizedBox.shrink();
     }
   }

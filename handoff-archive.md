@@ -1,3 +1,12 @@
+# Son oturum — 2026-10-11 — Karar ve doğrulama sekmesi
+- **`57c7b01c`** Backend: opsiyonel ajan tamamlama doğrulaması; istek karşılanma/bug/diğer özelliklere etki puanları ve yeterli kanıt kontrolü. Varsayılan kabul ≥85%, her risk ≤20%; yapılandırılabilir. Ret veya hata geri bildirimi aynı izin kontrollü araç döngüsüne gider; en fazla 3 değerlendirme, sonra ana modele bağımsız inceleme/test/düzeltme talimatı. Mevcut süre/iterasyon sınırları sürer; başarı zorlanmaz.
+- Bu oturumun ikinci commit'i: Ayarlar › Karar ve Doğrulama ayrı sekme; karar ve doğrulama bağımsız anahtarları, ortak sağlayıcı/model, eşikler, TR/EN metinler. Sohbette puan ve kendi kontrolüne geçiş olayları gösterilir. Eski Öğrenme ayarları korunur. `PLAN_decision_model.md` tamamlandı; `docs/DECISION_MODEL.md` güncellendi. Push yok.
+- Kapsam: Memo'nun ajan araç döngüsü/Code Mode. Düz metin sohbet ve harici kod ajanının iç süreci kapsam dışı. İnceleyici araç çalıştırmaz; sınırlı gerçek araç geçmişi + son taslak üzerinden kanıt ister. Yüzdeler model tahminidir, ölçülmüş bug olasılığı değildir; gerçek model kalitesi denenmedi.
+- Doğrulama: `CGO_ENABLED=1 go build -tags sqlite_fts5 ./...` ve `go vet` exit 0; `go test -tags sqlite_fts5 ./... -race` tüm paketler ok (`internal/app 44.362s`). `flutter test --no-pub`: **571 passed**. `flutter analyze lib/ --no-fatal-infos`: exit 0, değişmeyen dosyalarda mevcut 5 info, yeni bulgu yok. Dokunulan Dart dosyalarında L10n literal taraması ve `git diff --check`: boş. Gerçek sohbet/sahte HTTP sağlayıcısı ile üç ret→ana model kontrolü ve bozuk inceleyici sınırı testli.
+- Sonraki adım: gerçek küçük modelle kalite/gecikme/maliyet ölçümü; açık işler ve kalıcı uyarılar yukarıda.
+
+---
+
 # Son oturum — 2026-10-11 — Opsiyonel karar modeli
 - **`242a6015`** Backend: `Learning.DecisionEnabled/DecisionProvider/DecisionModel`; seçilen sağlayıcıya doğrudan, araçsız, 5 sn bütçeli çağrı. Otomatik hafıza kaydı YES/NO, sabit bilgi çıkarımı, niyet/proaktif kararlar ve global ajan açık normal sohbetlerde araç gerekliliği. Kesin NO dışında eski yönlendirme korunur; çıkarım/öğrenme hatasında eski modele dönülür. Açık ajan/proje sohbeti, Code Mode, görev işçisi ve ekli dosya/görsel atlanmaz; kapalı ajan açılmaz. Eski öğrenme API istemcileri seçimi silmez; PUT yöneticiye kapılı.
 - Bu oturumun ikinci commit'i: Ayarlar › Öğrenme'de TR/EN karar modeli anahtarı ve sağlayıcı/model alanları; `docs/DECISION_MODEL.md`; `PLAN_decision_model.md` tamamlandı. Varsayılan kapalı, seçim yeniden başlatmadan uygulanır; gerçek veriler/hesaplar değiştirilmedi, push yok.

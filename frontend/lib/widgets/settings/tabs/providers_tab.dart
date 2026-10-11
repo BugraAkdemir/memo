@@ -6,6 +6,7 @@ import '../../../models/provider_config.dart';
 import '../../../providers/provider_provider.dart';
 import '../../provider_config_dialog.dart';
 import '../image_model_section.dart';
+import '../decision_model_section.dart';
 import '../../../core/friendly_error.dart';
 
 /// Filters out untouched placeholder entries — installs from before
@@ -112,6 +113,7 @@ class ProvidersTab extends ConsumerWidget {
         ),
 
         const ImageModelSection(),
+        const DecisionModelSection(),
       ],
     );
   }
@@ -175,13 +177,14 @@ class ProviderCard extends ConsumerWidget {
                 children: [
                   Row(
                     children: [
-                      Text(
+                      Flexible(child:Text(
                         p.name,
+                        overflow:TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
                         ),
-                      ),
+                      )),
                       if (isActive) ...[
                         const SizedBox(width: 8),
                         Container(
@@ -204,14 +207,15 @@ class ProviderCard extends ConsumerWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    p.model,
+                    p.configuredModels.map((m) => m.id).join(' · '),
+                    maxLines:3,overflow:TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 12,
                       color: MemoTheme.of(context).textDim,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Row(
+                  Wrap(spacing:8,runSpacing:4,
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -233,9 +237,8 @@ class ProviderCard extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
                       if (p.connected)
-                        Row(
+                        Row(mainAxisSize:MainAxisSize.min,
                           children: [
                             const Icon(
                               Icons.check_circle,

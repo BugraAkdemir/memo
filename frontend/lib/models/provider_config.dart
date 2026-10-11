@@ -1,3 +1,15 @@
+class ConfiguredModel {
+  final String id;
+  final String kind;
+  const ConfiguredModel({required this.id, this.kind = 'chat'});
+  factory ConfiguredModel.fromJson(Map<String, dynamic> json) =>
+      ConfiguredModel(
+        id: json['id'] as String? ?? '',
+        kind: json['kind'] as String? ?? 'chat',
+      );
+  Map<String, dynamic> toJson() => {'id': id, 'kind': kind};
+}
+
 /// Provider configuration model — mirrors Go `provider.ProviderConfig`
 class ProviderConfig {
   final String type;
@@ -5,6 +17,13 @@ class ProviderConfig {
   final String? apiKey;
   final String? baseUrl;
   final String model;
+  final List<ConfiguredModel> models;
+  List<ConfiguredModel> get configuredModels =>
+      models.isEmpty && model.isNotEmpty
+      ? [ConfiguredModel(id: model)]
+      : models;
+  List<ConfiguredModel> get chatModels =>
+      configuredModels.where((m) => m.kind == 'chat').toList();
   final bool enabled;
   final int priority;
   final double temperature;
@@ -31,6 +50,7 @@ class ProviderConfig {
     this.apiKey,
     this.baseUrl,
     required this.model,
+    this.models = const [],
     this.enabled = false,
     this.priority = 0,
     this.temperature = 0.7,
@@ -49,6 +69,10 @@ class ProviderConfig {
       apiKey: json['api_key'] as String?,
       baseUrl: json['base_url'] as String?,
       model: json['model'] as String? ?? '',
+      models: (json['models'] as List? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(ConfiguredModel.fromJson)
+          .toList(),
       enabled: json['enabled'] as bool? ?? false,
       priority: json['priority'] as int? ?? 0,
       temperature: (json['temperature'] as num?)?.toDouble() ?? 0.7,
@@ -68,6 +92,7 @@ class ProviderConfig {
       'api_key': apiKey ?? '',
       'base_url': baseUrl ?? '',
       'model': model,
+      'models': models.map((m) => m.toJson()).toList(),
       'enabled': enabled,
       'priority': priority,
       'temperature': temperature,
@@ -84,6 +109,7 @@ class ProviderConfig {
     String? apiKey,
     String? baseUrl,
     String? model,
+    List<ConfiguredModel>? models,
     bool? enabled,
     int? priority,
     double? temperature,
@@ -100,6 +126,7 @@ class ProviderConfig {
       apiKey: apiKey ?? this.apiKey,
       baseUrl: baseUrl ?? this.baseUrl,
       model: model ?? this.model,
+      models: models ?? this.models,
       enabled: enabled ?? this.enabled,
       priority: priority ?? this.priority,
       temperature: temperature ?? this.temperature,

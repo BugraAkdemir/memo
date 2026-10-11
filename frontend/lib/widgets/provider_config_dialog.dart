@@ -38,6 +38,8 @@ class _ProviderConfigDialogState
   bool _obscureKey = true;
   String? _saveError;
   String _effortLevel = '';
+  List<ConfiguredModel> _models = [];
+  String _modelKind = 'chat';
   List<String> _availableEffortLevels = [];
   bool _loadingEffortLevels = false;
 
@@ -63,6 +65,10 @@ class _ProviderConfigDialogState
   void initState() {
     super.initState();
     final existing = widget.existing;
+    _models = List.of(existing?.configuredModels ?? []);
+    _modelKind =
+        _models.where((m) => m.id == existing?.model).firstOrNull?.kind ??
+        'chat';
     _type = existing?.type ?? 'openai';
     _nameCtrl = TextEditingController(
       text: existing?.name ?? ProviderDefaults.displayNames[_type] ?? _type,
@@ -156,6 +162,8 @@ class _ProviderConfigDialogState
     if (type == null) return;
     setState(() {
       _type = type;
+      _models = [];
+      _modelKind = 'chat';
       _nameCtrl.text = ProviderDefaults.displayNames[type] ?? type;
       if (_baseUrlCtrl.text.isEmpty ||
           ProviderDefaults.defaultBaseUrls.values
@@ -582,12 +590,18 @@ class _ProviderConfigDialogState
 
       // Trim every free-text field: a stray space/tab pasted into a model id or
       // key silently breaks requests (e.g. an invalid model that stalls the API).
+      final models =
+          _models.where((m) => m.id != _modelCtrl.text.trim()).toList()..add(
+            ConfiguredModel(id: _modelCtrl.text.trim(), kind: _modelKind),
+          );
+      final activeModel = _modelKind == 'chat' ? _modelCtrl.text.trim() : (models.where((m) => m.kind == 'chat').firstOrNull?.id ?? _modelCtrl.text.trim());
       final config = ProviderConfig(
         type: _type,
         name: finalName,
         apiKey: _apiKeyCtrl.text.trim(),
         baseUrl: _baseUrlCtrl.text.trim(),
-        model: _modelCtrl.text.trim(),
+        model: activeModel,
+        models: models,
         enabled: _enabled,
         contextTokens: int.tryParse(_contextCtrl.text.trim()) ?? 0,
         priority: int.tryParse(_priorityCtrl.text.trim()) ?? existing?.priority ?? 0,
@@ -618,7 +632,9 @@ class _ProviderConfigDialogState
       }
       Navigator.of(context).pop(true);
     } catch (e) {
-      if (mounted) setState(() => _saveError = '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}');
+      if (mounted) {
+        setState(() => _saveError = '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}');
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -846,6 +862,63 @@ class _ProviderConfigDialogState
                     ],
                   ],
                 ),
+                if (!ProviderDefaults.isCLIType(_type)) ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('model_role_$_modelKind'),
+                    initialValue: _modelKind,
+                    decoration: InputDecoration(
+                      labelText: L10n.t('provider_model_role'),
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'chat',
+                        child: Text(L10n.t('provider_role_chat')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'decision',
+                        child: Text(L10n.t('provider_role_decision')),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _modelKind = v ?? 'chat'),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(L10n.t('provider_models_hint')),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final m in _models)
+                        InputChip(
+                          label: Text(
+                            '${m.id} · ${L10n.t(m.kind == 'decision' ? 'provider_role_decision' : 'provider_role_chat')}',
+                          ),
+                          onPressed: () => setState(() {
+                            _modelCtrl.text = m.id;
+                            _modelKind = m.kind;
+                          }),
+                          onDeleted: () => setState(() {
+                            _models.remove(m);
+                            if(_modelCtrl.text.trim()==m.id) {
+                              _modelCtrl.text=_models.firstOrNull?.id ?? '';
+                              _modelKind=_models.firstOrNull?.kind ?? 'chat';
+                            }
+                          }),
+                        ),
+                    ],
+                  ),
+                  TextButton.icon(
+                    onPressed: () => setState(() {
+                      final id = _modelCtrl.text.trim();
+                      if (id.isEmpty) return;
+                      _models.removeWhere((m) => m.id == id);
+                      _models.add(ConfiguredModel(id: id, kind: _modelKind));
+                    }),
+                    icon: const Icon(Icons.add),
+                    label: Text(L10n.t('provider_add_model')),
+                  ),
+                ],
                 if (ProviderDefaults.hasFreeModelCatalog(_type)) ...[
                   const SizedBox(height: 6),
                   Align(

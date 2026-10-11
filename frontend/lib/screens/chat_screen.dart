@@ -609,10 +609,25 @@ class _QuickModelDropdown extends ConsumerWidget {
           leading: Icon(Icons.computer_outlined, size: 16, color: c.textMuted),
           active: effectiveActive == 'local',
         ),
-        for (final p in d.providers.where((p) => p.enabled))
+        for (final p in d.providers.where((p) => p.enabled &&
+              (ProviderDefaults.isCLIType(p.type) || p.chatModels.isNotEmpty),
+        ))
           if (p.name == kSubscriptionsProviderName && d.subsModels.isNotEmpty)
             ..._subscriptionModelEntries(p, d.subsModels, effectiveActive == p.name)
-          else
+          else if (!ProviderDefaults.isCLIType(p.type) &&
+              p.models.isNotEmpty) ...[
+            ModelPickerEntry.header(
+              p.name,
+              leading: providerLogoWidget(p.type, size: 14),
+            ),
+            for (final m in p.chatModels)
+              ModelPickerEntry.item(
+                value: encodeModelSelection(p.name, m.id),
+                title: m.id,
+                leading: providerLogoWidget(p.type, size: 16),
+                active: effectiveActive == p.name && p.model == m.id,
+              ),
+          ] else
             ModelPickerEntry.item(
               value: p.name,
               title: p.name,
@@ -747,7 +762,7 @@ class _QuickModelDropdown extends ConsumerWidget {
   ) {
     final out = <ModelPickerEntry>[];
     String? lastVendor;
-    for (final m in models) {
+    for (final m in models.where((m) => !provider.models.any((configured) => configured.id == m.id && configured.kind == 'decision'))) {
       if (m.ownedBy != lastVendor) {
         lastVendor = m.ownedBy;
         final label = vendorLabel(m.ownedBy);
@@ -908,7 +923,9 @@ class _QuickEffortSelector extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final activeName = ref.watch(activeProviderTypeProvider).valueOrNull ?? '';
     final cliType = ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '';
-    if (activeName.isEmpty || cliType.isNotEmpty) return const SizedBox.shrink();
+    if (activeName.isEmpty || cliType.isNotEmpty) {
+      return const SizedBox.shrink();
+    }
 
     final providers = ref.watch(providerListProvider).valueOrNull ?? const <ProviderConfig>[];
     final match = providers.where((p) => p.name == activeName);

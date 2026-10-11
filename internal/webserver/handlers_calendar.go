@@ -172,17 +172,47 @@ func (s *Server) handleLearningSettings(w http.ResponseWriter, r *http.Request) 
 
 	case http.MethodPut:
 		var body struct {
-			DecisionEnabled    *bool  `json:"decision_enabled"`
-			DecisionProvider   string `json:"decision_provider"`
-			DecisionModel      string `json:"decision_model"`
-			SingleModelEnabled bool   `json:"single_model_enabled"`
-			ModelID            string `json:"model_id"`
+			VerificationEnabled   *bool  `json:"verification_enabled"`
+			VerificationThreshold *int   `json:"verification_threshold"`
+			VerificationMaxRisk   *int   `json:"verification_max_risk"`
+			DecisionEnabled       *bool  `json:"decision_enabled"`
+			DecisionProvider      string `json:"decision_provider"`
+			DecisionModel         string `json:"decision_model"`
+			SingleModelEnabled    bool   `json:"single_model_enabled"`
+			ModelID               string `json:"model_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			jsonError(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		if body.DecisionEnabled != nil {
+		if body.VerificationEnabled != nil || body.VerificationThreshold != nil || body.VerificationMaxRisk != nil {
+			reviewBridge, ok := s.bridge.(interface {
+				UpdateDecisionReviewSettings(bool, string, string, bool, int, int) error
+			})
+			if !ok {
+				jsonError(w, "verification settings unavailable", http.StatusNotImplemented)
+				return
+			}
+			cfg := bridge.GetLearningSettings()
+			if body.DecisionEnabled != nil {
+				cfg.DecisionEnabled = *body.DecisionEnabled
+				cfg.DecisionProvider = body.DecisionProvider
+				cfg.DecisionModel = body.DecisionModel
+			}
+			if body.VerificationEnabled != nil {
+				cfg.VerificationEnabled = *body.VerificationEnabled
+			}
+			if body.VerificationThreshold != nil {
+				cfg.VerificationThreshold = *body.VerificationThreshold
+			}
+			if body.VerificationMaxRisk != nil {
+				cfg.VerificationMaxRisk = *body.VerificationMaxRisk
+			}
+			if err := reviewBridge.UpdateDecisionReviewSettings(cfg.DecisionEnabled, cfg.DecisionProvider, cfg.DecisionModel, cfg.VerificationEnabled, cfg.VerificationThreshold, cfg.VerificationMaxRisk); err != nil {
+				jsonError(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		} else if body.DecisionEnabled != nil {
 			decisions, ok := s.bridge.(interface {
 				UpdateDecisionSettings(bool, string, string) error
 			})

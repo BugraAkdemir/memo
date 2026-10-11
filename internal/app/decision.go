@@ -28,7 +28,7 @@ func (a *App) decisionSettings() config.LearningConfig {
 // tools and global agent switch are never changed by a classification call.
 func (a *App) callDecisionModel(ctx context.Context, system, user string, maxTokens int) (string, error) {
 	cfg := a.decisionSettings()
-	if !cfg.DecisionEnabled {
+	if !cfg.DecisionEnabled && !cfg.VerificationEnabled {
 		return "", fmt.Errorf("decision model disabled")
 	}
 	a.providerMu.RLock()
@@ -80,11 +80,25 @@ func (a *App) decisionAllows(ctx context.Context, system, user string) bool {
 }
 
 func (a *App) UpdateDecisionSettings(enabled bool, providerName, model string) error {
+	cfg := a.decisionSettings()
+	return a.UpdateDecisionReviewSettings(enabled, providerName, model, cfg.VerificationEnabled, cfg.VerificationThreshold, cfg.VerificationMaxRisk)
+}
+
+func (a *App) UpdateDecisionReviewSettings(enabled bool, providerName, model string, verification bool, threshold, maxRisk int) error {
 	providerName, model = strings.TrimSpace(providerName), strings.TrimSpace(model)
-	if enabled && (providerName == "" || model == "") {
-		return fmt.Errorf("decision provider and model are required")
+	if threshold == 0 {
+		threshold = 85
 	}
-	if enabled {
+	if maxRisk == 0 {
+		maxRisk = 20
+	}
+	if threshold < 1 || threshold > 100 || maxRisk < 1 || maxRisk > 100 {
+		return fmt.Errorf("verification thresholds must be between 1 and 100")
+	}
+	if enabled || verification {
+		if providerName == "" || model == "" {
+			return fmt.Errorf("decision provider and model are required")
+		}
 		a.providerMu.RLock()
 		router := a.providerRouter
 		a.providerMu.RUnlock()
@@ -106,6 +120,7 @@ func (a *App) UpdateDecisionSettings(enabled bool, providerName, model string) e
 	}
 	previous := a.cfg.Learning
 	a.cfg.Learning.DecisionEnabled, a.cfg.Learning.DecisionProvider, a.cfg.Learning.DecisionModel = enabled, providerName, model
+	a.cfg.Learning.VerificationEnabled, a.cfg.Learning.VerificationThreshold, a.cfg.Learning.VerificationMaxRisk = verification, threshold, maxRisk
 	if err := config.Save(a.cfg); err != nil {
 		a.cfg.Learning = previous
 		return err

@@ -359,6 +359,7 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 	}
 
 	if agentActive {
+		ctx = a.withDecisionReview(ctx, userMsg)
 		for i, msg := range messages {
 			if msg.Role == "system" {
 				if content, ok := msg.Content.(string); ok {

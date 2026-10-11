@@ -458,3 +458,32 @@ func TestHandleLearningSettings_DecisionSelection(t *testing.T) {
 		t.Fatalf("old client lost selection: %+v", b.learnSettings)
 	}
 }
+
+func (b *decisionSettingsBridge) UpdateDecisionReviewSettings(enabled bool, name, model string, verify bool, threshold, risk int) error {
+	if threshold < 1 || threshold > 100 || risk < 1 || risk > 100 {
+		return errPlain("invalid thresholds")
+	}
+	if err := b.UpdateDecisionSettings(enabled, name, model); err != nil {
+		return err
+	}
+	b.learnSettings.VerificationEnabled = verify
+	b.learnSettings.VerificationThreshold = threshold
+	b.learnSettings.VerificationMaxRisk = risk
+	return nil
+}
+func TestHandleLearningSettings_VerificationSelection(t *testing.T) {
+	b := &decisionSettingsBridge{}
+	s := newCalendarMoodServer(&b.calendarMoodStubBridge)
+	s.bridge = b
+	body := `{"decision_enabled":true,"decision_provider":"cheap","decision_model":"tiny","verification_enabled":true,"verification_threshold":90,"verification_max_risk":15}`
+	w := httptest.NewRecorder()
+	s.handleLearningSettings(w, httptest.NewRequest(http.MethodPut, "/api/learning/settings", bytes.NewBufferString(body)))
+	if w.Code != 200 || !b.learnSettings.VerificationEnabled || b.learnSettings.VerificationThreshold != 90 || b.learnSettings.VerificationMaxRisk != 15 {
+		t.Fatalf("status=%d settings=%+v", w.Code, b.learnSettings)
+	}
+	w = httptest.NewRecorder()
+	s.handleLearningSettings(w, httptest.NewRequest(http.MethodPut, "/api/learning/settings", bytes.NewBufferString(`{"single_model_enabled":false}`)))
+	if w.Code != 200 || b.learnSettings.VerificationThreshold != 90 {
+		t.Fatal("legacy client erased review settings")
+	}
+}

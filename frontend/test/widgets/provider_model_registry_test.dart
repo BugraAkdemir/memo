@@ -25,12 +25,13 @@ class _Api extends MemoApiClient {
 void main() {
   testWidgets('provider model card fits a narrow window with long IDs', (tester) async {
     tester.view.physicalSize=const Size(320,800);tester.view.devicePixelRatio=1;addTearDown(tester.view.reset);
-    await tester.pumpWidget(const ProviderScope(child:MaterialApp(home:Scaffold(body:ProviderCard(isActive:true,p:ProviderConfig(type:'custom',name:'An exceptionally long provider connection label',model:'chat-one',enabled:true,connected:true,models:[ConfiguredModel(id:'chat-one-with-a-very-long-model-id'),ConfiguredModel(id:'review-with-a-long-name',kind:'decision')]))))));
+    await tester.pumpWidget(const ProviderScope(child:MaterialApp(home:Scaffold(body:ProviderCard(isActive:true,p:ProviderConfig(type:'custom',name:'An exceptionally long provider connection label',model:'chat-one',enabled:true,connected:true,models:[ConfiguredModel(id:'chat-one-with-a-very-long-model-id'),ConfiguredModel(id:'review-with-a-long-name')]))))));
     await tester.pumpAndSettle();
     expect(tester.takeException(),isNull);
   });
 
-  testWidgets('one API connection saves multiple chat and decision models', (
+  testWidgets(
+    'one API connection saves multiple models without role selection', (
     tester,
   ) async {
     final locale = L10n.locale;
@@ -72,11 +73,7 @@ void main() {
       find.widgetWithText(TextField, 'chat-two'),
       'review',
     );
-    await tester.ensureVisible(find.byKey(const ValueKey('model_role_chat')));
-    await tester.tap(find.byKey(const ValueKey('model_role_chat')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(L10n.t('provider_role_decision')).last);
-    await tester.pumpAndSettle();
+      expect(find.text(L10n.t('provider_model_role')), findsNothing);
     await tester.ensureVisible(find.text(L10n.t('save')));
     await tester.tap(find.text(L10n.t('save')));
     await tester.pumpAndSettle();
@@ -85,8 +82,8 @@ void main() {
       'chat-two',
       'review',
     ]);
-    expect(api.saved?.models.last.kind, 'decision');
-    expect(api.saved?.model, 'chat-one');
+    expect(api.saved?.models.last.id, 'review');
+    expect(api.saved?.model, 'review');
     expect(api.saved?.apiKey, 'existing-key');
     expect(tester.takeException(), isNull);
   });
@@ -101,7 +98,7 @@ void main() {
       ],
     });
     final copied = ProviderConfig.fromJson(p.copyWith(enabled: true).toJson());
-    expect(copied.chatModels.map((m) => m.id), ['chat-one']);
-    expect(copied.configuredModels.last.kind, 'decision');
+    expect(copied.chatModels.map((m) => m.id), ['chat-one', 'review']);
+    expect(copied.configuredModels.last.id, 'review');
   });
 }

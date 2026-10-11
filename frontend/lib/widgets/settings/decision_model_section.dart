@@ -23,6 +23,8 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
       _verification = false;
   String? _error;
   int _threshold = 85, _maxRisk = 20;
+  final Map<String, List<String>> _catalogs = {};
+  bool _fetching = false;
   bool _legacySingle = false;
   String _legacyModel = '';
   @override
@@ -63,6 +65,7 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
             : '';
         _loading = false;
       });
+      if (_provider.text.isNotEmpty) _refreshModels();
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -110,6 +113,22 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
     }
   }
 
+  Future<void> _refreshModels() async {
+    final name = _provider.text;
+    if (name.isEmpty || _fetching) return;
+    setState(() => _fetching = true);
+    try {
+      final list = await ref.read(apiClientProvider).listProviderModels(name);
+      if (mounted) {
+        setState(() => _catalogs[name] = list.models.map((m) => m.id).toList());
+      }
+    } catch (_) {
+      /* Saved choices are still available. */
+    } finally {
+      if (mounted) setState(() => _fetching = false);
+    }
+  }
+
   Map<String, String> _choices() {
     final providers =
         ref.read(providerListProvider).valueOrNull ?? <ProviderConfig>[];
@@ -117,8 +136,12 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
       for (final p in providers.where(
         (p) => p.enabled && !ProviderDefaults.isCLIType(p.type),
       ))
-        for (final m in p.configuredModels.where((m) => m.kind == 'decision'))
-          encodeModelSelection(p.name, m.id): '${p.name} · ${m.id}',
+        for (final id in <String>{
+          ...p.configuredModels.map((m) => m.id),
+          ...?_catalogs[p.name],
+          if (p.name == _provider.text && _model.text.isNotEmpty) _model.text,
+        })
+          encodeModelSelection(p.name, id): '${p.name} · $id',
     };
   }
 
@@ -136,12 +159,35 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            Row(
+              children: [
+                const Icon(Icons.fact_check_outlined, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
               L10n.t('decision_tab_title'),
-              style: Theme.of(context).textTheme.titleLarge,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: L10n.t('refresh'),
+                  onPressed: _fetching ? null : _refreshModels,
+                  icon: _fetching
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh, size: 18),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
-            Text(L10n.t('verification_overview')),
+            Text(L10n.t('verification_overview'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
             const SizedBox(height: 12),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -161,7 +207,7 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
                   ? null
                   : (value) => setState(() => _verification = value),
             ),
-            if (_decision || _verification) ...[
+            ...[
               DropdownButtonFormField<String>(
                 key: ValueKey('decision_model_$value'),
                 initialValue: value,
@@ -187,14 +233,19 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
                         final choice = decodeModelSelection(v ?? '');
                         _provider.text = choice?.provider ?? '';
                         _model.text = choice?.model ?? '';
+                        _refreshModels();
                       }),
               ),
               const SizedBox(height: 8),
               Text(L10n.t('decision_registered_hint')),
               if (choices.isEmpty) Text(L10n.t('decision_no_models')),
             ],
-            if (_verification) ...[
-              const SizedBox(height: 20),
+            if (_verification)
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(L10n.t('verification_limits')),
+                children: [
+              const SizedBox(height: 8),
               Text(L10n.t('verification_threshold', {'n': '$_threshold'})),
               Slider(
                 value: _threshold.toDouble(),
@@ -219,6 +270,7 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
               ),
               Text(L10n.t('verification_fallback_desc')),
             ],
+              ),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),

@@ -77,6 +77,28 @@ class _ServerFileBrowserDialogState extends ConsumerState<ServerFileBrowserDialo
     }
   }
 
+  /// Asks for a name, creates the folder inside the one being viewed and
+  /// steps into it. The dialog stays open on a refusal (name taken, bad
+  /// character, no write access) and shows the server's reason, so the user
+  /// can fix the name instead of starting over.
+  Future<void> _newFolder() async {
+    final parent = _result?.path ?? '';
+    if (parent.isEmpty) return;
+    final created = await showDialog<ServerBrowseResult>(
+      context: context,
+      builder: (_) => _NewFolderDialog(
+        create: (name) =>
+            ref.read(apiClientProvider).makeServerDirectory(parent, name),
+      ),
+    );
+    if (created == null || !mounted) return;
+    setState(() {
+      _result = created;
+      _error = null;
+      _loading = false;
+    });
+  }
+
   void _onEntryTap(ServerBrowseEntry entry) {
     final base = _result?.path ?? '';
     // path/base joining is done with a plain "/" here, not package:path's
@@ -145,6 +167,16 @@ class _ServerFileBrowserDialogState extends ConsumerState<ServerFileBrowserDialo
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  // Only when a folder is being chosen: a file picker has
+                  // nothing to put a new folder in for.
+                  if (widget.mode == ServerBrowseMode.directory)
+                    Tooltip(
+                      message: L10n.t('server_browse_new_folder'),
+                      child: IconButton(
+                        icon: Icon(Icons.create_new_folder_outlined, size: 20, color: c.textMuted),
+                        onPressed: result != null && !_loading ? _newFolder : null,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -161,14 +193,19 @@ class _ServerFileBrowserDialogState extends ConsumerState<ServerFileBrowserDialo
               ),
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              // A Wrap, not a Row: in a 280 px phone dialog the localized
+              // "select this folder" button plus Cancel do not fit side by
+              // side, and the second one must drop to its own line instead
+              // of overflowing.
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 8,
+                runSpacing: 4,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     child: Text(L10n.t('cancel')),
                   ),
-                  const SizedBox(width: 8),
                   if (widget.mode == ServerBrowseMode.directory)
                     FilledButton(
                       onPressed: result != null ? () => Navigator.of(context).pop(result.path) : null,
@@ -219,6 +256,85 @@ class _ServerFileBrowserDialogState extends ConsumerState<ServerFileBrowserDialo
           onTap: selectable ? () => _onEntryTap(entry) : null,
         );
       },
+    );
+  }
+}
+
+/// Name prompt for [ServerFileBrowserDialog]'s new-folder button. Runs the
+/// creation itself so a refusal can be shown under the field with the dialog
+/// still open; pops the created folder on success.
+class _NewFolderDialog extends StatefulWidget {
+  const _NewFolderDialog({required this.create});
+
+  final Future<ServerBrowseResult> Function(String name) create;
+
+  @override
+  State<_NewFolderDialog> createState() => _NewFolderDialogState();
+}
+
+class _NewFolderDialogState extends State<_NewFolderDialog> {
+  final _controller = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final name = _controller.text.trim();
+    if (name.isEmpty || _busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final created = await widget.create(name);
+      if (mounted) Navigator.of(context).pop(created);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = L10n.t('server_browse_create_error', {'e': FriendlyError.describeGeneric(e)});
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(L10n.t('server_browse_new_folder')),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            enabled: !_busy,
+            textInputAction: TextInputAction.done,
+            onChanged: (_) => setState(() => _error = null),
+            onSubmitted: (_) => _submit(),
+            decoration: InputDecoration(labelText: L10n.t('server_browse_folder_name')),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(_error!, style: TextStyle(color: MemoTheme.red, fontSize: 12.5)),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: Text(L10n.t('cancel')),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : _submit,
+          child: Text(L10n.t('server_browse_create')),
+        ),
+      ],
     );
   }
 }

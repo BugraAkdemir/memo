@@ -1362,6 +1362,35 @@ func (s *Server) handleFileBrowse(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result)
 }
 
+// handleFileMkdir implements POST /api/files/mkdir {"parent","name"} — the
+// folder picker's "new folder" button (see App.MakeServerDirectory). Creates
+// one directory directly inside parent and answers with it, like
+// handleFileBrowse would.
+func (s *Server) handleFileMkdir(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Parent string `json:"parent"`
+		Name   string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	result, err := s.fullBridge.MakeServerDirectory(req.Parent, req.Name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, result)
+}
+
 // handleOutboxDownload implements GET /api/files/outbox/{token} — serves a
 // file staged by the share_file agent tool's frontend delivery path (see
 // App.DeliverFile's doc comment). The token is the only credential: it's a

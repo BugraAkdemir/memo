@@ -19,12 +19,16 @@ import 'package:memo_flutter/widgets/chat_input.dart';
 /// Same reasoning as chat_input_narrow_test.dart's adapter — this suite
 /// only cares about the picker/preview path, never actually sends.
 class _UnauthorizedAdapter implements HttpClientAdapter {
+  /// Every path requested, so a test can prove a pick sent nothing.
+  final requested = <String>[];
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    requested.add(options.path);
     return ResponseBody.fromString(
       '{"error":"unauthorized"}',
       401,
@@ -125,11 +129,14 @@ final _tinyPngBytes = Uint8List.fromList([
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  late _UnauthorizedAdapter adapter;
+
   Future<void> pumpChatInput(WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final client = MemoApiClient(baseUrl: 'http://memo.test');
-    client.dio.httpClientAdapter = _UnauthorizedAdapter();
+    adapter = _UnauthorizedAdapter();
+    client.dio.httpClientAdapter = adapter;
     final container = ProviderContainer(overrides: [
       apiClientProvider.overrideWithValue(client),
       prefsProvider.overrideWithValue(prefs),
@@ -189,5 +196,68 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('empty.png'), findsNothing);
+  });
+
+  // Reported: choosing a file/photo sent it at once, so there was no chance to
+  // write a prompt under it. Both attach buttons now stage the file beside the
+  // composer and leave the sending to the send button.
+  for (final (label, icon) in [
+    ('attach file', Icons.attach_file),
+    ('attach image', Icons.image_outlined),
+  ]) {
+    testWidgets('$label: the pick is staged, not sent, and a prompt can be typed under it',
+        (tester) async {
+      FilePickerPlatform.instance = _FakeFilePickerPlatform(
+        _InMemoryPlatformFile(name: 'photo.png', bytes: _tinyPngBytes),
+      );
+      await pumpChatInput(tester);
+      await tester.enterText(find.byType(TextField), 'what is in this picture?');
+      adapter.requested.clear();
+
+      await tester.tap(find.byIcon(icon));
+      await tester.pumpAndSettle();
+
+      expect(find.text('photo.png'), findsOneWidget, reason: 'staged with its name');
+      expect(find.byType(Image), findsWidgets, reason: 'a picture gets a thumbnail');
+      expect(adapter.requested.where((p) => p.contains('send')), isEmpty,
+          reason: 'picking must not send anything');
+      // The typed text is still there to be sent with the attachment.
+      expect(find.text('what is in this picture?'), findsOneWidget);
+      // And the user can keep typing.
+      await tester.enterText(find.byType(TextField), 'describe it in Turkish');
+      expect(find.text('describe it in Turkish'), findsOneWidget);
+    });
+  }
+
+  testWidgets('a non-image file is staged with a file tile, not an image decode',
+      (tester) async {
+    FilePickerPlatform.instance = _FakeFilePickerPlatform(
+      _InMemoryPlatformFile(name: 'report.pdf', bytes: Uint8List.fromList([1, 2, 3])),
+    );
+    await pumpChatInput(tester);
+    adapter.requested.clear();
+
+    await tester.tap(find.byIcon(Icons.attach_file));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('report.pdf'), findsOneWidget);
+    expect(find.byIcon(Icons.insert_drive_file_outlined), findsOneWidget);
+    expect(find.byType(Image), findsNothing);
+    expect(adapter.requested.where((p) => p.contains('send')), isEmpty);
+  });
+
+  testWidgets('the staged attachment can be removed before sending', (tester) async {
+    FilePickerPlatform.instance = _FakeFilePickerPlatform(
+      _InMemoryPlatformFile(name: 'report.pdf', bytes: Uint8List.fromList([1, 2, 3])),
+    );
+    await pumpChatInput(tester);
+    await tester.tap(find.byIcon(Icons.attach_file));
+    await tester.pumpAndSettle();
+    expect(find.text('report.pdf'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+    expect(find.text('report.pdf'), findsNothing);
   });
 }

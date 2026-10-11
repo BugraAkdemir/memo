@@ -115,6 +115,52 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   String? _pickedImagePath;
   Uint8List? _pickedImageBytes;
   String? _pickedFileName;
+
+  static const _imageExtensions = {
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic', 'heif',
+  };
+
+  /// Whether the staged attachment is a picture (thumbnail preview) or some
+  /// other file (icon + name). Decided by the file's extension rather than by
+  /// which button picked it: both buttons stage the same way now, and an
+  /// image chosen through "attach file" deserves a thumbnail too.
+  bool get _pickedIsImage {
+    final name = _pickedFileName ??
+        (_pickedImagePath != null ? p.basename(_pickedImagePath!) : '');
+    final dot = name.lastIndexOf('.');
+    if (dot < 0) return false;
+    return _imageExtensions.contains(name.substring(dot + 1).toLowerCase());
+  }
+
+  /// Lets the user choose a file and STAGES it beside the composer; nothing
+  /// is sent here. The send button (or Enter) sends it together with whatever
+  /// the user typed, so a prompt can accompany the attachment. "Attach file"
+  /// used to hand the pick straight to sendFile(), which sent it at once with
+  /// whatever happened to be in the field — and the image button, which
+  /// already staged, was the only one that let you write about it.
+  Future<void> _pickAttachment(FileType type) async {
+    if (ref.read(isSendingProvider)) return;
+    // pickFile (singular) replaces pickFiles + allowMultiple: false.
+    // PlatformFile.path is null — rather than throwing — whenever the file is
+    // not on local disk, which covers web blobs and Android content:// URIs
+    // alike, so no kIsWeb special case is needed.
+    final file = await FilePicker.pickFile(type: type);
+    if (file == null) return;
+    final path = file.path;
+    // Only read the bytes when there is no path to hand the backend instead:
+    // loading a whole file into memory just to discard it would be wasteful
+    // on desktop. withData is gone from the API; readAsBytes() replaces it.
+    final bytes = path == null ? await file.readAsBytes() : null;
+    if (path == null && (bytes == null || bytes.isEmpty)) return;
+    if (!mounted) return;
+    setState(() {
+      _pickedImagePath = path;
+      _pickedImageBytes = bytes;
+      _pickedFileName = file.name;
+    });
+    _focusNode.requestFocus();
+  }
+
   bool _whatsappStopped = false;
   CancelToken? _whatsappCancelToken;
 
@@ -1175,19 +1221,34 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: _pickedImagePath != null
-                      ? Image.file(
-                          File(_pickedImagePath!),
+                  child: !_pickedIsImage
+                      // Not a picture: Image.file/memory would throw while
+                      // decoding it, so show a file tile instead.
+                      ? Container(
                           width: 60,
                           height: 60,
-                          fit: BoxFit.cover,
+                          color: MemoTheme.of(context).bgElement,
+                          child: Icon(
+                            Icons.insert_drive_file_outlined,
+                            size: 28,
+                            color: MemoTheme.of(context).textDim,
+                          ),
                         )
-                      : Image.memory(
-                          _pickedImageBytes!,
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.cover,
-                        ),
+                      : _pickedImagePath != null
+                          ? Image.file(
+                              File(_pickedImagePath!),
+                              width: 60,
+                              height: 60,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => const SizedBox(width: 60, height: 60),
+                            )
+                          : Image.memory(
+                              _pickedImageBytes!,
+                              width: 60,
+                              height: 60,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => const SizedBox(width: 60, height: 60),
+                            ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -1260,30 +1321,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     ? L10n.t('orchestra_not_available')
                     : L10n.t('attach_image'),
                 disabled: orchestraEnabled,
-                onTap: () async {
-                  final isSending = ref.read(isSendingProvider);
-                  if (isSending || orchestraEnabled) return;
-
-                  // pickFile (singular) replaces pickFiles + allowMultiple:
-                  // false. PlatformFile.path is now null — rather than
-                  // throwing — whenever the file is not on local disk, which
-                  // covers web blobs and Android content:// URIs alike, so
-                  // the old kIsWeb special-case is no longer needed.
-                  final file = await FilePicker.pickFile(type: FileType.image);
-                  if (file == null) return;
-                  final path = file.path;
-                  // Only read the bytes when there is no path to hand the
-                  // backend instead: loading a whole image into memory just
-                  // to discard it would be wasteful on desktop. withData is
-                  // gone from the API; readAsBytes() is the replacement.
-                  final bytes = path == null ? await file.readAsBytes() : null;
-                  if (path == null && (bytes == null || bytes.isEmpty)) return;
-                  setState(() {
-                    _pickedImagePath = path;
-                    _pickedImageBytes = bytes;
-                    _pickedFileName = file.name;
-                  });
-                  _focusNode.requestFocus();
+                onTap: () {
+                  if (orchestraEnabled) return;
+                  _pickAttachment(FileType.image);
                 },
               ),
               const SizedBox(width: 4),
@@ -1293,32 +1333,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     ? L10n.t('orchestra_not_available')
                     : L10n.t('attach_file'),
                 disabled: orchestraEnabled,
-                onTap: () async {
-                  final isSending = ref.read(isSendingProvider);
-                  if (isSending || orchestraEnabled) return;
-
-                  final file = await FilePicker.pickFile(type: FileType.any);
-                  if (file == null) return;
-                  final path = file.path;
-                  final bytes = path == null ? await file.readAsBytes() : null;
-                  if (path == null && (bytes == null || bytes.isEmpty)) return;
-                  final text = _controller.text.trim();
-                  _controller.clear();
-                  _dismissPopup();
-                  try {
-                    await ref.read(messagesProvider.notifier).sendFile(
-                          text,
-                          filePath: path,
-                          fileBytes: bytes,
-                          fileName: file.name,
-                        );
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}')),
-                      );
-                    }
-                  }
+                onTap: () {
+                  if (orchestraEnabled) return;
+                  _pickAttachment(FileType.any);
                 },
               ),
               // Orchestra quick toggle

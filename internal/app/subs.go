@@ -194,7 +194,7 @@ func (a *App) SubscriptionsState(ctx context.Context) models.SubscriptionsState 
 		st.Model = p.Model
 	}
 	ls := m.LoginStatus()
-		st.Login = models.SubscriptionLogin{Provider: ls.Provider, Running: ls.Running, URL: ls.URL, Done: ls.Done, Error: ls.Error, NeedsPaste: ls.NeedsPaste}
+	st.Login = models.SubscriptionLogin{Provider: ls.Provider, Running: ls.Running, URL: ls.URL, Done: ls.Done, Error: ls.Error, NeedsPaste: ls.NeedsPaste}
 	return st
 }
 

@@ -228,7 +228,6 @@ func login(provider, authDir string) {
 		os.Exit(1)
 	}
 	fmt.Println("Authentication successful")
-	fmt.Fprintln(os.Stderr, "EXITING NOW")
 	os.Exit(0)
 }
 

@@ -40,8 +40,9 @@ func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPost:
 		var body struct {
-			Action   string `json:"action"`
-			Provider string `json:"provider"`
+			Action      string `json:"action"`
+			Provider    string `json:"provider"`
+			CallbackURL string `json:"callback_url"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
@@ -61,14 +62,9 @@ func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 		case "submit_callback":
 			// The sign-in's authorization code, which is a credential until it
 			// is exchanged: admin-only, like the login that produced it.
-			var cb struct {
-				CallbackURL string `json:"callback_url"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&cb); err != nil {
-				http.Error(w, "bad json", http.StatusBadRequest)
-				return
-			}
-			if err := s.fullBridge.SubmitSubscriptionCallback(cb.CallbackURL); err != nil {
+			// callback_url was decoded with the rest of the body above: the
+			// body is a stream and a second Decode of it would only see EOF.
+			if err := s.fullBridge.SubmitSubscriptionCallback(body.CallbackURL); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}

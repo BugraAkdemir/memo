@@ -197,6 +197,19 @@ it works."
 
 CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/PR.
 
+**Test flakes: reproduce under load, then measure — never "re-run until green".** A test that passes alone and fails in CI is a
+race. Build the binary (`go test -race -c -o x.test ./internal/app/`), start ~12–24 busy loops (`sh -c 'while :; do :; done'`, with a
+`timeout`), run it with `-test.count=150` and `TMPDIR=<dir>` (a failed temp-dir cleanup leaves its files behind), and compare a
+build of the old code against the new one on the same load. Two classes already found this way: (1) a test asserting on the
+*last* request a fake provider saw — the background chat-title call can arrive after it; look for ANY matching request;
+(2) `TempDir RemoveAll cleanup: ... directory not empty` — post-turn follow-up work (the chat-title generation) still writing to
+the session store when the test's temp dir is removed.
+
+**Follow-up work after a turn uses `a.goBackground(...)`, and a test that runs a turn calls `drainBackground(t, a)` AFTER its last
+`t.TempDir()`** (`internal/app/background.go`, `background_test.go`). Cleanups run in reverse order, so only a drain registered
+after the temp dirs runs before they are removed. `Shutdown` waits for the same work (2 s) after cancelling the lifecycle context.
+Never use `goBackground` for the long-lived servers/loops started in `Startup` — a wait on those would never return.
+
 **Upstream watch** (`.github/workflows/upstream.yml`, every 6 hours + manual): credential-free probes of everything outside this
 repo that Memo depends on — the vendors' API/OAuth endpoints (expected answer is a *refusal*, which still proves address, error
 shape and no block), the Antigravity update manifest CLIProxyAPI reads, the pinned CLIProxyAPI release (assets and digests still

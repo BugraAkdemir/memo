@@ -11,6 +11,7 @@ import (
 	"memo/internal/cliproxy"
 	"memo/internal/config"
 	"memo/internal/logx"
+	"memo/internal/modelcatalog"
 	"memo/internal/models"
 	"memo/internal/provider"
 )
@@ -60,6 +61,28 @@ func subsMarker(m *cliproxy.Manager, model string) provider.ProviderConfig {
 		Model:   model,
 		Enabled: true,
 	}
+}
+
+// subscriptionMarker keeps the user's effort preference across sidecar restarts.
+func (a *App) subscriptionMarker(m *cliproxy.Manager, model string) provider.ProviderConfig {
+	p := subsMarker(m, model)
+	if old, ok := a.subsMarkerConfig(); ok {
+		p.EffortLevel = old.EffortLevel
+		if old.Model != model {
+			p.EffortLevel = supportedSubscriptionEffort(model, p.EffortLevel)
+		}
+	}
+	return p
+}
+func supportedSubscriptionEffort(model, level string) string {
+	if cap, ok := modelcatalog.Shared().Cached(model, ""); ok {
+		for _, l := range cap.Thinking.Levels {
+			if l == level {
+				return level
+			}
+		}
+	}
+	return ""
 }
 
 // isSubsMarker reports whether p is the Subscriptions provider.
@@ -326,7 +349,7 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 	prev := ""
 	if p, ok := a.subsMarkerConfig(); ok && p.Model != "" {
 		prev = p.Model
-		if err := a.UpdateProvider(subsMarker(m, prev)); err != nil {
+		if err := a.UpdateProvider(a.subscriptionMarker(m, prev)); err != nil {
 			logx.Printf("subs: early provider registration: %v", err)
 		}
 	}
@@ -356,7 +379,7 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 		}
 	}
 
-	return a.UpdateProvider(subsMarker(m, pickDefaultSubscriptionModel(list, prev)))
+	return a.UpdateProvider(a.subscriptionMarker(m, pickDefaultSubscriptionModel(list, prev)))
 }
 
 // Timing for syncSubscriptions — vars so tests can shorten them.
@@ -436,6 +459,9 @@ func (a *App) SetProviderModel(name, model string) error {
 				p.Models = append(p.Models, provider.ConfiguredModel{ID: model})
 			}
 			p.Model = model
+			if isSubsMarker(p) {
+				p.EffortLevel = supportedSubscriptionEffort(model, p.EffortLevel)
+			}
 			return a.UpdateProvider(p)
 		}
 	}
@@ -486,9 +512,16 @@ func (a *App) ListProviderModels(ctx context.Context, name string) ([]models.Pro
 			list = m.CachedModels()
 		}
 		quotas := a.subsQuotas(ctx, len(list) > 0, models.QuotaWaitFromContext(ctx))
+		catalog := modelcatalog.Shared()
+		_ = catalog.Ensure(ctx)
 		out := make([]models.ProviderModel, 0, len(list))
 		for _, md := range list {
+			catalog.ObserveOwner(md.ID, md.OwnedBy)
 			pm := models.ProviderModel{ID: md.ID, OwnedBy: md.OwnedBy}
+			if cap, ok := catalog.Cached(md.ID, md.OwnedBy); ok {
+				pm.ContextLength = cap.Context
+				pm.EffortLevels = cap.Thinking.Levels
+			}
 			if q, ok := quotas.For(md.ID, md.OwnedBy); ok {
 				r := q.Remaining
 				pm.Remaining, pm.ResetAt, pm.QuotaWindow = &r, q.ResetAt, q.Window

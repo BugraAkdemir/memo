@@ -62,9 +62,9 @@ func TestContextBudgetFor_CustomGatewayFollowsTheModel(t *testing.T) {
 	a := &App{cfg: &config.AppConfig{}, providerCfgMgr: cfgMgr}
 
 	for name, want := range map[string]int{
-		subsProviderName: 1024 * 1024, // the model id says Gemini
-		"mine":           50000,       // an explicit setting beats the id
-		"plain":          128 * 1024,  // nothing to go on -> the default
+		subsProviderName: 128 * 1024, // unknown catalog: internal safety budget
+		"mine":           50000,      // an explicit setting beats the id
+		"plain":          128 * 1024, // nothing to go on -> the default
 	} {
 		if got := a.contextBudgetFor(name); got != want {
 			t.Errorf("contextBudgetFor(%q) = %d, want %d", name, got, want)

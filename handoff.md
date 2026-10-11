@@ -15,6 +15,7 @@
 - Claude hesabıyla giriş yok → Claude kota biçimi (`oauth/usage`) ve `quota_exhausted` kartı gerçek doluşta hiç görülmedi.
 
 **Doğrulanmadı (kimse denemedi)**
+- Mobil bağlantı akışı (`feat/mobile-connect-flow`, merge edilmedi): gerçek telefonda/emülatörde görünüm, `MemoRoot` ile sağlayıcıların yenilenmesi, Android/iOS düz HTTP; ayrıntı son oturum özeti.
 - Auto Route: gerçek satıcı/abonelik model kalitesi, kota davranışı ve gerçek GGUF soğuk yükleme ölçülmedi. Kurulum sihirbazının yeni düzeni/abonelik girişinin native pencerede kontrolü de açık; sahte HTTP + Flutter testleri geçti.
 - Yeni opsiyonel karar/doğrulama modeli: gerçek sağlayıcıda karar kalitesi, doğrulama güvenilirliği, hız ve maliyet ölçümü yapılmadı; sahte HTTP sağlayıcısı + gerçek sohbet yönlendirmesi ve TR/EN widget testleriyle doğrulandı.
 - Gerçek hesapla uzak giriş (yapıştırma → token değişimi); kopyala butonunun HTTP tarayıcıdaki `execCommand` yedeği.
@@ -37,9 +38,12 @@
 
 ---
 
-# Son oturum — 2026-10-12 — Kullanıcı etkisi / yarım özellik denetimi
-- Kullanıcının rapor isteği tamamlandı: `docs/AUDIT_2026-10-12.md`; 21 özellik için yaklaşık olgunluk puanı, 17 bulgu/sınır, üretimden kopmuş ve test destek kodunun ayrımı. Yüzdeler ölçülmüş başarı oranı değil; kapsam/kanıt sınırları açık.
-- Codebase-memory grafik/trace/snippet + coverage ve doğrudan kaynak kontrolü kullanıldı. Kritik davranışlar 9 overlay gözlem testiyle yeniden üretildi; kalıcı tekrar çalıştırma: `python3 docs/audits/2026-10-12/run_probes.py`. PASS kusurun gözlendiği anlamına gelir; düzeltme yapıldığını göstermez. Üretim kodu değiştirilmedi.
-- Standart doğrulama (tarama başındaki e42d7a89 durumu): CGO sqlite_fts5 build/vet/tüm Go race exit 0; Flutter 595 passed; analyze exit 1, mevcut 5 info, error/warning yok. Gerçek hesap/donanım/native görünüm bu turda denenmedi.
-- Çalışma alanında eşzamanlı frontend auth/restart, app shell, bağlantı ekranı, server probe, L10n ve test düzenlemeleri görüldü; dokunulmadı, bu değişiklikler raporun son-hâl doğrulaması kapsamında değil. Rapor/kanıt/handoff ayrı yerel docs commit; push/yayın yok. Auto Route kod commit’leri 9ec3487d + 185b99b2, önceki sihirbaz ea0ad9cc; ayrıntılı eski özet arşivde.
-- Sonraki iş: kullanıcı raporu değerlendirdikten sonra veri kurtarma ve ayar kalıcılığı sorunlarından başlanması önerildi. Bu oturumda düzeltme veya yayın istenmedi.
+---
+
+# Son oturum — 2026-10-12 — Mobil bağlantı akışı (`feat/mobile-connect-flow`)
+- İstek: telefonda adres → sunucu kontrolü → giriş (şifre / token / ikisi, "beni hatırla"); sunucu zaten kuruluysa kurulum sihirbazı gelmesin, hiç kurulmadıysa gelsin; masaüstü/web değişmesin. Yeni dal, `main`'e merge/push yok. Commit'ler: **50ce0b35** (kapı + kapsam yenileme), **7d17165a** (bağlantı ekranı), **b4fec753** (sihirbaz). Arada başka bir oturumun `e9189005` (denetim belgeleri) bu dala düştü; yalnız docs.
+- Kök nedenler: (1) `authGateProvider` istemciyi bir kez `read` ediyordu; adres sonradan girilince eski, adressiz istemciyle yoklamaya devam ediyordu → artık `watch`. (2) `/api/onboarding` giriş arkasında (canlı doğrulandı: anonim 401), telefon yerel `false` tahminiyle tüm sihirbazı açıyordu. (3) Tüm hatalar tek cümleydi. (4) `auth_mode: none` giriş formu istiyordu (artık `ok`).
+- Yeni: `widgets/mobile_connect_screen.dart` (yalnız `isMobilePlatform` ve kayıtlı adres boşken), `core/server_probe.dart` (DNS / reddedildi / zaman aşımı / TLS / rota yok / Memo değil sınıflandırması), `core/scope_restart.dart` + `main.dart` `MemoRoot` (telefonda `exit(0)` yerine ProviderScope yenileme; `ChangeServerDialog` telefonda bunu kullanır). Port kuralı `normalizeBackendUrl`'de zaten vardı: portsuz http → 8090, yazılan port korunur. Sihirbazdan mobil sunucu adımı ve 18 ölü L10n anahtarı silindi; telefonda sihirbaz yalnız kayıtlı adres + açık kapı + sunucunun "tamamlanmadı" yanıtı varken görünür (`onboardingCheckedProvider`, başarısız okuma 5 sn'de bir tekrarlanır).
+- Doğrulama: `flutter test` **632 passed**, `flutter analyze lib/` yalnız mevcut 5 info, L10n literal taraması boş. Gerçek HTTP: izole backend `--lan` ile LAN IP'sinden (non-loopback) — setup/status, reddedilen port, çözülmeyen ad, create-admin → şifre girişi (yanlış şifre 401, doğru + remember), ikinci istemcide onboarding=true, token modunda gerçek `authGateProvider` (setupNeeded → loginNeeded → ok) geçti. Go tarafı değişmedi (yalnız binary derlendi).
+- **Doğrulanmadı:** gerçek telefon/emülatörde hiçbir şey (görünüm, klavye, `MemoRoot` yenilemesinin tüm sağlayıcıları sıfırladığı, Android/iOS cleartext); `none` modu yalnız birim testle; portsuz domain 80/443 arkasındaysa kullanıcı `https://` yazmalı (443/80 yedeği eklenmedi). Telefonda ilk bağlantıdan sonra gezi/launchpad yine bir kez görünebilir (kurulum değil, cihaz başına). Aynı "giriş sonrası onboarding'i yeniden oku" eksiği web'de de var; web'e dokunulmadı.
+- Sonraki: dal incelenip `main`'e alınacaksa önce telefonda elle dene; `handoff` açık işlerine yukarıdaki doğrulanmayanlar eklendi.

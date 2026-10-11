@@ -70,6 +70,8 @@ Bir akış parçası, `finish_reason`'ı aşağıdaki işaretçilerden birini s�
 Kota, kimlik bilgisi dosyasındaki token'la sağlayıcıdan okunur; token yalnızca sağlayıcıya gider — bu API'ye, günlüklere ya da arayüze asla. Antigravity bunu model başına bildirir; Codex ve Claude hesabı pencerelerle ölçer, bu yüzden en sıkışık pencere o sağlayıcının tüm modellerine uygulanır. Claude ayrıştırıcısı uç noktanın bilinen biçiminden yazıldı ve canlı bir Claude girişine karşı doğrulanmadı.
 
 ### 🌐 Etkileşimli Tarayıcı Paneli
+**Beta:** Ayarlar › Beta Özellikler kapalıyken navigate/click/scroll/type `{error: "...beta özelliğidir..."}` döner ve status oturum yok der; close serbest kalır.
+
 Sohbetin yanındaki canlı tarayıcı paneli tek bir yalıtılmış Chromium oturumunu sürer (`internal/browserengine/`). Tüm oturum rotaları ajan (araç çalıştırma) izni ister, yalnızca `http`, `https` ve boş sayfayı kabul eder (`file://` yok) ve panel tek turda yeniden çizilebilsin diye `{screenshot_base64, url, error}` döner. İsteğe bağlı tarayıcı kurulumunu `GET`/`PUT /api/browser`, `POST /api/browser/install` ve `GET /api/browser/install/progress` yönetir.
 
 | Endpoint | Metot | Açıklama |

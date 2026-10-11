@@ -81,7 +81,8 @@ Common issues and their solutions for Memo.
 **Solution:** Check that the backend is running and reachable. A reply is only cut after 300 seconds of true silence (30 minutes in total at most); it is then marked as a timeout and the text received so far is kept.
 
 ## 13. The browser panel stays blank or Memo cannot open it
-**Issue:** The live browser panel shows nothing, or `browser_*` tools fail.
+**Issue:** The live browser panel shows nothing, or `browser_*` tools fail — or there is no globe button / the model says it has no such tool.
+**First check:** the panel and `open_app` are **Beta** features. Turn on Settings › Beta Features; with it off they are not shown or offered at all.
 **Cause:** The browser panel drives an isolated Chromium that is an optional download. Pages are also refused if they are not `http`, `https` or a blank page (`file://` is blocked on purpose).
 **Solution:** Install Chromium from the Browser Engine section of Settings › General (the *Download Chromium* button). Agent permission is required for the panel's session endpoints; with Agent Mode off you can still drive the panel by hand if your account has the agent permission.
 

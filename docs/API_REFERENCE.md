@@ -271,6 +271,8 @@ Quota comes from the vendor with the token in the credential file, which goes on
 | `GET` / `PUT` | `/api/skills/active-list?chat_id=`, `/api/skills/active` (`{chat_id, names}`) | Get/set the skills active **in one chat**. Activation is per chat; a new chat starts with none |
 
 ### 🌐 Interactive Browser Pane
+**Beta:** with Settings › Beta Features off, navigate/click/scroll/type answer `{error: "...beta feature..."}` and status reports no session; close stays allowed.
+
 The live browser panel next to the chat drives one isolated Chromium session (`internal/browserengine/`). All session routes need the agent (tool-execution) permission, accept only `http`, `https` and a blank page (no `file://`), and answer `{screenshot_base64, url, error}` so the panel can repaint from a single round trip. `GET`/`PUT /api/browser`, `POST /api/browser/install` and `GET /api/browser/install/progress` manage the optional browser install.
 
 | Method | Endpoint | Description |

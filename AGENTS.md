@@ -423,6 +423,8 @@ confirm every single time before tagging or pushing a tag.
   A real sign-in needs a browser and your own account.
 - **Upstream drift** is watched by the scheduled `upstream` workflow (see below), not by hand.
 
+**open_app and the interactive browser pane are Beta features (gate added 2026-10-11).** `open_app` and the seven `browser_*` tools are `ToolDef{Beta: true}`: with Settings › Beta Features off, `ToolRegistry.Get` says not-found and `ToOpenAITools` skips them (the pipeline then answers "Unknown tool"), so they are absent, not disabled. The one place that asks is `internal/beta` (`beta.Enabled()`, fails closed; `App.Startup` installs `App.GetBeta` as the gate). Also gated: the panel's direct actions (`App.requireBrowserBeta` — Navigate/Click/Scroll/Type), the "Agent mode is off" hint in `identity.buildCapabilitiesBlock` and the pipeline's empty-turn fallback (both stop mentioning the browser/opening apps), and on the Flutter side the globe button, chat-menu row and pane via `betaEnabledProvider` (backend answer wins over the local mirror). `SetBeta(false)` closes a live browser session. Do not gate `fetch_page`'s headless-browser fallback or the Chromium install section in Settings › General: they serve non-beta `fetch_page`. A new beta-only tool = set `Beta: true` on its ToolDef; a test that needs it must switch Beta on (`Harness.SetBeta(true)` in e2e, `beta.SetGate` in unit tests).
+
 **open_app and the interactive browser pane (2026-10-05 — all four found broken live, then fixed)**
 - **On Linux, never exec the app name the model gives you.** It is a display name ("Spotify", "VS Code"); binaries
   are lowercase and Flatpak/Snap apps are not on PATH. `open_app` resolves it through the Desktop Entry registry

@@ -219,6 +219,13 @@ class _AppShellState extends ConsumerState<AppShell> {
     // each needing its own copy of this listener.
     ref.listen<AsyncValue<AuthGateInfo>>(authGateProvider, (prev, next) {
       if (authGateBlocked(prev?.valueOrNull) != authGateBlocked(next.valueOrNull)) {
+        // Phone: /api/onboarding is behind the sign-in, so the first read
+        // (made before the user could log in) 401'd and left the local
+        // preference's "not done" guess in place — which opened the whole
+        // setup wizard on a server that was long since configured. Ask again
+        // now that the gate has moved. Not done on desktop/web, whose
+        // behaviour is deliberately unchanged.
+        if (isMobilePlatform) ref.invalidate(setupCompleteProvider);
         ref.invalidate(llamaSettingsProvider);
         ref.invalidate(systemPromptProvider);
         ref.invalidate(memoryFilesProvider);

@@ -1609,17 +1609,6 @@ class L10n {
     'connect_fail_unreachable': 'Bu adrese ağ yolu yok. Telefon başka bir ağda ya da VPN kapalı olabilir.',
     'connect_fail_not_memo': 'Bu adreste bir sunucu var ama Memo gibi yanıt vermiyor. Adresi ve portu kontrol et.',
     'connect_fail_unknown': 'Bağlantı kurulamadı.',
-    'setup_step_server': 'Sunucuya Bağlan',
-    'setup_step_server_desc':
-        'Memo\'nun beyni bilgisayarında çalışıyor; telefon ona bağlanıyor. Bilgisayarındaki Memo\'nun adresini gir.',
-    'setup_server_url_label': 'Sunucu adresi',
-    'setup_server_token_label': 'Erişim anahtarı (varsa)',
-    'setup_server_help':
-        'Bilgisayarında Memo açıkken, aynı Wi-Fi ağındaysan onun yerel IP adresini 8090 portuyla yaz. Tailscale kullanıyorsan doğrudan Tailscale adresini yazabilirsin.',
-    'setup_server_test': 'Bağlantıyı test et',
-    'setup_server_testing': 'Deneniyor...',
-    'setup_server_ok': 'Bağlandı.',
-    'setup_server_fail': 'Bu adreste Memo bulunamadı. Adresi ve bilgisayardaki Memo\'nun açık olduğunu kontrol et.',
 
     'setup_step_language_theme': 'Dil ve Görünüm',
 
@@ -4043,17 +4032,6 @@ class L10n {
     'connect_fail_unreachable': 'There is no network route to that address. Your phone may be on another network, or the VPN is off.',
     'connect_fail_not_memo': 'Something answers at that address but it does not behave like Memo. Check the address and port.',
     'connect_fail_unknown': 'Could not connect.',
-    'setup_step_server': 'Connect to your server',
-    'setup_step_server_desc':
-        'Memo\'s brain runs on your computer; your phone connects to it. Enter the address of Memo on your computer.',
-    'setup_server_url_label': 'Server address',
-    'setup_server_token_label': 'Access token (if any)',
-    'setup_server_help':
-        'With Memo running on your computer, and your phone on the same Wi-Fi, enter that computer\'s local IP address with port 8090. If you use Tailscale, its address works directly.',
-    'setup_server_test': 'Test connection',
-    'setup_server_testing': 'Trying...',
-    'setup_server_ok': 'Connected.',
-    'setup_server_fail': 'No Memo found at that address. Check the address, and that Memo is running on your computer.',
 
     'setup_step_language_theme': 'Language & Appearance',
 

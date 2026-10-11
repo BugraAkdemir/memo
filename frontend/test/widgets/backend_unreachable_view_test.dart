@@ -291,13 +291,30 @@ void main() {
       // unreachable AND a healthy auth gate — so the setup flag is the only
       // thing that can suppress the overlay here. Without it the test would
       // pass for the wrong reason: a null gate already short-circuits.
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
       await pumpApp(
         tester,
         connected: false,
         gate: Stream.value(const AuthGateInfo(AuthGateState.ok)),
         setupComplete: false,
       );
+      debugDefaultTargetPlatformOverride = null;
       expect(find.byType(BackendUnreachableView), findsNothing);
+    });
+
+    // On a phone the address is entered on the connect screen before this can
+    // matter, and the wizard stays hidden until the server answers — so an
+    // unfinished-setup flag must not hide the only screen that can fix a
+    // server that stopped answering.
+    testWidgets('on a phone it still covers the screen when setup is not marked complete',
+        (tester) async {
+      await pumpApp(
+        tester,
+        connected: false,
+        gate: Stream.value(const AuthGateInfo(AuthGateState.ok)),
+        setupComplete: false,
+      );
+      expect(find.byType(BackendUnreachableView), findsOneWidget);
     });
 
     testWidgets(

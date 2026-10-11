@@ -62,13 +62,13 @@ void main() {
             body: TextButton(
               onPressed: () async =>
                   picked = await showServerFileBrowserDialog(context, mode: mode),
-              child: const Text('open'),
+              child: const Icon(Icons.launch),
             ),
           ),
         ),
       ),
     ));
-    await tester.tap(find.text('open'));
+    await tester.tap(find.byIcon(Icons.launch));
     await tester.pumpAndSettle();
   }
 

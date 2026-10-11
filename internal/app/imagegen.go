@@ -65,7 +65,7 @@ const imageGenerationMarker = "generated_image"
 // can only produce images. Returns ok=false for every ordinary chat turn,
 // which is the overwhelmingly common case.
 func (a *App) imageRoute(ctx context.Context, router *provider.Router) (provider.ImageGenerator, string, bool) {
-	if router == nil {
+	if router == nil || subscriptionTextRouteFromCtx(ctx) != nil {
 		return nil, "", false
 	}
 	gen, model, ok := router.ImageGenerator()

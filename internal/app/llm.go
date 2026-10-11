@@ -387,7 +387,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			}
 		} else {
 			var err error
-			agentRouter, modelName, effortLevel, err = a.resolveAgentProvider()
+			agentRouter, modelName, effortLevel, err = a.resolveAgentProviderForContext(ctx)
 			if err != nil {
 				a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
@@ -787,7 +787,7 @@ func (a *App) callWebSearchAgentStream(ctx context.Context, messages []api.Messa
 			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
 		}
 
-		agentRouter, modelName, effortLevel, err := a.resolveAgentProvider()
+		agentRouter, modelName, effortLevel, err := a.resolveAgentProviderForContext(ctx)
 		if err != nil {
 			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
@@ -929,7 +929,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		// chat is actually configured with — see AgentTaskRunner's and
 		// RunAgentTasks's doc comments for why tasks need this instead of a
 		// plain ChatCompletion.
-		agentRouter, modelName, effortLevel, err := a.resolveAgentProvider()
+		agentRouter, modelName, effortLevel, err := a.resolveAgentProviderForContext(ctx)
 		if err != nil {
 			// Combined mode: an Orchestra-configured user often has no separate
 			// "active provider" set, so the agent half would otherwise fail here.
@@ -1108,7 +1108,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	a.providerMu.RLock()
 	orchEnabled := a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled
 	a.providerMu.RUnlock()
-	if orchEnabled {
+	if orchEnabled && subscriptionTextRouteFromCtx(ctx) == nil {
 		a.providerMu.RLock()
 		if a.activeProviderName != "" {
 			logx.Printf("ORCHESTRA: overriding active provider '%s' - orchestra mode uses its own provider configuration", a.activeProviderName)
@@ -1242,6 +1242,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	// resolveAgentProvider already relies on for agent mode — see its doc
 	// comment for the confusing-error-message this used to produce here.
 	providerRouter, activeName, _ := a.ensureProviderRouter()
+	if route := subscriptionTextRouteFromCtx(ctx); route != nil {
+		providerRouter, activeName = route.router, subsProviderName
+	}
 	if activeName != "" && providerRouter != nil {
 		go func() {
 			defer close(outCh)
@@ -1273,6 +1276,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				EffortLevel: a.activeProviderEffortLevel(activeName),
 			}
 			a.cfgMu.RUnlock()
+			if route := subscriptionTextRouteFromCtx(ctx); route != nil {
+				req.EffortLevel = route.effort
+			}
 
 			ch, err := providerRouter.ChatCompletionStream(providerCtx, req)
 			if err != nil {
@@ -1280,7 +1286,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				var errMsg string
 				if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
 					errMsg = tm
-				} else if a.providerSwapped(providerRouter) {
+				} else if subscriptionTextRouteFromCtx(ctx) == nil && a.providerSwapped(providerRouter) {
 					errMsg = a.modelSwappedMidStreamMsg()
 				} else {
 					errMsg = "⚠️ " + err.Error()
@@ -1295,6 +1301,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 			start := time.Now()
 			usageMetaVal := usageMeta{Provider: activeName, Model: a.activeProviderModel(activeName), Category: categoryChat, PromptTokens: estimateMessagesTokens(messages)}
+			if route := subscriptionTextRouteFromCtx(ctx); route != nil {
+				usageMetaVal.Model = route.model
+			}
 			// providerCompletionTokens holds the provider's own completion
 			// count when it reported one. Kept separate from tokenCount (which
 			// counts received SSE content chunks, not tokens) so the
@@ -1354,7 +1363,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 					var errMsg string
 					if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
 						errMsg = tm // the watchdog's cancel surfaced as a read error
-					} else if a.providerSwapped(providerRouter) {
+					} else if subscriptionTextRouteFromCtx(ctx) == nil && a.providerSwapped(providerRouter) {
 						errMsg = a.modelSwappedMidStreamMsg()
 					} else {
 						errMsg = "⚠️ " + chunk.Error
@@ -1908,7 +1917,7 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 	a.providerMu.RLock()
 	orchEnabled := a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled
 	a.providerMu.RUnlock()
-	if orchEnabled {
+	if orchEnabled && subscriptionTextRouteFromCtx(ctx) == nil {
 		var userPrompt string
 		var systemPrompt string
 		for i := len(messages) - 1; i >= 0; i-- {
@@ -1958,6 +1967,9 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 	// resolveAgentProvider already relies on for agent mode — see its doc
 	// comment for the confusing-error-message this used to produce here.
 	providerRouter, activeName, _ := a.ensureProviderRouter()
+	if route := subscriptionTextRouteFromCtx(ctx); route != nil {
+		providerRouter, activeName = route.router, subsProviderName
+	}
 	if activeName != "" && providerRouter != nil {
 		// Every caller of callLLM wants *text* (chat titles, fact
 		// extraction, mood, proactive checks — see the category constants).
@@ -1990,10 +2002,13 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 		}
 		a.cfgMu.RUnlock()
 
+		if route := subscriptionTextRouteFromCtx(ctx); route != nil {
+			req.EffortLevel = route.effort
+		}
 		resp, err := providerRouter.ChatCompletion(pctx, req)
 		if err != nil {
 			logx.Printf("Provider error: %v", err)
-			if a.providerSwapped(providerRouter) {
+			if subscriptionTextRouteFromCtx(ctx) == nil && a.providerSwapped(providerRouter) {
 				return a.modelSwappedMidStreamMsg()
 			}
 			errMsg := "⚠️ " + err.Error()

@@ -11,3 +11,11 @@ Vendor ownership from the authenticated list disambiguates routing. When multipl
 Chat's effort selector and the provider editor query `/api/providers/effort-levels?type=subscriptions&model=<id>`. Only models present in the account list return efforts. The selected effort is sent through the existing OpenAI-compatible `reasoning_effort` request field. Sidecar re-registration preserves the preference; changing models clears a value not supported by the new model.
 
 Verification uses local HTTP catalog fixtures for offline recovery, failed/malformed refreshes, capability matching and 1M context/gauge behavior; the REST effort test excludes catalog-only models, and a Flutter widget test selects and saves a reported effort. An explicit network probe is available with `CGO_ENABLED=1 go test -tags 'sqlite_fts5 upstream' ./internal/modelcatalog -run TestPublishedCatalogSchema -v`. Normal catalog unit tests do not require the internet.
+
+## Text questions while an image model is selected
+
+Selecting a subscription image model does not make every message an image prompt. A normal question (including a question about an attached image) is routed for that turn to an account-listed chat model. Memo first prefers a previously saved chat model from the same signed-in vendor, then another chat model from that vendor, then another signed-in subscription vendor. The saved provider/model selection is unchanged.
+
+The override is a private single-provider router carried on the request context, used by ordinary streaming, agents, web search and contextual utility calls. It cannot spill into unrelated API providers. Explicit picture requests and `/image` keep the selected image route. If no subscription chat model is available, the stream ends with an explanation rather than producing an unwanted image.
+
+The e2e fixture selects `codex-image`, asks a normal question through plain chat, agent and web-search turns, and checks for `codex-model-a`'s text response with no image calls. A subsequent explicit drawing request still produces an image, while the selected model remains `codex-image`. A separate unit test verifies terminal failure without sending an image when no chat model is available. Real vendor request wording and routing quality have not been measured; intent classification remains the existing heuristic with the explicit `/image` override.

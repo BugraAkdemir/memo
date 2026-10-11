@@ -329,18 +329,24 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 		agentActive = true
 	}
 
-	// An image-output-only active model (see imagegen.go) can neither run a
-	// tool loop nor a web-search turn: both are /chat/completions calls that
-	// such a model answers with a 404, and neither has anywhere to put an
-	// image if it somehow succeeded. Force the plain path, which is the one
-	// that routes the turn to the images endpoint. Checked before the agent
-	// system prompt is appended below so an image prompt isn't padded with
-	// tool instructions the model will never use.
+	// Explicit picture requests keep the image path. Ordinary questions on
+	// a subscription image model use a private chat router from that account.
+	// Other image providers retain their explicitly selected image behavior.
 	imageOnlyModel := false
 	if router, activeName, _ := a.ensureProviderRouter(); activeName != "" && router != nil {
 		if _, _, ok := a.imageRoute(ctx, router); ok {
 			imageOnlyModel = true
-			agentActive = false
+			if cfg, found := a.providerConfigByName(activeName); found && isSubsMarker(cfg) &&
+				!imageForced(ctx) && (code || classifyImageIntent(userMsg, len(imageInputsFromMessages(messages)) > 0) == imageIntentNone) {
+				routed, err := a.routeSubscriptionText(ctx, cfg)
+				if err != nil {
+					return a.subscriptionTextRouteError(ctx, err, userMsg, sessionID)
+				}
+				ctx = routed
+				imageOnlyModel = false
+			} else {
+				agentActive = false
+			}
 		}
 	}
 
@@ -370,7 +376,7 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 		}
 	}
 
-	orchestraEnabled := a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled
+	orchestraEnabled := subscriptionTextRouteFromCtx(ctx) == nil && a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled
 	localModelRunning := a.llamaServer != nil && a.llamaServer.IsRunning()
 
 	a.providerMu.RLock()

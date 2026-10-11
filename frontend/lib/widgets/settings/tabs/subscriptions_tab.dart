@@ -23,7 +23,8 @@ import '../../../providers/settings_provider.dart';
 /// Models are not picked here: they appear in the chat's model selector and
 /// `/model`, which is where the choice is made.
 class SubscriptionsTab extends ConsumerStatefulWidget {
-  const SubscriptionsTab({super.key});
+  final bool embedded;
+  const SubscriptionsTab({super.key, this.embedded = false});
 
   @override
   ConsumerState<SubscriptionsTab> createState() => _SubscriptionsTabState();
@@ -36,7 +37,8 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
   String _loginFor = ''; // provider whose sign-in this tab is waiting on
   String _authUrl = '';
   bool _starting = false;
-  bool _pasteSent = false; // the callback URL was handed over; wait for the login
+  bool _pasteSent =
+      false; // the callback URL was handed over; wait for the login
 
   @override
   void initState() {
@@ -107,7 +109,9 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
       _pasteSent = false;
     });
     try {
-      final url = await ref.read(apiClientProvider).startSubscriptionLogin(provider);
+      final url = await ref
+          .read(apiClientProvider)
+          .startSubscriptionLogin(provider);
       if (!mounted) return;
       setState(() {
         _starting = false;
@@ -120,7 +124,9 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
         _starting = false;
         _loginFor = '';
       });
-      _toast(L10n.t('subs_login_failed', {'e': FriendlyError.describeGeneric(e)}));
+      _toast(
+        L10n.t('subs_login_failed', {'e': FriendlyError.describeGeneric(e)}),
+      );
     }
   }
 
@@ -180,7 +186,9 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
       setState(() => _pasteSent = true);
     } catch (e) {
       if (!mounted) return;
-      _toast(L10n.t('subs_login_failed', {'e': FriendlyError.describeGeneric(e)}));
+      _toast(
+        L10n.t('subs_login_failed', {'e': FriendlyError.describeGeneric(e)}),
+      );
     }
   }
 
@@ -198,52 +206,68 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
     final theme = MemoTheme.of(context);
     final stateAsync = ref.watch(subscriptionsProvider);
 
-    return ListView(
-      padding: const EdgeInsets.all(32),
-      children: [
-        Text(
-          L10n.t('tab_subscriptions'),
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: theme.textMain),
+    final children = <Widget>[
+      Text(
+        L10n.t('tab_subscriptions'),
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: theme.textMain,
         ),
-        const SizedBox(height: 8),
-        Text(
-          L10n.t('subs_desc'),
-          style: TextStyle(fontSize: 13, height: 1.45, color: theme.textDim),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: MemoTheme.warningOrange.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: MemoTheme.warningOrange.withValues(alpha: 0.4)),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        L10n.t(widget.embedded ? 'setup_subs_intro' : 'subs_desc'),
+        style: TextStyle(fontSize: 13, height: 1.45, color: theme.textDim),
+      ),
+      const SizedBox(height: 12),
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: MemoTheme.warningOrange.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: MemoTheme.warningOrange.withValues(alpha: 0.4),
           ),
-          child: Text(
-            L10n.t('subs_risk_note'),
-            style: TextStyle(fontSize: 12, height: 1.4, color: theme.textMain),
-          ),
         ),
-        const SizedBox(height: 24),
-        stateAsync.when(
-          loading: () => const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+        child: Text(
+          L10n.t('subs_risk_note'),
+          style: TextStyle(fontSize: 12, height: 1.4, color: theme.textMain),
+        ),
+      ),
+      const SizedBox(height: 24),
+      stateAsync.when(
+        loading: () => const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
           ),
-          error: (e, _) => Text(
-            L10n.t('subs_error', {'e': FriendlyError.describeGeneric(e)}),
-            style: const TextStyle(color: MemoTheme.red, fontSize: 12),
-          ),
-          data: (st) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _watchForModels(st);
-            });
-            return _body(context, st);
-          },
         ),
-      ],
-    );
+        error: (e, _) => Text(
+          L10n.t('subs_error', {'e': FriendlyError.describeGeneric(e)}),
+          style: const TextStyle(color: MemoTheme.red, fontSize: 12),
+        ),
+        data: (st) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _watchForModels(st);
+          });
+          return _body(context, st);
+        },
+      ),
+    ];
+    return widget.embedded
+        ? Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          )
+        : ListView(padding: const EdgeInsets.all(32), children: children);
   }
 
   Widget _body(BuildContext context, SubscriptionsState st) {
@@ -253,12 +277,20 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.info_outline_rounded, size: 18, color: MemoTheme.warningOrange),
+            const Icon(
+              Icons.info_outline_rounded,
+              size: 18,
+              color: MemoTheme.warningOrange,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 st.problem.isEmpty ? L10n.t('subs_not_bundled') : st.problem,
-                style: TextStyle(fontSize: 13, height: 1.45, color: theme.textMain),
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.45,
+                  color: theme.textMain,
+                ),
               ),
             ),
           ],
@@ -269,11 +301,12 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '${L10n.t('subs_sidecar_version', {'version': st.version.isEmpty ? '?' : st.version})} · '
-          '${st.running ? L10n.t('subs_running') : L10n.t('subs_stopped')}',
-          style: TextStyle(fontSize: 11, color: theme.textDim),
-        ),
+        if (!widget.embedded)
+          Text(
+            '${L10n.t('subs_sidecar_version', {'version': st.version.isEmpty ? '?' : st.version})} · '
+            '${st.running ? L10n.t('subs_running') : L10n.t('subs_stopped')}',
+            style: TextStyle(fontSize: 11, color: theme.textDim),
+          ),
         const SizedBox(height: 12),
         for (final provider in st.providers) ...[
           _providerCard(context, st, provider),
@@ -285,7 +318,11 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
     );
   }
 
-  Widget _providerCard(BuildContext context, SubscriptionsState st, String provider) {
+  Widget _providerCard(
+    BuildContext context,
+    SubscriptionsState st,
+    String provider,
+  ) {
     final theme = MemoTheme.of(context);
     final accounts = st.accountsFor(provider);
     final waiting = _loginFor == provider;
@@ -298,7 +335,9 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
           Row(
             children: [
               Icon(
-                signedIn ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                signedIn
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked_rounded,
                 size: 18,
                 color: signedIn ? MemoTheme.green : theme.textDim,
               ),
@@ -309,16 +348,24 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
                   children: [
                     Text(
                       vendorLabel(provider),
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: theme.textMain),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: theme.textMain,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       signedIn
                           ? accounts
-                              .map((a) => a.email.isEmpty
-                                  ? L10n.t('subs_signed_in')
-                                  : L10n.t('subs_signed_in_as', {'email': a.email}))
-                              .join('\n')
+                                .map(
+                                  (a) => a.email.isEmpty
+                                      ? L10n.t('subs_signed_in')
+                                      : L10n.t('subs_signed_in_as', {
+                                          'email': a.email,
+                                        }),
+                                )
+                                .join('\n')
                           : L10n.t('subs_not_signed_in'),
                       style: TextStyle(fontSize: 12, color: theme.textDim),
                     ),
@@ -327,7 +374,10 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
               ),
               const SizedBox(width: 12),
               if (waiting)
-                OutlinedButton(onPressed: _cancel, child: Text(L10n.t('cancel')))
+                OutlinedButton(
+                  onPressed: _cancel,
+                  child: Text(L10n.t('cancel')),
+                )
               else if (signedIn)
                 OutlinedButton.icon(
                   onPressed: () => _signOut(provider),
@@ -336,7 +386,9 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
                 )
               else
                 FilledButton.icon(
-                  onPressed: (_starting || _loginFor.isNotEmpty) ? null : () => _signIn(provider),
+                  onPressed: (_starting || _loginFor.isNotEmpty)
+                      ? null
+                      : () => _signIn(provider),
                   icon: const Icon(Icons.link_rounded, size: 16),
                   label: Text(L10n.t('subs_sign_in')),
                 ),
@@ -346,7 +398,11 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
             const SizedBox(height: 12),
             Row(
               children: [
-                const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -358,7 +414,10 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
             ),
             if (_authUrl.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Text(L10n.t('subs_link_hint'), style: TextStyle(fontSize: 11, color: theme.textDim)),
+              Text(
+                L10n.t('subs_link_hint'),
+                style: TextStyle(fontSize: 11, color: theme.textDim),
+              ),
               const SizedBox(height: 4),
               _CopyableLink(url: _authUrl),
             ],
@@ -384,11 +443,18 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
         children: [
           Text(
             L10n.t('subs_models_title'),
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.textMain),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: theme.textMain,
+            ),
           ),
           const SizedBox(height: 6),
           if (st.models.isEmpty)
-            Text(L10n.t('subs_models_none'), style: TextStyle(fontSize: 12, color: theme.textDim))
+            Text(
+              L10n.t('subs_models_none'),
+              style: TextStyle(fontSize: 12, color: theme.textDim),
+            )
           else ...[
             Text(
               L10n.t('subs_models_count', {'n': '${st.models.length}'}),
@@ -401,11 +467,20 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
               children: [
                 for (final m in st.models)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
-                      color: m.id == st.model ? MemoTheme.accent.withValues(alpha: 0.15) : theme.bgHover,
+                      color: m.id == st.model
+                          ? MemoTheme.accent.withValues(alpha: 0.15)
+                          : theme.bgHover,
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: m.id == st.model ? MemoTheme.accent : theme.borderSoft),
+                      border: Border.all(
+                        color: m.id == st.model
+                            ? MemoTheme.accent
+                            : theme.borderSoft,
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -413,7 +488,11 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
                         Flexible(
                           child: Text(
                             m.id,
-                            style: TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11, color: theme.textMain),
+                            style: TextStyle(
+                              fontFamily: 'JetBrainsMono',
+                              fontSize: 11,
+                              color: theme.textMain,
+                            ),
                           ),
                         ),
                         if (m.remainingPercent != null) ...[
@@ -426,10 +505,20 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
               ],
             ),
             const SizedBox(height: 10),
-            Text(L10n.t('subs_models_hint'), style: TextStyle(fontSize: 11, color: theme.textDim, height: 1.4)),
+            Text(
+              L10n.t('subs_models_hint'),
+              style: TextStyle(fontSize: 11, color: theme.textDim, height: 1.4),
+            ),
             if (st.models.any((m) => m.remainingPercent != null)) ...[
               const SizedBox(height: 4),
-              Text(L10n.t('subs_quota_hint'), style: TextStyle(fontSize: 11, color: theme.textDim, height: 1.4)),
+              Text(
+                L10n.t('subs_quota_hint'),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: theme.textDim,
+                  height: 1.4,
+                ),
+              ),
             ],
           ],
         ],
@@ -478,7 +567,11 @@ class _CopyableLink extends StatelessWidget {
             child: SelectableText(
               url,
               maxLines: 2,
-              style: TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11, color: theme.textDim),
+              style: TextStyle(
+                fontFamily: 'JetBrainsMono',
+                fontSize: 11,
+                color: theme.textDim,
+              ),
             ),
           ),
           IconButton(
@@ -554,7 +647,11 @@ class _PasteCallbackBoxState extends State<_PasteCallbackBox> {
         children: [
           Text(
             L10n.t('subs_paste_title'),
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.textMain),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: theme.textMain,
+            ),
           ),
           const SizedBox(height: 6),
           Text(

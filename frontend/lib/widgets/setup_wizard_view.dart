@@ -17,6 +17,7 @@ import '../providers/provider_provider.dart';
 import '../providers/settings_provider.dart';
 import 'persona_picker.dart';
 import 'provider_config_dialog.dart';
+import 'settings/tabs/subscriptions_tab.dart';
 
 class SetupWizardOverlay extends ConsumerWidget {
   const SetupWizardOverlay({super.key});
@@ -72,7 +73,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   String? _modelDownloadError;
 
   bool _memoryModelDownloading = false;
-  bool _memoryModelDownloadDone = false;
   String? _memoryModelDownloadError;
 
   ThemeColors get _colors {
@@ -102,7 +102,10 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
         text.isEmpty ? _promptFor(personaPresets.first.key) : text,
       );
     }
-    return composePersonaPrompt(_nameController.text, _promptFor(_selectedPrompt));
+    return composePersonaPrompt(
+      _nameController.text,
+      _promptFor(_selectedPrompt),
+    );
   }
 
   @override
@@ -113,6 +116,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
 
   @override
   void dispose() {
+    _pageScroll.dispose();
     _nameController.dispose();
     _customPromptController.dispose();
     _serverUrlController.dispose();
@@ -127,10 +131,12 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
       _backendOk = isAlive;
       if (isAlive) {
         final models = await ref.read(apiClientProvider).listLocalModels();
-        _modelsOk = models.isNotEmpty;
-        _localModelCount = models.length;
+        _modelsOk = models.any((m) => !m.isEmbedding);
+        _localModelCount = models.where((m) => !m.isEmbedding).length;
         _hasEmbeddingModel = models.any((m) => m.isEmbedding);
-        final activeProvider = await ref.read(apiClientProvider).getActiveProvider();
+        final activeProvider = await ref
+            .read(apiClientProvider)
+            .getActiveProvider();
         _providerConfigured = activeProvider.isNotEmpty;
         _activeProviderName = activeProvider.isEmpty ? null : activeProvider;
       }
@@ -201,7 +207,9 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   Future<void> _connectProvider() async {
     Set<String> before = {};
     try {
-      before = (await ref.read(providerListProvider.future)).map((p) => p.name).toSet();
+      before = (await ref.read(
+        providerListProvider.future,
+      )).map((p) => p.name).toSet();
     } catch (_) {
       // Fall through — the diff below then treats every provider as "new",
       // which just means we (re-)activate whichever one comes back first.
@@ -244,7 +252,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   Future<void> _downloadMemoryModel() async {
     setState(() {
       _memoryModelDownloading = true;
-      _memoryModelDownloadDone = false;
       _memoryModelDownloadError = null;
     });
     try {
@@ -254,7 +261,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
       if (mounted) {
         setState(() {
           _memoryModelDownloading = false;
-          _memoryModelDownloadDone = true;
           _hasEmbeddingModel = true;
         });
       }
@@ -282,10 +288,15 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
         _downloadCurated(recommendedMemoryModel),
       ]);
       if (!mounted) return;
-      await _waitForDownloadsIdle([recommendedChatModel(gpu), recommendedMemoryModel]);
+      await _waitForDownloadsIdle([
+        recommendedChatModel(gpu),
+        recommendedMemoryModel,
+      ]);
       if (mounted) setState(() => _modelDownloadDone = true);
     } catch (e) {
-      if (mounted) setState(() => _modelDownloadError = FriendlyError.describe(e));
+      if (mounted) {
+        setState(() => _modelDownloadError = FriendlyError.describe(e));
+      }
     }
   }
 
@@ -296,7 +307,11 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     if (file == null) {
       throw Exception('${model.name}: no downloadable file found');
     }
-    await api.downloadModel(model.repoId, file.filename, expectedSize: file.size);
+    await api.downloadModel(
+      model.repoId,
+      file.filename,
+      expectedSize: file.size,
+    );
   }
 
   /// Polls until none of [models]' downloads are still active. A download no
@@ -307,7 +322,9 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     final repoIds = models.map((m) => m.repoId).toSet();
     while (true) {
       final progress = await api.getDownloadProgress();
-      final relevant = progress.where((p) => repoIds.contains(p.repoId)).toList();
+      final relevant = progress
+          .where((p) => repoIds.contains(p.repoId))
+          .toList();
       for (final p in relevant) {
         if (p.active && p.error != null && p.error!.isNotEmpty) {
           throw Exception(p.error);
@@ -327,7 +344,9 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describe(e)}')),
+          SnackBar(
+            content: Text('${L10n.t('error')}: ${FriendlyError.describe(e)}'),
+          ),
         );
       }
     } finally {
@@ -335,613 +354,649 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     }
   }
 
+  int _page = 0;
+  String _connection = 'local';
+  bool _connectingSubscription = false;
+  String? _subscriptionError;
+  final _pageScroll = ScrollController();
+
+  void _goTo(int page) {
+    setState(() => _page = page);
+    if (_pageScroll.hasClients) _pageScroll.jumpTo(0);
+    if (page == (isMobilePlatform ? 5 : 4)) _checkDiagnostics();
+  }
+
   @override
   Widget build(BuildContext context) {
-    // The server step only exists on mobile, so the visible step numbers
-    // have to close up behind it rather than being hardcoded 1..5. Locals
-    // inside build(), not fields: the counter must restart from 1 on every
-    // rebuild, and a field would keep climbing.
-    final showServerStep = isMobilePlatform;
-    var stepsSoFar = 0;
-    String stepNumber() => '${++stepsSoFar}';
+    final c = _colors;
     return Theme(
       data: Theme.of(context).copyWith(
         brightness: _brightness,
+        extensions: [c],
         colorScheme: ColorScheme.fromSeed(
           seedColor: MemoTheme.accent,
           brightness: _brightness,
+          primary: MemoTheme.accent,
+          onPrimary: c.textInverse,
+          surface: c.bgPanel,
+          onSurface: c.textMain,
         ),
       ),
-      child: Builder(
-        builder: (context) {
-          final c = _colors;
-          final textTheme = Theme.of(context).textTheme;
-
-          return Container(
-            color: c.bgApp,
-            child: Center(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: LayoutBuilder(
-                  builder: (context, outerConstraints) {
-                  // The card's own width (640) already gets clamped down to
-                  // fit a narrow viewport by the ambient constraint chain —
-                  // that part was never the bug. What wasn't responsive is
-                  // everything INSIDE it: 40px of padding per side plus a
-                  // 24px margin is more than half of a 375px phone's width
-                  // on its own, so the remaining content (in particular the
-                  // Language/Theme cards below, side by side) was squeezed
-                  // hard enough to wrap "Türkçe"/"English" mid-word.
-                  // Confirmed live.
-                  final narrow = outerConstraints.maxWidth < 500;
-                  final hPad = narrow ? 16.0 : 40.0;
-                  return Container(
-                  width: 640,
-                  margin: EdgeInsets.symmetric(horizontal: narrow ? 8 : 24),
-                  decoration: BoxDecoration(
-                    color: c.bgPanel,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: c.borderSoft),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: _brightness == Brightness.dark ? 0.4 : 0.1),
-                        blurRadius: 40,
-                        offset: Offset(0, 8),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide =
+              constraints.maxWidth >= 800 && constraints.maxHeight >= 680;
+          final narrow = constraints.maxWidth < 560;
+          final labels = [
+            if (isMobilePlatform) L10n.t('setup_step_server'),
+            L10n.t('setup_step_language_theme'),
+            L10n.t('setup_step_persona'),
+            L10n.t('setup_step_model'),
+            L10n.t('setup_step_preferences'),
+            L10n.t('setup_step_check'),
+          ];
+          final pages = <Widget Function()>[
+            if (isMobilePlatform)
+              () => _SetupPage(
+                title: L10n.t('setup_step_server'),
+                subtitle: L10n.t('setup_step_server_desc'),
+                color: c,
+                child: _Card(
+                  color: c,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _Label(text: L10n.t('setup_server_url_label'), color: c),
+                      SizedBox(height: 8),
+                      TextField(
+                        controller: _serverUrlController,
+                        keyboardType: TextInputType.url,
+                        autocorrect: false,
+                        style: TextStyle(color: c.textMain, fontSize: 14),
+                        decoration: InputDecoration(
+                          // An example address, not prose:
+                          // deliberately not an L10n key, same
+                          // as the token hint below it.
+                          hintText: '192.168.1.50:8090',
+                          hintStyle: TextStyle(color: c.textDim),
+                          isDense: true,
+                        ),
+                      ),
+                      SizedBox(height: 16),
+                      _Label(
+                        text: L10n.t('setup_server_token_label'),
+                        color: c,
+                      ),
+                      SizedBox(height: 8),
+                      TextField(
+                        controller: _serverTokenController,
+                        autocorrect: false,
+                        style: TextStyle(color: c.textMain, fontSize: 14),
+                        decoration: InputDecoration(
+                          hintText: 'memo-...',
+                          hintStyle: TextStyle(color: c.textDim),
+                          isDense: true,
+                        ),
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        L10n.t('setup_server_help'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: c.textDim,
+                          height: 1.5,
+                        ),
+                      ),
+                      SizedBox(height: 16),
+                      Row(
+                        children: [
+                          _Pill(
+                            label: _serverTesting
+                                ? L10n.t('setup_server_testing')
+                                : L10n.t('setup_server_test'),
+                            selected: false,
+                            accent: MemoTheme.accent,
+                            color: c,
+                            // _Pill.onTap is a non-null
+                            // VoidCallback; the guard against
+                            // re-entry lives inside
+                            // _testServerConnection too.
+                            onTap: () => _testServerConnection(),
+                          ),
+                          SizedBox(width: 12),
+                          if (_serverOk != null)
+                            Expanded(
+                              child: Text(
+                                _serverOk!
+                                    ? L10n.t('setup_server_ok')
+                                    : L10n.t('setup_server_fail'),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _serverOk!
+                                      ? MemoTheme.green
+                                      : MemoTheme.red,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // ─── Hero ───────────────────────────────
-                      Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.fromLTRB(hPad, 40, hPad, 28),
-                        decoration: BoxDecoration(
-                          border: Border(bottom: BorderSide(color: c.borderSoft)),
+                ),
+              ),
+            () => _SetupPage(
+              title: L10n.t('setup_step_language_theme'),
+              color: c,
+              child: Builder(
+                builder: (context) {
+                  final languageCard = _Card(
+                    color: c,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _Label(text: L10n.t('language'), color: c),
+                        SizedBox(height: 10),
+                        _Pill(
+                          label: L10n.t('language_tr'),
+                          selected: L10n.locale == MemoLocale.tr,
+                          accent: MemoTheme.accent,
+                          color: c,
+                          onTap: () => setState(() {
+                            ref
+                                .read(localeProvider.notifier)
+                                .setLocale(MemoLocale.tr);
+                          }),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 52,
-                              height: 52,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [MemoTheme.accent, MemoTheme.accentLight],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: MemoTheme.accent.withValues(alpha: 0.35),
-                                    blurRadius: 20,
-                                    offset: Offset(0, 6),
-                                  ),
-                                ],
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'M',
-                                  style: TextStyle(
-                                    fontFamily: textTheme.headlineSmall?.fontFamily,
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
-                                    color: c.textInverse,
-                                  ),
-                                ),
-                              ),
+                        SizedBox(height: 6),
+                        _Pill(
+                          label: L10n.t('language_en'),
+                          selected: L10n.locale == MemoLocale.en,
+                          accent: MemoTheme.accent,
+                          color: c,
+                          onTap: () => setState(() {
+                            ref
+                                .read(localeProvider.notifier)
+                                .setLocale(MemoLocale.en);
+                          }),
+                        ),
+                      ],
+                    ),
+                  );
+                  final themeCard = _Card(
+                    color: c,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _Label(text: L10n.t('theme'), color: c),
+                        SizedBox(height: 10),
+                        _Pill(
+                          label: L10n.t('theme_dark'),
+                          selected: _selectedTheme == 'dark',
+                          accent: MemoTheme.accent,
+                          color: c,
+                          onTap: () => setState(() => _selectedTheme = 'dark'),
+                        ),
+                        SizedBox(height: 6),
+                        _Pill(
+                          label: L10n.t('theme_light'),
+                          selected: _selectedTheme == 'light',
+                          accent: MemoTheme.accent,
+                          color: c,
+                          onTap: () => setState(() => _selectedTheme = 'light'),
+                        ),
+                        SizedBox(height: 6),
+                        _Pill(
+                          label: L10n.t('theme_system'),
+                          selected: _selectedTheme == 'system',
+                          accent: MemoTheme.accent,
+                          color: c,
+                          onTap: () =>
+                              setState(() => _selectedTheme = 'system'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (narrow) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [languageCard, SizedBox(height: 12), themeCard],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: languageCard),
+                      SizedBox(width: 12),
+                      Expanded(child: themeCard),
+                    ],
+                  );
+                },
+              ),
+            ),
+            () => _SetupPage(
+              title: L10n.t('setup_step_persona'),
+              subtitle: L10n.t('setup_step_persona_desc'),
+              color: c,
+              child: PersonaPicker(
+                selectedKey: _customPrompt ? 'custom' : _selectedPrompt,
+                nameController: _nameController,
+                customController: _customPromptController,
+                onSelect: (key) => setState(() {
+                  if (key == 'custom') {
+                    _customPrompt = true;
+                  } else {
+                    _customPrompt = false;
+                    _selectedPrompt = key;
+                  }
+                }),
+                onNameChanged: (_) {},
+                onCustomTextChanged: (_) {},
+              ),
+            ),
+            () => _SetupPage(
+              title: L10n.t('setup_step_model'),
+              subtitle: L10n.t('setup_connection_intro'),
+              color: c,
+              child: _buildConnection(c),
+            ),
+            () => _SetupPage(
+              title: L10n.t('setup_step_preferences'),
+              subtitle: L10n.t('setup_step_preferences_desc'),
+              color: c,
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final learning = ref.watch(learningSettingsProvider);
+                  final learningData = learning.valueOrNull;
+                  final proactiveEnabled =
+                      learningData?['enabled'] as bool? ?? false;
+                  final proactiveLevel =
+                      learningData?['level'] as String? ?? 'subtle';
+
+                  final minimal = ref.watch(minimalModeProvider);
+                  final minimalEnabled = minimal.valueOrNull ?? false;
+
+                  return Column(
+                    children: [
+                      _PreferenceToggle(
+                        icon: Icons.psychology_outlined,
+                        title: L10n.t('learning_proactive_title'),
+                        desc: L10n.t('setup_pref_proactive_desc'),
+                        value: proactiveEnabled,
+                        color: c,
+                        onChanged: learning.isLoading
+                            ? null
+                            : (v) => ref
+                                  .read(learningSettingsProvider.notifier)
+                                  .update(v, proactiveLevel),
+                      ),
+                      SizedBox(height: 10),
+                      _PreferenceToggle(
+                        icon: Icons.speed_outlined,
+                        title: L10n.t('minimal_mode_section'),
+                        desc: L10n.t('setup_pref_minimal_desc'),
+                        value: minimalEnabled,
+                        color: c,
+                        onChanged: minimal.isLoading
+                            ? null
+                            : (_) => ref
+                                  .read(minimalModeProvider.notifier)
+                                  .toggle(),
+                      ),
+                      // Mobile only: asking for the OS
+                      // notification permission here, rather
+                      // than inside NotificationService.init(),
+                      // is the whole point — init() at launch
+                      // would fire a system prompt before the
+                      // user had seen any of Memo's own UI or
+                      // any reason for it.
+                      if (notificationsSupported) ...[
+                        SizedBox(height: 10),
+                        _PreferenceToggle(
+                          icon: Icons.notifications_active_outlined,
+                          title: L10n.t('notif_permission_title'),
+                          desc: L10n.t('notif_permission_desc'),
+                          value: _notifPermissionGranted,
+                          color: c,
+                          onChanged: _notifPermissionAsking
+                              ? null
+                              : (_) => _askNotificationPermission(),
+                        ),
+                      ],
+                    ],
+                  );
+                },
+              ),
+            ),
+            () => _SetupPage(
+              title: L10n.t('setup_step_check'),
+              color: c,
+
+              child: _Card(
+                color: c,
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          L10n.t('system_check'),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: c.textSecondary,
+                          ),
+                        ),
+                        Tooltip(
+                          message: L10n.t('setup_check_refresh_tooltip'),
+                          waitDuration: const Duration(milliseconds: 300),
+                          child: InkWell(
+                            onTap: _checking ? null : _checkDiagnostics,
+                            child: Padding(
+                              padding: EdgeInsets.all(4),
+                              child: _checking
+                                  ? SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: c.textDim,
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.refresh,
+                                      size: 16,
+                                      color: c.textDim,
+                                    ),
                             ),
-                            SizedBox(height: 20),
-                            Text(
-                              L10n.t('setup_eyebrow').toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.4,
-                                color: MemoTheme.accent,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              L10n.t('setup_wizard_title'),
-                              style: textTheme.headlineSmall?.copyWith(
-                                fontSize: 26,
-                                height: 1.2,
-                                fontWeight: FontWeight.w700,
-                                color: c.textMain,
-                              ),
-                            ),
-                            SizedBox(height: 10),
-                            Text(
-                              L10n.t('setup_subtitle'),
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: c.textDim,
-                                height: 1.5,
-                              ),
-                            ),
-                          ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 14),
+                    _DiagRow(
+                      title: L10n.t('backend_connection'),
+                      ok: _backendOk,
+                      color: c,
+                      tooltip: L10n.t('setup_check_backend_tooltip'),
+                    ),
+                    SizedBox(height: 8),
+                    _DiagRow(
+                      title: L10n.t('local_models_status'),
+                      ok: _modelsOk,
+                      optional: _providerConfigured,
+                      color: c,
+                      tooltip: L10n.t('setup_check_models_tooltip'),
+                    ),
+                    SizedBox(height: 8),
+                    _DiagRow(
+                      title: L10n.t('setup_check_ready'),
+                      ok: _modelsOk || _providerConfigured,
+                      color: c,
+                    ),
+                    if (!_backendOk || !(_modelsOk || _providerConfigured)) ...[
+                      SizedBox(height: 12),
+                      Container(
+                        padding: EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: MemoTheme.warningOrange.withValues(
+                            alpha: 0.08,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          L10n.t('system_check_info'),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: MemoTheme.warningOrange,
+                            height: 1.3,
+                          ),
                         ),
                       ),
-
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(hPad, 32, hPad, 36),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // ─── Step 1 (mobile only) — Server ───
-                            //
-                            // First, not last: every other step talks to the
-                            // backend (persona save, model list, diagnostics),
-                            // and on a phone there is no local backend to fall
-                            // back to — normalizeBackendUrl returns empty
-                            // there — so without an address none of them can
-                            // do anything. On desktop and web the address is
-                            // already known, so the step is not shown at all
-                            // and the numbering closes up behind it.
-                            if (showServerStep)
-                              _TimelineStep(
-                                number: stepNumber(),
-                                title: L10n.t('setup_step_server'),
-                                subtitle: L10n.t('setup_step_server_desc'),
-                                color: c,
-                                child: _Card(
-                                  color: c,
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ];
+          return ColoredBox(
+            color: c.bgApp,
+            child: SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(wide ? 24 : 8),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 1120,
+                      maxHeight: 880,
+                    ),
+                    child: Material(
+                      color: c.bgPanel,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        side: BorderSide(color: c.borderSoft),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Row(
+                        children: [
+                          if (wide)
+                            SizedBox(
+                              width: 240,
+                              child: Material(
+                                color: c.bgElement,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      _Label(text: L10n.t('setup_server_url_label'), color: c),
-                                      SizedBox(height: 8),
-                                      TextField(
-                                        controller: _serverUrlController,
-                                        keyboardType: TextInputType.url,
-                                        autocorrect: false,
-                                        style: TextStyle(color: c.textMain, fontSize: 14),
-                                        decoration: InputDecoration(
-                                          // An example address, not prose:
-                                          // deliberately not an L10n key, same
-                                          // as the token hint below it.
-                                          hintText: '192.168.1.50:8090',
-                                          hintStyle: TextStyle(color: c.textDim),
-                                          isDense: true,
-                                        ),
+                                      Icon(
+                                        Icons.auto_awesome_rounded,
+                                        color: MemoTheme.accent,
+                                        size: 32,
                                       ),
-                                      SizedBox(height: 16),
-                                      _Label(text: L10n.t('setup_server_token_label'), color: c),
-                                      SizedBox(height: 8),
-                                      TextField(
-                                        controller: _serverTokenController,
-                                        autocorrect: false,
-                                        style: TextStyle(color: c.textMain, fontSize: 14),
-                                        decoration: InputDecoration(
-                                          hintText: 'memo-...',
-                                          hintStyle: TextStyle(color: c.textDim),
-                                          isDense: true,
-                                        ),
-                                      ),
-                                      SizedBox(height: 16),
+                                      const SizedBox(height: 20),
                                       Text(
-                                        L10n.t('setup_server_help'),
-                                        style: TextStyle(fontSize: 12, color: c.textDim, height: 1.5),
+                                        L10n.t('setup_eyebrow'),
+                                        style: TextStyle(
+                                          color: c.textMain,
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
-                                      SizedBox(height: 16),
-                                      Row(
-                                        children: [
-                                          _Pill(
-                                            label: _serverTesting
-                                                ? L10n.t('setup_server_testing')
-                                                : L10n.t('setup_server_test'),
-                                            selected: false,
-                                            accent: MemoTheme.accent,
-                                            color: c,
-                                            // _Pill.onTap is a non-null
-                                            // VoidCallback; the guard against
-                                            // re-entry lives inside
-                                            // _testServerConnection too.
-                                            onTap: () => _testServerConnection(),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        L10n.t('setup_journey_desc'),
+                                        style: TextStyle(
+                                          color: c.textDim,
+                                          fontSize: 13,
+                                          height: 1.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 32),
+                                      for (var i = 0; i < labels.length; i++)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 8,
                                           ),
-                                          SizedBox(width: 12),
-                                          if (_serverOk != null)
-                                            Expanded(
-                                              child: Text(
-                                                _serverOk!
-                                                    ? L10n.t('setup_server_ok')
-                                                    : L10n.t('setup_server_fail'),
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: _serverOk! ? MemoTheme.green : MemoTheme.red,
+                                          child: ListTile(
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 8,
                                                 ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            selected: i == _page,
+                                            selectedTileColor: MemoTheme.accent
+                                                .withValues(alpha: .12),
+                                            leading: Icon(
+                                              i < _page
+                                                  ? Icons.check_circle_outline
+                                                  : Icons.circle_outlined,
+                                              color: i == _page
+                                                  ? MemoTheme.accent
+                                                  : c.textDim,
+                                              size: 20,
+                                            ),
+                                            title: Text(
+                                              labels[i],
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: i == _page
+                                                    ? FontWeight.w600
+                                                    : FontWeight.w400,
+                                                color: i == _page
+                                                    ? c.textMain
+                                                    : c.textDim,
                                               ),
                                             ),
-                                        ],
+                                            onTap: _saving
+                                                ? null
+                                                : () => _goTo(i),
+                                          ),
+                                        ),
+                                      const Spacer(),
+                                      Text(
+                                        L10n.t('setup_change_later'),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          height: 1.5,
+                                          color: c.textDim,
+                                        ),
                                       ),
                                     ],
                                   ),
                                 ),
                               ),
-
-                            // ─── Language & Theme ─────────────
-                            _TimelineStep(
-                              number: stepNumber(),
-                              title: L10n.t('setup_step_language_theme'),
-                              color: c,
-                              child: Builder(builder: (context) {
-                                final languageCard = _Card(
-                                  color: c,
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      _Label(text: L10n.t('language'), color: c),
-                                      SizedBox(height: 10),
-                                      _Pill(
-                                        label: 'Türkçe',
-                                        selected: L10n.locale == MemoLocale.tr,
-                                        accent: MemoTheme.accent,
-                                        color: c,
-                                        onTap: () => setState(() {
-                                          ref.read(localeProvider.notifier).setLocale(MemoLocale.tr);
-                                        }),
-                                      ),
-                                      SizedBox(height: 6),
-                                      _Pill(
-                                        label: 'English',
-                                        selected: L10n.locale == MemoLocale.en,
-                                        accent: MemoTheme.accent,
-                                        color: c,
-                                        onTap: () => setState(() {
-                                          ref.read(localeProvider.notifier).setLocale(MemoLocale.en);
-                                        }),
-                                      ),
-                                    ],
+                            ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Padding(
+                                  padding: EdgeInsets.fromLTRB(
+                                    wide ? 32 : 20,
+                                    24,
+                                    wide ? 32 : 20,
+                                    16,
                                   ),
-                                );
-                                final themeCard = _Card(
-                                  color: c,
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      _Label(text: L10n.t('theme'), color: c),
-                                      SizedBox(height: 10),
-                                      _Pill(
-                                        label: L10n.t('theme_dark'),
-                                        selected: _selectedTheme == 'dark',
-                                        accent: MemoTheme.accent,
-                                        color: c,
-                                        onTap: () => setState(() => _selectedTheme = 'dark'),
-                                      ),
-                                      SizedBox(height: 6),
-                                      _Pill(
-                                        label: L10n.t('theme_light'),
-                                        selected: _selectedTheme == 'light',
-                                        accent: MemoTheme.accent,
-                                        color: c,
-                                        onTap: () => setState(() => _selectedTheme = 'light'),
-                                      ),
-                                      SizedBox(height: 6),
-                                      _Pill(
-                                        label: L10n.t('theme_system'),
-                                        selected: _selectedTheme == 'system',
-                                        accent: MemoTheme.accent,
-                                        color: c,
-                                        onTap: () => setState(() => _selectedTheme = 'system'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-
-                                // Two side-by-side cards, each with a
-                                // two-word pill ("Türkçe"/"English"), need
-                                // real room — squeezed to ~117px each on a
-                                // 375px phone (before hPad's own shrink even
-                                // helped), the pill text wrapped mid-word
-                                // ("Türk/çe"). Below the breakpoint they
-                                // stack instead.
-                                //
-                                // A LayoutBuilder+Wrap version of this was
-                                // tried and reverted: this step sits inside
-                                // _TimelineStep's IntrinsicHeight (matches
-                                // its numbered-circle-and-thread column's
-                                // height to its content), and a
-                                // LayoutBuilder in that position broke
-                                // IntrinsicHeight's dry-layout measurement
-                                // pass outright — a hard "RenderBox was not
-                                // laid out" crash, not just a cosmetic
-                                // mismatch, confirmed live. Plain
-                                // Row/Column swapping is the one that
-                                // actually works here without crashing.
-                                // Known remaining imperfection, not chased
-                                // further: stacking two cards makes this
-                                // step's content taller than
-                                // _TimelineStep's IntrinsicHeight measured
-                                // it as up front, an 11px mismatch —
-                                // visibly harmless (the connecting line
-                                // ends 11px short of the next step's
-                                // circle) but not eliminated.
-                                if (narrow) {
-                                  return Column(
-                                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                                    children: [
-                                      languageCard,
-                                      SizedBox(height: 12),
-                                      themeCard,
-                                    ],
-                                  );
-                                }
-                                return Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(child: languageCard),
-                                    SizedBox(width: 12),
-                                    Expanded(child: themeCard),
-                                  ],
-                                );
-                              }),
-                            ),
-
-                            // ─── Step 2 — Persona ──────────────
-                            _TimelineStep(
-                              number: stepNumber(),
-                              title: L10n.t('setup_step_persona'),
-                              subtitle: L10n.t('setup_step_persona_desc'),
-                              color: c,
-                              child: PersonaPicker(
-                                selectedKey: _customPrompt ? 'custom' : _selectedPrompt,
-                                nameController: _nameController,
-                                customController: _customPromptController,
-                                onSelect: (key) => setState(() {
-                                  if (key == 'custom') {
-                                    _customPrompt = true;
-                                  } else {
-                                    _customPrompt = false;
-                                    _selectedPrompt = key;
-                                  }
-                                }),
-                                onNameChanged: (_) {},
-                                onCustomTextChanged: (_) {},
-                              ),
-                            ),
-
-                            // ─── Step 3 — Model Recommendation ─
-                            _TimelineStep(
-                              number: stepNumber(),
-                              title: L10n.t('setup_step_model'),
-                              color: c,
-                              child: Consumer(
-                                builder: (context, ref, _) {
-                                  final gpuAsync = ref.watch(gpuInfoProvider);
-                                  final gpu = gpuAsync.valueOrNull ?? const GPUInfo();
-                                  final downloads =
-                                      ref.watch(downloadProgressProvider).valueOrNull ?? [];
-                                  final repoIds = {
-                                    recommendedChatModel(gpu).repoId,
-                                    recommendedMemoryModel.repoId,
-                                  };
-                                  final ourDownloads = downloads
-                                      .where((p) => repoIds.contains(p.repoId))
-                                      .toList();
-                                  return _ModelRecommendationCard(
-                                    color: c,
-                                    checking: _checking,
-                                    gpu: gpu,
-                                    downloads: ourDownloads,
-                                    alreadyHasModels: _modelsOk,
-                                    localModelCount: _localModelCount,
-                                    downloadStarted: _modelDownloadStarted,
-                                    downloadDone: _modelDownloadDone,
-                                    downloadError: _modelDownloadError,
-                                    onDownload: _downloadRecommendedModels,
-                                    providerConfigured: _providerConfigured,
-                                    activeProviderName: _activeProviderName,
-                                    onConnectProvider: _connectProvider,
-                                    hasEmbeddingModel: _hasEmbeddingModel,
-                                    memoryModelDownloading: _memoryModelDownloading,
-                                    memoryModelDownloadDone: _memoryModelDownloadDone,
-                                    memoryModelDownloadError: _memoryModelDownloadError,
-                                    onDownloadMemoryModel: _downloadMemoryModel,
-                                  );
-                                },
-                              ),
-                            ),
-
-                            // ─── Step 4 — Starting Preferences ─
-                            _TimelineStep(
-                              number: stepNumber(),
-                              title: L10n.t('setup_step_preferences'),
-                              subtitle: L10n.t('setup_step_preferences_desc'),
-                              color: c,
-                              child: Consumer(
-                                builder: (context, ref, _) {
-                                  final learning = ref.watch(learningSettingsProvider);
-                                  final learningData = learning.valueOrNull;
-                                  final proactiveEnabled = learningData?['enabled'] as bool? ?? false;
-                                  final proactiveLevel = learningData?['level'] as String? ?? 'subtle';
-
-                                  final minimal = ref.watch(minimalModeProvider);
-                                  final minimalEnabled = minimal.valueOrNull ?? false;
-
-                                  return Column(
-                                    children: [
-                                      _PreferenceToggle(
-                                        icon: Icons.psychology_outlined,
-                                        title: L10n.t('learning_proactive_title'),
-                                        desc: L10n.t('setup_pref_proactive_desc'),
-                                        value: proactiveEnabled,
-                                        color: c,
-                                        onChanged: learning.isLoading
-                                            ? null
-                                            : (v) => ref
-                                                .read(learningSettingsProvider.notifier)
-                                                .update(v, proactiveLevel),
-                                      ),
-                                      SizedBox(height: 10),
-                                      _PreferenceToggle(
-                                        icon: Icons.speed_outlined,
-                                        title: L10n.t('minimal_mode_section'),
-                                        desc: L10n.t('setup_pref_minimal_desc'),
-                                        value: minimalEnabled,
-                                        color: c,
-                                        onChanged: minimal.isLoading
-                                            ? null
-                                            : (_) => ref.read(minimalModeProvider.notifier).toggle(),
-                                      ),
-                                      // Mobile only: asking for the OS
-                                      // notification permission here, rather
-                                      // than inside NotificationService.init(),
-                                      // is the whole point — init() at launch
-                                      // would fire a system prompt before the
-                                      // user had seen any of Memo's own UI or
-                                      // any reason for it.
-                                      if (notificationsSupported) ...[
-                                        SizedBox(height: 10),
-                                        _PreferenceToggle(
-                                          icon: Icons.notifications_active_outlined,
-                                          title: L10n.t('notif_permission_title'),
-                                          desc: L10n.t('notif_permission_desc'),
-                                          value: _notifPermissionGranted,
-                                          color: c,
-                                          onChanged: _notifPermissionAsking
-                                              ? null
-                                              : (_) => _askNotificationPermission(),
-                                        ),
-                                      ],
-                                    ],
-                                  );
-                                },
-                              ),
-                            ),
-
-                            // ─── Step 5 — System Check ─────────
-                            _TimelineStep(
-                              number: stepNumber(),
-                              title: L10n.t('setup_step_check'),
-                              color: c,
-                              isLast: true,
-                              child: _Card(
-                                color: c,
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          L10n.t('system_check'),
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w500,
-                                            color: c.textSecondary,
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.auto_awesome_outlined,
+                                            color: MemoTheme.accent,
+                                            size: 18,
                                           ),
-                                        ),
-                                        Tooltip(
-                                          message: L10n.t('setup_check_refresh_tooltip'),
-                                          waitDuration: const Duration(milliseconds: 300),
-                                          child: InkWell(
-                                            onTap: _checking ? null : _checkDiagnostics,
-                                            child: Padding(
-                                              padding: EdgeInsets.all(4),
-                                              child: _checking
-                                                  ? SizedBox(
-                                                      width: 14,
-                                                      height: 14,
-                                                      child: CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color: c.textDim,
-                                                      ),
-                                                    )
-                                                  : Icon(
-                                                      Icons.refresh,
-                                                      size: 16,
-                                                      color: c.textDim,
-                                                    ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              L10n.t('setup_progress', {
+                                                'current': '${_page + 1}',
+                                                'total': '${pages.length}',
+                                              }),
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: c.textDim,
+                                              ),
                                             ),
                                           ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(4),
+                                        child: LinearProgressIndicator(
+                                          value: (_page + 1) / pages.length,
+                                          minHeight: 3,
+                                          color: MemoTheme.accent,
+                                          backgroundColor: c.borderSoft,
                                         ),
-                                      ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  child: SingleChildScrollView(
+                                    controller: _pageScroll,
+                                    padding: EdgeInsets.fromLTRB(
+                                      wide ? 32 : 20,
+                                      12,
+                                      wide ? 32 : 20,
+                                      24,
                                     ),
-                                    SizedBox(height: 14),
-                                    _DiagRow(
-                                      title: L10n.t('backend_connection'),
-                                      ok: _backendOk,
-                                      color: c,
-                                      tooltip: L10n.t('setup_check_backend_tooltip'),
+                                    child: KeyedSubtree(
+                                      key: ValueKey(_page),
+                                      child: pages[_page](),
                                     ),
-                                    SizedBox(height: 8),
-                                    _DiagRow(
-                                      title: L10n.t('local_models_status'),
-                                      ok: _modelsOk,
-                                      color: c,
-                                      tooltip: L10n.t('setup_check_models_tooltip'),
-                                    ),
-                                    SizedBox(height: 8),
-                                    _DiagRow(
-                                      title: L10n.t('setup_check_ready'),
-                                      ok: _modelsOk || _providerConfigured,
-                                      color: c,
-                                    ),
-                                    if (!_backendOk || !(_modelsOk || _providerConfigured)) ...[
-                                      SizedBox(height: 12),
-                                      Container(
-                                        padding: EdgeInsets.all(10),
-                                        decoration: BoxDecoration(
-                                          color: MemoTheme.warningOrange.withValues(alpha: 0.08),
-                                          borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                Divider(height: 1, color: c.borderSoft),
+                                Padding(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: wide ? 32 : 20,
+                                    vertical: 16,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      if (_page > 0)
+                                        TextButton.icon(
+                                          key: const Key('setup_back'),
+                                          onPressed: _saving
+                                              ? null
+                                              : () => _goTo(_page - 1),
+                                          icon: const Icon(
+                                            Icons.arrow_back,
+                                            size: 16,
+                                          ),
+                                          label: Text(L10n.t('back')),
                                         ),
-                                        child: Text(
-                                          L10n.t('system_check_info'),
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: MemoTheme.warningOrange,
-                                            height: 1.3,
+                                      const Spacer(),
+                                      FilledButton.icon(
+                                        key: const Key('setup_next'),
+                                        onPressed: _saving
+                                            ? null
+                                            : _page == pages.length - 1
+                                            ? _saveSetup
+                                            : () => _goTo(_page + 1),
+                                        icon: _saving
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              )
+                                            : Icon(
+                                                _page == pages.length - 1
+                                                    ? Icons.check
+                                                    : Icons.arrow_forward,
+                                                size: 18,
+                                              ),
+                                        label: Text(
+                                          L10n.t(
+                                            _page == pages.length - 1
+                                                ? 'start_button'
+                                                : 'next',
                                           ),
                                         ),
                                       ),
                                     ],
-                                  ],
-                                ),
-                              ),
-                            ),
-
-                            SizedBox(height: 4),
-
-                            // ─── Save Button ──────────────────
-                            SizedBox(
-                              height: 50,
-                              child: ElevatedButton(
-                                onPressed: _saving ? null : _saveSetup,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: MemoTheme.accent,
-                                  foregroundColor: c.textInverse,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
                                   ),
-                                  elevation: 0,
                                 ),
-                                child: _saving
-                                    ? SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
-                                          color: c.textInverse,
-                                        ),
-                                      )
-                                    : Text(
-                                        L10n.t('start_button'),
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                              ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                  );
-                  },
                 ),
               ),
             ),
@@ -950,101 +1005,330 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
       ),
     );
   }
+
+  Widget _buildConnection(ThemeColors c) {
+    final subscriptions = ref.watch(subscriptionsProvider).valueOrNull;
+    final options = [
+      (
+        'local',
+        Icons.computer_outlined,
+        'setup_local_title',
+        'setup_local_desc',
+      ),
+      ('api', Icons.key_outlined, 'setup_api_title', 'setup_api_desc'),
+      (
+        'subscriptions',
+        Icons.account_circle_outlined,
+        'setup_subs_title',
+        'setup_subs_desc',
+      ),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final horizontal = constraints.maxWidth >= 620;
+            final width = horizontal
+                ? (constraints.maxWidth - 24) / 3
+                : constraints.maxWidth;
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final option in options)
+                  SizedBox(
+                    width: width,
+                    child: _ConnectionChoice(
+                      key: ValueKey('setup_connection_${option.$1}'),
+                      color: c,
+                      selected: _connection == option.$1,
+                      icon: option.$2,
+                      title: L10n.t(option.$3),
+                      description: L10n.t(option.$4),
+                      onTap: () => setState(() => _connection = option.$1),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 20),
+        if (_connection == 'local')
+          Consumer(
+            builder: (context, ref, _) {
+              final gpu =
+                  ref.watch(gpuInfoProvider).valueOrNull ?? const GPUInfo();
+              final repoIds = {
+                recommendedChatModel(gpu).repoId,
+                recommendedMemoryModel.repoId,
+              };
+              final downloads =
+                  (ref.watch(downloadProgressProvider).valueOrNull ??
+                          <DownloadProgress>[])
+                      .where((p) => repoIds.contains(p.repoId))
+                      .toList();
+              return _ModelRecommendationCard(
+                color: c,
+                checking: _checking,
+                gpu: gpu,
+                downloads: downloads,
+                alreadyHasModels: _modelsOk,
+                localModelCount: _localModelCount,
+                downloadStarted: _modelDownloadStarted,
+                downloadDone: _modelDownloadDone,
+                downloadError: _modelDownloadError,
+                onDownload: _downloadRecommendedModels,
+              );
+            },
+          ),
+        if (_connection == 'api')
+          _Card(
+            color: c,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_providerConfigured)
+                  Text(
+                    L10n.t('setup_provider_connected', {
+                      'name': _activeProviderName ?? '',
+                    }),
+                    style: TextStyle(color: c.textMain, fontSize: 13),
+                  ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: _connectProvider,
+                  icon: const Icon(Icons.add_link, size: 18),
+                  label: Text(L10n.t('setup_provider_connect_button')),
+                ),
+              ],
+            ),
+          ),
+        if (_connection == 'subscriptions') ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: const SubscriptionsTab(embedded: true),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            L10n.t('setup_subs_wait'),
+            style: TextStyle(color: c.textDim, fontSize: 12, height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              key: const Key('setup_use_subscription'),
+              onPressed:
+                  _connectingSubscription ||
+                      subscriptions == null ||
+                      subscriptions.accounts.isEmpty ||
+                      subscriptions.models.isEmpty
+                  ? null
+                  : _useSubscription,
+              icon: const Icon(Icons.check, size: 18),
+              label: Text(L10n.t('setup_subs_use')),
+            ),
+          ),
+        ],
+        if (_connection == 'subscriptions' &&
+            _activeProviderName == 'Subscriptions')
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(
+              L10n.t('setup_subs_ready'),
+              style: const TextStyle(color: MemoTheme.green, fontSize: 13),
+            ),
+          ),
+        if (_connection == 'subscriptions' && _subscriptionError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(
+              _subscriptionError!,
+              style: const TextStyle(color: MemoTheme.red, fontSize: 13),
+            ),
+          ),
+        if (_connection != 'local' && !_hasEmbeddingModel) ...[
+          const SizedBox(height: 20),
+          _Card(
+            color: c,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  L10n.t('setup_memory_model_missing'),
+                  style: TextStyle(color: c.textDim, fontSize: 12, height: 1.5),
+                ),
+                const SizedBox(height: 12),
+                if (_memoryModelDownloadError != null)
+                  Text(
+                    _memoryModelDownloadError!,
+                    style: const TextStyle(color: MemoTheme.red),
+                  ),
+                OutlinedButton.icon(
+                  onPressed: _memoryModelDownloading
+                      ? null
+                      : _downloadMemoryModel,
+                  icon: _memoryModelDownloading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.download_outlined, size: 18),
+                  label: Text(
+                    L10n.t(
+                      _memoryModelDownloading
+                          ? 'setup_memory_model_downloading'
+                          : 'setup_memory_model_download_button',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (_connection != 'local' && _hasEmbeddingModel)
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Text(
+              L10n.t('setup_memory_model_ready'),
+              style: const TextStyle(color: MemoTheme.green),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _useSubscription() async {
+    if (_connectingSubscription) return;
+    setState(() {
+      _connectingSubscription = true;
+      _subscriptionError = null;
+    });
+    try {
+      await ref.read(apiClientProvider).setActiveProvider('Subscriptions');
+      if (!mounted) return;
+      ref.read(activeProviderTypeProvider.notifier).setActive('Subscriptions');
+      ref.invalidate(providerListProvider);
+      await _checkDiagnostics();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _subscriptionError = FriendlyError.describeGeneric(e));
+      }
+    } finally {
+      if (mounted) setState(() => _connectingSubscription = false);
+    }
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
-/// One step in the setup checklist: a numbered circle connected by a thin
-/// bronze thread to the next step's circle — literalizes "a handful of
-/// things, one thread, then you're in" rather than implying a gated,
-/// paginated flow (every step is already visible/editable at once, so a
-/// fake "locked until previous step done" stepper would be dishonest UI).
-class _TimelineStep extends StatelessWidget {
-  final String number;
+class _SetupPage extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Widget child;
   final ThemeColors color;
-  final bool isLast;
-
-  const _TimelineStep({
-    required this.number,
+  const _SetupPage({
     required this.title,
     this.subtitle,
     required this.child,
     required this.color,
-    this.isLast = false,
   });
-
   @override
-  Widget build(BuildContext context) {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Column(
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        title,
+        style: TextStyle(
+          fontSize: 26,
+          height: 1.2,
+          fontWeight: FontWeight.w700,
+          color: color.textMain,
+        ),
+      ),
+      if (subtitle != null) ...[
+        const SizedBox(height: 10),
+        Text(
+          subtitle!,
+          style: TextStyle(fontSize: 13, height: 1.5, color: color.textDim),
+        ),
+      ],
+      const SizedBox(height: 24),
+      child,
+    ],
+  );
+}
+
+class _ConnectionChoice extends StatelessWidget {
+  final ThemeColors color;
+  final bool selected;
+  final IconData icon;
+  final String title, description;
+  final VoidCallback onTap;
+  const _ConnectionChoice({
+    super.key,
+    required this.color,
+    required this.selected,
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.onTap,
+  });
+  @override
+  Widget build(BuildContext context) => Semantics(
+    selected: selected,
+    button: true,
+    child: Material(
+      color: selected ? MemoTheme.accent.withValues(alpha: .10) : color.bgApp,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: selected ? MemoTheme.accent : color.borderSoft),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: MemoTheme.accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Center(
-                  child: Text(
-                    number,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: MemoTheme.accent,
-                    ),
-                  ),
-                ),
-              ),
-              if (!isLast)
-                Expanded(
-                  child: Container(
-                    width: 2,
-                    margin: EdgeInsets.symmetric(vertical: 6),
-                    color: MemoTheme.accent.withValues(alpha: 0.18),
-                  ),
-                ),
-            ],
-          ),
-          SizedBox(width: 14),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              Row(
                 children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: color.textMain,
-                      height: 1.1,
-                    ),
+                  Icon(icon, color: MemoTheme.accent, size: 24),
+                  const Spacer(),
+                  Icon(
+                    selected ? Icons.check_circle : Icons.circle_outlined,
+                    size: 18,
+                    color: selected ? MemoTheme.accent : color.textDim,
                   ),
-                  if (subtitle != null) ...[
-                    SizedBox(height: 4),
-                    Text(
-                      subtitle!,
-                      style: TextStyle(fontSize: 12.5, color: color.textDim, height: 1.4),
-                    ),
-                  ],
-                  SizedBox(height: 14),
-                  child,
                 ],
               ),
-            ),
+              const SizedBox(height: 14),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: color.textMain,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                description,
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: color.textDim,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 /// A small "?" affordance that explains a term or control on hover — for
@@ -1122,27 +1406,26 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: Duration(milliseconds: 150),
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected
-              ? accent.withValues(alpha: 0.12)
+    return Semantics(
+      selected: selected,
+      child: OutlinedButton(
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: selected
+              ? accent.withValues(alpha: .10)
               : color.bgElement,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? accent : color.borderSoft,
-            width: selected ? 1.5 : 1,
+          foregroundColor: selected ? accent : color.textSecondary,
+          side: BorderSide(color: selected ? accent : color.borderSoft),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
           ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-            color: selected ? accent : color.textSecondary,
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
           ),
         ),
       ),
@@ -1199,12 +1482,20 @@ class _PreferenceToggle extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color.textMain),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: color.textMain,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   desc,
-                  style: TextStyle(fontSize: 11.5, height: 1.4, color: color.textDim),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.4,
+                    color: color.textDim,
+                  ),
                 ),
               ],
             ),
@@ -1232,14 +1523,6 @@ class _ModelRecommendationCard extends StatelessWidget {
   final bool downloadDone;
   final String? downloadError;
   final void Function(GPUInfo gpu) onDownload;
-  final bool providerConfigured;
-  final String? activeProviderName;
-  final VoidCallback onConnectProvider;
-  final bool hasEmbeddingModel;
-  final bool memoryModelDownloading;
-  final bool memoryModelDownloadDone;
-  final String? memoryModelDownloadError;
-  final VoidCallback onDownloadMemoryModel;
 
   const _ModelRecommendationCard({
     required this.color,
@@ -1252,14 +1535,6 @@ class _ModelRecommendationCard extends StatelessWidget {
     required this.downloadDone,
     required this.downloadError,
     required this.onDownload,
-    required this.providerConfigured,
-    required this.activeProviderName,
-    required this.onConnectProvider,
-    required this.hasEmbeddingModel,
-    required this.memoryModelDownloading,
-    required this.memoryModelDownloadDone,
-    required this.memoryModelDownloadError,
-    required this.onDownloadMemoryModel,
   });
 
   @override
@@ -1268,176 +1543,7 @@ class _ModelRecommendationCard extends StatelessWidget {
       color: color,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _content(),
-          if (!checking) ...[
-            SizedBox(height: 14),
-            _providerSection(),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// Alternative to the local-model download above: connect an API provider
-  /// instead, so setup doesn't force a multi-GB download on someone who
-  /// already has an OpenAI/Gemini/Claude key. Shown regardless of the local
-  /// model state above — a provider is useful even alongside local models.
-  Widget _providerSection() {
-    if (providerConfigured) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 18),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  L10n.t('setup_provider_connected', {'name': activeProviderName ?? ''}),
-                  style: TextStyle(fontSize: 12, color: color.textMain),
-                ),
-              ),
-            ],
-          ),
-          if (!hasEmbeddingModel) ...[
-            SizedBox(height: 10),
-            _memoryModelWarning(),
-          ],
-        ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(child: Divider(color: color.borderSoft)),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 10),
-              child: Text(
-                L10n.t('setup_or'),
-                style: TextStyle(fontSize: 11, color: color.textDim),
-              ),
-            ),
-            Expanded(child: Divider(color: color.borderSoft)),
-          ],
-        ),
-        SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: SizedBox(
-                height: 42,
-                child: OutlinedButton.icon(
-                  onPressed: onConnectProvider,
-                  icon: Icon(Icons.cloud_outlined, size: 16, color: color.textMain),
-                  label: Text(
-                    L10n.t('setup_provider_connect_button'),
-                    style: TextStyle(
-                      color: color.textMain,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: color.borderSoft),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(width: 8),
-            _InfoTip(message: L10n.t('setup_provider_connect_tooltip'), color: color),
-          ],
-        ),
-      ],
-    );
-  }
-
-  /// An API provider only ever covers chat — memory/RAG always runs against
-  /// the local embedding model regardless of which chat provider is active,
-  /// so connecting a provider alone leaves memory silently, permanently off
-  /// with nothing telling the user why. Surfaced right here instead, with a
-  /// one-click download for the same curated memory model the local-model
-  /// path above already recommends.
-  Widget _memoryModelWarning() {
-    return Container(
-      padding: EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: MemoTheme.warningOrange.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.info_outline, size: 16, color: MemoTheme.warningOrange),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  L10n.t('setup_memory_model_missing'),
-                  style: TextStyle(fontSize: 11, color: color.textMain, height: 1.4),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 10),
-          if (memoryModelDownloadError != null) ...[
-            Text(
-              memoryModelDownloadError!,
-              style: TextStyle(fontSize: 11, color: MemoTheme.red),
-            ),
-            SizedBox(height: 8),
-          ],
-          if (memoryModelDownloadDone)
-            Row(
-              children: [
-                Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 16),
-                SizedBox(width: 6),
-                Text(
-                  L10n.t('setup_memory_model_ready'),
-                  style: TextStyle(fontSize: 12, color: color.textMain),
-                ),
-              ],
-            )
-          else if (memoryModelDownloading)
-            Row(
-              children: [
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.warningOrange),
-                ),
-                SizedBox(width: 8),
-                Text(
-                  L10n.t('setup_memory_model_downloading'),
-                  style: TextStyle(fontSize: 12, color: color.textDim),
-                ),
-              ],
-            )
-          else
-            OutlinedButton.icon(
-              onPressed: onDownloadMemoryModel,
-              icon: Icon(Icons.download_outlined, size: 15, color: MemoTheme.warningOrange),
-              label: Text(
-                L10n.t('setup_memory_model_download_button'),
-                style: TextStyle(
-                  color: MemoTheme.warningOrange,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12,
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: MemoTheme.warningOrange.withValues(alpha: 0.4)),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              ),
-            ),
-        ],
+        children: [_content()],
       ),
     );
   }
@@ -1449,7 +1555,10 @@ class _ModelRecommendationCard extends StatelessWidget {
           SizedBox(
             width: 16,
             height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2, color: color.textDim),
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: color.textDim,
+            ),
           ),
           SizedBox(width: 10),
           Text(
@@ -1480,17 +1589,27 @@ class _ModelRecommendationCard extends StatelessWidget {
     final gpuLine = gpu.hasGpu
         ? '${gpu.name} — ${gpu.vramFormatted} VRAM'
         : L10n.t('setup_model_gpu_none');
-    final ramLine = gpu.ramTotalMb > 0 ? gpu.ramFormatted : L10n.t('setup_model_ram_unknown');
+    final ramLine = gpu.ramTotalMb > 0
+        ? gpu.ramFormatted
+        : L10n.t('setup_model_ram_unknown');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          L10n.t('setup_model_hello'),
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color.textMain),
+          L10n.t('setup_local_recommendation'),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: color.textMain,
+          ),
         ),
         SizedBox(height: 10),
-        _SpecRow(label: L10n.t('setup_model_ram'), value: ramLine, color: color),
+        _SpecRow(
+          label: L10n.t('setup_model_ram'),
+          value: ramLine,
+          color: color,
+        ),
         SizedBox(height: 4),
         _SpecRow(
           label: L10n.t('setup_model_gpu'),
@@ -1546,7 +1665,9 @@ class _ModelRecommendationCard extends StatelessWidget {
               onPressed: () => onDownload(gpu),
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: MemoTheme.accent),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               child: Text(
                 L10n.t('setup_model_download_button'),
@@ -1561,7 +1682,11 @@ class _ModelRecommendationCard extends StatelessWidget {
         else if (downloadDone)
           Row(
             children: [
-              Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 18),
+              Icon(
+                Icons.check_circle_rounded,
+                color: MemoTheme.green,
+                size: 18,
+              ),
               SizedBox(width: 8),
               Text(
                 L10n.t('setup_model_download_done'),
@@ -1609,7 +1734,10 @@ class _SpecRow extends StatelessWidget {
           child: Row(
             children: [
               Flexible(
-                child: Text(label, style: TextStyle(fontSize: 12, color: color.textDim)),
+                child: Text(
+                  label,
+                  style: TextStyle(fontSize: 12, color: color.textDim),
+                ),
               ),
               if (tooltip != null) ...[
                 SizedBox(width: 4),
@@ -1637,10 +1765,7 @@ class _DownloadProgressRow extends StatelessWidget {
   final DownloadProgress progress;
   final ThemeColors color;
 
-  const _DownloadProgressRow({
-    required this.progress,
-    required this.color,
-  });
+  const _DownloadProgressRow({required this.progress, required this.color});
 
   /// Parses the backend's already-formatted speed string (e.g. "3.2 MB/s",
   /// from Go's `formatSpeed`) back into bytes/sec, then estimates time
@@ -1675,7 +1800,9 @@ class _DownloadProgressRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = progress;
     final pct = p.percent.clamp(0, 100).toDouble();
-    final label = p.filename.isNotEmpty ? p.filename : L10n.t('setup_preparing');
+    final label = p.filename.isNotEmpty
+        ? p.filename
+        : L10n.t('setup_preparing');
     final speedSuffix = p.speed.isNotEmpty ? ' (${p.speed})' : '';
     final eta = _etaLabel();
     final etaSuffix = eta != null ? ' — $eta' : '';
@@ -1705,26 +1832,48 @@ class _DownloadProgressRow extends StatelessWidget {
 class _DiagRow extends StatelessWidget {
   final String title;
   final bool ok;
+  final bool optional;
   final ThemeColors color;
   final String? tooltip;
 
-  const _DiagRow({required this.title, required this.ok, required this.color, this.tooltip});
+  const _DiagRow({
+    required this.title,
+    required this.ok,
+    this.optional = false,
+    required this.color,
+    this.tooltip,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         Icon(
-          ok ? Icons.check_circle_rounded : Icons.error_outline_rounded,
-          color: ok ? MemoTheme.green : MemoTheme.red,
+          ok
+              ? Icons.check_circle_rounded
+              : optional
+              ? Icons.remove_circle_outline
+              : Icons.error_outline_rounded,
+          color: ok
+              ? MemoTheme.green
+              : optional
+              ? color.textDim
+              : MemoTheme.red,
           size: 20,
         ),
         SizedBox(width: 10),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 13,
-            color: ok ? color.textMain : MemoTheme.red,
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.4,
+              color: ok
+                  ? color.textMain
+                  : optional
+                  ? color.textDim
+                  : MemoTheme.red,
+            ),
           ),
         ),
         if (tooltip != null) ...[

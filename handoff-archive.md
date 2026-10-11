@@ -1,3 +1,13 @@
+# Son oturum — 2026-10-11 — API Sağlayıcıları tasarımı
+- frontend-design uygulandı. API Sağlayıcıları artık Genel ile aynı başlık, SectionTabBar ve panel dilini kullanıyor: Bağlantılar / Görsel üretimi / Karar ve doğrulama. Bunlar mevcut API sekmesinin iç bölümleri. IndexedStack form taslaklarını ve kaydırma konumlarını bölüm geçişlerinde korur; dar pencerede 16px, masaüstünde 32px kenar boşluğu.
+- Karar/doğrulama ve varsayılan görsel modeli panelleri gölgesiz, ince kenarlıklı ortak yüzey/alan stili kullanır. Anahtar ve açıklama tipografisi sadeleştirildi, iki kaydet düğmesi sağa hizalandı. Sağlayıcı kartları da aynı panel stilinde. Model seçim/kaydetme ve sağlayıcı yönetim davranışı korunur; yeni bölüm etiketleri TR/EN L10n.
+- Doğrulama: Flutter **581 passed**, son odaklı süit **16 passed** (TR/EN 360px bölüm erişimi, doğrulama eşikleri ve kaydedilmemiş model taslağının korunması dahil). Analyze yalnız mevcut **5 info**, --no-fatal-infos exit 0. CGO sqlite_fts5 Go build/vet/tüm race exit 0 (app/e2e cached). L10n literal taraması ve git diff --check boş.
+- Üç 880px Flutter önizlemesi gerçek Noto Sans ve Material Icons yüklenerek render edildi ve incelendi; önizleme fontu uygulamanın Inter fontunun yerine kullanıldı. Geçici render testi başarılı, sonra kaldırıldı. Gerçek masaüstü penceresi denenmedi. TestSprite bağlı proje yok; çalıştırılmadı.
+- PLAN_provider_settings_design.md tamamlandı. Yerel feat(frontend) commit; push/yayın yok. Önceki görsel→Abonelik metin yönlendirmesi commit'i d2e5007c.
+- Sonraki: gerçek masaüstünde API sekmesi görünümü ve hesaplı model yönlendirmesi/bağlam/effort kontrolü; diğer açık işler yukarıda.
+
+---
+
 # Son oturum — 2026-10-11 — Görsel modelde metin sorusunu Abonelikler'e yönlendirme
 - Seçili Abonelik görsel modeli artık normal soruyu otomatik resme çevirmiyor. Niyet resim istemiyorsa aynı abonelik satıcısının kayıtlı/hesapta listelenen sohbet modeli tercih edilir, gerekirse diğer bağlı Abonelik hesabının sohbet modeli. Tek isteğe özel router context üzerinde taşınır; kayıtlı seçim/küresel router değişmez, normal API sağlayıcılarına geçmez. Ajan, web arama ve context taşıyan yardımcı LLM çağrıları aynı yönlendirmeyi kullanır; kullanımda gerçek hedef model kaydedilir.
 - Açık resim isteği ve /image seçili görsel yolunu korur. Abonelik sohbet modeli bulunmazsa hata + terminal Done döner, resim üretilmez. Niyet tespiti mevcut sezgiyle yapılır; bu çalışma karar modeliyle niyet çözümleme eklemedi.

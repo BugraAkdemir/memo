@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -81,6 +82,10 @@ final effortLevelsProvider = FutureProvider.family<List<String>, (String type, S
   key,
 ) async {
   if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
+  if (key.$1 == 'subscriptions') {
+    final refresh = Timer(const Duration(minutes: 1), ref.invalidateSelf);
+    ref.onDispose(refresh.cancel);
+  }
   try {
     return await ref
         .read(apiClientProvider)

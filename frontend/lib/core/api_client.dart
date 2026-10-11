@@ -2033,6 +2033,7 @@ class MemoApiClient {
   }
 
   /// Which reasoning-effort labels [type] + [model] actually accept.
+  /// Subscriptions uses the online CLIProxyAPI capability catalog.
   /// openrouter/claude/gemini/ollama are queried live against that
   /// specific model's real capabilities; every other type has no known
   /// capability signal and always returns empty (see the backend's

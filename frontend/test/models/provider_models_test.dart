@@ -2,6 +2,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memo_flutter/models/provider_models.dart';
 
 void main() {
+  test('published subscription capabilities survive the API response', () {
+    final model = ProviderModel.fromJson({
+      'id': 'published-model',
+      'context_length': 1000000,
+      'effort_levels': ['medium', 'high'],
+    });
+    expect(model.contextLength, 1000000);
+    expect(model.effortLevels, ['medium', 'high']);
+    expect(ProviderModel.fromJson({'id': 'unknown'}).contextLength, 0);
+    expect(ProviderModel.fromJson({'id': 'unknown'}).effortLevels, isEmpty);
+  });
+
   group('model selection keys', () {
     test('round-trip a provider and a model', () {
       final key = encodeModelSelection('Subscriptions', 'claude-sonnet-4-6');
@@ -26,7 +38,10 @@ void main() {
       expect(decodeModelSelection('${kModelSelectPrefix}onlyprovider'), isNull);
       expect(decodeModelSelection('$kModelSelectPrefix\u0001model'), isNull);
       expect(decodeModelSelection('${kModelSelectPrefix}p\u0001'), isNull);
-      expect(decodeModelSelection('${kModelSelectPrefix}p\u0001m\u0001extra'), isNull);
+      expect(
+        decodeModelSelection('${kModelSelectPrefix}p\u0001m\u0001extra'),
+        isNull,
+      );
     });
   });
 
@@ -39,7 +54,10 @@ void main() {
         ],
         'current': 'claude-sonnet-4-6',
       });
-      expect(l.models.map((m) => m.id), ['claude-sonnet-4-6', 'gpt-oss-120b-medium']);
+      expect(l.models.map((m) => m.id), [
+        'claude-sonnet-4-6',
+        'gpt-oss-120b-medium',
+      ]);
       expect(l.models.first.ownedBy, 'antigravity');
       expect(l.models.last.ownedBy, '');
       expect(l.current, 'claude-sonnet-4-6');
@@ -48,12 +66,25 @@ void main() {
 
     test('survives an unexpected payload instead of throwing', () {
       expect(ProviderModelList.fromJson({'models': 'nope'}).models, isEmpty);
-      expect(ProviderModelList.fromJson({'models': [1, null, 'x', {'owned_by': 'y'}]}).models, isEmpty);
+      expect(
+        ProviderModelList.fromJson({
+          'models': [
+            1,
+            null,
+            'x',
+            {'owned_by': 'y'},
+          ],
+        }).models,
+        isEmpty,
+      );
       expect(ProviderModelList.fromJson({}).models, isEmpty);
     });
 
     test('carries the backend error through', () {
-      expect(ProviderModelList.fromJson({'models': [], 'error': 'boom'}).error, 'boom');
+      expect(
+        ProviderModelList.fromJson({'models': [], 'error': 'boom'}).error,
+        'boom',
+      );
     });
   });
 
@@ -81,14 +112,38 @@ void main() {
       final m = ProviderModel.fromJson({'id': 'gpt-5'});
       expect(m.remaining, isNull);
       expect(m.remainingPercent, isNull);
-      expect(ProviderModel.fromJson({'id': 'x', 'remaining': 0}).remainingPercent, 0);
+      expect(
+        ProviderModel.fromJson({'id': 'x', 'remaining': 0}).remainingPercent,
+        0,
+      );
     });
 
-    test('a sliver left never rounds down to "0%" and the value is clamped', () {
-      expect(ProviderModel.fromJson({'id': 'x', 'remaining': 0.002}).remainingPercent, 1);
-      expect(ProviderModel.fromJson({'id': 'x', 'remaining': 1.4}).remainingPercent, 100);
-      expect(ProviderModel.fromJson({'id': 'x', 'remaining': -0.3}).remainingPercent, 0);
-    });
+    test(
+      'a sliver left never rounds down to "0%" and the value is clamped',
+      () {
+        expect(
+          ProviderModel.fromJson({
+            'id': 'x',
+            'remaining': 0.002,
+          }).remainingPercent,
+          1,
+        );
+        expect(
+          ProviderModel.fromJson({
+            'id': 'x',
+            'remaining': 1.4,
+          }).remainingPercent,
+          100,
+        );
+        expect(
+          ProviderModel.fromJson({
+            'id': 'x',
+            'remaining': -0.3,
+          }).remainingPercent,
+          0,
+        );
+      },
+    );
   });
 
   group('vendor labels', () {

@@ -34,6 +34,7 @@ class AuthGateInfo {
 ///   - setup done, loopback source   -> nothing (backend trusts loopback
 ///     — remoteAuthOK passes credential-less loopback requests, so asking
 ///     for a password here would be demanding one that is never checked)
+///   - setup done, auth mode "none"  -> nothing (server checks no credential)
 ///   - setup done, no saved token    -> login gate (remote/unknown source)
 ///   - saved token but 401           -> login gate (expired session)
 ///   - backend unreachable           -> ok (BackendUnreachableOverlay)
@@ -44,7 +45,12 @@ final authGateProvider = StreamProvider.autoDispose<AuthGateInfo>((ref) async* {
     alive = false;
     pollTimer?.cancel();
   });
-  final api = ref.read(apiClientProvider);
+  // watch, not read: when the backend address changes (mobile connect flow,
+  // change-server dialog) the gate must probe the NEW server. A client
+  // captured once at stream start kept asking the old — on a fresh phone,
+  // address-less — client, so the login gate never opened for the server the
+  // user had just entered.
+  final api = ref.watch(apiClientProvider);
   final prefs = ref.read(prefsProvider);
   while (alive) {
     try {
@@ -70,7 +76,10 @@ final authGateProvider = StreamProvider.autoDispose<AuthGateInfo>((ref) async* {
       if (ss.needsSetup && !declined) {
         yield AuthGateInfo(AuthGateState.setupNeeded, authMode: ss.authMode);
       } else if (!ss.needsSetup) {
-        if (ss.loopback) {
+        if (ss.loopback || ss.authMode == 'none') {
+          // "none" is the deliberate no-credential mode (remoteAuthOK lets
+          // every request through), so a login form would ask for a
+          // password the server never checks.
           yield const AuthGateInfo(AuthGateState.ok);
         } else {
           final saved = prefs.getString('memo_remote_access_token');

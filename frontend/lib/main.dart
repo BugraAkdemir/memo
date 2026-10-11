@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/l10n.dart';
 import 'core/notification_service.dart';
+import 'core/scope_restart.dart';
 import 'core/theme.dart';
 import 'core/tray_controller.dart';
 import 'providers/settings_provider.dart';
@@ -54,12 +55,31 @@ void main(List<String> args) async {
   // boolean. Before runApp so a reminder tapped from the notification
   // shade has a fully initialized plugin to report itself to.
   await NotificationService.init();
-  runApp(ProviderScope(
-    overrides: [
-      prefsProvider.overrideWithValue(prefs),
-    ],
-    child: const MemoApp(),
-  ));
+  runApp(MemoRoot(prefs: prefs));
+}
+
+/// Owns the [ProviderScope]. Keyed by [scopeEpoch] so the mobile connect flow
+/// can rebuild every provider against a freshly saved server address without
+/// quitting the app (see core/scope_restart.dart). Nothing else touches the
+/// epoch, so on desktop and web this is a plain ProviderScope.
+class MemoRoot extends StatelessWidget {
+  const MemoRoot({super.key, required this.prefs});
+
+  final SharedPreferences prefs;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: scopeEpoch,
+      builder: (context, epoch, _) => ProviderScope(
+        key: ValueKey(epoch),
+        overrides: [
+          prefsProvider.overrideWithValue(prefs),
+        ],
+        child: const MemoApp(),
+      ),
+    );
+  }
 }
 
 class MemoApp extends ConsumerWidget {

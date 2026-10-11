@@ -139,6 +139,57 @@ void main() {
     expect((await firstGate(c)).state, AuthGateState.loginNeeded);
   });
 
+  test('auth mode none after setup needs no login even from a remote source',
+      () async {
+    final c = await makeContainer({
+      '/api/setup/status': (200, {
+        'needs_setup': false,
+        'auth_mode': 'none',
+        'loopback': false,
+      }),
+    });
+    expect((await firstGate(c)).state, AuthGateState.ok,
+        reason: 'mode none lets every request through (remoteAuthOK), so a '
+            'password form would ask for something the server never checks');
+  });
+
+  test('the gate probes the new server after the API client is replaced',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    MemoApiClient clientFor(String base, Map<String, (int, Object?)> r) {
+      final client = MemoApiClient(baseUrl: base);
+      client.dio.httpClientAdapter = _FakeAdapter(r);
+      return client;
+    }
+
+    // A fresh phone starts with an address-less client that reaches nothing.
+    final source = StateProvider<MemoApiClient>((ref) => clientFor('', {}));
+    final container = ProviderContainer(overrides: [
+      apiClientProvider.overrideWith((ref) => ref.watch(source)),
+      prefsProvider.overrideWithValue(prefs),
+    ]);
+    addTearDown(container.dispose);
+
+    final seen = <AuthGateState>[];
+    final sub = container.listen(authGateProvider, (_, next) {
+      final v = next.valueOrNull;
+      if (v != null) seen.add(v.state);
+    }, fireImmediately: true);
+    addTearDown(sub.close);
+    await container.read(authGateProvider.future);
+
+    container.read(source.notifier).state = clientFor('http://memo.test', {
+      '/api/setup/status': (200, {'needs_setup': false, 'auth_mode': 'password'}),
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(container.read(authGateProvider).valueOrNull?.state,
+        AuthGateState.loginNeeded,
+        reason: 'a gate that kept the first client would still be asking the '
+            'address-less one and never show the login form');
+  });
+
   test('absent loopback field (old backend) falls back to token-based gate',
       () async {
     final c = await makeContainer({

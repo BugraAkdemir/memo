@@ -128,6 +128,45 @@ func TestSubscriptions_APictureRequestGoesToTheAccountsOwnImageModel(t *testing.
 	if len(lines) != 3 || !strings.HasPrefix(lines[2], "antigravity-image /v1/images/edits 1") {
 		t.Fatalf("sidecar image requests = %q, want an image-to-image call carrying the photo", lines)
 	}
+
+	// Selecting an image model does not turn ordinary questions into images.
+	if err := h.App.SetProviderModel("Subscriptions", "codex-image"); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"plain", "agent", "web-search"} {
+		h.SetAgentEnabled(mode == "agent")
+		h.SetWebSearchEnabled(mode == "web-search")
+		events := h.SendMessageStream(chatID, "Türkiye'nin başkenti neresidir?")
+		if _, ok := generatedImage(events); ok {
+			t.Fatalf("%s question produced an image", mode)
+		}
+		if got := FinalContent(events); !strings.Contains(got, "pong from codex-model-a") {
+			t.Fatalf("%s reply=%q", mode, got)
+		}
+		current := ""
+		for _, cfg := range h.App.GetProviders() {
+			if cfg.Name == "Subscriptions" {
+				current = cfg.Model
+			}
+		}
+		if current != "codex-image" || h.App.GetActiveProvider() != "Subscriptions" {
+			t.Fatalf("selection changed: %q", current)
+		}
+	}
+	if got := len(imageLogLines(t)); got != 3 {
+		t.Fatalf("ordinary questions made image calls: %d", got)
+	}
+	h.SetAgentEnabled(false)
+	h.SetWebSearchEnabled(false)
+	if _, ok := generatedImage(h.SendMessageStream(chatID, "bana bir kedi resmi çiz")); !ok {
+		t.Fatal("explicit image request stopped working")
+	}
+	if got := len(imageLogLines(t)); got != 4 {
+		t.Fatalf("explicit request calls=%d", got)
+	}
+	if got := len(h.Fake.ImageRequests()); got != 0 {
+		t.Fatal("subscription turn escaped to the default API image provider")
+	}
 }
 
 // No image model on the subscription and none set as the default: a picture

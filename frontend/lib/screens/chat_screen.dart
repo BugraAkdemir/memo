@@ -42,7 +42,7 @@ class ChatScreen extends ConsumerWidget {
   // 375px phone width, where it squeezed _ChatContent's available width down
   // to ~15px and threw a 189px RenderFlex overflow. Below the breakpoint the
   // sidebar moves into AppShell's shared mobile drawer (opened via a menu
-  // button in _ChatTopBar) instead of sitting inline.
+  // button in ChatTopBar) instead of sitting inline.
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -72,7 +72,7 @@ class ChatScreen extends ConsumerWidget {
         // mobile drawer (Sohbetler/Menü tabs), which also sidesteps a
         // Scaffold-always-paints-its-own-opaque-background seam bug a
         // second nested Scaffold used to cause against the Glass Light
-        // gradient (see the Session 19 fix this replaced). _ChatTopBar's
+        // gradient (see the Session 19 fix this replaced). ChatTopBar's
         // menu button still opens a drawer via Scaffold.of(context) — it
         // now finds AppShell's ancestor Scaffold instead of a local one.
         if (narrow) {
@@ -152,7 +152,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
     return Column(
       children: [
         // ─── Top Bar ──────────────────────────────
-         _ChatTopBar(showMenuButton: widget.showMenuButton),
+         ChatTopBar(showMenuButton: widget.showMenuButton),
 
         // ─── Messages or Welcome ──────────────────
         Expanded(
@@ -557,7 +557,12 @@ class _PickerData {
 }
 
 class _QuickModelDropdown extends ConsumerWidget {
-  const _QuickModelDropdown();
+  const _QuickModelDropdown({this.maxWidth = 220});
+
+  /// The button's widest size. The phone top bar passes a share of the screen
+  /// instead: at a fixed 220 px it left the chips and chat title next to it
+  /// almost no room, and they were drawn over each other.
+  final double maxWidth;
 
   Future<void> _openMenu(BuildContext context, WidgetRef ref) async {
     final button = context.findRenderObject() as RenderBox;
@@ -717,7 +722,7 @@ class _QuickModelDropdown extends ConsumerWidget {
         if (chatId == null) return;
         await api.setChatCLIProvider(chatId, selectedProvider.type);
         // _setupCLIChat first, invalidate after: invalidating rebuilds
-        // _ChatTopBar (it watches activeChatCLIProviderProvider), which can
+        // ChatTopBar (it watches activeChatCLIProviderProvider), which can
         // deactivate this context before _setupCLIChat even runs — the
         // dialog/folder picker then silently never appears on the first
         // pick (only worked on a second attempt, once the rebuild had
@@ -873,7 +878,7 @@ class _QuickModelDropdown extends ConsumerWidget {
             child: Container(
               margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              constraints: const BoxConstraints(maxWidth: 220),
+              constraints: BoxConstraints(maxWidth: maxWidth),
               decoration: BoxDecoration(
                 color: c.bgElement,
                 borderRadius: BorderRadius.circular(8),
@@ -908,6 +913,52 @@ class _QuickModelDropdown extends ConsumerWidget {
   }
 }
 
+/// What the effort controls need: the active provider's config, the levels it
+/// accepts for the current model, and the level in force right now ('' =
+/// provider default). Null when there is nothing to choose (see
+/// [_QuickEffortSelector]'s doc comment for every case), so callers hide
+/// their control instead of showing an empty menu.
+class _EffortState {
+  const _EffortState(this.config, this.levels, this.current);
+  final ProviderConfig config;
+  final List<String> levels;
+  final String current;
+}
+
+_EffortState? _readEffort(WidgetRef ref) {
+  final activeName = ref.watch(activeProviderTypeProvider).valueOrNull ?? '';
+  final cliType = ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '';
+  if (activeName.isEmpty || cliType.isNotEmpty) return null;
+
+  final providers = ref.watch(providerListProvider).valueOrNull ?? const <ProviderConfig>[];
+  final match = providers.where((p) => p.name == activeName);
+  if (match.isEmpty) return null;
+  final config = match.first;
+
+  // model is passed unconditionally — the backend only uses it for the
+  // types whose discovery actually depends on it (openrouter/claude/
+  // gemini/ollama) and ignores it otherwise; see effortLevelsProvider's
+  // doc comment.
+  final levelsAsync = ref.watch(effortLevelsProvider((config.type, config.model)));
+  final levels = levelsAsync.valueOrNull ?? const <String>[];
+  if (levels.isEmpty) return null;
+  final current = levels.contains(config.effortLevel) ? config.effortLevel : '';
+  return _EffortState(config, levels, current);
+}
+
+/// Takes the [ProviderContainer] rather than a WidgetRef: the phone's effort
+/// list is a second sheet that outlives the row which opened it, and a
+/// WidgetRef must not be used once its widget is gone.
+Future<void> _setEffort(ProviderContainer container, ProviderConfig config, String value) async {
+  try {
+    await container.read(apiClientProvider).updateProvider(config.copyWith(effortLevel: value));
+    container.invalidate(providerListProvider);
+  } catch (e) {
+    container.read(errorMessageProvider.notifier).state =
+        L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)});
+  }
+}
+
 /// Compact reasoning-effort quick-select shown next to _QuickModelDropdown.
 /// Hides itself entirely (SizedBox.shrink) whenever there's nothing useful
 /// to show: local mode, a CLI-backed provider (Claude Code/Codex are real
@@ -921,38 +972,17 @@ class _QuickEffortSelector extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final activeName = ref.watch(activeProviderTypeProvider).valueOrNull ?? '';
-    final cliType = ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '';
-    if (activeName.isEmpty || cliType.isNotEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final providers = ref.watch(providerListProvider).valueOrNull ?? const <ProviderConfig>[];
-    final match = providers.where((p) => p.name == activeName);
-    if (match.isEmpty) return const SizedBox.shrink();
-    final config = match.first;
-
-    // model is passed unconditionally — the backend only uses it for the
-    // types whose discovery actually depends on it (openrouter/claude/
-    // gemini/ollama) and ignores it otherwise; see effortLevelsProvider's
-    // doc comment.
-    final levelsAsync = ref.watch(effortLevelsProvider((config.type, config.model)));
-    final levels = levelsAsync.valueOrNull ?? const <String>[];
-    if (levels.isEmpty) return const SizedBox.shrink();
+    final effort = _readEffort(ref);
+    if (effort == null) return const SizedBox.shrink();
+    final config = effort.config;
+    final levels = effort.levels;
+    final current = effort.current;
 
     final c = MemoTheme.of(context);
-    final current = levels.contains(config.effortLevel) ? config.effortLevel : '';
     final label = current.isEmpty ? L10n.t('effort_level_default') : current;
 
-    Future<void> pick(String value) async {
-      try {
-        await ref.read(apiClientProvider).updateProvider(config.copyWith(effortLevel: value));
-        ref.invalidate(providerListProvider);
-      } catch (e) {
-        ref.read(errorMessageProvider.notifier).state =
-            L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)});
-      }
-    }
+    Future<void> pick(String value) =>
+        _setEffort(ProviderScope.containerOf(context), config, value);
 
     return Tooltip(
       message: L10n.t('effort_level_label'),
@@ -1014,6 +1044,93 @@ class _QuickEffortSelector extends ConsumerWidget {
   }
 }
 
+/// The phone's way to the reasoning-effort choice: a full-width, labelled row
+/// in the "more actions" sheet that shows the level in force and opens a list
+/// of the levels in a second sheet. The desktop chip above was reused here
+/// as-is — a small unlabelled pill with a popup menu opening on top of a modal
+/// sheet — which is easy to miss and awkward to hit with a thumb. Hidden under
+/// the same conditions as the chip (no levels to offer).
+class _EffortSheetRow extends ConsumerWidget {
+  const _EffortSheetRow({required this.onClose});
+
+  /// Closes the actions sheet this row sits in before the list opens.
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final effort = _readEffort(ref);
+    if (effort == null) return const SizedBox.shrink();
+    final c = MemoTheme.of(context);
+    final current = effort.current;
+    final currentLabel = current.isEmpty ? L10n.t('effort_level_default') : current;
+    // The sheet's own context dies when it closes; the list needs one that
+    // outlives it, so it is opened from the parent route's navigator.
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final container = ProviderScope.containerOf(context);
+
+    return ListTile(
+      key: const Key('effort_sheet_row'),
+      leading: Icon(Icons.psychology_outlined, color: c.textDim),
+      title: Text(L10n.t('effort_level_label'), style: TextStyle(color: c.textMain)),
+      subtitle: Text(currentLabel, style: TextStyle(color: c.textDim)),
+      trailing: Icon(Icons.chevron_right, color: c.textDim),
+      onTap: () {
+        onClose();
+        showModalBottomSheet<void>(
+          context: navigator.context,
+          backgroundColor: c.bgPanel,
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(MemoTheme.radiusLg)),
+          ),
+          builder: (sheetContext) => SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.7,
+              ),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Text(
+                      L10n.t('effort_level_label'),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: c.textMain,
+                      ),
+                    ),
+                  ),
+                  for (final value in ['', ...effort.levels])
+                    ListTile(
+                      leading: Icon(
+                        value == current ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                        color: value == current ? MemoTheme.accent : c.textDim,
+                      ),
+                      title: Text(
+                        value.isEmpty ? L10n.t('effort_level_default') : value,
+                        style: TextStyle(
+                          color: c.textMain,
+                          fontWeight: value == current ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        _setEffort(container, effort.config, value);
+                      },
+                    ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _QuickModelMenuRow extends StatelessWidget {
   final Widget leading;
   final String label;
@@ -1052,9 +1169,12 @@ class _QuickModelMenuRow extends StatelessWidget {
   }
 }
 
-class _ChatTopBar extends ConsumerWidget {
+/// The chat screen's top bar. Public only so a widget test can lay it out at
+/// phone widths; nothing outside this file uses it.
+@visibleForTesting
+class ChatTopBar extends ConsumerWidget {
   final bool showMenuButton;
-   const _ChatTopBar({this.showMenuButton = false});
+   const ChatTopBar({super.key, this.showMenuButton = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1312,10 +1432,7 @@ class _ChatTopBar extends ConsumerWidget {
                   ),
                   const SizedBox(height: 4),
                 ],
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Align(alignment: Alignment.centerLeft, child: _QuickEffortSelector()),
-                ),
+                _EffortSheetRow(onClose: () => Navigator.of(sheetContext).pop()),
                 if (isAgentEnabled)
                   row(
                     icon: Icons.undo,
@@ -1365,12 +1482,55 @@ class _ChatTopBar extends ConsumerWidget {
       );
     }
 
+    // The status chips (incognito, agent project, agent, auto-approve). On the
+    // phone layout they are icon-only with the text as a tooltip: four of them
+    // with labels, plus the chat title, the model button and the menu, do not
+    // fit in 360-390 px, and the project chip was clipped and drawn underneath
+    // the model button. Wide layouts keep the labelled chip exactly as before.
+    final compactBadges = showMenuButton;
+    final badgeGap = compactBadges ? 6.0 : 12.0;
+    Widget badge({
+      required IconData icon,
+      required Color color,
+      required String label,
+      required String tooltip,
+      VoidCallback? onTap,
+      bool flexible = false,
+    }) {
+      final text = Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
+      );
+      Widget chip = Container(
+        padding: EdgeInsets.symmetric(horizontal: compactBadges ? 6 : 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            if (!compactBadges) ...[
+              const SizedBox(width: 4),
+              if (flexible) Flexible(child: text) else text,
+            ],
+          ],
+        ),
+      );
+      if (onTap != null) chip = GestureDetector(onTap: onTap, child: chip);
+      chip = Tooltip(message: tooltip, child: chip);
+      return flexible && !compactBadges ? Flexible(child: chip) : chip;
+    }
+
     return Container(
       height: 56,
       margin: glass
           ? const EdgeInsets.fromLTRB(12, 12, 12, 8)
           : EdgeInsets.zero,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: EdgeInsets.symmetric(horizontal: showMenuButton ? 12 : 20),
       decoration: glass
           ? BoxDecoration(
               color: c.bgPanel,
@@ -1394,143 +1554,44 @@ class _ChatTopBar extends ConsumerWidget {
             child: Row(
               children: [
                 if (isIncognito) ...[
-                  Tooltip(
-                    message: L10n.t('incognito_tooltip'),
-                    child: Container(
-                    padding:  EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: MemoTheme.warmBrown.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.visibility_off,
-                          size: 14,
-                          color: MemoTheme.warmBrown,
-                        ),
-                         SizedBox(width: 4),
-                        Text(
-                          L10n.t('incognito_on'),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: MemoTheme.warmBrown,
-                          ),
-                        ),
-                      ],
-                    ),
+                  badge(
+                    icon: Icons.visibility_off,
+                    color: MemoTheme.warmBrown,
+                    label: L10n.t('incognito_on'),
+                    tooltip: L10n.t('incognito_tooltip'),
                   ),
-                  ),
-                   SizedBox(width: 12),
+                  SizedBox(width: badgeGap),
                 ],
                 if (isAgentEnabled && agentProjectPath != null) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: MemoTheme.green.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.folder_outlined,
-                          size: 14,
-                          color: MemoTheme.green,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${L10n.t('agent_chat_project')}${p.basename(agentProjectPath!)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: MemoTheme.green,
-                          ),
-                        ),
-                      ],
-                    ),
+                  badge(
+                    icon: Icons.folder_outlined,
+                    color: MemoTheme.green,
+                    label: '${L10n.t('agent_chat_project')}${p.basename(agentProjectPath!)}',
+                    // The full name is what the narrow, icon-only form hides.
+                    tooltip: '${L10n.t('agent_chat_project')}${p.basename(agentProjectPath!)}',
+                    // A long project folder name must shrink, not push the
+                    // model button off the bar (it did, at phone width).
+                    flexible: true,
                   ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: badgeGap),
                 ] else if (isAgentEnabled && agentProjectPath == null) ...[
-                  Tooltip(
-                    message: L10n.t('mode_agent_desc'),
-                    child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: MemoTheme.accent.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.psychology,
-                          size: 14,
-                          color: MemoTheme.accent,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          L10n.t('agent_badge'),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: MemoTheme.accent,
-                          ),
-                        ),
-                      ],
-                    ),
+                  badge(
+                    icon: Icons.psychology,
+                    color: MemoTheme.accent,
+                    label: L10n.t('agent_badge'),
+                    tooltip: L10n.t('mode_agent_desc'),
                   ),
-                  ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: badgeGap),
                 ],
                 if (isAgentEnabled && isAutoPermission) ...[
-                  Tooltip(
-                    message: L10n.t('auto_permission_tooltip'),
-                    child: GestureDetector(
+                  badge(
+                    icon: Icons.auto_awesome,
+                    color: MemoTheme.green,
+                    label: 'Auto',
+                    tooltip: L10n.t('auto_permission_tooltip'),
                     onTap: () => ref.read(agentAutoPermissionProvider.notifier).toggle(),
-                    child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: MemoTheme.green.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.auto_awesome,
-                          size: 14,
-                          color: MemoTheme.green,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Auto',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: MemoTheme.green,
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
-                  ),
-                  ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: badgeGap),
                 ],
                 Flexible(
                   child: Text(
@@ -1555,7 +1616,9 @@ class _ChatTopBar extends ConsumerWidget {
           // behind one overflow icon opening openMobileActionsSheet's
           // full-width, fully-labeled rows.
           if (showMenuButton) ...[
-            const _QuickModelDropdown(),
+            _QuickModelDropdown(
+              maxWidth: (MediaQuery.sizeOf(context).width * 0.42).clamp(110.0, 220.0),
+            ),
             IconButton(
               icon: Icon(Icons.more_vert, color: c.textDim),
               tooltip: L10n.t('more_actions'),

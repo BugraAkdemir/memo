@@ -1,3 +1,34 @@
+# Handoff — 2026-10-11 — CI govulncheck düzeltmesi + `submit_callback` HTTP hatası
+
+## İstek
+Commitlenmemiş workflow değişikliklerinin amacını incele, son 4 commit gerçekten işini yapıyor mu bak; bulunan `submit_callback` hatasını düzelt, hepsini commitle.
+
+## Yapılanlar (2 commit, `main`'de, **PUSH EDİLMEDİ**)
+| Commit | Ne |
+|---|---|
+| `bc41039c` | `GO_VERSION "1.26"` → `"1.26.9"` (7 workflow), `go.mod` 1.26.9 + `x/net` 0.60 ve diğer x/* yükseltmeleri, `go mod tidy`. Sebep: son push'ta CI **Security Scan kırmızıydı**; `setup-go "1.26"` runner önbelleğindeki **1.26.8**'e çözülmüş (12 stdlib bulgusu, düzeltme 1.26.9'da) ve `x/net` 0.57 (GO-2026-6617/6612/6611/6610/6603) |
+| `66b8794a` | **Gerçek hata:** `handleSubscriptions` `r.Body`'yi iki kez decode ediyordu; `submit_callback` her zaman 400 "bad json" dönüyordu, yani `edf81e2e`'deki uzak giriş HTTP üzerinden **hiç çalışmıyordu** (Manager ve widget testleri handler'dan geçmediği için yeşildi). `callback_url` tek decode'a alındı, 2 handler testi eklendi (düzeltme geri alınınca ikisi de kırmızı). Ayrıca `app/subs.go` gofmt ve fakecpa'daki hata ayıklama satırı (`EXITING NOW`) temizlendi |
+
+## Doğrulama
+`go build` / `go vet` temiz. `go test -tags sqlite_fts5 ./... -race` ilk tam koşuda **iki zamanlama hatası** verdi: `internal/e2e` (hangi test olduğu kaydedilmedi) ve `livemode` `TestReconnectingSession_SendAudioRoutesToCurrentInner`. İkisi de yeniden koşulunca geçti (livemode tek başına 5/5); bu değişikliklerin dokunduğu koda bağlı değiller ama **kök neden araştırılmadı**. Flutter tarafına dokunulmadı; bu oturumda `flutter test` tam koşulmadı (sadece 2 ilgili dosya: 10 test geçti).
+`govulncheck` yerelde 0 etkilenen açık dedi, ama yerel Go 1.27.1 olduğundan stdlib kısmı ancak CI'ın 1.26.9 ile temiz geçmesiyle kanıtlanır.
+
+## DOĞRULANMADI
+- Gerçek bir satıcı hesabıyla uzak giriş (yapıştırma → token değişimi) hâlâ denenmedi.
+- Kopyala butonunun web yolu (`execCommand` yedeği) gerçek bir HTTP tarayıcıda denenmedi.
+- Push sonrası CI'ın gerçekten yeşile dönüp dönmediği.
+
+## Küçük açık noktalar
+- Yapıştırma kutusu `Done` olana kadar görünür kalıyor (`NeedsPaste` o zamana kadar true).
+- `login.go`: sonuç goroutine'i `s.tail`'i, okuyucu son satırı işlemeden okuyabilir (hata mesajı son satırı kaçırabilir; teorik, 3 `-race` turunda görülmedi).
+- `Dockerfile` kayan `golang:1.26-bookworm` kullanıyor; imaj 1.26.9'dan eskiyse `go 1.26.9` isteyen go.mod ile build kırılır (golang imajları `GOTOOLCHAIN=local`).
+- `GO_VERSION` elle sabit; `go-version-file: go.mod` ile tek kaynağa çekilebilir.
+
+## Hâlâ kullanıcıda
+`origin`'in ikinci push URL'sindeki düz metin token → sil + döndür. Önceki girdideki diğer maddeler geçerli.
+
+---
+
 # Handoff — 2026-10-10 — Uzak sunucuda abonelik girişi + kopyala butonu
 
 ## İstekler

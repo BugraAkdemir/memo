@@ -27,6 +27,7 @@ import '../widgets/settings_dialog.dart';
 import '../widgets/llama_installer_view.dart';
 import '../widgets/backend_unreachable_view.dart';
 import '../widgets/auth_gate_overlay.dart';
+import '../widgets/mobile_connect_screen.dart';
 import '../widgets/setup_wizard_view.dart';
 import '../widgets/version_banner.dart';
 import '../widgets/proactive_suggestion_banner.dart';
@@ -436,6 +437,9 @@ class _AppShellState extends ConsumerState<AppShell> {
                 const AuthGateOverlay(),
                 const VersionBanner(),
                 const ProactiveSuggestionBanner(),
+                // Phone-only first screen; renders nothing on desktop/web and
+                // once an address has been saved. Last so it covers everything.
+                const MobileConnectOverlay(),
               ],
             ),
           ),

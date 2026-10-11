@@ -1595,6 +1595,20 @@ class L10n {
     'notif_permission_desc':
         'Takvim etkinliklerin için, Memo kapalıyken bile telefonuna bildirim gelsin.',
 
+    'connect_title': 'Sunucuya bağlan',
+    'connect_subtitle':
+        'Memo\'nun çalıştığı bilgisayarın IP adresini ya da alan adını yaz. Port yazmazsan 8090 kullanılır.',
+    'connect_address_label': 'IP veya alan adı',
+    'connect_will_use': 'Bağlanılacak adres: \${url}',
+    'connect_checking': 'Sunucu kontrol ediliyor...',
+    'connect_fail_title': 'Bağlanılamadı',
+    'connect_fail_dns': 'Bu ad bulunamadı. Yazımı kontrol et; telefonun internete ya da aynı ağa bağlı olduğundan emin ol.',
+    'connect_fail_refused': 'Bilgisayara ulaşıldı ama bu portta Memo yanıt vermiyor. Bilgisayardaki Memo\'da Uzaktan Erişim\'in açık olduğunu ve portu kontrol et.',
+    'connect_fail_timeout': 'Sunucu zamanında yanıt vermedi. Aynı Wi-Fi ağında olduğunu, güvenlik duvarının portu engellemediğini ve adresin doğru olduğunu kontrol et.',
+    'connect_fail_tls': 'Güvenli bağlantı kurulamadı (sertifika hatası). Adresin https ile doğru çalıştığından emin ol.',
+    'connect_fail_unreachable': 'Bu adrese ağ yolu yok. Telefon başka bir ağda ya da VPN kapalı olabilir.',
+    'connect_fail_not_memo': 'Bu adreste bir sunucu var ama Memo gibi yanıt vermiyor. Adresi ve portu kontrol et.',
+    'connect_fail_unknown': 'Bağlantı kurulamadı.',
     'setup_step_server': 'Sunucuya Bağlan',
     'setup_step_server_desc':
         'Memo\'nun beyni bilgisayarında çalışıyor; telefon ona bağlanıyor. Bilgisayarındaki Memo\'nun adresini gir.',
@@ -4015,6 +4029,20 @@ class L10n {
     'notif_permission_desc':
         'Let Memo notify your phone about calendar events, even when Memo is closed.',
 
+    'connect_title': 'Connect to your server',
+    'connect_subtitle':
+        'Enter the IP address or domain of the computer running Memo. Without a port, 8090 is used.',
+    'connect_address_label': 'IP or domain',
+    'connect_will_use': 'Will connect to: \${url}',
+    'connect_checking': 'Checking the server...',
+    'connect_fail_title': 'Could not connect',
+    'connect_fail_dns': 'That name was not found. Check the spelling, and that your phone is online or on the same network.',
+    'connect_fail_refused': 'The computer is reachable but nothing answers on that port. Check that Remote Access is on in Memo on the computer, and the port.',
+    'connect_fail_timeout': 'The server did not answer in time. Check that you are on the same Wi-Fi, that a firewall is not blocking the port, and that the address is right.',
+    'connect_fail_tls': 'The secure connection could not be set up (certificate error). Make sure the address works over https.',
+    'connect_fail_unreachable': 'There is no network route to that address. Your phone may be on another network, or the VPN is off.',
+    'connect_fail_not_memo': 'Something answers at that address but it does not behave like Memo. Check the address and port.',
+    'connect_fail_unknown': 'Could not connect.',
     'setup_step_server': 'Connect to your server',
     'setup_step_server_desc':
         'Memo\'s brain runs on your computer; your phone connects to it. Enter the address of Memo on your computer.',

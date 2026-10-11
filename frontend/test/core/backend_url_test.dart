@@ -14,6 +14,16 @@ void main() {
       expect(normalizeBackendUrl('192.168.1.106'), 'http://192.168.1.106:8090');
     });
 
+    // The phone connect screen's contract: a domain needs no ":8090" typed,
+    // and a port the user did type is the one that is used.
+    test('a bare domain with no port defaults to 8090', () {
+      expect(normalizeBackendUrl('domain.com'), 'http://domain.com:8090');
+    });
+
+    test('a domain with its own port keeps it', () {
+      expect(normalizeBackendUrl('domain.com:8540'), 'http://domain.com:8540');
+    });
+
     test('an explicit port is always respected, never overridden', () {
       expect(normalizeBackendUrl('192.168.1.106:1234'), 'http://192.168.1.106:1234');
     });

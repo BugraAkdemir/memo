@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:memo_flutter/core/api_client.dart';
 import 'package:memo_flutter/core/l10n.dart';
+import 'package:memo_flutter/core/scope_restart.dart';
 import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
@@ -96,6 +97,10 @@ void main() {
 
     testWidgets('applying a new server address shows the restart-required dialog with a live countdown',
         (tester) async {
+      // The restart dialog is the desktop/web path; a phone swaps the
+      // provider scope instead (next test). flutter_test reports android by
+      // default, so pin a desktop platform for the body of this test.
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
       await pump(tester);
       await tester.tap(find.text(L10n.t('backend_unreachable_change_server')));
       await tester.pumpAndSettle();
@@ -106,6 +111,7 @@ void main() {
       );
       await tester.tap(find.text(L10n.t('apply')));
       await tester.pumpAndSettle();
+      debugDefaultTargetPlatformOverride = null;
 
       expect(find.text(L10n.t('restart_required_title')), findsOneWidget);
       expect(find.text(L10n.t('restart_in_seconds', {'s': '10'})), findsOneWidget);
@@ -125,6 +131,7 @@ void main() {
 
     testWidgets('typing a bare host with no scheme does not crash the app (regression, bug3)',
         (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
       await pump(tester);
       await tester.tap(find.text(L10n.t('backend_unreachable_change_server')));
       await tester.pumpAndSettle();
@@ -140,12 +147,37 @@ void main() {
       );
       await tester.tap(find.text(L10n.t('apply')));
       await tester.pumpAndSettle();
+      debugDefaultTargetPlatformOverride = null;
 
       expect(tester.takeException(), isNull);
       final container = ProviderScope.containerOf(
         tester.element(find.byType(BackendUnreachableView)),
       );
       expect(container.read(backendUrlProvider), 'http://127.0.0.1:8090');
+    });
+
+    testWidgets('on a phone, applying a new address rebuilds the provider scope instead of offering a restart',
+        (tester) async {
+      // flutter_test's default platform is android, i.e. mobile.
+      await pump(tester);
+      final before = scopeEpoch.value;
+      await tester.tap(find.text(L10n.t('backend_unreachable_change_server')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextField, L10n.t('remote_backend_url_field_label')),
+        'memo.example.com:8540',
+      );
+      await tester.tap(find.text(L10n.t('apply')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(L10n.t('restart_required_title')), findsNothing,
+          reason: 'exit(0) on a phone only closes the app on the user');
+      expect(scopeEpoch.value, before + 1);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(BackendUnreachableView)),
+      );
+      expect(container.read(backendUrlProvider), 'http://memo.example.com:8540');
     });
 
     testWidgets('"Bu Bilgisayarın Backend\'ine Dön" resets both fields to the local default',

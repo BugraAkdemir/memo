@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../core/platform_capabilities.dart';
+import '../core/scope_restart.dart';
 import '../core/theme.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
@@ -261,6 +262,13 @@ class ChangeServerDialogState extends ConsumerState<ChangeServerDialog> {
     ref.invalidate(apiClientProvider);
     if (!mounted) return;
     Navigator.of(context).pop();
+    if (isMobilePlatform) {
+      // A phone has no entry point that relaunches it after exit(0), so the
+      // restart countdown below would simply close the app. Rebuild the
+      // provider tree against the new address instead.
+      softRestartScope();
+      return;
+    }
     showDialog(
       context: context,
       barrierDismissible: false,

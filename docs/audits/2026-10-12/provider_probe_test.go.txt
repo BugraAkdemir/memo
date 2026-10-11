@@ -1,0 +1,27 @@
+package provider
+import("bytes";"context";"net/http";"net/http/httptest";"path/filepath";"testing")
+// These probes assert the observed defect, not a desired fixed behavior.
+func TestAuditProviderFieldsLostOnReload(t *testing.T){
+ path:=filepath.Join(t.TempDir(),"providers.json");key:=bytes.Repeat([]byte{1},32)
+ cm:=NewConfigManager(path,key);cm.Set(ProviderConfig{Type:ProviderCustom,Name:"audit",Model:"test",Enabled:true,EffortLevel:"high",ContextTokens:1000000})
+ before:=cm.GetAll()[0];after:=NewConfigManager(path,key).GetAll()[0]
+ if before.EffortLevel!="high"||before.ContextTokens!=1000000{t.Fatal("fixture invalid")}
+ if after.EffortLevel!=""||after.ContextTokens!=0{t.Fatal("observed defect changed")}
+ t.Logf("OBSERVED: before effort=%q context=%d; after effort=%q context=%d",before.EffortLevel,before.ContextTokens,after.EffortLevel,after.ContextTokens)
+}
+func TestAuditConnectionCheckAcceptsUnavailableModel(t *testing.T){
+ srv:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.Header().Set("Content-Type","application/json");if r.URL.Path=="/v1/models"{w.Write([]byte(`{"data":[{"id":"available"}]}`));return};w.WriteHeader(404);w.Write([]byte(`{"error":{"message":"model not found"}}`))}));defer srv.Close()
+ cm:=NewConfigManager(filepath.Join(t.TempDir(),"p.json"),bytes.Repeat([]byte{2},32))
+ cfg:=ProviderConfig{Type:ProviderCustom,Name:"audit",Model:"missing",BaseURL:srv.URL+"/v1"}
+ p,_:=NewProvider(cfg);_,err:=p.ChatCompletion(context.Background(),ChatRequest{Model:"missing",Messages:[]Message{TextMessage("user","test")}});if err==nil{t.Fatal("fixture must reject chat")}
+ if err:=cm.TestConnection(&cfg);err!=nil{t.Fatalf("observed defect changed: %v",err)}
+ t.Log("OBSERVED: chat rejects selected model with HTTP 404, TestConnection returns nil because /models succeeds")
+}
+func TestAuditProviderSaveFailureOnlyLogged(t *testing.T){
+ dir:=t.TempDir();cm:=NewConfigManager(filepath.Join(dir,"p.json"),bytes.Repeat([]byte{4},32))
+ cm.filePath=filepath.Join(dir,"p.json","cannot-write.json")
+ cm.Set(ProviderConfig{Type:ProviderCustom,Name:"lost",Model:"test",Enabled:true})
+ if len(cm.GetAll())!=1{t.Fatal("fixture invalid")}
+ after:=NewConfigManager(cm.filePath,bytes.Repeat([]byte{4},32)).GetAll();if len(after)!=0{t.Fatal("observed defect changed")}
+ t.Log("OBSERVED: Set returns without an error channel and exposes changed in-memory state; reopening unwritable target loses that state")
+}

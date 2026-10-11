@@ -1,0 +1,14 @@
+package cloudsync
+import("archive/zip";"bytes";"context";"os";"path/filepath";"testing";"memo/internal/provider")
+func TestAuditCloudArchiveOmitsDataAndProviderKey(t *testing.T){
+ dir:=t.TempDir();path:=filepath.Join(dir,"providers.json");key:=bytes.Repeat([]byte{1},32)
+ cm:=provider.NewConfigManager(path,key);cm.Set(provider.ProviderConfig{Type:provider.ProviderCustom,Name:"audit",Model:"test",APIKey:"audit-fake-key",Enabled:true})
+ for _,n:=range []string{"machine.key","calendar/events.db","routines/routines.json","tasklists/task.json","stats/usage.db","images/photo.enc","telegram.json"}{p:=filepath.Join(dir,n);if err:=os.MkdirAll(filepath.Dir(p),0700);err!=nil{t.Fatal(err)};if err:=os.WriteFile(p,[]byte("fixture"),0600);err!=nil{t.Fatal(err)}}
+ m:=&Manager{ctx:context.Background(),dataDir:dir,persistDir:filepath.Join(dir,"memory")};b,err:=m.archive();if err!=nil{t.Fatal(err)};zr,err:=zip.NewReader(bytes.NewReader(b),int64(len(b)));if err!=nil{t.Fatal(err)}
+ names:=map[string]bool{};for _,f:=range zr.File{names[f.Name]=true}
+ if !names["data/providers.json"]{t.Fatal("fixture missing provider")}
+ for _,n:=range []string{"data/machine.key","data/calendar/events.db","data/routines/routines.json","data/tasklists/task.json","data/stats/usage.db","data/images/photo.enc","data/telegram.json"}{if names[n]{t.Fatalf("observed omission changed: %s",n)}}
+ dest:=t.TempDir();pull:=&Manager{dataDir:dest,persistDir:filepath.Join(dest,"memory")};if err:=pull.restoreZip(b);err!=nil{t.Fatal(err)}
+ restored:=provider.NewConfigManager(filepath.Join(dest,"providers.json"),bytes.Repeat([]byte{9},32)).GetAll();if len(restored)!=1||restored[0].APIKey!=""{t.Fatal("observed decryption failure changed")}
+ t.Log("OBSERVED: cloud archive omits key/calendar/routines/tasklists/stats/images/Telegram; restored provider API key is empty with fresh device key")
+}

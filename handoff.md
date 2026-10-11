@@ -5,6 +5,9 @@
 > Oturum sonunda: eski "son oturum" özetini arşivin **başına** taşı, yenisini buraya kısa yaz, hâlâ açık olanı aşağıdaki bloklara kat.
 
 ## Açık işler
+**Kod denetimi (2026-10-12)**
+- Ayrıntı: `docs/AUDIT_2026-10-12.md`. Yeni açık öncelikler: provider effort/context kalıcılığı; bulut yedeğinde machine.key/veri kapsamı; yerel export config yolu ve yutulan okuma hataları; provider kaydetme hataları; embedding kesintisinde pinned fallback; Auto Route inference failover. Bu tur yalnız raporlandı, düzeltilmedi. Mobil alarm eşleme, ajan thinking gösterimi ve iki model seçici farkı da raporda.
+
 **Kullanıcıda**
 - `origin`'in ikinci push URL'sinde düz metin token (`web.bugradev.com`, satılan alan adı) → URL'yi sil + token'ı döndür. Silme: `git remote set-url --delete --push origin 'web.bugradev.com'`. O zamana kadar push **yalnızca** `git push https://github.com/BugraAkdemir/memo.git main` ile; `git push origin` token'ı yabancıya sızdırır.
 - Eski sürümlerin REPL `update` komutu ve `download.bugradev.com/get-memo.sh` satırları artık başkasının sunucusuna gidiyor → yeni sürümü duyur, eski satırları kaldır.
@@ -34,10 +37,9 @@
 
 ---
 
-# Son oturum — 2026-10-12 — Auto Route durumu ve handoff güncellemesi
-- Auto Route tamamlandı: her istekte yalnız ekli API modelleri, hesaptaki abonelik modelleri ve yerel sohbet GGUF’ları arasından bağlam/araç/görsel desteğine göre seçim yapar. Opsiyonel karar modeli hata, timeout veya geçersiz seçimde kurallara düşer; karar/doğrulama kapalıyken mevcut sistem korunur.
-- Ortak sohbet geçmişi kullanılır; seçilen pencereye göre özetlenebilir. İstek özel router ana model ayarını değiştirmez. Gerçek kullanılan model canlı yanıtta, kayıtlı mesajda ve bağlam göstergesinde görünür; akış gösterimi kapalıyken de etiket korunur. Soğuk GGUF ayrı süreçte yüklenir, heartbeat sürer ve tur sonunda süreç kapanır.
-- Models.dev için çevrimdışı yedek tamamlandı: başarılı veriler atomik disk snapshot’ına yazılır; ağ/JSON hatasında son başarılı veri, o da yoksa sağlayıcı ayarı/abonelik önbelleği/GGUF bilgisi kullanılır. Bilinmeyen kapasite uydurulmaz. Ayrıntı: `docs/AUTO_ROUTE.md`; `PLAN_auto_route.md` tamamlandı.
-- Kod commit’leri: backend **9ec3487d**, arayüz **185b99b2**; önceki kurulum/abonelik sihirbazı **ea0ad9cc**. Yerel commit’ler; push/yayın yapılmadı.
-- Önceki kod doğrulaması: CGO + sqlite_fts5 Go build/vet/tüm race **exit 0**; gerçek HTTP yönlendirme/geçmiş/etiket/bağlam ve karar yedekleri geçti. Katalog 503/disk yedeği, private port ve heartbeat testleri geçti. Flutter **595 passed**; analyze yalnız mevcut **5 info**, `--no-fatal-infos` **exit 0**; L10n taraması **0 eşleşme**, `git diff --check` temiz.
-- Bu oturum yalnız handoff belgelerini güncelledi; önceki özet arşivin başına taşındı ve eski flake kaydının bağlantısı düzeltildi. Kod testleri yeniden çalıştırılmadı. Sıradaki açık kontroller: gerçek sağlayıcı/abonelik kalite ve kota davranışı, gerçek GGUF yükleme/inference, kurulum sihirbazının native görünümü ve abonelik girişi. TestSprite bağlı proje yok.
+# Son oturum — 2026-10-12 — Kullanıcı etkisi / yarım özellik denetimi
+- Kullanıcının rapor isteği tamamlandı: `docs/AUDIT_2026-10-12.md`; 21 özellik için yaklaşık olgunluk puanı, 17 bulgu/sınır, üretimden kopmuş ve test destek kodunun ayrımı. Yüzdeler ölçülmüş başarı oranı değil; kapsam/kanıt sınırları açık.
+- Codebase-memory grafik/trace/snippet + coverage ve doğrudan kaynak kontrolü kullanıldı. Kritik davranışlar 9 overlay gözlem testiyle yeniden üretildi; kalıcı tekrar çalıştırma: `python3 docs/audits/2026-10-12/run_probes.py`. PASS kusurun gözlendiği anlamına gelir; düzeltme yapıldığını göstermez. Üretim kodu değiştirilmedi.
+- Standart doğrulama (tarama başındaki e42d7a89 durumu): CGO sqlite_fts5 build/vet/tüm Go race exit 0; Flutter 595 passed; analyze exit 1, mevcut 5 info, error/warning yok. Gerçek hesap/donanım/native görünüm bu turda denenmedi.
+- Çalışma alanında eşzamanlı frontend auth/restart, app shell, bağlantı ekranı, server probe, L10n ve test düzenlemeleri görüldü; dokunulmadı, bu değişiklikler raporun son-hâl doğrulaması kapsamında değil. Rapor/kanıt/handoff ayrı yerel docs commit; push/yayın yok. Auto Route kod commit’leri 9ec3487d + 185b99b2, önceki sihirbaz ea0ad9cc; ayrıntılı eski özet arşivde.
+- Sonraki iş: kullanıcı raporu değerlendirdikten sonra veri kurtarma ve ayar kalıcılığı sorunlarından başlanması önerildi. Bu oturumda düzeltme veya yayın istenmedi.

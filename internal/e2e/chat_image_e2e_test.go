@@ -146,8 +146,13 @@ func TestChat_UploadedPictureNeverTouchesTheTempDirInTheClear(t *testing.T) {
 		}
 	}
 	// And the model did get the picture.
-	reqs := h.Fake.Requests()
-	if len(reqs) == 0 || !strings.Contains(string(reqs[len(reqs)-1].Raw), "image_url") {
-		t.Fatal("the picture did not reach the model")
+	// Any request will do, not the last one: the chat-title call is made in the
+	// background after the turn and, under load, can land after the chat call
+	// and before this check (it carries no picture).
+	for _, r := range h.Fake.Requests() {
+		if strings.Contains(string(r.Raw), "image_url") {
+			return
+		}
 	}
+	t.Fatal("the picture did not reach the model")
 }

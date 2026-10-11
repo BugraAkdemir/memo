@@ -1,3 +1,12 @@
+# Son oturum — 2026-10-12 — Kullanıcı etkisi / yarım özellik denetimi
+- Kullanıcının rapor isteği tamamlandı: `docs/AUDIT_2026-10-12.md`; 21 özellik için yaklaşık olgunluk puanı, 17 bulgu/sınır, üretimden kopmuş ve test destek kodunun ayrımı. Yüzdeler ölçülmüş başarı oranı değil; kapsam/kanıt sınırları açık.
+- Codebase-memory grafik/trace/snippet + coverage ve doğrudan kaynak kontrolü kullanıldı. Kritik davranışlar 9 overlay gözlem testiyle yeniden üretildi; kalıcı tekrar çalıştırma: `python3 docs/audits/2026-10-12/run_probes.py`. PASS kusurun gözlendiği anlamına gelir; düzeltme yapıldığını göstermez. Üretim kodu değiştirilmedi.
+- Standart doğrulama (tarama başındaki e42d7a89 durumu): CGO sqlite_fts5 build/vet/tüm Go race exit 0; Flutter 595 passed; analyze exit 1, mevcut 5 info, error/warning yok. Gerçek hesap/donanım/native görünüm bu turda denenmedi.
+- Çalışma alanında eşzamanlı frontend auth/restart, app shell, bağlantı ekranı, server probe, L10n ve test düzenlemeleri görüldü; dokunulmadı, bu değişiklikler raporun son-hâl doğrulaması kapsamında değil. Rapor/kanıt/handoff ayrı yerel docs commit; push/yayın yok. Auto Route kod commit’leri 9ec3487d + 185b99b2, önceki sihirbaz ea0ad9cc; ayrıntılı eski özet arşivde.
+- Sonraki iş: kullanıcı raporu değerlendirdikten sonra veri kurtarma ve ayar kalıcılığı sorunlarından başlanması önerildi. Bu oturumda düzeltme veya yayın istenmedi.
+
+---
+
 # Son oturum — 2026-10-12 — Auto Route durumu ve handoff güncellemesi
 - Auto Route tamamlandı: her istekte yalnız ekli API modelleri, hesaptaki abonelik modelleri ve yerel sohbet GGUF’ları arasından bağlam/araç/görsel desteğine göre seçim yapar. Opsiyonel karar modeli hata, timeout veya geçersiz seçimde kurallara düşer; karar/doğrulama kapalıyken mevcut sistem korunur.
 - Ortak sohbet geçmişi kullanılır; seçilen pencereye göre özetlenebilir. İstek özel router ana model ayarını değiştirmez. Gerçek kullanılan model canlı yanıtta, kayıtlı mesajda ve bağlam göstergesinde görünür; akış gösterimi kapalıyken de etiket korunur. Soğuk GGUF ayrı süreçte yüklenir, heartbeat sürer ve tur sonunda süreç kapanır.

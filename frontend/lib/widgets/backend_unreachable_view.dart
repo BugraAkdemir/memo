@@ -50,7 +50,15 @@ class BackendUnreachableOverlay extends ConsumerWidget {
     // be buried under this overlay — which suggests a loopback address that
     // cannot work on a phone. Correct on every platform, not just mobile:
     // while the wizard is up, it owns the screen.
-    if (!ref.watch(setupCompleteProvider)) return const SizedBox.shrink();
+    //
+    // Phones are the exception since the connect screen: the address is
+    // entered there, before this overlay can matter, and the wizard stays
+    // hidden until the server has answered. A server that stops answering
+    // right after the address was saved would otherwise leave the user on an
+    // empty screen with no retry and no way to fix the address.
+    if (!isMobilePlatform && !ref.watch(setupCompleteProvider)) {
+      return const SizedBox.shrink();
+    }
 
     final connected = ref.watch(connectionStatusProvider).valueOrNull;
     // null covers both "still loading the first check" and "stream errored"

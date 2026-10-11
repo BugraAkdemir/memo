@@ -10,6 +10,7 @@ import 'package:memo_flutter/models/gpu_info.dart';
 import 'package:memo_flutter/models/provider_config.dart';
 import 'package:memo_flutter/models/provider_models.dart';
 import 'package:memo_flutter/models/subscriptions.dart';
+import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/models_provider.dart';
 import 'package:memo_flutter/providers/provider_provider.dart';
@@ -138,29 +139,70 @@ void main() {
     variant: TargetPlatformVariant({TargetPlatform.linux}),
   );
 
+  // The phone connects (MobileConnectScreen) and signs in (AuthGateOverlay)
+  // before the wizard can matter, and the wizard is only for a server that
+  // was never set up. These pin the three states a phone can be in.
+  Future<void> pumpMobileWizard(
+    WidgetTester tester, {
+    required _Api api,
+    String savedUrl = 'http://memo.test:8090',
+    AuthGateState gate = AuthGateState.ok,
+  }) async {
+    SharedPreferences.setMockInitialValues({
+      if (savedUrl.isNotEmpty) 'memo_api_base_url': savedUrl,
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          prefsProvider.overrideWithValue(prefs),
+          apiClientProvider.overrideWithValue(api),
+          authGateProvider.overrideWith((ref) => Stream.value(AuthGateInfo(gate))),
+          gpuInfoProvider.overrideWith((ref) async => const GPUInfo()),
+        ],
+        child: const MaterialApp(home: Scaffold(body: SetupWizardOverlay())),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets(
-    'mobile setup starts with the server connection step',
+    'phone: a server that is already set up never shows the wizard',
     (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      final prefs = await SharedPreferences.getInstance();
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            prefsProvider.overrideWithValue(prefs),
-            apiClientProvider.overrideWithValue(_Api()),
-          ],
-          child: const MaterialApp(home: Scaffold(body: SetupWizardOverlay())),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text(L10n.t('setup_step_server')), findsOneWidget);
-      expect(find.byType(TextField), findsNWidgets(2));
+      await pumpMobileWizard(tester, api: _Api()..completed = true);
+      expect(find.byKey(const Key('setup_next')), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+    variant: TargetPlatformVariant({TargetPlatform.android}),
+  );
+
+  testWidgets(
+    'phone: the wizard waits for a saved server address and for sign-in',
+    (tester) async {
+      await pumpMobileWizard(tester, api: _Api(), savedUrl: '');
+      expect(find.byKey(const Key('setup_next')), findsNothing,
+          reason: 'no address yet: the connect screen owns the phone');
+      await pumpMobileWizard(tester,
+          api: _Api(), gate: AuthGateState.loginNeeded);
+      expect(find.byKey(const Key('setup_next')), findsNothing,
+          reason: 'signed out: the login gate owns the phone');
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+    variant: TargetPlatformVariant({TargetPlatform.android}),
+  );
+
+  testWidgets(
+    'phone: a never-set-up server starts the wizard at language and theme, with no server step',
+    (tester) async {
+      await pumpMobileWizard(tester, api: _Api());
+      expect(find.text(L10n.t('setup_step_language_theme')), findsWidgets);
+      // The old first page asked for an address and a token in two fields.
+      expect(find.byType(TextField), findsNothing);
       await tester.tap(find.byKey(const Key('setup_next')));
       await tester.pumpAndSettle();
-      expect(find.text(L10n.t('setup_step_language_theme')), findsOneWidget);
       await tester.tap(find.byKey(const Key('setup_back')));
       await tester.pumpAndSettle();
-      expect(find.text(L10n.t('setup_step_server')), findsOneWidget);
+      expect(find.text(L10n.t('setup_step_language_theme')), findsWidgets);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },

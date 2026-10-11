@@ -10,6 +10,7 @@ import '../models/curated_models.dart';
 import '../models/gpu_info.dart';
 import '../models/local_model.dart';
 import '../models/persona_presets.dart';
+import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/learning_provider.dart';
 import '../providers/models_provider.dart';
@@ -30,6 +31,22 @@ class SetupWizardOverlay extends ConsumerWidget {
       return SizedBox.shrink();
     }
 
+    if (isMobilePlatform) {
+      // A phone connects (MobileConnectScreen) and signs in (AuthGateOverlay)
+      // before anything else, and the wizard is only for a server that has
+      // never been set up. Until the server has actually answered "onboarding
+      // complete?", the local preference's `false` is just the default of a
+      // fresh install — acting on it is what showed the full wizard against
+      // servers that were long since configured.
+      final gate = ref.watch(authGateProvider).valueOrNull;
+      if (ref.watch(backendUrlProvider).isEmpty ||
+          gate == null ||
+          gate.state != AuthGateState.ok ||
+          !ref.watch(onboardingCheckedProvider)) {
+        return const SizedBox.shrink();
+      }
+    }
+
     return _SetupWizardScreen();
   }
 }
@@ -44,15 +61,8 @@ class _SetupWizardScreen extends ConsumerStatefulWidget {
 class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   final _nameController = TextEditingController();
   final _customPromptController = TextEditingController();
-  // Only used by the mobile-only server step; created unconditionally so
-  // dispose() stays simple.
-  final _serverUrlController = TextEditingController();
-  final _serverTokenController = TextEditingController();
-  bool _serverTesting = false;
   bool _notifPermissionGranted = false;
   bool _notifPermissionAsking = false;
-  // null = not tried yet, so the step shows neither a tick nor an error.
-  bool? _serverOk;
 
   String _selectedTheme = 'light';
   String _selectedPrompt = personaPresets.first.key;
@@ -119,8 +129,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     _pageScroll.dispose();
     _nameController.dispose();
     _customPromptController.dispose();
-    _serverUrlController.dispose();
-    _serverTokenController.dispose();
     super.dispose();
   }
 
@@ -162,38 +170,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
       if (mounted) setState(() => _notifPermissionGranted = granted);
     } finally {
       if (mounted) setState(() => _notifPermissionAsking = false);
-    }
-  }
-
-  /// Saves the typed address/token, rebuilds the API client against it and
-  /// probes the backend — the mobile-only counterpart to the final step's
-  /// diagnostics, which cannot tell the user anything useful while there is
-  /// no address to check at all.
-  Future<void> _testServerConnection() async {
-    final url = _serverUrlController.text.trim();
-    if (url.isEmpty || _serverTesting) return;
-    setState(() {
-      _serverTesting = true;
-      _serverOk = null;
-    });
-    try {
-      await ref.read(backendUrlProvider.notifier).save(url);
-      await ref
-          .read(backendTokenProvider.notifier)
-          .save(_serverTokenController.text.trim());
-      // The client is built from those two values, so it has to be rebuilt
-      // before the probe reaches the new address.
-      ref.invalidate(apiClientProvider);
-      final ok = await ref.read(apiClientProvider).isAlive();
-      if (!mounted) return;
-      setState(() => _serverOk = ok);
-      // A reachable server makes the later diagnostics meaningful, so run
-      // them now rather than leaving the last step stale.
-      if (ok) await _checkDiagnostics();
-    } catch (_) {
-      if (mounted) setState(() => _serverOk = false);
-    } finally {
-      if (mounted) setState(() => _serverTesting = false);
     }
   }
 
@@ -363,7 +339,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   void _goTo(int page) {
     setState(() => _page = page);
     if (_pageScroll.hasClients) _pageScroll.jumpTo(0);
-    if (page == (isMobilePlatform ? 5 : 4)) _checkDiagnostics();
+    if (page == 4) _checkDiagnostics();
   }
 
   @override
@@ -388,7 +364,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
               constraints.maxWidth >= 800 && constraints.maxHeight >= 680;
           final narrow = constraints.maxWidth < 560;
           final labels = [
-            if (isMobilePlatform) L10n.t('setup_step_server'),
             L10n.t('setup_step_language_theme'),
             L10n.t('setup_step_persona'),
             L10n.t('setup_step_model'),
@@ -396,94 +371,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
             L10n.t('setup_step_check'),
           ];
           final pages = <Widget Function()>[
-            if (isMobilePlatform)
-              () => _SetupPage(
-                title: L10n.t('setup_step_server'),
-                subtitle: L10n.t('setup_step_server_desc'),
-                color: c,
-                child: _Card(
-                  color: c,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _Label(text: L10n.t('setup_server_url_label'), color: c),
-                      SizedBox(height: 8),
-                      TextField(
-                        controller: _serverUrlController,
-                        keyboardType: TextInputType.url,
-                        autocorrect: false,
-                        style: TextStyle(color: c.textMain, fontSize: 14),
-                        decoration: InputDecoration(
-                          // An example address, not prose:
-                          // deliberately not an L10n key, same
-                          // as the token hint below it.
-                          hintText: '192.168.1.50:8090',
-                          hintStyle: TextStyle(color: c.textDim),
-                          isDense: true,
-                        ),
-                      ),
-                      SizedBox(height: 16),
-                      _Label(
-                        text: L10n.t('setup_server_token_label'),
-                        color: c,
-                      ),
-                      SizedBox(height: 8),
-                      TextField(
-                        controller: _serverTokenController,
-                        autocorrect: false,
-                        style: TextStyle(color: c.textMain, fontSize: 14),
-                        decoration: InputDecoration(
-                          hintText: 'memo-...',
-                          hintStyle: TextStyle(color: c.textDim),
-                          isDense: true,
-                        ),
-                      ),
-                      SizedBox(height: 16),
-                      Text(
-                        L10n.t('setup_server_help'),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: c.textDim,
-                          height: 1.5,
-                        ),
-                      ),
-                      SizedBox(height: 16),
-                      Row(
-                        children: [
-                          _Pill(
-                            label: _serverTesting
-                                ? L10n.t('setup_server_testing')
-                                : L10n.t('setup_server_test'),
-                            selected: false,
-                            accent: MemoTheme.accent,
-                            color: c,
-                            // _Pill.onTap is a non-null
-                            // VoidCallback; the guard against
-                            // re-entry lives inside
-                            // _testServerConnection too.
-                            onTap: () => _testServerConnection(),
-                          ),
-                          SizedBox(width: 12),
-                          if (_serverOk != null)
-                            Expanded(
-                              child: Text(
-                                _serverOk!
-                                    ? L10n.t('setup_server_ok')
-                                    : L10n.t('setup_server_fail'),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: _serverOk!
-                                      ? MemoTheme.green
-                                      : MemoTheme.red,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
             () => _SetupPage(
               title: L10n.t('setup_step_language_theme'),
               color: c,

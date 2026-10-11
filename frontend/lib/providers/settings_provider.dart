@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../core/backend_url.dart';
 import '../core/l10n.dart';
+import '../core/platform_capabilities.dart';
 import '../models/browser_install_progress.dart';
 import '../models/dev_gateway.dart';
 import '../models/gpu_info.dart';
@@ -148,6 +149,14 @@ final setupCompleteProvider =
       return SetupCompleteNotifier(ref, prefs);
     });
 
+/// True once the backend has actually answered "is onboarding complete?" in
+/// this app session. Until then [setupCompleteProvider] is only the local
+/// preference's guess, which on a freshly installed phone is always `false`
+/// — showing the setup wizard on that guess is what put the whole wizard in
+/// front of users whose server had long been set up. The phone-only gating of
+/// the wizard (setup_wizard_view.dart) waits for this.
+final onboardingCheckedProvider = StateProvider<bool>((ref) => false);
+
 class SetupCompleteNotifier extends StateNotifier<bool> {
   final Ref _ref;
   final SharedPreferences _prefs;
@@ -171,15 +180,33 @@ class SetupCompleteNotifier extends StateNotifier<bool> {
     if (confirmWithBackend) _init();
   }
 
+  Timer? _retry;
+
   Future<void> _init() async {
     try {
       final completed =
           await _ref.read(apiClientProvider).getOnboardingComplete();
+      if (!mounted) return;
       state = completed;
       await _prefs.setBool('memo_setup_complete', completed);
+      if (mounted) _ref.read(onboardingCheckedProvider.notifier).state = true;
     } catch (e) {
       debugPrint('setup: onboarding init error: ${FriendlyError.describeGeneric(e)}');
+      // On a phone the wizard stays hidden until the server has answered, so
+      // a single failed read (server still starting, a flaky mobile link)
+      // would leave it hidden for the whole session. Ask again; other
+      // platforms keep their one-shot behaviour.
+      if (isMobilePlatform && mounted) {
+        _retry?.cancel();
+        _retry = Timer(const Duration(seconds: 5), _init);
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _retry?.cancel();
+    super.dispose();
   }
 
   Future<void> completeSetup() async {

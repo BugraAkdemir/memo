@@ -6,7 +6,7 @@ The decision model checks whether an automatic conversation-memory write is usef
 
 Requests go directly to the selected provider/model, without tools or changes to the active chat model. Yes/no calls request at most eight output tokens, structured extraction requests at most 512, with a five-second timeout and an 8,000-character (Unicode rune) input bound. Provider errors and ambiguous classifications preserve the existing routing; failed extraction/learning calls fall back to their original paths. Reported usage appears under Learning in Usage Stats. Switching settings takes effect without restart.
 
-A separate model is not automatically cheaper or faster: that depends on the model selected. Agent classification adds an extra request before the main answer. Memory selection is a best-effort model judgment and may omit a useful turn; explicit “remember” actions remain available. The chosen provider receives the text needed for its decisions.
+The UI recommends fast, low-cost models suited to decisions and classification. General chat LLMs remain compatible through the same chat-completion API and receive role-specific prompts; a specialized non-chat endpoint is not supported by this setting. A separate model is not automatically cheaper or faster: that depends on the model selected. Agent classification adds an extra request before the main answer. Memory selection is a best-effort model judgment and may omit a useful turn; explicit “remember” actions remain available. The chosen provider receives the text needed for its decisions.
 
 ## Completion verification
 

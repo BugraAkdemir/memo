@@ -201,6 +201,61 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
                 color: MemoTheme.of(context).textDim,
               ),
             ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: MemoTheme.accent.withValues(alpha: .08),
+                borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                border: Border.all(
+                  color: MemoTheme.accent.withValues(alpha: .25),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.lightbulb_outline,
+                    size: 18,
+                    color: MemoTheme.accent,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          L10n.t('decision_recommendation_title'),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: MemoTheme.of(context).textMain,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          L10n.t('decision_recommendation_desc'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.5,
+                            color: MemoTheme.of(context).textDim,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          L10n.t('decision_scores_note'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.5,
+                            color: MemoTheme.of(context).textDim,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,

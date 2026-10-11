@@ -114,6 +114,12 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text(L10n.t('decision_model_title')), findsOneWidget);
+      expect(
+        find.text(L10n.t('decision_recommendation_title')),
+        findsOneWidget,
+      );
+      expect(find.text(L10n.t('decision_recommendation_desc')), findsOneWidget);
+      expect(find.text(L10n.t('decision_scores_note')), findsOneWidget);
       expect(find.text('cheap · tiny'), findsOneWidget);
       await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
       await tester.tap(find.byType(DropdownButtonFormField<String>));
@@ -176,6 +182,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('cheap · tiny'), findsOneWidget);
         await tester.ensureVisible(find.text(L10n.t('verification_limits')));
+        await tester.pumpAndSettle();
         await tester.tap(find.text(L10n.t('verification_limits')));
         await tester.pumpAndSettle();
         expect(find.byType(Slider), findsNWidgets(2));

@@ -135,15 +135,15 @@ func agentDecisionInput(messages []api.Message, user string) string {
 	return text.String()
 }
 
-// Revalidate roles on every call so deleted/reclassified models cannot be used.
+// Revalidate the enabled API connection on every call. Any selected model is allowed.
 func (a *App) decisionProviderConfig(name, model string) (provider.ProviderConfig, error) {
 	if a.providerCfgMgr != nil {
 		for _, cfg := range a.providerCfgMgr.GetAll() {
-			if cfg.Name == name && cfg.Enabled && cfg.ModelKind(model) == "decision" && !strings.HasSuffix(string(cfg.Type), "-cli") {
+			if cfg.Name == name && cfg.Enabled && strings.TrimSpace(model) != "" && !strings.HasSuffix(string(cfg.Type), "-cli") {
 				cfg.Model = model
 				return cfg, nil
 			}
 		}
 	}
-	return provider.ProviderConfig{}, fmt.Errorf("select a registered decision model from an enabled API provider")
+	return provider.ProviderConfig{}, fmt.Errorf("select a model from an enabled API provider")
 }

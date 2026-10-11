@@ -10,3 +10,7 @@
 ## Provider model management redesign
 - [x] Persist per-provider model IDs with explicit chat/decision roles; restrict decision calls and chat model switches accordingly, verify and commit backend.
 - [x] Manage multiple models in API Providers, embed decision/verification model picker there, remove separate tab and expand chat dropdown; localize, verify and commit with handoff.
+
+## Unrestricted selection and usable model menus
+- [x] Remove manual model-role restrictions; retain and merge configured/catalog models, verify backend and commit.
+- [ ] Show provider model groups even for legacy records, simplify model editing and decision controls, verify UI and rotate handoff; import local Claude skills.

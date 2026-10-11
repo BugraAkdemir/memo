@@ -20,7 +20,7 @@ This hook covers Memo's agent pipeline (including Code Mode); plain text chat st
 
 ## Multiple models per API connection
 
-Provider models are stored as IDs; existing single-model configurations are also shown as model rows under their provider. There is no manual Chat/Decision type selector. Any connected API model can serve chat, decision and verification work. The chat picker first shows saved/current models immediately, then merges vendor catalog models in the background. Catalog failures leave saved choices available. Changing the active model saves both the prior and selected ID; older clients updating only the active model also preserve earlier choices. Model-role restrictions from the previous implementation are removed.
+Provider models are stored as IDs; existing single-model configurations are also shown as model rows under their provider. There is no manual Chat/Decision type selector. Any connected API model can serve chat, decision and verification work. The chat picker shows only explicitly saved model IDs and the current model. Vendor catalogs are available in the provider editor; browsing a catalog does not add all its models to the chat picker. Changing the active model saves both the prior and selected ID; older clients updating only the active model also preserve earlier choices. Model-role restrictions from the previous implementation are removed.
 
 Subscriptions retain their dynamic live catalog. Model IDs survive provider edits and restart alongside the existing encrypted credential. Availability still depends on the vendor; an unavailable decision or verification model follows the existing bounded fallback. Saved selection is separate from whether the model is cheaper, faster or good at evaluation.
 

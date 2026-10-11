@@ -1997,6 +1997,13 @@ class L10n {
     'proactive_suggestion_stop': 'Artık sorma',
     'learning_level_label': 'Seviye:',
     'learning_settings_saved': 'Öğrenme ayarları kaydedildi',
+    'decision_model_title': 'Karar modeli (isteğe bağlı)',
+    'decision_model_desc':
+        'Hafıza kaydı, bilgi çıkarımı, niyet ve proaktif kararları ayrı bir modele sor. Ajan açıkken yalnız gerektiğinde araçları kullan; hata olursa mevcut akış devam eder.',
+    'decision_provider_label': 'Karar sağlayıcısı',
+    'decision_provider_hint':
+        'API Sağlayıcıları bölümündeki sağlayıcının tam adı. CLI ajanları desteklenmez.',
+    'decision_model_label': 'Karar modelinin kimliği',
     'learning_single_model_title': 'Tek Model Modu',
     'learning_single_model_desc':
         'Niyet analizi ve proaktif kararlar Orchestra yerine tek modeli kullanır.',
@@ -4354,6 +4361,13 @@ class L10n {
     'proactive_suggestion_stop': 'Stop asking',
     'learning_level_label': 'Level:',
     'learning_settings_saved': 'Learning settings saved',
+    'decision_model_title': 'Decision model (optional)',
+    'decision_model_desc':
+        'Use a separate model for memory retention, fact extraction, intent and proactive decisions. When agent mode is on, use tools only when needed; routing failures preserve existing behavior.',
+    'decision_provider_label': 'Decision provider',
+    'decision_provider_hint':
+        'Exact provider name from API Providers. CLI agents are not supported.',
+    'decision_model_label': 'Decision model ID',
     'learning_single_model_title': 'Single Model Mode',
     'learning_single_model_desc':
         'Intent analysis and proactive decisions use a single model instead of Orchestra.',

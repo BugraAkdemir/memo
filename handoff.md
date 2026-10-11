@@ -12,6 +12,7 @@
 - Claude hesabıyla giriş yok → Claude kota biçimi (`oauth/usage`) ve `quota_exhausted` kartı gerçek doluşta hiç görülmedi.
 
 **Doğrulanmadı (kimse denemedi)**
+- Yeni opsiyonel karar modeli: gerçek sağlayıcıda karar kalitesi, hız ve maliyet ölçümü yapılmadı; sahte HTTP sağlayıcısı + gerçek sohbet yönlendirmesi ve TR/EN widget testleriyle doğrulandı.
 - Gerçek hesapla uzak giriş (yapıştırma → token değişimi); kopyala butonunun HTTP tarayıcıdaki `execCommand` yedeği.
 - Gerçek Telegram / WhatsApp (WhatsApp'ın sahte aktarımı yok), gerçek satıcı görsel üretimi (Antigravity `gemini-3.1-flash-image` bu hesapta Google'dan 500 veriyor), Flutter'da görüntüleyici/halka/yapıştırma kutusu/kota kartının gerçek pencerede görünümü.
 - Windows/macOS/arm64'te sidecar'ı çalıştırma (yalnız build adımları CI ile kanıtlı); Codex 5s/7g kota pencereleri (bu hesapta yalnız `30d` geldi).
@@ -32,18 +33,8 @@
 
 ---
 
-# Son oturum — 2026-10-11 — CI govulncheck + `submit_callback` + handoff küçültme
-Tam kayıt: `handoff-archive.md` (üstteki girdi).
-- **`bc41039c`** `GO_VERSION "1.26"`→`"1.26.9"` (7 workflow) + `go.mod` 1.26.9, `x/net` 0.60 vb. Sebep: `setup-go "1.26"` runner önbelleğindeki 1.26.8'e çözülüyordu → govulncheck 12 stdlib + 5 `x/net` bulgusu. Sonuç: push sonrası `Security Scan` yeşil.
-- **`66b8794a`** Gerçek hata: `handleSubscriptions` gövdeyi iki kez decode ediyordu → `submit_callback` hep 400 "bad json"; uzak giriş (`edf81e2e`) HTTP üzerinden hiç çalışmıyordu. Tek decode + 2 handler testi (düzeltme geri alınınca kırmızı).
-- **`1b16c56c`** CI'daki tek kırmızı: `TestChat_UploadedPictureNeverTouchesTheTempDirInTheClear` fake sağlayıcının *son* isteğine bakıyordu; arka plandaki sohbet-başlığı çağrısı (resimsiz) yük altında araya giriyordu (24 döngüyle 22/40 düşüyordu, düzeltmeden sonra 40/40). Test hatası, üretim kodu doğruydu.
-- **`da3c6a41`** `handoff.md` 1,39 MB → arşive taşındı; CI Old-domain Guard `handoff-archive.md`'yi de istisna tutuyor; AGENTS.md kural #2'de rotasyon kuralı.
-- Doğrulama: yerelde `build`/`vet` temiz, ilgili testler `-race` yeşil. `da3c6a41` CI: Security Scan / Flutter / L10n / Old-domain **yeşil**; `Test (Go)` kırmızı (yukarıdaki TempDir yarışı, ilk koşuda); yalnız o iş yeniden koşturuldu — sonucu `gh run list` ile bak.
-- Sonraki adım: kullanıcıdaki maddeler (yukarıda); sonra gerçek hesapla uzak giriş denemesi.
-
-# Flake araştırması — 2026-10-11 (CI `Test (Go)` neden sürekli kırmızıydı)
-İki ayrı kök neden, ikisi de ölçüldü:
-1. **Turdan sonra çalışan başlık üretimi** (`finishStream` → `generateChatTitleForSession`, fire-and-forget): LLM çağrısı + `sm.save` testin temp klasörü silinirken hâlâ sürüyor → `TempDir RemoveAll cleanup: ... 001|003: directory not empty` (çakışan klasör her iki başarısız testte de *sessions* klasörüydü: `TestIntegration_AgentTurnRecordsRealUsage`, `TestSendMessage_WebSearchOnMinimalModeOn_NoToolDefinitions`). Doğrudan görülen: test sunucusu kapandıktan SONRA başlık isteği `EOF`/`connection refused` ile düşüyor (24 busy-loop altında, düzeltmeden önce 148 kez; sonra 0). Başlık yazısı test temizliğinden 0,18 ms önce biten koşular ölçüldü. Birebir "directory not empty"ı yerelde üretemedim (pencere çok dar) — kanıt dolaylı ama tutarlı. **Düzeltme:** `App.goBackground` + `waitBackground` (`background.go`), 3 başlık çağrı noktası buna taşındı, başlık çağrısı `lifecycleCtx` ile iptal edilir, `Shutdown` 2 sn bekler; 18 başlık-başlatan teste `drainBackground(t, a)`.
-2. **Pinned olgu sınırı delinebiliyordu** (`TestIntegration_MemoryBlock_CappedAndUserOnly`, ~%2): `PinnedFactsPerTurn` sınırı yalnız `GetPinnedFactsRanked` listesine uygulanıyordu; RAG sonucu kendisi pinned bir olgu getirirse (rakamları farklı olgular "yakın kopya" sayılmaz) prompt'a 11. olarak giriyordu. Bu uygulama hatası, test değil. 150 koşuda 4/4 başarısız koşuda tam 1 RAG-pinned vardı, 196 başarılıda 0. **Düzeltme:** `mergePinnedFirst` (saf fonksiyon) RAG'den gelen pinned olguyu eler; 3 deterministik test + mutasyon. 300 koşuda 0 hata (öncesi ~%2).
-Ayrıca (daha önce): e2e resim testi son isteğe bakıyordu (`1b16c56c`). Yöntem AGENTS.md "Test flakes" bölümünde.
-Doğrulama: `go build`/`vet` temiz; `go test -tags sqlite_fts5 ./... -race -count=1` tüm paketler ok. Push/CI sonucu bu girdide YOK.
+# Son oturum — 2026-10-11 — Opsiyonel karar modeli
+- **`242a6015`** Backend: `Learning.DecisionEnabled/DecisionProvider/DecisionModel`; seçilen sağlayıcıya doğrudan, araçsız, 5 sn bütçeli çağrı. Otomatik hafıza kaydı YES/NO, sabit bilgi çıkarımı, niyet/proaktif kararlar ve global ajan açık normal sohbetlerde araç gerekliliği. Kesin NO dışında eski yönlendirme korunur; çıkarım/öğrenme hatasında eski modele dönülür. Açık ajan/proje sohbeti, Code Mode, görev işçisi ve ekli dosya/görsel atlanmaz; kapalı ajan açılmaz. Eski öğrenme API istemcileri seçimi silmez; PUT yöneticiye kapılı.
+- Bu oturumun ikinci commit'i: Ayarlar › Öğrenme'de TR/EN karar modeli anahtarı ve sağlayıcı/model alanları; `docs/DECISION_MODEL.md`; `PLAN_decision_model.md` tamamlandı. Varsayılan kapalı, seçim yeniden başlatmadan uygulanır; gerçek veriler/hesaplar değiştirilmedi, push yok.
+- Doğrulama: `CGO_ENABLED=1 go build -tags sqlite_fts5 ./...` / `go vet` temiz; `go test -tags sqlite_fts5 ./... -race` tüm paketler **ok**. `flutter test`: **570 passed** (yeni TR/EN widget testleri dahil). `flutter analyze lib/`: mevcut 5 info (4 async context + 1 null-aware elements; değiştirilmeyen dosyalarda), hata/uyarı yok; `--no-fatal-infos` exit 0. Dokunulan Dart dosyalarında L10n literal taraması ve `git diff --check` boş.
+- Sonraki adım: gerçek bir küçük karar modeliyle kalite/gecikme/maliyet ölçümü; daha önceki açık işler yukarıda korunuyor.

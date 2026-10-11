@@ -1,0 +1,9 @@
+# Optional decision model
+
+Settings → Learning → Decision model enables a separate model for narrow decisions. Enter the exact name of an enabled API provider and its model ID, then save. Local OpenAI-compatible servers and Ollama can be used through their configured providers; CLI coding agents cannot. With this option disabled, existing routing remains unchanged. When enabled it takes priority over Learning's older single-model setting.
+
+The decision model checks whether an automatic conversation-memory write is useful, extracts durable personal facts, analyses learning intents and supplies proactive decisions. Explicit memory writes are unaffected. When the global agent toggle is on, it also checks whether a normal chat needs tools; only an exact NO skips the agent loop. It never enables an agent that the user disabled and never skips explicit project-agent chats, Code Mode, task workers or turns with attachments. Recent user/assistant messages provide context for follow-ups.
+
+Requests go directly to the selected provider/model, without tools or changes to the active chat model. Yes/no calls request at most eight output tokens, structured extraction requests at most 512, with a five-second timeout and an 8,000-character (Unicode rune) input bound. Provider errors and ambiguous classifications preserve the existing routing; failed extraction/learning calls fall back to their original paths. Reported usage appears under Learning in Usage Stats. Switching settings takes effect without restart.
+
+A separate model is not automatically cheaper or faster: that depends on the model selected. Agent classification adds an extra request before the main answer. Memory selection is a best-effort model judgment and may omit a useful turn; explicit “remember” actions remain available. The chosen provider receives the text needed for its decisions.

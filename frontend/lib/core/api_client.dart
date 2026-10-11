@@ -2894,11 +2894,22 @@ class MemoApiClient {
   /// Update learning settings (single model mode + model id).
   Future<void> updateLearningSettings(
     bool singleModelEnabled,
-    String modelId,
-  ) async {
+    String modelId, {
+    bool? decisionEnabled,
+    String decisionProvider = '',
+    String decisionModel = '',
+  }) async {
     await _dio.put(
       '/api/learning/settings',
-      data: {'single_model_enabled': singleModelEnabled, 'model_id': modelId},
+      data: {
+        'single_model_enabled': singleModelEnabled,
+        'model_id': modelId,
+        if (decisionEnabled != null) ...{
+          'decision_enabled': decisionEnabled,
+          'decision_provider': decisionProvider,
+          'decision_model': decisionModel,
+        },
+      },
     );
   }
 

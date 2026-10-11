@@ -295,6 +295,12 @@ func modelContextWindow(router *provider.Router, modelName string) int {
 			case provider.ProviderClaude, provider.ProviderCustomAnthropic:
 				return 200 * 1024
 			case provider.ProviderCustom:
+				if p.Name == "Subscriptions" {
+					if w := provider.SubscriptionContextWindow(p, modelName); w > 0 {
+						return w
+					}
+					return 128 * 1024
+				}
 				// An OpenAI-compatible gateway can front any family, so the
 				// type says nothing; the model id does (Claude 200K, Gemini 1M).
 				name := modelName

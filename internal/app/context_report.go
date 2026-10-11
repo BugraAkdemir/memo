@@ -4,6 +4,7 @@ package app
 
 import (
 	"encoding/json"
+	"memo/internal/provider"
 	"strings"
 	"sync"
 	"time"
@@ -211,6 +212,16 @@ func (a *App) compactionSettings() (enabled bool, pct int) {
 func (a *App) ContextReport(chatID string) models.ContextReport {
 	providerName, model := a.activeModelIdentity()
 	window := a.currentContextWindow()
+	if providerName == subsProviderName {
+		if p, ok := a.subsMarkerConfig(); ok && p.ContextTokens == 0 {
+			a.cfgMu.RLock()
+			override := a.cfg.Llama.MaxContextTokens
+			a.cfgMu.RUnlock()
+			if override == 0 {
+				window = provider.SubscriptionContextWindow(p, model)
+			}
+		}
+	}
 	enabled, pct := a.compactionSettings()
 	rep := models.ContextReport{
 		Provider:           providerName,

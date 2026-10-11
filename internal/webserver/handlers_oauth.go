@@ -181,6 +181,23 @@ func (s *Server) handleProviderEffortLevels(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if ptype == "subscriptions" {
+		list, _, err := s.fullBridge.ListProviderModels(r.Context(), "Subscriptions")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		levels := []string{}
+		for _, m := range list {
+			if m.ID == r.URL.Query().Get("model") {
+				levels = append(levels, m.EffortLevels...)
+				break
+			}
+		}
+		writeJSON(w, map[string]interface{}{"levels": levels})
+		return
+	}
+
 	if !effortDiscoveredTypes[ptype] {
 		levels := provider.EffortLevelsForType(ptype)
 		if levels == nil {

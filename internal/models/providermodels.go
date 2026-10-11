@@ -5,8 +5,10 @@ package models
 // (the Subscriptions sidecar does: antigravity, claude, codex …); selectors
 // use it to group a long list.
 type ProviderModel struct {
-	ID      string `json:"id"`
-	OwnedBy string `json:"owned_by,omitempty"`
+	ID            string   `json:"id"`
+	ContextLength int      `json:"context_length,omitempty"`
+	EffortLevels  []string `json:"effort_levels,omitempty"`
+	OwnedBy       string   `json:"owned_by,omitempty"`
 	// Remaining / ResetAt: the share of the model's allowance left (0..1) and when
 	// it refills, for the Subscriptions provider when the vendor reports it.
 	Remaining   *float64 `json:"remaining,omitempty"`

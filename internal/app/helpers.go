@@ -53,6 +53,12 @@ func (a *App) contextBudgetFor(providerName string) int {
 		// provider.ContextWindowForModel).
 		for _, p := range a.providerCfgMgr.GetEnabled() {
 			if p.Name == providerName && p.Type == provider.ProviderCustom {
+				if isSubsMarker(p) {
+					if w := provider.SubscriptionContextWindow(p, p.Model); w > 0 {
+						return w
+					}
+					return 128 * 1024 // internal safety budget, not measured capacity
+				}
 				if w := provider.ContextWindowForModel(p.Model); w > 0 {
 					return w
 				}

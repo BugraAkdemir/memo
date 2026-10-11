@@ -1,3 +1,13 @@
+# Son oturum — 2026-10-11 — Görsel modelde metin sorusunu Abonelikler'e yönlendirme
+- Seçili Abonelik görsel modeli artık normal soruyu otomatik resme çevirmiyor. Niyet resim istemiyorsa aynı abonelik satıcısının kayıtlı/hesapta listelenen sohbet modeli tercih edilir, gerekirse diğer bağlı Abonelik hesabının sohbet modeli. Tek isteğe özel router context üzerinde taşınır; kayıtlı seçim/küresel router değişmez, normal API sağlayıcılarına geçmez. Ajan, web arama ve context taşıyan yardımcı LLM çağrıları aynı yönlendirmeyi kullanır; kullanımda gerçek hedef model kaydedilir.
+- Açık resim isteği ve /image seçili görsel yolunu korur. Abonelik sohbet modeli bulunmazsa hata + terminal Done döner, resim üretilmez. Niyet tespiti mevcut sezgiyle yapılır; bu çalışma karar modeliyle niyet çözümleme eklemedi.
+- Gerçek HTTP/SSE + sahte sidecar e2e: codex-image seçiliyken düz/ajan/web-search sorusu codex-model-a'dan metin aldı, görsel çağrısı sayısı artmadı; sonra açık resim isteği çalıştı. Kayıtlı seçili model hâlâ codex-image, normal API varsayılan resim sağlayıcısı kullanılmadı. Odaklı e2e **3.888s ok**; sohbet modeli yokken hiçbir ağ isteği yapmadan terminal hata testi geçti. Gerçek hesap/ücretli LLM çağrısı yapılmadı.
+- Son doğrulama: CGO sqlite_fts5 Go build/vet ve tüm race testleri exit 0. Flutter **579 passed**, analyze mevcut 5 info (--no-fatal-infos exit 0). Flutter kaynağı bu oturumda değişmedi; L10n diff taraması boş, git diff --check boş. TestSprite bağlı proje yok, çalıştırılmadı.
+- PLAN_subscription_text_route.md + docs/SUBSCRIPTION_CAPABILITIES.md güncel. Bu oturum tek fix(app) yerel commit ile kaydedilecek; push/yayın yok. Önceki bağlam/effort commit'leri c176f6e3 + 9e628d89; ayrıntılar arşivde.
+- Sonraki: gerçek masaüstü/hesapta model yönlendirmesini kontrol et; bağlam/effort gerçek hesap doğrulaması ve diğer açık işler yukarıda.
+
+---
+
 # Son oturum — 2026-10-11 — Abonelik bağlam/effort keşfi
 - Backend **`c176f6e3`**: Abonelikler için aileye göre bağlam tahmini yerine CLIProxyAPI `main/internal/registry/models/models.json` çevrimiçi verisi, tam kimlik + model sahibi eşleşmesi. 6 saat TTL, 4 sn HTTP sınırı, 1 dk hata geri çekilmesi; eşzamanlı soğuk istekler birleşir, eski veri/disk snapshot çevrimdışı korunur. Katalog, hesapta olmayan model eklemez. Bilinmeyen kapasite göstergede 0/bilinmiyor; yalnız iç güvenli bütçe kullanılır. Açık kullanıcı bağlam sınırı korunur.
 - Frontend: Abonelikler effort seçicisi ve sağlayıcı düzenleyici model başına `subscriptions` keşfi kullanır; ilk hata kalıcı olmasın diye 1 dk tekrar. Seviye listesi internet verisinden gelir. Yeniden bağlantıda tercih korunur, model değişiminde uyumsuz seviye temizlenir. ProviderModel yanıtı bağlam/effort taşır.

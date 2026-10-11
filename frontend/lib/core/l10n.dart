@@ -889,6 +889,9 @@ class L10n {
 
     // Settings — Providers
     'providers_title': 'API Sağlayıcıları',
+    'providers_connections': 'Bağlantılar',
+    'providers_images': 'Görsel üretimi',
+    'providers_decisions': 'Karar ve doğrulama',
     'add_provider': 'Sağlayıcı Ekle',
     'add_provider_title': 'API Sağlayıcı Ekle',
     'image_viewer_title': 'Görsel',
@@ -3306,6 +3309,9 @@ class L10n {
     'memory_import_no_facts': 'No usable information found.',
 
     'providers_title': 'API Providers',
+    'providers_connections': 'Connections',
+    'providers_images': 'Image generation',
+    'providers_decisions': 'Decision & verification',
     'add_provider': 'Add Provider',
     'add_provider_title': 'Add API Provider',
     'image_viewer_title': 'Image',

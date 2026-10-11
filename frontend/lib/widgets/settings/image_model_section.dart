@@ -67,7 +67,9 @@ class _ImageModelSectionState extends ConsumerState<ImageModelSection> {
     setState(() => _loadingModels = true);
     List<String> ids = const [];
     try {
-      final list = await ref.read(apiClientProvider).listProviderModels(provider);
+      final list = await ref
+          .read(apiClientProvider)
+          .listProviderModels(provider);
       ids = list.models.map((ProviderModel m) => m.id).toList();
     } catch (_) {
       // No list is fine: the field still takes a typed model name.
@@ -85,7 +87,9 @@ class _ImageModelSectionState extends ConsumerState<ImageModelSection> {
       _saving = true;
       _message = null;
     });
-    final err = await ref.read(imageConfigProvider.notifier).save(
+    final err = await ref
+        .read(imageConfigProvider.notifier)
+        .save(
           defaultProvider: _provider.isEmpty ? '' : _provider,
           defaultModel: _provider.isEmpty ? '' : model,
         );
@@ -102,9 +106,11 @@ class _ImageModelSectionState extends ConsumerState<ImageModelSection> {
     final theme = MemoTheme.of(context);
     final cfgAsync = ref.watch(imageConfigProvider);
     final cfg = cfgAsync.valueOrNull;
-    final providers = (ref.watch(providerListProvider).valueOrNull ?? const <ProviderConfig>[])
-        .where((p) => p.enabled)
-        .toList();
+    final providers =
+        (ref.watch(providerListProvider).valueOrNull ??
+                const <ProviderConfig>[])
+            .where((p) => p.enabled)
+            .toList();
     ref.listen<AsyncValue<ImageConfig>>(imageConfigProvider, (_, next) {
       final c = next.valueOrNull;
       if (c != null) _seed(c.defaultProvider, c.defaultModel);
@@ -114,8 +120,13 @@ class _ImageModelSectionState extends ConsumerState<ImageModelSection> {
     final names = providers.map((p) => p.name).toList();
     final dropdownValue = names.contains(_provider) ? _provider : '';
 
-    return Card(
-      margin: const EdgeInsets.only(top: 24),
+    return Material(
+      color: MemoTheme.of(context).bgPanel,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: MemoTheme.of(context).borderSoft),
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -123,20 +134,22 @@ class _ImageModelSectionState extends ConsumerState<ImageModelSection> {
           children: [
             Text(
               L10n.t('image_section_title'),
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.textMain,
-                  ),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: theme.textMain,
+              ),
             ),
             const SizedBox(height: 6),
             Text(
               L10n.t('image_section_desc'),
-              style: TextStyle(color: theme.textDim, fontSize: 13),
+              style: TextStyle(color: theme.textDim, fontSize: 12, height: 1.5),
             ),
             const SizedBox(height: 12),
             SwitchListTile(
               key: const Key('image_auto_route_switch'),
               contentPadding: EdgeInsets.zero,
+              activeThumbColor: MemoTheme.accent,
               value: cfg?.autoRoute ?? true,
               onChanged: cfg == null
                   ? null
@@ -150,13 +163,20 @@ class _ImageModelSectionState extends ConsumerState<ImageModelSection> {
                         _message = err;
                       });
                     },
-              title: Text(L10n.t('image_auto_route')),
+              title: Text(
+                L10n.t('image_auto_route'),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: MemoTheme.of(context).textMain,
+                ),
+              ),
               subtitle: Text(
                 L10n.t('image_auto_route_hint'),
                 style: TextStyle(color: theme.textDim, fontSize: 12),
               ),
             ),
-            const Divider(),
+            Divider(height: 32, color: theme.borderSoft),
             Text(
               L10n.t('image_default_title'),
               style: const TextStyle(fontWeight: FontWeight.w600),
@@ -175,12 +195,33 @@ class _ImageModelSectionState extends ConsumerState<ImageModelSection> {
               isExpanded: true,
               decoration: InputDecoration(
                 labelText: L10n.t('image_default_provider'),
-                border: const OutlineInputBorder(),
+                filled: true,
+                fillColor: MemoTheme.of(context).bgElement,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 16,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                  borderSide: BorderSide(
+                    color: MemoTheme.of(context).borderSoft,
+                  ),
+                ),
                 isDense: true,
               ),
               items: [
-                DropdownMenuItem(value: '', child: Text(L10n.t('image_default_none'))),
-                for (final n in names) DropdownMenuItem(value: n, child: Text(n)),
+                DropdownMenuItem(
+                  value: '',
+                  child: Text(L10n.t('image_default_none')),
+                ),
+                for (final n in names)
+                  DropdownMenuItem(
+                    value: n,
+                    child: Text(n, overflow: TextOverflow.ellipsis),
+                  ),
               ],
               onChanged: (v) {
                 final next = v ?? '';
@@ -198,7 +239,9 @@ class _ImageModelSectionState extends ConsumerState<ImageModelSection> {
               key: ValueKey('image_model_$_provider'),
               optionsBuilder: (v) {
                 final q = v.text.trim().toLowerCase();
-                return _suggestions.where((m) => q.isEmpty || m.toLowerCase().contains(q));
+                return _suggestions.where(
+                  (m) => q.isEmpty || m.toLowerCase().contains(q),
+                );
               },
               initialValue: TextEditingValue(text: _modelController.text),
               onSelected: (v) => _modelController.text = v,
@@ -207,7 +250,9 @@ class _ImageModelSectionState extends ConsumerState<ImageModelSection> {
                 // whether it was picked from the list or typed.
                 if (!identical(_boundField, controller)) {
                   _boundField = controller;
-                  controller.addListener(() => _modelController.text = controller.text);
+                  controller.addListener(
+                    () => _modelController.text = controller.text,
+                  );
                 }
                 return TextField(
                   key: const Key('image_default_model'),
@@ -217,7 +262,21 @@ class _ImageModelSectionState extends ConsumerState<ImageModelSection> {
                   decoration: InputDecoration(
                     labelText: L10n.t('image_default_model'),
                     hintText: L10n.t('image_default_model_hint'),
-                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: MemoTheme.of(context).bgElement,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 16,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                      borderSide: BorderSide(
+                        color: MemoTheme.of(context).borderSoft,
+                      ),
+                    ),
                     isDense: true,
                     suffixIcon: _loadingModels
                         ? const Padding(
@@ -236,22 +295,25 @@ class _ImageModelSectionState extends ConsumerState<ImageModelSection> {
             const SizedBox(height: 12),
             Row(
               children: [
+                Expanded(
+                  child: _message == null
+                      ? const SizedBox.shrink()
+                      : Text(
+                          _message!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _messageIsError
+                                ? Theme.of(context).colorScheme.error
+                                : theme.textDim,
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 12),
                 FilledButton(
                   key: const Key('image_save'),
                   onPressed: _saving ? null : _saveDefault,
                   child: Text(L10n.t('image_save')),
                 ),
-                const SizedBox(width: 12),
-                if (_message != null)
-                  Expanded(
-                    child: Text(
-                      _message!,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: _messageIsError ? Theme.of(context).colorScheme.error : theme.textDim,
-                      ),
-                    ),
-                  ),
               ],
             ),
           ],

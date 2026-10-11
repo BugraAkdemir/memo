@@ -1,3 +1,13 @@
+# Son oturum — 2026-10-12 — Auto Route durumu ve handoff güncellemesi
+- Auto Route tamamlandı: her istekte yalnız ekli API modelleri, hesaptaki abonelik modelleri ve yerel sohbet GGUF’ları arasından bağlam/araç/görsel desteğine göre seçim yapar. Opsiyonel karar modeli hata, timeout veya geçersiz seçimde kurallara düşer; karar/doğrulama kapalıyken mevcut sistem korunur.
+- Ortak sohbet geçmişi kullanılır; seçilen pencereye göre özetlenebilir. İstek özel router ana model ayarını değiştirmez. Gerçek kullanılan model canlı yanıtta, kayıtlı mesajda ve bağlam göstergesinde görünür; akış gösterimi kapalıyken de etiket korunur. Soğuk GGUF ayrı süreçte yüklenir, heartbeat sürer ve tur sonunda süreç kapanır.
+- Models.dev için çevrimdışı yedek tamamlandı: başarılı veriler atomik disk snapshot’ına yazılır; ağ/JSON hatasında son başarılı veri, o da yoksa sağlayıcı ayarı/abonelik önbelleği/GGUF bilgisi kullanılır. Bilinmeyen kapasite uydurulmaz. Ayrıntı: `docs/AUTO_ROUTE.md`; `PLAN_auto_route.md` tamamlandı.
+- Kod commit’leri: backend **9ec3487d**, arayüz **185b99b2**; önceki kurulum/abonelik sihirbazı **ea0ad9cc**. Yerel commit’ler; push/yayın yapılmadı.
+- Önceki kod doğrulaması: CGO + sqlite_fts5 Go build/vet/tüm race **exit 0**; gerçek HTTP yönlendirme/geçmiş/etiket/bağlam ve karar yedekleri geçti. Katalog 503/disk yedeği, private port ve heartbeat testleri geçti. Flutter **595 passed**; analyze yalnız mevcut **5 info**, `--no-fatal-infos` **exit 0**; L10n taraması **0 eşleşme**, `git diff --check` temiz.
+- Bu oturum yalnız handoff belgelerini güncelledi; önceki özet arşivin başına taşındı ve eski flake kaydının bağlantısı düzeltildi. Kod testleri yeniden çalıştırılmadı. Sıradaki açık kontroller: gerçek sağlayıcı/abonelik kalite ve kota davranışı, gerçek GGUF yükleme/inference, kurulum sihirbazının native görünümü ve abonelik girişi. TestSprite bağlı proje yok.
+
+---
+
 # Son oturum — 2026-10-11 — Auto Route + çevrimdışı model bilgisi
 - Model seçicisine Auto Route eklendi. Her istekte yalnız ekli API modelleri, hesaptaki abonelik modelleri ve yerel sohbet GGUF’ları arasından seçim; bağlam/araç/görsel desteği ve kodlama ipuçları kullanılır. Opsiyonel karar modeli aday indeksi seçebilir; geçersiz seçim/hata/timeout tek seferde kurallara düşer. Karar/doğrulama kapalıyken mevcut davranış korunur.
 - Seçim geçmiş kısaltılmadan önce yapılır. İstek özel router kullanır; kayıtlı ana model, yerel istemci ve görev snapshot’ı değişmez. Ortak sohbet geçmişi korunur, seçilen pencereye göre özetlenebilir. Gerçek model SSE ile görünür, yanıta kaydedilir ve bağlam göstergesinde kullanılır. Akış gösterimi kapalıyken de etiket gelir; içerik tamamlanana kadar biriktirilir. CLI sohbetinden Auto Route seçimi CLI modunu kapatır.

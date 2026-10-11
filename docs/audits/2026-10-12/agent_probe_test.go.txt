@@ -1,0 +1,10 @@
+package agent
+import("context";"testing";"memo/internal/provider")
+func TestAuditAgentDropsThinkingDisplay(t *testing.T){
+ prov:=&scriptedProvider{responses:[]provider.ChatResponse{{Content:"audit answer",Thinking:"audit reasoning"}}}
+ p:=NewPipeline(NewRegistry(),NewPermissionManager(t.TempDir()),NewSandbox(DefaultSandboxConfig(t.TempDir())),prov,nil)
+ ch,err:=p.RunStream(context.Background(),[]provider.Message{{Role:"user",Content:"test"}},"audit",func(AgentEvent){},nil);if err!=nil{t.Fatal(err)}
+ var reply,thinking string;for c:=range ch{if c.Error!=""{t.Fatal(c.Error)};reply+=c.Content;thinking+=c.Thinking}
+ if reply!="audit answer"||thinking!=""{t.Fatalf("observed behavior changed: %q %q",reply,thinking)}
+ t.Log("OBSERVED: provider returns Thinking but agent output carries no Thinking chunks")
+}

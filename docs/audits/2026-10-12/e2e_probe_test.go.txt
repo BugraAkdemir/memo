@@ -1,0 +1,13 @@
+package e2e
+import("os";"strings";"testing";"memo/internal/app";"memo/internal/config";"memo/internal/provider")
+func TestAuditAutoRouteNoAlternateOnProviderFailure(t *testing.T){
+ h:=NewHarness(t);h.SetAgentEnabled(false);h.SetWebSearchEnabled(false)
+ fixture:=`{"fixture":{"api":"ENDPOINT","models":{"general":{"id":"general","limit":{"context":16384},"modalities":{"input":["text"],"output":["text"]}},"backup":{"id":"backup","limit":{"context":32768},"modalities":{"input":["text"],"output":["text"]}}}}}`
+ if err:=os.WriteFile(config.DataPath("model-routing-capabilities.json"),[]byte(strings.ReplaceAll(fixture,"ENDPOINT",h.Fake.Srv.URL)),0600);err!=nil{t.Fatal(err)}
+ if err:=h.App.UpdateProvider(provider.ProviderConfig{Type:provider.ProviderCustom,Name:"e2e-fake",BaseURL:h.Fake.Srv.URL,APIKey:"test",Model:"general",Enabled:true,Models:[]provider.ConfiguredModel{{ID:"general"},{ID:"backup"}}});err!=nil{t.Fatal(err)}
+ h.Fake.Script=func(_ int,r FakeChatRequest)FakeChatResponse{if r.Model=="general"{return FakeChatResponse{Status:503,RawBody:"audit unavailable"}};return FakeChatResponse{Text:"backup works"}}
+ h.App.SetActiveProvider(app.AutoRouteProvider);evs:=h.SendMessageStream(h.NewChat(),"Audit ordinary request")
+ sawErr:=false;for _,e:=range evs{if e.Error!=""{sawErr=true}}
+ if !sawErr{t.Fatal("observed failure changed")};for _,r:=range h.Fake.Requests(){if r.Model=="backup"{t.Fatal("observed no-failover behavior changed")}}
+ t.Log("OBSERVED: Auto Route selects general, 503 terminates turn, connected backup model is never called")
+}

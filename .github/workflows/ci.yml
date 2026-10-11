@@ -152,7 +152,7 @@ jobs:
   # The old domain was sold (2026-10): anything that still points at it hands
   # the new owner a `curl | bash` into our users' machines. Every install URL,
   # guide link and doc now lives on memocpp.com / data.memocpp.com — fail the
-  # build if the old host creeps back. handoff.md (a historical log of what was
+  # build if the old host creeps back. handoff.md and handoff-archive.md (historical logs of what was
   # true at the time) and this file (the guard has to name the host) are the
   # only files allowed to mention it.
   domain-guard:
@@ -164,7 +164,7 @@ jobs:
       - name: No tracked file may reference bugradev.com
         run: |
           set -euo pipefail
-          HITS=$(git -c core.quotepath=off grep -I -n -i 'bugradev\.com' -- . ':!handoff.md' ':!.github/workflows/ci.yml' || true)
+          HITS=$(git -c core.quotepath=off grep -I -n -i 'bugradev\.com' -- . ':!handoff.md' ':!handoff-archive.md' ':!.github/workflows/ci.yml' || true)
           if [ -n "$HITS" ]; then
             echo "$HITS"
             echo "::error title=Old-domain Guard::bugradev.com was sold. Use memocpp.com (site) or data.memocpp.com (R2 downloads) instead."

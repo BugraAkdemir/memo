@@ -48,6 +48,7 @@ func newTestAppForCLI(t *testing.T) (*App, *sessions.Manager) {
 		sessions:       sm,
 		providerCfgMgr: provider.NewConfigManager(t.TempDir()+"/providers.json", nil),
 	}
+	drainBackground(t, a)
 	return a, sm
 }
 

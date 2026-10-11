@@ -132,6 +132,7 @@ type App struct {
 	quotaSource func() cliproxy.QuotaSet
 
 	shutdownOnce         sync.Once          // guards Shutdown() against double-call
+	bg                   bgGroup            // post-turn follow-up work (chat titles); see background.go
 	lifecycleCtx         context.Context    // goroutine lifecycle only — NOT for request-scoped operations
 	lifecycleCancel      context.CancelFunc // cancels lifecycleCtx on shutdown
 	client               *api.Client
@@ -981,6 +982,13 @@ func (a *App) shutdownSync(ctx context.Context) {
 	// reminders, WhatsApp intent loop, observer analysis, etc.)
 	if a.lifecycleCancel != nil {
 		a.lifecycleCancel()
+	}
+	// A chat-title generation may still be mid-flight (an LLM call, then a
+	// write to the session store). It sees the cancelled lifecycle context and
+	// stops quickly; wait for it so it cannot write into a store that the rest
+	// of shutdown is about to close.
+	if !a.waitBackground(2 * time.Second) {
+		logx.Printf("WARN: shutdown: follow-up work (chat title) still running after 2s")
 	}
 
 	a.webMu.RLock()

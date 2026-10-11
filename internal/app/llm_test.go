@@ -704,6 +704,7 @@ func TestSendMessage_PlainChatSelfHealsNilProviderRouter(t *testing.T) {
 	}
 	a.lifecycleCtx, a.lifecycleCancel = context.WithCancel(context.Background())
 	t.Cleanup(a.lifecycleCancel)
+	drainBackground(t, a)
 
 	reply := a.SendMessage("naber")
 	if reply != "healed reply" {

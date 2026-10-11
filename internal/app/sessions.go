@@ -266,7 +266,14 @@ func (a *App) generateChatTitleForSession(sessionID string) string {
 		)),
 	}
 
-	title := strings.TrimSpace(a.callLLM(context.Background(), prompt, categoryTitle))
+	// Tied to the app's lifecycle, not Background(): a title is nobody's reply,
+	// so it should stop with the app instead of holding shutdown (or a test's
+	// teardown) for a full provider timeout.
+	ctx := a.lifecycleCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	title := strings.TrimSpace(a.callLLM(ctx, prompt, categoryTitle))
 	if title == "" || strings.HasPrefix(title, "⚠️") {
 		return ""
 	}

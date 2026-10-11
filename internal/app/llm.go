@@ -1851,12 +1851,12 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 					sm.SetLastMessageThinking(sessionID, thinking)
 				}
 				if !code && len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
-					goRecover("generateChatTitleForSession", func() { a.generateChatTitleForSession(sessionID) })
+					a.goBackground("generateChatTitleForSession", func() { a.generateChatTitleForSession(sessionID) })
 				}
 			} else {
 				sm.AddMessage("assistant", reply, genImage, "", agentEvents...)
 				if !code && len(sm.GetActiveMessages()) == 2 {
-					goRecover("GenerateChatTitle", func() { a.GenerateChatTitle() })
+					a.goBackground("GenerateChatTitle", func() { a.GenerateChatTitle() })
 				}
 			}
 		}

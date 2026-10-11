@@ -203,6 +203,8 @@ func newLongSessionApp(t *testing.T, fp *fakeProvider, withMemory bool) *lsHarne
 		a.store = store
 	}
 
+	drainBackground(t, a)
+
 	h := &lsHarness{a: a, sm: sm, stats: st, fp: fp, chatID: sm.NewChat()}
 	return h
 }

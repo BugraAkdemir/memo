@@ -350,7 +350,7 @@ func (a *App) SendCLIMessageStream(ctx context.Context, chatID, userMsg string) 
 // rather than shared, matching the same "exactly 2 messages" condition.
 func (a *App) generateCLIChatTitleIfNew(chatID string, sm *sessions.Manager) {
 	if len(sm.GetActiveMessagesForSession(chatID)) == 2 {
-		goRecover("generateChatTitleForSession", func() { a.generateChatTitleForSession(chatID) })
+		a.goBackground("generateChatTitleForSession", func() { a.generateChatTitleForSession(chatID) })
 	}
 }
 

@@ -343,6 +343,8 @@ func TestSendMessageStreamTo_MemoryUsed_AnnotatesSavedReply(t *testing.T) {
 		events:             &eventRing{},
 	}
 
+	drainBackground(t, a)
+
 	ch := a.SendMessageStreamTo(context.Background(), chatID, "adimi hatirliyor musun")
 	sawLiveMemoryUsedChunk := false
 	for chunk := range ch {
@@ -420,6 +422,8 @@ func TestSendMessageStreamTo_NoMemoryRetrieved_LeavesMemoryUsedZero(t *testing.T
 		activeProviderName: "test",
 		events:             &eventRing{},
 	}
+
+	drainBackground(t, a)
 
 	ch := a.SendMessageStreamTo(context.Background(), chatID, "selam")
 	for chunk := range ch {
@@ -527,7 +531,7 @@ func newSendMessageTestApp(t *testing.T, reqs *capturedRequests) *App {
 
 	agentExecutor := agent.NewExecutor(t.TempDir(), nil, nil, nil)
 
-	return &App{
+	a := &App{
 		cfg:                &config.AppConfig{Memory: config.MemoryConfig{MemoryEnabled: false}},
 		identity:           identity.New("Test", "Memo", "casual", "", false),
 		sessions:           sm,
@@ -538,6 +542,8 @@ func newSendMessageTestApp(t *testing.T, reqs *capturedRequests) *App {
 		webSearchExecutor:  agent.NewWebSearchExecutor(agentExecutor),
 		events:             &eventRing{},
 	}
+	drainBackground(t, a)
+	return a
 }
 
 // TestSendMessage_AgentModeOn_SendsToolDefinitions is the regression test for
@@ -718,6 +724,8 @@ func TestCallWebSearchAgentStream_UsesResolvedRouterNotStaleSyncedOne(t *testing
 		webSearchExecutor:  webSearchExecutor,
 		events:             &eventRing{},
 	}
+
+	drainBackground(t, a)
 
 	reply := a.SendMessage("naber")
 	if reply != "reply-from-B" {

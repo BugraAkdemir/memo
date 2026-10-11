@@ -288,6 +288,18 @@ func (h *Harness) GetChatCodeSubMode(chatID string) (subMode string, pinned bool
 	return out.SubMode, out.Pinned
 }
 
+// SetBeta flips Settings › Beta Features through the real endpoint
+// (PUT /api/remote-access {"beta":...}), so the test exercises the same path
+// the Flutter client uses and the gate the agent tools read.
+func (h *Harness) SetBeta(enabled bool) {
+	h.t.Helper()
+	resp := h.putJSON("/api/remote-access", map[string]bool{"beta": enabled})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.t.Fatalf("PUT /api/remote-access beta=%v: status %d", enabled, resp.StatusCode)
+	}
+}
+
 // SetWebSearchEnabled toggles the global web-search flag via POST
 // /api/websearch. Worth a helper because it changes which code path a plain
 // (non-agent) chat turn takes at all: with web search on, routeStream sends

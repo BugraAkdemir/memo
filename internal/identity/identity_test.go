@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"memo/internal/beta"
 	"memo/internal/memory"
 )
 
@@ -539,5 +540,26 @@ func TestAvailableStyles(t *testing.T) {
 		if styles[i] != s {
 			t.Errorf("styles[%d] = %q, want %q", i, styles[i], s)
 		}
+	}
+}
+
+// The browser is a beta feature. With Beta off it does not exist for the user,
+// so the "agent mode is off" hint must not offer it as one toggle away.
+func TestCapabilitiesBlock_MentionsTheBrowserOnlyWhileBetaIsOn(t *testing.T) {
+	t.Cleanup(func() { beta.SetGate(nil) })
+
+	beta.SetGate(func() bool { return false })
+	off := buildCapabilitiesBlock(false, true)
+	if strings.Contains(strings.ToLower(off), "browser") {
+		t.Errorf("hint mentions the browser with Beta off: %q", off)
+	}
+	if !strings.Contains(off, "Agent mode") || !strings.Contains(off, "terminal commands") {
+		t.Errorf("the rest of the hint was lost: %q", off)
+	}
+
+	beta.SetGate(func() bool { return true })
+	on := buildCapabilitiesBlock(false, true)
+	if !strings.Contains(on, "sandboxed browser") {
+		t.Errorf("hint omits the browser with Beta on: %q", on)
 	}
 }

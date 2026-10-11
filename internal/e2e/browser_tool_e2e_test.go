@@ -158,8 +158,10 @@ func (f *fakeBrowserManager) StopSession() error {
 // the test and restores whatever Harness wired up (a real
 // browserToolAdapter over a real, not-yet-started browserengine.Manager)
 // afterward.
-func withFakeBrowser(t *testing.T) *fakeBrowserManager {
+func withFakeBrowser(t *testing.T, h *Harness) *fakeBrowserManager {
 	t.Helper()
+	// The browser tools are a beta feature: they exist only while Beta is on.
+	h.SetBeta(true)
 	orig := tools.InteractiveBrowser
 	fake := &fakeBrowserManager{installed: true}
 	tools.InteractiveBrowser = fake
@@ -175,7 +177,7 @@ func withFakeBrowser(t *testing.T) *fakeBrowserManager {
 func TestAgent_BrowserNavigate_RequiresPermissionThenExecutes(t *testing.T) {
 	h := NewHarness(t)
 	h.SetAgentEnabled(true)
-	fake := withFakeBrowser(t)
+	fake := withFakeBrowser(t, h)
 
 	callCount := 0
 	h.Fake.Script = func(callNum int, req FakeChatRequest) FakeChatResponse {
@@ -242,7 +244,7 @@ func TestAgent_BrowserNavigate_RequiresPermissionThenExecutes(t *testing.T) {
 func TestAgent_BrowserNavigate_AllowSession_SkipsPromptOnSecondCall(t *testing.T) {
 	h := NewHarness(t)
 	h.SetAgentEnabled(true)
-	fake := withFakeBrowser(t)
+	fake := withFakeBrowser(t, h)
 
 	callCount := 0
 	h.Fake.Script = func(callNum int, req FakeChatRequest) FakeChatResponse {
@@ -308,7 +310,7 @@ func TestAgent_BrowserNavigate_AllowSession_SkipsPromptOnSecondCall(t *testing.T
 func TestAgent_BrowserScreenshot_SafeNoPromptAndNoImageInModelContext(t *testing.T) {
 	h := NewHarness(t)
 	h.SetAgentEnabled(true)
-	fake := withFakeBrowser(t)
+	fake := withFakeBrowser(t, h)
 	if _, err := fake.StartSession(context.Background()); err != nil {
 		t.Fatalf("seed session: %v", err)
 	}
@@ -372,7 +374,7 @@ func TestAgent_BrowserScreenshot_SafeNoPromptAndNoImageInModelContext(t *testing
 func TestAgent_BrowserFullFlow_NavigateClickTypeScrollScreenshot(t *testing.T) {
 	h := NewHarness(t)
 	h.SetAgentEnabled(true)
-	fake := withFakeBrowser(t)
+	fake := withFakeBrowser(t, h)
 
 	steps := []FakeToolCall{
 		{ID: "call_1", Name: "browser_navigate", Arguments: `{"url":"https://example.com/signup"}`},
@@ -466,7 +468,7 @@ func TestAgent_BrowserFullFlow_NavigateClickTypeScrollScreenshot(t *testing.T) {
 func TestAgent_BrowserNavigate_EngineNotInstalled_GivesActionableMessage(t *testing.T) {
 	h := NewHarness(t)
 	h.SetAgentEnabled(true)
-	fake := withFakeBrowser(t)
+	fake := withFakeBrowser(t, h)
 	fake.installed = false
 
 	var toolError string
@@ -518,7 +520,7 @@ func TestAgent_BrowserNavigate_EngineNotInstalled_GivesActionableMessage(t *test
 func TestAgent_BrowserScreenshot_EmitsLiveFrameOverSSE(t *testing.T) {
 	h := NewHarness(t)
 	h.SetAgentEnabled(true)
-	fake := withFakeBrowser(t)
+	fake := withFakeBrowser(t, h)
 	if _, err := fake.StartSession(context.Background()); err != nil {
 		t.Fatalf("seed session: %v", err)
 	}
@@ -579,7 +581,7 @@ func TestAgent_BrowserScreenshot_EmitsLiveFrameOverSSE(t *testing.T) {
 func TestAgent_BrowserGetText_SafeNoPromptReturnsPageText(t *testing.T) {
 	h := NewHarness(t)
 	h.SetAgentEnabled(true)
-	fake := withFakeBrowser(t)
+	fake := withFakeBrowser(t, h)
 	if _, err := fake.StartSession(context.Background()); err != nil {
 		t.Fatalf("seed session: %v", err)
 	}

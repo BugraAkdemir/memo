@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"memo/internal/agent/tools"
+	"memo/internal/beta"
 	"memo/internal/provider"
 	"sort"
 	"sync"
@@ -51,6 +52,12 @@ type ToolDef struct {
 	// that actually have that skill active, without needing a separate
 	// registry per chat.
 	SkillOwner string
+	// Beta marks a tool that only exists while beta features are on
+	// (Settings › Beta Features, internal/beta). With beta off the tool is
+	// neither offered to the model (ToOpenAITools) nor found by Get, so a
+	// model that calls it anyway gets the ordinary "unknown tool" answer — it
+	// is absent, not disabled. Today: open_app and the browser_* session tools.
+	Beta bool
 }
 
 // ToolRegistry manages all available tools.
@@ -362,6 +369,7 @@ func (r *ToolRegistry) registerFetchPageTool() {
 func (r *ToolRegistry) registerOpenAppTool() {
 	r.Register(ToolDef{
 		Name:        "open_app",
+		Beta:        true,
 		Description: "Launches a desktop application, or the default browser with a blank tab, on the user's computer (Windows, macOS, or Linux). Call this ONLY for an explicit launch/open command naming an application — e.g. \"Spotify'ı aç\", \"Steam'i başlat\", \"tarayıcıyı aç\", \"open VS Code\". Do NOT call this for a question, a search, or any information request, even if it mentions a browser or an app by name — \"en son haberler ne\", \"X hakkında bilgi ver\", \"YouTube'da ne var\" are answered with web_search or directly, never by opening anything. This tool only starts the program — it cannot search inside it, open a specific site, play a specific song, or answer any question.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"app_name":{"type":"string","description":"Just the application's name (e.g. \"Spotify\", \"Steam\", \"tarayıcı\"/\"browser\", \"Discord\", \"VS Code\") — extract it, do NOT pass the user's raw sentence"}},"required":["app_name"]}`),
 		DangerLevel: Medium,
@@ -390,6 +398,7 @@ func (r *ToolRegistry) registerOpenAppTool() {
 func (r *ToolRegistry) registerBrowserTools() {
 	r.Register(ToolDef{
 		Name:        "browser_navigate",
+		Beta:        true,
 		Description: "Opens a URL in Memo's own sandboxed, interactive browser session (a dedicated, disposable Chromium process — never the user's real browser or accounts) so you can click/type/scroll through and test a live page, e.g. a site you just built. Do NOT use this for a plain \"read/summarize this page\" or \"what does this site say\" request — that's fetch_page (much faster, no browser launch); reach for this tool only when the task genuinely needs interaction (click a button, fill a form, verify something visually) or the user explicitly asks you to open/use a browser. Starts a session on first use; a later call reuses it, loading a new URL in the same tab. Does not return a screenshot or the page's content itself — call browser_get_text next to see what's on the page and get real selectors for anything you need to click, or browser_screenshot to show the user (not yourself) what it looks like.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"url":{"type":"string","description":"The URL to open"}},"required":["url"]}`),
 		DangerLevel: Medium,
@@ -397,6 +406,7 @@ func (r *ToolRegistry) registerBrowserTools() {
 	})
 	r.Register(ToolDef{
 		Name:        "browser_click",
+		Beta:        true,
 		Description: "Clicks an element in the active interactive browser session — either by CSS selector, or by exact viewport coordinates if there's no stable selector to target (e.g. canvas content). Provide exactly one of selector or (x and y). Do NOT guess a selector from a screenshot or assumed markup — call browser_get_text first, which lists every clickable element with a selector GUARANTEED to hit it; use that exact string. Requires an existing session (call browser_navigate first).",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector of the element to click"},"x":{"type":"number","description":"Viewport x coordinate (use together with y instead of selector)"},"y":{"type":"number","description":"Viewport y coordinate (use together with x instead of selector)"}}}`),
 		DangerLevel: Medium,
@@ -404,6 +414,7 @@ func (r *ToolRegistry) registerBrowserTools() {
 	})
 	r.Register(ToolDef{
 		Name:        "browser_type",
+		Beta:        true,
 		Description: "Focuses an element by CSS selector in the active interactive browser session and types text into it as real key events (triggers the page's own input handlers, not just a value assignment). Requires an existing session (call browser_navigate first).",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector of the input/textarea/editable element"},"text":{"type":"string","description":"The text to type"}},"required":["selector","text"]}`),
 		DangerLevel: Medium,
@@ -411,6 +422,7 @@ func (r *ToolRegistry) registerBrowserTools() {
 	})
 	r.Register(ToolDef{
 		Name:        "browser_scroll",
+		Beta:        true,
 		Description: "Scrolls the page in the active interactive browser session by (dx, dy) pixels from its current position. Omitting both scrolls down a bit by default. Requires an existing session (call browser_navigate first).",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"dx":{"type":"integer","description":"Horizontal scroll in pixels (default 0)"},"dy":{"type":"integer","description":"Vertical scroll in pixels (default 800 if both dx and dy are omitted)"}}}`),
 		DangerLevel: Safe,
@@ -418,6 +430,7 @@ func (r *ToolRegistry) registerBrowserTools() {
 	})
 	r.Register(ToolDef{
 		Name:        "browser_screenshot",
+		Beta:        true,
 		Description: "Captures the current page of the active interactive browser session and shows it to the USER in a live pane — call it after navigate/click/type/scroll so the user can watch along. You yourself do NOT receive the image (no visual/multimodal channel is wired up) — call browser_get_text if you need to know what's actually on the page. Returns an error if no session is currently open.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		DangerLevel: Safe,
@@ -425,6 +438,7 @@ func (r *ToolRegistry) registerBrowserTools() {
 	})
 	r.Register(ToolDef{
 		Name:        "browser_get_text",
+		Beta:        true,
 		Description: "Reads the active interactive browser session's page: its visible text, AND a list of every clickable element (links, buttons, inputs) with a ready-to-use CSS selector for each. Since you cannot see screenshots yourself, this is your real way to know what's on a page and what you can act on — call this right after browser_navigate, before trying to click or type anything, and reuse the exact selector strings it gives you (do not write your own guesses like '#submit' or 'button.primary' — they usually don't match the real page and will fail). Call it again after a click/navigate if the page changed.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		DangerLevel: Safe,
@@ -432,6 +446,7 @@ func (r *ToolRegistry) registerBrowserTools() {
 	})
 	r.Register(ToolDef{
 		Name:        "browser_close",
+		Beta:        true,
 		Description: "Closes the active interactive browser session, if one is open. Call this once you're done testing a page — a forgotten session closes itself automatically after a few minutes of inactivity, but closing it explicitly frees the resources sooner.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		DangerLevel: Safe,
@@ -574,6 +589,9 @@ func (r *ToolRegistry) Get(name string) (ToolDef, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	tool, ok := r.tools[name]
+	if ok && tool.Beta && !beta.Enabled() {
+		return ToolDef{}, false
+	}
 	return tool, ok
 }
 
@@ -604,6 +622,9 @@ func (r *ToolRegistry) ToOpenAITools(activeSkills map[string]bool) []provider.To
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	// Read once so one call sees one answer even if the switch flips midway.
+	betaOn := beta.Enabled()
+
 	names := make([]string, 0, len(r.tools))
 	for name := range r.tools {
 		names = append(names, name)
@@ -614,6 +635,9 @@ func (r *ToolRegistry) ToOpenAITools(activeSkills map[string]bool) []provider.To
 	for _, name := range names {
 		t := r.tools[name]
 		if t.SkillOwner != "" && !activeSkills[t.SkillOwner] {
+			continue
+		}
+		if t.Beta && !betaOn {
 			continue
 		}
 		defs = append(defs, provider.ToolDefinition{

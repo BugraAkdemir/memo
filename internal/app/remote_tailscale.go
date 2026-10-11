@@ -175,11 +175,18 @@ func (a *App) SetBeta(enabled bool) error {
 	if a.cfg == nil {
 		return fmt.Errorf("config not loaded")
 	}
+	a.cfgMu.Lock()
 	a.cfg.Beta = enabled
+	a.cfgMu.Unlock()
 	if !enabled {
 		// Beta-off must not leave experimental processes (swarm coordinator
 		// / rpc-server) running in the background.
 		a.stopSwarmForBetaOff()
+		// The browser panel is a beta feature too: its Chromium session is a
+		// live OS process the user can no longer see or close from the UI.
+		if err := a.CloseBrowserSession(); err != nil {
+			logx.Printf("beta off: closing the browser session: %v", err)
+		}
 	}
 	if err := config.Save(a.cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)
@@ -189,6 +196,8 @@ func (a *App) SetBeta(enabled bool) error {
 
 // GetBeta reports whether beta features are enabled.
 func (a *App) GetBeta() bool {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
 	return a.cfg != nil && a.cfg.Beta
 }
 

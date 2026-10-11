@@ -1125,6 +1125,12 @@ class L10n {
     'beta_item_swarm_title': 'Memo Swarm',
     'beta_item_swarm_desc':
         'Birden fazla makineyi birleştirip tek büyük model çalıştır (yan menü → Swarm). macOS’ta henüz yok.',
+    'beta_item_open_app_title': 'Uygulama açma',
+    'beta_item_open_app_desc':
+        'Memo, istediğinde bilgisayarda bir uygulamayı ya da tarayıcıyı açabilir (“Spotify’ı aç”). Ajan Modu açıkken, izin sistemi üzerinden çalışır.',
+    'beta_item_browser_title': 'Memo içinde tarayıcı',
+    'beta_item_browser_desc':
+        'Sohbetin yanında canlı bir tarayıcı paneli: Memo izole bir Chromium sekmesini sürer, istersen sen de adres çubuğundan ve tıklayarak kullanırsın. Sohbet başlığındaki dünya simgesiyle açılır.',
     'tab_live_mode': 'Sesli Mod',
     'live_mode_tab_title': 'Sesli Mod',
     'live_mode_tab_desc':
@@ -3502,6 +3508,12 @@ class L10n {
     'beta_item_swarm_title': 'Memo Swarm',
     'beta_item_swarm_desc':
         'Pool machines to run one large model (sidebar → Swarm). Not available on macOS yet.',
+    'beta_item_open_app_title': 'Open apps',
+    'beta_item_open_app_desc':
+        'Memo can open an app or your browser on this computer when you ask (“open Spotify”). Works with Agent Mode on, through the permission system.',
+    'beta_item_browser_title': 'Browser inside Memo',
+    'beta_item_browser_desc':
+        'A live browser panel next to the chat: Memo drives an isolated Chromium tab, and you can use it yourself from the address bar and by clicking. Opened with the globe icon in the chat header.',
     'tab_live_mode': 'Live Mode',
     'live_mode_tab_title': 'Live Mode',
     'live_mode_tab_desc':

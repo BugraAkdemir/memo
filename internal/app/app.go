@@ -18,6 +18,7 @@ import (
 	"memo/internal/agent"
 	"memo/internal/agent/tools"
 	"memo/internal/api"
+	"memo/internal/beta"
 	"memo/internal/browserengine"
 	"memo/internal/calendar"
 	"memo/internal/cliproxy"
@@ -734,6 +735,10 @@ func (a *App) Startup(ctx context.Context) {
 	a.providerMu.RLock()
 	providerRouter, providerCfgMgr := a.providerRouter, a.providerCfgMgr
 	a.providerMu.RUnlock()
+	// Beta-only agent tools (open_app, browser_*) and the prompt text that
+	// mentions them ask this on every call, so the Settings switch takes effect
+	// on the next turn.
+	beta.SetGate(a.GetBeta)
 	a.agentExecutor = agent.NewExecutor(basePath, providerRouter, providerCfgMgr, a.getSessionManager())
 	a.agentExecutor.SetBypassPermissions(a.cfg.Mood.SystemManagement)
 	a.agentExecutor.SetMaxIterations(a.cfg.AgentMode.MaxIterations)

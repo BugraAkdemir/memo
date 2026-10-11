@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"memo/internal/agent/tools"
+	"memo/internal/beta"
 	"memo/internal/logx"
 	"memo/internal/provider"
 	"memo/internal/truncate"
@@ -237,9 +238,17 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 					// web_search/fetch_page or nothing), so the fallback
 					// stays generic rather than guessing which one applies.
 					content = tools.T(
-						"Bu isteğe bir cevap üretemedim. Farklı bir şekilde ifade etmeyi, ya da (bir uygulama açma/dosya işlemi gibi bir şey istiyorsan) Ajan Modu'nun açık olduğunu kontrol etmeyi deneyebilirsin.",
-						"I couldn't generate a reply to that. Try rephrasing it, or — if you're asking for something like opening an app or a file operation — check that Agent Mode is turned on.",
+						"Bu isteğe bir cevap üretemedim. Farklı bir şekilde ifade etmeyi, ya da (bir dosya işlemi gibi bir şey istiyorsan) Ajan Modu'nun açık olduğunu kontrol etmeyi deneyebilirsin.",
+						"I couldn't generate a reply to that. Try rephrasing it, or — if you're asking for something like a file operation — check that Agent Mode is turned on.",
 					)
+					if beta.Enabled() {
+						// Opening an app is a beta feature: only point at it
+						// while it exists for the user.
+						content = tools.T(
+							"Bu isteğe bir cevap üretemedim. Farklı bir şekilde ifade etmeyi, ya da (bir uygulama açma/dosya işlemi gibi bir şey istiyorsan) Ajan Modu'nun açık olduğunu kontrol etmeyi deneyebilirsin.",
+							"I couldn't generate a reply to that. Try rephrasing it, or — if you're asking for something like opening an app or a file operation — check that Agent Mode is turned on.",
+						)
+					}
 				}
 				trySend(ctx, outCh, provider.StreamChunk{Content: content})
 				onEvent(AgentEvent{Type: EventFinalResponse, Content: content})

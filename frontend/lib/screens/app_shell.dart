@@ -955,19 +955,10 @@ class _AppShellState extends ConsumerState<AppShell> {
   /// unguarded.
   bool _showSwarmNav() {
     if (!kIsWeb && Platform.isMacOS) return false;
-    final ra = ref.watch(remoteAccessProvider).valueOrNull;
-    // The backend's answer is authoritative once it actually arrives — it
-    // owns cfg.Beta, the local pref is only a mirror of it. The old code
-    // fell through to that mirror whenever the answer was anything but
-    // beta:true, so a stale local true kept the Swarm tab visible against
-    // a backend with beta:false, permanently. Reported live.
-    //
-    // "Arrived" has to be tested by the key, not by non-null:
-    // remoteAccessProvider swallows its own failure into {'enabled': false},
-    // which is indistinguishable from a real response except that the real
-    // one always carries 'beta' (RemoteAccessStatus.Beta, no omitempty).
-    if (ra != null && ra.containsKey('beta')) return ra['beta'] == true;
-    return ref.watch(betaFeaturesProvider);
+    // See betaEnabledProvider for why the backend's answer wins over the
+    // local mirror (a stale local true once kept Swarm visible against a
+    // backend with beta:false).
+    return ref.watch(betaEnabledProvider);
   }
 
 }

@@ -7,6 +7,7 @@ import '../../../providers/chat_provider.dart';
 import '../../../providers/provider_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../core/friendly_error.dart';
+import '../../agent/browser_pane.dart';
 
 /// Settings → Beta Features.
 ///
@@ -33,6 +34,10 @@ class _BetaFeaturesTabState extends ConsumerState<BetaFeaturesTab> {
       // Keep local prefs in lockstep so Swarm nav / other beta UI that fall
       // back to betaFeaturesProvider don't lag or disagree with the backend.
       await ref.read(betaFeaturesProvider.notifier).setEnabled(enabled);
+      // The browser panel is a beta feature: leave no open pane (and no
+      // stale "session active" flag) behind when the switch goes off. The
+      // backend closes its Chromium session itself; this resets the UI state.
+      if (!enabled) await closeBrowserPane(ref);
       ref.invalidate(remoteAccessProvider);
       ref.invalidate(providerListProvider);
       ref.invalidate(gatewayModelsProvider);
@@ -129,6 +134,20 @@ class _BetaFeaturesTabState extends ConsumerState<BetaFeaturesTab> {
               icon: Icons.hub_outlined,
               title: L10n.t('beta_item_swarm_title'),
               body: L10n.t('beta_item_swarm_desc'),
+              enabled: beta,
+            ),
+            const SizedBox(height: 10),
+            _BetaFeatureRow(
+              icon: Icons.open_in_new,
+              title: L10n.t('beta_item_open_app_title'),
+              body: L10n.t('beta_item_open_app_desc'),
+              enabled: beta,
+            ),
+            const SizedBox(height: 10),
+            _BetaFeatureRow(
+              icon: Icons.public,
+              title: L10n.t('beta_item_browser_title'),
+              body: L10n.t('beta_item_browser_desc'),
               enabled: beta,
             ),
             const SizedBox(height: 24),

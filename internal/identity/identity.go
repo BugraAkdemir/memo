@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"memo/internal/beta"
 	"memo/internal/memory"
 	"memo/internal/truncate"
 )
@@ -404,7 +405,13 @@ func buildChannelAwarenessBlock(whatsappReachable, telegramReachable bool) strin
 func buildCapabilitiesBlock(agentEnabled, webSearchEnabled bool) string {
 	var off []string
 	if !agentEnabled {
-		off = append(off, "Agent mode (reading/writing files, running terminal commands, or driving your own sandboxed browser to open a site and click/type/scroll through it) is off in this conversation, so you can't do those right now. You cannot flip it on yourself — it's a UI toggle, not something you can call. Don't just decline and wait to be asked: proactively tell the user it's one toggle away (chat toolbar's robot icon, or the Agent tab), ask them to turn it on, and say you'll do the thing right away once it's on — never claim you lack the ability entirely.")
+		// The browser is a beta feature: with beta off it does not exist for
+		// the user, so the model must not offer it as "one toggle away".
+		what := "reading/writing files or running terminal commands"
+		if beta.Enabled() {
+			what = "reading/writing files, running terminal commands, or driving your own sandboxed browser to open a site and click/type/scroll through it"
+		}
+		off = append(off, "Agent mode ("+what+") is off in this conversation, so you can't do those right now. You cannot flip it on yourself — it's a UI toggle, not something you can call. Don't just decline and wait to be asked: proactively tell the user it's one toggle away (chat toolbar's robot icon, or the Agent tab), ask them to turn it on, and say you'll do the thing right away once it's on — never claim you lack the ability entirely.")
 	}
 	if !webSearchEnabled {
 		off = append(off, "Web search is off in this conversation, so you can't browse the web or fetch live info right now. You cannot flip it on yourself. Don't just decline: proactively tell the user it's one toggle away (chat toolbar's globe icon) and that you'll search right away once it's on — never claim you lack the ability entirely.")

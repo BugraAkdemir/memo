@@ -39,6 +39,15 @@ void main() {
     });
   }
 
+  for (final beta in [false, true]) {
+    testWidgets('Beta ${beta ? 'on' : 'off'}: lists opening apps and the browser panel', (tester) async {
+      await _pump(tester, beta: beta);
+      expect(find.text(L10n.t('beta_item_open_app_title')), findsOneWidget);
+      expect(find.text(L10n.t('beta_item_browser_title')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('Turkish at phone width: no overflow', (tester) async {
     await _pump(tester, beta: true, locale: MemoLocale.tr, size: const Size(360 * 3, 1400 * 3));
     expect(tester.takeException(), isNull);

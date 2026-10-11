@@ -1166,6 +1166,20 @@ class BetaFeaturesNotifier extends StateNotifier<bool> {
   }
 }
 
+/// Whether beta features are on, the way the UI should gate on it: the
+/// backend's answer once it has arrived (it owns `cfg.Beta`), the local pref
+/// only until then. Testing the key rather than non-null matters:
+/// [remoteAccessProvider] swallows its own failure into `{'enabled': false}`,
+/// which looks like an answer but carries no `beta` — see the long comment on
+/// the Swarm nav in app_shell.dart for the bug that cost.
+///
+/// Gates the beta-only UI: Swarm, and the browser panel's entry points.
+final betaEnabledProvider = Provider<bool>((ref) {
+  final ra = ref.watch(remoteAccessProvider).valueOrNull;
+  if (ra != null && ra.containsKey('beta')) return ra['beta'] == true;
+  return ref.watch(betaFeaturesProvider);
+});
+
 // ─── Locale ─────────────────────────────────────────────────────
 
 final localeProvider = StateNotifierProvider<LocaleNotifier, MemoLocale>(

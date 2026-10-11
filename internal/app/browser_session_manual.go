@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -14,11 +15,27 @@ import (
 // permission-prompt flow entirely: there is nothing to ask permission for
 // when the user is the one doing it.
 
+// requireBrowserBeta refuses a direct session action while beta features are
+// off. The panel, the address bar and the agent's browser_* tools are one beta
+// feature (Settings › Beta Features): with it off the Flutter client does not
+// show the panel, and this is the same answer for any other client of the REST
+// API. Closing a session and reading its status stay allowed so a session left
+// over from before beta was switched off can still be torn down.
+func (a *App) requireBrowserBeta() error {
+	if !a.GetBeta() {
+		return errors.New(a.t("Tarayıcı paneli beta özelliğidir; Ayarlar'dan Beta'yı açın", "The browser panel is a beta feature; enable Beta in Settings"))
+	}
+	return nil
+}
+
 // NavigateBrowserSession starts (or reuses) the interactive browser session
 // and loads url. Returns the resulting screenshot and the tab's resolved
 // URL (which can differ from the requested one after a redirect) so the
 // caller gets a fully up-to-date pane in one round trip.
 func (a *App) NavigateBrowserSession(ctx context.Context, rawURL string) (screenshot []byte, resolvedURL string, err error) {
+	if err := a.requireBrowserBeta(); err != nil {
+		return nil, "", err
+	}
 	if a.browserMgr == nil {
 		return nil, "", fmt.Errorf("browser engine not initialized")
 	}
@@ -48,6 +65,9 @@ func (a *App) NavigateBrowserSession(ctx context.Context, rawURL string) (screen
 // back to these) and returns the resulting screenshot + resolved URL.
 // Errors if no session is currently open.
 func (a *App) ClickBrowserSession(ctx context.Context, x, y float64) (screenshot []byte, resolvedURL string, err error) {
+	if err := a.requireBrowserBeta(); err != nil {
+		return nil, "", err
+	}
 	if a.browserMgr == nil {
 		return nil, "", fmt.Errorf("browser engine not initialized")
 	}
@@ -73,6 +93,9 @@ func (a *App) ClickBrowserSession(ctx context.Context, x, y float64) (screenshot
 // pixels and returns the resulting screenshot — BrowserPane's mouse-wheel-
 // over-the-screenshot handler drives this.
 func (a *App) ScrollBrowserSession(ctx context.Context, dx, dy int) (screenshot []byte, resolvedURL string, err error) {
+	if err := a.requireBrowserBeta(); err != nil {
+		return nil, "", err
+	}
 	if a.browserMgr == nil {
 		return nil, "", fmt.Errorf("browser engine not initialized")
 	}
@@ -96,6 +119,9 @@ func (a *App) ScrollBrowserSession(ctx context.Context, dx, dy int) (screenshot 
 // resulting screenshot + resolved URL — BrowserPane's keyboard row drives
 // this. Errors if no session is currently open.
 func (a *App) TypeBrowserSession(ctx context.Context, text string, enter bool) (screenshot []byte, resolvedURL string, err error) {
+	if err := a.requireBrowserBeta(); err != nil {
+		return nil, "", err
+	}
 	if a.browserMgr == nil {
 		return nil, "", fmt.Errorf("browser engine not initialized")
 	}
@@ -131,7 +157,7 @@ func (a *App) CloseBrowserSession() error {
 // agent left a session open, or the user navigated away from chat and
 // back).
 func (a *App) BrowserSessionStatus(ctx context.Context) (active bool, url string) {
-	if a.browserMgr == nil {
+	if a.browserMgr == nil || !a.GetBeta() {
 		return false, ""
 	}
 	sess, ok := a.browserMgr.GetSession()

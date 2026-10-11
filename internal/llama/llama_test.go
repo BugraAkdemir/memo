@@ -3,6 +3,9 @@ package llama
 import (
 	"bytes"
 	"encoding/binary"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -399,4 +402,22 @@ func envValue(t *testing.T, env []string, key string, caseInsensitive bool) stri
 	}
 	t.Fatalf("%s not found in %#v", key, env)
 	return ""
+}
+
+func TestIsolatedServerNeverOwnsAnUntrackedPort(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"data":[]}`)) }))
+	defer srv.Close()
+	addr := srv.Listener.Addr().(*net.TCPAddr)
+	private := NewIsolatedServer(addr.Port, 8192)
+	if private.GetStatus().Running {
+		t.Fatal("private server adopted an unrelated process")
+	}
+	if err := private.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := srv.Client().Get(srv.URL)
+	if err != nil {
+		t.Fatalf("untracked listener was stopped: %v", err)
+	}
+	resp.Body.Close()
 }

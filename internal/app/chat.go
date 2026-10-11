@@ -90,6 +90,9 @@ func (a *App) ToggleIncognito(enabled bool) {
 }
 
 func (a *App) handleIncognito(userMsg string, b64 string) string {
+	if a.GetActiveProvider() == AutoRouteProvider {
+		return drainToReplyWith(a.handleIncognitoStream(context.Background(), userMsg, b64), a.FriendlyError)
+	}
 	a.incognitoMu.Lock()
 	if b64 != "" {
 		a.incognitoMessages = append(a.incognitoMessages, api.NewMultimodalMessage("user", userMsg, b64))
@@ -271,7 +274,7 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 // forceAgent activates tool execution for this call regardless of the
 // global agent-mode toggle — set when sessionID is itself an agent chat
 // (see SendMessageStreamTo's doc comment).
-func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath, sessionID string, forceAgent bool) <-chan api.StreamChunk {
+func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath, sessionID string, forceAgent bool) <-chan api.StreamChunk {
 	// Active-skill instructions are baked into systemPrompt by
 	// buildMessagesForSession (helpers.go) itself now, before messages was
 	// even built — see that call site's comment for why re-injecting here
@@ -521,7 +524,7 @@ func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg stri
 		return errCh
 	}
 
-	innerCh, ok := runLockedStreamSetup("sendMessageStreamInnerTo/setup", release, func() <-chan api.StreamChunk {
+	innerCh, ok := a.runLockedAutoRouteSetup(ctx, "sendMessageStreamInnerTo/setup", release, func() <-chan api.StreamChunk {
 		return a.sendMessageStreamCore(ctx, chatID, userMsg, forceAgent)
 	})
 	if !ok {
@@ -590,6 +593,11 @@ func (a *App) sendMessageStreamCore(ctx context.Context, chatID, userMsg string,
 
 	sm := a.getSessionManager()
 	var memUsed int
+	var routeErr error
+	ctx, routeErr = a.prepareAutoRoute(ctx, chatID, userMsg, false, forceAgent)
+	if routeErr != nil {
+		return a.subscriptionTextRouteError(ctx, routeErr, userMsg, chatID)
+	}
 	messages := a.buildMessagesForSession(ctx, chatID, userMsg, nil, &memUsed)
 	if sm != nil {
 		sm.AddMessageToSession(chatID, "user", userMsg, "", "")
@@ -679,11 +687,16 @@ func (a *App) SendMessageWithImageDataStream(ctx context.Context, userMsg string
 		return busyStreamChan(a.busyNotice())
 	}
 
-	innerCh, ok := runLockedStreamSetup("SendMessageWithImageStream/setup", release, func() <-chan api.StreamChunk {
+	innerCh, ok := a.runLockedAutoRouteSetup(ctx, "SendMessageWithImageStream/setup", release, func() <-chan api.StreamChunk {
 		// buildMessagesForSession (not a hand-rolled system+history+user list) so
 		// image messages get the same mood directive, web search context, and
 		// token-aware history truncation as plain text ones — the manual
 		// construction this replaced skipped all three (BUG-QL5).
+		var routeErr error
+		ctx, routeErr = a.prepareAutoRoute(ctx, chatID, userMsg, true, false)
+		if routeErr != nil {
+			return a.subscriptionTextRouteError(ctx, routeErr, userMsg, chatID)
+		}
 		msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64}, nil)
 		stored := persistChatImage(imagePath, imgData)
 		if sm != nil {
@@ -756,7 +769,12 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		return busyStreamChan(a.busyNotice())
 	}
 
-	innerCh, ok := runLockedStreamSetup("SendMessageWithFileStream/setup", release, func() <-chan api.StreamChunk {
+	innerCh, ok := a.runLockedAutoRouteSetup(ctx, "SendMessageWithFileStream/setup", release, func() <-chan api.StreamChunk {
+		var routeErr error
+		ctx, routeErr = a.prepareAutoRoute(ctx, chatID, combined, false, false)
+		if routeErr != nil {
+			return a.subscriptionTextRouteError(ctx, routeErr, combined, chatID)
+		}
 		messages := a.buildMessagesForSession(ctx, chatID, combined, nil, nil)
 		if sm != nil {
 			sm.AddMessageToSession(chatID, "user", userMsg, "", filePath)
@@ -778,6 +796,11 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 }
 
 func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 string) <-chan api.StreamChunk {
+	var routeErr error
+	ctx, routeErr = a.prepareAutoRoute(ctx, "", userMsg, b64 != "", false)
+	if routeErr != nil {
+		return a.subscriptionTextRouteError(ctx, routeErr, userMsg, "")
+	}
 	a.incognitoMu.Lock()
 	if b64 != "" {
 		a.incognitoMessages = append(a.incognitoMessages, api.NewMultimodalMessage("user", userMsg, b64))
@@ -788,7 +811,7 @@ func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 str
 	msgs = append(msgs, a.incognitoMessages...)
 	a.incognitoMu.Unlock()
 
-	return activityRelay(a.callLLMStream(ctx, msgs, userMsg, "", "", ""))
+	return a.relayModelRoute(ctx, activityRelay(a.callLLMStream(ctx, msgs, userMsg, "", "", "")))
 }
 
 // SendMessageWithImage sends a vision message (non-streaming). Same
@@ -831,13 +854,17 @@ func (a *App) SendMessageWithImageData(userMsg string, name string, imgData []by
 	}
 	defer release()
 
-	msgs := a.buildMessagesForSession(context.Background(), chatID, userMsg, []string{b64}, nil)
+	ctx, routeErr := a.prepareAutoRoute(context.Background(), chatID, userMsg, true, false)
+	if routeErr != nil {
+		return "⚠️ " + routeErr.Error()
+	}
+	msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64}, nil)
 	stored := persistChatImage(imagePath, imgData)
 	if sm != nil {
 		sm.AddMessageToSession(chatID, "user", userMsg, stored, "")
 	}
 
-	ch := a.routeStream(context.Background(), msgs, userMsg, stored, "", chatID, false)
+	ch := a.routeStream(ctx, msgs, userMsg, stored, "", chatID, false)
 	reply := drainToReplyWith(ch, a.FriendlyError)
 
 	// Cosmetic only: finishStream (inside the drain above) already recorded
@@ -890,12 +917,16 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 	}
 	defer release()
 
-	messages := a.buildMessagesForSession(context.Background(), chatID, combined, nil, nil)
+	ctx, routeErr := a.prepareAutoRoute(context.Background(), chatID, combined, false, false)
+	if routeErr != nil {
+		return "⚠️ " + routeErr.Error()
+	}
+	messages := a.buildMessagesForSession(ctx, chatID, combined, nil, nil)
 	if sm != nil {
 		sm.AddMessageToSession(chatID, "user", userMsg, "", filePath)
 	}
 
-	ch := a.routeStream(context.Background(), messages, userMsg, "", filePath, chatID, false)
+	ch := a.routeStream(ctx, messages, userMsg, "", filePath, chatID, false)
 	return drainToReplyWith(ch, a.FriendlyError)
 }
 

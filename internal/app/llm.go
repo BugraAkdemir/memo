@@ -412,7 +412,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		// overwritten with the provider's real prompt-token count in
 		// drainAgentStream once the pipeline reports usage on its terminal
 		// chunk. It stays as the fallback for providers that report no usage.
-		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, Category: categoryAgent, PromptTokens: estimateMessagesTokens(messages)}
+		usageMetaVal := usageMeta{Provider: a.turnProviderLabel(ctx), Model: modelName, Category: categoryAgent, PromptTokens: estimateMessagesTokens(messages)}
 
 		start := time.Now()
 		agentEvents := &agentEventLog{}
@@ -800,7 +800,7 @@ func (a *App) callWebSearchAgentStream(ctx context.Context, messages []api.Messa
 			projectPath = sm.GetProjectPath(sessionID)
 		}
 
-		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, Category: categoryWebSearch, PromptTokens: estimateMessagesTokens(messages)}
+		usageMetaVal := usageMeta{Provider: a.turnProviderLabel(ctx), Model: modelName, Category: categoryWebSearch, PromptTokens: estimateMessagesTokens(messages)}
 
 		start := time.Now()
 		agentEvents := &agentEventLog{}
@@ -1082,7 +1082,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		fullBufMu.Unlock()
 		emitUsage(outAccum)
 
-		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, Category: categoryAgent, PromptTokens: inputTokens}
+		usageMetaVal := usageMeta{Provider: a.turnProviderLabel(ctx), Model: modelName, Category: categoryAgent, PromptTokens: inputTokens}
 		agentEventsMu.Lock()
 		finalEvents := agentEvents
 		agentEventsMu.Unlock()
@@ -1243,7 +1243,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	// comment for the confusing-error-message this used to produce here.
 	providerRouter, activeName, _ := a.ensureProviderRouter()
 	if route := subscriptionTextRouteFromCtx(ctx); route != nil {
-		providerRouter, activeName = route.router, subsProviderName
+		providerRouter, activeName = route.router, routeProvider(route)
 	}
 	if activeName != "" && providerRouter != nil {
 		go func() {
@@ -1853,6 +1853,12 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 		if sm != nil {
 			if sessionID != "" {
 				sm.AddMessageToSession(sessionID, "assistant", reply, genImage, "", agentEvents...)
+				if r := subscriptionTextRouteFromCtx(ctx); r != nil && r.auto && genImage == "" {
+					sm.SetLastMessageModelRoute(sessionID, routeProvider(r), r.model)
+				}
+				if target, ok := ctx.Value(autoImageRouteKey{}).(imageTarget); ok {
+					sm.SetLastMessageModelRoute(sessionID, target.Provider, target.Model)
+				}
 				if memUsed, ok := ctx.Value(memoryUsedCtxKey{}).(int); ok && memUsed > 0 {
 					sm.SetLastMessageMemoryUsed(sessionID, memUsed)
 				}
@@ -1968,7 +1974,7 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 	// comment for the confusing-error-message this used to produce here.
 	providerRouter, activeName, _ := a.ensureProviderRouter()
 	if route := subscriptionTextRouteFromCtx(ctx); route != nil {
-		providerRouter, activeName = route.router, subsProviderName
+		providerRouter, activeName = route.router, routeProvider(route)
 	}
 	if activeName != "" && providerRouter != nil {
 		// Every caller of callLLM wants *text* (chat titles, fact

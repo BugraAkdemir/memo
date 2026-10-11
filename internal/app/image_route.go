@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ import (
 // case already used, so the picture is stored, shown and sealed the same way.
 
 type forcedImageCtxKey struct{}
+type autoImageRouteKey struct{}
 
 // withForcedImage marks a turn whose picture request is explicit (the "/image"
 // command), so the wording heuristics are skipped.
@@ -254,12 +256,19 @@ func (a *App) autoRouteImageTurn(ctx context.Context, messages []api.Message, us
 	if intent != imageIntentEdit {
 		sources = nil
 	}
+	if a.GetActiveProvider() == AutoRouteProvider {
+		ctx = context.WithValue(ctx, autoImageRouteKey{}, target)
+	}
 	logx.Printf("IMAGE: auto-routing this turn to %s/%s (intent=%d, forced=%v)", target.Provider, target.Model, intent, forced)
 
 	out := make(chan api.StreamChunk, 16)
 	go func() {
 		defer close(out)
 		defer recoverStreamPanic(ctx, out, "autoRouteImageTurn")
+		if _, ok := ctx.Value(autoImageRouteKey{}).(imageTarget); ok {
+			b, _ := json.Marshal(map[string]any{"provider": target.Provider, "model": target.Model, "auto": true})
+			trySend(ctx, out, api.StreamChunk{FinishReason: "model_route", Content: string(b)})
+		}
 		a.streamImageGeneration(ctx, target.Gen, target.Model, userMsg, userMsg, sessionID, sources, out)
 	}()
 	return out, true

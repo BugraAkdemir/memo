@@ -14,6 +14,11 @@ import (
 type subscriptionTextRoute struct {
 	router        *provider.Router
 	model, effort string
+	provider      string
+	window        int
+	auto          bool
+	reason        string
+	cleanup       func()
 }
 type subscriptionTextRouteKey struct{}
 

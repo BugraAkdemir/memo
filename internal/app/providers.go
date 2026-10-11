@@ -178,7 +178,7 @@ func (a *App) reinitProviderAndOrchestra() {
 				break
 			}
 		}
-		if !matchesName {
+		if !matchesName && activeProviderName != AutoRouteProvider {
 			matchedType := false
 			for _, p := range configs {
 				if string(p.Type) == activeProviderName {
@@ -288,8 +288,11 @@ func (a *App) SetActiveProvider(name string) {
 	}
 	a.providerMu.Unlock()
 
+	a.cfgMu.Lock()
 	a.cfg.ActiveProvider = name
-	if err := config.Save(a.cfg); err != nil {
+	saveErr := config.Save(a.cfg)
+	a.cfgMu.Unlock()
+	if err := saveErr; err != nil {
 		logx.Printf("WARN: failed to persist active provider: %v", err)
 	}
 	logx.Printf("Active provider set to: %s", name)

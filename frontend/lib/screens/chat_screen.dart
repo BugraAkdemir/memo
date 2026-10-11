@@ -548,13 +548,11 @@ class _PickerData {
   final List<ProviderConfig> providers;
   final String cliType;
   final List<ProviderModel> subsModels;
-  final Map<String, List<ProviderModel>> catalogs;
   const _PickerData({
     required this.activeType,
     required this.providers,
     required this.cliType,
     required this.subsModels,
-    this.catalogs = const {},
   });
 }
 
@@ -591,34 +589,11 @@ class _QuickModelDropdown extends ConsumerWidget {
           return const <ProviderModel>[];
         }),
       ]);
-      final providers = results[1] as List<ProviderConfig>;
-      final catalogs = <String, List<ProviderModel>>{};
-      if (fresh) {
-        await Future.wait(
-          providers
-              .where(
-                (p) =>
-                    p.enabled &&
-                    !ProviderDefaults.isCLIType(p.type) &&
-                    p.name != kSubscriptionsProviderName,
-              )
-              .map((p) async {
-                try {
-                  catalogs[p.name] = (await api.listProviderModels(
-                    p.name,
-                  )).models;
-                } catch (_) {
-                  /* Saved models stay visible. */
-                }
-              }),
-        );
-      }
       return _PickerData(
         activeType: results[0] as String,
         providers: results[1] as List<ProviderConfig>,
         cliType: results[2] as String,
         subsModels: results[3] as List<ProviderModel>,
-        catalogs: catalogs,
       );
     }
 
@@ -641,7 +616,6 @@ class _QuickModelDropdown extends ConsumerWidget {
             ..._subscriptionModelEntries(p, d.subsModels, effectiveActive == p.name)
           else if (!ProviderDefaults.isCLIType(p.type)) ...providerModelPickerEntries(
               p,
-              catalog: d.catalogs[p.name] ?? const [],
               isActive: effectiveActive == p.name,
             )
           else
@@ -1586,15 +1560,14 @@ class _ChatTopBar extends ConsumerWidget {
   }
 }
 
-/// The same group is used for legacy single-model and saved multi-model providers.
+/// Show saved IDs and the legacy current model, never the vendor catalog.
+/// Subscriptions use their separate live-account model list.
 List<ModelPickerEntry> providerModelPickerEntries(
   ProviderConfig provider, {
-  List<ProviderModel> catalog = const [],
   bool isActive = false,
 }) {
   final ids = <String>{
     ...provider.configuredModels.map((m) => m.id),
-    ...catalog.map((m) => m.id),
   };
   if (provider.model.isNotEmpty) ids.add(provider.model);
   return [

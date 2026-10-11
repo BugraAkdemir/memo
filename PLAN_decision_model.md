@@ -14,3 +14,6 @@
 ## Unrestricted selection and usable model menus
 - [x] Remove manual model-role restrictions; retain and merge configured/catalog models, verify backend and commit.
 - [x] Show provider model groups even for legacy records, simplify model editing and decision controls, verify UI and rotate handoff; import local Claude skills.
+
+## Chat picker catalog regression
+- [x] Stop adding ordinary provider catalogs to the chat picker; retain saved/current models and dynamic Subscriptions, verify and commit.

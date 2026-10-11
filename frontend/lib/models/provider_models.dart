@@ -115,3 +115,5 @@ String vendorLabel(String ownedBy) {
       return ownedBy[0].toUpperCase() + ownedBy.substring(1);
   }
 }
+
+const kAutoRouteProviderName = 'auto-route';

@@ -227,6 +227,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
               }
               final taskChatId = ref.watch(activeChatIdProvider).valueOrNull ?? '';
               return ChatMessageList(
+                modelRoute: ref.watch(streamingModelRouteProvider),
                 messages: messages,
                 isTyping: isSending,
                 streamingContent: streamingContent,
@@ -609,6 +610,13 @@ class _QuickModelDropdown extends ConsumerWidget {
           activeCLIName.isNotEmpty ? activeCLIName : (d.activeType.isEmpty ? 'local' : d.activeType);
       return [
         ModelPickerEntry.item(
+          value: kAutoRouteProviderName,
+          title: L10n.t('auto_route'),
+          tag: L10n.t('auto_route_tag'),
+          leading: Icon(Icons.auto_awesome_outlined, size: 16, color: MemoTheme.accent),
+          active: effectiveActive == kAutoRouteProviderName,
+        ),
+        ModelPickerEntry.item(
           value: 'local',
           title: L10n.t('local_model'),
           leading: Icon(Icons.computer_outlined, size: 16, color: c.textMuted),
@@ -722,6 +730,14 @@ class _QuickModelDropdown extends ConsumerWidget {
           await _setupCLIChat(context, ref, chatId);
         }
         ref.invalidate(activeChatCLIProviderProvider);
+      } else if (selected == kAutoRouteProviderName) {
+        final chatId = ref.read(activeChatIdProvider).valueOrNull;
+        if (chatId != null) {
+          await api.setChatCLIProvider(chatId, '');
+          ref.invalidate(activeChatCLIProviderProvider);
+        }
+        await api.setActiveProvider(kAutoRouteProviderName);
+        ref.read(activeProviderTypeProvider.notifier).setActive(kAutoRouteProviderName);
       } else if (selected == 'local') {
         await api.setActiveProvider('');
         ref.read(activeProviderTypeProvider.notifier).setActive('');
@@ -843,6 +859,9 @@ class _QuickModelDropdown extends ConsumerWidget {
       final match = providers.where((p) => p.type == cliType);
       label = match.isNotEmpty ? match.first.name : cliType;
       leadingIcon = Icon(Icons.terminal_rounded, size: 15, color: MemoTheme.accent);
+    } else if (activeType == kAutoRouteProviderName) {
+      label = L10n.t('auto_route');
+      leadingIcon = Icon(Icons.auto_awesome_outlined, size: 15, color: MemoTheme.accent);
     } else if (isLocal) {
       label = L10n.t('local_model');
       leadingIcon = Icon(Icons.computer_outlined, size: 15, color: c.textMuted);
@@ -861,7 +880,7 @@ class _QuickModelDropdown extends ConsumerWidget {
 
     return Builder(
       builder: (btnContext) => Tooltip(
-        message: L10n.t('switch_model'),
+        message: activeType == kAutoRouteProviderName ? L10n.t('auto_route_help') : L10n.t('switch_model'),
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           child: GestureDetector(
@@ -1581,7 +1600,7 @@ class ChatTopBar extends ConsumerWidget {
                   badge(
                     icon: Icons.auto_awesome,
                     color: MemoTheme.green,
-                    label: 'Auto',
+                    label: L10n.t('auto_mode_label'),
                     tooltip: L10n.t('auto_permission_tooltip'),
                     onTap: () => ref.read(agentAutoPermissionProvider.notifier).toggle(),
                   ),

@@ -50,6 +50,12 @@ class L10n {
   // ─── Turkish ──────────────────────────────────────────────────
 
   static const _tr = <String, String>{
+ 'memo_monogram': 'M',
+ 'auto_mode_label': 'Otomatik',
+ 'auto_route': 'Auto Route',
+ 'auto_route_tag': 'İsteğe göre seç',
+ 'auto_route_help': 'Her mesajda bağlı modeller arasından seçim yapar. Aynı sohbet geçmişi kullanılır; bağlam sınırına göre özetlenebilir. Model bilgileri çevrimdışı önbellekten de kullanılabilir.',
+ 'auto_route_used': 'Auto Route · {provider} · {model}',
     // App
     'app_title': 'Memo',
     'app_subtitle': 'AI Bellek Kabuğu',
@@ -2510,6 +2516,12 @@ class L10n {
   };
 
   static const _en = <String, String>{
+ 'memo_monogram': 'M',
+ 'auto_mode_label': 'Auto',
+ 'auto_route': 'Auto Route',
+ 'auto_route_tag': 'Choose per request',
+ 'auto_route_help': 'Chooses among connected models for each message. Uses the same chat history; it may be summarized to fit the context limit. Cached model information is also available offline.',
+ 'auto_route_used': 'Auto Route · {provider} · {model}',
     'app_title': 'Memo',
     'app_subtitle': 'AI Memory Shell',
 

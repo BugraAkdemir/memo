@@ -12,6 +12,8 @@ class ChatMessage {
   // was off or nothing relevant enough came back. Mirrors Go
   // sessions.ChatMessage.MemoryUsed.
   final int memoryUsed;
+  final String routeProvider;
+  final String routeModel;
 
   const ChatMessage({
     required this.role,
@@ -22,6 +24,8 @@ class ChatMessage {
     required this.timestamp,
     this.agentEvents,
     this.memoryUsed = 0,
+    this.routeProvider = '',
+    this.routeModel = '',
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -33,7 +37,9 @@ class ChatMessage {
         timestamp: json['timestamp'] as String? ?? '',
         agentEvents: json['agent_events'] as List<dynamic>?,
         memoryUsed: json['memory_used'] as int? ?? 0,
-      );
+    routeProvider: json['route_provider'] as String? ?? '',
+    routeModel: json['route_model'] as String? ?? '',
+  );
 
   Map<String, dynamic> toJson() => {
         'role': role,
@@ -44,6 +50,8 @@ class ChatMessage {
         'timestamp': timestamp,
         if (agentEvents != null) 'agent_events': agentEvents,
         if (memoryUsed > 0) 'memory_used': memoryUsed,
+    if (routeModel.isNotEmpty) 'route_model': routeModel,
+    if (routeProvider.isNotEmpty) 'route_provider': routeProvider,
       };
 
   bool get isUser => role == 'user';
@@ -100,4 +108,13 @@ class ChatSession {
         msgCount: json['msg_count'] as int? ?? 0,
         projectPath: json['project_path'] as String?,
       );
+}
+
+/// A routing status marker; never part of the assistant's answer text.
+class ModelRoute {
+  final String provider;
+  final String model;
+  const ModelRoute(this.provider, this.model);
+  factory ModelRoute.fromJson(Map<String, dynamic> json) =>
+      ModelRoute(json['provider'] as String? ?? '', json['model'] as String? ?? '');
 }

@@ -25,6 +25,7 @@
 **Bilinen küçük noktalar**
 - Yapıştırma kutusu `Done` olana kadar görünür kalıyor; `login.go`'da sonuç goroutine'i `s.tail`'i okuyucu son satırı işlemeden okuyabilir (teorik).
 - Minimal Mod otomatik sıkıştırmayı atlıyor; `chat_input.dart`'taki ikinci model değiştirici ham kimlik listeliyor; görsel modeli seçicide etiketsiz.
+- **CI `Test (Go)` 8 Ekim'den beri sık kırmızı** (10-07'de yeşildi; 10-08'den sonra 5 koşunun 4'ü): her seferinde farklı yük-bağımlı test. Biri çözüldü (e2e resim testi, `1b16c56c`). Diğer sınıf: `internal/app` testlerinde `TempDir RemoveAll cleanup: ... directory not empty` — `TestIntegration_AgentTurnRecordsRealUsage` (4d1d34fa), `TestSendMessage_WebSearchOnMinimalModeOn_NoToolDefinitions` (da3c6a41). Yerelde 60 koşuda yeniden üretilemedi; bırakılan kalıntı `agent-audit.jsonl` (`agent.openAuditLogFile`, `NewExecutor`'da açılır, 2026-08-18'den beri var) → test klasörü silinirken bir yer `config.DataPath`/yeni executor ile klasörü yeniden oluşturuyor olabilir. Kök neden BULUNMADI. Yeniden üretme: `TMPDIR=<dizin>` ile `go test -c` ikilisini 24 meşgul döngü altında koş, kalan dosyaya bak.
 - Yük altında düşen testler: `livemode` `TestReconnectingSession_SendAudioRoutesToCurrentInner` (kök neden araştırılmadı), `TestBootstrapTokenAuth_Succeeds`, `TestIntegration_MemoryBlock_CappedAndUserOnly`, canary DuckDuckGo captcha. Yük altında test flake'i şüphesinde: `go test -c` + 24 meşgul döngüyle yeniden üret, sonra isteği/çıktıyı dök (bu yöntemle 2026-10-11'deki e2e yarışı bulundu).
 
 ---
@@ -35,5 +36,5 @@ Tam kayıt: `handoff-archive.md` (üstteki girdi).
 - **`66b8794a`** Gerçek hata: `handleSubscriptions` gövdeyi iki kez decode ediyordu → `submit_callback` hep 400 "bad json"; uzak giriş (`edf81e2e`) HTTP üzerinden hiç çalışmıyordu. Tek decode + 2 handler testi (düzeltme geri alınınca kırmızı).
 - **`1b16c56c`** CI'daki tek kırmızı: `TestChat_UploadedPictureNeverTouchesTheTempDirInTheClear` fake sağlayıcının *son* isteğine bakıyordu; arka plandaki sohbet-başlığı çağrısı (resimsiz) yük altında araya giriyordu (24 döngüyle 22/40 düşüyordu, düzeltmeden sonra 40/40). Test hatası, üretim kodu doğruydu.
 - **`da3c6a41`** `handoff.md` 1,39 MB → arşive taşındı; CI Old-domain Guard `handoff-archive.md`'yi de istisna tutuyor; AGENTS.md kural #2'de rotasyon kuralı.
-- Doğrulama: yerelde `build`/`vet` temiz, ilgili testler `-race` yeşil; son push'un (`da3c6a41`) CI sonucu bu girdiye yazılmadı → `gh run list` ile bak.
+- Doğrulama: yerelde `build`/`vet` temiz, ilgili testler `-race` yeşil. `da3c6a41` CI: Security Scan / Flutter / L10n / Old-domain **yeşil**; `Test (Go)` kırmızı (yukarıdaki TempDir yarışı, ilk koşuda); yalnız o iş yeniden koşturuldu — sonucu `gh run list` ile bak.
 - Sonraki adım: kullanıcıdaki maddeler (yukarıda); sonra gerçek hesapla uzak giriş denemesi.

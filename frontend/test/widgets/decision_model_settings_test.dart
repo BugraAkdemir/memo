@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memo_flutter/core/api_client.dart';
 import 'package:memo_flutter/core/l10n.dart';
+import 'package:memo_flutter/core/theme.dart';
+import 'package:memo_flutter/models/image_config.dart';
+import 'package:memo_flutter/providers/image_config_provider.dart';
+import 'package:memo_flutter/widgets/settings/tabs/providers_tab.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/widgets/settings/decision_model_section.dart';
 import 'package:memo_flutter/models/provider_config.dart';
@@ -75,6 +79,17 @@ class _DecisionApi extends MemoApiClient {
   }) async {}
 }
 
+class _Images extends ImageConfigNotifier {
+  @override
+  Future<ImageConfig> build() async =>
+      const ImageConfig(defaultProvider: 'cheap', defaultModel: 'image-test');
+}
+
+class _Active extends ActiveProviderNotifier {
+  @override
+  Future<String> build() async => 'cheap';
+}
+
 void main() {
   for (final locale in MemoLocale.values) {
     testWidgets('decision selection loads and saves in $locale', (
@@ -86,11 +101,14 @@ void main() {
       final api = _DecisionApi();
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [apiClientProvider.overrideWithValue(api),
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
             providerListProvider.overrideWith(_ProviderList.new),
           ],
           child: const MaterialApp(
-            home: Scaffold(body: SingleChildScrollView(child: DecisionModelSection())),
+            home: Scaffold(
+              body: SingleChildScrollView(child: DecisionModelSection()),
+            ),
           ),
         ),
       );
@@ -101,11 +119,9 @@ void main() {
       await tester.tap(find.byType(DropdownButtonFormField<String>));
       await tester.pumpAndSettle();
       expect(find.text('cheap · chat-llm'), findsWidgets);
-      await tester.tap(
-        find.text('cheap · fast-model').last);
+      await tester.tap(find.text('cheap · fast-model').last);
       await tester.pumpAndSettle();
-      await tester.ensureVisible(
-        find.text(L10n.t('save')));
+      await tester.ensureVisible(find.text(L10n.t('save')));
       await tester.pumpAndSettle();
       await tester.tap(find.text(L10n.t('save')));
       await tester.pumpAndSettle();
@@ -117,5 +133,61 @@ void main() {
       expect(api.savedRisk, 15);
       expect(tester.takeException(), isNull);
     });
+  }
+  for (final locale in MemoLocale.values) {
+    testWidgets(
+      'provider sections preserve drafts at narrow width in $locale',
+      (tester) async {
+        final previous = L10n.locale;
+        L10n.setLocale(locale);
+        addTearDown(() => L10n.setLocale(previous));
+        tester.view.physicalSize = const Size(360, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(_DecisionApi()),
+              providerListProvider.overrideWith(_ProviderList.new),
+              imageConfigProvider.overrideWith(_Images.new),
+              activeProviderTypeProvider.overrideWith(_Active.new),
+            ],
+            child: MaterialApp(
+              theme: MemoTheme.darkThemeData,
+              home: const Scaffold(body: ProvidersTab()),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(ProviderCard), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.ensureVisible(find.text(L10n.t('providers_images')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(L10n.t('providers_images')));
+        await tester.pumpAndSettle();
+        final field = find.byKey(const Key('image_default_model'));
+        await tester.ensureVisible(field);
+        await tester.enterText(field, 'unsaved-image-draft');
+        await tester.pumpAndSettle();
+        // Horizontal section navigation must be reachable on small windows.
+        final decisions = find.text(L10n.t('providers_decisions'));
+        await tester.ensureVisible(decisions);
+        await tester.tap(decisions);
+        await tester.pumpAndSettle();
+        expect(find.text('cheap · tiny'), findsOneWidget);
+        await tester.ensureVisible(find.text(L10n.t('verification_limits')));
+        await tester.tap(find.text(L10n.t('verification_limits')));
+        await tester.pumpAndSettle();
+        expect(find.byType(Slider), findsNWidgets(2));
+        expect(tester.takeException(), isNull);
+        await tester.ensureVisible(find.text(L10n.t('providers_images')));
+        await tester.ensureVisible(find.text(L10n.t('providers_images')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(L10n.t('providers_images')));
+        await tester.pumpAndSettle();
+        expect(find.text('unsaved-image-draft'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 }

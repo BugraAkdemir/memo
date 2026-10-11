@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/l10n.dart';
+import '../../core/theme.dart';
 import '../../core/friendly_error.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/provider_provider.dart';
@@ -152,8 +153,13 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
     final choices = _choices();
     final selected = encodeModelSelection(_provider.text, _model.text);
     final value = choices.containsKey(selected) ? selected : '';
-    return Card(
-      margin: const EdgeInsets.only(top: 24),
+    return Material(
+      color: MemoTheme.of(context).bgPanel,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: MemoTheme.of(context).borderSoft),
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -165,9 +171,11 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-              L10n.t('decision_tab_title'),
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    L10n.t('decision_tab_title'),
+                    style: TextStyle(
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
+                      color: MemoTheme.of(context).textMain,
                     ),
                   ),
                 ),
@@ -185,14 +193,34 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
               ],
             ),
             const SizedBox(height: 12),
-            Text(L10n.t('verification_overview'),
-              style: Theme.of(context).textTheme.bodySmall,
+            Text(
+              L10n.t('verification_overview'),
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.5,
+                color: MemoTheme.of(context).textDim,
+              ),
             ),
             const SizedBox(height: 12),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text(L10n.t('decision_model_title')),
-              subtitle: Text(L10n.t('decision_model_desc')),
+              activeThumbColor: MemoTheme.accent,
+              title: Text(
+                L10n.t('decision_model_title'),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: MemoTheme.of(context).textMain,
+                ),
+              ),
+              subtitle: Text(
+                L10n.t('decision_model_desc'),
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: MemoTheme.of(context).textDim,
+                ),
+              ),
               value: _decision,
               onChanged: _saving
                   ? null
@@ -200,8 +228,23 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text(L10n.t('verification_enabled_title')),
-              subtitle: Text(L10n.t('verification_enabled_desc')),
+              activeThumbColor: MemoTheme.accent,
+              title: Text(
+                L10n.t('verification_enabled_title'),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: MemoTheme.of(context).textMain,
+                ),
+              ),
+              subtitle: Text(
+                L10n.t('verification_enabled_desc'),
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: MemoTheme.of(context).textDim,
+                ),
+              ),
               value: _verification,
               onChanged: _saving
                   ? null
@@ -214,7 +257,21 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
                 isExpanded: true,
                 decoration: InputDecoration(
                   labelText: L10n.t('decision_model_label'),
-                  border: const OutlineInputBorder(),
+                  filled: true,
+                  fillColor: MemoTheme.of(context).bgElement,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 16,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                    borderSide: BorderSide(
+                      color: MemoTheme.of(context).borderSoft,
+                    ),
+                  ),
                 ),
                 items: [
                   DropdownMenuItem(
@@ -237,39 +294,55 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
                       }),
               ),
               const SizedBox(height: 8),
-              Text(L10n.t('decision_registered_hint')),
+              Text(
+                L10n.t('decision_registered_hint'),
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: MemoTheme.of(context).textDim,
+                ),
+              ),
               if (choices.isEmpty) Text(L10n.t('decision_no_models')),
             ],
             if (_verification)
               ExpansionTile(
                 tilePadding: EdgeInsets.zero,
-                title: Text(L10n.t('verification_limits')),
+                title: Text(
+                  L10n.t('verification_limits'),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: MemoTheme.of(context).textMain,
+                  ),
+                ),
+                shape: const Border(),
+                collapsedShape: const Border(),
                 children: [
-              const SizedBox(height: 8),
-              Text(L10n.t('verification_threshold', {'n': '$_threshold'})),
-              Slider(
-                value: _threshold.toDouble(),
-                min: 1,
-                max: 100,
-                divisions: 99,
-                label: '$_threshold%',
-                onChanged: _saving
-                    ? null
-                    : (value) => setState(() => _threshold = value.round()),
-              ),
-              Text(L10n.t('verification_max_risk', {'n': '$_maxRisk'})),
-              Slider(
-                value: _maxRisk.toDouble(),
-                min: 1,
-                max: 100,
-                divisions: 99,
-                label: '$_maxRisk%',
-                onChanged: _saving
-                    ? null
-                    : (value) => setState(() => _maxRisk = value.round()),
-              ),
-              Text(L10n.t('verification_fallback_desc')),
-            ],
+                  const SizedBox(height: 8),
+                  Text(L10n.t('verification_threshold', {'n': '$_threshold'})),
+                  Slider(
+                    value: _threshold.toDouble(),
+                    min: 1,
+                    max: 100,
+                    divisions: 99,
+                    label: '$_threshold%',
+                    onChanged: _saving
+                        ? null
+                        : (value) => setState(() => _threshold = value.round()),
+                  ),
+                  Text(L10n.t('verification_max_risk', {'n': '$_maxRisk'})),
+                  Slider(
+                    value: _maxRisk.toDouble(),
+                    min: 1,
+                    max: 100,
+                    divisions: 99,
+                    label: '$_maxRisk%',
+                    onChanged: _saving
+                        ? null
+                        : (value) => setState(() => _maxRisk = value.round()),
+                  ),
+                  Text(L10n.t('verification_fallback_desc')),
+                ],
               ),
             if (_error != null)
               Padding(
@@ -279,7 +352,7 @@ class _DecisionModelSectionState extends ConsumerState<DecisionModelSection> {
             const SizedBox(height: 16),
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton(
+              child: FilledButton(
                 onPressed: _saving ? null : _save,
                 child: _saving
                     ? const SizedBox(

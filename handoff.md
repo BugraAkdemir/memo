@@ -40,6 +40,14 @@
 
 ---
 
+# Son oturum — 2026-10-12 — CLIProxyAPI v8.0.16 → v8.0.25
+- `internal/cliproxy/PINNED.txt` v8.0.25'e çekildi (arşiv digest'leri GitHub'ınkiyle birebir, binary SHA'ları `vendor_cliproxy.sh` ile doğrulandı). R2'ye (`binaries/{linux/cliproxy,linux/cliproxy-arm64,windows/cliproxy,darwin/cliproxy}`) yalnız bu 4 klasör additive kopyalandı; `r2-memo-push/binaries` staging klasörü de güncellendi (yoksa `upload-memo.sh` R2'yi eski sürüme geri yazar).
+- Doğrulama: `go test -tags upstream` dört test (UPSTREAM_DEEP=1, canlı R2'den inen gerçek linux binary: 401 kapısı, `/v1/models`, görsel model tespiti, login flag'leri) geçti; `go test ./internal/cliproxy/` geçti. **Doğrulanmadı:** gerçek hesapla Claude/Codex/Antigravity isteği, Windows/macOS/arm64 binary'leri çalıştırılmadı (yalnız SHA).
+- Dikkat: v8.0.20+ sidecar her 3 saatte npm kayıt defterinden Grok CLI sürümü çekmeye çalışıyor (başarısızsa yedek sürümü tutar). Memo'nun "çalışma anında dış bağımlılık yok" iddiasına dokunan yeni bir giden istek.
+- Geri alma: PINNED.txt'i önceki commit'e döndür, `scripts/vendor_cliproxy.sh <dir>` ile v8.0.16'yı indir, aynı 4 klasörü R2'ye ve staging'e kopyala.
+
+---
+
 # Son oturum — 2026-10-12 — Mobil bağlantı akışı (`feat/mobile-connect-flow`)
 - İstek: telefonda adres → sunucu kontrolü → giriş (şifre / token / ikisi, "beni hatırla"); sunucu zaten kuruluysa kurulum sihirbazı gelmesin, hiç kurulmadıysa gelsin; masaüstü/web değişmesin. Dal `feat/mobile-connect-flow`; sonradan 5 commit `main` üzerine cherry-pick ile alındı (çakışma çıkmadı), `main` push edildi. Commit'ler: **50ce0b35** (kapı + kapsam yenileme), **7d17165a** (bağlantı ekranı), **b4fec753** (sihirbaz). Arada başka bir oturumun `e9189005` (denetim belgeleri) bu dala düştü; yalnız docs.
 - Kök nedenler: (1) `authGateProvider` istemciyi bir kez `read` ediyordu; adres sonradan girilince eski, adressiz istemciyle yoklamaya devam ediyordu → artık `watch`. (2) `/api/onboarding` giriş arkasında (canlı doğrulandı: anonim 401), telefon yerel `false` tahminiyle tüm sihirbazı açıyordu. (3) Tüm hatalar tek cümleydi. (4) `auth_mode: none` giriş formu istiyordu (artık `ok`).

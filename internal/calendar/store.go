@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,7 +32,10 @@ CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_time);
 
 // Store persists calendar events in a dedicated SQLite database.
 type Store struct {
-	db *database.DB
+	db        *database.DB
+	changesMu sync.Mutex
+	changes   map[chan struct{}]struct{}
+	closed    bool
 }
 
 // NewStore opens (or creates) the calendar database at dir/events.db.
@@ -49,7 +53,43 @@ func NewStore(dir string) (*Store, error) {
 }
 
 // Close releases the database connection.
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error {
+	s.changesMu.Lock()
+	s.closed = true
+	for ch := range s.changes {
+		close(ch)
+		delete(s.changes, ch)
+	}
+	s.changesMu.Unlock()
+	return s.db.Close()
+}
+
+// SubscribeChanges coalesces committed changes into snapshot-reload signals.
+func (s *Store) SubscribeChanges() (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	s.changesMu.Lock()
+	if s.closed {
+		close(ch)
+	} else {
+		if s.changes == nil {
+			s.changes = make(map[chan struct{}]struct{})
+		}
+		s.changes[ch] = struct{}{}
+		ch <- struct{}{}
+	}
+	s.changesMu.Unlock()
+	return ch, func() { s.changesMu.Lock(); delete(s.changes, ch); s.changesMu.Unlock() }
+}
+func (s *Store) NotifyChanges() {
+	s.changesMu.Lock()
+	defer s.changesMu.Unlock()
+	for ch := range s.changes {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
 
 // Add inserts a new event. If e.ID is empty a UUID is generated.
 func (s *Store) Add(ctx context.Context, e Event) (Event, error) {
@@ -78,6 +118,7 @@ func (s *Store) Add(ctx context.Context, e Event) (Event, error) {
 	if err != nil {
 		return Event{}, fmt.Errorf("calendar: add: %w", err)
 	}
+	s.NotifyChanges()
 	return e, nil
 }
 
@@ -103,6 +144,7 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("calendar: delete: %w", err)
 	}
+	s.NotifyChanges()
 	return nil
 }
 

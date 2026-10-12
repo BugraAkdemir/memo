@@ -2954,6 +2954,14 @@ class MemoApiClient {
     return [];
   }
 
+  /// Passive change signals; reconnect and fetch a full snapshot on each one.
+  Stream<void> calendarChangeStream({CancelToken? cancelToken}) async* {
+    await for (final line in _sseLines(path: '/api/calendar/changes', method: 'GET',
+        cancelToken: cancelToken, dioReceiveTimeout: Duration.zero)) {
+      if (line.startsWith('data: ')) yield null;
+    }
+  }
+
   /// Add a manual calendar event.
   Future<Map<String, dynamic>> addCalendarEvent(
     String title,

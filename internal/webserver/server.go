@@ -438,6 +438,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Calendar
 	// Calendar permission (Faz 5.1.1, yapacam.md), lenient-gated.
 	route("/api/calendar/events", s.requirePermission(s.handleCalendarEvents, hasCalendarPerm))
+	route("/api/calendar/changes", s.requirePermissionStrict(s.handleCalendarChanges, hasCalendarPerm))
 	route("/api/calendar/events/", s.requirePermission(s.handleCalendarEvent, hasCalendarPerm))
 	route("/api/calendar/settings", s.requirePermission(s.handleCalendarSettings, hasCalendarPerm))
 

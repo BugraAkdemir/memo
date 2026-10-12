@@ -4,6 +4,7 @@ package webserver
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -11,6 +12,52 @@ import (
 	"memo/internal/calendar"
 	"memo/internal/config"
 )
+
+// Read-only, permission-gated notifications for mobile alarm reconciliation.
+func (s *Server) handleCalendarChanges(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	bridge, ok := s.bridge.(interface {
+		SubscribeCalendarChanges() (<-chan struct{}, func())
+	})
+	if !ok {
+		http.Error(w, "calendar changes unavailable", http.StatusNotImplemented)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	ch, unsubscribe := bridge.SubscribeCalendarChanges()
+	defer unsubscribe()
+	flusher.Flush()
+	ticker := time.NewTicker(25 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case _, ok := <-ch:
+			if !ok {
+				return
+			}
+			if _, err := fmt.Fprint(w, "data: {\"changed\":true}\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-ticker.C:
+			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
 
 // CalendarBridge is the subset of App methods required by calendar handlers.
 type CalendarBridge interface {

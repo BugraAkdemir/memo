@@ -28,6 +28,8 @@ class NotificationService {
 
   static final _plugin = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
+  static bool get initialized => _initialized;
+  static const _calendarPayloadPrefix = 'memo-calendar:';
 
   /// Visible for tests only — lets a suite reset the one-shot [init] guard.
   static void resetForTest() => _initialized = false;
@@ -154,7 +156,25 @@ class NotificationService {
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
+      payload: '$_calendarPayloadPrefix$eventId',
     );
+  }
+
+  /// Recover ownership after restart; never cancel unrelated notifications.
+  static Future<Set<String>> pendingReminders() async {
+    if (!_initialized) return {};
+    final ids=<String>{};
+    for (final request in await _plugin.pendingNotificationRequests()) {
+      final payload=request.payload;
+      if (payload!=null && payload.startsWith(_calendarPayloadPrefix)) {
+        ids.add(payload.substring(_calendarPayloadPrefix.length));
+      } else if (payload==null && request.id>=_reminderBase && request.id<_reminderBase+0x8000) {
+        // Prior versions omitted payloads. Replace their reserved-band alarms
+        // once with the complete current snapshot and owned payloads.
+        await _plugin.cancel(request.id);
+      }
+    }
+    return ids;
   }
 
   /// Cancels a previously scheduled reminder. A no-op when nothing was

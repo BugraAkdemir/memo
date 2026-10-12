@@ -316,7 +316,22 @@ func (a *App) UpdateCalendarSettings(leadMinutes int, disableTimeGuess bool) err
 	}
 	a.cfg.Calendar.ReminderLeadMinutes = leadMinutes
 	a.cfg.Calendar.DisableTimeGuess = disableTimeGuess
-	return config.Save(a.cfg)
+	if err := config.Save(a.cfg); err != nil {
+		return err
+	}
+	if a.calendarStore != nil {
+		a.calendarStore.NotifyChanges()
+	}
+	return nil
+}
+
+func (a *App) SubscribeCalendarChanges() (<-chan struct{}, func()) {
+	if a.calendarStore != nil {
+		return a.calendarStore.SubscribeChanges()
+	}
+	ch := make(chan struct{})
+	close(ch)
+	return ch, func() {}
 }
 
 // ListCalendarEvents returns events within the given time range.

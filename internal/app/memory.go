@@ -467,9 +467,17 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 		// Embedding backend unreachable is expected in API/Orchestra-only mode —
 		// degrade silently instead of flooding the UI with error toasts.
 		if !isEmbeddingBackendDown(err) {
-			a.emitEvent("memory:error", fmt.Sprintf("Hafıza okunamadı: %v", err))
+			a.emitEvent("memory:error", a.t("Hafıza okunamadı: ", "Could not read memory: ")+err.Error())
 		}
-		return nil
+		// Use a fresh bounded DB-only budget: the embedding timeout may have
+		// exhausted rctx, but must not also disable lexical and pinned recall.
+		lexCtx, lexCancel := context.WithTimeout(ctx, 5*time.Second)
+		var lexErr error
+		m, lexErr = a.store.RetrieveLexicalContext(lexCtx, query, a.cfg.Memory.TopK)
+		lexCancel()
+		if lexErr != nil {
+			logx.Printf("MEMORY: lexical fallback: %v", lexErr)
+		}
 	}
 
 	// Pinned facts (explicit saves, importance=5) are merged in unconditionally
@@ -480,7 +488,11 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 	// decomposition, which would otherwise leave GetPinnedFacts almost no
 	// time and silently break the "unconditional" guarantee under load.
 	pinCtx, pinCancel := context.WithTimeout(ctx, 5*time.Second)
-	pinned, pinErr := a.store.GetPinnedFactsRanked(pinCtx, query, a.cfg.Memory.PinnedFactsPerTurn)
+	pinQuery := query
+	if err != nil {
+		pinQuery = ""
+	}
+	pinned, pinErr := a.store.GetPinnedFactsRanked(pinCtx, pinQuery, a.cfg.Memory.PinnedFactsPerTurn)
 	pinCancel()
 	if pinErr != nil {
 		logx.Printf("MEMORY: GetPinnedFactsRanked: %v", pinErr)

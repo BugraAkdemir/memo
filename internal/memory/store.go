@@ -1136,6 +1136,15 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 	return memories, nil
 }
 
+// RetrieveLexicalContext is the embedding-independent recovery path. FTS hits
+// retain their own match type and are not presented as cosine measurements.
+func (s *Store) RetrieveLexicalContext(ctx context.Context, query string, topK int) ([]MemoryResult, error) {
+	if !s.useFTS || topK <= 0 || strings.TrimSpace(query) == "" {
+		return nil, nil
+	}
+	return s.ftsSearch(ctx, query, topK)
+}
+
 func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK int, minSimilarity float32) ([]MemoryResult, error) {
 	vecJSON, err := json.Marshal(queryEmbedding)
 	if err != nil {
@@ -1469,7 +1478,13 @@ func (s *Store) GetPinnedFactsRanked(ctx context.Context, query string, limit in
 		coreN = len(cands)
 	}
 
-	queryEmb, embErr := s.embed(ctx, capForEmbedding(query, chunkMaxTokens))
+	var queryEmb []float32
+	var embErr error
+	// An empty query requests the recent-facts fallback directly. The caller
+	// already knows embeddings are down; don't wait for the same outage twice.
+	if strings.TrimSpace(query) != "" {
+		queryEmb, embErr = s.embed(ctx, capForEmbedding(query, chunkMaxTokens))
+	}
 	if embErr != nil || len(queryEmb) != s.dim {
 		logx.Printf("MEMORY: GetPinnedFactsRanked embed failed (%v), falling back to most-recent-%d", embErr, limit)
 		out := make([]MemoryResult, 0, limit)

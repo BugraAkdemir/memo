@@ -1277,7 +1277,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			}
 			a.cfgMu.RUnlock()
 			if route := subscriptionTextRouteFromCtx(ctx); route != nil {
-				req.EffortLevel = route.effort
+				req.EffortLevel = routeEffort(route)
 			}
 
 			ch, err := providerRouter.ChatCompletionStream(providerCtx, req)
@@ -1302,7 +1302,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			start := time.Now()
 			usageMetaVal := usageMeta{Provider: activeName, Model: a.activeProviderModel(activeName), Category: categoryChat, PromptTokens: estimateMessagesTokens(messages)}
 			if route := subscriptionTextRouteFromCtx(ctx); route != nil {
-				usageMetaVal.Model = route.model
+				usageMetaVal.Model = routeModel(route)
 			}
 			// providerCompletionTokens holds the provider's own completion
 			// count when it reported one. Kept separate from tokenCount (which
@@ -1808,6 +1808,18 @@ func withThinking(ctx context.Context, thinking string) context.Context {
 }
 
 func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int, finishReason, reply, userMsg, sessionID string, meta *usageMeta, agentEvents ...[]interface{}) {
+	if r := subscriptionTextRouteFromCtx(ctx); r != nil && r.auto && meta != nil {
+		meta.Provider, meta.Model = routeProvider(r), routeModel(r)
+		a.ctxState.mu.Lock()
+		snap := a.ctxState.snaps[sessionID]
+		snap.provider = meta.Provider
+		snap.model = meta.Model
+		snap.window = routeWindow(r)
+		if a.ctxState.snaps != nil {
+			a.ctxState.snaps[sessionID] = snap
+		}
+		a.ctxState.mu.Unlock()
+	}
 	duration := time.Since(start).Seconds()
 	tps := 0.0
 	if duration > 0 && tokenCount > 0 {
@@ -1854,7 +1866,7 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 			if sessionID != "" {
 				sm.AddMessageToSession(sessionID, "assistant", reply, genImage, "", agentEvents...)
 				if r := subscriptionTextRouteFromCtx(ctx); r != nil && r.auto && genImage == "" {
-					sm.SetLastMessageModelRoute(sessionID, routeProvider(r), r.model)
+					sm.SetLastMessageModelRoute(sessionID, routeProvider(r), routeModel(r))
 				}
 				if target, ok := ctx.Value(autoImageRouteKey{}).(imageTarget); ok {
 					sm.SetLastMessageModelRoute(sessionID, target.Provider, target.Model)
@@ -2009,7 +2021,7 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 		a.cfgMu.RUnlock()
 
 		if route := subscriptionTextRouteFromCtx(ctx); route != nil {
-			req.EffortLevel = route.effort
+			req.EffortLevel = routeEffort(route)
 		}
 		resp, err := providerRouter.ChatCompletion(pctx, req)
 		if err != nil {

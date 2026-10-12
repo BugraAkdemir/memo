@@ -33,3 +33,7 @@ Plan: `PLAN_v4_6_completion.md`. İlk iki birim ayrı checkpoint'lerde uygulanı
 
 - 2. birim: odaklı model seçici/composer testleri **25 passed**; tam `flutter test` **656 passed**, exit 0. `flutter analyze lib/`: yalnız aynı **4 mevcut info**, warning/error yok. Değişen dört üretim Dart dosyasında L10n literal taraması boş; `git diff --check` exit 0. Gerçek telefonda/native pencerede görüntü veya gerçek abonelik hesabında kota davranışı bu testlerle doğrulanmış sayılmaz.
 - Provider/mobil menü kusurları kapatıldı; Auto Route failover, thinking, pinned fallback, alarm uzlaştırma ve yedek kurtarma açık. AGENTS.md’nin oturum başına 1–2 birim kuralı gereği bunlar sonraki plan adımlarıdır.
+
+## 12 Ekim — kalanları sırayla tamamlama
+
+Auto Route inference/soğuk yükleme failover ve bilinen kota seçimi tamamlandı. Güvenli ilk-yanıt hatalarında en fazla üç aday; çıktı/düşünme/araç cevabı sonrası replay yok. Her adayın isteği kendi pencere sınırına daraltılır; canlı/kayıtlı model ve bağlam halkası gerçek kazananı gösterir. Gerçek HTTP plain-chat + agent 503→backup testleri ve yan etki/iptal/ret/bütçe/soğuk yükleme/kota testleri geçti. Go build/vet/tam race exit 0; Flutter 656 passed, analyze yalnız mevcut 4 info; diff-check temiz. Gerçek satıcı ve GGUF donanım ölçümü bu sonuçlara dahil değil. Kullanıcının tümünü sırayla bitirme talimatı, önceki iki birimlik oturum sınırını bu çalışma için kaldırdı.

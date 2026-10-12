@@ -33,6 +33,12 @@ func NewRouter(configs []ProviderConfig) *Router {
 	return r
 }
 
+// NewRouterWithProvider wraps a request-scoped provider without registering a
+// process-wide constructor or changing any saved configuration.
+func NewRouterWithProvider(cfg ProviderConfig, p Provider) *Router {
+	return &Router{configs: []ProviderConfig{cfg}, providers: []*providerEntry{{Provider: p, cfg: cfg}}}
+}
+
 // UpdateConfigs replaces all provider configs and rebuilds the provider list.
 func (r *Router) UpdateConfigs(configs []ProviderConfig) {
 	r.mu.Lock()

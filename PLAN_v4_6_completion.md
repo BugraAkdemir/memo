@@ -2,7 +2,7 @@
 
 Kaynaklar: `versinNote/v4.6.0.md`, TR karşılığı, `docs/AUDIT_2026-10-12.md`, güncel graph/snippet ve doğrudan kaynak kontrolleri.
 Beta araçları/tarayıcı/Swarm kapsam dışı. Gerçek cihaz veya gerçek hesapla denenmemiş bir akış, kanıt olmadan bozuk sayılmaz.
-AGENTS.md gereği oturum başına en fazla iki küçük uygulama birimi; her biri ayrı doğrulanır ve commit edilir.
+Kullanıcı 12 Ekim’de kalanların hepsini sırayla bitirmeyi açıkça istedi; önceki oturum sınırı bu çalışma için kaldırıldı. Her birim ayrı doğrulanır ve commit edilir.
 
 ## Bu oturum
 
@@ -11,7 +11,7 @@ AGENTS.md gereği oturum başına en fazla iki küçük uygulama birimi; her bir
 
 ## Sonraki oturumlar — tamamlanmış sayılmayacak
 
-- [ ] Auto Route: ilk model cevap/araç yan etkisinden önce hata verdiğinde sınırlı güvenli alternatif; soğuk yerel model yükleme hatası; bilinen tükenmiş abonelik kotasının seçimde ele alınması. Farklı bağlam bütçelerinde yeniden mesaj oluşturma ve kullanılan model kaydını doğru tutma.
+- [x] Auto Route: ilk model cevap/araç yan etkisinden önce hata verdiğinde sınırlı güvenli alternatif; soğuk yerel model yükleme hatası; bilinen tükenmiş abonelik kotasının seçimde ele alınması. Farklı bağlam bütçelerinde yeniden mesaj oluşturma ve kullanılan model kaydını doğru tutma.
 - [ ] Ajan thinking: provider metnini canlı akışa taşıma ve final kaydına ekleme; Native blok replay'i koruma.
 - [ ] Hafıza: embedding kesilince pinned fallback'e ulaşma; FTS kurtarma kapsamını belirleme; limit ve timeout testleri.
 - [ ] Mobil takvim: dışarıdan ekleme/silme/başlık değişimi için alarm uzlaştırma; başarısız planlamayı tekrar deneme; gerçek cihaz doğrulaması.

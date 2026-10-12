@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -29,6 +28,7 @@ type routeCandidate struct {
 	tools        *bool
 	localPath    string
 	description  string
+	quotaBlocked bool
 }
 
 func includes(xs []string, x string) bool {
@@ -76,6 +76,17 @@ func (a *App) autoRouteCandidates(ctx context.Context) []routeCandidate {
 					ids = append(ids, m.ID)
 				}
 			}
+			blocked := map[string]bool{}
+			if isSubsMarker(cfg) {
+				list := a.subsModelList(ctx)
+				quotas := a.subsQuotas(ctx, len(list) > 0, 0)
+				for _, m := range list {
+					if q, ok := quotas.For(m.ID, m.OwnedBy); ok {
+						reset, err := time.Parse(time.RFC3339, q.ResetAt)
+						blocked[m.ID] = q.Remaining <= 0 && err == nil && reset.After(time.Now())
+					}
+				}
+			}
 			seen := map[string]bool{}
 			gen, hasGen := imageGeneratorFor(cfg)
 			probeCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
@@ -84,7 +95,7 @@ func (a *App) autoRouteCandidates(ctx context.Context) []routeCandidate {
 					continue
 				}
 				seen[id] = true
-				c := routeCandidate{cfg: cfg, window: windows[id]}
+				c := routeCandidate{cfg: cfg, window: windows[id], quotaBlocked: blocked[id]}
 				c.cfg.Model = id
 				c.cfg.Models = nil
 				c.cfg.ContextTokens = 0
@@ -176,8 +187,18 @@ func (a *App) autoRouteCandidates(ctx context.Context) []routeCandidate {
 // eligibleRouteCandidates enforces known hard requirements before any classifier
 // can choose. Unknown context is a last resort; never claim it fits a big file.
 func eligibleRouteCandidates(cs []routeCandidate, need int, vision, tools, code bool) []routeCandidate {
+	available := false
+	for _, c := range cs {
+		if !c.quotaBlocked && (!vision || c.vision) && (!tools || c.tools == nil || *c.tools) {
+			available = true
+			break
+		}
+	}
 	var eligible, fit []routeCandidate
 	for _, c := range cs {
+		if available && c.quotaBlocked {
+			continue
+		}
 		if vision && !c.vision {
 			continue
 		}
@@ -257,7 +278,9 @@ func (a *App) prepareAutoRoute(ctx context.Context, chatID, user string, vision,
 	}
 	a.incognitoMu.RUnlock()
 	code := codeModeActive(ctx) || codingRequest(user)
-	cs := eligibleRouteCandidates(a.autoRouteCandidates(ctx), need, vision, forceAgent || codeModeActive(ctx) || a.GetAgentEnabled() || a.GetWebSearchEnabled(), code)
+	needsTools := forceAgent || codeModeActive(ctx) || a.GetAgentEnabled() || a.GetWebSearchEnabled()
+	all := a.autoRouteCandidates(ctx)
+	cs := eligibleRouteCandidates(all, need, vision, needsTools, code)
 	if len(cs) == 0 {
 		return ctx, errors.New(a.t("Auto Route için bu isteğe uygun bağlı model yok. Bir API, abonelik veya yerel sohbet modeli ekle.", "No connected model can handle this Auto Route request. Add an API, subscription or local chat model."))
 	}
@@ -300,26 +323,32 @@ func (a *App) prepareAutoRoute(ctx context.Context, chatID, user string, vision,
 			}
 		}
 	}
-	c := cs[pick]
-	cleanup := func() {}
-	if c.localPath != "" {
-		srv, err := a.startAutoRouteLocal(ctx, c.localPath, c.window)
-		if err != nil {
-			return ctx, err
+	// Try the classifier's choice first, retaining the deterministic alternatives.
+	ordered := append([]routeCandidate{cs[pick]}, cs[:pick]...)
+	ordered = append(ordered, cs[pick+1:]...)
+	// Smaller alternatives are re-budgeted only if a preferred model refuses.
+	seen := map[string]bool{}
+	for _, c := range ordered {
+		seen[c.cfg.Name+"/"+c.cfg.Model+"/"+c.localPath] = true
+	}
+	for _, c := range eligibleRouteCandidates(all, 0, vision, needsTools, code) {
+		key := c.cfg.Name + "/" + c.cfg.Model + "/" + c.localPath
+		if !seen[key] {
+			ordered = append(ordered, c)
+			seen[key] = true
 		}
-		c.cfg.BaseURL = srv.GetBaseURL()
-		c.window = srv.CtxSize()
-		c.cfg.ContextTokens = c.window
-		var once sync.Once
-		cleanup = func() { once.Do(func() { _ = srv.Stop() }) }
 	}
-	router := provider.NewRouter([]provider.ProviderConfig{c.cfg})
-	router.SetActiveProvider(c.cfg.Name)
-	if !router.HasActiveProvider() {
-		cleanup()
-		return ctx, errors.New(a.t("Auto Route modeli başlatılamadı.", "Could not initialize the Auto Route model."))
+	fallback := &autoRouteFallback{app: a, candidates: ordered}
+	if err := fallback.advance(ctx); err != nil {
+		return ctx, err
 	}
-	route := &subscriptionTextRoute{router: router, provider: c.cfg.Name, model: c.cfg.Model, effort: c.cfg.EffortLevel, window: c.window, auto: true, reason: reason, cleanup: cleanup}
+	c := fallback.current
+	if fallback.attempts > 1 {
+		reason = "fallback"
+	}
+	router := provider.NewRouterWithProvider(c.cfg, fallback)
+	route := &subscriptionTextRoute{router: router, provider: c.cfg.Name, model: c.cfg.Model,
+		effort: c.cfg.EffortLevel, window: c.window, auto: true, reason: reason, cleanup: fallback.close, fallback: fallback}
 	return context.WithValue(ctx, subscriptionTextRouteKey{}, route), nil
 }
 func (a *App) startAutoRouteLocal(ctx context.Context, path string, window int) (*llama.Server, error) {
@@ -350,6 +379,9 @@ func (a *App) startAutoRouteLocal(ctx context.Context, path string, window int) 
 	return srv, nil
 }
 func routeProvider(r *subscriptionTextRoute) string {
+	if r.fallback != nil {
+		return r.fallback.snapshot().cfg.Name
+	}
 	if r.provider != "" {
 		return r.provider
 	}
@@ -377,9 +409,22 @@ func (a *App) relayModelRoute(ctx context.Context, inner <-chan api.StreamChunk)
 		defer close(out)
 		defer r.cleanup()
 		defer recoverStreamPanic(ctx, out, "auto-route")
-		b, _ := json.Marshal(map[string]interface{}{"provider": routeProvider(r), "model": r.model, "auto": true, "reason": r.reason})
+		b, _ := json.Marshal(map[string]interface{}{"provider": routeProvider(r), "model": routeModel(r), "auto": true, "reason": r.reason})
 		trySend(ctx, out, api.StreamChunk{FinishReason: "model_route", Content: string(b)})
-		forwardStream(ctx, inner, out)
+		lastProvider, lastModel := routeProvider(r), routeModel(r)
+		for chunk := range inner {
+			currentProvider, currentModel := routeProvider(r), routeModel(r)
+			if currentProvider != lastProvider || currentModel != lastModel {
+				b, _ := json.Marshal(map[string]interface{}{"provider": currentProvider, "model": currentModel, "auto": true, "reason": "fallback"})
+				trySend(ctx, out, api.StreamChunk{FinishReason: "model_route", Content: string(b)})
+				lastProvider, lastModel = currentProvider, currentModel
+			}
+			select {
+			case out <- chunk:
+			case <-ctx.Done():
+				return
+			}
+		}
 	}()
 	return out
 }

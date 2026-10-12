@@ -242,14 +242,14 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	} else {
 		tokenBudget = a.apiContextBudget()
 		if route != nil {
-			tokenBudget = route.window
+			tokenBudget = routeWindow(route)
 			if tokenBudget <= 0 {
 				tokenBudget = 128 * 1024
 			}
 		}
 		window = tokenBudget
 		if route != nil {
-			window = route.window
+			window = routeWindow(route)
 			a.cfgMu.RLock()
 			limit := a.cfg.Llama.MaxContextTokens
 			a.cfgMu.RUnlock()
@@ -475,7 +475,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		a.ctxState.mu.Lock()
 		snap := a.ctxState.snaps[chatID]
 		snap.provider = routeProvider(route)
-		snap.model = route.model
+		snap.model = routeModel(route)
 		a.ctxState.snaps[chatID] = snap
 		a.ctxState.mu.Unlock()
 	}

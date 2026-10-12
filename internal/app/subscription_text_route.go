@@ -19,7 +19,28 @@ type subscriptionTextRoute struct {
 	auto          bool
 	reason        string
 	cleanup       func()
+	fallback      *autoRouteFallback
 }
+
+func routeModel(r *subscriptionTextRoute) string {
+	if r.fallback != nil {
+		return r.fallback.snapshot().cfg.Model
+	}
+	return r.model
+}
+func routeWindow(r *subscriptionTextRoute) int {
+	if r.fallback != nil {
+		return r.fallback.snapshot().window
+	}
+	return r.window
+}
+func routeEffort(r *subscriptionTextRoute) string {
+	if r.fallback != nil {
+		return r.fallback.snapshot().cfg.EffortLevel
+	}
+	return r.effort
+}
+
 type subscriptionTextRouteKey struct{}
 
 func subscriptionTextRouteFromCtx(ctx context.Context) *subscriptionTextRoute {
@@ -89,7 +110,7 @@ func (a *App) routeSubscriptionText(ctx context.Context, cfg provider.ProviderCo
 }
 func (a *App) resolveAgentProviderForContext(ctx context.Context) (*provider.Router, string, string, error) {
 	if route := subscriptionTextRouteFromCtx(ctx); route != nil {
-		return route.router, route.model, route.effort, nil
+		return route.router, routeModel(route), routeEffort(route), nil
 	}
 	return a.resolveAgentProvider()
 }

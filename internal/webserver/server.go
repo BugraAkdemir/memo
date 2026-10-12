@@ -1240,7 +1240,12 @@ func (s *Server) remoteAuthMiddleware(next http.Handler) http.Handler {
 func limitBodyMiddleware(next http.Handler, maxBytes int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Body != nil {
-			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			limit := maxBytes
+			if r.URL.Path == "/api/import" && limit < 700<<20 {
+				// Encrypted backup JSON base64 expands a restorable 500 MiB archive.
+				limit = 700 << 20
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
 		}
 		next.ServeHTTP(w, r)
 	})

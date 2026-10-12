@@ -17,6 +17,9 @@ import (
 
 type Source struct{ Entry, Path string }
 
+const MaxFileBytes int64 = 200 << 20
+const MaxTotalBytes int64 = 500 << 20
+
 var RootFiles = []string{"providers.json", "orchestra.json", "permissions.json", "machine.key", "session.key", "telegram.json", "active_skills.json", "skills_imported.json", "livemode_engines.json", "stt_providers.json", "tts_providers.json"}
 var DataDirectories = []string{"memory", "whatsapp", "mood", "calendar", "profile", "routines", "tasklists", "stats", "agent-backups", "skills"}
 
@@ -58,9 +61,9 @@ func IsDataEntry(rel string, models bool) bool {
 // WriteSource skips only absent optional roots. Walk/open/copy errors abort the
 // backup rather than producing an apparently successful incomplete archive.
 func WriteSource(zw *zip.Writer, s Source) (int, error) {
-	return writeSource(zw, s, nil)
+	return writeSource(zw, s, nil, nil)
 }
-func writeSource(zw *zip.Writer, s Source, read func(string, string) ([]byte, error)) (int, error) {
+func writeSource(zw *zip.Writer, s Source, read func(string, string) ([]byte, error), total *int64) (int, error) {
 	if s.Path == "" {
 		return 0, nil
 	}
@@ -78,6 +81,9 @@ func writeSource(zw *zip.Writer, s Source, read func(string, string) ([]byte, er
 		}
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("backup: not a regular file: %s", path)
+		}
+		if total != nil && (info.Size() > MaxFileBytes || *total+info.Size() > MaxTotalBytes) {
+			return fmt.Errorf("backup: archive exceeds restore size limit: %s", path)
 		}
 		f, err := os.Open(path)
 		if err != nil {
@@ -98,10 +104,19 @@ func writeSource(zw *zip.Writer, s Source, read func(string, string) ([]byte, er
 			var blob []byte
 			blob, err = read(path, entry)
 			if err == nil {
+				if total != nil && (int64(len(blob)) > MaxFileBytes || *total+int64(len(blob)) > MaxTotalBytes) {
+					return fmt.Errorf("backup: archive exceeds restore size limit: %s", path)
+				}
 				_, err = w.Write(blob)
+				if total != nil {
+					*total += int64(len(blob))
+				}
 			}
 		} else {
 			_, err = io.Copy(w, f)
+			if total != nil {
+				*total += info.Size()
+			}
 		}
 		if err != nil {
 			return err
@@ -158,8 +173,9 @@ func archive(sources []Source, read func(string, string) ([]byte, error)) ([]byt
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	count := 0
+	var total int64
 	for _, s := range sources {
-		n, err := writeSource(zw, s, read)
+		n, err := writeSource(zw, s, read, &total)
 		if err != nil {
 			zw.Close()
 			return nil, 0, err

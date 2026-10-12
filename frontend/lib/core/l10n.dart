@@ -1963,7 +1963,7 @@ class L10n {
     'backup_section_desc':
         'Sohbetler, hafıza, takvim, rutinler, öğrenilen alışkanlıklar, kullanım istatistikleri, sağlayıcı/API ayarları ve WhatsApp mesajları dahil tüm kullanıcı verilerinizi .memo dosyasına aktarın veya geri yükleyin.',
     'backup_include_models': 'Modelleri dahil et',
-    'backup_include_models_sub': 'GGUF modelleri (büyük boyut)',
+    'backup_include_models_sub': 'Yalnızca 200 MB altındaki GGUF dosyaları; toplam yedek en çok 500 MB',
     'backup_export_btn': 'Dışa Aktar',
     'backup_export_desc': 'Tüm verileri .memo dosyasına kaydeder',
     'backup_import_btn': 'İçe Aktar',
@@ -4394,7 +4394,7 @@ class L10n {
     'backup_section_desc':
         'Export or restore all your data — chats, memory, calendar, routines, learned habits, usage stats, provider/API settings, and WhatsApp messages — to/from a .memo file.',
     'backup_include_models': 'Include models',
-    'backup_include_models_sub': 'GGUF models (large size)',
+    'backup_include_models_sub': 'GGUF files under 200 MB only; backup total up to 500 MB',
     'backup_export_btn': 'Export',
     'backup_export_desc': 'Saves all data to a .memo file',
     'backup_import_btn': 'Import',

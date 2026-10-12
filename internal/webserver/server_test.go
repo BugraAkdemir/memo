@@ -641,6 +641,19 @@ func TestCorsMiddleware_OPTIONSPreflightFromSameHost(t *testing.T) {
 }
 
 func TestLimitBodyMiddleware(t *testing.T) {
+	t.Run("backup_import_allows_archive_body", func(t *testing.T) {
+		handler := limitBodyMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, err := io.ReadAll(r.Body); err != nil {
+				http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+			}
+		}), 10)
+		req := httptest.NewRequest(http.MethodPost, "/api/import", strings.NewReader(strings.Repeat("x", 20)))
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("backup import got %d, want %d", w.Code, http.StatusOK)
+		}
+	})
 	t.Run("small_body_passes", func(t *testing.T) {
 		handler := limitBodyMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			data, err := io.ReadAll(r.Body)

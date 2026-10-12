@@ -50,10 +50,54 @@ func parseVerification(raw string, threshold, maxRisk int) (agent.CompletionAsse
 }
 func limitReviewText(s string, n int) string {
 	r := []rune(s)
-	if len(r) > n {
-		return string(r[:n]) + " [truncated]"
+	if len(r) <= n {
+		return s
 	}
-	return s
+	if n <= 0 {
+		return ""
+	}
+	marker := fmt.Sprintf("\n[excerpt: %d+ characters omitted]\n", len(r)-n)
+	room := n - len([]rune(marker))
+	if room < 2 {
+		return string(r[:n])
+	}
+	head := room / 2
+	tail := room - head
+	return string(r[:head]) + marker + string(r[len(r)-tail:])
+}
+
+type reviewExcerpt struct{ omitted, truncated int }
+
+func buildReviewPrompt(original string, history []provider.Message, draft string) (string, reviewExcerpt) {
+	var records []string
+	for _, msg := range history {
+		if msg.Role == "system" {
+			continue
+		}
+		record, _ := json.Marshal(msg)
+		records = append(records, string(record))
+	}
+	var scope reviewExcerpt
+	if len(records) > 12 {
+		scope.omitted = len(records) - 12
+		records = records[scope.omitted:]
+	}
+	var transcript strings.Builder
+	for _, record := range records {
+		if len([]rune(record)) > 420 {
+			scope.truncated++
+		}
+		transcript.WriteString(limitReviewText(record, 420))
+		transcript.WriteByte('\n')
+	}
+	if len([]rune(original)) > 1000 {
+		scope.truncated++
+	}
+	if len([]rune(draft)) > 1200 {
+		scope.truncated++
+	}
+	prompt := fmt.Sprintf("Evidence scope: %d older non-system messages omitted; %d text excerpts shortened. This is not the complete transcript. No independent tests or source inspections were run by this reviewer. Missing evidence must be requested, never inferred.\nOriginal request:\n%s\nActual transcript excerpt:\n%s\nProposed final answer:\n%s", scope.omitted, scope.truncated, limitReviewText(original, 1000), transcript.String(), limitReviewText(draft, 1200))
+	return prompt, scope
 }
 
 func (a *App) withDecisionReview(ctx context.Context, original string) context.Context {
@@ -67,20 +111,7 @@ func (a *App) withDecisionReview(ctx context.Context, original string) context.C
 		}
 		// Keep actual tool calls/results with the draft. A bounded excerpt is not
 		// complete evidence; the reviewer must ask the main agent to inspect gaps.
-		start := 0
-		if len(history) > 12 {
-			start = len(history) - 12
-		}
-		var transcript strings.Builder
-		for _, msg := range history[start:] {
-			if msg.Role == "system" {
-				continue
-			}
-			record, _ := json.Marshal(msg)
-			transcript.WriteString(limitReviewText(string(record), 420))
-			transcript.WriteByte('\n')
-		}
-		prompt := "Original request:\n" + limitReviewText(original, 1000) + "\nActual transcript excerpt (may be truncated; missing evidence must be checked):\n" + transcript.String() + "\nProposed final answer:\n" + limitReviewText(draft, 1200)
+		prompt, scope := buildReviewPrompt(original, history, draft)
 		raw, err := a.callDecisionModel(ctx, verificationSystemPrompt, prompt, 512)
 		if err != nil {
 			return agent.CompletionAssessment{}, err
@@ -90,7 +121,10 @@ func (a *App) withDecisionReview(ctx context.Context, original string) context.C
 			var report verificationAssessment
 			object, _ := jsonutil.ExtractBalancedObject(raw)
 			json.Unmarshal([]byte(object), &report)
-			assessment.Summary = fmt.Sprintf(a.t("Model değerlendirmesi: istek %d%%, bug riski %d%%, diğer özelliklere etki %d%%.", "Model assessment: satisfaction %d%%, bug risk %d%%, other-feature risk %d%%."), *report.Satisfaction, *report.BugRisk, *report.RegressionRisk)
+			assessment.Summary = fmt.Sprintf(a.t("Model tahmini: istek %d%%, bug riski %d%%, diğer özelliklere etki %d%%. Ölçülmüş olasılıklar değildir; kısmi kanıt incelendi.", "Model estimate: satisfaction %d%%, bug risk %d%%, other-feature risk %d%%. These are not measured probabilities; partial evidence was reviewed."), *report.Satisfaction, *report.BugRisk, *report.RegressionRisk)
+			if scope.omitted > 0 || scope.truncated > 0 {
+				assessment.Summary += fmt.Sprintf(a.t(" %d eski mesaj dışarıda; %d metin kısaltıldı.", " %d older messages omitted; %d texts shortened."), scope.omitted, scope.truncated)
+			}
 		}
 		return assessment, err
 	})

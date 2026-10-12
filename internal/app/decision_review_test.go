@@ -68,3 +68,26 @@ func TestDecisionVerificationRealChatFallsBackAfterThreeReviews(t *testing.T) {
 		t.Fatalf("main model did not receive self-check instruction: %s", reqs)
 	}
 }
+
+func TestReviewExcerptPreservesFailedTestTailAndDisclosesMissingHistory(t *testing.T) {
+	history := []provider.Message{{Role: "system", Content: "untrusted hidden system"}}
+	for i := 0; i < 13; i++ {
+		history = append(history, provider.Message{Role: "user", Content: "earlier"})
+	}
+	history = append(history, provider.Message{Role: "tool", Content: "go test ./...\n" + strings.Repeat("passing test output ", 100) + "\nFAIL important regression", ToolCallID: "test-call"})
+	prompt, scope := buildReviewPrompt("Fix the regression", history, "finished")
+	if scope.omitted != 2 || scope.truncated != 1 {
+		t.Fatalf("scope=%+v", scope)
+	}
+	for _, need := range []string{"2 older non-system messages omitted", "1 text excerpts shortened", "FAIL important regression", "not the complete transcript", "No independent tests"} {
+		if !strings.Contains(prompt, need) {
+			t.Fatalf("missing %q", need)
+		}
+	}
+	if strings.Contains(prompt, "untrusted hidden system") {
+		t.Fatal("system leaked")
+	}
+	if len([]rune(limitReviewText(strings.Repeat("ü", 3000), 420))) > 420 {
+		t.Fatal("rune budget exceeded")
+	}
+}

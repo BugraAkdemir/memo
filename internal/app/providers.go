@@ -60,7 +60,9 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	a.providerCfgMgr.Set(cfg)
+	if err := a.providerCfgMgr.Set(cfg); err != nil {
+		return err
+	}
 	configs := a.providerCfgMgr.GetEnabled()
 
 	a.providerMu.Lock()
@@ -116,7 +118,9 @@ func (a *App) DeleteProvider(pt provider.ProviderType, name ...string) error {
 		}
 	}
 
-	a.providerCfgMgr.Delete(pt, name...)
+	if err := a.providerCfgMgr.Delete(pt, name...); err != nil {
+		return err
+	}
 
 	// Rebuild router so the deleted provider stops serving immediately.
 	configs := a.providerCfgMgr.GetEnabled()

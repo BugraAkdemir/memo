@@ -59,7 +59,9 @@ func (cm *ConfigManager) Load() {
 	if err != nil {
 		if os.IsNotExist(err) {
 			cm.configs = defaultConfigs()
-			cm.saveLocked()
+			if err := cm.saveLocked(); err != nil {
+				logx.Printf("PROVIDER: failed to initialize config: %v", err)
+			}
 			return
 		}
 		logx.Printf("PROVIDER: failed to load config: %v", err)
@@ -89,24 +91,28 @@ func (cm *ConfigManager) Load() {
 			apiKey = ""
 		}
 		cm.configs = append(cm.configs, ProviderConfig{
-			Type:        s.Type,
-			Name:        s.Name,
-			APIKey:      apiKey,
-			BaseURL:     s.BaseURL,
-			Model:       s.Model,
-			Models:      append([]ConfiguredModel(nil), s.Models...),
-			Enabled:     s.Enabled,
-			Priority:    s.Priority,
-			Temperature: s.Temperature,
-			TopP:        s.TopP,
-			MaxTokens:   s.MaxTokens,
+			Type:          s.Type,
+			Name:          s.Name,
+			APIKey:        apiKey,
+			BaseURL:       s.BaseURL,
+			Model:         s.Model,
+			Models:        append([]ConfiguredModel(nil), s.Models...),
+			Enabled:       s.Enabled,
+			Priority:      s.Priority,
+			Temperature:   s.Temperature,
+			TopP:          s.TopP,
+			MaxTokens:     s.MaxTokens,
+			EffortLevel:   s.EffortLevel,
+			ContextTokens: s.ContextTokens,
 		})
 	}
 	if droppedLegacy > 0 {
 		// Persist the cleanup now, so a stale entry cannot come back on the next
 		// load (or ride along into a backup) once nothing reads it any more.
 		logx.Printf("PROVIDER: removed %d legacy subscription provider(s) (gemini-sub / claude-sub); sign in under Settings > Subscriptions instead", droppedLegacy)
-		cm.saveLocked()
+		if err := cm.saveLocked(); err != nil {
+			logx.Printf("PROVIDER: failed to persist legacy cleanup: %v", err)
+		}
 	}
 }
 
@@ -122,13 +128,13 @@ var legacySubscriptionTypes = map[ProviderType]bool{
 }
 
 // Save persists provider configs to the JSON file with encrypted API keys.
-func (cm *ConfigManager) Save() {
+func (cm *ConfigManager) Save() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	cm.saveLocked()
+	return cm.saveLocked()
 }
 
-func (cm *ConfigManager) saveLocked() {
+func (cm *ConfigManager) saveLocked() error {
 	stored := struct {
 		Configs []providerConfigStored `json:"providers"`
 	}{
@@ -138,8 +144,7 @@ func (cm *ConfigManager) saveLocked() {
 	for _, cfg := range cm.configs {
 		encrypted, err := cm.encrypt(cfg.APIKey)
 		if err != nil {
-			logx.Printf("PROVIDER: failed to encrypt key for %s: %v", cfg.Type, err)
-			continue
+			return fmt.Errorf("encrypt provider key: %w", err)
 		}
 		stored.Configs = append(stored.Configs, providerConfigStored{
 			Type:            cfg.Type,
@@ -153,24 +158,25 @@ func (cm *ConfigManager) saveLocked() {
 			Temperature:     cfg.Temperature,
 			TopP:            cfg.TopP,
 			MaxTokens:       cfg.MaxTokens,
+			EffortLevel:     cfg.EffortLevel,
+			ContextTokens:   cfg.ContextTokens,
 		})
 	}
 
 	data, err := json.MarshalIndent(stored, "", "  ")
 	if err != nil {
-		logx.Printf("PROVIDER: failed to marshal config: %v", err)
-		return
+		return fmt.Errorf("encode provider configuration: %w", err)
 	}
 
 	dir := filepath.Dir(cm.filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		logx.Printf("PROVIDER: failed to create config dir: %v", err)
-		return
+		return fmt.Errorf("create provider configuration directory: %w", err)
 	}
 
 	if err := fileutil.AtomicWrite(cm.filePath, data, 0600); err != nil {
-		logx.Printf("PROVIDER: failed to write config: %v", err)
+		return fmt.Errorf("write provider configuration: %w", err)
 	}
+	return nil
 }
 
 // GetAll returns a copy of all provider configs (API keys in plaintext).
@@ -213,7 +219,7 @@ func (cm *ConfigManager) GetEnabled() []ProviderConfig {
 }
 
 // Set sets a provider config (add or update).
-func (cm *ConfigManager) Set(cfg ProviderConfig) {
+func (cm *ConfigManager) Set(cfg ProviderConfig) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -231,38 +237,53 @@ func (cm *ConfigManager) Set(cfg ProviderConfig) {
 		}
 		if matchKey == key {
 			cm.configs[i] = cfg
-			cm.saveLocked()
-			return
+			if err := cm.saveLocked(); err != nil {
+				cm.configs[i] = c
+				return err
+			}
+			return nil
 		}
 	}
 	cm.configs = append(cm.configs, cfg)
-	cm.saveLocked()
+	if err := cm.saveLocked(); err != nil {
+		cm.configs = cm.configs[:len(cm.configs)-1]
+		return err
+	}
+	return nil
 }
 
 // Delete removes a provider config by type or name.
 // If name is non-empty, it matches on Name first. Falls back to Type match.
-func (cm *ConfigManager) Delete(pt ProviderType, name ...string) {
+func (cm *ConfigManager) Delete(pt ProviderType, name ...string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	if len(name) > 0 && name[0] != "" {
 		for i, cfg := range cm.configs {
 			if cfg.Name == name[0] {
-				cm.configs = append(cm.configs[:i], cm.configs[i+1:]...)
-				cm.saveLocked()
-				return
+				return cm.deleteLocked(i)
 			}
 		}
-		return
+		return nil
 	}
 
 	for i, cfg := range cm.configs {
 		if cfg.Type == pt {
-			cm.configs = append(cm.configs[:i], cm.configs[i+1:]...)
-			cm.saveLocked()
-			return
+			return cm.deleteLocked(i)
 		}
 	}
+	return nil
+}
+
+// Keep the old slice intact until the replacement is durably written.
+func (cm *ConfigManager) deleteLocked(i int) error {
+	previous := cm.configs
+	cm.configs = append(append([]ProviderConfig(nil), previous[:i]...), previous[i+1:]...)
+	if err := cm.saveLocked(); err != nil {
+		cm.configs = previous
+		return err
+	}
+	return nil
 }
 
 // encrypt encrypts plaintext with AES-256-GCM.
@@ -351,6 +372,7 @@ func (cm *ConfigManager) TestConnection(cfg *ProviderConfig) error {
 		if listErr != nil {
 			return fmt.Errorf("chat: %v; list: %v", err, listErr)
 		}
+		return fmt.Errorf("server is reachable, but the selected model did not answer: %w", err)
 	}
 	return nil
 }
@@ -367,6 +389,8 @@ type providerConfigStored struct {
 	Temperature     float64           `json:"temperature,omitempty"`
 	TopP            float64           `json:"top_p,omitempty"`
 	MaxTokens       int               `json:"max_tokens,omitempty"`
+	EffortLevel     string            `json:"effort_level,omitempty"`
+	ContextTokens   int               `json:"context_tokens,omitempty"`
 }
 
 // defaultConfigs is what a fresh install's providers.json starts as. Used

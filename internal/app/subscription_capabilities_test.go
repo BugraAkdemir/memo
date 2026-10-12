@@ -7,6 +7,7 @@ import (
 	"memo/internal/provider"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 )
 
@@ -22,9 +23,11 @@ func TestSubscriptionBudgetUsesPublishedModelAndUnknownGauge(t *testing.T) {
 	if err := catalog.Ensure(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	mgr := provider.NewConfigManager(t.TempDir(), nil)
+	mgr := provider.NewConfigManager(filepath.Join(t.TempDir(), "providers.json"), nil)
 	p := provider.ProviderConfig{Type: provider.ProviderCustom, Name: subsProviderName, BaseURL: "http://127.0.0.1:1/v1", Model: "published-1m", Enabled: true}
-	mgr.Set(p)
+	if err := mgr.Set(p); err != nil {
+		t.Fatal(err)
+	}
 	a := &App{cfg: &config.AppConfig{}, providerCfgMgr: mgr, activeProviderName: subsProviderName}
 	if got := a.contextBudgetFor(subsProviderName); got != 1000000 {
 		t.Fatalf("budget=%d", got)
@@ -39,7 +42,9 @@ func TestSubscriptionBudgetUsesPublishedModelAndUnknownGauge(t *testing.T) {
 		t.Fatalf("unsupported effort=%q", got)
 	}
 	p.Model = "unknown-model"
-	mgr.Set(p)
+	if err := mgr.Set(p); err != nil {
+		t.Fatal(err)
+	}
 	if got := a.contextBudgetFor(subsProviderName); got != 128*1024 {
 		t.Fatalf("safety budget=%d", got)
 	}

@@ -1,3 +1,12 @@
+# Son oturum — 2026-10-12 — Beta dışı kalan kod düzeltmeleri
+- Kullanıcı kalanları tek çalışmada sırayla bitirmeyi istedi. Çalışma gereğinden uzun sürdü; yeni genişletme yapılmadı. Beta/release/tag/push yok.
+- Commitler: `4904f083` Auto Route, `e0304912` thinking, `1e62d466` memory, `4eabbf73` calendar, `4832c69a` backup manifest, `2cd7a18f` portable encrypted pictures, `ba05187c` reviewer evidence. Son checkpoint web onboarding + EN/TR notes/rapor/handoff.
+- Doğrulama: Go CGO/sqlite_fts5 build/vet/tam race exit 0; son image testleri app/cloudsync/e2e/backupdata race PASS. Flutter 662 PASS; analyze 4 eski info, warning/error yok; L10n literal taraması boş. Web release build PASS; Chromium scripted login sonrası onboarding 2 kez çağrıldı, configured server wizard kapandı. Gerçek pinli Linux sidecar upstream deep test PASS (17.228s). Browser-automation script kaydedildi; TestSprite bağlı değil.
+- Restore sonrası restart gerekir (yardımcı DB servisleri kapatılır); görsel anahtarı yedeğe girmez, portable resimler yalnız parolalı yerel veya şifreli bulut arşivinde. Parola saklanmaz. Bulk install son aşaması bütün dosyalar için tek transaction değil.
+- Açık/ölçülmedi: cihaz listesi yalnız Linux; gerçek telefon alarm/klavye/scope, gerçek OAuth callback/Claude kota, native Windows/macOS ve reviewer kalite/maliyet. Windows R2 QA download 403; Wine binary olmadan başlamadı. Bunlar ürün bozuk diye sunulmuyor.
+
+---
+
 # Son oturum — 2026-10-12 — v4.6 Beta dışı tamamlama, ilk iki birim
 - İstek: bu sürümde gelen Beta dışı özelliklerin eksik alt akışlarını ve buglarını bul/düzelt; abonelik Auto örnek, kapsam bununla sınırlı değil. İnceleme `docs/V4_6_COMPLETION_REVIEW.md`, sıralı plan `PLAN_v4_6_completion.md`.
 - **1. checkpoint `7cbddaa9`:** provider effort/context diske yazılır; Set/Delete/Save hata döndürür ve bellek değişimini geri alır; router yalnız başarılı yazmada değiştirilir. Katalog erişimi başarısız model cevabını artık bağlantı testinde gizlemez. Eski kaynakla roundtrip ve HTTP 401/404/429/503 yanlış başarı testleri FAIL, düzeltilen kaynakta PASS. Klasör yolu veren abonelik test fixture’ı da düzeltildi.

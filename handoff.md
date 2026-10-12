@@ -5,11 +5,12 @@
 > Oturum sonunda: eski "son oturum" özetini arşivin **başına** taşı, yenisini buraya kısa yaz, hâlâ açık olanı aşağıdaki bloklara kat.
 
 ## Açık işler
-**Kod denetimi (2026-10-12)**
+**Kod denetimi ve sürüm hazırlığı (2026-10-12)**
 - Beta dışı kod eksikleri kapandı: provider kayıt/model menüsü (önceki oturum), güvenli Auto Route alternatif/kota, thinking, pinned/FTS fallback, mobil alarm SSE uzlaştırması, ortak yedek kapsamı ve parolalı cihazlar arası görsel restore, doğrulayıcı kanıt açıklığı, web onboarding yenileme. Plan/kanıt: `PLAN_v4_6_completion.md`, `docs/V4_6_COMPLETION_REVIEW.md`. Açık olanlar gerçek telefon/native OS, gerçek OAuth/Claude kota ve LLM kalite-maliyet ölçümleri; bunlar otomatik testlerle tamamlandı sayılmaz.
 
 **Kullanıcıda**
-- `origin`'in ikinci push URL'sinde düz metin token (`web.bugradev.com`, satılan alan adı) → URL'yi sil + token'ı döndür. Silme: `git remote set-url --delete --push origin 'web.bugradev.com'`. O zamana kadar push **yalnızca** `git push https://github.com/BugraAkdemir/memo.git main` ile; `git push origin` token'ı yabancıya sızdırır.
+- v4.6.0 hazırlık commitleri `main`e pushlandı; güncel CI bitince yayımlamak için `v4.6.0` etiketinin push edilmesine bu sefer özel açık onay gerekli. Etiket push edilmedi, sürüm beacona dokunulmadı.
+- Geçmişte `origin` push URL'sinde düz metin token ve artık satılmış bir alan adı vardı. Bu oturumda `git remote -v` yalnız GitHub URL'sini gösterdi; push doğrudan GitHub HTTPS adresine yapıldı. Eski token'ın döndürülmesi kullanıcıda.
 - Eski sürümlerin REPL `update` komutu ve `download.bugradev.com/get-memo.sh` satırları artık başkasının sunucusuna gidiyor → yeni sürümü duyur, eski satırları kaldır.
 - llama.cpp b9441→b11456 uygulanmadı (karar kullanıcıda; AGENTS.md "llama.cpp upgrade traps").
 - Claude hesabıyla giriş yok → Claude kota biçimi (`oauth/usage`) ve `quota_exhausted` kartı gerçek doluşta hiç görülmedi.
@@ -23,7 +24,7 @@
 - Windows/macOS/arm64'te sidecar'ı çalıştırma (yalnız build adımları CI ile kanıtlı); Codex 5s/7g kota pencereleri (bu hesapta yalnız `30d` geldi).
 
 **Kalıcı uyarılar**
-- `~/.config/Memo/image.key` kaybolursa şifreli görseller (`data/images`, `data/generated-images`) **geri gelmez**; yedeğe (`ExportData`) görsel klasörleri girmiyor. Eski bir Memo sürümüne dönülürse mühürlenmiş görseller bozuk görünür.
+- `~/.config/Memo/image.key` kaybolursa yalnız veri klasörü kopyasındaki mühürlü görseller açılamaz. Parolalı taşınabilir yerel veya şifreli bulut yedeği görselleri ana anahtarı kopyalamadan taşır; anahtar kaybından önce alınmış yedek geri yüklenebilir. Eski Memo sürümüne dönülürse mühürlü görseller bozuk görünür.
 - Otomatik "kota sıfırlanınca devam" yalnız Memo açıkken çalışır (CLI ajan sohbetleri, WhatsApp, Self-Driving kapsam dışı). Görsel niyet sezgisi anahtar sözcüğe dayalı (yanlış tetiklenirse `image_intent_test.go`'ya negatif ekle; kullanıcı `/image` ile zorlayabilir).
 - Sidecar `/v1/models` listesi soğuk başlangıçta ~30 sn gecikebilir. Abonelik bağlam/effort verisi artık CLIProxyAPI çevrimiçi kayıt defterinden tam model kimliğiyle alınır; son başarılı snapshot çevrimdışı saklanır. Bilinmeyen kapasite göstergeye tahmin olarak yazılmaz; ayrıntı `docs/SUBSCRIPTION_CAPABILITIES.md`.
 - **Beta kapısı (2026-10-11):** `open_app` ve 7 `browser_*` aracı + tarayıcı paneli (düğme, menü satırı, panel, `/api/browser/session/*` eylemleri) yalnız Ayarlar › Beta Özellikler açıkken var; kapalıyken modele sunulmaz, çağrısı "Unknown tool", istem ipucu tarayıcıdan söz etmez, `SetBeta(false)` açık oturumu kapatır. Tek soran yer `internal/beta` (kapalı varsayılır). **Doğrulanmadı:** Flutter arayüzünün (dünya düğmesi/menü satırı/panel) Beta kapalı/açıkken gerçek pencerede görünümü — `ChatScreen` için widget-test düzeneği yok, kapı yalnız `betaEnabledProvider` testiyle ve analizle doğrulandı. `fetch_page`'in başsız-tarayıcı yedeği ve Genel sekmesindeki Chromium kurulum bölümü bilerek kapıya alınmadı (beta olmayan `fetch_page`'e de hizmet ediyor). Güncellenmeyen belgeler: `docs/PROJECT_MAP.md`, `docs/UI_FEATURES.md`, `docs/ROADMAP.md` (EN/TR) ve iki Obsidian kasası hâlâ bu iki özelliği "v4.6.0'da yeni" diye Beta'dan söz etmeden anlatıyor.
@@ -38,9 +39,11 @@
 
 ---
 
-# Son oturum — 2026-10-12 — Beta dışı kalan kod düzeltmeleri
-- Kullanıcı kalanları tek çalışmada sırayla bitirmeyi istedi. Çalışma gereğinden uzun sürdü; yeni genişletme yapılmadı. Beta/release/tag/push yok.
-- Commitler: `4904f083` Auto Route, `e0304912` thinking, `1e62d466` memory, `4eabbf73` calendar, `4832c69a` backup manifest, `2cd7a18f` portable encrypted pictures, `ba05187c` reviewer evidence. Son checkpoint web onboarding + EN/TR notes/rapor/handoff.
-- Doğrulama: Go CGO/sqlite_fts5 build/vet/tam race exit 0; son image testleri app/cloudsync/e2e/backupdata race PASS. Flutter 662 PASS; analyze 4 eski info, warning/error yok; L10n literal taraması boş. Web release build PASS; Chromium scripted login sonrası onboarding 2 kez çağrıldı, configured server wizard kapandı. Gerçek pinli Linux sidecar upstream deep test PASS (17.228s). Browser-automation script kaydedildi; TestSprite bağlı değil.
-- Restore sonrası restart gerekir (yardımcı DB servisleri kapatılır); görsel anahtarı yedeğe girmez, portable resimler yalnız parolalı yerel veya şifreli bulut arşivinde. Parola saklanmaz. Bulk install son aşaması bütün dosyalar için tek transaction değil.
-- Açık/ölçülmedi: cihaz listesi yalnız Linux; gerçek telefon alarm/klavye/scope, gerçek OAuth callback/Claude kota, native Windows/macOS ve reviewer kalite/maliyet. Windows R2 QA download 403; Wine binary olmadan başlamadı. Bunlar ürün bozuk diye sunulmuyor.
+---
+
+# Son oturum — 2026-10-12 — v4.6.0 yayın hazırlığı
+- İlk `main` push: `1e1eb29b`; CI, Docker, canary, Android, iOS yeşil; Linux/Windows/macOS son gözlemde sürüyordu. Son push: `fc9f657d`; aynı işlerin güncel CI'si sırada/çalışıyor, sonucu yeniden izle.
+- `5f291ab3` yedek düzeltmesi: export 200 MiB/dosya ve 500 MiB/toplam restore sınırını aşan arşivi reddeder; `/api/import` şifreli JSON/base64 gövdesi için 700 MiB kabul eder; GGUF sınırı TR/EN görünür. Hedefli testler PASS.
+- `451a3a37`: `version`, `installer.iss`, iki README 4.6.0'a eşitlendi, version dosyasında newline yok. `fc9f657d`: TR/EN v4.6 notlarında mobil alarm uzlaştırması ve yedek sınırları güncellendi. Üç commit `main`e pushlandı.
+- Kod düzeltmesi sonrası CGO/sqlite_fts5 Go build/vet/tam race PASS; Flutter 662 PASS, analyze yalnız 4 eski info; L10n literal taraması ve diff-check boş. Son push CI sonucu bekleniyor. `v4.6.0` etiketi ve update beacon kesinlikle yapılmadı.
+- Sonraki adım: `fc9f657d` CI'daki bütün işlerin terminal sonucunu doğrula; kırmızıysa düzelt. Tam yeşilden sonra kullanıcıdan bu tag push'u için açık onay al. Etiketli CI yeşil olmadan beacon güncelleme.

@@ -1,3 +1,12 @@
+# Son oturum — 2026-10-12 — v4.6 Beta dışı tamamlama, ilk iki birim
+- İstek: bu sürümde gelen Beta dışı özelliklerin eksik alt akışlarını ve buglarını bul/düzelt; abonelik Auto örnek, kapsam bununla sınırlı değil. İnceleme `docs/V4_6_COMPLETION_REVIEW.md`, sıralı plan `PLAN_v4_6_completion.md`.
+- **1. checkpoint `7cbddaa9`:** provider effort/context diske yazılır; Set/Delete/Save hata döndürür ve bellek değişimini geri alır; router yalnız başarılı yazmada değiştirilir. Katalog erişimi başarısız model cevabını artık bağlantı testinde gizlemez. Eski kaynakla roundtrip ve HTTP 401/404/429/503 yanlış başarı testleri FAIL, düzeltilen kaynakta PASS. Klasör yolu veren abonelik test fixture’ı da düzeltildi.
+- **2. checkpoint:** ortak üst/composer model seçenekleri (Auto Route, kayıtlı API, canlı abonelik, CLI), ortak non-CLI seçim uygulaması (başarılı kayıttan sonra yalnız seçilen chat CLI’dan çıkar), ortak ilk CLI kurulum akışı. Composer’da uzun liste arama/kaydırma ve ekran altında yukarı açılma; TR/EN dar ekran testleri. EN/TR v4.6 notları ve audit durumları güncellendi.
+- Doğrulama: CGO/sqlite_fts5 Go build/vet/tam race **exit 0**; odaklı Flutter **25 passed**, tam **656 passed**; analyze **4 mevcut info**, warning/error yok; üretim Dart L10n taraması boş; diff-check temiz. TestSprite repo bağlantısı bulunmadı, mevcut Go gerçek HTTP + Flutter testleri kullanıldı.
+- **Açık:** Auto Route inference/soğuk yükleme failover ve kota seçimi; ajan thinking forwarding; embedding kesintisinde pinned fallback; alarm uzlaştırma; görsel/yedek kapsamı ve anahtar kurtarma. Gerçek telefon/hesap/native ekran doğrulanmadı. AGENTS.md’nin oturum başına 1–2 birim sınırı gereği diğerleri sonraki adımlar. Yayın/tag/push yok.
+
+---
+
 # Son oturum — 2026-10-12 — CLIProxyAPI v8.0.16 → v8.0.25
 - `internal/cliproxy/PINNED.txt` v8.0.25'e çekildi (arşiv digest'leri GitHub'ınkiyle birebir, binary SHA'ları `vendor_cliproxy.sh` ile doğrulandı). R2'ye (`binaries/{linux/cliproxy,linux/cliproxy-arm64,windows/cliproxy,darwin/cliproxy}`) yalnız bu 4 klasör additive kopyalandı; `r2-memo-push/binaries` staging klasörü de güncellendi (yoksa `upload-memo.sh` R2'yi eski sürüme geri yazar).
 - Doğrulama: `go test -tags upstream` dört test (UPSTREAM_DEEP=1, canlı R2'den inen gerçek linux binary: 401 kapısı, `/v1/models`, görsel model tespiti, login flag'leri) geçti; `go test ./internal/cliproxy/` geçti. **Doğrulanmadı:** gerçek hesapla Claude/Codex/Antigravity isteği, Windows/macOS/arm64 binary'leri çalıştırılmadı (yalnız SHA).

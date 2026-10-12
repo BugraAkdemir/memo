@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/friendly_error.dart';
@@ -31,7 +32,7 @@ class SetupWizardOverlay extends ConsumerWidget {
       return SizedBox.shrink();
     }
 
-    if (isMobilePlatform) {
+    if (isMobilePlatform || kIsWeb) {
       // A phone connects (MobileConnectScreen) and signs in (AuthGateOverlay)
       // before anything else, and the wizard is only for a server that has
       // never been set up. Until the server has actually answered "onboarding
@@ -39,7 +40,7 @@ class SetupWizardOverlay extends ConsumerWidget {
       // fresh install — acting on it is what showed the full wizard against
       // servers that were long since configured.
       final gate = ref.watch(authGateProvider).valueOrNull;
-      if (ref.watch(backendUrlProvider).isEmpty ||
+      if ((isMobilePlatform && ref.watch(backendUrlProvider).isEmpty) ||
           gate == null ||
           gate.state != AuthGateState.ok ||
           !ref.watch(onboardingCheckedProvider)) {

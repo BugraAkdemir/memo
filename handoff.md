@@ -6,7 +6,7 @@
 
 ## Açık işler
 **Kod denetimi (2026-10-12)**
-- Ayrıntı: `docs/AUDIT_2026-10-12.md`. Açık öncelikler: bulut yedeğinde machine.key/veri kapsamı; yerel export config yolu ve yutulan okuma hataları; embedding kesintisinde pinned fallback; Auto Route inference failover; mobil alarm eşleme ve ajan thinking gösterimi. **A01/A07/A11 kapandı** (`7cbddaa9`: effort/context kalıcılığı, kayıt hatası/rollback, model bağlantı testi). **A14 model menüsü farkı kapandı** (bu oturum); backend dil kısmı açık. Güncel kapsam/plan: `docs/V4_6_COMPLETION_REVIEW.md`, `PLAN_v4_6_completion.md` (ilk iki birim tamam).
+- Beta dışı kod eksikleri kapandı: provider kayıt/model menüsü (önceki oturum), güvenli Auto Route alternatif/kota, thinking, pinned/FTS fallback, mobil alarm SSE uzlaştırması, ortak yedek kapsamı ve parolalı cihazlar arası görsel restore, doğrulayıcı kanıt açıklığı, web onboarding yenileme. Plan/kanıt: `PLAN_v4_6_completion.md`, `docs/V4_6_COMPLETION_REVIEW.md`. Açık olanlar gerçek telefon/native OS, gerçek OAuth/Claude kota ve LLM kalite-maliyet ölçümleri; bunlar otomatik testlerle tamamlandı sayılmaz.
 
 **Kullanıcıda**
 - `origin`'in ikinci push URL'sinde düz metin token (`web.bugradev.com`, satılan alan adı) → URL'yi sil + token'ı döndür. Silme: `git remote set-url --delete --push origin 'web.bugradev.com'`. O zamana kadar push **yalnızca** `git push https://github.com/BugraAkdemir/memo.git main` ile; `git push origin` token'ı yabancıya sızdırır.
@@ -38,9 +38,9 @@
 
 ---
 
-# Son oturum — 2026-10-12 — v4.6 Beta dışı tamamlama, ilk iki birim
-- İstek: bu sürümde gelen Beta dışı özelliklerin eksik alt akışlarını ve buglarını bul/düzelt; abonelik Auto örnek, kapsam bununla sınırlı değil. İnceleme `docs/V4_6_COMPLETION_REVIEW.md`, sıralı plan `PLAN_v4_6_completion.md`.
-- **1. checkpoint `7cbddaa9`:** provider effort/context diske yazılır; Set/Delete/Save hata döndürür ve bellek değişimini geri alır; router yalnız başarılı yazmada değiştirilir. Katalog erişimi başarısız model cevabını artık bağlantı testinde gizlemez. Eski kaynakla roundtrip ve HTTP 401/404/429/503 yanlış başarı testleri FAIL, düzeltilen kaynakta PASS. Klasör yolu veren abonelik test fixture’ı da düzeltildi.
-- **2. checkpoint:** ortak üst/composer model seçenekleri (Auto Route, kayıtlı API, canlı abonelik, CLI), ortak non-CLI seçim uygulaması (başarılı kayıttan sonra yalnız seçilen chat CLI’dan çıkar), ortak ilk CLI kurulum akışı. Composer’da uzun liste arama/kaydırma ve ekran altında yukarı açılma; TR/EN dar ekran testleri. EN/TR v4.6 notları ve audit durumları güncellendi.
-- Doğrulama: CGO/sqlite_fts5 Go build/vet/tam race **exit 0**; odaklı Flutter **25 passed**, tam **656 passed**; analyze **4 mevcut info**, warning/error yok; üretim Dart L10n taraması boş; diff-check temiz. TestSprite repo bağlantısı bulunmadı, mevcut Go gerçek HTTP + Flutter testleri kullanıldı.
-- **Açık:** Auto Route inference/soğuk yükleme failover ve kota seçimi; ajan thinking forwarding; embedding kesintisinde pinned fallback; alarm uzlaştırma; görsel/yedek kapsamı ve anahtar kurtarma. Gerçek telefon/hesap/native ekran doğrulanmadı. AGENTS.md’nin oturum başına 1–2 birim sınırı gereği diğerleri sonraki adımlar. Yayın/tag/push yok.
+# Son oturum — 2026-10-12 — Beta dışı kalan kod düzeltmeleri
+- Kullanıcı kalanları tek çalışmada sırayla bitirmeyi istedi. Çalışma gereğinden uzun sürdü; yeni genişletme yapılmadı. Beta/release/tag/push yok.
+- Commitler: `4904f083` Auto Route, `e0304912` thinking, `1e62d466` memory, `4eabbf73` calendar, `4832c69a` backup manifest, `2cd7a18f` portable encrypted pictures, `ba05187c` reviewer evidence. Son checkpoint web onboarding + EN/TR notes/rapor/handoff.
+- Doğrulama: Go CGO/sqlite_fts5 build/vet/tam race exit 0; son image testleri app/cloudsync/e2e/backupdata race PASS. Flutter 662 PASS; analyze 4 eski info, warning/error yok; L10n literal taraması boş. Web release build PASS; Chromium scripted login sonrası onboarding 2 kez çağrıldı, configured server wizard kapandı. Gerçek pinli Linux sidecar upstream deep test PASS (17.228s). Browser-automation script kaydedildi; TestSprite bağlı değil.
+- Restore sonrası restart gerekir (yardımcı DB servisleri kapatılır); görsel anahtarı yedeğe girmez, portable resimler yalnız parolalı yerel veya şifreli bulut arşivinde. Parola saklanmaz. Bulk install son aşaması bütün dosyalar için tek transaction değil.
+- Açık/ölçülmedi: cihaz listesi yalnız Linux; gerçek telefon alarm/klavye/scope, gerçek OAuth callback/Claude kota, native Windows/macOS ve reviewer kalite/maliyet. Windows R2 QA download 403; Wine binary olmadan başlamadı. Bunlar ürün bozuk diye sunulmuyor.

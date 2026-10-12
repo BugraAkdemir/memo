@@ -19,7 +19,9 @@ Kullanıcı 12 Ekim’de kalanların hepsini sırayla bitirmeyi açıkça istedi
 - [x] Görseller/yedek: şifreli görseller ve anahtar kurtarma için açık kapsam; yerel config yolu ve okuma hataları; cihazlar arası provider credential restore. Taşınabilir anahtar politikası belirlenmeden sessizce anahtarları yedeğe ekleme.
 - [x] Karar/doğrulama: kısmi transcript, atlanan mesaj/kısaltılan metin sayısı ve ölçülmemiş model tahminleri görünür; uzun çıktının test hatası içeren sonu korunur.
 - [ ] Gerçek modelle doğrulayıcı kalite/gecikme/maliyet ölçümü (kod testinden ayrı; puanlar ölçülmüş olasılık olarak sunulmaz).
-- [ ] Mobil bağlantı: gerçek Android/iOS/emülatörde cleartext, klavye ve scope yenileme; web'de giriş sonrası onboarding yenilemesi.
-- [ ] Abonelikler: gerçek uzak callback girişi ve Claude kota biçimi; platform sidecar runtime doğrulaması.
+- [x] Web giriş sonrası onboarding yenilemesi ve sunucu cevabı bilinmeden kurulum açılmasını engelleme.
+- [ ] Gerçek Android/iOS/emülatörde cleartext, klavye ve scope yenileme: ortamda yalnız Linux cihazı mevcut.
+- [x] Abonelik Linux runtime sözleşmesi: gerçek pinli binary, login bayrakları, loopback anahtar kapısı/katalog/görsel endpoint kontrolü.
+- [ ] Gerçek uzak OAuth callback ve Claude kota doluşu; native Windows/macOS runtime.
 
 Ayrıntılı durum: `docs/V4_6_COMPLETION_REVIEW.md`.

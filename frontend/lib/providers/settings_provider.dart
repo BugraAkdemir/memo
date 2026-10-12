@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -196,7 +196,7 @@ class SetupCompleteNotifier extends StateNotifier<bool> {
       // a single failed read (server still starting, a flaky mobile link)
       // would leave it hidden for the whole session. Ask again; other
       // platforms keep their one-shot behaviour.
-      if (isMobilePlatform && mounted) {
+      if ((isMobilePlatform || kIsWeb) && mounted) {
         _retry?.cancel();
         _retry = Timer(const Duration(seconds: 5), _init);
       }

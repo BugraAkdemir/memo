@@ -226,6 +226,12 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				}
 			}
 
+			// Public reasoning returned by the provider is separate from reply text.
+			// Native replay below remains intact for the next tool iteration.
+			if resp.Thinking != "" {
+				trySend(ctx, outCh, provider.StreamChunk{Thinking: resp.Thinking})
+			}
+
 			// If no tool calls, we are done
 			if len(resp.ToolCalls) == 0 {
 				content := stripHallucinatedToolSyntax(resp.Content)

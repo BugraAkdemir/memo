@@ -12,7 +12,7 @@ Kullanıcı 12 Ekim’de kalanların hepsini sırayla bitirmeyi açıkça istedi
 ## Sonraki oturumlar — tamamlanmış sayılmayacak
 
 - [x] Auto Route: ilk model cevap/araç yan etkisinden önce hata verdiğinde sınırlı güvenli alternatif; soğuk yerel model yükleme hatası; bilinen tükenmiş abonelik kotasının seçimde ele alınması. Farklı bağlam bütçelerinde yeniden mesaj oluşturma ve kullanılan model kaydını doğru tutma.
-- [ ] Ajan thinking: provider metnini canlı akışa taşıma ve final kaydına ekleme; Native blok replay'i koruma.
+- [x] Ajan thinking: provider metnini canlı akışa taşıma ve final kaydına ekleme; Native blok replay'i koruma.
 - [ ] Hafıza: embedding kesilince pinned fallback'e ulaşma; FTS kurtarma kapsamını belirleme; limit ve timeout testleri.
 - [ ] Mobil takvim: dışarıdan ekleme/silme/başlık değişimi için alarm uzlaştırma; başarısız planlamayı tekrar deneme; gerçek cihaz doğrulaması.
 - [ ] Görseller/yedek: şifreli görseller ve anahtar kurtarma için açık kapsam; yerel config yolu ve okuma hataları; cihazlar arası provider credential restore. Taşınabilir anahtar politikası belirlenmeden sessizce anahtarları yedeğe ekleme.

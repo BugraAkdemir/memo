@@ -690,6 +690,7 @@ func (l *agentEventLog) snapshot() []interface{} {
 // call site for the minimal pattern.
 func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.StreamChunk, outCh chan<- api.StreamChunk, start time.Time, userMsg, sessionID string, usageMetaVal *usageMeta, agentEvents *agentEventLog) (finishReason string, chainable bool) {
 	var fullReply strings.Builder
+	var fullThinking strings.Builder
 	// The agent pipeline attaches a real cross-iteration token accounting to
 	// its terminal chunk (see internal/agent/pipeline.go). Fold it into
 	// usageMetaVal.PromptTokens (which otherwise holds only a word-count
@@ -718,7 +719,7 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 	for {
 		chunk, ok, ctxDone := recvChunk(ctx, streamCh)
 		if ctxDone {
-			a.persistInterruptedTurn(ctx, start, completionTokens, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+			a.persistInterruptedTurn(withThinking(ctx, fullThinking.String()), start, completionTokens, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 			trySend(ctx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 			return "", false
 		}
@@ -726,6 +727,10 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 			break
 		}
 		applyUsage(chunk.Usage)
+		if chunk.Thinking != "" {
+			fullThinking.WriteString(chunk.Thinking)
+			trySend(ctx, outCh, api.StreamChunk{Thinking: chunk.Thinking})
+		}
 		if chunk.Error != "" {
 			a.recordFailedTurn(userMsg, fullReply.String(), "⚠️ "+chunk.Error, sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
@@ -738,13 +743,13 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		}
 
 		if chunk.Done {
-			a.finishStream(ctx, start, completionTokens, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+			a.finishStream(withThinking(ctx, fullThinking.String()), start, completionTokens, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 			return chunk.FinishReason, true
 		}
 	}
 
 	if fullReply.Len() > 0 {
-		a.finishStream(ctx, start, completionTokens, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+		a.finishStream(withThinking(ctx, fullThinking.String()), start, completionTokens, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 		return "stop", true
 	}
 	a.recordStreamError(userMsg, a.t("⚠️ Agent boş yanıt döndürdü", "⚠️ Agent returned an empty response"), sessionID)

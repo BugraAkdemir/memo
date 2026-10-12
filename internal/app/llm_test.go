@@ -778,3 +778,39 @@ func TestCallLLMStream_OrchestraPlainChatError_PersistsErrorNotEmptyReply(t *tes
 		t.Errorf("persisted reply = %q, want it to contain the error text", last.Content)
 	}
 }
+
+func TestDrainAgentStreamPersistsAndForwardsThinking(t *testing.T) {
+	for _, explicitDone := range []bool{true, false} {
+		t.Run(fmt.Sprint(explicitDone), func(t *testing.T) {
+			sm, err := sessions.NewManager(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := sm.NewChat()
+			a := &App{cfg: &config.AppConfig{}, sessions: sm, identity: identity.New("Test", "Memo", "casual", "", true)}
+			ch := make(chan provider.StreamChunk, 4)
+			ch <- provider.StreamChunk{Thinking: "first "}
+			ch <- provider.StreamChunk{Thinking: "second"}
+			ch <- provider.StreamChunk{Content: "answer"}
+			if explicitDone {
+				ch <- provider.StreamChunk{Done: true, FinishReason: "stop"}
+			}
+			close(ch)
+			out := make(chan api.StreamChunk, 8)
+			_, chainable := a.drainAgentStream(context.Background(), ch, out, time.Now(), "question", id, &usageMeta{}, nil)
+			close(out)
+			var thinking, reply string
+			for c := range out {
+				thinking += c.Thinking
+				reply += c.Content
+			}
+			if !chainable || thinking != "first second" || reply != "answer" {
+				t.Fatalf("thinking=%q reply=%q", thinking, reply)
+			}
+			msgs := sm.GetActiveMessagesForSession(id)
+			if len(msgs) != 1 || msgs[0].Thinking != thinking || msgs[0].Content != reply {
+				t.Fatalf("persistence mismatch: %+v", msgs)
+			}
+		})
+	}
+}

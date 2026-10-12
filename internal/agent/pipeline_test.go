@@ -993,3 +993,23 @@ func TestRunStream_SkillToolAllowedWhenSkillActive(t *testing.T) {
 		t.Fatal("skill tool did not execute even though its skill is active in this chat")
 	}
 }
+
+func TestRunStreamForwardsProviderThinking(t *testing.T) {
+	prov := &scriptedProvider{responses: []provider.ChatResponse{{Content: "answer", Thinking: "public reasoning"}}}
+	p := NewPipeline(NewRegistry(), NewPermissionManager(t.TempDir()), NewSandbox(DefaultSandboxConfig(t.TempDir())), prov, nil)
+	ch, err := p.RunStream(context.Background(), []provider.Message{provider.TextMessage("user", "question")}, "model", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var thinking, reply string
+	for c := range ch {
+		if c.Error != "" {
+			t.Fatal(c.Error)
+		}
+		thinking += c.Thinking
+		reply += c.Content
+	}
+	if thinking != "public reasoning" || reply != "answer" {
+		t.Fatalf("thinking=%q reply=%q", thinking, reply)
+	}
+}

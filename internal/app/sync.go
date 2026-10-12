@@ -50,6 +50,7 @@ func (a *App) ensureSyncManager() error {
 		clientSecret,
 		a.cfg.Sync.TokenPath,
 	)
+	a.syncManager.SetBackupPaths(config.DataDir(), config.ConfigFilePath())
 	a.wireSyncRestoreHooks(a.syncManager)
 	return nil
 }
@@ -264,6 +265,7 @@ func (a *App) UpdateSyncSettings(enabled bool, clientID, clientSecret, passphras
 			resolvedClientSecret,
 			a.cfg.Sync.TokenPath,
 		)
+		a.syncManager.SetBackupPaths(config.DataDir(), config.ConfigFilePath())
 		a.wireSyncRestoreHooks(a.syncManager)
 	} else {
 		a.syncManager = nil

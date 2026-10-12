@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"memo/internal/backupdata"
 	"memo/internal/config"
 	"memo/internal/fileutil"
 	"memo/internal/sessions"
@@ -23,110 +24,25 @@ func backupsDir() string { return config.DataPath("backups") }
 
 // ExportData packages all user data (except models) into a .memo zip archive.
 func (a *App) ExportData(includeModels bool) ([]byte, error) {
-	// Force WAL checkpoint on memory.db so that committed-but-unmerged WAL
-	// transactions are flushed to the main database file before archiving.
-	// Without this, recent interactions may be missing from the export.
-	// Routed through the live store (not a second raw connection to the
-	// same file, which used to race the store's own write loop with no
-	// coordination — see BUG_REPORT.md P1-4); a.store is nil on a fresh
-	// install that has never opened memory.db, nothing to checkpoint then.
+	a.storeMu.RLock()
 	if a.store != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		if err := a.store.Checkpoint(ctx); err != nil {
-			logx.Printf("export: WAL checkpoint on memory.db: %v", err)
-		}
+		err := a.store.Checkpoint(ctx)
 		cancel()
-	}
-
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
-
-	addFile := func(name, src string) error {
-		fi, err := os.Stat(src)
 		if err != nil {
-			return nil // skip missing files
+			a.storeMu.RUnlock()
+			return nil, fmt.Errorf("export: memory checkpoint: %w", err)
 		}
-		if fi.IsDir() {
-			return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-				if err != nil || info.IsDir() {
-					return err
-				}
-				// Skip atomic-write temp files — they are never valid data.
-				if strings.HasSuffix(path, ".tmp") {
-					return nil
-				}
-				rel, _ := filepath.Rel(src, path)
-				w, err := zw.Create(filepath.Join(name, rel))
-				if err != nil {
-					return err
-				}
-				f, err := os.Open(path)
-				if err != nil {
-					return err
-				}
-				_, err = io.Copy(w, f)
-				f.Close()
-				return err
-			})
-		}
-		w, err := zw.Create(name)
-		if err != nil {
-			return err
-		}
-		f, err := os.Open(src)
-		if err != nil {
-			return err
-		}
-		_, err = io.Copy(w, f)
-		f.Close()
-		return err
 	}
-
-	addFile("sessions/", config.DataPath("sessions"))
-	addFile("config/config.yaml", "config/config.yaml")
-	addFile("data/providers.json", config.DataPath("providers.json"))
-	addFile("data/orchestra.json", config.DataPath("orchestra.json"))
-	addFile("data/permissions.json", config.DataPath("permissions.json"))
-	// machine.key decrypts providers.json's encrypted API keys (see
-	// provider.defaultMachineKey) — without it, restoring providers.json on a
-	// different machine (or after a data wipe that regenerates the key)
-	// silently leaves every API key as undecryptable garbage. This was
-	// missing entirely before: providers.json was exported but its key never
-	// was, so importing this backup anywhere but the exact machine that made
-	// it already broke every configured provider.
-	addFile("data/machine.key", config.DataPath("machine.key"))
-	// session.key signs remote-access password-login session tokens (see
-	// remote_auth.go's sessionSigningKey) — not strictly required (a missing
-	// key is just regenerated, invalidating any outstanding 12h sessions,
-	// which is a mild inconvenience, not data loss), but harmless to carry
-	// over so a restore doesn't needlessly log every paired device out.
-	addFile("data/session.key", config.DataPath("session.key"))
-	addFile("data/memory/", config.DataPath("memory"))
-	addFile("data/whatsapp/", config.DataPath("whatsapp"))
-	addFile("data/mood/", config.DataPath("mood"))
-	addFile("data/calendar/", config.DataPath("calendar"))
-	addFile("data/profile/", config.DataPath("profile"))
-	addFile("data/routines/", config.DataPath("routines"))
-	addFile("data/tasklists/", config.DataPath("tasklists"))
-	addFile("data/stats/", config.DataPath("stats"))
-	addFile("data/agent-backups/", config.DataPath("agent-backups"))
-	addFile("data/skills/", config.DataPath("skills"))
-	// Deliberately NOT exported — machine/account-specific, not portable user
-	// data: sync_token.json (a Google Drive incremental-sync cursor tied to
-	// this device; restoring it elsewhere could make cloud sync think it's
-	// already up to date and skip real remote changes), tailscale/ (tsnet
-	// node identity/keys — same reason WipeAllData's wipePreserve treats it
-	// as machine state, not user content), and backups/ (this function's own
-	// pre-import snapshot directory — including it would nest old .memo
-	// archives inside the new one).
-	if includeModels {
-		addFile("data/models/", config.DataPath("models"))
+	a.storeMu.RUnlock()
+	memoryDir := config.DataPath("memory")
+	a.cfgMu.RLock()
+	if a.cfg != nil && a.cfg.Memory.PersistDir != "" {
+		memoryDir = a.cfg.Memory.PersistDir
 	}
-
-	if err := zw.Close(); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	a.cfgMu.RUnlock()
+	data, _, err := backupdata.Archive(backupdata.Sources(config.DataDir(), memoryDir, config.ConfigFilePath(), false, includeModels))
+	return data, err
 }
 
 // resolveImportTarget maps a zip entry name (as written by ExportData) to its
@@ -500,4 +416,3 @@ func (a *App) WipeAllData() error {
 	logx.Info("All user data wiped")
 	return nil
 }
-

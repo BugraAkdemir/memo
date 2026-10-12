@@ -212,3 +212,55 @@ func TestExportData_ExcludesNonPortableMachineState(t *testing.T) {
 		}
 	}
 }
+
+func TestExportUsesResolvedConfigOutsideWorkingDirectory(t *testing.T) {
+	t.Setenv("MEMO_DATA_DIR", filepath.Join(t.TempDir(), "data"))
+	config.ResetForTests()
+	t.Cleanup(config.ResetForTests)
+	path := config.ConfigFilePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("identity: resolved-config"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(t.TempDir())
+	data, err := (&App{}).ExportData(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range zr.File {
+		if f.Name == "config/config.yaml" {
+			r, err := f.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			b, err := io.ReadAll(r)
+			if err != nil || string(b) != "identity: resolved-config" {
+				t.Fatalf("wrong config: %q %v", b, err)
+			}
+			return
+		}
+	}
+	t.Fatal("resolved config omitted")
+}
+func TestExportDoesNotHideUnreadableSource(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "data")
+	t.Setenv("MEMO_DATA_DIR", root)
+	config.ResetForTests()
+	t.Cleanup(config.ResetForTests)
+	if err := os.MkdirAll(filepath.Join(root, "sessions"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "missing"), filepath.Join(root, "sessions", "broken.json")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if b, err := (&App{}).ExportData(false); err == nil || len(b) != 0 {
+		t.Fatal("unreadable source produced an apparently successful archive")
+	}
+}

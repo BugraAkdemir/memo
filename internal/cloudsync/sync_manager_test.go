@@ -174,11 +174,11 @@ func TestArchive_UsesLiveStoreCheckpointCallbacksWhenSet(t *testing.T) {
 	}
 }
 
-// TestArchive_MemoryCheckpointCallbackErrorSkipsFile confirms a failing
+// TestArchive_MemoryCheckpointFailureAbortsBackup confirms a failing
 // live-store checkpoint is treated exactly like the old raw-connection
 // failure path: the file is skipped from the backup rather than archiving
 // a possibly-incomplete database.
-func TestArchive_MemoryCheckpointCallbackErrorSkipsFile(t *testing.T) {
+func TestArchive_MemoryCheckpointFailureAbortsBackup(t *testing.T) {
 	tmp := t.TempDir()
 	persistDir := filepath.Join(tmp, "memory")
 	dataDir := filepath.Join(tmp, "data")
@@ -201,19 +201,10 @@ func TestArchive_MemoryCheckpointCallbackErrorSkipsFile(t *testing.T) {
 		},
 	}
 
-	zipData, err := m.archive()
-	if err != nil {
-		t.Fatalf("archive failed: %v", err)
+	if _, err := m.archive(); err == nil {
+		t.Fatal("failed checkpoint produced an apparently complete backup")
 	}
-	zr, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
-	if err != nil {
-		t.Fatalf("zip reader: %v", err)
-	}
-	for _, f := range zr.File {
-		if f.Name == "memory/memory.db" {
-			t.Error("memory.db was archived despite a failing checkpoint — should have been skipped")
-		}
-	}
+
 }
 
 // TestRestoreExtractsWALSidecars verifies that restoreZip writes the SQLite

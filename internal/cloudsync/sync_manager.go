@@ -18,6 +18,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"memo/internal/backupdata"
 	"memo/internal/logx"
 	"os"
 	"path/filepath"
@@ -25,8 +26,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/google/uuid"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
@@ -42,14 +43,15 @@ type Manager struct {
 	ctx        context.Context
 	persistDir string // e.g. data/memory  — SQLite + legacy .gob
 	dataDir    string // e.g. data/         — sessions/, providers.json, etc.
+	configFile string
 	passphrase string
 	drive      *driveClient
 	interval   int64
 
 	count      atomic.Int64
-	stopped    atomic.Bool   // set by Stop() to prevent new goroutine launches
-	mu         sync.Mutex    // guards in-flight backup
-	scheduleMu sync.Mutex    // serializes Increment / TriggerNow scheduling race
+	stopped    atomic.Bool // set by Stop() to prevent new goroutine launches
+	mu         sync.Mutex  // guards in-flight backup
+	scheduleMu sync.Mutex  // serializes Increment / TriggerNow scheduling race
 	inFlight   bool
 
 	// BeforeRestore/AfterRestore let the owner release and re-open resources that
@@ -72,6 +74,15 @@ type Manager struct {
 	// directly are unaffected if left unset.
 	CheckpointMemoryDB func(ctx context.Context) error
 	CheckpointMoodDB   func(ctx context.Context) error
+}
+
+// SetBackupPaths is called before scheduling starts, so a custom memory
+// directory never changes the user-data root or the resolved config location.
+func (m *Manager) SetBackupPaths(dataDir, configFile string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dataDir = dataDir
+	m.configFile = configFile
 }
 
 // AccountInfo describes the connected Google account.
@@ -111,8 +122,8 @@ func New(
 			}
 		}
 		passphrase = loadOrCreateMachineID(dataDir)
-		logx.Printf("WARN: cloudsync: no passphrase configured — backups are encrypted with a " +
-			"machine-specific key stored in %s. Backups cannot be restored on a different machine. " +
+		logx.Printf("WARN: cloudsync: no passphrase configured — backups are encrypted with a "+
+			"machine-specific key stored in %s. Backups cannot be restored on a different machine. "+
 			"Set a passphrase in Settings → Cloud Sync for portable encryption.", dataDir)
 	}
 	dc, err := newDriveClient(clientID, clientSecret, tokenPath)
@@ -402,187 +413,59 @@ func (m *Manager) runPullPipeline() bool {
 
 // archive creates an in-memory ZIP of all user data:
 //
-//   memory/memory.db          — SQLite vector+memory store
-//   memory/<*.gob>            — legacy chromem-go files (kept for compat)
-//   sessions/<id>.json        — chat history
-//   data/providers.json       — API provider config
-//   data/orchestra.json       — orchestra config
-//   data/permissions.json     — agent permissions
-//   data/profile/patterns.json — learned time patterns
+//	memory/memory.db          — SQLite vector+memory store
+//	memory/<*.gob>            — legacy chromem-go files (kept for compat)
+//	sessions/<id>.json        — chat history
+//	data/providers.json       — API provider config
+//	data/orchestra.json       — orchestra config
+//	data/permissions.json     — agent permissions
+//	data/profile/patterns.json — learned time patterns
 func (m *Manager) archive() ([]byte, error) {
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
-	added := 0
-
-	addFile := func(src, destPath string) error {
-		info, err := os.Stat(src)
-		if err != nil {
-			return err
-		}
-		header, err := zip.FileInfoHeader(info)
-		if err != nil {
-			return err
-		}
-		header.Name = destPath
-		header.Method = zip.Deflate
-		w, err := zw.CreateHeader(header)
-		if err != nil {
-			return err
-		}
-		f, err := os.Open(src)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		_, err = io.Copy(w, f)
-		return err
+	ctx := m.ctx
+	if ctx == nil {
+		ctx = context.Background()
 	}
-
-	// 1. memory.db (primary SQLite memory store) + WAL sidecars.
-	// WAL mode keeps committed transactions in -wal until a checkpoint, so a
-	// backup of memory.db alone can be incomplete/corrupt. We archive the
-	// sidecar files too; SQLite ignores missing -wal/-shm on open, so this is
-	// backward-compatible with old backups that only contained memory.db.
-	memDB := filepath.Join(m.persistDir, "memory.db")
-
-	// Force a WAL checkpoint so committed data is flushed to the main DB file
-	// before we copy it. This prevents data loss in backups. If checkpointing
-	// fails (DB locked, I/O error) we must NOT silently archive a memory.db
-	// that may be missing recent transactions — log it clearly and skip this
-	// file for the current backup instead.
-	memDBOK := true
-	if _, statErr := os.Stat(memDB); statErr == nil {
-		if m.CheckpointMemoryDB != nil {
-			if chkErr := m.CheckpointMemoryDB(m.ctx); chkErr != nil {
-				logx.Printf("cloudsync: ERROR wal_checkpoint(TRUNCATE) failed for memory.db: %v — skipping memory.db in this backup to avoid archiving a possibly-incomplete database", chkErr)
-				memDBOK = false
-			}
-		} else if db, err := sql.Open("sqlite3", memDB); err == nil {
-			// No live store wired in (e.g. a test constructing Manager
-			// directly) — fall back to a one-off connection, same as
-			// before this existed.
-			if _, chkErr := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); chkErr != nil {
-				logx.Printf("cloudsync: ERROR wal_checkpoint(TRUNCATE) failed for memory.db: %v — skipping memory.db in this backup to avoid archiving a possibly-incomplete database", chkErr)
-				memDBOK = false
-			}
-			db.Close()
+	for _, item := range []struct {
+		path       string
+		checkpoint func(context.Context) error
+	}{
+		{filepath.Join(m.persistDir, "memory.db"), m.CheckpointMemoryDB},
+		{filepath.Join(m.dataDir, "mood", "mood.db"), m.CheckpointMoodDB},
+	} {
+		_, err := os.Lstat(item.path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if item.checkpoint != nil {
+			err = item.checkpoint(ctx)
 		} else {
-			logx.Printf("cloudsync: WARN could not open memory.db for WAL checkpoint: %v", err)
-		}
-	}
-
-	if memDBOK {
-		if err := addFile(memDB, "memory/memory.db"); err == nil {
-			added++
-			logx.Printf("cloudsync: archived memory.db")
-		} else if !os.IsNotExist(err) {
-			logx.Printf("cloudsync: WARN skipping memory.db: %v", err)
-		}
-		for _, suffix := range []string{"-wal", "-shm"} {
-			if err := addFile(memDB+suffix, "memory/memory.db"+suffix); err == nil {
-				added++
-				logx.Printf("cloudsync: archived memory.db%s", suffix)
+			var db *sql.DB
+			db, err = sql.Open("sqlite3", item.path)
+			if err == nil {
+				_, err = db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
+				db.Close()
 			}
 		}
-	} else {
-		m.emitError("Cloud backup: WAL checkpoint failed for memory.db — memory.db was skipped in this backup")
-	}
-
-	// 2. Legacy .gob files (chromem-go; may be absent on new installs)
-	_ = filepath.Walk(m.persistDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
-		}
-		if !strings.EqualFold(filepath.Ext(info.Name()), ".gob") {
-			return nil
-		}
-		rel, err := filepath.Rel(m.persistDir, path)
 		if err != nil {
-			return nil
-		}
-		if addErr := addFile(path, "memory/"+filepath.ToSlash(rel)); addErr == nil {
-			added++
-		}
-		return nil
-	})
-
-	// 3. Chat sessions
-	sessDir := filepath.Join(m.dataDir, "sessions")
-	_ = filepath.Walk(sessDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
-		}
-		if !strings.EqualFold(filepath.Ext(info.Name()), ".json") {
-			return nil
-		}
-		if addErr := addFile(path, "sessions/"+info.Name()); addErr == nil {
-			added++
-		}
-		return nil
-	})
-
-	// 4. Root data JSON files
-	for _, name := range []string{"providers.json", "orchestra.json", "permissions.json"} {
-		p := filepath.Join(m.dataDir, name)
-		if err := addFile(p, "data/"+name); err == nil {
-			added++
+			return nil, fmt.Errorf("cloudsync: checkpoint %s: %w", item.path, err)
 		}
 	}
-
-	// 5. Mood DB + WAL sidecars.
-	// Same WAL checkpoint treatment as memory.db above: without it, WAL-only
-	// mood records would be missing from the archived mood.db.
-	moodDB := filepath.Join(m.dataDir, "mood", "mood.db")
-	moodDBOK := true
-	if _, statErr := os.Stat(moodDB); statErr == nil {
-		if m.CheckpointMoodDB != nil {
-			if chkErr := m.CheckpointMoodDB(m.ctx); chkErr != nil {
-				logx.Printf("cloudsync: ERROR wal_checkpoint(TRUNCATE) failed for mood.db: %v — skipping mood.db in this backup to avoid archiving a possibly-incomplete database", chkErr)
-				moodDBOK = false
-			}
-		} else if db, err := sql.Open("sqlite3", moodDB); err == nil {
-			// No live store wired in (e.g. a test constructing Manager
-			// directly) — fall back to a one-off connection, same as
-			// before this existed.
-			if _, chkErr := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); chkErr != nil {
-				logx.Printf("cloudsync: ERROR wal_checkpoint(TRUNCATE) failed for mood.db: %v — skipping mood.db in this backup to avoid archiving a possibly-incomplete database", chkErr)
-				moodDBOK = false
-			}
-			db.Close()
-		} else {
-			logx.Printf("cloudsync: WARN could not open mood.db for WAL checkpoint: %v", err)
-		}
+	configFile := m.configFile
+	if configFile == "" {
+		configFile = filepath.Join(filepath.Dir(m.dataDir), "config", "config.yaml")
 	}
-
-	if moodDBOK {
-		if err := addFile(moodDB, "mood/mood.db"); err == nil {
-			added++
-			logx.Printf("cloudsync: archived mood.db")
-		}
-		for _, suffix := range []string{"-wal", "-shm"} {
-			if err := addFile(moodDB+suffix, "mood/mood.db"+suffix); err == nil {
-				added++
-				logx.Printf("cloudsync: archived mood.db%s", suffix)
-			}
-		}
-	} else {
-		m.emitError("Cloud backup: WAL checkpoint failed for mood.db — mood.db was skipped in this backup")
+	data, count, err := backupdata.Archive(backupdata.Sources(m.dataDir, m.persistDir, configFile, true, false))
+	if err != nil {
+		return nil, err
 	}
-
-	// 6. Learned patterns
-	patternsPath := filepath.Join(m.dataDir, "profile", "patterns.json")
-	if err := addFile(patternsPath, "data/profile/patterns.json"); err == nil {
-		added++
-	}
-
-	if err := zw.Close(); err != nil {
-		return nil, fmt.Errorf("cloudsync: archive close: %w", err)
-	}
-	if added == 0 {
+	if count == 0 {
 		return nil, fmt.Errorf("cloudsync: no data files found to archive under %s", m.dataDir)
 	}
-	logx.Printf("cloudsync: archive complete — %d files", added)
-	return buf.Bytes(), nil
+	logx.Printf("cloudsync: archive complete — %d files", count)
+	return data, nil
 }
 
 // restoreZip extracts a backup ZIP and writes files back to their correct locations.
@@ -611,6 +494,11 @@ func (m *Manager) restoreZip(zipData []byte) error {
 			return ""
 		}
 		switch {
+		case name == "config/config.yaml":
+			if m.configFile != "" {
+				return m.configFile
+			}
+			return filepath.Join(filepath.Dir(m.dataDir), "config", "config.yaml")
 		case name == "memory/memory.db",
 			name == "memory/memory.db-wal",
 			name == "memory/memory.db-shm":
@@ -621,7 +509,7 @@ func (m *Manager) restoreZip(zipData []byte) error {
 		case strings.HasPrefix(name, "sessions/") && strings.HasSuffix(name, ".json"):
 			base := filepath.Base(filepath.FromSlash(name))
 			return filepath.Join(m.dataDir, "sessions", base)
-		case strings.HasPrefix(name, "data/") && strings.HasSuffix(name, ".json"):
+		case strings.HasPrefix(name, "data/") && backupdata.IsDataEntry(strings.TrimPrefix(name, "data/"), false):
 			rel := strings.TrimPrefix(name, "data/")
 			return filepath.Join(m.dataDir, filepath.FromSlash(rel))
 		case name == "mood/mood.db",

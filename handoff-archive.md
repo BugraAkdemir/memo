@@ -1,3 +1,12 @@
+# Son oturum — 2026-10-12 — v4.6.0 yayın hazırlığı
+- İlk push `1e1eb29b`: sekiz işin tamamı yeşil. Sürüm hazırlığı `fc9f657d`: CI/Docker/canary/Android/iOS/macOS yeşil, Windows Chocolatey 504 yüzünden kırmızı; bu sürüm koduyla ilgili değildi. Son kod SHA `cf755817`: CI, canary, Docker, Linux (x86_64+ARM64), macOS ve Windows tümü yeşil. Android/iOS workflowları bu SHA'da filtre gereği açılmadı; sürüm değişikliğini içeren `fc9f657d` koşularında yeşil.
+- `5f291ab3` yedek düzeltmesi: export 200 MiB/dosya ve 500 MiB/toplam restore sınırını aşan arşivi reddeder; `/api/import` şifreli JSON/base64 gövdesi için 700 MiB kabul eder; GGUF sınırı TR/EN görünür. Hedefli testler PASS.
+- `451a3a37`: `version`, `installer.iss`, iki README 4.6.0'a eşitlendi, version dosyasında newline yok. `fc9f657d`: TR/EN v4.6 notlarında mobil alarm uzlaştırması ve yedek sınırları güncellendi. Üç commit `main`e pushlandı.
+- Kod düzeltmesi sonrası CGO/sqlite_fts5 Go build/vet/tam race PASS; Flutter 662 PASS, analyze yalnız 4 eski info; L10n literal taraması ve diff-check boş. TestSprite CLI var ama bu depoya bağlı proje yok (`project list` boş). `v4.6.0` etiketi ve update beacon kesinlikle yapılmadı.
+- `cf755817`: Windows workflow'u Chocolatey yerine resmi rclone v1.75.2 zip + SHA-256 doğrulamasına çevrildi; indirilen dosyanın hash'i ve `rclone.exe` yerelde, CI'da rclone kurulumu/R2 indirmesi/Windows yükleyici derlemesi doğrulandı. Kod/CI sürüm yayınına hazır. Sonraki adım: kullanıcıdan `v4.6.0` etiketini push etmek için bu sefer özel açık onay al; etiketli CI yeşil olmadan beacon güncelleme.
+
+---
+
 # Son oturum — 2026-10-12 — Beta dışı kalan kod düzeltmeleri
 - Kullanıcı kalanları tek çalışmada sırayla bitirmeyi istedi. Çalışma gereğinden uzun sürdü; yeni genişletme yapılmadı. Beta/release/tag/push yok.
 - Commitler: `4904f083` Auto Route, `e0304912` thinking, `1e62d466` memory, `4eabbf73` calendar, `4832c69a` backup manifest, `2cd7a18f` portable encrypted pictures, `ba05187c` reviewer evidence. Son checkpoint web onboarding + EN/TR notes/rapor/handoff.

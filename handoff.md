@@ -9,7 +9,6 @@
 - Beta dışı kod eksikleri kapandı: provider kayıt/model menüsü (önceki oturum), güvenli Auto Route alternatif/kota, thinking, pinned/FTS fallback, mobil alarm SSE uzlaştırması, ortak yedek kapsamı ve parolalı cihazlar arası görsel restore, doğrulayıcı kanıt açıklığı, web onboarding yenileme. Plan/kanıt: `PLAN_v4_6_completion.md`, `docs/V4_6_COMPLETION_REVIEW.md`. Açık olanlar gerçek telefon/native OS, gerçek OAuth/Claude kota ve LLM kalite-maliyet ölçümleri; bunlar otomatik testlerle tamamlandı sayılmaz.
 
 **Kullanıcıda**
-- v4.6.0 hazırlık commitleri `main`e pushlandı; güncel CI bitince yayımlamak için `v4.6.0` etiketinin push edilmesine bu sefer özel açık onay gerekli. Etiket push edilmedi, sürüm beacona dokunulmadı.
 - Geçmişte `origin` push URL'sinde düz metin token ve artık satılmış bir alan adı vardı. Bu oturumda `git remote -v` yalnız GitHub URL'sini gösterdi; push doğrudan GitHub HTTPS adresine yapıldı. Eski token'ın döndürülmesi kullanıcıda.
 - Eski sürümlerin REPL `update` komutu ve `download.bugradev.com/get-memo.sh` satırları artık başkasının sunucusuna gidiyor → yeni sürümü duyur, eski satırları kaldır.
 - llama.cpp b9441→b11456 uygulanmadı (karar kullanıcıda; AGENTS.md "llama.cpp upgrade traps").
@@ -39,9 +38,8 @@
 
 ---
 
-# Son oturum — 2026-10-12 — v4.6.0 yayın hazırlığı
-- İlk push `1e1eb29b`: sekiz işin tamamı yeşil. Sürüm hazırlığı `fc9f657d`: CI/Docker/canary/Android/iOS/macOS yeşil, Windows Chocolatey 504 yüzünden kırmızı; bu sürüm koduyla ilgili değildi. Son kod SHA `cf755817`: CI, canary, Docker, Linux (x86_64+ARM64), macOS ve Windows tümü yeşil. Android/iOS workflowları bu SHA'da filtre gereği açılmadı; sürüm değişikliğini içeren `fc9f657d` koşularında yeşil.
-- `5f291ab3` yedek düzeltmesi: export 200 MiB/dosya ve 500 MiB/toplam restore sınırını aşan arşivi reddeder; `/api/import` şifreli JSON/base64 gövdesi için 700 MiB kabul eder; GGUF sınırı TR/EN görünür. Hedefli testler PASS.
-- `451a3a37`: `version`, `installer.iss`, iki README 4.6.0'a eşitlendi, version dosyasında newline yok. `fc9f657d`: TR/EN v4.6 notlarında mobil alarm uzlaştırması ve yedek sınırları güncellendi. Üç commit `main`e pushlandı.
-- Kod düzeltmesi sonrası CGO/sqlite_fts5 Go build/vet/tam race PASS; Flutter 662 PASS, analyze yalnız 4 eski info; L10n literal taraması ve diff-check boş. TestSprite CLI var ama bu depoya bağlı proje yok (`project list` boş). `v4.6.0` etiketi ve update beacon kesinlikle yapılmadı.
-- `cf755817`: Windows workflow'u Chocolatey yerine resmi rclone v1.75.2 zip + SHA-256 doğrulamasına çevrildi; indirilen dosyanın hash'i ve `rclone.exe` yerelde, CI'da rclone kurulumu/R2 indirmesi/Windows yükleyici derlemesi doğrulandı. Kod/CI sürüm yayınına hazır. Sonraki adım: kullanıcıdan `v4.6.0` etiketini push etmek için bu sefer özel açık onay al; etiketli CI yeşil olmadan beacon güncelleme.
+# Son oturum — 2026-10-13 — v4.6.0 yayını
+- Kullanıcının açık yetkisiyle `v4.6.0` etiketi `4d6e9aa0` üzerinde pushlandı. GitHub Release yayımlandı (ön sürüm değil); İngilizce gövdeye Türkçe etiketli not bağlantısı eklendi. Etiketli Android `38310408519`, iOS `38310408512`, Linux `38310408497`, macOS `38310408612`, Windows `38310408716` ve Docker `38310408637` CI koşuları **success**.
+- R2 sabit adresleri `memo.exe`, `memo.tar.gz`, `memo.AppImage`, `memo-mac.zip`, `memo.apk`, `memo.ipa`, `memo_arm.zip`: HEAD 200, Last-Modified etiket CI yayınıyla taze. GitHub Release varlıkları 8/8.
+- `/home/bugra/Documents/memo-web` `3e30a90` ile EN/TR v4.6 notları, iOS/AppImage indirmeleri, mobil kurulum ve emekli `gemini-sub` açıklamaları güncellendi; GitHub'a pushlandı, Vercel success. Üretim build 126/126 prerender; değişen JS/JSX ESLint PASS, `git diff --check` temiz. Tam `npm run lint` 10 önceden var olan ve değişiklik dışı hata verdi. Canlı Chromium'da EN/TR ana, mobil, sürüm notu ve kurulum sayfaları açıldı; iOS düğmesi doğru IPA'ya gidiyor, JS/aynı-origin HTTP hata yok. Site deposundaki kullanıcıya ait `src/.data.js.kate-swp` silinmiş durumu ile `supabase/.temp/cli-latest` dokunulmadan bırakıldı.
+- Ayrı `/home/bugra/Documents/version` deposunda `5977ae5` ile beacon `V4.6.0` yapılıp pushlandı; Vercel success, canlı `version-zeta.vercel.app/version.json` `V4.6.0`. Memo kodu bu oturumda değişmedi; yayın öncesi Go/Flutter testleri önceki oturumda yeşildi. Gerçek cihaz/OAuth/model kalite sınamaları hâlâ üstteki açık maddelerde.

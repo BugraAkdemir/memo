@@ -9,7 +9,8 @@ import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/provider_config.dart';
 import '../models/provider_models.dart';
-import '../widgets/quota_badge.dart';
+import '../widgets/chat_model_selection.dart';
+export '../widgets/chat_model_selection.dart' show providerModelPickerEntries;
 import '../widgets/quota_notice_card.dart';
 import '../widgets/model_picker.dart';
 import '../models/model_display.dart';
@@ -26,7 +27,6 @@ import '../widgets/welcome_view.dart';
 import '../widgets/live_realtime_view.dart';
 import '../providers/live_realtime_session_provider.dart';
 import '../widgets/backend_unreachable_view.dart';
-import '../widgets/server_file_browser_dialog.dart';
 import '../providers/agent_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/auth_gate_provider.dart';
@@ -424,13 +424,24 @@ class _CLIWorkdirBadge extends ConsumerWidget {
 class _CLIModelBadge extends ConsumerWidget {
   const _CLIModelBadge();
 
-  Future<void> _openMenu(BuildContext context, WidgetRef ref, String cliType, String chatId) async {
+  Future<void> _openMenu(
+    BuildContext context,
+    WidgetRef ref,
+    String cliType,
+    String chatId,
+  ) async {
     final button = context.findRenderObject() as RenderBox;
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final position = RelativeRect.fromRect(
       Rect.fromPoints(
-        button.localToGlobal(button.size.bottomLeft(Offset.zero), ancestor: overlay),
-        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+        button.localToGlobal(
+          button.size.bottomLeft(Offset.zero),
+          ancestor: overlay,
+        ),
+        button.localToGlobal(
+          button.size.bottomRight(Offset.zero),
+          ancestor: overlay,
+        ),
       ),
       Offset.zero & overlay.size,
     );
@@ -442,8 +453,10 @@ class _CLIModelBadge extends ConsumerWidget {
       current = await ref.read(apiClientProvider).getChatCLIModel(chatId);
     } catch (e) {
       if (context.mounted) {
-        ref.read(errorMessageProvider.notifier).state =
-            L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)});
+        ref.read(errorMessageProvider.notifier).state = L10n.t(
+          'switch_failed',
+          {'e': FriendlyError.describeGeneric(e)},
+        );
       }
       return;
     }
@@ -456,7 +469,11 @@ class _CLIModelBadge extends ConsumerWidget {
         PopupMenuItem(
           value: '',
           child: _QuickModelMenuRow(
-            leading: Icon(Icons.auto_awesome_outlined, size: 15, color: MemoTheme.of(context).textMuted),
+            leading: Icon(
+              Icons.auto_awesome_outlined,
+              size: 15,
+              color: MemoTheme.of(context).textMuted,
+            ),
             label: L10n.t('cli_model_default'),
             isActive: current.isEmpty,
           ),
@@ -465,7 +482,11 @@ class _CLIModelBadge extends ConsumerWidget {
           PopupMenuItem(
             enabled: false,
             child: _QuickModelMenuRow(
-              leading: Icon(Icons.info_outline, size: 15, color: MemoTheme.of(context).textDim),
+              leading: Icon(
+                Icons.info_outline,
+                size: 15,
+                color: MemoTheme.of(context).textDim,
+              ),
               label: L10n.t('cli_model_none_available'),
               labelColor: MemoTheme.of(context).textDim,
             ),
@@ -475,7 +496,11 @@ class _CLIModelBadge extends ConsumerWidget {
             PopupMenuItem(
               value: m,
               child: _QuickModelMenuRow(
-                leading: Icon(Icons.terminal_rounded, size: 15, color: MemoTheme.accent),
+                leading: Icon(
+                  Icons.terminal_rounded,
+                  size: 15,
+                  color: MemoTheme.accent,
+                ),
                 label: m,
                 isActive: current == m,
               ),
@@ -488,8 +513,9 @@ class _CLIModelBadge extends ConsumerWidget {
       await ref.read(apiClientProvider).setChatCLIModel(chatId, selected);
       ref.invalidate(activeChatCLIModelProvider);
     } catch (e) {
-      ref.read(errorMessageProvider.notifier).state =
-          L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)});
+      ref.read(errorMessageProvider.notifier).state = L10n.t('switch_failed', {
+        'e': FriendlyError.describeGeneric(e),
+      });
     }
   }
 
@@ -603,43 +629,10 @@ class _QuickModelDropdown extends ConsumerWidget {
       );
     }
 
-    List<ModelPickerEntry> entriesFor(_PickerData d) {
-      final activeCLIName =
-          d.cliType.isEmpty ? '' : (d.providers.where((p) => p.type == d.cliType).firstOrNull?.name ?? d.cliType);
-      final effectiveActive =
-          activeCLIName.isNotEmpty ? activeCLIName : (d.activeType.isEmpty ? 'local' : d.activeType);
-      return [
-        ModelPickerEntry.item(
-          value: kAutoRouteProviderName,
-          title: L10n.t('auto_route'),
-          tag: L10n.t('auto_route_tag'),
-          leading: Icon(Icons.auto_awesome_outlined, size: 16, color: MemoTheme.accent),
-          active: effectiveActive == kAutoRouteProviderName,
-        ),
-        ModelPickerEntry.item(
-          value: 'local',
-          title: L10n.t('local_model'),
-          leading: Icon(Icons.computer_outlined, size: 16, color: c.textMuted),
-          active: effectiveActive == 'local',
-        ),
-        for (final p in d.providers.where((p) => p.enabled &&
-              (ProviderDefaults.isCLIType(p.type) || p.chatModels.isNotEmpty),
-        ))
-          if (p.name == kSubscriptionsProviderName && d.subsModels.isNotEmpty)
-            ..._subscriptionModelEntries(p, d.subsModels, effectiveActive == p.name)
-          else if (!ProviderDefaults.isCLIType(p.type)) ...providerModelPickerEntries(
-              p,
-              isActive: effectiveActive == p.name,
-            )
-          else
-            ModelPickerEntry.item(
-              value: p.name,
-              title: p.name,
-              leading: providerLogoWidget(p.type, size: 16),
-              active: effectiveActive == p.name,
-            ),
-      ];
-    }
+    List<ModelPickerEntry> entriesFor(_PickerData d) => chatModelPickerEntries(
+      providers: d.providers, subscriptionModels: d.subsModels,
+      activeProvider: d.activeType, cliType: d.cliType, mutedColor: c.textMuted,
+    );
 
     final _PickerData first;
     try {
@@ -690,7 +683,9 @@ class _QuickModelDropdown extends ConsumerWidget {
     final pickedModel = decodeModelSelection(selected);
     if (pickedModel != null) {
       try {
-        await ref.read(apiClientProvider).setProviderModel(pickedModel.provider, pickedModel.model, activate: true);
+        await selectNonCLIChatModel(ref.read(apiClientProvider), selected,
+            chatId: ref.read(activeChatIdProvider).valueOrNull);
+        ref.invalidate(activeChatCLIProviderProvider);
         ref.read(activeProviderTypeProvider.notifier).setActive(pickedModel.provider);
         ref.invalidate(providerListProvider);
         if (context.mounted) {
@@ -727,23 +722,14 @@ class _QuickModelDropdown extends ConsumerWidget {
         // pick (only worked on a second attempt, once the rebuild had
         // already happened and settled).
         if (context.mounted) {
-          await _setupCLIChat(context, ref, chatId);
+          await setupCLIChat(context, ref, chatId);
         }
         ref.invalidate(activeChatCLIProviderProvider);
-      } else if (selected == kAutoRouteProviderName) {
-        final chatId = ref.read(activeChatIdProvider).valueOrNull;
-        if (chatId != null) {
-          await api.setChatCLIProvider(chatId, '');
-          ref.invalidate(activeChatCLIProviderProvider);
-        }
-        await api.setActiveProvider(kAutoRouteProviderName);
-        ref.read(activeProviderTypeProvider.notifier).setActive(kAutoRouteProviderName);
-      } else if (selected == 'local') {
-        await api.setActiveProvider('');
-        ref.read(activeProviderTypeProvider.notifier).setActive('');
       } else {
-        await api.setActiveProvider(selected);
-        ref.read(activeProviderTypeProvider.notifier).setActive(selected);
+        final provider = await selectNonCLIChatModel(api, selected,
+            chatId: ref.read(activeChatIdProvider).valueOrNull);
+        ref.read(activeProviderTypeProvider.notifier).setActive(provider);
+        ref.invalidate(activeChatCLIProviderProvider);
       }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -759,85 +745,6 @@ class _QuickModelDropdown extends ConsumerWidget {
           SnackBar(content: Text(L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
-    }
-  }
-
-  /// The Subscriptions provider as sections of the picker: one header per vendor
-  /// (Antigravity, Claude, Codex) with its models under it, each shown by a short
-  /// readable name plus a tag and its family's logo. Values are
-  /// [encodeModelSelection] strings, so picking one switches model AND provider in
-  /// a single step.
-  List<ModelPickerEntry> _subscriptionModelEntries(
-    ProviderConfig provider,
-    List<ProviderModel> models,
-    bool providerIsActive,
-  ) {
-    final out = <ModelPickerEntry>[];
-    String? lastVendor;
-    for (final m in models) {
-      if (m.ownedBy != lastVendor) {
-        lastVendor = m.ownedBy;
-        final label = vendorLabel(m.ownedBy);
-        out.add(ModelPickerEntry.header(
-          label.isEmpty ? provider.name : label,
-          leading: vendorLogo(m.ownedBy, size: 14),
-        ));
-      }
-      final d = prettyModelName(m.id);
-      out.add(ModelPickerEntry.item(
-        value: encodeModelSelection(provider.name, m.id),
-        title: d.title,
-        tag: d.tag,
-        leading: modelFamilyLogo(m.id, size: 16),
-        trailing: m.remainingPercent == null ? null : QuotaBadge(model: m, fontSize: 11),
-        active: providerIsActive && provider.model == m.id,
-      ));
-    }
-    return out;
-  }
-
-  /// First time a chat is pointed at a CLI provider: warns the user this is
-  /// a real agent (file/shell access), then asks which folder it should run
-  /// in. Only runs once per chat — a workdir already set means both of
-  /// these already happened.
-  Future<void> _setupCLIChat(BuildContext context, WidgetRef ref, String chatId) async {
-    final api = ref.read(apiClientProvider);
-    final existing = await api.getChatCLIWorkdir(chatId);
-    if (existing.isNotEmpty || !context.mounted) return;
-
-    final proceed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(L10n.t('cli_first_use_title')),
-        content: Text(L10n.t('cli_first_use_body')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(L10n.t('cancel')),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(L10n.t('cli_first_use_continue')),
-          ),
-        ],
-      ),
-    );
-    if (proceed != true || !context.mounted) return;
-
-    final dir = await showServerFileBrowserDialog(context, mode: ServerBrowseMode.directory);
-    if (dir == null) return;
-    try {
-      await api.setChatCLIWorkdir(chatId, dir);
-    } catch (e) {
-      // Not ScaffoldMessenger.of(context) — the native folder picker above
-      // can stay open for a long, unpredictable time, and by the time it
-      // resolves the widget this context came from (deep inside the model
-      // dropdown's popup menu) may already be gone. errorMessageProvider is
-      // a global, context-free sink a stable top-level listener shows as a
-      // SnackBar (see _ChatContent's ref.listen) — this codebase's own
-      // established way of avoiding exactly this class of crash.
-      ref.read(errorMessageProvider.notifier).state =
-          L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)});
     }
   }
 
@@ -1643,29 +1550,4 @@ class ChatTopBar extends ConsumerWidget {
       ),
     );
   }
-}
-
-/// Show saved IDs and the legacy current model, never the vendor catalog.
-/// Subscriptions use their separate live-account model list.
-List<ModelPickerEntry> providerModelPickerEntries(
-  ProviderConfig provider, {
-  bool isActive = false,
-}) {
-  final ids = <String>{
-    ...provider.configuredModels.map((m) => m.id),
-  };
-  if (provider.model.isNotEmpty) ids.add(provider.model);
-  return [
-    ModelPickerEntry.header(
-      provider.name,
-      leading: providerLogoWidget(provider.type, size: 14),
-    ),
-    for (final id in ids.where((id) => id.isNotEmpty))
-      ModelPickerEntry.item(
-        value: encodeModelSelection(provider.name, id),
-        title: id,
-        leading: providerLogoWidget(provider.type, size: 16),
-        active: isActive && id == provider.model,
-      ),
-  ];
 }

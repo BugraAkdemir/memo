@@ -7,7 +7,7 @@ AGENTS.md gereği oturum başına en fazla iki küçük uygulama birimi; her bir
 ## Bu oturum
 
 - [x] 1. Sağlayıcı kayıt güvenilirliği: effort/context disk roundtrip; Set/Delete/Save hatasını döndürme ve bellek rollback; App router'ını yalnız başarılı yazmadan sonra değiştirme; bağlantı testinde başarısız modelin katalogla gizlenmesini engelleme. Eski config uyumluluğu, şifreli anahtar, başarısız ekleme/düzenleme/silme ve gerçek HTTP testleri.
-- [ ] 2. Yeni model seçimini bütün sohbet girişlerine taşıma: üst seçici ile composer menüsünde ortak kayıtlı/abonelik model satırları, Auto Route ve CLI'dan çıkış; uzun abonelik listesinde kaydırma/arama ve TR/EN widget testleri. Katalog tarama ile kullanıcıya eklenen model ayrımını koruma.
+- [x] 2. Yeni model seçimini bütün sohbet girişlerine taşıma: üst seçici ile composer menüsünde ortak kayıtlı/abonelik model satırları, Auto Route ve CLI'dan çıkış; uzun abonelik listesinde kaydırma/arama ve TR/EN widget testleri. Katalog tarama ile kullanıcıya eklenen model ayrımını koruma.
 
 ## Sonraki oturumlar — tamamlanmış sayılmayacak
 

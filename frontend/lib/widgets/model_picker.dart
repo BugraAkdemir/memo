@@ -201,10 +201,12 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
     const margin = 12.0;
     final width = (size.width - margin * 2).clamp(240.0, 340.0);
     final left = (widget.anchor.right - width).clamp(margin, size.width - width - margin);
-    final top = widget.anchor.bottom + 6;
-    // Everything below the button, minus a margin — never taller than 560, never
-    // so short the list is unusable.
-    final maxHeight = (size.height - top - margin).clamp(220.0, 560.0);
+    final bottomEdge = size.height - MediaQuery.viewInsetsOf(context).bottom - margin;
+    final below = bottomEdge - widget.anchor.bottom - 6;
+    final above = widget.anchor.top - 6 - margin;
+    final openAbove = below < 220 && above > below;
+    // Open above a bottom-of-screen composer; stay within the viewport/keyboard.
+    final maxHeight = (openAbove ? above : below).clamp(0.0, 560.0);
 
     final selectable = _entries.where((e) => !e.isHeader).length;
     final visible = _visible;
@@ -213,7 +215,8 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
       children: [
         Positioned(
           left: left,
-          top: top,
+          top: openAbove ? null : widget.anchor.bottom + 6,
+          bottom: openAbove ? size.height - widget.anchor.top + 6 : null,
           width: width,
           child: Material(
             color: c.bgPanel,

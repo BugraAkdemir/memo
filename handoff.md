@@ -6,7 +6,7 @@
 
 ## Açık işler
 **Kod denetimi (2026-10-12)**
-- Ayrıntı: `docs/AUDIT_2026-10-12.md`. Yeni açık öncelikler: provider effort/context kalıcılığı; bulut yedeğinde machine.key/veri kapsamı; yerel export config yolu ve yutulan okuma hataları; provider kaydetme hataları; embedding kesintisinde pinned fallback; Auto Route inference failover. Bu tur yalnız raporlandı, düzeltilmedi. Mobil alarm eşleme, ajan thinking gösterimi ve iki model seçici farkı da raporda.
+- Ayrıntı: `docs/AUDIT_2026-10-12.md`. Açık öncelikler: bulut yedeğinde machine.key/veri kapsamı; yerel export config yolu ve yutulan okuma hataları; embedding kesintisinde pinned fallback; Auto Route inference failover; mobil alarm eşleme ve ajan thinking gösterimi. **A01/A07/A11 kapandı** (`7cbddaa9`: effort/context kalıcılığı, kayıt hatası/rollback, model bağlantı testi). **A14 model menüsü farkı kapandı** (bu oturum); backend dil kısmı açık. Güncel kapsam/plan: `docs/V4_6_COMPLETION_REVIEW.md`, `PLAN_v4_6_completion.md` (ilk iki birim tamam).
 
 **Kullanıcıda**
 - `origin`'in ikinci push URL'sinde düz metin token (`web.bugradev.com`, satılan alan adı) → URL'yi sil + token'ı döndür. Silme: `git remote set-url --delete --push origin 'web.bugradev.com'`. O zamana kadar push **yalnızca** `git push https://github.com/BugraAkdemir/memo.git main` ile; `git push origin` token'ı yabancıya sızdırır.
@@ -15,7 +15,7 @@
 - Claude hesabıyla giriş yok → Claude kota biçimi (`oauth/usage`) ve `quota_exhausted` kartı gerçek doluşta hiç görülmedi.
 
 **Doğrulanmadı (kimse denemedi)**
-- Mobil bağlantı akışı (`feat/mobile-connect-flow`, 2026-10-12'de `main`'e alındı): gerçek telefonda/emülatörde görünüm, `MemoRoot` ile sağlayıcıların yenilenmesi, Android/iOS düz HTTP; ayrıntı son oturum özeti.
+- Mobil bağlantı akışı (`feat/mobile-connect-flow`, 2026-10-12'de `main`'e alındı): gerçek telefonda/emülatörde görünüm, `MemoRoot` ile sağlayıcıların yenilenmesi, Android/iOS düz HTTP; ayrıntı arşivdeki mobil bağlantı oturumu.
 - Auto Route: gerçek satıcı/abonelik model kalitesi, kota davranışı ve gerçek GGUF soğuk yükleme ölçülmedi. Kurulum sihirbazının yeni düzeni/abonelik girişinin native pencerede kontrolü de açık; sahte HTTP + Flutter testleri geçti.
 - Yeni opsiyonel karar/doğrulama modeli: gerçek sağlayıcıda karar kalitesi, doğrulama güvenilirliği, hız ve maliyet ölçümü yapılmadı; sahte HTTP sağlayıcısı + gerçek sohbet yönlendirmesi ve TR/EN widget testleriyle doğrulandı.
 - Gerçek hesapla uzak giriş (yapıştırma → token değişimi); kopyala butonunun HTTP tarayıcıdaki `execCommand` yedeği.
@@ -32,26 +32,15 @@
 
 **Bilinen küçük noktalar**
 - Yapıştırma kutusu `Done` olana kadar görünür kalıyor; `login.go`'da sonuç goroutine'i `s.tail`'i okuyucu son satırı işlemeden okuyabilir (teorik).
-- Minimal Mod otomatik sıkıştırmayı atlıyor; `chat_input.dart`'taki ikinci model değiştirici ham kimlik listeliyor; görsel modeli seçicide etiketsiz.
+- Minimal Mod otomatik sıkıştırmayı atlıyor; görsel modeli seçicide etiketsiz. İkinci model menüsü artık üst menüyle aynı Auto Route/kayıtlı model/abonelik listesini, okunur abonelik adlarını ve arama/kaydırmayı kullanıyor.
 - **CI `Test (Go)` flake'i — kök neden bulundu ve düzeltildi (2026-10-11)**, ayrıntı `handoff-archive.md` içinde. Açık kalan bir şey: testler `config.DataDir()` önbelleğini (`dataDirCached`) sıfırlamadan `t.Setenv("MEMO_DATA_DIR", t.TempDir())` yapıyor (örn. `newSendMessageTestApp`), bu yüzden sonraki testler ilk testin ÇOKTAN SİLİNMİŞ klasörüne (`config/config.yaml`, `001/agent-audit.jsonl`, `machine.key`…) yazıp onu `/tmp`'de yeniden oluşturuyor — her koşuda 4 dosya sızıyor, testler birbirinden gerçekten izole değil. Düzeltilmedi (`config.ResetForTests()` çağrısı eksik); sızıntıyı görmek için `TMPDIR=<dizin>` ile koş.
 - Yük altında düşen testler: `livemode` `TestReconnectingSession_SendAudioRoutesToCurrentInner` (kök neden araştırılmadı), `TestBootstrapTokenAuth_Succeeds` (TempDir), canary DuckDuckGo captcha. Yük altında test flake'i şüphesinde: `go test -c` + 24 meşgul döngüyle yeniden üret, sonra isteği/çıktıyı dök (bu yöntemle 2026-10-11'deki e2e yarışı bulundu).
 
 ---
 
----
-
-# Son oturum — 2026-10-12 — CLIProxyAPI v8.0.16 → v8.0.25
-- `internal/cliproxy/PINNED.txt` v8.0.25'e çekildi (arşiv digest'leri GitHub'ınkiyle birebir, binary SHA'ları `vendor_cliproxy.sh` ile doğrulandı). R2'ye (`binaries/{linux/cliproxy,linux/cliproxy-arm64,windows/cliproxy,darwin/cliproxy}`) yalnız bu 4 klasör additive kopyalandı; `r2-memo-push/binaries` staging klasörü de güncellendi (yoksa `upload-memo.sh` R2'yi eski sürüme geri yazar).
-- Doğrulama: `go test -tags upstream` dört test (UPSTREAM_DEEP=1, canlı R2'den inen gerçek linux binary: 401 kapısı, `/v1/models`, görsel model tespiti, login flag'leri) geçti; `go test ./internal/cliproxy/` geçti. **Doğrulanmadı:** gerçek hesapla Claude/Codex/Antigravity isteği, Windows/macOS/arm64 binary'leri çalıştırılmadı (yalnız SHA).
-- Dikkat: v8.0.20+ sidecar her 3 saatte npm kayıt defterinden Grok CLI sürümü çekmeye çalışıyor (başarısızsa yedek sürümü tutar). Memo'nun "çalışma anında dış bağımlılık yok" iddiasına dokunan yeni bir giden istek.
-- Geri alma: PINNED.txt'i önceki commit'e döndür, `scripts/vendor_cliproxy.sh <dir>` ile v8.0.16'yı indir, aynı 4 klasörü R2'ye ve staging'e kopyala.
-
----
-
-# Son oturum — 2026-10-12 — Mobil bağlantı akışı (`feat/mobile-connect-flow`)
-- İstek: telefonda adres → sunucu kontrolü → giriş (şifre / token / ikisi, "beni hatırla"); sunucu zaten kuruluysa kurulum sihirbazı gelmesin, hiç kurulmadıysa gelsin; masaüstü/web değişmesin. Dal `feat/mobile-connect-flow`; sonradan 5 commit `main` üzerine cherry-pick ile alındı (çakışma çıkmadı), `main` push edildi. Commit'ler: **50ce0b35** (kapı + kapsam yenileme), **7d17165a** (bağlantı ekranı), **b4fec753** (sihirbaz). Arada başka bir oturumun `e9189005` (denetim belgeleri) bu dala düştü; yalnız docs.
-- Kök nedenler: (1) `authGateProvider` istemciyi bir kez `read` ediyordu; adres sonradan girilince eski, adressiz istemciyle yoklamaya devam ediyordu → artık `watch`. (2) `/api/onboarding` giriş arkasında (canlı doğrulandı: anonim 401), telefon yerel `false` tahminiyle tüm sihirbazı açıyordu. (3) Tüm hatalar tek cümleydi. (4) `auth_mode: none` giriş formu istiyordu (artık `ok`).
-- Yeni: `widgets/mobile_connect_screen.dart` (yalnız `isMobilePlatform` ve kayıtlı adres boşken), `core/server_probe.dart` (DNS / reddedildi / zaman aşımı / TLS / rota yok / Memo değil sınıflandırması), `core/scope_restart.dart` + `main.dart` `MemoRoot` (telefonda `exit(0)` yerine ProviderScope yenileme; `ChangeServerDialog` telefonda bunu kullanır). Port kuralı `normalizeBackendUrl`'de zaten vardı: portsuz http → 8090, yazılan port korunur. Sihirbazdan mobil sunucu adımı ve 18 ölü L10n anahtarı silindi; telefonda sihirbaz yalnız kayıtlı adres + açık kapı + sunucunun "tamamlanmadı" yanıtı varken görünür (`onboardingCheckedProvider`, başarısız okuma 5 sn'de bir tekrarlanır).
-- Doğrulama: `flutter test` **632 passed**, `flutter analyze lib/` yalnız mevcut 5 info, L10n literal taraması boş. Gerçek HTTP: izole backend `--lan` ile LAN IP'sinden (non-loopback) — setup/status, reddedilen port, çözülmeyen ad, create-admin → şifre girişi (yanlış şifre 401, doğru + remember), ikinci istemcide onboarding=true, token modunda gerçek `authGateProvider` (setupNeeded → loginNeeded → ok) geçti. Go tarafı değişmedi (yalnız binary derlendi).
-- **Doğrulanmadı:** gerçek telefon/emülatörde hiçbir şey (görünüm, klavye, `MemoRoot` yenilemesinin tüm sağlayıcıları sıfırladığı, Android/iOS cleartext); `none` modu yalnız birim testle; portsuz domain 80/443 arkasındaysa kullanıcı `https://` yazmalı (443/80 yedeği eklenmedi). Telefonda ilk bağlantıdan sonra gezi/launchpad yine bir kez görünebilir (kurulum değil, cihaz başına). Aynı "giriş sonrası onboarding'i yeniden oku" eksiği web'de de var; web'e dokunulmadı.
-- Sonraki: `main`'e alındı ama telefonda elle denenmedi, önce dene; `handoff` açık işlerine yukarıdaki doğrulanmayanlar eklendi.
+# Son oturum — 2026-10-12 — v4.6 Beta dışı tamamlama, ilk iki birim
+- İstek: bu sürümde gelen Beta dışı özelliklerin eksik alt akışlarını ve buglarını bul/düzelt; abonelik Auto örnek, kapsam bununla sınırlı değil. İnceleme `docs/V4_6_COMPLETION_REVIEW.md`, sıralı plan `PLAN_v4_6_completion.md`.
+- **1. checkpoint `7cbddaa9`:** provider effort/context diske yazılır; Set/Delete/Save hata döndürür ve bellek değişimini geri alır; router yalnız başarılı yazmada değiştirilir. Katalog erişimi başarısız model cevabını artık bağlantı testinde gizlemez. Eski kaynakla roundtrip ve HTTP 401/404/429/503 yanlış başarı testleri FAIL, düzeltilen kaynakta PASS. Klasör yolu veren abonelik test fixture’ı da düzeltildi.
+- **2. checkpoint:** ortak üst/composer model seçenekleri (Auto Route, kayıtlı API, canlı abonelik, CLI), ortak non-CLI seçim uygulaması (başarılı kayıttan sonra yalnız seçilen chat CLI’dan çıkar), ortak ilk CLI kurulum akışı. Composer’da uzun liste arama/kaydırma ve ekran altında yukarı açılma; TR/EN dar ekran testleri. EN/TR v4.6 notları ve audit durumları güncellendi.
+- Doğrulama: CGO/sqlite_fts5 Go build/vet/tam race **exit 0**; odaklı Flutter **25 passed**, tam **656 passed**; analyze **4 mevcut info**, warning/error yok; üretim Dart L10n taraması boş; diff-check temiz. TestSprite repo bağlantısı bulunmadı, mevcut Go gerçek HTTP + Flutter testleri kullanıldı.
+- **Açık:** Auto Route inference/soğuk yükleme failover ve kota seçimi; ajan thinking forwarding; embedding kesintisinde pinned fallback; alarm uzlaştırma; görsel/yedek kapsamı ve anahtar kurtarma. Gerçek telefon/hesap/native ekran doğrulanmadı. AGENTS.md’nin oturum başına 1–2 birim sınırı gereği diğerleri sonraki adımlar. Yayın/tag/push yok.

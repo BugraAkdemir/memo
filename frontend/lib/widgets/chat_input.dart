@@ -33,7 +33,8 @@ import '../providers/whatsapp_provider.dart';
 import 'orchestra_config_dialog.dart';
 import 'prompt_templates.dart';
 import 'skill_config_dialog.dart';
-import 'svg_icon.dart';
+import 'chat_model_selection.dart';
+import 'model_picker.dart';
 import '../core/friendly_error.dart';
 
 // Intents for the "/" and "@" popups' keyboard navigation. Bound via a
@@ -856,7 +857,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(L10n.t('providers_load_failed', {'e': FriendlyError.describeGeneric(e)})),
+            content: Text(
+              L10n.t('providers_load_failed', {
+                'e': FriendlyError.describeGeneric(e),
+              }),
+            ),
           ),
         );
       }
@@ -865,67 +870,64 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
     if (!mounted) return;
 
-    final options = <_ModelOption>[];
-    options.add(
-      _ModelOption(
-        type: 'local',
-        name: L10n.t('local_model'),
-        icon: '▣', // ▣ — matches the geometric glyphs providerIcon() uses
-        subtitle: L10n.t('llama_cpp'),
-      ),
-    );
-    for (final p in providers) {
-      if (!p.enabled) continue;
-      // The Subscriptions provider fronts every signed-in vendor account: show
-      // one row per model it offers (grouped by vendor in the subtitle) so the
-      // user picks the model directly. If the list cannot be fetched it stays
-      // a single row, and switching still works.
-      if (p.name == kSubscriptionsProviderName) {
-        try {
-          final models = (await api.listProviderModels(p.name)).models;
-          if (models.isNotEmpty) {
-            for (final m in models) {
-              options.add(
-                _ModelOption(
-                  type: encodeModelSelection(p.name, m.id),
-                  name: m.id,
-                  icon: providerIcon(p.type),
-                  subtitle: vendorLabel(m.ownedBy).isEmpty ? p.name : '${p.name} · ${vendorLabel(m.ownedBy)}',
-                  logoType: p.type,
-                ),
-              );
-            }
-            continue;
-          }
-        } catch (e) {
-          debugPrint('chat_input: subscription model list unavailable, showing one row: $e');
-        }
-      }
-      options.add(
-        _ModelOption(
-          type: p.name,
-          name: p.name,
-          icon: providerIcon(p.type),
-          subtitle: p.model,
-        ),
+    final chatId = ref.read(activeChatIdProvider).valueOrNull;
+    final mutedColor = MemoTheme.of(context).textMuted;
+    Future<List<ModelPickerEntry>> entries({bool fresh = false}) async {
+      final results = await Future.wait<Object>([
+        api
+            .listProviderModels(kSubscriptionsProviderName, fresh: fresh)
+            .then<List<ProviderModel>>((list) => list.models)
+            .catchError((Object e) {
+              debugPrint('chat_input: subscription model list unavailable: $e');
+              return const <ProviderModel>[];
+            }),
+        chatId == null
+            ? Future<String>.value('')
+            : api.getChatCLIProvider(chatId),
+      ]);
+      return chatModelPickerEntries(
+        providers: providers,
+        subscriptionModels: results[0] as List<ProviderModel>,
+        activeProvider: activeProvider,
+        cliType: results[1] as String,
+        mutedColor: mutedColor,
       );
     }
-    if (!mounted) return;
-    // A provider-with-model entry is "active" only when that provider is the
-    // active one AND it is using that model.
-    final activeProviderCfg = providers.where((p) => p.name == activeProvider).firstOrNull;
-    final activeKey = (activeProviderCfg != null && activeProvider == kSubscriptionsProviderName)
-        ? encodeModelSelection(activeProviderCfg.name, activeProviderCfg.model)
-        : (activeProvider.isEmpty ? 'local' : activeProvider);
 
-    final selected = await showDialog<String>(
+    final List<ModelPickerEntry> initial;
+    try {
+      initial = await entries();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              L10n.t('providers_load_failed', {
+                'e': FriendlyError.describeGeneric(e),
+              }),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    _focusNode.unfocus();
+    final box = context.findRenderObject() as RenderBox;
+    final selected = await showModelPicker(
       context: context,
-      builder: (ctx) => _ModelSwitcherDialog(
-        options: options,
-        activeType: activeKey,
-        onOpenRouterOAuth: () {
-          Navigator.of(ctx).pop('__openrouter_oauth__');
-        },
+      anchor: box.localToGlobal(Offset.zero) & box.size,
+      entries: initial,
+      refresh: () async => mounted ? await entries(fresh: true) : null,
+      firstRefreshAfter: const Duration(milliseconds: 2500),
+      footer: ModelPickerEntry.item(
+        value: '__openrouter_oauth__',
+        title: L10n.t('login_openrouter'),
+        leading: Icon(
+          Icons.key_outlined,
+          size: 16,
+          color: MemoTheme.warningOrange,
+        ),
       ),
     );
 
@@ -937,30 +939,30 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     }
 
     try {
-      final pickedModel = decodeModelSelection(selected);
-      if (pickedModel != null) {
-        await api.setProviderModel(pickedModel.provider, pickedModel.model, activate: true);
-        ref.read(activeProviderTypeProvider.notifier).setActive(pickedModel.provider);
-        ref.invalidate(providerListProvider);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(L10n.t('switched_to', {'name': pickedModel.model})),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-        return;
-      }
-      if (selected == 'local') {
-        await api.setActiveProvider('');
-        ref.read(activeProviderTypeProvider.notifier).setActive('');
+      final selectedProvider = providers
+          .where((p) => p.name == selected)
+          .firstOrNull;
+      if (selectedProvider != null &&
+          ProviderDefaults.isCLIType(selectedProvider.type)) {
+        if (chatId == null) return;
+        await api.setChatCLIProvider(chatId, selectedProvider.type);
+        if (!mounted) return;
+        await setupCLIChat(context, ref, chatId);
+        ref.invalidate(activeChatCLIProviderProvider);
       } else {
-        await api.setActiveProvider(selected);
-        ref.read(activeProviderTypeProvider.notifier).setActive(selected);
+        final provider = await selectNonCLIChatModel(
+          api,
+          selected,
+          chatId: chatId,
+        );
+        ref.read(activeProviderTypeProvider.notifier).setActive(provider);
+        ref.invalidate(activeChatCLIProviderProvider);
+        ref.invalidate(providerListProvider);
       }
       if (mounted) {
-        final name = options.firstWhere((o) => o.type == selected).name;
+        final name = initial
+            .firstWhere((entry) => entry.value == selected)
+            .title;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(L10n.t('switched_to', {'name': name})),
@@ -971,7 +973,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)}))),
+          SnackBar(
+            content: Text(
+              L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)}),
+            ),
+          ),
         );
       }
     }
@@ -1865,127 +1871,6 @@ class _RecordingDotState extends State<_RecordingDot>
           shape: BoxShape.circle,
           color: MemoTheme.red,
         ),
-      ),
-    );
-  }
-}
-
-// ─── Model Switcher Dialog ──────────────────────────────────────
-
-class _ModelOption {
-  final String type;
-  final String name;
-  final String icon;
-  final String subtitle;
-
-  /// Provider type whose logo to show, when [type] is a selection key (a
-  /// provider+model pair) rather than a provider name.
-  final String? logoType;
-
-  const _ModelOption({
-    required this.type,
-    required this.name,
-    required this.icon,
-    required this.subtitle,
-    this.logoType,
-  });
-}
-
-class _ModelSwitcherDialog extends StatelessWidget {
-  final List<_ModelOption> options;
-  final String activeType;
-  final VoidCallback? onOpenRouterOAuth;
-
-  const _ModelSwitcherDialog({
-    required this.options,
-    required this.activeType,
-    this.onOpenRouterOAuth,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(L10n.t('switch_model')),
-      content: SizedBox(
-        width: 320,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              L10n.t('switch_model_desc'),
-              style: TextStyle(
-                fontSize: 13,
-                color: MemoTheme.of(context).textDim,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ...options.map(
-              (opt) => _ModelOptionTile(
-                option: opt,
-                isActive: opt.type == activeType,
-                onTap: () => Navigator.of(context).pop(opt.type),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextButton.icon(
-              onPressed: onOpenRouterOAuth,
-              icon: const SvgIcon('key', size: 16,
-                  color: MemoTheme.warningOrange),
-              label: Text(L10n.t('login_openrouter')),
-              style: TextButton.styleFrom(foregroundColor: MemoTheme.warningOrange),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(L10n.t('cancel')),
-        ),
-      ],
-    );
-  }
-}
-
-class _ModelOptionTile extends StatelessWidget {
-  final _ModelOption option;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _ModelOptionTile({
-    required this.option,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      color: isActive ? MemoTheme.accent.withValues(alpha: 0.08) : null,
-      child: ListTile(
-        leading: SizedBox(
-          width: 32,
-          height: 32,
-          child: option.type == 'local'
-              ? Icon(Icons.computer_outlined, size: 24, color: MemoTheme.of(context).textMuted)
-              : providerLogoWidget(option.logoType ?? option.type, size: 28),
-        ),
-        title: Text(
-          option.name,
-          style: TextStyle(
-            fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-          ),
-        ),
-        subtitle: Text(
-          option.subtitle,
-          style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim),
-        ),
-        trailing: isActive
-            ? Icon(Icons.check_circle, color: MemoTheme.accent, size: 20)
-            : null,
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
       ),
     );
   }

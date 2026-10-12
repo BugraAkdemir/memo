@@ -39,11 +39,9 @@
 
 ---
 
----
-
 # Son oturum — 2026-10-12 — v4.6.0 yayın hazırlığı
-- İlk `main` push: `1e1eb29b`; CI, Docker, canary, Android, iOS yeşil; Linux/Windows/macOS son gözlemde sürüyordu. Son push: `fc9f657d`; aynı işlerin güncel CI'si sırada/çalışıyor, sonucu yeniden izle.
+- İlk `main` push `1e1eb29b`: tüm sekiz CI/workflow işi yeşil. Sürüm hazırlığı `fc9f657d`: ana CI, Docker ve canary yeşil; Windows R2 indirme öncesi Chocolatey deposu 504 yüzünden `rclone` kuramadı (choco 0 çıkmış), diğer platformlar son gözlemde sürüyordu. Handoff push `95f88acc` güncel CI başlattı.
 - `5f291ab3` yedek düzeltmesi: export 200 MiB/dosya ve 500 MiB/toplam restore sınırını aşan arşivi reddeder; `/api/import` şifreli JSON/base64 gövdesi için 700 MiB kabul eder; GGUF sınırı TR/EN görünür. Hedefli testler PASS.
 - `451a3a37`: `version`, `installer.iss`, iki README 4.6.0'a eşitlendi, version dosyasında newline yok. `fc9f657d`: TR/EN v4.6 notlarında mobil alarm uzlaştırması ve yedek sınırları güncellendi. Üç commit `main`e pushlandı.
 - Kod düzeltmesi sonrası CGO/sqlite_fts5 Go build/vet/tam race PASS; Flutter 662 PASS, analyze yalnız 4 eski info; L10n literal taraması ve diff-check boş. Son push CI sonucu bekleniyor. `v4.6.0` etiketi ve update beacon kesinlikle yapılmadı.
-- Sonraki adım: `fc9f657d` CI'daki bütün işlerin terminal sonucunu doğrula; kırmızıysa düzelt. Tam yeşilden sonra kullanıcıdan bu tag push'u için açık onay al. Etiketli CI yeşil olmadan beacon güncelleme.
+- Windows workflow'u Chocolatey yerine resmi rclone v1.75.2 zip + SHA-256 doğrulamasına çevrildi; indirilen dosyanın hash'i ve içindeki `rclone.exe` yerelde doğrulandı. Düzeltme commit/push ve yeni Windows CI sonucu bekleniyor. Tüm platformlar yeşil olduktan sonra kullanıcıdan bu tag push'u için açık onay al. Etiketli CI yeşil olmadan beacon güncelleme.

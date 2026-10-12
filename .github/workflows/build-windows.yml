@@ -56,12 +56,23 @@ jobs:
         run: flutter pub get
         working-directory: frontend
 
-      # No marketplace rclone action (see build-linux.yml's identical note —
-      # wei/rclone-action's repo no longer exists). choco ships preinstalled
-      # on windows-latest.
+      # Chocolatey's community feed returned 504 while choco still exited 0,
+      # leaving the next step without rclone. Fetch the pinned official build
+      # and verify its archive before putting the executable on PATH.
       - name: Install rclone
-        run: choco install rclone -y --no-progress
         shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'rclone-v1.75.2-windows-amd64.zip'
+          Invoke-WebRequest -Uri 'https://downloads.rclone.org/v1.75.2/rclone-v1.75.2-windows-amd64.zip' -OutFile $zip
+          $actual = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = '8a9db2bad1dc79a65b3348fd857069598e2aab7cf4d118b77b1df23055aff818'
+          if ($actual -ne $expected) { throw "rclone archive SHA-256 mismatch: $actual" }
+          $installDir = Join-Path $env:RUNNER_TEMP 'rclone'
+          Expand-Archive -Path $zip -DestinationPath $installDir -Force
+          $exe = Get-ChildItem -Path $installDir -Filter rclone.exe -Recurse -File | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $exe) { throw 'rclone.exe missing from official archive' }
+          Add-Content -Path $env:GITHUB_PATH -Value (Split-Path $exe)
+          & $exe version
 
       - name: Download engine binaries from R2
         run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/windows/ binaries/windows/ --progress

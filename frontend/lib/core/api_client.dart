@@ -1601,7 +1601,18 @@ class MemoApiClient {
   // ─── Backup / Restore (.memo) ────────────────────────────────────
 
   /// Export all user data as .memo bytes.
-  Future<List<int>> exportData({bool includeModels = false}) async {
+  Future<List<int>> exportData({
+    bool includeModels = false,
+    String? password,
+  }) async {
+    if (password != null) {
+      final res = await _dio.post(
+        '/api/export',
+        data: {'include_models': includeModels, 'password': password},
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return _guard<List<int>>(res.data);
+    }
     final res = await _dio.get(
       '/api/export',
       queryParameters: {'include_models': includeModels.toString()},
@@ -1611,7 +1622,14 @@ class MemoApiClient {
   }
 
   /// Import from .memo bytes.
-  Future<void> importData(List<int> data) async {
+  Future<void> importData(List<int> data, {String? password}) async {
+    if (password != null) {
+      await _dio.post(
+        '/api/import',
+        data: {'data': base64Encode(data), 'password': password},
+      );
+      return;
+    }
     await _dio.post(
       '/api/import',
       data: Stream.fromIterable([data]),

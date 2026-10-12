@@ -306,12 +306,67 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
 
   // ── Yerel yedekleme metodları ───────────────────────────────────
 
+  Future<String?> _backupPassword({required bool exporting}) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(L10n.t('backup_password_title')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                L10n.t(
+                  exporting
+                      ? 'backup_password_export_help'
+                      : 'backup_password_import_help',
+                ),
+              ),
+              TextField(
+                controller: controller,
+                obscureText: true,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: L10n.t('backup_password_label'),
+                ),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(L10n.t('cancel')),
+            ),
+            TextButton(
+              onPressed: controller.text.runes.length >= (exporting ? 8 : 1)
+                  ? () => Navigator.pop(context, controller.text)
+                  : null,
+              child: Text(L10n.t('confirm')),
+            ),
+          ],
+        ),
+      ),
+    );
+    // The dialog route may still animate after its future resolves.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+    });
+    return result;
+  }
+
   Future<void> _export() async {
     if (_exporting) return;
     setState(() => _exporting = true);
     try {
+      final password = await _backupPassword(exporting: true);
+      if (password == null || !mounted) return;
       final api = ref.read(apiClientProvider);
-      final data = await api.exportData(includeModels: _includeModels);
+      final data = await api.exportData(
+        includeModels: _includeModels,
+        password: password,
+      );
       if (!mounted) return;
 
       // saveFile writes the bytes itself now and returns where they landed
@@ -327,17 +382,27 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       );
       if (saved != null) {
         if (mounted) {
-          final where = saved.scheme == 'file' ? saved.toFilePath() : saved.toString();
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(L10n.t('backup_export_saved', {'path': where}))));
+          final where = saved.scheme == 'file'
+              ? saved.toFilePath()
+              : saved.toString();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(L10n.t('backup_export_saved', {'path': where})),
+            ),
+          );
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(L10n.t('backup_export_error', {'e': FriendlyError.describeGeneric(e)}))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              L10n.t('backup_export_error', {
+                'e': FriendlyError.describeGeneric(e),
+              }),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -361,20 +426,37 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
 
       final data = await picked.readAsBytes();
       if (data.isEmpty) return;
-      await ref.read(apiClientProvider).importData(data);
+      const magic = [77, 69, 77, 79, 66, 65, 67, 75, 85, 80, 49, 0];
+      final encrypted =
+          data.length >= magic.length &&
+          List.generate(
+            magic.length,
+            (i) => data[i] == magic[i],
+          ).every((v) => v);
+      String? password;
+      if (encrypted) {
+        if (!mounted) return;
+        password = await _backupPassword(exporting: false);
+        if (password == null || !mounted) return;
+      }
+      await ref.read(apiClientProvider).importData(data, password: password);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(L10n.t('backup_import_success')),
-          ),
+          SnackBar(content: Text(L10n.t('backup_import_success'))),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(L10n.t('backup_import_error', {'e': FriendlyError.describeGeneric(e)}))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              L10n.t('backup_import_error', {
+                'e': FriendlyError.describeGeneric(e),
+              }),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _importing = false);

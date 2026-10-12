@@ -83,16 +83,7 @@ func (a *App) wireSyncRestoreHooks(sm *cloudsync.Manager) {
 		}
 		return a.mood.Checkpoint(ctx)
 	}
-	sm.BeforeRestore = func() {
-		a.storeMu.Lock()
-		if a.store != nil {
-			if err := a.store.Close(); err != nil {
-				logx.Printf("WARN: memory store close before restore: %v", err)
-			}
-			a.store = nil
-		}
-		a.storeMu.Unlock()
-	}
+	sm.BeforeRestore = a.closeStoresForRestore
 	sm.AfterRestore = func() {
 		a.clientMu.RLock()
 		client := a.client

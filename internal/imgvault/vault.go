@@ -160,8 +160,17 @@ func (v *Vault) ReadFile(path string) ([]byte, error) {
 	if !IsSealed(raw) {
 		return raw, nil
 	}
+	return v.OpenData(raw)
+}
+
+// OpenData reads an in-memory picture without exposing the master key.
+func (v *Vault) OpenData(raw []byte) ([]byte, error) {
+	if !IsSealed(raw) {
+		return raw, nil
+	}
 	return Open(v.key, raw)
 }
+func (v *Vault) SealData(plain []byte) ([]byte, error) { return Seal(v.key, plain) }
 
 // SealInPlace encrypts a plaintext file where it lies. A file that is already
 // sealed is left alone (changed is false).

@@ -1,6 +1,7 @@
 package cloudsync
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -16,8 +17,8 @@ import (
 )
 
 const (
-	saltLen      = 16
-	pbkdf2Iter   = 600000
+	saltLen    = 16
+	pbkdf2Iter = 600000
 )
 
 // deriveKey produces a 32-byte AES-256 key from the given passphrase.
@@ -145,4 +146,24 @@ func hardwareID() string {
 		return "memo-fallback-key"
 	}
 	return host
+}
+
+var backupMagic = []byte("MEMOBACKUP1\x00")
+
+func IsEncryptedBackup(data []byte) bool { return bytes.HasPrefix(data, backupMagic) }
+func EncryptBackup(password string, data []byte) ([]byte, error) {
+	if len([]rune(password)) < 8 {
+		return nil, fmt.Errorf("backup password must contain at least 8 characters")
+	}
+	blob, err := encrypt(password, data)
+	if err != nil {
+		return nil, err
+	}
+	return append(append([]byte(nil), backupMagic...), blob...), nil
+}
+func DecryptBackup(password string, data []byte) ([]byte, error) {
+	if !IsEncryptedBackup(data) {
+		return nil, fmt.Errorf("not an encrypted Memo backup")
+	}
+	return decrypt(password, data[len(backupMagic):])
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"memo/internal/backupdata"
+	"memo/internal/cloudsync"
 	"memo/internal/config"
 	"memo/internal/fileutil"
 	"memo/internal/sessions"
@@ -24,6 +25,26 @@ func backupsDir() string { return config.DataPath("backups") }
 
 // ExportData packages all user data (except models) into a .memo zip archive.
 func (a *App) ExportData(includeModels bool) ([]byte, error) {
+	return a.exportData(includeModels, false)
+}
+func (a *App) ExportEncryptedData(includeModels bool, password string) ([]byte, error) {
+	if len([]rune(password)) < 8 {
+		return nil, fmt.Errorf("backup password must contain at least 8 characters")
+	}
+	blob, err := a.exportData(includeModels, true)
+	if err != nil {
+		return nil, err
+	}
+	return cloudsync.EncryptBackup(password, blob)
+}
+func (a *App) ImportEncryptedData(data []byte, password string) error {
+	blob, err := cloudsync.DecryptBackup(password, data)
+	if err != nil {
+		return fmt.Errorf("backup password incorrect or archive damaged: %w", err)
+	}
+	return a.ImportData(blob)
+}
+func (a *App) exportData(includeModels, portable bool) ([]byte, error) {
 	a.storeMu.RLock()
 	if a.store != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -41,7 +62,7 @@ func (a *App) ExportData(includeModels bool) ([]byte, error) {
 		memoryDir = a.cfg.Memory.PersistDir
 	}
 	a.cfgMu.RUnlock()
-	data, _, err := backupdata.Archive(backupdata.Sources(config.DataDir(), memoryDir, config.ConfigFilePath(), false, includeModels))
+	data, _, err := backupdata.ArchiveImages(backupdata.Sources(config.DataDir(), memoryDir, config.ConfigFilePath(), false, includeModels), config.DataDir(), portable)
 	return data, err
 }
 
@@ -124,6 +145,7 @@ func (a *App) ImportData(data []byte) error {
 	// the entire archive has been extracted without error.
 	type pendingMove struct{ staged, target string }
 	var pending []pendingMove
+	var total int64
 
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
@@ -134,6 +156,11 @@ func (a *App) ImportData(data []byte) error {
 		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
 			continue
 		}
+
+		if f.UncompressedSize64 > 200<<20 || total+int64(f.UncompressedSize64) > 500<<20 {
+			return fmt.Errorf("import: archive exceeds size limit")
+		}
+		total += int64(f.UncompressedSize64)
 
 		target, _, ok := resolveImportTarget(f.Name, config.DataDir(), config.ConfigDir())
 		if !ok {
@@ -151,13 +178,23 @@ func (a *App) ImportData(data []byte) error {
 			return fmt.Errorf("import: open %s: %w", f.Name, err)
 		}
 
-		out, err := os.Create(staged)
+		out, err := os.OpenFile(staged, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 		if err != nil {
 			rc.Close()
 			return fmt.Errorf("import: create staged %s: %w", f.Name, err)
 		}
 
-		_, err = io.Copy(out, rc)
+		var blob []byte
+		blob, err = io.ReadAll(io.LimitReader(rc, 200<<20+1))
+		if err == nil && len(blob) > 200<<20 {
+			err = fmt.Errorf("entry exceeds 200 MB")
+		}
+		if err == nil {
+			blob, err = backupdata.RestoreContent(f.Name, blob, config.DataDir())
+		}
+		if err == nil {
+			_, err = out.Write(blob)
+		}
 		rc.Close()
 		cerr := out.Close()
 		if err != nil {
@@ -169,6 +206,8 @@ func (a *App) ImportData(data []byte) error {
 
 		pending = append(pending, pendingMove{staged: staged, target: target})
 	}
+
+	a.closeStoresForRestore()
 
 	// Phase 2: every entry is safely staged. Move each staged file into its live
 	// destination. Renames are same-filesystem (staging lives inside the data
@@ -223,6 +262,59 @@ func (a *App) ImportData(data []byte) error {
 	a.reinitProviderAndOrchestra()
 
 	return nil
+}
+
+// Close live SQLite handles before replacing files. Auxiliary stores stay
+// closed until restart, as the restore UI already instructs. Keeping their
+// pointers avoids racing background readers; operations return a closed DB
+// error instead of writing stale WAL pages into restored data.
+func (a *App) closeStoresForRestore() {
+	a.storeMu.Lock()
+	if a.store != nil {
+		if err := a.store.Close(); err != nil {
+			logx.Printf("restore: memory close: %v", err)
+		}
+		a.store = nil
+	}
+	a.storeMu.Unlock()
+	for _, close := range []func() error{
+		func() error {
+			if a.calendarStore != nil {
+				return a.calendarStore.Close()
+			}
+			return nil
+		},
+		func() error {
+			if a.observerStore != nil {
+				return a.observerStore.Close()
+			}
+			return nil
+		},
+		func() error {
+			if a.statsStore != nil {
+				return a.statsStore.Close()
+			}
+			return nil
+		},
+		func() error {
+			if a.mood != nil {
+				return a.mood.Close()
+			}
+			return nil
+		},
+	} {
+		if err := close(); err != nil {
+			logx.Printf("restore: store close: %v", err)
+		}
+	}
+	a.StopWhatsApp()
+	a.waMu.Lock()
+	if a.waMsgStore != nil {
+		if err := a.waMsgStore.Close(); err != nil {
+			logx.Printf("restore: WhatsApp store close: %v", err)
+		}
+	}
+	a.waMu.Unlock()
 }
 
 // snapshotPreImport creates a timestamped backup of the current data in the

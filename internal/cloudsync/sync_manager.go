@@ -394,9 +394,6 @@ func (m *Manager) runPullPipeline() bool {
 	// Close any open handles to the files we're about to overwrite (the live
 	// memory.db), then always re-open afterwards — even on failure — so the app
 	// is never left without its memory store.
-	if m.BeforeRestore != nil {
-		m.BeforeRestore()
-	}
 	restoreErr := m.restoreZip(zipBuf)
 	if m.AfterRestore != nil {
 		m.AfterRestore()
@@ -457,7 +454,7 @@ func (m *Manager) archive() ([]byte, error) {
 	if configFile == "" {
 		configFile = filepath.Join(filepath.Dir(m.dataDir), "config", "config.yaml")
 	}
-	data, count, err := backupdata.Archive(backupdata.Sources(m.dataDir, m.persistDir, configFile, true, false))
+	data, count, err := backupdata.ArchiveImages(backupdata.Sources(m.dataDir, m.persistDir, configFile, true, false), m.dataDir, true)
 	if err != nil {
 		return nil, err
 	}
@@ -527,6 +524,13 @@ func (m *Manager) restoreZip(zipData []byte) error {
 
 	var totalUncompressed int64
 	extracted := 0
+	type pendingRestore struct{ temp, dest string }
+	var pending []pendingRestore
+	defer func() {
+		for _, p := range pending {
+			os.Remove(p.temp)
+		}
+	}()
 
 	for _, zf := range zr.File {
 		if zf.FileInfo().IsDir() {
@@ -552,7 +556,13 @@ func (m *Manager) restoreZip(zipData []byte) error {
 		}
 
 		// Write to a temp file next to the destination, then rename atomically.
-		tmpDest := dest + ".synctmp"
+		tmpFile, err := os.CreateTemp(filepath.Dir(dest), ".restore-*")
+		if err != nil {
+			return err
+		}
+		tmpDest := tmpFile.Name()
+		tmpFile.Close()
+		pending = append(pending, pendingRestore{tmpDest, dest})
 		rc, err := zf.Open()
 		if err != nil {
 			return fmt.Errorf("cloudsync: restore open zip entry %q: %w", zf.Name, err)
@@ -567,7 +577,16 @@ func (m *Manager) restoreZip(zipData []byte) error {
 			rc.Close()
 			return fmt.Errorf("cloudsync: restore create tmp %s: %w", tmpDest, err)
 		}
-		_, cpErr := io.Copy(out, io.LimitReader(rc, maxFileBytes))
+		blob, cpErr := io.ReadAll(io.LimitReader(rc, maxFileBytes+1))
+		if cpErr == nil && int64(len(blob)) > maxFileBytes {
+			cpErr = fmt.Errorf("entry exceeds size limit")
+		}
+		if cpErr == nil {
+			blob, cpErr = backupdata.RestoreContent(zf.Name, blob, m.dataDir)
+		}
+		if cpErr == nil {
+			_, cpErr = out.Write(blob)
+		}
 		clErr := out.Close()
 		rc.Close()
 		if cpErr != nil {
@@ -578,6 +597,20 @@ func (m *Manager) restoreZip(zipData []byte) error {
 			os.Remove(tmpDest)
 			return fmt.Errorf("cloudsync: restore close tmp: %w", clErr)
 		}
+		extracted++
+		logx.Printf("cloudsync: restored %s", dest)
+	}
+
+	if extracted == 0 {
+		return fmt.Errorf("cloudsync: restore zip had no recognisable entries")
+	}
+	// Validate and stage every file before replacing any live destination.
+	if m.BeforeRestore != nil {
+		m.BeforeRestore()
+	}
+	for _, p := range pending {
+		tmpDest, dest := p.temp, p.dest
+
 		if err := os.Rename(tmpDest, dest); err != nil {
 			// Windows: destination may be briefly open by antivirus/indexer.
 			// Fall back to copy-then-delete so restore doesn't fail mid-way.
@@ -587,13 +620,8 @@ func (m *Manager) restoreZip(zipData []byte) error {
 			}
 			os.Remove(tmpDest)
 		}
-		extracted++
-		logx.Printf("cloudsync: restored %s", dest)
 	}
 
-	if extracted == 0 {
-		return fmt.Errorf("cloudsync: restore zip had no recognisable entries")
-	}
 	logx.Printf("cloudsync: restore complete — %d files", extracted)
 	return nil
 }

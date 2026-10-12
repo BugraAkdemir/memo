@@ -347,35 +347,75 @@ func (s *Server) handleSendFileStream(w http.ResponseWriter, r *http.Request) {
 
 // ─── Backup / Restore (.memo) ─────────────────────────────────────────────────
 
+type encryptedBackupBridge interface {
+	ExportEncryptedData(bool, string) ([]byte, error)
+	ImportEncryptedData([]byte, string) error
+}
+
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet || s.fullBridge == nil {
-		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+	if s.fullBridge == nil || (r.Method != http.MethodGet && r.Method != http.MethodPost) {
+		http.Error(w, "GET or POST only", 405)
 		return
 	}
-	includeModels := r.URL.Query().Get("include_models") == "true"
-	data, err := s.fullBridge.ExportData(includeModels)
+	var data []byte
+	var err error
+	if r.Method == http.MethodPost {
+		var req struct {
+			IncludeModels bool   `json:"include_models"`
+			Password      string `json:"password"`
+		}
+		if json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&req) != nil {
+			http.Error(w, "invalid backup request", 400)
+			return
+		}
+		bridge, ok := s.fullBridge.(encryptedBackupBridge)
+		if !ok {
+			http.Error(w, "encrypted backup unavailable", 501)
+			return
+		}
+		data, err = bridge.ExportEncryptedData(req.IncludeModels, req.Password)
+	} else {
+		data, err = s.fullBridge.ExportData(r.URL.Query().Get("include_models") == "true")
+	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), 500)
 		return
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", "attachment; filename=memo_backup.memo")
 	w.Write(data)
 }
-
 func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || s.fullBridge == nil {
-		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		http.Error(w, "POST only", 405)
 		return
 	}
 	defer r.Body.Close()
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "read error", http.StatusBadRequest)
-		return
+	var err error
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		var req struct {
+			Data     []byte `json:"data"`
+			Password string `json:"password"`
+		}
+		if json.NewDecoder(r.Body).Decode(&req) != nil {
+			http.Error(w, "invalid backup request", 400)
+			return
+		}
+		bridge, ok := s.fullBridge.(encryptedBackupBridge)
+		if !ok {
+			http.Error(w, "encrypted backup unavailable", 501)
+			return
+		}
+		err = bridge.ImportEncryptedData(req.Data, req.Password)
+	} else {
+		var data []byte
+		data, err = io.ReadAll(r.Body)
+		if err == nil {
+			err = s.fullBridge.ImportData(data)
+		}
 	}
-	if err := s.fullBridge.ImportData(data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
 		return
 	}
 	writeJSON(w, map[string]string{"status": "ok"})

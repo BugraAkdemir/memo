@@ -16,7 +16,7 @@ Kullanıcı 12 Ekim’de kalanların hepsini sırayla bitirmeyi açıkça istedi
 - [x] Hafıza: embedding kesilince pinned fallback'e ulaşma; FTS kurtarma kapsamını belirleme; limit ve timeout testleri.
 - [x] Mobil takvim: dışarıdan ekleme/silme/başlık değişimi için alarm uzlaştırma; başarısız planlamayı tekrar deneme. Gerçek HTTP SSE ve Android platform-kanalı widget testi geçti.
 - [ ] Mobil takvimin gerçek telefon/emülatörde OS alarmı doğrulaması (kod testinden ayrı).
-- [ ] Görseller/yedek: şifreli görseller ve anahtar kurtarma için açık kapsam; yerel config yolu ve okuma hataları; cihazlar arası provider credential restore. Taşınabilir anahtar politikası belirlenmeden sessizce anahtarları yedeğe ekleme.
+- [x] Görseller/yedek: şifreli görseller ve anahtar kurtarma için açık kapsam; yerel config yolu ve okuma hataları; cihazlar arası provider credential restore. Taşınabilir anahtar politikası belirlenmeden sessizce anahtarları yedeğe ekleme.
 - [ ] Karar/doğrulama: sınırlı transcript nedeniyle eksik kanıtın görünürlüğü; gerçek kalite/gecikme/maliyet ölçümü. Puanları ölçülmüş hata olasılığına dönüştürme.
 - [ ] Mobil bağlantı: gerçek Android/iOS/emülatörde cleartext, klavye ve scope yenileme; web'de giriş sonrası onboarding yenilemesi.
 - [ ] Abonelikler: gerçek uzak callback girişi ve Claude kota biçimi; platform sidecar runtime doğrulaması.

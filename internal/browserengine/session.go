@@ -705,3 +705,13 @@ func (m *Manager) dropIdleSession(s *Session) {
 		m.session = nil
 	}
 }
+
+// ResolveExecutable returns the Chromium-family binary Memo would launch for
+// an interactive session — the same resolution the browser pane uses, so a
+// browser installed once from Settings serves every feature that needs one.
+// Other packages that drive their own Chromium (internal/webchat) call this
+// instead of searching the machine a second, different way. A failure wraps
+// ErrBrowserNotInstalled.
+func ResolveExecutable(ctx context.Context) (string, error) {
+	return resolveExecutable(ctx)
+}

@@ -138,12 +138,25 @@
   }
 
   // ---- operations --------------------------------------------------------
+  // A visible button/link whose whole text is "Log in" / "Sign up" ...: only
+  // signed-out visitors see these.
+  function visibleLoginText() {
+    var rx = re(cfg.loginText);
+    if (!rx) return false;
+    var els = document.querySelectorAll('button, a, [role="button"]');
+    for (var i = 0; i < els.length; i++) {
+      var t = (els[i].innerText || '').trim();
+      if (t && t.length < 40 && rx.test(t) && visible(els[i])) return true;
+    }
+    return false;
+  }
+
   function probe() {
     var titleRe = re(cfg.challengeTitle);
     var challenge = (titleRe && titleRe.test(document.title || '')) || anyVisible(cfg.challengeMarkers);
     var path = location.pathname || '';
     var onLoginPath = (cfg.loginPaths || []).some(function (p) { return path.indexOf(p) >= 0; });
-    var login = onLoginPath || anyVisible(cfg.loginMarkers);
+    var login = onLoginPath || anyVisible(cfg.loginMarkers) || visibleLoginText();
     var composer = pickVisible(cfg.composer);
     var state = 'unknown';
     if (challenge) state = 'challenge';

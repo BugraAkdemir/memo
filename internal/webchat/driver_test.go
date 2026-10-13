@@ -87,6 +87,7 @@ func TestAsk_ErrorKinds(t *testing.T) {
 		want ErrKind
 	}{
 		{"login", KindNeedsLogin},
+		{"login_text", KindNeedsLogin},
 		{"challenge", KindChallenge},
 		{"quota", KindQuota},
 		{"silent", KindPageChanged},

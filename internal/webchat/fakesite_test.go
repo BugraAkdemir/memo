@@ -38,6 +38,12 @@ func newFakeChat(t *testing.T) *fakeChat {
 		case "login":
 			fmt.Fprint(w, `<html><title>Home</title><body><a data-testid="login-button" href="/login">Log in</a><div id="prompt-textarea" contenteditable="true" class="ProseMirror"></div></body></html>`)
 			return
+		case "login_text":
+			// What the real signed-out chatgpt.com looks like: a visible
+			// "Log in" button with no test id, hidden /auth/login links, and a
+			// composer that works for anonymous visitors.
+			fmt.Fprint(w, `<html><title>Home</title><body><button>Log in</button><button>Sign up for free</button><a href="/auth/login" style="display:none">Continue with Google</a><div id="prompt-textarea" contenteditable="true" class="ProseMirror"></div><button data-testid="send-button">Send</button></body></html>`)
+			return
 		case "challenge":
 			fmt.Fprint(w, `<html><title>Just a moment...</title><body><div id="challenge-form">checking</div></body></html>`)
 			return

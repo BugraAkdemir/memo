@@ -286,6 +286,23 @@ func isSessionProviderName(name string, configs []provider.ProviderConfig) bool 
 	return false
 }
 
+// providerNameIsOptInOnly reports whether name refers to a provider that must
+// only ever answer the person's own messages — a web chat (ChatGPT / claude.ai
+// through a browser window). Every message to one is a real conversation in
+// the person's real account, so background helper calls (titles, fact
+// extraction, mood, proactive checks…) must never be sent to it.
+func (a *App) providerNameIsOptInOnly(name string) bool {
+	if name == "" || a.providerCfgMgr == nil {
+		return false
+	}
+	for _, p := range a.providerCfgMgr.GetAll() {
+		if p.Name == name {
+			return provider.IsOptInOnly(p.Type)
+		}
+	}
+	return false
+}
+
 // SetActiveProvider selects which provider to use for chat (by provider Name).
 func (a *App) SetActiveProvider(name string) {
 	a.providerMu.Lock()

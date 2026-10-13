@@ -55,3 +55,25 @@ func TestRouter_OptInOnlyProviderIsUsedOnlyWhenPinned(t *testing.T) {
 		t.Fatalf("pinned call count = %d, want 1", calls)
 	}
 }
+
+// "Test connection" sends a real message. For a web chat that is a real
+// conversation in the person's account, so it must not send anything.
+func TestTestConnection_SendsNothingToAnOptInOnlyProvider(t *testing.T) {
+	calls := 0
+	old := externalConstructors[ProviderWebClaude]
+	RegisterConstructor(ProviderWebClaude, func(ProviderConfig) (Provider, error) { return optInStub{&calls}, nil })
+	t.Cleanup(func() {
+		if old != nil {
+			externalConstructors[ProviderWebClaude] = old
+		} else {
+			delete(externalConstructors, ProviderWebClaude)
+		}
+	})
+	cm := &ConfigManager{}
+	if err := cm.TestConnection(&ProviderConfig{Type: ProviderWebClaude, Name: "w", Model: "m"}); err != nil {
+		t.Fatalf("TestConnection: %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("TestConnection sent %d message(s) to a web chat", calls)
+	}
+}

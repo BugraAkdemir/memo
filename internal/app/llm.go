@@ -2002,6 +2002,16 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 		// utility call, with each caller then reporting its own downstream
 		// failure. Skipping is the honest answer; every caller already
 		// treats an empty result as "nothing came back".
+		// A web chat answers only the person's own messages: each call would
+		// open a real conversation in their account, spend its allowance and
+		// risk the account. Helper calls are skipped, exactly like the
+		// image-only case below — every caller treats "" as "nothing came back".
+		// categoryChat is the exception: it is the person's own message (the
+		// incognito chat path), not a background helper.
+		if category != categoryChat && a.providerNameIsOptInOnly(activeName) {
+			logx.Printf("LLM: skipping %s call — the active provider is a web chat, which only answers your own messages", category)
+			return ""
+		}
 		if _, imgModel, ok := a.imageRoute(ctx, providerRouter); ok {
 			logx.Printf("LLM: skipping %s call — active model %q generates images only, no text model available", category, imgModel)
 			return ""

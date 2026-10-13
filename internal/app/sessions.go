@@ -273,7 +273,14 @@ func (a *App) generateChatTitleForSession(sessionID string) string {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	title := strings.TrimSpace(a.callLLM(ctx, prompt, categoryTitle))
+	var title string
+	if a.providerNameIsOptInOnly(a.GetActiveProvider()) {
+		// No helper call may reach a web chat (see callLLM); name the chat
+		// from the person's own first words instead.
+		title = firstWordsTitle(msgs[0].Content)
+	} else {
+		title = strings.TrimSpace(a.callLLM(ctx, prompt, categoryTitle))
+	}
 	if title == "" || strings.HasPrefix(title, "⚠️") {
 		return ""
 	}
@@ -306,4 +313,14 @@ func (a *App) ClearHistory() {
 	if sm != nil {
 		sm.DeleteChat(sm.GetActiveID())
 	}
+}
+
+// firstWordsTitle shortens a message to a chat title: its first six words, no
+// trailing punctuation.
+func firstWordsTitle(s string) string {
+	words := strings.Fields(s)
+	if len(words) > 6 {
+		words = words[:6]
+	}
+	return strings.TrimRight(strings.Join(words, " "), ".,;:!?…")
 }

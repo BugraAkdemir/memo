@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"memo/internal/config"
+	"memo/internal/webchat/webchattest"
 )
 
 // realBrowserService starts a Service for a copy of the ChatGPT table whose
 // start page is the fake site, driving a real headless Chromium. It skips when
 // no Chromium is available, like the other real-browser tests in this repo.
-func realBrowserService(t *testing.T, f *fakeChat) *Service {
+func realBrowserService(t *testing.T, f *webchattest.FakeChat) *Service {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("real-Chromium test")
@@ -27,7 +28,7 @@ func realBrowserService(t *testing.T, f *fakeChat) *Service {
 	t.Cleanup(func() { headless = false })
 
 	site := chatgptSite
-	site.StartURL = f.srv.URL + "/new"
+	site.StartURL = f.URL()
 	svc := &Service{site: &site, resolve: realResolve}
 	if _, err := svc.resolve(context.Background()); err != nil {
 		t.Skipf("no usable Chromium: %v", err)
@@ -46,7 +47,7 @@ func ask(t *testing.T, svc *Service, prompt string) (string, error) {
 }
 
 func TestAsk_StreamsMarkdownAndFinishes(t *testing.T) {
-	f := newFakeChat(t)
+	f := webchattest.New(t)
 	svc := realBrowserService(t, f)
 
 	got, err := ask(t, svc, "Say hello\nin two lines")
@@ -61,13 +62,13 @@ func TestAsk_StreamsMarkdownAndFinishes(t *testing.T) {
 	if strings.Contains(got, "Copy") {
 		t.Errorf("a button's label leaked into the reply:\n%s", got)
 	}
-	if msg, _ := f.lastMsg.Load().(string); !strings.Contains(msg, "Say hello") || !strings.Contains(msg, "in two lines") {
+	if msg := f.LastMessage(); !strings.Contains(msg, "Say hello") || !strings.Contains(msg, "in two lines") {
 		t.Errorf("the page received %q; the multi-line prompt must arrive whole", msg)
 	}
 }
 
 func TestAsk_EveryTurnIsAFreshConversation(t *testing.T) {
-	f := newFakeChat(t)
+	f := webchattest.New(t)
 	svc := realBrowserService(t, f)
 	for i := 0; i < 2; i++ {
 		got, err := ask(t, svc, "again")
@@ -94,8 +95,8 @@ func TestAsk_ErrorKinds(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.mode, func(t *testing.T) {
-			f := newFakeChat(t)
-			f.mode.Store(c.mode)
+			f := webchattest.New(t)
+			f.SetMode(c.mode)
 			svc := realBrowserService(t, f)
 			old := startTimeout
 			startTimeout = 2 * time.Second
@@ -119,19 +120,19 @@ func TestAsk_ErrorKinds(t *testing.T) {
 }
 
 func TestAsk_NoLoginMeansNothingWasSent(t *testing.T) {
-	f := newFakeChat(t)
-	f.mode.Store("login")
+	f := webchattest.New(t)
+	f.SetMode("login")
 	svc := realBrowserService(t, f)
 	if _, err := ask(t, svc, "secret question"); KindOf(err) != KindNeedsLogin {
 		t.Fatalf("want needs_login, got %v", err)
 	}
-	if n := f.sends.Load(); n != 0 {
+	if n := int32(f.Sends()); n != 0 {
 		t.Fatalf("a signed-out page received %d message(s); nothing may be typed before sign-in is confirmed", n)
 	}
 }
 
 func TestAsk_BrowserRestartsAfterItIsClosed(t *testing.T) {
-	f := newFakeChat(t)
+	f := webchattest.New(t)
 	svc := realBrowserService(t, f)
 	if _, err := ask(t, svc, "one"); err != nil {
 		t.Fatal(err)
@@ -147,7 +148,7 @@ func TestAsk_BrowserRestartsAfterItIsClosed(t *testing.T) {
 }
 
 func TestAsk_OnlyOneTurnAtATime(t *testing.T) {
-	f := newFakeChat(t)
+	f := webchattest.New(t)
 	svc := realBrowserService(t, f)
 	svc.busy.Lock()
 	defer svc.busy.Unlock()

@@ -352,6 +352,12 @@ func (cm *ConfigManager) TestConnection(cfg *ProviderConfig) error {
 	if err != nil {
 		return err
 	}
+	// A web chat has no "reachable" to test: the only probe is a real message
+	// in the person's real account. Its readiness (signed in or not) is shown
+	// in Settings › Web chat instead.
+	if IsOptInOnly(cfg.Type) {
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 

@@ -1,3 +1,11 @@
+# Son oturum — 2026-10-13 — v4.6.0 yayını
+- Kullanıcının açık yetkisiyle `v4.6.0` etiketi `4d6e9aa0` üzerinde pushlandı. GitHub Release yayımlandı (ön sürüm değil); İngilizce gövdeye Türkçe etiketli not bağlantısı eklendi. Etiketli Android `38310408519`, iOS `38310408512`, Linux `38310408497`, macOS `38310408612`, Windows `38310408716` ve Docker `38310408637` CI koşuları **success**.
+- R2 sabit adresleri `memo.exe`, `memo.tar.gz`, `memo.AppImage`, `memo-mac.zip`, `memo.apk`, `memo.ipa`, `memo_arm.zip`: HEAD 200, Last-Modified etiket CI yayınıyla taze. GitHub Release varlıkları 8/8.
+- `/home/bugra/Documents/memo-web` `3e30a90` ile EN/TR v4.6 notları, iOS/AppImage indirmeleri, mobil kurulum ve emekli `gemini-sub` açıklamaları güncellendi; GitHub'a pushlandı, Vercel success. Üretim build 126/126 prerender; değişen JS/JSX ESLint PASS, `git diff --check` temiz. Tam `npm run lint` 10 önceden var olan ve değişiklik dışı hata verdi. Canlı Chromium'da EN/TR ana, mobil, sürüm notu ve kurulum sayfaları açıldı; iOS düğmesi doğru IPA'ya gidiyor, JS/aynı-origin HTTP hata yok. Site deposundaki kullanıcıya ait `src/.data.js.kate-swp` silinmiş durumu ile `supabase/.temp/cli-latest` dokunulmadan bırakıldı.
+- Ayrı `/home/bugra/Documents/version` deposunda `5977ae5` ile beacon `V4.6.0` yapılıp pushlandı; Vercel success, canlı `version-zeta.vercel.app/version.json` `V4.6.0`. Memo kodu bu oturumda değişmedi; yayın öncesi Go/Flutter testleri önceki oturumda yeşildi. Gerçek cihaz/OAuth/model kalite sınamaları hâlâ üstteki açık maddelerde.
+
+---
+
 # Son oturum — 2026-10-12 — v4.6.0 yayın hazırlığı
 - İlk push `1e1eb29b`: sekiz işin tamamı yeşil. Sürüm hazırlığı `fc9f657d`: CI/Docker/canary/Android/iOS/macOS yeşil, Windows Chocolatey 504 yüzünden kırmızı; bu sürüm koduyla ilgili değildi. Son kod SHA `cf755817`: CI, canary, Docker, Linux (x86_64+ARM64), macOS ve Windows tümü yeşil. Android/iOS workflowları bu SHA'da filtre gereği açılmadı; sürüm değişikliğini içeren `fc9f657d` koşularında yeşil.
 - `5f291ab3` yedek düzeltmesi: export 200 MiB/dosya ve 500 MiB/toplam restore sınırını aşan arşivi reddeder; `/api/import` şifreli JSON/base64 gövdesi için 700 MiB kabul eder; GGUF sınırı TR/EN görünür. Hedefli testler PASS.

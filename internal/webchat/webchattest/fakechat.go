@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package webchat
+// Package webchattest serves a stand-in chat page for tests: the DOM hooks the
+// site tables in internal/webchat name, with a reply that appears piece by
+// piece. It proves Memo's logic against the page SHAPE; it says nothing about
+// whether the real sites still look like this.
+package webchattest
 
 import (
 	"fmt"
@@ -19,8 +23,8 @@ import (
 // piece. It is served over real HTTP and driven by a real Chromium. It proves
 // Memo's logic against the page shape; it does NOT prove the real sites still
 // look like this (see Site.Verified).
-type fakeChat struct {
-	srv *httptest.Server
+type FakeChat struct {
+	srv *httptest.Server // URL() is its address
 	// behaviour switches
 	mode    atomic.Value // "ok" | "login" | "challenge" | "quota" | "silent"
 	sends   atomic.Int32
@@ -29,8 +33,9 @@ type fakeChat struct {
 
 const fakeReplyHTML = `<p>Hello <strong>world</strong>, here is a list:</p><ul><li>one</li><li>two</li></ul><pre><button>Copy</button><code class="language-go">fmt.Println("hi")</code></pre><p>Done.</p>`
 
-func newFakeChat(t *testing.T) *fakeChat {
-	f := &fakeChat{}
+// New starts the fake site; it is closed with the test.
+func New(t *testing.T) *FakeChat {
+	f := &FakeChat{}
 	f.mode.Store("ok")
 	mux := http.NewServeMux()
 	mux.HandleFunc("/new", func(w http.ResponseWriter, r *http.Request) {
@@ -119,3 +124,15 @@ func jsParts() string {
 	sb.WriteString("]")
 	return sb.String()
 }
+
+// URL is the page a Site's StartURL should point at.
+func (f *FakeChat) URL() string { return f.srv.URL + "/new" }
+
+// SetMode picks the page behaviour: ok, login, login_text, challenge, quota, silent.
+func (f *FakeChat) SetMode(m string) { f.mode.Store(m) }
+
+// Sends is how many messages the page has received.
+func (f *FakeChat) Sends() int { return int(f.sends.Load()) }
+
+// LastMessage is the text of the last message the page received.
+func (f *FakeChat) LastMessage() string { s, _ := f.lastMsg.Load().(string); return s }

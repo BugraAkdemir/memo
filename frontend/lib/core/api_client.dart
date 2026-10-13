@@ -1455,6 +1455,30 @@ class MemoApiClient {
     _applyRemoteToken(res.data);
   }
 
+  // ─── Web chat (ChatGPT / claude.ai through a browser window, Beta) ───
+
+  /// Per-site state: {beta, notice_version, sites:[{site, name, running,
+  /// state, verified, installed, connecting, error?, consented}]}.
+  Future<Map<String, dynamic>> getWebChat() async {
+    final res = await _dio.get('/api/webchat');
+    final data = _guard<Map>(res.data);
+    return Map<String, dynamic>.from(data);
+  }
+
+  /// [action]: consent | revoke | connect | disconnect. Returns the new state.
+  Future<Map<String, dynamic>> webChatAction(
+    String action,
+    String site, {
+    bool forget = false,
+  }) async {
+    final res = await _dio.post(
+      '/api/webchat',
+      data: {'action': action, 'site': site, if (forget) 'forget': true},
+    );
+    final data = _guard<Map>(res.data);
+    return Map<String, dynamic>.from(data);
+  }
+
   /// Toggles experimental (beta) features.
   Future<void> setBeta(bool enabled) async {
     await _dio.put('/api/remote-access', data: {'beta': enabled});

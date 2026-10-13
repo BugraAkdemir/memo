@@ -153,6 +153,8 @@ class ProviderDefaults {
     'cline': 'anthropic/claude-opus-5',
     'claude-code-cli': 'claude-code',
     'codex-cli': 'codex',
+    'web-chatgpt': 'chatgpt-web',
+    'web-claude': 'claude-web',
   };
 
   static const Map<String, String> defaultBaseUrls = {
@@ -183,6 +185,8 @@ class ProviderDefaults {
     'cline': 'Cline',
     'claude-code-cli': 'Claude Code (CLI)',
     'codex-cli': 'Codex (CLI)',
+    'web-chatgpt': 'ChatGPT (Web)',
+    'web-claude': 'Claude (Web)',
     'custom': 'Özel (OpenAI uyumlu)',
     'custom-anthropic': 'Özel (Anthropic uyumlu)',
   };
@@ -231,6 +235,13 @@ class ProviderDefaults {
 
   static bool isCLIType(String type) => cliTypes.contains(type);
 
+  /// Web chats (Beta): ChatGPT / claude.ai driven through a browser window.
+  /// They are created from Settings → Web chat (where the notice is
+  /// confirmed), never from the provider picker, and have no API key.
+  static const Set<String> webChatTypes = {'web-chatgpt', 'web-claude'};
+
+  static bool isWebChatType(String type) => webChatTypes.contains(type);
+
   /// Providers whose available models are fetched dynamically from the API
   /// (via /api/providers/models, or — for openrouter/kilo — their own
   /// dedicated pricing/free-aware endpoint) instead of the user typing one
@@ -274,7 +285,8 @@ class ProviderDefaults {
       type != 'ollama' &&
       type != 'custom' &&
       type != 'custom-anthropic' &&
-      !isCLIType(type);
+      !isCLIType(type) &&
+      !isWebChatType(type);
 
   /// Providers that require the user to supply a Base URL (no sensible default).
   static bool needsBaseUrl(String type) =>

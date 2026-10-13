@@ -521,6 +521,37 @@ class L10n {
     'dev_gateway_claude_cli_model_none': 'Model seçilmedi',
     'dev_gateway_claude_cli_model_disabled_hint':
         'Model seçmeden önce yukarıdan bağlan.',
+    'tab_web_chat': 'Web sohbet',
+    'web_chat_desc':
+        "ChatGPT veya Claude'un web sohbetini, kendi hesabınla, API yerine kullan. Memo senin giriş yaptığın gerçek bir tarayıcı penceresine yazar ve cevabı oradan okur. Yalnızca metin: araç çağırma yok.",
+    'web_chat_risk_short':
+        'Bu, sitelerin kullanım şartlarının kısıtladığı bir otomasyondur; hesabın sınırlanabilir veya kapatılabilir. Deneyseldir, siteler haber vermeden değişir ve çalışmayı bırakabilir. Yalnızca riskini göze aldığın bir hesapla kullan.',
+    'web_chat_beta_off': 'Önce Beta Özellikleri sekmesinden Beta\'yı aç.',
+    'web_chat_enable': 'Uyarıyı oku ve etkinleştir',
+    'web_chat_connect': 'Bağlan',
+    'web_chat_disconnect': 'Pencereyi kapat',
+    'web_chat_forget': 'Oturumu sil',
+    'web_chat_revoke': 'Onayı geri çek',
+    'web_chat_add_model': 'Modellerime ekle',
+    'web_chat_added': 'Modellerde var',
+    'web_chat_experimental': 'Deneysel',
+    'web_chat_experimental_tip':
+        'Bu sitenin sayfa yapısı, giriş yapılmış bir hesapla henüz doğrulanmadı.',
+    'web_chat_state_not_enabled': 'Etkin değil — önce uyarıyı onayla.',
+    'web_chat_state_idle': 'Bağlı değil. Bağlan\'a basıp açılan pencerede giriş yap.',
+    'web_chat_state_connecting':
+        'Memo penceresi açık. Orada giriş yap veya insan doğrulamasını tamamla.',
+    'web_chat_state_ready': 'Hazır — giriş yapılmış.',
+    'web_chat_state_login': 'Giriş yapılmamış. Bağlan\'a basıp giriş yap.',
+    'web_chat_state_challenge': 'Site insan doğrulaması istiyor. Memo penceresinde tamamla.',
+    'web_chat_state_unknown': 'Sayfa tanınamadı. Bağlan\'ı tekrar dene.',
+    'web_chat_state_no_browser':
+        'Chromium tabanlı bir tarayıcı bulunamadı. Ayarlar › Genel\'den kur.',
+    'web_chat_notice_title': '\${site} web sohbeti — önemli uyarı',
+    'web_chat_notice_body':
+        "Bu özellik mesajlarını resmi API yerine \${site} sitesi üzerinden, kendi hesabınla ve bir yazılım tarafından yönetilen tarayıcı penceresinde gönderir.\n\n• Sitenin kullanım şartları web uygulamasının otomatik kullanımını kısıtlar. Hesabın sınırlanabilir veya kapatılabilir.\n• Memo girişi ya da insan doğrulamasını aşmaya çalışmaz; bunları sen yaparsın. Şifren Memo'ya hiç girmez.\n• Deneyseldir: site haber vermeden değişir ve özellik çalışmayı bırakabilir. Diğer sağlayıcıların etkilenmez.\n• Mesajların \${site} şirketine hesabın altında gider ve onların gizlilik politikasına tabidir.\n• Yalnızca metin: dosya, görsel ve araç çağırma desteklenmez.\n• Sonuçlarından yalnızca sen sorumlusun.",
+    'web_chat_notice_accept': 'Riski anlıyorum ve kabul ediyorum',
+    'web_chat_notice_confirm': 'Etkinleştir',
     'tab_subscriptions': 'Abonelikler',
     'subs_desc':
         "Antigravity, Claude veya Codex hesabınla giriş yap; o hesabın bütün modelleri sohbetteki model seçicide, /model komutunda ve yerel :8090/v1 geçidinde kullanılabilir olur. İşi Memo'nun içinde gelen CLIProxyAPI yapar; internetten bir şey indirilmez.",
@@ -2979,6 +3010,37 @@ class L10n {
     'dev_gateway_claude_cli_model_none': 'No model selected',
     'dev_gateway_claude_cli_model_disabled_hint':
         'Connect above before picking a model.',
+    'tab_web_chat': 'Web chat',
+    'web_chat_desc':
+        "Use ChatGPT's or Claude's web chat with your own account instead of an API. Memo types into a real browser window you sign in to and reads the reply from it. Text only: no tool calling.",
+    'web_chat_risk_short':
+        "This is automation that the sites' terms restrict; your account could be limited or closed. It is experimental, the sites change without notice and it can stop working. Use it only with an account you are willing to risk.",
+    'web_chat_beta_off': 'Turn Beta on first, in the Beta Features tab.',
+    'web_chat_enable': 'Read the notice and enable',
+    'web_chat_connect': 'Connect',
+    'web_chat_disconnect': 'Close window',
+    'web_chat_forget': 'Forget sign-in',
+    'web_chat_revoke': 'Withdraw confirmation',
+    'web_chat_add_model': 'Add to my models',
+    'web_chat_added': 'In your models',
+    'web_chat_experimental': 'Experimental',
+    'web_chat_experimental_tip':
+        "This site's page layout has not been checked with a signed-in account yet.",
+    'web_chat_state_not_enabled': 'Not enabled — confirm the notice first.',
+    'web_chat_state_idle': 'Not connected. Press Connect and sign in in the window that opens.',
+    'web_chat_state_connecting':
+        'The Memo window is open. Sign in there or finish the human check.',
+    'web_chat_state_ready': 'Ready — signed in.',
+    'web_chat_state_login': 'Not signed in. Press Connect and sign in.',
+    'web_chat_state_challenge': 'The site wants a human check. Finish it in the Memo window.',
+    'web_chat_state_unknown': 'The page was not recognised. Try Connect again.',
+    'web_chat_state_no_browser':
+        'No Chromium-based browser found. Install one from Settings › General.',
+    'web_chat_notice_title': '\${site} web chat — important notice',
+    'web_chat_notice_body':
+        "This feature sends your messages through the \${site} website, with your own account, in a browser window driven by software, instead of through the official API.\n\n• The site's terms restrict automated use of its web app. Your account could be limited or closed.\n• Memo does not try to get around sign-in or human checks; you do those yourself. Your password never enters Memo.\n• It is experimental: the site changes without notice and the feature can stop working. Your other providers are not affected.\n• Your messages go to \${site}'s company under your account and are covered by their privacy policy.\n• Text only: files, images and tool calling are not supported.\n• You alone are responsible for the consequences.",
+    'web_chat_notice_accept': 'I understand and accept this risk',
+    'web_chat_notice_confirm': 'Enable',
     'tab_subscriptions': 'Subscriptions',
     'subs_desc':
         "Sign in with an Antigravity, Claude or Codex account and every model that account offers becomes available in the chat's model selector, the /model command and the local :8090/v1 gateway. CLIProxyAPI, which ships inside Memo, does the work; nothing is downloaded from the internet.",

@@ -34,6 +34,7 @@ import 'settings/tabs/whatsapp_tab.dart';
 import 'settings/tabs/telegram_tab.dart';
 import 'settings/tabs/live_mode_tab.dart';
 import 'settings/tabs/subscriptions_tab.dart';
+import 'settings/tabs/web_chat_tab.dart';
 import 'settings/tabs/code_submode_prompts_tab.dart';
 
 /// Settings dialog: a searchable, grouped rail on the left, tab content on
@@ -106,14 +107,15 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/microphone.svg', // Live Mode
     'lib/icon/slash/key.svg', // Subscriptions
     'lib/icon/slash/code.svg', // Code Mode Prompts
+    'lib/icon/slash/globe.svg', // Web chat (Beta)
   ];
 
   /// Tab indices grouped under an eyebrow header, in sidebar display order.
-  /// Every index 0..26 must appear exactly once — covered by
+  /// Every index 0..27 must appear exactly once — covered by
   /// settings_dialog_test.dart's group-coverage test.
   static const _groups = [
     ('settings_group_general', [0, 1, 2]),
-    ('settings_group_providers', [5, 6, 25, 15, 22, 23, 24]),
+    ('settings_group_providers', [5, 6, 25, 27, 15, 22, 23, 24]),
     ('settings_group_memory', [3, 4, 9, 10, 21]),
     ('settings_group_agents', [7, 8, 11, 18, 26]),
     ('settings_group_system', [12, 13, 14, 20]),
@@ -148,6 +150,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_live_mode'),
     L10n.t('tab_subscriptions'),
     L10n.t('code_submode_prompts_tab_title'),
+    L10n.t('tab_web_chat'),
   ];
 
   /// Tab indices hidden for the current session's account permissions
@@ -166,6 +169,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     if (!perms.whatsapp) hidden.add(22);
     if (!perms.telegram) hidden.add(23);
     if (!perms.models) hidden.add(25); // Subscriptions
+    if (!perms.models) hidden.add(27); // Web chat
     return hidden;
   }
 
@@ -384,6 +388,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 24: return const LiveModeTab();
       case 25: return const SubscriptionsTab();
       case 26: return const CodeSubModePromptsTab();
+      case 27: return const WebChatTab();
       default: return const SizedBox.shrink();
     }
   }

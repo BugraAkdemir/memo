@@ -224,6 +224,10 @@ type claudeBlock struct {
 	ToolUseID string `json:"tool_use_id,omitempty"`
 	Content   string `json:"content,omitempty"`
 
+	// CacheControl marks a prompt-cache breakpoint on a block we build (never on
+	// a replayed raw block — see markRollingCacheBreakpoint).
+	CacheControl *claudeCacheControl `json:"cache_control,omitempty"`
+
 	// raw is the block exactly as the API sent it, kept for replay. Set only
 	// by UnmarshalJSON; a block built in code marshals field by field.
 	raw json.RawMessage
@@ -336,6 +340,13 @@ func carriesCacheControl(clReq claudeRequest) bool {
 			return true
 		}
 	}
+	for _, m := range clReq.Messages {
+		for _, b := range m.Content {
+			if b.CacheControl != nil {
+				return true
+			}
+		}
+	}
 	return false
 }
 
@@ -365,7 +376,49 @@ func stripCacheControl(clReq claudeRequest) claudeRequest {
 		}
 		clReq.Tools = tools
 	}
+	// The messages slice (and each content slice) is shared with the caller's
+	// request value, so clear the breakpoint on copies.
+	if n := len(clReq.Messages); n > 0 {
+		msgs := make([]claudeMsg, n)
+		copy(msgs, clReq.Messages)
+		for i := range msgs {
+			blocks := make([]claudeBlock, len(msgs[i].Content))
+			copy(blocks, msgs[i].Content)
+			for j := range blocks {
+				blocks[j].CacheControl = nil
+			}
+			msgs[i].Content = blocks
+		}
+		clReq.Messages = msgs
+	}
 	return clReq
+}
+
+// markRollingCacheBreakpoint puts a cache breakpoint on the last block of the
+// last message. An agent turn calls the model again and again with the same
+// growing conversation: system + tools were already cached, but every tool
+// result since the start of the turn was re-read at full price on each
+// iteration. With the breakpoint on the newest block, the next iteration finds
+// everything up to it cached and pays full price only for what was added.
+// Only a block we built is marked: replayed thinking blocks are sent
+// byte-for-byte (and are not cacheable targets), and an empty block cannot
+// carry the marker.
+func markRollingCacheBreakpoint(msgs []claudeMsg) {
+	if len(msgs) == 0 {
+		return
+	}
+	last := &msgs[len(msgs)-1]
+	if len(last.Content) == 0 {
+		return
+	}
+	b := &last.Content[len(last.Content)-1]
+	if len(b.raw) > 0 {
+		return
+	}
+	switch b.Type {
+	case "text", "tool_result", "tool_use":
+		b.CacheControl = &claudeCacheControl{Type: "ephemeral"}
+	}
 }
 
 // postMessages sends one /messages request, retrying once without whichever
@@ -903,6 +956,9 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 	}
 	if cacheable && len(clReq.Tools) > 0 {
 		clReq.Tools[len(clReq.Tools)-1].CacheControl = &claudeCacheControl{Type: "ephemeral"}
+	}
+	if cacheable {
+		markRollingCacheBreakpoint(clReq.Messages)
 	}
 
 	if clReq.MaxTokens <= 0 {

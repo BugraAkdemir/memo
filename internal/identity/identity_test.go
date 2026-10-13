@@ -563,3 +563,15 @@ func TestCapabilitiesBlock_MentionsTheBrowserOnlyWhileBetaIsOn(t *testing.T) {
 		t.Errorf("hint omits the browser with Beta on: %q", on)
 	}
 }
+
+// The persona tells the model to be brief; without a carve-out that brevity
+// leaked into code, which came out shortened or with "...rest unchanged".
+func TestBuildSystemPrompt_BriefnessDoesNotApplyToCode(t *testing.T) {
+	id := New("User", "Memo", "casual", "", false)
+	p := id.BuildSystemPrompt(nil, true, false, false, false, false)
+	for _, want := range []string{`When you write code`, `never for the code`, `no "...rest unchanged" placeholders`} {
+		if !strings.Contains(p, want) {
+			t.Errorf("system prompt lacks %q", want)
+		}
+	}
+}

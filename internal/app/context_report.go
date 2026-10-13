@@ -12,7 +12,6 @@ import (
 	"memo/internal/agent"
 	"memo/internal/api"
 	"memo/internal/cliproxy"
-	"memo/internal/memory"
 	"memo/internal/models"
 	"memo/internal/truncate"
 )
@@ -378,11 +377,14 @@ func isCompactSummary(m api.Message) bool {
 
 // noteContextSnap records the make-up of the prompt buildMessagesForSession just
 // assembled for chatID. history is what went into the prompt (a compaction
-// summary, when there is one, is its first message); systemTokens covers the
-// whole system prompt, of which the retrieved memories and the active-skill
-// block are shown apart.
-func (a *App) noteContextSnap(chatID string, window int, history []api.Message, memories []memory.MemoryResult, systemTokens, skillTokens, toolTokens, userTokens int) {
-	s := contextSnap{window: window, tools: toolTokens, current: userTokens, skills: skillTokens}
+// summary, when there is one, is its first message). systemTokens covers the
+// whole system prompt, of which the active-skill block is shown apart;
+// userTokens covers the current user message, of which the retrieved-memory
+// block (memoryTokens — it rides on that message, not in the system prompt, so
+// the system prompt stays cache-stable) is shown apart.
+func (a *App) noteContextSnap(chatID string, window int, history []api.Message, memoryTokens, systemTokens, skillTokens, toolTokens, userTokens int) {
+	s := contextSnap{window: window, tools: toolTokens, skills: skillTokens, memory: memoryTokens}
+	s.current = max(userTokens-memoryTokens, 0)
 	s.provider, s.model = a.activeModelIdentity()
 	if len(history) > 0 && isCompactSummary(history[0]) {
 		s.summary = truncate.EstimateTokens(history[0].GetTextContent())
@@ -395,13 +397,6 @@ func (a *App) noteContextSnap(chatID string, window int, history []api.Message, 
 	} else {
 		s.history = estimateHistoryTokens(history)
 	}
-	for _, m := range memories {
-		s.memory += truncate.EstimateTokens(m.Content)
-	}
-	// The memory block is part of the system prompt, never more than it.
-	if s.memory+s.skills > systemTokens {
-		s.memory = max(systemTokens-s.skills, 0)
-	}
-	s.system = max(systemTokens-s.memory-s.skills, 0)
+	s.system = max(systemTokens-s.skills, 0)
 	a.recordContextSnap(chatID, s)
 }

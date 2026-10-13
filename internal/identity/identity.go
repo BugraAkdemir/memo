@@ -268,47 +268,67 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		}
 	}
 
-	// Memory context — truncate to fit within a reasonable budget. Included
-	// even in MinimalMode: memory has its own separate on/off switch
-	// (cfg.Memory.MemoryEnabled, checked by the caller before ever passing
-	// memories in here), so MinimalMode only ever strips identity/persona
-	// injection, never memory.
+	// Memory context (see BuildMemoryBlock). Included even in MinimalMode:
+	// memory has its own separate on/off switch (cfg.Memory.MemoryEnabled,
+	// checked by the caller before ever passing memories in here), so
+	// MinimalMode only ever strips identity/persona injection, never memory.
+	if memBlock := id.BuildMemoryBlock(memories, stripAssistant, memBudget); memBlock != "" {
+		if sb.Len() > 0 {
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(memBlock)
+	}
+
+	return sb.String()
+}
+
+// BuildMemoryBlock renders the retrieved-memories block, truncated to
+// memoryTokenBudget (MaxMemoryContextTokens when <= 0), or "" when there is
+// nothing to say. BuildSystemPrompt used to embed it at the end of the system
+// prompt; because retrieval depends on the current message, that block differs
+// from turn to turn, and a changing system prompt invalidates every prompt
+// cache (the provider's prefix cache, the local server's KV cache) for the
+// whole conversation after it. Callers that care about caching take the block
+// from here and put it on the current user message instead, leaving the system
+// prompt byte-stable (see App.buildMessagesForSession).
+func (id *Identity) BuildMemoryBlock(memories []memory.MemoryResult, stripAssistant bool, memoryTokenBudget int) string {
+	memBudget := MaxMemoryContextTokens
+	if memoryTokenBudget > 0 {
+		memBudget = memoryTokenBudget
+	}
+	userName, _, _, _ := id.GetProfile()
+
 	var memoryBlock string
 	if stripAssistant {
 		memoryBlock = memory.FormatMemoriesUserOnly(memories)
 	} else {
 		memoryBlock = memory.FormatMemoriesForPrompt(memories)
 	}
-	if memoryBlock != "" {
-		// Ensure memories don't exceed memBudget (MaxMemoryContextTokens
-		// unless the caller passed a tighter one — see memoryTokenBudget's
-		// doc comment above) — leaves room for identity + conversation.
-		blockTokens := truncate.EstimateTokens(memoryBlock)
-		if blockTokens > memBudget {
-			// Truncate the memory block to fit
-			lines := strings.Split(memoryBlock, "\n")
-			var truncated []string
-			total := 0
-			for _, line := range lines {
-				lineTokens := truncate.EstimateTokens(line)
-				if total+lineTokens > memBudget {
-					truncated = append(truncated, "... (more memories available)")
-					break
-				}
-				total += lineTokens
-				truncated = append(truncated, line)
+	if memoryBlock == "" {
+		return ""
+	}
+	// Ensure memories don't exceed memBudget — leaves room for identity +
+	// conversation.
+	if truncate.EstimateTokens(memoryBlock) > memBudget {
+		lines := strings.Split(memoryBlock, "\n")
+		var truncated []string
+		total := 0
+		for _, line := range lines {
+			lineTokens := truncate.EstimateTokens(line)
+			if total+lineTokens > memBudget {
+				truncated = append(truncated, "... (more memories available)")
+				break
 			}
-			memoryBlock = strings.Join(truncated, "\n")
+			total += lineTokens
+			truncated = append(truncated, line)
 		}
-
-		if sb.Len() > 0 {
-			sb.WriteString("\n\n")
-		}
-		fmt.Fprintf(&sb, "Relevant memories from past conversations with %s — background context for continuity; don't mention recalling them unless asked.", userName)
-		sb.WriteString(memoryBlock)
-		sb.WriteString("\nDon't invent details beyond these, and don't repeat their timestamps verbatim. Always write a fresh reply to the current message.")
+		memoryBlock = strings.Join(truncated, "\n")
 	}
 
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Relevant memories from past conversations with %s — background context for continuity; don't mention recalling them unless asked.", userName)
+	sb.WriteString(memoryBlock)
+	sb.WriteString("\nDon't invent details beyond these, and don't repeat their timestamps verbatim. Always write a fresh reply to the current message.")
 	return sb.String()
 }
 
@@ -327,6 +347,7 @@ How you speak:
 - You can curse or call someone out when it's warranted. If the user's doing something wrong or talking nonsense, you say so straight.
 - No fake enthusiasm like "Absolutely!", "Great question!", "Of course!". Never.
 - No long-winded filler. Short, to the point, answer what was actually asked.
+- When you write code, the "short" rule is for the talk around it, never for the code: complete, correct, runnable, in a fenced block with its language — no "...rest unchanged" placeholders, no cut-off files. Think it through before you answer; a wrong quick answer is worse than a right one that takes longer.
 
 Your limits:
 - You don't help with anything that would harm the user — but you say so like a person, not a robot.

@@ -705,17 +705,53 @@ func TestIntegration_MemoryBlock_CappedAndUserOnly(t *testing.T) {
 	}
 
 	_, reqs := h.turn(t, "kullanici hakkinda ne biliyorsun kalici gercek")
-	sys := firstAgentReq(t, reqs).system()
+	req := firstAgentReq(t, reqs)
+	sys := req.system()
+	all := req.allText()
 
-	if !strings.Contains(sys, "RELEVANT MEMORIES") {
-		t.Fatalf("no memory block in the system prompt:\n%s", sys)
+	// The block rides on the current user message, NOT in the system prompt:
+	// it changes with every message, and a changing system prompt invalidates
+	// the prompt cache for the whole conversation after it.
+	if strings.Contains(sys, "RELEVANT MEMORIES") {
+		t.Fatalf("the memory block is back in the system prompt (breaks prompt caching):\n%s", sys)
 	}
-	if pinned := strings.Count(sys, "importance=pinned"); pinned > 10 {
+	if !strings.Contains(all, "RELEVANT MEMORIES") {
+		t.Fatalf("no memory block reached the model:\n%s", all)
+	}
+	if pinned := strings.Count(all, "importance=pinned"); pinned > 10 {
 		t.Errorf("pinned facts in prompt = %d, want <= 10 (pinned_facts_per_turn)", pinned)
 	}
 	// stripAssistant: none of Memo's stored replies may appear.
-	if strings.Contains(sys, "MEMONUN CEVABI") {
-		t.Errorf("assistant reply text leaked into the memory block despite stripAssistant:\n%s", sys)
+	if strings.Contains(all, "MEMONUN CEVABI") {
+		t.Errorf("assistant reply text leaked into the memory block despite stripAssistant:\n%s", all)
+	}
+}
+
+// Two turns with different messages (so different retrieved memories) must send
+// a byte-identical system prompt: that is what lets the provider's prompt cache
+// and the local server's KV cache keep the whole conversation prefix.
+func TestIntegration_SystemPromptIsByteStableAcrossTurns(t *testing.T) {
+	fp := newFakeProvider(t, func(n int, req map[string]any) map[string]any {
+		return respText("fake-model", "ok", 100, 5)
+	})
+	h := newLongSessionApp(t, fp, true)
+	h.a.cfgMu.Lock()
+	h.a.cfg.Memory.MinSimilarity = 0
+	h.a.cfgMu.Unlock()
+	ctx := context.Background()
+	for i := 0; i < 6; i++ {
+		if err := h.a.store.SaveExplicit(ctx, fmt.Sprintf("kullanici hakkinda kalici gercek numara %d", i), "profile"); err != nil {
+			t.Fatalf("SaveExplicit: %v", err)
+		}
+	}
+
+	_, reqs1 := h.turn(t, "kullanici hakkinda ne biliyorsun kalici gercek")
+	first := firstAgentReq(t, reqs1).system()
+	_, reqs2 := h.turn(t, "baska bir konu tamamen farkli bir soru soruyorum")
+	second := firstAgentReq(t, reqs2).system()
+
+	if first == "" || first != second {
+		t.Errorf("system prompt changed between turns (prompt caches are invalidated):\n--- turn 1 ---\n%s\n--- turn 2 ---\n%s", first, second)
 	}
 }
 

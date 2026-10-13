@@ -335,7 +335,12 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 			}
 		}
 	default:
-		systemPrompt = a.identity.BuildSystemPrompt(memories, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable(), memoryBudget)
+		// No memories here on purpose: the retrieved block differs from turn to
+		// turn, and a changing system prompt invalidates the provider's prompt
+		// cache (and the local server's KV cache) for the entire conversation
+		// after it. The block rides on the current user message below, next to
+		// the time block, so everything before it stays byte-identical.
+		systemPrompt = a.identity.BuildSystemPrompt(nil, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
 		if !minimal {
 			// Mood is fully opt-in. When the engine is disabled the model is driven
 			// solely by the configured system prompt: no directive, no neutral block,
@@ -367,6 +372,15 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// digest (it is coding infra, the whole point) but drops the time block
 	// (irrelevant to a coding turn, and it is the volatile part).
 	volatileCtx := ""
+	// Retrieved memories: independent of Minimal Mode (memory has its own
+	// switch, and `memories` is empty in Code Mode and when memory is off).
+	memoryCtx := ""
+	if len(memories) > 0 {
+		memoryCtx = a.identity.BuildMemoryBlock(memories, true, memoryBudget)
+		if memoryCtx != "" {
+			volatileCtx += "\n\n" + memoryCtx
+		}
+	}
 	if !minimal && !code {
 		volatileCtx += a.timeContextBlockForChat(chatID)
 	}
@@ -470,7 +484,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	for _, h := range history {
 		histUsed += truncate.EstimateTokens(h.GetTextContent())
 	}
-	a.noteContextSnap(chatID, window, history, memories, systemTokens, skillTokens, toolTokens, userTokens)
+	a.noteContextSnap(chatID, window, history, truncate.EstimateTokens(memoryCtx), systemTokens, skillTokens, toolTokens, userTokens)
 	if route != nil && route.auto && chatID != "" {
 		a.ctxState.mu.Lock()
 		snap := a.ctxState.snaps[chatID]

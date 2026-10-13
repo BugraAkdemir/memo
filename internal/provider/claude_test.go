@@ -670,3 +670,68 @@ func TestBuildClaudeRequest_NormalizesRoleAlternation(t *testing.T) {
 		t.Fatalf("leading assistant not bridged: %+v", got2.Messages)
 	}
 }
+
+func TestBuildClaudeRequest_RollingBreakpointOnTheNewestBlock(t *testing.T) {
+	tools := []ToolDefinition{{Type: "function", Function: ToolFunction{Name: "a", Description: "d", Parameters: json.RawMessage(`{"type":"object"}`)}}}
+	p := &claudeProvider{baseURL: "https://api.anthropic.com"}
+
+	// An agent turn after one tool round trip: [user, assistant(tool_use), user(tool_result)].
+	req := ChatRequest{
+		Messages: []Message{
+			TextMessage("system", "sys"),
+			TextMessage("user", "do it"),
+			{Role: "assistant", ToolCalls: []ToolCall{{ID: "t1", Type: "function", Function: ToolCallFunction{Name: "a", Arguments: json.RawMessage(`{}`)}}}},
+			{Role: "tool", ToolCallID: "t1", Content: "result text"},
+		},
+		Tools: tools,
+	}
+	got := p.buildClaudeRequest(req, "claude-x", false)
+	last := got.Messages[len(got.Messages)-1]
+	lb := last.Content[len(last.Content)-1]
+	if lb.CacheControl == nil || lb.CacheControl.Type != "ephemeral" {
+		t.Fatalf("the newest block (%s) should carry a cache breakpoint: %#v", lb.Type, lb)
+	}
+	marked := 0
+	for _, m := range got.Messages {
+		for _, b := range m.Content {
+			if b.CacheControl != nil {
+				marked++
+			}
+		}
+	}
+	if marked != 1 {
+		t.Errorf("%d blocks carry cache_control, want exactly the newest one (the API allows 4 breakpoints in total: system, last tool, this)", marked)
+	}
+
+	// A plain chat turn (no tools) is not cached — unchanged behaviour.
+	plain := p.buildClaudeRequest(ChatRequest{Messages: []Message{TextMessage("system", "sys"), TextMessage("user", "hi")}}, "claude-x", false)
+	if carriesCacheControl(plain) {
+		t.Error("a plain chat turn must not ask for caching")
+	}
+
+	// Withdrawing caching (an endpoint that rejects the field) clears it everywhere.
+	stripped := stripCacheControl(got)
+	if carriesCacheControl(stripped) {
+		t.Error("stripCacheControl left a breakpoint behind")
+	}
+	if !carriesCacheControl(got) {
+		t.Error("stripCacheControl modified the caller's request in place")
+	}
+}
+
+func TestMarkRollingCacheBreakpoint_NeverTouchesReplayedOrUnsupportedBlocks(t *testing.T) {
+	raw := claudeBlock{Type: "text", Text: "x"}
+	raw.raw = json.RawMessage(`{"type":"text","text":"x"}`)
+	msgs := []claudeMsg{{Role: "user", Content: []claudeBlock{raw}}}
+	markRollingCacheBreakpoint(msgs)
+	if msgs[0].Content[0].CacheControl != nil {
+		t.Error("a replayed raw block must be sent byte-for-byte")
+	}
+	msgs = []claudeMsg{{Role: "assistant", Content: []claudeBlock{{Type: "thinking", Thinking: "..."}}}}
+	markRollingCacheBreakpoint(msgs)
+	if msgs[0].Content[0].CacheControl != nil {
+		t.Error("thinking blocks cannot carry cache_control")
+	}
+	markRollingCacheBreakpoint(nil)
+	markRollingCacheBreakpoint([]claudeMsg{{Role: "user"}})
+}

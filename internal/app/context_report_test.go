@@ -6,7 +6,6 @@ import (
 	"memo/internal/api"
 	"memo/internal/cliproxy"
 	"memo/internal/config"
-	"memo/internal/memory"
 )
 
 func gaugeApp() *App {
@@ -83,15 +82,16 @@ func TestNoteContextSnap_SeparatesSummaryMemoryAndSkills(t *testing.T) {
 		api.NewTextMessage("user", "hello there my friend"),
 	}
 	a.convSummaries = map[string]*convSummary{"c1": {coveredCount: 12}}
-	mems := []memory.MemoryResult{{Content: string(make([]byte, 300))}} // 100 tokens
-	a.noteContextSnap("c1", 10000, hist, mems, 500, 50, 70, 20)
+	// The memory block (100 tokens) rides on the current user message, not in
+	// the system prompt: userTokens = 20 of message + 100 of memory.
+	a.noteContextSnap("c1", 10000, hist, 100, 400, 50, 70, 120)
 
 	s := a.ctxState.snaps["c1"]
 	if s.summary == 0 || s.summarized != 12 {
 		t.Errorf("summary=%d summarized=%d, want a summary counted apart from history, covering 12 messages", s.summary, s.summarized)
 	}
 	if s.memory != 100 || s.skills != 50 || s.system != 350 {
-		t.Errorf("memory=%d skills=%d system=%d, want 100/50/350 (system = 500 − memory − skills)", s.memory, s.skills, s.system)
+		t.Errorf("memory=%d skills=%d system=%d, want 100/50/350 (system = system prompt − skills; memory is counted from the user message)", s.memory, s.skills, s.system)
 	}
 	if s.tools != 70 || s.current != 20 {
 		t.Errorf("tools=%d current=%d", s.tools, s.current)

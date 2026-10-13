@@ -134,3 +134,6 @@ data/cliproxy/
 # Images Memo generated or received at run time (chat attachments, generated pictures)
 data/generated-images/
 data/images/
+
+# Web chat browser profiles (sign-in cookies) and consent record — never commit
+data/webchat/

@@ -19,6 +19,14 @@ Codex'in değil.
    olunca pencere küçülür.
 4. **Modellerime ekle**; model seçicide *ChatGPT (Web)* / *Claude (Web)* seç.
 
+**Hangi tarayıcı.** Gerçek pencereli, Chromium tabanlı bir tarayıcı: Chrome, Chromium, Edge, Brave, Vivaldi veya
+Opera. Varsayılan tarayıcın bunlardan biriyse Memo onu seçer, değilse listedeki ilk kurulu olanı;
+`MEMO_WEBCHAT_BROWSER=/yol/tarayici` ile zorlanabilir. Her zaman Memo'nun kendi profil klasörüyle çalışır, yani
+orada bir kez daha giriş yaparsın (güncel Chrome olağan profilde hata ayıklama portunu reddeder; ikisini
+karıştırmak gerçek sekmelerine ve çerezlerine erişim açardı). Firefox ve Safari kullanılamaz: Memo sayfayı
+Chrome DevTools Protocol ile sürer, onlarda bu yok. Ayarlar'daki yerleşik "tarayıcı motoru" penceresiz
+(headless) bir yapıdır, giriş için kullanılamaz.
+
 Yalnızca metin: araç çağırma, dosya, görsel yok. Her tur yeni (ChatGPT'de geçici) bir konuşmadır; sistem istemi
 ve o ana kadarki yazışma tek mesajda gider, böylece sitedeki duruma hiçbir şey bağlı kalmaz. Yardımcı çağrılar
 (sohbet başlığı, olgu çıkarma, ruh hâli, proaktif kontroller…) ve "Bağlantıyı sına" web sohbetine **asla**

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/browser"
+	"github.com/chromedp/chromedp"
 	"memo/internal/config"
 	"memo/internal/webchat/webchattest"
 )
@@ -167,3 +169,75 @@ func TestStablePrefix(t *testing.T) {
 }
 
 func TestMain(m *testing.M) { os.Exit(m.Run()) }
+
+func waitFor(t *testing.T, what string, within time.Duration, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}
+
+// Reported live: the person closed the browser window by accident while
+// Connect was waiting for them to sign in; Connect kept polling a dead page
+// and, because it still counted as "running", pressing Connect again did
+// nothing at all.
+func TestConnect_ClosingTheWindowEndsItAndConnectWorksAgain(t *testing.T) {
+	f := webchattest.New(t)
+	f.SetMode("login")
+	svc := realBrowserService(t, f)
+	ctx := context.Background()
+
+	svc.StartConnect()
+	waitFor(t, "the window to open and wait for sign-in", 20*time.Second, func() bool {
+		svc.mu.Lock()
+		defer svc.mu.Unlock()
+		return svc.t.alive() && svc.connecting
+	})
+
+	// The person closes the window.
+	svc.mu.Lock()
+	closing := svc.t
+	svc.mu.Unlock()
+	_ = chromedp.Run(closing.ctx, browser.Close())
+
+	waitFor(t, "Connect to notice the closed window", 15*time.Second, func() bool {
+		return !svc.Status(ctx).Connecting
+	})
+	st := svc.Status(ctx)
+	if !strings.Contains(st.Error, "closed") {
+		t.Fatalf("status error = %q, want the window-closed sentence", st.Error)
+	}
+
+	// Now they sign in properly: pressing Connect again must work.
+	f.SetMode("ok")
+	svc.StartConnect()
+	waitFor(t, "the second Connect to finish", 30*time.Second, func() bool {
+		return !svc.Status(ctx).Connecting
+	})
+	st = svc.Status(ctx)
+	if st.Error != "" || st.State != "ready" {
+		t.Fatalf("after reconnecting: state=%q error=%q, want ready/no error", st.State, st.Error)
+	}
+}
+
+// Pressing Connect while an earlier attempt is still waiting replaces it.
+func TestConnect_PressingItAgainReplacesAWaitingAttempt(t *testing.T) {
+	f := webchattest.New(t)
+	f.SetMode("login")
+	svc := realBrowserService(t, f)
+	ctx := context.Background()
+
+	svc.StartConnect()
+	waitFor(t, "first connect to wait", 20*time.Second, func() bool { return svc.Status(ctx).Connecting })
+	f.SetMode("ok")
+	svc.StartConnect() // second press, first still waiting
+	waitFor(t, "second connect to finish", 30*time.Second, func() bool { return !svc.Status(ctx).Connecting })
+	if st := svc.Status(ctx); st.State != "ready" || st.Error != "" {
+		t.Fatalf("state=%q error=%q after replacing a waiting attempt", st.State, st.Error)
+	}
+}

@@ -19,6 +19,14 @@ web chat's, not an API's or Codex's.
    minimised when the page is ready.
 4. **Add to my models**, then pick *ChatGPT (Web)* / *Claude (Web)* in the model selector.
 
+**Which browser.** A Chromium-family browser with a real window: Chrome, Chromium, Edge, Brave, Vivaldi or
+Opera. Memo prefers your default browser when it is one of those, otherwise the first installed from that
+list; `MEMO_WEBCHAT_BROWSER=/path/to/browser` forces one. It always runs with Memo's own profile folder, so
+you sign in once more there (current Chrome refuses a debugging port on your everyday profile, and mixing
+the two would put your real tabs and cookies in reach). Firefox and Safari cannot be used: Memo drives the
+page over the Chrome DevTools Protocol, which they do not offer. Memo's built-in "browser engine" from
+Settings is a headless build with no window, so it cannot be used for sign-in.
+
 Text only. No tool calling, files or pictures. Every turn is a fresh (temporary, for ChatGPT) conversation
 that carries the system prompt and the transcript so far in one message, so nothing depends on state kept
 on the site. Helper calls (chat titles, fact extraction, mood, proactive checks…) and "Test connection" are

@@ -16,7 +16,6 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
 
-	"memo/internal/browserengine"
 	"memo/internal/logx"
 )
 
@@ -48,8 +47,10 @@ type Service struct {
 	t    *tab
 	busy sync.Mutex // held for the length of one turn
 
-	connecting bool   // a background Connect is waiting for the person
-	lastErr    string // sentence from the last failed Connect, shown by Status
+	connecting    bool   // a background Connect is waiting for the person
+	lastErr       string // sentence from the last failed Connect, shown by Status
+	connectCancel context.CancelFunc
+	connectDone   chan struct{} // closed when the latest background Connect has ended
 }
 
 var (
@@ -65,7 +66,7 @@ func For(site *Site) *Service {
 	if s, ok := services[site.ID]; ok {
 		return s
 	}
-	s := &Service{site: site, resolve: browserengine.ResolveExecutable}
+	s := &Service{site: site, resolve: resolveBrowser}
 	services[site.ID] = s
 	return s
 }
@@ -277,6 +278,12 @@ func (s *Service) waitForHuman(ctx context.Context, t *tab, first string) error 
 			return ctx.Err()
 		case <-time.After(time.Second):
 		}
+		// The person closed the window (or the browser died): stop waiting at
+		// once instead of polling a dead page for the rest of the window, which
+		// left Connect "running" and made pressing it again do nothing.
+		if !t.alive() {
+			return newErr(KindClosed, s.site.Name, nil)
+		}
 		p, err := s.probe(ctx, t)
 		if err != nil {
 			continue
@@ -346,6 +353,11 @@ func (s *Service) Connect(ctx context.Context) (err error) {
 	}
 	t.bringToFront(ctx)
 	if err := s.openFresh(ctx, t, true); err != nil {
+		// Whatever the step that failed, a window that is gone means the
+		// person closed it: say that, not a generic browser failure.
+		if !t.alive() && !isCtxErr(err) {
+			return newErr(KindClosed, s.site.Name, err)
+		}
 		return s.classify(err)
 	}
 	t.setWindow(ctx, browser.WindowStateMinimized)
@@ -353,20 +365,37 @@ func (s *Service) Connect(ctx context.Context) (err error) {
 }
 
 // StartConnect begins Connect in the background and returns at once; the
-// person watches Status. It does nothing when a connect is already running.
+// person watches Status. Pressing it again while a connect is still waiting
+// replaces that connect (the old one is cancelled and fully ended first), so a
+// stuck or abandoned attempt can never block a new one.
 func (s *Service) StartConnect() {
+	ctx, cancel := context.WithTimeout(context.Background(), humanCheckWindow+readyTimeout+30*time.Second)
+	done := make(chan struct{})
+
 	s.mu.Lock()
-	if s.connecting {
-		s.mu.Unlock()
-		return
+	if s.connectCancel != nil {
+		s.connectCancel()
 	}
+	prev := s.connectDone
+	s.connectCancel, s.connectDone = cancel, done
 	s.connecting, s.lastErr = true, ""
 	s.mu.Unlock()
+
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), humanCheckWindow+readyTimeout+30*time.Second)
+		defer close(done)
 		defer cancel()
+		if prev != nil {
+			select {
+			case <-prev:
+			case <-time.After(15 * time.Second):
+			}
+		}
 		err := s.Connect(ctx)
 		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.connectDone != done {
+			return // superseded: the newer connect owns the status now
+		}
 		s.connecting = false
 		if err != nil && !isCtxErr(err) {
 			if e := (*Err)(nil); asErr(err, &e) {
@@ -375,13 +404,17 @@ func (s *Service) StartConnect() {
 				s.lastErr = newErr(KindBrowser, s.site.Name, err).Message()
 			}
 		}
-		s.mu.Unlock()
 	}()
 }
 
 // Disconnect closes the browser. The saved sign-in stays unless forget is
 // true, which also removes the profile folder.
 func (s *Service) Disconnect(forget bool) error {
+	s.mu.Lock()
+	if s.connectCancel != nil {
+		s.connectCancel() // the person asked to stop: no "window closed" complaint
+	}
+	s.mu.Unlock()
 	s.Close()
 	if forget {
 		return removeProfile(s.site.ID)

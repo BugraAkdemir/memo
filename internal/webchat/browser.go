@@ -14,7 +14,6 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 
-	"memo/internal/browserengine"
 	"memo/internal/config"
 	"memo/internal/logx"
 )
@@ -48,8 +47,8 @@ var headless = false
 func startTab(ctx context.Context, siteID string, resolve func(context.Context) (string, error)) (*tab, error) {
 	exe, err := resolve(ctx)
 	if err != nil {
-		if errors.Is(err, browserengine.ErrBrowserNotInstalled) {
-			return nil, newErr(KindNotInstalled, "", err)
+		if KindOf(err) != "" {
+			return nil, err
 		}
 		return nil, newErr(KindBrowser, "", err)
 	}

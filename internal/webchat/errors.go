@@ -25,6 +25,7 @@ const (
 	KindDisabled     ErrKind = "disabled"      // Beta Features is off
 	KindNoConsent    ErrKind = "no_consent"    // the notice has not been confirmed for this site
 	KindBrowser      ErrKind = "browser"       // the browser died or could not be driven
+	KindClosed       ErrKind = "closed"        // the person closed the window while waiting for sign-in
 )
 
 // Err is the one error type this package returns across its boundary.
@@ -50,7 +51,7 @@ func (e *Err) Message() string {
 	}
 	switch e.Kind {
 	case KindNotInstalled:
-		return "No Chromium-based browser was found on this computer. Install one from Settings › General, then try again."
+		return "No Chrome, Chromium, Edge, Brave, Vivaldi or Opera was found on this computer. Install one of them (Memo's built-in headless browser cannot show a sign-in window), then try again."
 	case KindNeedsLogin:
 		return fmt.Sprintf("You are not signed in to %s. Open Settings › Web chat and press Connect, then sign in in the window that opens.", site)
 	case KindChallenge:
@@ -63,6 +64,8 @@ func (e *Err) Message() string {
 			msg += " " + e.Extra
 		}
 		return msg
+	case KindClosed:
+		return fmt.Sprintf("The Memo browser window was closed before sign-in to %s finished. Press Connect to open it again.", site)
 	case KindTimeout:
 		return fmt.Sprintf("%s did not answer in time. Try again.", site)
 	case KindBusy:

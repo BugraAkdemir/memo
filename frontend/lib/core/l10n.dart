@@ -523,7 +523,7 @@ class L10n {
         'Model seçmeden önce yukarıdan bağlan.',
     'tab_web_chat': 'Web sohbet',
     'web_chat_desc':
-        "ChatGPT veya Claude'un web sohbetini, kendi hesabınla, API yerine kullan. Memo senin giriş yaptığın gerçek bir tarayıcı penceresine yazar ve cevabı oradan okur. Yalnızca metin: araç çağırma yok.",
+        "ChatGPT veya Claude'un web sohbetini, kendi hesabınla, API yerine kullan. Memo senin giriş yaptığın gerçek bir tarayıcı penceresine yazar ve cevabı oradan okur. Yalnızca metin: araç çağırma yok. Chromium tabanlı bir tarayıcı gerekir (Chrome, Brave, Edge…); Firefox kullanılamaz.",
     'web_chat_risk_short':
         'Bu, sitelerin kullanım şartlarının kısıtladığı bir otomasyondur; hesabın sınırlanabilir veya kapatılabilir. Deneyseldir, siteler haber vermeden değişir ve çalışmayı bırakabilir. Yalnızca riskini göze aldığın bir hesapla kullan.',
     'web_chat_beta_off': 'Önce Beta Özellikleri sekmesinden Beta\'yı aç.',
@@ -546,7 +546,7 @@ class L10n {
     'web_chat_state_challenge': 'Site insan doğrulaması istiyor. Memo penceresinde tamamla.',
     'web_chat_state_unknown': 'Sayfa tanınamadı. Bağlan\'ı tekrar dene.',
     'web_chat_state_no_browser':
-        'Chromium tabanlı bir tarayıcı bulunamadı. Ayarlar › Genel\'den kur.',
+        "Chrome, Chromium, Edge, Brave, Vivaldi veya Opera bulunamadı. Birini kur (Memo'nun yerleşik başsız tarayıcısı giriş penceresi gösteremez).",
     'web_chat_notice_title': '\${site} web sohbeti — önemli uyarı',
     'web_chat_notice_body':
         "Bu özellik mesajlarını resmi API yerine \${site} sitesi üzerinden, kendi hesabınla ve bir yazılım tarafından yönetilen tarayıcı penceresinde gönderir.\n\n• Sitenin kullanım şartları web uygulamasının otomatik kullanımını kısıtlar. Hesabın sınırlanabilir veya kapatılabilir.\n• Memo girişi ya da insan doğrulamasını aşmaya çalışmaz; bunları sen yaparsın. Şifren Memo'ya hiç girmez.\n• Deneyseldir: site haber vermeden değişir ve özellik çalışmayı bırakabilir. Diğer sağlayıcıların etkilenmez.\n• Mesajların \${site} şirketine hesabın altında gider ve onların gizlilik politikasına tabidir.\n• Yalnızca metin: dosya, görsel ve araç çağırma desteklenmez.\n• Sonuçlarından yalnızca sen sorumlusun.",
@@ -3012,7 +3012,7 @@ class L10n {
         'Connect above before picking a model.',
     'tab_web_chat': 'Web chat',
     'web_chat_desc':
-        "Use ChatGPT's or Claude's web chat with your own account instead of an API. Memo types into a real browser window you sign in to and reads the reply from it. Text only: no tool calling.",
+        "Use ChatGPT's or Claude's web chat with your own account instead of an API. Memo types into a real browser window you sign in to and reads the reply from it. Text only: no tool calling. Needs a Chromium-based browser (Chrome, Brave, Edge…); Firefox cannot be used.",
     'web_chat_risk_short':
         "This is automation that the sites' terms restrict; your account could be limited or closed. It is experimental, the sites change without notice and it can stop working. Use it only with an account you are willing to risk.",
     'web_chat_beta_off': 'Turn Beta on first, in the Beta Features tab.',
@@ -3035,7 +3035,7 @@ class L10n {
     'web_chat_state_challenge': 'The site wants a human check. Finish it in the Memo window.',
     'web_chat_state_unknown': 'The page was not recognised. Try Connect again.',
     'web_chat_state_no_browser':
-        'No Chromium-based browser found. Install one from Settings › General.',
+        "No Chrome, Chromium, Edge, Brave, Vivaldi or Opera found. Install one (Memo's built-in headless browser cannot show a sign-in window).",
     'web_chat_notice_title': '\${site} web chat — important notice',
     'web_chat_notice_body':
         "This feature sends your messages through the \${site} website, with your own account, in a browser window driven by software, instead of through the official API.\n\n• The site's terms restrict automated use of its web app. Your account could be limited or closed.\n• Memo does not try to get around sign-in or human checks; you do those yourself. Your password never enters Memo.\n• It is experimental: the site changes without notice and the feature can stop working. Your other providers are not affected.\n• Your messages go to \${site}'s company under your account and are covered by their privacy policy.\n• Text only: files, images and tool calling are not supported.\n• You alone are responsible for the consequences.",

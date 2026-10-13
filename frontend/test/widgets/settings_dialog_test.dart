@@ -244,6 +244,26 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // Web chat is a Beta feature: with Beta off it has no row at all (absent, not
+  // greyed out), and searching for it finds nothing.
+  testWidgets('the Web chat tab does not exist while Beta Features is off',
+      (tester) async {
+    await _pumpSettingsDialog(tester);
+    expect(find.text(L10n.t('tab_web_chat')), findsNothing);
+    await tester.scrollUntilVisible(find.text(L10n.t('tab_subscriptions')), 150,
+        scrollable: _railScrollable);
+    expect(find.text(L10n.t('tab_web_chat')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the Web chat tab appears once Beta Features is on', (tester) async {
+    await _pumpSettingsDialog(tester, initialPrefs: {'memo_beta_features': true});
+    await tester.scrollUntilVisible(find.text(L10n.t('tab_web_chat')), 150,
+        scrollable: _railScrollable);
+    expect(find.text(L10n.t('tab_web_chat')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   // The rail's labels, icons and `_buildTabContent` cases are parallel lists
   // that must stay index-aligned. Once, an inserted tab shifted the labels but
   // not the content, so the rail said one thing and opened another. Guard the

@@ -13,7 +13,7 @@ Codex'in değil.
 
 ## Kullanım
 
-1. Ayarlar › Beta Özellikleri: Beta'yı aç.
+1. Ayarlar › Beta Özellikleri: Beta'yı aç. *Web sohbet* sekmesi Beta açılana kadar Ayarlar'da hiç görünmez.
 2. Ayarlar › Web sohbet: site için **Uyarıyı oku ve etkinleştir** (kutuyu işaretle).
 3. **Bağlan**: Memo tarayıcı penceresi açılır. Giriş yap, varsa insan doğrulamasını tamamla. Sayfa hazır
    olunca pencere küçülür.

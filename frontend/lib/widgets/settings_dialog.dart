@@ -159,7 +159,10 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   /// local desktop use and any admin session, since readMyPermissions
   /// fails open to everything true whenever the saved role isn't exactly
   /// "user" — see that function's own doc comment.
-  Set<int> get _hiddenTabIndices {
+  ///
+  /// Beta-only tabs are absent, not disabled, while Beta Features is off: the
+  /// web chat tab has no row in the rail and no search hit until it is on.
+  Set<int> _hiddenTabIndices({required bool beta}) {
     final perms = readMyPermissions(ref.read(prefsProvider));
     final hidden = <int>{};
     if (!perms.models) hidden.add(5); // Providers
@@ -170,6 +173,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     if (!perms.telegram) hidden.add(23);
     if (!perms.models) hidden.add(25); // Subscriptions
     if (!perms.models) hidden.add(27); // Web chat
+    if (!beta) hidden.add(27); // Web chat is a Beta feature
     return hidden;
   }
 
@@ -183,7 +187,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   Widget build(BuildContext context) {
     ref.watch(localeProvider);
     final tabs = _tabs;
-    final hidden = _hiddenTabIndices;
+    final hidden = _hiddenTabIndices(beta: ref.watch(betaEnabledProvider));
     var tabIndex = _activeTab.clamp(0, tabs.length - 1);
     // Land somewhere visible if the requested/previously-active tab is one
     // this account's permissions hide — General (0) is never gated.

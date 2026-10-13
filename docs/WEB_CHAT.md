@@ -13,7 +13,7 @@ web chat's, not an API's or Codex's.
 
 ## Using it
 
-1. Settings › Beta Features: turn Beta on.
+1. Settings › Beta Features: turn Beta on. The *Web chat* tab does not exist in Settings until Beta is on.
 2. Settings › Web chat: **Read the notice and enable** (tick the box) for the site.
 3. **Connect**: a Memo browser window opens. Sign in and finish any human check yourself. The window is
    minimised when the page is ready.

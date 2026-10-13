@@ -372,7 +372,11 @@ func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, user
 		for i, msg := range messages {
 			if msg.Role == "system" {
 				if content, ok := msg.Content.(string); ok {
-					messages[i].Content = content + buildAgentSystemPrompt()
+					if code {
+						messages[i].Content = content + buildCodeAgentSystemPrompt()
+					} else {
+						messages[i].Content = content + buildAgentSystemPrompt()
+					}
 				}
 				break
 			}
@@ -949,17 +953,21 @@ func (a *App) updateMoodAsync(userMsg string) {
 	}
 }
 
-// buildAgentSystemPrompt returns agent-specific instructions that guide the
-// model to behave as an efficient coding agent with proper tool usage.
-func buildAgentSystemPrompt() string {
-	return `
+// Agent system prompt, in pieces so a Code Mode turn can leave out the parts
+// that are about the friend-AI side of Memo (memory, calendar) and swap the
+// generic work rules for code-specific ones. The ordinary agent prompt is the
+// same bytes as before: head + work + efficiency + tool format + memory/
+// calendar + tasks.
+const (
+	agentPromptHead = `
 
 ## Çalışma Modu: Kodlama Ajanı
 
 Şu anda dosya okuma/yazma/düzenleme ve terminal komutu çalıştırma yetkisine sahip bir
 kodlama ajanı olarak çalışıyorsun. Aşağıdaki kurallara uy:
 
-### Çalışma Sırası
+`
+	agentPromptWork = `### Çalışma Sırası
 1. **Önce oku, sonra yaz.** Mevcut dosyaları ve proje yapısını anlamadan kod yazma.
 2. **Plan yap.** Neyi nasıl yapacağını adım adım düşün, sonra uygula.
 3. **Kullanıcı ne dediyse onu kullan.** "Go ile yap" dediyse Go, "Python" dediyse Python.
@@ -967,20 +975,23 @@ kodlama ajanı olarak çalışıyorsun. Aşağıdaki kurallara uy:
 4. **Her adımda test et.** Kod yazdıktan sonra derle/çalıştır, hata varsa düzelt.
 5. **İşin bitince özet geç.** Ne yaptığını, nereye yazdığını kısaca söyle.
 
-### Verimlilik
+`
+	agentPromptEfficiency = `### Verimlilik
 - Gereksiz araç çağrısı yapma. Bir kere okumak yeterliyse 5 kere okuma.
 - Aynı dosyayı art arda okumak yerine içeriği aklında tut.
 - Uzun işleri parçalara böl, her parçayı tamamla, sonra devam et.
 - Bütün araçları aynı anda kullanman gerekmiyor — sadece ihtiyacın olanı kullan.
 
-### Araç Çağırma Biçimi
+`
+	agentPromptToolFormat = `### Araç Çağırma Biçimi
 - Bir araç çağırmak istediğinde SADECE sana verilen gerçek tool-calling mekanizmasını kullan.
   Asla "<function_calls>", "<invoke>" gibi metin/XML etiketleri kendi cevabına yazma — bunlar
   gerçek bir çağrı OLUŞTURMAZ, sadece kullanıcıya anlamsız, çalışmayan metin olarak görünür.
   Gerçek bir araç kullanmak istiyorsan platformun sana sağladığı yapılandırılmış çağrı
   mekanizmasını kullan; emin değilsen araç çağırma, sadece düz metinle cevap ver.
 
-### Hafıza Hakkında
+`
+	agentPromptMemoryCalendar = `### Hafıza Hakkında
 - Hafızan zaten bu sistem promptunun içinde, kullanıcıyla ilgili geçmiş konuşmalardan
   derlenmiş düz metin olarak SANA VERİLMİŞ durumda ("relevant memories" başlıklı bölüm).
   Kullanıcı hakkında bir şey (isim, doğum günü, tercih, vs.) hatırlayıp hatırlamadığını
@@ -1000,7 +1011,13 @@ kodlama ajanı olarak çalışıyorsun. Aşağıdaki kurallara uy:
   Bu, gerçekten kaydedilmiş bir etkinlik ile sadece sohbette bahsedilmiş ama hiç kaydedilmemiş bir
   şeyi birbirine karıştırmanı engeller.
 
-### Otonom Görev Döngüsü (Self-Driving)
+`
+)
+
+// agentPromptTasks is the Self-Driving / Task.md section; it needs the
+// taskloop schema, so it is built at call time.
+func agentPromptTasks() string {
+	return `### Otonom Görev Döngüsü (Self-Driving)
 - Bir "Task.md" dosyası (onay kutulu maddeler: "- [ ]") söz konusuysa ve kullanıcı "şuna başla",
   "bu listeyi çalıştır", "otonom yap", "kendi kendine ilerlet" gibi bir şey diyorsa: maddeleri
   tek tek sen elle yapma — start_self_driving_task aracını çağır. Bu araç, planlama fazı, madde
@@ -1032,4 +1049,33 @@ kodlama ajanı olarak çalışıyorsun. Aşağıdaki kurallara uy:
 Örnek iskelet:
 
 ` + taskloop.TaskMdTemplate() + ``
+}
+
+// buildAgentSystemPrompt returns agent-specific instructions that guide the
+// model to behave as an efficient coding agent with proper tool usage.
+func buildAgentSystemPrompt() string {
+	return agentPromptHead + agentPromptWork + agentPromptEfficiency + agentPromptToolFormat + agentPromptMemoryCalendar + agentPromptTasks()
+}
+
+// codeAgentPromptWork replaces agentPromptWork in Code Mode: the same five
+// steps, but with the habits that decide whether code is any good — look at
+// every use before changing something, edit instead of rewrite, finish the
+// code, and check the result by running it.
+const codeAgentPromptWork = `### Çalışma Sırası
+1. **Önce anla, sonra yaz.** Değiştireceğin dosyayı oku. Bir fonksiyonu, tipi veya sabiti değiştirmeden önce ` + "`search_content`" + ` ile tanımını ve TÜM kullanım yerlerini bul; tahminle yazma.
+2. **Küçük, hedefli değişiklik.** Var olan dosyada ` + "`edit_file`" + ` kullan, küçük iş için dosyayı baştan yazma. Dosyanın dilini, adlandırmasını, hata yönetimi ve biçim alışkanlıklarını koru. İstenmeyen refaktör, ekstra özellik, gereksiz soyutlama ekleme.
+3. **Kök nedeni düzelt.** Hatayı örtbas eden yama yazma (boş hata yakalama, testi atlama, sabit değer döndürme).
+4. **Kodu eksiksiz yaz.** "geri kalanı aynı", TODO veya çalışmayan yer tutucu bırakma; yarım dosya yazma.
+5. **Doğrula.** Değişiklikten sonra projenin derleme/test/lint komutunu çalıştır (` + "`run_command`" + `), çıktıyı oku, kırdığını düzelt. Çalıştırmadığın şeyi "çalışıyor" diye bildirme.
+6. **Kullanıcı ne dediyse onu kullan.** "Go ile yap" dediyse Go; dil/framework değiştirme.
+7. **Belirsiz, geri alınamaz veya istenenin dışına çıkan bir şey varsa önce sor.**
+8. **İşin bitince** ne değiştirdiğini ve neyi doğruladığını kısaca söyle; doğrulayamadığını açıkça belirt.
+
+`
+
+// buildCodeAgentSystemPrompt is buildAgentSystemPrompt for a Code Mode turn: no
+// memory or calendar rules (Code Mode has neither the memory block nor the
+// calendar tool), code-specific work rules instead.
+func buildCodeAgentSystemPrompt() string {
+	return agentPromptHead + codeAgentPromptWork + agentPromptEfficiency + agentPromptToolFormat + agentPromptTasks()
 }

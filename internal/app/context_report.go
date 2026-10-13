@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"memo/internal/agent"
 	"memo/internal/api"
 	"memo/internal/cliproxy"
 	"memo/internal/memory"
@@ -136,6 +137,9 @@ func (a *App) agentToolTokens(chatID string) int {
 		return 0
 	}
 	defs := a.agentExecutor.Registry().ToOpenAITools(a.activeSkillSet(chatID))
+	if a.resolveCodeMode(chatID) {
+		defs = agent.ForCodeMode(defs) // the gauge must count what a Code Mode turn really sends
+	}
 	if len(defs) == 0 {
 		return 0
 	}

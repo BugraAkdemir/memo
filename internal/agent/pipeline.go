@@ -98,6 +98,16 @@ func NewPipeline(registry *ToolRegistry, permissions *PermissionManager, sandbox
 	}
 }
 
+// turnTools is the tool list for this turn: the registry's, minus what a Code
+// Mode turn (codeSubMode != "") does not need.
+func (p *Pipeline) turnTools() []provider.ToolDefinition {
+	defs := p.registry.ToOpenAITools(p.activeSkills)
+	if p.codeSubMode != "" {
+		return ForCodeMode(defs)
+	}
+	return defs
+}
+
 // NewPipelineWithBudget creates a pipeline with a context token budget.
 // When maxTokens > 0, the pipeline truncates accumulated tool-call history
 // to stay within budget, dropping oldest tool result messages first.
@@ -191,7 +201,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				Model:       modelName,
 				Messages:    currentMessages,
 				Temperature: 0.2,
-				Tools:       p.registry.ToOpenAITools(p.activeSkills),
+				Tools:       p.turnTools(),
 				Stream:      false,
 				EffortLevel: p.effortLevel,
 			}

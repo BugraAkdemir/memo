@@ -146,8 +146,28 @@ func TestClaudeProvider_ChatCompletion_DefaultsMaxTokensWhenUnset(t *testing.T) 
 	if _, err := p.ChatCompletion(context.Background(), ChatRequest{Messages: []Message{TextMessage("user", "hi")}}); err != nil {
 		t.Fatalf("ChatCompletion() error = %v", err)
 	}
-	if gotBody.MaxTokens != 4096 {
-		t.Errorf("MaxTokens = %d, want the 4096 default when unset (Anthropic requires this field)", gotBody.MaxTokens)
+	if gotBody.MaxTokens != 8192 {
+		t.Errorf("MaxTokens = %d, want the 8192 default for claude-3-5 when unset (Anthropic requires this field)", gotBody.MaxTokens)
+	}
+}
+
+func TestDefaultClaudeMaxTokens(t *testing.T) {
+	cases := map[string]int{
+		"claude-3-opus-20240229":     4096,
+		"claude-3-haiku-20240307":    4096,
+		"claude-3-5-haiku-20241022":  8192,
+		"claude-3-7-sonnet-20250219": 8192,
+		"claude-sonnet-4-20250514":   16384,
+		"claude-opus-4-1-20250805":   16384,
+		"claude-opus-5-5":            16384,
+		"subs/claude-sonnet-5-5":     16384,
+		"glm-4.6":                    4096, // a non-Claude model behind an Anthropic-shaped proxy: limit unknown
+		"":                           4096,
+	}
+	for in, want := range cases {
+		if got := defaultClaudeMaxTokens(in); got != want {
+			t.Errorf("defaultClaudeMaxTokens(%q) = %d, want %d", in, got, want)
+		}
 	}
 }
 

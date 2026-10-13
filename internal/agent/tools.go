@@ -77,7 +77,7 @@ func NewRegistry() *ToolRegistry {
 func (r *ToolRegistry) registerBuiltins() {
 	r.Register(ToolDef{
 		Name:        "read_file",
-		Description: "Reads the content of a file",
+		Description: "Reads a file (use offset/limit for large files). Read a file before editing it, so your edit matches its exact text and style.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read"},"offset":{"type":"integer","description":"1-based line to start from (optional)"},"limit":{"type":"integer","description":"max lines to return from offset (optional)"}},"required":["path"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.ReadFile,
@@ -85,7 +85,7 @@ func (r *ToolRegistry) registerBuiltins() {
 
 	r.Register(ToolDef{
 		Name:        "write_file",
-		Description: "Writes content to a file. Overwrites if exists, creates if not.",
+		Description: "Creates a new file, or fully replaces one. To change part of an existing file use edit_file instead — do not rewrite a whole file for a small change.",
 		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Path to the file to write"}, "content": {"type": "string", "description": "Content to write"}}, "required": ["path", "content"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.WriteFile,
@@ -118,7 +118,7 @@ func (r *ToolRegistry) registerBuiltins() {
 
 	r.Register(ToolDef{
 		Name:        "run_command",
-		Description: "Executes a terminal command using bash -c",
+		Description: "Executes a terminal command using bash -c. Use it to build, run tests and linters and inspect git state; prefer read_file / search_content / edit_file over cat, grep and sed.",
 		Parameters:  json.RawMessage(`{"type": "object", "properties": {"command": {"type": "string", "description": "The command to run"}, "cwd": {"type": "string", "description": "Optional working directory"}}, "required": ["command"]}`),
 		DangerLevel: Dangerous,
 		ExecuteFn:   tools.RunCommand,
@@ -126,12 +126,19 @@ func (r *ToolRegistry) registerBuiltins() {
 
 	r.Register(ToolDef{
 		Name:        "search_files",
-		Description: "Searches for files matching a pattern",
+		Description: "Finds files by NAME using a glob (e.g. *.go). It does not look inside files — to search the text of files use search_content.",
 		Parameters:  json.RawMessage(`{"type": "object", "properties": {"pattern": {"type": "string", "description": "Glob pattern (e.g. *.go)"}, "path": {"type": "string", "description": "Directory to search in"}}, "required": ["pattern", "path"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.SearchFiles,
 	})
 
+	r.Register(ToolDef{
+		Name:        "search_content",
+		Description: "Searches INSIDE files for a regular expression (grep) and returns path:line: text. Use it to find where a function, type or string is defined and every place it is used BEFORE you change it. Skips .git, node_modules, vendor, build output and binary files.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string","description":"Regular expression (Go/RE2 syntax). Escape ( ) [ ] { } . * + ? with a backslash to match them literally."},"path":{"type":"string","description":"Directory or file to search (default: the project root)"},"glob":{"type":"string","description":"Only search files whose NAME matches this glob, e.g. *.go"},"ignore_case":{"type":"boolean"},"context":{"type":"integer","description":"Lines of context around each match, 0-3 (default 0)"},"max_results":{"type":"integer","description":"Stop after this many matches (default 100, max 500)"}},"required":["pattern"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.SearchContent,
+	})
 	r.Register(ToolDef{
 		Name:        "get_file_info",
 		Description: "Gets metadata about a file or directory",
@@ -150,7 +157,7 @@ func (r *ToolRegistry) registerBuiltins() {
 
 	r.Register(ToolDef{
 		Name:        "edit_file",
-		Description: "Edits an existing file. Provide EITHER old_string and new_string, OR start_line, end_line and new_content.",
+		Description: "Edits an existing file. Provide EITHER old_string and new_string (old_string must match the file text EXACTLY, including whitespace, and be unique in the file — add surrounding lines until it is; otherwise the edit fails), OR start_line, end_line and new_content.",
 		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string"}, "old_string": {"type": "string"}, "new_string": {"type": "string"}, "start_line": {"type": "integer"}, "end_line": {"type": "integer"}, "new_content": {"type": "string"}}, "required": ["path"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.EditFile,
@@ -527,7 +534,7 @@ func NewReadOnlyRegistry() *ToolRegistry {
 	r := &ToolRegistry{tools: make(map[string]ToolDef)}
 	r.Register(ToolDef{
 		Name:        "read_file",
-		Description: "Reads the content of a file",
+		Description: "Reads a file (use offset/limit for large files). Read a file before editing it, so your edit matches its exact text and style.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read"},"offset":{"type":"integer","description":"1-based line to start from (optional)"},"limit":{"type":"integer","description":"max lines to return from offset (optional)"}},"required":["path"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.ReadFile,
@@ -541,10 +548,17 @@ func NewReadOnlyRegistry() *ToolRegistry {
 	})
 	r.Register(ToolDef{
 		Name:        "search_files",
-		Description: "Searches for files matching a pattern",
+		Description: "Finds files by NAME using a glob (e.g. *.go). It does not look inside files — to search the text of files use search_content.",
 		Parameters:  json.RawMessage(`{"type": "object", "properties": {"pattern": {"type": "string", "description": "Glob pattern (e.g. *.go)"}, "path": {"type": "string", "description": "Directory to search in"}}, "required": ["pattern", "path"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.SearchFiles,
+	})
+	r.Register(ToolDef{
+		Name:        "search_content",
+		Description: "Searches INSIDE files for a regular expression (grep) and returns path:line: text. Use it to find where a function, type or string is defined and every place it is used BEFORE you change it. Skips .git, node_modules, vendor, build output and binary files.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string","description":"Regular expression (Go/RE2 syntax). Escape ( ) [ ] { } . * + ? with a backslash to match them literally."},"path":{"type":"string","description":"Directory or file to search (default: the project root)"},"glob":{"type":"string","description":"Only search files whose NAME matches this glob, e.g. *.go"},"ignore_case":{"type":"boolean"},"context":{"type":"integer","description":"Lines of context around each match, 0-3 (default 0)"},"max_results":{"type":"integer","description":"Stop after this many matches (default 100, max 500)"}},"required":["pattern"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.SearchContent,
 	})
 	r.Register(ToolDef{
 		Name:        "get_file_info",
@@ -650,6 +664,29 @@ func (r *ToolRegistry) ToOpenAITools(activeSkills map[string]bool) []provider.To
 		})
 	}
 	return defs
+}
+
+// codeModeOmitted are tools that have nothing to do with editing a project:
+// messaging, calendar, routines, provider/self management. A Code Mode turn
+// does not offer them — about 1k tokens of schema re-sent on every iteration,
+// and a chance for the model to reach for WhatsApp in the middle of a refactor.
+// They stay registered, so the same tools still work in ordinary agent chats.
+var codeModeOmitted = map[string]bool{
+	"whatsapp_send": true, "whatsapp_search": true, "whatsapp_latest": true, "whatsapp_messages": true,
+	"get_calendar_events": true, "create_routine": true, "list_routines": true, "cancel_routine": true,
+	"configure_provider": true, "self_clone": true,
+}
+
+// ForCodeMode drops the tools a Code Mode turn does not need from defs.
+func ForCodeMode(defs []provider.ToolDefinition) []provider.ToolDefinition {
+	out := make([]provider.ToolDefinition, 0, len(defs))
+	for _, d := range defs {
+		if codeModeOmitted[d.Function.Name] {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
 }
 
 // Execute runs a registered tool by name.

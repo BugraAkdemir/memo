@@ -906,7 +906,7 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, strea
 	}
 
 	if clReq.MaxTokens <= 0 {
-		clReq.MaxTokens = 4096
+		clReq.MaxTokens = defaultClaudeMaxTokens(model)
 	}
 	if req.EffortLevel != "" {
 		clReq.Thinking = &claudeThinking{Type: "adaptive"}
@@ -953,4 +953,33 @@ func (p *claudeProvider) wrapError(err error) error {
 func (p *claudeProvider) parseError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
 	return &ProviderError{Provider: p.Name(), Err: fmt.Errorf("status %d: %s", resp.StatusCode, ExtractErrorMessage(body))}
+}
+
+// defaultClaudeMaxTokens is the output ceiling used when the caller sets none
+// (Anthropic requires the field). It used to be a flat 4096, which silently cut
+// a long answer — or a write_file call carrying a few hundred lines of code —
+// in half, and with adaptive thinking on it also had to cover the thinking.
+// Models differ in how much they may emit, and asking for more than a model's
+// limit is a 400, so this follows the family:
+//   - claude-3-opus / claude-3-haiku: 4096 (their hard limit);
+//   - claude-3-5-* / claude-3-7-*: 8192;
+//   - every other claude-* id (4.x, 5.x): 16384, well under their limits and
+//     under the size Anthropic wants streamed rather than sent in one response;
+//   - anything that is not a claude-* id (an Anthropic-compatible proxy fronting
+//     some other model): 4096 as before, because its limit is unknown.
+func defaultClaudeMaxTokens(model string) int {
+	m := strings.ToLower(strings.TrimSpace(model))
+	if i := strings.LastIndex(m, "/"); i >= 0 {
+		m = m[i+1:]
+	}
+	switch {
+	case !strings.HasPrefix(m, "claude"):
+		return 4096
+	case strings.HasPrefix(m, "claude-3-opus"), strings.HasPrefix(m, "claude-3-haiku"):
+		return 4096
+	case strings.HasPrefix(m, "claude-3-5-"), strings.HasPrefix(m, "claude-3-7-"):
+		return 8192
+	default:
+		return 16384
+	}
 }

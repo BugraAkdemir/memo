@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"memo/internal/logx"
+	"memo/internal/webchat"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -1055,6 +1056,9 @@ func (a *App) shutdownSync(ctx context.Context) {
 		stop("browser engine", a.browserMgr.Stop)
 		stop("browser session", a.browserMgr.StopSession)
 	}
+	// The web-chat browsers (Beta) are separate Chromium processes with their
+	// own profiles; they must not outlive Memo.
+	stop("web chat browsers", func() error { webchat.CloseAll(); return nil })
 	if a.swarmServer != nil {
 		stop("swarm coordinator", a.swarmServer.Stop)
 	}

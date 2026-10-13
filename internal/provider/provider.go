@@ -50,6 +50,12 @@ const (
 	// ProviderCodexCLI is the same idea as ProviderClaudeCodeCLI but for
 	// OpenAI's `codex` CLI — implemented in internal/agentcli.
 	ProviderCodexCLI ProviderType = "codex-cli"
+	// ProviderWebChatGPT and ProviderWebClaude answer from the person's own
+	// chatgpt.com / claude.ai conversation, driven through a real browser
+	// window (internal/webchat) — plain text only, no tool calling, Beta.
+	// Implemented in internal/webchat and registered from its init().
+	ProviderWebChatGPT ProviderType = "web-chatgpt"
+	ProviderWebClaude  ProviderType = "web-claude"
 	// ProviderCustom is any OpenAI-compatible endpoint the user points at via a
 	// custom Base URL (self-hosted, proxies, providers we don't list natively).
 	ProviderCustom ProviderType = "custom"
@@ -65,6 +71,12 @@ const (
 	// (custom_anthropic.go), which already accepts an arbitrary BaseURL.
 	ProviderCustomAnthropic ProviderType = "custom-anthropic"
 )
+
+// IsOptInOnly reports whether a provider type must never be used implicitly —
+// as a fallback or an automatic route — only when the person selected it.
+func IsOptInOnly(t ProviderType) bool {
+	return t == ProviderWebChatGPT || t == ProviderWebClaude
+}
 
 // Provider is the common interface all LLM providers must implement.
 type Provider interface {
@@ -455,6 +467,8 @@ var DefaultModels = map[ProviderType]string{
 	ProviderLlamaCPP:      "local-model",
 	ProviderClaudeCodeCLI: "claude-code",
 	ProviderCodexCLI:      "codex",
+	ProviderWebChatGPT:    "chatgpt-web",
+	ProviderWebClaude:     "claude-web",
 	// kilo-auto/balanced auto-routes to a capable model per request — a
 	// reasonable default that works immediately without the user having to
 	// already know a specific Kilo model id (see kilo.ai/docs/gateway).

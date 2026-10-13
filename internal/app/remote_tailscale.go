@@ -9,6 +9,7 @@ import (
 
 	"memo/internal/config"
 	"memo/internal/tunnel"
+	"memo/internal/webchat"
 )
 
 // startTailscale brings up the embedded Tailscale tunnel that reverse-proxies to
@@ -187,6 +188,8 @@ func (a *App) SetBeta(enabled bool) error {
 		if err := a.CloseBrowserSession(); err != nil {
 			logx.Printf("beta off: closing the browser session: %v", err)
 		}
+		// The web chats (ChatGPT / claude.ai) are beta too; close their windows.
+		webchat.CloseAll()
 	}
 	if err := config.Save(a.cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)

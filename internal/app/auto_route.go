@@ -56,7 +56,7 @@ func (a *App) autoRouteCandidates(ctx context.Context) []routeCandidate {
 	var out []routeCandidate
 	if a.providerCfgMgr != nil {
 		for _, cfg := range a.providerCfgMgr.GetEnabled() {
-			if cfg.Type == provider.ProviderClaudeCodeCLI || cfg.Type == provider.ProviderCodexCLI {
+			if cfg.Type == provider.ProviderClaudeCodeCLI || cfg.Type == provider.ProviderCodexCLI || provider.IsOptInOnly(cfg.Type) {
 				continue
 			}
 			ids := []string{cfg.Model}

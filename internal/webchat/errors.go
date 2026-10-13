@@ -89,3 +89,8 @@ func KindOf(err error) ErrKind {
 func newErr(kind ErrKind, site string, cause error) *Err {
 	return &Err{Kind: kind, Site: site, Cause: cause}
 }
+
+// Message is the sentence for a kind, without needing an error value.
+func Message(kind ErrKind, site *Site) string {
+	return (&Err{Kind: kind, Site: site.Name}).Message()
+}

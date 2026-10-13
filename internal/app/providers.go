@@ -13,6 +13,9 @@ import (
 	"memo/internal/config"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
+	// Blank-imported for its init(), which registers web-chatgpt / web-claude
+	// the same way (Beta, text only).
+	_ "memo/internal/webchat"
 )
 
 // GetProviders returns all configured providers with their connection status.

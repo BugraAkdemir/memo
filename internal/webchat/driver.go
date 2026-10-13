@@ -44,9 +44,12 @@ type Service struct {
 	// resolve finds the browser binary (seam for tests).
 	resolve func(context.Context) (string, error)
 
-	mu   sync.Mutex // guards t
+	mu   sync.Mutex // guards t, connecting, lastErr
 	t    *tab
 	busy sync.Mutex // held for the length of one turn
+
+	connecting bool   // a background Connect is waiting for the person
+	lastErr    string // sentence from the last failed Connect, shown by Status
 }
 
 var (
@@ -300,6 +303,10 @@ type Status struct {
 	State     string `json:"state"`    // "idle" (not started), or ready | login | challenge | unknown
 	Verified  bool   `json:"verified"` // selectors confirmed against a real signed-in page
 	Installed bool   `json:"installed"`
+	// Connecting is true while the window is open waiting for the person to
+	// sign in; Error holds the sentence from the last Connect that failed.
+	Connecting bool   `json:"connecting"`
+	Error      string `json:"error,omitempty"`
 }
 
 // Status never launches anything; with no browser open the state is "idle"
@@ -311,8 +318,9 @@ func (s *Service) Status(ctx context.Context) Status {
 	}
 	s.mu.Lock()
 	t := s.t
+	st.Connecting, st.Error = s.connecting, s.lastErr
 	s.mu.Unlock()
-	if t.alive() {
+	if t.alive() && !st.Connecting {
 		st.Running = true
 		if p, err := s.probe(ctx, t); err == nil {
 			st.State = p.State
@@ -342,6 +350,33 @@ func (s *Service) Connect(ctx context.Context) (err error) {
 	}
 	t.setWindow(ctx, browser.WindowStateMinimized)
 	return nil
+}
+
+// StartConnect begins Connect in the background and returns at once; the
+// person watches Status. It does nothing when a connect is already running.
+func (s *Service) StartConnect() {
+	s.mu.Lock()
+	if s.connecting {
+		s.mu.Unlock()
+		return
+	}
+	s.connecting, s.lastErr = true, ""
+	s.mu.Unlock()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), humanCheckWindow+readyTimeout+30*time.Second)
+		defer cancel()
+		err := s.Connect(ctx)
+		s.mu.Lock()
+		s.connecting = false
+		if err != nil && !isCtxErr(err) {
+			if e := (*Err)(nil); asErr(err, &e) {
+				s.lastErr = e.Message()
+			} else {
+				s.lastErr = newErr(KindBrowser, s.site.Name, err).Message()
+			}
+		}
+		s.mu.Unlock()
+	}()
 }
 
 // Disconnect closes the browser. The saved sign-in stays unless forget is

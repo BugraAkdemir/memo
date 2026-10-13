@@ -226,6 +226,12 @@ func (r *Router) getActiveEntries() []*providerEntry {
 		if r.activeName != "" && entry.cfg.Name != r.activeName {
 			continue
 		}
+		// A web chat spends the person's real account allowance and takes
+		// seconds to fail; it is used only when picked, never as a silent
+		// fallback for another provider's error.
+		if r.activeName == "" && IsOptInOnly(entry.cfg.Type) {
+			continue
+		}
 		if entry.disabled {
 			disabled = append(disabled, entry)
 		} else {

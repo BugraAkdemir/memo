@@ -43,6 +43,7 @@ func TestFriendlyError_KnownFailures(t *testing.T) {
 		// Found live against the fake provider: the OpenAI-compatible provider
 		// words a 403 as an "authentication error", which must not read as a bad key.
 		{"403 worded as authentication", "⚠️ all providers failed: [custom] authentication error (status 403): simulated error", "not allowed to use this model", "erişim izni yok"},
+		{"opencode zen free tier", `⚠️ all providers failed: [opencode-zen] authentication error (status 403): {"type":"error","error":{"type":"FreeTierError","message":"OpenCode's free tier can only be used from within OpenCode."}}`, "only work inside the OpenCode app", "yalnızca OpenCode uygulamasının içinde"},
 		{"no such model", "⚠️ [custom] status 404: model not found", "was not found", "bulunamadı"},
 		{"rate limit", "⚠️ [groq] status 429: Rate limit reached for requests", "too many requests", "çok fazla istek"},
 		{"server error", "⚠️ [custom] status 500: Internal error encountered.", "problem on its side", "sunucu tarafında"},

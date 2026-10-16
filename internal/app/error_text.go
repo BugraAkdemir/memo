@@ -131,6 +131,14 @@ func (a *App) classifyProviderError(text string) (msg string, known bool) {
 			"Konuşma bu modelin bağlam sınırına sığmıyor. Yeni bir sohbet başlat ya da daha geniş bağlamlı bir model seç; Memo normalde bağlam %90'a gelince eski turları kendisi özetler."+tag,
 			"The conversation no longer fits this model's context window. Start a new chat or pick a model with a larger window; Memo normally summarizes older turns by itself once the context reaches 90%."+tag), true
 
+	// OpenCode Zen's "-free" models answer 403 FreeTierError to every client
+	// but OpenCode's own: the gate is on the client, not the key, so a valid API
+	// key does not unlock them. Paid Zen models are not affected.
+	case containsAny(lower, "freetiererror", "free tier can only be used from within opencode"):
+		return a.t(
+			"OpenCode Zen'in ücretsiz (-free) modelleri yalnızca OpenCode uygulamasının içinde çalışıyor; API anahtarı bunu açmaz. Zen'de ücretli bir model seç ya da başka bir sağlayıcı kullan."+tag,
+			"OpenCode Zen's free (-free) models only work inside the OpenCode app itself; an API key doesn't unlock them. Pick a paid Zen model or use another provider."+tag), true
+
 	// A 403 first: the OpenAI-compatible provider words both 401 and 403 as an
 	// "authentication error", so the wording alone would send a plain "not
 	// allowed" down the wrong-key path below.

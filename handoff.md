@@ -8,11 +8,11 @@
 **Kod denetimi ve sürüm hazırlığı (2026-10-12)**
 - Beta dışı kod eksikleri kapandı: provider kayıt/model menüsü (önceki oturum), güvenli Auto Route alternatif/kota, thinking, pinned/FTS fallback, mobil alarm SSE uzlaştırması, ortak yedek kapsamı ve parolalı cihazlar arası görsel restore, doğrulayıcı kanıt açıklığı, web onboarding yenileme. Plan/kanıt: `PLAN_v4_6_completion.md`, `docs/V4_6_COMPLETION_REVIEW.md`. Açık olanlar gerçek telefon/native OS, gerçek OAuth/Claude kota ve LLM kalite-maliyet ölçümleri; bunlar otomatik testlerle tamamlandı sayılmaz.
 
-**Uygulama içi güncelleme (4.7.0) — kod bitti, yayın sürüyor** (`PLAN_auto_update.md`, `docs/AUTO_UPDATE.md`)
-- Doğrulanmadı: **gerçek Windows** (Setup.exe `ShellExecute`) ve **macOS** (yalnız CI derlemesi; macOS betik kurulumunda başlatıcı yok → çoğu kurulum "manual"), gerçek GPU/model ile motor güncellemesi sonrası yeniden başlatma (yalnız sahte motorla), Flutter penceresinin gerçek masaüstünde görünümü (widget testleri var).
-- Windows/macOS motor klasörlerinde sürüm işareti yok (llama.cpp sürümü kanıtlanmadı) → motor güncellemesi almazlar; `internal/components/ENGINES.txt`'ye kanıtlı satır eklenince açılır. Linux llama b9441, linux/cpu whisper 1.8.6 (R2 ile md5 eşleşmesi).
-- Yerel `binaries/linux/cpu` yarım kalmış b11456 denemesinden artık taşıyor (`libllama.so.0.0.1`, `*.so.0-new`, `llama-new`); R2'dekinde yok. Silmeden önce kullanıcıya sor.
-- Özel imza anahtarı: `~/.config/memo-release/update-signing.key` + Actions secret `MEMO_UPDATE_SIGNING_KEY`. Kaybolursa yeni anahtar = eski anahtarla imzalı yeni sürüm.
+**Uygulama içi güncelleme (4.7.0, yayında)** — `PLAN_auto_update.md`, `docs/AUTO_UPDATE.md`
+- Doğrulanmadı: gerçek **Windows** (Setup.exe `ShellExecute`) ve **macOS** (yalnız CI derlemesi; betik kurulumunda başlatıcı yok → çoğu "manual"), gerçek GPU/model ile motor güncellemesi sonrası yeniden başlatma (sahte motorla denendi), Flutter penceresi gerçek masaüstünde.
+- Windows/macOS motor klasörlerinde sürüm işareti yok → motor güncellemesi almazlar; kanıtlı satır `internal/components/ENGINES.txt`'ye eklenince açılır (Linux: llama b9441, linux/cpu whisper 1.8.6).
+- Yerel `binaries/linux/cpu` yarım b11456 denemesinden artık taşıyor (`libllama.so.0.0.1`, `*.so.0-new`, `llama-new`); R2'de yok. Silmeden önce sor.
+- İmza özel anahtarı: `~/.config/memo-release/update-signing.key` + Actions secret `MEMO_UPDATE_SIGNING_KEY`; kaybolursa yeni anahtar eski anahtarla imzalı bir sürümle gelir.
 
 **Kullanıcıda**
 - Geçmişte `origin` push URL'sinde düz metin token ve artık satılmış bir alan adı vardı. Bu oturumda `git remote -v` yalnız GitHub URL'sini gösterdi; push doğrudan GitHub HTTPS adresine yapıldı. Eski token'ın döndürülmesi kullanıcıda.
@@ -45,8 +45,8 @@
 
 ---
 
-# Son oturum — 2026-10-17 — Uygulama içi güncelleme + v4.7.0 hazırlığı
-- Yapılan: imzalı (ed25519) manifest + bayt-tam indirme + yol-güvenli açma (`internal/updater`), yerinde takas + geri alma (`cmd/memo-updater`, yeni sürümün İÇİNDEN çalışır), motor bileşeni kurulumu (`<veri>/components`, bundled'dan önce aranır; llama auto modu flavor'ı bundled'dan seçer), `/api/update/{check,status,apply}` (apply adminOnly), Flutter penceresi (açılışta, Atla/Daha sonra/zorunlu, motor penceresi), CI'da damgalama + `memo-updater` + manifest yayını, `scripts/{stamp_engine_versions,publish_update_manifest,publish_component,verify_update_manifest}.sh`.
-- **Gerçek süreçlerle denendi (Linux):** V4.6.0 → V4.7.0 başarılı güncelleme, çöken yeni sürümde geri alma (eski sürüm geri geldi, kullanıcı verisi sağlam) — bunlar bir hata buldu (geri alma sessizdi) → `update-failure.txt` + pencerede gösterim. Zincir testi (yayıncı → kurucu) `tar -h` hard-link hatasını yakaladı.
-- Doğrulama: Go build/vet, tam `-race` test (livemode `SendAudioRoutesToCurrentInner` ve webchat `PressingItAgain` Flutter testiyle aynı anda koşunca düştü; tek başına 3×`-race` geçti — bilinen yük kararsızlığı), Flutter 702 test, analyze (4 eski info), Kural #8 grep temiz.
-- Sürüm: 4.7.0 (kullanıcı seçti; 4.6.0 zaten yayında). Notlar `versinNote/v4.7.0.md`, `tr/`. Yayın adımları (etiket, CI, manifest doğrulama, işaret) bu girişin altına işlenecek.
+# Son oturum — 2026-10-17 — Uygulama içi güncelleme + v4.7.0 yayını
+- Yapılan: imzalı manifest + bayt-tam indirme + yol-güvenli açma (`internal/updater`), yerinde takas/geri alma (`cmd/memo-updater`, YENİ sürümün içinden çalışır), motor bileşeni kurulumu (`<veri>/components`; llama auto modu flavor'ı bundled'dan seçer), `/api/update/*` (apply adminOnly), Flutter penceresi, CI'da damgalama + updater + manifest yayını, `scripts/{stamp_engine_versions,publish_update_manifest,publish_component,verify_update_manifest}.sh`.
+- Gerçek süreçlerle (Linux) denendi: başarılı güncelleme ve çöken yeni sürümde geri alma → geri alma sessizdi, `update-failure.txt` + pencerede gösterim eklendi; yayıncı→kurucu zincir testi `tar -h` hard-link hatasını yakaladı.
+- Doğrulama: Go build/vet + tam `-race` (aşağıdaki kararsız testler hariç), Flutter 702 test, analyze (4 eski info), Kural #8 grep temiz (CI bekçisi test dosyasındaki `Text('open')`'ı yakaladı, düzeltildi).
+- **Yayın:** etiket kullanıcı onayıyla `03e03418` üzerinde itildi; 6 derleme yeşil; stabil dosyalar taze; `verify_update_manifest.sh` 3 platformda geçti; Linux/macOS SHA-256 manifestle eşleşti; Linux arşivinde `memo-updater` + işaretler var; GitHub Release ön sürüm değil. İşaret (`BugraAkdemir/version` `4a6b21b`) en son bump'landı, `components` satırı yok. `Test (Go)` CI'da iki kararsız testle kırmızı (aşağıda). 4.6.0 kullanıcıları için geçiş elle.

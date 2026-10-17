@@ -2536,6 +2536,30 @@ class MemoApiClient {
     }
   }
 
+  // ─── In-app update ─────────────────────────────────────────────
+
+  /// Ask the backend whether a newer Memo (or engine component) exists.
+  /// Throws on failure; the provider that calls this keeps it ambient.
+  Future<Map<String, dynamic>> checkForUpdate({bool force = false}) async {
+    final res = await _dio.get(
+      '/api/update/check',
+      queryParameters: force ? {'force': '1'} : null,
+    );
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
+  /// Start an update: kind "app", or kind "component" with a component name.
+  /// The backend answers at once; poll [getUpdateStatus] for progress.
+  Future<void> applyUpdate(String kind, {String component = ''}) async {
+    await _dio.post('/api/update/apply', data: {'kind': kind, 'component': component});
+  }
+
+  /// Progress of the running update.
+  Future<Map<String, dynamic>> getUpdateStatus() async {
+    final res = await _dio.get('/api/update/status');
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
   // ─── WhatsApp ──────────────────────────────────────────────────
 
   /// Get WhatsApp connection status.

@@ -29,7 +29,9 @@ import '../widgets/backend_unreachable_view.dart';
 import '../widgets/auth_gate_overlay.dart';
 import '../widgets/mobile_connect_screen.dart';
 import '../widgets/setup_wizard_view.dart';
+import '../widgets/update_prompt.dart';
 import '../widgets/version_banner.dart';
+import '../providers/update_provider.dart';
 import '../widgets/proactive_suggestion_banner.dart';
 import '../widgets/engine_strip.dart';
 import '../widgets/launchpad_view.dart';
@@ -255,6 +257,9 @@ class _AppShellState extends ConsumerState<AppShell> {
         // doing it here too costs nothing and covers the gate transitions
         // those five call sites don't know about.
         ref.invalidate(gatewayModelsProvider);
+        // The update prompt reads once at start; before the gate opened it got
+        // the safe default (nothing to offer), so it asks again now.
+        ref.invalidate(updateInfoProvider);
         ref.invalidate(gpuInfoProvider);
         // Drives whether the Swarm tab is shown at all — a stale answer
         // here silently hands that decision to the local mirror pref.
@@ -442,6 +447,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                 LlamaInstallerOverlay(),
                 const BackendUnreachableOverlay(),
                 const AuthGateOverlay(),
+                const UpdatePrompt(),
                 const VersionBanner(),
                 const ProactiveSuggestionBanner(),
                 // Phone-only first screen; renders nothing on desktop/web and

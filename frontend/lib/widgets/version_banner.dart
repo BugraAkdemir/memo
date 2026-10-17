@@ -5,7 +5,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../providers/update_provider.dart';
 import '../providers/version_provider.dart';
+import 'update_prompt.dart';
 
 /// A subtle, dismissable banner shown in the bottom-right corner
 /// when a new Memo version is available.
@@ -59,6 +61,17 @@ class _VersionBannerState extends ConsumerState<VersionBanner>
     );
   }
 
+  /// A one-click update opens the update window; anything else (or a backend
+  /// that couldn't say) falls back to the download page.
+  Future<void> _onTap() async {
+    final info = ref.read(updateInfoProvider).valueOrNull;
+    if (info != null && info.available && info.canUpdateInPlace && mounted) {
+      await showAppUpdateDialog(context, info);
+      return;
+    }
+    await _openDownloadPage();
+  }
+
   Future<void> _openDownloadPage() async {
     final uri = Uri.parse('https://memocpp.com');
     if (await canLaunchUrl(uri)) {
@@ -82,7 +95,7 @@ class _VersionBannerState extends ConsumerState<VersionBanner>
           current: info.current,
           latest: info.latest!,
           onDismiss: _dismiss,
-          onTap: _openDownloadPage,
+          onTap: _onTap,
         );
       },
       loading: () => const SizedBox.shrink(),

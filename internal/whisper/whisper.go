@@ -546,6 +546,21 @@ func resolveModel(configured string) string {
 	return ""
 }
 
+// EngineFlavor reports which bundled engine folder whisper-server would run
+// from, or "" when it comes from elsewhere (a custom path, PATH).
+func EngineFlavor(configured string) string {
+	bin, err := resolveBinary(configured)
+	if err != nil {
+		return ""
+	}
+	d := filepath.Dir(bin)
+	osDir := filepath.Dir(d)
+	if filepath.Base(osDir) == runtime.GOOS && filepath.Base(filepath.Dir(osDir)) == "binaries" {
+		return filepath.Base(d)
+	}
+	return ""
+}
+
 // overrideRootFn is the root of the downloaded-engine tree the component
 // updater writes (<data>/components). A var so tests can point it elsewhere.
 var overrideRootFn = func() string { return components.OverrideRoot(config.DataDir()) }

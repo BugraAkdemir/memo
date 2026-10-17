@@ -69,6 +69,22 @@ func OverrideRoot(dataDir string) string {
 	return filepath.Join(dataDir, OverrideDirName)
 }
 
+// BundledRoots lists the directories that may hold the install's own
+// binaries/ tree, best first: the working directory, the running executable's
+// directory and its parent (the installed CLI lives one level deeper than the
+// tree the installer copied). It mirrors the search the engines themselves do.
+func BundledRoots() []string {
+	roots := []string{"."}
+	if exe, err := os.Executable(); err == nil {
+		if real, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = real
+		}
+		d := filepath.Dir(exe)
+		roots = append(roots, d, filepath.Dir(d))
+	}
+	return roots
+}
+
 // Installed describes one component as found on disk.
 type Installed struct {
 	Name Name

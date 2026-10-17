@@ -24,6 +24,8 @@ type ServerStatus struct {
 	Port      int     `json:"port"`
 	PID       int     `json:"pid"`
 	GPU       GPUInfo `json:"gpu"`
+	// CtxSize is the context window the running server was started with.
+	CtxSize int `json:"ctx_size,omitempty"`
 }
 
 // Server manages a llama-server subprocess.
@@ -318,6 +320,7 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		s.cmd.Stderr = os.Stderr
 	}
 	s.modelPath = modelPath
+	s.ctxSize = actualCtx
 	s.stopping = false
 	s.waitDone = make(chan struct{})
 
@@ -542,6 +545,7 @@ func (s *Server) GetStatus() ServerStatus {
 			status.PID = s.cmd.Process.Pid
 			status.ModelPath = s.modelPath
 			status.ModelName = extractModelName(s.modelPath)
+			status.CtxSize = s.ctxSize
 		}
 		return status
 	}
@@ -686,6 +690,29 @@ func resolveBinary(configured string, mode string) (string, error) {
 	}
 
 	return "", fmt.Errorf("llama-server binary not found — install llama.cpp or set the binary path in settings")
+}
+
+// EngineFlavor reports which bundled engine folder ("cpu", "amd", "nvidia",
+// "metal", …) llama-server would run from for this configuration, or "" when it
+// would come from somewhere Memo does not own (PATH, a custom binary_path).
+// The component updater uses it to update exactly the folder that is in use.
+func EngineFlavor(configured, mode string) string {
+	bin, err := resolveBinary(configured, mode)
+	if err != nil {
+		return ""
+	}
+	return FlavorOfPath(bin)
+}
+
+// FlavorOfPath returns "<flavor>" for a path of the form
+// …/binaries/<os>/<flavor>/<file>, and "" for anything else.
+func FlavorOfPath(bin string) string {
+	d := filepath.Dir(bin)
+	osDir := filepath.Dir(d)
+	if filepath.Base(osDir) == runtime.GOOS && filepath.Base(filepath.Dir(osDir)) == "binaries" {
+		return filepath.Base(d)
+	}
+	return ""
 }
 
 // binarySearchBases returns directories to search for engine binaries: the

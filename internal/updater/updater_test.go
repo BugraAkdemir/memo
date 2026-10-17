@@ -627,3 +627,10 @@ func TestEnsureSpace(t *testing.T) {
 		t.Errorf("an absurd request must be refused with ErrNoSpace, got %v", err)
 	}
 }
+
+func TestPublicKey_IsCompiledIn(t *testing.T) {
+	k := PublicKey()
+	if len(k) != ed25519.PublicKeySize {
+		t.Fatalf("the build carries no usable update key (len %d); it would refuse every update", len(k))
+	}
+}

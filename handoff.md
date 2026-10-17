@@ -8,6 +8,9 @@
 **Kod denetimi ve sürüm hazırlığı (2026-10-12)**
 - Beta dışı kod eksikleri kapandı: provider kayıt/model menüsü (önceki oturum), güvenli Auto Route alternatif/kota, thinking, pinned/FTS fallback, mobil alarm SSE uzlaştırması, ortak yedek kapsamı ve parolalı cihazlar arası görsel restore, doğrulayıcı kanıt açıklığı, web onboarding yenileme. Plan/kanıt: `PLAN_v4_6_completion.md`, `docs/V4_6_COMPLETION_REVIEW.md`. Açık olanlar gerçek telefon/native OS, gerçek OAuth/Claude kota ve LLM kalite-maliyet ölçümleri; bunlar otomatik testlerle tamamlandı sayılmaz.
 
+**Uygulama içi güncelleme (v4.6.1 hedefi) — başladı, `PLAN_auto_update.md`**
+- Adım 0–1 bitti (`d897f804`): `internal/components` + `scripts/stamp_engine_versions.sh`, testli. Sıradaki: Adım 2 (`internal/updater`: ed25519 imzalı manifest, semver, sha256). **Hiçbir şey uygulamaya bağlanmadı**, `binaries/` ve R2'ye marker yazılmadı (R2 yazımı kullanıcı onayı ister). Windows/macOS llama sürümü kanıtlanmadı (ayrıntı planın "Sürüm bilgisi" bölümü). İmza anahtarı kararı: GitHub Actions secret'ı (R2 anahtarlarının yanında) — anahtar henüz üretilmedi.
+
 **Kullanıcıda**
 - Geçmişte `origin` push URL'sinde düz metin token ve artık satılmış bir alan adı vardı. Bu oturumda `git remote -v` yalnız GitHub URL'sini gösterdi; push doğrudan GitHub HTTPS adresine yapıldı. Eski token'ın döndürülmesi kullanıcıda.
 - Eski sürümlerin REPL `update` komutu ve `download.bugradev.com/get-memo.sh` satırları artık başkasının sunucusuna gidiyor → yeni sürümü duyur, eski satırları kaldır.

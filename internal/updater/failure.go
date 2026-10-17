@@ -24,11 +24,16 @@ const (
 // WriteFailure records that updating to version failed with cause.
 func WriteFailure(path, version string, cause error) error {
 	msg := "update to " + version + " failed"
+	detail := cause
 	if errors.Is(cause, ErrRolledBack) {
 		msg += " and was rolled back"
+		var rb *rolledBackError
+		if errors.As(cause, &rb) {
+			detail = rb.cause // the reason, without the generic "restored" sentence around it
+		}
 	}
-	if cause != nil {
-		msg += ": " + oneLine(cause.Error())
+	if detail != nil {
+		msg += ": " + oneLine(detail.Error())
 	}
 	return os.WriteFile(path, []byte(msg+"\n"), 0o600)
 }

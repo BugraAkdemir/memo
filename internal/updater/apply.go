@@ -50,6 +50,14 @@ type Launched struct {
 // back (and relaunched). The update did not happen; nothing was lost.
 var ErrRolledBack = errors.New("updater: the new version did not start; the previous version was restored")
 
+// rolledBackError carries WHY the new version failed while still matching
+// errors.Is(err, ErrRolledBack).
+type rolledBackError struct{ cause error }
+
+func (e *rolledBackError) Error() string        { return ErrRolledBack.Error() + " (" + e.cause.Error() + ")" }
+func (e *rolledBackError) Is(target error) bool { return target == ErrRolledBack }
+func (e *rolledBackError) Unwrap() error        { return e.cause }
+
 // Apply waits for Memo to exit, swaps the new release in, relaunches, and
 // checks that the new backend answers with the expected version. Any failure
 // after the first file moved restores the previous version and relaunches it.
@@ -125,7 +133,7 @@ func rollBack(sw *Swap, l *Launched, d ApplyDeps, logf func(string, ...any), cau
 	if _, err := d.Relaunch(); err != nil {
 		logf("could not relaunch the previous version: %v", err)
 	}
-	return fmt.Errorf("%w (%v)", ErrRolledBack, cause)
+	return &rolledBackError{cause: cause}
 }
 
 func waitGone(ctx context.Context, pids []int, alive func(int) bool, timeout, every time.Duration) error {
@@ -178,7 +186,7 @@ func waitHealthy(ctx context.Context, health func(context.Context) (string, erro
 		}
 		select {
 		case <-exited: // nil channel never fires
-			return last, fmt.Errorf("updater: the new version exited before it answered: %w", lastErr)
+			return last, errors.New("the new version stopped before it was ready")
 		default:
 		}
 		if time.Now().After(deadline) {

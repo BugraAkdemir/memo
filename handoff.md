@@ -8,8 +8,11 @@
 **Kod denetimi ve sürüm hazırlığı (2026-10-12)**
 - Beta dışı kod eksikleri kapandı: provider kayıt/model menüsü (önceki oturum), güvenli Auto Route alternatif/kota, thinking, pinned/FTS fallback, mobil alarm SSE uzlaştırması, ortak yedek kapsamı ve parolalı cihazlar arası görsel restore, doğrulayıcı kanıt açıklığı, web onboarding yenileme. Plan/kanıt: `PLAN_v4_6_completion.md`, `docs/V4_6_COMPLETION_REVIEW.md`. Açık olanlar gerçek telefon/native OS, gerçek OAuth/Claude kota ve LLM kalite-maliyet ölçümleri; bunlar otomatik testlerle tamamlandı sayılmaz.
 
-**Uygulama içi güncelleme (v4.6.1 hedefi) — başladı, `PLAN_auto_update.md`**
-- Adım 0–1 bitti (`d897f804`): `internal/components` + `scripts/stamp_engine_versions.sh`, testli. Sıradaki: Adım 2 (`internal/updater`: ed25519 imzalı manifest, semver, sha256). **Hiçbir şey uygulamaya bağlanmadı**, `binaries/` ve R2'ye marker yazılmadı (R2 yazımı kullanıcı onayı ister). Windows/macOS llama sürümü kanıtlanmadı (ayrıntı planın "Sürüm bilgisi" bölümü). İmza anahtarı kararı: GitHub Actions secret'ı (R2 anahtarlarının yanında) — anahtar henüz üretilmedi.
+**Uygulama içi güncelleme (4.7.0) — kod bitti, yayın sürüyor** (`PLAN_auto_update.md`, `docs/AUTO_UPDATE.md`)
+- Doğrulanmadı: **gerçek Windows** (Setup.exe `ShellExecute`) ve **macOS** (yalnız CI derlemesi; macOS betik kurulumunda başlatıcı yok → çoğu kurulum "manual"), gerçek GPU/model ile motor güncellemesi sonrası yeniden başlatma (yalnız sahte motorla), Flutter penceresinin gerçek masaüstünde görünümü (widget testleri var).
+- Windows/macOS motor klasörlerinde sürüm işareti yok (llama.cpp sürümü kanıtlanmadı) → motor güncellemesi almazlar; `internal/components/ENGINES.txt`'ye kanıtlı satır eklenince açılır. Linux llama b9441, linux/cpu whisper 1.8.6 (R2 ile md5 eşleşmesi).
+- Yerel `binaries/linux/cpu` yarım kalmış b11456 denemesinden artık taşıyor (`libllama.so.0.0.1`, `*.so.0-new`, `llama-new`); R2'dekinde yok. Silmeden önce kullanıcıya sor.
+- Özel imza anahtarı: `~/.config/memo-release/update-signing.key` + Actions secret `MEMO_UPDATE_SIGNING_KEY`. Kaybolursa yeni anahtar = eski anahtarla imzalı yeni sürüm.
 
 **Kullanıcıda**
 - Geçmişte `origin` push URL'sinde düz metin token ve artık satılmış bir alan adı vardı. Bu oturumda `git remote -v` yalnız GitHub URL'sini gösterdi; push doğrudan GitHub HTTPS adresine yapıldı. Eski token'ın döndürülmesi kullanıcıda.
@@ -42,6 +45,8 @@
 
 ---
 
-# Son oturum — 2026-10-14 — Kod kalitesi / token / önbellek
-- **"Memo kodu kötü yazıyor" incelemesi (ölçüm: gerçek istek dökümü):** (1) `search_files` yalnız dosya ADI arıyordu → yeni `search_content` (grep) aracı, araç açıklamaları yönlendirici; (2) Code Mode 32 araç/18 KB gönderiyordu (WhatsApp, takvim, rutin, self_clone…) → `agent.ForCodeMode`, kod-odaklı ajan istemi (`buildCodeAgentSystemPrompt`; normal ajan istemi bayt-bayt aynı, sha256 doğrulandı); (3) Claude `max_tokens` sabit 4096 → model ailesine göre 4096/8192/16384; (4) düz sohbet persona'sına "kısa kuralı koda uygulanmaz" maddesi; (5) hafıza bloğu sistem isteminden kullanıcı mesajına taşındı (önbellek öneki sabit) + Claude araç turlarında kayan `cache_control`. **Abonelikte GPT-6.1-sol penceresi** CLIProxyAPI'nin yayımlı kaydından (`data/cliproxy/model-capabilities.json`) 272.000 geliyor — 1M değil; Codex abonelik arka ucu için gerçek sınır bilinmiyor, kullanıcı `context_tokens` ile elle verebilir. Doğrulanmadı: gerçek modelde kalite farkının ne kadar kapandığı (A/B ölçülmedi); düşünme (thinking) varsayılan kapalı bırakıldı (maliyet) — Claude/abonelikte efor seçici ile açılır.
-- Web sohbet (Beta) özeti ve bağlan/tarayıcı düzeltmeleri arşivin başında; açık madde: giriş yapılmış hesapla hiç denenmedi (`docs/WEB_CHAT.md`).
+# Son oturum — 2026-10-17 — Uygulama içi güncelleme + v4.7.0 hazırlığı
+- Yapılan: imzalı (ed25519) manifest + bayt-tam indirme + yol-güvenli açma (`internal/updater`), yerinde takas + geri alma (`cmd/memo-updater`, yeni sürümün İÇİNDEN çalışır), motor bileşeni kurulumu (`<veri>/components`, bundled'dan önce aranır; llama auto modu flavor'ı bundled'dan seçer), `/api/update/{check,status,apply}` (apply adminOnly), Flutter penceresi (açılışta, Atla/Daha sonra/zorunlu, motor penceresi), CI'da damgalama + `memo-updater` + manifest yayını, `scripts/{stamp_engine_versions,publish_update_manifest,publish_component,verify_update_manifest}.sh`.
+- **Gerçek süreçlerle denendi (Linux):** V4.6.0 → V4.7.0 başarılı güncelleme, çöken yeni sürümde geri alma (eski sürüm geri geldi, kullanıcı verisi sağlam) — bunlar bir hata buldu (geri alma sessizdi) → `update-failure.txt` + pencerede gösterim. Zincir testi (yayıncı → kurucu) `tar -h` hard-link hatasını yakaladı.
+- Doğrulama: Go build/vet, tam `-race` test (livemode `SendAudioRoutesToCurrentInner` ve webchat `PressingItAgain` Flutter testiyle aynı anda koşunca düştü; tek başına 3×`-race` geçti — bilinen yük kararsızlığı), Flutter 702 test, analyze (4 eski info), Kural #8 grep temiz.
+- Sürüm: 4.7.0 (kullanıcı seçti; 4.6.0 zaten yayında). Notlar `versinNote/v4.7.0.md`, `tr/`. Yayın adımları (etiket, CI, manifest doğrulama, işaret) bu girişin altına işlenecek.

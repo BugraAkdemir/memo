@@ -40,8 +40,8 @@ Eski istemciler bilmediği alanları yok sayar (`CheckLatestVersion` yalnız `ve
 - `vec0` (sqlite-vec) backend süreci içine yüklenir → bu mekanizmaya dahil DEĞİL.
 
 ## Adımlar (her biri testli; oturum başına en çok 1–2)
-- [ ] 0. Karar: imza anahtarı nerede duracak (CI secret önerilir). Whisper'ın hangi tag/sürümden derlendiğini bul.
-- [ ] 1. Sürüm dosyaları + `internal/components`: kurulu sürümleri okur (override > gömülü). `vendor_llama.sh` / paketleme `LLAMA_VERSION`/`WHISPER_VERSION` yazar.
+- [x] 0. Karar: imza anahtarı GitHub Actions secret'ında (R2 anahtarlarıyla aynı yerde). Whisper sürümü: `libwhisper.so.1`'in kendi `whisper_version()` çıktısı **1.8.6** (ctypes ile okundu). Yerel llama-server: `--version` → 9441.
+- [x] 1. `internal/components` (kurulu sürümü okur: override > gömülü, geçerli marker şartı, `Compare`: llama `bNNNN` sayısal, diğerleri noktalı) + `scripts/stamp_engine_versions.sh` (`stamp`/`check`, `--only OS/FLAVOR`, libllama build numarasıyla çapraz kontrol, iki geçişli yazma). **Henüz yapılmayan:** gerçek `binaries/`/R2'ye damga basmak (aşağıdaki "Sürüm bilgisi" notu) ve CI'a bağlamak (Adım 7).
 - [ ] 2. `internal/updater`: manifest tipleri, ed25519 doğrulama, semver, downgrade reddi, sha256; anahtar üretme betiği. Testler: kurcalanmış manifest, yanlış imza, eski sürüm, sha256 uyuşmazlığı.
 - [ ] 3. Backend: `CheckLatestVersion` semver'e + yeni alanlar; `GET /api/update/check` (not TR/EN, required, bileşen farkı); `POST /api/update/apply` + ilerleme (`adminOnly`). `/api/version/check` eski şekliyle kalır.
 - [ ] 4. Bileşen güncelleyici: indir (Range ile devam, disk alanı denetimi), doğrula, `components/` altına hazırla, alt süreci durdur (llama-server / sidecar / whisper), yer değiştir, başlat, sağlık denetimi, başarısızsa geri al. Arama köklerine override ekle: `internal/llama`, `internal/whisper`, `internal/cliproxy` (Binary() bugün exe dizinini DataDir'den ÖNCE arıyor — override en başa).
@@ -49,6 +49,13 @@ Eski istemciler bilmediği alanları yok sayar (`CheckLatestVersion` yalnız `ve
 - [ ] 6. Flutter: açılışta güncelleme penceresi (TR+EN L10n, Kural #8), "Güncelle / Sonra / Bu sürümü atla", `required_update`, ilerleme, yeniden başlama durumu. Atlanan sürüm cihaz tercihi.
 - [ ] 7. CI / sürüm süreci: manifest üretme + imzalama, `scripts/publish_component.sh` (R2'ye yükle + manifest), `memo-release` skill Faz 4'ün genişletilmesi (işaret en son bump'lanır).
 - [ ] 8. Belgeler (`docs/`, AGENTS.md), `handoff.md`.
+
+## Sürüm bilgisi: hangi klasör hangi llama.cpp'yi taşıyor (2026-10-17, yerel `binaries/` üzerinde ölçüldü)
+- **Linux amd / nvidia / cpu-arm64: b9441** — `libllama.so.0.0.9441` (kanıtlı). **Linux cpu:** `llama-server --version` = 9441, ama klasörde yarım kalmış bir b11456 hazırlığından artıklar var (`libllama.so.0.0.1`, `libggml*.so.0.14.0`, `*.so.0-new`, `llama-new`); damgadan önce temizlenmeli.
+- **Windows: muhtemelen b9441** — `ggml-base.dll` 0.13.1, Linux b9441'in ggml'i ile aynı. Kanıt değil (bir ggml sürümü birkaç llama build'ine denk gelebilir); damga basmadan önce kullanıcıdan/kaynak arşivden teyit.
+- **macOS: b9441 DEĞİL** — dylib'ler ggml 0.15.3 (Linux b9441: 0.13.1). Tam tag bilinmiyor (2026-07-02 commit'i `291b549b`). Kanıtlanmadan damga basılmaz.
+- **Sonuç:** llama sürümü klasör (platform/flavor) başınadır, ağaç başına değil. Bu yüzden `version.json`'daki `components.llama` bir **etiket/tetikleyicidir**; hangi klasörün neyi alacağını imzalı bileşen manifesti söyler (manifestte olmayan flavor güncellenmez — NVIDIA b9441'de kalır).
+- `binaries/` git'te yok sayılıyor (yalnız macOS dosyaları zorla eklenmiş) → Linux/Windows için marker'ların kaynağı **R2**'dir; R2'ye yazmak kullanıcı onayı ister.
 
 ## Bilinen tuzaklar (kodda doğrulanmış)
 - `llama.resolveBinary` arama tabanları üzerinde **dış döngü** olarak dolaşıp içte amd → nvidia → cpu bakıyor (`internal/llama/llama.go`, "Check Bundled Paths"). Yalnız `cpu` içeren bir override tabanı, makinede gömülü `amd` varken bile kazanır. Override eklerken sıra (flavor-major mı, mod önceden çözülüyor mu) testle kanıtlanmalı.

@@ -69,6 +69,9 @@ Map<String, dynamic> _appCheck({bool required = false, String mode = 'auto'}) =>
       'components': <Object>[],
     };
 
+// Label of the throwaway button that opens a dialog in these tests (test fixture, not UI).
+const _kOpenLabel = 'open';
+
 /// Lets the fake backend's futures and the notifier's timers make progress: a
 /// bare pump() drains microtasks once, but a request chains several of them.
 Future<void> settle(WidgetTester tester, [int ms = 100]) async {
@@ -131,7 +134,7 @@ void main() {
         builder: (ctx) => TextButton(
           key: const Key('open'),
           onPressed: () => showAppUpdateDialog(ctx, info),
-          child: const Text('open'),
+          child: const Text(_kOpenLabel),
         ),
       );
 
@@ -301,7 +304,7 @@ void main() {
       await pumpHost(tester, opener: (ctx) => TextButton(
             key: const Key('open'),
             onPressed: () => showDialog<void>(context: ctx, builder: (_) => ComponentUpdateDialog(components: comps)),
-            child: const Text('open'),
+            child: const Text(_kOpenLabel),
           ));
       await tester.tap(find.byKey(const Key('open')));
       await tester.pumpAndSettle();

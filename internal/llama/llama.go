@@ -2,6 +2,7 @@ package llama
 
 import (
 	"fmt"
+	"memo/internal/components"
 	"memo/internal/config"
 	"memo/internal/gguf"
 	"memo/internal/logx"
@@ -585,10 +586,20 @@ func (s *Server) CtxSize() int {
 
 // ─── Binary Resolution ──────────────────────────────────────────
 
+// overrideRootFn is the root of the downloaded-engine tree the component
+// updater writes (<data>/components). A var so tests can point it elsewhere.
+var overrideRootFn = func() string { return components.OverrideRoot(config.DataDir()) }
+
 // resolveBinary finds the llama-server binary.
 // It searches relative to the current working directory first, then relative to
 // the running executable's location (for bundled AppImage/tar.gz deployments
 // where CWD is $HOME/.memo but binaries live next to memo-backend).
+//
+// A copy of an engine folder that the component updater downloaded
+// (<data>/components/binaries/<os>/<flavor>) shadows the bundled copy of the
+// SAME flavor — and only that: which flavor is used is still decided by the
+// bundled tree and the engine mode, exactly as before, so an update to one
+// flavor can never switch a machine to another.
 func resolveBinary(configured string, mode string) (string, error) {
 	// 1. If a specific mode is requested, look in bundled paths first
 	currentOS := runtime.GOOS
@@ -613,17 +624,27 @@ func resolveBinary(configured string, mode string) (string, error) {
 	}
 
 	// 3. Check Bundled Paths (Auto-detect order) in all search bases
-	for _, base := range binarySearchBases() {
-		bundledDirs := []string{
-			filepath.Join(base, "binaries", currentOS, "amd", llamaServerBinary()),
-			filepath.Join(base, "binaries", currentOS, "nvidia", llamaServerBinary()),
-			filepath.Join(base, "binaries", currentOS, "cpu", llamaServerBinary()),
-			filepath.Join(base, "bin", llamaServerBinary()),
-		}
-		for _, p := range bundledDirs {
+	flavors := []string{"amd", "nvidia", "cpu"}
+	for _, base := range bundledSearchBases() {
+		for _, flavor := range flavors {
+			p := filepath.Join(base, "binaries", currentOS, flavor, llamaServerBinary())
 			if _, err := os.Stat(p); err == nil {
+				// Same flavor, downloaded copy: prefer it.
+				if ov := filepath.Join(overrideRootFn(), "binaries", currentOS, flavor, llamaServerBinary()); fileExists(ov) {
+					return ov, nil
+				}
 				return p, nil
 			}
+		}
+		p := filepath.Join(base, "bin", llamaServerBinary())
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+	// Nothing bundled at all: a downloaded engine can still carry the machine.
+	for _, flavor := range flavors {
+		if ov := filepath.Join(overrideRootFn(), "binaries", currentOS, flavor, llamaServerBinary()); fileExists(ov) {
+			return ov, nil
 		}
 	}
 
@@ -667,13 +688,25 @@ func resolveBinary(configured string, mode string) (string, error) {
 	return "", fmt.Errorf("llama-server binary not found — install llama.cpp or set the binary path in settings")
 }
 
-// binarySearchBases returns directories to search for bundled binaries.
+// binarySearchBases returns directories to search for engine binaries: the
+// downloaded-engine tree first, then the bundled ones.
 func binarySearchBases() []string {
+	return append([]string{overrideRootFn()}, bundledSearchBases()...)
+}
+
+// bundledSearchBases returns directories to search for the binaries that ship
+// with the install.
+func bundledSearchBases() []string {
 	exePath, err := os.Executable()
 	if err != nil {
 		return []string{"."}
 	}
 	return binarySearchBasesFrom(exePath)
+}
+
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
 }
 
 // binarySearchBasesFrom is the pure part of binarySearchBases, split out so

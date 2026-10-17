@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"memo/internal/components"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1107,5 +1108,59 @@ func TestWantsPaste_MatchesEveryVendorsPrompt(t *testing.T) {
 		if wantsPaste(line) {
 			t.Errorf("wantsPaste(%q) = true, want false", line)
 		}
+	}
+}
+
+// A downloaded sidecar (<data>/components) is searched before the bundled one,
+// and one that fails its checksum must NOT take Subscriptions down: Binary()
+// refuses it and falls back to the bundled copy.
+func TestBinary_DownloadedSidecarShadowsTheBundledOne(t *testing.T) {
+	downloaded, bundled := bundle(t), bundle(t)
+	// Make the two distinguishable by their VERSION file.
+	write := func(root, v string) {
+		p := filepath.Join(root, "binaries", runtime.GOOS, "cliproxy", "VERSION")
+		if err := os.WriteFile(p, []byte(v+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(downloaded, "v9.9.9")
+	write(bundled, "v1.0.0")
+
+	m := New(t.TempDir())
+	m.roots = []string{downloaded, bundled} // production order: override first
+	_, ver, err := m.Binary()
+	if err != nil || ver != "v9.9.9" {
+		t.Fatalf("version = %q, %v; want the downloaded v9.9.9", ver, err)
+	}
+}
+
+func TestBinary_DamagedDownloadFallsBackToTheBundledSidecar(t *testing.T) {
+	downloaded, bundled := bundle(t), bundle(t)
+	dir := filepath.Join(downloaded, "binaries", runtime.GOOS, "cliproxy")
+	f, err := os.OpenFile(filepath.Join(dir, binaryFile(runtime.GOOS, runtime.GOARCH)), os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("corrupt")
+	f.Close()
+	os.WriteFile(filepath.Join(bundled, "binaries", runtime.GOOS, "cliproxy", "VERSION"), []byte("v1.0.0\n"), 0o644)
+
+	m := New(t.TempDir())
+	m.roots = []string{downloaded, bundled}
+	path, ver, err := m.Binary()
+	if err != nil {
+		t.Fatalf("a damaged download took the sidecar down: %v", err)
+	}
+	if ver != "v1.0.0" || !strings.HasPrefix(path, bundled) {
+		t.Fatalf("used %s (%s); want the bundled copy", path, ver)
+	}
+}
+
+// The production search order really starts with the override tree.
+func TestSearchRoots_StartsWithTheDownloadedEngineTree(t *testing.T) {
+	m := New(t.TempDir())
+	roots := m.searchRoots()
+	if len(roots) < 2 || filepath.Base(roots[0]) != components.OverrideDirName {
+		t.Fatalf("roots = %v; want the override tree (…/%s) first", roots, components.OverrideDirName)
 	}
 }

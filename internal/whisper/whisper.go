@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"memo/internal/components"
+	"memo/internal/config"
 	"memo/internal/logx"
 	"mime/multipart"
 	"net/http"
@@ -544,13 +546,19 @@ func resolveModel(configured string) string {
 	return ""
 }
 
-// binarySearchBases returns directories to search for bundled binaries.
+// overrideRootFn is the root of the downloaded-engine tree the component
+// updater writes (<data>/components). A var so tests can point it elsewhere.
+var overrideRootFn = func() string { return components.OverrideRoot(config.DataDir()) }
+
+// binarySearchBases returns directories to search for bundled binaries: the
+// downloaded-engine tree first (a newer whisper.cpp build the updater fetched),
+// then the ones that ship with the install.
 func binarySearchBases() []string {
 	exePath, err := os.Executable()
 	if err != nil {
-		return []string{"."}
+		return []string{overrideRootFn(), "."}
 	}
-	return binarySearchBasesFrom(exePath)
+	return append([]string{overrideRootFn()}, binarySearchBasesFrom(exePath)...)
 }
 
 // binarySearchBasesFrom is the pure part of binarySearchBases, split out so

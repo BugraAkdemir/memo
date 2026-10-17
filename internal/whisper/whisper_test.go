@@ -57,12 +57,58 @@ func TestWhisperServerBinary(t *testing.T) {
 
 func TestBinarySearchBases(t *testing.T) {
 	bases := binarySearchBases()
-	if len(bases) < 1 {
-		t.Error("expected at least one base")
+	if len(bases) < 2 {
+		t.Fatalf("expected the downloaded-engine tree and at least one bundled base, got %v", bases)
 	}
-	if bases[0] != "." {
-		t.Errorf("first base = %q, want %q", bases[0], ".")
+	// The downloaded-engine tree comes first so a newer whisper.cpp the updater
+	// fetched shadows the bundled one; the bundled search order is unchanged
+	// after it, starting with the working directory.
+	if want := overrideRootFn(); bases[0] != want {
+		t.Errorf("first base = %q, want the override root %q", bases[0], want)
 	}
+	if bases[1] != "." {
+		t.Errorf("second base = %q, want %q", bases[1], ".")
+	}
+}
+
+func TestResolveBinary_DownloadedEngineShadowsTheBundledOne(t *testing.T) {
+	over, bundled := t.TempDir(), t.TempDir()
+	name := whisperServerBinary()
+	mk := func(root string) string {
+		p := filepath.Join(root, "binaries", runtime.GOOS, "cpu", name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	bundledBin := mk(bundled)
+	t.Chdir(bundled)
+
+	prev := overrideRootFn
+	t.Cleanup(func() { overrideRootFn = prev })
+	overrideRootFn = func() string { return over }
+
+	got, err := resolveBinary("")
+	if err != nil || !samePath(got, bundledBin) {
+		t.Fatalf("with no downloaded engine: %q, %v; want the bundled %q", got, err, bundledBin)
+	}
+	overBin := mk(over)
+	got, err = resolveBinary("")
+	if err != nil || got != overBin {
+		t.Fatalf("with a downloaded engine: %q, %v; want %q", got, err, overBin)
+	}
+}
+
+func samePath(a, b string) bool {
+	// EvalSymlinks keeps a relative path relative; compare absolute real paths.
+	aa, _ := filepath.Abs(a)
+	ba, _ := filepath.Abs(b)
+	x, err1 := filepath.EvalSymlinks(aa)
+	y, err2 := filepath.EvalSymlinks(ba)
+	return err1 == nil && err2 == nil && x == y
 }
 
 func TestWithPrependedEnvPath(t *testing.T) {

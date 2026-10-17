@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"memo/internal/components"
 	"memo/internal/config"
 )
 
@@ -52,7 +53,10 @@ func (m *Manager) searchRoots() []string {
 	if m.roots != nil {
 		return m.roots
 	}
-	var roots []string
+	// A newer sidecar the component updater downloaded shadows the bundled one.
+	// If its checksum file does not match it, Binary() refuses it and carries on
+	// to the bundled copy, so a damaged download cannot take Subscriptions down.
+	roots := []string{components.OverrideRoot(config.DataDir())}
 	if exe, err := os.Executable(); err == nil {
 		if real, err := filepath.EvalSymlinks(exe); err == nil {
 			exe = real

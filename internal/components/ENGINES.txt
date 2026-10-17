@@ -1,0 +1,25 @@
+# What each engine folder in the bundled binaries/ tree actually holds.
+#
+# CI stamps the version markers (LLAMA_VERSION, WHISPER_VERSION) from this file
+# and then checks them (scripts/stamp_engine_versions.sh --from), so the
+# in-app component updater can tell an installed engine from a newer release.
+# internal/components reads the markers.
+#
+# Only list what has been PROVEN. A wrong line here makes the updater skip, or
+# repeat, an update, and the stamp script cross-checks it against the build
+# number in the library file names where it can (Linux libllama.so.0.0.<N>).
+# Folders not listed get no marker, which the updater reads as "version
+# unknown" and never offers an update for.
+#
+# Evidence (2026-10-17): Linux folders carry libllama.so.0.0.9441 in R2 and
+# llama-server --version reports 9441; whisper-server/libwhisper.so.1 in
+# linux/cpu are byte-identical (md5) to the local copy whose
+# whisper_version() is 1.8.6.
+#
+# NOT listed on purpose: windows/* (ggml 0.13.1 like Linux b9441, but the llama
+# build was not proven) and darwin/* (ggml 0.15.3: a different, newer build whose
+# tag is not recorded anywhere). Add them when someone has confirmed the tag.
+#
+# component  version  folders...
+llama   b9441  linux/amd linux/nvidia linux/cpu linux/cpu-arm64
+whisper 1.8.6  linux/cpu

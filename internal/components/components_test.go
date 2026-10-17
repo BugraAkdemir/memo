@@ -257,8 +257,19 @@ func TestStampScript_RefusesBadVersionsAndMixedLibraries(t *testing.T) {
 	if out, err := runStamp(t, root, "stamp", "--llama", "9441", "--whisper", "1.8.6", root); err == nil {
 		t.Fatalf("a llama tag without the b was accepted:\n%s", out)
 	}
-	if out, err := runStamp(t, root, "stamp", "--llama", "b9441", root); err == nil {
-		t.Fatalf("stamp without --whisper was accepted although a whisper-server exists:\n%s", out)
+	// Stamping one component leaves the other alone...
+	if out, err := runStamp(t, root, "stamp", "--llama", "b9441", "--only", "linux/cpu", root); err != nil {
+		t.Fatalf("stamping llama alone failed: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "linux", "cpu", "WHISPER_VERSION")); err == nil {
+		t.Fatal("stamping llama wrote a whisper marker")
+	}
+	// ...and a whole-tree check still notices the whisper marker that is missing.
+	if out, err := runStamp(t, root, "check", "--only", "linux/cpu", root); err == nil {
+		t.Fatalf("check passed with the whisper marker missing:\n%s", out)
+	}
+	if err := os.Remove(filepath.Join(root, "linux", "cpu", "LLAMA_VERSION")); err != nil {
+		t.Fatal(err)
 	}
 	// A folder whose libllama carries a different build number than the tag we
 	// were told is refused — the stamp must never claim a version the files deny.
@@ -300,5 +311,94 @@ func TestStampScript_OnlyRestrictsToTheNamedFolders(t *testing.T) {
 	}
 	if _, err := runStamp(t, root, "check", root); err == nil {
 		t.Error("check on the whole tree passed although windows and darwin are unstamped")
+	}
+}
+
+func TestStampScript_CheckWithAVersionRequiresThatExactVersion(t *testing.T) {
+	root := engineTree(t)
+	if out, err := runStamp(t, root, "stamp", "--llama", "b9441", "--whisper", "1.8.6", root); err != nil {
+		t.Fatalf("stamp: %v\n%s", err, out)
+	}
+	if out, err := runStamp(t, root, "check", "--llama", "b9441", "--whisper", "1.8.6", root); err != nil {
+		t.Fatalf("exact check failed: %v\n%s", err, out)
+	}
+	out, err := runStamp(t, root, "check", "--llama", "b11456", "--only", "linux/cpu", root)
+	if err == nil || !strings.Contains(out, "WRONG") {
+		t.Fatalf("a marker holding another version passed an exact check:\n%s", out)
+	}
+	if out, err := runStamp(t, root, "check", "--whisper", "1.9.0", "--only", "linux/cpu", root); err == nil {
+		t.Fatalf("whisper mismatch passed:\n%s", out)
+	}
+}
+
+func TestStampScript_ASelectionThatMatchesNothingIsAFailureNotAPass(t *testing.T) {
+	root := engineTree(t)
+	out, err := runStamp(t, root, "check", "--llama", "b9441", "--only", "linux/cpuu", root)
+	if err == nil || !strings.Contains(out, "nothing matched") {
+		t.Fatalf("a typo in --only passed silently:\n%s", out)
+	}
+	if out, err := runStamp(t, root, "stamp", "--llama", "b9441", "--only", "linux/cpuu", root); err == nil {
+		t.Fatalf("stamping a folder that does not exist passed:\n%s", out)
+	}
+}
+
+func TestStampScript_FromADeclarationFile(t *testing.T) {
+	root := engineTree(t)
+	decl := filepath.Join(t.TempDir(), "ENGINES.txt")
+	body := "# what ships\nllama   b9441  linux/cpu linux/amd\n\nwhisper 1.8.6  linux/cpu\n"
+	if err := os.WriteFile(decl, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runStamp(t, root, "stamp", "--from", decl, root); err != nil {
+		t.Fatalf("stamp --from: %v\n%s", err, out)
+	}
+	for path, want := range map[string]string{
+		filepath.Join(root, "linux", "cpu", "LLAMA_VERSION"):   "b9441",
+		filepath.Join(root, "linux", "amd", "LLAMA_VERSION"):   "b9441",
+		filepath.Join(root, "linux", "cpu", "WHISPER_VERSION"): "1.8.6",
+	} {
+		if b, err := os.ReadFile(path); err != nil || strings.TrimSpace(string(b)) != want {
+			t.Errorf("%s = %q, %v; want %q", path, b, err, want)
+		}
+	}
+	// Folders the declaration does not mention stay unmarked (windows/macOS: unproven).
+	for _, p := range []string{filepath.Join(root, "windows", "cpu", "LLAMA_VERSION"), filepath.Join(root, "darwin", "metal", "LLAMA_VERSION")} {
+		if _, err := os.Stat(p); err == nil {
+			t.Errorf("%s was stamped although the declaration does not cover it", p)
+		}
+	}
+	if out, err := runStamp(t, root, "check", "--from", decl, root); err != nil {
+		t.Fatalf("check --from after stamping: %v\n%s", err, out)
+	}
+	// A declaration that is wrong about the files is caught by the check.
+	if err := os.WriteFile(filepath.Join(root, "linux", "cpu", "LLAMA_VERSION"), []byte("b1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runStamp(t, root, "check", "--from", decl, root); err == nil {
+		t.Fatalf("check --from passed with a wrong marker:\n%s", out)
+	}
+}
+
+func TestStampScript_FromRejectsBadDeclarations(t *testing.T) {
+	root := engineTree(t)
+	for name, body := range map[string]string{
+		"unknown component": "sqlite 1.0 linux/cpu\n",
+		"no folders":        "llama b9441\n",
+		"empty":             "# nothing\n",
+		"bad llama tag":     "llama 9441 linux/cpu\n",
+	} {
+		decl := filepath.Join(t.TempDir(), "ENGINES.txt")
+		_ = os.WriteFile(decl, []byte(body), 0o644)
+		if out, err := runStamp(t, root, "stamp", "--from", decl, root); err == nil {
+			t.Errorf("%s: accepted:\n%s", name, out)
+		}
+	}
+	if out, err := runStamp(t, root, "stamp", "--from", "/nonexistent/ENGINES.txt", root); err == nil {
+		t.Errorf("missing file accepted:\n%s", out)
+	}
+	decl := filepath.Join(t.TempDir(), "ENGINES.txt")
+	_ = os.WriteFile(decl, []byte("llama b9441 linux/cpu\n"), 0o644)
+	if out, err := runStamp(t, root, "stamp", "--from", decl, "--llama", "b1", root); err == nil {
+		t.Errorf("--from combined with --llama accepted:\n%s", out)
 	}
 }

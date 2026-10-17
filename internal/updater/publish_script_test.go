@@ -3,10 +3,17 @@
 package updater
 
 import (
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -222,5 +229,73 @@ func TestPublishScript_WindowsInstallerShape(t *testing.T) {
 	m, err := ParseAppManifest(body)
 	if err != nil || m.Kind != KindInstaller || m.Format != "exe" || m.Root != "" {
 		t.Fatalf("manifest = %+v, %v", m, err)
+	}
+}
+
+// ── scripts/verify_update_manifest.sh ───────────────────────────────────────
+
+func (e *publishEnv) verify(t *testing.T, base string, args ...string) (string, error) {
+	t.Helper()
+	cmd := exec.Command("bash", append([]string{filepath.Join(e.repo, "scripts", "verify_update_manifest.sh")}, args...)...)
+	cmd.Dir = e.repo
+	cmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "GOCACHE=" + goCache(t), "GOFLAGS=-mod=mod",
+		"GOPATH=" + os.Getenv("GOPATH"), "GOMODCACHE=" + os.Getenv("GOMODCACHE"), "BASE=" + base,
+	}
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func TestVerifyScript(t *testing.T) {
+	if _, err := exec.LookPath("curl"); err != nil {
+		t.Skip("curl not available")
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not available")
+	}
+	e := newPublishEnv(t)
+	priv, _ := DecodePrivate(e.privKey)
+
+	artifact := []byte(strings.Repeat("z", 4096))
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	// A real file server (R2, a CDN) states Content-Length on HEAD; Go's handler
+	// does not unless asked, and the script reads exactly that header.
+	mux.HandleFunc("/memo.tar.gz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(len(artifact)))
+		_, _ = w.Write(artifact)
+	})
+
+	publish := func(platform, version string, size int, signWith ed25519.PrivateKey) {
+		sum := sha256.Sum256(artifact)
+		m := AppManifest{Schema: 1, Type: TypeApp, Version: version, Platform: platform, Kind: KindArchive, Format: "tar.gz",
+			URL: srv.URL + "/memo.tar.gz", SHA256: hex.EncodeToString(sum[:]), Size: int64(size), Root: "Memo"}
+		body, _ := json.Marshal(m)
+		sig, _ := Sign(signWith, body)
+		path := "/update/app/4.7.0/" + platform + ".json"
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) })
+		mux.HandleFunc(path+".sig", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(sig)) })
+	}
+	publish("linux-amd64", "V4.7.0", len(artifact), priv)
+	base := srv.URL + "/update"
+
+	if out, err := e.verify(t, base, "V4.7.0", "linux-amd64"); err != nil || !strings.Contains(out, "ok ") {
+		t.Fatalf("a consistent release failed verification: %v\n%s", err, out)
+	}
+	// A platform CI never published.
+	if out, err := e.verify(t, base, "V4.7.0", "linux-amd64", "windows-amd64"); err == nil || !strings.Contains(out, "MISSING") {
+		t.Fatalf("a missing platform passed:\n%s", out)
+	}
+	// Signed by someone else.
+	_, other, _ := GenerateKey()
+	publish("darwin-arm64", "V4.7.0", len(artifact), other)
+	if out, err := e.verify(t, base, "V4.7.0", "darwin-arm64"); err == nil || !strings.Contains(out, "BAD SIG") {
+		t.Fatalf("a foreign signature passed:\n%s", out)
+	}
+	// The file is not the size the manifest promises (a stale CDN copy, a half upload).
+	publish("windows-amd64", "V4.7.0", len(artifact)+1, priv)
+	if out, err := e.verify(t, base, "V4.7.0", "windows-amd64"); err == nil || !strings.Contains(out, "SIZE") {
+		t.Fatalf("a size mismatch passed:\n%s", out)
 	}
 }

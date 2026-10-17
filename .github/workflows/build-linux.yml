@@ -110,6 +110,16 @@ jobs:
       - name: Verify bundled CLIProxyAPI (pinned SHA-256)
         run: scripts/verify_cliproxy.sh binaries linux/cliproxy
 
+      # The in-app component updater needs to know what each engine folder holds
+      # (internal/components). The versions are declared in ENGINES.txt, stamped
+      # into the folders here and checked straight away: a declaration that is
+      # wrong about what R2 handed us (the stamp also cross-checks the libllama
+      # build number) fails the build instead of shipping a wrong marker.
+      - name: Stamp engine versions
+        run: |
+          scripts/stamp_engine_versions.sh stamp --from internal/components/ENGINES.txt binaries
+          scripts/stamp_engine_versions.sh check --from internal/components/ENGINES.txt binaries
+
       # Must run BEFORE "Build Go backend" — internal/webserver/webapp.go's
       # //go:embed all:webapp reads whatever is physically in that
       # directory at compile time; the checked-out repo only has the
@@ -130,6 +140,13 @@ jobs:
       - name: Build Go backend
         run: |
           CGO_ENABLED=1 go build -tags "sqlite_fts5" -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
+
+      # The program that swaps a downloaded release in after Memo has exited. It
+      # ships INSIDE the release, so the next update runs the swap logic that
+      # matches the layout it is installing. Pure Go, no cgo.
+      - name: Build the updater
+        run: |
+          CGO_ENABLED=0 go build -trimpath -o "build_output/stage/${{ env.APP_NAME }}/memo-updater" ./cmd/memo-updater
 
       - name: Build Flutter frontend
         run: flutter build linux --release
@@ -306,6 +323,22 @@ jobs:
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
           RCLONE_CONFIG_R2_ACL: public-read
+
+      # Tell installed apps what the stable file now IS. This MUST come after the
+      # upload above: the manifest carries the SHA-256 of exactly the file just
+      # uploaded as memo.tar.gz. The beacon (version.json) is bumped by hand
+      # afterwards (memo-release Phase 4), so no app asks for this before then.
+      - name: Publish update manifest
+        if: startsWith(github.ref, 'refs/tags/')
+        run: scripts/publish_update_manifest.sh linux-amd64 archive tar.gz build_output/dist/memo_beta.tar.gz https://data.memocpp.com/memo.tar.gz "${{ env.APP_NAME }}"
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+          MEMO_UPDATE_SIGNING_KEY: ${{ secrets.MEMO_UPDATE_SIGNING_KEY }}
 
       # The AppImage follows the tar.gz's channel logic exactly: a tag push
       # republishes it under the stable filename (memo.AppImage), every push

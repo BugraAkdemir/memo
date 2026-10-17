@@ -76,6 +76,13 @@ jobs:
           ARCH=$(uname -m)
           GOARCH=$ARCH CGO_ENABLED=1 go build -tags "sqlite_fts5" -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
 
+      # See build-linux.yml: the swap program ships inside the release. Same
+      # architecture as the backend it sits beside.
+      - name: Build the updater
+        run: |
+          ARCH=$(uname -m)
+          GOARCH=$ARCH CGO_ENABLED=0 go build -trimpath -o "build_output/stage/${{ env.APP_NAME }}/memo-updater" ./cmd/memo-updater
+
       - name: Build Flutter frontend
         run: flutter build macos --release
         env:
@@ -236,6 +243,23 @@ jobs:
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
           RCLONE_CONFIG_R2_ACL: public-read
+
+      # See build-linux.yml's "Publish update manifest". This zip holds the runner's
+      # own architecture (the backend above is built for `uname -m`), so that is the
+      # one platform it is announced for.
+      - name: Publish update manifest
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          if [ "$(uname -m)" = "arm64" ]; then P=darwin-arm64; else P=darwin-amd64; fi
+          scripts/publish_update_manifest.sh "$P" archive zip build_output/dist/${{ env.APP_NAME }}-macos.zip https://data.memocpp.com/memo-mac.zip "${{ env.APP_NAME }}"
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+          MEMO_UPDATE_SIGNING_KEY: ${{ secrets.MEMO_UPDATE_SIGNING_KEY }}
 
       - name: Upload beta to R2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

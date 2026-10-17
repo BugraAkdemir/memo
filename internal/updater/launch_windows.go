@@ -14,3 +14,8 @@ import (
 func StartDetached(script, dir string, env []string, out io.Writer) (*Launched, error) {
 	return nil, errors.New("updater: in-place relaunch is not supported on windows")
 }
+
+// StartDetachedArgs is not used on Windows either.
+func StartDetachedArgs(script string, args []string, dir string, env []string, out io.Writer) (*Launched, error) {
+	return nil, errors.New("updater: in-place relaunch is not supported on windows")
+}

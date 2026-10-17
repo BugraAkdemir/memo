@@ -96,6 +96,9 @@ func TestDestructiveEndpoints_AdminOnly(t *testing.T) {
 		// as long as the POST is listed here.
 		{"POST", "/api/subscriptions"},
 		{"POST", "/api/v1/wipe"},
+		// Starting an update replaces the program (and downloads and runs code):
+		// reading the check/status is ambient, applying is an admin action.
+		{"POST", "/api/update/apply"},
 	} {
 		if st, _ := do(t, c.method, base+c.path, "user-session", "{}"); st != http.StatusForbidden {
 			t.Errorf("%s %s as a restricted user: status %d, want 403", c.method, c.path, st)

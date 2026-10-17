@@ -24,6 +24,7 @@ import (
 	"memo/internal/stt"
 	"memo/internal/taskloop"
 	"memo/internal/tts"
+	"memo/internal/updater"
 	"memo/internal/whatsapp"
 )
 
@@ -309,10 +310,15 @@ func (b *swarmStubBridge) GetMemoryStats() models.MemoryStats      { return mode
 func (b *swarmStubBridge) FilteredMemorySearch(query string, topK int, since string, tag string) []memory.MemoryResult {
 	return nil
 }
-func (b *swarmStubBridge) GetUsageStats(days int) stats.Summary                        { return stats.Summary{} }
-func (b *swarmStubBridge) GetImageBase64(path string) string                           { return "" }
-func (b *swarmStubBridge) GetVersion() string                                          { return "test" }
-func (b *swarmStubBridge) CheckLatestVersion() (string, error)                         { return "", nil }
+func (b *swarmStubBridge) GetUsageStats(days int) stats.Summary { return stats.Summary{} }
+func (b *swarmStubBridge) GetImageBase64(path string) string    { return "" }
+func (b *swarmStubBridge) GetVersion() string                   { return "test" }
+func (b *swarmStubBridge) CheckLatestVersion() (string, error)  { return "", nil }
+func (b *swarmStubBridge) CheckForUpdate(context.Context, bool) (*updater.Info, error) {
+	return &updater.Info{}, nil
+}
+func (b *swarmStubBridge) ApplyUpdate(string, string) error                            { return nil }
+func (b *swarmStubBridge) UpdateStatus() updater.Status                                { return updater.Status{} }
 func (b *swarmStubBridge) ListChats() []sessions.SessionInfo                           { return nil }
 func (b *swarmStubBridge) NewAgentChat(projectPath string) string                      { return "" }
 func (b *swarmStubBridge) GetAgentEnabled() bool                                       { return false }

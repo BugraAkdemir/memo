@@ -20,7 +20,13 @@ import (
 // follows: it is Memo, expected to run for hours. A goroutine reaps it so the
 // stop function and a quick exit do not leave a zombie behind.
 func StartDetached(script, dir string, env []string, out io.Writer) (*Launched, error) {
-	cmd := exec.Command(script)
+	return StartDetachedArgs(script, nil, dir, env, out)
+}
+
+// StartDetachedArgs is StartDetached for a program that takes arguments (the
+// backend uses it to start memo-updater).
+func StartDetachedArgs(script string, args []string, dir string, env []string, out io.Writer) (*Launched, error) {
+	cmd := exec.Command(script, args...)
 	cmd.Dir = dir
 	cmd.Env = env
 	cmd.Stdin = nil

@@ -201,6 +201,12 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/stats/usage", s.handleUsageStats)
 	route("/api/version", s.handleVersion)
 	route("/api/version/check", s.handleVersionCheck)
+	// In-app update. Reading what is available and how far an update got is
+	// ambient (the update dialog polls it); STARTING one replaces the program,
+	// so it is admin-only like the other actions that change the install.
+	route("/api/update/check", s.handleUpdateCheck)
+	route("/api/update/status", s.handleUpdateStatus)
+	route("/api/update/apply", s.adminOnly(s.handleUpdateApply))
 	route("/api/image", s.handleImage)
 	route("/api/chat/export", s.handleExportChat)
 	route("/api/chat/title", s.handleGenerateTitle)

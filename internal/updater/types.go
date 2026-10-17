@@ -2,6 +2,11 @@
 
 package updater
 
+import "errors"
+
+// ErrBusy is returned when an update is asked for while one is already running.
+var ErrBusy = errors.New("an update is already in progress")
+
 // Update modes: how this particular install can be updated.
 const (
 	// ModeAuto: Memo downloads the release and swaps it in itself (Linux and

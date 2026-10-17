@@ -389,6 +389,8 @@ type App struct {
 	// Embedded binaries and version string passed in from main.
 	binaries embed.FS
 	version  string
+	// update is the in-app updater's state (update.go); its zero value is ready.
+	update updateRuntime
 
 	// Remote-access auth (Faz 2, yapacam.md) — see remote_auth.go.
 	// remoteAuthLimiter guards password-login brute-forcing; sessionKey
@@ -629,6 +631,10 @@ func (a *App) Startup(ctx context.Context) {
 	a.initRoutines(ctx)
 	a.initStats()
 	a.initSwarm()
+
+	// An app update may have bundled engines newer than the ones downloaded
+	// earlier; those must not keep shadowing them. Quick, and before any engine starts.
+	a.pruneDownloadedEngines()
 
 	a.modelStore = modelstore.New(cfg.Llama.ModelsDir)
 	a.llamaServer = llama.NewServer(cfg.Llama.Port, cfg.Llama.CtxSize)

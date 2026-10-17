@@ -24,6 +24,7 @@ import (
 	"memo/internal/stt"
 	"memo/internal/taskloop"
 	"memo/internal/tts"
+	"memo/internal/updater"
 	"memo/internal/whatsapp"
 )
 
@@ -121,6 +122,11 @@ type FullBridge interface {
 	// Version
 	GetVersion() string
 	CheckLatestVersion() (string, error)
+
+	// In-app update (internal/app/update.go). Apply is gated adminOnly by the route.
+	CheckForUpdate(ctx context.Context, force bool) (*updater.Info, error)
+	ApplyUpdate(kind, component string) error
+	UpdateStatus() updater.Status
 
 	// Sessions
 	ListChats() []sessions.SessionInfo

@@ -61,8 +61,10 @@ type Info struct {
 	// DownloadURL is where a person goes when Mode is manual.
 	DownloadURL string          `json:"download_url,omitempty"`
 	Components  []ComponentInfo `json:"components"`
-	Error       string          `json:"error,omitempty"`
-	CheckedAt   int64           `json:"checked_at,omitempty"`
+	// LastFailure is the note a failed (and rolled-back) update attempt left, if any.
+	LastFailure string `json:"last_failure,omitempty"`
+	Error       string `json:"error,omitempty"`
+	CheckedAt   int64  `json:"checked_at,omitempty"`
 }
 
 // Status is the progress of a running update.

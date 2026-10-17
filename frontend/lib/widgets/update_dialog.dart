@@ -75,6 +75,12 @@ class AppUpdateDialog extends ConsumerWidget {
                     // Plain Text on purpose: the note comes from a file nobody signs.
                     Text(note, key: const Key('update_note'), style: TextStyle(color: theme.textSecondary, fontSize: 13.5, height: 1.4)),
                   ],
+                  if (info.lastFailure.isNotEmpty && !running) ...[
+                    const SizedBox(height: 12),
+                    Text(L10n.t('update_last_failed', {'err': info.lastFailure}),
+                        key: const Key('update_last_failure'),
+                        style: const TextStyle(color: MemoTheme.warningOrange, fontSize: 12.5, height: 1.4)),
+                  ],
                   if (info.required && !running) ...[
                     const SizedBox(height: 12),
                     Text(L10n.t('update_required_hint'),

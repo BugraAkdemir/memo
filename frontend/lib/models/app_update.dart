@@ -17,6 +17,9 @@ class AppUpdateInfo {
   final String downloadUrl;
   final List<ComponentUpdate> components;
 
+  /// What a failed (rolled-back) update attempt left behind, if anything.
+  final String lastFailure;
+
   const AppUpdateInfo({
     this.current = '',
     this.latest = '',
@@ -28,6 +31,7 @@ class AppUpdateInfo {
     this.sizeBytes = 0,
     this.downloadUrl = 'https://memocpp.com',
     this.components = const [],
+    this.lastFailure = '',
   });
 
   bool get canUpdateInPlace => mode == 'auto' || mode == 'installer';
@@ -65,6 +69,7 @@ class AppUpdateInfo {
       sizeBytes: i('size_bytes'),
       downloadUrl: s('download_url', 'https://memocpp.com'),
       components: comps,
+      lastFailure: s('last_failure'),
     );
   }
 }

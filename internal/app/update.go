@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -221,7 +220,7 @@ func (a *App) invalidateUpdateInfo() {
 
 func (a *App) buildUpdateInfo(ctx context.Context) *updater.Info {
 	facts := a.installFacts()
-	mode, _, _ := classifyInstall(facts)
+	mode, installDir, _ := classifyInstall(facts)
 	info := &updater.Info{
 		Current:     a.GetVersion(),
 		Mode:        mode,
@@ -229,6 +228,9 @@ func (a *App) buildUpdateInfo(ctx context.Context) *updater.Info {
 		DownloadURL: manualDownloadURL,
 		Components:  []updater.ComponentInfo{},
 		CheckedAt:   time.Now().Unix(),
+	}
+	if installDir != "" {
+		info.LastFailure = updater.ReadFailure(filepath.Join(installDir, updater.FailureFile))
 	}
 	client := a.updateClient()
 	bc, err := client.FetchBeacon(ctx)
@@ -507,6 +509,7 @@ func (a *App) runArchiveUpdate(ctx context.Context, info *updater.Info) error {
 	}
 
 	work := filepath.Join(install, ".update")
+	_ = os.Remove(filepath.Join(install, updater.FailureFile)) // a new attempt supersedes the old note
 	if st, err := os.Stat(filepath.Join(work, "backup")); err == nil && st.IsDir() {
 		// A previous update left its backup because even the rollback failed. That
 		// directory may hold the only intact copy of the app: never delete it.
@@ -563,13 +566,9 @@ func (a *App) runArchiveUpdate(ctx context.Context, info *updater.Info) error {
 	if ws := a.getWebServer(); ws != nil && ws.GetPort() > 0 {
 		port = ws.GetPort()
 	}
+	// The updater writes update.log itself (--log); its own stdout/stderr stay
+	// unattached so nothing is logged twice.
 	logPath := filepath.Join(install, "update.log")
-	logf, _ := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
-	var out io.Writer = io.Discard
-	if logf != nil {
-		defer logf.Close()
-		out = logf
-	}
 	// The NEW release's updater does the swap, so the swap logic always matches
 	// the layout it is installing. It waits for this process to exit first.
 	_, err = updater.StartDetachedArgs(newUpdater, []string{
@@ -583,7 +582,7 @@ func (a *App) runArchiveUpdate(ctx context.Context, info *updater.Info) error {
 		"--health", fmt.Sprintf("http://127.0.0.1:%d/api/version", port),
 		"--launch", launcher,
 		"--log", logPath,
-	}, install, os.Environ(), out)
+	}, install, os.Environ(), nil)
 	if err != nil {
 		return err
 	}

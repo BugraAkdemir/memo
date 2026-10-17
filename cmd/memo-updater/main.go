@@ -78,11 +78,14 @@ func run(args []string, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Progress goes to the log file when there is one, otherwise to stderr. Not
+	// both: the backend that starts this process may already point its stderr at
+	// the same file, which printed every line twice.
 	var logw io.Writer = stderr
 	if *logPath != "" {
 		if f, err := os.OpenFile(*logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
 			defer f.Close()
-			logw = io.MultiWriter(stderr, f)
+			logw = f
 		}
 	}
 	logf := func(format string, a ...any) { fmt.Fprintf(logw, "memo-updater: "+format+"\n", a...) }
@@ -107,10 +110,17 @@ func run(args []string, stderr io.Writer) int {
 	} else {
 		logf("keeping %s (it may hold the previous version)", *work)
 	}
+	marker := filepath.Join(*install, updater.FailureFile)
 	if err != nil {
 		logf("FAILED: %v", err)
+		// Tell the person on the next start. A rolled-back update otherwise looks
+		// like nothing happened at all.
+		if werr := updater.WriteFailure(marker, *expect, err); werr != nil {
+			logf("could not record the failure: %v", werr)
+		}
 		return 1
 	}
+	_ = os.Remove(marker)
 	logf("done")
 	return 0
 }

@@ -46,6 +46,12 @@ void main() {
       expect(i.components.length, 1);
     });
 
+    test('reads the last failure note and tolerates its absence', () {
+      expect(AppUpdateInfo.fromJson({'last_failure': 'boom'}).lastFailure, 'boom');
+      expect(AppUpdateInfo.fromJson({}).lastFailure, '');
+      expect(AppUpdateInfo.fromJson({'last_failure': 5}).lastFailure, '');
+    });
+
     test('only an in-place mode is one-click', () {
       expect(AppUpdateInfo.fromJson({'mode': 'installer'}).canUpdateInPlace, isTrue);
       expect(AppUpdateInfo.fromJson({'mode': 'manual'}).canUpdateInPlace, isFalse);

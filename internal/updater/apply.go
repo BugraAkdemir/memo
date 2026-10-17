@@ -121,7 +121,7 @@ func rollBack(sw *Swap, l *Launched, d ApplyDeps, logf func(string, ...any), cau
 		logf("ROLLBACK FAILED: %v", err)
 		return fmt.Errorf("updater: update failed (%v) and the rollback also failed: %w", cause, err)
 	}
-	logf("previous version restored")
+	logf("previous version restored; relaunching the previous version")
 	if _, err := d.Relaunch(); err != nil {
 		logf("could not relaunch the previous version: %v", err)
 	}

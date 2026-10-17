@@ -164,6 +164,20 @@ void main() {
       expect(L10n.t('update_now'), isNot(equals(_enOf('update_now'))));
     });
 
+    testWidgets('says so when the previous attempt failed and was rolled back', (tester) async {
+      final m = _appCheck()..['last_failure'] = 'update to V4.7.0 failed and was rolled back: the new version exited';
+      await openDialog(tester, AppUpdateInfo.fromJson(m));
+      expect(find.byKey(const Key('update_last_failure')), findsOneWidget);
+      expect(find.textContaining('rolled back'), findsOneWidget);
+      // ...and offers another try.
+      expect(find.byKey(const Key('update_now')), findsOneWidget);
+    });
+
+    testWidgets('shows no failure line when nothing failed', (tester) async {
+      await openDialog(tester, AppUpdateInfo.fromJson(_appCheck()));
+      expect(find.byKey(const Key('update_last_failure')), findsNothing);
+    });
+
     testWidgets('a required update has no "Skip this version", but keeps "Later"', (tester) async {
       await openDialog(tester, AppUpdateInfo.fromJson(_appCheck(required: true)));
       expect(find.byKey(const Key('update_skip')), findsNothing);

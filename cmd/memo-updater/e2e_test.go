@@ -183,11 +183,16 @@ func TestE2E_UpdateSucceeds(t *testing.T) {
 	e.layoutOld(t)
 	e.layoutStaged(t)
 	old := e.startOld(t)
+	// A note from an earlier failed attempt must not outlive a success.
+	_ = os.WriteFile(filepath.Join(e.install, updater.FailureFile), []byte("update to V4.6.9 failed\n"), 0o600)
 
 	out, err := e.runUpdater(t, old, 300*time.Millisecond)
 	defer killBackend(t, e.install)
 	if err != nil {
 		t.Fatalf("updater failed: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(e.install, updater.FailureFile)); err == nil {
+		t.Error("the old failure note survived a successful update")
 	}
 	if v, err := versionOf(t, e.port); err != nil || v != "V4.7.0" {
 		t.Fatalf("after the update the backend reports %q, %v; want V4.7.0\n%s", v, err, out)
@@ -219,8 +224,17 @@ func TestE2E_NewVersionThatCrashesIsRolledBack(t *testing.T) {
 	if err == nil {
 		t.Fatalf("a crashing new version was reported as success:\n%s", out)
 	}
-	if !strings.Contains(out, "previous version") {
-		t.Errorf("output does not explain the rollback:\n%s", out)
+	logText, _ := os.ReadFile(filepath.Join(e.install, "update.log"))
+	if !strings.Contains(string(logText), "previous version") {
+		t.Errorf("update.log does not explain the rollback:\n%s", logText)
+	}
+	// The person is told on the next start.
+	if note := updater.ReadFailure(filepath.Join(e.install, updater.FailureFile)); !strings.Contains(note, "V4.7.0") || !strings.Contains(note, "rolled back") {
+		t.Errorf("failure note = %q", note)
+	}
+	// Each line is written once: to the log, not also to stderr.
+	if strings.Count(string(logText), "relaunching") != 2 { // the new version, then the previous one
+		t.Errorf("expected exactly two 'relaunching' lines (new, then restored), got:\n%s", logText)
 	}
 	waitFor(t, func() bool { v, err := versionOf(t, e.port); return err == nil && v == "V4.6.0" }, "the OLD backend to be back after the rollback")
 	if b, _ := os.ReadFile(filepath.Join(e.install, "config", "config.yaml")); string(b) != "user: setting\n" {

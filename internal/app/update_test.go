@@ -793,3 +793,32 @@ func TestWithLibraryPath(t *testing.T) {
 		t.Error("an empty environment must still get the library path")
 	}
 }
+
+func TestCheckForUpdate_ShowsTheNoteAFailedUpdateLeft(t *testing.T) {
+	plat := runtime.GOOS + "-" + runtime.GOARCH
+	if plat != "linux-amd64" && plat != "darwin-arm64" && plat != "darwin-amd64" {
+		t.Skip("script-install flow")
+	}
+	install := installDir(t)
+	if err := updater.WriteFailure(filepath.Join(install, updater.FailureFile), "V4.7.0", updater.ErrRolledBack); err != nil {
+		t.Fatal(err)
+	}
+	s := newSite(t)
+	s.beacon("V4.7.0", nil)
+	s.appManifest("V4.7.0", plat, nil)
+	a := autoApp(t, s, install)
+	info, _ := a.CheckForUpdate(context.Background(), true)
+	if !strings.Contains(info.LastFailure, "rolled back") {
+		t.Fatalf("LastFailure = %q", info.LastFailure)
+	}
+
+	// Starting a fresh attempt supersedes the old note.
+	s2 := newSite(t)
+	publishApp(t, s2, releaseArchive(t, false, ""))
+	a2 := autoApp(t, s2, install)
+	info2, _ := a2.CheckForUpdate(context.Background(), true)
+	_ = a2.runArchiveUpdate(context.Background(), info2) // fails (no updater in the release); that's fine
+	if _, err := os.Stat(filepath.Join(install, updater.FailureFile)); err == nil {
+		t.Error("the previous failure note survived the start of a new attempt")
+	}
+}

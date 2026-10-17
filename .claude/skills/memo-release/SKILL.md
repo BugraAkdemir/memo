@@ -27,6 +27,12 @@ and the separate update-beacon bump. History shows the manual ones get
 missed: the v3.1.2 bump shipped with `installer.iss` still saying 3.1.1,
 and both READMEs kept pointing at the v3.1.1 changelog.
 
+Since 4.7.0 CI also **signs and publishes the in-app update manifests**
+(`update/app/<X.Y.Z>/<platform>.json` + `.sig` on `data.memocpp.com`) right after each
+platform's artifact is uploaded, using the `MEMO_UPDATE_SIGNING_KEY` Actions secret, and
+builds `memo-updater` into the Linux/macOS releases (see `docs/AUTO_UPDATE.md`). A tag
+that does not match the `version` file (a checkpoint tag) publishes no manifest.
+
 **Core principle: the release is not done until every phase below is
 checked off, committed, and CI is green on the pushed tag.**
 
@@ -122,6 +128,13 @@ hours or days old:
 curl -sI https://data.memocpp.com/memo.tar.gz | grep -i last-modified
 ```
 
+Then verify what installed apps will fetch (manifests + signatures + the size of each
+file) — this downloads only manifests and issues HEAD requests:
+
+```bash
+scripts/verify_update_manifest.sh          # defaults to the version file; exit 1 = do NOT bump the beacon
+```
+
 Downloading the full ~750MB tarball just to peek inside it (`tar tz` on a
 piped-and-cut download, or re-downloading to extract the embedded
 `version`) is slow and has actually hung/failed mid-transfer before —
@@ -130,16 +143,40 @@ the tarball's internal layout, which isn't guaranteed stable anyway.
 
 ## Phase 4 — Update beacon
 
-Bump `version` field in `version.json` on `version-zeta.vercel.app`. This
-is a separate system from R2/GitHub — `CheckLatestVersion()`
-(`internal/app/version.go`) polls it, and installed apps show the update
-banner ONLY after this changes. Do this AFTER Phase 3's CI run is
-confirmed green — the moment the beacon changes, users start downloading,
-so it must never point at a version that isn't actually live yet.
+The beacon is `version.json` in the **`BugraAkdemir/version`** repo
+(`/home/bugra/Documents/version`), served at `version-zeta.vercel.app/version.json`;
+pushing to its `main` deploys it. Installed apps poll it and, when it names a newer
+version, open the update window — so bump it **last**, only after Phase 3 is green AND
+`scripts/verify_update_manifest.sh` passed. The moment it changes, users start
+downloading; it must never point at a release that does not check out.
+
+```json
+{
+  "version": "V<NEW>",
+  "mini_version_note_tr": "kısa not (güncelleme penceresinde görünür)",
+  "mini_version_note_en": "short note shown in the update window",
+  "required_update": false,
+  "components": { "llama": "b9441", "whisper": "1.8.6", "cliproxy": "v8.0.25" }
+}
+```
+
+* `version` — the release being announced (`V4.7.0`).
+* The two notes — plain text, ≤ 600 characters, shown as-is (no markup). Write what the
+  person gains, not the changelog.
+* `required_update: true` hides "Skip this version" ("Later" stays). Use it sparingly.
+* `components` — the newest engine tags. **Keep it equal to what the release bundles**
+  unless an engine release was published with `scripts/publish_component.sh`; a tag
+  here with no signed manifest behind it simply offers nothing.
 
 ```bash
-curl -fsSL https://version-zeta.vercel.app/version.json   # must show <NEW>
+cd /home/bugra/Documents/version
+# edit version.json, then
+git add version.json && git commit -m "chore(release): announce Memo <NEW> to installed clients" && git push origin main
+curl -fsSL https://version-zeta.vercel.app/version.json   # must show <NEW> (allow a minute for the deploy)
 ```
+
+An engine-only release (no new Memo) changes only `components` and leaves `version`
+alone, so older apps show nothing.
 
 ## Phase 5 — Close out
 
@@ -175,6 +212,8 @@ curl -fsSL https://version-zeta.vercel.app/version.json   # must show <NEW>
 | Forgetting README changelog links | Users read old release notes (happened in v3.1.2) | Phase 1 table rows 3–4 |
 | Bumping the beacon before CI finishes | Update banner points users at a version that isn't actually uploaded yet | Phase 4 ordering rule |
 | Bumping pubspec.yaml versions | Meaningless churn — they are independent | Phase 1 "do NOT touch" |
+| Bumping the beacon before `verify_update_manifest.sh` passes | Apps look for a release whose manifest is missing or inconsistent and quietly fall back to the download page | Phase 4 ordering rule |
+| Publishing an engine folder without its other component's marker | `linux/cpu` holds llama.cpp AND whisper.cpp; a whole-folder replace that lacks one breaks it | `scripts/publish_component.sh` refuses a folder whose marker is not the version published |
 | Pushing the tag without confirming first | AGENTS.md hard rule — tag pushes are real, visible, irreversible-ish actions | Phase 3 |
 
 ## Known tension: checkpoint tags vs. real releases

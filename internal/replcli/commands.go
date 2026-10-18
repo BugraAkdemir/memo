@@ -43,6 +43,8 @@ func (s *session) handleCommand(line string) bool {
 		s.cmdDisconnect()
 	case "/web":
 		s.cmdWeb(args)
+	case "/skill":
+		s.cmdSkill(args)
 	case "/gui":
 		s.cmdGui()
 	case "/clear":
@@ -70,13 +72,23 @@ func (s *session) handleCommand(line string) bool {
 // dropdown uses, so the two menus can never drift apart.
 func (s *session) showCommandMenu() bool {
 	cmds := slashCommands()
-	items := make([]menuItem, len(cmds))
-	for i, c := range cmds {
-		items[i] = menuItem{Label: c.label, Hint: c.hint}
+	items := make([]menuItem, 0, len(cmds)+8)
+	for _, c := range cmds {
+		items = append(items, menuItem{Label: c.label, Hint: c.hint})
+	}
+	// The installed skills follow the commands. Best-effort: with the skill list
+	// unavailable the menu is just the commands.
+	skills := s.skillRows()
+	for _, k := range skills {
+		items = append(items, menuItem{Label: "skill: " + k.Name, Hint: k.hint()})
 	}
 	idx := selectFromMenu(s.out, s.keys, t("menu_title_commands"), items)
 	if idx < 0 {
 		fmt.Fprint(s.out, t("help_text"))
+		return false
+	}
+	if idx >= len(cmds) {
+		s.toggleSkill(skills[idx-len(cmds)].Name)
 		return false
 	}
 
@@ -97,6 +109,8 @@ func (s *session) showCommandMenu() bool {
 		s.cmdDisconnect()
 	case "/web":
 		s.cmdWeb(nil)
+	case "/skill":
+		s.cmdSkill(nil)
 	case "/gui":
 		s.cmdGui()
 	case "/clear":
@@ -1052,4 +1066,126 @@ func (s *session) cmdTaskListList() error {
 func (s *session) cmdTaskListInteractive() {
 	_ = s.cmdTaskListList()
 	fmt.Fprintln(s.out, dim(t("tasklist_interactive_footer")))
+}
+
+// skillRow is an installed skill and whether it is active in THIS session's chat.
+type skillRow struct {
+	SkillInfo
+	Active bool
+}
+
+func (k skillRow) hint() string {
+	state := t("skill_state_off")
+	if k.Active {
+		state = t("skill_state_on")
+	}
+	if k.Description == "" {
+		return state
+	}
+	return state + " · " + k.Description
+}
+
+// skillRows lists the installed skills with their state in this session's chat,
+// or nil when they cannot be read.
+func (s *session) skillRows() []skillRow {
+	skills, err := s.client.ListSkills(s.ctx)
+	if err != nil || len(skills) == 0 {
+		return nil
+	}
+	active := map[string]bool{}
+	if names, err := s.client.ChatSkills(s.ctx, s.chatID); err == nil {
+		for _, n := range names {
+			active[n] = true
+		}
+	}
+	rows := make([]skillRow, len(skills))
+	for i, k := range skills {
+		rows[i] = skillRow{SkillInfo: k, Active: active[k.Name]}
+	}
+	return rows
+}
+
+// cmdSkill lists the installed skills, or turns one on/off. Skills are scoped to
+// the chat — the REPL session's own — so activating one here never changes
+// another chat, whether it is open in the desktop app or in another terminal.
+func (s *session) cmdSkill(args []string) {
+	if len(args) == 0 {
+		rows := s.skillRows()
+		if len(rows) == 0 {
+			fmt.Fprintln(s.out, dim(t("skill_none")))
+			return
+		}
+		fmt.Fprintln(s.out, bold(t("skill_list_header")))
+		for _, k := range rows {
+			mark := "  "
+			if k.Active {
+				mark = green("✓ ")
+			}
+			line := "  " + mark + k.Name
+			if k.Description != "" {
+				line += dim("  " + k.Description)
+			}
+			fmt.Fprintln(s.out, line)
+		}
+		fmt.Fprintln(s.out, dim(t("skill_usage")))
+		return
+	}
+	if len(args) < 2 || (args[0] != "on" && args[0] != "off") {
+		fmt.Fprintln(s.out, yellow(t("skill_usage")))
+		return
+	}
+	name := strings.Join(args[1:], " ")
+	s.setSkill(name, args[0] == "on")
+}
+
+// toggleSkill flips one skill in this session's chat (the "/" menu entry).
+func (s *session) toggleSkill(name string) {
+	names, err := s.client.ChatSkills(s.ctx, s.chatID)
+	if err != nil {
+		fmt.Fprintln(s.out, errorf(t("skill_failed"), err))
+		return
+	}
+	on := true
+	for _, n := range names {
+		if n == name {
+			on = false
+		}
+	}
+	s.setSkill(name, on)
+}
+
+func (s *session) setSkill(name string, on bool) {
+	known := false
+	for _, k := range s.skillRows() {
+		if strings.EqualFold(k.Name, name) {
+			name, known = k.Name, true
+		}
+	}
+	if !known {
+		fmt.Fprintln(s.out, yellow(fmt.Sprintf(t("skill_not_found"), name)))
+		return
+	}
+	cur, err := s.client.ChatSkills(s.ctx, s.chatID)
+	if err != nil {
+		fmt.Fprintln(s.out, errorf(t("skill_failed"), err))
+		return
+	}
+	next := make([]string, 0, len(cur)+1)
+	for _, n := range cur {
+		if n != name {
+			next = append(next, n)
+		}
+	}
+	if on {
+		next = append(next, name)
+	}
+	if err := s.client.SetChatSkills(s.ctx, s.chatID, next); err != nil {
+		fmt.Fprintln(s.out, errorf(t("skill_failed"), err))
+		return
+	}
+	if on {
+		fmt.Fprintln(s.out, green(fmt.Sprintf(t("skill_turned_on"), name)))
+	} else {
+		fmt.Fprintln(s.out, green(fmt.Sprintf(t("skill_turned_off"), name)))
+	}
 }

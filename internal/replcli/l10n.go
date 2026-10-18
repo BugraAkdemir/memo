@@ -140,7 +140,7 @@ var tr = map[string]string{
 
 	// commands.go
 	"unknown_command":                "Bilinmeyen komut: %s (yardım için /help yaz)",
-	"menu_title_commands":            "Komutlar",
+	"menu_title_commands":            "Komutlar ve skiller",
 	"connect_usage":                  "Kullanım: /connect <base_url> <api_key> <model>",
 	"remote_status_failed":           "Uzak erişim durumu alınamadı: %v",
 	"ngrok_already_running":          "✓ ngrok zaten çalışıyor: %s",
@@ -195,6 +195,16 @@ var tr = map[string]string{
 	"disconnect_already_none":        "Zaten aktif bir harici sağlayıcı yok.",
 	"disconnect_failed":              "Sağlayıcı bırakılamadı: %v",
 	"disconnected_from":              "✓ %s bırakıldı, yerel modele dönüldü.",
+	"cmd_skill_hint":                 "skilleri listele; bu oturum için aç/kapat",
+	"skill_none":                     "Yüklü skill yok.",
+	"skill_list_header":              "Skiller (✓ = bu oturumda aktif; yalnız bu sohbet için geçerli):",
+	"skill_usage":                    "Kullanım: /skill [on|off <isim>]",
+	"skill_not_found":                "Skill bulunamadı: %s",
+	"skill_turned_on":                "✓ %s bu oturum için açıldı.",
+	"skill_turned_off":               "✓ %s bu oturum için kapatıldı.",
+	"skill_failed":                   "Skill değiştirilemedi: %v",
+	"skill_state_on":                 "✓ aktif (bu oturum)",
+	"skill_state_off":                "kapalı",
 	"web_usage":                      "Kullanım: /web on|off",
 	"web_status_failed":              "Web arama durumu alınamadı: %v",
 	"web_status_on":                  "Web araçları (bu oturum): açık.",
@@ -241,6 +251,7 @@ var tr = map[string]string{
   /connect <base_url> <api_key> <model>   harici bir API sağlayıcısına bağlanır
   /disconnect                             aktif harici/CLI sağlayıcıyı bırakır, yerel modele döner
   /web [on|off]                           web araçlarını bu oturum için açar/kapatır (varsayılan: açık)
+  /skill [on|off <isim>]                  skilleri listeler; bu oturum (sohbet) için açar/kapatır
   /gui                                    masaüstü uygulamasını açar
   /clear                                  sohbet geçmişini temizler, yeni bir sohbet başlatır
   /session [isim|numara|new|list]         bu projedeki sohbetler arasında geçiş yapar
@@ -347,7 +358,7 @@ var en = map[string]string{
 
 	// commands.go
 	"unknown_command":                "Unknown command: %s (type /help for help)",
-	"menu_title_commands":            "Commands",
+	"menu_title_commands":            "Commands and skills",
 	"connect_usage":                  "Usage: /connect <base_url> <api_key> <model>",
 	"remote_status_failed":           "Could not get remote access status: %v",
 	"ngrok_already_running":          "✓ ngrok already running: %s",
@@ -401,6 +412,16 @@ var en = map[string]string{
 	"disconnect_already_none":        "No external provider is currently active.",
 	"disconnect_failed":              "Could not disconnect provider: %v",
 	"disconnected_from":              "✓ Disconnected %s, back to the local model.",
+	"cmd_skill_hint":                 "list skills; turn them on/off for this session",
+	"skill_none":                     "No skills installed.",
+	"skill_list_header":              "Skills (✓ = active in this session; applies to this chat only):",
+	"skill_usage":                    "Usage: /skill [on|off <name>]",
+	"skill_not_found":                "Skill not found: %s",
+	"skill_turned_on":                "✓ %s turned on for this session.",
+	"skill_turned_off":               "✓ %s turned off for this session.",
+	"skill_failed":                   "Could not change the skill: %v",
+	"skill_state_on":                 "✓ active (this session)",
+	"skill_state_off":                "off",
 	"web_usage":                      "Usage: /web on|off",
 	"web_status_failed":              "Could not get web search status: %v",
 	"web_status_on":                  "Web tools (this session): on.",
@@ -448,6 +469,7 @@ var en = map[string]string{
   /connect <base_url> <api_key> <model>   connects to an external API provider
   /disconnect                             drops the active external/CLI provider, back to the local model
   /web [on|off]                           turns web tools on/off for this session (default: on)
+  /skill [on|off <name>]                  lists skills; turns one on/off for this session (chat)
   /gui                                    opens the desktop app
   /clear                                  clears the chat history, starts a new chat
   /session [name|number|new|list]         switches between this project's chats

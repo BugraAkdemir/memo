@@ -585,8 +585,10 @@ class _PickerData {
   });
 }
 
-class _QuickModelDropdown extends ConsumerWidget {
-  const _QuickModelDropdown({this.maxWidth = 220});
+/// The model/provider quick-switch button: public because the Agent screen's top
+/// bar shows the same picker next to the chat title.
+class QuickModelDropdown extends ConsumerWidget {
+  const QuickModelDropdown({super.key, this.maxWidth = 220});
 
   /// The button's widest size. The phone top bar passes a share of the screen
   /// instead: at a fixed 220 px it left the chips and chat title next to it
@@ -835,7 +837,7 @@ class _QuickModelDropdown extends ConsumerWidget {
 /// What the effort controls need: the active provider's config, the levels it
 /// accepts for the current model, and the level in force right now ('' =
 /// provider default). Null when there is nothing to choose (see
-/// [_QuickEffortSelector]'s doc comment for every case), so callers hide
+/// [QuickEffortSelector]'s doc comment for every case), so callers hide
 /// their control instead of showing an empty menu.
 class _EffortState {
   const _EffortState(this.config, this.levels, this.current);
@@ -881,7 +883,7 @@ Future<void> _setEffort(ProviderContainer container, ProviderConfig config, Stri
   }
 }
 
-/// Compact reasoning-effort quick-select shown next to _QuickModelDropdown.
+/// Compact reasoning-effort quick-select shown next to QuickModelDropdown.
 /// Hides itself entirely (SizedBox.shrink) whenever there's nothing useful
 /// to show: local mode, a CLI-backed provider (Claude Code/Codex are real
 /// agents with their own effort handling, not Memo's HTTP provider path —
@@ -889,8 +891,8 @@ Future<void> _setEffort(ProviderContainer container, ProviderConfig config, Stri
 /// provider/model combination effortLevelsProvider reports as having no
 /// effort levels at all (e.g. OpenRouter before a model is chosen, or a
 /// model that just doesn't support it).
-class _QuickEffortSelector extends ConsumerWidget {
-  const _QuickEffortSelector();
+class QuickEffortSelector extends ConsumerWidget {
+  const QuickEffortSelector({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1213,11 +1215,11 @@ class ChatTopBar extends ConsumerWidget {
 
       // Quick model/provider switch dropdown — local model, every
       // enabled API provider, and a shortcut to add a new one.
-      const _QuickModelDropdown(),
+      const QuickModelDropdown(),
 
       // Reasoning-effort quick-select — only renders itself when the active
       // provider/model actually has effort levels to offer.
-      const _QuickEffortSelector(),
+      const QuickEffortSelector(),
 
       // Undo button (only when agent mode is on)
       if (isAgentEnabled)
@@ -1538,7 +1540,7 @@ class ChatTopBar extends ConsumerWidget {
           // behind one overflow icon opening openMobileActionsSheet's
           // full-width, fully-labeled rows.
           if (showMenuButton) ...[
-            _QuickModelDropdown(
+            QuickModelDropdown(
               maxWidth: (MediaQuery.sizeOf(context).width * 0.42).clamp(110.0, 220.0),
             ),
             IconButton(

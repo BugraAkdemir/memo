@@ -11,6 +11,7 @@ import '../providers/tasklist_provider.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/server_file_browser_dialog.dart';
+import 'chat_screen.dart' show QuickModelDropdown, QuickEffortSelector;
 import 'tasks_screen.dart';
 import '../core/friendly_error.dart';
 
@@ -287,7 +288,7 @@ class _AgentContent extends ConsumerWidget {
 
     return Column(
       children: [
-        _AgentTopBar(activeChat: activeChat!, leadingGap: narrow),
+        AgentTopBar(activeChat: activeChat!, leadingGap: narrow),
         Expanded(
           child: messagesAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -336,16 +337,22 @@ class _AgentContent extends ConsumerWidget {
   }
 }
 
-class _AgentTopBar extends ConsumerWidget {
+/// The agent chat's top bar. Public only so a widget test can lay it out at
+/// several widths; nothing outside this file uses it.
+@visibleForTesting
+class AgentTopBar extends ConsumerWidget {
   final ChatSession activeChat;
   // Reserves room for AppShell's floating mobile hamburger (top:12,
   // left:12), which sits on top of this bar's own top-left corner at
   // narrow widths and would otherwise overlap the badge/title below.
   final bool leadingGap;
-  const _AgentTopBar({required this.activeChat, this.leadingGap = false});
+  const AgentTopBar({super.key, required this.activeChat, this.leadingGap = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Below this the labelled "Agent" and folder chips shrink to their icons (the
+    // full text stays as a tooltip) so the model switch fits beside the title.
+    final compact = MediaQuery.sizeOf(context).width < 560;
     return Container(
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -365,13 +372,18 @@ class _AgentTopBar extends ConsumerWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.smart_toy, size: 14, color: MemoTheme.green),
-                const SizedBox(width: 4),
-                Text(L10n.t('nav_agent'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.green)),
+                Tooltip(
+                  message: L10n.t('nav_agent'),
+                  child: const Icon(Icons.smart_toy, size: 14, color: MemoTheme.green),
+                ),
+                if (!compact) ...[
+                  const SizedBox(width: 4),
+                  Text(L10n.t('nav_agent'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.green)),
+                ],
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: compact ? 8 : 12),
           if (activeChat.projectPath != null) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -382,17 +394,41 @@ class _AgentTopBar extends ConsumerWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.folder_outlined, size: 14, color: MemoTheme.accent),
-                  const SizedBox(width: 4),
-                  Text(p.basename(activeChat.projectPath!), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.accent)),
+                  Tooltip(
+                    message: activeChat.projectPath!,
+                    child: const Icon(Icons.folder_outlined, size: 14, color: MemoTheme.accent),
+                  ),
+                  if (!compact) ...[
+                    const SizedBox(width: 4),
+                    Text(p.basename(activeChat.projectPath!), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.accent)),
+                  ],
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: compact ? 8 : 12),
           ],
           Expanded(
             child: Text(activeChat.title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain), overflow: TextOverflow.ellipsis),
           ),
+          // The same model switch the plain chat's top bar has — an agent chat
+          // runs on whichever model/provider is active, and until now it could
+          // only be changed from the other screen. Room-aware: the bar also
+          // carries the folder chip, the title and two icon buttons, so a narrow
+          // window gets the model button alone, at a share of the width.
+          LayoutBuilder(builder: (context, constraints) {
+            final wide = MediaQuery.sizeOf(context).width >= 760;
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                QuickModelDropdown(
+                  maxWidth: wide
+                      ? 220
+                      : (MediaQuery.sizeOf(context).width * 0.22).clamp(96.0, 180.0),
+                ),
+                if (wide) const QuickEffortSelector(),
+              ],
+            );
+          }),
           _CodeModeToggle(chatId: activeChat.id),
           IconButton(
             icon: const Icon(Icons.checklist),

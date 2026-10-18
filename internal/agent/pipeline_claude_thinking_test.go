@@ -37,7 +37,8 @@ func TestRunStream_ClaudeThinkingBlocksSurviveTheToolLoop(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
 		var req struct {
-			Thinking any `json:"thinking"`
+			Stream   bool `json:"stream"`
+			Thinking any  `json:"thinking"`
 			Messages []struct {
 				Role    string           `json:"role"`
 				Content []map[string]any `json:"content"`
@@ -48,6 +49,26 @@ func TestRunStream_ClaudeThinkingBlocksSurviveTheToolLoop(t *testing.T) {
 		calls++
 		n := calls
 		mu.Unlock()
+		// The agent pipeline streams, so the fake answers in SSE: the same
+		// blocks, delivered as content_block_start/_delta events.
+		sse := func(events ...string) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			for _, e := range events {
+				w.Write([]byte("data: " + e + "\n\n"))
+			}
+		}
+		if req.Stream && n == 1 {
+			sse(`{"type":"message_start","message":{"usage":{"input_tokens":10}}}`,
+				`{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`,
+				`{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"`+sig+`"}}`,
+				`{"type":"content_block_stop","index":0}`,
+				`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"read_file","input":{}}}`,
+				`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"note.txt\"}"}}`,
+				`{"type":"content_block_stop","index":1}`,
+				`{"type":"message_delta","usage":{"output_tokens":5}}`,
+				`{"type":"message_stop"}`)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		if n == 1 {
 			// Thinking (empty text — the default display on current models)
@@ -75,6 +96,15 @@ func TestRunStream_ClaudeThinkingBlocksSurviveTheToolLoop(t *testing.T) {
 				w.Write([]byte(`{"type":"error","error":{"type":"invalid_request_error","message":"messages.1.content.0.type: Expected ` + "`thinking`" + ` or ` + "`redacted_thinking`" + `, but found ` + "`tool_use`" + `. When thinking is enabled, a final assistant message must start with a thinking block."}}`))
 				return
 			}
+		}
+		if req.Stream {
+			sse(`{"type":"message_start","message":{"usage":{"input_tokens":20}}}`,
+				`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+				`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"done"}}`,
+				`{"type":"content_block_stop","index":0}`,
+				`{"type":"message_delta","usage":{"output_tokens":2}}`,
+				`{"type":"message_stop"}`)
+			return
 		}
 		w.Write([]byte(`{"model":"claude-opus-5","stop_reason":"end_turn","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":20,"output_tokens":2}}`))
 	}))

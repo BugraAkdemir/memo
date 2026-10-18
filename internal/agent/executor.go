@@ -603,8 +603,9 @@ func (e *Executor) UndoLast() error {
 }
 
 func (e *Executor) logEvent(sessionID string, ev AgentEvent) {
-	if ev.Type == EventPermissionRequest || ev.Type == EventFinalResponse {
-		return // we only log tool executions (results/errors)
+	if ev.Type == EventPermissionRequest || ev.Type == EventFinalResponse ||
+		ev.Type == EventNarrationDelta || ev.Type == EventNarration {
+		return // we only log tool executions (results/errors); model text is not an audit event
 	}
 
 	entry := AgentLogEntry{

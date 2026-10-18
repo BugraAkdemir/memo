@@ -403,6 +403,35 @@ func writeStreamingResponse(w http.ResponseWriter, resp FakeChatResponse, wantsU
 		return
 	}
 	stop := "stop"
+	// Tool calls stream the way a real OpenAI-compatible server sends them:
+	// one chunk per call carrying its id and name, then the arguments as a
+	// STRING in two fragments, and finish_reason "tool_calls". The agent loop
+	// streams, so a fake that only wrote text here would make every scripted
+	// tool turn look like an empty answer.
+	if len(resp.ToolCalls) > 0 {
+		stop = "tool_calls"
+		type fn struct {
+			Name      string `json:"name,omitempty"`
+			Arguments string `json:"arguments"`
+		}
+		type tcDelta struct {
+			Index    int    `json:"index"`
+			ID       string `json:"id,omitempty"`
+			Type     string `json:"type,omitempty"`
+			Function fn     `json:"function"`
+		}
+		for i, tc := range resp.ToolCalls {
+			writeChunk(map[string]any{"choices": []map[string]any{{"index": 0, "delta": map[string]any{
+				"tool_calls": []tcDelta{{Index: i, ID: tc.ID, Type: "function", Function: fn{Name: tc.Name}}},
+			}}}})
+			half := len(tc.Arguments) / 2
+			for _, frag := range []string{tc.Arguments[:half], tc.Arguments[half:]} {
+				writeChunk(map[string]any{"choices": []map[string]any{{"index": 0, "delta": map[string]any{
+					"tool_calls": []tcDelta{{Index: i, Function: fn{Arguments: frag}}},
+				}}}})
+			}
+		}
+	}
 	writeChunk(map[string]any{"choices": []streamChoice{{FinishReason: &stop}}})
 	// The usage chunk goes AFTER the finish_reason chunk and carries an empty
 	// choices array — that ordering is the whole reason processSSE has to hold

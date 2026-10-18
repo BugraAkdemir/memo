@@ -445,6 +445,8 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 				turnCtx, cancel = context.WithTimeout(ctx, time.Duration(budget)*time.Second)
 				defer cancel()
 			}
+			// An interactive turn shows the model's text as it is written.
+			turnCtx = agent.WithLiveNarration(turnCtx)
 		}
 
 		// Code Mode raises the loop ceilings (coding tasks are long, and the
@@ -487,6 +489,14 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		// nothing and removes any doubt.
 		var planSaved atomic.Bool
 		onEvent := func(ev agent.AgentEvent) {
+			// A piece of the model's text as it streams is live-only: forwarded
+			// to the client, never recorded (the whole step arrives afterwards
+			// as one EventNarration, which is).
+			if ev.Type == agent.EventNarrationDelta {
+				chunkData, _ := json.Marshal(ev)
+				trySend(ctx, outCh, api.StreamChunk{Content: string(chunkData), FinishReason: "agent_event"})
+				return
+			}
 			agentEvents.add(ev)
 			a.recordWorkingSetEvent(sessionID, ev)
 			if taskListID != "" {

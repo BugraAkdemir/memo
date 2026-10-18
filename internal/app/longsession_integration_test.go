@@ -59,11 +59,64 @@ func newFakeProvider(t *testing.T, script func(n int, req map[string]any) map[st
 		n := len(fp.requests)
 		fp.mu.Unlock()
 		resp := fp.script(n, body)
+		if stream, _ := body["stream"].(bool); stream {
+			writeFakeSSE(w, resp)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	t.Cleanup(fp.srv.Close)
 	return fp
+}
+
+// writeFakeSSE answers a stream:true request the way a real OpenAI-compatible
+// server does, from the scripted chat.completion body: the text as one delta,
+// each tool call as an id/name chunk followed by its arguments string in two
+// fragments, then finish_reason, then the usage chunk (empty choices).
+// The agent loop streams, so a fake that answered stream:true with a plain JSON
+// body would not be a server that exists.
+func writeFakeSSE(w http.ResponseWriter, resp map[string]any) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	flusher, _ := w.(http.Flusher)
+	send := func(v any) {
+		b, _ := json.Marshal(v)
+		fmt.Fprintf(w, "data: %s\n\n", b)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	choices, _ := resp["choices"].([]map[string]any)
+	if len(choices) > 0 {
+		msg, _ := choices[0]["message"].(map[string]any)
+		if text, _ := msg["content"].(string); text != "" {
+			send(map[string]any{"choices": []map[string]any{{"index": 0, "delta": map[string]any{"content": text}}}})
+		}
+		if tcs, _ := msg["tool_calls"].([]map[string]any); len(tcs) > 0 {
+			for i, tc := range tcs {
+				f, _ := tc["function"].(map[string]any)
+				args, _ := f["arguments"].(string)
+				send(map[string]any{"choices": []map[string]any{{"index": 0, "delta": map[string]any{"tool_calls": []map[string]any{{
+					"index": i, "id": tc["id"], "type": "function", "function": map[string]any{"name": f["name"], "arguments": ""},
+				}}}}}})
+				half := len(args) / 2
+				for _, frag := range []string{args[:half], args[half:]} {
+					send(map[string]any{"choices": []map[string]any{{"index": 0, "delta": map[string]any{"tool_calls": []map[string]any{{
+						"index": i, "function": map[string]any{"arguments": frag},
+					}}}}}})
+				}
+			}
+		}
+		fr, _ := choices[0]["finish_reason"].(string)
+		send(map[string]any{"choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": fr}}})
+	}
+	if usage, ok := resp["usage"]; ok {
+		send(map[string]any{"choices": []map[string]any{}, "usage": usage})
+	}
+	fmt.Fprint(w, "data: [DONE]\n\n")
+	if flusher != nil {
+		flusher.Flush()
+	}
 }
 
 func (fp *fakeProvider) reqBodies() []string {
@@ -521,7 +574,7 @@ func TestIntegration_CodeMode(t *testing.T) {
 		}
 		return respText("fake-model", "done", 800, 10)
 	})
-	h := newLongSessionApp(t, fp, true) // memory ON — Code Mode must suppress it anyway
+	h := newLongSessionApp(t, fp, true)       // memory ON — Code Mode must suppress it anyway
 	h.chatID = h.sm.NewAgentChat("/tmp/proj") // project chat → Code Mode on by default
 	if !h.a.resolveCodeMode(h.chatID) {
 		t.Fatal("a project chat should resolve to Code Mode on")

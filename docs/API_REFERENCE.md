@@ -20,7 +20,7 @@ This list below is not exhaustive — there are 180+ registered endpoints as of 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `POST` | `/api/send` | Send a standard JSON message (non-streaming) |
-| `POST` | `/api/send/stream` | SSE streaming response |
+| `POST` | `/api/send/stream` | SSE streaming response. Body: `message`, optional `chat_id`, optional `options` `{auto_permission, web_tools}` — this client's own settings for this one request (they never change a backend-wide flag; absent = follow the backend) |
 | `POST` | `/api/send_file` | File/image message (Multipart) |
 | `GET` | `/api/chats` | List all sessions |
 | `POST` | `/api/chats/new` | Create new session |

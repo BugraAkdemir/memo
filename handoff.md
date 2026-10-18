@@ -20,6 +20,10 @@
 - Gözlem, neden bilinmiyor: log'da `upstream served model "gemini-3.8-flash-n" for requested "gemini-3.8-flash-high"` (CLIProxyAPI/Antigravity) — istenen model ≠ çalışan model olabilir; "aynı model" karşılaştırmasını etkileyebilir.
 - Önceden var olan kararsız test: `TestRunComponentUpdate_TamperedDownloadChangesNothing` (`internal/app/update_test.go`) `-race -count>1` ile `5d068ac1`'de de düşüyor.
 
+**Terminal REPL (2026-10-18, `PLAN_cli_coding.md`)**
+- Doğrulanmadı: gerçek bir modelle REPL turu (yalnız `fakeprovider` + gerçek pty); Windows/macOS terminali; `/` menüsündeki skill satırlarının etkileşimli seçimi (menü testi yok, yalnız `toggleSkill`/`skillRows` birimleri); `/skill` ile gerçek bir skill'in komut istemine girip kullanılması.
+- Bilerek yapılmadı: REPL'de `/agent` açma-kapama (REPL hep kodlama/agent), `memo agent on|off|auto` alt komutları global bayrakları sürmeye devam eder. `-chat <id>` ile düz (projesiz) sohbet hâlâ açılabilir; yalnız `/session` listesi proje sohbetlerine indi.
+
 **Kullanıcıda**
 - Geçmişte `origin` push URL'sinde düz metin token ve artık satılmış bir alan adı vardı. Bu oturumda `git remote -v` yalnız GitHub URL'sini gösterdi; push doğrudan GitHub HTTPS adresine yapıldı. Eski token'ın döndürülmesi kullanıcıda.
 - Eski sürümlerin REPL `update` komutu ve `download.bugradev.com/get-memo.sh` satırları artık başkasının sunucusuna gidiyor → yeni sürümü duyur, eski satırları kaldır.
@@ -51,7 +55,8 @@
 
 ---
 
-# Son oturum — 2026-10-18 — Agent döngüsü: canlı akış, görünür adımlar, bağlam
-- Şikâyet: agent modunda düşünce/komut görünmüyor, sonuç tek parça geliyor; uzun kodlama işinde 400 ile çöküyor ve kalite düşüyor. Kök neden (koddan + `~/.memo/backend.log`'dan): döngü her adımda **akışsız** `ChatCompletion`; araçla gelen model metni kullanıcıya hiç gitmiyordu; bağlam koruması **en eski mesajları** (= kullanıcının görevi) atıyor, araç argümanlarını saymıyor, sağlayıcının gerçek token sayısını kullanmıyor ve bütçe 1M pencerede ~786k'ydı (55 adımda 1.048.576 sınırı aşıldı).
-- Yapıldı (7 commit, hepsi `main`, itilmedi): sağlayıcı akışı araç çağrısı/imzalı thinking/reasoning taşır (`4f4e2ed0`); pipeline akışlı + `narration`/`narration_delta` olayları + dar geri dönüş (`96bdf680`); bağlam sıkıştırıcı + `context_budget_tokens` 200000 + taşma kurtarma (`26f5feca`), sohbet geçmişi aynı tavanla (`72499140`); Flutter zaman çizelgesi "Ran N commands ›" (`0359ec95`); log/`[[narrate]]` (`37b72bb5`); canlı testte yakalanan düzeltme: düşürme notu araç sonucunda, kullanıcı mesajı değil (`216150a7`). Ayrıntı ve tuzaklar: AGENTS.md "Agent loop: live streaming…".
-- Doğrulama: Go build/vet + tam `-race` (yalnız yukarıdaki eski kararsız test hariç temiz), Flutter analyze (4 eski info) + 717 test, Kural #8 grep boş. Gerçek `memo --headless` + `fakeprovider`: anlatım/araç/cevap sırası zaman damgalarıyla; kaydedilen mesaj aynı sırayı koruyor; 37 adımlık tur 9 sıkıştırmayla bütçede kaldı, hata yok.
+# Son oturum — 2026-10-18 (2) — REPL: kodlama odaklı, arayüzden ayrı, canlı gösterim, `/` skill
+- İstek: REPL ve masaüstü uygulaması aynı anda kullanılabilsin, ayarları birbirini etkilemesin; REPL kodlama odaklı (Code Mode/agent/web varsayılan açık); ara metin görünsün; `/` Memo özelliklerini ve skilleri listelesin, skiller yalnız o oturum için.
+- Kök neden (koddan): backend bayrakları GLOBAL — REPL otomatik izni, web toggle'ını ve aktif sohbeti yazıyordu; sohbet oluşturmak da aktif sohbeti değiştiriyordu (bunu yalnız GERÇEK REPL'i pty'de bir "masaüstü" yanında çalıştırınca gördüm, birim testleri geçmişti). Agent+Code Mode zaten sohbet başına çözülüyor (REPL sohbetleri agent sohbeti), web araçları agent araç setinde hep var.
+- Yapıldı (6 commit, itilmedi): istek başına `options{auto_permission,web_tools}` (`21277c73`); REPL oturum-yerel ayarlar, global yazma yok, `/session` yalnız proje sohbetleri (`06e83422`); canlı düşünce/anlatım + araç başına kalıcı satır (`145269a2`); `/skill` ve `/` menüsünde skiller (`2e17d1d1`); `{"activate":false}` sohbet oluşturma (`e2d84718`). Ayrıntı/tuzaklar: AGENTS.md "The terminal REPL is a second CLIENT…".
+- Doğrulama: Go build/vet + tam `-race` (yalnız yükte düşen eski `webchat` testi hariç temiz; tek başına 3×geçti), e2e'de override'sız çalışınca testlerin DÜŞTÜĞÜ gösterildi. Canlı: gerçek `memo --headless` + `fakeprovider` + gerçek REPL (pty) — masaüstünün agent/otomatik-izin/web ayarları ve aktif sohbeti REPL oturumundan önce/sonra birebir aynı; REPL 1. turda izin sordu, Shift+Tab sonrası 2. turda sormadı; anlatım, `✓ run_command echo ikinci` satırı ve cevap birer kez.

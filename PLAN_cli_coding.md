@@ -18,8 +18,12 @@ REPL'de ara metin (narration) görünsün; `/` ile Memo özellikleri + mevcut sk
 - REPL oturum durumu yerel (otomatik izin, web araçları), her istekte gönderilir. `SwitchChat` ve global yazmalar kalkar.
 
 ## Birimler
-- [ ] U1 backend: `ClientOptions` (otomatik izin override, web araçları kapat) + testler
-- [ ] U2 REPL: oturum-yerel ayarlar, global yazma yok, sohbet-kapsamlı geçmiş, /session yalnız kodlama sohbetleri
-- [ ] U3 REPL: canlı narration gösterimi
-- [ ] U4 REPL: `/` menüsü özellikler + skiller (oturum-kapsamlı etkinleştirme), `/skill`
-- [ ] U5 canlı doğrulama: GUI + REPL aynı backend'de eşzamanlı
+- [x] U1 backend: `ClientOptions` (otomatik izin override, web araçları kapat) + testler
+- [x] U2 REPL: oturum-yerel ayarlar, global yazma yok, sohbet-kapsamlı geçmiş, /session yalnız kodlama sohbetleri
+- [x] U3 REPL: canlı narration gösterimi
+- [x] U4 REPL: `/` menüsü özellikler + skiller (oturum-kapsamlı etkinleştirme), `/skill`
+- [x] U5 canlı doğrulama: GUI + REPL aynı backend'de eşzamanlı
+
+## Durum (2026-10-18)
+U1–U5 yapıldı. Canlı doğrulamada ek bir sızıntı bulundu ve kapatıldı: sohbet oluşturma aktif sohbeti değiştiriyordu
+(`{"activate": false}`). Açık: gerçek modelle REPL turu, Windows/macOS terminali, `/` menüsü skill satırlarının etkileşimli denemesi.

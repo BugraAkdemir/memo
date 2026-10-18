@@ -64,6 +64,13 @@ func (a *App) maybeCompactHistory(ctx context.Context, chatID string, history []
 	if !enabled || chatID == "" || window <= 0 || len(history) < 8 {
 		return history
 	}
+	// A 1M-token window is not a reason to carry 900k tokens of conversation:
+	// quality and cost both degrade long before it fills, and the estimate here
+	// drifts further the longer the history is. Measure against the budget
+	// ceiling instead, so a long session is condensed while it is still sharp.
+	if budget := a.contextBudgetTokens(); window > budget {
+		window = budget
+	}
 
 	used := fixedTokens + estimateHistoryTokens(history)
 	if used*100 < thresholdPct*window {

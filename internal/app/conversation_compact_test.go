@@ -214,3 +214,22 @@ func TestMaybeCompactHistory_TrustsTheProvidersLastCount(t *testing.T) {
 		t.Fatal("a count from a different model must be ignored")
 	}
 }
+
+// A huge model window must not postpone condensing a long conversation until
+// the window is nearly full: the context budget ceiling is the yardstick.
+func TestMaybeCompactHistory_BudgetCeilingCapsAHugeWindow(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{}}
+	a.cfg.AgentMode.ConversationCompactEnabled = true
+	a.cfg.AgentMode.CompactThresholdPct = 60
+	a.cfg.AgentMode.ContextBudgetTokens = 400 // tiny ceiling for the test
+
+	h := longHistory(20)
+	cut := len(h) * 6 / 10
+	a.convSummaries = map[string]*convSummary{
+		"c1": {coveredCount: cut, prefixSig: conversationSig(h[:cut]), text: "- did X"},
+	}
+	got := a.maybeCompactHistory(context.Background(), "c1", h, 1_000_000, 0)
+	if len(got) != (len(h)-cut)+1 || got[0].Role != "system" {
+		t.Fatalf("a 1M window with a 400-token ceiling must still compact; got %d messages", len(got))
+	}
+}

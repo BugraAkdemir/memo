@@ -210,6 +210,18 @@ func (a *App) compactionSettings() (enabled bool, pct int) {
 	return enabled, pct
 }
 
+// contextBudgetTokens is the ceiling on a conversation's working context
+// (agent_mode.context_budget_tokens), whatever the model's window is.
+func (a *App) contextBudgetTokens() int {
+	a.cfgMu.RLock()
+	n := a.cfg.AgentMode.ContextBudgetTokens
+	a.cfgMu.RUnlock()
+	if n <= 0 {
+		n = agent.DefaultContextBudgetTokens
+	}
+	return n
+}
+
 // ContextReport builds the gauge for one chat. It never calls a model and never
 // waits on the network: the allowance figures come from the quota cache.
 func (a *App) ContextReport(chatID string) models.ContextReport {

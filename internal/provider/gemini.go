@@ -344,8 +344,12 @@ func (p *geminiProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 	// nothing to request: it is simply present, and until now it was thrown
 	// away on the streaming path (only ChatCompletion read it).
 	var usage *Usage
+	// Gemini sends each functionCall whole inside one chunk, so unlike the
+	// OpenAI shape there is nothing to glue together — only to collect and
+	// hand over on the terminal chunk.
+	var toolCalls []ToolCall
 	terminal := func(finishReason string) StreamChunk {
-		return StreamChunk{Done: true, FinishReason: finishReason, Usage: usage}
+		return StreamChunk{Done: true, FinishReason: finishReason, Usage: usage, ToolCalls: toolCalls}
 	}
 
 	for scanner.Scan() {
@@ -390,6 +394,16 @@ func (p *geminiProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 					return
 				}
 			}
+			if part.FunctionCall != nil {
+				toolCalls = append(toolCalls, ToolCall{
+					ID:   part.FunctionCall.ID,
+					Type: "function",
+					Function: ToolCallFunction{
+						Name:      part.FunctionCall.Name,
+						Arguments: part.FunctionCall.Args,
+					},
+				})
+			}
 		}
 
 		fr := result.Candidates[0].FinishReason
@@ -404,7 +418,7 @@ func (p *geminiProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		return
 	}
 
-	if fullContent.Len() > 0 {
+	if fullContent.Len() > 0 || len(toolCalls) > 0 {
 		trySend(ctx, ch, terminal(""))
 	}
 }

@@ -577,9 +577,11 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 	}
 	defer stopGrace()
 
-	// terminal builds the final chunk, attaching usage if any was reported.
+	var tcAsm toolCallAssembler
+	// terminal builds the final chunk, attaching usage if any was reported and
+	// every tool call the model made (assembled from the streamed fragments).
 	terminal := func(finishReason string) StreamChunk {
-		return StreamChunk{Done: true, FinishReason: finishReason, Usage: usage}
+		return StreamChunk{Done: true, FinishReason: finishReason, Usage: usage, ToolCalls: tcAsm.toolCalls()}
 	}
 
 	for scanner.Scan() {
@@ -625,6 +627,15 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		}
 
 		delta := chunk.Choices[0].Delta
+		if think := delta.ReasoningContent + delta.Reasoning; think != "" {
+			trySend(ctx, ch, StreamChunk{Thinking: think})
+			if ctx.Err() != nil {
+				return
+			}
+		}
+		for _, f := range delta.ToolCalls {
+			tcAsm.add(f)
+		}
 		if delta.Content != "" {
 			fullContent.WriteString(delta.Content)
 			trySend(ctx, ch, StreamChunk{Content: delta.Content})
@@ -698,6 +709,79 @@ type openAIStreamChoice struct {
 type openAIStreamDelta struct {
 	Role    string `json:"role,omitempty"`
 	Content string `json:"content,omitempty"`
+	// ReasoningContent / Reasoning are the two spellings OpenAI-compatible
+	// servers use for a reasoning model's visible thinking (DeepSeek, Qwen,
+	// llama-server, CLIProxyAPI use the first; OpenRouter the second).
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+	Reasoning        string `json:"reasoning,omitempty"`
+	// ToolCalls arrive as fragments: the first one for a call carries its id
+	// and function name, later ones only more of the arguments string.
+	ToolCalls []openAIStreamToolCall `json:"tool_calls,omitempty"`
+}
+
+type openAIStreamToolCall struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id,omitempty"`
+	Type     string `json:"type,omitempty"`
+	Function struct {
+		Name      string `json:"name,omitempty"`
+		Arguments string `json:"arguments,omitempty"`
+	} `json:"function"`
+}
+
+// toolCallAssembler glues streamed tool-call fragments back into whole calls.
+// Servers disagree on the details, so it is deliberately forgiving: a fragment
+// with a new non-empty id starts a new call even if the server reused index 0
+// (some gateways number every call 0), and a fragment with no id continues the
+// call at its index.
+type toolCallAssembler struct {
+	calls   []*assembledToolCall
+	byIndex map[int]*assembledToolCall
+}
+
+type assembledToolCall struct {
+	id, name string
+	args     strings.Builder
+}
+
+func (a *toolCallAssembler) add(f openAIStreamToolCall) {
+	if a.byIndex == nil {
+		a.byIndex = map[int]*assembledToolCall{}
+	}
+	cur := a.byIndex[f.Index]
+	if cur == nil || (f.ID != "" && cur.id != "" && f.ID != cur.id) {
+		cur = &assembledToolCall{}
+		a.calls = append(a.calls, cur)
+		a.byIndex[f.Index] = cur
+	}
+	if f.ID != "" {
+		cur.id = f.ID
+	}
+	if f.Function.Name != "" {
+		cur.name = f.Function.Name
+	}
+	cur.args.WriteString(f.Function.Arguments)
+}
+
+// toolCalls returns the assembled calls in arrival order. The arguments are
+// stored as a JSON string literal, exactly the shape a non-streaming response
+// decodes into (the agent pipeline's fixJSONArgs unwraps it, and replaying it
+// to the server sends the string back unchanged). A call with no name is
+// dropped: it can be neither executed nor replayed.
+func (a *toolCallAssembler) toolCalls() []ToolCall {
+	var out []ToolCall
+	for _, c := range a.calls {
+		if c.name == "" {
+			continue
+		}
+		args := c.args.String()
+		if strings.TrimSpace(args) == "" {
+			args = "{}"
+		}
+		raw, _ := json.Marshal(args)
+		out = append(out, ToolCall{ID: c.id, Type: "function", Function: ToolCallFunction{Name: c.name, Arguments: raw}})
+	}
+	return out
 }
 
 func (p *openAIProvider) setAuth(req *http.Request) {

@@ -650,6 +650,7 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 	scanner.Buffer(make([]byte, 0, 65536), 10*1024*1024)
 
 	var fullContent strings.Builder
+	blocks := &claudeStreamBlocks{}
 	// streamUsage accumulates this stream's accounting so the terminal chunk
 	// can carry it. Anthropic splits it across two events: message_start
 	// carries input_tokens plus the (already final) cache figures, and each
@@ -662,6 +663,11 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 	var streamUsage claudeUsage
 	sawUsage := false
 	usageChunk := func(c StreamChunk) StreamChunk {
+		// Every terminal chunk also carries the tool calls (and the signed
+		// thinking blocks the next request must echo) the model produced.
+		if c.Done {
+			c.ToolCalls, c.Native = blocks.result()
+		}
 		if !sawUsage {
 			return c
 		}
@@ -714,19 +720,32 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 				logClaudeCachePerformance(ms.Message.Usage)
 			}
 
+		case "content_block_start":
+			var st struct {
+				Index        int             `json:"index"`
+				ContentBlock json.RawMessage `json:"content_block"`
+			}
+			if err := json.Unmarshal([]byte(data), &st); err == nil {
+				blocks.start(st.Index, st.ContentBlock)
+			}
+
 		case "content_block_delta":
 			// BUG-THINK1: a thinking_delta event's payload used to be
 			// silently dropped — this struct only ever had a Text field, so
 			// json.Unmarshal just left it at its zero value with no error.
 			var delta struct {
+				Index int `json:"index"`
 				Delta struct {
-					Text     string `json:"text"`
-					Thinking string `json:"thinking"`
+					Text        string `json:"text"`
+					Thinking    string `json:"thinking"`
+					Signature   string `json:"signature"`
+					PartialJSON string `json:"partial_json"`
 				} `json:"delta"`
 			}
 			if err := json.Unmarshal([]byte(data), &delta); err != nil {
 				continue
 			}
+			blocks.delta(delta.Index, delta.Delta.Text, delta.Delta.Thinking, delta.Delta.Signature, delta.Delta.PartialJSON)
 			if delta.Delta.Thinking != "" {
 				trySend(ctx, ch, StreamChunk{Thinking: delta.Delta.Thinking})
 				if ctx.Err() != nil {
@@ -784,9 +803,102 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		return
 	}
 
-	if fullContent.Len() > 0 {
+	if fullContent.Len() > 0 || blocks.hasToolUse() {
 		trySend(ctx, ch, usageChunk(StreamChunk{Done: true}))
 	}
+}
+
+// claudeStreamBlocks rebuilds the content blocks of a streamed message from
+// its content_block_start / _delta events, so a streamed turn can hand the
+// agent pipeline exactly what a non-streaming response would: the tool calls,
+// and — when the model thought — the thinking blocks with their signatures,
+// which the API requires back unchanged on the next request.
+type claudeStreamBlocks struct {
+	order []int
+	byIdx map[int]*claudeStreamBlock
+}
+
+type claudeStreamBlock struct {
+	typ, id, name string
+	text          strings.Builder
+	thinking      strings.Builder
+	signature     strings.Builder
+	partial       strings.Builder
+	startRaw      json.RawMessage
+}
+
+func (b *claudeStreamBlocks) start(idx int, raw json.RawMessage) {
+	var head struct {
+		Type string `json:"type"`
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(raw, &head) != nil {
+		return
+	}
+	if b.byIdx == nil {
+		b.byIdx = map[int]*claudeStreamBlock{}
+	}
+	if _, seen := b.byIdx[idx]; !seen {
+		b.order = append(b.order, idx)
+	}
+	b.byIdx[idx] = &claudeStreamBlock{typ: head.Type, id: head.ID, name: head.Name, startRaw: append(json.RawMessage(nil), raw...)}
+}
+
+func (b *claudeStreamBlocks) delta(idx int, text, thinking, signature, partial string) {
+	blk := b.byIdx[idx]
+	if blk == nil {
+		return
+	}
+	blk.text.WriteString(text)
+	blk.thinking.WriteString(thinking)
+	blk.signature.WriteString(signature)
+	blk.partial.WriteString(partial)
+}
+
+func (b *claudeStreamBlocks) hasToolUse() bool {
+	for _, blk := range b.byIdx {
+		if blk.typ == "tool_use" {
+			return true
+		}
+	}
+	return false
+}
+
+// result returns the assembled tool calls and, only when the model thought,
+// the verbatim blocks to replay (the same condition ChatCompletion uses).
+func (b *claudeStreamBlocks) result() ([]ToolCall, any) {
+	var calls []ToolCall
+	var replay []claudeBlock
+	thought := false
+	for _, idx := range b.order {
+		blk := b.byIdx[idx]
+		switch blk.typ {
+		case "text":
+			// The API refuses an empty text block, so none is replayed.
+			if blk.text.Len() > 0 {
+				replay = append(replay, claudeBlock{Type: "text", Text: blk.text.String()})
+			}
+		case "thinking":
+			thought = true
+			raw, _ := json.Marshal(map[string]string{"type": "thinking", "thinking": blk.thinking.String(), "signature": blk.signature.String()})
+			replay = append(replay, claudeBlock{Type: "thinking", Thinking: blk.thinking.String(), raw: raw})
+		case "redacted_thinking":
+			thought = true
+			replay = append(replay, claudeBlock{Type: "redacted_thinking", raw: blk.startRaw})
+		case "tool_use":
+			input := json.RawMessage(strings.TrimSpace(blk.partial.String()))
+			if len(input) == 0 || !json.Valid(input) {
+				input = json.RawMessage("{}")
+			}
+			calls = append(calls, ToolCall{ID: blk.id, Type: "function", Function: ToolCallFunction{Name: blk.name, Arguments: input}})
+			replay = append(replay, claudeBlock{Type: "tool_use", ID: blk.id, Name: blk.name, Input: input})
+		}
+	}
+	if !thought {
+		return calls, nil
+	}
+	return calls, replay
 }
 
 // normalizeClaudeMessages enforces the two shape rules the Anthropic

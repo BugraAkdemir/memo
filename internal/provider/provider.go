@@ -241,6 +241,17 @@ type StreamChunk struct {
 	// on the next message. Empty for every HTTP provider.
 	CLISessionID string `json:"cli_session_id,omitempty"`
 
+	// ToolCalls are the tool calls the model made in this stream, complete
+	// (arguments fully assembled), carried on the terminal chunk only. A
+	// provider that streams tool-call fragments assembles them itself, so a
+	// consumer never sees a half-built call. Plain chat requests carry no tools
+	// and never get any; the agent pipeline reads them to run its loop live.
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+
+	// Native is ChatResponse.Native for a streamed turn (Claude's signed
+	// thinking blocks), carried on the terminal chunk next to ToolCalls.
+	Native any `json:"-"`
+
 	// Usage, when non-nil, carries a token accounting for the stream that just
 	// finished, and is only ever set on a terminal (Done or Error) chunk —
 	// every consumer stops reading at the first Done, so a usage-only chunk

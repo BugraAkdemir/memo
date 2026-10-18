@@ -7,7 +7,9 @@ import '../core/theme.dart';
 import '../models/chat.dart';
 import '../providers/chat_provider.dart';
 import '../providers/agent_provider.dart';
+import '../providers/settings_provider.dart' show betaEnabledProvider;
 import '../providers/tasklist_provider.dart';
+import '../widgets/agent/browser_pane.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/server_file_browser_dialog.dart';
@@ -44,7 +46,15 @@ class AgentScreen extends ConsumerWidget {
         // No local Scaffold/Drawer/menu button here anymore — AppShell's
         // single floating hamburger (present on every screen) replaces it;
         // _AgentTopBar's leadingGap above reserves the space it overlaps.
+        // The interactive browser panel is shared with the plain chat (same
+        // providers: the agent's browser_* tool events and the top-bar button
+        // both drive browserSessionActiveProvider), and Beta-gated the same way.
+        final browserOpen = ref.watch(betaEnabledProvider) &&
+            ref.watch(browserSessionActiveProvider);
+
         if (narrow) {
+          // Full-width takeover, as in ChatScreen (see BrowserPane's doc comment).
+          if (browserOpen) return const BrowserPane(narrow: true);
           return content;
         }
 
@@ -52,6 +62,7 @@ class AgentScreen extends ConsumerWidget {
           children: [
             _AgentSidebar(),
             Expanded(child: content),
+            if (browserOpen) const BrowserPane(),
           ],
         );
       },
@@ -430,6 +441,21 @@ class AgentTopBar extends ConsumerWidget {
             );
           }),
           _CodeModeToggle(chatId: activeChat.id),
+          // Open/close the browser panel by hand — the same button the plain
+          // chat's top bar has (Beta only). The agent can also open it itself
+          // with browser_navigate.
+          // Hidden below 480 px: at a phone width the bar has no room for one more
+          // button (the agent still opens the panel itself, which has its own
+          // close button).
+          if (ref.watch(betaEnabledProvider) && MediaQuery.sizeOf(context).width >= 480)
+            Builder(builder: (context) {
+              final active = ref.watch(browserSessionActiveProvider);
+              return IconButton(
+                icon: Icon(Icons.public, color: active ? MemoTheme.green : MemoTheme.of(context).textSecondary),
+                tooltip: active ? L10n.t('browser_pane_close') : L10n.t('browser_pane_open'),
+                onPressed: () => active ? closeBrowserPane(ref) : openBrowserPane(ref),
+              );
+            }),
           IconButton(
             icon: const Icon(Icons.checklist),
             tooltip: L10n.t('taskloop_title'),

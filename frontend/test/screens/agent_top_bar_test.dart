@@ -84,6 +84,7 @@ void main() {
     WidgetTester tester, {
     required double width,
     List<String> effortLevels = const ['low', 'medium', 'high'],
+    bool beta = false,
   }) async {
     tester.view.physicalSize = Size(width, 800);
     tester.view.devicePixelRatio = 1;
@@ -99,6 +100,7 @@ void main() {
         apiClientProvider.overrideWithValue(client),
         authGateProvider.overrideWith((ref) => Stream.value(const AuthGateInfo(AuthGateState.ok))),
         agentEnabledProvider.overrideWith((ref) => _AgentOn(ref)),
+        betaEnabledProvider.overrideWithValue(beta),
         chatListProvider.overrideWith(() => _Chats('/home/user/projects/memo')),
         activeChatIdProvider.overrideWith(_ActiveChat.new),
         providerListProvider.overrideWith(_Providers.new),
@@ -152,5 +154,43 @@ void main() {
     await pump(tester, width: 520);
     expect(find.byTooltip(L10n.t('switch_model')), findsOneWidget);
     expect(find.byType(QuickEffortSelector), findsNothing);
+  });
+
+  // Reported: the plain chat has the browser panel button and the agent chat did not.
+  group('browser panel button (Beta)', () {
+    testWidgets('is hidden while Beta is off', (tester) async {
+      await pump(tester, width: 1100);
+      expect(find.byTooltip(L10n.t('browser_pane_open')), findsNothing);
+    });
+
+    testWidgets('is shown with Beta on and toggles the shared browser session flag', (tester) async {
+      await pump(tester, width: 1100, beta: true);
+      final container = ProviderScope.containerOf(tester.element(find.byType(AgentTopBar)));
+      expect(container.read(browserSessionActiveProvider), isFalse);
+
+      await tester.tap(find.byTooltip(L10n.t('browser_pane_open')));
+      await tester.pumpAndSettle();
+      expect(container.read(browserSessionActiveProvider), isTrue);
+      expect(find.byTooltip(L10n.t('browser_pane_close')), findsOneWidget, reason: 'the button now offers to close it');
+    });
+
+    for (final width in [1100.0, 700.0, 560.0, 520.0, 480.0]) {
+      testWidgets('with the button added the bar still fits at ${width.toInt()} px', (tester) async {
+        await pump(tester, width: width, beta: true);
+        expect(tester.takeException(), isNull);
+        final globe = tester.getRect(find.byTooltip(L10n.t('browser_pane_open')));
+        final model = tester.getRect(find.byTooltip(L10n.t('switch_model')));
+        expect(globe.right, lessThanOrEqualTo(width));
+        expect(model.right, lessThanOrEqualTo(globe.left + 0.5));
+      });
+    }
+
+    for (final width in [430.0, 390.0, 360.0]) {
+      testWidgets('on a phone (${width.toInt()} px) there is no room for it, and nothing overflows', (tester) async {
+        await pump(tester, width: width, beta: true);
+        expect(tester.takeException(), isNull);
+        expect(find.byTooltip(L10n.t('browser_pane_open')), findsNothing);
+      });
+    }
   });
 }

@@ -86,7 +86,18 @@ class _PopupCallbackAction<T extends Intent> extends CallbackAction<T> {
 }
 
 class ChatInput extends ConsumerStatefulWidget {
-  const ChatInput({super.key});
+  /// The new-chat screen shows the composer in the middle of the page as a
+  /// rounded card with the model picker inside it ([modelPicker]); after the first
+  /// message the same composer (same widget state — pass a GlobalKey) sits at the
+  /// bottom as always.
+  final bool landing;
+  final Widget? modelPicker;
+
+  /// Called before a message is sent; returning false cancels the send. The
+  /// new-chat screen uses it to ask for the project folder of an Agent chat.
+  final Future<bool> Function()? beforeSend;
+
+  const ChatInput({super.key, this.landing = false, this.modelPicker, this.beforeSend});
 
   @override
   ConsumerState<ChatInput> createState() => _ChatInputState();
@@ -103,6 +114,7 @@ const double _composerStackBelowWidth = 460;
 class _ChatInputState extends ConsumerState<ChatInput> {
   final _controller = MentionTextEditingController();
   final _focusNode = FocusNode();
+  final _fieldKey = GlobalKey(); // see the field's KeyedSubtree in build
 
   // Short phrases that resume a paused Self-Driving task instead of being sent
   // as a chat message (v4.6.0 Faz F). Kept deliberately tight — a longer
@@ -575,6 +587,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     }
 
     if (ref.read(isSendingProvider)) return;
+
+    final before = widget.beforeSend;
+    if (before != null && !await before()) return;
+    if (!mounted) return;
 
     // WhatsApp chat mode — route to WhatsApp stream when active
     if (ref.read(whatsAppChatModeProvider)) {
@@ -1318,16 +1334,29 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           // popup, an attachment preview) can make Flutter re-create the input
           // bar and drop the text field's focus.
           key: const ValueKey('chat-input-area'),
-          padding: MemoTheme.of(context).isGlass
-              ? const EdgeInsets.fromLTRB(12, 8, 12, 12)
-              : EdgeInsets.zero,
+          padding: widget.landing
+              ? EdgeInsets.zero
+              : MemoTheme.of(context).isGlass
+                  ? const EdgeInsets.fromLTRB(12, 8, 12, 12)
+                  : EdgeInsets.zero,
           child: GlassBlur(
-          borderRadius: MemoTheme.of(context).isGlass
-              ? BorderRadius.circular(MemoTheme.radiusLg)
-              : BorderRadius.zero,
+          borderRadius: widget.landing
+              ? BorderRadius.circular(22)
+              : MemoTheme.of(context).isGlass
+                  ? BorderRadius.circular(MemoTheme.radiusLg)
+                  : BorderRadius.zero,
           child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: MemoTheme.of(context).isGlass
+          padding: widget.landing
+              ? const EdgeInsets.fromLTRB(18, 14, 14, 12)
+              : const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: widget.landing
+              ? BoxDecoration(
+                  color: MemoTheme.of(context).bgPanel,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: MemoTheme.of(context).borderSoft),
+                  boxShadow: MemoTheme.shadowLg,
+                )
+              : MemoTheme.of(context).isGlass
               ? BoxDecoration(
                   color: MemoTheme.of(context).bgPanel,
                   borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
@@ -1551,7 +1580,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
             ];
 
             // ─── Text Input ──────────────────────────
-            final field = Container(
+            // Keyed so the text field keeps its state (draft, focus, keyboard
+            // connection) when the layout around it changes shape: new-chat screen
+            // <-> bottom bar, and a window resized across the narrow breakpoint
+            // (Column <-> Row put it at a different place in the tree).
+            final field = KeyedSubtree(key: _fieldKey, child: Container(
                   constraints: const BoxConstraints(maxHeight: 160),
                   decoration: BoxDecoration(
                     color: MemoTheme.of(context).bgPanel,
@@ -1661,7 +1694,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                         ),
                       ),
                     ),
-                  );
+                  ));
 
             // ─── Send / Stop / Pause-task Button ──────
             final showStop = isSending || taskLocksInput;
@@ -1707,6 +1740,39 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   ),
                 ),
               );
+
+            // New-chat screen: the text on top, then one row with the actions on the
+            // left and the model picker + send on the right, at any width.
+            if (widget.landing) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  field,
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: actions,
+                          ),
+                        ),
+                      ),
+                      if (widget.modelPicker != null) ...[
+                        const SizedBox(width: 8),
+                        Flexible(child: widget.modelPicker!),
+                      ],
+                      const SizedBox(width: 10),
+                      send,
+                    ],
+                  ),
+                ],
+              );
+            }
 
             if (narrow) {
               return Column(

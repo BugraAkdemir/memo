@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../models/chat.dart';
 import '../models/provider_config.dart';
 import '../models/provider_models.dart';
 import '../widgets/chat_model_selection.dart';
@@ -21,6 +22,8 @@ import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/agent/browser_pane.dart';
+import '../widgets/new_chat_landing.dart';
+import '../providers/new_chat_provider.dart';
 import '../widgets/agent/code_mode_toggle.dart';
 import 'tasks_screen.dart';
 import '../providers/tasklist_provider.dart';
@@ -121,9 +124,55 @@ class _ChatContent extends ConsumerStatefulWidget {
 }
 
 class _ChatContentState extends ConsumerState<_ChatContent> {
+  // The page's one composer. A GlobalKey so it keeps its state — text, focus,
+  // attachments — when it moves from the middle of the new-chat screen to the
+  // bottom after the first message.
+  final GlobalKey _inputKey = GlobalKey();
+
   @override
   Widget build(BuildContext context) {
     final messagesAsync = ref.watch(messagesProvider);
+
+    // New-chat screen: an empty plain/agent chat shows the Chat | Agent switch, the
+    // composer in the middle and starter suggestions. After the first message the
+    // chat is whatever was chosen, for good, and the composer sits at the bottom.
+    final chats = ref.watch(chatListProvider).valueOrNull ?? const <ChatSession>[];
+    final activeId = ref.watch(activeChatIdProvider).valueOrNull;
+    final activeChat = chats.where((c) => c.id == activeId).firstOrNull;
+    final loadedMessages = messagesAsync.valueOrNull;
+    final liveStatus = ref.watch(liveRealtimeSessionProvider).status;
+    final landing = activeChat != null &&
+        loadedMessages != null &&
+        loadedMessages.isEmpty &&
+        !ref.watch(isSendingProvider) &&
+        ref.watch(streamingContentProvider).isEmpty &&
+        ref.watch(streamingAgentEventsProvider).isEmpty &&
+        ref.watch(streamingNarrationProvider).isEmpty &&
+        ref.watch(streamingThinkingProvider).isEmpty &&
+        (ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '').isEmpty &&
+        ref.watch(chatTaskForProvider(activeChat.id)) == null &&
+        liveStatus != LiveRealtimeSessionStatus.connecting &&
+        liveStatus != LiveRealtimeSessionStatus.connected;
+    final agentLanding = landing && isAgentModeFor(activeChat, ref.watch(pendingAgentChatsProvider));
+    final composer = ChatInput(
+      key: _inputKey,
+      landing: landing,
+      // Room-aware, like the top bar: on a phone the composer row only has space
+      // for a short model button (the effort level stays in the top bar's menu).
+      modelPicker: landing
+          ? (MediaQuery.sizeOf(context).width < 640
+              ? const QuickModelDropdown(maxWidth: 120)
+              : const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [QuickModelDropdown(maxWidth: 200), QuickEffortSelector()],
+                ))
+          : null,
+      // An Agent chat needs its project folder: ask for it when the person sends
+      // without having chosen one, and send only if they did.
+      beforeSend: agentLanding && !activeChat.isAgentChat
+          ? () => chooseProjectForNewChat(context, ref, activeChat.id)
+          : null,
+    );
 
     // errorMessageProvider's SnackBar is shown exactly once, in
     // app_shell.dart's own ref.listen (added first, June — this screen's
@@ -158,7 +207,9 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
 
         // ─── Messages or Welcome ──────────────────
         Expanded(
-          child: messagesAsync.when(
+          child: landing
+              ? NewChatLanding(chat: activeChat, composer: composer)
+              : messagesAsync.when(
             loading: () =>  Center(
               child: CircularProgressIndicator(color: MemoTheme.accent),
             ),
@@ -259,7 +310,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
         const QuotaNoticeCard(),
 
         // ─── Input ────────────────────────────────
-         ChatInput(),
+        if (!landing) composer,
       ],
     );
   }

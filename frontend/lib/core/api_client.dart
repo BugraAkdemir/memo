@@ -642,6 +642,16 @@ class MemoApiClient {
     return res.data['id'] as String? ?? '';
   }
 
+  /// Turns an EMPTY chat into a project (agent) chat rooted at [projectPath], or
+  /// back into a plain chat with an empty path. Refused (409) once the chat has
+  /// messages: which kind a chat is gets decided before its first message.
+  Future<void> setChatProject(String chatId, String projectPath) async {
+    await _dio.post(
+      '/api/chats/project',
+      data: {'chat_id': chatId, 'project_path': projectPath},
+    );
+  }
+
   /// Switch to a chat by ID.
   Future<void> switchChat(String id) async {
     await _dio.post('/api/chats/switch', data: {'id': id});

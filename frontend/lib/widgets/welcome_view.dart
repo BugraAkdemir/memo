@@ -67,25 +67,25 @@ class WelcomeView extends ConsumerWidget {
                 runSpacing: 12,
                 alignment: WrapAlignment.center,
                 children: [
-                  _Suggestion(
+                  SuggestionCard(
                     icon: Icons.code_rounded,
                     label: L10n.t('suggest_review_label'),
                     hint: L10n.t('suggest_review_hint'),
                     starter: L10n.t('quick_review_starter'),
                   ),
-                  _Suggestion(
+                  SuggestionCard(
                     icon: Icons.menu_book_outlined,
                     label: L10n.t('suggest_explain_label'),
                     hint: L10n.t('suggest_explain_hint'),
                     starter: L10n.t('quick_explain_starter'),
                   ),
-                  _Suggestion(
+                  SuggestionCard(
                     icon: Icons.checklist_rounded,
                     label: L10n.t('suggest_plan_label'),
                     hint: L10n.t('suggest_plan_hint'),
                     starter: L10n.t('quick_plan_starter'),
                   ),
-                  _Suggestion(
+                  SuggestionCard(
                     icon: Icons.lightbulb_outline_rounded,
                     label: L10n.t('suggest_ideate_label'),
                     hint: L10n.t('suggest_ideate_hint'),
@@ -167,13 +167,15 @@ class _FadeIn extends StatelessWidget {
   }
 }
 
-class _Suggestion extends ConsumerStatefulWidget {
+/// A starter card: tapping it fills the composer with [starter].
+class SuggestionCard extends ConsumerStatefulWidget {
   final IconData icon;
   final String label;
   final String hint;
   final String starter;
 
-  const _Suggestion({
+  const SuggestionCard({
+    super.key,
     required this.icon,
     required this.label,
     required this.hint,
@@ -181,10 +183,10 @@ class _Suggestion extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_Suggestion> createState() => _SuggestionState();
+  ConsumerState<SuggestionCard> createState() => _SuggestionState();
 }
 
-class _SuggestionState extends ConsumerState<_Suggestion> {
+class _SuggestionState extends ConsumerState<SuggestionCard> {
   bool _hovering = false;
 
   @override

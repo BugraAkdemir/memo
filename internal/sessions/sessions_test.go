@@ -808,3 +808,24 @@ func TestAwaitingPlanDecision_RoundTripsAndDefaultsFalse(t *testing.T) {
 		t.Error("SetAwaitingPlanDecision on unknown chat should error")
 	}
 }
+
+func TestNewAgentChatNoActivate_KeepsTheActiveChat(t *testing.T) {
+	m, err := NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	first := m.NewChat()
+	id := m.NewAgentChatNoActivate("/proj")
+	if id == "" || id == first {
+		t.Fatalf("no new chat: %q", id)
+	}
+	if m.GetActiveID() != first {
+		t.Fatalf("active chat moved to %q, want %q", m.GetActiveID(), first)
+	}
+	if m.GetProjectPath(id) != "/proj" || !m.IsAgentChat(id) {
+		t.Error("the chat must still be a project (agent) chat")
+	}
+	if got := m.NewAgentChat("/p2"); m.GetActiveID() != got {
+		t.Error("NewAgentChat must keep making its chat active")
+	}
+}

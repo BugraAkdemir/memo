@@ -148,8 +148,11 @@ func (c *Client) NewAgentChat(ctx context.Context, projectPath string) (string, 
 	var resp struct {
 		ID string `json:"id"`
 	}
+	// activate=false: the backend's active chat is global, and making this chat
+	// the active one would move a desktop app on the same backend to it. (An
+	// older backend ignores the field and activates as before.)
 	if err := c.doJSON(ctx, http.MethodPost, "/api/agent/chat",
-		map[string]string{"project_path": projectPath}, &resp); err != nil {
+		map[string]any{"project_path": projectPath, "activate": false}, &resp); err != nil {
 		return "", err
 	}
 	return resp.ID, nil

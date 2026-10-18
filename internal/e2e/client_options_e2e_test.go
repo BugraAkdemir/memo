@@ -132,3 +132,41 @@ func TestClientOptions_WebToolsOffHidesWebSearchAndFetchPage(t *testing.T) {
 		t.Fatalf("without options the web tools are there as before: %v", toolNames)
 	}
 }
+
+// The active chat is global. A second client creating its chat with
+// {"activate": false} must not move the first client's open chat; without it the
+// old behaviour (the new chat becomes active) is unchanged.
+func TestAgentChat_ActivateFalseLeavesTheActiveChatAlone(t *testing.T) {
+	h := NewHarness(t)
+	desktop := h.NewChat() // the desktop app's open chat; creating it makes it active
+	active := func() string {
+		resp := h.getJSON("/api/chats/active")
+		var out struct {
+			ID string `json:"id"`
+		}
+		decodeInto(h.t, resp, &out)
+		return out.ID
+	}
+	if active() != desktop {
+		t.Fatalf("setup: active = %q, want %q", active(), desktop)
+	}
+
+	var made struct {
+		ID string `json:"id"`
+	}
+	decodeInto(t, h.postJSON("/api/agent/chat", map[string]any{"project_path": t.TempDir(), "activate": false}), &made)
+	if made.ID == "" || made.ID == desktop {
+		t.Fatalf("no new chat created: %q", made.ID)
+	}
+	if active() != desktop {
+		t.Fatalf("activate=false moved the active chat to %q", active())
+	}
+
+	var plain struct {
+		ID string `json:"id"`
+	}
+	decodeInto(t, h.postJSON("/api/agent/chat", map[string]any{"project_path": t.TempDir()}), &plain)
+	if active() != plain.ID {
+		t.Fatalf("without the option the new chat is active as before; active = %q, new = %q", active(), plain.ID)
+	}
+}

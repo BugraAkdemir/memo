@@ -35,6 +35,16 @@ func (a *App) NewAgentChat(projectPath string) string {
 	return sm.NewAgentChat(projectPath)
 }
 
+// NewAgentChatNoActivate creates an agent chat without switching the globally
+// active chat (see sessions.Manager.NewAgentChatNoActivate).
+func (a *App) NewAgentChatNoActivate(projectPath string) string {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return ""
+	}
+	return sm.NewAgentChatNoActivate(projectPath)
+}
+
 // ListChats returns a list of all sessions.
 func (a *App) ListChats() []sessions.SessionInfo {
 	sm := a.getSessionManager()

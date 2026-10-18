@@ -2527,6 +2527,13 @@ func (s *Server) handleOrchestraConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// agentChatNoActivate is the optional bridge method behind {"activate": false}.
+// An optional interface, like chatScopedMessages, so every existing bridge and
+// test stub keeps compiling.
+type agentChatNoActivate interface {
+	NewAgentChatNoActivate(projectPath string) string
+}
+
 func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || s.fullBridge == nil {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -2534,6 +2541,11 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		ProjectPath string `json:"project_path"`
+		// Activate=false creates the chat without making it the backend's
+		// active chat — for a second client (the terminal REPL) sharing the
+		// backend with the desktop app, whose open chat must not move. Absent
+		// or true keeps the old behaviour.
+		Activate *bool `json:"activate"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
@@ -2543,7 +2555,12 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "project_path required", http.StatusBadRequest)
 		return
 	}
-	id := s.fullBridge.NewAgentChat(req.ProjectPath)
+	id := ""
+	if c, ok := s.fullBridge.(agentChatNoActivate); ok && req.Activate != nil && !*req.Activate {
+		id = c.NewAgentChatNoActivate(req.ProjectPath)
+	} else {
+		id = s.fullBridge.NewAgentChat(req.ProjectPath)
+	}
 	writeJSON(w, map[string]string{"id": id})
 }
 

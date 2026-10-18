@@ -190,6 +190,18 @@ func (m *Manager) NewAgentChat(projectPath string) string {
 	return s.ID
 }
 
+// NewAgentChatNoActivate is NewAgentChat without making the new chat the active
+// one. The active chat is global: a second client on the same backend (the
+// terminal REPL next to the desktop app) that created its chat the ordinary way
+// moved the other client's open chat out from under it.
+func (m *Manager) NewAgentChatNoActivate(projectPath string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.newSession("Agent Chat")
+	s.ProjectPath = projectPath
+	return s.ID
+}
+
 func (m *Manager) GetProjectPath(id string) string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

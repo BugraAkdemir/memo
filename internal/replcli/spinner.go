@@ -55,6 +55,13 @@ func newSpinner(out io.Writer) *spinner {
 	return s
 }
 
+// isStopped reports whether Stop was called.
+func (s *spinner) isStopped() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stopped
+}
+
 // Label returns the spinner's current status text — thread-safe against a
 // concurrent SetLabel call from the turn's own goroutine.
 func (s *spinner) Label() string {

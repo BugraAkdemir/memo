@@ -216,6 +216,14 @@ type session struct {
 	// Reset at the start of every sendMessage call.
 	aiTurnStarted bool
 
+	// line is the kind of line being written live right now (thinking or the
+	// model's text), so the next thing printed knows to finish it first.
+	// textStreamed means the current step's text was already printed live as it
+	// arrived, so the same words must not be printed again when the step ends.
+	// Both are reset at the start of every turn.
+	line         liveLine
+	textStreamed bool
+
 	// sp is the in-flight turn's status-line spinner, non-nil only between
 	// sendMessage starting and finishing a turn. handleAgentEvent reuses it
 	// to show live tool-call activity instead of printing a permanent line
@@ -357,6 +365,7 @@ func (s *session) stopInterruptWatch() {
 // racing the next prompt for the same stdout and garbling both.
 func (s *session) sendMessage(line string) {
 	s.aiTurnStarted = false
+	s.line, s.textStreamed = lineNone, false
 
 	// Only worth checking for a save confirmation if embedding is actually
 	// running — otherwise every message would pay the polling delay below
@@ -676,13 +685,25 @@ func (s *session) memoryActive() bool {
 func (s *session) handleChunk(chunk api.StreamChunk) error {
 	if chunk.Error != "" {
 		s.stopSpinner()
+		s.endLine()
 		fmt.Fprintln(s.out, errorf("%s", friendlyError(chunk.Error)))
 		return nil
+	}
+
+	// The model's thinking, as it arrives: dim, on its own line, so it reads as
+	// working-out rather than as the answer.
+	if chunk.Thinking != "" {
+		s.beginLine(lineThinking)
+		fmt.Fprint(s.out, dim(chunk.Thinking))
+		if chunk.Content == "" && chunk.FinishReason == "" {
+			return nil
+		}
 	}
 
 	switch chunk.FinishReason {
 	case "status":
 		s.stopSpinner()
+		s.endLine()
 		fmt.Fprintln(s.out, dim(fmt.Sprintf("[%s]", chunk.Content)))
 	case "agent_event":
 		var ev AgentEvent
@@ -695,6 +716,7 @@ func (s *session) handleChunk(chunk api.StreamChunk) error {
 		// the saved file's absolute path. A terminal can't show the image,
 		// so print where it landed.
 		s.stopSpinner()
+		s.endLine()
 		s.aiTurnStarted = true
 		fmt.Fprintln(s.out, dim(fmt.Sprintf(t("image_saved"), chunk.Content)))
 	case "usage", "activity", "memory_used", "browser_frame", "model_route":
@@ -706,10 +728,22 @@ func (s *session) handleChunk(chunk api.StreamChunk) error {
 		// (internal/app/chat.go) describes for the WhatsApp path.
 	default:
 		// "" (plain streamed token) or "stop" (may carry trailing text).
-		// Agent mode isn't truly token-streamed backend-side (the whole
-		// reply arrives as one chunk), so reveal it with a typewriter
-		// effect instead of dumping it on screen all at once.
-		if !s.aiTurnStarted && chunk.Content != "" {
+		if chunk.Content == "" {
+			return nil
+		}
+		if s.textStreamed {
+			// The agent loop streams its text live (narration events), and the
+			// final answer is the last of those: it is already on screen, and
+			// printing it again here would show it twice.
+			s.textStreamed = false
+			s.aiTurnStarted = true
+			return nil
+		}
+		// A reply that was not streamed live (a plain chat turn, an older
+		// backend, a provider that cannot stream tools) arrives whole, so
+		// reveal it with a typewriter effect instead of dumping it at once.
+		s.endLine()
+		if !s.aiTurnStarted {
 			s.stopSpinner()
 			s.aiTurnStarted = true
 			fmt.Fprint(s.out, bold(brightMagenta("● ")))
@@ -717,6 +751,113 @@ func (s *session) handleChunk(chunk api.StreamChunk) error {
 		typewriter(s.out, chunk.Content)
 	}
 	return nil
+}
+
+// liveLine is what the REPL is writing live on the current terminal line.
+type liveLine int
+
+const (
+	lineNone liveLine = iota
+	lineThinking
+	lineText
+)
+
+// beginLine starts (or continues) a live line of the given kind: a different
+// kind that is still open is finished first, the status spinner gives the line
+// up, and the kind's marker is printed once.
+func (s *session) beginLine(kind liveLine) {
+	if s.line == kind {
+		return
+	}
+	s.endLine()
+	s.stopSpinner()
+	switch kind {
+	case lineThinking:
+		fmt.Fprint(s.out, dim("✻ "))
+	case lineText:
+		fmt.Fprint(s.out, bold(brightMagenta("● ")))
+	}
+	s.line = kind
+}
+
+// endLine finishes a live line with a newline.
+func (s *session) endLine() {
+	if s.line != lineNone {
+		fmt.Fprintln(s.out)
+		s.line = lineNone
+	}
+}
+
+// ensureSpinner brings the status spinner back if a live line stopped it, so a
+// tool that starts next still shows what it is doing. Outside a turn (s.sp nil)
+// it does nothing.
+func (s *session) ensureSpinner() {
+	if s.sp != nil && s.sp.isStopped() {
+		s.sp = newSpinner(s.out)
+	}
+}
+
+// printToolLine leaves one permanent line per finished tool call — what ran and
+// how it went — so a coding session reads as a record of what the agent did.
+// Running state stays on the transient spinner line.
+func (s *session) printToolLine(ev AgentEvent) {
+	s.stopSpinner()
+	s.endLine()
+	what := toolArgSummary(ev.Tool, ev.Args)
+	if what != "" {
+		what = " " + what
+	}
+	took := ""
+	if ev.DurationMs > 0 {
+		took = dim(fmt.Sprintf("  %dms", ev.DurationMs))
+	}
+	switch ev.Type {
+	case "tool_error":
+		msg := ev.Error
+		if len(msg) > 120 {
+			msg = msg[:120] + "…"
+		}
+		fmt.Fprintln(s.out, red("  ✗ "+ev.Tool+what)+dim("  "+msg))
+	case "permission_denied":
+		fmt.Fprintln(s.out, yellow("  ⊘ "+ev.Tool+what))
+	default:
+		fmt.Fprintln(s.out, green("  ✓ ")+dim(ev.Tool+what)+took)
+	}
+	s.ensureSpinner()
+}
+
+// toolArgSummary is the one-line "what exactly" of a tool call: the command,
+// the path, the pattern, the query.
+func toolArgSummary(tool string, raw json.RawMessage) string {
+	var args map[string]any
+	if json.Unmarshal(raw, &args) != nil {
+		// Some providers send the arguments as a string holding the object.
+		var asString string
+		if json.Unmarshal(raw, &asString) != nil || json.Unmarshal([]byte(asString), &args) != nil {
+			return ""
+		}
+	}
+	keys := []string{"path", "command", "pattern", "query", "url"}
+	switch tool {
+	case "run_command", "run_command_readonly":
+		keys = []string{"command"}
+	case "search_files", "search_content":
+		keys = []string{"pattern"}
+	case "web_search":
+		keys = []string{"query"}
+	case "fetch_page", "browser_navigate":
+		keys = []string{"url"}
+	}
+	for _, k := range keys {
+		if v, ok := args[k].(string); ok && strings.TrimSpace(v) != "" {
+			one := strings.Join(strings.Fields(v), " ")
+			if r := []rune(one); len(r) > 120 {
+				one = string(r[:120]) + "…"
+			}
+			return one
+		}
+	}
+	return ""
 }
 
 // stopSpinner halts the current turn's status-line spinner, if one is
@@ -751,15 +892,34 @@ func (s *session) handleAgentEvent(ev AgentEvent) error {
 		return nil // no turn in flight to attach a status update to
 	}
 	switch ev.Type {
+	case "narration_delta":
+		// A piece of the model's current step, live. Whether it is narration or
+		// the final answer is only known when the step ends.
+		s.beginLine(lineText)
+		fmt.Fprint(s.out, ev.Content)
+		s.textStreamed = true
+	case "narration":
+		// The step ended with tool calls: its text was narration. Already on
+		// screen if it streamed; otherwise (an older backend, a provider that
+		// does not stream) print it whole now.
+		if s.textStreamed {
+			s.endLine()
+		} else if strings.TrimSpace(ev.Content) != "" {
+			s.stopSpinner()
+			s.endLine()
+			fmt.Fprintln(s.out, bold(brightMagenta("● "))+ev.Content)
+		}
+		s.textStreamed = false
+		s.ensureSpinner()
 	case "tool_executing":
+		s.endLine()
+		s.ensureSpinner()
 		s.sp.SetLabel(dim(fmt.Sprintf(t("tool_running"), ev.Tool)))
-	case "tool_result":
-		s.sp.SetLabel(green(fmt.Sprintf(t("tool_done"), ev.Tool)))
-	case "tool_error":
-		s.sp.SetLabel(errorf(t("tool_error"), ev.Tool, ev.Error))
-	case "permission_denied":
-		s.sp.SetLabel(yellow(fmt.Sprintf(t("tool_denied"), ev.Tool)))
+	case "tool_result", "tool_error", "permission_denied":
+		s.printToolLine(ev)
 	case "permission_request":
+		s.endLine()
+		s.ensureSpinner()
 		return s.askPermission(ev)
 	}
 	return nil

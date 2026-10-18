@@ -334,6 +334,14 @@ class _ChatListItemState extends State<_ChatListItem> {
                         children: [
                           Row(
                             children: [
+                              // An agent (project) chat is marked, so one list can hold both kinds.
+                              if (widget.chat.isAgentChat) ...[
+                                Tooltip(
+                                  message: L10n.t('agent_chat_marker'),
+                                  child: Icon(Icons.smart_toy, size: 13, color: MemoTheme.green),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
                               Flexible(
                                 child: Text(
                                   widget.chat.title,

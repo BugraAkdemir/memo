@@ -38,6 +38,12 @@ class _AgentOn extends AgentEnabledNotifier {
   }
 }
 
+class _AgentOff extends AgentEnabledNotifier {
+  _AgentOff(super.ref) {
+    state = false;
+  }
+}
+
 class _Chats extends ChatListNotifier {
   _Chats(this.path);
   final String? path;
@@ -86,6 +92,7 @@ void main() {
     String? projectPath = '/home/user/projects/proje',
     List<String> effortLevels = const [],
     double height = 800,
+    bool agentOn = true,
   }) async {
     tester.view.physicalSize = Size(width, height);
     tester.view.devicePixelRatio = 1;
@@ -103,7 +110,7 @@ void main() {
         authGateProvider.overrideWith(
           (ref) => Stream.value(const AuthGateInfo(AuthGateState.ok)),
         ),
-        agentEnabledProvider.overrideWith((ref) => _AgentOn(ref)),
+        agentEnabledProvider.overrideWith((ref) => agentOn ? _AgentOn(ref) : _AgentOff(ref)),
         chatListProvider.overrideWith(() => _Chats(projectPath)),
         activeChatIdProvider.overrideWith(_ActiveChat.new),
         providerListProvider.overrideWith(_Providers.new),
@@ -206,6 +213,40 @@ void main() {
       await pump(tester, width: 390, effortLevels: const []);
       await openActions(tester);
       expect(find.byKey(const Key('effort_sheet_row')), findsNothing);
+    });
+  });
+
+  // One chat list holds both kinds, so an agent chat has to say what it is, and keep
+  // the controls it had on the (now removed) Agent screen.
+  group('agent chats in the unified chat screen', () {
+    testWidgets('an agent chat is marked next to its title and has Code Mode + Tasks', (tester) async {
+      await pump(tester, width: 1100);
+      expect(find.byTooltip(L10n.t('agent_chat_marker')), findsOneWidget);
+      expect(find.byTooltip(L10n.t('code_mode_off_tooltip')), findsOneWidget);
+      expect(find.byTooltip(L10n.t('taskloop_title')), findsOneWidget);
+    });
+
+    testWidgets('a plain chat has none of them', (tester) async {
+      await pump(tester, width: 1100, projectPath: null);
+      expect(find.byTooltip(L10n.t('agent_chat_marker')), findsNothing);
+      expect(find.byTooltip(L10n.t('code_mode_off_tooltip')), findsNothing);
+      expect(find.byTooltip(L10n.t('taskloop_title')), findsNothing);
+    });
+
+    testWidgets('the project chip does not depend on the global agent toggle', (tester) async {
+      await pump(tester, width: 1100, agentOn: false);
+      expect(find.text('${L10n.t('agent_chat_project')}proje'), findsOneWidget,
+          reason: 'an agent chat is an agent chat whatever the app-wide switch says');
+      expect(find.byTooltip(L10n.t('agent_chat_marker')), findsOneWidget);
+    });
+
+    testWidgets('on a phone the actions sheet carries Code Mode and Tasks, and fits', (tester) async {
+      await pump(tester, width: 390);
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text(L10n.t('code_mode_off_tooltip')), findsOneWidget);
+      expect(find.text(L10n.t('taskloop_title')), findsOneWidget);
     });
   });
 }

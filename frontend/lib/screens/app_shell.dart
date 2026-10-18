@@ -40,7 +40,6 @@ import '../widgets/glass_surface.dart';
 import '../widgets/chat_sidebar.dart';
 import '../widgets/agent/permission_dialog.dart';
 import 'chat_screen.dart';
-import 'agent_screen.dart';
 import 'model_store_screen.dart';
 import 'calendar_screen.dart';
 import 'routines_screen.dart';
@@ -405,7 +404,11 @@ class _AppShellState extends ConsumerState<AppShell> {
                               index: _currentIndex,
                               children: [
                                 ChatScreen(key: ValueKey('chat_$locale')),
-                                const AgentScreen(),
+                                // Index 1 used to be the separate Agent screen. Chats are one
+                                // list now (an agent chat is a chat with a project), so this
+                                // slot stays only to keep the other tab indices stable;
+                                // _handleTabChange sends anyone who asks for it to Chats.
+                                const SizedBox.shrink(),
                                 ModelStoreScreen(
                                     key: ValueKey('models_$locale')),
                                 const CalendarScreen(),
@@ -564,15 +567,6 @@ class _AppShellState extends ConsumerState<AppShell> {
             label: L10n.t('chats'),
             isActive: _currentIndex == 0,
             onTap: () => _handleTabChange(0),
-          ),
-
-          _NavRailButton(
-            key: _navKeys[1],
-            icon: Icons.smart_toy_outlined,
-            activeIcon: Icons.smart_toy,
-            label: L10n.t('nav_agent'),
-            isActive: _currentIndex == 1,
-            onTap: () => _handleTabChange(1),
           ),
 
           _NavRailButton(
@@ -759,13 +753,6 @@ class _AppShellState extends ConsumerState<AppShell> {
           onTap: () => _selectMobileTab(0),
         ),
         item(
-          icon: Icons.smart_toy_outlined,
-          activeIcon: Icons.smart_toy,
-          label: L10n.t('nav_agent'),
-          isActive: _currentIndex == 1,
-          onTap: () => _selectMobileTab(1),
-        ),
-        item(
           icon: Icons.memory_outlined,
           activeIcon: Icons.memory,
           label: L10n.t('model_store'),
@@ -913,13 +900,13 @@ class _AppShellState extends ConsumerState<AppShell> {
   Widget _buildTourOverlay() {
     final steps = <String>[
       L10n.t('tour_step_chat'),
-      L10n.t('tour_step_agent'),
       L10n.t('tour_step_models'),
       L10n.t('tour_step_calendar'),
     ];
     return Positioned.fill(
       child: SpotlightTour(
-        targetKeys: [..._navKeys.take(4)],
+        // Chats, Models, Calendar (key 1 belonged to the removed Agent tab).
+        targetKeys: [_navKeys[0], _navKeys[2], _navKeys[3]],
         stepTexts: steps,
         onComplete: () {
           ref.read(tourSeenProvider.notifier).markSeen();
@@ -934,6 +921,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   void _handleTabChange(int index) {
+    if (index == 1) index = 0; // the Agent tab is gone: agent chats live in Chats
     setState(() => _currentIndex = index);
     ref.read(activeTabProvider.notifier).state = index;
     // WhatsApp status polling is no longer driven from here — it moved

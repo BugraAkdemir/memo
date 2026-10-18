@@ -21,6 +21,8 @@ import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/agent/browser_pane.dart';
+import '../widgets/agent/code_mode_toggle.dart';
+import 'tasks_screen.dart';
 import '../providers/tasklist_provider.dart';
 import '../widgets/provider_config_dialog.dart';
 import '../widgets/welcome_view.dart';
@@ -1132,6 +1134,9 @@ class ChatTopBar extends ConsumerWidget {
       });
     });
 
+    final isAgentChat = agentProjectPath != null && agentProjectPath!.isNotEmpty;
+    final activeChatId = activeChatAsync.valueOrNull ?? '';
+
     final c = MemoTheme.of(context);
     final glass = c.isGlass;
 
@@ -1220,6 +1225,19 @@ class ChatTopBar extends ConsumerWidget {
       // Reasoning-effort quick-select — only renders itself when the active
       // provider/model actually has effort levels to offer.
       const QuickEffortSelector(),
+
+      // Agent (project) chats: Code Mode and the task list, which used to live
+      // only on the separate Agent screen.
+      if (isAgentChat && activeChatId.isNotEmpty) CodeModeToggle(chatId: activeChatId),
+      if (isAgentChat && activeChatId.isNotEmpty)
+        IconButton(
+          icon: const Icon(Icons.checklist, size: 20),
+          tooltip: L10n.t('taskloop_title'),
+          color: MemoTheme.of(context).textDim,
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => TasksScreen(initialChatId: activeChatId)),
+          ),
+        ),
 
       // Undo button (only when agent mode is on)
       if (isAgentEnabled)
@@ -1340,8 +1358,11 @@ class ChatTopBar extends ConsumerWidget {
             );
           }
 
+          // Scrollable: an agent chat adds Code Mode and Tasks rows, and the sheet
+          // is capped at a share of the screen height, so the rows overflowed.
           return SafeArea(
-            child: Column(
+            child: SingleChildScrollView(
+              child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const SizedBox(height: 8),
@@ -1357,6 +1378,25 @@ class ChatTopBar extends ConsumerWidget {
                   const SizedBox(height: 4),
                 ],
                 _EffortSheetRow(onClose: () => Navigator.of(sheetContext).pop()),
+                if (isAgentChat && activeChatId.isNotEmpty) ...[
+                  Consumer(builder: (context, sheetRef, _) {
+                    final on = sheetRef.watch(chatCodeModeProvider(activeChatId)).valueOrNull?.enabled ?? false;
+                    return row(
+                      icon: on ? Icons.code : Icons.code_off,
+                      label: on ? L10n.t('code_mode_on_tooltip') : L10n.t('code_mode_off_tooltip'),
+                      isActive: on,
+                      onTap: () => toggleChatCodeMode(context, ref, activeChatId, currentlyOn: on),
+                    );
+                  }),
+                  row(
+                    icon: Icons.checklist,
+                    label: L10n.t('taskloop_title'),
+                    isActive: false,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => TasksScreen(initialChatId: activeChatId)),
+                    ),
+                  ),
+                ],
                 if (isAgentEnabled)
                   row(
                     icon: Icons.undo,
@@ -1400,6 +1440,7 @@ class ChatTopBar extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
               ],
+            ),
             ),
           );
         },
@@ -1486,7 +1527,7 @@ class ChatTopBar extends ConsumerWidget {
                   ),
                   SizedBox(width: badgeGap),
                 ],
-                if (isAgentEnabled && agentProjectPath != null) ...[
+                if (isAgentChat) ...[
                   badge(
                     icon: Icons.folder_outlined,
                     color: MemoTheme.green,
@@ -1498,7 +1539,7 @@ class ChatTopBar extends ConsumerWidget {
                     flexible: true,
                   ),
                   SizedBox(width: badgeGap),
-                ] else if (isAgentEnabled && agentProjectPath == null) ...[
+                ] else if (isAgentEnabled) ...[
                   badge(
                     icon: Icons.psychology,
                     color: MemoTheme.accent,
@@ -1516,6 +1557,15 @@ class ChatTopBar extends ConsumerWidget {
                     onTap: () => ref.read(agentAutoPermissionProvider.notifier).toggle(),
                   ),
                   SizedBox(width: badgeGap),
+                ],
+                // An agent (project) chat says so next to its name, wherever the
+                // title is shown — the chat list has the same marker.
+                if (isAgentChat && !isIncognito) ...[
+                  Tooltip(
+                    message: L10n.t('agent_chat_marker'),
+                    child: Icon(Icons.smart_toy, size: 16, color: MemoTheme.green),
+                  ),
+                  const SizedBox(width: 6),
                 ],
                 Flexible(
                   child: Text(

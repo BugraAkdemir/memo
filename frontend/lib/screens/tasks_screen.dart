@@ -22,8 +22,7 @@ bool _isTaskActive(String status) =>
 class TasksScreen extends ConsumerStatefulWidget {
   /// The agent chat this screen was opened from. Pre-selects that chat as
   /// the target for newly created lists (a task list can only be bound to
-  /// an agent chat — see AgentScreen, the only place this screen is reachable
-  /// from).
+  /// an agent chat; this screen is opened from a project chat's top bar).
   final String? initialChatId;
 
   const TasksScreen({super.key, this.initialChatId});

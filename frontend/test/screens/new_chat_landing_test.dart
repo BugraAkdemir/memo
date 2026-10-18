@@ -113,6 +113,22 @@ void main() {
     expect(box.contains(picker.center), isTrue, reason: 'the model button is part of the composer card');
   });
 
+  // Reported: "the underlined row looks crooked" - the send button did not reach the
+  // right edge and the model button floated in the middle.
+  for (final width in [1200.0, 900.0, 390.0]) {
+    testWidgets('the bottom row of the composer is flush: send at the right edge, picker next to it (${width.toInt()} px)',
+        (tester) async {
+      await pump(tester, width: width, height: width < 500 ? 800 : 900);
+      expect(tester.takeException(), isNull);
+      final card = tester.getRect(find.byKey(const ValueKey('chat-input-area')));
+      final send = tester.getRect(find.byIcon(Icons.send_rounded));
+      final picker = tester.getRect(find.byTooltip(L10n.t('switch_model')).last);
+      expect(card.right - send.right, lessThan(24), reason: 'send is at the right end of the card, not floating');
+      expect(send.left - picker.right, lessThan(30), reason: 'the model button sits right next to send');
+      expect((send.center.dy - picker.center.dy).abs(), lessThan(6), reason: 'same baseline');
+    });
+  }
+
   testWidgets('choosing Agent swaps the title, the suggestions and asks for a project', (tester) async {
     await pump(tester);
     await tester.tap(agentSeg());

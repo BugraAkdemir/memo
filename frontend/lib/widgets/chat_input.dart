@@ -1762,9 +1762,12 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                           ),
                         ),
                       ),
+                      // Not Flexible: next to the Expanded actions it split the free
+                      // space with them and kept only its own width, leaving a gap at
+                      // the right end so the send button did not sit at the edge.
                       if (widget.modelPicker != null) ...[
                         const SizedBox(width: 8),
-                        Flexible(child: widget.modelPicker!),
+                        widget.modelPicker!,
                       ],
                       const SizedBox(width: 10),
                       send,

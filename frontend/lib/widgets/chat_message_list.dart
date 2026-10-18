@@ -11,6 +11,7 @@ import '../models/chat.dart';
 import '../models/agent.dart';
 import '../models/task_list.dart';
 import '../core/l10n.dart';
+import 'agent/agent_timeline.dart';
 import 'agent/task_activity_block.dart';
 import 'chat_image.dart';
 import 'stream_progress.dart';
@@ -103,6 +104,10 @@ class ChatMessageList extends StatefulWidget {
   final String streamingContent;
   final String streamingThinking;
   final List<AgentEvent>? streamingAgentEvents;
+
+  /// The text of the model's current step, as it is being written
+  /// (streamingNarrationProvider).
+  final String streamingNarration;
   final String statusText;
   final bool isCLIChat;
   final String apiBaseUrl;
@@ -127,6 +132,7 @@ class ChatMessageList extends StatefulWidget {
     this.streamingContent = '',
     this.streamingThinking = '',
     this.streamingAgentEvents,
+    this.streamingNarration = '',
     this.statusText = '',
     this.isCLIChat = false,
     required this.apiBaseUrl,
@@ -149,7 +155,11 @@ class _ChatMessageListState extends State<ChatMessageList> {
     super.didUpdateWidget(oldWidget);
     final messagesChanged = widget.messages.length != oldWidget.messages.length;
     final streamingLenChanged =
-        widget.streamingContent.length != oldWidget.streamingContent.length;
+        widget.streamingContent.length != oldWidget.streamingContent.length ||
+        widget.streamingNarration.length != oldWidget.streamingNarration.length ||
+        widget.streamingThinking.length != oldWidget.streamingThinking.length ||
+        (widget.streamingAgentEvents?.length ?? 0) !=
+            (oldWidget.streamingAgentEvents?.length ?? 0);
     final typingStarted = widget.isTyping && !oldWidget.isTyping;
     final taskAppeared =
         widget.taskActivity != null && oldWidget.taskActivity == null;
@@ -196,6 +206,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
     final hasStreaming =
         widget.modelRoute != null ||
         widget.streamingContent.isNotEmpty ||
+        widget.streamingNarration.isNotEmpty ||
+        widget.streamingThinking.isNotEmpty ||
         (widget.streamingAgentEvents != null &&
             widget.streamingAgentEvents!.isNotEmpty);
     final showTyping = widget.isTyping && !hasStreaming;
@@ -233,6 +245,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
               modelRoute: widget.modelRoute,
               thinking: widget.streamingThinking,
               agentEvents: widget.streamingAgentEvents,
+              narration: widget.streamingNarration,
               keepWorkingCue: widget.isCLIChat,
               apiBaseUrl: widget.apiBaseUrl,
               timing: widget.streamTiming,
@@ -465,24 +478,20 @@ class _MessageBubbleState extends State<_MessageBubble> {
                               widget.message.agentEvents != null &&
                               widget.message.agentEvents!.isNotEmpty)
                             Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                children:
-                                    _visibleToolBadges(
-                                      widget.message.agentEvents!,
-                                    ).map((e) {
-                                      if (e is AgentEvent) {
-                                        return _AgentStatusBadge(event: e);
-                                      }
-                                      if (e is Map<String, dynamic>) {
-                                        return _AgentStatusBadge(
-                                          event: AgentEvent.fromJson(e),
-                                        );
-                                      }
-                                      return const SizedBox.shrink();
-                                    }).toList(),
+                              padding: const EdgeInsets.only(top: 4),
+                              child: AgentTimeline(
+                                events: widget.message.agentEvents!,
+                                live: false,
+                                buildText: (ctx, text) => MarkdownBody(
+                                  data: text,
+                                  selectable: true,
+                                  styleSheet: _buildMarkdownStyleSheet(ctx),
+                                  onTapLink: (t, href, title) {
+                                    if (href != null) {
+                                      _openChatLink(widget.apiBaseUrl, href);
+                                    }
+                                  },
+                                ),
                               ),
                             ),
                           if (widget.message.hasImage)
@@ -574,6 +583,7 @@ class _StreamingBubble extends StatefulWidget {
   final String content;
   final String thinking;
   final List<AgentEvent>? agentEvents;
+  final String narration;
   // CLI providers (Claude Code, ...) can go quiet for a long stretch between
   // content chunks — running a tool, thinking — with no event Memo can see
   // to explain the gap (yapacam.md §5: opaque by design). Normal providers
@@ -592,6 +602,7 @@ class _StreamingBubble extends StatefulWidget {
     required this.content,
     this.thinking = '',
     this.agentEvents,
+    this.narration = '',
     this.keepWorkingCue = false,
     required this.apiBaseUrl,
     this.timing,
@@ -604,7 +615,9 @@ class _StreamingBubble extends StatefulWidget {
 }
 
 class _StreamingBubbleState extends State<_StreamingBubble> {
-  bool _thinkingExpanded = false;
+  // Open while the model is thinking so the person can follow it live; the
+  // saved message (a different widget) starts collapsed.
+  bool _thinkingExpanded = true;
 
   @override
   Widget build(BuildContext context) {
@@ -661,6 +674,24 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                             () => _thinkingExpanded = !_thinkingExpanded,
                           ),
                         ),
+                      // What the turn has done so far, in order: the model's
+                      // words between steps and the tools it ran, then the text
+                      // it is writing right now.
+                      AgentTimeline(
+                        events: widget.agentEvents ?? const [],
+                        liveNarration: widget.narration,
+                        live: true,
+                        buildText: (ctx, text) => MarkdownBody(
+                          data: text,
+                          selectable: true,
+                          styleSheet: _buildMarkdownStyleSheet(ctx),
+                          onTapLink: (t, href, title) {
+                            if (href != null) {
+                              _openChatLink(widget.apiBaseUrl, href);
+                            }
+                          },
+                        ),
+                      ),
                       if (widget.content.isNotEmpty)
                         MarkdownBody(
                           data: widget.content,
@@ -672,9 +703,6 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                             }
                           },
                         ),
-                      if (widget.agentEvents != null &&
-                          widget.agentEvents!.isNotEmpty)
-                        _AgentStatusBar(events: widget.agentEvents!),
                       // The live progress line replaces the plain working
                       // cue whenever timing is known: it keeps moving (phase
                       // + elapsed) for the whole turn, including the long
@@ -750,7 +778,7 @@ class _ThinkingToggle extends StatelessWidget {
                   ),
                   SizedBox(width: 4),
                   Text(
-                    expanded ? 'Düşünme gizle' : 'Düşünme göster',
+                    expanded ? L10n.t('thinking_hide') : L10n.t('thinking_show'),
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
@@ -954,115 +982,6 @@ class _TypingIndicator extends StatelessWidget {
   }
 }
 
-/// Shows a single animated line for ongoing agent activity.
-/// Displays the current tool being executed or the last completed action.
-class _AgentStatusBar extends StatelessWidget {
-  final List<AgentEvent> events;
-
-  const _AgentStatusBar({required this.events});
-
-  String _statusText(AgentEvent? last) {
-    if (last == null) return L10n.t('agent_status_preparing');
-    final tool = toolLabel(last.toolName);
-    switch (last.type) {
-      case 'tool_executing':
-        return L10n.t('agent_status_running', {'tool': tool});
-      case 'tool_result':
-        return L10n.t('agent_status_done', {'tool': tool});
-      case 'tool_error':
-        return L10n.t('agent_status_error', {'tool': tool});
-      case 'verification':
-        return last.content ?? L10n.t('verification_event_title');
-      case 'permission_denied':
-        return L10n.t('agent_status_denied', {'tool': tool});
-      default:
-        return L10n.t('agent_status_working');
-    }
-  }
-
-  IconData _iconFor(String? toolName) {
-    switch (toolName) {
-      case 'read_file':
-        return Icons.description_outlined;
-      case 'write_file':
-      case 'edit_file':
-        return Icons.edit_outlined;
-      case 'insert_line':
-        return Icons.space_bar;
-      case 'delete_lines':
-      case 'delete_file':
-        return Icons.delete_outline;
-      case 'run_command':
-        return Icons.terminal;
-      case 'search_files':
-        return Icons.search;
-      default:
-        return Icons.build_outlined;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (events.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    final lastEvent = events.last;
-
-    final isExecuting = lastEvent.type == 'tool_executing';
-    final isError = lastEvent.type == 'tool_error';
-
-    final iconColor = isError ? MemoTheme.red : MemoTheme.accent;
-    final statusIcon = isExecuting
-        ? Icons.sync
-        : (isError ? Icons.error_outline : Icons.check_circle_outline);
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 4),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (isExecuting)
-            SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.5,
-                color: MemoTheme.accent,
-              ),
-            )
-          else
-            Icon(statusIcon, size: 14, color: iconColor),
-          const SizedBox(width: 6),
-          Icon(_iconFor(lastEvent.toolName), size: 14, color: iconColor),
-          const SizedBox(width: 6),
-          Text(
-            _statusText(lastEvent),
-            style: TextStyle(
-              fontSize: 12,
-              color: iconColor,
-              fontWeight: isExecuting ? FontWeight.w400 : FontWeight.w500,
-            ),
-          ),
-          if (lastEvent.durationMs != null && lastEvent.durationMs! > 0)
-            Container(
-              margin: const EdgeInsets.only(left: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: Text(
-                '${lastEvent.durationMs}ms',
-                style: TextStyle(fontSize: 10, color: iconColor),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A small badge showing a single completed or errored agent action.
 /// Tiny "N memories used" marker next to an assistant reply's timestamp.
 /// Deliberately not styled like _AgentStatusBadge's colored pills below —
 /// this rides in the same hover-only metadata row as the timestamp/copy
@@ -1095,135 +1014,6 @@ class _MemoryUsedIndicator extends StatelessWidget {
           ),
           const SizedBox(width: 3),
           Text('$count', style: TextStyle(fontSize: 10, color: color)),
-        ],
-      ),
-    );
-  }
-}
-
-/// Collapses one raw agentEvents list into the badges actually worth
-/// showing: one per real tool call, not one per raw pipeline event.
-///
-/// pipeline.go's tool loop (internal/agent/pipeline.go) always emits
-/// EventToolExecuting immediately followed by EventToolResult or
-/// EventToolError for the same call before moving to the next one — never
-/// interleaved, confirmed by reading the loop (a plain sequential `for`,
-/// not concurrent). So every stored "executing" that has a completion event
-/// right after it is the *same call*, already resolved, and the two used to
-/// render as two separate badges side by side for one action — one call to
-/// list_directory read as two list_directory badges, two calls to
-/// get_file_info (both erroring) read as four. This was a real, live,
-/// reproducible confusion found by driving the app directly, not a
-/// hypothetical: it looks exactly like the model repeated a tool call it
-/// didn't.
-///
-/// A raw "executing" with nothing after it is genuinely still in flight (or
-/// was interrupted mid-stream, per _AgentStatusBadge's own isInterrupted
-/// comment below) — that one has no pair to collapse into, so it stays.
-List<dynamic> _visibleToolBadges(List<dynamic> raw) {
-  const completions = {'tool_result', 'tool_error'};
-  final out = <dynamic>[];
-  for (var i = 0; i < raw.length; i++) {
-    final e = raw[i];
-    final type = e is AgentEvent
-        ? e.type
-        : (e is Map ? e['type'] as String? : null);
-    if (type == 'tool_executing' && i + 1 < raw.length) {
-      final next = raw[i + 1];
-      final nextType = next is AgentEvent
-          ? next.type
-          : (next is Map ? next['type'] as String? : null);
-      if (completions.contains(nextType)) {
-        continue; // the next iteration renders the real, final-state badge
-      }
-    }
-    out.add(e);
-  }
-  return out;
-}
-
-class _AgentStatusBadge extends StatelessWidget {
-  final AgentEvent event;
-
-  const _AgentStatusBadge({required this.event});
-
-  String _label(String? toolName) {
-    switch (toolName) {
-      case 'read_file':
-        return 'Dosya okudu';
-      case 'write_file':
-        return 'Dosya yazdi';
-      case 'edit_file':
-        return 'Dosya duzenledi';
-      case 'insert_line':
-        return 'Satir ekledi';
-      case 'delete_lines':
-      case 'delete_file':
-        return 'Sildi';
-      case 'run_command':
-        return 'Komut calistirdi';
-      case 'search_files':
-        return 'Arama yapti';
-      default:
-        return toolName ?? 'Arac';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (event.type == 'verification') {
-      return Container(
-        padding: const EdgeInsets.all(8),
-        child: Text(L10n.t('verification_event_detail', {'text': event.content ?? ''}),
-          style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim)),
-      );
-    }
-    final isError =
-        event.type == 'tool_error' || event.type == 'permission_denied';
-    // tool_executing in a historical message means the stream was interrupted before
-    // the tool completed — show it as cancelled rather than successful.
-    final isInterrupted =
-        event.type == 'tool_executing' || event.type == 'permission_request';
-    final color = isError
-        ? MemoTheme.red
-        : isInterrupted
-        ? MemoTheme.of(context).textDim
-        : MemoTheme.accent;
-    final icon = isError
-        ? Icons.error_outline
-        : isInterrupted
-        ? Icons.cancel_outlined
-        : Icons.check_circle_outline;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
-          Text(
-            _label(event.toolName),
-            style: TextStyle(
-              fontSize: 11,
-              color: color,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          if (event.durationMs != null && event.durationMs! > 0) ...[
-            const SizedBox(width: 2),
-            Text(
-              '(${event.durationMs}ms)',
-              style: TextStyle(
-                fontSize: 10,
-                color: color.withValues(alpha: 0.7),
-              ),
-            ),
-          ],
         ],
       ),
     );

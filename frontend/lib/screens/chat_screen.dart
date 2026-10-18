@@ -186,6 +186,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
               final streamingContent = ref.watch(streamingContentProvider);
               final streamingThinking = ref.watch(streamingThinkingProvider);
               final streamingAgentEvents = ref.watch(streamingAgentEventsProvider);
+              final streamingNarration = ref.watch(streamingNarrationProvider);
               final streamingStatus = ref.watch(streamingStatusProvider);
               final isCLIChat = (ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '').isNotEmpty;
 
@@ -233,6 +234,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
                 streamingContent: streamingContent,
                 streamingThinking: streamingThinking,
                 streamingAgentEvents: streamingAgentEvents,
+                streamingNarration: streamingNarration,
                 statusText: streamingStatus,
                 streamTiming: ref.watch(streamTimingProvider),
                 isCLIChat: isCLIChat,

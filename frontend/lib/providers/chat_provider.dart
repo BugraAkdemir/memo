@@ -11,6 +11,7 @@ import '../models/stream_timing.dart';
 import '../core/backend_url.dart';
 import '../core/l10n.dart';
 import '../models/agent.dart';
+import '../models/agent_timeline.dart';
 import '../models/browser_frame.dart';
 import '../models/chat.dart';
 import '../models/provider_models.dart';
@@ -310,6 +311,14 @@ final streamingAgentEventsProvider = StateProvider<List<AgentEvent>>(
   (ref) => [],
 );
 
+/// The text the model is writing right now for its CURRENT step, as it
+/// streams. A step that ends in tool calls turns out to have been narration
+/// ("I'll check the config first"): the backend then sends a `narration` event
+/// with the whole text, which lands in [streamingAgentEventsProvider] and
+/// clears this. A step with no tools is the final answer, which arrives as the
+/// ordinary content and replaces this.
+final streamingNarrationProvider = StateProvider<String>((ref) => '');
+
 /// Transient pre-token status (e.g. 'web_search') shown in the typing indicator
 /// while the backend works before the first content token arrives.
 final streamingStatusProvider = StateProvider<String>((ref) => '');
@@ -550,6 +559,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     ref.read(streamingModelRouteProvider.notifier).state = null;
     ref.read(streamingThinkingProvider.notifier).state = '';
     ref.read(streamingAgentEventsProvider.notifier).state = [];
+          ref.read(streamingNarrationProvider.notifier).state = '';
     ref.read(streamingStatusProvider.notifier).state = '';
   }
 
@@ -750,6 +760,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           _timingTouch();
           if (chunk.finishReason == 'heartbeat') continue;
           fullReply += chunk.content;
+            if (chunk.content.isNotEmpty) {
+              // The final answer has arrived; it replaces the live text of
+              // the last step, which was showing the same words.
+              ref.read(streamingNarrationProvider.notifier).state = '';
+            }
           ref.read(streamingContentProvider.notifier).state = fullReply;
         }
         if (_generation != myGeneration) return;
@@ -831,39 +846,28 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           } else if (chunk.finishReason == 'agent_event') {
             try {
               final ev = AgentEvent.fromJson(json.decode(chunk.content));
-              final currentEvents = [...ref.read(streamingAgentEventsProvider)];
-
-              // Only keep permission_request for dialogs and final results/errors.
-              // tool_executing events are transient — replace the last event with
-              // this one so the UI shows a single "dusunuyor..." line instead of
-              // accumulating one per tool call.
-              if (ev.type == 'tool_executing') {
-                // Keep only this as the current executing event (replaces previous)
-                if (currentEvents.isNotEmpty && currentEvents.last.type == 'tool_executing') {
-                  currentEvents[currentEvents.length - 1] = ev;
-                } else {
-                  currentEvents.add(ev);
+              if (ev.type == 'narration_delta') {
+                // The model's current step, as it is being written.
+                ref.read(streamingNarrationProvider.notifier).state +=
+                    ev.content ?? '';
+              } else {
+                if (ev.type == 'narration') {
+                  // The step is over and tools follow: its text now lives in
+                  // the timeline, in order with them.
+                  ref.read(streamingNarrationProvider.notifier).state = '';
                 }
-              } else if (ev.type == 'tool_result' || ev.type == 'tool_error' || ev.type == 'permission_denied') {
-                // Check if we can replace the last executing event with this result
-                if (currentEvents.isNotEmpty && currentEvents.last.type == 'tool_executing') {
-                  currentEvents[currentEvents.length - 1] = ev;
-                } else {
-                  currentEvents.add(ev);
+                if (ev.type == 'permission_request') {
+                  ref.read(agentEventBusProvider).emit(ev);
                 }
-              } else if (ev.type == 'verification') {
-                currentEvents.add(ev);
-              } else if (ev.type == 'permission_request') {
-                currentEvents.add(ev);
-                ref.read(agentEventBusProvider).emit(ev);
+                final currentEvents = foldAgentEvent(
+                    ref.read(streamingAgentEventsProvider), ev);
+                _applyBrowserPaneEvent(ref, ev);
+                ref.read(streamingAgentEventsProvider.notifier).state =
+                    currentEvents;
+                finalAgentEvents = currentEvents;
               }
-              _applyBrowserPaneEvent(ref, ev);
-
-              ref.read(streamingAgentEventsProvider.notifier).state =
-                  currentEvents;
-              finalAgentEvents = currentEvents;
             } catch (e) {
-              // ignore parse errors
+              debugPrint('chat_provider: malformed agent_event SSE chunk: $e');
             }
           } else if (chunk.finishReason == 'browser_frame') {
             try {
@@ -887,6 +891,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
               ref.read(streamingStatusProvider.notifier).state = '';
             }
             fullReply += chunk.content;
+            if (chunk.content.isNotEmpty) {
+              // The final answer has arrived; it replaces the live text of
+              // the last step, which was showing the same words.
+              ref.read(streamingNarrationProvider.notifier).state = '';
+            }
             fullThinking += chunk.thinking ?? '';
 
             // Update streaming providers instead of copying the entire message list
@@ -915,6 +924,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           ref.read(streamingModelRouteProvider.notifier).state = null;
           ref.read(streamingThinkingProvider.notifier).state = '';
           ref.read(streamingAgentEventsProvider.notifier).state = [];
+          ref.read(streamingNarrationProvider.notifier).state = '';
           ref.read(streamingStatusProvider.notifier).state = '';
           await refresh();
           return;
@@ -956,6 +966,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingModelRouteProvider.notifier).state = null;
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
+          ref.read(streamingNarrationProvider.notifier).state = '';
       ref.read(streamingStatusProvider.notifier).state = '';
 
       // Refresh chat metadata — wait a beat so async title generation finishes
@@ -973,6 +984,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingModelRouteProvider.notifier).state = null;
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
+          ref.read(streamingNarrationProvider.notifier).state = '';
       ref.read(streamingStatusProvider.notifier).state = '';
       // The stream's own error chunk (thrown as an Exception by
       // sendMessageStream, see its "must NOT be swallowed" comment) is the
@@ -1102,28 +1114,26 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           } else if (chunk.finishReason == 'agent_event') {
             try {
               final ev = AgentEvent.fromJson(json.decode(chunk.content));
-              final currentEvents = [...ref.read(streamingAgentEventsProvider)];
-              if (ev.type == 'tool_executing') {
-                if (currentEvents.isNotEmpty && currentEvents.last.type == 'tool_executing') {
-                  currentEvents[currentEvents.length - 1] = ev;
-                } else {
-                  currentEvents.add(ev);
+              if (ev.type == 'narration_delta') {
+                // The model's current step, as it is being written.
+                ref.read(streamingNarrationProvider.notifier).state +=
+                    ev.content ?? '';
+              } else {
+                if (ev.type == 'narration') {
+                  // The step is over and tools follow: its text now lives in
+                  // the timeline, in order with them.
+                  ref.read(streamingNarrationProvider.notifier).state = '';
                 }
-              } else if (ev.type == 'tool_result' || ev.type == 'tool_error' || ev.type == 'permission_denied') {
-                if (currentEvents.isNotEmpty && currentEvents.last.type == 'tool_executing') {
-                  currentEvents[currentEvents.length - 1] = ev;
-                } else {
-                  currentEvents.add(ev);
+                if (ev.type == 'permission_request') {
+                  ref.read(agentEventBusProvider).emit(ev);
                 }
-              } else if (ev.type == 'verification') {
-                currentEvents.add(ev);
-              } else if (ev.type == 'permission_request') {
-                currentEvents.add(ev);
-                ref.read(agentEventBusProvider).emit(ev);
+                final currentEvents = foldAgentEvent(
+                    ref.read(streamingAgentEventsProvider), ev);
+                _applyBrowserPaneEvent(ref, ev);
+                ref.read(streamingAgentEventsProvider.notifier).state =
+                    currentEvents;
+                finalAgentEvents = currentEvents;
               }
-              _applyBrowserPaneEvent(ref, ev);
-              ref.read(streamingAgentEventsProvider.notifier).state = currentEvents;
-              finalAgentEvents = currentEvents;
             } catch (e) {
               debugPrint('chat_provider: malformed agent_event SSE chunk: $e');
             }
@@ -1139,6 +1149,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
               ref.read(streamingStatusProvider.notifier).state = '';
             }
             fullReply += chunk.content;
+            if (chunk.content.isNotEmpty) {
+              // The final answer has arrived; it replaces the live text of
+              // the last step, which was showing the same words.
+              ref.read(streamingNarrationProvider.notifier).state = '';
+            }
             fullThinking += chunk.thinking ?? '';
             if (streamingEnabled) {
               ref.read(streamingContentProvider.notifier).state = fullReply;
@@ -1160,6 +1175,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           ref.read(streamingModelRouteProvider.notifier).state = null;
           ref.read(streamingThinkingProvider.notifier).state = '';
           ref.read(streamingAgentEventsProvider.notifier).state = [];
+          ref.read(streamingNarrationProvider.notifier).state = '';
           ref.read(streamingStatusProvider.notifier).state = '';
           await refresh();
           return '';
@@ -1195,6 +1211,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingModelRouteProvider.notifier).state = null;
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
+          ref.read(streamingNarrationProvider.notifier).state = '';
       ref.read(streamingStatusProvider.notifier).state = '';
 
       await refresh();
@@ -1208,6 +1225,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingModelRouteProvider.notifier).state = null;
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
+          ref.read(streamingNarrationProvider.notifier).state = '';
       ref.read(streamingStatusProvider.notifier).state = '';
       // See the matching comment in sendMessage()'s catch block: the
       // stream's error chunk is the backend's own terminal message for this

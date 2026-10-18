@@ -714,7 +714,11 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                           phase: streamPhaseLabel(
                             events: widget.agentEvents,
                             statusText: widget.statusText,
-                            content: widget.content,
+                            // The model's current step counts as "writing"
+                            // even while it is still narration, not the answer.
+                            content: widget.content.isNotEmpty
+                                ? widget.content
+                                : widget.narration,
                           ),
                         )
                       else if ((widget.agentEvents == null ||

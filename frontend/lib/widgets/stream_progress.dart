@@ -40,8 +40,9 @@ String toolLabel(String? toolName) {
 /// What the in-flight turn is doing right now, in a few words.
 ///
 /// The case that matters most is the gap *after* a tool finished: the model
-/// is working out its next step (in agent mode, one non-streaming request
-/// that can take minutes), and the status bar used to sit on a static
+/// is working out its next step (the agent loop now streams, so its text and
+/// thinking show as they arrive, but a slow or non-streaming provider can still
+/// leave a long silent gap), and the status bar used to sit on a static
 /// "done ✓" for that whole time — which is exactly what read as "stuck".
 String streamPhaseLabel({
   List<AgentEvent>? events,

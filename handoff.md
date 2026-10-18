@@ -14,6 +14,12 @@
 - Yerel `binaries/linux/cpu` yarım b11456 denemesinden artık taşıyor (`libllama.so.0.0.1`, `*.so.0-new`, `llama-new`); R2'de yok. Silmeden önce sor.
 - İmza özel anahtarı: `~/.config/memo-release/update-signing.key` + Actions secret `MEMO_UPDATE_SIGNING_KEY`; kaybolursa yeni anahtar eski anahtarla imzalı bir sürümle gelir.
 
+**Agent döngüsü: canlı akış + bağlam (2026-10-18, `PLAN_agent_streaming.md`)**
+- Doğrulanmadı: gerçek sağlayıcılarla (Subscriptions/OpenAI-uyumlu/Claude/Gemini) akış+araç çağrısı yalnız sahte SSE sunucularıyla ve `cmd/fakeprovider` ile denendi; Flutter zaman çizelgesinin gerçek pencerede görünümü (yalnız widget testleri); aynı görevin Claude Code/opencode ile gerçek model karşılaştırması (kalite farkının ne kadarının kapandığı ölçülmedi).
+- Terminal REPL ara metni (`narration`) göstermiyor, yalnız araç durumu satırı. Gemini yerel `thoughtSignature` (Gemini 3 araç döngüsü) işlenmiyor (eskiden de yoktu).
+- Gözlem, neden bilinmiyor: log'da `upstream served model "gemini-3.8-flash-n" for requested "gemini-3.8-flash-high"` (CLIProxyAPI/Antigravity) — istenen model ≠ çalışan model olabilir; "aynı model" karşılaştırmasını etkileyebilir.
+- Önceden var olan kararsız test: `TestRunComponentUpdate_TamperedDownloadChangesNothing` (`internal/app/update_test.go`) `-race -count>1` ile `5d068ac1`'de de düşüyor.
+
 **Kullanıcıda**
 - Geçmişte `origin` push URL'sinde düz metin token ve artık satılmış bir alan adı vardı. Bu oturumda `git remote -v` yalnız GitHub URL'sini gösterdi; push doğrudan GitHub HTTPS adresine yapıldı. Eski token'ın döndürülmesi kullanıcıda.
 - Eski sürümlerin REPL `update` komutu ve `download.bugradev.com/get-memo.sh` satırları artık başkasının sunucusuna gidiyor → yeni sürümü duyur, eski satırları kaldır.
@@ -45,8 +51,7 @@
 
 ---
 
-# Son oturum — 2026-10-17 — Uygulama içi güncelleme + v4.7.0 yayını
-- Yapılan: imzalı manifest + bayt-tam indirme + yol-güvenli açma (`internal/updater`), yerinde takas/geri alma (`cmd/memo-updater`, YENİ sürümün içinden çalışır), motor bileşeni kurulumu (`<veri>/components`; llama auto modu flavor'ı bundled'dan seçer), `/api/update/*` (apply adminOnly), Flutter penceresi, CI'da damgalama + updater + manifest yayını, `scripts/{stamp_engine_versions,publish_update_manifest,publish_component,verify_update_manifest}.sh`.
-- Gerçek süreçlerle (Linux) denendi: başarılı güncelleme ve çöken yeni sürümde geri alma → geri alma sessizdi, `update-failure.txt` + pencerede gösterim eklendi; yayıncı→kurucu zincir testi `tar -h` hard-link hatasını yakaladı.
-- Doğrulama: Go build/vet + tam `-race` (aşağıdaki kararsız testler hariç), Flutter 702 test, analyze (4 eski info), Kural #8 grep temiz (CI bekçisi test dosyasındaki `Text('open')`'ı yakaladı, düzeltildi).
-- **Yayın:** etiket kullanıcı onayıyla `03e03418` üzerinde itildi; 6 derleme yeşil; stabil dosyalar taze; `verify_update_manifest.sh` 3 platformda geçti; Linux/macOS SHA-256 manifestle eşleşti; Linux arşivinde `memo-updater` + işaretler var; GitHub Release ön sürüm değil. İşaret (`BugraAkdemir/version` `4a6b21b`) en son bump'landı, `components` satırı yok. `Test (Go)` CI'da iki kararsız testle kırmızı (aşağıda). 4.6.0 kullanıcıları için geçiş elle.
+# Son oturum — 2026-10-18 — Agent döngüsü: canlı akış, görünür adımlar, bağlam
+- Şikâyet: agent modunda düşünce/komut görünmüyor, sonuç tek parça geliyor; uzun kodlama işinde 400 ile çöküyor ve kalite düşüyor. Kök neden (koddan + `~/.memo/backend.log`'dan): döngü her adımda **akışsız** `ChatCompletion`; araçla gelen model metni kullanıcıya hiç gitmiyordu; bağlam koruması **en eski mesajları** (= kullanıcının görevi) atıyor, araç argümanlarını saymıyor, sağlayıcının gerçek token sayısını kullanmıyor ve bütçe 1M pencerede ~786k'ydı (55 adımda 1.048.576 sınırı aşıldı).
+- Yapıldı (7 commit, hepsi `main`, itilmedi): sağlayıcı akışı araç çağrısı/imzalı thinking/reasoning taşır (`4f4e2ed0`); pipeline akışlı + `narration`/`narration_delta` olayları + dar geri dönüş (`96bdf680`); bağlam sıkıştırıcı + `context_budget_tokens` 200000 + taşma kurtarma (`26f5feca`), sohbet geçmişi aynı tavanla (`72499140`); Flutter zaman çizelgesi "Ran N commands ›" (`0359ec95`); log/`[[narrate]]` (`37b72bb5`); canlı testte yakalanan düzeltme: düşürme notu araç sonucunda, kullanıcı mesajı değil (`216150a7`). Ayrıntı ve tuzaklar: AGENTS.md "Agent loop: live streaming…".
+- Doğrulama: Go build/vet + tam `-race` (yalnız yukarıdaki eski kararsız test hariç temiz), Flutter analyze (4 eski info) + 717 test, Kural #8 grep boş. Gerçek `memo --headless` + `fakeprovider`: anlatım/araç/cevap sırası zaman damgalarıyla; kaydedilen mesaj aynı sırayı koruyor; 37 adımlık tur 9 sıkıştırmayla bütçede kaldı, hata yok.

@@ -14,17 +14,24 @@ geliyor (Claude Code / opencode gibi canlı akış yok); uzun kodlama işlerinde
 - Log: `upstream served model "gemini-3.8-flash-n" for requested model "gemini-3.8-flash-high"` — istenen ≠ çalışan model.
 
 ## Birimler (her biri testli, yeşil olunca commit)
-- [ ] **A. Sağlayıcı akışı araç taşır.** `StreamChunk.ToolCalls` + `Native` (terminal chunk'ta tam hâlde). OpenAI SSE'de
+- [x] **A. Sağlayıcı akışı araç taşır.** `StreamChunk.ToolCalls` + `Native` (terminal chunk'ta tam hâlde). OpenAI SSE'de
       araç-çağrısı delta birleştirme + `reasoning_content` → Thinking; Claude SSE'de blok yeniden kurma (thinking+signature
       → `Native`); Gemini SSE'de `functionCall`. Testler: sahte SSE sunucularıyla.
-- [ ] **B. Pipeline akışlı.** `AgentStreamProvider` isteğe bağlı arayüzü; varsa akışla çağır, metin/düşünce delta'larını
+- [x] **B. Pipeline akışlı.** `AgentStreamProvider` isteğe bağlı arayüzü; varsa akışla çağır, metin/düşünce delta'larını
       anında ilet, araç çağrılarıyla gelen ara metni `narration` olayı olarak ilet. Akış desteklenmezse eski yol.
-- [ ] **C. Bağlam sağlamlığı.** Gerçek (sağlayıcının bildirdiği) prompt token sayısıyla bütçe; pencere için sabit üst sınır
+- [x] **C. Bağlam sağlamlığı.** Gerçek (sağlayıcının bildirdiği) prompt token sayısıyla bütçe; pencere için sabit üst sınır
       (çok büyük pencerede bile makul bir tavan); tur içi sıkıştırma; "input token count exceeds" 400'ünde otomatik
       sıkıştır-ve-yeniden-dene.
-- [ ] **D. Arayüz.** Flutter (ve REPL): ara metin satırları + araç olayları `Ran N commands >` gibi gruplanıp açılır/kapanır;
+- [x] **D. Arayüz.** Flutter (REPL açık: bkz. handoff): ara metin satırları + araç olayları `Ran N commands >` gibi gruplanıp açılır/kapanır;
       bitince kapalı, son cevap altta.
-- [ ] **E. Kalite ölçümü.** Aynı görevi fakeprovider ile koşup giden isteği (sistem istemi, araç şeması, bütçe) dök;
+- [~] **E. Kalite ölçümü.** Aynı görevi fakeprovider ile koşup giden isteği (sistem istemi, araç şeması, bütçe) dök;
       istenen/çalışan model uyarısını araştır. Sonuç `handoff.md`'ye.
 
 Doğrulama (her birim): AGENTS.md "Verification Commands" (build/vet/test -race; Flutter analyze/test + Kural #8 grep).
+
+## Durum (2026-10-18)
+A–D yapıldı, testli ve commit'li (`4f4e2ed0`, `96bdf680`, `26f5feca`, `72499140`, `0359ec95`, `37b72bb5`, `216150a7`).
+Gerçek `memo --headless` + `cmd/fakeprovider` ile canlı doğrulandı: anlatım/araç/cevap sırası ve zaman damgaları;
+uzun turda 9 sıkıştırma, bağlam bütçede, hata yok.
+**E kısmen**: aynı görevi gerçek modelle Claude Code/opencode ile karşılaştırmak yapılmadı (gerçek model gerekir).
+Ölçüm için `AGENT-CONTEXT` satırı artık `last_prompt_tok`, `compactions`, `streamed` içerir.

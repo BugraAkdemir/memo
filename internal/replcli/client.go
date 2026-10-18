@@ -221,9 +221,35 @@ func (c *Client) SetAgentAutoPermission(ctx context.Context, enabled bool) error
 // every call; an empty chatID exists only for backward-compatible callers
 // (e.g. tests exercising the pre-Faz-4 behavior).
 func (c *Client) SendStream(ctx context.Context, chatID, message string, onChunk func(api.StreamChunk) error) error {
-	body := map[string]string{"message": message}
+	return c.SendStreamWith(ctx, chatID, message, SendOptions{}, onChunk)
+}
+
+// SendOptions are this client's own settings for one request. They travel WITH
+// the request and never change a backend-wide flag, so a REPL and a desktop app
+// sharing one backend cannot disturb each other (internal/agent.ClientOptions).
+// A nil field means "follow the backend", exactly like a client that sends none.
+type SendOptions struct {
+	AutoPermission *bool
+	WebTools       *bool
+}
+
+func (o SendOptions) isZero() bool { return o.AutoPermission == nil && o.WebTools == nil }
+
+// SendStreamWith is SendStream with per-request options.
+func (c *Client) SendStreamWith(ctx context.Context, chatID, message string, opts SendOptions, onChunk func(api.StreamChunk) error) error {
+	body := map[string]any{"message": message}
 	if chatID != "" {
 		body["chat_id"] = chatID
+	}
+	if !opts.isZero() {
+		o := map[string]any{}
+		if opts.AutoPermission != nil {
+			o["auto_permission"] = *opts.AutoPermission
+		}
+		if opts.WebTools != nil {
+			o["web_tools"] = *opts.WebTools
+		}
+		body["options"] = o
 	}
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(body); err != nil {

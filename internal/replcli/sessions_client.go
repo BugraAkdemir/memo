@@ -3,6 +3,7 @@ package replcli
 import (
 	"context"
 	"net/http"
+	"net/url"
 )
 
 // SessionInfo mirrors sessions.SessionInfo — the fields the REPL needs to
@@ -38,6 +39,17 @@ func (c *Client) ListChats(ctx context.Context) ([]SessionInfo, error) {
 		return nil, err
 	}
 	return chats, nil
+}
+
+// MessagesFor returns chatID's message history without touching which chat the
+// backend considers active (that is global: switching it would move the desktop
+// app to this chat).
+func (c *Client) MessagesFor(ctx context.Context, chatID string) ([]ChatMessage, error) {
+	var msgs []ChatMessage
+	if err := c.doJSON(ctx, http.MethodGet, "/api/messages?chat_id="+url.QueryEscape(chatID), nil, &msgs); err != nil {
+		return nil, err
+	}
+	return msgs, nil
 }
 
 // Messages returns the message history of the currently active chat.

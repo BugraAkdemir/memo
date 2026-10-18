@@ -80,7 +80,7 @@ var tr = map[string]string{
 	"cmd_model_download_hint":   "model indirmek için masaüstü uygulamasını aç",
 	"cmd_connect_hint":          "harici bir API sağlayıcısına bağlan",
 	"cmd_disconnect_hint":       "aktif harici/CLI sağlayıcıyı bırak, yerel modele dön",
-	"cmd_web_hint":              "web aramayı aç/kapat/durumunu göster",
+	"cmd_web_hint":              "web araçlarını bu oturum için aç/kapat/durumunu göster",
 	"cmd_gui_hint":              "masaüstü uygulamasını aç",
 	"cmd_clear_hint":            "sohbeti temizle, yeni bir sohbet başlat",
 	"cmd_session_hint":          "bu projedeki sohbetler arasında geç",
@@ -197,11 +197,11 @@ var tr = map[string]string{
 	"disconnected_from":              "✓ %s bırakıldı, yerel modele dönüldü.",
 	"web_usage":                      "Kullanım: /web on|off",
 	"web_status_failed":              "Web arama durumu alınamadı: %v",
-	"web_status_on":                  "Web arama: açık.",
-	"web_status_off":                 "Web arama: kapalı.",
+	"web_status_on":                  "Web araçları (bu oturum): açık.",
+	"web_status_off":                 "Web araçları (bu oturum): kapalı.",
 	"web_toggle_failed":              "Web arama değiştirilemedi: %v",
-	"web_turned_on":                  "✓ Web arama açıldı.",
-	"web_turned_off":                 "✓ Web arama kapatıldı.",
+	"web_turned_on":                  "✓ Web araçları bu oturum için açıldı.",
+	"web_turned_off":                 "✓ Web araçları bu oturum için kapatıldı.",
 	"exe_path_not_found":             "Çalıştırılabilir dosya yolu bulunamadı: %v",
 	"gui_not_found":                  "GUI bulunamadı (%s) — bu kurulum GUI içermiyor olabilir.",
 	"gui_start_failed":               "GUI başlatılamadı: %v",
@@ -240,7 +240,7 @@ var tr = map[string]string{
   /model-download                         model indirmek için masaüstü uygulamasını (GUI) açar
   /connect <base_url> <api_key> <model>   harici bir API sağlayıcısına bağlanır
   /disconnect                             aktif harici/CLI sağlayıcıyı bırakır, yerel modele döner
-  /web [on|off]                           web aramayı açar/kapatır (boşsa durumunu gösterir)
+  /web [on|off]                           web araçlarını bu oturum için açar/kapatır (varsayılan: açık)
   /gui                                    masaüstü uygulamasını açar
   /clear                                  sohbet geçmişini temizler, yeni bir sohbet başlatır
   /session [isim|numara|new|list]         bu projedeki sohbetler arasında geçiş yapar
@@ -290,7 +290,7 @@ var en = map[string]string{
 	"cmd_model_download_hint":   "open the desktop app to download a model",
 	"cmd_connect_hint":          "connect to an external API provider",
 	"cmd_disconnect_hint":       "drop the active external/CLI provider, go back to the local model",
-	"cmd_web_hint":              "turn web search on/off, or show its current state",
+	"cmd_web_hint":              "turn web tools on/off for this session, or show the state",
 	"cmd_gui_hint":              "open the desktop app",
 	"cmd_clear_hint":            "clear the chat, start a new one",
 	"cmd_session_hint":          "switch between this project's chats",
@@ -403,11 +403,11 @@ var en = map[string]string{
 	"disconnected_from":              "✓ Disconnected %s, back to the local model.",
 	"web_usage":                      "Usage: /web on|off",
 	"web_status_failed":              "Could not get web search status: %v",
-	"web_status_on":                  "Web search: on.",
-	"web_status_off":                 "Web search: off.",
+	"web_status_on":                  "Web tools (this session): on.",
+	"web_status_off":                 "Web tools (this session): off.",
 	"web_toggle_failed":              "Could not change web search: %v",
-	"web_turned_on":                  "✓ Web search turned on.",
-	"web_turned_off":                 "✓ Web search turned off.",
+	"web_turned_on":                  "✓ Web tools turned on for this session.",
+	"web_turned_off":                 "✓ Web tools turned off for this session.",
 	"connected_to":                   "✓ Connected to %s (model: %s).",
 	"exe_path_not_found":             "Could not find the executable path: %v",
 	"gui_not_found":                  "GUI not found (%s) — this install may not include the GUI.",
@@ -447,7 +447,7 @@ var en = map[string]string{
   /model-download                         opens the desktop app (GUI) to download a model
   /connect <base_url> <api_key> <model>   connects to an external API provider
   /disconnect                             drops the active external/CLI provider, back to the local model
-  /web [on|off]                           turns web search on/off (shows current state if no argument)
+  /web [on|off]                           turns web tools on/off for this session (default: on)
   /gui                                    opens the desktop app
   /clear                                  clears the chat history, starts a new chat
   /session [name|number|new|list]         switches between this project's chats

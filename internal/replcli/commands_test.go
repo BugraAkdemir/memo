@@ -347,83 +347,83 @@ func TestHandleCommand_Disconnect_NoneActive(t *testing.T) {
 	}
 }
 
-// newWebSearchTestServer mocks GET/POST /api/websearch, recording every POST
-// body and answering GET with whatever the test last set enabled to.
-func newWebSearchTestServer(t *testing.T, initialEnabled bool) (*httptest.Server, *[]bool) {
+// webBackend answers every request with 500 and records it: /web must be a
+// purely local, per-session switch, so it must not call the backend at all.
+func webBackend(t *testing.T) (*httptest.Server, *[]string) {
 	t.Helper()
-	enabled := initialEnabled
-	var posts []bool
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/websearch", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			json.NewEncoder(w).Encode(map[string]bool{"enabled": enabled})
-			return
-		}
-		var body map[string]bool
-		json.NewDecoder(r.Body).Decode(&body)
-		enabled = body["enabled"]
-		posts = append(posts, enabled)
-		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
-	})
-	return httptest.NewServer(mux), &posts
+	var calls []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		http.Error(w, "unexpected", http.StatusInternalServerError)
+	}))
+	return srv, &calls
 }
 
-// TestHandleCommand_Web_TurnsOnAndOff is the regression test for the /web
-// command added alongside removing activateChat's forced global web-search
-// enable (see TestActivateChat_DoesNotTouchGlobalAgentOrWebSearchToggles):
-// the REPL previously had no command at all to turn web search on or off
-// itself, only ever an implicit (and cross-client-unsafe) auto-on.
+// TestHandleCommand_Web_TurnsOnAndOff: /web on|off is this session's own
+// setting (sent with each request). The desktop app's web-search toggle is
+// global, and writing it from here overrode a concurrent desktop user's choice.
 func TestHandleCommand_Web_TurnsOnAndOff(t *testing.T) {
-	srv, posts := newWebSearchTestServer(t, false)
+	srv, calls := webBackend(t)
 	defer srv.Close()
 	s, out := newTestSession(t, srv)
+	s.webTools = true
 
-	s.handleCommand("/web on")
-	if len(*posts) != 1 || !(*posts)[0] {
-		t.Fatalf("expected one POST enabled=true after /web on, got %+v", *posts)
-	}
-	if !strings.Contains(out.String(), "aç") {
-		t.Errorf("expected an on confirmation, got:\n%s", out.String())
-	}
-
-	out.Reset()
 	s.handleCommand("/web off")
-	if len(*posts) != 2 || (*posts)[1] {
-		t.Fatalf("expected a second POST enabled=false after /web off, got %+v", *posts)
+	if s.webTools {
+		t.Fatal("/web off did not turn the session's web tools off")
 	}
 	if !strings.Contains(out.String(), "kapat") {
 		t.Errorf("expected an off confirmation, got:\n%s", out.String())
 	}
+
+	out.Reset()
+	s.handleCommand("/web on")
+	if !s.webTools {
+		t.Fatal("/web on did not turn the session's web tools on")
+	}
+	if !strings.Contains(out.String(), "aç") {
+		t.Errorf("expected an on confirmation, got:\n%s", out.String())
+	}
+	if len(*calls) != 0 {
+		t.Errorf("/web must not call the backend, got %v", *calls)
+	}
 }
 
-// TestHandleCommand_Web_NoArgsReportsStatus covers the bare "/web" status
-// path — must not POST anything, just read and report the current state.
+// TestHandleCommand_Web_NoArgsReportsStatus: a bare /web reports the session's
+// state, again without touching the backend.
 func TestHandleCommand_Web_NoArgsReportsStatus(t *testing.T) {
-	srv, posts := newWebSearchTestServer(t, true)
+	srv, calls := webBackend(t)
 	defer srv.Close()
 	s, out := newTestSession(t, srv)
+	s.webTools = true
 
 	s.handleCommand("/web")
-
-	if len(*posts) != 0 {
-		t.Errorf("expected no POST for a bare /web status check, got %+v", *posts)
-	}
 	if !strings.Contains(out.String(), "açık") {
 		t.Errorf("expected status output reporting 'on', got:\n%s", out.String())
+	}
+	out.Reset()
+	s.webTools = false
+	s.handleCommand("/web")
+	if !strings.Contains(out.String(), "kapalı") {
+		t.Errorf("expected status output reporting 'off', got:\n%s", out.String())
+	}
+	if len(*calls) != 0 {
+		t.Errorf("a status check must not call the backend, got %v", *calls)
 	}
 }
 
 // TestHandleCommand_Web_UnknownArg rejects anything other than on/off
 // instead of silently doing nothing.
 func TestHandleCommand_Web_UnknownArg(t *testing.T) {
-	srv, posts := newWebSearchTestServer(t, false)
+	srv, calls := webBackend(t)
 	defer srv.Close()
 	s, out := newTestSession(t, srv)
+	s.webTools = true
 
 	s.handleCommand("/web maybe")
 
-	if len(*posts) != 0 {
-		t.Errorf("expected no POST for an invalid argument, got %+v", *posts)
+	if !s.webTools || len(*calls) != 0 {
+		t.Errorf("an invalid argument must change nothing (webTools=%v, calls=%v)", s.webTools, *calls)
 	}
 	if !strings.Contains(out.String(), "Kullanım") {
 		t.Errorf("expected a usage message, got:\n%s", out.String())
@@ -618,12 +618,11 @@ func TestPickTheme_NoKeys_ReportsCurrent(t *testing.T) {
 	}
 }
 
-// TestHandleCommand_Session_List_ShowsAllChats asserts /session list shows
-// every chat — including ones from other project paths and GUI-created
-// chats with no project path at all — since the CLI and the Flutter GUI
-// share one global chat set and either client should be able to resume a
-// chat the other one started.
-func TestHandleCommand_Session_List_ShowsAllChats(t *testing.T) {
+// TestHandleCommand_Session_List_ShowsCodingChatsOnly: the terminal client is
+// for coding. /session lists the project chats (the ones the REPL and the
+// desktop app's Code Mode make, whichever client started them) and leaves plain
+// conversations to the desktop app.
+func TestHandleCommand_Session_List_ShowsCodingChatsOnly(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/chats", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode([]SessionInfo{
@@ -641,10 +640,13 @@ func TestHandleCommand_Session_List_ShowsAllChats(t *testing.T) {
 	s.handleCommand("/session list")
 
 	got := out.String()
-	for _, title := range []string{"Sohbet A", "Sohbet B", "Sohbet C (GUI)"} {
+	for _, title := range []string{"Sohbet A", "Sohbet B"} {
 		if !strings.Contains(got, title) {
-			t.Errorf("expected %q in list, got:\n%s", title, got)
+			t.Errorf("expected project chat %q in list, got:\n%s", title, got)
 		}
+	}
+	if strings.Contains(got, "Sohbet C (GUI)") {
+		t.Errorf("a plain (no project) chat must not be listed in the coding client:\n%s", got)
 	}
 }
 

@@ -734,21 +734,14 @@ func (s *session) cmdDisconnect() {
 	s.refreshLiveStatus()
 }
 
-// cmdWeb turns web search on/off, or with no argument reports its current
-// state. Web search is a global toggle (like the active provider above),
-// not per-chat — activateChat used to force it on for every fresh/switched
-// REPL chat, which silently overrode a Flutter GUI user's own choice on a
-// concurrently-running backend. That auto-on default was removed; this
-// command is the replacement — the REPL previously had no way at all to
-// turn web search on, on or off, itself.
+// cmdWeb turns this session's web tools (web_search, fetch_page) on or off, or
+// with no argument reports the state. It is a SESSION setting sent with each
+// request: the desktop app's own web-search toggle is global, and changing that
+// from here silently overrode a concurrent desktop user's choice. Starts on —
+// the REPL is a coding client and the model reads docs through these tools.
 func (s *session) cmdWeb(args []string) {
 	if len(args) == 0 {
-		enabled, err := s.client.GetWebSearchEnabled(s.ctx)
-		if err != nil {
-			fmt.Fprintln(s.out, errorf(t("web_status_failed"), err))
-			return
-		}
-		if enabled {
+		if s.webTools {
 			fmt.Fprintln(s.out, t("web_status_on"))
 		} else {
 			fmt.Fprintln(s.out, t("web_status_off"))
@@ -756,25 +749,16 @@ func (s *session) cmdWeb(args []string) {
 		return
 	}
 
-	var enable bool
 	switch args[0] {
 	case "on":
-		enable = true
+		s.webTools = true
+		fmt.Fprintln(s.out, green(t("web_turned_on")))
 	case "off":
-		enable = false
+		s.webTools = false
+		fmt.Fprintln(s.out, green(t("web_turned_off")))
 	default:
 		fmt.Fprintln(s.out, yellow(t("web_usage")))
 		return
-	}
-
-	if err := s.client.SetWebSearchEnabled(s.ctx, enable); err != nil {
-		fmt.Fprintln(s.out, errorf(t("web_toggle_failed"), err))
-		return
-	}
-	if enable {
-		fmt.Fprintln(s.out, green(t("web_turned_on")))
-	} else {
-		fmt.Fprintln(s.out, green(t("web_turned_off")))
 	}
 	s.refreshLiveStatus()
 }

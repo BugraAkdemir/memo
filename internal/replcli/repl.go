@@ -120,14 +120,13 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 	// loadSavedTheme is read again here rather than reusing ed.theme so
 	// piped/non-terminal runs (ed nil) still pick the right welcome-banner
 	// style, not always the same zero-value fallback.
-	s := &session{client: client, ctx: ctx, out: out, scanner: scanner, ownBackend: ownBackend, keys: keys, ed: ed, projectPath: projectPath, theme: loadSavedTheme()}
+	s := &session{client: client, ctx: ctx, out: out, scanner: scanner, ownBackend: ownBackend, keys: keys, ed: ed, projectPath: projectPath, theme: loadSavedTheme(), webTools: true}
 
 	if ed != nil {
-		// Best-effort: an unreachable/older backend just means the status
-		// bar starts in its default (off) state, same as GetUILanguage above.
-		if enabled, err := client.GetAgentAutoPermission(ctx); err == nil {
-			ed.autoPermission = enabled
-		}
+		// Auto-permission is THIS session's own setting (off until Shift+Tab):
+		// the backend's global flag belongs to whoever else is using it (the
+		// desktop app), and is neither read nor written from here.
+		ed.autoPermission = s.autoPermission
 		ed.onToggleAutoPermission = s.toggleAutoPermission
 	}
 
@@ -185,6 +184,15 @@ type session struct {
 	projectPath string
 	chatID      string
 
+	// autoPermission and webTools are this session's own settings. They are
+	// sent with every request (Client.SendStreamWith) and never written to the
+	// backend, so a desktop app on the same backend keeps its own agent / web
+	// search / auto-permission choices, and the two can be used side by side.
+	// The REPL is a coding client: agent tools are always on (every chat it
+	// makes is an agent chat in Code Mode) and web tools start on.
+	autoPermission bool
+	webTools       bool
+
 	// theme selects the welcome-banner/status-bar style (see theme.go,
 	// editor.go's statusBarLine). Loaded once at Run() startup and changed
 	// only via /theme.
@@ -227,7 +235,24 @@ var promptStyle = bold(gold("❯ "))
 // lists and picks from, so any chat started in the GUI can be resumed from
 // the CLI and vice versa.
 func (s *session) allChats() ([]SessionInfo, error) {
-	return s.client.ListChats(s.ctx)
+	chats, err := s.client.ListChats(s.ctx)
+	if err != nil {
+		return nil, err
+	}
+	return codingChats(chats), nil
+}
+
+// codingChats keeps the chats that belong to a project — the ones the REPL and
+// the desktop app's Code Mode create. The terminal client is for coding, not
+// for casual conversation; plain chats stay in the desktop app.
+func codingChats(all []SessionInfo) []SessionInfo {
+	out := make([]SessionInfo, 0, len(all))
+	for _, c := range all {
+		if c.ProjectPath != "" {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // startFreshChat creates a brand-new agent chat rooted at s.projectPath and
@@ -240,28 +265,17 @@ func (s *session) startFreshChat() error {
 	return s.activateChat(id)
 }
 
-// activateChat switches the backend's active chat to id and records id as
-// this session's current chat.
+// activateChat records id as this session's current chat. It deliberately does
+// NOT switch the backend's active chat: that is global, so doing it moved the
+// desktop app (open on the same backend) to this chat. Every request names its
+// chat (chat_id), so nothing here needs the backend to agree.
 //
-// Used to also force-enable agent mode and web search here via
-// SetAgentEnabled/SetWebSearchEnabled(true) — both are global, backend-wide
-// toggles, not per-chat, so doing that on every launch/clear silently
-// flipped them on for whatever chat a concurrently-running Flutter GUI had
-// open, even if the user had deliberately turned either off there. Removed:
-// agent mode no longer needs it at all — every chat the REPL sends into via
-// chat_id goes through SendMessageStreamTo, which forces tool execution
-// per-call for an IsAgentChat chat (every chat startFreshChat creates)
-// regardless of this flag. Web search has no per-chat equivalent to fall
-// back on, so this is a real behavior change: REPL chats no longer get web
-// search on by default — enable it from the GUI if wanted. Chosen
-// deliberately over keeping the auto-on default, since silently sending
-// queries out to a web search from a background toggle cuts against Memo's
-// privacy-first design (see AGENTS.md's target-audience notes) independent
-// of the cross-client collision this also fixes.
+// It also no longer forces agent mode or web search on. Both used to be global
+// toggles, so a REPL launch silently overrode a desktop user's own choice. The
+// REPL needs neither: every chat it makes is an agent chat in Code Mode (tool
+// execution is forced per call for such a chat), and its web tools are a
+// session setting sent with each request.
 func (s *session) activateChat(id string) error {
-	if err := s.client.SwitchChat(s.ctx, id); err != nil {
-		return fmt.Errorf(t("chat_switch_failed"), err)
-	}
 	s.chatID = id
 	return nil
 }
@@ -270,7 +284,7 @@ func (s *session) activateChat(id string) error {
 // a resumed session reads like an uninterrupted conversation instead of
 // silently forgetting everything before this run.
 func (s *session) replayHistory() {
-	msgs, err := s.client.Messages(s.ctx)
+	msgs, err := s.client.MessagesFor(s.ctx, s.chatID)
 	if err != nil || len(msgs) == 0 {
 		return
 	}
@@ -370,7 +384,8 @@ func (s *session) sendMessage(line string) {
 	onChunk := func(chunk api.StreamChunk) error {
 		return s.handleChunk(chunk)
 	}
-	err := s.client.SendStream(ctx, s.chatID, line, onChunk)
+	auto, web := s.autoPermission, s.webTools
+	err := s.client.SendStreamWith(ctx, s.chatID, line, SendOptions{AutoPermission: &auto, WebTools: &web}, onChunk)
 	s.stopSpinner()
 	s.sp = nil
 
@@ -750,23 +765,15 @@ func (s *session) handleAgentEvent(ev AgentEvent) error {
 	return nil
 }
 
-// toggleAutoPermission flips the backend's Shift+Tab auto-permission mode
-// (PUT /api/agent/auto-permission — internal/agent/pipeline.go's
-// autoPermission, the same flag the Flutter GUI's Shift+Tab shortcut
-// drives) and returns the resulting state for the editor's status bar. Once
-// on, permission_request events stop arriving entirely — every tool call is
-// approved before the backend ever emits one — so askPermission below simply
-// sees fewer calls rather than needing its own auto-approve branch.
-// Best-effort: a transport error leaves the mode unchanged, matching how
-// other backend-dependent REPL actions in this file degrade.
+// toggleAutoPermission flips THIS session's auto-permission (Shift+Tab) and
+// returns the resulting state for the editor's status bar. It is sent with every
+// request, so on the next turn permission_request events stop arriving — every
+// tool call is approved before the backend ever emits one. Nothing is written to
+// the backend: its own flag (the desktop app's Shift+Tab) is a different
+// setting that this session neither reads nor changes.
 func (s *session) toggleAutoPermission(current bool) bool {
-	next := !current
-	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
-	defer cancel()
-	if err := s.client.SetAgentAutoPermission(ctx, next); err != nil {
-		return current
-	}
-	return next
+	s.autoPermission = !current
+	return s.autoPermission
 }
 
 // askPermission prompts for a single tool call. Mirrors the Flutter GUI's

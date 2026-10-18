@@ -28,16 +28,16 @@ func TestOneLine_CollapsesWhitespaceAndTruncates(t *testing.T) {
 	}
 }
 
-func TestChatListCmd_SwitchesThenListsMessages(t *testing.T) {
-	var switchedTo string
+func TestChatListCmd_ReadsTheChatByIDWithoutSwitchingTheActiveChat(t *testing.T) {
+	var asked string
+	switched := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/chats/switch":
-			var body map[string]string
-			json.NewDecoder(r.Body).Decode(&body)
-			switchedTo = body["id"]
+			switched = true // the active chat is backend-wide: it would move a desktop app
 			w.WriteHeader(http.StatusOK)
 		case r.URL.Path == "/api/messages":
+			asked = r.URL.Query().Get("chat_id")
 			json.NewEncoder(w).Encode([]replcli.ChatMessage{
 				{Role: "user", Content: "merhaba", Timestamp: "2026-08-22T10:00:00Z"},
 				{Role: "assistant", Content: "selam!", Timestamp: "2026-08-22T10:00:01Z", MemoryUsed: 3},
@@ -53,8 +53,11 @@ func TestChatListCmd_SwitchesThenListsMessages(t *testing.T) {
 	if code := chatListCmd(ctx, client, "chat-123"); code != 0 {
 		t.Fatalf("chatListCmd returned %d, want 0", code)
 	}
-	if switchedTo != "chat-123" {
-		t.Errorf("switched to chat %q, want %q", switchedTo, "chat-123")
+	if asked != "chat-123" {
+		t.Errorf("messages requested for chat %q, want chat-123", asked)
+	}
+	if switched {
+		t.Error("chatListCmd switched the backend's active chat")
 	}
 }
 

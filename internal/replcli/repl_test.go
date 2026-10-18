@@ -177,34 +177,22 @@ func newTestServer(t *testing.T, sseLines []string) (*httptest.Server, *[]map[st
 	return httptest.NewServer(mux), &permissionCalls
 }
 
-// TestActivateChat_DoesNotTouchGlobalAgentOrWebSearchToggles is the
-// regression test for the opposite, later-discovered bug: activateChat
-// used to force both agent mode (SetAgentEnabled) and web search
-// (SetWebSearchEnabled) on globally on every fresh chat/clear/session
-// switch. Both are backend-wide, not per-chat or per-client — a
-// concurrently-running Flutter GUI shared the exact same App instance, so
-// every replcli launch silently flipped its agent-mode and web-search
-// settings on too, even if the GUI user had deliberately turned either off.
-// Agent mode no longer needs the global flag at all (every chat replcli
-// sends into via chat_id now forces tool execution per-call through
-// SendMessageStreamTo/IsAgentChat, see the Faz 4 chat-id work); web search
-// has no per-chat equivalent, so it's simply no longer force-enabled — see
-// the new /web command for how a user turns it on deliberately instead.
-func TestActivateChat_DoesNotTouchGlobalAgentOrWebSearchToggles(t *testing.T) {
-	agentCalled, webSearchCalled := false, false
-
+// TestActivateChat_DoesNotTouchAnyBackendWideState: agent mode, web search,
+// auto-permission and the ACTIVE CHAT are all backend-wide, and a desktop app
+// shares the backend. A REPL that wrote any of them (it used to force agent and
+// web search on, and switch the active chat) silently changed what the desktop
+// user saw and did. Every request names its chat, and a REPL chat is an agent
+// chat in Code Mode, so none of it is needed.
+func TestActivateChat_DoesNotTouchAnyBackendWideState(t *testing.T) {
+	var touched []string
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/chats/switch", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
-	})
-	mux.HandleFunc("/api/agent/enabled", func(w http.ResponseWriter, r *http.Request) {
-		agentCalled = true
-		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
-	})
-	mux.HandleFunc("/api/websearch", func(w http.ResponseWriter, r *http.Request) {
-		webSearchCalled = true
-		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
-	})
+	for _, path := range []string{"/api/chats/switch", "/api/agent/enabled", "/api/websearch", "/api/agent/auto-permission"} {
+		path := path
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			touched = append(touched, r.Method+" "+path)
+			json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		})
+	}
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
@@ -212,11 +200,8 @@ func TestActivateChat_DoesNotTouchGlobalAgentOrWebSearchToggles(t *testing.T) {
 	if err := s.activateChat("chat-1"); err != nil {
 		t.Fatalf("activateChat() error = %v", err)
 	}
-	if agentCalled {
-		t.Error("activateChat must not call /api/agent/enabled — it's a global toggle, not per-chat")
-	}
-	if webSearchCalled {
-		t.Error("activateChat must not call /api/websearch — it's a global toggle, not per-chat")
+	if len(touched) != 0 {
+		t.Errorf("activateChat wrote backend-wide state: %v", touched)
 	}
 	if s.chatID != "chat-1" {
 		t.Errorf("chatID = %q, want chat-1", s.chatID)

@@ -56,18 +56,9 @@ func runChatListMode(port int, chatID string) int {
 }
 
 func chatListCmd(ctx context.Context, client *replcli.Client, chatID string) int {
-	// GET /api/messages has no chat_id parameter of its own — it always
-	// answers for whichever chat the backend currently considers "active"
-	// (internal/webserver's WebGetActiveMessages), the same global-state
-	// quirk runPrintMode's own -chat handling already works around by
-	// switching first. This does mean pointing a live GUI/REPL sharing this
-	// same backend at a different chat as a side effect — pre-existing
-	// behavior of -chat, not new here.
-	if err := client.SwitchChat(ctx, chatID); err != nil {
-		fmt.Fprintf(os.Stderr, "FATAL: sohbete geçilemedi / could not switch to chat %q: %v\n", chatID, err)
-		return 1
-	}
-	msgs, err := client.Messages(ctx)
+	// Read by chat_id: the backend's "active chat" is global, and switching it
+	// would move a desktop app on the same backend to this chat.
+	msgs, err := client.MessagesFor(ctx, chatID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: mesajlar alınamadı / failed to fetch messages: %v\n", err)
 		return 1
@@ -128,11 +119,7 @@ func validateMemoryQuery(query string) (code int, handled bool) {
 }
 
 func chatMemoryUsageCmd(ctx context.Context, client *replcli.Client, chatID string) int {
-	if err := client.SwitchChat(ctx, chatID); err != nil {
-		fmt.Fprintf(os.Stderr, "FATAL: sohbete geçilemedi / could not switch to chat %q: %v\n", chatID, err)
-		return 1
-	}
-	msgs, err := client.Messages(ctx)
+	msgs, err := client.MessagesFor(ctx, chatID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: mesajlar alınamadı / failed to fetch messages: %v\n", err)
 		return 1

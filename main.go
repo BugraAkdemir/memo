@@ -517,14 +517,9 @@ func runPrintMode(port int, prompt, chatID string, autoAllow bool) {
 		}
 		chatID = id
 	}
-	if err := client.SwitchChat(ctx, chatID); err != nil {
-		fmt.Fprintf(os.Stderr, "FATAL: sohbete geçilemedi: %v\n", err)
-		os.Exit(1)
-	}
-	if err := client.SetAgentEnabled(ctx, true); err != nil {
-		fmt.Fprintf(os.Stderr, "FATAL: agent modu açılamadı: %v\n", err)
-		os.Exit(1)
-	}
+	// No SwitchChat / SetAgentEnabled: both are backend-wide, so they moved a
+	// desktop app on the same backend. The request names its chat, and an agent
+	// chat runs its tools per call regardless of the global agent flag.
 
 	memoryLikely := false
 	if status, err := client.EmbeddingStatus(ctx); err == nil && status.Running {
@@ -576,7 +571,7 @@ func runPrintMode(port int, prompt, chatID string, autoAllow bool) {
 		}
 		return nil
 	}
-	if err := client.SendStream(ctx, chatID, prompt, onChunk); err != nil {
+	if err := client.SendStreamWith(ctx, chatID, prompt, replcli.SendOptions{AutoPermission: &autoAllow}, onChunk); err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
 		os.Exit(1)
 	}

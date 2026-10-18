@@ -83,3 +83,14 @@ func TestCodeSubModeCtx_RoundTrips(t *testing.T) {
 		t.Errorf("codeSubModeFromCtx = %q, want \"build\"", got)
 	}
 }
+
+// Models that call tools in silence (Gemini through a subscription) left the
+// person watching a list of commands and nothing else. Both agent prompts ask the
+// model to say what it is about to do.
+func TestAgentPrompts_AskTheModelToNarrate(t *testing.T) {
+	for name, p := range map[string]string{"agent": buildAgentSystemPrompt(), "code": buildCodeAgentSystemPrompt()} {
+		if !strings.Contains(p, "İlerlemeyi Anlat") || !strings.Contains(p, "ÖNCE tek kısa cümleyle") {
+			t.Errorf("%s prompt lacks the narration rule", name)
+		}
+	}
+}

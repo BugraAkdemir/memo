@@ -983,6 +983,18 @@ kodlama ajanı olarak çalışıyorsun. Aşağıdaki kurallara uy:
 - Bütün araçları aynı anda kullanman gerekmiyor — sadece ihtiyacın olanı kullan.
 
 `
+	// agentPromptNarration: some models (Gemini through a subscription, most
+	// small ones) call tools in silence unless told otherwise, and the person
+	// watching a long coding turn then sees nothing but a growing list of
+	// commands. Claude and GPT narrate on their own; this asks the rest to.
+	agentPromptNarration = `### İlerlemeyi Anlat
+- Araç çağırmadan ÖNCE tek kısa cümleyle ne yapacağını yaz ("Önce testlere bakıyorum.",
+  "Yapılandırma dosyasını okuyorum."). Sessizce arka arkaya araç çağırma: kullanıcı ne
+  yaptığını ekranda canlı olarak okuyor.
+- Sonuçlara baktıktan sonra bulduğunu bir cümleyle söyle, sonra devam et.
+- Bu cümleler kısa kalsın; uzun açıklamayı iş bitince ver.
+
+`
 	agentPromptToolFormat = `### Araç Çağırma Biçimi
 - Bir araç çağırmak istediğinde SADECE sana verilen gerçek tool-calling mekanizmasını kullan.
   Asla "<function_calls>", "<invoke>" gibi metin/XML etiketleri kendi cevabına yazma — bunlar
@@ -1054,7 +1066,7 @@ func agentPromptTasks() string {
 // buildAgentSystemPrompt returns agent-specific instructions that guide the
 // model to behave as an efficient coding agent with proper tool usage.
 func buildAgentSystemPrompt() string {
-	return agentPromptHead + agentPromptWork + agentPromptEfficiency + agentPromptToolFormat + agentPromptMemoryCalendar + agentPromptTasks()
+	return agentPromptHead + agentPromptWork + agentPromptEfficiency + agentPromptNarration + agentPromptToolFormat + agentPromptMemoryCalendar + agentPromptTasks()
 }
 
 // codeAgentPromptWork replaces agentPromptWork in Code Mode: the same five
@@ -1077,5 +1089,5 @@ const codeAgentPromptWork = `### Çalışma Sırası
 // memory or calendar rules (Code Mode has neither the memory block nor the
 // calendar tool), code-specific work rules instead.
 func buildCodeAgentSystemPrompt() string {
-	return agentPromptHead + codeAgentPromptWork + agentPromptEfficiency + agentPromptToolFormat + agentPromptTasks()
+	return agentPromptHead + codeAgentPromptWork + agentPromptEfficiency + agentPromptNarration + agentPromptToolFormat + agentPromptTasks()
 }

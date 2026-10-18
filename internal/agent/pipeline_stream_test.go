@@ -270,3 +270,50 @@ func TestRunStream_MidStreamErrorIsReported(t *testing.T) {
 		t.Fatalf("last = %+v", last)
 	}
 }
+
+// Seen live (Gemini through a subscription): after six tool results the model
+// returned nothing at all, the person got "I couldn't generate a reply", and
+// answering "try again" produced the answer the model had all along. An empty
+// step is now answered with a nudge before the fallback is ever shown.
+func TestRunStream_EmptyStepAfterToolsIsRetriedWithANudge(t *testing.T) {
+	prov := &recordingProvider{responses: []provider.ChatResponse{
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "c1", "read_file", map[string]string{"path": "a.txt"})}},
+		{}, // the model gives up: no text, no tool call
+		{Content: "İşte cevap."},
+	}}
+	pl, _ := newStreamTestPipeline(t, prov)
+	_, content, _, last := runStreamTurn(t, context.Background(), pl)
+
+	if content != "İşte cevap." || last.Error != "" {
+		t.Fatalf("content=%q last=%+v, want the real answer, not the fallback", content, last)
+	}
+	if len(prov.seen) != 3 {
+		t.Fatalf("model calls = %d, want 3", len(prov.seen))
+	}
+	// The nudge is in the request that follows the empty step ...
+	lastReq := prov.seen[2]
+	nudge, _ := lastReq[len(lastReq)-1].Content.(string)
+	if lastReq[len(lastReq)-1].Role != "user" || !strings.Contains(nudge, "answer the user's request") {
+		t.Errorf("retry request does not end with the nudge: %+v", lastReq[len(lastReq)-1])
+	}
+	// ... and is not shown to the user.
+	if strings.Contains(content, "memo-internal") {
+		t.Error("the nudge leaked into the reply")
+	}
+}
+
+// A model that stays empty gets two nudges, then the old fallback.
+func TestRunStream_StillEmptyAfterTwoNudgesShowsTheFallback(t *testing.T) {
+	prov := &recordingProvider{responses: []provider.ChatResponse{
+		{ToolCalls: []provider.ToolCall{mustToolCall(t, "c1", "read_file", map[string]string{"path": "a.txt"})}},
+		{}, {}, {},
+	}}
+	pl, _ := newStreamTestPipeline(t, prov)
+	_, content, _, _ := runStreamTurn(t, context.Background(), pl)
+	if !strings.Contains(content, "couldn't generate") && !strings.Contains(content, "üretemedim") {
+		t.Fatalf("content = %q, want the fallback message", content)
+	}
+	if len(prov.seen) != 4 {
+		t.Errorf("model calls = %d, want 4 (1 tool step + empty + 2 nudged retries)", len(prov.seen))
+	}
+}

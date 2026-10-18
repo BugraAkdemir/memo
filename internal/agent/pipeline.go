@@ -182,6 +182,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		sentCount := len(currentMessages)
 		lastPromptTok := 0 // the provider's own prompt-token count for the last call (0 = unknown)
 		noStream := false  // set once the endpoint refuses streaming with tools
+		emptyRetries := 0  // times an empty (no text, no tool call) step was answered with a nudge
 		compactions := 0   // how many times the context was shrunk this turn (in-budget compaction or a too-long retry)
 		// logContext emits the one honest per-turn accounting line for agent
 		// mode. The app-side CONTEXT log is written before routeStream appends
@@ -199,7 +200,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		selfCheck := false
 		continuations := 0
 	restart:
-		for iteration := 0; iteration < p.maxIters+reviewAttempts; iteration++ {
+		for iteration := 0; iteration < p.maxIters+reviewAttempts+emptyRetries; iteration++ {
 			iters++ // cumulative across auto-continue passes
 			// Check context cancellation
 			select {
@@ -305,6 +306,19 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			// If no tool calls, we are done
 			if len(resp.ToolCalls) == 0 {
 				content := stripHallucinatedToolSyntax(resp.Content)
+				// A step with no text and no tool call is the model giving up
+				// mid-task — seen live with Gemini through a subscription after six
+				// tool results: the person got "I couldn't generate a reply" and
+				// had to say "try again" to get the answer the model had all along.
+				// Ask it to answer (twice at most, only this run's copy of the
+				// conversation — nothing is saved) before showing that fallback.
+				if strings.TrimSpace(content) == "" && emptyRetries < 2 && ctx.Err() == nil {
+					emptyRetries++
+					logx.Printf("AGENT: empty reply at iteration %d (thinking_chars=%d, messages=%d) — asking the model to answer (retry %d/2)",
+						iters, len(resp.Thinking), len(currentMessages), emptyRetries)
+					currentMessages = append(currentMessages, provider.Message{Role: "user", Content: emptyReplyNudge})
+					continue
+				}
 				if content == "" {
 					// A genuinely empty assistant turn — no tool calls, no
 					// text — used to end the stream with nothing sent at
@@ -728,6 +742,10 @@ func codeModeToolAutoApproveSet(subMode string) map[string]bool {
 // adapters that require strict role alternation (see claude.go) coalesce it
 // into the adjacent real user turn.
 const contextTrimMarker = "[context-trim]"
+
+// emptyReplyNudge is added (for this run only) after a step that produced
+// neither text nor a tool call.
+const emptyReplyNudge = "<memo-internal>Your last step was empty. Using what you already have (including any tool results above), answer the user's request now in plain text, or call a tool if you still need information. Do not reply with nothing.</memo-internal>"
 
 // trySend delivers chunk to outCh, preferring the send over ctx cancellation.
 // A plain `select { case outCh <- chunk: case <-ctx.Done(): }` lets Go's

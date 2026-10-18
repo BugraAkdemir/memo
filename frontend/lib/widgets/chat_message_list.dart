@@ -11,6 +11,7 @@ import '../models/chat.dart';
 import '../models/agent.dart';
 import '../models/task_list.dart';
 import '../core/l10n.dart';
+import '../core/mention_style.dart';
 import 'agent/agent_timeline.dart';
 import 'agent/task_activity_block.dart';
 import 'chat_image.dart';
@@ -506,11 +507,22 @@ class _MessageBubbleState extends State<_MessageBubble> {
                             ),
                           if (widget.message.content.isNotEmpty)
                             MarkdownBody(
-                              data: widget.message.content,
+                              // A mentioned file ("@src/main.go") reads like a
+                              // link — blue — in what the person sent.
+                              data: isUser
+                                  ? linkifyMentions(widget.message.content)
+                                  : widget.message.content,
                               selectable: true,
-                              styleSheet: _buildMarkdownStyleSheet(context),
+                              styleSheet: isUser
+                                  ? _buildMarkdownStyleSheet(context).copyWith(
+                                      a: TextStyle(
+                                        color: mentionColor(context),
+                                        decoration: TextDecoration.none,
+                                      ),
+                                    )
+                                  : _buildMarkdownStyleSheet(context),
                               onTapLink: (text, href, title) {
-                                if (href != null) {
+                                if (href != null && !isMentionLink(href)) {
                                   _openChatLink(widget.apiBaseUrl, href);
                                 }
                               },

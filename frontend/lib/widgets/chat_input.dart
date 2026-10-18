@@ -10,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/l10n.dart';
+import '../core/mention_style.dart';
 import '../core/platform_capabilities.dart';
 import '../core/theme.dart';
 import 'file_mention_popup.dart';
@@ -69,6 +70,13 @@ class _PopupDismissIntent extends Intent {
 /// ArrowDown) do nothing and fall through to the TextField's default
 /// behavior when no popup is open, and drive popup navigation when one is,
 /// without swapping the shortcuts/actions maps themselves.
+/// Tab that the popup has just used to confirm a choice. Flutter ALSO treats the
+/// same key press as "move focus to the next control", so without swallowing it
+/// the text box lost the keyboard right after a file was picked.
+class _PopupTabIntent extends Intent {
+  const _PopupTabIntent();
+}
+
 class _PopupCallbackAction<T extends Intent> extends CallbackAction<T> {
   final bool Function() isEnabledWhen;
   _PopupCallbackAction({required this.isEnabledWhen, required super.onInvoke});
@@ -93,7 +101,7 @@ class ChatInput extends ConsumerStatefulWidget {
 const double _composerStackBelowWidth = 460;
 
 class _ChatInputState extends ConsumerState<ChatInput> {
-  final _controller = TextEditingController();
+  final _controller = MentionTextEditingController();
   final _focusNode = FocusNode();
 
   // Short phrases that resume a paused Self-Driving task instead of being sent
@@ -263,6 +271,15 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
     if (_popupActive) {
       _confirmPopupSelection();
+      // Returning true from a hardware handler does not stop the focus tree from
+      // seeing the same Tab (it would then move focus off the text box), so also
+      // flag it for the Shortcuts binding to swallow, and put focus back once the
+      // frame is done in case anything moved it anyway.
+      _tabConfirmedPopup = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _tabConfirmedPopup = false;
+        if (mounted) _focusNode.requestFocus();
+      });
       return true;
     }
     return false;
@@ -479,6 +496,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   // false (no popup open) correctly lets the key fall through to
   // EditableText's normal behavior instead of swallowing it.
   bool get _popupActive => _showFileMentions || _showTemplates;
+
+  /// Set by [_handleHardwareKeyEvent] when a Tab press just confirmed a popup
+  /// choice, for the rest of that key event: the Shortcuts binding below then
+  /// consumes the same Tab so focus traversal does not run.
+  bool _tabConfirmedPopup = false;
 
   void _movePopupSelection(int delta) {
     if (_showFileMentions) {
@@ -1551,6 +1573,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                       // HardwareKeyboard level instead of in this
                       // Shortcuts/Actions pair.
                       SingleActivator(LogicalKeyboardKey.escape): _PopupDismissIntent(),
+                      // Only swallows the Tab that _handleHardwareKeyEvent just
+                      // used to confirm a popup (see _tabConfirmedPopup); any other
+                      // Tab is not claimed and keeps its normal focus traversal.
+                      SingleActivator(LogicalKeyboardKey.tab): _PopupTabIntent(),
                     },
                     child: Actions(
                       actions: {
@@ -1576,6 +1602,13 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                             } else {
                               _send();
                             }
+                            return null;
+                          },
+                        ),
+                        _PopupTabIntent: _PopupCallbackAction<_PopupTabIntent>(
+                          isEnabledWhen: () => _tabConfirmedPopup,
+                          onInvoke: (_) {
+                            _tabConfirmedPopup = false;
                             return null;
                           },
                         ),

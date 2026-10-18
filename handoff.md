@@ -63,7 +63,8 @@
 - Kullanıcı ekran görüntüsüyle: model 6 araçtan sonra "cevap üretemedim" dedi ("açık zaten dene" deyince cevapladı); sohbette yalnız komut listesi var, modelin yazdığı bir şey yok; `@` yazınca metin kutusu klavyeyi bırakıyor ve listede aşağı inince seçim görünmüyor.
 - Kök nedenler: (1) boş adım için kurtarma yoktu; (2) Gemini sessiz araç çağırıyor (kayıtlı olaylarda 0 narration) ve istemde "ne yapacağını yaz" kuralı yoktu; (3) `@` açılırken popup Column'un İLK çocuğu olarak eklendiği için kardeş girdi çubuğu yeniden yaratılıyor, `EditableTextState` değişiyor, klavye bağlantısı açılmıyor; liste seçili satıra kaydırılmıyordu.
 - Yapıldı: boş adım nudge'ı + "İlerlemeyi Anlat" istemi (`1b38fa44`); `FileMentionPopup` (sabit satır yüksekliği, seçili satırı görünür tutar, kaydırma çubuğu) + popup için sabit slot + anahtarlı girdi alanı (regresyon testi eski yapıda DÜŞÜYOR, yenisinde geçiyor).
-- Doğrulama: Go testleri yeşil, Flutter 723 test, analyze (3 eski info), Kural #8 grep boş. Gerçek pencerede `@` davranışı bu oturumda görülmedi (yalnız widget testi).
+- Doğrulama: Go testleri yeşil, Flutter 734 test, analyze (3 eski info), Kural #8 grep boş. Gerçek pencerede `@` davranışı bu oturumda görülmedi (yalnız widget testi).
+- Sonradan (kullanıcı tekrar bildirdi): Tab ile dosya seçince kutu yine klavyeyi bırakıyordu — hardware işleyicisi `true` dönse de aynı Tab odak gezintisini de çalıştırıyor; Enter'da yoktu. Tab artık `_PopupTabIntent` ile yutuluyor (+ kare sonunda odak geri). Seçilen `@dosya` kutuda ve gönderilen kullanıcı mesajında mavi (`lib/core/mention_style.dart`). Testler: Tab/Enter ile seçim sonrası aynı `EditableTextState` + odak.
 
 ---
 

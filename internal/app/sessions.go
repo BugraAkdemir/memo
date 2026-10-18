@@ -45,6 +45,60 @@ func (a *App) NewAgentChatNoActivate(projectPath string) string {
 	return sm.NewAgentChatNoActivate(projectPath)
 }
 
+// SetChatProject makes an empty chat a project (agent) chat, or a plain one again
+// with path "" — only before its first message (sessions.ErrChatNotEmpty).
+func (a *App) SetChatProject(chatID, path string) error {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return fmt.Errorf("no session manager")
+	}
+	return sm.SetChatProjectIfEmpty(chatID, path)
+}
+
+// nameCodeChat titles a Code Mode (agent) chat from the person's own first words.
+// The ordinary title is an LLM call, and Code Mode promises no Memo-initiated
+// side calls (they compete with the turn for the model, and cost subscription
+// quota), so an agent chat used to keep "Agent Chat" forever and the chat list
+// became a column of identical names. First words cost nothing; leading @file
+// mentions are dropped when there is other text, since "@AGENTS.md" is not a
+// name for a conversation.
+func (a *App) nameCodeChat(sessionID string) {
+	sm := a.getSessionManager()
+	if sm == nil || sessionID == "" {
+		return
+	}
+	msgs := sm.GetActiveMessagesForSession(sessionID)
+	if len(msgs) == 0 {
+		return
+	}
+	title := firstWordsTitle(withoutMentions(msgs[0].Content))
+	runes := []rune(title)
+	if len(runes) > 60 {
+		title = string(runes[:60])
+	}
+	if strings.TrimSpace(title) == "" {
+		return
+	}
+	// Only replaces the placeholder: a name the person already gave stays.
+	if _, err := sm.RenameChatIfTitle(sessionID, "Agent Chat", title); err != nil {
+		logx.Printf("code-chat title: %v", err)
+	}
+}
+
+// withoutMentions drops "@file" words from s unless that would leave nothing.
+func withoutMentions(s string) string {
+	var kept []string
+	for _, w := range strings.Fields(s) {
+		if !strings.HasPrefix(w, "@") {
+			kept = append(kept, w)
+		}
+	}
+	if len(kept) == 0 {
+		return s
+	}
+	return strings.Join(kept, " ")
+}
+
 // ListChats returns a list of all sessions.
 func (a *App) ListChats() []sessions.SessionInfo {
 	sm := a.getSessionManager()

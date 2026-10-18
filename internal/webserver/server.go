@@ -367,6 +367,8 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// by itself, and gating it risks soft-locking a prompt an account was
 	// legitimately already mid-way through answering.
 	route("/api/agent/chat", s.requirePermission(s.handleAgentChat, hasAgentPerm))
+	// Empty chat <-> project (agent) chat; same permission as creating an agent chat.
+	route("/api/chats/project", s.requirePermission(s.handleChatProject, hasAgentPerm))
 	route("/api/agent/enabled", s.requirePermission(s.handleAgentEnabled, hasAgentPerm))
 	route("/api/agent/permission", s.handleAgentPermission)
 	route("/api/agent/permissions", s.requirePermission(s.handleAgentPermissions, hasAgentPerm))

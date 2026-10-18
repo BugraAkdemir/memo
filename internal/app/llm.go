@@ -1894,6 +1894,8 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 				}
 				if !code && len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
 					a.goBackground("generateChatTitleForSession", func() { a.generateChatTitleForSession(sessionID) })
+				} else if code && len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
+					a.nameCodeChat(sessionID) // no LLM call: see nameCodeChat
 				}
 			} else {
 				sm.AddMessage("assistant", reply, genImage, "", agentEvents...)

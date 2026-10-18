@@ -202,6 +202,36 @@ func (m *Manager) NewAgentChatNoActivate(projectPath string) string {
 	return s.ID
 }
 
+// ErrChatNotEmpty is returned by SetChatProjectIfEmpty when the chat already has
+// messages: what a chat IS (a plain conversation or a project/agent chat) is
+// decided before its first message and never changes afterwards.
+var ErrChatNotEmpty = fmt.Errorf("the chat already has messages")
+
+// SetChatProjectIfEmpty turns an EMPTY chat into a project (agent) chat rooted at
+// path, or back into a plain chat when path is "". The two default titles follow
+// the kind ("New Chat" <-> "Agent Chat"); a title the person chose is left alone.
+// The desktop app's new-chat screen uses this: it starts every chat as a plain
+// one and lets the person pick Chat or Agent before typing.
+func (m *Manager) SetChatProjectIfEmpty(id, path string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	if len(s.Messages) > 0 {
+		return ErrChatNotEmpty
+	}
+	s.ProjectPath = path
+	switch {
+	case path != "" && s.Title == "New Chat":
+		s.Title = "Agent Chat"
+	case path == "" && s.Title == "Agent Chat":
+		s.Title = "New Chat"
+	}
+	return m.save(s)
+}
+
 func (m *Manager) GetProjectPath(id string) string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

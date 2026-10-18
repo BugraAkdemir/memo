@@ -3,6 +3,7 @@ package webserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"memo/internal/agent"
@@ -15,6 +16,7 @@ import (
 	"memo/internal/models"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
+	"memo/internal/sessions"
 	"memo/internal/shutdown"
 	"memo/internal/stt"
 	"memo/internal/taskloop"
@@ -2525,6 +2527,46 @@ func (s *Server) handleOrchestraConfig(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
 	}
+}
+
+// chatProjectSetter is the optional bridge method behind POST /api/chats/project.
+type chatProjectSetter interface {
+	SetChatProject(chatID, projectPath string) error
+}
+
+// handleChatProject turns an EMPTY chat into a project (agent) chat, or back into a
+// plain one with project_path "". A chat that already has messages is refused
+// (409): which kind a chat is gets decided before its first message.
+func (s *Server) handleChatProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ChatID      string `json:"chat_id"`
+		ProjectPath string `json:"project_path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ChatID == "" {
+		http.Error(w, "chat_id required", http.StatusBadRequest)
+		return
+	}
+	setter, ok := s.fullBridge.(chatProjectSetter)
+	if !ok {
+		http.Error(w, "not supported", http.StatusNotImplemented)
+		return
+	}
+	if err := setter.SetChatProject(req.ChatID, req.ProjectPath); err != nil {
+		code := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, sessions.ErrChatNotEmpty):
+			code = http.StatusConflict
+		case strings.Contains(err.Error(), "not found"):
+			code = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), code)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
 }
 
 // agentChatNoActivate is the optional bridge method behind {"activate": false}.

@@ -829,3 +829,44 @@ func TestNewAgentChatNoActivate_KeepsTheActiveChat(t *testing.T) {
 		t.Error("NewAgentChat must keep making its chat active")
 	}
 }
+
+func TestSetChatProjectIfEmpty(t *testing.T) {
+	m, err := NewManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := m.NewChat()
+
+	if err := m.SetChatProjectIfEmpty(id, "/proj"); err != nil {
+		t.Fatal(err)
+	}
+	if m.GetProjectPath(id) != "/proj" || !m.IsAgentChat(id) || m.GetTitle(id) != "Agent Chat" {
+		t.Fatalf("not an agent chat: path=%q title=%q", m.GetProjectPath(id), m.GetTitle(id))
+	}
+	if err := m.SetChatProjectIfEmpty(id, ""); err != nil {
+		t.Fatal(err)
+	}
+	if m.IsAgentChat(id) || m.GetTitle(id) != "New Chat" {
+		t.Fatalf("not back to plain: title=%q", m.GetTitle(id))
+	}
+
+	// A title the person chose is left alone.
+	m.RenameChat(id, "Benim adım")
+	_ = m.SetChatProjectIfEmpty(id, "/proj")
+	if m.GetTitle(id) != "Benim adım" {
+		t.Errorf("a chosen title was replaced: %q", m.GetTitle(id))
+	}
+
+	// After a message the kind is fixed.
+	m.SwitchChat(id)
+	m.AddMessage("user", "merhaba", "", "")
+	if err := m.SetChatProjectIfEmpty(id, "/other"); err != ErrChatNotEmpty {
+		t.Fatalf("err = %v, want ErrChatNotEmpty", err)
+	}
+	if m.GetProjectPath(id) != "/proj" {
+		t.Error("the refused call changed the path")
+	}
+	if err := m.SetChatProjectIfEmpty("missing", "/x"); err == nil {
+		t.Error("an unknown chat must be an error")
+	}
+}

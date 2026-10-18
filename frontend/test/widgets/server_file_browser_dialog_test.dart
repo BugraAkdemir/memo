@@ -81,7 +81,7 @@ void main() {
 
     await tester.tap(newFolderButton());
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'my-project');
+    await tester.enterText(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)), 'my-project');
     await tester.tap(find.text(L10n.t('server_browse_create')));
     await tester.pumpAndSettle();
 
@@ -101,7 +101,7 @@ void main() {
     api.refuse = '"docs" already exists';
     await tester.tap(newFolderButton());
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'docs');
+    await tester.enterText(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)), 'docs');
     await tester.tap(find.text(L10n.t('server_browse_create')));
     await tester.pumpAndSettle();
 
@@ -109,7 +109,7 @@ void main() {
     expect(find.text(L10n.t('server_browse_folder_name')), findsOneWidget,
         reason: 'the dialog must stay open so the name can be fixed');
     // Editing clears the message.
-    await tester.enterText(find.byType(TextField), 'docs2');
+    await tester.enterText(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)), 'docs2');
     await tester.pump();
     expect(find.textContaining('already exists'), findsNothing);
   });

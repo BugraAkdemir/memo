@@ -1769,6 +1769,14 @@ class L10n {
     'server_browse_folder_name': 'Klasör adı',
     'server_browse_create': 'Oluştur',
     'server_browse_create_error': 'Klasör oluşturulamadı: \${e}',
+    'server_browse_path_hint': 'Yol yaz veya yapıştır (~ = ana klasör), Enter',
+    'server_browse_go': 'Git',
+    'server_browse_home': 'Ana klasör',
+    'server_browse_filter_hint': 'Bu klasörde ara…',
+    'server_browse_show_hidden': 'Gizli klasörleri göster',
+    'server_browse_hide_hidden': 'Gizli klasörleri gizle',
+    'server_browse_recent': 'Son kullanılanlar:',
+    'server_browse_no_match': 'Eşleşen yok',
 
     // Version
     'version': 'Versiyon',
@@ -4267,6 +4275,14 @@ class L10n {
     'server_browse_folder_name': 'Folder name',
     'server_browse_create': 'Create',
     'server_browse_create_error': 'Could not create folder: \${e}',
+    'server_browse_path_hint': 'Type or paste a path (~ = home), Enter',
+    'server_browse_go': 'Go',
+    'server_browse_home': 'Home folder',
+    'server_browse_filter_hint': 'Search this folder…',
+    'server_browse_show_hidden': 'Show hidden folders',
+    'server_browse_hide_hidden': 'Hide hidden folders',
+    'server_browse_recent': 'Recent:',
+    'server_browse_no_match': 'No match',
 
     'version': 'Version',
 

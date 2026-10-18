@@ -38,6 +38,9 @@ const serverCoupledPrefsKeys = <String>[
   // flag that install never set — which is exactly how Swarm stayed
   // visible against a backend with beta:false.
   'memo_beta_features',
+  // Folders picked in the server file browser: paths that exist on THIS
+  // backend only, meaningless (and a lead to the wrong disk) on another.
+  'memo_recent_server_dirs',
 ];
 
 /// The install id (see SetupStatus.installId) this client last saw. Held

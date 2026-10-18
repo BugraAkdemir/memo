@@ -627,9 +627,13 @@ class MemoApiClient {
     return [];
   }
 
-  /// Create new chat, returns the new chat ID.
-  Future<String> newChat() async {
-    final res = await _dio.post('/api/chats/new');
+  /// Create new chat, returns the new chat ID. With [reuseEmpty] an untouched
+  /// blank chat is reopened instead of adding a second empty one.
+  Future<String> newChat({bool reuseEmpty = false}) async {
+    final res = await _dio.post(
+      '/api/chats/new',
+      data: reuseEmpty ? {'reuse_empty': true} : null,
+    );
     return res.data['id'] as String? ?? '';
   }
 

@@ -234,7 +234,7 @@ class ChatListNotifier extends AsyncNotifier<List<ChatSession>> {
 
   Future<String> createNew() async {
     final api = ref.read(apiClientProvider);
-    final id = await api.newChat();
+    final id = await api.newChat(reuseEmpty: true);
     await refresh();
     return id;
   }

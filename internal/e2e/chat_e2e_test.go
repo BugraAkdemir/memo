@@ -98,3 +98,44 @@ func TestChat_TwoChatsStayIndependent(t *testing.T) {
 		t.Fatal("never found a provider request containing chat B's message")
 	}
 }
+
+// TestChat_NewChatButtonReopensTheBlankChat covers the desktop "+ New Chat"
+// button ({"reuse_empty": true}): pressing it on an untouched blank chat must not
+// pile up a second empty entry, and a blank chat lists above chats with
+// messages. Plain POSTs without the flag still always create.
+func TestChat_NewChatButtonReopensTheBlankChat(t *testing.T) {
+	h := NewHarness(t)
+	h.Fake.Script = func(callNum int, req FakeChatRequest) FakeChatResponse {
+		return FakeChatResponse{Text: "ack"}
+	}
+	newChatButton := func() string {
+		resp := h.postJSON("/api/chats/new", map[string]any{"reuse_empty": true})
+		var out struct {
+			ID string `json:"id"`
+		}
+		decodeInto(t, resp, &out)
+		return out.ID
+	}
+
+	first := newChatButton()
+	if again := newChatButton(); again != first {
+		t.Fatalf("New Chat on a blank chat made %q, want the same %q", again, first)
+	}
+	h.SendMessageStream(first, "hello")
+	second := newChatButton()
+	if second == first {
+		t.Fatalf("a chat with messages was reopened as the blank one")
+	}
+	if plain := h.NewChat(); plain == second {
+		t.Fatalf("a plain POST /api/chats/new must always create, got %q again", plain)
+	}
+
+	var list []struct {
+		ID       string `json:"id"`
+		MsgCount int    `json:"msg_count"`
+	}
+	decodeInto(t, h.getJSON("/api/chats"), &list)
+	if len(list) < 3 || list[0].MsgCount != 0 || list[len(list)-1].ID != first || list[len(list)-1].MsgCount == 0 {
+		t.Fatalf("blank chats should list first and the used chat last, got %+v", list)
+	}
+}

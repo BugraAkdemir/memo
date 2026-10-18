@@ -870,3 +870,68 @@ func TestSetChatProjectIfEmpty(t *testing.T) {
 		t.Error("an unknown chat must be an error")
 	}
 }
+
+func TestNewOrReuseEmptyChatReusesTheBlankOne(t *testing.T) {
+	m, err := NewManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := m.NewOrReuseEmptyChat()
+	if again := m.NewOrReuseEmptyChat(); again != first {
+		t.Fatalf("pressing New Chat on an empty chat made %s, want %s", again, first)
+	}
+	if n := len(m.ListChats()); n != 1 {
+		t.Fatalf("%d chats listed, want 1", n)
+	}
+	m.AddMessage("user", "hello", "", "")
+	second := m.NewOrReuseEmptyChat()
+	if second == first {
+		t.Fatal("a chat with a message was reused as the blank one")
+	}
+	if m.GetActiveID() != second {
+		t.Fatal("the new chat is not active")
+	}
+	if n := len(m.ListChats()); n != 2 {
+		t.Fatalf("%d chats listed, want 2", n)
+	}
+}
+
+func TestNewOrReuseEmptyChatLeavesAgentChatsAlone(t *testing.T) {
+	m, err := NewManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.NewOrReuseEmptyChat() // the plain blank chat
+	agent := m.NewAgentChatNoActivate("/tmp/proj")
+	got := m.NewOrReuseEmptyChat()
+	if got == agent {
+		t.Fatal("an empty agent chat was taken over by a plain New Chat")
+	}
+	if m.GetProjectPath(agent) != "/tmp/proj" {
+		t.Fatal("the agent chat lost its project")
+	}
+}
+
+func TestBlankChatListsFirstAndSameMinuteChatsKeepOrder(t *testing.T) {
+	m, err := NewManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := m.NewOrReuseEmptyChat()
+	m.AddMessage("user", "a", "", "")
+	b := m.NewOrReuseEmptyChat()
+	m.AddMessage("user", "b", "", "")
+	blank := m.NewOrReuseEmptyChat()
+	// All three fall in the same minute: the blank one first, then the most
+	// recently used (b), then a — repeatedly, not by luck of map order.
+	for i := 0; i < 50; i++ {
+		list := m.ListChats()
+		if len(list) < 3 || list[0].ID != blank || list[1].ID != b || list[2].ID != a {
+			t.Fatalf("round %d: order = %v, want [%s %s %s]", i, list, blank, b, a)
+		}
+	}
+	m.AddMessageToSession(a, "user", "again", "", "")
+	if list := m.ListChats(); list[0].ID != blank || list[1].ID != a {
+		t.Fatalf("after touching a: order = %v", list)
+	}
+}

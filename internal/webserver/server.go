@@ -734,6 +734,17 @@ func (s *Server) handleNewChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
+	// {"reuse_empty": true} (the desktop "+ New Chat" button): an untouched blank
+	// chat is reopened instead of adding a second empty entry. Without it every
+	// call creates a chat, as before.
+	var req struct {
+		ReuseEmpty bool `json:"reuse_empty"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if rb, ok := s.bridge.(interface{ NewOrReuseEmptyChat() string }); ok && req.ReuseEmpty {
+		writeJSON(w, map[string]string{"id": rb.NewOrReuseEmptyChat()})
+		return
+	}
 	id := s.bridge.NewChat()
 	writeJSON(w, map[string]string{"id": id})
 }

@@ -50,6 +50,12 @@ type Session struct {
 	Messages    []ChatMessage `json:"messages"`
 	ProjectPath string        `json:"project_path,omitempty"`
 
+	// seq orders sessions touched within the same minute: the timestamps above
+	// only have minute resolution, so without it a chat created or messaged
+	// after another one in the same minute could list below it (map iteration
+	// order decided). In-memory only; sessions loaded from disk start at 0.
+	seq int64
+
 	// CLIProvider is this chat's own active provider (a provider.ProviderType
 	// value, e.g. "claude-code-cli"), independent of the app-wide active
 	// provider — each chat remembers its own, so switching provider in one
@@ -109,6 +115,8 @@ type Manager struct {
 	sessions map[string]*Session
 	active   string
 	mu       sync.RWMutex
+	// seqCounter feeds Session.seq; guarded by mu.
+	seqCounter int64
 }
 
 func NewManager(dir string) (*Manager, error) {
@@ -157,8 +165,17 @@ func (m *Manager) newSession(title string) *Session {
 		UpdatedAt: now,
 		Messages:  []ChatMessage{},
 	}
+	m.seqCounter++
+	s.seq = m.seqCounter
 	m.sessions[s.ID] = s
 	return s
+}
+
+// touch marks a session as just used. Caller holds m.mu for writing.
+func (m *Manager) touch(s *Session) {
+	s.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	m.seqCounter++
+	s.seq = m.seqCounter
 }
 
 func (m *Manager) NewChat() string {
@@ -167,6 +184,33 @@ func (m *Manager) NewChat() string {
 	s := m.newSession("New Chat")
 	m.active = s.ID
 	return s.ID
+}
+
+// NewOrReuseEmptyChat is what the "+ New Chat" button calls: when a plain,
+// untouched chat (no messages, not an agent/CLI chat, still the default title)
+// already exists, it becomes the active chat again instead of piling up a second
+// blank entry. Pressing the button on an empty chat therefore changes nothing.
+func (m *Manager) NewOrReuseEmptyChat() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var best *Session
+	for _, s := range m.sessions {
+		if len(s.Messages) != 0 || s.ProjectPath != "" || s.CLIProvider != "" ||
+			s.Title != "New Chat" {
+			continue
+		}
+		if best == nil || s.seq > best.seq || (s.seq == best.seq && s.ID > best.ID) {
+			best = s
+		}
+	}
+	if best == nil {
+		s := m.newSession("New Chat")
+		m.active = s.ID
+		return s.ID
+	}
+	m.touch(best)
+	m.active = best.ID
+	return best.ID
 }
 
 // NewBackgroundChat creates a new session without switching the active
@@ -453,7 +497,7 @@ func (m *Manager) AddMessage(role, content, imagePath, filePath string, agentEve
 		msg.AgentEvents = agentEvents[0]
 	}
 	s.Messages = append(s.Messages, msg)
-	s.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	m.touch(s)
 
 	// Auto-title from first user message
 	if s.Title == "New Chat" && role == "user" && len(content) > 0 {
@@ -494,7 +538,7 @@ func (m *Manager) updateMessageLocked(s *Session, index int, content string) err
 	}
 	s.Messages[index].Content = content
 	s.Messages[index].Timestamp = time.Now().Format("15:04")
-	s.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	m.touch(s)
 	return m.save(s)
 }
 
@@ -520,7 +564,7 @@ func (m *Manager) deleteMessageLocked(s *Session, index int) error {
 		return fmt.Errorf("message index %d out of range", index)
 	}
 	s.Messages = append(s.Messages[:index], s.Messages[index+1:]...)
-	s.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	m.touch(s)
 	return m.save(s)
 }
 
@@ -561,7 +605,7 @@ func (m *Manager) AddMessageToSession(sessionID, role, content, imagePath, fileP
 		msg.AgentEvents = agentEvents[0]
 	}
 	s.Messages = append(s.Messages, msg)
-	s.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	m.touch(s)
 
 	if s.Title == "New Chat" && role == "user" && len(content) > 0 {
 		title := content
@@ -705,7 +749,7 @@ func (m *Manager) SetCLIProvider(id, provider string) error {
 		return fmt.Errorf("session not found: %s", id)
 	}
 	s.CLIProvider = provider
-	s.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	m.touch(s)
 	return m.save(s)
 }
 
@@ -809,7 +853,19 @@ func (m *Manager) sortedList() []*Session {
 		list = append(list, s)
 	}
 	sort.Slice(list, func(i, j int) bool {
-		return list[i].UpdatedAt > list[j].UpdatedAt
+		a, b := list[i], list[j]
+		// A chat with nothing in it yet is the one the person just opened:
+		// it stays on top until it gets a message, whatever the clock says.
+		if ea, eb := len(a.Messages) == 0, len(b.Messages) == 0; ea != eb {
+			return ea
+		}
+		if a.UpdatedAt != b.UpdatedAt {
+			return a.UpdatedAt > b.UpdatedAt
+		}
+		if a.seq != b.seq {
+			return a.seq > b.seq
+		}
+		return a.ID > b.ID
 	})
 	return list
 }

@@ -26,6 +26,16 @@ func (a *App) NewChat() string {
 	return sm.NewChat()
 }
 
+// NewOrReuseEmptyChat is the desktop "+ New Chat" button: it goes back to an
+// untouched blank chat when one exists instead of adding another empty entry.
+func (a *App) NewOrReuseEmptyChat() string {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return ""
+	}
+	return sm.NewOrReuseEmptyChat()
+}
+
 // NewAgentChat creates a new agent chat session tied to a project path.
 func (a *App) NewAgentChat(projectPath string) string {
 	sm := a.getSessionManager()

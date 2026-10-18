@@ -75,6 +75,8 @@ type Executor struct {
 	// maxIters overrides the pipeline's default per-turn tool-call ceiling
 	// when > 0 (config.AgentMode.MaxIterations, set by the app at startup).
 	maxIters int
+	// contextBudget caps one turn's working context in tokens (0 = default).
+	contextBudget int
 	// maxContinuations bounds the auto-"keep going" restarts a turn gets
 	// after hitting maxIters while still making tool calls
 	// (config.AgentMode.MaxContinuations; 0 = hard stop, the old behaviour).
@@ -382,6 +384,13 @@ func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Rou
 	}
 	window := modelContextWindow(router, modelName)
 	maxTokens := int(float64(window) * 0.75) // leave room for the model's own output + margin
+	// A model with a huge window (1M) is not helped by filling it: quality drops
+	// long before the window does, every step re-sends and re-bills the whole
+	// turn, and a 55-step turn crossed the provider's hard limit and died. The
+	// loop keeps its working context under this ceiling instead.
+	if cap := e.getContextBudget(); maxTokens > cap {
+		maxTokens = cap
+	}
 	if maxTokens < 32*1024 {
 		maxTokens = 32 * 1024
 	}
@@ -534,6 +543,27 @@ func (e *Executor) SetMaxIterations(n int) {
 	e.mu.Lock()
 	e.maxIters = n
 	e.mu.Unlock()
+}
+
+// DefaultContextBudgetTokens is the ceiling on one agent turn's working context
+// unless the user sets another (config agent_mode.context_budget_tokens).
+const DefaultContextBudgetTokens = 200_000
+
+// SetContextBudget sets the ceiling, in tokens, on one agent turn's working
+// context. <= 0 restores DefaultContextBudgetTokens.
+func (e *Executor) SetContextBudget(n int) {
+	e.mu.Lock()
+	e.contextBudget = n
+	e.mu.Unlock()
+}
+
+func (e *Executor) getContextBudget() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.contextBudget <= 0 {
+		return DefaultContextBudgetTokens
+	}
+	return e.contextBudget
 }
 
 // SetMaxContinuations sets how many "keep going" auto-restarts a turn that

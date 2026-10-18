@@ -749,6 +749,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.agentExecutor = agent.NewExecutor(basePath, providerRouter, providerCfgMgr, a.getSessionManager())
 	a.agentExecutor.SetBypassPermissions(a.cfg.Mood.SystemManagement)
 	a.agentExecutor.SetMaxIterations(a.cfg.AgentMode.MaxIterations)
+	a.agentExecutor.SetContextBudget(a.cfg.AgentMode.ContextBudgetTokens)
 	a.agentExecutor.SetMaxContinuations(a.cfg.AgentMode.MaxContinuations)
 	// Restored from config rather than hardcoded off: the toggle is
 	// persisted by SetAgentEnabled now (see config.AgentModeConfig), so a

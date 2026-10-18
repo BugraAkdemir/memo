@@ -8,7 +8,6 @@ import (
 	"memo/internal/beta"
 	"memo/internal/logx"
 	"memo/internal/provider"
-	"memo/internal/truncate"
 	"regexp"
 	"runtime/debug"
 	"strings"
@@ -158,10 +157,6 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		sawUsage := false
 		firstPromptTok := 0 // iteration-0 prefill: system + agent block + tool schema + history + user
 		iters := 0
-		// Tool names whose results have been dropped by intra-turn truncation
-		// so far this run — surfaced to the model as one marker message.
-		var evictedTools []string
-		evictedSeen := map[string]bool{}
 		termUsage := func() *provider.Usage {
 			if !sawUsage {
 				return nil
@@ -180,6 +175,9 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				totalUsage.CachedPromptTokens, totalUsage.CacheWriteTokens, totalUsage.CompletionTokens)
 		}
 
+		seedLen := len(currentMessages) // the system prompt, history and the user's request: never compacted
+		sentCount := len(currentMessages)
+		lastPromptTok := 0 // the provider's own prompt-token count for the last call (0 = unknown)
 		review := completionReviewFromContext(ctx)
 		noStream := false // set once the endpoint refuses streaming with tools
 		reviewAttempts := 0
@@ -197,18 +195,57 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			default:
 			}
 
+			// Keep the request inside the context budget (see context_compact.go):
+			// sized from the provider's own count for the last call plus what was
+			// added since, and shrunk by eliding OLD tool outputs — never the seed.
+			toolDefs := p.turnTools()
+			if p.maxTokens > 0 {
+				if sentCount > len(currentMessages) {
+					sentCount = len(currentMessages)
+				}
+				cur := estimateMessagesTokens(currentMessages[sentCount:]) + lastPromptTok
+				if lastPromptTok == 0 {
+					cur = estimateMessagesTokens(currentMessages) + estimateToolDefsTokens(toolDefs)
+				}
+				if cur > p.maxTokens {
+					if shrunk, changed := compactTurn(currentMessages, seedLen, int(float64(p.maxTokens)*compactTargetFrac), estimateToolDefsTokens(toolDefs), keepRecentToolResults); changed {
+						logx.Printf("AGENT: context %d tokens over budget %d — compacted old tool outputs (iteration %d)", cur, p.maxTokens, iteration)
+						currentMessages = shrunk
+						lastPromptTok = 0
+					}
+				}
+			}
+
 			// Define request
 			req := provider.ChatRequest{
 				Model:       modelName,
 				Messages:    currentMessages,
 				Temperature: 0.2,
-				Tools:       p.turnTools(),
+				Tools:       toolDefs,
 				EffortLevel: p.effortLevel,
 			}
 
 			// Call LLM — streamed when the provider can, so text and thinking
-			// reach the user while the model is writing (see callModel).
+			// reach the user while the model is writing (see callModel). A
+			// "prompt too long" refusal is not final: shrink harder and ask
+			// again (twice at most), instead of ending a long turn there.
 			resp, thinkingForwarded, err := p.callModel(ctx, req, outCh, onEvent, &noStream)
+			for retry := 0; err != nil && retry < 2 && looksLikeContextOverflow(err.Error()) && ctx.Err() == nil; retry++ {
+				base := lastPromptTok
+				if base == 0 {
+					base = estimateMessagesTokens(currentMessages) + estimateToolDefsTokens(toolDefs)
+				}
+				shrunk, changed := compactTurn(currentMessages, seedLen, base/2, estimateToolDefsTokens(toolDefs), 2)
+				if !changed {
+					break
+				}
+				logx.Printf("AGENT: provider refused the prompt as too long (%v) — compacted to retry (attempt %d)", err, retry+1)
+				currentMessages = shrunk
+				lastPromptTok = 0
+				req.Messages = currentMessages
+				resp, thinkingForwarded, err = p.callModel(ctx, req, outCh, onEvent, &noStream)
+			}
+			sentCount = len(currentMessages)
 			if err != nil {
 				logx.Printf("AGENT: ChatCompletion error: %v", err)
 				logContext("error")
@@ -235,6 +272,11 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				if firstPromptTok == 0 && resp.Usage.PromptTokens > 0 {
 					firstPromptTok = resp.Usage.PromptTokens
 				}
+				// The size of the request that was just made, as the provider
+				// counted it — the best measure of where the context stands.
+				lastPromptTok = resp.Usage.PromptTokens
+			} else {
+				lastPromptTok = 0
 			}
 
 			// Public reasoning returned by the provider is separate from reply text.
@@ -347,68 +389,6 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 
 			// Snapshot basePath once per iteration to avoid repeated mutex acquisitions.
 			basePath := p.sandbox.GetBasePath()
-
-			// Enforce context token budget: if currentMessages exceeds maxTokens,
-			// drop oldest assistant+tool message pairs, keeping system prompt and
-			// the most recent turn. This prevents unbounded message growth when
-			// many tool calls are made across iterations.
-			if p.maxTokens > 0 {
-				truncMsgs := make([]truncate.Message, len(currentMessages))
-				for i, m := range currentMessages {
-					var content string
-					if s, ok := m.Content.(string); ok {
-						content = s
-					}
-					truncMsgs[i] = truncate.Message{Role: m.Role, Content: content, Index: i}
-				}
-				truncMsgs = truncate.TruncateMessages(truncMsgs, p.maxTokens)
-				// Recover original messages by position (Index), not content equality.
-				// Rebuilding from truncate.Message would strip ToolCalls, causing
-				// orphaned tool-role messages and LLM API rejections. Matching on
-				// content (the old approach) is unsafe because distinct tool
-				// results can share identical text (e.g. two calls both returning
-				// "OK"), which could truncate the wrong message.
-				kept := make(map[int]struct{}, len(truncMsgs))
-				for _, tm := range truncMsgs {
-					kept[tm.Index] = struct{}{}
-				}
-				// Note which tools' outputs are being dropped so the model gets a
-				// one-line marker instead of silently losing them and blindly
-				// re-running the same reads a few iterations later.
-				for i, m := range currentMessages {
-					if _, ok := kept[i]; ok {
-						continue
-					}
-					for _, tc := range m.ToolCalls {
-						if n := tc.Function.Name; n != "" && !evictedSeen[n] {
-							evictedSeen[n] = true
-							evictedTools = append(evictedTools, n)
-						}
-					}
-				}
-				filtered := make([]provider.Message, 0, len(truncMsgs)+1)
-				stubInserted := false
-				for _, tm := range truncMsgs {
-					if tm.Index < 0 || tm.Index >= len(currentMessages) {
-						continue
-					}
-					m := currentMessages[tm.Index]
-					// Drop any earlier trim-marker; a single fresh one covering the
-					// whole evicted set is re-inserted below.
-					if s, ok := m.Content.(string); ok && strings.HasPrefix(s, contextTrimMarker) {
-						continue
-					}
-					filtered = append(filtered, m)
-					if !stubInserted && m.Role == "system" && len(evictedTools) > 0 {
-						filtered = append(filtered, provider.Message{Role: "user", Content: evictionStub(evictedTools)})
-						stubInserted = true
-					}
-				}
-				if !stubInserted && len(evictedTools) > 0 {
-					filtered = append([]provider.Message{{Role: "user", Content: evictionStub(evictedTools)}}, filtered...)
-				}
-				currentMessages = filtered
-			}
 
 			// Execute each tool call. processedToolCallIDs tracks which calls
 			// in this batch already got a real tool-role response, so the
@@ -706,22 +686,15 @@ func codeModeToolAutoApproveSet(subMode string) map[string]bool {
 	}
 }
 
-// contextTrimMarker prefixes the synthetic user message that stands in for
-// tool results dropped by intra-turn truncation. Recognisable so a later
-// truncation pass can replace it with a fresh combined one rather than
-// stacking markers. It is a user-role note (not assistant): it must never
-// become a leading assistant message nor sit two-assistant-deep, both of
-// which Anthropic rejects with a 400 (BUG-SCAN2) — and provider adapters
-// that require strict role alternation (see claude.go) coalesce it into the
-// adjacent real user turn.
+// contextTrimMarker prefixes the notes context_compact.go leaves in the loop:
+// the stub that replaces an elided tool output, and the user-role note that
+// stands in for whole exchanges dropped as a last resort. Recognisable so a
+// later compaction never stacks them. The note is user-role (not assistant): it
+// must never become a leading assistant message nor sit two-assistant-deep,
+// both of which Anthropic rejects with a 400 (BUG-SCAN2) — and provider
+// adapters that require strict role alternation (see claude.go) coalesce it
+// into the adjacent real user turn.
 const contextTrimMarker = "[context-trim]"
-
-// evictionStub is that message's body: it tells the model which tools'
-// outputs from earlier in this same turn were trimmed to fit the context
-// window, so it re-runs one deliberately instead of assuming it never ran.
-func evictionStub(tools []string) string {
-	return fmt.Sprintf("%s Earlier in this turn some tool outputs were trimmed to fit the context window (tools used: %s). If you need any of that information again, call the tool again rather than assuming it was never run.", contextTrimMarker, strings.Join(tools, ", "))
-}
 
 // trySend delivers chunk to outCh, preferring the send over ctx cancellation.
 // A plain `select { case outCh <- chunk: case <-ctx.Done(): }` lets Go's

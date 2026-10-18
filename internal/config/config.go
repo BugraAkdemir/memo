@@ -361,6 +361,13 @@ type AgentModeConfig struct {
 	// default and is moved to 90 on load).
 	CompactThresholdPct int `yaml:"compact_threshold_pct" json:"compact_threshold_pct"`
 
+	// ContextBudgetTokens caps the working context of ONE agent turn (tokens).
+	// A long coding task re-sends everything it has produced on every step; past
+	// this ceiling the oldest tool outputs are replaced by one-line stubs (never
+	// the conversation or the user's request). Default 200000, however large the
+	// model's window is: quality and cost both degrade long before a 1M window.
+	ContextBudgetTokens int `yaml:"context_budget_tokens" json:"context_budget_tokens"`
+
 	// MaxIterations is the per-turn tool-call ceiling for one agent turn.
 	// Was a hardcoded 40. Default 40.
 	MaxIterations int `yaml:"max_iterations" json:"max_iterations"`
@@ -1063,6 +1070,7 @@ func Default() *AppConfig {
 			ConversationCompactEnabled: true,
 			CompactThresholdPct:        defaultCompactThresholdPct,
 			MaxIterations:              40,
+			ContextBudgetTokens:        200000,
 			TurnBudgetSecs:             1200,
 			MaxContinuations:           2,
 			CodeModeMaxIterations:      80,
@@ -1329,6 +1337,10 @@ func (c *AppConfig) validate() []string {
 	if c.AgentMode.MaxIterations <= 0 {
 		c.AgentMode.MaxIterations = 40
 		fixes = append(fixes, "AgentMode.MaxIterations")
+	}
+	if c.AgentMode.ContextBudgetTokens <= 0 {
+		c.AgentMode.ContextBudgetTokens = 200000
+		fixes = append(fixes, "AgentMode.ContextBudgetTokens")
 	}
 	if c.AgentMode.TurnBudgetSecs < 0 {
 		c.AgentMode.TurnBudgetSecs = 0 // negative is nonsense; treat as disabled

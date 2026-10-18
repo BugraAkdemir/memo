@@ -28,6 +28,11 @@
 - `AGENT-CONTEXT` gerçek turda `streamed=true` gösterdi (akış Subscriptions'ta çalışıyor) ama `cached_tok=0`: eskiden (akışsız) %85 önbellek raporlanıyordu. Akışlı kullanım parçasında önbellek ayrıntısı CLIProxyAPI'den gelmiyor olabilir (yalnız ölçüm mü, gerçek maliyet mi bilinmiyor; ölçülmedi).
 - Gemini araç çağrılarının yanına hiç metin yazmıyor ve düşünce göndermiyor (kayıtlı sohbette 0 `narration`, 0 düşünce) → istemlere "İlerlemeyi Anlat" kuralı eklendi; gerçek modelde etkisi ölçülmedi. Boş adım (6 araçtan sonra) artık nudge ile yeniden denenir; hangi koşulda boş döndüğünün kök nedeni bilinmiyor (`AGENT: empty reply at iteration` satırı artık loglanır).
 
+**Birleşik sohbet listesi + yeni sohbet ekranı (2026-10-19)**
+- Doğrulanmadı: hiçbiri gerçek pencerede görülmedi (yalnız widget testleri + gerçek backend e2e). Özellikle: ortalanmış besteci/öneri düzeninin görünümü, "Ajan" seçip klasör seçince başlık/üst çubuk, ilk mesajdan sonra alta geçiş animasyonu yok (anında), klasör seçici ile bütünleşme.
+- Bilerek: ajan sekmesi kalktı (IndexedStack 1. indeks boş kutu); eski ajan sohbetleri `ProjectPath`'leri sayesinde listede ajan simgesiyle görünür. `WelcomeView` yalnız CLI sohbetlerinde kaldı. Landing'de `/` şablon listesi hâlâ aşağı kaydırmada seçimi görünür tutmuyor (yalnız `@` listesi düzeltildi).
+- Ajan sohbet başlığı ilk kelimelerden (LLM yok); "güzel" başlık istenirse Code Mode'un yan-çağrı yasağıyla çakışır, karar kullanıcıda.
+
 **Kullanıcıda**
 - Geçmişte `origin` push URL'sinde düz metin token ve artık satılmış bir alan adı vardı. Bu oturumda `git remote -v` yalnız GitHub URL'sini gösterdi; push doğrudan GitHub HTTPS adresine yapıldı. Eski token'ın döndürülmesi kullanıcıda.
 - Eski sürümlerin REPL `update` komutu ve `download.bugradev.com/get-memo.sh` satırları artık başkasının sunucusuna gidiyor → yeni sürümü duyur, eski satırları kaldır.
@@ -59,17 +64,8 @@
 
 ---
 
-# Son oturum — 2026-10-18 (3) — Sahadan: boş cevap, sessiz model, `@` listesi
-- Kullanıcı ekran görüntüsüyle: model 6 araçtan sonra "cevap üretemedim" dedi ("açık zaten dene" deyince cevapladı); sohbette yalnız komut listesi var, modelin yazdığı bir şey yok; `@` yazınca metin kutusu klavyeyi bırakıyor ve listede aşağı inince seçim görünmüyor.
-- Kök nedenler: (1) boş adım için kurtarma yoktu; (2) Gemini sessiz araç çağırıyor (kayıtlı olaylarda 0 narration) ve istemde "ne yapacağını yaz" kuralı yoktu; (3) `@` açılırken popup Column'un İLK çocuğu olarak eklendiği için kardeş girdi çubuğu yeniden yaratılıyor, `EditableTextState` değişiyor, klavye bağlantısı açılmıyor; liste seçili satıra kaydırılmıyordu.
-- Yapıldı: boş adım nudge'ı + "İlerlemeyi Anlat" istemi (`1b38fa44`); `FileMentionPopup` (sabit satır yüksekliği, seçili satırı görünür tutar, kaydırma çubuğu) + popup için sabit slot + anahtarlı girdi alanı (regresyon testi eski yapıda DÜŞÜYOR, yenisinde geçiyor).
-- Doğrulama: Go testleri yeşil, Flutter 734 test, analyze (3 eski info), Kural #8 grep boş. Gerçek pencerede `@` davranışı bu oturumda görülmedi (yalnız widget testi).
-- Sonradan (kullanıcı tekrar bildirdi): Tab ile dosya seçince kutu yine klavyeyi bırakıyordu — hardware işleyicisi `true` dönse de aynı Tab odak gezintisini de çalıştırıyor; Enter'da yoktu. Tab artık `_PopupTabIntent` ile yutuluyor (+ kare sonunda odak geri). Seçilen `@dosya` kutuda ve gönderilen kullanıcı mesajında mavi (`lib/core/mention_style.dart`). Testler: Tab/Enter ile seçim sonrası aynı `EditableTextState` + odak.
-
----
-
-# Son oturum — 2026-10-18 (2) — REPL: kodlama odaklı, arayüzden ayrı, canlı gösterim, `/` skill
-- İstek: REPL ve masaüstü uygulaması aynı anda kullanılabilsin, ayarları birbirini etkilemesin; REPL kodlama odaklı (Code Mode/agent/web varsayılan açık); ara metin görünsün; `/` Memo özelliklerini ve skilleri listelesin, skiller yalnız o oturum için.
-- Kök neden (koddan): backend bayrakları GLOBAL — REPL otomatik izni, web toggle'ını ve aktif sohbeti yazıyordu; sohbet oluşturmak da aktif sohbeti değiştiriyordu (bunu yalnız GERÇEK REPL'i pty'de bir "masaüstü" yanında çalıştırınca gördüm, birim testleri geçmişti). Agent+Code Mode zaten sohbet başına çözülüyor (REPL sohbetleri agent sohbeti), web araçları agent araç setinde hep var.
-- Yapıldı (6 commit, itilmedi): istek başına `options{auto_permission,web_tools}` (`21277c73`); REPL oturum-yerel ayarlar, global yazma yok, `/session` yalnız proje sohbetleri (`06e83422`); canlı düşünce/anlatım + araç başına kalıcı satır (`145269a2`); `/skill` ve `/` menüsünde skiller (`2e17d1d1`); `{"activate":false}` sohbet oluşturma (`e2d84718`). Ayrıntı/tuzaklar: AGENTS.md "The terminal REPL is a second CLIENT…".
-- Doğrulama: Go build/vet + tam `-race` (yalnız yükte düşen eski `webchat` testi hariç temiz; tek başına 3×geçti), e2e'de override'sız çalışınca testlerin DÜŞTÜĞÜ gösterildi. Canlı: gerçek `memo --headless` + `fakeprovider` + gerçek REPL (pty) — masaüstünün agent/otomatik-izin/web ayarları ve aktif sohbeti REPL oturumundan önce/sonra birebir aynı; REPL 1. turda izin sordu, Shift+Tab sonrası 2. turda sormadı; anlatım, `✓ run_command echo ikinci` satırı ve cevap birer kez.
+# Son oturum — 2026-10-19 — Tek sohbet listesi, yeni sohbet ekranı, ajan başlığı
+- İstek: ajan sohbet geçmişi ile normal sohbet geçmişi ayrı → tek yerde; yeni sohbette üstte Sohbet/Ajan seçimi (sonradan değişmesin), ortada besteci + öneriler + model seçici, ilk mesajdan sonra alta; başlıkta ajan simgesi; ajan sohbetine başlık.
+- Yapıldı (3 commit): backend `POST /api/chats/project` (boş sohbeti ajan sohbetine çevir/geri al, mesaj varsa 409) + ajan sohbeti ilk kelimelerden başlık (`3fc427e4`); ajan sekmesi kaldırıldı, liste/başlık simgesi, Code Mode + Görevler düğmesi üst çubuğa (`16423830`); yeni sohbet ekranı (`c404c5cd`). Ayrıntı/tuzaklar: AGENTS.md "One chat list…".
+- Yakalanan gerçek hata: metin alanı Column↔Row geçişinde yeniden yaratılıyordu (taslak+klavye kaybı; pencere eşiği geçilince de) → `_fieldKey`.
+- Doğrulama: Go e2e/sessions/app/webserver yeşil; Flutter 759 test, analyze (3 eski info), Kural #8 grep boş. Bu oturumda ayrıca itilmeyen commit'ler: klasör seçici (`943ecc5a`), ajan tarayıcı paneli (`4c3b90b0`; ajan ekranı silindiği için paneli artık normal sohbet gösteriyor).

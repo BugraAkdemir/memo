@@ -238,6 +238,7 @@ A streamed chunk is ordinary reply text unless its `finish_reason` names one of 
 | :--- | :--- | :--- |
 | `GET` | `/api/cli/status` | Whether `claude`/`codex` are installed, with version |
 | `GET` | `/api/cli/running` | CLI jobs currently running in the background |
+| `POST` | `/api/chats/project` | `{chat_id, project_path}` — turns an EMPTY chat into a project (agent) chat, or back into a plain one with `""`. 409 once the chat has messages, 404 for an unknown chat. Same permission as `/api/agent/chat` |
 | `GET` | `/api/cli/commands` | The CLI's own `/` commands (project/personal/skill/built-in) |
 | `GET`/`PUT` | `/api/chats/cli-provider`, `/api/chats/cli-workdir`, `/api/chats/cli-model` | Per-chat CLI provider/working-dir/model |
 | `POST` | `/api/send/cli-stream` | Send a message to a CLI-provider chat (SSE) |

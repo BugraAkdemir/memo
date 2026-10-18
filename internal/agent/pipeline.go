@@ -164,22 +164,23 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			u := totalUsage
 			return &u
 		}
+		seedLen := len(currentMessages) // the system prompt, history and the user's request: never compacted
+		sentCount := len(currentMessages)
+		lastPromptTok := 0 // the provider's own prompt-token count for the last call (0 = unknown)
+		noStream := false  // set once the endpoint refuses streaming with tools
+		compactions := 0   // how many times the context was shrunk this turn (in-budget compaction or a too-long retry)
 		// logContext emits the one honest per-turn accounting line for agent
 		// mode. The app-side CONTEXT log is written before routeStream appends
 		// the agent instruction block and before the tool schema is attached,
 		// so it undercounts the real prefill by thousands of tokens; this one
 		// is measured from what the provider actually billed.
 		logContext := func(end string) {
-			logx.Printf("AGENT-CONTEXT: end=%s iters=%d msgs=%d first_prompt_tok=%d total_prompt_tok=%d cached_tok=%d cache_write_tok=%d completion_tok=%d",
-				end, iters, len(currentMessages), firstPromptTok, totalUsage.PromptTokens,
-				totalUsage.CachedPromptTokens, totalUsage.CacheWriteTokens, totalUsage.CompletionTokens)
+			logx.Printf("AGENT-CONTEXT: end=%s iters=%d msgs=%d first_prompt_tok=%d last_prompt_tok=%d total_prompt_tok=%d cached_tok=%d cache_write_tok=%d completion_tok=%d compactions=%d streamed=%t",
+				end, iters, len(currentMessages), firstPromptTok, lastPromptTok, totalUsage.PromptTokens,
+				totalUsage.CachedPromptTokens, totalUsage.CacheWriteTokens, totalUsage.CompletionTokens, compactions, !noStream)
 		}
 
-		seedLen := len(currentMessages) // the system prompt, history and the user's request: never compacted
-		sentCount := len(currentMessages)
-		lastPromptTok := 0 // the provider's own prompt-token count for the last call (0 = unknown)
 		review := completionReviewFromContext(ctx)
-		noStream := false // set once the endpoint refuses streaming with tools
 		reviewAttempts := 0
 		selfCheck := false
 		continuations := 0
@@ -212,6 +213,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 						logx.Printf("AGENT: context %d tokens over budget %d — compacted old tool outputs (iteration %d)", cur, p.maxTokens, iteration)
 						currentMessages = shrunk
 						lastPromptTok = 0
+						compactions++
 					}
 				}
 			}
@@ -242,6 +244,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				logx.Printf("AGENT: provider refused the prompt as too long (%v) — compacted to retry (attempt %d)", err, retry+1)
 				currentMessages = shrunk
 				lastPromptTok = 0
+				compactions++
 				req.Messages = currentMessages
 				resp, thinkingForwarded, err = p.callModel(ctx, req, outCh, onEvent, &noStream)
 			}

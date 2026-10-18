@@ -25,6 +25,8 @@
 //	[[think]]                  (Anthropic) lead with a signed thinking block
 //	[[say TEXT]]               answer exactly TEXT
 //	[[delay N]]                wait N seconds before answering (any request)
+//	[[narrate TEXT]]           with a tool call, also write TEXT first (what a
+//	                           real model says next to its tool calls)
 //	[[loop N]]                 keep calling list_directory until N tool
 //	                           results are in the conversation (long agent turn)
 //
@@ -113,7 +115,7 @@ func handleModels(w http.ResponseWriter, r *http.Request) {
 
 // ---------------------------------------------------------------- directives
 
-var directiveRe = regexp.MustCompile(`\[\[(tool|error|slow|cut|badjson|empty|long|think|say|delay|loop)\b\s*(.*?)\]\]`)
+var directiveRe = regexp.MustCompile(`\[\[(tool|error|slow|cut|badjson|empty|long|think|say|delay|loop|narrate)\b\s*(.*?)\]\]`)
 
 type toolDirective struct {
 	Name string
@@ -133,6 +135,7 @@ type plan struct {
 	hasSay  bool
 	delay   int
 	loop    int
+	narrate string
 }
 
 func parseDirectives(text string) plan {
@@ -167,6 +170,8 @@ func parseDirectives(text string) plan {
 			p.delay, _ = strconv.Atoi(arg)
 		case "loop":
 			p.loop, _ = strconv.Atoi(arg)
+		case "narrate":
+			p.narrate = arg
 		}
 	}
 	return p
@@ -282,6 +287,8 @@ func handleOpenAI(w http.ResponseWriter, r *http.Request) {
 	text := ""
 	if len(toolCalls) == 0 {
 		text = replyText(p, userText, toolResult)
+	} else {
+		text = p.narrate
 	}
 	finish := "stop"
 	if len(toolCalls) > 0 {
@@ -319,12 +326,6 @@ func handleOpenAI(w http.ResponseWriter, r *http.Request) {
 	if p.delay > 0 {
 		time.Sleep(time.Duration(p.delay) * time.Second)
 	}
-	if len(toolCalls) > 0 {
-		for i, tc := range toolCalls {
-			tc["index"] = i
-		}
-		send(delta(map[string]any{"tool_calls": toolCalls}, nil))
-	}
 	pieces := chunks(text, max(p.slow, 4))
 	for i, c := range pieces {
 		if p.badJSON && i == 1 {
@@ -338,6 +339,13 @@ func handleOpenAI(w http.ResponseWriter, r *http.Request) {
 			hijackClose(w)
 			return
 		}
+	}
+	// Like a real model: the words first, then the tool calls they introduce.
+	if len(toolCalls) > 0 {
+		for i, tc := range toolCalls {
+			tc["index"] = i
+		}
+		send(delta(map[string]any{"tool_calls": toolCalls}, nil))
 	}
 	send(delta(map[string]any{}, finish))
 	if so, ok := body["stream_options"].(map[string]any); ok && so["include_usage"] == true {

@@ -256,18 +256,33 @@ func compactTurn(msgs []provider.Message, seedLen, target, toolDefTokens, keepRe
 			changed = true
 		}
 		if dropped > 0 {
-			// An earlier stub from a previous compaction is replaced, not stacked.
-			note := provider.Message{Role: "user", Content: fmt.Sprintf("%s Earlier steps of this turn were dropped to fit the context window (tools used: %s). If you need any of that information again, run the tool again rather than assuming it was never run.", contextTrimMarker, strings.Join(names, ", "))}
-			clean := out[:seedLen:seedLen]
-			clean = append(clean, note)
-			for _, m := range out[seedLen:] {
-				if s, ok := m.Content.(string); ok && m.Role == "user" && strings.HasPrefix(s, contextTrimMarker+" Earlier steps") {
+			// The note rides on the first tool result that is left, never as a
+			// new message: a user-role note after the user's request would be
+			// read as the latest instruction, and an assistant one breaks role
+			// alternation. A note from an earlier compaction is replaced.
+			note := fmt.Sprintf("%s Earlier steps of this turn were dropped to fit the context window (tools used: %s). If you need any of that information again, run the tool again rather than assuming it was never run.", contextTrimMarker, strings.Join(names, ", "))
+			for k := seedLen; k < len(out); k++ {
+				if out[k].Role != "tool" {
 					continue
 				}
-				clean = append(clean, m)
+				if body, ok := out[k].Content.(string); ok {
+					out[k].Content = note + "\n\n" + stripDropNote(body)
+				}
+				break
 			}
-			out = clean
 		}
 	}
 	return out, changed
+}
+
+// stripDropNote removes the note a previous compaction put at the front of a
+// tool result, so notes are replaced instead of stacked.
+func stripDropNote(body string) string {
+	const head = contextTrimMarker + " Earlier steps"
+	if strings.HasPrefix(body, head) {
+		if _, rest, ok := strings.Cut(body, "\n\n"); ok {
+			return rest
+		}
+	}
+	return body
 }

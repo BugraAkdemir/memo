@@ -154,12 +154,28 @@ func TestCompactTurn_LastResortDropsOldExchangesNotTheNewest(t *testing.T) {
 	}
 	note := 0
 	for _, m := range out {
+		if m.Role == "user" {
+			if s, ok := m.Content.(string); ok && strings.Contains(s, "Earlier steps") {
+				t.Errorf("the drop note must not be a user message (it would read as a new instruction): %q", s)
+			}
+		}
 		if s, ok := m.Content.(string); ok && strings.Contains(s, "Earlier steps of this turn were dropped") {
 			note++
 		}
 	}
 	if note != 1 {
 		t.Errorf("want exactly one drop note, got %d", note)
+	}
+	// Compacting again must replace the note, not stack another.
+	again, _ := compactTurn(out, len(seed), 30, 0, 2)
+	notes := 0
+	for _, m := range again {
+		if s, ok := m.Content.(string); ok && strings.Count(s, "Earlier steps of this turn were dropped") > 0 {
+			notes += strings.Count(s, "Earlier steps of this turn were dropped")
+		}
+	}
+	if notes > 1 {
+		t.Errorf("notes stacked: %d", notes)
 	}
 }
 

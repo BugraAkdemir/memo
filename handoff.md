@@ -24,6 +24,10 @@
 - Doğrulanmadı: gerçek bir modelle REPL turu (yalnız `fakeprovider` + gerçek pty); Windows/macOS terminali; `/` menüsündeki skill satırlarının etkileşimli seçimi (menü testi yok, yalnız `toggleSkill`/`skillRows` birimleri); `/skill` ile gerçek bir skill'in komut istemine girip kullanılması.
 - Bilerek yapılmadı: REPL'de `/agent` açma-kapama (REPL hep kodlama/agent), `memo agent on|off|auto` alt komutları global bayrakları sürmeye devam eder. `-chat <id>` ile düz (projesiz) sohbet hâlâ açılabilir; yalnız `/session` listesi proje sohbetlerine indi.
 
+**Sahada görülenler (2026-10-18, Subscriptions/Gemini)**
+- `AGENT-CONTEXT` gerçek turda `streamed=true` gösterdi (akış Subscriptions'ta çalışıyor) ama `cached_tok=0`: eskiden (akışsız) %85 önbellek raporlanıyordu. Akışlı kullanım parçasında önbellek ayrıntısı CLIProxyAPI'den gelmiyor olabilir (yalnız ölçüm mü, gerçek maliyet mi bilinmiyor; ölçülmedi).
+- Gemini araç çağrılarının yanına hiç metin yazmıyor ve düşünce göndermiyor (kayıtlı sohbette 0 `narration`, 0 düşünce) → istemlere "İlerlemeyi Anlat" kuralı eklendi; gerçek modelde etkisi ölçülmedi. Boş adım (6 araçtan sonra) artık nudge ile yeniden denenir; hangi koşulda boş döndüğünün kök nedeni bilinmiyor (`AGENT: empty reply at iteration` satırı artık loglanır).
+
 **Kullanıcıda**
 - Geçmişte `origin` push URL'sinde düz metin token ve artık satılmış bir alan adı vardı. Bu oturumda `git remote -v` yalnız GitHub URL'sini gösterdi; push doğrudan GitHub HTTPS adresine yapıldı. Eski token'ın döndürülmesi kullanıcıda.
 - Eski sürümlerin REPL `update` komutu ve `download.bugradev.com/get-memo.sh` satırları artık başkasının sunucusuna gidiyor → yeni sürümü duyur, eski satırları kaldır.
@@ -52,6 +56,14 @@
 - Minimal Mod otomatik sıkıştırmayı atlıyor; görsel modeli seçicide etiketsiz. İkinci model menüsü artık üst menüyle aynı Auto Route/kayıtlı model/abonelik listesini, okunur abonelik adlarını ve arama/kaydırmayı kullanıyor.
 - **CI `Test (Go)` flake'i — kök neden bulundu ve düzeltildi (2026-10-11)**, ayrıntı `handoff-archive.md` içinde. Açık kalan bir şey: testler `config.DataDir()` önbelleğini (`dataDirCached`) sıfırlamadan `t.Setenv("MEMO_DATA_DIR", t.TempDir())` yapıyor (örn. `newSendMessageTestApp`), bu yüzden sonraki testler ilk testin ÇOKTAN SİLİNMİŞ klasörüne (`config/config.yaml`, `001/agent-audit.jsonl`, `machine.key`…) yazıp onu `/tmp`'de yeniden oluşturuyor — her koşuda 4 dosya sızıyor, testler birbirinden gerçekten izole değil. Düzeltilmedi (`config.ResetForTests()` çağrısı eksik); sızıntıyı görmek için `TMPDIR=<dizin>` ile koş.
 - Yük altında düşen testler: `livemode` `TestReconnectingSession_SendAudioRoutesToCurrentInner` (kök neden araştırılmadı), `TestBootstrapTokenAuth_Succeeds` (TempDir), canary DuckDuckGo captcha, `webchat` `TestConnect_PressingItAgainReplacesAWaitingAttempt` (2026-10-17: CI'da bir kez düştü, tek başına 3×`-race` geçti; şüphe: test "ilk bağlanma bekliyor"u `Connecting` ile bekliyor ama o bayrak `StartConnect` anında true — ikinci basış ilk denemeyi gezinme ortasında kesebilir; ölçülmedi). Yük altında test flake'i şüphesinde: `go test -c` + 24 meşgul döngüyle yeniden üret, sonra isteği/çıktıyı dök (bu yöntemle 2026-10-11'deki e2e yarışı bulundu).
+
+---
+
+# Son oturum — 2026-10-18 (3) — Sahadan: boş cevap, sessiz model, `@` listesi
+- Kullanıcı ekran görüntüsüyle: model 6 araçtan sonra "cevap üretemedim" dedi ("açık zaten dene" deyince cevapladı); sohbette yalnız komut listesi var, modelin yazdığı bir şey yok; `@` yazınca metin kutusu klavyeyi bırakıyor ve listede aşağı inince seçim görünmüyor.
+- Kök nedenler: (1) boş adım için kurtarma yoktu; (2) Gemini sessiz araç çağırıyor (kayıtlı olaylarda 0 narration) ve istemde "ne yapacağını yaz" kuralı yoktu; (3) `@` açılırken popup Column'un İLK çocuğu olarak eklendiği için kardeş girdi çubuğu yeniden yaratılıyor, `EditableTextState` değişiyor, klavye bağlantısı açılmıyor; liste seçili satıra kaydırılmıyordu.
+- Yapıldı: boş adım nudge'ı + "İlerlemeyi Anlat" istemi (`1b38fa44`); `FileMentionPopup` (sabit satır yüksekliği, seçili satırı görünür tutar, kaydırma çubuğu) + popup için sabit slot + anahtarlı girdi alanı (regresyon testi eski yapıda DÜŞÜYOR, yenisinde geçiyor).
+- Doğrulama: Go testleri yeşil, Flutter 723 test, analyze (3 eski info), Kural #8 grep boş. Gerçek pencerede `@` davranışı bu oturumda görülmedi (yalnız widget testi).
 
 ---
 

@@ -107,6 +107,41 @@ void main() {
     expect(fieldWidth(tester), greaterThan(200));
   });
 
+  testWidgets(
+      'typing "@" opens the file list and the text field KEEPS the keyboard '
+      '(regression: the popup was inserted as the first child of the composer\'s '
+      'Column, which re-created the input bar and dropped its focus — the person '
+      'had to click the box again to keep typing)',
+      (tester) async {
+    await pumpAt(tester, const Size(1000, 800));
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    await tester.pump();
+    bool focused() => tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus;
+    expect(focused(), isTrue, reason: 'setup: tapping the field focuses it');
+    // The actual symptom: a re-created text field has a NEW EditableTextState
+    // that never opens the platform keyboard connection (its focus node already
+    // "has focus", so no focus change fires), so typing does nothing until the
+    // person clicks the box again. The same state object must survive.
+    final before = tester.state<EditableTextState>(find.byType(EditableText));
+
+    await tester.enterText(field, '@');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // The popup is open ...
+    expect(find.text(L10n.t('file_mention_none')), findsOneWidget);
+    // ... and the very same text field is still there, with focus, so the next
+    // key goes into it.
+    expect(identical(tester.state<EditableTextState>(find.byType(EditableText)), before), isTrue,
+        reason: 'the text field was re-created when the popup opened');
+    expect(focused(), isTrue);
+    await tester.enterText(field, '@src');
+    await tester.pump();
+    expect(tester.widget<TextField>(field).controller!.text, '@src');
+    expect(focused(), isTrue);
+  });
+
   testWidgets('at a desktop width the composer still lays out in one row',
       (tester) async {
     await pumpAt(tester, const Size(1400, 900));

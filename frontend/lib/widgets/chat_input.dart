@@ -12,6 +12,7 @@ import 'package:path/path.dart' as p;
 import '../core/l10n.dart';
 import '../core/platform_capabilities.dart';
 import '../core/theme.dart';
+import 'file_mention_popup.dart';
 import 'glass_surface.dart';
 import '../models/agent.dart';
 import '../models/chat.dart';
@@ -1175,11 +1176,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final popup = _showFileMentions
         ? Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _FileMentionPopup(
+            child: FileMentionPopup(
               results: _fileMentionResults,
               selectedIndex: _fileMentionSelectedIndex,
               onSelect: _selectFileMentionAt,
-              onDismiss: _dismissFileMentions,
             ),
           )
         : _showTemplates
@@ -1212,7 +1212,12 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         // geometry Flutter expects, so nothing reached it. This trades a
         // few pixels of the message list shifting up while a popup is open
         // for interaction that is guaranteed to actually work.
-        if (popup != null) popup,
+        // Always one child in this slot (an empty box when no popup is open).
+        // The popup used to be inserted as the FIRST child only while open,
+        // which shifted every unkeyed sibling after it: the input bar below was
+        // rebuilt from scratch, its text field lost the keyboard focus, and the
+        // person had to click it again after typing "@".
+        popup ?? const SizedBox.shrink(),
         // Image preview
         if (_pickedImagePath != null || _pickedImageBytes != null)
           Container(
@@ -1287,6 +1292,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         // Input area — a floating frosted-glass bar in Glass Light; a flush
         // top-bordered bar in dark.
         Padding(
+          // Keyed so that no sibling appearing or disappearing above it (a
+          // popup, an attachment preview) can make Flutter re-create the input
+          // bar and drop the text field's focus.
+          key: const ValueKey('chat-input-area'),
           padding: MemoTheme.of(context).isGlass
               ? const EdgeInsets.fromLTRB(12, 8, 12, 12)
               : EdgeInsets.zero,
@@ -2065,10 +2074,6 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
   }
 }
 
-/// "@" file-mention dropdown — same visual shape as [PromptTemplatesPopup]
-/// (prompt_templates.dart), for a flat list of project-relative file paths
-/// instead of slash templates. Empty when [ChatInputState._resolveProjectRoot]
-/// has no folder to search (no CLI workdir, no agent project path).
 /// "/" dropdown for a CLI chat: the CLI's own commands, with a source badge
 /// (project / user / skill / builtin) so it's clear where each one comes
 /// from — a project command and a same-named personal one are genuinely
@@ -2218,87 +2223,3 @@ class _CLICommandSourceBadge extends StatelessWidget {
   }
 }
 
-class _FileMentionPopup extends StatelessWidget {
-  final List<String> results;
-  final int selectedIndex;
-  final ValueChanged<int> onSelect;
-  final VoidCallback onDismiss;
-
-  const _FileMentionPopup({
-    required this.results,
-    required this.selectedIndex,
-    required this.onSelect,
-    required this.onDismiss,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = MemoTheme.of(context);
-    if (results.isEmpty) {
-      return Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        constraints: const BoxConstraints(maxHeight: 80),
-        decoration: BoxDecoration(
-          color: theme.bgApp,
-          borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-          border: Border.all(color: theme.borderSoft),
-          boxShadow: MemoTheme.shadowMd,
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          L10n.t('file_mention_none'),
-          style: TextStyle(
-            fontSize: 13,
-            color: theme.textDim,
-            fontStyle: FontStyle.italic,
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      constraints: const BoxConstraints(maxHeight: 240),
-      decoration: BoxDecoration(
-        color: theme.bgApp,
-        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-        border: Border.all(color: theme.borderSoft),
-        boxShadow: MemoTheme.shadowMd,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-        child: ListView.builder(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          shrinkWrap: true,
-          itemCount: results.length,
-          itemBuilder: (context, index) {
-            final path = results[index];
-            final isSelected = index == selectedIndex;
-            return InkWell(
-              onTap: () => onSelect(index),
-              child: Container(
-                color: isSelected ? theme.bgElement : Colors.transparent,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(Icons.insert_drive_file_outlined,
-                        size: 15, color: theme.textDim),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        path,
-                        style: TextStyle(fontSize: 13, color: theme.textMain),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}

@@ -65,6 +65,11 @@ type Pipeline struct {
 	// snapshotted once at RunStream construction). Executor.RunStream wires
 	// this to e.GetAutoPermission.
 	autoPermissionFn func() bool
+	// autoPermissionOverride, when set, replaces the global auto-permission
+	// flag for this run in both directions (see ClientOptions).
+	autoPermissionOverride *bool
+	// noWebTools hides web_search/fetch_page from this run (see ClientOptions).
+	noWebTools bool
 
 	// effortLevel is the active provider's resolved EffortLevel for this
 	// run (see provider.ChatRequest.EffortLevel's doc comment) — set by the
@@ -102,7 +107,16 @@ func NewPipeline(registry *ToolRegistry, permissions *PermissionManager, sandbox
 func (p *Pipeline) turnTools() []provider.ToolDefinition {
 	defs := p.registry.ToOpenAITools(p.activeSkills)
 	if p.codeSubMode != "" {
-		return ForCodeMode(defs)
+		defs = ForCodeMode(defs)
+	}
+	if p.noWebTools {
+		kept := make([]provider.ToolDefinition, 0, len(defs))
+		for _, d := range defs {
+			if !webToolNames[d.Function.Name] {
+				kept = append(kept, d)
+			}
+		}
+		defs = kept
 	}
 	return defs
 }
@@ -408,6 +422,19 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				// Fix double-encoded JSON args (some LLMs return string inside string)
 				args = fixJSONArgs(args)
 
+				// A tool this run hides is refused too: a model that saw it earlier
+				// in the conversation could still name it.
+				if p.noWebTools && webToolNames[toolName] {
+					errMsg := fmt.Sprintf("tool %q is turned off for this session", toolName)
+					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: errMsg})
+					currentMessages = append(currentMessages, provider.Message{
+						Role:       "tool",
+						ToolCallID: tc.ID,
+						Content:    fmt.Sprintf("Error: %s", errMsg),
+					})
+					continue
+				}
+
 				// Ensure tool exists
 				toolDef, ok := p.registry.Get(toolName)
 				if !ok {
@@ -468,6 +495,9 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				autoNow := p.autoPermission
 				if !autoNow && p.autoPermissionFn != nil {
 					autoNow = p.autoPermissionFn()
+				}
+				if p.autoPermissionOverride != nil {
+					autoNow = *p.autoPermissionOverride
 				}
 				if autoNow {
 					logx.Printf("AGENT: [AUTO] auto-approving %q (auto-permission mode; prompt_required=%v)", toolName, permRes.NeedPrompt)

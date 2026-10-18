@@ -400,10 +400,19 @@ func (h *Harness) SendMessageStream(chatID, message string) []SSEEvent {
 // (most importantly permission_request) before the turn can finish.
 func (h *Harness) SendMessageStreamAsync(chatID, message string) <-chan SSEEvent {
 	h.t.Helper()
-	resp := h.postJSON("/api/send/stream", map[string]string{
-		"chat_id": chatID,
-		"message": message,
-	})
+	return h.SendMessageStreamAsyncWith(chatID, message, nil)
+}
+
+// SendMessageStreamAsyncWith is SendMessageStreamAsync with the per-request
+// client options the terminal REPL sends ("auto_permission", "web_tools"); nil
+// sends none, exactly like the desktop app.
+func (h *Harness) SendMessageStreamAsyncWith(chatID, message string, options map[string]any) <-chan SSEEvent {
+	h.t.Helper()
+	body := map[string]any{"chat_id": chatID, "message": message}
+	if options != nil {
+		body["options"] = options
+	}
+	resp := h.postJSON("/api/send/stream", body)
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
 		h.t.Fatalf("POST /api/send/stream: status %d", resp.StatusCode)
@@ -642,4 +651,15 @@ func (h *Harness) GetChatActiveSkills(chatID string) []string {
 	}
 	decodeInto(h.t, resp, &out)
 	return out.Names
+}
+
+// autoPermissionOn reads the backend's global auto-permission flag.
+func (h *Harness) autoPermissionOn() bool {
+	h.t.Helper()
+	resp := h.getJSON("/api/agent/auto-permission")
+	var out struct {
+		Enabled bool `json:"enabled"`
+	}
+	decodeInto(h.t, resp, &out)
+	return out.Enabled
 }

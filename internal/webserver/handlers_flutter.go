@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"memo/internal/agent"
 	"memo/internal/agentcli"
 	"memo/internal/api"
 	"memo/internal/browserengine"
@@ -45,6 +46,14 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 		// for backward compatibility with older clients, which fall back to
 		// the previous implicit-active-chat behavior.
 		ChatID string `json:"chat_id"`
+		// Options are this client's own settings for this one request (the
+		// terminal REPL sends them; the desktop app does not). They never
+		// change a backend-wide flag, so two clients on one backend cannot
+		// disturb each other — see agent.ClientOptions.
+		Options *struct {
+			AutoPermission *bool `json:"auto_permission"`
+			WebTools       *bool `json:"web_tools"`
+		} `json:"options"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
@@ -71,6 +80,12 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
+	if req.Options != nil {
+		ctx = agent.WithClientOptions(ctx, agent.ClientOptions{
+			AutoPermission: req.Options.AutoPermission,
+			NoWebTools:     req.Options.WebTools != nil && !*req.Options.WebTools,
+		})
+	}
 	var ch <-chan api.StreamChunk
 	// Incognito is a client-facing mode, so it is honoured here rather than
 	// inside SendMessageStreamTo (which task-list workers and the

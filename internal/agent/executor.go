@@ -428,6 +428,11 @@ func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Rou
 	pipeline.bypassPermissions = e.GetBypassPermissions()
 	pipeline.autoPermission = e.GetAutoPermission()
 	pipeline.autoPermissionFn = e.GetAutoPermission
+	// What THIS client asked for on this request beats the backend-wide flags
+	// (see ClientOptions): the REPL and the desktop app share a backend.
+	co := clientOptionsFromCtx(ctx)
+	pipeline.autoPermissionOverride = co.AutoPermission
+	pipeline.noWebTools = co.NoWebTools
 	pipeline.effortLevel = effortLevel
 	pipeline.activeSkills = e.resolveActiveSkillSet(sessionID)
 

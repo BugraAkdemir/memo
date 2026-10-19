@@ -312,6 +312,13 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		}
 	}
 
+	// Starts a session in a set-up project (empty under Minimal Mode, when the
+	// feature is off, and for plain chats): see projectInstruction.
+	projectInstr := ""
+	if projectChat && !minimal {
+		projectInstr = a.projectInstruction(chatID)
+	}
+
 	var systemPrompt string
 	// skillTokens is the part of systemPrompt that is active-skill instructions,
 	// tracked only so the context gauge can show it apart from the persona.
@@ -326,7 +333,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		a.cfgMu.RLock()
 		am := a.cfg.AgentMode
 		a.cfgMu.RUnlock()
-		systemPrompt = codeSubModeDirective(am, codeSubModeFromCtx(ctx))
+		systemPrompt = codeSubModeDirective(am, codeSubModeFromCtx(ctx)) + projectInstr
 		// A skill the user explicitly activated in this chat still needs to
 		// reach the model in Code Mode — the tool itself was already
 		// dispatch-gated per chat (see skill.go), but until now nothing told
@@ -352,6 +359,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		} else {
 			systemPrompt = a.identity.BuildSystemPrompt(nil, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
 		}
+		systemPrompt += projectInstr
 		if !minimal {
 			// Mood is fully opt-in. When the engine is disabled the model is driven
 			// solely by the configured system prompt: no directive, no neutral block,

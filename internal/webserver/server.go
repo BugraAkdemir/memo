@@ -369,6 +369,11 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/agent/chat", s.requirePermission(s.handleAgentChat, hasAgentPerm))
 	// Empty chat <-> project (agent) chat; same permission as creating an agent chat.
 	route("/api/chats/project", s.requirePermission(s.handleChatProject, hasAgentPerm))
+	// Project folders (.memo/): status / setup / decline. Setup writes into the
+	// user's project folder, so it needs the same permission as agent chats.
+	route("/api/projects/status", s.requirePermission(s.handleProjectStatus, hasAgentPerm))
+	route("/api/projects/setup", s.requirePermission(s.handleProjectSetup, hasAgentPerm))
+	route("/api/projects/decline", s.requirePermission(s.handleProjectDecline, hasAgentPerm))
 	route("/api/agent/enabled", s.requirePermission(s.handleAgentEnabled, hasAgentPerm))
 	route("/api/agent/permission", s.handleAgentPermission)
 	route("/api/agent/permissions", s.requirePermission(s.handleAgentPermissions, hasAgentPerm))

@@ -66,6 +66,12 @@ type Info struct {
 	CommitPolicy string `json:"commit_policy,omitempty"`
 	// ProviderPolicy is reserved (e.g. "local_only"); not enforced yet.
 	ProviderPolicy string `json:"provider_policy,omitempty"`
+
+	// RulesVersion and RulesHash record which generic rules text Memo last wrote
+	// to .memo/AGENTS.md. The file is refreshed on an update only while its hash
+	// still equals RulesHash, i.e. while nobody has edited it.
+	RulesVersion int    `json:"rules_version,omitempty"`
+	RulesHash    string `json:"rules_hash,omitempty"`
 }
 
 // NewID returns a fresh random project id ("p_" + 128 bits of hex).
@@ -92,11 +98,17 @@ func InfoPath(root string) string { return filepath.Join(root, DirName, InfoFile
 // `.memo`, and ErrForeignDir when `.memo` exists but lacks a valid marker.
 func ReadInfo(root string) (*Info, error) {
 	dir := Dir(root)
-	if _, err := os.Lstat(dir); err != nil {
+	st, err := os.Lstat(dir)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, ErrNoProject
 		}
 		return nil, err
+	}
+	// A symlinked .memo would make every write below land wherever the link
+	// points — possibly outside the project. Never treat one as ours.
+	if st.Mode()&os.ModeSymlink != 0 || !st.IsDir() {
+		return nil, fmt.Errorf("%w: .memo is not a plain folder", ErrForeignDir)
 	}
 	data, err := os.ReadFile(InfoPath(root))
 	if err != nil {

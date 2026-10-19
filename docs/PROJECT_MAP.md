@@ -373,6 +373,21 @@ internal/memory/
   store_test.go    — etkileşim kaydetme ve benzer bağlam getirme testleri
 ```
 
+### internal/project/ — Proje klasörleri (`.memo/`, Beta)
+
+```
+internal/project/
+├── guard.go        # Hangi klasör proje kökü olabilir: ev + üstleri, ~/.memo kurulumu, sistem klasörleri reddedilir
+├── project.go      # .memo/project.json (kind, kimlik, ayarlar); sembolik-bağ .memo "yabancı" sayılır
+├── manager.go      # cihaz başına kayıt defteri (data/projects.json): bekleyen kimlik, taşıma/kopya algılama
+├── scaffold.go     # gömülü şablonlarla başlangıç dosyaları; Status (arayüz için)
+├── templates/      # İngilizce, teknolojiden bağımsız şablonlar (go:embed)
+├── skills.go       # proje skill'lerini listele/oku/kaldır; GitHub'dan güvenli arşiv indirip kur
+└── skillsource.go  # owner/repo, github URL ya da yapıştırılmış `npx skills add …` satırından kaynak çıkarır (npx asla çalışmaz)
+```
+
+`internal/memory/scope.go`: hafıza kapsamı (`Scope`, `memories.project_id`) ve göç öncesi yedek. `internal/app/project_scope.go`, `project_setup.go`, `project_skills.go`: uygulama bağları.
+
 ### internal/models/
 
 ```

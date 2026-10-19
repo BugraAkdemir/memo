@@ -5,6 +5,13 @@ Memo Backend, varsayılan olarak `localhost:8090` üzerinde bir REST API çalı�
 ## Kimlik Doğrulama
 Yerel (`localhost`) bağlantılar token gerektirmeden açıktır. **Uzaktan erişim (LAN, ngrok veya Tailscale) her istekte Settings'te gösterilen erişim token'ını zorunlu kılar.**
 
+## Proje klasörleri (`.memo/`, Beta) — bkz. [`PROJECT_FOLDER.md`](PROJECT_FOLDER.md)
+| Yöntem | Uç nokta | Açıklama |
+| :--- | :--- | :--- |
+| `POST` | `/api/projects/status` | `{path}` → `{root, id, name, set_up, declined, allowed, reason, enabled, should_ask}`. Hiçbir şey yazmaz. İzin: `/api/agent/chat` ile aynı |
+| `POST` | `/api/projects/setup` | `{path}` → `.memo/` ve başlangıç dosyalarını oluşturur (asla üzerine yazmaz). Ev klasörü, Memo'nun kendi klasörleri, yabancı `.memo` ya da Beta kapalıyken 403 |
+| `POST` | `/api/projects/decline` | `{path, declined?}` → "bu klasöre asla Memo kurma"yı hatırlar (`declined:false` geri alır) |
+
 ## Developer API Gateway (Anthropic- ve OpenAI-uyumlu)
 `POST /v1/messages`, Claude Code gibi sadece Anthropic'in Messages API formatını konuşan araçların (`ANTHROPIC_BASE_URL` ile) Memo'ya bağlanmasını sağlar. `GET /v1/models` + `POST /v1/chat/completions` aynı gateway'in OpenAI-uyumlu ikizidir. Model seçimi her ikisinde de `type/model-id` formatında (`local/qwen2.5`, `openai/gpt-4o`, ...). **Her iki endpoint de artık loopback-olmayan her çağıran için API anahtarını zorunlu kılıyor** (v4.5.0 güvenlik düzeltmesi). Bkz. Sidebar → Developer.
 

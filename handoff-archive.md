@@ -1,3 +1,12 @@
+# Son oturum — 2026-10-19 — Tek sohbet listesi, yeni sohbet ekranı, ajan başlığı
+- İstek: ajan sohbet geçmişi ile normal sohbet geçmişi ayrı → tek yerde; yeni sohbette üstte Sohbet/Ajan seçimi (sonradan değişmesin), ortada besteci + öneriler + model seçici, ilk mesajdan sonra alta; başlıkta ajan simgesi; ajan sohbetine başlık.
+- Yapıldı (3 commit): backend `POST /api/chats/project` (boş sohbeti ajan sohbetine çevir/geri al, mesaj varsa 409) + ajan sohbeti ilk kelimelerden başlık (`3fc427e4`); ajan sekmesi kaldırıldı, liste/başlık simgesi, Code Mode + Görevler düğmesi üst çubuğa (`16423830`); yeni sohbet ekranı (`c404c5cd`). Ayrıntı/tuzaklar: AGENTS.md "One chat list…".
+- Yakalanan gerçek hata: metin alanı Column↔Row geçişinde yeniden yaratılıyordu (taslak+klavye kaybı; pencere eşiği geçilince de) → `_fieldKey`.
+- Doğrulama: Go e2e/sessions/app/webserver yeşil; Flutter 759 test, analyze (3 eski info), Kural #8 grep boş. Bu oturumda ayrıca itilmeyen commit'ler: klasör seçici (`943ecc5a`), ajan tarayıcı paneli (`4c3b90b0`; ajan ekranı silindiği için paneli artık normal sohbet gösteriyor).
+- Sonradan (aynı gün): sohbet listesi sırası + "Yeni Sohbet" — zaman damgası dakika çözünürlüklü olduğu için aynı dakikadaki sohbetler map sırasıyla diziliyordu (yeni boş sohbet ortada/altta kalıyordu) → `Session.seq` ile kesin sıra, boş sohbetler her zaman en üstte; `POST /api/chats/new {"reuse_empty":true}` (yalnız Flutter butonu/açılış) boş düz sohbeti yeniden açar, ajan/CLI sohbetlerine dokunmaz; bayraksız çağrı hâlâ her seferinde oluşturur (REPL/e2e/WhatsApp). Gerçek pencerede görülmedi.
+
+---
+
 # Son oturum — 2026-10-18 (3) — Sahadan: boş cevap, sessiz model, `@` listesi
 - Kullanıcı ekran görüntüsüyle: model 6 araçtan sonra "cevap üretemedim" dedi ("açık zaten dene" deyince cevapladı); sohbette yalnız komut listesi var, modelin yazdığı bir şey yok; `@` yazınca metin kutusu klavyeyi bırakıyor ve listede aşağı inince seçim görünmüyor.
 - Kök nedenler: (1) boş adım için kurtarma yoktu; (2) Gemini sessiz araç çağırıyor (kayıtlı olaylarda 0 narration) ve istemde "ne yapacağını yaz" kuralı yoktu; (3) `@` açılırken popup Column'un İLK çocuğu olarak eklendiği için kardeş girdi çubuğu yeniden yaratılıyor, `EditableTextState` değişiyor, klavye bağlantısı açılmıyor; liste seçili satıra kaydırılmıyordu.

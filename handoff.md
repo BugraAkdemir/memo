@@ -33,6 +33,13 @@
 - Bilerek: ajan sekmesi kalktı (IndexedStack 1. indeks boş kutu); eski ajan sohbetleri `ProjectPath`'leri sayesinde listede ajan simgesiyle görünür. `WelcomeView` yalnız CLI sohbetlerinde kaldı. Landing'de `/` şablon listesi hâlâ aşağı kaydırmada seçimi görünür tutmuyor (yalnız `@` listesi düzeltildi).
 - Ajan sohbet başlığı ilk kelimelerden (LLM yok); "güzel" başlık istenirse Code Mode'un yan-çağrı yasağıyla çakışır, karar kullanıcıda.
 
+**Proje klasörleri: `.memo/`, proje hafızası, proje skill'leri (2026-10-19, `PLAN_project_folders.md`, `docs/PROJECT_FOLDER.md`) — Beta, varsayılan kapalı**
+- Bitti (yerel commit'ler, **itilmedi**): P0 `internal/project` (kök koruması, kimlik, kayıt defteri), P1 hafıza havuzları (`memories.project_id`, yedekli göç), P2 iskele + `/api/projects/*` + Flutter onay penceresi + oturum başı satırı, P3 proje skill'leri (`/skill add`, `install_project_skill`), P5 belgeler (EN/TR + iki Obsidian kasası). Tuzaklar: AGENTS.md "Project folders…".
+- **Yapılmadı:** P4 proje başına komut izinleri (`.memo/permissions.json`, hash güveni) — klonlanan deponun izin dosyası sessizce geçerli olmamalı; `provider_policy` (örn. `local_only`) alanı yalnız ayrılmış, uygulanmıyor; proje skill'i için uygulamada seçici yok (`/skill`, `/skill:on`, `/skill add` sohbet komutları).
+- **Doğrulanmadı:** gerçek GitHub'dan skill indirme (yalnız yerel sahte sunucu; `codeload.github.com/<o>/<r>/zip/HEAD` biçimi gerçekte denenmedi); kurulum penceresinin gerçek pencerede görünümü; gerçek bir modelin "önce `.memo/AGENTS.md`'yi oku" satırına uyması; gerçek kullanıcı veritabanında göç (yalnız eski şemalı örnek veritabanıyla denendi); Windows/macOS'ta `Guard` sistem klasörü listesi.
+- Bilerek: Live Mode arka plan sohbeti `ProjectPath = ev` olduğu için *normal sohbet* sayılır (`memoryScopeForChat`); ev klasörüne köklenmiş başka bir ajan sohbeti ise hiç hafıza almaz. Code Mode KAPALI bir proje sohbeti takvim/WhatsApp araçlarını hâlâ alır (kullanıcının açık seçimi), yalnız hafıza/kimlik izole.
+- Göç yedeği `data/backups/memory-pre-project-id-*.db` dışa aktarma/bulut kapsamında DEĞİL (`backupdata.DataDirectories` listesinde yok) — yerelde kalır, kendiliğinden silinmez.
+
 **Kullanıcıda**
 - Geçmişte `origin` push URL'sinde düz metin token ve artık satılmış bir alan adı vardı. Bu oturumda `git remote -v` yalnız GitHub URL'sini gösterdi; push doğrudan GitHub HTTPS adresine yapıldı. Eski token'ın döndürülmesi kullanıcıda.
 - Eski sürümlerin REPL `update` komutu ve `download.bugradev.com/get-memo.sh` satırları artık başkasının sunucusuna gidiyor → yeni sürümü duyur, eski satırları kaldır.
@@ -64,9 +71,9 @@
 
 ---
 
-# Son oturum — 2026-10-19 — Tek sohbet listesi, yeni sohbet ekranı, ajan başlığı
-- İstek: ajan sohbet geçmişi ile normal sohbet geçmişi ayrı → tek yerde; yeni sohbette üstte Sohbet/Ajan seçimi (sonradan değişmesin), ortada besteci + öneriler + model seçici, ilk mesajdan sonra alta; başlıkta ajan simgesi; ajan sohbetine başlık.
-- Yapıldı (3 commit): backend `POST /api/chats/project` (boş sohbeti ajan sohbetine çevir/geri al, mesaj varsa 409) + ajan sohbeti ilk kelimelerden başlık (`3fc427e4`); ajan sekmesi kaldırıldı, liste/başlık simgesi, Code Mode + Görevler düğmesi üst çubuğa (`16423830`); yeni sohbet ekranı (`c404c5cd`). Ayrıntı/tuzaklar: AGENTS.md "One chat list…".
-- Yakalanan gerçek hata: metin alanı Column↔Row geçişinde yeniden yaratılıyordu (taslak+klavye kaybı; pencere eşiği geçilince de) → `_fieldKey`.
-- Doğrulama: Go e2e/sessions/app/webserver yeşil; Flutter 759 test, analyze (3 eski info), Kural #8 grep boş. Bu oturumda ayrıca itilmeyen commit'ler: klasör seçici (`943ecc5a`), ajan tarayıcı paneli (`4c3b90b0`; ajan ekranı silindiği için paneli artık normal sohbet gösteriyor).
-- Sonradan (aynı gün): sohbet listesi sırası + "Yeni Sohbet" — zaman damgası dakika çözünürlüklü olduğu için aynı dakikadaki sohbetler map sırasıyla diziliyordu (yeni boş sohbet ortada/altta kalıyordu) → `Session.seq` ile kesin sıra, boş sohbetler her zaman en üstte; `POST /api/chats/new {"reuse_empty":true}` (yalnız Flutter butonu/açılış) boş düz sohbeti yeniden açar, ajan/CLI sohbetlerine dokunmaz; bayraksız çağrı hâlâ her seferinde oluşturur (REPL/e2e/WhatsApp). Gerçek pencerede görülmedi.
+# Son oturum — 2026-10-19 (2) — Proje klasörleri (`.memo/`), proje hafızası, proje skill'leri
+- İstek: Memo bir klasöre girince `.memo/` açsın (kurallar, notlar, proje skill'leri), proje başına sabit id ile hafıza ayrılsın: genel sohbet her id'yi görsün, ajan sohbeti yalnız kendi klasörünün id'sini; kişisel bilgi (ad, genel hafıza) projeye asla sızmasın; `$HOME`'da çalışırsa Memo kurulumuyla (`~/.memo`) çakışmasın.
+- Yapıldı (hepsi `main`'de yerel): `6f6ed562` P0, `1fc14a51` P1, `14242739`+`4f03e711` P2 (arka uç + Flutter), `4954ffa7` P3, belge commit'leri. Önemli bulgu: `~/.memo` zaten Memo'nun kurulum klasörü; Code Mode önceden hiç hafıza okumuyor/yazmıyordu (ajan sohbetinin hafızası yeni yetenek, Beta arkasında).
+- Yakalanan gerçek hatalar: silinmiş klasördeki proje sohbeti projesinden düşüyordu (`RootError` `ErrForbiddenRoot`'a sarılıydı); mutlak yollu zip girdisi "güvenli" görünüyordu; sembolik `.memo` testi yalnız boş hedefte düşüyordu (geçerli `project.json` içeren hedefle sıkılaştırıldı).
+- Doğrulama: `go build/vet/test -race` tüm repo yeşil (66 paket), Flutter 770 test + analyze (3 eski info), Kural #8 grep'i yalnız test içindeki `Text('go')`. Her koruma bilerek bozulup testin düştüğü görüldü (hafıza süzgeçleri, kimlik sızıntısı, Minimal Mod, sembolik bağ, skill güvenliği); yalnız çift katmanlı kontroller (yol güvenliği, Minimal Mod satırı) tek tek kaldırılınca düşmedi, ikisi birden kaldırılınca düştü.
+- Sonraki: P4 izinler; gerçek pencerede onay penceresi ve gerçek model denemesi; gerçek GitHub'dan bir skill indirme denemesi; ilk sürümü Beta arkasında çıkar.

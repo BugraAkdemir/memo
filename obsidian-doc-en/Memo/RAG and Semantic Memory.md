@@ -35,3 +35,6 @@ Settings › Memory is five pill-switched sections — **Settings**, **Known Fac
 - [[Vector Search Logic]]
 - [[Data Layer and Persistence]]
 - [[Advanced Settings]] (Top-K and Threshold values)
+
+## Project pools (Beta)
+With project folders on, memory is partitioned by `memories.project_id`: an ordinary chat reads every pool and writes the general one, while a project (agent) chat reads and writes **only its own project's pool** — never the general memory, pinned facts or your name. See [[Project Folders]].

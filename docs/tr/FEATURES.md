@@ -229,6 +229,9 @@ Memo, tam bilgisayar kontrolüne sahip bir yapay zeka ajanı olarak davranır:
 - **Ekran görüntüleri sohbet geçmişine asla girmez** — yalnızca panele akar (`browser_frame` parçaları), bu yüzden token harcamaz; bir sayfanın ne dediği metin yolundan okunur. Düz bir "bu siteyi özetle" yine hızlı sayfa-getirme yolundan gider.
 - **Yapısı gereği güvenli**: yalnızca `http`, `https` ve boş sayfa kabul edilir (`file://` yok) ve oturum uç noktaları ajan izni ister.
 
+### Proje klasörleri: `.memo/`, kendi hafızası, proje skill'leri (yeni, **Beta**)
+Bir klasörü proje olarak aç; Memo içinde küçük bir `.memo/` klasörü — genel çalışma kuralları, notlar — ve kökte `AGENTS.md` ile `handoff.md` tutabilir (hiçbir şeyin üzerine yazmadan). Tek satırlık bir oturum başı talimatı modele önce `.memo/AGENTS.md`'yi okumasını söyler; dosyalar isteme yapıştırılmaz. Her projenin sabit bir kimliği vardır; klasör taşınınca hafızası onunla gider. **Bir proje sohbeti yalnız kendi projesinin hafızasını okur ve yazar; genel hafızanı, adını ya da stil notlarını asla görmez**, normal sohbet ise her şeyi görmeye devam eder. Proje skill'leri (`/skill add owner/repo`) yalnız talimattır ve açılana kadar isteme girmez. Ev klasörün ve Memo'nun kendi `~/.memo`'su asla proje olamaz. Varsayılan kapalı; Minimal Mod hiçbir şey eklemez. Ayrıntı: [`PROJECT_FOLDER.md`](PROJECT_FOLDER.md).
+
 ### Code Mode: Plan / Auto / Build (v4.5.0'da yeni)
 Code Mode eskiden tek bir aç/kapa anahtarıydı. Artık mesaj kutusunda **Ctrl+Tab** ile (ya da alt durum çubuğundaki çip'e dokunarak) döngülenen, her biri kendi düzenlenebilir sistem promptuna sahip (Ayarlar) üç preset:
 - **Plan** — kod tabanını inceler ve tek bir dosyaya bile dokunmadan somut, adım-adım bir plan yazar. Plan diske kaydedilir (`data/plans/<proje>/plan.md`, özel `save_code_plan` aracıyla — proje dizininin dışında sandbox'lanmış), ve hazır olduğunda Memo düz sohbette Build'e mi yoksa Auto'ya mı geçilsin diye sorar.

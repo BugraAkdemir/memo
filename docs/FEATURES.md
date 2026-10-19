@@ -236,6 +236,9 @@ Code Mode used to be a single on/off switch. It's now three presets, cycled with
 - **Build** — the fast lane: file edits and `run_command` calls run without waiting.
 - If the global auto-permission toggle is already on when a plan finishes, Memo skips the question and chains straight into Build **within the same reply** (one SSE stream, no second round trip) instead of waiting for an answer.
 
+### Project folders: `.memo/`, a memory of their own, project skills (new, **Beta**)
+Open a folder as a project and Memo can keep a small `.memo/` folder in it — generic working rules, notes — plus `AGENTS.md` and `handoff.md` in the root (never overwriting anything). A one-line session-start instruction tells the model to read `.memo/AGENTS.md` first; the files are not pasted into the prompt. Each project gets a stable id, so its memory follows it when the folder moves; **a project chat reads and writes only its own project's memory and never sees your general memory, name or style notes**, while an ordinary chat still sees everything. Project skills (`/skill add owner/repo`) are instructions only and stay out of the prompt until switched on. Your home folder and Memo's own `~/.memo` can never be a project. Off by default; Minimal Mode adds nothing. Details: [`PROJECT_FOLDER.md`](PROJECT_FOLDER.md).
+
 ---
 
 ## 6.5 🚗 Self-Driving Task Loop (v4.4.0, sub-modes chaining added in v4.5.0)

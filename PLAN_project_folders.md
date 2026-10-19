@@ -15,7 +15,7 @@ Amaç: Memo bir klasörü proje olarak açınca o klasörde `.memo/` (kurallar, 
 - [x] **P0** `internal/project`: kök koruması, `.memo/project.json`, id + cihaz başına kayıt defteri (taşıma/kopya algılama), atomik yazma.
 - [x] **P1** Hafıza kapsamı: `memories.project_id` (eklemeli geçiş + öncesinde yedek + başarısızsa kapalı), Store API'sinde `Scope`, birleştirme/tekilleştirme/dream sınırı, ctx ile `chatID → scope`, `Session.ProjectID`, proje sohbetinde kimlik bloğundan ad/öğrenilmiş notların çıkarılması, proje kapsamında olgu çıkarımı kapalı.
 - [x] **P2** İskele + talimat: gömülü şablonlar, `/api/projects/*`, onay arayüzü (TR/EN l10n), tek satırlık talimat (Minimal Mod'da yok).
-- [x] **P3** Proje skill'leri: `.memo/skills`, `/` menüsü, link ile kurulum (güven kapısı).
+- [x] **P3** Proje skill'leri: `.memo/skills`, link ile kurulum (güven kapısı). **Yapılmadı:** `/` menüsünde/uygulamada skill seçici (şimdilik `/skill`, `/skill:on`, `/skill add` sohbet komutları).
 - [ ] **P4** Proje başına izinler (hash güveni) — sonraki sürüm olabilir.
 - [x] **P5** Belgeler: EN/TR docs, iki Obsidian kasası, AGENTS.md, handoff.
 

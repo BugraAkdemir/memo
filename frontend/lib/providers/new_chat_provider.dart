@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/friendly_error.dart';
 import '../core/l10n.dart';
 import '../models/chat.dart';
+import '../widgets/project_setup_dialog.dart';
 import '../widgets/server_file_browser_dialog.dart';
 import 'agent_provider.dart' show chatCodeModeProvider;
 import 'chat_provider.dart';
@@ -52,6 +53,7 @@ Future<void> setNewChatMode(BuildContext context, WidgetRef ref, ChatSession cha
 Future<bool> chooseProjectForNewChat(BuildContext context, WidgetRef ref, String chatId) async {
   final chosen = await showServerFileBrowserDialog(context, mode: ServerBrowseMode.directory);
   if (chosen == null || chosen.isEmpty) return false;
+  if (context.mounted) await offerProjectSetup(context, ref, chosen);
   try {
     await ref.read(apiClientProvider).setChatProject(chatId, chosen);
     ref.invalidate(chatCodeModeProvider(chatId));
@@ -64,5 +66,45 @@ Future<bool> chooseProjectForNewChat(BuildContext context, WidgetRef ref, String
       );
     }
     return false;
+  }
+}
+
+/// Offers to set Memo up in a freshly chosen project folder: a `.memo` folder
+/// with the working rules and notes, and AGENTS.md / handoff.md in the root when
+/// they are missing. Nothing is written without a "Set up" answer. Best effort:
+/// an old backend, a refused folder, Minimal Mode, the feature being off or a
+/// folder the person already declined all end quietly with no dialog, and a
+/// failure never blocks choosing the folder.
+Future<void> offerProjectSetup(BuildContext context, WidgetRef ref, String path) async {
+  final api = ref.read(apiClientProvider);
+  try {
+    final status = await api.projectStatus(path);
+    if (!status.shouldAsk || !context.mounted) return;
+    final name = status.name.isNotEmpty ? status.name : path.split(RegExp(r'[\\/]')).where((p) => p.isNotEmpty).last;
+    final choice = await showProjectSetupDialog(context, folderName: name);
+    switch (choice) {
+      case ProjectSetupChoice.setUp:
+        try {
+          await api.setupProject(path);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(L10n.t('project_setup_done', {'folder': name}))),
+            );
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(L10n.t('project_setup_failed', {'error': FriendlyError.describeGeneric(e)}))),
+            );
+          }
+        }
+      case ProjectSetupChoice.never:
+        await api.declineProject(path);
+      case ProjectSetupChoice.notNow:
+      case null:
+        break;
+    }
+  } catch (_) {
+    // Optional extra: never get in the way of picking the folder.
   }
 }

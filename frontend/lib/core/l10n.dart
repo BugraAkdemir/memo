@@ -1927,6 +1927,13 @@ class L10n {
     'general_tab_reset': 'Sıfırlama',
     'general_tab_cli': 'CLI ve Kaldırma',
     'agent_create_failed': 'Ajan sohbeti oluşturulamadı: \${error}',
+    'project_setup_title': 'Bu proje için Memo kurulsun mu?',
+    'project_setup_body': 'Memo, "\${folder}" klasörüne çalışma kurallarını ve notlarını içeren bir .memo klasörü ekleyebilir; yoksa proje kökünde AGENTS.md ve handoff.md de oluşturur. Var olan hiçbir dosyanın üzerine yazılmaz.',
+    'project_setup_yes': 'Kur',
+    'project_setup_later': 'Şimdi değil',
+    'project_setup_never': 'Bu klasör için asla',
+    'project_setup_done': 'Memo \${folder} klasörüne kuruldu.',
+    'project_setup_failed': 'Proje kurulamadı: \${error}',
 
     // Settings tabs (missing)
     'tab_learning': 'Öğrenme',
@@ -4453,6 +4460,13 @@ class L10n {
     'general_tab_reset': 'Reset',
     'general_tab_cli': 'CLI & Uninstall',
     'agent_create_failed': 'Could not create agent chat: \${error}',
+    'project_setup_title': 'Set up Memo for this project?',
+    'project_setup_body': 'Memo can add a .memo folder to "\${folder}" with its working rules and notes, plus AGENTS.md and handoff.md in the project root if they do not exist yet. No existing file is overwritten.',
+    'project_setup_yes': 'Set up',
+    'project_setup_later': 'Not now',
+    'project_setup_never': 'Never for this folder',
+    'project_setup_done': 'Memo is set up in \${folder}.',
+    'project_setup_failed': 'Could not set up the project: \${error}',
 
     // Settings tabs (missing)
     'tab_learning': 'Learning',

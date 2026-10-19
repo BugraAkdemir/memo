@@ -18,6 +18,7 @@ import '../models/live_mode_engine_config.dart';
 import '../models/local_model.dart';
 import '../models/minimal_mode_overrides.dart';
 import '../models/orchestra_config.dart';
+import '../models/project_status.dart';
 import '../models/provider_config.dart';
 import '../models/context_report.dart';
 import '../models/provider_models.dart';
@@ -654,6 +655,26 @@ class MemoApiClient {
       '/api/chats/project',
       data: {'chat_id': chatId, 'project_path': projectPath},
     );
+  }
+
+  /// Whether [path] can be a Memo project folder, whether it already is one, and
+  /// whether to offer setting it up. Writes nothing.
+  Future<ProjectStatus> projectStatus(String path) async {
+    final res = await _dio.post('/api/projects/status', data: {'path': path});
+    return ProjectStatus.fromJson(Map<String, dynamic>.from(res.data as Map));
+  }
+
+  /// Creates the project's `.memo/` folder and starter files (never overwriting
+  /// anything). Refused (403) for the home folder, Memo's own folders, a foreign
+  /// `.memo`, or while the Beta feature is off.
+  Future<ProjectSetupResult> setupProject(String path) async {
+    final res = await _dio.post('/api/projects/setup', data: {'path': path});
+    return ProjectSetupResult.fromJson(Map<String, dynamic>.from(res.data as Map));
+  }
+
+  /// Remembers "never set up Memo in this folder" ([declined] false undoes it).
+  Future<void> declineProject(String path, {bool declined = true}) async {
+    await _dio.post('/api/projects/decline', data: {'path': path, 'declined': declined});
   }
 
   /// Switch to a chat by ID.

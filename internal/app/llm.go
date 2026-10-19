@@ -1904,7 +1904,9 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 				}
 			}
 		}
-		if sc, ok := a.memoryScopeForChat(gaugeChat); ok && a.memoryAllowedFor(sc, code) {
+		// A Self-Driving step with "task memory" off neither reads (helpers.go) nor
+		// writes memory.
+		if sc, ok := a.memoryScopeForChat(gaugeChat); ok && !taskMemoryDisabled(ctx) && a.memoryAllowedFor(sc, code) {
 			a.saveMemoryAsync(sc, userMsg, reply)
 		}
 		// Mood is shaped by the person's own conversations; a project chat

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	"memo/internal/beta"
 	"memo/internal/project"
 	"memo/internal/skill"
 )
@@ -22,8 +21,6 @@ import (
 // opens it. Its instructions are only ever injected into a chat whose person
 // switches it on (/skill:on), exactly like a global skill.
 //
-// The feature is part of the Beta project-folder work: with Beta off project
-// skills are invisible.
 
 // parseProjectSkill adapts the real SKILL.md parser to what internal/project
 // asks of one, so a project skill is accepted or refused exactly like any other.
@@ -41,7 +38,7 @@ func parseProjectSkill(data []byte, dir string) (project.SkillMeta, error) {
 
 // projectRootForChat returns the root of the set-up project chatID works in.
 func (a *App) projectRootForChat(chatID string) (path, root string, ok bool) {
-	if !beta.Enabled() || !a.isProjectChat(chatID) {
+	if !a.isProjectChat(chatID) {
 		return "", "", false
 	}
 	path = a.getSessionManager().GetProjectPath(chatID)
@@ -94,9 +91,6 @@ func (a *App) lookupSkill(chatID, name string) (*skill.SkillDefinition, bool) {
 // InstallProjectSkill installs a skill from a GitHub source (see
 // project.ParseSkillSource) into chatID's project.
 func (a *App) InstallProjectSkill(ctx context.Context, chatID, source string) (*project.InstallResult, error) {
-	if !beta.Enabled() {
-		return nil, errors.New("project skills are a Beta feature; turn on Settings > Beta Features first")
-	}
 	path, _, ok := a.projectRootForChat(chatID)
 	if !ok {
 		if !a.isProjectChat(chatID) {

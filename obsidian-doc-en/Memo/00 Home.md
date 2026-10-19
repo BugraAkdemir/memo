@@ -26,7 +26,7 @@ Local-first · Privacy-first · Zero cloud dependency · Full offline capable
 - [[Features Catalog]] — Full current feature list
 - [[Agent Mode]] — Agent pipeline, tools, permissions, Code Mode's Plan/Auto/Build sub-modes
 - [[Self-Driving Task Loop]] — Unattended multi-step `Task.md` execution
-- [[Project Folders]] — `.memo/` in a project: working rules, notes, its own memory, project skills (Beta)
+- [[Project Folders]] — `.memo/` in a project: working rules, notes, its own memory, project skills
 - [[Desktop Mascot]] — The always-on-top activity companion
 - [[WhatsApp Integration]] — Setup and features
 - [[Telegram Integration]] — Bot setup, owner lock, self-chat assistant

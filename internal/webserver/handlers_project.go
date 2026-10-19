@@ -54,7 +54,7 @@ func (s *Server) handleProjectStatus(w http.ResponseWriter, r *http.Request) {
 
 // handleProjectSetup: POST {path} -> creates `.memo/` and the starter files
 // (never overwriting anything). 403 when the folder can never be a project
-// (home, Memo's own folders, a foreign .memo) or the feature is off.
+// (home, Memo's own folders, a foreign .memo).
 func (s *Server) handleProjectSetup(w http.ResponseWriter, r *http.Request) {
 	api, req, ok := s.projectRequest(w, r)
 	if !ok {
@@ -64,8 +64,6 @@ func (s *Server) handleProjectSetup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		code := http.StatusInternalServerError
 		if errors.Is(err, project.ErrForbiddenRoot) || errors.Is(err, project.ErrForeignDir) {
-			code = http.StatusForbidden
-		} else if st := api.ProjectStatus(req.Path); !st.Enabled {
 			code = http.StatusForbidden
 		}
 		http.Error(w, err.Error(), code)

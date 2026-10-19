@@ -59,7 +59,7 @@ func (a *App) SetChatActiveSkills(chatID string, names []string) error {
 		return fmt.Errorf("skill manager not initialized")
 	}
 	for _, name := range names {
-		// The chat's own project skills count too (Beta; see project_skills.go).
+		// The chat's own project skills count too (see project_skills.go).
 		if _, ok := a.lookupSkill(chatID, name); !ok {
 			return fmt.Errorf("skill %q not found", name)
 		}

@@ -2,26 +2,12 @@
 
 package agent
 
-import (
-	"testing"
+import "testing"
 
-	"memo/internal/beta"
-)
-
-// install_project_skill belongs to project folders (Beta), and a project chat
-// runs in Code Mode, so the tool must survive Code Mode's tool filter.
-func TestInstallProjectSkill_IsBetaOnlyAndStaysInCodeMode(t *testing.T) {
-	t.Cleanup(func() { beta.SetGate(nil) })
+// A project chat runs in Code Mode by default, so install_project_skill must
+// survive Code Mode's tool filter, and installing downloaded files must ask.
+func TestInstallProjectSkill_StaysInCodeModeAndAsksPermission(t *testing.T) {
 	r := NewRegistry()
-
-	beta.SetGate(func() bool { return false })
-	for _, d := range ForCodeMode(r.ToOpenAITools(nil)) {
-		if d.Function.Name == "install_project_skill" {
-			t.Fatal("install_project_skill is offered with Beta off")
-		}
-	}
-
-	beta.SetGate(func() bool { return true })
 	found := false
 	for _, d := range ForCodeMode(r.ToOpenAITools(nil)) {
 		if d.Function.Name == "install_project_skill" {
@@ -29,7 +15,7 @@ func TestInstallProjectSkill_IsBetaOnlyAndStaysInCodeMode(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("install_project_skill must be available to a Code Mode project chat while Beta is on")
+		t.Fatal("install_project_skill must be available to a Code Mode project chat")
 	}
 	if tool, ok := r.Get("install_project_skill"); !ok || tool.DangerLevel == Safe {
 		t.Fatalf("installing downloaded files must ask for permission: %+v, %v", tool, ok)

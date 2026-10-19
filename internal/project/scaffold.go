@@ -45,11 +45,9 @@ type Status struct {
 // UIStatus is Status plus what the app decides about showing the setup prompt.
 type UIStatus struct {
 	Status
-	// Enabled is false while project folders are not switched on (Beta).
-	Enabled bool `json:"enabled"`
 	// ShouldAsk is true when the UI should offer "set up Memo for this project":
-	// the feature is on, Minimal Mode is off, the folder can be a project, is not
-	// set up yet and was not declined.
+	// Minimal Mode is off, the folder can be a project, is not set up yet and was
+	// not declined.
 	ShouldAsk bool `json:"should_ask"`
 }
 

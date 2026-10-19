@@ -316,7 +316,7 @@ As of this writing, open items worth tracking live in `docs/ROADMAP.md`'s "Near-
 | Technical Deep Dive | `docs/TECHNICAL_DEEP_DIVE.md` | Engineering decisions |
 | Features | `docs/FEATURES.md` | Feature catalog |
 | Self-Hosting | `docs/SELF_HOSTED.md` | Running just the backend on a Pi/home server/VPS |
-| Project folders (Beta) | `docs/PROJECT_FOLDER.md` | `.memo/`, project ids, project-scoped memory, project skills |
+| Project folders | `docs/PROJECT_FOLDER.md` | `.memo/`, project ids, project-scoped memory, project skills |
 | Troubleshooting | `docs/TROUBLESHOOTING.md` | Common issues & fixes |
 | Contributing | `docs/CONTRIBUTING.md` | Contribution guidelines |
 | Release Notes | `versinNote/` | Per-version changelog (`v4.5.0.md` is current) |

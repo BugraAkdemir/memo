@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"memo/internal/beta"
 	"memo/internal/skill"
 )
 
@@ -42,12 +41,10 @@ func writeSkill(t *testing.T, root, dir, content string) {
 	}
 }
 
-// skillApp is a project chat in a set-up project with Beta on, plus a plain chat.
+// skillApp is a project chat in a set-up project, plus a plain chat.
 func skillApp(t *testing.T) (a *App, projChat, plainChat, root string) {
 	t.Helper()
 	a, sm, home := projectScopeApp(t)
-	beta.SetGate(func() bool { return true })
-	t.Cleanup(func() { beta.SetGate(nil) })
 	a.skillManager = skill.NewManager(t.TempDir())
 	proj := mkProject(t, home, "shop")
 	res, err := a.projectManager().Scaffold(proj)
@@ -73,11 +70,6 @@ func TestProjectSkills_AreInstructionsOnlyAndOnlyForTheirOwnProject(t *testing.T
 	}
 	if _, ok := a.lookupSkill(plainChat, "deploy"); ok {
 		t.Fatal("a plain chat can see a project's skill")
-	}
-
-	beta.SetGate(func() bool { return false })
-	if _, ok := a.lookupSkill(projChat, "deploy"); ok {
-		t.Fatal("project skills must be invisible while Beta is off")
 	}
 }
 
@@ -180,13 +172,9 @@ func TestSkillCommand_AddListAndRemove(t *testing.T) {
 	}
 }
 
-func TestInstallProjectSkill_NeedsBetaAndASetUpProject(t *testing.T) {
-	a, projChat, plainChat, _ := skillApp(t)
+func TestInstallProjectSkill_NeedsAProjectChat(t *testing.T) {
+	a, _, plainChat, _ := skillApp(t)
 	if _, err := a.InstallProjectSkill(context.Background(), plainChat, "acme/repo"); err == nil || !strings.Contains(err.Error(), "not a project chat") {
 		t.Fatalf("plain chat: %v", err)
-	}
-	beta.SetGate(func() bool { return false })
-	if _, err := a.InstallProjectSkill(context.Background(), projChat, "acme/repo"); err == nil || !strings.Contains(err.Error(), "Beta") {
-		t.Fatalf("Beta off: %v", err)
 	}
 }

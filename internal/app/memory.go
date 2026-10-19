@@ -18,6 +18,9 @@ import (
 // simply unreachable (no local embedding server running). This is expected when
 // the user runs an API/Orchestra-only setup, so we log it but don't surface a
 // scary "memory error" toast on every single message.
+// projectReplyStoreChars caps the assistant reply stored with a project turn.
+const projectReplyStoreChars = 1500
+
 func isEmbeddingBackendDown(err error) bool {
 	if err == nil {
 		return false
@@ -121,6 +124,11 @@ func (a *App) saveMemorySync(ctx context.Context, sc memory.Scope, userMsg, repl
 	mctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
+	if sc.InProject() {
+		// A coding turn's reply can be a whole diff. Retrieval only ever shows the
+		// user's side (BuildMemoryBlock strips the reply), so keep a short excerpt.
+		reply = truncate.Text(reply, projectReplyStoreChars)
+	}
 	if err := store.SaveInteraction(mctx, sc, userMsg, reply); err != nil {
 		logx.Printf("LATENCY app.memory_save_sync total_ms=%d status=error", time.Since(start).Milliseconds())
 		logx.Printf("MEMORY SAVE FAILED: %v", err)

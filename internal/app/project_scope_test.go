@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"memo/internal/api"
-	"memo/internal/beta"
 	"memo/internal/config"
 	"memo/internal/identity"
 	"memo/internal/memory"
@@ -141,25 +140,16 @@ func TestMemoryScopeForChat(t *testing.T) {
 func TestMemoryAllowedFor(t *testing.T) {
 	a := &App{}
 	proj, plain := memory.ProjectScope("p_x"), memory.AllProjects
-	defer beta.SetGate(nil)
-
-	beta.SetGate(func() bool { return false })
-	if a.memoryAllowedFor(proj, true) {
-		t.Error("project chat in Code Mode must have no memory while Beta is off")
+	for _, codeMode := range []bool{false, true} {
+		if !a.memoryAllowedFor(proj, codeMode) {
+			t.Errorf("a project chat has its own memory whether or not Code Mode is on (code=%v)", codeMode)
+		}
 	}
-	if !a.memoryAllowedFor(proj, false) {
-		t.Error("a project chat with Code Mode off keeps its (project) memory")
-	}
-	if a.memoryAllowedFor(plain, true) || !a.memoryAllowedFor(plain, false) {
-		t.Error("plain chats are unchanged: memory unless Code Mode")
-	}
-
-	beta.SetGate(func() bool { return true })
-	if !a.memoryAllowedFor(proj, true) {
-		t.Error("with Beta on a project chat in Code Mode gets its project memory")
+	if !a.memoryAllowedFor(plain, false) {
+		t.Error("a plain chat keeps its memory")
 	}
 	if a.memoryAllowedFor(plain, true) {
-		t.Error("Code Mode on a plain chat still has no memory")
+		t.Error("a plain chat pinned to Code Mode still has no memory")
 	}
 }
 
@@ -168,8 +158,6 @@ func TestMemoryAllowedFor(t *testing.T) {
 // memory, and nothing of the person's general memory, name or style.
 func TestBuildMessages_ProjectChatNeverSeesPersonalMemoryOrIdentity(t *testing.T) {
 	a, sm, home := projectScopeApp(t)
-	defer beta.SetGate(nil)
-	beta.SetGate(func() bool { return true })
 
 	// Every text embeds to the same vector, so similarity can never be what
 	// keeps a row out of a result — only the scope can.
@@ -253,12 +241,13 @@ func TestBuildMessages_ProjectChatNeverSeesPersonalMemoryOrIdentity(t *testing.T
 		}
 	})
 
-	t.Run("Beta off: a project chat in Code Mode has no memory at all", func(t *testing.T) {
-		beta.SetGate(func() bool { return false })
+	t.Run("the Memory switch off: a project chat has no memory at all", func(t *testing.T) {
+		a.cfg.Memory.MemoryEnabled = false
+		defer func() { a.cfg.Memory.MemoryEnabled = true }()
 		got := prompt(projChat, false)
 		for _, none := range []string{"project-note", "Tester-Secret", "general-secret"} {
 			if strings.Contains(got, none) {
-				t.Errorf("Code Mode project chat with Beta off carried %q", none)
+				t.Errorf("memory switched off but the prompt carried %q", none)
 			}
 		}
 	})

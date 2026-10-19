@@ -5,7 +5,6 @@ package app
 import (
 	"os"
 
-	"memo/internal/beta"
 	"memo/internal/config"
 	"memo/internal/logx"
 	"memo/internal/memory"
@@ -74,21 +73,16 @@ func (a *App) memoryScopeForChat(chatID string) (sc memory.Scope, ok bool) {
 	return memory.Scope{}, false
 }
 
-// projectMemoryEnabled reports whether project chats read and write their own
-// memory. Code Mode used to have no memory at all; giving project chats a
-// private pool is new behaviour and ships behind Beta first.
-func projectMemoryEnabled() bool { return beta.Enabled() }
-
-// memoryAllowedFor reports whether a chat with scope sc may read/write memory
-// on a turn that is (code) or is not in Code Mode. Code Mode has never touched
-// memory; a *project* chat in Code Mode now may, in its own pool, behind Beta.
-// A project chat with Code Mode off keeps remembering, as it always did, but in
-// the project's pool rather than the general one.
+// memoryAllowedFor reports whether a chat with scope sc may read/write memory.
+//
+// A project (agent) chat has a memory of its own and it does not depend on Code
+// Mode: Code Mode is the default for project chats, and it only strips what is
+// *personal* (persona, mood, time block, background LLM calls); the project's
+// own pool is not personal. A plain chat is unchanged: memory unless the chat
+// was pinned to Code Mode. Whether memory is on at all is the Memory switch
+// (GetMemoryEnabled), checked by every caller.
 func (a *App) memoryAllowedFor(sc memory.Scope, code bool) bool {
-	if sc.InProject() {
-		return !code || projectMemoryEnabled()
-	}
-	return !code
+	return sc.InProject() || !code
 }
 
 // isProjectChat reports whether chatID is a project (agent) chat for which the

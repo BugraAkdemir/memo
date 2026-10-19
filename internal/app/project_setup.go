@@ -3,10 +3,8 @@
 package app
 
 import (
-	"fmt"
 	"path/filepath"
 
-	"memo/internal/beta"
 	"memo/internal/project"
 )
 
@@ -19,17 +17,14 @@ func (a *App) minimalModeOn() bool {
 // ProjectStatus tells the UI whether path can be a Memo project, whether it is
 // set up, and whether to offer setting it up. It writes nothing.
 func (a *App) ProjectStatus(path string) project.UIStatus {
-	st := project.UIStatus{Status: a.projectManager().Status(path), Enabled: beta.Enabled()}
-	st.ShouldAsk = st.Enabled && !a.minimalModeOn() && st.Allowed && !st.SetUp && !st.Declined
+	st := project.UIStatus{Status: a.projectManager().Status(path)}
+	st.ShouldAsk = !a.minimalModeOn() && st.Allowed && !st.SetUp && !st.Declined
 	return st
 }
 
 // SetupProject creates the project's `.memo/` folder and starter files. It is
-// an explicit user action (the UI asks first) and is part of the Beta feature.
+// an explicit user action (the UI asks first).
 func (a *App) SetupProject(path string) (*project.ScaffoldResult, error) {
-	if !beta.Enabled() {
-		return nil, fmt.Errorf("project folders are a Beta feature; turn on Settings > Beta Features first")
-	}
 	return a.projectManager().Scaffold(path)
 }
 
@@ -43,10 +38,10 @@ func (a *App) DeclineProject(path string, declined bool) error {
 // the prompt (the model reads them with its tools when it needs them), which
 // keeps the prompt small and its prefix byte-stable for prompt caches.
 //
-// It is empty under Minimal Mode (pure wrapper: Memo adds nothing), when the
-// feature is off, for plain chats, and for a folder that is not set up.
+// It is empty under Minimal Mode (pure wrapper: Memo adds nothing), for plain
+// chats, and for a folder that is not set up.
 func (a *App) projectInstruction(chatID string) string {
-	if !beta.Enabled() || a.minimalModeOn() || !a.isProjectChat(chatID) {
+	if a.minimalModeOn() || !a.isProjectChat(chatID) {
 		return ""
 	}
 	sm := a.getSessionManager()

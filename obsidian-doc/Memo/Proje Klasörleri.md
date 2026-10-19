@@ -1,7 +1,7 @@
-# 📁 Proje Klasörleri (`.memo/`) — Beta
+# 📁 Proje Klasörleri (`.memo/`)
 
 > **Paket:** `internal/project/` (koruma, kimlik, iskele, skill'ler), `internal/memory/scope.go` (hafıza havuzları); `internal/app/` içinde `project_scope.go`, `project_setup.go`, `project_skills.go` ile bağlanır
-> **Durum:** Beta (Ayarlar › Beta Özellikler), varsayılan kapalı. Tasarım kaydı: `PLAN_project_folders.md`; tam sayfa: `docs/tr/PROJECT_FOLDER.md`
+> Tasarım kaydı: `PLAN_project_folders.md`; tam sayfa: `docs/tr/PROJECT_FOLDER.md`
 > **Veri:** `<proje>/.memo/`, `data/projects.json` (cihaza özel), `data/backups/memory-pre-project-id-*.db`
 > **API uç noktaları:** `/api/projects/status`, `/api/projects/setup`, `/api/projects/decline`
 

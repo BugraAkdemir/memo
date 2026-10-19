@@ -64,7 +64,7 @@ Future<_Adapter> _pump(WidgetTester tester, Map<String, dynamic> status, {int st
   return adapter;
 }
 
-const _ask = {'root': '/home/u/work/shop', 'name': 'shop', 'allowed': true, 'enabled': true, 'should_ask': true};
+const _ask = {'root': '/home/u/work/shop', 'name': 'shop', 'allowed': true, 'should_ask': true};
 
 void main() {
   setUp(() => L10n.setLocale(MemoLocale.en));
@@ -104,7 +104,7 @@ void main() {
     expect(a.calls, ['/api/projects/status']);
   });
 
-  testWidgets('no dialog when the backend says not to ask (Beta off, Minimal Mode, declined, home…)', (tester) async {
+  testWidgets('no dialog when the backend says not to ask (Minimal Mode, declined, home…)', (tester) async {
     final a = await _pump(tester, {..._ask, 'should_ask': false});
     expect(find.text('Set up Memo for this project?'), findsNothing);
     expect(a.calls, ['/api/projects/status']);

@@ -13,9 +13,6 @@ class ProjectStatus {
   final bool allowed;
   final String reason;
 
-  /// False while project folders are not switched on (Beta).
-  final bool enabled;
-
   /// True when the app should ask "set up Memo for this project?".
   final bool shouldAsk;
 
@@ -27,7 +24,6 @@ class ProjectStatus {
     this.declined = false,
     this.allowed = false,
     this.reason = '',
-    this.enabled = false,
     this.shouldAsk = false,
   });
 
@@ -39,7 +35,6 @@ class ProjectStatus {
         declined: json['declined'] as bool? ?? false,
         allowed: json['allowed'] as bool? ?? false,
         reason: json['reason'] as String? ?? '',
-        enabled: json['enabled'] as bool? ?? false,
         shouldAsk: json['should_ask'] as bool? ?? false,
       );
 }

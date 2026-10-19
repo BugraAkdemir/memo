@@ -13,7 +13,6 @@ import (
 var betaToolNames = []string{
 	"open_app", "browser_navigate", "browser_click", "browser_type",
 	"browser_scroll", "browser_screenshot", "browser_get_text", "browser_close",
-	"install_project_skill",
 }
 
 func offeredNames(r *ToolRegistry) map[string]bool {

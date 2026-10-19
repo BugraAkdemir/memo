@@ -1,15 +1,14 @@
-# Project folders (`.memo/`) — Beta
+# Project folders (`.memo/`)
 
 When you open a folder as a project (an agent chat), Memo can keep its own small
 folder in it: working rules, notes, project skills — and give that project a
-memory of its own. Everything here is **Beta** (Settings › Beta Features) and off
-by default. Design record: `PLAN_project_folders.md`.
+memory of its own. Design record: `PLAN_project_folders.md`.
 
 ## What the person sees
 
 - Picking a folder for a new agent chat asks **"Set up Memo for this project?"** —
   *Set up*, *Not now*, *Never for this folder*. Nothing is written unless you answer
-  *Set up*. The question is not asked when Beta is off, in Minimal Mode, for a folder
+  *Set up*. The question is not asked in Minimal Mode, for a folder
   that can never be a project (see below), or for a folder you said "never" to.
 - In a set-up project the model is told, in one line, to read `.memo/AGENTS.md` first.
   That file points on to the project's `AGENTS.md`, `handoff.md` and `.memo/notes.md`.
@@ -71,8 +70,11 @@ A project chat never receives your general memory, pinned facts, name, learned s
 notes or custom persona text; its mood is neither shown nor fed; it learns no personal
 facts and its turns do not go to the optional decision model. A project whose id cannot
 be determined gets **no** memory, never the general pool. Code Mode used to have no
-memory at all; a project chat in Code Mode now reads and writes its own pool while Beta
-is on. A project chat with Code Mode off keeps remembering, now in the project's pool.
+memory at all; a project chat now reads and writes its own pool whether or not Code Mode is
+on: Code Mode only strips what is personal, and the project's own pool is not. The
+Memory switch still decides whether any memory is used. A coding turn's reply is
+stored as an excerpt (1500 characters), since retrieval only shows the user's side.
+Self-Driving task steps with "task memory" off neither read nor write it.
 
 ### The one-time database change
 
@@ -114,7 +116,7 @@ several skills the error lists them. An installed skill is never overwritten.
 | Method | Endpoint | |
 |---|---|---|
 | `POST` | `/api/projects/status` | `{path}` → `{root, id, name, set_up, declined, allowed, reason, enabled, should_ask}`; writes nothing |
-| `POST` | `/api/projects/setup` | `{path}` → creates the files; 403 for home / Memo's folders / a foreign `.memo` / Beta off |
+| `POST` | `/api/projects/setup` | `{path}` → creates the files; 403 for home / Memo's folders / a foreign `.memo` |
 | `POST` | `/api/projects/decline` | `{path, declined?}` → remember "never here" (`false` undoes it) |
 
 ## Not done / not verified

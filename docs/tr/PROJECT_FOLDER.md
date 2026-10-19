@@ -1,15 +1,14 @@
-# Proje klasörleri (`.memo/`) — Beta
+# Proje klasörleri (`.memo/`)
 
 Bir klasörü proje olarak (ajan sohbeti) açtığında Memo, içinde kendi küçük klasörünü
 tutabilir: çalışma kuralları, notlar, proje skill'leri — ve o projeye kendi hafızasını
-verir. Burada anlatılan her şey **Beta**'dır (Ayarlar › Beta Özellikler) ve varsayılan
-olarak kapalıdır. Tasarım kaydı: `PLAN_project_folders.md`.
+verir. Tasarım kaydı: `PLAN_project_folders.md`.
 
 ## Kullanıcı ne görür
 
 - Yeni bir ajan sohbeti için klasör seçince **"Bu proje için Memo kurulsun mu?"** sorulur —
   *Kur*, *Şimdi değil*, *Bu klasör için asla*. *Kur* demedikçe hiçbir şey yazılmaz. Soru;
-  Beta kapalıyken, Minimal Mod'da, proje olamayacak bir klasörde (aşağıya bakın) ya da
+  Minimal Mod'da, proje olamayacak bir klasörde (aşağıya bakın) ya da
   "asla" dediğin klasörde sorulmaz.
 - Kurulmuş bir projede modele tek satırla önce `.memo/AGENTS.md`'yi okuması söylenir. O
   dosya projenin `AGENTS.md`'sine, `handoff.md`'sine ve `.memo/notes.md`'sine yönlendirir.
@@ -73,8 +72,11 @@ Proje sohbeti; genel hafızanı, sabitlenmiş gerçekleri, adını, öğrenilmi�
 da özel persona metnini asla almaz; ruh hâli ne gösterilir ne beslenir; kişisel bilgi
 öğrenmez ve turları isteğe bağlı karar modeline gitmez. Kimliği belirlenemeyen bir proje
 **hiç** hafıza alır, asla genel havuzu değil. Code Mode'un eskiden hiç hafızası yoktu;
-Code Mode'daki bir proje sohbeti artık Beta açıkken kendi havuzunu okur ve yazar. Code Mode
-kapalı bir proje sohbeti hatırlamaya devam eder, ama artık projenin havuzunda.
+Proje sohbeti artık Code Mode açık olsun olmasın kendi havuzunu okur ve yazar: Code Mode yalnızca
+**kişisel** olanı çıkarır, projenin kendi havuzu kişisel değildir. Hafıza anahtarı hâlâ hafızanın
+kullanılıp kullanılmayacağını belirler. Kodlama turunun yanıtı özet olarak (1500 karakter) saklanır,
+çünkü geri getirme yalnız kullanıcı tarafını gösterir. "Görev hafızası" kapalı olan otonom görev
+adımları hafızayı ne okur ne yazar.
 
 ### Tek seferlik veritabanı değişikliği
 
@@ -115,7 +117,7 @@ kaldırır.
 | Yöntem | Uç nokta | |
 |---|---|---|
 | `POST` | `/api/projects/status` | `{path}` → `{root, id, name, set_up, declined, allowed, reason, enabled, should_ask}`; hiçbir şey yazmaz |
-| `POST` | `/api/projects/setup` | `{path}` → dosyaları oluşturur; ev / Memo klasörleri / yabancı `.memo` / Beta kapalı için 403 |
+| `POST` | `/api/projects/setup` | `{path}` → dosyaları oluşturur; ev / Memo klasörleri / yabancı `.memo` için 403 |
 | `POST` | `/api/projects/decline` | `{path, declined?}` → "burada asla"yı hatırlar (`false` geri alır) |
 
 ## Yapılmadı / doğrulanmadı

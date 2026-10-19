@@ -82,7 +82,6 @@ type projectStatus struct {
 	Declined  bool   `json:"declined"`
 	Allowed   bool   `json:"allowed"`
 	Reason    string `json:"reason"`
-	Enabled   bool   `json:"enabled"`
 	ShouldAsk bool   `json:"should_ask"`
 }
 
@@ -111,21 +110,6 @@ func TestProjectFolders_SetupFlowAndTheSessionStartInstruction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("Beta off: nothing is offered and setup is refused", func(t *testing.T) {
-		st := h.projectStatus(t, proj)
-		if st.Enabled || st.ShouldAsk {
-			t.Fatalf("status with Beta off = %+v", st)
-		}
-		if code := h.postStatus("/api/projects/setup", map[string]string{"path": proj}); code != http.StatusForbidden {
-			t.Fatalf("setup with Beta off: status %d, want 403", code)
-		}
-		if _, err := os.Stat(filepath.Join(proj, ".memo")); !os.IsNotExist(err) {
-			t.Fatal(".memo was created with Beta off")
-		}
-	})
-
-	h.SetBeta(true)
-
 	t.Run("the home folder can never be a project and is left untouched", func(t *testing.T) {
 		st := h.projectStatus(t, home)
 		if st.Allowed || st.ShouldAsk || st.Reason == "" {
@@ -144,7 +128,7 @@ func TestProjectFolders_SetupFlowAndTheSessionStartInstruction(t *testing.T) {
 	var id string
 	t.Run("a fresh folder is offered, set up, then no longer offered", func(t *testing.T) {
 		st := h.projectStatus(t, proj)
-		if !st.Enabled || !st.Allowed || st.SetUp || !st.ShouldAsk || st.ID == "" {
+		if !st.Allowed || st.SetUp || !st.ShouldAsk || st.ID == "" {
 			t.Fatalf("fresh status = %+v", st)
 		}
 		id = st.ID
@@ -209,7 +193,6 @@ func TestProjectFolders_SetupFlowAndTheSessionStartInstruction(t *testing.T) {
 
 func TestProjectFolders_DecliningIsRemembered(t *testing.T) {
 	h, home, _ := projectHarness(t)
-	h.SetBeta(true)
 	proj := filepath.Join(home, "w", "p")
 	if err := os.MkdirAll(proj, 0o755); err != nil {
 		t.Fatal(err)

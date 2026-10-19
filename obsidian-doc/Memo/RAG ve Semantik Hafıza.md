@@ -35,5 +35,5 @@ Ayarlar › Hafıza, bir pill çubuğuyla değiştirilen beş bölümdür — **
 - [[Veri Katmanı ve Kalıcılık]]
 - [[Gelişmiş Ayarlar]] (Top-K ve Eşik Değerleri)
 
-## Proje havuzları (Beta)
-Proje klasörleri açıkken hafıza `memories.project_id` ile bölünür: normal sohbet her havuzu okur ve genel havuza yazar; proje (ajan) sohbeti ise **yalnız kendi projesinin havuzunu** okur ve yazar — genel hafızayı, sabitlenmiş gerçekleri ya da adını asla görmez. Bkz. [[Proje Klasörleri]].
+## Proje havuzları
+Hafıza `memories.project_id` ile bölünür: normal sohbet her havuzu okur ve genel havuza yazar; proje (ajan) sohbeti ise **yalnız kendi projesinin havuzunu** okur ve yazar — genel hafızayı, sabitlenmiş gerçekleri ya da adını asla görmez. Bkz. [[Proje Klasörleri]].

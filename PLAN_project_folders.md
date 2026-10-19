@@ -9,7 +9,7 @@ Amaç: Memo bir klasörü proje olarak açınca o klasörde `.memo/` (kurallar, 
 - Oturum başında isteme tek satır: "önce `.memo/AGENTS.md`'yi oku"; dosyalar isteme gömülmez. Kök `AGENTS.md` araç-nötr kalır (`.memo`'dan söz etmez).
 - Şablonlar teknolojiden bağımsız, İngilizce, kalite odaklı; `go:embed` ile ikilide.
 - 3k aktif kullanıcı: veritabanı geçişi yalnız eklemeli, yedekli, başarısızsa özellik kapalı çalışır.
-- İlk sürüm Beta arkasında (`internal/beta`), varsayılan kapalı.
+- ~~İlk sürüm Beta arkasında~~ → **kaldırıldı (2026-10-19, kullanıcı):** hiçbir parça Beta'ya bağlı değil; proje sohbetinin hafızası Code Mode'dan bağımsız (Code Mode yalnız kişisel olanı çıkarır).
 
 ## Aşamalar (her biri ayrı commit, doğrulanmadan sonrakine geçilmez)
 - [x] **P0** `internal/project`: kök koruması, `.memo/project.json`, id + cihaz başına kayıt defteri (taşıma/kopya algılama), atomik yazma.

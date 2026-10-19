@@ -5,11 +5,11 @@ Memo Backend, varsayılan olarak `localhost:8090` üzerinde bir REST API çalı�
 ## Kimlik Doğrulama
 Yerel (`localhost`) bağlantılar token gerektirmeden açıktır. **Uzaktan erişim (LAN, ngrok veya Tailscale) her istekte Settings'te gösterilen erişim token'ını zorunlu kılar.**
 
-## Proje klasörleri (`.memo/`, Beta) — bkz. [`PROJECT_FOLDER.md`](PROJECT_FOLDER.md)
+## Proje klasörleri (`.memo/`) — bkz. [`PROJECT_FOLDER.md`](PROJECT_FOLDER.md)
 | Yöntem | Uç nokta | Açıklama |
 | :--- | :--- | :--- |
 | `POST` | `/api/projects/status` | `{path}` → `{root, id, name, set_up, declined, allowed, reason, enabled, should_ask}`. Hiçbir şey yazmaz. İzin: `/api/agent/chat` ile aynı |
-| `POST` | `/api/projects/setup` | `{path}` → `.memo/` ve başlangıç dosyalarını oluşturur (asla üzerine yazmaz). Ev klasörü, Memo'nun kendi klasörleri, yabancı `.memo` ya da Beta kapalıyken 403 |
+| `POST` | `/api/projects/setup` | `{path}` → `.memo/` ve başlangıç dosyalarını oluşturur (asla üzerine yazmaz). Ev klasörü, Memo'nun kendi klasörleri, yabancı `.memo` için 403 |
 | `POST` | `/api/projects/decline` | `{path, declined?}` → "bu klasöre asla Memo kurma"yı hatırlar (`declined:false` geri alır) |
 
 ## Developer API Gateway (Anthropic- ve OpenAI-uyumlu)

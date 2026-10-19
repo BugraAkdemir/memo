@@ -26,7 +26,7 @@ Yerel-öncelikli · Gizlilik-öncelikli · Sıfır bulut bağımlısı · Tamame
 - [[Özellik Kataloğu]] — Güncel tam özellik listesi
 - [[Ajan Modu]] — Ajan pipeline'ı, araçlar, izinler, Code Mode'un Plan/Auto/Build alt-modları
 - [[Otonom Görev Döngüsü]] — Bir `Task.md`'den gözetimsiz çok-adımlı çalıştırma
-- [[Proje Klasörleri]] — Projede `.memo/`: çalışma kuralları, notlar, kendi hafızası, proje skill'leri (Beta)
+- [[Proje Klasörleri]] — Projede `.memo/`: çalışma kuralları, notlar, kendi hafızası, proje skill'leri
 - [[Masaüstü Maskotu]] — Her-zaman-üstte aktivite yoldaşı
 - [[WhatsApp Entegrasyonu]] — Kurulum ve özellikler
 - [[Telegram Entegrasyonu]] — Bot kurulumu, sahip kilidi, kendine-sohbet asistanı

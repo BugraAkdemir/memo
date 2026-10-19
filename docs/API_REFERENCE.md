@@ -243,11 +243,11 @@ A streamed chunk is ordinary reply text unless its `finish_reason` names one of 
 | `GET`/`PUT` | `/api/chats/cli-provider`, `/api/chats/cli-workdir`, `/api/chats/cli-model` | Per-chat CLI provider/working-dir/model |
 | `POST` | `/api/send/cli-stream` | Send a message to a CLI-provider chat (SSE) |
 
-### 📁 Project folders (`.memo/`, Beta) — see [`PROJECT_FOLDER.md`](PROJECT_FOLDER.md)
+### 📁 Project folders (`.memo/`) — see [`PROJECT_FOLDER.md`](PROJECT_FOLDER.md)
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `POST` | `/api/projects/status` | `{path}` → `{root, id, name, set_up, declined, allowed, reason, enabled, should_ask}`. Writes nothing. Same permission as `/api/agent/chat` |
-| `POST` | `/api/projects/setup` | `{path}` → creates `.memo/` and the starter files (never overwrites). 403 for the home folder, Memo's own folders, a foreign `.memo`, or Beta off |
+| `POST` | `/api/projects/setup` | `{path}` → creates `.memo/` and the starter files (never overwrites). 403 for the home folder, Memo's own folders, or a foreign `.memo` |
 | `POST` | `/api/projects/decline` | `{path, declined?}` → remembers "never set up Memo in this folder" (`declined:false` undoes it) |
 
 ### 🛠️ Developer API Gateway

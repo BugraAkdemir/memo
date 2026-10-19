@@ -196,6 +196,22 @@ const MaxMemoryContextTokens = 4096
 // per-request budget is derived and passed in here for the local-model
 // path specifically.
 func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool, agentEnabled, webSearchEnabled, whatsappReachable, telegramReachable bool, memoryTokenBudget ...int) string {
+	return id.buildSystemPrompt(false, memories, stripAssistant, agentEnabled, webSearchEnabled, whatsappReachable, telegramReachable, memoryTokenBudget...)
+}
+
+// BuildProjectSystemPrompt is BuildSystemPrompt for a project (agent) chat that
+// is not in Code Mode. A project is not the person's personal assistant space,
+// so nothing that identifies or profiles the person goes in: the user is "the
+// user" (no name), the learned style notes imported from the person's own
+// context are left out, and a custom persona text — which may well contain
+// their name (the default one does) — is replaced by the built-in neutral
+// identity. No memories are embedded here (project memory rides on the user
+// message, see BuildProjectMemoryBlock).
+func (id *Identity) BuildProjectSystemPrompt(stripAssistant bool, agentEnabled, webSearchEnabled, whatsappReachable, telegramReachable bool) string {
+	return id.buildSystemPrompt(true, nil, stripAssistant, agentEnabled, webSearchEnabled, whatsappReachable, telegramReachable)
+}
+
+func (id *Identity) buildSystemPrompt(private bool, memories []memory.MemoryResult, stripAssistant bool, agentEnabled, webSearchEnabled, whatsappReachable, telegramReachable bool, memoryTokenBudget ...int) string {
 	memBudget := MaxMemoryContextTokens
 	if len(memoryTokenBudget) > 0 && memoryTokenBudget[0] > 0 {
 		memBudget = memoryTokenBudget[0]
@@ -211,6 +227,9 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 	// themselves, so a concurrent Update() can't land mid-build and mix old
 	// and new values across the two blocks.
 	userName, assistantName, style, customRole := id.GetProfile()
+	if private {
+		userName, customRole = "the user", ""
+	}
 
 	// Persona/identity block: base identity or CustomRole, origin facts,
 	// style instructions, and learned style notes — bundled as one category
@@ -238,7 +257,7 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		// Learned personalization — additive, from imported memory (see
 		// LearnedStyleNotes doc comment), not gated behind CustomRole so it
 		// still applies under a wizard persona or a fully custom prompt.
-		if notes := id.GetLearnedStyleNotes(); notes != "" {
+		if notes := id.GetLearnedStyleNotes(); notes != "" && !private {
 			sb.WriteString("\n\nWhat you've learned about how this user likes to be talked to (from imported context, adapt your tone accordingly):\n")
 			sb.WriteString(notes)
 		}
@@ -292,11 +311,21 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 // from here and put it on the current user message instead, leaving the system
 // prompt byte-stable (see App.buildMessagesForSession).
 func (id *Identity) BuildMemoryBlock(memories []memory.MemoryResult, stripAssistant bool, memoryTokenBudget int) string {
+	userName, _, _, _ := id.GetProfile()
+	return buildMemoryBlock(userName, memories, stripAssistant, memoryTokenBudget)
+}
+
+// BuildProjectMemoryBlock is BuildMemoryBlock for a project chat: the same
+// block, but about "the user" rather than the person by name.
+func (id *Identity) BuildProjectMemoryBlock(memories []memory.MemoryResult, stripAssistant bool, memoryTokenBudget int) string {
+	return buildMemoryBlock("the user", memories, stripAssistant, memoryTokenBudget)
+}
+
+func buildMemoryBlock(userName string, memories []memory.MemoryResult, stripAssistant bool, memoryTokenBudget int) string {
 	memBudget := MaxMemoryContextTokens
 	if memoryTokenBudget > 0 {
 		memBudget = memoryTokenBudget
 	}
-	userName, _, _, _ := id.GetProfile()
 
 	var memoryBlock string
 	if stripAssistant {

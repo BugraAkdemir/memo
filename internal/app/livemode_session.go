@@ -150,7 +150,7 @@ func (a *App) refreshLiveModeMemory(session livemode.Session, userText string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	results := a.retrieveMemory(ctx, text)
+	results := a.retrieveMemory(ctx, memory.AllProjects, text)
 	block := memory.FormatMemoriesForPrompt(results)
 	if block == "" {
 		return
@@ -562,7 +562,7 @@ func (a *App) buildLiveModeSystemPrompt(ctx context.Context, workMode string) st
 	}
 	var memories []memory.MemoryResult
 	if a.GetMemoryEnabled() {
-		memories = a.retrieveMemory(ctx, a.t("güncel bağlam", "current context"))
+		memories = a.retrieveMemory(ctx, memory.AllProjects, a.t("güncel bağlam", "current context"))
 	}
 	base := a.identity.BuildSystemPrompt(memories, false, true, true, a.whatsappReachable(), a.telegramReachable())
 

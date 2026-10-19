@@ -745,12 +745,12 @@ func TestIntegration_MemoryBlock_CappedAndUserOnly(t *testing.T) {
 
 	ctx := context.Background()
 	for i := 0; i < 15; i++ {
-		if err := h.a.store.SaveExplicit(ctx, fmt.Sprintf("kullanici hakkinda kalici gercek numara %d", i), "profile"); err != nil {
+		if err := h.a.store.SaveExplicit(ctx, memory.AllProjects, fmt.Sprintf("kullanici hakkinda kalici gercek numara %d", i), "profile"); err != nil {
 			t.Fatalf("SaveExplicit: %v", err)
 		}
 	}
 	for i := 0; i < 3; i++ {
-		if err := h.a.store.SaveInteraction(ctx,
+		if err := h.a.store.SaveInteraction(ctx, memory.AllProjects,
 			fmt.Sprintf("kullanicidan gelen mesaj %d biraz uzun olsun ki kaydedilsin", i),
 			fmt.Sprintf("MEMONUN CEVABI %d bu satir promptta gorunmemeli", i)); err != nil {
 			t.Fatalf("SaveInteraction: %v", err)
@@ -793,7 +793,7 @@ func TestIntegration_SystemPromptIsByteStableAcrossTurns(t *testing.T) {
 	h.a.cfgMu.Unlock()
 	ctx := context.Background()
 	for i := 0; i < 6; i++ {
-		if err := h.a.store.SaveExplicit(ctx, fmt.Sprintf("kullanici hakkinda kalici gercek numara %d", i), "profile"); err != nil {
+		if err := h.a.store.SaveExplicit(ctx, memory.AllProjects, fmt.Sprintf("kullanici hakkinda kalici gercek numara %d", i), "profile"); err != nil {
 			t.Fatalf("SaveExplicit: %v", err)
 		}
 	}

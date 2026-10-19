@@ -13,7 +13,7 @@ Amaç: Memo bir klasörü proje olarak açınca o klasörde `.memo/` (kurallar, 
 
 ## Aşamalar (her biri ayrı commit, doğrulanmadan sonrakine geçilmez)
 - [x] **P0** `internal/project`: kök koruması, `.memo/project.json`, id + cihaz başına kayıt defteri (taşıma/kopya algılama), atomik yazma.
-- [ ] **P1** Hafıza kapsamı: `memories.project_id` (eklemeli geçiş + öncesinde yedek + başarısızsa kapalı), Store API'sinde `Scope`, birleştirme/tekilleştirme/dream sınırı, ctx ile `chatID → scope`, `Session.ProjectID`, proje sohbetinde kimlik bloğundan ad/öğrenilmiş notların çıkarılması, proje kapsamında olgu çıkarımı kapalı.
+- [x] **P1** Hafıza kapsamı: `memories.project_id` (eklemeli geçiş + öncesinde yedek + başarısızsa kapalı), Store API'sinde `Scope`, birleştirme/tekilleştirme/dream sınırı, ctx ile `chatID → scope`, `Session.ProjectID`, proje sohbetinde kimlik bloğundan ad/öğrenilmiş notların çıkarılması, proje kapsamında olgu çıkarımı kapalı.
 - [ ] **P2** İskele + talimat: gömülü şablonlar, `POST /api/projects/setup`, onay arayüzü (TR/EN l10n), tek satırlık talimat (Minimal Mod'da yok).
 - [ ] **P3** Proje skill'leri: `.memo/skills`, `/` menüsü, link ile kurulum (güven kapısı).
 - [ ] **P4** Proje başına izinler (hash güveni) — sonraki sürüm olabilir.

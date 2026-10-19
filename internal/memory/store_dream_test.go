@@ -11,7 +11,7 @@ import (
 // in whatever order the store returns them.
 func pinnedContents(t *testing.T, ctx context.Context, store *Store) []string {
 	t.Helper()
-	facts, err := store.GetPinnedFacts(ctx)
+	facts, err := store.GetPinnedFacts(ctx, AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -25,7 +25,7 @@ func pinnedContents(t *testing.T, ctx context.Context, store *Store) []string {
 func seedPinnedFacts(t *testing.T, ctx context.Context, store *Store, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
-		if err := store.SaveExplicit(ctx, fmt.Sprintf("fact number %d", i), ""); err != nil {
+		if err := store.SaveExplicit(ctx, AllProjects, fmt.Sprintf("fact number %d", i), ""); err != nil {
 			t.Fatalf("SaveExplicit(%d) error = %v", i, err)
 		}
 	}

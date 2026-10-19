@@ -24,17 +24,17 @@ func TestMemoryOutageRetainsPinnedAndLexicalRecall(t *testing.T) {
 	}
 	defer store.Close()
 	for _, fact := range []string{"My name is Ada", "I prefer Turkish replies"} {
-		if err := store.SaveExplicit(context.Background(), fact, "profile"); err != nil {
+		if err := store.SaveExplicit(context.Background(), memory.AllProjects, fact, "profile"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := store.SaveInteraction(context.Background(), "The telescope project uses a silver mirror", "That telescope specification is recorded"); err != nil {
+	if err := store.SaveInteraction(context.Background(), memory.AllProjects, "The telescope project uses a silver mirror", "That telescope specification is recorded"); err != nil {
 		t.Fatal(err)
 	}
 	down.Store(true)
 	before := calls.Load()
 	a := &App{store: store, cfg: &config.AppConfig{Memory: config.MemoryConfig{MemoryEnabled: true, TopK: 5, PinnedFactsPerTurn: 1}}}
-	got := a.retrieveMemory(context.Background(), "telescope")
+	got := a.retrieveMemory(context.Background(), memory.AllProjects, "telescope")
 	pinned, lexical := 0, 0
 	for _, r := range got {
 		if r.MatchType == "pinned" {
@@ -63,7 +63,7 @@ func TestMemoryOutageRespectsCancelledCaller(t *testing.T) {
 	a := &App{store: store, cfg: &config.AppConfig{Memory: config.MemoryConfig{TopK: 5, PinnedFactsPerTurn: 1}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if got := a.retrieveMemory(ctx, "anything"); len(got) != 0 {
+	if got := a.retrieveMemory(ctx, memory.AllProjects, "anything"); len(got) != 0 {
 		t.Fatal("cancelled caller recalled memory")
 	}
 }

@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"memo/internal/memory"
 	"strings"
 	"testing"
 	"time"
@@ -84,7 +85,7 @@ func TestRefreshLiveModeMemory_NoMatchingMemoryNeverInjects(t *testing.T) {
 
 func TestRefreshLiveModeMemory_InjectsFormattedMemoryWhenFound(t *testing.T) {
 	store := newExtractionTestStore(t)
-	if err := store.SaveExplicit(context.Background(), "Kullanıcının köpeğinin adı Zeytin", "profile"); err != nil {
+	if err := store.SaveExplicit(context.Background(), memory.AllProjects, "Kullanıcının köpeğinin adı Zeytin", "profile"); err != nil {
 		t.Fatalf("SaveExplicit: %v", err)
 	}
 	a := &App{store: store, cfg: &config.AppConfig{Memory: config.MemoryConfig{MemoryEnabled: true, TopK: 5, MinSimilarity: 0, PinnedFactsPerTurn: 3}}}
@@ -112,7 +113,7 @@ func TestRefreshLiveModeMemory_InjectsFormattedMemoryWhenFound(t *testing.T) {
 // even reinforce a hallucination.
 func TestLivePermissionRoutingSession_RefreshesMemoryOnlyForUserTranscripts(t *testing.T) {
 	store := newExtractionTestStore(t)
-	if err := store.SaveExplicit(context.Background(), "Kullanıcının köpeğinin adı Zeytin", "profile"); err != nil {
+	if err := store.SaveExplicit(context.Background(), memory.AllProjects, "Kullanıcının köpeğinin adı Zeytin", "profile"); err != nil {
 		t.Fatalf("SaveExplicit: %v", err)
 	}
 	a := &App{store: store, cfg: &config.AppConfig{Memory: config.MemoryConfig{MemoryEnabled: true, TopK: 5, MinSimilarity: 0, PinnedFactsPerTurn: 3}}}

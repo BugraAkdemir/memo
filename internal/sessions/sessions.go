@@ -49,6 +49,11 @@ type Session struct {
 	UpdatedAt   string        `json:"updated_at"`
 	Messages    []ChatMessage `json:"messages"`
 	ProjectPath string        `json:"project_path,omitempty"`
+	// ProjectID is the stable id of the project ProjectPath belongs to (see
+	// internal/project). It is what ties this chat to its project-scoped memory,
+	// and it survives the folder being moved or renamed. Resolved lazily from
+	// ProjectPath; cleared whenever ProjectPath changes.
+	ProjectID string `json:"project_id,omitempty"`
 
 	// seq orders sessions touched within the same minute: the timestamps above
 	// only have minute resolution, so without it a chat created or messaged
@@ -266,6 +271,9 @@ func (m *Manager) SetChatProjectIfEmpty(id, path string) error {
 	if len(s.Messages) > 0 {
 		return ErrChatNotEmpty
 	}
+	if s.ProjectPath != path {
+		s.ProjectID = ""
+	}
 	s.ProjectPath = path
 	switch {
 	case path != "" && s.Title == "New Chat":
@@ -298,7 +306,37 @@ func (m *Manager) SetProjectPath(id, path string) error {
 	if !ok {
 		return fmt.Errorf("session not found: %s", id)
 	}
+	if s.ProjectPath != path {
+		s.ProjectID = ""
+	}
 	s.ProjectPath = path
+	return m.save(s)
+}
+
+// GetProjectID returns the project id recorded for chat id ("" = none yet).
+func (m *Manager) GetProjectID(id string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if s, ok := m.sessions[id]; ok {
+		return s.ProjectID
+	}
+	return ""
+}
+
+// SetProjectID records the project id that chat id's ProjectPath resolved to.
+// It is a no-op when the value is unchanged, so resolving once per turn does
+// not rewrite the chat file every time.
+func (m *Manager) SetProjectID(id, projectID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	if s.ProjectID == projectID {
+		return nil
+	}
+	s.ProjectID = projectID
 	return m.save(s)
 }
 

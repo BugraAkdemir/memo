@@ -26,10 +26,10 @@ func TestSaveAndRetrieve(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveInteraction(ctx, "coffee beans", "arabica"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "coffee beans", "arabica"); err != nil {
 		t.Fatalf("SaveInteraction(coffee) error = %v", err)
 	}
-	if err := store.SaveInteraction(ctx, "mountain hiking", "boots"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "mountain hiking", "boots"); err != nil {
 		t.Fatalf("SaveInteraction(hiking) error = %v", err)
 	}
 
@@ -37,7 +37,7 @@ func TestSaveAndRetrieve(t *testing.T) {
 		t.Fatalf("Count() = %d, want 2", store.Count())
 	}
 
-	results, err := store.RetrieveContext(ctx, "coffee grinder", 1, 0)
+	results, err := store.RetrieveContext(ctx, AllProjects, "coffee grinder", 1, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() error = %v", err)
 	}
@@ -66,12 +66,12 @@ func TestRecentSince(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveInteraction(ctx, "old fact", "noted"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "old fact", "noted"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 
 	future := time.Now().Add(time.Hour)
-	results, err := store.RecentSince(ctx, future, 10)
+	results, err := store.RecentSince(ctx, AllProjects, future, 10)
 	if err != nil {
 		t.Fatalf("RecentSince(future) error = %v", err)
 	}
@@ -80,7 +80,7 @@ func TestRecentSince(t *testing.T) {
 	}
 
 	past := time.Now().Add(-time.Hour)
-	results, err = store.RecentSince(ctx, past, 10)
+	results, err = store.RecentSince(ctx, AllProjects, past, 10)
 	if err != nil {
 		t.Fatalf("RecentSince(past) error = %v", err)
 	}
@@ -103,7 +103,7 @@ func TestDeleteMemory(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveInteraction(ctx, "coffee beans", "arabica"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "coffee beans", "arabica"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 
@@ -134,7 +134,7 @@ func TestClearAll(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveInteraction(ctx, "coffee beans", "arabica"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "coffee beans", "arabica"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 	if store.Count() != 1 {
@@ -176,7 +176,7 @@ func TestStats(t *testing.T) {
 		t.Fatalf("empty-store stats = %+v, want all-zero counts", stats)
 	}
 
-	if err := store.SaveInteraction(ctx, "test", "response"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "test", "response"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 
@@ -208,16 +208,16 @@ func TestStats_PinnedTokens(t *testing.T) {
 	defer store.Close()
 
 	// Not pinned — must not count toward PinnedTokens.
-	if err := store.SaveInteraction(ctx, "some casual chat turn", "ok"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "some casual chat turn", "ok"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 
 	fact1 := "User's dog is named Zeytin"
 	fact2 := "User works as a backend engineer"
-	if err := store.SaveExplicit(ctx, fact1, ""); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, fact1, ""); err != nil {
 		t.Fatalf("SaveExplicit(fact1) error = %v", err)
 	}
-	if err := store.SaveExplicit(ctx, fact2, ""); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, fact2, ""); err != nil {
 		t.Fatalf("SaveExplicit(fact2) error = %v", err)
 	}
 
@@ -298,11 +298,11 @@ func TestHybridSearch_MatchTypeSet(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveInteraction(ctx, "coffee beans arabica", "great choice"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "coffee beans arabica", "great choice"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 
-	results, err := store.RetrieveContext(ctx, "coffee", 5, 0)
+	results, err := store.RetrieveContext(ctx, AllProjects, "coffee", 5, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() error = %v", err)
 	}
@@ -331,7 +331,7 @@ func TestSaveInteraction_Chunking(t *testing.T) {
 	for i := range words {
 		words[i] = "coffee"
 	}
-	if err := store.SaveInteraction(ctx, strings.Join(words, " "), "reply"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, strings.Join(words, " "), "reply"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 	if store.Count() <= 1 {
@@ -348,7 +348,7 @@ func TestSaveInteraction_ShortNoChunk(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveInteraction(ctx, "coffee beans", "arabica"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "coffee beans", "arabica"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 	if store.Count() != 1 {
@@ -372,7 +372,7 @@ func TestSaveExplicit(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveExplicit(ctx, "user likes short answers", "imported"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "user likes short answers", "imported"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 	if store.Count() != 1 {
@@ -463,11 +463,11 @@ func TestSaveAndRetrieve_LongUnbrokenBlob(t *testing.T) {
 	blob := strings.Repeat("a", 40000) // no spaces — exactly the reported repro shape
 	longReply := strings.Repeat("b", 40000)
 
-	if err := store.SaveInteraction(ctx, blob+" birkaç normal kelime", longReply); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, blob+" birkaç normal kelime", longReply); err != nil {
 		t.Fatalf("SaveInteraction() with long unbroken blob + long reply error = %v, want nil", err)
 	}
 
-	if _, err := store.RetrieveContext(ctx, blob+" ve normal bir soru daha", 5, 0); err != nil {
+	if _, err := store.RetrieveContext(ctx, AllProjects, blob+" ve normal bir soru daha", 5, 0); err != nil {
 		t.Fatalf("RetrieveContext() with long unbroken blob query error = %v, want nil", err)
 	}
 }

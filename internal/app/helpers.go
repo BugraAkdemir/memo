@@ -159,8 +159,13 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// — gets no RAG/memory block at all: personal memories are noise (and a
 	// privacy surface) for code work, and retrieval also costs an embed call
 	// on the shared inference slot.
-	if a.GetMemoryEnabled() && !taskMemoryDisabled(ctx) && !code {
-		memories = a.retrieveMemory(ctx, a.buildMemoryQuery(userMsg))
+	// Which pool this chat may read: everything for a plain chat, only its own
+	// project's rows for a project chat (see memoryScopeForChat), nothing when
+	// the project cannot be identified.
+	memScope, scopeOK := a.memoryScopeForChat(chatID)
+	projectChat := a.isProjectChat(chatID)
+	if a.GetMemoryEnabled() && !taskMemoryDisabled(ctx) && scopeOK && a.memoryAllowedFor(memScope, code) {
+		memories = a.retrieveMemory(ctx, memScope, a.buildMemoryQuery(userMsg))
 	}
 	if retrievedCountOut != nil {
 		*retrievedCountOut = len(memories)
@@ -340,12 +345,18 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		// cache (and the local server's KV cache) for the entire conversation
 		// after it. The block rides on the current user message below, next to
 		// the time block, so everything before it stays byte-identical.
-		systemPrompt = a.identity.BuildSystemPrompt(nil, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
+		if projectChat {
+			// A project chat is not the person's personal assistant: no name, no
+			// learned style notes, no custom persona text that may carry them.
+			systemPrompt = a.identity.BuildProjectSystemPrompt(true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
+		} else {
+			systemPrompt = a.identity.BuildSystemPrompt(nil, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
+		}
 		if !minimal {
 			// Mood is fully opt-in. When the engine is disabled the model is driven
 			// solely by the configured system prompt: no directive, no neutral block,
 			// no self-interest text is injected.
-			if a.mood != nil && a.mood.Enabled() {
+			if a.mood != nil && a.mood.Enabled() && !projectChat {
 				systemPrompt += a.mood.BuildDirective()
 				systemPrompt += a.mood.BuildSelfInterestDirective()
 			}
@@ -376,7 +387,11 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// switch, and `memories` is empty in Code Mode and when memory is off).
 	memoryCtx := ""
 	if len(memories) > 0 {
-		memoryCtx = a.identity.BuildMemoryBlock(memories, true, memoryBudget)
+		if projectChat {
+			memoryCtx = a.identity.BuildProjectMemoryBlock(memories, true, memoryBudget)
+		} else {
+			memoryCtx = a.identity.BuildMemoryBlock(memories, true, memoryBudget)
+		}
 		if memoryCtx != "" {
 			volatileCtx += "\n\n" + memoryCtx
 		}

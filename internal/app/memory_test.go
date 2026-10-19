@@ -45,7 +45,7 @@ func TestSaveMemoryAsyncSkipsErrorReplies(t *testing.T) {
 		memorySaveCh: make(chan saveTask, 1),
 	}
 
-	a.saveMemoryAsync("kullanıcı mesajı", "⚠️ Yerel model yüklenmemiş. Lütfen bir model başlatın veya API sağlayıcı seçin.")
+	a.saveMemoryAsync(memory.AllProjects, "kullanıcı mesajı", "⚠️ Yerel model yüklenmemiş. Lütfen bir model başlatın veya API sağlayıcı seçin.")
 
 	select {
 	case task := <-a.memorySaveCh:
@@ -54,7 +54,7 @@ func TestSaveMemoryAsyncSkipsErrorReplies(t *testing.T) {
 		// expected: nothing queued
 	}
 
-	a.saveMemoryAsync("kullanıcı mesajı", "gerçek bir yanıt")
+	a.saveMemoryAsync(memory.AllProjects, "kullanıcı mesajı", "gerçek bir yanıt")
 
 	select {
 	case task := <-a.memorySaveCh:
@@ -89,7 +89,7 @@ func TestSaveMemoryAsync_ClosedChannelDoesNotPanic(t *testing.T) {
 			t.Fatalf("saveMemoryAsync panicked instead of recovering its own closed-channel send: %v", r)
 		}
 	}()
-	a.saveMemoryAsync("kullanıcı mesajı", "gerçek bir yanıt")
+	a.saveMemoryAsync(memory.AllProjects, "kullanıcı mesajı", "gerçek bir yanıt")
 }
 
 func TestParseExtractedFacts(t *testing.T) {
@@ -229,7 +229,7 @@ func TestExtractAndPinFacts_SkipsAlreadyPinnedDuplicate(t *testing.T) {
 	store := newExtractionTestStore(t)
 
 	// Pre-pin the fact as if it were extracted on an earlier turn.
-	if err := store.SaveExplicit(context.Background(), "User's name is Ece.", "auto-extracted"); err != nil {
+	if err := store.SaveExplicit(context.Background(), memory.AllProjects, "User's name is Ece.", "auto-extracted"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 
@@ -246,7 +246,7 @@ func TestExtractAndPinFacts_SkipsAlreadyPinnedDuplicate(t *testing.T) {
 
 	a.extractAndPinFacts(context.Background(), "adım Ece, en sevdiğim renk turuncu", 1)
 
-	pinned, err := store.GetPinnedFacts(context.Background())
+	pinned, err := store.GetPinnedFacts(context.Background(), memory.AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -315,7 +315,7 @@ func TestExtractAndPinFacts_SavesEachExtractedFact(t *testing.T) {
 
 	a.extractAndPinFacts(context.Background(), "kopeğimin adı Zeytin, en sevdiğim renk kırmızı", 1)
 
-	pinned, err := store.GetPinnedFacts(context.Background())
+	pinned, err := store.GetPinnedFacts(context.Background(), memory.AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -342,7 +342,7 @@ func TestExtractAndPinFacts_NoneResponsePinsNothing(t *testing.T) {
 
 	a.extractAndPinFacts(context.Background(), "selam", 1)
 
-	pinned, err := store.GetPinnedFacts(context.Background())
+	pinned, err := store.GetPinnedFacts(context.Background(), memory.AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -380,7 +380,7 @@ func TestExtractAndPinFacts_DisabledConfigNeverCallsProvider(t *testing.T) {
 	if hit {
 		t.Fatal("provider must not be called when AutoFactExtraction is disabled")
 	}
-	pinned, _ := store.GetPinnedFacts(context.Background())
+	pinned, _ := store.GetPinnedFacts(context.Background(), memory.AllProjects)
 	if len(pinned) != 0 {
 		t.Fatalf("len(pinned) = %d, want 0", len(pinned))
 	}
@@ -402,7 +402,7 @@ func TestExtractAndPinFacts_NoModelConfigured_SkipsGracefully(t *testing.T) {
 
 	a.extractAndPinFacts(context.Background(), "adım Ahmet", 1)
 
-	pinned, _ := store.GetPinnedFacts(context.Background())
+	pinned, _ := store.GetPinnedFacts(context.Background(), memory.AllProjects)
 	if len(pinned) != 0 {
 		t.Fatalf("len(pinned) = %d, want 0", len(pinned))
 	}
@@ -432,7 +432,7 @@ func TestExtractAndPinFacts_LocalOnlySetup_ActuallyRuns(t *testing.T) {
 
 	a.extractAndPinFacts(context.Background(), "adım Ahmet", 1)
 
-	pinned, err := store.GetPinnedFacts(context.Background())
+	pinned, err := store.GetPinnedFacts(context.Background(), memory.AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -451,7 +451,7 @@ func TestExtractAndPinFacts_LocalOnlySetup_ActuallyRuns(t *testing.T) {
 // same way retrieveMemory does for the real chat path.
 func TestDebugMemorySearch_IncludesPinnedFacts(t *testing.T) {
 	store := newExtractionTestStore(t)
-	if err := store.SaveExplicit(context.Background(), "kullanicinin adi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(context.Background(), memory.AllProjects, "kullanicinin adi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 

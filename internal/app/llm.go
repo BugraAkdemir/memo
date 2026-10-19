@@ -1904,10 +1904,12 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 				}
 			}
 		}
-		if !code {
-			a.saveMemoryAsync(userMsg, reply)
+		if sc, ok := a.memoryScopeForChat(gaugeChat); ok && a.memoryAllowedFor(sc, code) {
+			a.saveMemoryAsync(sc, userMsg, reply)
 		}
-		if !code && a.mood != nil && a.mood.Enabled() {
+		// Mood is shaped by the person's own conversations; a project chat
+		// neither reads nor feeds it.
+		if !code && a.mood != nil && a.mood.Enabled() && !a.isProjectChat(gaugeChat) {
 			goRecover("updateMoodAsync", func() { a.updateMoodAsync(userMsg) })
 		}
 		if meta != nil {

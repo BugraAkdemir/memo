@@ -40,7 +40,7 @@ func isLLMErrorReply(reply string) bool {
 	return strings.HasPrefix(reply, "⚠️")
 }
 
-func (a *App) saveMemoryAsync(userMsg, reply string) {
+func (a *App) saveMemoryAsync(sc memory.Scope, userMsg, reply string) {
 	if reply == "" || isLLMErrorReply(reply) || !a.GetMemoryEnabled() {
 		return
 	}
@@ -62,7 +62,7 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 		}
 	}()
 	select {
-	case a.memorySaveCh <- saveTask{userMsg: userMsg, reply: reply}:
+	case a.memorySaveCh <- saveTask{scope: sc, userMsg: userMsg, reply: reply}:
 	case <-time.After(2 * time.Second):
 		logx.Info("WARN: memory save channel full, dropping")
 		a.emitEvent("memory:error", "Hafıza kaydetme kuyruğu dolu; bu mesaj hatırlanmayabilir")
@@ -79,12 +79,12 @@ func (a *App) memorySaveWorker() {
 		// worker.
 		func() {
 			defer recoverPanic("memorySaveWorker/saveMemorySync")
-			a.saveMemorySync(a.lifecycleCtx, task.userMsg, task.reply)
+			a.saveMemorySync(a.lifecycleCtx, task.scope, task.userMsg, task.reply)
 		}()
 	}
 }
 
-func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
+func (a *App) saveMemorySync(ctx context.Context, sc memory.Scope, userMsg, reply string) {
 	if !a.GetMemoryEnabled() {
 		return
 	}
@@ -99,7 +99,11 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 		return
 	}
 
-	if !a.decisionAllows(ctx, memoryDecisionPrompt, userMsg) {
+	// A project turn never goes to the optional decision model: that would send
+	// the project's conversation to a side provider the project chat itself
+	// did not choose. The deterministic filters above and the store's own
+	// near-duplicate check still apply.
+	if !sc.InProject() && !a.decisionAllows(ctx, memoryDecisionPrompt, userMsg) {
 		return
 	}
 
@@ -117,7 +121,7 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 	mctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if err := store.SaveInteraction(mctx, userMsg, reply); err != nil {
+	if err := store.SaveInteraction(mctx, sc, userMsg, reply); err != nil {
 		logx.Printf("LATENCY app.memory_save_sync total_ms=%d status=error", time.Since(start).Milliseconds())
 		logx.Printf("MEMORY SAVE FAILED: %v", err)
 		if !isEmbeddingBackendDown(err) {
@@ -142,7 +146,11 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 		// blocking it here would back up every other chat's save behind this
 		// one turn's extraction call. queueFactExtraction batches it so the
 		// call fires once per FactExtractionEveryNTurns turns, not every turn.
-		a.queueFactExtraction(ctx, userMsg)
+		// Durable *personal* facts about the user are a general-chat feature: a
+		// project chat must not learn (or pin) anything about the person.
+		if !sc.InProject() {
+			a.queueFactExtraction(ctx, userMsg)
+		}
 	}
 }
 
@@ -326,7 +334,7 @@ func (a *App) pinnedFactTexts(ctx context.Context) map[string]struct{} {
 	if store == nil {
 		return set
 	}
-	pinned, err := store.GetPinnedFacts(ctx)
+	pinned, err := store.GetPinnedFacts(ctx, memory.AllProjects)
 	if err != nil {
 		logx.Printf("MEMORY: dedup check GetPinnedFacts: %v", err)
 		return set
@@ -450,7 +458,7 @@ func mergePinnedFirst(pinned, retrieved []memory.MemoryResult) []memory.MemoryRe
 	return merged
 }
 
-func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryResult {
+func (a *App) retrieveMemory(ctx context.Context, sc memory.Scope, query string) []memory.MemoryResult {
 	a.storeMu.RLock()
 	defer a.storeMu.RUnlock()
 	if a.store == nil {
@@ -460,7 +468,7 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 	start := time.Now()
 	rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	m, err := a.store.RetrieveContext(rctx, query, a.cfg.Memory.TopK, a.cfg.Memory.MinSimilarity)
+	m, err := a.store.RetrieveContext(rctx, sc, query, a.cfg.Memory.TopK, a.cfg.Memory.MinSimilarity)
 	if err != nil {
 		logx.Printf("LATENCY app.retrieve_memory total_ms=%d status=error", time.Since(start).Milliseconds())
 		logx.Printf("MEMORY RETRIEVE FAILED: %v", err)
@@ -473,7 +481,7 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 		// exhausted rctx, but must not also disable lexical and pinned recall.
 		lexCtx, lexCancel := context.WithTimeout(ctx, 5*time.Second)
 		var lexErr error
-		m, lexErr = a.store.RetrieveLexicalContext(lexCtx, query, a.cfg.Memory.TopK)
+		m, lexErr = a.store.RetrieveLexicalContext(lexCtx, sc, query, a.cfg.Memory.TopK)
 		lexCancel()
 		if lexErr != nil {
 			logx.Printf("MEMORY: lexical fallback: %v", lexErr)
@@ -492,7 +500,7 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 	if err != nil {
 		pinQuery = ""
 	}
-	pinned, pinErr := a.store.GetPinnedFactsRanked(pinCtx, pinQuery, a.cfg.Memory.PinnedFactsPerTurn)
+	pinned, pinErr := a.store.GetPinnedFactsRanked(pinCtx, sc, pinQuery, a.cfg.Memory.PinnedFactsPerTurn)
 	pinCancel()
 	if pinErr != nil {
 		logx.Printf("MEMORY: GetPinnedFactsRanked: %v", pinErr)
@@ -530,6 +538,7 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 		EmbeddingFunc:       embeddingFunc,
 		DreamSettings:       a.dreamSettings,
 		RecencyHalfLifeDays: a.cfg.Memory.RecencyHalfLifeDays,
+		SnapshotDir:         config.DataPath("backups"),
 	})
 	if err != nil {
 		logx.Printf("WARN: memory re-init: %v (restoring old store)", err)
@@ -571,7 +580,7 @@ func (a *App) DebugMemorySearch(query string) []memory.MemoryResult {
 	defer cancel()
 	results := a.store.DebugSearch(ctx, query, 10)
 
-	pinned, err := a.store.GetPinnedFacts(ctx)
+	pinned, err := a.store.GetPinnedFacts(ctx, memory.AllProjects)
 	if err != nil {
 		logx.Printf("MEMORY: DebugMemorySearch GetPinnedFacts: %v", err)
 		return results
@@ -605,7 +614,7 @@ func (a *App) GetKnownFacts() []memory.MemoryResult {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	facts, err := a.store.GetPinnedFacts(ctx)
+	facts, err := a.store.GetPinnedFacts(ctx, memory.AllProjects)
 	if err != nil {
 		logx.Printf("MEMORY: GetKnownFacts: %v", err)
 		return nil
@@ -846,7 +855,7 @@ func (a *App) SaveExplicitMemory(content, tags string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	return a.store.SaveExplicit(ctx, content, tags)
+	return a.store.SaveExplicit(ctx, memory.AllProjects, content, tags)
 }
 
 // DeleteExplicitMemory deletes memories matching the given pattern.
@@ -906,7 +915,7 @@ func (a *App) UpdatePinnedFact(oldID, content, tags string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if err := a.store.SaveExplicit(ctx, content, tags); err != nil {
+	if err := a.store.SaveExplicit(ctx, memory.AllProjects, content, tags); err != nil {
 		return err
 	}
 	if _, err := a.store.DeleteByUUIDs(ctx, []string{oldID}); err != nil {
@@ -962,7 +971,7 @@ func (a *App) FilteredMemorySearch(query string, topK int, since string, tag str
 			sinceTime = t
 		}
 	}
-	results, err := a.store.FilteredSearch(ctx, query, topK, a.cfg.Memory.MinSimilarity, sinceTime, tag)
+	results, err := a.store.FilteredSearch(ctx, memory.AllProjects, query, topK, a.cfg.Memory.MinSimilarity, sinceTime, tag)
 	if err != nil {
 		logx.Printf("MEMORY: filtered search: %v", err)
 		return nil

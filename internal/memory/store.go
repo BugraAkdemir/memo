@@ -60,6 +60,12 @@ type Store struct {
 	useFTS        bool
 	stopCh        chan struct{}
 
+	// hasProjectID is true once memories.project_id exists (see
+	// migrateProjectColumn). Written once in initSchema before NewStore returns.
+	hasProjectID bool
+	// snapshotDir is where the one-time pre-migration snapshot goes.
+	snapshotDir string
+
 	// recencyHalfLifeDays weights RetrieveContext toward newer memories: a
 	// result's similarity is multiplied by 0.5 once it is this many days old
 	// (halving again every further half-life, floored so a strongly relevant
@@ -116,6 +122,12 @@ type StoreConfig struct {
 	// available on the machine actually running the test. Production
 	// callers should never set this.
 	ForceGoFallback bool
+
+	// SnapshotDir, if set, receives a full copy of memory.db before the one-time
+	// project_id migration touches an existing database. If the copy cannot be
+	// written the migration is skipped (project memory stays off). Empty skips
+	// the snapshot (tests, brand-new installs).
+	SnapshotDir string
 }
 
 func (c StoreConfig) dbPath() string {
@@ -151,6 +163,7 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 		forceGoFallback:     cfg.ForceGoFallback,
 		dreamSettings:       cfg.DreamSettings,
 		recencyHalfLifeDays: cfg.RecencyHalfLifeDays,
+		snapshotDir:         cfg.SnapshotDir,
 	}
 
 	if err := s.initSchema(); err != nil {
@@ -215,6 +228,8 @@ func (s *Store) initSchema() error {
 			logx.Printf("MEMORY: migrated column memories.%s", col.name)
 		}
 	}
+
+	s.migrateProjectColumn(s.snapshotDir)
 
 	if _, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS _metadata (
@@ -575,20 +590,24 @@ func capForEmbedding(text string, maxTokens int) string {
 	return splitLongWord(text, maxTokens)[0]
 }
 
-func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg string) error {
+func (s *Store) SaveInteraction(ctx context.Context, sc Scope, userMsg, assistantMsg string) error {
+	if s.scopeUnavailable(sc) {
+		return nil
+	}
+	projectID := sc.WriteProjectID()
 	chunks := chunkText(userMsg, chunkMaxTokens, chunkOverlapTokens)
 	parentUUID := fmt.Sprintf("mem_%d", time.Now().UnixNano())
 	totalChunks := len(chunks)
 
 	for i, chunk := range chunks {
-		if err := s.saveChunk(ctx, chunk, assistantMsg, parentUUID, i, totalChunks); err != nil {
+		if err := s.saveChunk(ctx, projectID, chunk, assistantMsg, parentUUID, i, totalChunks); err != nil {
 			return fmt.Errorf("memory.SaveInteraction chunk[%d]: %w", i, err)
 		}
 	}
 	return nil
 }
 
-func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUUID string, chunkIndex, totalChunks int) error {
+func (s *Store) saveChunk(ctx context.Context, projectID, userChunk, assistantMsg, parentUUID string, chunkIndex, totalChunks int) error {
 	embedStart := time.Now()
 	embedText := userChunk
 	if assistantMsg != "" {
@@ -610,7 +629,7 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 	// duplicates of each other would silently drop pieces of a single long
 	// message instead of catching a genuinely repeated short turn.
 	if totalChunks == 1 {
-		if dupUUID, err := s.findDuplicateInteraction(ctx, embedding); err != nil {
+		if dupUUID, err := s.findDuplicateInteraction(ctx, embedding, ProjectScope(projectID)); err != nil {
 			logx.Printf("memory: duplicate check failed, saving anyway: %v", err)
 		} else if dupUUID != "" {
 			logx.Printf("MEMORY SAVE SKIPPED: near-duplicate of %s (similarity >= %.2f)", dupUUID, duplicateInteractionSimilarity)
@@ -648,6 +667,9 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 		rowID, err := res.LastInsertId()
 		if err != nil {
 			return err
+		}
+		if err := s.attachProject(tx, rowID, projectID); err != nil {
+			return fmt.Errorf("attach project: %w", err)
 		}
 
 		if s.useVec {
@@ -694,12 +716,14 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 // treated as a duplicate target here — SaveExplicit has its own insert path
 // entirely and is never skipped or merged by this check, only ordinary chat
 // turns saved via SaveInteraction are.
-func (s *Store) findDuplicateInteraction(ctx context.Context, embedding []float32) (string, error) {
+func (s *Store) findDuplicateInteraction(ctx context.Context, embedding []float32, sc Scope) (string, error) {
+	// A repeated question is only a duplicate inside its own pool: the same
+	// words asked in another project (or in a general chat) must still be kept.
 	searchFn := s.goSearch
-	if s.useVec {
+	if s.useVec && !sc.InProject() {
 		searchFn = s.vecSearch
 	}
-	candidates, err := searchFn(ctx, embedding, 5, duplicateInteractionSimilarity)
+	candidates, err := searchFn(ctx, embedding, 5, duplicateInteractionSimilarity, sc)
 	if err != nil {
 		return "", err
 	}
@@ -736,7 +760,8 @@ func escapeFTSQuery(q string) string {
 	return strings.Join(parts, " OR ")
 }
 
-func (s *Store) ftsSearch(ctx context.Context, query string, topK int) ([]MemoryResult, error) {
+func (s *Store) ftsSearch(ctx context.Context, query string, topK int, sc Scope) ([]MemoryResult, error) {
+	scopeSQL, scopeArgs := s.scopeClause(sc, "m.project_id")
 	// m.pending_deletion = 0 excludes a consolidation merge's two originals
 	// — see vecSearch's identical fix for the full explanation (BUG-H5).
 	// Unlike vecSearch's sqlite-vec KNN query, FTS5's MATCH has no fragile
@@ -747,10 +772,10 @@ func (s *Store) ftsSearch(ctx context.Context, query string, topK int) ([]Memory
                m.importance, m.source, m.tags, m.session_id, m.retrieve_count
         FROM memories_fts
         JOIN memories m ON m.id = memories_fts.rowid
-        WHERE memories_fts MATCH ? AND m.pending_deletion = 0
+        WHERE memories_fts MATCH ? AND m.pending_deletion = 0`+scopeSQL+`
         ORDER BY memories_fts.rank, m.uuid
         LIMIT ?
-    `, escapeFTSQuery(query), topK)
+    `, append(append([]any{escapeFTSQuery(query)}, scopeArgs...), topK)...)
 	if err != nil {
 		return nil, fmt.Errorf("memory.ftsSearch: %w", err)
 	}
@@ -983,7 +1008,10 @@ func recencyFactor(tsRFC3339 string, halfLifeDays int, now time.Time) float32 {
 	return float32(f)
 }
 
-func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, minSimilarity float32) ([]MemoryResult, error) {
+func (s *Store) RetrieveContext(ctx context.Context, sc Scope, query string, topK int, minSimilarity float32) ([]MemoryResult, error) {
+	if s.scopeUnavailable(sc) {
+		return nil, nil
+	}
 	start := time.Now()
 
 	embedStart := time.Now()
@@ -1003,9 +1031,16 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 
 	candidateK := min(max(topK*5, 20), 100)
 
-	vecSearchFn := s.goSearch
-	if s.useVec {
-		vecSearchFn = s.vecSearch
+	// A project scope always uses the exact in-Go search over that project's own
+	// rows: sqlite-vec's KNN cannot be filtered without breaking its query shape,
+	// so a small project's few rows could be crowded out of a global top-K by
+	// the (much larger) general pool and never come back at all.
+	baseSearch := s.goSearch
+	if s.useVec && !sc.InProject() {
+		baseSearch = s.vecSearch
+	}
+	vecSearchFn := func(ctx context.Context, emb []float32, k int, minSim float32) ([]MemoryResult, error) {
+		return baseSearch(ctx, emb, k, minSim, sc)
 	}
 
 	wholeQueryResults, err := vecSearchFn(ctx, queryEmbedding, candidateK, minSimilarity)
@@ -1061,7 +1096,7 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 	// ones that already survived a recency-blind cut (BUG-SCAN9).
 	var memories []MemoryResult
 	if s.useFTS {
-		ftsMemories, ftsErr := s.ftsSearch(ctx, query, candidateK)
+		ftsMemories, ftsErr := s.ftsSearch(ctx, query, candidateK, sc)
 		if ftsErr != nil {
 			logx.Printf("MEMORY: ftsSearch: %v", ftsErr)
 		} else if len(ftsMemories) > 0 {
@@ -1138,14 +1173,14 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 
 // RetrieveLexicalContext is the embedding-independent recovery path. FTS hits
 // retain their own match type and are not presented as cosine measurements.
-func (s *Store) RetrieveLexicalContext(ctx context.Context, query string, topK int) ([]MemoryResult, error) {
-	if !s.useFTS || topK <= 0 || strings.TrimSpace(query) == "" {
+func (s *Store) RetrieveLexicalContext(ctx context.Context, sc Scope, query string, topK int) ([]MemoryResult, error) {
+	if !s.useFTS || topK <= 0 || strings.TrimSpace(query) == "" || s.scopeUnavailable(sc) {
 		return nil, nil
 	}
-	return s.ftsSearch(ctx, query, topK)
+	return s.ftsSearch(ctx, query, topK, sc)
 }
 
-func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK int, minSimilarity float32) ([]MemoryResult, error) {
+func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK int, minSimilarity float32, sc Scope) ([]MemoryResult, error) {
 	vecJSON, err := json.Marshal(queryEmbedding)
 	if err != nil {
 		return nil, fmt.Errorf("memory.vecSearch: marshal: %w", err)
@@ -1169,9 +1204,16 @@ func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK in
 	// eventually deletes them (up to ~187 days later) — without this check
 	// those originals kept resurfacing as near-duplicates of the very
 	// merged row that replaced them (BUG-H5).
+	// The project is selected (never put in the WHERE clause — that would break
+	// the KNN shape described above) and checked in the Go loop, like
+	// pending_deletion. Only needed when the scope is narrower than "all".
+	projSel := ""
+	if s.hasProjectID && !sc.all {
+		projSel = ", m.project_id"
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.uuid, m.content, m.timestamp, m.user_msg, m.assist_msg, v.distance,
-		       m.importance, m.source, m.tags, m.session_id, m.retrieve_count, m.pending_deletion
+		       m.importance, m.source, m.tags, m.session_id, m.retrieve_count, m.pending_deletion`+projSel+`
 		FROM vec_memories v
 		JOIN memories m ON m.id = v.rowid
 		WHERE v.embedding MATCH ?
@@ -1192,12 +1234,20 @@ func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK in
 			importance, retrieveCount int
 			source, tags, sessionID   string
 			pendingDeletion           int
+			rowProject                string
 		)
-		if err := rows.Scan(&uuid, &content, &timestamp, &userMsg, &assistMsg, &distance,
-			&importance, &source, &tags, &sessionID, &retrieveCount, &pendingDeletion); err != nil {
+		dest := []any{&uuid, &content, &timestamp, &userMsg, &assistMsg, &distance,
+			&importance, &source, &tags, &sessionID, &retrieveCount, &pendingDeletion}
+		if projSel != "" {
+			dest = append(dest, &rowProject)
+		}
+		if err := rows.Scan(dest...); err != nil {
 			return nil, fmt.Errorf("memory.vecSearch: scan: %w", err)
 		}
 		if pendingDeletion != 0 {
+			continue
+		}
+		if projSel != "" && !sc.matches(rowProject) {
 			continue
 		}
 
@@ -1239,7 +1289,8 @@ func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK in
 // production code must never change it.
 var goSearchMaxCandidateRows = 20000
 
-func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int, minSimilarity float32) ([]MemoryResult, error) {
+func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int, minSimilarity float32, sc Scope) ([]MemoryResult, error) {
+	scopeSQL, scopeArgs := s.scopeClause(sc, "project_id")
 	// pending_deletion = 0 excludes a consolidation merge's two originals
 	// (saveMergedAs marks them pending_deletion=1 but leaves the rows
 	// intact until PurgePendingDeletions eventually deletes them) — see
@@ -1253,8 +1304,8 @@ func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, uuid, content, timestamp, user_msg, assist_msg, embedding,
 		        importance, source, tags, session_id, retrieve_count
-		 FROM memories WHERE embedding IS NOT NULL AND pending_deletion = 0
-		 ORDER BY id DESC LIMIT ?`, goSearchMaxCandidateRows)
+		 FROM memories WHERE embedding IS NOT NULL AND pending_deletion = 0`+scopeSQL+`
+		 ORDER BY id DESC LIMIT ?`, append(scopeArgs, goSearchMaxCandidateRows)...)
 	if err != nil {
 		return nil, fmt.Errorf("memory.goSearch: %w", err)
 	}
@@ -1382,15 +1433,19 @@ const pinnedFactsLimit = 75
 // similarity contest against routine conversational noise (see AGENTS.md's
 // Known Pitfalls, Memory / Vector Store section, 2026-07-15 entries, for the
 // bug class this exists to sidestep).
-func (s *Store) GetPinnedFacts(ctx context.Context) ([]MemoryResult, error) {
+func (s *Store) GetPinnedFacts(ctx context.Context, sc Scope) ([]MemoryResult, error) {
+	if s.scopeUnavailable(sc) {
+		return nil, nil
+	}
+	scopeSQL, scopeArgs := s.scopeClause(sc, "project_id")
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT uuid, content, timestamp, user_msg, assist_msg,
 		       importance, source, tags, session_id, retrieve_count
 		FROM memories
-		WHERE source = 'explicit' AND importance = 5 AND pending_deletion = 0
+		WHERE source = 'explicit' AND importance = 5 AND pending_deletion = 0`+scopeSQL+`
 		ORDER BY timestamp DESC
 		LIMIT ?
-	`, pinnedFactsLimit)
+	`, append(scopeArgs, pinnedFactsLimit)...)
 	if err != nil {
 		return nil, fmt.Errorf("memory.GetPinnedFacts: %w", err)
 	}
@@ -1425,19 +1480,23 @@ func (s *Store) GetPinnedFacts(ctx context.Context) ([]MemoryResult, error) {
 // limit <= 0 falls back to GetPinnedFacts (whole set). An embedding failure
 // falls back to most-recent-`limit` — pinned facts are important enough
 // that "recent ones" beats "none".
-func (s *Store) GetPinnedFactsRanked(ctx context.Context, query string, limit int) ([]MemoryResult, error) {
+func (s *Store) GetPinnedFactsRanked(ctx context.Context, sc Scope, query string, limit int) ([]MemoryResult, error) {
 	if limit <= 0 {
-		return s.GetPinnedFacts(ctx)
+		return s.GetPinnedFacts(ctx, sc)
+	}
+	if s.scopeUnavailable(sc) {
+		return nil, nil
 	}
 
+	scopeSQL, scopeArgs := s.scopeClause(sc, "project_id")
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT uuid, content, timestamp, user_msg, assist_msg,
 		       importance, source, tags, session_id, retrieve_count, embedding
 		FROM memories
-		WHERE source = 'explicit' AND importance = 5 AND pending_deletion = 0
+		WHERE source = 'explicit' AND importance = 5 AND pending_deletion = 0`+scopeSQL+`
 		ORDER BY timestamp DESC
 		LIMIT ?
-	`, pinnedFactsLimit)
+	`, append(scopeArgs, pinnedFactsLimit)...)
 	if err != nil {
 		return nil, fmt.Errorf("memory.GetPinnedFactsRanked: %w", err)
 	}
@@ -1680,7 +1739,7 @@ func (s *Store) incrementRetrieveCounts(ids []string) {
 }
 
 func (s *Store) DebugSearch(ctx context.Context, query string, topK int) []MemoryResult {
-	results, err := s.RetrieveContext(ctx, query, topK, 0)
+	results, err := s.RetrieveContext(ctx, AllProjects, query, topK, 0)
 	if err != nil {
 		logx.Printf("DEBUG SEARCH ERROR: %v", err)
 		return nil
@@ -1847,8 +1906,8 @@ func (s *Store) Stats() models.MemoryStats {
 // pass returns fewer than topK results after filtering (because top-ranked memories
 // are all outside the filter window), fall back to a direct SQL-ordered query that
 // respects the filters — ensuring recent/tagged memories are not silently dropped.
-func (s *Store) FilteredSearch(ctx context.Context, query string, topK int, minSimilarity float32, since time.Time, tag string) ([]MemoryResult, error) {
-	results, err := s.RetrieveContext(ctx, query, topK*3, minSimilarity)
+func (s *Store) FilteredSearch(ctx context.Context, sc Scope, query string, topK int, minSimilarity float32, since time.Time, tag string) ([]MemoryResult, error) {
+	results, err := s.RetrieveContext(ctx, sc, query, topK*3, minSimilarity)
 	if err != nil {
 		return nil, err
 	}
@@ -1879,7 +1938,7 @@ func (s *Store) FilteredSearch(ctx context.Context, query string, topK int, minS
 	// Fallback: semantic results were all outside the filter window.
 	// Query DB directly so that recent/tagged memories are not silently dropped.
 	if len(filtered) < topK {
-		sqlResults, sqlErr := s.sqlFilteredFallback(ctx, topK-len(filtered), since, tag)
+		sqlResults, sqlErr := s.sqlFilteredFallback(ctx, topK-len(filtered), since, tag, sc)
 		if sqlErr != nil {
 			logx.Printf("MEMORY: FilteredSearch fallback: %v", sqlErr)
 		} else {
@@ -1904,16 +1963,23 @@ func (s *Store) FilteredSearch(ctx context.Context, query string, topK int, minS
 // for callers that want everything in a window (e.g. a periodic self-insight
 // digest) rather than top-K by similarity to a search query. Reuses
 // FilteredSearch's own SQL fallback path instead of duplicating the query.
-func (s *Store) RecentSince(ctx context.Context, since time.Time, limit int) ([]MemoryResult, error) {
-	return s.sqlFilteredFallback(ctx, limit, since, "")
+func (s *Store) RecentSince(ctx context.Context, sc Scope, since time.Time, limit int) ([]MemoryResult, error) {
+	return s.sqlFilteredFallback(ctx, limit, since, "", sc)
 }
 
 // sqlFilteredFallback returns up to limit memories that satisfy the since/tag constraints,
 // ordered by timestamp descending (most recent first). Used when semantic retrieval
 // returns no results within the filter window.
-func (s *Store) sqlFilteredFallback(ctx context.Context, limit int, since time.Time, tag string) ([]MemoryResult, error) {
+func (s *Store) sqlFilteredFallback(ctx context.Context, limit int, since time.Time, tag string, sc Scope) ([]MemoryResult, error) {
+	if s.scopeUnavailable(sc) {
+		return nil, nil
+	}
 	var args []any
 	where := "pending_deletion = 0"
+	if scopeSQL, scopeArgs := s.scopeClause(sc, "project_id"); scopeSQL != "" {
+		where += scopeSQL
+		args = append(args, scopeArgs...)
+	}
 	if !since.IsZero() {
 		where += " AND timestamp >= ?"
 		args = append(args, since.UTC().Format(time.RFC3339))
@@ -2059,7 +2125,11 @@ func FormatMemoriesUserOnly(memories []MemoryResult) string {
 	return sb.String()
 }
 
-func (s *Store) SaveExplicit(ctx context.Context, content, tags string) error {
+func (s *Store) SaveExplicit(ctx context.Context, sc Scope, content, tags string) error {
+	if s.scopeUnavailable(sc) {
+		return fmt.Errorf("memory.SaveExplicit: project memory is unavailable")
+	}
+	projectID := sc.WriteProjectID()
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	uuid := fmt.Sprintf("explicit_%d", time.Now().UnixNano())
 
@@ -2095,6 +2165,9 @@ func (s *Store) SaveExplicit(ctx context.Context, content, tags string) error {
 		rowID, err := res.LastInsertId()
 		if err != nil {
 			return err
+		}
+		if err := s.attachProject(tx, rowID, projectID); err != nil {
+			return fmt.Errorf("attach project: %w", err)
 		}
 		if s.useVec && embedding != nil {
 			vecJSON, _ := json.Marshal(embedding)
@@ -2402,7 +2475,7 @@ func (s *Store) FindMergeCandidates(ctx context.Context, limit int) ([]MergeCand
 		FROM memories
 		WHERE embedding IS NOT NULL
 		  AND pending_deletion = 0
-		  AND source NOT IN ('merged', 'explicit')
+		  AND source NOT IN ('merged', 'explicit')`+s.generalOnlySQL()+`
 		ORDER BY timestamp DESC
 		LIMIT ?
 	`, consolidateSampleSize, limit)
@@ -2423,7 +2496,7 @@ func (s *Store) FindPinnedMergeCandidates(ctx context.Context, limit int) ([]Mer
 		WHERE embedding IS NOT NULL
 		  AND pending_deletion = 0
 		  AND source = 'explicit'
-		  AND importance = 5
+		  AND importance = 5`+s.generalOnlySQL()+`
 		ORDER BY timestamp DESC
 		LIMIT ?
 	`, pinnedFactsLimit, limit)
@@ -2684,7 +2757,7 @@ func (s *Store) dreamPass(ctx context.Context, fn DreamFunc, minCount int) (befo
 func (s *Store) fetchFactsForDream(ctx context.Context) ([]int64, []string, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, content FROM memories
-		WHERE source = 'explicit' AND importance = 5 AND pending_deletion = 0
+		WHERE source = 'explicit' AND importance = 5 AND pending_deletion = 0`+s.generalOnlySQL()+`
 		ORDER BY timestamp DESC
 		LIMIT ?
 	`, pinnedFactsLimit)
@@ -2919,6 +2992,8 @@ type ExportMemory struct {
 	Importance int    `json:"importance"`
 	Tags       string `json:"tags"`
 	Source     string `json:"source"`
+	// ProjectID files the memory under a project; empty = general pool.
+	ProjectID string `json:"project_id,omitempty"`
 }
 
 // ExportPayload is the top-level envelope for memory export/import.
@@ -2929,8 +3004,12 @@ type ExportPayload struct {
 }
 
 func (s *Store) Export(ctx context.Context) ([]byte, error) {
+	projCol := "''"
+	if s.hasProjectID {
+		projCol = "project_id"
+	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT uuid, content, timestamp, user_msg, assist_msg, importance, tags, source
+		SELECT uuid, content, timestamp, user_msg, assist_msg, importance, tags, source, `+projCol+`
 		FROM memories
 		WHERE pending_deletion = 0
 		ORDER BY timestamp
@@ -2942,7 +3021,7 @@ func (s *Store) Export(ctx context.Context) ([]byte, error) {
 	var memories []ExportMemory
 	for rows.Next() {
 		var m ExportMemory
-		if err := rows.Scan(&m.UUID, &m.Content, &m.Timestamp, &m.UserMsg, &m.AssistMsg, &m.Importance, &m.Tags, &m.Source); err != nil {
+		if err := rows.Scan(&m.UUID, &m.Content, &m.Timestamp, &m.UserMsg, &m.AssistMsg, &m.Importance, &m.Tags, &m.Source, &m.ProjectID); err != nil {
 			continue
 		}
 		memories = append(memories, m)
@@ -2997,6 +3076,13 @@ func (s *Store) Import(ctx context.Context, data []byte) (int, error) {
 			}
 			if n, _ := res.RowsAffected(); n == 0 {
 				return nil // UUID already existed — skip vec/FTS insert
+			}
+			if s.hasProjectID && m.ProjectID != "" {
+				if id, idErr := res.LastInsertId(); idErr == nil {
+					if err := s.attachProject(tx, id, m.ProjectID); err != nil {
+						return err
+					}
+				}
 			}
 			if embedding == nil {
 				return nil

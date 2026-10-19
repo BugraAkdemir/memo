@@ -112,7 +112,7 @@ func runSkipsNearDuplicateRepeatedGreeting(t *testing.T, store *Store) {
 	// prompt-side half of this) — these turns must collapse to one memory
 	// instead of five near-identical rows.
 	for i := range 5 {
-		if err := store.SaveInteraction(ctx, "selam", "selam! nasilsin"); err != nil {
+		if err := store.SaveInteraction(ctx, AllProjects, "selam", "selam! nasilsin"); err != nil {
 			t.Fatalf("SaveInteraction() [%d] error = %v", i, err)
 		}
 	}
@@ -120,7 +120,7 @@ func runSkipsNearDuplicateRepeatedGreeting(t *testing.T, store *Store) {
 		t.Fatalf("Count() after 5 near-identical greetings = %d, want 1 (later turns should be skipped as duplicates)", got)
 	}
 
-	if err := store.SaveInteraction(ctx, "dogum gunum 5 mayis", "not aldim"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "dogum gunum 5 mayis", "not aldim"); err != nil {
 		t.Fatalf("SaveInteraction() distinct turn error = %v", err)
 	}
 	if got := store.Count(); got != 2 {
@@ -140,20 +140,20 @@ func TestSaveInteraction_NeverTreatsPinnedFactAsDuplicateTarget(t *testing.T) {
 	ctx := context.Background()
 	store := newRecallStore(t, bagOfWordsEmbedding(32), 32)
 
-	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin adi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 	// Same wording as the pinned fact, but going through the ordinary chat
 	// path — this must still be saved as its own conversation memory, not
 	// silently skipped because it resembles the pinned fact.
-	if err := store.SaveInteraction(ctx, "kullanicinin adi Ahmet", ""); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "kullanicinin adi Ahmet", ""); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 
 	if got := store.Count(); got != 2 {
 		t.Fatalf("Count() = %d, want 2 (pinned fact + conversation turn, neither skipped)", got)
 	}
-	pinned, err := store.GetPinnedFacts(ctx)
+	pinned, err := store.GetPinnedFacts(ctx, AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -168,14 +168,14 @@ func TestGetPinnedFacts_OnlyExplicitSource(t *testing.T) {
 	ctx := context.Background()
 	store := newRecallStore(t, bagOfWordsEmbedding(16), 16)
 
-	if err := store.SaveInteraction(ctx, "kanka naber", "iyilik kanka"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "kanka naber", "iyilik kanka"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
-	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin adi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 
-	pinned, err := store.GetPinnedFacts(ctx)
+	pinned, err := store.GetPinnedFacts(ctx, AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -194,7 +194,7 @@ func TestGetPinnedFacts_EmptyStoreReturnsEmpty(t *testing.T) {
 	ctx := context.Background()
 	store := newRecallStore(t, bagOfWordsEmbedding(16), 16)
 
-	pinned, err := store.GetPinnedFacts(ctx)
+	pinned, err := store.GetPinnedFacts(ctx, AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -208,12 +208,12 @@ func TestGetPinnedFacts_RespectsCap(t *testing.T) {
 	store := newRecallStore(t, bagOfWordsEmbedding(16), 16)
 
 	for i := range pinnedFactsLimit + 10 {
-		if err := store.SaveExplicit(ctx, fmt.Sprintf("gercek numara %d", i), "profile"); err != nil {
+		if err := store.SaveExplicit(ctx, AllProjects, fmt.Sprintf("gercek numara %d", i), "profile"); err != nil {
 			t.Fatalf("SaveExplicit(%d) error = %v", i, err)
 		}
 	}
 
-	pinned, err := store.GetPinnedFacts(ctx)
+	pinned, err := store.GetPinnedFacts(ctx, AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -244,10 +244,10 @@ func TestFindMergeCandidates_ExcludesExplicitFacts(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin adi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit(1) error = %v", err)
 	}
-	if err := store.SaveExplicit(ctx, "kullanicinin ismi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin ismi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit(2) error = %v", err)
 	}
 
@@ -280,10 +280,10 @@ func TestFindPinnedMergeCandidates_MatchesNearDuplicatePinnedFacts(t *testing.T)
 	}
 	defer store.Close()
 
-	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin adi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit(1) error = %v", err)
 	}
-	if err := store.SaveExplicit(ctx, "kullanicinin ismi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin ismi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit(2) error = %v", err)
 	}
 
@@ -316,10 +316,10 @@ func TestFindPinnedMergeCandidates_ExcludesNonExplicit(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveInteraction(ctx, "kanka naber", "iyilik kanka"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "kanka naber", "iyilik kanka"); err != nil {
 		t.Fatalf("SaveInteraction(1) error = %v", err)
 	}
-	if err := store.SaveInteraction(ctx, "naber kanka", "kanka iyilik"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "naber kanka", "kanka iyilik"); err != nil {
 		t.Fatalf("SaveInteraction(2) error = %v", err)
 	}
 
@@ -350,10 +350,10 @@ func TestSavePinnedMerged_StaysPinned(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin adi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit(1) error = %v", err)
 	}
-	if err := store.SaveExplicit(ctx, "kullanicinin ismi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin ismi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit(2) error = %v", err)
 	}
 
@@ -370,7 +370,7 @@ func TestSavePinnedMerged_StaysPinned(t *testing.T) {
 		t.Fatalf("savePinnedMerged() error = %v", err)
 	}
 
-	pinned, err := store.GetPinnedFacts(ctx)
+	pinned, err := store.GetPinnedFacts(ctx, AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -405,10 +405,10 @@ func TestRunPinnedConsolidation_MergesAndKeepsPinned(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin adi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit(1) error = %v", err)
 	}
-	if err := store.SaveExplicit(ctx, "kullanicinin ismi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin ismi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit(2) error = %v", err)
 	}
 
@@ -417,7 +417,7 @@ func TestRunPinnedConsolidation_MergesAndKeepsPinned(t *testing.T) {
 	}
 	store.runPinnedConsolidation(ctx, fakeMerge)
 
-	pinned, err := store.GetPinnedFacts(ctx)
+	pinned, err := store.GetPinnedFacts(ctx, AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -449,10 +449,10 @@ func TestRunConsolidation_NeverTouchesPinnedFacts(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin adi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit(1) error = %v", err)
 	}
-	if err := store.SaveExplicit(ctx, "kullanicinin ismi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin ismi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit(2) error = %v", err)
 	}
 
@@ -461,7 +461,7 @@ func TestRunConsolidation_NeverTouchesPinnedFacts(t *testing.T) {
 	}
 	store.runConsolidation(ctx, fakeMerge)
 
-	pinned, err := store.GetPinnedFacts(ctx)
+	pinned, err := store.GetPinnedFacts(ctx, AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -487,11 +487,11 @@ func runRetrieveContextExcludesPendingDeletion(t *testing.T, store *Store) {
 	t.Helper()
 	ctx := context.Background()
 
-	if err := store.SaveInteraction(ctx, "kullanicinin kedisinin adi Pamuk", "kaydedildi"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "kullanicinin kedisinin adi Pamuk", "kaydedildi"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 
-	before, err := store.RetrieveContext(ctx, "kedimin adi ne", 5, 0)
+	before, err := store.RetrieveContext(ctx, AllProjects, "kedimin adi ne", 5, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() (before) error = %v", err)
 	}
@@ -506,7 +506,7 @@ func runRetrieveContextExcludesPendingDeletion(t *testing.T, store *Store) {
 		t.Fatalf("mark pending_deletion: %v", err)
 	}
 
-	after, err := store.RetrieveContext(ctx, "kedimin adi ne", 5, 0)
+	after, err := store.RetrieveContext(ctx, AllProjects, "kedimin adi ne", 5, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() (after) error = %v", err)
 	}
@@ -529,11 +529,11 @@ func TestRecall_SingleExplicitFact(t *testing.T) {
 	ctx := context.Background()
 	store := newRecallStore(t, bagOfWordsEmbedding(32), 32)
 
-	if err := store.SaveExplicit(ctx, "kullanicinin favori rengi kirmizidir", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin favori rengi kirmizidir", "profile"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 
-	results, err := store.RetrieveContext(ctx, "favori rengi nedir", 3, 0)
+	results, err := store.RetrieveContext(ctx, AllProjects, "favori rengi nedir", 3, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() error = %v", err)
 	}
@@ -558,7 +558,7 @@ func TestRecall_MultipleDistinctFacts_EachIndependentlyRetrievable(t *testing.T)
 		"evcilhayvan": "kullanicinin bir kedisi var adi Pamuk",
 	}
 	for _, content := range facts {
-		if err := store.SaveExplicit(ctx, content, "profile"); err != nil {
+		if err := store.SaveExplicit(ctx, AllProjects, content, "profile"); err != nil {
 			t.Fatalf("SaveExplicit(%q) error = %v", content, err)
 		}
 	}
@@ -574,7 +574,7 @@ func TestRecall_MultipleDistinctFacts_EachIndependentlyRetrievable(t *testing.T)
 		{"evcil hayvani var mi", "Pamuk"},
 	}
 	for _, tc := range tests {
-		results, err := store.RetrieveContext(ctx, tc.query, 2, 0)
+		results, err := store.RetrieveContext(ctx, AllProjects, tc.query, 2, 0)
 		if err != nil {
 			t.Fatalf("RetrieveContext(%q) error = %v", tc.query, err)
 		}
@@ -610,7 +610,7 @@ func TestRecall_CompoundQuery_ShortFactSurvivesNoise(t *testing.T) {
 	// topic words with the eventual compound query, without being the fact
 	// we care about.
 	for i := range 15 {
-		if err := store.SaveInteraction(ctx,
+		if err := store.SaveInteraction(ctx, AllProjects,
 			fmt.Sprintf("Ahmet bugun dogum gunu partisi hakkinda konustu sohbet %d", i),
 			"ilginc bir sohbetti",
 		); err != nil {
@@ -619,12 +619,12 @@ func TestRecall_CompoundQuery_ShortFactSurvivesNoise(t *testing.T) {
 	}
 
 	// The actual fact, saved once, exactly like the real /remember flow.
-	if err := store.SaveExplicit(ctx, "kullanicinin en sevdigi renk kirmizidir", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kullanicinin en sevdigi renk kirmizidir", "profile"); err != nil {
 		t.Fatalf("SaveExplicit(color fact) error = %v", err)
 	}
 
 	// A brand-new-session, single compound question — the literal repro.
-	results, err := store.RetrieveContext(ctx, "adimi ve dogum gunumu ve en sevdigim rengi biliyor musun", 5, 0)
+	results, err := store.RetrieveContext(ctx, AllProjects, "adimi ve dogum gunumu ve en sevdigim rengi biliyor musun", 5, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() error = %v", err)
 	}
@@ -647,7 +647,7 @@ func TestRecall_PersistsAcrossStoreReopen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore() (session 1) error = %v", err)
 	}
-	if err := store1.SaveExplicit(ctx, "kullanicinin favori rengi kirmizidir", "profile"); err != nil {
+	if err := store1.SaveExplicit(ctx, AllProjects, "kullanicinin favori rengi kirmizidir", "profile"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 	if err := store1.Close(); err != nil {
@@ -663,7 +663,7 @@ func TestRecall_PersistsAcrossStoreReopen(t *testing.T) {
 	if store2.Count() != 1 {
 		t.Fatalf("Count() after reopen = %d, want 1", store2.Count())
 	}
-	results, err := store2.RetrieveContext(ctx, "favori rengi nedir", 3, 0)
+	results, err := store2.RetrieveContext(ctx, AllProjects, "favori rengi nedir", 3, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() (session 2) error = %v", err)
 	}
@@ -681,14 +681,14 @@ func TestRecall_ExplicitFactOutranksCasualMention(t *testing.T) {
 	ctx := context.Background()
 	store := newRecallStore(t, bagOfWordsEmbedding(16), 16)
 
-	if err := store.SaveInteraction(ctx, "kahve hakkinda gecici bir sohbet ettik", "guzel bir sohbetti"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "kahve hakkinda gecici bir sohbet ettik", "guzel bir sohbetti"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
-	if err := store.SaveExplicit(ctx, "kahve", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "kahve", "profile"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 
-	results, err := store.RetrieveContext(ctx, "kahve", 2, 0)
+	results, err := store.RetrieveContext(ctx, AllProjects, "kahve", 2, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() error = %v", err)
 	}
@@ -774,7 +774,7 @@ func runCasualFactNotCrowdedOutByRoutineNoise(t *testing.T, store *Store) {
 	ctx := context.Background()
 
 	for i := range 30 {
-		if err := store.SaveInteraction(ctx,
+		if err := store.SaveInteraction(ctx, AllProjects,
 			fmt.Sprintf("kanka naber bugun hava nasil sohbet %d", i),
 			"iyilik kanka",
 		); err != nil {
@@ -783,13 +783,13 @@ func runCasualFactNotCrowdedOutByRoutineNoise(t *testing.T, store *Store) {
 	}
 
 	// Mirrors the real bug exactly: a normal chat turn, not SaveExplicit.
-	if err := store.SaveInteraction(ctx, "kopeğimin adı zeytin", "ne güzel isim"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "kopeğimin adı zeytin", "ne güzel isim"); err != nil {
 		t.Fatalf("SaveInteraction(fact) error = %v", err)
 	}
 
 	// A small topK, matching the real-world default, and a genuinely
 	// compound question — the decomposition only activates for these.
-	results, err := store.RetrieveContext(ctx, "kanka naber ve kopeğimin adı neydi", 5, 0)
+	results, err := store.RetrieveContext(ctx, AllProjects, "kanka naber ve kopeğimin adı neydi", 5, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() error = %v", err)
 	}
@@ -843,12 +843,12 @@ func TestRecall_TopKLimitRespected(t *testing.T) {
 	store := newRecallStore(t, bagOfWordsEmbedding(24), 24)
 
 	for i := range 10 {
-		if err := store.SaveExplicit(ctx, fmt.Sprintf("kahve turu numara %d", i), "profile"); err != nil {
+		if err := store.SaveExplicit(ctx, AllProjects, fmt.Sprintf("kahve turu numara %d", i), "profile"); err != nil {
 			t.Fatalf("SaveExplicit(%d) error = %v", i, err)
 		}
 	}
 
-	results, err := store.RetrieveContext(ctx, "kahve turu", 3, 0)
+	results, err := store.RetrieveContext(ctx, AllProjects, "kahve turu", 3, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() error = %v", err)
 	}
@@ -865,11 +865,11 @@ func TestRecall_MinSimilarityExcludesUnrelated(t *testing.T) {
 	ctx := context.Background()
 	store := newRecallStore(t, bagOfWordsEmbedding(32), 32)
 
-	if err := store.SaveExplicit(ctx, "dag yuruyusu botlari cok rahatti", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "dag yuruyusu botlari cok rahatti", "profile"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 
-	results, err := store.RetrieveContext(ctx, "kahve fasulyesi kavurma", 5, 0.9)
+	results, err := store.RetrieveContext(ctx, AllProjects, "kahve fasulyesi kavurma", 5, 0.9)
 	if err != nil {
 		t.Fatalf("RetrieveContext() error = %v", err)
 	}
@@ -885,7 +885,7 @@ func TestRecall_EmptyStoreReturnsEmpty(t *testing.T) {
 	ctx := context.Background()
 	store := newRecallStore(t, bagOfWordsEmbedding(16), 16)
 
-	results, err := store.RetrieveContext(ctx, "anything at all", 5, 0)
+	results, err := store.RetrieveContext(ctx, AllProjects, "anything at all", 5, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() error = %v", err)
 	}
@@ -911,14 +911,14 @@ func TestRecall_LongFactChunked_DetailBuriedAtEndStillRetrievable(t *testing.T) 
 	}
 	longText := strings.Join(filler, " ") + " ozel detay kod kelimesi Zebra1234"
 
-	if err := store.SaveInteraction(ctx, longText, "tamam"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, longText, "tamam"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 	if store.Count() <= 1 {
 		t.Fatalf("Count() = %d, want >1 (long text should have been chunked)", store.Count())
 	}
 
-	results, err := store.RetrieveContext(ctx, "ozel detay kod kelimesi Zebra1234", 3, 0)
+	results, err := store.RetrieveContext(ctx, AllProjects, "ozel detay kod kelimesi Zebra1234", 3, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() error = %v", err)
 	}
@@ -1060,11 +1060,11 @@ func TestHybridSearch_MatchTypeIsHybridWhenFTSCompiled(t *testing.T) {
 		t.Skip(`requires -tags "sqlite_fts5"`)
 	}
 
-	if err := store.SaveInteraction(ctx, "coffee beans arabica", "great choice"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "coffee beans arabica", "great choice"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 
-	results, err := store.RetrieveContext(ctx, "coffee beans arabica", 5, 0)
+	results, err := store.RetrieveContext(ctx, AllProjects, "coffee beans arabica", 5, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() error = %v", err)
 	}
@@ -1095,12 +1095,12 @@ func TestGetPinnedFactsRanked_PicksRelevantAndCaps(t *testing.T) {
 		"kullanicinin kardesi doktor",
 	}
 	for _, f := range facts {
-		if err := store.SaveExplicit(ctx, f, "profile"); err != nil {
+		if err := store.SaveExplicit(ctx, AllProjects, f, "profile"); err != nil {
 			t.Fatalf("SaveExplicit(%q): %v", f, err)
 		}
 	}
 
-	got, err := store.GetPinnedFactsRanked(ctx, "en sevdigi kahve cekirdegi arabica mi", 3)
+	got, err := store.GetPinnedFactsRanked(ctx, AllProjects, "en sevdigi kahve cekirdegi arabica mi", 3)
 	if err != nil {
 		t.Fatalf("GetPinnedFactsRanked: %v", err)
 	}
@@ -1157,7 +1157,7 @@ func TestRetrieveContext_RecencyChangesMembershipNotJustOrder(t *testing.T) {
 			"kullanici arabica cekirdegini kavurmayi sever bazen",     // weaker
 			"kullanici kahve dukkanina ugrar arada",                   // weaker
 		} {
-			if err := s.SaveExplicit(ctx, f, ""); err != nil {
+			if err := s.SaveExplicit(ctx, AllProjects, f, ""); err != nil {
 				t.Fatalf("SaveExplicit: %v", err)
 			}
 		}
@@ -1169,7 +1169,7 @@ func TestRetrieveContext_RecencyChangesMembershipNotJustOrder(t *testing.T) {
 	const q = "arabica kahve cekirdegi"
 
 	blind := mk(0) // recency off
-	got, err := blind.RetrieveContext(ctx, q, 1, 0.0)
+	got, err := blind.RetrieveContext(ctx, AllProjects, q, 1, 0.0)
 	if err != nil {
 		t.Fatalf("RetrieveContext (blind): %v", err)
 	}
@@ -1178,7 +1178,7 @@ func TestRetrieveContext_RecencyChangesMembershipNotJustOrder(t *testing.T) {
 	}
 
 	fresh := mk(30) // recency on
-	got, err = fresh.RetrieveContext(ctx, q, 1, 0.0)
+	got, err = fresh.RetrieveContext(ctx, AllProjects, q, 1, 0.0)
 	if err != nil {
 		t.Fatalf("RetrieveContext (fresh): %v", err)
 	}
@@ -1204,11 +1204,11 @@ func TestGetPinnedFactsRanked_FewerFactsThanCore(t *testing.T) {
 	for _, n := range []int{1, 2} {
 		store := newRecallStore(t, bagOfWordsEmbedding(32), 32)
 		for i := 0; i < n; i++ {
-			if err := store.SaveExplicit(ctx, distinct[i], ""); err != nil {
+			if err := store.SaveExplicit(ctx, AllProjects, distinct[i], ""); err != nil {
 				t.Fatalf("SaveExplicit: %v", err)
 			}
 		}
-		got, err := store.GetPinnedFactsRanked(ctx, "anything at all", 10)
+		got, err := store.GetPinnedFactsRanked(ctx, AllProjects, "anything at all", 10)
 		if err != nil {
 			t.Fatalf("n=%d GetPinnedFactsRanked: %v", n, err)
 		}
@@ -1224,11 +1224,11 @@ func TestGetPinnedFactsRanked_LimitZeroFallsBackToFullSet(t *testing.T) {
 	ctx := context.Background()
 	store := newRecallStore(t, bagOfWordsEmbedding(32), 32)
 	for _, f := range []string{"fact bir", "fact iki", "fact uc"} {
-		if err := store.SaveExplicit(ctx, f, ""); err != nil {
+		if err := store.SaveExplicit(ctx, AllProjects, f, ""); err != nil {
 			t.Fatalf("SaveExplicit: %v", err)
 		}
 	}
-	got, err := store.GetPinnedFactsRanked(ctx, "anything", 0)
+	got, err := store.GetPinnedFactsRanked(ctx, AllProjects, "anything", 0)
 	if err != nil {
 		t.Fatalf("GetPinnedFactsRanked: %v", err)
 	}
@@ -1285,11 +1285,11 @@ func TestGoSearch_CapsCandidateRowsToMostRecent(t *testing.T) {
 
 	// The most distinctive memory is saved FIRST (lowest id), so it's the
 	// first to fall outside an id-DESC-LIMIT window as more rows are added.
-	if err := store.SaveInteraction(ctx, "zebra kanguru ahtapot", "ilginc hayvanlar"); err != nil {
+	if err := store.SaveInteraction(ctx, AllProjects, "zebra kanguru ahtapot", "ilginc hayvanlar"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
 	for i := range 4 {
-		if err := store.SaveInteraction(ctx, fmt.Sprintf("alakasiz konu numara %d", i), "cevap"); err != nil {
+		if err := store.SaveInteraction(ctx, AllProjects, fmt.Sprintf("alakasiz konu numara %d", i), "cevap"); err != nil {
 			t.Fatalf("SaveInteraction() [%d] error = %v", i, err)
 		}
 	}
@@ -1302,7 +1302,7 @@ func TestGoSearch_CapsCandidateRowsToMostRecent(t *testing.T) {
 	// Cap smaller than the 5 saved rows: the distinctive memory must fall
 	// outside the window and not be found.
 	goSearchMaxCandidateRows = 3
-	capped, err := store.goSearch(ctx, q, 5, 0)
+	capped, err := store.goSearch(ctx, q, 5, 0, AllProjects)
 	if err != nil {
 		t.Fatalf("goSearch() error = %v", err)
 	}
@@ -1312,7 +1312,7 @@ func TestGoSearch_CapsCandidateRowsToMostRecent(t *testing.T) {
 
 	// Widen the cap back over it: the same memory must be found again.
 	goSearchMaxCandidateRows = 100
-	uncapped, err := store.goSearch(ctx, q, 5, 0)
+	uncapped, err := store.goSearch(ctx, q, 5, 0, AllProjects)
 	if err != nil {
 		t.Fatalf("goSearch() error = %v", err)
 	}

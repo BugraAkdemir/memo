@@ -221,7 +221,9 @@ func (a *App) AppendMessage(role, content string) error {
 	// whose whole contract is "nothing persisted, nothing recalled".
 	if role == "assistant" && content != "" && !a.GetIncognito() {
 		if userMsg := lastUserMessage(sm.GetActiveMessages()); userMsg != "" {
-			a.saveMemoryAsync(userMsg, content)
+			if sc, ok := a.memoryScopeForChat(sm.GetActiveID()); ok {
+				a.saveMemoryAsync(sc, userMsg, content)
+			}
 		}
 	}
 	return nil

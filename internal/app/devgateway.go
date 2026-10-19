@@ -263,7 +263,7 @@ func (a *App) MaybeSaveGatewayMemory(userMsg, reply string) {
 	if !a.devGatewayMemoryEnabled() {
 		return
 	}
-	a.saveMemoryAsync(userMsg, reply)
+	a.saveMemoryAsync(memory.AllProjects, userMsg, reply)
 }
 
 func (a *App) devGatewayMemoryEnabled() bool {
@@ -314,7 +314,7 @@ func (a *App) injectGatewayMemory(ctx context.Context, messages []provider.Messa
 		return messages
 	}
 
-	results := a.retrieveMemory(ctx, lastUserText)
+	results := a.retrieveMemory(ctx, memory.AllProjects, lastUserText)
 	block := strings.TrimSpace(memory.FormatMemoriesForPrompt(results))
 	return mergeSystemBlock(messages, block)
 }

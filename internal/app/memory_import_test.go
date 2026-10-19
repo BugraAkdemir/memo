@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"memo/internal/memory"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -97,7 +98,7 @@ func newImportTestRouter(t *testing.T, facts []string, styleSummary string) *pro
 // AI) would otherwise get a fresh duplicate pinned entry every time.
 func TestImportMemoryFromText_SkipsAlreadyPinnedDuplicate(t *testing.T) {
 	store := newExtractionTestStore(t)
-	if err := store.SaveExplicit(context.Background(), "User's name is Ece.", "imported"); err != nil {
+	if err := store.SaveExplicit(context.Background(), memory.AllProjects, "User's name is Ece.", "imported"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 
@@ -117,7 +118,7 @@ func TestImportMemoryFromText_SkipsAlreadyPinnedDuplicate(t *testing.T) {
 		t.Errorf("factsSaved = %d, want 1 (duplicate must not count as newly saved)", factsSaved)
 	}
 
-	pinned, err := store.GetPinnedFacts(context.Background())
+	pinned, err := store.GetPinnedFacts(context.Background(), memory.AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -164,7 +165,7 @@ func TestImportMemoryFromText_CapsFactCount(t *testing.T) {
 		t.Errorf("factsSaved = %d, want %d (capped)", factsSaved, maxImportedFactsPerCall)
 	}
 
-	pinned, err := store.GetPinnedFacts(context.Background())
+	pinned, err := store.GetPinnedFacts(context.Background(), memory.AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}

@@ -41,7 +41,7 @@ func (a *App) GenerateSelfInsight(ctx context.Context, windowDays int, lang stri
 	var memories []memory.MemoryResult
 	if a.store != nil {
 		var err error
-		memories, err = a.store.RecentSince(ctx, since, maxInsightMemories)
+		memories, err = a.store.RecentSince(ctx, memory.AllProjects, since, maxInsightMemories)
 		if err != nil {
 			logx.Printf("insight: RecentSince: %v", err)
 		}

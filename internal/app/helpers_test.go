@@ -300,7 +300,7 @@ func TestRetrieveMemory_MergesInPinnedFactsRegardlessOfRanking(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveExplicit(context.Background(), "kullanicinin adi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(context.Background(), memory.AllProjects, "kullanicinin adi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 
@@ -311,7 +311,7 @@ func TestRetrieveMemory_MergesInPinnedFactsRegardlessOfRanking(t *testing.T) {
 		},
 	}
 
-	results := a.retrieveMemory(context.Background(), "irrelevant query")
+	results := a.retrieveMemory(context.Background(), memory.AllProjects, "irrelevant query")
 	found := false
 	for _, r := range results {
 		if strings.Contains(r.Content, "Ahmet") {
@@ -345,10 +345,10 @@ func TestRetrieveMemory_PinnedFactsComeFirst(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveInteraction(context.Background(), "kanka naber", "iyilik"); err != nil {
+	if err := store.SaveInteraction(context.Background(), memory.AllProjects, "kanka naber", "iyilik"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
-	if err := store.SaveExplicit(context.Background(), "kullanicinin adi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(context.Background(), memory.AllProjects, "kullanicinin adi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 
@@ -359,7 +359,7 @@ func TestRetrieveMemory_PinnedFactsComeFirst(t *testing.T) {
 		},
 	}
 
-	results := a.retrieveMemory(context.Background(), "naber")
+	results := a.retrieveMemory(context.Background(), memory.AllProjects, "naber")
 	if len(results) < 2 {
 		t.Fatalf("expected at least 2 results (routine + pinned), got %d: %+v", len(results), results)
 	}

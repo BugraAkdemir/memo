@@ -110,7 +110,7 @@ func TestMigrateEmbeddingsToVecSkipsDimensionMismatch(t *testing.T) {
 	ctx := context.Background()
 
 	// A well-formed dim=3 row that should migrate successfully.
-	if err := s.SaveInteraction(ctx, "coffee beans", "arabica"); err != nil {
+	if err := s.SaveInteraction(ctx, AllProjects, "coffee beans", "arabica"); err != nil {
 		t.Fatalf("SaveInteraction: %v", err)
 	}
 

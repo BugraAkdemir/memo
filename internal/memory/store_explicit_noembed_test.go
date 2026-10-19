@@ -21,10 +21,10 @@ func TestSaveExplicit_WithoutAnEmbedderStillSavesAndRecalls(t *testing.T) {
 	defer store.Close()
 
 	ctx := context.Background()
-	if err := store.SaveExplicit(ctx, "The user's favourite colour is orange.", "profile"); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "The user's favourite colour is orange.", "profile"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v, want the fact saved without a vector", err)
 	}
-	got, err := store.GetPinnedFactsRanked(ctx, "what colour do I like?", 5)
+	got, err := store.GetPinnedFactsRanked(ctx, AllProjects, "what colour do I like?", 5)
 	if err != nil {
 		t.Fatalf("GetPinnedFactsRanked() error = %v", err)
 	}

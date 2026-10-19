@@ -306,7 +306,7 @@ func TestSendMessageStreamTo_MemoryUsed_AnnotatesSavedReply(t *testing.T) {
 		t.Fatalf("memory.NewStore() error = %v", err)
 	}
 	defer store.Close()
-	if err := store.SaveExplicit(context.Background(), "kullanicinin adi Ahmet", "profile"); err != nil {
+	if err := store.SaveExplicit(context.Background(), memory.AllProjects, "kullanicinin adi Ahmet", "profile"); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 

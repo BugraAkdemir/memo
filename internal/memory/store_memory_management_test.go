@@ -21,14 +21,14 @@ func TestDeleteByUUIDs_DeletesExactRowsOnly(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveExplicit(ctx, "User likes cats", ""); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "User likes cats", ""); err != nil {
 		t.Fatalf("SaveExplicit(cats) error = %v", err)
 	}
-	if err := store.SaveExplicit(ctx, "User likes cats and dogs too", ""); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "User likes cats and dogs too", ""); err != nil {
 		t.Fatalf("SaveExplicit(cats and dogs) error = %v", err)
 	}
 
-	facts, err := store.GetPinnedFacts(ctx)
+	facts, err := store.GetPinnedFacts(ctx, AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -56,7 +56,7 @@ func TestDeleteByUUIDs_DeletesExactRowsOnly(t *testing.T) {
 		t.Fatalf("DeleteByUUIDs() deleted = %d, want 1", deleted)
 	}
 
-	after, err := store.GetPinnedFacts(ctx)
+	after, err := store.GetPinnedFacts(ctx, AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() after delete error = %v", err)
 	}
@@ -81,7 +81,7 @@ func TestDeleteByUUIDs_UnknownIDSkippedWithoutError(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveExplicit(ctx, "User likes cats", ""); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "User likes cats", ""); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 
@@ -93,7 +93,7 @@ func TestDeleteByUUIDs_UnknownIDSkippedWithoutError(t *testing.T) {
 		t.Fatalf("DeleteByUUIDs(unknown id) deleted = %d, want 0", deleted)
 	}
 
-	facts, err := store.GetPinnedFacts(ctx)
+	facts, err := store.GetPinnedFacts(ctx, AllProjects)
 	if err != nil {
 		t.Fatalf("GetPinnedFacts() error = %v", err)
 	}
@@ -114,7 +114,7 @@ func TestDeleteByUUIDs_EmptyInputIsNoOp(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveExplicit(ctx, "User likes cats", ""); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "User likes cats", ""); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 
@@ -123,7 +123,7 @@ func TestDeleteByUUIDs_EmptyInputIsNoOp(t *testing.T) {
 		t.Fatalf("DeleteByUUIDs(nil) = (%d, %v), want (0, nil)", deleted, err)
 	}
 
-	facts, _ := store.GetPinnedFacts(ctx)
+	facts, _ := store.GetPinnedFacts(ctx, AllProjects)
 	if len(facts) != 1 {
 		t.Fatalf("pinned facts after empty-input delete = %d, want 1 (untouched)", len(facts))
 	}
@@ -144,7 +144,7 @@ func TestListConversationMemories_ExcludesPinnedFacts(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveExplicit(ctx, "User's dog is named Zeytin", ""); err != nil {
+	if err := store.SaveExplicit(ctx, AllProjects, "User's dog is named Zeytin", ""); err != nil {
 		t.Fatalf("SaveExplicit() error = %v", err)
 	}
 	// Each topic must land in a different testEmbedding() bucket — same-
@@ -153,7 +153,7 @@ func TestListConversationMemories_ExcludesPinnedFacts(t *testing.T) {
 	// rather than exercise ListConversationMemories itself.
 	topics := []string{"coffee beans", "mountain hiking", "a test query"}
 	for i, topic := range topics {
-		if err := store.SaveInteraction(ctx, topic, "reply about "+topic); err != nil {
+		if err := store.SaveInteraction(ctx, AllProjects, topic, "reply about "+topic); err != nil {
 			t.Fatalf("SaveInteraction(%d) error = %v", i, err)
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"memo/internal/logx"
+	"memo/internal/project"
 	"memo/internal/webchat"
 	"os"
 	"path/filepath"
@@ -71,6 +72,7 @@ type SyncAccount struct {
 }
 
 type saveTask struct {
+	scope   memory.Scope
 	userMsg string
 	reply   string
 }
@@ -170,6 +172,11 @@ type App struct {
 	liveModeChatMu sync.Mutex
 	liveJobsMu     sync.Mutex
 	liveJobs       map[string]context.CancelFunc
+
+	// projectMgr resolves project folders to stable project ids (see
+	// projectManager); built lazily.
+	projectMgr   *project.Manager
+	projectMgrMu sync.Mutex
 	// livePermMu/livePendingPermAnswerCh: while non-nil, the next transcript
 	// routed via routeLiveTranscriptToPermissionAnswer is treated as the
 	// spoken answer to an outstanding voice_prompt permission question
@@ -553,6 +560,7 @@ func (a *App) Startup(ctx context.Context) {
 			EmbeddingFunc:       embeddingFunc,
 			DreamSettings:       a.dreamSettings,
 			RecencyHalfLifeDays: cfg.Memory.RecencyHalfLifeDays,
+			SnapshotDir:         config.DataPath("backups"),
 		})
 		if err != nil {
 			logx.Printf("WARN: memory: %v", err)

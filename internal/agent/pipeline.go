@@ -493,7 +493,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				}
 
 				// Check Permission
-				permRes := p.permissions.Check(toolName, args, toolDef.DangerLevel)
+				permRes := p.permissions.Check(toolName, args, toolDef.DangerLevel, basePath)
 
 				// Sistem yönetimi modunda izin ekranı çıkmaz — tüm tool'lar otomatik onaylanır.
 				if p.bypassPermissions {

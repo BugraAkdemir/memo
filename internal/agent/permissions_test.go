@@ -91,3 +91,53 @@ func TestPermissions_SafeTools_AlwaysAllowed(t *testing.T) {
 		t.Errorf("Safe tools must always be allowed without prompt; allowed=%v needPrompt=%v", res.Allowed, res.NeedPrompt)
 	}
 }
+
+type fakeProjectChecker struct {
+	allowedCmds map[string]bool
+}
+
+func (f *fakeProjectChecker) CheckProjectPermission(path, toolName string, args json.RawMessage) (allowed bool, matched bool) {
+	if toolName == "run_command" {
+		var a struct {
+			Command string `json:"command"`
+		}
+		if err := json.Unmarshal(args, &a); err == nil && f.allowedCmds[a.Command] {
+			return true, true
+		}
+	}
+	return false, false
+}
+
+func TestPermissions_ProjectContext_Integration(t *testing.T) {
+	dir := t.TempDir()
+	pm := NewPermissionManager(dir)
+
+	checker := &fakeProjectChecker{
+		allowedCmds: map[string]bool{
+			"go test": true,
+		},
+	}
+	pm.SetProjectChecker(checker)
+
+	goTestArgs := json.RawMessage(`{"command":"go test"}`)
+	rmArgs := json.RawMessage(`{"command":"rm -rf /"}`)
+
+	// Without project context, Dangerous run_command prompts
+	res := pm.Check("run_command", goTestArgs, Dangerous)
+	if res.Allowed || !res.NeedPrompt {
+		t.Errorf("expected prompt without project context, got allowed=%v needPrompt=%v", res.Allowed, res.NeedPrompt)
+	}
+
+	// With project context, allowed command executes silently without prompt
+	res = pm.Check("run_command", goTestArgs, Dangerous, "/some/project")
+	if !res.Allowed || res.NeedPrompt {
+		t.Errorf("expected auto-allow with project context, got allowed=%v needPrompt=%v", res.Allowed, res.NeedPrompt)
+	}
+
+	// With project context, unauthorized command still prompts
+	res = pm.Check("run_command", rmArgs, Dangerous, "/some/project")
+	if res.Allowed || !res.NeedPrompt {
+		t.Errorf("expected prompt for unauthorized command, got allowed=%v needPrompt=%v", res.Allowed, res.NeedPrompt)
+	}
+}
+

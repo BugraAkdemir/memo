@@ -112,6 +112,41 @@ yollar reddedilir; hiçbir şey çalıştırılabilir yapılmaz). Bir yerde bird
 hata mesajı onları listeler. Kurulu skill'in üzerine asla yazılmaz. `/skill remove <ad>`
 kaldırır.
 
+## İzinler
+
+Bir proje, Memo'nun sormayı bırakacağı birkaç şeyi `.memo/permissions.json` içinde önceden
+onaylayabilir (`.memo/.gitignore` ile sürüm kontrolünün dışında tutulur):
+
+```json
+{ "version": 1, "allowed_commands": ["go test", "git status"], "allowed_tools": ["edit_file"] }
+```
+
+- **Bir komut kuralı tam olarak tek bir düz komutu onaylar, ona zincirlenen hiçbir şeyi.**
+  `run_command` satırı `bash -c`'ye verir; bu yüzden "`go test` ile başlıyor" yetmez:
+  `go test ./... ; rm -rf ~` da onunla başlar. Bir satır ancak harf, rakam, boşluk, `_ . / : = , @ + -`
+  ve tırnaklardan oluşuyorsa — zincirleyebilecek (`; & |`), yönlendirebilecek (`< >`), yerine
+  koyabilecek (`$ \``), genişletebilecek (`* ? ~ { }`) ya da yorum yapabilecek (`#`) hiçbir şey
+  yoksa — ve izinli bir önekle kelime sınırında başlıyorsa onaylanır (`go test`, `go test ./...`'yı
+  eşler, `go testing`'i eşlemez). Bunu geçemeyen komut eskisi gibi sorar; örneğin `-run 'A|B'`;
+  `-run A` yaz ya da bir kez onayla.
+- **Hemen hemen her şeye izin veren kurallar kaydedilirken/onaylanırken reddedilir:** kabuklar
+  ve yorumlayıcılar (`bash`, `python3`, `node`…), sarmalayıcılar (`env`, `xargs`, `sudo`, `time`,
+  `find`…), ağ ve konteyner araçları (`curl`, `nc`, `ssh`, `docker`, `npx`…), yıkıcı olanlar (`rm`,
+  `mv`, `dd`, `chmod`…), alt komutsuz `git` / `go` / `npm` / `cargo` (alt komutu yaz: `git status`) ve
+  komutun başka bir program çalıştırmasını sağlayan bayraklar (`-exec`, `-toolexec`, `-ldflags`…).
+  Liste elden geldiğince; asıl savunma karakter denetimidir.
+- **Yalnız dosya araçları ada göre önceden onaylanabilir:** `read_file`, `list_directory`,
+  `get_file_info`, `search_files`, `search_content`, `write_file`, `edit_file`, `insert_line`,
+  `delete_lines`, `create_task_md`, `edit_task_md`, `save_code_plan`. `run_command`, `delete_file`,
+  ağa, hesaplarına ya da Memo'nun kendi ayarlarına ulaşan her şey hep sorar.
+- **İlk görüşte güven.** Klonlanmış bir depoyla gelen ya da modelin kendisinin yazdığı bir izin
+  dosyası, *sen* onaylayana kadar yok sayılır (`/api/projects/permissions/trust` ya da
+  `/api/projects/permissions/save` ile kaydederek). Memo dosyanın SHA-256'sını cihaza özel kayıt
+  defterinde (`data/projects.json`) sabitler; dosya sonradan, kim tarafından olursa olsun,
+  değişirse yeniden yok sayılır. Kuralları bozan tek bir kural içeren dosya bütünüyle yok sayılır.
+- Projenin kendi `AGENTS.md`'si ve `.memo/AGENTS.md` bunların hiçbirini veremez; yalnız onaylanmış
+  dosya verebilir.
+
 ## API
 
 | Yöntem | Uç nokta | |
@@ -119,10 +154,12 @@ kaldırır.
 | `POST` | `/api/projects/status` | `{path}` → `{root, id, name, set_up, declined, allowed, reason, enabled, should_ask}`; hiçbir şey yazmaz |
 | `POST` | `/api/projects/setup` | `{path}` → dosyaları oluşturur; ev / Memo klasörleri / yabancı `.memo` için 403 |
 | `POST` | `/api/projects/decline` | `{path, declined?}` → "burada asla"yı hatırlar (`false` geri alır) |
+| `POST` | `/api/projects/permissions` | `{path}` → `{permissions, status: {exists, trusted, hash}}` |
+| `POST` | `/api/projects/permissions/save` | `{path, permissions}` → `.memo/permissions.json` yazar ve güvenir |
+| `POST` | `/api/projects/permissions/trust` | `{path}` → mevcut dosyanın özetini güvenilir olarak sabitler |
 
 ## Yapılmadı / doğrulanmadı
 
-- Proje başına komut izinleri (`.memo/permissions.json`) henüz yok.
 - Gerçek GitHub'dan indirme yalnız yerel bir sahte sunucuyla denendi.
 - Kurulum penceresi ve yeni akış yalnız widget testleriyle denendi, gerçek pencerede
   görülmedi; gerçek bir modelin oturum başı satırına uyup uymadığı ölçülmedi.

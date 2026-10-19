@@ -137,3 +137,7 @@ data/images/
 
 # Web chat browser profiles (sign-in cookies) and consent record — never commit
 data/webchat/
+
+# Memo project folder created by running Memo on its own source tree, and the per-device registry
+/.memo/
+data/projects.json

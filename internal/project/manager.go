@@ -20,6 +20,9 @@ type registryEntry struct {
 	Created string `json:"created"`
 	// Declined is set when the user chose "never set up Memo here".
 	Declined bool `json:"declined,omitempty"`
+	// TrustedPermissionsHash is the SHA-256 hash of .memo/permissions.json
+	// approved by the user on this device.
+	TrustedPermissionsHash string `json:"trusted_permissions_hash,omitempty"`
 }
 
 type registryFile struct {
@@ -48,6 +51,11 @@ func NewManager(guard Guard, registryPath string) *Manager {
 	m := &Manager{guard: guard, path: registryPath, now: time.Now}
 	m.load()
 	return m
+}
+
+// Guard returns the project guard configured on this manager.
+func (m *Manager) Guard() Guard {
+	return m.guard
 }
 
 func (m *Manager) load() {
@@ -230,6 +238,180 @@ func (m *Manager) SetDeclined(path string, declined bool) error {
 		m.reg.Projects[root] = e
 	}
 	e.Declined = declined
+	m.saveLocked()
+	return nil
+}
+
+// TrustedPermissionsHash returns the trusted permissions hash recorded for root.
+func (m *Manager) TrustedPermissionsHash(path string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	root, ok := m.guard.FindRoot(path)
+	if !ok {
+		var err error
+		if root, err = m.guard.Check(path); err != nil {
+			return "", err
+		}
+	}
+	if e := m.reg.Projects[root]; e != nil {
+		return e.TrustedPermissionsHash, nil
+	}
+	return "", nil
+}
+
+// TrustPermissions records the current hash of .memo/permissions.json in the registry.
+func (m *Manager) TrustPermissions(path string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	root, ok := m.guard.FindRoot(path)
+	if !ok {
+		var err error
+		if root, err = m.guard.Check(path); err != nil {
+			return "", err
+		}
+	}
+
+	_, raw, err := ReadPermissionsFile(root)
+	if err != nil {
+		return "", err
+	}
+	if raw == nil {
+		return "", ErrNoProject
+	}
+	hash := HashPermissions(raw)
+
+	e := m.reg.Projects[root]
+	if e == nil {
+		e = &registryEntry{ID: NewID(), Created: m.now().UTC().Format(time.RFC3339)}
+		m.reg.Projects[root] = e
+	}
+	e.TrustedPermissionsHash = hash
+	m.saveLocked()
+	return hash, nil
+}
+
+// UntrustPermissions clears the trusted permissions hash for root.
+func (m *Manager) UntrustPermissions(path string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	root, ok := m.guard.FindRoot(path)
+	if !ok {
+		var err error
+		if root, err = m.guard.Check(path); err != nil {
+			return err
+		}
+	}
+	if e := m.reg.Projects[root]; e != nil && e.TrustedPermissionsHash != "" {
+		e.TrustedPermissionsHash = ""
+		m.saveLocked()
+	}
+	return nil
+}
+
+// PermissionsStatus reports whether .memo/permissions.json exists, its hash,
+// and whether it is trusted on this device.
+type PermissionsStatus struct {
+	Exists  bool   `json:"exists"`
+	Trusted bool   `json:"trusted"`
+	Hash    string `json:"hash,omitempty"`
+}
+
+// CheckPermissionsStatus checks whether the permissions file is trusted.
+func (m *Manager) CheckPermissionsStatus(path string) (PermissionsStatus, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	root, ok := m.guard.FindRoot(path)
+	if !ok {
+		var err error
+		if root, err = m.guard.Check(path); err != nil {
+			return PermissionsStatus{}, err
+		}
+	}
+
+	_, raw, err := ReadPermissionsFile(root)
+	if err != nil {
+		return PermissionsStatus{}, err
+	}
+	if raw == nil {
+		return PermissionsStatus{Exists: false, Trusted: false}, nil
+	}
+	hash := HashPermissions(raw)
+	trusted := false
+	if e := m.reg.Projects[root]; e != nil && e.TrustedPermissionsHash != "" {
+		trusted = (e.TrustedPermissionsHash == hash)
+	}
+	return PermissionsStatus{Exists: true, Trusted: trusted, Hash: hash}, nil
+}
+
+// GetActivePermissions returns the parsed permissions ONLY if the file exists
+// and its hash matches the trusted hash in the registry. Otherwise returns nil, nil.
+func (m *Manager) GetActivePermissions(path string) (*Permissions, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	root, ok := m.guard.FindRoot(path)
+	if !ok {
+		var err error
+		if root, err = m.guard.Check(path); err != nil {
+			return nil, err
+		}
+	}
+
+	perms, raw, err := ReadPermissionsFile(root)
+	if err != nil {
+		return nil, err
+	}
+	if perms == nil || raw == nil {
+		return nil, nil
+	}
+	hash := HashPermissions(raw)
+	e := m.reg.Projects[root]
+	if e == nil || e.TrustedPermissionsHash == "" || e.TrustedPermissionsHash != hash {
+		// Untrusted: ignored per TOFU policy.
+		return nil, nil
+	}
+	return perms, nil
+}
+
+// CheckProjectPermission evaluates whether toolName with args is authorized
+// by a trusted permissions.json in the project root containing path.
+func (m *Manager) CheckProjectPermission(path, toolName string, args json.RawMessage) (allowed bool, matched bool) {
+	perms, err := m.GetActivePermissions(path)
+	if err != nil || perms == nil {
+		return false, false
+	}
+	return perms.CheckToolCall(toolName, args)
+}
+
+// SavePermissions writes permissions to `<root>/.memo/permissions.json` and
+// automatically marks the file as trusted in the registry.
+func (m *Manager) SavePermissions(path string, perms *Permissions) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	root, ok := m.guard.FindRoot(path)
+	if !ok {
+		var err error
+		if root, err = m.guard.Check(path); err != nil {
+			return err
+		}
+	}
+
+	raw, err := WritePermissionsFile(root, perms)
+	if err != nil {
+		return err
+	}
+	hash := HashPermissions(raw)
+	e := m.reg.Projects[root]
+	if e == nil {
+		e = &registryEntry{ID: NewID(), Created: m.now().UTC().Format(time.RFC3339)}
+		m.reg.Projects[root] = e
+	}
+	e.TrustedPermissionsHash = hash
 	m.saveLocked()
 	return nil
 }

@@ -83,7 +83,7 @@ func (e *Executor) ExecuteToolCall(ctx context.Context, sessionID, toolName stri
 		return "", err
 	}
 
-	permRes := e.permissions.Check(toolName, args, toolDef.DangerLevel)
+	permRes := e.permissions.Check(toolName, args, toolDef.DangerLevel, effectiveBase)
 	if e.GetBypassPermissions() || e.GetAutoPermission() {
 		permRes.NeedPrompt = false
 		permRes.Allowed = true

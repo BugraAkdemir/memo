@@ -759,6 +759,7 @@ func (a *App) Startup(ctx context.Context) {
 	// on the next turn.
 	beta.SetGate(a.GetBeta)
 	a.agentExecutor = agent.NewExecutor(basePath, providerRouter, providerCfgMgr, a.getSessionManager())
+	a.agentExecutor.SetProjectChecker(a.projectManager())
 	a.agentExecutor.SetBypassPermissions(a.cfg.Mood.SystemManagement)
 	a.agentExecutor.SetMaxIterations(a.cfg.AgentMode.MaxIterations)
 	a.agentExecutor.SetContextBudget(a.cfg.AgentMode.ContextBudgetTokens)

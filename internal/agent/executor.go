@@ -518,6 +518,14 @@ func (e *Executor) HandlePermissionResponse(requestID string, policy PermissionP
 	return nil
 }
 
+// SetProjectChecker sets the per-project permission checker on the executor's
+// permission manager.
+func (e *Executor) SetProjectChecker(pc ProjectPermissionChecker) {
+	if e.permissions != nil {
+		e.permissions.SetProjectChecker(pc)
+	}
+}
+
 // GetAgentPermissions returns permanent permissions.
 func (e *Executor) GetAgentPermissions() []PermissionRecord {
 	return e.permissions.ListPermanent()

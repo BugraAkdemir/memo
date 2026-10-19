@@ -44,12 +44,18 @@ type PermissionResult struct {
 	DangerLevel DangerLevel
 }
 
+// ProjectPermissionChecker checks whether a project authorizes a tool execution.
+type ProjectPermissionChecker interface {
+	CheckProjectPermission(path, toolName string, args json.RawMessage) (allowed bool, matched bool)
+}
+
 // PermissionManager handles tool execution authorizations.
 type PermissionManager struct {
 	mu                   sync.RWMutex
 	filePath             string
 	sessionPermissions   map[string]PermissionPolicy
 	permanentPermissions []PermissionRecord
+	projectChecker       ProjectPermissionChecker
 }
 
 func NewPermissionManager(dataDir string) *PermissionManager {
@@ -61,8 +67,16 @@ func NewPermissionManager(dataDir string) *PermissionManager {
 	return pm
 }
 
-// Check evaluates if a tool call is allowed.
-func (pm *PermissionManager) Check(toolName string, args json.RawMessage, dangerLevel DangerLevel) PermissionResult {
+// SetProjectChecker sets the per-project permission checker.
+func (pm *PermissionManager) SetProjectChecker(pc ProjectPermissionChecker) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.projectChecker = pc
+}
+
+// Check evaluates if a tool call is allowed. If projectRoot is provided,
+// project-level permissions (e.g. .memo/permissions.json) are checked first.
+func (pm *PermissionManager) Check(toolName string, args json.RawMessage, dangerLevel DangerLevel, projectRoot ...string) PermissionResult {
 	// Safe tools are always allowed silently
 	if dangerLevel == Safe {
 		return PermissionResult{
@@ -71,6 +85,25 @@ func (pm *PermissionManager) Check(toolName string, args json.RawMessage, danger
 			ToolName:    toolName,
 			Args:        args,
 			DangerLevel: dangerLevel,
+		}
+	}
+
+	pm.mu.RLock()
+	checker := pm.projectChecker
+	pm.mu.RUnlock()
+
+	// Check project-level permissions first if in a project context
+	if len(projectRoot) > 0 && projectRoot[0] != "" && checker != nil {
+		if allowed, matched := checker.CheckProjectPermission(projectRoot[0], toolName, args); matched {
+			if allowed {
+				return PermissionResult{
+					Allowed:     true,
+					NeedPrompt:  false,
+					ToolName:    toolName,
+					Args:        args,
+					DangerLevel: dangerLevel,
+				}
+			}
 		}
 	}
 

@@ -111,6 +111,43 @@ absolute and `..` paths are refused; nothing is made executable). If a place hol
 several skills the error lists them. An installed skill is never overwritten.
 `/skill remove <name>` removes it.
 
+## Permissions
+
+A project can pre-approve a few things so Memo stops asking about them, in
+`.memo/permissions.json` (kept out of version control by `.memo/.gitignore`):
+
+```json
+{ "version": 1, "allowed_commands": ["go test", "git status"], "allowed_tools": ["edit_file"] }
+```
+
+- **A command rule approves exactly one plain command, never what is chained to it.**
+  `run_command` hands the line to `bash -c`, so "starts with `go test`" is not enough:
+  `go test ./... ; rm -rf ~` also starts with it. A line is approved only if it is made of
+  letters, digits, blanks and `_ . / : = , @ + -` and quotes — nothing that can chain
+  (`; & |`), redirect (`< >`), substitute (`$ \``), expand (`* ? ~ { }`) or comment (`#`) —
+  and it starts with an allowed prefix at a word boundary (`go test` matches `go test ./...`,
+  not `go testing`). A command that fails this simply asks as before, for example
+  `-run 'A|B'`; write `-run A` or ask once.
+- **Rules that are almost everything are refused** when saved or approved: shells and
+  interpreters (`bash`, `python3`, `node`…), wrappers (`env`, `xargs`, `sudo`, `time`,
+  `find`…), network and container tools (`curl`, `nc`, `ssh`, `docker`, `npx`…), destructive
+  ones (`rm`, `mv`, `dd`, `chmod`…), a bare `git` / `go` / `npm` / `cargo` (name the
+  sub-command: `git status`), and flags that make a command run another program
+  (`-exec`, `-toolexec`, `-ldflags`…). The list is best effort; the character check is the
+  main defence.
+- **Only file tools can be pre-approved by name:** `read_file`, `list_directory`,
+  `get_file_info`, `search_files`, `search_content`, `write_file`, `edit_file`,
+  `insert_line`, `delete_lines`, `create_task_md`, `edit_task_md`, `save_code_plan`.
+  `run_command`, `delete_file`, anything that reaches the network, your accounts or Memo's
+  own settings always asks.
+- **Trust on first use.** A permissions file that arrives with a cloned repository, or that
+  the model wrote itself, is ignored until *you* approve it (`/api/projects/permissions/trust`
+  or saving through `/api/projects/permissions/save`). Memo pins the file's SHA-256 in the
+  per-device registry (`data/projects.json`); if the file changes afterwards, by anyone, it is
+  ignored again. A file with even one rule that breaks the constraints is ignored as a whole.
+- The project's own `AGENTS.md` and `.memo/AGENTS.md` can *not* grant any of this; only the
+  approved file can.
+
 ## API
 
 | Method | Endpoint | |
@@ -118,10 +155,12 @@ several skills the error lists them. An installed skill is never overwritten.
 | `POST` | `/api/projects/status` | `{path}` → `{root, id, name, set_up, declined, allowed, reason, enabled, should_ask}`; writes nothing |
 | `POST` | `/api/projects/setup` | `{path}` → creates the files; 403 for home / Memo's folders / a foreign `.memo` |
 | `POST` | `/api/projects/decline` | `{path, declined?}` → remember "never here" (`false` undoes it) |
+| `POST` | `/api/projects/permissions` | `{path}` → `{permissions, status: {exists, trusted, hash}}` |
+| `POST` | `/api/projects/permissions/save` | `{path, permissions}` → writes and trusts `.memo/permissions.json` |
+| `POST` | `/api/projects/permissions/trust` | `{path}` → pins the existing file hash as trusted |
 
 ## Not done / not verified
 
-- Per-project command permissions (`.memo/permissions.json`) are not implemented yet.
 - Downloading from real GitHub was only tested against a local stand-in server.
 - The setup dialog and the new flow were tested with widget tests only, not on a real
   window; a real model's compliance with the session-start line was not measured.

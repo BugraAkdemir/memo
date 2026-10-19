@@ -17,11 +17,15 @@ type projectAPI interface {
 	ProjectStatus(path string) project.UIStatus
 	SetupProject(path string) (*project.ScaffoldResult, error)
 	DeclineProject(path string, declined bool) error
+	GetProjectPermissions(path string) (*project.Permissions, project.PermissionsStatus, error)
+	SaveProjectPermissions(path string, perms *project.Permissions) error
+	TrustProjectPermissions(path string) (string, error)
 }
 
 type projectPathRequest struct {
-	Path     string `json:"path"`
-	Declined *bool  `json:"declined"`
+	Path        string               `json:"path"`
+	Declined    *bool                `json:"declined"`
+	Permissions *project.Permissions `json:"permissions,omitempty"`
 }
 
 func (s *Server) projectRequest(w http.ResponseWriter, r *http.Request) (projectAPI, projectPathRequest, bool) {
@@ -92,4 +96,65 @@ func (s *Server) handleProjectDecline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]string{"ok": "true"})
+}
+
+// handleProjectPermissions: POST {path} -> returns permissions and trust status.
+func (s *Server) handleProjectPermissions(w http.ResponseWriter, r *http.Request) {
+	api, req, ok := s.projectRequest(w, r)
+	if !ok {
+		return
+	}
+	perms, status, err := api.GetProjectPermissions(req.Path)
+	if err != nil {
+		http.Error(w, err.Error(), permissionsErrorStatus(err, http.StatusInternalServerError))
+		return
+	}
+	writeJSON(w, map[string]any{
+		"permissions": perms,
+		"status":      status,
+	})
+}
+
+// handleProjectPermissionsSave: POST {path, permissions} -> saves permissions and trusts them.
+func (s *Server) handleProjectPermissionsSave(w http.ResponseWriter, r *http.Request) {
+	api, req, ok := s.projectRequest(w, r)
+	if !ok {
+		return
+	}
+	if req.Permissions == nil {
+		http.Error(w, "permissions required", http.StatusBadRequest)
+		return
+	}
+	if err := api.SaveProjectPermissions(req.Path, req.Permissions); err != nil {
+		http.Error(w, err.Error(), permissionsErrorStatus(err, http.StatusBadRequest))
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
+// handleProjectPermissionsTrust: POST {path} -> trusts existing permissions.json hash.
+func (s *Server) handleProjectPermissionsTrust(w http.ResponseWriter, r *http.Request) {
+	api, req, ok := s.projectRequest(w, r)
+	if !ok {
+		return
+	}
+	hash, err := api.TrustProjectPermissions(req.Path)
+	if err != nil {
+		http.Error(w, err.Error(), permissionsErrorStatus(err, http.StatusBadRequest))
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true", "hash": hash})
+}
+
+// permissionsErrorStatus maps a permissions error to a status: a folder that can
+// never be a project (or a foreign .memo) is 403; a rule that breaks the safety
+// constraints is 400; anything else is def.
+func permissionsErrorStatus(err error, def int) int {
+	switch {
+	case errors.Is(err, project.ErrForbiddenRoot), errors.Is(err, project.ErrForeignDir):
+		return http.StatusForbidden
+	case errors.Is(err, project.ErrInvalidRule):
+		return http.StatusBadRequest
+	}
+	return def
 }

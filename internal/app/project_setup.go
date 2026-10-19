@@ -33,6 +33,38 @@ func (a *App) DeclineProject(path string, declined bool) error {
 	return a.projectManager().SetDeclined(path, declined)
 }
 
+// ProjectPermissionsStatus returns the existence and trust status of a project's permissions.json.
+func (a *App) ProjectPermissionsStatus(path string) (project.PermissionsStatus, error) {
+	return a.projectManager().CheckPermissionsStatus(path)
+}
+
+// GetProjectPermissions reads the project's permissions file and status.
+func (a *App) GetProjectPermissions(path string) (*project.Permissions, project.PermissionsStatus, error) {
+	st, err := a.projectManager().CheckPermissionsStatus(path)
+	if err != nil {
+		return nil, st, err
+	}
+	root, ok := a.projectManager().Guard().FindRoot(path)
+	if !ok {
+		var checkErr error
+		if root, checkErr = a.projectManager().Guard().Check(path); checkErr != nil {
+			return nil, st, checkErr
+		}
+	}
+	perms, _, err := project.ReadPermissionsFile(root)
+	return perms, st, err
+}
+
+// SaveProjectPermissions writes and automatically trusts permissions.json for a project.
+func (a *App) SaveProjectPermissions(path string, perms *project.Permissions) error {
+	return a.projectManager().SavePermissions(path, perms)
+}
+
+// TrustProjectPermissions marks an existing permissions.json as trusted by saving its hash.
+func (a *App) TrustProjectPermissions(path string) (string, error) {
+	return a.projectManager().TrustPermissions(path)
+}
+
 // projectInstruction is the one line that starts every session in a set-up
 // project: read the generic rules first. The files themselves are never put in
 // the prompt (the model reads them with its tools when it needs them), which

@@ -16,7 +16,7 @@ Amaç: Memo bir klasörü proje olarak açınca o klasörde `.memo/` (kurallar, 
 - [x] **P1** Hafıza kapsamı: `memories.project_id` (eklemeli geçiş + öncesinde yedek + başarısızsa kapalı), Store API'sinde `Scope`, birleştirme/tekilleştirme/dream sınırı, ctx ile `chatID → scope`, `Session.ProjectID`, proje sohbetinde kimlik bloğundan ad/öğrenilmiş notların çıkarılması, proje kapsamında olgu çıkarımı kapalı.
 - [x] **P2** İskele + talimat: gömülü şablonlar, `/api/projects/*`, onay arayüzü (TR/EN l10n), tek satırlık talimat (Minimal Mod'da yok).
 - [x] **P3** Proje skill'leri: `.memo/skills`, link ile kurulum (güven kapısı). **Yapılmadı:** `/` menüsünde/uygulamada skill seçici (şimdilik `/skill`, `/skill:on`, `/skill add` sohbet komutları).
-- [ ] **P4** Proje başına izinler (hash güveni) — sonraki sürüm olabilir.
+- [x] **P4** Proje başına izinler (`.memo/permissions.json`, hash güveni). Memo yazdı; incelemede kabuk zinciri açığı bulundu ve kapatıldı (`shellSafe`, yasak çalıştırıcılar, araç izin listesi). **Yapılmadı:** izinler için arayüz.
 - [x] **P5** Belgeler: EN/TR docs, iki Obsidian kasası, AGENTS.md, handoff.
 
 Ayrıntılar ve gerekçeler: oturum planı (`~/.claude/plans/memo-ignore-gerek-yok-buna-dapper-lemur.md`). Doğrulanmayacaklar (gerçek pencere, gerçek sağlayıcı, modelin kuralları izlemesi) handoff'a "doğrulanmadı" olarak yazılır.

@@ -217,6 +217,7 @@ func (r *ToolRegistry) registerBuiltins() {
 	r.registerSelfDrivingTaskTool()
 	r.registerTaskMdTools()
 	r.registerCodePlanTool()
+	r.registerProjectSkillTool()
 
 	r.Register(ToolDef{
 		Name:        "get_task_status",
@@ -277,6 +278,20 @@ func (r *ToolRegistry) registerCodePlanTool() {
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"content":{"type":"string","description":"The full plan as Markdown"}},"required":["content"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.SaveCodePlan,
+	})
+}
+
+// registerProjectSkillTool adds install_project_skill (Beta, like the rest of
+// project folders). It stays available in Code Mode: installing a skill into the
+// project the chat is working in is part of working on that project.
+func (r *ToolRegistry) registerProjectSkillTool() {
+	r.Register(ToolDef{
+		Name:        "install_project_skill",
+		Description: "Installs a skill into THIS project's .memo/skills folder from a GitHub source the user gave you: owner/repo, a github.com URL, or an `npx skills add ...` command the user pasted. Call it ONLY when the user explicitly asks to install a skill and has given the source; never choose a source yourself. Nothing is executed (an npx command is only read for its source): the skill is downloaded as plain files and is used only when the user turns it on with /skill:on <name>; any tools a skill declares are ignored. If the place holds several skills, the error lists them: ask which one and call again with `--skill <name>` added to the source. The project must already be set up for Memo.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"source":{"type":"string","description":"The user's source: owner/repo, owner/repo/path, a github.com URL, or the pasted npx command, optionally with --skill <name>"}},"required":["source"]}`),
+		DangerLevel: Medium,
+		Beta:        true,
+		ExecuteFn:   tools.InstallProjectSkill,
 	})
 }
 

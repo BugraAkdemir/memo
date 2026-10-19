@@ -59,7 +59,8 @@ func (a *App) SetChatActiveSkills(chatID string, names []string) error {
 		return fmt.Errorf("skill manager not initialized")
 	}
 	for _, name := range names {
-		if _, ok := a.skillManager.Get(name); !ok {
+		// The chat's own project skills count too (Beta; see project_skills.go).
+		if _, ok := a.lookupSkill(chatID, name); !ok {
 			return fmt.Errorf("skill %q not found", name)
 		}
 	}
@@ -120,6 +121,18 @@ func (a *App) handleSkillCommand(ctx context.Context, chatID, userMsg string) <-
 			}
 			b.WriteString("\nUse `/skill:on <name>` to activate, `/skill:off <name>` to deactivate.")
 		}
+		if proj := a.projectSkillList(chatID); len(proj) > 0 {
+			activeHere := a.activeSkillSet(chatID)
+			b.WriteString("\n\n**📁 Project skills (this project only):**\n\n")
+			for _, s := range proj {
+				active := ""
+				if activeHere[s.Dir] {
+					active = " ✅ **active in this chat**"
+				}
+				b.WriteString(fmt.Sprintf("- **%s**%s — %s\n", s.Dir, active, s.Description))
+			}
+			b.WriteString("\nProject skills are instructions only; they are used only while switched on.")
+		}
 		ch <- api.StreamChunk{Content: b.String()}
 		ch <- api.StreamChunk{Done: true}
 		close(ch)
@@ -142,9 +155,27 @@ func (a *App) handleSkillCommand(ctx context.Context, chatID, userMsg string) <-
 		close(ch)
 		return ch
 
+	case cmd == "add" && len(parts) >= 2:
+		source := strings.TrimSpace(strings.TrimPrefix(msg, "add"))
+		res, err := a.InstallProjectSkill(ctx, chatID, source)
+		if err != nil {
+			ch <- api.StreamChunk{Content: fmt.Sprintf("❌ Could not add the skill: %s", err.Error())}
+		} else {
+			ch <- api.StreamChunk{Content: "✅ " + describeInstalledSkill(res)}
+		}
+		ch <- api.StreamChunk{Done: true}
+		close(ch)
+		return ch
+
 	case cmd == "remove" && len(parts) >= 2:
 		name := parts[1]
-		if err := a.skillManager.Remove(name); err != nil {
+		var err error
+		if _, isProject := a.projectSkillDef(chatID, name); isProject {
+			err = a.RemoveProjectSkill(chatID, name)
+		} else {
+			err = a.skillManager.Remove(name)
+		}
+		if err != nil {
 			ch <- api.StreamChunk{Content: fmt.Sprintf("❌ Remove failed: %s", err.Error())}
 		} else {
 			ch <- api.StreamChunk{Content: fmt.Sprintf("✅ Skill **%s** removed.", name)}
@@ -212,7 +243,7 @@ func (a *App) handleSkillCommand(ctx context.Context, chatID, userMsg string) <-
 		return ch
 
 	default:
-		ch <- api.StreamChunk{Content: fmt.Sprintf("❌ Unknown skill command: `%s`\n\nUsage:\n- `/skill` — list skills\n- `/skill install <path>` — install from path\n- `/skill remove <name>` — remove skill\n- `/skill:on <name>` — activate skill\n- `/skill:off <name>` — deactivate skill\n- `/skill:off` — deactivate all", cmd)}
+		ch <- api.StreamChunk{Content: fmt.Sprintf("❌ Unknown skill command: `%s`\n\nUsage:\n- `/skill` — list skills\n- `/skill install <path>` — install from path\n- `/skill add <github source>` — add a skill to this project (owner/repo, a github.com URL, or a pasted `npx skills add …` line; nothing is run)\n- `/skill remove <name>` — remove skill\n- `/skill:on <name>` — activate skill\n- `/skill:off <name>` — deactivate skill\n- `/skill:off` — deactivate all", cmd)}
 		ch <- api.StreamChunk{Done: true}
 		close(ch)
 		return ch
@@ -266,7 +297,7 @@ func (a *App) buildActiveSkillPrompt(chatID string, skillTokenBudget ...int) str
 	used := 0
 	omitted := 0
 	for _, name := range names {
-		def, ok := a.skillManager.Get(name)
+		def, ok := a.lookupSkill(chatID, name)
 		if !ok {
 			// A skill this chat had active was since removed — nothing
 			// meaningful to inject, and not an error worth surfacing here.

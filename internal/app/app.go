@@ -177,6 +177,9 @@ type App struct {
 	// projectManager); built lazily.
 	projectMgr   *project.Manager
 	projectMgrMu sync.Mutex
+	// projectSkillBaseURL points project-skill downloads at another archive host;
+	// only tests set it. Empty means GitHub.
+	projectSkillBaseURL string
 	// livePermMu/livePendingPermAnswerCh: while non-nil, the next transcript
 	// routed via routeLiveTranscriptToPermissionAnswer is treated as the
 	// spoken answer to an outstanding voice_prompt permission question
@@ -745,6 +748,7 @@ func (a *App) Startup(ctx context.Context) {
 	tools.TaskMdEditor = taskMdEditorAdapter{a}
 	tools.TaskStatus = taskStatusToolAdapter{a}
 	tools.PlanSaver = planSaverAdapter{a}
+	tools.ProjectSkills = projectSkillToolAdapter{a}
 
 	basePath, _ := filepath.Abs(".")
 	a.providerMu.RLock()

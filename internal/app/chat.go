@@ -602,6 +602,10 @@ func (a *App) sendMessageStreamCore(ctx context.Context, chatID, userMsg string,
 	if routeErr != nil {
 		return a.subscriptionTextRouteError(ctx, routeErr, userMsg, chatID)
 	}
+	// A skill the message calls is switched on for this chat BEFORE the prompt
+	// is built, so the turn it was called in already carries its instructions.
+	var skillUses []skillUse
+	ctx, skillUses = a.skillsForTurn(ctx, chatID, userMsg)
 	messages := a.buildMessagesForSession(ctx, chatID, userMsg, nil, &memUsed)
 	if sm != nil {
 		sm.AddMessageToSession(chatID, "user", userMsg, "", "")
@@ -616,6 +620,8 @@ func (a *App) sendMessageStreamCore(ctx context.Context, chatID, userMsg string,
 	}
 
 	inner := a.routeStream(ctx, messages, userMsg, "", "", chatID, forceAgent)
+	// "Using skill X" goes out ahead of everything else the turn streams.
+	inner = prependChunks(ctx, inner, skillNoticeChunks(skillUses))
 	if memUsed <= 0 {
 		return inner
 	}

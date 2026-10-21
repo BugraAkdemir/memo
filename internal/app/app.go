@@ -749,6 +749,7 @@ func (a *App) Startup(ctx context.Context) {
 	tools.TaskStatus = taskStatusToolAdapter{a}
 	tools.PlanSaver = planSaverAdapter{a}
 	tools.ProjectSkills = projectSkillToolAdapter{a}
+	tools.Skills = skillToolAdapter{a}
 
 	basePath, _ := filepath.Abs(".")
 	a.providerMu.RLock()

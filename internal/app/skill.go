@@ -100,6 +100,11 @@ func (a *App) handleSkillCommand(ctx context.Context, chatID, userMsg string) <-
 	if !strings.HasPrefix(userMsg, "/skill") {
 		return nil
 	}
+	// "/skill", "/skill:on x", "/skill add y" are commands; "/skill-builder" is a
+	// call to a skill that happens to start with the same letters.
+	if rest := userMsg[len("/skill"):]; rest != "" && rest[0] != ' ' && rest[0] != ':' && rest[0] != '\t' && rest[0] != '\n' {
+		return nil
+	}
 
 	ch := make(chan api.StreamChunk, 10)
 	msg := strings.TrimSpace(strings.TrimPrefix(userMsg, "/skill"))

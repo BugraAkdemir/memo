@@ -218,6 +218,7 @@ func (r *ToolRegistry) registerBuiltins() {
 	r.registerTaskMdTools()
 	r.registerCodePlanTool()
 	r.registerProjectSkillTool()
+	r.registerUseSkillTool()
 
 	r.Register(ToolDef{
 		Name:        "get_task_status",
@@ -290,6 +291,19 @@ func (r *ToolRegistry) registerProjectSkillTool() {
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"source":{"type":"string","description":"The user's source: owner/repo, owner/repo/path, a github.com URL, or the pasted npx command, optionally with --skill <name>"}},"required":["source"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.InstallProjectSkill,
+	})
+}
+
+// registerUseSkill is how the model calls a skill itself ("use the necessary
+// skills"): it switches the skill on for THIS chat only and returns its
+// instructions for the rest of the turn.
+func (r *ToolRegistry) registerUseSkillTool() {
+	r.Register(ToolDef{
+		Name:        "use_skill",
+		Description: "Loads one of the user's installed skills into this chat and returns its instructions, which you then follow. Call it when the user asks you to use a skill (by name or \"the necessary/relevant skills\"), or when an installed skill clearly fits the task. Call it with no name first to list the installed skills with a one-line description each, then call it again with the name you chose. The skill stays active for the rest of THIS chat only; a new chat starts without it. Do not load skills the task does not need.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","description":"The skill's name or its /name form (e.g. pair-programming). Leave empty to list the installed skills."}}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.UseSkill,
 	})
 }
 

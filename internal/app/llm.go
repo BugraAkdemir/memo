@@ -1829,6 +1829,9 @@ func (a *App) persistInterruptedTurn(ctx context.Context, start time.Time, token
 // saved message, so the stopped turn reads the way it looked on screen.
 func (a *App) recordStoppedTurn(ctx context.Context, userMsg, sessionID string, events []interface{}) {
 	thinking, _ := ctx.Value(thinkingCtxKey{}).(string)
+	if merged := withSkillEvents(ctx, [][]interface{}{events}); len(merged) == 1 {
+		events = merged[0]
+	}
 	a.incognitoMu.RLock()
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
@@ -1917,6 +1920,8 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 	if duration > 0 && tokenCount > 0 {
 		tps = float64(tokenCount) / duration
 	}
+	// The skills this turn called go on the saved message too.
+	agentEvents = withSkillEvents(ctx, agentEvents)
 
 	a.emitEvent("chat:done", api.StreamChunk{
 		Done: true,

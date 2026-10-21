@@ -1982,6 +1982,7 @@ class L10n {
 
     // Chat errors
     'error_agent_timeout': 'Ajan yanıt vermiyor (5dk zaman aşımı)',
+    'stream_stopped_marker': '⏹️ Cevap durduruldu.',
     'error_server_timeout': 'Sunucu yanıt vermiyor (5dk zaman aşımı)',
 
     // Version banner
@@ -4517,6 +4518,7 @@ class L10n {
 
     // Chat errors
     'error_agent_timeout': 'Agent is not responding (5min timeout)',
+    'stream_stopped_marker': '⏹️ Response stopped.',
     'error_server_timeout': 'Server is not responding (5min timeout)',
 
     // Version banner

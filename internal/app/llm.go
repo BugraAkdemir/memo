@@ -493,9 +493,13 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			// to the client, never recorded (the whole step arrives afterwards
 			// as one EventNarration, which is).
 			if ev.Type == agent.EventNarrationDelta {
+				agentEvents.noteDelta(ev.Content)
 				chunkData, _ := json.Marshal(ev)
 				trySend(ctx, outCh, api.StreamChunk{Content: string(chunkData), FinishReason: "agent_event"})
 				return
+			}
+			if ev.Type == agent.EventNarration {
+				agentEvents.resetLive()
 			}
 			agentEvents.add(ev)
 			a.recordWorkingSetEvent(sessionID, ev)
@@ -634,6 +638,42 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 type agentEventLog struct {
 	mu     sync.Mutex
 	events []interface{}
+	// live is the text of the step the model is writing right now: pieces of
+	// it arrive as EventNarrationDelta (live-only, never recorded) and it is
+	// cleared when the whole step lands as EventNarration. A turn the user
+	// stops in the middle of a step would otherwise lose exactly what they
+	// had been watching.
+	live strings.Builder
+}
+
+// noteDelta remembers a piece of the step that is still being written.
+func (l *agentEventLog) noteDelta(s string) {
+	if l == nil || s == "" {
+		return
+	}
+	l.mu.Lock()
+	l.live.WriteString(s)
+	l.mu.Unlock()
+}
+
+// resetLive forgets the in-progress step (it arrived whole, or the step ended).
+func (l *agentEventLog) resetLive() {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	l.live.Reset()
+	l.mu.Unlock()
+}
+
+// liveText is what the in-progress step had written so far.
+func (l *agentEventLog) liveText() string {
+	if l == nil {
+		return ""
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.live.String()
 }
 
 func (l *agentEventLog) add(ev interface{}) {
@@ -729,7 +769,14 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 	for {
 		chunk, ok, ctxDone := recvChunk(ctx, streamCh)
 		if ctxDone {
-			a.persistInterruptedTurn(withThinking(ctx, fullThinking.String()), start, completionTokens, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+			// Agent turns mostly write next to their tool calls, so the reply
+			// proper is often still empty when the user stops: fall back to the
+			// step that was being written, which is what was on screen.
+			partial := fullReply.String()
+			if strings.TrimSpace(partial) == "" {
+				partial = agentEvents.liveText()
+			}
+			a.persistInterruptedTurn(withThinking(ctx, fullThinking.String()), start, completionTokens, partial, userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 			trySend(ctx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 			return "", false
 		}
@@ -1360,7 +1407,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 						trySend(ctx, outCh, api.StreamChunk{Error: tm, Done: true})
 						return
 					}
-					a.persistInterruptedTurn(ctx, start, completionCount(providerCompletionTokens, tokenCount), fullReply.String(), userMsg, sessionID, &usageMetaVal)
+					a.persistInterruptedTurn(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), fullReply.String(), userMsg, sessionID, &usageMetaVal)
 					trySend(providerCtx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 					return
 				}
@@ -1514,7 +1561,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 					trySend(ctx, outCh, api.StreamChunk{Error: tm, Done: true})
 					return
 				}
-				a.persistInterruptedTurn(ctx, start, tokenCount, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				a.persistInterruptedTurn(withThinking(ctx, fullThinking.String()), start, tokenCount, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(streamCtx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 				return
 			}
@@ -1764,10 +1811,40 @@ func (a *App) stopMarker() string {
 // falls back to recording just the marker.
 func (a *App) persistInterruptedTurn(ctx context.Context, start time.Time, tokenCount int, partial, userMsg, sessionID string, meta *usageMeta, agentEvents ...[]interface{}) {
 	if strings.TrimSpace(partial) == "" {
-		a.recordStreamError(userMsg, a.stopMarker(), sessionID)
+		var events []interface{}
+		for _, e := range agentEvents {
+			events = append(events, e...)
+		}
+		a.recordStoppedTurn(ctx, userMsg, sessionID, events)
 		return
 	}
 	a.finishStream(ctx, start, tokenCount, "stop", partial+"\n\n"+a.stopMarker(), userMsg, sessionID, meta, agentEvents...)
+}
+
+// recordStoppedTurn saves a turn the user stopped before any reply text
+// existed. The stop marker alone used to be all that survived — but an agent
+// turn stopped mid-run has already shown tool calls and narration, and a
+// thinking model has already shown its reasoning; wiping those and leaving a
+// bare "stopped" line is exactly what the user saw. They are kept on the
+// saved message, so the stopped turn reads the way it looked on screen.
+func (a *App) recordStoppedTurn(ctx context.Context, userMsg, sessionID string, events []interface{}) {
+	thinking, _ := ctx.Value(thinkingCtxKey{}).(string)
+	a.incognitoMu.RLock()
+	incog := a.isIncognito
+	a.incognitoMu.RUnlock()
+	sm := a.getSessionManager()
+	if (len(events) == 0 && thinking == "") || incog || sm == nil {
+		a.recordStreamError(userMsg, a.stopMarker(), sessionID)
+		return
+	}
+	if sessionID != "" {
+		sm.AddMessageToSession(sessionID, "assistant", a.stopMarker(), "", "", events)
+		if thinking != "" {
+			sm.SetLastMessageThinking(sessionID, thinking)
+		}
+		return
+	}
+	sm.AddMessage("assistant", a.stopMarker(), "", "", events)
 }
 
 // recordUsageEvent persists one completed turn to the usage-stats store.

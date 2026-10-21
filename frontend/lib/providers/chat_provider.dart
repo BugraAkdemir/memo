@@ -444,6 +444,13 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   bool _stopped = false;
   Timer? _delayedRefreshTimer;
 
+  /// What the answer looked like at the moment the user pressed stop (text,
+  /// the model's current step, its reasoning, the tool calls so far). Taken in
+  /// [stopStreaming] BEFORE the live overlay is cleared and put on screen by
+  /// [_settleStoppedTurn], so the stopped answer stays where it was instead of
+  /// disappearing until the server's saved copy arrives.
+  ChatMessage? _stoppedSnapshot;
+
   // Riverpod can rebuild this exact same MessagesNotifier *instance* (not a
   // fresh one) when messagesProvider is invalidated while something is still
   // watching it (e.g. a chat switch, or — confirmed via a captured
@@ -551,6 +558,25 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
   void stopStreaming() {
     _stopped = true;
+    final shownText = ref.read(streamingContentProvider);
+    final shownStep = ref.read(streamingNarrationProvider);
+    final shownThinking = ref.read(streamingThinkingProvider);
+    final shownEvents = ref.read(streamingAgentEventsProvider);
+    final shownBody = shownText.isNotEmpty ? shownText : shownStep;
+    if (ref.read(isSendingProvider) &&
+        (shownBody.isNotEmpty || shownThinking.isNotEmpty || shownEvents.isNotEmpty)) {
+      final route = ref.read(streamingModelRouteProvider);
+      final marker = L10n.t('stream_stopped_marker');
+      _stoppedSnapshot = ChatMessage(
+        role: 'assistant',
+        content: shownBody.isEmpty ? marker : '$shownBody\n\n$marker',
+        thinking: shownThinking.isEmpty ? null : shownThinking,
+        agentEvents: shownEvents.isEmpty ? null : List<AgentEvent>.of(shownEvents),
+        routeProvider: route?.provider ?? '',
+        routeModel: route?.model ?? '',
+        timestamp: DateTime.now().toIso8601String().substring(11, 19),
+      );
+    }
     _cancelToken?.cancel();
     _cancelToken = null;
     ref.read(isSendingProvider.notifier).state = false;
@@ -561,6 +587,46 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     ref.read(streamingAgentEventsProvider.notifier).state = [];
           ref.read(streamingNarrationProvider.notifier).state = '';
     ref.read(streamingStatusProvider.notifier).state = '';
+  }
+
+  /// Ends a turn the user stopped. The stopped answer is put back on screen
+  /// from [_stoppedSnapshot] right away, then replaced by the server's saved
+  /// copy as soon as that exists: the server records a stopped turn a moment
+  /// after the connection closes, so a reload straight after the stop can
+  /// still find the conversation without it.
+  Future<void> _settleStoppedTurn({ChatMessage? kept, int attempt = 0}) async {
+    final myGeneration = _generation;
+    if (attempt == 0) {
+      kept = _stoppedSnapshot;
+      _stoppedSnapshot = null;
+      if (kept != null) {
+        state = AsyncData([...(state.valueOrNull ?? <ChatMessage>[]), kept]);
+      }
+    }
+    final result = await AsyncValue.guard(
+      () => _fetch(ref.read(apiClientProvider)),
+    );
+    if (_generation != myGeneration) return;
+    final saved = result.valueOrNull;
+    if (kept == null) {
+      state = result;
+      return;
+    }
+    // The reload failed: keep showing the stopped answer rather than an error.
+    if (saved == null) return;
+    final recorded = saved.isNotEmpty && saved.last.role == 'assistant';
+    if (recorded || attempt >= 5) {
+      state = result;
+      return;
+    }
+    state = AsyncData([...saved, kept]);
+    _delayedRefreshTimer?.cancel();
+    final keptNow = kept;
+    _delayedRefreshTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (_generation == myGeneration) {
+        _settleStoppedTurn(kept: keptNow, attempt: attempt + 1);
+      }
+    });
   }
 
   Future<void> refresh() async {
@@ -706,6 +772,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     ref.read(streamingModelRouteProvider.notifier).state = null;
 
     _stopped = false;
+    _stoppedSnapshot = null;
     _cancelToken = CancelToken();
     final api = ref.read(apiClientProvider);
 
@@ -776,7 +843,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           // refresh() repaints it from the message list.
           ref.read(streamingContentProvider.notifier).state = '';
           ref.read(streamingModelRouteProvider.notifier).state = null;
-          await refresh();
+          await _settleStoppedTurn();
           return;
         }
       } else if (streamingEnabled || await _autoRouteActive(api)) {
@@ -926,7 +993,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           ref.read(streamingAgentEventsProvider.notifier).state = [];
           ref.read(streamingNarrationProvider.notifier).state = '';
           ref.read(streamingStatusProvider.notifier).state = '';
-          await refresh();
+          await _settleStoppedTurn();
           return;
         }
       } else {
@@ -1023,6 +1090,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     final myGeneration = _generation;
 
     _stopped = false;
+    _stoppedSnapshot = null;
     _cancelToken = CancelToken();
     final api = ref.read(apiClientProvider);
 
@@ -1177,7 +1245,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           ref.read(streamingAgentEventsProvider.notifier).state = [];
           ref.read(streamingNarrationProvider.notifier).state = '';
           ref.read(streamingStatusProvider.notifier).state = '';
-          await refresh();
+          await _settleStoppedTurn();
           return '';
         }
       } else {

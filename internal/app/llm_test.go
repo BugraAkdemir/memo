@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"memo/internal/agent"
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/identity"
@@ -812,5 +813,86 @@ func TestDrainAgentStreamPersistsAndForwardsThinking(t *testing.T) {
 				t.Fatalf("persistence mismatch: %+v", msgs)
 			}
 		})
+	}
+}
+
+// TestDrainAgentStream_CtxDone_KeepsWhatWasOnScreen guards the stop button on
+// an agent turn. The model wrote some text next to a tool call and was still
+// mid-step when the user stopped; none of it was reply text yet, so the saved
+// message used to be the bare stop marker — narration, tool badges and
+// reasoning all vanished the moment the turn ended.
+func TestDrainAgentStream_CtxDone_KeepsWhatWasOnScreen(t *testing.T) {
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("sessions.NewManager: %v", err)
+	}
+	chatID := sm.NewChat()
+	a := &App{
+		cfg:      &config.AppConfig{},
+		identity: identity.New("Test", "Memo", "casual", "", false),
+		sessions: sm,
+		events:   &eventRing{},
+	}
+
+	log := &agentEventLog{}
+	log.add(agent.AgentEvent{Type: agent.EventNarration, Content: "Önce config'e bakıyorum."})
+	log.add(agent.AgentEvent{Type: agent.EventToolResult, ToolName: "read_file", Result: "ok"})
+	log.noteDelta("Şimdi testleri ")
+	log.noteDelta("çalıştırıyorum")
+
+	streamCh := make(chan provider.StreamChunk, 1)
+	streamCh <- provider.StreamChunk{Thinking: "önce düşünüyorum"}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	outCh := make(chan api.StreamChunk, 8)
+	a.drainAgentStream(ctx, streamCh, outCh, time.Now(), "soru", chatID, &usageMeta{}, log)
+	close(outCh)
+
+	msgs := sm.GetActiveMessagesForSession(chatID)
+	if len(msgs) != 1 || msgs[0].Role != "assistant" {
+		t.Fatalf("expected exactly one persisted assistant message, got %+v", msgs)
+	}
+	m := msgs[0]
+	if !strings.Contains(m.Content, "Şimdi testleri çalıştırıyorum") {
+		t.Errorf("the step that was being written is gone: %q", m.Content)
+	}
+	if !strings.Contains(m.Content, "stopped") {
+		t.Errorf("missing the stop marker: %q", m.Content)
+	}
+	if len(m.AgentEvents) != 2 {
+		t.Errorf("tool/narration events were dropped: %d kept, want 2: %+v", len(m.AgentEvents), m.AgentEvents)
+	}
+	if m.Thinking != "önce düşünüyorum" {
+		t.Errorf("reasoning was dropped: %q", m.Thinking)
+	}
+}
+
+// With nothing but tool activity so far there is no text to keep: the saved
+// message is the marker, but the tool calls that already ran stay on it.
+func TestRecordStoppedTurn_KeepsToolEventsWithoutText(t *testing.T) {
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("sessions.NewManager: %v", err)
+	}
+	chatID := sm.NewChat()
+	a := &App{cfg: &config.AppConfig{}, sessions: sm}
+
+	a.recordStoppedTurn(context.Background(), "q", chatID, []interface{}{agent.AgentEvent{Type: agent.EventToolExecuting, ToolName: "bash"}})
+	msgs := sm.GetActiveMessagesForSession(chatID)
+	if len(msgs) != 1 || len(msgs[0].AgentEvents) != 1 || !strings.Contains(msgs[0].Content, "stopped") {
+		t.Fatalf("stopped turn lost its tool events or marker: %+v", msgs)
+	}
+
+	// Nothing at all: exactly the old behaviour, the bare marker.
+	other := sm.NewChat()
+	a.recordStoppedTurn(context.Background(), "q", other, nil)
+	got := sm.GetActiveMessagesForSession(other)
+	if len(got) != 1 || len(got[0].AgentEvents) != 0 || !strings.Contains(got[0].Content, "stopped") {
+		t.Fatalf("bare stop changed: %+v", got)
 	}
 }

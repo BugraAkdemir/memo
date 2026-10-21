@@ -10,19 +10,11 @@ import '../core/friendly_error.dart';
 /// The same rule as the backend's skillSlug (internal/app/skill_invoke.go), so
 /// what the "/" menu inserts is what the backend recognises as a call.
 String skillSlug(String name) {
-  final out = StringBuffer();
-  var dash = true;
-  for (final r in name.toLowerCase().runes) {
-    final ch = String.fromCharCode(r);
-    if (RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(ch)) {
-      out.write(ch);
-      dash = false;
-    } else if (!dash) {
-      out.write('-');
-      dash = true;
-    }
-  }
-  return out.toString().replaceAll(RegExp(r'^-+|-+$'), '');
+  return name
+      .replaceAll('İ', 'i') // Unicode lower-casing would leave a combining dot
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^\p{L}\p{Nd}]+', unicode: true), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
 }
 
 /// A skill definition from the backend.
@@ -86,7 +78,7 @@ class SkillListNotifier extends AsyncNotifier<List<SkillDefinition>> {
       return name;
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Beceri yüklenemedi (${FriendlyError.describeGeneric(e)})';
+          '${L10n.t('error')}: ${L10n.t('skill_install_failed')} (${FriendlyError.describeGeneric(e)})';
       return null;
     }
   }
@@ -100,7 +92,7 @@ class SkillListNotifier extends AsyncNotifier<List<SkillDefinition>> {
       return true;
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Beceri kaldırılamadı (${FriendlyError.describeGeneric(e)})';
+          '${L10n.t('error')}: ${L10n.t('skill_delete_failed')} (${FriendlyError.describeGeneric(e)})';
       return false;
     }
   }

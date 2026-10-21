@@ -93,16 +93,32 @@ List<SlashItem> buildSlashItems({
   ];
 }
 
-/// The rows whose command, name or description contain [query].
+/// The rows that match [query], best first: the command typed exactly, then
+/// commands starting with it, then containing it, then a name, then a
+/// description. Typing "/model" must open the model picker even when a hundred
+/// skills mention "model" in their description; within one rank the menu's own
+/// order (skills by name, then commands) is kept.
 List<SlashItem> filterSlashItems(List<SlashItem> items, String query) {
   final q = query.trim().toLowerCase();
   if (q.isEmpty) return items;
-  return items
-      .where((i) =>
-          i.key.toLowerCase().contains(q) ||
-          i.label.toLowerCase().contains(q) ||
-          i.subtitle.toLowerCase().contains(q))
-      .toList();
+  final key = '/$q';
+  int rank(SlashItem i) {
+    final k = i.key.toLowerCase();
+    if (k == key) return 0;
+    if (k.startsWith(key)) return 1;
+    if (k.contains(q)) return 2;
+    if (i.label.toLowerCase().contains(q)) return 3;
+    if (i.subtitle.toLowerCase().contains(q)) return 4;
+    return -1;
+  }
+
+  final ranked = <(int, int, SlashItem)>[];
+  for (var n = 0; n < items.length; n++) {
+    final r = rank(items[n]);
+    if (r >= 0) ranked.add((r, n, items[n]));
+  }
+  ranked.sort((a, b) => a.$1 != b.$1 ? a.$1.compareTo(b.$1) : a.$2.compareTo(b.$2));
+  return [for (final r in ranked) r.$3];
 }
 
 /// Popup that appears above the input when the user types "/". Shows the
@@ -115,12 +131,17 @@ class SlashMenuPopup extends StatefulWidget {
   /// Skills are still being loaded: say so instead of "nothing matches".
   final bool loading;
 
+  /// The skill list could not be loaded: say so, instead of showing only the
+  /// commands (or "nothing matches") as if no skills were installed.
+  final bool loadFailed;
+
   const SlashMenuPopup({
     super.key,
     required this.items,
     required this.onSelect,
     this.selectedIndex = 0,
     this.loading = false,
+    this.loadFailed = false,
   });
 
   @override
@@ -190,7 +211,11 @@ class _SlashMenuPopupState extends State<SlashMenuPopup> {
         decoration: _decoration(context),
         padding: const EdgeInsets.all(16),
         child: Text(
-          L10n.t(widget.loading ? 'slash_loading' : 'no_matching_command'),
+          L10n.t(widget.loadFailed
+              ? 'slash_load_failed'
+              : widget.loading
+                  ? 'slash_loading'
+                  : 'no_matching_command'),
           style: TextStyle(
             fontSize: 13,
             color: MemoTheme.of(context).textDim,
@@ -206,7 +231,21 @@ class _SlashMenuPopupState extends State<SlashMenuPopup> {
       decoration: _decoration(context),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-        child: Scrollbar(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.loadFailed)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                color: MemoTheme.of(context).bgElement,
+                child: Text(
+                  L10n.t('slash_load_failed'),
+                  style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim),
+                ),
+              ),
+            Flexible(
+              child: Scrollbar(
           controller: _scroll,
           child: ListView.builder(
             controller: _scroll,
@@ -224,6 +263,9 @@ class _SlashMenuPopupState extends State<SlashMenuPopup> {
               );
             },
           ),
+        ),
+            ),
+          ],
         ),
       ),
     );

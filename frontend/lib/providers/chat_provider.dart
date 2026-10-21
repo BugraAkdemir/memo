@@ -443,6 +443,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   CancelToken? _cancelToken;
   bool _stopped = false;
   Timer? _delayedRefreshTimer;
+  Timer? _settleTimer;
+  int _settleGen = 0;
 
   /// What the answer looked like at the moment the user pressed stop (text,
   /// the model's current step, its reasoning, the tool calls so far). Taken in
@@ -519,8 +521,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   Future<List<ChatMessage>> build() async {
     _generation++;
     _stopped = false;
+    _stoppedSnapshot = null;
+    _settleGen++;
     ref.onDispose(() {
       _delayedRefreshTimer?.cancel();
+      _settleTimer?.cancel();
     });
     // BUG-ONB4: while the auth gate is up, the backend answers 401 — which
     // used to surface as a visible "Bir şeyler ters gitti" over the login
@@ -593,38 +598,45 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   /// from [_stoppedSnapshot] right away, then replaced by the server's saved
   /// copy as soon as that exists: the server records a stopped turn a moment
   /// after the connection closes, so a reload straight after the stop can
-  /// still find the conversation without it.
-  Future<void> _settleStoppedTurn({ChatMessage? kept, int attempt = 0}) async {
+  /// still find the conversation without it. A failed reload counts as "not
+  /// recorded yet"; if the server still has nothing after the last try the
+  /// answer STAYS on screen and the person is told it is not saved.
+  Future<void> _settleStoppedTurn({ChatMessage? kept, int attempt = 0, int token = 0}) async {
     final myGeneration = _generation;
     if (attempt == 0) {
+      token = ++_settleGen;
       kept = _stoppedSnapshot;
       _stoppedSnapshot = null;
       if (kept != null) {
         state = AsyncData([...(state.valueOrNull ?? <ChatMessage>[]), kept]);
       }
     }
+    // A new send or a chat switch has taken over the screen: this chain must
+    // not write over it.
+    bool stale() => _generation != myGeneration || token != _settleGen;
     final result = await AsyncValue.guard(
       () => _fetch(ref.read(apiClientProvider)),
     );
-    if (_generation != myGeneration) return;
-    final saved = result.valueOrNull;
+    if (stale()) return;
     if (kept == null) {
       state = result;
       return;
     }
-    // The reload failed: keep showing the stopped answer rather than an error.
-    if (saved == null) return;
-    final recorded = saved.isNotEmpty && saved.last.role == 'assistant';
-    if (recorded || attempt >= 5) {
+    final saved = result.valueOrNull;
+    if (saved != null && saved.isNotEmpty && saved.last.role == 'assistant') {
       state = result;
       return;
     }
-    state = AsyncData([...saved, kept]);
-    _delayedRefreshTimer?.cancel();
+    if (saved != null) state = AsyncData([...saved, kept]);
+    if (attempt >= 5) {
+      ref.read(errorMessageProvider.notifier).state = L10n.t('stopped_answer_unsaved');
+      return;
+    }
+    _settleTimer?.cancel();
     final keptNow = kept;
-    _delayedRefreshTimer = Timer(const Duration(milliseconds: 1200), () {
-      if (_generation == myGeneration) {
-        _settleStoppedTurn(kept: keptNow, attempt: attempt + 1);
+    _settleTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (!stale()) {
+        _settleStoppedTurn(kept: keptNow, attempt: attempt + 1, token: token);
       }
     });
   }
@@ -773,6 +785,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
     _stopped = false;
     _stoppedSnapshot = null;
+    _settleGen++; // a stopped turn still settling must not write over this send
+    _settleTimer?.cancel();
     _cancelToken = CancelToken();
     final api = ref.read(apiClientProvider);
 
@@ -1091,6 +1105,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
     _stopped = false;
     _stoppedSnapshot = null;
+    _settleGen++; // a stopped turn still settling must not write over this send
+    _settleTimer?.cancel();
     _cancelToken = CancelToken();
     final api = ref.read(apiClientProvider);
 

@@ -226,23 +226,40 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final active = chatId.isEmpty
         ? const <String>{}
         : ref.read(chatActiveSkillsProvider(chatId)).valueOrNull ?? const <String>{};
-    return filterSlashItems(
-      buildSlashItems(
-        skills: skills,
-        activeSkills: active,
-        atMessageStart: _slashStart == 0,
-      ),
-      _filterQuery,
-    );
+    // Sorting and slugging hundreds of skills is not free and this getter runs
+    // on every build, arrow key and Enter: rebuild the rows only when their
+    // inputs change, and just filter per keystroke.
+    final atStart = _slashStart == 0;
+    if (!identical(skills, _slashSkills) ||
+        !identical(active, _slashActive) ||
+        atStart != _slashAtStart ||
+        _slashBase == null) {
+      _slashSkills = skills;
+      _slashActive = active;
+      _slashAtStart = atStart;
+      _slashBase = buildSlashItems(skills: skills, activeSkills: active, atMessageStart: atStart);
+    }
+    return filterSlashItems(_slashBase!, _filterQuery);
   }
+
+  List<SkillDefinition>? _slashSkills;
+  Set<String>? _slashActive;
+  bool _slashAtStart = true;
+  List<SlashItem>? _slashBase;
+
+  static final _slashAtEnd = RegExp(r'(^|\s)/([^\s/]*)$');
+  static final _wordTail = RegExp(r'^[^\s/]*');
 
   /// The "/word" the cursor is at the end of, or null. A "/" only counts at the
   /// start of the message or after whitespace, so a path ("src/app") or a URL
   /// never opens the menu.
   ({int start, String query})? _slashTokenAtCursor(String text) {
-    var cursor = _controller.selection.baseOffset;
+    final sel = _controller.selection;
+    // A selected range is being replaced by the next keystroke, not completed.
+    if (sel.isValid && !sel.isCollapsed) return null;
+    var cursor = sel.baseOffset;
     if (cursor < 0 || cursor > text.length) cursor = text.length;
-    final m = RegExp(r'(^|\s)/([^\s/]*)$').firstMatch(text.substring(0, cursor));
+    final m = _slashAtEnd.firstMatch(text.substring(0, cursor));
     if (m == null) return null;
     return (start: m.start + m.group(1)!.length, query: m.group(2)!);
   }
@@ -305,7 +322,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     // toggle (app_shell.dart's _ToggleAutoPermissionIntent) — never claim it.
     if (HardwareKeyboard.instance.isShiftPressed) return false;
 
-    if (_popupActive) {
+    if (_popupHasRows) {
       _confirmPopupSelection();
       // Returning true from a hardware handler does not stop the focus tree from
       // seeing the same Tab (it would then move focus off the text box), so also
@@ -503,10 +520,15 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   void _selectCLICommandAt(int index) {
     final items = _filteredCLICommands;
     if (index < 0 || index >= items.length) return;
+    final text = _controller.text;
+    final head = (_slashStart + 1 + _filterQuery.length).clamp(0, text.length);
+    final tail = text.substring(head + (_wordTail.firstMatch(text.substring(head))?.end ?? 0));
     final inserted = '${items[index].slash} ';
     setState(() => _showTemplates = false);
-    _controller.text = inserted;
-    _controller.selection = TextSelection.collapsed(offset: inserted.length);
+    _controller.value = TextEditingValue(
+      text: text.substring(0, _slashStart) + inserted + tail.trimLeft(),
+      selection: TextSelection.collapsed(offset: _slashStart + inserted.length),
+    );
     _focusNode.requestFocus();
   }
 
@@ -525,6 +547,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     var end = _controller.selection.baseOffset;
     if (end < 0 || end > text.length) end = text.length;
     final start = _slashStart.clamp(0, end);
+    // A cursor in the middle of the word ("/pa|ir"): the rest of that word is
+    // part of what is being completed, not text to keep.
+    end += _wordTail.firstMatch(text.substring(end))?.end ?? 0;
     final before = text.substring(0, start);
     final after = text.substring(end);
     if (item.kind == SlashKind.action) {
@@ -566,6 +591,18 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   // false (no popup open) correctly lets the key fall through to
   // EditableText's normal behavior instead of swallowing it.
   bool get _popupActive => _showFileMentions || _showTemplates;
+
+  /// A popup with something to pick. Enter, Tab and the arrows belong to the
+  /// popup only then: with no rows (nothing matches, the skills are still
+  /// loading, "look at /etc") they would otherwise be swallowed and the message
+  /// could not be sent until the person dismissed a menu they never asked for.
+  bool get _popupHasRows {
+    if (_showFileMentions) return _fileMentionResults.isNotEmpty;
+    if (_showTemplates) {
+      return _isCLIChat ? _filteredCLICommands.isNotEmpty : _filteredItems.isNotEmpty;
+    }
+    return false;
+  }
 
   /// Set by [_handleHardwareKeyEvent] when a Tab press just confirmed a popup
   /// choice, for the rest of that key event: the Shortcuts binding below then
@@ -1245,6 +1282,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                         items: _filteredItems,
                         selectedIndex: _selectedIndex,
                         loading: ref.watch(skillListProvider).isLoading,
+                        loadFailed: ref.watch(skillListProvider).hasError &&
+                            !ref.watch(skillListProvider).hasValue,
                         onSelect: _pickSlashItem,
                       ),
               )
@@ -1626,11 +1665,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     child: Actions(
                       actions: {
                         _PopupArrowDownIntent: _PopupCallbackAction<_PopupArrowDownIntent>(
-                          isEnabledWhen: () => _popupActive,
+                          isEnabledWhen: () => _popupHasRows,
                           onInvoke: (_) => _movePopupSelection(1),
                         ),
                         _PopupArrowUpIntent: _PopupCallbackAction<_PopupArrowUpIntent>(
-                          isEnabledWhen: () => _popupActive,
+                          isEnabledWhen: () => _popupHasRows,
                           onInvoke: (_) => _movePopupSelection(-1),
                         ),
                         // Always enabled (unlike the others): plain Enter
@@ -1642,7 +1681,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                         // both racing to claim the same key.
                         _PopupEnterIntent: CallbackAction<_PopupEnterIntent>(
                           onInvoke: (_) {
-                            if (_popupActive) {
+                            if (_popupHasRows) {
                               _confirmPopupSelection();
                             } else {
                               _send();

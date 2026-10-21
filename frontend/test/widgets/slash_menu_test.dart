@@ -56,6 +56,35 @@ void main() {
       expect(items(query: 'zzzz'), isEmpty);
     });
 
+    test('typing a command beats skills that only mention it in their description', () {
+      final crowded = [
+        ...fakeSkills(),
+        const SkillDefinition(name: 'aaa-first', description: 'works with any model and remembers things'),
+        const SkillDefinition(name: 'zzz-modelling', description: 'model everything'),
+      ];
+      List<String> keys(String q) => filterSlashItems(buildSlashItems(skills: crowded), q).map((i) => i.key).toList();
+      expect(keys('model').first, '/model', reason: 'the exact command comes first');
+      expect(keys('remember').first, '/remember');
+      expect(keys('mod').first, '/model', reason: 'a command starting with it beats a name containing it');
+      expect(keys('model'), containsAll(['/zzz-modelling', '/aaa-first']));
+    });
+
+    // The same vectors are in internal/app/skill_invoke_test.go: the slug the
+    // menu inserts is the one the backend recognises, so they must agree.
+    test('skillSlug agrees with the backend on Turkish and edge-case names', () {
+      const vectors = {
+        'Pair Programming': 'pair-programming',
+        'codebase-memory': 'codebase-memory',
+        'Verification & Quality Assurance': 'verification-quality-assurance',
+        '  V3 CLI  ': 'v3-cli',
+        'ecc:go-review': 'ecc-go-review',
+        'İş Planı': 'iş-planı',
+        'GEREKLİ SKİLLER': 'gerekli-skiller',
+        'x² y': 'x-y',
+      };
+      vectors.forEach((name, slug) => expect(skillSlug(name), slug, reason: name));
+    });
+
     test('a skill the chat already called is marked', () {
       final marked = items(active: {'Pair Programming'}).where((i) => i.active).toList();
       expect(marked.map((i) => i.label), ['Pair Programming']);
@@ -123,6 +152,20 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('/pair-programming').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('says so when the skill list could not be loaded', (tester) async {
+      L10n.setLocale(MemoLocale.en);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: SlashMenuPopup(items: const [], loadFailed: true, onSelect: (_) {})),
+      ));
+      expect(find.text(L10n.t('slash_load_failed')), findsOneWidget);
+      // With commands still listed, the failure is a banner above them.
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: SlashMenuPopup(items: items(atStart: true).skip(fakeSkills().length).toList(), loadFailed: true, onSelect: (_) {})),
+      ));
+      expect(find.text(L10n.t('slash_load_failed')), findsOneWidget);
+      expect(find.text('/model'), findsOneWidget);
     });
 
     testWidgets('says so while skills load, and when nothing matches', (tester) async {

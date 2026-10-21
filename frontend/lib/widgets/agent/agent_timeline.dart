@@ -125,16 +125,21 @@ class _SkillLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = MemoTheme.of(context);
+    final skipped = item.skipReason.isNotEmpty;
     final line = Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.extension_outlined, size: 14, color: MemoTheme.accent),
+          Icon(skipped ? Icons.block : Icons.extension_outlined,
+              size: 14, color: skipped ? c.textDim : MemoTheme.accent),
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              L10n.t('skill_used_line', {'name': item.name}),
+              skipped
+                  ? L10n.t(item.skipReason == 'minimal_mode' ? 'skill_skipped_minimal' : 'skill_skipped_unsaved',
+                      {'name': item.name})
+                  : L10n.t('skill_used_line', {'name': item.name}),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 12, color: c.textDim),

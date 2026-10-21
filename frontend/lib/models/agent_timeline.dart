@@ -43,7 +43,11 @@ class VerificationItem extends TimelineItem {
 class SkillItem extends TimelineItem {
   final String name;
   final String description;
-  const SkillItem(this.name, this.description);
+
+  /// Why the call did NOT take effect ("minimal_mode", "not_saved"); empty when
+  /// the skill is in use.
+  final String skipReason;
+  const SkillItem(this.name, this.description, {this.skipReason = ''});
 }
 
 enum ToolCallStatus { running, ok, error, denied, interrupted }
@@ -123,6 +127,12 @@ List<TimelineItem> buildTimeline(List<dynamic> raw, {required bool live}) {
         group = null;
         items.add(SkillItem(name, (ev.content ?? '').trim()));
         break;
+      case 'skill_skipped':
+        final skipped = (ev.toolName ?? '').trim();
+        if (skipped.isEmpty) break;
+        group = null;
+        items.add(SkillItem(skipped, '', skipReason: (ev.content ?? '').trim()));
+        break;
       case 'tool_executing':
         final next = i + 1 < events.length ? events[i + 1] : null;
         final completes = next != null &&
@@ -198,6 +208,7 @@ List<AgentEvent> foldAgentEvent(List<AgentEvent> current, AgentEvent ev) {
     case 'narration':
     case 'verification':
     case 'skill_used':
+    case 'skill_skipped':
     case 'permission_request':
       out.add(ev);
       break;

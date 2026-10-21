@@ -17,7 +17,11 @@ import 'package:memo_flutter/providers/settings_provider.dart';
 class _Adapter implements HttpClientAdapter {
   bool recorded = false;
   int gets = 0;
-  final StreamController<Uint8List> sse = StreamController<Uint8List>();
+
+  /// How many of the next reloads fail (backend briefly unreachable).
+  int failGets = 0;
+  StreamController<Uint8List> sse = StreamController<Uint8List>();
+  bool _sseUsed = false;
 
   @override
   Future<ResponseBody> fetch(
@@ -27,6 +31,11 @@ class _Adapter implements HttpClientAdapter {
   ) async {
     if (options.method == 'GET' && options.path == '/api/messages') {
       gets++;
+      if (gets > 1 && failGets > 0) {
+        failGets--;
+        return ResponseBody.fromString('{"error":"down"}', 503,
+            headers: {Headers.contentTypeHeader: [Headers.jsonContentType]});
+      }
       // The first read is the empty chat; afterwards the user's message is
       // saved, and the stopped assistant turn only once [recorded] is set.
       final body = <Map<String, dynamic>>[
@@ -43,6 +52,8 @@ class _Adapter implements HttpClientAdapter {
           headers: {Headers.contentTypeHeader: [Headers.jsonContentType]});
     }
     if (options.method == 'POST' && options.path == '/api/send/stream') {
+      if (_sseUsed) sse = StreamController<Uint8List>(); // a second send
+      _sseUsed = true;
       return ResponseBody(sse.stream, 200);
     }
     return ResponseBody.fromString('not found', 404);
@@ -132,4 +143,70 @@ void main() {
     expect(assistants, hasLength(1), reason: 'no duplicate next to the saved copy');
     expect(assistants.single.content, startsWith('saved copy'));
   });
+
+  test('a failed reload after the stop is retried, and the saved copy wins once it exists', () async {
+    final (container, adapter) = await boot();
+    final notifier = container.read(messagesProvider.notifier);
+
+    final send = notifier.sendMessage('fix it');
+    adapter.sse.add(_chunk({'content': 'half an answer'}));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+
+    adapter.failGets = 1; // the reload right after the stop fails
+    notifier.stopStreaming();
+    await adapter.sse.close();
+    await send;
+    var assistants = (container.read(messagesProvider).valueOrNull ?? []).where((m) => m.role == 'assistant');
+    expect(assistants, hasLength(1), reason: 'a failed reload must not take the stopped answer off the screen');
+    expect(assistants.single.content, startsWith('half an answer'));
+    expect(container.read(messagesProvider).hasError, isFalse);
+
+    adapter.recorded = true; // the server catches up
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    assistants = (container.read(messagesProvider).valueOrNull ?? []).where((m) => m.role == 'assistant');
+    expect(assistants, hasLength(1));
+    expect(assistants.single.content, startsWith('saved copy'));
+  });
+
+  test('a new send right after a stop is not written over by the stop\'s retry', () async {
+    final (container, adapter) = await boot();
+    final notifier = container.read(messagesProvider.notifier);
+
+    final first = notifier.sendMessage('fix it');
+    adapter.sse.add(_chunk({'content': 'half an answer'}));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    notifier.stopStreaming();
+    await adapter.sse.close();
+    await first;
+
+    // The person types a correction while the stopped turn is still settling.
+    final second = notifier.sendMessage('actually, do this instead');
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    adapter.recorded = true;
+    await Future<void>.delayed(const Duration(milliseconds: 1600)); // past a retry
+    final messages = container.read(messagesProvider).valueOrNull ?? [];
+    expect(messages.last.content, 'actually, do this instead',
+        reason: 'the retry must not replace the new turn with an older reload');
+    adapter.sse.add(_chunk({'content': 'ok', 'done': true}));
+    await adapter.sse.close();
+    await second;
+  });
+
+  test('when the server never records the stopped turn the answer stays and the person is told',
+      () async {
+    final (container, adapter) = await boot();
+    final notifier = container.read(messagesProvider.notifier);
+
+    final send = notifier.sendMessage('fix it');
+    adapter.sse.add(_chunk({'content': 'half an answer'}));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    notifier.stopStreaming();
+    await adapter.sse.close();
+    await send;
+
+    await Future<void>.delayed(const Duration(seconds: 7)); // 5 retries x 1.2s
+    final assistants = (container.read(messagesProvider).valueOrNull ?? []).where((m) => m.role == 'assistant');
+    expect(assistants, hasLength(1), reason: 'giving up must not delete what the person saw');
+    expect(container.read(errorMessageProvider), isNotNull);
+  }, timeout: const Timeout(Duration(seconds: 30)));
 }

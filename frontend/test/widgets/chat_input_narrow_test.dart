@@ -69,20 +69,21 @@ void main() {
     return container;
   }
 
-  Future<void> pumpAt(WidgetTester tester, Size size) async {
+  Future<void> pumpAt(WidgetTester tester, Size size,
+      {Future<bool> Function()? beforeSend}) async {
     final container = await harness();
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
-      child: const MaterialApp(
+      child: MaterialApp(
         home: Scaffold(
           // Bottom-aligned so the composer sits where it really does, and
           // the rest of the column doesn't fight it for vertical space.
           body: Column(
             mainAxisAlignment: MainAxisAlignment.end,
-            children: [ChatInput()],
+            children: [ChatInput(beforeSend: beforeSend)],
           ),
         ),
       ),
@@ -149,6 +150,58 @@ void main() {
     await tester.enterText(field, 'login sorununu /pair-programming ile coz');
     await tester.pumpAndSettle();
     expect(find.byType(SlashMenuPopup), findsNothing);
+  });
+
+  testWidgets('Enter is not swallowed by a "/" menu that has nothing to pick', (tester) async {
+    var sendAttempts = 0;
+    await pumpAt(tester, const Size(1000, 800), beforeSend: () async {
+      sendAttempts++;
+      return false; // observe the send path without going on to a backend
+    });
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    await tester.enterText(field, 'look at /zzzzzz');
+    await tester.pumpAndSettle();
+    // The menu is open but has nothing to pick ("no matching command")…
+    expect(find.text(L10n.t('no_matching_command')), findsOneWidget);
+    // …so Enter must reach the send path instead of being claimed by it.
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(sendAttempts, 1, reason: 'before, Enter did nothing until the menu was dismissed');
+  });
+
+  testWidgets('a cursor in the middle of the word completes that word', (tester) async {
+    await pumpAt(tester, const Size(1000, 800));
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    final controller = tester.widget<TextField>(field).controller!;
+    await tester.enterText(field, 'use /pair now');
+    controller.selection = const TextSelection.collapsed(offset: 'use /pa'.length);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(controller.text, 'use /pair-programming now', reason: 'the rest of the typed word is replaced, not kept');
+  });
+
+  testWidgets('a selected range does not open the menu', (tester) async {
+    await pumpAt(tester, const Size(1000, 800));
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    final controller = tester.widget<TextField>(field).controller!;
+    await tester.enterText(field, 'see /pa');
+    controller.selection = const TextSelection(baseOffset: 0, extentOffset: 'see /pa'.length);
+    await tester.pumpAndSettle();
+    expect(find.byType(SlashMenuPopup), findsNothing);
+  });
+
+  testWidgets('typing a command name opens that command even among many skills', (tester) async {
+    await pumpAt(tester, const Size(1000, 800));
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    await tester.enterText(field, '/orchestra');
+    await tester.pumpAndSettle();
+    final popup = tester.widget<SlashMenuPopup>(find.byType(SlashMenuPopup));
+    expect(popup.items.first.key, '/orchestra');
   });
 
   testWidgets('a path, a URL or a second slash does not open the menu', (tester) async {

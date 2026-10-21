@@ -196,4 +196,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Skill kullanılıyor: codebase-memory'), findsOneWidget);
   });
+
+  testWidgets('a skill that was NOT applied says so instead of claiming it is in use', (tester) async {
+    L10n.setLocale(MemoLocale.en);
+    await tester.pumpWidget(harness(const [
+      AgentEvent(type: 'skill_skipped', toolName: 'codebase-memory', content: 'minimal_mode'),
+      AgentEvent(type: 'skill_skipped', toolName: 'plan', content: 'not_saved'),
+    ]));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Skill not used: codebase-memory'), findsOneWidget);
+    expect(find.textContaining('Could not switch the skill on for this chat: plan'), findsOneWidget);
+    expect(find.textContaining('Using skill'), findsNothing);
+  });
 }

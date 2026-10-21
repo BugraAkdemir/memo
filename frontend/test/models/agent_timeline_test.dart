@@ -109,6 +109,17 @@ void main() {
       expect(live.map((e) => e.type).toList(), ['skill_used', 'tool_result']);
     });
 
+    test('a skill that could not take effect is a skipped line with its reason', () {
+      final t = buildTimeline(const [
+        AgentEvent(type: 'skill_skipped', toolName: 'codebase-memory', content: 'minimal_mode'),
+      ], live: false);
+      final item = t.single as SkillItem;
+      expect(item.name, 'codebase-memory');
+      expect(item.skipReason, 'minimal_mode');
+      final live = foldAgentEvent(const [], const AgentEvent(type: 'skill_skipped', toolName: 'x', content: 'not_saved'));
+      expect(live.single.type, 'skill_skipped');
+    });
+
     test('a use_skill call reads as the skill name', () {
       expect(toolArgSummary('use_skill', {'name': 'pair-programming'}), 'pair-programming');
     });

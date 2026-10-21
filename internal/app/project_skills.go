@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"memo/internal/logx"
 	"memo/internal/project"
 	"memo/internal/skill"
 )
@@ -43,7 +44,13 @@ func (a *App) projectRootForChat(chatID string) (path, root string, ok bool) {
 	}
 	path = a.getSessionManager().GetProjectPath(chatID)
 	res, err := a.projectManager().Open(path)
-	if err != nil || !res.SetUp {
+	if err != nil {
+		// Not "no project": its skills just vanish from the catalog, and the
+		// only trace of why is this line.
+		logx.Printf("project: open %q for chat %s: %v", path, chatID, err)
+		return "", "", false
+	}
+	if !res.SetUp {
 		return "", "", false
 	}
 	return path, res.Root, true

@@ -389,6 +389,34 @@ func (m *Manager) SetActiveSkills(id string, names []string) error {
 	return m.save(s)
 }
 
+// AddActiveSkills adds names to id's active skills (those already there stay)
+// in one locked step, so two calls at once cannot lose an addition the way a
+// Get-then-Set pair can.
+func (m *Manager) AddActiveSkills(id string, names []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	have := make(map[string]bool, len(s.ActiveSkills))
+	for _, n := range s.ActiveSkills {
+		have[n] = true
+	}
+	next := append([]string(nil), s.ActiveSkills...)
+	for _, n := range names {
+		if !have[n] {
+			have[n] = true
+			next = append(next, n)
+		}
+	}
+	if len(next) == len(s.ActiveSkills) {
+		return nil
+	}
+	s.ActiveSkills = next
+	return m.save(s)
+}
+
 // validCodeSubModes are the only values SetCodeSubMode accepts besides "".
 var validCodeSubModes = map[string]bool{"plan": true, "auto": true, "build": true}
 

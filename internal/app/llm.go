@@ -666,14 +666,21 @@ func (l *agentEventLog) resetLive() {
 	l.mu.Unlock()
 }
 
-// liveText is what the in-progress step had written so far.
-func (l *agentEventLog) liveText() string {
+// stopState reads the in-progress step and the recorded events in ONE locked
+// step: read separately, a narration event landing between the two reads would
+// save the same words twice (as the reply and as a narration event).
+func (l *agentEventLog) stopState() (live string, events []interface{}) {
 	if l == nil {
-		return ""
+		return "", nil
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.live.String()
+	live = l.live.String()
+	if len(l.events) > 0 {
+		events = make([]interface{}, len(l.events))
+		copy(events, l.events)
+	}
+	return live, events
 }
 
 func (l *agentEventLog) add(ev interface{}) {
@@ -773,10 +780,11 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 			// proper is often still empty when the user stops: fall back to the
 			// step that was being written, which is what was on screen.
 			partial := fullReply.String()
+			live, events := agentEvents.stopState()
 			if strings.TrimSpace(partial) == "" {
-				partial = agentEvents.liveText()
+				partial = live
 			}
-			a.persistInterruptedTurn(withThinking(ctx, fullThinking.String()), start, completionTokens, partial, userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+			a.persistInterruptedTurn(withThinking(ctx, fullThinking.String()), start, completionTokens, partial, userMsg, sessionID, usageMetaVal, events)
 			trySend(ctx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
 			return "", false
 		}

@@ -620,7 +620,7 @@ func (a *App) runAgentRoutine(ctx context.Context, r routine.Routine) (string, e
 		defer a.SetAgentAutoPermission(prevAuto)
 	}
 
-	ch := a.sendMessageStreamCore(ctx, chatID, r.Prompt, true)
+	ch := a.sendMessageStreamCore(withoutSkillCalls(ctx), chatID, r.Prompt, true)
 
 	// If r.AutoApproveTools was true, SetAgentAutoPermission(true) above
 	// already made the pipeline bypass every permission check silently —

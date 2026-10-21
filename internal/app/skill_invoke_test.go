@@ -2,19 +2,26 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+	"unicode/utf8"
 
 	"memo/internal/api"
 	"memo/internal/config"
+	"memo/internal/identity"
 	"memo/internal/sessions"
 	"memo/internal/skill"
 )
 
 func testSkillCatalog() []skillRef {
-	mk := func(name, desc string) skillRef { return skillRef{Name: name, Slug: skillSlug(name), Description: desc} }
+	mk := func(name, desc string) skillRef {
+		return skillRef{Name: name, Slug: skillSlug(name), Description: desc}
+	}
 	return []skillRef{
 		mk("Pair Programming", "AI-assisted pair programming with driver and navigator modes"),
 		mk("codebase-memory", "Use the codebase knowledge graph for structural code queries"),
@@ -40,6 +47,9 @@ func TestSkillSlug(t *testing.T) {
 		"Verification & Quality Assurance": "verification-quality-assurance",
 		"  V3 CLI  ":                       "v3-cli",
 		"ecc:go-review":                    "ecc-go-review",
+		"İş Planı":                         "iş-planı",
+		"GEREKLİ SKİLLER":                  "gerekli-skiller",
+		"x² y":                             "x-y",
 	} {
 		if got := skillSlug(in); got != want {
 			t.Errorf("skillSlug(%q) = %q, want %q", in, got, want)
@@ -70,6 +80,15 @@ func TestDetectSkillCalls(t *testing.T) {
 		{"ask without a name (English)", "fix it using the relevant skills", nil, true},
 		{"ask without a name, no qualifier", "skilleri kullanarak çöz", nil, true},
 		{"nothing about skills", "login sayfası açılmıyor", nil, false},
+		{"a path that starts with a skill name is not a call", "cat /plan/x.go ve ls /plan/dir", nil, false},
+		{"the name far from the word skill is not a call", "make a plan for my skills", nil, false},
+		{"the name after 'and' is not a call", "list my skills and plan", nil, false},
+		{"a question about skills is not an ask", "skill kullanımı nedir? How are skills used by memo?", nil, false},
+		{"mentioning skills is not an ask", "my skills are useful, write a skill to use markdown", nil, false},
+		{"a skill that uses something is not an ask", "I need a skill that uses Go", nil, false},
+		{"skill: name", "skill: plan the sprint", []string{"plan"}, false},
+		{"capital Turkish İ still reads as an ask", "GEREKLİ SKİLLERİ kullanarak çöz", nil, true},
+		{"capital İ in a name", "frontend-design SKİLLİNİ kullan", []string{"frontend-design"}, false},
 		{"the word skill alone is not a call", "bu skill sistemi nasıl çalışıyor?", nil, false},
 	}
 	for _, c := range cases {
@@ -265,5 +284,126 @@ func TestUseSkillTool(t *testing.T) {
 	}
 	if _, err := ad.UseSkill(ctxA, "does-not-exist"); err == nil || !strings.Contains(err.Error(), "no installed skill") {
 		t.Errorf("unknown skill error = %v", err)
+	}
+}
+
+// A turn must not claim a skill is in use when it is not: Minimal Mode sends
+// the model no skill instructions, and a chat whose active list cannot be
+// updated will not carry the skill.
+func TestSkillsForTurn_SaysSoWhenTheSkillCannotTakeEffect(t *testing.T) {
+	a, chatA, _ := appWithSkills(t, map[string]string{"codebase-memory": "Graph"})
+	sm := a.getSessionManager()
+
+	a.identity = identity.New("T", "Memo", "casual", "", true)
+	ctx, uses := a.skillsForTurn(context.Background(), chatA, "bak /codebase-memory")
+	if len(uses) != 1 || uses[0].Skipped != skillSkipMinimalMode {
+		t.Fatalf("Minimal Mode: uses = %+v, want one skipped (minimal_mode)", uses)
+	}
+	if got := sm.GetActiveSkills(chatA); len(got) != 0 {
+		t.Errorf("Minimal Mode switched the skill on: %v", got)
+	}
+	ev := uses[0].event()
+	if ev.Type != skillSkippedEventType || ev.ToolName != "codebase-memory" || ev.Content != skillSkipMinimalMode {
+		t.Errorf("skipped event = %+v", ev)
+	}
+	if merged := withSkillEvents(ctx, nil); len(merged) != 1 || len(merged[0]) != 1 {
+		t.Errorf("the saved reply must carry the skip notice too: %+v", merged)
+	}
+
+	a.identity = identity.New("T", "Memo", "casual", "", false)
+	_, uses = a.skillsForTurn(context.Background(), "no-such-chat", "bak /codebase-memory")
+	if len(uses) != 1 || uses[0].Skipped != skillSkipNotSaved {
+		t.Errorf("a chat whose list cannot be saved: uses = %+v, want one skipped (not_saved)", uses)
+	}
+	if chunks := skillNoticeChunks(uses); len(chunks) != 1 || !strings.Contains(chunks[0].Content, `"skill_skipped"`) {
+		t.Errorf("notice = %+v", chunks)
+	}
+}
+
+func TestUseSkillTool_DoesNotClaimItIsActiveWhenItIsNot(t *testing.T) {
+	a, _, _ := appWithSkills(t, map[string]string{"codebase-memory": "Graph"})
+	out, err := skillToolAdapter{a}.UseSkill(withCurrentChatID(context.Background(), "no-such-chat"), "codebase-memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "is now active in this chat") || !strings.Contains(out, "THIS turn only") ||
+		!strings.Contains(out, "INSTRUCTIONS FOR codebase-memory") {
+		t.Errorf("tool result = %q", out)
+	}
+}
+
+func TestUseSkillTool_CutNeverSplitsACharacter(t *testing.T) {
+	a, chatA, _ := appWithSkills(t, map[string]string{"big": "x"})
+	// One ASCII byte, then 3-byte characters: the cap falls in the middle of one.
+	def, _ := a.lookupSkill(chatA, "big")
+	def.Instructions = "a" + strings.Repeat("€", maxSkillToolChars)
+	out, err := skillToolAdapter{a}.UseSkill(withCurrentChatID(context.Background(), chatA), "big")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !utf8.ValidString(out) || !strings.Contains(out, "was cut") {
+		t.Errorf("cut result valid=%v cutNote=%v", utf8.ValidString(out), strings.Contains(out, "was cut"))
+	}
+}
+
+// Calling a skill by name switches it on for the chat for good, so the model
+// must not be able to do it for a project skill — that text came with a cloned
+// repository and nobody read it.
+func TestUseSkillTool_NeverLoadsAProjectSkill(t *testing.T) {
+	a, chatA, _ := appWithSkills(t, map[string]string{"codebase-memory": "Graph"})
+	cat := a.buildSkillCatalog(chatA, false)
+	if len(cat) != 1 || cat[0].Name != "codebase-memory" {
+		t.Fatalf("global-only catalog = %+v", cat)
+	}
+	out, err := skillToolAdapter{a}.UseSkill(withCurrentChatID(context.Background(), chatA), "")
+	if err != nil || strings.Contains(out, "\n\n") {
+		t.Errorf("listing = %q, %v", out, err)
+	}
+}
+
+func TestSkillsForTurn_IgnoresAutomatedTurnsAndQuietMessages(t *testing.T) {
+	a, chatA, _ := appWithSkills(t, map[string]string{"codebase-memory": "Graph"})
+	sm := a.getSessionManager()
+
+	ctx := withoutSkillCalls(context.Background())
+	if _, uses := a.skillsForTurn(ctx, chatA, "run /codebase-memory now"); len(uses) != 0 {
+		t.Errorf("a routine/delegated prompt called a skill: %+v", uses)
+	}
+	if got := sm.GetActiveSkills(chatA); len(got) != 0 {
+		t.Errorf("automated turn switched a skill on: %v", got)
+	}
+	// No "/" and no word skill: not even looked at.
+	if _, uses := a.skillsForTurn(context.Background(), chatA, "merhaba nasılsın"); len(uses) != 0 {
+		t.Errorf("quiet message called %+v", uses)
+	}
+}
+
+func TestAddActiveSkills_KeepsEveryConcurrentAddition(t *testing.T) {
+	_, chatA, _ := appWithSkills(t, map[string]string{"a": "x"})
+	a, _, _ := appWithSkills(t, map[string]string{"a": "x"})
+	sm := a.getSessionManager()
+	chat := sm.GetActiveID()
+	_ = chatA
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_ = sm.AddActiveSkills(chat, []string{fmt.Sprintf("s%d", i), "shared"})
+		}(i)
+	}
+	wg.Wait()
+	if got := sm.GetActiveSkills(chat); len(got) != 21 {
+		t.Errorf("got %d active skills (%v), want 20 distinct + shared = 21", len(got), got)
+	}
+}
+
+func TestPickSkillsFor_LongMessageIsFast(t *testing.T) {
+	cat := testSkillCatalog()
+	msg := strings.Repeat("alpha beta gamma delta epsilon zeta eta theta iota kappa ", 40000)
+	start := time.Now()
+	pickSkillsFor(msg, cat, 3)
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("pickSkillsFor on a %d byte message took %v", len(msg), d)
 	}
 }

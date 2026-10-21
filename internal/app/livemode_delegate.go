@@ -190,7 +190,7 @@ func (a *App) SendLiveDelegatedMessageStream(sessionCtx context.Context, instruc
 		defer cancel()
 		defer recoverStreamPanic(jobCtx, outCh, "SendLiveDelegatedMessageStream")
 
-		inner := a.sendMessageStreamCore(jobCtx, chatID, instruction, true /* forceAgent */)
+		inner := a.sendMessageStreamCore(withoutSkillCalls(jobCtx), chatID, instruction, true /* forceAgent */)
 		slow := forwardWithSlowMarker(jobCtx, inner, outCh, timeout)
 		if slow {
 			logx.Printf("livemode delegate: DONE (ran past %s, result went to background inject) chat=%s", timeout, chatID)

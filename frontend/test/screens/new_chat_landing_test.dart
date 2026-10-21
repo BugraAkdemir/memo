@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,6 +18,7 @@ import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/new_chat_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
 import 'package:memo_flutter/screens/chat_screen.dart';
+import 'package:memo_flutter/widgets/prompt_templates.dart';
 
 class _DownAdapter implements HttpClientAdapter {
   @override
@@ -91,6 +94,42 @@ void main() {
   Finder field() => find.byType(TextField);
   Finder chatSeg() => find.text(L10n.t('mode_chat_label'));
   Finder agentSeg() => find.text(L10n.t('mode_agent_label'));
+
+  testWidgets('slash menu on the landing page follows arrows and keeps the composer focused', (tester) async {
+    await pump(tester, height: 748);
+    await tester.tap(field());
+    final before = tester.state<EditableTextState>(find.byType(EditableText));
+    await tester.enterText(field(), '/');
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 7; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('/translate').hitTestable(), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field()).controller!.text, templates[7].text);
+    expect(identical(tester.state<EditableTextState>(find.byType(EditableText)), before), isTrue);
+    expect(tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus, isTrue);
+  });
+
+  testWidgets('mouse wheel reaches the bottom of the slash menu on the landing page', (tester) async {
+    await pump(tester, height: 748);
+    await tester.tap(field());
+    await tester.enterText(field(), '/');
+    await tester.pumpAndSettle();
+    final popup = find.byType(PromptTemplatesPopup);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: tester.getCenter(popup));
+    await tester.sendEventToBinding(PointerScrollEvent(
+      position: tester.getCenter(popup),
+      scrollDelta: const Offset(0, 1000),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('/skill').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await mouse.removePointer();
+  });
 
   testWidgets('an empty new chat: switch on top, composer in the MIDDLE, suggestions below it', (tester) async {
     await pump(tester);

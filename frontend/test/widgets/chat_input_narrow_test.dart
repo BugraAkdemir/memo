@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,6 +13,7 @@ import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
 import 'package:memo_flutter/widgets/chat_input.dart';
+import 'package:memo_flutter/widgets/prompt_templates.dart';
 
 /// Answers 401 for everything — this suite only cares about layout, and a
 /// gated backend keeps every provider on its safe default instead of
@@ -93,6 +95,31 @@ void main() {
       matching: find.byType(TextField),
     )).width;
   }
+
+  testWidgets(
+      'slash arrows keep the selection visible and Enter inserts it without losing focus',
+      (tester) async {
+    await pumpAt(tester, const Size(1000, 800));
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    final before = tester.state<EditableTextState>(find.byType(EditableText));
+    await tester.enterText(field, '/');
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 7; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      expect(tester.widget<PromptTemplatesPopup>(find.byType(PromptTemplatesPopup)).selectedIndex, i + 1);
+    }
+    final popup = tester.getRect(find.byType(PromptTemplatesPopup));
+    final selected = tester.getRect(find.text('/translate'));
+    expect(selected.top, greaterThanOrEqualTo(popup.top));
+    expect(selected.bottom, lessThanOrEqualTo(popup.bottom));
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field).controller!.text, templates[7].text);
+    expect(identical(tester.state<EditableTextState>(find.byType(EditableText)), before), isTrue);
+    expect(tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus, isTrue);
+  });
 
   testWidgets(
       'at a phone width the message field still gets a usable width '

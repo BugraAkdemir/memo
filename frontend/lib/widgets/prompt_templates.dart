@@ -133,7 +133,7 @@ class PopupOrchestraSwitch extends PopupResult {}
 class PopupSkillSelect extends PopupResult {}
 
 /// Popup that appears above the input when user types "/".
-class PromptTemplatesPopup extends StatelessWidget {
+class PromptTemplatesPopup extends StatefulWidget {
   final void Function(PopupResult result) onSelect;
   final VoidCallback onDismiss;
   final String query;
@@ -147,9 +147,59 @@ class PromptTemplatesPopup extends StatelessWidget {
     this.selectedIndex = 0,
   });
 
+  @override
+  State<PromptTemplatesPopup> createState() => _PromptTemplatesPopupState();
+}
+
+class _PromptTemplatesPopupState extends State<PromptTemplatesPopup> {
+  final ScrollController _scroll = ScrollController();
+
+  double get _rowHeight => 60 * MediaQuery.textScalerOf(context).scale(13) / 13;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleEnsureVisible();
+  }
+
+  @override
+  void didUpdateWidget(PromptTemplatesPopup oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedIndex != widget.selectedIndex ||
+        oldWidget.query != widget.query) {
+      _scheduleEnsureVisible();
+    }
+  }
+
+  void _scheduleEnsureVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients || _filteredItems.isEmpty) return;
+      final index = widget.selectedIndex.clamp(0, _filteredItems.length - 1);
+      final top = 4 + index * _rowHeight;
+      final bottom = top + _rowHeight;
+      final position = _scroll.position;
+      // Move only on selection/query changes so wheel scrolling remains free.
+      double? target;
+      if (top < position.pixels) {
+        target = index == 0 ? 0 : top;
+      } else if (bottom > position.pixels + position.viewportDimension) {
+        target = bottom - position.viewportDimension;
+      }
+      if (target != null) {
+        _scroll.jumpTo(target.clamp(0.0, position.maxScrollExtent));
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
   List<PopupItem> get _filteredItems {
-    if (query.isEmpty) return templates;
-    final q = query.toLowerCase();
+    if (widget.query.isEmpty) return templates;
+    final q = widget.query.toLowerCase();
     return templates.where((item) {
       return item.key.toLowerCase().contains(q) ||
           item.label.toLowerCase().contains(q);
@@ -192,29 +242,35 @@ class PromptTemplatesPopup extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-        child: ListView.builder(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          shrinkWrap: true,
-          itemCount: items.length,
-          itemBuilder: (context, index) {
-            final item = items[index];
-            final isSelected = index == selectedIndex;
-            return _PopupItemWidget(
-              item: item,
-              isSelected: isSelected,
-              onTap: () {
-                if (item.type == ItemType.template) {
-                  onSelect(PopupInsertText(item.text));
-                } else if (item.key == '/model') {
-                  onSelect(PopupModelSwitch());
-                } else if (item.key == '/orchestra') {
-                  onSelect(PopupOrchestraSwitch());
-                } else if (item.key == '/skill') {
-                  onSelect(PopupSkillSelect());
-                }
-              },
-            );
-          },
+        child: Scrollbar(
+          controller: _scroll,
+          child: ListView.builder(
+            controller: _scroll,
+            primary: false,
+            itemExtent: _rowHeight,
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            shrinkWrap: true,
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final isSelected = index == widget.selectedIndex;
+              return _PopupItemWidget(
+                item: item,
+                isSelected: isSelected,
+                onTap: () {
+                  if (item.type == ItemType.template) {
+                    widget.onSelect(PopupInsertText(item.text));
+                  } else if (item.key == '/model') {
+                    widget.onSelect(PopupModelSwitch());
+                  } else if (item.key == '/orchestra') {
+                    widget.onSelect(PopupOrchestraSwitch());
+                  } else if (item.key == '/skill') {
+                    widget.onSelect(PopupSkillSelect());
+                  }
+                },
+              );
+            },
+          ),
         ),
       ),
     );

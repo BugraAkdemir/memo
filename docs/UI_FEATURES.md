@@ -74,7 +74,7 @@
 
 **Text field:**
 - Multiline, max 160px height
-- "/" triggers prompt template popup
+- "/" (at the start of a message or after a space, anywhere in the text) opens the slash menu: every installed skill plus /remember, /forget, /model, /orchestra
 - Filtered list, arrow navigation, Enter selects
 
 **Send/Stop button:**
@@ -241,7 +241,7 @@ Five sections switched with a pill bar, each pill carrying a live count (v4.6.0)
 - A note about third-party-client risk is shown on the page
 
 ### Skills (`skills_tab.dart`)
-- Lists, installs and removes skills. Turning a skill on or off happens inside the chat — activation is per chat (v4.6.0)
+- Lists, installs and removes skills. A skill is switched on by calling it from a chat (`/name`, "…using the X skill", "…using the necessary skills"), for that chat only
 
 ### Usage Stats (`stats_tab.dart`)
 - KPI cards, 30-day chart, per-model breakdown, and the **Prompt Cache** panel (v4.6.0): read from cache / written to cache / full-price input, hit ratio, "N cached" badges per model and category; "not reported" when the provider sends no cache figure
@@ -289,10 +289,11 @@ Five sections switched with a pill bar, each pill carrying a live count (v4.6.0)
 
 ## 8. OTHER COMPONENTS
 
-### 8.1 Prompt Templates
-- Trigger: "/" in text field
-- Filtered popup list
-- Templates: /model, /orchestra, /insight, custom prompts; in a CLI-provider chat, shows that CLI's own real commands instead
+### 8.1 Slash menu (`slash_menu.dart`)
+- Trigger: "/" at the start of the text or after whitespace — mid-sentence too, so a skill can be called from inside a message. A path, a URL or a second slash never opens it
+- Rows: every installed skill (inserted as its `/name` form, e.g. `/pair-programming`; a skill this chat already called is marked), then the commands that do something real: `/remember`, `/forget`, `/model`, `/orchestra`. From the middle of a sentence only skills are offered
+- Picking a skill only calls it: it is switched on for **this chat** and the turn says "Using skill: X"; there is no on/off switch anywhere. Picking replaces just the typed `/word`; the rest of the text and the cursor stay
+- In a CLI-provider chat, shows that CLI's own real commands instead (first word only)
 
 ### 8.1.1 @ File-Mention
 - Trigger: "@" in text field

@@ -1,3 +1,11 @@
+# Son oturum — 2026-10-21 — `/` menüsü kaydırma
+- PromptTemplatesPopup kendi ScrollController/Scrollbar'ını yönetir; ok seçimi görünür tutulur, liste tekerlekle bağımsız kayar. Satır yüksekliği yazı ölçeğini izler, filtre değişimi seçimi görünür kılar.
+- Eski kodda seçimin görünüm dışına çıkması yeni testle yeniden üretildi. Tekerlek arızası testte eski kodla tekrarlanmadı; yeni kodda iç içe kaydırmalı sayfa + gerçek PointerScrollEvent + /skill tıklaması geçti.
+- Doğrulama: Go CGO+sqlite_fts5 build/vet çıkış 0; race tam koşusu yalnız önceden kayıtlı webchat `TestConnect_PressingItAgainReplacesAWaitingAttempt` ile düştü (`state="ready" error="ChatGPT could not be reached through the browser. Try again."`), tekrar koşulmadı. Flutter analyze yalnız kabul edilen 3 use_build_context_synchronously info (çıkış 1); ilk tam test 776 geçti, yeni landing/TR/EN büyük-yazı testleri eklenince hedefli 18 test geçti. Nihai tam Flutter koşusu: 778 test geçti (çıkış 0). L10n literal taraması boş, diff --check temiz.
+- Yeni sohbetin gerçek ChatScreen widget'ında ok/Enter/odak ve PointerScrollEvent testleri var; gerçek masaüstü penceresinde kontrol yapılmadı. Skill sistemi yeniden tasarlanmadı. Düzeltme yerel commit olarak kaydedildi; push yapılmadı.
+
+---
+
 # Son oturum — 2026-10-19 (3) — Proje izinleri (P4): Memo yazdı, inceleyip sıkılaştırıldı
 - Memo (Gemini 3.8 Flash, varsayılan düşünme `MEDIUM`) P4'ü yazdı: `.memo/permissions.json`, komut-önek kuralları, hash ile ilk-görüşte-güven (`data/projects.json`), `PermissionManager.Check`'e proje bağlamı, `/api/projects/permissions*`. Derleniyor, `vet` temiz, kendi testleri geçiyordu.
 - İncelemede **kritik açık** çıktı: `run_command` satırı `bash -c`'ye verildiği için yalnız önek eşleşmesi `go test ./... ; rm -rf ~`, `&& git push --force`, `|| curl … | sh`, `> ~/.bashrc`, `| nc` satırlarını sorulmadan geçiriyordu; ayrıca `bash`, `rm`, `sudo`, `python3`… kural olarak kabul ediliyor, `AllowedTools` sınırsızdı (`delete_file`, `start_self_driving_task`…). Plan da bunu yazmamıştı (kabuk meta karakterleri atlanmıştı).

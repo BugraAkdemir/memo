@@ -195,6 +195,7 @@ internal/app/
   cliadmin_test.go    — RemoveCLI'ın CLI giriş dosyalarını sildiğinin testi
   settings.go         — kimlik/mood/self-interest/web-search/sistem-yönetimi ayar get/set'leri
   skill.go            — Skill kurulum/liste/kaldırma ve aktif skill prompt enjeksiyonu
+  skill_invoke.go     — skill çağrısı: mesajdan (/ad, "X skill", "gerekli skilleri") tespit, sohbete özel açma, akışta "skill_used" bildirimi, ajanın use_skill aracı
   stt.go              — whisper konuşma-metin sunucu kontrolü ve ses kayıt/transkripsiyon
   sync.go             — Google Drive bulut senkronizasyon auth, tetikleme, ayarlar, bağlantı kesme köprüsü
   remote.go           — Uzak erişim durumu/config: web sunucu portu, tokenlar, ngrok anahtarları
@@ -750,11 +751,11 @@ frontend/lib/widgets/
   chat_input.dart           — kompozitör widget'ı: metin girişi, model değiştirici dialog, OpenRouter model seçici, kayıt butonu
   chat_message_list.dart    — kaydırılabilir markdown mesaj listesi, streaming/düşünme balonu render'ıyla
   chat_sidebar.dart         — yeni-sohbet butonu, gizli mod anahtarı ve durum çubuğuyla sohbet listesi kenar çubuğu
-  prompt_templates.dart     — slash-komut (/) açılır penceresi: prompt şablonları, model değiştir, orchestra değiştir, skill seç
+  slash_menu.dart           — slash (/) menüsü: yüklü skill'ler + /remember, /forget, /model, /orchestra; cümle ortasında da açılır
   model_config_dialog.dart  — yerel bir modeli yapılandırıp başlatma dialog'u (context boyutu, GPU katmanları, port)
   provider_config_dialog.dart — harici sağlayıcı ekleme/düzenleme dialog'u (API anahtarı, model tarayıcı)
   orchestra_config_dialog.dart — orchestra modu rollerini, sistem promptlarını, rol-başı model seçimini yapılandırma dialog'u
-  skill_config_dialog.dart  — agent skill'lerini listeleme, aktif/deaktif etme, kurma, kaldırma dialog'u
+  skill_config_dialog.dart  — agent skill'lerini listeleme, kurma, kaldırma dialog'u (açma/kapama yok: skill çağrılarak açılır)
   setup_wizard_view.dart    — donanım tanılaması ve ilk yapılandırmadan geçiren ilk-çalıştırma kurulum sihirbazı katmanı
   llama_installer_view.dart — llama.cpp binary kurulumu/indirme ilerlemesini yöneten katman ekranı
   launchpad_view.dart       — Memo'nun yeteneklerini tanıtan özellik kartlarıyla ilk-çalıştırma launchpad ekranı

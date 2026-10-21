@@ -6,7 +6,7 @@
 
 **Proje klasörleri (2026-10-19, `PLAN_project_folders.md`, `docs/PROJECT_FOLDER.md`)**
 - P0–P5 işaretli: kök koruması/id/kayıt, yedekli hafıza göçü, iskele/API/onay, proje skill komutları, hash güvenli izinler, EN/TR belgeler. Beta'ya bağlı değil; proje hafızası Code Mode'dan bağımsız, Hafıza/Minimal Mod/görev hafızası anahtarları geçerli.
-- Yapılmadı: uygulamada proje skill seçici (`/skill`, `/skill:on`, `/skill add` var), proje izin düzenleme/onay arayüzü (yalnız dosya/API), `provider_policy` uygulaması (`local_only` vb. yalnız ayrılmış alan). Kullanıcı skill sistemini değiştirebileceğimizi söyledi; yeni tasarımın kapsamı belirlenmedi.
+- Yapılmadı: proje skill'leri Flutter `/` menüsünde listelenmiyor (menü yalnız global skill'leri okur; backend `/ad` yazılınca proje skill'ini de tanır; `/skill add` var), proje izin düzenleme/onay arayüzü (yalnız dosya/API), `provider_policy` uygulaması (`local_only` vb. yalnız ayrılmış alan). Kullanıcı skill sistemini değiştirebileceğimizi söyledi; yeni tasarımın kapsamı belirlenmedi.
 - Gerçekte doğrulanmadı: GitHub skill indirmesi (`codeload.github.com/<o>/<r>/zip/HEAD`), kurulum/onay penceresi, modelin `.memo/AGENTS.md` ve izinlere uyması, kullanıcı veritabanında göç, Windows/macOS Guard listeleri.
 - Göç yedekleri `data/backups/memory-pre-project-id-*.db` yerelde kalır; dışa aktarma/bulut kapsamında değil, otomatik silinmez.
 - Live Mode'un ev köklü arka plan sohbeti normal sohbet sayılır; diğer ev köklü ajan sohbeti hafıza almaz. Code Mode kapalı proje sohbetinde takvim/WhatsApp araçları açık kalır; kişisel hafıza/kimlik izoledir.
@@ -14,7 +14,7 @@
 **Birleşik sohbet listesi / yeni sohbet ekranı (2026-10-19)**
 - Gerçek pencerede doğrulanmadı: merkez besteci/öneriler, Ajan + klasör seçimi, başlık/üst çubuk ve ilk mesajda alta geçiş. Geçiş anlık; animasyon yok. Ajan sekmesinin eski IndexedStack indeksi boş tutulur; ajanlar ProjectPath ile işaretlenir.
 - Ajan başlığı ilk kelimelerden, LLM çağrısı yok. Daha güzel başlık için Code Mode yan-çağrı yasağı hakkında kullanıcı kararı gerekir. WelcomeView yalnız CLI sohbetlerinde.
-- `/` menüsü kaydırma düzeltmesinin sonuçları aşağıda; CLI sağlayıcısına özel `_CLICommandPopup` bu değişikliğe dahil değil.
+- `/` menüsü artık skill menüsü (aşağıda); CLI sağlayıcısına özel `_CLICommandPopup` bu değişikliğe dahil değil.
 
 **Agent akışı / REPL (`PLAN_agent_streaming.md`, `PLAN_cli_coding.md`)**
 - Gerçek sağlayıcılarda akış+araç döngüsü, gerçek modelle REPL/skill kullanımı, Windows/macOS terminali, Flutter zaman çizelgesi ve Claude Code/opencode kalite-maliyet karşılaştırması doğrulanmadı (sahte SSE + fakeprovider + pty/widget testleri var).
@@ -43,6 +43,12 @@
 - Test izolasyonu: DataDir önbelleği sıfırlanmadan MEMO_DATA_DIR değiştiren testler silinmiş temp klasörünü yeniden oluşturup dört dosya sızdırabiliyor; config.ResetForTests eksikleri açık.
 - Bilinen kararsızlar: update `TestRunComponentUpdate_TamperedDownloadChangesNothing` eski 5d068ac1'de de -race -count>1 düşer; livemode `TestReconnectingSession_SendAudioRoutesToCurrentInner`; `TestBootstrapTokenAuth_Succeeds` temp temizliği; DuckDuckGo captcha; webchat `TestConnect_PressingItAgainReplacesAWaitingAttempt` (Connecting bayrağı gerçek gezinmeden erken; şüphe ölçülmedi). Yükte flake: go test -c + 24 meşgul döngü, eski/yeni aynı yükte ölç; yeşile kadar yeniden koşma.
 
+**Skill çağrısı / durdurma (2026-10-22)**
+- Gerçek pencerede doğrulanmadı: `/` menüsü (cümle ortasında açılma, imleç/IME, Windows yolları), durdurma sonrası akışın ekranda kalması, "Skill kullanılıyor" satırı. Gerçek modelin `use_skill` aracını doğru seçmesi ölçülmedi. "gerekli skilleri kullan" kelime eşleşmesiyle en çok 3 skill seçer (model çağrısı yok), kaba; ajan turunda asıl yol `use_skill`.
+- Resim/dosya ekli gönderimlerde skill çağrısı tespiti yok (yalnız düz metin yolu `sendMessageStreamCore`). `/skill:on|off|add|remove` komutları ve REPL'in `/skill`'i duruyor; masaüstünde açma/kapama arayüzü yok.
+
+---
+
 ## Kalıcı uyarılar
 - `~/.config/Memo/image.key` kaybında yalnız data kopyası görselleri açamaz. Parolalı taşınabilir/şifreli bulut yedeği ana anahtarı kopyalamadan taşır; önceden alınmış yedek kurtarabilir. Eski sürüm mühürlü görselleri bozuk görür.
 - Kota dolunca otomatik devam yalnız Memo açıkken; CLI ajan/WhatsApp/Self-Driving kapsam dışı. Görsel niyet anahtar sözcüklü; yanlış tetikte negatif test ekle, `/image` zorlar.
@@ -53,8 +59,8 @@
 
 ---
 
-# Son oturum — 2026-10-21 — `/` menüsü kaydırma
-- PromptTemplatesPopup kendi ScrollController/Scrollbar'ını yönetir; ok seçimi görünür tutulur, liste tekerlekle bağımsız kayar. Satır yüksekliği yazı ölçeğini izler, filtre değişimi seçimi görünür kılar.
-- Eski kodda seçimin görünüm dışına çıkması yeni testle yeniden üretildi. Tekerlek arızası testte eski kodla tekrarlanmadı; yeni kodda iç içe kaydırmalı sayfa + gerçek PointerScrollEvent + /skill tıklaması geçti.
-- Doğrulama: Go CGO+sqlite_fts5 build/vet çıkış 0; race tam koşusu yalnız önceden kayıtlı webchat `TestConnect_PressingItAgainReplacesAWaitingAttempt` ile düştü (`state="ready" error="ChatGPT could not be reached through the browser. Try again."`), tekrar koşulmadı. Flutter analyze yalnız kabul edilen 3 use_build_context_synchronously info (çıkış 1); ilk tam test 776 geçti, yeni landing/TR/EN büyük-yazı testleri eklenince hedefli 18 test geçti. Nihai tam Flutter koşusu: 778 test geçti (çıkış 0). L10n literal taraması boş, diff --check temiz.
-- Yeni sohbetin gerçek ChatScreen widget'ında ok/Enter/odak ve PointerScrollEvent testleri var; gerçek masaüstü penceresinde kontrol yapılmadı. Skill sistemi yeniden tasarlanmadı. Düzeltme yerel commit olarak kaydedildi; push yapılmadı.
+# Son oturum — 2026-10-22 — durdurulan akış kalır + skill çağrıyla açılır
+- Durdurma: ajan adımı araç çağrısının yanına yazdığından cevap metni boş kalıyordu; `persistInterruptedTurn` yalnız "durduruldu" satırını kaydedip anlatım/araç olayı/düşünceyi siliyordu. Şimdi `agentEventLog.live` + `recordStoppedTurn` hepsini saklar; Flutter `_stoppedSnapshot` ekrandakini hemen geri koyar, sunucunun kopyası gelince onu gösterir. Gerçek HTTP kopmasıyla e2e (eski kodda düşer: araç çağrısı `[]`).
+- Skill: aç/kapa anahtarı ve "Skill Yönetimi" satırı kalktı; `/` menüsü yüklü skill'leri (+ /remember /forget /model /orchestra) listeler, 8 hazır şablon silindi. `/ad`, "<ad> skill'ini kullan", "gerekli skilleri kullan" mesajdan tanınır, o sohbete özel açılır, akışta ve kayıtlı cevapta `skill_used` satırı; ajanda `use_skill` aracı; `/skill-builder` artık `/skill` komutu sayılıp yutulmuyor.
+- Commitler (yerel, push yok): `8a259f59` durdurma, `071c5fcd` skill backend, `932ff830` Flutter menü, `bfeb1f80` e2e + docs/AGENTS/handoff.
+- Doğrulama: Go build/vet temiz; `go test ./... -race` tüm paketler ok, tek düşen kayıtlı webchat `TestConnect_PressingItAgainReplacesAWaitingAttempt`; Flutter analyze yalnız kabul edilen 3 info, `flutter test` 796 geçti; yeni testler eski kodda düşüyor (durdurma 3 test, e2e). ECC go/flutter/silent-failure reviewer'ları çalıştırıldı (bulgular aşağıda/commit'te).

@@ -830,9 +830,7 @@ class L10n {
         'data/skills/ klasörüne SKILL.md dosyası ekleyin\nveya aşağıdan yükleyin.',
     'skills_list_load_failed': 'Skill\'ler yüklenemedi: \${e}',
     'skill_activation_hint_settings':
-        'Skill\'ler sohbet bazında etkinleştirilir. Bir skill\'i açmak için sohbetin giriş çubuğundaki skill menüsünü kullanın.',
-    'skill_activated': '✅ \${name} aktifleştirildi',
-    'skill_deactivated': '⏸️ \${name} devre dışı',
+        'Bir skill\'i kullanmak için sohbette "/" yazıp seçin ya da mesajınızda adını anın (ör. /ad). Skill yalnız çağrıldığı sohbette açık kalır.',
     'skill_deleted_ok': '🗑️ \${name} silindi',
     'skill_delete_failed': '❌ Silme başarısız',
     'skill_installed_ok': '✅ \${name} yüklendi',
@@ -1738,33 +1736,18 @@ class L10n {
     'start_button': 'Başla',
 
     // Prompt templates
-    'template_review': 'Kod Review',
-    'template_explain': 'Açıkla',
-    'template_fix': 'Hata Düzelt',
-    'template_plan': 'Plan Yap',
-    'template_summarize': 'Özetle',
-    'template_compare': 'Karşılaştır',
-    'template_brainstorm': 'Beyin Fırtınası',
-    'template_translate': 'Çevir (EN->TR)',
+    'slash_remember': 'Hatırla',
+    'slash_remember_sub': 'Bir bilgiyi hafızaya kaydet',
+    'slash_forget': 'Unut',
+    'slash_forget_sub': 'Eşleşen hafıza kayıtlarını sil',
+    'slash_loading': 'Skill\'ler yükleniyor…',
+    'slash_skill_active': 'bu sohbette açık',
+    'skill_used_line': 'Skill kullanılıyor: \${name}',
+    'tool_label_skill': 'Skill',
     'template_switch_model': 'Model Değiştir',
     'template_switch_model_sub': 'Local / API arasında geçiş',
     'template_orchestra': 'Orchestra Mode',
     'template_orchestra_sub': 'Çoklu model orkestrasyonu',
-    'template_skill': 'Skill Yönetimi',
-    'template_skill_sub': "Skill'leri listele, aktifleştir/devre dışı bırak",
-    'template_review_text':
-        'Aşağıdaki kodu incele, hataları ve iyileştirme önerilerini açıkla:\n\n```\n\n```',
-    'template_explain_text':
-        'Aşağıdaki kavramı basit ve anlaşılır bir şekilde açıkla:\n\n',
-    'template_fix_text':
-        'Bu hata mesajını analiz et ve nasıl düzelteceğimi göster:\n\n',
-    'template_plan_text':
-        'Aşağıdaki görev için adım adım bir uygulama planı oluştur:\n\n',
-    'template_summarize_text': 'Aşağıdaki metni kısa ve öz şekilde özetle:\n\n',
-    'template_compare_text':
-        'Şu iki seçeneği karşılaştır, artı ve eksilerini listele:\n\n1. \n2. ',
-    'template_brainstorm_text': 'Şu konu hakkında yaratıcı fikirler üret:\n\n',
-    'template_translate_text': 'Aşağıdaki metni Türkçeye çevir:\n\n',
     'openrouter_key_instructions':
         "openrouter.ai/keys adresinden API Key'ini kopyalayıp aşağıya yapıştır:",
     'openrouter_key_hint': 'sk-or-... ile başlar',
@@ -3390,9 +3373,7 @@ class L10n {
         'Add a SKILL.md file under data/skills/\nor install one below.',
     'skills_list_load_failed': 'Failed to load skills: \${e}',
     'skill_activation_hint_settings':
-        'Skills are activated per chat. Use the skill menu in a chat\'s input bar to turn one on.',
-    'skill_activated': '✅ \${name} activated',
-    'skill_deactivated': '⏸️ \${name} deactivated',
+        'Use a skill by typing "/" in a chat and picking it, or by naming it in your message (e.g. /name). It stays on only in the chat that called it.',
     'skill_deleted_ok': '🗑️ \${name} removed',
     'skill_delete_failed': '❌ Delete failed',
     'skill_installed_ok': '✅ \${name} installed',
@@ -4273,33 +4254,18 @@ class L10n {
 
     'start_button': 'Start',
 
-    'template_review': 'Code Review',
-    'template_explain': 'Explain',
-    'template_fix': 'Fix Bug',
-    'template_plan': 'Make Plan',
-    'template_summarize': 'Summarize',
-    'template_compare': 'Compare',
-    'template_brainstorm': 'Brainstorm',
-    'template_translate': 'Translate (TR->EN)',
+    'slash_remember': 'Remember',
+    'slash_remember_sub': 'Save a fact to memory',
+    'slash_forget': 'Forget',
+    'slash_forget_sub': 'Delete matching memory entries',
+    'slash_loading': 'Loading skills…',
+    'slash_skill_active': 'on in this chat',
+    'skill_used_line': 'Using skill: \${name}',
+    'tool_label_skill': 'Skill',
     'template_switch_model': 'Switch Model',
     'template_switch_model_sub': 'Switch between local/API',
     'template_orchestra': 'Orchestra Mode',
     'template_orchestra_sub': 'Multi-model orchestration',
-    'template_skill': 'Skill Management',
-    'template_skill_sub': 'List, enable, or disable skills',
-    'template_review_text':
-        'Review the following code, list bugs and improvement ideas:\n\n```\n\n```',
-    'template_explain_text':
-        'Explain the following concept simply and clearly:\n\n',
-    'template_fix_text':
-        'Analyze this error message and show me how to fix it:\n\n',
-    'template_plan_text':
-        'Create a step-by-step implementation plan for the following task:\n\n',
-    'template_summarize_text': 'Summarize the following text briefly:\n\n',
-    'template_compare_text':
-        'Compare these two options and list pros and cons:\n\n1. \n2. ',
-    'template_brainstorm_text': 'Generate creative ideas about this topic:\n\n',
-    'template_translate_text': 'Translate the following text to English:\n\n',
     'openrouter_key_instructions':
         'Copy your API key from openrouter.ai/keys and paste it below:',
     'openrouter_key_hint': 'Starts with sk-or-...',

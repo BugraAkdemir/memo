@@ -10,15 +10,11 @@ import 'svg_icon.dart';
 import '../providers/skill_provider.dart';
 import '../core/friendly_error.dart';
 
-/// Dialog for managing skills: list, install, remove, and — when opened
-/// with a chatId — activate/deactivate for that specific chat.
+/// Dialog for managing skills: list, install, remove. There is no on/off
+/// switch: a skill is used by calling it from a message ("/name"), and that
+/// switches it on for that chat only.
 class SkillConfigDialog extends ConsumerStatefulWidget {
-  const SkillConfigDialog({super.key, this.chatId});
-
-  /// The chat activation applies to. null when opened with no chat context
-  /// (Settings > Skills) — the per-row Switch is hidden in that case, since
-  /// there's no chat to activate a skill for.
-  final String? chatId;
+  const SkillConfigDialog({super.key});
 
   @override
   ConsumerState<SkillConfigDialog> createState() => _SkillConfigDialogState();
@@ -28,10 +24,6 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
   @override
   Widget build(BuildContext context) {
     final skillsAsync = ref.watch(skillListProvider);
-    final chatId = widget.chatId;
-    final activeSkills = chatId == null
-        ? const <String>{}
-        : ref.watch(chatActiveSkillsProvider(chatId)).valueOrNull ?? const <String>{};
     final theme = MemoTheme.of(context);
 
     return Dialog(
@@ -71,18 +63,17 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                 ],
               ),
             ),
-            if (chatId == null)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: theme.borderSoft)),
-                ),
-                child: Text(
-                  L10n.t('skill_activation_hint_settings'),
-                  style: TextStyle(color: theme.textDim, fontSize: 12),
-                ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: theme.borderSoft)),
               ),
+              child: Text(
+                L10n.t('skill_activation_hint_settings'),
+                style: TextStyle(color: theme.textDim, fontSize: 12),
+              ),
+            ),
             // Content
             Expanded(
               child: skillsAsync.when(
@@ -125,13 +116,8 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                     separatorBuilder: (_, _) => Divider(height: 1, color: theme.borderSoft),
                     itemBuilder: (context, index) {
                       final skill = skills[index];
-                      final isActive = chatId != null && activeSkills.contains(skill.name);
                       return ListTile(
-                        leading: SvgIcon(
-                          isActive ? 'check-circle' : 'puzzle-piece',
-                          size: 20,
-                          color: isActive ? MemoTheme.green : theme.textDim,
-                        ),
+                        leading: SvgIcon('puzzle-piece', size: 20, color: theme.textDim),
                         title: Text(
                           skill.name,
                           style: TextStyle(
@@ -147,24 +133,9 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Toggle active/inactive for this chat — only
-                            // meaningful (and only shown) when opened from
-                            // inside a chat.
-                            if (chatId != null)
-                              Switch(
-                                value: isActive,
-                                onChanged: (v) => _toggleSkill(chatId, skill.name, v),
-                                activeThumbColor: MemoTheme.accent,
-                              ),
-                            // Remove button
-                            IconButton(
-                              icon: Icon(Icons.delete_outline, size: 18, color: theme.textDim),
-                              onPressed: () => _removeSkill(skill.name),
-                            ),
-                          ],
+                        trailing: IconButton(
+                          icon: Icon(Icons.delete_outline, size: 18, color: theme.textDim),
+                          onPressed: () => _removeSkill(skill.name),
                         ),
                       );
                     },
@@ -198,19 +169,6 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
         ),
       ),
     );
-  }
-
-  Future<void> _toggleSkill(String chatId, String name, bool active) async {
-    final notifier = ref.read(skillListProvider.notifier);
-    final ok = await notifier.toggleSkill(chatId, name, active);
-    if (ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(active ? L10n.t('skill_activated', {'name': name}) : L10n.t('skill_deactivated', {'name': name})),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
   }
 
   Future<void> _removeSkill(String name) async {

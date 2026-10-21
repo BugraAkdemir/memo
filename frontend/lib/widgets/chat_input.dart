@@ -33,8 +33,7 @@ import '../providers/tasklist_provider.dart';
 import '../providers/voice_mode_provider.dart';
 import '../providers/whatsapp_provider.dart';
 import 'orchestra_config_dialog.dart';
-import 'prompt_templates.dart';
-import 'skill_config_dialog.dart';
+import 'slash_menu.dart';
 import 'chat_model_selection.dart';
 import 'model_picker.dart';
 import '../core/friendly_error.dart';
@@ -127,6 +126,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   bool _showTemplates = false;
   String _filterQuery = '';
   int _selectedIndex = 0;
+  // Where the "/" being typed starts in the composer (0 = the first character):
+  // the menu opens for a "/" anywhere in the message, so a skill can be called
+  // from the middle of a sentence ("fix this using /pair-programming").
+  int _slashStart = 0;
   // Desktop's FilePicker gives a real filesystem path; the web backend
   // never populates `path` (there's no such concept in a browser) and
   // gives raw `bytes` instead — see file_picker_web.dart's addPickedFile
@@ -186,7 +189,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   bool _whatsappStopped = false;
   CancelToken? _whatsappCancelToken;
 
-  // "@" file mention — unlike "/" templates (whole-message trigger), this
+  // "@" file mention — like the "/" menu, this
   // triggers on the current word wherever the cursor is, so "look at
   // @lib/foo.dart please" works mid-sentence too.
   bool _showFileMentions = false;
@@ -198,8 +201,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
   // "/" in a CLI chat lists that CLI's own commands (fetched from the
   // backend, which can read .claude/commands & .codex/prompts) instead of
-  // Memo's prompt templates — a coding agent's configured workflows are what
-  // "/" means there, and Memo's canned prompt text would be noise.
+  // Memo's own skill/command menu — a coding agent's configured workflows are
+  // what "/" means there, and Memo's skills do not apply to it.
   List<CLICommand> _cliCommands = [];
   int _cliCommandsRequestGen = 0;
   String _cliCommandsLoadedFor = '';
@@ -214,13 +217,34 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         .toList();
   }
 
-  List<PopupItem> get _filteredItems {
-    if (_filterQuery.isEmpty) return templates;
-    final q = _filterQuery.toLowerCase();
-    return templates.where((item) {
-      return item.key.toLowerCase().contains(q) ||
-          item.label.toLowerCase().contains(q);
-    }).toList();
+  /// The rows the "/" menu shows for what has been typed after the slash:
+  /// every installed skill and, at the very start of a message, the app's own
+  /// commands.
+  List<SlashItem> get _filteredItems {
+    final chatId = ref.read(activeChatIdProvider).valueOrNull ?? '';
+    final skills = ref.read(skillListProvider).valueOrNull ?? const <SkillDefinition>[];
+    final active = chatId.isEmpty
+        ? const <String>{}
+        : ref.read(chatActiveSkillsProvider(chatId)).valueOrNull ?? const <String>{};
+    return filterSlashItems(
+      buildSlashItems(
+        skills: skills,
+        activeSkills: active,
+        atMessageStart: _slashStart == 0,
+      ),
+      _filterQuery,
+    );
+  }
+
+  /// The "/word" the cursor is at the end of, or null. A "/" only counts at the
+  /// start of the message or after whitespace, so a path ("src/app") or a URL
+  /// never opens the menu.
+  ({int start, String query})? _slashTokenAtCursor(String text) {
+    var cursor = _controller.selection.baseOffset;
+    if (cursor < 0 || cursor > text.length) cursor = text.length;
+    final m = RegExp(r'(^|\s)/([^\s/]*)$').firstMatch(text.substring(0, cursor));
+    if (m == null) return null;
+    return (start: m.start + m.group(1)!.length, query: m.group(2)!);
   }
 
   @override
@@ -299,15 +323,28 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
   void _onTextChanged() {
     final text = _controller.text;
-    final show = text.startsWith('/');
+    final token = _slashTokenAtCursor(text);
+    final isCli = _isCLIChat;
+    // A CLI chat lists the CLI's own commands, which only mean something as the
+    // first word of the message.
+    final show = token != null && (!isCli || token.start == 0);
     final wasShowing = _showTemplates;
-    final newQuery = show ? text.substring(1) : '';
-    if (show != _showTemplates || newQuery != _filterQuery) {
+    final newQuery = show ? token.query : '';
+    final newStart = show ? token.start : 0;
+    if (show != _showTemplates || newQuery != _filterQuery || newStart != _slashStart) {
       setState(() {
         _showTemplates = show;
         _filterQuery = newQuery;
+        _slashStart = newStart;
         _selectedIndex = 0;
       });
+    }
+    if (show && !wasShowing && !isCli) {
+      // What is installed and what this chat has already called can have
+      // changed since the last time the menu was open.
+      ref.invalidate(skillListProvider);
+      final chatId = ref.read(activeChatIdProvider).valueOrNull ?? '';
+      if (chatId.isNotEmpty) ref.invalidate(chatActiveSkillsProvider(chatId));
     }
     if (show) {
       // Refetch each time the popup opens, not once per chat: the backend's
@@ -322,9 +359,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   }
 
   /// Loads the active CLI provider's slash commands. Not a CLI chat ->
-  /// clears the list, so the dropdown falls back to Memo's own prompt
-  /// templates. The previous list is deliberately left in place while a
-  /// refresh is in flight, so reopening "/" never flashes empty.
+  /// clears the list, so the dropdown falls back to Memo's own menu.
+  /// The previous list is deliberately left in place while a refresh is in
+  /// flight, so reopening "/" never flashes empty.
   Future<void> _ensureCLICommandsLoaded({bool refresh = false}) async {
     final cliType = ref.read(activeChatCLIProviderProvider).valueOrNull ?? '';
     final chatId = ref.read(activeChatIdProvider).valueOrNull ?? '';
@@ -358,10 +395,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   }
 
   /// True when "/" should list the CLI's commands rather than Memo's
-  /// templates. Driven by the chat's CLI provider, not by whether the fetch
+  /// skills. Driven by the chat's CLI provider, not by whether the fetch
   /// happened to return anything, so a CLI chat with no custom commands
-  /// still shows the CLI's (empty) list instead of silently falling back to
-  /// prompt templates that would do nothing useful there.
+  /// still shows the CLI's (empty) list instead of silently falling back to a
+  /// skill menu that would do nothing useful there.
   bool get _isCLIChat =>
       (ref.read(activeChatCLIProviderProvider).valueOrNull ?? '').isNotEmpty;
 
@@ -476,21 +513,42 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   void _selectAtIndex(int index) {
     final items = _filteredItems;
     if (index < 0 || index >= items.length) return;
-    final item = items[index];
-    if (item.type == ItemType.template) {
-      setState(() => _showTemplates = false);
-      _controller.text = item.text;
-      _controller.selection = TextSelection.fromPosition(
-        TextPosition(offset: item.text.length),
+    _pickSlashItem(items[index]);
+  }
+
+  /// Applies a picked "/" row. A skill (or a command that takes text) puts its
+  /// "/name " in place of the "/word" being typed and leaves the rest of the
+  /// message alone, so the person keeps writing; a command that opens a picker
+  /// removes the typed "/word" first — it is not part of the message.
+  void _pickSlashItem(SlashItem item) {
+    final text = _controller.text;
+    var end = _controller.selection.baseOffset;
+    if (end < 0 || end > text.length) end = text.length;
+    final start = _slashStart.clamp(0, end);
+    final before = text.substring(0, start);
+    final after = text.substring(end);
+    if (item.kind == SlashKind.action) {
+      _controller.value = TextEditingValue(
+        text: before + after,
+        selection: TextSelection.collapsed(offset: before.length),
       );
-      _focusNode.requestFocus();
-    } else if (item.key == '/model') {
       _dismissPopup();
-      _showModelSwitcher();
-    } else if (item.key == '/orchestra') {
-      _dismissPopup();
-      _showOrchestraConfig();
+      if (item.key == '/model') {
+        _showModelSwitcher();
+      } else if (item.key == '/orchestra') {
+        _showOrchestraConfig();
+      }
+      return;
     }
+    // One space after the name; none added when the text after already starts
+    // with one. The cursor lands after that space, ready for the rest.
+    final gap = after.startsWith(RegExp(r'\s')) ? '' : ' ';
+    setState(() => _showTemplates = false);
+    _controller.value = TextEditingValue(
+      text: before + item.key + gap + after,
+      selection: TextSelection.collapsed(offset: before.length + item.key.length + 1),
+    );
+    _focusNode.requestFocus();
   }
 
   // Popup keyboard navigation (arrows/enter/tab/escape while the "/" or "@"
@@ -786,21 +844,6 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   Future<bool> _tryHandleManualCommand(String text) async {
     final cmd = text.split(' ').first;
 
-    // Check template commands (fill input with template text)
-    for (final item in templates) {
-      if (item.type == ItemType.template && item.key == cmd) {
-        final suffix = text.substring(cmd.length).trim();
-        _controller.text = suffix.isNotEmpty
-            ? '${item.text}$suffix'
-            : item.text;
-        _controller.selection = TextSelection.fromPosition(
-          TextPosition(offset: _controller.text.length),
-        );
-        _focusNode.requestFocus();
-        return true;
-      }
-    }
-
     // Action commands
     if (cmd == '/model') {
       _showModelSwitcher();
@@ -810,44 +853,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       _showOrchestraConfig();
       return true;
     }
-    if (cmd == '/skill') {
-      _showSkillManager();
-      return true;
-    }
-
     return false; // Not a known command, send as-is
-  }
-
-  void _onPopupResult(PopupResult result) {
-    _dismissPopup();
-
-    if (result is PopupInsertText) {
-      _controller.text = result.text;
-      _controller.selection = TextSelection.fromPosition(
-        TextPosition(offset: result.text.length),
-      );
-      _focusNode.requestFocus();
-    } else if (result is PopupModelSwitch) {
-      _showModelSwitcher();
-    } else if (result is PopupOrchestraSwitch) {
-      _showOrchestraConfig();
-    } else if (result is PopupSkillSelect) {
-      _showSkillManager();
-    }
-  }
-
-  Future<void> _showSkillManager() async {
-    final chatId = ref.read(activeChatIdProvider).valueOrNull ?? '';
-    if (chatId.isEmpty) {
-      debugPrint('skill manager: opened but no active chat id');
-      return;
-    }
-    await showDialog(
-      context: context,
-      builder: (_) => SkillConfigDialog(chatId: chatId),
-    );
-    ref.invalidate(skillListProvider);
-    ref.invalidate(chatActiveSkillsProvider(chatId));
   }
 
   /// Whether a chat request would actually have somewhere to go: either an
@@ -1211,6 +1217,12 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       }
     });
 
+    if (_showTemplates && !_isCLIChat) {
+      ref.watch(skillListProvider);
+      final slashChatId = ref.watch(activeChatIdProvider).valueOrNull ?? '';
+      if (slashChatId.isNotEmpty) ref.watch(chatActiveSkillsProvider(slashChatId));
+    }
+
     final popup = _showFileMentions
         ? Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1229,11 +1241,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                         selectedIndex: _selectedIndex,
                         onSelect: _selectCLICommandAt,
                       )
-                    : PromptTemplatesPopup(
-                        query: _filterQuery,
+                    : SlashMenuPopup(
+                        items: _filteredItems,
                         selectedIndex: _selectedIndex,
-                        onSelect: _onPopupResult,
-                        onDismiss: _dismissPopup,
+                        loading: ref.watch(skillListProvider).isLoading,
+                        onSelect: _pickSlashItem,
                       ),
               )
             : null;

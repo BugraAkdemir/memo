@@ -79,10 +79,8 @@ class SkillsTab extends ConsumerWidget {
                   separatorBuilder: (_, _) => Divider(height: 1, color: theme.borderSoft),
                   itemBuilder: (_, i) {
                     final s = skills[i];
-                    // Activation is per-chat now (see SkillConfigDialog) —
-                    // there's no chat context here in Settings, so this is
-                    // an installed-skills list only, no active/inactive
-                    // state to show.
+                    // An installed-skills list only: a skill is switched on
+                    // by calling it from a chat ("/name"), per chat.
                     return ListTile(
                       leading: SvgIcon('puzzle-piece', size: 24, color: theme.textDim),
                       title: Text(

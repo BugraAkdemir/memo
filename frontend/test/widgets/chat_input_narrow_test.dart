@@ -13,7 +13,10 @@ import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
 import 'package:memo_flutter/widgets/chat_input.dart';
-import 'package:memo_flutter/widgets/prompt_templates.dart';
+import 'package:memo_flutter/providers/skill_provider.dart';
+import 'package:memo_flutter/widgets/slash_menu.dart';
+
+import '../support/fake_skills.dart';
 
 /// Answers 401 for everything — this suite only cares about layout, and a
 /// gated backend keeps every provider on its safe default instead of
@@ -60,6 +63,7 @@ void main() {
           AuthGateInfo(AuthGateState.ok, authMode: 'password'),
         ),
       ),
+      skillListProvider.overrideWith(FakeSkillList.new),
     ]);
     addTearDown(container.dispose);
     return container;
@@ -97,7 +101,7 @@ void main() {
   }
 
   testWidgets(
-      'slash arrows keep the selection visible and Enter inserts it without losing focus',
+      'slash arrows keep the selection visible and Enter inserts the skill without losing focus',
       (tester) async {
     await pumpAt(tester, const Size(1000, 800));
     final field = find.byType(TextField);
@@ -105,20 +109,74 @@ void main() {
     final before = tester.state<EditableTextState>(find.byType(EditableText));
     await tester.enterText(field, '/');
     await tester.pumpAndSettle();
+    final rows = buildSlashItems(skills: fakeSkills());
     for (var i = 0; i < 7; i++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pumpAndSettle();
-      expect(tester.widget<PromptTemplatesPopup>(find.byType(PromptTemplatesPopup)).selectedIndex, i + 1);
+      expect(tester.widget<SlashMenuPopup>(find.byType(SlashMenuPopup)).selectedIndex, i + 1);
     }
-    final popup = tester.getRect(find.byType(PromptTemplatesPopup));
-    final selected = tester.getRect(find.text('/translate'));
+    final popup = tester.getRect(find.byType(SlashMenuPopup));
+    final selected = tester.getRect(find.text(rows[7].key));
     expect(selected.top, greaterThanOrEqualTo(popup.top));
     expect(selected.bottom, lessThanOrEqualTo(popup.bottom));
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(tester.widget<TextField>(field).controller!.text, templates[7].text);
+    // The skill's /name, a space after it, ready for the rest of the message.
+    expect(tester.widget<TextField>(field).controller!.text, '${rows[7].key} ');
+    expect(find.byType(SlashMenuPopup), findsNothing, reason: 'the menu closes once a skill is picked');
     expect(identical(tester.state<EditableTextState>(find.byType(EditableText)), before), isTrue);
     expect(tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus, isTrue);
+  });
+
+  testWidgets('a "/" in the middle of a sentence calls a skill without touching the rest',
+      (tester) async {
+    await pumpAt(tester, const Size(1000, 800));
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    await tester.enterText(field, 'login sorununu /pair');
+    await tester.pumpAndSettle();
+
+    // Only skills are offered from here — the commands act on a whole message.
+    expect(find.byType(SlashMenuPopup), findsOneWidget);
+    expect(find.text('/pair-programming'), findsOneWidget);
+    expect(find.text('/model'), findsNothing);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field).controller!.text, 'login sorununu /pair-programming ');
+
+    // Typing on carries the sentence along, and the menu stays closed.
+    await tester.enterText(field, 'login sorununu /pair-programming ile coz');
+    await tester.pumpAndSettle();
+    expect(find.byType(SlashMenuPopup), findsNothing);
+  });
+
+  testWidgets('a path, a URL or a second slash does not open the menu', (tester) async {
+    await pumpAt(tester, const Size(1000, 800));
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    for (final text in ['bak src/app/main.go', 'https://example.com/x', '/usr/bin']) {
+      await tester.enterText(field, text);
+      await tester.pumpAndSettle();
+      expect(find.byType(SlashMenuPopup), findsNothing, reason: text);
+    }
+  });
+
+  testWidgets('picking a skill in the middle keeps the text after the cursor', (tester) async {
+    await pumpAt(tester, const Size(1000, 800));
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    final controller = tester.widget<TextField>(field).controller!;
+    await tester.enterText(field, 'fix /code bug now');
+    // Put the cursor right after "/code".
+    controller.selection = const TextSelection.collapsed(offset: 'fix /code'.length);
+    await tester.pumpAndSettle();
+    expect(find.byType(SlashMenuPopup), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(controller.text, 'fix /codebase-memory bug now');
+    expect(controller.selection.baseOffset, 'fix /codebase-memory '.length,
+        reason: 'the cursor is after the name, ready to keep typing');
   });
 
   testWidgets(

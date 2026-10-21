@@ -6,6 +6,25 @@ import '../providers/chat_provider.dart' show apiClientProvider, errorMessagePro
 import '../providers/gate_guard.dart';
 import '../core/friendly_error.dart';
 
+/// The /name form of a skill name: "Pair Programming" -> "pair-programming".
+/// The same rule as the backend's skillSlug (internal/app/skill_invoke.go), so
+/// what the "/" menu inserts is what the backend recognises as a call.
+String skillSlug(String name) {
+  final out = StringBuffer();
+  var dash = true;
+  for (final r in name.toLowerCase().runes) {
+    final ch = String.fromCharCode(r);
+    if (RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(ch)) {
+      out.write(ch);
+      dash = false;
+    } else if (!dash) {
+      out.write('-');
+      dash = true;
+    }
+  }
+  return out.toString().replaceAll(RegExp(r'^-+|-+$'), '');
+}
+
 /// A skill definition from the backend.
 class SkillDefinition {
   final String name;
@@ -82,28 +101,6 @@ class SkillListNotifier extends AsyncNotifier<List<SkillDefinition>> {
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Beceri kaldırılamadı (${FriendlyError.describeGeneric(e)})';
-      return false;
-    }
-  }
-
-  /// Toggle a skill on/off for one chat. Activation is per-chat — this
-  /// never affects any other chat's active-skill list.
-  Future<bool> toggleSkill(String chatId, String name, bool active) async {
-    try {
-      final api = ref.read(apiClientProvider);
-      final current = await api.getActiveSkills(chatId);
-      final updated = Set<String>.from(current);
-      if (active) {
-        updated.add(name);
-      } else {
-        updated.remove(name);
-      }
-      await api.setActiveSkills(chatId, updated.toList());
-      ref.invalidate(chatActiveSkillsProvider(chatId));
-      return true;
-    } catch (e) {
-      ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Beceri durumu değiştirilemedi (${FriendlyError.describeGeneric(e)})';
       return false;
     }
   }

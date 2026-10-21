@@ -18,7 +18,10 @@ import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/new_chat_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
 import 'package:memo_flutter/screens/chat_screen.dart';
-import 'package:memo_flutter/widgets/prompt_templates.dart';
+import 'package:memo_flutter/providers/skill_provider.dart';
+import 'package:memo_flutter/widgets/slash_menu.dart';
+
+import '../support/fake_skills.dart';
 
 class _DownAdapter implements HttpClientAdapter {
   @override
@@ -84,6 +87,7 @@ void main() {
         authGateProvider.overrideWith((ref) => Stream.value(const AuthGateInfo(AuthGateState.ok))),
         activeChatIdProvider.overrideWith(_ActiveChat.new),
         messagesProvider.overrideWith(_Messages.new),
+        skillListProvider.overrideWith(FakeSkillList.new),
       ],
       child: const MaterialApp(home: Scaffold(body: ChatScreen())),
     ));
@@ -101,14 +105,15 @@ void main() {
     final before = tester.state<EditableTextState>(find.byType(EditableText));
     await tester.enterText(field(), '/');
     await tester.pumpAndSettle();
+    final rows = buildSlashItems(skills: fakeSkills());
     for (var i = 0; i < 7; i++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pumpAndSettle();
     }
-    expect(find.text('/translate').hitTestable(), findsOneWidget);
+    expect(find.text(rows[7].key).hitTestable(), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(tester.widget<TextField>(field()).controller!.text, templates[7].text);
+    expect(tester.widget<TextField>(field()).controller!.text, '${rows[7].key} ');
     expect(identical(tester.state<EditableTextState>(find.byType(EditableText)), before), isTrue);
     expect(tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus, isTrue);
   });
@@ -118,15 +123,15 @@ void main() {
     await tester.tap(field());
     await tester.enterText(field(), '/');
     await tester.pumpAndSettle();
-    final popup = find.byType(PromptTemplatesPopup);
+    final popup = find.byType(SlashMenuPopup);
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     await mouse.addPointer(location: tester.getCenter(popup));
     await tester.sendEventToBinding(PointerScrollEvent(
       position: tester.getCenter(popup),
-      scrollDelta: const Offset(0, 1000),
+      scrollDelta: const Offset(0, 2000),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('/skill').hitTestable(), findsOneWidget);
+    expect(find.text('/orchestra').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
     await mouse.removePointer();
   });

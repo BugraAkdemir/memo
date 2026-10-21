@@ -32,6 +32,8 @@ String toolLabel(String? toolName) {
       return L10n.t('tool_label_message');
     case 'whatsapp_search':
       return L10n.t('tool_label_message_search');
+    case 'use_skill':
+      return L10n.t('tool_label_skill');
     default:
       return toolName ?? L10n.t('tool_label_generic');
   }

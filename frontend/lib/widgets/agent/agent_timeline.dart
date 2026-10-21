@@ -65,6 +65,8 @@ class _AgentTimelineState extends State<AgentTimeline> {
             if (!_expanded.add(i)) _expanded.remove(i);
           }),
         ));
+      } else if (item is SkillItem) {
+        children.add(_SkillLine(item: item));
       } else if (item is VerificationItem) {
         children.add(Padding(
           padding: const EdgeInsets.only(bottom: 6),
@@ -107,8 +109,43 @@ IconData _toolIcon(String tool) {
     case 'web_search':
     case 'fetch_page':
       return Icons.public;
+    case 'use_skill':
+      return Icons.extension_outlined;
     default:
       return Icons.build_outlined;
+  }
+}
+
+/// One quiet line saying a skill is in use; the skill's own description is the
+/// tooltip.
+class _SkillLine extends StatelessWidget {
+  final SkillItem item;
+  const _SkillLine({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MemoTheme.of(context);
+    final line = Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.extension_outlined, size: 14, color: MemoTheme.accent),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              L10n.t('skill_used_line', {'name': item.name}),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: c.textDim),
+            ),
+          ),
+        ],
+      ),
+    );
+    return item.description.isEmpty
+        ? line
+        : Tooltip(message: item.description, child: line);
   }
 }
 

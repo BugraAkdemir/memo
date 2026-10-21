@@ -38,6 +38,14 @@ class VerificationItem extends TimelineItem {
   const VerificationItem(this.text);
 }
 
+/// "Using skill X": the turn called a skill, from the message itself or by the
+/// model's own `use_skill` call.
+class SkillItem extends TimelineItem {
+  final String name;
+  final String description;
+  const SkillItem(this.name, this.description);
+}
+
 enum ToolCallStatus { running, ok, error, denied, interrupted }
 
 class ToolCallEntry {
@@ -108,6 +116,12 @@ List<TimelineItem> buildTimeline(List<dynamic> raw, {required bool live}) {
         if (t.isEmpty) break;
         group = null;
         items.add(VerificationItem(t));
+        break;
+      case 'skill_used':
+        final name = (ev.toolName ?? '').trim();
+        if (name.isEmpty) break;
+        group = null;
+        items.add(SkillItem(name, (ev.content ?? '').trim()));
         break;
       case 'tool_executing':
         final next = i + 1 < events.length ? events[i + 1] : null;
@@ -183,6 +197,7 @@ List<AgentEvent> foldAgentEvent(List<AgentEvent> current, AgentEvent ev) {
       break;
     case 'narration':
     case 'verification':
+    case 'skill_used':
     case 'permission_request':
       out.add(ev);
       break;
@@ -220,6 +235,9 @@ String toolArgSummary(String tool, dynamic args) {
     case 'fetch_page':
     case 'browser_navigate':
       v = pick(['url']);
+      break;
+    case 'use_skill':
+      v = pick(['name']);
       break;
     default:
       v = pick(['path', 'command', 'pattern', 'query', 'url']);

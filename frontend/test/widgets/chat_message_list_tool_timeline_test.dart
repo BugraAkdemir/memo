@@ -171,4 +171,29 @@ void main() {
     expect(find.text('Testleri çalıştırıyorum.'), findsOneWidget);
     expect(find.text('Sonuca bakıyorum'), findsOneWidget);
   });
+
+  testWidgets('a saved reply says which skill it used, with the skill description as tooltip',
+      (tester) async {
+    L10n.setLocale(MemoLocale.en);
+    await tester.pumpWidget(harness(const [
+      AgentEvent(type: 'skill_used', toolName: 'Pair Programming', content: 'Driver and navigator'),
+    ]));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Using skill: Pair Programming'), findsOneWidget);
+    expect(find.byTooltip('Driver and navigator'), findsOneWidget);
+    // The reply text itself is untouched.
+    expect(find.textContaining('tamam', findRichText: true), findsOneWidget);
+  });
+
+  testWidgets('the skill line reads in Turkish too', (tester) async {
+    L10n.setLocale(MemoLocale.tr);
+    addTearDown(() => L10n.setLocale(MemoLocale.en));
+    await tester.pumpWidget(harness(const [
+      AgentEvent(type: 'skill_used', toolName: 'codebase-memory'),
+    ]));
+    await tester.pumpAndSettle();
+    expect(find.text('Skill kullanılıyor: codebase-memory'), findsOneWidget);
+  });
 }

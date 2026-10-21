@@ -85,6 +85,35 @@ void main() {
     });
   });
 
+  group('skills', () {
+    test('a skill the turn called is its own line, ahead of what the turn did', () {
+      final t = buildTimeline(const [
+        AgentEvent(type: 'skill_used', toolName: 'Pair Programming', content: 'Driver and navigator'),
+        AgentEvent(type: 'tool_result', toolName: 'read_file'),
+        AgentEvent(type: 'skill_used', toolName: 'codebase-memory'),
+      ], live: false);
+      expect(t.map((e) => e.runtimeType).toList(), [SkillItem, ToolGroupItem, SkillItem]);
+      expect((t.first as SkillItem).name, 'Pair Programming');
+      expect((t.first as SkillItem).description, 'Driver and navigator');
+    });
+
+    test('an event with no skill name shows nothing', () {
+      expect(buildTimeline(const [AgentEvent(type: 'skill_used')], live: false), isEmpty);
+    });
+
+    test('the live fold keeps it, in order, while the turn streams', () {
+      var live = <AgentEvent>[];
+      live = foldAgentEvent(live, const AgentEvent(type: 'skill_used', toolName: 'frontend-design'));
+      live = foldAgentEvent(live, const AgentEvent(type: 'tool_executing', toolName: 'read_file'));
+      live = foldAgentEvent(live, const AgentEvent(type: 'tool_result', toolName: 'read_file'));
+      expect(live.map((e) => e.type).toList(), ['skill_used', 'tool_result']);
+    });
+
+    test('a use_skill call reads as the skill name', () {
+      expect(toolArgSummary('use_skill', {'name': 'pair-programming'}), 'pair-programming');
+    });
+  });
+
   group('toolArgSummary', () {
     test('picks the meaningful argument per tool', () {
       expect(toolArgSummary('run_command', {'command': 'go test ./...', 'cwd': '/x'}), 'go test ./...');

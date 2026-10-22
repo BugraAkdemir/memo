@@ -51,7 +51,7 @@ func (a *App) DownloadModel(repoID, filename string, expectedSize int64) error {
 // just watch "is anything active"), then starts an embedding model
 // automatically if memory is enabled and nothing is running yet. Safe to call
 // even if the just-downloaded file wasn't an embedding model —
-// autoStartEmbeddingModel re-scans all local models itself.
+// startupEmbeddingModel checks the configured model, then available local embeddings.
 func (a *App) autoStartEmbeddingAfterDownload(repoID, filename string) {
 	if !a.GetMemoryEnabled() {
 		return

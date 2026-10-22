@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"log"
 	"memo/internal/logx"
 	"os"
 	"strings"
@@ -193,31 +192,9 @@ func (a *App) SkipLlamaGPUInstall() error {
 	return nil
 }
 
-// autoStartEmbeddingModel finds the first embedding model and starts it.
+// autoStartEmbeddingModel shares the supervisor gate, including manual-stop intent.
 func (a *App) autoStartEmbeddingModel() {
-	models := a.modelStore.ListLocalModels()
-	var embeddingPath string
-	for _, m := range models {
-		if m.IsEmbedding {
-			embeddingPath = m.Path
-			break
-		}
-	}
-	if embeddingPath == "" {
-		msg := "⚠️ No embedding model found — RAG will NOT function."
-		logx.Info(msg)
-		a.emitEvent("memory:error", msg)
-		return
-	}
-
-	logx.Printf("Auto-starting embedding model: %s", embeddingPath)
-	if err := a.StartEmbeddingModel(embeddingPath, a.cfg.Llama.EmbeddingGPULayers); err != nil {
-		msg := fmt.Sprintf("⚠️ Failed to auto-start embedding model: %v", err)
-		log.Print(msg)
-		a.emitEvent("memory:error", msg)
-	} else {
-		logx.Info("✅ Embedding model auto-started — memory/RAG is active.")
-	}
+	a.startupEmbeddingModel()
 }
 
 // isEmbeddingModelPath reports whether the given model path is tagged as an embedding model.

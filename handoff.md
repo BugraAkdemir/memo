@@ -37,6 +37,7 @@
 - Windows/macOS/arm64 sidecar yalnız CI build ile doğrulandı. Claude girişi yok: oauth/usage ve gerçek quota_exhausted kartı denenmedi. Codex bu hesapta yalnız 30d bildirdi; 5s/7g pencereleri denenmedi.
 
 **Kullanıcıda / bilinen küçük noktalar**
+- Embedding düzeltmesi: Pi üzerinde yeni build ile reboot/çökme henüz denenmedi. Eski `embedding_auto_start: false` otomatik ezilmez; yeni sürümde modeli bir kez elle açmak tercihi kaydeder.
 - Eski origin push URL'sinde düz token/satılmış alan adı vardı; son kayıtta yalnız GitHub görünüyordu, token döndürme kullanıcıda. Eski REPL update / download.bugradev.com/get-memo.sh başkasına gider; eski satırları kaldırıp sürümü duyur.
 - Yapıştırma kutusu Done'a kadar açık; login.go sonuç goroutine'inin s.tail'i erken okuma ihtimali ölçülmedi.
 - Minimal Mod auto-compact atlar; görsel modeli seçicide etiketsiz. İkinci model menüsü ortak liste/arama/kaydırma kullanır.
@@ -60,9 +61,7 @@
 
 ---
 
-# Son oturum — 2026-10-22 — durdurulan akış kalır + skill çağrıyla açılır
-- Durdurma: ajan adımı araç çağrısının yanına yazdığından cevap metni boş kalıyordu; `persistInterruptedTurn` yalnız "durduruldu" satırını kaydedip anlatım/araç olayı/düşünceyi siliyordu. Şimdi `agentEventLog.live` + `recordStoppedTurn` hepsini saklar; Flutter `_stoppedSnapshot` ekrandakini hemen geri koyar, sunucunun kopyası gelince onu gösterir. Gerçek HTTP kopmasıyla e2e (eski kodda düşer: araç çağrısı `[]`).
-- Skill: aç/kapa anahtarı ve "Skill Yönetimi" satırı kalktı; `/` menüsü yüklü skill'leri (+ /remember /forget /model /orchestra) listeler, 8 hazır şablon silindi. `/ad`, "<ad> skill'ini kullan", "gerekli skilleri kullan" mesajdan tanınır, o sohbete özel açılır, akışta ve kayıtlı cevapta `skill_used` satırı; ajanda `use_skill` aracı; `/skill-builder` artık `/skill` komutu sayılıp yutulmuyor.
-- Commitler (yerel, push yok): `8a259f59` durdurma, `071c5fcd` skill backend, `932ff830` Flutter menü, `bfeb1f80` e2e, `00cd9e2a` docs, + inceleme düzeltmeleri.
-- ECC reviewer bulguları düzeltildi (boş menüde Enter yutulması, `use_skill` yalnız global, yanlış pozitif tespit, otomatik prompt'ta tespit, durdurma yeniden deneme yarışı/vazgeçince silinme, yalan "kullanılıyor" → `skill_skipped`, komut sıralaması, imleç ortası, İ/slug).
-- Doğrulama: Go build/vet temiz, `go test ./... -race` ok; Flutter analyze yalnız kabul edilen 3 info, `flutter test` yeşil; yeni testler eski kodda düşüyor.
+# Son oturum — 2026-10-23 — embedding otomatik açılış ve çökme toparlama
+- Varsayılan ve paket config örneği artık `embedding_auto_start: true`. Aç/kapat tercihi kaydedilir; mevcut açık `false` korunur, yeni sürümde elle başlatmak `true` kaydeder.
+- Tek yaşam döngüsü: 30 sn denetim, çökmede aynı model/GPU ile yeniden başlatma. Hafıza kapalı/elle durdurulmuşken başlamaz; indirme/yükleme iptal edilir. Açılış deposunu bekler; motor güncellemesinde durur; shutdown sonrasında canlanmaz. llama monitor eski sürecin çıkışıyla yenisini silemez.
+- Gerçek sahte alt süreçle crash, manuel stop, hafıza toggle, yükleme iptali, shutdown ve motor update testleri var. Go CGO+sqlite_fts5 build/vet çıkış 0; tam race testi yeşil; Flutter analyze kabul edilen 3 info, 808 test geçti; diff kontrolü temiz. Düzeltme yerel commit; push yok.

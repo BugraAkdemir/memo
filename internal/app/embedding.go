@@ -1,8 +1,11 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
+	"memo/internal/config"
 	"memo/internal/logx"
 	"os"
 	"path/filepath"
@@ -12,23 +15,74 @@ import (
 	"memo/internal/llama"
 )
 
-// StartEmbeddingModel starts the dedicated embedding llama-server. The
-// freshly launched process occasionally dies within its first second or two
-// (observed as an unexplained external SIGTERM moments after a clean start —
-// not something Stop()/killPID/killByPort in this codebase ever triggers,
-// since those all mark the server as stopping first and this exit is always
-// logged as unexpected). A single retry recovers from that transient case
-// instead of leaving memory silently off until the user manually reruns
-// /embedding.
+// StartEmbeddingModel is an explicit user request. Remember the choice so a
+// successful manual start also opts in to startup and crash recovery.
 func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
 	if a.modelStore != nil {
 		for _, m := range a.modelStore.ListLocalModels() {
 			if m.Path == modelPath && !m.IsEmbedding {
-				return fmt.Errorf("sohbet modeli Hafıza (Embedding) Modeli olarak başlatılamaz")
+				return fmt.Errorf("chat models cannot be started as embedding models")
 			}
 		}
 	}
+	a.cfgMu.Lock()
+	if !a.cfg.Memory.MemoryEnabled || a.embeddingPaused {
+		a.cfgMu.Unlock()
+		return errors.New("memory is disabled or the engine is being updated")
+	}
+	a.cfg.Memory.EmbeddingAutoStart = true
+	err := config.Save(a.cfg)
+	a.cfgMu.Unlock()
+	if err != nil {
+		return err
+	}
+	a.embeddingMu.Lock()
+	defer a.embeddingMu.Unlock()
+	return a.startEmbeddingLocked(modelPath, gpuLayers)
+}
 
+// Caller holds embeddingMu. The context is canceled by memory-off, manual stop
+// or shutdown, including while downloading a first-run model or waiting for it.
+func (a *App) embeddingContextLocked() (context.Context, context.CancelFunc, bool) {
+	a.cfgMu.Lock()
+	defer a.cfgMu.Unlock()
+	if !a.cfg.Memory.MemoryEnabled || !a.cfg.Memory.EmbeddingAutoStart || a.embeddingPaused {
+		return nil, nil, false
+	}
+	parent := a.lifecycleCtx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	a.embeddingCancel = cancel
+	return ctx, func() {
+		cancel()
+		a.cfgMu.Lock()
+		a.embeddingCancel = nil
+		a.cfgMu.Unlock()
+	}, true
+}
+
+func (a *App) startEmbeddingLocked(modelPath string, gpuLayers int) error {
+	ctx, done, ok := a.embeddingContextLocked()
+	if !ok {
+		return context.Canceled
+	}
+	defer done()
+	return a.launchEmbeddingLocked(ctx, modelPath, gpuLayers)
+}
+
+func (a *App) launchEmbeddingLocked(ctx context.Context, modelPath string, gpuLayers int) error {
+	if a.memoryStoreReady != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-a.memoryStoreReady:
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if a.llamaEmbedServer.IsRunning() {
 		a.llamaEmbedServer.Stop()
 		time.Sleep(500 * time.Millisecond)
@@ -46,18 +100,28 @@ func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
 	const maxAttempts = 3
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		logx.Printf("Starting embedding model on port %d (attempt %d/%d)", embPort, attempt, maxAttempts)
 
 		if err := a.llamaEmbedServer.Start(binaryPath, modelPath, 512, embPort, gpuLayers, true, engineMode); err != nil {
 			return err
 		}
 
-		if err := a.llamaEmbedServer.WaitReady(120 * time.Second); err != nil {
+		if err := a.llamaEmbedServer.WaitReadyContext(ctx, 120*time.Second); err != nil {
 			a.llamaEmbedServer.Stop()
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			lastErr = err
 			if attempt < maxAttempts {
 				logx.Printf("embedding model failed to start (attempt %d/%d): %v — retrying", attempt, maxAttempts, err)
-				time.Sleep(1 * time.Second)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(time.Second):
+				}
 				continue
 			}
 			return fmt.Errorf("embedding model loaded but server failed to start after %d attempts: %w", maxAttempts, lastErr)
@@ -65,13 +129,21 @@ func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
 		break
 	}
 
+	if err := ctx.Err(); err != nil {
+		_ = a.llamaEmbedServer.Stop()
+		return err
+	}
+	a.embeddingPath, a.embeddingLayers = modelPath, gpuLayers
 	embBaseURL := a.llamaEmbedServer.GetBaseURL()
+	a.cfgMu.RLock()
+	timeoutSeconds, embeddingModel := a.cfg.API.TimeoutSeconds, a.cfg.API.EmbeddingModel
+	a.cfgMu.RUnlock()
 	a.clientMu.Lock()
-	a.embeddingClient = api.NewClient(embBaseURL, a.cfg.API.TimeoutSeconds)
+	a.embeddingClient = api.NewClient(embBaseURL, timeoutSeconds)
 	embClient := a.embeddingClient
 	a.clientMu.Unlock()
 
-	a.reinitMemoryStore(embClient, a.cfg.API.EmbeddingModel)
+	a.reinitMemoryStore(embClient, embeddingModel)
 	logx.Printf("Embedding server ready on %s", embBaseURL)
 
 	return nil
@@ -79,6 +151,20 @@ func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
 
 // StopEmbeddingModel stops the dedicated embedding llama-server.
 func (a *App) StopEmbeddingModel() error {
+	a.cfgMu.Lock()
+	a.cfg.Memory.EmbeddingAutoStart = false
+	if a.embeddingCancel != nil {
+		a.embeddingCancel()
+	}
+	err := config.Save(a.cfg)
+	a.cfgMu.Unlock()
+	a.embeddingMu.Lock()
+	defer a.embeddingMu.Unlock()
+	return errors.Join(err, a.stopEmbeddingLocked())
+}
+
+// Internal stops (memory off, engine update) preserve the user's startup choice.
+func (a *App) stopEmbeddingLocked() error {
 	if err := a.llamaEmbedServer.Stop(); err != nil {
 		return err
 	}
@@ -135,34 +221,92 @@ func (a *App) reconnectEmbeddingIfAlreadyRunning() {
 	a.reinitMemoryStore(embClient, embeddingModel)
 }
 
-// startupEmbeddingModel ensures the embedding model is available and running at startup.
+// superviseEmbedding retries at a fixed, bounded rate, never in a hot crash loop.
+// The same settings gate boot, downloads, local-model hooks and crash recovery.
+func (a *App) superviseEmbedding(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		a.startupEmbeddingModel()
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
 func (a *App) startupEmbeddingModel() {
+	a.embeddingMu.Lock()
+	defer a.embeddingMu.Unlock()
+	ctx, done, ok := a.embeddingContextLocked()
+	if !ok {
+		return
+	}
+	defer done()
+	if ctx.Err() != nil {
+		return
+	}
+	if a.llamaEmbedServer.GetStatus().Running {
+		a.clientMu.RLock()
+		connected := a.embeddingClient != nil
+		a.clientMu.RUnlock()
+		if !connected {
+			a.reconnectEmbeddingIfAlreadyRunning()
+		}
+		return
+	}
+	a.cfgMu.RLock()
 	repoID := a.cfg.Memory.EmbeddingModelRepo
 	filename := a.cfg.Memory.EmbeddingModelFile
-	a.cfgMu.RLock()
 	modelsDir := a.cfg.Llama.ModelsDir
 	embGPULayers := a.cfg.Llama.EmbeddingGPULayers
 	a.cfgMu.RUnlock()
-	modelPath := filepath.Join(modelsDir, filename)
-
-	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
-		logx.Printf("Downloading embedding model: %s/%s ...", repoID, filename)
-		a.emitEvent("memory:downloading", filename)
-		if err := a.downloadFile(repoID, filename, modelPath); err != nil {
-			logx.Printf("WARN: failed to download embedding model: %v", err)
-			a.emitEvent("memory:error", fmt.Sprintf("Embedding model indirme hatası: %v", err))
+	modelPath := a.embeddingPath
+	if modelPath != "" {
+		embGPULayers = a.embeddingLayers
+	} else {
+		if filename == "" {
 			return
 		}
-		logx.Printf("Embedding model downloaded: %s", modelPath)
+		modelPath = filepath.Join(modelsDir, filename)
 	}
-
+	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+		// Imported/downloaded embedding models need not use the bundled default's filename.
+		if a.embeddingPath == "" && a.modelStore != nil {
+			for _, m := range a.modelStore.ListLocalModels() {
+				if m.IsEmbedding {
+					modelPath = m.Path
+					break
+				}
+			}
+		}
+	}
+	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+		if repoID == "" || a.embeddingPath != "" {
+			return
+		}
+		logx.Printf("Downloading embedding model: %s/%s ...", repoID, filename)
+		a.emitEvent("memory:downloading", filename)
+		if err := a.downloadFile(ctx, repoID, filename, modelPath); err != nil {
+			if ctx.Err() == nil {
+				logx.Printf("WARN: failed to download embedding model: %v", err)
+			}
+			return
+		}
+	}
 	logx.Printf("Auto-starting embedding model: %s", modelPath)
-	if err := a.StartEmbeddingModel(modelPath, embGPULayers); err != nil {
-		msg := fmt.Sprintf("Failed to start embedding model: %v", err)
-		log.Print(msg)
-		a.emitEvent("memory:error", msg)
+	if err := a.launchEmbeddingLocked(ctx, modelPath, embGPULayers); err != nil {
+		if ctx.Err() == nil {
+			msg := fmt.Sprintf("Failed to start embedding model: %v", err)
+			log.Print(msg)
+			a.emitEvent("memory:error", msg)
+		}
 	} else {
 		logx.Info("Cross-mode active: API provider for chat, local model for embeddings")
-		a.emitEvent("memory:ready", filename)
+		a.emitEvent("memory:ready", filepath.Base(modelPath))
 	}
 }

@@ -667,6 +667,23 @@ func (a *App) quiesceLlama() (func() error, error) {
 	if swarm != nil && swarm.IsRunning() {
 		return nil, errors.New("Memo Swarm is using the engine; stop it first")
 	}
+	// Prevent the embedding supervisor from reviving the engine during replacement.
+	a.cfgMu.Lock()
+	a.embeddingPaused = true
+	if a.embeddingCancel != nil {
+		a.embeddingCancel()
+	}
+	a.cfgMu.Unlock()
+	resume := false
+	defer func() {
+		if !resume {
+			a.cfgMu.Lock()
+			a.embeddingPaused = false
+			a.cfgMu.Unlock()
+		}
+	}()
+	a.embeddingMu.Lock()
+	defer a.embeddingMu.Unlock()
 	chat := a.llamaServer.GetStatus()
 	emb := a.llamaEmbedServer.GetStatus()
 	// A llama-server somebody else started (no tracked process) is not ours to stop.
@@ -679,18 +696,27 @@ func (a *App) quiesceLlama() (func() error, error) {
 		}
 	}
 	if emb.Running {
-		if err := a.StopEmbeddingModel(); err != nil {
+		if err := a.stopEmbeddingLocked(); err != nil {
 			return nil, err
 		}
 	}
 	a.cfgMu.RLock()
 	embLayers := a.cfg.Llama.EmbeddingGPULayers
 	a.cfgMu.RUnlock()
+	resume = true
 	return func() error {
-		if emb.Running {
-			if err := a.StartEmbeddingModel(emb.ModelPath, embLayers); err != nil {
-				return fmt.Errorf("embedding model: %w", err)
-			}
+		a.embeddingMu.Lock()
+		a.cfgMu.Lock()
+		a.embeddingPaused = false
+		wanted := a.cfg.Memory.MemoryEnabled && a.cfg.Memory.EmbeddingAutoStart
+		a.cfgMu.Unlock()
+		var embErr error
+		if emb.Running && wanted {
+			embErr = a.startEmbeddingLocked(emb.ModelPath, embLayers)
+		}
+		a.embeddingMu.Unlock()
+		if embErr != nil {
+			return fmt.Errorf("embedding model: %w", embErr)
 		}
 		if chat.Running {
 			if err := a.StartLocalModel(chat.ModelPath, chat.CtxSize, chat.Port, -1); err != nil {

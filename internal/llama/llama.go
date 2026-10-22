@@ -1,6 +1,7 @@
 package llama
 
 import (
+	"context"
 	"fmt"
 	"memo/internal/components"
 	"memo/internal/config"
@@ -369,13 +370,21 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		s.cmd.Process.Pid, s.port, s.gpu.GPULayers)
 
 	// Monitor process in background for unexpected exits
-	logx.GoRecover("llama.Server.monitor", s.monitor)
+	cmd, waitDone := s.cmd, s.waitDone
+	logx.GoRecover("llama.Server.monitor", func() { s.monitor(cmd, waitDone) })
 
 	return nil
 }
 
 // WaitReady polls the server's health endpoint until it responds or timeout.
 func (s *Server) WaitReady(timeout time.Duration) error {
+	return s.WaitReadyContext(context.Background(), timeout)
+}
+
+// WaitReadyContext also lets an intentional stop cancel an in-flight model load.
+func (s *Server) WaitReadyContext(ctx context.Context, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	deadline := time.Now().Add(timeout)
 	s.mu.Lock()
 	port := s.port
@@ -388,7 +397,11 @@ func (s *Server) WaitReady(timeout time.Duration) error {
 		if !s.IsRunning() {
 			return fmt.Errorf("llama: server process exited during startup")
 		}
-		resp, err := client.Get(url)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(req)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -396,7 +409,11 @@ func (s *Server) WaitReady(timeout time.Duration) error {
 				return nil
 			}
 		}
-		time.Sleep(500 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
 
 	return fmt.Errorf("llama: server failed to become ready within %v", timeout)
@@ -472,11 +489,7 @@ func (s *Server) forceKill() {
 }
 
 // monitor watches for unexpected process exit.
-func (s *Server) monitor() {
-	s.mu.Lock()
-	cmd := s.cmd
-	waitDone := s.waitDone
-	s.mu.Unlock()
+func (s *Server) monitor(cmd *exec.Cmd, waitDone chan struct{}) {
 
 	if cmd == nil {
 		return
@@ -501,8 +514,8 @@ func (s *Server) monitor() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.stopping {
-		return // Expected shutdown
+	if s.cmd != cmd || s.stopping {
+		return // Expected shutdown, or a newer process already owns this server.
 	}
 
 	if err != nil {

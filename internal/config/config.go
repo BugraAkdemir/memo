@@ -957,6 +957,7 @@ func Default() *AppConfig {
 			MinSimilarity:             0.35,
 			MemoryEnabled:             true,
 			EmbeddingDimension:        768,
+			EmbeddingAutoStart:        true,
 			EmbeddingModelRepo:        "nomic-ai/nomic-embed-text-v1.5-GGUF",
 			EmbeddingModelFile:        "nomic-embed-text-v1.5.Q4_K_M.gguf",
 			AutoFactExtraction:        true,

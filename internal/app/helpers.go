@@ -705,10 +705,10 @@ func detectMime(path string, data []byte) string {
 }
 
 // downloadFile downloads a GGUF model from HuggingFace synchronously.
-func (a *App) downloadFile(repoID, filename, destPath string) error {
+func (a *App) downloadFile(ctx context.Context, repoID, filename, destPath string) error {
 	downloadURL := fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repoID, filename)
 
-	req, err := http.NewRequestWithContext(a.lifecycleCtx, http.MethodGet, downloadURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}

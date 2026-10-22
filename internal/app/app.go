@@ -197,7 +197,13 @@ type App struct {
 	tgClient         *telegram.Client
 	tgStore          *telegram.Store
 	llamaServer      *llama.Server
-	llamaEmbedServer *llama.Server // dedicated embedding model server
+	llamaEmbedServer *llama.Server      // dedicated embedding model server
+	memoryStoreReady <-chan struct{}    // initial placeholder store has finished
+	embeddingMu      sync.Mutex         // serializes embedding start/stop/store rewiring
+	embeddingCancel  context.CancelFunc // cfgMu; cancels download/readiness on intentional stop
+	embeddingPaused  bool               // cfgMu; engine update temporarily owns the embedding process
+	embeddingPath    string             // embeddingMu; last successfully started model, for crash recovery
+	embeddingLayers  int                // embeddingMu
 	// swarmServer is a separate llama-server used only as the Memo Swarm
 	// coordinator. Kept independent of llamaServer so starting/stopping a
 	// swarm never tears down the user's normal chat model (and vice versa).
@@ -553,6 +559,7 @@ func (a *App) Startup(ctx context.Context) {
 	// *after*, never racing to overwrite a.store first only to have this
 	// goroutine clobber it back to the placeholder afterward.
 	memStoreReady := make(chan struct{})
+	a.memoryStoreReady = memStoreReady
 
 	go func() {
 		defer close(memStoreReady)
@@ -686,29 +693,16 @@ func (a *App) Startup(ctx context.Context) {
 	a.initLiveModeEngines()
 	a.ttsVoiceStore = tts.NewVoiceStore(config.DataPath("tts_voices"))
 
-	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
-		goRecover("startupEmbeddingModel", a.startupEmbeddingModel)
-	} else if cfg.Memory.MemoryEnabled {
-		// EmbeddingAutoStart only gates launching a brand-new model process
-		// (a resource/consent decision — may download a model). Reconnecting
-		// to one that's already alive on the configured port — started by an
-		// earlier backend process this one is attaching after, or started
-		// manually before this Startup() ran — is a different, much
-		// lower-risk action and shouldn't need the same opt-in. Without
-		// this, memory silently keeps embedding through the a.client
-		// placeholder wired above until something explicitly calls
-		// StartEmbeddingModel (GUI's model dialog, or the CLI's
-		// /embedding) — and GetStatus()'s own pingPort() fallback reports
-		// "running" the entire time without ever actually reconnecting
-		// anything, misleading whoever queries it (the CLI's welcome
-		// banner in particular: shows embedding as on while memory
-		// search/save both silently operate on the wrong client).
-		go func() {
-			defer recoverPanic("reconnectEmbeddingIfAlreadyRunning")
-			<-memStoreReady
-			a.reconnectEmbeddingIfAlreadyRunning()
-		}()
-	}
+	// Wait for the placeholder store before wiring the real embedding client.
+	// One owner handles boot and crash recovery; manual starts/stops share its lock.
+	goRecover("superviseEmbedding", func() {
+		select {
+		case <-a.lifecycleCtx.Done():
+			return
+		case <-memStoreReady:
+		}
+		a.superviseEmbedding(a.lifecycleCtx, 30*time.Second)
+	})
 
 	// Auto-init WhatsApp when explicitly enabled OR when a paired session
 	// already exists on disk. The latter means a previously-connected user no
@@ -901,21 +895,6 @@ func (a *App) Startup(ctx context.Context) {
 	}
 	logx.Info("Skill manager initialized")
 
-	// Auto-start the embedding model at boot, not just after a local chat
-	// model loads — a user routing chat through an external provider (no
-	// local model ever started via StartLocalModel) would otherwise never
-	// get an embedding server, silently breaking RAG/memory retrieval.
-	// Backgrounded since WaitReady can take a while and must not delay the
-	// rest of Startup.
-	if a.GetMemoryEnabled() {
-		go func() {
-			defer recoverPanic("Startup/autoStartEmbeddingModel")
-			if !a.llamaEmbedServer.IsRunning() {
-				a.autoStartEmbeddingModel()
-			}
-		}()
-	}
-
 	logx.Info("Memo ready")
 }
 
@@ -1031,6 +1010,12 @@ func (a *App) shutdownSync(ctx context.Context) {
 	// finished, it is safe to close memorySaveCh — no more sends will occur.
 	close(a.memorySaveCh)
 	a.memorySaveWg.Wait()
+
+	a.embeddingMu.Lock()
+	if a.llamaEmbedServer != nil {
+		_ = a.llamaEmbedServer.Stop()
+	}
+	a.embeddingMu.Unlock()
 
 	a.storeMu.Lock()
 	if a.store != nil {

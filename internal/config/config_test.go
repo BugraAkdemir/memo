@@ -10,6 +10,9 @@ import (
 
 func TestDefaultValues(t *testing.T) {
 	cfg := Default()
+	if !cfg.Memory.EmbeddingAutoStart {
+		t.Fatal("fresh installs must auto-start embeddings")
+	}
 	if cfg.API.BaseURL != "http://127.0.0.1:8081/v1" {
 		t.Errorf("BaseURL = %q, want %q", cfg.API.BaseURL, "http://127.0.0.1:8081/v1")
 	}
@@ -619,5 +622,24 @@ func TestMigrateLegacyRemoteAccount_NoOpWhenAccountsAlreadyPresent(t *testing.T)
 	}
 	if len(cfg.RemoteAccess.Accounts) != 1 || cfg.RemoteAccess.Accounts[0].Username != "bob" {
 		t.Error("expected the existing Accounts list to be left untouched")
+	}
+}
+
+func TestLoadEmbeddingAutoStartPreservesExplicitStop(t *testing.T) {
+	for _, value := range []string{"", "    embedding_auto_start: false\n", "    embedding_auto_start: true\n"} {
+		t.Run(value, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte("memory:\n    memory_enabled: true\n"+value), 0600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := value != "    embedding_auto_start: false\n"
+			if cfg.Memory.EmbeddingAutoStart != want {
+				t.Fatalf("auto-start=%v, want %v", cfg.Memory.EmbeddingAutoStart, want)
+			}
+		})
 	}
 }

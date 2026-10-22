@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"memo/internal/logx"
 	"strings"
@@ -830,28 +831,25 @@ func (a *App) dreamPinnedFactsLLM(ctx context.Context, facts []string) ([]string
 	return out, nil
 }
 
-// SetMemoryEnabled toggles the memory feature.
-// When enabling, EmbeddingAutoStart is persisted so the embedding model
-// auto-starts on the next restart as well. If the embedding server is not
-// already running and the model repo/file are configured, the download-and-
-// start sequence runs immediately in the background.
+// SetMemoryEnabled preserves a manual embedding stop across memory toggles.
 func (a *App) SetMemoryEnabled(enabled bool) error {
 	a.cfgMu.Lock()
 	a.cfg.Memory.MemoryEnabled = enabled
-	if enabled {
-		a.cfg.Memory.EmbeddingAutoStart = true
+	if !enabled && a.embeddingCancel != nil {
+		a.embeddingCancel()
 	}
+	err := config.Save(a.cfg)
 	a.cfgMu.Unlock()
-	if err := config.Save(a.cfg); err != nil {
-		return err
+	if !enabled && a.llamaEmbedServer != nil {
+		a.embeddingMu.Lock()
+		stopErr := a.stopEmbeddingLocked()
+		a.embeddingMu.Unlock()
+		return errors.Join(err, stopErr)
 	}
-	if enabled &&
-		a.cfg.Memory.EmbeddingModelRepo != "" &&
-		a.cfg.Memory.EmbeddingModelFile != "" &&
-		!a.llamaEmbedServer.IsRunning() {
+	if err == nil && enabled && a.llamaEmbedServer != nil {
 		goRecover("startupEmbeddingModel", a.startupEmbeddingModel)
 	}
-	return nil
+	return err
 }
 
 // SaveExplicitMemory saves a user-provided memory entry.

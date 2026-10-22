@@ -28,7 +28,7 @@ memory:
     embedding_dimension: 768
     embedding_model_repo: nomic-ai/nomic-embed-text-v1.5-GGUF
     embedding_model_file: nomic-embed-text-v1.5.Q4_K_M.gguf
-    embedding_auto_start: false
+    embedding_auto_start: true
 
 remote_access:
     enabled: false

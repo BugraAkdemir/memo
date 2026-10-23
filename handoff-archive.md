@@ -1,3 +1,8 @@
+# Son oturum — 2026-10-23 — embedding otomatik açılış ve çökme toparlama
+- Varsayılan ve paket config örneği artık `embedding_auto_start: true`. Aç/kapat tercihi kaydedilir; mevcut açık `false` korunur, yeni sürümde elle başlatmak `true` kaydeder.
+- Tek yaşam döngüsü: 30 sn denetim, çökmede aynı model/GPU ile yeniden başlatma. Hafıza kapalı/elle durdurulmuşken başlamaz; indirme/yükleme iptal edilir. Açılış deposunu bekler; motor güncellemesinde durur; shutdown sonrasında canlanmaz. llama monitor eski sürecin çıkışıyla yenisini silemez.
+- Gerçek sahte alt süreçle crash, manuel stop, hafıza toggle, yükleme iptali, shutdown ve motor update testleri var. Go CGO+sqlite_fts5 build/vet çıkış 0; tam race testi yeşil; Flutter analyze kabul edilen 3 info, 808 test geçti; diff kontrolü temiz. Düzeltme yerel commit; push yok.
+
 # Son oturum — 2026-10-22 — durdurulan akış kalır + skill çağrıyla açılır
 - Durdurma: ajan adımı araç çağrısının yanına yazdığından cevap metni boş kalıyordu; `persistInterruptedTurn` yalnız "durduruldu" satırını kaydedip anlatım/araç olayı/düşünceyi siliyordu. Şimdi `agentEventLog.live` + `recordStoppedTurn` hepsini saklar; Flutter `_stoppedSnapshot` ekrandakini hemen geri koyar, sunucunun kopyası gelince onu gösterir. Gerçek HTTP kopmasıyla e2e (eski kodda düşer: araç çağrısı `[]`).
 - Skill: aç/kapa anahtarı ve "Skill Yönetimi" satırı kalktı; `/` menüsü yüklü skill'leri (+ /remember /forget /model /orchestra) listeler, 8 hazır şablon silindi. `/ad`, "<ad> skill'ini kullan", "gerekli skilleri kullan" mesajdan tanınır, o sohbete özel açılır, akışta ve kayıtlı cevapta `skill_used` satırı; ajanda `use_skill` aracı; `/skill-builder` artık `/skill` komutu sayılıp yutulmuyor.

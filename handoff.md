@@ -4,6 +4,10 @@
 
 ## Açık işler
 
+**Alt ajan (2026-10-23, `docs/SUBAGENT_REVIEW.md`)**
+- Açık: readonly shell yazma açığı doğrulandı; worker repo kurallarını aktarmıyor; model başka listeden seçilebilir; özgün hatalar kayboluyor. Planlayıcı paralel yazarlarda çakışma riski ölçülmedi.
+- Task.md varsayılanı planlayıcı; dört rol worker yolunda. Dinamik spawn/message/wait yok. Yeni gerçek model koşusu yok.
+
 **Proje klasörleri (2026-10-19, `PLAN_project_folders.md`, `docs/PROJECT_FOLDER.md`)**
 - P0–P5 işaretli: kök koruması/id/kayıt, yedekli hafıza göçü, iskele/API/onay, proje skill komutları, hash güvenli izinler, EN/TR belgeler. Beta'ya bağlı değil; proje hafızası Code Mode'dan bağımsız, Hafıza/Minimal Mod/görev hafızası anahtarları geçerli.
 - Yapılmadı: proje skill'leri Flutter `/` menüsünde listelenmiyor (menü yalnız global skill'leri okur; backend `/ad` yazılınca proje skill'ini de tanır; `/skill add` var), proje izin düzenleme/onay arayüzü (yalnız dosya/API), `provider_policy` uygulaması (`local_only` vb. yalnız ayrılmış alan). Kullanıcı skill sistemini değiştirebileceğimizi söyledi; yeni tasarımın kapsamı belirlenmedi.
@@ -61,7 +65,7 @@
 
 ---
 
-# Son oturum — 2026-10-23 — embedding otomatik açılış ve çökme toparlama
-- Varsayılan ve paket config örneği artık `embedding_auto_start: true`. Aç/kapat tercihi kaydedilir; mevcut açık `false` korunur, yeni sürümde elle başlatmak `true` kaydeder.
-- Tek yaşam döngüsü: 30 sn denetim, çökmede aynı model/GPU ile yeniden başlatma. Hafıza kapalı/elle durdurulmuşken başlamaz; indirme/yükleme iptal edilir. Açılış deposunu bekler; motor güncellemesinde durur; shutdown sonrasında canlanmaz. llama monitor eski sürecin çıkışıyla yenisini silemez.
-- Gerçek sahte alt süreçle crash, manuel stop, hafıza toggle, yükleme iptali, shutdown ve motor update testleri var. Go CGO+sqlite_fts5 build/vet çıkış 0; tam race testi yeşil; Flutter analyze kabul edilen 3 info, 808 test geçti; diff kontrolü temiz. Düzeltme yerel commit; push yok.
+# Son oturum — 2026-10-23 — alt ajan yeteneği incelemesi
+- Kaynak/graph incelemesi ve `docs/SUBAGENT_REVIEW.md`: worker dört rolü ile varsayılan planlayıcı paralel coder yolu ayrıştırıldı; açık bulgular yukarıda.
+- Tam taskloop -race: ok 34.949s. Hedefli taskloop/agent/agent-tools/app testleri: dört paket ok. Readonly araçla geçici klasörde yazma doğrulandı; geçici dosyalar temizlendi. Gerçek model/UI ve tam repo doğrulaması yapılmadı.
+- Uygulama kodu değişmedi; yalnız inceleme/handoff belgeleri. Push yok.

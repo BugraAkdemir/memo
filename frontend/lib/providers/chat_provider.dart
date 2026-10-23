@@ -486,6 +486,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   /// this client's switch and its read, show — or delete from — the wrong
   /// chat.
   String _chatId = '';
+  int _userTurnEpoch = 0;
 
   void _timingStart() {
     final now = DateTime.now();
@@ -654,6 +655,27 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     state = result;
   }
 
+  /// Poll background main-agent turns without replacing an in-flight user stream.
+  Future<void> refreshIfIdle(String chatId) async {
+    if (_chatId != chatId || ref.read(isSendingProvider)) return;
+    final generation = _generation;
+    final epoch = _userTurnEpoch;
+    final result = await AsyncValue.guard(() => _fetch(ref.read(apiClientProvider)));
+    if (_generation != generation || epoch != _userTurnEpoch || _chatId != chatId ||
+        ref.read(isSendingProvider)) {
+      return;
+    }
+    // A transient polling failure must not hide an already loaded conversation.
+    if (result.hasValue) {
+      // A stopped turn can be visible locally before the backend saves it.
+      if (_stopped && (result.valueOrNull?.length ?? 0) <
+          (state.valueOrNull?.length ?? 0)) {
+        return;
+      }
+      state = result;
+    }
+  }
+
   Future<void> updateMessage(int index, String newContent) async {
     final api = ref.read(apiClientProvider);
     try {
@@ -776,6 +798,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     // `await _handleMemoryCommand` below. That let two overlapping requests
     // race through, clobbering the shared _cancelToken field and appending
     // two user-message bubbles for what was a single send.
+    _userTurnEpoch++;
     ref.read(isSendingProvider.notifier).state = true;
     // Whatever the quota card was saying is about the previous turn: the
     // conversation has moved on (an automatic "continue" lands here too).
@@ -1110,6 +1133,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     _cancelToken = CancelToken();
     final api = ref.read(apiClientProvider);
 
+    _userTurnEpoch++;
     ref.read(isSendingProvider.notifier).state = true;
     // Whatever the quota card was saying is about the previous turn: the
     // conversation has moved on (an automatic "continue" lands here too).

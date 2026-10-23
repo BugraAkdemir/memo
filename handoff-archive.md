@@ -1,3 +1,10 @@
+# Son oturum — 2026-10-23 — alt ajan yeteneği incelemesi
+- Kaynak/graph incelemesi ve `docs/SUBAGENT_REVIEW.md`: worker dört rolü ile varsayılan planlayıcı paralel coder yolu ayrıştırıldı; açık bulgular yukarıda.
+- Tam taskloop -race: ok 34.949s. Hedefli taskloop/agent/agent-tools/app testleri: dört paket ok. Readonly araçla geçici klasörde yazma doğrulandı; geçici dosyalar temizlendi. Gerçek model/UI ve tam repo doğrulaması yapılmadı.
+- Uygulama kodu değişmedi; yalnız inceleme/handoff belgeleri. Push yok.
+
+---
+
 # Son oturum — 2026-10-23 — embedding otomatik açılış ve çökme toparlama
 - Varsayılan ve paket config örneği artık `embedding_auto_start: true`. Aç/kapat tercihi kaydedilir; mevcut açık `false` korunur, yeni sürümde elle başlatmak `true` kaydeder.
 - Tek yaşam döngüsü: 30 sn denetim, çökmede aynı model/GPU ile yeniden başlatma. Hafıza kapalı/elle durdurulmuşken başlamaz; indirme/yükleme iptal edilir. Açılış deposunu bekler; motor güncellemesinde durur; shutdown sonrasında canlanmaz. llama monitor eski sürecin çıkışıyla yenisini silemez.

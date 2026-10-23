@@ -14,12 +14,12 @@ ECC orch-add-feature: büyük kapsam; plan ve commit için yeniden onay istenmez
 - [x] Gerçek geçici Git reposu + fake provider ile kuyruk/sınır/takip/kurtarma/çatışma testleri.
 
 ## 2. Arayüz, doğrulama ve teslim
-- [ ] Sohbet akışında alt ajan kartları; sağ panelde prompt, çıktı, araç işlemleri; dar ekranda panel görünümü.
-- [ ] Eşzamanlılık ayarı; TR+EN yerelleştirme. Arka plan ana ajan cevabı sohbet değişmeden yenilenir.
-- [ ] API yetki/sahiplik denetimi; çocuklar başka sohbeti/alt ajanı yönetemez.
-- [ ] ECC kod ve güvenlik incelemesi; bulunan sorunları düzelt.
-- [ ] Go CGO+sqlite_fts5 build/vet/tam race; Flutter analyze lib/ ve tüm testler; L10n/diff kontrolü.
-- [ ] Doküman/handoff, doğrulanmış aşamalarda Conventional Commit; push yok.
+- [x] Sohbet akışında alt ajan kartları; sağ panelde prompt, çıktı, araç işlemleri; dar ekranda panel görünümü.
+- [x] Eşzamanlılık ayarı; TR+EN yerelleştirme. Arka plan ana ajan cevabı sohbet değişmeden yenilenir.
+- [x] API yetki/sahiplik denetimi; çocuklar başka sohbeti/alt ajanı yönetemez.
+- [x] ECC kod ve güvenlik incelemesi; bulunan sorunları düzelt.
+- [x] Go CGO+sqlite_fts5 build/vet/tam race; Flutter analyze lib/ ve tüm testler; L10n/diff kontrolü.
+- [x] Doküman/handoff, doğrulanmış aşamalarda Conventional Commit; push yok.
 
 Kabul örneği: çocuk 1 tamamlandığında ana ajan yanıt üretirken çocuk 2 tamamlanırsa
 ikinci kayıt kalıcı kuyrukta durur; ilk tur bitmeden ikinci tur başlamaz. Kullanıcının

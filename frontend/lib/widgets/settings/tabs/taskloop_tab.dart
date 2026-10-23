@@ -5,6 +5,7 @@ import '../../../core/l10n.dart';
 import '../../../core/theme.dart';
 import '../../../providers/provider_provider.dart';
 import '../../../providers/taskloop_settings_provider.dart';
+import '../../agent/subagent_settings.dart';
 import '../../../providers/chat_provider.dart'
     show apiClientProvider, errorMessageProvider;
 import '../../../core/friendly_error.dart';
@@ -102,6 +103,8 @@ class _TaskLoopTabState extends ConsumerState<TaskLoopTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const SubagentSettings(),
+          const SizedBox(height: 24),
           Text(
             L10n.t('taskloop_settings'),
             style: TextStyle(

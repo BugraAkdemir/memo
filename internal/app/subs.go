@@ -379,7 +379,13 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 		}
 	}
 
-	return a.UpdateProvider(a.subscriptionMarker(m, pickDefaultSubscriptionModel(list, prev)))
+	a.subscriptionModelMu.Lock()
+	defer a.subscriptionModelMu.Unlock()
+	chosen := prev
+	if p, ok := a.subsMarkerConfig(); ok && p.Model != "" {
+		chosen = p.Model
+	}
+	return a.UpdateProvider(a.subscriptionMarker(m, pickDefaultSubscriptionModel(list, chosen)))
 }
 
 // Timing for syncSubscriptions — vars so tests can shorten them.
@@ -440,6 +446,8 @@ func (a *App) stopSubscriptions() {
 // the one supported way to change a model without re-sending (and clobbering)
 // the whole provider config.
 func (a *App) SetProviderModel(name, model string) error {
+	a.subscriptionModelMu.Lock()
+	defer a.subscriptionModelMu.Unlock()
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return errors.New("model is required")

@@ -337,8 +337,9 @@ type App struct {
 	tailscaleTunnel     *tunnel.Tailscale
 
 	// subs is the CLIProxyAPI sidecar manager (see subs.go), created lazily.
-	subs   *cliproxy.Manager
-	subsMu sync.Mutex
+	subs                *cliproxy.Manager
+	subsMu              sync.Mutex
+	subscriptionModelMu sync.Mutex
 
 	// provModels briefly caches each provider's live model list for the model
 	// selectors (see ListProviderModels).

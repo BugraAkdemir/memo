@@ -28,6 +28,7 @@ import '../models/dev_gateway.dart';
 import '../models/dream.dart';
 import '../models/swarm.dart';
 import '../models/task_list.dart';
+import '../models/subagent.dart';
 import '../models/tts_provider_config.dart';
 import '../models/stt_provider_config.dart';
 import '../models/tts_voice.dart';
@@ -3284,6 +3285,28 @@ class MemoApiClient {
 
   Future<void> approveTaskPlan(String id) async {
     await _dio.post('/api/tasklists/$id/approve-plan');
+  }
+
+  Future<List<SubagentJob>> listSubagents(String chatId) async {
+    final res = await _dio.get('/api/subagents', queryParameters: {'chat_id': chatId});
+    return SubagentJob.records(res.data).map(SubagentJob.fromJson)
+        .where((j) => j.id.isNotEmpty && j.chatId == chatId).toList();
+  }
+
+  Future<void> subagentAction(String id, String chatId, String action,
+      {String? prompt}) async {
+    await _dio.post('/api/subagents/${Uri.encodeComponent(id)}/$action',
+        data: {'chat_id': chatId, 'prompt': ?prompt});
+  }
+
+  Future<int> getSubagentParallelism() async {
+    final res = await _dio.get('/api/subagents/settings');
+    final n = res.data is Map ? res.data['max_parallel'] : null;
+    return n is num ? n.toInt().clamp(1, 16) : 3;
+  }
+
+  Future<void> setSubagentParallelism(int value) async {
+    await _dio.put('/api/subagents/settings', data: {'max_parallel': value});
   }
 
   Future<Map<String, dynamic>> getTaskLoopSettings() async {

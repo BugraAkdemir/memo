@@ -507,6 +507,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 
 				// Check Permission
 				permRes := p.permissions.Check(toolName, args, toolDef.DangerLevel, basePath)
+				explicitlyDenied := !permRes.Allowed && !permRes.NeedPrompt
 
 				// Sistem yönetimi modunda izin ekranı çıkmaz — tüm tool'lar otomatik onaylanır.
 				if p.bypassPermissions {
@@ -550,9 +551,13 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 					permRes.Allowed = true
 				}
 
-				if p.delegatedPermissions && permRes.NeedPrompt {
-					permRes.NeedPrompt = false
-					permRes.Allowed = codeModeToolAutoApproveSet("build")[toolName] || (toolDef.SkillOwner != "" && p.activeSkills[toolDef.SkillOwner])
+				if p.delegatedPermissions {
+					if explicitlyDenied {
+						permRes = PermissionResult{Allowed: false, NeedPrompt: false}
+					} else if permRes.NeedPrompt {
+						permRes.NeedPrompt = false
+						permRes.Allowed = codeModeToolAutoApproveSet("build")[toolName] || (toolDef.SkillOwner != "" && p.activeSkills[toolDef.SkillOwner]) || (p.chatSubAgentsEnabled && chatSubAgentCoordinationTool(toolName))
+					}
 				}
 
 				if permRes.NeedPrompt {

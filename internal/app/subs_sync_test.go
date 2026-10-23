@@ -176,3 +176,53 @@ func TestStartSubscriptions_RetriesWhileTheSidecarStillListsNothing(t *testing.T
 		t.Error("startSubscriptions gave up before the sidecar listed its models")
 	}
 }
+
+// Model discovery runs after early provider registration. A person can switch
+// accounts while that discovery is still pending; its eventual result must
+// preserve the newer choice rather than restore the model captured at start.
+func TestSyncSubscriptions_PreservesModelSelectedDuringDiscovery(t *testing.T) {
+	fastSubs(t)
+	t.Setenv("FAKECPA_MODELS_DELAY_MS", "3000")
+	a := syncApp(t)
+	seedCredential(t)
+	if err := os.WriteFile(config.DataPath("cliproxy", "auth", "codex-x.json"), []byte(`{"type":"codex","email":"x@example.com"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.providerCfgMgr.Set(provider.ProviderConfig{Type: provider.ProviderCustom, Name: subsProviderName, BaseURL: "http://127.0.0.1:1/v1", APIKey: "stale", Model: "antigravity-model-a", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- a.syncSubscriptions(context.Background()) }()
+	// This is the same observable handshake as the early-registration test:
+	// sync has captured its old choice, but the sidecar has not listed models.
+	deadline := time.Now().Add(8 * time.Second)
+	registered := false
+	for time.Now().Before(deadline) {
+		p, ok := a.subsMarkerConfig()
+		m := a.subsManager()
+		if ok && m.BaseURL() != "" && p.BaseURL == m.BaseURL() && p.APIKey == m.APIKey() {
+			if len(m.CachedModels()) != 0 {
+				t.Fatal("model discovery completed before the concurrent-selection handshake")
+			}
+			registered = true
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("discovery finished before early registration: %v", err)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if !registered {
+		t.Fatal("subscription was not registered before model discovery")
+	}
+	if err := a.SetProviderModel(subsProviderName, "codex-model-a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := a.subsMarkerConfig(); p.Model != "codex-model-a" {
+		t.Fatalf("model=%q after discovery; user's newer codex-model-a selection was overwritten", p.Model)
+	}
+}

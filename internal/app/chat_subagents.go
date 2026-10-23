@@ -154,8 +154,10 @@ func (a *App) ChatSubAgentAction(ctx context.Context, chatID, action string, arg
 		if serr != nil {
 			return "", serr
 		}
-		if req.Write {
+		if req.Write && isolate {
 			sys += "\nWork only in this assigned worktree. Run relevant checks, then commit your changes locally with a Conventional Commit and no attribution. Never push, merge, switch branches or remove worktrees. Report the commit and test results. Main reviews and merges your work."
+		} else if req.Write {
+			sys += "\nWork only in this assigned project folder. You are the single shared writer: make targeted changes, run the relevant checks, and report the files changed and verification. Follow the project's commit rules; never push or switch branches."
 		}
 		result, err = a.chatSubAgents.Create(subagents.CreateRequest{ChatID: chatID, Title: req.Title, Prompt: req.Prompt, Skills: req.Skills, ProjectDir: project, Isolated: isolate, Write: req.Write, SystemPrompt: sys, ProviderName: name, Model: model, Effort: effort})
 	case "send":
@@ -231,22 +233,8 @@ func (a *App) runChatSubAgent(ctx context.Context, j subagents.Job, emit func(su
 		}
 		defer release()
 	}
-	registry := agent.NewChatSubAgentRegistry(j.Write)
-	// Explicitly selected skill instructions are snapshotted in SystemPrompt.
-	// Their callable tools are allowed only on this child, not globally activated.
-	selected := map[string]bool{}
-	if j.Write {
-		for _, name := range j.Skills {
-			selected[name] = true
-			if def, ok := a.lookupSkill(j.ChatID, name); ok {
-				for _, st := range def.Manifest.Tools {
-					if tool, ok := a.agentExecutor.Registry().Get(st.Name); ok && tool.SkillOwner == name {
-						registry.Register(tool)
-					}
-				}
-			}
-		}
-	}
+	registry, selected := a.chatSubAgentToolRegistry(j.Write, j.Skills)
+
 	ctx = agent.WithSubAgentSkills(ctx, selected)
 	exec := agent.NewSubAgentExecutor(a.agentExecutor, registry, router, j.WorkDir)
 	ctx = agent.WithDelegatedPermissions(ctx) // preserve explicit denies; no invisible permission prompts
@@ -399,4 +387,23 @@ type chatDelegationRouteKey struct{}
 type chatDelegationRoute struct {
 	router        *provider.Router
 	model, effort string
+}
+
+// Skill registrars namespace tool names. Select by the registered owner rather
+// than looking up the short manifest name, which is never an executable tool ID.
+func (a *App) chatSubAgentToolRegistry(write bool, skills []string) (*agent.ToolRegistry, map[string]bool) {
+	registry := agent.NewChatSubAgentRegistry(write)
+	selected := map[string]bool{}
+	if !write {
+		return registry, selected
+	}
+	for _, name := range skills {
+		selected[name] = true
+	}
+	for _, def := range a.agentExecutor.Registry().ToOpenAITools(selected) {
+		if tool, ok := a.agentExecutor.Registry().Get(def.Function.Name); ok && tool.SkillOwner != "" && selected[tool.SkillOwner] {
+			registry.Register(tool)
+		}
+	}
+	return registry, selected
 }

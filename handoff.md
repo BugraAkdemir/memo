@@ -4,9 +4,9 @@
 
 ## Açık işler
 
-**Alt ajan (2026-10-23, `docs/SUBAGENT_REVIEW.md`)**
-- Açık: readonly shell yazma açığı doğrulandı; worker repo kurallarını aktarmıyor; model başka listeden seçilebilir; özgün hatalar kayboluyor. Planlayıcı paralel yazarlarda çakışma riski ölçülmedi.
-- Task.md varsayılanı planlayıcı; dört rol worker yolunda. Dinamik spawn/message/wait yok. Yeni gerçek model koşusu yok.
+**Alt ajan (2026-10-23, `PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`)**
+- Tamamlandı: Normal sohbet alt ajanları (Aşama 1 & 2): `internal/subagents`, FIFO mailbox, worktree/branch izolasyonu, `memo-*` branch yönetimi, context/yetki sınırları, `spawn/send/list/cancel/close/merge` araçları; Flutter `SubagentTray`, `SubagentPane`, `SubagentSettings` (1-16), TR+EN `L10n`, widget/unit/race testleri.
+- Açık: Gerçek sağlayıcı/model ile canlı uçtan uca kullanım deneyimi; Self-Driving taskloop içindeki eski worker bulgularının sertleştirilmesi (`docs/SUBAGENT_REVIEW.md` - readonly komut sınırı, kural aktarımı).
 
 **Proje klasörleri (2026-10-19, `PLAN_project_folders.md`, `docs/PROJECT_FOLDER.md`)**
 - P0–P5 işaretli: kök koruması/id/kayıt, yedekli hafıza göçü, iskele/API/onay, proje skill komutları, hash güvenli izinler, EN/TR belgeler. Beta'ya bağlı değil; proje hafızası Code Mode'dan bağımsız, Hafıza/Minimal Mod/görev hafızası anahtarları geçerli.
@@ -65,7 +65,9 @@
 
 ---
 
-# Son oturum — 2026-10-23 — alt ajan yeteneği incelemesi
-- Kaynak/graph incelemesi ve `docs/SUBAGENT_REVIEW.md`: worker dört rolü ile varsayılan planlayıcı paralel coder yolu ayrıştırıldı; açık bulgular yukarıda.
-- Tam taskloop -race: ok 34.949s. Hedefli taskloop/agent/agent-tools/app testleri: dört paket ok. Readonly araçla geçici klasörde yazma doğrulandı; geçici dosyalar temizlendi. Gerçek model/UI ve tam repo doğrulaması yapılmadı.
-- Uygulama kodu değişmedi; yalnız inceleme/handoff belgeleri. Push yok.
+# Son oturum — 2026-10-23 — normal sohbet alt ajanları (Aşama 1 & 2)
+- Normal sohbet alt ajanları (`PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`) Aşama 1 ve 2 uygulandı: arka planda çalışan alt ajan motoru (`internal/subagents`), kalıcı FIFO kuyruğu, ana ajana senkronize teslimat, Git worktree/branch (`memo-*`) izolasyonu ve birleştirme/çatışma yönetimi.
+- Araçlar: `spawn_agent`, `send_agent`, `list_agents`, `cancel_agent`, `close_agent`, `merge_agent`. Alt ajanlarda kişisel hafıza/RAG yok; sadece görev + Code Mode + seçilen skill talimatları.
+- Flutter UI: `SubagentTray` kartları, `SubagentPane` detay paneli (prompt, çıktı, araç hareketleri, takip talimatı, iptal/kapatma/yarım kalan incelemeyi sürdürme), `SubagentSettings` eşzamanlılık sınırı (1–16). TR+EN 24 L10n anahtarı eklendi, sıfır hardcoded string.
+- ECC ve güvenlik düzeltmeleri: Arka plan incelemesinde görünmez izin promptu engellendi (`delegated_permissions.go`), model keşfi sırasında model seçimi yarış koşulu çözüldü (`subs.go`, `app.go`), alt ajan skill tool ad alanı ayrıştırması düzeltildi (`chat_subagents.go`).
+- Doğrulama: Go CGO+sqlite_fts5 build ve vet temiz (çıkış 0); `internal/subagents`, `internal/agent`, `internal/app` race testleri yeşil; Flutter analyze 0 hata/uyarı (yalnız 3 bilinen info); Flutter test 815 testin tamamı geçti; L10n kontrolü temiz. Yerel commit'lendi; push yok.

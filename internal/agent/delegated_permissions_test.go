@@ -53,3 +53,37 @@ func TestMutationGuardDoesNotBlockReads(t *testing.T) {
 		t.Fatal("mutation not guarded")
 	}
 }
+
+func TestUnattendedMainReviewCanCoordinateWithoutInvisiblePrompts(t *testing.T) {
+	for _, deny := range []bool{false, true} {
+		t.Run(map[bool]string{false: "authorized followup", true: "explicit deny wins over global auto"}[deny], func(t *testing.T) {
+			ran := false
+			r := &ToolRegistry{tools: map[string]ToolDef{}}
+			r.Register(ToolDef{Name: "send_agent", DangerLevel: Medium, ExecuteFn: func(context.Context, json.RawMessage, string, func(string) error) (string, error) {
+				ran = true
+				return "queued", nil
+			}})
+			pm := NewPermissionManager(t.TempDir())
+			if deny {
+				pm.HandleResponse("send_agent", json.RawMessage(`{}`), DenyForever)
+			}
+			fake := &scriptedProvider{responses: []provider.ChatResponse{{ToolCalls: []provider.ToolCall{mustToolCall(t, "followup", "send_agent", map[string]string{"id": "child", "prompt": "fix the missed check"})}}, {Content: "review complete"}}}
+			p := NewPipeline(r, pm, NewSandbox(DefaultSandboxConfig(t.TempDir())), fake, nil)
+			p.delegatedPermissions = true
+			p.chatSubAgentsEnabled = true
+			p.autoPermission = deny
+			ch, err := p.RunStream(context.Background(), nil, "fake", func(AgentEvent) {}, func(string, AgentEvent) (PermissionPolicy, error) {
+				t.Error("background main opened invisible permission prompt")
+				return DenyOnce, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range ch {
+			}
+			if ran == deny {
+				t.Fatalf("tool ran=%v denied=%v", ran, deny)
+			}
+		})
+	}
+}

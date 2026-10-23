@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"memo/internal/agent"
 	"memo/internal/logx"
 	"memo/internal/subagents"
 )
@@ -104,6 +105,7 @@ func (a *App) deliverChatSubAgentResult(ctx context.Context, c subagents.Complet
 func (a *App) deliverOneChatSubAgentResult(ctx context.Context, chat string, c subagents.Completion) {
 	// No global active chat switch or agent flag mutation. The result marker is
 	// saved atomically in the final assistant message before mailbox ACK.
+	ctx = agent.WithDelegatedPermissions(ctx)
 	ctx = context.WithValue(ctx, subAgentCompletionKey{}, c.ID)
 	ctx = context.WithValue(withChatLockWait(ctx), chatTurnQueuedKey{}, true)
 	payload, _ := json.Marshal(c)

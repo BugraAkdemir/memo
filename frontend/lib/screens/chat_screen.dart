@@ -22,6 +22,8 @@ import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/agent/browser_pane.dart';
+import '../widgets/agent/subagent_pane.dart';
+import '../providers/subagent_provider.dart';
 import '../widgets/new_chat_landing.dart';
 import '../providers/new_chat_provider.dart';
 import '../widgets/agent/code_mode_toggle.dart';
@@ -55,6 +57,12 @@ class ChatScreen extends ConsumerWidget {
       builder: (context, constraints) {
         final narrow = constraints.maxWidth < MemoTheme.mobileNavBreakpoint;
         final isIncognito = ref.watch(incognitoProvider);
+        final chatId = ref.watch(activeChatIdProvider).valueOrNull ?? '';
+        final childId = ref.watch(selectedSubagentProvider(chatId));
+        final childPane = childId == null ? null : SubagentPane(
+          key: ValueKey('$chatId/$childId'), chatId: chatId, jobId: childId,
+          onClose: () => ref.read(selectedSubagentProvider(chatId).notifier).state = null,
+        );
 
         final content = Container(
           // Transparent in Glass Light so the soft gradient shows behind the
@@ -80,6 +88,8 @@ class ChatScreen extends ConsumerWidget {
         // gradient (see the Session 19 fix this replaced). ChatTopBar's
         // menu button still opens a drawer via Scaffold.of(context) — it
         // now finds AppShell's ancestor Scaffold instead of a local one.
+        // A details panel must not squeeze the composer between two sidebars.
+        if (childPane != null && constraints.maxWidth < 1100) return childPane;
         if (narrow) {
           // Full-width takeover, not a side-by-side split — see
           // BrowserPane's own doc comment for why narrow mode gets a
@@ -105,7 +115,9 @@ class ChatScreen extends ConsumerWidget {
             Expanded(child: content),
 
             // ─── Agent Browser (only while a session is open) ──
-            if (ref.watch(betaEnabledProvider) &&
+            if (childPane != null)
+              SizedBox(width: (constraints.maxWidth * 0.36).clamp(280.0, 440.0), child: childPane)
+            else if (ref.watch(betaEnabledProvider) &&
                 ref.watch(browserSessionActiveProvider))
               const BrowserPane(),
           ],
@@ -308,6 +320,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
 
         // Quota notice (allowance ran out / running low) — only when there is one.
         const QuotaNoticeCard(),
+        if (activeId != null) SubagentTray(chatId: activeId),
 
         // ─── Input ────────────────────────────────
         if (!landing) composer,

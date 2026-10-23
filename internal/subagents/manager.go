@@ -12,6 +12,7 @@ import (
 	"memo/internal/provider"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -194,7 +195,8 @@ func (m *Manager) saveLocked() error {
 	if err == nil {
 		err = os.Rename(name, filepath.Join(m.dir, "state.json"))
 	}
-	if err == nil {
+	// Windows supports flushing the state file, but not a directory handle.
+	if err == nil && runtime.GOOS != "windows" {
 		if d, e := os.Open(m.dir); e == nil {
 			err = d.Sync()
 			_ = d.Close()

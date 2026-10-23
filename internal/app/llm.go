@@ -403,7 +403,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			ctx = withCurrentChatID(ctx, sessionID)
 			if a.chatSubAgents != nil && sessionID != "" {
 				ctx = tools.WithChatSubAgentService(ctx, chatSubAgentAdapter{a: a, chatID: sessionID})
-				ctx = context.WithValue(ctx, chatDelegationRouteKey{}, chatDelegationRoute{router: provider.NewRouter(agentRouter.ActiveProviders()), model: modelName, effort: effortLevel})
+				ctx = context.WithValue(ctx, chatDelegationRouteKey{}, newChatDelegationRoute(agentRouter, modelName, effortLevel))
 			}
 		}
 

@@ -86,6 +86,18 @@ func (r *Router) ActiveProviders() []ProviderConfig {
 	return configs
 }
 
+// SelectedConfig returns the first provider this router would actually try,
+// respecting the explicit selection, opt-in restrictions and health fallback.
+// ActiveProviders lists enabled entries for management and does not apply that
+// selection, so it must not be used to identify a delegated request's provider.
+func (r *Router) SelectedConfig() (ProviderConfig, bool) {
+	entries := r.getActiveEntries()
+	if len(entries) == 0 {
+		return ProviderConfig{}, false
+	}
+	return entries[0].cfg, true
+}
+
 // AllConfigs returns all provider configs (including disabled).
 func (r *Router) AllConfigs() []ProviderConfig {
 	r.mu.RLock()

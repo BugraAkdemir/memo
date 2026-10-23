@@ -137,11 +137,11 @@ func (a *App) ChatSubAgentAction(ctx context.Context, chatID, action string, arg
 		if rerr != nil {
 			return "", rerr
 		}
-		configs := router.ActiveProviders()
-		name := ""
-		if len(configs) > 0 {
-			name = configs[0].Name
+		selected, ok := router.SelectedConfig()
+		if !ok {
+			return "", fmt.Errorf("no provider selected for sub-agent model %q", model)
 		}
+		name := selected.Name
 		project := a.getSessionManager().GetProjectPath(chatID)
 		if project == "" && a.agentExecutor != nil {
 			project, _ = filepath.Abs(".")
@@ -216,6 +216,7 @@ func (a *App) chatSubAgentSystemPrompt(chatID string, skills []string) (string, 
 	return sys, nil
 }
 func (a *App) runChatSubAgent(ctx context.Context, j subagents.Job, emit func(subagents.Event)) (subagents.RunResult, error) {
+	logx.Printf("subagent: task=%s provider=%q model=%q effort=%q", j.ID, j.ProviderName, j.Model, j.Effort)
 	router, model, effort, err := a.chatSubAgentRouter(j)
 	if err != nil {
 		return subagents.RunResult{}, err
@@ -380,13 +381,35 @@ func (a *App) chatSubAgentRouter(j subagents.Job) (*provider.Router, string, str
 		cfg := provider.ProviderConfig{Type: provider.ProviderLlamaCPP, Name: j.ProviderName, BaseURL: a.llamaServer.GetBaseURL(), Model: j.Model, Enabled: true, ContextTokens: a.llamaServer.CtxSize()}
 		return provider.NewRouter([]provider.ProviderConfig{cfg}), j.Model, j.Effort, nil
 	}
-	return a.agentRouterFromProviderName(j.ProviderName, j.Model)
+	router, model, effort, err := a.agentRouterFromProviderName(j.ProviderName, j.Model)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("sub-agent provider %q model %q: %w", j.ProviderName, j.Model, err)
+	}
+	if _, ok := router.SelectedConfig(); !ok {
+		return nil, "", "", fmt.Errorf("sub-agent provider %q cannot use model %q: check the provider's registered models and configuration", j.ProviderName, j.Model)
+	}
+	return router, model, effort, nil
 }
 
 type chatDelegationRouteKey struct{}
 type chatDelegationRoute struct {
 	router        *provider.Router
 	model, effort string
+}
+
+// Freeze the turn's selected provider before tools run. Rebuilding from all
+// enabled entries loses SetActiveProvider and can pair one vendor with another
+// vendor's model. Explicitly pin the private router, including opt-in providers.
+func newChatDelegationRoute(router *provider.Router, model, effort string) chatDelegationRoute {
+	var configs []provider.ProviderConfig
+	if selected, ok := router.SelectedConfig(); ok {
+		configs = append(configs, selected)
+	}
+	snapshot := provider.NewRouter(configs)
+	if len(configs) > 0 {
+		snapshot.SetActiveProvider(configs[0].Name)
+	}
+	return chatDelegationRoute{router: snapshot, model: model, effort: effort}
 }
 
 // Skill registrars namespace tool names. Select by the registered owner rather

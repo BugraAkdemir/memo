@@ -65,7 +65,7 @@
 
 ---
 
-# Son oturum — 2026-10-23 — alt ajan sağlayıcı yönlendirmesi
-- Kök neden: ActiveProviders seçili sağlayıcıyı filtrelemiyor; ana tur snapshot’ı seçimi kaybediyor, spawn ilk sağlayıcıyı alıyordu. Kullanıcıdaki iki iş OpenCode Zen/gemini-3.8-flash-high olarak kayıtlı; ana sohbet Subscriptions. Models doğrulaması çocuk router’ını boş bırakıyordu.
-- SelectedConfig gerçek yönlendirmeyi izler; tur snapshot’ı tek sağlayıcıya sabitlenir. Log/hata sağlayıcı ve modeli gösterir. Eski iki failed iş taşınmadı; yeniden oluşturulmalı. Canlı Gemini denenmedi; aracı logu high isteğine flash-n sunulduğunu bildiriyor.
-- RED: araç/doğrudan spawn yanlış sağlayıcı. GREEN: yönlendirme regresyonları ve tam E2E/provider race PASS. Go 1.26.10 build/vet PASS; tam race bilinen update ErrChecksum + ngrok ortam testinde FAIL. Flutter 822 PASS, analiz 13 eski info; diff/L10n temiz. Yerel commit, push yok.
+# Son oturum — 2026-10-23 — alt ajan geçmişi
+- Şeritte yalnız running/queued ajanlar ve Geçmiş ajanlar düğmesi var. Biten/hatalı/iptal/kapatılanlar sohbet kapsamındaki geçmiş panelinde; tıklayınca görev/çıktı/araçlar, geri tuşuyla liste. Durum geçişi kartı şeritten kaldırır; EN/TR anahtarlar bağlı.
+- CloseJob artık görev/çıktı/mesaj/olay/hata verisini yerel geçmişte korur; system prompt/skills silinir. Merge koruması değişmedi. Önceden silinmiş ayrıntılar kurtarılamaz, arayüz bunu belirtir. RAG eklenmedi.
+- RED: biten kart şeritte, kapanan çıktı kayıp. GREEN: 11 odaklı Flutter; tam Flutter 826 PASS; analiz 13 eski info, yeni warning/error yok. Go 1.26.10 build/vet ve subagents/app/E2E race PASS; tam race yalnız gerçek ngrok ortam testi FAIL. L10n/diff temiz. Yerel commit; push ve canlı pencere doğrulaması yok.

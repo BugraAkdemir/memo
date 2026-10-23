@@ -35,6 +35,8 @@ class SubagentTray extends ConsumerWidget {
       );
     }
     final jobs = state.valueOrNull ?? const [];
+    final active = jobs.where((job) => job.active);
+    final pastCount = jobs.length - active.length;
     if (jobs.isEmpty) return const SizedBox.shrink();
     return ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 104),
@@ -44,7 +46,7 @@ class SubagentTray extends ConsumerWidget {
           spacing: 8,
           runSpacing: 4,
           children: [
-            for (final job in jobs)
+            for (final job in active)
               ActionChip(
                 key: ValueKey('subagent-${job.id}'),
                 avatar: Icon(
@@ -55,12 +57,130 @@ class SubagentTray extends ConsumerWidget {
                   '${job.title.isEmpty ? L10n.t('subagent_title') : job.title} · ${subagentStatusLabel(job.status)}',
                   overflow: TextOverflow.ellipsis,
                 ),
-                onPressed: () =>
-                    ref.read(selectedSubagentProvider(chatId).notifier).state =
-                        job.id,
+                onPressed: () {
+                  ref.read(subagentHistoryOpenProvider(chatId).notifier).state =
+                      false;
+                  ref.read(selectedSubagentProvider(chatId).notifier).state =
+                      job.id;
+                },
               ),
+            ActionChip(
+              key: const ValueKey('subagent-history'),
+              avatar: const Icon(Icons.history, size: 18),
+              label: Text(
+                L10n.t('subagent_history_count', {'n': '$pastCount'}),
+              ),
+              onPressed: () {
+                ref.read(selectedSubagentProvider(chatId).notifier).state =
+                    null;
+                ref.read(subagentHistoryOpenProvider(chatId).notifier).state =
+                    true;
+              },
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Shared by desktop and narrow layouts so history opens in the same place as
+/// a running child's transcript, with back navigation to its history list.
+Widget? subagentDetailsPane(WidgetRef ref, String chatId) {
+  final selected = ref.watch(selectedSubagentProvider(chatId));
+  final historyOpen = ref.watch(subagentHistoryOpenProvider(chatId));
+  if (selected != null) {
+    return SubagentPane(
+      key: ValueKey('$chatId/$selected'),
+      chatId: chatId,
+      jobId: selected,
+      onClose: () =>
+          ref.read(selectedSubagentProvider(chatId).notifier).state = null,
+    );
+  }
+  if (!historyOpen) return null;
+  return SubagentHistoryPane(
+    key: ValueKey('history-$chatId'),
+    chatId: chatId,
+    onClose: () =>
+        ref.read(subagentHistoryOpenProvider(chatId).notifier).state = false,
+  );
+}
+
+class SubagentHistoryPane extends ConsumerWidget {
+  final String chatId;
+  final VoidCallback onClose;
+  const SubagentHistoryPane({
+    super.key,
+    required this.chatId,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(subagentsProvider(chatId));
+    final past = (state.valueOrNull ?? const [])
+        .where((job) => !job.active)
+        .toList()
+        .reversed
+        .toList();
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      child: Column(
+        children: [
+          ListTile(
+            leading: IconButton(
+              tooltip: L10n.t('close'),
+              onPressed: onClose,
+              icon: const Icon(Icons.arrow_back),
+            ),
+            title: Text(L10n.t('subagent_history')),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: state.hasError
+                ? Center(
+                    child: TextButton(
+                      onPressed: () =>
+                          ref.invalidate(subagentsProvider(chatId)),
+                      child: Text(L10n.t('subagent_load_error')),
+                    ),
+                  )
+                : state.isLoading && !state.hasValue
+                ? Center(child: Text(L10n.t('subagent_loading')))
+                : past.isEmpty
+                ? Center(child: Text(L10n.t('subagent_history_empty')))
+                : ListView.separated(
+                    padding: const EdgeInsets.all(8),
+                    itemCount: past.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final job = past[index];
+                      return ListTile(
+                        key: ValueKey('subagent-history-${job.id}'),
+                        leading: Icon(
+                          job.error.isEmpty
+                              ? Icons.task_alt
+                              : Icons.error_outline,
+                        ),
+                        title: Text(
+                          job.title.isEmpty
+                              ? L10n.t('subagent_title')
+                              : job.title,
+                        ),
+                        subtitle: Text(subagentStatusLabel(job.status)),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () =>
+                            ref
+                                .read(selectedSubagentProvider(chatId).notifier)
+                                .state = job
+                                .id,
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -158,6 +278,16 @@ class _SubagentPaneState extends ConsumerState<SubagentPane> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (job.closed &&
+                        job.prompt.isEmpty &&
+                        job.output.isEmpty &&
+                        job.error.isEmpty &&
+                        job.history.isEmpty &&
+                        job.events.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(L10n.t('subagent_history_unavailable')),
+                      ),
                     Text(
                       L10n.t('subagent_prompt'),
                       style: Theme.of(context).textTheme.titleSmall,
@@ -210,7 +340,7 @@ class _SubagentPaneState extends ConsumerState<SubagentPane> {
             ),
             if (_error != null)
               Padding(padding: const EdgeInsets.all(8), child: Text(_error!)),
-            if (job.resultDelivery == 'interrupted')
+            if (!job.closed && job.resultDelivery == 'interrupted')
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(

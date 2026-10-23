@@ -580,8 +580,8 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	}
 }
 
-// CloseJob removes transient task data after its result has been accepted. An
-// isolated task must first be merged; unmerged work is never silently discarded.
+// CloseJob closes a task while keeping its transcript in chat-scoped history.
+// Isolated workspaces must first be merged; unmerged work is never discarded.
 func (m *Manager) CloseJob(chat, id string) error {
 	m.gitMu.Lock()
 	defer m.gitMu.Unlock()
@@ -604,13 +604,9 @@ func (m *Manager) CloseJob(chat, id string) error {
 	}
 	old := clone(*j)
 	j.State = Closed
-	j.Messages = nil
-	j.Events = nil
-	j.Result = ""
-	j.Prompt = ""
 	j.SystemPrompt = ""
 	j.Skills = nil
-	j.Error = ""
+	j.UpdatedAt = time.Now().UTC()
 	if err = m.saveLocked(); err != nil {
 		*j = old
 	}

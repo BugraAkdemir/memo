@@ -57,10 +57,17 @@ tail, but a finalized result remains stored. Running children recover as
 interrupted and require an explicit follow-up; queued children can start normally.
 Ordinary pending HTTP sends remain tied to their client connection.
 
-Accepting a child with `close_agent` clears its transient prompt, output, system
-prompt, messages and events. A small closed status record remains for the chat
-card. Unacknowledged completion records are retained independently. Failed or
-unmerged isolated work is not deleted automatically.
+The chat tray shows only running and queued children. **Agent history** opens a
+chat-scoped panel for completed, failed, interrupted, cancelled and closed tasks;
+selecting a task opens its assigned prompt, output and tool events. Back returns
+to the history list. The history selection never carries into another chat.
+
+Accepting a child with `close_agent` closes it against further instructions while
+retaining its prompt, output, messages and events in this local history. The
+internal system prompt and skill list are cleared. Older records already cleared
+by a previous version cannot recover their details. Unacknowledged completion
+records are retained independently. Failed or unmerged isolated work is not
+deleted automatically, and the existing merge-before-close guard still applies.
 
 ## Coding isolation and integration
 

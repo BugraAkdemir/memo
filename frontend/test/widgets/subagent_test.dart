@@ -195,22 +195,8 @@ void main() {
             home: Scaffold(
               body: Consumer(
                 builder: (context, ref, _) {
-                  final selected = ref.watch(selectedSubagentProvider('room'));
-                  return selected == null
-                      ? const SubagentTray(chatId: 'room')
-                      : SubagentPane(
-                          chatId: 'room',
-                          jobId: selected,
-                          onClose: () =>
-                              ref
-                                      .read(
-                                        selectedSubagentProvider(
-                                          'room',
-                                        ).notifier,
-                                      )
-                                      .state =
-                                  null,
-                        );
+                  return subagentDetailsPane(ref, 'room') ??
+                      const SubagentTray(chatId: 'room');
                 },
               ),
             ),
@@ -218,7 +204,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('subagent-one')));
+      await tester.tap(find.byKey(const ValueKey('subagent-history')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('subagent-history-one')));
       await tester.pumpAndSettle();
       expect(find.text('Add a search box'), findsOneWidget);
       expect(find.text('Search implemented'), findsOneWidget);
@@ -296,15 +284,24 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MaterialApp(
-          home: Scaffold(body: SubagentTray(chatId: 'room')),
+        child: MaterialApp(
+          home: Scaffold(
+            body: Consumer(
+              builder: (context, ref, _) =>
+                  subagentDetailsPane(ref, 'room') ??
+                  const SubagentTray(chatId: 'room'),
+            ),
+          ),
         ),
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('subagent-one')));
+    await tester.tap(find.byKey(const ValueKey('subagent-history')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('subagent-history-one')));
     expect(container.read(selectedSubagentProvider('room')), 'one');
     expect(container.read(selectedSubagentProvider('other')), isNull);
+    expect(container.read(subagentHistoryOpenProvider('other')), isFalse);
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,

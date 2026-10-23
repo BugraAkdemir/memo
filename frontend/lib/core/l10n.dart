@@ -50,6 +50,10 @@ class L10n {
   // ─── Turkish ──────────────────────────────────────────────────
 
   static const _tr = <String, String>{
+    'subagent_history': 'Geçmiş ajanlar',
+    'subagent_history_count': 'Geçmiş ajanlar (\${n})',
+    'subagent_history_empty': 'Henüz biten alt ajan yok.',
+    'subagent_history_unavailable': 'Bu eski kaydın ayrıntıları saklanmamış.',
     'chat_jump_to_latest': 'Son mesaja git',
     'subagent_title': 'Alt ajan',
     'subagent_delivery_interrupted': 'Alt ajanın sonucu kaydedildi ancak ana ajanın değerlendirmesi yarıda kaldı. Alt ajanı yeniden çalıştırmadan devam edebilirsiniz.',
@@ -2638,6 +2642,10 @@ class L10n {
   };
 
   static const _en = <String, String>{
+    'subagent_history': 'Agent history',
+    'subagent_history_count': 'Agent history (\${n})',
+    'subagent_history_empty': 'No past sub-agents yet.',
+    'subagent_history_unavailable': 'Details were not retained for this older task.',
     'chat_jump_to_latest': 'Jump to latest message',
     'subagent_title': 'Sub-agent',
     'subagent_delivery_interrupted': 'The child result is saved, but the main agent review was interrupted. Resume the review without running the child again.',

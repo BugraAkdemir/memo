@@ -636,3 +636,44 @@ func TestFailedCreatePersistenceNeverRunsOrPublishesTask(t *testing.T) {
 		t.Fatal("nonexistent completion claimed")
 	}
 }
+
+func TestCloseJobPreservesReadableHistoryAfterRestart(t *testing.T) {
+	dir := t.TempDir()
+	runner := func(ctx context.Context, j Job, emit func(Event)) (RunResult, error) {
+		emit(Event{Type: "tool_result", ToolName: "read_file", Result: "tool evidence"})
+		return RunResult{Output: "finished output", Messages: append(j.Messages, provider.TextMessage("assistant", "finished output"))}, nil
+	}
+	m, err := Open(dir, 1, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Start(); err != nil {
+		t.Fatal(err)
+	}
+	j, err := m.Create(CreateRequest{ChatID: "chat", Prompt: "original task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, func() bool { got, _ := m.Get("chat", j.ID); return got.State == Awaiting })
+	if err = m.CloseJob("chat", j.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(dir, 1, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Shutdown(context.Background())
+	got, err := reopened.Get("chat", j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != Closed || got.Prompt != "original task" || got.Result != "finished output" || len(got.Messages) != 2 || len(got.Events) == 0 {
+		t.Fatalf("closed history was lost: %+v", got)
+	}
+	if _, err = reopened.Followup("chat", j.ID, "restart"); err == nil {
+		t.Fatal("closed history became runnable")
+	}
+}

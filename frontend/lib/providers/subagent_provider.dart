@@ -10,6 +10,10 @@ import 'gate_guard.dart';
 final selectedSubagentProvider = StateProvider.autoDispose
     .family<String?, String>((ref, chatId) => null);
 
+/// The history panel is scoped to the same chat as the selected transcript.
+final subagentHistoryOpenProvider = StateProvider.autoDispose
+    .family<bool, String>((ref, chatId) => false);
+
 /// Sequential await + cancellable pause: polls never overlap, and an abandoned
 /// conversation cannot publish a late response into the newly selected chat.
 final subagentsProvider = StreamProvider.autoDispose

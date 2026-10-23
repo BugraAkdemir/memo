@@ -23,7 +23,6 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/agent/browser_pane.dart';
 import '../widgets/agent/subagent_pane.dart';
-import '../providers/subagent_provider.dart';
 import '../widgets/new_chat_landing.dart';
 import '../providers/new_chat_provider.dart';
 import '../widgets/agent/code_mode_toggle.dart';
@@ -58,11 +57,7 @@ class ChatScreen extends ConsumerWidget {
         final narrow = constraints.maxWidth < MemoTheme.mobileNavBreakpoint;
         final isIncognito = ref.watch(incognitoProvider);
         final chatId = ref.watch(activeChatIdProvider).valueOrNull ?? '';
-        final childId = ref.watch(selectedSubagentProvider(chatId));
-        final childPane = childId == null ? null : SubagentPane(
-          key: ValueKey('$chatId/$childId'), chatId: chatId, jobId: childId,
-          onClose: () => ref.read(selectedSubagentProvider(chatId).notifier).state = null,
-        );
+        final childPane = subagentDetailsPane(ref, chatId);
 
         final content = Container(
           // Transparent in Glass Light so the soft gradient shows behind the

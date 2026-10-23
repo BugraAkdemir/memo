@@ -188,8 +188,8 @@ func TestMergedWorkspaceCleanupCanBeRetried(t *testing.T) {
 		t.Fatal(err)
 	}
 	jj, _ = m.Get("chat", j.ID)
-	if jj.State != Closed || len(jj.Messages) > 0 || len(jj.Events) > 0 || jj.Prompt != "" {
-		t.Fatal("transient data retained", jj)
+	if jj.State != Closed || len(jj.Messages) == 0 || jj.Prompt != "task" {
+		t.Fatal("closed task history lost", jj)
 	}
 }
 func TestMergeRefusesActiveSharedWriter(t *testing.T) {

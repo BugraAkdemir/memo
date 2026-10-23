@@ -35,33 +35,39 @@ func (a *App) SendMessageWithImageStreamTo(ctx context.Context, chatID, userMsg 
 	}
 	b64 := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(imgData)
 
-	lockChatID := a.resolveChatID(chatID)
-	release, ok := a.lockChatStream(lockChatID)
-	if !ok {
-		return busyStreamChan(a.busyNotice())
-	}
-
-	innerCh, ok := a.runLockedAutoRouteSetup(ctx, "SendMessageWithImageStreamTo/setup", release, func() <-chan api.StreamChunk {
-		var routeErr error
-		ctx, routeErr = a.prepareAutoRoute(ctx, chatID, userMsg, true, forceAgent)
-		if routeErr != nil {
-			return a.subscriptionTextRouteError(ctx, routeErr, userMsg, chatID)
+	start := func(ctx context.Context) <-chan api.StreamChunk {
+		release, ok := a.lockAttachmentChatStream(ctx, chatID)
+		if !ok {
+			return busyStreamChan(a.busyNotice())
 		}
-		msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64}, nil)
-		stored := persistChatImage("inbound"+imageExtension(mime), imgData)
-		sm.AddMessageToSession(chatID, "user", userMsg, stored, "")
-		return a.routeStream(ctx, msgs, userMsg, stored, "", chatID, forceAgent)
-	})
-	if !ok {
-		return busyStreamChan(a.busyNotice())
-	}
 
-	out := make(chan api.StreamChunk, 128)
-	go func() {
-		defer close(out)
-		defer release()
-		defer recoverPanic("forwardStream")
-		forwardStreamReleasing(ctx, innerCh, out, release)
-	}()
-	return out
+		innerCh, ok := a.runLockedAutoRouteSetup(ctx, "SendMessageWithImageStreamTo/setup", release, func() <-chan api.StreamChunk {
+			var routeErr error
+			ctx, routeErr = a.prepareAutoRoute(ctx, chatID, userMsg, true, forceAgent)
+			if routeErr != nil {
+				return a.subscriptionTextRouteError(ctx, routeErr, userMsg, chatID)
+			}
+			msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64}, nil)
+			stored := persistChatImage("inbound"+imageExtension(mime), imgData)
+			sm.AddMessageToSession(chatID, "user", userMsg, stored, "")
+			return a.routeStream(ctx, msgs, userMsg, stored, "", chatID, forceAgent)
+		})
+		if !ok {
+			return busyStreamChan(a.busyNotice())
+		}
+
+		out := make(chan api.StreamChunk, 128)
+		go func() {
+			defer close(out)
+			defer release()
+			defer recoverPanic("forwardStream")
+			forwardStreamReleasing(ctx, innerCh, out, release)
+		}()
+		return out
+	}
+	if a.chatSubAgents != nil {
+		imgData = append([]byte(nil), imgData...)
+		return a.queueChatStream(ctx, chatID, start)
+	}
+	return start(ctx)
 }

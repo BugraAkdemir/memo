@@ -86,7 +86,9 @@ type Pipeline struct {
 	// which ones the dispatch loop below will actually execute. nil/empty
 	// means no skill tools are available this turn (built-ins are never
 	// gated by this).
-	activeSkills map[string]bool
+	activeSkills         map[string]bool
+	chatSubAgentsEnabled bool
+	delegatedPermissions bool
 }
 
 // NewPipeline creates a new agent execution pipeline.
@@ -106,6 +108,17 @@ func NewPipeline(registry *ToolRegistry, permissions *PermissionManager, sandbox
 // Mode turn (codeSubMode != "") does not need.
 func (p *Pipeline) turnTools() []provider.ToolDefinition {
 	defs := p.registry.ToOpenAITools(p.activeSkills)
+	if !p.chatSubAgentsEnabled {
+		kept := defs[:0]
+		for _, d := range defs {
+			switch d.Function.Name {
+			case "spawn_agent", "send_agent", "list_agents", "close_agent", "cancel_agent", "merge_agent":
+				continue
+			}
+			kept = append(kept, d)
+		}
+		defs = kept
+	}
 	if p.codeSubMode != "" {
 		defs = ForCodeMode(defs)
 	}
@@ -535,6 +548,11 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 					logx.Printf("AGENT: [CODE:%s] auto-approving %q (code-mode edits)", p.codeSubMode, toolName)
 					permRes.NeedPrompt = false
 					permRes.Allowed = true
+				}
+
+				if p.delegatedPermissions && permRes.NeedPrompt {
+					permRes.NeedPrompt = false
+					permRes.Allowed = codeModeToolAutoApproveSet("build")[toolName] || (toolDef.SkillOwner != "" && p.activeSkills[toolDef.SkillOwner])
 				}
 
 				if permRes.NeedPrompt {

@@ -46,6 +46,7 @@ import (
 	"memo/internal/skills"
 	"memo/internal/stats"
 	"memo/internal/stt"
+	"memo/internal/subagents"
 	"memo/internal/swarm"
 	"memo/internal/taskloop"
 	"memo/internal/telegram"
@@ -297,6 +298,13 @@ type App struct {
 	// (see internal/browserengine's doc comment). Wired into
 	// internal/websearch.Browser and tools.InteractiveBrowser in Startup().
 	browserMgr *browserengine.Manager
+
+	chatSubAgents      *subagents.Manager
+	subAgentTurns      chatTurnQueue
+	subAgentWrites     projectMutationQueue
+	subAgentDeliveryMu sync.Mutex
+	subAgentDelivering map[uint64]bool
+	subAgentDispatchWG sync.WaitGroup
 
 	taskloopStore  *taskloop.Store
 	taskloopEngine *taskloop.Engine
@@ -895,6 +903,7 @@ func (a *App) Startup(ctx context.Context) {
 	}
 	logx.Info("Skill manager initialized")
 
+	a.initChatSubAgents()
 	logx.Info("Memo ready")
 }
 
@@ -984,11 +993,18 @@ func (a *App) shutdownSync(ctx context.Context) {
 		a.taskloopEngine.Shutdown(ctx)
 	}
 
+	if a.chatSubAgents != nil {
+		if err := a.chatSubAgents.Shutdown(ctx); err != nil {
+			logx.Printf("subagent shutdown: %v", err)
+		}
+	}
+
 	// Cancel lifecycle context to stop all goroutines (proactive engine, calendar
 	// reminders, WhatsApp intent loop, observer analysis, etc.)
 	if a.lifecycleCancel != nil {
 		a.lifecycleCancel()
 	}
+	a.subAgentDispatchWG.Wait()
 	// A chat-title generation may still be mid-flight (an LLM call, then a
 	// write to the session store). It sees the cancelled lifecycle context and
 	// stops quickly; wait for it so it cannot write into a store that the rest

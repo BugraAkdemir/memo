@@ -118,6 +118,7 @@ internal/agent/data/agent-backups/history.json
 internal/geminisub/data/
 internal/claudesub/data/
 data/tasklists/
+data/subagents/
 .gitignore
 .freebuff/
 

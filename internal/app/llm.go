@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"memo/internal/agent"
+	"memo/internal/agent/tools"
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/models"
@@ -400,6 +401,10 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		// must not be able to launch nested task loops.
 		if taskRunConfigFromCtx(ctx) == nil {
 			ctx = withCurrentChatID(ctx, sessionID)
+			if a.chatSubAgents != nil && sessionID != "" {
+				ctx = tools.WithChatSubAgentService(ctx, chatSubAgentAdapter{a: a, chatID: sessionID})
+				ctx = context.WithValue(ctx, chatDelegationRouteKey{}, chatDelegationRoute{router: provider.NewRouter(agentRouter.ActiveProviders()), model: modelName, effort: effortLevel})
+			}
 		}
 
 		sm := a.getSessionManager()
@@ -413,6 +418,10 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		// drainAgentStream once the pipeline reports usage on its terminal
 		// chunk. It stays as the fallback for providers that report no usage.
 		usageMetaVal := usageMeta{Provider: a.turnProviderLabel(ctx), Model: modelName, Category: categoryAgent, PromptTokens: estimateMessagesTokens(messages)}
+
+		if a.chatSubAgents != nil {
+			ctx = agent.WithMutationGuard(ctx, a.lockSubAgentProject)
+		}
 
 		start := time.Now()
 		agentEvents := &agentEventLog{}
@@ -1930,6 +1939,14 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 	}
 	// The skills this turn called go on the saved message too.
 	agentEvents = withSkillEvents(ctx, agentEvents)
+	if id, ok := ctx.Value(subAgentCompletionKey{}).(uint64); ok && ctx.Err() == nil {
+		var events []interface{}
+		if len(agentEvents) > 0 {
+			events = append(events, agentEvents[0]...)
+		}
+		events = append(events, map[string]interface{}{"type": "subagent_completion", "completion_id": id})
+		agentEvents = [][]interface{}{events}
+	}
 
 	a.emitEvent("chat:done", api.StreamChunk{
 		Done: true,

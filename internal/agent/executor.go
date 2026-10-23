@@ -435,6 +435,11 @@ func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Rou
 	pipeline.noWebTools = co.NoWebTools
 	pipeline.effortLevel = effortLevel
 	pipeline.activeSkills = e.resolveActiveSkillSet(sessionID)
+	if explicit, ok := ctx.Value(subAgentSkillsKey{}).(map[string]bool); ok {
+		pipeline.activeSkills = explicit
+	}
+	pipeline.chatSubAgentsEnabled = tools.HasChatSubAgentService(ctx)
+	pipeline.delegatedPermissions, _ = ctx.Value(delegatedPermissionsKey{}).(bool)
 
 	// A permission request must be registered BEFORE the event that asks for it
 	// reaches the client: a fast client (a script, the web UI under load, a CI

@@ -72,6 +72,7 @@ func NewRegistry() *ToolRegistry {
 		tools: make(map[string]ToolDef),
 	}
 	r.registerBuiltins()
+	r.registerChatSubAgentTools()
 	return r
 }
 func (r *ToolRegistry) registerBuiltins() {
@@ -721,6 +722,13 @@ func (r *ToolRegistry) Execute(ctx context.Context, name string, args json.RawMe
 	tool, ok := r.Get(name)
 	if !ok {
 		return "", fmt.Errorf("tool not found: %s", name)
+	}
+	if guard, ok := ctx.Value(mutationGuardKey{}).(MutationGuard); ok && mutationTool(tool) {
+		release, err := guard(ctx, basePath)
+		if err != nil {
+			return "", err
+		}
+		defer release()
 	}
 	return tool.ExecuteFn(ctx, args, basePath, createBackup)
 }

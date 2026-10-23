@@ -338,6 +338,9 @@ type WebSearchConfig struct {
 // routed as a plain toolless reply ("agent mode is off, turn it on...").
 // Mirrors WebSearchConfig.Enabled, which is persisted for the same reason.
 type AgentModeConfig struct {
+	// SubAgentMaxParallel limits normal-chat asynchronous children, independent of task-loop steps.
+	SubAgentMaxParallel int `yaml:"subagent_max_parallel" json:"subagent_max_parallel"`
+
 	Enabled bool `yaml:"enabled" json:"enabled"`
 
 	// WorkingSetEnabled keeps a per-chat digest of the files and commands an
@@ -1060,6 +1063,7 @@ func Default() *AppConfig {
 			MaxResults: 5,
 		},
 		AgentMode: AgentModeConfig{
+			SubAgentMaxParallel: 3,
 			// Off by default — a fresh install shouldn't start with
 			// file/command tool access live. Existing installs that had
 			// agent mode on when they last shut down now keep it on, since

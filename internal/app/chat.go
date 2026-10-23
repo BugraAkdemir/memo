@@ -503,6 +503,9 @@ func (a *App) SendMessageStreamToAsAgent(ctx context.Context, chatID, userMsg st
 // call regardless of the global agent-mode toggle — see SendMessageStreamTo's
 // doc comment for why.
 func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg string, forceAgent bool) <-chan api.StreamChunk {
+	if a.chatSubAgents != nil && ctx.Value(chatTurnQueuedKey{}) != true {
+		return a.queueChatAgentTurn(ctx, chatID, userMsg, forceAgent)
+	}
 	// Serialise per chat, not globally (v4.6.0 Faz A, chat_locks.go): a second
 	// stream in the *same* chat is rejected so two turns can't interleave
 	// user/user/assistant/assistant into one history, but a stream in a
@@ -692,40 +695,49 @@ func (a *App) SendMessageWithImageDataStream(ctx context.Context, userMsg string
 		chatID = sm.GetActiveID()
 	}
 
-	release, ok := a.lockChatStream(chatID)
-	if !ok {
-		return busyStreamChan(a.busyNotice())
-	}
-
-	innerCh, ok := a.runLockedAutoRouteSetup(ctx, "SendMessageWithImageStream/setup", release, func() <-chan api.StreamChunk {
-		// buildMessagesForSession (not a hand-rolled system+history+user list) so
-		// image messages get the same mood directive, web search context, and
-		// token-aware history truncation as plain text ones — the manual
-		// construction this replaced skipped all three (BUG-QL5).
-		var routeErr error
-		ctx, routeErr = a.prepareAutoRoute(ctx, chatID, userMsg, true, false)
-		if routeErr != nil {
-			return a.subscriptionTextRouteError(ctx, routeErr, userMsg, chatID)
+	start := func(ctx context.Context) <-chan api.StreamChunk {
+		release, ok := a.lockAttachmentChatStream(ctx, chatID)
+		if !ok {
+			return busyStreamChan(a.busyNotice())
 		}
-		msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64}, nil)
-		stored := persistChatImage(imagePath, imgData)
-		if sm != nil {
-			sm.AddMessageToSession(chatID, "user", userMsg, stored, "")
-		}
-		return a.routeStream(ctx, msgs, userMsg, stored, "", chatID, false)
-	})
-	if !ok {
-		return busyStreamChan(a.busyNotice())
-	}
 
-	out := make(chan api.StreamChunk, 128)
-	go func() {
-		defer close(out)
-		defer release()
-		defer recoverPanic("forwardStream")
-		forwardStreamReleasing(ctx, innerCh, out, release)
-	}()
-	return out
+		innerCh, ok := a.runLockedAutoRouteSetup(ctx, "SendMessageWithImageStream/setup", release, func() <-chan api.StreamChunk {
+			// buildMessagesForSession (not a hand-rolled system+history+user list) so
+			// image messages get the same mood directive, web search context, and
+			// token-aware history truncation as plain text ones — the manual
+			// construction this replaced skipped all three (BUG-QL5).
+			var routeErr error
+			ctx, routeErr = a.prepareAutoRoute(ctx, chatID, userMsg, true, false)
+			if routeErr != nil {
+				return a.subscriptionTextRouteError(ctx, routeErr, userMsg, chatID)
+			}
+			msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64}, nil)
+			stored := persistChatImage(imagePath, imgData)
+			if sm != nil {
+				sm.AddMessageToSession(chatID, "user", userMsg, stored, "")
+			}
+			return a.routeStream(ctx, msgs, userMsg, stored, "", chatID, false)
+		})
+		if !ok {
+			return busyStreamChan(a.busyNotice())
+		}
+
+		out := make(chan api.StreamChunk, 128)
+		go func() {
+			defer close(out)
+			defer release()
+			defer recoverPanic("forwardStream")
+			forwardStreamReleasing(ctx, innerCh, out, release)
+		}()
+		return out
+	}
+	if a.chatSubAgents != nil {
+		// The caller may release/reuse its upload buffer once this returns.
+		// Preserve the exact picture encoded above until the queued turn persists it.
+		imgData = append([]byte(nil), imgData...)
+		return a.queueChatStream(ctx, chatID, start)
+	}
+	return start(ctx)
 }
 
 // SendMessageWithFileStream attaches a file's content to the message.
@@ -774,35 +786,41 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		chatID = sm.GetActiveID()
 	}
 
-	release, ok := a.lockChatStream(chatID)
-	if !ok {
-		return busyStreamChan(a.busyNotice())
-	}
-
-	innerCh, ok := a.runLockedAutoRouteSetup(ctx, "SendMessageWithFileStream/setup", release, func() <-chan api.StreamChunk {
-		var routeErr error
-		ctx, routeErr = a.prepareAutoRoute(ctx, chatID, combined, false, false)
-		if routeErr != nil {
-			return a.subscriptionTextRouteError(ctx, routeErr, combined, chatID)
+	start := func(ctx context.Context) <-chan api.StreamChunk {
+		release, ok := a.lockAttachmentChatStream(ctx, chatID)
+		if !ok {
+			return busyStreamChan(a.busyNotice())
 		}
-		messages := a.buildMessagesForSession(ctx, chatID, combined, nil, nil)
-		if sm != nil {
-			sm.AddMessageToSession(chatID, "user", userMsg, "", filePath)
-		}
-		return a.routeStream(ctx, messages, userMsg, "", filePath, chatID, false)
-	})
-	if !ok {
-		return busyStreamChan(a.busyNotice())
-	}
 
-	out := make(chan api.StreamChunk, 128)
-	go func() {
-		defer close(out)
-		defer release()
-		defer recoverPanic("forwardStream")
-		forwardStreamReleasing(ctx, innerCh, out, release)
-	}()
-	return out
+		innerCh, ok := a.runLockedAutoRouteSetup(ctx, "SendMessageWithFileStream/setup", release, func() <-chan api.StreamChunk {
+			var routeErr error
+			ctx, routeErr = a.prepareAutoRoute(ctx, chatID, combined, false, false)
+			if routeErr != nil {
+				return a.subscriptionTextRouteError(ctx, routeErr, combined, chatID)
+			}
+			messages := a.buildMessagesForSession(ctx, chatID, combined, nil, nil)
+			if sm != nil {
+				sm.AddMessageToSession(chatID, "user", userMsg, "", filePath)
+			}
+			return a.routeStream(ctx, messages, userMsg, "", filePath, chatID, false)
+		})
+		if !ok {
+			return busyStreamChan(a.busyNotice())
+		}
+
+		out := make(chan api.StreamChunk, 128)
+		go func() {
+			defer close(out)
+			defer release()
+			defer recoverPanic("forwardStream")
+			forwardStreamReleasing(ctx, innerCh, out, release)
+		}()
+		return out
+	}
+	if a.chatSubAgents != nil {
+		return a.queueChatStream(ctx, chatID, start)
+	}
+	return start(ctx)
 }
 
 func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 string) <-chan api.StreamChunk {
@@ -1072,7 +1090,7 @@ func agentPromptTasks() string {
 // buildAgentSystemPrompt returns agent-specific instructions that guide the
 // model to behave as an efficient coding agent with proper tool usage.
 func buildAgentSystemPrompt() string {
-	return agentPromptHead + agentPromptWork + agentPromptEfficiency + agentPromptNarration + agentPromptToolFormat + agentPromptMemoryCalendar + agentPromptTasks()
+	return agentPromptHead + agentPromptDelegation + agentPromptWork + agentPromptEfficiency + agentPromptNarration + agentPromptToolFormat + agentPromptMemoryCalendar + agentPromptTasks()
 }
 
 // codeAgentPromptWork replaces agentPromptWork in Code Mode: the same five
@@ -1095,5 +1113,13 @@ const codeAgentPromptWork = `### Çalışma Sırası
 // memory or calendar rules (Code Mode has neither the memory block nor the
 // calendar tool), code-specific work rules instead.
 func buildCodeAgentSystemPrompt() string {
-	return agentPromptHead + codeAgentPromptWork + agentPromptEfficiency + agentPromptNarration + agentPromptToolFormat + agentPromptTasks()
+	return agentPromptHead + agentPromptDelegation + codeAgentPromptWork + agentPromptEfficiency + agentPromptNarration + agentPromptToolFormat + agentPromptTasks()
 }
+
+// Normal chat delegation is asynchronous: yielding ends this model turn without
+// cancelling children. The mailbox starts a fresh serialized main turn later.
+const agentPromptDelegation = `### Asynchronous sub-agents
+When useful for the task, or when the user asks, use spawn_agent to delegate bounded work. Choose the number of children according to useful independent tasks; excess jobs queue automatically. Give each child a precise task, ownership and relevant context; they do not inherit your conversation, memory or persona. Pass explicit installed skill names when needed. For parallel coding use write:true, isolate:true; each writer gets a separate memo- branch/worktree. A single shared writer may use isolate:false; main project writes wait for that child, while conversation and inspection remain available. Do not edit the same work in main while a child owns it.
+spawn_agent and send_agent return immediately. You may keep working or simply tell the user what was delegated and yield. Do not keep calling list_agents to wait: completed child results automatically resume this chat through a durable FIFO mailbox after the current turn. The user may talk with you while children work; honor their latest instructions when results arrive. Reuse send_agent for corrections to the SAME task, create a new child for independent work. Inspect results, diffs and verification, then merge_agent (serialized into clean main) and close_agent. On merge failure preserve the branch and report the blocker; never force deletion or discard user changes. Closing a task accepts its work and releases its temporary transcript. Children that fail/interrupted are not success; do not silently retry cancelled work.
+
+`

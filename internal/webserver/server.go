@@ -383,6 +383,11 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/agent/auto-permission", s.requirePermission(s.handleAgentAutoPermission, hasAgentPerm))
 	route("/api/agent/undo", s.requirePermission(s.handleAgentUndo, hasAgentPerm))
 
+	// Normal-chat sub-agents use the same agent permission as their parent.
+	route("/api/subagents", s.requirePermission(s.handleChatSubAgents, hasAgentPerm))
+	route("/api/subagents/settings", s.requirePermission(s.handleChatSubAgentSettings, hasAgentPerm))
+	route("/api/subagents/", s.requirePermission(s.handleChatSubAgentByID, hasAgentPerm))
+
 	// Task lists
 	route("/api/tasklists", s.handleTaskLists)
 	route("/api/tasklists/", s.handleTaskListByID)

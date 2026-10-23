@@ -1,3 +1,11 @@
+# Son oturum — 2026-10-23 — push ve CI engelleri
+- `b6e7fa0f` main’e pushlandı. CI `40000816237`: Go/L10n/domain PASS; Flutter tam analizindeki 5 eski warning ve Go stdlib `GO-2026-6809` nedeniyle FAIL.
+- Go minimumu ve 7 workflow `1.26.10`; Flutter testlerindeki 4 kullanılmayan sınıf ve gereksiz importlar temizlendi. CI kontrolleri gevşetilmedi.
+- Yeni Go ile build/vet ve govulncheck PASS (etkilenen 0 açık); app/E2E race PASS. Tam yerel race yalnız ngrok ortam testi nedeniyle FAIL. Flutter tam analiz `--no-fatal-infos` PASS (13 eski info); değişen testler 14 PASS, tam koşu 814 PASS/1 wav stop timeout. Yerel hatalar yukarıda.
+- Düzeltme commit’i için push yetkisi var. Güncel CI: https://github.com/BugraAkdemir/memo/actions/workflows/ci.yml?query=branch%3Amain . Canlı sağlayıcı/native UX açık; tag/release yok.
+
+---
+
 # Son oturum — 2026-10-23 — inceleme düzeltmeleri
 - Erken model kaydı kilitlendi (`5aff49cf`), eski kodda RED/yeni kodda GREEN. Benchmark gerçek çocuk kod/test/commit ve main takip/merge/close araçlarını, FIFO/izolasyon/temizliği doğruluyor. Yazma aracı kaldırılınca eski test PASS, yeni FAIL. Kanıt: `docs/CHAT_SUBAGENTS.md`.
 - Go build/vet ve ilgili race PASS; tam race bağımsız Tailscale nedeniyle FAIL (aynı yükte eski 8/150, yeni 2/150). Flutter 815 PASS, analyze 3 eski info. Flutter değişmedi.

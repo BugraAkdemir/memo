@@ -42,24 +42,8 @@ class BackendUnreachableOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // First run belongs entirely to the setup wizard, which sits EARLIER in
-    // app_shell.dart's Stack and would therefore be painted over by this.
-    // On mobile that is fatal rather than cosmetic: there is no local
-    // backend to fall back to, so a fresh install genuinely has no
-    // reachable server, and the one screen that asks for an address would
-    // be buried under this overlay — which suggests a loopback address that
-    // cannot work on a phone. Correct on every platform, not just mobile:
-    // while the wizard is up, it owns the screen.
-    //
-    // Phones are the exception since the connect screen: the address is
-    // entered there, before this overlay can matter, and the wizard stays
-    // hidden until the server has answered. A server that stops answering
-    // right after the address was saved would otherwise leave the user on an
-    // empty screen with no retry and no way to fix the address.
-    if (!isMobilePlatform && !ref.watch(setupCompleteProvider)) {
-      return const SizedBox.shrink();
-    }
-
+    // A dead saved address must remain editable even before onboarding has
+    // completed. The mobile connect overlay still owns an unconfigured phone.
     final connected = ref.watch(connectionStatusProvider).valueOrNull;
     // null covers both "still loading the first check" and "stream errored"
     // (isAlive() itself never throws, but valueOrNull is null either way) —
@@ -74,7 +58,9 @@ class BackendUnreachableOverlay extends ConsumerWidget {
     // connectivity poll (BUG-ONB3: the RPi flashed this overlay for the
     // whole stale-false window right after a successful login).
     final auth = ref.watch(authGateProvider).valueOrNull;
-    if (auth == null || auth.state != AuthGateState.ok) return const SizedBox.shrink();
+    if (auth == null || auth.state != AuthGateState.ok) {
+      return const SizedBox.shrink();
+    }
 
     return Container(
       color: MemoTheme.of(context).bgApp.withValues(alpha: 0.95),
@@ -102,107 +88,124 @@ class BackendUnreachableView extends ConsumerWidget {
     final theme = MemoTheme.of(context);
 
     return Center(
-      child: Container(
-        width: 420,
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          color: theme.bgPanel,
-          borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
-          border: Border.all(color: theme.borderSoft),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: const BoxDecoration(
-                color: MemoTheme.accentPale,
-                shape: BoxShape.circle,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Container(
+          width: 420,
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: theme.bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
+            border: Border.all(color: theme.borderSoft),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
               ),
-              child: Icon(Icons.cloud_off_rounded, size: 30, color: MemoTheme.accent),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              L10n.t('backend_unreachable_title'),
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: theme.textMain,
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: const BoxDecoration(
+                  color: MemoTheme.accentPale,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.cloud_off_rounded,
+                  size: 30,
+                  color: MemoTheme.accent,
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              L10n.t('backend_unreachable_desc', {'url': baseUrl}),
-              textAlign: TextAlign.center,
-              style: TextStyle(color: theme.textDim, height: 1.5, fontSize: 13),
-            ),
-            const SizedBox(height: 28),
-            SizedBox(
-              width: double.infinity,
-              height: 44,
-              child: ElevatedButton(
-                onPressed: () {
-                  ref.invalidate(connectionStatusProvider);
-                  ref.invalidate(messagesProvider);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: MemoTheme.accent,
-                  foregroundColor: theme.textInverse,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+              const SizedBox(height: 20),
+              Text(
+                L10n.t('backend_unreachable_title'),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: theme.textMain,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                L10n.t('backend_unreachable_desc', {'url': baseUrl}),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: theme.textDim,
+                  height: 1.5,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: ElevatedButton(
+                  onPressed: () {
+                    ref.invalidate(connectionStatusProvider);
+                    ref.invalidate(messagesProvider);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MemoTheme.accent,
+                    foregroundColor: theme.textInverse,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                    ),
+                  ),
+                  child: Text(
+                    L10n.t('retry'),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
-                child: Text(L10n.t('retry'), style: const TextStyle(fontWeight: FontWeight.w600)),
               ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              height: 40,
-              child: OutlinedButton(
-                // Deliberately its own small dialog, not a hop into the full
-                // Settings dialog — a user stuck here can't do anything else
-                // in the app anyway, and shouldn't have to go find Remote
-                // Access among 20 settings tabs just to fix the one field
-                // that's actually blocking them right now.
-                onPressed: () => showDialog(
-                  context: context,
-                  builder: (context) => const ChangeServerDialog(),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: theme.textMain,
-                  side: BorderSide(color: theme.borderSoft),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 40,
+                child: OutlinedButton(
+                  // Deliberately its own small dialog, not a hop into the full
+                  // Settings dialog — a user stuck here can't do anything else
+                  // in the app anyway, and shouldn't have to go find Remote
+                  // Access among 20 settings tabs just to fix the one field
+                  // that's actually blocking them right now.
+                  onPressed: () => showDialog(
+                    context: context,
+                    builder: (context) => const ChangeServerDialog(),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: theme.textMain,
+                    side: BorderSide(color: theme.borderSoft),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                    ),
+                  ),
+                  child: Text(
+                    L10n.t('backend_unreachable_change_server'),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                 ),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: () => _confirmRestart(context),
                 child: Text(
-                  L10n.t('backend_unreachable_change_server'),
-                  style: const TextStyle(fontWeight: FontWeight.w500),
+                  L10n.t('backend_unreachable_restart'),
+                  style: TextStyle(
+                    color: theme.textDim,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: () => _confirmRestart(context),
-              child: Text(
-                L10n.t('backend_unreachable_restart'),
-                style: TextStyle(color: theme.textDim, fontWeight: FontWeight.w500),
-              ),
-            ),
-            // "Cannot reach the backend" is also what a client stuck on a
-            // credential the server no longer honours can look like, so the
-            // escape hatch belongs here too, not only on the auth gate.
-            const ClearSavedSignInButton(),
-          ],
+              // "Cannot reach the backend" is also what a client stuck on a
+              // credential the server no longer honours can look like, so the
+              // escape hatch belongs here too, not only on the auth gate.
+              const ClearSavedSignInButton(),
+            ],
+          ),
         ),
       ),
     );
@@ -254,8 +257,12 @@ class ChangeServerDialog extends ConsumerStatefulWidget {
 }
 
 class ChangeServerDialogState extends ConsumerState<ChangeServerDialog> {
-  late final _urlCtrl = TextEditingController(text: ref.read(backendUrlProvider));
-  late final _tokenCtrl = TextEditingController(text: ref.read(backendTokenProvider));
+  late final _urlCtrl = TextEditingController(
+    text: ref.read(backendUrlProvider),
+  );
+  late final _tokenCtrl = TextEditingController(
+    text: ref.read(backendTokenProvider),
+  );
 
   @override
   void dispose() {
@@ -265,23 +272,17 @@ class ChangeServerDialogState extends ConsumerState<ChangeServerDialog> {
   }
 
   Future<void> _apply({String? urlOverride, String? tokenOverride}) async {
-    await ref.read(backendUrlProvider.notifier).save(urlOverride ?? _urlCtrl.text);
-    await ref.read(backendTokenProvider.notifier).save(tokenOverride ?? _tokenCtrl.text);
-    ref.invalidate(apiClientProvider);
+    await ref
+        .read(backendUrlProvider.notifier)
+        .save(urlOverride ?? _urlCtrl.text);
+    await ref
+        .read(backendTokenProvider.notifier)
+        .save(tokenOverride ?? _tokenCtrl.text);
     if (!mounted) return;
     Navigator.of(context).pop();
-    if (isMobilePlatform) {
-      // A phone has no entry point that relaunches it after exit(0), so the
-      // restart countdown below would simply close the app. Rebuild the
-      // provider tree against the new address instead.
-      softRestartScope();
-      return;
-    }
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const RestartRequiredDialog(),
-    );
+    // Rebuild every provider, including streams that captured the old client.
+    // Quitting the desktop process would also make run_memo.sh stop its backend.
+    softRestartScope();
   }
 
   /// "Bu bilgisayarın backend'ine dön" — clears both fields back to Memo's
@@ -295,6 +296,7 @@ class ChangeServerDialogState extends ConsumerState<ChangeServerDialog> {
     final theme = MemoTheme.of(context);
     return AlertDialog(
       title: Text(widget.title ?? L10n.t('change_server_dialog_title')),
+      scrollable: true,
       content: SizedBox(
         width: 380,
         child: Column(
@@ -347,10 +349,7 @@ class ChangeServerDialogState extends ConsumerState<ChangeServerDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: Text(L10n.t('cancel')),
         ),
-        FilledButton(
-          onPressed: () => _apply(),
-          child: Text(L10n.t('apply')),
-        ),
+        FilledButton(onPressed: () => _apply(), child: Text(L10n.t('apply'))),
       ],
     );
   }
@@ -413,7 +412,10 @@ class RestartRequiredDialogState extends State<RestartRequiredDialog> {
           const SizedBox(height: 12),
           Text(
             L10n.t('restart_in_seconds', {'s': '$_remaining'}),
-            style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 12),
+            style: TextStyle(
+              color: MemoTheme.of(context).textDim,
+              fontSize: 12,
+            ),
           ),
         ],
       ),

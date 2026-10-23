@@ -1268,7 +1268,7 @@ class BackendUrlNotifier extends StateNotifier<String> {
   // eagerly and there's no UI screen reachable before that construction
   // runs.
   BackendUrlNotifier(this._prefs)
-      : super(normalizeBackendUrl(_prefs.getString('memo_api_base_url') ?? ''));
+      : super(configuredBackendUrl(_prefs.getString('memo_api_base_url') ?? ''));
 
   Future<void> save(String url) async {
     final trimmed = url.trim();
@@ -1279,14 +1279,16 @@ class BackendUrlNotifier extends StateNotifier<String> {
       // empty there (see defaultBackendUrl) — hardcoding loopback here
       // would hand a phone an address that can never answer.
       await _prefs.remove('memo_api_base_url');
-      state = normalizeBackendUrl('');
+      clearLaunchBackendUrlOverride();
+      state = configuredBackendUrl('');
       return;
     }
     // normalizeBackendUrl adds a scheme/port if missing (e.g. "127.0.0.1"
     // -> "http://127.0.0.1:8090") and strips a trailing slash.
     final normalized = normalizeBackendUrl(trimmed);
     await _prefs.setString('memo_api_base_url', normalized);
-    state = normalized;
+    clearLaunchBackendUrlOverride();
+    state = configuredBackendUrl(normalized);
   }
 }
 

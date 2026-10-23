@@ -65,8 +65,8 @@
 
 ---
 
-# Son oturum — 2026-10-23 — push ve CI engelleri
-- `b6e7fa0f` main’e pushlandı. CI `40000816237`: Go/L10n/domain PASS; Flutter tam analizindeki 5 eski warning ve Go stdlib `GO-2026-6809` nedeniyle FAIL.
-- Go minimumu ve 7 workflow `1.26.10`; Flutter testlerindeki 4 kullanılmayan sınıf ve gereksiz importlar temizlendi. CI kontrolleri gevşetilmedi.
-- Yeni Go ile build/vet ve govulncheck PASS (etkilenen 0 açık); app/E2E race PASS. Tam yerel race yalnız ngrok ortam testi nedeniyle FAIL. Flutter tam analiz `--no-fatal-infos` PASS (13 eski info); değişen testler 14 PASS, tam koşu 814 PASS/1 wav stop timeout. Yerel hatalar yukarıda.
-- Düzeltme commit’i için push yetkisi var. Güncel CI: https://github.com/BugraAkdemir/memo/actions/workflows/ci.yml?query=branch%3Amain . Canlı sağlayıcı/native UX açık; tag/release yok.
+# Son oturum — 2026-10-23 — yerel başlatma ve çevrimdışı sunucu değiştirme
+- Kök neden: run_memo.sh yerel backend açarken Flutter kayıtlı Tailscale adresine gidiyordu. Betik artık MEMO_BACKEND_URL ile ilk bağlantıyı localhost’a yönlendirir; kayıtlı adres silinmez, kullanıcı adres değiştirirse geçici seçim bırakılır.
+- Ulaşılamayan sunucuda masaüstü de provider scope’u yeniler, uygulamayı kapatmaz. Başlangıç/onboarding hatası kurtarma ekranını gizlemez; dar pencerede ekran/diyalog kaydırılabilir. Backend öldü penceresi doğrudan adres düzenleyiciyi açar.
+- Flutter tam test 817 PASS; odaklı 17 PASS; dart-define regresyonu PASS; tam analiz 13 eski info, hata/uyarı yok; L10n/diff ve bash -n temiz. Go 1.26.10 build/vet PASS; tam race yalnız önceki gerçek ngrok ortam testi nedeniyle FAIL (tünele dokunulmadı).
+- Yeni düzeltme yerel commit, push yok. Önceki 2cf1135d CI 40002282639: 5/5 PASS. Gerçek açık kullanıcı penceresi yeniden başlatılmalı; canlı UX doğrulaması kullanıcıda.

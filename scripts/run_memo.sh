@@ -50,4 +50,8 @@ for _ in $(seq 1 120); do
   sleep 0.5
 done
 
-cd "$ROOT/frontend" && flutter run -d linux
+# The desktop client normally honors its saved server, which may be a remote
+# Tailscale address. Start this dev run on the backend we just started, without
+# changing that saved preference for ordinary app launches.
+echo "run_memo: connecting frontend to http://127.0.0.1:$PORT ..."
+cd "$ROOT/frontend" && flutter run -d linux --dart-define="MEMO_BACKEND_URL=http://127.0.0.1:$PORT"

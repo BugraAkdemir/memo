@@ -2,6 +2,21 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'platform_capabilities.dart';
 
+/// A launcher may select its own backend for this run without rewriting the
+/// user's saved remote server. Ordinary launches keep the saved preference.
+/// Web builds retain their existing page-origin routing.
+String _launchBackendUrl = const String.fromEnvironment('MEMO_BACKEND_URL');
+
+/// Explicit address edits take precedence over the launcher's initial choice.
+void clearLaunchBackendUrlOverride() => _launchBackendUrl = '';
+
+String configuredBackendUrl(String saved) {
+  final launchUrl = _launchBackendUrl;
+  return normalizeBackendUrl(
+    !kIsWeb && launchUrl.trim().isNotEmpty ? launchUrl : saved,
+  );
+}
+
 /// The address to fall back on when nothing has been configured yet.
 ///
 /// Takes its inputs as explicit parameters instead of reading `kIsWeb` /
@@ -79,8 +94,7 @@ String normalizeBackendUrl(String input) {
     // Split on ':' to look at the host alone — "myhost.ts.net:8443" must
     // still be recognised as a Funnel host.
     final host = trimmed.split(':').first;
-    withScheme =
-        (host.endsWith('.ts.net') ? 'https://' : 'http://') + trimmed;
+    withScheme = (host.endsWith('.ts.net') ? 'https://' : 'http://') + trimmed;
   }
   final uri = Uri.tryParse(withScheme);
   if (uri == null || uri.host.isEmpty) {
@@ -90,8 +104,9 @@ String normalizeBackendUrl(String input) {
     return fallback;
   }
 
-  final normalized =
-      (!uri.hasPort && uri.scheme == 'http') ? uri.replace(port: 8090) : uri;
+  final normalized = (!uri.hasPort && uri.scheme == 'http')
+      ? uri.replace(port: 8090)
+      : uri;
   final result = normalized.toString();
   return result.endsWith('/') ? result.substring(0, result.length - 1) : result;
 }

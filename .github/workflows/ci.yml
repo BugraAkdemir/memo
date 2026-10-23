@@ -77,6 +77,10 @@ jobs:
         run: flutter test --coverage
         working-directory: frontend
 
+      - name: Test development backend override
+        run: flutter test test/providers/launch_backend_url_test.dart --dart-define=MEMO_BACKEND_URL=http://127.0.0.1:8090
+        working-directory: frontend
+
       - name: Upload coverage
         uses: codecov/codecov-action@v5
         with:

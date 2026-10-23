@@ -42,7 +42,7 @@ final apiClientProvider = Provider<MemoApiClient>((ref) {
   final saved = prefs.getString('memo_api_base_url') ?? '';
   final baseUrl = kIsWeb
       ? webBackendUrl(saved, Uri.base.origin)
-      : normalizeBackendUrl(saved);
+      : configuredBackendUrl(saved);
   return MemoApiClient(
     baseUrl: baseUrl,
     savedRemoteToken: prefs.getString(_remoteTokenPrefsKey),

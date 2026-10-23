@@ -475,19 +475,17 @@ class _AppShellState extends ConsumerState<AppShell> {
           // A backend can go dead because a custom Remote Access URL
           // (Settings) points at a server that's since been shut down —
           // "restart the app" alone doesn't help there, it just reloads the
-          // same dead URL. Opening Settings first lets the user clear/fix
-          // it without forcing a full quit.
+          // same dead URL. Open the offline address editor directly so the user
+          // can reconnect without entering settings or quitting.
           TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
               showDialog(
                 context: context,
-                builder: (context) => SettingsDialog(
-                  initialTab: SettingsDialog.remoteAccessTabIndex,
-                ),
+                builder: (context) => const ChangeServerDialog(),
               );
             },
-            child: Text(L10n.t('settings')),
+            child: Text(L10n.t('backend_unreachable_change_server')),
           ),
           TextButton(
             onPressed: restartApp,

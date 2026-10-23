@@ -39,9 +39,8 @@ class AuthGateOverlay extends ConsumerWidget {
 /// Also renders the server footer line under the card: which backend this
 /// gate is talking to, and a way to re-point it when the backend moved —
 /// the URL comes from the same SharedPreferences key the Settings
-/// Remote Access tab edits, and the change dialog forces a restart (same
-/// reasoning as BackendUnreachableView's copy: too many providers capture
-/// their MemoApiClient once at stream start to safely hot-swap the URL).
+/// Remote Access tab edits, and the change dialog rebuilds the provider scope so streams that captured
+/// the previous client reconnect to the saved address.
 class _GateScaffold extends ConsumerWidget {
   const _GateScaffold({required this.child});
 

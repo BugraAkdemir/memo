@@ -1,3 +1,13 @@
+# Son oturum — 2026-10-23 — normal sohbet alt ajanları (Aşama 1 & 2)
+- Normal sohbet alt ajanları (`PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`) Aşama 1 ve 2 uygulandı: arka planda çalışan alt ajan motoru (`internal/subagents`), kalıcı FIFO kuyruğu, ana ajana senkronize teslimat, Git worktree/branch (`memo-*`) izolasyonu ve birleştirme/çatışma yönetimi.
+- Araçlar: `spawn_agent`, `send_agent`, `list_agents`, `cancel_agent`, `close_agent`, `merge_agent`. Alt ajanlarda kişisel hafıza/RAG yok; sadece görev + Code Mode + seçilen skill talimatları.
+- Flutter UI: `SubagentTray` kartları, `SubagentPane` detay paneli (prompt, çıktı, araç hareketleri, takip talimatı, iptal/kapatma/yarım kalan incelemeyi sürdürme), `SubagentSettings` eşzamanlılık sınırı (1–16). TR+EN 24 L10n anahtarı eklendi, sıfır hardcoded string.
+- ECC ve güvenlik düzeltmeleri: Arka plan incelemesinde görünmez izin promptu engellendi (`delegated_permissions.go`), model keşfi sırasında model seçimi yarış koşulu çözüldü (`subs.go`, `app.go`), alt ajan skill tool ad alanı ayrıştırması düzeltildi (`chat_subagents.go`).
+- Doğrulama: Go CGO+sqlite_fts5 build ve vet temiz (çıkış 0); `internal/subagents`, `internal/agent`, `internal/app` race testleri yeşil; Flutter analyze 0 hata/uyarı (yalnız 3 bilinen info); Flutter test 815 testin tamamı geçti; L10n kontrolü temiz.
+- Senaryo & Benchmark Doğrulaması (`internal/e2e/benchmark_subagents_e2e_test.go`): Gerçek Git deposuna sahip sahte projede çoklu alt ajan izole worktree/branch kod yazımı, main dalı izolasyonu, `send_agent` takip talimatı, FIFO kuyruk teslimatı, seri `merge_agent` ve worktree temizliği uçtan uca doğrulandı (commit `ed3f6e9e`). CLIProxyAPI Google/Antigravity (`akdemirbugra14@gmail.com`) ve Codex canlı hesap doğrulaması yapıldı; yerel commit'lendi, push yok.
+
+---
+
 # Son oturum — 2026-10-23 — alt ajan yeteneği incelemesi
 - Kaynak/graph incelemesi ve `docs/SUBAGENT_REVIEW.md`: worker dört rolü ile varsayılan planlayıcı paralel coder yolu ayrıştırıldı; açık bulgular yukarıda.
 - Tam taskloop -race: ok 34.949s. Hedefli taskloop/agent/agent-tools/app testleri: dört paket ok. Readonly araçla geçici klasörde yazma doğrulandı; geçici dosyalar temizlendi. Gerçek model/UI ve tam repo doğrulaması yapılmadı.

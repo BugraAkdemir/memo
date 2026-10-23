@@ -7,6 +7,7 @@
 **Alt ajan (2026-10-23, `PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`)**
 - Tamamlandı: Normal sohbet alt ajanları (Aşama 1 & 2): `internal/subagents`, FIFO mailbox, worktree/branch izolasyonu, `memo-*` branch yönetimi, context/yetki sınırları, `spawn/send/list/cancel/close/merge` araçları; Flutter `SubagentTray`, `SubagentPane`, `SubagentSettings` (1-16), TR+EN `L10n`, widget/unit/race testleri.
 - Açık: Gerçek sağlayıcı/model ile canlı uçtan uca kullanım deneyimi; Self-Driving taskloop içindeki eski worker bulgularının sertleştirilmesi (`docs/SUBAGENT_REVIEW.md` - readonly komut sınırı, kural aktarımı).
+- İnceleme bulguları: `subs.go:350-355` erken kayıt seçimi okuma/yazması `subscriptionModelMu` dışında; eşzamanlı model seçimi hâlâ ezilebilir. Yeni proje benchmark’ında çocuklar metin döndürüyor, dosyaları/commit’leri test yazıyor ve merge HTTP üzerinden tetikleniyor; bu benchmark gerçek çocuk kod yazımı, ana ajanın merge aracı veya FIFO sırasını kanıtlamıyor. İlgili regresyon kapsamı güçlendirilmeli.
 
 **Proje klasörleri (2026-10-19, `PLAN_project_folders.md`, `docs/PROJECT_FOLDER.md`)**
 - P0–P5 işaretli: kök koruması/id/kayıt, yedekli hafıza göçü, iskele/API/onay, proje skill komutları, hash güvenli izinler, EN/TR belgeler. Beta'ya bağlı değil; proje hafızası Code Mode'dan bağımsız, Hafıza/Minimal Mod/görev hafızası anahtarları geçerli.
@@ -65,10 +66,8 @@
 
 ---
 
-# Son oturum — 2026-10-23 — normal sohbet alt ajanları (Aşama 1 & 2)
-- Normal sohbet alt ajanları (`PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`) Aşama 1 ve 2 uygulandı: arka planda çalışan alt ajan motoru (`internal/subagents`), kalıcı FIFO kuyruğu, ana ajana senkronize teslimat, Git worktree/branch (`memo-*`) izolasyonu ve birleştirme/çatışma yönetimi.
-- Araçlar: `spawn_agent`, `send_agent`, `list_agents`, `cancel_agent`, `close_agent`, `merge_agent`. Alt ajanlarda kişisel hafıza/RAG yok; sadece görev + Code Mode + seçilen skill talimatları.
-- Flutter UI: `SubagentTray` kartları, `SubagentPane` detay paneli (prompt, çıktı, araç hareketleri, takip talimatı, iptal/kapatma/yarım kalan incelemeyi sürdürme), `SubagentSettings` eşzamanlılık sınırı (1–16). TR+EN 24 L10n anahtarı eklendi, sıfır hardcoded string.
-- ECC ve güvenlik düzeltmeleri: Arka plan incelemesinde görünmez izin promptu engellendi (`delegated_permissions.go`), model keşfi sırasında model seçimi yarış koşulu çözüldü (`subs.go`, `app.go`), alt ajan skill tool ad alanı ayrıştırması düzeltildi (`chat_subagents.go`).
-- Doğrulama: Go CGO+sqlite_fts5 build ve vet temiz (çıkış 0); `internal/subagents`, `internal/agent`, `internal/app` race testleri yeşil; Flutter analyze 0 hata/uyarı (yalnız 3 bilinen info); Flutter test 815 testin tamamı geçti; L10n kontrolü temiz.
-- Senaryo & Benchmark Doğrulaması (`internal/e2e/benchmark_subagents_e2e_test.go`): Gerçek Git deposuna sahip sahte projede çoklu alt ajan izole worktree/branch kod yazımı, main dalı izolasyonu, `send_agent` takip talimatı, FIFO kuyruk teslimatı, seri `merge_agent` ve worktree temizliği uçtan uca doğrulandı (commit `ed3f6e9e`). CLIProxyAPI Google/Antigravity (`akdemirbugra14@gmail.com`) ve Codex canlı hesap doğrulaması yapıldı; yerel commit'lendi, push yok.
+# Son oturum — 2026-10-23 — alt ajan değişikliklerinin incelemesi
+- `5548e4f1..c2f04067` değişiklikleri incelendi; uygulama kodu değiştirilmedi. İki açık bulgu yukarıda: eksik model seçimi kilidi ve yeni benchmark’ın iddia ettiği uçtan uca kapsamı doğrulamaması. Önceki özetteki “tam benchmark doğrulandı/model yarışı çözüldü” ifadeleri bu sınırlarla okunmalı.
+- Gerçek çalıştırmalar: `CGO_ENABLED=1 go build -tags sqlite_fts5 ./...` ve `go vet` çıkış 0; `go test -tags sqlite_fts5 ./... -race` çıkış 0. Alt ajan/agent/app/e2e race paketi ayrıca geçti; yeni benchmark tekil koşusu PASS (2.320s).
+- Flutter: `flutter analyze lib/` yalnız 3 bilinen BuildContext info (çıkış 1), hata/uyarı yok; `flutter test` 815 PASS (çıkış 0). Değişen Flutter lib dosyaları için hardcoded UI literal taraması boş. Canlı sağlayıcı/masaüstü UX bu incelemede denenmedi.
+- Yalnız handoff/arşiv güncellendi; yerel dokümantasyon commit’i, push yok.

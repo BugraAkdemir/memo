@@ -23,8 +23,6 @@ import (
 
 	"crypto/rand"
 	"encoding/hex"
-
-	"memo/internal/fileutil"
 )
 
 const (
@@ -98,6 +96,16 @@ func InfoPath(root string) string { return filepath.Join(root, DirName, InfoFile
 // `.memo`, and ErrForeignDir when `.memo` exists but lacks a valid marker.
 func ReadInfo(root string) (*Info, error) {
 	dir := Dir(root)
+	existing, err := existingPath(dir)
+	if err != nil {
+		return nil, err
+	}
+	if existing == "" {
+		return nil, ErrNoProject
+	}
+	if filepath.Base(existing) != DirName {
+		return nil, fmt.Errorf("%w: differently cased .memo entry", ErrForeignDir)
+	}
 	st, err := os.Lstat(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -109,6 +117,16 @@ func ReadInfo(root string) (*Info, error) {
 	// points — possibly outside the project. Never treat one as ours.
 	if st.Mode()&os.ModeSymlink != 0 || !st.IsDir() {
 		return nil, fmt.Errorf("%w: .memo is not a plain folder", ErrForeignDir)
+	}
+	marker, err := os.Lstat(InfoPath(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrForeignDir
+		}
+		return nil, err
+	}
+	if !marker.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: project.json is not a regular file", ErrForeignDir)
 	}
 	data, err := os.ReadFile(InfoPath(root))
 	if err != nil {
@@ -127,6 +145,30 @@ func ReadInfo(root string) (*Info, error) {
 	return &info, nil
 }
 
+// createInfo owns initialization only after exclusively creating the directory.
+// A competing setup or a foreign directory appearing after ReadInfo is never
+// adopted or overwritten. Interrupted initialization is left for inspection.
+func createInfo(root string, info *Info) error {
+	if err := os.Mkdir(Dir(root), 0755); err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("%w: .memo appeared during setup", ErrForeignDir)
+		}
+		return err
+	}
+	data, err := json.MarshalIndent(info, "", "  ")
+	if err != nil {
+		return err
+	}
+	created, err := createStarter(InfoPath(root), append(data, '\n'))
+	if err != nil {
+		return err
+	}
+	if !created {
+		return fmt.Errorf("%w: project.json appeared during setup", ErrForeignDir)
+	}
+	return nil
+}
+
 // writeInfo stores info atomically, creating `.memo` if needed.
 func writeInfo(root string, info *Info) error {
 	if err := os.MkdirAll(Dir(root), 0o755); err != nil {
@@ -136,7 +178,8 @@ func writeInfo(root string, info *Info) error {
 	if err != nil {
 		return err
 	}
-	return fileutil.AtomicWrite(InfoPath(root), append(data, '\n'), 0o644)
+	_, err = writeProjectFile(InfoPath(root), append(data, '\n'), true)
+	return err
 }
 
 func newInfo(root, id string, now time.Time) *Info {

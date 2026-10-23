@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func read(t *testing.T, p string) string {
@@ -210,5 +211,318 @@ func TestStatus(t *testing.T) {
 	}
 	if st2 := m.Status(proj); !st2.SetUp || st2.ID != st.ID || st2.Name != "app" {
 		t.Errorf("after setup: %+v (pending id was %s)", st2, st.ID)
+	}
+}
+
+func TestScaffold_PreservesCaseVariants(t *testing.T) {
+	for _, name := range []string{"agents.md", "Agents.md", "claude.md", "ClAuDe.Md", "Handoff.md", "HANDOFF.MD"} {
+		t.Run(name, func(t *testing.T) {
+			g, home := fakeHome(t)
+			m := NewManager(g, filepath.Join(t.TempDir(), "projects.json"))
+			root := mkdir(t, home, "app")
+			path := filepath.Join(root, name)
+			if err := os.WriteFile(path, []byte("user content"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := m.Scaffold(root); err != nil {
+				t.Fatal(err)
+			}
+			if got := read(t, path); got != "user content" {
+				t.Fatalf("overwritten: %q", got)
+			}
+			canonical := "AGENTS.md"
+			if strings.EqualFold(name, "handoff.md") {
+				canonical = "handoff.md"
+			}
+			entries, err := os.ReadDir(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, entry := range entries {
+				if entry.Name() == canonical {
+					t.Fatalf("created duplicate %s beside %s", canonical, name)
+				}
+			}
+		})
+	}
+}
+
+func TestScaffold_PreservesManagedCaseVariants(t *testing.T) {
+	for _, name := range []string{"agents.md", "Notes.md", ".GITIGNORE"} {
+		t.Run(name, func(t *testing.T) {
+			g, home := fakeHome(t)
+			m := NewManager(g, filepath.Join(t.TempDir(), "projects.json"))
+			root := mkdir(t, home, "app")
+			if _, err := m.Init(root); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(Dir(root), name)
+			if err := os.WriteFile(path, []byte("user content"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := m.Scaffold(root); err != nil {
+				t.Fatal(err)
+			}
+			if got := read(t, path); got != "user content" {
+				t.Fatal("overwritten")
+			}
+			entries, _ := os.ReadDir(Dir(root))
+			count := 0
+			for _, entry := range entries {
+				if strings.EqualFold(entry.Name(), name) {
+					count++
+				}
+			}
+			if count != 1 {
+				t.Fatalf("case duplicates: %d", count)
+			}
+		})
+	}
+}
+
+func TestCreateStarter_NeverReplacesAnExistingEntry(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "AGENTS.md")
+	if err := os.WriteFile(path, []byte("editor won the race"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	created, err := createStarter(path, []byte("template"))
+	if err != nil || created {
+		t.Fatalf("created=%v err=%v", created, err)
+	}
+	if got := read(t, path); got != "editor won the race" {
+		t.Fatalf("overwritten: %s", got)
+	}
+	if runtime.GOOS != "windows" {
+		link := filepath.Join(root, "handoff.md")
+		if err := os.Symlink(filepath.Join(root, "missing"), link); err != nil {
+			t.Fatal(err)
+		}
+		if created, err := createStarter(link, []byte("template")); err != nil || created {
+			t.Fatalf("replaced link: %v %v", created, err)
+		}
+	}
+}
+
+func TestScaffold_PreservesManagedRulesSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires privileges")
+	}
+	g, home := fakeHome(t)
+	m := NewManager(g, filepath.Join(t.TempDir(), "projects.json"))
+	root := mkdir(t, home, "app")
+	res, err := m.Scaffold(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(Dir(root), "AGENTS.md")
+	target := filepath.Join(t.TempDir(), "rules")
+	old := []byte("previous generated template")
+	if err := os.WriteFile(target, old, 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := ReadInfo(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info.RulesHash = sha(old)
+	if err := writeInfo(root, info); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Scaffold(res.Root); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Lstat(path)
+	if err != nil || st.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("link replaced: %v %v", st, err)
+	}
+	if got := read(t, target); got != string(old) {
+		t.Fatalf("target changed: %s", got)
+	}
+}
+
+func TestInit_PreservesCaseVariantMemoAndMarkerLinks(t *testing.T) {
+	for _, mode := range []string{"directory", "marker-link"} {
+		t.Run(mode, func(t *testing.T) {
+			if runtime.GOOS == "windows" && mode == "marker-link" {
+				t.Skip("symlink privileges")
+			}
+			g, home := fakeHome(t)
+			m := NewManager(g, filepath.Join(t.TempDir(), "projects.json"))
+			root := mkdir(t, home, "app")
+			if mode == "directory" {
+				mkdir(t, root, ".Memo")
+			} else {
+				other := mkdir(t, home, "other")
+				if _, err := m.Init(other); err != nil {
+					t.Fatal(err)
+				}
+				mkdir(t, root, DirName)
+				if err := os.Symlink(InfoPath(other), InfoPath(root)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := m.Scaffold(root); !errors.Is(err, ErrForeignDir) {
+				t.Fatalf("expected refusal, got %v", err)
+			}
+			if exists(filepath.Join(root, "AGENTS.md")) {
+				t.Fatal("wrote starter into refused project")
+			}
+		})
+	}
+}
+
+func TestRulesPath_UsesExistingSpelling(t *testing.T) {
+	root := t.TempDir()
+	mkdir(t, root, DirName)
+	path := filepath.Join(Dir(root), "agents.md")
+	if err := os.WriteFile(path, []byte("existing"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := RulesPath(root)
+	if err != nil || got != path {
+		t.Fatalf("got %q, %v; want %q", got, err, path)
+	}
+}
+
+func TestCreateInfo_NeverAdoptsDirectoryCreatedByAnotherWriter(t *testing.T) {
+	root := t.TempDir()
+	mkdir(t, root, DirName)
+	marker := InfoPath(root)
+	if err := os.WriteFile(marker, []byte("foreign marker"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := createInfo(root, newInfo(root, NewID(), time.Now())); !errors.Is(err, ErrForeignDir) {
+		t.Fatalf("got %v", err)
+	}
+	if got := read(t, marker); got != "foreign marker" {
+		t.Fatalf("overwritten marker: %s", got)
+	}
+}
+
+func TestCreateStarter_ConcurrentWritersPublishOneCompleteFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "AGENTS.md")
+	results := make(chan bool, 16)
+	errs := make(chan error, 16)
+	for i := 0; i < 16; i++ {
+		go func() {
+			created, err := createStarter(path, []byte(strings.Repeat("complete", 1024)))
+			results <- created
+			errs <- err
+		}()
+	}
+	created := 0
+	for i := 0; i < 16; i++ {
+		if <-results {
+			created++
+		}
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if created != 1 {
+		t.Fatalf("created %d times", created)
+	}
+	if got := read(t, path); got != strings.Repeat("complete", 1024) {
+		t.Fatal("partial content")
+	}
+}
+
+func TestScaffold_RefreshPreservesExistingTemporaryNames(t *testing.T) {
+	g, home := fakeHome(t)
+	m := NewManager(g, filepath.Join(t.TempDir(), "projects.json"))
+	root := mkdir(t, home, "app")
+	if _, err := m.Scaffold(root); err != nil {
+		t.Fatal(err)
+	}
+	rules := filepath.Join(Dir(root), "AGENTS.md")
+	old := []byte("old generated rules")
+	if err := os.WriteFile(rules, old, 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := ReadInfo(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info.RulesHash = sha(old)
+	if err := writeInfo(root, info); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{rules + ".tmp", InfoPath(root) + ".tmp"} {
+		if err := os.WriteFile(path, []byte("user data"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := m.Scaffold(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{rules + ".tmp", InfoPath(root) + ".tmp"} {
+		if got, err := os.ReadFile(path); err != nil || string(got) != "user data" {
+			t.Errorf("lost %s: %q %v", path, got, err)
+		}
+	}
+}
+
+func TestScaffold_PreservesDirectoriesAndDanglingLinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink privileges")
+	}
+	g, home := fakeHome(t)
+	m := NewManager(g, filepath.Join(t.TempDir(), "projects.json"))
+	root := mkdir(t, home, "app")
+	if _, err := m.Init(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(root, "agents.md"), filepath.Join(Dir(root), "AGENTS.md")} {
+		mkdir(t, path)
+	}
+	handoff := filepath.Join(root, "Handoff.md")
+	if err := os.Symlink("missing-target", handoff); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Scaffold(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(root, "agents.md"), filepath.Join(Dir(root), "AGENTS.md")} {
+		if st, err := os.Lstat(path); err != nil || !st.IsDir() {
+			t.Fatalf("directory replaced: %s %v", path, err)
+		}
+	}
+	if target, err := os.Readlink(handoff); err != nil || target != "missing-target" {
+		t.Fatalf("link replaced: %q %v", target, err)
+	}
+}
+
+func TestStarterCreationFailsClosedWhenParentCannotBeRead(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "missing")
+	path := filepath.Join(parent, "AGENTS.md")
+	if found, err := existingPath(path); err == nil || found != "" {
+		t.Fatalf("missing parent treated as writable: %q %v", found, err)
+	}
+	if created, err := createStarter(path, []byte("template")); err == nil || created {
+		t.Fatalf("created into missing parent: %v %v", created, err)
+	}
+	if path, err := RulesPath(root); err == nil || path != "" {
+		t.Fatalf("missing .memo ignored: %q %v", path, err)
+	}
+	// A plain file where the parent should be must also fail without changing it.
+	if err := os.WriteFile(parent, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := existingPath(path); err == nil {
+		t.Fatal("non-directory parent accepted")
+	}
+	if _, err := createStarter(path, []byte("template")); err == nil {
+		t.Fatal("non-directory parent accepted")
+	}
+	if got := read(t, parent); got != "keep" {
+		t.Fatalf("parent replaced: %s", got)
 	}
 }

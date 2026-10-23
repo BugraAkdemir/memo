@@ -213,7 +213,7 @@ func (m *Manager) Init(path string) (*Resolved, error) {
 		return nil, err
 	}
 	info = newInfo(root, res.ID, m.now())
-	if err := writeInfo(root, info); err != nil {
+	if err := createInfo(root, info); err != nil {
 		return nil, err
 	}
 	if e := m.reg.Projects[root]; e != nil {

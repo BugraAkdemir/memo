@@ -8,7 +8,7 @@
 - Açık: Gerçek sağlayıcı/model ile canlı uçtan uca kullanım deneyimi; Self-Driving taskloop içindeki eski worker bulgularının sertleştirilmesi (`docs/SUBAGENT_REVIEW.md` - readonly komut sınırı, kural aktarımı).
 
 **Proje klasörleri (2026-10-19, `PLAN_project_folders.md`, `docs/PROJECT_FOLDER.md`)**
-- P0–P5 işaretli: kök koruması/id/kayıt, yedekli hafıza göçü, iskele/API/onay, proje skill komutları, hash güvenli izinler, EN/TR belgeler. Beta'ya bağlı değil; proje hafızası Code Mode'dan bağımsız, Hafıza/Minimal Mod/görev hafızası anahtarları geçerli.
+- P0–P5 tamamlandı; proje hafızası Code Mode’dan bağımsız, hafıza anahtarlarına bağlı.
 - Yapılmadı: proje skill'leri Flutter `/` menüsünde listelenmiyor (menü yalnız global skill'leri okur; backend `/ad` yazılınca proje skill'ini de tanır; `/skill add` var), proje izin düzenleme/onay arayüzü (yalnız dosya/API), `provider_policy` uygulaması (`local_only` vb. yalnız ayrılmış alan). Kullanıcı skill sistemini değiştirebileceğimizi söyledi; yeni tasarımın kapsamı belirlenmedi.
 - Gerçekte doğrulanmadı: GitHub skill indirmesi (`codeload.github.com/<o>/<r>/zip/HEAD`), kurulum/onay penceresi, modelin `.memo/AGENTS.md` ve izinlere uyması, kullanıcı veritabanında göç, Windows/macOS Guard listeleri.
 - Göç yedekleri `data/backups/memory-pre-project-id-*.db` yerelde kalır; dışa aktarma/bulut kapsamında değil, otomatik silinmez.
@@ -32,7 +32,7 @@
 - İmza anahtarı `~/.config/memo-release/update-signing.key` ve Actions `MEMO_UPDATE_SIGNING_KEY`; anahtar geçişi eski anahtarla imzalı sürüm ister.
 
 **Saha doğrulaması / sürüm hazırlığı**
-- Beta dışı kod eksikleri kapandı: `PLAN_v4_6_completion.md`, `docs/V4_6_COMPLETION_REVIEW.md`. Gerçek telefon/native OS, OAuth/Claude kota, model kalitesi/maliyeti testlerle tamamlanmış sayılmaz.
+- Canlı cihaz/OAuth/kota ve model kalitesi testlerle doğrulanmış sayılmaz; tamamlanan beta dışı işler: `PLAN_v4_6_completion.md`.
 - Mobil akış (`feat/mobile-connect-flow`, 2026-10-12 main): gerçek cihaz/emülatör, MemoRoot sonrası provider yenileme, Android/iOS düz HTTP açık.
 - Auto Route gerçek kalite/kota/GGUF soğuk yükleme; yeni karar/doğrulama modelinin gerçek kalitesi/hızı/maliyeti; kurulum sihirbazı ve abonelik giriş penceresi açık.
 - Web sohbet Beta (`docs/WEB_CHAT.md`): giriş yapılmış ChatGPT/claude.ai hesabıyla hiç denenmedi; yalnız signed-out sayfalar ve sahte site.
@@ -65,8 +65,8 @@
 
 ---
 
-# Son oturum — 2026-10-23 — yerel başlatma ve çevrimdışı sunucu değiştirme
-- Kök neden: run_memo.sh yerel backend açarken Flutter kayıtlı Tailscale adresine gidiyordu. Betik artık MEMO_BACKEND_URL ile ilk bağlantıyı localhost’a yönlendirir; kayıtlı adres silinmez, kullanıcı adres değiştirirse geçici seçim bırakılır.
-- Ulaşılamayan sunucuda masaüstü de provider scope’u yeniler, uygulamayı kapatmaz. Başlangıç/onboarding hatası kurtarma ekranını gizlemez; dar pencerede ekran/diyalog kaydırılabilir. Backend öldü penceresi doğrudan adres düzenleyiciyi açar.
-- Flutter tam test 817 PASS; odaklı 17 PASS; dart-define regresyonu PASS; tam analiz 13 eski info, hata/uyarı yok; L10n/diff ve bash -n temiz. Go 1.26.10 build/vet PASS; tam race yalnız önceki gerçek ngrok ortam testi nedeniyle FAIL (tünele dokunulmadı).
-- Yeni düzeltme yerel commit, push yok. Önceki 2cf1135d CI 40002282639: 5/5 PASS. Gerçek açık kullanıcı penceresi yeniden başlatılmalı; canlı UX doğrulaması kullanıcıda.
+# Son oturum — 2026-10-23 — proje dosyalarını koruma
+- Dosya adları harf farkıyla tanınır: root AGENTS/CLAUDE/handoff ve .memo kurallar/notes/.gitignore. Mevcut dosya, klasör ve kopuk symlink korunur; model gerçek kurallar dosyası adına yönlendirilir. Yönetilen şablon v2 aynı kuralı taşır.
+- Yeni iskele/marker dosyaları mevcut hedefi değiştirmeden yayımlanır; ilk .memo oluşturma exclusive. .Memo ve symlink project.json sahiplenilmez. Güncellemeler benzersiz geçici dosya kullanır; mevcut *.tmp dosyaları korunur. Düzenlenmemiş Memo kuralları hash ile güncellenmeye devam eder.
+- RED: 9 harf varyasyonu ve mevcut iki *.tmp dosyasının kaybı. GREEN: proje race PASS (%79.6 toplam paket coverage); app yönlendirme regresyonu PASS. Go 1.26.10 build/vet PASS. Tam race ilk koşu FAIL: bilinen update ErrChecksum testi + gerçek ngrok. Son kodda yalnız TestFetchURL_NoServer atlanarak tüm race PASS; tünele dokunulmadı.
+- Flutter 817 PASS, analiz 13 eski info; diff/L10n temiz. Yerel commit; push yok. Canlı model ve Windows/macOS yerel dosya sistemi denenmedi.

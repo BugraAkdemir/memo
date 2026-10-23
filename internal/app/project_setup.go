@@ -82,7 +82,15 @@ func (a *App) projectInstruction(chatID string) string {
 	if err != nil || !res.SetUp {
 		return ""
 	}
-	rules := filepath.ToSlash(filepath.Join(project.DirName, "AGENTS.md"))
+	rulesPath, err := project.RulesPath(res.Root)
+	if err != nil || rulesPath == "" {
+		return ""
+	}
+	rules, err := filepath.Rel(res.Root, rulesPath)
+	if err != nil {
+		return ""
+	}
+	rules = filepath.ToSlash(rules)
 	if filepath.Clean(path) != res.Root {
 		// The chat works in a sub-folder of the project: point at the real root.
 		rules = filepath.ToSlash(filepath.Join(res.Root, rules))

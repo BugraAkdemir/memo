@@ -6,14 +6,18 @@ If the two conflict, the project's `AGENTS.md` wins — except for the
 Safety rules below, which always apply.
 
 ## 1. Session start (every session)
-1. Read this file.
+1. Read this file. File names below are case-insensitive references: inspect
+   the directory and use the existing spelling (e.g. `agents.md`, `Handoff.md`,
+   `claude.md`). Never create a second file that differs only in letter case.
+   Preserve existing files, directories and symlinks; do not replace them.
 2. Read the project's root `AGENTS.md` (or `CLAUDE.md` if there is no
    `AGENTS.md`), if it exists.
 3. Read the top of `handoff.md`, if it exists: it is the last session's
    state and what was left to do.
 4. Read `.memo/notes.md`.
-5. If the project's `AGENTS.md` is missing, or still contains `<...>`
-   placeholders, set it up (see section 6) before doing substantial work.
+5. If neither root `AGENTS.md` nor `CLAUDE.md` exists, or the existing rules
+   file still contains `<...>` placeholders, set it up (see section 6) before
+   doing substantial work.
 
 Project skills live in `.memo/skills/<name>/SKILL.md`. They are not loaded
 automatically: use one only when the user asks for it or the task clearly

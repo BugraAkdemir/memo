@@ -1,3 +1,15 @@
+# Son oturum — 2026-10-23 — yerel başlatma ve çevrimdışı sunucu değiştirme
+- Kök neden: run_memo.sh yerel backend açarken Flutter kayıtlı Tailscale adresine gidiyordu. Betik artık MEMO_BACKEND_URL ile ilk bağlantıyı localhost’a yönlendirir; kayıtlı adres silinmez, kullanıcı adres değiştirirse geçici seçim bırakılır.
+- Ulaşılamayan sunucuda masaüstü de provider scope’u yeniler, uygulamayı kapatmaz. Başlangıç/onboarding hatası kurtarma ekranını gizlemez; dar pencerede ekran/diyalog kaydırılabilir. Backend öldü penceresi doğrudan adres düzenleyiciyi açar.
+- Flutter tam test 817 PASS; odaklı 17 PASS; dart-define regresyonu PASS; tam analiz 13 eski info, hata/uyarı yok; L10n/diff ve bash -n temiz. Go 1.26.10 build/vet PASS; tam race yalnız önceki gerçek ngrok ortam testi nedeniyle FAIL (tünele dokunulmadı).
+- Yeni düzeltme yerel commit, push yok. Önceki 2cf1135d CI 40002282639: 5/5 PASS. Gerçek açık kullanıcı penceresi yeniden başlatılmalı; canlı UX doğrulaması kullanıcıda.
+
+Taşınan tamamlanmış durum notları:
+- P0–P5 işaretli: kök koruması/id/kayıt, yedekli hafıza göçü, iskele/API/onay, proje skill komutları, hash güvenli izinler, EN/TR belgeler. Beta'ya bağlı değil; proje hafızası Code Mode'dan bağımsız, Hafıza/Minimal Mod/görev hafızası anahtarları geçerli.
+- Beta dışı kod eksikleri kapandı: `PLAN_v4_6_completion.md`, `docs/V4_6_COMPLETION_REVIEW.md`. Gerçek telefon/native OS, OAuth/Claude kota, model kalitesi/maliyeti testlerle tamamlanmış sayılmaz.
+
+---
+
 # Son oturum — 2026-10-23 — push ve CI engelleri
 - `b6e7fa0f` main’e pushlandı. CI `40000816237`: Go/L10n/domain PASS; Flutter tam analizindeki 5 eski warning ve Go stdlib `GO-2026-6809` nedeniyle FAIL.
 - Go minimumu ve 7 workflow `1.26.10`; Flutter testlerindeki 4 kullanılmayan sınıf ve gereksiz importlar temizlendi. CI kontrolleri gevşetilmedi.

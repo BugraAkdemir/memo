@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  GO_VERSION: "1.26.9"
+  GO_VERSION: "1.26.10"
   FLUTTER_CHANNEL: stable
 
 jobs:

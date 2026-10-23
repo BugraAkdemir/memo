@@ -45,6 +45,7 @@
 - Yapıştırma kutusu Done'a kadar açık; login.go sonuç goroutine'inin s.tail'i erken okuma ihtimali ölçülmedi.
 - Minimal Mod auto-compact atlar; görsel modeli seçicide etiketsiz. İkinci model menüsü ortak liste/arama/kaydırma kullanır.
 - Test izolasyonu: DataDir önbelleği sıfırlanmadan MEMO_DATA_DIR değiştiren testler silinmiş temp klasörünü yeniden oluşturup dört dosya sızdırabiliyor; config.ResetForTests eksikleri açık.
+- Yerel test ortamı: `ngrok.TestFetchURL_NoServer` gerçek yerel API’den URL alınca düşüyor; tünele dokunma. Yoğun ilk araç-zinciri derlemesinde `wav_player_test.dart` stop testi 2s zaman aşımı aldı (bu oturumda oynatıcı kodu değişmedi).
 - Bilinen kararsızlar: Tailscale `TestEnsureTailscaleWebServerBind_RebindsFromLoopback` (aynı yükte eski 8/150, yeni 2/150; sunucu yeniden bağlama), update `TestRunComponentUpdate_TamperedDownloadChangesNothing` eski 5d068ac1'de de -race -count>1 düşer; livemode `TestReconnectingSession_SendAudioRoutesToCurrentInner`; `TestBootstrapTokenAuth_Succeeds` temp temizliği; DuckDuckGo captcha; webchat `TestConnect_PressingItAgainReplacesAWaitingAttempt` (Connecting bayrağı gerçek gezinmeden erken; şüphe ölçülmedi). Yükte flake: go test -c + 24 meşgul döngü, eski/yeni aynı yükte ölç; yeşile kadar yeniden koşma.
 
 **Skill çağrısı / durdurma (2026-10-22)**
@@ -64,7 +65,8 @@
 
 ---
 
-# Son oturum — 2026-10-23 — inceleme düzeltmeleri
-- Erken model kaydı kilitlendi (`5aff49cf`), eski kodda RED/yeni kodda GREEN. Benchmark gerçek çocuk kod/test/commit ve main takip/merge/close araçlarını, FIFO/izolasyon/temizliği doğruluyor. Yazma aracı kaldırılınca eski test PASS, yeni FAIL. Kanıt: `docs/CHAT_SUBAGENTS.md`.
-- Go build/vet ve ilgili race PASS; tam race bağımsız Tailscale nedeniyle FAIL (aynı yükte eski 8/150, yeni 2/150). Flutter 815 PASS, analyze 3 eski info. Flutter değişmedi.
-- İkinci yerel commit benchmark/belgeler/handoff; push yok. Canlı sağlayıcı/native UX ve Tailscale açık.
+# Son oturum — 2026-10-23 — push ve CI engelleri
+- `b6e7fa0f` main’e pushlandı. CI `40000816237`: Go/L10n/domain PASS; Flutter tam analizindeki 5 eski warning ve Go stdlib `GO-2026-6809` nedeniyle FAIL.
+- Go minimumu ve 7 workflow `1.26.10`; Flutter testlerindeki 4 kullanılmayan sınıf ve gereksiz importlar temizlendi. CI kontrolleri gevşetilmedi.
+- Yeni Go ile build/vet ve govulncheck PASS (etkilenen 0 açık); app/E2E race PASS. Tam yerel race yalnız ngrok ortam testi nedeniyle FAIL. Flutter tam analiz `--no-fatal-infos` PASS (13 eski info); değişen testler 14 PASS, tam koşu 814 PASS/1 wav stop timeout. Yerel hatalar yukarıda.
+- Düzeltme commit’i için push yetkisi var. Güncel CI: https://github.com/BugraAkdemir/memo/actions/workflows/ci.yml?query=branch%3Amain . Canlı sağlayıcı/native UX açık; tag/release yok.

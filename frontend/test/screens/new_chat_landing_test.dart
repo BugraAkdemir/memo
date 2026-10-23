@@ -12,7 +12,6 @@ import 'package:memo_flutter/core/api_client.dart';
 import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/models/chat.dart';
 import 'package:memo_flutter/models/server_browse_entry.dart';
-import 'package:memo_flutter/providers/agent_provider.dart';
 import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/new_chat_provider.dart';

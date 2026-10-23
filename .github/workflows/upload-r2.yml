@@ -9,7 +9,7 @@ on:
         default: 'v3.1.1-beta'
 
 env:
-  GO_VERSION: "1.26.9"
+  GO_VERSION: "1.26.10"
   FLUTTER_CHANNEL: stable
   APP_NAME: Memo
   R2_ENDPOINT: https://ce4b56c11890013834d9c6a31568e3f9.r2.cloudflarestorage.com

@@ -9,11 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:memo_flutter/core/api_client.dart';
 import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/models/chat.dart';
-import 'package:memo_flutter/models/provider_config.dart';
-import 'package:memo_flutter/providers/agent_provider.dart';
 import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
-import 'package:memo_flutter/providers/provider_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
 import 'package:memo_flutter/widgets/chat_sidebar.dart';
 
@@ -32,18 +29,6 @@ class _DownAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-class _AgentOn extends AgentEnabledNotifier {
-  _AgentOn(super.ref) {
-    state = true;
-  }
-}
-
-class _AgentOff extends AgentEnabledNotifier {
-  _AgentOff(super.ref) {
-    state = false;
-  }
-}
-
 class _Chats extends ChatListNotifier {
   _Chats(this.path);
   final String? path;
@@ -57,23 +42,6 @@ class _Chats extends ChatListNotifier {
 class _ActiveChat extends ActiveChatIdNotifier {
   @override
   Future<String> build() async => 'c1';
-}
-
-class _Providers extends ProviderListNotifier {
-  @override
-  Future<List<ProviderConfig>> build() async => const [
-        ProviderConfig(
-          name: 'MyRouter',
-          type: 'openrouter',
-          model: 'some/model',
-          effortLevel: 'high',
-        ),
-      ];
-}
-
-class _ActiveProvider extends ActiveProviderNotifier {
-  @override
-  Future<String> build() async => 'MyRouter';
 }
 
 void main() {

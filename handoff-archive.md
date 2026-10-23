@@ -1,3 +1,10 @@
+# Son oturum — 2026-10-23 — inceleme düzeltmeleri
+- Erken model kaydı kilitlendi (`5aff49cf`), eski kodda RED/yeni kodda GREEN. Benchmark gerçek çocuk kod/test/commit ve main takip/merge/close araçlarını, FIFO/izolasyon/temizliği doğruluyor. Yazma aracı kaldırılınca eski test PASS, yeni FAIL. Kanıt: `docs/CHAT_SUBAGENTS.md`.
+- Go build/vet ve ilgili race PASS; tam race bağımsız Tailscale nedeniyle FAIL (aynı yükte eski 8/150, yeni 2/150). Flutter 815 PASS, analyze 3 eski info. Flutter değişmedi.
+- İkinci yerel commit benchmark/belgeler/handoff; push yok. Canlı sağlayıcı/native UX ve Tailscale açık.
+
+---
+
 # Son oturum — 2026-10-23 — alt ajan değişikliklerinin incelemesi
 - `5548e4f1..c2f04067` değişiklikleri incelendi; uygulama kodu değiştirilmedi. İki açık bulgu yukarıda: eksik model seçimi kilidi ve yeni benchmark’ın iddia ettiği uçtan uca kapsamı doğrulamaması. Önceki özetteki “tam benchmark doğrulandı/model yarışı çözüldü” ifadeleri bu sınırlarla okunmalı.
 - Gerçek çalıştırmalar: `CGO_ENABLED=1 go build -tags sqlite_fts5 ./...` ve `go vet` çıkış 0; `go test -tags sqlite_fts5 ./... -race` çıkış 0. Alt ajan/agent/app/e2e race paketi ayrıca geçti; yeni benchmark tekil koşusu PASS (2.320s).

@@ -69,6 +69,43 @@ by a previous version cannot recover their details. Unacknowledged completion
 records are retained independently. Failed or unmerged isolated work is not
 deleted automatically, and the existing merge-before-close guard still applies.
 
+## Live state, failures and timing
+
+**The main agent always sees the real state.** Every main turn carries a
+`<memo-subagent-status>` block (appended to the current user message, never the
+system prompt, so the prompt cache is untouched) listing each non-closed child:
+state, current activity ("running tool run_command", "waiting for the model after
+tool edit_file"), elapsed and idle time, tool-call/error counts, the error of a
+failed child, a recovery hint, and any result main has not reviewed yet.
+`list_agents` returns the same compact summary per child plus recent tools and
+the tail of its output; it no longer returns whole transcripts, and
+`list_agents {id}` adds that child's full final output. A failed,
+interrupted or cancelled child reaches main through the same durable mailbox as a
+success, and the delivered record includes that summary (`task`), not only the
+error string.
+
+**Why children used to fail at exactly 20 minutes.** `runChatSubAgent` applied
+the interactive turn budget (`agent_mode.turn_budget_secs`, 1200 s) to background
+children, so a healthy coder mid-edit was killed with a bare `context deadline
+exceeded` (two live children with 315 and 377 events). Children now fail only
+when they make **no progress** (no model output or tool activity) for 15 minutes,
+with the reason in the error, or after a 6 hour backstop. The earlier failures
+(`no provider configured or all providers failed`) were the provider-inheritance
+bug fixed in `90f52c63`.
+
+**Transient provider errors are retried.** A 5xx, timeout or rate limit during a
+child's run is retried up to three times (30 s, 2 min, 5 min, or the provider's
+retry hint, at most 10 min). Each retry shows as a `retry` event, and the model is
+told that part of the work may already be on disk (`git status`/`git diff`) so it
+continues instead of starting over. Configuration, authentication and
+unsupported-model errors are not retried. A failure with no final reply still
+hands main the last tool results.
+
+Limitations: a silent tool that runs longer than the idle limit (a very long
+build) is still treated as stalled; a result whose delivery was interrupted
+blocks later results behind it in the FIFO until it is resumed from the child
+pane, though main is told about all of them in the status block.
+
 ## Coding isolation and integration
 
 For writable children, omitted `isolate` defaults to true. Each gets a separate

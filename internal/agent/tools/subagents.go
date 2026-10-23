@@ -61,7 +61,9 @@ func ChatSubAgentAction(ctx context.Context, action string, args json.RawMessage
 			ID string `json:"id"`
 		}{}
 	case "list":
-		target = &struct{}{}
+		target = &struct {
+			ID string `json:"id"`
+		}{}
 	default:
 		return "", fmt.Errorf("unknown sub-agent action: %s", action)
 	}

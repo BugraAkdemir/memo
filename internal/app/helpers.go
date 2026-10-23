@@ -410,6 +410,10 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	if !minimal {
 		volatileCtx += a.renderWorkingSet(chatID)
 	}
+	// Live state of delegated sub-agents, fresh every turn: without it the model
+	// answers "how are they doing?" from stale earlier turns (it kept saying
+	// "running" about children that had already failed). Empty when none exist.
+	volatileCtx += a.subAgentStatusBlock(chatID)
 	effectiveUserMsg := userMsg
 	if volatileCtx != "" {
 		effectiveUserMsg = userMsg + volatileCtx

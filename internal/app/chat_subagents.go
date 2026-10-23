@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"memo/internal/agent"
@@ -17,6 +18,7 @@ import (
 	"memo/internal/logx"
 	"memo/internal/provider"
 	"memo/internal/subagents"
+	"memo/internal/taskloop"
 )
 
 // These are independent from the old Self-Driving fan-out. A child is a
@@ -39,6 +41,15 @@ func (a *App) initChatSubAgents() {
 		defer recoverPanic("subagent result mailbox")
 		a.pumpChatSubAgents(a.lifecycleCtx)
 	}()
+}
+
+// subAgentStatusBlock is the live status of this chat's children for the main
+// agent's next turn; empty when it has none or the runtime is unavailable.
+func (a *App) subAgentStatusBlock(chatID string) string {
+	if a.chatSubAgents == nil || chatID == "" {
+		return ""
+	}
+	return a.chatSubAgents.StatusBlock(chatID)
 }
 
 func (a *App) GetChatSubAgentSettings() map[string]int {
@@ -125,7 +136,25 @@ func (a *App) ChatSubAgentAction(ctx context.Context, chatID, action string, arg
 	var err error
 	switch action {
 	case "list":
-		result = a.chatSubAgents.List(chatID)
+		// Compact live summaries: a Job carries its whole transcript and every
+		// tool event, which buried the status the main agent asked for.
+		result = a.chatSubAgents.Summaries(chatID)
+		if req.ID != "" {
+			// One child in full: its summary plus the whole final output, which the
+			// compact list only carries the tail of.
+			sum, ok := a.chatSubAgents.SummaryOf(chatID, req.ID)
+			if !ok {
+				return "", errors.New("subagent task not found in this chat")
+			}
+			job, jerr := a.chatSubAgents.Get(chatID, req.ID)
+			if jerr != nil {
+				return "", jerr
+			}
+			result = struct {
+				subagents.Summary
+				Output string `json:"output,omitempty"`
+			}{sum, lastRunes(job.Result, 64*1024)}
+		}
 	case "spawn":
 		if strings.TrimSpace(req.Prompt) == "" || len(req.Prompt) > 128*1024 {
 			return "", errors.New("prompt must be nonempty and at most 128 KiB")
@@ -242,11 +271,28 @@ func (a *App) runChatSubAgent(ctx context.Context, j subagents.Job, emit func(su
 	a.cfgMu.RLock()
 	am := a.cfg.AgentMode
 	a.cfgMu.RUnlock()
-	if am.TurnBudgetSecs > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(am.TurnBudgetSecs)*time.Second)
-		defer cancel()
-	}
+	// A child is a background task, not a reply the user is watching, so it is NOT
+	// bound by the interactive turn's wall-clock budget (TurnBudgetSecs, 20 min):
+	// that deadline cut healthy coders mid-edit (two children with 315 and 377
+	// events were failed at exactly 20:00 with a bare "context deadline
+	// exceeded"). A child instead fails when it stops making progress, with a
+	// message that says so, and only a very long total cap remains as a backstop.
+	timing := currentSubAgentTiming()
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	// Monotonic offsets from one base: a wall-clock step or a laptop suspend must
+	// not read as hours of silence and fail a healthy child.
+	base := time.Now()
+	var lastActive atomic.Int64
+	touch := func() { lastActive.Store(int64(time.Since(base))) }
+	touch()
+	rawEmit := emit
+	emit = func(e subagents.Event) { touch(); rawEmit(e) }
+	totalCap := time.AfterFunc(timing.total, func() {
+		cancel(fmt.Errorf("sub-agent stopped: it reached its %s total time limit", timing.total))
+	})
+	defer totalCap.Stop()
+	go watchSubAgentIdle(ctx, cancel, base, &lastActive, timing.idle)
 	ctx = agent.WithLiveNarration(ctx)
 	ctx = agent.WithTurnOverrides(ctx, agent.TurnOverrides{MaxIters: am.CodeModeMaxIterations, MaxContinuations: am.CodeModeMaxContinuations, CodeSubMode: "build"})
 	msgs := append([]provider.Message{provider.TextMessage("system", j.SystemPrompt)}, j.Messages...)
@@ -261,41 +307,168 @@ func (a *App) runChatSubAgent(ctx context.Context, j subagents.Job, emit func(su
 		}
 		emit(subagents.Event{Type: string(ev.Type), Content: ev.Content, ToolName: ev.ToolName, Result: ev.Result, Error: ev.Error, Args: ev.Args})
 	}
-	start := time.Now()
-	ch, err := exec.RunStream(ctx, "", model, effort, msgs, onEvent, j.WorkDir)
-	if err != nil {
-		return subagents.RunResult{}, err
+	attempt := func(msgs []provider.Message) (string, error) {
+		attemptStart := time.Now()
+		ch, err := exec.RunStream(ctx, "", model, effort, msgs, onEvent, j.WorkDir)
+		if err != nil {
+			return "", err
+		}
+		var out strings.Builder
+		var usage *provider.Usage
+		var runErr error
+	consume:
+		for {
+			select {
+			case c, ok := <-ch:
+				if !ok {
+					break consume
+				}
+				touch()
+				if c.Error != "" {
+					runErr = errors.New(c.Error)
+				}
+				if c.Content != "" {
+					out.WriteString(c.Content)
+					emit(subagents.Event{Type: "output", Content: c.Content})
+				}
+				if c.Thinking != "" {
+					emit(subagents.Event{Type: "thinking", Content: c.Thinking})
+				}
+				if c.Usage != nil {
+					usage = c.Usage
+				}
+			case <-ctx.Done():
+				// A transport that ignores cancellation would leave the child "running"
+				// forever with the failure never recorded. Stop waiting for it; a
+				// drainer lets the producer finish whenever it does.
+				go func() {
+					for range ch {
+					}
+				}()
+				break consume
+			}
+		}
+		// Every paid attempt is counted, not just the last one.
+		a.recordTaskStreamUsage(attemptStart, j.ProviderName, model, "chat_subagent", usage, len(j.SystemPrompt)/4+len(j.Prompt)/4, out.String())
+		return out.String(), runErr
 	}
-	var out strings.Builder
-	var usage *provider.Usage
-	var runErr error
-	for c := range ch {
-		if c.Error != "" {
-			runErr = errors.New(c.Error)
+	attempts := 1
+	reply, runErr := attempt(msgs)
+	// A provider hiccup (5xx, timeout, rate limit) mid-task is not the task's
+	// failure: wait and run again with a note that part of the work may already be
+	// on disk. Configuration errors ("no provider configured", bad model, auth)
+	// are not retried; they would fail identically.
+	for i := 0; runErr != nil && i < len(timing.retryDelays) && ctx.Err() == nil && retryableSubAgentErr(runErr); i++ {
+		delay := timing.retryDelays[i]
+		if hint := time.Duration(taskloop.RetryAfterSeconds(runErr)) * time.Second; hint > delay {
+			delay = min(hint, 10*time.Minute)
 		}
-		if c.Content != "" {
-			out.WriteString(c.Content)
-			emit(subagents.Event{Type: "output", Content: c.Content})
+		emit(subagents.Event{Type: "retry", Content: fmt.Sprintf("Provider error: %v. Retrying in %s (attempt %d of %d).", runErr, delay, i+2, len(timing.retryDelays)+1)})
+		select {
+		case <-ctx.Done():
+		case <-time.After(delay):
 		}
-		if c.Thinking != "" {
-			emit(subagents.Event{Type: "thinking", Content: c.Thinking})
+		if ctx.Err() != nil {
+			break
 		}
-		if c.Usage != nil {
-			usage = c.Usage
-		}
+		touch() // the backoff was not silence; the next attempt gets a full idle window
+		attempts++
+		reply, runErr = attempt(withInterruptionNote(msgs, runErr))
 	}
-	if ctx.Err() != nil {
-		runErr = ctx.Err()
+	// A watchdog/cap/shutdown cause replaces the error only when the run did not
+	// finish: a complete reply that raced the cancel is still a success.
+	if ctx.Err() != nil && (runErr != nil || reply == "") {
+		cause := context.Cause(ctx)
+		if runErr != nil && !strings.Contains(runErr.Error(), "context canceled") && runErr.Error() != cause.Error() {
+			cause = fmt.Errorf("%w (last provider error: %s)", cause, lastRunes(oneLineText(runErr.Error()), 200))
+		}
+		runErr = cause
+	}
+	if runErr != nil && attempts > 1 {
+		runErr = fmt.Errorf("%w (after %d attempts)", runErr, attempts)
 	}
 	history := append([]provider.Message{}, j.Messages...)
 	// Preserve task-local tool evidence for follow-ups without another session or RAG.
-	reply := out.String()
 	if reply == "" && runErr == nil {
 		runErr = errors.New("sub-agent produced no final output")
 	}
 	history = append(history, provider.TextMessage("assistant", reply+"\n\nTask-local tool evidence:\n"+evidence.String()))
-	a.recordTaskStreamUsage(start, j.ProviderName, model, "chat_subagent", usage, len(j.SystemPrompt)/4+len(j.Prompt)/4, reply)
-	return subagents.RunResult{Output: reply, Messages: history}, runErr
+	output := reply
+	if runErr != nil && reply == "" {
+		// A failure with no final reply used to leave the main agent a bare error.
+		// Give it what the child had done so it can decide what to do next.
+		output = "No final reply was produced before the failure."
+		if e := strings.TrimSpace(evidence.String()); e != "" {
+			output += "\nLast tool results:\n" + lastRunes(e, 2000)
+		}
+	}
+	return subagents.RunResult{Output: output, Messages: history}, runErr
+}
+
+// subAgentTiming bounds a child. Idle is the longest it may go without any
+// model output or tool activity; total is a backstop for a runaway loop; retry
+// is the wait before each automatic retry after a transient provider error.
+type subAgentTiming struct {
+	idle, total time.Duration
+	retryDelays []time.Duration
+}
+
+var subAgentTimingOverride atomic.Pointer[subAgentTiming]
+
+func currentSubAgentTiming() subAgentTiming {
+	if o := subAgentTimingOverride.Load(); o != nil {
+		return *o
+	}
+	return subAgentTiming{idle: 15 * time.Minute, total: 6 * time.Hour, retryDelays: []time.Duration{30 * time.Second, 2 * time.Minute, 5 * time.Minute}}
+}
+
+// SetSubAgentTimingForTests shortens the child watchdog and retry waits so a
+// stall or provider outage can be exercised in milliseconds. All zero resets.
+func (a *App) SetSubAgentTimingForTests(idle, total time.Duration, retryDelays []time.Duration) {
+	if idle == 0 && total == 0 && retryDelays == nil {
+		subAgentTimingOverride.Store(nil)
+		return
+	}
+	subAgentTimingOverride.Store(&subAgentTiming{idle: idle, total: total, retryDelays: retryDelays})
+}
+
+func retryableSubAgentErr(err error) bool {
+	return taskloop.IsTransientErr(err) || taskloop.IsRateLimitErr(err)
+}
+
+// watchSubAgentIdle cancels a child that has produced neither output nor tool
+// activity for the idle limit, saying so in the cause that becomes its error.
+func watchSubAgentIdle(ctx context.Context, cancel context.CancelCauseFunc, base time.Time, last *atomic.Int64, idle time.Duration) {
+	tick := min(max(idle/4, 5*time.Millisecond), 30*time.Second)
+	t := time.NewTicker(tick)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if quiet := time.Since(base) - time.Duration(last.Load()); quiet >= idle {
+				cancel(fmt.Errorf("sub-agent made no progress for %s (no model output or tool activity) and was stopped", quiet.Round(time.Second)))
+				return
+			}
+		}
+	}
+}
+
+// withInterruptionNote tells the model the previous attempt died so it checks
+// the working directory instead of redoing finished work. The note rides on the
+// last user message, so role alternation stays valid for every provider.
+func withInterruptionNote(msgs []provider.Message, cause error) []provider.Message {
+	reason := firstRunes(oneLineText(cause.Error()), 300)
+	note := "\n\n[Note: your previous attempt was interrupted by a provider error (" + reason + "). Part of the work may already be in the working directory: inspect it (git status, git diff, read the files) and continue; do not redo finished work.]"
+	out := append([]provider.Message(nil), msgs...)
+	if n := len(out); n > 0 && out[n-1].Role == "user" {
+		if text, ok := out[n-1].Content.(string); ok {
+			out[n-1] = provider.TextMessage("user", text+note)
+			return out
+		}
+	}
+	return append(out, provider.TextMessage("user", strings.TrimSpace(note)))
 }
 
 // Validation runs against the staged integration on main before committing.
@@ -429,4 +602,20 @@ func (a *App) chatSubAgentToolRegistry(write bool, skills []string) (*agent.Tool
 		}
 	}
 	return registry, selected
+}
+
+func oneLineText(text string) string { return strings.Join(strings.Fields(text), " ") }
+
+func firstRunes(text string, n int) string {
+	if r := []rune(text); len(r) > n {
+		return string(r[:n])
+	}
+	return text
+}
+
+func lastRunes(text string, n int) string {
+	if r := []rune(text); len(r) > n {
+		return string(r[len(r)-n:])
+	}
+	return text
 }

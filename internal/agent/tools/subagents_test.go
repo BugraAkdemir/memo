@@ -44,7 +44,7 @@ func TestChatSubAgentActionsRejectInvalidOrCrossChatArguments(t *testing.T) {
 	for _, tc := range []struct{ action, args string }{
 		{"spawn", `{"prompt":" "}`}, {"spawn", `{"prompt":"x","chat_id":"other"}`}, {"spawn", `{"prompt":"x","skills":[""]}`},
 		{"send", `{"id":"x","prompt":""}`}, {"send", `{"prompt":"x"}`}, {"merge", `{"id":""}`},
-		{"list", `{"id":"x"}`}, {"close", `{"id":"x","chat_id":"other"}`}, {"unknown", `{}`}, {"list", `{} {}`}, {"list", `null`},
+		{"list", `{"id":"x","chat_id":"other"}`}, {"close", `{"id":"x","chat_id":"other"}`}, {"unknown", `{}`}, {"list", `{} {}`}, {"list", `null`},
 	} {
 		if _, err := ChatSubAgentAction(ctx, tc.action, json.RawMessage(tc.args)); err == nil {
 			t.Errorf("accepted %s %s", tc.action, tc.args)

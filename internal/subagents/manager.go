@@ -67,7 +67,9 @@ type Job struct {
 	Result         string             `json:"output,omitempty"`
 	Error          string             `json:"error,omitempty"`
 	CreatedAt      time.Time          `json:"created_at"`
-	UpdatedAt      time.Time          `json:"updated_at"`
+	// StartedAt is when the current round began executing (not when it queued).
+	StartedAt time.Time `json:"started_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 type CreateRequest struct {
 	Write        bool   `json:"write"`
@@ -353,7 +355,8 @@ func (m *Manager) scheduleLocked() {
 			continue
 		}
 		j.State = Running
-		j.UpdatedAt = time.Now().UTC()
+		j.StartedAt = time.Now().UTC()
+		j.UpdatedAt = j.StartedAt
 		if err := m.saveLocked(); err != nil {
 			j.State = Queued
 			m.data.Queue = append([]string{id}, m.data.Queue...)

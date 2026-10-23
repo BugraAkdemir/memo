@@ -1,3 +1,11 @@
+# Son oturum — 2026-10-23 — proje dosyalarını koruma
+- Dosya adları harf farkıyla tanınır: root AGENTS/CLAUDE/handoff ve .memo kurallar/notes/.gitignore. Mevcut dosya, klasör ve kopuk symlink korunur; model gerçek kurallar dosyası adına yönlendirilir. Yönetilen şablon v2 aynı kuralı taşır.
+- Yeni iskele/marker dosyaları mevcut hedefi değiştirmeden yayımlanır; ilk .memo oluşturma exclusive. .Memo ve symlink project.json sahiplenilmez. Güncellemeler benzersiz geçici dosya kullanır; mevcut *.tmp dosyaları korunur. Düzenlenmemiş Memo kuralları hash ile güncellenmeye devam eder.
+- RED: 9 harf varyasyonu ve mevcut iki *.tmp dosyasının kaybı. GREEN: proje race PASS (%79.6 toplam paket coverage); app yönlendirme regresyonu PASS. Go 1.26.10 build/vet PASS. Tam race ilk koşu FAIL: bilinen update ErrChecksum testi + gerçek ngrok. Son kodda yalnız TestFetchURL_NoServer atlanarak tüm race PASS; tünele dokunulmadı.
+- Flutter 817 PASS, analiz 13 eski info; diff/L10n temiz. Yerel commit; push yok. Canlı model ve Windows/macOS yerel dosya sistemi denenmedi.
+
+---
+
 # Son oturum — 2026-10-23 — yerel başlatma ve çevrimdışı sunucu değiştirme
 - Kök neden: run_memo.sh yerel backend açarken Flutter kayıtlı Tailscale adresine gidiyordu. Betik artık MEMO_BACKEND_URL ile ilk bağlantıyı localhost’a yönlendirir; kayıtlı adres silinmez, kullanıcı adres değiştirirse geçici seçim bırakılır.
 - Ulaşılamayan sunucuda masaüstü de provider scope’u yeniler, uygulamayı kapatmaz. Başlangıç/onboarding hatası kurtarma ekranını gizlemez; dar pencerede ekran/diyalog kaydırılabilir. Backend öldü penceresi doğrudan adres düzenleyiciyi açar.

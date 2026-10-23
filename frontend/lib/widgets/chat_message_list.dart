@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -150,6 +151,19 @@ class ChatMessageList extends StatefulWidget {
 
 class _ChatMessageListState extends State<ChatMessageList> {
   final ScrollController _scrollController = ScrollController();
+  final ValueNotifier<bool> _showJumpToLatest = ValueNotifier(false);
+  int _jumpGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_updateJumpVisibility);
+  }
+
+  void _updateJumpVisibility() {
+    if (!mounted) return;
+    _showJumpToLatest.value = !_isNearBottom();
+  }
 
   @override
   void didUpdateWidget(ChatMessageList oldWidget) {
@@ -157,7 +171,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
     final messagesChanged = widget.messages.length != oldWidget.messages.length;
     final streamingLenChanged =
         widget.streamingContent.length != oldWidget.streamingContent.length ||
-        widget.streamingNarration.length != oldWidget.streamingNarration.length ||
+        widget.streamingNarration.length !=
+            oldWidget.streamingNarration.length ||
         widget.streamingThinking.length != oldWidget.streamingThinking.length ||
         (widget.streamingAgentEvents?.length ?? 0) !=
             (oldWidget.streamingAgentEvents?.length ?? 0);
@@ -186,7 +201,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
   void _scrollToBottom() {
     if (!_isNearBottom()) return; // don't yank if user scrolled up
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      if (mounted && _scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: Duration(milliseconds: 300),
@@ -196,9 +211,28 @@ class _ChatMessageListState extends State<ChatMessageList> {
     });
   }
 
+  Future<void> _jumpToLatest() async {
+    final generation = ++_jumpGeneration;
+    // Lazy lists estimate the end from the items already laid out. Recheck
+    // after each animation so tall messages farther down still take one click.
+    while (mounted &&
+        generation == _jumpGeneration &&
+        _scrollController.hasClients &&
+        _scrollController.position.extentAfter > 1) {
+      await _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+      await WidgetsBinding.instance.endOfFrame;
+    }
+  }
+
   @override
   void dispose() {
+    _scrollController.removeListener(_updateJumpVisibility);
     _scrollController.dispose();
+    _showJumpToLatest.dispose();
     super.dispose();
   }
 
@@ -219,7 +253,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
         (showTyping ? 1 : 0) +
         (hasTask ? 1 : 0);
 
-    return ListView.builder(
+    final messageList = ListView.builder(
       controller: _scrollController,
       padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       itemCount: itemCount,
@@ -270,6 +304,60 @@ class _ChatMessageListState extends State<ChatMessageList> {
           state: widget.taskActivity!,
         );
       },
+    );
+
+    return NotificationListener<UserScrollNotification>(
+      onNotification: (notification) {
+        if (notification.depth == 0 &&
+            notification.direction != ScrollDirection.idle) {
+          // A new user scroll takes priority over an unfinished jump.
+          _jumpGeneration++;
+        }
+        return false;
+      },
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: (notification) {
+          if (notification.depth == 0) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _updateJumpVisibility();
+            });
+          }
+          return false;
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            messageList,
+            Positioned(
+              bottom: 12,
+              left: 0,
+              right: 0,
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _showJumpToLatest,
+                builder: (context, visible, _) {
+                  if (!visible) return const SizedBox.shrink();
+                  final colors = MemoTheme.of(context);
+                  return Center(
+                    child: Material(
+                      color: colors.bgPanel,
+                      elevation: 3,
+                      shape: CircleBorder(
+                        side: BorderSide(color: colors.borderSoft),
+                      ),
+                      child: IconButton(
+                        tooltip: L10n.t('chat_jump_to_latest'),
+                        onPressed: _jumpToLatest,
+                        icon: const Icon(Icons.arrow_downward_rounded),
+                        color: colors.textMain,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

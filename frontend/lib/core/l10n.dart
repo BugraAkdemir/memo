@@ -50,6 +50,7 @@ class L10n {
   // ─── Turkish ──────────────────────────────────────────────────
 
   static const _tr = <String, String>{
+    'chat_jump_to_latest': 'Son mesaja git',
     'subagent_title': 'Alt ajan',
     'subagent_delivery_interrupted': 'Alt ajanın sonucu kaydedildi ancak ana ajanın değerlendirmesi yarıda kaldı. Alt ajanı yeniden çalıştırmadan devam edebilirsiniz.',
     'subagent_resume_review': 'Ana ajanın değerlendirmesini sürdür',
@@ -2637,6 +2638,7 @@ class L10n {
   };
 
   static const _en = <String, String>{
+    'chat_jump_to_latest': 'Jump to latest message',
     'subagent_title': 'Sub-agent',
     'subagent_delivery_interrupted': 'The child result is saved, but the main agent review was interrupted. Resume the review without running the child again.',
     'subagent_resume_review': 'Resume main review',

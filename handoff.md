@@ -65,8 +65,7 @@
 
 ---
 
-# Son oturum — 2026-10-23 — proje dosyalarını koruma
-- Dosya adları harf farkıyla tanınır: root AGENTS/CLAUDE/handoff ve .memo kurallar/notes/.gitignore. Mevcut dosya, klasör ve kopuk symlink korunur; model gerçek kurallar dosyası adına yönlendirilir. Yönetilen şablon v2 aynı kuralı taşır.
-- Yeni iskele/marker dosyaları mevcut hedefi değiştirmeden yayımlanır; ilk .memo oluşturma exclusive. .Memo ve symlink project.json sahiplenilmez. Güncellemeler benzersiz geçici dosya kullanır; mevcut *.tmp dosyaları korunur. Düzenlenmemiş Memo kuralları hash ile güncellenmeye devam eder.
-- RED: 9 harf varyasyonu ve mevcut iki *.tmp dosyasının kaybı. GREEN: proje race PASS (%79.6 toplam paket coverage); app yönlendirme regresyonu PASS. Go 1.26.10 build/vet PASS. Tam race ilk koşu FAIL: bilinen update ErrChecksum testi + gerçek ngrok. Son kodda yalnız TestFetchURL_NoServer atlanarak tüm race PASS; tünele dokunulmadı.
-- Flutter 817 PASS, analiz 13 eski info; diff/L10n temiz. Yerel commit; push yok. Canlı model ve Windows/macOS yerel dosya sistemi denenmedi.
+# Son oturum — 2026-10-23 — son mesaja atlama
+- Sohbet yukarıdayken alt ortada Son mesaja git düğmesi; en altta gizli. Değişken mesaj boylarında tek tıkla sona ulaşır, elle kaydırma atlamayı iptal eder. EN/TR tooltip, boyut değişimine uyum; eski mesaj okunurken yeni mesaj aşağı çekmez.
+- RED: düğme yokluğu ve uzun sohbette 1920px eksik atlama. GREEN: 5 widget testi; tam Flutter 822 PASS. Değişen 3 dosya analiz: No issues found; tam analiz 13 eski info. L10n/diff temiz.
+- Go 1.26.10 build/vet PASS; tam race FAIL: bilinen update ErrChecksum ve gerçek ngrok ortam testi. Backend değişmedi. Yerel commit, push yok; gerçek açık pencerede denenmedi.

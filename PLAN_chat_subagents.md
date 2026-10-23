@@ -25,3 +25,10 @@ Kabul örneği: çocuk 1 tamamlandığında ana ajan yanıt üretirken çocuk 2 
 ikinci kayıt kalıcı kuyrukta durur; ilk tur bitmeden ikinci tur başlamaz. Kullanıcının
 o sırada gönderdiği mesaj da aynı sohbet sırasını kullanır. Farklı sohbetler birbirini
 bekletmez. Kabul edilen işin geçici içeriği ancak başarılı birleştirme/kapatma sonrası temizlenir.
+
+## 3. İnceleme düzeltmeleri (2026-10-23)
+- [x] Erken abonelik kaydının model okuma/yazmasını model seçimiyle aynı kilitte tut; eski kodda düşen regresyon testini doğrula.
+- [x] Proje benchmark’ında çocuk yazma/test/commit ve ana ajan spawn/takip/merge/kapatma araçlarını gerçekten çalıştır; FIFO sırasını, paralel izolasyonu ve branch/worktree temizliğini assert et. Yazma aracı kaldırıldığında yeni testin düştüğünü doğrula.
+
+Doğrulama ayrıntıları ve bağımsız Tailscale test kararsızlığı:
+`docs/CHAT_SUBAGENTS.md` inceleme regresyonları bölümü.

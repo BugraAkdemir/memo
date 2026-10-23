@@ -100,3 +100,40 @@ worktree isolation, merge conflict/validation failure/cleanup retry, streamed
 attachments, real HTTP/fake-provider delegation and main resumption, and Flutter
 panel/settings/recovery behavior. No live vendor-model quality or native
 Windows/macOS execution is established by those tests.
+
+## Review regressions verified on 2026-10-23
+
+The two review findings were treated as separate checkpoints. The guarantees
+come from the approved plan above and the review's model-selection race report.
+
+| Guarantee | Test / evidence | Result |
+| --- | --- | --- |
+| Early subscription endpoint registration cannot write during a model-selection transaction, and reads the selection after acquiring the lock | `TestSyncSubscriptions_EarlyRegistrationWaitsForModelSelection` | RED on the previous code: `early registration wrote provider config while a model-selection transaction held subscriptionModelMu`; GREEN after protecting the early read/write |
+| Model selection remains usable while network discovery is pending | `TestSyncSubscriptions_PreservesModelSelectedDuringDiscovery` and other `TestSyncSubscriptions_` cases | `CGO_ENABLED=1 go test -tags sqlite_fts5 ./internal/app -race -run '^TestSyncSubscriptions_' -count=1`: PASS, 9.501s |
+| Two isolated children actually write source/tests, run tests and commit; main reuses a child, merges and closes through real tools | `TestBenchmark_SubagentsFakeProject` | `CGO_ENABLED=1 go test -tags sqlite_fts5 ./internal/e2e -race -run '^TestBenchmark_SubagentsFakeProject$' -count=1 -v -timeout=90s`: PASS, 2.654s |
+| Child 2 completing during the blocked first review stays pending and reviews follow increasing completion IDs; accepted changes land through sequential merges and both branches/worktrees disappear | Same benchmark, channel-controlled ordering and final Git assertions | PASS |
+| A broken child writer cannot produce a green benchmark | Temporary Go build overlay removing `write_file` from the child registry; no production mutation committed | Previous benchmark: PASS, 1.364s. New benchmark: expected FAIL, `Error: Unknown tool: write_file` for both writers |
+
+Only fixture initialization writes files from the test process. All child changes,
+follow-up edits, tests and commits use agent tool calls. Tool results must be
+present and successful before the fake provider advances to its next step. The
+fixture is a dependency-free Go module so merge validation also runs its tests.
+The existing `TestChatSubAgents_ResultWhileMainBusyQueuesWithHumanTurn` covers a
+human message arriving during main review; this benchmark controls child-result
+order and writer isolation. Model quality and native desktop UX remain untested.
+
+Verification: Go build/vet passed. The full `./... -race` run passed the agent,
+subagent and E2E packages, but failed
+`TestEnsureTailscaleWebServerBind_RebindsFromLoopback` with
+`web server not running after rebind`. A comparison of race test binaries under
+12 identical busy-loop processes, 150 runs per version, reproduced that same
+failure 8 times before these fixes and 2 times after them. This is recorded as a
+separate pre-existing server lifecycle problem; the full suite is **not** claimed
+to be green. Flutter tests passed 815/815; analysis reported only the 3 existing
+BuildContext infos. No Flutter source changed.
+
+Coverage measurement:
+`CGO_ENABLED=1 go test -tags sqlite_fts5 ./internal/app -run '^TestSyncSubscriptions_' -coverprofile=/tmp/memo-subagent-fixes-coverage.out`
+passed (9.306s). `syncSubscriptions` and `SetProviderModel` each measured 75%;
+the intentionally narrow selection measured 0.9% of the whole app package.
+These figures do not establish 80% app-wide coverage.

@@ -1,3 +1,11 @@
+# Son oturum — 2026-10-23 — alt ajan değişikliklerinin incelemesi
+- `5548e4f1..c2f04067` değişiklikleri incelendi; uygulama kodu değiştirilmedi. İki açık bulgu yukarıda: eksik model seçimi kilidi ve yeni benchmark’ın iddia ettiği uçtan uca kapsamı doğrulamaması. Önceki özetteki “tam benchmark doğrulandı/model yarışı çözüldü” ifadeleri bu sınırlarla okunmalı.
+- Gerçek çalıştırmalar: `CGO_ENABLED=1 go build -tags sqlite_fts5 ./...` ve `go vet` çıkış 0; `go test -tags sqlite_fts5 ./... -race` çıkış 0. Alt ajan/agent/app/e2e race paketi ayrıca geçti; yeni benchmark tekil koşusu PASS (2.320s).
+- Flutter: `flutter analyze lib/` yalnız 3 bilinen BuildContext info (çıkış 1), hata/uyarı yok; `flutter test` 815 PASS (çıkış 0). Değişen Flutter lib dosyaları için hardcoded UI literal taraması boş. Canlı sağlayıcı/masaüstü UX bu incelemede denenmedi.
+- Yalnız handoff/arşiv güncellendi; yerel dokümantasyon commit’i, push yok.
+
+---
+
 # Son oturum — 2026-10-23 — normal sohbet alt ajanları (Aşama 1 & 2)
 - Normal sohbet alt ajanları (`PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`) Aşama 1 ve 2 uygulandı: arka planda çalışan alt ajan motoru (`internal/subagents`), kalıcı FIFO kuyruğu, ana ajana senkronize teslimat, Git worktree/branch (`memo-*`) izolasyonu ve birleştirme/çatışma yönetimi.
 - Araçlar: `spawn_agent`, `send_agent`, `list_agents`, `cancel_agent`, `close_agent`, `merge_agent`. Alt ajanlarda kişisel hafıza/RAG yok; sadece görev + Code Mode + seçilen skill talimatları.

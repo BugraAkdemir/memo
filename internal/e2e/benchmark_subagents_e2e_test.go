@@ -3,261 +3,294 @@
 package e2e
 
 import (
-	"context"
 	"encoding/json"
-	"net/http"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"testing"
 
 	"memo/internal/subagents"
 )
 
-// TestBenchmark_SubagentsFakeProject runs a complete end-to-end benchmark
-// scenario for normal-chat subagents operating on a realistic fake project.
-//
-// Scenario phases:
-// 1. Initialize a real Git project directory with initial code and tests.
-// 2. Main agent roots at the project in agent mode.
-// 3. Main agent spawns two isolated subagents (child-1 for math, child-2 for string utils).
-// 4. Verify parallel execution, separate memo-* worktrees and branches.
-// 5. Children write code and run verification tests in their respective worktrees.
-// 6. Main branch remains clean and untouched while children are working.
-// 7. Follow-up instruction (send_agent) sent to child-1 to add additional functionality.
-// 8. Completed results arrive in main agent's durable FIFO mailbox.
-// 9. Main agent reviews, merges (merge_agent) child-1 then child-2 serially.
-// 10. Verify main branch contains both changes, and all temporary branches/worktrees are cleaned up.
+// The provider alone is scripted. Children write, test and commit through real
+// agent tools; main spawns, follows up, merges and closes through its tools.
+// Gates keep two writers active together and finish child 2 while main is
+// reviewing child 1, so the durable FIFO and lack of overlapping reviews are
+// assertions rather than assumptions about scheduler timing.
 func TestBenchmark_SubagentsFakeProject(t *testing.T) {
-	// Step 1: Create a real Git repo for the fake project
-	projectDir := t.TempDir()
-	runGit(t, projectDir, "init", "-b", "main")
-	runGit(t, projectDir, "config", "user.name", "Benchmark Engineer")
-	runGit(t, projectDir, "config", "user.email", "benchmark@google.test")
-	runGit(t, projectDir, "config", "commit.gpgsign", "false")
-
-	// Base project files
-	initialPy := "def add(a, b):\n    return a + b\n"
-	if err := os.WriteFile(filepath.Join(projectDir, "math_utils.py"), []byte(initialPy), 0644); err != nil {
-		t.Fatal(err)
+	project := t.TempDir()
+	runGit(t, project, "init", "-b", "main")
+	runGit(t, project, "config", "user.name", "Benchmark Engineer")
+	runGit(t, project, "config", "user.email", "benchmark@example.test")
+	runGit(t, project, "config", "commit.gpgsign", "false")
+	initial := "package sample\n\nfunc Add(a, b int) int { return a + b }\n"
+	for name, content := range map[string]string{
+		"go.mod":       "module example.test/subagent-benchmark\n\ngo 1.20\n",
+		"base.go":      initial,
+		"base_test.go": "package sample\nimport \"testing\"\nfunc TestAdd(t *testing.T) { if Add(2, 3) != 5 { t.Fatal(\"add\") } }\n",
+	} {
+		if err := os.WriteFile(filepath.Join(project, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
-	testPy := "from math_utils import add\n\ndef test_add():\n    assert add(2, 3) == 5\n"
-	if err := os.WriteFile(filepath.Join(projectDir, "test_math.py"), []byte(testPy), 0644); err != nil {
-		t.Fatal(err)
-	}
-	runGit(t, projectDir, "add", ".")
-	runGit(t, projectDir, "commit", "-m", "chore: initial project commit")
+	runGit(t, project, "add", ".")
+	runGit(t, project, "commit", "-m", "chore: initialize fixture")
 
-	// Step 2: Boot Harness and Agent Chat
 	h := NewHarness(t)
 	h.SetAgentEnabled(true)
 	h.SetAutoPermission(true)
-	chat := h.NewAgentChat(projectDir)
-
-	var child1Spawned, child2Spawned atomic.Bool
-	childTasks := make(chan FakeChatRequest, 10)
-	mainReviews := make(chan string, 10)
+	chat := h.NewAgentChat(project)
+	gate := func() (<-chan struct{}, func()) {
+		ch := make(chan struct{})
+		var once sync.Once
+		release := func() { once.Do(func() { close(ch) }) }
+		t.Cleanup(release) // release scripted requests before Harness shutdown
+		return ch, release
+	}
+	mathFinish, finishMath := gate()
+	stringFinish, finishString := gate()
+	firstReviewFinish, finishFirstReview := gate()
+	followupFinish, finishFollowup := gate()
+	prepared := make(chan string, 3)
+	reviews := make(chan subagents.Completion, 4)
+	var seenMu sync.Mutex
+	seen := map[uint64]bool{}
 
 	h.Fake.Script = func(_ int, req FakeChatRequest) FakeChatResponse {
 		last := lastSubAgentUser(req)
-
-		// Child execution
 		if childRequest(req) {
-			childTasks <- req
+			label, source, testSource, commit := "math", "math.go", "math_test.go", "feat(math): add multiply"
+			code := "package sample\n\nfunc Multiply(a, b int) int { return a * b }\n"
+			testCode := "package sample\nimport \"testing\"\nfunc TestMultiply(t *testing.T) { if Multiply(6, 7) != 42 { t.Fatal(\"multiply\") } }\n"
+			finish := mathFinish
 			if strings.Contains(last, "TASK_MULTIPLY_FOLLOWUP") {
-				return FakeChatResponse{Text: "SUBAGENT_1_FOLLOWUP_DONE: Added multiply and docstring"}
+				label, commit, finish = "followup", "docs(math): document multiply", followupFinish
+				code = "package sample\n\n// Multiply returns the product of two integers.\nfunc Multiply(a, b int) int { return a * b }\n"
+				if !strings.Contains(string(req.Raw), "RESULT_math") || !strings.Contains(string(req.Raw), "TASK_MULTIPLY:") {
+					t.Error("follow-up lost the child's original task/result history")
+				}
+			} else if strings.Contains(last, "TASK_REVERSE:") {
+				label, source, testSource, commit, finish = "string", "string.go", "string_test.go", "feat(strings): add reverse", stringFinish
+				code = "package sample\n\nfunc Reverse(s string) string { r := []rune(s); for i, j := 0, len(r)-1; i < j; i, j = i+1, j-1 { r[i], r[j] = r[j], r[i] }; return string(r) }\n"
+				testCode = "package sample\nimport \"testing\"\nfunc TestReverse(t *testing.T) { if Reverse(\"Memo\") != \"omeM\" { t.Fatal(\"reverse\") } }\n"
 			}
-			if strings.Contains(last, "TASK_MULTIPLY") {
-				return FakeChatResponse{Text: "SUBAGENT_1_DONE: Implemented multiply in math_utils.py"}
+			steps := []FakeToolCall{
+				benchmarkCall(label+"-write", "write_file", map[string]any{"path": source, "content": code}),
+				benchmarkCall(label+"-test-write", "write_file", map[string]any{"path": testSource, "content": testCode}),
+				benchmarkCall(label+"-test", "run_command", map[string]any{"command": "go test ./..."}),
+				benchmarkCall(label+"-stage", "run_command", map[string]any{"command": "git add " + source + " " + testSource}),
+				benchmarkCall(label+"-commit", "run_command", map[string]any{"command": "git commit -m \"" + commit + "\""}),
 			}
-			if strings.Contains(last, "TASK_REVERSE") {
-				return FakeChatResponse{Text: "SUBAGENT_2_DONE: Implemented reverse_string in string_utils.py"}
+			if response, done := benchmarkToolSequence(t, req, steps); !done {
+				return response
 			}
-			return FakeChatResponse{Text: "CHILD_GENERIC_DONE"}
+			results := benchmarkToolResults(req)
+			if !strings.Contains(results[label+"-test"], "ok") || !strings.Contains(results[label+"-commit"], commit) {
+				t.Errorf("%s child did not test and commit successfully: %v", label, results)
+			}
+			prepared <- label
+			<-finish
+			return FakeChatResponse{Text: "RESULT_" + label}
 		}
-
-		// Main agent handling returned subagent result
-		if strings.Contains(last, "<memo-subagent-result>") && len(req.Tools) > 0 {
-			mainReviews <- last
-			return FakeChatResponse{Text: "MAIN: Reviewed subagent completion."}
+		if len(req.Tools) == 0 {
+			return FakeChatResponse{Text: "fixture"} // title/metadata requests
 		}
-
-		// Initial user instruction to delegate
-		if strings.Contains(last, "DELEGATE_BENCHMARK_TASKS") {
-			if child1Spawned.CompareAndSwap(false, true) {
-				return FakeChatResponse{
-					ToolCalls: []FakeToolCall{{
-						ID:   "call-spawn-1",
-						Name: "spawn_agent",
-						Arguments: `{"prompt":"TASK_MULTIPLY: Add multiply(a, b) function to math_utils.py and test in test_math.py","title":"Math utils multiply","write":true,"isolate":true}`,
-					}},
+		if strings.Contains(last, "<memo-subagent-result>") {
+			var completion subagents.Completion
+			start, end := strings.Index(last, "\n{"), strings.LastIndex(last, "\n</memo-subagent-result>")
+			if start < 0 || end <= start || json.Unmarshal([]byte(last[start+1:end]), &completion) != nil {
+				t.Errorf("invalid completion envelope: %s", last)
+				return FakeChatResponse{Text: "invalid completion"}
+			}
+			seenMu.Lock()
+			first := !seen[completion.ID]
+			seen[completion.ID] = true
+			seenMu.Unlock()
+			if first {
+				reviews <- completion
+			}
+			prefix := fmt.Sprintf("review-%d", completion.ID)
+			if completion.Result == "RESULT_math" {
+				<-firstReviewFinish
+				step := benchmarkCall(prefix+"-followup", "send_agent", map[string]any{"id": completion.JobID, "prompt": "TASK_MULTIPLY_FOLLOWUP: document Multiply, retest and commit"})
+				if response, done := benchmarkToolSequence(t, req, []FakeToolCall{step}); !done {
+					return response
+				}
+			} else {
+				steps := []FakeToolCall{
+					benchmarkCall(prefix+"-verify", "run_command", map[string]any{"command": "go test ./..."}),
+					benchmarkCall(prefix+"-merge", "merge_agent", map[string]any{"id": completion.JobID}),
+					benchmarkCall(prefix+"-close", "close_agent", map[string]any{"id": completion.JobID}),
+				}
+				if response, done := benchmarkToolSequence(t, req, steps); !done {
+					return response
+				}
+				results := benchmarkToolResults(req)
+				if !strings.Contains(results[prefix+"-merge"], `"status":"merged"`) || !strings.Contains(results[prefix+"-close"], `"status":"closed"`) {
+					t.Errorf("main did not merge and close child: %v", results)
 				}
 			}
+			return FakeChatResponse{Text: "REVIEWED_" + completion.Result}
 		}
-
-		return FakeChatResponse{Text: "MAIN: Ready for instructions."}
+		if strings.Contains(last, "DELEGATE_BENCHMARK_TASKS") {
+			steps := []FakeToolCall{
+				benchmarkCall("spawn-math", "spawn_agent", map[string]any{"prompt": "TASK_MULTIPLY: implement Multiply with tests and commit", "write": true, "isolate": true}),
+				benchmarkCall("spawn-string", "spawn_agent", map[string]any{"prompt": "TASK_REVERSE: implement Reverse with tests and commit", "write": true, "isolate": true}),
+			}
+			if response, done := benchmarkToolSequence(t, req, steps); !done {
+				return response
+			}
+			return FakeChatResponse{Text: "Both children delegated."}
+		}
+		return FakeChatResponse{Text: "ready"}
 	}
 
-	// Step 3: Trigger main agent to spawn child 1
-	events := h.SendMessageStream(chat, "DELEGATE_BENCHMARK_TASKS please delegate the work.")
-	for _, ev := range events {
+	for _, ev := range h.SendMessageStream(chat, "DELEGATE_BENCHMARK_TASKS") {
 		if ev.Error != "" {
-			t.Fatalf("stream error: %s", ev.Error)
+			t.Fatalf("main stream: %s", ev.Error)
 		}
 	}
-
-	if !child1Spawned.Load() {
-		t.Fatal("main agent did not invoke spawn_agent for child 1")
+	ready := map[string]bool{}
+	for len(ready) < 2 {
+		ready[awaitSubAgentValue(t, prepared)] = true
 	}
-
-	// Wait for child 1 to be created and verify isolation
+	if !ready["math"] || !ready["string"] {
+		t.Fatalf("parallel children did not both prepare their changes: %v", ready)
+	}
 	job1 := awaitSubAgentJob(t, h, chat, func(j subagents.Job) bool {
-		return strings.Contains(j.Prompt, "TASK_MULTIPLY")
+		return strings.Contains(j.Prompt, "TASK_MULTIPLY:") && j.State == subagents.Running
 	})
-	if !strings.HasPrefix(job1.Branch, "memo-") {
-		t.Fatalf("child 1 expected memo- branch, got %q", job1.Branch)
-	}
-	if job1.WorkDir == projectDir || !strings.Contains(job1.WorkDir, "subagents/worktrees") {
-		t.Fatalf("child 1 expected isolated workdir, got %q", job1.WorkDir)
-	}
-
-	// Step 4: Spawn child 2 directly to test parallel isolated execution
-	args2, _ := json.Marshal(map[string]any{
-		"prompt":  "TASK_REVERSE: Create string_utils.py with reverse_string(s) function",
-		"title":   "String utils reverse",
-		"write":   true,
-		"isolate": true,
+	job2 := awaitSubAgentJob(t, h, chat, func(j subagents.Job) bool {
+		return strings.Contains(j.Prompt, "TASK_REVERSE:") && j.State == subagents.Running
 	})
-	respCreated, err := h.App.ChatSubAgentAction(context.Background(), chat, "spawn", args2)
-	if err != nil {
-		t.Fatalf("spawn child 2 error: %v", err)
+	if !strings.HasPrefix(job1.Branch, "memo-") || !strings.HasPrefix(job2.Branch, "memo-") || job1.Branch == job2.Branch || job1.WorkDir == job2.WorkDir || job1.WorkDir == project || job2.WorkDir == project {
+		t.Fatalf("children are not isolated: %+v / %+v", job1, job2)
 	}
-	var job2 subagents.Job
-	if err = json.Unmarshal([]byte(respCreated), &job2); err != nil {
-		t.Fatal(err)
-	}
-	child2Spawned.Store(true)
-
-	if !strings.HasPrefix(job2.Branch, "memo-") || job2.Branch == job1.Branch {
-		t.Fatalf("child 2 branch clash: job1=%s job2=%s", job1.Branch, job2.Branch)
-	}
-	if job2.WorkDir == job1.WorkDir || job2.WorkDir == projectDir {
-		t.Fatalf("child 2 workdir clash: job1=%s job2=%s", job1.WorkDir, job2.WorkDir)
-	}
-
-	// Step 5: Simulate children writing code into their isolated worktrees
-	// Child 1 edits math_utils.py in its workdir
-	child1Math := initialPy + "\ndef multiply(a, b):\n    return a * b\n"
-	if err := os.WriteFile(filepath.Join(job1.WorkDir, "math_utils.py"), []byte(child1Math), 0644); err != nil {
-		t.Fatal(err)
-	}
-	runGit(t, job1.WorkDir, "add", "math_utils.py")
-	runGit(t, job1.WorkDir, "commit", "-m", "feat(math): add multiply function")
-
-	// Child 2 creates string_utils.py in its workdir
-	child2Str := "def reverse_string(s):\n    return s[::-1]\n"
-	if err := os.WriteFile(filepath.Join(job2.WorkDir, "string_utils.py"), []byte(child2Str), 0644); err != nil {
-		t.Fatal(err)
-	}
-	runGit(t, job2.WorkDir, "add", "string_utils.py")
-	runGit(t, job2.WorkDir, "commit", "-m", "feat(strings): add reverse_string function")
-
-	// Step 6: Verify main project remains clean and untouched
-	mainMath, err := os.ReadFile(filepath.Join(projectDir, "math_utils.py"))
-	if err != nil || string(mainMath) != initialPy {
-		t.Fatalf("main project math_utils.py was prematurely modified: %s", string(mainMath))
-	}
-	if _, err := os.Stat(filepath.Join(projectDir, "string_utils.py")); !os.IsNotExist(err) {
-		t.Fatal("string_utils.py leaked into main project before merge")
-	}
-
-	// Step 7: Follow-up instruction (send_agent) on child 1
-	sendResp := h.postJSON("/api/subagents/"+job1.ID+"/send", map[string]string{
-		"chat_id": chat,
-		"prompt":  "TASK_MULTIPLY_FOLLOWUP: add docstring to multiply function",
-	})
-	if sendResp.StatusCode != http.StatusOK {
-		t.Fatalf("send_agent status: %d", sendResp.StatusCode)
-	}
-	sendResp.Body.Close()
-
-	// Child 1 commits the docstring in its worktree
-	child1MathWithDoc := initialPy + "\ndef multiply(a, b):\n    \"\"\"Multiply two numbers.\"\"\"\n    return a * b\n"
-	if err := os.WriteFile(filepath.Join(job1.WorkDir, "math_utils.py"), []byte(child1MathWithDoc), 0644); err != nil {
-		t.Fatal(err)
-	}
-	runGit(t, job1.WorkDir, "add", "math_utils.py")
-	runGit(t, job1.WorkDir, "commit", "-m", "docs(math): add docstring to multiply")
-
-	// Wait for child 1 to finish round 2 and await follow-up
-	job1After := awaitSubAgentJob(t, h, chat, func(j subagents.Job) bool {
-		return j.ID == job1.ID && j.Round == 2 && j.State == subagents.Awaiting
-	})
-	if job1After.Round != 2 {
-		t.Fatalf("expected round 2, got %d", job1After.Round)
-	}
-
-	// Step 8: Sequential Merge of Child 1
-	mergeResp1 := h.postJSON("/api/subagents/"+job1.ID+"/merge", map[string]string{"chat_id": chat})
-	if mergeResp1.StatusCode != http.StatusOK {
-		t.Fatalf("merge child 1 status: %d", mergeResp1.StatusCode)
-	}
-	mergeResp1.Body.Close()
-
-	// Verify Child 1 changes landed on main
-	mainMathAfter1, err := os.ReadFile(filepath.Join(projectDir, "math_utils.py"))
-	if err != nil || !strings.Contains(string(mainMathAfter1), "def multiply") || !strings.Contains(string(mainMathAfter1), "Multiply two numbers") {
-		t.Fatalf("main math_utils.py missing child 1 content: %s", string(mainMathAfter1))
-	}
-
-	// Verify child 1 worktree is deleted
-	if _, err := os.Stat(job1.WorkDir); !os.IsNotExist(err) {
-		t.Fatalf("child 1 worktree %s still exists after successful merge", job1.WorkDir)
-	}
-
-	// Close child 1
-	closeResp1 := h.postJSON("/api/subagents/"+job1.ID+"/close", map[string]string{"chat_id": chat})
-	if closeResp1.StatusCode != http.StatusOK {
-		t.Fatalf("close child 1 status: %d", closeResp1.StatusCode)
-	}
-	closeResp1.Body.Close()
-
-	// Step 9: Sequential Merge of Child 2
-	mergeResp2 := h.postJSON("/api/subagents/"+job2.ID+"/merge", map[string]string{"chat_id": chat})
-	if mergeResp2.StatusCode != http.StatusOK {
-		t.Fatalf("merge child 2 status: %d", mergeResp2.StatusCode)
-	}
-	mergeResp2.Body.Close()
-
-	// Verify Child 2 changes landed on main
-	mainStrAfter2, err := os.ReadFile(filepath.Join(projectDir, "string_utils.py"))
-	if err != nil || !strings.Contains(string(mainStrAfter2), "def reverse_string") {
-		t.Fatalf("main string_utils.py missing child 2 content: %s", string(mainStrAfter2))
-	}
-
-	// Verify child 2 worktree is deleted
-	if _, err := os.Stat(job2.WorkDir); !os.IsNotExist(err) {
-		t.Fatalf("child 2 worktree %s still exists after successful merge", job2.WorkDir)
-	}
-
-	// Close child 2
-	closeResp2 := h.postJSON("/api/subagents/"+job2.ID+"/close", map[string]string{"chat_id": chat})
-	if closeResp2.StatusCode != http.StatusOK {
-		t.Fatalf("close child 2 status: %d", closeResp2.StatusCode)
-	}
-	closeResp2.Body.Close()
-
-	// Step 10: Final validation on main project
-	logOut := runGit(t, projectDir, "log", "--oneline", "-n", "10")
-	for _, expectedCommit := range []string{"feat(math)", "docs(math)", "feat(strings)"} {
-		if !strings.Contains(logOut, expectedCommit) {
-			t.Errorf("main git log missing commit %s:\n%s", expectedCommit, logOut)
+	for _, name := range []string{"math.go", "string.go"} {
+		if _, err := os.Stat(filepath.Join(project, name)); !os.IsNotExist(err) {
+			t.Fatalf("child file %s leaked into main before merge", name)
 		}
 	}
+	if got := runGit(t, project, "status", "--porcelain"); got != "" {
+		t.Fatalf("main modified before merge: %s", got)
+	}
 
-	t.Logf("BENCHMARK_SUCCESS: All subagent scenarios verified cleanly on fake project!")
+	finishMath()
+	first := awaitSubAgentValue(t, reviews)
+	if first.JobID != job1.ID || first.Round != 1 || first.Result != "RESULT_math" {
+		t.Fatalf("first review=%+v", first)
+	}
+	// Child 2 completes while the first main review is still blocked. Its
+	// completion must remain pending, without starting a concurrent review.
+	finishString()
+	awaitSubAgentJob(t, h, chat, func(j subagents.Job) bool {
+		return j.ID == job2.ID && j.State == subagents.Awaiting && j.ResultDelivery == "pending"
+	})
+	select {
+	case c := <-reviews:
+		t.Fatalf("main review overlapped the blocked first review: %+v", c)
+	default:
+	}
+	finishFirstReview()
+	second := awaitSubAgentValue(t, reviews)
+	if second.JobID != job2.ID || second.Result != "RESULT_string" || second.ID <= first.ID {
+		t.Fatalf("FIFO completion order broken: first=%+v second=%+v", first, second)
+	}
+	awaitSubAgentSavedReply(t, h, chat, "REVIEWED_RESULT_string")
+	if got := awaitSubAgentValue(t, prepared); got != "followup" {
+		t.Fatalf("main did not reuse math child for follow-up: %s", got)
+	}
+	finishFollowup()
+	third := awaitSubAgentValue(t, reviews)
+	if third.JobID != job1.ID || third.Round != 2 || third.Result != "RESULT_followup" || third.ID <= second.ID {
+		t.Fatalf("follow-up identity/order broken: %+v", third)
+	}
+	awaitSubAgentSavedReply(t, h, chat, "REVIEWED_RESULT_followup")
+
+	for _, job := range []subagents.Job{job1, job2} {
+		awaitSubAgentJob(t, h, chat, func(j subagents.Job) bool { return j.ID == job.ID && j.State == subagents.Closed && j.Merged })
+		if _, err := os.Stat(job.WorkDir); !os.IsNotExist(err) {
+			t.Errorf("merged worktree remains: %s", job.WorkDir)
+		}
+		if branches := runGit(t, project, "branch", "--list", job.Branch); strings.TrimSpace(branches) != "" {
+			t.Errorf("merged child branch remains: %s", branches)
+		}
+	}
+	// No duplicate main review may be hidden by the buffered channel.
+	select {
+	case c := <-reviews:
+		t.Fatalf("duplicate/unexpected main review: %+v", c)
+	default:
+	}
+	b, err := os.ReadFile(filepath.Join(project, "math.go"))
+	if err != nil || !strings.Contains(string(b), "// Multiply returns") {
+		t.Fatalf("main lost follow-up edits: %s (%v)", b, err)
+	}
+	cmd := exec.Command("go", "test", "./...")
+	cmd.Dir = project
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("merged project tests: %v\n%s", err, out)
+	}
+	log := runGit(t, project, "log", "--format=%s", "--reverse")
+	for _, subject := range []string{"feat(math): add multiply", "docs(math): document multiply", "feat(strings): add reverse"} {
+		if !strings.Contains(log, subject) {
+			t.Errorf("missing child commit %q in main: %s", subject, log)
+		}
+	}
+	merge2, merge1 := strings.Index(log, "integrate subagent task "+job2.ID), strings.Index(log, "integrate subagent task "+job1.ID)
+	if merge2 < 0 || merge1 <= merge2 {
+		t.Errorf("main merges did not follow accepted-result order: %s", log)
+	}
+	t.Log("verified real child write/test/commit tools, main follow-up/merge/close tools, FIFO reviews and branch/worktree cleanup")
+}
+
+func benchmarkCall(id, name string, args map[string]any) FakeToolCall {
+	b, err := json.Marshal(args)
+	if err != nil {
+		panic(err)
+	}
+	return FakeToolCall{ID: id, Name: name, Arguments: string(b)}
+}
+
+// Only results since the current user message belong to this turn. In
+// particular, main's earlier spawn/merge calls cannot satisfy a new review.
+func benchmarkToolResults(req FakeChatRequest) map[string]string {
+	results := map[string]string{}
+	for _, raw := range req.Messages {
+		var m struct {
+			Role, Content string
+			ToolCallID    string `json:"tool_call_id"`
+		}
+		if json.Unmarshal(raw, &m) != nil {
+			continue
+		}
+		if m.Role == "user" {
+			clear(results)
+		}
+		if m.Role == "tool" {
+			results[m.ToolCallID] = m.Content
+		}
+	}
+	return results
+}
+
+func benchmarkToolSequence(t *testing.T, req FakeChatRequest, steps []FakeToolCall) (FakeChatResponse, bool) {
+	t.Helper()
+	results := benchmarkToolResults(req)
+	for _, call := range steps {
+		result, ok := results[call.ID]
+		if !ok {
+			return FakeChatResponse{ToolCalls: []FakeToolCall{call}}, false
+		}
+		if strings.HasPrefix(result, "Error:") || strings.Contains(result, "Command failed") || strings.Contains(result, "timed out") {
+			t.Errorf("agent tool %s (%s) failed: %s", call.ID, call.Name, result)
+			return FakeChatResponse{Text: "tool failed"}, false
+		}
+	}
+	return FakeChatResponse{}, true
 }
 
 func runGit(t *testing.T, dir string, args ...string) string {

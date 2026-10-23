@@ -5,9 +5,7 @@
 ## Açık işler
 
 **Alt ajan (2026-10-23, `PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`)**
-- Tamamlandı: Normal sohbet alt ajanları (Aşama 1 & 2): `internal/subagents`, FIFO mailbox, worktree/branch izolasyonu, `memo-*` branch yönetimi, context/yetki sınırları, `spawn/send/list/cancel/close/merge` araçları; Flutter `SubagentTray`, `SubagentPane`, `SubagentSettings` (1-16), TR+EN `L10n`, widget/unit/race testleri.
 - Açık: Gerçek sağlayıcı/model ile canlı uçtan uca kullanım deneyimi; Self-Driving taskloop içindeki eski worker bulgularının sertleştirilmesi (`docs/SUBAGENT_REVIEW.md` - readonly komut sınırı, kural aktarımı).
-- İnceleme bulguları: `subs.go:350-355` erken kayıt seçimi okuma/yazması `subscriptionModelMu` dışında; eşzamanlı model seçimi hâlâ ezilebilir. Yeni proje benchmark’ında çocuklar metin döndürüyor, dosyaları/commit’leri test yazıyor ve merge HTTP üzerinden tetikleniyor; bu benchmark gerçek çocuk kod yazımı, ana ajanın merge aracı veya FIFO sırasını kanıtlamıyor. İlgili regresyon kapsamı güçlendirilmeli.
 
 **Proje klasörleri (2026-10-19, `PLAN_project_folders.md`, `docs/PROJECT_FOLDER.md`)**
 - P0–P5 işaretli: kök koruması/id/kayıt, yedekli hafıza göçü, iskele/API/onay, proje skill komutları, hash güvenli izinler, EN/TR belgeler. Beta'ya bağlı değil; proje hafızası Code Mode'dan bağımsız, Hafıza/Minimal Mod/görev hafızası anahtarları geçerli.
@@ -47,7 +45,7 @@
 - Yapıştırma kutusu Done'a kadar açık; login.go sonuç goroutine'inin s.tail'i erken okuma ihtimali ölçülmedi.
 - Minimal Mod auto-compact atlar; görsel modeli seçicide etiketsiz. İkinci model menüsü ortak liste/arama/kaydırma kullanır.
 - Test izolasyonu: DataDir önbelleği sıfırlanmadan MEMO_DATA_DIR değiştiren testler silinmiş temp klasörünü yeniden oluşturup dört dosya sızdırabiliyor; config.ResetForTests eksikleri açık.
-- Bilinen kararsızlar: update `TestRunComponentUpdate_TamperedDownloadChangesNothing` eski 5d068ac1'de de -race -count>1 düşer; livemode `TestReconnectingSession_SendAudioRoutesToCurrentInner`; `TestBootstrapTokenAuth_Succeeds` temp temizliği; DuckDuckGo captcha; webchat `TestConnect_PressingItAgainReplacesAWaitingAttempt` (Connecting bayrağı gerçek gezinmeden erken; şüphe ölçülmedi). Yükte flake: go test -c + 24 meşgul döngü, eski/yeni aynı yükte ölç; yeşile kadar yeniden koşma.
+- Bilinen kararsızlar: Tailscale `TestEnsureTailscaleWebServerBind_RebindsFromLoopback` (aynı yükte eski 8/150, yeni 2/150; sunucu yeniden bağlama), update `TestRunComponentUpdate_TamperedDownloadChangesNothing` eski 5d068ac1'de de -race -count>1 düşer; livemode `TestReconnectingSession_SendAudioRoutesToCurrentInner`; `TestBootstrapTokenAuth_Succeeds` temp temizliği; DuckDuckGo captcha; webchat `TestConnect_PressingItAgainReplacesAWaitingAttempt` (Connecting bayrağı gerçek gezinmeden erken; şüphe ölçülmedi). Yükte flake: go test -c + 24 meşgul döngü, eski/yeni aynı yükte ölç; yeşile kadar yeniden koşma.
 
 **Skill çağrısı / durdurma (2026-10-22)**
 - Gerçek pencerede doğrulanmadı: `/` menüsü (cümle ortası, imleç/IME), durdurma sonrası akışın kalması, skill satırları. Gerçek modelin `use_skill`'i doğru seçmesi ölçülmedi. "gerekli skilleri kullan" kelime eşleşmesiyle en çok 3 skill seçer (model çağrısı yok), kaba.
@@ -66,8 +64,7 @@
 
 ---
 
-# Son oturum — 2026-10-23 — alt ajan değişikliklerinin incelemesi
-- `5548e4f1..c2f04067` değişiklikleri incelendi; uygulama kodu değiştirilmedi. İki açık bulgu yukarıda: eksik model seçimi kilidi ve yeni benchmark’ın iddia ettiği uçtan uca kapsamı doğrulamaması. Önceki özetteki “tam benchmark doğrulandı/model yarışı çözüldü” ifadeleri bu sınırlarla okunmalı.
-- Gerçek çalıştırmalar: `CGO_ENABLED=1 go build -tags sqlite_fts5 ./...` ve `go vet` çıkış 0; `go test -tags sqlite_fts5 ./... -race` çıkış 0. Alt ajan/agent/app/e2e race paketi ayrıca geçti; yeni benchmark tekil koşusu PASS (2.320s).
-- Flutter: `flutter analyze lib/` yalnız 3 bilinen BuildContext info (çıkış 1), hata/uyarı yok; `flutter test` 815 PASS (çıkış 0). Değişen Flutter lib dosyaları için hardcoded UI literal taraması boş. Canlı sağlayıcı/masaüstü UX bu incelemede denenmedi.
-- Yalnız handoff/arşiv güncellendi; yerel dokümantasyon commit’i, push yok.
+# Son oturum — 2026-10-23 — inceleme düzeltmeleri
+- Erken model kaydı kilitlendi (`5aff49cf`), eski kodda RED/yeni kodda GREEN. Benchmark gerçek çocuk kod/test/commit ve main takip/merge/close araçlarını, FIFO/izolasyon/temizliği doğruluyor. Yazma aracı kaldırılınca eski test PASS, yeni FAIL. Kanıt: `docs/CHAT_SUBAGENTS.md`.
+- Go build/vet ve ilgili race PASS; tam race bağımsız Tailscale nedeniyle FAIL (aynı yükte eski 8/150, yeni 2/150). Flutter 815 PASS, analyze 3 eski info. Flutter değişmedi.
+- İkinci yerel commit benchmark/belgeler/handoff; push yok. Canlı sağlayıcı/native UX ve Tailscale açık.

@@ -523,6 +523,9 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	if err != nil {
 		return fmt.Errorf("cannot listen on port %d: %w", port, err)
 	}
+	if tcpAddr, ok := ln.Addr().(*net.TCPAddr); ok {
+		s.port = tcpAddr.Port
+	}
 
 	s.running = true
 	var addrLog = addr

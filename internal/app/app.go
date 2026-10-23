@@ -1114,6 +1114,16 @@ func (a *App) shutdownSync(ctx context.Context) {
 	stopRecordingProcess()
 }
 
+// WebServerPort returns the active web server port, or 0 if not running.
+func (a *App) WebServerPort() int {
+	a.webMu.RLock()
+	defer a.webMu.RUnlock()
+	if a.webServer != nil {
+		return a.webServer.GetPort()
+	}
+	return 0
+}
+
 // getWebServer returns the current web server under read lock.
 func (a *App) getWebServer() *webserver.Server {
 	a.webMu.RLock()

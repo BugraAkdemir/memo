@@ -108,10 +108,10 @@ func NewHarness(t *testing.T) *Harness {
 	}
 	a.SetActiveProvider("e2e-fake")
 
-	port := freePort(t)
-	if err := a.StartWebServerHTTP(port); err != nil {
+	if err := a.StartWebServerHTTP(0); err != nil {
 		t.Fatalf("StartWebServerHTTP: %v", err)
 	}
+	port := a.WebServerPort()
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	waitForListening(t, port)
 

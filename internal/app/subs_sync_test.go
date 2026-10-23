@@ -226,3 +226,52 @@ func TestSyncSubscriptions_PreservesModelSelectedDuringDiscovery(t *testing.T) {
 		t.Fatalf("model=%q after discovery; user's newer codex-model-a selection was overwritten", p.Model)
 	}
 }
+
+// Even early endpoint refresh must wait for an in-progress model-selection
+// transaction. Otherwise it can write its stale Model after that selection.
+func TestSyncSubscriptions_EarlyRegistrationWaitsForModelSelection(t *testing.T) {
+	fastSubs(t)
+	a := syncApp(t)
+	seedCredential(t)
+	old := provider.ProviderConfig{Type: provider.ProviderCustom, Name: subsProviderName, BaseURL: "http://127.0.0.1:1/v1", APIKey: "stale", Model: "antigravity-model-a", Enabled: true}
+	if err := a.providerCfgMgr.Set(old); err != nil {
+		t.Fatal(err)
+	}
+	// Start the fixture first, so process readiness cannot hide the unguarded
+	// write while we hold the same lock as SetProviderModel.
+	if err := a.subsManager().Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	a.subscriptionModelMu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			a.subscriptionModelMu.Unlock()
+		}
+	}()
+	done := make(chan error, 1)
+	go func() { done <- a.syncSubscriptions(context.Background()) }()
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		p, _ := a.subsMarkerConfig()
+		if p.BaseURL != old.BaseURL {
+			t.Error("early registration wrote provider config while a model-selection transaction held subscriptionModelMu")
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	// Commit a newer selection as the lock-owning transaction, then let sync
+	// refresh the endpoint. It must read the new choice after acquiring the lock.
+	old.Model = "antigravity-model-b"
+	if err := a.UpdateProvider(old); err != nil {
+		t.Fatal(err)
+	}
+	a.subscriptionModelMu.Unlock()
+	locked = false
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := a.subsMarkerConfig(); p.Model != old.Model {
+		t.Fatalf("model=%q, want newer selection %q", p.Model, old.Model)
+	}
+}

@@ -346,6 +346,10 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 	// with the sidecar's current port and key: chat works the moment the
 	// process is healthy instead of 30s later. The wait below then only has to
 	// confirm (or replace) that choice once the list is known.
+	// Reading the choice and refreshing its endpoint form one transaction with
+	// SetProviderModel. Locking only the final discovery update still allowed
+	// this early write to restore a model selected before a concurrent change.
+	a.subscriptionModelMu.Lock()
 	prev := ""
 	if p, ok := a.subsMarkerConfig(); ok && p.Model != "" {
 		prev = p.Model
@@ -353,6 +357,7 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 			logx.Printf("subs: early provider registration: %v", err)
 		}
 	}
+	a.subscriptionModelMu.Unlock()
 
 	var list []cliproxy.Model
 	for deadline := time.Now().Add(subsModelsTimeout); ; {

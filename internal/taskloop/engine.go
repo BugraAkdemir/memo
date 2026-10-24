@@ -3,6 +3,7 @@ package taskloop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"memo/internal/logx"
 	"memo/internal/truncate"
@@ -46,11 +47,11 @@ type AcceptanceChecker func(ctx context.Context, listID string, step PlanStep) (
 type Escalator func(ctx context.Context, listID string, step PlanStep, failure EscalationInput) ([]PlanStep, error)
 
 type Engine struct {
-	store       *Store
-	runWorker   RunWorker
-	reviewChief ReviewChief
-	setBypass   BypassSetter
-	onEvent     func(name, data string)
+	store        *Store
+	runWorker    RunWorker
+	reviewChief  ReviewChief
+	setBypass    BypassSetter
+	onEvent      func(name, data string)
 	mu           sync.Mutex
 	activeCount  int
 	active       map[string]context.CancelFunc
@@ -67,7 +68,7 @@ type Engine struct {
 	planConfig       func(ctx context.Context, listID, chatID string, items []string) error
 	retry            *RetryScheduler
 	subOrch          *SubAgentOrchestrator
-	subSpecs         func(itemText, feedback string) []SubAgentSpec
+	subSpecs         func(ctx context.Context, itemText, feedback string) []SubAgentSpec
 
 	// v4.5.0 planner/executor mode (all nil/zero-safe; only used when a list's
 	// Mode == ModePlanner and a Planner is configured).
@@ -180,10 +181,10 @@ func WithRetryScheduler(interval time.Duration) EngineOption {
 }
 
 // WithSubAgents enables fan-out: for an item shouldSpawn() considers large,
-// the loop runs specFn(itemText, lastFeedback) sub-agents through orch instead
-// of a single worker turn, then hands the aggregated output to the chief
-// review. Both must be non-nil to take effect.
-func WithSubAgents(orch *SubAgentOrchestrator, specFn func(itemText, feedback string) []SubAgentSpec) EngineOption {
+// the loop resolves specs using the list context and complete worker prompt
+// (project rules, item, prior output and feedback), then runs them through orch
+// instead of a single worker turn. Both must be non-nil to take effect.
+func WithSubAgents(orch *SubAgentOrchestrator, specFn func(ctx context.Context, itemText, feedback string) []SubAgentSpec) EngineOption {
 	return func(e *Engine) {
 		e.subOrch = orch
 		e.subSpecs = specFn
@@ -1430,7 +1431,7 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 		var workerOutput string
 		var err error
 		if useSubAgents {
-			specs := e.subSpecs(item.Text, lastFeedback)
+			specs := e.subSpecs(ctx, workerPrompt, lastFeedback)
 			roles := make([]string, len(specs))
 			for i, s := range specs {
 				roles[i] = string(s.Role)
@@ -1445,14 +1446,18 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 			} else {
 				workerOutput = AggregateResults(results)
 				allFailed := len(results) > 0
+				var causes []error
 				for _, r := range results {
+					if r.Err != nil {
+						causes = append(causes, r.Err)
+					}
 					if r.Err == nil {
 						allFailed = false
 						break
 					}
 				}
 				if allFailed {
-					err = fmt.Errorf("tüm alt-agent'lar başarısız oldu")
+					err = fmt.Errorf("tüm alt-agent'lar başarısız oldu: %w", errors.Join(causes...))
 				}
 			}
 		} else {
@@ -1533,7 +1538,8 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 			}
 			logx.Printf("TASKLOOP: CEO review error on item %s round %d: %v", item.ID, round, err)
 			if round < maxRoundsPerItem {
-				workerPrompt = withPreamble(item.Text + "\n\nÖnceki çıktı:\n" + truncate.Text(workerOutput, 2000) + "\n\nEksik/yanlış: CEO yanıtı anlaşılamadı. Lütfen görevi eksiksiz tamamlayıp tekrar dene.")
+				lastFeedback = "CEO yanıtı anlaşılamadı: " + err.Error()
+				workerPrompt = withPreamble(item.Text + "\n\nÖnceki çıktı:\n" + truncate.Text(workerOutput, 2000) + "\n\nEksik/yanlış: " + lastFeedback + ". Lütfen görevi eksiksiz tamamlayıp tekrar dene.")
 				if err := e.store.IncrementRounds(listID, item.ID); err != nil {
 					logx.Printf("TASKLOOP: increment rounds %s/%s: %v", listID, item.ID, err)
 				}

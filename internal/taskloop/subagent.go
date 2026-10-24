@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"memo/internal/logx"
+	"memo/internal/truncate"
 )
 
 // SubRole is the part a sub-agent plays for one large task item.
@@ -29,7 +30,7 @@ type SubAgentSpec struct {
 }
 
 // SubAgentResult is one sub-agent's outcome. Err is per-spec: one failing
-// sibling does not cancel the others.
+// reader sibling does not cancel the others. A failed coder stops the batch.
 type SubAgentResult struct {
 	Role   SubRole
 	Output string
@@ -71,6 +72,13 @@ func (o *SubAgentOrchestrator) Spawn(ctx context.Context, itemText string, specs
 	}
 
 	results := make([]SubAgentResult, len(specs))
+	for i, spec := range specs {
+		results[i].Role = spec.Role
+	}
+	if err := ctx.Err(); err != nil {
+		return results, err
+	}
+	var coderHandoff string
 
 	// Phase 1: the writer, alone.
 	for i, s := range specs {
@@ -80,14 +88,26 @@ func (o *SubAgentOrchestrator) Spawn(ctx context.Context, itemText string, specs
 		out, err := o.runner.Run(ctx, s, true)
 		results[i] = SubAgentResult{Role: s.Role, Output: out, Err: err}
 		logx.Printf("TASKLOOP: sub-agent coder done (err=%v)", err)
+		if err != nil {
+			return results, fmt.Errorf("coder sub-agent: %w", err)
+		}
+		coderHandoff = truncate.Text(out, 4000)
 	}
 
-	// Phase 2: read-only roles in parallel.
+	if err := ctx.Err(); err != nil {
+		return results, err
+	}
+
+	// Phase 2: read-only roles in parallel. Give each fresh reader the coder's
+	// bounded handoff so it can verify the actual work without rediscovering it.
 	sem := make(chan struct{}, o.maxPar)
 	var wg sync.WaitGroup
 	for i, s := range specs {
 		if s.Role == SubRoleCoder {
 			continue
+		}
+		if coderHandoff != "" {
+			s.Task += "\n\n--- Coder output (verify this work) ---\n" + coderHandoff
 		}
 		wg.Add(1)
 		go func(i int, s SubAgentSpec) {
@@ -111,8 +131,17 @@ func (o *SubAgentOrchestrator) Spawn(ctx context.Context, itemText string, specs
 					results[i] = SubAgentResult{Role: s.Role, Err: fmt.Errorf("sub-agent %s panicked: %v", s.Role, r)}
 				}
 			}()
-			sem <- struct{}{}
+			select {
+			case <-ctx.Done():
+				results[i].Err = ctx.Err()
+				return
+			case sem <- struct{}{}:
+			}
 			defer func() { <-sem }()
+			if err := ctx.Err(); err != nil {
+				results[i].Err = err
+				return
+			}
 			out, err := o.runner.Run(ctx, s, false)
 			results[i] = SubAgentResult{Role: s.Role, Output: out, Err: err}
 			logx.Printf("TASKLOOP: sub-agent %s done (err=%v)", s.Role, err)
@@ -120,7 +149,7 @@ func (o *SubAgentOrchestrator) Spawn(ctx context.Context, itemText string, specs
 	}
 	wg.Wait()
 
-	return results, nil
+	return results, ctx.Err()
 }
 
 // AggregateResults folds sub-agent outputs into one string for the chief
@@ -139,14 +168,11 @@ func AggregateResults(results []SubAgentResult) string {
 	return strings.TrimSpace(b.String())
 }
 
-// shouldSpawn is the engine's heuristic for whether an item is big enough to
-// fan out. Conservative: most items stay single-agent.
+// shouldSpawn selects explicit fan-out or structurally multi-action items.
+// Verbosity alone does not justify paying for four separate model turns.
 func shouldSpawn(itemText string) bool {
 	t := strings.ToLower(itemText)
 	if strings.Contains(t, "[parallel]") {
-		return true
-	}
-	if len(itemText) > 200 {
 		return true
 	}
 	joiners := strings.Count(t, " ve ") + strings.Count(t, " and ") + strings.Count(t, ";")

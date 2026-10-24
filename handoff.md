@@ -1,22 +1,24 @@
 # Handoff — güncel durum
 
-> Her yeni sohbette yüklenir; hedef <10 KB. Ayrıntılı eski kayıtlar `handoff-archive.md` içinde; yalnız gerektiğinde hedefli ara. Oturum sonunda önceki son özeti arşivin başına taşı, açık işleri burada koru.
+> Her sohbette yüklenir; hedef <10 KB. Eski kayıtlar `handoff-archive.md`: yalnız hedefli ara. Eski son özeti arşiv başına taşı; açık işleri koru.
 
 ## Açık işler
 
 **Alt ajan (2026-10-23, `PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`)**
-- Açık: Gerçek sağlayıcı/model ile canlı uçtan uca kullanım deneyimi; Self-Driving taskloop içindeki eski worker bulgularının sertleştirilmesi (`docs/SUBAGENT_REVIEW.md` - readonly komut sınırı, kural aktarımı).
+- Açık: Canlı sağlayıcı/model deneyimi; Self-Driving readonly komut sınırı (`docs/SUBAGENT_REVIEW.md`). Worker kuralları/routing/hata aktarımı düzeltildi (2026-10-24, `docs/TASKLOOP_PERFORMANCE_REVIEW.md`); gerçek Antigravity/Waydroid hız-kalite ölçümü ve bildirilen 300 dk geçmişi yok.
+
+- Önceki alt ajan oturumundan açık: kesilen baş sonuç FIFO’yu tutar (held; Resume main review gerekir, resume aracı yok); kalıcılık hatası context canceled görünür; durum bloğu Minimal Mod’da da eklenir.
 
 **Proje klasörleri (2026-10-19, `PLAN_project_folders.md`, `docs/PROJECT_FOLDER.md`)**
-- P0–P5 tamamlandı; proje hafızası Code Mode’dan bağımsız, hafıza anahtarlarına bağlı.
+- P0–P5 bitti; proje hafızası Code Mode’dan bağımsız, hafıza anahtarlarına bağlı.
 - Yapılmadı: proje skill'leri Flutter `/` menüsünde listelenmiyor (menü yalnız global skill'leri okur; backend `/ad` yazılınca proje skill'ini de tanır; `/skill add` var), proje izin düzenleme/onay arayüzü (yalnız dosya/API), `provider_policy` uygulaması (`local_only` vb. yalnız ayrılmış alan). Kullanıcı skill sistemini değiştirebileceğimizi söyledi; yeni tasarımın kapsamı belirlenmedi.
 - Gerçekte doğrulanmadı: GitHub skill indirmesi (`codeload.github.com/<o>/<r>/zip/HEAD`), kurulum/onay penceresi, modelin `.memo/AGENTS.md` ve izinlere uyması, kullanıcı veritabanında göç, Windows/macOS Guard listeleri.
-- Göç yedekleri `data/backups/memory-pre-project-id-*.db` yerelde kalır; dışa aktarma/bulut kapsamında değil, otomatik silinmez.
+- `data/backups/memory-pre-project-id-*.db` yereldir; dışa/buluta aktarılmaz, otomatik silinmez.
 - Live Mode'un ev köklü arka plan sohbeti normal sohbet sayılır; diğer ev köklü ajan sohbeti hafıza almaz. Code Mode kapalı proje sohbetinde takvim/WhatsApp araçları açık kalır; kişisel hafıza/kimlik izoledir.
 
 **Birleşik sohbet listesi / yeni sohbet ekranı (2026-10-19)**
 - Gerçek pencerede doğrulanmadı: merkez besteci/öneriler, Ajan + klasör seçimi, başlık/üst çubuk ve ilk mesajda alta geçiş. Geçiş anlık; animasyon yok. Ajan sekmesinin eski IndexedStack indeksi boş tutulur; ajanlar ProjectPath ile işaretlenir.
-- Ajan başlığı ilk kelimelerden, LLM çağrısı yok. Daha güzel başlık için Code Mode yan-çağrı yasağı hakkında kullanıcı kararı gerekir. WelcomeView yalnız CLI sohbetlerinde.
+- Ajan başlığı ilk kelimelerden; LLM başlığı Code Mode yan-çağrı yasağı için kullanıcı kararı ister. WelcomeView yalnız CLI.
 - `/` menüsü artık skill menüsü (aşağıda); CLI sağlayıcısına özel `_CLICommandPopup` bu değişikliğe dahil değil.
 
 **Agent akışı / REPL (`PLAN_agent_streaming.md`, `PLAN_cli_coding.md`)**
@@ -46,7 +48,7 @@
 - Minimal Mod auto-compact atlar; görsel modeli seçicide etiketsiz. İkinci model menüsü ortak liste/arama/kaydırma kullanır.
 - Test izolasyonu: DataDir önbelleği sıfırlanmadan MEMO_DATA_DIR değiştiren testler silinmiş temp klasörünü yeniden oluşturup dört dosya sızdırabiliyor; config.ResetForTests eksikleri açık.
 - Yerel test ortamı: `ngrok.TestFetchURL_NoServer` gerçek yerel API’den URL alınca düşüyor; tünele dokunma. Yoğun ilk araç-zinciri derlemesinde `wav_player_test.dart` stop testi 2s zaman aşımı aldı (bu oturumda oynatıcı kodu değişmedi).
-- Bilinen kararsızlar: Tailscale `TestEnsureTailscaleWebServerBind_RebindsFromLoopback` (aynı yükte eski 8/150, yeni 2/150; sunucu yeniden bağlama), update `TestRunComponentUpdate_TamperedDownloadChangesNothing` eski 5d068ac1'de de -race -count>1 düşer; livemode `TestReconnectingSession_SendAudioRoutesToCurrentInner`; `TestBootstrapTokenAuth_Succeeds` temp temizliği; DuckDuckGo captcha; webchat `TestConnect_PressingItAgainReplacesAWaitingAttempt` (Connecting bayrağı gerçek gezinmeden erken; şüphe ölçülmedi). Yükte flake: go test -c + 24 meşgul döngü, eski/yeni aynı yükte ölç; yeşile kadar yeniden koşma.
+- Kararsız testler: Tailscale RebindsFromLoopback eski 8/150, yeni 2/150; update TamperedDownloadChangesNothing eski 5d068ac1’de de düşer (bu oturumda da uzunluk/checksum beklentisi); livemode SendAudioRoutesToCurrentInner; BootstrapTokenAuth temp temizliği; DuckDuckGo captcha; webchat PressingItAgainReplacesAWaitingAttempt (Connecting erken; ölçülmedi). Yükte eski/yeni aynı 24 döngüyle ölç; yeşile kadar koşma.
 
 **Skill çağrısı / durdurma (2026-10-22)**
 - Gerçek pencerede doğrulanmadı: `/` menüsü (cümle ortası, imleç/IME), durdurma sonrası akışın kalması, skill satırları. Gerçek modelin `use_skill`'i doğru seçmesi ölçülmedi. "gerekli skilleri kullan" kelime eşleşmesiyle en çok 3 skill seçer (model çağrısı yok), kaba.
@@ -58,18 +60,14 @@
 ## Kalıcı uyarılar
 - `~/.config/Memo/image.key` kaybında yalnız data kopyası görselleri açamaz. Parolalı taşınabilir/şifreli bulut yedeği ana anahtarı kopyalamadan taşır; önceden alınmış yedek kurtarabilir. Eski sürüm mühürlü görselleri bozuk görür.
 - Kota dolunca otomatik devam yalnız Memo açıkken; CLI ajan/WhatsApp/Self-Driving kapsam dışı. Görsel niyet anahtar sözcüklü; yanlış tetikte negatif test ekle, `/image` zorlar.
-- Sidecar model listesi soğukta ~30s gecikir. Bağlam/effort tam model id ile çevrimiçi kayıt defterinden, son başarılı snapshot çevrimdışı; bilinmeyen kapasite tahmin edilmez (`docs/SUBSCRIPTION_CAPABILITIES.md`).
+- Sidecar soğuk liste ~30s. Bağlam/effort tam model id kaydından; çevrimdışı son snapshot. Bilinmeyen kapasite tahmin edilmez (`docs/SUBSCRIPTION_CAPABILITIES.md`).
 - Beta kapısı: open_app + yedi browser_* aracı/paneli/session API, Beta kapalıyken yok; kapatmak oturumu bitirir. fetch_page fallback/Chromium kurulum bölümü kapısız. Gerçek pencerede Beta açık/kapalı görünümü doğrulanmadı. PROJECT_MAP/UI_FEATURES/ROADMAP EN/TR ve Obsidian'da bu kapıyı anlatmayan eski satırlar var.
 - Mobil adlar: memo.apk/ipa (v*), memo-beta.apk/ipa (main; frontend/version/workflow değişiminde). Eski memo-android.apk/memo-android_beta.apk/memo-ios.ipa/memo-ios_beta.ipa R2'de kalmış, güncellenmez. Masaüstü: memo.AppImage/memo_beta.AppImage, memo.tar.gz/memo_beta.tar.gz, memo-mac.zip/memo-mac_beta.zip, memo.exe/memo-beta.exe, memo_arm.zip/memo_arm_beta.zip.
 - Go sürümü go.mod + 7 workflow GO_VERSION birlikte yükseltilir; Docker golang:1.26-bookworm kayandır.
 
 ---
 
-# Son oturum — 2026-10-24 — alt ajan dayanıklılığı / durum görünürlüğü
-- Kök neden: çocuklara etkileşimli tur bütçesi (`turn_budget_secs` 1200s) uygulanıyordu; 315/377 olaylı sağlıklı iki çocuk tam 20:00'de çıplak `context deadline exceeded` ile öldü. Önceki `no provider configured` hataları `90f52c63`'ün düzelttiği sağlayıcı hatasıydı. Ana ajan "running" diyordu çünkü `list_agents` dev Job dökümü veriyordu ve her turda durum yoktu.
-- Yapıldı: çocuk artık yalnız 15 dk **ilerleme yok** (monoton ölçüm) veya 6 saat tavanında düşer, nedeni hatada yazar; takılı akış zorla bitirilir; geçici 5xx/zaman aşımı/kota hatası 30s/2dk/5dk ile 3 kez yeniden denenir (model "iş diskte olabilir" notu alır); hatada son araç sonuçları ana ajana gider. Ana ajan her turda `<memo-subagent-status>` bloğu (kullanıcı mesajına, sistem prompt'una değil) ve kompakt `list_agents` (+`id` ile tam çıktı) görür; sonuç bildirimi `task` özeti taşır. Mailbox'ta yutulan hatalar loglanır, ana tur hatası kalıcı kaydedilir. İki bağımsız inceleme (go-reviewer, silent-failure-hunter) bulguları uygulandı.
-- Açık: kesintiye uğrayan baş sonuç, arkasındaki sonuçları FIFO'da bekletir (durum bloğu "held" der, kullanıcı **Resume main review** basmalı; ana ajanın `resume` aracı yok). Kalıcılık hatasında çocuğun hata nedeni "context canceled" görünür. Minimal Mod'da da blok eklenir. Kullanıcıdaki çalışan backend eski binary olabilir: `memo --kill` + yeniden başlat.
-- Doğrulama: yeni 3+1 E2E (retry, idle, hata+canlı durum, list id) ve status birim testleri RED/GREEN (enjeksiyonu kapatınca düştü); subagents/agent/e2e/webserver/app `-race` PASS. Gerçek model/pencerede doğrulanmadı.
-
----
-
+# Son oturum — 2026-10-24 — task worker verimliliği
+- Log: 391s/31 adım, 1.826.050 input (%93,95 cache), 26.559 output, 8 ret; 300dk yok: `docs/TASKLOOP_PERFORMANCE_REVIEW.md`.
+- Düzeltildi: uzunluk tek başına dört rol açmıyor; kurallar (.memo dahil), retry/handoff aktarılıyor; görev model/effort ve executor limitleri korunuyor; coder hatası reader başlatmıyor; hata usage kaybolmuyor. Limit commit: `6c284f6d`; worker da commit edilir. Push yok.
+- Doğrulama: build/vet PASS; agent/taskloop/e2e/webserver race PASS (1.302/34.905/68.897/1.809s); app bilinen update testi hariç PASS 51.355s. Tam race yalnız eski update testi FAIL. Flutter 826 PASS; analyze 3 eski info. RED/GREEN + E2E 1/4 worker; canlı hız ölçülmedi.

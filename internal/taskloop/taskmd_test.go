@@ -237,3 +237,61 @@ func TestReadRules_EmptyRoot(t *testing.T) {
 		t.Fatalf("ReadRules(\"\") = %q, want empty", out)
 	}
 }
+
+func TestReadRules_IncludesMemoProjectRulesAfterRootRules(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".memo"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "AGENTS.md"), "root-agent-guidance")
+	writeFile(t, filepath.Join(dir, "CLAUDE.md"), "root-claude-guidance")
+	writeFile(t, filepath.Join(dir, "rules.md"), "root-rules-guidance")
+	writeFile(t, filepath.Join(dir, "memo.md"), "root-memo-guidance")
+	writeFile(t, filepath.Join(dir, ".memo", "AGENTS.md"), "memo-project-guidance")
+	out, err := ReadRules(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := -1
+	for _, guidance := range []string{"root-agent-guidance", "root-claude-guidance", "root-rules-guidance", "root-memo-guidance", "memo-project-guidance"} {
+		i := strings.Index(out, guidance)
+		if i <= prev {
+			t.Fatalf("missing or out-of-order guidance %q: %s", guidance, out)
+		}
+		prev = i
+	}
+	if strings.Count(out, "memo-project-guidance") != 1 || !strings.Contains(out, "===== .memo/AGENTS.md =====") {
+		t.Fatalf("project rules missing/duplicated: %s", out)
+	}
+}
+
+func TestReadRules_DoesNotDuplicateCopiedMemoProjectRules(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".memo"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "AGENTS.md"), "shared-project-guidance\n")
+	writeFile(t, filepath.Join(dir, ".memo", "AGENTS.md"), "shared-project-guidance\n\n")
+	out, err := ReadRules(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(out, "shared-project-guidance") != 1 {
+		t.Fatalf("copied project rules duplicated: %s", out)
+	}
+}
+
+func TestReadRules_MemoProjectRulesWithoutRootRules(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".memo"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, ".memo", "AGENTS.md"), "memo-only-guidance")
+	out, err := ReadRules(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "memo-only-guidance") {
+		t.Fatalf("missing memo-only rules: %q", out)
+	}
+}

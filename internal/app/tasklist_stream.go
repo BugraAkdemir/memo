@@ -65,10 +65,10 @@ func drainStreamIdleUsage(streamCh <-chan provider.StreamChunk, cancel context.C
 
 	if idle <= 0 {
 		for chunk := range streamCh {
+			keep(chunk)
 			if chunk.Error != "" {
 				return sb.String(), usage, fmt.Errorf("%s", chunk.Error)
 			}
-			keep(chunk)
 		}
 		return sb.String(), usage, nil
 	}
@@ -81,10 +81,10 @@ func drainStreamIdleUsage(streamCh <-chan provider.StreamChunk, cancel context.C
 			if !ok {
 				return sb.String(), usage, nil
 			}
+			keep(chunk)
 			if chunk.Error != "" {
 				return sb.String(), usage, fmt.Errorf("%s", chunk.Error)
 			}
-			keep(chunk)
 			if !timer.Stop() {
 				select {
 				case <-timer.C:

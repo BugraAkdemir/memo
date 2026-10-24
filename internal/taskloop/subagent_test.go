@@ -171,10 +171,13 @@ func TestShouldSpawn(t *testing.T) {
 	yes := []string{
 		"do X and Y and also Z with tests",
 		"refactor this [parallel]",
-		"a" + string(make([]byte, 210)),
 		"step one\n- sub a\n- sub b\n- sub c",
 	}
-	no := []string{"fix the typo in README", "add a null check", "bump the version"}
+	no := []string{
+		"fix the typo in README", "add a null check", "bump the version",
+		strings.Repeat("a", 210),
+		"Açıklamadaki yazım yanlışını düzelt: " + strings.Repeat("ölçü açıklaması ", 30),
+	}
 	for _, s := range yes {
 		if !shouldSpawn(s) {
 			t.Errorf("shouldSpawn(%.30q) = false, want true", s)

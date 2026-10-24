@@ -24,8 +24,14 @@ func (r *appSubAgentRunner) Run(ctx context.Context, spec taskloop.SubAgentSpec,
 	var router *provider.Router
 	projectPath, listID := "", ""
 	base := r.a.agentExecutor
+	effort := ""
 	if trc != nil {
 		router = trc.exec.ActiveRouter()
+		base = trc.exec
+		// Orchestra may select a different role model with different effort support.
+		if spec.Model == trc.model {
+			effort = trc.effortLevel
+		}
 		projectPath = trc.projectPath
 		listID = trc.listID
 	}
@@ -64,24 +70,26 @@ func (r *appSubAgentRunner) Run(ctx context.Context, spec taskloop.SubAgentSpec,
 		onEvent = func(ev agent.AgentEvent) { r.a.emitSubAgentActivity(listID, string(spec.Role), ev) }
 	}
 	start := time.Now()
-	streamCh, err := exec.RunStream(ctx, "", spec.Model, "", msgs, onEvent, projectPath)
+	var sb strings.Builder
+	var usage *provider.Usage
+	defer func() {
+		r.a.recordTaskStreamUsage(start, routerProviderName(router), spec.Model, categoryTaskSubagent, usage,
+			taskloop.EstTokens(spec.SystemPrompt)+taskloop.EstTokens(spec.Task), sb.String())
+	}()
+	streamCh, err := exec.RunStream(ctx, "", spec.Model, effort, msgs, onEvent, projectPath)
 	if err != nil {
 		return "", err
 	}
-	var sb strings.Builder
-	var usage *provider.Usage
 	for chunk := range streamCh {
 		if chunk.Usage != nil {
 			usage = chunk.Usage
 		}
+		sb.WriteString(chunk.Content)
 		if chunk.Error != "" {
 			return sb.String(), fmt.Errorf("sub-agent %s: %s", spec.Role, chunk.Error)
 		}
-		sb.WriteString(chunk.Content)
 	}
 	out := strings.TrimSpace(sb.String())
-	r.a.recordTaskStreamUsage(start, routerProviderName(router), spec.Model, categoryTaskSubagent, usage,
-		taskloop.EstTokens(spec.SystemPrompt)+taskloop.EstTokens(spec.Task), out)
 	if out == "" {
 		return "", fmt.Errorf("sub-agent %s produced no output", spec.Role)
 	}
@@ -109,7 +117,7 @@ func subRoleToOrchestra(role taskloop.SubRole) orchestra.RoleName {
 // Orchestra is enabled each role's model/prompt comes from its RoleConfig;
 // otherwise every role runs on the task's own model with a role-specific
 // system prompt.
-func (a *App) resolveSubAgentSpecs(itemText, feedback string) []taskloop.SubAgentSpec {
+func (a *App) resolveSubAgentSpecs(ctx context.Context, itemText, feedback string) []taskloop.SubAgentSpec {
 	roles := []taskloop.SubRole{
 		taskloop.SubRoleCoder,
 		taskloop.SubRoleAnalyzer,
@@ -129,8 +137,8 @@ func (a *App) resolveSubAgentSpecs(itemText, feedback string) []taskloop.SubAgen
 	}
 
 	taskModel := ""
-	if trc := a.currentAnyTaskModel(); trc != "" {
-		taskModel = trc
+	if trc := taskRunConfigFromCtx(ctx); trc != nil {
+		taskModel = trc.model
 	}
 
 	coderTask := itemText
@@ -152,6 +160,10 @@ func (a *App) resolveSubAgentSpecs(itemText, feedback string) []taskloop.SubAgen
 			} else if orchCfg.ChiefModel != "" {
 				model = orchCfg.ChiefModel
 			}
+		}
+		sysPrompt += "\n\nComplete only the supplied task item, then return a concise handoff with changed files, verification and blockers. Do not execute the rest of Task.md or repeat completed work. Read only relevant file ranges; avoid dumping entire directories or large logs into context."
+		if trc := taskRunConfigFromCtx(ctx); trc != nil && trc.projectPath != "" {
+			sysPrompt += "\nTools are confined to project directory: " + trc.projectPath + ". Use project-local commands and the cwd argument. run_command rejects dollar signs, backticks, privilege escalation and paths outside this project, including paths in remote-device shell arguments. Do not retry or disguise a denied operation; report the exact blocker if project-local tools cannot complete it."
 		}
 		task := itemText
 		switch role {
@@ -181,17 +193,4 @@ func findOrchestraRole(cfg orchestra.OrchestraConfig, name orchestra.RoleName) (
 		}
 	}
 	return orchestra.RoleConfig{}, false
-}
-
-// currentAnyTaskModel returns some running task's model as a fallback when a
-// sub-agent spec is built outside a specific task ctx. Best-effort.
-func (a *App) currentAnyTaskModel() string {
-	a.taskRunMu.RLock()
-	defer a.taskRunMu.RUnlock()
-	for _, trc := range a.taskRunCfgs {
-		if trc.model != "" {
-			return trc.model
-		}
-	}
-	return ""
 }

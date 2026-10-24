@@ -67,8 +67,8 @@ type ParsedTaskMd struct {
 
 // checkboxRe matches a checkbox list item, capturing leading whitespace:
 //
-//	- [ ] text        * [ ] text        + [ ] text
-//	1. [ ] text        2) [ ] text        (indented) - [ ] text
+//   - [ ] text        * [ ] text        + [ ] text
+//     1. [ ] text        2) [ ] text        (indented) - [ ] text
 //
 // Group 1 is the leading whitespace, group 2 the check mark (space, x or X),
 // group 3 the item text.
@@ -186,16 +186,18 @@ func markLineDone(s string) (string, bool) {
 
 // ruleFiles is the priority order in which repo rule files are read and
 // concatenated. AGENTS.md first means its guidance leads the merged prompt.
-var ruleFiles = []string{"AGENTS.md", "CLAUDE.md", "rules.md", "memo.md"}
+var ruleFiles = []string{"AGENTS.md", "CLAUDE.md", "rules.md", "memo.md", ".memo/AGENTS.md"}
 
-// ReadRules concatenates whichever of AGENTS.md / CLAUDE.md / rules.md / memo.md
-// exist under projectRoot, in that priority order, each under a "===== name ====="
-// header. An empty projectRoot or a root with none of the files yields "".
+// ReadRules concatenates root rule files followed by Memo project rules, each
+// under a "===== name =====" header. A copied .memo/AGENTS.md is not included
+// twice when its content already appeared in a root rule file. An empty root
+// or a root with none of the files yields "".
 func ReadRules(projectRoot string) (string, error) {
 	if strings.TrimSpace(projectRoot) == "" {
 		return "", nil
 	}
 	var b strings.Builder
+	seen := make(map[string]bool)
 	for _, name := range ruleFiles {
 		data, err := os.ReadFile(filepath.Join(projectRoot, name))
 		if err != nil {
@@ -204,6 +206,11 @@ func ReadRules(projectRoot string) (string, error) {
 			}
 			return "", fmt.Errorf("taskloop: read %s: %w", name, err)
 		}
+		content := strings.TrimSpace(string(data))
+		if name == ".memo/AGENTS.md" && seen[content] {
+			continue
+		}
+		seen[content] = true
 		if b.Len() > 0 {
 			b.WriteString("\n\n")
 		}

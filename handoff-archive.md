@@ -1,3 +1,13 @@
+# Son oturum — 2026-10-24 — alt ajan dayanıklılığı / durum görünürlüğü
+- Kök neden: çocuklara etkileşimli tur bütçesi (`turn_budget_secs` 1200s) uygulanıyordu; 315/377 olaylı sağlıklı iki çocuk tam 20:00'de çıplak `context deadline exceeded` ile öldü. Önceki `no provider configured` hataları `90f52c63`'ün düzelttiği sağlayıcı hatasıydı. Ana ajan "running" diyordu çünkü `list_agents` dev Job dökümü veriyordu ve her turda durum yoktu.
+- Yapıldı: çocuk artık yalnız 15 dk **ilerleme yok** (monoton ölçüm) veya 6 saat tavanında düşer, nedeni hatada yazar; takılı akış zorla bitirilir; geçici 5xx/zaman aşımı/kota hatası 30s/2dk/5dk ile 3 kez yeniden denenir (model "iş diskte olabilir" notu alır); hatada son araç sonuçları ana ajana gider. Ana ajan her turda `<memo-subagent-status>` bloğu (kullanıcı mesajına, sistem prompt'una değil) ve kompakt `list_agents` (+`id` ile tam çıktı) görür; sonuç bildirimi `task` özeti taşır. Mailbox'ta yutulan hatalar loglanır, ana tur hatası kalıcı kaydedilir. İki bağımsız inceleme (go-reviewer, silent-failure-hunter) bulguları uygulandı.
+- Açık: kesintiye uğrayan baş sonuç, arkasındaki sonuçları FIFO'da bekletir (durum bloğu "held" der, kullanıcı **Resume main review** basmalı; ana ajanın `resume` aracı yok). Kalıcılık hatasında çocuğun hata nedeni "context canceled" görünür. Minimal Mod'da da blok eklenir. Kullanıcıdaki çalışan backend eski binary olabilir: `memo --kill` + yeniden başlat.
+- Doğrulama: yeni 3+1 E2E (retry, idle, hata+canlı durum, list id) ve status birim testleri RED/GREEN (enjeksiyonu kapatınca düştü); subagents/agent/e2e/webserver/app `-race` PASS. Gerçek model/pencerede doğrulanmadı.
+
+---
+
+---
+
 # Son oturum — 2026-10-23 — alt ajan geçmişi
 - Şeritte yalnız running/queued ajanlar ve Geçmiş ajanlar düğmesi var. Biten/hatalı/iptal/kapatılanlar sohbet kapsamındaki geçmiş panelinde; tıklayınca görev/çıktı/araçlar, geri tuşuyla liste. Durum geçişi kartı şeritten kaldırır; EN/TR anahtarlar bağlı.
 - CloseJob artık görev/çıktı/mesaj/olay/hata verisini yerel geçmişte korur; system prompt/skills silinir. Merge koruması değişmedi. Önceden silinmiş ayrıntılar kurtarılamaz, arayüz bunu belirtir. RAG eklenmedi.

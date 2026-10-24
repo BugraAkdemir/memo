@@ -32,3 +32,7 @@ bekletmez. Kabul edilen işin geçici içeriği ancak başarılı birleştirme/k
 
 Doğrulama ayrıntıları ve bağımsız Tailscale test kararsızlığı:
 `docs/CHAT_SUBAGENTS.md` inceleme regresyonları bölümü.
+
+## 4. Tamamlanan çocuk ana ajanı uyandırmıyor (2026-10-24)
+- [x] Kesilmiş inceleme kaydını koruyup yeni pending sonuçların otomatik teslimini aç; pending FIFO, tek inflight, açık retry sırası ve kalıcı ACK kuralları için RED/GREEN testleri.
+- [x] Disk hatasında sahipsiz kalan inflight kaydı canlı incelemeyi kesmeden kurtar; gerçek HTTP/SSE E2E ile kullanıcı mesajı olmadan devamı doğrula, ECC incelemesi ve repo kontrollerini tamamla.

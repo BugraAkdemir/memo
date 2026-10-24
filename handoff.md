@@ -7,7 +7,7 @@
 **Alt ajan (2026-10-23, `PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`)**
 - Açık: Canlı sağlayıcı/model deneyimi; Self-Driving readonly komut sınırı (`docs/SUBAGENT_REVIEW.md`). Worker kuralları/routing/hata aktarımı düzeltildi (2026-10-24, `docs/TASKLOOP_PERFORMANCE_REVIEW.md`); gerçek Antigravity/Waydroid hız-kalite ölçümü ve bildirilen 300 dk geçmişi yok.
 
-- Önceki alt ajan oturumundan açık: kesilen baş sonuç FIFO’yu tutar (held; Resume main review gerekir, resume aracı yok); kalıcılık hatası context canceled görünür; durum bloğu Minimal Mod’da da eklenir.
+- Alt ajan: kesilmiş inceleme artık sonraki sonuçları tutmaz (2026-10-24). Kendi incelemesi Resume main review ister; ana ajanın resume aracı yok. Çocuk kalıcılık hatası context canceled görünebilir; durum bloğu Minimal Mod’da da eklenir.
 
 **Proje klasörleri (2026-10-19, `PLAN_project_folders.md`, `docs/PROJECT_FOLDER.md`)**
 - P0–P5 bitti; proje hafızası Code Mode’dan bağımsız, hafıza anahtarlarına bağlı.
@@ -67,7 +67,7 @@
 
 ---
 
-# Son oturum — 2026-10-24 — task worker verimliliği
-- Log: 391s/31 adım, 1.826.050 input (%93,95 cache), 26.559 output, 8 ret; 300dk yok: `docs/TASKLOOP_PERFORMANCE_REVIEW.md`.
-- Düzeltildi: uzunluk tek başına dört rol açmıyor; kurallar (.memo dahil), retry/handoff aktarılıyor; görev model/effort ve executor limitleri korunuyor; coder hatası reader başlatmıyor; hata usage kaybolmuyor. Limit commit: `6c284f6d`; worker da commit edilir. Push yok.
-- Doğrulama: build/vet PASS; agent/taskloop/e2e/webserver race PASS (1.302/34.905/68.897/1.809s); app bilinen update testi hariç PASS 51.355s. Tam race yalnız eski update testi FAIL. Flutter 826 PASS; analyze 3 eski info. RED/GREEN + E2E 1/4 worker; canlı hız ölçülmedi.
+# Son oturum — 2026-10-24 — alt ajan sonuç bildirimi
+- Fix: kesilmiş inceleme artık yeni sonuçları tutmaz; pending FIFO/tek inflight sürer. Açık retry kuyruğun sonuna gider; çocuk tekrarlanmaz. Disk hatasında sahipsiz claim atomik kurtarılır; retry yarışı kapandı. Bildirim ID’leri loglanır. Ayrıntı: docs/CHAT_SUBAGENTS.md, plan §4.
+- Yerel fix commit; push yok. RED/GREEN gerçek HTTP/SSE testi yeni kullanıcı mesajı olmadan ana devamı doğrular. Gerçek sağlayıcı/pencere tekrarı yok.
+- Build/vet/tam Go race PASS: app 59.946s, E2E 91.831s, subagents 2.958s; atomiklik race 30 tekrar PASS. Flutter 826 PASS, analyze 3 eski info; L10n/diff temiz.

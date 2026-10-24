@@ -1,3 +1,10 @@
+# Son oturum — 2026-10-24 — task worker verimliliği
+- Log: 391s/31 adım, 1.826.050 input (%93,95 cache), 26.559 output, 8 ret; 300dk yok: `docs/TASKLOOP_PERFORMANCE_REVIEW.md`.
+- Düzeltildi: uzunluk tek başına dört rol açmıyor; kurallar (.memo dahil), retry/handoff aktarılıyor; görev model/effort ve executor limitleri korunuyor; coder hatası reader başlatmıyor; hata usage kaybolmuyor. Limit commit: `6c284f6d`; worker da commit edilir. Push yok.
+- Doğrulama: build/vet PASS; agent/taskloop/e2e/webserver race PASS (1.302/34.905/68.897/1.809s); app bilinen update testi hariç PASS 51.355s. Tam race yalnız eski update testi FAIL. Flutter 826 PASS; analyze 3 eski info. RED/GREEN + E2E 1/4 worker; canlı hız ölçülmedi.
+
+---
+
 # Son oturum — 2026-10-24 — alt ajan dayanıklılığı / durum görünürlüğü
 - Kök neden: çocuklara etkileşimli tur bütçesi (`turn_budget_secs` 1200s) uygulanıyordu; 315/377 olaylı sağlıklı iki çocuk tam 20:00'de çıplak `context deadline exceeded` ile öldü. Önceki `no provider configured` hataları `90f52c63`'ün düzelttiği sağlayıcı hatasıydı. Ana ajan "running" diyordu çünkü `list_agents` dev Job dökümü veriyordu ve her turda durum yoktu.
 - Yapıldı: çocuk artık yalnız 15 dk **ilerleme yok** (monoton ölçüm) veya 6 saat tavanında düşer, nedeni hatada yazar; takılı akış zorla bitirilir; geçici 5xx/zaman aşımı/kota hatası 30s/2dk/5dk ile 3 kez yeniden denenir (model "iş diskte olabilir" notu alır); hatada son araç sonuçları ana ajana gider. Ana ajan her turda `<memo-subagent-status>` bloğu (kullanıcı mesajına, sistem prompt'una değil) ve kompakt `list_agents` (+`id` ile tam çıktı) görür; sonuç bildirimi `task` özeti taşır. Mailbox'ta yutulan hatalar loglanır, ana tur hatası kalıcı kaydedilir. İki bağımsız inceleme (go-reviewer, silent-failure-hunter) bulguları uygulandı.

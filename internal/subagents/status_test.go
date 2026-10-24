@@ -158,7 +158,7 @@ func TestSummariesCountOnlyTheCurrentRound(t *testing.T) {
 	}
 }
 
-func TestSummariesFlagResultsHeldBehindInterruptedHead(t *testing.T) {
+func TestSummariesPendingResultsAreNotHeldBehindInterruptedHead(t *testing.T) {
 	m, _ := Open(t.TempDir(), 1, noopRunner)
 	seedJob(m, Job{ID: "a", State: Failed})
 	seedJob(m, Job{ID: "b", State: Failed})
@@ -169,8 +169,8 @@ func TestSummariesFlagResultsHeldBehindInterruptedHead(t *testing.T) {
 	}
 	m.mu.Unlock()
 	for _, s := range m.summaries("chat", time.Now()) {
-		if s.ID == "b" && s.ResultDelivery != "held" {
-			t.Fatalf("b should be held behind a: %+v", s)
+		if s.ID == "b" && (s.ResultDelivery != "pending" || s.DeliveryError != "") {
+			t.Fatalf("b should remain pending despite a stopped review: %+v", s)
 		}
 	}
 }

@@ -25,8 +25,22 @@ func (a *App) pumpChatSubAgents(ctx context.Context) {
 	for {
 		for _, chat := range a.chatSubAgents.PendingChats() {
 			for _, c := range a.chatSubAgents.Completions(chat) {
+				if c.Delivery == "inflight" && !a.completionWasSaved(chat, c.ID) {
+					// The manager holds its mutex while checking dispatcher ownership:
+					// an explicit retry cannot replace the claim between check and save.
+					// Lock order matches its notifier: manager, then dispatch map.
+					err := a.chatSubAgents.InterruptOrphanedCompletion(chat, c.ID, func() bool {
+						a.subAgentDeliveryMu.Lock()
+						defer a.subAgentDeliveryMu.Unlock()
+						return a.subAgentDelivering[c.ID]
+					}, "Main review ended before its delivery state was saved; resume explicitly")
+					if err != nil {
+						logx.Printf("subagent: could not recover orphaned review completion=%d task=%s: %v", c.ID, c.JobID, err)
+					}
+					continue
+				}
 				if c.Delivery == "interrupted" && !a.completionWasSaved(chat, c.ID) {
-					break
+					continue
 				}
 				a.scheduleChatSubAgentCompletion(ctx, c)
 			}
@@ -54,6 +68,7 @@ func (a *App) scheduleChatSubAgentCompletion(ctx context.Context, c subagents.Co
 		return
 	}
 	a.subAgentDelivering[c.ID] = true
+	logx.Printf("subagent: queued main review completion=%d task=%s chat=%s", c.ID, c.JobID, c.ChatID)
 	ticket := a.subAgentTurns.reserve(c.ChatID)
 	a.subAgentDispatchWG.Add(1)
 	a.subAgentDeliveryMu.Unlock()
@@ -64,8 +79,8 @@ func (a *App) scheduleChatSubAgentCompletion(ctx context.Context, c subagents.Co
 			if r := recover(); r != nil {
 				logx.Printf("subagent main delivery panic: %v", r)
 				if err := a.chatSubAgents.MarkDeliveryInterrupted(c.ChatID, c.ID, "Main agent review failed; resume explicitly"); err != nil {
-				logx.Printf("subagent: could not record interrupted delivery %d: %v", c.ID, err)
-			}
+					logx.Printf("subagent: could not record interrupted delivery %d: %v", c.ID, err)
+				}
 			}
 		}()
 		defer func() { a.subAgentDeliveryMu.Lock(); delete(a.subAgentDelivering, c.ID); a.subAgentDeliveryMu.Unlock() }()
@@ -83,23 +98,21 @@ func (a *App) completionWasSaved(chat string, id uint64) bool {
 	return sm.HasPersistedCompletion(chat, id)
 }
 func (a *App) deliverChatSubAgentResult(ctx context.Context, c subagents.Completion) {
-	first, ok := a.chatSubAgents.PeekCompletion(c.ChatID)
-	if !ok || first.ID != c.ID {
-		return
-	} // a prior interrupted result remains at the head
 	if a.completionWasSaved(c.ChatID, c.ID) {
 		if err := a.chatSubAgents.AckCompletion(c.ChatID, c.ID); err != nil {
 			logx.Printf("subagent: could not acknowledge completion %d: %v", c.ID, err)
 		}
 		return
 	}
-	if first.Delivery != "pending" {
+	first, ok := a.chatSubAgents.NextDeliverableCompletion(c.ChatID)
+	if !ok || first.ID != c.ID {
 		return
-	}
+	} // Pending reviews stay FIFO; a stopped review does not hold later results.
 	if err := a.chatSubAgents.ClaimCompletion(c.ChatID, c.ID); err != nil {
 		logx.Printf("subagent: could not claim completion %d: %v", c.ID, err)
 		return
 	}
+	logx.Printf("subagent: starting main review completion=%d task=%s chat=%s", c.ID, c.JobID, c.ChatID)
 	turnErr := a.deliverOneChatSubAgentResult(ctx, c.ChatID, c)
 	if !a.completionWasSaved(c.ChatID, c.ID) {
 		// Keep the real cause: "interrupted" alone hides a provider outage or a
@@ -118,6 +131,7 @@ func (a *App) deliverChatSubAgentResult(ctx context.Context, c subagents.Complet
 		logx.Printf("subagent: could not acknowledge completion %d: %v", c.ID, err)
 	}
 }
+
 // It returns the last error the main turn reported, if any.
 func (a *App) deliverOneChatSubAgentResult(ctx context.Context, chat string, c subagents.Completion) string {
 	// No global active chat switch or agent flag mutation. The result marker is

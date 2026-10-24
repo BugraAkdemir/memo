@@ -677,3 +677,272 @@ func TestCloseJobPreservesReadableHistoryAfterRestart(t *testing.T) {
 		t.Fatal("closed history became runnable")
 	}
 }
+
+// A stopped main review belongs to that delivery only. New child results must
+// remain runnable without replaying the stopped turn or rerunning the child.
+func TestInterruptedCompletionDoesNotBlockNewResults(t *testing.T) {
+	m, err := Open(t.TempDir(), 1, noopRunner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.data.Completions = []Completion{
+		{ID: 1, ChatID: "chat", JobID: "old", Delivery: "interrupted", DeliveryError: "stopped", Result: "old result"},
+		{ID: 2, ChatID: "chat", JobID: "new", Delivery: "pending", Result: "new result"},
+		{ID: 3, ChatID: "chat", JobID: "last", Delivery: "pending", Result: "last result"},
+	}
+	if err := m.ClaimCompletion("chat", 3); err == nil {
+		t.Fatal("new pending overtook earlier pending")
+	}
+	if err := m.ClaimCompletion("chat", 2); err != nil {
+		t.Fatalf("interrupted old record blocked new result: %v", err)
+	}
+	if err := m.ClaimCompletion("chat", 3); err == nil {
+		t.Fatal("second delivery started while first was inflight")
+	}
+	if err := m.AckCompletion("chat", 2); err != nil {
+		t.Fatalf("active result could not be acknowledged: %v", err)
+	}
+	if err := m.ClaimCompletion("chat", 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.MarkDeliveryInterrupted("chat", 3, "new stop"); err != nil {
+		t.Fatal(err)
+	}
+	if head, ok := m.PeekCompletion("chat"); !ok || head.ID != 1 || head.Delivery != "interrupted" {
+		t.Fatalf("stopped historical turn was lost: %+v", head)
+	}
+	if err := m.AckCompletion("other", 1); err == nil {
+		t.Fatal("cross-chat acknowledgement accepted")
+	}
+	if err := m.AckCompletion("chat", 3); err != nil {
+		t.Fatalf("saved interrupted result could not be acknowledged: %v", err)
+	}
+}
+
+func TestDeliverableCompletionRecoverySkipsStoppedReviews(t *testing.T) {
+	dir := t.TempDir()
+	var runs atomic.Int32
+	runner := func(context.Context, Job, func(Event)) (RunResult, error) { runs.Add(1); return RunResult{}, nil }
+	m, err := Open(dir, 1, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.data.Completions = []Completion{
+		{ID: 1, ChatID: "chat", JobID: "old", Delivery: "interrupted", Result: "old result"},
+		{ID: 2, ChatID: "chat", JobID: "stopped", Delivery: "inflight", Result: "saved parent result"},
+		{ID: 3, ChatID: "other", JobID: "other", Delivery: "pending"},
+		{ID: 4, ChatID: "chat", JobID: "new", Delivery: "pending", Result: "new result"},
+	}
+	if err := m.saveLocked(); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := Open(dir, 1, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := recovered.NextDeliverableCompletion("chat"); !ok || got.ID != 4 {
+		t.Fatalf("new completion blocked after recovery: %+v %v", got, ok)
+	}
+	if err := recovered.AckCompletion("chat", 2); err != nil {
+		t.Fatalf("saved stopped result could not recover ACK: %v", err)
+	}
+	if err := recovered.ClaimCompletion("chat", 4); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := recovered.NextDeliverableCompletion("chat"); ok {
+		t.Fatal("inflight did not block parallel main turn")
+	}
+	if got, ok := recovered.NextDeliverableCompletion("other"); !ok || got.ID != 3 {
+		t.Fatal("one chat blocked another", got, ok)
+	}
+	if err := recovered.AckCompletion("chat", 4); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := recovered.NextDeliverableCompletion("chat"); ok {
+		t.Fatal("stopped review replayed automatically")
+	}
+	final, err := Open(dir, 1, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := final.Completions("chat")
+	if len(all) != 1 || all[0].ID != 1 || all[0].Delivery != "interrupted" || runs.Load() != 0 {
+		t.Fatalf("history/recovery incorrect: %+v runs=%d", all, runs.Load())
+	}
+}
+
+func TestRetryCompletionCannotDisplaceActiveDelivery(t *testing.T) {
+	for _, interrupt := range []bool{false, true} {
+		t.Run(map[bool]string{false: "ack", true: "interrupt"}[interrupt], func(t *testing.T) {
+			var runs atomic.Int32
+			m, err := Open(t.TempDir(), 1, func(context.Context, Job, func(Event)) (RunResult, error) { runs.Add(1); return RunResult{}, nil })
+			if err != nil {
+				t.Fatal(err)
+			}
+			seedJob(m, Job{ID: "old", State: Awaiting})
+			m.data.Completions = []Completion{
+				{ID: 1, ChatID: "chat", JobID: "old", Delivery: "interrupted", Result: "old result"},
+				{ID: 2, ChatID: "chat", JobID: "active", Delivery: "inflight"},
+				{ID: 3, ChatID: "chat", JobID: "next", Delivery: "pending"},
+			}
+			start := make(chan struct{})
+			errs := make(chan error, 2)
+			go func() { <-start; errs <- m.RetryCompletion("chat", "old") }()
+			go func() {
+				<-start
+				if interrupt {
+					errs <- m.MarkDeliveryInterrupted("chat", 2, "user stopped")
+				} else {
+					errs <- m.AckCompletion("chat", 2)
+				}
+			}()
+			close(start)
+			for i := 0; i < 2; i++ {
+				if err := <-errs; err != nil {
+					t.Fatal(err)
+				}
+			}
+			next, ok := m.NextDeliverableCompletion("chat")
+			if !ok || next.ID != 3 {
+				t.Fatalf("explicit retry jumped ahead of pending result: %+v %v", next, ok)
+			}
+			if err := m.ClaimCompletion("chat", 1); err == nil {
+				t.Fatal("retry overtook older pending")
+			}
+			if err := m.ClaimCompletion("chat", 3); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := m.NextDeliverableCompletion("chat"); ok {
+				t.Fatal("retry started parallel main turn")
+			}
+			if err := m.AckCompletion("chat", 3); err != nil {
+				t.Fatal(err)
+			}
+			retried, ok := m.NextDeliverableCompletion("chat")
+			if !ok || retried.ID != 1 || retried.Result != "old result" || retried.DeliveryError != "" {
+				t.Fatalf("retry lost saved result: %+v %v", retried, ok)
+			}
+			if runs.Load() != 0 {
+				t.Fatal("delivery retry reran child")
+			}
+		})
+	}
+}
+
+func TestInterruptOrphanedCompletionCannotParkRetriedClaim(t *testing.T) {
+	m, err := Open(t.TempDir(), 1, noopRunner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedJob(m, Job{ID: "job", State: Awaiting})
+	m.data.Completions = []Completion{{ID: 1, ChatID: "chat", JobID: "job", Delivery: "inflight", Result: "saved result"}}
+	entered := make(chan bool, 1)
+	release := make(chan struct{})
+	orphanDone := make(chan error, 1)
+	go func() {
+		orphanDone <- m.InterruptOrphanedCompletion("chat", 1, func() bool {
+			// This is a lock assertion, not a timing-based guess about scheduling.
+			unlocked := m.mu.TryLock()
+			if unlocked {
+				m.mu.Unlock()
+			}
+			entered <- !unlocked
+			<-release
+			return false
+		}, "orphaned delivery")
+	}()
+	locked := <-entered
+	retried := make(chan error, 1)
+	go func() {
+		// Simulate the original delivery exiting followed by an explicit retry.
+		// If recovery parked it first, this marker is already satisfied.
+		_ = m.MarkDeliveryInterrupted("chat", 1, "original stopped")
+		if err := m.RetryCompletion("chat", "job"); err != nil {
+			retried <- err
+			return
+		}
+		retried <- m.ClaimCompletion("chat", 1)
+	}()
+	if !locked {
+		// Reproduce the old split check/write: reuse the same completion ID while
+		// the orphan check is paused, then let its stale write target the new claim.
+		if err := <-retried; err != nil {
+			t.Error(err)
+		}
+	}
+	close(release)
+	if err := <-orphanDone; err != nil {
+		t.Fatal(err)
+	}
+	if locked {
+		if err := <-retried; err != nil {
+			t.Fatal(err)
+		}
+	}
+	c, _ := m.PeekCompletion("chat")
+	if !locked || c.Delivery != "inflight" {
+		t.Fatalf("orphan check must be atomic with claim/retry: locked=%v completion=%+v", locked, c)
+	}
+	if err := m.InterruptOrphanedCompletion("chat", 1, func() bool { return true }, "must not park active retry"); err != nil {
+		t.Fatal(err)
+	}
+	c, _ = m.PeekCompletion("chat")
+	if c.Delivery != "inflight" {
+		t.Fatal("active retry parked", c)
+	}
+}
+
+func TestInterruptOrphanedCompletionGuardsAndPersistenceRollback(t *testing.T) {
+	dir := t.TempDir()
+	m, err := Open(dir, 1, noopRunner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.data.Completions = []Completion{{ID: 1, ChatID: "chat", Delivery: "pending"}, {ID: 2, ChatID: "chat", Delivery: "interrupted"}, {ID: 3, ChatID: "chat", Delivery: "inflight", DeliveryError: "previous evidence"}}
+	checks := 0
+	active := func() bool { checks++; return false }
+	for _, request := range []struct {
+		chat string
+		id   uint64
+	}{{"other", 3}, {"chat", 99}, {"chat", 1}, {"chat", 2}} {
+		if err := m.InterruptOrphanedCompletion(request.chat, request.id, active, "orphan"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if checks != 0 {
+		t.Fatalf("checked dispatch ownership for non-inflight completion %d times", checks)
+	}
+	if err := os.Remove(filepath.Join(dir, "state.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.InterruptOrphanedCompletion("chat", 3, active, "orphan"); err == nil {
+		t.Fatal("failed persistence hidden")
+	}
+	all := m.Completions("chat")
+	if all[2].Delivery != "inflight" || all[2].DeliveryError != "previous evidence" {
+		t.Fatal("failed save did not roll back", all[2])
+	}
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.InterruptOrphanedCompletion("chat", 3, active, "orphan"); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := Open(dir, 1, noopRunner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all = recovered.Completions("chat")
+	if all[2].Delivery != "interrupted" || all[2].DeliveryError != "orphan" {
+		t.Fatal("recovery marker not durable", all[2])
+	}
+}

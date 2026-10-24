@@ -485,25 +485,62 @@ func (m *Manager) PeekCompletion(chat string) (Completion, bool) {
 	}
 	return Completion{}, false
 }
-func (m *Manager) AckCompletion(chat string, id uint64) error {
+
+// NextDeliverableCompletion returns the oldest runnable delivery, leaving stopped
+// reviews in the mailbox for explicit retry or recovery acknowledgement. An
+// inflight delivery anywhere in this chat blocks another main turn.
+func (m *Manager) NextDeliverableCompletion(chat string) (Completion, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	i := m.nextDeliverableLocked(chat)
+	if i < 0 {
+		return Completion{}, false
+	}
+	return m.data.Completions[i], true
+}
+
+func (m *Manager) nextDeliverableLocked(chat string) int {
+	next := -1
 	for i, c := range m.data.Completions {
 		if c.ChatID != chat {
 			continue
 		}
-		if c.ID != id {
+		if c.Delivery == "inflight" {
+			return -1
+		}
+		if c.Delivery == "interrupted" {
+			continue
+		}
+		if next < 0 {
+			next = i
+		}
+	}
+	if next >= 0 && m.data.Completions[next].Delivery == "pending" {
+		return next
+	}
+	return -1
+}
+
+func (m *Manager) AckCompletion(chat string, id uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, c := range m.data.Completions {
+		if c.ChatID != chat || c.ID != id {
+			continue
+		}
+		// A stored parent message can recover any interrupted delivery without
+		// replaying it. An active main turn remains ackable even if a retry was
+		// queued meanwhile. Pending results still obey runnable FIFO order.
+		if c.Delivery != "interrupted" && c.Delivery != "inflight" && i != m.nextDeliverableLocked(chat) {
 			return errors.New("completion must be acknowledged in FIFO order")
 		}
-		if c.ID == id && c.ChatID == chat {
-			old := m.data.Completions
-			m.data.Completions = append(append([]Completion(nil), old[:i]...), old[i+1:]...)
-			if err := m.saveLocked(); err != nil {
-				m.data.Completions = old
-				return err
-			}
-			return nil
+		old := m.data.Completions
+		m.data.Completions = append(append([]Completion(nil), old[:i]...), old[i+1:]...)
+		if err := m.saveLocked(); err != nil {
+			m.data.Completions = old
+			return err
 		}
+		return nil
 	}
 	return errors.New("completion not found in this chat")
 }
@@ -648,25 +685,17 @@ func (m *Manager) PendingChats() []string {
 func (m *Manager) ClaimCompletion(chat string, id uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for i := range m.data.Completions {
-		c := &m.data.Completions[i]
-		if c.ChatID != chat {
-			continue
-		}
-		if c.ID != id {
-			return errors.New("completion must be claimed in FIFO order")
-		}
-		if c.Delivery != "pending" {
-			return errors.New("completion is already claimed or interrupted")
-		}
-		c.Delivery = "inflight"
-		if err := m.saveLocked(); err != nil {
-			c.Delivery = "pending"
-			return err
-		}
-		return nil
+	i := m.nextDeliverableLocked(chat)
+	if i < 0 || m.data.Completions[i].ID != id {
+		return errors.New("completion must be pending and claimed in runnable FIFO order")
 	}
-	return errors.New("completion not found")
+	c := &m.data.Completions[i]
+	c.Delivery = "inflight"
+	if err := m.saveLocked(); err != nil {
+		c.Delivery = "pending"
+		return err
+	}
+	return nil
 }
 func (m *Manager) RetryCompletion(chat, jobID string) error {
 	m.mu.Lock()
@@ -677,15 +706,20 @@ func (m *Manager) RetryCompletion(chat, jobID string) error {
 	for i := range m.data.Completions {
 		c := &m.data.Completions[i]
 		if c.ChatID == chat && c.JobID == jobID && c.Delivery == "interrupted" {
-			oldError := c.DeliveryError
-			c.Delivery = "pending"
-			c.DeliveryError = ""
+			// An explicit retry is new delivery work: append it after already
+			// queued results, preserving the immutable completion ID and output.
+			// It cannot jump ahead of an inflight turn or prevent that turn's ACK.
+			old := m.data.Completions
+			retried := *c
+			retried.Delivery = "pending"
+			retried.DeliveryError = ""
+			next := append(append([]Completion(nil), old[:i]...), old[i+1:]...)
+			m.data.Completions = append(next, retried)
 			if err := m.saveLocked(); err != nil {
-				c.Delivery = "interrupted"
-				c.DeliveryError = oldError
+				m.data.Completions = old
 				return err
 			}
-			m.notifyLocked(*c)
+			m.notifyLocked(retried)
 			return nil
 		}
 	}
@@ -721,11 +755,8 @@ func (m *Manager) MarkDeliveryInterrupted(chat string, id uint64, reason string)
 	defer m.mu.Unlock()
 	for i := range m.data.Completions {
 		c := &m.data.Completions[i]
-		if c.ChatID != chat {
+		if c.ChatID != chat || c.ID != id {
 			continue
-		}
-		if c.ID != id {
-			return errors.New("completion interruption must follow FIFO order")
 		}
 		if c.Delivery != "inflight" {
 			return errors.New("completion is not being delivered")
@@ -740,6 +771,32 @@ func (m *Manager) MarkDeliveryInterrupted(chat string, id uint64, reason string)
 		return nil
 	}
 	return errors.New("completion not found")
+}
+
+// InterruptOrphanedCompletion parks an inflight delivery only when its owner is
+// no longer registered. active must only inspect the caller's dispatch map and
+// must not call manager methods. This check is serialized with delivery changes.
+func (m *Manager) InterruptOrphanedCompletion(chat string, id uint64, active func() bool, reason string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.data.Completions {
+		c := &m.data.Completions[i]
+		if c.ChatID != chat || c.ID != id || c.Delivery != "inflight" {
+			continue
+		}
+		if active() {
+			return nil
+		}
+		old := *c
+		c.Delivery = "interrupted"
+		c.DeliveryError = reason
+		if err := m.saveLocked(); err != nil {
+			*c = old
+			return err
+		}
+		return nil
+	}
+	return nil
 }
 
 func (m *Manager) checkpointStream() {

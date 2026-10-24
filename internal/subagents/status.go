@@ -87,26 +87,11 @@ func (m *Manager) summaries(chat string, now time.Time) []Summary {
 			if c.JobID == j.ID && c.ChatID == j.ChatID {
 				s.ResultDelivery = c.Delivery
 				s.DeliveryError = c.DeliveryError
-				// Results are reviewed strictly in order: one whose earlier result was
-				// interrupted waits for the user to resume that one.
-				if head, ok := headCompletion(m.data.Completions, chat); ok && head.ID != c.ID && head.Delivery == "interrupted" {
-					s.ResultDelivery = "held"
-					s.DeliveryError = "held behind an earlier result whose review was interrupted; it is delivered after the user presses Resume main review on that task"
-				}
 			}
 		}
 		out = append(out, s)
 	}
 	return out
-}
-
-func headCompletion(all []Completion, chat string) (Completion, bool) {
-	for _, c := range all {
-		if c.ChatID == chat {
-			return c, true
-		}
-	}
-	return Completion{}, false
 }
 
 func summarize(j *Job, now time.Time) Summary {

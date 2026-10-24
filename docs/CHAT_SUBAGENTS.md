@@ -46,7 +46,10 @@ only after reading that marker from the saved session file, never solely from
 memory. Duplicate notifications and a crash after session save but before ACK do
 not execute the review twice. Stopped, failed or unsaved reviews retain their
 result and require **Resume main review** in the child pane; this resumes the
-review without rerunning the child. Background reviews may use delegated coding/checking and child-coordination tools without an invisible permission dialog; explicit denies still win. Unrelated actions are denied and must be requested in an interactive turn.
+review without rerunning the child. An interrupted review does not hold later pending
+results: those continue automatically in arrival order, with at most one review
+in flight per chat. Explicit resume requeues that saved result after already
+pending work while retaining its completion ID. Background reviews may use delegated coding/checking and child-coordination tools without an invisible permission dialog; explicit denies still win. Unrelated actions are denied and must be requested in an interactive turn.
 
 Child tasks and completion records live in `config.DataPath("subagents")`, as an
 atomic private state file and managed worktrees. They are temporary local recovery
@@ -102,9 +105,11 @@ unsupported-model errors are not retried. A failure with no final reply still
 hands main the last tool results.
 
 Limitations: a silent tool that runs longer than the idle limit (a very long
-build) is still treated as stalled; a result whose delivery was interrupted
-blocks later results behind it in the FIFO until it is resumed from the child
-pane, though main is told about all of them in the status block.
+build) is still treated as stalled. A stopped result still needs explicit resume
+for its own review; later results are delivered automatically. When a delivery
+state save fails, the mailbox retries parking an orphaned claim after storage
+recovers. It checks dispatcher ownership under the manager lock so explicit
+resume cannot cause a newly active review to be interrupted.
 
 ## Coding isolation and integration
 
@@ -181,3 +186,34 @@ Coverage measurement:
 passed (9.306s). `syncSubscriptions` and `SetProviderModel` each measured 75%;
 the intentionally narrow selection measured 0.9% of the whole app package.
 These figures do not establish 80% app-wide coverage.
+
+## Completion wakeup regression (2026-10-24)
+
+A stopped main review previously remained at the mailbox head and silently held
+all later results. A new user message could read current child status even while
+automatic delivery remained blocked. The supplied log shows child turns ending
+at 21:46:59 and 21:47:14 (UTC+03), followed by no new parent work until the user's
+21:48:30 message. The supplied tail does not include the saved mailbox state, so
+it does not by itself prove which earlier delivery was interrupted.
+
+The regression test reproduces the blocking path through real App/HTTP/SSE:
+first main review returns HTTP 503, a second child finishes successfully, and
+main must save its review without another user send. It failed before the fix
+and passes afterward. The failed old review is retained and neither the child
+nor that review is automatically replayed. Manager tests also cover pending
+FIFO, explicit retry during a live review, restart recovery and isolated chats.
+A separate app regression fails a delivery-state save, restores storage and
+checks recovery without restart or replay; an active dispatcher is preserved.
+
+The mailbox now logs completion ID, child ID and chat ID when scheduling and
+starting main review, so future field logs can distinguish delivery delay from
+model/tool execution without exposing the result contents.
+
+Verification: `CGO_ENABLED=1 go build -tags sqlite_fts5 ./...` and `go vet` passed;
+full `CGO_ENABLED=1 go test -tags sqlite_fts5 ./... -race` passed (app 59.946s,
+E2E 91.831s, subagents 2.958s). Focused mailbox regressions passed (app 1.755s,
+E2E 1.562s); orphan/retry atomicity tests passed 30 repetitions under `-race`.
+Flutter: 826 tests passed; analyze reported only three existing
+`use_build_context_synchronously` infos. No Dart source changed; the touched-file
+UI literal check and `git diff --check` were empty. This proves the reproduced
+mailbox path; a real-provider UI replay on the reporting machine remains untested.

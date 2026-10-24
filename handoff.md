@@ -5,8 +5,9 @@
 ## Açık işler
 
 **Alt ajan (2026-10-23, `PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`)**
-- Açık: Canlı sağlayıcı/model deneyimi; Self-Driving readonly komut sınırı (`docs/SUBAGENT_REVIEW.md`). Worker kuralları/routing/hata aktarımı düzeltildi (2026-10-24, `docs/TASKLOOP_PERFORMANCE_REVIEW.md`); gerçek Antigravity/Waydroid hız-kalite ölçümü ve bildirilen 300 dk geçmişi yok.
+- Canlı web UI alt ajan testi PASS (aşağıda); uzun iş/native pencere ölçülmedi. Açık: Self-Driving readonly komut sınırı (`docs/SUBAGENT_REVIEW.md`). Worker kuralları/routing/hata aktarımı düzeltildi (2026-10-24, `docs/TASKLOOP_PERFORMANCE_REVIEW.md`); gerçek Antigravity/Waydroid hız-kalite ölçümü ve bildirilen 300 dk geçmişi yok.
 
+- **Yeni açık UI eksiği:** otomatik ana inceleme çalışırken sidebar spinner var ama bestecide Durdur yok. Bu nedenle canlı kesinti/sonraki sonuç testi ekrandan tamamlanamadı; düzeltilmedi.
 - Alt ajan: kesilmiş inceleme artık sonraki sonuçları tutmaz (2026-10-24). Kendi incelemesi Resume main review ister; ana ajanın resume aracı yok. Çocuk kalıcılık hatası context canceled görünebilir; durum bloğu Minimal Mod’da da eklenir.
 
 **Proje klasörleri (2026-10-19, `PLAN_project_folders.md`, `docs/PROJECT_FOLDER.md`)**
@@ -17,7 +18,7 @@
 - Live Mode'un ev köklü arka plan sohbeti normal sohbet sayılır; diğer ev köklü ajan sohbeti hafıza almaz. Code Mode kapalı proje sohbetinde takvim/WhatsApp araçları açık kalır; kişisel hafıza/kimlik izoledir.
 
 **Birleşik sohbet listesi / yeni sohbet ekranı (2026-10-19)**
-- Gerçek pencerede doğrulanmadı: merkez besteci/öneriler, Ajan + klasör seçimi, başlık/üst çubuk ve ilk mesajda alta geçiş. Geçiş anlık; animasyon yok. Ajan sekmesinin eski IndexedStack indeksi boş tutulur; ajanlar ProjectPath ile işaretlenir.
+- Webde Ajan/klasör seçimi ve ilk mesaj sonrası alta geçiş denendi; native pencere, öneriler/animasyon ölçülmedi. Geçiş anlık; animasyon yok. Ajan sekmesinin eski IndexedStack indeksi boş tutulur; ajanlar ProjectPath ile işaretlenir.
 - Ajan başlığı ilk kelimelerden; LLM başlığı Code Mode yan-çağrı yasağı için kullanıcı kararı ister. WelcomeView yalnız CLI.
 - `/` menüsü artık skill menüsü (aşağıda); CLI sağlayıcısına özel `_CLICommandPopup` bu değişikliğe dahil değil.
 
@@ -67,7 +68,7 @@
 
 ---
 
-# Son oturum — 2026-10-24 — alt ajan sonuç bildirimi
-- Fix: kesilmiş inceleme artık yeni sonuçları tutmaz; pending FIFO/tek inflight sürer. Açık retry kuyruğun sonuna gider; çocuk tekrarlanmaz. Disk hatasında sahipsiz claim atomik kurtarılır; retry yarışı kapandı. Bildirim ID’leri loglanır. Ayrıntı: docs/CHAT_SUBAGENTS.md, plan §4.
-- Yerel fix commit; push yok. RED/GREEN gerçek HTTP/SSE testi yeni kullanıcı mesajı olmadan ana devamı doğrular. Gerçek sağlayıcı/pencere tekrarı yok.
-- Build/vet/tam Go race PASS: app 59.946s, E2E 91.831s, subagents 2.958s; atomiklik race 30 tekrar PASS. Flutter 826 PASS, analyze 3 eski info; L10n/diff temiz.
+# Son oturum — 2026-10-24 — görünür canlı test
+- Kullanıcı testi durdurdu; yeni test başlatma. Web UI + backend `bc0fb851` derlendi; Subscriptions/Gemini 3.8 Flash High ile iki readonly çocuk toplam=23/satır=3 buldu, ana ajan yeni kullanıcı mesajı olmadan iki sonucu işleyip kapattı. Önceki gerçek sohbetin iki ajanı da Closed görüldü.
+- 20s sleep içeren otomatik ana inceleme tamamlandı; UI Durdur eksikliği yüzünden kesinti testi yapılmış sayılmaz. Kaynak değişmedi; yalnız bu handoff/arşiv commit+push istendi. Önceki build/vet/tam race ve Flutter 826 PASS kaydı arşivde; bu tur web build/canlı test ve diff kontrolü yapıldı.
+- `/tmp/memo-visible-qa-backend` :8090’da açık bırakıldı; log `/tmp/memo-visible-qa-backend.log`, geçici proje `/tmp/memo-visible-qa-project`. Görünür sekme açık. İlk test varolan boş Live Mode sohbetini kullandı; ikinci test ayrı sohbet. Test kayıtları silinmedi. Commit/push bu kayıtla tamamlanır.

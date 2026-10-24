@@ -1,3 +1,10 @@
+# Son oturum — 2026-10-24 — alt ajan sonuç bildirimi
+- Fix: kesilmiş inceleme artık yeni sonuçları tutmaz; pending FIFO/tek inflight sürer. Açık retry kuyruğun sonuna gider; çocuk tekrarlanmaz. Disk hatasında sahipsiz claim atomik kurtarılır; retry yarışı kapandı. Bildirim ID’leri loglanır. Ayrıntı: docs/CHAT_SUBAGENTS.md, plan §4.
+- Yerel fix commit; push yok. RED/GREEN gerçek HTTP/SSE testi yeni kullanıcı mesajı olmadan ana devamı doğrular. Gerçek sağlayıcı/pencere tekrarı yok.
+- Build/vet/tam Go race PASS: app 59.946s, E2E 91.831s, subagents 2.958s; atomiklik race 30 tekrar PASS. Flutter 826 PASS, analyze 3 eski info; L10n/diff temiz.
+
+---
+
 # Son oturum — 2026-10-24 — task worker verimliliği
 - Log: 391s/31 adım, 1.826.050 input (%93,95 cache), 26.559 output, 8 ret; 300dk yok: `docs/TASKLOOP_PERFORMANCE_REVIEW.md`.
 - Düzeltildi: uzunluk tek başına dört rol açmıyor; kurallar (.memo dahil), retry/handoff aktarılıyor; görev model/effort ve executor limitleri korunuyor; coder hatası reader başlatmıyor; hata usage kaybolmuyor. Limit commit: `6c284f6d`; worker da commit edilir. Push yok.

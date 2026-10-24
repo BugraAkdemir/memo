@@ -177,18 +177,23 @@ func NewWebSearchExecutor(existing *Executor) *Executor {
 // switch provider (self-heal) or run with permissions bypassed without
 // disturbing the executor interactive chat uses. Mirrors NewWhatsAppExecutor.
 func NewTaskExecutor(existing *Executor, router *provider.Router) *Executor {
+	existing.mu.Lock()
+	defer existing.mu.Unlock()
 	return &Executor{
-		basePath:       existing.basePath,
-		providerRouter: router,
-		providerCfgMgr: existing.providerCfgMgr,
-		registry:       existing.registry,
-		permissions:    existing.permissions,
-		sandbox:        existing.sandbox,
-		backup:         existing.backup,
-		sessionManager: existing.sessionManager,
-		pendingPerms:   make(map[string]*PermissionRequest),
-		logs:           make([]AgentLogEntry, 0),
-		auditLogFile:   existing.auditLogFile,
+		basePath:         existing.basePath,
+		providerRouter:   router,
+		providerCfgMgr:   existing.providerCfgMgr,
+		registry:         existing.registry,
+		permissions:      existing.permissions,
+		sandbox:          existing.sandbox,
+		backup:           existing.backup,
+		sessionManager:   existing.sessionManager,
+		pendingPerms:     make(map[string]*PermissionRequest),
+		logs:             make([]AgentLogEntry, 0),
+		auditLogFile:     existing.auditLogFile,
+		maxIters:         existing.maxIters,
+		maxContinuations: existing.maxContinuations,
+		contextBudget:    existing.contextBudget,
 	}
 }
 
@@ -203,22 +208,27 @@ func (e *Executor) ActiveRouter() *provider.Router {
 // sessionManager nil (no cd persistence, no session), and a sandbox scoped to
 // projectPath. It reuses the shared permissions/backup/audit trail.
 func NewSubAgentExecutor(existing *Executor, registry *ToolRegistry, router *provider.Router, projectPath string) *Executor {
+	existing.mu.Lock()
+	defer existing.mu.Unlock()
 	base := existing.basePath
 	if projectPath != "" {
 		base = projectPath
 	}
 	return &Executor{
-		basePath:       base,
-		providerRouter: router,
-		providerCfgMgr: existing.providerCfgMgr,
-		registry:       registry,
-		permissions:    existing.permissions,
-		sandbox:        NewSandbox(DefaultSandboxConfig(base)),
-		backup:         existing.backup,
-		sessionManager: nil,
-		pendingPerms:   make(map[string]*PermissionRequest),
-		logs:           make([]AgentLogEntry, 0),
-		auditLogFile:   existing.auditLogFile,
+		basePath:         base,
+		providerRouter:   router,
+		providerCfgMgr:   existing.providerCfgMgr,
+		registry:         registry,
+		permissions:      existing.permissions,
+		sandbox:          NewSandbox(DefaultSandboxConfig(base)),
+		backup:           existing.backup,
+		sessionManager:   nil,
+		pendingPerms:     make(map[string]*PermissionRequest),
+		logs:             make([]AgentLogEntry, 0),
+		auditLogFile:     existing.auditLogFile,
+		maxIters:         existing.maxIters,
+		maxContinuations: existing.maxContinuations,
+		contextBudget:    existing.contextBudget,
 	}
 }
 

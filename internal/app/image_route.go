@@ -48,6 +48,16 @@ func imageForced(ctx context.Context) bool {
 	return v
 }
 
+// pictureAskedButNotDrawn reports a turn whose message asked for a picture but
+// that ended without one (genImage is the path this turn drew, empty when none).
+// What the text model said instead is not worth keeping in memory.
+func pictureAskedButNotDrawn(ctx context.Context, userMsg, genImage string) bool {
+	if genImage != "" {
+		return false
+	}
+	return imageForced(ctx) || classifyImageIntent(userMsg, false) != imageIntentNone
+}
+
 // imageTarget is the model an image request goes to.
 type imageTarget struct {
 	Gen      provider.ImageGenerator

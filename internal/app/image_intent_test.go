@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -25,6 +26,16 @@ func TestClassifyImageIntent_Generate(t *testing.T) {
 		"give me an image of a sunset over the sea",
 		"I need a wallpaper of mountains",
 		"can you make a picture of a dog?",
+		// Turkish verb stem + ending — the wording that slipped through before.
+		"hey selam memo uzayda uçan bir köpek resmi üretsene",
+		"bir kedi resmi üretir misin",
+		"uzayda uçan köpek görseli üretebilir misin?",
+		"kırmızı araba resmi oluştursana",
+		"bir ejderha görseli tasarlasana",
+		"şu manzaranın fotoğrafını hazırlasana",
+		"bir kale resmi yaratsana",
+		"köpek resmi üretin",
+		"bir kedi resmi üretiver",
 	} {
 		if got := classifyImageIntent(text, false); got != imageIntentGenerate {
 			t.Errorf("%q: got %v, want generate", text, got)
@@ -64,6 +75,13 @@ func TestClassifyImageIntent_NotAPictureRequest(t *testing.T) {
 		"create a state machine for the login flow",
 		"README'ye logo ekle",
 		"bir buton tasarla",
+		// Addressed to no one / not a request for a picture.
+		"kedi resim yapar",
+		"resim üretme",
+		"python ile resim üretsene",
+		"nasıl resim üretilir",
+		"bir tablo oluştursana",
+		"resimlerim nerede",
 	} {
 		if got := classifyImageIntent(text, false); got != imageIntentNone {
 			t.Errorf("%q: got %v, want none", text, got)
@@ -83,6 +101,10 @@ func TestClassifyImageIntent_WithAttachedPhoto(t *testing.T) {
 		"bunun gibi bir logo tasarla",
 		"turn this into a watercolor painting",
 		"fix the lighting",
+		"arka planı değiştirsene",
+		"bunu anime yapsana",
+		"gözlük ekler misin",
+		"bunun gibi bir logo üretsene",
 	}
 	for _, text := range edit {
 		if got := classifyImageIntent(text, true); got != imageIntentEdit {
@@ -109,5 +131,23 @@ func TestClassifyImageIntent_WithAttachedPhoto(t *testing.T) {
 func TestFoldForIntent(t *testing.T) {
 	if got := foldForIntent("ÇİZ Şu ĞÜÖ ığ"); got != "ciz su guo ig" {
 		t.Errorf("fold = %q", got)
+	}
+}
+
+// A picture request the text model answered in words is not remembered: the
+// invented "here is your picture" would otherwise come back as established fact.
+func TestPictureAskedButNotDrawn(t *testing.T) {
+	ctx := context.Background()
+	if !pictureAskedButNotDrawn(ctx, "uzayda uçan bir köpek resmi üretsene", "") {
+		t.Error("a picture request with no picture drawn must not be remembered")
+	}
+	if pictureAskedButNotDrawn(ctx, "uzayda uçan bir köpek resmi üretsene", "/data/generated-images/memo-1.png") {
+		t.Error("a turn that drew its picture is not an unserved request")
+	}
+	if pictureAskedButNotDrawn(ctx, "merhaba nasılsın", "") {
+		t.Error("an ordinary turn must still be remembered")
+	}
+	if !pictureAskedButNotDrawn(withForcedImage(ctx), "bir şey", "") {
+		t.Error("/image with no picture drawn must not be remembered")
 	}
 }

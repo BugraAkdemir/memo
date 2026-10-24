@@ -8,6 +8,7 @@ package webchattest
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -57,9 +58,10 @@ func New(t *testing.T) *FakeChat {
 	})
 	mux.HandleFunc("/sent", func(w http.ResponseWriter, r *http.Request) {
 		f.sends.Add(1)
-		b := make([]byte, 1<<16)
-		n, _ := r.Body.Read(b)
-		f.lastMsg.Store(string(b[:n]))
+		// A single Read returns only what has arrived so far, so a long prompt
+		// (the system prompt alone is several KB) came back cut in the middle.
+		b, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+		f.lastMsg.Store(string(b))
 	})
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)

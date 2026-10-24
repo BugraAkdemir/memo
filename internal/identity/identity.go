@@ -285,6 +285,10 @@ func (id *Identity) buildSystemPrompt(private bool, memories []memory.MemoryResu
 			}
 			sb.WriteString(capBlock)
 		}
+		if sb.Len() > 0 {
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(buildPicturesBlock())
 	}
 
 	// Memory context (see BuildMemoryBlock). Included even in MinimalMode:
@@ -467,6 +471,17 @@ func buildCapabilitiesBlock(agentEnabled, webSearchEnabled bool) string {
 		off = append(off, "Web search is off in this conversation, so you can't browse the web or fetch live info right now. You cannot flip it on yourself. Don't just decline: proactively tell the user it's one toggle away (chat toolbar's globe icon) and that you'll search right away once it's on — never claim you lack the ability entirely.")
 	}
 	return strings.Join(off, " ")
+}
+
+// buildPicturesBlock keeps the model from claiming a picture it never made.
+// Pictures are drawn by a separate image model that Memo routes a drawing
+// request to (see internal/app/image_route.go); the chat model itself cannot
+// produce one. A turn that reached the chat model anyway used to get replies
+// like "here is your picture 🐶" with nothing attached — and, once saved to
+// memory, later "I can't draw" or "I already sent it" answers built on them.
+func buildPicturesBlock() string {
+	return "Pictures: you can't make or attach an image yourself; Memo draws one with an image model when the user asks (\"draw …\", /image). " +
+		"Never claim you made or sent a picture unless one is shown; if none appeared, say so and suggest asking again."
 }
 
 func (id *Identity) Update(userName, assistantName, style, customRole string) {

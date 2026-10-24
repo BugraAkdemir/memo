@@ -1,3 +1,10 @@
+# Son oturum — 2026-10-24 — görünür canlı test
+- Kullanıcı testi durdurdu; yeni test başlatma. Web UI + backend `bc0fb851` derlendi; Subscriptions/Gemini 3.8 Flash High ile iki readonly çocuk toplam=23/satır=3 buldu, ana ajan yeni kullanıcı mesajı olmadan iki sonucu işleyip kapattı. Önceki gerçek sohbetin iki ajanı da Closed görüldü.
+- 20s sleep içeren otomatik ana inceleme tamamlandı; UI Durdur eksikliği yüzünden kesinti testi yapılmış sayılmaz. Kaynak değişmedi; yalnız bu handoff/arşiv commit+push istendi. Önceki build/vet/tam race ve Flutter 826 PASS kaydı arşivde; bu tur web build/canlı test ve diff kontrolü yapıldı.
+- `/tmp/memo-visible-qa-backend` :8090’da açık bırakıldı; log `/tmp/memo-visible-qa-backend.log`, geçici proje `/tmp/memo-visible-qa-project`. Görünür sekme açık. İlk test varolan boş Live Mode sohbetini kullandı; ikinci test ayrı sohbet. Test kayıtları silinmedi. Commit/push bu kayıtla tamamlanır.
+
+---
+
 # Son oturum — 2026-10-24 — alt ajan sonuç bildirimi
 - Fix: kesilmiş inceleme artık yeni sonuçları tutmaz; pending FIFO/tek inflight sürer. Açık retry kuyruğun sonuna gider; çocuk tekrarlanmaz. Disk hatasında sahipsiz claim atomik kurtarılır; retry yarışı kapandı. Bildirim ID’leri loglanır. Ayrıntı: docs/CHAT_SUBAGENTS.md, plan §4.
 - Yerel fix commit; push yok. RED/GREEN gerçek HTTP/SSE testi yeni kullanıcı mesajı olmadan ana devamı doğrular. Gerçek sağlayıcı/pencere tekrarı yok.

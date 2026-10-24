@@ -2013,7 +2013,11 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 		}
 		// A Self-Driving step with "task memory" off neither reads (helpers.go) nor
 		// writes memory.
-		if sc, ok := a.memoryScopeForChat(gaugeChat); ok && !taskMemoryDisabled(ctx) && a.memoryAllowedFor(sc, code) {
+		// A picture was asked for and none was drawn: the text model's answer is a
+		// guess ("here is your picture 🐶" with no picture, or "I can't draw"), and
+		// remembering it makes later turns repeat it as established fact.
+		if sc, ok := a.memoryScopeForChat(gaugeChat); ok && !taskMemoryDisabled(ctx) && a.memoryAllowedFor(sc, code) &&
+			!pictureAskedButNotDrawn(ctx, userMsg, genImage) {
 			a.saveMemoryAsync(sc, userMsg, reply)
 		}
 		// Mood is shaped by the person's own conversations; a project chat

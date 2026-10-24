@@ -40,6 +40,9 @@ func classifyImageIntent(text string, hasImage bool) imageIntent {
 		if editAskRe.MatchString(t) {
 			return imageIntentEdit
 		}
+		if editVerbSuffixedRe.MatchString(t) {
+			return imageIntentEdit
+		}
 		// "make a logo like this one" — the photo is a reference for a new picture.
 		if wantsPictureMade(t) {
 			return imageIntentEdit
@@ -66,7 +69,7 @@ func wantsPictureMade(t string) bool {
 	if drawVerbRe.MatchString(t) {
 		return true
 	}
-	return pictureNounRe.MatchString(t) && makeVerbRe.MatchString(t)
+	return pictureNounRe.MatchString(t) && (makeVerbRe.MatchString(t) || makeVerbSuffixedRe.MatchString(t))
 }
 
 // isHowToQuestion: "how do I draw …" / "nasıl resim çizilir" asks for knowledge,
@@ -78,6 +81,13 @@ func isHowToQuestion(t string) bool {
 	}
 	return !politeRe.MatchString(t)
 }
+
+const (
+	makeStems = `uret|olustur|tasarla|hazirla|yarat|yap|cizdir`
+	editStems = `duzenle|degistir|donustur|cevir|kaldir|sil|ekle|renklendir|temizle|netlestir|buyut|iyilestir|guzellestir|` + makeStems
+	// Text is folded to ASCII first, so "ı" is already "i" here.
+	askEndings = `s[ae]n[ae]?|[iu]ver|[iu]n|y[iu]n|(?:r|ir|ur|ar|er|[ae]bilir)(?:sin)? ?m[iu](?:sin|sun|siniz|sunuz)`
+)
 
 var (
 	// Words that put a "draw/make/create" request in another world than pictures.
@@ -96,6 +106,17 @@ var (
 
 	// Words that ask for one to be made.
 	makeVerbRe = regexp.MustCompile(`\b(yap|yapar misin|yapsana|yapabilir misin|uret|uretir misin|olustur|olusturur musun|tasarla|tasarlar misin|hazirla|yarat|goster|gosterir misin|cikar|istiyorum|isterim|lazim|olsun|ver|generate|create|make|design|produce|render|show me|give me|i need|i want|need|want|get me|build)\b`)
+
+	// The Turkish way of asking is the verb stem plus an ending — "üretsene",
+	// "tasarlasana", "yapıverir misin" — which the whole-word list above can never
+	// match (it needs the bare "uret"). The stems are only the verbs that mean
+	// "make/produce"; the endings are the request forms (-sene/-sana, -sen, -iver,
+	// the polite plural -in/-yin, and "-ir misin" questions). A bare third-person
+	// "yapar" is not enough: it must be addressed to the assistant.
+	makeVerbSuffixedRe = regexp.MustCompile(`\b(` + makeStems + `)(` + askEndings + `)\b`)
+
+	// With a photo attached: the same endings on the verbs that change a picture.
+	editVerbSuffixedRe = regexp.MustCompile(`\b(` + editStems + `)(` + askEndings + `)\b`)
 
 	// With a photo attached: asks to change it.
 	editAskRe = regexp.MustCompile(`\b(duzenle|degistir|donustur|cevir|arka plan|arkaplan|arka planini|silueti|kaldir|cikar|sil|ekle|renklendir|siyah beyaz|siyah-beyaz|karakalem|karikatur|anime|studio ghibli|ghibli|pixar|boya|yagli boya|suluboya|stilinde|tarzinda|gibi yap|yap|olsun|rotus|temizle|netlestir|buyut|iyilestir|guzellestir|edit|change|modify|alter|turn (it|this|him|her|them)|make (it|this|him|her|them|the)|convert|transform|remove|erase|add|replace|swap|restyle|colorize|colourise|cartoon|sketch|in the style|style of|background|upscale|enhance|retouch|fix|clean up|black and white|b&w|paint it|draw on)\b`)

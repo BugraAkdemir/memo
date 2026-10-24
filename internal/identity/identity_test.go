@@ -575,3 +575,22 @@ func TestBuildSystemPrompt_BriefnessDoesNotApplyToCode(t *testing.T) {
 		}
 	}
 }
+
+// A text model that is asked for a picture must not pretend it drew one: the
+// "here is your picture" replies it invented (with nothing attached) were saved
+// to memory and then repeated. The note rides with the capability block, so it
+// is on in a normal prompt and off only where Minimal Mode strips capabilities.
+func TestBuildSystemPrompt_PicturesNoteForbidsClaimingAnUndrawnPicture(t *testing.T) {
+	id := New("User", "Memo", "casual", "", false)
+	p := id.BuildSystemPrompt(nil, true, true, true, false, false)
+	for _, want := range []string{"Pictures:", "Never claim you made or sent a picture", "/image"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("system prompt lacks %q", want)
+		}
+	}
+
+	min := New("User", "Memo", "casual", "", true)
+	if strings.Contains(min.BuildSystemPrompt(nil, true, true, true, false, false), "Pictures:") {
+		t.Error("Minimal Mode should not carry the pictures note")
+	}
+}

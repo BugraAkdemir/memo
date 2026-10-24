@@ -164,6 +164,17 @@ func TestSubscriptions_APictureRequestGoesToTheAccountsOwnImageModel(t *testing.
 	if got := len(imageLogLines(t)); got != 4 {
 		t.Fatalf("explicit request calls=%d", got)
 	}
+	// The way it is actually asked in Turkish — verb stem plus ending ("üretsene"),
+	// with the agent on — used to miss the wording heuristic, so the chat model
+	// answered with words ("here is your picture") and nothing was ever drawn.
+	h.SetAgentEnabled(true)
+	if _, ok := generatedImage(h.SendMessageStream(chatID, "hey selam memo uzayda uçan bir köpek resmi üretsene")); !ok {
+		t.Fatal("\"…resmi üretsene\" with an image model selected produced no picture")
+	}
+	h.SetAgentEnabled(false)
+	if got := len(imageLogLines(t)); got != 5 {
+		t.Fatalf("\"üretsene\" request calls=%d, want 5", got)
+	}
 	if got := len(h.Fake.ImageRequests()); got != 0 {
 		t.Fatal("subscription turn escaped to the default API image provider")
 	}

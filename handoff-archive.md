@@ -1,3 +1,11 @@
+# Son oturum — 2026-10-24 — "resim üretsene" resim üretmiyordu
+- Kök neden: niyet sezgisi `uret`i yalnız çıplak sözcük sayıyordu; "…resmi üretsene" `classifyImageIntent`te 0 döndü, tur görsel modeli yerine metin modeline gitti, model "işte resim" diye uydurdu ve bu tur hafızaya girdi (memories 86/87). `data/generated-images` hiç oluşmadı; `data/images` kullanıcının gönderdiği ekran görüntüleri.
+- Düzeltildi: fiil kökü+ek (`image_intent.go`), çizilmeyen resim turu hafızaya yazılmaz (`pictureAskedButNotDrawn`), kısa "Pictures:" prompt notu (uzun hali compaction testini bozdu), `webchattest/fakechat.go` tek `Read` yerine `io.ReadAll`.
+- Doğrulama: RED/GREEN e2e (kullanıcının cümlesi, agent açık); build/vet PASS; tam race'te yalnız bilinen kararsızlar (update Tampered…, webchat PressingItAgain… tek başına 6/6 geçer).
+- Açık: "resim nerde" şikâyeti önceki isteği yeniden denemez; DB'deki 86/87 silinmedi; gerçek hesapla canlı üretim denenmedi.
+
+---
+
 # Son oturum — 2026-10-24 — görünür canlı test
 - Kullanıcı testi durdurdu; yeni test başlatma. Web UI + backend `bc0fb851` derlendi; Subscriptions/Gemini 3.8 Flash High ile iki readonly çocuk toplam=23/satır=3 buldu, ana ajan yeni kullanıcı mesajı olmadan iki sonucu işleyip kapattı. Önceki gerçek sohbetin iki ajanı da Closed görüldü.
 - 20s sleep içeren otomatik ana inceleme tamamlandı; UI Durdur eksikliği yüzünden kesinti testi yapılmış sayılmaz. Kaynak değişmedi; yalnız bu handoff/arşiv commit+push istendi. Önceki build/vet/tam race ve Flutter 826 PASS kaydı arşivde; bu tur web build/canlı test ve diff kontrolü yapıldı.

@@ -30,8 +30,8 @@
 
 **Güncelleme (4.7.0 yayında, `PLAN_auto_update.md`, `docs/AUTO_UPDATE.md`)**
 - Gerçek Windows Setup.exe/ShellExecute, macOS, GPU/model ile motor sonrası restart ve Flutter güncelleme penceresi doğrulanmadı. macOS betik kurulumunda başlatıcı yok → çoğu manual.
-- Windows/macOS motor sürüm işareti yok; kanıtlı ENGINES.txt satırı eklenmeden motor güncellemesi almaz. Linux llama b9441, cpu whisper 1.8.6.
-- Yerel linux/cpu içindeki yarım b11456 artıkları (`libllama.so.0.0.1`, `*.so.0-new`, `llama-new`) R2'de yok; silmeden sor. llama b11456 yükseltmesi uygulanmadı, karar kullanıcıda.
+- Windows/macOS motor sürüm işareti yok; kanıtlı ENGINES.txt satırı eklenmeden motor güncellemesi almaz. Linux llama b11669 (nvidia b9441), cpu whisper 1.9.5 (2026-10-25).
+- llama yükseltmesi 2026-10-25'te uygulandı (b11669); eski b11456 artıkları yeni klasörle gitti.
 - İmza anahtarı `~/.config/memo-release/update-signing.key` ve Actions `MEMO_UPDATE_SIGNING_KEY`; anahtar geçişi eski anahtarla imzalı sürüm ister.
 
 **Saha doğrulaması / sürüm hazırlığı**
@@ -68,8 +68,9 @@
 
 ---
 
-# Son oturum — 2026-10-24 — "resim üretsene" resim üretmiyordu
-- Kök neden: niyet sezgisi `uret`i yalnız çıplak sözcük sayıyordu; "…resmi üretsene" `classifyImageIntent`te 0 döndü, tur görsel modeli yerine metin modeline gitti, model "işte resim" diye uydurdu ve bu tur hafızaya girdi (memories 86/87). `data/generated-images` hiç oluşmadı; `data/images` kullanıcının gönderdiği ekran görüntüleri.
-- Düzeltildi: fiil kökü+ek (`image_intent.go`), çizilmeyen resim turu hafızaya yazılmaz (`pictureAskedButNotDrawn`), kısa "Pictures:" prompt notu (uzun hali compaction testini bozdu), `webchattest/fakechat.go` tek `Read` yerine `io.ReadAll`.
-- Doğrulama: RED/GREEN e2e (kullanıcının cümlesi, agent açık); build/vet PASS; tam race'te yalnız bilinen kararsızlar (update Tampered…, webchat PressingItAgain… tek başına 6/6 geçer).
-- Açık: "resim nerde" şikâyeti önceki isteği yeniden denemez; DB'deki 86/87 silinmedi; gerçek hesapla canlı üretim denenmedi.
+# Son oturum — 2026-10-25 — motor güncellemesi (CLIProxy v8.0.43, llama b11669, whisper 1.9.5)
+- **CLIProxyAPI v8.0.25→v8.0.43** (`3b90a275`): R2 4 klasör + imzalı bileşen + beacon yayında; kurulu 4.7.0 uygulama indirip kurdu. Diyalog hatası: biten bileşen satırı "Şimdi güncelle"de kalıyordu, ikinci tıklama "there is no cliproxy update" veriyordu → düzeltildi (`43c76439`, RED/GREEN widget testi).
+- **llama b9441→b11669** (stabil v0.7.0; llama.cpp artık `v0.N.0` yayınlıyor, asset yalnız `nightly-tag.txt`) linux/cpu, amd, cpu-arm64; nvidia b9441'de (CUDA 12.2 yok). **whisper 1.9.5** statik derlendi (kendi ggml, glibc 2.38), `memo-lora-train` silindi (kullanıcı kullanmıyor). Gerçek Phi-3 sohbet + nomic embedding + JFK transkripsiyonu klasör içinde PASS. R2 `binaries/linux/*` sync edildi; eski b9441 yedeği `memo-r2:memo/binaries-backup-b9441/`.
+- **Hata:** `llamaReportsBuild` — yeni llama `version: 0.7.0-dev (build 11669…)` yazıyor; eski `verifyEngine` yalnız `version: 11669` arıyordu, ≤4.7.0 uygulamalar güncellemeyi geri alırdı. Bu yüzden llama/whisper bileşenleri `--requires-app 4.7.1` ile yayınlandı: **sıradaki Memo sürümü 4.7.1 (veya üstü) olmalı** ve bu düzeltmeyi içermeli. `vendor_llama.sh` döngü sonu `&&` hatası düzeltildi.
+- **Kurulum scriptleri** (`get-memo*.sh`, `get_memo_arm.sh`, `update.sh`) kurulurken eski motor klasörlerini beacon'a göre güncelliyor (`scripts/engine_refresh.sh`, blok 6 scriptte gömülü, `internal/components/installer_refresh_test.go` aynılığı + senaryoları sınar). İmza kontrolü yok (yalnız HTTPS+SHA-256), `requires_app` yok sayılır. Canlı R2/beacon'a karşı CLIProxy v8.0.25→v8.0.43 denendi PASS; llama/whisper indirmesi gerçekte denenmedi. `main`'e push edilince CI scriptleri R2'ye koyar.
+- **Açık:** (1) commit'ler push edilmedi (`0a8b6063`, `f5cf3fe0`, `43c76439`); (2) Windows/macOS motorları dokunulmadı (işaret yok); (3) whisper-server klasördeki llama ggml arka uçlarını da yüklüyor (çalışıyor; llama bump'ında yeniden dene); (4) statik whisper yedeği AVX2+FMA+F16C varsayar, daha eski CPU'da çökebilir (klasördeki `libggml-cpu-*.so` varyantları genelde devreye girer, ölçülmedi); (5) amd klasörü ROCm 10 ile ~1,2 GB (arşiv 244 MB), gerçek AMD GPU ile denenmedi; (6) issue #42–#47 açık (kapatma izni reddedildi); (7) "indirdim, **Yeniden başlat**" onay adımı yok (komple güncelleme indirme bitince kendiliğinden kapanır) — kullanıcı isterse ayrı iş; (8) Docker daemon kapalı, whisper host'ta derlendi.

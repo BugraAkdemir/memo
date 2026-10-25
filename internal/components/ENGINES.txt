@@ -16,10 +16,18 @@
 # linux/cpu are byte-identical (md5) to the local copy whose
 # whisper_version() is 1.8.6.
 #
+# Evidence (2026-10-25): linux/cpu, linux/amd and linux/cpu-arm64 now hold
+# llama.cpp b11669 (= the stable v0.7.0 release; `llama-server --version` prints
+# "version: 0.7.0-dev (build 11669, ...)"). linux/cpu's whisper-server is
+# whisper.cpp v1.9.5 built STATICALLY (own ggml, no libwhisper.so, glibc >= 2.38),
+# so it no longer depends on the folder's libggml*. linux/nvidia stays on b9441
+# (the CUDA 12.2 builds it needs are no longer published). memo-lora-train is gone.
+#
 # NOT listed on purpose: windows/* (ggml 0.13.1 like Linux b9441, but the llama
 # build was not proven) and darwin/* (ggml 0.15.3: a different, newer build whose
 # tag is not recorded anywhere). Add them when someone has confirmed the tag.
 #
 # component  version  folders...
-llama   b9441  linux/amd linux/nvidia linux/cpu linux/cpu-arm64
-whisper 1.8.6  linux/cpu
+llama   b11669 linux/amd linux/cpu linux/cpu-arm64
+llama   b9441  linux/nvidia
+whisper 1.9.5  linux/cpu

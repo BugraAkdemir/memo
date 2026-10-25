@@ -156,7 +156,7 @@ downloading; it must never point at a release that does not check out.
   "mini_version_note_tr": "kısa not (güncelleme penceresinde görünür)",
   "mini_version_note_en": "short note shown in the update window",
   "required_update": false,
-  "components": { "llama": "b9441", "whisper": "1.8.6", "cliproxy": "v8.0.25" }
+  "components": { "llama": "b11669", "whisper": "1.9.5", "cliproxy": "v8.0.43" }
 }
 ```
 
@@ -177,6 +177,101 @@ curl -fsSL https://version-zeta.vercel.app/version.json   # must show <NEW> (all
 
 An engine-only release (no new Memo) changes only `components` and leaves `version`
 alone, so older apps show nothing.
+
+## Engine release (llama.cpp, whisper.cpp, CLIProxyAPI) — no new Memo
+
+Engines ship on their own: installed apps (and the installer scripts, see step 7) pick up a newer
+engine from the beacon without a Memo release. Do this when upstream moved (the scheduled
+"Upstream watch" workflow opens an `upstream-notice` issue per CLIProxyAPI release) or when an engine
+fix cannot wait. Order matters — **the beacon is always last**, and nothing here is announced until
+step 6. Every R2 write below is user-visible: confirm with the person before the first one.
+
+**0. Look first.** `gh release list -R router-for-me/CLIProxyAPI`, `ggml-org/llama.cpp`,
+`ggml-org/whisper.cpp`; read the notes between the pinned and the new version. Pinned versions live in
+`internal/cliproxy/PINNED.txt` (CLIProxyAPI) and `internal/components/ENGINES.txt` (llama/whisper,
+per folder). llama.cpp now publishes stable `v0.N.0` releases whose only asset is `nightly-tag.txt`
+naming the `bNNNN` build; **Memo's tooling speaks `bNNNN`**, so use that tag (`gh release download
+v0.7.0 -R ggml-org/llama.cpp -p nightly-tag.txt -O -`).
+
+**1. CLIProxyAPI.** Edit `PINNED.txt`: `version`, then per asset the archive digest (`gh api
+repos/router-for-me/CLIProxyAPI/releases/tags/<v> -q '.assets[]|"\(.name) \(.digest)"'`) and the digest
+of the EXTRACTED binary (download, extract, `sha256sum`). Then `scripts/vendor_cliproxy.sh` (lays out
+`binaries/…/cliproxy*` and refuses a digest mismatch) and `scripts/verify_cliproxy.sh binaries
+linux/cliproxy linux/cliproxy-arm64 windows/cliproxy darwin/cliproxy`. `go test ./internal/cliproxy`.
+Test the REAL binary before R2 is touched: serve `binaries/` with `python3 -m http.server`, point `r2Base`
+in `internal/cliproxy/upstream_test.go` at it, run `UPSTREAM_DEEP=1 go test -tags upstream
+./internal/cliproxy -run RealBinary`, then `git checkout` the test file. Then R2 (step 5), commit
+`PINNED.txt` and push it **right after** R2 is updated (the builds check R2 against the pin).
+
+**2. llama.cpp.** `scripts/vendor_llama.sh -t bNNNN linux/cpu linux/amd linux/cpu-arm64` stages the new
+engine into `binaries-staged/` without touching `binaries/` and refuses a folder where a helper would lose a
+library. NVIDIA stays on its old build unless CUDA builds Memo can use are published (check
+`gh release view bNNNN -R ggml-org/llama.cpp`); folders not published are simply not offered.
+Windows/macOS folders have no version marker (`ENGINES.txt` lists only proven Linux folders) — do not
+publish them from this machine. **Test the staged `llama-server` with a real model** (Phi-3 chat +
+nomic embedding in `data/models/`, the flags from `internal/llama/llama.go`), not just `--version`.
+Remove stale leftovers from the staged folder (a `llama-new/` directory from an old attempt), then
+`rclone sync binaries-staged/linux/<f> binaries/linux/<f>`.
+
+**3. whisper.cpp** lives in the SAME `linux/cpu` folder, so it is built to NOT depend on llama's ggml:
+clone the tag, then `cmake -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON
+-DGGML_F16C=ON -DGGML_BMI2=OFF -DGGML_AVX512=OFF -DGGML_OPENMP=OFF -DWHISPER_BUILD_EXAMPLES=ON
+-DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"` and build `whisper-server`. Check
+`objdump -T whisper-server | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1`: it must not need more than the
+old build (2.38). A host with a newer glibc leaks new symbol versions — 2026-10 `sqrtf@GLIBC_2.43`; pin it
+with `-include <file with __asm__(".symver sqrtf,sqrtf@GLIBC_2.2.5");>` in `CMAKE_C_FLAGS/CXX_FLAGS`.
+Copy it over `binaries/linux/cpu/whisper-server`, delete `libwhisper.so.1`, and **transcribe a real
+wav from inside the folder** (`whisper-server --model ggml-small.bin …`, POST `/inference`): a static
+whisper-server still `load_backend`s the folder's `libggml-*.so`, so test it where it will run.
+
+**4. Declare and stamp.** Edit `internal/components/ENGINES.txt` (one `llama`/`whisper` line per set of
+folders; add an "Evidence" comment), then `scripts/stamp_engine_versions.sh stamp --from
+internal/components/ENGINES.txt binaries` and the same with `check`. `go test ./internal/components
+./internal/app`. If the engine prints its version differently, fix `llamaReportsBuild`/`verifyEngine`
+in `internal/app/update.go` FIRST: apps older than that fix cannot verify the new engine, which is what
+`--requires-app` (step 5) is for. (b11669 prints `version: 0.7.0-dev (build 11669, …)`; apps before the
+fix look for `version: 11669` and would roll every update back.)
+
+**5. R2 — back up, then `sync`, never `copy`.** `rclone copy` overwrites but never deletes, so an old
+`libggml*.so.0.13.1` would keep shipping inside the bundle. First back the old folders up inside the
+bucket (server-side, no download): `rclone copy memo-r2:memo/binaries/linux/<f>
+memo-r2:memo/binaries-backup-<oldtag>/linux/<f>`. Then `rclone sync --dry-run --checksum
+binaries/linux/<f> memo-r2:memo/binaries/linux/<f>` (read the delete list), then the real
+`rclone sync --checksum`. This is the folder the NEXT Memo release bundles. Then publish the
+update components: `scripts/publish_component.sh --dry-run --requires-app <A> <component> <version>
+<os/folder>=<dir> …` and the same without `--dry-run`. `<A>` is the first app version that can verify and
+run the engine — 4.7.0 for CLIProxyAPI; 4.7.1 for llama b11669 and for whisper 1.9.5 (they share
+`linux/cpu`, so BOTH markers are inside the archive and both components point at it). The script refuses
+a folder whose marker is not the version, packs with symlinks followed (the app refuses links), signs
+with `~/.config/memo-release/update-signing.key`, verifies the signature with the key in
+`internal/updater/pubkey.go`, uploads archives first and `manifest.json` last. It announces nothing yet.
+
+**6. Beacon — last.** In `/home/bugra/Documents/version/version.json` set
+`"components": {"llama": "b11669", "whisper": "1.9.5", "cliproxy": "v8.0.43"}` (list only what you
+published; leave `version` alone for an engine-only release), commit, push, then
+`curl -fsSL https://version-zeta.vercel.app/version.json`. Apps whose version is below `requires_app`
+see reason `needs_newer_app` and are offered nothing; apps with a missing folder in the manifest see
+`not_for_this_machine`. Ask the person to close the matching `upstream-notice` issues (they stay open
+otherwise).
+
+**7. The installer scripts update engines themselves.** `get-memo.sh`, `get-memo-beta.sh`,
+`get-memo-server*.sh`, `get_memo_arm.sh` and `update.sh` embed the block between `# >>> memo-engine-refresh`
+and `# <<< memo-engine-refresh` from `scripts/engine_refresh.sh`. After the archive is copied it reads the
+same beacon, compares every Linux engine folder's marker (`LLAMA_VERSION`, `WHISPER_VERSION`, `VERSION`)
+with it, downloads the published folder (SHA-256 from the manifest, no links/`..` in the archive, marker
+must equal the announced version, the new binary must start) and swaps it whole, keeping the old one on any
+failure. It only touches folders this machine can use (`cpu`, `cliproxy`; `amd`/`nvidia` only with that GPU;
+the `-arm64` ones on arm), never a folder without a marker, and is never fatal. `MEMO_SKIP_ENGINE_REFRESH=1`
+skips it. It does NOT check the Ed25519 signature (a shell script has no key) — it trusts the same HTTPS
+origin as the archive it just downloaded — and ignores `requires_app` (the app that was just installed is
+the newest one). **Edit `scripts/engine_refresh.sh` only**, then paste its block into all six installers;
+`go test ./internal/components` (`TestInstallers_EmbedTheSameEngineRefreshBlock`) fails when one drifts.
+The scripts reach users when the commit lands on `main` (CI uploads them to R2), no tag needed.
+
+Things that went wrong before: `vendor_llama.sh` used `is_llama_file && rm` as the last command of a
+`set -e` loop and silently exited when the last file was not llama's (fixed 2026-10-25); `grep -q` at the
+end of a pipe under `pipefail` can report "no match" after SIGPIPE — keep listings in a variable; with the
+Docker daemon off the engine is built on the host, so always check glibc symbol versions.
 
 ## Phase 5 — Close out
 

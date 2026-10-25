@@ -16,7 +16,7 @@ echo "$VAD_SHA256  $VAD_DEST" | sha256sum --check --status
 
 # NOTE (2026-10-07): newer llama.cpp releases changed asset names, wrap tarballs in
 # llama-<tag>/, ship lib symlinks and renamed rpc-server -> ggml-rpc-server, and the
-# folders also hold Memo's own whisper-server/memo-lora-train that break if ggml is
+# folders also held Memo's own whisper-server/memo-lora-train that break if ggml is
 # swapped under them. Upgrade with scripts/vendor_llama.sh (it stages and checks);
 # do not just bump VERSION here. See AGENTS.md "Upgrading the bundled llama.cpp".
 #

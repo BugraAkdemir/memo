@@ -822,3 +822,25 @@ func TestCheckForUpdate_ShowsTheNoteAFailedUpdateLeft(t *testing.T) {
 		t.Error("the previous failure note survived the start of a new attempt")
 	}
 }
+
+// llama.cpp moved from "version: 9441 (abc)" to "version: 0.7.0-dev (build 11669, …)".
+// An engine update must verify against either, or every new build is rolled back.
+func TestLlamaReportsBuild(t *testing.T) {
+	cases := []struct {
+		out, build string
+		want       bool
+	}{
+		{"version: 9441 (abc)\nbuilt with GNU", "9441", true},
+		{"version: 0.7.0-dev (build 11669, commit 620d2225c)\nbuilt with GNU 11.4.0", "11669", true},
+		{"version: 0.7.0-dev (build 11669, commit 620d2225c)", "1166", false},
+		{"version: 0.7.0-dev (build 11669, commit 620d2225c)", "9441", false},
+		{"version: 94410 (abc)", "9441", false},
+		{"error while loading shared libraries", "11669", false},
+		{"version: 9441 (abc)", "", false},
+	}
+	for _, c := range cases {
+		if got := llamaReportsBuild(c.out, c.build); got != c.want {
+			t.Errorf("llamaReportsBuild(%q, %q) = %v, want %v", c.out, c.build, got, c.want)
+		}
+	}
+}

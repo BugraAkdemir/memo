@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -803,7 +804,7 @@ func (a *App) verifyEngine(name components.Name, dir, version string) error {
 			return fmt.Errorf("llama-server --version: %w: %s", err, firstLine(text))
 		}
 		want := strings.TrimPrefix(strings.TrimPrefix(version, "b"), "B")
-		if !strings.Contains(text, "version: "+want) {
+		if !llamaReportsBuild(text, want) {
 			return fmt.Errorf("llama-server reports %q, expected build %s", firstLine(text), want)
 		}
 		return nil
@@ -814,6 +815,19 @@ func (a *App) verifyEngine(name components.Name, dir, version string) error {
 		return fmt.Errorf("whisper-server did not start: %s", firstLine(text))
 	}
 	return nil
+}
+
+// llamaReportsBuild reports whether `llama-server --version` output names the
+// given build number. Up to b9441 it printed "version: 9441 (abc)"; since the
+// project moved to semantic versions it prints "version: 0.7.0-dev (build 11669,
+// commit …)". Both are accepted, and the number must stand alone so "1166"
+// does not match build 11669.
+func llamaReportsBuild(text, build string) bool {
+	if build == "" {
+		return false
+	}
+	re := regexp.MustCompile(`(?:version: |\(build )` + regexp.QuoteMeta(build) + `\b`)
+	return re.MatchString(text)
 }
 
 func executable(name string) string {

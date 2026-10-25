@@ -8,14 +8,15 @@
 #   FLAVOR   linux/cpu  linux/amd  linux/cpu-arm64  windows/cpu  windows/amd
 #            darwin/cpu darwin/metal      (NVIDIA is deliberately not here: the
 #            CUDA 12.2 builds Memo bundles are no longer published)
-#   -t TAG   llama.cpp release (default: $LLAMA_TAG or b11456)
+#   -t TAG   llama.cpp release (default: $LLAMA_TAG or b11669)
 #   -o OUT   staging dir (default ./binaries-staged); OUT/<flavor>/ = the current
 #            folder with ONLY llama.cpp's own files replaced
 #
 # Why this is a script and not "just extract the tarball over it":
 #  1. The bundled folders hold helpers that are not llama.cpp but are LINKED to the
-#     folder's own libggml*/libllama* — whisper-server (speech-to-text) and
-#     memo-lora-train (on-device training) are Memo's own builds. Dropping a newer
+#     folder's own libggml*/libllama* — whisper-server (speech-to-text) was one of
+#     Memo's own builds (memo-lora-train, removed 2026-10-25, was another; whisper-server
+#     is now static, see the memo-release skill). Dropping a newer
 #     ggml next to them kills them at load ("libggml-cpu.so.0: cannot open shared
 #     object file"; verified with b9441 -> b11456). After staging, every helper's
 #     NEEDED libraries are checked against the new folder and the flavor is
@@ -27,7 +28,7 @@
 #  3. Every archive is checked against the SHA-256 GitHub publishes for it.
 set -euo pipefail
 
-TAG="${LLAMA_TAG:-b11456}"
+TAG="${LLAMA_TAG:-b11669}"
 OUT="./binaries-staged"
 while getopts "t:o:" o; do case "$o" in t) TAG="$OPTARG";; o) OUT="$OPTARG";; *) exit 2;; esac; done
 shift $((OPTIND-1))
@@ -78,7 +79,9 @@ for flavor in "$@"; do
   D="$OUT/$flavor"; rm -rf "$D"; mkdir -p "$D"
   [ -d "$ROOT/binaries/$flavor" ] && cp -a "$ROOT/binaries/$flavor/." "$D/"
   # drop llama.cpp's own (old) files, keep Memo's
-  find "$D" -maxdepth 1 \( -type f -o -type l \) | while read -r f; do is_llama_file "$f" && rm -f "$f"; done
+  # `if`, not `is_llama_file && rm`: a `&&` list that ends on a non-llama file exits 1, which with
+  # `set -e` + a pipe ended the whole script silently (whisper-server happened to be listed last).
+  find "$D" -maxdepth 1 \( -type f -o -type l \) | while read -r f; do if is_llama_file "$f"; then rm -f "$f"; fi; done
   cp -aL "$SRC/." "$D/"                       # -L: plain files, no symlinks
   echo "$TAG" > "$D/LLAMA_VERSION"
 

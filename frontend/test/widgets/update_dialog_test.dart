@@ -323,6 +323,26 @@ void main() {
       final other = tester.widget<TextButton>(find.byKey(const Key('update_component_cliproxy_apply')));
       expect(other.onPressed, isNull);
     });
+
+    testWidgets('a component that finished shows "Updated." and cannot be applied a second time', (tester) async {
+      backend.statuses.add({'state': 'done', 'kind': 'component', 'component': 'cliproxy'});
+      await pumpHost(tester, opener: (ctx) => TextButton(
+            key: const Key('open'),
+            onPressed: () => showDialog<void>(context: ctx, builder: (_) => ComponentUpdateDialog(components: comps)),
+            child: const Text(_kOpenLabel),
+          ));
+      await tester.tap(find.byKey(const Key('open')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('update_component_cliproxy_apply')));
+      await settle(tester, 30);
+
+      expect(find.byKey(const Key('update_component_cliproxy_updated')), findsOneWidget);
+      expect(find.byKey(const Key('update_component_cliproxy_apply')), findsNothing);
+      // The other component is untouched and can still be applied.
+      expect(find.byKey(const Key('update_component_llama_apply')), findsOneWidget);
+      expect(find.text(L10n.t('update_close')), findsOneWidget);
+    });
   });
 
   group('the startup prompt', () {

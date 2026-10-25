@@ -238,13 +238,31 @@ class _Actions extends ConsumerWidget {
 /// The engine-update window: llama.cpp / whisper.cpp / the Subscriptions
 /// connector have newer builds. Applying one stops the engine and starts it
 /// again, so it asks first.
-class ComponentUpdateDialog extends ConsumerWidget {
+class ComponentUpdateDialog extends ConsumerStatefulWidget {
   const ComponentUpdateDialog({super.key, required this.components});
   final List<ComponentUpdate> components;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ComponentUpdateDialog> createState() => _ComponentUpdateDialogState();
+}
+
+class _ComponentUpdateDialogState extends ConsumerState<ComponentUpdateDialog> {
+  /// Components that finished installing while this window was open. The list
+  /// the window was opened with never changes, so without this a finished row
+  /// kept its "Update now" button and a second tap failed with "there is no
+  /// update to install".
+  final Set<String> _updated = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final components = widget.components;
     final theme = MemoTheme.of(context);
+    ref.listen<UpdateFlow>(updateFlowProvider, (_, next) {
+      final done = next.progress;
+      if (done.isDone && done.component.isNotEmpty && !_updated.contains(done.component)) {
+        setState(() => _updated.add(done.component));
+      }
+    });
     final flow = ref.watch(updateFlowProvider);
     final running = flow.running;
     final current = flow.progress.component;
@@ -294,6 +312,12 @@ class ComponentUpdateDialog extends ConsumerWidget {
                         ),
                         if (running && current == c.name)
                           const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        else if (_updated.contains(c.name))
+                          Row(key: Key('update_component_${c.name}_updated'), mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 16),
+                            const SizedBox(width: 6),
+                            Text(L10n.t('update_done'), style: TextStyle(color: theme.textSecondary, fontSize: 12.5)),
+                          ])
                         else
                           TextButton(
                             key: Key('update_component_${c.name}_apply'),

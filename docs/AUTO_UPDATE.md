@@ -124,6 +124,7 @@ handed an engine it cannot drive (for example a changed flag).
 * **Not run on real Windows or macOS.** Windows (Setup.exe via `ShellExecute`) and
   macOS are compiled in CI only. macOS also ships no `run_memo.sh` next to the backend
   in script installs, so most macOS installs take the manual path.
+* **Installer scripts** (`get-memo*.sh`, `get_memo_arm.sh`, `update.sh`) refresh older engine folders while they install: after copying `binaries/` they read the same beacon, compare each Linux engine folder's marker, download the published folder (SHA-256 from the manifest, no `..`/links, marker must match, the new binary must start) and swap it whole, keeping the old one on any failure. Only folders this machine can use (`cpu`, `cliproxy`; `amd`/`nvidia` with that GPU), never a folder without a marker, never fatal; `MEMO_SKIP_ENGINE_REFRESH=1` skips it. Source of truth: `scripts/engine_refresh.sh` (embedded verbatim in the installers, kept identical by `internal/components/installer_refresh_test.go`). It does not check the Ed25519 signature and ignores `requires_app`.
 * Windows/macOS engine folders carry **no version marker** (their llama.cpp build was
   never recorded), so they get no engine updates until someone confirms the tag and
   adds it to `ENGINES.txt`.

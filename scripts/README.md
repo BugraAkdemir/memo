@@ -60,3 +60,10 @@ list too if a script here is renamed or a new one is added.
 |---|---|
 | `run_memo.sh` | Starts the backend and the Flutter frontend together for local development. **Has a hardcoded absolute path** (this developer's machine) — edit it before using on a different checkout, or just run the two commands from `AGENTS.md`'s Quick Start yourself. |
 | `install.sh` | Installs a build produced by `package_linux.sh` (`build_output/memo-linux-x64/`) into `~/.local/share/MemoApp` with a desktop entry. Older/narrower than `get-memo.sh` — mainly useful for testing a local build without going through the R2-hosted installer. |
+
+### Engine refresh inside the installers
+
+`engine_refresh.sh` is the source of truth for the block (`# >>> memo-engine-refresh` … `# <<< memo-engine-refresh`)
+that `get-memo*.sh`, `get_memo_arm.sh` and `update.sh` embed: it brings older engine folders (llama.cpp,
+whisper.cpp, the Subscriptions connector) up to the versions announced in the update beacon while the installer
+runs. Edit `engine_refresh.sh`, re-embed the block in all six scripts, and run `go test ./internal/components`.

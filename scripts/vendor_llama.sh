@@ -8,6 +8,8 @@
 #   FLAVOR   linux/cpu  linux/amd  linux/cpu-arm64  windows/cpu  windows/amd
 #            darwin/cpu darwin/metal      (NVIDIA is deliberately not here: the
 #            CUDA 12.2 builds Memo bundles are no longer published)
+#            linux/cpu also gets libggml-vulkan.so (same tag) so GPUs ROCm/CUDA
+#            builds do not cover can still speed up prompt processing
 #   -t TAG   llama.cpp release (default: $LLAMA_TAG or b11669)
 #   -o OUT   staging dir (default ./binaries-staged); OUT/<flavor>/ = the current
 #            folder with ONLY llama.cpp's own files replaced
@@ -62,15 +64,38 @@ is_llama_file() {
 # Libraries every Linux system provides; not ours to ship.
 system_lib() { case "$1" in libc.so*|libm.so*|libdl.so*|libpthread.so*|librt.so*|libstdc++.so*|libgcc_s.so*|libgomp.so*|ld-linux*|linux-vdso*|libutil.so*) return 0;; *) return 1;; esac; }
 
+# GPU backend plugin shipped INTO a flavor that would not have it. ggml loads every
+# libggml-*.so it finds next to llama-server, so one file turns the cpu engine into a
+# Vulkan-capable one (any GPU with a Vulkan driver: Intel/AMD iGPUs, AMD cards ROCm does
+# not support, NVIDIA without a matching CUDA build). It must come from the SAME tag as
+# the engine: a plugin from another build is not ABI-compatible with libggml-base.
+# Memo picks it up without a new flavor (internal/llama/device_probe.go asks the engine
+# which devices it sees). Measured with Phi-3 Q4 on a Ryzen 5 5600H APU: prompt
+# processing 2.2x faster, decode unchanged. Not for linux/amd: that build has its own GPU
+# backend and the same card would show up twice. is_llama_file() below treats libggml*
+# as llama.cpp's own, so without this step a restage would silently DROP the plugin.
+plugin_asset_for() { # flavor -> asset holding the plugin, or empty
+  case "$1" in
+    linux/cpu) echo "llama-$TAG-bin-ubuntu-vulkan-x64.tar.gz" ;;
+    *) echo "" ;;
+  esac
+}
+
+# Download an asset into $WORK and check it against the SHA-256 GitHub publishes for it.
+fetch_verified() { # asset
+  local a="$1" want got
+  want="$(gh release view "$TAG" --repo "$REPO" --json assets --jq ".assets[]|select(.name==\"$a\")|.digest|sub(\"sha256:\";\"\")")"
+  [ -n "$want" ] || { echo "   no such asset in $TAG: $a" >&2; exit 1; }
+  gh release download "$TAG" --repo "$REPO" --pattern "$a" --dir "$WORK" --clobber >/dev/null
+  got="$(sha256sum "$WORK/$a" | cut -d' ' -f1)"
+  [ "$got" = "$want" ] || { echo "   CHECKSUM MISMATCH for $a (got $got, GitHub says $want)" >&2; exit 1; }
+}
+
 refused=0
 for flavor in "$@"; do
   asset="$(asset_for "$flavor")"
   echo "==> $flavor  <-  $asset ($TAG)"
-  want="$(gh release view "$TAG" --repo "$REPO" --json assets --jq ".assets[]|select(.name==\"$asset\")|.digest|sub(\"sha256:\";\"\")")"
-  [ -n "$want" ] || { echo "   no such asset in $TAG" >&2; exit 1; }
-  gh release download "$TAG" --repo "$REPO" --pattern "$asset" --dir "$WORK" --clobber >/dev/null
-  got="$(sha256sum "$WORK/$asset" | cut -d' ' -f1)"
-  [ "$got" = "$want" ] || { echo "   CHECKSUM MISMATCH (got $got, GitHub says $want)" >&2; exit 1; }
+  fetch_verified "$asset"
 
   X="$WORK/x_$(echo "$flavor" | tr / _)"; mkdir -p "$X"
   case "$asset" in *.zip) unzip -q -o "$WORK/$asset" -d "$X" ;; *) tar -xzf "$WORK/$asset" -C "$X" ;; esac
@@ -84,6 +109,17 @@ for flavor in "$@"; do
   find "$D" -maxdepth 1 \( -type f -o -type l \) | while read -r f; do if is_llama_file "$f"; then rm -f "$f"; fi; done
   cp -aL "$SRC/." "$D/"                       # -L: plain files, no symlinks
   echo "$TAG" > "$D/LLAMA_VERSION"
+
+  plugin="$(plugin_asset_for "$flavor")"
+  if [ -n "$plugin" ]; then
+    echo "   + GPU backend plugin from $plugin"
+    fetch_verified "$plugin"
+    P="$WORK/p_$(echo "$flavor" | tr / _)"; mkdir -p "$P"
+    tar -xzf "$WORK/$plugin" -C "$P"
+    pl="$(find "$P" -name libggml-vulkan.so -type f | head -1)"
+    [ -n "$pl" ] || { echo "   REFUSED: $plugin has no libggml-vulkan.so" >&2; refused=1; rm -rf "$D"; continue; }
+    cp -L "$pl" "$D/libggml-vulkan.so"
+  fi
 
   # Back-compat: Memo accepts both names, but keep the long-standing one too.
   [ -f "$D/ggml-rpc-server" ] && [ ! -f "$D/rpc-server" ] && cp "$D/ggml-rpc-server" "$D/rpc-server"

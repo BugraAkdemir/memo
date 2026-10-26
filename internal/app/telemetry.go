@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"memo/internal/logx"
 	"memo/internal/stats"
 	"memo/internal/telemetry"
+	"memo/internal/updater"
 )
 
 // The optional anonymous daily summary (docs/TELEMETRY.md). Everything that
@@ -228,4 +230,64 @@ func noteLocalStartFail(component string, err error) {
 		return
 	}
 	telemetry.NoteStartFail(component, llama.ClassifyStartError(err))
+}
+
+// updateOutcome maps the result of an update attempt onto the event and code the
+// daily summary allows. ok is false for results that are not an outcome at all:
+// another update was already running, the person quit mid-way, or there was
+// nothing to install (so nothing was attempted).
+func updateOutcome(err error) (event, code string, ok bool) {
+	switch {
+	case err == nil:
+		return "applied", "", true
+	case errors.Is(err, updater.ErrBusy), errors.Is(err, context.Canceled), isNoUpdateErr(err):
+		return "", "", false
+	case errors.Is(err, updater.ErrRolledBack):
+		return "rolled_back", "", true
+	case errors.Is(err, updater.ErrChecksum):
+		return "failed", "checksum", true
+	case errors.Is(err, updater.ErrBadSignature):
+		return "failed", "signature", true
+	}
+	return "failed", "", true
+}
+
+// isNoUpdateErr recognises the "nothing to install" answers of runAppUpdate and
+// runComponentUpdate, which are refusals rather than failed attempts.
+func isNoUpdateErr(err error) bool {
+	t := err.Error()
+	return strings.HasPrefix(t, "there is no update to install") ||
+		(strings.HasPrefix(t, "there is no ") && strings.HasSuffix(t, " update to install")) ||
+		strings.HasPrefix(t, "this installation cannot update itself")
+}
+
+// rollbackNoteWindow is how recent update-failure.txt must be to count as
+// "this just happened": memo-updater writes it and restarts the previous
+// version at once, so a note hours old belongs to an earlier run.
+const rollbackNoteWindow = 2 * time.Hour
+
+// freshRollbackNote reports the event ("rolled_back" or "failed") for the note
+// memo-updater left in installDir, once per process and only while the note is
+// fresh. The updater runs outside this process, so the note is the only trace
+// of a rolled-back update.
+func (u *updateRuntime) freshRollbackNote(installDir string, now time.Time) (event string, ok bool) {
+	path := filepath.Join(installDir, updater.FailureFile)
+	st, err := os.Stat(path)
+	if err != nil || !st.Mode().IsRegular() || now.Sub(st.ModTime()) > rollbackNoteWindow {
+		return "", false
+	}
+	note := updater.ReadFailure(path)
+	if note == "" {
+		return "", false
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.noteCounted {
+		return "", false
+	}
+	u.noteCounted = true
+	if strings.Contains(note, "rolled back") {
+		return "rolled_back", true
+	}
+	return "failed", true
 }

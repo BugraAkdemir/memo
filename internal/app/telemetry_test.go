@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,7 @@ import (
 	"memo/internal/provider"
 	"memo/internal/stats"
 	"memo/internal/telemetry"
+	"memo/internal/updater"
 )
 
 func newTelemetryApp(t *testing.T) *App {
@@ -262,5 +264,54 @@ func TestTelemetry_FailureAndEngineCountersReachTheNextReport(t *testing.T) {
 		if strings.Contains(body, bad) {
 			t.Errorf("report must not contain %q\n%s", bad, body)
 		}
+	}
+}
+
+func TestUpdateOutcome_MapsAnApplyResultToTheFixedEventAndCode(t *testing.T) {
+	cases := []struct {
+		err         error
+		event, code string
+		counted     bool
+	}{
+		{nil, "applied", "", true},
+		{updater.ErrChecksum, "failed", "checksum", true},
+		{fmt.Errorf("download: %w", updater.ErrChecksum), "failed", "checksum", true},
+		{updater.ErrBadSignature, "failed", "signature", true},
+		{errors.New("dial tcp: no such host"), "failed", "", true},
+		{updater.ErrBusy, "", "", false},                             // not an outcome: another update was already running
+		{context.Canceled, "", "", false},                            // the person quit
+		{errors.New("there is no update to install"), "", "", false}, // nothing was attempted
+	}
+	for _, c := range cases {
+		ev, code, ok := updateOutcome(c.err)
+		if ev != c.event || code != c.code || ok != c.counted {
+			t.Errorf("updateOutcome(%v) = %q,%q,%v; want %q,%q,%v", c.err, ev, code, ok, c.event, c.code, c.counted)
+		}
+	}
+}
+
+func TestRolledBackNote_CountsOnlyAFreshNoteAndOnlyOncePerProcess(t *testing.T) {
+	t.Setenv("MEMO_TELEMETRY", "")
+	dir := t.TempDir()
+	note := filepath.Join(dir, updater.FailureFile)
+	if err := updater.WriteFailure(note, "4.6.0", updater.ErrRolledBack); err != nil {
+		t.Fatal(err)
+	}
+	var rt updateRuntime
+	if ev, ok := rt.freshRollbackNote(dir, time.Now()); !ok || ev != "rolled_back" {
+		t.Fatalf("fresh rolled-back note: %q %v", ev, ok)
+	}
+	if _, ok := rt.freshRollbackNote(dir, time.Now()); ok {
+		t.Fatal("the same note was counted twice in one process")
+	}
+	// An old note (a restart days later) is not news.
+	var rt2 updateRuntime
+	if _, ok := rt2.freshRollbackNote(dir, time.Now().Add(72*time.Hour)); ok {
+		t.Fatal("a stale note was counted")
+	}
+	// No note at all.
+	var rt3 updateRuntime
+	if _, ok := rt3.freshRollbackNote(t.TempDir(), time.Now()); ok {
+		t.Fatal("counted a note that does not exist")
 	}
 }

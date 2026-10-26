@@ -153,7 +153,7 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 	// trace of that is a debug line nobody reads. Say so once, loudly, with
 	// the fix. Only for the chat model start — the embedding server is a
 	// CPU-by-default sidecar and would just double the line.
-	if !embedding && (mode == "" || mode == "auto") && s.gpu.Type == GPUTypeCPU {
+	if !embedding && (mode == "" || mode == "auto") && s.gpu.Type == GPUTypeCPU && !usesPluginGPU(bin) {
 		logx.Printf("llama: no GPU acceleration detected — running on CPU. " +
 			"If this machine has an NVIDIA/AMD GPU, ensure nvidia-smi/rocm-smi is on " +
 			"PATH, or set llama.engine_mode (nvidia|amd) in config.yaml to force it.")
@@ -166,6 +166,17 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		// bucket (see autoGPULayers), so a model that fits entirely gets
 		// fully offloaded instead of being capped at the bucket's layer count.
 		actualGPU = autoGPULayers(modelPath, s.gpu)
+		// A GPU that only exists because a Vulkan backend plugin sits in the cpu
+		// folder is invisible to the sysfs/nvidia-smi detection above, whose
+		// figures (e.g. the 512 MB carve-out of an APU) would size a partial
+		// offload. Measured on Phi-3 Q4 with an APU: 0 layers and all layers both
+		// decode at ~13 t/s with prompt processing ~2.2x faster than CPU, but 8
+		// layers decode at ~10.5 t/s. Prompt processing is offloaded either way,
+		// so keep the weights on the host unless the caller asked for layers.
+		if usesPluginGPU(bin) {
+			actualGPU = 0
+			logx.Printf("llama: GPU backend plugin present in the cpu engine — keeping weights on the host, GPU handles prompt processing")
+		}
 	}
 	// If mode is CPU, force 0 layers
 	if mode == "cpu" {
@@ -284,6 +295,8 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		}
 	}
 
+	args = append(args, hostOnlyArgs(bin, mode, embedding, actualGPU, rpc != nil)...)
+
 	// Auto-detect multimodal projector (mmproj) file next to the model
 	mmproj := findMmproj(modelPath)
 	if mmproj != "" {
@@ -325,28 +338,7 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 	s.stopping = false
 	s.waitDone = make(chan struct{})
 
-	// Add binary directory to the shared library search path.
-	// Windows uses PATH for DLL discovery.
-	// On Linux/macOS: the bundled binary has its RUNPATH set at build time.
-	binDir := filepath.Dir(bin)
-	absBinDir, err := filepath.Abs(binDir)
-	if err == nil {
-		binDir = absBinDir
-	}
-
-	env := os.Environ()
-	if runtime.GOOS == "windows" {
-		env = withPrependedEnvPath(env, "PATH", binDir, true)
-	} else if runtime.GOOS == "darwin" {
-		// macOS ignores LD_LIBRARY_PATH; dyld uses DYLD_LIBRARY_PATH instead.
-		env = withPrependedEnvPath(env, "DYLD_LIBRARY_PATH", binDir, false)
-		env = withPrependedEnvPath(env, "DYLD_FALLBACK_LIBRARY_PATH", binDir, false)
-	} else {
-		// The bundled binary has RUNPATH=/tmp/llama.cpp/build/bin: which
-		// doesn't exist after deployment. Put the real directory first.
-		env = withPrependedEnvPath(env, "LD_LIBRARY_PATH", binDir, false)
-	}
-	s.cmd.Env = env
+	s.cmd.Env = engineEnv(bin)
 
 	// Setpgid puts the child in its own process group so forceKill/killByPort
 	// can signal the whole tree without affecting the parent Memo process.
@@ -643,15 +635,31 @@ func resolveBinary(configured string, mode string) (string, error) {
 	// 3. Check Bundled Paths (Auto-detect order) in all search bases
 	flavors := []string{"amd", "nvidia", "cpu"}
 	for _, base := range bundledSearchBases() {
+		// gpuLess is the first GPU flavor skipped in this base because its build
+		// cannot see a GPU here. The old order (amd, nvidia, cpu) picked the
+		// first folder that exists, so an amd (ROCm) folder on a machine ROCm
+		// does not support silently ran everything on the CPU while the cpu
+		// folder, which may carry a Vulkan backend, went unused.
+		gpuLess := ""
 		for _, flavor := range flavors {
 			p := filepath.Join(base, "binaries", currentOS, flavor, llamaServerBinary())
 			if _, err := os.Stat(p); err == nil {
 				// Same flavor, downloaded copy: prefer it.
 				if ov := filepath.Join(overrideRootFn(), "binaries", currentOS, flavor, llamaServerBinary()); fileExists(ov) {
-					return ov, nil
+					p = ov
+				}
+				if flavor != "cpu" && flavorShowsNoGPU(p) {
+					if gpuLess == "" {
+						gpuLess = p
+					}
+					continue
 				}
 				return p, nil
 			}
+		}
+		// Nothing better turned up: keep the old answer rather than none.
+		if gpuLess != "" {
+			return gpuLess, nil
 		}
 		p := filepath.Join(base, "bin", llamaServerBinary())
 		if _, err := os.Stat(p); err == nil {
@@ -775,6 +783,34 @@ func llamaServerBinary() string {
 		return "llama-server.exe"
 	}
 	return "llama-server"
+}
+
+// engineEnv is the environment a llama-server at bin runs in: the process
+// environment with the binary's own directory first on the shared-library
+// search path, so its sibling libggml-*.so backends are found.
+func engineEnv(bin string) []string {
+	// Add binary directory to the shared library search path.
+	// Windows uses PATH for DLL discovery.
+	// On Linux/macOS: the bundled binary has its RUNPATH set at build time.
+	binDir := filepath.Dir(bin)
+	absBinDir, err := filepath.Abs(binDir)
+	if err == nil {
+		binDir = absBinDir
+	}
+
+	env := os.Environ()
+	if runtime.GOOS == "windows" {
+		env = withPrependedEnvPath(env, "PATH", binDir, true)
+	} else if runtime.GOOS == "darwin" {
+		// macOS ignores LD_LIBRARY_PATH; dyld uses DYLD_LIBRARY_PATH instead.
+		env = withPrependedEnvPath(env, "DYLD_LIBRARY_PATH", binDir, false)
+		env = withPrependedEnvPath(env, "DYLD_FALLBACK_LIBRARY_PATH", binDir, false)
+	} else {
+		// The bundled binary has RUNPATH=/tmp/llama.cpp/build/bin: which
+		// doesn't exist after deployment. Put the real directory first.
+		env = withPrependedEnvPath(env, "LD_LIBRARY_PATH", binDir, false)
+	}
+	return env
 }
 
 func withPrependedEnvPath(env []string, key, dir string, caseInsensitive bool) []string {

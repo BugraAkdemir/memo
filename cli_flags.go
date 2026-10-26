@@ -103,6 +103,7 @@ YÖNETİM / MANAGEMENT (SSH-only self-hosted kurulum için / for SSH-only self-h
   memo service install|uninstall|status     systemd --user servisi / systemd --user service
   memo provider list|add|set-active|active  harici LLM sağlayıcıları / external LLM providers
   memo agent status|enable|disable|...      agent modu / agent (tool-use) mode
+  memo telemetry status|preview|on|off|...  isteğe bağlı anonim günlük özet / the optional anonymous daily summary
   memo model list|search|download|start|... yerel/embedding modelleri / local & embedding models
                               Her biri için kullanım detayı: argümansız çalıştır, ör. "memo provider"
                               Full usage for any of these: run with no arguments, e.g. "memo provider"

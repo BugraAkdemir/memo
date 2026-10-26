@@ -46,6 +46,7 @@ var subcommandDispatch = map[string]func([]string) int{
 	"provider": runProviderCommand,
 	"agent":    runAgentCommand,
 	"model":    runModelCommand,
+	"telemetry": runTelemetryCommand, // the optional anonymous daily summary (docs/TELEMETRY.md)
 }
 
 func main() {

@@ -247,16 +247,7 @@ var deviceFlagCache sync.Map // map[string]bool
 
 // deviceNoneSupported probes whether this build accepts `--device none`.
 func deviceNoneSupported(bin string) bool {
-	key := probeCacheKey(bin)
-	if cached, ok := deviceFlagCache.Load(key); ok {
-		return cached.(bool)
-	}
-	supported, concluded := probeFlags(bin, deviceNoneArgs)
-	if !concluded {
-		return false
-	}
-	deviceFlagCache.Store(key, supported)
-	return supported
+	return flagsAccepted(&deviceFlagCache, bin, deviceNoneArgs)
 }
 
 // hostOnlyArgs returns `--device none` for the two cases that must stay off a

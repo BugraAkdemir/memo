@@ -303,6 +303,9 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		args = append(args, "--mmproj", mmproj)
 		logx.Printf("llama: detected mmproj: %s", mmproj)
 	}
+	if spec := speculativeArgs(bin, embedding, mmproj != "", rpc != nil); len(spec) > 0 {
+		args = append(args, spec...)
+	}
 
 	if rpc != nil {
 		args = append(args, buildRPCArgs(*rpc)...)

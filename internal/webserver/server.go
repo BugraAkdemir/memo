@@ -207,6 +207,14 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/update/check", s.handleUpdateCheck)
 	route("/api/update/status", s.handleUpdateStatus)
 	route("/api/update/apply", s.adminOnly(s.handleUpdateApply))
+	// Optional anonymous daily summary (docs/TELEMETRY.md). Reading the status and
+	// the preview is ambient (like /api/stats/usage); answering, resetting the id
+	// and deleting the server-side data change the whole install: admin-only.
+	route("/api/telemetry/status", s.handleTelemetryStatus)
+	route("/api/telemetry/preview", s.handleTelemetryPreview)
+	route("/api/telemetry/consent", s.adminOnly(s.handleTelemetryConsent))
+	route("/api/telemetry/reset-id", s.adminOnly(s.handleTelemetryResetID))
+	route("/api/telemetry/delete", s.adminOnly(s.handleTelemetryDelete))
 	route("/api/image", s.handleImage)
 	route("/api/chat/export", s.handleExportChat)
 	route("/api/chat/title", s.handleGenerateTitle)

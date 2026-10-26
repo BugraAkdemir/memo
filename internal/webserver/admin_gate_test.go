@@ -99,6 +99,11 @@ func TestDestructiveEndpoints_AdminOnly(t *testing.T) {
 		// Starting an update replaces the program (and downloads and runs code):
 		// reading the check/status is ambient, applying is an admin action.
 		{"POST", "/api/update/apply"},
+		// Answering the telemetry question, resetting its id and deleting the
+		// server-side data change the whole install; reading the status is ambient.
+		{"POST", "/api/telemetry/consent"},
+		{"POST", "/api/telemetry/reset-id"},
+		{"POST", "/api/telemetry/delete"},
 	} {
 		if st, _ := do(t, c.method, base+c.path, "user-session", "{}"); st != http.StatusForbidden {
 			t.Errorf("%s %s as a restricted user: status %d, want 403", c.method, c.path, st)

@@ -160,3 +160,29 @@ func TestTelemetry_EndToEndAgainstAFakeServer(t *testing.T) {
 		}
 	}
 }
+
+func TestProviderErrorCode_MapsTheErrorTextToTheSchemaCodes(t *testing.T) {
+	cases := []struct{ text, want string }{
+		{"API error: status 401 Unauthorized", "401"},
+		{"HTTP 403 forbidden", "401"},
+		{"status 429: rate limit", "429"},
+		{"status 429: You exceeded your current quota", "quota"},
+		{"insufficient_quota", "quota"},
+		{"status 500 internal error", "5xx"},
+		{"HTTP 503 overloaded", "5xx"},
+		{"status 529", "5xx"},
+		{"context deadline exceeded (Client.Timeout)", "timeout"},
+		{"read tcp 1.2.3.4:5->6.7.8.9:443: i/o timeout", "timeout"},
+		{"dial tcp: lookup api.example.com: no such host", "network"},
+		{"connection refused", "network"},
+		{"unexpected EOF", "network"},
+		{"status 400 bad request: maximum context length", ""},
+		{"something nobody anticipated", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := providerErrorCode(c.text); got != c.want {
+			t.Errorf("providerErrorCode(%q) = %q, want %q", c.text, got, c.want)
+		}
+	}
+}

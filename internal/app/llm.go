@@ -1449,6 +1449,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 					} else if subscriptionTextRouteFromCtx(ctx) == nil && a.providerSwapped(providerRouter) {
 						errMsg = a.modelSwappedMidStreamMsg()
 					} else {
+						a.noteProviderFailure(usageMetaVal.Provider, usageMetaVal.Model, chunk.Error)
 						errMsg = "⚠️ " + chunk.Error
 						if hint := a.localModelHint(); hint != "" {
 							errMsg += "\n\n" + hint

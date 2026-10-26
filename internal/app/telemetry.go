@@ -180,3 +180,42 @@ func (a *App) TelemetryDelete(ctx context.Context) error {
 	}
 	return a.telemetry.DeleteData(ctx)
 }
+
+// providerErrorCode maps a raw provider error text onto the small fixed set of
+// codes the daily summary may carry ("401", "429", "5xx", "quota", "timeout",
+// "network"). Anything it cannot place yields "" and is not counted: the
+// summary has no free-text bucket, so an error text can never leak through it.
+func providerErrorCode(text string) string {
+	lower := strings.ToLower(text)
+	status := errStatus(text)
+	switch {
+	case quotaWording(lower):
+		return "quota"
+	case status == 401 || status == 403:
+		return "401"
+	case status == 429:
+		return "429"
+	case status >= 500:
+		return "5xx"
+	case containsAny(lower, "timeout", "deadline exceeded", "timed out"):
+		return "timeout"
+	case containsAny(lower, "no such host", "connection refused", "connection reset", "unexpected eof", "network is unreachable", "broken pipe", "tls:"):
+		return "network"
+	}
+	return ""
+}
+
+// noteProviderFailure counts one failed provider turn by provider TYPE (never
+// the person's own provider name). Local engines are reported through their own
+// start/exit counters instead.
+func (a *App) noteProviderFailure(providerName, model, errText string) {
+	code := providerErrorCode(errText)
+	if code == "" {
+		return
+	}
+	kind, typ := (&telemetrySources{a: a}).ProviderOf(providerName, model)
+	if kind == "local" {
+		return
+	}
+	telemetry.NoteProviderErr(typ, code)
+}

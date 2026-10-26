@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -183,6 +184,83 @@ func TestProviderErrorCode_MapsTheErrorTextToTheSchemaCodes(t *testing.T) {
 	for _, c := range cases {
 		if got := providerErrorCode(c.text); got != c.want {
 			t.Errorf("providerErrorCode(%q) = %q, want %q", c.text, got, c.want)
+		}
+	}
+}
+
+func TestTelemetry_FailureAndEngineCountersReachTheNextReport(t *testing.T) {
+	t.Setenv("MEMO_TELEMETRY", "")
+	orig := telemetryHardware
+	telemetryHardware = func() telemetry.HWInfo { return telemetry.HWInfo{GPUType: "cpu", RAMMB: 16000, Threads: 8} }
+	t.Cleanup(func() { telemetryHardware = orig })
+	t.Cleanup(func() { telemetry.SetDefault(nil) })
+
+	var mu sync.Mutex
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, string(b))
+		mu.Unlock()
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	a := newTelemetryApp(t)
+	statePath := filepath.Join(t.TempDir(), "telemetry_state.json")
+	today := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
+	managerAt := func(clock time.Time) *telemetry.Manager {
+		m, err := telemetry.New(telemetry.Config{
+			StatePath: statePath, Endpoint: srv.URL, Sources: &telemetrySources{a: a},
+			Info: telemetry.Info{Version: a.GetVersion(), Build: telemetry.BuildOfficial, OS: "linux", Arch: "amd64"},
+			Now:  func() time.Time { return clock },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+
+	// Nothing is kept before an answer.
+	m := managerAt(today)
+	telemetry.SetDefault(m)
+	a.noteProviderFailure("orchestra", "x", "status 429: slow down")
+	noteLocalStartFail("llama", errors.New("fork/exec x: permission denied"))
+	if m.Status().Enabled {
+		t.Fatal("must not be enabled before an answer")
+	}
+
+	if err := managerAt(today.AddDate(0, 0, -3)).SetConsent(true); err != nil {
+		t.Fatal(err)
+	}
+	m = managerAt(today)
+	telemetry.SetDefault(m)
+
+	a.noteProviderFailure("orchestra", "x", "status 429: slow down")
+	a.noteProviderFailure("orchestra", "x", "status 429: slow down")
+	a.noteProviderFailure("orchestra", "x", "an error text no code fits") // not counted
+	a.noteProviderFailure("local", "m.gguf", "status 500")                // local engines have their own counters
+	noteLocalStartFail("llama", errors.New("fork/exec /home/alice/llama-server: permission denied"))
+	noteLocalStartFail("embedding", context.Canceled) // a cancelled start is not a failure
+	telemetry.NoteExit("llama", "oom_killed")
+
+	if err := managerAt(today.AddDate(0, 0, 1)).Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != 1 {
+		t.Fatalf("want one report, got %d: %v", len(bodies), bodies)
+	}
+	body := bodies[0]
+	for _, want := range []string{`"provider":"orchestra"`, `"code":"429"`, `"n":2`, `"component":"llama","code":"permission"`, `"code":"oom_killed"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("report lacks %s\n%s", want, body)
+		}
+	}
+	for _, bad := range []string{"alice", "slow down", "embedding", `"500"`, "5xx"} {
+		if strings.Contains(body, bad) {
+			t.Errorf("report must not contain %q\n%s", bad, body)
 		}
 	}
 }

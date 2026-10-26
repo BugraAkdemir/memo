@@ -106,6 +106,7 @@ func (a *App) launchEmbeddingLocked(ctx context.Context, modelPath string, gpuLa
 		logx.Printf("Starting embedding model on port %d (attempt %d/%d)", embPort, attempt, maxAttempts)
 
 		if err := a.llamaEmbedServer.Start(binaryPath, modelPath, 512, embPort, gpuLayers, true, engineMode); err != nil {
+			noteLocalStartFail("embedding", err)
 			return err
 		}
 
@@ -124,6 +125,7 @@ func (a *App) launchEmbeddingLocked(ctx context.Context, modelPath string, gpuLa
 				}
 				continue
 			}
+			noteLocalStartFail("embedding", lastErr) // once per request, not once per retry
 			return fmt.Errorf("embedding model loaded but server failed to start after %d attempts: %w", maxAttempts, lastErr)
 		}
 		break

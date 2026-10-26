@@ -25,11 +25,13 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 	a.cfgMu.RUnlock()
 
 	if err := a.llamaServer.Start(binaryPath, modelPath, ctxSize, port, gpuLayers, false, engineMode); err != nil {
+		noteLocalStartFail("llama", err)
 		return err
 	}
 
 	if err := a.llamaServer.WaitReady(180 * time.Second); err != nil {
 		a.llamaServer.Stop()
+		noteLocalStartFail("llama", err)
 		return fmt.Errorf("Model yükleme zaman aşımına uğradı (3 dk). (Hata: %w)", err)
 	}
 

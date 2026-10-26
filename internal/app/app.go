@@ -671,6 +671,8 @@ func (a *App) Startup(ctx context.Context) {
 	a.modelStore = modelstore.New(cfg.Llama.ModelsDir)
 	a.llamaServer = llama.NewServer(cfg.Llama.Port, cfg.Llama.CtxSize)
 	a.llamaEmbedServer = llama.NewServer(cfg.Llama.EmbeddingPort, 512)
+	a.llamaServer.SetExitHook(func(err error) { telemetry.NoteExit("llama", llama.ClassifyExit(err)) })
+	a.llamaEmbedServer.SetExitHook(func(err error) { telemetry.NoteExit("embedding", llama.ClassifyExit(err)) })
 	a.llamaInstaller = llama.NewInstaller(config.DataDir())
 
 	// Buffered generously: a single worker drains this and each save can block up

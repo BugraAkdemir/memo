@@ -219,3 +219,13 @@ func (a *App) noteProviderFailure(providerName, model, errText string) {
 	}
 	telemetry.NoteProviderErr(typ, code)
 }
+
+// noteLocalStartFail counts one failed start of a local engine ("llama" or
+// "embedding") under its fixed failure code. A start the person cancelled is
+// not a failure.
+func noteLocalStartFail(component string, err error) {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return
+	}
+	telemetry.NoteStartFail(component, llama.ClassifyStartError(err))
+}

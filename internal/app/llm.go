@@ -63,6 +63,10 @@ type usageMeta struct {
 	// report no cache accounting at all — see cacheTokens' doc comment for
 	// why that is not the same as "nothing was cached".
 	Cache cacheTokens
+	// TTFTMs is the time from sending the request to the first token, in
+	// milliseconds. 0 = not measured (non-streaming paths). Feeds the speed
+	// buckets of the optional daily telemetry summary (internal/telemetry).
+	TTFTMs int
 }
 
 // cacheTokens carries the two prompt-cache figures a provider can report for
@@ -1467,6 +1471,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				if chunk.Content != "" {
 					if !firstTokenLogged {
 						firstTokenLogged = true
+						usageMetaVal.TTFTMs = int(time.Since(start).Milliseconds())
 						logx.Printf("LATENCY provider.first_token ms=%d", time.Since(start).Milliseconds())
 					}
 					fullReply.WriteString(chunk.Content)
@@ -1617,6 +1622,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			if chunk.Content != "" {
 				if !firstTokenLogged {
 					firstTokenLogged = true
+					usageMetaVal.TTFTMs = int(time.Since(requestStart).Milliseconds())
 					logx.Printf("LATENCY llm.first_token total_ms=%d after_stream_ready_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), len(messages))
 				}
 				fullReply.WriteString(chunk.Content)
@@ -1876,6 +1882,10 @@ func (a *App) recordUsageEvent(meta usageMeta, completionTokens int, durationSec
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	// A Minimal Mode turn stays in the person's own usage stats but is marked
+	// private so the optional telemetry summary never counts it. Incognito never
+	// gets here: finishStream and recordCallLLMUsage skip it entirely.
+	private := a.identity != nil && a.identity.GetMinimalMode()
 	if err := a.statsStore.RecordEvent(ctx, stats.Event{
 		Provider:           meta.Provider,
 		Model:              meta.Model,
@@ -1886,6 +1896,8 @@ func (a *App) recordUsageEvent(meta usageMeta, completionTokens int, durationSec
 		CompletionTokens:   completionTokens,
 		DurationSecs:       durationSecs,
 		TokensPerSecond:    tokensPerSecond,
+		Private:            private,
+		TTFTMs:             meta.TTFTMs,
 	}); err != nil {
 		logx.Printf("WARN: record usage event: %v", err)
 	}

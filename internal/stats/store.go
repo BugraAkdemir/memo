@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS usage_events (
     cached_prompt_tokens INTEGER NOT NULL DEFAULT 0,
     cache_write_tokens   INTEGER NOT NULL DEFAULT 0,
     duration_secs     REAL    NOT NULL DEFAULT 0,
-    tokens_per_second REAL    NOT NULL DEFAULT 0
+    tokens_per_second REAL    NOT NULL DEFAULT 0,
+    private           INTEGER NOT NULL DEFAULT 0,
+    ttft_ms           INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_usage_events_ts ON usage_events(ts);
 `
@@ -77,6 +79,14 @@ func migrateColumns(ctx context.Context, db *database.DB) error {
 		{"category", "ALTER TABLE usage_events ADD COLUMN category TEXT NOT NULL DEFAULT 'chat'"},
 		{"cached_prompt_tokens", "ALTER TABLE usage_events ADD COLUMN cached_prompt_tokens INTEGER NOT NULL DEFAULT 0"},
 		{"cache_write_tokens", "ALTER TABLE usage_events ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0"},
+		// private marks a turn recorded while Minimal Mode was on; the daily
+		// telemetry summary never counts it. Rows from before the column existed
+		// are not private (Minimal Mode turns of older versions cannot be told
+		// apart, and nothing was ever sent about them).
+		{"private", "ALTER TABLE usage_events ADD COLUMN private INTEGER NOT NULL DEFAULT 0"},
+		// ttft_ms is the time from sending the request to the first token, in
+		// milliseconds; 0 = not measured (non-streaming call, or an older row).
+		{"ttft_ms", "ALTER TABLE usage_events ADD COLUMN ttft_ms INTEGER NOT NULL DEFAULT 0"},
 	} {
 		var count int
 		if err := db.QueryRowContext(ctx,
@@ -127,6 +137,11 @@ type Event struct {
 	CompletionTokens   int
 	DurationSecs       float64
 	TokensPerSecond    float64
+	// Private is true for a turn made while Minimal Mode was on. It is kept in
+	// the person's own usage stats but never counted by telemetry.
+	Private bool
+	// TTFTMs is the time to first token in milliseconds, 0 when not measured.
+	TTFTMs int
 }
 
 // RecordEvent inserts a completed turn's usage. Called fire-and-forget from
@@ -142,11 +157,49 @@ func (s *Store) RecordEvent(ctx context.Context, e Event) error {
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO usage_events (ts, provider, model, category, prompt_tokens, completion_tokens,
-		                          cached_prompt_tokens, cache_write_tokens, duration_secs, tokens_per_second)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                          cached_prompt_tokens, cache_write_tokens, duration_secs, tokens_per_second,
+		                          private, ttft_ms)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		ts.Unix(), e.Provider, e.Model, category, e.PromptTokens, e.CompletionTokens,
-		e.CachedPromptTokens, e.CacheWriteTokens, e.DurationSecs, e.TokensPerSecond)
+		e.CachedPromptTokens, e.CacheWriteTokens, e.DurationSecs, e.TokensPerSecond,
+		boolToInt(e.Private), e.TTFTMs)
 	return err
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// EventsBetween returns the NON-PRIVATE events with from <= ts < to, oldest
+// first. It is the only door the daily telemetry summary reads through, which
+// is why the private filter lives here and not in the caller: a Minimal Mode
+// turn cannot reach a report even if a collector forgets to check.
+func (s *Store) EventsBetween(ctx context.Context, from, to time.Time) ([]Event, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT ts, provider, model, category, prompt_tokens, completion_tokens,
+		       cached_prompt_tokens, cache_write_tokens, duration_secs, tokens_per_second, ttft_ms
+		FROM usage_events
+		WHERE private = 0 AND ts >= ? AND ts < ?
+		ORDER BY ts, id`, from.Unix(), to.Unix())
+	if err != nil {
+		return nil, fmt.Errorf("stats: events between: %w", err)
+	}
+	defer rows.Close()
+	var out []Event
+	for rows.Next() {
+		var e Event
+		var ts int64
+		if err := rows.Scan(&ts, &e.Provider, &e.Model, &e.Category, &e.PromptTokens, &e.CompletionTokens,
+			&e.CachedPromptTokens, &e.CacheWriteTokens, &e.DurationSecs, &e.TokensPerSecond, &e.TTFTMs); err != nil {
+			return nil, fmt.Errorf("stats: scan event: %w", err)
+		}
+		e.Timestamp = time.Unix(ts, 0).UTC()
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // ModelUsage is one model's aggregated usage within a Summary.

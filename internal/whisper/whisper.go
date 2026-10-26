@@ -8,6 +8,7 @@ import (
 	"io"
 	"memo/internal/components"
 	"memo/internal/config"
+	"memo/internal/llama"
 	"memo/internal/logx"
 	"mime/multipart"
 	"net/http"
@@ -76,6 +77,10 @@ func (s *Server) startLocked(binaryPath, modelPath, language string, port int) e
 	bin, err := resolveBinary(binaryPath)
 	if err != nil {
 		return fmt.Errorf("whisper: %w", err)
+	}
+	// whisper-server is 0644 in an installed copy: R2 and archives drop the mode.
+	if llama.FlavorOfPath(bin) != "" {
+		llama.EnsureExecutable(bin)
 	}
 
 	model := modelPath

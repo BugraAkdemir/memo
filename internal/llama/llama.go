@@ -130,6 +130,9 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 	} else {
 		bin, err = resolveBinary(binaryPath, mode)
 	}
+	if err == nil {
+		ensureEngineExecutable(bin)
+	}
 	if err != nil {
 		return fmt.Errorf("Llama.cpp motoru (llama-server) bulunamadı. Lütfen motorun kurulu olduğundan emin olun veya Ayarlar -> Llama kısmından yolu kontrol edin. (Hata: %w)", err)
 	}
@@ -650,6 +653,8 @@ func resolveBinary(configured string, mode string) (string, error) {
 				if ov := filepath.Join(overrideRootFn(), "binaries", currentOS, flavor, llamaServerBinary()); fileExists(ov) {
 					p = ov
 				}
+				// Asked which GPUs it sees (it is run), so it must be runnable first.
+				ensureEngineExecutable(p)
 				if choice, done := sel.consider(flavor, p); done {
 					return choice, nil
 				}

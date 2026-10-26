@@ -129,6 +129,7 @@ func ResolveRPCServerBinary(mode string) (string, error) {
 			for _, name := range rpcServerBinaries() {
 				p := filepath.Join(base, "binaries", currentOS, flavor, name)
 				if _, err := os.Stat(p); err == nil {
+					ensureEngineExecutable(p)
 					return p, nil
 				}
 			}

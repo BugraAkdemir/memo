@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tel.memocpp.com/schema/report.v1.json",
+  "title": "Memo daily telemetry report, schema 1",
+  "description": "One report = one completed UTC day of one installation. An allow-list: anything not named here is refused. The client (internal/telemetry/schema.go) and the Worker must agree with this file; see ../API.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "tid", "day", "app_version", "build", "os", "arch", "ui_lang", "hw", "usage"],
+  "properties": {
+    "schema":      { "const": 1 },
+    "tid":         { "type": "string", "pattern": "^[0-9a-f]{32}$", "description": "random 128-bit install id, hex; resettable" },
+    "day":         { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "the UTC day this report covers" },
+    "app_version": { "$ref": "#/$defs/semver" },
+    "build":       { "enum": ["official", "source"] },
+    "os":          { "enum": ["linux", "windows", "darwin"] },
+    "arch":        { "enum": ["amd64", "arm64"] },
+    "ui_lang":     { "type": "string", "pattern": "^[a-z]{2}$" },
+
+    "hw": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gpu_class", "engine", "ram_gb"],
+      "properties": {
+        "gpu_class":   { "enum": ["none", "nvidia", "amd", "intel", "apple"] },
+        "gpu_model":   { "$ref": "#/$defs/label", "description": "catalog name or other_<vendor>; never a driver/PCI/serial string" },
+        "vram_gb":     { "type": "integer", "minimum": 0, "maximum": 1024 },
+        "engine":      { "enum": ["cpu", "amd", "nvidia", "vulkan", "metal"] },
+        "cpu_cores":   { "type": "integer", "minimum": 1, "maximum": 1024 },
+        "cpu_threads": { "type": "integer", "minimum": 1, "maximum": 2048 },
+        "ram_gb":      { "enum": [2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 256, 512], "description": "rounded to a standard size" }
+      }
+    },
+
+    "usage": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "provider", "model", "category", "turns", "in_tokens", "out_tokens", "cached_tokens"],
+        "properties": {
+          "kind":          { "enum": ["local", "api", "sub"] },
+          "provider":      { "$ref": "#/$defs/slug", "description": "'local' for kind=local; provider type for api; vendor for sub" },
+          "model":         { "$ref": "#/$defs/label", "description": "catalog name or 'other'; never a file name" },
+          "category":      { "enum": ["chat", "agent", "fact_extraction", "dream", "consolidation", "memory_import", "mood", "title", "learning", "routine", "proactive", "insight", "web_search", "task_review", "task_plan", "task_step", "task_subagent", "compaction"] },
+          "turns":         { "$ref": "#/$defs/turns" },
+          "in_tokens":     { "$ref": "#/$defs/tokens" },
+          "out_tokens":    { "$ref": "#/$defs/tokens" },
+          "cached_tokens": { "$ref": "#/$defs/tokens" }
+        }
+      }
+    },
+
+    "purpose": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "derived from device-side flags, never from message text",
+      "properties": {
+        "text":  { "$ref": "#/$defs/purposeCell" },
+        "code":  { "$ref": "#/$defs/purposeCell" },
+        "image": { "$ref": "#/$defs/purposeCell" },
+        "voice": { "$ref": "#/$defs/purposeCell" }
+      }
+    },
+
+    "perf": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["size_bucket", "hw_class", "tps_bucket", "ttft_bucket", "n"],
+        "properties": {
+          "size_bucket": { "enum": ["<2b", "2-4b", "4-8b", "8-14b", "14-32b", "32b+"] },
+          "hw_class":    { "enum": ["cpu", "amd", "nvidia", "vulkan", "metal"] },
+          "tps_bucket":  { "enum": ["<5", "5-10", "10-20", "20-40", "40-80", "80+"] },
+          "ttft_bucket": { "enum": ["<0.5s", "0.5-1s", "1-2s", "2-5s", "5-10s", "10s+"] },
+          "n":           { "$ref": "#/$defs/count" }
+        }
+      }
+    },
+
+    "local_start_fail": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["component", "code", "n"],
+        "properties": {
+          "component": { "enum": ["llama", "embedding", "whisper"] },
+          "code":      { "enum": ["permission", "port", "oom", "missing_file", "crash_at_load", "timeout", "unknown"] },
+          "n":         { "$ref": "#/$defs/count" }
+        }
+      }
+    },
+
+    "llama_exit": {
+      "type": "array",
+      "maxItems": 32,
+      "description": "a local engine process that died AFTER it had started",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["component", "code", "n"],
+        "properties": {
+          "component": { "enum": ["llama", "embedding", "whisper"] },
+          "code":      { "enum": ["oom_killed", "signal", "exit_nonzero", "unknown"] },
+          "n":         { "$ref": "#/$defs/count" }
+        }
+      }
+    },
+
+    "provider_err": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["provider", "code", "n"],
+        "properties": {
+          "provider": { "$ref": "#/$defs/slug" },
+          "code":     { "enum": ["401", "429", "5xx", "quota", "timeout", "network"] },
+          "n":        { "$ref": "#/$defs/count" }
+        }
+      }
+    },
+
+    "update": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event", "n"],
+        "properties": {
+          "event": { "enum": ["offered", "downloaded", "applied", "rolled_back", "failed"] },
+          "code":  { "enum": ["", "checksum", "signature", "needs_newer_app", "not_for_this_machine"] },
+          "n":     { "$ref": "#/$defs/count" }
+        }
+      }
+    },
+
+    "crash": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sig", "component", "exc_type", "frames", "n"],
+        "properties": {
+          "sig":       { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 hex of the frames joined by \\n; the Worker recomputes it" },
+          "component": { "enum": ["go", "dart", "llama"] },
+          "exc_type":  { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.]{0,63}$", "description": "the panic/exception TYPE name only (no spaces, no colon: a message cannot fit); the message is never sent" },
+          "frames": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "items": { "type": "string", "pattern": "^memo[A-Za-z0-9_./()*\\[\\]-]{0,119} [A-Za-z0-9_][A-Za-z0-9_./-]{0,99}:[0-9]{1,6}$", "description": "'<pkg.Func> <repo-relative file>:<line>'; the function must start with 'memo' (Memo's own frames only); no arguments, no absolute paths" }
+          },
+          "n": { "$ref": "#/$defs/count" }
+        }
+      }
+    },
+
+    "features": {
+      "type": "array",
+      "maxItems": 12,
+      "uniqueItems": true,
+      "description": "features used at least once that day",
+      "items": { "enum": ["projects", "subagents", "skills", "live_mode", "whatsapp", "telegram", "memory", "cloud_sync", "webchat_beta", "self_driving", "image_gen", "voice"] }
+    },
+
+    "milestones": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "UTC dates of first occurrences; the server keeps the earliest ever reported",
+      "properties": {
+        "installed":      { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "provider_added": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "first_message":  { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+      }
+    },
+
+    "memory_rows_bucket": { "enum": ["0", "1-100", "100-1k", "1k+"] }
+  },
+
+  "$defs": {
+    "semver": { "type": "string", "pattern": "^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}(-[a-z0-9.]{1,16})?$" },
+    "slug":   { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,31}$" },
+    "label":  { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._:/+()-]{0,63}$" },
+    "turns":  { "type": "integer", "minimum": 0, "maximum": 100000 },
+    "tokens": { "type": "integer", "minimum": 0, "maximum": 2000000000 },
+    "count":  { "type": "integer", "minimum": 0, "maximum": 1000000 },
+    "purposeCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["turns"],
+      "properties": {
+        "turns":      { "$ref": "#/$defs/turns" },
+        "in_tokens":  { "$ref": "#/$defs/tokens" },
+        "out_tokens": { "$ref": "#/$defs/tokens" }
+      }
+    }
+  }
+}

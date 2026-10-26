@@ -428,3 +428,86 @@ func TestMigration_IfTheSnapshotCannotBeWrittenNothingIsMigrated(t *testing.T) {
 		t.Fatal("the column was added even though the snapshot failed")
 	}
 }
+
+// The state a crash leaves behind: recent memories exist ONLY in memory.db-wal.
+// Copying memory.db alone would lose them from the safety snapshot, and the
+// snapshot is the only way back from a migration, so it has to hold them.
+func TestMigration_SnapshotKeepsMemoriesThatOnlyExistInTheWAL(t *testing.T) {
+	live := legacyStoreDir(t, 3)
+	liveDB := filepath.Join(live, "memory.db")
+
+	db, err := sql.Open("sqlite3", "file:"+liveDB+"?_journal_mode=WAL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec("PRAGMA wal_autocheckpoint=0"); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"wal-a", "wal-b"} {
+		if _, err := db.Exec("INSERT INTO memories(uuid, content, timestamp) VALUES (?, ?, '2026-10-26T12:00:00Z')", id, "coffee only in the wal "+id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Crash image: all three files copied while the writer is still open.
+	crash := t.TempDir()
+	for _, f := range []string{"memory.db", "memory.db-wal", "memory.db-shm"} {
+		if b, err := os.ReadFile(filepath.Join(live, f)); err == nil {
+			if err := os.WriteFile(filepath.Join(crash, f), b, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	db.Close()
+	if _, err := os.Stat(filepath.Join(crash, "memory.db-wal")); err != nil {
+		t.Fatalf("test setup: no WAL in the crash image: %v", err)
+	}
+	// What a plain copy of the main file would have kept.
+	naive := filepath.Join(t.TempDir(), "naive.db")
+	b, _ := os.ReadFile(filepath.Join(crash, "memory.db"))
+	if err := os.WriteFile(naive, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if n := rowCountImmutable(t, naive); n != 3 {
+		t.Fatalf("test setup: the main file alone holds %d rows, want 3 (the WAL rows must be WAL-only)", n)
+	}
+
+	snaps := t.TempDir()
+	s, err := NewStore(StoreConfig{Dir: crash, Dimension: 3, EmbeddingFunc: scopeEmbedding, ForceGoFallback: true, SnapshotDir: snaps})
+	if err != nil {
+		t.Fatalf("open crash image: %v", err)
+	}
+	if got := s.Count(); got != 5 {
+		t.Fatalf("rows after migration = %d, want 5", got)
+	}
+	s.Close()
+
+	entries, _ := os.ReadDir(snaps)
+	if len(entries) != 1 {
+		t.Fatalf("snapshots = %v, want exactly one", entries)
+	}
+	snap := filepath.Join(snaps, entries[0].Name())
+	if n := rowCountImmutable(t, snap); n != 5 {
+		t.Fatalf("snapshot holds %d rows, want all 5 including the 2 that lived only in the WAL", n)
+	}
+	if hasProjectColumn(t, snap) {
+		t.Fatal("the snapshot must be the pre-migration database")
+	}
+}
+
+// rowCountImmutable counts rows reading only the file itself (no WAL), which is
+// exactly what restoring a snapshot would see.
+func rowCountImmutable(t *testing.T, dbPath string) int {
+	t.Helper()
+	db, err := sql.Open("sqlite3", "file:"+dbPath+"?mode=ro&immutable=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var n int
+	if err := db.QueryRow("SELECT COUNT(*) FROM memories").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}

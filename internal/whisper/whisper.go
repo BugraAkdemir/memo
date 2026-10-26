@@ -129,6 +129,7 @@ func (s *Server) startLocked(binaryPath, modelPath, language string, port int) e
 		"--language", lang,
 		"--threads", fmt.Sprintf("%d", whisperThreads()),
 	}
+	args = append(args, hostOnlyArgs(bin)...)
 
 	logx.Printf("whisper: launching %s %s", bin, strings.Join(args, " "))
 

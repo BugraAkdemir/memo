@@ -69,7 +69,9 @@ var gpuBackendLibs = []string{
 	"ggml-vulkan*.dll", "ggml-cuda*.dll", "ggml-hip*.dll", "ggml-sycl*.dll", "ggml-opencl*.dll",
 }
 
-func hasGPUBackendLib(bin string) bool {
+// HasGPUBackendLib reports whether a ggml GPU backend library sits in the same
+// folder as bin. Exported for whisper-server, which shares the engine folder.
+func HasGPUBackendLib(bin string) bool {
 	dir := filepath.Dir(bin)
 	for _, pat := range gpuBackendLibs {
 		if m, _ := filepath.Glob(filepath.Join(dir, pat)); len(m) > 0 {
@@ -139,7 +141,7 @@ func listGPUDevices(bin string) (devs []string, concluded bool) {
 	}
 	// No GPU backend library beside it, nothing to ask: a custom binary_path can
 	// be any program, and running it with a flag it does not know is not free.
-	if !hasGPUBackendLib(bin) {
+	if !HasGPUBackendLib(bin) {
 		return nil, false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)

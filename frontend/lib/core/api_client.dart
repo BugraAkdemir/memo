@@ -2590,6 +2590,38 @@ class MemoApiClient {
     return _guard<Map<String, dynamic>>(res.data);
   }
 
+  // ─── Telemetry (optional anonymous daily summary) ──────────────
+
+  /// Where the person's answer stands. Ambient: callers keep failures quiet.
+  Future<Map<String, dynamic>> getTelemetryStatus() async {
+    final res = await _dio.get('/api/telemetry/status');
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
+  /// The exact report that would be sent next ({day, empty, json}).
+  Future<Map<String, dynamic>> getTelemetryPreview() async {
+    final res = await _dio.get('/api/telemetry/preview');
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
+  /// Record an explicit yes ([share] true) or no. Returns the new status.
+  Future<Map<String, dynamic>> setTelemetryConsent(bool share) async {
+    final res = await _dio.post('/api/telemetry/consent', data: {'share': share});
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
+  /// Give this install a new random id; the old one is forgotten server-side.
+  Future<Map<String, dynamic>> resetTelemetryId() async {
+    final res = await _dio.post('/api/telemetry/reset-id', data: <String, dynamic>{});
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
+  /// Delete this install's data on the server and stop sharing.
+  Future<Map<String, dynamic>> deleteTelemetryData() async {
+    final res = await _dio.post('/api/telemetry/delete', data: <String, dynamic>{});
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
   // ─── WhatsApp ──────────────────────────────────────────────────
 
   /// Get WhatsApp connection status.

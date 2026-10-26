@@ -35,7 +35,7 @@ jobs:
             libwebkit2gtk-4.1-dev libjsoncpp-dev
 
       - name: Build Go backend
-        run: CGO_ENABLED=1 go build -tags "sqlite_fts5" -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
+        run: CGO_ENABLED=1 go build -tags "sqlite_fts5" -ldflags "${{ github.repository == 'BugraAkdemir/memo' && '-X memo/internal/telemetry.BuildChannel=official' || '' }}" -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
 
       - name: Build Flutter frontend
         working-directory: frontend
@@ -84,7 +84,7 @@ jobs:
       - name: Build Go backend
         run: |
           set CGO_ENABLED=1
-          go build -tags "sqlite_fts5" -o "build_output\stage\${{ env.APP_NAME }}\memo-backend.exe" .
+          go build -tags "sqlite_fts5" -ldflags "${{ github.repository == 'BugraAkdemir/memo' && '-X memo/internal/telemetry.BuildChannel=official' || '' }}" -o "build_output\stage\${{ env.APP_NAME }}\memo-backend.exe" .
         shell: cmd
 
       - name: Build Flutter frontend
@@ -256,7 +256,7 @@ jobs:
         with: { channel: "${{ env.FLUTTER_CHANNEL }}" }
 
       - name: Build Go backend
-        run: CGO_ENABLED=1 go build -tags "sqlite_fts5" -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
+        run: CGO_ENABLED=1 go build -tags "sqlite_fts5" -ldflags "${{ github.repository == 'BugraAkdemir/memo' && '-X memo/internal/telemetry.BuildChannel=official' || '' }}" -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
 
       - name: Build Flutter frontend
         working-directory: frontend

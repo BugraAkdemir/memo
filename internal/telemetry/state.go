@@ -143,9 +143,17 @@ func (s *State) Snapshot() StateData {
 }
 
 func (s *State) mutate(fn func(d *StateData)) error {
+	return s.mutateIf(func(d *StateData) bool { fn(d); return true })
+}
+
+// mutateIf saves only when fn reports that it changed something: a flag that is
+// set on every chat turn must not turn into one disk write per turn.
+func (s *State) mutateIf(fn func(d *StateData) bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	fn(&s.d)
+	if !fn(&s.d) {
+		return nil
+	}
 	return s.saveLocked()
 }
 
@@ -174,11 +182,13 @@ func (s *State) MarkSent(day string) error {
 
 // SetMilestone keeps the earliest date seen for "provider_added" or "first_message".
 func (s *State) SetMilestone(name, day string) error {
-	return s.mutate(func(d *StateData) {
+	return s.mutateIf(func(d *StateData) bool {
 		target := map[string]*string{"provider_added": &d.Milestones.ProviderAdded, "first_message": &d.Milestones.FirstMessage}[name]
 		if target != nil && (*target == "" || day < *target) {
 			*target = day
+			return true
 		}
+		return false
 	})
 }
 
@@ -251,12 +261,16 @@ func bump(m *map[string]int, key string) {
 
 // AddFeature notes that a feature was used on a day (once per day).
 func (s *State) AddFeature(day, feature string) error {
-	return s.mutate(func(d *StateData) {
+	return s.mutateIf(func(d *StateData) bool {
 		c := d.day(day)
+		if c.Features[feature] {
+			return false
+		}
 		if c.Features == nil {
 			c.Features = map[string]bool{}
 		}
 		c.Features[feature] = true
+		return true
 	})
 }
 

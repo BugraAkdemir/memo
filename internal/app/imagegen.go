@@ -132,6 +132,7 @@ func saveGeneratedImage(img provider.GeneratedImage) (string, error) {
 // recordStreamError call so the turn is persisted either way. outCh is
 // owned and closed by the caller.
 func (a *App) streamImageGeneration(ctx context.Context, gen provider.ImageGenerator, model, prompt, userMsg, sessionID string, images []provider.ImageInput, outCh chan<- api.StreamChunk) {
+	a.noteFeature("image_gen")
 	if prompt == "" {
 		prompt = userMsg
 	}

@@ -164,3 +164,34 @@ func TestState_ConcurrentWritersDoNotLoseOrCorruptData(t *testing.T) {
 		t.Fatalf("counted %d, want 40", n)
 	}
 }
+
+func TestState_RepeatedFeatureAndMilestoneNotesDoNotRewriteTheFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "telemetry_state.json")
+	s, err := OpenState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddFeature("2026-10-27", "skills"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMilestone("first_message", "2026-10-27"); err != nil {
+		t.Fatal(err)
+	}
+	// If a repeat wrote again, the file would come back.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.AddFeature("2026-10-27", "skills")
+	_ = s.SetMilestone("first_message", "2026-10-27")
+	_ = s.SetMilestone("first_message", "2026-10-28") // a later day never replaces an earlier one
+	if _, err := os.Stat(path); err == nil {
+		t.Fatal("a note that changed nothing rewrote the state file (one disk write per chat turn)")
+	}
+	// A real change still persists.
+	if err := s.AddFeature("2026-10-27", "voice"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("a new feature was not saved: %v", err)
+	}
+}

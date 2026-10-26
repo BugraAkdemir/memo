@@ -13,6 +13,7 @@ import (
 	"memo/internal/config"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
+	"memo/internal/telemetry"
 	// Blank-imported for its init(), which registers web-chatgpt / web-claude
 	// the same way (Beta, text only).
 	_ "memo/internal/webchat"
@@ -66,6 +67,7 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 	if err := a.providerCfgMgr.Set(cfg); err != nil {
 		return err
 	}
+	telemetry.NoteMilestone("provider_added")
 	configs := a.providerCfgMgr.GetEnabled()
 
 	a.providerMu.Lock()

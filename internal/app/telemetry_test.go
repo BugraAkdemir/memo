@@ -315,3 +315,94 @@ func TestRolledBackNote_CountsOnlyAFreshNoteAndOnlyOncePerProcess(t *testing.T) 
 		t.Fatal("counted a note that does not exist")
 	}
 }
+
+// telemetryRig runs a manager that has agreed to share, over a fake server, and
+// returns the next day's report body after the notes in fn were made.
+func telemetryRig(t *testing.T, a *App, fn func()) string {
+	t.Helper()
+	t.Setenv("MEMO_TELEMETRY", "")
+	orig := telemetryHardware
+	telemetryHardware = func() telemetry.HWInfo { return telemetry.HWInfo{GPUType: "cpu", RAMMB: 16000, Threads: 8} }
+	t.Cleanup(func() { telemetryHardware = orig; telemetry.SetDefault(nil) })
+
+	var mu sync.Mutex
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, string(b))
+		mu.Unlock()
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	t.Cleanup(srv.Close)
+
+	statePath := filepath.Join(t.TempDir(), "telemetry_state.json")
+	today := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
+	managerAt := func(clock time.Time) *telemetry.Manager {
+		m, err := telemetry.New(telemetry.Config{
+			StatePath: statePath, Endpoint: srv.URL, Sources: &telemetrySources{a: a},
+			Info: telemetry.Info{Version: a.GetVersion(), Build: telemetry.BuildOfficial, OS: "linux", Arch: "amd64"},
+			Now:  func() time.Time { return clock },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	if err := managerAt(today.AddDate(0, 0, -3)).SetConsent(true); err != nil {
+		t.Fatal(err)
+	}
+	telemetry.SetDefault(managerAt(today))
+	fn()
+	if err := managerAt(today.AddDate(0, 0, 1)).Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != 1 {
+		t.Fatalf("want one report, got %d", len(bodies))
+	}
+	return bodies[0]
+}
+
+func TestNoteFeature_CountsUseButNeverIncognitoOrMinimalMode(t *testing.T) {
+	a := newTelemetryApp(t)
+	body := telemetryRig(t, a, func() {
+		a.noteFeature("skills")
+		a.noteFeature("skills") // twice is still once
+		a.ToggleIncognito(true)
+		a.noteFeature("voice")
+		a.ToggleIncognito(false)
+		a.identity.SetMinimalMode(true)
+		a.noteFeature("image_gen")
+		a.identity.SetMinimalMode(false)
+		a.noteFeature("subagents")
+	})
+	for _, want := range []string{`"skills"`, `"subagents"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("report lacks %s\n%s", want, body)
+		}
+	}
+	for _, bad := range []string{`"voice"`, `"image_gen"`} {
+		if strings.Contains(body, bad) {
+			t.Errorf("%s was used in incognito or Minimal Mode and must not be counted\n%s", bad, body)
+		}
+	}
+}
+
+func TestMilestones_FirstMessageAndProviderAddedAreDatesNotContent(t *testing.T) {
+	a := newTelemetryApp(t)
+	body := telemetryRig(t, a, func() {
+		// A day with only a milestone is quiet and sends nothing; the date waits in the
+		// state for the next day that has activity. Give this one a turn.
+		_ = a.statsStore.RecordEvent(context.Background(), stats.Event{Timestamp: time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC), Provider: "local", Model: "m.gguf", Category: "chat", PromptTokens: 5, CompletionTokens: 5})
+		a.noteFirstMessage(usageMeta{Category: "chat"})
+		a.noteFirstMessage(usageMeta{Category: "title"}) // a background call is not a message
+		telemetry.NoteMilestone("provider_added")
+	})
+	for _, want := range []string{`"first_message":"2026-10-27"`, `"provider_added":"2026-10-27"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("report lacks %s\n%s", want, body)
+		}
+	}
+}

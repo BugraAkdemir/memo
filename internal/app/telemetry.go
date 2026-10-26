@@ -291,3 +291,22 @@ func (u *updateRuntime) freshRollbackNote(installDir string, now time.Time) (eve
 	}
 	return "failed", true
 }
+
+// noteFeature records that a feature was used today. Incognito and Minimal Mode
+// turns are never counted, for features as for everything else.
+func (a *App) noteFeature(name string) {
+	if a.GetIncognito() || a.minimalModeOn() {
+		return
+	}
+	telemetry.NoteFeature(name)
+}
+
+// noteFirstMessage records the date of the first real conversation turn. Only
+// the date is kept, and background calls (titles, memory extraction, …) are not
+// messages.
+func (a *App) noteFirstMessage(meta usageMeta) {
+	if meta.Category != "chat" || a.minimalModeOn() {
+		return
+	}
+	telemetry.NoteMilestone("first_message")
+}

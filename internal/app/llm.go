@@ -1889,6 +1889,7 @@ func (a *App) recordUsageEvent(meta usageMeta, completionTokens int, durationSec
 	// private so the optional telemetry summary never counts it. Incognito never
 	// gets here: finishStream and recordCallLLMUsage skip it entirely.
 	private := a.identity != nil && a.identity.GetMinimalMode()
+	a.noteFirstMessage(meta)
 	if err := a.statsStore.RecordEvent(ctx, stats.Event{
 		Provider:           meta.Provider,
 		Model:              meta.Model,

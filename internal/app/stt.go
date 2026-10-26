@@ -289,6 +289,7 @@ func (a *App) StopRecordingAndTranscribe() (string, error) {
 // (including "local", and "google_live"/"openai_realtime", which don't use
 // this discrete-turn call at all) behaves exactly as before.
 func (a *App) TranscribeAudio(audioData []byte) (string, error) {
+	a.noteFeature("voice")
 	engine := livemode.EngineType(a.GetLiveModeConfig().ActiveEngine)
 	switch engine {
 	case livemode.EngineElevenLabs, livemode.EngineCustom:

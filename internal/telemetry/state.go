@@ -59,6 +59,9 @@ type StateData struct {
 	LastSentDay string                  `json:"last_sent_day,omitempty"`
 	Milestones  Milestones              `json:"milestones"`
 	Days        map[string]*DayCounters `json:"days,omitempty"`
+	// PendingForget are old install ids the server still has to forget (a reset
+	// or a delete made while offline); retried on every cycle until it answers.
+	PendingForget []string `json:"pending_forget,omitempty"`
 }
 
 // State is the on-disk state, safe for concurrent use.
@@ -190,6 +193,31 @@ func (s *State) ResetID() (string, error) {
 	s.d.Days = map[string]*DayCounters{}
 	s.d.LastSentDay = ""
 	return old, s.saveLocked()
+}
+
+// AddPendingForget remembers an id the server must still forget.
+func (s *State) AddPendingForget(tid string) error {
+	return s.mutate(func(d *StateData) {
+		for _, x := range d.PendingForget {
+			if x == tid {
+				return
+			}
+		}
+		d.PendingForget = append(d.PendingForget, tid)
+	})
+}
+
+// RemovePendingForget clears an id once the server has forgotten it.
+func (s *State) RemovePendingForget(tid string) error {
+	return s.mutate(func(d *StateData) {
+		out := d.PendingForget[:0]
+		for _, x := range d.PendingForget {
+			if x != tid {
+				out = append(out, x)
+			}
+		}
+		d.PendingForget = out
+	})
 }
 
 // day returns the counters of one day, creating them, and drops days that fell

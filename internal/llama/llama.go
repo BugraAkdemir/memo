@@ -153,7 +153,7 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 	// trace of that is a debug line nobody reads. Say so once, loudly, with
 	// the fix. Only for the chat model start — the embedding server is a
 	// CPU-by-default sidecar and would just double the line.
-	if !embedding && (mode == "" || mode == "auto") && s.gpu.Type == GPUTypeCPU && !usesPluginGPU(bin) {
+	if !embedding && (mode == "" || mode == "auto") && s.gpu.Type == GPUTypeCPU && !usesVulkanOnlyGPU(bin) {
 		logx.Printf("llama: no GPU acceleration detected — running on CPU. " +
 			"If this machine has an NVIDIA/AMD GPU, ensure nvidia-smi/rocm-smi is on " +
 			"PATH, or set llama.engine_mode (nvidia|amd) in config.yaml to force it.")
@@ -173,9 +173,9 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		// decode at ~13 t/s with prompt processing ~2.2x faster than CPU, but 8
 		// layers decode at ~10.5 t/s. Prompt processing is offloaded either way,
 		// so keep the weights on the host unless the caller asked for layers.
-		if usesPluginGPU(bin) {
+		if usesVulkanOnlyGPU(bin) {
 			actualGPU = 0
-			logx.Printf("llama: GPU backend plugin present in the cpu engine — keeping weights on the host, GPU handles prompt processing")
+			logx.Printf("llama: the engine's only GPU is a Vulkan one — keeping weights on the host, the GPU handles prompt processing")
 		}
 	}
 	// If mode is CPU, force 0 layers
@@ -635,12 +635,11 @@ func resolveBinary(configured string, mode string) (string, error) {
 	// 3. Check Bundled Paths (Auto-detect order) in all search bases
 	flavors := []string{"amd", "nvidia", "cpu"}
 	for _, base := range bundledSearchBases() {
-		// gpuLess is the first GPU flavor skipped in this base because its build
-		// cannot see a GPU here. The old order (amd, nvidia, cpu) picked the
-		// first folder that exists, so an amd (ROCm) folder on a machine ROCm
-		// does not support silently ran everything on the CPU while the cpu
-		// folder, which may carry a Vulkan backend, went unused.
-		gpuLess := ""
+		// The old order (amd, nvidia, cpu) picked the first folder that exists, so
+		// an amd (ROCm) folder on a machine ROCm does not support silently ran
+		// everything on the CPU while a folder that could use the GPU went unused.
+		// gpuSelector asks each build which devices it sees (see its doc).
+		var sel gpuSelector
 		for _, flavor := range flavors {
 			p := filepath.Join(base, "binaries", currentOS, flavor, llamaServerBinary())
 			if _, err := os.Stat(p); err == nil {
@@ -648,18 +647,14 @@ func resolveBinary(configured string, mode string) (string, error) {
 				if ov := filepath.Join(overrideRootFn(), "binaries", currentOS, flavor, llamaServerBinary()); fileExists(ov) {
 					p = ov
 				}
-				if flavor != "cpu" && flavorShowsNoGPU(p) {
-					if gpuLess == "" {
-						gpuLess = p
-					}
-					continue
+				if choice, done := sel.consider(flavor, p); done {
+					return choice, nil
 				}
-				return p, nil
 			}
 		}
-		// Nothing better turned up: keep the old answer rather than none.
-		if gpuLess != "" {
-			return gpuLess, nil
+		// Nothing settled it: keep a skipped flavor rather than none at all.
+		if fb := sel.fallback(); fb != "" {
+			return fb, nil
 		}
 		p := filepath.Join(base, "bin", llamaServerBinary())
 		if _, err := os.Stat(p); err == nil {

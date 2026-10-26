@@ -162,24 +162,81 @@ func listGPUDevices(bin string) (devs []string, concluded bool) {
 	return answer(devs, true)
 }
 
-// flavorShowsNoGPU reports whether bin is a GPU engine flavor (amd, nvidia)
-// that definitely cannot see a GPU on this machine right now.
-func flavorShowsNoGPU(bin string) bool {
-	devs, ok := listGPUDevices(bin)
-	return ok && len(devs) == 0
+// onlyVulkan reports whether every listed device is a Vulkan one. Vulkan is not
+// what the amd (ROCm) and nvidia (CUDA) folders exist for, and on a machine
+// those cannot drive it is all they see: the b9441 nvidia folder also carries a
+// Vulkan backend and lists the integrated GPU of a plain AMD/Intel laptop.
+func onlyVulkan(devs []string) bool {
+	for _, d := range devs {
+		if !strings.HasPrefix(d, "Vulkan") {
+			return false
+		}
+	}
+	return len(devs) > 0
 }
 
-// usesPluginGPU reports whether bin is the plain cpu engine that nevertheless
-// lists a GPU — the case of a Vulkan backend plugin (libggml-vulkan.so) placed
-// in the cpu folder. Such a GPU is used for prompt processing even with zero
-// offloaded layers, and Memo's own GPU detection (sysfs/nvidia-smi) knows
-// nothing about it, so it must not size layer offload from that detection.
-func usesPluginGPU(bin string) bool {
-	if FlavorOfPath(bin) != "cpu" {
-		return false
-	}
+// usesVulkanOnlyGPU reports whether bin's only GPU is a Vulkan one, whichever
+// folder it lives in (a Vulkan backend plugin dropped into the cpu folder, or
+// the Vulkan backend of the nvidia folder on a machine without CUDA). Such a GPU
+// is used for prompt processing even with zero offloaded layers, and Memo's own
+// GPU detection (sysfs/nvidia-smi) knows nothing about it, so it must not size
+// layer offload from that detection.
+func usesVulkanOnlyGPU(bin string) bool {
 	devs, ok := listGPUDevices(bin)
-	return ok && len(devs) > 0
+	return ok && onlyVulkan(devs)
+}
+
+// gpuSelector implements resolveBinary's auto choice among the bundled flavors,
+// visited in the order amd, nvidia, cpu. The old rule — first folder that exists —
+// ran everything on the CPU whenever the amd (ROCm) folder was present on a
+// machine ROCm does not support, however capable the others were.
+//
+//   - a flavor that lists a native (non-Vulkan) device is used right away;
+//   - one that lists nothing, or only Vulkan, is remembered and skipped for now;
+//   - the cpu flavor is used if it lists a device (a Vulkan plugin sits beside
+//     it; it is also the newest build), otherwise the remembered Vulkan flavor,
+//     otherwise cpu;
+//   - a probe with no verdict (older build, hung runtime, Windows/macOS) leaves
+//     the old answer: that folder, at once.
+type gpuSelector struct{ none, vulkan string }
+
+// consider returns the engine to use when p (a bundled copy of flavor) settles
+// the choice, or done=false to keep looking.
+func (g *gpuSelector) consider(flavor, p string) (choice string, done bool) {
+	devs, ok := listGPUDevices(p)
+	if flavor == "cpu" {
+		if ok && len(devs) > 0 {
+			return p, true
+		}
+		if g.vulkan != "" {
+			return g.vulkan, true
+		}
+		return p, true
+	}
+	switch {
+	case !ok:
+		return p, true
+	case len(devs) == 0:
+		if g.none == "" {
+			g.none = p
+		}
+		return "", false
+	case onlyVulkan(devs):
+		if g.vulkan == "" {
+			g.vulkan = p
+		}
+		return "", false
+	}
+	return p, true
+}
+
+// fallback is the answer when no cpu flavor ended the walk: rather one of the
+// skipped flavors than none at all.
+func (g *gpuSelector) fallback() string {
+	if g.vulkan != "" {
+		return g.vulkan
+	}
+	return g.none
 }
 
 // deviceNoneArgs are the arguments that keep a llama-server on the host CPU
@@ -206,9 +263,9 @@ func deviceNoneSupported(bin string) bool {
 // GPU backend even though one is loaded, or nil:
 //
 //   - engine_mode "cpu": the user asked for no GPU, and a Vulkan plugin in the
-//     cpu folder would otherwise take it anyway. Only that plugin case is
-//     rewritten; what a GPU flavor's own backend does under "cpu" is unchanged.
-//   - the embedding sidecar on a plugin GPU with no layers requested: measured
+//     cpu folder would otherwise take it anyway. Only a Vulkan-only GPU is
+//     rewritten; what a native (ROCm/CUDA) backend does under "cpu" is unchanged.
+//   - the embedding sidecar on a Vulkan-only GPU with no layers requested: measured
 //     on Vulkan (RADV RENOIR) it is ~10x slower for short inputs and its
 //     vectors differ from the CPU ones (cosine 0.991-0.994), so stored and new
 //     vectors would no longer share one space.
@@ -219,7 +276,7 @@ func hostOnlyArgs(bin, mode string, embedding bool, gpuLayers int, rpc bool) []s
 	if rpc {
 		return nil
 	}
-	want := (mode == "cpu" || (embedding && gpuLayers == 0)) && usesPluginGPU(bin)
+	want := (mode == "cpu" || (embedding && gpuLayers == 0)) && usesVulkanOnlyGPU(bin)
 	if !want || !deviceNoneSupported(bin) {
 		return nil
 	}

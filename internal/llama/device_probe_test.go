@@ -232,24 +232,28 @@ func TestResolveBinary_ExplicitModeIgnoresTheDeviceProbe(t *testing.T) {
 	}
 }
 
-func TestUsesPluginGPU(t *testing.T) {
+func TestUsesVulkanOnlyGPU(t *testing.T) {
 	requireLinux(t)
 	cases := []struct {
 		flavor, devices string
 		want            bool
 	}{
-		{"cpu", vulkanGPU, true}, // the GPU comes from a plugin dropped into the cpu folder
-		{"cpu", noGPU, false},    // plain CPU engine
-		{"amd", hipGPU, false},   // the flavor's own GPU backend, not a plugin
-		{"nvidia", vulkanGPU, false},
+		{"cpu", vulkanGPU, true},   // the GPU comes from a plugin dropped into the cpu folder
+		{"cpu", noGPU, false},      // plain CPU engine
+		{"amd", hipGPU, false},     // the flavor's own GPU backend
+		{"nvidia", cudaGPU, false}, // the flavor's own GPU backend
+		// the b9441 nvidia folder carries Vulkan too: on a machine without CUDA that is all it sees
+		{"nvidia", vulkanGPU, true},
+		// a native device next to a Vulkan one: the native backend decides
+		{"nvidia", cudaGPU + "\n  Vulkan1: NVIDIA GeForce RTX 3060 (12288 MiB, 11000 MiB free)", false},
 	}
 	for _, c := range cases {
 		bin := probeBinary(t, t.TempDir(), c.flavor, c.devices, true)
-		if got := usesPluginGPU(bin); got != c.want {
-			t.Errorf("usesPluginGPU(%s flavor, devices %q) = %v, want %v", c.flavor, c.devices, got, c.want)
+		if got := usesVulkanOnlyGPU(bin); got != c.want {
+			t.Errorf("usesVulkanOnlyGPU(%s flavor, devices %q) = %v, want %v", c.flavor, c.devices, got, c.want)
 		}
 	}
-	if usesPluginGPU(withStubBackendLib(t, engine(t, t.TempDir(), "cpu"))) {
+	if usesVulkanOnlyGPU(withStubBackendLib(t, engine(t, t.TempDir(), "cpu"))) {
 		t.Error("a cpu engine that cannot run must not count as a GPU engine")
 	}
 }
@@ -260,6 +264,7 @@ func TestHostOnlyArgs(t *testing.T) {
 	plainCPU := probeBinary(t, t.TempDir(), "cpu", noGPU, true)
 	amd := probeBinary(t, t.TempDir(), "amd", hipGPU, true)
 	oldCPU := probeBinary(t, t.TempDir(), "cpu", vulkanGPU, false) // rejects --device
+	nvidiaVulkan := probeBinary(t, t.TempDir(), "nvidia", vulkanGPU, true)
 	devNone := []string{"--device", "none"}
 
 	tests := []struct {
@@ -279,6 +284,7 @@ func TestHostOnlyArgs(t *testing.T) {
 		{"engine_mode cpu never rewrites a GPU flavor's own backend, only the plugin case was measured", amd, "cpu", false, 0, false, nil},
 		{"embedding on a plain cpu engine needs no flag", plainCPU, "auto", true, 0, false, nil},
 		{"the amd engine's own GPU backend is not touched", amd, "auto", true, 0, false, nil},
+		{"a Vulkan-only GPU is host-only for embedding whatever the folder is called", nvidiaVulkan, "auto", true, 0, false, devNone},
 		{"a build that rejects --device is never given it", oldCPU, "cpu", false, 0, false, nil},
 		{"the swarm coordinator keeps its RPC devices", pluginCPU, "cpu", false, 0, true, nil},
 	}
@@ -426,4 +432,56 @@ func TestParseListDevices_CRLFAndTrailingNoise(t *testing.T) {
 	if strings.Contains(strings.Join(got, ""), "load_backend") {
 		t.Fatal("noise after the list must not be read as a device")
 	}
+}
+
+// The real bundle ships amd + nvidia + cpu side by side, and the nvidia folder
+// (b9441) carries a Vulkan backend as well. On a machine with neither ROCm nor
+// CUDA support that folder sees only the Vulkan GPU: not what the folder is for,
+// and an older build than cpu + plugin.
+func TestResolveBinary_AutoTreatsAVulkanOnlyGPUFlavorAsNotNative(t *testing.T) {
+	requireLinux(t)
+
+	t.Run("cpu with the plugin wins over a GPU flavor that only sees Vulkan", func(t *testing.T) {
+		_, bundled := withOverride(t)
+		probeBinary(t, bundled, "amd", noGPU, true)
+		probeBinary(t, bundled, "nvidia", vulkanGPU, true)
+		want := probeBinary(t, bundled, "cpu", vulkanGPU, true)
+		got, err := resolveBinary("", "auto")
+		if err != nil || !samePath(t, got, want) {
+			t.Fatalf("auto picked %q, %v; want the cpu engine %q", got, err, want)
+		}
+	})
+
+	t.Run("without the plugin, the flavor that sees Vulkan is still better than plain cpu", func(t *testing.T) {
+		_, bundled := withOverride(t)
+		probeBinary(t, bundled, "amd", noGPU, true)
+		want := probeBinary(t, bundled, "nvidia", vulkanGPU, true)
+		probeBinary(t, bundled, "cpu", noGPU, true)
+		got, err := resolveBinary("", "auto")
+		if err != nil || !samePath(t, got, want) {
+			t.Fatalf("auto picked %q, %v; want the nvidia engine %q", got, err, want)
+		}
+	})
+
+	t.Run("a native device keeps its flavor even when cpu has the plugin", func(t *testing.T) {
+		_, bundled := withOverride(t)
+		probeBinary(t, bundled, "amd", noGPU, true)
+		want := probeBinary(t, bundled, "nvidia", cudaGPU+"\n  Vulkan1: NVIDIA GeForce RTX 3060 (12288 MiB, 11000 MiB free)", true)
+		probeBinary(t, bundled, "cpu", vulkanGPU, true)
+		got, err := resolveBinary("", "auto")
+		if err != nil || !samePath(t, got, want) {
+			t.Fatalf("auto picked %q, %v; want the nvidia engine %q", got, err, want)
+		}
+	})
+
+	t.Run("nothing sees any GPU: the cpu engine, the newest build", func(t *testing.T) {
+		_, bundled := withOverride(t)
+		probeBinary(t, bundled, "amd", noGPU, true)
+		probeBinary(t, bundled, "nvidia", noGPU, true)
+		want := probeBinary(t, bundled, "cpu", noGPU, true)
+		got, err := resolveBinary("", "auto")
+		if err != nil || !samePath(t, got, want) {
+			t.Fatalf("auto picked %q, %v; want the cpu engine %q", got, err, want)
+		}
+	})
 }

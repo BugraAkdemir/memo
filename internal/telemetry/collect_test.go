@@ -19,6 +19,8 @@ type fakeSources struct {
 	memory   int
 	lang     string
 	features []string
+
+	webProvider bool
 }
 
 func (f *fakeSources) UsageEvents(_ context.Context, from, to time.Time) ([]stats.Event, error) {
@@ -44,6 +46,10 @@ func (f *fakeSources) ProviderOf(name, model string) (string, string) {
 		return "sub", "antigravity"
 	case "mykey":
 		return "api", "openai"
+	case "web":
+		if f.webProvider {
+			return "api", "web-chatgpt"
+		}
 	}
 	return "api", "other"
 }
@@ -80,9 +86,9 @@ func TestBuild_UsageIsGroupedAndNamesAreCatalogNames(t *testing.T) {
 		t.Fatalf("Build: %v %v", r, err)
 	}
 	want := map[string]UsageRow{
-		"local/local/Qwen3 8B/chat":                  {Kind: "local", Provider: "local", Model: "Qwen3 8B", Category: "chat", Turns: 2, InTokens: 1500, OutTokens: 300},
-		"sub/antigravity/gemini-3.8-flash/agent":     {Kind: "sub", Provider: "antigravity", Model: "gemini-3.8-flash", Category: "agent", Turns: 1, InTokens: 9000, OutTokens: 300, CachedTokens: 8000},
-		"api/openai/other/title":                     {Kind: "api", Provider: "openai", Model: "other", Category: "title", Turns: 1, InTokens: 50, OutTokens: 5},
+		"local/local/Qwen3 8B/chat":              {Kind: "local", Provider: "local", Model: "Qwen3 8B", Category: "chat", Turns: 2, InTokens: 1500, OutTokens: 300},
+		"sub/antigravity/gemini-3.8-flash/agent": {Kind: "sub", Provider: "antigravity", Model: "gemini-3.8-flash", Category: "agent", Turns: 1, InTokens: 9000, OutTokens: 300, CachedTokens: 8000},
+		"api/openai/other/title":                 {Kind: "api", Provider: "openai", Model: "other", Category: "title", Turns: 1, InTokens: 50, OutTokens: 5},
 	}
 	got := map[string]UsageRow{}
 	for _, u := range r.Usage {
@@ -123,8 +129,8 @@ func TestBuild_PurposeAndPerfComeFromCategoriesAndLocalSamples(t *testing.T) {
 		{Timestamp: day(9), Provider: "local", Model: "Qwen3-8B-Q4_K_M.gguf", Category: "chat", PromptTokens: 100, CompletionTokens: 50, TokensPerSecond: 55, TTFTMs: 700},
 		{Timestamp: day(10), Provider: "local", Model: "Qwen3-8B-Q4_K_M.gguf", Category: "chat", PromptTokens: 100, CompletionTokens: 50, TokensPerSecond: 12, TTFTMs: 3000},
 		{Timestamp: day(11), Provider: "Subscriptions", Model: "gemini-3.8-flash", Category: "agent", PromptTokens: 900, CompletionTokens: 30},
-		{Timestamp: day(12), Provider: "local", Model: "Qwen3-8B-Q4_K_M.gguf", Category: "chat", PromptTokens: 5, CompletionTokens: 3, TokensPerSecond: 99, TTFTMs: 100}, // too short to be a speed sample
-		{Timestamp: day(13), Provider: "local", Model: "my-secret-finetune.gguf", Category: "chat", PromptTokens: 100, CompletionTokens: 50, TokensPerSecond: 55, TTFTMs: 700},    // size unknown
+		{Timestamp: day(12), Provider: "local", Model: "Qwen3-8B-Q4_K_M.gguf", Category: "chat", PromptTokens: 5, CompletionTokens: 3, TokensPerSecond: 99, TTFTMs: 100},       // too short to be a speed sample
+		{Timestamp: day(13), Provider: "local", Model: "my-secret-finetune.gguf", Category: "chat", PromptTokens: 100, CompletionTokens: 50, TokensPerSecond: 55, TTFTMs: 700}, // size unknown
 	}
 	c, _ := newCollector(t, src)
 	r, _ := c.Build(context.Background(), "2026-10-26")
@@ -228,5 +234,65 @@ func TestBuild_EveryReportPassesTheServersSchema(t *testing.T) {
 	s := loadSchema(t)
 	if errs := validate(s, s, doc, "report"); len(errs) > 0 {
 		t.Fatalf("the built report breaks the server's allow-list:\n  %s\n%s", strings.Join(errs, "\n  "), raw)
+	}
+}
+
+func TestBuild_FeaturesAreDerivedFromWhatTheDayActuallyDid(t *testing.T) {
+	src := baseSources()
+	src.events = []stats.Event{
+		{Timestamp: day(9), Provider: "local", Model: "Qwen3-8B.gguf", Category: "chat", PromptTokens: 10, CompletionTokens: 10},
+		{Timestamp: day(10), Provider: "mykey", Model: "gpt-5.5", Category: "task_step", PromptTokens: 10, CompletionTokens: 10},
+		{Timestamp: day(11), Provider: "mykey", Model: "gpt-5.5", Category: "task_subagent", PromptTokens: 10, CompletionTokens: 10},
+	}
+	c, _ := newCollector(t, src)
+	r, _ := c.Build(context.Background(), "2026-10-26")
+	if strings.Join(r.Features, ",") != "self_driving,subagents" {
+		t.Fatalf("features = %v", r.Features)
+	}
+	// a web chat provider (provider type web-*) marks the Beta feature
+	src.events = []stats.Event{{Timestamp: day(9), Provider: "web", Model: "gpt-5.5", Category: "chat", PromptTokens: 1, CompletionTokens: 1}}
+	src.webProvider = true
+	r, _ = c.Build(context.Background(), "2026-10-26")
+	if strings.Join(r.Features, ",") != "webchat_beta" {
+		t.Fatalf("features = %v", r.Features)
+	}
+}
+
+func TestBuild_AVersionTheServerCannotReadIsNotReported(t *testing.T) {
+	src := baseSources()
+	src.events = []stats.Event{usedOn(1)}
+	for _, v := range []string{"", "dev", "5.0", "5.0.0+abc123def"} {
+		c, _ := newCollector(t, src)
+		c.Info.Version = v
+		if r, err := c.Build(context.Background(), "2026-10-26"); r != nil || err != ErrUnsupported {
+			t.Errorf("version %q: want ErrUnsupported, got %v %v", v, r, err)
+		}
+	}
+	c, _ := newCollector(t, src)
+	c.Info.Version = "v5.0.0" // a leading v is tolerated and dropped
+	r, err := c.Build(context.Background(), "2026-10-26")
+	if err != nil || r == nil || r.AppVersion != "5.0.0" {
+		t.Fatalf("v5.0.0 should become 5.0.0: %v %v", r, err)
+	}
+}
+
+func TestBuild_EngineFollowsTheEngineFolderAndFallsBackToTheGPUWhenItIsUnknown(t *testing.T) {
+	cases := []struct {
+		hw   HWInfo
+		want string
+	}{
+		{HWInfo{GPUType: "nvidia", EngineFlavor: "nvidia"}, "nvidia"},
+		{HWInfo{GPUType: "nvidia", EngineFlavor: "cpu"}, "cpu"}, // the person forced the CPU engine
+		{HWInfo{GPUType: "amd", EngineFlavor: "amd"}, "amd"},
+		{HWInfo{GPUType: "nvidia", EngineFlavor: ""}, "nvidia"}, // a custom llama-server: trust the card
+		{HWInfo{GPUType: "amd", EngineFlavor: ""}, "amd"},
+		{HWInfo{GPUType: "metal", EngineFlavor: ""}, "metal"},
+		{HWInfo{GPUType: "metal", EngineFlavor: "cpu-arm64"}, "metal"},
+		{HWInfo{GPUType: "cpu", EngineFlavor: ""}, "cpu"},
+	}
+	for _, c := range cases {
+		if got := engineOf(c.hw); got != c.want {
+			t.Errorf("engineOf(%+v) = %q, want %q", c.hw, got, c.want)
+		}
 	}
 }

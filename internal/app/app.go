@@ -50,6 +50,7 @@ import (
 	"memo/internal/swarm"
 	"memo/internal/taskloop"
 	"memo/internal/telegram"
+	"memo/internal/telemetry"
 	"memo/internal/tts"
 	"memo/internal/tunnel"
 	"memo/internal/websearch"
@@ -280,6 +281,7 @@ type App struct {
 	routineLoop  *routine.RoutineLoop
 
 	statsStore *stats.Store
+	telemetry  *telemetry.Manager // optional anonymous daily summary; nil until initTelemetry (see telemetry.go)
 
 	devGatewayLog gatewayLog
 
@@ -514,7 +516,9 @@ func (a *App) emitEvent(name string, data ...interface{}) {
 // identifies which goroutine panicked in the log.
 func recoverPanic(label string) {
 	if r := recover(); r != nil {
-		logx.Printf("PANIC in %s: %v\n%s", label, r, string(debug.Stack()))
+		stack := debug.Stack()
+		logx.Printf("PANIC in %s: %v\n%s", label, r, string(stack))
+		logx.NotifyPanic(r, stack)
 	}
 }
 
@@ -657,6 +661,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.initLearning(ctx)
 	a.initRoutines(ctx)
 	a.initStats()
+	a.initTelemetry() // after initStats: it reads the usage store; sends nothing until the person agrees
 	a.initSwarm()
 
 	// An app update may have bundled engines newer than the ones downloaded

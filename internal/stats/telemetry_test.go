@@ -32,7 +32,7 @@ func TestEventsBetween_ReturnsOnlyNonPrivateEventsInTheRange(t *testing.T) {
 	rec(day.Add(5*time.Hour), Event{Provider: "openai", Model: "gpt-5.5", Category: "agent", PromptTokens: 900, CachedPromptTokens: 800, CompletionTokens: 10})
 	rec(day.Add(6*time.Hour), Event{Provider: "openai", Model: "gpt-5.5", PromptTokens: 5, CompletionTokens: 5, Private: true}) // Minimal Mode turn
 	rec(day.Add(-time.Second), Event{Provider: "local", Model: "before"})                                                       // the day before
-	rec(day.Add(24*time.Hour), Event{Provider: "local", Model: "after"})                                                         // the day after (to is exclusive)
+	rec(day.Add(24*time.Hour), Event{Provider: "local", Model: "after"})                                                        // the day after (to is exclusive)
 
 	got, err := store.EventsBetween(ctx, day, day.Add(24*time.Hour))
 	if err != nil {

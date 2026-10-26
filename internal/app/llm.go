@@ -1763,7 +1763,9 @@ func recvChunk[T any](ctx context.Context, ch <-chan T) (chunk T, ok bool, ctxDo
 // before outCh is closed, instead of just losing the response silently.
 func recoverStreamPanic(ctx context.Context, outCh chan<- api.StreamChunk, label string) {
 	if r := recover(); r != nil {
-		logx.Printf("PANIC in %s: %v\n%s", label, r, string(debug.Stack()))
+		stack := debug.Stack()
+		logx.Printf("PANIC in %s: %v\n%s", label, r, string(stack))
+		logx.NotifyPanic(r, stack)
 		trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ internal error", Done: true})
 	}
 }

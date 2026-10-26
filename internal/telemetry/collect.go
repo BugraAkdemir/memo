@@ -64,10 +64,11 @@ type Collector struct {
 }
 
 var (
-	slugRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,31}$`)
-	langRe    = regexp.MustCompile(`^[a-z]{2}$`)
-	excTypeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.]{0,63}$`)
-	frameRe   = regexp.MustCompile(`^memo[A-Za-z0-9_./()*\[\]-]{0,119} [A-Za-z0-9_][A-Za-z0-9_./-]{0,99}:[0-9]{1,6}$`)
+	slugRe       = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,31}$`)
+	langRe       = regexp.MustCompile(`^[a-z]{2}$`)
+	appVersionRe = regexp.MustCompile(`^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(-[a-z0-9.]{1,16})?$`)
+	excTypeRe    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.]{0,63}$`)
+	frameRe      = regexp.MustCompile(`^memo[A-Za-z0-9_./()*\[\]-]{0,119} [A-Za-z0-9_][A-Za-z0-9_./-]{0,99}:[0-9]{1,6}$`)
 )
 
 // The lists below are the schema's enums. A value that is not on a list never
@@ -120,15 +121,25 @@ func gpuClass(t string) string {
 	return "none"
 }
 
+// engineOf names the hardware path the local model really uses: the bundled
+// engine folder when Memo knows it, otherwise (a custom llama-server) the GPU
+// that was detected. A forced CPU engine stays "cpu".
 func engineOf(h HWInfo) string {
+	if h.GPUType == "metal" {
+		return "metal"
+	}
 	switch h.EngineFlavor {
 	case "nvidia":
 		return "nvidia"
 	case "amd":
 		return "amd"
-	}
-	if h.GPUType == "metal" {
-		return "metal"
+	case "":
+		switch h.GPUType {
+		case "nvidia":
+			return "nvidia"
+		case "amd":
+			return "amd"
+		}
 	}
 	return "cpu"
 }
@@ -156,6 +167,10 @@ func (c *Collector) Build(ctx context.Context, day string) (*Report, error) {
 	if !set("linux", "windows", "darwin")[c.Info.OS] || !set("amd64", "arm64")[c.Info.Arch] {
 		return nil, ErrUnsupported
 	}
+	version := strings.TrimPrefix(strings.TrimSpace(c.Info.Version), "v")
+	if !appVersionRe.MatchString(version) {
+		return nil, ErrUnsupported // the server only reads x.y.z[-tag]; a report it would refuse is not sent
+	}
 	hwi := c.Sources.Hardware()
 	ram := RAMGB(hwi.RAMMB)
 	if ram == 0 {
@@ -172,6 +187,7 @@ func (c *Collector) Build(ctx context.Context, day string) (*Report, error) {
 		Schema: SchemaVersion, TID: snap.TID, Day: day, AppVersion: c.Info.Version, Build: c.Info.Build, OS: c.Info.OS, Arch: c.Info.Arch,
 		UILang: c.lang(),
 	}
+	r.AppVersion = version
 	engine := engineOf(hwi)
 	class := gpuClass(hwi.GPUType)
 	r.HW = HW{GPUClass: class, GPUModel: NormalizeGPU(hwi.GPUName, class), VRAMGB: min(1024, (hwi.VRAMMB+512)/1024), Engine: engine, RAMGB: ram}
@@ -192,7 +208,7 @@ func (c *Collector) Build(ctx context.Context, day string) (*Report, error) {
 		return nil, nil
 	}
 
-	r.Features = c.features(counters, len(events) > 0)
+	r.Features = c.features(counters, len(events) > 0, r.Usage)
 	if m := (Milestones{Installed: snap.InstallDay, ProviderAdded: snap.Milestones.ProviderAdded, FirstMessage: snap.Milestones.FirstMessage}); m != (Milestones{}) {
 		r.Milestones = &m
 	}
@@ -362,8 +378,30 @@ func crashRow(c *CrashAgg) (CrashRow, bool) {
 	return CrashRow{Sig: hex.EncodeToString(sum[:]), Component: c.Component, ExcType: c.ExcType, Frames: c.Frames, N: c.N}, true
 }
 
-func (c *Collector) features(d *DayCounters, used bool) []string {
+// derivedFeatures reads features off what the day's calls were: Self-Driving
+// task categories, sub-agent runs, and a web-chat provider. No hook is needed
+// and nothing is guessed from content.
+func derivedFeatures(rows []UsageRow) []string {
+	var out []string
+	for _, u := range rows {
+		switch {
+		case u.Category == "task_subagent":
+			out = append(out, "subagents")
+		case strings.HasPrefix(u.Category, "task_"):
+			out = append(out, "self_driving")
+		}
+		if strings.HasPrefix(u.Provider, "web-") {
+			out = append(out, "webchat_beta")
+		}
+	}
+	return out
+}
+
+func (c *Collector) features(d *DayCounters, used bool, rows []UsageRow) []string {
 	got := map[string]bool{}
+	for _, f := range derivedFeatures(rows) {
+		got[f] = true
+	}
 	if d != nil {
 		for f := range d.Features {
 			got[f] = true

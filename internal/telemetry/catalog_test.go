@@ -56,8 +56,8 @@ func TestNormalizeGPU(t *testing.T) {
 		{"Intel(R) Iris(R) Xe Graphics", "intel", "Iris Xe Graphics"},
 		{"Intel(R) UHD Graphics 630", "intel", "UHD Graphics"},
 		{"Some Unknown Card 9000", "nvidia", "other_nvidia"},
-		{"", "nvidia", ""},     // nothing detected: no model, not "other"
-		{"CPU", "none", ""},    // a CPU-only machine has no GPU model
+		{"", "nvidia", ""},  // nothing detected: no model, not "other"
+		{"CPU", "none", ""}, // a CPU-only machine has no GPU model
 		{"CPU (Zorunlu)", "none", ""},
 	}
 	for _, c := range cases {

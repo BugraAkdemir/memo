@@ -19,8 +19,8 @@ import (
 
 type recorded struct {
 	Path, Method, ContentType, UserAgent string
-	Header                                http.Header
-	Body                                  []byte
+	Header                               http.Header
+	Body                                 []byte
 }
 
 // fakeServer stands in for tel.memocpp.com: it records every request and answers

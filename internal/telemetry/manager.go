@@ -304,7 +304,9 @@ func (m *Manager) note(fn func(day string) error) {
 	}
 }
 
-func (m *Manager) NoteFeature(f string) { m.note(func(d string) error { return m.state.AddFeature(d, f) }) }
+func (m *Manager) NoteFeature(f string) {
+	m.note(func(d string) error { return m.state.AddFeature(d, f) })
+}
 func (m *Manager) NoteProviderErr(provider, code string) {
 	m.note(func(d string) error { return m.state.AddProviderErr(d, provider, code) })
 }
@@ -317,7 +319,9 @@ func (m *Manager) NoteExit(component, code string) {
 func (m *Manager) NoteUpdate(event, code string) {
 	m.note(func(d string) error { return m.state.AddUpdate(d, event, code) })
 }
-func (m *Manager) NoteCrash(c CrashAgg) { m.note(func(d string) error { return m.state.AddCrash(d, c) }) }
+func (m *Manager) NoteCrash(c CrashAgg) {
+	m.note(func(d string) error { return m.state.AddCrash(d, c) })
+}
 
 // NoteMilestone records "provider_added" / "first_message" (earliest date wins).
 func (m *Manager) NoteMilestone(name string) {

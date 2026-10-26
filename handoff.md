@@ -4,6 +4,10 @@
 
 ## Açık işler
 
+**Yerel model hızı (2026-10-26, AGENTS.md "Local-model speed")**
+- Eklenti `libggml-vulkan.so` yalnız yerel `binaries/linux/cpu`'da; R2'ye YAYINLANMADI → kullanıcılara ulaşmadı. Yayınlarken `vendor_llama.sh linux/cpu` + rclone + `publish_component.sh` ve **`--requires-app` bu kodu içeren sürüm olmalı**: eski uygulamada eklentili cpu klasörü Whisper'ı sessizce GPU'ya geçirir (`--no-gpu` yok) ve `engine_mode: cpu` GPU'yu kapatmaz. `~/.memo` (kurulu kopya) güncellenmedi.
+- Doğrulanmadı: ayrık Vulkan GPU'da tam katman offload (yalnız APU vardı), `--n-cpu-moe` (MoE modeli yok), gerçek araç çağrısı üreten model + spekülasyon, Whisper'ı GPU'da gerçek konuşmayla (örnek ses yok → şimdilik `--no-gpu`), Windows/macOS (probe Linux'a kapalı), CUDA/ROCm donanımıyla spekülasyon.
+
 **Alt ajan (2026-10-23, `PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`)**
 - Canlı web UI alt ajan testi PASS (aşağıda); uzun iş/native pencere ölçülmedi. Açık: Self-Driving readonly komut sınırı (`docs/SUBAGENT_REVIEW.md`). Worker kuralları/routing/hata aktarımı düzeltildi (2026-10-24, `docs/TASKLOOP_PERFORMANCE_REVIEW.md`); gerçek Antigravity/Waydroid hız-kalite ölçümü ve bildirilen 300 dk geçmişi yok.
 
@@ -32,6 +36,7 @@
 - Gerçek Windows Setup.exe/ShellExecute, macOS, GPU/model ile motor sonrası restart ve Flutter güncelleme penceresi doğrulanmadı. macOS betik kurulumunda başlatıcı yok → çoğu manual.
 - Windows/macOS motor sürüm işareti yok; kanıtlı ENGINES.txt satırı eklenmeden motor güncellemesi almaz. Linux llama b11669 (nvidia b9441), cpu whisper 1.9.5 (2026-10-25).
 - llama yükseltmesi 2026-10-25'te uygulandı (b11669); eski b11456 artıkları yeni klasörle gitti.
+- 2026-10-25 motor güncellemesinden kalan: whisper-server klasördeki llama ggml arka uçlarını da yükler (llama yükseltmesinde yeniden dene); statik whisper AVX2+FMA+F16C varsayar (eski CPU'da çökebilir, ölçülmedi); amd klasörü ROCm 10 ile ~1,2 GB, gerçek AMD GPU ile denenmedi; issue #42-#47 açık; "indirdim, Yeniden başlat" onay adımı yok (komple güncelleme indirme bitince kendiliğinden kapanır); Docker daemon kapalıydı.
 - İmza anahtarı `~/.config/memo-release/update-signing.key` ve Actions `MEMO_UPDATE_SIGNING_KEY`; anahtar geçişi eski anahtarla imzalı sürüm ister.
 
 **Saha doğrulaması / sürüm hazırlığı**
@@ -68,9 +73,10 @@
 
 ---
 
-# Son oturum — 2026-10-25 — motor güncellemesi (CLIProxy v8.0.43, llama b11669, whisper 1.9.5)
-- **CLIProxyAPI v8.0.25→v8.0.43** (`3b90a275`): R2 4 klasör + imzalı bileşen + beacon yayında; kurulu 4.7.0 uygulama indirip kurdu. Diyalog hatası: biten bileşen satırı "Şimdi güncelle"de kalıyordu, ikinci tıklama "there is no cliproxy update" veriyordu → düzeltildi (`43c76439`, RED/GREEN widget testi).
-- **llama b9441→b11669** (stabil v0.7.0; llama.cpp artık `v0.N.0` yayınlıyor, asset yalnız `nightly-tag.txt`) linux/cpu, amd, cpu-arm64; nvidia b9441'de (CUDA 12.2 yok). **whisper 1.9.5** statik derlendi (kendi ggml, glibc 2.38), `memo-lora-train` silindi (kullanıcı kullanmıyor). Gerçek Phi-3 sohbet + nomic embedding + JFK transkripsiyonu klasör içinde PASS. R2 `binaries/linux/*` sync edildi; eski b9441 yedeği `memo-r2:memo/binaries-backup-b9441/`.
-- **Hata:** `llamaReportsBuild` — yeni llama `version: 0.7.0-dev (build 11669…)` yazıyor; eski `verifyEngine` yalnız `version: 11669` arıyordu, ≤4.7.0 uygulamalar güncellemeyi geri alırdı. Bu yüzden llama/whisper bileşenleri `--requires-app 4.7.1` ile yayınlandı: **sıradaki Memo sürümü 4.7.1 (veya üstü) olmalı** ve bu düzeltmeyi içermeli. `vendor_llama.sh` döngü sonu `&&` hatası düzeltildi.
-- **Kurulum scriptleri** (`get-memo*.sh`, `get_memo_arm.sh`, `update.sh`) kurulurken eski motor klasörlerini beacon'a göre güncelliyor (`scripts/engine_refresh.sh`, blok 6 scriptte gömülü, `internal/components/installer_refresh_test.go` aynılığı + senaryoları sınar). İmza kontrolü yok (yalnız HTTPS+SHA-256), `requires_app` yok sayılır. Canlı R2/beacon'a karşı CLIProxy v8.0.25→v8.0.43 denendi PASS; llama/whisper indirmesi gerçekte denenmedi. `main`'e push edilince CI scriptleri R2'ye koyar.
-- **Açık:** (1) commit'ler push edilmedi (`0a8b6063`, `f5cf3fe0`, `43c76439`); (2) Windows/macOS motorları dokunulmadı (işaret yok); (3) whisper-server klasördeki llama ggml arka uçlarını da yüklüyor (çalışıyor; llama bump'ında yeniden dene); (4) statik whisper yedeği AVX2+FMA+F16C varsayar, daha eski CPU'da çökebilir (klasördeki `libggml-cpu-*.so` varyantları genelde devreye girer, ölçülmedi); (5) amd klasörü ROCm 10 ile ~1,2 GB (arşiv 244 MB), gerçek AMD GPU ile denenmedi; (6) issue #42–#47 açık (kapatma izni reddedildi); (7) "indirdim, **Yeniden başlat**" onay adımı yok (komple güncelleme indirme bitince kendiliğinden kapanır) — kullanıcı isterse ayrı iş; (8) Docker daemon kapalı, whisper host'ta derlendi.
+# Son oturum — 2026-10-26 — yerel model hızlandırma
+- **Kök neden:** auto modda `resolveBinary` ilk klasörü (amd, nvidia, cpu) seçiyordu; bu APU'da `amd` (ROCm) hiç GPU görmüyor → her şey CPU'da. Şimdi her build'e `--list-devices` sorulur (`gpuSelector`, `internal/llama/device_probe.go`); yalnız Vulkan gören klasör "yerel GPU" sayılmaz. `nvidia` (b9441) klasörü de Vulkan taşıyor ve burada Vulkan0 görüyor; gerçek üç klasörlü düzende doğrulandı.
+- **Ölçüm (Ryzen 5 5600H APU, Phi-3 Q4, b11669):** `linux/cpu`'ya `libggml-vulkan.so` → 1641 token prompt eval 65,7 → 146 t/s (ilk token ~25 → ~11 sn), decode aynı (~13-15). Vulkan-yalnız GPU'da katman 0 (8 katman 10,5 t/s'ye düşürüyordu), embedding ve `engine_mode: cpu` için `--device none` (Vulkan'da vektörler CPU'dan farklı, cosine 0,991-0,994), Whisper `--no-gpu`.
+- **Spekülatif decode:** `--spec-type ngram-simple` (n=16, min-hits=2): kod kopyalama 14,6 → ~50 t/s, düz metinde fark yok; varsayılan ayarlar düz metni %8-11 yavaşlattı. `MEMO_LLAMA_SPECULATIVE=off` ile kapanır.
+- **Ölçülüp reddedildi:** 12 thread, `--threads-batch`, ubatch, CPU'da q8_0 KV ve flash attention.
+- **Commit'ler (push edilmedi):** `b9d442a7`, `ea2dbab4` (vendor_llama.sh), `a7692f38`, `694ef6d2`, `aa0ae468` (+ bu doküman commit'i). Doğrulama: RED/GREEN testler, mutasyon kontrolü, gerçek `Server.Start`/`whisper.Server.Start` koşuları, `go build/vet` + `go test ./... -race`. Tam koşuda yalnız `TestRunComponentUpdate_TamperedDownloadChangesNothing` düştü: temiz `7eb50de6`'da da 15'te 2 düşüyor (önceden var). `TestEmbeddingLifecycle` `internal/app/.starts` dosyası sızdırıyor (silindi; test izolasyonu açığı).
+- **Araçlar:** ruflo/claude-flow MCP araçları bu oturumda bağlanmadı (yalnız ruflo-console arayüzü var), `ecc:go-reviewer` ajanı kullanıldı; bulguları (önbellek süresi, klasör mtime, Linux kapısı, mode cpu kapsamı) düzeltildi.

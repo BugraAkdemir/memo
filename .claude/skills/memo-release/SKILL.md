@@ -212,6 +212,11 @@ publish them from this machine. **Test the staged `llama-server` with a real mod
 nomic embedding in `data/models/`, the flags from `internal/llama/llama.go`), not just `--version`.
 Remove stale leftovers from the staged folder (a `llama-new/` directory from an old attempt), then
 `rclone sync binaries-staged/linux/<f> binaries/linux/<f>`.
+`linux/cpu` is staged WITH `libggml-vulkan.so` (the script fetches it from the same tag's `ubuntu-vulkan-x64`
+asset and checks its SHA-256): it is what lets the cpu engine use an integrated/unsupported GPU for prompt
+processing (~2x), see AGENTS.md "Local-model speed". After staging, `LD_LIBRARY_PATH=<folder> <folder>/llama-server
+--list-devices` must print a `Vulkan0:` line on a machine with a Vulkan driver, and the folder must still
+start `whisper-server` (it passes `--no-gpu` itself). Never add the plugin to `linux/amd`.
 
 **3. whisper.cpp** lives in the SAME `linux/cpu` folder, so it is built to NOT depend on llama's ggml:
 clone the tag, then `cmake -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON

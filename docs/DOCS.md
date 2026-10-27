@@ -48,7 +48,7 @@ Memo is not just another chat UI. It is a full AI companion that runs entirely o
 | **Learning** | Background observer tracks *when* you work (not *what*), learns rhythms, and proactively nudges you about patterns — on by default, fully controllable per sub-feature. |
 | **Offline** | Works 100% offline with bundled llama.cpp. External providers, including Claude Code/Codex CLI and the Subscriptions provider (Antigravity / Claude / Codex accounts through the bundled CLIProxyAPI) as chat providers, are optional. |
 | **Developer-friendly** | Sidebar → Developer exposes both an Anthropic-compatible and an OpenAI-compatible local API gateway, so tools like Claude Code can run against your own local model or API keys. |
-| **Private** | No telemetry, no analytics, no cloud dependency. API keys and the `.memo` backup are encrypted; remote access requires a token, and every gateway endpoint now enforces it. |
+| **Private** | No tracking, no analytics, no cloud dependency. The only optional exception is an anonymous daily summary that is off until you say yes (see [TELEMETRY.md](TELEMETRY.md)). API keys and the `.memo` backup are encrypted; remote access requires a token, and every gateway endpoint now enforces it. |
 
 ---
 

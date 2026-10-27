@@ -60,14 +60,14 @@ func serve(s *Server, method, path, body string) *httptest.ResponseRecorder {
 }
 
 func TestTelemetryStatus_ReportsTheCurrentAnswer(t *testing.T) {
-	stub := &telemetryStub{swarmStubBridge: &swarmStubBridge{}, status: telemetry.Status{NeedsAsk: true, Build: "official", Endpoint: "https://tel.memocpp.com", DeviceID: "0f3c9a1e"}}
+	stub := &telemetryStub{swarmStubBridge: &swarmStubBridge{}, status: telemetry.Status{Enabled: true, Consent: telemetry.ConsentYes, Build: "official", Endpoint: "https://tel.memocpp.com", DeviceID: "0f3c9a1e"}}
 	w := serve(newTelemetryServer(stub), "GET", "/api/telemetry/status", "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", w.Code, w.Body)
 	}
 	var got map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &got)
-	if got["needs_ask"] != true || got["enabled"] != false || got["build"] != "official" || got["device_id"] != "0f3c9a1e" {
+	if _, stale := got["needs_ask"]; stale || got["enabled"] != true || got["consent"] != "yes" || got["build"] != "official" || got["device_id"] != "0f3c9a1e" {
 		t.Fatalf("body = %s", w.Body)
 	}
 }

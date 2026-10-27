@@ -8,7 +8,6 @@ import "context"
 // the optional anonymous daily summary (docs/TELEMETRY.md).
 type TelemetryStatus struct {
 	Enabled     bool   `json:"enabled"`
-	NeedsAsk    bool   `json:"needs_ask"`
 	Consent     string `json:"consent"` // "", "yes", "no"
 	EnvOff      bool   `json:"env_off"` // MEMO_TELEMETRY=off
 	Build       string `json:"build"`

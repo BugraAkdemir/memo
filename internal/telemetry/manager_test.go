@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -113,28 +114,66 @@ func (f *fixture) agreeOn(t *testing.T, offset int) {
 	f.m.now = func() time.Time { return now }
 }
 
-func TestTick_SendsNothingUntilThePersonHasAgreed(t *testing.T) {
+func TestNew_AnOfficialBuildSharesByDefaultButNeverTheDaysBeforeIt(t *testing.T) {
 	f := newFixture(t, BuildOfficial)
 	f.src.events = []stats.Event{usedOn(1), usedOn(2)}
-	if st := f.m.Status(); !st.NeedsAsk || st.Enabled || st.Consent != ConsentUnset {
-		t.Fatalf("a new official install must ask and send nothing: %+v", st)
+	st := f.m.Status()
+	if !st.Enabled || st.Consent != ConsentYes || st.ConsentDay != dayStr(0) {
+		t.Fatalf("a new official install shares from the day it starts: %+v", st)
 	}
 	_ = f.m.Tick(context.Background())
-	if n := len(f.srv.reqs); n != 0 {
-		t.Fatalf("%d requests went out before the person answered", n)
+	if n := len(f.srv.requests("/v1/report")); n != 0 {
+		t.Fatalf("%d reports went out for days before the default took effect", n)
 	}
-	// declining keeps it that way, and stops asking
-	_ = f.m.SetConsent(false)
+	// The day of the default itself is never reported either; the first report is
+	// for the next day, sent the day after.
+	f.m.now = func() time.Time { return now.AddDate(0, 0, 2) }
+	f.src.events = []stats.Event{usedOn(-1)}
 	_ = f.m.Tick(context.Background())
-	if n := len(f.srv.reqs); n != 0 || f.m.Status().NeedsAsk {
-		t.Fatalf("declined: requests=%d needsAsk=%v", n, f.m.Status().NeedsAsk)
+	if n := len(f.srv.requests("/v1/report")); n != 1 {
+		t.Fatalf("want the first completed day reported, got %d reports", n)
 	}
 }
 
-func TestTick_ABuildFromSourceNeverAsksAndNeverSendsByDefault(t *testing.T) {
+func TestSetConsent_ANoDropsTheCountersKeptSoFar(t *testing.T) {
+	f := newFixture(t, BuildOfficial)
+	f.m.NoteFeature("skills")
+	f.m.NoteProviderErr("openai", "429")
+	if len(f.m.state.Snapshot().Days) == 0 {
+		t.Fatal("setup: counters should be kept while sharing is on")
+	}
+	_ = f.m.SetConsent(false)
+	if n := len(f.m.state.Snapshot().Days); n != 0 {
+		t.Fatalf("%d days of counters stayed on disk after the person said no", n)
+	}
+}
+
+func TestNew_ADeclinedAnswerSurvivesARestartAndIsNeverOverwrittenByTheDefault(t *testing.T) {
+	f := newFixture(t, BuildOfficial)
+	f.src.events = []stats.Event{usedOn(1)}
+	_ = f.m.SetConsent(false)
+	m2, err := New(Config{StatePath: f.m.cfg.StatePath, Endpoint: f.srv.URL, Sources: f.src, Info: f.m.cfg.Info, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := m2.Status(); st.Enabled || st.Consent != ConsentNo {
+		t.Fatalf("a person who said no must stay at no after a restart: %+v", st)
+	}
+	f.m.now = func() time.Time { return now.AddDate(0, 0, 5) }
+	_ = m2.Tick(context.Background())
+	if n := len(f.srv.requests("/v1/report")); n != 0 {
+		t.Fatalf("declined, yet %d reports were sent", n)
+	}
+	m2.NoteFeature("memo")
+	if len(m2.state.Snapshot().Days) != 0 {
+		t.Fatal("counters were kept after the person declined")
+	}
+}
+
+func TestTick_ABuildFromSourceNeverSharesByDefault(t *testing.T) {
 	f := newFixture(t, BuildSource)
 	f.src.events = []stats.Event{usedOn(1)}
-	if st := f.m.Status(); st.NeedsAsk || st.Enabled {
+	if st := f.m.Status(); st.Enabled || st.Consent != ConsentUnset {
 		t.Fatalf("source build: %+v", st)
 	}
 	_ = f.m.Tick(context.Background())
@@ -279,8 +318,9 @@ func TestPreview_IsExactlyTheBytesThatAreSent(t *testing.T) {
 	}
 }
 
-func TestPreview_ShowsWhatWouldGoEvenBeforeTheAnswerAndSendsNothing(t *testing.T) {
+func TestPreview_ShowsWhatWouldGoEvenWhileSharingIsOffAndSendsNothing(t *testing.T) {
 	f := newFixture(t, BuildOfficial)
+	_ = f.m.SetConsent(false) // a person deciding whether to turn it back on can see the report first
 	f.src.events = []stats.Event{usedOn(1)}
 	p, err := f.m.Preview(context.Background())
 	if err != nil || p.Empty || !strings.Contains(string(p.JSON), `"day":"`+dayStr(1)+`"`) {
@@ -305,7 +345,7 @@ func TestEnvironmentSwitchWinsOverAnAnswer(t *testing.T) {
 	f.agreeOn(t, 5)
 	t.Setenv("MEMO_TELEMETRY", "off")
 	st := f.m.Status()
-	if !st.EnvOff || st.Enabled || st.NeedsAsk {
+	if !st.EnvOff || st.Enabled {
 		t.Fatalf("MEMO_TELEMETRY=off must disable everything: %+v", st)
 	}
 	_ = f.m.Tick(context.Background())
@@ -319,11 +359,11 @@ func TestEnvironmentSwitchWinsOverAnAnswer(t *testing.T) {
 }
 
 func TestCountersAreOnlyKeptWhileSharingIsOn(t *testing.T) {
-	f := newFixture(t, BuildOfficial)
+	f := newFixture(t, BuildSource)
 	f.m.NoteFeature("skills")
 	f.m.NoteProviderErr("openai", "429")
 	if len(f.m.state.Snapshot().Days) != 0 {
-		t.Fatal("counters were recorded before the person agreed")
+		t.Fatal("counters were recorded while sharing was off")
 	}
 	f.agreeOn(t, 3)
 	f.m.NoteFeature("skills")
@@ -402,5 +442,83 @@ func TestEncode_AnOversizeReportIsTrimmedNotRefused(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), `"tid"`) {
 		t.Fatal("trimming must keep the report valid")
+	}
+}
+
+// ---------------------------------------------------------------- the install count
+
+func TestInstallCount_IsSentOnceWithNoIDAndRegardlessOfTheAnswer(t *testing.T) {
+	for _, answer := range []string{"default", "no"} {
+		f := newFixture(t, BuildOfficial)
+		if answer == "no" {
+			_ = f.m.SetConsent(false)
+		}
+		_ = f.m.Tick(context.Background())
+		_ = f.m.Tick(context.Background())
+		reqs := f.srv.requests("/v1/install")
+		if len(reqs) != 1 {
+			t.Fatalf("[%s] want the install count exactly once, got %d", answer, len(reqs))
+		}
+		var body map[string]any
+		if err := json.Unmarshal(reqs[0].Body, &body); err != nil {
+			t.Fatal(err)
+		}
+		want := map[string]any{"schema": float64(1), "app_version": "5.0.0", "os": "linux", "arch": "amd64"}
+		if !reflect.DeepEqual(body, want) {
+			t.Fatalf("[%s] the install count must be exactly these four facts and no id, got %v", answer, body)
+		}
+		if reqs[0].Header.Get("Authorization") != "" || reqs[0].Header.Get("Cookie") != "" {
+			t.Fatalf("[%s] unexpected identifying headers: %v", answer, reqs[0].Header)
+		}
+		// A new process on the same data folder does not count the install again.
+		m2, err := New(Config{StatePath: f.m.cfg.StatePath, Endpoint: f.srv.URL, Sources: f.src, Info: f.m.cfg.Info, Now: func() time.Time { return now }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = m2.Tick(context.Background())
+		if n := len(f.srv.requests("/v1/install")); n != 1 {
+			t.Fatalf("[%s] a restart counted the install again (%d)", answer, n)
+		}
+	}
+}
+
+func TestInstallCount_NeverFromASourceBuildOrWithTheEnvironmentSwitch(t *testing.T) {
+	src := newFixture(t, BuildSource)
+	_ = src.m.Tick(context.Background())
+	if len(src.srv.reqs) != 0 {
+		t.Fatal("a source build counted an install")
+	}
+	t.Setenv("MEMO_TELEMETRY", "off")
+	off := newFixture(t, BuildOfficial)
+	_ = off.m.Tick(context.Background())
+	if len(off.srv.reqs) != 0 {
+		t.Fatal("MEMO_TELEMETRY=off must stop the install count too")
+	}
+}
+
+func TestInstallCount_ServerTroubleRetriesAndARefusalDropsIt(t *testing.T) {
+	f := newFixture(t, BuildOfficial)
+	f.srv.respond = func(r recorded, n int) int {
+		if r.Path == "/v1/install" && n <= 2 {
+			return http.StatusNotFound // a server that does not know the route yet, then trouble
+		}
+		return http.StatusAccepted
+	}
+	_ = f.m.Tick(context.Background())
+	_ = f.m.Tick(context.Background())
+	if f.m.state.Snapshot().InstallSent {
+		t.Fatal("a failed install count was marked as done")
+	}
+	_ = f.m.Tick(context.Background())
+	if n := len(f.srv.requests("/v1/install")); n != 3 || !f.m.state.Snapshot().InstallSent {
+		t.Fatalf("want it retried until accepted (3 requests), got %d", n)
+	}
+
+	g := newFixture(t, BuildOfficial)
+	g.srv.respond = func(recorded, int) int { return http.StatusBadRequest }
+	_ = g.m.Tick(context.Background())
+	_ = g.m.Tick(context.Background())
+	if n := len(g.srv.requests("/v1/install")); n != 1 {
+		t.Fatalf("a refused body must not be resent, got %d requests", n)
 	}
 }

@@ -120,19 +120,16 @@ func TestTelemetry_EndToEndAgainstAFakeServer(t *testing.T) {
 	_ = a.statsStore.RecordEvent(ctx, stats.Event{Timestamp: yesterday, Provider: "local", Model: "/home/alice/models/Qwen3-8B-Q4_K_M.gguf", Category: "chat", PromptTokens: 800, CompletionTokens: 200, TokensPerSecond: 61, TTFTMs: 450})
 	_ = a.statsStore.RecordEvent(ctx, stats.Event{Timestamp: yesterday, Provider: "local", Model: "minimal-mode-secret.gguf", Category: "chat", PromptTokens: 9, CompletionTokens: 9, Private: true})
 
-	// Before the answer: the choice is due, nothing leaves, and the person can look at what would.
+	// First start of an official build: sharing is on by default, but the day of
+	// that default is never reported, so only the one-time install count leaves.
 	m := managerAt(today)
 	a.telemetry = m
-	if st := a.TelemetryStatus(); !st.NeedsAsk || st.Enabled {
-		t.Fatalf("a new official install must ask: %+v", st)
+	if st := a.TelemetryStatus(); !st.Enabled || st.Consent != telemetry.ConsentYes {
+		t.Fatalf("a new official install shares by default: %+v", st)
 	}
 	_ = m.Tick(ctx)
-	if len(sent()) != 0 {
-		t.Fatalf("sent before the answer: %v", sent())
-	}
-	pre, err := a.TelemetryPreview(ctx)
-	if err != nil || pre.Empty {
-		t.Fatalf("preview: %+v %v", pre, err)
+	if got := sent(); len(got) != 1 || !strings.HasPrefix(got[0], "/v1/install ") {
+		t.Fatalf("before any completed day only the install count may leave: %v", got)
 	}
 
 	// The answer ("yes") is given three days ago; today the cycle runs.
@@ -141,12 +138,21 @@ func TestTelemetry_EndToEndAgainstAFakeServer(t *testing.T) {
 	}
 	m = managerAt(today)
 	a.telemetry = m
+	pre, err := a.TelemetryPreview(ctx)
+	if err != nil || pre.Empty {
+		t.Fatalf("preview: %+v %v", pre, err)
+	}
 	if err := m.Tick(ctx); err != nil {
 		t.Fatal(err)
 	}
-	got := sent()
-	if len(got) != 1 || !strings.HasPrefix(got[0], "/v1/report ") {
-		t.Fatalf("want exactly one report, got %v", got)
+	var got []string
+	for _, b := range sent() {
+		if strings.HasPrefix(b, "/v1/report ") {
+			got = append(got, b)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("want exactly one report, got %v", sent())
 	}
 	body := strings.TrimPrefix(got[0], "/v1/report ")
 	if body != string(pre.JSON) && !strings.Contains(body, `"day":"2026-10-26"`) {
@@ -213,7 +219,9 @@ func TestTelemetry_FailureAndEngineCountersReachTheNextReport(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		mu.Lock()
-		bodies = append(bodies, string(b))
+		if r.URL.Path == "/v1/report" { // the one-time install count is not a report
+			bodies = append(bodies, string(b))
+		}
 		mu.Unlock()
 		w.WriteHeader(http.StatusAccepted)
 	}))
@@ -234,13 +242,16 @@ func TestTelemetry_FailureAndEngineCountersReachTheNextReport(t *testing.T) {
 		return m
 	}
 
-	// Nothing is kept before an answer.
+	// Nothing is kept while the person has said no.
 	m := managerAt(today)
+	if err := m.SetConsent(false); err != nil {
+		t.Fatal(err)
+	}
 	telemetry.SetDefault(m)
 	a.noteProviderFailure("orchestra", "x", "status 429: slow down")
 	noteLocalStartFail("llama", errors.New("fork/exec x: permission denied"))
 	if m.Status().Enabled {
-		t.Fatal("must not be enabled before an answer")
+		t.Fatal("must not be enabled after a no")
 	}
 
 	if err := managerAt(today.AddDate(0, 0, -3)).SetConsent(true); err != nil {
@@ -341,7 +352,9 @@ func telemetryRig(t *testing.T, a *App, fn func()) string {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		mu.Lock()
-		bodies = append(bodies, string(b))
+		if r.URL.Path == "/v1/report" { // the one-time install count is not a report
+			bodies = append(bodies, string(b))
+		}
 		mu.Unlock()
 		w.WriteHeader(http.StatusAccepted)
 	}))

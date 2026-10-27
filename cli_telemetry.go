@@ -86,7 +86,7 @@ func telemetryAnswer(consent string) string {
 	case "no":
 		return "hayır, paylaşmıyor / no, not sharing"
 	}
-	return "henüz sorulmadı, hiçbir şey gönderilmiyor / not asked yet, nothing is sent"
+	return "cevap yok (kaynak derleme), hiçbir şey gönderilmiyor / no answer (source build), nothing is sent"
 }
 
 func telemetryStatusCmd(ctx context.Context, c *replcli.Client) int {
@@ -108,10 +108,6 @@ func telemetryStatusCmd(ctx context.Context, c *replcli.Client) int {
 	}
 	if st.LastSentDay != "" {
 		fmt.Printf("Son gönderilen gün / last day sent: %s\n", st.LastSentDay)
-	}
-	if st.NeedsAsk {
-		fmt.Println("\nHenüz sorulmadı: karar vermek için `memo telemetry preview`, sonra `memo telemetry on` ya da `off`.")
-		fmt.Println("Not asked yet: see `memo telemetry preview`, then `memo telemetry on` or `off`.")
 	}
 	return 0
 }

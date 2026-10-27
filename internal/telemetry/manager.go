@@ -17,8 +17,8 @@ import (
 
 // BuildChannel is "official" in a release build (CI stamps it with
 // -ldflags "-X memo/internal/telemetry.BuildChannel=official") and "source"
-// everywhere else. A source build never asks and never sends unless the person
-// turns it on, so community builds cannot pollute the numbers.
+// everywhere else. A source build never sends unless the person turns it on,
+// so community builds cannot pollute the numbers.
 var BuildChannel = BuildSource
 
 // Config wires a Manager.
@@ -33,8 +33,7 @@ type Config struct {
 
 // Status is what Settings and the CLI show.
 type Status struct {
-	Enabled     bool    `json:"enabled"`       // answered yes, and not switched off from outside
-	NeedsAsk    bool    `json:"needs_ask"`     // an official build that has not been answered yet: show the choice screen
+	Enabled     bool    `json:"enabled"`       // sharing is on (the default of an official build), and not switched off from outside
 	Consent     Consent `json:"consent"`       // "", "yes", "no"
 	EnvOff      bool    `json:"env_off"`       // MEMO_TELEMETRY=off
 	Build       string  `json:"build"`         // official | source
@@ -75,6 +74,15 @@ func New(cfg Config) (*Manager, error) {
 		m.now = time.Now
 	}
 	m.collector = &Collector{Sources: cfg.Sources, State: st, Info: cfg.Info}
+	// An official build shares by default, for a fresh install and for one that
+	// was updated from a version without telemetry alike; the person can turn it
+	// off in the setup wizard or in Settings > Privacy. The day of this default
+	// counts as the day of the answer, so only days AFTER it are ever reported.
+	if cfg.Info.Build == BuildOfficial && st.Snapshot().Consent == ConsentUnset {
+		if err := st.SetConsent(ConsentYes, m.today()); err != nil {
+			return nil, err
+		}
+	}
 	return m, nil
 }
 
@@ -103,7 +111,7 @@ func (m *Manager) enabled() bool {
 	return !envOff() && m.state.Snapshot().Consent == ConsentYes
 }
 
-// Status reports the current answer and whether the choice screen is due.
+// Status reports the current answer.
 func (m *Manager) Status() Status {
 	snap := m.state.Snapshot()
 	off := envOff()
@@ -113,7 +121,6 @@ func (m *Manager) Status() Status {
 	}
 	return Status{
 		Enabled:     !off && snap.Consent == ConsentYes,
-		NeedsAsk:    !off && m.cfg.Info.Build == BuildOfficial && snap.Consent == ConsentUnset,
 		Consent:     snap.Consent,
 		EnvOff:      off,
 		Build:       m.cfg.Info.Build,
@@ -204,9 +211,10 @@ func (m *Manager) Tick(ctx context.Context) error {
 	if envOff() {
 		return nil
 	}
+	installErr := m.sendInstall(ctx) // independent of the answer; see install.go
 	m.retryForgets(ctx)
 	if !m.enabled() {
-		return nil
+		return installErr
 	}
 	for _, day := range m.pendingDays() {
 		r, err := m.collector.Build(ctx, day)
@@ -235,7 +243,7 @@ func (m *Manager) Tick(ctx context.Context) error {
 			return err // keep the day, try again next cycle
 		}
 	}
-	return nil
+	return installErr
 }
 
 func (m *Manager) retryForgets(ctx context.Context) {

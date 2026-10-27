@@ -47,14 +47,14 @@ func cliCtx(t *testing.T) context.Context {
 	return ctx
 }
 
-func TestTelemetryStatusCmd_SaysPlainlyThatNothingIsSentBeforeAnAnswer(t *testing.T) {
-	ts := newTelemetryServer(t, map[string]any{"consent": "", "needs_ask": true, "build": "official", "endpoint": "https://tel.memocpp.com", "device_id": "0f3c9a1e"}, nil)
+func TestTelemetryStatusCmd_SaysPlainlyThatASourceBuildWithoutAnAnswerSendsNothing(t *testing.T) {
+	ts := newTelemetryServer(t, map[string]any{"consent": "", "build": "source", "endpoint": "https://tel.memocpp.com", "device_id": "0f3c9a1e"}, nil)
 	var code int
 	out := captureStdout(t, func() { code = telemetryStatusCmd(cliCtx(t), replcli.NewClient(ts.URL)) })
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	for _, want := range []string{"henüz sorulmadı", "not asked yet", "official", "https://tel.memocpp.com", "0f3c9a1e", "memo telemetry preview"} {
+	for _, want := range []string{"cevap yok", "no answer", "nothing is sent", "source", "https://tel.memocpp.com", "0f3c9a1e"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status output lacks %q:\n%s", want, out)
 		}

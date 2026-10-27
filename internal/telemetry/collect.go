@@ -167,7 +167,7 @@ func (c *Collector) Build(ctx context.Context, day string) (*Report, error) {
 	if !set("linux", "windows", "darwin")[c.Info.OS] || !set("amd64", "arm64")[c.Info.Arch] {
 		return nil, ErrUnsupported
 	}
-	version := strings.TrimLeft(strings.TrimSpace(c.Info.Version), "vV") // the version file of a real build reads "V4.7.0"
+	version := cleanVersion(c.Info.Version)
 	if !appVersionRe.MatchString(version) {
 		return nil, ErrUnsupported // the server only reads x.y.z[-tag]; a report it would refuse is not sent
 	}
@@ -430,3 +430,7 @@ func sortedKeys[V any](m map[string]V) []string {
 	sort.Strings(out)
 	return out
 }
+
+// cleanVersion turns what the version file holds ("V4.7.0") into what the
+// server reads ("4.7.0").
+func cleanVersion(v string) string { return strings.TrimLeft(strings.TrimSpace(v), "vV") }

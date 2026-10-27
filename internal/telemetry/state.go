@@ -18,7 +18,7 @@ import (
 type Consent string
 
 const (
-	ConsentUnset Consent = ""    // never asked: nothing is sent, nothing is counted
+	ConsentUnset Consent = ""    // no answer on file: a source build stays off; an official build turns this into "yes" on its first start (see New)
 	ConsentYes   Consent = "yes" // agreed
 	ConsentNo    Consent = "no"  // declined
 )
@@ -57,6 +57,7 @@ type StateData struct {
 	ConsentDay  string                  `json:"consent_day,omitempty"`
 	InstallDay  string                  `json:"install_day,omitempty"` // only set for a install that started with telemetry
 	LastSentDay string                  `json:"last_sent_day,omitempty"`
+	InstallSent bool                    `json:"install_sent,omitempty"` // the one-time, id-less install count has been accepted by the server
 	Milestones  Milestones              `json:"milestones"`
 	Days        map[string]*DayCounters `json:"days,omitempty"`
 	// PendingForget are old install ids the server still has to forget (a reset
@@ -157,9 +158,16 @@ func (s *State) mutateIf(fn func(d *StateData) bool) error {
 	return s.saveLocked()
 }
 
-// SetConsent records the answer and the day it was given.
+// SetConsent records the answer and the day it was given. A "no" also drops the
+// counters kept so far: they will never be sent, and a person who switched this
+// off should not have its leftovers on disk.
 func (s *State) SetConsent(c Consent, day string) error {
-	return s.mutate(func(d *StateData) { d.Consent, d.ConsentDay = c, day })
+	return s.mutate(func(d *StateData) {
+		d.Consent, d.ConsentDay = c, day
+		if c == ConsentNo {
+			d.Days = map[string]*DayCounters{}
+		}
+	})
 }
 
 // SetInstallDay remembers the day this install began, once.
@@ -168,6 +176,17 @@ func (s *State) SetInstallDay(day string) error {
 		if d.InstallDay == "" {
 			d.InstallDay = day
 		}
+	})
+}
+
+// MarkInstallSent records that the one-time install count is done.
+func (s *State) MarkInstallSent() error {
+	return s.mutateIf(func(d *StateData) bool {
+		if d.InstallSent {
+			return false
+		}
+		d.InstallSent = true
+		return true
 	})
 }
 

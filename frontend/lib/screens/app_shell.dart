@@ -30,7 +30,6 @@ import '../widgets/auth_gate_overlay.dart';
 import '../widgets/mobile_connect_screen.dart';
 import '../widgets/setup_wizard_view.dart';
 import '../widgets/update_prompt.dart';
-import '../widgets/telemetry_prompt.dart';
 import '../widgets/version_banner.dart';
 import '../providers/update_provider.dart';
 import '../widgets/proactive_suggestion_banner.dart';
@@ -452,7 +451,6 @@ class _AppShellState extends ConsumerState<AppShell> {
                 const BackendUnreachableOverlay(),
                 const AuthGateOverlay(),
                 const UpdatePrompt(),
-                const TelemetryPrompt(),
                 const VersionBanner(),
                 const ProactiveSuggestionBanner(),
                 // Phone-only first screen; renders nothing on desktop/web and

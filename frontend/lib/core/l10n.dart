@@ -579,16 +579,17 @@ class L10n {
     'tab_web_chat': 'Web sohbet',
     'tab_privacy': 'Gizlilik',
     'telemetry_title': 'Anonim günlük özet',
-    'telemetry_intro': 'İstersen Memo, günde en çok bir kez, seni tanıtmayan küçük bir özet gönderir: hangi donanım ve model türlerinin kullanıldığı, hangi özelliklerin açık olduğu, ne tür hatalar yaşandığı. Bu, Memo’yu hangi bilgisayarlarda nasıl daha iyi çalıştıracağımızı öğrenmemizi sağlar. Sen evet demeden hiçbir şey sayılmaz ya da gönderilmez.',
+    'telemetry_intro': 'Memo, günde en çok bir kez, seni tanıtmayan küçük bir özet gönderir: hangi donanım ve model türlerinin kullanıldığı, hangi özelliklerin açık olduğu, ne tür hatalar yaşandığı. Bu, Memo’yu hangi bilgisayarlarda nasıl daha iyi çalıştıracağımızı öğrenmemizi sağlar. Resmî sürümlerde bu özet varsayılan olarak açıktır; istediğin zaman kapatabilirsin, kapatınca hiçbir şey sayılmaz ya da gönderilmez.',
     'telemetry_never_title': 'Asla gönderilmeyenler',
     'telemetry_never_body': 'Mesajların ve cevapların, anılar, kişiler, takvim, dosya ve klasör adları, proje adları, API anahtarları ve parolalar, IP adresin (hiçbir yere yazılmaz), kullanıcı ve bilgisayar adın, günün saati (yalnızca gün), Gizli Sohbet (Incognito) ve Minimal Mod konuşmaları.',
     'telemetry_sent_title': 'Gönderilenler',
     'telemetry_sent_body': 'Rastgele bir kurulum kimliği, sürüm, işletim sistemi, kaba donanım bilgisi (ekran kartı bilinen bir listeden, bellek miktarı), model ve sağlayıcı türü başına sayılar, hız aralıkları, hata türleri ve açık özellikler. Aşağıdaki önizleme gönderilecek metnin kendisidir, kelimesi kelimesine.',
-    'telemetry_status_not_asked': 'Henüz sorulmadı — hiçbir şey gönderilmiyor',
+    'telemetry_status_not_asked': 'Cevap yok (kaynak derleme) — hiçbir şey gönderilmiyor',
     'telemetry_status_yes': 'Evet — günlük özet gönderiliyor',
     'telemetry_status_no': 'Hayır — hiçbir şey gönderilmiyor',
     'telemetry_env_off': 'MEMO_TELEMETRY=off ayarlı: cevabından bağımsız olarak hiçbir şey sayılmaz ya da gönderilmez.',
-    'telemetry_source_build': 'Bu sürüm kaynak koddan derlenmiş: asla sormaz ve sen açmadıkça hiçbir şey göndermez.',
+    'telemetry_source_build': 'Bu sürüm kaynak koddan derlenmiş: sen açmadıkça özet göndermez ve kurulum sayımı da yapmaz.',
+    'telemetry_install_note': 'Bundan ayrı olarak, resmî bir sürüm ilk kurulumda yalnızca sürüm, işletim sistemi ve mimariyi içeren, hiçbir kimlik taşımayan tek bir “kuruldu” sayımı gönderir. Bu sayım günlük özet kapalı olsa da gider; MEMO_TELEMETRY=off ise onu da durdurur.',
     'telemetry_btn_share': 'Evet, paylaş',
     'telemetry_btn_decline': 'Hayır, paylaşma',
     'telemetry_saved_yes': 'Kaydedildi: evet. Cevabından sonraki günler için özet gönderilir.',
@@ -611,10 +612,6 @@ class L10n {
     'telemetry_delete_confirm_title': 'Sunucudaki veriler silinsin mi?',
     'telemetry_delete_confirm_body': 'Bu kurulumun gönderdiği tüm özetler sunucudan silinir ve paylaşım kapatılır. Bu geri alınamaz. İstersen sonra yeniden açabilirsin.',
     'telemetry_delete_done': 'Silme istendi ve paylaşım kapatıldı.',
-    'telemetry_ask_title': 'Memo’yu geliştirmemize yardım eder misin?',
-    'telemetry_ask_body': 'Memo, istersen günde en çok bir kez kim olduğunu belli etmeyen küçük bir özet gönderebilir: kullanılan donanım ve model türleri, açık özellikler, yaşanan hata türleri. Mesajların, dosya adların ya da IP adresin asla gönderilmez. Sen seçene kadar hiçbir şey sayılmaz ya da gönderilmez.',
-    'telemetry_ask_details': 'Ne gönderilir, ne gönderilmez?',
-    'telemetry_ask_change_later': 'Kararını istediğin zaman Ayarlar › Gizlilik’ten değiştirebilirsin.',
     'web_chat_desc':
         "ChatGPT veya Claude'un web sohbetini, kendi hesabınla, API yerine kullan. Memo senin giriş yaptığın gerçek bir tarayıcı penceresine yazar ve cevabı oradan okur. Yalnızca metin: araç çağırma yok. Chromium tabanlı bir tarayıcı gerekir (Chrome, Brave, Edge…); Firefox kullanılamaz.",
     'web_chat_risk_short':
@@ -1784,6 +1781,9 @@ class L10n {
         'İkisi de sonradan Ayarlar\'dan değiştirilebilir.',
     'setup_pref_proactive_desc':
         'Memo, konuşma alışkanlıklarından öğrenip zamanla küçük öneriler sunabilir (örn. bir hatırlatma önerisi). Tamamen bilgisayarında kalır — kapalıyken hiçbir şey kaydedilip önerilmez.',
+    'setup_pref_telemetry_title': 'Anonim günlük özet',
+    'setup_pref_telemetry_desc': 'Memo’yu geliştirmemize yardım et: günde en çok bir kez, seni tanıtmayan küçük bir özet (donanım ve model türleri, açık özellikler, hata türleri). Mesajların, dosya adların ya da IP adresin asla gönderilmez. İstediğin zaman Ayarlar › Gizlilik’ten kapatabilirsin.',
+    'setup_pref_telemetry_details': 'Ne gönderilir, ne gönderilmez?',
     'setup_pref_minimal_desc':
         'Sistem promptunu kısaltıp yanıtları hızlandırır — zayıf donanımda ya da hafızayı yormak istemediğinde işine yarar.',
 
@@ -3194,16 +3194,17 @@ class L10n {
     'tab_web_chat': 'Web chat',
     'tab_privacy': 'Privacy',
     'telemetry_title': 'Anonymous daily summary',
-    'telemetry_intro': 'If you like, Memo sends one small summary a day at most that does not identify you: which hardware and model types are used, which features are on, and what kinds of errors happen. It tells us which computers to make Memo work better on. Nothing is counted or sent until you say yes.',
+    'telemetry_intro': 'Memo sends one small summary a day at most that does not identify you: which hardware and model types are used, which features are on, and what kinds of errors happen. It tells us which computers to make Memo work better on. In official releases this summary is on by default; you can turn it off at any time, and then nothing is counted or sent.',
     'telemetry_never_title': 'Never sent',
     'telemetry_never_body': 'Your messages and replies, memories, contacts, calendar, file and folder names, project names, API keys and passwords, your IP address (it is written nowhere), your user and computer name, the time of day (only the day), and Incognito and Minimal Mode conversations.',
     'telemetry_sent_title': 'What is sent',
     'telemetry_sent_body': 'A random installation id, the version, the operating system, coarse hardware facts (graphics card from a known list, amount of memory), counts per model and provider type, speed ranges, error kinds and which features are on. The preview below is the text itself, word for word.',
-    'telemetry_status_not_asked': 'Not asked yet — nothing is sent',
+    'telemetry_status_not_asked': 'No answer (source build) — nothing is sent',
     'telemetry_status_yes': 'Yes — the daily summary is sent',
     'telemetry_status_no': 'No — nothing is sent',
     'telemetry_env_off': 'MEMO_TELEMETRY=off is set: nothing is counted or sent, whatever you answered.',
-    'telemetry_source_build': 'This build was made from source: it never asks and sends nothing unless you turn it on.',
+    'telemetry_source_build': 'This build was made from source: it sends no summary unless you turn it on, and does not count installs.',
+    'telemetry_install_note': 'Separately, an official release sends one install count the first time it runs: just the version, operating system and architecture, with no identifier. It is sent even when the daily summary is off; MEMO_TELEMETRY=off stops it too.',
     'telemetry_btn_share': 'Yes, share',
     'telemetry_btn_decline': 'No, do not share',
     'telemetry_saved_yes': 'Saved: yes. A summary is sent for the days after your answer.',
@@ -3226,10 +3227,6 @@ class L10n {
     'telemetry_delete_confirm_title': 'Delete the data on the server?',
     'telemetry_delete_confirm_body': 'Every summary this installation has sent is deleted from the server and sharing is turned off. This cannot be undone. You can turn it back on later.',
     'telemetry_delete_done': 'Deletion was requested and sharing is off.',
-    'telemetry_ask_title': 'Would you help us improve Memo?',
-    'telemetry_ask_body': 'If you like, Memo can send one small summary a day at most that does not identify you: the hardware and model types in use, which features are on and what kinds of errors happen. Your messages, file names and IP address are never sent. Nothing is counted or sent until you choose.',
-    'telemetry_ask_details': 'What is sent and what is not?',
-    'telemetry_ask_change_later': 'You can change this at any time in Settings › Privacy.',
     'web_chat_desc':
         "Use ChatGPT's or Claude's web chat with your own account instead of an API. Memo types into a real browser window you sign in to and reads the reply from it. Text only: no tool calling. Needs a Chromium-based browser (Chrome, Brave, Edge…); Firefox cannot be used.",
     'web_chat_risk_short':
@@ -4374,6 +4371,9 @@ class L10n {
         'Both of these can be changed later in Settings.',
     'setup_pref_proactive_desc':
         'Memo can learn from your conversation habits and occasionally offer small suggestions (like a reminder). It all stays on your computer — when this is off, nothing is recorded or suggested.',
+    'setup_pref_telemetry_title': 'Anonymous daily summary',
+    'setup_pref_telemetry_desc': 'Help us improve Memo: one small summary a day at most that does not identify you (hardware and model types, features that are on, kinds of errors). Your messages, file names and IP address are never sent. You can turn it off at any time in Settings › Privacy.',
+    'setup_pref_telemetry_details': 'What is sent and what is not?',
     'setup_pref_minimal_desc':
         'Shortens the system prompt to speed up replies — useful on weaker hardware, or when you\'d rather not spend context on it.',
 

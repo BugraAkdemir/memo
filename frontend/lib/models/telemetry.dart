@@ -1,17 +1,12 @@
 /// What the backend says about the optional anonymous daily summary
-/// (docs/TELEMETRY.md). Parsed defensively: this feeds an ambient first-run
-/// question and a settings tab, and unreadable input must never switch anything
-/// on or pop the question up.
+/// (docs/TELEMETRY.md). Parsed defensively: this feeds a settings tab and the
+/// setup wizard, and unreadable input must never switch anything on.
 class TelemetryStatus {
-  /// Sharing is actually in effect (answered yes, not switched off by the
-  /// environment).
+  /// Sharing is actually in effect (the answer is yes - the default of an
+  /// official build - and it is not switched off by the environment).
   final bool enabled;
 
-  /// An official build whose person has not answered yet: the first-run choice
-  /// is due. Nothing is counted or sent until it is answered.
-  final bool needsAsk;
-
-  /// '' (not asked), 'yes' or 'no'.
+  /// '' (no answer: a source build), 'yes' or 'no'.
   final String consent;
 
   /// MEMO_TELEMETRY=off is set on the backend: it overrides any answer.
@@ -28,7 +23,6 @@ class TelemetryStatus {
 
   const TelemetryStatus({
     this.enabled = false,
-    this.needsAsk = false,
     this.consent = '',
     this.envOff = false,
     this.build = '',
@@ -48,7 +42,6 @@ class TelemetryStatus {
     String s(String k) => raw[k] is String ? raw[k] as String : '';
     return TelemetryStatus(
       enabled: raw['enabled'] == true,
-      needsAsk: raw['needs_ask'] == true,
       consent: s('consent'),
       envOff: raw['env_off'] == true,
       build: s('build'),

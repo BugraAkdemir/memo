@@ -71,6 +71,8 @@ class _PrivacyTabState extends ConsumerState<PrivacyTab> {
         ),
         const SizedBox(height: 12),
         Text(L10n.t('telemetry_intro'), style: TextStyle(height: 1.6, color: theme.textMuted)),
+        const SizedBox(height: 10),
+        Text(L10n.t('telemetry_install_note'), style: TextStyle(height: 1.6, fontSize: 13, color: theme.textDim)),
         const SizedBox(height: 20),
         if (status == null)
           const Padding(

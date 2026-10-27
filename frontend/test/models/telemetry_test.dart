@@ -7,7 +7,6 @@ void main() {
     test('reads the backend answer', () {
       final s = TelemetryStatus.fromJson({
         'enabled': true,
-        'needs_ask': false,
         'consent': 'yes',
         'env_off': false,
         'build': 'official',
@@ -24,25 +23,38 @@ void main() {
       expect(s.lastSentDay, '2026-10-27');
     });
 
-    test('a new official install has to be asked, and nothing is shared', () {
-      final s = TelemetryStatus.fromJson({'needs_ask': true, 'consent': '', 'build': 'official'});
-      expect(s.needsAsk, isTrue);
+    test('a source build without an answer shares nothing', () {
+      final s = TelemetryStatus.fromJson({'consent': '', 'build': 'source'});
       expect(s.answered, isFalse);
       expect(s.sharing, isFalse);
     });
 
     test('an environment switch beats an answer of yes', () {
-      final s = TelemetryStatus.fromJson({'consent': 'yes', 'enabled': false, 'env_off': true});
+      final s = TelemetryStatus.fromJson({
+        'consent': 'yes',
+        'enabled': false,
+        'env_off': true,
+      });
       expect(s.envOff, isTrue);
-      expect(s.sharing, isFalse, reason: 'MEMO_TELEMETRY=off means nothing is sent, whatever was answered');
+      expect(
+        s.sharing,
+        isFalse,
+        reason:
+            'MEMO_TELEMETRY=off means nothing is sent, whatever was answered',
+      );
     });
 
     test('junk never turns anything on', () {
-      for (final junk in [null, 'x', 5, <Object>[], {'enabled': 'yes', 'needs_ask': 1, 'consent': 7}]) {
+      for (final junk in [
+        null,
+        'x',
+        5,
+        <Object>[],
+        {'enabled': 'yes', 'consent': 7},
+      ]) {
         final s = TelemetryStatus.fromJson(junk);
         expect(s.enabled, isFalse);
         expect(s.sharing, isFalse);
-        expect(s.needsAsk, isFalse, reason: 'unreadable must not pop up the first-run question');
       }
     });
   });
@@ -50,14 +62,22 @@ void main() {
   group('TelemetryPreview.fromJson', () {
     test('keeps the exact JSON text as sent', () {
       const raw = '{"schema":1,"day":"2026-10-26","usage":[]}';
-      final p = TelemetryPreview.fromJson({'day': '2026-10-26', 'empty': false, 'json': raw});
+      final p = TelemetryPreview.fromJson({
+        'day': '2026-10-26',
+        'empty': false,
+        'json': raw,
+      });
       expect(p.json, raw);
       expect(p.empty, isFalse);
       expect(p.day, '2026-10-26');
     });
 
     test('a quiet day is empty', () {
-      final p = TelemetryPreview.fromJson({'day': '', 'empty': true, 'json': ''});
+      final p = TelemetryPreview.fromJson({
+        'day': '',
+        'empty': true,
+        'json': '',
+      });
       expect(p.empty, isTrue);
     });
 

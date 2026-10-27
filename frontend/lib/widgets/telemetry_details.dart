@@ -10,8 +10,8 @@ import '../core/theme.dart';
 import '../providers/telemetry_provider.dart';
 
 /// What the optional daily summary contains and does not contain, plus the exact
-/// text that would be sent next. Shared by Settings › Privacy and the first-run
-/// question, so the person sees the same words in both places.
+/// text that would be sent next. Shared by Settings › Privacy and the setup
+/// wizard, so the person sees the same words in both places.
 class TelemetryDetails extends ConsumerStatefulWidget {
   const TelemetryDetails({super.key});
 

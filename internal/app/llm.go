@@ -533,6 +533,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		streamCh, err := exec.RunStreamWithRouter(turnCtx, agentRouter, sessionID, modelName, effortLevel, pMsgs, onEvent, projectPath)
 		if err != nil {
 			logx.Printf("Agent error: %v", err)
+			a.noteProviderFailure(usageMetaVal.Provider, usageMetaVal.Model, err.Error())
 			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
@@ -616,6 +617,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		buildStreamCh, err := exec.RunStreamWithRouter(turnCtx, agentRouter, sessionID, modelName, effortLevel, pMsgs, onEvent, projectPath)
 		if err != nil {
 			logx.Printf("Agent error (build continuation): %v", err)
+			a.noteProviderFailure(usageMetaVal.Provider, usageMetaVal.Model, err.Error())
 			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
@@ -810,6 +812,7 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 			trySend(ctx, outCh, api.StreamChunk{Thinking: chunk.Thinking})
 		}
 		if chunk.Error != "" {
+			a.noteProviderFailure(usageMetaVal.Provider, usageMetaVal.Model, chunk.Error)
 			a.recordFailedTurn(userMsg, fullReply.String(), "⚠️ "+chunk.Error, sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 			return "", false
@@ -907,6 +910,7 @@ func (a *App) callWebSearchAgentStream(ctx context.Context, messages []api.Messa
 
 		if err != nil {
 			logx.Printf("Web search agent error: %v", err)
+			a.noteProviderFailure(usageMetaVal.Provider, usageMetaVal.Model, err.Error())
 			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
@@ -1366,6 +1370,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			ch, err := providerRouter.ChatCompletionStream(providerCtx, req)
 			if err != nil {
 				logx.Printf("Provider stream error: %v", err)
+				if providerCtx.Err() == nil { // not our own cancel or watchdog
+					a.noteProviderFailure(activeName, a.activeProviderModel(activeName), err.Error())
+				}
 				var errMsg string
 				if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
 					errMsg = tm

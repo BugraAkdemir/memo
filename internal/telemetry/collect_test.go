@@ -5,6 +5,7 @@ package telemetry
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -293,6 +294,34 @@ func TestBuild_EngineFollowsTheEngineFolderAndFallsBackToTheGPUWhenItIsUnknown(t
 	for _, c := range cases {
 		if got := engineOf(c.hw); got != c.want {
 			t.Errorf("engineOf(%+v) = %q, want %q", c.hw, got, c.want)
+		}
+	}
+}
+
+// The version file of a real build reads "V4.7.0" (capital V). A first version
+// of Build only stripped a lowercase "v", so every report of a real build was
+// refused as "unsupported" and nothing was ever sent - found by running the
+// real binary, not by a test, because the tests used "5.0.0".
+func TestBuild_AcceptsTheVersionStringsARealBuildHas(t *testing.T) {
+	for _, v := range []string{"V4.7.0", "v4.7.0", "4.7.0", " V4.7.0\n", "V5.0.0-beta1"} {
+		src := baseSources()
+		src.events = []stats.Event{{Timestamp: day(9), Provider: "local", Model: "x.gguf", Category: "chat", PromptTokens: 1, CompletionTokens: 1}}
+		c, _ := newCollector(t, src)
+		c.Info.Version = v
+		r, err := c.Build(context.Background(), "2026-10-26")
+		if err != nil || r == nil {
+			t.Errorf("version %q: Build = %v, %v (a real build's own version must produce a report)", v, r, err)
+			continue
+		}
+		if strings.ContainsAny(r.AppVersion, "vV \n") {
+			t.Errorf("version %q: report carries %q, want the bare x.y.z", v, r.AppVersion)
+		}
+	}
+	for _, v := range []string{"", "dev", "latest", "V4.7"} {
+		c, _ := newCollector(t, baseSources())
+		c.Info.Version = v
+		if _, err := c.Build(context.Background(), "2026-10-26"); !errors.Is(err, ErrUnsupported) {
+			t.Errorf("version %q should still be refused, got %v", v, err)
 		}
 	}
 }

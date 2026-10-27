@@ -179,6 +179,17 @@ func TestProviderErrorCode_MapsTheErrorTextToTheSchemaCodes(t *testing.T) {
 		{"dial tcp: lookup api.example.com: no such host", "network"},
 		{"connection refused", "network"},
 		{"unexpected EOF", "network"},
+		// Raw texts as Memo's own router produces them: no "status NNN" in them.
+		{"LLM Error: all providers failed: [custom] provider rate limited: fakeprovider: forced error 429", "429"},
+		{"too many requests", "429"},
+		{"rate_limit_error: slow down", "429"},
+		{"invalid api key provided", "401"},
+		{"401 Unauthorized", "401"},
+		{"authentication failed", "401"},
+		{"service unavailable", "5xx"},
+		{"overloaded_error", "5xx"},
+		{"internal server error", "5xx"},
+		{"bad gateway", "5xx"},
 		{"status 400 bad request: maximum context length", ""},
 		{"something nobody anticipated", ""},
 		{"", ""},
@@ -396,13 +407,30 @@ func TestMilestones_FirstMessageAndProviderAddedAreDatesNotContent(t *testing.T)
 		// A day with only a milestone is quiet and sends nothing; the date waits in the
 		// state for the next day that has activity. Give this one a turn.
 		_ = a.statsStore.RecordEvent(context.Background(), stats.Event{Timestamp: time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC), Provider: "local", Model: "m.gguf", Category: "chat", PromptTokens: 5, CompletionTokens: 5})
-		a.noteFirstMessage(usageMeta{Category: "chat"})
 		a.noteFirstMessage(usageMeta{Category: "title"}) // a background call is not a message
+		a.noteFirstMessage(usageMeta{Category: "learning"})
+		a.noteFirstMessage(usageMeta{Category: "chat"})
 		telemetry.NoteMilestone("provider_added")
 	})
 	for _, want := range []string{`"first_message":"2026-10-27"`, `"provider_added":"2026-10-27"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("report lacks %s\n%s", want, body)
+		}
+	}
+}
+
+// With web tools on (the default) an ordinary chat turn is recorded as
+// "web_search", and agent chats as "agent": both are real messages. Found by
+// running the real binary, where the milestone never appeared.
+func TestFirstMessage_CountsEveryCategoryAPersonalTurnIsRecordedUnder(t *testing.T) {
+	for _, cat := range []string{"chat", "web_search", "agent"} {
+		a := newTelemetryApp(t)
+		body := telemetryRig(t, a, func() {
+			_ = a.statsStore.RecordEvent(context.Background(), stats.Event{Timestamp: time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC), Provider: "local", Model: "m.gguf", Category: cat, PromptTokens: 5, CompletionTokens: 5})
+			a.noteFirstMessage(usageMeta{Category: cat})
+		})
+		if !strings.Contains(body, `"first_message":"2026-10-27"`) {
+			t.Errorf("category %q is a real message but the milestone is missing\n%s", cat, body)
 		}
 	}
 }

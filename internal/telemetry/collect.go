@@ -167,7 +167,7 @@ func (c *Collector) Build(ctx context.Context, day string) (*Report, error) {
 	if !set("linux", "windows", "darwin")[c.Info.OS] || !set("amd64", "arm64")[c.Info.Arch] {
 		return nil, ErrUnsupported
 	}
-	version := strings.TrimPrefix(strings.TrimSpace(c.Info.Version), "v")
+	version := strings.TrimLeft(strings.TrimSpace(c.Info.Version), "vV") // the version file of a real build reads "V4.7.0"
 	if !appVersionRe.MatchString(version) {
 		return nil, ErrUnsupported // the server only reads x.y.z[-tag]; a report it would refuse is not sent
 	}

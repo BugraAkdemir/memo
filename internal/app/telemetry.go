@@ -199,6 +199,13 @@ func providerErrorCode(text string) string {
 		return "429"
 	case status >= 500:
 		return "5xx"
+	// Memo's own router and several vendors word these without a status number.
+	case containsAny(lower, "rate limit", "rate_limit", "too many requests"):
+		return "429"
+	case containsAny(lower, "unauthorized", "invalid api key", "invalid_api_key", "authentication", "invalid x-api-key", "api key not valid"):
+		return "401"
+	case containsAny(lower, "service unavailable", "overloaded", "bad gateway", "internal server error", "gateway timeout"):
+		return "5xx"
 	case containsAny(lower, "timeout", "deadline exceeded", "timed out"):
 		return "timeout"
 	case containsAny(lower, "no such host", "connection refused", "connection reset", "unexpected eof", "network is unreachable", "broken pipe", "tls:"):
@@ -305,7 +312,13 @@ func (a *App) noteFeature(name string) {
 // the date is kept, and background calls (titles, memory extraction, …) are not
 // messages.
 func (a *App) noteFirstMessage(meta usageMeta) {
-	if meta.Category != "chat" || a.minimalModeOn() {
+	switch meta.Category {
+	case "chat", "web_search", "agent":
+		// A normal chat turn is recorded as web_search while web tools are on.
+	default:
+		return
+	}
+	if a.minimalModeOn() {
 		return
 	}
 	telemetry.NoteMilestone("first_message")

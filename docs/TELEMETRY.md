@@ -1,15 +1,16 @@
 # Anonymous daily summary (telemetry)
 
-Memo can send **one small, anonymous summary per day** so we can learn which computers and models people really use, what is too slow, and what breaks. It is **optional and off until you say yes**. Nothing is counted or sent before you answer, and you can change your mind at any time.
+Memo can send **one small, anonymous summary per day** so we can learn which computers and models people really use, what is too slow, and what breaks. In official releases it is **on by default and you can turn it off** at any time, during setup or in Settings › Privacy. When it is off, nothing is counted and no summary is sent. One more thing is sent whatever you choose: a one-time install count (see below).
 
 This page is the whole contract: what is asked, what is sent, what is never sent, and how to look at it, turn it off or delete it. The list of fields below is checked by a test against the code, so it cannot drift.
 
 ## The choice
 
-- **Official builds** ask once, on first run after the setup wizard, with two buttons of equal weight: *Yes, share* and *No, do not share*. Nothing is preselected and there is no "later". If you close Memo without answering, nothing is counted or sent and the question comes back next launch.
-- **An update from a version that had no telemetry** is treated the same way: you have not been asked yet, so nothing is sent until you answer.
-- **Builds from source never ask** and stay off unless you turn them on (they then report `build: "source"`, so community builds do not mix into the official numbers).
-- **`MEMO_TELEMETRY=off`** in the environment beats every answer: nothing is counted, nothing is sent, no network request is made.
+- **Official builds share by default.** A new install shows a switch in the setup wizard, already on, with a link to exactly what is and is not sent; switch it off there and nothing is ever counted or sent. There is no separate question afterwards.
+- **An update from a version that had no telemetry** is treated the same way: the daily summary is on after the update, **without a question and without a notice**. Turn it off in Settings › Privacy.
+- **Whatever the default, the first report is for the first full day after it took effect.** The day the default started is never reported, and neither is anything before it.
+- **Builds from source stay off** unless you turn them on (they then report `build: "source"`, so community builds do not mix into the official numbers), and they never send the install count.
+- **`MEMO_TELEMETRY=off`** in the environment beats every answer: nothing is counted, nothing is sent (install count included), no network request is made.
 
 Change it any time in **Settings › Privacy**, or from a terminal:
 
@@ -22,7 +23,7 @@ memo telemetry reset-id          # a new random id (the server is asked to forge
 memo telemetry delete            # delete your data on the server and stop sharing
 ```
 
-## Look before you decide
+## Look at it any time
 
 `memo telemetry preview --raw` (and *Settings › Privacy › Show the content*) prints **the exact bytes that would be sent**. The preview and the sender call the same function, so what you read is what leaves. Looking sends nothing.
 
@@ -33,6 +34,12 @@ memo telemetry delete            # delete your data on the server and stop shari
 - A report that could not be delivered is retried for at most **8 days back**; older days are dropped.
 - Over HTTPS to `tel.memocpp.com`. The server answers only to a fixed, validated format and refuses anything else.
 - The server stores a **keyed hash** of your random id, never the id itself. Your IP address is never read, logged or stored; only a country, which Cloudflare's edge adds, is used.
+
+## The install count (sent even when the summary is off)
+
+The first time an official build runs, it sends **one** request, `POST /v1/install`, with exactly four values and **no install id**: `schema`, `app_version`, `os` and `arch`. The server adds it to a per-day counter; it stores no id, no country and nothing else about the request, so the count cannot be tied to a device or to a daily summary. It is sent **once per data folder**, also if you answered *no* to the summary, so that "how many installs are there" can be answered. It is the only thing that leaves when the summary is off.
+
+Three limits to be honest about: it is an approximate count, not a device count (a reinstall with the data folder deleted counts again, and anyone could inflate it); Memo cannot tell a brand-new install from an update out of a version that had no state file, so those count as an install too; and it is only stopped by `MEMO_TELEMETRY=off`, not by switching the summary off. Builds from source never send it.
 
 ## Never sent
 
@@ -127,6 +134,6 @@ Not everything the format allows is sent yet. This version does not send the `of
 
 ## Where it lives
 
-The local state (your answer, the random id, counters for the current days) is one file, `telemetry_state.json`, in Memo's data folder with owner-only permissions. Counters are kept only while sharing is on.
+The local state (your answer, the random id, counters for the current days) is one file, `telemetry_state.json`, in Memo's data folder with owner-only permissions. Counters are kept only while sharing is on. The same file remembers that the install count has been sent, so it is not sent again.
 
 The server side is a separate, open project: a write-only endpoint (`tel.memocpp.com`) and a read-only admin panel. See its repository for the database schema and what is stored.

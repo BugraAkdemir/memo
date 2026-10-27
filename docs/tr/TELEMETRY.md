@@ -1,15 +1,16 @@
 # Anonim günlük özet (telemetri)
 
-Memo, insanların gerçekte hangi bilgisayarları ve modelleri kullandığını, neyin fazla yavaş kaldığını ve nelerin bozulduğunu öğrenebilmemiz için günde **bir küçük, anonim özet** gönderebilir. Bu **isteğe bağlıdır ve sen evet diyene kadar kapalıdır**. Sen cevap vermeden hiçbir şey sayılmaz ya da gönderilmez; fikrini istediğin zaman değiştirebilirsin.
+Memo, insanların gerçekte hangi bilgisayarları ve modelleri kullandığını, neyin fazla yavaş kaldığını ve nelerin bozulduğunu öğrenebilmemiz için günde **bir küçük, anonim özet** gönderebilir. Resmî sürümlerde bu özet **varsayılan olarak açıktır ve istediğin zaman kapatabilirsin**: kurulum sihirbazında ya da Ayarlar › Gizlilik’te. Kapalıyken hiçbir şey sayılmaz ve özet gönderilmez. Ne seçersen seç bir şey daha gider: tek seferlik bir kurulum sayımı (aşağıya bak).
 
 Bu sayfa sözleşmenin tamamıdır: ne sorulur, ne gönderilir, ne asla gönderilmez; ve nasıl bakılır, kapatılır, silinir. Aşağıdaki alan listesi koda karşı bir testle denetlenir, yani koddan ayrışamaz.
 
 ## Seçim
 
-- **Resmî sürümler** kurulum sihirbazından sonra ilk açılışta bir kez sorar; iki düğme eşit ağırlıktadır: *Evet, paylaş* ve *Hayır, paylaşma*. Hiçbiri önceden seçili değildir ve "sonra" yoktur. Cevap vermeden Memo’yu kapatırsan hiçbir şey sayılmaz ya da gönderilmez, soru bir sonraki açılışta yeniden gelir.
-- **Telemetrisi olmayan bir sürümden güncelleme** de aynı şekilde ele alınır: henüz sorulmadı, sen cevaplayana kadar hiçbir şey gönderilmez.
-- **Kaynak koddan derlenen sürümler asla sormaz** ve sen açmadıkça kapalı kalır (açılırsa `build: "source"` bildirirler, böylece topluluk derlemeleri resmî sayılara karışmaz).
-- Ortamdaki **`MEMO_TELEMETRY=off`** her cevabı geçersiz kılar: hiçbir şey sayılmaz, gönderilmez, ağ isteği yapılmaz.
+- **Resmî sürümler varsayılan olarak paylaşır.** Yeni bir kurulumda sihirbazda zaten açık bir anahtar görünür; yanında tam olarak ne gönderildiğini ve ne gönderilmediğini gösteren bir bağlantı vardır. Orada kapatırsan hiçbir şey sayılmaz ya da gönderilmez. Sonradan ayrı bir soru çıkmaz.
+- **Telemetrisi olmayan bir sürümden güncelleme** de aynı şekilde ele alınır: güncellemeden sonra günlük özet **soru sorulmadan ve haber verilmeden** açıktır. Ayarlar › Gizlilik’ten kapatabilirsin.
+- **Varsayılan ne olursa olsun, ilk rapor yürürlüğe girdiği günden sonraki ilk tam gün içindir.** Varsayılanın başladığı gün ve öncesi hiçbir zaman gönderilmez.
+- **Kaynak koddan derlenen sürümler kapalı kalır**, sen açmadıkça (açılırsa `build: "source"` bildirirler, böylece topluluk derlemeleri resmî sayılara karışmaz) ve kurulum sayımını da göndermezler.
+- Ortamdaki **`MEMO_TELEMETRY=off`** her cevabı geçersiz kılar: hiçbir şey sayılmaz, gönderilmez (kurulum sayımı dahil), ağ isteği yapılmaz.
 
 İstediğin zaman **Ayarlar › Gizlilik**’ten ya da terminalden değiştirebilirsin:
 
@@ -22,7 +23,7 @@ memo telemetry reset-id          # yeni rastgele kimlik (sunucudan eskisini unut
 memo telemetry delete            # sunucudaki verini sil ve paylaşımı kapat
 ```
 
-## Karar vermeden önce bak
+## İstediğin zaman bak
 
 `memo telemetry preview --raw` (ve *Ayarlar › Gizlilik › İçeriği göster*) **gönderilecek baytların tamamını** yazdırır. Önizleme ve gönderici aynı fonksiyonu çağırır; okuduğun şey çıkan şeydir. Bakmak hiçbir şey göndermez.
 
@@ -33,6 +34,13 @@ memo telemetry delete            # sunucudaki verini sil ve paylaşımı kapat
 - Teslim edilemeyen rapor en çok **8 gün geriye** kadar yeniden denenir; daha eski günler bırakılır.
 - `tel.memocpp.com` adresine HTTPS ile. Sunucu yalnız sabit, doğrulanmış bir biçimi kabul eder, gerisini reddeder.
 - Sunucu rastgele kimliğinin kendisini değil, **anahtarlı bir özetini** saklar. IP adresin hiçbir zaman okunmaz, kaydedilmez, saklanmaz; yalnız Cloudflare kenarının eklediği ülke kullanılır.
+
+
+## Kurulum sayımı (özet kapalıyken de gider)
+
+Resmî bir sürüm ilk kez çalıştığında **tek bir** istek, `POST /v1/install`, gönderir: tam dört değer ve **kurulum kimliği yok** — `schema`, `app_version`, `os` ve `arch`. Sunucu bunu günlük bir sayaca ekler; kimlik, ülke ya da isteğe dair başka hiçbir şey saklamaz, bu yüzden sayım bir cihaza ya da günlük özete bağlanamaz. **Veri klasörü başına bir kez** gider, özete *hayır* dediysen de, böylece "kaç kurulum var" sorusu cevaplanabilir. Özet kapalıyken dışarı çıkan tek şey budur.
+
+Dürüst olmak gereken üç sınır: bu yaklaşık bir sayıdır, cihaz sayısı değildir (veri klasörünü silip yeniden kuran tekrar sayılır ve biri onu şişirebilir); Memo, durum dosyası olmayan eski bir sürümden güncellemeyi sıfırdan kurulumdan ayıramaz, ikisi de kurulum sayılır; ve yalnızca `MEMO_TELEMETRY=off` onu durdurur, özeti kapatmak durdurmaz. Kaynak koddan derlenen sürümler bunu hiç göndermez.
 
 ## Asla gönderilmeyenler
 
@@ -127,6 +135,6 @@ Biçimin izin verdiği her şey henüz gönderilmiyor. Bu sürüm `offered` ve `
 
 ## Nerede durur
 
-Yerel durum (cevabın, rastgele kimlik, son günlerin sayaçları) Memo’nun veri klasöründe yalnız sahibinin okuyabildiği tek bir dosyadır: `telemetry_state.json`. Sayaçlar yalnız paylaşım açıkken tutulur.
+Yerel durum (cevabın, rastgele kimlik, son günlerin sayaçları) Memo’nun veri klasöründe yalnız sahibinin okuyabildiği tek bir dosyadır: `telemetry_state.json`. Sayaçlar yalnız paylaşım açıkken tutulur. Aynı dosya kurulum sayımının gönderildiğini de hatırlar, böylece tekrar gönderilmez.
 
 Sunucu tarafı ayrı, açık bir projedir: yalnız yazılabilen bir uç nokta (`tel.memocpp.com`) ve yalnız okunabilen bir yönetim paneli. Veritabanı şeması ve nelerin saklandığı için o deponun belgelerine bak.

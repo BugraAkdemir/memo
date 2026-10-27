@@ -1,3 +1,13 @@
+# Son oturum — 2026-10-26 — yerel model hızlandırma
+- **Kök neden:** auto modda `resolveBinary` ilk klasörü (amd, nvidia, cpu) seçiyordu; bu APU'da `amd` (ROCm) hiç GPU görmüyor → her şey CPU'da. Şimdi her build'e `--list-devices` sorulur (`gpuSelector`, `internal/llama/device_probe.go`); yalnız Vulkan gören klasör "yerel GPU" sayılmaz. `nvidia` (b9441) klasörü de Vulkan taşıyor ve burada Vulkan0 görüyor; gerçek üç klasörlü düzende doğrulandı.
+- **Ölçüm (Ryzen 5 5600H APU, Phi-3 Q4, b11669):** `linux/cpu`'ya `libggml-vulkan.so` → 1641 token prompt eval 65,7 → 146 t/s (ilk token ~25 → ~11 sn), decode aynı (~13-15). Vulkan-yalnız GPU'da katman 0 (8 katman 10,5 t/s'ye düşürüyordu), embedding ve `engine_mode: cpu` için `--device none` (Vulkan'da vektörler CPU'dan farklı, cosine 0,991-0,994), Whisper `--no-gpu`.
+- **Spekülatif decode:** `--spec-type ngram-simple` (n=16, min-hits=2): kod kopyalama 14,6 → ~50 t/s, düz metinde fark yok; varsayılan ayarlar düz metni %8-11 yavaşlattı. `MEMO_LLAMA_SPECULATIVE=off` ile kapanır.
+- **Ölçülüp reddedildi:** 12 thread, `--threads-batch`, ubatch, CPU'da q8_0 KV ve flash attention.
+- **Commit'ler (push edilmedi):** `b9d442a7`, `ea2dbab4` (vendor_llama.sh), `a7692f38`, `694ef6d2`, `aa0ae468` (+ bu doküman commit'i). Doğrulama: RED/GREEN testler, mutasyon kontrolü, gerçek `Server.Start`/`whisper.Server.Start` koşuları, `go build/vet` + `go test ./... -race`. Tam koşuda yalnız `TestRunComponentUpdate_TamperedDownloadChangesNothing` düştü: temiz `7eb50de6`'da da 15'te 2 düşüyor (önceden var). `TestEmbeddingLifecycle` `internal/app/.starts` dosyası sızdırıyor (silindi; test izolasyonu açığı).
+- **Araçlar:** ruflo/claude-flow MCP araçları bu oturumda bağlanmadı (yalnız ruflo-console arayüzü var), `ecc:go-reviewer` ajanı kullanıldı; bulguları (önbellek süresi, klasör mtime, Linux kapısı, mode cpu kapsamı) düzeltildi.
+
+---
+
 # Son oturum — 2026-10-25 — motor güncellemesi (CLIProxy v8.0.43, llama b11669, whisper 1.9.5)
 - **CLIProxyAPI v8.0.25→v8.0.43** (`3b90a275`): R2 4 klasör + imzalı bileşen + beacon yayında; kurulu 4.7.0 uygulama indirip kurdu. Diyalog hatası: biten bileşen satırı "Şimdi güncelle"de kalıyordu, ikinci tıklama "there is no cliproxy update" veriyordu → düzeltildi (`43c76439`, RED/GREEN widget testi).
 - **llama b9441→b11669** (stabil v0.7.0; llama.cpp artık `v0.N.0` yayınlıyor, asset yalnız `nightly-tag.txt`) linux/cpu, amd, cpu-arm64; nvidia b9441'de (CUDA 12.2 yok). **whisper 1.9.5** statik derlendi (kendi ggml, glibc 2.38), `memo-lora-train` silindi (kullanıcı kullanmıyor). Gerçek Phi-3 sohbet + nomic embedding + JFK transkripsiyonu klasör içinde PASS. R2 `binaries/linux/*` sync edildi; eski b9441 yedeği `memo-r2:memo/binaries-backup-b9441/`.

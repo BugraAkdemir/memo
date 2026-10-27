@@ -61,6 +61,13 @@
 - Bilinen boşluklar: resim/dosya ekli gönderimde skill tespiti yok; yerel modelin token bütçesi skill'i prompt'tan düşürürse "kullanılıyor" satırı yine görünür; hata/zaman aşımı yolunda kayıtlı cevap `skill_used` satırını kaybeder (canlı akışta görünmüştü); proje skill'leri Flutter menüsünde yok (backend `/ad` ile tanır); durdurma işareti sunucu kopyasında hep Türkçe (Flutter anlık kopyası arayüz dilinde).
 - `/skill:on|off|add|remove` ve REPL `/skill` duruyor; masaüstünde açma/kapama arayüzü yok.
 
+**İsteğe bağlı telemetri istemcisi (2026-10-27, `PLAN_telemetry.md`, `docs/TELEMETRY.md`, dal `feat/telemetry-client`, push YOK)**
+- Sunucu (Supabase + `tel.`/`admin.memocpp.com`) ayrı depo `~/Documents/admin.memocpp.com` (+ özel GitHub `BugraAkdemir/memo-admin`); canlı DB'de 30 SAHTE demo cihaz duruyor (`node scripts/demo-data.mjs clear`, kullanıcı "sil" deyince). Kullanıcı hâlâ: Cloudflare API belirtecini sil, DB/panel parolalarını değiştir, `.env.local`'dan `DB_PASSWORD`/belirteç satırlarını çıkar.
+- Doğrulanmadı: gerçek `tel.memocpp.com`'a gönderim (hiçbir yerde canlıya raporlanmadı; testler sahte sunucuya, gerçek ikili izole dizinde), gerçek pencerede Gizlilik sekmesi/ilk-açılış sorusu (yalnız widget testleri), Windows/macOS, CI `-ldflags` etiketi (YAML ayrıştı, ikili 'official' damgası yerelde doğrulandı; gerçek tag koşusu yok), 8 günlük geri dolgu gerçek zamanla.
+- Yapılmadı: whisper başlatma/çıkış sayacı, Dart ve motor-süreci çökmeleri, `offered`/`downloaded` güncelleme olayları, `needs_newer_app`/`not_for_this_machine` nedenleri, yerel paketleme betikleri (macrelease/package_*/build_releases_arm) `official` damgalamaz, web sitesi gizlilik sayfası, v5.0.0 notları.
+- Birleştirmeden önce karar: README/FEATURES/DOCS "telemetri yok" cümleleri bu dalda değişti (yeni cümle: isteğe bağlı, evet denene dek kapalı). Özellik yayınlanmadan bu cümleler yayına çıkmamalı.
+- Bilinen kararsız test (bu işten bağımsız, main'de de 7/20 düşüyor): `TestRunComponentUpdate_TamperedDownloadChangesNothing` iki arşivin aynı boyutta çıktığını varsayıyor; düzeltme önerisi ayrı görev olarak açıldı.
+
 ---
 
 ## Kalıcı uyarılar
@@ -73,10 +80,8 @@
 
 ---
 
-# Son oturum — 2026-10-26 — yerel model hızlandırma
-- **Kök neden:** auto modda `resolveBinary` ilk klasörü (amd, nvidia, cpu) seçiyordu; bu APU'da `amd` (ROCm) hiç GPU görmüyor → her şey CPU'da. Şimdi her build'e `--list-devices` sorulur (`gpuSelector`, `internal/llama/device_probe.go`); yalnız Vulkan gören klasör "yerel GPU" sayılmaz. `nvidia` (b9441) klasörü de Vulkan taşıyor ve burada Vulkan0 görüyor; gerçek üç klasörlü düzende doğrulandı.
-- **Ölçüm (Ryzen 5 5600H APU, Phi-3 Q4, b11669):** `linux/cpu`'ya `libggml-vulkan.so` → 1641 token prompt eval 65,7 → 146 t/s (ilk token ~25 → ~11 sn), decode aynı (~13-15). Vulkan-yalnız GPU'da katman 0 (8 katman 10,5 t/s'ye düşürüyordu), embedding ve `engine_mode: cpu` için `--device none` (Vulkan'da vektörler CPU'dan farklı, cosine 0,991-0,994), Whisper `--no-gpu`.
-- **Spekülatif decode:** `--spec-type ngram-simple` (n=16, min-hits=2): kod kopyalama 14,6 → ~50 t/s, düz metinde fark yok; varsayılan ayarlar düz metni %8-11 yavaşlattı. `MEMO_LLAMA_SPECULATIVE=off` ile kapanır.
-- **Ölçülüp reddedildi:** 12 thread, `--threads-batch`, ubatch, CPU'da q8_0 KV ve flash attention.
-- **Commit'ler (push edilmedi):** `b9d442a7`, `ea2dbab4` (vendor_llama.sh), `a7692f38`, `694ef6d2`, `aa0ae468` (+ bu doküman commit'i). Doğrulama: RED/GREEN testler, mutasyon kontrolü, gerçek `Server.Start`/`whisper.Server.Start` koşuları, `go build/vet` + `go test ./... -race`. Tam koşuda yalnız `TestRunComponentUpdate_TamperedDownloadChangesNothing` düştü: temiz `7eb50de6`'da da 15'te 2 düşüyor (önceden var). `TestEmbeddingLifecycle` `internal/app/.starts` dosyası sızdırıyor (silindi; test izolasyonu açığı).
-- **Araçlar:** ruflo/claude-flow MCP araçları bu oturumda bağlanmadı (yalnız ruflo-console arayüzü var), `ecc:go-reviewer` ajanı kullanıldı; bulguları (önbellek süresi, klasör mtime, Linux kapısı, mode cpu kapsamı) düzeltildi.
+# Son oturum — 2026-10-27 — isteğe bağlı anonim telemetri, Memo tarafı (dal `feat/telemetry-client`, commit listesi `git log main..HEAD`, push/PR/tag YOK)
+- **Yapılan:** `internal/telemetry` (şema=izin listesi, katalog, kovalar, durum dosyası, onay kapısı, günlük gönderici, çökme temizleyici), `stats` göçü (`private`, `ttft_ms`), `logx` panik kancası, API `/api/telemetry/*` (cevap/sıfırla/sil admin-only), `memo telemetry …` CLI, sayaç kancaları (sağlayıcı hata sınıfı, yerel motor başlatma/çıkış, güncelleme sonucu, özellik, 2 kilometre taşı), CI damgası, Flutter Ayarlar › Gizlilik (sekme 28) + ilk açılış zorunlu seçim, `docs/TELEMETRY.md` (+TR; alan listesi şemaya karşı testle kilitli), README/DOCS/FEATURES/Obsidian cümleleri, AGENTS.md notu.
+- **Kritik kurallar test ile kilitli:** cevap yokken sayılmaz/gönderilmez; evet günü ve öncesi gönderilmez; Incognito/Minimal Mod sayılmaz (mutasyon kontrollü); `MEMO_TELEMETRY=off` her şeyi geçer; kaynak derleme sormaz.
+- **Doğrulama (2026-10-27):** `go vet ./...` temiz, `go build` OK, `go test -race ./...` 67 paket ok, yalnız bilinen kararsız `internal/app` testi düştü; o test atlanınca `internal/app` ok. `flutter analyze lib/` yalnız 3 eski `use_build_context_synchronously` bilgisi; `flutter test` 844 geçti; Kural 8 grep'i boş. Gerçek ikili (resmî damgalı + kaynak) izole `MEMO_DATA_DIR` + sahte telemetri sunucusuyla: ilk durum `needs_ask`, kötü gövdeler 400, CLI `on` sonrası aynı gün 0 istek, yeniden başlatmada cevap kalıcı, `MEMO_TELEMETRY=off` etkili, kaynak derleme sormuyor, durum dosyası 0600, toplam 0 ağ isteği.
+- **Sıradaki:** kullanıcı dalı gözden geçirip birleştirmeye karar verir (`git log main..feat/telemetry-client`); canlı ucu denemek için resmî derleme + `memo telemetry on`, ertesi gün bir etkinlik kaydıyla `memo telemetry preview --raw`; sonra yukarıdaki "yapılmadı" listesi.

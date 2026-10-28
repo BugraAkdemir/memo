@@ -4,7 +4,7 @@
 Memo, standart bir sohbet arayüzünden ziyade, yerel Büyük Dil Modelleri (Local LLM) ile çalışan yüksek performanslı ve gizlilik odaklı bir **Hafıza Kabuğu (Memory Shell)**'dir. "Bağlamsal Rezonans" ve RAG (Retrieval-Augmented Generation) kullanarak her etkileşiminizi kalıcı bir veri olarak saklar, geçmiş konuşmaları hatırlar ve yapay zekanın sadece söylediklerinizi değil, düşünme biçiminizi de öğrenmesini hedefler. 
 
 En önemli odak noktaları:
-- **Gizlilik:** Çevrimdışı (Offline) çalışabilme, sıfır veri sızıntısı.
+- **Gizlilik:** Çevrimdışı (Offline) çalışabilme ve yerel veri işleme.
 - **Performans:** Hızlı okuma/yazma için SQLite + sqlite-vec ile vektör veritabanında verilerin saklanması.
 
 ## Mimari Yapı

@@ -1,139 +1,132 @@
-# Anonymous daily summary (telemetry)
+# Telemetri — tutulan veriler ve kullanım amaçları
 
-Memo can send **one small, anonymous summary per day** so we can learn which computers and models people really use, what is too slow, and what breaks. In official releases it is **on by default and you can turn it off** at any time, during setup or in Settings › Privacy. When it is off, nothing is counted and no summary is sent. One more thing is sent whatever you choose: a one-time install count (see below).
+Bu belge mevcut istemcinin teknik veri envanteridir. Yasal aydınlatma metni değildir. Günlük rapor, kurulum sayımı ve silme istekleri aşağıda ayrı açıklanır.
 
-This page is the whole contract: what is asked, what is sent, what is never sent, and how to look at it, turn it off or delete it. The list of fields below is checked by a test against the code, so it cannot drift.
+## Gönderim ve varsayılanlar
 
-## The choice
+Resmî derlemelerde günlük rapor varsayılan olarak açıktır. Bu, hem yeni kurulum hem daha önce telemetri bulunmayan bir sürümden güncelleme için geçerlidir; ayrı bir onay sorusu çıkmaz. Kurulum sihirbazındaki anahtar veya Ayarlar › Gizlilik üzerinden kapatılabilir. Önceden kaydedilmiş kapalı tercihi varsayılanla ezilmez. Kaynak derlemelerde kullanıcı açmadıkça günlük rapor kapalıdır ve kurulum sayımı gönderilmez.
 
-- **Official builds share by default.** A new install shows a switch in the setup wizard, already on, with a link to exactly what is and is not sent; switch it off there and nothing is ever counted or sent. There is no separate question afterwards.
-- **An update from a version that had no telemetry** is treated the same way: the daily summary is on after the update, **without a question and without a notice**. Turn it off in Settings › Privacy.
-- **Whatever the default, the first report is for the first full day after it took effect.** The day the default started is never reported, and neither is anything before it.
-- **Builds from source stay off** unless you turn them on (they then report `build: "source"`, so community builds do not mix into the official numbers), and they never send the install count.
-- **`MEMO_TELEMETRY=off`** in the environment beats every answer: nothing is counted, nothing is sent (install count included), no network request is made.
+Günlük rapor yalnız paylaşımın açıldığı UTC gününden sonraki tamamlanmış günleri kapsar. Etkinlik olmayan gün için rapor üretilmez. Başlangıçta 0–89 saniye beklenir, ardından yaklaşık üç saatte bir gönderim döngüsü çalışır. Çevrimdışı kalan günler en fazla sekiz gün geriye kadar denenir. Aynı günün raporu ağ hatasında yeniden denenebilir. Desteklenmeyen platform, sürüm biçimi veya okunamayan RAM bilgisi günlük rapor üretimini engeller.
 
-Change it any time in **Settings › Privacy**, or from a terminal:
+Varsayılan adres `https://tel.memocpp.com` ve günlük rapor yolu `POST /v1/report` olur. `MEMO_TELEMETRY_URL` geliştirme/test için adresi değiştirir. JSON dışında istemcinin eklediği başlıklar `Content-Type: application/json` ve sabit `User-Agent: memo` değeridir.
 
-```bash
-memo telemetry status            # where things stand
-memo telemetry preview [--raw]   # the exact content of the next summary
-memo telemetry on                # share the anonymous daily summary
-memo telemetry off               # do not share
-memo telemetry reset-id          # a new random id (the server is asked to forget the old one)
-memo telemetry delete            # delete your data on the server and stop sharing
-```
+## Hangi veri, hangi amaçla?
 
-## Look at it any time
+| Veri grubu | Tutulan/gönderilen değer | Amaç |
+|---|---|---|
+| Kurulum kimliği | Rastgele üretilen 128 bit `tid`; hesap veya donanım seri numarası değildir | Günlük raporları aynı kuruluma bağlamak, tekrarları ayırmak ve o kimlik için silme istemek |
+| Sürüm ve platform | Rapor günü (UTC), şema, uygulama sürümü, derleme türü, işletim sistemi, mimari, arayüz dili | Sorunları sürüme/platforma göre ayırmak ve dil/platform desteğini planlamak |
+| Donanım | GPU sınıfı, katalog GPU adı veya `other_<üretici>`, GB’ye yuvarlanan VRAM, motor türü, varsa çekirdek/iş parçacığı sayısı, standart sınıfa yuvarlanan RAM | Donanım desteği ve yerel motor uyumluluğunu değerlendirmek |
+| Model kullanımı | Yerel/API/abonelik türü; sağlayıcı türü; katalog model adı veya `other`; çağrı kategorisi; tur, girdi/çıktı ve önbellek token toplamları | Kullanılan model/sağlayıcıları, iş yükünü ve önbellek kullanımını anlamak |
+| Kullanım amacı | `text` ve `code` başına tur/token toplamı; çağrı kategorisinden türetilir, mesaj okunarak sınıflandırılmaz | Metin ve ajan/kod iş yükünün dağılımını görmek |
+| Yerel hız | Model boyutu, motor sınıfı, token/s ve ilk token gecikmesi aralıkları ile örnek sayısı | Yavaş kalan donanım/model gruplarını belirlemek |
+| Başlatma/çıkış | Bileşen, sabit hata sınıfı ve adet | Yerel motorun başlatılamadığı veya beklenmedik kapandığı durumları saymak |
+| Sağlayıcı hataları | Sağlayıcı türü, `401`, `429`, `5xx`, `quota`, `timeout`, `network` sınıfları ve adet | Kimlik doğrulama, kota ve bağlantı sorunlarını ayırmak |
+| Güncelleme | Sonuç/olay kodu ve adet | Güncellemelerin başarı, hata ve geri alma oranlarını görmek |
+| Çökme | Hata türü, en çok beş Memo fonksiyonu/depo içi dosya/satır, bunların SHA-256 özeti ve adet | Aynı kod hatalarını gruplamak ve düzeltilecek yeri bulmak |
+| Özellikler | Özellik adları; günün kullanımından, özellik sayaçlarından ve kullanım varsa mevcut etkin yapılandırmadan türetilir | Özelliklerin kullanımını ve açık olan yetenekleri değerlendirmek |
+| İlk kullanım tarihleri | Varsa ilk kurulum, ilk sağlayıcı ekleme ve ilk sohbet turunun UTC günleri | Kurulumdan ilk kullanıma geçişi değerlendirmek |
+| Hafıza boyutu | `0`, `1-100`, `100-1k`, `1k+` aralığı; içerik yok | Hafıza kapasitesini ve ölçek gereksinimini anlamak |
 
-`memo telemetry preview --raw` (and *Settings › Privacy › Show the content*) prints **the exact bytes that would be sent**. The preview and the sender call the same function, so what you read is what leaves. Looking sends nothing.
+Kullanım kategorileri: `chat`, `agent`, `fact_extraction`, `dream`, `consolidation`, `memory_import`, `mood`, `title`, `learning`, `routine`, `proactive`, `insight`, `web_search`, `task_review`, `task_plan`, `task_step`, `task_subagent`, `compaction`.
 
-## When and how it is sent
+Özellik listesi: `projects`, `subagents`, `skills`, `live_mode`, `whatsapp`, `telegram`, `memory`, `cloud_sync`, `webchat_beta`, `self_driving`, `image_gen`, `voice`. Etkin yapılandırmadan gelen bir ad, o özelliğin o gün kullanıldığının tek başına kanıtı değildir.
 
-- At most **one report per completed UTC day**, covering that day only. Never today, and never a day on or before the day you said yes.
-- Only the day is sent, never a time of day.
-- A report that could not be delivered is retried for at most **8 days back**; older days are dropped.
-- Over HTTPS to `tel.memocpp.com`. The server answers only to a fixed, validated format and refuses anything else.
-- The server stores a **keyed hash** of your random id, never the id itself. Your IP address is never read, logged or stored; only a country, which Cloudflare's edge adds, is used.
+Hız örnekleri yalnız boyutu bilinen yerel modelin `chat`/`agent` çağrılarından, en az 20 çıktı tokenı ve geçerli hız/ilk token ölçümü varsa üretilir. Token/s aralıkları `<5`, `5-10`, `10-20`, `20-40`, `40-80`, `80+`; gecikme aralıkları `<0.5s`, `0.5-1s`, `1-2s`, `2-5s`, `5-10s`, `10s+`; model boyutu aralıkları `<2b`, `2-4b`, `4-8b`, `8-14b`, `14-32b`, `32b+` olur. Rapor 16.000 baytı veya 150 kullanım satırını aşarsa en az token içeren kullanım satırları azaltılır.
 
-## The install count (sent even when the summary is off)
+## Kurulum sayımı
 
-The first time an official build runs, it sends **one** request, `POST /v1/install`, with exactly four values and **no install id**: `schema`, `app_version`, `os` and `arch`. The server adds it to a per-day counter; it stores no id, no country and nothing else about the request, so the count cannot be tied to a device or to a daily summary. It is sent **once per data folder**, also if you answered *no* to the summary, so that "how many installs are there" can be answered. It is the only thing that leaves when the summary is off.
+Resmî derlemeler veri klasörü başına bir kez `POST /v1/install` gönderir. Gövde yalnız `schema`, `app_version`, `os`, `arch` alanlarını içerir; `tid` içermez. Amaç sürüm/platform bazında yaklaşık kurulum sayısını ölçmektir. Günlük rapor anahtarı kapalıyken de gönderilir. Eski sürümden güncelleme ve veri klasörünü silerek tekrar kurma sayımı artırabilir; bu kesin kişi/cihaz sayısı değildir. Başarılı veya gövdesi kesin reddedilmiş istek yerel `install_sent` alanıyla tamamlanmış sayılır; ağ/sunucu hatası daha sonra yeniden denenir. Kaynak derlemeler ve `MEMO_TELEMETRY=off` bunu göndermez.
 
-Three limits to be honest about: it is an approximate count, not a device count (a reinstall with the data folder deleted counts again, and anyone could inflate it); Memo cannot tell a brand-new install from an update out of a version that had no state file, so those count as an install too; and it is only stopped by `MEMO_TELEMETRY=off`, not by switching the summary off. Builds from source never send it.
+## İçerik sınırları ve ağ bilgileri
 
-## Never sent
+Telemetri gövdesinde mesaj, cevap, sohbet başlığı, hafıza içeriği, kişi/takvim/WhatsApp/Telegram içeriği, resim/ses, dosya veya proje adı, kullanıcı dosya yolu, API anahtarı, parola, oturum belirteci, e-posta, kullanıcı/bilgisayar adı ve donanım seri numarası alanı yoktur. Kişinin verdiği sağlayıcı adı yerine sağlayıcı türü kullanılır. Model/GPU adları katalogla sınırlandırılır. Çökme mesajı, değişken/argüman değerleri, mutlak dosya yolu ve üçüncü taraf yığın çerçeveleri gönderilmez. Çökmedeki depo içi kaynak yolu bunun dışındadır.
 
-- The content of messages, replies and chat titles
-- Memories, contacts, calendar, WhatsApp and Telegram messages
-- File names, folder paths, project names
-- API keys, passwords, tokens, sessions
-- Your IP address
-- Your user name, computer name, e-mail
-- The time of day (only the day, UTC)
-- Graphics driver version, serial numbers, processor model name
-- Names of models you made yourself (anything not in a known list becomes `other`)
-- Crash error messages, variable values and any code that is not Memo's
-- **Incognito and Minimal Mode turns, and every number derived from them**
+IP adresi rapor JSON’una eklenmez; ancak HTTPS bağlantısı sırasında sunucu ve ağ altyapısı kaynak IP’yi görebilir. Bu istemci kodu tek başına sunucu/Cloudflare erişim günlüklerini, ülke türetimini veya saklama politikasını doğrulamaz. Rastgele kimlik günlük raporları birbirine bağlayabildiğinden, buradaki teknik açıklama “kimlikle ilişkilendirilemez” veya “sıfır kişisel veri” şeklinde mutlak bir hukuki iddia değildir.
 
-## What is sent
+Gizli sohbet kullanım kayıtları tutulmaz; Minimal Mod’a ait özel kullanım satırları günlük rapor kaynağından filtrelenir. Özellik sayaçları da bu modlarda atlanır. Bu, süreç genelindeki kurulum sayımının veya motor/güncelleme olaylarının tümünü kapatan bir anahtar değildir.
 
-Every field is a number, a coarse class, or a name picked from a fixed list. There is no field that could hold free text.
+## Günlük raporun eksiksiz alan listesi
 
-- **Identity and time.** A random installation id, the day, Memo's version, official or source build, operating system, architecture, interface language. Used so the same device is not counted twice and problems can be tied to a version.
-- **Hardware (coarse).** Graphics card class and a name from a known catalogue (anything else is `other_<vendor>`), video memory, which engine the local model runs on, processor cores and threads, RAM rounded to a standard size.
-- **Usage counts.** Per day: how many turns and tokens per kind (local, own API key, subscription), provider type, model (from a catalogue, else `other`) and purpose. Counts only, never messages.
-- **Speed.** For local models: how many samples fell in each (model size, hardware, tokens-per-second, time-to-first-token) bucket.
-- **Failures.** Local engine start failures and unexpected exits by a fixed reason code; provider errors by class (`401`, `429`, `5xx`, `quota`, `timeout`, `network`); update outcomes (applied, failed, rolled back; checksum or signature as the reason).
-- **Crashes.** The *type* of the error and up to five of Memo's own function names, plus a hash of them. The panic message is never sent.
-- **Features and milestones.** Which features were used that day, and the dates of three firsts (installed, first provider added, first message).
-
-### Every field
+Aşağıdaki liste `Report` yapısının JSON alanlarıyla otomatik testte karşılaştırılır. İsteğe bağlı alanlar her raporda bulunmayabilir.
 
 <!-- fields:begin -->
-- `schema` — the report format number
-- `tid` — random installation id (the server stores only a keyed hash)
-- `day` — the UTC day the report covers, no time
-- `app_version` — Memo's version
-- `build` — `official` or `source`
-- `os` — linux, windows or darwin
-- `arch` — amd64 or arm64
-- `ui_lang` — the interface language
-- `hw.gpu_class` — none, nvidia, amd, intel or apple
-- `hw.gpu_model` — a catalogue name, or `other_<vendor>`
-- `hw.vram_gb` — video memory in GB
-- `hw.engine` — the hardware path the local model uses
-- `hw.cpu_cores` — processor cores
-- `hw.cpu_threads` — processor threads
-- `hw.ram_gb` — RAM rounded to a standard size
-- `usage[].kind` — local, api or sub
-- `usage[].provider` — provider type or subscription vendor
-- `usage[].model` — a catalogue name, or `other`
-- `usage[].category` — what the call was for (chat, agent, title, …)
-- `usage[].turns` — number of turns
-- `usage[].in_tokens` — input tokens
-- `usage[].out_tokens` — output tokens
-- `usage[].cached_tokens` — input tokens served from a cache
-- `purpose.{key}.turns` — turns per purpose (text or code)
-- `purpose.{key}.in_tokens` — input tokens per purpose
-- `purpose.{key}.out_tokens` — output tokens per purpose
-- `perf[].size_bucket` — local model size bucket
-- `perf[].hw_class` — hardware class of the sample
-- `perf[].tps_bucket` — tokens-per-second range
-- `perf[].ttft_bucket` — time-to-first-token range
-- `perf[].n` — samples in that bucket
-- `local_start_fail[].component` — llama, embedding or whisper
-- `local_start_fail[].code` — permission, port, oom, missing_file, crash_at_load, timeout or unknown
-- `local_start_fail[].n` — how many times
-- `llama_exit[].component` — llama, embedding or whisper
-- `llama_exit[].code` — oom_killed, signal, exit_nonzero or unknown
-- `llama_exit[].n` — how many times
-- `provider_err[].provider` — provider type
-- `provider_err[].code` — 401, 429, 5xx, quota, timeout or network
-- `provider_err[].n` — how many times
-- `update[].event` — offered, downloaded, applied, rolled_back or failed
-- `update[].code` — checksum, signature, needs_newer_app or not_for_this_machine
-- `update[].n` — how many times
-- `crash[].sig` — hash of the frames
-- `crash[].component` — go, dart or llama
-- `crash[].exc_type` — the error type name, never its message
-- `crash[].frames[]` — up to five of Memo's own function names
-- `crash[].n` — how many times
-- `features[]` — features used that day
-- `milestones.installed` — the day of the first run
-- `milestones.provider_added` — the day the first provider was saved
-- `milestones.first_message` — the day of the first chat turn
-- `memory_rows_bucket` — a coarse size range of the memory store
+- `schema` — rapor biçiminin numarası
+- `tid` — rastgele kurulum kimliği
+- `day` — raporun kapsadığı UTC günü, saat yok
+- `app_version` — Memo sürümü
+- `build` — `official` ya da `source`
+- `os` — linux, windows ya da darwin
+- `arch` — amd64 ya da arm64
+- `ui_lang` — arayüz dili
+- `hw.gpu_class` — none, nvidia, amd, intel ya da apple
+- `hw.gpu_model` — katalogdan bir ad ya da `other_<üretici>`
+- `hw.vram_gb` — GB cinsinden video belleği
+- `hw.engine` — yerel modelin kullandığı donanım yolu
+- `hw.cpu_cores` — işlemci çekirdekleri
+- `hw.cpu_threads` — işlemci iş parçacıkları
+- `hw.ram_gb` — standart bir boyuta yuvarlanmış RAM
+- `usage[].kind` — local, api ya da sub
+- `usage[].provider` — sağlayıcı türü ya da abonelik üreticisi
+- `usage[].model` — katalogdan bir ad ya da `other`
+- `usage[].category` — çağrının ne için olduğu (chat, agent, title, …)
+- `usage[].turns` — tur sayısı
+- `usage[].in_tokens` — girdi token sayısı
+- `usage[].out_tokens` — çıktı token sayısı
+- `usage[].cached_tokens` — önbellekten gelen girdi token sayısı
+- `purpose.{key}.turns` — amaç başına tur (metin ya da kod)
+- `purpose.{key}.in_tokens` — amaç başına girdi token sayısı
+- `purpose.{key}.out_tokens` — amaç başına çıktı token sayısı
+- `perf[].size_bucket` — yerel model boyut aralığı
+- `perf[].hw_class` — örneğin donanım sınıfı
+- `perf[].tps_bucket` — saniyedeki token aralığı
+- `perf[].ttft_bucket` — ilk token süresi aralığı
+- `perf[].n` — o aralıktaki örnek sayısı
+- `local_start_fail[].component` — llama, embedding ya da whisper
+- `local_start_fail[].code` — permission, port, oom, missing_file, crash_at_load, timeout ya da unknown
+- `local_start_fail[].n` — kaç kez
+- `llama_exit[].component` — llama, embedding ya da whisper
+- `llama_exit[].code` — oom_killed, signal, exit_nonzero ya da unknown
+- `llama_exit[].n` — kaç kez
+- `provider_err[].provider` — sağlayıcı türü
+- `provider_err[].code` — 401, 429, 5xx, quota, timeout ya da network
+- `provider_err[].n` — kaç kez
+- `update[].event` — offered, downloaded, applied, rolled_back ya da failed
+- `update[].code` — checksum, signature, needs_newer_app ya da not_for_this_machine
+- `update[].n` — kaç kez
+- `crash[].sig` — çerçevelerin özeti
+- `crash[].component` — go, dart ya da llama
+- `crash[].exc_type` — hata türü adı, mesajı asla
+- `crash[].frames[]` — Memo’nun kendi en çok beş fonksiyon adı, depo içi dosya yolu ve satır numarası
+- `crash[].n` — kaç kez
+- `features[]` — kullanılan veya etkin yapılandırmadan eklenen özellikler
+- `milestones.installed` — ilk çalıştırma günü
+- `milestones.provider_added` — ilk sağlayıcının kaydedildiği gün
+- `milestones.first_message` — ilk sohbet turunun günü
+- `memory_rows_bucket` — hafıza deposunun kaba boyut aralığı
 <!-- fields:end -->
 
-Not everything the format allows is sent yet. This version does not send the `offered` and `downloaded` update events or the `needs_newer_app` and `not_for_this_machine` reasons, does not report `whisper` failures, and reports only crashes of Memo's backend (`go`), not of the app window or the engine process; image and voice use appear in `features[]`, not in `purpose`. A quiet day (no activity) sends nothing.
+Şema ile mevcut bağlantılar aynı kapsamda değildir: `offered`/`downloaded` güncelleme olayları, `needs_newer_app`/`not_for_this_machine` nedenleri, Whisper başlatma/çıkış olayları ve Dart/motor süreç çökmeleri henüz bağlı değildir. Çökme bildirimi yakalanan Go panic’lerini kapsar. Görsel/ses kullanımı `purpose` yerine `features[]` içinde temsil edilir.
 
-## Reset and delete
+## Yerel kayıt, önizleme, kapatma ve silme
 
-- **Renew the id** gives this install a new random id and a fresh history, and asks the server to forget the old one. If you are offline, the request is kept and retried.
-- **Delete my data on the server** asks the server to delete everything belonging to this installation and turns sharing off. The local state file is not part of your backups.
+`config.DataPath("telemetry_state.json")` ile açılan yerel durum dosyası rastgele kimliği, paylaşım tercihini/gününü, kurulum gününü, son işlenen günü, kurulum sayımı işaretini, ilk kullanım tarihlerini, günlük sayaçları ve bekleyen silme kimliklerini tutar. Dosya izni `0600` olur. Sayaç yazımında on günden eski günler budanır; uygulama kapalıyken bir silme zamanlayıcısı çalışmaz. Durum dosyası yedek kapsamına alınmaz. Günlük kullanım toplamları ayrıca yerel istatistik deposundan okunur; paylaşımı kapatmak bu ayrı yerel istatistik geçmişini silmez.
 
-## Where it lives
+```bash
+memo telemetry status
+memo telemetry preview --raw
+memo telemetry on
+memo telemetry off
+memo telemetry reset-id
+memo telemetry delete
+```
 
-The local state (your answer, the random id, counters for the current days) is one file, `telemetry_state.json`, in Memo's data folder with owner-only permissions. Counters are kept only while sharing is on. The same file remembers that the install count has been sent, so it is not sent again.
+Önizleme ağ isteği yapmaz; günlük rapor için göndericiyle aynı JSON kodlayıcısını kullanır. Kurulum sayımı ve silme isteği günlük rapor önizlemesinin parçası değildir. Ayarlar › Gizlilik aynı kontrolleri sunar.
 
-The server side is a separate, open project: a write-only endpoint (`tel.memocpp.com`) and a read-only admin panel. See its repository for the database schema and what is stored.
+Paylaşımı kapatmak günlük raporu durdurur ve telemetri sayaçlarını temizler; mevcut sunucu verisinin silinmesini kendiliğinden istemez. Kimliği yenilemek eski `tid` için `POST /v1/forget` gövdesinde yalnız `tid` göndererek silme ister, yeni rastgele kimlik oluşturur ve yerel günlük sayaç/geçmişini sıfırlar. `delete` aynı silme isteğini yapar ve günlük paylaşımı kapatır. Çevrimdışıysa eski kimlik bekleyen listede kalır ve sonraki döngülerde yeniden denenir. Kimliksiz kurulum sayımı `tid` ile eşleştirilmediği için bu istekle o sayımdan bir kayıt çıkarılamaz.
+
+`MEMO_TELEMETRY=off` (ayrıca `0`, `false`, `no`) telemetri sayaçlarını ve tüm telemetri ağ isteklerini, kurulum sayımı ve bekleyen silme isteği dahil, engeller. Bu ayar Memo’nun diğer ağ özelliklerini kapatmaz. Silme isteği bu sırada kuyruğa alınır; tekrar gönderilebilmesi için bu engelin kaldırılması gerekir.
+
+## Sunucu tarafının doğrulama sınırı
+
+Bu belge bu depodaki istemci davranışını ve gönderim biçimini açıklar. Canlı sunucunun saklama süresi, IP/erişim günlükleri, veritabanındaki kimlik dönüşümü, yedeklerden silme ve erişim yetkileri bu koddan doğrulanamaz; bunlar sunucu yapılandırmasıyla ayrıca doğrulanmalıdır. Sunucunun canlıya dağıtılmış olduğu burada varsayılmaz.

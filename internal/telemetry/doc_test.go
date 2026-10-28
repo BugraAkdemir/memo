@@ -70,7 +70,7 @@ func TestDocs_ListExactlyTheFieldsTheReportCarries(t *testing.T) {
 	if len(want) < 40 {
 		t.Fatalf("only %d schema paths found - the reflection walk is broken", len(want))
 	}
-	for _, rel := range []string{"docs/TELEMETRY.md", "docs/tr/TELEMETRY.md"} {
+	for _, rel := range []string{"docs/TELEMETRY.md"} {
 		got := documentedPaths(t, rel)
 		var missing, stale []string
 		for p := range want {

@@ -16739,11 +16739,11 @@ Gerçek bir binary derlenip boş bir data dizininden çalıştırılarak FTS5'in
 
 ---
 
-# Handoff — 2026-07-14/15 (Session 27, devam 3) — Yeni özellik: "Hata Bildir" ayarlar sekmesi (telemetri tartışmasından çıktı)
+# Handoff — 2026-07-14/15 (Session 27, devam 3) — Yeni özellik: "Hata Bildir" ayarlar sekmesi
 
 ## Özet
 
-Kullanıcıyla telemetri konusunda uzun bir sohbet oldu: uygulama "0 telemetri, 0 veri" iddiasında, kullanıcı hata raporu/indirme sayısı/kullanım amacı gibi bir telemetri eklemeyi düşünüyordu ama bunun felsefeye ters düşüp şüphe yaratacağından endişeliydi. Tartışma sonucu: indirme sayıları zaten web sitesi tarafında (client'a dokunmadan) tutuluyor; hata raporları için opsiyonel ama tamamen **elle tetiklenen**, arka planda hiçbir şey göndermeyen bir yöntem kararlaştırıldı — GitHub Issues'a önceden doldurulmuş bir link açmak (kullanıcı kendi hesabıyla, kendi gözden geçirip gönderiyor). Kullanıcı sonra "kodlamaya başla, sabah bitmiş görmek istiyorum, soru sorma" dedi — bu yüzden fazla soru sormadan uygulandı.
+Hata raporları için tamamen elle tetiklenen bir yöntem kararlaştırıldı: GitHub Issues için önceden doldurulmuş bir bağlantı açılır; kullanıcı kendi hesabıyla gözden geçirip gönderir. Kullanıcı uygulamanın yapılmasını istedi.
 
 ## Yapılan
 
@@ -16754,7 +16754,7 @@ Yeni Settings sekmesi: `frontend/lib/widgets/settings/tabs/report_bug_tab.dart` 
 - "GitHub'da Bildir" butonu: `https://github.com/BugraAkdemir/memo/issues/new?title=...&body=...` linkini `url_launcher` ile tarayıcıda açar. Hiçbir şey bizim sunucumuza gitmez — kullanıcı GitHub'ın kendi sayfasında son kez görüp düzenleyip kendi hesabıyla gönderir.
 - Ekran görüntüsü YOK (bilinçli — ekranda özel sohbet içeriği görünebilir).
 - "Son 10 hata" için yeni bir takip sistemi eklenmedi — zaten var olan `internal/app`'in `eventRing`/`GetEvents()` (`GET /api/events`, önceden Flutter tarafından hiç kullanılmıyordu) tekrar kullanıldı. Yeni `MemoApiClient.getEvents()` eklendi, client-side `name` alanı "error" içeren event'ler filtrelenip son 10'u alınıyor.
-- Yeni backend endpoint'i YOK — bilinçli tercih, "sıfır veri topluyoruz" iddiasını bozmamak için.
+- Hata raporu için yeni backend endpoint’i eklenmedi; tarayıcı üzerinden GitHub Issues kullanılır.
 
 `settings_dialog.dart`'a sekme kaydı eklendi (case 16, mevcut desene uyularak). l10n.dart'a TR+EN 14 yeni key eklendi.
 

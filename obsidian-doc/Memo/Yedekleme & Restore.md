@@ -69,5 +69,5 @@ Memo, Google Drive'a E2E şifreli yedekleme sunar:
 ## 🔒 Güvenlik
 
 - Yedekleme zip dosyaları standart ZIP sıkıştırması kullanır (zip'in kendisi şifrelenmez — E2E şifreleme bulut senkronizasyonu seviyesinde uygulanır)
-- Bulut bağımlılığı yok — her şey isteğe bağlı. (İsteğe bağlı anonim günlük özetin durum dosyası yedeğe girmez.)
+- Bulut bağımlılığı yok — her şey isteğe bağlı.
 - Silme işlemi atomiktir ve tamdır

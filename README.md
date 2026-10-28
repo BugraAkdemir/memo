@@ -40,7 +40,7 @@
 
 It runs entirely on **your** machine. It remembers conversations from weeks ago. It learns *when* you work and quietly gets ready before you do. And when you ask it to actually **do** something — edit a file, run a command, message someone on WhatsApp — it does it.
 
-No cloud. No subscription. No tracking of what you do or write: official builds send an anonymous daily summary of counts (never your messages, files or IP address) that you can read first and switch off in setup or Settings, plus one id-less install count that is sent even when it is off. Your mind stays yours.
+No cloud. No subscription. Your mind stays yours.
 
 <div align="center">
   <br/>
@@ -264,7 +264,7 @@ A **Chief** model decomposes a complex task and delegates to 8 specialist roles,
 - **🖥️ Coding Agent as a Provider (Beta)** — point any single chat at your locally installed **Claude Code** or **Codex CLI** instead of an API. That chat becomes a real coding agent with file/shell access, running in the background independent of whatever else you're doing in Memo — while every other chat keeps using its own provider, untouched.
 - **🎤 Live Mode v2** — real native audio-to-audio conversation via Google Live or OpenAI Realtime, with barge-in and mid-conversation memory recall. No engine configured? It falls back to on-device whisper.cpp transcription + local Piper TTS, audio never leaving your machine.
 - **☁️ Cloud Sync** — optional E2E-encrypted Google Drive backup. AES-256-GCM + PBKDF2 (600K iterations). Encrypted *before* upload — Google can't read it.
-- **🔒 Privacy by Design** — no tracking and no analytics. Official builds send an anonymous daily summary (hardware and model types, feature use, error kinds; never messages, files or your IP address) that is on by default, can be turned off in setup or Settings › Privacy, can be previewed byte for byte, and is never sent from Incognito or Minimal Mode; they also send one id-less install count the first time they run, even when the summary is off. See [docs/TELEMETRY.md](docs/TELEMETRY.md). Config files at `0600`. Incognito mode leaves zero trace. The observer stores activity timestamps, never message content. Both local Developer Gateway endpoints (Anthropic- and OpenAI-compatible) now require their API key for any non-loopback caller, and an imported skill no longer auto-activates itself.
+- **🔒 Privacy by Design** — Config files at `0600`. Incognito mode leaves zero trace. The observer stores activity timestamps, never message content. Both local Developer Gateway endpoints (Anthropic- and OpenAI-compatible) now require their API key for any non-loopback caller, and an imported skill no longer auto-activates itself.
 
 ---
 

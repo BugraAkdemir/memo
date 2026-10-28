@@ -121,7 +121,7 @@ memo telemetry reset-id
 memo telemetry delete
 ```
 
-Önizleme ağ isteği yapmaz; günlük rapor için göndericiyle aynı JSON kodlayıcısını kullanır. Kurulum sayımı ve silme isteği günlük rapor önizlemesinin parçası değildir. Ayarlar › Gizlilik aynı kontrolleri sunar.
+Önizleme ağ isteği yapmaz; günlük rapor için göndericiyle aynı JSON kodlayıcısını kullanır. Kurulum sayımı ve silme isteği günlük rapor önizlemesinin parçası değildir. Ayarlar › Gizlilik yalnız günlük paylaşımı açıp kapatan anahtarı sunar. Önizleme, kimlik yenileme ve sunucudan silme işlemleri yukarıdaki terminal komutlarıyla kullanılabilir.
 
 Paylaşımı kapatmak günlük raporu durdurur ve telemetri sayaçlarını temizler; mevcut sunucu verisinin silinmesini kendiliğinden istemez. Kimliği yenilemek eski `tid` için `POST /v1/forget` gövdesinde yalnız `tid` göndererek silme ister, yeni rastgele kimlik oluşturur ve yerel günlük sayaç/geçmişini sıfırlar. `delete` aynı silme isteğini yapar ve günlük paylaşımı kapatır. Çevrimdışıysa eski kimlik bekleyen listede kalır ve sonraki döngülerde yeniden denenir. Kimliksiz kurulum sayımı `tid` ile eşleştirilmediği için bu istekle o sayımdan bir kayıt çıkarılamaz.
 

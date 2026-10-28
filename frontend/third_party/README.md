@@ -63,3 +63,32 @@ directory, then reapply the `MEMO PATCH` block by diffing against this
 copy's `multi_window_manager.cc` (or just re-search for `gtk_widget_realize`
 in the new file and paste the same block immediately after the window is
 created, before that call).
+
+### Mascot window lifetime
+
+The Dart owner retains one mascot window and hides/reuses it for toggles.
+It waits for the child engine's handler before sending commands, serializes
+visibility/skin changes, and sends the selected skin to the live child.
+Hiding removes the animated widget and stops activity polling. The child's
+close control and native close event both hide it; a hidden child exits when
+its main window is gone, so caching it does not keep a closed app alive.
+
+This avoids the Linux engine-destruction path that reproduced a GLX
+`BadAccess` process exit on the first toggle-off. The regression harness
+exercises twenty cycles, live/hidden skin changes, rapid toggles, and main
+window shutdown:
+
+```bash
+# From frontend/, with an isolated preferences directory:
+flutter build linux --debug -t tool/mascot_lifecycle_smoke.dart
+mascot_test_config=$(mktemp -d)
+xvfb-run -a env XDG_CONFIG_HOME="$mascot_test_config" LIBGL_ALWAYS_SOFTWARE=1 \
+  ./build/linux/x64/debug/bundle/memo_flutter
+# Restore the normal debug application after running the harness:
+flutter build linux --debug -t lib/main.dart
+```
+
+The test uses the real Linux plugins and software rendering. GTK/Flutter
+initialization and final main-window teardown may still print compositor or
+`FlutterEngineRemoveView` warnings; a zero exit and the harness markers are
+the result, not an assertion that those upstream warnings disappeared.

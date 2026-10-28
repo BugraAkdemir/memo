@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, exit;
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:dio/dio.dart';
@@ -9,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../core/backend_url.dart';
 import '../core/l10n.dart';
+import '../core/mascot_channel.dart';
 import 'memo_mascot.dart';
 
 const _petAreaSize = Size(132, 148);
@@ -19,14 +20,9 @@ const _windowSize = Size(132, 148 + _bubbleGap + _bubbleAreaHeight);
 Future<void> runMascotWindow() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
-  try {
-    final controller = await WindowController.fromCurrentEngine();
-    await controller.setWindowMethodHandler((call) async {
-      if (call.method == 'window_close') {
-        await windowManager.close();
-      }
-    });
-  } catch (_) {}
+  // Closing a secondary FlView tears down its engine on Linux while pending
+  // compositor work can still reference it. Keep one hidden window instead.
+  await windowManager.setPreventClose(true);
 
   const options = WindowOptions(
     size: _windowSize,
@@ -42,8 +38,6 @@ Future<void> runMascotWindow() async {
       await windowManager.setHasShadow(false);
     }
     await windowManager.setResizable(false);
-    await windowManager.show();
-    await windowManager.focus();
   });
 
   runApp(const MascotWindowApp());
@@ -81,7 +75,13 @@ class _MascotSurface extends StatefulWidget {
 
 const _pollInterval = Duration(milliseconds: 1200);
 
-class _MascotSurfaceState extends State<_MascotSurface> {
+class _MascotSurfaceState extends State<_MascotSurface> with WindowListener {
+  bool _visible = false;
+  bool _managed = false;
+  String? _ownerWindowId;
+  bool _ownerGone = false;
+  StreamSubscription<void>? _ownerEvents;
+  String _baseUrl = '';
   bool _hovering = false;
   MascotMood _mood = MascotMood.idle;
   MascotSkin _skin = MascotSkin.classic;
@@ -93,19 +93,102 @@ class _MascotSurfaceState extends State<_MascotSurface> {
   @override
   void initState() {
     super.initState();
-    _startPolling();
+    windowManager.addListener(this);
+    _initialize();
   }
 
-  Future<void> _startPolling() async {
+  Future<void> _initialize() async {
     final prefs = await SharedPreferences.getInstance();
-    final baseUrl = normalizeBackendUrl(prefs.getString('memo_api_base_url') ?? '');
+    _baseUrl = normalizeBackendUrl(prefs.getString('memo_api_base_url') ?? '');
     final skin = MascotSkinPrefValue.fromPrefValue(prefs.getString('memo_mascot_skin'));
     if (!mounted) return;
-    setState(() => _skin = skin);
-    _dio = Dio(BaseOptions(baseUrl: baseUrl, connectTimeout: const Duration(seconds: 2)));
-    _poll();
-    _pollTimer = Timer.periodic(_pollInterval, (_) => _poll());
+    _skin = skin;
+    final controller = await WindowController.fromCurrentEngine();
+    _managed = controller.arguments == mascotWindowArgument;
+    if (_managed) {
+      final windows = await WindowController.getAll();
+      for (final window in windows) {
+        if (window.windowId != controller.windowId && window.arguments != mascotWindowArgument) {
+          _ownerWindowId = window.windowId;
+          break;
+        }
+      }
+      _ownerEvents = onWindowsChanged.listen((_) => unawaited(_checkOwner()));
+    }
+    await controller.setWindowMethodHandler((call) async {
+      if (call.method == 'window_close') await _hideWindow();
+    });
+    await mascotLifecycleChannel.setMethodCallHandler((call) async {
+      if (!mounted) return;
+      switch (call.method) {
+        case 'show':
+          await _showWindow(MascotSkinPrefValue.fromPrefValue(call.arguments as String?));
+        case 'hide':
+          await _hideWindow(notifyOwner: false);
+        case 'skin':
+          setState(() => _skin = MascotSkinPrefValue.fromPrefValue(call.arguments as String?));
+      }
+    });
+    if (!mounted) return;
+    if (_managed) {
+      await mascotLifecycleChannel.invokeMethod<void>('ready');
+    } else {
+      await _showWindow(skin);
+    }
   }
+
+  Future<void> _showWindow(MascotSkin skin) async {
+    if (!mounted) return;
+    setState(() {
+      _skin = skin;
+      _visible = true;
+      _hovering = false;
+    });
+    _stopPolling();
+    _dio = Dio(BaseOptions(baseUrl: _baseUrl, connectTimeout: const Duration(seconds: 2)));
+    unawaited(_poll());
+    _pollTimer = Timer.periodic(_pollInterval, (_) => _poll());
+    await windowManager.show();
+    await windowManager.focus();
+  }
+
+  void _stopPolling() {
+    _pollGeneration++;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _dio?.close(force: true);
+    _dio = null;
+  }
+
+  Future<void> _hideWindow({bool notifyOwner = true}) async {
+    _stopPolling();
+    if (mounted) {
+      setState(() {
+        _visible = false;
+        _mood = MascotMood.idle;
+        _toolName = null;
+      });
+    }
+    await windowManager.hide();
+    await _checkOwner();
+    if (_managed && notifyOwner) {
+      await mascotLifecycleChannel.invokeMethod<void>('hidden');
+    }
+  }
+
+  // A cached, hidden pet must not keep an otherwise-closed application alive.
+  // A visible pet retains the existing behavior of surviving the main window.
+  Future<void> _checkOwner() async {
+    final owner = _ownerWindowId;
+    if (!_managed || owner == null) return;
+    final windows = await WindowController.getAll();
+    if (!mounted) return;
+    _ownerGone = !windows.any((window) => window.windowId == owner);
+    if (_ownerGone && !_visible) exit(0);
+  }
+
+  @override
+  void onWindowClose() => unawaited(_hideWindow());
 
   Future<void> _poll() async {
     final dio = _dio;
@@ -147,14 +230,16 @@ class _MascotSurfaceState extends State<_MascotSurface> {
 
   @override
   void dispose() {
-    _pollGeneration++;
-    _pollTimer?.cancel();
-    _dio?.close();
+    windowManager.removeListener(this);
+    unawaited(_ownerEvents?.cancel());
+    _stopPolling();
+    unawaited(mascotLifecycleChannel.setMethodCallHandler(null));
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_visible) return const SizedBox.shrink();
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
@@ -178,7 +263,7 @@ class _MascotSurfaceState extends State<_MascotSurface> {
                       duration: const Duration(milliseconds: 150),
                       child: IgnorePointer(
                         ignoring: !_hovering,
-                        child: _CloseButton(onTap: () => windowManager.close()),
+                        child: _CloseButton(onTap: () => unawaited(_hideWindow())),
                       ),
                     ),
                   ),

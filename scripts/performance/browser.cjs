@@ -20,16 +20,19 @@ const stage=process.env.BENCH_STAGE||JSON.parse(fs.readFileSync(path.join(root,'
   const apiOpenStart=Date.now();await p.evaluate(async()=>{await fetch('/api/chats/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:'bench-eval'})})});
   // Reload so the real notifier loads the selected session through normal API requests.
   await p.reload();await a11y.waitFor();await a11y.dispatchEvent('click');await box.waitFor({timeout:30000});try{await skipEngine.waitFor({timeout:5000});await skipEngine.click()}catch{}
+  const jump=p.getByRole('button',{name:'Jump to latest message',exact:true});if(await jump.count())await jump.click();
   const openedAt=Date.now();
   await p.evaluate(()=>{window.benchFrames=[];window.benchLong=[];window.benchRunning=true;let prev;function frame(t){if(prev!==undefined)window.benchFrames.push(t-prev);prev=t;if(window.benchRunning)requestAnimationFrame(frame)}requestAnimationFrame(frame);new PerformanceObserver(xs=>window.benchLong.push(...xs.getEntries().map(e=>({start:e.startTime,duration:e.duration})))).observe({type:'longtask',buffered:false})});
   await p.waitForTimeout(1500);const idle=await p.evaluate(()=>{const a=window.benchFrames;window.benchFrames=[];return a});
-  await box.fill('BENCH_STREAM Render the synthetic Markdown stream for the UI benchmark.');await box.press('Enter');
-  let received=true;
-  try{await p.waitForFunction(()=>document.body.innerText.includes('Stream paragraph with'),{},{timeout:30000})}catch{received=false}
-  await p.waitForTimeout(3500);
+  await box.click();await p.waitForTimeout(250);await p.keyboard.insertText('BENCH_STREAM Render the synthetic Markdown stream for the UI benchmark.');await p.waitForTimeout(250);await p.getByRole('button',{name:'',exact:true}).last().click();await p.waitForTimeout(500);if(await jump.count())await jump.click();
+  const completed = await p.waitForFunction(async()=>{
+   const r=await fetch('/api/messages?chat_id=bench-eval');const rows=await r.json();
+   return rows.some(m=>m.role==='assistant' && m.content.includes('Stream paragraph'));
+  },{},{timeout:30000}).then(()=>true).catch(()=>false);
+  await p.waitForTimeout(500);
   const raw=await p.evaluate(()=>{window.benchRunning=false;return {intervals:window.benchFrames,longTasks:window.benchLong,paints:performance.getEntriesByType('paint').map(x=>({name:x.name,start:x.startTime}))}});
   function summarize(a){const s=[...a].sort((x,y)=>x-y);return {samples:a.length,mean_interval_ms:a.reduce((x,y)=>x+y,0)/a.length,p95_interval_ms:s[Math.floor((s.length-1)*.95)],over_33ms:a.filter(x=>x>33.34).length,cadence_fps:1000/(a.reduce((x,y)=>x+y,0)/a.length)}}
-  const result={stage:Number(stage),platform:'Linux Chromium headless Flutter web release',metric:'requestAnimationFrame cadence; NOT native rendered FPS',navigation_to_composer_ms:readyMs,chat_open_window:{start_unix_ms:apiOpenStart,end_unix_ms:openedAt},stream_window:{start_unix_ms:openedAt,end_unix_ms:Date.now()},response_rendered:received,idle:summarize(idle),stream:summarize(raw.intervals),long_tasks:raw.longTasks,paints:raw.paints,errors,snapshot_before:snapshot,snapshot_after:(await p.locator('body').innerText()).slice(-3000)};
+  const result={stage:Number(stage),platform:'Linux Chromium headless Flutter web release',metric:'requestAnimationFrame cadence; NOT native rendered FPS',navigation_to_composer_ms:readyMs,chat_open_window:{start_unix_ms:apiOpenStart,end_unix_ms:openedAt},stream_window:{start_unix_ms:openedAt,end_unix_ms:Date.now()},response_persisted:completed,response_rendered:null,visual_review_required:true,idle:summarize(idle),stream:summarize(raw.intervals),long_tasks:raw.longTasks,paints:raw.paints,errors,snapshot_before:snapshot,snapshot_after:(await p.locator('body').innerText()).slice(-3000)};
   await p.screenshot({path:path.join(root,`stage-${stage}-ui.png`)});fs.writeFileSync(path.join(root,`stage-${stage}-ui.json`),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
  }finally{await b.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -4,6 +4,9 @@
 
 ## Açık işler
 
+**Performans benchmark — kullanıcı duraklattı (29 Ekim)**
+- Devam noktası: `docs/PERFORMANCE_BENCHMARK_CHECKPOINT.md` ve `data/performance-benchmark/PAUSED.json`. Düzeltilmiş son koşuda yalnız aşama1 kayıtlı; data aşama2. Kalibrasyon/resume ve aşama2–3/rapor/doğrulama açık. Mevcut runner baştan siler; körlemesine çalıştırma.
+
 **Telemetri / resmî sürüm öncesi (`docs/TELEMETRY.md`, `PLAN_telemetry.md`)**
 - 2026-10-27 sözleşmesi: resmî derlemede günlük paylaşım yeni kurulum/güncellemede sorusuz varsayılan açık; sihirbaz/Ayarlar › Gizlilik kapatır, kayıtlı hayır ezilmez. Kaynak derleme kapalı. Ayrıca veri klasörü başına kimliksiz `/v1/install` günlük paylaşım kapalıyken de gider; kaynak derleme ve `MEMO_TELEMETRY=off` engeller. İlk varsayılan günü raporlanmaz.
 - **Sunucu dağıtımı doğrulanmadı:** `~/Documents/admin.memocpp.com`: `db/migrations/001_installs.sql` → `tel/` Pages → `admin/` Pages. Handoff'taki son duruma göre dağıtılmamıştı; `/v1/install` 404 yeniden denenir. Resmî sürümden önce doğrula. 30 sahte demo cihaz 27 Ekim'de silindi.
@@ -56,9 +59,7 @@
 
 ---
 
-# Son oturum — 2026-10-29 — Go/Windows/macOS performans incelemesi
-- Ayrıntı/öncelik/efor: `docs/PERFORMANCE_REVIEW.md`. Ürün kodu değişmedi; hedef platform süreleri ölçülmedi, yerel stres testi yok.
-- Windows installer motorları kuruyor; launcher ayrıca ~/.memo/binaries kopyalıyor. CWD önceliği eski motoru seçebilir; backend-yok dalında UI öncesi sabit1+2sn bekleme var. Backend data/config varsayılanı ProgramData, launcher hazırlığı home altında.
-- RAG embedding tekrarı, proje20k satır taraması, pool1; tam sohbet JSON yüklemesi; Flutter gönderim öncesi GET/chunk başına metin güncellemesi adaylar. Kazanç ölçülmedi.
-- Mac llama-server Mach-O bağımlılığı dört llama/mtmd dylib incelenen ağaçta yok; mimari/launcher/DYLD sorunları raporda. Gerçek Mac çalıştırması gerekli.
-- Graph coverage/doğrudan kaynak ve binary header incelemesi; git diff --check PASS. Ürün değişmediği için Go/Flutter testleri yok. Docs yerel commit, push yok. Sonraki: Windows launcher/paket sözleşmesi; hedef platform/uzak CI doğrulaması.
+# Son oturum — 2026-10-29 — Üç aşamalı benchmark duraklatıldı
+- Kullanıcı data test verisini değiştirmeyi ve Gemini Subs kullanımını açıkça onayladı. Kod: cmd/memo-perf + scripts/performance; ilk commit36ba732a. Ürün optimizasyonu yok.
+- Keşif koşusu3 aşama tamam; son düzeltilmiş koşu aşama1 tamam, aşama2 Cedar yanıtından sonra kullanıcı durdurdu. Raw/log/manifest/checkpoint data/performance-benchmark altında; git dışında. Ayrıntı ve tam devam sırası CHECKPOINT belgesinde.
+- Tüm bize ait benchmark/sidecar süreçleri durdu;18080/18082/18090 kapalı. Yeni ölçüm başlatma: kullanıcı sonra devam edecek. Protokol2 test, syntax/build/target-vet/web-build PASS; tam Go/Flutter doğrulamaları ve nihai rapor açık. Commit yerel; push/PR yok.

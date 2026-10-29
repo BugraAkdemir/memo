@@ -155,7 +155,7 @@ def connect(path):
 
 def seed(year,previous):
  """Offline bulk fixture writes only; the actual application is STOPPED here."""
- t=time.perf_counter();days=365*year;old=365*previous
+ t=time.perf_counter();days=365*year+(1 if year==3 else 0);old=365*previous
  samples=json.loads((OUT/'ultrachat-sample.json').read_text())['rows']
  sessions=DATA/'sessions';sessions.mkdir(exist_ok=True)
  for day in range(old,days):
@@ -237,7 +237,8 @@ def main():
  if not 1<=args.stages<=3:ap.error('stages must be 1..3')
  OUT.mkdir(exist_ok=True)
  for port in (18080,18082,18083,18084,18090):
-  with socket.socket() as sock:sock.bind(('127.0.0.1',port))
+  with socket.socket() as sock:
+   sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);sock.bind(('127.0.0.1',port))
  corpus=OUT/'ultrachat-sample.json'
  if not corpus.exists():
   url='https://datasets-server.huggingface.co/rows?dataset=HuggingFaceH4%2Fultrachat_200k&config=default&split=train_sft&offset=0&length=100'
@@ -268,14 +269,14 @@ def main():
    for rep in range(3):
     stage['cold'].append(b.start(f'stage-{year}-cold-{rep}'))
     if rep<2:b.stop()
-   for path in ['/api/status','/api/chats','/api/messages','/api/context?chat_id=bench-long','/api/stats/usage']:
+   for path in ['/api/status','/api/chats','/api/messages?chat_id=bench-medium','/api/messages?chat_id=bench-long','/api/context?chat_id=bench-long','/api/stats/usage']:
     values=[];nbytes=[]
     for _ in range(15):
      t=time.perf_counter();d=b.api(path);values.append((time.perf_counter()-t)*1000);nbytes.append(len(json.dumps(d)))
     stage['api'][path]={'ms':values,'median_ms':statistics.median(values),'max_ms':max(values),'response_bytes_median':statistics.median(nbytes)}
    for chat in ['bench-eval','bench-medium','bench-long']:
-    b.api('/api/chats/switch',{'id':chat});before=b.api('/api/context?chat_id='+chat)
-    turn=b.stream(chat,'BENCH_FAKE Measure the response overhead.');turn['chat']=chat;turn['context_before']=before;turn['context_after']=b.api('/api/context?chat_id='+chat);stage['fake_turns'].append(turn)
+    open_calls=len(Fixture.calls);open_start=time.perf_counter();b.api('/api/chats/switch',{'id':chat});b.api('/api/messages?chat_id='+chat);before=b.api('/api/context?chat_id='+chat);opening={'ms':(time.perf_counter()-open_start)*1000,'provider_calls':len(Fixture.calls)-open_calls}
+    turn=b.stream(chat,'BENCH_FAKE Measure the response overhead.');turn['chat']=chat;turn['chat_open']=opening;turn['context_before']=before;turn['context_after']=b.api('/api/context?chat_id='+chat);stage['fake_turns'].append(turn)
    Fixture.model=args.gemini_model
    for key,q,expected in QUERIES:
     turn=b.stream('bench-eval','BENCH_REAL_EVAL Answer only from remembered personal facts. If the fact is unavailable, say UNKNOWN. Answer in at most two sentences. '+q)

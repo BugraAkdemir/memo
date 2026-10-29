@@ -1,3 +1,12 @@
+# Son oturum — 2026-10-29 — Go/Windows/macOS performans incelemesi
+- Ayrıntı/öncelik/efor: `docs/PERFORMANCE_REVIEW.md`. Ürün kodu değişmedi; hedef platform süreleri ölçülmedi, yerel stres testi yok.
+- Windows installer motorları kuruyor; launcher ayrıca ~/.memo/binaries kopyalıyor. CWD önceliği eski motoru seçebilir; backend-yok dalında UI öncesi sabit1+2sn bekleme var. Backend data/config varsayılanı ProgramData, launcher hazırlığı home altında.
+- RAG embedding tekrarı, proje20k satır taraması, pool1; tam sohbet JSON yüklemesi; Flutter gönderim öncesi GET/chunk başına metin güncellemesi adaylar. Kazanç ölçülmedi.
+- Mac llama-server Mach-O bağımlılığı dört llama/mtmd dylib incelenen ağaçta yok; mimari/launcher/DYLD sorunları raporda. Gerçek Mac çalıştırması gerekli.
+- Graph coverage/doğrudan kaynak ve binary header incelemesi; git diff --check PASS. Ürün değişmediği için Go/Flutter testleri yok. Docs yerel commit, push yok. Sonraki: Windows launcher/paket sözleşmesi; hedef platform/uzak CI doğrulaması.
+
+---
+
 # Son oturum — 2026-10-29 — Go → Rust maliyet/kazanç değerlendirmesi
 - Kullanıcı CPU/RAM/GPU, istek/UI hızı ve özellikle Windows cold start açısından geçişi sordu. Yalnız inceleme; dönüşüm/optimizasyon uygulanmadı, benchmark veya yerel yük testi başlatılmadı.
 - Kod bulguları: Windows launch.ps1 üreten workflow'da backend yokken sabit1+2sn sleep; ilk açılışta koşullu binaries klasör kopyası; Startup HTTP sunucusundan önce çağrılır; sessions.NewManager tüm sohbet JSON'larını senkron yükler; skill keşfi/senkronizasyon Startup içinde. Bunların kullanıcının kurulu Windows kopyasındaki süre payı ölçülmedi.

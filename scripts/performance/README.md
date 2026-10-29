@@ -11,7 +11,8 @@ memory retrieval. It disables unrelated background model calls and external
 connectors. A lexical SHA-256 embedding fixture is deterministic; it does not
 measure real embedding model quality, GPU inference, Windows launchers or native
 Flutter FPS. Browser RAF cadence is a responsiveness proxy only, and is valid
-only when `response_rendered` is true.
+only after the response screenshot has been visually reviewed. The script records
+`response_persisted`; Flutter Canvas text is not reliably exposed to DOM text queries.
 
 Build with bounded parallelism (no load workers or cache eviction):
 
@@ -51,7 +52,7 @@ python3 scripts/performance/quality.py
 The runner fetches 100 dialogues from HuggingFaceH4/ultrachat_200k (MIT) if absent.
 The downloaded seed and source metadata live under data/performance-benchmark/.
 Each stage is regenerated from the same seed with nested record IDs and dates
-rebased to its 1/2/3-year horizon. This prevents benchmark-created chat memories
+rebased to its 365/730/1096-day horizon. This prevents benchmark-created chat memories
 and answers leaking into the next stage. Needle facts have fixed timestamps.
 Three process-cold starts and 15 sequential samples per API are collected.
 There is no OS cache eviction. Real answer calls are capped at 12 in the main
@@ -60,8 +61,8 @@ Do not run the quality test concurrently with the main runner.
 
 `browser.cjs` needs Playwright and Chromium. Override `BENCH_NODE_ROOT` (a Node
 module root) and `BENCH_CHROMIUM` for other installations. It performs local-only
-auth setup and skips engine installation using actual UI controls. It verifies a
-rendered response before the result can be used. The scripts neither install
+auth setup and skips engine installation using actual UI controls. It checks a persisted response and saves a screenshot for visual verification
+before the result can be used. The scripts neither install
 engines nor pretend a hidden dialog is a streamed answer.
 
 Raw artifacts include prompts, replies, stage manifests, logs, UI screenshots,

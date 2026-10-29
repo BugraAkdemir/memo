@@ -159,6 +159,7 @@ func (a *App) ChatSubAgentAction(ctx context.Context, chatID, action string, arg
 		if strings.TrimSpace(req.Prompt) == "" || len(req.Prompt) > 128*1024 {
 			return "", errors.New("prompt must be nonempty and at most 128 KiB")
 		}
+		a.noteFeature("subagents")
 		router, model, effort, rerr := a.resolveAgentProviderForContext(ctx)
 		if route, ok := ctx.Value(chatDelegationRouteKey{}).(chatDelegationRoute); ok {
 			router, model, effort, rerr = route.router, route.model, route.effort, nil

@@ -42,6 +42,8 @@ type Server struct {
 	waitDone  chan struct{} // Closed when the process actually exits
 	portPid   int           // Last known PID for the port (fallback when cmd is nil)
 	logFile   *os.File      // llama-server's own stdout/stderr, never the REPL's
+
+	exitHook func(err error) // called on an exit nobody asked for (see SetExitHook)
 }
 
 // clampContextSize returns ctxSize clamped to modelPath's own trained max
@@ -523,6 +525,9 @@ func (s *Server) monitor(cmd *exec.Cmd, waitDone chan struct{}) {
 	}
 	s.cmd = nil
 	s.modelPath = ""
+	if hook := s.exitHook; hook != nil {
+		go hook(err) // never under s.mu: the hook must not be able to deadlock the server
+	}
 }
 
 // IsRunning checks if the server process is still alive.

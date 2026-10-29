@@ -199,3 +199,39 @@ func TestRecover_NoopWhenNoPanic(t *testing.T) {
 		defer Recover("TestRecover_NoopWhenNoPanic")
 	}() // must not panic itself
 }
+
+func TestRecover_TellsThePanicHookWithTheValueAndTheStack(t *testing.T) {
+	var gotVal any
+	var gotStack []byte
+	SetPanicHook(func(r any, stack []byte) { gotVal, gotStack = r, stack })
+	defer SetPanicHook(nil)
+
+	func() {
+		defer Recover("test")
+		panic("boom")
+	}()
+
+	if gotVal != "boom" {
+		t.Fatalf("hook saw %v, want boom", gotVal)
+	}
+	if !strings.Contains(string(gotStack), "TestRecover_TellsThePanicHook") {
+		t.Fatalf("the stack handed to the hook does not show where it panicked:\n%s", gotStack)
+	}
+}
+
+func TestRecover_AHookThatPanicsItselfDoesNotBreakRecovery(t *testing.T) {
+	SetPanicHook(func(any, []byte) { panic("hook bug") })
+	defer SetPanicHook(nil)
+	func() {
+		defer Recover("test")
+		panic("original")
+	}() // must return normally
+}
+
+func TestRecover_WithoutAHookStillSwallowsThePanic(t *testing.T) {
+	SetPanicHook(nil)
+	func() {
+		defer Recover("test")
+		panic("x")
+	}()
+}

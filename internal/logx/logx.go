@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"runtime/debug"
+	"sync/atomic"
 )
 
 // Level represents log severity.
@@ -72,8 +73,35 @@ func Printf(format string, v ...interface{}) {
 // goroutine panicked in the log.
 func Recover(label string) {
 	if r := recover(); r != nil {
-		Printf("PANIC in %s: %v\n%s", label, r, string(debug.Stack()))
+		stack := debug.Stack()
+		Printf("PANIC in %s: %v\n%s", label, r, string(stack))
+		NotifyPanic(r, stack)
 	}
+}
+
+// panicHook, when set, is told about every panic a Recover swallows. Memo's
+// optional telemetry installs one that counts a sanitized signature of the
+// crash (internal/telemetry); with none installed nothing changes.
+var panicHook atomic.Pointer[func(r any, stack []byte)]
+
+// SetPanicHook installs (or, with nil, removes) the panic hook.
+func SetPanicHook(f func(r any, stack []byte)) {
+	if f == nil {
+		panicHook.Store(nil)
+		return
+	}
+	panicHook.Store(&f)
+}
+
+// NotifyPanic hands a recovered panic to the hook. A hook that itself panics
+// is swallowed: reporting must never break the recovery it hangs off.
+func NotifyPanic(r any, stack []byte) {
+	h := panicHook.Load()
+	if h == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	(*h)(r, stack)
 }
 
 // GoRecover starts fn in a new goroutine with Recover deferred around it, so

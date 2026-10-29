@@ -63,6 +63,10 @@ type usageMeta struct {
 	// report no cache accounting at all — see cacheTokens' doc comment for
 	// why that is not the same as "nothing was cached".
 	Cache cacheTokens
+	// TTFTMs is the time from sending the request to the first token, in
+	// milliseconds. 0 = not measured (non-streaming paths). Feeds the speed
+	// buckets of the optional daily telemetry summary (internal/telemetry).
+	TTFTMs int
 }
 
 // cacheTokens carries the two prompt-cache figures a provider can report for
@@ -529,6 +533,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		streamCh, err := exec.RunStreamWithRouter(turnCtx, agentRouter, sessionID, modelName, effortLevel, pMsgs, onEvent, projectPath)
 		if err != nil {
 			logx.Printf("Agent error: %v", err)
+			a.noteProviderFailure(usageMetaVal.Provider, usageMetaVal.Model, err.Error())
 			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
@@ -612,6 +617,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		buildStreamCh, err := exec.RunStreamWithRouter(turnCtx, agentRouter, sessionID, modelName, effortLevel, pMsgs, onEvent, projectPath)
 		if err != nil {
 			logx.Printf("Agent error (build continuation): %v", err)
+			a.noteProviderFailure(usageMetaVal.Provider, usageMetaVal.Model, err.Error())
 			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
@@ -806,6 +812,7 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 			trySend(ctx, outCh, api.StreamChunk{Thinking: chunk.Thinking})
 		}
 		if chunk.Error != "" {
+			a.noteProviderFailure(usageMetaVal.Provider, usageMetaVal.Model, chunk.Error)
 			a.recordFailedTurn(userMsg, fullReply.String(), "⚠️ "+chunk.Error, sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 			return "", false
@@ -903,6 +910,7 @@ func (a *App) callWebSearchAgentStream(ctx context.Context, messages []api.Messa
 
 		if err != nil {
 			logx.Printf("Web search agent error: %v", err)
+			a.noteProviderFailure(usageMetaVal.Provider, usageMetaVal.Model, err.Error())
 			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
@@ -1362,6 +1370,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			ch, err := providerRouter.ChatCompletionStream(providerCtx, req)
 			if err != nil {
 				logx.Printf("Provider stream error: %v", err)
+				if providerCtx.Err() == nil { // not our own cancel or watchdog
+					a.noteProviderFailure(activeName, a.activeProviderModel(activeName), err.Error())
+				}
 				var errMsg string
 				if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
 					errMsg = tm
@@ -1445,6 +1456,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 					} else if subscriptionTextRouteFromCtx(ctx) == nil && a.providerSwapped(providerRouter) {
 						errMsg = a.modelSwappedMidStreamMsg()
 					} else {
+						a.noteProviderFailure(usageMetaVal.Provider, usageMetaVal.Model, chunk.Error)
 						errMsg = "⚠️ " + chunk.Error
 						if hint := a.localModelHint(); hint != "" {
 							errMsg += "\n\n" + hint
@@ -1467,6 +1479,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				if chunk.Content != "" {
 					if !firstTokenLogged {
 						firstTokenLogged = true
+						usageMetaVal.TTFTMs = int(time.Since(start).Milliseconds())
 						logx.Printf("LATENCY provider.first_token ms=%d", time.Since(start).Milliseconds())
 					}
 					fullReply.WriteString(chunk.Content)
@@ -1617,6 +1630,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			if chunk.Content != "" {
 				if !firstTokenLogged {
 					firstTokenLogged = true
+					usageMetaVal.TTFTMs = int(time.Since(requestStart).Milliseconds())
 					logx.Printf("LATENCY llm.first_token total_ms=%d after_stream_ready_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), len(messages))
 				}
 				fullReply.WriteString(chunk.Content)
@@ -1757,7 +1771,9 @@ func recvChunk[T any](ctx context.Context, ch <-chan T) (chunk T, ok bool, ctxDo
 // before outCh is closed, instead of just losing the response silently.
 func recoverStreamPanic(ctx context.Context, outCh chan<- api.StreamChunk, label string) {
 	if r := recover(); r != nil {
-		logx.Printf("PANIC in %s: %v\n%s", label, r, string(debug.Stack()))
+		stack := debug.Stack()
+		logx.Printf("PANIC in %s: %v\n%s", label, r, string(stack))
+		logx.NotifyPanic(r, stack)
 		trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ internal error", Done: true})
 	}
 }
@@ -1876,6 +1892,11 @@ func (a *App) recordUsageEvent(meta usageMeta, completionTokens int, durationSec
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	// A Minimal Mode turn stays in the person's own usage stats but is marked
+	// private so the optional telemetry summary never counts it. Incognito never
+	// gets here: finishStream and recordCallLLMUsage skip it entirely.
+	private := a.identity != nil && a.identity.GetMinimalMode()
+	a.noteFirstMessage(meta)
 	if err := a.statsStore.RecordEvent(ctx, stats.Event{
 		Provider:           meta.Provider,
 		Model:              meta.Model,
@@ -1886,6 +1907,8 @@ func (a *App) recordUsageEvent(meta usageMeta, completionTokens int, durationSec
 		CompletionTokens:   completionTokens,
 		DurationSecs:       durationSecs,
 		TokensPerSecond:    tokensPerSecond,
+		Private:            private,
+		TTFTMs:             meta.TTFTMs,
 	}); err != nil {
 		logx.Printf("WARN: record usage event: %v", err)
 	}

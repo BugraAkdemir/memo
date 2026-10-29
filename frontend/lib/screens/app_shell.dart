@@ -24,6 +24,7 @@ import '../providers/whatsapp_provider.dart';
 import '../providers/swarm_provider.dart';
 import '../providers/agent_provider.dart';
 import '../widgets/settings_dialog.dart';
+import '../widgets/memo_mascot.dart';
 import '../widgets/llama_installer_view.dart';
 import '../widgets/backend_unreachable_view.dart';
 import '../widgets/auth_gate_overlay.dart';
@@ -808,15 +809,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final logo = Stack(
       clipBehavior: Clip.none,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.asset(
-            'lib/icon/memo.png',
-            width: 36,
-            height: 36,
-            fit: BoxFit.cover,
-          ),
-        ),
+        const MemoMascotLogo(),
         if (isIncognito)
           Positioned(
             right: -2,

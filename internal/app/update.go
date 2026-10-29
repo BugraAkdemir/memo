@@ -22,6 +22,7 @@ import (
 	"memo/internal/llama"
 	"memo/internal/logx"
 	"memo/internal/shutdown"
+	"memo/internal/telemetry"
 	"memo/internal/updater"
 	"memo/internal/whisper"
 )
@@ -55,6 +56,10 @@ type updateRuntime struct {
 	running bool
 	info    *updater.Info
 	infoAt  time.Time
+
+	// noteCounted: this process already counted the failure note memo-updater
+	// left, so a re-check of the update window does not count it again.
+	noteCounted bool
 
 	// Test seams.
 	client *updater.Client
@@ -232,6 +237,9 @@ func (a *App) buildUpdateInfo(ctx context.Context) *updater.Info {
 	}
 	if installDir != "" {
 		info.LastFailure = updater.ReadFailure(filepath.Join(installDir, updater.FailureFile))
+		if ev, ok := a.update.freshRollbackNote(installDir, time.Now()); ok {
+			telemetry.NoteUpdate(ev, "")
+		}
 	}
 	client := a.updateClient()
 	bc, err := client.FetchBeacon(ctx)
@@ -413,6 +421,9 @@ func (a *App) ApplyUpdate(kind, component string) error {
 			err = a.runAppUpdate(a.lifecycle())
 		} else {
 			err = a.runComponentUpdate(a.lifecycle(), components.Name(component))
+		}
+		if ev, code, ok := updateOutcome(err); ok {
+			telemetry.NoteUpdate(ev, code)
 		}
 		a.update.mu.Lock()
 		a.update.running = false

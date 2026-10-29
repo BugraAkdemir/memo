@@ -67,5 +67,5 @@ Memo supports E2E encrypted backup to Google Drive:
 ## 🔒 Security
 
 - Backup zip files use standard ZIP compression (no encryption on the zip itself — E2E encryption is applied at the cloud sync level)
-- No telemetry or cloud dependency — everything is optional
+- No cloud dependency — everything is optional.
 - Wipe operation is atomic and complete

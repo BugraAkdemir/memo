@@ -308,6 +308,7 @@ func (a *App) buildActiveSkillPrompt(chatID string, skillTokenBudget ...int) str
 			// meaningful to inject, and not an error worth surfacing here.
 			continue
 		}
+		a.noteFeature("skills")
 		var block strings.Builder
 		block.WriteString(fmt.Sprintf("### Skill: %s\n", name))
 		if def.Manifest.Description != "" {

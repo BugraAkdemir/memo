@@ -1,53 +1,125 @@
+import 'dart:async';
+
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Owns the desktop mascot's open/closed state so both the tray menu item
-/// and the Settings toggle (general_tab.dart) drive the exact same window
-/// instead of each keeping their own — a real desktop_multi_window
-/// WindowController when the mascot is open, null when it's closed.
+import '../core/mascot_channel.dart';
+import 'settings_provider.dart';
+
+/// Visibility is separate from the retained window: toggling never destroys
+/// the Linux FlView/engine while its renderer can still reference it.
 class MascotWindowNotifier extends StateNotifier<WindowController?> {
-  MascotWindowNotifier() : super(null) {
-    // Catches the window closing from EITHER side — the tray/Settings
-    // toggle asking it to close, or the mascot's own hover close button —
-    // so whichever UI shows "is it open" stays correct either way.
-    onWindowsChanged.listen((_) => _syncState());
+  MascotWindowNotifier({String Function()? readSkin})
+    : _readSkin = readSkin ?? (() => 'classic'),
+      super(null) {
+    _windowsChanged = onWindowsChanged.listen((_) => _syncState());
   }
+
+  final String Function() _readSkin;
+  late final StreamSubscription<void> _windowsChanged;
+  WindowController? _window;
+  Completer<void>? _ready;
+  Future<void> _pending = Future<void>.value();
 
   Future<void> _syncState() async {
-    final tracked = state;
+    final tracked = _window;
     if (tracked == null) return;
-    final stillOpen = (await WindowController.getAll())
-        .any((w) => w.windowId == tracked.windowId);
-    if (!stillOpen) state = null;
+    try {
+      final windows = await WindowController.getAll();
+      if (!mounted || _window != tracked) return;
+      if (!windows.any((w) => w.windowId == tracked.windowId)) {
+        _window = null;
+        state = null;
+      }
+    } catch (e) {
+      debugPrint('mascot: window sync: $e');
+    }
   }
 
-  /// Opens the mascot if it's closed, closes it if it's open. Not a
-  /// window inside this app: closing/quitting Memo does not close it,
-  /// same as the CLI staying up independently of the Flutter app.
-  Future<void> toggle() async {
-    final existing = state;
-    if (existing != null) {
-      // WindowController has no close() of its own — this is the
-      // hand-off point desktop_multi_window's README documents for
-      // asking another window to close itself (see
-      // mascot_window.dart's setWindowMethodHandler).
-      await existing.invokeMethod('window_close');
-      return; // onWindowsChanged -> _syncState clears state.
+  // Tray clicks, Settings clicks and skin updates share one ordered queue.
+  Future<void> _enqueue(Future<void> Function() action) {
+    final operation = _pending.then((_) async {
+      if (mounted) await action();
+    });
+    _pending = operation.catchError((Object e) {
+      debugPrint('mascot: window action: $e');
+    });
+    return operation;
+  }
+
+  Future<void> _ensureWindow() async {
+    if (_window != null) {
+      await _ready?.future.timeout(const Duration(seconds: 15));
+      return;
     }
-    final controller = await WindowController.create(
-      const WindowConfiguration(arguments: '', hiddenAtLaunch: true),
+    _ready = Completer<void>();
+    await mascotLifecycleChannel.setMethodCallHandler((call) async {
+      if (!mounted) return;
+      if (call.method == 'ready' && !_ready!.isCompleted) {
+        _ready!.complete();
+      } else if (call.method == 'hidden') {
+        state = null;
+      }
+    });
+    // A provider-scope restart must reuse the existing pet, too.
+    final windows = await WindowController.getAll();
+    for (final window in windows) {
+      if (window.arguments == mascotWindowArgument) {
+        _window = window;
+        if (!_ready!.isCompleted) _ready!.complete();
+        return;
+      }
+    }
+    _window = await WindowController.create(
+      const WindowConfiguration(
+        arguments: mascotWindowArgument,
+        hiddenAtLaunch: true,
+      ),
     );
-    await controller.show();
-    state = controller;
+    // Do not send commands into an engine whose Dart handler is not ready.
+    await _ready!.future.timeout(const Duration(seconds: 15));
+  }
+
+  Future<void> toggle() => _enqueue(() async {
+    if (state != null) {
+      await mascotLifecycleChannel.invokeMethod<void>('hide');
+      if (mounted) state = null;
+      return;
+    }
+    await _ensureWindow();
+    if (!mounted) return;
+    await mascotLifecycleChannel.invokeMethod<void>('show', _readSkin());
+    if (mounted) state = _window;
+  });
+
+  Future<void> updateSkin(String skin) => _enqueue(() async {
+    if (_window == null) return;
+    await _ready?.future.timeout(const Duration(seconds: 15));
+    if (mounted) {
+      await mascotLifecycleChannel.invokeMethod<void>('skin', skin);
+    }
+  });
+
+  @override
+  void dispose() {
+    unawaited(_windowsChanged.cancel());
+    unawaited(mascotLifecycleChannel.setMethodCallHandler(null));
+    super.dispose();
   }
 }
 
 final mascotWindowProvider =
-    StateNotifierProvider<MascotWindowNotifier, WindowController?>(
-  (ref) => MascotWindowNotifier(),
-);
+    StateNotifierProvider<MascotWindowNotifier, WindowController?>((ref) {
+      final notifier = MascotWindowNotifier(
+        readSkin: () => ref.read(mascotSkinProvider),
+      );
+      ref.listen<String>(mascotSkinProvider, (_, skin) {
+        unawaited(notifier.updateSkin(skin));
+      });
+      return notifier;
+    });
 
-/// Convenience bool view for UI that only cares whether it's open —
-/// Settings' toggle switch and the tray menu's label both just need this.
-final mascotWindowOpenProvider =
-    Provider<bool>((ref) => ref.watch(mascotWindowProvider) != null);
+final mascotWindowOpenProvider = Provider<bool>(
+  (ref) => ref.watch(mascotWindowProvider) != null,
+);

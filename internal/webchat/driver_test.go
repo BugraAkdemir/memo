@@ -233,7 +233,21 @@ func TestConnect_PressingItAgainReplacesAWaitingAttempt(t *testing.T) {
 	ctx := context.Background()
 
 	svc.StartConnect()
-	waitFor(t, "first connect to wait", 20*time.Second, func() bool { return svc.Status(ctx).Connecting })
+	// Connecting becomes true before the goroutine has opened/navigated the
+	// browser. Wait for the login page too, so this tests replacing a human
+	// sign-in wait rather than cancelling an in-flight browser startup.
+	waitFor(t, "first connect to wait for sign-in", 20*time.Second, func() bool {
+		svc.mu.Lock()
+		tab, connecting := svc.t, svc.connecting
+		svc.mu.Unlock()
+		if !connecting || !tab.alive() {
+			return false
+		}
+		// Status intentionally does not probe a connecting tab. This test
+		// needs to observe the page without ending the pending attempt.
+		p, err := svc.probe(ctx, tab)
+		return err == nil && p.State == "login"
+	})
 	f.SetMode("ok")
 	svc.StartConnect() // second press, first still waiting
 	waitFor(t, "second connect to finish", 30*time.Second, func() bool { return !svc.Status(ctx).Connecting })

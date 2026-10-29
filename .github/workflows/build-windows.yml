@@ -107,7 +107,7 @@ jobs:
       - name: Build Go backend
         run: |
           set CGO_ENABLED=1
-          go build -tags "sqlite_fts5" -o "build_output\stage\${{ env.APP_NAME }}\memo-backend.exe" .
+          go build -tags "sqlite_fts5" -ldflags "${{ (github.repository == 'BugraAkdemir/memo' && startsWith(github.ref, 'refs/tags/v')) && '-X memo/internal/telemetry.BuildChannel=official' || '' }}" -o "build_output\stage\${{ env.APP_NAME }}\memo-backend.exe" .
         shell: cmd
 
       - name: Build Flutter frontend

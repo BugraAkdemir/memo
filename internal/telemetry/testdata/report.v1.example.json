@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "tid": "0f3c9a1e7b2d4c5a8e6f1b0d9c3a7e42",
+  "day": "2026-10-26",
+  "app_version": "5.0.0",
+  "build": "official",
+  "os": "linux",
+  "arch": "amd64",
+  "ui_lang": "tr",
+  "hw": {
+    "gpu_class": "nvidia",
+    "gpu_model": "RTX 5060 Ti",
+    "vram_gb": 16,
+    "engine": "nvidia",
+    "cpu_cores": 8,
+    "cpu_threads": 16,
+    "ram_gb": 32
+  },
+  "usage": [
+    {
+      "kind": "local",
+      "provider": "local",
+      "model": "Qwen3 8B",
+      "category": "chat",
+      "turns": 14,
+      "in_tokens": 21800,
+      "out_tokens": 5200,
+      "cached_tokens": 0
+    },
+    {
+      "kind": "sub",
+      "provider": "antigravity",
+      "model": "Gemini 3.8 Flash",
+      "category": "agent",
+      "turns": 6,
+      "in_tokens": 412000,
+      "out_tokens": 9100,
+      "cached_tokens": 380000
+    },
+    {
+      "kind": "api",
+      "provider": "openai",
+      "model": "other",
+      "category": "title",
+      "turns": 3,
+      "in_tokens": 900,
+      "out_tokens": 40,
+      "cached_tokens": 0
+    }
+  ],
+  "purpose": {
+    "text": {
+      "turns": 14,
+      "in_tokens": 21800,
+      "out_tokens": 5200
+    },
+    "code": {
+      "turns": 6,
+      "in_tokens": 412000,
+      "out_tokens": 9100
+    }
+  },
+  "perf": [
+    {
+      "size_bucket": "4-8b",
+      "hw_class": "nvidia",
+      "tps_bucket": "40-80",
+      "ttft_bucket": "0.5-1s",
+      "n": 14
+    }
+  ],
+  "local_start_fail": [
+    {
+      "component": "llama",
+      "code": "permission",
+      "n": 1
+    }
+  ],
+  "provider_err": [
+    {
+      "provider": "openai",
+      "code": "429",
+      "n": 2
+    }
+  ],
+  "update": [
+    {
+      "event": "offered",
+      "n": 1
+    }
+  ],
+  "crash": [
+    {
+      "sig": "eb15eaa1dccfb1c718ed553a35d8a237d1683c70b2568a5c9f0771ba6e3f95d1",
+      "component": "go",
+      "exc_type": "runtime.boundsError",
+      "frames": [
+        "memo/internal/app.(*App).finishStream internal/app/chat.go:812",
+        "memo/internal/app.(*App).sendMessageStreamCore internal/app/chat.go:455"
+      ],
+      "n": 1
+    }
+  ],
+  "features": [
+    "projects",
+    "skills",
+    "memory"
+  ],
+  "milestones": {
+    "installed": "2026-10-20",
+    "provider_added": "2026-10-20",
+    "first_message": "2026-10-20"
+  },
+  "memory_rows_bucket": "100-1k"
+}

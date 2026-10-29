@@ -45,6 +45,39 @@ extension MascotSkinPrefValue on MascotSkin {
       value == 'pixel' ? MascotSkin.pixel : MascotSkin.classic;
 }
 
+// One choice per application isolate, independent of the desktop pet preference.
+final _sessionLogoSkin =
+    MascotSkin.values[math.Random().nextInt(MascotSkin.values.length)];
+
+/// A transparent, still portrait. It owns no ticker or idle-gesture timer.
+class MemoMascotLogo extends StatelessWidget {
+  const MemoMascotLogo({super.key, this.skin, this.size = 36});
+
+  final MascotSkin? skin;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: L10n.t('mascot_semantic_label'),
+      image: true,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: CustomPaint(
+          painter: switch (skin ?? _sessionLogoSkin) {
+            MascotSkin.classic => _MascotPainter(mood: MascotMood.idle, t: 0),
+            MascotSkin.pixel => _PixelMascotPainter(
+              mood: MascotMood.idle,
+              t: 0,
+            ),
+          },
+        ),
+      ),
+    );
+  }
+}
+
 /// Memo's mascot: hand-drawn as vector shapes (no external asset, no
 /// runtime image decode) so every state renders crisply at any size. Two
 /// interchangeable [skin]s — [MascotSkin.classic]'s warm mocha-and-gold

@@ -40,7 +40,7 @@
 
 Tamamen **senin** makinende çalışır. Haftalar önceki konuşmaları hatırlar. *Ne zaman* çalıştığını öğrenir ve sen daha başlamadan sessizce hazırlanır. Ve gerçekten bir şey **yapmasını** istediğinde — bir dosyayı düzenle, komut çalıştır, WhatsApp'tan mesaj at — yapar.
 
-Bulut yok. Abonelik yok. Telemetri yok. Zihnin sana kalır.
+Bulut yok. Abonelik yok. Zihnin sana kalır.
 
 <div align="center">
   <br/>
@@ -264,7 +264,7 @@ Bir **Şef** model karmaşık görevi parçalara böler, 8 uzman role dağıtır
 - **🖥️ Kodlama Ajanı Sağlayıcı Olarak (Beta)** — herhangi bir sohbeti, bir API yerine bilgisayarında kurulu **Claude Code** veya **Codex CLI**'a bağla. O sohbet, dosya/komut yetkisi olan gerçek bir kodlama ajanına dönüşür — Memo'da başka ne yapıyor olursan ol, arka planda bağımsız çalışır; diğer tüm sohbetler kendi sağlayıcısını kullanmaya devam eder, hiç etkilenmez.
 - **🎤 Live Mode v2** — Google Live ya da OpenAI Realtime üzerinden gerçek native sesten-sese konuşma, barge-in ve konuşma-ortası hafıza hatırlamasıyla. Hiçbir motor yapılandırılmadıysa cihaz-üstü whisper.cpp transkripsiyonu + yerel Piper TTS'e düşer, ses hiç makineni terk etmez.
 - **☁️ Bulut Senkronizasyonu** — isteğe bağlı uçtan uca şifreli Google Drive yedeği. AES-256-GCM + PBKDF2 (600K iterasyon). Yüklemeden *önce* şifrelenir — Google okuyamaz.
-- **🔒 Tasarımı Gereği Gizli** — telemetri yok, analitik yok, çökme raporu yok. Yapılandırma dosyaları `0600`. Gizli mod sıfır iz bırakır. Gözlemci yalnız aktivite zaman damgalarını saklar, mesaj içeriğini değil. İki yerel Developer Gateway endpoint'i de (Anthropic- ve OpenAI-uyumlu) artık loopback-olmayan her çağıran için API anahtarını zorunlu kılıyor, ve içe aktarılan bir skill artık kendi kendine aktive olmuyor.
+- **🔒 Tasarımı Gereği Gizli** — Yapılandırma dosyaları `0600`. Gizli mod sıfır iz bırakır. Gözlemci yalnız aktivite zaman damgalarını saklar, mesaj içeriğini değil. İki yerel Developer Gateway endpoint'i de (Anthropic- ve OpenAI-uyumlu) artık loopback-olmayan her çağıran için API anahtarını zorunlu kılıyor, ve içe aktarılan bir skill artık kendi kendine aktive olmuyor.
 
 ---
 

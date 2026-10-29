@@ -50,7 +50,7 @@ Settings › Memory is five focused sections switched with a pill bar (each pill
 - **Go Fallback**: If vec0 extension is unavailable, brute-force cosine similarity fallback.
 
 ### Privacy & Local Isolation
-- **100% Offline**: No data ever leaves your computer. No telemetry, no logs, no cloud dependencies.
+- **Offline use**: Local models can process your chats on your computer without a cloud service. External providers are optional.
 - **Encrypted Local Storage**: Your mind stays on your hardware.
 - **AES-256-GCM Encryption**: API keys encrypted with machine-derived key.
 - **Pictures are ciphertext on disk (v4.6.0)**: every image you send Memo (`data/images`) and every image Memo draws (`data/generated-images`) is sealed with XChaCha20-Poly1305 under a fresh per-file key (HKDF-SHA256 over a master secret and a random salt, random 192-bit nonce, authenticated), mode 0600. The master secret is deliberately **not** in the data folder — by default it is `~/.config/Memo/image.key` (`%AppData%\Memo`, `~/Library/Application Support/Memo`), so copying, backing up or syncing the data folder does not carry the key; `MEMO_IMAGE_KEY` replaces the file with a passphrase supplied from outside (scrypt-stretched). A run with `MEMO_DATA_DIR` set (container volume, portable, tests) keeps the key beside the data so a discarded config folder cannot lock every picture. Pictures from before v4.6.0 are sealed once at startup; the app serves them decrypted, so nothing in the UI changed. **Not covered, by nature:** a picture while it is open in memory, and the copy a model provider, Telegram or WhatsApp receives when it is sent there. Backups do not include the picture folders (or the image key).

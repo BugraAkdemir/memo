@@ -164,6 +164,9 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// the project cannot be identified.
 	memScope, scopeOK := a.memoryScopeForChat(chatID)
 	projectChat := a.isProjectChat(chatID)
+	if projectChat {
+		a.noteFeature("projects")
+	}
 	if a.GetMemoryEnabled() && !taskMemoryDisabled(ctx) && scopeOK && a.memoryAllowedFor(memScope, code) {
 		memories = a.retrieveMemory(ctx, memScope, a.buildMemoryQuery(userMsg))
 	}

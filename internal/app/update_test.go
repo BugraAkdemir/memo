@@ -569,13 +569,19 @@ func TestRunComponentUpdate_TamperedDownloadChangesNothing(t *testing.T) {
 	good := engineArchive(t, "11456", "b11456")
 	publishLlama(t, s, good, "b11456")
 	// The bytes served are not the bytes the (signed) manifest describes.
-	evil := engineArchive(t, "11456", "b11456")
-	b, _ := os.ReadFile(evil)
+	// Mutate the published archive itself: a separately generated gzip can
+	// have another size and hit the length check before checksum verification.
+	b, err := os.ReadFile(good)
+	if err != nil {
+		t.Fatal(err)
+	}
 	b[len(b)/2] ^= 0xff
-	_ = os.WriteFile(good, b, 0o644)
+	if err := os.WriteFile(good, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	a := compApp(t, s, "V4.6.0")
-	err := a.runComponentUpdate(context.Background(), components.Llama)
+	err = a.runComponentUpdate(context.Background(), components.Llama)
 	if !errors.Is(err, updater.ErrChecksum) {
 		t.Fatalf("err = %v, want ErrChecksum", err)
 	}

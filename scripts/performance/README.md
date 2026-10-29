@@ -49,6 +49,18 @@ python3 scripts/performance/longevity.py --replace-test-data \
 python3 scripts/performance/quality.py
 ```
 
+Resume and fixture transport: `--start-stage N` re-runs only stages N..3 and keeps
+the accepted earlier entries of `results.json` (it refuses if they used a different
+`--fixture-nodelay`). Files of re-run stages are first copied to
+`data/performance-benchmark/superseded/<timestamp>/`. Each section of a stage is
+saved to `stage-N-partial.json`; that file is evidence only, an interrupted stage is
+re-run from its seed. The HTTP fixture sets `TCP_NODELAY` by default (`--fixture-nodelay
+on`). Calibration on 29 Oct 2026 (40 keep-alive embedding POSTs, fixture alone, curl):
+median 0.25-0.36 ms with it, 40.9 ms without it (Nagle + delayed ACK between the
+header and body writes). Rows measured without it, including the first stage 1,
+inflate every retrieval/embedding-heavy number by roughly 41 ms per call.
+Do not mix the two settings in one comparison.
+
 The runner fetches 100 dialogues from HuggingFaceH4/ultrachat_200k (MIT) if absent.
 The downloaded seed and source metadata live under data/performance-benchmark/.
 Each stage is regenerated from the same seed with nested record IDs and dates

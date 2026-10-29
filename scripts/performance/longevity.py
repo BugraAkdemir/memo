@@ -33,7 +33,11 @@ def visible_text(event):
 
 class Fixture(http.server.BaseHTTPRequestHandler):
  protocol_version = 'HTTP/1.1'
- calls = []; embedding_calls = 0; real_calls = 0; model = ''; max_real = 12
+ calls = []; embedding_calls = 0; real_calls = 0; model = ''; max_real = 12; nodelay = True
+ def setup(self):
+  super().setup()
+  # Headers and body are separate writes; without TCP_NODELAY Nagle + delayed ACK add ~40 ms on reused connections.
+  if Fixture.nodelay: self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
  def log_message(self, *a): pass
  def reply(self, value, status=200):
   b=json.dumps(value).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(b)));self.end_headers();self.wfile.write(b)
@@ -232,10 +236,22 @@ def insert_memories(db,rows):
  db.commit()
 
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('--replace-test-data',action='store_true');ap.add_argument('--binary',default='/tmp/memo-performance-run/memo-perf');ap.add_argument('--stages',type=int,default=3);ap.add_argument('--gemini-model',default='gemini-3.8-flash-high');ap.add_argument('--browser-command');args=ap.parse_args()
+ ap=argparse.ArgumentParser();ap.add_argument('--replace-test-data',action='store_true');ap.add_argument('--binary',default='/tmp/memo-performance-run/memo-perf');ap.add_argument('--stages',type=int,default=3);ap.add_argument('--start-stage',type=int,default=1,help='re-run only stages START..STAGES; earlier accepted results.json entries are kept');ap.add_argument('--fixture-nodelay',choices=['on','off'],default='on',help='TCP_NODELAY on the HTTP fixture; keep identical across compared stages');ap.add_argument('--gemini-model',default='gemini-3.8-flash-high');ap.add_argument('--browser-command');args=ap.parse_args()
  if not args.replace_test_data:ap.error('explicit --replace-test-data required')
  if not 1<=args.stages<=3:ap.error('stages must be 1..3')
+ if not 1<=args.start_stage<=args.stages:ap.error('start-stage must be 1..stages')
+ Fixture.nodelay=args.fixture_nodelay=='on'
  OUT.mkdir(exist_ok=True)
+ results=[]
+ if args.start_stage>1:
+  prior=json.loads((OUT/'results.json').read_text()) if (OUT/'results.json').exists() else []
+  if [s['manifest']['years'] for s in prior[:args.start_stage-1]]!=list(range(1,args.start_stage)):ap.error('results.json lacks accepted stages 1..%d'%(args.start_stage-1))
+  if any(s.get('fixture_nodelay')!=Fixture.nodelay for s in prior[:args.start_stage-1]):ap.error('accepted stages used a different --fixture-nodelay; re-run from stage 1')
+  results=prior[:args.start_stage-1]
+ # Never overwrite evidence: move files of the stages about to be re-run into superseded/<timestamp>/.
+ stamp=time.strftime('%Y%m%dT%H%M%S');old=[p for p in OUT.iterdir() if p.is_file() and (p.name=='results.json' and args.start_stage==1 or any(re.match(rf'stage-{y}-',p.name) for y in range(args.start_stage,4)))]
+ for p in old:
+  (OUT/'superseded'/stamp).mkdir(parents=True,exist_ok=True);shutil.copy2(p,OUT/'superseded'/stamp/p.name)
  for port in (18080,18082,18083,18084,18090):
   with socket.socket() as sock:
    sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);sock.bind(('127.0.0.1',port))
@@ -250,55 +266,59 @@ def main():
  if saved is not None:
   backup.write_bytes(saved);backup.chmod(0o600)
  web=http.server.ThreadingHTTPServer(('127.0.0.1',18080),WebProxy);threading.Thread(target=web.serve_forever,daemon=True).start()
- server=http.server.ThreadingHTTPServer(('127.0.0.1',18082),Fixture);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start();b=Bench(args.binary);results=[]
+ server=http.server.ThreadingHTTPServer(('127.0.0.1',18082),Fixture);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start();b=Bench(args.binary)
  try:
   # Only the user-designated test stores are replaced. Authentication and model weights stay available.
-  (DATA/'providers.json').unlink(missing_ok=True)
-  (DATA/'telegram.json').unlink(missing_ok=True)
-  for name in ['sessions','memory','profile','stats','calendar']:
-   p=DATA/name
-   if p.exists():shutil.rmtree(p)
-  b.start('bootstrap');b.stop()
-  for year in range(1,args.stages+1):
+  if args.start_stage==1:
+   (DATA/'providers.json').unlink(missing_ok=True)
+   (DATA/'telegram.json').unlink(missing_ok=True)
+   for name in ['sessions','memory','profile','stats','calendar']:
+    p=DATA/name
+    if p.exists():shutil.rmtree(p)
+   b.start('bootstrap');b.stop()
+  for year in range(args.start_stage,args.stages+1):
    if year>1:
     for name in ['sessions','memory','profile','stats','calendar']:
-     shutil.rmtree(DATA/name)
+     shutil.rmtree(DATA/name,ignore_errors=True)
     b.start(f'stage-{year}-bootstrap');b.stop()
    print('STAGE',year,'SEED',flush=True);manifest=seed(year,0);write_json(OUT/f'stage-{year}-manifest.json',manifest)
-   stage={'manifest':manifest,'cold':[],'api':{},'fake_turns':[],'real_turns':[]}
+   stage={'manifest':manifest,'fixture_nodelay':Fixture.nodelay,'cold':[],'api':{},'fake_turns':[],'real_turns':[]}
+   partial=lambda:write_json(OUT/f'stage-{year}-partial.json',stage)  # evidence only: an interrupted stage is re-run from its seed
    for rep in range(3):
     stage['cold'].append(b.start(f'stage-{year}-cold-{rep}'))
     if rep<2:b.stop()
+   partial()
    for path in ['/api/status','/api/chats','/api/messages?chat_id=bench-medium','/api/messages?chat_id=bench-long','/api/context?chat_id=bench-long','/api/stats/usage']:
     values=[];nbytes=[]
     for _ in range(15):
      t=time.perf_counter();d=b.api(path);values.append((time.perf_counter()-t)*1000);nbytes.append(len(json.dumps(d)))
     stage['api'][path]={'ms':values,'median_ms':statistics.median(values),'max_ms':max(values),'response_bytes_median':statistics.median(nbytes)}
+   partial()
    for chat in ['bench-eval','bench-medium','bench-long']:
     open_calls=len(Fixture.calls);open_start=time.perf_counter();b.api('/api/chats/switch',{'id':chat});b.api('/api/messages?chat_id='+chat);before=b.api('/api/context?chat_id='+chat);opening={'ms':(time.perf_counter()-open_start)*1000,'provider_calls':len(Fixture.calls)-open_calls}
-    turn=b.stream(chat,'BENCH_FAKE Measure the response overhead.');turn['chat']=chat;turn['chat_open']=opening;turn['context_before']=before;turn['context_after']=b.api('/api/context?chat_id='+chat);stage['fake_turns'].append(turn)
+    turn=b.stream(chat,'BENCH_FAKE Measure the response overhead.');turn['chat']=chat;turn['chat_open']=opening;turn['context_before']=before;turn['context_after']=b.api('/api/context?chat_id='+chat);stage['fake_turns'].append(turn);partial()
    Fixture.model=args.gemini_model
    for key,q,expected in QUERIES:
     turn=b.stream('bench-eval','BENCH_REAL_EVAL Answer only from remembered personal facts. If the fact is unavailable, say UNKNOWN. Answer in at most two sentences. '+q)
-    turn['question_id']=key;turn['expected']=expected;turn['context_after']=b.api('/api/context?chat_id=bench-eval');stage['real_turns'].append(turn)
+    turn['question_id']=key;turn['expected']=expected;turn['context_after']=b.api('/api/context?chat_id=bench-eval');stage['real_turns'].append(turn);partial()
     print('STAGE',year,'GEMINI',key,'ms',round(turn['total_ms']),'response',turn['text'][:160],flush=True)
    Fixture.model=''
    stage['rss_after_turns_kb']=b.rss()
    if args.browser_command:
     env={**os.environ,'BENCH_STAGE':str(year),'BENCH_OUTPUT':str(OUT)}
     r=subprocess.run(args.browser_command,shell=True,cwd=REPO,env=env,capture_output=True,text=True,timeout=270)
-    stage['browser']={'exit_code':r.returncode,'stdout':r.stdout,'stderr':r.stderr}
+    stage['browser']={'exit_code':r.returncode,'stdout':r.stdout,'stderr':r.stderr};partial()
    b.stop()
    p=subprocess.run([args.binary,'-mode','rag','-data',str(DATA)],input=json.dumps([q for _,q,_ in QUERIES]),capture_output=True,text=True,cwd=DATA,env={**os.environ,'GOMAXPROCS':'2'},timeout=90)
    (OUT/f'stage-{year}-rag.log').write_text(p.stderr)
    if p.returncode:raise RuntimeError(p.stderr[-1500:])
-   stage['rag']=json.loads(p.stdout);results.append(stage);write_json(OUT/'results.json',results)
+   stage['rag']=json.loads(p.stdout);results.append(stage);write_json(OUT/'results.json',results);(OUT/f'stage-{year}-partial.json').unlink(missing_ok=True)
    print('STAGE',year,'COMPLETE','cold_ms',[round(x['process_to_api_ms']) for x in stage['cold']],'memories',manifest['memories'],flush=True)
  finally:
   b.stop();server.shutdown();server.server_close();web.shutdown();web.server_close()
   if saved is None:cfg.unlink(missing_ok=True)
   else:cfg.write_bytes(saved)
   backup.unlink(missing_ok=True)
-  write_json(OUT/'provider-calls.json',Fixture.calls)
+  write_json(OUT/('provider-calls.json' if args.start_stage==1 else f'provider-calls-from-stage-{args.start_stage}.json'),Fixture.calls)
  print('RESULTS',OUT/'results.json',flush=True)
 if __name__=='__main__':main()

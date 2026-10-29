@@ -43,9 +43,10 @@
 - Pi embedding yeni build/reboot denenmedi; eski embedding_auto_start:false ezilmez, elle açmak tercihi kaydeder. Eski origin token döndürme kullanıcıda; satılmış alan adındaki eski REPL indirmeleri kaldırılıp sürüm duyurulmalı.
 - Yapıştırma kutusu Done'a dek açık; login.go s.tail erken okuma ölçülmedi. Minimal Mod auto-compact atlar; görsel modeli etiketsiz; ikinci model menüsü ortak listeyi kullanır.
 - MEMO_DATA_DIR testlerinde config.ResetForTests eksikleri dosya sızdırabilir. ngrok.TestFetchURL_NoServer yerel API yüzünden düşebilir, tünele dokunma. Yoğun derlemede wav_player stop testi 2s timeout görmüştü.
-- Açık kararsız testler: Tailscale RebindsFromLoopback eski8/150 yeni2/150; livemode SendAudioRoutesToCurrentInner; BootstrapTokenAuth temp temizliği; DuckDuckGo captcha; webchat PressingItAgainReplacesAWaitingAttempt. Yükte eski/yeni aynı 24 döngüyle ölç; yeşile dek koşma. TamperedDownloadChangesNothing 29 Ekim'de düzeltildi: eski36/150, yeni0/150.
+- Açık kararsız testler: Tailscale RebindsFromLoopback eski8/150 yeni2/150; livemode SendAudioRoutesToCurrentInner; BootstrapTokenAuth temp temizliği; DuckDuckGo captcha; webchat PressingItAgainReplacesAWaitingAttempt. Yerel yük testi çalıştırma; kullanıcı sistemi dondurduğunu bildirdi. Yeşile dek koşma. TamperedDownloadChangesNothing 29 Ekim'de düzeltildi: eski36/150, yeni0/150.
 
 ## Kalıcı uyarılar
+- Kullanıcı talebi: yerel CPU dolduran busy loop/stres testi başlatma. Önceki döngüler sonlandırıldı. Ağır doğrulamayı uzak CI üzerinde yap.
 - `~/.config/Memo/image.key` olmadan yalnız data kopyası görselleri açamaz; taşınabilir/şifreli bulut yedeği anahtarı taşımadan aktarır, eski yedek kurtarabilir. Eski sürüm mühürlü görseli bozuk görür.
 - Kota sonrası otomatik devam yalnız Memo açıkken; CLI ajan/WhatsApp/Self-Driving kapsam dışı. Görsel niyeti anahtar sözcüklü: yanlış tetikte negatif test; `/image` zorlar.
 - Sidecar soğuk liste ~30s; kapasite/effort tam model id'sinden, offline son snapshot; bilinmeyen tahmin edilmez (`docs/SUBSCRIPTION_CAPABILITIES.md`).
@@ -55,8 +56,9 @@
 
 ---
 
-# Son oturum — 2026-10-29 — Go → Rust maliyet/kazanç değerlendirmesi
-- Kullanıcı CPU/RAM/GPU, istek/UI hızı ve özellikle Windows cold start açısından geçişi sordu. Yalnız inceleme; dönüşüm/optimizasyon uygulanmadı, benchmark veya yerel yük testi başlatılmadı.
-- Kod bulguları: Windows launch.ps1 üreten workflow'da backend yokken sabit1+2sn sleep; ilk açılışta koşullu binaries klasör kopyası; Startup HTTP sunucusundan önce çağrılır; sessions.NewManager tüm sohbet JSON'larını senkron yükler; skill keşfi/senkronizasyon Startup içinde. Bunların kullanıcının kurulu Windows kopyasındaki süre payı ölçülmedi.
-- git ls-files sayımı: testler hariç500 Go dosyası119592 fiziksel satır;495 test dosyası95834 satır (yorum/boş satır dahil). llama-server ayrı süreç, Flutter HTTP/SSE istemcisi; dil değişimi model ağırlıklarını/GPU çekirdeklerini/API token maliyetini kendiliğinden değiştirmez.
-- Öneri: önce Windows açılışını süreç/aşama bazında ölç ve Go/Flutter'daki darboğazları düzelt; profilde gerekirse seçili Rust modülü. Tam eşdeğer Rust backend için8–16 mühendis-ay yalnız kaba planlama tahmini; kullanıcı kararı yok. Önceki PR/dal arşivleme ayrıntısı arşiv başında. Bu kayıt yerel docs commit'i, push yok.
+# Son oturum — 2026-10-29 — Go/Windows/macOS performans incelemesi
+- Ayrıntı/öncelik/efor: `docs/PERFORMANCE_REVIEW.md`. Ürün kodu değişmedi; hedef platform süreleri ölçülmedi, yerel stres testi yok.
+- Windows installer motorları kuruyor; launcher ayrıca ~/.memo/binaries kopyalıyor. CWD önceliği eski motoru seçebilir; backend-yok dalında UI öncesi sabit1+2sn bekleme var. Backend data/config varsayılanı ProgramData, launcher hazırlığı home altında.
+- RAG embedding tekrarı, proje20k satır taraması, pool1; tam sohbet JSON yüklemesi; Flutter gönderim öncesi GET/chunk başına metin güncellemesi adaylar. Kazanç ölçülmedi.
+- Mac llama-server Mach-O bağımlılığı dört llama/mtmd dylib incelenen ağaçta yok; mimari/launcher/DYLD sorunları raporda. Gerçek Mac çalıştırması gerekli.
+- Graph coverage/doğrudan kaynak ve binary header incelemesi; git diff --check PASS. Ürün değişmediği için Go/Flutter testleri yok. Docs yerel commit, push yok. Sonraki: Windows launcher/paket sözleşmesi; hedef platform/uzak CI doğrulaması.

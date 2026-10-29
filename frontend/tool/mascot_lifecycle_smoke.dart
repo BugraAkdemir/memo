@@ -18,11 +18,13 @@ void main(List<String> args) async {
   await Future<void>.delayed(const Duration(seconds: 1));
   var skin = 'classic';
   final owner = MascotWindowNotifier(readSkin: () => skin);
+  WindowController? visibleWindow;
+  final removeListener = owner.addListener((window) => visibleWindow = window);
   try {
     String? originalId;
     for (var i = 0; i < 20; i++) {
       await owner.toggle();
-      final controller = owner.state;
+      final controller = visibleWindow;
       if (controller == null) throw StateError('pet did not open');
       originalId ??= controller.windowId;
       if (controller.windowId != originalId) {
@@ -37,9 +39,9 @@ void main(List<String> args) async {
       } else {
         await owner.toggle();
       }
-      if (owner.state != null) throw StateError('pet did not hide');
+      if (visibleWindow != null) throw StateError('pet did not hide');
       await owner.updateSkin(i.isEven ? 'classic' : 'pixel');
-      print('MASCOT_CYCLE_PASS ${i + 1}');
+      debugPrint('MASCOT_CYCLE_PASS ${i + 1}');
     }
     await Future.wait([
       owner.toggle(),
@@ -47,24 +49,29 @@ void main(List<String> args) async {
       owner.toggle(),
       owner.toggle(),
     ]);
-    if (owner.state != null)
+    if (visibleWindow != null) {
       throw StateError('rapid toggles did not serialize');
+    }
     final pets = (await WindowController.getAll()).where(
       (w) => w.arguments == mascotWindowArgument,
     );
-    if (pets.length != 1)
+    if (pets.length != 1) {
       throw StateError('retained ${pets.length} pet engines');
-    print(
+    }
+    debugPrint(
       'MASCOT_NATIVE_PASS: 20 cycles, live/hidden skin changes, rapid toggles, one retained engine',
     );
+    removeListener();
     owner.dispose();
     await windowManager.ensureInitialized();
-    print('MASCOT_OWNER_CLOSE: destroying the main window with the pet hidden');
+    debugPrint(
+      'MASCOT_OWNER_CLOSE: destroying the main window with the pet hidden',
+    );
     await windowManager.destroy();
     await Future<void>.delayed(const Duration(seconds: 4));
     throw StateError('a hidden pet kept the closed application alive');
   } catch (error, stack) {
-    print('MASCOT_NATIVE_FAIL: $error\n$stack');
+    debugPrint('MASCOT_NATIVE_FAIL: $error\n$stack');
     exit(1);
   }
 }

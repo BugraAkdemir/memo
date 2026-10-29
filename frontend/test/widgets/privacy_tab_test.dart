@@ -23,13 +23,12 @@ class _FakeTelemetryBackend implements HttpClientAdapter {
     this.build = 'official',
     this.failConsent = false,
     this.envOff = false,
-    this.previewJson = '',
   });
   String consent;
   final String build;
   final bool failConsent;
   final bool envOff;
-  final String previewJson;
+  final String previewJson = '';
   final requests = <String>[];
 
   Map<String, Object?> get _status => {

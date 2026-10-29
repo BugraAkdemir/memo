@@ -1,3 +1,9 @@
+# Son oturum — 2026-10-29 — eski dal arşivlendi
+- Kullanıcı isteğiyle `feat/telemetry-client`, yerelde ve GitHub'da `archive/feat/telemetry-client` adına taşındı. Uç aynı: `fb345a78`; origin/main içinde olduğu doğrulandı. Eski uzak dal adı kaldırıldı; geçmiş arşiv dalında korunuyor. main üzerinde kalındı.
+- PR #52 daha önce `cc9fd58c` ile merge edildi: 13 CI PASS, 1 yayın SKIP. Önceki ayrıntılı oturum kaydı arşiv başında; sunucu dağıtımı/resmî sürüm işleri hâlâ açık.
+- Yük testi kısıtı sürüyor: kullanıcı sistemini zorlayan busy-loop'lar durduruldu, kalan0 doğrulandı; yeniden yerel yük testi başlatma. Webchat150 ölçümü tamamlanmadı; son doğrulama GitHub CI'da geçti.
+- Doğrulama: yerel/uzak arşiv ref'i aynı SHA; eski uzak ref yok. Kod değişmedi. Bu handoff yerel docs commit'inde, push yok; kullanıcının AGENTS/.claude-flow ve telemetry_state değişiklikleri korundu.
+
 # Son oturum — 2026-10-29 — PR #52 merge edildi, CI yeşil
 - https://github.com/BugraAkdemir/memo/pull/52 → main: `cc9fd58c` (21:44 İstanbul). Doğrulanan baş: `fb345a78`; PR CI 13 PASS, yayın adımı 1 SKIP. Yerel main eşitlendi; bu handoff ayrı yerel docs commit'i, push yok.
 - Düzeltmeler: `e26644f6` Flutter analiz; `09746129` x/net v0.62.0 (GO-2026-6860) + aynı arşiv baytlarını bozan checksum testi; `e4f12e16` hatalı Status/login beklemesi `fb345a78` ile doğrudan sekme probe'una çevrildi. Son Go CI geçti.

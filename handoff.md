@@ -55,8 +55,8 @@
 
 ---
 
-# Son oturum — 2026-10-29 — eski dal arşivlendi
-- Kullanıcı isteğiyle `feat/telemetry-client`, yerelde ve GitHub'da `archive/feat/telemetry-client` adına taşındı. Uç aynı: `fb345a78`; origin/main içinde olduğu doğrulandı. Eski uzak dal adı kaldırıldı; geçmiş arşiv dalında korunuyor. main üzerinde kalındı.
-- PR #52 daha önce `cc9fd58c` ile merge edildi: 13 CI PASS, 1 yayın SKIP. Önceki ayrıntılı oturum kaydı arşiv başında; sunucu dağıtımı/resmî sürüm işleri hâlâ açık.
-- Yük testi kısıtı sürüyor: kullanıcı sistemini zorlayan busy-loop'lar durduruldu, kalan0 doğrulandı; yeniden yerel yük testi başlatma. Webchat150 ölçümü tamamlanmadı; son doğrulama GitHub CI'da geçti.
-- Doğrulama: yerel/uzak arşiv ref'i aynı SHA; eski uzak ref yok. Kod değişmedi. Bu handoff yerel docs commit'inde, push yok; kullanıcının AGENTS/.claude-flow ve telemetry_state değişiklikleri korundu.
+# Son oturum — 2026-10-29 — Go → Rust maliyet/kazanç değerlendirmesi
+- Kullanıcı CPU/RAM/GPU, istek/UI hızı ve özellikle Windows cold start açısından geçişi sordu. Yalnız inceleme; dönüşüm/optimizasyon uygulanmadı, benchmark veya yerel yük testi başlatılmadı.
+- Kod bulguları: Windows launch.ps1 üreten workflow'da backend yokken sabit1+2sn sleep; ilk açılışta koşullu binaries klasör kopyası; Startup HTTP sunucusundan önce çağrılır; sessions.NewManager tüm sohbet JSON'larını senkron yükler; skill keşfi/senkronizasyon Startup içinde. Bunların kullanıcının kurulu Windows kopyasındaki süre payı ölçülmedi.
+- git ls-files sayımı: testler hariç500 Go dosyası119592 fiziksel satır;495 test dosyası95834 satır (yorum/boş satır dahil). llama-server ayrı süreç, Flutter HTTP/SSE istemcisi; dil değişimi model ağırlıklarını/GPU çekirdeklerini/API token maliyetini kendiliğinden değiştirmez.
+- Öneri: önce Windows açılışını süreç/aşama bazında ölç ve Go/Flutter'daki darboğazları düzelt; profilde gerekirse seçili Rust modülü. Tam eşdeğer Rust backend için8–16 mühendis-ay yalnız kaba planlama tahmini; kullanıcı kararı yok. Önceki PR/dal arşivleme ayrıntısı arşiv başında. Bu kayıt yerel docs commit'i, push yok.

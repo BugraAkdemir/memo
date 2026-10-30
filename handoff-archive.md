@@ -1,3 +1,10 @@
+# Son oturum — 2026-10-29 — Üç aşamalı benchmark duraklatıldı
+- Kullanıcı data test verisini değiştirmeyi ve Gemini Subs kullanımını açıkça onayladı. Kod: cmd/memo-perf + scripts/performance; ilk commit36ba732a. Ürün optimizasyonu yok.
+- Keşif koşusu3 aşama tamam; son düzeltilmiş koşu aşama1 tamam, aşama2 Cedar yanıtından sonra kullanıcı durdurdu. Raw/log/manifest/checkpoint data/performance-benchmark altında; git dışında. Ayrıntı ve tam devam sırası CHECKPOINT belgesinde.
+- Tüm bize ait benchmark/sidecar süreçleri durdu;18080/18082/18090 kapalı. Yeni ölçüm başlatma: kullanıcı sonra devam edecek. Protokol2 test, syntax/build/target-vet/web-build PASS; tam Go/Flutter doğrulamaları ve nihai rapor açık. Commit yerel; push/PR yok.
+
+---
+
 # Son oturum — 2026-10-29 — Go/Windows/macOS performans incelemesi
 - Ayrıntı/öncelik/efor: `docs/PERFORMANCE_REVIEW.md`. Ürün kodu değişmedi; hedef platform süreleri ölçülmedi, yerel stres testi yok.
 - Windows installer motorları kuruyor; launcher ayrıca ~/.memo/binaries kopyalıyor. CWD önceliği eski motoru seçebilir; backend-yok dalında UI öncesi sabit1+2sn bekleme var. Backend data/config varsayılanı ProgramData, launcher hazırlığı home altında.

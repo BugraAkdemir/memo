@@ -59,7 +59,7 @@
 
 ---
 
-# Son oturum — 2026-10-29 — Üç aşamalı benchmark duraklatıldı
-- Kullanıcı data test verisini değiştirmeyi ve Gemini Subs kullanımını açıkça onayladı. Kod: cmd/memo-perf + scripts/performance; ilk commit36ba732a. Ürün optimizasyonu yok.
-- Keşif koşusu3 aşama tamam; son düzeltilmiş koşu aşama1 tamam, aşama2 Cedar yanıtından sonra kullanıcı durdurdu. Raw/log/manifest/checkpoint data/performance-benchmark altında; git dışında. Ayrıntı ve tam devam sırası CHECKPOINT belgesinde.
-- Tüm bize ait benchmark/sidecar süreçleri durdu;18080/18082/18090 kapalı. Yeni ölçüm başlatma: kullanıcı sonra devam edecek. Protokol2 test, syntax/build/target-vet/web-build PASS; tam Go/Flutter doğrulamaları ve nihai rapor açık. Commit yerel; push/PR yok.
+# Son oturum — 2026-10-30 — Dallar birleştirildi/temizlendi ve ECC tam uygulama denetimi çıkarıldı
+- Kullanıcı talebiyle `codex/performance-longevity` (`e40695a8`) fast-forward ile `main`'e birleştirilip `origin/main`'e push edildi; merge edilmiş eski dallar (`codex/performance-longevity`, yerel/uzak `archive/feat/telemetry-client` `fb345a78`, `worktree-agent-aba4e15e39498ad15` `3219c80e` + worktree klasörü) yerelden ve GitHub'dan silindi.
+- ECC `production-audit` + `verification-loop` kapsamında tam doğrulama ve özellik/bug denetimi yapıldı: `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race` (55/55 paket PASS), `python3 -m unittest` (`scripts/performance`, 2/2 PASS), `flutter analyze lib/` (yalnız mevcut 3 info, 0 warning/error), `flutter test` (848/848 PASS).
+- Yeni tespit edilen kod bulgusu: `internal/cliproxy/run.go` `Start()` içinde `waitHealthy` sırasında sidecar erken çıkarsa `monitor()` goroutine'i durdurulmuyor (`p.stopping` / `m.Stop()` çağrılmıyor); arka planda yeniden başlatma yapıyor ve testlerde `fast(t)` cleanup'ı ile `restartBackoff` üzerinde DATA RACE üretiyor. Kullanıcının AGENTS/.claude-flow ve `data/telemetry_state.json` yerel değişiklikleri korundu.

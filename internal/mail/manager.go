@@ -97,11 +97,15 @@ func (m *Manager) saveOAuthAccount(ctx context.Context, sess *OAuthSession, tok 
 		return nil, err
 	}
 
-	sess.mu.Lock()
+	if sess.mu != nil {
+		sess.mu.Lock()
+	}
 	sess.Status = "completed"
 	sess.AccountID = acct.ID
 	sess.Email = acct.Email
-	sess.mu.Unlock()
+	if sess.mu != nil {
+		sess.mu.Unlock()
+	}
 
 	return acct, nil
 }
@@ -109,14 +113,27 @@ func (m *Manager) saveOAuthAccount(ctx context.Context, sess *OAuthSession, tok 
 // AddPasswordAccount uses Autodiscover to find the IMAP/SMTP servers for an email address,
 // verifies login via IMAP, and stores the account encrypted at rest.
 func (m *Manager) AddPasswordAccount(ctx context.Context, email, password string) (*Account, error) {
+	return m.ConnectWithPassword(ctx, email, password, "", nil)
+}
+
+// ConnectWithPassword connects an email account via password (either using a
+// custom ServerConfig or 3-tier Autodiscover), verifies login over IMAP, and
+// stores the credentials encrypted at rest.
+func (m *Manager) ConnectWithPassword(ctx context.Context, email, password, displayName string, custom *ServerConfig) (*Account, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" || password == "" {
 		return nil, fmt.Errorf("email and password are required")
 	}
 
-	srv, err := Autodiscover(ctx, email)
-	if err != nil {
-		return nil, err
+	var srv ServerConfig
+	if custom != nil && custom.IMAPHost != "" && custom.SMTPHost != "" {
+		srv = *custom
+	} else {
+		var err error
+		srv, err = Autodiscover(ctx, email)
+		if err != nil {
+			return nil, err
+		}
 	}
 	srv.AuthType = AuthPassword
 
@@ -134,6 +151,7 @@ func (m *Manager) AddPasswordAccount(ctx context.Context, email, password string
 	acct := &Account{
 		ID:          acctID,
 		Email:       email,
+		DisplayName: strings.TrimSpace(displayName),
 		Provider:    srv.Provider,
 		AuthType:    AuthPassword,
 		Server:      srv,
@@ -327,4 +345,131 @@ func (m *Manager) SaveDraft(ctx context.Context, req SendRequest) (string, error
 	defer client.Close()
 
 	return client.AppendDraft(acct.Email, req)
+}
+
+// GetAccount returns a safe copy of a single connected account by ID.
+func (m *Manager) GetAccount(accountID string) (Account, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	acct, ok := m.accounts[accountID]
+	if !ok {
+		return Account{}, false
+	}
+	cp := *acct
+	cp.Password = ""
+	cp.Token = nil
+	return cp, true
+}
+
+// SyncAccountIncremental connects to the account's INBOX and performs an
+// incremental High-Water Mark sync:
+//   - If acct.LastSeenUID == 0 (first poll after connecting a new account),
+//     it records the current highest UID (or UIDNEXT-1) as the High-Water Mark
+//     and returns coldStart=true with zero messages so pre-existing inbox
+//     history never triggers a notification or autonomous reply storm.
+//   - If acct.LastSeenUID > 0, it fetches only messages with UID > LastSeenUID
+//     (in ascending UID order), updates LastSeenUID on disk, and returns them.
+func (m *Manager) SyncAccountIncremental(ctx context.Context, accountID string, maxScan int) (highWaterMark uint32, coldStart bool, newMessages []*MessageDetail, err error) {
+	acct, client, err := m.connectAuthenticatedIMAP(ctx, accountID)
+	if err != nil {
+		return 0, false, nil, err
+	}
+	defer client.Close()
+
+	st, err := client.SelectMailboxStatus("INBOX")
+	if err != nil {
+		return 0, false, nil, err
+	}
+
+	m.mu.RLock()
+	lastUID := acct.LastSeenUID
+	m.mu.RUnlock()
+
+	if maxScan <= 0 {
+		maxScan = 25
+	}
+
+	// Cold-Start High-Water Mark initialization
+	if lastUID == 0 {
+		var hwm uint32
+		if st.UIDNext > 1 {
+			hwm = st.UIDNext - 1
+		}
+		if st.Exists > 0 {
+			summaries, ferr := client.FetchRecentSummaries(st.Exists, 5)
+			if ferr == nil {
+				for _, s := range summaries {
+					if s.UID > hwm {
+						hwm = s.UID
+					}
+					if s.UID == 0 && s.SeqNum > hwm {
+						hwm = s.SeqNum
+					}
+				}
+			}
+		}
+		if hwm == 0 {
+			// Empty inbox on initial connect: set sentinel 1 so subsequent
+			// messages (UID >= 1) are treated as incremental if UID > 0, or if
+			// UIDNext == 1 then any first message gets UID >= 1. Wait: if inbox
+			// is completely empty and first message will get UID 1, we only
+			// advance if hwm > 0.
+			return 0, true, nil, nil
+		}
+		_ = m.UpdateLastSeenUID(accountID, hwm)
+		return hwm, true, nil, nil
+	}
+
+	if st.Exists == 0 {
+		return lastUID, false, nil, nil
+	}
+	if st.UIDNext > 1 && st.UIDNext-1 <= lastUID {
+		return lastUID, false, nil, nil
+	}
+
+	summaries, err := client.FetchRecentSummaries(st.Exists, maxScan)
+	if err != nil {
+		return lastUID, false, nil, err
+	}
+
+	// Collect messages with UID > lastUID and sort ascending by UID so we
+	// process older messages before newer ones.
+	var unseen []MessageSummary
+	for _, s := range summaries {
+		uid := s.UID
+		if uid == 0 {
+			uid = s.SeqNum
+		}
+		if uid > lastUID {
+			s.UID = uid
+			unseen = append(unseen, s)
+		}
+	}
+	if len(unseen) == 0 {
+		return lastUID, false, nil, nil
+	}
+
+	sort.Slice(unseen, func(i, j int) bool {
+		return unseen[i].UID < unseen[j].UID
+	})
+
+	highestUID := lastUID
+	for _, s := range unseen {
+		detail, derr := client.FetchMessageDetail(s.SeqNum)
+		if derr != nil {
+			continue
+		}
+		if detail.UID == 0 {
+			detail.UID = s.UID
+		}
+		if detail.UID > highestUID {
+			highestUID = detail.UID
+		}
+		newMessages = append(newMessages, detail)
+	}
+
+	if highestUID > lastUID {
+		_ = m.UpdateLastSeenUID(accountID, highestUID)
+	}
+	return highestUID, false, newMessages, nil
 }

@@ -449,6 +449,23 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/telegram/stop", s.requirePermission(s.handleTelegramStop, hasTelegramPerm))
 	route("/api/telegram/disconnect", s.requirePermission(s.handleTelegramDisconnect, hasTelegramPerm))
 
+	// Mail subsystem
+	route("/api/mail/accounts", s.handleMailAccounts)
+	route("/api/mail/autodiscover", s.handleMailAutodiscover)
+	route("/api/mail/oauth/start", s.handleMailOAuthStart)
+	route("/api/mail/oauth/status", s.handleMailOAuthStatus)
+	route("/api/mail/oauth/manual", s.handleMailOAuthManual)
+	route("/api/mail/accounts/password", s.handleMailPasswordConnect)
+	route("/api/mail/inbox", s.handleMailInbox)
+	route("/api/mail/message", s.handleMailMessage)
+	route("/api/mail/attachment", s.handleMailAttachment)
+	route("/api/mail/search", s.handleMailSearch)
+	route("/api/mail/send", s.handleMailSend)
+	route("/api/mail/draft", s.handleMailDraft)
+	route("/api/mail/sync", s.handleMailSync)
+	route("/api/mail/stats", s.handleMailStats)
+	route("/api/mail/settings", s.handleMailSettings)
+
 	route("/api/export", s.adminOnly(s.handleExport))
 
 	// Skills

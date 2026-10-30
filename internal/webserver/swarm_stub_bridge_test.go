@@ -11,6 +11,7 @@ import (
 	"memo/internal/config"
 	"memo/internal/livemode"
 	"memo/internal/llama"
+	"memo/internal/mail"
 	"memo/internal/memory"
 	"memo/internal/models"
 	"memo/internal/modelstore"
@@ -692,3 +693,40 @@ func (b *swarmStubBridge) ListTaskLists() []taskloop.TaskListInfo               
 func (b *swarmStubBridge) DeleteTaskList(id string) error                         { return nil }
 func (b *swarmStubBridge) StartTaskList(ctx context.Context, listID string) error { return nil }
 func (b *swarmStubBridge) StopTaskList(listID string)                             {}
+func (b *swarmStubBridge) MailListAccounts() []mail.Account                       { return nil }
+func (b *swarmStubBridge) MailRemoveAccount(accountID string) error               { return nil }
+func (b *swarmStubBridge) MailAutodiscover(ctx context.Context, emailAddr string) mail.ServerConfig {
+	return mail.ServerConfig{}
+}
+func (b *swarmStubBridge) MailStartOAuth(ctx context.Context, provider, emailAddr string) (mail.OAuthSession, error) {
+	return mail.OAuthSession{}, nil
+}
+func (b *swarmStubBridge) MailGetOAuthStatus(state string) (mail.OAuthSession, bool) {
+	return mail.OAuthSession{}, false
+}
+func (b *swarmStubBridge) MailCompleteManualOAuth(ctx context.Context, state, callbackURL, emailAddr string) (*mail.Account, error) {
+	return nil, nil
+}
+func (b *swarmStubBridge) MailConnectPassword(ctx context.Context, emailAddr, password, displayName, imapHost string, imapPort int, smtpHost string, smtpPort int) (*mail.Account, error) {
+	return nil, nil
+}
+func (b *swarmStubBridge) MailFetchInbox(ctx context.Context, accountID string, limit int) (int, []mail.MessageSummary, error) {
+	return 0, nil, nil
+}
+func (b *swarmStubBridge) MailFetchMessage(ctx context.Context, accountID string, seqNum uint32) (*mail.MessageDetail, error) {
+	return nil, nil
+}
+func (b *swarmStubBridge) MailFetchAttachment(ctx context.Context, accountID string, seqNum uint32, partOrName string) (*mail.AttachmentInfo, error) {
+	return nil, nil
+}
+func (b *swarmStubBridge) MailSearch(ctx context.Context, accountID, query string, limit int) ([]mail.MessageSummary, error) {
+	return nil, nil
+}
+func (b *swarmStubBridge) MailSend(ctx context.Context, req mail.SendRequest) error { return nil }
+func (b *swarmStubBridge) MailSaveDraft(ctx context.Context, req mail.SendRequest) (string, error) {
+	return "", nil
+}
+func (b *swarmStubBridge) MailSyncNow(ctx context.Context) error          { return nil }
+func (b *swarmStubBridge) MailGetWatcherStats() mail.WatcherStats         { return mail.WatcherStats{} }
+func (b *swarmStubBridge) GetMailConfig() config.MailConfig               { return config.MailConfig{} }
+func (b *swarmStubBridge) UpdateMailConfig(cfg config.MailConfig) error   { return nil }

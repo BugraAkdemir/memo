@@ -12,6 +12,7 @@ type Source string
 const (
 	SourceChat     Source = "chat"
 	SourceWhatsApp Source = "whatsapp"
+	SourceMail     Source = "mail"
 	SourceManual   Source = "manual"
 )
 

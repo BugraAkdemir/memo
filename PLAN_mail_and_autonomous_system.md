@@ -269,7 +269,7 @@ autonomy:
   - **Testler (`internal/mail/mail_test.go`):**
     - `XOAUTH2` SASL paket üretimi, JWT `id_token` çözme, Mozilla ISPDB XML ayrıştırma, Türkçe RFC 2047 başlık ve `multipart/mixed` + `quoted-printable` + `base64` MIME çözme, `.ics` takvim daveti ayrıştırma, OTP/fatura yakalama ve şifreli kasa okuma/yazma testleri.
 
-- [ ] **Adım 2 — Arka Plan Mail Dinleyici (`Watcher`), Tufan Koruması, Triyaj ve REST API Uçları:**
+- [x] **Adım 2 — Arka Plan Mail Dinleyici (`Watcher`), Tufan Koruması, Triyaj ve REST API Uçları:**
   - **Dosyalar:**
     - `internal/mail/watcher.go`: Bağlı hesapları `a.lifecycleCtx` altında dinleyen, `High-Water Mark (last_seen_uid)` ile ilk kurulumda eski maillere bildirim fırtınası atmayan, RFC 3834 otomatik yanıt / bülten / spam ayrımı yapan arka plan döngüsü.
     - `internal/webserver/handlers_mail.go` & `internal/webserver/bridge.go`:

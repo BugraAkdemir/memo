@@ -52,13 +52,15 @@ type OAuthSession struct {
 
 	listener net.Listener
 	server   *http.Server
-	mu       sync.Mutex
+	mu       *sync.Mutex
 }
 
 // Snapshot returns a thread-safe copy of OAuthSession for JSON serialization.
 func (s *OAuthSession) Snapshot() OAuthSession {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if s.mu != nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
 	return OAuthSession{
 		State:       s.State,
 		Provider:    s.Provider,
@@ -107,6 +109,7 @@ func (m *Manager) StartOAuthFlow(provider ProviderType, emailHint string) (*OAut
 		CodeVerifier: verifier,
 		Status:       "pending",
 		CreatedAt:    time.Now(),
+		mu:           &sync.Mutex{},
 	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

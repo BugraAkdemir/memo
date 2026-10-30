@@ -1,0 +1,270 @@
+package mail
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+)
+
+// WatcherConfig tunes the background email polling and triage loop.
+type WatcherConfig struct {
+	Enabled         bool
+	PollInterval    time.Duration
+	MaxScanPerPoll  int
+	MaxAutonomyAge  time.Duration
+	AutoIndexMemory bool
+}
+
+// WatcherStats tracks cumulative triage metrics for UI display and morning briefings.
+type WatcherStats struct {
+	TotalEvaluated    int       `json:"total_evaluated"`
+	DroppedMarketing  int       `json:"dropped_marketing"`
+	IndexedInRAG      int       `json:"indexed_in_rag"`
+	PassedToAutonomy  int       `json:"passed_to_autonomy"`
+	CalendarExtracted int       `json:"calendar_extracted"`
+	ColdStarts        int       `json:"cold_starts"`
+	LastSyncAt        time.Time `json:"last_sync_at,omitempty"`
+}
+
+// MemoryIndexFunc indexes a non-bulk email into Memo's RAG vector store.
+type MemoryIndexFunc func(ctx context.Context, account Account, detail *MessageDetail, decision TriageDecision) error
+
+// MailEventHandler receives every newly arrived email alongside its Gatekeeper TriageDecision.
+type MailEventHandler func(ctx context.Context, account Account, detail *MessageDetail, decision TriageDecision)
+
+// Watcher polls connected email accounts in the background, enforces the
+// High-Water Mark cold-start flood guard, runs the 3-layer Gatekeeper, and
+// dispatches clean messages to RAG memory and the Digital Twin engine.
+type Watcher struct {
+	manager    *Manager
+	gatekeeper *Gatekeeper
+
+	mu      sync.RWMutex
+	cfg     WatcherConfig
+	stats   WatcherStats
+	indexFn MemoryIndexFunc
+	onEvent MailEventHandler
+
+	triggerCh chan struct{}
+	pollMu    sync.Mutex
+}
+
+// NewWatcher creates a new background mail Watcher.
+func NewWatcher(manager *Manager, gatekeeper *Gatekeeper, cfg WatcherConfig) *Watcher {
+	if cfg.PollInterval <= 0 {
+		cfg.PollInterval = 60 * time.Second
+	}
+	if cfg.MaxScanPerPoll <= 0 {
+		cfg.MaxScanPerPoll = 25
+	}
+	if cfg.MaxAutonomyAge <= 0 {
+		cfg.MaxAutonomyAge = 6 * time.Hour
+	}
+	if gatekeeper == nil {
+		gatekeeper = NewGatekeeper(nil)
+	}
+	return &Watcher{
+		manager:    manager,
+		gatekeeper: gatekeeper,
+		cfg:        cfg,
+		triggerCh:  make(chan struct{}, 1),
+	}
+}
+
+// SetMemoryIndexer registers the callback that saves relevant emails into RAG memory.
+func (w *Watcher) SetMemoryIndexer(fn MemoryIndexFunc) {
+	w.mu.Lock()
+	w.indexFn = fn
+	w.mu.Unlock()
+}
+
+// SetEventHandler registers the callback invoked for each evaluated new message.
+func (w *Watcher) SetEventHandler(fn MailEventHandler) {
+	w.mu.Lock()
+	w.onEvent = fn
+	w.mu.Unlock()
+}
+
+// UpdateConfig updates the live Watcher configuration.
+func (w *Watcher) UpdateConfig(cfg WatcherConfig) {
+	if cfg.PollInterval <= 0 {
+		cfg.PollInterval = 60 * time.Second
+	}
+	if cfg.MaxScanPerPoll <= 0 {
+		cfg.MaxScanPerPoll = 25
+	}
+	if cfg.MaxAutonomyAge <= 0 {
+		cfg.MaxAutonomyAge = 6 * time.Hour
+	}
+	w.mu.Lock()
+	w.cfg = cfg
+	w.mu.Unlock()
+}
+
+// Stats returns a snapshot of the Watcher's cumulative triage metrics.
+func (w *Watcher) Stats() WatcherStats {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.stats
+}
+
+// TriggerNow wakes the background poll loop immediately (non-blocking).
+func (w *Watcher) TriggerNow() {
+	select {
+	case w.triggerCh <- struct{}{}:
+	default:
+	}
+}
+
+// Start runs the background polling loop until ctx is cancelled.
+func (w *Watcher) Start(ctx context.Context) {
+	// Initial sync pass shortly after startup
+	w.mu.RLock()
+	enabled := w.cfg.Enabled
+	interval := w.cfg.PollInterval
+	w.mu.RUnlock()
+
+	if enabled {
+		_ = w.SyncOnce(ctx)
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-w.triggerCh:
+			_ = w.SyncOnce(ctx)
+		case <-ticker.C:
+			w.mu.RLock()
+			en := w.cfg.Enabled
+			newInterval := w.cfg.PollInterval
+			w.mu.RUnlock()
+			if newInterval != interval && newInterval > 0 {
+				interval = newInterval
+				ticker.Reset(interval)
+			}
+			if en {
+				_ = w.SyncOnce(ctx)
+			}
+		}
+	}
+}
+
+// SyncOnce polls all connected accounts once and processes any messages with
+// UID > LastSeenUID through the 3-layer Gatekeeper.
+func (w *Watcher) SyncOnce(ctx context.Context) error {
+	w.pollMu.Lock()
+	defer w.pollMu.Unlock()
+
+	if w.manager == nil {
+		return nil
+	}
+
+	w.mu.RLock()
+	cfg := w.cfg
+	indexFn := w.indexFn
+	onEvent := w.onEvent
+	w.mu.RUnlock()
+
+	accounts := w.manager.ListAccounts()
+	if len(accounts) == 0 {
+		return nil
+	}
+
+	var firstErr error
+	for _, acct := range accounts {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		_, coldStart, newMsgs, err := w.manager.SyncAccountIncremental(ctx, acct.ID, cfg.MaxScanPerPoll)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+
+		w.mu.Lock()
+		w.stats.LastSyncAt = time.Now()
+		if coldStart {
+			w.stats.ColdStarts++
+		}
+		w.mu.Unlock()
+
+		if coldStart || len(newMsgs) == 0 {
+			continue
+		}
+
+		for _, detail := range newMsgs {
+			if detail == nil {
+				continue
+			}
+			decision := w.gatekeeper.Evaluate(ctx, detail)
+
+			// Backfill Age Guard: never allow autonomous replies to messages older
+			// than MaxAutonomyAge (default 6 hours), even if UID > LastSeenUID
+			// (e.g. user moved an old email into INBOX).
+			if !detail.Timestamp.IsZero() && cfg.MaxAutonomyAge > 0 {
+				if time.Since(detail.Timestamp) > cfg.MaxAutonomyAge {
+					decision.AllowAutoReply = false
+				}
+			}
+
+			hasCal := len(detail.Structured.CalendarInvites) > 0 ||
+				len(detail.Structured.Flights) > 0 ||
+				len(detail.Structured.Invoices) > 0
+
+			w.mu.Lock()
+			w.stats.TotalEvaluated++
+			if decision.DropFromRAG {
+				w.stats.DroppedMarketing++
+			}
+			if decision.AllowAutoReply {
+				w.stats.PassedToAutonomy++
+			}
+			if hasCal && decision.ExtractCalendar {
+				w.stats.CalendarExtracted++
+			}
+			w.mu.Unlock()
+
+			if !decision.DropFromRAG && decision.IndexInRAG && cfg.AutoIndexMemory && indexFn != nil {
+				if err := indexFn(ctx, acct, detail, decision); err == nil {
+					w.mu.Lock()
+					w.stats.IndexedInRAG++
+					w.mu.Unlock()
+				}
+			}
+
+			if onEvent != nil {
+				onEvent(ctx, acct, detail, decision)
+			}
+		}
+	}
+
+	return firstErr
+}
+
+// FormatMailForMemory formats an email into a compact, structured text block
+// suitable for RAG memory indexing (never includes raw HTML or bulky headers).
+func FormatMailForMemory(account Account, detail *MessageDetail, decision TriageDecision) (summaryLine, fullRecord string) {
+	body := strings.TrimSpace(detail.TextBody)
+	if body == "" {
+		body = stripHTMLTags(detail.HTMLBody)
+	}
+	if len(body) > 1500 {
+		body = body[:1500] + "..."
+	}
+	dateStr := detail.Date
+	if !detail.Timestamp.IsZero() {
+		dateStr = detail.Timestamp.Format("2006-01-02 15:04")
+	}
+	summaryLine = fmt.Sprintf("[Mail | Account: %s | From: %s | Subject: %s | Date: %s | Category: %s]",
+		account.Email, detail.From, detail.Subject, dateStr, decision.Category)
+	fullRecord = body
+	return summaryLine, fullRecord
+}

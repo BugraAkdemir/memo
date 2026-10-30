@@ -31,6 +31,7 @@ import (
 	"memo/internal/intent"
 	"memo/internal/livemode"
 	"memo/internal/llama"
+	"memo/internal/mail"
 	"memo/internal/memory"
 	"memo/internal/modelstore"
 	moodpkg "memo/internal/mood"
@@ -198,6 +199,10 @@ type App struct {
 	waMsgStore       *whatsapp.Store
 	tgClient         *telegram.Client
 	tgStore          *telegram.Store
+	mailMu           sync.RWMutex
+	mailManager      *mail.Manager
+	mailGatekeeper   *mail.Gatekeeper
+	mailWatcher      *mail.Watcher
 	llamaServer      *llama.Server
 	llamaEmbedServer *llama.Server      // dedicated embedding model server
 	memoryStoreReady <-chan struct{}    // initial placeholder store has finished
@@ -659,6 +664,7 @@ func (a *App) Startup(ctx context.Context) {
 	goRecover("proactiveEngine.Start", func() { a.proactiveEngine.Start(a.lifecycleCtx) })
 
 	a.initLearning(ctx)
+	a.initMail(a.lifecycleCtx)
 	a.initRoutines(ctx)
 	a.initStats()
 	a.initTelemetry() // after initStats: it reads the usage store; sends nothing until the person agrees

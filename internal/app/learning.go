@@ -176,6 +176,9 @@ func (a *App) processMessageIntent(text string, source intent.Source, contact st
 			logx.Printf("calendar: add from intent: %v", err)
 			return
 		}
+		if result.Source == intent.Source("mail") {
+			a.recordMailCalendarAdded()
+		}
 		payload, _ := json.Marshal(calendar.AddedPayload{ID: event.ID, Title: event.Title})
 		a.emitEvent("calendar:added", string(payload))
 		logx.Printf("calendar: added %q at %s (source=%s)", event.Title, event.StartTime.Format("2006-01-02 15:04"), event.Source)

@@ -591,6 +591,17 @@ func capForEmbedding(text string, maxTokens int) string {
 }
 
 func (s *Store) SaveInteraction(ctx context.Context, sc Scope, userMsg, assistantMsg string) error {
+	return s.saveInteraction(ctx, sc, userMsg, assistantMsg, "conversation")
+}
+
+// SaveMail stores an external record without conversational near-duplicate
+// suppression. Distinct mails can have identical embeddings (templates, repeated
+// invitations); their account/folder/UID identity is carried in userMsg.
+func (s *Store) SaveMail(ctx context.Context, sc Scope, userMsg string) error {
+	return s.saveInteraction(ctx, sc, userMsg, "", "mail")
+}
+
+func (s *Store) saveInteraction(ctx context.Context, sc Scope, userMsg, assistantMsg, source string) error {
 	if s.scopeUnavailable(sc) {
 		return nil
 	}
@@ -600,14 +611,14 @@ func (s *Store) SaveInteraction(ctx context.Context, sc Scope, userMsg, assistan
 	totalChunks := len(chunks)
 
 	for i, chunk := range chunks {
-		if err := s.saveChunk(ctx, projectID, chunk, assistantMsg, parentUUID, i, totalChunks); err != nil {
+		if err := s.saveChunk(ctx, projectID, chunk, assistantMsg, parentUUID, i, totalChunks, source); err != nil {
 			return fmt.Errorf("memory.SaveInteraction chunk[%d]: %w", i, err)
 		}
 	}
 	return nil
 }
 
-func (s *Store) saveChunk(ctx context.Context, projectID, userChunk, assistantMsg, parentUUID string, chunkIndex, totalChunks int) error {
+func (s *Store) saveChunk(ctx context.Context, projectID, userChunk, assistantMsg, parentUUID string, chunkIndex, totalChunks int, source string) error {
 	embedStart := time.Now()
 	embedText := userChunk
 	if assistantMsg != "" {
@@ -628,7 +639,7 @@ func (s *Store) saveChunk(ctx context.Context, projectID, userChunk, assistantMs
 	// consecutive chunks by design (chunkOverlapTokens) — treating those as
 	// duplicates of each other would silently drop pieces of a single long
 	// message instead of catching a genuinely repeated short turn.
-	if totalChunks == 1 {
+	if totalChunks == 1 && source == "conversation" {
 		if dupUUID, err := s.findDuplicateInteraction(ctx, embedding, ProjectScope(projectID)); err != nil {
 			logx.Printf("memory: duplicate check failed, saving anyway: %v", err)
 		} else if dupUUID != "" {
@@ -657,8 +668,8 @@ func (s *Store) saveChunk(ctx context.Context, projectID, userChunk, assistantMs
 			`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding,
 			                      chunk_index, parent_uuid, total_chunks,
 			                      session_id, importance, tags, source, retrieve_count)
-             VALUES (?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, '', 3, '', 'conversation', 0)`,
-			uuid, content, timestamp, userChunk, storedAssist, embedBlob, chunkIndex, parentUUID, totalChunks,
+             VALUES (?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, '', 3, '', ?, 0)`,
+			uuid, content, timestamp, userChunk, storedAssist, embedBlob, chunkIndex, parentUUID, totalChunks, source,
 		)
 		if err != nil {
 			return fmt.Errorf("insert memory: %w", err)

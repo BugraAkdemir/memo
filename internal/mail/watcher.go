@@ -2,6 +2,7 @@ package mail
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -110,6 +111,13 @@ func (w *Watcher) Stats() WatcherStats {
 	return w.stats
 }
 
+// RecordCalendarAdded counts committed events, including plain-text intent extraction.
+func (w *Watcher) RecordCalendarAdded() {
+	w.mu.Lock()
+	w.stats.CalendarExtracted++
+	w.mu.Unlock()
+}
+
 // TriggerNow wakes the background poll loop immediately (non-blocking).
 func (w *Watcher) TriggerNow() {
 	select {
@@ -215,10 +223,6 @@ func (w *Watcher) SyncOnce(ctx context.Context) error {
 				}
 			}
 
-			hasCal := len(detail.Structured.CalendarInvites) > 0 ||
-				len(detail.Structured.Flights) > 0 ||
-				len(detail.Structured.Invoices) > 0
-
 			w.mu.Lock()
 			w.stats.TotalEvaluated++
 			if decision.DropFromRAG {
@@ -226,9 +230,6 @@ func (w *Watcher) SyncOnce(ctx context.Context) error {
 			}
 			if decision.AllowAutoReply {
 				w.stats.PassedToAutonomy++
-			}
-			if hasCal && decision.ExtractCalendar {
-				w.stats.CalendarExtracted++
 			}
 			w.mu.Unlock()
 
@@ -249,22 +250,25 @@ func (w *Watcher) SyncOnce(ctx context.Context) error {
 	return firstErr
 }
 
-// FormatMailForMemory formats an email into a compact, structured text block
-// suitable for RAG memory indexing (never includes raw HTML or bulky headers).
-func FormatMailForMemory(account Account, detail *MessageDetail, decision TriageDecision) (summaryLine, fullRecord string) {
+// FormatMailForMemory keeps the entire mail on the user side of memory.
+// The second return value is empty: mail content is not an assistant reply.
+func FormatMailForMemory(account Account, detail *MessageDetail, decision TriageDecision) (userMsg, assistantMsg string) {
 	body := strings.TrimSpace(detail.TextBody)
 	if body == "" {
 		body = stripHTMLTags(detail.HTMLBody)
-	}
-	if len(body) > 1500 {
-		body = body[:1500] + "..."
 	}
 	dateStr := detail.Date
 	if !detail.Timestamp.IsZero() {
 		dateStr = detail.Timestamp.Format("2006-01-02 15:04")
 	}
-	summaryLine = fmt.Sprintf("[Mail | Account: %s | From: %s | Subject: %s | Date: %s | Category: %s]",
-		account.Email, detail.From, detail.Subject, dateStr, decision.Category)
-	fullRecord = body
-	return summaryLine, fullRecord
+	userMsg = fmt.Sprintf("[Mail | Account: %s | Account-ID: %s | Folder: INBOX | UID: %d | Message-ID: %s | From: %s | Subject: %s | Date: %s | Category: %s]",
+		account.Email, account.ID, detail.UID, detail.MessageID, detail.From, detail.Subject, dateStr, decision.Category)
+	// Deliberately omit OTPCode: the Gatekeeper keeps OTP messages out of RAG.
+	structured := StructuredExtraction{CalendarInvites: detail.Structured.CalendarInvites, Flights: detail.Structured.Flights, Invoices: detail.Structured.Invoices}
+	if len(structured.CalendarInvites)+len(structured.Flights)+len(structured.Invoices) > 0 {
+		data, _ := json.Marshal(structured)
+		userMsg += "\nStructured: " + string(data)
+	}
+	userMsg += "\nBody:\n" + body
+	return userMsg, ""
 }

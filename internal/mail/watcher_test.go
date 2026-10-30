@@ -340,3 +340,27 @@ func TestWatcherColdStartHighWaterMarkAndIncrementalSync(t *testing.T) {
 		t.Fatalf("expected 2 events evaluated (102 + 103), got %v", eventUIDs)
 	}
 }
+
+func TestFormatMailForMemoryKeepsCompleteRecordOnUserSide(t *testing.T) {
+	detail := &MessageDetail{UID: 42, MessageID: "<42@example.com>", From: "sender@example.com", Subject: "Trip", TextBody: strings.Repeat("uzun gövde ", 400) + "SON",
+		Structured: StructuredExtraction{
+			CalendarInvites: []CalendarInvite{{Summary: "Planning", Location: "Room 7"}},
+			Flights:         []FlightInfo{{FlightNumber: "TK123", ReservationNumber: "PNR42"}},
+			Invoices:        []InvoiceInfo{{InvoiceID: "INV42", TotalAmount: "123.45"}},
+		}}
+	user, assistant := FormatMailForMemory(Account{ID: "acct", Email: "owner@example.com"}, detail, TriageDecision{})
+	for _, want := range []string{"UID: 42", "<42@example.com>", "sender@example.com", "Trip", detail.TextBody, "Room 7", "TK123", "PNR42", "INV42", "123.45"} {
+		if !strings.Contains(user, want) {
+			t.Errorf("user side missing %q", want)
+		}
+	}
+	if assistant != "" {
+		t.Fatal("mail must not be stored on the assistant side")
+	}
+	detail.TextBody = ""
+	detail.HTMLBody = "<p>HTML body</p>"
+	user, _ = FormatMailForMemory(Account{}, detail, TriageDecision{})
+	if !strings.Contains(user, "HTML body") || strings.Contains(user, "<p>") {
+		t.Fatal("HTML fallback not converted to text")
+	}
+}

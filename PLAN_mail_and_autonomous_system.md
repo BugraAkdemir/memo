@@ -254,11 +254,21 @@ autonomy:
 
 ## 7. Uygulama Fazları ve Adımları (9 Adım)
 
+> **Çapraz tamamlama ve kullanıcı test kapısı — 2026-10-31:** Her adımda backend ile o adımın kullanılabilir frontend akışı birlikte hazırlanır ve birlikte doğrulanır. Frontend işi yalnız Faz 5'e ertelenmez; Adım 8'deki ilgili UI parçaları ait oldukları adıma taşınarak uygulanır. Yalnız backend'in bitmesi adımı/fazı tamamlamaz. Teknik doğrulamadan sonra durulur, kullanıcı gerçek senaryolarla dener ve geri bildirim verir. Sonraki adıma/faza kullanıcı bildiriminden önce geçilmez.
+
+### Güncel kontrol noktası — 2026-10-31
+- **Faz 1 / Adım 1–2:** Çekirdek mail paketi, watcher/triage/REST API ve Mail ekranı mevcut. Bu oturum yalnız mail hafızası, normal sohbet takvim özeti ve başarılı takvim işleminin frontend sayacına yansıması düzeltmeleriyle sınırlıdır.
+- **Adım 1 frontend karşılığı:** Gmail/Outlook/diğer hesap bağlama, gelen kutusu, tam mesaj ve yapılandırılmış bilgi kartları, gönderim/taslak arayüzü mevcut; gerçek hesap ve cihaz senaryoları kullanıcı tarafından doğrulanacak.
+- **Adım 2 frontend karşılığı:** Senkronizasyon düğmesi ve triage/hafıza/takvim sayaçları mevcut; görünür Mail ekranında sayaç yenilemesi bu oturumda eklendi. Metinden etkinlik ekleme dahil gerçek mail → hafıza/takvim → sohbet/UI akışı kullanıcı testini bekliyor.
+- Eski `[x]` işaretleri backend uygulama kaydıydı; çapraz kabul ve gerçek senaryo geri bildirimi tamamlanmadığından Adım 1–2 yeniden açık tutuluyor. Faz 1 tamamlandı kabul edilmiyor.
+- **Faz 2 / Adım 3'e başlanmadı.** Bu oturumdan sonra ilerlemek yerine kullanıcı geri bildirimi beklenir.
+
+
 > **Çalışma Kuralı (`AGENTS.md`):** Her adım kendi birim/entegrasyon testleriyle birlikte yazılır, doğrulama komutları (`go build/vet/test -tags "sqlite_fts5" -race`, `flutter analyze/test`, L10n kontrolü) çalıştırılır ve yeşil olduğu kanıtlandıktan sonra Conventional Commits formatında otomatik commit edilir.
 
 ### Faz 1: Çekirdek Mail Motoru, Yapısal Ayrıştırıcı ve Arka Plan Dinleyici (`internal/mail`)
 
-- [x] **Adım 1 — `internal/mail` Çekirdek Paketi, Şifreli Hesap Kasası ve `.ics`/Fatura/Uçuş/OTP Ayrıştırıcı:**
+- [ ] **Adım 1 — `internal/mail` Çekirdek Paketi, Şifreli Hesap Kasası ve `.ics`/Fatura/Uçuş/OTP Ayrıştırıcı:**
   - **Dosyalar:**
     - `internal/mail/types.go`, `internal/mail/autodiscover.go`, `internal/mail/oauth.go`, `internal/mail/imap.go`, `internal/mail/smtp.go`, `internal/mail/manager.go`
     - `internal/mail/vault.go`: Hesap kimlik bilgilerini ve OAuth2 refresh token'larını `config.DataPath("mail/accounts.json")` içinde AES-GCM ile şifreleyen kasa.
@@ -269,7 +279,7 @@ autonomy:
   - **Testler (`internal/mail/mail_test.go`):**
     - `XOAUTH2` SASL paket üretimi, JWT `id_token` çözme, Mozilla ISPDB XML ayrıştırma, Türkçe RFC 2047 başlık ve `multipart/mixed` + `quoted-printable` + `base64` MIME çözme, `.ics` takvim daveti ayrıştırma, OTP/fatura yakalama ve şifreli kasa okuma/yazma testleri.
 
-- [x] **Adım 2 — Arka Plan Mail Dinleyici (`Watcher`), Tufan Koruması, Triyaj ve REST API Uçları:**
+- [ ] **Adım 2 — Arka Plan Mail Dinleyici (`Watcher`), Tufan Koruması, Triyaj ve REST API Uçları:**
   - **Dosyalar:**
     - `internal/mail/watcher.go`: Bağlı hesapları `a.lifecycleCtx` altında dinleyen, `High-Water Mark (last_seen_uid)` ile ilk kurulumda eski maillere bildirim fırtınası atmayan, RFC 3834 otomatik yanıt / bülten / spam ayrımı yapan arka plan döngüsü.
     - `internal/webserver/handlers_mail.go` & `internal/webserver/bridge.go`:

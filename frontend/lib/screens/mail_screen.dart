@@ -10,16 +10,71 @@ import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/mail.dart';
 import '../providers/chat_provider.dart';
+import '../providers/auth_gate_provider.dart';
+import '../providers/gate_guard.dart';
 import '../providers/mail_provider.dart';
 
 class MailScreen extends ConsumerStatefulWidget {
-  const MailScreen({super.key});
+  const MailScreen({super.key, this.isActive = true});
+
+  final bool isActive;
 
   @override
   ConsumerState<MailScreen> createState() => _MailScreenState();
 }
 
-class _MailScreenState extends ConsumerState<MailScreen> {
+class _MailScreenState extends ConsumerState<MailScreen>
+    with WidgetsBindingObserver {
+  Timer? _statsTimer;
+  bool _statsReloading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _updateStatsTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant MailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isActive != widget.isActive) _updateStatsTimer();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _updateStatsTimer();
+  }
+
+  void _updateStatsTimer() {
+    _statsTimer?.cancel();
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (!widget.isActive ||
+        (state != null && state != AppLifecycleState.resumed)) {
+      return;
+    }
+    _statsTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _reloadStats(),
+    );
+    Future.microtask(_reloadStats);
+  }
+
+  Future<void> _reloadStats() async {
+    if (!mounted ||
+        !widget.isActive ||
+        _statsReloading ||
+        authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      return;
+    }
+    _statsReloading = true;
+    try {
+      await ref.read(mailStatsProvider.notifier).reload();
+    } finally {
+      _statsReloading = false;
+    }
+  }
+
   final TextEditingController _searchController = TextEditingController();
 
   List<MailMessageSummary> _messages = const [];
@@ -37,6 +92,8 @@ class _MailScreenState extends ConsumerState<MailScreen> {
 
   @override
   void dispose() {
+    _statsTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     super.dispose();
   }

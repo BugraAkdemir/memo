@@ -100,16 +100,40 @@ func (a *App) callMailClassifierLLM(ctx context.Context, systemPrompt, userPromp
 }
 
 func (a *App) indexMailInMemory(ctx context.Context, account mail.Account, detail *mail.MessageDetail, decision mail.TriageDecision) error {
-	if a.cfg != nil && !a.cfg.Memory.MemoryEnabled {
-		return nil
+	if !a.GetMemoryEnabled() || detail == nil {
+		return fmt.Errorf("mail memory indexing disabled or missing message")
 	}
-	summaryLine, fullRecord := mail.FormatMailForMemory(account, detail, decision)
-	if a.memorySaveCh != nil {
-		a.saveMemoryAsync(memory.Scope{}, summaryLine, fullRecord)
-		return nil
+	userMsg, _ := mail.FormatMailForMemory(account, detail, decision)
+	a.storeMu.RLock()
+	store := a.store
+	a.storeMu.RUnlock()
+	if store == nil {
+		return fmt.Errorf("mail memory store not initialized")
 	}
-	a.saveMemorySync(ctx, memory.Scope{}, summaryLine, fullRecord)
+	// Triage has already selected this record. Do not run conversational
+	// decision/fact extraction or semantic dedup on somebody else's email.
+	mctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := store.SaveMail(mctx, memory.Scope{}, userMsg); err != nil {
+		return err
+	}
+	a.emitEvent("memory:saved", "")
+	a.syncMu.RLock()
+	sm := a.syncManager
+	a.syncMu.RUnlock()
+	if sm != nil {
+		sm.Increment()
+	}
 	return nil
+}
+
+func (a *App) recordMailCalendarAdded() {
+	a.mailMu.RLock()
+	watcher := a.mailWatcher
+	a.mailMu.RUnlock()
+	if watcher != nil {
+		watcher.RecordCalendarAdded()
+	}
 }
 
 func (a *App) onIncomingMailEvent(ctx context.Context, account mail.Account, detail *mail.MessageDetail, decision mail.TriageDecision) {
@@ -181,6 +205,7 @@ func (a *App) extractMailStructuredToCalendar(ctx context.Context, detail *mail.
 		})
 		if err == nil {
 			addedStructured = true
+			a.recordMailCalendarAdded()
 			p, _ := json.Marshal(calendar.AddedPayload{ID: ev.ID, Title: ev.Title})
 			a.emitEvent("calendar:added", string(p))
 		}
@@ -209,6 +234,7 @@ func (a *App) extractMailStructuredToCalendar(ctx context.Context, detail *mail.
 		})
 		if err == nil {
 			addedStructured = true
+			a.recordMailCalendarAdded()
 			p, _ := json.Marshal(calendar.AddedPayload{ID: ev.ID, Title: ev.Title})
 			a.emitEvent("calendar:added", string(p))
 		}
@@ -232,6 +258,7 @@ func (a *App) extractMailStructuredToCalendar(ctx context.Context, detail *mail.
 		})
 		if err == nil {
 			addedStructured = true
+			a.recordMailCalendarAdded()
 			p, _ := json.Marshal(calendar.AddedPayload{ID: ev.ID, Title: ev.Title})
 			a.emitEvent("calendar:added", string(p))
 		}

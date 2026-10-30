@@ -409,6 +409,9 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	}
 	if !minimal && !code {
 		volatileCtx += a.timeContextBlockForChat(chatID)
+		if !projectChat {
+			volatileCtx += a.upcomingCalendarContext(ctx, time.Now())
+		}
 	}
 	if !minimal {
 		volatileCtx += a.renderWorkingSet(chatID)
@@ -781,4 +784,26 @@ func copyFile(src, dst string) error {
 
 	_, err = io.Copy(out, in)
 	return err
+}
+
+// upcomingCalendarContext grounds ordinary chat without requiring agent tools.
+// Keep volatile dates on the current user message, preserving the system prefix.
+func (a *App) upcomingCalendarContext(ctx context.Context, now time.Time) string {
+	if a.calendarStore == nil {
+		return ""
+	}
+	events, err := a.calendarStore.List(ctx, now, now.AddDate(0, 0, 7))
+	if err != nil || len(events) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\n[Upcoming calendar events]\n")
+	for _, event := range events {
+		fmt.Fprintf(&b, "- %s | %s", event.StartTime.In(now.Location()).Format("2006-01-02 15:04 MST"), event.Title)
+		if event.EndTime != nil {
+			fmt.Fprintf(&b, " | until %s", event.EndTime.In(now.Location()).Format("2006-01-02 15:04 MST"))
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
 }

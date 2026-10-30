@@ -425,7 +425,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                                 // mounted forever — polling is started/stopped
                                 // in _handleTabChange (KNOWN_ISSUES M04).
                                 const SwarmScreen(),
-                                const MailScreen(),
+                                MailScreen(isActive: _currentIndex == 7),
                               ],
                             ),
                           ),

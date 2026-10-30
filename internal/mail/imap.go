@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/net/html/charset"
 )
 
 // BuildXOAUTH2String constructs the raw SASL XOAUTH2 payload and returns its base64 encoding.
@@ -548,9 +550,7 @@ func ParseRawMIME(raw []byte) MessageDetail {
 	}
 
 	dec := &mime.WordDecoder{
-		CharsetReader: func(charset string, input io.Reader) (io.Reader, error) {
-			return input, nil
-		},
+		CharsetReader: charset.NewReaderLabel,
 	}
 	decodeHdr := func(val string) string {
 		val = strings.TrimSpace(val)
@@ -667,12 +667,12 @@ func parseMIMEPart(contentType, transferEnc, disposition string, body io.Reader,
 		if detail.TextBody != "" {
 			detail.TextBody += "\n"
 		}
-		detail.TextBody += string(data)
+		detail.TextBody += decodeMIMEText(data, params["charset"], false)
 	case "text/html":
 		if detail.HTMLBody != "" {
 			detail.HTMLBody += "\n"
 		}
-		detail.HTMLBody += string(data)
+		detail.HTMLBody += decodeMIMEText(data, params["charset"], true)
 	default:
 		if filename != "" {
 			detail.Attachments = append(detail.Attachments, AttachmentInfo{
@@ -684,6 +684,28 @@ func parseMIMEPart(contentType, transferEnc, disposition string, body io.Reader,
 			})
 		}
 	}
+}
+
+// Decode after transfer decoding, before extraction, security review and JSON/RAG.
+// Unknown labels are preserved rather than guessing a lossy replacement charset.
+func decodeMIMEText(data []byte, label string, html bool) string {
+	var reader io.Reader
+	var err error
+	if strings.TrimSpace(label) != "" {
+		reader, err = charset.NewReaderLabel(label, bytes.NewReader(data))
+	} else if html {
+		reader, err = charset.NewReader(bytes.NewReader(data), "text/html")
+	} else {
+		return string(data)
+	}
+	if err != nil {
+		return string(data)
+	}
+	decoded, err := io.ReadAll(reader)
+	if err != nil {
+		return string(data)
+	}
+	return string(decoded)
 }
 
 func decodeTransferEncoding(enc string, r io.Reader) io.Reader {

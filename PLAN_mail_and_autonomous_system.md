@@ -259,7 +259,7 @@ autonomy:
 ### Güncel kontrol noktası — 2026-10-31
 - **Faz 1 / Adım 1–2:** Backend ve Mail ekranı mevcut; önceki mail hafızası/takvim/sayaç düzeltmeleri `c5201951` içinde. Canlı hesap/cihaz kabulü kullanıcıya ait. Kullanıcı bu oturumda plandan ilerlemeyi açıkça istedi.
 - **Eski mailler:** Bilinçli olarak alınmaz; yalnız bağlantı sınırından sonra gelenler işlenir. Bu bir eksik iş değildir (§3.5 güncellendi).
-- **Şimdiki kapsam: Faz 2 / Adım 3.** Backend kalkanları, gerçek mail giriş/gönderim/taslak yolları, frontend güvenlik kontrol paneli ve sayaç birlikte uygulandı; teknik kontroller geçti. Kullanıcı gerçek senaryoları deneyecek; canlı kabul bildirilene kadar adım kutusu açık kalır.
+- **Şimdiki kapsam: Faz 2 / Adım 3.** Backend kalkanları, gerçek mail giriş/gönderim/taslak yolları, frontend güvenlik kontrol paneli ve sayaç birlikte uygulandı; teknik kontroller geçti. Kullanıcı gelen saldırı mailinin engellendiğini doğruladı (`mail:security_blocked`, UID 17378). Diğer güvenlik senaryoları ve mail görünümü/sayaç geri bildirim düzeltmelerinin cihaz kabulü bekleniyor; adım kutusu açık kalır.
 - `LoopBreaker`, kişi kapsamı ve başlık maskeleyen müsaitlik çıktısı bu adımın testli yardımcılarıdır. Henüz var olmayan otomatik yanıt yürütücüsüne/kişi grafiğine bağlantıları Adım 4–6'da yapılır; bu oturumda o adımlara geçilmez.
 - **Sıradaki adım: Adım 4.** Bu oturumda başlanmayacak; önce Adım 3 için kullanıcı geri bildirimi beklenecek.
 
@@ -310,7 +310,9 @@ autonomy:
     - Mail hesabı, içerik, ek, gönderim ve güvenlik kontrol uçları admin-only; stats ve ayar GET ambient, ayar değişikliği admin-only.
     - LoopBreaker süreç içi atomik rezervasyon; restart sonrası kalıcı tekrar kaydı Adım 4'ün veritabanına ait. Gözlenen OTP'ler yalnız RAM'de 15 dk ve en çok 256 adet tutulur. Tüm saldırıların tespiti veya henüz uygulanmamış kanal/otonom akış koruması iddia edilmez.
     - **Teknik doğrulama:** CGO/sqlite_fts5 build + vet + tüm Go race testleri PASS (70 paket); Flutter 853/853 PASS; analyze yalnız mevcut 3 context info; değişen/yeni 7 Dart dosyasında UI literal taraması 0 eşleşme. Testler düşük paralellikte, alt ajan/PR/push olmadan çalıştırıldı.
-    - **Kullanıcı testi bekleniyor:** Gelen saldırı maili → engel sayacı/RAG-takvim yok; normal yeni mail → normal akış; sahte anahtar içeren gönderim/taslak → güvenlik reddi; panelin TR/EN görünümü. Ayrıntılar `docs/MAIL_SECURITY.md`.
+    - **Geri bildirim düzeltmeleri doğrulaması:** CGO/sqlite_fts5 build/vet ve Go race70 paket PASS; Flutter856/856 PASS; analyze mevcut3 info; değişen3 UI Dart dosyasında literal0.
+    - **Kullanıcı geri bildirimi (31 Ekim):** Gelen saldırı maili güvenlik engeliyle sonuçlandı; kullanıcı güvenliği olumlu doğruladı. Türkçe MIME charset dönüşümü, HTML/CSS gövde gösterimi ve restart sonrası kümülatif sayaç saklama bu adımın geri bildirim düzeltmeleridir. Repo sorusuna otomatik yanıt henüz uygulanmadı (Adım4–6); sonraki adıma geçilmedi.
+    - **Kullanıcı testi bekleniyor:** Görünüm/charset ve restart sayaçları; sahte anahtar içeren gerçek gönderim/taslak → güvenlik reddi; panelin TR/EN görünümü. Eski mailler yeniden işlenmez; önceden kaybolan sayaçlar ve bozuk RAG metni otomatik geri getirilemez. Ayrıntılar `docs/MAIL_SECURITY.md`.
 
 - [ ] **Adım 4 — Dijital İkiz Veritabanı (`internal/twin`), Birleşik Kişi Grafiği, Üslup Klonlayıcı ve Salt-Okunur Araçlar:**
   - **Dosyalar:**

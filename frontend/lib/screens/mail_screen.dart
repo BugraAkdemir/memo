@@ -10,6 +10,7 @@ import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/mail.dart';
 import '../widgets/mail_security_dialog.dart';
+import '../widgets/mail_body.dart';
 import '../providers/chat_provider.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/gate_guard.dart';
@@ -894,13 +895,10 @@ class _MailScreenState extends ConsumerState<MailScreen>
           const SizedBox(height: 12),
           Expanded(
             child: SingleChildScrollView(
-              child: SelectableText(
-                detail.textBody.isNotEmpty ? detail.textBody : detail.htmlBody,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  height: 1.5,
-                  color: c.textMain,
-                ),
+              child: MailBody(
+                key: ValueKey('${detail.messageId}:${detail.uid}'),
+                textBody: detail.textBody,
+                htmlBody: detail.htmlBody,
               ),
             ),
           ),

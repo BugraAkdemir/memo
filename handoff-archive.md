@@ -1,3 +1,12 @@
+# Son oturum — 2026-10-31 — Faz 2 / Adım 3 mail güvenliği
+- Kullanıcı devam istedi; alt ajan/PR/uzak işlem yok. Eski mail alınmaması bilinçli karar (§3.5).
+- Adım3 backend+frontend: injection/base64/rol/komut ve isteğe bağlı DecisionModel denetimi, escaped dış içerik zarfı; mail-source hafıza birleştirme dışında; gönderim/taslak öncesi DLP, RAM OTP TTL15dk/256; güvenlik sayacı ve Mail güvenliği paneli (TR/EN), admin API kapıları.
+- Scope/FreeBusy/LoopBreaker testli; otonom yürütücü/kişi grafiğine bağlantı Adım4–6. Limit/senaryolar: docs/MAIL_SECURITY.md.
+- Doğrulama: son build/vet + tüm Go race70 paket PASS; Flutter853/853 PASS; analyze mevcut3 info; 7 Dart dosyasında UI literal0; diff temiz. Yerel feat(autonomy) commit; push/PR yok.
+- Adım4 geri bildirim bekler; diğer yerel değişiklikler korundu.
+
+---
+
 # Son oturum — 2026-10-31 — Mail hafızası/takvim düzeltmesi; izinsiz PR kapatıldı
 - `c5201951` commit edildi ve `feat/digital-twin-mail` dalına push edildi: tam mail/UID/structured veri userMsg tarafında, mail-source kayıtları sohbet cosine dedup/fact extraction dışında; normal sohbet volatileCtx 7 günlük takvim özeti (Minimal/Code/proje hariç); başarılı structured/metin etkinliklerinin sayacı ve görünür/aktif Mail ekranında 15sn sayaç yenilemesi.
 - Yerel build/vet PASS (CGO/sqlite_fts5, -p1/GOMAXPROCS=2); hedefli Go testleri PASS ve mail/memory/app hedefli race PASS; frontend sayaç lifecycle testi 1/1 PASS; analyze yalnız mevcut 3 context info; L10n taraması/diff check temiz. Tam Go/Flutter suite sonucu yok: uzak CI kullanıcı itirazıyla iptal edildi.

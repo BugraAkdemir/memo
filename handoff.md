@@ -5,7 +5,7 @@
 ## Açık işler
 
 **Dijital İkiz / Mail — kullanıcı kabulü bekleniyor**
-- PLAN_mail_and_autonomous_system.md: şimdiki iş Faz2/Adım3. Backend+frontend birlikte; Adım4'e kullanıcı geri bildirimi olmadan geçme. Eski mailler bilerek alınmaz. Adım1–2 canlı hesap/cihaz kabulü bildirilmedi. Güvenlik kullanıcı senaryoları: docs/MAIL_SECURITY.md.
+- PLAN_mail_and_autonomous_system.md: şimdiki iş Faz2/Adım3. Backend+frontend birlikte; Adım4 başlamadı. Gelen saldırı engeli kullanıcıda PASS; diğer güvenlik senaryoları ve charset/HTML/kalıcı sayaç cihaz kabulü bekleniyor. Eski mail/backfill yok. Senaryolar: docs/MAIL_SECURITY.md.
 
 **Performans benchmark — kullanıcı duraklattı (29 Ekim)**
 - docs/PERFORMANCE_BENCHMARK_CHECKPOINT.md + data/performance-benchmark/PAUSED.json: son koşuda yalnız aşama1 kayıtlı, data aşama2. Kalibrasyon/resume/aşama2–3/rapor/doğrulama açık. Runner baştan siler; körlemesine çalıştırma.
@@ -63,9 +63,8 @@
 
 ---
 
-# Son oturum — 2026-10-31 — Faz 2 / Adım 3 mail güvenliği
-- Kullanıcı devam istedi; alt ajan/PR/uzak işlem yok. Eski mail alınmaması bilinçli karar (§3.5).
-- Adım3 backend+frontend: injection/base64/rol/komut ve isteğe bağlı DecisionModel denetimi, escaped dış içerik zarfı; mail-source hafıza birleştirme dışında; gönderim/taslak öncesi DLP, RAM OTP TTL15dk/256; güvenlik sayacı ve Mail güvenliği paneli (TR/EN), admin API kapıları.
-- Scope/FreeBusy/LoopBreaker testli; otonom yürütücü/kişi grafiğine bağlantı Adım4–6. Limit/senaryolar: docs/MAIL_SECURITY.md.
-- Doğrulama: son build/vet + tüm Go race70 paket PASS; Flutter853/853 PASS; analyze mevcut3 info; 7 Dart dosyasında UI literal0; diff temiz. Yerel feat(autonomy) commit; push/PR yok.
-- Adım4 geri bildirim bekler; diğer yerel değişiklikler korundu.
+# Son oturum — 2026-10-31 — Mail kullanıcı testi düzeltmeleri
+- MIME Türkçe charset → UTF-8, RAG/güvenlikten önce. HTML gömülü CSS+tablo ve TR/EN düz metin anahtarı; script/uzak resim/stylesheet yok. Tam tarayıcı CSS'i değil; html0.15.6 pini.
+- Watcher sayaçları hesap kasası yanında watcher-stats.json'a seri/atomik/0600 yazılır, açılışta yüklenir. Restart/callback/IMAP testli; eski kayıp sayaç/bozuk RAG onarılmadı, backfill yok.
+- Kullanıcı saldırı maili engelini onayladı; repo otomatik yanıtı Adım4–6'da, başlanmadı. docs/MAIL_SECURITY.md testleri cihazda bekler; iki süreç güncel kodla yeniden başlatılmalı.
+- Doğrulama: build/vet PASS, Go race70 paket PASS; Flutter856/856 PASS; analyze mevcut3 info; UI literal3 dosya0; diff temiz. Yerel fix(mail) commit; push/PR/alt ajan yok. Diğer yerel değişiklikler korundu.

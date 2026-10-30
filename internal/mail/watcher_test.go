@@ -343,6 +343,22 @@ func TestWatcherColdStartHighWaterMarkAndIncrementalSync(t *testing.T) {
 		t.Fatalf("unexpected watcher stats after incremental sync: %+v", st)
 	}
 
+	// Real polling counters and asynchronous calendar callbacks survive recreation.
+	watcher.RecordCalendarAdded()
+	restarted := NewWatcher(mgr, gk, WatcherConfig{})
+	got, want := restarted.Stats(), watcher.Stats()
+	got.LastSyncAt = got.LastSyncAt.UTC()
+	want.LastSyncAt = want.LastSyncAt.UTC()
+	if got != want {
+		t.Fatalf("restart lost counters: got %+v want %+v", got, want)
+	}
+	if err := restarted.SyncOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if restarted.Stats().TotalEvaluated != 3 {
+		t.Fatal("restart reprocessed historical mail")
+	}
+
 	mu.Lock()
 	defer mu.Unlock()
 	if len(indexedUIDs) != 1 || indexedUIDs[0] != 103 {

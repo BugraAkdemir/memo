@@ -35,3 +35,39 @@ Use a rebuilt backend and frontend. Old mail is intentionally not backfilled.
 8. A restricted remote account must not read mailbox contents or invoke security preview; an admin/local desktop user should retain access.
 
 Real provider mail delivery, device layout and accuracy against arbitrary attacks still require the owner's scenario feedback. Do not move to Step 4 until that feedback is received.
+
+## Mail feedback fixes (31 October)
+
+Incoming MIME headers and text/HTML bodies are converted from their declared
+charset (including ISO-8859-9 and Windows-1254) to UTF-8 before extraction,
+security review and memory indexing. HTML meta charset is used when MIME omits
+it. Already corrupted RAG records are not guessed or automatically reindexed.
+
+The mail reader prefers HTML, with embedded CSS, typography and table layout
+rendered by static Flutter widgets. A localized plain-text switch is available.
+Scripts, frames, remote stylesheets and images are not loaded. This is a subset
+of browser CSS; linked stylesheets and CID/remote pictures are not rendered.
+See the [renderer API](https://pub.dev/documentation/flutter_html/latest/flutter_html/Html-class.html)
+and [table extension](https://pub.dev/packages/flutter_html_table).
+`html` is pinned to 0.15.6 because flutter_html 3.0.0 uses the selector function
+removed in 0.15.7; widget tests verify embedded CSS actually changes text styles.
+
+Cumulative watcher counters are saved as owner-readable `watcher-stats.json`
+beside the configured encrypted account vault and restored on startup. Updates
+are serialized and atomically replaced, including calendar callbacks. The file
+contains counts, sync time and a categorical reason, never mail content or OTPs.
+Counters lost before this change cannot be reconstructed reliably from RAG
+chunks; no historical mail is reprocessed to invent totals.
+
+Device checks:
+1. Read an ISO-8859-9/Windows-1254 mail with Turkish subject/body; verify it in
+   Inbox and in a NEW mail's memory record. Previously stored replacement
+   characters do not repair themselves.
+2. Open an HTML mail containing headings, colors and a table; switch to plain
+   text and back. Remote images remain unloaded.
+3. After a NEW ordinary mail/calendar event or security block, note the counters,
+   close and reopen Memo, and verify the same counts before sending another mail.
+
+The owner confirmed an incoming injection was blocked (31 October). This does
+not imply that outgoing DLP, all UI layouts or the later autonomous reply engine
+have received live acceptance. Step 4 has not started.

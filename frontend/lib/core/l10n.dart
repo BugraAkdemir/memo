@@ -50,6 +50,9 @@ class L10n {
   // ─── Turkish ──────────────────────────────────────────────────
 
   static const _tr = <String, String>{
+    'mail_body_formatted': 'Biçimli görünüm',
+    'mail_body_plain': 'Düz metin',
+    'mail_body_remote_blocked': 'Gizlilik için dış görseller ve uzak içerik yüklenmez.',
     'mail_security_title': 'Mail güvenliği',
     'mail_stats_security': 'Güvenlik engeli: \${n}',
     'mail_security_explainer': 'Gelen içerik ve dışarı gidecek metni kontrol eder; e-posta göndermez ve metni kaydetmez. Karar modeli açıksa metin o modele iletilir. Kurallar tüm saldırıları tespit edemez.',
@@ -2776,6 +2779,9 @@ class L10n {
   };
 
   static const _en = <String, String>{
+    'mail_body_formatted': 'Formatted view',
+    'mail_body_plain': 'Plain text',
+    'mail_body_remote_blocked': 'External images and remote content are not loaded for privacy.',
     'mail_security_title': 'Mail security',
     'mail_stats_security': 'Security blocked: \${n}',
     'mail_security_explainer': 'Checks incoming content and outgoing text without sending mail or saving the text. If the decision model is enabled, the text is sent to that model. Rules cannot detect every attack.',

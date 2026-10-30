@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"memo/internal/autonomy"
+	"memo/internal/fileutil"
 	netmail "net/mail"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -46,12 +50,13 @@ type Watcher struct {
 	manager    *Manager
 	gatekeeper *Gatekeeper
 
-	mu      sync.RWMutex
-	cfg     WatcherConfig
-	stats   WatcherStats
-	indexFn MemoryIndexFunc
-	onEvent MailEventHandler
-	guard   func(context.Context, Account, *MessageDetail) autonomy.Verdict
+	mu        sync.RWMutex
+	cfg       WatcherConfig
+	statsPath string
+	stats     WatcherStats
+	indexFn   MemoryIndexFunc
+	onEvent   MailEventHandler
+	guard     func(context.Context, Account, *MessageDetail) autonomy.Verdict
 
 	triggerCh chan struct{}
 	pollMu    sync.Mutex
@@ -71,11 +76,44 @@ func NewWatcher(manager *Manager, gatekeeper *Gatekeeper, cfg WatcherConfig) *Wa
 	if gatekeeper == nil {
 		gatekeeper = NewGatekeeper(nil)
 	}
-	return &Watcher{
+	w := &Watcher{
 		manager:    manager,
 		gatekeeper: gatekeeper,
 		cfg:        cfg,
 		triggerCh:  make(chan struct{}, 1),
+	}
+	if manager != nil && manager.vault != nil && manager.vault.filePath != "" {
+		w.statsPath = filepath.Join(filepath.Dir(manager.vault.filePath), "watcher-stats.json")
+		data, err := os.ReadFile(w.statsPath)
+		if err == nil {
+			var restored WatcherStats
+			err = json.Unmarshal(data, &restored)
+			if err == nil {
+				w.stats = restored
+			}
+		}
+		if err != nil && !os.IsNotExist(err) {
+			slog.Warn("mail: cannot load cumulative stats", "error", err)
+		}
+	}
+	return w
+}
+
+// Called under mu: serialize snapshot + atomic replacement with every mutation,
+// including calendar callbacks outside the polling loop. No mail content is saved.
+func (w *Watcher) persistStatsLocked() {
+	if w.statsPath == "" {
+		return
+	}
+	data, err := json.Marshal(w.stats)
+	if err == nil {
+		err = os.MkdirAll(filepath.Dir(w.statsPath), 0700)
+	}
+	if err == nil {
+		err = fileutil.AtomicWrite(w.statsPath, data, 0600)
+	}
+	if err != nil {
+		slog.Warn("mail: cannot persist cumulative stats", "error", err)
 	}
 }
 
@@ -106,6 +144,7 @@ func (w *Watcher) RecordSecurityBlocked(code string) {
 	w.mu.Lock()
 	w.stats.SecurityBlocked++
 	w.stats.LastSecurityReason = code
+	w.persistStatsLocked()
 	w.mu.Unlock()
 }
 
@@ -136,6 +175,7 @@ func (w *Watcher) Stats() WatcherStats {
 func (w *Watcher) RecordCalendarAdded() {
 	w.mu.Lock()
 	w.stats.CalendarExtracted++
+	w.persistStatsLocked()
 	w.mu.Unlock()
 }
 
@@ -224,6 +264,7 @@ func (w *Watcher) SyncOnce(ctx context.Context) error {
 		if coldStart {
 			w.stats.ColdStarts++
 		}
+		w.persistStatsLocked()
 		w.mu.Unlock()
 
 		if coldStart || len(newMsgs) == 0 {
@@ -247,6 +288,7 @@ func (w *Watcher) SyncOnce(ctx context.Context) error {
 			if verdict.Blocked {
 				w.mu.Lock()
 				w.stats.TotalEvaluated++
+				w.persistStatsLocked()
 				w.mu.Unlock()
 				w.RecordSecurityBlocked(verdict.Code)
 				if onEvent != nil {
@@ -279,12 +321,14 @@ func (w *Watcher) SyncOnce(ctx context.Context) error {
 			if decision.AllowAutoReply {
 				w.stats.PassedToAutonomy++
 			}
+			w.persistStatsLocked()
 			w.mu.Unlock()
 
 			if !decision.DropFromRAG && decision.IndexInRAG && cfg.AutoIndexMemory && indexFn != nil {
 				if err := indexFn(ctx, acct, detail, decision); err == nil {
 					w.mu.Lock()
 					w.stats.IndexedInRAG++
+					w.persistStatsLocked()
 					w.mu.Unlock()
 				}
 			}

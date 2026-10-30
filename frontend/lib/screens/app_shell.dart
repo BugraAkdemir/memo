@@ -23,6 +23,7 @@ import '../providers/taskloop_settings_provider.dart';
 import '../providers/whatsapp_provider.dart';
 import '../providers/swarm_provider.dart';
 import '../providers/agent_provider.dart';
+import '../providers/mail_provider.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/memo_mascot.dart';
 import '../widgets/llama_installer_view.dart';
@@ -46,6 +47,7 @@ import 'calendar_screen.dart';
 import 'routines_screen.dart';
 import 'developer_screen.dart';
 import 'swarm_screen.dart';
+import 'mail_screen.dart';
 import '../core/app_restart.dart';
 
 /// Tracks which main tab is currently selected
@@ -75,7 +77,7 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  // 0=chat 1=agent 2=models 3=calendar 4=routines 5=developer 6=swarm
+  // 0=chat 1=agent 2=models 3=calendar 4=routines 5=developer 6=swarm 7=mail
   int _currentIndex = 0;
   bool _showLaunchpad = false;
   bool _showTour = false;
@@ -87,7 +89,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   bool _hasEverConnectedToBackend = false;
   bool _backendDeadDialogShown = false;
 
-  final _navKeys = List.generate(7, (_) => GlobalKey());
+  final _navKeys = List.generate(8, (_) => GlobalKey());
 
   // Lets the floating mobile-nav button (see _buildMobileNavButton) open
   // this Scaffold's drawer without needing a descendant BuildContext —
@@ -327,6 +329,8 @@ class _AppShellState extends ConsumerState<AppShell> {
         // invalidation is what actually recovers them once the gate opens.
         ref.invalidate(learningSettingsProvider);
         ref.invalidate(learningPatternsProvider);
+        ref.invalidate(mailAccountsProvider);
+        ref.invalidate(mailStatsProvider);
       }
     });
 
@@ -421,6 +425,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                                 // mounted forever — polling is started/stopped
                                 // in _handleTabChange (KNOWN_ISSUES M04).
                                 const SwarmScreen(),
+                                const MailScreen(),
                               ],
                             ),
                           ),
@@ -584,6 +589,15 @@ class _AppShellState extends ConsumerState<AppShell> {
             label: L10n.t('calendar_title'),
             isActive: _currentIndex == 3,
             onTap: () => _handleTabChange(3),
+          ),
+
+          _NavRailButton(
+            key: _navKeys[7],
+            icon: Icons.mail_outline,
+            activeIcon: Icons.mail,
+            label: L10n.t('tab_mail'),
+            isActive: _currentIndex == 7,
+            onTap: () => _handleTabChange(7),
           ),
 
           _NavRailButton(
@@ -764,6 +778,13 @@ class _AppShellState extends ConsumerState<AppShell> {
           label: L10n.t('calendar_title'),
           isActive: _currentIndex == 3,
           onTap: () => _selectMobileTab(3),
+        ),
+        item(
+          icon: Icons.mail_outline,
+          activeIcon: Icons.mail,
+          label: L10n.t('tab_mail'),
+          isActive: _currentIndex == 7,
+          onTap: () => _selectMobileTab(7),
         ),
         item(
           icon: Icons.schedule_outlined,

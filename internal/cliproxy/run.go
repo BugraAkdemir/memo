@@ -23,7 +23,8 @@ type process struct {
 	done chan struct{}
 	err  error // valid after done closes
 
-	stopping bool // set under Manager.mu before an intentional stop
+	stopping bool          // set under Manager.mu before an intentional stop
+	stopCh   chan struct{} // closed under Manager.mu when stopping is set
 }
 
 func (p *process) alive() bool {
@@ -74,8 +75,24 @@ func (m *Manager) Start(ctx context.Context) error {
 		return err
 	}
 
-	logx.GoRecover("cliproxy.monitor", func() { m.monitor(p, bin) })
-	return m.waitHealthy(ctx, p)
+	if err := m.waitHealthy(ctx, p); err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	if m.proc != p || p.stopping {
+		m.mu.Unlock()
+		return nil
+	}
+	monDone := make(chan struct{})
+	m.monDone = monDone
+	m.mu.Unlock()
+
+	logx.GoRecover("cliproxy.monitor", func() {
+		defer close(monDone)
+		m.monitor(p, bin)
+	})
+	return nil
 }
 
 // spawnLocked writes the config and execs the binary.
@@ -94,7 +111,7 @@ func (m *Manager) spawnLocked(bin string) (*process, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("cliproxy: start: %w", err)
 	}
-	p := &process{cmd: cmd, done: make(chan struct{})}
+	p := &process{cmd: cmd, done: make(chan struct{}), stopCh: make(chan struct{})}
 	m.proc = p
 	go func() { // reap — an unwaited child is a zombie
 		p.err = cmd.Wait()
@@ -129,6 +146,7 @@ func (m *Manager) waitHealthy(ctx context.Context, p *process) error {
 	deadline := time.Now().Add(healthTimeout)
 	for {
 		if !p.alive() {
+			m.Stop()
 			return fmt.Errorf("cliproxy: sidecar exited during startup: %v", p.err)
 		}
 		if m.ping(ctx) == nil {
@@ -140,6 +158,7 @@ func (m *Manager) waitHealthy(ctx context.Context, p *process) error {
 		}
 		select {
 		case <-ctx.Done():
+			m.Stop()
 			return ctx.Err()
 		case <-time.After(healthInterval):
 		}
@@ -192,10 +211,15 @@ func (m *Manager) monitor(p *process, bin string) {
 			return
 		}
 		m.restarts = append(m.restarts, now)
+		backoff := restartBackoff
 		m.mu.Unlock()
 
-		logx.Printf("cliproxy: sidecar exited (%v) — restarting in %s", p.err, restartBackoff)
-		time.Sleep(restartBackoff)
+		logx.Printf("cliproxy: sidecar exited (%v) — restarting in %s", p.err, backoff)
+		select {
+		case <-p.stopCh:
+			return
+		case <-time.After(backoff):
+		}
 
 		m.mu.Lock()
 		if m.proc != p || p.stopping {
@@ -216,10 +240,13 @@ func (m *Manager) monitor(p *process, bin string) {
 func (m *Manager) Stop() {
 	m.mu.Lock()
 	p := m.proc
-	if p != nil {
+	if p != nil && !p.stopping {
 		p.stopping = true
+		close(p.stopCh)
 	}
 	m.proc = nil
+	monDone := m.monDone
+	m.monDone = nil
 	l := m.login
 	m.login = nil
 	m.mu.Unlock()
@@ -233,6 +260,9 @@ func (m *Manager) Stop() {
 		case <-p.done:
 		case <-time.After(5 * time.Second):
 		}
+	}
+	if monDone != nil {
+		<-monDone
 	}
 }
 

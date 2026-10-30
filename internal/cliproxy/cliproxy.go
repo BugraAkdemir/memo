@@ -69,6 +69,7 @@ type Manager struct {
 	mu       sync.Mutex
 	st       state
 	proc     *process
+	monDone  chan struct{}
 	login    *loginSession
 	restarts []int64 // unix-second timestamps of recent automatic restarts
 

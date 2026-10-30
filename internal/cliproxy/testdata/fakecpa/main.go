@@ -53,6 +53,14 @@ func main() {
 		login("codex", authDir)
 	}
 
+	if os.Getenv("FAKECPA_FAIL_START_ONCE") == "1" {
+		marker := filepath.Join(filepath.Dir(authDir), "failed_start")
+		if _, err := os.Stat(marker); err != nil {
+			_ = os.WriteFile(marker, []byte("x"), 0o600)
+			os.Exit(3)
+		}
+	}
+
 	if ms, _ := strconv.Atoi(os.Getenv("FAKECPA_CRASH_ONCE_MS")); ms > 0 {
 		marker := filepath.Join(filepath.Dir(authDir), "crashed")
 		if _, err := os.Stat(marker); err != nil {

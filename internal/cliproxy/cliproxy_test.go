@@ -387,6 +387,20 @@ func TestStop_IsNotFollowedByARestart(t *testing.T) {
 	}
 }
 
+func TestStart_StartupFailureDoesNotResurrectOrRace(t *testing.T) {
+	fast(t)
+	t.Setenv("FAKECPA_FAIL_START_ONCE", "1")
+	m := newMgr(t)
+	if err := m.Start(context.Background()); err == nil {
+		t.Fatal("Start succeeded when sidecar exited immediately, want error")
+	}
+	time.Sleep(2 * restartBackoff)
+	if m.Running() {
+		t.Fatal("failed Start still resurrected the sidecar in the background via monitor")
+	}
+}
+
+
 // ── login, accounts, models ─────────────────────────────────────────────────
 
 func TestLogin_FlowAccountsModelsLogout(t *testing.T) {

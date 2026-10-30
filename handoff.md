@@ -20,8 +20,8 @@
 - Linux llama b11669 (nvidia b9441), cpu whisper 1.9.5. Whisper llama ggml arka uçlarını da yükler: yükseltmede tekrar dene. Statik Whisper eski CPU'da AVX2/FMA/F16C riski ölçülmedi; AMD ROCm 10 klasörü ~1,2 GB gerçek GPU'da denenmedi.
 
 **Alt ajan (`PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`)**
-- Web UI canlı kısa test PASS; uzun iş/native ölçülmedi. Self-Driving readonly komut sınırı açık (`docs/SUBAGENT_REVIEW.md`). Gerçek Antigravity/Waydroid hız/kalite ve bildirilen 300 dk geçmişi yok (`docs/TASKLOOP_PERFORMANCE_REVIEW.md`).
-- Otomatik ana incelemede sidebar spinner var, bestecide Durdur yok; canlı kesinti/sonraki sonuç testi tamamlanamadı. Kesilmiş inceleme sonraki sonuçları tutmaz; Resume main review gerekir, ana ajanın resume aracı yok. Çocuk kayıt hatası context canceled olabilir; durum bloğu Minimal Mod’da da eklenir.
+- Web UI canlı kısa test PASS; uzun iş/native ölçülmedi. Gerçek Antigravity/Waydroid hız/kalite ve bildirilen 300 dk geçmişi yok (`docs/TASKLOOP_PERFORMANCE_REVIEW.md`).
+- Otomatik ana incelemede sidebar spinner var, bestecide Durdur yok; canlı kesinti/sonraki sonuç testi tamamlanamadı. Kesilmiş inceleme sonraki sonuçları tutmaz; Resume main review gerekir, ana ajanın resume aracı yok. Çocuk kayıt hatası context canceled olabilir.
 
 **Proje / sohbet / skill**
 - `PLAN_project_folders.md` P0–P5 tamam; hafıza Code Mode'dan bağımsız, hafıza anahtarlarına bağlı. Açık: Flutter `/` yalnız global skill, proje skill backend `/ad` ile çalışır; proje izin arayüzü yok; provider_policy yalnız ayrılmış alan. Skill tasarımı kapsamı belirlenmedi.
@@ -59,7 +59,7 @@
 
 ---
 
-# Son oturum — 2026-10-30 — Dallar birleştirildi/temizlendi ve ECC tam uygulama denetimi çıkarıldı
-- Kullanıcı talebiyle `codex/performance-longevity` (`e40695a8`) fast-forward ile `main`'e birleştirilip `origin/main`'e push edildi; merge edilmiş eski dallar (`codex/performance-longevity`, yerel/uzak `archive/feat/telemetry-client` `fb345a78`, `worktree-agent-aba4e15e39498ad15` `3219c80e` + worktree klasörü) yerelden ve GitHub'dan silindi.
-- ECC `production-audit` + `verification-loop` kapsamında tam doğrulama ve özellik/bug denetimi yapıldı: `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race` (55/55 paket PASS), `python3 -m unittest` (`scripts/performance`, 2/2 PASS), `flutter analyze lib/` (yalnız mevcut 3 info, 0 warning/error), `flutter test` (848/848 PASS).
-- Yeni tespit edilen kod bulgusu: `internal/cliproxy/run.go` `Start()` içinde `waitHealthy` sırasında sidecar erken çıkarsa `monitor()` goroutine'i durdurulmuyor (`p.stopping` / `m.Stop()` çağrılmıyor); arka planda yeniden başlatma yapıyor ve testlerde `fast(t)` cleanup'ı ile `restartBackoff` üzerinde DATA RACE üretiyor. Kullanıcının AGENTS/.claude-flow ve `data/telemetry_state.json` yerel değişiklikleri korundu.
+# Son oturum — 2026-10-30 — Dallar birleştirildi, ECC denetimi yapıldı ve 3 kod hatası düzeltildi
+- `codex/performance-longevity` (`e40695a8`) fast-forward ile `main`'e birleştirilip push edildi; merge edilmiş eski dallar (`codex/performance-longevity`, yerel/uzak `archive/feat/telemetry-client` `fb345a78`, `worktree-agent-aba4e15e39498ad15` `3219c80e` + worktree) silindi.
+- ECC denetiminde tespit edilen 3 kod hatası sırayla düzeltilip `main`'e push edildi: (1) `a48b308e`: `isReadOnlyCommand` kabuk zincirleme/yönlendirme/komut ikamesi ve `find -delete/-exec`, `git --output`, `go test -exec/-toolexec` bayraklarını engeller; (2) `701ee8aa`: `cliproxy.Manager.Start` içinde `waitHealthy` başarısız olduğunda `Stop()` çağrılır, `monitor()` yalnız sağlıklı başlangıçtan sonra başlatılır ve `Stop()` `monitor` çıkışını bekler (data race kapatıldı); (3) Minimal Mod açıkken `<memo-subagent-status>` bloğu kullanıcı mesajına eklenmez.
+- Doğrulama: `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race` (55/55 paket PASS), `python3 -m unittest` (`scripts/performance`, 2/2 PASS), `flutter analyze lib/` (yalnız mevcut 3 info, 0 warning/error), `flutter test` (848/848 PASS). Kullanıcının AGENTS/.claude-flow ve `data/telemetry_state.json` yerel değişiklikleri korundu.

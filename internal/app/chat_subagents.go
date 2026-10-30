@@ -44,9 +44,10 @@ func (a *App) initChatSubAgents() {
 }
 
 // subAgentStatusBlock is the live status of this chat's children for the main
-// agent's next turn; empty when it has none or the runtime is unavailable.
+// agent's next turn; empty when it has none, under Minimal Mode, or when the
+// runtime is unavailable.
 func (a *App) subAgentStatusBlock(chatID string) string {
-	if a.chatSubAgents == nil || chatID == "" {
+	if a.chatSubAgents == nil || chatID == "" || a.minimalModeOn() {
 		return ""
 	}
 	return a.chatSubAgents.StatusBlock(chatID)

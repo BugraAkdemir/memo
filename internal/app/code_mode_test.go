@@ -11,6 +11,7 @@ import (
 	"memo/internal/identity"
 	"memo/internal/sessions"
 	"memo/internal/skill"
+	"memo/internal/subagents"
 )
 
 func newCodeModeApp(t *testing.T) (*App, *sessions.Manager) {
@@ -210,3 +211,46 @@ func TestBuildMessagesForSession_CodeModeOffKeepsPersona(t *testing.T) {
 		t.Error("a plain chat must still get the normal persona")
 	}
 }
+
+func TestBuildMessagesForSession_MinimalModeOmitsSubAgentStatusBlock(t *testing.T) {
+	a, sm := newCodeModeApp(t)
+	chat := sm.NewAgentChat("/tmp/proj")
+
+	mgr, err := subagents.Open(t.TempDir(), 1, func(context.Context, subagents.Job, func(subagents.Event)) (subagents.RunResult, error) {
+		return subagents.RunResult{Output: "done"}, nil
+	})
+	if err != nil {
+		t.Fatalf("subagents.Open() error = %v", err)
+	}
+	a.chatSubAgents = mgr
+	if _, err := mgr.Create(subagents.CreateRequest{
+		ChatID:     chat,
+		Title:      "audit",
+		Prompt:     "inspect repo",
+		ProjectDir: "/tmp/proj",
+	}); err != nil {
+		t.Fatalf("mgr.Create() error = %v", err)
+	}
+
+	// Sanity check: when Minimal Mode is off, the status block is injected.
+	msgsNormal := a.buildMessagesForSession(context.Background(), chat, "status?", nil, nil)
+	var sawNormal bool
+	for _, m := range msgsNormal {
+		if s, ok := m.Content.(string); ok && strings.Contains(s, "<memo-subagent-status") {
+			sawNormal = true
+		}
+	}
+	if !sawNormal {
+		t.Fatal("expected <memo-subagent-status> block when Minimal Mode is off")
+	}
+
+	// When Minimal Mode is on, Memo must not inject <memo-subagent-status>.
+	a.identity.SetMinimalMode(true)
+	msgsMinimal := a.buildMessagesForSession(context.Background(), chat, "status?", nil, nil)
+	for _, m := range msgsMinimal {
+		if s, ok := m.Content.(string); ok && strings.Contains(s, "<memo-subagent-status") {
+			t.Fatal("Minimal Mode must not inject <memo-subagent-status> into the user message")
+		}
+	}
+}
+

@@ -731,7 +731,36 @@ func isAllowedReadOnlyCurl(cmd string) bool {
 	return true
 }
 
+// readOnlyUnsafeFlags are flags on otherwise read-only allowlisted binaries
+// (find, go test/build/vet/list, git log/diff/show) that execute arbitrary
+// commands or write files to disk. Checked token-by-token (with leading
+// dashes and any "=..." value stripped) for non-curl allowlisted commands.
+var readOnlyUnsafeFlags = map[string]bool{
+	"exec": true, "execdir": true, "ok": true, "okdir": true,
+	"delete": true, "fprint": true, "fprint0": true, "fls": true,
+	"toolexec": true, "output": true, "upload-pack": true,
+}
+
+func hasReadOnlyUnsafeFlag(cmd string) bool {
+	for _, tok := range strings.Fields(cmd) {
+		if !strings.HasPrefix(tok, "-") {
+			continue
+		}
+		name := strings.TrimLeft(tok, "-")
+		if i := strings.IndexByte(name, '='); i >= 0 {
+			name = name[:i]
+		}
+		if readOnlyUnsafeFlags[strings.ToLower(name)] {
+			return true
+		}
+	}
+	return false
+}
+
 func isReadOnlyCommand(cmd string) bool {
+	if strings.ContainsAny(cmd, ";|&><\n\r`$") {
+		return false
+	}
 	c := strings.TrimSpace(cmd)
 	for _, p := range readOnlyCommandAllowlist {
 		if p == "curl" {
@@ -741,7 +770,7 @@ func isReadOnlyCommand(cmd string) bool {
 			continue
 		}
 		if c == p || strings.HasPrefix(c, p+" ") {
-			return true
+			return !hasReadOnlyUnsafeFlag(c)
 		}
 	}
 	return false

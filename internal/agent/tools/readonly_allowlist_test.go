@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 )
@@ -158,3 +160,46 @@ func TestIsAllowedReadOnlyCurl_RejectsFileWrites(t *testing.T) {
 		}
 	}
 }
+
+func TestIsReadOnlyCommand_RejectsChainingRedirectionAndExecFlags(t *testing.T) {
+	blocked := []string{
+		`git status ; printf audit-proof > readonly-proof.txt`,
+		`git status && touch pwned.txt`,
+		`git status || touch pwned.txt`,
+		`git status | tee pwned.txt`,
+		`git status & touch pwned.txt`,
+		"git status\ntouch pwned.txt",
+		"git status\rtouch pwned.txt",
+		`git status > out.txt`,
+		`git diff >> out.txt`,
+		`cat < /etc/passwd`,
+		`git status $(touch pwned.txt)`,
+		"git status `touch pwned.txt`",
+		`find . -name "*.tmp" -delete`,
+		`find . -exec rm {} ;`,
+		`find . -execdir sh -c "touch x" {} +`,
+		`go test -exec=sh ./...`,
+		`go test -toolexec=sh ./...`,
+		`git log --output=out.txt`,
+		`git diff --output out.txt`,
+	}
+	for _, c := range blocked {
+		if isReadOnlyCommand(c) {
+			t.Errorf("isReadOnlyCommand(%q) = true, want false", c)
+		}
+	}
+}
+
+func TestRunCommandReadOnly_ChainedCommandDoesNotWriteFile(t *testing.T) {
+	dir := t.TempDir()
+	raw, _ := json.Marshal(RunCommandArgs{
+		Command: `git status ; printf audit-proof > readonly-proof.txt`,
+	})
+	if _, err := RunCommandReadOnly(context.Background(), raw, dir, nil); err == nil {
+		t.Fatal("RunCommandReadOnly succeeded on chained write command, want error")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "readonly-proof.txt")); !os.IsNotExist(err) {
+		t.Fatalf("readonly-proof.txt should not exist, stat err = %v", err)
+	}
+}
+

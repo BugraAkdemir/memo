@@ -16,6 +16,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"memo/internal/autonomy"
 	"memo/internal/database"
 	"memo/internal/models"
 	"memo/internal/truncate"
@@ -2098,7 +2099,11 @@ func FormatMemoriesForPrompt(memories []MemoryResult) string {
 		if age != "" {
 			meta += " | " + age
 		}
-		fmt.Fprintf(&sb, "[Memory %d | %s]\n%s\n\n", i+1, meta, m.Content)
+		content := m.Content
+		if m.Source == "mail" {
+			content = autonomy.WrapUntrustedExternalMessage("", "mail", content)
+		}
+		fmt.Fprintf(&sb, "[Memory %d | %s]\n%s\n\n", i+1, meta, content)
 	}
 	sb.WriteString("--- END MEMORIES ---\n")
 	return sb.String()
@@ -2129,6 +2134,9 @@ func FormatMemoriesUserOnly(memories []MemoryResult) string {
 		userText := m.UserMsg
 		if userText == "" {
 			userText = stripAssistantReply(m.Content)
+		}
+		if m.Source == "mail" {
+			userText = autonomy.WrapUntrustedExternalMessage("", "mail", userText)
 		}
 		fmt.Fprintf(&sb, "[Memory %d | %s]\n%s\n\n", i+1, meta, userText)
 	}
@@ -2468,6 +2476,8 @@ const (
 	dreamThreshold = 40
 )
 
+// Mail records are excluded too: merging would erase their external source
+// boundary and forward raw third-party content to a background model.
 // FindMergeCandidates returns up to limit pairs of memories whose embeddings
 // have cosine similarity ≥ 0.92. It samples the consolidateSampleSize most
 // recent non-deleted memories to keep the O(n²) scan fast.
@@ -2486,7 +2496,7 @@ func (s *Store) FindMergeCandidates(ctx context.Context, limit int) ([]MergeCand
 		FROM memories
 		WHERE embedding IS NOT NULL
 		  AND pending_deletion = 0
-		  AND source NOT IN ('merged', 'explicit')`+s.generalOnlySQL()+`
+		  AND source NOT IN ('merged', 'explicit', 'mail')`+s.generalOnlySQL()+`
 		ORDER BY timestamp DESC
 		LIMIT ?
 	`, consolidateSampleSize, limit)

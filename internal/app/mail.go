@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"memo/internal/autonomy"
 	"memo/internal/calendar"
 	"memo/internal/config"
 	"memo/internal/intent"
@@ -45,6 +46,7 @@ func (a *App) initMail(ctx context.Context) {
 	})
 	watcher.SetMemoryIndexer(a.indexMailInMemory)
 	watcher.SetEventHandler(a.onIncomingMailEvent)
+	watcher.SetSecurityGuard(a.inspectIncomingMail)
 
 	a.mailMu.Lock()
 	a.mailManager = mgr
@@ -83,6 +85,7 @@ func (a *App) ensureMailManager() *mail.Manager {
 			})
 			w.SetMemoryIndexer(a.indexMailInMemory)
 			w.SetEventHandler(a.onIncomingMailEvent)
+			w.SetSecurityGuard(a.inspectIncomingMail)
 			a.mailWatcher = w
 		}
 	}
@@ -92,7 +95,7 @@ func (a *App) ensureMailManager() *mail.Manager {
 func (a *App) callMailClassifierLLM(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
 	cfg := a.decisionSettings()
 	if cfg.DecisionEnabled {
-		if res, err := a.callDecisionModel(ctx, systemPrompt, userPrompt, 256); err == nil && strings.TrimSpace(res) != "" {
+		if res, err := a.callDecisionModel(ctx, systemPrompt, autonomy.WrapUntrustedExternalMessage("", "mail", userPrompt), 256); err == nil && strings.TrimSpace(res) != "" {
 			return res, nil
 		}
 	}
@@ -138,6 +141,11 @@ func (a *App) recordMailCalendarAdded() {
 
 func (a *App) onIncomingMailEvent(ctx context.Context, account mail.Account, detail *mail.MessageDetail, decision mail.TriageDecision) {
 	if detail == nil {
+		return
+	}
+	if decision.SecurityBlocked {
+		payload, _ := json.Marshal(map[string]any{"account_id": account.ID, "uid": detail.UID, "code": decision.SecurityReason})
+		a.emitEvent("mail:security_blocked", string(payload))
 		return
 	}
 	if decision.DropFromRAG {
@@ -393,6 +401,9 @@ func (a *App) MailSearch(ctx context.Context, accountID, query string, limit int
 }
 
 func (a *App) MailSend(ctx context.Context, req mail.SendRequest) error {
+	if err := a.inspectMailOutbound(req); err != nil {
+		return err
+	}
 	mgr := a.ensureMailManager()
 	if mgr == nil {
 		return fmt.Errorf("mail subsystem not initialized")
@@ -415,6 +426,9 @@ func (a *App) MailSend(ctx context.Context, req mail.SendRequest) error {
 }
 
 func (a *App) MailSaveDraft(ctx context.Context, req mail.SendRequest) (string, error) {
+	if err := a.inspectMailOutbound(req); err != nil {
+		return "", err
+	}
 	mgr := a.ensureMailManager()
 	if mgr == nil {
 		return "", fmt.Errorf("mail subsystem not initialized")

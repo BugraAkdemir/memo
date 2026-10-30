@@ -23,6 +23,8 @@ const (
 
 // TriageDecision is the output of Gatekeeper.Evaluate for an incoming email.
 type TriageDecision struct {
+	SecurityBlocked bool         `json:"security_blocked,omitempty"`
+	SecurityReason  string       `json:"security_reason,omitempty"`
 	Category        MailCategory `json:"category"`
 	Layer           int          `json:"layer"` // 1 = social/structured, 2 = RFC/ESP header, 3 = semantic model
 	Reason          string       `json:"reason"`

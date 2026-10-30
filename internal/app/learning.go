@@ -12,6 +12,7 @@ import (
 
 	"memo/internal/agent/tools"
 	"memo/internal/api"
+	"memo/internal/autonomy"
 	"memo/internal/calendar"
 	"memo/internal/config"
 	"memo/internal/intent"
@@ -126,6 +127,9 @@ func (a *App) processMessageIntent(text string, source intent.Source, contact st
 		return
 	}
 
+	if source == intent.Source("mail") {
+		text = autonomy.WrapUntrustedExternalMessage(contact, "mail", text)
+	}
 	result, err := extractor.Extract(a.lifecycleCtx, text, source, contact, ts)
 	if err != nil {
 		logx.Printf("intent: extract: %v", err)

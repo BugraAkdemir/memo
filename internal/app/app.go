@@ -20,6 +20,7 @@ import (
 	"memo/internal/agent"
 	"memo/internal/agent/tools"
 	"memo/internal/api"
+	"memo/internal/autonomy"
 	"memo/internal/beta"
 	"memo/internal/browserengine"
 	"memo/internal/calendar"
@@ -203,6 +204,7 @@ type App struct {
 	mailManager      *mail.Manager
 	mailGatekeeper   *mail.Gatekeeper
 	mailWatcher      *mail.Watcher
+	mailShield       *autonomy.Shield
 	llamaServer      *llama.Server
 	llamaEmbedServer *llama.Server      // dedicated embedding model server
 	memoryStoreReady <-chan struct{}    // initial placeholder store has finished

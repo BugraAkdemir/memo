@@ -9,6 +9,7 @@ import '../core/friendly_error.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/mail.dart';
+import '../widgets/mail_security_dialog.dart';
 import '../providers/chat_provider.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/gate_guard.dart';
@@ -422,6 +423,23 @@ class _MailScreenState extends ConsumerState<MailScreen>
                 color: MemoTheme.accent,
               ),
             ],
+            if (stats != null && stats.securityBlocked > 0)
+              Tooltip(
+                message: mailSecurityReason(stats.lastSecurityReason),
+                child: _StatBadge(
+                  icon: Icons.gpp_bad_outlined,
+                  label: L10n.t('mail_stats_security', {'n': '${stats.securityBlocked}'}),
+                  color: MemoTheme.warningOrange,
+                ),
+              ),
+            OutlinedButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => const MailSecurityDialog(),
+              ),
+              icon: const Icon(Icons.security_outlined, size: 16),
+              label: Text(L10n.t('mail_security_title')),
+            ),
             OutlinedButton.icon(
               onPressed: _syncing ? null : () => _triggerSync(activeAccountId),
               icon: _syncing
@@ -1677,7 +1695,7 @@ class _MailComposeDialogState extends ConsumerState<_MailComposeDialog> {
       if (!mounted) return;
       setState(() => _busy = false);
       widget.onToast(
-        L10n.t('mail_error_prefix', {'err': FriendlyError.describeGeneric(e)}),
+        L10n.t('mail_error_prefix', {'err': describeMailError(e)}),
         isError: true,
       );
     }
@@ -1703,7 +1721,7 @@ class _MailComposeDialogState extends ConsumerState<_MailComposeDialog> {
       if (!mounted) return;
       setState(() => _busy = false);
       widget.onToast(
-        L10n.t('mail_error_prefix', {'err': FriendlyError.describeGeneric(e)}),
+        L10n.t('mail_error_prefix', {'err': describeMailError(e)}),
         isError: true,
       );
     }

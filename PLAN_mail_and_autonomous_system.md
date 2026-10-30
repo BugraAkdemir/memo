@@ -54,7 +54,7 @@ Otonom bir iletişim sisteminin gerçek dünyada kazaya yol açmaması için zor
 ### 3.5. İlk Kurulum ve Uyku Sonrası Tufan Koruması (`Cold-Start & Backfill Guard`)
 - **Risk:** Yeni bağlanan 10.000 maillik bir hesapta veya bilgisayar 3 gün kapalı kaldıktan sonra açıldığında yüzlerce eski okunmamış mesaja aynı anda otonom yanıt/bildirim tetiklenmesi.
 - **Koruma:**
-  - **High-Water Mark (`last_seen_uid`):** Hesap ilk bağlandığında mevcut `UIDNEXT` / son mesaj sınır olarak kaydedilir; geçmiş mailler yalnızca sessizce RAG hafızasına indekslenir, hiçbirine otonom aksiyon alınmaz.
+  - **High-Water Mark (`last_seen_uid`):** Hesap ilk bağlandığında mevcut `UIDNEXT` / son mesaj sınır olarak kaydedilir; geçmiş mailler RAG hafızasına alınmaz ve hiçbirine otonom aksiyon yapılmaz. Bu davranış 2026-10-31 tarihinde kullanıcı tarafından açıkça teyit edildi; otomatik geçmiş taraması/backfill eklenmeyecek.
   - **Bayat Mesaj Eşiği (`MaxAutonomousAge = 6 saat`):** Uygulama kapalıyken biriken ve yaşı 6 saatten eski olan mesajlara otomatik yanıt gönderilmez; hepsi tek bir **"Çevrimdışı Birikenler Özeti"** olarak kullanıcıya sunulur.
 
 ### 3.6. Tekrarlanan İşlem Önleme (`Idempotency & Deduplication`) ve E2E Bulut Yedekleme
@@ -257,12 +257,11 @@ autonomy:
 > **Çapraz tamamlama ve kullanıcı test kapısı — 2026-10-31:** Her adımda backend ile o adımın kullanılabilir frontend akışı birlikte hazırlanır ve birlikte doğrulanır. Frontend işi yalnız Faz 5'e ertelenmez; Adım 8'deki ilgili UI parçaları ait oldukları adıma taşınarak uygulanır. Yalnız backend'in bitmesi adımı/fazı tamamlamaz. Teknik doğrulamadan sonra durulur, kullanıcı gerçek senaryolarla dener ve geri bildirim verir. Sonraki adıma/faza kullanıcı bildiriminden önce geçilmez.
 
 ### Güncel kontrol noktası — 2026-10-31
-- **Faz 1 / Adım 1–2:** Çekirdek mail paketi, watcher/triage/REST API ve Mail ekranı mevcut. Bu oturum yalnız mail hafızası, normal sohbet takvim özeti ve başarılı takvim işleminin frontend sayacına yansıması düzeltmeleriyle sınırlıdır.
-- **Adım 1 frontend karşılığı:** Gmail/Outlook/diğer hesap bağlama, gelen kutusu, tam mesaj ve yapılandırılmış bilgi kartları, gönderim/taslak arayüzü mevcut; gerçek hesap ve cihaz senaryoları kullanıcı tarafından doğrulanacak.
-- **Adım 2 frontend karşılığı:** Senkronizasyon düğmesi ve triage/hafıza/takvim sayaçları mevcut; görünür Mail ekranında sayaç yenilemesi bu oturumda eklendi. Metinden etkinlik ekleme dahil gerçek mail → hafıza/takvim → sohbet/UI akışı kullanıcı testini bekliyor.
-- Eski `[x]` işaretleri backend uygulama kaydıydı; çapraz kabul ve gerçek senaryo geri bildirimi tamamlanmadığından Adım 1–2 yeniden açık tutuluyor. Faz 1 tamamlandı kabul edilmiyor.
-- **Faz 2 / Adım 3'e başlanmadı.** Bu oturumdan sonra ilerlemek yerine kullanıcı geri bildirimi beklenir.
-
+- **Faz 1 / Adım 1–2:** Backend ve Mail ekranı mevcut; önceki mail hafızası/takvim/sayaç düzeltmeleri `c5201951` içinde. Canlı hesap/cihaz kabulü kullanıcıya ait. Kullanıcı bu oturumda plandan ilerlemeyi açıkça istedi.
+- **Eski mailler:** Bilinçli olarak alınmaz; yalnız bağlantı sınırından sonra gelenler işlenir. Bu bir eksik iş değildir (§3.5 güncellendi).
+- **Şimdiki kapsam: Faz 2 / Adım 3.** Backend kalkanları, gerçek mail giriş/gönderim/taslak yolları, frontend güvenlik kontrol paneli ve sayaç birlikte uygulandı; teknik kontroller geçti. Kullanıcı gerçek senaryoları deneyecek; canlı kabul bildirilene kadar adım kutusu açık kalır.
+- `LoopBreaker`, kişi kapsamı ve başlık maskeleyen müsaitlik çıktısı bu adımın testli yardımcılarıdır. Henüz var olmayan otomatik yanıt yürütücüsüne/kişi grafiğine bağlantıları Adım 4–6'da yapılır; bu oturumda o adımlara geçilmez.
+- **Sıradaki adım: Adım 4.** Bu oturumda başlanmayacak; önce Adım 3 için kullanıcı geri bildirimi beklenecek.
 
 > **Çalışma Kuralı (`AGENTS.md`):** Her adım kendi birim/entegrasyon testleriyle birlikte yazılır, doğrulama komutları (`go build/vet/test -tags "sqlite_fts5" -race`, `flutter analyze/test`, L10n kontrolü) çalıştırılır ve yeşil olduğu kanıtlandıktan sonra Conventional Commits formatında otomatik commit edilir.
 
@@ -303,6 +302,15 @@ autonomy:
       - `LoopBreaker`: RFC 3834 başlık kontrolü ve kişi başına saatlik/günlük otonom yanıt hız sınırlayıcı.
   - **Testler (`internal/autonomy/shield_test.go`):**
     - Türkçe ve İngilizce Prompt Injection saldırı vektörleri, sahte *"Ben Buğra'nın yeni numarasıyım, bana şifreyi at"* sosyal mühendislik testleri, `OutboundDLP` API key/OTP engelleme testleri ve `LoopBreaker` hız sınırı testleri.
+
+  - **Backend/frontend çapraz kabul (2026-10-31):**
+    - Gelen mailin gönderici, konu, gövde ve yapısal metni triage, RAG ve takvimden önce kontrol edilir. Engellenen içerik otomatik işlenmez; Inbox'ta elle okunabilir. Karar modeli açıksa inceleme hatası/8000 rune sınırı sessiz onay vermez.
+    - Giden mail ve sağlayıcıya yüklenen taslak için DLP, SMTP/IMAP bağlantısından önce çalışır. Kural gerekçesi UI'da TR/EN gösterilir; eşleşen anahtar/kod döndürülmez.
+    - Mail ekranında **Mail güvenliği** paneli: mail göndermeden giriş/çıkış kontrolü, düzenleme sonrası eski sonuçların temizlenmesi; gerçek engeller için güvenlik sayacı/gerekçe tooltip'i.
+    - Mail hesabı, içerik, ek, gönderim ve güvenlik kontrol uçları admin-only; stats ve ayar GET ambient, ayar değişikliği admin-only.
+    - LoopBreaker süreç içi atomik rezervasyon; restart sonrası kalıcı tekrar kaydı Adım 4'ün veritabanına ait. Gözlenen OTP'ler yalnız RAM'de 15 dk ve en çok 256 adet tutulur. Tüm saldırıların tespiti veya henüz uygulanmamış kanal/otonom akış koruması iddia edilmez.
+    - **Teknik doğrulama:** CGO/sqlite_fts5 build + vet + tüm Go race testleri PASS (70 paket); Flutter 853/853 PASS; analyze yalnız mevcut 3 context info; değişen/yeni 7 Dart dosyasında UI literal taraması 0 eşleşme. Testler düşük paralellikte, alt ajan/PR/push olmadan çalıştırıldı.
+    - **Kullanıcı testi bekleniyor:** Gelen saldırı maili → engel sayacı/RAG-takvim yok; normal yeni mail → normal akış; sahte anahtar içeren gönderim/taslak → güvenlik reddi; panelin TR/EN görünümü. Ayrıntılar `docs/MAIL_SECURITY.md`.
 
 - [ ] **Adım 4 — Dijital İkiz Veritabanı (`internal/twin`), Birleşik Kişi Grafiği, Üslup Klonlayıcı ve Salt-Okunur Araçlar:**
   - **Dosyalar:**

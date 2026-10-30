@@ -104,6 +104,22 @@ func TestDestructiveEndpoints_AdminOnly(t *testing.T) {
 		{"POST", "/api/telemetry/consent"},
 		{"POST", "/api/telemetry/reset-id"},
 		{"POST", "/api/telemetry/delete"},
+		{"POST", "/api/mail/security/check"},
+		{"GET", "/api/mail/accounts"},
+		{"DELETE", "/api/mail/accounts"},
+		{"GET", "/api/mail/autodiscover"},
+		{"POST", "/api/mail/oauth/start"},
+		{"GET", "/api/mail/oauth/status"},
+		{"POST", "/api/mail/oauth/manual"},
+		{"POST", "/api/mail/accounts/password"},
+		{"GET", "/api/mail/inbox"},
+		{"GET", "/api/mail/message"},
+		{"GET", "/api/mail/attachment"},
+		{"GET", "/api/mail/search"},
+		{"POST", "/api/mail/send"},
+		{"POST", "/api/mail/draft"},
+		{"POST", "/api/mail/sync"},
+		{"PUT", "/api/mail/settings"},
 	} {
 		if st, _ := do(t, c.method, base+c.path, "user-session", "{}"); st != http.StatusForbidden {
 			t.Errorf("%s %s as a restricted user: status %d, want 403", c.method, c.path, st)

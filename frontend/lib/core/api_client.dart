@@ -3627,6 +3627,11 @@ class MemoApiClient {
     return const MailWatcherStats();
   }
 
+  Future<MailSecurityReport> checkMailSecurity(String text) async {
+    final res = await _dio.post('/api/mail/security/check', data: {'text': text});
+    return MailSecurityReport.fromJson(Map<String,dynamic>.from(_guard<Map>(res.data)));
+  }
+
   Future<MailWatcherStats> getMailStats() async {
     final res = await _dio.get('/api/mail/stats');
     return MailWatcherStats.fromJson(

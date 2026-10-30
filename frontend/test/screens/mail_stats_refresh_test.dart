@@ -24,7 +24,7 @@ class _MailAdapter implements HttpClientAdapter {
     if (options.path == '/api/mail/stats') {
       statsRequests++;
       return ResponseBody.fromString(
-        '{"calendar_extracted":$count}',
+        '{"calendar_extracted":$count,"security_blocked":2,"last_security_reason":"prompt_injection"}',
         200,
         headers: {
           Headers.contentTypeHeader: [Headers.jsonContentType],
@@ -82,6 +82,7 @@ void main() {
       find.text(L10n.t('mail_stats_calendar', {'n': '1'})),
       findsOneWidget,
     );
+    expect(find.text(L10n.t('mail_stats_security', {'n': '2'})), findsOneWidget);
     adapter.count = 2;
     await tester.pump(const Duration(seconds: 15));
     await tester.pumpAndSettle();

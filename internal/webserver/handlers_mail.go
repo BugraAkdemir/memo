@@ -1,8 +1,11 @@
 package webserver
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"memo/internal/autonomy"
 	"net/http"
 	"strconv"
 	"strings"
@@ -341,7 +344,7 @@ func (s *Server) handleMailSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := mb.MailSend(r.Context(), req); err != nil {
-		writeMailJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeMailSendError(w, err)
 		return
 	}
 	writeMailJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -364,7 +367,7 @@ func (s *Server) handleMailDraft(w http.ResponseWriter, r *http.Request) {
 	}
 	mailbox, err := mb.MailSaveDraft(r.Context(), req)
 	if err != nil {
-		writeMailJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeMailSendError(w, err)
 		return
 	}
 	writeMailJSON(w, http.StatusOK, map[string]any{
@@ -429,4 +432,43 @@ func (s *Server) handleMailSettings(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func writeMailSendError(w http.ResponseWriter, err error) {
+	var denied *autonomy.BlockedError
+	if errors.As(err, &denied) {
+		writeMailJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "mail_security_blocked", "code": denied.Code})
+		return
+	}
+	writeMailJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+}
+
+type mailSecurityBridge interface {
+	MailCheckSecurity(context.Context, string) autonomy.SecurityReport
+}
+
+func (s *Server) handleMailSecurityCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var b mailSecurityBridge
+	if s.fullBridge != nil {
+		b, _ = any(s.fullBridge).(mailSecurityBridge)
+	} else {
+		b, _ = s.bridge.(mailSecurityBridge)
+	}
+	if b == nil {
+		http.Error(w, "mail security not available", http.StatusNotImplemented)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, autonomy.MaxCheckBytes+1024)
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Text) > autonomy.MaxCheckBytes {
+		writeMailJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid security check input"})
+		return
+	}
+	writeMailJSON(w, http.StatusOK, b.MailCheckSecurity(r.Context(), req.Text))
 }

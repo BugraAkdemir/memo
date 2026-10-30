@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"memo/internal/autonomy"
+	netmail "net/mail"
 	"strings"
 	"sync"
 	"time"
@@ -20,13 +22,15 @@ type WatcherConfig struct {
 
 // WatcherStats tracks cumulative triage metrics for UI display and morning briefings.
 type WatcherStats struct {
-	TotalEvaluated    int       `json:"total_evaluated"`
-	DroppedMarketing  int       `json:"dropped_marketing"`
-	IndexedInRAG      int       `json:"indexed_in_rag"`
-	PassedToAutonomy  int       `json:"passed_to_autonomy"`
-	CalendarExtracted int       `json:"calendar_extracted"`
-	ColdStarts        int       `json:"cold_starts"`
-	LastSyncAt        time.Time `json:"last_sync_at,omitempty"`
+	TotalEvaluated     int       `json:"total_evaluated"`
+	DroppedMarketing   int       `json:"dropped_marketing"`
+	IndexedInRAG       int       `json:"indexed_in_rag"`
+	PassedToAutonomy   int       `json:"passed_to_autonomy"`
+	CalendarExtracted  int       `json:"calendar_extracted"`
+	SecurityBlocked    int       `json:"security_blocked"`
+	LastSecurityReason string    `json:"last_security_reason,omitempty"`
+	ColdStarts         int       `json:"cold_starts"`
+	LastSyncAt         time.Time `json:"last_sync_at,omitempty"`
 }
 
 // MemoryIndexFunc indexes a non-bulk email into Memo's RAG vector store.
@@ -47,6 +51,7 @@ type Watcher struct {
 	stats   WatcherStats
 	indexFn MemoryIndexFunc
 	onEvent MailEventHandler
+	guard   func(context.Context, Account, *MessageDetail) autonomy.Verdict
 
 	triggerCh chan struct{}
 	pollMu    sync.Mutex
@@ -85,6 +90,22 @@ func (w *Watcher) SetMemoryIndexer(fn MemoryIndexFunc) {
 func (w *Watcher) SetEventHandler(fn MailEventHandler) {
 	w.mu.Lock()
 	w.onEvent = fn
+	w.mu.Unlock()
+}
+
+// SetSecurityGuard installs the optional semantic review/OTP observer. A
+// deterministic guard still runs when no app-level callback is installed.
+func (w *Watcher) SetSecurityGuard(fn func(context.Context, Account, *MessageDetail) autonomy.Verdict) {
+	w.mu.Lock()
+	w.guard = fn
+	w.mu.Unlock()
+}
+
+// RecordSecurityBlocked records codes only, never the mail/secret itself.
+func (w *Watcher) RecordSecurityBlocked(code string) {
+	w.mu.Lock()
+	w.stats.SecurityBlocked++
+	w.stats.LastSecurityReason = code
 	w.mu.Unlock()
 }
 
@@ -177,6 +198,7 @@ func (w *Watcher) SyncOnce(ctx context.Context) error {
 	cfg := w.cfg
 	indexFn := w.indexFn
 	onEvent := w.onEvent
+	guard := w.guard
 	w.mu.RUnlock()
 
 	accounts := w.manager.ListAccounts()
@@ -212,7 +234,33 @@ func (w *Watcher) SyncOnce(ctx context.Context) error {
 			if detail == nil {
 				continue
 			}
+			text, _ := FormatMailForMemory(acct, detail, TriageDecision{})
+			verdict := autonomy.DetectPromptInjection(ctx, text, nil)
+			if guard != nil {
+				// The app also observes parsed OTPs here, including in denied
+				// mail. Its review can never override a deterministic block.
+				reviewed := guard(ctx, acct, detail)
+				if !verdict.Blocked {
+					verdict = reviewed
+				}
+			}
+			if verdict.Blocked {
+				w.mu.Lock()
+				w.stats.TotalEvaluated++
+				w.mu.Unlock()
+				w.RecordSecurityBlocked(verdict.Code)
+				if onEvent != nil {
+					onEvent(ctx, acct, detail, TriageDecision{SecurityBlocked: true, SecurityReason: verdict.Code, DropFromRAG: true})
+				}
+				continue
+			}
 			decision := w.gatekeeper.Evaluate(ctx, detail)
+			// Protocol/group gates cannot be bypassed by a VIP classification.
+			recipients, _ := mailRecipients(detail.To, detail.Cc)
+			policy := autonomy.AutoReplyPolicy(autonomy.Envelope{Account: acct.ID, Sender: detail.From, ThreadID: detail.InReplyTo, Headers: detail.Headers, RecipientCount: recipients})
+			if policy.Blocked {
+				decision.AllowAutoReply = false
+			}
 
 			// Backfill Age Guard: never allow autonomous replies to messages older
 			// than MaxAutonomyAge (default 6 hours), even if UID > LastSeenUID
@@ -271,4 +319,20 @@ func FormatMailForMemory(account Account, detail *MessageDetail, decision Triage
 	}
 	userMsg += "\nBody:\n" + body
 	return userMsg, ""
+}
+
+// Count recipient addresses rather than commas inside quoted display names.
+func mailRecipients(to, cc string) (int, error) {
+	total := 0
+	for _, field := range []string{to, cc} {
+		if strings.TrimSpace(field) == "" {
+			continue
+		}
+		addrs, err := netmail.ParseAddressList(field)
+		if err != nil {
+			return 2, err
+		} // malformed envelopes require manual approval
+		total += len(addrs)
+	}
+	return total, nil
 }

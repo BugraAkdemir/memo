@@ -395,6 +395,8 @@ class MailWatcherStats {
   final int indexedInRag;
   final int passedToAutonomy;
   final int calendarExtracted;
+  final int securityBlocked;
+  final String lastSecurityReason;
   final int coldStarts;
   final String lastSyncAt;
 
@@ -404,6 +406,8 @@ class MailWatcherStats {
     this.indexedInRag = 0,
     this.passedToAutonomy = 0,
     this.calendarExtracted = 0,
+    this.securityBlocked = 0,
+    this.lastSecurityReason = '',
     this.coldStarts = 0,
     this.lastSyncAt = '',
   });
@@ -415,8 +419,33 @@ class MailWatcherStats {
       indexedInRag: (json['indexed_in_rag'] as num?)?.toInt() ?? 0,
       passedToAutonomy: (json['passed_to_autonomy'] as num?)?.toInt() ?? 0,
       calendarExtracted: (json['calendar_extracted'] as num?)?.toInt() ?? 0,
+      securityBlocked: json['security_blocked'] is num ? (json['security_blocked'] as num).toInt() : 0,
+      lastSecurityReason: json['last_security_reason'] is String ? json['last_security_reason'] : '',
       coldStarts: (json['cold_starts'] as num?)?.toInt() ?? 0,
       lastSyncAt: json['last_sync_at'] as String? ?? '',
     );
+  }
+}
+
+class MailSecurityVerdict {
+  final bool blocked;
+  final String code;
+  final String check;
+  const MailSecurityVerdict({required this.blocked, required this.code, required this.check});
+  factory MailSecurityVerdict.fromJson(Map<String, dynamic> json) => MailSecurityVerdict(
+    blocked: json['blocked'] != false,
+    code: json['code'] is String ? json['code'] : 'unknown',
+    check: json['check'] is String ? json['check'] : 'rules',
+  );
+}
+
+class MailSecurityReport {
+  final MailSecurityVerdict inbound;
+  final MailSecurityVerdict outbound;
+  const MailSecurityReport({required this.inbound, required this.outbound});
+  factory MailSecurityReport.fromJson(Map<String, dynamic> json) {
+    MailSecurityVerdict read(String key) => MailSecurityVerdict.fromJson(
+      json[key] is Map ? Map<String,dynamic>.from(json[key]) : <String,dynamic>{});
+    return MailSecurityReport(inbound: read('inbound'), outbound: read('outbound'));
   }
 }

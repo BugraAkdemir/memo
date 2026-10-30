@@ -71,3 +71,43 @@ Device checks:
 The owner confirmed an incoming injection was blocked (31 October). This does
 not imply that outgoing DLP, all UI layouts or the later autonomous reply engine
 have received live acceptance. Step 4 has not started.
+
+## Explicit sends from ordinary chat (31 October follow-up)
+
+The Mail UI already had direct Send/Save draft. The missing chat tools are now
+registered as `mail_accounts`, `mail_inbox`, `mail_search`, `mail_read`,
+`mail_send`, and `mail_save_draft`. Search takes plain text, not IMAP query
+syntax. Read/search output is wrapped as untrusted external data; account
+listing returns only account ID, address and display name, never credentials.
+The model is instructed to use these native methods instead of terminal scripts.
+
+When a channel is connected, an ordinary text chat can use its tools with Agent
+mode OFF. The per-turn registry actually excludes filesystem/terminal/browser
+execution, including hidden tool calls the provider might fabricate. Existing
+WhatsApp tools are included when connected. `telegram_send` targets the linked
+owner bot chat; arbitrary Telegram usernames, history search, personal-account
+sending and mail attachments are not implemented by this change. Text-only web
+chat providers retain ordinary conversation without unsupported tool calls.
+
+The same permission/event SSE path works with Agent OFF. The permission dialog
+shows the actual account, recipients, subject and message, in addition to the
+localized tool name. Existing auto-approval policies still apply. Mail send and
+draft use the App methods with outbound DLP before SMTP/IMAP. Restricted remote
+accounts cannot gain private channel access through chat. Synchronous chat/file
+HTTP requests now preserve the same authorization/cancellation context as SSE.
+
+This does not start the automatic incoming-mail reply engine (Steps 4–6).
+
+Checks on a rebuilt backend AND frontend:
+- Agent OFF: ask to find/read a mail, agree on the recipient/text, then say
+  "sen at". Expect native `mail_send` and the existing permission flow, with the
+  recipient/body visible. Agent must stay OFF. Check the recipient mailbox.
+- Agent ON: repeat; expect the same native mail tool, not a Python script.
+- Ask to save a draft: check Drafts, with nothing sent. A fabricated API key
+  should still be blocked for both send and draft.
+- With WhatsApp connected, ask to read/send through that channel with Agent OFF.
+  With Telegram linked, ask to send text to your own bot chat; confirm receipt.
+
+Automated HTTP/SSE → permission HTTP → real loopback SMTP regression checks the
+mail body and reply headers without sending any real email. Live delivery and
+real-model choice of tools still need the owner's scenario test.

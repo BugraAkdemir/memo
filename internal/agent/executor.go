@@ -409,7 +409,7 @@ func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Rou
 		maxTokens = seedPlus
 	}
 
-	pipeline := NewPipelineWithBudget(e.registry, e.permissions, sessionSandbox, router, e.backup, maxTokens)
+	pipeline := NewPipelineWithBudget(e.registry.scoped(ctx), e.permissions, sessionSandbox, router, e.backup, maxTokens)
 	if mi, mc := e.getLoopBounds(); mi > 0 || mc > 0 {
 		if mi > 0 {
 			pipeline.maxIters = mi

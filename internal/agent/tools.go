@@ -76,6 +76,7 @@ func NewRegistry() *ToolRegistry {
 	return r
 }
 func (r *ToolRegistry) registerBuiltins() {
+	r.registerCommunicationTools()
 	r.Register(ToolDef{
 		Name:        "read_file",
 		Description: "Reads a file (use offset/limit for large files). Read a file before editing it, so your edit matches its exact text and style.",
@@ -700,6 +701,7 @@ func (r *ToolRegistry) ToOpenAITools(activeSkills map[string]bool) []provider.To
 // and a chance for the model to reach for WhatsApp in the middle of a refactor.
 // They stay registered, so the same tools still work in ordinary agent chats.
 var codeModeOmitted = map[string]bool{
+	"mail_accounts": true, "mail_inbox": true, "mail_search": true, "mail_read": true, "mail_send": true, "mail_save_draft": true, "telegram_send": true,
 	"whatsapp_send": true, "whatsapp_search": true, "whatsapp_latest": true, "whatsapp_messages": true,
 	"get_calendar_events": true, "create_routine": true, "list_routines": true, "cancel_routine": true,
 	"configure_provider": true, "self_clone": true,

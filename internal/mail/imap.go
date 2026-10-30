@@ -384,6 +384,9 @@ func (c *IMAPClient) FetchMessageDetail(seqNum uint32) (*MessageDetail, error) {
 
 // SearchMessages searches the selected mailbox for messages matching query.
 func (c *IMAPClient) SearchMessages(query string, limit int) ([]MessageSummary, error) {
+	if strings.ContainsAny(query, "\r\n\x00") {
+		return nil, fmt.Errorf("invalid mail search text")
+	}
 	_ = c.conn.SetDeadline(time.Now().Add(20 * time.Second))
 	tag := c.nextTag()
 	escaped := strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(query), `\`, `\\`), `"`, `\"`)

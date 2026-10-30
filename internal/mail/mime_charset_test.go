@@ -68,3 +68,12 @@ func TestMIMEHTMLCharsetFallbacks(t *testing.T) {
 		})
 	}
 }
+
+func TestMailSearchRejectsProtocolControlCharactersBeforeIO(t *testing.T) {
+	c := &IMAPClient{} // no connection: rejection must occur before protocol I/O
+	for _, query := range []string{"hello\r\nA2 LOGOUT", "hello\x00world"} {
+		if _, err := c.SearchMessages(query, 20); err == nil {
+			t.Fatal("accepted protocol injection")
+		}
+	}
+}

@@ -9,6 +9,7 @@ import '../../models/agent.dart';
 import '../../providers/chat_provider.dart';
 import '../../utils/tool_names.dart';
 import '../../core/friendly_error.dart';
+import 'communication_preview.dart';
 
 class PermissionDialog extends ConsumerStatefulWidget {
   final AgentEvent event;
@@ -215,7 +216,9 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
             L10n.t('permission_wants_tool', {'tool': toolName}),
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           ),
-          if (shortArg != null)
+          CommunicationPreview(event: widget.event),
+          if (shortArg != null &&
+              !const {'mail_send', 'mail_save_draft', 'whatsapp_send', 'telegram_send'}.contains(widget.event.toolName))
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Container(

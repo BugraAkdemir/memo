@@ -5,7 +5,7 @@
 ## Açık işler
 
 **Dijital İkiz / Mail — kullanıcı kabulü bekleniyor**
-- PLAN_mail_and_autonomous_system.md: şimdiki iş Faz2/Adım3. Backend+frontend birlikte; Adım4 başlamadı. Gelen saldırı engeli kullanıcıda PASS; diğer güvenlik senaryoları ve charset/HTML/kalıcı sayaç cihaz kabulü bekleniyor. Eski mail/backfill yok. Senaryolar: docs/MAIL_SECURITY.md.
+- PLAN_mail_and_autonomous_system.md: şimdiki iş Faz2/Adım3. Backend+frontend birlikte; Adım4 başlamadı. Gelen saldırı engeli kullanıcıda PASS; diğer güvenlik senaryoları ve charset/HTML/kalıcı sayaç cihaz kabulü bekleniyor. Eski mail/backfill yok. Sohbetten native gönderim Agent kapalıyken eklendi; cihaz kabulü bekliyor. Senaryolar: docs/MAIL_SECURITY.md.
 
 **Performans benchmark — kullanıcı duraklattı (29 Ekim)**
 - docs/PERFORMANCE_BENCHMARK_CHECKPOINT.md + data/performance-benchmark/PAUSED.json: son koşuda yalnız aşama1 kayıtlı, data aşama2. Kalibrasyon/resume/aşama2–3/rapor/doğrulama açık. Runner baştan siler; körlemesine çalıştırma.
@@ -63,8 +63,7 @@
 
 ---
 
-# Son oturum — 2026-10-31 — Mail kullanıcı testi düzeltmeleri
-- MIME Türkçe charset → UTF-8, RAG/güvenlikten önce. HTML gömülü CSS+tablo ve TR/EN düz metin anahtarı; script/uzak resim/stylesheet yok. Tam tarayıcı CSS'i değil; html0.15.6 pini.
-- Watcher sayaçları hesap kasası yanında watcher-stats.json'a seri/atomik/0600 yazılır, açılışta yüklenir. Restart/callback/IMAP testli; eski kayıp sayaç/bozuk RAG onarılmadı, backfill yok.
-- Kullanıcı saldırı maili engelini onayladı; repo otomatik yanıtı Adım4–6'da, başlanmadı. docs/MAIL_SECURITY.md testleri cihazda bekler; iki süreç güncel kodla yeniden başlatılmalı.
-- Doğrulama: build/vet PASS, Go race70 paket PASS; Flutter856/856 PASS; analyze mevcut3 info; UI literal3 dosya0; diff temiz. Yerel fix(mail) commit; push/PR/alt ajan yok. Diğer yerel değişiklikler korundu.
+# Son oturum — 2026-10-31 — Sohbet iletişim araçları
+- Native mail araçları + bağlı Telegram botuna gönderim; WhatsApp ile Agent OFF normal sohbet. Terminal açılmaz; izin/DLP/rol sınırı korunur. TR/EN adlar ve alıcı/metin önizlemesi. Code Mode iletişim almaz.
+- Son build/vet, Go race70 PASS; Flutter858/858 + son izin6/6 PASS; analyze mevcut3 info; UI literal4 dosya0. HTTP/SSE→izin→loopback SMTP PASS; gerçek mail yok.
+- Yerel fix(chat), PR/push/alt ajan yok. Adım4 başlamadı; otonom yanıt Adım4–6. İki süreci güncelleyip cihaz testleri: docs/MAIL_SECURITY.md. Diğer yerel değişiklikler korundu.

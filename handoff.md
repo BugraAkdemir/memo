@@ -4,9 +4,10 @@
 
 ## Açık işler
 
-**Dijital İkiz / Mail — Adım4 cihaz kabulü**
-- PLAN_mail_and_autonomous_system.md: Faz2/Adım4 backend+frontend teknik hazır; kullanıcı testi bekler, kutu açık. Kişi eşleme kullanıcı doğrulamalıdır: mail/WhatsApp adresleri aynı kayda eklenir veya kişiler açıkça birleştirilir; isim benzerliği yetmez. Üslup, kaynak tarihli geçmiş ve salt-okunur Git/doluluk paneli: docs/DIGITAL_TWIN_CONTACTS.md. Telegram yalnız sahip botudur; üçüncü kişi geçmişi yok. Adım5 başlamadı.
-- Gerçek sohbetten mail teslimi kullanıcıda PASS. Göreli tarih ve Adım3 görünüm/charset/sayaç/diğer güvenlik cihaz kabulü açık (docs/MAIL_SECURITY.md); saldırı engeli PASS. Eski mail/backfill yok; izin politikası değişmedi. Backend+frontend birlikte; sonraki adıma kullanıcı geri bildirimi olmadan geçme.
+**Dijital İkiz / Mail — Adım5 teknik hazır**
+- Adım5 backend/frontend birlikte: karar/takvim/Drafts, kalıcı olay/UID/limit, panel/iptal: docs/DIGITAL_TWIN_AUTONOMY.md. Varsayılan kapalı; karar modeli gerekir. Ses: yerel Whisper/ffmpeg; bulut yok. Telegram sahip.
+- Adım5 hazırlar; grace_period_auto GÖNDERMEZ. Adım6 gönderim/uzaktan onay başlamadı; gönderimde ayar/kişi/DLP yeniden denetlenmeli. Kutu teknik tamam; gerçek model/IMAP/Whisper/WhatsApp kabulü açık. İptal yüklenmiş taslak/takvimi silmez; kesinti/hata tekrar edilmez.
+- Adım4 kişi/üslup/Git/doluluk ve Adım3 görünüm/charset/sayaç/göreli tarih kabulü açık: docs/DIGITAL_TWIN_CONTACTS.md + docs/MAIL_SECURITY.md. İsimden eşleme ve eski mail/backfill yok. Sohbet mail teslimi/saldırı engeli kullanıcıda PASS; izin politikası aynı. Sonraki adıma geri bildirimle geç.
 
 **Performans benchmark — kullanıcı duraklattı (29 Ekim)**
 - docs/PERFORMANCE_BENCHMARK_CHECKPOINT.md + data/performance-benchmark/PAUSED.json: son koşuda yalnız aşama1 kayıtlı, data aşama2. Kalibrasyon/resume/aşama2–3/rapor/doğrulama açık. Runner baştan siler; körlemesine çalıştırma.
@@ -42,11 +43,11 @@
 **Güncelleme / saha**
 - 4.7.0 yayında (`PLAN_auto_update.md`, `docs/AUTO_UPDATE.md`). Gerçek Windows Setup.exe/ShellExecute, macOS, GPU/model motor sonrası restart ve Flutter penceresi denenmedi; macOS betik kurulumunda başlatıcı yok. Windows/macOS ENGINES işareti kanıtsız: eklenmeden güncelleme almaz.
 - issue #42–47 açık; indirme bitince kendiliğinden kapanır (yeniden başlat onayı yok); Docker daemon son denemede kapalıydı. İmza: `~/.config/memo-release/update-signing.key`, Actions MEMO_UPDATE_SIGNING_KEY; anahtar geçişi eski imzalı sürüm ister.
-- PLAN_v4_6_completion.md: canlı cihaz/OAuth/kota/model kalitesi kanıtsız. Mobil cihaz/emülatör, MemoRoot provider yenileme, Android/iOS HTTP; Auto Route kalite/kota/GGUF soğuk yükleme, karar/doğrulama kalite/hız/maliyet, sihirbaz/abonelik giriş penceresi açık.
+- PLAN_v4_6_completion.md: cihaz/OAuth/kota/model kalitesi kanıtsız. Mobil cihaz/emülatör, MemoRoot provider yenileme, Android/iOS HTTP; Auto Route kalite/kota/GGUF soğuk yükleme, karar/doğrulama kalite/hız/maliyet, sihirbaz/abonelik giriş penceresi açık.
 - Web sohbet Beta yalnız signed-out/fake site; signed-in ChatGPT/Claude denenmedi. Uzak giriş token değişimi, HTTP clipboard fallback, Telegram/WhatsApp, görsel üretimi ve Flutter görsel/kota kartları canlı denenmedi. Antigravity flash-image hesapta 500; WhatsApp fake taşıması yok.
 - Windows/macOS/arm64 sidecar yalnız CI build; Claude login/quota yok. Codex yalnız30d; 5s/7g denenmedi.
 
-**Bilinen küçük noktalar / test ortamı**
+**Küçük noktalar / test ortamı**
 - Pi embedding yeni build/reboot denenmedi; eski embedding_auto_start:false ezilmez, elle açmak tercihi kaydeder. Eski origin token döndürme kullanıcıda; satılmış alan adındaki eski REPL indirmeleri kaldırılıp sürüm duyurulmalı.
 - Yapıştırma kutusu Done'a dek açık; login.go s.tail erken okuma ölçülmedi. Minimal Mod auto-compact atlar; görsel modeli etiketsiz; ikinci model menüsü ortak listeyi kullanır.
 - MEMO_DATA_DIR testlerinde config.ResetForTests eksikleri dosya sızdırabilir. ngrok.TestFetchURL_NoServer yerel API yüzünden düşebilir, tünele dokunma. Yoğun derlemede wav_player stop testi 2s timeout görmüştü.
@@ -54,7 +55,7 @@
 
 ## Kalıcı uyarılar
 - Alt ajan çalıştırma; açık talep olmadan PR açma. Backend+frontend birlikte doğrulanır; kullanıcı gerçek senaryo testiyle geri bildirim verir. Sonraki adıma kendiliğinden geçme.
-- Kullanıcı talebi: yerel CPU dolduran busy loop/stres testi başlatma. Önceki döngüler sonlandırıldı. Ağır doğrulamayı uzak CI üzerinde yap.
+- Yerel CPU dolduran busy loop/stres testi yasak; eski döngüler kapalı. Ağır doğrulama uzak CI’da.
 - `~/.config/Memo/image.key` olmadan yalnız data kopyası görselleri açamaz; taşınabilir/şifreli bulut yedeği anahtarı taşımadan aktarır, eski yedek kurtarabilir. Eski sürüm mühürlü görseli bozuk görür.
 - Kota sonrası otomatik devam yalnız Memo açıkken; CLI ajan/WhatsApp/Self-Driving kapsam dışı. Görsel niyeti anahtar sözcüklü: yanlış tetikte negatif test; `/image` zorlar.
 - Sidecar soğuk liste ~30s; kapasite/effort tam model id'sinden, offline son snapshot; bilinmeyen tahmin edilmez (`docs/SUBSCRIPTION_CAPABILITIES.md`).
@@ -64,6 +65,7 @@
 
 ---
 
-# Son oturum — 2026-10-31 — Adım4 test açıklaması
-- Kişi geçmişi, giden üslup, Agent kapalı Git ve takvim mahremiyeti senaryoları verildi. Aynı kişinin kanal adreslerini kullanıcı bağlar; otomatik isim eşleme yok.
-- Kullanıcı test sonucu bildirmedi; Adım5 bekler. Kod değişmedi; 83e53725 yerel. Arşiv: Go71/Flutter866 PASS. Belge diff kontrolü PASS; push yok.
+# Son oturum — 2026-10-31 — Adım5 backend/frontend
+- Adım5 backend/frontend teknik hazır; cihaz kabulü açık. Adım6 başlamadı.
+- CGO/sqlite_fts5 build/vet exit0; Go race71 PASS + son regresyonlar PASS; Flutter870/870 PASS; analyze mevcut3 info; UI literal6 dosya0; diff PASS.
+- Yerel feat commit; push/tag/PR yok. Önceden değişmiş AGENTS.md/.claude-flow/data dosyaları dahil değil.

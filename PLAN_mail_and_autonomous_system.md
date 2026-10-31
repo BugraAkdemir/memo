@@ -263,7 +263,7 @@ autonomy:
 - `LoopBreaker`, kişi kapsamı ve başlık maskeleyen müsaitlik çıktısı bu adımın testli yardımcılarıdır. Kişi grafiği ve salt-okunur yürütücü Adım 4'tedir; gelen olayları otomatik yanıt motoruna bağlama Adım 5–6'ya aittir.
 - **Adım3 kullanıcı geri bildirimi — sohbet araçları:** Mail UI/backend gönderimi mevcuttu; model için mail araçları yoktu. Kullanıcının açık isteğiyle `mail_accounts/inbox/search/read/send/save_draft` ve bağlı bot sohbetine `telegram_send` eklendi. Mevcut WhatsApp araçlarıyla birlikte Agent kapalı normal sohbette sınırlı araç döngüsü; terminal/dosya açılmaz. Agent açıkken de yerleşik servisler kullanılır; Python/SMTP script yolu önerilmez. İzin ekranında alıcı/gövde önizlenir, TR/EN adlar vardır; mail DLP ve admin sınırı korunur. Bu, kullanıcı talebiyle gönderimdir; gelen maile kendiliğinden yanıt motoru değildir. Gerçek HTTP/SSE → izin HTTP → loopback SMTP testi, gövde/yanıt başlığı ve Agent kapalı kalmasıyla geçti. Son doğrulama: build/vet ve Go race70 paket PASS; Flutter858/858 + son izin6/6 PASS; analyze mevcut3 info; UI literal4 dosya0. Canlı cihaz kabulü bekleniyor.
 - **Canlı kabul ve tarih geri bildirimi (31 Ekim):** Kullanıcı sohbetten gönderilen mailin gerçek alıcıya ulaştığını doğruladı. Tekrarlanan gönderim izninin gerekliliği hakkında görüş sordu; izin politikası değiştirilmedi. Tarih riski için RAG'a kesin kayıt zamanı, mail okuma aracına orijinal gönderim tarihi/saat dilimi; yeni sohbet mesajlarına kalıcı tam zaman damgası ve eski günler için model geçmişine tarih bağlamı eklendi. Eksik eski tarihler tahmin edilmez; metinler yeniden yazılmaz. Saat hover'ında TR/EN tam tarih görünür. Son doğrulama: CGO/sqlite_fts5 build/vet ve Go race70 paket PASS; Flutter861/861 PASS; analyze mevcut3 info; UI literal3 dosya0. Bu değişiklik sonraki otonom aşamayı başlatmaz.
-- **Güncel kapsam: Faz 2 / Adım 4.** Kullanıcı 31 Ekim’de açıkça devam edilmesini istedi. Kişi deposu/eşleme/üslup, salt-okunur araçlar, normal sohbet bağlantısı ve frontend paneli birlikte hazırlandı. Kullanıcı cihaz kabulü beklenir; Adım 5 başlamadı.
+- **Önceki kapsam: Faz 2 / Adım 4.** Kullanıcı 31 Ekim’de açıkça devam edilmesini istedi. Kişi deposu/eşleme/üslup, salt-okunur araçlar, normal sohbet bağlantısı ve frontend paneli birlikte hazırlandı. Kullanıcı cihaz kabulü beklenir. Kullanıcı sonraki mesajında Adım5’in backend/frontend birlikte yapılmasını açıkça yetkilendirdi.
 
 > **Çalışma Kuralı (`AGENTS.md`):** Her adım kendi birim/entegrasyon testleriyle birlikte yazılır, doğrulama komutları (`go build/vet/test -tags "sqlite_fts5" -race`, `flutter analyze/test`, L10n kontrolü) çalıştırılır ve yeşil olduğu kanıtlandıktan sonra Conventional Commits formatında otomatik commit edilir.
 
@@ -337,20 +337,28 @@ autonomy:
     - Mevcut Telegram botu yalnız hesap sahibine açıktır. Sayısal Telegram adresi grafikte saklanır; üçüncü kişi Telegram geçmişi taşıması uygulanmış sayılmaz. Telegram sahip ve WhatsApp öz sohbetleri/grupları kişi geçmişine kopyalanmaz.
     - İkiz DB yerel/şifreli bulut yedeğine dahil; WAL checkpoint, restore/wipe/shutdown kapanışı bağlıdır. Bekleyen aksiyon/söz tabloları sonraki motorları çalıştırmaz; izin politikası değişmedi.
     - **Teknik doğrulama:** CGO/sqlite_fts5 build + vet exit0; tüm Go race testlerinde 71 paket PASS/0 FAIL. Flutter866/866 PASS; analyze yalnız mevcut3 context info; değişen/yeni6 UI Dart dosyasında literal0; diff kontrolü PASS. Kaynak saat dilimini koruyan gece yarısı/sıralama ve bağlı CC adreslerinin tek sayılması regresyonları dahil.
-    - **Kullanıcı kabulü bekleniyor; adım kutusu açık.** Senaryolar ve sınırlar: `docs/DIGITAL_TWIN_CONTACTS.md`. Adım5'e kullanıcı geri bildirimi olmadan geçilmez.
+    - **Kullanıcı kabulü bekleniyor; adım kutusu açık.** Senaryolar ve sınırlar: `docs/DIGITAL_TWIN_CONTACTS.md`. Adım4 cihaz kabulü açık kalır; kullanıcı 31 Ekim’de Adım5’e devamı açıkça istedi.
 
 
 ---
 
 ### Faz 3: Dijital İkiz Beyni, Takvim Harmanlama, Sesli Mesaj Köprüsü ve Çok Kanallı Onay
 
-- [ ] **Adım 5 — Otonom Karar Motoru (`internal/autonomy/engine.go`), Sesli Mesaj (`Whisper`) ve Takvim Harmanlama:**
+- [x] **Adım 5 — Otonom Karar Motoru (`internal/autonomy/engine.go`), Sesli Mesaj (`Whisper`) ve Takvim Harmanlama:**
   - **Dosyalar:**
     - `internal/autonomy/engine.go`:
       - Mail (`Watcher`), WhatsApp (`runWhatsAppIntentLoop` — metin + `internal/whisper` sesli mesaj transkripti) ve Telegram (`runTelegramLoop` — metin + sesli mesaj) olaylarını ortak `HandleIncomingEvent` boru hattına bağlar.
       - **Takvim Harmanlama Akışı:** `.ics` veya metin içi toplantı/fatura/uçuş yakalandığında `calendarStore`'a ekler, çakışma ve saat tercihi kontrolü yapar, karşı tarafa kullanıcının üslubuyla yanıt taslağı (çakışma varsa alternatif boş saat öneren, yoksa onaylayan) yazar (Mail ise `SaveDraft` ile Gmail/Outlook `Drafts` klasörüne kaydeder) ve kullanıcıya bildirim + onay sorusu gönderir.
       - **Soru / Araştırma Akışı:** Salt-okunur araçlarla (`git_project_status`, `check_availability`, `contact_timeline`, `search_memory`) soruyu araştırır. Grup/CC değilse, `full_auto` açıksa ve güven skoru yüksekse `60sn Grace Period` kuyruğuna sokarak yanıtlar; aksi halde taslak olarak kaydedip onay ister.
   - **Testler:** Toplantı çakışma tespiti + alternatif saat taslağı testi, *"xxx projesini merge ettin mi?"* otonom araştırma + üsluplu yanıt testi, grup mesajlarında otomatik yanıtın engellenip taslağa düşmesi testi.
+
+  - **Backend/frontend birlikte uygulama (31 Ekim, kullanıcı açık talebi):**
+    - Mail/WhatsApp ortak karar motoru; sabit gönderici kapsamlı araştırma, tarih/başlık/kişi/grup/CC kalkanları, kaynak tarihli takvim önerisi, çakışma ve alternatif saatler, üsluplu DLP-korumalı mail Drafts yüklemesi.
+    - Kalıcı olay ve davet UID rezervasyonu, saatlik/günlük aday bütçesi; model/araç/yükleme hataları görünür ve otomatik aday olmaktan çıkar. Genel ajan ve aktif sohbet ayarları değişmez.
+    - Aynı değişiklikte Dijital İkiz → Otonomi paneli: kanal/mod/süre/ses ayarları, son kararlar, taslak/çakışma/hata ve yerel iptal; admin-only API, TR/EN ve dar ekran/HTTP widget testleri.
+    - WhatsApp sesli mesaj ve sahip Telegram sesi; yerel Whisper ve sıkıştırılmış seste sabit, dosyasız/ağsız ffmpeg dönüşümü. Telegram üçüncü kişilere açılmaz. ffmpeg/Whisper yoksa buluta geçilmez.
+    - Adım5 yalnız hazırlar; otomatik adayın gönderimi ve uzaktan onay Adım6 köprüsüdür. Kullanıcıya panelde açıkça belirtilir. Ayarlar mevcut twin tercihlerinde kalır. Ayrıntı ve cihaz testleri: `docs/DIGITAL_TWIN_AUTONOMY.md`.
+    - **Teknik doğrulama:** CGO/sqlite_fts5 build/vet exit0; tüm Go race71 paket PASS, son tarih/grup/karar regresyonları ayrıca PASS. Flutter870/870 PASS; analyze yalnız mevcut3 context info; değişen/yeni6 Dart dosyasında UI literal0; diff kontrolü PASS. Kutu teknik uygulamayı gösterir. Gerçek model/hesap/ses cihaz kabulü beklenir; Adım6 başlamadı.
 
 - [ ] **Adım 6 — Çok Kanallı Bildirim, 60sn Geri Al Tamponu ve Onay Köprüsü (UI + WhatsApp Self-Chat + Telegram):**
   - **Dosyalar:**

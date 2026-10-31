@@ -163,7 +163,7 @@ func (a *App) onIncomingMailEvent(ctx context.Context, account mail.Account, det
 
 	a.recordTwinMail(ctx, account, detail)
 
-	if decision.ExtractCalendar {
+	if handled := a.autonomyMail(ctx, account, detail, decision); !handled && decision.ExtractCalendar {
 		a.extractMailStructuredToCalendar(ctx, detail)
 	}
 

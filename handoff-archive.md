@@ -1,3 +1,8 @@
+# Son oturum — 2026-10-31 — Adım4 test açıklaması
+- Kişi geçmişi, giden üslup, Agent kapalı Git ve takvim mahremiyeti senaryoları verildi. Aynı kişinin kanal adreslerini kullanıcı bağlar; otomatik isim eşleme yok.
+- Kullanıcı test sonucu bildirmedi; Adım5 bekler. Kod değişmedi; 83e53725 yerel. Arşiv: Go71/Flutter866 PASS. Belge diff kontrolü PASS; push yok.
+
+
 # Son oturum — 2026-10-31 — İkiz kişi ve salt-okunur araştırma
 - 83e53725 yerel feat(twin): Adım4 depo/kişi/üslup, sınırlandırılmış araçlar, normal sohbet ve TR/EN paneli. Adım5 yok; cihaz testi bekler.
 - Build/vet exit0; Go race71 PASS/0 FAIL; Flutter866/866 PASS; analyze mevcut3 info; UI literal6 dosya0; diff PASS. Gece yarısı/offset, CC tekrarı, Git filtreleri/indeks ve HTTP/SSE/SMTP testli.

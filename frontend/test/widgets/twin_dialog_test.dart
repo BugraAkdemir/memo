@@ -9,10 +9,12 @@ import 'package:memo_flutter/core/api_client.dart';
 import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/widgets/twin_dialog.dart';
+import 'package:memo_flutter/widgets/autonomy_panel.dart';
 
 class _TwinAdapter implements HttpClientAdapter {
   final calls = <RequestOptions>[];
   final contacts = <Map<String, dynamic>>[];
+  final actions = <Map<String, dynamic>>[];
   bool denyGit = false;
   var preferences = <String, dynamic>{
     'timezone': 'Europe/Istanbul',
@@ -33,11 +35,15 @@ class _TwinAdapter implements HttpClientAdapter {
       case '/api/twin/state':
         result = {
           'contacts': contacts,
+          'actions': actions,
           'preferences': preferences,
           'projects': [
             {'id': 'p_test', 'name': 'Demo repo'},
           ],
         };
+      case '/api/twin/cancel_action':
+        actions.firstWhere((a) => a['id'] == (o.data as Map)['id'])['state'] =
+            'cancelled';
       case '/api/twin/contact':
         final data = Map<String, dynamic>.from(o.data as Map);
         data['id'] = 'c_test';
@@ -249,6 +255,63 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  for (final locale in MemoLocale.values) {
+    testWidgets('autonomy settings and local cancellation use HTTP ($locale)', (
+      tester,
+    ) async {
+      final a = await _mount(tester, locale);
+      a.actions.add({
+        'id': 'pending-1',
+        'recipient': 'friend@example.com',
+        'channel': 'mail',
+        'state': 'pending',
+        'reason': 'drafted',
+        'body': 'Prepared reply',
+      });
+      await tester.tap(find.byTooltip(L10n.t('refresh')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text(L10n.t('auto_tab')));
+      await tester.tap(find.text(L10n.t('auto_tab')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(Switch).first);
+      await tester.pumpAndSettle();
+      final payload =
+          a.calls.lastWhere((c) => c.path == '/api/twin/preferences').data
+              as Map;
+      expect((payload['autonomy'] as Map)['enabled'], true);
+      expect(payload['timezone'], 'Europe/Istanbul');
+      await tester.scrollUntilVisible(
+        find.text('Prepared reply'),
+        300,
+        scrollable: find
+            .descendant(
+              of: find.byType(AutonomyPanel),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.scrollUntilVisible(
+        find.text(L10n.t('cancel')).hitTestable(),
+        150,
+        scrollable: find
+            .descendant(
+              of: find.byType(AutonomyPanel),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(L10n.t('cancel')));
+      await tester.pumpAndSettle();
+      expect(
+        a.calls.lastWhere((c) => c.path == '/api/twin/cancel_action').data,
+        {'id': 'pending-1'},
+      );
+      expect(find.text(L10n.t('auto_state_cancelled')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('contact editor remains usable in a narrow window', (
     tester,

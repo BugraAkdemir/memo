@@ -3,6 +3,7 @@ package twin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -228,5 +229,38 @@ func TestTimelineOrdersInstantsAcrossOffsetsWithoutChangingSourceDay(t *testing.
 	messages, err := s.Timeline(ctx, id, 50)
 	if err != nil || len(messages) != 2 || messages[0].Body != "later" || messages[1].SentAt.Format(time.RFC3339) != "2026-11-01T00:30:00+03:00" {
 		t.Fatal(messages, err)
+	}
+}
+
+func TestAutonomyCandidateBudgetSurvivesReopenAndChannels(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	ok, err := s.ReserveCandidate(ctx, "same-contact", "mail-thread", "a", now, true)
+	if err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if ok, err = s.ReserveCandidate(ctx, "same-contact", "wa-thread", "b", now.Add(time.Minute), true); err != nil || ok {
+		t.Fatal(ok, err)
+	}
+	for i := 1; i <= 2; i++ {
+		if ok, err = s.ReserveCandidate(ctx, "same-contact", "another", fmt.Sprint(i), now.Add(time.Duration(i)*2*time.Hour), true); err != nil || !ok {
+			t.Fatal(ok, err)
+		}
+	}
+	if ok, err = s.ReserveCandidate(ctx, "same-contact", "another", "fourth", now.Add(8*time.Hour), true); err != nil || ok {
+		t.Fatal(ok, err)
 	}
 }

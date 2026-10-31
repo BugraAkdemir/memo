@@ -91,11 +91,25 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		if err != nil {
 			return nil, err
 		}
+		actions, err := s.Actions(ctx)
+		if err != nil {
+			return nil, err
+		}
 		return struct {
+			Actions     []twin.Action                `json:"actions"`
 			Contacts    []twin.Contact               `json:"contacts"`
 			Preferences twin.Preferences             `json:"preferences"`
 			Projects    []autonomy.RegisteredProject `json:"projects"`
-		}{contacts, p, a.twinProjects()}, nil
+		}{actions, contacts, p, a.twinProjects()}, nil
+	case "cancel_action":
+		var args struct {
+			ID string `json:"id"`
+		}
+		if err := decodeTwin(raw, &args); err != nil {
+			return nil, err
+		}
+		err := s.CancelAction(ctx, args.ID)
+		return map[string]bool{"ok": err == nil}, err
 	case "contact":
 		var c twin.Contact
 		if err := decodeTwin(raw, &c); err != nil {
@@ -162,6 +176,9 @@ func (a *App) recordTwinSentMail(ctx context.Context, r mail.SendRequest) {
 	}
 }
 func (a *App) recordTwinWhatsApp(ctx context.Context, c *whatsapp.Client, m whatsapp.Message) {
+	if !m.FromMe && autonomy.DetectPromptInjection(ctx, m.Text, nil).Blocked {
+		return
+	}
 	if c == nil || strings.TrimSpace(m.Text) == "" {
 		return
 	}

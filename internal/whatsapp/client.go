@@ -47,6 +47,30 @@ type Message struct {
 	// WhatsApp's media servers, never stored: fetch the bytes with
 	// Client.DownloadImage while the message is in hand.
 	Image *ImageRef `json:"-"`
+	Audio *AudioRef `json:"-"`
+}
+
+// AudioRef is a live, bounded voice handle; audio is never persisted.
+type AudioRef struct {
+	Size uint64
+	msg  *waE2E.AudioMessage
+}
+
+func (c *Client) DownloadAudio(ctx context.Context, m Message) ([]byte, error) {
+	if m.Audio == nil || m.Audio.msg == nil || m.Audio.Size > 20<<20 {
+		return nil, fmt.Errorf("whatsapp: invalid voice size")
+	}
+	c.startMu.Lock()
+	wa := c.waClient
+	c.startMu.Unlock()
+	if wa == nil {
+		return nil, fmt.Errorf("whatsapp: not connected")
+	}
+	b, err := wa.Download(ctx, m.Audio.msg)
+	if len(b) > 20<<20 {
+		return nil, fmt.Errorf("whatsapp: voice exceeds limit")
+	}
+	return b, err
 }
 
 // ImageRef points at a picture WhatsApp holds.
@@ -992,7 +1016,11 @@ func (c *Client) handleMessage(evt *waEvent.Message) {
 	if im := evt.Message.GetImageMessage(); im != nil {
 		image = &ImageRef{MimeType: im.GetMimetype(), Size: im.GetFileLength(), msg: im}
 	}
-	if text == "" && image == nil {
+	var audio *AudioRef
+	if v := evt.Message.GetAudioMessage(); v != nil {
+		audio = &AudioRef{Size: v.GetFileLength(), msg: v}
+	}
+	if text == "" && image == nil && audio == nil {
 		return
 	}
 
@@ -1024,6 +1052,7 @@ func (c *Client) handleMessage(evt *waEvent.Message) {
 		Timestamp:  info.Timestamp,
 		FromMe:     info.IsFromMe,
 		Image:      image,
+		Audio:      audio,
 	}
 
 	// A picture with no caption has no text to index or search.

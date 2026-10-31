@@ -112,7 +112,24 @@ func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
 			if !ok {
 				return
 			}
+			if msg.Audio != nil {
+				if !a.autonomyVoiceEnabled(ctx) || time.Since(msg.Timestamp) > 6*time.Hour {
+					continue
+				}
+				data, err := a.waClient.DownloadAudio(ctx, msg)
+				if err != nil {
+					a.emitEvent("autonomy:voice_failed", "")
+					continue
+				}
+				text, err := a.transcribeExternalVoice(ctx, data)
+				if err != nil {
+					a.emitEvent("autonomy:voice_failed", "")
+					continue
+				}
+				msg.Text = text
+			}
 			a.recordTwinWhatsApp(ctx, a.waClient, msg)
+			a.autonomyWhatsApp(ctx, msg)
 			if a.routeWhatsAppPermissionAnswer(msg) {
 				continue
 			}
@@ -122,7 +139,7 @@ func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
 			// silently stop reaching the observer/intent pipeline.
 			// A picture with no caption has no text for the observer or intent
 			// extraction to look at; it still reaches the self-chat reply below.
-			if strings.TrimSpace(msg.Text) != "" {
+			if strings.TrimSpace(msg.Text) != "" && !a.autonomyWhatsAppEnabled(ctx, msg) {
 				func() {
 					defer recoverPanic("runWhatsAppIntentLoop/RecordWhatsAppMessage")
 					// Record in observer regardless of intent.

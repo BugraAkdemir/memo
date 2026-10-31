@@ -29,7 +29,13 @@ class TwinState {
   final List<TwinContact> contacts;
   final Map<String, dynamic> preferences;
   final List<Map<String, dynamic>> projects;
-  const TwinState(this.contacts, this.preferences, this.projects);
+  final List<Map<String, dynamic>> actions;
+  const TwinState(
+    this.contacts,
+    this.preferences,
+    this.projects, [
+    this.actions = const [],
+  ]);
   factory TwinState.fromJson(Map<String, dynamic> j) => TwinState(
     (j['contacts'] as List)
         .map((c) => TwinContact.fromJson(Map<String, dynamic>.from(c as Map)))
@@ -38,5 +44,11 @@ class TwinState {
     (j['projects'] as List)
         .map((p) => Map<String, dynamic>.from(p as Map))
         .toList(),
+    j['actions'] is List
+        ? (j['actions'] as List)
+              .whereType<Map>()
+              .map((a) => Map<String, dynamic>.from(a))
+              .toList()
+        : [],
   );
 }

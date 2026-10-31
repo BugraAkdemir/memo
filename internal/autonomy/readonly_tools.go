@@ -40,7 +40,7 @@ type ExternalAutonomousExecutor struct {
 
 func (e *ExternalAutonomousExecutor) Execute(ctx context.Context, name string, args json.RawMessage) (any, error) {
 	switch name {
-	case "contact_timeline", "check_availability", "git_project_status":
+	case "contact_timeline", "search_memory", "check_availability", "git_project_status":
 	default:
 		return nil, ErrAutonomousCommandForbidden
 	}
@@ -67,7 +67,7 @@ func (e *ExternalAutonomousExecutor) execute(ctx context.Context, name string, r
 		return nil, ErrContactScope
 	}
 	switch name {
-	case "contact_timeline", "check_availability", "git_project_status":
+	case "contact_timeline", "search_memory", "check_availability", "git_project_status":
 	default:
 		return nil, ErrAutonomousCommandForbidden
 	}
@@ -86,7 +86,7 @@ func (e *ExternalAutonomousExecutor) execute(ctx context.Context, name string, r
 	if dec.Decode(&extra) != io.EOF {
 		return nil, twin.ErrInvalid
 	}
-	if name == "contact_timeline" {
+	if name == "contact_timeline" || name == "search_memory" {
 		if sender != "" {
 			if args.ContactID != "" && args.ContactID != sender {
 				return nil, ErrContactScope

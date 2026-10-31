@@ -4,10 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../models/twin.dart';
+import 'autonomy_panel.dart';
 import '../providers/chat_provider.dart';
 
 /// Owner-managed identity links and read-only evidence. This panel does not
-/// start an autonomous reply loop or expose the owner's bot/self-chat history.
+/// expose the owner's bot/self-chat history.
 class TwinDialog extends ConsumerStatefulWidget {
   const TwinDialog({super.key});
   @override
@@ -227,7 +228,7 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
                       labelText: L10n.t('twin_contact_policy'),
                     ),
                     items: [
-                      for (final p in ['draft_only', 'never'])
+                      for (final p in ['draft_only', 'default', 'never'])
                         DropdownMenuItem(
                           value: p,
                           child: Text(L10n.t('twin_policy_$p')),
@@ -399,6 +400,7 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
             'work_start': _start.text.trim(),
             'work_end': _end.text.trim(),
             'allow_project_inspection': _inspect,
+            'autonomy': _state!.preferences['autonomy'] ?? {},
           });
           if (!mounted) return;
           setState(() {
@@ -409,6 +411,25 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
         }),
       ),
     ],
+  );
+
+  Widget _autonomy() => AutonomyPanel(
+    settings: _state!.preferences['autonomy'] is Map
+        ? Map<String, dynamic>.from(_state!.preferences['autonomy'] as Map)
+        : {},
+    actions: _state!.actions,
+    busy: _busy,
+    onSettings: (value) => _run(() async {
+      await ref.read(apiClientProvider).callTwin('preferences', {
+        ..._state!.preferences,
+        'autonomy': value,
+      });
+      await _refresh();
+    }),
+    onCancel: (id) => _run(() async {
+      await ref.read(apiClientProvider).callTwin('cancel_action', {'id': id});
+      await _refresh();
+    }),
   );
 
   Widget _tools() => ListView(
@@ -526,7 +547,7 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
-    length: 3,
+    length: 4,
     child: AlertDialog(
       title: Row(
         children: [
@@ -560,11 +581,13 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
                 ),
               ),
             TabBar(
+              isScrollable: true,
               tabs: [
                 for (final k in [
                   'twin_contacts_tab',
                   'twin_preferences_tab',
                   'twin_tools_tab',
+                  'auto_tab',
                 ])
                   Tab(text: L10n.t(k)),
               ],
@@ -577,7 +600,12 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
                           : _button('retry', _load),
                     )
                   : TabBarView(
-                      children: [_contacts(), _preferences(), _tools()],
+                      children: [
+                        _contacts(),
+                        _preferences(),
+                        _tools(),
+                        _autonomy(),
+                      ],
                     ),
             ),
           ],

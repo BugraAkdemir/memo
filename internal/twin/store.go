@@ -20,6 +20,9 @@ var ErrNotFound = errors.New("twin contact not found")
 var ErrAliasConflict = errors.New("address already belongs to another contact")
 
 const schema = `
+CREATE TABLE IF NOT EXISTS autonomy_auto_reservations(event_key TEXT PRIMARY KEY, contact_id TEXT NOT NULL, thread_key TEXT NOT NULL, at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS autonomy_reservations_contact ON autonomy_auto_reservations(contact_id,at);
+CREATE TABLE IF NOT EXISTS autonomy_events(event_key TEXT PRIMARY KEY, at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS contacts(id TEXT PRIMARY KEY, name TEXT NOT NULL, autonomy_policy TEXT NOT NULL DEFAULT 'draft_only');
 CREATE TABLE IF NOT EXISTS contact_aliases(channel TEXT NOT NULL, address TEXT NOT NULL, contact_id TEXT NOT NULL, PRIMARY KEY(channel,address));
 CREATE INDEX IF NOT EXISTS aliases_contact ON contact_aliases(contact_id);
@@ -45,10 +48,11 @@ type Contact struct {
 	Style          StyleProfile `json:"style"`
 }
 type Preferences struct {
-	Timezone               string `json:"timezone"`
-	WorkStart              string `json:"work_start"`
-	WorkEnd                string `json:"work_end"`
-	AllowProjectInspection bool   `json:"allow_project_inspection"`
+	Autonomy               AutonomySettings `json:"autonomy"`
+	Timezone               string           `json:"timezone"`
+	WorkStart              string           `json:"work_start"`
+	WorkEnd                string           `json:"work_end"`
+	AllowProjectInspection bool             `json:"allow_project_inspection"`
 }
 type Message struct {
 	Channel  string    `json:"channel"`
@@ -99,6 +103,15 @@ func (s *Store) SavePreferences(ctx context.Context, p Preferences) error {
 	end, e2 := time.Parse("15:04", p.WorkEnd)
 	if e1 != nil || e2 != nil || !end.After(start) {
 		return fmt.Errorf("%w: working hours", ErrInvalid)
+	}
+	if p.Autonomy.Mode == "" {
+		p.Autonomy.Mode = "draft_only"
+	}
+	if p.Autonomy.GraceSeconds == 0 {
+		p.Autonomy.GraceSeconds = 60
+	}
+	if (p.Autonomy.Mode != "draft_only" && p.Autonomy.Mode != "full_auto") || p.Autonomy.GraceSeconds < 10 || p.Autonomy.GraceSeconds > 3600 {
+		return ErrInvalid
 	}
 	b, _ := json.Marshal(p)
 	return s.db.Write(ctx, func(tx *sql.Tx) error {

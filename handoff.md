@@ -5,7 +5,7 @@
 ## Açık işler
 
 **Dijital İkiz / Mail — Adım4 cihaz kabulü**
-- PLAN_mail_and_autonomous_system.md: Faz2/Adım4 backend+frontend teknik hazır; kullanıcı testi bekler, kutu açık. Kişi eşleme/üslup, kaynak tarihli geçmiş ve salt-okunur Git/doluluk paneli: docs/DIGITAL_TWIN_CONTACTS.md. Telegram yalnız sahip botudur; üçüncü kişi geçmişi yok. Adım5 başlamadı.
+- PLAN_mail_and_autonomous_system.md: Faz2/Adım4 backend+frontend teknik hazır; kullanıcı testi bekler, kutu açık. Kişi eşleme kullanıcı doğrulamalıdır: mail/WhatsApp adresleri aynı kayda eklenir veya kişiler açıkça birleştirilir; isim benzerliği yetmez. Üslup, kaynak tarihli geçmiş ve salt-okunur Git/doluluk paneli: docs/DIGITAL_TWIN_CONTACTS.md. Telegram yalnız sahip botudur; üçüncü kişi geçmişi yok. Adım5 başlamadı.
 - Gerçek sohbetten mail teslimi kullanıcıda PASS. Göreli tarih ve Adım3 görünüm/charset/sayaç/diğer güvenlik cihaz kabulü açık (docs/MAIL_SECURITY.md); saldırı engeli PASS. Eski mail/backfill yok; izin politikası değişmedi. Backend+frontend birlikte; sonraki adıma kullanıcı geri bildirimi olmadan geçme.
 
 **Performans benchmark — kullanıcı duraklattı (29 Ekim)**
@@ -64,7 +64,6 @@
 
 ---
 
-# Son oturum — 2026-10-31 — İkiz kişi ve salt-okunur araştırma
-- 83e53725 yerel feat(twin): Adım4 depo/kişi/üslup, sınırlandırılmış araçlar, normal sohbet ve TR/EN paneli. Adım5 yok; cihaz testi bekler.
-- Build/vet exit0; Go race71 PASS/0 FAIL; Flutter866/866 PASS; analyze mevcut3 info; UI literal6 dosya0; diff PASS. Gece yarısı/offset, CC tekrarı, Git filtreleri/indeks ve HTTP/SSE/SMTP testli.
-- Handoff arşivlendi. Push/PR/alt ajan yok; diğer yerel değişiklikler korundu.
+# Son oturum — 2026-10-31 — Adım4 test açıklaması
+- Kişi geçmişi, giden üslup, Agent kapalı Git ve takvim mahremiyeti senaryoları verildi. Aynı kişinin kanal adreslerini kullanıcı bağlar; otomatik isim eşleme yok.
+- Kullanıcı test sonucu bildirmedi; Adım5 bekler. Kod değişmedi; 83e53725 yerel. Arşiv: Go71/Flutter866 PASS. Belge diff kontrolü PASS; push yok.

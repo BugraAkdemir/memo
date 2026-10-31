@@ -1,3 +1,11 @@
+# Son oturum — 2026-10-31 — Sonraki adım kontrol noktası
+- Sıradaki Faz2/Adım4: ikiz DB, kanallar arası kişi eşleme/üslup, salt-okunur repo/kişi/müsaitlik araçları. Backend+frontend birlikte; henüz başlanmadı.
+- Otonom araştırma/yanıt Adım5, gönderim/onay köprüsü Adım6. Gerçek mail teslimi PASS; göreli tarih cihaz kabulü bekler. İzin politikası değişmedi.
+- Kod değişmedi; son kod doğrulaması önceki kayıtta: Go build/vet/race70, Flutter861 PASS; mevcut3 info. 8c03867e yerel, ec72fba0'a kadar push edilmişti.
+- Bu oturum yalnız handoff güncellemesi; belge diff kontrolü PASS. Push/PR/alt ajan yok; diğer yerel değişiklikler korundu.
+
+---
+
 # Son oturum — 2026-10-31 — Göreli tarih bağlamı
 - Kullanıcı gerçek mail teslimini doğruladı. Açık istekte ek izin gereksiz görüşü verildi; politika değiştirilmedi.
 - RAG kesin kayıt zamanı; mail kaynak tarihi/offset; yeni mesajda sent_at, eski günlerde tarihli model geçmişi. Eksik tarihler uydurulmaz; tarihsiz düz mailden takvim tahmini yok. UI tarih tooltip TR/EN; metin/backfill yok.

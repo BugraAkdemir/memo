@@ -83,6 +83,7 @@ func (a *App) wireSyncRestoreHooks(sm *cloudsync.Manager) {
 		}
 		return a.mood.Checkpoint(ctx)
 	}
+	sm.CheckpointTwinDB = a.checkpointTwin
 	sm.BeforeRestore = a.closeStoresForRestore
 	sm.AfterRestore = func() {
 		a.clientMu.RLock()

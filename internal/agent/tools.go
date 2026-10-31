@@ -701,6 +701,7 @@ func (r *ToolRegistry) ToOpenAITools(activeSkills map[string]bool) []provider.To
 // and a chance for the model to reach for WhatsApp in the middle of a refactor.
 // They stay registered, so the same tools still work in ordinary agent chats.
 var codeModeOmitted = map[string]bool{
+	"twin_contacts": true, "contact_timeline": true, "check_availability": true, "git_project_status": true,
 	"mail_accounts": true, "mail_inbox": true, "mail_search": true, "mail_read": true, "mail_send": true, "mail_save_draft": true, "telegram_send": true,
 	"whatsapp_send": true, "whatsapp_search": true, "whatsapp_latest": true, "whatsapp_messages": true,
 	"get_calendar_events": true, "create_routine": true, "list_routines": true, "cancel_routine": true,

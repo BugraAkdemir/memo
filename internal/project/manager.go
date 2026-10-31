@@ -415,3 +415,26 @@ func (m *Manager) SavePermissions(path string, perms *Permissions) error {
 	m.saveLocked()
 	return nil
 }
+
+// Registered returns existing, explicitly set-up projects only. Reading this
+// list never registers a caller-supplied path or repairs a project identity.
+func (m *Manager) Registered() []Resolved {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []Resolved{}
+	for path, entry := range m.reg.Projects {
+		if entry.Declined {
+			continue
+		}
+		root, err := m.guard.Check(path)
+		if err != nil || root != path {
+			continue
+		}
+		info, err := ReadInfo(root)
+		if err != nil || info.ID != entry.ID {
+			continue
+		}
+		out = append(out, Resolved{Root: root, ID: entry.ID, SetUp: true, Info: info})
+	}
+	return out
+}

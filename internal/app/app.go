@@ -55,6 +55,7 @@ import (
 	"memo/internal/telemetry"
 	"memo/internal/tts"
 	"memo/internal/tunnel"
+	"memo/internal/twin"
 	"memo/internal/websearch"
 	"memo/internal/webserver"
 	"memo/internal/whatsapp"
@@ -200,6 +201,8 @@ type App struct {
 	waMsgStore       *whatsapp.Store
 	tgClient         *telegram.Client
 	tgStore          *telegram.Store
+	twinMu           sync.RWMutex
+	twinStore        *twin.Store
 	mailMu           sync.RWMutex
 	mailManager      *mail.Manager
 	mailGatekeeper   *mail.Gatekeeper
@@ -666,6 +669,7 @@ func (a *App) Startup(ctx context.Context) {
 	goRecover("proactiveEngine.Start", func() { a.proactiveEngine.Start(a.lifecycleCtx) })
 
 	a.initLearning(ctx)
+	a.initTwin()
 	a.initMail(a.lifecycleCtx)
 	a.initRoutines(ctx)
 	a.initStats()
@@ -1115,6 +1119,7 @@ func (a *App) shutdownSync(ctx context.Context) {
 	if a.observerStore != nil {
 		stop("observer", a.observerStore.Close)
 	}
+	stop("twin", a.closeTwin)
 	if a.calendarStore != nil {
 		stop("calendar", a.calendarStore.Close)
 	}

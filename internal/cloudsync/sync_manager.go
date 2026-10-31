@@ -74,6 +74,7 @@ type Manager struct {
 	// directly are unaffected if left unset.
 	CheckpointMemoryDB func(ctx context.Context) error
 	CheckpointMoodDB   func(ctx context.Context) error
+	CheckpointTwinDB   func(ctx context.Context) error
 }
 
 // SetBackupPaths is called before scheduling starts, so a custom memory
@@ -428,6 +429,7 @@ func (m *Manager) archive() ([]byte, error) {
 	}{
 		{filepath.Join(m.persistDir, "memory.db"), m.CheckpointMemoryDB},
 		{filepath.Join(m.dataDir, "mood", "mood.db"), m.CheckpointMoodDB},
+		{filepath.Join(m.dataDir, "twin", "twin.db"), m.CheckpointTwinDB},
 	} {
 		_, err := os.Lstat(item.path)
 		if os.IsNotExist(err) {

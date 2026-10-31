@@ -21,7 +21,7 @@ const MaxFileBytes int64 = 200 << 20
 const MaxTotalBytes int64 = 500 << 20
 
 var RootFiles = []string{"providers.json", "orchestra.json", "permissions.json", "machine.key", "session.key", "telegram.json", "active_skills.json", "skills_imported.json", "livemode_engines.json", "stt_providers.json", "tts_providers.json"}
-var DataDirectories = []string{"memory", "whatsapp", "mood", "calendar", "profile", "routines", "tasklists", "stats", "agent-backups", "skills"}
+var DataDirectories = []string{"twin", "memory", "whatsapp", "mood", "calendar", "profile", "routines", "tasklists", "stats", "agent-backups", "skills"}
 
 func Sources(dataDir, memoryDir, configFile string, cloudLayout, models bool) []Source {
 	out := []Source{{"sessions/", filepath.Join(dataDir, "sessions")}, {"config/config.yaml", configFile}}

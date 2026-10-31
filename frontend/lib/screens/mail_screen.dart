@@ -10,6 +10,7 @@ import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/mail.dart';
 import '../widgets/mail_security_dialog.dart';
+import '../widgets/twin_dialog.dart';
 import '../widgets/mail_body.dart';
 import '../providers/chat_provider.dart';
 import '../providers/auth_gate_provider.dart';
@@ -440,6 +441,11 @@ class _MailScreenState extends ConsumerState<MailScreen>
               ),
               icon: const Icon(Icons.security_outlined, size: 16),
               label: Text(L10n.t('mail_security_title')),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => showDialog<void>(context: context, builder: (_) => const TwinDialog()),
+              icon: const Icon(Icons.people_outline, size: 16),
+              label: Text(L10n.t('twin_title')),
             ),
             OutlinedButton.icon(
               onPressed: _syncing ? null : () => _triggerSync(activeAccountId),

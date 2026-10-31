@@ -271,3 +271,14 @@ func scanEvents(rows *sql.Rows) ([]Event, error) {
 	}
 	return events, rows.Err()
 }
+
+// ListOverlapping includes events beginning before the requested window.
+// An event without an end conservatively occupies one hour.
+func (s *Store) ListOverlapping(ctx context.Context, from, to time.Time) ([]Event, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id,title,start_time,end_time,description,source,contact_name,created_at,reminder_sent FROM events WHERE start_time < ? AND COALESCE(end_time,start_time+3600) > ? ORDER BY start_time`, to.Unix(), from.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanEvents(rows)
+}

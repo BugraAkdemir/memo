@@ -70,7 +70,7 @@ func (a *App) initWhatsApp() {
 	a.waClient.SetStore(msgStore)
 
 	// Wire up WhatsApp client for agent tools (package-level global)
-	tools.WhatsAppClient = waToolAdapter{a.waClient}
+	tools.WhatsAppClient = waToolAdapter{a.waClient, a}
 
 	go func() {
 		defer recoverPanic("waClient.Start")
@@ -112,6 +112,7 @@ func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
 			if !ok {
 				return
 			}
+			a.recordTwinWhatsApp(ctx, a.waClient, msg)
 			if a.routeWhatsAppPermissionAnswer(msg) {
 				continue
 			}
@@ -702,7 +703,11 @@ func (a *App) WhatsAppSend(ctx context.Context, jid, text string) (string, error
 	if a.waClient == nil {
 		return "", fmt.Errorf("WhatsApp not initialized")
 	}
-	return a.waClient.SendMessage(ctx, jid, text)
+	id, err := a.waClient.SendMessage(ctx, jid, text)
+	if err == nil {
+		a.recordTwinWhatsApp(ctx, a.waClient, whatsapp.Message{ID: id, ChatJID: jid, Text: text, FromMe: true, Timestamp: time.Now()})
+	}
+	return id, err
 }
 
 // GetWhatsAppChatMode returns whether WhatsApp chat mode is active.
@@ -1031,10 +1036,14 @@ func (a *App) WhatsAppStats() (total, last24h int, err error) {
 
 // waToolAdapter wraps *whatsapp.Client to satisfy tools.WhatsAppClient.
 type waToolAdapter struct {
-	c *whatsapp.Client
+	c   *whatsapp.Client
+	app *App
 }
 
 func (a waToolAdapter) SendMessage(ctx context.Context, jid, text string) (string, error) {
+	if a.app != nil {
+		return a.app.WhatsAppSend(ctx, jid, text)
+	}
 	return a.c.SendMessage(ctx, jid, text)
 }
 

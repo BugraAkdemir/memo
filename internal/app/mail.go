@@ -161,6 +161,8 @@ func (a *App) onIncomingMailEvent(ctx context.Context, account mail.Account, det
 		return
 	}
 
+	a.recordTwinMail(ctx, account, detail)
+
 	if decision.ExtractCalendar {
 		a.extractMailStructuredToCalendar(ctx, detail)
 	}
@@ -414,6 +416,7 @@ func (a *App) MailSend(ctx context.Context, req mail.SendRequest) error {
 	if err := mgr.Send(ctx, req); err != nil {
 		return err
 	}
+	a.recordTwinSentMail(ctx, req)
 	a.mailMu.RLock()
 	gk := a.mailGatekeeper
 	a.mailMu.RUnlock()

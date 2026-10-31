@@ -1,3 +1,4 @@
+import '../models/twin.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -3638,4 +3639,14 @@ class MemoApiClient {
       Map<String, dynamic>.from(_guard<Map>(res.data)),
     );
   }
+  Future<TwinState> getTwinState() async {
+    final res = await _dio.get('/api/twin/state');
+    return TwinState.fromJson(Map<String, dynamic>.from(_guard<Map>(res.data)));
+  }
+
+  Future<dynamic> callTwin(String operation, Map<String, dynamic> args) async {
+    final res = await _dio.post('/api/twin/$operation', data: args);
+    return res.data;
+  }
+
 }

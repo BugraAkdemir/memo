@@ -29,7 +29,7 @@ func TestCommunicationScopeDeniesHiddenToolsAndLeavesSharedRegistryIntact(t *tes
 	}
 	for _, def := range ForCodeMode(registry.ToOpenAITools(nil)) {
 		switch def.Function.Name {
-		case "mail_send", "mail_read", "telegram_send":
+		case "mail_send", "mail_read", "telegram_send", "twin_contacts", "contact_timeline", "check_availability", "git_project_status":
 			t.Fatalf("personal tool in code mode: %s", def.Function.Name)
 		}
 	}
@@ -38,7 +38,7 @@ func TestCommunicationScopeDeniesHiddenToolsAndLeavesSharedRegistryIntact(t *tes
 func TestRestrictedChatCannotOfferOrExecuteCommunicationTools(t *testing.T) {
 	ctx := tools.WithCommunicationAccess(context.Background(), false)
 	scoped := NewRegistry().scoped(ctx)
-	for _, name := range []string{"mail_accounts", "mail_read", "mail_send", "telegram_send", "whatsapp_send", "whatsapp_search"} {
+	for _, name := range []string{"mail_accounts", "mail_read", "mail_send", "telegram_send", "whatsapp_send", "whatsapp_search", "twin_contacts", "contact_timeline", "check_availability", "git_project_status"} {
 		if _, ok := scoped.Get(name); ok {
 			t.Fatalf("restricted channel visible: %s", name)
 		}

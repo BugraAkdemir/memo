@@ -12,6 +12,7 @@ import (
 
 	"memo/internal/config"
 	"memo/internal/mail"
+	"memo/internal/twin"
 )
 
 // Real HTTP/SSE -> native tool -> permission HTTP -> App.MailSend -> real SMTP.
@@ -134,4 +135,17 @@ func TestCommunicationMailSendWithAgentOffKeepsPermissionsAndNativeTransport(t *
 	case <-time.After(time.Second):
 		t.Fatal("SMTP received no mail")
 	}
+	var state struct {
+		Contacts []twin.Contact `json:"contacts"`
+	}
+	decodeInto(t, h.getJSON("/api/twin/state"), &state)
+	if len(state.Contacts) != 1 || state.Contacts[0].Aliases[0].Address != "friend@example.com" {
+		t.Fatalf("sent mail absent from twin: %+v", state)
+	}
+	var timeline []twin.Message
+	decodeInto(t, h.postJSON("/api/twin/contact_timeline", map[string]string{"contact_id": state.Contacts[0].ID}), &timeline)
+	if len(timeline) != 1 || !timeline[0].Outgoing || timeline[0].Body != "Sorun ne, detay verebilir misin?" || timeline[0].SentAt.IsZero() {
+		t.Fatalf("wrong sent-mail evidence: %+v", timeline)
+	}
+
 }

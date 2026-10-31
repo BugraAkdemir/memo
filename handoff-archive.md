@@ -1,3 +1,10 @@
+# Son oturum — 2026-10-31 — Sohbet iletişim araçları
+- Native mail araçları + bağlı Telegram botuna gönderim; WhatsApp ile Agent OFF normal sohbet. Terminal açılmaz; izin/DLP/rol sınırı korunur. TR/EN adlar ve alıcı/metin önizlemesi. Code Mode iletişim almaz.
+- Son build/vet, Go race70 PASS; Flutter858/858 + son izin6/6 PASS; analyze mevcut3 info; UI literal4 dosya0. HTTP/SSE→izin→loopback SMTP PASS; gerçek mail yok.
+- Yerel fix(chat), PR/push/alt ajan yok. Adım4 başlamadı; otonom yanıt Adım4–6. İki süreci güncelleyip cihaz testleri: docs/MAIL_SECURITY.md. Diğer yerel değişiklikler korundu.
+
+---
+
 # Son oturum — 2026-10-31 — Mail kullanıcı testi düzeltmeleri
 - MIME Türkçe charset → UTF-8, RAG/güvenlikten önce. HTML gömülü CSS+tablo ve TR/EN düz metin anahtarı; script/uzak resim/stylesheet yok. Tam tarayıcı CSS'i değil; html0.15.6 pini.
 - Watcher sayaçları hesap kasası yanında watcher-stats.json'a seri/atomik/0600 yazılır, açılışta yüklenir. Restart/callback/IMAP testli; eski kayıp sayaç/bozuk RAG onarılmadı, backfill yok.

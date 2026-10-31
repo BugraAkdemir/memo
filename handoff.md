@@ -5,7 +5,7 @@
 ## Açık işler
 
 **Dijital İkiz / Mail — kullanıcı kabulü bekleniyor**
-- PLAN_mail_and_autonomous_system.md: şimdiki iş Faz2/Adım3. Backend+frontend birlikte; Adım4 başlamadı. Gelen saldırı engeli kullanıcıda PASS; diğer güvenlik senaryoları ve charset/HTML/kalıcı sayaç cihaz kabulü bekleniyor. Eski mail/backfill yok. Sohbetten native gönderim Agent kapalıyken eklendi; cihaz kabulü bekliyor. Senaryolar: docs/MAIL_SECURITY.md.
+- PLAN_mail_and_autonomous_system.md: şimdiki iş Faz2/Adım3. Backend+frontend birlikte; Adım4 başlamadı. Gelen saldırı engeli kullanıcıda PASS; diğer güvenlik senaryoları ve charset/HTML/kalıcı sayaç cihaz kabulü bekleniyor. Eski mail/backfill yok. Sohbetten gerçek mail gönderimi kullanıcıda PASS (31 Ekim); göreli tarih düzeltmesi cihaz kabulü bekler. İzin politikası değişmedi. Senaryolar: docs/MAIL_SECURITY.md.
 
 **Performans benchmark — kullanıcı duraklattı (29 Ekim)**
 - docs/PERFORMANCE_BENCHMARK_CHECKPOINT.md + data/performance-benchmark/PAUSED.json: son koşuda yalnız aşama1 kayıtlı, data aşama2. Kalibrasyon/resume/aşama2–3/rapor/doğrulama açık. Runner baştan siler; körlemesine çalıştırma.
@@ -63,7 +63,8 @@
 
 ---
 
-# Son oturum — 2026-10-31 — Kullanıcı push istedi, canlı test bekleniyor
-- Kullanıcı mevcut feat/digital-twin-mail dalındaki doğrulanmış commit'leri push etmemi açıkça istedi. Commit mesajları Conventional Commits, ayrıntılı İngilizce gerekçe ve doğrulama içeriyor; atıf yok. PR/tag yok.
-- Gönderilecek özellikler: d67e0052 güvenlik, 17aa24e1 MIME/HTML/kalıcı sayaç, 8ce6dbdb Agent bağımsız iletişim; son doğrulama Go build/vet/race70 ve Flutter858 PASS, mevcut3 info. Yeni kod değişmedi.
-- Kullanıcı gerçek mail gönderimini deneyecek; geri bildirime göre sonraki aşama kararlaştırılacak. Adım4 başlamadı. İlgisiz yerel değişiklikler ve data/mail dahil kullanıcı verileri commit dışında.
+# Son oturum — 2026-10-31 — Göreli tarih bağlamı
+- Kullanıcı gerçek mail teslimini doğruladı. Açık istekte ek izin gereksiz görüşü verildi; politika değiştirilmedi.
+- RAG kesin kayıt zamanı; mail kaynak tarihi/offset; yeni mesajda sent_at, eski günlerde tarihli model geçmişi. Eksik tarihler uydurulmaz; tarihsiz düz mailden takvim tahmini yok. UI tarih tooltip TR/EN; metin/backfill yok.
+- Son build/vet + Go race70 PASS; Flutter861/861 PASS; analyze mevcut3 info; UI literal3 dosya0. Gece/gün değişimi, kırpma, legacy/reload ve gerçek plain-chat sağlayıcı girdisi testli.
+- Yerel fix(memory) commit; push/PR/alt ajan yok. Adım4 başlamadı. docs/MAIL_SECURITY.md cihaz tarih senaryosu bekler. Diğer yerel değişiklikler korundu.

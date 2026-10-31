@@ -351,7 +351,7 @@ func FormatMailForMemory(account Account, detail *MessageDetail, decision Triage
 	}
 	dateStr := detail.Date
 	if !detail.Timestamp.IsZero() {
-		dateStr = detail.Timestamp.Format("2006-01-02 15:04")
+		dateStr = detail.Timestamp.Format(time.RFC3339)
 	}
 	userMsg = fmt.Sprintf("[Mail | Account: %s | Account-ID: %s | Folder: INBOX | UID: %d | Message-ID: %s | From: %s | Subject: %s | Date: %s | Category: %s]",
 		account.Email, account.ID, detail.UID, detail.MessageID, detail.From, detail.Subject, dateStr, decision.Category)

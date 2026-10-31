@@ -111,3 +111,38 @@ Checks on a rebuilt backend AND frontend:
 Automated HTTP/SSE → permission HTTP → real loopback SMTP regression checks the
 mail body and reply headers without sending any real email. Live delivery and
 real-model choice of tools still need the owner's scenario test.
+
+## Relative dates and live acceptance (31 October)
+
+The owner confirmed a chat-requested email reached the real recipient. The
+existing permission window still appeared; this follow-up does not change its
+policy or infer approval from natural-language text.
+
+Temporal context now distinguishes source time from reading time:
+- RAG metadata includes the exact recorded-at time even in user-only formatting.
+  A mail's original Date/sent_at takes precedence over its RAG ingestion time.
+  The elapsed-age label no longer calls a previous day's recent record "today".
+- Native mail_read includes its original Date and RFC3339 sent_at when known;
+  newly indexed mail preserves that offset too. Raw "yarın" is left intact.
+- New persisted chat messages include full sent_at alongside the existing HH:MM
+  display clock. Ordinary-chat model history marks old/other-zone messages with
+  their source timestamp, including after token truncation. Current-day messages
+  use the fresh clock block without repeating date metadata on every turn.
+- Legacy messages with only HH:MM remain explicitly undated; neither session
+  UpdatedAt nor today's date is fabricated as their original date. Original
+  message text and old RAG records are not rewritten or re-ingested.
+- Current time means the clock now, not a replacement for historical event dates.
+  Compaction is instructed to preserve source dates, and fresh calendar event
+  dates remain the reference for scheduled meetings. Minimal/Code Mode keep their
+  existing no-extra-context contracts. Hover over a dated message's clock to see
+  its full source timestamp (TR/EN).
+
+Tests cover midnight/month boundaries, offsets, legacy unknown dates,
+restart, history truncation, user-only/full RAG formatting and the actual plain
+chat provider request. These tests verify dates/context supplied to the model;
+real LLM wording still needs the owner's scenario feedback. Example: an email
+sent 31 October saying "yarın 12:00" refers to 1 November; reading it on
+1 November must not move the event to 2 November. Calendar extraction
+already used a valid mail timestamp. For plain-language mail without a valid
+Date it now skips automatic extraction instead of substituting processing time;
+structured ICS/flight/invoice dates still work independently.

@@ -2056,8 +2056,10 @@ func formatMemoryAge(timestamp string) string {
 	}
 	d := time.Since(t)
 	switch {
+	case d < 0:
+		return "future timestamp"
 	case d < 24*time.Hour:
-		return "today"
+		return "less than 24 hours ago"
 	case d < 7*24*time.Hour:
 		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
 	case d < 30*24*time.Hour:
@@ -2088,6 +2090,7 @@ func FormatMemoriesForPrompt(memories []MemoryResult) string {
 	}
 	var sb strings.Builder
 	sb.WriteString("\n--- RELEVANT MEMORIES ---\n")
+	sb.WriteString("Relative days (tomorrow/yesterday/yarın/dün) refer to the source date, not today's clock. For mail use its Date/sent_at, not recorded_at (ingestion). Prefer current calendar event dates; if the source date is unknown, do not guess.\n")
 	for i, m := range memories {
 		age := formatMemoryAge(m.Timestamp)
 		imp := importanceLabel(m.Importance)
@@ -2096,6 +2099,11 @@ func FormatMemoriesForPrompt(memories []MemoryResult) string {
 			src = "conversation"
 		}
 		meta := fmt.Sprintf("relevance=%.0f%% | importance=%s | source=%s", m.Similarity*100, imp, src)
+		if stamp, err := time.Parse(time.RFC3339, m.Timestamp); err == nil {
+			meta += " | recorded_at=" + stamp.Format(time.RFC3339)
+		} else {
+			meta += " | recorded_at=unknown"
+		}
 		if age != "" {
 			meta += " | " + age
 		}
@@ -2115,6 +2123,7 @@ func FormatMemoriesUserOnly(memories []MemoryResult) string {
 	}
 	var sb strings.Builder
 	sb.WriteString("\n--- RELEVANT MEMORIES ---\n")
+	sb.WriteString("Relative days (tomorrow/yesterday/yarın/dün) refer to the source date, not today's clock. For mail use its Date/sent_at, not recorded_at (ingestion). Prefer current calendar event dates; if the source date is unknown, do not guess.\n")
 	for i, m := range memories {
 		age := formatMemoryAge(m.Timestamp)
 		imp := importanceLabel(m.Importance)
@@ -2123,6 +2132,11 @@ func FormatMemoriesUserOnly(memories []MemoryResult) string {
 			src = "conversation"
 		}
 		meta := fmt.Sprintf("relevance=%.0f%% | importance=%s | source=%s", m.Similarity*100, imp, src)
+		if stamp, err := time.Parse(time.RFC3339, m.Timestamp); err == nil {
+			meta += " | recorded_at=" + stamp.Format(time.RFC3339)
+		} else {
+			meta += " | recorded_at=unknown"
+		}
 		if age != "" {
 			meta += " | " + age
 		}

@@ -6,6 +6,7 @@ class ChatMessage {
   final String? imagePath;
   final String? filePath;
   final String timestamp;
+  final String sentAt;
   final List<dynamic>? agentEvents;
   // How many memories were retrieved and injected into the prompt for the
   // turn that produced this (assistant) message — 0 means either memory
@@ -22,6 +23,7 @@ class ChatMessage {
     this.imagePath,
     this.filePath,
     required this.timestamp,
+    this.sentAt = '',
     this.agentEvents,
     this.memoryUsed = 0,
     this.routeProvider = '',
@@ -35,6 +37,7 @@ class ChatMessage {
         imagePath: json['image_path'] as String?,
         filePath: json['file_path'] as String?,
         timestamp: json['timestamp'] as String? ?? '',
+        sentAt: json['sent_at'] as String? ?? '',
         agentEvents: json['agent_events'] as List<dynamic>?,
         memoryUsed: json['memory_used'] as int? ?? 0,
     routeProvider: json['route_provider'] as String? ?? '',
@@ -48,6 +51,7 @@ class ChatMessage {
         if (imagePath != null) 'image_path': imagePath,
         if (filePath != null) 'file_path': filePath,
         'timestamp': timestamp,
+        if (sentAt.isNotEmpty) 'sent_at': sentAt,
         if (agentEvents != null) 'agent_events': agentEvents,
         if (memoryUsed > 0) 'memory_used': memoryUsed,
     if (routeModel.isNotEmpty) 'route_model': routeModel,

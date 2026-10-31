@@ -50,6 +50,7 @@ class L10n {
   // ─── Turkish ──────────────────────────────────────────────────
 
   static const _tr = <String, String>{
+    'message_sent_at': 'Gönderim zamanı: \${time}',
     'mail_body_formatted': 'Biçimli görünüm',
     'mail_body_plain': 'Düz metin',
     'mail_body_remote_blocked': 'Gizlilik için dış görseller ve uzak içerik yüklenmez.',
@@ -2796,6 +2797,7 @@ class L10n {
   };
 
   static const _en = <String, String>{
+    'message_sent_at': 'Sent at: \${time}',
     'mail_body_formatted': 'Formatted view',
     'mail_body_plain': 'Plain text',
     'mail_body_remote_blocked': 'External images and remote content are not loaded for privacy.',

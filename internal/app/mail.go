@@ -276,7 +276,10 @@ func (a *App) extractMailStructuredToCalendar(ctx context.Context, detail *mail.
 		text := strings.TrimSpace(detail.Subject + "\n" + detail.TextBody)
 		ts := detail.Timestamp
 		if ts.IsZero() {
-			ts = time.Now()
+			// A malformed/missing Date cannot anchor "tomorrow". Do not silently
+			// substitute processing time; structured absolute dates above still work.
+			logx.Printf("mail: skipped natural-language calendar extraction without valid Date")
+			return
 		}
 		a.processMessageIntent(text, intent.Source("mail"), detail.From, ts)
 	}

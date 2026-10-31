@@ -456,7 +456,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		historyBudget = 512
 	}
 
-	history := a.getSessionHistoryTokenAwareForSession(chatID, historyBudget)
+	history := a.getSessionHistoryTokenAwareForSession(chatID, historyBudget, !minimal && !code)
 	// Once history fills most of the budget, condense its oldest stretch into
 	// one summary message instead of letting drop-oldest quietly lose early
 	// turns. No-op below the threshold, and the summary is cached so the
@@ -545,7 +545,7 @@ const timeGapMentionThreshold = 15 * time.Minute
 // A pure function of its two arguments so threshold/format behavior is
 // unit-testable without an App; timeContextBlockForChat is the thin wiring.
 func timeContextBlock(now, lastActivity time.Time) string {
-	block := "\n\n[Time context] Current local time: " + now.Format("Monday, 2 January 2006, 15:04") + "."
+	block := "\n\n[Time context] Current local time: " + now.Format("Monday, 2 January 2006, 15:04 -07:00") + "."
 	if !lastActivity.IsZero() {
 		if gap := now.Sub(lastActivity); gap >= timeGapMentionThreshold {
 			block += " Last message in this conversation was " + humanizeGap(gap) + " ago."
@@ -553,7 +553,7 @@ func timeContextBlock(now, lastActivity time.Time) string {
 	}
 	// A recalled memory may contain a time/date value from a past turn — it
 	// is history, not the current time. This line is always authoritative.
-	block += " This is the current time now — if a memory or earlier message mentions a different time or date, that one is stale; use this."
+	block += " Current clock only; past tomorrow/yesterday uses its source date, or calendar dates. Unknown source dates must not be guessed."
 	return block
 }
 
@@ -672,14 +672,19 @@ func (a *App) getSessionHistoryTokenAware(tokenBudget int) []api.Message {
 
 // getSessionHistoryTokenAwareForSession returns chatID's history, not
 // whatever chat happens to be globally active at call time.
-func (a *App) getSessionHistoryTokenAwareForSession(chatID string, tokenBudget int) []api.Message {
+func (a *App) getSessionHistoryTokenAwareForSession(chatID string, tokenBudget int, includeDates ...bool) []api.Message {
 	sm := a.getSessionManager()
 	if sm == nil {
 		return nil
 	}
 
 	var history []map[string]string
-	if tokenBudget > 0 {
+	if len(includeDates) > 0 && includeDates[0] {
+		a.cfgMu.RLock()
+		maxHistory := a.cfg.Llama.MaxHistory
+		a.cfgMu.RUnlock()
+		history = sm.GetDatedHistoryForAPIForSession(chatID, tokenBudget, maxHistory)
+	} else if tokenBudget > 0 {
 		history = sm.GetHistoryForAPITokenAwareForSession(chatID, tokenBudget)
 	} else {
 		a.cfgMu.RLock()

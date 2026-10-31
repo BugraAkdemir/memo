@@ -5,7 +5,7 @@
 ## Açık işler
 
 **Dijital İkiz / Mail — kullanıcı kabulü bekleniyor**
-- PLAN_mail_and_autonomous_system.md: şimdiki iş Faz2/Adım3. Backend+frontend birlikte; Adım4 başlamadı. Gelen saldırı engeli kullanıcıda PASS; diğer güvenlik senaryoları ve charset/HTML/kalıcı sayaç cihaz kabulü bekleniyor. Eski mail/backfill yok. Sohbetten gerçek mail gönderimi kullanıcıda PASS (31 Ekim); göreli tarih düzeltmesi cihaz kabulü bekler. İzin politikası değişmedi. Senaryolar: docs/MAIL_SECURITY.md.
+- PLAN_mail_and_autonomous_system.md: şimdiki iş Faz2/Adım3. Backend+frontend birlikte; Adım4 başlamadı. Gelen saldırı engeli kullanıcıda PASS; diğer güvenlik senaryoları ve charset/HTML/kalıcı sayaç cihaz kabulü bekleniyor. Eski mail/backfill yok. Sohbetten gerçek mail gönderimi kullanıcıda PASS (31 Ekim); göreli tarih düzeltmesi cihaz kabulü bekler. İzin politikası değişmedi. Sıradaki Adım4: ikiz DB, kişi/üslup ve salt-okunur araçlar; başlamadan kullanıcı geri bildirimi beklenir. Senaryolar: docs/MAIL_SECURITY.md.
 
 **Performans benchmark — kullanıcı duraklattı (29 Ekim)**
 - docs/PERFORMANCE_BENCHMARK_CHECKPOINT.md + data/performance-benchmark/PAUSED.json: son koşuda yalnız aşama1 kayıtlı, data aşama2. Kalibrasyon/resume/aşama2–3/rapor/doğrulama açık. Runner baştan siler; körlemesine çalıştırma.
@@ -63,8 +63,8 @@
 
 ---
 
-# Son oturum — 2026-10-31 — Göreli tarih bağlamı
-- Kullanıcı gerçek mail teslimini doğruladı. Açık istekte ek izin gereksiz görüşü verildi; politika değiştirilmedi.
-- RAG kesin kayıt zamanı; mail kaynak tarihi/offset; yeni mesajda sent_at, eski günlerde tarihli model geçmişi. Eksik tarihler uydurulmaz; tarihsiz düz mailden takvim tahmini yok. UI tarih tooltip TR/EN; metin/backfill yok.
-- Son build/vet + Go race70 PASS; Flutter861/861 PASS; analyze mevcut3 info; UI literal3 dosya0. Gece/gün değişimi, kırpma, legacy/reload ve gerçek plain-chat sağlayıcı girdisi testli.
-- Yerel fix(memory) commit; push/PR/alt ajan yok. Adım4 başlamadı. docs/MAIL_SECURITY.md cihaz tarih senaryosu bekler. Diğer yerel değişiklikler korundu.
+# Son oturum — 2026-10-31 — Sonraki adım kontrol noktası
+- Sıradaki Faz2/Adım4: ikiz DB, kanallar arası kişi eşleme/üslup, salt-okunur repo/kişi/müsaitlik araçları. Backend+frontend birlikte; henüz başlanmadı.
+- Otonom araştırma/yanıt Adım5, gönderim/onay köprüsü Adım6. Gerçek mail teslimi PASS; göreli tarih cihaz kabulü bekler. İzin politikası değişmedi.
+- Kod değişmedi; son kod doğrulaması önceki kayıtta: Go build/vet/race70, Flutter861 PASS; mevcut3 info. 8c03867e yerel, ec72fba0'a kadar push edilmişti.
+- Bu oturum yalnız handoff güncellemesi; belge diff kontrolü PASS. Push/PR/alt ajan yok; diğer yerel değişiklikler korundu.

@@ -209,6 +209,10 @@ class _MailScreenState extends ConsumerState<MailScreen>
               if (a['state'] != 'preparing')
                 Text(
                   L10n.t(switch (a['reason']) {
+                    'reply_timeout' => 'auto_reason_timeout',
+                    'reply_cancelled' => 'auto_reason_cancelled',
+                    'reply_invalid_response' => 'auto_reason_invalid_response',
+                    'reply_provider_failed' => 'auto_reason_provider_failed',
                     'drafted' => 'auto_reason_drafted',
                     'contact_manual' => 'auto_reason_manual',
                     'contact_never' => 'auto_reason_never',

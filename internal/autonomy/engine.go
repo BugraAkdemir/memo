@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -84,6 +85,9 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 	}
 	finish := func(reason string, state string) (*twin.Action, error) {
 		a.Reason = reason
+		if state == "failed" {
+			a.FailureStage = a.Stage
+		}
 		a.Stage = ""
 		a.State = state
 		if state != "pending" {
@@ -158,7 +162,7 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 		if err != nil {
 			return err
 		}
-		return json.Unmarshal([]byte(raw), dst)
+		return decodeGeneratedJSON(raw, dst)
 	}
 	progress := func(stage string) error {
 		a.State, a.Reason, a.Stage = "preparing", "preparing", stage
@@ -181,7 +185,7 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 	}
 	err = call(analyzePrompt, map[string]any{"message": untrusted, "source_at": in.At, "timezone": prefs.Timezone, "registered_projects": projects}, &plan)
 	if err != nil {
-		return finish("review_unavailable", "failed")
+		return finish(generationFailureReason(err), "failed")
 	}
 	if len(in.Calendar) > 0 {
 		plan.Kind = "calendar"
@@ -292,8 +296,11 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 		return nil, err
 	}
 	err = call(replyPrompt, map[string]any{"message": untrusted, "style": style, "evidence": evidence, "calendar_proposals": plan.Calendar, "calendar_kinds": plan.CalendarKinds, "conflict": a.Conflict, "alternatives": a.Alternatives}, &reply)
-	if err != nil || strings.TrimSpace(reply.Body) == "" || len(reply.Body) > 16000 {
-		return finish("review_unavailable", "failed")
+	if err != nil {
+		return finish(generationFailureReason(err), "failed")
+	}
+	if strings.TrimSpace(reply.Body) == "" || len(reply.Body) > 16000 {
+		return finish("reply_invalid_response", "failed")
 	}
 	v := InspectOutboundDLP(reply.Body)
 	if e.Shield != nil {
@@ -391,4 +398,31 @@ func ParseDecisionScore(raw string) (float64, error) {
 		return 0, fmt.Errorf("invalid decision score")
 	}
 	return score, nil
+}
+
+// Accept one JSON object, optionally inside a single Markdown code fence.
+// Do not extract a convenient object from prose or ignore trailing payloads.
+func decodeGeneratedJSON(raw string, dst any) error {
+	raw = strings.TrimSpace(raw)
+	if strings.HasPrefix(raw, "```json\n") || strings.HasPrefix(raw, "```\n") || strings.HasPrefix(raw, "```json\r\n") || strings.HasPrefix(raw, "```\r\n") {
+		if strings.HasSuffix(raw, "```") {
+			raw = strings.TrimSpace(raw[strings.IndexByte(raw, '\n')+1 : len(raw)-3])
+		}
+	}
+	return json.Unmarshal([]byte(raw), dst)
+}
+
+func generationFailureReason(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "reply_timeout"
+	}
+	if errors.Is(err, context.Canceled) {
+		return "reply_cancelled"
+	}
+	var syntax *json.SyntaxError
+	var shape *json.UnmarshalTypeError
+	if errors.As(err, &syntax) || errors.As(err, &shape) {
+		return "reply_invalid_response"
+	}
+	return "reply_provider_failed"
 }

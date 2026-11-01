@@ -1,3 +1,10 @@
+# Son oturum — 2026-11-01 — Yanıt/arayüz
+- SMTP/yanıt UI: docs/TWIN_UI_DESIGN.md. Tek mail anahtarı, görünür kişi engeli, yeni İkiz düzeni.
+- Build/vet0; Go race71/Flutter880 PASS; eski3 info; literal0/diff PASS. ECC görsel PASS.
+- İki commit; push/gerçek mail yok. DB tercihleri korunur; Adım6 açık.
+
+---
+
 # Son oturum — 2026-11-01 — Mail
 - HTML @media, durum ve kişi istisnalı varsayılan: iki yerel commit, push yok.
 - Build/vet0; Go race71/Flutter874 PASS; analyze eski3 info; literal0/diff PASS.

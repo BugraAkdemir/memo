@@ -6,8 +6,8 @@
 
 **Dijital İkiz / Mail — Adım5 teknik hazır**
 - Adım5 karar/takvim/Drafts, olay/UID/limit, panel/iptal: docs/DIGITAL_TWIN_AUTONOMY.md. Varsayılan kapalı; yanıt modeli gerekir. Ses: yerel Whisper/ffmpeg; bulut yok. Telegram sahip.
-- 1 Kasım: Ayarlar → Mail ve Otonomi yanıt yazarı seçer; karar mailde0–1 skor verir. Skor yoksa onay gerekir. Seçim kanallardan bağımsızdır.
-- Adım5 hazırlar; grace_period_auto GÖNDERMEZ. Adım6 gönderim/uzaktan onay başlamadı; gönderimde ayar/kişi/DLP yeniden denetlenmeli. Gerçek model/IMAP/Whisper/WhatsApp kabulü açık. İptal yüklenmiş taslak/takvimi silmez; kesinti/hata tekrar edilmez.
+- 1 Kasım: yanıt yazarı Ayarlar → Mail ve Otonomi; karar0–1, yoksa onay. Canlı IMAP/model/Drafts/onaylı SMTP/teslim kullanıcı PASS.
+- Adım5 hazırlar; grace_period_auto GÖNDERMEZ. Adım6 gönderim/uzaktan onay başlamadı; gönderimde ayar/kişi/DLP yeniden denetlenmeli. Whisper/WhatsApp kabulü açık. İptal yüklenmiş taslak/takvimi silmez; kesinti/hata tekrar edilmez.
 - Adım4 kişi/üslup/Git/doluluk ve Adım3 görünüm/charset/sayaç/göreli tarih kabulü açık: docs/DIGITAL_TWIN_CONTACTS.md + docs/MAIL_SECURITY.md. İsimden eşleme ve eski mail/backfill yok. Mail teslimi/saldırı engeli kullanıcıda PASS; izin aynı. Sonraki adıma geri bildirimle geç.
 
 **Performans benchmark — kullanıcı duraklattı (29 Ekim)**
@@ -66,7 +66,7 @@
 
 ---
 
-# Son oturum — 2026-11-01 — Yanıt/arayüz
-- SMTP/yanıt UI: docs/TWIN_UI_DESIGN.md. Tek mail anahtarı, görünür kişi engeli, yeni İkiz düzeni.
-- Build/vet0; Go race71/Flutter880 PASS; eski3 info; literal0/diff PASS. ECC görsel PASS.
-- İki commit; push/gerçek mail yok. DB tercihleri korunur; Adım6 açık.
+# Son oturum — 2026-11-01 — Canlı mail
+- Fenced JSON + ayrık hata nedenleri. Build/vet0; Go race71/Flutter880 PASS; eski3 info, literal0/diff PASS.
+- Gerçek mail→model→Drafts→onaylı SMTP200; kullanıcı teslim PASS. a7324752 hazırlama kaydı pending: tekrar gönderme.
+- Backend8090 açık; log /tmp/memo-live-mail-fixed.log. Commit var, push yok; Adım6 açık.

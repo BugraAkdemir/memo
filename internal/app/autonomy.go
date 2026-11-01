@@ -29,7 +29,11 @@ func (a *App) handleAutonomyIncoming(ctx context.Context, in autonomy.IncomingEv
 		return
 	}
 	engine := autonomy.Engine{Store: a.twinStore, Projects: a.twinProjects, Generate: func(ctx context.Context, system, user string) (string, error) {
-		return a.callAutonomyReplyModel(ctx, selection, system, user)
+		raw, err := a.callAutonomyReplyModel(ctx, selection, system, user)
+		if err != nil {
+			logx.Printf("autonomy: reply model failed provider=%s model=%s: %v", selection.Provider, selection.Model, err)
+		}
+		return raw, err
 	}, Decide: func(ctx context.Context, system, user string) (string, error) {
 		return a.callMailScorer(ctx, system, user)
 	}, Shield: a.ensureMailShield(),
@@ -39,6 +43,9 @@ func (a *App) handleAutonomyIncoming(ctx context.Context, in autonomy.IncomingEv
 		},
 		Notify: func(v twin.Action) {
 			raw, _ := json.Marshal(map[string]string{"id": v.ID, "state": v.State})
+			if v.State == "failed" {
+				logx.Printf("autonomy: action failed id=%s stage=%s reason=%s", v.ID, v.FailureStage, v.Reason)
+			}
 			a.emitEvent("autonomy:action_pending", string(raw))
 		}}
 	if a.calendarStore != nil {

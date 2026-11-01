@@ -33,6 +33,7 @@ func EffectiveReplyPolicy(mode, policy string) string {
 }
 
 type Action struct {
+	FailureStage  string      `json:"failure_stage,omitempty"`
 	Stage         string      `json:"stage,omitempty"`
 	UpdatedAt     time.Time   `json:"updated_at"`
 	DecisionScore *float64    `json:"decision_score,omitempty"`

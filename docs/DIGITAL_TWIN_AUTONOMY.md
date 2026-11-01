@@ -143,3 +143,31 @@ skor/yanıt modeli ve hesap cihaz kabulü beklenir; otomatik gönderim hâlâ Ad
    modele çağrı olmamalı. Kişiye açık taslak tercihi verip YENİ mail gönderin;
    taslak hazırlanmalıdır. Önceki mail veya UID otomatik tekrar edilmez.
 5. Eski kişide “asla” varsa genel seçimle kaldırılmaz; kişi istisnasını açıkça değiştirin.
+
+## 1 Kasım — gerçek model ve hesap testi
+
+- Paylaşılan kayıtta analiz çağrısı 90 saniyede kesilmiş; sidecar 499 dönmüş ve
+  taslak yüklemesine geçilmemişti. Önceden bu hata yalnız `review_unavailable`
+  görünüyordu. Artık zaman aşımı, iptal, sağlayıcı hatası ve okunamayan model
+  çıktısı ayrı nedenlerle gösterilir; başarısız aşama da kaydedilir.
+- Seçili gerçek model bağlantısında analiz 7,3 saniyede yanıt verdi; geçerli JSON
+  bir Markdown `json` kod bloğundaydı. Motor artık tek dış kod bloğunu kaldırır.
+  Açıklama içinden rastgele JSON seçmez; çoklu/trailing payload ve eksik blok
+  reddedilir. Hem analiz hem yanıt çıktısı bu yoldan okunur.
+- Kullanıcının gönderdiği **MEMO CANLI TEST** gerçek IMAP alımı → seçili yanıt
+  modeli → `check_availability` → yanıt → gerçek Drafts yüklemesini tamamladı.
+  Hazırlama yaklaşık23 saniye sürdü; `draft_saved=true`, `state=pending` doğrulandı.
+- Bu testte bağımsız karar modeli kapalı/atanmamış olduğundan skor alınmadı ve
+  taslak kullanıcı onayında kaldı. Genel otomatik gönderim hâlâ Adım6 kapsamındadır.
+- Kullanıcının tek test yanıtı için açık onayından sonra gerçek `/api/mail/send`
+  üzerinden, Türkçe görünen alıcı adıyla gönderim denendi: HTTP200 `{ok:true}`
+  ve SMTP sunucu kabulü doğrulandı. Bu, alıcı kutusuna teslim teyidiyle aynı şey
+  değildir; alıcı hesabındaki görünüm kullanıcıdan ayrıca soruldu ve kullanıcı
+  “Evet, yanıt geldi” diyerek gerçek teslimi doğruladı.
+- Teknik kontroller: CGO/sqlite_fts5 build/vet exit0, Go race71 paket PASS,
+  Flutter880 PASS, analyze yalnız mevcut3 info, değişen Dart UI literal0, diff PASS.
+
+Bu testte SMTP gönderimi ayrı manuel API yolundan yapıldı. Hazırlama kuyruğundaki
+`a7324752…` kaydı hâlâ `pending`; gönderim köprüsü olmadığı için bu kayıt teslim
+kaydı değildir. Aynı test taslağını tekrar göndermeyin. Genel otomatik teslim
+ve hazırlama kaydını teslimle eşleyen onay köprüsü Adım6 olarak açık kalır.

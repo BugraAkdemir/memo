@@ -36,6 +36,13 @@ void main() {
                   'conflict': true,
                   'draft_saved': true,
                 },
+                {
+                  'id': 'failed',
+                  'recipient': 'friend@example.com',
+                  'channel': 'mail',
+                  'state': 'failed',
+                  'reason': 'reply_timeout',
+                },
               ],
               busy: false,
               onSettings: (v) => saved = v,
@@ -72,6 +79,18 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text(L10n.t('cancel')));
       expect(cancelled, 'a');
+      await tester.scrollUntilVisible(
+        find.text(L10n.t('auto_reason_timeout')),
+        150,
+        scrollable: find
+            .descendant(
+              of: find.byType(AutonomyPanel),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(find.text(L10n.t('auto_reason_timeout')), findsOneWidget);
+      expect(find.text(L10n.t('auto_reason_review')), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }

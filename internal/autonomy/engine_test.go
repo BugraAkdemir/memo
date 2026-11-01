@@ -411,3 +411,55 @@ func TestEngineGlobalDefaultAndContactOverrides(t *testing.T) {
 		})
 	}
 }
+
+func TestEngineAcceptsRealModelFencedJSONAndReportsModelFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name, reason    string
+		modelErr        error
+		fenced, invalid bool
+	}{
+		{name: "fenced", fenced: true},
+		{name: "timeout", reason: "reply_timeout", modelErr: fmt.Errorf("provider: %w", context.DeadlineExceeded)},
+		{name: "cancelled", reason: "reply_cancelled", modelErr: context.Canceled},
+		{name: "provider", reason: "reply_provider_failed", modelErr: fmt.Errorf("quota exceeded")},
+		{name: "invalid", reason: "reply_invalid_response", invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, in := engineFixture(t)
+			e.Generate = func(_ context.Context, system, _ string) (string, error) {
+				if tc.modelErr != nil {
+					return "", tc.modelErr
+				}
+				if tc.invalid {
+					return "Here is your answer {broken}", nil
+				}
+				raw := `{"kind":"question","tools":[]}`
+				if system == replyPrompt {
+					raw = `{"body":"Selam, inceleme için yanıt hazır.","factual":false,"evidence_tools":[]}`
+				}
+				return "```json\n" + raw + "\n```", nil
+			}
+			uploads := 0
+			e.SaveDraft = func(context.Context, twin.Action) error { uploads++; return nil }
+			a, err := e.HandleIncomingEvent(context.Background(), in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.fenced {
+				if a.State != "pending" || !a.DraftSaved || uploads != 1 {
+					t.Fatalf("%+v uploads%d", a, uploads)
+				}
+			} else {
+				if a.State != "failed" || a.Reason != tc.reason || a.FailureStage != "analyzing" || uploads != 0 {
+					t.Fatalf("%+v", a)
+				}
+			}
+		})
+	}
+	for _, raw := range []string{"```json\n{}\n```\n{}", "before {}", "{} {}", "```json\n{}", "```python\n{}\n```"} {
+		var dst analysis
+		if decodeGeneratedJSON(raw, &dst) == nil {
+			t.Fatalf("accepted ambiguous response %q", raw)
+		}
+	}
+}

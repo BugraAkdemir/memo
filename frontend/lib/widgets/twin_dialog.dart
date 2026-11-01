@@ -10,7 +10,8 @@ import '../providers/chat_provider.dart';
 /// Owner-managed identity links and read-only evidence. This panel does not
 /// expose the owner's bot/self-chat history.
 class TwinDialog extends ConsumerStatefulWidget {
-  const TwinDialog({super.key});
+  const TwinDialog({super.key, this.initialTab = 0});
+  final int initialTab;
   @override
   ConsumerState<TwinDialog> createState() => _TwinDialogState();
 }
@@ -21,7 +22,7 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
   String? _error;
   String? _selected;
   String? _project;
-  String _policy = 'draft_only';
+  String _policy = 'default';
   final _name = TextEditingController();
   final _address = TextEditingController();
   final _timezone = TextEditingController();
@@ -99,7 +100,7 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
     setState(() {
       _selected = contact?.id;
       _name.text = contact?.name ?? '';
-      _policy = contact?.policy ?? 'draft_only';
+      _policy = contact?.policy ?? 'default';
       _aliases = List.of(contact?.aliases ?? []);
       _address.clear();
       _timeline = null;
@@ -228,7 +229,12 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
                       labelText: L10n.t('twin_contact_policy'),
                     ),
                     items: [
-                      for (final p in ['draft_only', 'default', 'never'])
+                      for (final p in [
+                        'default',
+                        'draft_only',
+                        'full_auto',
+                        'never',
+                      ])
                         DropdownMenuItem(
                           value: p,
                           child: Text(L10n.t('twin_policy_$p')),
@@ -547,6 +553,7 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
+    initialIndex: widget.initialTab,
     length: 4,
     child: AlertDialog(
       title: Row(

@@ -29,6 +29,10 @@ class MailScreen extends ConsumerStatefulWidget {
 class _MailScreenState extends ConsumerState<MailScreen>
     with WidgetsBindingObserver {
   Timer? _statsTimer;
+  Timer? _activityTimer;
+  bool _activityLoading = false;
+  Map<String, dynamic>? _activity;
+  bool _activityFailed = false;
   bool _statsReloading = false;
 
   @override
@@ -51,6 +55,7 @@ class _MailScreenState extends ConsumerState<MailScreen>
 
   void _updateStatsTimer() {
     _statsTimer?.cancel();
+    _activityTimer?.cancel();
     final state = WidgetsBinding.instance.lifecycleState;
     if (!widget.isActive ||
         (state != null && state != AppLifecycleState.resumed)) {
@@ -60,6 +65,10 @@ class _MailScreenState extends ConsumerState<MailScreen>
       const Duration(seconds: 15),
       (_) => _reloadStats(),
     );
+    _activityTimer = Timer.periodic(
+      const Duration(seconds: 3), (_) => _reloadActivity(),
+    );
+    Future.microtask(_reloadActivity);
     Future.microtask(_reloadStats);
   }
 
@@ -76,6 +85,120 @@ class _MailScreenState extends ConsumerState<MailScreen>
     } finally {
       _statsReloading = false;
     }
+  }
+
+  Future<void> _reloadActivity() async {
+    if (!mounted ||
+        !widget.isActive ||
+        _activityLoading ||
+        authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      return;
+    }
+    _activityLoading = true;
+    try {
+      final activity = await ref.read(apiClientProvider).getTwinActivity();
+      if (mounted) {
+        setState(() {
+          _activity = activity;
+          _activityFailed = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _activityFailed = true);
+    } finally {
+      _activityLoading = false;
+    }
+  }
+
+  Future<void> _openReplySettings() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => const TwinDialog(initialTab: 3),
+    );
+    if (mounted) await _reloadActivity();
+  }
+
+  Widget _replyActivity(String? accountId) {
+    final settings = _activity?['settings'];
+    final model = _activity?['reply_model'];
+    final actions = (_activity?['actions'] as List? ?? const [])
+        .whereType<Map>()
+        .where(
+          (a) =>
+              a['channel'] == 'mail' &&
+              (accountId == null || a['account'] == accountId),
+        )
+        .toList();
+    // Keep concurrent generation visible even when a newer mail has completed.
+    final preparing = actions
+        .where((a) => a['state'] == 'preparing')
+        .take(3)
+        .toList();
+    final visible = preparing.isNotEmpty ? preparing : actions.take(1).toList();
+    final status = _activityFailed
+        ? 'mail_auto_unavailable'
+        : settings is! Map
+        ? 'mail_auto_loading'
+        : settings['enabled'] != true || settings['mail'] != true
+        ? 'mail_auto_disabled'
+        : model is! Map ||
+              (model['provider'] ?? '') == '' ||
+              (model['model'] ?? '') == ''
+        ? 'mail_auto_no_model'
+        : 'mail_auto_ready';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(L10n.t(status))),
+                TextButton(
+                  onPressed: _openReplySettings,
+                  child: Text(L10n.t('mail_auto_settings')),
+                ),
+              ],
+            ),
+            if (status == 'mail_auto_ready') Text(L10n.t('mail_auto_delivery_notice')),
+            for (final a in visible) ...[
+              if (a['state'] == 'preparing') const LinearProgressIndicator(),
+              Text(
+                L10n.t('mail_auto_activity', {
+                  'recipient': '${a['recipient'] ?? ''}',
+                  'status': L10n.t(
+                    a['state'] == 'preparing'
+                        ? 'mail_auto_stage_${a['stage'] ?? 'analyzing'}'
+                        : 'auto_state_${a['state']}',
+                  ),
+                }),
+              ),
+              if (a['state'] == 'preparing')
+                Text(L10n.t('mail_auto_interrupted')),
+              if (a['draft_saved'] == true) Text(L10n.t('auto_saved')),
+              if (a['mode'] == 'grace_period_auto')
+                Text(L10n.t('auto_candidate')),
+              if (a['state'] != 'preparing')
+                Text(
+                  L10n.t(switch (a['reason']) {
+                    'drafted' => 'auto_reason_drafted',
+                    'contact_manual' => 'auto_reason_manual',
+                    'contact_never' => 'auto_reason_never',
+                    'automated_sender' => 'auto_reason_automated',
+                    'no_action' => 'auto_reason_none',
+                    'stale_message' => 'auto_reason_stale',
+                    'draft_upload_failed' => 'auto_reason_upload',
+                    _ => 'auto_reason_review',
+                  }),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   final TextEditingController _searchController = TextEditingController();
@@ -96,6 +219,7 @@ class _MailScreenState extends ConsumerState<MailScreen>
   @override
   void dispose() {
     _statsTimer?.cancel();
+    _activityTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     super.dispose();
@@ -326,6 +450,7 @@ class _MailScreenState extends ConsumerState<MailScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildHeader(c, statsAsync.valueOrNull, activeAccountId),
+          _replyActivity(activeAccountId),
           const SizedBox(height: 16),
           _buildConnectCardsRow(c),
           const SizedBox(height: 16),

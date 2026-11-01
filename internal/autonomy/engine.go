@@ -84,6 +84,7 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 	}
 	finish := func(reason string, state string) (*twin.Action, error) {
 		a.Reason = reason
+		a.Stage = ""
 		a.State = state
 		if state != "pending" {
 			a.Mode = "awaiting_approval"
@@ -134,7 +135,11 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 			break
 		}
 	}
-	if contact.AutonomyPolicy == "never" {
+	policy := twin.EffectiveReplyPolicy(settings.Mode, contact.AutonomyPolicy)
+	if policy == "manual" {
+		return finish("contact_manual", "skipped")
+	}
+	if policy == "never" {
 		return finish("contact_never", "skipped")
 	}
 	if e.Generate == nil {
@@ -155,9 +160,17 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 		}
 		return json.Unmarshal([]byte(raw), dst)
 	}
-	a.State = "preparing"
-	a.Reason = "preparing"
-	if err := e.Store.SaveAction(ctx, a); err != nil {
+	progress := func(stage string) error {
+		a.State, a.Reason, a.Stage = "preparing", "preparing", stage
+		if err := e.Store.SaveAction(ctx, a); err != nil {
+			return err
+		}
+		if e.Notify != nil {
+			e.Notify(a)
+		}
+		return nil
+	}
+	if err := progress("analyzing"); err != nil {
 		return nil, err
 	}
 	untrusted := WrapUntrustedExternalMessage(in.Sender, in.Channel, in.Subject+"\n"+in.Body)
@@ -180,6 +193,9 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 	}
 	if (plan.Kind != "calendar" && plan.Kind != "question") || len(plan.Tools) > 3 || len(plan.Calendar) > 5 {
 		return finish("review_required", "failed")
+	}
+	if err := progress("researching"); err != nil {
+		return nil, err
 	}
 	ex := ExternalAutonomousExecutor{Store: e.Store, Calendar: e.Calendar, Projects: e.Projects, Sender: alias}
 	evidence := map[string]any{}
@@ -272,6 +288,9 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 		Factual       bool     `json:"factual"`
 		EvidenceTools []string `json:"evidence_tools"`
 	}
+	if err := progress("writing"); err != nil {
+		return nil, err
+	}
 	err = call(replyPrompt, map[string]any{"message": untrusted, "style": style, "evidence": evidence, "calendar_proposals": plan.Calendar, "calendar_kinds": plan.CalendarKinds, "conflict": a.Conflict, "alternatives": a.Alternatives}, &reply)
 	if err != nil || strings.TrimSpace(reply.Body) == "" || len(reply.Body) > 16000 {
 		return finish("review_unavailable", "failed")
@@ -293,7 +312,10 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 	// Only the independent scorer may supply confidence. Missing/malformed scores
 	// keep a valid draft reviewable and can never grant automatic eligibility.
 	a.ScoreStatus = "not_requested"
-	if settings.Mode == "full_auto" && reply.Factual && supported && plan.Kind == "question" && len(plan.Calendar) == 0 && !in.ForceDraft && contact.AutonomyPolicy == "default" && !in.Envelope.IsGroup && in.Envelope.RecipientCount <= 1 {
+	if policy == "full_auto" && reply.Factual && supported && plan.Kind == "question" && len(plan.Calendar) == 0 && !in.ForceDraft && !in.Envelope.IsGroup && in.Envelope.RecipientCount <= 1 {
+		if err := progress("scoring"); err != nil {
+			return nil, err
+		}
 		a.ScoreStatus = "unavailable"
 		data, _ := json.Marshal(map[string]any{"message": untrusted, "draft": reply.Body, "evidence": evidence})
 		if e.Decide != nil && len([]rune(string(data))) <= 7800 {
@@ -308,7 +330,7 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 		}
 	}
 
-	if !in.ForceDraft && settings.Mode == "full_auto" && contact.AutonomyPolicy == "default" && plan.Kind == "question" && len(plan.Calendar) == 0 && reply.Factual && a.DecisionScore != nil && *a.DecisionScore >= 0.95 && supported && !in.Envelope.IsGroup && in.Envelope.RecipientCount <= 1 {
+	if !in.ForceDraft && policy == "full_auto" && plan.Kind == "question" && len(plan.Calendar) == 0 && reply.Factual && a.DecisionScore != nil && *a.DecisionScore >= 0.95 && supported && !in.Envelope.IsGroup && in.Envelope.RecipientCount <= 1 {
 		allowed, err := e.Store.ReserveCandidate(ctx, a.ContactID, in.Account+":"+in.Envelope.ThreadID, id, now, in.Envelope.ThreadID != "")
 		if err != nil {
 			return finish("research_failed", "failed")
@@ -324,6 +346,9 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 		}
 	}
 	if in.Channel == "mail" && e.SaveDraft != nil {
+		if err := progress("saving"); err != nil {
+			return nil, err
+		}
 		if err := e.SaveDraft(ctx, a); err != nil {
 			return finish("draft_upload_failed", "failed")
 		}

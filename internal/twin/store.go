@@ -111,7 +111,7 @@ func (s *Store) SavePreferences(ctx context.Context, p Preferences) error {
 	if p.Autonomy.GraceSeconds == 0 {
 		p.Autonomy.GraceSeconds = 60
 	}
-	if (p.Autonomy.Mode != "draft_only" && p.Autonomy.Mode != "full_auto") || p.Autonomy.GraceSeconds < 10 || p.Autonomy.GraceSeconds > 3600 {
+	if (p.Autonomy.Mode != "draft_only" && p.Autonomy.Mode != "full_auto" && p.Autonomy.Mode != "manual") || p.Autonomy.GraceSeconds < 10 || p.Autonomy.GraceSeconds > 3600 {
 		return ErrInvalid
 	}
 	b, _ := json.Marshal(p)
@@ -154,7 +154,7 @@ func (s *Store) RecordMessage(ctx context.Context, m Message, name string) error
 			if len(name) > 300 {
 				name = a.Address
 			}
-			if _, err = tx.ExecContext(ctx, "INSERT INTO contacts(id,name) VALUES(?,?)", id, name); err != nil {
+			if _, err = tx.ExecContext(ctx, "INSERT INTO contacts(id,name,autonomy_policy) VALUES(?,?,'default')", id, name); err != nil {
 				return err
 			}
 			if _, err = tx.ExecContext(ctx, "INSERT INTO contact_aliases(channel,address,contact_id) VALUES(?,?,?)", a.Channel, a.Address, id); err != nil {

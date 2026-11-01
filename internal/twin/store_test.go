@@ -264,3 +264,33 @@ func TestAutonomyCandidateBudgetSurvivesReopenAndChannels(t *testing.T) {
 		t.Fatal(ok, err)
 	}
 }
+
+func TestNewContactsInheritAndExplicitChoicesSurviveIngress(t *testing.T) {
+	ctx := context.Background()
+	s, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	m := Message{Channel: "mail", Account: "inbox", EventID: "new", Address: "new@example.com", Body: "Question", SentAt: time.Now()}
+	if err := s.RecordMessage(ctx, m, "New"); err != nil {
+		t.Fatal(err)
+	}
+	contacts, err := s.Contacts(ctx)
+	if err != nil || len(contacts) != 1 || contacts[0].AutonomyPolicy != "default" {
+		t.Fatalf("%+v %v", contacts, err)
+	}
+	c := contacts[0]
+	c.AutonomyPolicy = "draft_only"
+	if _, err := s.SaveContact(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	m.EventID = "next"
+	if err := s.RecordMessage(ctx, m, "New"); err != nil {
+		t.Fatal(err)
+	}
+	contacts, err = s.Contacts(ctx)
+	if err != nil || contacts[0].AutonomyPolicy != "draft_only" {
+		t.Fatalf("override lost: %+v %v", contacts, err)
+	}
+}

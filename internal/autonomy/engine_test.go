@@ -335,3 +335,79 @@ func TestWriterWorksWithoutDecisionModel(t *testing.T) {
 		t.Fatal(a)
 	}
 }
+
+func TestEngineGlobalDefaultAndContactOverrides(t *testing.T) {
+	for _, tc := range []struct{ global, contact, want string }{
+		{"full_auto", "default", "grace_period_auto"},
+		{"draft_only", "default", "awaiting_approval"},
+		{"manual", "default", "skipped"},
+		{"full_auto", "draft_only", "awaiting_approval"},
+		{"draft_only", "full_auto", "grace_period_auto"},
+		{"manual", "full_auto", "grace_period_auto"},
+		{"manual", "draft_only", "awaiting_approval"},
+		{"full_auto", "never", "skipped"},
+	} {
+		t.Run(tc.global+"/"+tc.contact, func(t *testing.T) {
+			e, in := engineFixture(t)
+			ctx := context.Background()
+			p, err := e.Store.Preferences(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p.Autonomy.Mode = tc.global
+			if err := e.Store.SavePreferences(ctx, p); err != nil {
+				t.Fatal(err)
+			}
+			contacts, err := e.Store.Contacts(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := contacts[0]
+			c.AutonomyPolicy = tc.contact
+			if _, err := e.Store.SaveContact(ctx, c); err != nil {
+				t.Fatal(err)
+			}
+			stages := []string{}
+			e.Notify = func(a twin.Action) {
+				if a.State == "preparing" {
+					stages = append(stages, a.Stage)
+				}
+			}
+			calls := 0
+			e.Generate = func(_ context.Context, system, _ string) (string, error) {
+				calls++
+				if system == analyzePrompt {
+					return `{"kind":"question","tools":[{"name":"contact_timeline","args":{}}]}`, nil
+				}
+				actions, err := e.Store.Actions(ctx)
+				if err != nil || len(actions) != 1 || actions[0].Stage != "writing" {
+					t.Fatalf("writing not visible before generation: %+v %v", actions, err)
+				}
+				return `{"body":"A factual reply","factual":true,"evidence_tools":["contact_timeline"]}`, nil
+			}
+			e.SaveDraft = func(_ context.Context, a twin.Action) error {
+				actions, err := e.Store.Actions(ctx)
+				if err != nil || len(actions) != 1 || actions[0].Stage != "saving" {
+					t.Fatalf("saving not visible: %+v %v", actions, err)
+				}
+				return nil
+			}
+			a, err := e.HandleIncomingEvent(ctx, in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.want == "skipped" {
+				if a.State != "skipped" || calls != 0 {
+					t.Fatalf("unexpected preparation: %+v calls=%d", a, calls)
+				}
+			} else {
+				if a.Mode != tc.want || !a.DraftSaved || a.State != "pending" || a.Stage != "" {
+					t.Fatalf("unexpected final action: %+v", a)
+				}
+				if strings.Join(stages, ",") != "analyzing,researching,writing,saving" && strings.Join(stages, ",") != "analyzing,researching,writing,scoring,saving" {
+					t.Fatal(stages)
+				}
+			}
+		})
+	}
+}

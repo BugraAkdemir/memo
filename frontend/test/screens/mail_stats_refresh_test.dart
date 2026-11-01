@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -14,6 +15,8 @@ import 'package:memo_flutter/screens/mail_screen.dart';
 class _MailAdapter implements HttpClientAdapter {
   int count = 1;
   int statsRequests = 0;
+  int activityRequests = 0;
+  String stage = '';
 
   @override
   Future<ResponseBody> fetch(
@@ -21,6 +24,16 @@ class _MailAdapter implements HttpClientAdapter {
     Stream<Uint8List>? request,
     Future<void>? cancel,
   ) async {
+    if (options.path == '/api/twin/activity') {
+      activityRequests++;
+      return ResponseBody.fromString(jsonEncode({
+        'settings': {'enabled': true, 'mail': true},
+        'reply_model': {'provider': 'test', 'model': 'writer'},
+        'actions': [{'channel': 'mail', 'recipient': 'friend@example.com',
+          'state': stage.isEmpty ? 'pending' : 'preparing',
+          'stage': stage, 'reason': 'drafted', 'draft_saved': stage.isEmpty}],
+      }), 200, headers: {Headers.contentTypeHeader: [Headers.jsonContentType]});
+    }
     if (options.path == '/api/mail/stats') {
       statsRequests++;
       return ResponseBody.fromString(
@@ -83,6 +96,9 @@ void main() {
       findsOneWidget,
     );
     expect(find.text(L10n.t('mail_stats_security', {'n': '2'})), findsOneWidget);
+    expect(find.text(L10n.t('mail_auto_ready')), findsOneWidget);
+    expect(find.textContaining('friend@example.com'), findsOneWidget);
+    expect(find.text(L10n.t('auto_saved')), findsOneWidget);
     adapter.count = 2;
     await tester.pump(const Duration(seconds: 15));
     await tester.pumpAndSettle();
@@ -93,14 +109,18 @@ void main() {
     await mount(false);
     await tester.pumpAndSettle();
     final beforeHidden = adapter.statsRequests;
+    final activityBeforeHidden = adapter.activityRequests;
     await tester.pump(const Duration(seconds: 30));
     expect(adapter.statsRequests, beforeHidden);
+    expect(adapter.activityRequests, activityBeforeHidden);
     await mount(true);
     await tester.pumpAndSettle();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     final beforePaused = adapter.statsRequests;
+    final activityBeforePaused = adapter.activityRequests;
     await tester.pump(const Duration(seconds: 30));
     expect(adapter.statsRequests, beforePaused);
+    expect(adapter.activityRequests, activityBeforePaused);
     adapter.count = 3;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
@@ -108,6 +128,14 @@ void main() {
       find.text(L10n.t('mail_stats_calendar', {'n': '3'})),
       findsOneWidget,
     );
+    adapter.stage = 'writing';
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    expect(find.textContaining(L10n.t('mail_auto_stage_writing')), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
+    final stopped = adapter.activityRequests;
+    await tester.pump(const Duration(seconds: 6));
+    expect(adapter.activityRequests, stopped);
   });
 }

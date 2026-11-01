@@ -82,6 +82,20 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		return nil, fmt.Errorf("twin unavailable")
 	}
 	switch operation {
+	case "activity":
+		p, err := s.Preferences(ctx)
+		if err != nil {
+			return nil, err
+		}
+		actions, err := s.Actions(ctx)
+		if err != nil {
+			return nil, err
+		}
+		selection, err := s.ReplyModel(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"settings": p.Autonomy, "actions": actions, "reply_model": selection}, nil
 	case "state", "twin_contacts":
 		contacts, err := s.Contacts(ctx)
 		if err != nil {

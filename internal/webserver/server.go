@@ -452,7 +452,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/telegram/disconnect", s.requirePermission(s.handleTelegramDisconnect, hasTelegramPerm))
 
 	// Mail subsystem
-	for _, op := range []string{"state", "contact", "merge", "preferences", "reply_model", "cancel_action", "contact_timeline", "check_availability", "git_project_status"} {
+	for _, op := range []string{"state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "contact_timeline", "check_availability", "git_project_status"} {
 		route("/api/twin/"+op, s.adminOnly(s.handleTwin))
 	}
 	route("/api/mail/accounts", s.adminOnly(s.handleMailAccounts))

@@ -57,8 +57,12 @@ köprüsü Adım6'dır. Kuyrukta `grace_period_auto` olması bu sürümde mesaj 
   saatleri ve gerçek kesişim sorgularıyla en çok 72 saat içinde yarım saatlik
   adımlarla aranır. Takvim boşluğu müsaitlik garantisi değildir. Modelin metinden
   çıkardığı tarihlerin doğruluğu gerçek modelle kabul testi gerektirir.
-- Her kişi başlangıçta yalnız taslaktır. Tam otomatik aday için kullanıcı o kişide
-  “Otonomi modunu izle” seçmeli; genel mod full_auto, triage uygun, grup/CC olmayan,
+- Genel varsayılan “Herkese otomatik yanıt”, “Herkese otomatik taslak” veya
+  “Kişi bazında manuel seçim” olabilir. Yeni kişiler “Genel tercihi kullan” ile
+  oluşur; mevcut açık kişi tercihleri korunur. Kişinin taslak/otomatik/asla tercihi
+  genel varsayılandan önceliklidir. Manuel modda genel tercihi izleyen kişi için
+  model çağrılmaz; kişi seçimi beklenir. Genel ayarı değiştirmek kanal anahtarını açmaz.
+  Tam otomatik aday için etkin tercih full_auto, triage uygun, grup/CC olmayan,
   başarılı araç kanıtı bulunan salt bilgi sorusu ve bağımsız karar modelinin
   en az 0.95 skoru olmalıdır. Karar modelinden yalnız tek bir 0–1 sayısı istenir;
   üretici modelin kendi confidence alanı yetki vermez. Eksik/bozuk/NaN/sınır dışı
@@ -74,7 +78,11 @@ köprüsü Adım6'dır. Kuyrukta `grace_period_auto` olması bu sürümde mesaj 
   otomatik yeniden çalıştırılmaz; yarım kalan takvim/taslak elle incelenmelidir.
 - Yanıt, uzak Drafts yüklemesinden önce DLP'den geçer; sır içeren gövde karar
   kartına konulmaz. Ambient olay akışına yalnız kayıt kimliği/durumu çıkar; gövde,
-  alıcı ve konu admin-only `/api/twin/state` yanıtından okunur.
+  alıcı ve konu admin-only `/api/twin/state` veya `/api/twin/activity` yanıtından okunur.
+  Mail ekranı görünür ve uygulama aktifken activity üç saniyede bir yenilenir;
+  arka planda durur. İnceleme/araştırma/yazma/skor/Drafts yükleme aşamaları model
+  çağrısından önce kalıcı kaydedilir; hata/atlama ve kayıtlı taslak sonucu görünür.
+  `preparing` son kayıtlı aşamadır; uygulama kesilmişse canlı çalışma garantisi değildir.
 - Kanal ayarları `twin_preferences.autonomy` alanında; yanıt sağlayıcısı/modeli
   ayrı `twin_reply_model` tablosunda kalır. Kanal değişikliği yanıt modelini silmez.
   Admin-only `POST /api/twin/reply_model` (ve `/api/v1/...`) bu çifti atomik kaydeder;
@@ -120,3 +128,18 @@ Düzeltmenin teknik doğrulaması: CGO/sqlite_fts5 build/vet exit0; tüm Go
 race testleri 71 paket PASS; Flutter874/874 PASS; analyze yalnız mevcut3 context
 info; değişen/yeni7 Dart dosyasında UI literal0; diff kontrolü PASS. Gerçek
 skor/yanıt modeli ve hesap cihaz kabulü beklenir; otomatik gönderim hâlâ Adım6’dır.
+
+## Genel tercih ve kişi istisnası kabul senaryosu
+
+1. Mail → **Yanıt tercihleri ve işlemler** ile Otonomi sekmesine doğrudan girin.
+   Motoru ve mail kanalını açın; Ayarlar → Mail ve Otonomi bölümünde yanıt yazarı seçin.
+2. Genel tercihi herkese taslak, test kişisini **Genel tercihi kullan** yapın.
+   Bu adrese yeni bir bilgi sorusu gönderin. Mail ekranında alıcıyla birlikte
+   inceleme/yazma/kaydetme ve ardından taslak sonucu görünmelidir; Drafts'ı kontrol edin.
+3. Genel tercih otomatik, test kişisi yalnız taslak: yine onay gerektiren taslak
+   olmalıdır. Genel tercih taslak, kişi otomatik: yeterli kanıt ve bağımsız skor
+   varsa otomatik aday olabilir; bu adımda gönderim yapılmaz.
+4. Manuel mod + kişi genel tercihi kullan: kişi seçimi bekleniyor/atlandı görünmeli,
+   modele çağrı olmamalı. Kişiye açık taslak tercihi verip YENİ mail gönderin;
+   taslak hazırlanmalıdır. Önceki mail veya UID otomatik tekrar edilmez.
+5. Eski kişide “asla” varsa genel seçimle kaldırılmaz; kişi istisnasını açıkça değiştirin.

@@ -32,12 +32,13 @@ class AutonomyPanel extends StatelessWidget {
       DropdownButtonFormField<String>(
         isExpanded: true,
         key: ValueKey(settings['mode']),
-        initialValue: settings['mode'] == 'full_auto'
-            ? 'full_auto'
+        initialValue:
+            ['draft_only', 'full_auto', 'manual'].contains(settings['mode'])
+            ? settings['mode'] as String
             : 'draft_only',
         decoration: InputDecoration(labelText: L10n.t('auto_mode')),
         items: [
-          for (final key in ['draft_only', 'full_auto'])
+          for (final key in ['draft_only', 'full_auto', 'manual'])
             DropdownMenuItem(value: key, child: Text(L10n.t('auto_$key'))),
         ],
         onChanged: busy
@@ -46,6 +47,7 @@ class AutonomyPanel extends StatelessWidget {
                 if (v != null) onSettings({...settings, 'mode': v});
               },
       ),
+      Text(L10n.t('auto_policy_help')),
       DropdownButtonFormField<int>(
         isExpanded: true,
         key: ValueKey(settings['grace_seconds']),
@@ -112,6 +114,7 @@ class AutonomyPanel extends StatelessWidget {
   String _reason(dynamic code) => L10n.t(switch (code) {
     'drafted' => 'auto_reason_drafted',
     'stale_message' => 'auto_reason_stale',
+    'contact_manual' => 'auto_reason_manual',
     'contact_never' => 'auto_reason_never',
     'automated_sender' => 'auto_reason_automated',
     'no_action' => 'auto_reason_none',

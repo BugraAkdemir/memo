@@ -32,6 +32,9 @@ func TestTwinHTTPMethodsLimitsAndCodes(t *testing.T) {
 		err                error
 	}{
 		{"GET", "/api/twin/state", "", 200, nil},
+		{"GET", "/api/twin/activity", "", 200, nil},
+		{"GET", "/api/v1/twin/activity", "", 200, nil},
+		{"POST", "/api/twin/activity", "{}", 405, nil},
 		{"GET", "/api/v1/twin/state", "", 200, nil},
 		{"POST", "/api/twin/state", "{}", 405, nil},
 		{"GET", "/api/twin/contact", "", 405, nil},
@@ -51,9 +54,9 @@ func TestTwinHTTPMethodsLimitsAndCodes(t *testing.T) {
 func TestTwinHTTPRequiresAdminForReadsAndWrites(t *testing.T) {
 	stub := &swarmStubBridge{sessionRole: func(token string) (string, bool) { return "user", token == "user-session" }}
 	s := New(stub)
-	for _, op := range []string{"state", "contact", "merge", "preferences", "reply_model", "cancel_action", "contact_timeline", "check_availability", "git_project_status"} {
+	for _, op := range []string{"state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "contact_timeline", "check_availability", "git_project_status"} {
 		req := httptest.NewRequest("POST", "/api/twin/"+op, strings.NewReader(`{}`))
-		if op == "state" {
+		if op == "state" || op == "activity" {
 			req.Method = "GET"
 		}
 		req.Header.Set("X-Memo-Token", "user-session")

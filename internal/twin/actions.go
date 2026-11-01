@@ -17,7 +17,24 @@ type AutonomySettings struct {
 	WhatsApp     bool   `json:"whatsapp"`
 	Voice        bool   `json:"voice"`
 }
+
+// EffectiveReplyPolicy gives explicit contact choices precedence. In manual
+// mode, an unconfigured contact must be chosen by the owner before preparation.
+func EffectiveReplyPolicy(mode, policy string) string {
+	switch policy {
+	case "never", "draft_only", "full_auto":
+		return policy
+	case "default":
+		if mode == "full_auto" || mode == "draft_only" {
+			return mode
+		}
+	}
+	return "manual"
+}
+
 type Action struct {
+	Stage         string      `json:"stage,omitempty"`
+	UpdatedAt     time.Time   `json:"updated_at"`
 	DecisionScore *float64    `json:"decision_score,omitempty"`
 	ScoreStatus   string      `json:"score_status,omitempty"`
 	ID            string      `json:"id"`
@@ -59,12 +76,13 @@ func (s *Store) SaveAction(ctx context.Context, a Action) error {
 	if a.ID == "" || a.Channel == "" {
 		return ErrInvalid
 	}
+	a.UpdatedAt = time.Now().UTC()
 	raw, err := json.Marshal(a)
 	if err != nil {
 		return err
 	}
 	return s.db.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, "INSERT INTO pending_autonomous_actions(id,contact_id,channel,payload,state,execute_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,state=excluded.state", a.ID, a.ContactID, a.Channel, string(raw), a.State, a.ExecuteAt)
+		_, err := tx.ExecContext(ctx, "INSERT INTO pending_autonomous_actions(id,contact_id,channel,payload,state,execute_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,state=excluded.state,execute_at=excluded.execute_at", a.ID, a.ContactID, a.Channel, string(raw), a.State, a.ExecuteAt)
 		if err != nil {
 			return err
 		}

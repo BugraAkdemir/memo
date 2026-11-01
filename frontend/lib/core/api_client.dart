@@ -3639,6 +3639,11 @@ class MemoApiClient {
       Map<String, dynamic>.from(_guard<Map>(res.data)),
     );
   }
+  Future<Map<String, dynamic>> getTwinActivity() async {
+    final res = await _dio.get('/api/twin/activity');
+    return Map<String, dynamic>.from(_guard<Map>(res.data));
+  }
+
   Future<TwinState> getTwinState() async {
     final res = await _dio.get('/api/twin/state');
     return TwinState.fromJson(Map<String, dynamic>.from(_guard<Map>(res.data)));

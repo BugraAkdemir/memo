@@ -63,9 +63,9 @@ func (s *Store) SaveContact(ctx context.Context, c Contact) (string, error) {
 		return "", ErrInvalid
 	}
 	if c.AutonomyPolicy == "" {
-		c.AutonomyPolicy = "draft_only"
+		c.AutonomyPolicy = "default"
 	}
-	if c.AutonomyPolicy != "draft_only" && c.AutonomyPolicy != "never" && c.AutonomyPolicy != "default" {
+	if c.AutonomyPolicy != "draft_only" && c.AutonomyPolicy != "never" && c.AutonomyPolicy != "default" && c.AutonomyPolicy != "full_auto" {
 		return "", ErrInvalid
 	}
 	aliases := []Alias{}
@@ -148,6 +148,11 @@ func (s *Store) Merge(ctx context.Context, target, source string) error {
 		// Future pending actions cannot silently inherit a new recipient identity.
 		if _, e := tx.ExecContext(ctx, "UPDATE pending_autonomous_actions SET state='cancelled' WHERE contact_id IN (?,?) AND state='pending'", target, source); e != nil {
 			return e
+		}
+		if policies[0] == "default" || policies[1] == "default" {
+			if _, e := tx.ExecContext(ctx, "UPDATE contacts SET autonomy_policy='default' WHERE id=?", target); e != nil {
+				return e
+			}
 		}
 		if policies[0] == "draft_only" || policies[1] == "draft_only" {
 			if _, e := tx.ExecContext(ctx, "UPDATE contacts SET autonomy_policy='draft_only' WHERE id=?", target); e != nil {

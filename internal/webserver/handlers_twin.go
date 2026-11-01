@@ -34,7 +34,7 @@ func (s *Server) handleTwin(w http.ResponseWriter, r *http.Request) {
 		op = strings.TrimPrefix(r.URL.Path, "/api/v1/twin/")
 	}
 	raw := json.RawMessage(`{}`)
-	if op == "state" {
+	if op == "state" || op == "activity" {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(405)
 			return
@@ -52,7 +52,7 @@ func (s *Server) handleTwin(w http.ResponseWriter, r *http.Request) {
 		raw = b
 	}
 	switch op {
-	case "state", "contact", "merge", "preferences", "reply_model", "cancel_action", "contact_timeline", "check_availability", "git_project_status":
+	case "state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "contact_timeline", "check_availability", "git_project_status":
 	default:
 		w.WriteHeader(404)
 		return

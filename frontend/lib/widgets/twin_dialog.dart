@@ -10,14 +10,16 @@ import '../providers/chat_provider.dart';
 /// Owner-managed identity links and read-only evidence. This panel does not
 /// expose the owner's bot/self-chat history.
 class TwinDialog extends ConsumerStatefulWidget {
-  const TwinDialog({super.key, this.initialTab = 0});
+  const TwinDialog({super.key, this.initialTab = 0, this.initialContactId});
   final int initialTab;
+  final String? initialContactId;
   @override
   ConsumerState<TwinDialog> createState() => _TwinDialogState();
 }
 
 class _TwinDialogState extends ConsumerState<TwinDialog> {
   TwinState? _state;
+  bool _initialContactApplied = false;
   bool _busy = false;
   String? _error;
   String? _selected;
@@ -92,6 +94,13 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
       _inspect = state.preferences['allow_project_inspection'] == true;
       if (!state.projects.any((p) => p['id'] == _project)) _project = null;
     });
+    if (!_initialContactApplied) {
+      _initialContactApplied = true;
+      final contact = state.contacts
+          .where((contact) => contact.id == widget.initialContactId)
+          .firstOrNull;
+      if (contact != null) _select(contact);
+    }
   }
 
   Future<void> _load() => _run(_refresh);
@@ -164,6 +173,7 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
       OutlinedButton.icon(
         onPressed: _busy ? null : action,
         icon: Icon(icon ?? Icons.check, size: 18),
+        style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
         label: Text(L10n.t(key)),
       );
 
@@ -195,11 +205,22 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
                               for (final c in contacts)
                                 ListTile(
                                   selected: c.id == _selected,
-                                  title: Text(c.name),
+                                  title: Text(
+                                    c.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                   subtitle: Text(
-                                    L10n.t('twin_alias_count', {
-                                      'n': '${c.aliases.length}',
-                                    }),
+                                    L10n.t('twin_policy_${c.policy}'),
+                                    style: TextStyle(
+                                      color: c.policy == 'never'
+                                          ? Theme.of(context).colorScheme.error
+                                          : null,
+                                    ),
+                                  ),
+                                  leading: const Icon(
+                                    Icons.person_outline,
+                                    size: 20,
                                   ),
                                   onTap: _busy ? null : () => _select(c),
                                 ),
@@ -212,8 +233,33 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
             if (!compact) const VerticalDivider(),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.all(12),
+                key: const ValueKey('twin_contact_editor'),
+                padding: const EdgeInsets.all(20),
                 children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          L10n.t(
+                            _selected == null
+                                ? 'twin_new_contact'
+                                : 'twin_contact_details',
+                          ),
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton.icon(
+                        onPressed: _busy ? null : _saveContact,
+                        icon: const Icon(Icons.check, size: 18),
+                        label: Text(L10n.t('save')),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 44),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   TextField(
                     key: const ValueKey('twin_name'),
                     controller: _name,
@@ -245,6 +291,11 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
                         : (v) => setState(() => _policy = v!),
                   ),
                   const SizedBox(height: 12),
+                  Text(
+                    L10n.t('twin_contact_policy_help'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 24),
                   Text(L10n.t('twin_alias_help')),
                   for (final a in _aliases)
                     ListTile(
@@ -307,7 +358,6 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
                   Wrap(
                     spacing: 10,
                     children: [
-                      _button('save', _saveContact),
                       if (_selected != null)
                         _button(
                           'twin_timeline',
@@ -378,22 +428,32 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
   }
 
   Widget _preferences() => ListView(
-    padding: const EdgeInsets.all(16),
+    padding: const EdgeInsets.all(24),
     children: [
+      Text(
+        L10n.t('twin_hours_heading'),
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      const SizedBox(height: 8),
       Text(L10n.t('twin_preferences_help')),
+      const SizedBox(height: 20),
       TextField(
         controller: _timezone,
         decoration: InputDecoration(labelText: L10n.t('twin_timezone')),
       ),
+      const SizedBox(height: 16),
       TextField(
         controller: _start,
         decoration: InputDecoration(labelText: L10n.t('twin_work_start')),
       ),
+      const SizedBox(height: 16),
       TextField(
         controller: _end,
         decoration: InputDecoration(labelText: L10n.t('twin_work_end')),
       ),
+      const SizedBox(height: 20),
       SwitchListTile(
+        contentPadding: EdgeInsets.zero,
         title: Text(L10n.t('twin_project_access')),
         value: _inspect,
         onChanged: _busy ? null : (v) => setState(() => _inspect = v),
@@ -420,6 +480,7 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
   );
 
   Widget _autonomy() => AutonomyPanel(
+    replyModel: _state!.replyModel,
     settings: _state!.preferences['autonomy'] is Map
         ? Map<String, dynamic>.from(_state!.preferences['autonomy'] as Map)
         : {},
@@ -441,7 +502,13 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
   Widget _tools() => ListView(
     padding: const EdgeInsets.all(16),
     children: [
+      Text(
+        L10n.t('twin_git_heading'),
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      const SizedBox(height: 8),
       Text(L10n.t('twin_readonly_help')),
+      const SizedBox(height: 20),
       DropdownButtonFormField<String>(
         isExpanded: true,
         key: ValueKey(_project),
@@ -493,7 +560,12 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
           ),
           const SizedBox(height: 12),
         ],
-      const Divider(),
+      const Divider(height: 40),
+      Text(
+        L10n.t('twin_calendar_heading'),
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      const SizedBox(height: 16),
       _button('twin_pick_day', () async {
         final day = await showDatePicker(
           context: context,
@@ -552,72 +624,148 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
   );
 
   @override
-  Widget build(BuildContext context) => DefaultTabController(
-    initialIndex: widget.initialTab,
-    length: 4,
-    child: AlertDialog(
-      title: Row(
-        children: [
-          Expanded(child: Text(L10n.t('twin_title'))),
-          IconButton(
-            tooltip: L10n.t('refresh'),
-            onPressed: _busy ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: L10n.t('close'),
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.close),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: 1000,
-        height: 640,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(L10n.t('twin_scope_notice')),
-            if (_busy) const LinearProgressIndicator(),
-            if (_error != null)
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DefaultTabController(
+      initialIndex: widget.initialTab,
+      length: 4,
+      child: Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1080, maxHeight: 760),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Padding(
-                padding: const EdgeInsets.all(8),
-                child: Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                padding: const EdgeInsets.fromLTRB(24, 16, 12, 12),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.auto_awesome_outlined,
+                      color: theme.colorScheme.primary,
+                      size: 26,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            L10n.t('twin_title'),
+                            style: theme.textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            L10n.t('twin_subtitle'),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: L10n.t('refresh'),
+                      onPressed: _busy ? null : _load,
+                      icon: const Icon(Icons.refresh),
+                    ),
+                    IconButton(
+                      tooltip: L10n.t('close'),
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
                 ),
               ),
-            TabBar(
-              isScrollable: true,
-              tabs: [
-                for (final k in [
-                  'twin_contacts_tab',
-                  'twin_preferences_tab',
-                  'twin_tools_tab',
-                  'auto_tab',
-                ])
-                  Tab(text: L10n.t(k)),
-              ],
-            ),
-            Expanded(
-              child: _state == null
-                  ? Center(
-                      child: _busy
-                          ? const CircularProgressIndicator()
-                          : _button('retry', _load),
-                    )
-                  : TabBarView(
-                      children: [
-                        _contacts(),
-                        _preferences(),
-                        _tools(),
-                        _autonomy(),
-                      ],
+              TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                tabs: [
+                  for (final k in [
+                    'twin_contacts_tab',
+                    'twin_preferences_tab',
+                    'twin_tools_tab',
+                    'auto_tab',
+                  ])
+                    Tab(text: L10n.t(k)),
+                ],
+              ),
+              SizedBox(
+                height: 3,
+                child: _busy ? const LinearProgressIndicator() : null,
+              ),
+              if (_error != null)
+                Container(
+                  color: theme.colorScheme.errorContainer,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: theme.colorScheme.onErrorContainer,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _error!,
+                          style: TextStyle(
+                            color: theme.colorScheme.onErrorContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: _state == null
+                    ? Center(
+                        child: _busy
+                            ? const CircularProgressIndicator()
+                            : _button('retry', _load),
+                      )
+                    : TabBarView(
+                        children: [
+                          _contacts(),
+                          _preferences(),
+                          _tools(),
+                          _autonomy(),
+                        ],
+                      ),
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
-            ),
-          ],
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        L10n.t('twin_scope_notice'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

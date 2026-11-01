@@ -1,3 +1,10 @@
+# Son oturum — 2026-11-01 — Mail
+- HTML @media, durum ve kişi istisnalı varsayılan: iki yerel commit, push yok.
+- Build/vet0; Go race71/Flutter874 PASS; analyze eski3 info; literal0/diff PASS.
+- DB prefs/kuyruk boş, kişi never; ayar değişmedi. İki süreç restart+YENİ mail kabulü açık; Adım6 yok.
+
+---
+
 # Son oturum — 2026-11-01 — Mail yanıt modeli / skor ayrımı
 - Yanıt yazarı/karar skoru ayrıldı. Cihaz/model kabulü açık; Adım6 başlamadı.
 - Build/vet exit0; Go race71 PASS; Flutter874/874 PASS; analyze mevcut3 info; UI literal7 dosya0; diff PASS. Yerel fix commit, push/tag/PR yok; önceki değişiklikler korunur.

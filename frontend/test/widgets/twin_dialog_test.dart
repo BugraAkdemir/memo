@@ -112,7 +112,12 @@ class _TwinAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-Future<_TwinAdapter> _mount(WidgetTester tester, MemoLocale locale) async {
+Future<_TwinAdapter> _mount(
+  WidgetTester tester,
+  MemoLocale locale, {
+  String? initialContactId,
+  _TwinAdapter? initialAdapter,
+}) async {
   final previous = L10n.locale;
   L10n.setLocale(locale);
   addTearDown(() => L10n.setLocale(previous));
@@ -120,7 +125,7 @@ Future<_TwinAdapter> _mount(WidgetTester tester, MemoLocale locale) async {
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final adapter = _TwinAdapter();
+  final adapter = initialAdapter ?? _TwinAdapter();
   final api = MemoApiClient(baseUrl: 'http://memo.test');
   api.dio.httpClientAdapter = adapter;
   final container = ProviderContainer(
@@ -130,7 +135,9 @@ Future<_TwinAdapter> _mount(WidgetTester tester, MemoLocale locale) async {
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: const MaterialApp(home: Scaffold(body: TwinDialog())),
+      child: MaterialApp(
+        home: Scaffold(body: TwinDialog(initialContactId: initialContactId)),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -164,6 +171,16 @@ void main() {
         expect(find.text(L10n.t('twin_style_insufficient')), findsOneWidget);
         await tester.tap(find.text(L10n.t('twin_timeline')));
         await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('Tomorrow at noon'),
+          180,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const ValueKey('twin_contact_editor')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
         expect(find.text('Tomorrow at noon'), findsOneWidget);
         expect(find.textContaining('2026-10-31T20:50:00Z'), findsOneWidget);
         await tester.tap(find.text(L10n.t('twin_preferences_tab')));
@@ -322,4 +339,100 @@ void main() {
     expect(find.byKey(const ValueKey('twin_name')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+  for (final locale in MemoLocale.values) {
+    testWidgets('all twin sections fit the reported desktop window ($locale)', (
+      tester,
+    ) async {
+      final adapter = await _mount(tester, locale);
+      adapter.contacts.add({
+        'id': 'blocked',
+        'name': 'Test person with a longer display name',
+        'autonomy_policy': 'never',
+        'aliases': [
+          {'channel': 'mail', 'address': 'person@example.com'},
+        ],
+        'style': {
+          'samples': 0,
+          'tone': 'unknown',
+          'language': 'unknown',
+          'sufficient': false,
+        },
+      });
+      await tester.tap(find.byTooltip(L10n.t('refresh')));
+      await tester.pumpAndSettle();
+      tester.view.physicalSize = const Size(1000, 600);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(L10n.t('twin_policy_never')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      for (final key in [
+        'twin_preferences_tab',
+        'twin_tools_tab',
+        'auto_tab',
+      ]) {
+        await tester.ensureVisible(find.text(L10n.t(key)));
+        await tester.tap(find.text(L10n.t(key)));
+        await tester.pumpAndSettle();
+        expect(find.byTooltip(L10n.t('close')).hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
+  testWidgets(
+    'opens the requested blocked person and keeps save visible at 1000x600',
+    (tester) async {
+      final adapter = _TwinAdapter();
+      for (final id in ['other', 'blocked']) {
+        adapter.contacts.add({
+          'id': id,
+          'name': id,
+          'autonomy_policy': id == 'blocked' ? 'never' : 'default',
+          'aliases': [
+            {'channel': 'mail', 'address': '$id@example.com'},
+          ],
+          'style': {
+            'samples': 0,
+            'tone': 'unknown',
+            'language': 'unknown',
+            'sufficient': false,
+          },
+        });
+      }
+      await _mount(
+        tester,
+        MemoLocale.en,
+        initialContactId: 'blocked',
+        initialAdapter: adapter,
+      );
+      tester.view.physicalSize = const Size(1000, 600);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('twin_name')))
+            .controller!
+            .text,
+        'blocked',
+      );
+      expect(
+        find.widgetWithText(FilledButton, L10n.t('save')).hitTestable(),
+        findsOneWidget,
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('twin_name')),
+        'Edited name',
+      );
+      await tester.tap(find.byTooltip(L10n.t('refresh')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('twin_name')))
+            .controller!
+            .text,
+        'Edited name',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

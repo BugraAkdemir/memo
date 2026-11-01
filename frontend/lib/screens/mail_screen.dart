@@ -110,10 +110,10 @@ class _MailScreenState extends ConsumerState<MailScreen>
     }
   }
 
-  Future<void> _openReplySettings() async {
+  Future<void> _openReplySettings({String? contactId}) async {
     await showDialog<void>(
       context: context,
-      builder: (_) => const TwinDialog(initialTab: 3),
+      builder: (_) => TwinDialog(initialTab: contactId == null ? 3 : 0, initialContactId: contactId),
     );
     if (mounted) await _reloadActivity();
   }
@@ -129,6 +129,20 @@ class _MailScreenState extends ConsumerState<MailScreen>
               (accountId == null || a['account'] == accountId),
         )
         .toList();
+    final rawSender = _selectedDetail?.from.trim().toLowerCase() ?? '';
+    final bracketAddress = RegExp(r'<([^<>]+)>').firstMatch(rawSender)?.group(1);
+    final sender = (bracketAddress ?? rawSender).trim();
+    final contacts = (_activity?['mail_contacts'] as List? ?? const []).whereType<Map>();
+    Map? selectedContact;
+    for (final c in contacts) {
+      if ((c['addresses'] as List? ?? const []).any((a) => '$a'.toLowerCase() == sender)) {
+        selectedContact = c;
+        break;
+      }
+    }
+    final contactBlocked = selectedContact?['policy'] == 'never';
+    final contactManual = selectedContact?['policy'] == 'default' &&
+        settings is Map && settings['mode'] == 'manual';
     // Keep concurrent generation visible even when a newer mail has completed.
     final preparing = actions
         .where((a) => a['state'] == 'preparing')
@@ -158,12 +172,23 @@ class _MailScreenState extends ConsumerState<MailScreen>
                 const SizedBox(width: 8),
                 Expanded(child: Text(L10n.t(status))),
                 TextButton(
-                  onPressed: _openReplySettings,
+                  onPressed: () => _openReplySettings(),
                   child: Text(L10n.t('mail_auto_settings')),
                 ),
               ],
             ),
             if (status == 'mail_auto_ready') Text(L10n.t('mail_auto_delivery_notice')),
+            if (!_activityFailed && (contactBlocked || contactManual))
+              Padding(padding: const EdgeInsets.only(top: 8), child: Wrap(
+                spacing: 12, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(L10n.t(contactBlocked ? 'mail_contact_never' : 'mail_contact_manual'),
+                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  TextButton.icon(onPressed: () => _openReplySettings(contactId: selectedContact?['id'] as String?),
+                    icon: const Icon(Icons.person_outline, size: 18),
+                    label: Text(L10n.t('mail_contact_edit'))),
+                ],
+              )),
             for (final a in visible) ...[
               if (a['state'] == 'preparing') const LinearProgressIndicator(),
               Text(
@@ -869,11 +894,12 @@ class _MailScreenState extends ConsumerState<MailScreen>
                                       ),
                                     ),
                                     const SizedBox(width: 6),
-                                    Text(
-                                      msg.date,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: c.textDim,
+                                    Flexible(
+                                      child: Text(
+                                        msg.date,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(fontSize: 10, color: c.textDim),
                                       ),
                                     ),
                                   ],
@@ -982,7 +1008,8 @@ class _MailScreenState extends ConsumerState<MailScreen>
                 onPressed: () => _openComposeDialog(
                   accountId: activeAccountId,
                   initialTo: detail.from,
-                  initialSubject: detail.subject,
+                  initialSubject: detail.subject.trim().toLowerCase().startsWith('re:')
+                      ? detail.subject.trim() : 'Re: ${detail.subject.trim()}',
                   inReplyTo: detail.messageId,
                 ),
                 icon: const Icon(Icons.reply, size: 16),
@@ -1797,11 +1824,29 @@ class _MailComposeDialogState extends ConsumerState<_MailComposeDialog> {
   }
 
   List<String> _splitAddresses(String raw) {
-    return raw
-        .split(',')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
+    final addresses = <String>[];
+    var quoted = false;
+    var escaped = false;
+    var angleDepth = 0;
+    var start = 0;
+    for (var i = 0; i < raw.length; i++) {
+      final char = raw[i];
+      if (escaped) { escaped = false; continue; }
+      if (quoted && char == r'\') { escaped = true; continue; }
+      if (char == '"') { quoted = !quoted; }
+      if (!quoted) {
+        if (char == '<') angleDepth++;
+        if (char == '>' && angleDepth > 0) angleDepth--;
+        if (char == ',' && angleDepth == 0) {
+          final address = raw.substring(start, i).trim();
+          if (address.isNotEmpty) addresses.add(address);
+          start = i + 1;
+        }
+      }
+    }
+    final last = raw.substring(start).trim();
+    if (last.isNotEmpty) addresses.add(last);
+    return addresses;
   }
 
   Future<void> _send() async {
@@ -1859,7 +1904,7 @@ class _MailComposeDialogState extends ConsumerState<_MailComposeDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(L10n.t('mail_compose')),
+      title: Text(L10n.t(widget.initialTo.isNotEmpty ? 'mail_compose_reply_title' : 'mail_compose')),
       content: SizedBox(
         width: 540,
         child: SingleChildScrollView(

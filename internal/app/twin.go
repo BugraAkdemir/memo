@@ -95,7 +95,31 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"settings": p.Autonomy, "actions": actions, "reply_model": selection}, nil
+		contacts, err := s.Contacts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		// Activity needs enough identity to explain a sender's effective policy,
+		// without exporting other-channel aliases, writing styles or timelines.
+		type mailContactPolicy struct {
+			ID        string   `json:"id"`
+			Name      string   `json:"name"`
+			Policy    string   `json:"policy"`
+			Addresses []string `json:"addresses"`
+		}
+		mailContacts := []mailContactPolicy{}
+		for _, contact := range contacts {
+			addresses := []string{}
+			for _, alias := range contact.Aliases {
+				if alias.Channel == "mail" {
+					addresses = append(addresses, alias.Address)
+				}
+			}
+			if len(addresses) > 0 {
+				mailContacts = append(mailContacts, mailContactPolicy{contact.ID, contact.Name, contact.AutonomyPolicy, addresses})
+			}
+		}
+		return map[string]any{"settings": p.Autonomy, "actions": actions, "reply_model": selection, "mail_contacts": mailContacts}, nil
 	case "state", "twin_contacts":
 		contacts, err := s.Contacts(ctx)
 		if err != nil {

@@ -48,10 +48,8 @@ void main() {
       await tester.pump();
       expect(saved?['enabled'], isTrue);
       expect(saved?['mode'], 'draft_only');
-      await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
-      await tester.tap(find.byType(DropdownButtonFormField<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(L10n.t('auto_manual')).last);
+      await tester.ensureVisible(find.text(L10n.t('auto_manual')));
+      await tester.tap(find.text(L10n.t('auto_manual')));
       await tester.pumpAndSettle();
       expect(saved?['mode'], 'manual');
       await tester.scrollUntilVisible(

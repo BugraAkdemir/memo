@@ -171,3 +171,17 @@ Bu testte SMTP gönderimi ayrı manuel API yolundan yapıldı. Hazırlama kuyru�
 `a7324752…` kaydı hâlâ `pending`; gönderim köprüsü olmadığı için bu kayıt teslim
 kaydı değildir. Aynı test taslağını tekrar göndermeyin. Genel otomatik teslim
 ve hazırlama kaydını teslimle eşleyen onay köprüsü Adım6 olarak açık kalır.
+
+
+## 1 Kasım — farklı gönderen kabulü
+
+Kullanıcı farklı bir Gmail adresinden **MEMO FARKLI GÖNDEREN TESTİ** mailini
+23:11:30+03:00 tarihinde gönderdi (UID17399). Yeni kişinin tercihi `default`,
+genel mod `full_auto` olarak doğrulandı. Analiz/takvim sorgusu/yanıt hazırlama ve
+gerçek Drafts yüklemesi yaklaşık22 saniyede tamamlandı: `reason=drafted`,
+`draft_saved=true`, `state=pending`, `mode=awaiting_approval`.
+
+Bu ikinci testte SMTP gönderilmedi. `score_status=unavailable`; bağımsız skor
+alınamadığında onay gerektirme davranışı korundu. Sonuç, farklı gönderenin genel
+tercihi devralıp otomatik taslak hazırlanmasının gerçek hesapta PASS olduğudur;
+otomatik teslim PASS iddiası değildir. Kod değişmedi.

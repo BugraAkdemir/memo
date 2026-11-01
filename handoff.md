@@ -5,6 +5,7 @@
 ## Açık işler
 
 **Dijital İkiz / Mail — Adım5 teknik hazır**
+- a7324752 test yanıtı SMTP ile gönderildi; hazırlama kaydı pending. Tekrar gönderme.
 - Adım5 karar/takvim/Drafts, olay/UID/limit, panel/iptal: docs/DIGITAL_TWIN_AUTONOMY.md. Varsayılan kapalı; yanıt modeli gerekir. Ses: yerel Whisper/ffmpeg; bulut yok. Telegram sahip.
 - 1 Kasım: yanıt yazarı Ayarlar → Mail ve Otonomi; karar0–1, yoksa onay. Canlı IMAP/model/Drafts/onaylı SMTP/teslim kullanıcı PASS.
 - Adım5 hazırlar; grace_period_auto GÖNDERMEZ. Adım6 gönderim/uzaktan onay başlamadı; gönderimde ayar/kişi/DLP yeniden denetlenmeli. Whisper/WhatsApp kabulü açık. İptal yüklenmiş taslak/takvimi silmez; kesinti/hata tekrar edilmez.
@@ -66,7 +67,6 @@
 
 ---
 
-# Son oturum — 2026-11-01 — Canlı mail
-- Fenced JSON + ayrık hata nedenleri. Build/vet0; Go race71/Flutter880 PASS; eski3 info, literal0/diff PASS.
-- Gerçek mail→model→Drafts→onaylı SMTP200; kullanıcı teslim PASS. a7324752 hazırlama kaydı pending: tekrar gönderme.
-- Backend8090 açık; log /tmp/memo-live-mail-fixed.log. Commit var, push yok; Adım6 açık.
+# Son oturum — 2026-11-01 — Farklı gönderen
+- UID17399/yeni kişi default → takvim → gerçek Drafts PASS (~22s). 453da7f6 pending; SMTP gönderilmedi, skor yok/onay gerekir.
+- Doküman/handoff commit; kod değişmedi. Backend8090 açık: /tmp/memo-live-mail-fixed.log.

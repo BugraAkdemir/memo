@@ -1,3 +1,10 @@
+# Son oturum — 2026-11-01 — Canlı mail
+- Fenced JSON + ayrık hata nedenleri. Build/vet0; Go race71/Flutter880 PASS; eski3 info, literal0/diff PASS.
+- Gerçek mail→model→Drafts→onaylı SMTP200; kullanıcı teslim PASS. a7324752 hazırlama kaydı pending: tekrar gönderme.
+- Backend8090 açık; log /tmp/memo-live-mail-fixed.log. Commit var, push yok; Adım6 açık.
+
+---
+
 # Son oturum — 2026-11-01 — Yanıt/arayüz
 - SMTP/yanıt UI: docs/TWIN_UI_DESIGN.md. Tek mail anahtarı, görünür kişi engeli, yeni İkiz düzeni.
 - Build/vet0; Go race71/Flutter880 PASS; eski3 info; literal0/diff PASS. ECC görsel PASS.

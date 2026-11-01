@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"mime"
 	"net"
+	netmail "net/mail"
 	"net/smtp"
 	"strconv"
 	"strings"
@@ -36,6 +37,38 @@ func SendEmail(acct *Account, accessToken string, req SendRequest) error {
 	if len(req.To) == 0 {
 		return fmt.Errorf("recipient (To) is required")
 	}
+	// SMTP envelopes contain mailbox addresses, never display names. Validate
+	// before opening a connection and encode names only in the MIME headers.
+	from, err := netmail.ParseAddress(acct.Email)
+	if err != nil {
+		return fmt.Errorf("invalid sender address: %w", err)
+	}
+	parseRecipients := func(values []string) ([]string, []string, error) {
+		addresses, headers := []string{}, []string{}
+		for _, value := range values {
+			if strings.ContainsAny(value, "\r\n") {
+				return nil, nil, fmt.Errorf("invalid recipient address")
+			}
+			address, err := netmail.ParseAddress(strings.TrimSpace(value))
+			if err != nil {
+				return nil, nil, fmt.Errorf("invalid recipient address: %w", err)
+			}
+			addresses = append(addresses, address.Address)
+			headers = append(headers, address.String())
+		}
+		return addresses, headers, nil
+	}
+	to, toHeaders, err := parseRecipients(req.To)
+	if err != nil {
+		return err
+	}
+	cc, ccHeaders, err := parseRecipients(req.Cc)
+	if err != nil {
+		return err
+	}
+	if strings.ContainsAny(acct.Email+req.Subject+req.InReplyTo, "\r\n") {
+		return fmt.Errorf("invalid mail header")
+	}
 	host := acct.Server.SMTPHost
 	port := acct.Server.SMTPPort
 	if port == 0 {
@@ -55,7 +88,6 @@ func SendEmail(acct *Account, accessToken string, req SendRequest) error {
 
 	dialer := &net.Dialer{Timeout: 15 * time.Second}
 	var client *smtp.Client
-	var err error
 
 	if port == 465 {
 		tlsConn, tlsErr := tls.DialWithDialer(dialer, "tcp", addr, tlsCfg)
@@ -94,16 +126,11 @@ func SendEmail(acct *Account, accessToken string, req SendRequest) error {
 		return fmt.Errorf("SMTP auth failed: %w", err)
 	}
 
-	if err := client.Mail(acct.Email); err != nil {
+	if err := client.Mail(from.Address); err != nil {
 		return err
 	}
-	allRcpts := append([]string{}, req.To...)
-	allRcpts = append(allRcpts, req.Cc...)
+	allRcpts := append(to, cc...)
 	for _, rcpt := range allRcpts {
-		rcpt = strings.TrimSpace(rcpt)
-		if rcpt == "" {
-			continue
-		}
 		if err := client.Rcpt(rcpt); err != nil {
 			return err
 		}
@@ -116,10 +143,10 @@ func SendEmail(acct *Account, accessToken string, req SendRequest) error {
 
 	encodedSubject := mime.QEncoding.Encode("utf-8", req.Subject)
 	var msg strings.Builder
-	msg.WriteString(fmt.Sprintf("From: %s\r\n", acct.Email))
-	msg.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(req.To, ", ")))
-	if len(req.Cc) > 0 {
-		msg.WriteString(fmt.Sprintf("Cc: %s\r\n", strings.Join(req.Cc, ", ")))
+	msg.WriteString(fmt.Sprintf("From: %s\r\n", from.String()))
+	msg.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(toHeaders, ", ")))
+	if len(ccHeaders) > 0 {
+		msg.WriteString(fmt.Sprintf("Cc: %s\r\n", strings.Join(ccHeaders, ", ")))
 	}
 	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", encodedSubject))
 	msg.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))

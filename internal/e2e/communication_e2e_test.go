@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"mime"
 	"net"
+	netmail "net/mail"
 	"net/textproto"
 	"strings"
 	"testing"
@@ -24,6 +26,7 @@ func TestCommunicationMailSendWithAgentOffKeepsPermissionsAndNativeTransport(t *
 	}
 	t.Cleanup(func() { listener.Close() })
 	delivered := make(chan string, 1)
+	envelope := make(chan string, 1)
 	go func() {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -43,7 +46,10 @@ func TestCommunicationMailSendWithAgentOffKeepsPermissionsAndNativeTransport(t *
 				fmt.Fprint(conn, "250-localhost\r\n250 AUTH PLAIN\r\n")
 			case strings.HasPrefix(line, "AUTH"):
 				fmt.Fprint(conn, "235 authenticated\r\n")
-			case strings.HasPrefix(line, "MAIL"), strings.HasPrefix(line, "RCPT"):
+			case strings.HasPrefix(line, "MAIL"):
+				fmt.Fprint(conn, "250 ok\r\n")
+			case strings.HasPrefix(line, "RCPT"):
+				envelope <- line
 				fmt.Fprint(conn, "250 ok\r\n")
 			case line == "DATA":
 				fmt.Fprint(conn, "354 send data\r\n")
@@ -129,11 +135,32 @@ func TestCommunicationMailSendWithAgentOffKeepsPermissionsAndNativeTransport(t *
 	}
 	select {
 	case body := <-delivered:
-		if !strings.Contains(body, "To: friend@example.com") || !strings.Contains(body, "Sorun ne, detay verebilir misin?") || !strings.Contains(body, "In-Reply-To: <original@example.com>") {
-			t.Fatalf("lost mail body/thread: %s", body)
+		message, err := netmail.ReadMessage(strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		recipients, err := message.Header.AddressList("To")
+		if err != nil || len(recipients) != 1 || recipients[0].Address != "friend@example.com" {
+			t.Fatalf("wrong MIME recipient: %v, %v", recipients, err)
+		}
+		subject, err := new(mime.WordDecoder).DecodeHeader(message.Header.Get("Subject"))
+		if err != nil || subject != "Re: acil toplantı" {
+			t.Fatalf("wrong decoded subject: %q, %v", subject, err)
+		}
+		text, err := io.ReadAll(message.Body)
+		if err != nil || strings.TrimSpace(string(text)) != "Sorun ne, detay verebilir misin?" || message.Header.Get("In-Reply-To") != "<original@example.com>" || message.Header.Get("References") != "<original@example.com>" {
+			t.Fatalf("lost mail body/thread: %s, %v", body, err)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("SMTP received no mail")
+	}
+	select {
+	case recipient := <-envelope:
+		if recipient != "RCPT TO:<friend@example.com>" {
+			t.Fatalf("invalid SMTP envelope: %q", recipient)
+		}
+	default:
+		t.Fatal("SMTP received no envelope recipient")
 	}
 	var state struct {
 		Contacts []twin.Contact `json:"contacts"`

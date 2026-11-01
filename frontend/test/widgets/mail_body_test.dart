@@ -39,6 +39,8 @@ void main() {
       tester,
     ) async {
       L10n.setLocale(lang);
+      final semantics = tester.ensureSemantics();
+
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -46,6 +48,7 @@ void main() {
               child: MailBody(
                 textBody: 'Düz gövde ığüşöç',
                 htmlBody: '''
+<style>@media only screen and (max-width: 600px) { .red {width: 100%} }</style>
 <style>.red {color: #ff0000; font-weight: bold}</style>
 <p class="red">Biçimli İğüşöç</p>
 <table><tr><td>Fatura</td><td>125 TL</td></tr></table>
@@ -90,7 +93,15 @@ void main() {
       expect(find.byType(Html), findsNothing);
       expect(find.text('Düz gövde ığüşöç'), findsOneWidget);
       expect(find.text(L10n.t('mail_body_formatted')), findsOneWidget);
+      await tester.tap(find.text(L10n.t('mail_body_formatted')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('125 TL', findRichText: true), findsWidgets);
+      await tester.pumpWidget(const MaterialApp(home: MailBody(
+        textBody: 'Next message', htmlBody: '<p>Another mail</p>')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Another mail', findRichText: true), findsWidgets);
       expect(tester.takeException(), isNull);
+      semantics.dispose();
     });
   }
   tearDown(() => L10n.setLocale(MemoLocale.en));

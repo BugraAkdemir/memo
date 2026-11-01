@@ -119,6 +119,16 @@ dom.Document prepareMailHtml(String source) {
       }
     }
   }
+  // flutter_html 3.0 can throw while visiting valid but unsupported CSS
+  // directives (e.g. @media expressions). Validate with its own parser before
+  // mounting a selectable render tree; discard only the failing stylesheet.
+  for (final style in document.querySelectorAll('style').toList()) {
+    try {
+      Style.fromCss(style.text, null);
+    } catch (_) {
+      style.remove();
+    }
+  }
   return document;
 }
 

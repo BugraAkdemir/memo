@@ -3,6 +3,8 @@ package webserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"memo/internal/autonomy"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -54,7 +56,7 @@ func TestTwinHTTPMethodsLimitsAndCodes(t *testing.T) {
 func TestTwinHTTPRequiresAdminForReadsAndWrites(t *testing.T) {
 	stub := &swarmStubBridge{sessionRole: func(token string) (string, bool) { return "user", token == "user-session" }}
 	s := New(stub)
-	for _, op := range []string{"state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "contact_timeline", "check_availability", "git_project_status"} {
+	for _, op := range []string{"state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "send_action", "contact_timeline", "check_availability", "git_project_status"} {
 		req := httptest.NewRequest("POST", "/api/twin/"+op, strings.NewReader(`{}`))
 		if op == "state" || op == "activity" {
 			req.Method = "GET"
@@ -65,6 +67,28 @@ func TestTwinHTTPRequiresAdminForReadsAndWrites(t *testing.T) {
 		s.adminOnly(func(_w http.ResponseWriter, _r *http.Request) { called = true })(w, req)
 		if called || w.Code != 403 {
 			t.Fatal(op, w.Code)
+		}
+	}
+}
+
+func TestOwnerReplySendHTTPFailuresAreStableAndRedacted(t *testing.T) {
+	for _, tc := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{twin.ErrDeliveryConflict, 409, "mail_reply_not_pending"},
+		{twin.ErrSentHistory, 409, "mail_reply_sent_history"},
+		{twin.ErrDeliveryDenied, 403, "mail_reply_contact_denied"},
+		{&autonomy.BlockedError{Code: "secret_private_key"}, 403, "mail_reply_blocked"},
+		{errors.New("SMTP private transport details"), 500, "mail_reply_send_uncertain"},
+	} {
+		f := &fakeTwinBridge{err: tc.err}
+		s := New(f)
+		w := httptest.NewRecorder()
+		s.handleTwin(w, httptest.NewRequest("POST", "/api/twin/send_action", strings.NewReader(`{"id":"draft","subject":"Re: meeting","body":"edited"}`)))
+		if w.Code != tc.status || !strings.Contains(w.Body.String(), tc.code) || strings.Contains(w.Body.String(), "private transport") {
+			t.Fatalf("%v: %d %s", tc.err, w.Code, w.Body)
 		}
 	}
 }

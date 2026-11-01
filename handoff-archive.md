@@ -1,3 +1,9 @@
+# Son oturum — 2026-11-01 — Farklı gönderen
+- UID17399/yeni kişi default → takvim → gerçek Drafts PASS (~22s). 453da7f6 pending; SMTP gönderilmedi, skor yok/onay gerekir.
+- Doküman/handoff commit; kod değişmedi. Backend8090 açık: /tmp/memo-live-mail-fixed.log.
+
+---
+
 # Son oturum — 2026-11-01 — Canlı mail
 - Fenced JSON + ayrık hata nedenleri. Build/vet0; Go race71/Flutter880 PASS; eski3 info, literal0/diff PASS.
 - Gerçek mail→model→Drafts→onaylı SMTP200; kullanıcı teslim PASS. a7324752 hazırlama kaydı pending: tekrar gönderme.

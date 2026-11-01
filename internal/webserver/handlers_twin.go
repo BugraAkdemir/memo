@@ -52,7 +52,7 @@ func (s *Server) handleTwin(w http.ResponseWriter, r *http.Request) {
 		raw = b
 	}
 	switch op {
-	case "state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "contact_timeline", "check_availability", "git_project_status":
+	case "state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "send_action", "contact_timeline", "check_availability", "git_project_status":
 	default:
 		w.WriteHeader(404)
 		return
@@ -60,7 +60,18 @@ func (s *Server) handleTwin(w http.ResponseWriter, r *http.Request) {
 	result, err := bridge.CallTwin(r.Context(), op, raw)
 	if err != nil {
 		status, code := 500, "twin_failed"
+		if op == "send_action" {
+			code = "mail_reply_send_uncertain"
+		}
 		switch {
+		case errors.Is(err, twin.ErrDeliveryConflict):
+			status, code = 409, "mail_reply_not_pending"
+		case errors.Is(err, twin.ErrSentHistory):
+			status, code = 409, "mail_reply_sent_history"
+		case errors.Is(err, twin.ErrDeliveryDenied):
+			status, code = 403, "mail_reply_contact_denied"
+		case errors.As(err, new(*autonomy.BlockedError)):
+			status, code = 403, "mail_reply_blocked"
 		case errors.Is(err, twin.ErrInvalid):
 			status, code = 400, "twin_invalid"
 		case errors.Is(err, twin.ErrAliasConflict):

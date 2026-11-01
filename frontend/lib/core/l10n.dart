@@ -60,12 +60,48 @@ class L10n {
     "mail_reply_save_failed": "Yanıt modeli kaydedilemedi. Etkin bir API sağlayıcısından model seçin.",
     "mail_reply_catalog_failed": "Model listesi yenilenemedi; kayıtlı modeller kullanılabilir.",
     "mail_reply_score": "Karar skoru: {score} / 1",
+    "mail_reply_access_denied": "Yanıtları yönetmek için hesap sahibi erişimi gerekir. Oturumunu kontrol et.",
+    "mail_reply_review_send": "Taslağı incele ve gönder",
+    "auto_state_sent": "Gönderildi",
+    "auto_state_sending": "Gönderiliyor",
+    "auto_state_send_uncertain": "Gönderim doğrulanamadı",
+    "mail_reply_uncertain_help":
+        "Gönderilenler klasörünü kontrol et. Bu yanıt, mükerrer gönderimi önlemek için tekrar gönderilmez.",
+    "mail_reply_review_title": "Yanıtı incele",
+    "mail_reply_body_required": "Göndermeden önce yanıt metnini yaz.",
+    "mail_reply_send_uncertain":
+        "Gönderim doğrulanamadı. Tekrar göndermeden önce hesabının Gönderilenler klasörünü kontrol et.",
+    "mail_reply_not_pending":
+        "Bu yanıt artık gönderim beklemiyor. Listeyi yenileyerek durumunu kontrol et.",
+    "mail_reply_sent_history":
+        "Bu yanıtın daha önce gönderildiğine ilişkin kayıt var. Tekrar gönderilmedi.",
+    "mail_reply_contact_denied":
+        "Bu kişi için yanıt izni kaldırılmış. Kişi tercihlerini kontrol et.",
+    "mail_reply_blocked":
+        "Güvenlik kontrolü gönderimi engelledi. Yanıttaki hassas bilgileri kaldır.",
+    "mail_reply_from_account": "Gönderen hesap: {account}",
+    "mail_reply_recipient": "Alıcı: {recipient}",
+    "mail_reply_body_label": "Yanıt metni",
+    "mail_reply_remote_copy":
+        "Buradaki düzenlemeler gönderilecek yanıta uygulanır. Hesabının Taslaklar klasöründeki önceki kopya otomatik silinmez.",
+    "mail_reply_sending": "Gönderiliyor…",
+    "mail_inbox_tab": "Gelen kutusu",
+    "mail_replies_tab": "Yanıtlar ({n})",
+    "mail_replies_filter_pending": "Bekleyenler",
+    "mail_replies_filter_sent": "Gönderilen yanıtlar",
+    "mail_replies_filter_all": "Tüm işlemler",
+    "mail_replies_empty": "Bu görünümde yanıt yok",
+    "mail_replies_help":
+        "Yeni mailler için hazırlanan yanıtlar burada görünür. Yanıt ayarlarını üstteki menüden değiştirebilirsin.",
+    "mail_add_account": "Hesap ekle",
+    "mail_more_settings": "Mail ayarları",
+    "mail_back_to_inbox": "Gelen kutusuna dön",
     "mail_reply_score_unavailable": "Karar skoru alınamadı; kullanıcı onayında tutuldu.",
 
     'auto_voice_help': 'Çalışan yerel Whisper kullanılır; sıkıştırılmış ses için yerel ffmpeg de gerekir. Hatada buluta geçilmez. Yanıt yazarı Ayarlar → Mail ve Otonomi bölümünden seçilir; isteğe bağlı karar modeli yalnız otomatik uygunluğu puanlar.',
     'auto_state_preparing': 'Hazırlanıyor; kesilmiş işlem elle inceleme gerektirir',
     "auto_tab": "Yanıt otomasyonu",
-    "auto_stage_notice": "Karar ve mail taslakları hazırlanır. Gönderim ve uzaktan onay Adım6 gerektirir; bu kuyruk henüz göndermez. Telegram yalnız hesap sahibine açıktır. Yeni kararlar için yenileyin.",
+    "auto_stage_notice": "Mail yanıtlarını inceleyip kendin gönderebilirsin. Otomatik gönderim ve uzaktan onay henüz açık değildir. Telegram yalnız hesap sahibine açıktır.",
     "auto_enabled": "Otonom kararları hazırla",
     "auto_mail": "Gelen mailler",
     "auto_whatsapp": "Gelen WhatsApp mesajları",
@@ -78,7 +114,7 @@ class L10n {
     "mail_auto_loading": "Yanıt durumu yükleniyor…",
     "mail_auto_disabled": "E-posta yanıtlarını hazırlama kapalı.",
     "mail_auto_no_model": "Yanıt hazırlamak için Ayarlar → Mail ve Otonomi bölümünden yanıt modeli seçin.",
-    "mail_auto_delivery_notice": "Şu anda taslak ve aday hazırlanır; otomatik gönderim henüz etkin değildir.",
+    "mail_auto_delivery_notice": "Hazırlanan yanıtları Yanıtlar bölümünde inceleyip gönderebilirsin. Otomatik gönderim henüz etkin değildir.",
     "mail_auto_ready": "Yeni mailler için yanıt hazırlama açık.",
     "mail_auto_settings": "Yanıt ayarları",
     "mail_auto_activity": "{recipient} · {status}",
@@ -2895,8 +2931,8 @@ class L10n {
 
     // Mail & Digital Twin Screen
     'tab_mail': 'E-posta',
-    'mail_title': 'E-posta & Dijital İkiz Merkezi',
-    'mail_subtitle': 'Sıfır yapılandırmalı OAuth2 e-posta istemcisi, 3 katmanlı bülten/spam kalkanı ve yapısal takvim çıkarıcı',
+    'mail_title': 'E-posta',
+    'mail_subtitle': 'Gelen maillerini ve hazırlanan yanıtları tek yerden yönet.',
     'mail_connect_gmail': 'Gmail ile Bağlan',
     'mail_connect_gmail_desc': 'Tek tıkla tarayıcıdan güvenli OAuth2 (XOAUTH2) girişi',
     'mail_connect_outlook': 'Outlook / Hotmail Bağla',
@@ -2973,12 +3009,48 @@ class L10n {
     "mail_reply_save_failed": "Could not save the reply model. Select a model from an enabled API provider.",
     "mail_reply_catalog_failed": "Could not refresh models; saved models are still available.",
     "mail_reply_score": "Decision score: {score} / 1",
+    "mail_reply_access_denied": "Owner access is required to manage replies. Check your signed-in account.",
+    "mail_reply_review_send": "Review and send",
+    "auto_state_sent": "Sent",
+    "auto_state_sending": "Sending",
+    "auto_state_send_uncertain": "Delivery unconfirmed",
+    "mail_reply_uncertain_help":
+        "Check your Sent folder. This reply cannot be sent again, to prevent duplicates.",
+    "mail_reply_review_title": "Review reply",
+    "mail_reply_body_required": "Write a reply before sending.",
+    "mail_reply_send_uncertain":
+        "Delivery could not be confirmed. Check your account’s Sent folder before sending again.",
+    "mail_reply_not_pending":
+        "This reply is no longer waiting to be sent. Refresh the list to check its status.",
+    "mail_reply_sent_history":
+        "A matching reply was already recorded as sent. It was not sent again.",
+    "mail_reply_contact_denied":
+        "Reply permission for this contact was removed. Check the contact preferences.",
+    "mail_reply_blocked":
+        "The security check blocked delivery. Remove sensitive information from the reply.",
+    "mail_reply_from_account": "From account: {account}",
+    "mail_reply_recipient": "To: {recipient}",
+    "mail_reply_body_label": "Reply text",
+    "mail_reply_remote_copy":
+        "Edits here apply to the outgoing reply. The previous copy in your account’s Drafts folder is not removed automatically.",
+    "mail_reply_sending": "Sending…",
+    "mail_inbox_tab": "Inbox",
+    "mail_replies_tab": "Replies ({n})",
+    "mail_replies_filter_pending": "Pending",
+    "mail_replies_filter_sent": "Sent replies",
+    "mail_replies_filter_all": "All activity",
+    "mail_replies_empty": "No replies in this view",
+    "mail_replies_help":
+        "Replies prepared for new emails appear here. Change reply settings from the menu above.",
+    "mail_add_account": "Add account",
+    "mail_more_settings": "Mail settings",
+    "mail_back_to_inbox": "Back to inbox",
     "mail_reply_score_unavailable": "Decision score unavailable; kept for owner approval.",
 
     'auto_voice_help': 'Uses running local Whisper; compressed voice also needs local ffmpeg. Failures never fall back to cloud. Select the reply writer under Settings → Mail and Autonomy; the optional decision model only scores automatic eligibility.',
     'auto_state_preparing': 'Preparing; interrupted work requires manual review',
     "auto_tab": "Reply automation",
-    "auto_stage_notice": "Prepares decisions and mail drafts. Delivery and remote approval require Step 6; this queue does not send yet. Telegram stays owner-only. Refresh to see new decisions.",
+    "auto_stage_notice": "Review and send mail replies yourself. Automatic delivery and remote approval are not active yet. Telegram stays owner-only.",
     "auto_enabled": "Prepare autonomous decisions",
     "auto_mail": "Incoming mail",
     "auto_whatsapp": "Incoming WhatsApp messages",
@@ -2991,7 +3063,7 @@ class L10n {
     "mail_auto_loading": "Loading reply status…",
     "mail_auto_disabled": "Email reply preparation is off.",
     "mail_auto_no_model": "Select a reply model in Settings → Mail and Autonomy to prepare replies.",
-    "mail_auto_delivery_notice": "Currently prepares drafts and candidates; automatic delivery is not active yet.",
+    "mail_auto_delivery_notice": "Review and send prepared replies in Replies. Automatic delivery is not active yet.",
     "mail_auto_ready": "Reply preparation is enabled for new mail.",
     "mail_auto_settings": "Reply settings",
     "mail_auto_activity": "{recipient} · {status}",
@@ -5761,8 +5833,8 @@ class L10n {
 
     // Mail & Digital Twin Screen
     'tab_mail': 'Mail',
-    'mail_title': 'Mail & Digital Twin Hub',
-    'mail_subtitle': 'Zero-config OAuth2 mail client, 3-layer newsletter/spam shield, and structured calendar extractor',
+    'mail_title': 'Mail',
+    'mail_subtitle': 'Manage your inbox and prepared replies in one place.',
     'mail_connect_gmail': 'Connect Gmail',
     'mail_connect_gmail_desc': 'One-click secure browser OAuth2 (XOAUTH2) sign-in',
     'mail_connect_outlook': 'Connect Outlook / Hotmail',

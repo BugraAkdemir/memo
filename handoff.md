@@ -1,15 +1,14 @@
 # Handoff — güncel durum
 
-> Hedef <10 KB. Ayrıntılar `handoff-archive.md`: yalnız hedefli ara. Açık işleri ve kalıcı uyarıları koru.
+> Eski ayrıntılar: `handoff-archive.md`; yalnız hedefli ara.
 
 ## Açık işler
 
-**Dijital İkiz / Mail — Adım5 teknik hazır**
-- a7324752 test yanıtı SMTP ile gönderildi; hazırlama kaydı pending. Tekrar gönderme.
-- Adım5 karar/takvim/Drafts, olay/UID/limit, panel/iptal: docs/DIGITAL_TWIN_AUTONOMY.md. Varsayılan kapalı; yanıt modeli gerekir. Ses: yerel Whisper/ffmpeg; bulut yok. Telegram sahip.
-- 1 Kasım: yanıt yazarı Ayarlar → Mail ve Otonomi; karar0–1, yoksa onay. Canlı IMAP/model/Drafts/onaylı SMTP/teslim kullanıcı PASS.
-- Adım5 hazırlar; grace_period_auto GÖNDERMEZ. Adım6 gönderim/uzaktan onay başlamadı; gönderimde ayar/kişi/DLP yeniden denetlenmeli. Whisper/WhatsApp kabulü açık. İptal yüklenmiş taslak/takvimi silmez; kesinti/hata tekrar edilmez.
-- Adım4 kişi/üslup/Git/doluluk ve Adım3 görünüm/charset/sayaç/göreli tarih kabulü açık: docs/DIGITAL_TWIN_CONTACTS.md + docs/MAIL_SECURITY.md. İsimden eşleme ve eski mail/backfill yok. Mail teslimi/saldırı engeli kullanıcıda PASS; izin aynı. Sonraki adıma geri bildirimle geç.
+**Dijital İkiz / Mail**
+- a7324752 SMTP gönderildi/eski kayıt pending: TEKRAR GÖNDERME. Yeni akış geçmiş kontrolüyle engeller. 453da7f6 farklı gönderen pending/Drafts; SMTP yok, skor yok/onay gerekir.
+- Adım5 teknik hazır: docs/DIGITAL_TWIN_AUTONOMY.md (karar/takvim/Drafts/UID/limit/iptal). Varsayılan kapalı, yanıt modeli gerekir. Ses yerel Whisper/ffmpeg; bulut yok. Telegram sahip. Gerçek IMAP/model/Drafts/onaylı SMTP/teslim kullanıcı PASS.
+- Mail → Yanıtlar manuel incele/düzenle/gönder: docs/MAIL_REPLY_REVIEW.md. Genel/grace_period_auto GÖNDERMEZ; otomatik/uzaktan Adım6 açık. WhatsApp/ses cihaz kabulü açık; iptal uzak taslak/takvimi silmez; kesinti/hata tekrar edilmez.
+- Adım4 kişi/üslup/Git/doluluk, Adım3 görünüm/charset/sayaç/göreli tarih cihaz kabulü açık: docs/DIGITAL_TWIN_CONTACTS.md + docs/MAIL_SECURITY.md. İsimden eşleme/backfill yok. Saldırı engeli kullanıcı PASS; izin aynı. Sonraki adım kullanıcı geri bildirimiyle.
 
 **Performans benchmark — kullanıcı duraklattı (29 Ekim)**
 - docs/PERFORMANCE_BENCHMARK_CHECKPOINT.md + data/performance-benchmark/PAUSED.json: son koşuda yalnız aşama1 kayıtlı, data aşama2. Kalibrasyon/resume/aşama2–3/rapor/doğrulama açık. Runner baştan siler; körlemesine çalıştırma.
@@ -67,6 +66,7 @@
 
 ---
 
-# Son oturum — 2026-11-01 — Farklı gönderen
-- UID17399/yeni kişi default → takvim → gerçek Drafts PASS (~22s). 453da7f6 pending; SMTP gönderilmedi, skor yok/onay gerekir.
-- Doküman/handoff commit; kod değişmedi. Backend8090 açık: /tmp/memo-live-mail-fixed.log.
+# Son oturum — 2 Kasım — Mail yanıtları
+- Manuel taslak gönderimi/sekme tasarımı: docs/MAIL_REPLY_REVIEW.md, docs/TWIN_UI_DESIGN.md.
+- Go build/vet0, race71 PASS; SMTP/UI6/görsel3 PASS. Flutter886 PASS; analyze eski3 info, UI literal0.
+- feat(mail) commit; canlı SMTP yok; backend8090/UI eski; kullanıcı değişiklikleri ayrı.

@@ -75,6 +75,9 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 	if !tools.CommunicationAllowed(ctx) {
 		return nil, autonomy.ErrContactScope
 	}
+	if operation == "send_action" {
+		return a.sendTwinAction(ctx, raw)
+	}
 	a.twinMu.RLock()
 	defer a.twinMu.RUnlock()
 	s := a.twinStore

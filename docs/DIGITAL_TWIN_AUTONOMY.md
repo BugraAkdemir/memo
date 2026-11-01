@@ -4,6 +4,11 @@ Backend ve Flutter aynı değişiklikte bağlanır. Bu adım **hazırlama** moto
 gönderim zamanlayıcısı, WhatsApp/Telegram uzaktan onayı ve çok kanallı bildirim
 köprüsü Adım6'dır. Kuyrukta `grace_period_auto` olması bu sürümde mesaj göndermez.
 
+
+**2 Kasım eklemesi:** Mail → Yanıtlar bölümünde taslağı inceleyip düzenleyerek
+kendin gönderebilirsin. Bu, kuyruktaki adayları otomatik göndermez. Manuel
+onay/gönderim sözleşmesi ve sınırlamaları: [MAIL_REPLY_REVIEW.md](MAIL_REPLY_REVIEW.md).
+
 ## Kullanım ve cihaz kabulü
 
 1. Mail ekranından **Dijital İkiz → Otonomi** sekmesini açın. İlk durumda motor,

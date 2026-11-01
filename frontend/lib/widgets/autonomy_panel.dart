@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/l10n.dart';
+import 'mail_reply_draft.dart';
 
 /// Reply preparation settings and owner-reviewable activity.
 class AutonomyPanel extends StatelessWidget {
@@ -7,6 +8,7 @@ class AutonomyPanel extends StatelessWidget {
   final Map<String, dynamic> replyModel;
   final List<Map<String, dynamic>> actions;
   final bool busy;
+  final VoidCallback? onRefresh;
   final ValueChanged<Map<String, dynamic>> onSettings;
   final ValueChanged<String> onCancel;
   const AutonomyPanel({
@@ -15,6 +17,7 @@ class AutonomyPanel extends StatelessWidget {
     this.replyModel = const {},
     required this.actions,
     required this.busy,
+    this.onRefresh,
     required this.onSettings,
     required this.onCancel,
   });
@@ -272,7 +275,20 @@ class AutonomyPanel extends StatelessWidget {
               ],
             ),
           ),
-        for (final a in actions) _action(context, a),
+        for (final a in actions)
+          if (a['channel'] == 'mail' &&
+              (a['body'] is String && (a['body'] as String).isNotEmpty))
+            MailReplyDraftCard(
+              action: a,
+              onReview: busy
+                  ? null
+                  : () => showMailReplyDraft(context, a, onChanged: onRefresh),
+              onCancel: a['state'] == 'pending' && !busy
+                  ? () => onCancel(a['id'] as String)
+                  : null,
+            )
+          else
+            _action(context, a),
       ],
     );
   }
@@ -349,10 +365,10 @@ class AutonomyPanel extends StatelessWidget {
 
   String _reason(dynamic code) => L10n.t(switch (code) {
     'reply_timeout' => 'auto_reason_timeout',
-                    'reply_cancelled' => 'auto_reason_cancelled',
-                    'reply_invalid_response' => 'auto_reason_invalid_response',
-                    'reply_provider_failed' => 'auto_reason_provider_failed',
-                    'drafted' => 'auto_reason_drafted',
+    'reply_cancelled' => 'auto_reason_cancelled',
+    'reply_invalid_response' => 'auto_reason_invalid_response',
+    'reply_provider_failed' => 'auto_reason_provider_failed',
+    'drafted' => 'auto_reason_drafted',
     'stale_message' => 'auto_reason_stale',
     'contact_manual' => 'auto_reason_manual',
     'contact_never' => 'auto_reason_never',

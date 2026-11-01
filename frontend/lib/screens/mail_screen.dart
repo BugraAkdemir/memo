@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -12,6 +13,7 @@ import '../models/mail.dart';
 import '../widgets/mail_security_dialog.dart';
 import '../widgets/twin_dialog.dart';
 import '../widgets/mail_body.dart';
+import '../widgets/mail_reply_draft.dart';
 import '../providers/chat_provider.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/gate_guard.dart';
@@ -33,7 +35,10 @@ class _MailScreenState extends ConsumerState<MailScreen>
   bool _activityLoading = false;
   Map<String, dynamic>? _activity;
   bool _activityFailed = false;
+  bool _activityDenied = false;
   bool _statsReloading = false;
+  int _section = 0;
+  String _replyFilter = 'pending';
 
   @override
   void initState() {
@@ -66,7 +71,8 @@ class _MailScreenState extends ConsumerState<MailScreen>
       (_) => _reloadStats(),
     );
     _activityTimer = Timer.periodic(
-      const Duration(seconds: 3), (_) => _reloadActivity(),
+      const Duration(seconds: 3),
+      (_) => _reloadActivity(),
     );
     Future.microtask(_reloadActivity);
     Future.microtask(_reloadStats);
@@ -101,10 +107,18 @@ class _MailScreenState extends ConsumerState<MailScreen>
         setState(() {
           _activity = activity;
           _activityFailed = false;
+          _activityDenied = false;
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _activityFailed = true);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _activityFailed = true;
+          _activityDenied =
+              error is DioException && error.response?.statusCode == 403;
+          if (_activityDenied) _activity = null;
+        });
+      }
     } finally {
       _activityLoading = false;
     }
@@ -113,7 +127,10 @@ class _MailScreenState extends ConsumerState<MailScreen>
   Future<void> _openReplySettings({String? contactId}) async {
     await showDialog<void>(
       context: context,
-      builder: (_) => TwinDialog(initialTab: contactId == null ? 3 : 0, initialContactId: contactId),
+      builder: (_) => TwinDialog(
+        initialTab: contactId == null ? 3 : 0,
+        initialContactId: contactId,
+      ),
     );
     if (mounted) await _reloadActivity();
   }
@@ -130,19 +147,26 @@ class _MailScreenState extends ConsumerState<MailScreen>
         )
         .toList();
     final rawSender = _selectedDetail?.from.trim().toLowerCase() ?? '';
-    final bracketAddress = RegExp(r'<([^<>]+)>').firstMatch(rawSender)?.group(1);
+    final bracketAddress = RegExp(
+      r'<([^<>]+)>',
+    ).firstMatch(rawSender)?.group(1);
     final sender = (bracketAddress ?? rawSender).trim();
-    final contacts = (_activity?['mail_contacts'] as List? ?? const []).whereType<Map>();
+    final contacts = (_activity?['mail_contacts'] as List? ?? const [])
+        .whereType<Map>();
     Map? selectedContact;
     for (final c in contacts) {
-      if ((c['addresses'] as List? ?? const []).any((a) => '$a'.toLowerCase() == sender)) {
+      if ((c['addresses'] as List? ?? const []).any(
+        (a) => '$a'.toLowerCase() == sender,
+      )) {
         selectedContact = c;
         break;
       }
     }
     final contactBlocked = selectedContact?['policy'] == 'never';
-    final contactManual = selectedContact?['policy'] == 'default' &&
-        settings is Map && settings['mode'] == 'manual';
+    final contactManual =
+        selectedContact?['policy'] == 'default' &&
+        settings is Map &&
+        settings['mode'] == 'manual';
     // Keep concurrent generation visible even when a newer mail has completed.
     final preparing = actions
         .where((a) => a['state'] == 'preparing')
@@ -150,7 +174,9 @@ class _MailScreenState extends ConsumerState<MailScreen>
         .toList();
     final visible = preparing.isNotEmpty ? preparing : actions.take(1).toList();
     final status = _activityFailed
-        ? 'mail_auto_unavailable'
+        ? (_activityDenied
+              ? 'mail_reply_access_denied'
+              : 'mail_auto_unavailable')
         : settings is! Map
         ? 'mail_auto_loading'
         : settings['enabled'] != true || settings['mail'] != true
@@ -161,70 +187,100 @@ class _MailScreenState extends ConsumerState<MailScreen>
         ? 'mail_auto_no_model'
         : 'mail_auto_ready';
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 170),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.auto_awesome, size: 18),
-                const SizedBox(width: 8),
-                Expanded(child: Text(L10n.t(status))),
-                TextButton(
-                  onPressed: () => _openReplySettings(),
-                  child: Text(L10n.t('mail_auto_settings')),
+                Row(
+                  children: [
+                    const Icon(Icons.auto_awesome, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(L10n.t(status))),
+                    TextButton(
+                      onPressed: () => _openReplySettings(),
+                      child: Text(L10n.t('mail_auto_settings')),
+                    ),
+                  ],
                 ),
+                if (!_activityFailed && (contactBlocked || contactManual))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          L10n.t(
+                            contactBlocked
+                                ? 'mail_contact_never'
+                                : 'mail_contact_manual',
+                          ),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => _openReplySettings(
+                            contactId: selectedContact?['id'] as String?,
+                          ),
+                          icon: const Icon(Icons.person_outline, size: 18),
+                          label: Text(L10n.t('mail_contact_edit')),
+                        ),
+                      ],
+                    ),
+                  ),
+                for (final a in visible) ...[
+                  if (a['state'] == 'preparing')
+                    const LinearProgressIndicator(),
+                  Text(
+                    L10n.t('mail_auto_activity', {
+                      'recipient': '${a['recipient'] ?? ''}',
+                      'status': L10n.t(
+                        a['state'] == 'preparing'
+                            ? 'mail_auto_stage_${a['stage'] ?? 'analyzing'}'
+                            : 'auto_state_${a['state']}',
+                      ),
+                    }),
+                  ),
+                  if (a['state'] == 'preparing')
+                    Text(L10n.t('mail_auto_interrupted')),
+                  if (a['draft_saved'] == true) Text(L10n.t('auto_saved')),
+                  if (a['mode'] == 'grace_period_auto')
+                    Text(L10n.t('auto_candidate')),
+                  if (!const [
+                    'preparing',
+                    'pending',
+                    'sent',
+                    'sending',
+                    'send_uncertain',
+                  ].contains(a['state']))
+                    Text(
+                      L10n.t(switch (a['reason']) {
+                        'reply_timeout' => 'auto_reason_timeout',
+                        'reply_cancelled' => 'auto_reason_cancelled',
+                        'reply_invalid_response' =>
+                          'auto_reason_invalid_response',
+                        'reply_provider_failed' =>
+                          'auto_reason_provider_failed',
+                        'drafted' => 'auto_reason_drafted',
+                        'contact_manual' => 'auto_reason_manual',
+                        'contact_never' => 'auto_reason_never',
+                        'automated_sender' => 'auto_reason_automated',
+                        'no_action' => 'auto_reason_none',
+                        'stale_message' => 'auto_reason_stale',
+                        'draft_upload_failed' => 'auto_reason_upload',
+                        _ => 'auto_reason_review',
+                      }),
+                    ),
+                ],
               ],
             ),
-            if (status == 'mail_auto_ready') Text(L10n.t('mail_auto_delivery_notice')),
-            if (!_activityFailed && (contactBlocked || contactManual))
-              Padding(padding: const EdgeInsets.only(top: 8), child: Wrap(
-                spacing: 12, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(L10n.t(contactBlocked ? 'mail_contact_never' : 'mail_contact_manual'),
-                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                  TextButton.icon(onPressed: () => _openReplySettings(contactId: selectedContact?['id'] as String?),
-                    icon: const Icon(Icons.person_outline, size: 18),
-                    label: Text(L10n.t('mail_contact_edit'))),
-                ],
-              )),
-            for (final a in visible) ...[
-              if (a['state'] == 'preparing') const LinearProgressIndicator(),
-              Text(
-                L10n.t('mail_auto_activity', {
-                  'recipient': '${a['recipient'] ?? ''}',
-                  'status': L10n.t(
-                    a['state'] == 'preparing'
-                        ? 'mail_auto_stage_${a['stage'] ?? 'analyzing'}'
-                        : 'auto_state_${a['state']}',
-                  ),
-                }),
-              ),
-              if (a['state'] == 'preparing')
-                Text(L10n.t('mail_auto_interrupted')),
-              if (a['draft_saved'] == true) Text(L10n.t('auto_saved')),
-              if (a['mode'] == 'grace_period_auto')
-                Text(L10n.t('auto_candidate')),
-              if (a['state'] != 'preparing')
-                Text(
-                  L10n.t(switch (a['reason']) {
-                    'reply_timeout' => 'auto_reason_timeout',
-                    'reply_cancelled' => 'auto_reason_cancelled',
-                    'reply_invalid_response' => 'auto_reason_invalid_response',
-                    'reply_provider_failed' => 'auto_reason_provider_failed',
-                    'drafted' => 'auto_reason_drafted',
-                    'contact_manual' => 'auto_reason_manual',
-                    'contact_never' => 'auto_reason_never',
-                    'automated_sender' => 'auto_reason_automated',
-                    'no_action' => 'auto_reason_none',
-                    'stale_message' => 'auto_reason_stale',
-                    'draft_upload_failed' => 'auto_reason_upload',
-                    _ => 'auto_reason_review',
-                  }),
-                ),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -272,10 +328,9 @@ class _MailScreenState extends ConsumerState<MailScreen>
       _isSearchActive = false;
     });
     try {
-      final res = await ref.read(apiClientProvider).getMailInbox(
-            accountId,
-            limit: 30,
-          );
+      final res = await ref
+          .read(apiClientProvider)
+          .getMailInbox(accountId, limit: 30);
       if (!mounted) return;
       setState(() {
         _messages = res.messages;
@@ -302,11 +357,9 @@ class _MailScreenState extends ConsumerState<MailScreen>
       _isSearchActive = true;
     });
     try {
-      final list = await ref.read(apiClientProvider).searchMail(
-            accountId,
-            q,
-            limit: 30,
-          );
+      final list = await ref
+          .read(apiClientProvider)
+          .searchMail(accountId, q, limit: 30);
       if (!mounted) return;
       setState(() {
         _messages = list;
@@ -328,10 +381,9 @@ class _MailScreenState extends ConsumerState<MailScreen>
       _detailError = null;
     });
     try {
-      final detail = await ref.read(apiClientProvider).getMailMessage(
-            accountId,
-            seqNum,
-          );
+      final detail = await ref
+          .read(apiClientProvider)
+          .getMailMessage(accountId, seqNum);
       if (!mounted) return;
       setState(() {
         _selectedDetail = detail;
@@ -474,15 +526,15 @@ class _MailScreenState extends ConsumerState<MailScreen>
 
     return Container(
       color: c.bgApp,
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+      padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 650 ? 12 : 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildHeader(c, statsAsync.valueOrNull, activeAccountId),
-          _replyActivity(activeAccountId),
-          const SizedBox(height: 16),
-          _buildConnectCardsRow(c),
-          const SizedBox(height: 16),
+          if (_section == 0) _replyActivity(activeAccountId),
+          const SizedBox(height: 12),
+          _mailSections(activeAccountId),
+          const SizedBox(height: 12),
           Expanded(
             child: accountsAsync.when(
               loading: () => const Center(
@@ -490,10 +542,9 @@ class _MailScreenState extends ConsumerState<MailScreen>
               ),
               error: (err, _) => Center(
                 child: Text(
-                  L10n.t(
-                    'mail_error_prefix',
-                    {'err': FriendlyError.describeGeneric(err)},
-                  ),
+                  L10n.t('mail_error_prefix', {
+                    'err': FriendlyError.describeGeneric(err),
+                  }),
                   style: const TextStyle(color: MemoTheme.red),
                 ),
               ),
@@ -502,6 +553,20 @@ class _MailScreenState extends ConsumerState<MailScreen>
                   return _buildEmptyAccountsState(c);
                 }
                 final currentId = activeAccountId ?? acctList.first.id;
+                if (_section == 1) {
+                  return Column(
+                    children: [
+                      _buildAccountBarAndSearch(
+                        c,
+                        acctList,
+                        currentId,
+                        showSearch: false,
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(child: _buildReplyList(currentId)),
+                    ],
+                  );
+                }
                 return _buildWorkspace(c, acctList, currentId);
               },
             ),
@@ -511,117 +576,330 @@ class _MailScreenState extends ConsumerState<MailScreen>
     );
   }
 
+  List<Map<String, dynamic>> _accountActions(String? accountId) =>
+      (_activity?['actions'] as List? ?? const [])
+          .whereType<Map>()
+          .where(
+            (a) =>
+                a['channel'] == 'mail' &&
+                (accountId == null || a['account'] == accountId),
+          )
+          .map((a) => Map<String, dynamic>.from(a))
+          .toList();
+
+  Widget _mailSections(String? accountId) {
+    final pending = _accountActions(
+      accountId,
+    ).where((a) => a['state'] == 'pending').length;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        ChoiceChip(
+          selected: _section == 0,
+          avatar: const Icon(Icons.inbox_outlined, size: 18),
+          label: Text(L10n.t('mail_inbox_tab')),
+          onSelected: (_) => setState(() => _section = 0),
+        ),
+        ChoiceChip(
+          selected: _section == 1,
+          avatar: const Icon(Icons.drafts_outlined, size: 18),
+          label: Text(L10n.t('mail_replies_tab', {'n': '$pending'})),
+          onSelected: (_) => setState(() => _section = 1),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReplyList(String accountId) {
+    final all = _accountActions(accountId);
+    final actions = all
+        .where(
+          (a) =>
+              _replyFilter == 'all' ||
+              (_replyFilter == 'sent'
+                  ? a['state'] == 'sent'
+                  : !const [
+                      'sent',
+                      'cancelled',
+                      'skipped',
+                      'blocked',
+                    ].contains(a['state'])),
+        )
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final filter in ['pending', 'sent', 'all'])
+              ChoiceChip(
+                label: Text(L10n.t('mail_replies_filter_$filter')),
+                selected: _replyFilter == filter,
+                onSelected: (_) => setState(() => _replyFilter = filter),
+              ),
+            IconButton(
+              tooltip: L10n.t('refresh'),
+              onPressed: _activityLoading ? null : _reloadActivity,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_activityFailed)
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              L10n.t(
+                _activityDenied
+                    ? 'mail_reply_access_denied'
+                    : 'mail_auto_unavailable',
+              ),
+            ),
+          ),
+        Expanded(
+          child: _activity == null && !_activityFailed
+              ? const Center(child: CircularProgressIndicator())
+              : actions.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.drafts_outlined, size: 40),
+                        const SizedBox(height: 12),
+                        Text(
+                          L10n.t('mail_replies_empty'),
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          L10n.t('mail_replies_help'),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView(
+                  children: [
+                    for (final action in actions)
+                      MailReplyDraftCard(
+                        action: action,
+                        onReview: () => showMailReplyDraft(
+                          context,
+                          action,
+                          onChanged: _reloadActivity,
+                        ),
+                        onCancel: action['state'] == 'pending'
+                            ? () => _cancelReply(action['id'] as String)
+                            : null,
+                      ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _cancelReply(String id) async {
+    try {
+      await ref.read(apiClientProvider).callTwin('cancel_action', {'id': id});
+    } catch (_) {
+      if (mounted) _toast(L10n.t('twin_failed'), isError: true);
+    }
+    if (mounted) await _reloadActivity();
+  }
+
+  Future<void> _addAccount() async {
+    final provider = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(L10n.t('mail_add_account')),
+        children: [
+          for (final type in ['google', 'microsoft', 'custom'])
+            SimpleDialogOption(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+              onPressed: () => Navigator.pop(context, type),
+              child: Text(
+                L10n.t(
+                  type == 'google'
+                      ? 'mail_connect_gmail'
+                      : type == 'microsoft'
+                      ? 'mail_connect_outlook'
+                      : 'mail_connect_custom',
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || provider == null) return;
+    if (provider == 'custom') {
+      await _openCustomConnectDialog();
+    } else {
+      await _openOAuthConnectDialog(provider);
+    }
+  }
+
   Widget _buildHeader(
     ThemeColors c,
     MailWatcherStats? stats,
     String? activeAccountId,
   ) {
-    return Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 12,
-      runSpacing: 12,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Row(
           children: [
-            Text(
-              L10n.t('mail_title'),
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: c.textMain,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    L10n.t('mail_title'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: c.textMain,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    L10n.t('mail_subtitle'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: c.textDim),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              L10n.t('mail_subtitle'),
-              style: TextStyle(fontSize: 13, color: c.textDim),
-            ),
-          ],
-        ),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            if (stats != null) ...[
-              _StatBadge(
-                icon: Icons.fact_check_outlined,
-                label: L10n.t(
-                  'mail_stats_evaluated',
-                  {'n': '${stats.totalEvaluated}'},
-                ),
-                color: c.textSecondary,
-              ),
-              _StatBadge(
-                icon: Icons.shield_outlined,
-                label: L10n.t(
-                  'mail_stats_blocked',
-                  {'n': '${stats.droppedMarketing}'},
-                ),
-                color: MemoTheme.warningOrange,
-              ),
-              _StatBadge(
-                icon: Icons.psychology_outlined,
-                label: L10n.t(
-                  'mail_stats_indexed',
-                  {'n': '${stats.indexedInRag}'},
-                ),
-                color: MemoTheme.green,
-              ),
-              _StatBadge(
-                icon: Icons.event_available_outlined,
-                label: L10n.t(
-                  'mail_stats_calendar',
-                  {'n': '${stats.calendarExtracted}'},
-                ),
-                color: MemoTheme.accent,
-              ),
-            ],
-            if (stats != null && stats.securityBlocked > 0)
-              Tooltip(
-                message: mailSecurityReason(stats.lastSecurityReason),
-                child: _StatBadge(
-                  icon: Icons.gpp_bad_outlined,
-                  label: L10n.t('mail_stats_security', {'n': '${stats.securityBlocked}'}),
-                  color: MemoTheme.warningOrange,
-                ),
-              ),
-            OutlinedButton.icon(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => const MailSecurityDialog(),
-              ),
-              icon: const Icon(Icons.security_outlined, size: 16),
-              label: Text(L10n.t('mail_security_title')),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => showDialog<void>(context: context, builder: (_) => const TwinDialog()),
-              icon: const Icon(Icons.people_outline, size: 16),
-              label: Text(L10n.t('twin_title')),
-            ),
-            OutlinedButton.icon(
+            IconButton(
+              tooltip: L10n.t(_syncing ? 'mail_syncing' : 'mail_sync_now'),
               onPressed: _syncing ? null : () => _triggerSync(activeAccountId),
               icon: _syncing
                   ? const SizedBox(
-                      width: 14,
-                      height: 14,
+                      width: 18,
+                      height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.sync, size: 16),
-              label: Text(
-                L10n.t(_syncing ? 'mail_syncing' : 'mail_sync_now'),
-              ),
+                  : const Icon(Icons.sync),
+            ),
+            IconButton(
+              tooltip: L10n.t('mail_add_account'),
+              onPressed: _addAccount,
+              icon: const Icon(Icons.person_add_outlined),
+            ),
+            PopupMenuButton<String>(
+              tooltip: L10n.t('mail_more_settings'),
+              icon: const Icon(Icons.more_horiz),
+              onSelected: (value) {
+                if (value == 'replies') {
+                  _openReplySettings();
+                } else if (value == 'contacts') {
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => const TwinDialog(),
+                  );
+                } else {
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => const MailSecurityDialog(),
+                  );
+                }
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'replies',
+                  child: Text(L10n.t('mail_auto_settings')),
+                ),
+                PopupMenuItem(
+                  value: 'contacts',
+                  child: Text(L10n.t('twin_contacts_tab')),
+                ),
+                PopupMenuItem(
+                  value: 'security',
+                  child: Text(L10n.t('mail_security_title')),
+                ),
+              ],
             ),
             if (activeAccountId != null && activeAccountId.isNotEmpty)
-              ElevatedButton.icon(
-                onPressed: () => _openComposeDialog(accountId: activeAccountId),
-                icon: const Icon(Icons.edit_outlined, size: 16),
-                label: Text(L10n.t('mail_compose')),
-              ),
+              if (MediaQuery.sizeOf(context).width < 650)
+                IconButton.filled(
+                  tooltip: L10n.t('mail_compose'),
+                  onPressed: () =>
+                      _openComposeDialog(accountId: activeAccountId),
+                  icon: const Icon(Icons.edit_outlined),
+                )
+              else
+                FilledButton.icon(
+                  onPressed: () =>
+                      _openComposeDialog(accountId: activeAccountId),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: Text(L10n.t('mail_compose')),
+                ),
           ],
         ),
+        if (stats != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _StatBadge(
+                    icon: Icons.fact_check_outlined,
+                    label: L10n.t('mail_stats_evaluated', {
+                      'n': '${stats.totalEvaluated}',
+                    }),
+                    color: c.textSecondary,
+                  ),
+                  const SizedBox(width: 8),
+                  _StatBadge(
+                    icon: Icons.shield_outlined,
+                    label: L10n.t('mail_stats_blocked', {
+                      'n': '${stats.droppedMarketing}',
+                    }),
+                    color: MemoTheme.warningOrange,
+                  ),
+                  const SizedBox(width: 8),
+                  _StatBadge(
+                    icon: Icons.psychology_outlined,
+                    label: L10n.t('mail_stats_indexed', {
+                      'n': '${stats.indexedInRag}',
+                    }),
+                    color: MemoTheme.green,
+                  ),
+                  const SizedBox(width: 8),
+                  _StatBadge(
+                    icon: Icons.event_available_outlined,
+                    label: L10n.t('mail_stats_calendar', {
+                      'n': '${stats.calendarExtracted}',
+                    }),
+                    color: MemoTheme.accent,
+                  ),
+                  if (stats.securityBlocked > 0) ...[
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: mailSecurityReason(stats.lastSecurityReason),
+                      child: _StatBadge(
+                        icon: Icons.gpp_bad_outlined,
+                        label: L10n.t('mail_stats_security', {
+                          'n': '${stats.securityBlocked}',
+                        }),
+                        color: MemoTheme.warningOrange,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -681,6 +959,15 @@ class _MailScreenState extends ConsumerState<MailScreen>
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 14, color: c.textSecondary),
           ),
+          const SizedBox(height: 20),
+          LayoutBuilder(
+            builder: (context, constraints) => constraints.maxWidth > 650
+                ? _buildConnectCardsRow(c)
+                : FilledButton(
+                    onPressed: _addAccount,
+                    child: Text(L10n.t('mail_add_account')),
+                  ),
+          ),
         ],
       ),
     );
@@ -697,18 +984,44 @@ class _MailScreenState extends ConsumerState<MailScreen>
         _buildAccountBarAndSearch(c, accounts, activeAccountId),
         const SizedBox(height: 12),
         Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: 360,
-                child: _buildInboxListPane(c, activeAccountId),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildMessageDetailPane(c, activeAccountId),
-              ),
-            ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 850) {
+                if (_selectedSeqNum == null) {
+                  return _buildInboxListPane(c, activeAccountId);
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => setState(() {
+                          _selectedSeqNum = null;
+                          _selectedDetail = null;
+                        }),
+                        icon: const Icon(Icons.arrow_back, size: 18),
+                        label: Text(L10n.t('mail_back_to_inbox')),
+                      ),
+                    ),
+                    Expanded(
+                      child: _buildMessageDetailPane(c, activeAccountId),
+                    ),
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: (constraints.maxWidth * .32).clamp(280.0, 360.0),
+                    child: _buildInboxListPane(c, activeAccountId),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildMessageDetailPane(c, activeAccountId)),
+                ],
+              );
+            },
           ),
         ),
       ],
@@ -718,8 +1031,9 @@ class _MailScreenState extends ConsumerState<MailScreen>
   Widget _buildAccountBarAndSearch(
     ThemeColors c,
     List<MailAccount> accounts,
-    String activeAccountId,
-  ) {
+    String activeAccountId, {
+    bool showSearch = true,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -727,81 +1041,100 @@ class _MailScreenState extends ConsumerState<MailScreen>
         borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
         border: Border.all(color: c.borderSoft),
       ),
-      child: Row(
-        children: [
-          Text(
-            L10n.t('mail_connected_accounts'),
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: c.textDim,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: accounts.map((acct) {
-                  final selected = acct.id == activeAccountId;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: InputChip(
-                      selected: selected,
-                      selectedColor: MemoTheme.accentMuted,
-                      label: Text(
-                        acct.email,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight:
-                              selected ? FontWeight.w600 : FontWeight.w400,
-                          color: selected ? MemoTheme.accent : c.textMain,
-                        ),
-                      ),
-                      onSelected: (_) {
-                        ref.read(activeMailAccountIdProvider.notifier).state =
-                            acct.id;
-                      },
-                      onDeleted: () => _confirmRemoveAccount(acct),
-                      deleteButtonTooltipMessage: L10n.t('mail_remove_account'),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 260,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 650;
+          final search = SizedBox(
+            width: compact ? double.infinity : 260,
             child: TextField(
               controller: _searchController,
               style: TextStyle(fontSize: 13, color: c.textMain),
               decoration: InputDecoration(
                 isDense: true,
-                hintText: L10n.t('mail_search_hint'),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
+                hintText: L10n.t("mail_search_hint"),
+                suffixIcon: IconButton(
+                  tooltip: L10n.t(
+                    _isSearchActive
+                        ? "mail_clear_search"
+                        : "mail_search_button",
+                  ),
+                  icon: Icon(
+                    _isSearchActive ? Icons.clear : Icons.search,
+                    size: 18,
+                  ),
+                  onPressed: () {
+                    if (_isSearchActive) {
+                      _searchController.clear();
+                      _loadInbox(activeAccountId);
+                    } else {
+                      _runSearch(activeAccountId);
+                    }
+                  },
                 ),
-                suffixIcon: _isSearchActive
-                    ? IconButton(
-                        tooltip: L10n.t('mail_clear_search'),
-                        icon: const Icon(Icons.clear, size: 16),
-                        onPressed: () {
-                          _searchController.clear();
-                          _loadInbox(activeAccountId);
-                        },
-                      )
-                    : IconButton(
-                        tooltip: L10n.t('mail_search_button'),
-                        icon: const Icon(Icons.search, size: 16),
-                        onPressed: () => _runSearch(activeAccountId),
-                      ),
               ),
               onSubmitted: (_) => _runSearch(activeAccountId),
             ),
-          ),
-        ],
+          );
+          final accountRow = Row(
+            children: [
+              Text(
+                L10n.t('mail_connected_accounts'),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: c.textDim,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: accounts.map((acct) {
+                      final selected = acct.id == activeAccountId;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: InputChip(
+                          selected: selected,
+                          selectedColor: MemoTheme.accentMuted,
+                          label: Text(
+                            acct.email,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: selected
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: selected ? MemoTheme.accent : c.textMain,
+                            ),
+                          ),
+                          onSelected: (_) {
+                            ref
+                                    .read(activeMailAccountIdProvider.notifier)
+                                    .state =
+                                acct.id;
+                          },
+                          onDeleted: () => _confirmRemoveAccount(acct),
+                          deleteButtonTooltipMessage: L10n.t(
+                            'mail_remove_account',
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              if (!compact && showSearch) ...[
+                const SizedBox(width: 12),
+                search,
+              ],
+            ],
+          );
+          return compact && showSearch
+              ? Column(
+                  children: [accountRow, const SizedBox(height: 8), search],
+                )
+              : accountRow;
+        },
       ),
     );
   }
@@ -816,139 +1149,141 @@ class _MailScreenState extends ConsumerState<MailScreen>
       child: _loadingInbox
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
           : _inboxError != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      L10n.t('mail_error_prefix', {'err': _inboxError!}),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: MemoTheme.red,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton(
+                      onPressed: () => _loadInbox(activeAccountId),
+                      child: Text(L10n.t('retry')),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : _messages.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  L10n.t('mail_inbox_empty'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: c.textDim),
+                ),
+              ),
+            )
+          : ListView.separated(
+              itemCount: _messages.length,
+              separatorBuilder: (_, _) =>
+                  Divider(height: 1, color: c.borderSoft),
+              itemBuilder: (context, idx) {
+                final msg = _messages[idx];
+                final selected = msg.seqNum == _selectedSeqNum;
+                return InkWell(
+                  onTap: () => _selectMessage(activeAccountId, msg.seqNum),
+                  child: Container(
+                    color: selected
+                        ? MemoTheme.accentMuted
+                        : Colors.transparent,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Row(
+                          children: [
+                            if (!msg.seen)
+                              Container(
+                                width: 8,
+                                height: 8,
+                                margin: const EdgeInsets.only(right: 6),
+                                decoration: const BoxDecoration(
+                                  color: MemoTheme.accent,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            Expanded(
+                              child: Text(
+                                msg.from,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: msg.seen
+                                      ? FontWeight.w500
+                                      : FontWeight.w700,
+                                  color: c.textMain,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                msg.date,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: c.textDim,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
                         Text(
-                          L10n.t('mail_error_prefix', {'err': _inboxError!}),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: MemoTheme.red,
-                            fontSize: 12,
+                          msg.subject,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: msg.seen
+                                ? FontWeight.w400
+                                : FontWeight.w600,
+                            color: c.textMain,
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        OutlinedButton(
-                          onPressed: () => _loadInbox(activeAccountId),
-                          child: Text(L10n.t('retry')),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            if (msg.hasCalendarInvite)
+                              _MiniTag(
+                                label: L10n.t('mail_badge_calendar'),
+                                color: MemoTheme.green,
+                              ),
+                            if (msg.hasListUnsub)
+                              _MiniTag(
+                                label: L10n.t('mail_badge_bulk'),
+                                color: MemoTheme.warningOrange,
+                              ),
+                            if (msg.isAutoSubmitted)
+                              _MiniTag(
+                                label: L10n.t('mail_badge_auto'),
+                                color: c.textDim,
+                              ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                )
-              : _messages.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          L10n.t('mail_inbox_empty'),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 13, color: c.textDim),
-                        ),
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: _messages.length,
-                      separatorBuilder: (_, _) =>
-                          Divider(height: 1, color: c.borderSoft),
-                      itemBuilder: (context, idx) {
-                        final msg = _messages[idx];
-                        final selected = msg.seqNum == _selectedSeqNum;
-                        return InkWell(
-                          onTap: () =>
-                              _selectMessage(activeAccountId, msg.seqNum),
-                          child: Container(
-                            color: selected
-                                ? MemoTheme.accentMuted
-                                : Colors.transparent,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    if (!msg.seen)
-                                      Container(
-                                        width: 8,
-                                        height: 8,
-                                        margin: const EdgeInsets.only(right: 6),
-                                        decoration: const BoxDecoration(
-                                          color: MemoTheme.accent,
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                    Expanded(
-                                      child: Text(
-                                        msg.from,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: msg.seen
-                                              ? FontWeight.w500
-                                              : FontWeight.w700,
-                                          color: c.textMain,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Flexible(
-                                      child: Text(
-                                        msg.date,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(fontSize: 10, color: c.textDim),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  msg.subject,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: msg.seen
-                                        ? FontWeight.w400
-                                        : FontWeight.w600,
-                                    color: c.textMain,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
-                                  children: [
-                                    if (msg.hasCalendarInvite)
-                                      _MiniTag(
-                                        label: L10n.t('mail_badge_calendar'),
-                                        color: MemoTheme.green,
-                                      ),
-                                    if (msg.hasListUnsub)
-                                      _MiniTag(
-                                        label: L10n.t('mail_badge_bulk'),
-                                        color: MemoTheme.warningOrange,
-                                      ),
-                                    if (msg.isAutoSubmitted)
-                                      _MiniTag(
-                                        label: L10n.t('mail_badge_auto'),
-                                        color: c.textDim,
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                );
+              },
+            ),
     );
   }
 
@@ -962,24 +1297,20 @@ class _MailScreenState extends ConsumerState<MailScreen>
       child: _loadingDetail
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
           : _detailError != null
-              ? Center(
-                  child: Text(
-                    L10n.t('mail_error_prefix', {'err': _detailError!}),
-                    style: const TextStyle(color: MemoTheme.red, fontSize: 13),
-                  ),
-                )
-              : _selectedDetail == null
-                  ? Center(
-                      child: Text(
-                        L10n.t('mail_select_message_prompt'),
-                        style: TextStyle(fontSize: 13, color: c.textDim),
-                      ),
-                    )
-                  : _buildMessageDetailContent(
-                      c,
-                      activeAccountId,
-                      _selectedDetail!,
-                    ),
+          ? Center(
+              child: Text(
+                L10n.t('mail_error_prefix', {'err': _detailError!}),
+                style: const TextStyle(color: MemoTheme.red, fontSize: 13),
+              ),
+            )
+          : _selectedDetail == null
+          ? Center(
+              child: Text(
+                L10n.t('mail_select_message_prompt'),
+                style: TextStyle(fontSize: 13, color: c.textDim),
+              ),
+            )
+          : _buildMessageDetailContent(c, activeAccountId, _selectedDetail!),
     );
   }
 
@@ -1012,8 +1343,10 @@ class _MailScreenState extends ConsumerState<MailScreen>
                 onPressed: () => _openComposeDialog(
                   accountId: activeAccountId,
                   initialTo: detail.from,
-                  initialSubject: detail.subject.trim().toLowerCase().startsWith('re:')
-                      ? detail.subject.trim() : 'Re: ${detail.subject.trim()}',
+                  initialSubject:
+                      detail.subject.trim().toLowerCase().startsWith('re:')
+                      ? detail.subject.trim()
+                      : 'Re: ${detail.subject.trim()}',
                   inReplyTo: detail.messageId,
                 ),
                 icon: const Icon(Icons.reply, size: 16),
@@ -1096,8 +1429,7 @@ class _MailScreenState extends ConsumerState<MailScreen>
           _StructuredBadgeCard(
             icon: Icons.receipt_long,
             title: L10n.t('mail_structured_invoice'),
-            value:
-                '${bill.providerName} ${bill.totalAmount} ${bill.currency}',
+            value: '${bill.providerName} ${bill.totalAmount} ${bill.currency}',
             color: MemoTheme.warningOrange,
           ),
         if (structured.otpCode.isNotEmpty)
@@ -1323,10 +1655,7 @@ class _StructuredBadgeCard extends StatelessWidget {
                   color: color,
                 ),
               ),
-              Text(
-                value,
-                style: TextStyle(fontSize: 12, color: c.textMain),
-              ),
+              Text(value, style: TextStyle(fontSize: 12, color: c.textMain)),
             ],
           ),
         ],
@@ -1378,9 +1707,7 @@ class _MailOAuthDialogState extends ConsumerState<_MailOAuthDialog> {
       if (sess.authUrl.isNotEmpty) {
         final uri = Uri.tryParse(sess.authUrl);
         if (uri != null) {
-          unawaited(
-            launchUrl(uri, mode: LaunchMode.externalApplication),
-          );
+          unawaited(launchUrl(uri, mode: LaunchMode.externalApplication));
         }
       }
       _startPolling(sess.state);
@@ -1448,9 +1775,7 @@ class _MailOAuthDialogState extends ConsumerState<_MailOAuthDialog> {
         child: _starting
             ? const Padding(
                 padding: EdgeInsets.all(24),
-                child: Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
               )
             : Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1555,8 +1880,9 @@ class _MailOAuthDialogState extends ConsumerState<_MailOAuthDialog> {
                         ),
                         const SizedBox(width: 8),
                         OutlinedButton(
-                          onPressed:
-                              _submittingManual ? null : _submitManualCallback,
+                          onPressed: _submittingManual
+                              ? null
+                              : _submitManualCallback,
                           child: Text(L10n.t('mail_oauth_manual_submit')),
                         ),
                       ],
@@ -1589,9 +1915,13 @@ class _MailCustomConnectDialogState
   final TextEditingController _passwordCtrl = TextEditingController();
   final TextEditingController _displayNameCtrl = TextEditingController();
   final TextEditingController _imapHostCtrl = TextEditingController();
-  final TextEditingController _imapPortCtrl = TextEditingController(text: '993');
+  final TextEditingController _imapPortCtrl = TextEditingController(
+    text: '993',
+  );
   final TextEditingController _smtpHostCtrl = TextEditingController();
-  final TextEditingController _smtpPortCtrl = TextEditingController(text: '587');
+  final TextEditingController _smtpPortCtrl = TextEditingController(
+    text: '587',
+  );
 
   bool _discovering = false;
   bool _connecting = false;
@@ -1644,7 +1974,9 @@ class _MailCustomConnectDialogState
       _error = null;
     });
     try {
-      await ref.read(apiClientProvider).connectMailPassword(
+      await ref
+          .read(apiClientProvider)
+          .connectMailPassword(
             email: email,
             password: password,
             displayName: _displayNameCtrl.text.trim(),
@@ -1835,9 +2167,17 @@ class _MailComposeDialogState extends ConsumerState<_MailComposeDialog> {
     var start = 0;
     for (var i = 0; i < raw.length; i++) {
       final char = raw[i];
-      if (escaped) { escaped = false; continue; }
-      if (quoted && char == r'\') { escaped = true; continue; }
-      if (char == '"') { quoted = !quoted; }
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (quoted && char == r'\') {
+        escaped = true;
+        continue;
+      }
+      if (char == '"') {
+        quoted = !quoted;
+      }
       if (!quoted) {
         if (char == '<') angleDepth++;
         if (char == '>' && angleDepth > 0) angleDepth--;
@@ -1858,7 +2198,9 @@ class _MailComposeDialogState extends ConsumerState<_MailComposeDialog> {
     if (to.isEmpty || _busy) return;
     setState(() => _busy = true);
     try {
-      await ref.read(apiClientProvider).sendMail(
+      await ref
+          .read(apiClientProvider)
+          .sendMail(
             accountId: widget.accountId,
             to: to,
             cc: _splitAddresses(_ccCtrl.text),
@@ -1884,7 +2226,9 @@ class _MailComposeDialogState extends ConsumerState<_MailComposeDialog> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final folder = await ref.read(apiClientProvider).saveMailDraft(
+      final folder = await ref
+          .read(apiClientProvider)
+          .saveMailDraft(
             accountId: widget.accountId,
             to: to,
             cc: _splitAddresses(_ccCtrl.text),
@@ -1908,7 +2252,13 @@ class _MailComposeDialogState extends ConsumerState<_MailComposeDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(L10n.t(widget.initialTo.isNotEmpty ? 'mail_compose_reply_title' : 'mail_compose')),
+      title: Text(
+        L10n.t(
+          widget.initialTo.isNotEmpty
+              ? 'mail_compose_reply_title'
+              : 'mail_compose',
+        ),
+      ),
       content: SizedBox(
         width: 540,
         child: SingleChildScrollView(
@@ -1943,9 +2293,7 @@ class _MailComposeDialogState extends ConsumerState<_MailComposeDialog> {
               TextField(
                 controller: _bodyCtrl,
                 maxLines: 8,
-                decoration: InputDecoration(
-                  hintText: L10n.t('mail_body_hint'),
-                ),
+                decoration: InputDecoration(hintText: L10n.t('mail_body_hint')),
               ),
             ],
           ),

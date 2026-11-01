@@ -33,6 +33,7 @@ func EffectiveReplyPolicy(mode, policy string) string {
 }
 
 type Action struct {
+	SentAt        *time.Time  `json:"sent_at,omitempty"`
 	FailureStage  string      `json:"failure_stage,omitempty"`
 	Stage         string      `json:"stage,omitempty"`
 	UpdatedAt     time.Time   `json:"updated_at"`
@@ -83,7 +84,7 @@ func (s *Store) SaveAction(ctx context.Context, a Action) error {
 		return err
 	}
 	return s.db.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, "INSERT INTO pending_autonomous_actions(id,contact_id,channel,payload,state,execute_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,state=excluded.state,execute_at=excluded.execute_at", a.ID, a.ContactID, a.Channel, string(raw), a.State, a.ExecuteAt)
+		_, err := tx.ExecContext(ctx, "INSERT INTO pending_autonomous_actions(id,contact_id,channel,payload,state,execute_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,state=excluded.state,execute_at=excluded.execute_at WHERE pending_autonomous_actions.state NOT IN ('sending','sent','send_uncertain')", a.ID, a.ContactID, a.Channel, string(raw), a.State, a.ExecuteAt)
 		if err != nil {
 			return err
 		}

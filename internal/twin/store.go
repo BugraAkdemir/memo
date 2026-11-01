@@ -71,7 +71,13 @@ func NewStore(dir string) (*Store, error) {
 		return nil, err
 	}
 	s := &Store{db: db}
-	err = db.Write(context.Background(), func(tx *sql.Tx) error { _, e := tx.Exec(schema); return e })
+	err = db.Write(context.Background(), func(tx *sql.Tx) error {
+		if _, e := tx.Exec(schema); e != nil {
+			return e
+		}
+		_, e := tx.Exec("UPDATE pending_autonomous_actions SET state='send_uncertain' WHERE state='sending'")
+		return e
+	})
 	if err != nil {
 		db.Close()
 		return nil, err

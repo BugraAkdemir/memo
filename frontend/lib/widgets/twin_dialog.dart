@@ -481,6 +481,7 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
 
   Widget _autonomy() => AutonomyPanel(
     replyModel: _state!.replyModel,
+    onRefresh: _load,
     settings: _state!.preferences['autonomy'] is Map
         ? Map<String, dynamic>.from(_state!.preferences['autonomy'] as Map)
         : {},

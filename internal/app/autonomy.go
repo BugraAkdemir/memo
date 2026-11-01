@@ -24,8 +24,14 @@ func (a *App) handleAutonomyIncoming(ctx context.Context, in autonomy.IncomingEv
 	if a.twinStore == nil {
 		return
 	}
-	engine := autonomy.Engine{Store: a.twinStore, Projects: a.twinProjects, Decide: func(ctx context.Context, system, user string) (string, error) {
-		return a.callAutonomyModel(ctx, system, user)
+	selection, err := a.twinStore.ReplyModel(ctx)
+	if err != nil {
+		return
+	}
+	engine := autonomy.Engine{Store: a.twinStore, Projects: a.twinProjects, Generate: func(ctx context.Context, system, user string) (string, error) {
+		return a.callAutonomyReplyModel(ctx, selection, system, user)
+	}, Decide: func(ctx context.Context, system, user string) (string, error) {
+		return a.callMailScorer(ctx, system, user)
 	}, Shield: a.ensureMailShield(),
 		SaveDraft: func(ctx context.Context, v twin.Action) error {
 			_, err := a.MailSaveDraft(ctx, mail.SendRequest{AccountID: v.Account, To: []string{v.Recipient}, Subject: "Re: " + v.Subject, Body: v.Body, InReplyTo: v.InReplyTo})
@@ -192,17 +198,10 @@ func (a *App) autonomyWhatsAppEnabled(ctx context.Context, m whatsapp.Message) b
 
 // Draft generation has its own budget; the five-second classifier deadline is
 // too short for a complete reply. The selected API is used without fallback.
-func (a *App) callAutonomyModel(ctx context.Context, system, user string) (string, error) {
-	cfg := a.decisionSettings()
-	if !cfg.DecisionEnabled {
-		return "", fmt.Errorf("decision model disabled")
-	}
-	selected, err := a.decisionProviderConfig(cfg.DecisionProvider, cfg.DecisionModel)
+func (a *App) callAutonomyReplyModel(ctx context.Context, selection twin.ReplyModel, system, user string) (string, error) {
+	selected, err := a.autonomyReplyProvider(selection)
 	if err != nil {
 		return "", err
-	}
-	if provider.IsOptInOnly(selected.Type) {
-		return "", fmt.Errorf("web chats cannot receive background decisions")
 	}
 	p, err := provider.NewProvider(selected)
 	if err != nil {
@@ -214,7 +213,7 @@ func (a *App) callAutonomyModel(ctx context.Context, system, user string) (strin
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	start := time.Now()
-	reply, err := p.ChatCompletion(ctx, provider.ChatRequest{Model: cfg.DecisionModel, Messages: []provider.Message{{Role: "system", Content: system}, {Role: "user", Content: user}}, MaxTokens: 1800, Temperature: 0, TopP: 1})
+	reply, err := p.ChatCompletion(ctx, provider.ChatRequest{Model: selection.Model, Messages: []provider.Message{{Role: "system", Content: system}, {Role: "user", Content: user}}, MaxTokens: 1800, Temperature: 0, TopP: 1})
 	if err != nil {
 		return "", err
 	}
@@ -222,7 +221,36 @@ func (a *App) callAutonomyModel(ctx context.Context, system, user string) (strin
 		return "", fmt.Errorf("invalid autonomy response")
 	}
 	if reply.Usage != nil {
-		a.recordCallLLMUsage(start, cfg.DecisionProvider, cfg.DecisionModel, categoryLearning, reply.Usage.PromptTokens, reply.Usage.CompletionTokens, usageCacheTokens(reply.Usage))
+		a.recordCallLLMUsage(start, selection.Provider, selection.Model, categoryLearning, reply.Usage.PromptTokens, reply.Usage.CompletionTokens, usageCacheTokens(reply.Usage))
 	}
 	return strings.TrimSpace(reply.Content), nil
+}
+
+func (a *App) autonomyReplyProvider(selection twin.ReplyModel) (provider.ProviderConfig, error) {
+	if selection.Provider == "" || selection.Model == "" {
+		return provider.ProviderConfig{}, fmt.Errorf("select a mail reply model")
+	}
+	selected, err := a.decisionProviderConfig(selection.Provider, selection.Model)
+	if err != nil {
+		return selected, err
+	}
+	if provider.IsOptInOnly(selected.Type) {
+		return selected, fmt.Errorf("web chats cannot receive background mail")
+	}
+	return selected, nil
+}
+
+func (a *App) callMailScorer(ctx context.Context, system, user string) (string, error) {
+	cfg := a.decisionSettings()
+	if !cfg.DecisionEnabled {
+		return "", fmt.Errorf("decision model disabled")
+	}
+	selected, err := a.decisionProviderConfig(cfg.DecisionProvider, cfg.DecisionModel)
+	if err != nil {
+		return "", err
+	}
+	if provider.IsOptInOnly(selected.Type) {
+		return "", fmt.Errorf("web chats cannot score background mail")
+	}
+	return a.callDecisionModel(ctx, system, user, 16)
 }

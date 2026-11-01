@@ -36,6 +36,7 @@ import 'settings/tabs/live_mode_tab.dart';
 import 'settings/tabs/subscriptions_tab.dart';
 import 'settings/tabs/web_chat_tab.dart';
 import 'settings/tabs/privacy_tab.dart';
+import 'settings/tabs/mail_autonomy_tab.dart';
 import 'settings/tabs/code_submode_prompts_tab.dart';
 
 /// Settings dialog: a searchable, grouped rail on the left, tab content on
@@ -110,14 +111,15 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/code.svg', // Code Mode Prompts
     'lib/icon/slash/globe.svg', // Web chat (Beta)
     'lib/icon/slash/shield-check.svg', // Privacy
+    'lib/icon/slash/chat-text.svg', // Mail and autonomy
   ];
 
   /// Tab indices grouped under an eyebrow header, in sidebar display order.
-  /// Every index 0..28 must appear exactly once — covered by
+  /// Every index 0..29 must appear exactly once — covered by
   /// settings_dialog_test.dart's group-coverage test.
   static const _groups = [
     ('settings_group_general', [0, 1, 2, 28]),
-    ('settings_group_providers', [5, 6, 25, 27, 15, 22, 23, 24]),
+    ('settings_group_providers', [5, 6, 25, 27, 15, 22, 23, 24, 29]),
     ('settings_group_memory', [3, 4, 9, 10, 21]),
     ('settings_group_agents', [7, 8, 11, 18, 26]),
     ('settings_group_system', [12, 13, 14, 20]),
@@ -154,6 +156,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('code_submode_prompts_tab_title'),
     L10n.t('tab_web_chat'),
     L10n.t('tab_privacy'),
+    L10n.t('mail_autonomy_tab'),
   ];
 
   /// Tab indices hidden for the current session's account permissions
@@ -168,6 +171,9 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   Set<int> _hiddenTabIndices({required bool beta}) {
     final perms = readMyPermissions(ref.read(prefsProvider));
     final hidden = <int>{};
+    if (ref.read(prefsProvider).getString('memo_session_role') == 'user') {
+      hidden.add(29);
+    }
     if (!perms.models) hidden.add(5); // Providers
     if (!perms.memory) {
       hidden.addAll([3, 4, 21]);
@@ -397,6 +403,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 26: return const CodeSubModePromptsTab();
       case 27: return const WebChatTab();
       case 28: return const PrivacyTab();
+      case 29: return const MailAutonomyTab();
       default: return const SizedBox.shrink();
     }
   }

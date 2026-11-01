@@ -95,12 +95,29 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		if err != nil {
 			return nil, err
 		}
+		selection, err := s.ReplyModel(ctx)
+		if err != nil {
+			return nil, err
+		}
 		return struct {
+			ReplyModel  twin.ReplyModel              `json:"reply_model"`
 			Actions     []twin.Action                `json:"actions"`
 			Contacts    []twin.Contact               `json:"contacts"`
 			Preferences twin.Preferences             `json:"preferences"`
 			Projects    []autonomy.RegisteredProject `json:"projects"`
-		}{actions, contacts, p, a.twinProjects()}, nil
+		}{selection, actions, contacts, p, a.twinProjects()}, nil
+	case "reply_model":
+		var m twin.ReplyModel
+		if err := decodeTwin(raw, &m); err != nil {
+			return nil, err
+		}
+		if m.Provider != "" || m.Model != "" {
+			if _, err := a.autonomyReplyProvider(m); err != nil {
+				return nil, twin.ErrInvalid
+			}
+		}
+		err := s.SaveReplyModel(ctx, m)
+		return map[string]bool{"ok": err == nil}, err
 	case "cancel_action":
 		var args struct {
 			ID string `json:"id"`

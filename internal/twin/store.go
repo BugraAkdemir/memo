@@ -20,6 +20,7 @@ var ErrNotFound = errors.New("twin contact not found")
 var ErrAliasConflict = errors.New("address already belongs to another contact")
 
 const schema = `
+CREATE TABLE IF NOT EXISTS twin_reply_model(id INTEGER PRIMARY KEY CHECK(id=1), provider TEXT NOT NULL, model TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS autonomy_auto_reservations(event_key TEXT PRIMARY KEY, contact_id TEXT NOT NULL, thread_key TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS autonomy_reservations_contact ON autonomy_auto_reservations(contact_id,at);
 CREATE TABLE IF NOT EXISTS autonomy_events(event_key TEXT PRIMARY KEY, at TEXT NOT NULL);

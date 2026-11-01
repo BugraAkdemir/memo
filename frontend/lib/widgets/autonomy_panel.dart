@@ -83,6 +83,14 @@ class AutonomyPanel extends StatelessWidget {
                 Text(a['subject'] is String ? a['subject'] as String : ''),
                 Text(L10n.t('auto_state_${a['state']}')),
                 Text(_reason(a['reason'])),
+                if (a['decision_score'] is num)
+                  Text(
+                    L10n.t('mail_reply_score', {
+                      'score': (a['decision_score'] as num).toStringAsFixed(2),
+                    }),
+                  ),
+                if (a['score_status'] == 'unavailable')
+                  Text(L10n.t('mail_reply_score_unavailable')),
                 if (a['mode'] == 'grace_period_auto')
                   Text(L10n.t('auto_candidate')),
                 if (a['conflict'] == true) Text(L10n.t('auto_conflict')),

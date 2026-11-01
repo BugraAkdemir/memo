@@ -50,7 +50,19 @@ class L10n {
   // ─── Turkish ──────────────────────────────────────────────────
 
   static const _tr = <String, String>{
-    'auto_voice_help': 'Çalışan yerel Whisper kullanılır; sıkıştırılmış ses için yerel ffmpeg de gerekir. Hatada buluta geçilmez. Karar hazırlamak için Öğrenme ayarlarında karar modeli yapılandırılmalıdır.',
+    "mail_autonomy_tab": "Mail ve Otonomi",
+    "mail_reply_title": "Mail yanıt modeli",
+    "mail_reply_help": "Gelen mesajları araştırıp yanıt taslağını yazacak modeli seçin. Karar modeli ayrıdır; yalnız otomatik yanıta uygunluğu 0–1 arasında puanlar. Yanıt modeli kendiliğinden seçilmez. Açık sohbetin modeli değişmez.",
+    "mail_reply_provider": "Yanıt sağlayıcısı",
+    "mail_reply_model": "Yanıt modeli",
+    "mail_reply_none": "Seçilmedi",
+    "mail_reply_saved": "Mail yanıt modeli kaydedildi.",
+    "mail_reply_save_failed": "Yanıt modeli kaydedilemedi. Etkin bir API sağlayıcısından model seçin.",
+    "mail_reply_catalog_failed": "Model listesi yenilenemedi; kayıtlı modeller kullanılabilir.",
+    "mail_reply_score": "Karar skoru: {score} / 1",
+    "mail_reply_score_unavailable": "Karar skoru alınamadı; kullanıcı onayında tutuldu.",
+
+    'auto_voice_help': 'Çalışan yerel Whisper kullanılır; sıkıştırılmış ses için yerel ffmpeg de gerekir. Hatada buluta geçilmez. Yanıt yazarı Ayarlar → Mail ve Otonomi bölümünden seçilir; isteğe bağlı karar modeli yalnız otomatik uygunluğu puanlar.',
     'auto_state_preparing': 'Hazırlanıyor; kesilmiş işlem elle inceleme gerektirir',
     "auto_tab": "Otonomi",
     "auto_stage_notice": "Karar ve mail taslakları hazırlanır. Gönderim ve uzaktan onay Adım6 gerektirir; bu kuyruk henüz göndermez. Telegram yalnız hesap sahibine açıktır. Yeni kararlar için yenileyin.",
@@ -2898,7 +2910,19 @@ class L10n {
   };
 
   static const _en = <String, String>{
-    'auto_voice_help': 'Uses running local Whisper; compressed voice also needs local ffmpeg. Failures never fall back to cloud. Decision preparation needs a configured decision model in Learning settings.',
+    "mail_autonomy_tab": "Mail and Autonomy",
+    "mail_reply_title": "Mail reply model",
+    "mail_reply_help": "Select the model that researches incoming messages and writes reply drafts. It is independent of the decision model, which only scores automatic eligibility from 0 to 1. No reply model is selected automatically. The current chat model stays unchanged.",
+    "mail_reply_provider": "Reply provider",
+    "mail_reply_model": "Reply model",
+    "mail_reply_none": "Not selected",
+    "mail_reply_saved": "Mail reply model saved.",
+    "mail_reply_save_failed": "Could not save the reply model. Select a model from an enabled API provider.",
+    "mail_reply_catalog_failed": "Could not refresh models; saved models are still available.",
+    "mail_reply_score": "Decision score: {score} / 1",
+    "mail_reply_score_unavailable": "Decision score unavailable; kept for owner approval.",
+
+    'auto_voice_help': 'Uses running local Whisper; compressed voice also needs local ffmpeg. Failures never fall back to cloud. Select the reply writer under Settings → Mail and Autonomy; the optional decision model only scores automatic eligibility.',
     'auto_state_preparing': 'Preparing; interrupted work requires manual review',
     "auto_tab": "Autonomy",
     "auto_stage_notice": "Prepares decisions and mail drafts. Delivery and remote approval require Step 6; this queue does not send yet. Telegram stays owner-only. Refresh to see new decisions.",

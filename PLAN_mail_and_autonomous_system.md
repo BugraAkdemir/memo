@@ -360,6 +360,8 @@ autonomy:
     - Adım5 yalnız hazırlar; otomatik adayın gönderimi ve uzaktan onay Adım6 köprüsüdür. Kullanıcıya panelde açıkça belirtilir. Ayarlar mevcut twin tercihlerinde kalır. Ayrıntı ve cihaz testleri: `docs/DIGITAL_TWIN_AUTONOMY.md`.
     - **Teknik doğrulama:** CGO/sqlite_fts5 build/vet exit0; tüm Go race71 paket PASS, son tarih/grup/karar regresyonları ayrıca PASS. Flutter870/870 PASS; analyze yalnız mevcut3 context info; değişen/yeni6 Dart dosyasında UI literal0; diff kontrolü PASS. Kutu teknik uygulamayı gösterir. Gerçek model/hesap/ses cihaz kabulü beklenir; Adım6 başlamadı.
 
+  - **1 Kasım kullanıcı düzeltmesi — bağımsız yanıt modeli:** Karar modeline taslak yazdırma kaldırıldı. Ayarlar → Mail ve Otonomi ayrı sekmesinde yanıt sağlayıcısı/modeli seçilir; sınıflandırma/araştırma/taslak yalnız bu modeldedir. Karar modeli yalnız 0–1 uygunluk ve mail risk skoru üretir; skor yoksa taslak onayda kalır. Model çifti ayrı/kalıcı/admin-only; mevcut sohbet/Öğrenme/kanal ayarları birbirini ezmez. Teknik doğrulama: CGO/sqlite_fts5 build/vet exit0; Go race71 paket PASS; Flutter874/874 PASS; analyze mevcut3 info; UI literal7 Dart dosyası0; diff PASS. Gerçek cihaz/model kabulü açık, Adım6 başlamadı.
+
 - [ ] **Adım 6 — Çok Kanallı Bildirim, 60sn Geri Al Tamponu ve Onay Köprüsü (UI + WhatsApp Self-Chat + Telegram):**
   - **Dosyalar:**
     - `internal/autonomy/approval_bridge.go`:

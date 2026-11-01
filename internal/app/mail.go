@@ -93,13 +93,18 @@ func (a *App) ensureMailManager() *mail.Manager {
 }
 
 func (a *App) callMailClassifierLLM(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
-	cfg := a.decisionSettings()
-	if cfg.DecisionEnabled {
-		if res, err := a.callDecisionModel(ctx, systemPrompt, autonomy.WrapUntrustedExternalMessage("", "mail", userPrompt), 256); err == nil && strings.TrimSpace(res) != "" {
-			return res, nil
-		}
+	a.twinMu.RLock()
+	s := a.twinStore
+	if s == nil {
+		a.twinMu.RUnlock()
+		return "", fmt.Errorf("mail reply model not configured")
 	}
-	return "", fmt.Errorf("mail semantic classifier disabled or unavailable")
+	selected, err := s.ReplyModel(ctx)
+	a.twinMu.RUnlock()
+	if err != nil {
+		return "", err
+	}
+	return a.callAutonomyReplyModel(ctx, selected, systemPrompt, autonomy.WrapUntrustedExternalMessage("", "mail", userPrompt))
 }
 
 func (a *App) indexMailInMemory(ctx context.Context, account mail.Account, detail *mail.MessageDetail, decision mail.TriageDecision) error {

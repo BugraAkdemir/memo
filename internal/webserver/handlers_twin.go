@@ -52,7 +52,7 @@ func (s *Server) handleTwin(w http.ResponseWriter, r *http.Request) {
 		raw = b
 	}
 	switch op {
-	case "state", "contact", "merge", "preferences", "cancel_action", "contact_timeline", "check_availability", "git_project_status":
+	case "state", "contact", "merge", "preferences", "reply_model", "cancel_action", "contact_timeline", "check_availability", "git_project_status":
 	default:
 		w.WriteHeader(404)
 		return

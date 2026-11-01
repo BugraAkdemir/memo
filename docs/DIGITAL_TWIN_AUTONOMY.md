@@ -7,8 +7,10 @@ köprüsü Adım6'dır. Kuyrukta `grace_period_auto` olması bu sürümde mesaj 
 ## Kullanım ve cihaz kabulü
 
 1. Mail ekranından **Dijital İkiz → Otonomi** sekmesini açın. İlk durumda motor,
-   kanallar ve ses kapalıdır. Öğrenme ayarlarında etkin bir API sağlayıcısından
-   karar modeli seçilmelidir; web sohbet sağlayıcılarına arka plan çağrısı yapılmaz.
+   kanallar ve ses kapalıdır. Etkin bir API sağlayıcısından
+   mail yanıt modeli seçimi **Ayarlar → Mail ve Otonomi** sekmesinden yapılır;
+   Öğrenme sekmesindeki karar modeli yalnız 0–1 skoru içindir. Yanıt modeli
+   seçilmeden diğer modele sessiz geçiş yapılmaz; web sohbetlerine arka plan çağrısı yoktur.
 2. Otonom karar hazırlamayı ve denenecek kanalı açın. Ayarlar anında kaydedilir;
    çalışma saati/proje izinleri ve kanal ayarları birbirini silmez. Yenile ile son
    100 karar görülür. Mevcut eski mail kutusu taranmaz.
@@ -45,7 +47,8 @@ köprüsü Adım6'dır. Kuyrukta `grace_period_auto` olması bu sürümde mesaj 
   enjeksiyon filtresi, otomatik gönderici başlıkları ve kişi kuralı değerlendirilir.
   Bilinmeyen tarih şimdiki zaman kabul edilmez; otomatik göndericilere taslak da
   üretilmez. İptal/yanıt `.ics` yöntemleri bu adımda otomatik takvim değişikliği yapmaz.
-- Model önce en fazla üç salt-okunur araştırma isteği üretir; genel ajan döngüsü,
+- Seçilen mail yanıt modeli sınıflandırma, en fazla üç salt-okunur araştırma
+  isteği ve yanıt taslağını üretir; genel ajan döngüsü,
   terminal, dosya değiştirme, aktif sohbet/model değiştirme veya araç kaydı yoktur.
   Model çıktısı doğrudan bir işlem olarak çalıştırılmaz; her istek beyaz liste ve
   sabit gönderici kapsamından geçer. `search_memory`, yalnız gönderenin bağlı kişi
@@ -56,7 +59,10 @@ köprüsü Adım6'dır. Kuyrukta `grace_period_auto` olması bu sürümde mesaj 
   çıkardığı tarihlerin doğruluğu gerçek modelle kabul testi gerektirir.
 - Her kişi başlangıçta yalnız taslaktır. Tam otomatik aday için kullanıcı o kişide
   “Otonomi modunu izle” seçmeli; genel mod full_auto, triage uygun, grup/CC olmayan,
-  başarılı araç kanıtı bulunan yüksek güvenli salt bilgi sorusu olmalıdır. Takvim,
+  başarılı araç kanıtı bulunan salt bilgi sorusu ve bağımsız karar modelinin
+  en az 0.95 skoru olmalıdır. Karar modelinden yalnız tek bir 0–1 sayısı istenir;
+  üretici modelin kendi confidence alanı yetki vermez. Eksik/bozuk/NaN/sınır dışı
+  skor taslağı silmez, kullanıcı onayında tutar. Sayısal 0 geçerli bir ölçümdür. Takvim,
   belirsizlik ve hata otomatik aday olmaz. Model güveni doğruluk garantisi değildir.
 - Kişi ve mail dizisi rezervasyonları SQLite'da saklanır: saatte 1, 24 saatte 3.
   Başarısız/iptal edilmiş adaylar da bütçeye dahildir. Süreç yeniden başlatmak veya
@@ -69,7 +75,11 @@ köprüsü Adım6'dır. Kuyrukta `grace_period_auto` olması bu sürümde mesaj 
 - Yanıt, uzak Drafts yüklemesinden önce DLP'den geçer; sır içeren gövde karar
   kartına konulmaz. Ambient olay akışına yalnız kayıt kimliği/durumu çıkar; gövde,
   alıcı ve konu admin-only `/api/twin/state` yanıtından okunur.
-- Ayarlar mevcut `twin_preferences` kaydının `autonomy` alanında, kayıtlar mevcut
+- Kanal ayarları `twin_preferences.autonomy` alanında; yanıt sağlayıcısı/modeli
+  ayrı `twin_reply_model` tablosunda kalır. Kanal değişikliği yanıt modelini silmez.
+  Admin-only `POST /api/twin/reply_model` (ve `/api/v1/...`) bu çifti atomik kaydeder;
+  `state.reply_model` seçimi, karar kartındaki `decision_score` ölçülen skoru döndürür.
+  Kayıtlar mevcut
   `pending_autonomous_actions` tablosunda, nedenler mevcut audit tablosunda kalır.
   Twin DB'nin mevcut yerel/E2E yedekleme yolu bunları da kapsar. Yeni admin-only
   işlem `POST /api/twin/cancel_action` (ve `/api/v1/...`) yalnız bekleyeni iptal eder.
@@ -83,7 +93,7 @@ Whisper modeli/ses tanıma kalitesini taklit ederek geçmiş sayılmaz. App ente
 seçilmiş HTTP karar sağlayıcısını; E2E testi gerçek App/HTTP ile ayar/kuyruk/iptali;
 Flutter testleri TR/EN dar görünümü ve gerçek API istek gövdelerini doğrular.
 
-Doğrulama: CGO/sqlite_fts5 build/vet exit0; Go race71 paket PASS, son tarih/grup
+Adım5 ilk doğrulaması: CGO/sqlite_fts5 build/vet exit0; Go race71 paket PASS, son tarih/grup
 regresyonları ayrıca PASS; Flutter870/870 PASS; analyze yalnız mevcut3 info;
 6 Dart dosyasında UI literal0; diff kontrolü PASS. Gerçek hesap/cihaz
 kabulü beklenir; Adım6 bu çalışmada başlatılmaz.
@@ -94,3 +104,19 @@ kontrolünü tekrar uygulamalı; geçmişte hazırlanmış adayı tek başına y
 Grup araştırmasında birebir kişi geçmişi araç sonuçlarından çıkarılır. Fatura son
 ödeme ve uçuş saatleri toplantı alternatifi gibi değiştirilmez; bugün vadesi dolan
 fatura tarihi gece yarısı olsa da takvime alınır.
+
+## 1 Kasım düzeltmesi — Yanıt yazarı ve karar skoru
+
+Önceki sürüm karar modeline plan/taslak yazdırıyordu; kullanıcı talebiyle ayrıldı.
+Ayarlar’daki **Mail ve Otonomi** sekmesinde sağlayıcı ve yanıt modeli seçilip
+Kaydet’e basılır. Mevcut sohbet ve Öğrenme’deki karar modeli seçimi değişmez.
+Karar modeli kapalıyken de taslak üretilir; otomatik aday için bağımsız skor gerekir.
+Mail güvenlik incelemesi de risk için sayısal skor kullanır (0 zararsız, 1 saldırı);
+0.5 ve üzeri engellenir. Mail semantik sınıflandırması yapılandırılmış yanıt yazarıyla
+çalışır; skorerden kategori JSON’u veya yanıt metni istenmez. Bu değişiklik mail
+akışına aittir; diğer özelliklerin mevcut karar protokolleri yeniden yazılmamıştır.
+
+Düzeltmenin teknik doğrulaması: CGO/sqlite_fts5 build/vet exit0; tüm Go
+race testleri 71 paket PASS; Flutter874/874 PASS; analyze yalnız mevcut3 context
+info; değişen/yeni7 Dart dosyasında UI literal0; diff kontrolü PASS. Gerçek
+skor/yanıt modeli ve hesap cihaz kabulü beklenir; otomatik gönderim hâlâ Adım6’dır.

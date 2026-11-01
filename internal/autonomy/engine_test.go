@@ -37,7 +37,7 @@ func engineFixture(t *testing.T) (*Engine, IncomingEvent) {
 	}
 	t.Cleanup(func() { cal.Close() })
 	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
-	return &Engine{Store: s, Calendar: cal, Now: func() time.Time { return now }}, IncomingEvent{Key: "first", Channel: "mail", Account: "account", Sender: "friend@example.com", Subject: "Project status", Body: "Did you merge the feature?", At: now, Envelope: Envelope{RecipientCount: 1}}
+	return &Engine{Store: s, Calendar: cal, Decide: func(context.Context, string, string) (string, error) { return "0.99", nil }, Now: func() time.Time { return now }}, IncomingEvent{Key: "first", Channel: "mail", Account: "account", Sender: "friend@example.com", Subject: "Project status", Body: "Did you merge the feature?", At: now, Envelope: Envelope{RecipientCount: 1}}
 }
 func TestEngineRealGitEvidenceStyleAndDurableDedup(t *testing.T) {
 	e, in := engineFixture(t)
@@ -68,7 +68,7 @@ func TestEngineRealGitEvidenceStyleAndDurableDedup(t *testing.T) {
 		}
 	}
 	calls := 0
-	e.Decide = func(_ context.Context, system, user string) (string, error) {
+	e.Generate = func(_ context.Context, system, user string) (string, error) {
 		calls++
 		if system == analyzePrompt {
 			return `{"kind":"question","tools":[{"name":"git_project_status","args":{"project_id":"p_demo"}}]}`, nil
@@ -116,7 +116,7 @@ func TestEngineCalendarConflictAlternativesAndNoPrivateTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	in.Calendar = []calendar.Event{{Title: "Architecture proposal", StartTime: at, EndTime: &end}}
-	e.Decide = func(_ context.Context, system, user string) (string, error) {
+	e.Generate = func(_ context.Context, system, user string) (string, error) {
 		if strings.Contains(user, "SECRET") || strings.Contains(user, "PRIVATE") {
 			t.Fatal("calendar leak", user)
 		}
@@ -148,7 +148,7 @@ func TestEngineSafetyGatesAndUncertainty(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			e, in := engineFixture(t)
 			ctx := context.Background()
-			e.Decide = func(_ context.Context, system, user string) (string, error) {
+			e.Generate = func(_ context.Context, system, user string) (string, error) {
 				if kind == "model_failure" {
 					return "", fmt.Errorf("offline")
 				}
@@ -172,6 +172,9 @@ func TestEngineSafetyGatesAndUncertainty(t *testing.T) {
 				}
 				b, _ := json.Marshal(map[string]any{"body": body, "factual": true, "confidence": confidence, "evidence_tools": names})
 				return string(b), nil
+			}
+			if kind == "low_confidence" {
+				e.Decide = func(context.Context, string, string) (string, error) { return "0.2", nil }
 			}
 			switch kind {
 			case "group":
@@ -215,7 +218,7 @@ func TestEngineSafetyGatesAndUncertainty(t *testing.T) {
 }
 func TestEngineConcurrentDuplicateClaims(t *testing.T) {
 	e, in := engineFixture(t)
-	e.Decide = func(context.Context, string, string) (string, error) { return `{"kind":"none"}`, nil }
+	e.Generate = func(context.Context, string, string) (string, error) { return `{"kind":"none"}`, nil }
 	var wg sync.WaitGroup
 	for i := 0; i < 4; i++ {
 		wg.Add(1)
@@ -237,7 +240,7 @@ func TestEngineInvitationUIDDedupAcrossSourceMessages(t *testing.T) {
 	e, in := engineFixture(t)
 	at := in.At.Add(time.Hour)
 	in.Calendar = []calendar.Event{{ID: "trusted-ics-uid", Title: "Meeting", StartTime: at}}
-	e.Decide = func(_ context.Context, system, user string) (string, error) {
+	e.Generate = func(_ context.Context, system, user string) (string, error) {
 		if system == analyzePrompt {
 			return `{"kind":"calendar"}`, nil
 		}
@@ -261,7 +264,7 @@ func TestEngineInvoiceDueTodayIsRecordedWithoutMovingItsDeadline(t *testing.T) {
 	at := time.Date(in.At.Year(), in.At.Month(), in.At.Day(), 0, 0, 0, 0, time.UTC)
 	in.Calendar = []calendar.Event{{Title: "Invoice due", StartTime: at}}
 	in.CalendarKinds = []string{"invoice"}
-	e.Decide = func(_ context.Context, system, user string) (string, error) {
+	e.Generate = func(_ context.Context, system, user string) (string, error) {
 		if system == analyzePrompt {
 			return `{"kind":"calendar"}`, nil
 		}
@@ -275,6 +278,60 @@ func TestEngineInvoiceDueTodayIsRecordedWithoutMovingItsDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(a.CalendarIDs) != 1 || len(a.Alternatives) != 0 || a.Conflict || a.State != "pending" {
+		t.Fatal(a)
+	}
+}
+
+func TestDecisionScoreIsScalarAndCannotWriteTheDraft(t *testing.T) {
+	for i, raw := range []string{"0", "0.2", "0.95", "1", "NaN", "Inf", "-0.1", "1.1", `{"score":1}`, "1 because safe", ""} {
+		t.Run(fmt.Sprintf("score_case_%d", i), func(t *testing.T) {
+			e, in := engineFixture(t)
+			scoreCalls := 0
+			e.Generate = func(_ context.Context, system, user string) (string, error) {
+				if system == analyzePrompt {
+					return `{"kind":"question","tools":[{"name":"contact_timeline","args":{}}]}`, nil
+				}
+				return `{"body":"Only the writer wrote this.","factual":true,"confidence":1,"evidence_tools":["contact_timeline"]}`, nil
+			}
+			e.Decide = func(_ context.Context, system, user string) (string, error) {
+				scoreCalls++
+				if system != scorePrompt || !strings.Contains(user, "Only the writer wrote this.") {
+					t.Error("incorrect scorer request")
+				}
+				return raw, nil
+			}
+			a, err := e.HandleIncomingEvent(context.Background(), in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if a.Body != "Only the writer wrote this." || a.State != "pending" || scoreCalls != 1 {
+				t.Fatal(a, scoreCalls)
+			}
+			score, err := ParseDecisionScore(raw)
+			eligible := err == nil && score >= 0.95
+			if (a.Mode == "grace_period_auto") != eligible {
+				t.Fatal(a)
+			}
+			if err != nil && (a.DecisionScore != nil || a.ScoreStatus != "unavailable") {
+				t.Fatal(a)
+			}
+		})
+	}
+}
+func TestWriterWorksWithoutDecisionModel(t *testing.T) {
+	e, in := engineFixture(t)
+	e.Decide = nil
+	e.Generate = func(_ context.Context, system, user string) (string, error) {
+		if system == analyzePrompt {
+			return `{"kind":"question","tools":[{"name":"contact_timeline","args":{}}]}`, nil
+		}
+		return `{"body":"Draft remains available.","factual":true,"evidence_tools":["contact_timeline"]}`, nil
+	}
+	a, err := e.HandleIncomingEvent(context.Background(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.State != "pending" || a.Body == "" || a.Mode != "awaiting_approval" || a.ScoreStatus != "unavailable" {
 		t.Fatal(a)
 	}
 }

@@ -18,24 +18,26 @@ type AutonomySettings struct {
 	Voice        bool   `json:"voice"`
 }
 type Action struct {
-	ID           string      `json:"id"`
-	ContactID    string      `json:"contact_id"`
-	Channel      string      `json:"channel"`
-	Account      string      `json:"account"`
-	Recipient    string      `json:"recipient"`
-	Subject      string      `json:"subject"`
-	Body         string      `json:"body"`
-	InReplyTo    string      `json:"in_reply_to"`
-	Mode         string      `json:"mode"`
-	Reason       string      `json:"reason"`
-	State        string      `json:"state"`
-	CreatedAt    time.Time   `json:"created_at"`
-	ExecuteAt    *time.Time  `json:"execute_at,omitempty"`
-	Tools        []string    `json:"tools"`
-	Conflict     bool        `json:"conflict"`
-	Alternatives []time.Time `json:"alternatives"`
-	CalendarIDs  []string    `json:"calendar_ids"`
-	DraftSaved   bool        `json:"draft_saved"`
+	DecisionScore *float64    `json:"decision_score,omitempty"`
+	ScoreStatus   string      `json:"score_status,omitempty"`
+	ID            string      `json:"id"`
+	ContactID     string      `json:"contact_id"`
+	Channel       string      `json:"channel"`
+	Account       string      `json:"account"`
+	Recipient     string      `json:"recipient"`
+	Subject       string      `json:"subject"`
+	Body          string      `json:"body"`
+	InReplyTo     string      `json:"in_reply_to"`
+	Mode          string      `json:"mode"`
+	Reason        string      `json:"reason"`
+	State         string      `json:"state"`
+	CreatedAt     time.Time   `json:"created_at"`
+	ExecuteAt     *time.Time  `json:"execute_at,omitempty"`
+	Tools         []string    `json:"tools"`
+	Conflict      bool        `json:"conflict"`
+	Alternatives  []time.Time `json:"alternatives"`
+	CalendarIDs   []string    `json:"calendar_ids"`
+	DraftSaved    bool        `json:"draft_saved"`
 }
 
 // ClaimIncoming is deliberately distinct from contact-history deduplication.

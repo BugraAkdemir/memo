@@ -5,9 +5,10 @@
 ## Açık işler
 
 **Dijital İkiz / Mail — Adım5 teknik hazır**
-- Adım5 backend/frontend birlikte: karar/takvim/Drafts, kalıcı olay/UID/limit, panel/iptal: docs/DIGITAL_TWIN_AUTONOMY.md. Varsayılan kapalı; karar modeli gerekir. Ses: yerel Whisper/ffmpeg; bulut yok. Telegram sahip.
-- Adım5 hazırlar; grace_period_auto GÖNDERMEZ. Adım6 gönderim/uzaktan onay başlamadı; gönderimde ayar/kişi/DLP yeniden denetlenmeli. Kutu teknik tamam; gerçek model/IMAP/Whisper/WhatsApp kabulü açık. İptal yüklenmiş taslak/takvimi silmez; kesinti/hata tekrar edilmez.
-- Adım4 kişi/üslup/Git/doluluk ve Adım3 görünüm/charset/sayaç/göreli tarih kabulü açık: docs/DIGITAL_TWIN_CONTACTS.md + docs/MAIL_SECURITY.md. İsimden eşleme ve eski mail/backfill yok. Sohbet mail teslimi/saldırı engeli kullanıcıda PASS; izin politikası aynı. Sonraki adıma geri bildirimle geç.
+- Adım5 karar/takvim/Drafts, olay/UID/limit, panel/iptal: docs/DIGITAL_TWIN_AUTONOMY.md. Varsayılan kapalı; yanıt modeli gerekir. Ses: yerel Whisper/ffmpeg; bulut yok. Telegram sahip.
+- 1 Kasım: Ayarlar → Mail ve Otonomi yanıt yazarı seçer; karar mailde0–1 skor verir. Skor yoksa onay gerekir. Seçim kanallardan bağımsızdır.
+- Adım5 hazırlar; grace_period_auto GÖNDERMEZ. Adım6 gönderim/uzaktan onay başlamadı; gönderimde ayar/kişi/DLP yeniden denetlenmeli. Gerçek model/IMAP/Whisper/WhatsApp kabulü açık. İptal yüklenmiş taslak/takvimi silmez; kesinti/hata tekrar edilmez.
+- Adım4 kişi/üslup/Git/doluluk ve Adım3 görünüm/charset/sayaç/göreli tarih kabulü açık: docs/DIGITAL_TWIN_CONTACTS.md + docs/MAIL_SECURITY.md. İsimden eşleme ve eski mail/backfill yok. Mail teslimi/saldırı engeli kullanıcıda PASS; izin aynı. Sonraki adıma geri bildirimle geç.
 
 **Performans benchmark — kullanıcı duraklattı (29 Ekim)**
 - docs/PERFORMANCE_BENCHMARK_CHECKPOINT.md + data/performance-benchmark/PAUSED.json: son koşuda yalnız aşama1 kayıtlı, data aşama2. Kalibrasyon/resume/aşama2–3/rapor/doğrulama açık. Runner baştan siler; körlemesine çalıştırma.
@@ -48,7 +49,7 @@
 - Windows/macOS/arm64 sidecar yalnız CI build; Claude login/quota yok. Codex yalnız30d; 5s/7g denenmedi.
 
 **Küçük noktalar / test ortamı**
-- Pi embedding yeni build/reboot denenmedi; eski embedding_auto_start:false ezilmez, elle açmak tercihi kaydeder. Eski origin token döndürme kullanıcıda; satılmış alan adındaki eski REPL indirmeleri kaldırılıp sürüm duyurulmalı.
+- Pi embedding build/reboot denenmedi; eski embedding_auto_start:false ezilmez, elle açmak tercihi kaydeder. Eski origin token döndürme kullanıcıda; satılmış alan adındaki eski REPL indirmeleri kaldırılıp sürüm duyurulmalı.
 - Yapıştırma kutusu Done'a dek açık; login.go s.tail erken okuma ölçülmedi. Minimal Mod auto-compact atlar; görsel modeli etiketsiz; ikinci model menüsü ortak listeyi kullanır.
 - MEMO_DATA_DIR testlerinde config.ResetForTests eksikleri dosya sızdırabilir. ngrok.TestFetchURL_NoServer yerel API yüzünden düşebilir, tünele dokunma. Yoğun derlemede wav_player stop testi 2s timeout görmüştü.
 - Açık kararsız testler: Tailscale RebindsFromLoopback eski8/150 yeni2/150; livemode SendAudioRoutesToCurrentInner; BootstrapTokenAuth temp temizliği; DuckDuckGo captcha; webchat PressingItAgainReplacesAWaitingAttempt. Yerel yük testi çalıştırma; kullanıcı sistemi dondurduğunu bildirdi. Yeşile dek koşma. TamperedDownloadChangesNothing 29 Ekim'de düzeltildi: eski36/150, yeni0/150.
@@ -65,7 +66,6 @@
 
 ---
 
-# Son oturum — 2026-10-31 — Adım5 backend/frontend
-- Adım5 backend/frontend teknik hazır; cihaz kabulü açık. Adım6 başlamadı.
-- CGO/sqlite_fts5 build/vet exit0; Go race71 PASS + son regresyonlar PASS; Flutter870/870 PASS; analyze mevcut3 info; UI literal6 dosya0; diff PASS.
-- Yerel feat commit; push/tag/PR yok. Önceden değişmiş AGENTS.md/.claude-flow/data dosyaları dahil değil.
+# Son oturum — 2026-11-01 — Mail yanıt modeli / skor ayrımı
+- Yanıt yazarı/karar skoru ayrıldı. Cihaz/model kabulü açık; Adım6 başlamadı.
+- Build/vet exit0; Go race71 PASS; Flutter874/874 PASS; analyze mevcut3 info; UI literal7 dosya0; diff PASS. Yerel fix commit, push/tag/PR yok; önceki değişiklikler korunur.

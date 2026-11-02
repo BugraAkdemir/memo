@@ -160,6 +160,10 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		if err != nil {
 			return nil, err
 		}
+		briefings, err := s.Briefings(ctx, 10)
+		if err != nil {
+			return nil, err
+		}
 		return struct {
 			ReplyModel  twin.ReplyModel              `json:"reply_model"`
 			Actions     []twin.Action                `json:"actions"`
@@ -167,7 +171,8 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 			Preferences twin.Preferences             `json:"preferences"`
 			Projects    []autonomy.RegisteredProject `json:"projects"`
 			Commitments []waitingView                `json:"commitments"`
-		}{selection, actions, contacts, p, a.twinProjects(), waitingViews(waiting)}, nil
+			Briefings   []twin.Briefing              `json:"briefings"`
+		}{selection, actions, contacts, p, a.twinProjects(), waitingViews(waiting), briefings}, nil
 	case "reply_model":
 		var m twin.ReplyModel
 		if err := decodeTwin(raw, &m); err != nil {
@@ -179,6 +184,15 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 			}
 		}
 		err := s.SaveReplyModel(ctx, m)
+		return map[string]bool{"ok": err == nil}, err
+	case "briefing_read":
+		var args struct {
+			Key string `json:"key"`
+		}
+		if err := decodeTwin(raw, &args); err != nil {
+			return nil, err
+		}
+		err := s.MarkBriefingRead(ctx, args.Key)
 		return map[string]bool{"ok": err == nil}, err
 	case "resolve_commitment":
 		var args struct {

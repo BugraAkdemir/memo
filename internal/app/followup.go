@@ -35,11 +35,12 @@ func waitingViews(list []twin.Commitment) []waitingView {
 	return out
 }
 
-// The radar only prepares reminder drafts for owner review, so a coarse tick is
-// enough; the first scan waits so startup is not slowed by a model call.
+// The loop only prepares reminder drafts and local briefings. A one-minute tick
+// keeps a short pre-meeting window from being missed; the first scan waits so
+// startup is not slowed by a model call.
 const (
 	followUpFirstScan = time.Minute
-	followUpInterval  = 5 * time.Minute
+	followUpInterval  = time.Minute
 )
 
 // runFollowUpScan prepares a review-only reminder for every commitment that is
@@ -137,6 +138,11 @@ func (a *App) startFollowUpRadar() {
 			case <-ctx.Done():
 				return
 			case <-timer.C:
+				if n, err := a.runBriefings(ctx, time.Now()); err != nil && ctx.Err() == nil {
+					logx.Printf("follow-up radar: briefing failed: %v", err)
+				} else if n > 0 {
+					logx.Printf("follow-up radar: built %d briefing(s)", n)
+				}
 				if n, err := a.runPromiseScan(ctx, time.Now()); err != nil && ctx.Err() == nil {
 					logx.Printf("follow-up radar: promise scan failed: %v", err)
 				} else if n > 0 {

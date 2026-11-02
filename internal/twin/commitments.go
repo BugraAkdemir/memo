@@ -321,3 +321,22 @@ func (s *Store) DuePromises(ctx context.Context, now time.Time, limit int) ([]Co
 	}
 	return scanCommitments(rows)
 }
+
+// ResolveCommitment lets the owner close a commitment by hand ("done"). It
+// reports ErrNotFound when nothing open or reminded has that id.
+func (s *Store) ResolveCommitment(ctx context.Context, id string) error {
+	return s.db.Write(ctx, func(tx *sql.Tx) error {
+		r, err := tx.ExecContext(ctx, "UPDATE commitments SET status='resolved',resolved_at=? WHERE id=? AND status IN ('open','reminded')", ts(time.Now()), id)
+		if err != nil {
+			return err
+		}
+		n, err := r.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return audit(ctx, tx, "commitment_resolved", "")
+	})
+}

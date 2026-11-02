@@ -42,10 +42,21 @@ func radarApp(t *testing.T, hours int) (*App, *twin.Store, *atomic.Int32) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Error(err)
 		}
-		if len(req.Tools) != 0 || len(req.Messages) == 0 || !strings.Contains(fmt.Sprint(req.Messages[0].Content), "follow-up message") {
-			t.Errorf("not an isolated follow-up call: tools=%d", len(req.Tools))
+		system := ""
+		if len(req.Messages) > 0 {
+			system = fmt.Sprint(req.Messages[0].Content)
 		}
-		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": `{"body":"Merhaba, bir geri dönüşün olursa sevinirim."}`}, "finish_reason": "stop"}}})
+		reply := `{"body":"Merhaba, bir geri dönüşün olursa sevinirim."}`
+		switch {
+		case len(req.Tools) != 0:
+			t.Errorf("not an isolated call: tools=%d", len(req.Tools))
+		case strings.Contains(system, "follow-up message"):
+		case strings.Contains(system, "list only the promises"):
+			reply = fmt.Sprintf(`{"promises":[{"summary":"Raporu gönder","due_at":"%s"}]}`, time.Now().Add(30*time.Hour).UTC().Format(time.RFC3339))
+		default:
+			t.Errorf("unexpected prompt: %.60s", system)
+		}
+		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": reply}, "finish_reason": "stop"}}})
 	}))
 	t.Cleanup(server.Close)
 	mgr := provider.NewConfigManager(t.TempDir()+"/providers.json", make([]byte, 32))
@@ -197,5 +208,144 @@ func TestPreferencesSaveRoundTripsRadar(t *testing.T) {
 	}
 	if p, _ := s.Preferences(ctx); !p.Radar.Enabled || p.Radar.FollowUpHours != 24 {
 		t.Fatalf("radar not saved: %+v", p.Radar)
+	}
+}
+
+// ---- promises ----
+
+func promiseApp(t *testing.T) (*App, *twin.Store, *atomic.Int32) {
+	t.Helper()
+	a, s, calls := radarApp(t, 48)
+	ctx := context.Background()
+	p, _ := s.Preferences(ctx)
+	p.Radar.TrackPromises = true
+	if err := s.SavePreferences(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	return a, s, calls
+}
+
+func promisesIn(t *testing.T, s *twin.Store) []twin.Commitment {
+	t.Helper()
+	all, err := s.Commitments(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := []twin.Commitment{}
+	for _, c := range all {
+		if c.Kind == "my_promise" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func TestSentMailPromiseIsExtractedThroughTheReplyModel(t *testing.T) {
+	ctx := context.Background()
+	a, s, calls := promiseApp(t)
+	req := mail.SendRequest{AccountID: "owner", To: []string{"Ali <ali@example.com>"}, Subject: "Rapor", Body: "Raporu yarın sana gönderirim."}
+	a.recordTwinSentMail(ctx, req)
+	// recordTwinSentMail only records; the model read runs separately.
+	if len(promisesIn(t, s)) != 0 {
+		t.Fatal("a promise appeared without a model read")
+	}
+	msg := twin.Message{Channel: "mail", Account: "owner", EventID: "x1", Address: "ali@example.com", Outgoing: true, Body: req.Body, SentAt: time.Now()}
+	if err := s.RecordMessage(ctx, msg, "Ali"); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := a.extractTwinPromises(ctx, msg); err != nil || n != 1 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	got := promisesIn(t, s)
+	if len(got) != 1 || got[0].Body != "Raporu gönder" || got[0].Address != "ali@example.com" {
+		t.Fatalf("promises=%+v", got)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("model calls=%d", calls.Load())
+	}
+}
+
+func TestPromiseScanRemindsOnceAndDoesNotRepeat(t *testing.T) {
+	ctx := context.Background()
+	a, s, _ := promiseApp(t)
+	if err := s.RecordMessage(ctx, twin.Message{Channel: "mail", Account: "owner", EventID: "x1", Address: "ali@example.com", Outgoing: true, Body: "Raporu yarın sana gönderirim.", SentAt: time.Now()}, "Ali"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.AddPromise(ctx, twin.Promise{Channel: "mail", Account: "owner", Address: "ali@example.com", Summary: "Raporu gönder", SourceRef: "x1", DueAt: time.Now().Add(24 * time.Hour)}); err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if n, err := a.runPromiseScan(ctx, time.Now()); err != nil || n != 0 {
+		t.Fatalf("not due yet: n=%d err=%v", n, err)
+	}
+	if n, err := a.runPromiseScan(ctx, time.Now().Add(25*time.Hour)); err != nil || n != 1 {
+		t.Fatalf("due: n=%d err=%v", n, err)
+	}
+	if got := promisesIn(t, s); len(got) != 1 || got[0].Status != "reminded" {
+		t.Fatalf("promise should be marked reminded: %+v", got)
+	}
+	if n, _ := a.runPromiseScan(ctx, time.Now().Add(48*time.Hour)); n != 0 {
+		t.Fatalf("reminded again: %d", n)
+	}
+}
+
+func TestResolveCommitmentClosesAPromiseOnceAndRejectsStrangers(t *testing.T) {
+	ctx := context.Background()
+	a, s, _ := promiseApp(t)
+	if err := s.RecordMessage(ctx, twin.Message{Channel: "mail", Account: "owner", EventID: "x1", Address: "ali@example.com", Outgoing: true, Body: "Raporu yarın sana gönderirim.", SentAt: time.Now()}, "Ali"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddPromise(ctx, twin.Promise{Channel: "mail", Account: "owner", Address: "ali@example.com", Summary: "Raporu gönder", SourceRef: "x1", DueAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	id := promisesIn(t, s)[0].ID
+	if _, err := a.CallTwin(ctx, "resolve_commitment", json.RawMessage(`{"id":"`+id+`"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := promisesIn(t, s); len(got) != 0 {
+		t.Fatalf("still listed after being resolved: %+v", got)
+	}
+	if _, err := a.CallTwin(ctx, "resolve_commitment", json.RawMessage(`{"id":"`+id+`"}`)); err == nil {
+		t.Fatal("resolving twice must report that nothing was open")
+	}
+	if _, err := a.CallTwin(ctx, "resolve_commitment", json.RawMessage(`{"id":"nope"}`)); err == nil {
+		t.Fatal("an unknown id was accepted")
+	}
+	if _, err := a.CallTwin(ctx, "resolve_commitment", json.RawMessage(`{"id":"x","extra":1}`)); err == nil {
+		t.Fatal("unknown fields must be rejected")
+	}
+}
+
+func TestActivityShowsAPromiseSummaryButNeverAMessageBody(t *testing.T) {
+	ctx := context.Background()
+	a, s, _ := promiseApp(t)
+	if err := s.RecordMessage(ctx, twin.Message{Channel: "mail", Account: "owner", EventID: "x1", Address: "ali@example.com", Outgoing: true, Body: "GİZLİ PROJE ADI için raporu yarın gönderirim, ne dersin?", SentAt: time.Now(), Subject: "Rapor"}, "Ali"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddPromise(ctx, twin.Promise{Channel: "mail", Account: "owner", Address: "ali@example.com", Summary: "Raporu gönder", SourceRef: "x1", DueAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := a.CallTwin(ctx, "activity", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, _ := json.Marshal(raw)
+	var got struct {
+		Commitments []struct {
+			Kind    string `json:"kind"`
+			Summary string `json:"summary"`
+		} `json:"commitments"`
+	}
+	if err = json.Unmarshal(blob, &got); err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[string]string{}
+	for _, c := range got.Commitments {
+		kinds[c.Kind] = c.Summary
+	}
+	if kinds["my_promise"] != "Raporu gönder" || kinds["waiting_on_other"] != "" {
+		t.Fatalf("kinds=%v blob=%s", kinds, blob)
+	}
+	if strings.Contains(string(blob), "GİZLİ PROJE ADI") {
+		t.Fatal("a message body leaked")
 	}
 }

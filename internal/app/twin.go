@@ -180,6 +180,15 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		}
 		err := s.SaveReplyModel(ctx, m)
 		return map[string]bool{"ok": err == nil}, err
+	case "resolve_commitment":
+		var args struct {
+			ID string `json:"id"`
+		}
+		if err := decodeTwin(raw, &args); err != nil {
+			return nil, err
+		}
+		err := s.ResolveCommitment(ctx, args.ID)
+		return map[string]bool{"ok": err == nil}, err
 	case "cancel_action", "hold_action":
 		var args struct {
 			ID string `json:"id"`
@@ -263,12 +272,26 @@ func (a *App) recordTwinSentMail(ctx context.Context, r mail.SendRequest) {
 	// More than one recipient is a group thread: it is evidence of how the
 	// owner writes, but the follow-up radar never nudges a group.
 	group := len(recipients) > 1
+	first := ""
 	for _, to := range recipients {
 		addr, err := netmail.ParseAddress(to)
 		if err != nil {
 			continue
 		}
+		if first == "" {
+			first = addr.Address
+		}
 		a.recordTwinMessage(ctx, twin.Message{Channel: "mail", Account: r.AccountID, Address: addr.Address, EventID: id, Outgoing: true, SentAt: at, Body: r.Body, Subject: r.Subject, InReplyTo: r.InReplyTo, Group: group}, addr.Name)
+	}
+	// Reading the text for promises needs the reply model, so it never blocks
+	// or fails the send; the engine itself checks that the owner opted in.
+	if first != "" && a.lifecycleCtx != nil {
+		msg := twin.Message{Channel: "mail", Account: r.AccountID, Address: first, EventID: id, Outgoing: true, SentAt: at, Body: r.Body, Subject: r.Subject}
+		a.goBackground("twinPromises", func() {
+			if _, err := a.extractTwinPromises(a.lifecycleCtx, msg); err != nil {
+				logx.Printf("twin: promise read failed: %v", err)
+			}
+		})
 	}
 }
 func (a *App) recordTwinWhatsApp(ctx context.Context, c *whatsapp.Client, m whatsapp.Message) {

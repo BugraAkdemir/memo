@@ -104,7 +104,7 @@ func (e *Engine) prepareFollowUp(ctx context.Context, c twin.Commitment, prefs t
 	a := twin.Action{
 		DeliveryVersion: 1, ID: followUpActionID(c.ID), ContactID: c.ContactID, Channel: c.Channel, Account: c.Account,
 		Recipient: c.Address, SourceAddress: c.Address, Subject: c.Subject, InReplyTo: c.InReplyTo, CreatedAt: now,
-		State: "preparing", Reason: "preparing", Stage: "writing", Mode: "awaiting_approval",
+		State: "preparing", Reason: "preparing", Stage: "writing", Mode: "awaiting_approval", FollowUp: true,
 		Tools: []string{}, Alternatives: []time.Time{}, CalendarIDs: []string{},
 	}
 	claimed, err := e.Store.ClaimIncomingAction(ctx, a)

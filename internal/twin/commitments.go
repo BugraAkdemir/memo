@@ -151,7 +151,7 @@ func trackCommitments(ctx context.Context, tx *sql.Tx, a Alias, m Message, conta
 	}
 	// Delivery of a reminder exists for mail and WhatsApp only, and a group or
 	// CC thread never gets an automatic nudge.
-	if m.Group || (a.Channel != "mail" && a.Channel != "whatsapp") || !expectsReply(m.Body) {
+	if m.Group || m.NoTrack || (a.Channel != "mail" && a.Channel != "whatsapp") || !expectsReply(m.Body) {
 		return nil
 	}
 	var raw string

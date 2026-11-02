@@ -70,6 +70,7 @@ func TestRadarIgnoresMessagesThatExpectNoReply(t *testing.T) {
 		{"group or cc", true, sentMail("c", "x@example.com", "Müsait misin?", now), true},
 		{"incoming", true, Message{Channel: "mail", Account: "acct", EventID: "d", Address: "x@example.com", Body: "Müsait misin?", SentAt: now}, false},
 		{"already overdue", true, sentMail("e", "x@example.com", "Müsait misin?", now.Add(-72*time.Hour)), false},
+		{"a reminder must not breed another", true, func() Message { m := sentMail("g", "x@example.com", "Müsait misin?", now); m.NoTrack = true; return m }(), false},
 		{"telegram has no delivery path", true, Message{Channel: "telegram", Account: "acct", EventID: "f", Address: "42", Outgoing: true, Body: "Müsait misin?", SentAt: now}, false},
 	}
 	for _, tc := range cases {

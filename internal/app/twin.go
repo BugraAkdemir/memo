@@ -279,6 +279,17 @@ func (a *App) recordTwinMail(ctx context.Context, account mail.Account, d *mail.
 	id := fmt.Sprintf("%d:%s", d.UID, d.MessageID)
 	return a.recordTwinMessage(ctx, twin.Message{Channel: "mail", Account: account.ID, Address: from.Address, EventID: id, SentAt: d.Timestamp, Body: d.Subject + "\n" + d.TextBody}, from.Name)
 }
+
+type noTrackKey struct{}
+
+// withNoTrack marks a send as a reminder: it is recorded as something the owner
+// said, but it must not start a new "waiting for a reply" record.
+func withNoTrack(ctx context.Context) context.Context {
+	return context.WithValue(ctx, noTrackKey{}, true)
+}
+
+func isNoTrack(ctx context.Context) bool { v, _ := ctx.Value(noTrackKey{}).(bool); return v }
+
 func (a *App) recordTwinSentMail(ctx context.Context, r mail.SendRequest) {
 	// Capture only after SMTP success; drafts and failed sends are not evidence
 	// of what the user actually said. Each send gets a distinct event id.
@@ -297,7 +308,7 @@ func (a *App) recordTwinSentMail(ctx context.Context, r mail.SendRequest) {
 		if first == "" {
 			first = addr.Address
 		}
-		a.recordTwinMessage(ctx, twin.Message{Channel: "mail", Account: r.AccountID, Address: addr.Address, EventID: id, Outgoing: true, SentAt: at, Body: r.Body, Subject: r.Subject, InReplyTo: r.InReplyTo, Group: group}, addr.Name)
+		a.recordTwinMessage(ctx, twin.Message{Channel: "mail", Account: r.AccountID, Address: addr.Address, EventID: id, Outgoing: true, SentAt: at, Body: r.Body, Subject: r.Subject, InReplyTo: r.InReplyTo, Group: group, NoTrack: isNoTrack(ctx)}, addr.Name)
 	}
 	// Reading the text for promises needs the reply model, so it never blocks
 	// or fails the send; the engine itself checks that the owner opted in.

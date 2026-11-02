@@ -73,7 +73,7 @@ func TestFollowUpPreparesReviewOnlyDraftOnce(t *testing.T) {
 		t.Fatalf("actions=%+v", got)
 	}
 	a := got[0]
-	if a.State != "pending" || a.Mode != "awaiting_approval" || a.ExecuteAt != nil || a.Channel != "mail" || a.Recipient != "friend@example.com" || a.SourceAddress != "friend@example.com" || a.Subject != "Teklif" || a.InReplyTo != "<m1@example.com>" || a.DeliveryVersion != 1 || a.ContactID == "" || !a.DraftSaved || a.Body == "" {
+	if a.State != "pending" || a.Mode != "awaiting_approval" || a.ExecuteAt != nil || a.Channel != "mail" || a.Recipient != "friend@example.com" || a.SourceAddress != "friend@example.com" || a.Subject != "Teklif" || a.InReplyTo != "<m1@example.com>" || a.DeliveryVersion != 1 || a.ContactID == "" || !a.DraftSaved || a.Body == "" || !a.FollowUp {
 		t.Fatalf("not a review-only mail draft: %+v", a)
 	}
 	if len(*saved) != 1 || *calls != 1 {

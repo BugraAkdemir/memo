@@ -91,7 +91,11 @@ func (a *App) deliverTwinAction(ctx context.Context, id, subject, body, mode str
 		return nil, err
 	}
 	if action.Channel == "mail" {
-		err = a.MailSend(ctx, mail.SendRequest{AccountID: action.Account, To: []string{action.Recipient}, Subject: action.Subject, Body: action.Body, InReplyTo: action.InReplyTo})
+		sendCtx := ctx
+		if action.FollowUp {
+			sendCtx = withNoTrack(ctx)
+		}
+		err = a.MailSend(sendCtx, mail.SendRequest{AccountID: action.Account, To: []string{action.Recipient}, Subject: action.Subject, Body: action.Body, InReplyTo: action.InReplyTo})
 	} else {
 		_, err = a.WhatsAppSend(ctx, action.Recipient, action.Body)
 	}

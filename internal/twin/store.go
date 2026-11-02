@@ -71,6 +71,8 @@ type Message struct {
 	Subject   string `json:"subject,omitempty"`
 	InReplyTo string `json:"in_reply_to,omitempty"`
 	Group     bool   `json:"group,omitempty"`
+	// NoTrack keeps a sent message from opening a waiting record (a reminder).
+	NoTrack bool `json:"no_track,omitempty"`
 }
 
 func NewStore(dir string) (*Store, error) {

@@ -61,6 +61,9 @@ type Action struct {
 	Alternatives    []time.Time `json:"alternatives"`
 	CalendarIDs     []string    `json:"calendar_ids"`
 	DraftSaved      bool        `json:"draft_saved"`
+	// FollowUp marks a reminder prepared by the follow-up radar. Sending it must
+	// not open another waiting record, or every reminder would breed the next.
+	FollowUp bool `json:"follow_up,omitempty"`
 }
 
 // ClaimIncoming is deliberately distinct from contact-history deduplication.

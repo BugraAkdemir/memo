@@ -3,9 +3,11 @@ package e2e
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/textproto"
 	"strings"
 	"sync/atomic"
@@ -146,6 +148,37 @@ func TestApprovalDeliveryAndUndoOverRealHTTPAndSMTP(t *testing.T) {
 					t.Fatal("queue did not settle", state)
 				}
 				time.Sleep(20 * time.Millisecond)
+			}
+			streamCtx, stopStream := context.WithTimeout(ctx, 3*time.Second)
+			req, _ := http.NewRequestWithContext(streamCtx, "GET", h.BaseURL+"/api/v1/twin/events", nil)
+			events, err := h.client.Do(req)
+			if err != nil {
+				stopStream()
+				t.Fatal(err)
+			}
+			scanner := bufio.NewScanner(events.Body)
+			matched := false
+			for scanner.Scan() {
+				line := scanner.Text()
+				if !strings.HasPrefix(line, "data: ") {
+					continue
+				}
+				var signal map[string]any
+				if err = json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &signal); err != nil {
+					t.Fatal(err)
+				}
+				if signal["id"] == action.ID && signal["state"] == want {
+					if signal["body"] != nil || signal["recipient"] != nil || signal["subject"] != nil {
+						t.Fatal("SSE leaked draft", signal)
+					}
+					matched = true
+					break
+				}
+			}
+			events.Body.Close()
+			stopStream()
+			if !matched {
+				t.Fatal("terminal SSE event missing", scanner.Err())
 			}
 			if mode != "cancel" {
 				select {

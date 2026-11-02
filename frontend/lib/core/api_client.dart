@@ -3084,6 +3084,16 @@ class MemoApiClient {
     return [];
   }
 
+  /// Private reply change signals. Snapshots remain authoritative after reconnect.
+  Stream<void> twinChangeStream({CancelToken? cancelToken}) async* {
+    await for (final line in _sseLines(
+      path: '/api/twin/events', method: 'GET', cancelToken: cancelToken,
+      dioReceiveTimeout: const Duration(seconds: 300),
+    )) {
+      if (line.startsWith('data: ')) yield null;
+    }
+  }
+
   /// Passive change signals; reconnect and fetch a full snapshot on each one.
   Stream<void> calendarChangeStream({CancelToken? cancelToken}) async* {
     await for (final line in _sseLines(path: '/api/calendar/changes', method: 'GET',

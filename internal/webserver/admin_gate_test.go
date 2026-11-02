@@ -104,6 +104,8 @@ func TestDestructiveEndpoints_AdminOnly(t *testing.T) {
 		{"POST", "/api/telemetry/consent"},
 		{"POST", "/api/telemetry/reset-id"},
 		{"POST", "/api/telemetry/delete"},
+		{"GET", "/api/twin/events"},
+		{"GET", "/api/v1/twin/events"},
 		{"POST", "/api/twin/approve_action"},
 		{"POST", "/api/v1/twin/approve_action"},
 		{"POST", "/api/twin/hold_action"},

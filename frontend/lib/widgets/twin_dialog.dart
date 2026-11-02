@@ -18,9 +18,12 @@ class TwinDialog extends ConsumerStatefulWidget {
   ConsumerState<TwinDialog> createState() => _TwinDialogState();
 }
 
-class _TwinDialogState extends ConsumerState<TwinDialog> {
+class _TwinDialogState extends ConsumerState<TwinDialog>
+    with WidgetsBindingObserver {
   TwinState? _state;
   Timer? _approvalTimer;
+  StreamSubscription<void>? _approvalChanges;
+  CancelToken? _approvalCancelToken;
   bool _polling = false;
   bool _initialContactApplied = false;
   bool _busy = false;
@@ -45,31 +48,58 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
   void initState() {
     super.initState();
     Future.microtask(_load);
-    _approvalTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      if (!mounted || _busy || _polling || _state == null) return;
-      final lifecycle = WidgetsBinding.instance.lifecycleState;
-      if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
-      _polling = true;
-      try {
-        final state = await ref.read(apiClientProvider).getTwinState();
-        if (mounted && !_busy) setState(() => _state = state);
-      } catch (error) {
-        if (mounted &&
-            error is DioException &&
-            error.response?.statusCode == 403) {
-          setState(() {
-            _state = null;
-            _error = _describe(error);
-          });
-        }
-      } finally {
-        _polling = false;
+    WidgetsBinding.instance.addObserver(this);
+    _syncApprovalStream();
+    _approvalTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _pollActivity(),
+    );
+  }
+
+  Future<void> _pollActivity() async {
+    if (!mounted || _busy || _polling || _state == null) return;
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+    _polling = true;
+    try {
+      final state = await ref.read(apiClientProvider).getTwinState();
+      if (mounted && !_busy) setState(() => _state = state);
+    } catch (error) {
+      if (mounted &&
+          error is DioException &&
+          error.response?.statusCode == 403) {
+        setState(() {
+          _state = null;
+          _error = _describe(error);
+        });
       }
-    });
+    } finally {
+      _polling = false;
+    }
+  }
+
+  void _syncApprovalStream() {
+    _approvalChanges?.cancel();
+    _approvalCancelToken?.cancel();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+    _approvalCancelToken = CancelToken();
+    _approvalChanges = ref
+        .read(apiClientProvider)
+        .twinChangeStream(cancelToken: _approvalCancelToken)
+        .listen((_) => _pollActivity(), onError: (Object _) {});
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _syncApprovalStream();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _approvalChanges?.cancel();
+    _approvalCancelToken?.cancel();
     _approvalTimer?.cancel();
     for (final c in [_name, _address, _timezone, _start, _end]) {
       c.dispose();

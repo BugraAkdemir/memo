@@ -32,6 +32,8 @@ class _MailScreenState extends ConsumerState<MailScreen>
     with WidgetsBindingObserver {
   Timer? _statsTimer;
   Timer? _activityTimer;
+  StreamSubscription<void>? _approvalChanges;
+  CancelToken? _approvalCancelToken;
   bool _activityLoading = false;
   Map<String, dynamic>? _activity;
   bool _activityFailed = false;
@@ -59,6 +61,8 @@ class _MailScreenState extends ConsumerState<MailScreen>
   }
 
   void _updateStatsTimer() {
+    _approvalChanges?.cancel();
+    _approvalCancelToken?.cancel();
     _statsTimer?.cancel();
     _activityTimer?.cancel();
     final state = WidgetsBinding.instance.lifecycleState;
@@ -66,6 +70,11 @@ class _MailScreenState extends ConsumerState<MailScreen>
         (state != null && state != AppLifecycleState.resumed)) {
       return;
     }
+    _approvalCancelToken = CancelToken();
+    _approvalChanges = ref
+        .read(apiClientProvider)
+        .twinChangeStream(cancelToken: _approvalCancelToken)
+        .listen((_) => _reloadActivity(), onError: (Object _) {});
     _statsTimer = Timer.periodic(
       const Duration(seconds: 15),
       (_) => _reloadStats(),
@@ -303,6 +312,8 @@ class _MailScreenState extends ConsumerState<MailScreen>
 
   @override
   void dispose() {
+    _approvalChanges?.cancel();
+    _approvalCancelToken?.cancel();
     _statsTimer?.cancel();
     _activityTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);

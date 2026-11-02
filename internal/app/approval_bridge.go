@@ -152,7 +152,16 @@ func (a *App) notifyApproval(ctx context.Context, v twin.Action, phase string) {
 		v = current
 	}
 	a.publishApprovalOnce(ctx, s, v, phase)
-	text := fmt.Sprintf(a.twinText("Memo yanıt #%d · %s\nAlıcı: %s\nKonu: %s", "Memo reply #%d · %s\nRecipient: %s\nSubject: %s"), v.ApprovalCode, v.State, v.Recipient, v.Subject)
+	status := a.twinText("Onay bekliyor", "Pending review")
+	switch v.State {
+	case "sent":
+		status = a.twinText("Gönderildi", "Sent")
+	case "cancelled":
+		status = a.twinText("İptal edildi", "Cancelled")
+	case "send_uncertain", "sending":
+		status = a.twinText("Gönderim doğrulanamadı; tekrar göndermeyin", "Delivery unconfirmed; do not resend")
+	}
+	text := fmt.Sprintf(a.twinText("Memo yanıt #%d · %s\nAlıcı: %s\nKonu: %s", "Memo reply #%d · %s\nRecipient: %s\nSubject: %s"), v.ApprovalCode, status, v.Recipient, v.Subject)
 	if phase == "pending" {
 		text += "\n\n" + v.Body + "\n\n" + fmt.Sprintf(a.twinText("#onay %d · #iptal %d · #asla %d", "#approve %d · #cancel %d · #never %d"), v.ApprovalCode, v.ApprovalCode, v.ApprovalCode)
 		if v.Mode == "grace_period_auto" && v.ExecuteAt != nil {

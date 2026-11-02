@@ -27,10 +27,10 @@ ile gönderilir; mailin mevcut incele/düzenle/gönder akışı korunur.
 
 ## Sahip bildirimleri ve komutlar
 
-Yeni bekleyen işlemler mevcut olay akışına `autonomy:action_pending`, sonuçlar
+Yeni bekleyen işlemler admin-only `GET /api/twin/events` SSE akışına (ve mevcut olay listesine) `autonomy:action_pending`, sonuçlar
 `autonomy:action_executed` olarak çıkar. Ambient veri yalnız işlem kimliği,
 numarası ve durumudur; konu, alıcı veya gövde içermez. Özel içerik admin API'sinde
-kalır. Açık Mail görünümü ve İkiz paneli durumları yeniler.
+kalır. Açık Mail görünümü ve İkiz paneli SSE sinyaliyle durumları yeniler; bağlantı kesilirse periyodik yenileme devam eder. Arka planda akış iptal edilir.
 
 Bağlı WhatsApp hesabının kendi sohbetine ve etkin/önceden bağlanmış Telegram
 sahibine aynı anda bağımsız bildirim denenir. Bildirim alıcı, konu, taslak ve

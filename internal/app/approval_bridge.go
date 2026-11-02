@@ -84,6 +84,11 @@ func (a *App) publishApprovalEvent(v twin.Action, phase string) {
 	raw, _ := json.Marshal(map[string]any{"id": v.ID, "state": v.State, "code": v.ApprovalCode})
 	a.emitEvent("autonomy:action_"+map[string]string{"pending": "pending", "executed": "executed"}[phase], string(raw))
 }
+func (a *App) publishApprovalOnce(ctx context.Context, s *twin.Store, v twin.Action, phase string) {
+	if claimed, err := s.ClaimNotification(ctx, v.ID, phase, "ui"); err == nil && claimed {
+		a.publishApprovalEvent(v, phase)
+	}
+}
 func (a *App) queueApprovalNotification(v twin.Action, phase string) {
 	if a.lifecycleCtx == nil {
 		return
@@ -146,9 +151,7 @@ func (a *App) notifyApproval(ctx context.Context, v twin.Action, phase string) {
 		}
 		v = current
 	}
-	if claimed, err := s.ClaimNotification(ctx, v.ID, phase, "ui"); err == nil && claimed {
-		a.publishApprovalEvent(v, phase)
-	}
+	a.publishApprovalOnce(ctx, s, v, phase)
 	text := fmt.Sprintf(a.twinText("Memo yanıt #%d · %s\nAlıcı: %s\nKonu: %s", "Memo reply #%d · %s\nRecipient: %s\nSubject: %s"), v.ApprovalCode, v.State, v.Recipient, v.Subject)
 	if phase == "pending" {
 		text += "\n\n" + v.Body + "\n\n" + fmt.Sprintf(a.twinText("#onay %d · #iptal %d · #asla %d", "#approve %d · #cancel %d · #never %d"), v.ApprovalCode, v.ApprovalCode, v.ApprovalCode)

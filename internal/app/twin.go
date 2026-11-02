@@ -183,7 +183,7 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 			err = s.CancelAction(ctx, args.ID)
 			if err == nil {
 				if v, e := s.Action(ctx, args.ID); e == nil {
-					a.publishApprovalEvent(v, "executed")
+					a.publishApprovalOnce(ctx, s, v, "executed")
 					a.queueApprovalNotification(v, "executed")
 				}
 			}

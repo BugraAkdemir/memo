@@ -99,7 +99,8 @@ func TestOwnerApprovedDraftUsesNativeSMTPAndCannotSendTwice(t *testing.T) {
 				if err = s.SaveAction(ctx, action); err != nil {
 					t.Fatal(err)
 				}
-				a := &App{mailManager: mgr, twinStore: s}
+				a := &App{mailManager: mgr, twinStore: s, lifecycleCtx: ctx, events: &eventRing{}}
+				drainBackground(t, a)
 				expectedBody := "Owner edited reply"
 				if mode != "owner_approved" {
 					p, _ := s.Preferences(ctx)
@@ -179,6 +180,18 @@ func TestOwnerApprovedDraftUsesNativeSMTPAndCannotSendTwice(t *testing.T) {
 				}
 				if _, err = a.CallTwin(ctx, "send_action", raw); !errors.Is(err, twin.ErrDeliveryConflict) {
 					t.Fatalf("replayed: %v", err)
+				}
+				if !a.waitBackground(time.Second) {
+					t.Fatal("approval follow-up still active")
+				}
+				terminal := 0
+				for _, event := range a.events.snapshot() {
+					if event.Name == "autonomy:action_executed" {
+						terminal++
+					}
+				}
+				if terminal != 1 {
+					t.Fatalf("duplicate terminal events: %d", terminal)
 				}
 				listener.Close()
 				select {

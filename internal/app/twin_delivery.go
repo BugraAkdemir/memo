@@ -104,7 +104,7 @@ func (a *App) deliverTwinAction(ctx context.Context, id, subject, body, mode str
 	if err != nil || finishErr != nil {
 		action.State = "send_uncertain"
 	}
-	a.publishApprovalEvent(action, "executed")
+	a.publishApprovalOnce(finishCtx, s, action, "executed")
 	// The worker/remote path publishes transport notifications after reservation;
 	// owner HTTP sends share exactly the same terminal-state notification.
 	a.queueApprovalNotification(action, "executed")

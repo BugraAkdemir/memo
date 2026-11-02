@@ -56,7 +56,7 @@ func TestTwinHTTPMethodsLimitsAndCodes(t *testing.T) {
 func TestTwinHTTPRequiresAdminForReadsAndWrites(t *testing.T) {
 	stub := &swarmStubBridge{sessionRole: func(token string) (string, bool) { return "user", token == "user-session" }}
 	s := New(stub)
-	for _, op := range []string{"state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "hold_action", "send_action", "approve_action", "contact_timeline", "check_availability", "git_project_status"} {
+	for _, op := range twinOperations {
 		req := httptest.NewRequest("POST", "/api/twin/"+op, strings.NewReader(`{}`))
 		if op == "state" || op == "activity" {
 			req.Method = "GET"
@@ -89,6 +89,62 @@ func TestOwnerReplySendHTTPFailuresAreStableAndRedacted(t *testing.T) {
 		s.handleTwin(w, httptest.NewRequest("POST", "/api/twin/send_action", strings.NewReader(`{"id":"draft","subject":"Re: meeting","body":"edited"}`)))
 		if w.Code != tc.status || !strings.Contains(w.Body.String(), tc.code) || strings.Contains(w.Body.String(), "private transport") {
 			t.Fatalf("%v: %d %s", tc.err, w.Code, w.Body)
+		}
+	}
+}
+
+// Found in the live run: three operations existed in the app but the HTTP layer
+// kept its own copy of the list, so they answered 404 in the real client. The
+// list is now one value used for both the routes and the handler.
+func TestEveryTwinOperationIsServedAndTheListHasTheStepSevenOnes(t *testing.T) {
+	want := []string{"resolve_commitment", "task_from_action", "briefing_read"}
+	have := map[string]bool{}
+	for _, op := range twinOperations {
+		have[op] = true
+	}
+	for _, op := range want {
+		if !have[op] {
+			t.Errorf("%s is not routable", op)
+		}
+	}
+	for _, op := range twinOperations {
+		f := &fakeTwinBridge{}
+		s := New(f)
+		method, body := "POST", `{}`
+		if op == "state" || op == "activity" {
+			method, body = "GET", ""
+		}
+		w := httptest.NewRecorder()
+		s.handleTwin(w, httptest.NewRequest(method, "/api/twin/"+op, strings.NewReader(body)))
+		if w.Code == 404 || f.operation != op {
+			t.Errorf("%s: status %d, bridge saw %q", op, w.Code, f.operation)
+		}
+	}
+	// An unknown operation is still refused before it reaches the bridge.
+	f := &fakeTwinBridge{}
+	w := httptest.NewRecorder()
+	New(f).handleTwin(w, httptest.NewRequest("POST", "/api/twin/run_command", strings.NewReader(`{}`)))
+	if w.Code != 404 || f.called != 0 {
+		t.Fatalf("unknown operation: status %d called=%d", w.Code, f.called)
+	}
+}
+
+func TestTwinTaskAndCommitmentErrorsMapToStableCodes(t *testing.T) {
+	for _, tc := range []struct {
+		op     string
+		err    error
+		status int
+	}{
+		{"task_from_action", twin.ErrInvalid, 400},
+		{"task_from_action", twin.ErrNotFound, 404},
+		{"resolve_commitment", twin.ErrNotFound, 404},
+		{"briefing_read", twin.ErrNotFound, 404},
+	} {
+		f := &fakeTwinBridge{err: tc.err}
+		w := httptest.NewRecorder()
+		New(f).handleTwin(w, httptest.NewRequest("POST", "/api/twin/"+tc.op, strings.NewReader(`{}`)))
+		if w.Code != tc.status {
+			t.Errorf("%s %v: %d", tc.op, tc.err, w.Code)
 		}
 	}
 }

@@ -453,7 +453,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 
 	// Mail subsystem
 	route("/api/twin/events", s.adminOnly(s.handleTwinEvents))
-	for _, op := range []string{"state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "hold_action", "send_action", "approve_action", "contact_timeline", "check_availability", "git_project_status"} {
+	for _, op := range twinOperations {
 		route("/api/twin/"+op, s.adminOnly(s.handleTwin))
 	}
 	route("/api/mail/accounts", s.adminOnly(s.handleMailAccounts))

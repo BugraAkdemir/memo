@@ -17,6 +17,25 @@ type TwinBridge interface {
 	CallTwin(context.Context, string, json.RawMessage) (any, error)
 }
 
+// twinOperations is the one list of owner operations served over HTTP. Routes
+// and the handler both read it: they used to keep separate copies, and an
+// operation present in the app but missing from either answered 404.
+var twinOperations = []string{
+	"state", "activity", "contact", "merge", "preferences", "reply_model",
+	"cancel_action", "hold_action", "send_action", "approve_action",
+	"contact_timeline", "check_availability", "git_project_status",
+	"resolve_commitment", "task_from_action", "briefing_read",
+}
+
+func isTwinOperation(op string) bool {
+	for _, known := range twinOperations {
+		if op == known {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) handleTwin(w http.ResponseWriter, r *http.Request) {
 	var bridge TwinBridge
 	if b, ok := s.bridge.(TwinBridge); ok {
@@ -51,9 +70,7 @@ func (s *Server) handleTwin(w http.ResponseWriter, r *http.Request) {
 		}
 		raw = b
 	}
-	switch op {
-	case "state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "hold_action", "send_action", "approve_action", "contact_timeline", "check_availability", "git_project_status":
-	default:
+	if !isTwinOperation(op) {
 		w.WriteHeader(404)
 		return
 	}

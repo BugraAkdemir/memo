@@ -38,15 +38,22 @@ var instructionPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?is)(ignore|disregard|override|forget).{0,60}(previous|prior|system|developer|instructions|rules)`),
 	regexp.MustCompile(`(?is)(önceki|onceki|sistem|geliştirici|gelistirici).{0,60}(talimat|kurallar|komut).{0,40}(unut|yok say|geçersiz|gecersiz)`),
 	regexp.MustCompile(`(?is)(reveal|print|show|send|leak|display).{0,60}(system prompt|developer message|api.key|password|\.env|private.key|verification.code|otp)`),
-	regexp.MustCompile(`(?is)(şifre|sifre|api.anahtar|sistem.prompt|doğrulama.kod|dogrulama.kod|\.env).{0,70}(gönder|gonder|paylaş|paylas|yazdır|yazdir|açıkla|acikla)`),
+	regexp.MustCompile(`(?is)(şifre|sifre|api.anahtar|sistem.prompt|doğrulama.kod|dogrulama.kod|\.env).{0,70}(gönder|gonder|paylaş|paylas|yazdır|yazdir|açıkla|açikla|acikla)`),
 	regexp.MustCompile(`(?is)(new number|yeni numara).{0,100}(password|code|şifre|sifre|kod)`),
 	regexp.MustCompile(`(?is)(you are now|act as|from now on|artık sen|artik sen).{0,50}(system|developer|admin|unrestricted|sistem|yönetici|yonetici)`),
 	regexp.MustCompile(`(?i)(\[/?INST\]|<\|(?:im_start|system|developer)\|>|</?untrusted_external_message|\[SYSTEM OVERRIDE)`),
 }
 var encodedToken = regexp.MustCompile(`[A-Za-z0-9+/_-]{24,}={0,2}`)
 
+// negatedAsk matches the Turkish verbs the "ask to share the code" rule looks
+// for when they carry the negative suffix (paylaşmayın, göndermeyin, açıklamayın).
+// A warning NOT to share a code is what every verification mail says, so it is
+// removed before matching; a request to share (paylaş, gönderin) is untouched.
+var negatedAsk = regexp.MustCompile(`(?i)(gönder|gonder|paylaş|paylas|yazdır|yazdir|açıkla|açikla|acikla)m[ae][^\s.,;:!?]*`)
+
 func ruleInjection(text string) bool {
 	text = strings.NewReplacer("İ", "i", "ı", "i").Replace(text)
+	text = negatedAsk.ReplaceAllString(text, " ")
 	for _, p := range instructionPatterns {
 		if p.MatchString(text) {
 			return true

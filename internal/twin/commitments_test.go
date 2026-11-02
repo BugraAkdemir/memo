@@ -252,3 +252,125 @@ func TestCommitmentsMigrationKeepsLegacyRows(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// ---- my_promise: what the owner promised someone else ----
+
+func promiseStore(t *testing.T) (*Store, string) {
+	t.Helper()
+	ctx := context.Background()
+	s := radarStore(t, true, 48)
+	p, _ := s.Preferences(ctx)
+	p.Radar.TrackPromises = true
+	if err := s.SavePreferences(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	// The contact exists because the owner wrote to them.
+	if err := s.RecordMessage(ctx, sentMail("m1", "ali@example.com", "Raporu yarın gönderirim.", time.Now()), "Ali"); err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.Resolve(ctx, Alias{Channel: "mail", Address: "ali@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s, id
+}
+
+func TestPromiseIsStoredListedAndDueOnTime(t *testing.T) {
+	ctx := context.Background()
+	s, contact := promiseStore(t)
+	due := time.Now().Add(24 * time.Hour)
+	ok, err := s.AddPromise(ctx, Promise{Channel: "mail", Account: "acct", Address: "ali@example.com", Summary: "Raporu gönder", SourceRef: "m1", DueAt: due})
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	// The same promise from the same message is never stored twice.
+	if ok, _ = s.AddPromise(ctx, Promise{Channel: "mail", Account: "acct", Address: "ali@example.com", Summary: "Raporu gönder", SourceRef: "m1", DueAt: due}); ok {
+		t.Fatal("duplicate promise stored")
+	}
+	all, err := s.Commitments(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var promise *Commitment
+	for i := range all {
+		if all[i].Kind == "my_promise" {
+			promise = &all[i]
+		}
+	}
+	if promise == nil || promise.Body != "Raporu gönder" || promise.ContactID != contact || promise.Status != "open" {
+		t.Fatalf("promise missing or wrong: %+v", all)
+	}
+	if got, _ := s.DuePromises(ctx, time.Now(), 10); len(got) != 0 {
+		t.Fatalf("not due yet: %+v", got)
+	}
+	got, err := s.DuePromises(ctx, due.Add(time.Minute), 10)
+	if err != nil || len(got) != 1 || got[0].ID != promise.ID {
+		t.Fatalf("due=%+v err=%v", got, err)
+	}
+	if ok, _ := s.SetCommitmentStatus(ctx, promise.ID, "open", "reminded"); !ok {
+		t.Fatal("could not mark reminded")
+	}
+	if got, _ = s.DuePromises(ctx, due.Add(time.Hour), 10); len(got) != 0 {
+		t.Fatalf("a reminded promise is due again: %+v", got)
+	}
+}
+
+// A reply from the contact answers a question; it says nothing about whether
+// the owner kept a promise, so it must never close one.
+func TestContactReplyDoesNotCloseAPromise(t *testing.T) {
+	ctx := context.Background()
+	s, _ := promiseStore(t)
+	if _, err := s.AddPromise(ctx, Promise{Channel: "mail", Account: "acct", Address: "ali@example.com", Summary: "Raporu gönder", SourceRef: "m1", DueAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	reply := Message{Channel: "mail", Account: "acct", EventID: "in1", Address: "ali@example.com", Body: "Tamam, bekliyorum", SentAt: time.Now().Add(time.Minute)}
+	if err := s.RecordMessage(ctx, reply, ""); err != nil {
+		t.Fatal(err)
+	}
+	all, _ := s.Commitments(ctx)
+	found := false
+	for _, c := range all {
+		if c.Kind == "my_promise" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("an incoming message closed the owner's promise")
+	}
+}
+
+func TestPromiseValidation(t *testing.T) {
+	ctx := context.Background()
+	s, _ := promiseStore(t)
+	good := Promise{Channel: "mail", Account: "acct", Address: "ali@example.com", Summary: "x", SourceRef: "m1", DueAt: time.Now().Add(time.Hour)}
+	for name, mutate := range map[string]func(*Promise){
+		"no summary":      func(p *Promise) { p.Summary = " " },
+		"no due date":     func(p *Promise) { p.DueAt = time.Time{} },
+		"already past":    func(p *Promise) { p.DueAt = time.Now().Add(-time.Hour) },
+		"over a year":     func(p *Promise) { p.DueAt = time.Now().Add(400 * 24 * time.Hour) },
+		"bad channel":     func(p *Promise) { p.Channel = "telegram" },
+		"unknown contact": func(p *Promise) { p.Address = "nobody@example.com" },
+	} {
+		p := good
+		mutate(&p)
+		if ok, err := s.AddPromise(ctx, p); ok || err == nil {
+			t.Errorf("%s accepted (ok=%v err=%v)", name, ok, err)
+		}
+	}
+}
+
+func TestTrackPromisesIsOffByDefaultAndSaved(t *testing.T) {
+	ctx := context.Background()
+	s := radarStore(t, true, 48)
+	if p, _ := s.Preferences(ctx); p.Radar.TrackPromises {
+		t.Fatal("promise tracking must default to off")
+	}
+	p, _ := s.Preferences(ctx)
+	p.Radar.TrackPromises = true
+	if err := s.SavePreferences(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Preferences(ctx); !got.Radar.TrackPromises {
+		t.Fatal("not saved")
+	}
+}

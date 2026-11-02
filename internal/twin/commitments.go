@@ -17,10 +17,13 @@ import (
 type RadarSettings struct {
 	Enabled       bool `json:"enabled"`
 	FollowUpHours int  `json:"follow_up_hours"`
+	// TrackPromises additionally reads the owner's own sent messages for
+	// promises with a clear date. Off by default; the reply model sees the text.
+	TrackPromises bool `json:"track_promises"`
 }
 
-// Commitment is a promise or an awaited reply. Only "waiting_on_other" is
-// produced so far; "my_promise" is reserved for a later step.
+// Commitment is an awaited reply ("waiting_on_other") or something the owner
+// promised someone ("my_promise").
 type Commitment struct {
 	ID         string     `json:"id"`
 	ContactID  string     `json:"contact_id"`
@@ -204,10 +207,10 @@ func scanCommitments(rows *sql.Rows) ([]Commitment, error) {
 	return out, rows.Err()
 }
 
-// Commitments lists what the owner is still waiting on (open or already
-// reminded), soonest due first.
+// Commitments lists what is still open for the owner, awaited replies and own
+// promises alike (open or already reminded), soonest due first.
 func (s *Store) Commitments(ctx context.Context) ([]Commitment, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+commitmentColumns+" FROM commitments WHERE kind='waiting_on_other' AND status IN ('open','reminded') ORDER BY due_at LIMIT 200")
+	rows, err := s.db.QueryContext(ctx, "SELECT "+commitmentColumns+" FROM commitments WHERE kind IN ('waiting_on_other','my_promise') AND status IN ('open','reminded') ORDER BY due_at LIMIT 200")
 	if err != nil {
 		return nil, err
 	}
@@ -258,4 +261,63 @@ func (s *Store) SetCommitmentStatus(ctx context.Context, id, from, to string) (b
 		return err
 	})
 	return won, err
+}
+
+// Promise is something the owner said they would do for someone, with a date.
+type Promise struct {
+	Channel   string
+	Account   string
+	Address   string
+	Summary   string
+	SourceRef string
+	DueAt     time.Time
+}
+
+// AddPromise stores a promise once. A promise needs a real, future, bounded
+// date: guessing one would make the reminder noise. It reports false when the
+// same promise from the same message already exists.
+func (s *Store) AddPromise(ctx context.Context, p Promise) (bool, error) {
+	summary := strings.TrimSpace(p.Summary)
+	if summary == "" || len([]rune(summary)) > 300 || p.DueAt.IsZero() || !p.DueAt.After(time.Now()) || p.DueAt.After(time.Now().AddDate(1, 0, 1)) || p.Account == "" || p.SourceRef == "" {
+		return false, ErrInvalid
+	}
+	if p.Channel != "mail" && p.Channel != "whatsapp" {
+		return false, ErrInvalid
+	}
+	a, err := NormalizeAlias(Alias{Channel: p.Channel, Address: p.Address})
+	if err != nil {
+		return false, err
+	}
+	added := false
+	err = s.db.Write(ctx, func(tx *sql.Tx) error {
+		var contact string
+		if err := tx.QueryRowContext(ctx, "SELECT contact_id FROM contact_aliases WHERE channel=? AND address=?", a.Channel, a.Address).Scan(&contact); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		r, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO commitments(id,contact_id,kind,body,due_at,status,channel,account,address,subject,in_reply_to,source_ref,created_at)
+VALUES(?,?,'my_promise',?,?,'open',?,?,?,'','',?,?)`,
+			commitmentID("promise:"+a.Channel, p.Account, p.SourceRef+"\x00"+summary, a.Address), contact, summary, ts(p.DueAt), a.Channel, p.Account, a.Address, truncateRunes(p.SourceRef, 500), ts(time.Now()))
+		if err != nil {
+			return err
+		}
+		n, err := r.RowsAffected()
+		added = err == nil && n == 1
+		return err
+	})
+	return added, err
+}
+
+// DuePromises returns open promises whose date has arrived.
+func (s *Store) DuePromises(ctx context.Context, now time.Time, limit int) ([]Commitment, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, "SELECT "+commitmentColumns+" FROM commitments WHERE kind='my_promise' AND status='open' AND due_at<=? ORDER BY due_at LIMIT ?", ts(now), limit)
+	if err != nil {
+		return nil, err
+	}
+	return scanCommitments(rows)
 }

@@ -69,6 +69,14 @@ func (s *Store) ClaimIncoming(ctx context.Context, key string) (bool, error) {
 	return s.claimIncoming(ctx, key, nil)
 }
 
+// IncomingClaimed reports whether an ingress key was already claimed, without
+// claiming it: used where the claim must only be written after the work succeeded.
+func (s *Store) IncomingClaimed(ctx context.Context, key string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM autonomy_events WHERE event_key=?", key).Scan(&n)
+	return n > 0, err
+}
+
 // ClaimIncomingAction atomically pairs deduplication with a visible preparation
 // record. A shutdown between the claim and the first model call must not leave
 // an invisible event that can never be retried or reviewed.

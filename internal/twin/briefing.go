@@ -19,9 +19,13 @@ type BriefingSettings struct {
 }
 
 // BriefingSection is one headed list of short lines.
+//
+// Heading is a code the UI translates; Items are language-neutral data (times,
+// names, addresses) and Counts maps a state code to a number.
 type BriefingSection struct {
-	Heading string   `json:"heading"`
-	Items   []string `json:"items"`
+	Heading string         `json:"heading"`
+	Items   []string       `json:"items"`
+	Counts  map[string]int `json:"counts,omitempty"`
 }
 
 // Briefing is a generated card for the owner: kind "morning" or "meeting".
@@ -71,7 +75,7 @@ func clampBriefing(b Briefing) Briefing {
 			}
 			items = append(items, truncateRunes(strings.TrimSpace(it), 400))
 		}
-		secs = append(secs, BriefingSection{Heading: truncateRunes(strings.TrimSpace(sec.Heading), 120), Items: items})
+		secs = append(secs, BriefingSection{Heading: truncateRunes(strings.TrimSpace(sec.Heading), 120), Items: items, Counts: sec.Counts})
 	}
 	b.Sections = secs
 	return b

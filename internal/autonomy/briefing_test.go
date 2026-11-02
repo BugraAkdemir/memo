@@ -296,6 +296,63 @@ func TestPreMeetingNoteIsLinkedOnlyByAnExactKnownAddress(t *testing.T) {
 	}
 }
 
+// Found live: with seven promises to one person, all five lines were promises and
+// the recent conversation, which is what a meeting needs, never appeared.
+func TestManyPromisesDoNotCrowdOutTheRecentConversation(t *testing.T) {
+	ctx := context.Background()
+	f := newBriefer(t, false, true)
+	s := f.b.Store
+	real := time.Now()
+	pref, _ := s.Preferences(ctx)
+	pref.Radar = twin.RadarSettings{Enabled: true, FollowUpHours: 48, TrackPromises: true}
+	if err := s.SavePreferences(ctx, pref); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		sendTo(t, s, "ali@example.com", "Konuşma mesajı "+string(rune('A'+i)), "m"+string(rune('0'+i)), real.Add(-time.Duration(i+1)*time.Hour))
+	}
+	for i := 0; i < 7; i++ {
+		if _, err := s.AddPromise(ctx, twin.Promise{Channel: "mail", Account: "acct", Address: "ali@example.com", Summary: "Söz " + string(rune('A'+i)), SourceRef: "m0", DueAt: real.Add(time.Duration(i+2) * time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	meetingIn(t, f, "Ali ile mimari", "ali@example.com", 10*time.Minute)
+	notes, err := f.b.MeetingNotes(ctx)
+	if err != nil || len(notes) != 1 {
+		t.Fatalf("notes=%+v err=%v", notes, err)
+	}
+	counts := map[string]int{}
+	total := 0
+	for _, sec := range notes[0].Sections {
+		if sec.Heading != "meeting_when" {
+			counts[sec.Heading] = len(sec.Items)
+			total += len(sec.Items)
+		}
+	}
+	if total != 5 || counts["meeting_promises"] > 2 || counts["meeting_recent"] < 3 {
+		t.Fatalf("promises crowded out the conversation: %v", counts)
+	}
+}
+
+// When a category has nothing, its slots go to the next one instead of staying empty.
+func TestUnusedQuotaSlotsAreFilledByTheNextCategory(t *testing.T) {
+	ctx := context.Background()
+	f := newBriefer(t, false, true)
+	s := f.b.Store
+	real := time.Now()
+	for i := 0; i < 8; i++ {
+		sendTo(t, s, "ali@example.com", "Sadece yazışma "+string(rune('A'+i)), "h"+string(rune('0'+i)), real.Add(-time.Duration(i+1)*time.Hour))
+	}
+	meetingIn(t, f, "Ali ile mimari", "ali@example.com", 10*time.Minute)
+	notes, _ := f.b.MeetingNotes(ctx)
+	if len(notes) != 1 {
+		t.Fatalf("%+v", notes)
+	}
+	if sec := section(&notes[0], "meeting_recent"); sec == nil || len(sec.Items) != 5 {
+		t.Fatalf("with no promises, waiting replies or drafts the five lines should all be history: %+v", notes[0].Sections)
+	}
+}
+
 func TestPreMeetingNoteHasAtMostFiveContactLines(t *testing.T) {
 	ctx := context.Background()
 	f := newBriefer(t, false, true)

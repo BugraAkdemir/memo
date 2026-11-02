@@ -241,20 +241,19 @@ func (b *Briefer) meetingNote(ctx context.Context, e calendar.Event, key string,
 		note.Sections = append(note.Sections, twin.BriefingSection{Heading: "meeting_unlinked", Items: []string{}})
 		return note, nil
 	}
-	type line struct{ heading, text string }
-	lines := []line{}
+	lines := []meetingLine{}
 	open, err := b.Store.Commitments(ctx)
 	if err != nil {
 		return note, err
 	}
 	for _, c := range open {
 		if c.ContactID == contact && c.Kind == "my_promise" {
-			lines = append(lines, line{"meeting_promises", join(clip(c.Body, 150), c.DueAt.In(loc).Format("02.01 15:04"))})
+			lines = append(lines, meetingLine{"meeting_promises", join(clip(c.Body, 150), c.DueAt.In(loc).Format("02.01 15:04"))})
 		}
 	}
 	for _, c := range open {
 		if c.ContactID == contact && c.Kind == "waiting_on_other" {
-			lines = append(lines, line{"meeting_waiting", join(clip(c.Subject, 100), c.CreatedAt.In(loc).Format("02.01 15:04"))})
+			lines = append(lines, meetingLine{"meeting_waiting", join(clip(c.Subject, 100), c.CreatedAt.In(loc).Format("02.01 15:04"))})
 		}
 	}
 	actions, err := b.Store.Actions(ctx)
@@ -263,7 +262,7 @@ func (b *Briefer) meetingNote(ctx context.Context, e calendar.Event, key string,
 	}
 	for _, a := range actions {
 		if a.ContactID == contact && a.State == "pending" {
-			lines = append(lines, line{"meeting_drafts", join(a.Recipient, clip(a.Subject, 100))})
+			lines = append(lines, meetingLine{"meeting_drafts", join(a.Recipient, clip(a.Subject, 100))})
 		}
 	}
 	history, err := b.Store.Timeline(ctx, contact, 10)
@@ -275,11 +274,9 @@ func (b *Briefer) meetingNote(ctx context.Context, e calendar.Event, key string,
 		if m.Outgoing {
 			arrow = "→"
 		}
-		lines = append(lines, line{"meeting_recent", fmt.Sprintf("%s %s %s", m.SentAt.In(loc).Format("02.01 15:04"), arrow, clip(m.Body, briefingSnippet))})
+		lines = append(lines, meetingLine{"meeting_recent", fmt.Sprintf("%s %s %s", m.SentAt.In(loc).Format("02.01 15:04"), arrow, clip(m.Body, briefingSnippet))})
 	}
-	if len(lines) > meetingLines {
-		lines = lines[:meetingLines]
-	}
+	lines = pickMeetingLines(lines, meetingLines)
 	index := map[string]int{}
 	for _, l := range lines {
 		i, ok := index[l.heading]
@@ -291,4 +288,45 @@ func (b *Briefer) meetingNote(ctx context.Context, e calendar.Event, key string,
 		note.Sections[i].Items = append(note.Sections[i].Items, l.text)
 	}
 	return note, nil
+}
+
+type meetingLine struct{ heading, text string }
+
+// pickMeetingLines chooses the lines of a pre-meeting note. A meeting needs the
+// recent conversation as much as the open promises, so each category has a
+// quota (two promises, one awaited reply, one draft) and the conversation gets
+// every remaining slot; a category with nothing hands its slots to the next one
+// in priority order. Found live: seven promises used all five lines.
+func pickMeetingLines(all []meetingLine, max int) []meetingLine {
+	order := []string{"meeting_promises", "meeting_waiting", "meeting_drafts", "meeting_recent"}
+	quota := map[string]int{"meeting_promises": 2, "meeting_waiting": 1, "meeting_drafts": 1, "meeting_recent": max}
+	byKind := map[string][]meetingLine{}
+	for _, l := range all {
+		byKind[l.heading] = append(byKind[l.heading], l)
+	}
+	taken := map[string]int{}
+	total := 0
+	for _, k := range order {
+		n := quota[k]
+		if n > len(byKind[k]) {
+			n = len(byKind[k])
+		}
+		if n > max-total {
+			n = max - total
+		}
+		taken[k] = n
+		total += n
+	}
+	// Unused slots go to whichever category still has lines, in priority order.
+	for _, k := range order {
+		for total < max && taken[k] < len(byKind[k]) {
+			taken[k]++
+			total++
+		}
+	}
+	out := make([]meetingLine, 0, total)
+	for _, k := range order {
+		out = append(out, byKind[k][:taken[k]]...)
+	}
+	return out
 }

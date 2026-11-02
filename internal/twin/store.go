@@ -55,6 +55,7 @@ type Preferences struct {
 	WorkStart              string           `json:"work_start"`
 	WorkEnd                string           `json:"work_end"`
 	AllowProjectInspection bool             `json:"allow_project_inspection"`
+	Radar                  RadarSettings    `json:"radar"`
 }
 type Message struct {
 	Channel  string    `json:"channel"`
@@ -64,6 +65,10 @@ type Message struct {
 	Outgoing bool      `json:"outgoing"`
 	Body     string    `json:"body"`
 	SentAt   time.Time `json:"sent_at"`
+	// Optional context used only by the follow-up radar.
+	Subject   string `json:"subject,omitempty"`
+	InReplyTo string `json:"in_reply_to,omitempty"`
+	Group     bool   `json:"group,omitempty"`
 }
 
 func NewStore(dir string) (*Store, error) {
@@ -80,6 +85,9 @@ func NewStore(dir string) (*Store, error) {
 			return err
 		}
 		if err := repairCancelledReasons(context.Background(), tx); err != nil {
+			return err
+		}
+		if err := migrateCommitments(tx); err != nil {
 			return err
 		}
 		_, e := tx.Exec("UPDATE pending_autonomous_actions SET state='send_uncertain' WHERE state='sending'")
@@ -126,6 +134,12 @@ func (s *Store) SavePreferences(ctx context.Context, p Preferences) error {
 	}
 	if (p.Autonomy.Mode != "draft_only" && p.Autonomy.Mode != "full_auto" && p.Autonomy.Mode != "manual") || p.Autonomy.GraceSeconds < 10 || p.Autonomy.GraceSeconds > 3600 {
 		return ErrInvalid
+	}
+	if p.Radar.FollowUpHours == 0 {
+		p.Radar.FollowUpHours = 48
+	}
+	if p.Radar.FollowUpHours < 1 || p.Radar.FollowUpHours > 720 {
+		return fmt.Errorf("%w: follow-up hours", ErrInvalid)
 	}
 	b, _ := json.Marshal(p)
 	return s.db.Write(ctx, func(tx *sql.Tx) error {
@@ -177,6 +191,9 @@ func (s *Store) RecordMessage(ctx context.Context, m Message, name string) error
 				return err
 			}
 		} else if err != nil {
+			return err
+		}
+		if err = trackCommitments(ctx, tx, a, m, id); err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO processed_external_events(channel,account,event_id,processed_at) VALUES(?,?,?,?)", a.Channel, m.Account, m.EventID, time.Now().UTC().Format(time.RFC3339Nano))

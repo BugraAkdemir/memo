@@ -1,8 +1,10 @@
-# Dijital İkiz — 2 Kasım 2026 canlı web kabulü (açık)
+# Dijital İkiz — 2 Kasım 2026 canlı web kabulü (DT6-1/2/3 düzeltildi; DT6-1 gerçek-mail doğrulaması açık)
 
 Gerçek hesap ve seçili gerçek modelle, `scripts/run_memo.sh` üzerinden
 `http://localhost:8090` Flutter web arayüzü kullanıldı. Test kodu yazılmadı.
-Aşağıdaki bulgular düzeltilmedi; Adım 6'nın canlı kabulü tamamlanmadı.
+**Durum (2 Kasım gecesi):** DT6-1 ve DT6-3 `9db7bcaf`, DT6-2 `090a02d8` ile düzeltildi. DT6-2 ve DT6-3 gerçek arayüzde doğrulandı; DT6-1 birim/entegrasyon testleriyle doğrulandı, gerçek taze mail + yarıda kesilen sync denenmedi. Adım 6'nın canlı kabulü tamamlanmadı.
+DT6-2 kök neden: Dio web adaptörü, yanıt başlığı `connectTimeout` (5 sn) içinde gelmezse isteği iptal eder; IMAP inbox 3–6 sn sürüyordu. DT6-3 kök neden: iptal yalnız `state` sütununu değiştiriyordu, payload'da bayat `drafted` kalıyordu.
+Aşağıdaki bulgular ilk kayıt hâlidir.
 
 - **DT6-1 / P1 — Alınan normal mail için hazırlama kaydı oluşmadı.**
   `MEMO ADIM6 CANLI ONAY`, UID17408: 22:26:26'da

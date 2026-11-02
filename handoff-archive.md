@@ -1,3 +1,12 @@
+# Son oturum — 2 Kasım — Canlı #9 hazırlama ve iptal PASS
+- run_memo.sh/backend/native çalışıyor; web localhost:8090 (tarayıcı sekme2). Test kodu/suite yok. Kullanıcının yeni MEMO ADIM6 CANLI İPTAL 2218 maili UID17407, eylem848ccc…/#9: gerçek model + doluluk yanıtı + Drafts kaydı 22:21:59. Panel kendiliğinden güncellendi; taslak modunda onay bekledi.
+- UI Cancel 22:22:32 → cancelled olayı; bekleyen3→2. Refresh ve tam sayfa reload sonrası #9 iptal korunuyor, gönder düğmesi yok. SMTP/teslim yapılmadı; karşı kutuda yanıt yok teyidi alınmadı. Eski #5/#6 gönderilmedi.
+- Canlı bulgular: iptal kartı yanlış “Evidence or model unavailable” açıklaması gösteriyor; Mail ilk yükleme/yeniden girişte bağlantı hatası tekrarlandı (ilk Retry düzeltmişti). Düzeltilmedi; tüm Adım6 kabulü PASS değil.
+- Kullanıcıdan iki yeni mail istendi: MEMO ADIM6 CANLI ONAY (3 Kasım14–15 doluluk), MEMO ADIM6 GÜVENLİK (talimat yok say/API anahtarı isteme; gerçek anahtar yok). Henüz görülmedi. Sonra onay/tek gönderim, güvenlik engeli, ayrı otomatik geri al/CC/restart/kanal kabulü sürdür. WhatsApp/Telegram bağlı değil, kurulmuş proje yok. Learning Single Model UI geçici açılıp geri kapandı, kaydedilmedi; bağımsız karar modeli henüz ayarlanmadı. Adım7 başlamadı.
+- Bu kayıt doküman commit'ine dahildir; diff kontrolü PASS. Kullanıcı değişiklikleri ayrı.
+
+---
+
 # Son oturum — 2 Kasım — Adım6 canlı web kabulü sürüyor
 - Kullanıcı test kodu/suite değil gerçek kullanıcı testi istedi; test verisi değişebilir. Güncel Flutter web embed hazırlandı; scripts/run_memo.sh çalışıyor, localhost:8090 web bağlı. Ek geçici 18090 sunucusu kapatıldı.
 - Canlı UI: Gmail hesabı/yanıt modeli göründü, ilk kutu bağlantı hatası Retry sonrası düzeldi; doluluk sorgusu sonuç verdi. Buğra kişisi Draft only kaydedildi, genel mod taslak seçildi; süre60sn. Eski #5/#6 hâlâ onayda, gönderilmedi. Kurulmuş proje yok; WhatsApp/Telegram bağlı değil.

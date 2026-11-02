@@ -1,6 +1,6 @@
 # PLAN — Memo "Dijital İkiz" (Digital Twin OS) & Otonom İletişim Sistemi
 **Doküman Türü:** Üretim Seviyesi Mimari Tasarım ve Uygulama Planı (SRS & Mühendislik Spesifikasyonu)  
-**Durum:** Faz 3 / Adım 6 teknik uygulaması ve tam CI doğrulaması tamam; gerçek kanal kabulü bekleniyor. Adım 7 başlatılmadı.
+**Durum:** Faz 3 / Adım 6 teknik uygulaması ve tam CI doğrulaması tamam; canlı kabulde mail hazırlama kesintisi bulundu (BUG_REPORT.md DT6-1–3), kabul tamamlanmadı. Adım 7 başlatılmadı.
 **Tarih:** 2026-10-30  
 **Kapsam:** `internal/mail`, `internal/autonomy`, `internal/twin`, `internal/calendar`, `internal/whatsapp`, `internal/telegram`, `internal/webserver`, `frontend/`
 
@@ -260,7 +260,7 @@ autonomy:
 - **Bulunduğumuz yer: Faz 3 / Adım 6 teknik olarak tamamlandı.** Adım5 hazırlama motoru ve Adım6 otomatik/manuel/uzaktan onay köprüsü backend ve frontend birlikte bağlıdır. Yeni uygun adaylar hazırlama/Drafts sonrası geri al süresinden sonra gönderilir; eski adaylar ve başlangıç/ayar değişikliğiyle duraklatılanlar elle onay ister. Kişi/kanal/DLP kontrolleri ve atomik rezervasyon tüm köprü gönderimlerinde korunur.
 - **Kod kontrol noktaları:** `160d9caf` köprü, `47aba274` tek terminal bildirimi, `6ebf3fb1` sahip SSE akışı; `12a5c7fe` ve `3471ae59` test adaptörü/yerleşim uyumu. Mail inceleme editörü geri sayımı sunucuda duraklatır; WhatsApp panel onayı ve iki sahip kanalında numaralı onay/iptal/kişi kuralı vardır. Güncel sözleşme: `docs/DIGITAL_TWIN_APPROVAL.md`.
 - **Tam doğrulama:** [CI](https://github.com/BugraAkdemir/memo/actions/runs/41503875218), kod `3471ae59`: CGO/sqlite_fts5 build/vet exit0; Go race71 paket PASS; Flutter890 PASS + geliştirme backend adresi testi1 PASS; güvenlik/L10n/alan adı kontrolleri PASS. Yerel `flutter analyze lib/` yalnız eski3 context info; CI tüm frontend analizi eski18 info, yeni bulgu yok. Değişen11 Dart dosyasında UI literal0; diff PASS.
-- **Kullanıcı kabulü:** Adım5'in gerçek mail/model/Drafts ve önceki manuel API teslim kabulü kayıtlıdır. Yeni köprünün gerçek Gmail/WhatsApp/Telegram ve native UI kabulü ayrıdır, henüz yapılmadı. Çalışan backend/UI bu oturumda yenilenmedi; gerçek hesaba gönderim yapılmadı. Adım1–4'ün kalan cihaz testleri ve Adım5 ses kabulü açık. Adım7'ye geçilmedi.
+- **Canlı kabul — 2 Kasım akşamı:** `run_memo.sh` ile güncel backend/Flutter web açıldı. Yeni gerçek mailde #9 Drafts/onay bekleme ve kalıcı UI iptali; ayrı saldırı mailinde prompt-injection engeli görüldü. Sonraki normal onay maili alındı fakat `context canceled` sırasında hazırlama kaydı oluşmadı. Mail kutusu bağlantı hatası ve iptal açıklaması bulguları da açık: `BUG_REPORT.md` DT6-1–3. SMTP gönderilmedi; onay/otomatik/kanal/native kabulü tamamlanmadı. Önceki Adım5 manuel teslim teyidi ayrı kapsamdır. Adım1–4 kalan cihaz testleri ve Adım5 ses kabulü açık; Adım7'ye geçilmedi.
 
 ### Önceki kontrol noktası — 2026-10-31
 - **Faz 1 / Adım 1–2:** Backend ve Mail ekranı mevcut; önceki mail hafızası/takvim/sayaç düzeltmeleri `c5201951` içinde. Canlı hesap/cihaz kabulü kullanıcıya ait. Kullanıcı bu oturumda plandan ilerlemeyi açıkça istedi.

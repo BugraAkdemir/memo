@@ -66,9 +66,7 @@
 
 ---
 
-# Son oturum — 2 Kasım — Canlı #9 hazırlama ve iptal PASS
-- run_memo.sh/backend/native çalışıyor; web localhost:8090 (tarayıcı sekme2). Test kodu/suite yok. Kullanıcının yeni MEMO ADIM6 CANLI İPTAL 2218 maili UID17407, eylem848ccc…/#9: gerçek model + doluluk yanıtı + Drafts kaydı 22:21:59. Panel kendiliğinden güncellendi; taslak modunda onay bekledi.
-- UI Cancel 22:22:32 → cancelled olayı; bekleyen3→2. Refresh ve tam sayfa reload sonrası #9 iptal korunuyor, gönder düğmesi yok. SMTP/teslim yapılmadı; karşı kutuda yanıt yok teyidi alınmadı. Eski #5/#6 gönderilmedi.
-- Canlı bulgular: iptal kartı yanlış “Evidence or model unavailable” açıklaması gösteriyor; Mail ilk yükleme/yeniden girişte bağlantı hatası tekrarlandı (ilk Retry düzeltmişti). Düzeltilmedi; tüm Adım6 kabulü PASS değil.
-- Kullanıcıdan iki yeni mail istendi: MEMO ADIM6 CANLI ONAY (3 Kasım14–15 doluluk), MEMO ADIM6 GÜVENLİK (talimat yok say/API anahtarı isteme; gerçek anahtar yok). Henüz görülmedi. Sonra onay/tek gönderim, güvenlik engeli, ayrı otomatik geri al/CC/restart/kanal kabulü sürdür. WhatsApp/Telegram bağlı değil, kurulmuş proje yok. Learning Single Model UI geçici açılıp geri kapandı, kaydedilmedi; bağımsız karar modeli henüz ayarlanmadı. Adım7 başlamadı.
-- Bu kayıt doküman commit'ine dahildir; diff kontrolü PASS. Kullanıcı değişiklikleri ayrı.
+# Son oturum — 2 Kasım — Canlı kabulde açık hata
+- run_memo.sh ve localhost:8090 açık; web sekme2. Gerçek UID17407/#9: model/Drafts/onay bekleme → UI iptal, refresh+reload sonrası korunuyor. UID17409 saldırı maili prompt_injection engelli; sayaç1→2. SMTP yok; eski #5/#6 gönderilmedi.
+- UID17408 CANLI ONAY alındı, context canceled sırasında hazırlama kaydı oluşmadı. Diğer bulgular: tekrarlanan Inbox bağlantı hatası, iptal kartında yanlış neden. BUG_REPORT.md DT6-1–3 ayrıntı/kanıt; düzeltilmedi. Plan canlı kabul durumu güncellendi; Adım7 yok.
+- Açık: kesinti/yeniden işleme, onay/tek gönderim, otomatik geri al/teslim, CC/grup/restart/kanal/native. WhatsApp/Telegram bağlı değil, kurulmuş proje yok. Learning geçici toggle geri alındı/kaydedilmedi. Test kodu/suite yok; doküman diff PASS; bu kayıt commit edilir.

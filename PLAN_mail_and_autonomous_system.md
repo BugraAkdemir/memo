@@ -1,6 +1,6 @@
 # PLAN — Memo "Dijital İkiz" (Digital Twin OS) & Otonom İletişim Sistemi
 **Doküman Türü:** Üretim Seviyesi Mimari Tasarım ve Uygulama Planı (SRS & Mühendislik Spesifikasyonu)  
-**Durum:** Faz 3 / Adım 6 teknik uygulaması ve tam CI doğrulaması tamam; canlı kabulde bulunan DT6-1–3 düzeltildi ve canlı doğrulandı (`9db7bcaf`, `090a02d8`; BUG_REPORT.md). Adım 6 cihaz kabulü (iptal / tek gönderim / otomatik geri al) tamamlanmadı. Adım 7 başlatılmadı.
+**Durum:** Faz 3 / Adım 6 teknik uygulaması ve tam CI doğrulaması tamam; canlı kabulde bulunan DT6-1–3 düzeltildi ve canlı doğrulandı (`9db7bcaf`, `090a02d8`; BUG_REPORT.md). Adım 6 cihaz kabulü (iptal / tek gönderim / otomatik geri al) tamamlanmadı. Adım 7'nin altı parçası da teknik olarak uygulandı (testli); canlı kabulü sürüyor.
 **Tarih:** 2026-10-30  
 **Kapsam:** `internal/mail`, `internal/autonomy`, `internal/twin`, `internal/calendar`, `internal/whatsapp`, `internal/telegram`, `internal/webserver`, `frontend/`
 
@@ -382,7 +382,12 @@ autonomy:
 
 ### Faz 4: Proaktif İkiz Döngüleri (Söz/Follow-Up Radarı, Proje Gözcüsü, Toplantı Bilgi Notu ve Sabah Brifingi)
 
-- [ ] **Adım 7 — Yanıt/Söz Takip Radarı (`commitments.go`), Proje Gözcüsü (`devwatch.go`), Toplantı Bilgi Notu ve Sabah Brifingi:**
+- [x] **Adım 7 — Yanıt/Söz Takip Radarı (`commitments.go`), Proje Gözcüsü (`devwatch.go`), Toplantı Bilgi Notu ve Sabah Brifingi:**
+  - **3 Kasım uygulama kontrol noktası (teknik uygulama; kutu uygulamayı gösterir, cihaz kabulü açıktır):** Yanıt takibi `internal/twin/commitments.go` + `internal/autonomy/followup.go` (soru içeren giden mail → süre dolunca YALNIZ onaya tabi hatırlatma taslağı; kişi başına tek taslak; herhangi kanaldan yanıt kapatır). Sözler `internal/autonomy/promises.go` (izinli, model giden mesajı bir kez okur; tarihsiz/geçmiş/1 yıldan uzak söz atılır; kişi yanıtı sözü kapatmaz). Brifing/toplantı notu `internal/autonomy/briefing.go` (model çağrısız; sahibin YEREL saatinde; kişiye yalnız birebir bilinen adresle bağlanır, isim bağlamaz; en çok 5 satır). Proje gözcüsü `internal/autonomy/devwatch.go` (mevcut sertleştirilmiş salt-okunur Git denetimini kullanır). TaskLoop köprüsü `internal/app/task_bridge.go` (`task_from_action`: sahip başlık+adımları yazar, proje sohbeti seçer, liste `idle` oluşur, mesaj başına bir kez; dış metin kendiliğinden göreve dönüşmez). Dosya yeri sapması: `briefing.go` plandaki gibi `internal/twin` yerine `internal/autonomy`'de (twin→calendar bağımlılığı olmasın diye); depo/ayar kısmı `internal/twin/briefing.go`.
+  - **Ayarlar** `twin_preferences` içinde (radar, söz takibi, brifingler), hepsi varsayılan KAPALI; `config.yaml`daki `autonomy.briefing.*` alanları hiçbir kod tarafından okunmuyordu, kullanılmadı. Arayüz: Yanıt otomasyonu sekmesinde Radar, Söz, Brifingler kartları ve her mail/WhatsApp eylemi altında “Göreve dönüştür”.
+  - **Canlı bulgular ve düzeltmeler:** (1) aynı kişiye iki soru iki ayrı hatırlatma üretecekti → kişi başına tek (`12c14610`); (2) üç yeni işlem HTTP'de 404'tü (webserver'da ayrı sabit liste) → tek liste (`927d50f5`); (3) ikizin saat dilimi hiç ayarlanmamıştı (UTC), “09:00” brifingi 12:00 TR olurdu → panelde saat dilimi gösterilir; (4) tercihler formu yeni alanları sessizce kapatırdı → form radar+brifing'i taşır.
+  - **Açık:** hatırlatma taslağının canlı oluşumu (A/B maili 01:04/01:06'da dolacak); söz/brifing/toplantı notu/TaskLoop köprüsü için gerçek cihaz kabulü; sahip kanallarına (WhatsApp/Telegram) brifing/söz bildirimi (yalnız UI + `autonomy:*` olayı var); giden WhatsApp mesajları radara bağlı değil (yalnız mail); toplantı notunda Git/commit bağlantısı ve “gece elenen reklam sayısı” yok; toplantıyı kişiye bağlama yalnız otonomi akışının yazdığı adresle olur.
+
   - **Dosyalar:**
     - `internal/twin/commitments.go`: Gönderilen maillerde/mesajlarda yanıt bekleyenleri (`waiting_on_other`) ve kullanıcının verdiği sözleri (`my_promise`) tespit edip süresi dolduğunda hatırlatma taslağı üreten döngü + teknik görev mesajlarını onay sonrası `internal/taskloop` (`Task.md`) görevine dönüştüren köprü.
     - `internal/twin/devwatch.go`: Kayıtlı projelerdeki (`data/projects.json`) yarım kalan değişiklikleri ve son çalışılan dosyaları özetleyen *"Dün nerede kalmıştık?"* motoru.

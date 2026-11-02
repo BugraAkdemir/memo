@@ -1,3 +1,14 @@
+# Son oturum — 2 Kasım gecesi — DT6-1/2/3 düzeltildi
+- Yalnız bilinen 3 hata, feat/digital-twin-mail, push edilmedi: DT6-1+DT6-3 `9db7bcaf`, DT6-2 `090a02d8`.
+- DT6-1: Watcher isteği değil uygulama bağlamıyla işler; UID yalnız işleme başarılıysa ilerler, ilk hatada hesap durur/yeniden dener. Claim+görünür "preparing" kaydı atomik; restart'ta kesilen hazırlık failed/reply_cancelled, tekrar gönderilmez.
+- DT6-2 kök neden: Dio web connectTimeout = ilk başlığa kadar süre (5 sn), Gmail IMAP 3–6 sn → ERR_ABORTED. Web'de 120 sn. Canlı: 3/3 tam yenileme PASS (5,77 sn'lik istek dahil).
+- DT6-3: iptal reason=user_cancelled, açılışta eski iptaller onarılır; gerçek #9 UI'da "Bu yanıtı siz iptal ettiniz" PASS.
+- Doğrulama: go build/vet ./..., -race twin/autonomy/mail + app Mail|Twin|Autonomy, flutter test 893 yeşil. Tam Go suite çalıştırılmadı (CI).
+- DT6-1 CANLI PASS (23:36): gerçek mail UID17415 "MEMO DT6 TEST 2315"; /api/mail/sync 1 sn'de kesildi (curl exit28), sunucu sürdürdü → #14 pending/drafted + Drafts kaydı, last_seen_uid yalnız bitince 17414→17415, bir yoklama sonra kopya yok. SMTP/gönderim yok; #14 onay bekliyor, gönderilmedi.
+- Açık: işlem sırasında backend çökmesi ve model hatası yolunda UID'nin ilerlememesi canlı denenmedi (yalnız test). Web connectTimeout değişikliği başka yavaş uç noktalarda (model yükleme) ayrıca denenmedi. AGENTS.md çalışma ağacında telemetri satırı "removed" yazıyor, bu oturumdan değil, commit edilmedi. 8090'da scratch backend çalışıyor (`run_memo.sh` kapatır).
+
+---
+
 # Son oturum — 2 Kasım — Canlı kabulde açık hata
 - run_memo.sh ve localhost:8090 açık; web sekme2. Gerçek UID17407/#9: model/Drafts/onay bekleme → UI iptal, refresh+reload sonrası korunuyor. UID17409 saldırı maili prompt_injection engelli; sayaç1→2. SMTP yok; eski #5/#6 gönderilmedi.
 - UID17408 CANLI ONAY alındı, context canceled sırasında hazırlama kaydı oluşmadı. Diğer bulgular: tekrarlanan Inbox bağlantı hatası, iptal kartında yanlış neden. BUG_REPORT.md DT6-1–3 ayrıntı/kanıt; düzeltilmedi. Plan canlı kabul durumu güncellendi; Adım7 yok.

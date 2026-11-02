@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS pending_autonomous_actions(id TEXT PRIMARY KEY, conta
 CREATE TABLE IF NOT EXISTS twin_audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, action TEXT NOT NULL, contact_id TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS contact_messages(channel TEXT NOT NULL, account TEXT NOT NULL, event_id TEXT NOT NULL, address TEXT NOT NULL, outgoing INTEGER NOT NULL, body TEXT NOT NULL, sent_at TEXT NOT NULL, PRIMARY KEY(channel,account,event_id,address));
 CREATE INDEX IF NOT EXISTS messages_alias ON contact_messages(channel,address,sent_at);
+CREATE TABLE IF NOT EXISTS briefings(key TEXT PRIMARY KEY, kind TEXT NOT NULL, created_at TEXT NOT NULL, payload TEXT NOT NULL, read INTEGER NOT NULL DEFAULT 0);
 `
 
 type Store struct{ db *database.DB }
@@ -56,6 +57,7 @@ type Preferences struct {
 	WorkEnd                string           `json:"work_end"`
 	AllowProjectInspection bool             `json:"allow_project_inspection"`
 	Radar                  RadarSettings    `json:"radar"`
+	Briefing               BriefingSettings `json:"briefing"`
 }
 type Message struct {
 	Channel  string    `json:"channel"`
@@ -140,6 +142,9 @@ func (s *Store) SavePreferences(ctx context.Context, p Preferences) error {
 	}
 	if p.Radar.FollowUpHours < 1 || p.Radar.FollowUpHours > 720 {
 		return fmt.Errorf("%w: follow-up hours", ErrInvalid)
+	}
+	if err := validBriefingSettings(&p.Briefing); err != nil {
+		return err
 	}
 	b, _ := json.Marshal(p)
 	return s.db.Write(ctx, func(tx *sql.Tx) error {

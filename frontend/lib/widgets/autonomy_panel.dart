@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/l10n.dart';
+import 'briefing_panel.dart';
 import 'follow_up_radar_card.dart';
 import 'mail_reply_draft.dart';
 
@@ -17,6 +18,10 @@ class AutonomyPanel extends StatelessWidget {
   final List<Map<String, dynamic>> waiting;
   final ValueChanged<Map<String, dynamic>>? onRadar;
   final ValueChanged<String>? onResolve;
+  final Map<String, dynamic> briefing;
+  final List<Map<String, dynamic>> briefings;
+  final ValueChanged<Map<String, dynamic>>? onBriefing;
+  final ValueChanged<String>? onBriefingRead;
   const AutonomyPanel({
     super.key,
     required this.settings,
@@ -31,6 +36,10 @@ class AutonomyPanel extends StatelessWidget {
     this.waiting = const [],
     this.onRadar,
     this.onResolve,
+    this.briefing = const {},
+    this.briefings = const [],
+    this.onBriefing,
+    this.onBriefingRead,
   });
 
   bool get _mailOn => settings['enabled'] == true && settings['mail'] == true;
@@ -290,6 +299,16 @@ class AutonomyPanel extends StatelessWidget {
             busy: busy,
             onChanged: onRadar!,
             onResolve: onResolve,
+          ),
+        ],
+        if (onBriefing != null && onBriefingRead != null) ...[
+          const SizedBox(height: 16),
+          BriefingPanel(
+            settings: briefing,
+            briefings: briefings,
+            busy: busy,
+            onSettings: onBriefing!,
+            onRead: onBriefingRead!,
           ),
         ],
         const Divider(height: 32),

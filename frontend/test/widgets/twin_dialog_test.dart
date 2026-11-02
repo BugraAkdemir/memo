@@ -22,7 +22,27 @@ class _TwinAdapter implements HttpClientAdapter {
     'work_end': '18:00',
     'allow_project_inspection': false,
     'radar': {'enabled': false, 'follow_up_hours': 48},
+    'briefing': {
+      'morning': false,
+      'morning_time': '09:00',
+      'pre_meeting': false,
+      'pre_meeting_minutes': 15,
+    },
   };
+  final briefings = <Map<String, dynamic>>[
+    {
+      'key': 'morning:2026-11-03',
+      'kind': 'morning',
+      'title': '2026-11-03',
+      'read': false,
+      'sections': [
+        {
+          'heading': 'meetings_today',
+          'items': ['14:00 Backend toplantısı'],
+        },
+      ],
+    },
+  ];
   final commitments = <Map<String, dynamic>>[
     {
       'id': 'c1',
@@ -49,10 +69,15 @@ class _TwinAdapter implements HttpClientAdapter {
           'actions': actions,
           'preferences': preferences,
           'commitments': commitments,
+          'briefings': briefings,
           'projects': [
             {'id': 'p_test', 'name': 'Demo repo'},
           ],
         };
+      case '/api/twin/briefing_read':
+        briefings.firstWhere(
+          (b) => b['key'] == (o.data as Map)['key'],
+        )['read'] = true;
       case '/api/twin/resolve_commitment':
         commitments.removeWhere((c) => c['id'] == (o.data as Map)['id']);
       case '/api/twin/approve_action':
@@ -281,6 +306,8 @@ void main() {
           'enabled': false,
           'follow_up_hours': 48,
         });
+        expect((a.preferences['briefing'] as Map)['morning_time'], '09:00');
+        expect(a.preferences['briefing'], isNotEmpty);
         expect(a.calls.every((c) => c.path.startsWith('/api/twin/')), isTrue);
         expect(tester.takeException(), isNull);
       },
@@ -504,6 +531,60 @@ void main() {
       expect(find.textContaining('Raporu gönder'), findsNothing);
       expect(tester.takeException(), isNull);
     });
+  }
+
+  for (final locale in MemoLocale.values) {
+    testWidgets(
+      'briefing settings save with the rest and cards are read ($locale)',
+      (tester) async {
+        final a = await _mount(tester, locale);
+        await tester.ensureVisible(find.text(L10n.t('auto_tab')));
+        await tester.tap(find.text(L10n.t('auto_tab')));
+        await tester.pumpAndSettle();
+        final scrollable = find
+            .descendant(
+              of: find.byType(AutonomyPanel),
+              matching: find.byType(Scrollable),
+            )
+            .first;
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('briefing-morning')),
+          300,
+          scrollable: scrollable,
+        );
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('briefing-morning')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('briefing-morning')));
+        await tester.pumpAndSettle();
+        final payload =
+            a.calls.lastWhere((c) => c.path == '/api/twin/preferences').data
+                as Map;
+        expect((payload['briefing'] as Map)['morning'], true);
+        expect((payload['briefing'] as Map)['morning_time'], '09:00');
+        // Everything else the owner configured travels with it.
+        expect(payload['timezone'], 'Europe/Istanbul');
+        expect(payload['radar'], {'enabled': false, 'follow_up_hours': 48});
+        // Opening an unread card reports it once.
+        final title = L10n.t('briefing_morning_title', {'date': '2026-11-03'});
+        await tester.scrollUntilVisible(
+          find.text(title),
+          300,
+          scrollable: scrollable,
+        );
+        await tester.ensureVisible(find.text(title));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(title));
+        await tester.pumpAndSettle();
+        expect(
+          a.calls.lastWhere((c) => c.path == '/api/twin/briefing_read').data,
+          {'key': 'morning:2026-11-03'},
+        );
+        expect(a.briefings.first['read'], true);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   testWidgets('contact editor remains usable in a narrow window', (

@@ -115,6 +115,38 @@ func TestDevWatchHandlesRenamesAndLimitsProjects(t *testing.T) {
 	}
 }
 
+// Found live: registering a project makes Memo write its own .memo/ folder, which
+// then showed up as untracked "unfinished work" in every freshly set-up project.
+func TestDevWatchIgnoresMemosOwnMetadataFolder(t *testing.T) {
+	dir := newRepo(t, "a.go")
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("v2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".memo"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"AGENTS.md", "project.json", "notes.md"} {
+		if err := os.WriteFile(filepath.Join(dir, ".memo", f), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lines := DevWatch(context.Background(), []RegisteredProject{{ID: "p", Name: "P", Root: dir}})
+	if len(lines) != 1 || !strings.HasPrefix(lines[0], "P (1): a.go") || strings.Contains(lines[0], ".memo") {
+		t.Fatalf("Memo's own folder was counted: %q", lines)
+	}
+	// A project whose ONLY change is Memo's folder has nothing unfinished.
+	clean := newRepo(t, "x.go")
+	if err := os.MkdirAll(filepath.Join(clean, ".memo"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(clean, ".memo", "project.json"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := DevWatch(context.Background(), []RegisteredProject{{ID: "q", Name: "Q", Root: clean}}); len(got) != 0 {
+		t.Fatalf("a project with only Memo metadata was reported: %q", got)
+	}
+}
+
 func TestDevWatchWithNoProjectsIsEmpty(t *testing.T) {
 	if got := DevWatch(context.Background(), nil); len(got) != 0 {
 		t.Fatalf("%q", got)

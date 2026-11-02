@@ -66,6 +66,10 @@ func changedFiles(status string) []string {
 			path = to
 		}
 		path = strings.Trim(path, `"`)
+		// Memo's own project metadata is not the owner's unfinished work.
+		if path == ".memo" || strings.HasPrefix(path, ".memo/") {
+			continue
+		}
 		if path != "" {
 			files = append(files, path)
 		}

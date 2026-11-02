@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,8 @@ class TwinDialog extends ConsumerStatefulWidget {
 
 class _TwinDialogState extends ConsumerState<TwinDialog> {
   TwinState? _state;
+  Timer? _approvalTimer;
+  bool _polling = false;
   bool _initialContactApplied = false;
   bool _busy = false;
   String? _error;
@@ -42,10 +45,32 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
   void initState() {
     super.initState();
     Future.microtask(_load);
+    _approvalTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (!mounted || _busy || _polling || _state == null) return;
+      final lifecycle = WidgetsBinding.instance.lifecycleState;
+      if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+      _polling = true;
+      try {
+        final state = await ref.read(apiClientProvider).getTwinState();
+        if (mounted && !_busy) setState(() => _state = state);
+      } catch (error) {
+        if (mounted &&
+            error is DioException &&
+            error.response?.statusCode == 403) {
+          setState(() {
+            _state = null;
+            _error = _describe(error);
+          });
+        }
+      } finally {
+        _polling = false;
+      }
+    });
   }
 
   @override
   void dispose() {
+    _approvalTimer?.cancel();
     for (final c in [_name, _address, _timezone, _start, _end]) {
       c.dispose();
     }
@@ -492,6 +517,10 @@ class _TwinDialogState extends ConsumerState<TwinDialog> {
         ..._state!.preferences,
         'autonomy': value,
       });
+      await _refresh();
+    }),
+    onApprove: (id) => _run(() async {
+      await ref.read(apiClientProvider).callTwin('approve_action', {'id': id});
       await _refresh();
     }),
     onCancel: (id) => _run(() async {

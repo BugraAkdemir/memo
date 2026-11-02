@@ -52,7 +52,7 @@ func (s *Server) handleTwin(w http.ResponseWriter, r *http.Request) {
 		raw = b
 	}
 	switch op {
-	case "state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "send_action", "contact_timeline", "check_availability", "git_project_status":
+	case "state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "hold_action", "send_action", "approve_action", "contact_timeline", "check_availability", "git_project_status":
 	default:
 		w.WriteHeader(404)
 		return
@@ -60,7 +60,7 @@ func (s *Server) handleTwin(w http.ResponseWriter, r *http.Request) {
 	result, err := bridge.CallTwin(r.Context(), op, raw)
 	if err != nil {
 		status, code := 500, "twin_failed"
-		if op == "send_action" {
+		if op == "send_action" || op == "approve_action" {
 			code = "mail_reply_send_uncertain"
 		}
 		switch {

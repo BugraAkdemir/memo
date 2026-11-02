@@ -32,6 +32,7 @@ func (a *App) initTwin() {
 	a.twinMu.Unlock()
 }
 func (a *App) closeTwin() error {
+	a.stopApprovalBridge()
 	a.twinMu.Lock()
 	defer a.twinMu.Unlock()
 	if a.twinStore == nil {
@@ -74,6 +75,15 @@ func decodeTwin(raw json.RawMessage, dst any) error {
 func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessage) (any, error) {
 	if !tools.CommunicationAllowed(ctx) {
 		return nil, autonomy.ErrContactScope
+	}
+	if operation == "approve_action" {
+		var input struct {
+			ID string `json:"id"`
+		}
+		if err := decodeTwin(raw, &input); err != nil {
+			return nil, err
+		}
+		return a.deliverTwinAction(ctx, input.ID, "", "", "bridge_approved", false)
 	}
 	if operation == "send_action" {
 		return a.sendTwinAction(ctx, raw)
@@ -159,14 +169,25 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		}
 		err := s.SaveReplyModel(ctx, m)
 		return map[string]bool{"ok": err == nil}, err
-	case "cancel_action":
+	case "cancel_action", "hold_action":
 		var args struct {
 			ID string `json:"id"`
 		}
 		if err := decodeTwin(raw, &args); err != nil {
 			return nil, err
 		}
-		err := s.CancelAction(ctx, args.ID)
+		var err error
+		if operation == "hold_action" {
+			err = s.HoldAutomatic(ctx, args.ID)
+		} else {
+			err = s.CancelAction(ctx, args.ID)
+			if err == nil {
+				if v, e := s.Action(ctx, args.ID); e == nil {
+					a.publishApprovalEvent(v, "executed")
+					a.queueApprovalNotification(v, "executed")
+				}
+			}
+		}
 		return map[string]bool{"ok": err == nil}, err
 	case "contact":
 		var c twin.Contact

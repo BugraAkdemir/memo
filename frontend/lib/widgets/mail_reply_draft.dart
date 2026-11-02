@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,30 @@ Future<void> showMailReplyDraft(
   Map<String, dynamic> action, {
   VoidCallback? onChanged,
 }) async {
+  // Opening an editor pauses an automatic countdown on the server. Local
+  // typing must not race an unattended send of the unedited draft.
+  if (action['state'] == 'pending' && action['mode'] == 'grace_period_auto') {
+    try {
+      await ProviderScope.containerOf(
+        context,
+        listen: false,
+      ).read(apiClientProvider).callTwin('hold_action', {'id': action['id']});
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(L10n.t('twin_failed'))));
+      }
+      return;
+    }
+    if (!context.mounted) return;
+    action = {
+      ...action,
+      'mode': 'awaiting_approval',
+      'execute_at': null,
+      'reason': 'delivery_paused',
+    };
+  }
   await showDialog<bool>(
     context: context,
     barrierDismissible: false,
@@ -89,6 +114,14 @@ class MailReplyDraftCard extends StatelessWidget {
             ),
             style: theme.textTheme.labelLarge,
           ),
+          if (action['approval_code'] is num)
+            Text(
+              L10n.t('approval_number', {
+                'number': '${action['approval_code']}',
+              }),
+            ),
+          if (action['reason'] == 'delivery_paused' && pending)
+            Text(L10n.t('approval_paused')),
           if (uncertain)
             Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -129,7 +162,7 @@ class MailReplyDraftCard extends StatelessWidget {
               }),
             ),
           if (action['mode'] == 'grace_period_auto' && pending)
-            Text(L10n.t('auto_candidate')),
+            ApprovalCountdown(action: action),
           if (action['conflict'] == true) Text(L10n.t('auto_conflict')),
           if (action['alternatives'] is List)
             for (final at in action['alternatives'] as List)
@@ -346,6 +379,47 @@ class _MailReplyDraftDialogState extends ConsumerState<_MailReplyDraftDialog> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The deadline is fixed by the server after preparation, never recomputed from
+/// the client's remaining duration. A due countdown does not claim SMTP success.
+class ApprovalCountdown extends StatefulWidget {
+  final Map<String, dynamic> action;
+  const ApprovalCountdown({super.key, required this.action});
+  @override
+  State<ApprovalCountdown> createState() => _ApprovalCountdownState();
+}
+
+class _ApprovalCountdownState extends State<ApprovalCountdown> {
+  Timer? _timer;
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final at = DateTime.tryParse('${widget.action['execute_at'] ?? ''}');
+    if (at == null || widget.action['delivery_version'] != 1) {
+      return Text(L10n.t('approval_paused'));
+    }
+    final seconds = (at.difference(DateTime.now()).inMilliseconds / 1000)
+        .ceil();
+    return Text(
+      seconds > 0
+          ? L10n.t('approval_countdown', {'seconds': '$seconds'})
+          : L10n.t('approval_due'),
     );
   }
 }

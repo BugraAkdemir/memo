@@ -128,9 +128,15 @@ func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
 				}
 				msg.Text = text
 			}
+			if a.routeWhatsAppApproval(ctx, msg, true) {
+				continue
+			}
 			a.recordTwinWhatsApp(ctx, a.waClient, msg)
 			a.autonomyWhatsApp(ctx, msg)
 			if a.routeWhatsAppPermissionAnswer(msg) {
+				continue
+			}
+			if a.routeWhatsAppApproval(ctx, msg, false) {
 				continue
 			}
 			// Recovered per-message: a panic while recording one WhatsApp

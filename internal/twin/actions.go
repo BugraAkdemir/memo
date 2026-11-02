@@ -7,8 +7,7 @@ import (
 	"time"
 )
 
-// AutonomySettings prepares decisions only. Delivery belongs to the separate
-// approval bridge; preparing a full-auto candidate never sends a message.
+// AutonomySettings gates preparation and the separate approval delivery bridge.
 type AutonomySettings struct {
 	Enabled      bool   `json:"enabled"`
 	Mode         string `json:"mode"`
@@ -33,30 +32,34 @@ func EffectiveReplyPolicy(mode, policy string) string {
 }
 
 type Action struct {
-	SentAt        *time.Time  `json:"sent_at,omitempty"`
-	FailureStage  string      `json:"failure_stage,omitempty"`
-	Stage         string      `json:"stage,omitempty"`
-	UpdatedAt     time.Time   `json:"updated_at"`
-	DecisionScore *float64    `json:"decision_score,omitempty"`
-	ScoreStatus   string      `json:"score_status,omitempty"`
-	ID            string      `json:"id"`
-	ContactID     string      `json:"contact_id"`
-	Channel       string      `json:"channel"`
-	Account       string      `json:"account"`
-	Recipient     string      `json:"recipient"`
-	Subject       string      `json:"subject"`
-	Body          string      `json:"body"`
-	InReplyTo     string      `json:"in_reply_to"`
-	Mode          string      `json:"mode"`
-	Reason        string      `json:"reason"`
-	State         string      `json:"state"`
-	CreatedAt     time.Time   `json:"created_at"`
-	ExecuteAt     *time.Time  `json:"execute_at,omitempty"`
-	Tools         []string    `json:"tools"`
-	Conflict      bool        `json:"conflict"`
-	Alternatives  []time.Time `json:"alternatives"`
-	CalendarIDs   []string    `json:"calendar_ids"`
-	DraftSaved    bool        `json:"draft_saved"`
+	DeliveryVersion int         `json:"delivery_version,omitempty"`
+	ApprovalCode    int64       `json:"approval_code,omitempty"`
+	SourceAddress   string      `json:"source_address,omitempty"`
+	Group           bool        `json:"group,omitempty"`
+	SentAt          *time.Time  `json:"sent_at,omitempty"`
+	FailureStage    string      `json:"failure_stage,omitempty"`
+	Stage           string      `json:"stage,omitempty"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+	DecisionScore   *float64    `json:"decision_score,omitempty"`
+	ScoreStatus     string      `json:"score_status,omitempty"`
+	ID              string      `json:"id"`
+	ContactID       string      `json:"contact_id"`
+	Channel         string      `json:"channel"`
+	Account         string      `json:"account"`
+	Recipient       string      `json:"recipient"`
+	Subject         string      `json:"subject"`
+	Body            string      `json:"body"`
+	InReplyTo       string      `json:"in_reply_to"`
+	Mode            string      `json:"mode"`
+	Reason          string      `json:"reason"`
+	State           string      `json:"state"`
+	CreatedAt       time.Time   `json:"created_at"`
+	ExecuteAt       *time.Time  `json:"execute_at,omitempty"`
+	Tools           []string    `json:"tools"`
+	Conflict        bool        `json:"conflict"`
+	Alternatives    []time.Time `json:"alternatives"`
+	CalendarIDs     []string    `json:"calendar_ids"`
+	DraftSaved      bool        `json:"draft_saved"`
 }
 
 // ClaimIncoming is deliberately distinct from contact-history deduplication.
@@ -84,7 +87,7 @@ func (s *Store) SaveAction(ctx context.Context, a Action) error {
 		return err
 	}
 	return s.db.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, "INSERT INTO pending_autonomous_actions(id,contact_id,channel,payload,state,execute_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,state=excluded.state,execute_at=excluded.execute_at WHERE pending_autonomous_actions.state NOT IN ('sending','sent','send_uncertain')", a.ID, a.ContactID, a.Channel, string(raw), a.State, a.ExecuteAt)
+		_, err := tx.ExecContext(ctx, "INSERT INTO pending_autonomous_actions(id,contact_id,channel,payload,state,execute_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,state=excluded.state,execute_at=excluded.execute_at WHERE pending_autonomous_actions.state NOT IN ('sending','sent','send_uncertain','cancelled')", a.ID, a.ContactID, a.Channel, string(raw), a.State, a.ExecuteAt)
 		if err != nil {
 			return err
 		}
@@ -92,7 +95,7 @@ func (s *Store) SaveAction(ctx context.Context, a Action) error {
 	})
 }
 func (s *Store) Actions(ctx context.Context) ([]Action, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT payload,state FROM pending_autonomous_actions ORDER BY rowid DESC LIMIT 100")
+	rows, err := s.db.QueryContext(ctx, "SELECT rowid,payload,state FROM pending_autonomous_actions ORDER BY rowid DESC LIMIT 100")
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +103,8 @@ func (s *Store) Actions(ctx context.Context) ([]Action, error) {
 	out := []Action{}
 	for rows.Next() {
 		var raw, state string
-		if err := rows.Scan(&raw, &state); err != nil {
+		var code int64
+		if err := rows.Scan(&code, &raw, &state); err != nil {
 			return nil, err
 		}
 		var a Action
@@ -108,6 +112,7 @@ func (s *Store) Actions(ctx context.Context) ([]Action, error) {
 			return nil, err
 		}
 		a.State = state
+		a.ApprovalCode = code
 		out = append(out, a)
 	}
 	return out, rows.Err()

@@ -203,6 +203,8 @@ type App struct {
 	tgStore          *telegram.Store
 	twinMu           sync.RWMutex
 	twinStore        *twin.Store
+	approvalCancel   context.CancelFunc
+	approvalDone     chan struct{}
 	mailMu           sync.RWMutex
 	mailManager      *mail.Manager
 	mailGatekeeper   *mail.Gatekeeper
@@ -753,6 +755,7 @@ func (a *App) Startup(ctx context.Context) {
 		a.initTelegram()
 	}
 	a.tgMu.Unlock()
+	a.startApprovalBridge()
 
 	// Shared with reinitProviderAndOrchestra (providers.go), which ImportData
 	// and cloud restore call after replacing providers.json/orchestra.json on

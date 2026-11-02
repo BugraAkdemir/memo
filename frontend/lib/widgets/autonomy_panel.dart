@@ -11,6 +11,7 @@ class AutonomyPanel extends StatelessWidget {
   final VoidCallback? onRefresh;
   final ValueChanged<Map<String, dynamic>> onSettings;
   final ValueChanged<String> onCancel;
+  final ValueChanged<String>? onApprove;
   const AutonomyPanel({
     super.key,
     required this.settings,
@@ -20,6 +21,7 @@ class AutonomyPanel extends StatelessWidget {
     this.onRefresh,
     required this.onSettings,
     required this.onCancel,
+    this.onApprove,
   });
 
   bool get _mailOn => settings['enabled'] == true && settings['mail'] == true;
@@ -72,6 +74,8 @@ class AutonomyPanel extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        Text(L10n.t('auto_stage_notice')),
         const SizedBox(height: 20),
         Material(
           color: colors.surfaceContainerHighest.withValues(alpha: .4),
@@ -218,6 +222,40 @@ class AutonomyPanel extends StatelessWidget {
           title: Text(L10n.t('reply_additional_settings')),
           subtitle: Text(L10n.t('reply_additional_help')),
           children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: DropdownButtonFormField<int>(
+                initialValue:
+                    [
+                      10,
+                      30,
+                      60,
+                      120,
+                      300,
+                      3600,
+                    ].contains(settings['grace_seconds'])
+                    ? settings['grace_seconds'] as int
+                    : 60,
+                decoration: InputDecoration(labelText: L10n.t('auto_grace')),
+                items: [10, 30, 60, 120, 300, 3600]
+                    .map(
+                      (seconds) => DropdownMenuItem(
+                        value: seconds,
+                        child: Text(
+                          L10n.t('approval_seconds', {'seconds': '$seconds'}),
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: busy
+                    ? null
+                    : (seconds) {
+                        if (seconds != null) {
+                          onSettings({...settings, 'grace_seconds': seconds});
+                        }
+                      },
+              ),
+            ),
             SwitchListTile(
               title: Text(L10n.t('auto_whatsapp')),
               value:
@@ -339,7 +377,13 @@ class AutonomyPanel extends StatelessWidget {
             ),
           if (a['score_status'] == 'unavailable')
             Text(L10n.t('mail_reply_score_unavailable')),
-          if (a['mode'] == 'grace_period_auto') Text(L10n.t('auto_candidate')),
+          if (a['mode'] == 'grace_period_auto' && a['state'] == 'pending')
+            ApprovalCountdown(action: a),
+          if (a['approval_code'] is num)
+            Text(
+              L10n.t('approval_number', {'number': '${a['approval_code']}'}),
+            ),
+          if (a['reason'] == 'delivery_paused') Text(L10n.t('approval_paused')),
           if (a['conflict'] == true) Text(L10n.t('auto_conflict')),
           if (a['alternatives'] is List)
             for (final t in a['alternatives'] as List) Text(t.toString()),
@@ -348,6 +392,17 @@ class AutonomyPanel extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: SelectableText(a['body'] as String),
+            ),
+          if (a['state'] == 'pending' &&
+              a['channel'] == 'whatsapp' &&
+              a['body'] is String &&
+              (a['body'] as String).isNotEmpty)
+            FilledButton.icon(
+              onPressed: busy || onApprove == null
+                  ? null
+                  : () => onApprove!(a['id'] as String),
+              icon: const Icon(Icons.send_outlined),
+              label: Text(L10n.t('approval_send')),
             ),
           if (a['state'] == 'pending')
             Padding(

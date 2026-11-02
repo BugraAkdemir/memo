@@ -12,7 +12,8 @@ press **Send**. The account, recipient and In-Reply-To are taken from the stored
 action, never accepted from the browser payload. The server rechecks the current
 contact permission and outbound DLP. A contact with `never` cannot be sent to
 through this workflow. Owner approval works for draft-only contacts too.
-Automatic delivery, countdown delivery and remote approval remain unimplemented.
+Automatic delivery, undo countdowns and owner-channel approvals are implemented
+by the separate Step 6 bridge; see [DIGITAL_TWIN_APPROVAL.md](DIGITAL_TWIN_APPROVAL.md).
 The existing IMAP Drafts copy is not updated or removed by this editor; the UI
 states this explicitly.
 

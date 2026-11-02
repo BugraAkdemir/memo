@@ -79,7 +79,7 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 	if err != nil || !claimed {
 		return nil, err
 	}
-	a := twin.Action{ID: id, Channel: in.Channel, Account: in.Account, Recipient: in.Sender, Subject: in.Subject, InReplyTo: in.InReplyTo, CreatedAt: now, State: "pending", Mode: "awaiting_approval", Reason: "drafted", Tools: []string{}, Alternatives: []time.Time{}, CalendarIDs: []string{}}
+	a := twin.Action{DeliveryVersion: 1, SourceAddress: in.Sender, Group: in.Envelope.IsGroup || in.Envelope.RecipientCount > 1, ID: id, Channel: in.Channel, Account: in.Account, Recipient: in.Sender, Subject: in.Subject, InReplyTo: in.InReplyTo, CreatedAt: now, State: "pending", Mode: "awaiting_approval", Reason: "drafted", Tools: []string{}, Alternatives: []time.Time{}, CalendarIDs: []string{}}
 	if in.Recipient != "" {
 		a.Recipient = in.Recipient
 	}
@@ -360,6 +360,19 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 			return finish("draft_upload_failed", "failed")
 		}
 		a.DraftSaved = true
+	}
+	// The owner gets the full undo window after slow generation/Drafts upload.
+	if a.Mode == "grace_period_auto" {
+		ready := time.Now()
+		if e.Now != nil {
+			ready = e.Now()
+		}
+		secs := settings.GraceSeconds
+		if secs < 10 {
+			secs = 60
+		}
+		at := ready.Add(time.Duration(secs) * time.Second)
+		a.ExecuteAt = &at
 	}
 	return finish("drafted", "pending")
 }

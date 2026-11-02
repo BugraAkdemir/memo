@@ -58,3 +58,12 @@ desktop palette/type, but prioritize the daily mail workflow:
 
 The earlier “delivery unavailable” note now refers specifically to unattended
 sending. Manual owner delivery and its limitations: `MAIL_REPLY_REVIEW.md`.
+
+## Adım 6 — 2 Kasım
+
+Otomatik aday kartları sabit sunucu tarihinden geri sayım ve İptal gösterir.
+Mail taslağını düzenlemeye açmak geri sayımı sunucuda duraklatır. WhatsApp
+taslağı panelden Onayla ve gönder ile gönderilebilir. Ek ayarlar geri al süresini
+seçtirir; TR/EN metinler etkin gönderim davranışını anlatır. Açık panel periyodik
+durum yeniler; arka planda durur. Eski “otomatik gönderim yok” tasarım notları
+önceki tarihin kapsamıdır. Güncel sözleşme: DIGITAL_TWIN_APPROVAL.md.

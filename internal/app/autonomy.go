@@ -24,11 +24,12 @@ func (a *App) handleAutonomyIncoming(ctx context.Context, in autonomy.IncomingEv
 	if a.twinStore == nil {
 		return
 	}
-	selection, err := a.twinStore.ReplyModel(ctx)
+	store := a.twinStore
+	selection, err := store.ReplyModel(ctx)
 	if err != nil {
 		return
 	}
-	engine := autonomy.Engine{Store: a.twinStore, Projects: a.twinProjects, Generate: func(ctx context.Context, system, user string) (string, error) {
+	engine := autonomy.Engine{Store: store, Projects: a.twinProjects, Generate: func(ctx context.Context, system, user string) (string, error) {
 		raw, err := a.callAutonomyReplyModel(ctx, selection, system, user)
 		if err != nil {
 			logx.Printf("autonomy: reply model failed provider=%s model=%s: %v", selection.Provider, selection.Model, err)

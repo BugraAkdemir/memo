@@ -16,16 +16,18 @@ var ErrSentHistory = errors.New("same reply already exists in sent history")
 func (s *Store) Action(ctx context.Context, id string) (Action, error) {
 	var a Action
 	var raw, state string
-	err := s.db.QueryRowContext(ctx, "SELECT payload,state FROM pending_autonomous_actions WHERE id=?", id).Scan(&raw, &state)
+	err := s.db.QueryRowContext(ctx, "SELECT rowid,payload,state FROM pending_autonomous_actions WHERE id=?", id).Scan(&a.ApprovalCode, &raw, &state)
 	if errors.Is(err, sql.ErrNoRows) {
 		return a, ErrNotFound
 	}
 	if err != nil {
 		return a, err
 	}
+	code := a.ApprovalCode
 	if err = json.Unmarshal([]byte(raw), &a); err != nil {
 		return a, err
 	}
+	a.ApprovalCode = code
 	a.State = state
 	return a, nil
 }
@@ -33,13 +35,23 @@ func (s *Store) Action(ctx context.Context, id string) (Action, error) {
 // BeginMailDelivery durably reserves one explicit owner-approved send. A lost
 // response, parallel click, restart or ambiguous SMTP failure cannot retry it.
 func (s *Store) BeginMailDelivery(ctx context.Context, id, subject, body string) (Action, error) {
+	return s.BeginDelivery(ctx, id, subject, body, "owner_approved", time.Now())
+}
+
+// BeginDelivery serializes consent, cancellation and the transport reservation.
+// bridge_approved and automatic require current channel consent.
+func (s *Store) BeginDelivery(ctx context.Context, id, subject, body, mode string, now time.Time) (Action, error) {
 	var a Action
+	if mode != "owner_approved" && mode != "bridge_approved" && mode != "automatic" {
+		return a, ErrInvalid
+	}
 	if id == "" || strings.TrimSpace(body) == "" || len(body) > 16000 || len(subject) > 998 || strings.ContainsAny(subject, "\r\n") {
 		return a, ErrInvalid
 	}
 	err := s.db.Write(ctx, func(tx *sql.Tx) error {
 		var raw, state string
-		err := tx.QueryRowContext(ctx, "SELECT payload,state FROM pending_autonomous_actions WHERE id=?", id).Scan(&raw, &state)
+		var code int64
+		err := tx.QueryRowContext(ctx, "SELECT rowid,payload,state FROM pending_autonomous_actions WHERE id=?", id).Scan(&code, &raw, &state)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -49,14 +61,19 @@ func (s *Store) BeginMailDelivery(ctx context.Context, id, subject, body string)
 		if err = json.Unmarshal([]byte(raw), &a); err != nil {
 			return err
 		}
+		a.ApprovalCode = code
 		if state != "pending" {
 			return ErrDeliveryConflict
 		}
-		if a.Channel != "mail" || a.Account == "" || a.Recipient == "" || a.Body == "" {
+		if (a.Channel != "mail" && a.Channel != "whatsapp") || a.Account == "" || a.Recipient == "" || a.Body == "" {
 			return ErrInvalid
 		}
+		address := a.SourceAddress
+		if address == "" {
+			address = a.Recipient
+		}
 		var policy string
-		if err = tx.QueryRowContext(ctx, `SELECT c.autonomy_policy FROM contacts c JOIN contact_aliases ca ON ca.contact_id=c.id WHERE c.id=? AND ca.channel='mail' AND ca.address=?`, a.ContactID, strings.ToLower(a.Recipient)).Scan(&policy); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT c.autonomy_policy FROM contacts c JOIN contact_aliases ca ON ca.contact_id=c.id WHERE c.id=? AND ca.channel=? AND ca.address=?`, a.ContactID, a.Channel, strings.ToLower(address)).Scan(&policy); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrDeliveryDenied
 			}
@@ -65,10 +82,32 @@ func (s *Store) BeginMailDelivery(ctx context.Context, id, subject, body string)
 		if policy == "never" {
 			return ErrDeliveryDenied
 		}
+		if mode != "owner_approved" {
+			var rawPrefs string
+			if err = tx.QueryRowContext(ctx, "SELECT value FROM twin_preferences WHERE id=1").Scan(&rawPrefs); err != nil {
+				return ErrDeliveryDenied
+			}
+			var p Preferences
+			if err = json.Unmarshal([]byte(rawPrefs), &p); err != nil {
+				return err
+			}
+			if !p.Autonomy.Enabled || (a.Channel == "mail" && !p.Autonomy.Mail) || (a.Channel == "whatsapp" && !p.Autonomy.WhatsApp) {
+				return ErrDeliveryDenied
+			}
+			if mode == "automatic" {
+				var reserved int
+				if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM autonomy_auto_reservations WHERE event_key=? AND contact_id=?", a.ID, a.ContactID).Scan(&reserved); err != nil {
+					return err
+				}
+				if a.DeliveryVersion != 1 || a.Mode != "grace_period_auto" || a.ExecuteAt == nil || now.Before(*a.ExecuteAt) || now.Sub(*a.ExecuteAt) > 30*time.Second || a.Group || a.Conflict || len(a.CalendarIDs) > 0 || a.ScoreStatus != "scored" || a.DecisionScore == nil || !(*a.DecisionScore >= .95 && *a.DecisionScore <= 1) || reserved != 1 || EffectiveReplyPolicy(p.Autonomy.Mode, policy) != "full_auto" {
+					return ErrDeliveryDenied
+				}
+			}
+		}
 		// Older manual sends had no action id. Preserve their evidence rather than
 		// offering to send an already delivered test/template a second time.
 		var sent int
-		if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM contact_messages WHERE channel='mail' AND account=? AND address=? AND outgoing=1 AND body=? AND julianday(sent_at)>=julianday(?)`, a.Account, strings.ToLower(a.Recipient), a.Body, a.CreatedAt.Format(time.RFC3339Nano)).Scan(&sent); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM contact_messages WHERE channel=? AND account=? AND address=? AND outgoing=1 AND body=? AND julianday(sent_at)>=julianday(?)`, a.Channel, a.Account, strings.ToLower(a.Recipient), a.Body, a.CreatedAt.Format(time.RFC3339Nano)).Scan(&sent); err != nil {
 			return err
 		}
 		if sent > 0 {
@@ -79,8 +118,8 @@ func (s *Store) BeginMailDelivery(ctx context.Context, id, subject, body string)
 		a.State = "sending"
 		a.Stage = ""
 		a.ExecuteAt = nil
-		a.Mode = "owner_approved"
-		a.Reason = "owner_approved"
+		a.Mode = mode
+		a.Reason = mode
 		a.UpdatedAt = time.Now().UTC()
 		rawBytes, err := json.Marshal(a)
 		if err != nil {

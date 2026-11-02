@@ -41,6 +41,9 @@ class _TwinAdapter implements HttpClientAdapter {
             {'id': 'p_test', 'name': 'Demo repo'},
           ],
         };
+      case '/api/twin/approve_action':
+        actions.firstWhere((a) => a['id'] == (o.data as Map)['id'])['state'] =
+            'sent';
       case '/api/twin/cancel_action':
         actions.firstWhere((a) => a['id'] == (o.data as Map)['id'])['state'] =
             'cancelled';
@@ -145,6 +148,75 @@ Future<_TwinAdapter> _mount(
 }
 
 void main() {
+  for (final locale in MemoLocale.values) {
+    testWidgets('WhatsApp approval and grace window are wired ($locale)', (
+      tester,
+    ) async {
+      final adapter = _TwinAdapter();
+      adapter.preferences['autonomy'] = {
+        'enabled': true,
+        'whatsapp': true,
+        'mode': 'draft_only',
+        'grace_seconds': 60,
+      };
+      adapter.actions.add({
+        'id': 'wa',
+        'channel': 'whatsapp',
+        'state': 'pending',
+        'body': 'A prepared WhatsApp reply',
+        'recipient': '905551234567',
+        'approval_code': 12,
+        'reason': 'drafted',
+      });
+      await _mount(tester, locale, initialAdapter: adapter);
+      await tester.tap(find.text(L10n.t('auto_tab')));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text(L10n.t('approval_send')),
+        250,
+        scrollable: find
+            .descendant(
+              of: find.byType(AutonomyPanel),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(L10n.t('approval_send')).hitTestable());
+      await tester.pumpAndSettle();
+      final call = adapter.calls.singleWhere(
+        (r) => r.path == '/api/twin/approve_action',
+      );
+      expect(call.data, {'id': 'wa'});
+      expect(find.text(L10n.t('auto_state_sent')), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text(L10n.t('reply_additional_settings')),
+        -250,
+        scrollable: find
+            .descendant(
+              of: find.byType(AutonomyPanel),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.text(L10n.t('reply_additional_settings')).hitTestable(),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byType(DropdownButtonFormField<int>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(DropdownButtonFormField<int>));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.text(L10n.t('approval_seconds', {'seconds': '120'})).last,
+      );
+      await tester.pumpAndSettle();
+      expect((adapter.preferences['autonomy'] as Map)['grace_seconds'], 120);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final locale in MemoLocale.values) {
     testWidgets(
       'contact links, source dates and preferences use real API payloads ($locale)',

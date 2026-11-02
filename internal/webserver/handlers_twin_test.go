@@ -56,7 +56,7 @@ func TestTwinHTTPMethodsLimitsAndCodes(t *testing.T) {
 func TestTwinHTTPRequiresAdminForReadsAndWrites(t *testing.T) {
 	stub := &swarmStubBridge{sessionRole: func(token string) (string, bool) { return "user", token == "user-session" }}
 	s := New(stub)
-	for _, op := range []string{"state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "send_action", "contact_timeline", "check_availability", "git_project_status"} {
+	for _, op := range []string{"state", "activity", "contact", "merge", "preferences", "reply_model", "cancel_action", "hold_action", "send_action", "approve_action", "contact_timeline", "check_availability", "git_project_status"} {
 		req := httptest.NewRequest("POST", "/api/twin/"+op, strings.NewReader(`{}`))
 		if op == "state" || op == "activity" {
 			req.Method = "GET"

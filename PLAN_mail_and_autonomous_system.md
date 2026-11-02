@@ -1,6 +1,6 @@
 # PLAN — Memo "Dijital İkiz" (Digital Twin OS) & Otonom İletişim Sistemi
 **Doküman Türü:** Üretim Seviyesi Mimari Tasarım ve Uygulama Planı (SRS & Mühendislik Spesifikasyonu)  
-**Durum:** Faz 3 — Adım 5 teknik uygulaması mevcut; Adım 6 kısmen uygulandı (yalnız UI manuel onay/gönderim), kabul ve otonom köprü açık
+**Durum:** Faz 3 — Adım 5 teknik uygulaması mevcut; Adım 6 uygulandı, tam CI doğrulaması ve gerçek kanal kabulü sürüyor
 **Tarih:** 2026-10-30  
 **Kapsam:** `internal/mail`, `internal/autonomy`, `internal/twin`, `internal/calendar`, `internal/whatsapp`, `internal/telegram`, `internal/webserver`, `frontend/`
 
@@ -368,6 +368,8 @@ autonomy:
   - **1 Kasım kullanıcı düzeltmesi — bağımsız yanıt modeli:** Karar modeline taslak yazdırma kaldırıldı. Ayarlar → Mail ve Otonomi ayrı sekmesinde yanıt sağlayıcısı/modeli seçilir; sınıflandırma/araştırma/taslak yalnız bu modeldedir. Karar modeli yalnız 0–1 uygunluk ve mail risk skoru üretir; skor yoksa taslak onayda kalır. Model çifti ayrı/kalıcı/admin-only; mevcut sohbet/Öğrenme/kanal ayarları birbirini ezmez. Teknik doğrulama: CGO/sqlite_fts5 build/vet exit0; Go race71 paket PASS; Flutter874/874 PASS; analyze mevcut3 info; UI literal7 Dart dosyası0; diff PASS. Gerçek cihaz/model kabulü açık, Adım6 başlamadı.
 
 - [ ] **Adım 6 — Çok Kanallı Bildirim, 60sn Geri Al Tamponu ve Onay Köprüsü (UI + WhatsApp Self-Chat + Telegram):**
+  - **2 Kasım uygulama kontrol noktası:** Yeni adayların geri al sonrası otomatik gönderimi, atomik teslim kaydı, güncel kanal/kişi/DLP kontrolü; sahip WhatsApp/Telegram bildirim ve numaralı onay/iptal/asla komutları; UI geri sayımı, düzenlemede duraklatma, WhatsApp onayı ve TR/EN süre ayarı uygulandı. Başlangıç/ayar değişikliği eski programları duraklatır. Hedefli Go race5 paket ve Flutter19 PASS; tam uzak CI doğrulaması sürüyor, bu nedenle kutu açık. Gerçek kanal kabulü ayrıdır. Sözleşme: `docs/DIGITAL_TWIN_APPROVAL.md`.
+
   - **Dosyalar:**
     - `internal/autonomy/approval_bridge.go`:
       - `pending_autonomous_actions` kuyruğunu yönetir ve `grace_period_seconds` süresi dolan otonom yanıtları `OutboundDLP` kontrolünden geçirerek gönderir.

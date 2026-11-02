@@ -111,10 +111,16 @@ func (a *App) runTelegramIntentLoop(ctx context.Context) {
 			if !ok {
 				return
 			}
+			if a.routeTelegramApproval(ctx, msg, true) {
+				continue
+			}
 			if a.routeTelegramPermissionAnswer(msg) {
 				continue
 			}
 			if !a.shouldReplyToTelegram(msg) {
+				continue
+			}
+			if a.routeTelegramApproval(ctx, msg, false) {
 				continue
 			}
 			goRecover("telegramMessageReply", func() {

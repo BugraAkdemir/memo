@@ -1,8 +1,11 @@
 # Dijital İkiz — Adım5: karar, araştırma ve takvim taslakları
 
-Backend ve Flutter aynı değişiklikte bağlanır. Bu adım **hazırlama** motorudur;
-gönderim zamanlayıcısı, WhatsApp/Telegram uzaktan onayı ve çok kanallı bildirim
-köprüsü Adım6'dır. Kuyrukta `grace_period_auto` olması bu sürümde mesaj göndermez.
+Backend ve Flutter aynı değişiklikte bağlanır. Adım5 **hazırlama** motorudur.
+**2 Kasım / Adım6:** yeni onay köprüsü uygun adayları geri al süresinden sonra
+gönderir; sahip bildirimleri/uzaktan onay ve iptal de bağlıdır. Eski adaylar
+otomatik etkinleştirilmez. Güncel sözleşme ve cihaz kabulü:
+[DIGITAL_TWIN_APPROVAL.md](DIGITAL_TWIN_APPROVAL.md).
+Aşağıdaki Adım5 ve 1 Kasım kayıtları kendi tarihindeki hazırlama kapsamını anlatır.
 
 
 **2 Kasım eklemesi:** Mail → Yanıtlar bölümünde taslağı inceleyip düzenleyerek

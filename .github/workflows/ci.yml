@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -32,7 +33,7 @@ jobs:
           restore-keys: go-${{ runner.os }}-
 
       - name: Build check
-        run: go build -tags "sqlite_fts5" -o /dev/null .
+        run: CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...
 
       - name: Vet
         run: go vet -tags "sqlite_fts5" ./...

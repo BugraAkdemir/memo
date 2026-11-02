@@ -20,6 +20,7 @@ var ErrNotFound = errors.New("twin contact not found")
 var ErrAliasConflict = errors.New("address already belongs to another contact")
 
 const schema = `
+CREATE TABLE IF NOT EXISTS autonomy_notifications(action_id TEXT NOT NULL, phase TEXT NOT NULL, target TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY(action_id,phase,target));
 CREATE TABLE IF NOT EXISTS twin_reply_model(id INTEGER PRIMARY KEY CHECK(id=1), provider TEXT NOT NULL, model TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS autonomy_auto_reservations(event_key TEXT PRIMARY KEY, contact_id TEXT NOT NULL, thread_key TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS autonomy_reservations_contact ON autonomy_auto_reservations(contact_id,at);
@@ -123,6 +124,9 @@ func (s *Store) SavePreferences(ctx context.Context, p Preferences) error {
 	b, _ := json.Marshal(p)
 	return s.db.Write(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, "INSERT INTO twin_preferences(id,value) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value", string(b)); err != nil {
+			return err
+		}
+		if err := pauseSchedules(ctx, tx); err != nil {
 			return err
 		}
 		return audit(ctx, tx, "preferences_updated", "")

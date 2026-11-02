@@ -7,7 +7,7 @@
 **Dijital İkiz / Mail**
 - a7324752 SMTP gönderildi/eski kayıt pending: TEKRAR GÖNDERME. Yeni akış geçmiş kontrolüyle engeller. 453da7f6 farklı gönderen pending/Drafts; SMTP yok, skor yok/onay gerekir.
 - Adım5 teknik hazır: docs/DIGITAL_TWIN_AUTONOMY.md (karar/takvim/Drafts/UID/limit/iptal). Varsayılan kapalı, yanıt modeli gerekir. Ses yerel Whisper/ffmpeg; bulut yok. Telegram sahip. Gerçek IMAP/model/Drafts/onaylı SMTP/teslim kullanıcı PASS.
-- Mail → Yanıtlar manuel incele/düzenle/gönder: docs/MAIL_REPLY_REVIEW.md. Genel/grace_period_auto GÖNDERMEZ; otomatik/uzaktan Adım6 açık. WhatsApp/ses cihaz kabulü açık; iptal uzak taslak/takvimi silmez; kesinti/hata tekrar edilmez.
+- Adım6 köprüsü uygulandı: docs/DIGITAL_TWIN_APPROVAL.md. Yeni adaylarda geri al/otomatik gönderim, UI ve sahip WhatsApp/Telegram onayı/iptali var; eski adaylar otomatik etkinleşmez. Tam CI doğrulaması ve gerçek kanal cihaz kabulü bekleniyor. WhatsApp/ses cihaz kabulü açık; iptal uzak taslak/takvimi silmez; kesinti/hata tekrar edilmez.
 - Adım4 kişi/üslup/Git/doluluk, Adım3 görünüm/charset/sayaç/göreli tarih cihaz kabulü açık: docs/DIGITAL_TWIN_CONTACTS.md + docs/MAIL_SECURITY.md. İsimden eşleme/backfill yok. Saldırı engeli kullanıcı PASS; izin aynı. Sonraki adım kullanıcı geri bildirimiyle.
 
 **Performans benchmark — kullanıcı duraklattı (29 Ekim)**
@@ -66,8 +66,7 @@
 
 ---
 
-# Son oturum — 2 Kasım — Plan durumu doğrulaması
-- Son kod d773a438; Faz3/Adım5 teknik mevcut, Adım6 yalnız UI manuel onay/gönderim kısmı mevcut. Ana planın eski durum başlığı/kontrol noktası güncellendi; kutular değiştirilmedi.
-- Yeni send_action gerçek hesap/UI kabulü açık; otomatik zamanlayıcı/60sn geri al ve WhatsApp/Telegram onayı açık. Önceki gerçek mail/model/Drafts/teslim kabulü ayrı yola aittir.
-- Bu oturum: hedefli Go race twin/app/webserver 3 paket PASS; mail_prepared_reply Flutter6 PASS; diff kontrolü PASS. Tam suite/build/vet tekrar yok; canlı SMTP yok; runtime sürümü denetlenmedi.
-- Yalnız plan/handoff dokümanları commit edilir; kullanıcı değişiklikleri korunur. Sonraki aşama başlatılmadı.
+# Son oturum — 2 Kasım — Adım6 uygulaması / doğrulama sürüyor
+- Otomatik/uzaktan onay köprüsü ve UI aynı değişiklikte. Sürüm işareti/bütçe/güncel kişi-kanal kontrolü, atomik rezervasyon, DLP, sahip sınırı ve mesaj tekrar koruması. Açılış/ayar değişikliği eski geri sayımları duraklatır; inceleme editörü de sunucuda duraklatır.
+- Go build/vet0; hedefli twin/autonomy/app/webserver/e2e race5 paket PASS; Flutter19 PASS; analyze yalnız eski3 info; UI literal0 ve diff PASS. Gerçek SMTP/Telegram/WhatsApp hesabına gönderim yok; çalışan backend/UI değiştirilmedi.
+- CI'ya workflow_dispatch eklendi; tam doğrulama uzak CI'da yapılacak. Kullanıcı değişiklikleri ayrı. Adım6 kutusu tam doğrulama öncesi açık; Adım7 başlatılmadı.

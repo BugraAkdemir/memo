@@ -21,6 +21,7 @@ class DraftAdapter implements HttpClientAdapter {
   Completer<void>? sending;
   Completer<void>? loading;
   final sent = <Map<String, dynamic>>[];
+  int holds = 0;
   final action = <String, dynamic>{
     'id': 'draft',
     'account': 'owner',
@@ -41,6 +42,11 @@ class DraftAdapter implements HttpClientAdapter {
     Object data;
     var status = 200;
     switch (o.path) {
+      case '/api/twin/hold_action':
+        holds++;
+        action['mode'] = 'awaiting_approval';
+        action['execute_at'] = null;
+        data = {'ok': true};
       case '/api/mail/accounts':
         data = {
           'accounts': [
@@ -143,6 +149,31 @@ Future<ProviderContainer> mountMail(
 }
 
 void main() {
+  testWidgets('reviewing a scheduled mail pauses automatic delivery first', (
+    tester,
+  ) async {
+    final adapter = DraftAdapter();
+    adapter.action.addAll({
+      'mode': 'grace_period_auto',
+      'delivery_version': 1,
+      'execute_at': DateTime.now()
+          .add(const Duration(minutes: 1))
+          .toIso8601String(),
+    });
+    await mountMail(tester, adapter, const Size(1000, 600));
+    await tester.tap(find.text(L10n.t('mail_replies_tab', {'n': '1'})));
+    await tester.pumpAndSettle();
+    expect(find.byType(ApprovalCountdown), findsWidgets);
+    await tester.ensureVisible(
+      find.text(L10n.t('mail_reply_review_send')).last,
+    );
+    await tester.tap(find.text(L10n.t('mail_reply_review_send')).last);
+    await tester.pumpAndSettle();
+    expect(adapter.holds, 1);
+    expect(find.text(L10n.t('mail_reply_review_title')), findsOneWidget);
+    expect(adapter.sent, isEmpty);
+  });
+
   for (final size in [
     const Size(1000, 600),
     const Size(1440, 900),

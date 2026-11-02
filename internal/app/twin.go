@@ -139,7 +139,31 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		}
 		commitments := waitingViews(waiting)
 		return map[string]any{"settings": p.Autonomy, "actions": actions, "reply_model": selection, "mail_contacts": mailContacts, "radar": p.Radar, "commitments": commitments}, nil
-	case "state", "twin_contacts":
+	case "twin_contacts":
+		// The chat tool promises contacts, working hours and project ids. It must
+		// not be backed by the full state, which carries every prepared reply's
+		// text and recipient, the waiting list and the briefing cards (private
+		// meeting titles), none of which a chat model needs.
+		contacts, err := s.Contacts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		p, err := s.Preferences(ctx)
+		if err != nil {
+			return nil, err
+		}
+		type workHours struct {
+			Timezone               string `json:"timezone"`
+			WorkStart              string `json:"work_start"`
+			WorkEnd                string `json:"work_end"`
+			AllowProjectInspection bool   `json:"allow_project_inspection"`
+		}
+		return struct {
+			Contacts    []twin.Contact               `json:"contacts"`
+			Preferences workHours                    `json:"preferences"`
+			Projects    []autonomy.RegisteredProject `json:"projects"`
+		}{contacts, workHours{p.Timezone, p.WorkStart, p.WorkEnd, p.AllowProjectInspection}, a.twinProjects()}, nil
+	case "state":
 		contacts, err := s.Contacts(ctx)
 		if err != nil {
 			return nil, err

@@ -31,7 +31,7 @@ void main() {
         // Off by default, with the promise that nothing is sent on its own.
         expect(find.text(L10n.t('radar_title')), findsOneWidget);
         expect(find.text(L10n.t('radar_help')), findsOneWidget);
-        await tester.tap(find.byType(Switch));
+        await tester.tap(find.byType(Switch).first);
         await tester.pump();
         expect(saved, {'enabled': true, 'follow_up_hours': 48});
 
@@ -75,7 +75,7 @@ void main() {
             ),
           ),
         );
-        await tester.tap(find.byType(Switch), warnIfMissed: false);
+        await tester.tap(find.byType(Switch).first, warnIfMissed: false);
         await tester.pump();
         expect(saved, isNull);
       });
@@ -131,6 +131,149 @@ void main() {
           ),
         );
         expect(find.text(L10n.t('radar_waiting_empty')), findsOneWidget);
+      });
+    });
+  }
+
+  for (final locale in MemoLocale.values) {
+    group('promise tracking ($locale)', () {
+      setUp(() => L10n.setLocale(locale));
+      tearDown(() => L10n.setLocale(MemoLocale.en));
+
+      testWidgets('tracking is its own opt-in switch that keeps the rest', (
+        tester,
+      ) async {
+        Map<String, dynamic>? saved;
+        await tester.pumpWidget(
+          host(
+            FollowUpRadarCard(
+              radar: const {
+                'enabled': true,
+                'follow_up_hours': 72,
+                'track_promises': false,
+              },
+              waiting: const [],
+              busy: false,
+              onChanged: (v) => saved = v,
+              onResolve: (_) {},
+            ),
+          ),
+        );
+        expect(find.text(L10n.t('radar_promises_toggle')), findsOneWidget);
+        expect(find.text(L10n.t('radar_promises_help')), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('radar-track-promises')));
+        await tester.pump();
+        expect(saved, {
+          'enabled': true,
+          'follow_up_hours': 72,
+          'track_promises': true,
+        });
+      });
+
+      testWidgets(
+        'promises are listed apart from awaited replies and can be closed',
+        (tester) async {
+          String? resolved;
+          await tester.pumpWidget(
+            host(
+              FollowUpRadarCard(
+                radar: const {
+                  'enabled': true,
+                  'follow_up_hours': 48,
+                  'track_promises': true,
+                },
+                waiting: const [
+                  {
+                    'id': 'w1',
+                    'kind': 'waiting_on_other',
+                    'address': 'ali@example.com',
+                    'subject': 'Teklif',
+                    'status': 'open',
+                    'due_at': '2026-11-04T12:30:00Z',
+                  },
+                  {
+                    'id': 'p1',
+                    'kind': 'my_promise',
+                    'summary': 'Raporu gönder',
+                    'address': 'veli@example.com',
+                    'status': 'reminded',
+                    'due_at': '2026-11-03T08:00:00Z',
+                  },
+                  {
+                    'id': 'p2',
+                    'kind': 'my_promise',
+                    'summary': 'Faturayı kes',
+                    'address': 'ayse@example.com',
+                    'status': 'open',
+                    'due_at': '2026-11-09T08:00:00Z',
+                  },
+                ],
+                busy: false,
+                onChanged: (_) {},
+                onResolve: (id) => resolved = id,
+              ),
+            ),
+          );
+          // One awaited reply and two promises, counted separately.
+          expect(
+            find.text(L10n.t('radar_waiting_title', {'n': '1'})),
+            findsOneWidget,
+          );
+          expect(
+            find.text(L10n.t('radar_promises_title', {'n': '2'})),
+            findsOneWidget,
+          );
+          expect(find.textContaining('Raporu gönder'), findsOneWidget);
+          expect(find.textContaining('Faturayı kes'), findsOneWidget);
+          // A promise that is due says so; a future one does not.
+          expect(find.text(L10n.t('radar_promise_reminded')), findsOneWidget);
+          expect(find.text(L10n.t('radar_promise_open')), findsOneWidget);
+          await tester.tap(find.text(L10n.t('radar_promise_done')).first);
+          await tester.pump();
+          expect(resolved, 'p1');
+        },
+      );
+
+      testWidgets('with tracking on and nothing promised it says so', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          host(
+            FollowUpRadarCard(
+              radar: const {
+                'enabled': true,
+                'follow_up_hours': 48,
+                'track_promises': true,
+              },
+              waiting: const [],
+              busy: false,
+              onChanged: (_) {},
+              onResolve: (_) {},
+            ),
+          ),
+        );
+        expect(find.text(L10n.t('radar_promises_empty')), findsOneWidget);
+      });
+
+      testWidgets('with tracking off and no promises the section stays quiet', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          host(
+            FollowUpRadarCard(
+              radar: const {'enabled': true, 'follow_up_hours': 48},
+              waiting: const [],
+              busy: false,
+              onChanged: (_) {},
+              onResolve: (_) {},
+            ),
+          ),
+        );
+        expect(find.text(L10n.t('radar_promises_empty')), findsNothing);
+        expect(
+          find.text(L10n.t('radar_promises_title', {'n': '0'})),
+          findsNothing,
+        );
       });
     });
   }

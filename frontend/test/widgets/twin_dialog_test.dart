@@ -53,6 +53,8 @@ class _TwinAdapter implements HttpClientAdapter {
             {'id': 'p_test', 'name': 'Demo repo'},
           ],
         };
+      case '/api/twin/resolve_commitment':
+        commitments.removeWhere((c) => c['id'] == (o.data as Map)['id']);
       case '/api/twin/approve_action':
         actions.firstWhere((a) => a['id'] == (o.data as Map)['id'])['state'] =
             'sent';
@@ -458,6 +460,48 @@ void main() {
       // Everything else the owner configured travels with it.
       expect(payload['timezone'], 'Europe/Istanbul');
       expect(a.preferences['radar'], {'enabled': true, 'follow_up_hours': 48});
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final locale in MemoLocale.values) {
+    testWidgets('closing a promise calls the API and removes it ($locale)', (
+      tester,
+    ) async {
+      final a = await _mount(tester, locale);
+      a.commitments.add({
+        'id': 'p1',
+        'kind': 'my_promise',
+        'summary': 'Raporu gönder',
+        'address': 'veli@example.com',
+        'status': 'reminded',
+        'due_at': '2026-11-03T08:00:00Z',
+      });
+      await tester.tap(find.byTooltip(L10n.t('refresh')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text(L10n.t('auto_tab')));
+      await tester.tap(find.text(L10n.t('auto_tab')));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text(L10n.t('radar_promise_done')),
+        300,
+        scrollable: find
+            .descendant(
+              of: find.byType(AutonomyPanel),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(find.textContaining('Raporu gönder'), findsOneWidget);
+      await tester.ensureVisible(find.text(L10n.t('radar_promise_done')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(L10n.t('radar_promise_done')));
+      await tester.pumpAndSettle();
+      expect(
+        a.calls.lastWhere((c) => c.path == '/api/twin/resolve_commitment').data,
+        {'id': 'p1'},
+      );
+      expect(find.textContaining('Raporu gönder'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }

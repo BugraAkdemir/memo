@@ -547,6 +547,12 @@ class _TwinDialogState extends ConsumerState<TwinDialog>
         ? Map<String, dynamic>.from(_state!.preferences['radar'] as Map)
         : {},
     waiting: _state!.commitments,
+    onResolve: (id) => _run(() async {
+      await ref.read(apiClientProvider).callTwin('resolve_commitment', {
+        'id': id,
+      });
+      await _refresh();
+    }),
     onRadar: (value) => _run(() async {
       await ref.read(apiClientProvider).callTwin('preferences', {
         ..._state!.preferences,

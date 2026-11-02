@@ -16,6 +16,7 @@ class AutonomyPanel extends StatelessWidget {
   final Map<String, dynamic> radar;
   final List<Map<String, dynamic>> waiting;
   final ValueChanged<Map<String, dynamic>>? onRadar;
+  final ValueChanged<String>? onResolve;
   const AutonomyPanel({
     super.key,
     required this.settings,
@@ -29,6 +30,7 @@ class AutonomyPanel extends StatelessWidget {
     this.radar = const {},
     this.waiting = const [],
     this.onRadar,
+    this.onResolve,
   });
 
   bool get _mailOn => settings['enabled'] == true && settings['mail'] == true;
@@ -287,6 +289,7 @@ class AutonomyPanel extends StatelessWidget {
             waiting: waiting,
             busy: busy,
             onChanged: onRadar!,
+            onResolve: onResolve,
           ),
         ],
         const Divider(height: 32),

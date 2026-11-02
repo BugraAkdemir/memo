@@ -11,15 +11,18 @@ class FollowUpRadarCard extends StatelessWidget {
   final List<Map<String, dynamic>> waiting;
   final bool busy;
   final ValueChanged<Map<String, dynamic>> onChanged;
+  final ValueChanged<String>? onResolve;
   const FollowUpRadarCard({
     super.key,
     required this.radar,
     required this.waiting,
     required this.busy,
     required this.onChanged,
+    this.onResolve,
   });
 
   bool get _enabled => radar['enabled'] == true;
+  bool get _track => radar['track_promises'] == true;
 
   int get _hours {
     final h = radar['follow_up_hours'];
@@ -38,6 +41,14 @@ class FollowUpRadarCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final hours = {..._choices, _hours}.toList()..sort();
+    final replies = [
+      for (final w in waiting)
+        if (w['kind'] != 'my_promise') w,
+    ];
+    final promises = [
+      for (final w in waiting)
+        if (w['kind'] == 'my_promise') w,
+    ];
     return Material(
       color: colors.surfaceContainerHighest.withValues(alpha: .4),
       shape: RoundedRectangleBorder(
@@ -91,19 +102,29 @@ class FollowUpRadarCard extends StatelessWidget {
                       }
                     },
             ),
+            SwitchListTile(
+              key: const ValueKey('radar-track-promises'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(L10n.t('radar_promises_toggle')),
+              subtitle: Text(L10n.t('radar_promises_help')),
+              value: _track,
+              onChanged: busy
+                  ? null
+                  : (v) => onChanged({...radar, 'track_promises': v}),
+            ),
             const SizedBox(height: 16),
             Text(
-              L10n.t('radar_waiting_title', {'n': '${waiting.length}'}),
+              L10n.t('radar_waiting_title', {'n': '${replies.length}'}),
               style: theme.textTheme.labelLarge,
             ),
             const SizedBox(height: 8),
-            if (waiting.isEmpty)
+            if (replies.isEmpty)
               Text(
                 L10n.t('radar_waiting_empty'),
                 style: theme.textTheme.bodySmall,
               )
             else
-              for (final w in waiting)
+              for (final w in replies)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
@@ -151,6 +172,72 @@ class FollowUpRadarCard extends StatelessWidget {
                     ],
                   ),
                 ),
+            if (_track || promises.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text(
+                L10n.t('radar_promises_title', {'n': '${promises.length}'}),
+                style: theme.textTheme.labelLarge,
+              ),
+              const SizedBox(height: 8),
+              if (promises.isEmpty)
+                Text(
+                  L10n.t('radar_promises_empty'),
+                  style: theme.textTheme.bodySmall,
+                )
+              else
+                for (final w in promises)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          w['status'] == 'reminded'
+                              ? Icons.notifications_active_outlined
+                              : Icons.handshake_outlined,
+                          size: 18,
+                          color: w['status'] == 'reminded'
+                              ? colors.error
+                              : colors.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${w['summary'] ?? ''} · ${w['address'] ?? ''}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                L10n.t(
+                                  w['status'] == 'reminded'
+                                      ? 'radar_promise_reminded'
+                                      : 'radar_promise_open',
+                                ),
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              if (_when(w['due_at'] as String?).isNotEmpty)
+                                Text(
+                                  L10n.t('radar_due', {
+                                    'when': _when(w['due_at'] as String?),
+                                  }),
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: busy || onResolve == null
+                              ? null
+                              : () => onResolve!('${w['id']}'),
+                          child: Text(L10n.t('radar_promise_done')),
+                        ),
+                      ],
+                    ),
+                  ),
+            ],
           ],
         ),
       ),

@@ -1,3 +1,9 @@
+# Son oturum — 2 Kasım — Adım6 cihaz test yönergesi
+- docs/DIGITAL_TWIN_APPROVAL.md: yeni maille iptal, tek onaylı gönderim, ayrı otomatik geri al senaryosu eklendi. Güncel backend/UI gerekir; önceki runtime yenilenmedi. Gerçek kabul yapılmadı.
+- Yalnız doküman; diff/iç bağlantı kontrolleri PASS. Yeni build/test yok; önceki CI sonucu arşivde. Bu kayıt doküman commit'ine dahildir; Adım7 başlamadı.
+
+---
+
 # Son oturum — 2 Kasım — Adım6 teknik tamam
 - Köprü160d9caf, tek olay47aba274, SSE6ebf3fb1; test uyumu12a5c7fe/3471ae59. Onay/iptal/asla, süre ve UI birlikte; docs/DIGITAL_TWIN_APPROVAL.md. Eski/başlangıç/ayar/editör geri sayımları duraklar.
 - CI41503875218: build/vet0, Go race71 PASS; Flutter890+adres1 PASS; güvenlik/L10n/alan adı PASS. Lib eski3 info; CI tüm frontend eski18 info. UI literal11 dosya0; diff PASS.

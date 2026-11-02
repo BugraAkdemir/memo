@@ -66,6 +66,7 @@
 
 ---
 
-# Son oturum — 2 Kasım — Adım6 cihaz test yönergesi
-- docs/DIGITAL_TWIN_APPROVAL.md: yeni maille iptal, tek onaylı gönderim, ayrı otomatik geri al senaryosu eklendi. Güncel backend/UI gerekir; önceki runtime yenilenmedi. Gerçek kabul yapılmadı.
-- Yalnız doküman; diff/iç bağlantı kontrolleri PASS. Yeni build/test yok; önceki CI sonucu arşivde. Bu kayıt doküman commit'ine dahildir; Adım7 başlamadı.
+# Son oturum — 2 Kasım — Adım6 canlı web kabulü sürüyor
+- Kullanıcı test kodu/suite değil gerçek kullanıcı testi istedi; test verisi değişebilir. Güncel Flutter web embed hazırlandı; scripts/run_memo.sh çalışıyor, localhost:8090 web bağlı. Ek geçici 18090 sunucusu kapatıldı.
+- Canlı UI: Gmail hesabı/yanıt modeli göründü, ilk kutu bağlantı hatası Retry sonrası düzeldi; doluluk sorgusu sonuç verdi. Buğra kişisi Draft only kaydedildi, genel mod taslak seçildi; süre60sn. Eski #5/#6 hâlâ onayda, gönderilmedi. Kurulmuş proje yok; WhatsApp/Telegram bağlı değil.
+- Karşı hesaptan akdemirbugra5@gmail.com'a MEMO ADIM6 CANLI İPTAL 2218 maili istendi (3 Kasım14–15 doluluk sorusu, CC/ek yok). Yeni mail henüz görülmedi; canlı iptal/onay/otomatik geri al/tekrar/kanal kabulü açık. Adım7 başlamadı. Test yazılmadı; buildler PASS, yalnız kayıt diff kontrolü yapıldı. Bu kayıt commit edilir.

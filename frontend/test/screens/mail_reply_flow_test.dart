@@ -46,6 +46,14 @@ class _ReplyAdapter implements HttpClientAdapter {
     Object data;
     var status = 200;
     switch (options.path) {
+      case '/api/twin/events':
+        return ResponseBody.fromString(
+          ': ready\n\n',
+          200,
+          headers: {
+            Headers.contentTypeHeader: ['text/event-stream'],
+          },
+        );
       case '/api/mail/accounts':
         data = {
           'accounts': [

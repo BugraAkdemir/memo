@@ -77,6 +77,37 @@ func TestExtractPromisesStoresDatedPromisesOnce(t *testing.T) {
 	}
 }
 
+// Found live: "yarın akşam" written at 01:26 in Istanbul became TODAY, because the
+// model got now=...+03:00 together with timezone=UTC and counted days in UTC. "now"
+// must be expressed in the same zone the model is told to use.
+func TestPromisePromptGivesNowInTheOwnersTimezone(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct{ tz, wantNow string }{
+		{"UTC", "2026-11-02T22:26:32Z"},
+		{"Europe/Istanbul", "2026-11-03T01:26:32+03:00"},
+		{"America/New_York", "2026-11-02T17:26:32-05:00"},
+	} {
+		t.Run(tc.tz, func(t *testing.T) {
+			e, msg, _ := promiseFixture(t, true)
+			p, _ := e.Store.Preferences(ctx)
+			p.Timezone = tc.tz
+			if err := e.Store.SavePreferences(ctx, p); err != nil {
+				t.Fatal(err)
+			}
+			// The same instant as seen from a machine in Istanbul.
+			e.Now = func() time.Time { return time.Date(2026, 11, 3, 1, 26, 32, 0, istanbul) }
+			var user string
+			e.Generate = func(_ context.Context, _, u string) (string, error) { user = u; return `{"promises":[]}`, nil }
+			if _, err := e.ExtractPromises(ctx, msg); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(user, `"now":"`+tc.wantNow+`"`) || !strings.Contains(user, `"timezone":"`+tc.tz+`"`) {
+				t.Fatalf("now and timezone disagree: %s", user)
+			}
+		})
+	}
+}
+
 func TestExtractPromisesDoesNothingUnlessAskedTo(t *testing.T) {
 	ctx := context.Background()
 	t.Run("tracking off", func(t *testing.T) {

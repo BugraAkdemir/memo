@@ -52,8 +52,10 @@ func (e *Engine) ExtractPromises(ctx context.Context, m twin.Message) (int, erro
 		now = e.Now()
 	}
 	data, err := json.Marshal(map[string]any{
-		"message":  WrapUntrustedExternalMessage("owner", m.Channel, m.Body),
-		"now":      now.Format(time.RFC3339),
+		"message": WrapUntrustedExternalMessage("owner", m.Channel, m.Body),
+		// The same zone the model is told to use, or "tomorrow" is counted in the
+		// wrong day (found live: 01:26 in Istanbul read as the previous UTC day).
+		"now":      now.In(location(prefs)).Format(time.RFC3339),
 		"timezone": prefs.Timezone,
 	})
 	if err != nil {

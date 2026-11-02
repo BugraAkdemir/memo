@@ -22,6 +22,7 @@ class AutonomyPanel extends StatelessWidget {
   final List<Map<String, dynamic>> briefings;
   final ValueChanged<Map<String, dynamic>>? onBriefing;
   final ValueChanged<String>? onBriefingRead;
+  final ValueChanged<Map<String, dynamic>>? onTask;
   const AutonomyPanel({
     super.key,
     required this.settings,
@@ -40,6 +41,7 @@ class AutonomyPanel extends StatelessWidget {
     this.briefings = const [],
     this.onBriefing,
     this.onBriefingRead,
+    this.onTask,
   });
 
   bool get _mailOn => settings['enabled'] == true && settings['mail'] == true;
@@ -354,7 +356,7 @@ class AutonomyPanel extends StatelessWidget {
           ),
         for (final a in actions)
           if (a['channel'] == 'mail' &&
-              (a['body'] is String && (a['body'] as String).isNotEmpty))
+              (a['body'] is String && (a['body'] as String).isNotEmpty)) ...[
             MailReplyDraftCard(
               action: a,
               onReview: busy
@@ -363,8 +365,17 @@ class AutonomyPanel extends StatelessWidget {
               onCancel: a['state'] == 'pending' && !busy
                   ? () => onCancel(a['id'] as String)
                   : null,
-            )
-          else
+            ),
+            if (onTask != null && a['state'] != 'preparing')
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: busy ? null : () => onTask!(a),
+                  icon: const Icon(Icons.task_alt_outlined, size: 18),
+                  label: Text(L10n.t('task_bridge_open')),
+                ),
+              ),
+          ] else
             _action(context, a),
       ],
     );
@@ -442,6 +453,17 @@ class AutonomyPanel extends StatelessWidget {
                   : () => onApprove!(a['id'] as String),
               icon: const Icon(Icons.send_outlined),
               label: Text(L10n.t('approval_send')),
+            ),
+          if (onTask != null &&
+              a['state'] != 'preparing' &&
+              (a['channel'] == 'mail' || a['channel'] == 'whatsapp'))
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: busy ? null : () => onTask!(a),
+                icon: const Icon(Icons.task_alt_outlined, size: 18),
+                label: Text(L10n.t('task_bridge_open')),
+              ),
             ),
           if (a['state'] == 'pending')
             Padding(

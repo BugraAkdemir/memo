@@ -74,6 +74,18 @@ class _TwinAdapter implements HttpClientAdapter {
             {'id': 'p_test', 'name': 'Demo repo'},
           ],
         };
+      case '/api/chats':
+        result = [
+          {
+            'id': 'c1',
+            'title': 'Memo projesi',
+            'project_path': '/work/memo',
+            'msg_count': 1,
+          },
+          {'id': 'c2', 'title': 'Sıradan sohbet', 'msg_count': 1},
+        ];
+      case '/api/twin/task_from_action':
+        result = {'task_id': 't1', 'state': 'idle'};
       case '/api/twin/briefing_read':
         briefings.firstWhere(
           (b) => b['key'] == (o.data as Map)['key'],
@@ -582,6 +594,68 @@ void main() {
           {'key': 'morning:2026-11-03'},
         );
         expect(a.briefings.first['read'], true);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final locale in MemoLocale.values) {
+    testWidgets(
+      'a message becomes an idle task only through the owner ($locale)',
+      (tester) async {
+        final a = await _mount(tester, locale);
+        a.actions.add({
+          'id': 'pending-1',
+          'recipient': 'friend@example.com',
+          'channel': 'mail',
+          'subject': 'Hata düzeltmesi',
+          'state': 'pending',
+          'reason': 'drafted',
+          'body': 'Prepared reply',
+        });
+        await tester.tap(find.byTooltip(L10n.t('refresh')));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text(L10n.t('auto_tab')));
+        await tester.tap(find.text(L10n.t('auto_tab')));
+        await tester.pumpAndSettle();
+        // The list is built lazily: drag it until the button exists.
+        final button = find.text(L10n.t('task_bridge_open'));
+        for (var i = 0; i < 40 && button.evaluate().isEmpty; i++) {
+          await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+          await tester.pump();
+        }
+        expect(button, findsOneWidget);
+        await tester.ensureVisible(find.text(L10n.t('task_bridge_open')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(L10n.t('task_bridge_open')));
+        await tester.pumpAndSettle();
+        // The dialog suggests the subject as a title, never the message text.
+        expect(
+          find.widgetWithText(TextField, 'Hata düzeltmesi'),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const ValueKey('task-chat')));
+        await tester.pumpAndSettle();
+        expect(find.text('Sıradan sohbet'), findsNothing);
+        await tester.tap(find.text('Memo projesi').last);
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey('task-steps')),
+          'Hatayı üret\nTesti yaz',
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('task-create')));
+        await tester.pumpAndSettle();
+        expect(
+          a.calls.lastWhere((c) => c.path == '/api/twin/task_from_action').data,
+          {
+            'id': 'pending-1',
+            'chat_id': 'c1',
+            'title': 'Hata düzeltmesi',
+            'items': ['Hatayı üret', 'Testi yaz'],
+          },
+        );
+        expect(find.text(L10n.t('task_bridge_done')), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

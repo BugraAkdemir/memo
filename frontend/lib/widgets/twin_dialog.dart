@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../models/twin.dart';
+import 'task_from_message_dialog.dart';
 import 'autonomy_panel.dart';
 import '../providers/chat_provider.dart';
 
@@ -537,6 +538,27 @@ class _TwinDialogState extends ConsumerState<TwinDialog>
     ],
   );
 
+  Future<void> _openTask(Map<String, dynamic> action) async {
+    final api = ref.read(apiClientProvider);
+    final chats = await api.listChats();
+    if (!mounted) return;
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => TaskFromMessageDialog(
+        subject: '${action['subject'] ?? ''}',
+        chats: chats,
+      ),
+    );
+    if (result == null || !mounted) return;
+    await _run(() async {
+      await api.callTwin('task_from_action', {'id': action['id'], ...result});
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(L10n.t('task_bridge_done'))));
+    });
+  }
+
   Widget _autonomy() => AutonomyPanel(
     replyModel: _state!.replyModel,
     onRefresh: _load,
@@ -552,6 +574,7 @@ class _TwinDialogState extends ConsumerState<TwinDialog>
         ? Map<String, dynamic>.from(_state!.preferences['briefing'] as Map)
         : {},
     briefings: _state!.briefings,
+    onTask: _openTask,
     onBriefing: (value) => _run(() async {
       await ref.read(apiClientProvider).callTwin('preferences', {
         ..._state!.preferences,

@@ -7,7 +7,7 @@
 **Dijital İkiz / Mail**
 - a7324752 SMTP gönderildi/eski kayıt pending: TEKRAR GÖNDERME. Yeni akış geçmiş kontrolüyle engeller. 453da7f6 farklı gönderen pending/Drafts; SMTP yok, skor yok/onay gerekir.
 - Adım5 teknik ve gerçek IMAP/model/Drafts/eski manuel SMTP/teslim kullanıcı PASS: docs/DIGITAL_TWIN_AUTONOMY.md. Varsayılan kapalı; ayrı yanıt modeli, yerel Whisper/ffmpeg, Telegram sahip.
-- Adım6 teknik/CI PASS: docs/DIGITAL_TWIN_APPROVAL.md. Geri al/otomatik gönderim ve UI/WhatsApp/Telegram sahip onayı bağlı; eski adaylar açılmaz. Gerçek kanal/native/ses kabulü açık. İptal uzak Drafts/takvimi silmez; belirsiz gönderim tekrarlanmaz.
+- Adım6 teknik/CI PASS: docs/DIGITAL_TWIN_APPROVAL.md. Geri al/otomatik gönderim ve UI/WhatsApp/Telegram sahip onayı bağlı; eski adaylar açılmaz. Gerçek kanal/native/ses kabulü açık; cihaz test yönergesi aynı dokümanda. İptal uzak Drafts/takvimi silmez; belirsiz gönderim tekrarlanmaz.
 - Adım4 kişi/üslup/Git/doluluk ve Adım3 görünüm/charset/sayaç/göreli tarih cihaz kabulü açık: docs/DIGITAL_TWIN_CONTACTS.md + docs/MAIL_SECURITY.md. İsim eşleme/backfill yok; saldırı engeli kullanıcı PASS, izin aynı. Sonraki adım kullanıcı geri bildirimiyle.
 
 **Performans benchmark — kullanıcı duraklattı (29 Ekim)**
@@ -66,7 +66,6 @@
 
 ---
 
-# Son oturum — 2 Kasım — Adım6 teknik tamam
-- Köprü160d9caf, tek olay47aba274, SSE6ebf3fb1; test uyumu12a5c7fe/3471ae59. Onay/iptal/asla, süre ve UI birlikte; docs/DIGITAL_TWIN_APPROVAL.md. Eski/başlangıç/ayar/editör geri sayımları duraklar.
-- CI41503875218: build/vet0, Go race71 PASS; Flutter890+adres1 PASS; güvenlik/L10n/alan adı PASS. Lib eski3 info; CI tüm frontend eski18 info. UI literal11 dosya0; diff PASS.
-- Plan Adım6 teknik işaretli; gerçek kanal/native kabulü açık. Canlı gönderim/çalışan uygulama yenileme yok. Kullanıcı değişiklikleri ayrı; Adım7 başlamadı. Kod push edildi; bu kayıt doküman commit'idir.
+# Son oturum — 2 Kasım — Adım6 cihaz test yönergesi
+- docs/DIGITAL_TWIN_APPROVAL.md: yeni maille iptal, tek onaylı gönderim, ayrı otomatik geri al senaryosu eklendi. Güncel backend/UI gerekir; önceki runtime yenilenmedi. Gerçek kabul yapılmadı.
+- Yalnız doküman; diff/iç bağlantı kontrolleri PASS. Yeni build/test yok; önceki CI sonucu arşivde. Bu kayıt doküman commit'ine dahildir; Adım7 başlamadı.

@@ -96,3 +96,53 @@ analizinde mevcut18 info (test dosyaları da dahil), yeni bulgu yok.
 Değişen11 Dart dosyasında UI literal0; diff kontrolü PASS. Dar ekran
 testlerinde kaydırma yerleşimini bekleme ve eski mail test adaptöründe
 SSE handshake desteği düzeltildi; davranış beklentileri kaldırılmadı.
+
+
+### Örnek cihaz testi: iptal → tek gönderim → geri al
+
+**Hazırlık:** Adım 6 kodunu içeren backend ve Flutter derlemesini çalıştırın.
+Önceki geliştirme oturumunda çalışan uygulama yenilenmedi; eski çalışan sürümle
+bu kabulü değerlendirmeyin. İki size ait mail hesabı kullanın: Memo'nun bağlı
+hesabı ve test göndereni. Mail yanıt hazırlamayı açın, ayrı yanıt modelini seçin;
+genel tercihi ve test kişisini **yalnız taslak** yapın. Uzaktan komut testi için
+WhatsApp kendi sohbeti veya önceden eşlenmiş özel Telegram sahip sohbeti hazır
+olsun. Her turda yeni bir mail gönderin; CC, grup ve ek kullanmayın. Eski
+`a7324752…` ve `453da7f6…` kayıtlarını bu teste katmayın.
+
+1. **İptal:** Test hesabından konu `MEMO ADIM6 TEST 1 — İPTAL`, gövde
+   `Merhaba, 3 Kasım 2026 saat 14:00–15:00 (Europe/Istanbul) arasında takviminde
+   kayıtlı bir etkinlik var mı? Yalnızca dolu/boş bilgisini paylaşabilir misin?
+   Toplantı oluşturmanı veya davet göndermeni istemiyorum.` olan maili yollayın.
+   Mail → Yanıtlar'da hazırlanan taslağı ve sahip sohbetindeki bildirimi bulun.
+   Bildirimdeki gerçek numarayla, beş dakika içinde `#iptal <numara>` gönderin
+   (`<numara>` yerine bildirimin sayısı yazılır).
+   **Beklenen:** kayıt iptal olur; test hesabına yanıt gitmez. Uzak Drafts
+   kopyasının kalması normaldir. Taslak oluşmazsa gönderime geçmeden sonucu
+   kaydedin; bunun nedenini yalnız bu senaryodan çıkarmayın.
+2. **Tek gönderim:** Aynı gövdeyle yeni konu `MEMO ADIM6 TEST 2 — ONAY` gönderin.
+   Yeni taslağın alıcısını ve içeriğini kontrol edin. Yeni bildirim numarasıyla
+   `#onay <numara>` gönderin.
+   **Beklenen:** UI gönderildi durumuna geçer ve test hesabının gelen kutusunda
+   tek yanıt görünür. Aynı numaralı onayı yeniden iletmek ikinci mail üretmemeli.
+   SMTP kabulü ile gelen kutusunda teslimi ayrı kaydedin. Sonuç belirsizse yeniden
+   gönderim denemeyin; önce gönderilenler ve alıcı hesabını kontrol edin.
+3. **Otomatik geri al (ayrı kabul):** Genel tercihi yalnız taslak bırakın;
+   yalnız test kişisini tam otomatik yapın. Bağımsız karar modelini ve 60 saniye
+   geri al süresini ayarlayın. Yeni konu `MEMO ADIM6 TEST 3 — GERİ AL` ile,
+   inceleme izni verdiğiniz kayıtlı bir proje için `Merhaba, [kayıtlı proje adı]
+   projesinde şu an hangi Git dalı etkin? Yalnız mevcut dal adını bildir;
+   dosya değiştirme veya komut çalıştırarak değişiklik yapma.` yazın; köşeli
+   parantezi gerçek proje adıyla değiştirin.
+   **Beklenen:** ancak gerekli kanıt ve bağımsız skor en az 0,95 ise otomatik
+   aday/geri sayım oluşur. Oluşursa 60 saniye dolmadan UI'dan veya yeni numarayla
+   `#iptal <numara>` üzerinden iptal edin; yanıt gitmemeli. Geri sayım sırasında
+   editörü açmak, ayar kaydetmek veya yeniden başlatmak sayacı duraklattığından
+   bu turda bunları yapmayın. Skor yoksa/düşükse onay beklemesi otomatik yolun
+   geçtiği anlamına gelmez; sonucu bu şekilde raporlayın. İptal edilmiş otomatik
+   aday da kişi/dizi bütçesini tüketir (saatte 1, 24 saatte 3); hemen tekrar
+   otomatik aday beklemeyin veya sınırı aşmaya çalışmayın.
+
+Sonuç kaydı: çalışan kod sürümü, bildirim kanalı, her turun numarası ve UI
+sonucu, test hesabına ulaşan yanıt sayısı, varsa geri sayım/skor veya hata.
+Bu metin test yönergesidir; gerçek hesap/native kabulü henüz yapılmış sayılmaz.
+Adım 7 kullanıcı geri bildirimi gelmeden başlatılmaz.

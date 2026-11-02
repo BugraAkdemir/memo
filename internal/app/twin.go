@@ -185,6 +185,8 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		}
 		err := s.SaveReplyModel(ctx, m)
 		return map[string]bool{"ok": err == nil}, err
+	case "task_from_action":
+		return a.taskFromAction(ctx, s, raw)
 	case "briefing_read":
 		var args struct {
 			Key string `json:"key"`

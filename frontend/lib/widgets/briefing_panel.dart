@@ -8,6 +8,7 @@ class BriefingPanel extends StatelessWidget {
   static const _leads = [5, 10, 15, 30, 60];
 
   final Map<String, dynamic> settings;
+  final String timezone;
   final List<Map<String, dynamic>> briefings;
   final bool busy;
   final ValueChanged<Map<String, dynamic>> onSettings;
@@ -15,6 +16,7 @@ class BriefingPanel extends StatelessWidget {
   const BriefingPanel({
     super.key,
     required this.settings,
+    this.timezone = '',
     required this.briefings,
     required this.busy,
     required this.onSettings,
@@ -99,6 +101,14 @@ class BriefingPanel extends StatelessWidget {
                       if (t != null) _set('morning_time', t);
                     },
             ),
+            if (timezone.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 4),
+                child: Text(
+                  L10n.t('briefing_timezone', {'tz': timezone}),
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
             SwitchListTile(
               key: const ValueKey('briefing-meeting'),
               contentPadding: EdgeInsets.zero,

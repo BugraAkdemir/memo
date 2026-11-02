@@ -205,6 +205,27 @@ void main() {
         },
       );
 
+      testWidgets('shows which time zone the briefing time is read in', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          host(
+            BriefingPanel(
+              settings: const {'morning': true, 'morning_time': '09:00'},
+              timezone: 'UTC',
+              briefings: const [],
+              busy: false,
+              onSettings: (_) {},
+              onRead: (_) {},
+            ),
+          ),
+        );
+        expect(
+          find.text(L10n.t('briefing_timezone', {'tz': 'UTC'})),
+          findsOneWidget,
+        );
+      });
+
       testWidgets('with nothing yet it says so', (tester) async {
         await tester.pumpWidget(
           host(

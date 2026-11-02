@@ -19,6 +19,7 @@ class AutonomyPanel extends StatelessWidget {
   final ValueChanged<Map<String, dynamic>>? onRadar;
   final ValueChanged<String>? onResolve;
   final Map<String, dynamic> briefing;
+  final String timezone;
   final List<Map<String, dynamic>> briefings;
   final ValueChanged<Map<String, dynamic>>? onBriefing;
   final ValueChanged<String>? onBriefingRead;
@@ -38,6 +39,7 @@ class AutonomyPanel extends StatelessWidget {
     this.onRadar,
     this.onResolve,
     this.briefing = const {},
+    this.timezone = '',
     this.briefings = const [],
     this.onBriefing,
     this.onBriefingRead,
@@ -307,6 +309,7 @@ class AutonomyPanel extends StatelessWidget {
           const SizedBox(height: 16),
           BriefingPanel(
             settings: briefing,
+            timezone: timezone,
             briefings: briefings,
             busy: busy,
             onSettings: onBriefing!,

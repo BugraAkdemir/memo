@@ -573,6 +573,7 @@ class _TwinDialogState extends ConsumerState<TwinDialog>
     briefing: _state!.preferences['briefing'] is Map
         ? Map<String, dynamic>.from(_state!.preferences['briefing'] as Map)
         : {},
+    timezone: '${_state!.preferences['timezone'] ?? ''}',
     briefings: _state!.briefings,
     onTask: _openTask,
     onBriefing: (value) => _run(() async {

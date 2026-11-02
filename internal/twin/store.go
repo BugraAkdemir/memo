@@ -76,6 +76,12 @@ func NewStore(dir string) (*Store, error) {
 		if _, e := tx.Exec(schema); e != nil {
 			return e
 		}
+		if err := interruptPreparations(context.Background(), tx); err != nil {
+			return err
+		}
+		if err := repairCancelledReasons(context.Background(), tx); err != nil {
+			return err
+		}
 		_, e := tx.Exec("UPDATE pending_autonomous_actions SET state='send_uncertain' WHERE state='sending'")
 		return e
 	})

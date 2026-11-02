@@ -421,6 +421,7 @@ class AutonomyPanel extends StatelessWidget {
   String _reason(dynamic code) => L10n.t(switch (code) {
     'reply_timeout' => 'auto_reason_timeout',
     'reply_cancelled' => 'auto_reason_cancelled',
+    'user_cancelled' => 'auto_reason_user_cancelled',
     'reply_invalid_response' => 'auto_reason_invalid_response',
     'reply_provider_failed' => 'auto_reason_provider_failed',
     'drafted' => 'auto_reason_drafted',

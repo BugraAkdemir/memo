@@ -220,26 +220,28 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		return nil, autonomy.ErrAutonomousCommandForbidden
 	}
 }
-func (a *App) recordTwinMessage(ctx context.Context, m twin.Message, name string) {
+func (a *App) recordTwinMessage(ctx context.Context, m twin.Message, name string) error {
 	a.twinMu.RLock()
 	defer a.twinMu.RUnlock()
 	if a.twinStore == nil {
-		return
+		return nil
 	}
 	if err := a.twinStore.RecordMessage(ctx, m, name); err != nil {
 		logx.Printf("twin: record message failed: %v", err)
+		return err
 	}
+	return nil
 }
-func (a *App) recordTwinMail(ctx context.Context, account mail.Account, d *mail.MessageDetail) {
+func (a *App) recordTwinMail(ctx context.Context, account mail.Account, d *mail.MessageDetail) error {
 	if d.Timestamp.IsZero() {
-		return
+		return nil
 	} // unknown source date must not become "now"
 	from, err := netmail.ParseAddress(d.From)
 	if err != nil {
-		return
+		return nil
 	}
 	id := fmt.Sprintf("%d:%s", d.UID, d.MessageID)
-	a.recordTwinMessage(ctx, twin.Message{Channel: "mail", Account: account.ID, Address: from.Address, EventID: id, SentAt: d.Timestamp, Body: d.Subject + "\n" + d.TextBody}, from.Name)
+	return a.recordTwinMessage(ctx, twin.Message{Channel: "mail", Account: account.ID, Address: from.Address, EventID: id, SentAt: d.Timestamp, Body: d.Subject + "\n" + d.TextBody}, from.Name)
 }
 func (a *App) recordTwinSentMail(ctx context.Context, r mail.SendRequest) {
 	// Capture only after SMTP success; drafts and failed sends are not evidence

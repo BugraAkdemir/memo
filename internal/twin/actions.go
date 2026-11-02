@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -65,6 +66,20 @@ type Action struct {
 // ClaimIncoming is deliberately distinct from contact-history deduplication.
 // Claims survive failures/restarts: an uncertain side effect is never replayed.
 func (s *Store) ClaimIncoming(ctx context.Context, key string) (bool, error) {
+	return s.claimIncoming(ctx, key, nil)
+}
+
+// ClaimIncomingAction atomically pairs deduplication with a visible preparation
+// record. A shutdown between the claim and the first model call must not leave
+// an invisible event that can never be retried or reviewed.
+func (s *Store) ClaimIncomingAction(ctx context.Context, a Action) (bool, error) {
+	if a.ID == "" || a.Channel == "" || a.State != "preparing" {
+		return false, ErrInvalid
+	}
+	return s.claimIncoming(ctx, a.ID, &a)
+}
+
+func (s *Store) claimIncoming(ctx context.Context, key string, a *Action) (bool, error) {
 	var claimed bool
 	err := s.db.Write(ctx, func(tx *sql.Tx) error {
 		r, e := tx.ExecContext(ctx, "INSERT OR IGNORE INTO autonomy_events(event_key,at) VALUES(?,?)", key, time.Now().UTC().Format(time.RFC3339Nano))
@@ -72,10 +87,106 @@ func (s *Store) ClaimIncoming(ctx context.Context, key string) (bool, error) {
 			return e
 		}
 		n, e := r.RowsAffected()
+		if e != nil {
+			return e
+		}
 		claimed = n == 1
+		if !claimed || a == nil {
+			return nil
+		}
+		a.UpdatedAt = time.Now().UTC()
+		raw, e := json.Marshal(a)
+		if e != nil {
+			return e
+		}
+		_, e = tx.ExecContext(ctx, "INSERT INTO pending_autonomous_actions(id,contact_id,channel,payload,state,execute_at) VALUES(?,?,?,?,?,NULL)", a.ID, a.ContactID, a.Channel, string(raw), a.State)
 		return e
 	})
-	return claimed, err
+	return claimed && err == nil, err
+}
+
+// Called at store open, before workers start. Preparation is never resumed as
+// an automatic delivery after a process interruption.
+func interruptPreparations(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, "SELECT payload FROM pending_autonomous_actions WHERE state='preparing'")
+	if err != nil {
+		return err
+	}
+	var actions []Action
+	for rows.Next() {
+		var raw string
+		if err = rows.Scan(&raw); err != nil {
+			rows.Close()
+			return err
+		}
+		var a Action
+		if err = json.Unmarshal([]byte(raw), &a); err != nil {
+			rows.Close()
+			return err
+		}
+		actions = append(actions, a)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, a := range actions {
+		a.State, a.Reason, a.Mode = "failed", "reply_cancelled", "awaiting_approval"
+		a.FailureStage, a.Stage, a.ExecuteAt = a.Stage, "", nil
+		a.UpdatedAt = time.Now().UTC()
+		raw, err := json.Marshal(a)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, "UPDATE pending_autonomous_actions SET payload=?,state='failed',execute_at=NULL WHERE id=? AND state='preparing'", string(raw), a.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+// Only CancelAction ever produces state "cancelled", so rows written before it
+// recorded a reason are owner cancellations still carrying the stale
+// "drafted"/empty reason of the prepared reply.
+func repairCancelledReasons(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, "SELECT id,payload FROM pending_autonomous_actions WHERE state='cancelled'")
+	if err != nil {
+		return err
+	}
+	fixed := map[string]string{}
+	for rows.Next() {
+		var id, raw string
+		if err = rows.Scan(&id, &raw); err != nil {
+			rows.Close()
+			return err
+		}
+		var a Action
+		if err = json.Unmarshal([]byte(raw), &a); err != nil {
+			rows.Close()
+			return err
+		}
+		if a.Reason != "" && a.Reason != "drafted" {
+			continue
+		}
+		a.Reason = "user_cancelled"
+		out, err := json.Marshal(a)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		fixed[id] = string(out)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for id, payload := range fixed {
+		if _, err = tx.ExecContext(ctx, "UPDATE pending_autonomous_actions SET payload=? WHERE id=? AND state='cancelled'", payload, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func (s *Store) SaveAction(ctx context.Context, a Action) error {
 	if a.ID == "" || a.Channel == "" {
@@ -119,7 +230,27 @@ func (s *Store) Actions(ctx context.Context) ([]Action, error) {
 }
 func (s *Store) CancelAction(ctx context.Context, id string) error {
 	return s.db.Write(ctx, func(tx *sql.Tx) error {
-		r, e := tx.ExecContext(ctx, "UPDATE pending_autonomous_actions SET state='cancelled' WHERE id=? AND state='pending'", id)
+		// The payload carries the user-visible reason; flipping only the state
+		// column left "drafted" behind and the UI called a cancelled reply
+		// "prepared for review".
+		var raw string
+		if e := tx.QueryRowContext(ctx, "SELECT payload FROM pending_autonomous_actions WHERE id=? AND state='pending'", id).Scan(&raw); e != nil {
+			if errors.Is(e, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return e
+		}
+		var a Action
+		if e := json.Unmarshal([]byte(raw), &a); e != nil {
+			return e
+		}
+		a.State, a.Reason, a.ExecuteAt = "cancelled", "user_cancelled", nil
+		a.UpdatedAt = time.Now().UTC()
+		updated, e := json.Marshal(a)
+		if e != nil {
+			return e
+		}
+		r, e := tx.ExecContext(ctx, "UPDATE pending_autonomous_actions SET payload=?,state='cancelled',execute_at=NULL WHERE id=? AND state='pending'", string(updated), id)
 		if e != nil {
 			return e
 		}

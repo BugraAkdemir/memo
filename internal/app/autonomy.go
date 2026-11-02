@@ -18,16 +18,16 @@ import (
 	"time"
 )
 
-func (a *App) handleAutonomyIncoming(ctx context.Context, in autonomy.IncomingEvent) {
+func (a *App) handleAutonomyIncoming(ctx context.Context, in autonomy.IncomingEvent) error {
 	a.twinMu.RLock()
 	defer a.twinMu.RUnlock()
 	if a.twinStore == nil {
-		return
+		return nil
 	}
 	store := a.twinStore
 	selection, err := store.ReplyModel(ctx)
 	if err != nil {
-		return
+		return err
 	}
 	engine := autonomy.Engine{Store: store, Projects: a.twinProjects, Generate: func(ctx context.Context, system, user string) (string, error) {
 		raw, err := a.callAutonomyReplyModel(ctx, selection, system, user)
@@ -54,23 +54,29 @@ func (a *App) handleAutonomyIncoming(ctx context.Context, in autonomy.IncomingEv
 	}
 	if _, err := engine.HandleIncomingEvent(ctx, in); err != nil {
 		logx.Printf("autonomy: preparation failed: %v", err)
+		return err
 	}
+	return nil
 }
-func (a *App) autonomyMail(ctx context.Context, account mail.Account, d *mail.MessageDetail, decision mail.TriageDecision) bool {
+func (a *App) autonomyMail(ctx context.Context, account mail.Account, d *mail.MessageDetail, decision mail.TriageDecision) (bool, error) {
 	a.twinMu.RLock()
 	s := a.twinStore
 	enabled := false
 	if s != nil {
 		p, err := s.Preferences(ctx)
-		enabled = err == nil && p.Autonomy.Enabled && p.Autonomy.Mail
+		if err != nil {
+			a.twinMu.RUnlock()
+			return true, fmt.Errorf("reading mail autonomy preferences: %w", err)
+		}
+		enabled = p.Autonomy.Enabled && p.Autonomy.Mail
 	}
 	a.twinMu.RUnlock()
 	if !enabled {
-		return false
+		return false, nil
 	}
 	from, err := netmail.ParseAddress(d.From)
 	if err != nil {
-		return true
+		return true, nil
 	}
 	recipients, err := netmail.ParseAddressList(d.To)
 	count := len(recipients)
@@ -125,8 +131,7 @@ func (a *App) autonomyMail(ctx context.Context, account mail.Account, d *mail.Me
 		in.CalendarKinds = append(in.CalendarKinds, "invoice")
 		in.Calendar = append(in.Calendar, calendar.Event{Title: title, StartTime: v.DueDate})
 	}
-	a.handleAutonomyIncoming(ctx, in)
-	return true
+	return true, a.handleAutonomyIncoming(ctx, in)
 }
 func (a *App) autonomyWhatsApp(ctx context.Context, m whatsapp.Message) {
 	if m.FromMe || a.waClient == nil {

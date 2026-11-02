@@ -75,13 +75,17 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 	}
 	sum := sha256.Sum256([]byte(in.Channel + "\x00" + in.Account + "\x00" + in.Key))
 	id := hex.EncodeToString(sum[:])
-	claimed, err := e.Store.ClaimIncoming(ctx, id)
-	if err != nil || !claimed {
-		return nil, err
-	}
 	a := twin.Action{DeliveryVersion: 1, SourceAddress: in.Sender, Group: in.Envelope.IsGroup || in.Envelope.RecipientCount > 1, ID: id, Channel: in.Channel, Account: in.Account, Recipient: in.Sender, Subject: in.Subject, InReplyTo: in.InReplyTo, CreatedAt: now, State: "pending", Mode: "awaiting_approval", Reason: "drafted", Tools: []string{}, Alternatives: []time.Time{}, CalendarIDs: []string{}}
 	if in.Recipient != "" {
 		a.Recipient = in.Recipient
+	}
+	// The claim and a visible "preparing" record commit together: a cancel or
+	// crash right after claiming must not leave an event nobody can see or retry.
+	claim := a
+	claim.State, claim.Reason, claim.Stage = "preparing", "preparing", "analyzing"
+	claimed, err := e.Store.ClaimIncomingAction(ctx, claim)
+	if err != nil || !claimed {
+		return nil, err
 	}
 	finish := func(reason string, state string) (*twin.Action, error) {
 		a.Reason = reason

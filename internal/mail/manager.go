@@ -45,11 +45,16 @@ func NewManager(storePath string, masterKey ...[]byte) (*Manager, error) {
 
 func (m *Manager) saveAccountsToDisk() error {
 	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.saveAccountsLocked()
+}
+
+// Caller holds mu through the atomic vault replacement.
+func (m *Manager) saveAccountsLocked() error {
 	list := make([]*Account, 0, len(m.accounts))
 	for _, a := range m.accounts {
 		list = append(list, a)
 	}
-	m.mu.RUnlock()
 
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].ID < list[j].ID
@@ -199,18 +204,21 @@ func (m *Manager) GetSession(state string) (OAuthSession, bool) {
 // UpdateLastSeenUID persists the High-Water Mark UID for an account.
 func (m *Manager) UpdateLastSeenUID(accountID string, uid uint32) error {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	acct, ok := m.accounts[accountID]
 	if !ok {
-		m.mu.Unlock()
 		return fmt.Errorf("account not found: %s", accountID)
 	}
 	if uid <= acct.LastSeenUID {
-		m.mu.Unlock()
 		return nil
 	}
+	previous := acct.LastSeenUID
 	acct.LastSeenUID = uid
-	m.mu.Unlock()
-	return m.saveAccountsToDisk()
+	if err := m.saveAccountsLocked(); err != nil {
+		acct.LastSeenUID = previous
+		return err
+	}
+	return nil
 }
 
 // RemoveAccount deletes a connected account.
@@ -370,6 +378,12 @@ func (m *Manager) GetAccount(accountID string) (Account, bool) {
 //   - If acct.LastSeenUID > 0, it fetches only messages with UID > LastSeenUID
 //     (in ascending UID order), updates LastSeenUID on disk, and returns them.
 func (m *Manager) SyncAccountIncremental(ctx context.Context, accountID string, maxScan int) (highWaterMark uint32, coldStart bool, newMessages []*MessageDetail, err error) {
+	return m.scanAccountIncremental(ctx, accountID, maxScan, true)
+}
+
+// The watcher acknowledges each UID only after dispatch has succeeded. Keep the
+// fetch-and-commit helper above for callers that consume the batch themselves.
+func (m *Manager) scanAccountIncremental(ctx context.Context, accountID string, maxScan int, commit bool) (highWaterMark uint32, coldStart bool, newMessages []*MessageDetail, err error) {
 	acct, client, err := m.connectAuthenticatedIMAP(ctx, accountID)
 	if err != nil {
 		return 0, false, nil, err
@@ -416,7 +430,9 @@ func (m *Manager) SyncAccountIncremental(ctx context.Context, accountID string, 
 			// advance if hwm > 0.
 			return 0, true, nil, nil
 		}
-		_ = m.UpdateLastSeenUID(accountID, hwm)
+		if err := m.UpdateLastSeenUID(accountID, hwm); err != nil {
+			return 0, true, nil, err
+		}
 		return hwm, true, nil, nil
 	}
 
@@ -457,7 +473,8 @@ func (m *Manager) SyncAccountIncremental(ctx context.Context, accountID string, 
 	for _, s := range unseen {
 		detail, derr := client.FetchMessageDetail(s.SeqNum)
 		if derr != nil {
-			continue
+			// Never acknowledge a later UID over a failed earlier fetch.
+			return lastUID, false, nil, fmt.Errorf("mail fetch UID %d: %w", s.UID, derr)
 		}
 		if detail.UID == 0 {
 			detail.UID = s.UID
@@ -468,8 +485,10 @@ func (m *Manager) SyncAccountIncremental(ctx context.Context, accountID string, 
 		newMessages = append(newMessages, detail)
 	}
 
-	if highestUID > lastUID {
-		_ = m.UpdateLastSeenUID(accountID, highestUID)
+	if commit && highestUID > lastUID {
+		if err := m.UpdateLastSeenUID(accountID, highestUID); err != nil {
+			return lastUID, false, nil, err
+		}
 	}
 	return highestUID, false, newMessages, nil
 }

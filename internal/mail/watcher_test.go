@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"memo/internal/autonomy"
 	"net"
@@ -366,6 +367,125 @@ func TestWatcherColdStartHighWaterMarkAndIncrementalSync(t *testing.T) {
 	}
 	if len(eventUIDs) != 3 {
 		t.Fatalf("expected 3 events evaluated (102 + 103 + blocked 104), got %v", eventUIDs)
+	}
+}
+
+// newReliableTestWatcher boots the fake TLS IMAP server with one old message
+// (UID 101), cold-starts the watcher on it and returns it ready for new mail.
+func newReliableTestWatcher(t *testing.T) (*fakeMultiMessageIMAP, *Manager, string, *Watcher) {
+	t.Helper()
+	cert, tlsCfg := generateSelfSignedCert(t)
+	prevHook := TLSConfigHook
+	TLSConfigHook = func(host string) *tls.Config { return tlsCfg }
+	t.Cleanup(func() { TLSConfigHook = prevHook })
+
+	fake := &fakeMultiMessageIMAP{}
+	fake.addMessage(101, strings.Join([]string{
+		"From: old@example.com", "To: bugra@gmail.com", "Subject: Old", "Date: Mon, 01 Jan 2024 10:00:00 +0000", "", "old",
+	}, "\r\n"))
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{cert}})
+	if err != nil {
+		t.Fatalf("tls.Listen: %v", err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go fake.serveConn(conn)
+		}
+	}()
+	host, portStr, _ := net.SplitHostPort(ln.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+	mgr, err := NewManager(filepath.Join(t.TempDir(), "accounts.json"), []byte("0123456789abcdef0123456789abcdef"))
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	id := "google:bugra@gmail.com"
+	mgr.mu.Lock()
+	mgr.accounts[id] = &Account{ID: id, Email: "bugra@gmail.com", Provider: ProviderGoogle, AuthType: AuthOAuth2,
+		Server: ServerConfig{Provider: ProviderGoogle, IMAPHost: host, IMAPPort: port, AuthType: AuthOAuth2},
+		Token:  &OAuthToken{AccessToken: "ya29.valid", Expiry: time.Now().Add(time.Hour)}}
+	mgr.mu.Unlock()
+	w := NewWatcher(mgr, NewGatekeeper(nil), WatcherConfig{Enabled: true, PollInterval: time.Minute, MaxScanPerPoll: 20, MaxAutonomyAge: 6 * time.Hour})
+	if err := w.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("cold start: %v", err)
+	}
+	return fake, mgr, id, w
+}
+
+func freshTestMail(uid uint32) string {
+	return strings.Join([]string{
+		"From: Can <can@arkadas.com>", "To: bugra@gmail.com", fmt.Sprintf("Subject: Test %d", uid),
+		"Date: " + time.Now().Format(time.RFC1123Z), "", "Merhaba, musait misin?",
+	}, "\r\n")
+}
+
+// DT6-1: a mail whose downstream preparation fails must NOT advance the
+// high-water mark, otherwise it is silently lost; the next poll retries it.
+func TestWatcherRetriesMailWhenDispatchFails(t *testing.T) {
+	fake, mgr, id, w := newReliableTestWatcher(t)
+	fake.addMessage(102, freshTestMail(102))
+	fake.addMessage(103, freshTestMail(103))
+
+	var got []uint32
+	fail := true
+	w.SetReliableEventHandler(func(ctx context.Context, a Account, d *MessageDetail, dec TriageDecision) error {
+		if fail {
+			return errors.New("twin: record message failed: context canceled")
+		}
+		got = append(got, d.UID)
+		return nil
+	})
+	if err := w.SyncOnce(context.Background()); err == nil {
+		t.Fatal("SyncOnce must report the failed dispatch")
+	}
+	if a, _ := mgr.GetAccount(id); a.LastSeenUID != 101 {
+		t.Fatalf("LastSeenUID=%d after failed dispatch, want 101 (mail 102 unacknowledged)", a.LastSeenUID)
+	}
+	fail = false
+	if err := w.SyncOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != 102 || got[1] != 103 {
+		t.Fatalf("retry delivered %v, want [102 103] in order, each once", got)
+	}
+	if a, _ := mgr.GetAccount(id); a.LastSeenUID != 103 {
+		t.Fatalf("LastSeenUID=%d, want 103", a.LastSeenUID)
+	}
+	if err := w.SyncOnce(context.Background()); err != nil || len(got) != 2 {
+		t.Fatalf("acknowledged mail was delivered again: %v err=%v", got, err)
+	}
+}
+
+// DT6-1: the browser request that triggers "sync now" may be cancelled mid-way;
+// accepted mail is the application's work and must still be processed.
+func TestWatcherProcessesAcceptedMailAfterRequestCancel(t *testing.T) {
+	fake, mgr, id, w := newReliableTestWatcher(t)
+	fake.addMessage(102, freshTestMail(102))
+	w.mu.Lock()
+	w.runCtx = context.Background() // what Start installs
+	w.mu.Unlock()
+
+	reqCtx, cancelReq := context.WithCancel(context.Background())
+	var handlerCtxErr error
+	delivered := 0
+	w.SetReliableEventHandler(func(ctx context.Context, a Account, d *MessageDetail, dec TriageDecision) error {
+		cancelReq() // the client gives up while the mail is being prepared
+		handlerCtxErr = ctx.Err()
+		delivered++
+		return nil
+	})
+	if err := w.SyncOnce(reqCtx); err != nil {
+		t.Fatalf("SyncOnce: %v", err)
+	}
+	if handlerCtxErr != nil {
+		t.Fatalf("handler saw the request's cancellation: %v", handlerCtxErr)
+	}
+	if a, _ := mgr.GetAccount(id); delivered != 1 || a.LastSeenUID != 102 {
+		t.Fatalf("delivered=%d LastSeenUID=%d, want 1 and 102", delivered, a.LastSeenUID)
 	}
 }
 

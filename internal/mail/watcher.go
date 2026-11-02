@@ -50,13 +50,15 @@ type Watcher struct {
 	manager    *Manager
 	gatekeeper *Gatekeeper
 
-	mu        sync.RWMutex
-	cfg       WatcherConfig
-	statsPath string
-	stats     WatcherStats
-	indexFn   MemoryIndexFunc
-	onEvent   MailEventHandler
-	guard     func(context.Context, Account, *MessageDetail) autonomy.Verdict
+	mu              sync.RWMutex
+	cfg             WatcherConfig
+	statsPath       string
+	stats           WatcherStats
+	indexFn         MemoryIndexFunc
+	onEvent         MailEventHandler
+	onEventReliable func(context.Context, Account, *MessageDetail, TriageDecision) error
+	runCtx          context.Context
+	guard           func(context.Context, Account, *MessageDetail) autonomy.Verdict
 
 	triggerCh chan struct{}
 	pollMu    sync.Mutex
@@ -131,6 +133,14 @@ func (w *Watcher) SetEventHandler(fn MailEventHandler) {
 	w.mu.Unlock()
 }
 
+// SetReliableEventHandler acknowledges a message only after downstream storage
+// and preparation have either completed or recorded a reviewable failure.
+func (w *Watcher) SetReliableEventHandler(fn func(context.Context, Account, *MessageDetail, TriageDecision) error) {
+	w.mu.Lock()
+	w.onEventReliable = fn
+	w.mu.Unlock()
+}
+
 // SetSecurityGuard installs the optional semantic review/OTP observer. A
 // deterministic guard still runs when no app-level callback is installed.
 func (w *Watcher) SetSecurityGuard(fn func(context.Context, Account, *MessageDetail) autonomy.Verdict) {
@@ -189,6 +199,10 @@ func (w *Watcher) TriggerNow() {
 
 // Start runs the background polling loop until ctx is cancelled.
 func (w *Watcher) Start(ctx context.Context) {
+	// Processing accepted mail belongs to the application, not a browser request.
+	w.mu.Lock()
+	w.runCtx = ctx
+	w.mu.Unlock()
 	// Initial sync pass shortly after startup
 	w.mu.RLock()
 	enabled := w.cfg.Enabled
@@ -238,6 +252,8 @@ func (w *Watcher) SyncOnce(ctx context.Context) error {
 	cfg := w.cfg
 	indexFn := w.indexFn
 	onEvent := w.onEvent
+	reliable := w.onEventReliable
+	runCtx := w.runCtx
 	guard := w.guard
 	w.mu.RUnlock()
 
@@ -251,7 +267,7 @@ func (w *Watcher) SyncOnce(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		_, coldStart, newMsgs, err := w.manager.SyncAccountIncremental(ctx, acct.ID, cfg.MaxScanPerPoll)
+		_, coldStart, newMsgs, err := w.manager.scanAccountIncremental(ctx, acct.ID, cfg.MaxScanPerPoll, false)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -271,70 +287,99 @@ func (w *Watcher) SyncOnce(ctx context.Context) error {
 			continue
 		}
 
+		dispatch := func(ctx context.Context, account Account, detail *MessageDetail, decision TriageDecision) error {
+			if reliable != nil {
+				return reliable(ctx, account, detail, decision)
+			}
+			if onEvent != nil {
+				onEvent(ctx, account, detail, decision)
+			}
+			return ctx.Err()
+		}
 		for _, detail := range newMsgs {
 			if detail == nil {
 				continue
 			}
-			text, _ := FormatMailForMemory(acct, detail, TriageDecision{})
-			verdict := autonomy.DetectPromptInjection(ctx, text, nil)
-			if guard != nil {
-				// The app also observes parsed OTPs here, including in denied
-				// mail. Its review can never override a deterministic block.
-				reviewed := guard(ctx, acct, detail)
-				if !verdict.Blocked {
-					verdict = reviewed
+			parent := runCtx
+			if parent == nil {
+				parent = ctx
+			}
+			// Bound individual work while preserving shutdown cancellation. A
+			// browser timeout cannot cancel accepted mail or the next batch item.
+			processCtx, cancel := context.WithTimeout(parent, 5*time.Minute)
+			err := func(ctx context.Context) error {
+				text, _ := FormatMailForMemory(acct, detail, TriageDecision{})
+				verdict := autonomy.DetectPromptInjection(ctx, text, nil)
+				if guard != nil {
+					// The app also observes parsed OTPs here, including in denied
+					// mail. Its review can never override a deterministic block.
+					reviewed := guard(ctx, acct, detail)
+					if !verdict.Blocked {
+						verdict = reviewed
+					}
 				}
-			}
-			if verdict.Blocked {
-				w.mu.Lock()
-				w.stats.TotalEvaluated++
-				w.persistStatsLocked()
-				w.mu.Unlock()
-				w.RecordSecurityBlocked(verdict.Code)
-				if onEvent != nil {
-					onEvent(ctx, acct, detail, TriageDecision{SecurityBlocked: true, SecurityReason: verdict.Code, DropFromRAG: true})
-				}
-				continue
-			}
-			decision := w.gatekeeper.Evaluate(ctx, detail)
-			// Protocol/group gates cannot be bypassed by a VIP classification.
-			recipients, _ := mailRecipients(detail.To, detail.Cc)
-			policy := autonomy.AutoReplyPolicy(autonomy.Envelope{Account: acct.ID, Sender: detail.From, ThreadID: detail.InReplyTo, Headers: detail.Headers, RecipientCount: recipients})
-			if policy.Blocked {
-				decision.AllowAutoReply = false
-			}
-
-			// Backfill Age Guard: never allow autonomous replies to messages older
-			// than MaxAutonomyAge (default 6 hours), even if UID > LastSeenUID
-			// (e.g. user moved an old email into INBOX).
-			if !detail.Timestamp.IsZero() && cfg.MaxAutonomyAge > 0 {
-				if time.Since(detail.Timestamp) > cfg.MaxAutonomyAge {
-					decision.AllowAutoReply = false
-				}
-			}
-
-			w.mu.Lock()
-			w.stats.TotalEvaluated++
-			if decision.DropFromRAG {
-				w.stats.DroppedMarketing++
-			}
-			if decision.AllowAutoReply {
-				w.stats.PassedToAutonomy++
-			}
-			w.persistStatsLocked()
-			w.mu.Unlock()
-
-			if !decision.DropFromRAG && decision.IndexInRAG && cfg.AutoIndexMemory && indexFn != nil {
-				if err := indexFn(ctx, acct, detail, decision); err == nil {
+				if verdict.Blocked {
 					w.mu.Lock()
-					w.stats.IndexedInRAG++
+					w.stats.TotalEvaluated++
 					w.persistStatsLocked()
 					w.mu.Unlock()
+					w.RecordSecurityBlocked(verdict.Code)
+					return dispatch(ctx, acct, detail, TriageDecision{SecurityBlocked: true, SecurityReason: verdict.Code, DropFromRAG: true})
 				}
-			}
+				decision := w.gatekeeper.Evaluate(ctx, detail)
+				// Protocol/group gates cannot be bypassed by a VIP classification.
+				recipients, _ := mailRecipients(detail.To, detail.Cc)
+				policy := autonomy.AutoReplyPolicy(autonomy.Envelope{Account: acct.ID, Sender: detail.From, ThreadID: detail.InReplyTo, Headers: detail.Headers, RecipientCount: recipients})
+				if policy.Blocked {
+					decision.AllowAutoReply = false
+				}
 
-			if onEvent != nil {
-				onEvent(ctx, acct, detail, decision)
+				// Backfill Age Guard: never allow autonomous replies to messages older
+				// than MaxAutonomyAge (default 6 hours), even if UID > LastSeenUID
+				// (e.g. user moved an old email into INBOX).
+				if !detail.Timestamp.IsZero() && cfg.MaxAutonomyAge > 0 {
+					if time.Since(detail.Timestamp) > cfg.MaxAutonomyAge {
+						decision.AllowAutoReply = false
+					}
+				}
+
+				w.mu.Lock()
+				w.stats.TotalEvaluated++
+				if decision.DropFromRAG {
+					w.stats.DroppedMarketing++
+				}
+				if decision.AllowAutoReply {
+					w.stats.PassedToAutonomy++
+				}
+				w.persistStatsLocked()
+				w.mu.Unlock()
+
+				if !decision.DropFromRAG && decision.IndexInRAG && cfg.AutoIndexMemory && indexFn != nil {
+					if err := indexFn(ctx, acct, detail, decision); err == nil {
+						w.mu.Lock()
+						w.stats.IndexedInRAG++
+						w.persistStatsLocked()
+						w.mu.Unlock()
+					}
+				}
+
+				return dispatch(ctx, acct, detail, decision)
+			}(processCtx)
+			if err == nil {
+				err = processCtx.Err()
+			}
+			cancel()
+			if err == nil {
+				err = w.manager.UpdateLastSeenUID(acct.ID, detail.UID)
+			}
+			if err != nil {
+				// Stop this account at the first unacknowledged message; the
+				// next poll retries it before any later UID.
+				slog.Warn("mail: message processing incomplete", "uid", detail.UID, "error", err)
+				if firstErr == nil {
+					firstErr = err
+				}
+				break
 			}
 		}
 	}

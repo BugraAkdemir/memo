@@ -45,7 +45,7 @@ func (a *App) initMail(ctx context.Context) {
 		AutoIndexMemory: mailCfg.AutoIndexMemory,
 	})
 	watcher.SetMemoryIndexer(a.indexMailInMemory)
-	watcher.SetEventHandler(a.onIncomingMailEvent)
+	watcher.SetReliableEventHandler(a.onIncomingMailEvent)
 	watcher.SetSecurityGuard(a.inspectIncomingMail)
 
 	a.mailMu.Lock()
@@ -84,7 +84,7 @@ func (a *App) ensureMailManager() *mail.Manager {
 				AutoIndexMemory: true,
 			})
 			w.SetMemoryIndexer(a.indexMailInMemory)
-			w.SetEventHandler(a.onIncomingMailEvent)
+			w.SetReliableEventHandler(a.onIncomingMailEvent)
 			w.SetSecurityGuard(a.inspectIncomingMail)
 			a.mailWatcher = w
 		}
@@ -144,14 +144,14 @@ func (a *App) recordMailCalendarAdded() {
 	}
 }
 
-func (a *App) onIncomingMailEvent(ctx context.Context, account mail.Account, detail *mail.MessageDetail, decision mail.TriageDecision) {
+func (a *App) onIncomingMailEvent(ctx context.Context, account mail.Account, detail *mail.MessageDetail, decision mail.TriageDecision) error {
 	if detail == nil {
-		return
+		return nil
 	}
 	if decision.SecurityBlocked {
 		payload, _ := json.Marshal(map[string]any{"account_id": account.ID, "uid": detail.UID, "code": decision.SecurityReason})
 		a.emitEvent("mail:security_blocked", string(payload))
-		return
+		return nil
 	}
 	if decision.DropFromRAG {
 		payload, _ := json.Marshal(map[string]any{
@@ -163,12 +163,18 @@ func (a *App) onIncomingMailEvent(ctx context.Context, account mail.Account, det
 			"reason":     decision.Reason,
 		})
 		a.emitEvent("mail:spam_filtered", string(payload))
-		return
+		return nil
 	}
 
-	a.recordTwinMail(ctx, account, detail)
+	if err := a.recordTwinMail(ctx, account, detail); err != nil {
+		return err
+	}
 
-	if handled := a.autonomyMail(ctx, account, detail, decision); !handled && decision.ExtractCalendar {
+	handled, err := a.autonomyMail(ctx, account, detail, decision)
+	if err != nil {
+		return err
+	}
+	if !handled && decision.ExtractCalendar {
 		a.extractMailStructuredToCalendar(ctx, detail)
 	}
 
@@ -182,6 +188,7 @@ func (a *App) onIncomingMailEvent(ctx context.Context, account mail.Account, det
 		"category":   decision.Category,
 	})
 	a.emitEvent("mail:received", string(payload))
+	return ctx.Err()
 }
 
 func (a *App) extractMailStructuredToCalendar(ctx context.Context, detail *mail.MessageDetail) {

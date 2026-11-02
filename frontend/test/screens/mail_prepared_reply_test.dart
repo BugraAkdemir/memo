@@ -97,6 +97,7 @@ class DraftAdapter implements HttpClientAdapter {
         }
       case '/api/twin/cancel_action':
         state = 'cancelled';
+        action['reason'] = 'user_cancelled'; // what the real server records
         data = {'ok': true};
       default:
         status = 404;
@@ -172,6 +173,20 @@ void main() {
     expect(adapter.holds, 1);
     expect(find.text(L10n.t('mail_reply_review_title')), findsOneWidget);
     expect(adapter.sent, isEmpty);
+  });
+
+  // DT6-3: a reply the owner cancelled must not read "prepared for review" or
+  // "evidence or model unavailable".
+  testWidgets('cancelled reply explains the owner cancelled it', (
+    tester,
+  ) async {
+    final adapter = DraftAdapter();
+    adapter.state = 'cancelled'; // the adapter overlays this on every action
+    adapter.action.addAll({'reason': 'user_cancelled', 'draft_saved': false});
+    await mountMail(tester, adapter, const Size(1000, 600));
+    expect(find.text(L10n.t('auto_reason_user_cancelled')), findsOneWidget);
+    expect(find.text(L10n.t('auto_reason_drafted')), findsNothing);
+    expect(find.text(L10n.t('auto_reason_review')), findsNothing);
   });
 
   for (final size in [

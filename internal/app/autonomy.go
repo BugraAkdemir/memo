@@ -18,17 +18,9 @@ import (
 	"time"
 )
 
-func (a *App) handleAutonomyIncoming(ctx context.Context, in autonomy.IncomingEvent) error {
-	a.twinMu.RLock()
-	defer a.twinMu.RUnlock()
-	if a.twinStore == nil {
-		return nil
-	}
-	store := a.twinStore
-	selection, err := store.ReplyModel(ctx)
-	if err != nil {
-		return err
-	}
+// autonomyEngine wires one engine to the selected reply model, the Drafts
+// upload and the UI event bus. The caller holds twinMu for as long as it uses it.
+func (a *App) autonomyEngine(store *twin.Store, selection twin.ReplyModel) autonomy.Engine {
 	engine := autonomy.Engine{Store: store, Projects: a.twinProjects, Generate: func(ctx context.Context, system, user string) (string, error) {
 		raw, err := a.callAutonomyReplyModel(ctx, selection, system, user)
 		if err != nil {
@@ -52,6 +44,20 @@ func (a *App) handleAutonomyIncoming(ctx context.Context, in autonomy.IncomingEv
 	if a.calendarStore != nil {
 		engine.Calendar = a.calendarStore
 	}
+	return engine
+}
+func (a *App) handleAutonomyIncoming(ctx context.Context, in autonomy.IncomingEvent) error {
+	a.twinMu.RLock()
+	defer a.twinMu.RUnlock()
+	if a.twinStore == nil {
+		return nil
+	}
+	store := a.twinStore
+	selection, err := store.ReplyModel(ctx)
+	if err != nil {
+		return err
+	}
+	engine := a.autonomyEngine(store, selection)
 	if _, err := engine.HandleIncomingEvent(ctx, in); err != nil {
 		logx.Printf("autonomy: preparation failed: %v", err)
 		return err

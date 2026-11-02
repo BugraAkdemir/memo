@@ -205,6 +205,8 @@ type App struct {
 	twinStore        *twin.Store
 	approvalCancel   context.CancelFunc
 	approvalDone     chan struct{}
+	radarCancel      context.CancelFunc
+	radarDone        chan struct{}
 	mailMu           sync.RWMutex
 	mailManager      *mail.Manager
 	mailGatekeeper   *mail.Gatekeeper
@@ -756,6 +758,7 @@ func (a *App) Startup(ctx context.Context) {
 	}
 	a.tgMu.Unlock()
 	a.startApprovalBridge()
+	a.startFollowUpRadar()
 
 	// Shared with reinitProviderAndOrchestra (providers.go), which ImportData
 	// and cloud restore call after replacing providers.json/orchestra.json on

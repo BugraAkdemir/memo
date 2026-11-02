@@ -32,6 +32,7 @@ func (a *App) initTwin() {
 	a.twinMu.Unlock()
 }
 func (a *App) closeTwin() error {
+	a.stopFollowUpRadar()
 	a.stopApprovalBridge()
 	a.twinMu.Lock()
 	defer a.twinMu.Unlock()
@@ -132,7 +133,25 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 				mailContacts = append(mailContacts, mailContactPolicy{contact.ID, contact.Name, contact.AutonomyPolicy, addresses})
 			}
 		}
-		return map[string]any{"settings": p.Autonomy, "actions": actions, "reply_model": selection, "mail_contacts": mailContacts}, nil
+		waiting, err := s.Commitments(ctx)
+		if err != nil {
+			return nil, err
+		}
+		// The waiting list shows who and since when, never what the owner wrote.
+		type waitingView struct {
+			ID      string    `json:"id"`
+			Channel string    `json:"channel"`
+			Address string    `json:"address"`
+			Subject string    `json:"subject"`
+			Status  string    `json:"status"`
+			SentAt  time.Time `json:"sent_at"`
+			DueAt   time.Time `json:"due_at"`
+		}
+		commitments := make([]waitingView, 0, len(waiting))
+		for _, c := range waiting {
+			commitments = append(commitments, waitingView{c.ID, c.Channel, c.Address, c.Subject, c.Status, c.CreatedAt, c.DueAt})
+		}
+		return map[string]any{"settings": p.Autonomy, "actions": actions, "reply_model": selection, "mail_contacts": mailContacts, "radar": p.Radar, "commitments": commitments}, nil
 	case "state", "twin_contacts":
 		contacts, err := s.Contacts(ctx)
 		if err != nil {
@@ -248,12 +267,16 @@ func (a *App) recordTwinSentMail(ctx context.Context, r mail.SendRequest) {
 	// of what the user actually said. Each send gets a distinct event id.
 	id := uuid.NewString()
 	at := time.Now()
-	for _, to := range append(append([]string{}, r.To...), r.Cc...) {
+	recipients := append(append([]string{}, r.To...), r.Cc...)
+	// More than one recipient is a group thread: it is evidence of how the
+	// owner writes, but the follow-up radar never nudges a group.
+	group := len(recipients) > 1
+	for _, to := range recipients {
 		addr, err := netmail.ParseAddress(to)
 		if err != nil {
 			continue
 		}
-		a.recordTwinMessage(ctx, twin.Message{Channel: "mail", Account: r.AccountID, Address: addr.Address, EventID: id, Outgoing: true, SentAt: at, Body: r.Body}, addr.Name)
+		a.recordTwinMessage(ctx, twin.Message{Channel: "mail", Account: r.AccountID, Address: addr.Address, EventID: id, Outgoing: true, SentAt: at, Body: r.Body, Subject: r.Subject, InReplyTo: r.InReplyTo, Group: group}, addr.Name)
 	}
 }
 func (a *App) recordTwinWhatsApp(ctx context.Context, c *whatsapp.Client, m whatsapp.Message) {

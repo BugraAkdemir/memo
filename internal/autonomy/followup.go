@@ -58,10 +58,29 @@ func (e *Engine) PrepareFollowUps(ctx context.Context) (int, error) {
 	for _, c := range contacts {
 		policy[c.ID] = c.AutonomyPolicy
 	}
+	// One reminder per person: a second unanswered question to the same contact
+	// is covered by the reminder already prepared (this scan) or still waiting
+	// for the owner (an earlier scan), instead of a second draft minutes later.
+	covered := map[string]bool{}
+	existing, err := e.Store.Actions(ctx)
+	if err != nil {
+		return 0, err
+	}
+	for _, a := range existing {
+		if a.Reason == "follow_up" && a.State == "pending" {
+			covered[a.ContactID] = true
+		}
+	}
 	prepared := 0
 	for _, c := range due {
 		if ctx.Err() != nil {
 			return prepared, ctx.Err()
+		}
+		if covered[c.ContactID] {
+			if _, err = e.Store.SetCommitmentStatus(ctx, c.ID, "open", "reminded"); err != nil {
+				return prepared, err
+			}
+			continue
 		}
 		if policy[c.ContactID] == "never" {
 			if _, err = e.Store.SetCommitmentStatus(ctx, c.ID, "open", "cancelled"); err != nil {
@@ -75,6 +94,7 @@ func (e *Engine) PrepareFollowUps(ctx context.Context) (int, error) {
 		}
 		if ok {
 			prepared++
+			covered[c.ContactID] = true
 		}
 	}
 	return prepared, nil

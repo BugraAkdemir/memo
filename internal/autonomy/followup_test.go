@@ -89,6 +89,36 @@ func TestFollowUpPreparesReviewOnlyDraftOnce(t *testing.T) {
 	}
 }
 
+// Found in the live run: two unanswered questions to the same person must not
+// produce two reminder drafts minutes apart.
+func TestFollowUpPreparesOnlyOneReminderPerContact(t *testing.T) {
+	e, calls, saved := followUpFixture(t)
+	ctx := context.Background()
+	second := twin.Message{Channel: "mail", Account: "account", EventID: "out-2", Address: "friend@example.com", Outgoing: true, Body: "Toplantıya gelecek misin?", SentAt: time.Now().Add(-5 * time.Minute), Subject: "Toplantı"}
+	if err := e.Store.RecordMessage(ctx, second, ""); err != nil {
+		t.Fatal(err)
+	}
+	if open, _ := e.Store.Commitments(ctx); len(open) != 2 {
+		t.Fatalf("fixture should wait on two questions: %+v", open)
+	}
+	if n, err := e.PrepareFollowUps(ctx); err != nil || n != 1 {
+		t.Fatalf("n=%d err=%v, want exactly one reminder", n, err)
+	}
+	if *calls != 1 || len(*saved) != 1 || len(followUpActions(t, e)) != 1 {
+		t.Fatalf("calls=%d saved=%d actions=%d", *calls, len(*saved), len(followUpActions(t, e)))
+	}
+	// Both questions are covered by that one reminder and never nag again.
+	open, _ := e.Store.Commitments(ctx)
+	for _, c := range open {
+		if c.Status != "reminded" {
+			t.Fatalf("a covered question stayed open: %+v", c)
+		}
+	}
+	if n, _ := e.PrepareFollowUps(ctx); n != 0 || *calls != 1 {
+		t.Fatalf("second scan prepared again: n=%d calls=%d", n, *calls)
+	}
+}
+
 func TestFollowUpDoesNothingWhenNotDueOrRadarOff(t *testing.T) {
 	e, calls, _ := followUpFixture(t)
 	ctx := context.Background()

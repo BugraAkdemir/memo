@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 import 'l10n.dart';
 import 'sse_stream.dart';
@@ -172,6 +172,17 @@ class MemoApiClient {
   /// same way between launches). A stale/rotated token still just 401s,
   /// exactly like before this fix — no worse, and self-corrects the next
   /// time getRemoteAccess()/setRemoteAccess() is called.
+  /// Native: a real TCP connect, so failing fast on an unreachable backend is
+  /// right. Web: dio's adapter aborts any request whose response HEADERS have
+  /// not arrived within this window and reports it as a connection timeout, so
+  /// a perfectly healthy but slow endpoint (IMAP inbox over Gmail takes 3-6 s)
+  /// showed "Internet connection issue" at 5 s (DT6-2). The browser reports a
+  /// refused connection immediately on its own; here the limit only has to
+  /// match how long a normal request may take.
+  @visibleForTesting
+  static Duration connectTimeoutFor({bool web = kIsWeb}) =>
+      web ? const Duration(seconds: 120) : const Duration(seconds: 5);
+
   MemoApiClient({
     required this.baseUrl,
     String? savedRemoteToken,
@@ -180,7 +191,7 @@ class MemoApiClient {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 5),
+        connectTimeout: connectTimeoutFor(),
         receiveTimeout: const Duration(seconds: 120),
         headers: {'Content-Type': 'application/json'},
       ),

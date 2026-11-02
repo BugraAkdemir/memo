@@ -1,6 +1,6 @@
 # PLAN — Memo "Dijital İkiz" (Digital Twin OS) & Otonom İletişim Sistemi
 **Doküman Türü:** Üretim Seviyesi Mimari Tasarım ve Uygulama Planı (SRS & Mühendislik Spesifikasyonu)  
-**Durum:** Kullanıcı Onaylı — Uygulamaya Hazır  
+**Durum:** Faz 3 — Adım 5 teknik uygulaması mevcut; Adım 6 kısmen uygulandı (yalnız UI manuel onay/gönderim), kabul ve otonom köprü açık
 **Tarih:** 2026-10-30  
 **Kapsam:** `internal/mail`, `internal/autonomy`, `internal/twin`, `internal/calendar`, `internal/whatsapp`, `internal/telegram`, `internal/webserver`, `frontend/`
 
@@ -256,7 +256,12 @@ autonomy:
 
 > **Çapraz tamamlama ve kullanıcı test kapısı — 2026-10-31:** Her adımda backend ile o adımın kullanılabilir frontend akışı birlikte hazırlanır ve birlikte doğrulanır. Frontend işi yalnız Faz 5'e ertelenmez; Adım 8'deki ilgili UI parçaları ait oldukları adıma taşınarak uygulanır. Yalnız backend'in bitmesi adımı/fazı tamamlamaz. Teknik doğrulamadan sonra durulur, kullanıcı gerçek senaryolarla dener ve geri bildirim verir. Sonraki adıma/faza kullanıcı bildiriminden önce geçilmez.
 
-### Güncel kontrol noktası — 2026-10-31
+### Güncel kontrol noktası — 2026-11-02
+- **Bulunduğumuz yer: Faz 3 / Adım 5 sonrası, Adım 6 kısmen uygulanmış durumda.** Adım5 hazırlama motoru ve UI mevcut. Gerçek mail → yanıt modeli → takvim araştırması → IMAP Drafts ve önceki manuel API yoluyla onaylı SMTP/teslim kabulü `docs/DIGITAL_TWIN_AUTONOMY.md` içinde kayıtlıdır; WhatsApp/ses ve önceki adımların kalan cihaz kabulü açıktır.
+- **Son kod commit'i `d773a438`:** Mail → Yanıtlar → incele/düzenle/gönder ve kalıcı gönderim durumu mevcut. Bu, Adım6'nın UI manuel onay/gönderim kısmıdır. Yeni `send_action` akışının gerçek hesap/arayüz kabulü henüz kayıtlı değildir. Otomatik zamanlayıcı, 60sn geri al gönderimi ve WhatsApp/Telegram uzaktan onayı açık kalır; Adım6 kutusu işaretlenmez. `grace_period_auto` kaydı kendiliğinden gönderim yapmaz.
+- **Bu oturumun hedefli doğrulaması:** `CGO_ENABLED=1 GOMAXPROCS=2 go test -p 1 -tags sqlite_fts5 -race ./internal/twin ./internal/app ./internal/webserver -run 'TestOwner|TestTwinHTTP' -count=1`: üç paket PASS. `flutter test test/screens/mail_prepared_reply_test.dart --concurrency=1 --reporter=expanded`: 6 PASS. Tam build/vet/Go/Flutter paketi yeniden çalıştırılmadı; önceki tam doğrulama `docs/MAIL_REPLY_REVIEW.md` kaydıdır. Canlı gönderim yapılmadı; sonraki adım başlatılmadı.
+
+### Önceki kontrol noktası — 2026-10-31
 - **Faz 1 / Adım 1–2:** Backend ve Mail ekranı mevcut; önceki mail hafızası/takvim/sayaç düzeltmeleri `c5201951` içinde. Canlı hesap/cihaz kabulü kullanıcıya ait. Kullanıcı bu oturumda plandan ilerlemeyi açıkça istedi.
 - **Eski mailler:** Bilinçli olarak alınmaz; yalnız bağlantı sınırından sonra gelenler işlenir. Bu bir eksik iş değildir (§3.5 güncellendi).
 - **Önceki kapsam: Faz 2 / Adım 3.** Backend kalkanları, gerçek mail giriş/gönderim/taslak yolları, frontend güvenlik kontrol paneli ve sayaç birlikte uygulandı; teknik kontroller geçti. Kullanıcı gelen saldırı mailinin engellendiğini doğruladı (`mail:security_blocked`, UID 17378). Diğer güvenlik senaryoları ve mail görünümü/sayaç geri bildirim düzeltmelerinin cihaz kabulü bekleniyor; adım kutusu açık kalır.

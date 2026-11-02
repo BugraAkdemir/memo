@@ -273,6 +273,7 @@ class _MailScreenState extends ConsumerState<MailScreen>
                         'reply_timeout' => 'auto_reason_timeout',
                         'reply_cancelled' => 'auto_reason_cancelled',
                         'user_cancelled' => 'auto_reason_user_cancelled',
+                        'follow_up' => 'auto_reason_follow_up',
                         'reply_invalid_response' =>
                           'auto_reason_invalid_response',
                         'reply_provider_failed' =>

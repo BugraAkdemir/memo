@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/l10n.dart';
+import 'follow_up_radar_card.dart';
 import 'mail_reply_draft.dart';
 
 /// Reply preparation settings and owner-reviewable activity.
@@ -12,6 +13,9 @@ class AutonomyPanel extends StatelessWidget {
   final ValueChanged<Map<String, dynamic>> onSettings;
   final ValueChanged<String> onCancel;
   final ValueChanged<String>? onApprove;
+  final Map<String, dynamic> radar;
+  final List<Map<String, dynamic>> waiting;
+  final ValueChanged<Map<String, dynamic>>? onRadar;
   const AutonomyPanel({
     super.key,
     required this.settings,
@@ -22,6 +26,9 @@ class AutonomyPanel extends StatelessWidget {
     required this.onSettings,
     required this.onCancel,
     this.onApprove,
+    this.radar = const {},
+    this.waiting = const [],
+    this.onRadar,
   });
 
   bool get _mailOn => settings['enabled'] == true && settings['mail'] == true;
@@ -225,6 +232,7 @@ class AutonomyPanel extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: DropdownButtonFormField<int>(
+                key: const ValueKey('grace-seconds'),
                 initialValue:
                     [
                       10,
@@ -272,6 +280,15 @@ class AutonomyPanel extends StatelessWidget {
             ),
           ],
         ),
+        if (onRadar != null) ...[
+          const SizedBox(height: 16),
+          FollowUpRadarCard(
+            radar: radar,
+            waiting: waiting,
+            busy: busy,
+            onChanged: onRadar!,
+          ),
+        ],
         const Divider(height: 32),
         Row(
           children: [
@@ -422,6 +439,7 @@ class AutonomyPanel extends StatelessWidget {
     'reply_timeout' => 'auto_reason_timeout',
     'reply_cancelled' => 'auto_reason_cancelled',
     'user_cancelled' => 'auto_reason_user_cancelled',
+    'follow_up' => 'auto_reason_follow_up',
     'reply_invalid_response' => 'auto_reason_invalid_response',
     'reply_provider_failed' => 'auto_reason_provider_failed',
     'drafted' => 'auto_reason_drafted',

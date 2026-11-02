@@ -522,6 +522,8 @@ class _TwinDialogState extends ConsumerState<TwinDialog>
             'work_end': _end.text.trim(),
             'allow_project_inspection': _inspect,
             'autonomy': _state!.preferences['autonomy'] ?? {},
+            // Saving working hours must not silently switch the radar off.
+            'radar': _state!.preferences['radar'] ?? {},
           });
           if (!mounted) return;
           setState(() {
@@ -541,6 +543,17 @@ class _TwinDialogState extends ConsumerState<TwinDialog>
         ? Map<String, dynamic>.from(_state!.preferences['autonomy'] as Map)
         : {},
     actions: _state!.actions,
+    radar: _state!.preferences['radar'] is Map
+        ? Map<String, dynamic>.from(_state!.preferences['radar'] as Map)
+        : {},
+    waiting: _state!.commitments,
+    onRadar: (value) => _run(() async {
+      await ref.read(apiClientProvider).callTwin('preferences', {
+        ..._state!.preferences,
+        'radar': value,
+      });
+      await _refresh();
+    }),
     busy: _busy,
     onSettings: (value) => _run(() async {
       await ref.read(apiClientProvider).callTwin('preferences', {

@@ -21,7 +21,18 @@ class _TwinAdapter implements HttpClientAdapter {
     'work_start': '09:00',
     'work_end': '18:00',
     'allow_project_inspection': false,
+    'radar': {'enabled': false, 'follow_up_hours': 48},
   };
+  final commitments = <Map<String, dynamic>>[
+    {
+      'id': 'c1',
+      'channel': 'mail',
+      'address': 'ali@example.com',
+      'subject': 'Teklif',
+      'status': 'open',
+      'due_at': '2026-11-04T12:30:00Z',
+    },
+  ];
   @override
   Future<ResponseBody> fetch(
     RequestOptions o,
@@ -37,6 +48,7 @@ class _TwinAdapter implements HttpClientAdapter {
           'contacts': contacts,
           'actions': actions,
           'preferences': preferences,
+          'commitments': commitments,
           'projects': [
             {'id': 'p_test', 'name': 'Demo repo'},
           ],
@@ -204,9 +216,9 @@ void main() {
         find.text(L10n.t('reply_additional_settings')).hitTestable(),
       );
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.byType(DropdownButtonFormField<int>));
+      await tester.ensureVisible(find.byKey(const ValueKey('grace-seconds')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(DropdownButtonFormField<int>));
+      await tester.tap(find.byKey(const ValueKey('grace-seconds')));
       await tester.pumpAndSettle();
       await tester.tap(
         find.text(L10n.t('approval_seconds', {'seconds': '120'})).last,
@@ -262,6 +274,11 @@ void main() {
         await tester.tap(find.text(L10n.t('save')).last);
         await tester.pumpAndSettle();
         expect(a.preferences['allow_project_inspection'], isTrue);
+        // Saving working hours must not silently switch the radar off.
+        expect(a.preferences['radar'], {
+          'enabled': false,
+          'follow_up_hours': 48,
+        });
         expect(a.calls.every((c) => c.path.startsWith('/api/twin/')), isTrue);
         expect(tester.takeException(), isNull);
       },
@@ -398,6 +415,49 @@ void main() {
         {'id': 'pending-1'},
       );
       expect(find.text(L10n.t('auto_state_cancelled')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final locale in MemoLocale.values) {
+    testWidgets('the radar switch saves with the other preferences ($locale)', (
+      tester,
+    ) async {
+      final a = await _mount(tester, locale);
+      await tester.ensureVisible(find.text(L10n.t('auto_tab')));
+      await tester.tap(find.text(L10n.t('auto_tab')));
+      await tester.pumpAndSettle();
+      final scrollable = find
+          .descendant(
+            of: find.byType(AutonomyPanel),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.text(L10n.t('radar_title')),
+        300,
+        scrollable: scrollable,
+      );
+      expect(find.textContaining('ali@example.com'), findsOneWidget);
+      await tester.tap(
+        find
+            .descendant(
+              of: find.ancestor(
+                of: find.text(L10n.t('radar_title')),
+                matching: find.byType(Material),
+              ),
+              matching: find.byType(Switch),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      final payload =
+          a.calls.lastWhere((c) => c.path == '/api/twin/preferences').data
+              as Map;
+      expect(payload['radar'], {'enabled': true, 'follow_up_hours': 48});
+      // Everything else the owner configured travels with it.
+      expect(payload['timezone'], 'Europe/Istanbul');
+      expect(a.preferences['radar'], {'enabled': true, 'follow_up_hours': 48});
       expect(tester.takeException(), isNull);
     });
   }

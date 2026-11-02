@@ -157,3 +157,45 @@ func TestActivityShowsRadarSettingsAndWaitingListWithoutMessageBodies(t *testing
 		t.Fatal("the waiting list leaked the owner's message body")
 	}
 }
+
+func TestTwinStateCarriesTheWaitingListForTheSettingsDialog(t *testing.T) {
+	ctx := context.Background()
+	a, s, _ := radarApp(t, 48)
+	if err := s.RecordMessage(ctx, twin.Message{Channel: "mail", Account: "owner", EventID: "o1", Address: "ali@example.com", Outgoing: true, Body: "GİZLİ PROJE ADI ne olacak?", SentAt: time.Now(), Subject: "Teklif"}, "Ali"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := a.CallTwin(ctx, "state", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, _ := json.Marshal(raw)
+	var got struct {
+		Preferences twin.Preferences `json:"preferences"`
+		Commitments []struct {
+			Address string `json:"address"`
+			Status  string `json:"status"`
+		} `json:"commitments"`
+	}
+	if err = json.Unmarshal(blob, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Preferences.Radar.Enabled || len(got.Commitments) != 1 || got.Commitments[0].Address != "ali@example.com" || got.Commitments[0].Status != "open" {
+		t.Fatalf("state=%s", blob)
+	}
+	if strings.Contains(string(blob), "GİZLİ PROJE ADI") {
+		t.Fatal("state leaked the owner's message body")
+	}
+}
+
+// Saving preferences through the API must keep the radar settings round-trip.
+func TestPreferencesSaveRoundTripsRadar(t *testing.T) {
+	ctx := context.Background()
+	a, s, _ := radarApp(t, 72)
+	body := `{"timezone":"UTC","work_start":"09:00","work_end":"18:00","allow_project_inspection":false,"autonomy":{},"radar":{"enabled":true,"follow_up_hours":24}}`
+	if _, err := a.CallTwin(ctx, "preferences", json.RawMessage(body)); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := s.Preferences(ctx); !p.Radar.Enabled || p.Radar.FollowUpHours != 24 {
+		t.Fatalf("radar not saved: %+v", p.Radar)
+	}
+}

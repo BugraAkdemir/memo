@@ -137,20 +137,7 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		if err != nil {
 			return nil, err
 		}
-		// The waiting list shows who and since when, never what the owner wrote.
-		type waitingView struct {
-			ID      string    `json:"id"`
-			Channel string    `json:"channel"`
-			Address string    `json:"address"`
-			Subject string    `json:"subject"`
-			Status  string    `json:"status"`
-			SentAt  time.Time `json:"sent_at"`
-			DueAt   time.Time `json:"due_at"`
-		}
-		commitments := make([]waitingView, 0, len(waiting))
-		for _, c := range waiting {
-			commitments = append(commitments, waitingView{c.ID, c.Channel, c.Address, c.Subject, c.Status, c.CreatedAt, c.DueAt})
-		}
+		commitments := waitingViews(waiting)
 		return map[string]any{"settings": p.Autonomy, "actions": actions, "reply_model": selection, "mail_contacts": mailContacts, "radar": p.Radar, "commitments": commitments}, nil
 	case "state", "twin_contacts":
 		contacts, err := s.Contacts(ctx)
@@ -169,13 +156,18 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		if err != nil {
 			return nil, err
 		}
+		waiting, err := s.Commitments(ctx)
+		if err != nil {
+			return nil, err
+		}
 		return struct {
 			ReplyModel  twin.ReplyModel              `json:"reply_model"`
 			Actions     []twin.Action                `json:"actions"`
 			Contacts    []twin.Contact               `json:"contacts"`
 			Preferences twin.Preferences             `json:"preferences"`
 			Projects    []autonomy.RegisteredProject `json:"projects"`
-		}{selection, actions, contacts, p, a.twinProjects()}, nil
+			Commitments []waitingView                `json:"commitments"`
+		}{selection, actions, contacts, p, a.twinProjects(), waitingViews(waiting)}, nil
 	case "reply_model":
 		var m twin.ReplyModel
 		if err := decodeTwin(raw, &m); err != nil {

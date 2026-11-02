@@ -122,6 +122,8 @@ class MailReplyDraftCard extends StatelessWidget {
             ),
           if (action['reason'] == 'delivery_paused' && pending)
             Text(L10n.t('approval_paused')),
+          if (action['reason'] == 'follow_up' && pending)
+            Text(L10n.t('auto_reason_follow_up')),
           if (uncertain)
             Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -139,6 +141,7 @@ class MailReplyDraftCard extends StatelessWidget {
                 'reply_timeout' => 'auto_reason_timeout',
                 'reply_cancelled' => 'auto_reason_cancelled',
                 'user_cancelled' => 'auto_reason_user_cancelled',
+                'follow_up' => 'auto_reason_follow_up',
                 'reply_invalid_response' => 'auto_reason_invalid_response',
                 'reply_provider_failed' => 'auto_reason_provider_failed',
                 'stale_message' => 'auto_reason_stale',

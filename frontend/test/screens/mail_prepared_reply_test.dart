@@ -189,6 +189,17 @@ void main() {
     expect(find.text(L10n.t('auto_reason_review')), findsNothing);
   });
 
+  // The follow-up radar prepares a reminder, not an answer; the owner must be
+  // able to tell the two apart before approving it.
+  testWidgets('a pending follow-up draft says why it exists', (tester) async {
+    final adapter = DraftAdapter();
+    adapter.action['reason'] = 'follow_up';
+    await mountMail(tester, adapter, const Size(1000, 600));
+    await tester.tap(find.text(L10n.t('mail_replies_tab', {'n': '1'})));
+    await tester.pumpAndSettle();
+    expect(find.text(L10n.t('auto_reason_follow_up')), findsWidgets);
+  });
+
   for (final size in [
     const Size(1000, 600),
     const Size(1440, 900),

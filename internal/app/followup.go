@@ -5,7 +5,28 @@ import (
 	"time"
 
 	"memo/internal/logx"
+	"memo/internal/twin"
 )
+
+// waitingView is what the UI may know about a pending reply: who, which
+// thread and when, never what the owner wrote.
+type waitingView struct {
+	ID      string    `json:"id"`
+	Channel string    `json:"channel"`
+	Address string    `json:"address"`
+	Subject string    `json:"subject"`
+	Status  string    `json:"status"`
+	SentAt  time.Time `json:"sent_at"`
+	DueAt   time.Time `json:"due_at"`
+}
+
+func waitingViews(list []twin.Commitment) []waitingView {
+	out := make([]waitingView, 0, len(list))
+	for _, c := range list {
+		out = append(out, waitingView{c.ID, c.Channel, c.Address, c.Subject, c.Status, c.CreatedAt, c.DueAt})
+	}
+	return out
+}
 
 // The radar only prepares reminder drafts for owner review, so a coarse tick is
 // enough; the first scan waits so startup is not slowed by a model call.

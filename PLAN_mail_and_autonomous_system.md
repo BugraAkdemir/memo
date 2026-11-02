@@ -1,6 +1,6 @@
 # PLAN — Memo "Dijital İkiz" (Digital Twin OS) & Otonom İletişim Sistemi
 **Doküman Türü:** Üretim Seviyesi Mimari Tasarım ve Uygulama Planı (SRS & Mühendislik Spesifikasyonu)  
-**Durum:** Faz 3 — Adım 5 teknik uygulaması mevcut; Adım 6 uygulandı, tam CI doğrulaması ve gerçek kanal kabulü sürüyor
+**Durum:** Faz 3 / Adım 6 teknik uygulaması ve tam CI doğrulaması tamam; gerçek kanal kabulü bekleniyor. Adım 7 başlatılmadı.
 **Tarih:** 2026-10-30  
 **Kapsam:** `internal/mail`, `internal/autonomy`, `internal/twin`, `internal/calendar`, `internal/whatsapp`, `internal/telegram`, `internal/webserver`, `frontend/`
 
@@ -257,9 +257,10 @@ autonomy:
 > **Çapraz tamamlama ve kullanıcı test kapısı — 2026-10-31:** Her adımda backend ile o adımın kullanılabilir frontend akışı birlikte hazırlanır ve birlikte doğrulanır. Frontend işi yalnız Faz 5'e ertelenmez; Adım 8'deki ilgili UI parçaları ait oldukları adıma taşınarak uygulanır. Yalnız backend'in bitmesi adımı/fazı tamamlamaz. Teknik doğrulamadan sonra durulur, kullanıcı gerçek senaryolarla dener ve geri bildirim verir. Sonraki adıma/faza kullanıcı bildiriminden önce geçilmez.
 
 ### Güncel kontrol noktası — 2026-11-02
-- **Bulunduğumuz yer: Faz 3 / Adım 5 sonrası, Adım 6 kısmen uygulanmış durumda.** Adım5 hazırlama motoru ve UI mevcut. Gerçek mail → yanıt modeli → takvim araştırması → IMAP Drafts ve önceki manuel API yoluyla onaylı SMTP/teslim kabulü `docs/DIGITAL_TWIN_AUTONOMY.md` içinde kayıtlıdır; WhatsApp/ses ve önceki adımların kalan cihaz kabulü açıktır.
-- **Son kod commit'i `d773a438`:** Mail → Yanıtlar → incele/düzenle/gönder ve kalıcı gönderim durumu mevcut. Bu, Adım6'nın UI manuel onay/gönderim kısmıdır. Yeni `send_action` akışının gerçek hesap/arayüz kabulü henüz kayıtlı değildir. Otomatik zamanlayıcı, 60sn geri al gönderimi ve WhatsApp/Telegram uzaktan onayı açık kalır; Adım6 kutusu işaretlenmez. `grace_period_auto` kaydı kendiliğinden gönderim yapmaz.
-- **Bu oturumun hedefli doğrulaması:** `CGO_ENABLED=1 GOMAXPROCS=2 go test -p 1 -tags sqlite_fts5 -race ./internal/twin ./internal/app ./internal/webserver -run 'TestOwner|TestTwinHTTP' -count=1`: üç paket PASS. `flutter test test/screens/mail_prepared_reply_test.dart --concurrency=1 --reporter=expanded`: 6 PASS. Tam build/vet/Go/Flutter paketi yeniden çalıştırılmadı; önceki tam doğrulama `docs/MAIL_REPLY_REVIEW.md` kaydıdır. Canlı gönderim yapılmadı; sonraki adım başlatılmadı.
+- **Bulunduğumuz yer: Faz 3 / Adım 6 teknik olarak tamamlandı.** Adım5 hazırlama motoru ve Adım6 otomatik/manuel/uzaktan onay köprüsü backend ve frontend birlikte bağlıdır. Yeni uygun adaylar hazırlama/Drafts sonrası geri al süresinden sonra gönderilir; eski adaylar ve başlangıç/ayar değişikliğiyle duraklatılanlar elle onay ister. Kişi/kanal/DLP kontrolleri ve atomik rezervasyon tüm köprü gönderimlerinde korunur.
+- **Kod kontrol noktaları:** `160d9caf` köprü, `47aba274` tek terminal bildirimi, `6ebf3fb1` sahip SSE akışı; `12a5c7fe` ve `3471ae59` test adaptörü/yerleşim uyumu. Mail inceleme editörü geri sayımı sunucuda duraklatır; WhatsApp panel onayı ve iki sahip kanalında numaralı onay/iptal/kişi kuralı vardır. Güncel sözleşme: `docs/DIGITAL_TWIN_APPROVAL.md`.
+- **Tam doğrulama:** [CI](https://github.com/BugraAkdemir/memo/actions/runs/41503875218), kod `3471ae59`: CGO/sqlite_fts5 build/vet exit0; Go race71 paket PASS; Flutter890 PASS + geliştirme backend adresi testi1 PASS; güvenlik/L10n/alan adı kontrolleri PASS. Yerel `flutter analyze lib/` yalnız eski3 context info; CI tüm frontend analizi eski18 info, yeni bulgu yok. Değişen11 Dart dosyasında UI literal0; diff PASS.
+- **Kullanıcı kabulü:** Adım5'in gerçek mail/model/Drafts ve önceki manuel API teslim kabulü kayıtlıdır. Yeni köprünün gerçek Gmail/WhatsApp/Telegram ve native UI kabulü ayrıdır, henüz yapılmadı. Çalışan backend/UI bu oturumda yenilenmedi; gerçek hesaba gönderim yapılmadı. Adım1–4'ün kalan cihaz testleri ve Adım5 ses kabulü açık. Adım7'ye geçilmedi.
 
 ### Önceki kontrol noktası — 2026-10-31
 - **Faz 1 / Adım 1–2:** Backend ve Mail ekranı mevcut; önceki mail hafızası/takvim/sayaç düzeltmeleri `c5201951` içinde. Canlı hesap/cihaz kabulü kullanıcıya ait. Kullanıcı bu oturumda plandan ilerlemeyi açıkça istedi.
@@ -367,8 +368,8 @@ autonomy:
 
   - **1 Kasım kullanıcı düzeltmesi — bağımsız yanıt modeli:** Karar modeline taslak yazdırma kaldırıldı. Ayarlar → Mail ve Otonomi ayrı sekmesinde yanıt sağlayıcısı/modeli seçilir; sınıflandırma/araştırma/taslak yalnız bu modeldedir. Karar modeli yalnız 0–1 uygunluk ve mail risk skoru üretir; skor yoksa taslak onayda kalır. Model çifti ayrı/kalıcı/admin-only; mevcut sohbet/Öğrenme/kanal ayarları birbirini ezmez. Teknik doğrulama: CGO/sqlite_fts5 build/vet exit0; Go race71 paket PASS; Flutter874/874 PASS; analyze mevcut3 info; UI literal7 Dart dosyası0; diff PASS. Gerçek cihaz/model kabulü açık, Adım6 başlamadı.
 
-- [ ] **Adım 6 — Çok Kanallı Bildirim, 60sn Geri Al Tamponu ve Onay Köprüsü (UI + WhatsApp Self-Chat + Telegram):**
-  - **2 Kasım uygulama kontrol noktası:** Yeni adayların geri al sonrası otomatik gönderimi, atomik teslim kaydı, güncel kanal/kişi/DLP kontrolü; sahip WhatsApp/Telegram bildirim ve numaralı onay/iptal/asla komutları; UI geri sayımı, düzenlemede duraklatma, WhatsApp onayı ve TR/EN süre ayarı uygulandı. Başlangıç/ayar değişikliği eski programları duraklatır. Hedefli Go race5 paket ve Flutter19 PASS; tam uzak CI doğrulaması sürüyor, bu nedenle kutu açık. Gerçek kanal kabulü ayrıdır. Sözleşme: `docs/DIGITAL_TWIN_APPROVAL.md`.
+- [x] **Adım 6 — Çok Kanallı Bildirim, 60sn Geri Al Tamponu ve Onay Köprüsü (UI + WhatsApp Self-Chat + Telegram):**
+  - **2 Kasım uygulama kontrol noktası:** Yeni adayların geri al sonrası otomatik gönderimi, atomik teslim kaydı, güncel kanal/kişi/DLP kontrolü; sahip WhatsApp/Telegram bildirim ve numaralı onay/iptal/asla komutları; UI geri sayımı, düzenlemede duraklatma, WhatsApp onayı ve TR/EN süre ayarı uygulandı. Başlangıç/ayar değişikliği eski programları duraklatır. Tam uzak CI: Go build/vet0, race71 paket PASS; Flutter890 + backend adresi1 PASS, güvenlik/L10n/alan adı PASS. Yerel lib analizi eski3 info; tüm frontend CI analizi eski18 info. UI literal11 dosya0. Kutu teknik uygulamayı gösterir; gerçek kanal/native cihaz kabulü açıktır. Sözleşme: `docs/DIGITAL_TWIN_APPROVAL.md`.
 
   - **Dosyalar:**
     - `internal/autonomy/approval_bridge.go`:

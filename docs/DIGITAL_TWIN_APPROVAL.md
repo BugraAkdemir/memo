@@ -87,3 +87,12 @@ izinli test kişisiyle önce taslak ve numaralı iptal, sonra açıkça onaylanm
 bir gönderim denenmelidir. Otomatik denemede bağımsız skorun gerçekten alınması
 ve geri al süresi boyunca iptal edilebilmesi ayrıca görülmelidir. Eski
 `a7324752…` yanıtını tekrar göndermeyin. Sonraki plan adımı başlatılmaz.
+
+Son teknik doğrulama (2 Kasım 2026, kod `3471ae59`): [tam CI](https://github.com/BugraAkdemir/memo/actions/runs/41503875218)
+beş işte başarılı. CGO/sqlite_fts5 build/vet exit0; Go race71 paket PASS;
+Flutter890 PASS ve ek geliştirme backend adresi testi1 PASS. Yerel
+`flutter analyze lib/` yalnız mevcut3 context info; CI tüm frontend
+analizinde mevcut18 info (test dosyaları da dahil), yeni bulgu yok.
+Değişen11 Dart dosyasında UI literal0; diff kontrolü PASS. Dar ekran
+testlerinde kaydırma yerleşimini bekleme ve eski mail test adaptöründe
+SSE handshake desteği düzeltildi; davranış beklentileri kaldırılmadı.

@@ -145,6 +145,7 @@ func interruptPreparations(ctx context.Context, tx *sql.Tx) error {
 	}
 	return nil
 }
+
 // Only CancelAction ever produces state "cancelled", so rows written before it
 // recorded a reason are owner cancellations still carrying the stale
 // "drafted"/empty reason of the prepared reply.

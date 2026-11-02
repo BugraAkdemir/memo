@@ -30,6 +30,7 @@ func TestApprovalCancellationWinsBeforeReservationAndSurvivesLatePreparation(t *
 		t.Fatal(err)
 	}
 }
+
 // DT6-3: cancelling used to flip only the state column, so the payload kept
 // reason "drafted" and the UI described a cancelled reply as "prepared".
 func TestCancelActionRecordsOwnerCancellationReason(t *testing.T) {
@@ -60,6 +61,7 @@ func TestCancelActionRecordsOwnerCancellationReason(t *testing.T) {
 		}
 	}
 }
+
 // Rows cancelled before DT6-3 was fixed still say "drafted"; opening the store
 // repairs them so existing history reads correctly too.
 func TestStoreOpenRepairsLegacyCancelledReason(t *testing.T) {
@@ -92,6 +94,7 @@ func TestStoreOpenRepairsLegacyCancelledReason(t *testing.T) {
 		t.Fatalf("unrelated row changed: %q", v.Reason)
 	}
 }
+
 // DT6-1: the dedup claim and the first visible record must commit together, and
 // a preparation interrupted by a restart must surface as reviewable, never as
 // an invisible claimed event that is silently dropped or replayed.

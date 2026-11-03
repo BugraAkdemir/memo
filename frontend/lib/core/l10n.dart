@@ -3054,6 +3054,16 @@ class L10n {
     'mail_custom_smtp_port': 'SMTP Portu',
     'mail_custom_connect_btn': 'Bağlan ve Kaydet',
     'mail_error_prefix': 'E-posta hatası: \${err}',
+    'tool_twin_commitments': 'Açık Sözler ve Beklenen Yanıtlar',
+    'tool_twin_commitments_desc': 'Verilen sözleri ve karşı taraftan beklenen yanıtları listeler.',
+    'tool_dev_status': 'Geliştirici Durumu',
+    'tool_dev_status_desc': 'Proje izinliyse git ve çalışma ağacı durumunu salt okunur özetler.',
+    'tool_mail_download_attachment': 'E-posta Eki İndir',
+    'tool_mail_download_attachment_desc': 'E-posta ekini yerel klasöre indirir ve metin önizlemesini gösterir.',
+    'twin_audit_log_title': 'İkiz Günlüğü',
+    'twin_audit_log_subtitle': '\${count} kayıt',
+    'twin_audit_log_empty': 'Henüz ikiz günlüğü kaydı yok.',
+    'mail_open_twin_panel': 'Dijital İkiz ve Yanıt Ayarlarını Aç',
   };
 
   static const _en = <String, String>{
@@ -6014,5 +6024,15 @@ class L10n {
     'mail_custom_smtp_port': 'SMTP Port',
     'mail_custom_connect_btn': 'Connect & Save',
     'mail_error_prefix': 'Mail error: \${err}',
+    'tool_twin_commitments': 'Open Commitments & Awaited Replies',
+    'tool_twin_commitments_desc': 'Lists open promises and awaited replies across contacts.',
+    'tool_dev_status': 'Developer Status',
+    'tool_dev_status_desc': 'Summarizes read-only git and working-tree status when project inspection is enabled.',
+    'tool_mail_download_attachment': 'Download Email Attachment',
+    'tool_mail_download_attachment_desc': 'Downloads an email attachment locally and previews safe text content.',
+    'twin_audit_log_title': 'Twin Audit Log',
+    'twin_audit_log_subtitle': '\${count} entries',
+    'twin_audit_log_empty': 'No twin audit log entries yet.',
+    'mail_open_twin_panel': 'Open Digital Twin & Reply Settings',
   };
 }

@@ -4,6 +4,7 @@ import '../../../core/l10n.dart';
 import '../../../models/provider_config.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/provider_provider.dart';
+import '../../twin_dialog.dart';
 
 /// The reply writer is selected independently of the scalar decision model.
 class MailAutonomyTab extends ConsumerStatefulWidget {
@@ -196,6 +197,14 @@ class _MailAutonomyTabState extends ConsumerState<MailAutonomyTab> {
                   ? null
                   : _save,
               child: Text(L10n.t('save')),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => const TwinDialog(initialTab: 3),
+              ),
+              icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+              label: Text(L10n.t('mail_open_twin_panel')),
             ),
           ],
         ),

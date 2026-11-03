@@ -44,6 +44,14 @@ void main() {
                   'reason': 'reply_timeout',
                 },
               ],
+              auditLog: const [
+                {
+                  'id': 1,
+                  'action': 'draft_queued',
+                  'contact_id': 'c-1',
+                  'at': '2026-11-03T12:00:00Z',
+                },
+              ],
               busy: false,
               onSettings: (v) => saved = v,
               onCancel: (v) => cancelled = v,
@@ -92,6 +100,19 @@ void main() {
       );
       expect(find.text(L10n.t('auto_reason_timeout')), findsOneWidget);
       expect(find.text(L10n.t('auto_reason_review')), findsNothing);
+      await tester.scrollUntilVisible(
+        find.text(L10n.t('twin_audit_log_title')),
+        150,
+        scrollable: find
+            .descendant(
+              of: find.byType(AutonomyPanel),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.tap(find.text(L10n.t('twin_audit_log_title')));
+      await tester.pumpAndSettle();
+      expect(find.text('draft_queued'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

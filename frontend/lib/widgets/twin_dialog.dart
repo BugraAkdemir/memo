@@ -575,6 +575,7 @@ class _TwinDialogState extends ConsumerState<TwinDialog>
         : {},
     timezone: '${_state!.preferences['timezone'] ?? ''}',
     briefings: _state!.briefings,
+    auditLog: _state!.auditLog,
     onTask: _openTask,
     onBriefing: (value) => _run(() async {
       await ref.read(apiClientProvider).callTwin('preferences', {

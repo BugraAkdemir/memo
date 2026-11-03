@@ -21,6 +21,7 @@ class AutonomyPanel extends StatelessWidget {
   final Map<String, dynamic> briefing;
   final String timezone;
   final List<Map<String, dynamic>> briefings;
+  final List<Map<String, dynamic>> auditLog;
   final ValueChanged<Map<String, dynamic>>? onBriefing;
   final ValueChanged<String>? onBriefingRead;
   final ValueChanged<Map<String, dynamic>>? onTask;
@@ -41,6 +42,7 @@ class AutonomyPanel extends StatelessWidget {
     this.briefing = const {},
     this.timezone = '',
     this.briefings = const [],
+    this.auditLog = const [],
     this.onBriefing,
     this.onBriefingRead,
     this.onTask,
@@ -380,6 +382,44 @@ class AutonomyPanel extends StatelessWidget {
               ),
           ] else
             _action(context, a),
+        const SizedBox(height: 16),
+        ExpansionTile(
+          key: const ValueKey('twin-audit-log'),
+          tilePadding: EdgeInsets.zero,
+          title: Text(L10n.t('twin_audit_log_title')),
+          subtitle: Text(
+            L10n.t('twin_audit_log_subtitle', {'count': '${auditLog.length}'}),
+          ),
+          children: [
+            if (auditLog.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    L10n.t('twin_audit_log_empty'),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              )
+            else
+              for (final entry in auditLog)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.history, size: 18),
+                  title: Text('${entry['action'] ?? ''}'),
+                  subtitle: Text(
+                    [
+                      if ((entry['contact_id'] ?? '').toString().isNotEmpty)
+                        '${entry['contact_id']}',
+                      if ((entry['at'] ?? '').toString().isNotEmpty)
+                        '${entry['at']}',
+                    ].join(' · '),
+                  ),
+                ),
+          ],
+        ),
       ],
     );
   }

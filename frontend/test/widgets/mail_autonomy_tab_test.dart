@@ -111,6 +111,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text(L10n.t('mail_reply_help')), findsOneWidget);
+        expect(find.text(L10n.t('mail_open_twin_panel')), findsOneWidget);
         await tester.tap(find.byType(DropdownButtonFormField<String>).first);
         await tester.pumpAndSettle();
         expect(find.text('web-private'), findsNothing);

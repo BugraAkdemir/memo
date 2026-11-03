@@ -26,8 +26,15 @@ void main() {
         'mail_inbox',
         'mail_search',
         'mail_read',
+        'mail_download_attachment',
         'mail_send',
         'mail_save_draft',
+        'twin_contacts',
+        'contact_timeline',
+        'check_availability',
+        'git_project_status',
+        'twin_commitments',
+        'dev_status',
         'telegram_send',
       ]) {
         expect(ToolNames.displayName(name), isNot(name));

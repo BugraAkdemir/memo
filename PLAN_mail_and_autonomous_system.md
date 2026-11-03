@@ -400,15 +400,15 @@ autonomy:
 
 ### Faz 5: Sohbet Araçları, CLI, Flutter UI ve Gerçek E2E Doğrulama
 
-- [ ] **Adım 8 — Normal Sohbet Araçları (`mail_*`, `contact_timeline`, `twin_*`), REPL `/mail` & `/twin` ve Flutter UI (`frontend/`):**
+- [x] **Adım 8 — Normal Sohbet Araçları (`mail_*`, `contact_timeline`, `twin_*`), REPL `/mail` & `/twin` ve Flutter UI (`frontend/`) — TAMAMLANDI (`739c6651`, `d1db09d8`, `a3842b6c`):**
   - **Backend & CLI Dosyaları:**
-    - `internal/agent/tools/mail.go` & `internal/agent/tools/twin.go`: Normal sohbette kullanıcının doğrudan çağırabileceği `mail_list`, `mail_read`, `mail_search`, `mail_draft`, `mail_send` (Permission Gate korumalı), `mail_download_attachment`, `contact_timeline`, `twin_commitments`, `dev_status` araçları.
-    - `internal/replcli/commands.go` & `internal/replcli/l10n.go`: `/mail` ve `/twin` terminal komutları (TR + EN).
+    - `internal/app/communication_tools.go` & `internal/agent/communication.go`: Normal sohbette kullanıcının doğrudan çağırabileceği `mail_accounts`, `mail_inbox`, `mail_read` (ek meta verileri dahil), `mail_search`, `mail_save_draft` (Permission Gate korumalı), `mail_send` (Permission Gate korumalı), `mail_download_attachment`, `contact_timeline`, `twin_contacts`, `twin_commitments`, `check_availability`, `dev_status` araçları ve `CallTwin("state")` altında `audit_log` listesi.
+    - `internal/replcli/mail_twin_client.go`, `internal/replcli/commands.go` & `internal/replcli/l10n.go`: `/mail` (`inbox`, `read`, `search`, `sync`) ve `/twin` (`contacts`, `commitments`, `audit`) terminal komutları (TR + EN).
   - **Flutter Frontend Dosyaları (`frontend/lib/`):**
-    - `features/mail/mail_screen.dart`: Tek tıkla **Gmail Bağla**, **Outlook Bağla**, **Diğer E-posta Bağla** kartları, Gelen Kutusu, Taslaklar, Onay Bekleyen İkiz Aksiyonları ve **İkiz Günlüğü (`Twin Audit Log`)** ekranı.
-    - `features/settings/`: **Dijital İkiz & Otonom Sistem Ayarları** (Ana şalter, Mail/WhatsApp/Telegram kanal şalterleri, Tam Otonom vs Taslak Modu, 60sn Geri Al süresi, Salt-Okunur Proje/Git Kontrol izni, Sabah Brifingi ve Follow-Up Radarı toggle'ları).
-    - `core/l10n.dart`: Tüm yeni kullanıcı arayüzü metinlerinin eksiksiz Türkçe ve İngilizce karşılıkları (**`AGENTS.md` Kural #8 — sıfır hardcoded UI string**).
-  - **Testler:** `flutter analyze lib/`, widget testleri ve L10n hardcoded string taraması.
+    - `widgets/mail_panel.dart`, `widgets/autonomy_panel.dart`, `widgets/twin_dialog.dart`: Gmail/Outlook/Diğer E-posta Bağla, Gelen Kutusu, Taslaklar, Onay Bekleyen İkiz Aksiyonları ve açılır-kapanır **İkiz Günlüğü (`Twin Audit Log`)** bölümü.
+    - `widgets/settings/tabs/mail_autonomy_tab.dart`: **Dijital İkiz & Otonom Sistem Ayarları** ve doğrudan **Dijital İkiz Kişi & Tercihlerini Aç** kısayolu.
+    - `utils/tool_names.dart` & `core/l10n.dart`: Tüm yeni kullanıcı arayüzü metinlerinin ve araç etiketlerinin eksiksiz Türkçe ve İngilizce karşılıkları (**`AGENTS.md` Kural #8 — sıfır hardcoded UI string**).
+  - **Testler & Canlı Doğrulama:** `go test -tags "sqlite_fts5" ./... -race`, `flutter analyze lib/`, 947 widget/unit testi, L10n hardcoded string taraması ve gerçek Gmail (`akdemirbugra5@gmail.com` ↔ `akdemirbugra14@gmail.com`) + Subscriptions (`gemini-3.8-flash-high`) üzerinde tüm REPL komutları ile sohbet araçlarının uçtan uca canlı doğrulanması PASS.
 
 - [ ] **Adım 9 — Gerçek Uçtan Uca (E2E) Test Paketi (`internal/e2e/mail_autonomy_e2e_test.go`) ve Dokümantasyon:**
   - **Senaryolar (`internal/e2e/`):**

@@ -5,6 +5,7 @@
 ## Açık işler
 
 **Dijital İkiz / Mail**
+- Adım 8 tamamlandı ve gerçek Gmail (`akdemirbugra5@gmail.com` ↔ `akdemirbugra14@gmail.com`) + Subscriptions (`gemini-3.8-flash-high`) üzerinde canlı doğrulandı (`739c6651`, `d1db09d8`, `a3842b6c`). Sırada son adım: **Adım 9 (`internal/e2e/mail_autonomy_e2e_test.go` + `docs/DIGITAL_TWIN_AND_MAIL.md`)**.
 - 3 Kasım gece E2E (gerçek Gmail 5↔14): Adım 1–7 canlı koşuldu, 8 gerçek hata düzeltildi (son: `e947bd67`); sonuçlar `PLAN_e2e_overnight.md`. Açık: WhatsApp/Telegram/ses ve `#onay` cihaz kabulü; karar modeli 5 sn skorlayıcı zaman aşımına sık takılıyor; ana Memo ayarları geri alındı (saat dilimi UTC, Istanbul önerilir).
 - a7324752 SMTP gönderildi/eski kayıt pending: TEKRAR GÖNDERME. Yeni akış geçmiş kontrolüyle engeller. 453da7f6 farklı gönderen pending/Drafts; SMTP yok, skor yok/onay gerekir.
 - Adım5 teknik ve gerçek IMAP/model/Drafts/eski manuel SMTP/teslim kullanıcı PASS: docs/DIGITAL_TWIN_AUTONOMY.md. Varsayılan kapalı; ayrı yanıt modeli, yerel Whisper/ffmpeg, Telegram sahip.
@@ -67,9 +68,9 @@
 
 ---
 
-# Son oturum — 3 Kasım — Adım 7 uygulandı (teknik), canlı kabul sürüyor
-- feat/digital-twin-mail, push edilmedi. Commit'ler: radar `725972bd`…`12c14610`, söz `fa092fdb`/`7ee6f268`/`27021494`, brifing `23e521ea`/`62bef9f3`/`c2c82a29`/`1fcc004e`/`eb3b9df4`, gözcü `05d9ddf7`, TaskLoop köprüsü `9f9a82dc`/`232f00b6`, HTTP düzeltmesi `927d50f5`.
-- Altı parça: yanıt takibi, söz takibi, sabah brifingi, toplantı notu, proje gözcüsü, TaskLoop köprüsü; hepsi testli + arayüzlü, hepsi varsayılan KAPALI; ayarlar twin_preferences'ta. Plan: PLAN_mail_and_autonomous_system.md Adım 7 kutusu.
-- Doğrulama: go build/vet ./..., -race internal/app (tam), twin/autonomy/mail/taskloop/calendar/sessions/webserver/e2e/config yeşil; flutter 945 yeşil, analyze yalnız bilinen 3 info. Tam `go test ./...` yerelde çalıştırılmadı.
-- CANLI (gerçek hesap): radar A/B mailleri kaydetti; sabah brifingi kartı gerçek veriyle oluştu ve arayüzde açıldı; canlıda 3 hata çıktı ve düzeltildi (kişi başına tek hatırlatma, HTTP 404 işlem listesi, saat dilimi uyarısı).
-- Açık/bekleyen: hatırlatma taslağının canlı oluşumu (MEMO RADAR A due 01:04, B 01:06 TR; kişi aynı, tek taslak beklenir). Radar şu an GERÇEK ayarda AÇIK ve 1 saat; test bitince kapatılmalı/48 saate alınmalı. Ikizin saat dilimi UTC (Çalışma saatleri sekmesinden Europe/Istanbul yapılmalı, kendiliğinden değiştirilmedi). Sahip kanallarına brifing/söz bildirimi yok; giden WhatsApp radara bağlı değil; cihaz kabulü yapılmadı. AGENTS.md çalışma ağacında telemetri satırı “removed” (bu oturumdan değil, commit edilmedi). 8090'da scratch backend çalışıyor (`run_memo.sh` kapatır).
+# Son oturum — 3 Kasım — Adım 8 tamamlandı ve canlı E2E doğrulandı
+- `feat/digital-twin-mail`, push edilmedi. Commit'ler: backend araçlar + AuditLog `739c6651`, REPL `/mail` + `/twin` `d1db09d8`, Flutter UI + L10n `a3842b6c`.
+- Eklenenler: Normal sohbet araçları (`twin_commitments`, `dev_status`, `mail_download_attachment`, `mail_read` içinde `attachments` meta verisi, `CallTwin("state")` içinde `audit_log`), REPL `/mail` (`inbox`, `read`, `search`, `sync`) ve `/twin` (`contacts`, `commitments`, `audit`) komutları (TR+EN), Flutter'da 11 iletişim/ikiz aracının TR+EN etiket/ikonları (`tool_names.dart`), `AutonomyPanel` altında açılır-kapanır **İkiz Günlüğü (`Twin Audit Log`)**, `MailAutonomyTab`'da `TwinDialog` kısayol düğmesi.
+- Doğrulama: `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race` tam paket yeşil; `flutter analyze lib/` (0 hata/uyarı, yalnız bilinen 3 info), `flutter test` 947/947 yeşil; L10n hardcoded string taraması 0 eşleşme.
+- CANLI (gerçek Gmail `akdemirbugra5@gmail.com` ↔ `akdemirbugra14@gmail.com` + Subscriptions `gemini-3.8-flash-high`): `akdemirbugra14`'ten ekli (`step8_notlar.txt`) gerçek e-posta gönderildi, `:8090` üzerinde Watcher + Gatekeeper + Twin tarafından işlendi (`seq_num: 13457, uid: 17438`). Gerçek PTY REPL'de `/mail`, `/mail read 13457`, `/mail search ADIM8-EK-TEST`, `/twin`, `/twin contacts`, `/twin commitments`, `/twin audit` doğrulandı. Normal sohbette gerçek LLM üzerinden `mail_accounts`, `mail_read`, `mail_download_attachment`, `twin_contacts`, `twin_commitments`, `contact_timeline`, `check_availability`, `dev_status`, `mail_save_draft` (IMAP Drafts kaydı, 2248ms) ve `mail_send` (`akdemirbugra14` gelen kutusuna `seq_num: 399, uid: 400` olarak ulaştı) uçtan uca doğrulandı. Geçici test sohbetleri ve sunucular temizlendi.
+- Sıradaki adım: `PLAN_mail_and_autonomous_system.md` **Adım 9** (`internal/e2e/mail_autonomy_e2e_test.go` + `docs/DIGITAL_TWIN_AND_MAIL.md`). `AGENTS.md` çalışma ağacında telemetri satırı “removed” (bu oturumdan değil, commit edilmedi).

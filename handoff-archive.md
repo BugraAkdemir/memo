@@ -1,3 +1,12 @@
+# Son oturum — 3 Kasım — Adım 7 uygulandı (teknik), canlı kabul sürüyor
+- feat/digital-twin-mail, push edilmedi. Commit'ler: radar `725972bd`…`12c14610`, söz `fa092fdb`/`7ee6f268`/`27021494`, brifing `23e521ea`/`62bef9f3`/`c2c82a29`/`1fcc004e`/`eb3b9df4`, gözcü `05d9ddf7`, TaskLoop köprüsü `9f9a82dc`/`232f00b6`, HTTP düzeltmesi `927d50f5`.
+- Altı parça: yanıt takibi, söz takibi, sabah brifingi, toplantı notu, proje gözcüsü, TaskLoop köprüsü; hepsi testli + arayüzlü, hepsi varsayılan KAPALI; ayarlar twin_preferences'ta. Plan: PLAN_mail_and_autonomous_system.md Adım 7 kutusu.
+- Doğrulama: go build/vet ./..., -race internal/app (tam), twin/autonomy/mail/taskloop/calendar/sessions/webserver/e2e/config yeşil; flutter 945 yeşil, analyze yalnız bilinen 3 info. Tam `go test ./...` yerelde çalıştırılmadı.
+- CANLI (gerçek hesap): radar A/B mailleri kaydetti; sabah brifingi kartı gerçek veriyle oluştu ve arayüzde açıldı; canlıda 3 hata çıktı ve düzeltildi (kişi başına tek hatırlatma, HTTP 404 işlem listesi, saat dilimi uyarısı).
+- Açık/bekleyen: hatırlatma taslağının canlı oluşumu (MEMO RADAR A due 01:04, B 01:06 TR; kişi aynı, tek taslak beklenir). Radar şu an GERÇEK ayarda AÇIK ve 1 saat; test bitince kapatılmalı/48 saate alınmalı. Ikizin saat dilimi UTC (Çalışma saatleri sekmesinden Europe/Istanbul yapılmalı, kendiliğinden değiştirilmedi). Sahip kanallarına brifing/söz bildirimi yok; giden WhatsApp radara bağlı değil; cihaz kabulü yapılmadı. AGENTS.md çalışma ağacında telemetri satırı “removed” (bu oturumdan değil, commit edilmedi). 8090'da scratch backend çalışıyor (`run_memo.sh` kapatır).
+
+---
+
 # Son oturum — 2 Kasım gecesi — DT6-1/2/3 düzeltildi
 - Yalnız bilinen 3 hata, feat/digital-twin-mail, push edilmedi: DT6-1+DT6-3 `9db7bcaf`, DT6-2 `090a02d8`.
 - DT6-1: Watcher isteği değil uygulama bağlamıyla işler; UID yalnız işleme başarılıysa ilerler, ilk hatada hesap durur/yeniden dener. Claim+görünür "preparing" kaydı atomik; restart'ta kesilen hazırlık failed/reply_cancelled, tekrar gönderilmez.

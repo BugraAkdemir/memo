@@ -85,6 +85,8 @@ var tr = map[string]string{
 	"cmd_clear_hint":            "sohbeti temizle, yeni bir sohbet başlat",
 	"cmd_session_hint":          "bu projedeki sohbetler arasında geç",
 	"cmd_tasklist_hint":         "görev listelerini yönet (list/create/start/stop/delete/show)",
+	"cmd_mail_hint":             "e-posta gelen kutusu, okuma, arama ve senkronizasyon",
+	"cmd_twin_hint":             "dijital ikiz durumu, bekleyen onaylar, kişiler, sözler ve günlük",
 	"cmd_remote_hint":           "ngrok ile uzak erişim tüneli aç",
 	"cmd_update_hint":           "Memo'yu en son sürüme güncelle",
 	"cmd_theme_hint":            "arayüz temasını değiştir/seç",
@@ -239,6 +241,37 @@ var tr = map[string]string{
 	"tasklist_lists_title":           "Görev Listeleri",
 	"tasklist_lists_header":          "%s (%d liste)\n",
 	"tasklist_interactive_footer":    "\nKomutlar: /tasklist list | create <başlık> <maddeler> | show <id> | start <id> | stop <id> | delete <id>",
+	"mail_no_accounts":               "Bağlı e-posta hesabı yok.",
+	"mail_accounts_header":           "E-posta Hesapları:",
+	"mail_stats_line":                "  İzleyici: %d işlendi · %d spam · %d tanıtım · %d güvenlik engeli",
+	"mail_inbox_empty":               "Gelen kutusu boş.",
+	"mail_inbox_header":              "\nGelen Kutusu — %s (toplam %d):",
+	"mail_usage_footer":              "Komutlar: /mail [inbox | read <sıra_no> | search <sorgu> | sync]",
+	"mail_read_usage":                "Kullanım: /mail read <sıra_no>",
+	"mail_subject_label":             "Konu:",
+	"mail_from_label":                "Kimden:",
+	"mail_attachments_label":         "Ekler",
+	"mail_search_usage":              "Kullanım: /mail search <sorgu>",
+	"mail_search_empty":              "Eşleşen e-posta bulunamadı.",
+	"mail_synced":                    "✓ E-posta senkronize edildi (%d işlendi).",
+	"twin_state_on":                  "açık",
+	"twin_state_off":                 "kapalı",
+	"twin_header":                    "Dijital İkiz:",
+	"twin_mode_label":                "varsayılan mod",
+	"twin_counts_line":               "  %d kişi · %d bekleyen onay · %d açık söz/beklenen · %d günlük kaydı",
+	"twin_pending_header":            "Bekleyen Onaylar:",
+	"twin_usage_footer":              "Komutlar: /twin [status | contacts | commitments | audit | approve <kod> | cancel <kod> | on | off | mode <draft_only|full_auto|manual>]",
+	"twin_no_contacts":               "Henüz kayıtlı kişi yok.",
+	"twin_no_commitments":            "Açık söz veya beklenen yanıt yok.",
+	"twin_no_audit":                  "Henüz ikiz günlüğü kaydı yok.",
+	"twin_approve_usage":             "Kullanım: /twin approve <id_veya_kod>",
+	"twin_action_approved":           "✓ İşlem onaylandı: %s",
+	"twin_cancel_usage":              "Kullanım: /twin cancel <id_veya_kod>",
+	"twin_action_cancelled":          "✓ İşlem iptal edildi: %s",
+	"twin_turned_on":                 "✓ Dijital ikiz açıldı.",
+	"twin_turned_off":                "✓ Dijital ikiz kapatıldı.",
+	"twin_mode_usage":                "Kullanım: /twin mode <draft_only|full_auto|manual>",
+	"twin_mode_changed":              "✓ Dijital ikiz varsayılan modu değiştirildi: %s",
 	"generic_error":                  "Hata: %v",
 	"session_hint_with_project":      "%s · %d mesaj · %s",
 	"session_hint_plain":             "%s · %d mesaj",
@@ -261,6 +294,8 @@ var tr = map[string]string{
   /tasklist start <id>                    görev listesini başlatır (otomatik çalışma)
   /tasklist stop <id>                     çalışan listeyi durdurur
   /tasklist delete <id>                   görev listesini siler
+  /mail [inbox|read|search|sync]          e-posta gelen kutusunu, mesajları ve aramayı yönetir
+  /twin [status|contacts|commitments|...] dijital ikiz durumunu, onayları ve günlüğü yönetir
   /remote                                 ngrok ile uzak erişim tüneli açar ve linkini gösterir
   /update                                 Memo'yu en son sürüme günceller
   /theme [default|claude-code]            arayüz temasını değiştirir (boşsa seçtirir; varsayılan: default)
@@ -306,6 +341,8 @@ var en = map[string]string{
 	"cmd_clear_hint":            "clear the chat, start a new one",
 	"cmd_session_hint":          "switch between this project's chats",
 	"cmd_tasklist_hint":         "manage task lists (list/create/start/stop/delete/show)",
+	"cmd_mail_hint":             "email inbox, reading, search, and sync",
+	"cmd_twin_hint":             "digital twin status, pending approvals, contacts, commitments, and log",
 	"cmd_remote_hint":           "open a remote-access tunnel via ngrok",
 	"cmd_update_hint":           "update Memo to the latest release",
 	"cmd_theme_hint":            "switch/pick the interface theme",
@@ -457,6 +494,37 @@ var en = map[string]string{
 	"tasklist_lists_title":           "Task Lists",
 	"tasklist_lists_header":          "%s (%d lists)\n",
 	"tasklist_interactive_footer":    "\nCommands: /tasklist list | create <title> <items> | show <id> | start <id> | stop <id> | delete <id>",
+	"mail_no_accounts":               "No connected email accounts.",
+	"mail_accounts_header":           "Email Accounts:",
+	"mail_stats_line":                "  Watcher: %d processed · %d spam · %d promo · %d security blocked",
+	"mail_inbox_empty":               "Inbox is empty.",
+	"mail_inbox_header":              "\nInbox — %s (%d total):",
+	"mail_usage_footer":              "Commands: /mail [inbox | read <seq_num> | search <query> | sync]",
+	"mail_read_usage":                "Usage: /mail read <seq_num>",
+	"mail_subject_label":             "Subject:",
+	"mail_from_label":                "From:",
+	"mail_attachments_label":         "Attachments",
+	"mail_search_usage":              "Usage: /mail search <query>",
+	"mail_search_empty":              "No matching emails found.",
+	"mail_synced":                    "✓ Email synced (%d processed).",
+	"twin_state_on":                  "on",
+	"twin_state_off":                 "off",
+	"twin_header":                    "Digital Twin:",
+	"twin_mode_label":                "default mode",
+	"twin_counts_line":               "  %d contacts · %d pending approvals · %d open commitments · %d audit entries",
+	"twin_pending_header":            "Pending Approvals:",
+	"twin_usage_footer":              "Commands: /twin [status | contacts | commitments | audit | approve <code> | cancel <code> | on | off | mode <draft_only|full_auto|manual>]",
+	"twin_no_contacts":               "No contacts recorded yet.",
+	"twin_no_commitments":            "No open commitments or awaited replies.",
+	"twin_no_audit":                  "No twin audit log entries yet.",
+	"twin_approve_usage":             "Usage: /twin approve <id_or_code>",
+	"twin_action_approved":           "✓ Action approved: %s",
+	"twin_cancel_usage":              "Usage: /twin cancel <id_or_code>",
+	"twin_action_cancelled":          "✓ Action cancelled: %s",
+	"twin_turned_on":                 "✓ Digital twin turned on.",
+	"twin_turned_off":                "✓ Digital twin turned off.",
+	"twin_mode_usage":                "Usage: /twin mode <draft_only|full_auto|manual>",
+	"twin_mode_changed":              "✓ Digital twin default mode changed: %s",
 	"generic_error":                  "Error: %v",
 	"session_hint_with_project":      "%s · %d messages · %s",
 	"session_hint_plain":             "%s · %d messages",
@@ -479,6 +547,8 @@ var en = map[string]string{
   /tasklist start <id>                    starts a task list (runs automatically)
   /tasklist stop <id>                     stops a running list
   /tasklist delete <id>                   deletes a task list
+  /mail [inbox|read|search|sync]          manages email inbox, messages, and search
+  /twin [status|contacts|commitments|...] manages digital twin status, approvals, and audit log
   /remote                                 opens a remote-access tunnel via ngrok and shows its link
   /update                                 updates Memo to the latest release
   /theme [default|claude-code]            switches the interface theme (prompts you to pick one if empty; default: default)

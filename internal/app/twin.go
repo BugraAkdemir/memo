@@ -188,6 +188,10 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 		if err != nil {
 			return nil, err
 		}
+		auditLog, err := s.AuditLog(ctx, 50)
+		if err != nil {
+			return nil, err
+		}
 		return struct {
 			ReplyModel  twin.ReplyModel              `json:"reply_model"`
 			Actions     []twin.Action                `json:"actions"`
@@ -196,7 +200,47 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 			Projects    []autonomy.RegisteredProject `json:"projects"`
 			Commitments []waitingView                `json:"commitments"`
 			Briefings   []twin.Briefing              `json:"briefings"`
-		}{selection, actions, contacts, p, a.twinProjects(), waitingViews(waiting), briefings}, nil
+			AuditLog    []twin.AuditEntry            `json:"audit_log"`
+		}{selection, actions, contacts, p, a.twinProjects(), waitingViews(waiting), briefings, auditLog}, nil
+	case "twin_commitments":
+		var args struct {
+			ContactID string `json:"contact_id"`
+		}
+		if len(raw) > 0 && strings.TrimSpace(string(raw)) != "{}" {
+			if err := decodeTwin(raw, &args); err != nil {
+				return nil, err
+			}
+		}
+		waiting, err := s.Commitments(ctx)
+		if err != nil {
+			return nil, err
+		}
+		views := waitingViews(waiting)
+		if id := strings.TrimSpace(args.ContactID); id != "" {
+			filtered := make([]waitingView, 0, len(views))
+			for _, v := range views {
+				if v.ContactID == id {
+					filtered = append(filtered, v)
+				}
+			}
+			views = filtered
+		}
+		return views, nil
+	case "dev_status":
+		var empty struct{}
+		if len(raw) > 0 && strings.TrimSpace(string(raw)) != "{}" {
+			if err := decodeTwin(raw, &empty); err != nil {
+				return nil, err
+			}
+		}
+		p, err := s.Preferences(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !p.AllowProjectInspection {
+			return nil, autonomy.ErrAutonomousCommandForbidden
+		}
+		return map[string]any{"projects": autonomy.DevWatch(ctx, a.twinProjects())}, nil
 	case "reply_model":
 		var m twin.ReplyModel
 		if err := decodeTwin(raw, &m); err != nil {

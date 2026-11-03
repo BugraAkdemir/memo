@@ -12,21 +12,22 @@ import (
 // waitingView is what the UI may know about a pending reply: who, which
 // thread and when, never what the owner wrote.
 type waitingView struct {
-	ID      string    `json:"id"`
-	Kind    string    `json:"kind"`
-	Summary string    `json:"summary,omitempty"` // only the owner's own one-line promise
-	Channel string    `json:"channel"`
-	Address string    `json:"address"`
-	Subject string    `json:"subject"`
-	Status  string    `json:"status"`
-	SentAt  time.Time `json:"sent_at"`
-	DueAt   time.Time `json:"due_at"`
+	ID        string    `json:"id"`
+	ContactID string    `json:"contact_id,omitempty"`
+	Kind      string    `json:"kind"`
+	Summary   string    `json:"summary,omitempty"` // only the owner's own one-line promise
+	Channel   string    `json:"channel"`
+	Address   string    `json:"address"`
+	Subject   string    `json:"subject"`
+	Status    string    `json:"status"`
+	SentAt    time.Time `json:"sent_at"`
+	DueAt     time.Time `json:"due_at"`
 }
 
 func waitingViews(list []twin.Commitment) []waitingView {
 	out := make([]waitingView, 0, len(list))
 	for _, c := range list {
-		v := waitingView{ID: c.ID, Kind: c.Kind, Channel: c.Channel, Address: c.Address, Subject: c.Subject, Status: c.Status, SentAt: c.CreatedAt, DueAt: c.DueAt}
+		v := waitingView{ID: c.ID, ContactID: c.ContactID, Kind: c.Kind, Channel: c.Channel, Address: c.Address, Subject: c.Subject, Status: c.Status, SentAt: c.CreatedAt, DueAt: c.DueAt}
 		if c.Kind == "my_promise" {
 			v.Summary = c.Body
 		}

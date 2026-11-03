@@ -108,6 +108,37 @@ func audit(ctx context.Context, tx *sql.Tx, action, id string) error {
 	_, err := tx.ExecContext(ctx, "INSERT INTO twin_audit_log(at,action,contact_id) VALUES(?,?,?)", time.Now().UTC().Format(time.RFC3339Nano), action, id)
 	return err
 }
+
+// AuditEntry is one row from twin_audit_log.
+type AuditEntry struct {
+	ID        int64     `json:"id"`
+	At        time.Time `json:"at"`
+	Action    string    `json:"action"`
+	ContactID string    `json:"contact_id,omitempty"`
+}
+
+// AuditLog returns the most recent twin_audit_log rows, newest first.
+func (s *Store) AuditLog(ctx context.Context, limit int) ([]AuditEntry, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx, "SELECT id,at,action,contact_id FROM twin_audit_log ORDER BY id DESC LIMIT ?", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []AuditEntry{}
+	for rows.Next() {
+		var e AuditEntry
+		var at string
+		if err := rows.Scan(&e.ID, &at, &e.Action, &e.ContactID); err != nil {
+			return nil, err
+		}
+		e.At, _ = time.Parse(time.RFC3339Nano, at)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
 func (s *Store) Preferences(ctx context.Context) (Preferences, error) {
 	p := Preferences{Timezone: "UTC", WorkStart: "09:00", WorkEnd: "18:00"}
 	var raw string

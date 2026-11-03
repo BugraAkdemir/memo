@@ -24,6 +24,7 @@ var twinOperations = []string{
 	"state", "activity", "contact", "merge", "preferences", "reply_model",
 	"cancel_action", "hold_action", "send_action", "approve_action",
 	"contact_timeline", "check_availability", "git_project_status",
+	"twin_commitments", "dev_status",
 	"resolve_commitment", "task_from_action", "briefing_read",
 }
 

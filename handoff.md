@@ -5,6 +5,7 @@
 ## Açık işler
 
 **Dijital İkiz / Mail**
+- 3 Kasım gece E2E (gerçek Gmail 5↔14): Adım 1–7 canlı koşuldu, 8 gerçek hata düzeltildi (son: `e947bd67`); sonuçlar `PLAN_e2e_overnight.md`. Açık: WhatsApp/Telegram/ses ve `#onay` cihaz kabulü; karar modeli 5 sn skorlayıcı zaman aşımına sık takılıyor; ana Memo ayarları geri alındı (saat dilimi UTC, Istanbul önerilir).
 - a7324752 SMTP gönderildi/eski kayıt pending: TEKRAR GÖNDERME. Yeni akış geçmiş kontrolüyle engeller. 453da7f6 farklı gönderen pending/Drafts; SMTP yok, skor yok/onay gerekir.
 - Adım5 teknik ve gerçek IMAP/model/Drafts/eski manuel SMTP/teslim kullanıcı PASS: docs/DIGITAL_TWIN_AUTONOMY.md. Varsayılan kapalı; ayrı yanıt modeli, yerel Whisper/ffmpeg, Telegram sahip.
 - Adım6 teknik/CI PASS: docs/DIGITAL_TWIN_APPROVAL.md. Geri al/otomatik gönderim ve UI/WhatsApp/Telegram sahip onayı bağlı; eski adaylar açılmaz. Gerçek kanal/native/ses kabulü açık; cihaz test yönergesi aynı dokümanda. İptal uzak Drafts/takvimi silmez; belirsiz gönderim tekrarlanmaz.

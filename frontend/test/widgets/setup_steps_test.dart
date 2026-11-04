@@ -4,12 +4,102 @@ import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/core/theme.dart';
 import 'package:memo_flutter/widgets/setup/embedding_step.dart';
 import 'package:memo_flutter/widgets/setup/local_model_step.dart';
+import 'package:memo_flutter/widgets/setup/mail_model_step.dart';
+import 'package:memo_flutter/core/api_client.dart';
+import 'package:memo_flutter/models/provider_config.dart';
+import 'package:memo_flutter/models/twin.dart';
+import 'package:memo_flutter/providers/chat_provider.dart';
+import 'package:memo_flutter/providers/provider_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 Widget _host(Widget child) => MaterialApp(
   home: Scaffold(body: SingleChildScrollView(child: child)),
 );
 
+class _TwinApi extends MemoApiClient {
+  _TwinApi() : super(baseUrl: 'http://memo.test');
+  final calls = <String, Map<String, dynamic>>{};
+  Map<String, dynamic> prefs = {
+    'autonomy': {'enabled': false, 'mail': false, 'mode': ''},
+    'timezone': 'UTC',
+  };
+  @override
+  Future<TwinState> getTwinState() async =>
+      TwinState(const [], prefs, const [], const [], const {});
+  @override
+  Future<dynamic> callTwin(String operation, Map<String, dynamic> args) async {
+    calls[operation] = args;
+    if (operation == 'preferences') prefs = Map.of(args);
+    return {'ok': true};
+  }
+}
+
+class _NoProviders extends ProviderListNotifier {
+  @override
+  Future<List<ProviderConfig>> build() async => [];
+}
+
 void main() {
+  test('the time zone suggested for a device offset', () {
+    expect(suggestedTimezone(const Duration(hours: 3)), 'Europe/Istanbul');
+    expect(suggestedTimezone(Duration.zero), 'UTC');
+    expect(suggestedTimezone(const Duration(hours: -5)), 'America/New_York');
+    expect(suggestedTimezone(const Duration(hours: 7)), isNull);
+  });
+
+  testWidgets(
+    'mail model step: picking a time zone saves it, drafts stay safe',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final api = _TwinApi();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            providerListProvider.overrideWith(_NoProviders.new),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: SetupMailModelStep(
+                  color: MemoTheme.light,
+                  modelSet: false,
+                  onModelChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // Drafts off by default; turning it on writes the safe mode only.
+      expect(
+        find.byKey(const Key('setup_mail_model_required')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byType(Switch).first);
+      await tester.pumpAndSettle();
+      final autonomy = api.calls['preferences']!['autonomy'] as Map;
+      expect(autonomy['enabled'], true);
+      expect(autonomy['mail'], true);
+      expect(autonomy['mode'], 'draft_only');
+      // Choose a time zone.
+      await tester.tap(find.byKey(const ValueKey('setup_timezone_UTC')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Europe/Istanbul').last);
+      await tester.pumpAndSettle();
+      expect(api.calls['preferences']!['timezone'], 'Europe/Istanbul');
+      // The rest of the preferences were kept.
+      expect(
+        (api.calls['preferences']!['autonomy'] as Map)['mode'],
+        'draft_only',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final locale in MemoLocale.values) {
     group('step widgets in $locale', () {
       setUp(() => L10n.setLocale(locale));

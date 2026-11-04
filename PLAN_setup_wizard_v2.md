@@ -71,7 +71,15 @@ Mail bağlama isteğe bağlı; **mail bağlanırsa mail (yanıt) modeli seçmek 
       adım Tamam / Atlandı / Eksik*, satıra dokununca o adıma döner). **Ayarlar'dan yeniden çalıştırma artık
       kullanıcının kişiliğini ve temasını ezmiyor** (`memo_setup_rerun` bayrağı; kişilik yalnız dokunulursa
       kaydedilir). Adımların 12'si de yerinde; her biri TR/EN. Flutter 981/981.
-- [ ] **U6 — Cilalama:** dar/geniş düzen, TR/EN, erişilebilirlik, gerçek uygulamada kabul.
+- [x] **U6 — Cilalama (kısmen):** saat dilimi seçici (mail yanıt modeli adımında; cihazın UTC farkına göre öneri,
+      varsayılan UTC kalmasın diye), `docs/SETUP_WIZARD.md` yeniden yazıldı, sihirbazın yazdığı tüm uçlar **gerçek
+      backend ile temiz veri klasöründe** denendi (ilk-çalıştırma tercihleri geri gönderilince kabul ediliyor,
+      onboarding PUT/GET, yanıt modeli kaydı). Flutter 983/983.
+      **Yapılmadı:** gerçek uygulama penceresinde görsel/elle kabul (Flutter web/desktop derlemesi ve ekran
+      görüntüsü alınmadı; düzen yalnız widget testleriyle 360x900, 1100x900, 1100x600 TR/EN'de sınandı). Zaman
+      dilimi seçici yalnız mail bağlıyken görünür; mail kullanmayan kullanıcı için ayrı bir yer yok. Kullanıcı
+      kabulü: temiz bir veri klasörüyle `MEMO_DATA_DIR=$(mktemp -d) memo` ve uygulamayı açıp sihirbazı baştan
+      sona gezmek.
 
 ## Doğrulama (her birim)
 `flutter analyze lib/` (yalnız bilinen 3 info), `flutter test`, L10n literal taraması (AGENTS.md kural 8),

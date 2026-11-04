@@ -27,6 +27,39 @@ class SetupMailModelStep extends ConsumerStatefulWidget {
   ConsumerState<SetupMailModelStep> createState() => _SetupMailModelStepState();
 }
 
+/// Common zones to pick from, and the zone to suggest for a given UTC offset in
+/// minutes (the device only exposes an offset, not an IANA name).
+const setupTimezones = [
+  'UTC',
+  'Europe/London',
+  'Europe/Berlin',
+  'Europe/Athens',
+  'Europe/Istanbul',
+  'Asia/Dubai',
+  'Asia/Kolkata',
+  'Asia/Tokyo',
+  'America/New_York',
+  'America/Chicago',
+  'America/Los_Angeles',
+];
+
+const _zoneByOffsetMinutes = {
+  0: 'UTC',
+  60: 'Europe/Berlin',
+  120: 'Europe/Athens',
+  180: 'Europe/Istanbul',
+  240: 'Asia/Dubai',
+  330: 'Asia/Kolkata',
+  540: 'Asia/Tokyo',
+  -300: 'America/New_York',
+  -360: 'America/Chicago',
+  -480: 'America/Los_Angeles',
+};
+
+/// The zone that matches this device's current UTC offset, if we know one.
+String? suggestedTimezone([Duration? offset]) =>
+    _zoneByOffsetMinutes[(offset ?? DateTime.now().timeZoneOffset).inMinutes];
+
 class _SetupMailModelStepState extends ConsumerState<SetupMailModelStep> {
   Map<String, dynamic>? _prefs;
   bool _savingDrafts = false;
@@ -54,11 +87,7 @@ class _SetupMailModelStepState extends ConsumerState<SetupMailModelStep> {
 
   Future<void> _setDrafts(bool on) async {
     final prefs = _prefs;
-    if (prefs == null || _savingDrafts) return;
-    setState(() {
-      _savingDrafts = true;
-      _error = null;
-    });
+    if (prefs == null) return;
     final next = Map<String, dynamic>.of(prefs);
     final autonomy = Map<String, dynamic>.of(
       (prefs['autonomy'] as Map?)?.cast<String, dynamic>() ?? const {},
@@ -68,6 +97,21 @@ class _SetupMailModelStepState extends ConsumerState<SetupMailModelStep> {
     // Always the safe mode: a draft is prepared, never sent on its own.
     autonomy['mode'] = 'draft_only';
     next['autonomy'] = autonomy;
+    await _savePrefs(next);
+  }
+
+  Future<void> _setTimezone(String zone) async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    await _savePrefs({...prefs, 'timezone': zone});
+  }
+
+  Future<void> _savePrefs(Map<String, dynamic> next) async {
+    if (_savingDrafts) return;
+    setState(() {
+      _savingDrafts = true;
+      _error = null;
+    });
     try {
       await ref.read(apiClientProvider).callTwin('preferences', next);
       if (mounted) setState(() => _prefs = next);
@@ -144,12 +188,64 @@ class _SetupMailModelStepState extends ConsumerState<SetupMailModelStep> {
           color: c,
           onChanged: _prefs == null || _savingDrafts ? null : _setDrafts,
         ),
+        const SizedBox(height: 12),
+        _timezoneCard(c),
         if (_error != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(_error!, style: const TextStyle(color: MemoTheme.red)),
           ),
       ],
+    );
+  }
+
+  Widget _timezoneCard(ThemeColors c) {
+    final current = '${_prefs?['timezone'] ?? 'UTC'}';
+    final zones = {...setupTimezones, current}.toList();
+    final suggestion = suggestedTimezone();
+    return SetupCard(
+      color: c,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            L10n.t('setup_timezone_title'),
+            style: TextStyle(color: c.textMain, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            L10n.t('setup_timezone_desc'),
+            style: TextStyle(color: c.textDim, fontSize: 12, height: 1.5),
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            key: ValueKey('setup_timezone_$current'),
+            initialValue: current,
+            isExpanded: true,
+            items: [
+              for (final z in zones) DropdownMenuItem(value: z, child: Text(z)),
+            ],
+            onChanged: _prefs == null || _savingDrafts
+                ? null
+                : (v) {
+                    if (v != null && v != current) _setTimezone(v);
+                  },
+          ),
+          if (suggestion != null && suggestion != current) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              key: const Key('setup_timezone_suggest'),
+              onPressed: _prefs == null || _savingDrafts
+                  ? null
+                  : () => _setTimezone(suggestion),
+              icon: const Icon(Icons.schedule, size: 16),
+              label: Text(
+                L10n.t('setup_timezone_suggest', {'zone': suggestion}),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

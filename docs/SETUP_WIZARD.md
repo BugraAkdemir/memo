@@ -1,13 +1,49 @@
 # Setup wizard
 
-The wizard presents editable steps with Back/Next navigation and a final Start action. Desktop windows with enough width and height show an editable step sidebar; compact windows use a single column with fixed navigation. Name, persona and appearance selections stay in wizard state when navigating. Mobile builds retain the server address/token step first. Preferences can be changed later in Settings.
+The wizard walks a new user through everything that used to need a trip to
+Settings. Required steps carry a trailing `*`; "Next" is off on a required step
+that is not done, and the final button is off while any required step is
+missing. The side list scrolls (there are up to twelve steps) and every row can
+be opened directly; compact windows use a single column. Plan and unit history:
+`PLAN_setup_wizard_v2.md`.
 
-The model connection step offers three paths:
+## Steps (`*` required)
 
-- **Local model:** inspect hardware recommendations and download the existing curated chat and embedding models. An embedding model alone does not count as a ready chat model.
-- **API key:** open the existing provider dialog. A newly added connection is activated using the existing provider flow.
-- **Subscription:** use the existing account sign-in, callback-paste, cancellation and model refresh flow inline. Once account models are listed, choose **Use subscription** to activate the Subscriptions provider for chat. Sign-in alone does not switch the chat provider. Activation errors stay visible inline.
+| Step | What it does |
+|---|---|
+| Language & appearance | Defaults are preselected. |
+| **Model connection \*** | **Local**: opens the Model Store as a window (the same store as the app, with sizes and hardware fit); closing it re-reads what is installed. **API key**: the existing provider dialog. **Subscription**: the existing sign-in flow inline. Done when a provider is active **or** a local chat model is downloaded. An embedding model alone is not a chat model. |
+| Embedding model | Recommended, skippable. Download the recommended one, pick another in the store, or skip; skipping says plainly that memory will not work. Independent of how the chat model is connected. |
+| Persona | Name and persona prompt. |
+| Mail (optional) | Gmail, Outlook or custom IMAP/SMTP, using the same dialogs as the Mail screen. |
+| **Mail reply model \*** | Appears only once a mail account exists. The model that writes reply drafts (same setting as Settings). Also: a safe switch "prepare reply drafts" (always draft-only mode, nothing is sent on its own) and the time zone, suggested from the device's UTC offset. |
+| Decision model | The Settings section itself; recommended when mail is connected because it performs the incoming-mail security review. |
+| Memory & learning | Memory, the nightly dream consolidation, proactive suggestions, minimal mode. |
+| Voice & images | Speech to text, text to speech and voice, image model (Settings sections). |
+| Channels | WhatsApp and Telegram pairing (Settings tabs, folded). |
+| Privacy & backup | Usage sharing, OS notification permission where available, encrypted cloud backup. |
+| Summary & check | Every step as Done / Skipped / Missing; a row goes back to that step. Also the system check. |
 
-API and subscription users can independently download the local embedding model for memory. Model downloads are optional; the final system check shows readiness and missing connections without forcing a download. A missing local chat model is neutral when an external chat provider is selected.
+## How it decides
 
-Widget tests cover Turkish and English at 360x900, 1100x900 and 1100x600, subscription sign-in through the existing UI, waiting for account models, explicit activation, name preservation and persisted setup completion. A separate mobile test covers the server step and back navigation. Tests use a fake API; live vendor login and the native desktop window were not exercised in this change.
+The rules are pure functions of a snapshot of the real application state
+(`frontend/lib/widgets/setup/setup_progress.dart`): active provider, downloaded
+chat models, embedding model, mail accounts, the twin reply model. There is no
+separate progress record, so the wizard resumes where it was left and stays right
+when something is changed elsewhere. The model step is always required; the reply
+model step is required only while a mail account exists; everything else is
+optional.
+
+## Running it again
+
+Settings -> General can restart the wizard. A re-run starts from the theme in use
+and writes the persona prompt only if it was touched in the wizard, so a custom
+prompt survives (`memo_setup_rerun` flag, cleared when the run finishes).
+
+## Tests
+
+`frontend/test/widgets/setup_progress_test.dart` (rules),
+`setup_steps_test.dart` (step widgets, time zone and drafts writes, both
+languages) and `setup_wizard_test.dart` (gating, mail requirement, store window,
+summary, re-run, the full flow in Turkish and English at 360x900, 1100x900 and
+1100x600).

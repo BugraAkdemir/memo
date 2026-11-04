@@ -304,6 +304,7 @@ autonomy:
 ### Faz 2: Güvenlik Kalkanları, Birleşik Kişi Grafiği ve Salt-Okunur Sistem Araçları (`internal/autonomy` + `internal/twin`)
 
 - [ ] **Adım 3 — Prompt Injection Kalkanı (`shield.go`), Mahremiyet Duvarı ve Outbound DLP Filtresi:**
+  - **Kalan (5 Kasım):** Teknik ve canlı Gmail doğrulaması tamam (`DIGITAL_TWIN_AND_MAIL.md`). Kutu, yalnızca sahibin cihaz kabulünü bekliyor: `docs/DIGITAL_TWIN_DEVICE_ACCEPTANCE.md` **A1–A6** geçince kapanır.
   - **Dosyalar:**
     - `internal/autonomy/shield.go`:
       - `WrapUntrustedExternalMessage`: Dış mesajları `<untrusted_external_message sender="..." channel="...">` sınırları içine alır ve sistem talimatlarının değiştirilemeyeceğini bildirir.
@@ -325,6 +326,7 @@ autonomy:
     - **Kullanıcı testi bekleniyor:** Görünüm/charset ve restart sayaçları; sahte anahtar içeren gerçek gönderim/taslak → güvenlik reddi; panelin TR/EN görünümü. Eski mailler yeniden işlenmez; önceden kaybolan sayaçlar ve bozuk RAG metni otomatik geri getirilemez. Ayrıntılar `docs/MAIL_SECURITY.md`.
 
 - [ ] **Adım 4 — Dijital İkiz Veritabanı (`internal/twin`), Birleşik Kişi Grafiği, Üslup Klonlayıcı ve Salt-Okunur Araçlar:**
+  - **Kalan (5 Kasım):** Teknik ve canlı doğrulama tamam. Kutu, yalnızca sahibin cihaz kabulünü bekliyor: `docs/DIGITAL_TWIN_DEVICE_ACCEPTANCE.md` **B1–B9** geçince kapanır. WhatsApp/Telegram `#onay` (C) ve ses (D) Adım 5–6'nın ayrı cihaz maddeleridir.
   - **Dosyalar:**
     - `internal/twin/store.go`: `data/twin/twin.db` SQLite şeması (`contacts`, `contact_aliases`, `twin_preferences`, `commitments`, `processed_external_events`, `pending_autonomous_actions`, `twin_audit_log`).
     - `internal/twin/contact_graph.go` & `internal/twin/style_cloner.go`: Aynı kişinin Mail/WhatsApp/Telegram adreslerini birleştirme ve kullanıcının o kişiye yazdığı geçmiş mesajlardan `StyleProfile` (samimi/resmi, selamlama, dil) çıkarma.

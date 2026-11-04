@@ -110,12 +110,28 @@ düşerdi, aşırı büyük kanıt ise skoru sessizce `unavailable` yapardı. D�
 `TestEngineLongTimelineEvidenceAndLongMailStillGetAReply` (önce kırmızı, sonra yeşil). Canlı yeniden deneme: iki
 soru da taslak üretti; özet, söz ve takvim bilgisini birleştirdi, dişçiyi anmadı.
 
-### Bulunan, düzeltilmeyenler
+### Sonraki tur (5 Kasım): kalan açıkların kapatılması
 
-- **Skor modeli ve yazma modeli aynı yavaş sağlayıcıyı bekletiyor.** Aynı anda birkaç mail işlenirken 5 sn'lik
+| Açık | Ne yapıldı | Kanıt |
+|---|---|---|
+| Sohbette bekleyen taslak listesi yok | Salt-okunur `twin_pending_actions` aracı (yalnız `pending`, en çok 20, 160 karakter önizleme); sistem istemi "yok" demeden önce çağırmasını söyler | Birim testi (önce kırmızı), `-race` yeşil; Flutter etiketi TR/EN |
+| 5 sn skorlayıcı sıradan maili tutuyor | Yalnız mail risk incelemesi/skoru 15 sn bekler; sohbet yolundaki kararlar 5 sn kalır. Tutma (fail-closed) ve tek yeniden deneme aynı | Test + mutasyon (tek satırı geri alınca canlıdaki `review_unavailable` ile kırmızı). Canlıda 7,7 sn'lik bir inceleme artık tamamlandı |
+| Otomatik gönderim + geri al canlıda yok | **Doğrulandı:** skor 1, `grace_period_auto`, 60 sn pencere, hesap 14'e tam 1 `Re:` maili | Gerçek Gmail + Subscriptions |
+| Göreve dönüştür | **Doğrulandı:** `idle` liste oluştu, ikinci deneme 409, çalışan görev yok, silindi | Canlı HTTP |
+| Radar vadesi canlıda | **Gözlenmedi:** soru 00:54'te kuruldu (vade 01:54:45), beklenmedi; kayıt kapatıldı. Vade anı hermetik testte gözlendi | Yalnız hermetik |
+| Cihaz maddeleri | `DIGITAL_TWIN_DEVICE_ACCEPTANCE.md`: A–D, ~25 dk | Senin cihazında |
+| Arayüzde neden metinleri | Üç kopya `switch` tek tabloya indi; 6 yeni neden TR/EN | Flutter 950/950 |
+
+Canlıda yeni görülenler:
+- **Giriş incelemesi bir kez yanlış pozitif verdi:** "Memo projesinin git durumuna bakıp söyle… evet ya da hayır, tek cümle" mesajı `prompt_injection` sayıldı; aynı soru daha doğal yazılınca geçti. Bu LLM tabanlı inceleme eşiğinin (≥0,5) doğal sonucu; değiştirilmedi.
+- Model, kanıtın kesin cevap vermediği git sorusunda **doğru şekilde temkinli** davranıp yanıtı olgusal işaretlemedi; otomatik gönderim yalnız kanıtın kesin olduğu soruda tetiklendi.
+
+### Bulunan, düzeltilmeyenler (4 Kasım listesi; yukarıdaki tabloyla güncellendi)
+
+- *(5 Kasım: mail incelemesi 15 sn'ye çıkarıldı, yukarıdaki tabloya bak; sağlayıcıyı paylaşma durumu aynı.)* **Skor modeli ve yazma modeli aynı yavaş sağlayıcıyı bekletiyor.** Aynı anda birkaç mail işlenirken 5 sn'lik
   skorlayıcı çağrıları proxy'de `499` ile iptal oldu ve CC maili `review_unavailable` ile tutuldu (güvenli taraf;
   mail kaybolmadı, yeniden gönderilince işlendi). Yoğun trafikte sıradan mailler gecikir.
-- **Sohbette bekleyen taslakları listeleyen araç yok.** Model "bekleyen taslak yok" dedi, oysa dört taslak vardı.
+- *(5 Kasım: `twin_pending_actions` eklendi, düzeltildi.)* **Sohbette bekleyen taslakları listeleyen araç yoktu.** Model "bekleyen taslak yok" dedi, oysa dört taslak vardı.
   Araç eksikliğinde model "bilmiyorum" yerine "yok" diyor.
 - **Otomatik gönderim + geri al canlıda yine gözlenemedi:** gerçek model proje sorusunda `git_project_status`
   yerine `search_memory` seçti ve yanıtı olgusal (`factual`) işaretlemedi → skor istenmedi. Bu yol hermetik

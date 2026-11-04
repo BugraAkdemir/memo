@@ -410,7 +410,8 @@ autonomy:
     - `utils/tool_names.dart` & `core/l10n.dart`: Tüm yeni kullanıcı arayüzü metinlerinin ve araç etiketlerinin eksiksiz Türkçe ve İngilizce karşılıkları (**`AGENTS.md` Kural #8 — sıfır hardcoded UI string**).
   - **Testler & Canlı Doğrulama:** `go test -tags "sqlite_fts5" ./... -race`, `flutter analyze lib/`, 947 widget/unit testi, L10n hardcoded string taraması ve gerçek Gmail (`akdemirbugra5@gmail.com` ↔ `akdemirbugra14@gmail.com`) + Subscriptions (`gemini-3.8-flash-high`) üzerinde tüm REPL komutları ile sohbet araçlarının uçtan uca canlı doğrulanması PASS.
 
-- [ ] **Adım 9 — Gerçek Uçtan Uca (E2E) Test Paketi (`internal/e2e/mail_autonomy_e2e_test.go`) ve Dokümantasyon:**
+- [x] **Adım 9 — Gerçek Uçtan Uca (E2E) Test Paketi (`internal/e2e/mail_autonomy_e2e_test.go`) ve Dokümantasyon:**
+  - **Sonuç (4 Kasım):** 4 senaryo da `internal/e2e/mail_autonomy_e2e_test.go` içinde yazıldı ve `-race` ile 5 tekrarda yeşil (gerçek IMAP/SMTP istemcileri + loopback TLS IMAP/SMTP, sahte model). Gerçek Gmail 5↔14 + Subscriptions üzerinde canlı doğrulandı; ayrıntı, ilk denemede görülen `reply_provider_failed`, skor modeli zaman aşımının sıradan maili tutması ve doğrulanamayanlar (WhatsApp/Telegram `#onay`, ses, geri al+otomatik gönderim canlıda tekrar denenmedi) `docs/DIGITAL_TWIN_AND_MAIL.md` içinde.
   - **Senaryolar (`internal/e2e/`):**
     1. **Otonom Proje Kontrolü & Güvenlik Kilidi:** Arkadaştan *"kanka şu xxx projesini merge ettin mi?"* mesajı geldiğinde geçici Git reposunda merge durumunun okunması, üsluba uygun yanıt hazırlanması ve dış mesaj bağlamında `run_command` çağrısının kesin olarak reddedildiğinin doğrulanması.
     2. **Çapraz Kanal Kişi Durumu:** *"Memo, Ahmet'ten gelen maillerin ve konuşmaların durumu ne?"* sorusunda Mail + WhatsApp + Takvim + Sözler verilerinin birleştirilip doğru özetlenmesi.

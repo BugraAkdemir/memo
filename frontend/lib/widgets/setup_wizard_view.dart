@@ -21,6 +21,7 @@ import '../providers/telemetry_provider.dart';
 import 'persona_picker.dart';
 import 'provider_config_dialog.dart';
 import 'setup/setup_progress.dart';
+import 'setup/setup_widgets.dart';
 import 'settings/tabs/subscriptions_tab.dart';
 import 'telemetry_details.dart';
 
@@ -415,19 +416,19 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                   : baseLabels[i],
           ];
           final pages = <Widget Function()>[
-            () => _SetupPage(
+            () => SetupPage(
               title: L10n.t('setup_step_language_theme'),
               color: c,
               child: Builder(
                 builder: (context) {
-                  final languageCard = _Card(
+                  final languageCard = SetupCard(
                     color: c,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _Label(text: L10n.t('language'), color: c),
+                        SetupLabel(text: L10n.t('language'), color: c),
                         SizedBox(height: 10),
-                        _Pill(
+                        SetupPill(
                           label: L10n.t('language_tr'),
                           selected: L10n.locale == MemoLocale.tr,
                           accent: MemoTheme.accent,
@@ -439,7 +440,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                           }),
                         ),
                         SizedBox(height: 6),
-                        _Pill(
+                        SetupPill(
                           label: L10n.t('language_en'),
                           selected: L10n.locale == MemoLocale.en,
                           accent: MemoTheme.accent,
@@ -453,14 +454,14 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                       ],
                     ),
                   );
-                  final themeCard = _Card(
+                  final themeCard = SetupCard(
                     color: c,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _Label(text: L10n.t('theme'), color: c),
+                        SetupLabel(text: L10n.t('theme'), color: c),
                         SizedBox(height: 10),
-                        _Pill(
+                        SetupPill(
                           label: L10n.t('theme_dark'),
                           selected: _selectedTheme == 'dark',
                           accent: MemoTheme.accent,
@@ -468,7 +469,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                           onTap: () => setState(() => _selectedTheme = 'dark'),
                         ),
                         SizedBox(height: 6),
-                        _Pill(
+                        SetupPill(
                           label: L10n.t('theme_light'),
                           selected: _selectedTheme == 'light',
                           accent: MemoTheme.accent,
@@ -476,7 +477,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                           onTap: () => setState(() => _selectedTheme = 'light'),
                         ),
                         SizedBox(height: 6),
-                        _Pill(
+                        SetupPill(
                           label: L10n.t('theme_system'),
                           selected: _selectedTheme == 'system',
                           accent: MemoTheme.accent,
@@ -505,7 +506,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                 },
               ),
             ),
-            () => _SetupPage(
+            () => SetupPage(
               title: L10n.t('setup_step_persona'),
               subtitle: L10n.t('setup_step_persona_desc'),
               color: c,
@@ -525,13 +526,13 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                 onCustomTextChanged: (_) {},
               ),
             ),
-            () => _SetupPage(
+            () => SetupPage(
               title: L10n.t('setup_step_model'),
               subtitle: L10n.t('setup_connection_intro'),
               color: c,
               child: _buildConnection(c),
             ),
-            () => _SetupPage(
+            () => SetupPage(
               title: L10n.t('setup_step_preferences'),
               subtitle: L10n.t('setup_step_preferences_desc'),
               color: c,
@@ -549,7 +550,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
 
                   return Column(
                     children: [
-                      _PreferenceToggle(
+                      SetupPreferenceToggle(
                         icon: Icons.psychology_outlined,
                         title: L10n.t('learning_proactive_title'),
                         desc: L10n.t('setup_pref_proactive_desc'),
@@ -562,7 +563,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                                   .update(v, proactiveLevel),
                       ),
                       SizedBox(height: 10),
-                      _PreferenceToggle(
+                      SetupPreferenceToggle(
                         icon: Icons.speed_outlined,
                         title: L10n.t('minimal_mode_section'),
                         desc: L10n.t('setup_pref_minimal_desc'),
@@ -584,7 +585,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                       // any reason for it.
                       if (notificationsSupported) ...[
                         SizedBox(height: 10),
-                        _PreferenceToggle(
+                        SetupPreferenceToggle(
                           icon: Icons.notifications_active_outlined,
                           title: L10n.t('notif_permission_title'),
                           desc: L10n.t('notif_permission_desc'),
@@ -600,11 +601,11 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                 },
               ),
             ),
-            () => _SetupPage(
+            () => SetupPage(
               title: L10n.t('setup_step_check'),
               color: c,
 
-              child: _Card(
+              child: SetupCard(
                 color: c,
                 child: Column(
                   children: [
@@ -646,14 +647,14 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                       ],
                     ),
                     SizedBox(height: 14),
-                    _DiagRow(
+                    SetupDiagRow(
                       title: L10n.t('backend_connection'),
                       ok: _backendOk,
                       color: c,
                       tooltip: L10n.t('setup_check_backend_tooltip'),
                     ),
                     SizedBox(height: 8),
-                    _DiagRow(
+                    SetupDiagRow(
                       title: L10n.t('local_models_status'),
                       ok: _modelsOk,
                       optional: _providerConfigured,
@@ -661,7 +662,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                       tooltip: L10n.t('setup_check_models_tooltip'),
                     ),
                     SizedBox(height: 8),
-                    _DiagRow(
+                    SetupDiagRow(
                       title: L10n.t('setup_check_ready'),
                       ok: _modelsOk || _providerConfigured,
                       color: c,
@@ -1006,7 +1007,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                 for (final option in options)
                   SizedBox(
                     width: width,
-                    child: _ConnectionChoice(
+                    child: SetupConnectionChoice(
                       key: ValueKey('setup_connection_${option.$1}'),
                       color: c,
                       selected: _connection == option.$1,
@@ -1050,7 +1051,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
             },
           ),
         if (_connection == 'api')
-          _Card(
+          SetupCard(
             color: c,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1117,7 +1118,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
           ),
         if (_connection != 'local' && !_hasEmbeddingModel) ...[
           const SizedBox(height: 20),
-          _Card(
+          SetupCard(
             color: c,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1191,215 +1192,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
-class _SetupPage extends StatelessWidget {
-  final String title;
-  final String? subtitle;
-  final Widget child;
-  final ThemeColors color;
-  const _SetupPage({
-    required this.title,
-    this.subtitle,
-    required this.child,
-    required this.color,
-  });
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(
-        title,
-        style: TextStyle(
-          fontSize: 26,
-          height: 1.2,
-          fontWeight: FontWeight.w700,
-          color: color.textMain,
-        ),
-      ),
-      if (subtitle != null) ...[
-        const SizedBox(height: 10),
-        Text(
-          subtitle!,
-          style: TextStyle(fontSize: 13, height: 1.5, color: color.textDim),
-        ),
-      ],
-      const SizedBox(height: 24),
-      child,
-    ],
-  );
-}
-
-class _ConnectionChoice extends StatelessWidget {
-  final ThemeColors color;
-  final bool selected;
-  final IconData icon;
-  final String title, description;
-  final VoidCallback onTap;
-  const _ConnectionChoice({
-    super.key,
-    required this.color,
-    required this.selected,
-    required this.icon,
-    required this.title,
-    required this.description,
-    required this.onTap,
-  });
-  @override
-  Widget build(BuildContext context) => Semantics(
-    selected: selected,
-    button: true,
-    child: Material(
-      color: selected ? MemoTheme.accent.withValues(alpha: .10) : color.bgApp,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: selected ? MemoTheme.accent : color.borderSoft),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(icon, color: MemoTheme.accent, size: 24),
-                  const Spacer(),
-                  Icon(
-                    selected ? Icons.check_circle : Icons.circle_outlined,
-                    size: 18,
-                    color: selected ? MemoTheme.accent : color.textDim,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: color.textMain,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                description,
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.5,
-                  color: color.textDim,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-/// A small "?" affordance that explains a term or control on hover — for
-/// someone who's never run a local AI model before, "chat model" vs "memory
-/// model" or "API provider" aren't self-explanatory just from a label.
-class _InfoTip extends StatelessWidget {
-  final String message;
-  final ThemeColors color;
-
-  const _InfoTip({required this.message, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: message,
-      waitDuration: const Duration(milliseconds: 300),
-      child: Icon(Icons.help_outline_rounded, size: 14, color: color.textDim),
-    );
-  }
-}
-
-class _Card extends StatelessWidget {
-  final Widget child;
-  final ThemeColors color;
-
-  const _Card({required this.child, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.bgApp,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.borderSoft),
-      ),
-      child: child,
-    );
-  }
-}
-
-class _Label extends StatelessWidget {
-  final String text;
-  final ThemeColors color;
-
-  const _Label({required this.text, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontWeight: FontWeight.w600,
-        fontSize: 13,
-        color: color.textMain,
-      ),
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final Color accent;
-  final ThemeColors color;
-  final VoidCallback onTap;
-
-  const _Pill({
-    required this.label,
-    required this.selected,
-    required this.accent,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      selected: selected,
-      child: OutlinedButton(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          backgroundColor: selected
-              ? accent.withValues(alpha: .10)
-              : color.bgElement,
-          foregroundColor: selected ? accent : color.textSecondary,
-          side: BorderSide(color: selected ? accent : color.borderSoft),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// One background preference the user can decide on right away instead of
 /// discovering it later — title, plain-language explanation, and a switch
 /// that applies immediately (same provider Settings itself uses, so nothing
@@ -1420,7 +1212,7 @@ class SetupTelemetryToggle extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 10),
-        _PreferenceToggle(
+        SetupPreferenceToggle(
           icon: Icons.insights_outlined,
           title: L10n.t('setup_pref_telemetry_title'),
           desc: L10n.t('setup_pref_telemetry_desc'),
@@ -1461,81 +1253,6 @@ class SetupTelemetryToggle extends ConsumerWidget {
   }
 }
 
-class _PreferenceToggle extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String desc;
-  final bool value;
-  final ThemeColors color;
-  final ValueChanged<bool>? onChanged;
-
-  const _PreferenceToggle({
-    required this.icon,
-    required this.title,
-    required this.desc,
-    required this.value,
-    required this.color,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: color.bgApp,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.borderSoft),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: MemoTheme.accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 16, color: MemoTheme.accent),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: color.textMain,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  desc,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    height: 1.4,
-                    color: color.textDim,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeThumbColor: MemoTheme.accent,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ModelRecommendationCard extends StatelessWidget {
   final ThemeColors color;
   final bool checking;
@@ -1563,7 +1280,7 @@ class _ModelRecommendationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Card(
+    return SetupCard(
       color: color,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1629,13 +1346,13 @@ class _ModelRecommendationCard extends StatelessWidget {
           ),
         ),
         SizedBox(height: 10),
-        _SpecRow(
+        SetupSpecRow(
           label: L10n.t('setup_model_ram'),
           value: ramLine,
           color: color,
         ),
         SizedBox(height: 4),
-        _SpecRow(
+        SetupSpecRow(
           label: L10n.t('setup_model_gpu'),
           value: gpuLine,
           color: color,
@@ -1650,7 +1367,7 @@ class _ModelRecommendationCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _SpecRow(
+              SetupSpecRow(
                 label: L10n.t('setup_model_chat_label'),
                 value: '${chatModel.name} (${chatModel.sizeFormatted})',
                 color: color,
@@ -1658,7 +1375,7 @@ class _ModelRecommendationCard extends StatelessWidget {
                 tooltip: L10n.t('setup_model_chat_tooltip'),
               ),
               SizedBox(height: 4),
-              _SpecRow(
+              SetupSpecRow(
                 label: L10n.t('setup_model_memory_label'),
                 value: memModel.name,
                 color: color,
@@ -1720,189 +1437,13 @@ class _ModelRecommendationCard extends StatelessWidget {
           )
         else ...[
           for (final d in downloads) ...[
-            _DownloadProgressRow(progress: d, color: color),
+            SetupDownloadProgressRow(progress: d, color: color),
             SizedBox(height: 8),
           ],
           Text(
             L10n.t('setup_model_download_bg_note'),
             style: TextStyle(fontSize: 11, color: color.textDim, height: 1.4),
           ),
-        ],
-      ],
-    );
-  }
-}
-
-class _SpecRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final ThemeColors color;
-  final bool bold;
-  final String? tooltip;
-
-  const _SpecRow({
-    required this.label,
-    required this.value,
-    required this.color,
-    this.bold = false,
-    this.tooltip,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 100,
-          child: Row(
-            children: [
-              Flexible(
-                child: Text(
-                  label,
-                  style: TextStyle(fontSize: 12, color: color.textDim),
-                ),
-              ),
-              if (tooltip != null) ...[
-                SizedBox(width: 4),
-                _InfoTip(message: tooltip!, color: color),
-              ],
-            ],
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
-              color: color.textMain,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DownloadProgressRow extends StatelessWidget {
-  final DownloadProgress progress;
-  final ThemeColors color;
-
-  const _DownloadProgressRow({required this.progress, required this.color});
-
-  /// Parses the backend's already-formatted speed string (e.g. "3.2 MB/s",
-  /// from Go's `formatSpeed`) back into bytes/sec, then estimates time
-  /// remaining from `totalBytes - downloaded`. A non-technical user staring
-  /// at a raw percentage with no sense of whether this takes 30 seconds or
-  /// 30 minutes is the #1 reason downloads get abandoned mid-way.
-  String? _etaLabel() {
-    final p = progress;
-    if (p.speed.isEmpty || p.totalBytes <= 0) return null;
-    final match = RegExp(r'([\d.]+)\s*(B|KB|MB|GB)/s').firstMatch(p.speed);
-    if (match == null) return null;
-    final value = double.tryParse(match.group(1)!);
-    if (value == null || value <= 0) return null;
-    final unit = match.group(2);
-    final bytesPerSec = switch (unit) {
-      'GB' => value * 1024 * 1024 * 1024,
-      'MB' => value * 1024 * 1024,
-      'KB' => value * 1024,
-      _ => value,
-    };
-    final remainingBytes = p.totalBytes - p.downloaded;
-    if (remainingBytes <= 0 || bytesPerSec <= 0) return null;
-    final seconds = remainingBytes / bytesPerSec;
-    if (seconds < 60) {
-      return L10n.t('setup_eta_seconds', {'s': '${seconds.round()}'});
-    }
-    final minutes = (seconds / 60).round();
-    return L10n.t('setup_eta_minutes', {'m': '$minutes'});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = progress;
-    final pct = p.percent.clamp(0, 100).toDouble();
-    final label = p.filename.isNotEmpty
-        ? p.filename
-        : L10n.t('setup_preparing');
-    final speedSuffix = p.speed.isNotEmpty ? ' (${p.speed})' : '';
-    final eta = _etaLabel();
-    final etaSuffix = eta != null ? ' — $eta' : '';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: pct > 0 ? pct / 100 : null,
-            minHeight: 6,
-            backgroundColor: color.bgElement,
-            color: MemoTheme.accent,
-          ),
-        ),
-        SizedBox(height: 6),
-        Text(
-          '$label — %${pct.toStringAsFixed(0)}$speedSuffix$etaSuffix',
-          style: TextStyle(fontSize: 11, color: color.textDim),
-        ),
-      ],
-    );
-  }
-}
-
-class _DiagRow extends StatelessWidget {
-  final String title;
-  final bool ok;
-  final bool optional;
-  final ThemeColors color;
-  final String? tooltip;
-
-  const _DiagRow({
-    required this.title,
-    required this.ok,
-    this.optional = false,
-    required this.color,
-    this.tooltip,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(
-          ok
-              ? Icons.check_circle_rounded
-              : optional
-              ? Icons.remove_circle_outline
-              : Icons.error_outline_rounded,
-          color: ok
-              ? MemoTheme.green
-              : optional
-              ? color.textDim
-              : MemoTheme.red,
-          size: 20,
-        ),
-        SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            title,
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.4,
-              color: ok
-                  ? color.textMain
-                  : optional
-                  ? color.textDim
-                  : MemoTheme.red,
-            ),
-          ),
-        ),
-        if (tooltip != null) ...[
-          SizedBox(width: 6),
-          _InfoTip(message: tooltip!, color: color),
         ],
       ],
     );

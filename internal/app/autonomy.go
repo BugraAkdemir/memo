@@ -271,5 +271,5 @@ func (a *App) callMailScorer(ctx context.Context, system, user string) (string, 
 	if provider.IsOptInOnly(selected.Type) {
 		return "", fmt.Errorf("web chats cannot score background mail")
 	}
-	return a.callDecisionModel(ctx, system, user, 16)
+	return a.callDecisionModelWithin(ctx, mailScorerTimeout, system, user, 16)
 }

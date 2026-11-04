@@ -157,7 +157,9 @@ void main() {
         overrides: [
           prefsProvider.overrideWithValue(prefs),
           apiClientProvider.overrideWithValue(api),
-          authGateProvider.overrideWith((ref) => Stream.value(AuthGateInfo(gate))),
+          authGateProvider.overrideWith(
+            (ref) => Stream.value(AuthGateInfo(gate)),
+          ),
           gpuInfoProvider.overrideWith((ref) async => const GPUInfo()),
         ],
         child: const MaterialApp(home: Scaffold(body: SetupWizardOverlay())),
@@ -180,12 +182,21 @@ void main() {
     'phone: the wizard waits for a saved server address and for sign-in',
     (tester) async {
       await pumpMobileWizard(tester, api: _Api(), savedUrl: '');
-      expect(find.byKey(const Key('setup_next')), findsNothing,
-          reason: 'no address yet: the connect screen owns the phone');
-      await pumpMobileWizard(tester,
-          api: _Api(), gate: AuthGateState.loginNeeded);
-      expect(find.byKey(const Key('setup_next')), findsNothing,
-          reason: 'signed out: the login gate owns the phone');
+      expect(
+        find.byKey(const Key('setup_next')),
+        findsNothing,
+        reason: 'no address yet: the connect screen owns the phone',
+      );
+      await pumpMobileWizard(
+        tester,
+        api: _Api(),
+        gate: AuthGateState.loginNeeded,
+      );
+      expect(
+        find.byKey(const Key('setup_next')),
+        findsNothing,
+        reason: 'signed out: the login gate owns the phone',
+      );
       await tester.pumpWidget(const SizedBox.shrink());
     },
     variant: TargetPlatformVariant({TargetPlatform.android}),
@@ -207,6 +218,88 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
     variant: TargetPlatformVariant({TargetPlatform.android}),
+  );
+
+  Future<void> pumpDesktopWizard(WidgetTester tester, _Api api) async {
+    tester.view.physicalSize = const Size(1100, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          prefsProvider.overrideWithValue(prefs),
+          apiClientProvider.overrideWithValue(api),
+          providerListProvider.overrideWith(_Providers.new),
+          activeProviderTypeProvider.overrideWith(_Active.new),
+          subscriptionsProvider.overrideWith(() => _Subs(api)),
+          gpuInfoProvider.overrideWith((ref) async => const GPUInfo()),
+          downloadProgressProvider.overrideWith(
+            (ref) => Stream.value(<DownloadProgress>[]),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: SetupWizardOverlay())),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  FilledButton nextButton(WidgetTester tester) =>
+      tester.widget<FilledButton>(find.byKey(const Key('setup_next')));
+
+  testWidgets(
+    'the model step is required: starred, and nothing moves on or finishes without a model',
+    (tester) async {
+      await pumpDesktopWizard(tester, _Api());
+      expect(find.text('${L10n.t('setup_step_model')} *'), findsOneWidget);
+      // Language, then persona: free to move on.
+      expect(nextButton(tester).onPressed, isNotNull);
+      await tester.tap(find.byKey(const Key('setup_next')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('setup_next')));
+      await tester.pumpAndSettle();
+      // The model page: required and empty, so "next" is off.
+      expect(nextButton(tester).onPressed, isNull);
+      // Jumping ahead through the side list still cannot finish.
+      await tester.tap(find.text(L10n.t('setup_step_check')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('setup_missing_required')), findsOneWidget);
+      expect(nextButton(tester).onPressed, isNull);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+    variant: TargetPlatformVariant({TargetPlatform.linux}),
+  );
+
+  testWidgets(
+    'a downloaded local chat model satisfies the required step',
+    (tester) async {
+      final api = _Api(
+        localModels: [
+          const LocalModel(
+            repoId: 'chat',
+            filename: 'chat.gguf',
+            size: 1,
+            path: '/test/chat.gguf',
+            isEmbedding: false,
+          ),
+        ],
+      );
+      await pumpDesktopWizard(tester, api);
+      await tester.tap(find.byKey(const Key('setup_next')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('setup_next')));
+      await tester.pumpAndSettle();
+      expect(nextButton(tester).onPressed, isNotNull);
+      await tester.tap(find.text(L10n.t('setup_step_check')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('setup_missing_required')), findsNothing);
+      expect(nextButton(tester).onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+    variant: TargetPlatformVariant({TargetPlatform.linux}),
   );
 
   for (final locale in MemoLocale.values) {

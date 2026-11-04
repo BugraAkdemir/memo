@@ -20,6 +20,7 @@ import '../providers/settings_provider.dart';
 import '../providers/telemetry_provider.dart';
 import 'persona_picker.dart';
 import 'provider_config_dialog.dart';
+import 'setup/setup_progress.dart';
 import 'settings/tabs/subscriptions_tab.dart';
 import 'telemetry_details.dart';
 
@@ -333,6 +334,17 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     }
   }
 
+  /// What the wizard knows about the app right now. A recommended model whose
+  /// download just finished counts as a local chat model even before the next
+  /// diagnostics refresh. Mail fields join in with the mail steps.
+  SetupSnapshot get _snapshot => SetupSnapshot(
+    hasActiveProvider: _providerConfigured,
+    localChatModels: _modelDownloadDone && _localModelCount == 0
+        ? 1
+        : _localModelCount,
+    hasEmbeddingModel: _hasEmbeddingModel,
+  );
+
   int _page = 0;
   String _connection = 'local';
   bool _connectingSubscription = false;
@@ -366,12 +378,41 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
           final wide =
               constraints.maxWidth >= 800 && constraints.maxHeight >= 680;
           final narrow = constraints.maxWidth < 560;
-          final labels = [
+          // Which step each page is, so required steps can be judged from the
+          // real state (setup_progress.dart) instead of the page number.
+          const pageSteps = [
+            SetupStepId.languageTheme,
+            SetupStepId.persona,
+            SetupStepId.model,
+            SetupStepId.memory,
+            SetupStepId.summary,
+          ];
+          final snapshot = _snapshot;
+          final missing = missingRequiredSteps(snapshot);
+          final canFinish = canFinishSetup(snapshot);
+          // A required step must be done before moving past it.
+          final blocksNext =
+              _page < pageSteps.length &&
+              stepState(pageSteps[_page], snapshot) ==
+                  SetupStepState.requiredTodo;
+          // Warn about a required step only once the user has reached it, so the
+          // list does not open with an alarm; before that the * is enough.
+          bool needsAttention(int i) =>
+              i <= _page &&
+              stepState(pageSteps[i], snapshot) == SetupStepState.requiredTodo;
+          final baseLabels = [
             L10n.t('setup_step_language_theme'),
             L10n.t('setup_step_persona'),
             L10n.t('setup_step_model'),
             L10n.t('setup_step_preferences'),
             L10n.t('setup_step_check'),
+          ];
+          // A trailing * marks what cannot be skipped.
+          final labels = [
+            for (var i = 0; i < baseLabels.length; i++)
+              requiredSteps(snapshot).contains(pageSteps[i])
+                  ? '${baseLabels[i]} *'
+                  : baseLabels[i],
           ];
           final pages = <Widget Function()>[
             () => _SetupPage(
@@ -625,6 +666,32 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                       ok: _modelsOk || _providerConfigured,
                       color: c,
                     ),
+                    if (missing.isNotEmpty) ...[
+                      SizedBox(height: 12),
+                      Container(
+                        key: const Key('setup_missing_required'),
+                        padding: EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: MemoTheme.warningOrange.withValues(
+                            alpha: 0.08,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          L10n.t('setup_missing_required', {
+                            'steps': missing
+                                .where(pageSteps.contains)
+                                .map((s) => baseLabels[pageSteps.indexOf(s)])
+                                .join(', '),
+                          }),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: MemoTheme.warningOrange,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
                     if (!_backendOk || !(_modelsOk || _providerConfigured)) ...[
                       SizedBox(height: 12),
                       Container(
@@ -723,10 +790,19 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                                             selectedTileColor: MemoTheme.accent
                                                 .withValues(alpha: .12),
                                             leading: Icon(
-                                              i < _page
+                                              needsAttention(i)
+                                                  ? Icons.error_outline
+                                                  : (i < _page ||
+                                                        stepState(
+                                                              pageSteps[i],
+                                                              snapshot,
+                                                            ) ==
+                                                            SetupStepState.done)
                                                   ? Icons.check_circle_outline
                                                   : Icons.circle_outlined,
-                                              color: i == _page
+                                              color: needsAttention(i)
+                                                  ? MemoTheme.warningOrange
+                                                  : i == _page
                                                   ? MemoTheme.accent
                                                   : c.textDim,
                                               size: 20,
@@ -850,10 +926,10 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                                       const Spacer(),
                                       FilledButton.icon(
                                         key: const Key('setup_next'),
-                                        onPressed: _saving
+                                        onPressed: _saving || blocksNext
                                             ? null
                                             : _page == pages.length - 1
-                                            ? _saveSetup
+                                            ? (canFinish ? _saveSetup : null)
                                             : () => _goTo(_page + 1),
                                         icon: _saving
                                             ? const SizedBox(

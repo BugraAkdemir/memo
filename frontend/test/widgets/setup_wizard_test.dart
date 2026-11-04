@@ -375,6 +375,28 @@ void main() {
   );
 
   testWidgets(
+    'decision model, memory and voice/image have their own optional pages',
+    (tester) async {
+      await pumpDesktopWizard(tester, _Api(localModels: chatModel));
+      for (final step in [
+        ('setup_step_decision', 'decision_tab_title'),
+        ('setup_step_preferences', 'setup_memory_enabled_title'),
+        ('setup_step_voice_image', 'stt_providers_title'),
+      ]) {
+        // Optional: no star on the label, and "next" stays available.
+        expect(find.text('${L10n.t(step.$1)} *'), findsNothing);
+        await tapStep(tester, L10n.t(step.$1));
+        expect(find.text(L10n.t(step.$2)), findsWidgets, reason: step.$1);
+        expect(nextButton(tester).onPressed, isNotNull, reason: step.$1);
+      }
+      expect(find.text(L10n.t('image_section_title')), findsWidgets);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+    variant: TargetPlatformVariant({TargetPlatform.linux}),
+  );
+
+  testWidgets(
     'choosing local opens the Model Store window instead of one recommendation',
     (tester) async {
       await pumpDesktopWizard(tester, _Api());
@@ -507,8 +529,10 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.text('Ada'), findsOneWidget);
           await next(); // -> mail
-          await next(); // mail skipped -> preferences
-          await next(); // -> summary
+          await next(); // mail skipped -> decision model
+          await next(); // decision skipped -> memory and learning
+          await next(); // memory -> voice and images
+          await next(); // voice and images skipped -> summary
           await next(); // finish
           expect(api.completed, true);
           expect(api.prompt, contains('Ada'));

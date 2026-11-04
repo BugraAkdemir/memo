@@ -60,7 +60,11 @@ Mail bağlama isteğe bağlı; **mail bağlanırsa mail (yanıt) modeli seçmek 
       Mail adımı (isteğe bağlı; Gmail / Outlook / Diğer) ve **mail yanıt modeli adımı** (mail bağlanınca listeye
       girer, `*` zorunlu; kaydedilmeden "Sonraki" ve "Başla" kapalı; güvenli anahtar: yanıt taslağı hazırla, hiçbir
       şey kendiliğinden gitmez). Yan liste kaydırılabilir (adım sayısı artıyor). Flutter 977/977.
-- [ ] **U4 — Model/ayar adımları:** karar modeli, hafıza ve öğrenme, ses ve görsel.
+- [x] **U4 — Model/ayar adımları:** karar modeli (`decision_step.dart`, Ayarlar bölümünün kendisi; mail bağlıysa
+      güvenlik incelemesi için önerilir), hafıza ve öğrenme (`memory_step.dart`: hafıza, rüya, proaktif öneri,
+      minimal mod; gömme modeli yoksa uyarır), ses ve görsel (`voice_image_step.dart`: STT, TTS, ses, görsel
+      model; hepsi Ayarlar bölümlerinin kendisi, ikinci kez yapılandırmak gerekmez). Hepsi isteğe bağlı.
+      Telemetri ve bildirim anahtarları U5'te "izinler ve gizlilik" adımına taşınacak. Flutter 978/978.
 - [ ] **U5 — Kanallar, izinler, özet:** WhatsApp/Telegram, izinler ve gizlilik, özet ekranı, Ayarlar'dan yeniden aç.
 - [ ] **U6 — Cilalama:** dar/geniş düzen, TR/EN, erişilebilirlik, gerçek uygulamada kabul.
 

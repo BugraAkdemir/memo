@@ -11,20 +11,22 @@ import '../models/curated_models.dart';
 import '../models/persona_presets.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
-import '../providers/learning_provider.dart';
 import '../providers/mail_provider.dart';
 import '../providers/provider_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/telemetry_provider.dart';
 import 'persona_picker.dart';
 import 'provider_config_dialog.dart';
+import 'setup/decision_step.dart';
 import 'setup/embedding_step.dart';
 import 'setup/local_model_step.dart';
 import 'setup/mail_model_step.dart';
 import 'setup/mail_step.dart';
+import 'setup/memory_step.dart';
 import 'setup/model_store_dialog.dart';
 import 'setup/setup_progress.dart';
 import 'setup/setup_widgets.dart';
+import 'setup/voice_image_step.dart';
 import 'settings/tabs/subscriptions_tab.dart';
 import 'telemetry_details.dart';
 
@@ -344,7 +346,9 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     SetupStepId.persona,
     SetupStepId.mail,
     SetupStepId.mailModel,
+    SetupStepId.decision,
     SetupStepId.memory,
+    SetupStepId.voiceImage,
     SetupStepId.summary,
   };
 
@@ -416,6 +420,8 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
             SetupStepId.persona => 'setup_step_persona',
             SetupStepId.mail => 'setup_step_mail',
             SetupStepId.mailModel => 'setup_step_mail_model',
+            SetupStepId.decision => 'setup_step_decision',
+            SetupStepId.voiceImage => 'setup_step_voice_image',
             SetupStepId.memory => 'setup_step_preferences',
             _ => 'setup_step_check',
           });
@@ -573,74 +579,52 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                 onModelChanged: (v) => setState(() => _replyModelSet = v),
               ),
             ),
+            SetupStepId.decision: () => SetupPage(
+              title: L10n.t('setup_step_decision'),
+              subtitle: L10n.t('setup_step_decision_desc'),
+              color: c,
+              child: SetupDecisionStep(
+                color: c,
+                mailConnected: snapshot.hasMail,
+              ),
+            ),
             SetupStepId.memory: () => SetupPage(
               title: L10n.t('setup_step_preferences'),
               subtitle: L10n.t('setup_step_preferences_desc'),
               color: c,
-              child: Consumer(
-                builder: (context, ref, _) {
-                  final learning = ref.watch(learningSettingsProvider);
-                  final learningData = learning.valueOrNull;
-                  final proactiveEnabled =
-                      learningData?['enabled'] as bool? ?? false;
-                  final proactiveLevel =
-                      learningData?['level'] as String? ?? 'subtle';
-
-                  final minimal = ref.watch(minimalModeProvider);
-                  final minimalEnabled = minimal.valueOrNull ?? false;
-
-                  return Column(
-                    children: [
-                      SetupPreferenceToggle(
-                        icon: Icons.psychology_outlined,
-                        title: L10n.t('learning_proactive_title'),
-                        desc: L10n.t('setup_pref_proactive_desc'),
-                        value: proactiveEnabled,
-                        color: c,
-                        onChanged: learning.isLoading
-                            ? null
-                            : (v) => ref
-                                  .read(learningSettingsProvider.notifier)
-                                  .update(v, proactiveLevel),
-                      ),
-                      SizedBox(height: 10),
-                      SetupPreferenceToggle(
-                        icon: Icons.speed_outlined,
-                        title: L10n.t('minimal_mode_section'),
-                        desc: L10n.t('setup_pref_minimal_desc'),
-                        value: minimalEnabled,
-                        color: c,
-                        onChanged: minimal.isLoading
-                            ? null
-                            : (_) => ref
-                                  .read(minimalModeProvider.notifier)
-                                  .toggle(),
-                      ),
-                      const SetupTelemetryToggle(),
-                      // Mobile only: asking for the OS
-                      // notification permission here, rather
-                      // than inside NotificationService.init(),
-                      // is the whole point — init() at launch
-                      // would fire a system prompt before the
-                      // user had seen any of Memo's own UI or
-                      // any reason for it.
-                      if (notificationsSupported) ...[
-                        SizedBox(height: 10),
-                        SetupPreferenceToggle(
-                          icon: Icons.notifications_active_outlined,
-                          title: L10n.t('notif_permission_title'),
-                          desc: L10n.t('notif_permission_desc'),
-                          value: _notifPermissionGranted,
-                          color: c,
-                          onChanged: _notifPermissionAsking
-                              ? null
-                              : (_) => _askNotificationPermission(),
-                        ),
-                      ],
-                    ],
-                  );
-                },
+              child: Column(
+                children: [
+                  SetupMemoryStep(
+                    color: c,
+                    hasEmbeddingModel: _hasEmbeddingModel,
+                  ),
+                  const SetupTelemetryToggle(),
+                  // Mobile only: asking for the OS notification permission
+                  // here, rather than inside NotificationService.init(), is
+                  // the whole point: init() at launch would fire a system
+                  // prompt before the user had seen any of Memo's own UI or
+                  // any reason for it.
+                  if (notificationsSupported) ...[
+                    const SizedBox(height: 10),
+                    SetupPreferenceToggle(
+                      icon: Icons.notifications_active_outlined,
+                      title: L10n.t('notif_permission_title'),
+                      desc: L10n.t('notif_permission_desc'),
+                      value: _notifPermissionGranted,
+                      color: c,
+                      onChanged: _notifPermissionAsking
+                          ? null
+                          : (_) => _askNotificationPermission(),
+                    ),
+                  ],
+                ],
               ),
+            ),
+            SetupStepId.voiceImage: () => SetupPage(
+              title: L10n.t('setup_step_voice_image'),
+              subtitle: L10n.t('setup_step_voice_image_desc'),
+              color: c,
+              child: SetupVoiceImageStep(color: c),
             ),
             SetupStepId.summary: () => SetupPage(
               title: L10n.t('setup_step_check'),

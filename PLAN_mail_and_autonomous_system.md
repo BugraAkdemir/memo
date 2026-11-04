@@ -275,7 +275,8 @@ autonomy:
 
 ### Faz 1: Çekirdek Mail Motoru, Yapısal Ayrıştırıcı ve Arka Plan Dinleyici (`internal/mail`)
 
-- [ ] **Adım 1 — `internal/mail` Çekirdek Paketi, Şifreli Hesap Kasası ve `.ics`/Fatura/Uçuş/OTP Ayrıştırıcı:**
+- [x] **Adım 1 — `internal/mail` Çekirdek Paketi, Şifreli Hesap Kasası ve `.ics`/Fatura/Uçuş/OTP Ayrıştırıcı:**
+  - **Kapanış (5 Kasım):** Planlanan tüm testler (`XOAUTH2`, ISPDB, Türkçe MIME/charset, `.ics`/OTP, şifreli kasa, sahte TLS IMAP + Drafts) `-race` ile yeşil. Gerçek Gmail 5↔14 üzerinde gönder/oku/ara/taslak/ek canlı doğrulandı (3 Kasım gece koşusu ve Adım 8/9 canlıları). Bilinen sınır: Fatura/uçuş/OTP ayrıştırıcıları bilerek YAPISALDIR (Schema.org, `.ics`, tek satırlık kod); düz metin cümlesindeki fatura/uçuş/kod tanınmaz.
   - **Dosyalar:**
     - `internal/mail/types.go`, `internal/mail/autodiscover.go`, `internal/mail/oauth.go`, `internal/mail/imap.go`, `internal/mail/smtp.go`, `internal/mail/manager.go`
     - `internal/mail/vault.go`: Hesap kimlik bilgilerini ve OAuth2 refresh token'larını `config.DataPath("mail/accounts.json")` içinde AES-GCM ile şifreleyen kasa.
@@ -286,7 +287,8 @@ autonomy:
   - **Testler (`internal/mail/mail_test.go`):**
     - `XOAUTH2` SASL paket üretimi, JWT `id_token` çözme, Mozilla ISPDB XML ayrıştırma, Türkçe RFC 2047 başlık ve `multipart/mixed` + `quoted-printable` + `base64` MIME çözme, `.ics` takvim daveti ayrıştırma, OTP/fatura yakalama ve şifreli kasa okuma/yazma testleri.
 
-- [ ] **Adım 2 — Arka Plan Mail Dinleyici (`Watcher`), Tufan Koruması, Triyaj ve REST API Uçları:**
+- [x] **Adım 2 — Arka Plan Mail Dinleyici (`Watcher`), Tufan Koruması, Triyaj ve REST API Uçları:**
+  - **Kapanış (5 Kasım):** Sahte IMAP ile yeni mail algılama, `High-Water Mark` soğuk başlangıç, artımlı eşitleme, yeniden deneme ve kalıcı sayaçlar `-race` ile yeşil; gece E2E'sinde 9/9 PASS; 4 Kasım hermetik tümü-birden testinde tek poll'da 10 mail türü doğru elendi/yönlendirildi, ikinci poll hiçbir şeyi çoğaltmadı. Canlıda gerçek gelen kutusu trafiği (bülten eleme dahil) sayaçlarda izlendi.
   - **Dosyalar:**
     - `internal/mail/watcher.go`: Bağlı hesapları `a.lifecycleCtx` altında dinleyen, `High-Water Mark (last_seen_uid)` ile ilk kurulumda eski maillere bildirim fırtınası atmayan, RFC 3834 otomatik yanıt / bülten / spam ayrımı yapan arka plan döngüsü.
     - `internal/webserver/handlers_mail.go` & `internal/webserver/bridge.go`:

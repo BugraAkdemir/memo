@@ -57,6 +57,20 @@ void main() {
       final prefs = container.read(prefsProvider);
       expect(prefs.getBool('memo_setup_complete'), false);
     });
+
+    test('a re-run is remembered until it is finished, so it cannot overwrite '
+        'choices the user already made', () async {
+      final container = await _containerWith({'memo_setup_complete': true});
+      addTearDown(container.dispose);
+      final prefs = container.read(prefsProvider);
+      expect(prefs.getBool('memo_setup_rerun') ?? false, false);
+
+      await container.read(setupCompleteProvider.notifier).resetSetup();
+      expect(prefs.getBool('memo_setup_rerun'), true);
+
+      await container.read(setupCompleteProvider.notifier).completeSetup();
+      expect(prefs.getBool('memo_setup_rerun') ?? false, false);
+    });
   });
 
   group('BackendUrlNotifier', () {

@@ -23,7 +23,7 @@ class SetupDecisionStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SetupInfoTip(
+        SetupNote(
           color: color,
           message: L10n.t(
             mailConnected

@@ -211,6 +211,8 @@ class SetupCompleteNotifier extends StateNotifier<bool> {
 
   Future<void> completeSetup() async {
     await _prefs.setBool('memo_setup_complete', true);
+    // A finished re-run is no longer a re-run.
+    await _prefs.remove('memo_setup_rerun');
     state = true;
     try {
       await _ref.read(apiClientProvider).setOnboardingComplete(true);
@@ -221,6 +223,9 @@ class SetupCompleteNotifier extends StateNotifier<bool> {
 
   Future<void> resetSetup() async {
     await _prefs.setBool('memo_setup_complete', false);
+    // Remembered so the wizard can tell a re-run from a first run and not
+    // overwrite the persona and theme the user already chose.
+    await _prefs.setBool('memo_setup_rerun', true);
     state = false;
     try {
       await _ref.read(apiClientProvider).setOnboardingComplete(false);

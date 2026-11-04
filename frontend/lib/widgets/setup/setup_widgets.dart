@@ -472,3 +472,32 @@ class SetupDiagRow extends StatelessWidget {
     );
   }
 }
+
+/// A short visible note above a step's controls (unlike [SetupInfoTip], which
+/// is only an icon with a tooltip).
+class SetupNote extends StatelessWidget {
+  final String message;
+  final ThemeColors color;
+
+  const SetupNote({super.key, required this.message, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(Icons.info_outline, size: 16, color: color.textDim),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            message,
+            style: TextStyle(color: color.textDim, fontSize: 12, height: 1.5),
+          ),
+        ),
+      ],
+    );
+  }
+}

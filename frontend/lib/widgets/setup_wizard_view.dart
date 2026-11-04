@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/friendly_error.dart';
@@ -14,21 +14,24 @@ import '../providers/chat_provider.dart';
 import '../providers/mail_provider.dart';
 import '../providers/provider_provider.dart';
 import '../providers/settings_provider.dart';
-import '../providers/telemetry_provider.dart';
 import 'persona_picker.dart';
 import 'provider_config_dialog.dart';
+import 'setup/channels_step.dart';
 import 'setup/decision_step.dart';
 import 'setup/embedding_step.dart';
 import 'setup/local_model_step.dart';
 import 'setup/mail_model_step.dart';
 import 'setup/mail_step.dart';
 import 'setup/memory_step.dart';
+import 'setup/privacy_step.dart';
 import 'setup/model_store_dialog.dart';
 import 'setup/setup_progress.dart';
 import 'setup/setup_widgets.dart';
+import 'setup/summary_step.dart';
 import 'setup/voice_image_step.dart';
 import 'settings/tabs/subscriptions_tab.dart';
-import 'telemetry_details.dart';
+
+export 'setup/telemetry_toggle.dart';
 
 class SetupWizardOverlay extends ConsumerWidget {
   const SetupWizardOverlay({super.key});
@@ -75,6 +78,11 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   bool _notifPermissionAsking = false;
 
   String _selectedTheme = 'light';
+
+  /// True when this run was started again from Settings. The persona is then
+  /// only written if the user touched it here, so a custom prompt survives.
+  bool _isRerun = false;
+  bool _personaTouched = false;
   String _selectedPrompt = personaPresets.first.key;
   bool _customPrompt = false;
 
@@ -128,6 +136,9 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   @override
   void initState() {
     super.initState();
+    _isRerun = ref.read(prefsProvider).getBool('memo_setup_rerun') ?? false;
+    // A re-run starts from the theme in use, not from the first-run default.
+    if (_isRerun) _selectedTheme = ref.read(themeModeProvider);
     _checkDiagnostics();
   }
 
@@ -309,7 +320,9 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   Future<void> _saveSetup() async {
     setState(() => _saving = true);
     try {
-      await ref.read(systemPromptProvider.notifier).save(_finalPrompt);
+      if (!_isRerun || _personaTouched) {
+        await ref.read(systemPromptProvider.notifier).save(_finalPrompt);
+      }
       await ref.read(themeModeProvider.notifier).setMode(_selectedTheme);
       await ref.read(setupCompleteProvider.notifier).completeSetup();
     } catch (e) {
@@ -349,6 +362,8 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     SetupStepId.decision,
     SetupStepId.memory,
     SetupStepId.voiceImage,
+    SetupStepId.channels,
+    SetupStepId.permissions,
     SetupStepId.summary,
   };
 
@@ -358,6 +373,9 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     for (final id in visibleSteps(s))
       if (_implemented.contains(id)) id,
   ];
+
+  /// Steps the user has opened; the summary counts a reviewed optional step.
+  final Set<SetupStepId> _visited = {SetupStepId.languageTheme};
 
   int _page = 0;
   String _connection = 'local';
@@ -369,6 +387,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     setState(() => _page = page);
     if (_pageScroll.hasClients) _pageScroll.jumpTo(0);
     final steps = _stepsFor(_snapshot);
+    if (page >= 0 && page < steps.length) _visited.add(steps[page]);
     if (page < steps.length && steps[page] == SetupStepId.summary) {
       _checkDiagnostics();
     }
@@ -422,6 +441,8 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
             SetupStepId.mailModel => 'setup_step_mail_model',
             SetupStepId.decision => 'setup_step_decision',
             SetupStepId.voiceImage => 'setup_step_voice_image',
+            SetupStepId.channels => 'setup_step_channels',
+            SetupStepId.permissions => 'setup_step_permissions',
             SetupStepId.memory => 'setup_step_preferences',
             _ => 'setup_step_check',
           });
@@ -552,6 +573,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                 nameController: _nameController,
                 customController: _customPromptController,
                 onSelect: (key) => setState(() {
+                  _personaTouched = true;
                   if (key == 'custom') {
                     _customPrompt = true;
                   } else {
@@ -559,8 +581,8 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                     _selectedPrompt = key;
                   }
                 }),
-                onNameChanged: (_) {},
-                onCustomTextChanged: (_) {},
+                onNameChanged: (_) => _personaTouched = true,
+                onCustomTextChanged: (_) => _personaTouched = true,
               ),
             ),
             SetupStepId.mail: () => SetupPage(
@@ -598,25 +620,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                     color: c,
                     hasEmbeddingModel: _hasEmbeddingModel,
                   ),
-                  const SetupTelemetryToggle(),
-                  // Mobile only: asking for the OS notification permission
-                  // here, rather than inside NotificationService.init(), is
-                  // the whole point: init() at launch would fire a system
-                  // prompt before the user had seen any of Memo's own UI or
-                  // any reason for it.
-                  if (notificationsSupported) ...[
-                    const SizedBox(height: 10),
-                    SetupPreferenceToggle(
-                      icon: Icons.notifications_active_outlined,
-                      title: L10n.t('notif_permission_title'),
-                      desc: L10n.t('notif_permission_desc'),
-                      value: _notifPermissionGranted,
-                      color: c,
-                      onChanged: _notifPermissionAsking
-                          ? null
-                          : (_) => _askNotificationPermission(),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -626,120 +629,155 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
               color: c,
               child: SetupVoiceImageStep(color: c),
             ),
+            SetupStepId.channels: () => SetupPage(
+              title: L10n.t('setup_step_channels'),
+              subtitle: L10n.t('setup_step_channels_desc'),
+              color: c,
+              child: SetupChannelsStep(color: c),
+            ),
+            SetupStepId.permissions: () => SetupPage(
+              title: L10n.t('setup_step_permissions'),
+              subtitle: L10n.t('setup_step_permissions_desc'),
+              color: c,
+              child: SetupPrivacyStep(
+                color: c,
+                notificationsGranted: notificationsSupported
+                    ? _notifPermissionGranted
+                    : null,
+                notificationsAsking: _notifPermissionAsking,
+                onAskNotifications: _askNotificationPermission,
+              ),
+            ),
             SetupStepId.summary: () => SetupPage(
               title: L10n.t('setup_step_check'),
               color: c,
-
-              child: SetupCard(
-                color: c,
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SetupSummaryStep(
+                    color: c,
+                    steps: pageSteps,
+                    snapshot: snapshot,
+                    visited: _visited,
+                    labelOf: labelOf,
+                    onGoTo: (id) => _goTo(pageSteps.indexOf(id)),
+                  ),
+                  const SizedBox(height: 12),
+                  SetupCard(
+                    color: c,
+                    child: Column(
                       children: [
-                        Text(
-                          L10n.t('system_check'),
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: c.textSecondary,
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              L10n.t('system_check'),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: c.textSecondary,
+                              ),
+                            ),
+                            Tooltip(
+                              message: L10n.t('setup_check_refresh_tooltip'),
+                              waitDuration: const Duration(milliseconds: 300),
+                              child: InkWell(
+                                onTap: _checking ? null : _checkDiagnostics,
+                                child: Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: _checking
+                                      ? SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: c.textDim,
+                                          ),
+                                        )
+                                      : Icon(
+                                          Icons.refresh,
+                                          size: 16,
+                                          color: c.textDim,
+                                        ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        Tooltip(
-                          message: L10n.t('setup_check_refresh_tooltip'),
-                          waitDuration: const Duration(milliseconds: 300),
-                          child: InkWell(
-                            onTap: _checking ? null : _checkDiagnostics,
-                            child: Padding(
-                              padding: EdgeInsets.all(4),
-                              child: _checking
-                                  ? SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: c.textDim,
-                                      ),
+                        SizedBox(height: 14),
+                        SetupDiagRow(
+                          title: L10n.t('backend_connection'),
+                          ok: _backendOk,
+                          color: c,
+                          tooltip: L10n.t('setup_check_backend_tooltip'),
+                        ),
+                        SizedBox(height: 8),
+                        SetupDiagRow(
+                          title: L10n.t('local_models_status'),
+                          ok: _modelsOk,
+                          optional: _providerConfigured,
+                          color: c,
+                          tooltip: L10n.t('setup_check_models_tooltip'),
+                        ),
+                        SizedBox(height: 8),
+                        SetupDiagRow(
+                          title: L10n.t('setup_check_ready'),
+                          ok: _modelsOk || _providerConfigured,
+                          color: c,
+                        ),
+                        if (missing.isNotEmpty) ...[
+                          SizedBox(height: 12),
+                          Container(
+                            key: const Key('setup_missing_required'),
+                            padding: EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: MemoTheme.warningOrange.withValues(
+                                alpha: 0.08,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              L10n.t('setup_missing_required', {
+                                'steps': missing
+                                    .where(pageSteps.contains)
+                                    .map(
+                                      (s) => baseLabels[pageSteps.indexOf(s)],
                                     )
-                                  : Icon(
-                                      Icons.refresh,
-                                      size: 16,
-                                      color: c.textDim,
-                                    ),
+                                    .join(', '),
+                              }),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: MemoTheme.warningOrange,
+                                height: 1.3,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
+                        if (!_backendOk ||
+                            !(_modelsOk || _providerConfigured)) ...[
+                          SizedBox(height: 12),
+                          Container(
+                            padding: EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: MemoTheme.warningOrange.withValues(
+                                alpha: 0.08,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              L10n.t('system_check_info'),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: MemoTheme.warningOrange,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
-                    SizedBox(height: 14),
-                    SetupDiagRow(
-                      title: L10n.t('backend_connection'),
-                      ok: _backendOk,
-                      color: c,
-                      tooltip: L10n.t('setup_check_backend_tooltip'),
-                    ),
-                    SizedBox(height: 8),
-                    SetupDiagRow(
-                      title: L10n.t('local_models_status'),
-                      ok: _modelsOk,
-                      optional: _providerConfigured,
-                      color: c,
-                      tooltip: L10n.t('setup_check_models_tooltip'),
-                    ),
-                    SizedBox(height: 8),
-                    SetupDiagRow(
-                      title: L10n.t('setup_check_ready'),
-                      ok: _modelsOk || _providerConfigured,
-                      color: c,
-                    ),
-                    if (missing.isNotEmpty) ...[
-                      SizedBox(height: 12),
-                      Container(
-                        key: const Key('setup_missing_required'),
-                        padding: EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: MemoTheme.warningOrange.withValues(
-                            alpha: 0.08,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          L10n.t('setup_missing_required', {
-                            'steps': missing
-                                .where(pageSteps.contains)
-                                .map((s) => baseLabels[pageSteps.indexOf(s)])
-                                .join(', '),
-                          }),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: MemoTheme.warningOrange,
-                            height: 1.3,
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (!_backendOk || !(_modelsOk || _providerConfigured)) ...[
-                      SizedBox(height: 12),
-                      Container(
-                        padding: EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: MemoTheme.warningOrange.withValues(
-                            alpha: 0.08,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          L10n.t('system_check_info'),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: MemoTheme.warningOrange,
-                            height: 1.3,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           };
@@ -1167,64 +1205,3 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
-
-/// One background preference the user can decide on right away instead of
-/// discovering it later — title, plain-language explanation, and a switch
-/// that applies immediately (same provider Settings itself uses, so nothing
-/// is lost if the wizard is closed before the final "Start" tap).
-/// The setup wizard's switch for the anonymous daily summary: on by default in
-/// an official build, switched off right here or later in Settings › Privacy.
-/// Hidden while the backend cannot be asked (null status) - a switch that cannot
-/// save would lie about its state.
-class SetupTelemetryToggle extends ConsumerWidget {
-  const SetupTelemetryToggle({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tel = ref.watch(telemetryStatusProvider).valueOrNull;
-    if (tel == null) return const SizedBox.shrink();
-    final c = MemoTheme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 10),
-        SetupPreferenceToggle(
-          icon: Icons.insights_outlined,
-          title: L10n.t('setup_pref_telemetry_title'),
-          desc: L10n.t('setup_pref_telemetry_desc'),
-          value: tel.sharing,
-          color: c,
-          onChanged: tel.envOff
-              ? null
-              : (v) async {
-                  try {
-                    await ref.read(telemetryActionsProvider).answer(v);
-                  } catch (e) {
-                    debugPrint('setup_wizard: telemetry answer: $e');
-                  }
-                },
-        ),
-        TextButton(
-          key: const Key('setupTelemetryDetails'),
-          onPressed: () => showDialog<void>(
-            context: context,
-            builder: (dialogContext) => AlertDialog(
-              title: Text(L10n.t('setup_pref_telemetry_title')),
-              content: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 520),
-                child: const SingleChildScrollView(child: TelemetryDetails()),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: Text(L10n.t('close')),
-                ),
-              ],
-            ),
-          ),
-          child: Text(L10n.t('setup_pref_telemetry_details')),
-        ),
-      ],
-    );
-  }
-}

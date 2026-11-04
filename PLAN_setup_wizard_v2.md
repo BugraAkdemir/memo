@@ -65,7 +65,12 @@ Mail bağlama isteğe bağlı; **mail bağlanırsa mail (yanıt) modeli seçmek 
       minimal mod; gömme modeli yoksa uyarır), ses ve görsel (`voice_image_step.dart`: STT, TTS, ses, görsel
       model; hepsi Ayarlar bölümlerinin kendisi, ikinci kez yapılandırmak gerekmez). Hepsi isteğe bağlı.
       Telemetri ve bildirim anahtarları U5'te "izinler ve gizlilik" adımına taşınacak. Flutter 978/978.
-- [ ] **U5 — Kanallar, izinler, özet:** WhatsApp/Telegram, izinler ve gizlilik, özet ekranı, Ayarlar'dan yeniden aç.
+- [x] **U5 — Kanallar, gizlilik, özet, yeniden çalıştırma:** kanallar (`channels_step.dart`: WhatsApp ve Telegram
+      sekmeleri katlanır panelde), gizlilik ve yedekleme (`privacy_step.dart`: kullanım paylaşımı, bildirim izni,
+      şifreli bulut yedekleme; telemetri anahtarı `telemetry_toggle.dart`'a çıktı), özet (`summary_step.dart`: her
+      adım Tamam / Atlandı / Eksik*, satıra dokununca o adıma döner). **Ayarlar'dan yeniden çalıştırma artık
+      kullanıcının kişiliğini ve temasını ezmiyor** (`memo_setup_rerun` bayrağı; kişilik yalnız dokunulursa
+      kaydedilir). Adımların 12'si de yerinde; her biri TR/EN. Flutter 981/981.
 - [ ] **U6 — Cilalama:** dar/geniş düzen, TR/EN, erişilebilirlik, gerçek uygulamada kabul.
 
 ## Doğrulama (her birim)

@@ -21,7 +21,7 @@ class SetupVoiceImageStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SetupInfoTip(color: color, message: L10n.t('setup_voice_image_tip')),
+        SetupNote(color: color, message: L10n.t('setup_voice_image_tip')),
         const SizedBox(height: 12),
         SetupCard(color: color, child: const STTProviderSection()),
         const SizedBox(height: 12),

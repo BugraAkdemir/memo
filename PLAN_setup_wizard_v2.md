@@ -55,8 +55,11 @@ Mail bağlama isteğe bağlı; **mail bağlanırsa mail (yanıt) modeli seçmek 
       olduğu (`local_model_step.dart`); gömme modeli kendi adımında (`embedding_step.dart`: önerileni indir /
       mağazadan seç / atla, atlamanın bedeli yazılı). Sayfa sırası planlandığı gibi: dil, model, gömme, kişilik,
       tercihler, kontrol. Görsel parçalar `setup/setup_widgets.dart`'a çıkarıldı. Flutter 974/974.
-- [ ] **U3 — Mail ve yanıt modeli:** mail bağlama pencerelerini ortak dosyaya çıkar; mail adımı; yanıt modeli
-      (mail varsa zorunlu) + güvenli varsayılanlar.
+- [x] **U3 — Mail ve yanıt modeli:** mail bağlama pencereleri ortak dosyada (`widgets/mail_connect_dialogs.dart`),
+      yanıt modeli seçici ortak widget (`widgets/mail_reply_model_picker.dart`, Ayarlar sekmesi de onu kullanır).
+      Mail adımı (isteğe bağlı; Gmail / Outlook / Diğer) ve **mail yanıt modeli adımı** (mail bağlanınca listeye
+      girer, `*` zorunlu; kaydedilmeden "Sonraki" ve "Başla" kapalı; güvenli anahtar: yanıt taslağı hazırla, hiçbir
+      şey kendiliğinden gitmez). Yan liste kaydırılabilir (adım sayısı artıyor). Flutter 977/977.
 - [ ] **U4 — Model/ayar adımları:** karar modeli, hafıza ve öğrenme, ses ve görsel.
 - [ ] **U5 — Kanallar, izinler, özet:** WhatsApp/Telegram, izinler ve gizlilik, özet ekranı, Ayarlar'dan yeniden aç.
 - [ ] **U6 — Cilalama:** dar/geniş düzen, TR/EN, erişilebilirlik, gerçek uygulamada kabul.

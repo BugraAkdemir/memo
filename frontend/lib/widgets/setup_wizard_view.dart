@@ -12,6 +12,7 @@ import '../models/persona_presets.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/learning_provider.dart';
+import '../providers/mail_provider.dart';
 import '../providers/provider_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/telemetry_provider.dart';
@@ -19,6 +20,8 @@ import 'persona_picker.dart';
 import 'provider_config_dialog.dart';
 import 'setup/embedding_step.dart';
 import 'setup/local_model_step.dart';
+import 'setup/mail_model_step.dart';
+import 'setup/mail_step.dart';
 import 'setup/model_store_dialog.dart';
 import 'setup/setup_progress.dart';
 import 'setup/setup_widgets.dart';
@@ -82,6 +85,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   bool _providerConfigured = false;
   String? _activeProviderName;
   bool _hasEmbeddingModel = false;
+  bool _replyModelSet = false;
 
   bool _memoryModelDownloading = false;
   String? _memoryModelDownloadError;
@@ -148,6 +152,14 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
             .getActiveProvider();
         _providerConfigured = activeProvider.isNotEmpty;
         _activeProviderName = activeProvider.isEmpty ? null : activeProvider;
+        try {
+          final twin = await ref.read(apiClientProvider).getTwinState();
+          _replyModelSet =
+              '${twin.replyModel['provider'] ?? ''}'.isNotEmpty &&
+              '${twin.replyModel['model'] ?? ''}'.isNotEmpty;
+        } catch (_) {
+          _replyModelSet = false;
+        }
       }
     } catch (_) {
       _backendOk = false;
@@ -311,22 +323,36 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     }
   }
 
-  /// What the wizard knows about the app right now. Mail fields join in with
-  /// the mail steps.
-  SetupSnapshot get _snapshot => SetupSnapshot(
+  /// What the wizard knows about the app right now.
+  SetupSnapshot _snapshotFor(int mailAccounts) => SetupSnapshot(
     hasActiveProvider: _providerConfigured,
     localChatModels: _localModelCount,
     hasEmbeddingModel: _hasEmbeddingModel,
+    mailAccounts: mailAccounts,
+    mailReplyModelSet: _replyModelSet,
   );
 
-  /// The page order. Each page is judged by its step id (setup_progress.dart).
-  static const _pageSteps = [
+  SetupSnapshot get _snapshot =>
+      _snapshotFor(ref.read(mailAccountsProvider).valueOrNull?.length ?? 0);
+
+  /// Steps that have a page. The rules know them all (setup_progress.dart); the
+  /// rest join as their pages are built.
+  static const _implemented = {
     SetupStepId.languageTheme,
     SetupStepId.model,
     SetupStepId.embedding,
     SetupStepId.persona,
+    SetupStepId.mail,
+    SetupStepId.mailModel,
     SetupStepId.memory,
     SetupStepId.summary,
+  };
+
+  /// The pages to show now: the reply-model page only exists while a mail
+  /// account is connected.
+  List<SetupStepId> _stepsFor(SetupSnapshot s) => [
+    for (final id in visibleSteps(s))
+      if (_implemented.contains(id)) id,
   ];
 
   int _page = 0;
@@ -338,7 +364,10 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   void _goTo(int page) {
     setState(() => _page = page);
     if (_pageScroll.hasClients) _pageScroll.jumpTo(0);
-    if (_pageSteps[page] == SetupStepId.summary) _checkDiagnostics();
+    final steps = _stepsFor(_snapshot);
+    if (page < steps.length && steps[page] == SetupStepId.summary) {
+      _checkDiagnostics();
+    }
   }
 
   @override
@@ -364,8 +393,10 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
           final narrow = constraints.maxWidth < 560;
           // Which step each page is, so required steps can be judged from the
           // real state (setup_progress.dart) instead of the page number.
-          const pageSteps = _pageSteps;
-          final snapshot = _snapshot;
+          final snapshot = _snapshotFor(
+            ref.watch(mailAccountsProvider).valueOrNull?.length ?? 0,
+          );
+          final pageSteps = _stepsFor(snapshot);
           final missing = missingRequiredSteps(snapshot);
           final canFinish = canFinishSetup(snapshot);
           // A required step must be done before moving past it.
@@ -378,14 +409,17 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
           bool needsAttention(int i) =>
               i <= _page &&
               stepState(pageSteps[i], snapshot) == SetupStepState.requiredTodo;
-          final baseLabels = [
-            L10n.t('setup_step_language_theme'),
-            L10n.t('setup_step_model'),
-            L10n.t('setup_step_embedding'),
-            L10n.t('setup_step_persona'),
-            L10n.t('setup_step_preferences'),
-            L10n.t('setup_step_check'),
-          ];
+          String labelOf(SetupStepId id) => L10n.t(switch (id) {
+            SetupStepId.languageTheme => 'setup_step_language_theme',
+            SetupStepId.model => 'setup_step_model',
+            SetupStepId.embedding => 'setup_step_embedding',
+            SetupStepId.persona => 'setup_step_persona',
+            SetupStepId.mail => 'setup_step_mail',
+            SetupStepId.mailModel => 'setup_step_mail_model',
+            SetupStepId.memory => 'setup_step_preferences',
+            _ => 'setup_step_check',
+          });
+          final baseLabels = [for (final id in pageSteps) labelOf(id)];
           // A trailing * marks what cannot be skipped.
           final labels = [
             for (var i = 0; i < baseLabels.length; i++)
@@ -393,8 +427,8 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                   ? '${baseLabels[i]} *'
                   : baseLabels[i],
           ];
-          final pages = <Widget Function()>[
-            () => SetupPage(
+          final builders = <SetupStepId, Widget Function()>{
+            SetupStepId.languageTheme: () => SetupPage(
               title: L10n.t('setup_step_language_theme'),
               color: c,
               child: Builder(
@@ -484,13 +518,13 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                 },
               ),
             ),
-            () => SetupPage(
+            SetupStepId.model: () => SetupPage(
               title: L10n.t('setup_step_model'),
               subtitle: L10n.t('setup_connection_intro'),
               color: c,
               child: _buildConnection(c),
             ),
-            () => SetupPage(
+            SetupStepId.embedding: () => SetupPage(
               title: L10n.t('setup_step_embedding'),
               subtitle: L10n.t('setup_embedding_desc'),
               color: c,
@@ -503,7 +537,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                 onOpenStore: _openStore,
               ),
             ),
-            () => SetupPage(
+            SetupStepId.persona: () => SetupPage(
               title: L10n.t('setup_step_persona'),
               subtitle: L10n.t('setup_step_persona_desc'),
               color: c,
@@ -523,7 +557,23 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                 onCustomTextChanged: (_) {},
               ),
             ),
-            () => SetupPage(
+            SetupStepId.mail: () => SetupPage(
+              title: L10n.t('setup_step_mail'),
+              subtitle: L10n.t('setup_step_mail_desc'),
+              color: c,
+              child: SetupMailStep(color: c),
+            ),
+            SetupStepId.mailModel: () => SetupPage(
+              title: L10n.t('setup_step_mail_model'),
+              subtitle: L10n.t('setup_step_mail_model_desc'),
+              color: c,
+              child: SetupMailModelStep(
+                color: c,
+                modelSet: _replyModelSet,
+                onModelChanged: (v) => setState(() => _replyModelSet = v),
+              ),
+            ),
+            SetupStepId.memory: () => SetupPage(
               title: L10n.t('setup_step_preferences'),
               subtitle: L10n.t('setup_step_preferences_desc'),
               color: c,
@@ -592,7 +642,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                 },
               ),
             ),
-            () => SetupPage(
+            SetupStepId.summary: () => SetupPage(
               title: L10n.t('setup_step_check'),
               color: c,
 
@@ -708,7 +758,8 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                 ),
               ),
             ),
-          ];
+          };
+          final pages = [for (final id in pageSteps) builders[id]!];
           return ColoredBox(
             color: c.bgApp,
             child: SafeArea(
@@ -764,59 +815,78 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                                         ),
                                       ),
                                       const SizedBox(height: 32),
-                                      for (var i = 0; i < labels.length; i++)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            bottom: 8,
-                                          ),
-                                          child: ListTile(
-                                            contentPadding:
-                                                const EdgeInsets.symmetric(
-                                                  horizontal: 8,
+                                      Expanded(
+                                        child: SingleChildScrollView(
+                                          child: Column(
+                                            children: [
+                                              for (
+                                                var i = 0;
+                                                i < labels.length;
+                                                i++
+                                              )
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        bottom: 8,
+                                                      ),
+                                                  child: ListTile(
+                                                    contentPadding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 8,
+                                                        ),
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            10,
+                                                          ),
+                                                    ),
+                                                    selected: i == _page,
+                                                    selectedTileColor: MemoTheme
+                                                        .accent
+                                                        .withValues(alpha: .12),
+                                                    leading: Icon(
+                                                      needsAttention(i)
+                                                          ? Icons.error_outline
+                                                          : (i < _page ||
+                                                                stepState(
+                                                                      pageSteps[i],
+                                                                      snapshot,
+                                                                    ) ==
+                                                                    SetupStepState
+                                                                        .done)
+                                                          ? Icons
+                                                                .check_circle_outline
+                                                          : Icons
+                                                                .circle_outlined,
+                                                      color: needsAttention(i)
+                                                          ? MemoTheme
+                                                                .warningOrange
+                                                          : i == _page
+                                                          ? MemoTheme.accent
+                                                          : c.textDim,
+                                                      size: 20,
+                                                    ),
+                                                    title: Text(
+                                                      labels[i],
+                                                      style: TextStyle(
+                                                        fontSize: 13,
+                                                        fontWeight: i == _page
+                                                            ? FontWeight.w600
+                                                            : FontWeight.w400,
+                                                        color: i == _page
+                                                            ? c.textMain
+                                                            : c.textDim,
+                                                      ),
+                                                    ),
+                                                    onTap: _saving
+                                                        ? null
+                                                        : () => _goTo(i),
+                                                  ),
                                                 ),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
-                                            selected: i == _page,
-                                            selectedTileColor: MemoTheme.accent
-                                                .withValues(alpha: .12),
-                                            leading: Icon(
-                                              needsAttention(i)
-                                                  ? Icons.error_outline
-                                                  : (i < _page ||
-                                                        stepState(
-                                                              pageSteps[i],
-                                                              snapshot,
-                                                            ) ==
-                                                            SetupStepState.done)
-                                                  ? Icons.check_circle_outline
-                                                  : Icons.circle_outlined,
-                                              color: needsAttention(i)
-                                                  ? MemoTheme.warningOrange
-                                                  : i == _page
-                                                  ? MemoTheme.accent
-                                                  : c.textDim,
-                                              size: 20,
-                                            ),
-                                            title: Text(
-                                              labels[i],
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: i == _page
-                                                    ? FontWeight.w600
-                                                    : FontWeight.w400,
-                                                color: i == _page
-                                                    ? c.textMain
-                                                    : c.textDim,
-                                              ),
-                                            ),
-                                            onTap: _saving
-                                                ? null
-                                                : () => _goTo(i),
+                                            ],
                                           ),
                                         ),
-                                      const Spacer(),
+                                      ),
                                       Text(
                                         L10n.t('setup_change_later'),
                                         style: TextStyle(

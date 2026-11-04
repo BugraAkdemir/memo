@@ -6,6 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:memo_flutter/core/api_client.dart';
 import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/models/local_model.dart';
+import 'package:memo_flutter/models/mail.dart';
+import 'package:memo_flutter/models/twin.dart';
+import 'package:memo_flutter/providers/mail_provider.dart';
 import 'package:memo_flutter/models/gpu_info.dart';
 import 'package:memo_flutter/models/provider_config.dart';
 import 'package:memo_flutter/models/provider_models.dart';
@@ -21,9 +24,13 @@ class _Api extends MemoApiClient {
   _Api({this.localModels = const []}) : super(baseUrl: 'http://memo.test');
   final List<LocalModel> localModels;
   String active = '', prompt = '';
+  Map<String, dynamic> replyModel = {};
   bool completed = false, loginStarted = false;
   @override
   Future<bool> isAlive() async => true;
+  @override
+  Future<TwinState> getTwinState() async =>
+      TwinState(const [], const {}, const [], const [], replyModel);
   @override
   Future<List<LocalModel>> listLocalModels() async => localModels;
   @override
@@ -52,6 +59,13 @@ class _Api extends MemoApiClient {
     loginStarted = true;
     return 'https://example.com/login';
   }
+}
+
+class _Mail extends MailAccountsNotifier {
+  _Mail(this.accounts);
+  final List<MailAccount> accounts;
+  @override
+  Future<List<MailAccount>> build() async => accounts;
 }
 
 class _Providers extends ProviderListNotifier {
@@ -226,7 +240,11 @@ void main() {
     variant: TargetPlatformVariant({TargetPlatform.android}),
   );
 
-  Future<void> pumpDesktopWizard(WidgetTester tester, _Api api) async {
+  Future<void> pumpDesktopWizard(
+    WidgetTester tester,
+    _Api api, {
+    List<MailAccount> mail = const [],
+  }) async {
     tester.view.physicalSize = const Size(1100, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -239,6 +257,7 @@ void main() {
           apiClientProvider.overrideWithValue(api),
           providerListProvider.overrideWith(_Providers.new),
           activeProviderTypeProvider.overrideWith(_Active.new),
+          mailAccountsProvider.overrideWith(() => _Mail(mail)),
           subscriptionsProvider.overrideWith(() => _Subs(api)),
           gpuInfoProvider.overrideWith((ref) async => const GPUInfo()),
           downloadProgressProvider.overrideWith(
@@ -248,6 +267,14 @@ void main() {
         child: const MaterialApp(home: Scaffold(body: SetupWizardOverlay())),
       ),
     );
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> tapStep(WidgetTester tester, String label) async {
+    final f = find.text(label);
+    await tester.ensureVisible(f);
+    await tester.pumpAndSettle();
+    await tester.tap(f);
     await tester.pumpAndSettle();
   }
 
@@ -268,10 +295,79 @@ void main() {
       // The model page: required and empty, so "next" is off.
       expect(nextButton(tester).onPressed, isNull);
       // Jumping ahead through the side list still cannot finish.
-      await tester.tap(find.text(L10n.t('setup_step_check')));
-      await tester.pumpAndSettle();
+      await tapStep(tester, L10n.t('setup_step_check'));
       expect(find.byKey(const Key('setup_missing_required')), findsOneWidget);
       expect(nextButton(tester).onPressed, isNull);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+    variant: TargetPlatformVariant({TargetPlatform.linux}),
+  );
+
+  final chatModel = [
+    const LocalModel(
+      repoId: 'chat',
+      filename: 'chat.gguf',
+      size: 1,
+      path: '/test/chat.gguf',
+      isEmbedding: false,
+    ),
+  ];
+  const account = MailAccount(id: 'g1', email: 'me@example.com');
+
+  testWidgets(
+    'no mail account: the reply-model step is not in the list at all',
+    (tester) async {
+      await pumpDesktopWizard(tester, _Api(localModels: chatModel));
+      expect(find.text(L10n.t('setup_step_mail_model')), findsNothing);
+      expect(find.text(L10n.t('setup_step_mail')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+    variant: TargetPlatformVariant({TargetPlatform.linux}),
+  );
+
+  testWidgets(
+    'a connected mail account makes the reply model required and blocks finishing',
+    (tester) async {
+      await pumpDesktopWizard(
+        tester,
+        _Api(localModels: chatModel),
+        mail: const [account],
+      );
+      expect(find.text('${L10n.t('setup_step_mail_model')} *'), findsOneWidget);
+      // Jump to the reply-model page through the side list.
+      await tapStep(tester, '${L10n.t('setup_step_mail_model')} *');
+      expect(
+        find.byKey(const Key('setup_mail_model_required')),
+        findsOneWidget,
+      );
+      expect(nextButton(tester).onPressed, isNull);
+      // The summary names the missing step and cannot finish.
+      await tapStep(tester, L10n.t('setup_step_check'));
+      expect(find.byKey(const Key('setup_missing_required')), findsOneWidget);
+      expect(
+        find.textContaining(L10n.t('setup_step_mail_model')),
+        findsWidgets,
+      );
+      expect(nextButton(tester).onPressed, isNull);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+    variant: TargetPlatformVariant({TargetPlatform.linux}),
+  );
+
+  testWidgets(
+    'with a mail account and a saved reply model the wizard can finish',
+    (tester) async {
+      final api = _Api(localModels: chatModel)
+        ..replyModel = {'provider': 'Subscriptions', 'model': 'm1'};
+      await pumpDesktopWizard(tester, api, mail: const [account]);
+      await tapStep(tester, '${L10n.t('setup_step_mail_model')} *');
+      expect(find.byKey(const Key('setup_mail_model_ready')), findsOneWidget);
+      expect(nextButton(tester).onPressed, isNotNull);
+      await tapStep(tester, L10n.t('setup_step_check'));
+      expect(find.byKey(const Key('setup_missing_required')), findsNothing);
+      expect(nextButton(tester).onPressed, isNotNull);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -317,8 +413,7 @@ void main() {
       await tester.tap(find.byKey(const Key('setup_next')));
       await tester.pumpAndSettle();
       expect(nextButton(tester).onPressed, isNotNull);
-      await tester.tap(find.text(L10n.t('setup_step_check')));
-      await tester.pumpAndSettle();
+      await tapStep(tester, L10n.t('setup_step_check'));
       expect(find.byKey(const Key('setup_missing_required')), findsNothing);
       expect(nextButton(tester).onPressed, isNotNull);
       expect(tester.takeException(), isNull);
@@ -366,8 +461,7 @@ void main() {
           );
           await tester.pumpAndSettle();
           if (width > 800) {
-            await tester.tap(find.text(L10n.t('theme_dark')));
-            await tester.pumpAndSettle();
+            await tapStep(tester, L10n.t('theme_dark'));
           }
           Future<void> next() async {
             await tester.tap(find.byKey(const Key('setup_next')));
@@ -406,12 +500,14 @@ void main() {
           await next(); // embedding (skipped) -> persona
           final name = find.byType(TextField).first;
           await tester.enterText(name, 'Ada');
-          await next(); // persona -> preferences
+          await next(); // persona -> mail (optional)
+          expect(find.byKey(const Key('setup_mail_gmail')), findsOneWidget);
           // Return to persona; the typed name survives.
           await tester.tap(find.byKey(const Key('setup_back')));
           await tester.pumpAndSettle();
           expect(find.text('Ada'), findsOneWidget);
-          await next(); // -> preferences
+          await next(); // -> mail
+          await next(); // mail skipped -> preferences
           await next(); // -> summary
           await next(); // finish
           expect(api.completed, true);

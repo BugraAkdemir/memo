@@ -181,7 +181,7 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 	if err := progress("analyzing"); err != nil {
 		return nil, err
 	}
-	untrusted := WrapUntrustedExternalMessage(in.Sender, in.Channel, in.Subject+"\n"+in.Body)
+	untrusted := wrapBounded(in.Sender, in.Channel, in.Subject+"\n"+in.Body, maxUntrustedRunes)
 	var plan analysis
 	projects := []RegisteredProject{}
 	if prefs.AllowProjectInspection && e.Projects != nil {
@@ -220,9 +220,10 @@ func (e *Engine) HandleIncomingEvent(ctx context.Context, in IncomingEvent) (*tw
 		if err != nil {
 			return finish("research_failed", "failed")
 		}
-		evidence[t.Name] = result
+		evidence[t.Name] = compactEvidence(result)
 		a.Tools = append(a.Tools, t.Name)
 	}
+	fitEvidence(evidence)
 	if len(plan.Calendar) > 0 {
 		if e.Calendar == nil {
 			return finish("calendar_unavailable", "failed")

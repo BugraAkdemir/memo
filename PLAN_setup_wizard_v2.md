@@ -50,7 +50,11 @@ Mail bağlama isteğe bağlı; **mail bağlanırsa mail (yanıt) modeli seçmek 
       zorunlu varken "Başla" kapalı ve özet eksik adımı söyler (2 widget testi). **Sayfa sırası bilerek değişmedi**
       (dil, kişilik, model, tercihler, kontrol): mevcut testler buna bağlı; sıra ve adım dosyalarına bölme U2'de
       model adımı yeniden yazılırken yapılır.
-- [ ] **U2 — Model ve gömme adımları:** Yerel → Model Mağazası penceresi, API, abonelik; gömme modeli adımı.
+- [x] **U2 — Model ve gömme adımları:** Yerel seçilince tek öneri kartı yerine **Model Mağazası penceresi**
+      (`setup/model_store_dialog.dart`, kapanınca kurulu modeller yeniden okunur) ve kaç sohbet modeli hazır
+      olduğu (`local_model_step.dart`); gömme modeli kendi adımında (`embedding_step.dart`: önerileni indir /
+      mağazadan seç / atla, atlamanın bedeli yazılı). Sayfa sırası planlandığı gibi: dil, model, gömme, kişilik,
+      tercihler, kontrol. Görsel parçalar `setup/setup_widgets.dart`'a çıkarıldı. Flutter 974/974.
 - [ ] **U3 — Mail ve yanıt modeli:** mail bağlama pencerelerini ortak dosyaya çıkar; mail adımı; yanıt modeli
       (mail varsa zorunlu) + güvenli varsayılanlar.
 - [ ] **U4 — Model/ayar adımları:** karar modeli, hafıza ve öğrenme, ses ve görsel.

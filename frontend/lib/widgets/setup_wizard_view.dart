@@ -8,18 +8,18 @@ import '../core/notification_service.dart';
 import '../core/platform_capabilities.dart';
 import '../core/theme.dart';
 import '../models/curated_models.dart';
-import '../models/gpu_info.dart';
-import '../models/local_model.dart';
 import '../models/persona_presets.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/learning_provider.dart';
-import '../providers/models_provider.dart';
 import '../providers/provider_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/telemetry_provider.dart';
 import 'persona_picker.dart';
 import 'provider_config_dialog.dart';
+import 'setup/embedding_step.dart';
+import 'setup/local_model_step.dart';
+import 'setup/model_store_dialog.dart';
 import 'setup/setup_progress.dart';
 import 'setup/setup_widgets.dart';
 import 'settings/tabs/subscriptions_tab.dart';
@@ -82,10 +82,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   bool _providerConfigured = false;
   String? _activeProviderName;
   bool _hasEmbeddingModel = false;
-
-  bool _modelDownloadStarted = false;
-  bool _modelDownloadDone = false;
-  String? _modelDownloadError;
 
   bool _memoryModelDownloading = false;
   String? _memoryModelDownloadError;
@@ -230,6 +226,12 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   /// memory permanently off with nothing telling the user why. Offered right
   /// next to the provider button so it's a one-click follow-up instead of a
   /// surprise discovered later.
+  /// Opens the Model Store window and re-reads what is installed once it closes.
+  Future<void> _openStore() async {
+    await showSetupModelStore(context);
+    if (mounted) await _checkDiagnostics();
+  }
+
   Future<void> _downloadMemoryModel() async {
     setState(() {
       _memoryModelDownloading = true;
@@ -251,32 +253,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
           _memoryModelDownloading = false;
           _memoryModelDownloadError = FriendlyError.describe(e);
         });
-      }
-    }
-  }
-
-  Future<void> _downloadRecommendedModels(GPUInfo gpu) async {
-    setState(() {
-      _modelDownloadStarted = true;
-      _modelDownloadDone = false;
-      _modelDownloadError = null;
-    });
-    try {
-      // The backend downloads distinct repo+file pairs concurrently, so both
-      // start right away instead of waiting for one to finish first.
-      await Future.wait([
-        _downloadCurated(recommendedChatModel(gpu)),
-        _downloadCurated(recommendedMemoryModel),
-      ]);
-      if (!mounted) return;
-      await _waitForDownloadsIdle([
-        recommendedChatModel(gpu),
-        recommendedMemoryModel,
-      ]);
-      if (mounted) setState(() => _modelDownloadDone = true);
-    } catch (e) {
-      if (mounted) {
-        setState(() => _modelDownloadError = FriendlyError.describe(e));
       }
     }
   }
@@ -335,16 +311,23 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     }
   }
 
-  /// What the wizard knows about the app right now. A recommended model whose
-  /// download just finished counts as a local chat model even before the next
-  /// diagnostics refresh. Mail fields join in with the mail steps.
+  /// What the wizard knows about the app right now. Mail fields join in with
+  /// the mail steps.
   SetupSnapshot get _snapshot => SetupSnapshot(
     hasActiveProvider: _providerConfigured,
-    localChatModels: _modelDownloadDone && _localModelCount == 0
-        ? 1
-        : _localModelCount,
+    localChatModels: _localModelCount,
     hasEmbeddingModel: _hasEmbeddingModel,
   );
+
+  /// The page order. Each page is judged by its step id (setup_progress.dart).
+  static const _pageSteps = [
+    SetupStepId.languageTheme,
+    SetupStepId.model,
+    SetupStepId.embedding,
+    SetupStepId.persona,
+    SetupStepId.memory,
+    SetupStepId.summary,
+  ];
 
   int _page = 0;
   String _connection = 'local';
@@ -355,7 +338,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   void _goTo(int page) {
     setState(() => _page = page);
     if (_pageScroll.hasClients) _pageScroll.jumpTo(0);
-    if (page == 4) _checkDiagnostics();
+    if (_pageSteps[page] == SetupStepId.summary) _checkDiagnostics();
   }
 
   @override
@@ -381,13 +364,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
           final narrow = constraints.maxWidth < 560;
           // Which step each page is, so required steps can be judged from the
           // real state (setup_progress.dart) instead of the page number.
-          const pageSteps = [
-            SetupStepId.languageTheme,
-            SetupStepId.persona,
-            SetupStepId.model,
-            SetupStepId.memory,
-            SetupStepId.summary,
-          ];
+          const pageSteps = _pageSteps;
           final snapshot = _snapshot;
           final missing = missingRequiredSteps(snapshot);
           final canFinish = canFinishSetup(snapshot);
@@ -403,8 +380,9 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
               stepState(pageSteps[i], snapshot) == SetupStepState.requiredTodo;
           final baseLabels = [
             L10n.t('setup_step_language_theme'),
-            L10n.t('setup_step_persona'),
             L10n.t('setup_step_model'),
+            L10n.t('setup_step_embedding'),
+            L10n.t('setup_step_persona'),
             L10n.t('setup_step_preferences'),
             L10n.t('setup_step_check'),
           ];
@@ -507,6 +485,25 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
               ),
             ),
             () => SetupPage(
+              title: L10n.t('setup_step_model'),
+              subtitle: L10n.t('setup_connection_intro'),
+              color: c,
+              child: _buildConnection(c),
+            ),
+            () => SetupPage(
+              title: L10n.t('setup_step_embedding'),
+              subtitle: L10n.t('setup_embedding_desc'),
+              color: c,
+              child: SetupEmbeddingStep(
+                color: c,
+                hasModel: _hasEmbeddingModel,
+                downloading: _memoryModelDownloading,
+                error: _memoryModelDownloadError,
+                onDownloadRecommended: _downloadMemoryModel,
+                onOpenStore: _openStore,
+              ),
+            ),
+            () => SetupPage(
               title: L10n.t('setup_step_persona'),
               subtitle: L10n.t('setup_step_persona_desc'),
               color: c,
@@ -525,12 +522,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                 onNameChanged: (_) {},
                 onCustomTextChanged: (_) {},
               ),
-            ),
-            () => SetupPage(
-              title: L10n.t('setup_step_model'),
-              subtitle: L10n.t('setup_connection_intro'),
-              color: c,
-              child: _buildConnection(c),
             ),
             () => SetupPage(
               title: L10n.t('setup_step_preferences'),
@@ -1023,32 +1014,11 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
         ),
         const SizedBox(height: 20),
         if (_connection == 'local')
-          Consumer(
-            builder: (context, ref, _) {
-              final gpu =
-                  ref.watch(gpuInfoProvider).valueOrNull ?? const GPUInfo();
-              final repoIds = {
-                recommendedChatModel(gpu).repoId,
-                recommendedMemoryModel.repoId,
-              };
-              final downloads =
-                  (ref.watch(downloadProgressProvider).valueOrNull ??
-                          <DownloadProgress>[])
-                      .where((p) => repoIds.contains(p.repoId))
-                      .toList();
-              return _ModelRecommendationCard(
-                color: c,
-                checking: _checking,
-                gpu: gpu,
-                downloads: downloads,
-                alreadyHasModels: _modelsOk,
-                localModelCount: _localModelCount,
-                downloadStarted: _modelDownloadStarted,
-                downloadDone: _modelDownloadDone,
-                downloadError: _modelDownloadError,
-                onDownload: _downloadRecommendedModels,
-              );
-            },
+          SetupLocalModelCard(
+            color: c,
+            checking: _checking,
+            chatModelCount: _localModelCount,
+            onOpenStore: _openStore,
           ),
         if (_connection == 'api')
           SetupCard(
@@ -1114,54 +1084,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
             child: Text(
               _subscriptionError!,
               style: const TextStyle(color: MemoTheme.red, fontSize: 13),
-            ),
-          ),
-        if (_connection != 'local' && !_hasEmbeddingModel) ...[
-          const SizedBox(height: 20),
-          SetupCard(
-            color: c,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  L10n.t('setup_memory_model_missing'),
-                  style: TextStyle(color: c.textDim, fontSize: 12, height: 1.5),
-                ),
-                const SizedBox(height: 12),
-                if (_memoryModelDownloadError != null)
-                  Text(
-                    _memoryModelDownloadError!,
-                    style: const TextStyle(color: MemoTheme.red),
-                  ),
-                OutlinedButton.icon(
-                  onPressed: _memoryModelDownloading
-                      ? null
-                      : _downloadMemoryModel,
-                  icon: _memoryModelDownloading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.download_outlined, size: 18),
-                  label: Text(
-                    L10n.t(
-                      _memoryModelDownloading
-                          ? 'setup_memory_model_downloading'
-                          : 'setup_memory_model_download_button',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-        if (_connection != 'local' && _hasEmbeddingModel)
-          Padding(
-            padding: const EdgeInsets.only(top: 16),
-            child: Text(
-              L10n.t('setup_memory_model_ready'),
-              style: const TextStyle(color: MemoTheme.green),
             ),
           ),
       ],
@@ -1248,203 +1170,6 @@ class SetupTelemetryToggle extends ConsumerWidget {
           ),
           child: Text(L10n.t('setup_pref_telemetry_details')),
         ),
-      ],
-    );
-  }
-}
-
-class _ModelRecommendationCard extends StatelessWidget {
-  final ThemeColors color;
-  final bool checking;
-  final GPUInfo gpu;
-  final List<DownloadProgress> downloads;
-  final bool alreadyHasModels;
-  final int localModelCount;
-  final bool downloadStarted;
-  final bool downloadDone;
-  final String? downloadError;
-  final void Function(GPUInfo gpu) onDownload;
-
-  const _ModelRecommendationCard({
-    required this.color,
-    required this.checking,
-    required this.gpu,
-    required this.downloads,
-    required this.alreadyHasModels,
-    required this.localModelCount,
-    required this.downloadStarted,
-    required this.downloadDone,
-    required this.downloadError,
-    required this.onDownload,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SetupCard(
-      color: color,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [_content()],
-      ),
-    );
-  }
-
-  Widget _content() {
-    if (checking) {
-      return Row(
-        children: [
-          SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: color.textDim,
-            ),
-          ),
-          SizedBox(width: 10),
-          Text(
-            L10n.t('setup_model_checking'),
-            style: TextStyle(fontSize: 13, color: color.textDim),
-          ),
-        ],
-      );
-    }
-
-    if (alreadyHasModels) {
-      return Row(
-        children: [
-          Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 20),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              L10n.t('setup_model_already', {'count': '$localModelCount'}),
-              style: TextStyle(fontSize: 13, color: color.textMain),
-            ),
-          ),
-        ],
-      );
-    }
-
-    final chatModel = recommendedChatModel(gpu);
-    final memModel = recommendedMemoryModel;
-    final gpuLine = gpu.hasGpu
-        ? '${gpu.name} — ${gpu.vramFormatted} VRAM'
-        : L10n.t('setup_model_gpu_none');
-    final ramLine = gpu.ramTotalMb > 0
-        ? gpu.ramFormatted
-        : L10n.t('setup_model_ram_unknown');
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          L10n.t('setup_local_recommendation'),
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: color.textMain,
-          ),
-        ),
-        SizedBox(height: 10),
-        SetupSpecRow(
-          label: L10n.t('setup_model_ram'),
-          value: ramLine,
-          color: color,
-        ),
-        SizedBox(height: 4),
-        SetupSpecRow(
-          label: L10n.t('setup_model_gpu'),
-          value: gpuLine,
-          color: color,
-        ),
-        SizedBox(height: 14),
-        Container(
-          padding: EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: MemoTheme.accent.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SetupSpecRow(
-                label: L10n.t('setup_model_chat_label'),
-                value: '${chatModel.name} (${chatModel.sizeFormatted})',
-                color: color,
-                bold: true,
-                tooltip: L10n.t('setup_model_chat_tooltip'),
-              ),
-              SizedBox(height: 4),
-              SetupSpecRow(
-                label: L10n.t('setup_model_memory_label'),
-                value: memModel.name,
-                color: color,
-                bold: true,
-                tooltip: L10n.t('setup_model_memory_tooltip'),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 8),
-        Text(
-          L10n.t('setup_model_local_note'),
-          style: TextStyle(fontSize: 11, color: color.textDim, height: 1.4),
-        ),
-        SizedBox(height: 14),
-        if (downloadError != null) ...[
-          Text(
-            downloadError!,
-            style: TextStyle(fontSize: 12, color: MemoTheme.red),
-          ),
-          SizedBox(height: 8),
-        ],
-        if (!downloadStarted)
-          SizedBox(
-            width: double.infinity,
-            height: 42,
-            child: OutlinedButton(
-              onPressed: () => onDownload(gpu),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: MemoTheme.accent),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: Text(
-                L10n.t('setup_model_download_button'),
-                style: TextStyle(
-                  color: MemoTheme.accent,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          )
-        else if (downloadDone)
-          Row(
-            children: [
-              Icon(
-                Icons.check_circle_rounded,
-                color: MemoTheme.green,
-                size: 18,
-              ),
-              SizedBox(width: 8),
-              Text(
-                L10n.t('setup_model_download_done'),
-                style: TextStyle(fontSize: 12, color: color.textMain),
-              ),
-            ],
-          )
-        else ...[
-          for (final d in downloads) ...[
-            SetupDownloadProgressRow(progress: d, color: color),
-            SizedBox(height: 8),
-          ],
-          Text(
-            L10n.t('setup_model_download_bg_note'),
-            style: TextStyle(fontSize: 11, color: color.textDim, height: 1.4),
-          ),
-        ],
       ],
     );
   }

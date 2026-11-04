@@ -124,15 +124,21 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      for (var i = 0; i < 2; i++) {
-        await tester.tap(find.byKey(const Key('setup_next')));
-        await tester.pumpAndSettle();
-      }
+      // Language, then the model page.
+      await tester.tap(find.byKey(const Key('setup_next')));
+      await tester.pumpAndSettle();
+      // Local is the default choice: the store card says nothing is ready,
+      // and the embedding model does not count as a chat model.
+      expect(find.byKey(const Key('setup_local_empty')), findsOneWidget);
+      expect(find.byKey(const Key('setup_local_ready')), findsNothing);
+      expect(find.byKey(const Key('setup_open_store')), findsOneWidget);
+      // Without a chat model the required step blocks "next".
       expect(
-        find.text(L10n.t('setup_model_already', {'count': '1'})),
-        findsNothing,
+        tester
+            .widget<FilledButton>(find.byKey(const Key('setup_next')))
+            .onPressed,
+        isNull,
       );
-      expect(find.text(L10n.t('setup_model_download_button')), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -273,6 +279,25 @@ void main() {
   );
 
   testWidgets(
+    'choosing local opens the Model Store window instead of one recommendation',
+    (tester) async {
+      await pumpDesktopWizard(tester, _Api());
+      await tester.tap(find.byKey(const Key('setup_next')));
+      await tester.pumpAndSettle();
+      // The old single "download these models" recommendation is gone.
+      expect(find.text(L10n.t('setup_model_download_button')), findsNothing);
+      await tester.tap(find.byKey(const Key('setup_open_store')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const Key('setup_model_store_dialog')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('setup_store_done')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('setup_model_store_dialog')), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+    variant: TargetPlatformVariant({TargetPlatform.linux}),
+  );
+
+  testWidgets(
     'a downloaded local chat model satisfies the required step',
     (tester) async {
       final api = _Api(
@@ -350,10 +375,7 @@ void main() {
             expect(tester.takeException(), isNull);
           }
 
-          await next();
-          final name = find.byType(TextField).first;
-          await tester.enterText(name, 'Ada');
-          await next();
+          await next(); // language -> model
           for (final path in ['local', 'api', 'subscriptions']) {
             final choice = find.byKey(ValueKey('setup_connection_$path'));
             await tester.ensureVisible(choice);
@@ -376,14 +398,22 @@ void main() {
           await tester.tap(use);
           await tester.pumpAndSettle();
           expect(api.active, 'Subscriptions');
-          // Return through appearance and persona; the typed name survives.
+          await next(); // model -> embedding
+          expect(
+            find.byKey(const Key('setup_embedding_skip_note')),
+            findsOneWidget,
+          );
+          await next(); // embedding (skipped) -> persona
+          final name = find.byType(TextField).first;
+          await tester.enterText(name, 'Ada');
+          await next(); // persona -> preferences
+          // Return to persona; the typed name survives.
           await tester.tap(find.byKey(const Key('setup_back')));
           await tester.pumpAndSettle();
           expect(find.text('Ada'), findsOneWidget);
-          await next();
-          await next();
-          await next();
-          await next();
+          await next(); // -> preferences
+          await next(); // -> summary
+          await next(); // finish
           expect(api.completed, true);
           expect(api.prompt, contains('Ada'));
           expect(prefs.getBool('memo_setup_complete'), true);

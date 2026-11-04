@@ -73,3 +73,55 @@ Subscriptions `gemini-3.8-flash-high`). Başka adrese mail gitmedi. Ana Memo aya
 - Çakışma, ana takvimde aynı saatte duran önceki testten kalan bir kayıtla da örtüştü; çakışmanın tek sebebinin geçici "dişçi" kaydım olduğu iddia edilemez.
 - Doğrulanmadı: WhatsApp Self-Chat / Telegram `#onay`, ses, gerçek cihaz arayüzü, `.ics` eki ile gerçek mail (test Memo yalnız düz metin gönderiyor; `.ics` yolu yalnız E2E'de).
 - Test Memo açılışta WhatsApp istemcisine bağlandı (önceki gecelerin yapılandırması; otonomisi kapalı).
+
+## Tüm adımlar bir arada — çakışma denetimi (4 Kasım)
+
+Tek tek doğrulanan adımlar aynı anda açıkken birbirini bozuyor mu? İki yoldan sınandı.
+
+**Hermetik:** `TestMailAutonomyWholePlanFeaturesTogether`
+(`internal/e2e/mail_autonomy_combined_e2e_test.go`, ~60 sn, `-race` ile 2 tekrar yeşil). Otonomi + undo + karar
+modeli + kalkan + gatekeeper + takvim + onay + yanıt radarı + söz takibi + sabah/toplantı brifingi aynı uygulamada
+açık; tek poll'da 10 farklı mail (iki otomatik adaylı soru, hız sınırına takılan ikinci soru, CC'li mail, `.ics`
+daveti, injection, bülten, noreply, oto-yanıt, OTP). Sahip aynı sırada iptal/onay/giden mail yapıyor. Doğrulananlar:
+yalnız 3 mail çıkar (Can'a otomatik, Merve'ye onaylı, Ahmet'e elle); bülten/noreply/oto-yanıt/injection modele hiç
+gitmez; iptal edilen aday gönderilmez; CC taslağı ve hız sınırlı soru sahibi bekler; kişi başına tek hatırlatma;
+sabah kartı tam bir kez; ikinci poll hiçbir şeyi değiştirmez; gözlenen OTP giden mailde engellenir.
+
+**Canlı** (ana Memo: tüm özellikler açık, genel mod `draft_only`, yalnız kişi 14 `full_auto`; 14 → 5 yığını):
+
+| Birlikte çalışan adımlar | Sonuç |
+|---|---|
+| Söz (7) + radar (7) + giden mail (1) | PASS. "Yarın 10:00" doğru çözüldü; soru 1 saatlik radara kuruldu; 14'ün sonraki mailleri soruyu kapattı. |
+| Onay (6) + radar (7) | PASS. Sahibin onayladığı davet yanıtı radara yeni bekleme kaydı açtı. |
+| Takvim (5) + toplantı notu (7) + kişi grafiği (4) | PASS. Sabah kartı iki toplantıyı, bekleyen taslakları ve geciken sözleri birleştirdi; toplantı notu 14'ün son maillerini doğru kişiye bağladı; dişçi kaydı sızmadı. |
+| Grup kilidi (3) + otonomi (5) | PASS. CC'li mail `group` işaretli, yalnız taslak. |
+| Injection (3) + yığın (2,5) | PASS. Engellendi, modele gitmedi. |
+| Zaman çizelgesi araştırması (4,5) | **HATA bulundu, düzeltildi** (aşağıda). |
+| Sohbet araçları (8) | PASS, bir bulgu hariç (aşağıda). |
+
+### Bulunan ve düzeltilen hata
+
+Uzun geçmişi olan kişiyle `contact_timeline` gerektiren her soru, canlıda `reply_provider_failed` ile düşüyordu
+(yığında 2/2, daha önceki "ilk deneme" hatası da buydu). Sebep: motor her model girdisini 7800 karakterle sınırlar,
+ama kanıt (son 50 mesaj, tam gövde) ve gelen mailin tamamı kırpılmadan girdiye giriyordu; aşım "provider hatası"
+diye yanlış etiketleniyordu ve günlüğe hiçbir şey düşmüyordu. Uzun gelen mail de aynı yüzden `analyzing` aşamasında
+düşerdi, aşırı büyük kanıt ise skoru sessizce `unavailable` yapardı. Düzeltme: `internal/autonomy/evidence.go`
+(mesaj ≤3200 karakter, kanıt en yeni 12 mesaj × 240 karakter ve toplam ≤3200; eski olan önce atılır). Test:
+`TestEngineLongTimelineEvidenceAndLongMailStillGetAReply` (önce kırmızı, sonra yeşil). Canlı yeniden deneme: iki
+soru da taslak üretti; özet, söz ve takvim bilgisini birleştirdi, dişçiyi anmadı.
+
+### Bulunan, düzeltilmeyenler
+
+- **Skor modeli ve yazma modeli aynı yavaş sağlayıcıyı bekletiyor.** Aynı anda birkaç mail işlenirken 5 sn'lik
+  skorlayıcı çağrıları proxy'de `499` ile iptal oldu ve CC maili `review_unavailable` ile tutuldu (güvenli taraf;
+  mail kaybolmadı, yeniden gönderilince işlendi). Yoğun trafikte sıradan mailler gecikir.
+- **Sohbette bekleyen taslakları listeleyen araç yok.** Model "bekleyen taslak yok" dedi, oysa dört taslak vardı.
+  Araç eksikliğinde model "bilmiyorum" yerine "yok" diyor.
+- **Otomatik gönderim + geri al canlıda yine gözlenemedi:** gerçek model proje sorusunda `git_project_status`
+  yerine `search_memory` seçti ve yanıtı olgusal (`factual`) işaretlemedi → skor istenmedi. Bu yol hermetik
+  testte ve 3 Kasım canlısında doğrulandı.
+- **Radarın vadesi canlıda beklenmedi** (en az 1 saat). Vade anındaki hatırlatma yalnız hermetik testte gözlendi.
+- Başlık sahteciliği gereken sinyaller (`List-Unsubscribe`, `Auto-Submitted`, `noreply`) canlıda 14 hesabıyla
+  üretilemez; yalnız hermetik testte sınandı. Gerçek gelen kutusundaki doğal bülten trafiği (sayaçta
+  `dropped_marketing`) ayrıca elendi.
+- Sınanmadı: Göreve dönüştür (TaskLoop köprüsü; alt ajan çalıştırmamak için), WhatsApp/Telegram, ses.

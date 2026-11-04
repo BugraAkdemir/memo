@@ -231,7 +231,22 @@ func rawMail(from, subject, msgID, body string, extra ...string) string {
 }
 
 // modelCalls counts what the scripted fake model was asked, by purpose.
-type modelCalls struct{ analyze, reply, score, other atomic.Int32 }
+type modelCalls struct {
+	analyze, reply, score, followUp, promise, other atomic.Int32
+	mu                                              sync.Mutex
+	analyzed                                        []string // every external message text the analysis model was shown
+}
+
+func (c *modelCalls) sawAnalyzed(marker string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, s := range c.analyzed {
+		if strings.Contains(s, marker) {
+			return true
+		}
+	}
+	return false
+}
 
 // script plays the owner's reply model. It decides ONLY from the data the app
 // really sent (registered projects, evidence, alternatives), so a leak of
@@ -261,7 +276,12 @@ func (c *modelCalls) script(leaked *atomic.Bool) func(int, FakeChatRequest) Fake
 				} `json:"registered_projects"`
 			}
 			_ = json.Unmarshal([]byte(user()), &u)
+			c.mu.Lock()
+			c.analyzed = append(c.analyzed, u.Message)
+			c.mu.Unlock()
 			switch {
+			case strings.Contains(u.Message, "[ref:TIMELINE]"):
+				return FakeChatResponse{Text: `{"kind":"question","tools":[{"name":"contact_timeline","args":{}}]}`}
 			case strings.Contains(u.Message, "[ref:SHELL]"): // a model fooled by the mail asks for a shell
 				return FakeChatResponse{Text: `{"kind":"question","tools":[{"name":"run_command","args":{}}]}`}
 			case strings.Contains(u.Message, "merge") && len(u.Projects) > 0:
@@ -275,6 +295,9 @@ func (c *modelCalls) script(leaked *atomic.Bool) func(int, FakeChatRequest) Fake
 				Alternatives []time.Time                `json:"alternatives"`
 			}
 			_ = json.Unmarshal([]byte(user()), &u)
+			if _, ok := u.Evidence["contact_timeline"]; ok {
+				return FakeChatResponse{Text: `{"body":"Son yazışmamıza baktım, kayıtlarda görünen konuşmamız bu.","factual":true,"evidence_tools":["contact_timeline"]}`}
+			}
 			if git, ok := u.Evidence["git_project_status"]; ok && strings.Contains(string(git), "performance-longevity") {
 				return FakeChatResponse{Text: `{"body":"Kanka evet, performance-longevity main'e merge edildi, pull alabilirsin.","factual":true,"evidence_tools":["git_project_status"]}`}
 			}
@@ -283,6 +306,16 @@ func (c *modelCalls) script(leaked *atomic.Bool) func(int, FakeChatRequest) Fake
 				body = "Merhaba, o saat uygun değil; " + u.Alternatives[0].Format("15:04 MST") + " olabilir mi?"
 			}
 			return FakeChatResponse{Text: fmt.Sprintf(`{"body":%q,"factual":false,"evidence_tools":[]}`, body)}
+		case strings.Contains(raw, "polite follow-up message"):
+			c.followUp.Add(1)
+			return FakeChatResponse{Text: `{"body":"Merhaba, teklif konusunda dönüşünüzü bekliyorum; müsait olunca yazar mısınız?"}`}
+		case strings.Contains(raw, "Read ONE message the owner wrote"):
+			c.promise.Add(1)
+			if strings.Contains(user(), "göndereceğim") {
+				due := time.Now().Add(20 * time.Hour).Format(time.RFC3339)
+				return FakeChatResponse{Text: fmt.Sprintf(`{"promises":[{"summary":"Sözleşmeyi gönderecek","due_at":%q}]}`, due)}
+			}
+			return FakeChatResponse{Text: `{"promises":[]}`}
 		case strings.Contains(raw, "Score whether this draft"):
 			c.score.Add(1)
 			return FakeChatResponse{Text: "0.98"}

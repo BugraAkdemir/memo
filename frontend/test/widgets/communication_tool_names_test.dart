@@ -34,6 +34,7 @@ void main() {
         'check_availability',
         'git_project_status',
         'twin_commitments',
+        'twin_pending_actions',
         'dev_status',
         'telegram_send',
       ]) {

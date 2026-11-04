@@ -21,6 +21,7 @@ class ToolNames {
     'check_availability': _ToolMeta('tool_check_availability', 'tool_check_availability_desc', Icons.people_outline),
     'git_project_status': _ToolMeta('tool_git_project_status', 'tool_git_project_status_desc', Icons.people_outline),
     'twin_commitments': _ToolMeta('tool_twin_commitments', 'tool_twin_commitments_desc', Icons.assignment_turned_in_outlined),
+    'twin_pending_actions': _ToolMeta('tool_twin_pending_actions', 'tool_twin_pending_actions_desc', Icons.drafts_outlined),
     'dev_status': _ToolMeta('tool_dev_status', 'tool_dev_status_desc', Icons.code_outlined),
     'mail_accounts': _ToolMeta('tool_mail_accounts', 'tool_mail_accounts_desc', Icons.account_circle_outlined),
     'mail_inbox': _ToolMeta('tool_mail_inbox', 'tool_mail_inbox_desc', Icons.inbox_outlined),

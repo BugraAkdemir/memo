@@ -226,6 +226,48 @@ func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessag
 			views = filtered
 		}
 		return views, nil
+	case "twin_pending_actions":
+		var empty struct{}
+		if len(raw) > 0 && strings.TrimSpace(string(raw)) != "{}" {
+			if err := decodeTwin(raw, &empty); err != nil {
+				return nil, err
+			}
+		}
+		actions, err := s.Actions(ctx)
+		if err != nil {
+			return nil, err
+		}
+		type pendingView struct {
+			ID        string    `json:"id"`
+			Channel   string    `json:"channel"`
+			Recipient string    `json:"recipient"`
+			Subject   string    `json:"subject"`
+			Mode      string    `json:"mode"` // awaiting_approval | grace_period_auto
+			Reason    string    `json:"reason"`
+			FollowUp  bool      `json:"follow_up,omitempty"`
+			Group     bool      `json:"group,omitempty"`
+			Conflict  bool      `json:"conflict,omitempty"`
+			CreatedAt time.Time `json:"created_at"`
+			SendsAt   time.Time `json:"sends_at,omitempty"` // only for grace_period_auto
+			Preview   string    `json:"preview"`
+		}
+		views := []pendingView{}
+		for _, v := range actions {
+			if v.State != "pending" || len(views) == 20 {
+				continue
+			}
+			p := pendingView{ID: v.ID, Channel: v.Channel, Recipient: v.Recipient, Subject: v.Subject, Mode: v.Mode, Reason: v.Reason, FollowUp: v.FollowUp, Group: v.Group, Conflict: v.Conflict, CreatedAt: v.CreatedAt}
+			if r := []rune(v.Body); len(r) > 160 {
+				p.Preview = string(r[:160]) + "…"
+			} else {
+				p.Preview = v.Body
+			}
+			if v.Mode == "grace_period_auto" && v.ExecuteAt != nil {
+				p.SendsAt = *v.ExecuteAt
+			}
+			views = append(views, p)
+		}
+		return views, nil
 	case "dev_status":
 		var empty struct{}
 		if len(raw) > 0 && strings.TrimSpace(string(raw)) != "{}" {

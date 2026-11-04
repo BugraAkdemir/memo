@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/l10n.dart';
+import '../utils/autonomy_reasons.dart';
 import '../providers/chat_provider.dart';
 
 Future<void> showMailReplyDraft(
@@ -137,27 +138,7 @@ class MailReplyDraftCard extends StatelessWidget {
             'preparing',
           ].contains(state))
             Text(
-              L10n.t(switch (action['reason']) {
-                'reply_timeout' => 'auto_reason_timeout',
-                'reply_cancelled' => 'auto_reason_cancelled',
-                'user_cancelled' => 'auto_reason_user_cancelled',
-                'follow_up' => 'auto_reason_follow_up',
-                'reply_invalid_response' => 'auto_reason_invalid_response',
-                'reply_provider_failed' => 'auto_reason_provider_failed',
-                'stale_message' => 'auto_reason_stale',
-                'contact_manual' => 'auto_reason_manual',
-                'contact_never' => 'auto_reason_never',
-                'automated_sender' => 'auto_reason_automated',
-                'no_action' => 'auto_reason_none',
-                'prompt_injection' ||
-                'encoded_instruction' => 'auto_reason_injection',
-                'secret_api_key' ||
-                'secret_private_key' ||
-                'secret_env' ||
-                'secret_otp' => 'auto_reason_dlp',
-                'draft_upload_failed' => 'auto_reason_upload',
-                _ => 'auto_reason_review',
-              }),
+              L10n.t(autonomyReasonKey(action['reason'])),
             ),
           if (action['decision_score'] is num)
             Text(

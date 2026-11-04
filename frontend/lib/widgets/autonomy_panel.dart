@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/l10n.dart';
+import '../utils/autonomy_reasons.dart';
 import 'briefing_panel.dart';
 import 'follow_up_radar_card.dart';
 import 'mail_reply_draft.dart';
@@ -522,25 +523,5 @@ class AutonomyPanel extends StatelessWidget {
     );
   }
 
-  String _reason(dynamic code) => L10n.t(switch (code) {
-    'reply_timeout' => 'auto_reason_timeout',
-    'reply_cancelled' => 'auto_reason_cancelled',
-    'user_cancelled' => 'auto_reason_user_cancelled',
-    'follow_up' => 'auto_reason_follow_up',
-    'reply_invalid_response' => 'auto_reason_invalid_response',
-    'reply_provider_failed' => 'auto_reason_provider_failed',
-    'drafted' => 'auto_reason_drafted',
-    'stale_message' => 'auto_reason_stale',
-    'contact_manual' => 'auto_reason_manual',
-    'contact_never' => 'auto_reason_never',
-    'automated_sender' => 'auto_reason_automated',
-    'no_action' => 'auto_reason_none',
-    'prompt_injection' || 'encoded_instruction' => 'auto_reason_injection',
-    'secret_api_key' ||
-    'secret_private_key' ||
-    'secret_env' ||
-    'secret_otp' => 'auto_reason_dlp',
-    'draft_upload_failed' => 'auto_reason_upload',
-    _ => 'auto_reason_review',
-  });
+  String _reason(dynamic code) => L10n.t(autonomyReasonKey(code));
 }

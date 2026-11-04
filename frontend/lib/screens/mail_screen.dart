@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/clipboard_copy.dart';
 import '../core/friendly_error.dart';
 import '../core/l10n.dart';
+import '../utils/autonomy_reasons.dart';
 import '../core/theme.dart';
 import '../models/mail.dart';
 import '../widgets/mail_security_dialog.dart';
@@ -269,24 +270,7 @@ class _MailScreenState extends ConsumerState<MailScreen>
                     'send_uncertain',
                   ].contains(a['state']))
                     Text(
-                      L10n.t(switch (a['reason']) {
-                        'reply_timeout' => 'auto_reason_timeout',
-                        'reply_cancelled' => 'auto_reason_cancelled',
-                        'user_cancelled' => 'auto_reason_user_cancelled',
-                        'follow_up' => 'auto_reason_follow_up',
-                        'reply_invalid_response' =>
-                          'auto_reason_invalid_response',
-                        'reply_provider_failed' =>
-                          'auto_reason_provider_failed',
-                        'drafted' => 'auto_reason_drafted',
-                        'contact_manual' => 'auto_reason_manual',
-                        'contact_never' => 'auto_reason_never',
-                        'automated_sender' => 'auto_reason_automated',
-                        'no_action' => 'auto_reason_none',
-                        'stale_message' => 'auto_reason_stale',
-                        'draft_upload_failed' => 'auto_reason_upload',
-                        _ => 'auto_reason_review',
-                      }),
+                      L10n.t(autonomyReasonKey(a['reason'])),
                     ),
                 ],
               ],

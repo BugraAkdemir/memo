@@ -5,7 +5,7 @@ Settings. Required steps carry a trailing `*`; "Next" is off on a required step
 that is not done, and the final button is off while any required step is
 missing. The side list scrolls (there are up to twelve steps) and every row can
 be opened directly; compact windows use a single column. Plan and unit history:
-`PLAN_setup_wizard_v2.md`.
+`docs/plans/PLAN_setup_wizard_v2.md`.
 
 ## Steps (`*` required)
 

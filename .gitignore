@@ -30,6 +30,8 @@ data/calendar/
 data/mood/
 data/profile/
 data/cli_theme
+data/mail/
+data/telemetry_state.json
 
 # Runtime databases (may contain personal data)
 *.db
@@ -95,6 +97,8 @@ STABILITY_REPORT.md
 # Misc
 server.log
 *.log
+.directory
+linux_nvidia.tar.gz
 
 STABILITY_AUDIT.html
 yapacam.md

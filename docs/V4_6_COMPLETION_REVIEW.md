@@ -24,7 +24,7 @@ Bu inceleme yeni sürüm notlarını uygulama akışlarıyla karşılaştırır.
 
 ## Uygulama ve doğrulama kaydı
 
-Plan: `PLAN_v4_6_completion.md`. İlk iki birim ayrı checkpoint'lerde uygulanır. Diğer açık işler sonraki oturumlara taşınır; sürüm notlarında çözülmüş gösterilmez.
+Plan: `docs/plans/PLAN_v4_6_completion.md`. İlk iki birim ayrı checkpoint'lerde uygulanır. Diğer açık işler sonraki oturumlara taşınır; sürüm notlarında çözülmüş gösterilmez.
 
 - İlk hedef testler: provider + app `-count=1 -race`, **PASS**.
 - Eski kaynağa Go overlay ile aynı roundtrip/HTTP regresyonları: effort/context kaybı ve 401/404/429/503 yanlış başarısı **FAIL** olarak yeniden üretildi. Test API farkını aşmak için overlay fixture yalnız Set'in eski void imzasına uyarlanmıştır; üretim dosyaları değiştirilmemiştir.

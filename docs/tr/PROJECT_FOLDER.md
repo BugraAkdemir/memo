@@ -2,7 +2,7 @@
 
 Bir klasörü proje olarak (ajan sohbeti) açtığında Memo, içinde kendi küçük klasörünü
 tutabilir: çalışma kuralları, notlar, proje skill'leri — ve o projeye kendi hafızasını
-verir. Tasarım kaydı: `PLAN_project_folders.md`.
+verir. Tasarım kaydı: `docs/plans/PLAN_project_folders.md`.
 
 ## Kullanıcı ne görür
 

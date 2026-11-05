@@ -1,7 +1,7 @@
 # 📁 Project Folders (`.memo/`)
 
 > **Package:** `internal/project/` (guard, ids, scaffold, skills), `internal/memory/scope.go` (memory pools), bridged into `internal/app/` via `project_scope.go`, `project_setup.go`, `project_skills.go`
-> Design record: `PLAN_project_folders.md`; full page: `docs/PROJECT_FOLDER.md`
+> Design record: `docs/plans/PLAN_project_folders.md`; full page: `docs/PROJECT_FOLDER.md`
 > **Data:** `<project>/.memo/`, `data/projects.json` (per device), `data/backups/memory-pre-project-id-*.db`
 > **API endpoints:** `/api/projects/status`, `/api/projects/setup`, `/api/projects/decline`
 

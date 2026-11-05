@@ -85,7 +85,7 @@ calendar years including the leap day; it has not yet been executed.
 
 ## Exact resume order
 
-1. Read this checkpoint, `PAUSED.json`, PLAN_performance_benchmark.md and
+1. Read this checkpoint, `PAUSED.json`, docs/plans/PLAN_performance_benchmark.md and
    scripts/performance/README.md. Check branch/status and preserve user changes.
    **Do not blindly run the current full runner**: it resets stage 1 and overwrites
    the accepted result. First add a bounded `--resume-stage` / per-section save

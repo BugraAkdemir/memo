@@ -6,7 +6,7 @@ note, and one click ("Update now") does the rest. Engine files (llama.cpp,
 whisper.cpp, the Subscriptions connector) can be refreshed on their own, without a
 new Memo release.
 
-This page is for people who ship Memo. Design record: `PLAN_auto_update.md`.
+This page is for people who ship Memo. Design record: `docs/plans/PLAN_auto_update.md`.
 
 ## What the person sees
 

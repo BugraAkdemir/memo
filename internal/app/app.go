@@ -42,6 +42,7 @@ import (
 	"memo/internal/proactive"
 	"memo/internal/provider"
 	"memo/internal/remoteauth"
+	"memo/internal/routecatalog"
 	"memo/internal/routine"
 	"memo/internal/sessions"
 	"memo/internal/skill"
@@ -765,6 +766,21 @@ func (a *App) Startup(ctx context.Context) {
 	// disk — keeping this as one code path means the two can't drift apart.
 	purgeLegacySubscriptionData()
 	a.reinitProviderAndOrchestra()
+	// The models.dev catalogue is the last source of a model's context window
+	// (provider.CachedContextWindow reads it without downloading); load it off
+	// the startup path. Ensure keeps the last good disk snapshot offline.
+	if n := a.cfg.Llama.MaxContextTokens; n > 0 {
+		logx.Printf("config: llama.max_context_tokens=%d overrides the context window of EVERY model (cloud ones too); set it to 0 for the models' real windows", n)
+	}
+	// MEMO_CATALOG_PRELOAD=off skips it (the e2e harness: its tests write their
+	// own catalogue snapshot and must stay offline).
+	if os.Getenv("MEMO_CATALOG_PRELOAD") != "off" {
+		goRecover("loadModelCatalog", func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			routecatalog.Shared().Ensure(ctx)
+		})
+	}
 	// Subscriptions: if a vendor account is already signed in, bring the
 	// bundled CLIProxyAPI sidecar up in the background and (re)register its
 	// provider with the sidecar's current port/key. Never blocks startup.

@@ -48,3 +48,24 @@ func TestCatalogOfflineFallbackAndExactEndpoint(t *testing.T) {
 		t.Fatal("missing cache must remain unknown")
 	}
 }
+
+// A vendor's own entry answers for its own endpoint even when other vendors
+// resell the same id with a different window (the cross-vendor rule in Lookup
+// would call that ambiguous).
+func TestLookupVendorIsNotAmbiguousAcrossResellers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"anthropic":{"models":{"m":{"id":"m","limit":{"context":1000000}}}},"reseller":{"models":{"m":{"id":"m","limit":{"context":200000}}}}}`))
+	}))
+	defer srv.Close()
+	c := New(filepath.Join(t.TempDir(), "cache.json"), srv.URL, srv.Client())
+	c.Ensure(context.Background())
+	if m, ok := c.LookupVendor("anthropic", "m"); !ok || m.Limit.Context != 1000000 {
+		t.Fatalf("vendor entry lost: %+v %v", m, ok)
+	}
+	if _, ok := c.Lookup("", "m"); ok {
+		t.Fatal("Lookup must still refuse an ambiguous id")
+	}
+	if _, ok := c.LookupVendor("nobody", "m"); ok {
+		t.Fatal("unknown vendor matched")
+	}
+}

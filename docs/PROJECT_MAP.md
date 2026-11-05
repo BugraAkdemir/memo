@@ -570,7 +570,7 @@ internal/provider/
   images.go         — ImageRequest: metinden-resim çağrısı, sohbet isteğinden bilerek ayrı tip
   openrouter_images.go — OpenRouter'ın görüntü-çıkışlı modelleri (POST {base}/images); hangi modelin görüntü modeli olduğu OpenRouter kataloğundan okunur
   openai_images.go  — OpenAI-uyumlu "custom" uç noktalar için görüntü üretimi/düzenleme (Subscriptions'ta Codex gpt-image-*); model, uç noktaya sorularak (prompt'suz yoklama) tanınır
-  model_context.go  — ContextWindowForModel: model kimliğinin ailesinden bağlam penceresi (claude-* 200K, gemini* 1M)
+  context_window.go — CachedContextWindow/WarmContextWindow + ContextWindower: bağlam penceresi sağlayıcının kendi API'sinden (Anthropic max_input_tokens, Gemini inputTokenLimit, /models alanları, Ollama /api/ps+show, llama-server /props), sonra models.dev; yoksa 0 = bilinmiyor (tahmin yok)
   effort.go         — GeminiThinkingBudgetForLevel + EffortLevelsFor*: "effort level" (minimal/low/medium/high/max) etiketlerinin vendor-özel parametrelere çevrimi (Gemini thinkingBudget, Claude adaptive thinking)
 ```
 

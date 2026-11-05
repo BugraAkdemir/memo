@@ -427,8 +427,17 @@ confirm every single time before tagging or pushing a tag.
   `reinitProviderAndOrchestra` clears an active provider that names nothing configured; startup removes `data/geminisub`,
   `data/claudesub`.
 - **Model selectors:** the chat top bar and `/model` expand the Subscriptions provider into its live model list (grouped by
-  `owned_by`); `provider.ContextWindowForModel` gives a `custom` gateway's models their real window (claude-* 200K, gemini* 1M)
-  unless `ContextTokens` is set.
+  `owned_by`); the context window is never derived from a model's name (see the next bullet).
+- **Context window = a published fact, never a guess (`internal/provider/context_window.go`).** `provider.CachedContextWindow(cfg, model)`
+  answers from memory (never waits on the network; a background refresh fills it, 6 h TTL, 1 min retry, last good figure kept
+  offline). Order: the provider's `ContextTokens` → Subscriptions' CLIProxyAPI registry → the provider's own API (`ContextWindower`:
+  Anthropic `max_input_tokens`, Gemini `inputTokenLimit`, OpenRouter/Groq/vLLM/… `/models` fields `context_length`/`context_window`/
+  `max_model_len`, Ollama `/api/ps` running window → Modelfile `num_ctx` → `model_info.*.context_length`, llama-server `/props`) →
+  models.dev (`routecatalog`; native vendors by their catalogue key, gateways by endpoint or an unambiguous id) → **0 = unknown**.
+  The gauge shows unknown for 0; prompt budgeting then uses `unknownContextBudget` (128K) which is a safety margin, not capacity. Only the
+  selected provider is ever asked (a test pins that). `llama.max_context_tokens` (global override, not in any UI) beats everything: a
+  stale value left in `config/config.yaml` showed 16.4K for every cloud model on 5 Nov — check it first when the gauge looks wrong.
+  `MEMO_CATALOG_PRELOAD=off` skips the startup models.dev load (the e2e harness sets it; its tests write their own snapshot).
 - **Quota (`remaining`, `reset_at`, `quota_window` on each model)** has two sources, both read with the token from the
   credential file (it goes only to the vendor, never to the API, logs or UI): Antigravity's catalogue call
   (`fetchAvailableModels` → `quotaInfo.remainingFraction`, per model) and the account meters of Codex

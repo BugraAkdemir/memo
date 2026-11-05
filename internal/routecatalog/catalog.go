@@ -140,6 +140,17 @@ func (c *Catalog) Lookup(endpoint, id string) (Model, bool) {
 	}
 	return found, count > 0
 }
+
+// LookupVendor reads one vendor's own entry (models.dev's top-level key, e.g.
+// "anthropic", "google"). A vendor's catalogue is authoritative for its own
+// models, so there is no cross-vendor ambiguity to resolve.
+func (c *Catalog) LookupVendor(vendor, id string) (Model, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	m, ok := c.data[vendor].Models[id]
+	return m, ok
+}
+
 func sameBool(a, b *bool) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil

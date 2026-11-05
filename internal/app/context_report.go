@@ -4,7 +4,6 @@ package app
 
 import (
 	"encoding/json"
-	"memo/internal/provider"
 	"strings"
 	"sync"
 	"time"
@@ -150,13 +149,14 @@ func (a *App) agentToolTokens(chatID string) int {
 }
 
 // currentContextWindow is the context window of whatever model a turn would run
-// on right now: the running local server's real window, else the active API
-// provider's budget.
-func (a *App) currentContextWindow() int {
+// on right now: the running local server's real window, else what the active
+// provider (or the user) published for that model — 0 while nothing has, so the
+// gauge reports "unknown" rather than a default dressed up as capacity.
+func (a *App) currentContextWindow(providerName, model string) int {
 	if a.llamaServer != nil && a.llamaServer.IsRunning() {
 		return a.localContextWindow()
 	}
-	return a.apiContextBudget()
+	return a.knownContextWindowFor(providerName, model)
 }
 
 // localContextWindow is the running llama-server's real window — what
@@ -226,17 +226,7 @@ func (a *App) contextBudgetTokens() int {
 // waits on the network: the allowance figures come from the quota cache.
 func (a *App) ContextReport(chatID string) models.ContextReport {
 	providerName, model := a.activeModelIdentity()
-	window := a.currentContextWindow()
-	if providerName == subsProviderName {
-		if p, ok := a.subsMarkerConfig(); ok && p.ContextTokens == 0 {
-			a.cfgMu.RLock()
-			override := a.cfg.Llama.MaxContextTokens
-			a.cfgMu.RUnlock()
-			if override == 0 {
-				window = provider.SubscriptionContextWindow(p, model)
-			}
-		}
-	}
+	window := a.currentContextWindow(providerName, model)
 	enabled, pct := a.compactionSettings()
 	rep := models.ContextReport{
 		Provider:           providerName,

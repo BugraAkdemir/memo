@@ -18,10 +18,15 @@ import (
 	"memo/internal/truncate"
 )
 
+// unknownContextBudget is what prompts are packed against while no source has
+// published the active model's window yet. It is an internal safety margin for
+// trimming history, never shown as the model's capacity (see
+// knownContextWindow, which reports 0 instead).
+const unknownContextBudget = 128 * 1024
+
 // apiContextBudget returns the context-window token budget for the active API
-// provider. It follows the model, not the provider type: the user-configured
-// ContextTokens for the active provider's model wins; an explicit global
-// MaxContextTokens override comes next; otherwise a conservative default.
+// provider: the model's real window when a source has published it, else the
+// internal safety budget.
 func (a *App) apiContextBudget() int {
 	a.providerMu.RLock()
 	active := a.activeProviderName
@@ -30,50 +35,48 @@ func (a *App) apiContextBudget() int {
 }
 
 // contextBudgetFor returns the context-window token budget for a named
-// provider, following the model not the type: an explicit global
-// MaxContextTokens override wins, then the user-configured per-model
-// ContextTokens, then a conservative per-provider fallback. Used by the
+// provider, following the model, never its name or type: an explicit global
+// MaxContextTokens override wins, then provider.CachedContextWindow (the
+// user's per-provider ContextTokens, else the vendor's own model metadata,
+// else the models.dev catalogue), then the internal safety budget. Used by the
 // planner/executor mode's context gauge as well as apiContextBudget.
 func (a *App) contextBudgetFor(providerName string) int {
+	if w := a.knownContextWindowFor(providerName, ""); w > 0 {
+		return w
+	}
+	return unknownContextBudget
+}
+
+// knownContextWindow is the active API provider's window as published, or 0 when
+// nothing has published it (yet). Unlike apiContextBudget it never substitutes
+// a default, so the gauge can say "unknown" instead of a made-up number.
+func (a *App) knownContextWindow() int {
+	a.providerMu.RLock()
+	active := a.activeProviderName
+	a.providerMu.RUnlock()
+	return a.knownContextWindowFor(active, "")
+}
+
+// knownContextWindowFor resolves providerName's window for model ("" = that
+// provider's configured model). Answers from memory; a vendor lookup runs in
+// the background when nothing is cached.
+func (a *App) knownContextWindowFor(providerName, model string) int {
 	a.cfgMu.RLock()
 	maxContextTokens := a.cfg.Llama.MaxContextTokens
 	a.cfgMu.RUnlock()
 	if maxContextTokens > 0 {
 		return maxContextTokens
 	}
-
-	if a.providerCfgMgr != nil && providerName != "" {
-		for _, p := range a.providerCfgMgr.GetEnabled() {
-			if p.Name == providerName && p.ContextTokens > 0 {
-				return p.ContextTokens
-			}
-		}
-		// An OpenAI-compatible gateway (custom) can front any model family, so
-		// the model id decides when nothing was configured (see
-		// provider.ContextWindowForModel).
-		for _, p := range a.providerCfgMgr.GetEnabled() {
-			if p.Name == providerName && p.Type == provider.ProviderCustom {
-				if isSubsMarker(p) {
-					if w := provider.SubscriptionContextWindow(p, p.Model); w > 0 {
-						return w
-					}
-					return 128 * 1024 // internal safety budget, not measured capacity
-				}
-				if w := provider.ContextWindowForModel(p.Model); w > 0 {
-					return w
-				}
-			}
+	if a.providerCfgMgr == nil || providerName == "" {
+		return 0
+	}
+	for _, p := range a.providerCfgMgr.GetEnabled() {
+		if p.Name == providerName {
+			w, _ := provider.CachedContextWindow(p, model)
+			return w
 		}
 	}
-
-	switch providerName {
-	case "gemini":
-		return 1024 * 1024
-	case "claude":
-		return 200 * 1024
-	default:
-		return 128 * 1024
-	}
+	return 0
 }
 
 // buildMemoryQuery enriches the retrieval query with recent conversation

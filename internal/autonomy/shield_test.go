@@ -31,7 +31,13 @@ func TestInjectionRulesAndDecision(t *testing.T) {
 			}
 		})
 	}
-	for _, text := range []string{"Yarın 14:00 toplantı yapabilir miyiz?", "Invoice 123 due next Friday", "Can you review the project status?", "I use a password manager."} {
+	for _, text := range []string{
+		"Yarın 14:00 toplantı yapabilir miyiz?", "Invoice 123 due next Friday", "Can you review the project status?", "I use a password manager.",
+		// "ignore the previous <ordinary thing>" is everyday mail, not an instruction override.
+		"Ignore the previous email, the meeting moved to 16:00.",
+		"Please disregard my earlier message about the invoice.",
+		"Forget the prior invite, here is the new one.",
+	} {
 		if v := DetectPromptInjection(context.Background(), text, nil); v.Blocked {
 			t.Fatalf("ordinary mail blocked: %q: %+v", text, v)
 		}

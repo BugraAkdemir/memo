@@ -35,7 +35,10 @@ func WrapUntrustedExternalMessage(sender, channel, text string) string {
 var instructionPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?is)(run|execute|invoke).{0,40}(run_command|write_file|edit_file|bash|powershell|shell|rm\s+-)`),
 	regexp.MustCompile(`(?is)(komut|terminal|bash|powershell|run_command|write_file|edit_file).{0,60}(çaliştir|calistir)`),
-	regexp.MustCompile(`(?is)(ignore|disregard|override|forget).{0,60}(previous|prior|system|developer|instructions|rules)`),
+	regexp.MustCompile(`(?is)(ignore|disregard|override|forget).{0,60}(system|developer|instructions|rules)`),
+	// "previous"/"prior" alone is ordinary mail ("ignore my previous email"); it only
+	// counts when it points at instructions, prompts, rules or context.
+	regexp.MustCompile(`(?is)(ignore|disregard|override|forget).{0,30}(previous|prior|above|earlier|preceding).{0,30}(instruction|prompt|rule|directive|guideline|context|command)`),
 	regexp.MustCompile(`(?is)(önceki|onceki|sistem|geliştirici|gelistirici).{0,60}(talimat|kurallar|komut).{0,40}(unut|yok say|geçersiz|gecersiz)`),
 	regexp.MustCompile(`(?is)(reveal|print|show|send|leak|display).{0,60}(system prompt|developer message|api.key|password|\.env|private.key|verification.code|otp)`),
 	regexp.MustCompile(`(?is)(şifre|sifre|api.anahtar|sistem.prompt|doğrulama.kod|dogrulama.kod|\.env).{0,70}(gönder|gonder|paylaş|paylas|yazdır|yazdir|açıkla|açikla|acikla)`),

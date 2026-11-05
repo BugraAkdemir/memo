@@ -4,6 +4,9 @@ import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/models/chat.dart';
 import 'package:memo_flutter/widgets/task_from_message_dialog.dart';
 
+// Test-only trigger label; named so it reads as a fixture, not UI copy.
+const _openButtonLabel = 'open';
+
 const chats = [
   ChatSession(
     id: 'c1',
@@ -48,13 +51,13 @@ Future<Map<String, dynamic>?> open(
                     TaskFromMessageDialog(subject: subject, chats: list),
               );
             },
-            child: const Text('open'),
+            child: const Text(_openButtonLabel),
           ),
         ),
       ),
     ),
   );
-  await tester.tap(find.text('open'));
+  await tester.tap(find.text(_openButtonLabel));
   await tester.pumpAndSettle();
   return result;
 }
@@ -129,13 +132,13 @@ void main() {
                         ),
                       );
                     },
-                    child: const Text('open'),
+                    child: const Text(_openButtonLabel),
                   ),
                 ),
               ),
             ),
           );
-          await tester.tap(find.text('open'));
+          await tester.tap(find.text(_openButtonLabel));
           await tester.pumpAndSettle();
           await tester.tap(find.byKey(const ValueKey('task-chat')));
           await tester.pumpAndSettle();

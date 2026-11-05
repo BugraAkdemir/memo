@@ -1,7 +1,7 @@
 # PLAN — Memo "Dijital İkiz" (Digital Twin OS) & Otonom İletişim Sistemi
 **Doküman Türü:** Üretim Seviyesi Mimari Tasarım ve Uygulama Planı (SRS & Mühendislik Spesifikasyonu)  
-**Durum:** Faz 3 / Adım 6 teknik uygulaması ve tam CI doğrulaması tamam; canlı kabulde bulunan DT6-1–3 düzeltildi ve canlı doğrulandı (`9db7bcaf`, `090a02d8`; BUG_REPORT.md). Adım 6 cihaz kabulü (iptal / tek gönderim / otomatik geri al) tamamlanmadı. Adım 7'nin altı parçası da teknik olarak uygulandı (testli); canlı kabulü sürüyor.
-**Tarih:** 2026-10-30  
+**Durum (5 Kasım 2026):** Adım 1–9'un hepsi teknik olarak uygulandı ve testli. Adım 3–4 kutuları yalnız sahibin cihaz kabulünü bekliyor (`docs/DIGITAL_TWIN_DEVICE_ACCEPTANCE.md`, 25 madde, hiçbiri işaretlenmedi). Kutu mantığı: ✅ = teknik uygulama + otomatik/canlı doğrulama; WhatsApp/Telegram `#onay` ve ses (C+D) cihaz kabulü Adım 5–7 için ayrıca açık. Ayrıntılı doğrulama ve plan–kod farkları aşağıdaki "5 Kasım doğrulama bulguları" bölümünde.
+**Tarih:** 2026-10-30 (son güncelleme 2026-11-05)  
 **Kapsam:** `internal/mail`, `internal/autonomy`, `internal/twin`, `internal/calendar`, `internal/whatsapp`, `internal/telegram`, `internal/webserver`, `frontend/`
 
 ---
@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS contacts (
     id                TEXT PRIMARY KEY,
     display_name      TEXT NOT NULL,
     relationship_type TEXT NOT NULL DEFAULT 'unknown', -- 'friend', 'colleague', 'client', 'family', 'service'
-    autonomy_policy   TEXT NOT NULL DEFAULT 'default', -- 'default', 'always_auto', 'always_draft', 'never_reply'
+    autonomy_policy   TEXT NOT NULL DEFAULT 'default', -- 'default', 'full_auto', 'draft_only', 'never'
     style_profile     TEXT NOT NULL DEFAULT '{}',      -- JSON: {formality, greeting, signoff, language, avg_words}
     is_vip            INTEGER NOT NULL DEFAULT 0,
     notes             TEXT NOT NULL DEFAULT '',
@@ -255,6 +255,18 @@ autonomy:
 ## 7. Uygulama Fazları ve Adımları (9 Adım)
 
 > **Çapraz tamamlama ve kullanıcı test kapısı — 2026-10-31:** Her adımda backend ile o adımın kullanılabilir frontend akışı birlikte hazırlanır ve birlikte doğrulanır. Frontend işi yalnız Faz 5'e ertelenmez; Adım 8'deki ilgili UI parçaları ait oldukları adıma taşınarak uygulanır. Yalnız backend'in bitmesi adımı/fazı tamamlamaz. Teknik doğrulamadan sonra durulur, kullanıcı gerçek senaryolarla dener ve geri bildirim verir. Sonraki adıma/faza kullanıcı bildiriminden önce geçilmez.
+
+### 5 Kasım doğrulama bulguları (gerçek iki hesap: `akdemirbugra5` ↔ `akdemirbugra14`, gerçek Subscriptions modeli)
+Yöntem: `a37f7cef` derlemesiyle iki Memo (:8090 gerçek model, :8091 sahte sağlayıcı) ayağa kalktı; mailler yalnız bu iki hesap arasında gitti. `internal/mail,autonomy,twin,e2e` testleri yerelde (race'siz, tek koşu) PASS; `go vet ./...` exit0; `flutter analyze` yalnız eski 18 info.
+- **Taslak → onay → tek gönderim (PASS):** soru maili 45 sn'de işlendi, `search_memory`+`contact_timeline` ile taslak; onayla tek mail gitti, ikinci onay `409 mail_reply_not_pending`, karşı taraf `Re:` yanıtını 27 sn'de aldı.
+- **Otomatik gönderim (PASS, karar modeli hızlıysa):** olgusal git sorusu → `git_project_status` kanıtı, skor 1, 60 sn geri alma penceresi, karşıya tam 1 mail.
+- **Skorlayıcı kararsızlığının nedeni bulundu:** `gemini-3.8-flash-high` istekleri 4–15+ sn sürüyor; 15 sn sınırı aşılınca sidecar `499` döndürüyor, `score_status=unavailable` olup otomatik gönderim taslağa düşüyor. Karar modeli için hızlı bir model (`gemini-3.5-flash-lite`, istekler 1–2 sn) seçilince sorun yok. Hata ayrıntısı `Decide` hata verince loglanmıyor (yalnız `unavailable`).
+- **Karar modeli geçersiz/ulaşılamazsa** gelen mail `review_unavailable` ile tümden engelleniyor (güvenli taraf, mail Inbox'ta okunabilir, otonom işlenmez).
+- **Giriş incelemesi yanlış pozitifi (düzeltildi, `51abfde5`):** "Ignore the previous email, …" kural katmanında (`check: rules`) saldırı sayılıyordu; kural artık `previous/prior`'ı yalnız talimat/istem/kural/bağlam adıyla birlikte sayıyor. Kalan bilinçli güvenli taraf: "şifre sıfırlama linkini gönderebilir misin?" `şifre … gönder` kuralına takılıyor.
+- **Toplantı önerisi düz metindeyse takvime işlenmiyor:** "bugün 16:10'da toplantı yapabilir miyiz?" → yalnız genel bir bekletme taslağı (`check_availability` çağrıldı, çakışma/alternatif yok, başlık sızıntısı yok). Takvim harmanlaması yalnız yapısal `.ics` davetinde çalışıyor; Senaryo 2'nin "metinli mail" kısmı uygulanmadı. Elle açılan takvim etkinliği API'de `contact_name` almadığından toplantı notu kişiye bağlanmıyor (yukarıdaki bilinen sınır).
+- **Plan–kod farkları:** (1) §5 `autonomy_policy` değerleri kodda `default | draft_only | never | full_auto` (`always_auto/always_draft` yok). (2) `mail` klasörü yedek listesinde (`internal/backupdata` `DataDirectories`) yok: `data/mail/accounts.json` ne yerel ne bulut yedeğine giriyor (§3.6 dahil diyor). (3) §3.5 6 saatlik eşik var (`stale_message`) ama "Çevrimdışı Birikenler Özeti" kartı yok. (4) §3.7 Katman 1 Gmail `X-GM-RAW` kategori filtresi ve Katman 2 HTML `utm_`/1x1 piksel analizi yok (ESP imzaları ve başlık sinyalleri var). (5) K4 beyaz listesinde kodda 4 araç var (`contact_timeline`, `search_memory`, `check_availability`, `git_project_status`); `get_calendar_events`, `mail_search`, `whatsapp_search` yok. (6) `autonomy.briefing.*` config alanları hiçbir kod tarafından okunmuyor. (7) Dosya adları: `mail_panel.dart` yerine `screens/mail_screen.dart`; `internal/twin/devwatch.go` yerine `internal/autonomy/devwatch.go`.
+- **Uzak CI:** `ci.yml` yalnız `main` push/PR ve elle tetikleme için çalışır; bu dalda son CI 2 Kasım `3471ae59`'du, sonraki 60+ commit uzak CI görmemişti (5 Kasım'da PR ile ilk kez koşturulur).
+- **Radar vade anı:** ilk deneme geçersizdi (aynı kişiden gelen başka bir test maili, tasarım gereği, takibi vadeden önce kapattı: `resolved_at` = o mailin geldiği an). İkinci deneme (yalnız A→B, B sessiz) 1 saatlik vade ile koşuyor; sonuç bu satıra eklenecek.
 
 ### Güncel kontrol noktası — 2026-11-02
 - **Bulunduğumuz yer: Faz 3 / Adım 6 teknik olarak tamamlandı.** Adım5 hazırlama motoru ve Adım6 otomatik/manuel/uzaktan onay köprüsü backend ve frontend birlikte bağlıdır. Yeni uygun adaylar hazırlama/Drafts sonrası geri al süresinden sonra gönderilir; eski adaylar ve başlangıç/ayar değişikliğiyle duraklatılanlar elle onay ister. Kişi/kanal/DLP kontrolleri ve atomik rezervasyon tüm köprü gönderimlerinde korunur.
@@ -394,7 +406,7 @@ autonomy:
 
   - **Dosyalar:**
     - `internal/twin/commitments.go`: Gönderilen maillerde/mesajlarda yanıt bekleyenleri (`waiting_on_other`) ve kullanıcının verdiği sözleri (`my_promise`) tespit edip süresi dolduğunda hatırlatma taslağı üreten döngü + teknik görev mesajlarını onay sonrası `internal/taskloop` (`Task.md`) görevine dönüştüren köprü.
-    - `internal/twin/devwatch.go`: Kayıtlı projelerdeki (`data/projects.json`) yarım kalan değişiklikleri ve son çalışılan dosyaları özetleyen *"Dün nerede kalmıştık?"* motoru.
+    - `internal/autonomy/devwatch.go` (planda `internal/twin/` idi): Kayıtlı projelerdeki (`data/projects.json`) yarım kalan değişiklikleri ve son çalışılan dosyaları özetleyen *"Dün nerede kalmıştık?"* motoru.
     - `internal/twin/briefing.go`:
       - **Toplantı Öncesi Bilgi Notu (`Pre-Meeting Context Pack`):** Toplantıya 15 dk kala katılımcı kişiyle olan son Mail/WhatsApp/Git geçmişini 5 maddede özetleyip kullanıcıya sunar.
       - **Sabah Günlük Sistem Brifingi:** Günün toplantıları, gece yapılan otonom işlemler, bekleyen taslaklar, geciken yanıtlar ve yarım kalan kod işlerini tek raporda sunar.
@@ -409,7 +421,7 @@ autonomy:
     - `internal/app/communication_tools.go` & `internal/agent/communication.go`: Normal sohbette kullanıcının doğrudan çağırabileceği `mail_accounts`, `mail_inbox`, `mail_read` (ek meta verileri dahil), `mail_search`, `mail_save_draft` (Permission Gate korumalı), `mail_send` (Permission Gate korumalı), `mail_download_attachment`, `contact_timeline`, `twin_contacts`, `twin_commitments`, `check_availability`, `dev_status` araçları ve `CallTwin("state")` altında `audit_log` listesi.
     - `internal/replcli/mail_twin_client.go`, `internal/replcli/commands.go` & `internal/replcli/l10n.go`: `/mail` (`inbox`, `read`, `search`, `sync`) ve `/twin` (`contacts`, `commitments`, `audit`) terminal komutları (TR + EN).
   - **Flutter Frontend Dosyaları (`frontend/lib/`):**
-    - `widgets/mail_panel.dart`, `widgets/autonomy_panel.dart`, `widgets/twin_dialog.dart`: Gmail/Outlook/Diğer E-posta Bağla, Gelen Kutusu, Taslaklar, Onay Bekleyen İkiz Aksiyonları ve açılır-kapanır **İkiz Günlüğü (`Twin Audit Log`)** bölümü.
+    - `screens/mail_screen.dart`, `widgets/autonomy_panel.dart`, `widgets/twin_dialog.dart`: Gmail/Outlook/Diğer E-posta Bağla, Gelen Kutusu, Taslaklar, Onay Bekleyen İkiz Aksiyonları ve açılır-kapanır **İkiz Günlüğü (`Twin Audit Log`)** bölümü.
     - `widgets/settings/tabs/mail_autonomy_tab.dart`: **Dijital İkiz & Otonom Sistem Ayarları** ve doğrudan **Dijital İkiz Kişi & Tercihlerini Aç** kısayolu.
     - `utils/tool_names.dart` & `core/l10n.dart`: Tüm yeni kullanıcı arayüzü metinlerinin ve araç etiketlerinin eksiksiz Türkçe ve İngilizce karşılıkları (**`AGENTS.md` Kural #8 — sıfır hardcoded UI string**).
   - **Testler & Canlı Doğrulama:** `go test -tags "sqlite_fts5" ./... -race`, `flutter analyze lib/`, 947 widget/unit testi, L10n hardcoded string taraması ve gerçek Gmail (`akdemirbugra5@gmail.com` ↔ `akdemirbugra14@gmail.com`) + Subscriptions (`gemini-3.8-flash-high`) üzerinde tüm REPL komutları ile sohbet araçlarının uçtan uca canlı doğrulanması PASS.
@@ -482,4 +494,4 @@ autonomy:
 
 ### Senaryo 10: Tek Cümleyle İkizine Yeni Kural Öğretme (`Preference Ledger`)
 - **Olay:** *"Memo, `prof@universite.edu.tr` adresinden mail gelirse asla otomatik yanıt gönderme, hep bana sor"* yazdın.
-- **Arka Plan Akışı:** `contacts` tablosunda o kişinin `autonomy_policy` alanı `'always_draft'` olarak kilitlenir ve `twin_preferences` tablosuna kalıcı kural olarak işlenir.
+- **Arka Plan Akışı:** `contacts` tablosunda o kişinin `autonomy_policy` alanı `'draft_only'` olarak kilitlenir ve `twin_preferences` tablosuna kalıcı kural olarak işlenir.

@@ -12,7 +12,7 @@ bug/tasarım eksiklerini görmek için repo'nun `BUG_REPORT.md`'sine bakın.
 > Build alt-modları şu ana kadar yayınlandı. Aşağıdaki maddeler bir sürüm
 > önceki "sırada ne var"ı değil, gerçekten sıradakini yansıtıyor.)
 
-## Bu döngüde yayınlanan (v4.0.0 → v4.5.0), bağlam için
+## Bu döngüde yayınlanan (v4.0.0 → v5.0), bağlam için
 
 - **v4.0.0** — sistem promptunda gerçek zaman farkındalığı ("son
   mesajdan bu yana ne kadar geçti"), WhatsApp üçüncü kişi sohbet devralma.
@@ -38,7 +38,7 @@ bug/tasarım eksiklerini görmek için repo'nun `BUG_REPORT.md`'sine bakın.
   aktarılan skill'lerin artık kendi kendine aktive olmaması; daha net
   Live Mode hata mesajları; ve Model Mağazası'nda düzeltilen bir
   HuggingFace avatar 404 seli.
-- **v4.6.0 (bu branch)** — Memo masaüstü uygulamaları açabiliyor
+- **v4.6.0** — Memo masaüstü uygulamaları açabiliyor
   (`open_app`) ve sohbetin yanındaki bir panelde canlı gösterilen yalıtılmış
   bir Chromium sekmesini sürebiliyor, istersen sen de elle kullanabiliyorsun;
   uzun cevaplar sabit 300 sn ile değil sessizlikle bitiyor, canlı ilerleme
@@ -54,6 +54,51 @@ bug/tasarım eksiklerini görmek için repo'nun `BUG_REPORT.md`'sine bakın.
   yıkıcı rotalar, tarayıcıda reddedilen `file://`, sohbete adreslenen
   gönderimlerde saygı gören gizli mod); AppImage'ın tar.gz ile aynı
   kararlı/beta R2 kanallarında yayınlanması.
+- **v4.7.0** — Memo uygulamanın içinden kendini güncelliyor (imzalı
+  manifestler, bayt-bayt doğrulanan sürdürülebilir indirmeler, otomatik geri
+  alma ile yerinde değiştirme) ve yerel motorlar (llama.cpp, whisper.cpp,
+  Abonelikler bağlayıcısı) yeni bir Memo beklemeden yenilenebiliyor; gerçek
+  bir tarayıcı penceresiyle ChatGPT ve claude.ai (Beta); daha yalın Code Mode
+  ve daha ucuz tekrar eden turlar.
+- **v5.0 (`main`, henüz etiketlenmedi)** — **Mail ve Dijital İkiz** (Gmail,
+  Outlook ya da herhangi bir IMAP hesabı; 3 katmanlı Gatekeeper, injection
+  kalkanı, giden sır taraması; mail ve WhatsApp'ta kişi başına tek zaman
+  çizelgesi; senin üslubunla yanıtlar; uygulamadan, WhatsApp'tan ya da
+  Telegram'dan geri alma süreli onay; takip radarı), **günlük brifing**
+  (bölümler, özel öğeler, Telegram / WhatsApp / mail teslimi, isteğe bağlı
+  brifing modeli), **kurulum sihirbazı v2**, **Projeler** (`.memo/`, projeye
+  özel hafıza, proje skill'leri ve izinleri), Sohbet | Ajan başlangıç
+  ekranıyla tek sohbet listesi, akışlı ajan döngüsü, **sohbet alt ajanları**,
+  adıyla çağrılan skill'ler, daha hızlı yerel modeller (Memo'nun gerçekten
+  gördüğü GPU'ya göre motor seçimi, Vulkan istem işleme, n-gram spekülatif
+  çözümleme) ve **anonim günlük özet** (resmî derlemelerde varsayılan olarak
+  açık). Taslak: [`versinNote/tr/v5.0.0.md`](../../versinNote/tr/v5.0.0.md).
+
+## v5.0 sonrası açık — yapıldı ama henüz kanıtlanmadı
+
+Dilekten değil, planların kendi "doğrulanmadı" listelerinden yazıldı:
+
+- **Dijital İkiz'in cihaz kabulü** — [`DIGITAL_TWIN_DEVICE_ACCEPTANCE.md`](../DIGITAL_TWIN_DEVICE_ACCEPTANCE.md)
+  içindeki 25 maddelik liste hâlâ işaretsiz: WhatsApp ve Telegram'dan onay
+  (`#onay` / `#iptal`), sesli mesajlar, gerçek ek olarak gelen `.ics` davetleri.
+- **Günlük brifing canlıda** — Telegram'a, WhatsApp'a ("kendine mesaj") ve
+  maile gerçek bir teslimat ile gerçek bir sağlayıcının yazdığı brifingin
+  arkasında yalnız birim ve widget testleri var. Kurulum sihirbazı ve brifing
+  paneli de gözle kontrol edilmedi.
+- **Proje izinlerinin ekranı yok** — `.memo/permissions.json` bugün Memo'nun
+  yerel API'siyle onaylanıyor.
+- **Mail hesapları yedeklerde ve bulut eşitlemesinde yok** — başka bir makinede
+  geri yüklemek mailini yeniden bağlamak demek.
+- **Düz metin toplantı istekleri** ("yarın 15'te görüşelim mi?") takvime
+  eklenmiyor; yalnız `.ics` davetleri ekleniyor.
+- **Yavaş bir güvenlik inceleme modeli** sıradan bir maili bekletebilir
+  (`review_unavailable`) ya da otomatik bir yanıtı taslağa düşürebilir.
+- **Ölü yapılandırma** — `config.yaml`'daki `autonomy.briefing.*` hiç okunmuyor;
+  gerçek ayarlar `twin.db`'de.
+- **Telemetri sunucusunun dağıtımı** resmî sürümden önce doğrulanmalı.
+- **Windows ve macOS** — uygulama içi güncelleme devri, motor güncellemeleri ve
+  daha hızlı yerel model işi yalnız Linux'ta doğrulandı; gerisi CI'da derleniyor
+  ve test ediliyor.
 
 ## Yakın vadeli — canlı testten maddeler
 
@@ -120,7 +165,7 @@ Bunun açık bıraktıkları:
 
 ## Platform Erişimi
 
-- **arm64 Docker image** — şu anki image sadece amd64.
+- ~~**arm64 Docker image**~~ — tamam: image çok mimarili (amd64 + arm64), `build-docker.yml` yayımlıyor.
 - **Resmi CasaOS App Store listelemesi.**
 - **Gerçek donanım doğrulaması** — ARM build ve Docker image sadece
   CI/sandbox'larda simüle edilerek doğrulandı, gerçek bir Raspberry Pi

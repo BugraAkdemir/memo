@@ -1,7 +1,7 @@
 ---
 tags: project, ai, go, flutter, memory, rag, llm, agent
 status: Active
-version: 4.5.0
+version: 5.0-dev (main; latest release 4.7.0)
 tech_stack: [Go 1.26, Flutter 3.10, SQLite, vec0, llama.cpp, whatsmeow]
 category: [[AI_Agents]]
 ---
@@ -38,7 +38,7 @@ Memo is not just another chat UI. It is a full AI companion that runs entirely o
 | Capability | Description |
 |-----------|-------------|
 | **Memory** | Every chat is embedded into a local vector database (SQLite + vec0 + FTS5, hybrid search). Remembers conversations indefinitely, with durable facts pinned outside normal retrieval ranking. |
-| **Action** | Agent tool system: 27+ built-in tools (file I/O, `run_command`, web search/fetch, calendar, routines, WhatsApp/Telegram, provider self-config) plus any skill that declares its own `command:` tool. Sandboxed, permission-gated. |
+| **Action** | Agent tool system: 40+ built-in tools (file I/O, `run_command`, web search/fetch, calendar, routines, WhatsApp/Telegram, provider self-config) plus any skill that declares its own `command:` tool. Sandboxed, permission-gated. |
 | **Code Mode** | Three switchable gears for agentic coding — **Plan** (investigates and writes a plan, touches nothing), **Auto** (confirms edits), **Build** (runs edits/commands without waiting) — cycled with Ctrl+Tab. |
 | **Self-Driving** | A `Task.md` checklist becomes an unattended, multi-step run: planner/executor mode, plan approval, up to 3 parallel sub-agents (coder + analyzer/reviewer/test-runner), escalating retry, live in-chat activity. |
 | **Automation** | Routines schedule a prompt or full agent run in plain language, on desktop or mobile, firing in your own device's timezone. |
@@ -84,9 +84,10 @@ Memo is not just another chat UI. It is a full AI companion that runs entirely o
           REST + SSE (:8090 local, or LAN / ngrok / Tailscale)       │
                            └─────────────────────────────────────────┘
 ┌──────────────────────────────┴─────────────────────────────────────────────────┐
-│                 Go Backend — 40+ packages, 180+ endpoints                        │
+│                 Go Backend — 65 packages, 260+ routes                          │
 │  Memory(vec0+FTS5) · Sessions · Llama · WhatsApp/Telegram · Agent · TaskLoop     │
 │  Provider Router · Orchestra · ModelStore · CloudSync · Calendar · Routine      │
+│  Mail · Twin · Autonomy · Projects · SubAgents · Updater · Telemetry            │
 │  LiveMode(v2) · TTS/STT · Swarm · Stats · ngrok · Tailscale · Skills · Observer  │
 └───────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -102,10 +103,10 @@ See [`PROJECT_MAP.md`](PROJECT_MAP.md) for a file-by-file breakdown. Package-lev
 | Directory | Responsibility |
 |-----------|---------------|
 | `internal/app/` | Central orchestrator (40+ files) — chat/LLM routing, agent bridge, Live Mode, Telegram/WhatsApp, task-loop bridge, Code Mode sub-mode state |
-| `internal/webserver/` | REST API (180+ endpoints) — `server.go`, `handlers_flutter.go`, `handlers_tasks.go`, `bridge.go` |
+| `internal/webserver/` | REST API (260+ routes, every `/api/…` route also served under `/api/v1/…`) — `server.go`, `handlers_flutter.go`, `handlers_tasks.go`, `bridge.go` |
 | `internal/agent/` + `internal/agent/tools/` | Agent/tool execution sandbox — 27+ built-in tools, permissions, danger levels |
 | `internal/taskloop/` | Self-Driving task loop: `Task.md` schema, planner/executor engine, sub-agent orchestration, retry/escalation |
-| `internal/provider/` | External LLM providers (15 `ProviderType` values, incl. Custom Anthropic-compatible, OpenCode Zen/Go, Kilo Code) |
+| `internal/provider/` | External LLM providers (18 `ProviderType` values, incl. Custom Anthropic-compatible, OpenCode Zen/Go, Kilo Code) |
 | `internal/agentcli/` | Claude Code / Codex CLI as chat providers (Beta) |
 | `internal/cliproxy/` | Subscriptions — runs the bundled CLIProxyAPI sidecar so an Antigravity / Claude / Codex sign-in exposes all of that account's models as one OpenAI-compatible provider |
 | `internal/anthropicapi/`, `internal/openaiapi/` | Developer API Gateway — local Anthropic- and OpenAI-compatible endpoints, both key-enforced |
@@ -124,6 +125,17 @@ See [`PROJECT_MAP.md`](PROJECT_MAP.md) for a file-by-file breakdown. Package-lev
 | `internal/browserengine/`, `internal/websearch/` | Optional headless-browser rendering for JS-heavy pages, DuckDuckGo scraping |
 | `internal/skill/`, `internal/skills/` | Plugin-like skill system; `go:embed`ded built-ins |
 | `internal/stats/` | Usage Stats (Settings → Stats) |
+| `internal/mail/` | Mail engine: zero-dependency IMAP client, SMTP, XOAUTH2 for Gmail/Outlook, auto-discovery, encrypted account vault, 3-layer Gatekeeper triage, 60-second watcher, `.ics`/structured extractors — see [`DIGITAL_TWIN_AND_MAIL.md`](DIGITAL_TWIN_AND_MAIL.md) |
+| `internal/twin/` | Digital Twin store (`data/twin/twin.db`): contacts and aliases, per-person policy, messages, prepared actions, commitments, daily briefings and their delivery ledger, preferences, the reply model, the style profile |
+| `internal/autonomy/` | The safety and decision layer: the inbound injection shield and outbound DLP, the autonomy engine, the approval bridge (app, WhatsApp, Telegram), the follow-up radar and promise tracking, the briefing builder and its text renderer, the project watcher, the read-only research tools |
+| `internal/project/` | Project folders: `.memo/project.json`, stable project id, the guard that keeps `~/.memo` and system folders out, the per-device registry — see [`PROJECT_FOLDER.md`](PROJECT_FOLDER.md) |
+| `internal/subagents/` | Chat sub-agents: independent, resumable child tasks with durable per-chat delivery, isolated project copies and merge — see [`CHAT_SUBAGENTS.md`](CHAT_SUBAGENTS.md) |
+| `internal/updater/`, `internal/components/`, `cmd/memo-updater/`, `cmd/memo-sign/` | In-app updates: signed manifests, resumable downloads, the in-place swap with rollback, engine-component install, and the maintainer's signing tool — see [`AUTO_UPDATE.md`](AUTO_UPDATE.md) |
+| `internal/telemetry/` | The anonymous daily summary: report schema (allow-list), catalogue normalisation, consent state, daily sender, one-time install count — see [`TELEMETRY.md`](TELEMETRY.md) |
+| `internal/webchat/`, `internal/beta/` | ChatGPT / claude.ai driven through a real browser window (Beta) and the single place that asks whether a Beta feature is on |
+| `internal/replcli/` | The terminal client: talks to the REST API exactly like the Flutter app (chat, agent, `/skill`, `/mail`, `/twin`) |
+| `internal/modelcatalog/`, `internal/routecatalog/`, `internal/upstream/` | Published model capabilities and specifications (never availability), and the scheduled watch on everything outside the repo that Memo depends on |
+| `internal/imgvault/` | Encrypts every stored picture at rest (the key lives outside the data directory) |
 | `internal/config/`, `internal/identity/`, `internal/sessions/` | Config management, persona/system-prompt, chat session persistence |
 | Frontend: `frontend/lib/mascot_main.dart` | Separate entry point for the desktop mascot window (same process, `desktop_multi_window`) |
 
@@ -131,7 +143,15 @@ See [`PROJECT_MAP.md`](PROJECT_MAP.md) for a file-by-file breakdown. Package-lev
 
 ## 5. Core Features
 
-See [`FEATURES.md`](FEATURES.md) for the full catalog. Headlines as of v4.5.0:
+See [`FEATURES.md`](FEATURES.md) for the full catalog. Headlines for `main` (v5.0 in the making):
+
+- **Mail & Digital Twin** — Gmail, Outlook or any IMAP account; a 3-layer Gatekeeper, an injection shield and an outgoing secret scan; one timeline per person across mail and WhatsApp; replies in your own style; approval from the app, WhatsApp or Telegram with an undo window. **Off by default.**
+- **Daily briefing** — a morning card (and a note before meetings) you shape: time, sections, up to five custom items, channels (app, Telegram, WhatsApp, mail) and an optional briefing model.
+- **Setup wizard v2** — model, memory, mail, channels, briefing and privacy in one resumable flow.
+- **Projects** — `.memo/` folders with their own rules and their own memory; one chat list with a Chat | Agent start screen; a live agent; sub-agents; skills by name.
+- **In-app updates and the anonymous daily summary** — signed updates with rollback; a content-free usage summary that is **on by default in official builds** and one switch away from off.
+
+Still current from earlier versions:
 
 - **Desktop Mascot** — an always-on-top animated character (two skins) reflecting Memo's live activity across every channel (chat, WhatsApp, Telegram, task loop), with idle flourishes and a plain-language status bubble.
 - **Code Mode: Plan / Auto / Build** — three cycled sub-modes for agentic coding, each with its own editable system prompt; Plan writes a saved plan and asks in-chat whether to proceed; auto-permission skips the question and chains straight into Build.
@@ -184,7 +204,13 @@ Agent mode (including Code Mode's Auto/Build sub-modes and the Self-Driving task
 | `data/routines/*.json` | One file per Routine |
 | `data/tasklists/` | Self-Driving `Task.md`/`Plan.md` state per task list |
 | `data/plans/<project>/plan.md` | Code Mode Plan sub-mode output (sandboxed outside the project directory) |
-| `data/usage.db` | Usage Stats — per-turn request/token records (SQLite) |
+| `data/stats/usage.db` | Usage Stats — per-turn request/token records (SQLite) |
+| `data/mail/accounts.json` | Connected mail accounts; secrets and tokens sit in an encrypted vault. **Not part of backups or cloud sync** — reconnect after restoring on another machine |
+| `data/twin/twin.db` | Digital Twin: contacts, messages, prepared actions, commitments, briefings and their delivery ledger, preferences (the briefing settings live here, not in `config.yaml`) |
+| `data/projects.json` | Per-device registry of project folders (never synced) |
+| `data/subagents/` | Chat sub-agent state (durable per-chat delivery queue) |
+| `data/cliproxy/` | The Subscriptions sidecar's accounts and state |
+| `data/install_id`, `data/telemetry_state.json` | The random install ID and the telemetry consent/counters (see [`TELEMETRY.md`](TELEMETRY.md)) |
 | `data/tts/voices/` | Downloaded local Piper voice files |
 | `data/skills/` | Materialized built-in + imported skills |
 | `.env` | Optional environment overrides (OAuth creds, API keys) |
@@ -292,6 +318,10 @@ GitHub Actions runs on every push/PR:
 | Skills | An imported skill (auto-picked-up from another tool's skill folder) no longer auto-activates — it's discovered but stays off until explicitly enabled |
 | WhatsApp / Telegram | Mutex-protected init, serialized message writes, owner-lock on Telegram (first sender wins, everyone else silently ignored) |
 | Remote Access | Four selectable auth modes (none/token/password/token+password); per-device tokens (hashed at rest, shown once); argon2id password hashing; brute-force lockout; short-lived signed session tokens |
+| Mail | Credentials in an encrypted vault; every inbound message passes a deterministic injection shield (EN/TR, role delimiters, base64) and an optional second review that fails closed before any model reads it; mail text is only ever sent to a model as untrusted data; outgoing subject/body/recipients/drafts are scanned for API keys, private keys, `KEY=value` lines and recent one-time codes before any connection opens ([`MAIL_SECURITY.md`](MAIL_SECURITY.md)) |
+| Autonomous sending | Off by default; per-person `never`/`draft_only`/`full_auto`; a 60-second undo window, an independent score ≥ 0.95, groups/CC never answered, one automatic reply per person per hour, no mail older than 6 hours, and an uncertain send is never repeated |
+| In-app updates | Every download is checked against a manifest signed by the maintainer (ed25519); a mismatch is deleted and nothing is installed; a new version that does not start is rolled back |
+| Telemetry | Anonymous and content-free; on by default in official builds, one switch off; `memo telemetry preview` shows the exact report ([`TELEMETRY.md`](TELEMETRY.md)) |
 | `.memo` Backup | Full export includes calendar/habits/routines/tasks/permissions/skills and `machine.key` |
 
 ---
@@ -317,9 +347,18 @@ As of this writing, open items worth tracking live in `docs/ROADMAP.md`'s "Near-
 | Features | `docs/FEATURES.md` | Feature catalog |
 | Self-Hosting | `docs/SELF_HOSTED.md` | Running just the backend on a Pi/home server/VPS |
 | Project folders | `docs/PROJECT_FOLDER.md` | `.memo/`, project ids, project-scoped memory, project skills |
+| Mail & Digital Twin | `docs/DIGITAL_TWIN_AND_MAIL.md` | Overview, the pipeline, live acceptance results, the daily briefing settings |
+| Mail security | `docs/MAIL_SECURITY.md` | The inbound shield and the outbound scan |
+| Digital Twin details | `docs/DIGITAL_TWIN_CONTACTS.md`, `DIGITAL_TWIN_AUTONOMY.md`, `DIGITAL_TWIN_APPROVAL.md`, `MAIL_REPLY_REVIEW.md` | Contacts and style, the decision engine, approval and undo, the review screen |
+| Setup wizard | `docs/SETUP_WIZARD.md` | The steps, how progress is decided, re-running it |
+| Sub-agents | `docs/CHAT_SUBAGENTS.md` | Chat sub-agents |
+| In-app updates | `docs/AUTO_UPDATE.md` | Signed updates, rollback, engine updates |
+| Telemetry | `docs/TELEMETRY.md` | The anonymous daily summary: every field and its purpose |
+| Web chat (Beta) | `docs/WEB_CHAT.md` | ChatGPT / claude.ai through a browser window |
+| Subscriptions | `docs/SUBSCRIPTION_CAPABILITIES.md` | How model capabilities of a subscription are read |
 | Troubleshooting | `docs/TROUBLESHOOTING.md` | Common issues & fixes |
 | Contributing | `docs/CONTRIBUTING.md` | Contribution guidelines |
-| Release Notes | `versinNote/` | Per-version changelog (`v4.5.0.md` is current) |
+| Release Notes | `versinNote/` | Per-version changelog (`v4.7.0.md` is the latest release; `v5.0.0.md` is drafted) |
 | CGO Flags | `docs/CGO_FLAGS.md` | Build configuration |
 | Turkish docs | `docs/tr/` | Turkish mirrors of the above |
 | Obsidian wiki (EN) | `obsidian-doc-en/Memo/` | Full browsable documentation set |
@@ -328,4 +367,4 @@ As of this writing, open items worth tracking live in `docs/ROADMAP.md`'s "Near-
 
 ---
 
-*Last updated: 2026-09-15 · Version: v4.5.0*
+*Last updated: 2026-11-07 · Covers `main` (v5.0 in the making); latest release v4.7.0*

@@ -5,9 +5,9 @@
 ## 1. NAVIGATION (app_shell.dart)
 
 - AppShell → NavRail (64px) + IndexedStack
-- **NavRail**: Logo, Chat, Agent, Models, WhatsApp, Calendar, Routines, Developer, Swarm (beta-gated, hidden unless Settings → Beta Features is on and the platform supports it — not macOS), Settings (dialog)
+- **NavRail** (v5.0): Logo, Chats, Models, Calendar, **Mail**, Routines, Developer, Swarm (beta-gated, hidden unless Settings → Beta Features is on and the platform supports it — not macOS), Settings (dialog). The old **Agent** and **WhatsApp** tabs are gone: agent chats live in the one chat list (marked with a robot) and WhatsApp/Telegram pairing lives in Settings and the setup wizard's Channels step
 - Active tab: filled icon, accent color
-- SetupWizardOverlay (first launch)
+- SetupWizardOverlay (first launch; see §5.9)
 - LlamaInstallerOverlay (download progress)
 - VersionBanner (update notification)
 - Theme: light/dark toggle (System, Light, Dark)
@@ -120,7 +120,7 @@
 
 ---
 
-## 4. AGENT SCREEN (agent_screen.dart)
+## 4. AGENT CHATS (no separate screen since v5.0 — an agent chat is a chat with a project folder)
 
 - Agent mode toggle
 - New Agent Chat: picks project folder
@@ -139,7 +139,7 @@
 
 ---
 
-## 5. WHATSAPP SCREEN (whatsapp_screen.dart)
+## 5. WHATSAPP (Settings → WhatsApp, widgets/settings/tabs/whatsapp_tab.dart — a separate screen before v5.0)
 
 - Connection status: connected/disconnected/connecting
 - QR code display for pairing
@@ -193,6 +193,34 @@
 - Poses driven by `/api/mascot/activity`: thinking, writing, running a specific tool, a distinct "Completed!" moment, idle flourishes (blink/breathe/occasional wave)
 - Speaks in time during Live Mode (mouth animation + "Speaking…" bubble) — no "listening" pose, since neither voice engine currently reports one
 - Click/drag zone shaped to the character's silhouette, not its bounding box; forced onto XWayland on Linux so always-on-top actually works under Wayland
+
+---
+
+## 5.7 MAIL SCREEN (mail_screen.dart) — new in v5.0
+
+- Off until an account is connected. **Connect** dialogs (`mail_connect_dialogs.dart`, shared with the setup wizard): Gmail and Outlook one-click OAuth, or any IMAP/SMTP account with auto-discovered settings
+- Inbox with the account switcher, message view (`mail_body.dart` keeps the mail's layout and decodes Turkish charsets), attachments, search, compose and Save draft; an outgoing secret match shows a localized reason and keeps the composer open
+- **Replies**: prepared replies to review, edit and send yourself (`mail_reply_draft.dart`); the reason behind each autonomous outcome is shown in the Digital Twin dialog's reply activity
+- **Mail security** dialog (`mail_security_dialog.dart`): dry-run the inbound shield and the outbound scan on pasted text; sends and stores nothing
+- A shortcut to the Digital Twin dialog
+
+## 5.8 DIGITAL TWIN DIALOG AND BRIEFING PANEL (twin_dialog.dart, autonomy_panel.dart, briefing_panel.dart, briefing_content_editor.dart) — new in v5.0
+
+- Tabs: **Contacts** (link a person's mail address and WhatsApp number, per-person policy, merge, timeline across channels), **Preferences** (working hours, time zone, project inspection), **Read-only tools** (availability, a registered project's git state), **Autonomy** (engine, channels, undo window, reply activity with a specific reason per outcome, follow-up radar and promises, the audit log)
+- **Briefing panel** inside Autonomy: morning and pre-meeting switches with their times (the morning time is any half hour), the cards (a card shows the model's summary and the owner's custom items), and the **content editor** — the same widget the setup wizard uses: built-in sections, up to five custom items, channels (Telegram, WhatsApp, mail — a channel that is not set up cannot be newly switched on), the sending mail account, and the separate briefing model
+- Reached from Mail → Digital Twin and from Settings → Mail & Autonomy
+
+## 5.9 SETUP WIZARD (setup_wizard_view.dart, widgets/setup/) — rebuilt in v5.0
+
+- Required steps carry a `*`; "Next" stays off until a required step is done; the side list scrolls and every row opens that step; compact windows use one column
+- Steps: language and appearance · model connection `*` · embedding model · persona · mail · mail reply model `*` (only with a mail account) · decision model · memory and learning · voice and images · channels · **daily briefing** · privacy and backup · summary and check
+- Progress is a pure function of real app state (`setup_progress.dart`), so it resumes where you left off; it can be re-run from Settings → General. See [`SETUP_WIZARD.md`](SETUP_WIZARD.md)
+
+## 5.10 NEW-CHAT START SCREEN (new_chat_landing.dart) — new in v5.0
+
+- A **Chat | Agent** switch chosen before the first message, a centred composer with the model picker, and starter suggestions; the composer drops to the bottom after sending
+- A blank chat is listed first and *New Chat* reopens it; agent chats get a title from your first words
+- Agent chats show the model and reasoning-effort pickers, the Code Mode switch, the Tasks button and, with the Beta on, the browser panel; sub-agents appear as cards you can open and steer, finished ones move to a history list
 
 ---
 

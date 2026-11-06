@@ -7,12 +7,12 @@ get reshaped, or get dropped as real usage informs them. See
 release, and the repo's `BUG_REPORT.md` for open bugs/design gaps found in
 live testing.
 
-> **Updated for v4.5.0** (this doc previously described a roadmap for
+> **Updated 2026-11-07** for `main` (v5.0 in the making): the shipped list now runs to v5.0 and a new section lists what is built but not yet proven. Earlier note: **updated for v4.5.0** (this doc previously described a roadmap for
 > "past v4.4.0" — the desktop mascot and Code Mode's Plan/Auto/Build
 > sub-modes have since shipped. The items below reflect what's actually
 > next, not what was next a release ago.)
 
-## Shipped this cycle (v4.0.0 → v4.5.0), for context
+## Shipped this cycle (v4.0.0 → v5.0), for context
 
 - **v4.0.0** — real time-awareness in the system prompt ("how long since
   the last message"), WhatsApp third-party conversation takeover.
@@ -37,7 +37,7 @@ live testing.
   for non-loopback callers; imported skills no longer auto-activate;
   clearer Live Mode failure messages and a fixed HuggingFace avatar
   404 spam in the Model Store.
-- **v4.6.0 (this branch)** — Memo can open desktop apps (`open_app`) and
+- **v4.6.0** — Memo can open desktop apps (`open_app`) and
   drive an isolated Chromium tab shown live in a panel next to the chat,
   which you can use by hand too; long replies are ended by silence, not a
   fixed 300 s, with a live progress line and heartbeat; **Subscriptions**
@@ -52,6 +52,52 @@ live testing.
   `file://` refused in the browser, incognito honoured on chat-addressed
   sends); the AppImage published to R2 on the same stable/beta channels as
   the tar.gz.
+- **v4.7.0** — Memo updates itself from inside the app (signed manifests,
+  byte-exact resumable downloads, an in-place swap with automatic rollback)
+  and the local engines (llama.cpp, whisper.cpp, the Subscriptions
+  connector) can be refreshed without a new Memo; ChatGPT and claude.ai
+  through a real browser window (Beta); a leaner Code Mode and cheaper
+  repeated turns.
+- **v5.0 (`main`, not yet tagged)** — **Mail and the Digital Twin** (Gmail,
+  Outlook or any IMAP account; a 3-layer Gatekeeper, an injection shield, an
+  outgoing secret scan; one timeline per person across mail and WhatsApp;
+  replies in your own style; approval from the app, WhatsApp or Telegram with
+  an undo window; a follow-up radar), the **daily briefing** (sections, custom
+  items, Telegram / WhatsApp / mail delivery, an optional briefing model), the
+  **setup wizard v2**, **Projects** (`.memo/`, project-scoped memory, project
+  skills and permissions), one chat list with a Chat | Agent start screen, the
+  streamed agent loop, **chat sub-agents**, skills called by name, faster
+  local models (engine chosen by the GPU Memo really sees, Vulkan prompt
+  processing, n-gram speculative decoding) and the **anonymous daily
+  summary** (on by default in official builds). Drafted in
+  [`versinNote/v5.0.0.md`](../versinNote/v5.0.0.md).
+
+## Open after v5.0 — what is built but not yet proven
+
+Written from the plans' own "not verified" lists, not from wishes:
+
+- **Device acceptance of the Digital Twin** — the 25-item checklist in
+  [`DIGITAL_TWIN_DEVICE_ACCEPTANCE.md`](DIGITAL_TWIN_DEVICE_ACCEPTANCE.md) is
+  still unticked: approving from WhatsApp and Telegram (`#onay` / `#iptal`),
+  voice messages, `.ics` invitations as real attachments.
+- **The daily briefing live** — a real delivery to Telegram, WhatsApp
+  ("message yourself") and mail, and a briefing written by a real provider,
+  have only unit and widget tests behind them. The setup wizard and the
+  briefing panel have not been checked by eye.
+- **Project permissions have no screen** — `.memo/permissions.json` is
+  approved through Memo's local API today.
+- **Mail accounts are not in backups or cloud sync** — restoring on another
+  machine means connecting mail again.
+- **Plain-text meeting requests** ("can we meet tomorrow at 3?") are not added
+  to the calendar; only `.ics` invitations are.
+- **A slow safety-review model** can hold an ordinary mail
+  (`review_unavailable`) or make an automatic reply fall back to a draft.
+- **Dead configuration** — `autonomy.briefing.*` in `config.yaml` is never
+  read; the real settings live in `twin.db`.
+- **Telemetry server deployment** must be verified before an official release.
+- **Windows and macOS** — the in-app update hand-off, engine updates and the
+  faster-local-model work are verified on Linux only; the rest is built and
+  tested in CI.
 
 ## Near-term — items from live testing
 
@@ -118,7 +164,7 @@ What that leaves open:
 
 ## Platform Reach
 
-- **arm64 Docker image** — the current image is amd64-only.
+- ~~**arm64 Docker image**~~ — done: the image is multi-arch (amd64 + arm64), published by `build-docker.yml`.
 - **Official CasaOS App Store listing.**
 - **Real-hardware verification** — the ARM build and Docker image have
   only ever been verified in CI/sandboxes, never on an actual Raspberry

@@ -4,6 +4,8 @@ Bu dosya, projedeki her kaynak dosyanın ne işe yaradığını kısaca açıkla
 referans ağaçtır. Elle güncel tutulur — büyük bir refactor sonrası tekrar
 oluşturulması gerekebilir.
 
+> **7 Kasım 2026'da `main`'e göre güncellendi (v5.0 hazırlanıyor):** `mail`, `twin`, `autonomy`, `subagents`, `updater`, `components`, `telemetry`, `webchat` ve küçük yardımcı paketler eklendi (iç paket sayısı 65). Aşağıdaki **v4.5.0** notu önceki güncellemeyi anlatır.
+>
 > **v4.5.0'a göre güncellendi** (2026-09-15): masaüstü maskotu, Code Mode
 > Plan/Auto/Build alt-modları, ve `internal/livemode/`, `internal/openaiapi/`,
 > `internal/remoteauth/`, `internal/browserengine/`, `internal/cliproxy/`,
@@ -642,7 +644,7 @@ internal/websearch/
   ddg_test.go  — DDG HTML sonuç ayrıştırmasının kaydedilmiş örnek sayfaya karşı testi
 ```
 
-### internal/webserver/ — REST API (180+ endpoint, `/api/*` ve `/api/v1/*` alias'lı)
+### internal/webserver/ — REST API (260+ rota, `/api/*` ve `/api/v1/*` alias'lı)
 
 ```
 internal/webserver/
@@ -670,6 +672,115 @@ internal/webserver/
   webapp.go                    — Flutter web build'inin (internal/webserver/webapp/) statik dosya servisi
   server_test.go               — temel webserver handler'larının bir mockBridge'e karşı testleri
 ```
+
+### internal/mail/ — Mail motoru (varsayılan kapalı)
+
+```
+internal/mail/
+├── imap.go          # bağımlılıksız IMAP4rev1 istemcisi (TLS, XOAUTH2, MIME ayrıştırma)
+├── smtp.go          # SMTP gönderimi (XOAUTH2 ya da PLAIN)
+├── oauth.go         # Gmail/Outlook için herkese açık masaüstü OAuth2 profilleri
+├── autodiscover.go  # hazır sağlayıcı ayarları + Thunderbird autoconfig veritabanı
+├── vault.go         # hesap kimlik bilgileri AES-256-GCM ile şifreli saklanır
+├── manager.go       # bağlı hesaplar, OAuth akışları, IMAP/SMTP işlemleri
+├── gatekeeper.go    # 3 katmanlı sınıflandırma: yapısal veri + kişiler → RFC başlıkları → model (5 kategori)
+├── watcher.go       # 60 sn'lik arka plan yoklama, yüksek-su-işareti (eski posta geriye okunmaz), güvenlik kancası
+├── extractor.go     # gövdeden yapısal veri (OTP, uçuş, fatura) çıkarımı
+├── ics.go           # RFC 5545 .ics davetleri
+└── types.go         # Account, MessageDetail, SendRequest, TriageDecision girdileri
+```
+
+Bkz. [`DIGITAL_TWIN_AND_MAIL.md`](DIGITAL_TWIN_AND_MAIL.md). Uygulama bağları: `internal/app/mail*.go`, `internal/webserver/handlers_mail*.go`.
+
+### internal/twin/ — Dijital İkiz deposu
+
+```
+internal/twin/
+├── store.go          # twin.db: kişiler + takma adlar, kaynak tarihli mesajlar, tercihler, şema
+├── actions.go        # hazırlanan eylemler ve otonomi ayarları
+├── approval.go       # onay, geri al süresi, gönderim rezervasyonu
+├── delivery.go       # onay köprüsü teslimi; kanal rızası
+├── commitments.go    # "bekliyorum" (waiting_on_other) ve "sözüm var" (my_promise) kayıtları
+├── contact_graph.go  # kişi bağlama/birleştirme (yalnız ada bakarak asla)
+├── style_cloner.go   # son giden mesajlardan üslup özeti (eğitilmiş klon değil)
+├── reply_model.go    # yanıt modeli seçimi (karar modelinden bağımsız)
+└── briefing.go       # günlük brifing ayarları + kartlar + (brifing, kanal) teslim defteri (briefing_deliveries)
+```
+
+### internal/autonomy/ — Güvenlik ve karar katmanı
+
+```
+internal/autonomy/
+├── shield.go          # gelen injection kalkanı (EN/TR kurallar, rol ayırıcılar, base64), giden DLP, tek kullanımlık kod gözlemi
+├── engine.go          # otonomi motoru: analiz → salt-okunur araştırma → yanıt → DLP → skor
+├── readonly_tools.go  # dış bağlam yürütücüsünün dört salt-okunur aracı
+├── evidence.go        # araştırma kanıtını model girdi sınırına sığdırır
+├── approval_bridge.go # uygulama / WhatsApp / Telegram onayı (#onay, #iptal, #asla)
+├── loop.go            # otomatik yanıt politikası (grup/CC, otomatik gönderici, hız sınırı)
+├── followup.go        # takip radarı (yalnız incelemeye açık hatırlatma taslakları)
+├── promises.go        # kendi tarihli sözlerini okuma
+├── briefing.go        # sabah brifingi + toplantı öncesi not (bölümler, özel öğeler, isteğe bağlı model)
+├── briefing_text.go   # brifingi TR/EN düz metne çevirir (dış kanallar için)
+├── devwatch.go        # "nerede kalmıştım?" — projelerin yarım işleri
+├── privacy.go         # takvim çıktısı yalnız maskeli aralıklar
+└── voice.go           # sesli mesajı yerelde metne çevirme (sesi diske yazmaz)
+```
+
+### internal/subagents/ — Sohbet alt ajanları
+
+```
+internal/subagents/
+├── manager.go  # bağımsız, sürdürülebilir çocuk görevler; kalıcı sohbet-başı teslim kutusu
+├── git.go      # paralel yazanlar için izole proje kopyası; yalnız doğrulanmış birleştirme kopyayı siler
+└── status.go   # "şu an ne yapıyor, başarısız mı" — sınırlı özet
+```
+
+Bkz. [`CHAT_SUBAGENTS.md`](CHAT_SUBAGENTS.md). Araç: `internal/agent/tools/subagents.go`.
+
+### internal/updater/ ve internal/components/ — Uygulama içi güncelleme
+
+```
+internal/updater/
+├── manifest.go, sign.go, pubkey.go   # imzalı manifest (ed25519); anahtar uzaktan değiştirilemez
+├── fetch.go, download.go, extract.go # bayt-bayt doğrulanan, sürdürülebilir indirme; güvenli açma
+├── swap.go, apply.go, health.go      # yerinde değiştirme; yeni sürüm yanıt vermezse geri alma
+├── failure.go                        # başarısız deneme bir sonraki açılışta gösterilir
+├── components.go                     # motor bileşeni kurulumu (llama.cpp, whisper.cpp, sidecar)
+└── installer_windows.go, launch_*.go, proc_*.go, space_*.go   # platforma özgü parçalar
+internal/components/components.go     # bir motor klasöründe hangi sürüm kurulu (*_VERSION işaretleri)
+```
+
+Bkz. [`AUTO_UPDATE.md`](AUTO_UPDATE.md). Ek komutlar: `cmd/memo-updater/` (her Linux/macOS sürümünün içinde gelen değiştirici), `cmd/memo-sign/` (bakımcı imza aracı).
+
+### internal/telemetry/ — Anonim günlük özet
+
+```
+internal/telemetry/
+├── schema.go, buckets.go, catalog.go  # rapor biçimi (izin listesi), aralıklar, katalog adları
+├── collect.go                         # günlük raporu kullanım olaylarından kurar
+├── state.go, manager.go               # rıza, rastgele kimlik, sayaçlar; resmî derleme varsayılanı
+├── send.go, install.go                # günlük gönderici; kimliksiz kurulum sayımı
+└── sanitize.go, notes.go              # çökme izi temizleyici; özellik/hata sayaçları
+```
+
+Bkz. [`TELEMETRY.md`](TELEMETRY.md). CLI: `memo telemetry status|preview|on|off|reset-id|delete`.
+
+### internal/webchat/ — ChatGPT / claude.ai tarayıcı penceresiyle (Beta)
+
+Gerçek, görünür bir Chromium penceresi ve Memo'ya ait bir profil (`data/webchat/<site>`); sağlayıcı türleri `web-chatgpt` / `web-claude`, yalnız metin. `site.go` seçici tabloları, `driver.go` + `page.js` sayfa sürücüsü, `browser.go` pencere yönetimi, `consent.go` bildirim onayı. Arka plan çağrıları (başlık, hafıza, yönlendirme) bu sağlayıcıya asla gitmez. Bkz. [`WEB_CHAT.md`](WEB_CHAT.md).
+
+### Küçük paketler
+
+| Paket | Görevi |
+|---|---|
+| `internal/telegram/` | Telegram Bot API istemcisi (uzun yoklama, gönderme) ve sahip kilidi (`store.go`) |
+| `internal/beta/` | Arka ucun "Beta özellikler açık mı?" diye sorduğu tek yer |
+| `internal/backupdata/` | Yerel dışa aktarma ve şifreli bulut yedeğinin paylaştığı taşınabilir kullanıcı verisi envanteri (mail hesapları dahil değil) |
+| `internal/imgvault/` | Diskteki resimleri şifreler (dosya başına anahtar; ana anahtar veri klasörünün dışında) |
+| `internal/modelcatalog/`, `internal/routecatalog/` | Yayımlanmış model yetenekleri ve özellikleri (kullanılabilirliği değil) |
+| `internal/upstream/` | Memo'nun bağlı olduğu, depo dışındaki şeylerin zamanlanmış izlenmesi |
+| `internal/skills/` | `go:embed` ile gömülü yerleşik skill'ler (`data/skills/`'e açılır) |
+| `internal/e2e/` | Gerçek uygulama + HTTP API + gerçek IMAP/SMTP istemcileriyle uçtan uca test donanımı |
 
 ### internal/whatsapp/
 

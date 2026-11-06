@@ -381,7 +381,7 @@ cd frontend && flutter run -d linux
 
 ## 📋 8. Current Status
 
-**Current version:** v4.5.0
+**Current version:** latest release v4.7.0; this document also covers `main` (v5.0 in the making).
 
 **Bug tracking:** [`BUG_REPORT.md`](../BUG_REPORT.md) (repo root) is the actively-maintained log. [docs/KNOWN_ISSUES.md](./KNOWN_ISSUES.md) and [docs/RESOLVED_ISSUES.md](./RESOLVED_ISSUES.md) are frozen historical snapshots from the v3.x line, kept for reference only.
 
@@ -391,12 +391,44 @@ cd frontend && flutter run -d linux
 - **v4.4.0** — `internal/taskloop/` (large expansion) — the Self-Driving task loop: `Task.md` schema, planner/executor engine, sub-agent orchestration, escalating retry, provider-lock hardening; `internal/openaiapi/` — OpenAI-compatible sibling of the Developer Gateway; real tool-calling added for the Claude and Gemini providers; `internal/geminisub/` — sign in with a personal Google account, reach Gemini via Code Assist (Beta); `internal/remoteauth/` split out of the webserver package (bruteforce lockout, per-device tokens, JWT session tokens); `internal/browserengine/` — optional headless-browser rendering for JS-heavy pages `internal/websearch` alone can't read.
 - **v4.5.0** — the desktop mascot (`frontend/lib/mascot_main.dart` + `mascot_window.dart`/`memo_mascot.dart`/`mascot_provider.dart`, a second window in the same process, driven by an app-wide activity signal in `internal/app/activity.go`/`internal/models/activity.go`); Code Mode's Plan/Auto/Build sub-modes (`Session.CodeSubMode`, `Pipeline.codeSubMode`, the `save_code_plan` tool); both Developer Gateway endpoints now key-enforced for non-loopback callers; imported skills no longer auto-activate.
 - **v4.6.0** — `internal/cliproxy/` — the Subscriptions sidecar: a bundled, SHA-256-pinned CLIProxyAPI child process on loopback that turns an Antigravity / Claude / Codex sign-in into one OpenAI-compatible endpoint (`internal/app/subs.go` registers it as the `Subscriptions` custom provider; `internal/geminisub/` and `internal/claudesub/` from the earlier Beta line are deleted); per-model quota (`internal/cliproxy/quota*.go`) feeding the model picker and the `quota_exhausted`/`quota_low` stream markers (`Server.withQuotaSignals`, `internal/app/quotasignal.go`); image generation/editing for `custom` and OpenRouter providers (`internal/provider/*_images.go`); `open_app` and the interactive browser `Session` (`internal/browserengine/session.go`, `browser_*` tools, `browser_frame` SSE chunks, `/api/browser/session/*`); plain-chat streams ended by silence not length (`internal/app/stream_watchdog.go`) with `heartbeat` chunks; prompt-cache accounting across providers (`provider.Usage`, `internal/stats/`); per-chat skill activation; the Cline provider; Android/iOS targets of the single Flutter client (the `mobile/` project is retired); `internal/upstream/` and the scheduled `upstream.yml` watch of everything outside this repo that Memo depends on. Security: destructive and credential-bearing routes are now explicitly gated (`adminOnly`/`adminWrites`/`redactSecrets`), `file://` is refused by the browser session, incognito is honoured on chat-addressed sends.
+- **v4.7.0** — `internal/updater/`, `internal/components/`, `cmd/memo-updater/`, `cmd/memo-sign/` — in-app updates: ed25519-signed manifests, byte-exact resumable downloads, an in-place swap with rollback, and separate engine updates; `internal/webchat/` — ChatGPT / claude.ai through a real browser window (Beta).
+- **v5.0 (`main`)** — the biggest addition since the task loop:
+  - `internal/mail/`, `internal/twin/`, `internal/autonomy/` — the mail engine, the Digital Twin store and the safety/decision layer (see the data flow below and [`DIGITAL_TWIN_AND_MAIL.md`](DIGITAL_TWIN_AND_MAIL.md)). The **daily briefing** is built by `autonomy.Briefer`, kept in `twin.db`, and delivered by `App.deliverMorningBriefings` through a claim-before-send ledger (`briefing_deliveries`).
+  - `internal/project/` (project folders with their own memory scope, `memories.project_id`), `internal/subagents/` (chat sub-agents), skills called by name, the streamed agent loop, one chat list with a Chat | Agent start screen.
+  - `internal/telemetry/` — the anonymous daily summary (on by default in official builds).
+  - Local models: the engine folder is chosen by the GPU the engine really sees (`internal/llama/device_probe.go`), a Vulkan backend plugin for prompt processing and n-gram speculative decoding (`internal/llama/spec.go`).
+  - The setup wizard v2 (`frontend/lib/widgets/setup_wizard_view.dart`, `frontend/lib/widgets/setup/`), whose progress is a pure function of real app state.
 - Backend-wide panic recovery: `logx.Recover`/`logx.GoRecover` wrap essentially every background goroutine, so an unexpected error in one no longer takes the whole process down.
 - Remote access (LAN/ngrok/Tailscale) requires the access token on every request; Tailscale itself is out of Beta.
 
-Package count has grown to 40+ (`ls internal/`) and registered endpoints to 180+ (`internal/webserver/server.go`'s `route(...)` calls) — the endpoint table in §6 above predates most of this and is illustrative, not exhaustive; see [`docs/API_REFERENCE.md`](API_REFERENCE.md) for the maintained list.
+Package count has grown to 65 (`ls internal/`) and registered routes to 262 (each also served under `/api/v1/`) (`internal/webserver/server.go`'s `route(...)` calls) — the endpoint table in §6 above predates most of this and is illustrative, not exhaustive; see [`docs/API_REFERENCE.md`](API_REFERENCE.md) for the maintained list.
+
+### Data flow: one incoming mail (v5.0)
+
+```mermaid
+sequenceDiagram
+    participant W as mail.Watcher (60 s poll)
+    participant S as autonomy shield
+    participant G as mail.Gatekeeper
+    participant T as twin.Store
+    participant E as autonomy engine
+    participant A as approval bridge
+    participant O as owner (app / WhatsApp / Telegram)
+    W->>S: new message (after the high-water mark only)
+    S-->>W: blocked? kept in inbox, counted by reason code, no model reads it
+    W->>G: Evaluate (contacts + structure, headers, model)
+    G-->>W: category; bulk and one-time-code mail is dropped from memory
+    W->>T: record message under the linked contact
+    W->>E: prepare (read-only research → draft in your style)
+    E->>E: outbound DLP, independent score
+    E->>A: pending action (Drafts folder + review screen)
+    A->>O: notification (ids and states only)
+    O-->>A: approve / cancel / never (or the undo window runs out)
+    A->>A: re-check every rule, claim the send once
+    A-->>W: SMTP send, recorded in the twin
+```
 
 ---
 
-> **Last updated:** 2026-10-07
-> **Version:** v4.5.0
+> **Last updated:** 2026-11-07
+> **Version:** latest release v4.7.0; covers `main` (v5.0 in the making)

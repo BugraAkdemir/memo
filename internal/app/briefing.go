@@ -59,6 +59,11 @@ func (a *App) runBriefings(ctx context.Context, now time.Time) (int, error) {
 	if morning != nil {
 		announce(morning.Key, morning.Kind)
 	}
+	// Every tick, not only when the card is new: a send that failed earlier is
+	// retried here, and a channel switched on later still gets today's card.
+	if prefs.Briefing.Morning {
+		a.deliverMorningBriefings(ctx, store, prefs.Briefing, now)
+	}
 	notes, err := b.MeetingNotes(ctx)
 	for _, n := range notes {
 		announce(n.Key, n.Kind)

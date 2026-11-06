@@ -276,7 +276,7 @@ Detay: [[Telegram Entegrasyonu]]
 
 ---
 
-## 🆕 v5.0 eklemeleri (`main`'de)
+## 🆕 v5.0.0 eklemeleri
 
 - **[[Dijital İkiz ve Mail]]** — Gmail, Outlook ya da herhangi bir IMAP hesabı; 3 katmanlı Gatekeeper, injection kalkanı ve giden sır taraması; mail ve WhatsApp'ta kişi başına tek zaman çizelgesi; senin üslubunla yanıtlar; uygulamadan, WhatsApp'tan ya da Telegram'dan 60 saniyelik geri alma süreli onay; takip radarı. **Varsayılan olarak kapalı.**
 - **[[Günlük Brifing]]** — sabah kartı ve toplantı öncesi not; günün her yarım saati, altı bölüm, beş özel öğeye kadar, uygulamaya, Telegram'a, WhatsApp'a ve/veya maile teslimat, isteğe bağlı brifing modeli.

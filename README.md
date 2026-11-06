@@ -42,7 +42,7 @@
 </div>
 
 > [!NOTE]
-> This page describes `main`, which is **v5.0** in the making. The latest tagged release is **v4.7.0** ([release notes](versinNote/v4.7.0.md)); the v5.0 notes are drafted in [`versinNote/v5.0.0.md`](versinNote/v5.0.0.md).
+> **v5.0.0 is out** (November 7, 2026). Read the [release notes](versinNote/v5.0.0.md) or jump to [what's new](#whats-new-in-v50).
 
 ---
 
@@ -383,7 +383,7 @@ The first launch opens the **setup wizard**: connect a model (local, API key or 
 <summary><b>🔄 Update, uninstall, manual download</b></summary>
 <br/>
 
-Memo can **update itself** from inside the app. Versions up to 4.6.0 have no updater, so moving to 4.7.0 is one last manual update (re-run the installer).
+Memo can **update itself** from inside the app. Versions up to 4.6.0 have no updater, so moving from one of those is a single manual update (re-run the installer); after that, updates are one click.
 
 ```bash
 curl -fsSL https://data.memocpp.com/update.sh | bash      # update

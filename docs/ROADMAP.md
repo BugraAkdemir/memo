@@ -7,7 +7,7 @@ get reshaped, or get dropped as real usage informs them. See
 release, and the repo's `BUG_REPORT.md` for open bugs/design gaps found in
 live testing.
 
-> **Updated 2026-11-07** for `main` (v5.0 in the making): the shipped list now runs to v5.0 and a new section lists what is built but not yet proven. Earlier note: **updated for v4.5.0** (this doc previously described a roadmap for
+> **Updated 2026-11-07** for v5.0.0: the shipped list now runs to v5.0 and a new section lists what is built but not yet proven. Earlier note: **updated for v4.5.0** (this doc previously described a roadmap for
 > "past v4.4.0" — the desktop mascot and Code Mode's Plan/Auto/Build
 > sub-modes have since shipped. The items below reflect what's actually
 > next, not what was next a release ago.)
@@ -58,7 +58,7 @@ live testing.
   connector) can be refreshed without a new Memo; ChatGPT and claude.ai
   through a real browser window (Beta); a leaner Code Mode and cheaper
   repeated turns.
-- **v5.0 (`main`, not yet tagged)** — **Mail and the Digital Twin** (Gmail,
+- **v5.0.0 (2026-11-07)** — **Mail and the Digital Twin** (Gmail,
   Outlook or any IMAP account; a 3-layer Gatekeeper, an injection shield, an
   outgoing secret scan; one timeline per person across mail and WhatsApp;
   replies in your own style; approval from the app, WhatsApp or Telegram with
@@ -69,7 +69,7 @@ live testing.
   streamed agent loop, **chat sub-agents**, skills called by name, faster
   local models (engine chosen by the GPU Memo really sees, Vulkan prompt
   processing, n-gram speculative decoding) and the **anonymous daily
-  summary** (on by default in official builds). Drafted in
+  summary** (on by default in official builds). Release notes:
   [`versinNote/v5.0.0.md`](../versinNote/v5.0.0.md).
 
 ## Open after v5.0 — what is built but not yet proven

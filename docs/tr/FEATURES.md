@@ -413,7 +413,7 @@ Resmî derlemeler küçük, anonim bir kullanım özetini **varsayılan olarak**
 - **Onboarding Sihirbazı**: İsim, persona ve ilk tanılama için rehberli bir kurulum.
 
 ---
-*Son güncelleme: 2026-11-07 · `main`'i anlatır (v5.0 hazırlanıyor); son sürüm v4.7.0*
+*Son güncelleme: 2026-11-07 · Sürüm: v5.0.0*
 
 **Buğra tarafından yapıldı.**
 *Yapay zekanı kontrol et. Hafızana sahip çık.*

@@ -89,6 +89,6 @@ Flutter istemcisi — Linux/Windows/macOS · Android/iOS · web
 
 ---
 
-## 🆕 v5.0 paketleri (`main`'de)
+## 🆕 v5.0.0 paketleri
 
 Arka uçta artık **65** iç paket ve **262** kayıtlı rota var (her biri `/api/v1/` altında da sunulur). v4.5'ten beri yeniler: `internal/mail/` (IMAP/SMTP, XOAUTH2, kasa, Gatekeeper, izleyici), `internal/twin/` (Dijital İkiz deposu, brifingler ve teslim defteri), `internal/autonomy/` (kalkan, karar motoru, onay köprüsü, radar, brifing derleyici), `internal/project/`, `internal/subagents/`, `internal/updater/` + `internal/components/`, `internal/telemetry/` ve `internal/webchat/`. Bkz. [[Dijital İkiz ve Mail]], [[Günlük Brifing]], [[Sohbet Alt Ajanları]], [[Uygulama İçi Güncelleme]], [[Telemetri ve Gizlilik]] ve dosya dosya harita için `docs/PROJECT_MAP.md`.

@@ -60,7 +60,7 @@ bug/tasarım eksiklerini görmek için repo'nun `BUG_REPORT.md`'sine bakın.
   Abonelikler bağlayıcısı) yeni bir Memo beklemeden yenilenebiliyor; gerçek
   bir tarayıcı penceresiyle ChatGPT ve claude.ai (Beta); daha yalın Code Mode
   ve daha ucuz tekrar eden turlar.
-- **v5.0 (`main`, henüz etiketlenmedi)** — **Mail ve Dijital İkiz** (Gmail,
+- **v5.0.0 (7 Kasım 2026)** — **Mail ve Dijital İkiz** (Gmail,
   Outlook ya da herhangi bir IMAP hesabı; 3 katmanlı Gatekeeper, injection
   kalkanı, giden sır taraması; mail ve WhatsApp'ta kişi başına tek zaman
   çizelgesi; senin üslubunla yanıtlar; uygulamadan, WhatsApp'tan ya da
@@ -72,7 +72,7 @@ bug/tasarım eksiklerini görmek için repo'nun `BUG_REPORT.md`'sine bakın.
   adıyla çağrılan skill'ler, daha hızlı yerel modeller (Memo'nun gerçekten
   gördüğü GPU'ya göre motor seçimi, Vulkan istem işleme, n-gram spekülatif
   çözümleme) ve **anonim günlük özet** (resmî derlemelerde varsayılan olarak
-  açık). Taslak: [`versinNote/tr/v5.0.0.md`](../../versinNote/tr/v5.0.0.md).
+  açık). Sürüm notları: [`versinNote/tr/v5.0.0.md`](../../versinNote/tr/v5.0.0.md).
 
 ## v5.0 sonrası açık — yapıldı ama henüz kanıtlanmadı
 

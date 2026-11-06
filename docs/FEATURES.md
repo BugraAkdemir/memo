@@ -413,7 +413,7 @@ Official builds send a small anonymous usage summary **by default** (also when u
 - **Onboarding Wizard**: A guided setup for name, persona, and initial diagnostics.
 
 ---
-*Last updated: 2026-11-07 · Covers `main` (v5.0 in the making); latest release v4.7.0*
+*Last updated: 2026-11-07 · Version: v5.0.0*
 
 **Built by Buğra.**
 *Control your AI. Own your Memory.*

@@ -4,7 +4,7 @@ Bu dosya, projedeki her kaynak dosyanın ne işe yaradığını kısaca açıkla
 referans ağaçtır. Elle güncel tutulur — büyük bir refactor sonrası tekrar
 oluşturulması gerekebilir.
 
-> **7 Kasım 2026'da `main`'e göre güncellendi (v5.0 hazırlanıyor):** `mail`, `twin`, `autonomy`, `subagents`, `updater`, `components`, `telemetry`, `webchat` ve küçük yardımcı paketler eklendi (iç paket sayısı 65). Aşağıdaki **v4.5.0** notu önceki güncellemeyi anlatır.
+> **7 Kasım 2026'da v5.0.0'a göre güncellendi:** `mail`, `twin`, `autonomy`, `subagents`, `updater`, `components`, `telemetry`, `webchat` ve küçük yardımcı paketler eklendi (iç paket sayısı 65). Aşağıdaki **v4.5.0** notu önceki güncellemeyi anlatır.
 >
 > **v4.5.0'a göre güncellendi** (2026-09-15): masaüstü maskotu, Code Mode
 > Plan/Auto/Build alt-modları, ve `internal/livemode/`, `internal/openaiapi/`,

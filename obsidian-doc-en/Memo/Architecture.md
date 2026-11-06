@@ -112,6 +112,6 @@ Flutter client — Linux/Windows/macOS · Android/iOS · web
 
 ---
 
-## 🆕 v5.0 packages (on `main`)
+## 🆕 v5.0.0 packages
 
 The backend now has **65** internal packages and **262** registered routes (each also served under `/api/v1/`). New since v4.5: `internal/mail/` (IMAP/SMTP, XOAUTH2, vault, Gatekeeper, watcher), `internal/twin/` (the Digital Twin store, briefings and the delivery ledger), `internal/autonomy/` (shield, decision engine, approval bridge, radar, briefer), `internal/project/`, `internal/subagents/`, `internal/updater/` + `internal/components/`, `internal/telemetry/` and `internal/webchat/`. See [[Digital Twin and Mail]], [[Daily Briefing]], [[Chat Sub-agents]], [[In-App Updates]], [[Telemetry and Privacy]], and `docs/PROJECT_MAP.md` for the file-by-file map.

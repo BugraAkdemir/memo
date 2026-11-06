@@ -42,7 +42,7 @@
 </div>
 
 > [!NOTE]
-> Bu sayfa, **v5.0**'ın hazırlandığı `main` dalını anlatır. Son etiketli sürüm **v4.7.0**'dır ([sürüm notları](versinNote/tr/v4.7.0.md)); v5.0 notlarının taslağı [`versinNote/tr/v5.0.0.md`](versinNote/tr/v5.0.0.md) içinde.
+> **v5.0.0 yayında** (7 Kasım 2026). [Sürüm notlarını](versinNote/tr/v5.0.0.md) oku ya da [yeniliklere](#yenilikler) geç.
 
 ---
 
@@ -391,7 +391,7 @@ flowchart TD
 <summary><b>🔄 Güncelleme, kaldırma, elle indirme</b></summary>
 <br/>
 
-Memo uygulamanın içinden **kendini güncelleyebilir**. 4.6.0'a kadar olan sürümlerde güncelleyici yoktur; bu yüzden 4.7.0'a geçmek son bir elle güncellemedir (kurulum betiğini yeniden çalıştır).
+Memo uygulamanın içinden **kendini güncelleyebilir**. 4.6.0'a kadar olan sürümlerde güncelleyici yoktur; bunlardan geçmek tek bir elle güncellemedir (kurulum betiğini yeniden çalıştır), sonrasında güncellemeler tek tıktır.
 
 ```bash
 curl -fsSL https://data.memocpp.com/update.sh | bash      # güncelle

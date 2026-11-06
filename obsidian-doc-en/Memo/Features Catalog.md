@@ -241,7 +241,7 @@ See [[Telegram Integration]].
 
 ---
 
-## 🆕 v5.0 additions (on `main`)
+## 🆕 v5.0.0 additions
 
 - **[[Digital Twin and Mail]]** — Gmail, Outlook or any IMAP account; a 3-layer Gatekeeper, an injection shield and an outgoing secret scan; one timeline per person across mail and WhatsApp; replies in your own style; approval from the app, WhatsApp or Telegram with a 60-second undo window; a follow-up radar. **Off by default.**
 - **[[Daily Briefing]]** — a morning card and a pre-meeting note; any half hour, six sections, up to five custom items, delivery to the app, Telegram, WhatsApp and/or mail, an optional briefing model.

@@ -3,7 +3,7 @@
 The wizard walks a new user through everything that used to need a trip to
 Settings. Required steps carry a trailing `*`; "Next" is off on a required step
 that is not done, and the final button is off while any required step is
-missing. The side list scrolls (there are up to twelve steps) and every row can
+missing. The side list scrolls (there are up to thirteen steps) and every row can
 be opened directly; compact windows use a single column. Plan and unit history:
 `docs/plans/PLAN_setup_wizard_v2.md`.
 
@@ -21,6 +21,7 @@ be opened directly; compact windows use a single column. Plan and unit history:
 | Memory & learning | Memory, the nightly dream consolidation, proactive suggestions, minimal mode. |
 | Voice & images | Speech to text, text to speech and voice, image model (Settings sections). |
 | Channels | WhatsApp and Telegram pairing (Settings tabs, folded). |
+| Daily briefing (optional) | Right after Channels, so WhatsApp and Telegram are already paired. Switches the morning briefing on and sets its time (any half hour), then the same editor as Settings: which sections it holds, up to five custom items, which channels it is also sent to (Telegram, WhatsApp, mail), and an optional briefing model. Also asks the time zone, which a briefing time is read in. Never blocks finishing. |
 | Privacy & backup | Usage sharing, OS notification permission where available, encrypted cloud backup. |
 | Summary & check | Every step as Done / Skipped / Missing; a row goes back to that step. Also the system check. |
 

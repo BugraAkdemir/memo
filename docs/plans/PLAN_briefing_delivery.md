@@ -26,4 +26,4 @@ settings live in `twin.db` (`twin_preferences.briefing`). `config.yaml`
 - [x] B3 `twin`/`app`: per-channel delivery with claim/retry, text rendering (tr/en) + tests
 - [x] F1 Flutter: shared briefing editor, generalised model picker, Settings panel
 - [x] F2 Flutter: wizard step after Channels, snapshot/summary, tests
-- [ ] D docs: `docs/DIGITAL_TWIN_AND_MAIL.md`, `docs/SETUP_WIZARD.md`, remove dead `autonomy.briefing` config
+- [x] D docs: `docs/DIGITAL_TWIN_AND_MAIL.md`, `docs/SETUP_WIZARD.md`. The dead `autonomy.briefing` config was NOT removed (not asked; harmless, noted in the docs).

@@ -141,3 +141,30 @@ Canlıda yeni görülenler:
   üretilemez; yalnız hermetik testte sınandı. Gerçek gelen kutusundaki doğal bülten trafiği (sayaçta
   `dropped_marketing`) ayrıca elendi.
 - Sınanmadı: Göreve dönüştür (TaskLoop köprüsü; alt ajan çalıştırmamak için), WhatsApp/Telegram, ses.
+
+## Günlük brifing ayarları (7 Kasım)
+
+Sabah brifingi artık Ayarlar (Mail otonomi → ikiz paneli) ve kurulum sihirbazının Kanallar'dan sonraki adımından
+aynı düzenleyiciyle ayarlanır. Ayarlar `twin_preferences.briefing` altındadır (`config.yaml`'daki
+`autonomy.briefing.*` hiçbir yerde okunmaz, ölü yapılandırma).
+
+- **İçerik:** `sections` = `meetings | overnight | drafts | waiting | promises | code`. Alan yoksa hepsi (eski
+  davranış); açıkça boş liste = hiçbiri (yalnız özel öğeler).
+- **Özel öğeler:** en çok 5, `{title, prompt}`. Brifing modeli seçiliyse model günün verisinden yanıtlar; değilse
+  yazdığınız metin olduğu gibi gelir. Model çökerse de öğe metni kaybolmaz.
+- **Brifing modeli:** `model {provider, model}`, isteğe bağlı, e-posta yanıt modelinden ayrı. Boşsa hiçbir model
+  çağrılmaz. Seçiliyse kısa bir özet yazar. Günün verisi (taslak konuları gibi başkalarının mailinden gelen metin)
+  `<untrusted_external_message>` zarfında gider; sahibin kendi talimatları sistem isteminde kalır. Model hatası ya da
+  JSON olmayan yanıt yalnız yazıyı kaybettirir, kart yine kaydedilir.
+- **Kanallar:** `telegram | whatsapp | mail` (+ uygulama kartı her zaman). Alıcı her zaman sahibin kendi hesabı:
+  Telegram sahip sohbeti, kendi WhatsApp numarası ("kendine mesaj"), seçilen hesabın kendi adresi (`mail_account`,
+  boşsa ilk hesap; adı verilen hesap silinmişse başka hesaptan gönderilmez, hata verir). Yalnız **sabah** brifingi
+  dışarı gider; toplantı notları uygulamada kalır.
+- **Gönderim güvenliği:** (brifing, kanal) çifti göndermeden önce `briefing_deliveries` tablosunda sahiplenilir;
+  başarılı gönderim bir daha yapılmaz, kesin başarısız olan 5 dk arayla en çok 5 kez, kartın üretiminden sonraki 6
+  saat içinde denenir. Yeniden başlatmanın yarıda kestiği gönderim `uncertain` olur ve tekrarlanmaz. Çıkış
+  DLP'si her kanalda önce çalışır (kartta API anahtarı varsa `blocked`, yeniden denenmez). Bir kanalın kapalı olması
+  diğerlerini durdurmaz.
+- **Doğrulanmadı:** gerçek Telegram/WhatsApp/mail teslimi, WhatsApp "kendine mesaj" gönderimi, gerçek bir
+  sağlayıcıyla model kompozisyonu, sihirbaz ve panelin görsel kabulü (yalnız widget testleri).
+

@@ -106,5 +106,72 @@ Sohbetin yanındaki canlı tarayıcı paneli tek bir yalıtılmış Chromium otu
 | `/api/sync/settings` | `GET` | Google Drive senkronizasyon durumunu al. |
 | `/api/sync/start` | `POST` | Manuel bir E2E şifreli senkronizasyon tetikle. |
 
+### ✉️ Mail (yalnız yönetici) — bkz. [`DIGITAL_TWIN_AND_MAIL.md`](../DIGITAL_TWIN_AND_MAIL.md), [`MAIL_SECURITY.md`](../MAIL_SECURITY.md)
+`stats` dışındaki her mail rotası yönetici oturumu ister; `settings` herkese okunur ama yalnız yönetici yazar. Bir hesap bağlanana kadar mail kapalıdır.
+
+| Endpoint | Metot | Açıklama |
+| :--- | :--- | :--- |
+| `/api/mail/accounts` | `GET`/`DELETE` | Bağlı hesapları listele; `DELETE ?id=` birini kaldırır |
+| `/api/mail/autodiscover` | `GET`/`POST` | `?email=` → hazır ayarlardan (Gmail, Outlook, …) ya da Thunderbird autoconfig veritabanından IMAP/SMTP ayarları |
+| `/api/mail/oauth/start` | `GET`/`POST` | Gmail / Outlook girişini başlat; URL ve bir `state` döner |
+| `/api/mail/oauth/status` | `GET`/`POST` | `?state=` → girişin bitip bitmediği |
+| `/api/mail/oauth/manual` | `POST` | `{state, callback_url, email}` — yönlendirme URL'sini yapıştırarak girişi tamamla (başsız ve uzak kurulumlar) |
+| `/api/mail/accounts/password` | `POST` | Parolayla herhangi bir IMAP/SMTP hesabı bağla |
+| `/api/mail/inbox` | `GET` | `?account_id=&limit=` → hesabın son mesaj özetleri |
+| `/api/mail/message` | `GET` | `?account_id=&seq_num=` → tek bir tam mesaj |
+| `/api/mail/attachment` | `GET` | `?account_id=&seq_num=&part=&filename=` → ek dosyanın baytları |
+| `/api/mail/search` | `GET` | `?account_id=&q=&limit=` → posta kutusunda ara |
+| `/api/mail/send` | `POST` | Mesaj gönder. Önce giden sır taraması çalışır; eşleşme `422` ve bir neden kodu döner, sırrı asla |
+| `/api/mail/draft` | `POST` | Hesabın Taslaklar klasörüne taslak kaydet (aynı sır taraması) |
+| `/api/mail/sync` | `POST` | Sonraki 60 saniyelik yoklamayı beklemeden hesapları şimdi yokla. `{ok, stats}` döner |
+| `/api/mail/stats` | `GET` | İzleyicinin sayaçları (değerlendirilen, süzülen, güvenlik kalkanının engellediği). Yalnız neden kodları, mesaj metni asla |
+| `/api/mail/security/check` | `POST` | Yapıştırılan metin için gelen injection kalkanını ve giden taramayı kuru çalıştır. Hiçbir şey göndermez, saklamaz, saymaz |
+| `/api/mail/settings` | `GET`/`PUT` | İzleyici ve sınıflandırma ayarları |
+
+### 🪞 Dijital İkiz (yalnız yönetici) — bkz. [`DIGITAL_TWIN_AND_MAIL.md`](../DIGITAL_TWIN_AND_MAIL.md), [`DIGITAL_TWIN_APPROVAL.md`](../DIGITAL_TWIN_APPROVAL.md)
+`/api/twin/{işlem}` altında işlem başına bir rota. `state` ve `activity` `GET`'tir; diğer her işlem en çok 32 KB'lık bir JSON gövdeli `POST`'tur ve bilinmeyen alanlar reddedilir. Bilinmeyen işlem `404` döner.
+
+| Endpoint | Metot | Açıklama |
+| :--- | :--- | :--- |
+| `/api/twin/state` | `GET` | İkiz panelinin gösterdiği her şey: tercihler (otonomi, radar, **brifing**), yanıt modeli, kişiler, hazırlanan eylemler, bekleyen taahhütler, brifing kartları, denetim günlüğü |
+| `/api/twin/activity` | `GET` | Son otonom kararlar |
+| `/api/twin/events` | `GET` | `autonomy:action_pending` ve `autonomy:action_executed` gibi sunucu-gönderimli değişim sinyalleri; `Last-Event-ID` ile kaldığı yerden sürer. Yalnız kimlik ve durum taşır, konu, alıcı ya da gövde asla; yeniden bağlandıktan sonra gerçeği `/api/twin/activity`'den al |
+| `/api/twin/preferences` | `POST` | Tercihleri kaydet; `briefing` dahil: `{morning, morning_time, pre_meeting, pre_meeting_minutes, sections[], custom[{title,prompt}], channels[], mail_account, model{provider,model}}` |
+| `/api/twin/reply_model` | `POST` | `{provider, model}` — yanıt taslaklarını yazan model (karar modelinden bağımsız) |
+| `/api/twin/contact` · `/merge` · `/contact_timeline` | `POST` | Kişi oluştur ya da düzenle (mail + WhatsApp takma adları, kişi başı politika `never`/`draft_only`/`full_auto`), iki kişiyi birleştir, bir kişinin kanallar arası zaman çizelgesini oku |
+| `/api/twin/approve_action` · `/send_action` · `/hold_action` · `/cancel_action` | `POST` | Hazırlanmış bir yanıt üzerinde sahip kararları. İkinci onay `409` döner |
+| `/api/twin/twin_commitments` · `/resolve_commitment` | `POST` | Açık "bekliyorum" ve "sözüm var" kayıtlarını listele; birini bitti işaretle |
+| `/api/twin/briefing_read` | `POST` | `{key}` — bir brifing kartını okundu işaretle |
+| `/api/twin/check_availability` · `/git_project_status` · `/dev_status` | `POST` | Salt-okunur kanıt araçları: maskeli boş/dolu, kayıtlı bir projenin git durumu, projelerdeki yarım işler |
+| `/api/twin/task_from_action` | `POST` | Bir mesajı, yalnız sahibi isterse, boşta bir Self-Driving görevine dönüştür |
+
+### 📊 Telemetri (anonim günlük özet) — bkz. [`TELEMETRY.md`](../TELEMETRY.md)
+Resmî derlemelerde varsayılan olarak açık; kaynak derlemelerde sen açmadıkça kapalı. Okumalar açıktır; yazmalar yalnız yöneticiye.
+
+| Endpoint | Metot | Açıklama |
+| :--- | :--- | :--- |
+| `/api/telemetry/status` | `GET` | Paylaşımın açık olup olmadığı, kişinin yanıtı, kurulum sayımı durumu |
+| `/api/telemetry/preview` | `GET`/`POST` | Hiçbir şey gönderilmeden önce gönderilecek tam rapor |
+| `/api/telemetry/consent` | `POST` | `{share: true|false}` — günlük paylaşımı aç ya da kapat |
+| `/api/telemetry/reset-id` | `POST` | Yeni bir rastgele kurulum kimliği üret |
+| `/api/telemetry/delete` | `POST` | Bu kurulum kimliğiyle tutulan verinin silinmesini iste |
+
+### 🔄 Uygulama içi güncelleme — bkz. [`AUTO_UPDATE.md`](AUTO_UPDATE.md)
+| Endpoint | Metot | Açıklama |
+| :--- | :--- | :--- |
+| `/api/update/check` | `GET` | `?force=` → daha yeni bir Memo sürümü (ya da motor) yayımlanmış mı; `force` önbelleği atlar |
+| `/api/update/status` | `GET`/`POST` | Sürmekte olan indirme ya da kurulumun durumu ve son denemenin sonucu |
+| `/api/update/apply` | `POST` | Yalnız yönetici. İndir, imzalı manifesti doğrula, dosyaları değiştir ve yeniden başlat |
+
+### 🧩 Sohbet alt ajanları — bkz. [`CHAT_SUBAGENTS.md`](../CHAT_SUBAGENTS.md)
+Ajan (araç çalıştırma) izni gerekir.
+
+| Endpoint | Metot | Açıklama |
+| :--- | :--- | :--- |
+| `/api/subagents` | `GET` | `?chat_id=` → sohbetin alt ajanları (çalışan, biten, geçmiş) |
+| `/api/subagents/settings` | `GET`/`PUT` | Aynı anda kaç tanesinin çalışacağı (1–16, varsayılan 3) |
+| `/api/subagents/{id}` | `GET` | `?chat_id=` → tek bir alt ajan: görevi, canlı çıktısı ve araç çağrıları |
+| `/api/subagents/{id}/{send\|cancel\|close\|merge\|resume}` | `POST` | Takip mesajı gönder, durdur, kapat, projenin izole kopyasını birleştir ya da yarıda kalan incelemeyi sürdür |
+
 ---
 *Detaylı JSON yükleri (payloads) için `internal/webserver/handlers_flutter.go` dosyasını inceleyin.*

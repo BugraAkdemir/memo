@@ -249,6 +249,9 @@ A streamed chunk is ordinary reply text unless its `finish_reason` names one of 
 | `POST` | `/api/projects/status` | `{path}` → `{root, id, name, set_up, declined, allowed, reason, enabled, should_ask}`. Writes nothing. Same permission as `/api/agent/chat` |
 | `POST` | `/api/projects/setup` | `{path}` → creates `.memo/` and the starter files (never overwrites). 403 for the home folder, Memo's own folders, or a foreign `.memo` |
 | `POST` | `/api/projects/decline` | `{path, declined?}` → remembers "never set up Memo in this folder" (`declined:false` undoes it) |
+| `POST` | `/api/projects/permissions` | `{path}` → the project's `.memo/permissions.json` rules and their trust state on this device. Writes nothing |
+| `POST` | `/api/projects/permissions/save` | Write the rules to `.memo/permissions.json`. A file with even one bad rule is rejected as a whole |
+| `POST` | `/api/projects/permissions/trust` | Approve the file's current content on this device (trust on first use). A file that arrives with a clone, or changes later, is ignored until approved again |
 
 ### 🛠️ Developer API Gateway
 | Method | Endpoint | Description |
@@ -291,6 +294,73 @@ The live browser panel next to the chat drives one isolated Chromium session (`i
 | `POST` | `/api/browser/session/scroll` | `{dx, dy}` |
 | `GET` | `/api/browser/session/status` | `{active, url}` |
 | `POST` | `/api/browser/session/close` | End the session |
+
+### ✉️ Mail (admin only) — see [`DIGITAL_TWIN_AND_MAIL.md`](DIGITAL_TWIN_AND_MAIL.md), [`MAIL_SECURITY.md`](MAIL_SECURITY.md)
+Every mail route needs an admin session except `stats`; `settings` is readable by anyone but writable only by an admin. Mail is off until an account is connected.
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET`/`DELETE` | `/api/mail/accounts` | List connected accounts; `DELETE ?id=` disconnects one |
+| `GET`/`POST` | `/api/mail/autodiscover` | `?email=` → IMAP/SMTP settings from the built-in presets (Gmail, Outlook, …) or Thunderbird's autoconfig database |
+| `GET`/`POST` | `/api/mail/oauth/start` | Begin the Gmail / Outlook sign-in; returns the URL and a `state` |
+| `GET`/`POST` | `/api/mail/oauth/status` | `?state=` → whether the sign-in finished |
+| `POST` | `/api/mail/oauth/manual` | `{state, callback_url, email}` — finish a sign-in by pasting the redirect URL (headless and remote setups) |
+| `POST` | `/api/mail/accounts/password` | Connect any IMAP/SMTP account with a password |
+| `GET` | `/api/mail/inbox` | `?account_id=&limit=` → the account's recent message summaries |
+| `GET` | `/api/mail/message` | `?account_id=&seq_num=` → one full message |
+| `GET` | `/api/mail/attachment` | `?account_id=&seq_num=&part=&filename=` → the attachment bytes |
+| `GET` | `/api/mail/search` | `?account_id=&q=&limit=` → search the mailbox |
+| `POST` | `/api/mail/send` | Send a message. The outgoing secret scan runs first; a match answers `422` with a reason code, never the secret |
+| `POST` | `/api/mail/draft` | Save a draft in the account's Drafts folder (same secret scan) |
+| `POST` | `/api/mail/sync` | Poll the connected accounts now instead of waiting for the next 60-second poll. Returns `{ok, stats}` |
+| `GET` | `/api/mail/stats` | The watcher's counters (messages evaluated, filtered, blocked by the security shield). Reason codes only, never message text |
+| `POST` | `/api/mail/security/check` | Dry-run the inbound injection shield and the outbound scan on pasted text. Sends nothing, stores nothing, counts nothing |
+| `GET`/`PUT` | `/api/mail/settings` | Watcher and triage settings |
+
+### 🪞 Digital Twin (admin only) — see [`DIGITAL_TWIN_AND_MAIL.md`](DIGITAL_TWIN_AND_MAIL.md), [`DIGITAL_TWIN_APPROVAL.md`](DIGITAL_TWIN_APPROVAL.md)
+One route per operation under `/api/twin/{operation}`. `state` and `activity` are `GET`; every other operation is a `POST` with a JSON body of at most 32 KB and unknown fields are rejected. An unknown operation answers `404`.
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/twin/state` | Everything the Digital Twin panel shows: preferences (autonomy, radar, **briefing**), reply model, contacts, prepared actions, waiting commitments, briefing cards, audit log |
+| `GET` | `/api/twin/activity` | The latest autonomous decisions |
+| `GET` | `/api/twin/events` | Server-sent change signals such as `autonomy:action_pending` and `autonomy:action_executed`, resumable with `Last-Event-ID`. They carry ids and states only, never a subject, recipient or body; after a reconnect fetch `/api/twin/activity` for the truth |
+| `POST` | `/api/twin/preferences` | Save preferences, including `briefing`: `{morning, morning_time, pre_meeting, pre_meeting_minutes, sections[], custom[{title,prompt}], channels[], mail_account, model{provider,model}}` |
+| `POST` | `/api/twin/reply_model` | `{provider, model}` — the model that writes reply drafts (independent of the decision model) |
+| `POST` | `/api/twin/contact` · `/merge` · `/contact_timeline` | Create or edit a contact (mail + WhatsApp aliases, per-person policy `never`/`draft_only`/`full_auto`), merge two contacts, read one person's timeline across channels |
+| `POST` | `/api/twin/approve_action` · `/send_action` · `/hold_action` · `/cancel_action` | Owner decisions on a prepared reply. A second approval answers `409` |
+| `POST` | `/api/twin/twin_commitments` · `/resolve_commitment` | List open "waiting on" and "my promise" records; mark one done |
+| `POST` | `/api/twin/briefing_read` | `{key}` — mark a briefing card as read |
+| `POST` | `/api/twin/check_availability` · `/git_project_status` · `/dev_status` | Read-only evidence tools: masked free/busy, a registered project's git state, unfinished work across projects |
+| `POST` | `/api/twin/task_from_action` | Turn a message into an idle Self-Driving task, only on the owner's request |
+
+### 📊 Telemetry (anonymous daily summary) — see [`TELEMETRY.md`](TELEMETRY.md)
+On by default in official builds; off in source builds unless enabled. The reads are open; the writes are admin only.
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/telemetry/status` | Whether sharing is on, the person's answer, the install count state |
+| `GET`/`POST` | `/api/telemetry/preview` | The exact report that would be sent, before anything is sent |
+| `POST` | `/api/telemetry/consent` | `{share: true|false}` — switch daily sharing on or off |
+| `POST` | `/api/telemetry/reset-id` | Make a new random install ID |
+| `POST` | `/api/telemetry/delete` | Ask for the data held under this install ID to be deleted |
+
+### 🔄 In-app updates — see [`AUTO_UPDATE.md`](AUTO_UPDATE.md)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/update/check` | `?force=` → whether a newer Memo version (or engine) is published; `force` skips the cache |
+| `GET`/`POST` | `/api/update/status` | The state of the current download or install and the result of the last attempt |
+| `POST` | `/api/update/apply` | Admin only. Download, verify the signed manifest, swap the files in and restart |
+
+### 🧩 Chat sub-agents — see [`CHAT_SUBAGENTS.md`](CHAT_SUBAGENTS.md)
+Needs the agent (tool-execution) permission.
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/subagents` | `?chat_id=` → the chat's sub-agents (running, finished, history) |
+| `GET`/`PUT` | `/api/subagents/settings` | How many run at once (1–16, default 3) |
+| `GET` | `/api/subagents/{id}` | `?chat_id=` → one sub-agent: its task, live output and tool calls |
+| `POST` | `/api/subagents/{id}/{send\|cancel\|close\|merge\|resume}` | Send it a follow-up, stop it, close it, merge its isolated copy of the project, or resume an interrupted review |
 
 ### 💾 Backup / Export / Wipe
 | Method | Endpoint | Description |

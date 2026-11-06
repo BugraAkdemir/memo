@@ -357,13 +357,63 @@ Multiple AI models collaborate as a team:
 
 ---
 
+## 11. ✉️ Mail & Digital Twin (v5.0)
+Everything in this section is **off by default**; nothing is read, drafted or sent until you switch it on. Deep dives: [`DIGITAL_TWIN_AND_MAIL.md`](DIGITAL_TWIN_AND_MAIL.md), [`MAIL_SECURITY.md`](MAIL_SECURITY.md), [`DIGITAL_TWIN_APPROVAL.md`](DIGITAL_TWIN_APPROVAL.md).
+
+### Connecting and reading mail
+- **Zero-config sign-in.** Gmail and Outlook through OAuth (XOAUTH2, no app passwords); any other provider through IMAP/SMTP with settings found from built-in presets or Thunderbird's autoconfig database. Credentials are kept in an encrypted vault on the machine.
+- **A 60-second watcher.** New mail is polled in the background. Only mail that arrives *after* you connect is handled; the old inbox is never backfilled and a cold start never floods the model.
+- **Three-layer triage (the Gatekeeper).** Layer 1 is structured data and your own contacts (invitations, flights, invoices, one-time codes, people you already write to, active reply threads); layer 2 is standard headers (`List-Unsubscribe`, `Auto-Submitted`, `Precedence`, `noreply`-style senders); layer 3 is a model, only for what is left. Mail lands in one of five categories and bulk, newsletter and one-time-code mail never enter memory or get a reply.
+
+### Protection
+- **Inbound shield.** Deterministic English and Turkish instruction-override, role-delimiter and base64-encoded-instruction checks run before triage, memory indexing and calendar extraction. An optional decision-model review adds a second opinion and **fails closed**: if it can't answer, the mail is held, not passed. A blocked mail stays readable in the inbox.
+- **Mail is data, never instructions.** Mail text reaches a model inside an untrusted-data envelope, and the research assistant that reads it has four read-only tools only (contact history, memory search, calendar availability, git status of a registered project).
+- **Outbound scan.** Subject, body, `To`/`Cc` and drafts are checked for API keys, private-key blocks, `KEY=value` lines and recently seen one-time codes before any connection is opened.
+- **Privacy wall.** The model sees only masked free/busy ranges from your calendar, never titles, places or guests, and other people's data never leaks into a reply.
+
+### The twin
+- **One person, every channel.** Link a person's mail address and WhatsApp number; a timeline shows both with their original dates, and a "tomorrow" written last week keeps its meaning. People are never merged by name alone.
+- **Your style, not a clone.** A plain summary (formal or casual, language, greeting) from your last 100 *sent* messages; it says so when examples are few.
+- **Prepared replies.** Read-only research, then a draft in your style, uploaded to the account's Drafts folder and shown in **Mail → Replies**, where you edit and send it yourself. A separate **reply model** writes the text; the decision model only scores.
+- **Per-person policy** `never` / `draft_only` (default) / `full_auto`.
+- **Approval from anywhere.** In the app, or on WhatsApp and Telegram with `#onay N`, `#iptal N`, `#asla N` (only your own chat is accepted).
+- **Automatic sending with an undo window.** For a *full auto* person, a reply waits a **60-second** window (adjustable); at the moment of sending every rule is re-checked, plus an independent confidence score of at least 0.95. Groups and CC are never answered automatically, nothing is sent twice, mail older than six hours is never answered on its own, one automatic reply per person per hour at most, and after a restart whatever still waits returns to you.
+- **Calendar-aware.** An `.ics` invitation is added with a note to review, conflicts are flagged, up to two alternatives are offered, and the reply never reveals other events.
+- **Follow-up radar and promises.** A review-only reminder draft for answers you are waiting on (one per person, groups never nagged), and tracking of your own dated promises.
+- **Chat tools.** Pending drafts, open commitments, a contact's timeline and the unfinished work of your projects; `/mail` and `/twin` in the terminal; a message can become an idle Self-Driving task, only on your say-so.
+
+## 12. 🌅 Daily Briefing (v5.0)
+- **Morning card.** Today's meetings, what was prepared overnight, drafts waiting, overdue replies, promises due, unfinished code work. Built from local data, no model needed.
+- **Pre-meeting note.** 5–120 minutes ahead (15 by default): promises to that person, replies you wait for, waiting drafts, recent messages.
+- **Yours to shape.** Any half hour; any mix of six built-in sections (`meetings`, `overnight`, `drafts`, `waiting`, `promises`, `code`); up to **five custom items** (a title plus an instruction or reminder); an optional **briefing model**, separate from the reply model. With a model, it writes a short summary and answers the custom items from the day's data (which goes to the provider you picked); without one, custom items appear exactly as written, and a failed model never blocks the card.
+- **Channels.** Always the app; optionally Telegram (your owner chat), WhatsApp (your own number) and/or mail (your own address, from the account you pick), any combination, only ever to you. Each send is claimed before it starts (`briefing_deliveries`), a restart can never send it twice, an unsure send is not repeated, and a failed one is retried up to five times, five minutes apart, within six hours. Outbound secret scan first. Only the morning briefing leaves the app.
+- Settings live in the twin preferences (`twin.db`), not `config.yaml`.
+
+## 13. 🧭 Setup Wizard v2 (v5.0)
+A guided flow for everything that used to need a trip to Settings: language and appearance → **model connection** (required: local, API key or subscription) → embedding model → persona → mail → **mail reply model** (required once mail exists) → decision model → memory and learning → voice and images → channels → **daily briefing** → privacy and backup → summary and check. Progress is read from the real app state, so it resumes where you left off; every step opens from the side list; it can be re-run from Settings → General without losing a custom persona. See [`SETUP_WIZARD.md`](SETUP_WIZARD.md).
+
+## 14. 🧩 One Chat List, Live Agent, Sub-agents (v5.0)
+- **One chat list.** The Agent tab is gone; an agent chat is a chat with a project folder, marked with a robot. New chats start on a **Chat | Agent** screen with a centred composer; a blank chat is reused instead of piling up.
+- **Live agent.** The model's text, thinking and each tool call stream in order, grouped and expandable; stopping keeps what you saw; long turns keep the task instead of forgetting it; an empty step after tool use is nudged to answer.
+- **Chat sub-agents.** Bounded background jobs with their own focused context (never your memory or persona), isolated project copies for parallel writers merged one at a time, a durable per-chat queue, live cards you can open and steer, a history list, and the selected provider and model carried over. Settings → Chat sub-agents sets how many run at once (1–16, default 3). See [`CHAT_SUBAGENTS.md`](CHAT_SUBAGENTS.md).
+- **Skills by name.** `/pair-programming` or "using the Pair Programming skill" in a message switches it on for that chat; `/` lists installed skills and real commands (`/remember`, `/forget`, `/model`, `/orchestra`).
+- **Terminal next to the app.** The REPL's settings are per session and it no longer moves the desktop app's open chat.
+
+## 15. 🔄 In-App Updates (v4.7.0)
+Signed manifests, byte-exact resumable downloads, an in-place swap with automatic rollback if the new version does not start, and separate engine updates (llama.cpp, whisper.cpp, the Subscriptions connector) without a new Memo. Installs that can't update themselves (AppImage, packages, Docker, source) get an *Open download page* button. See [`AUTO_UPDATE.md`](AUTO_UPDATE.md).
+
+## 16. 📊 Anonymous Daily Summary (v5.0)
+Official builds send a small anonymous usage summary **by default** (also when updating from a version without it); one switch turns it off (setup wizard or Settings → Privacy), source builds send nothing unless enabled, and `memo telemetry preview` shows the exact report first. It never carries messages, memory, contacts, files, paths, keys or names. A separate id-less install count is sent once per data folder. See [`TELEMETRY.md`](TELEMETRY.md).
+
+---
+
 ## 🎨 Design Philosophy: "Greige" Minimalism
 - **Focus-First UI**: Minimalist color palette to reduce cognitive load.
 - **Responsive Layout**: Designed for both desktop-wide and mobile-narrow views.
 - **Onboarding Wizard**: A guided setup for name, persona, and initial diagnostics.
 
 ---
-*Last updated: 2026-09-15 · Version: v4.5.0*
+*Last updated: 2026-11-07 · Covers `main` (v5.0 in the making); latest release v4.7.0*
 
 **Built by Buğra.**
 *Control your AI. Own your Memory.*

@@ -357,13 +357,63 @@ Birden fazla yapay zeka modeli bir takım olarak işbirliği yapar:
 
 ---
 
+## 11. ✉️ Mail ve Dijital İkiz (v5.0)
+Bu bölümdeki her şey **varsayılan olarak kapalıdır**; sen açana kadar hiçbir şey okunmaz, taslağa dönmez ya da gönderilmez. Ayrıntı: [`DIGITAL_TWIN_AND_MAIL.md`](../DIGITAL_TWIN_AND_MAIL.md), [`MAIL_SECURITY.md`](../MAIL_SECURITY.md), [`DIGITAL_TWIN_APPROVAL.md`](../DIGITAL_TWIN_APPROVAL.md).
+
+### Mail bağlama ve okuma
+- **Sıfır ayarlı giriş.** Gmail ve Outlook OAuth ile (XOAUTH2, uygulama şifresi yok); diğer her sağlayıcı, hazır ayarlardan ya da Thunderbird autoconfig veritabanından bulunan ayarlarla IMAP/SMTP üzerinden. Kimlik bilgileri makinede şifreli bir kasada tutulur.
+- **60 saniyelik izleyici.** Yeni mail arka planda yoklanır. Yalnız bağlandıktan *sonra* gelen mail işlenir; eski gelen kutusu geriye dönük okunmaz ve soğuk başlangıç modeli asla boğmaz.
+- **Üç katmanlı sınıflandırma (Gatekeeper).** 1. katman yapısal veri ve kendi kişilerin (davetler, uçuşlar, faturalar, tek kullanımlık kodlar, zaten yazıştığın kişiler, süren yanıt zincirleri); 2. katman standart başlıklar (`List-Unsubscribe`, `Auto-Submitted`, `Precedence`, `noreply` benzeri göndericiler); 3. katman bir model, yalnız geriye kalanlar için. Mail beş kategoriden birine düşer; toplu, bülten ve tek kullanımlık kod mailleri hafızaya girmez ve yanıt almaz.
+
+### Koruma
+- **Gelen kalkanı.** Belirleyici İngilizce ve Türkçe talimat-ezme, rol-ayırıcı ve base64 kodlu talimat denetimleri, sınıflandırmadan, hafızaya indekslemeden ve takvim çıkarımından önce çalışır. İsteğe bağlı karar modeli incelemesi ikinci görüş ekler ve **hata durumunda kapalı kalır**: yanıt veremezse mail geçirilmez, bekletilir. Engellenen mail gelen kutusunda okunabilir kalır.
+- **Mail veridir, talimat değil.** Mail metni modele güvenilmeyen veri zarfı içinde ulaşır ve onu okuyan araştırma asistanının yalnız dört salt-okunur aracı vardır (kişi geçmişi, hafıza araması, takvim doluluğu, kayıtlı projenin git durumu).
+- **Giden tarama.** Konu, gövde, `To`/`Cc` ve taslaklar, bağlantı açılmadan önce API anahtarları, özel anahtar blokları, `ANAHTAR=değer` satırları ve yakın zamanda görülen tek kullanımlık kodlar için denetlenir.
+- **Gizlilik duvarı.** Model takvimden yalnız maskeli boş/dolu aralıkları görür, başlık, yer ya da konuk asla; başkasının verisi yanıta karışmaz.
+
+### İkiz
+- **Tek kişi, her kanal.** Bir kişinin mail adresini ve WhatsApp numarasını bağla; zaman çizelgesi ikisini orijinal tarihleriyle gösterir ve geçen hafta yazılmış bir "yarın" anlamını korur. Kişiler yalnız ada bakılarak asla birleştirilmez.
+- **Senin üslubun, klon değil.** Son 100 *gönderdiğin* mesajdan düz bir özet (resmî ya da samimi, dil, selamlama); örnek azsa bunu söyler.
+- **Hazırlanan yanıtlar.** Salt-okunur araştırma, ardından senin üslubunla bir taslak; hesabın Taslaklar klasörüne yüklenir ve **Mail → Yanıtlar**'da görünür; oradan düzenleyip kendin gönderirsin. Metni ayrı bir **yanıt modeli** yazar; karar modeli yalnız puanlar.
+- **Kişi başı politika** `never` / `draft_only` (varsayılan) / `full_auto`.
+- **Her yerden onay.** Uygulamada ya da WhatsApp ve Telegram'da `#onay N`, `#iptal N`, `#asla N` ile (yalnız kendi sohbetin kabul edilir).
+- **Geri alma süreli otomatik gönderim.** *Tam otomatik* bir kişi için yanıt **60 saniyelik** bir pencere bekler (ayarlanabilir); gönderim anında her kural yeniden denetlenir, ayrıca en az 0,95'lik bağımsız bir güven puanı aranır. Gruplara ve CC'ye asla otomatik yanıt verilmez, hiçbir şey iki kez gitmez, altı saatten eski maile kendiliğinden yanıt verilmez, kişi başına saatte en çok bir otomatik yanıt gider ve yeniden başlatmadan sonra bekleyen her şey sana döner.
+- **Takvimden haberdar.** Bir `.ics` daveti incelemen için bir notla eklenir, çakışmalar işaretlenir, en çok iki alternatif sunulur ve yanıt diğer etkinlikleri asla açığa vurmaz.
+- **Takip radarı ve sözler.** Beklediğin yanıtlar için yalnız incelemeye açık bir hatırlatma taslağı (kişi başına bir tane, gruplara hatırlatma yapılmaz) ve tarihli kendi sözlerinin takibi.
+- **Sohbet araçları.** Bekleyen taslaklar, açık taahhütler, bir kişinin zaman çizelgesi ve projelerinin yarım işleri; terminalde `/mail` ve `/twin`; bir mesaj yalnız sen istersen boşta bir Self-Driving görevine dönüşebilir.
+
+## 12. 🌅 Günlük Brifing (v5.0)
+- **Sabah kartı.** Bugünkü toplantılar, gece hazırlananlar, bekleyen taslaklar, yanıtı gecikenler, vadesi gelen sözler, yarım kalan kod işleri. Yerel veriden derlenir, model gerekmez.
+- **Toplantı öncesi not.** 5–120 dakika önceden (varsayılan 15): o kişiye verdiğin sözler, beklediğin yanıtlar, bekleyen taslaklar, son mesajlar.
+- **Sana göre şekillenir.** Günün her yarım saati; altı yerleşik bölümün (`meetings`, `overnight`, `drafts`, `waiting`, `promises`, `code`) istediğin karışımı; beş **özel öğeye** kadar (bir başlık artı bir talimat ya da hatırlatma); isteğe bağlı, yanıt modelinden ayrı bir **brifing modeli**. Modelle kısa bir özet yazar ve özel öğeleri günün verisinden yanıtlar (veri seçtiğin sağlayıcıya gider); modelsiz özel öğeler yazdığın gibi görünür ve başarısız bir model kartı asla engellemez.
+- **Kanallar.** Uygulama her zaman; isteğe bağlı olarak Telegram (sahip sohbetin), WhatsApp (kendi numaran) ve/veya mail (seçtiğin hesaptan kendi adresin), istenen kombinasyonla ve yalnızca sana. Her gönderim başlamadan önce ayrılır (`briefing_deliveries`), yeniden başlatma onu asla iki kez gönderemez, sonucu belirsiz gönderim tekrarlanmaz, başarısız olan altı saat içinde beş dakika arayla en çok beş kez denenir. Önce giden sır taraması çalışır. Uygulamadan yalnız sabah brifingi çıkar.
+- Ayarlar `config.yaml`'da değil, ikiz tercihlerinde (`twin.db`) durur.
+
+## 13. 🧭 Kurulum Sihirbazı v2 (v5.0)
+Eskiden Ayarlar'a gitmeyi gerektiren her şey için rehberli bir akış: dil ve görünüm → **model bağlantısı** (zorunlu: yerel, API anahtarı ya da abonelik) → gömme modeli → persona → mail → **mail yanıt modeli** (mail varsa zorunlu) → karar modeli → hafıza ve öğrenme → ses ve görseller → kanallar → **günlük brifing** → gizlilik ve yedekleme → özet ve kontrol. İlerleme gerçek uygulama durumundan okunur, bu yüzden kaldığın yerden sürer; her adım yan listeden açılır; Ayarlar → Genel'den, özel personayı kaybetmeden yeniden çalıştırılabilir. Bkz. [`SETUP_WIZARD.md`](../SETUP_WIZARD.md).
+
+## 14. 🧩 Tek Sohbet Listesi, Canlı Ajan, Alt Ajanlar (v5.0)
+- **Tek sohbet listesi.** Ajan sekmesi kalktı; ajan sohbeti, proje klasörü olan bir sohbettir ve robotla işaretlenir. Yeni sohbetler ortada yazı kutusu olan bir **Sohbet | Ajan** ekranıyla başlar; boş sohbet yığılmak yerine yeniden kullanılır.
+- **Canlı ajan.** Modelin metni, düşüncesi ve her araç çağrısı sırayla akar, gruplanır ve açılabilir; durdurmak gördüklerini korur; uzun turlar görevi unutmaz; araç kullandıktan sonra boş kalan adım yanıt vermeye yönlendirilir.
+- **Sohbet alt ajanları.** Kendi odaklı bağlamı olan (hafızan ya da personan asla) sınırlı arka plan işleri, paralel yazanlar için izole proje kopyaları (tek tek birleştirilir), sohbet başına kalıcı bir kuyruk, açıp yönlendirebildiğin canlı kartlar, bir geçmiş listesi ve devralınan seçili sağlayıcı ile model. Ayarlar → Sohbet alt ajanları aynı anda kaç tanesinin çalışacağını belirler (1–16, varsayılan 3). Bkz. [`CHAT_SUBAGENTS.md`](../CHAT_SUBAGENTS.md).
+- **Skill'ler adıyla.** Mesajda `/pair-programming` ya da "Pair Programming skill'iyle" demek onu o sohbet için açar; `/` kurulu skill'leri ve gerçek komutları (`/remember`, `/forget`, `/model`, `/orchestra`) listeler.
+- **Uygulamanın yanında terminal.** REPL'in ayarları oturum başınadır ve masaüstü uygulamasının açık sohbetini artık oynatmaz.
+
+## 15. 🔄 Uygulama İçi Güncelleme (v4.7.0)
+İmzalı manifestler, bayt-bayt doğru ve sürdürülebilir indirmeler, yeni sürüm açılmazsa otomatik geri alınan yerinde değiştirme ve yeni bir Memo gerektirmeyen ayrı motor güncellemeleri (llama.cpp, whisper.cpp, Abonelikler bağlayıcısı). Kendini güncelleyemeyen kurulumlar (AppImage, paketler, Docker, kaynak) *İndirme sayfasını aç* düğmesi alır. Bkz. [`AUTO_UPDATE.md`](AUTO_UPDATE.md).
+
+## 16. 📊 Anonim Günlük Özet (v5.0)
+Resmî derlemeler küçük, anonim bir kullanım özetini **varsayılan olarak** gönderir (böyle bir özelliği olmayan sürümden güncellerken de); tek bir anahtar kapatır (kurulum sihirbazı ya da Ayarlar → Gizlilik), kaynak derlemeler sen açmadıkça hiçbir şey göndermez ve `memo telemetry preview` önce tam raporu gösterir. Mesaj, hafıza, kişi, dosya, yol, anahtar ya da ad asla taşımaz. Kimliksiz ayrı bir kurulum sayımı veri klasörü başına bir kez gönderilir. Bkz. [`TELEMETRY.md`](../TELEMETRY.md).
+
+---
+
 ## 🎨 Tasarım Felsefesi: "Greige" Minimalizm
 - **Odak-Öncelikli Arayüz**: Bilişsel yükü azaltmak için minimalist renk paleti.
 - **Duyarlı Yerleşim**: Hem masaüstü-geniş hem mobil-dar görünümler için tasarlandı.
 - **Onboarding Sihirbazı**: İsim, persona ve ilk tanılama için rehberli bir kurulum.
 
 ---
-*Son güncelleme: 2026-09-15 · Sürüm: v4.5.0*
+*Son güncelleme: 2026-11-07 · `main`'i anlatır (v5.0 hazırlanıyor); son sürüm v4.7.0*
 
 **Buğra tarafından yapıldı.**
 *Yapay zekanı kontrol et. Hafızana sahip çık.*

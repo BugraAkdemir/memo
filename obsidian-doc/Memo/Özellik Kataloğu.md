@@ -273,3 +273,14 @@ Detay: [[Telegram Entegrasyonu]]
 | Yerel STT (sesden metne) | ✅ |
 | Görsel yükleme (multimodal GGUF) | ✅ |
 | Belge indeksleme | ✅ |
+
+---
+
+## 🆕 v5.0 eklemeleri (`main`'de)
+
+- **[[Dijital İkiz ve Mail]]** — Gmail, Outlook ya da herhangi bir IMAP hesabı; 3 katmanlı Gatekeeper, injection kalkanı ve giden sır taraması; mail ve WhatsApp'ta kişi başına tek zaman çizelgesi; senin üslubunla yanıtlar; uygulamadan, WhatsApp'tan ya da Telegram'dan 60 saniyelik geri alma süreli onay; takip radarı. **Varsayılan olarak kapalı.**
+- **[[Günlük Brifing]]** — sabah kartı ve toplantı öncesi not; günün her yarım saati, altı bölüm, beş özel öğeye kadar, uygulamaya, Telegram'a, WhatsApp'a ve/veya maile teslimat, isteğe bağlı brifing modeli.
+- **[[Kurulum Sihirbazı]]** — yeniden yazılmış ilk kurulum akışı; ilerleme gerçek uygulama durumundan okunur.
+- **[[Proje Klasörleri]]** — kendi kuralları ve kendi hafızası olan `.memo/`; **[[Sohbet Alt Ajanları]]**; adıyla çağrılan skill'ler; Sohbet | Ajan başlangıç ekranıyla tek sohbet listesi ve canlı akan ajan.
+- **[[Uygulama İçi Güncelleme]]** ve **[[Telemetri ve Gizlilik]]** — geri almalı imzalı güncelleme; resmî derlemelerde varsayılan olarak açık, tek anahtarla kapanan anonim günlük özet.
+- **Yerel modeller, daha hızlı** — motor Memo'nun gerçekten gördüğü GPU'ya göre seçilir; Linux'ta Vulkan istem işleme ve n-gram spekülatif çözümleme.

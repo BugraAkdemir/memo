@@ -247,3 +247,9 @@ Details: [[Multimodal Capabilities (Vision and Voice)]]
 
 ---
 > **Note:** For more details on API usage, examine `internal/webserver/server.go` and `internal/webserver/handlers_flutter.go`.
+
+---
+
+## 🆕 v5.0 route groups
+
+Added since v4.5 (full tables in `docs/API_REFERENCE.md`): **`/api/mail/*`** (16 routes, admin only: accounts, OAuth, inbox, send, drafts, the security check), **`/api/twin/{operation}`** and **`/api/twin/events`** (the Digital Twin panel and its change signals — see [[Digital Twin and Mail]] and [[Daily Briefing]]), **`/api/telemetry/*`** ([[Telemetry and Privacy]]), **`/api/update/*`** ([[In-App Updates]]), **`/api/subagents/*`** ([[Chat Sub-agents]]) and **`/api/projects/permissions*`** ([[Project Folders]]). The backend registers 262 routes in all.

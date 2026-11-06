@@ -238,3 +238,14 @@ See [[Telegram Integration]].
 | ElevenLabs / Custom voice engines | ✅ (v4.3.0) |
 | Image upload (multimodal GGUF) | ✅ |
 | Document indexing | ✅ |
+
+---
+
+## 🆕 v5.0 additions (on `main`)
+
+- **[[Digital Twin and Mail]]** — Gmail, Outlook or any IMAP account; a 3-layer Gatekeeper, an injection shield and an outgoing secret scan; one timeline per person across mail and WhatsApp; replies in your own style; approval from the app, WhatsApp or Telegram with a 60-second undo window; a follow-up radar. **Off by default.**
+- **[[Daily Briefing]]** — a morning card and a pre-meeting note; any half hour, six sections, up to five custom items, delivery to the app, Telegram, WhatsApp and/or mail, an optional briefing model.
+- **[[Setup Wizard]]** — the rebuilt first-run flow; progress read from real app state.
+- **[[Project Folders]]** — `.memo/` with its own rules and its own memory; **[[Chat Sub-agents]]**; skills called by name; one chat list with a Chat | Agent start screen and a live streaming agent.
+- **[[In-App Updates]]** and **[[Telemetry and Privacy]]** — signed updates with rollback; an anonymous daily summary, on by default in official builds, one switch off.
+- **Local models, faster** — the engine is chosen by the GPU Memo really sees; Vulkan prompt processing and n-gram speculative decoding on Linux.

@@ -231,3 +231,9 @@ Detay: [[Geliştirici API Ağ Geçidi]]
 
 ---
 > **Not:** API kullanımı hakkında daha fazla detay için `internal/webserver/server.go` ve `internal/webserver/handlers_flutter.go` dosyalarını inceleyebilirsiniz.
+
+---
+
+## 🆕 v5.0 rota grupları
+
+v4.5'ten beri eklenenler (tam tablolar `docs/tr/API_REFERENCE.md` içinde): **`/api/mail/*`** (16 rota, yalnız yönetici: hesaplar, OAuth, gelen kutusu, gönderim, taslaklar, güvenlik denetimi), **`/api/twin/{işlem}`** ve **`/api/twin/events`** (Dijital İkiz paneli ve değişim sinyalleri — bkz. [[Dijital İkiz ve Mail]] ve [[Günlük Brifing]]), **`/api/telemetry/*`** ([[Telemetri ve Gizlilik]]), **`/api/update/*`** ([[Uygulama İçi Güncelleme]]), **`/api/subagents/*`** ([[Sohbet Alt Ajanları]]) ve **`/api/projects/permissions*`** ([[Proje Klasörleri]]). Arka uç toplam 262 rota kaydeder.

@@ -1,20 +1,22 @@
-# Memo v4.6.0
+# Memo
 
 **The AI assistant that learns your habits and acts before you ask.**
 
-Local-first · Privacy-first · Zero cloud dependency · Full offline capable
+Local-first · Privacy-first · Fully offline with a local model
 
-> **Latest tagged release: v4.5.0** (v4.6.0 is built on `main`; its headline features are in the list below). The two headline additions this release: a small animated **desktop mascot** that shows what Memo is actually doing in real time (its own always-on-top window, two selectable skins), and **Code Mode split into three gears** — Plan / Auto / Build, cycled with Ctrl+Tab, each with its own editable system prompt. Alongside those: both Developer Gateway endpoints (Anthropic- and OpenAI-compatible) now enforce their API key for non-loopback callers, imported skills no longer auto-activate themselves, Live Mode reports real failure reasons instead of a silent self-echo, and a round of reliability work (retry buttons on ~20 previously-dead error screens, friendlier error translation, a fixed HuggingFace avatar 404 spam). Changelog: `versinNote/v4.5.0.md`.
+> **Latest tagged release: v4.7.0.** This vault also describes `main`, which is **v5.0** in the making: Memo can now handle your [[Digital Twin and Mail|mail]] (off by default), send a [[Daily Briefing]] to the app, Telegram, WhatsApp or mail, and walk you through a rebuilt [[Setup Wizard]]; official builds send an anonymous daily summary unless you turn it off ([[Telemetry and Privacy]]).
 
 ---
 
-## What shipped this cycle (v4.0.0 → v4.6.0)
+## What shipped this cycle (v4.0.0 → v5.0)
 
 - **v4.0.0** — real time-awareness in the system prompt ("how long since the last message"), WhatsApp third-party conversation takeover.
 - **v4.3.0** — **[[Multimodal Capabilities (Vision and Voice)|Live Mode v2]]**: native audio-to-audio voice (Google Live / OpenAI Realtime), delegate/standalone modes, barge-in, ElevenLabs + custom engines; **[[Telegram Integration|Telegram]]** added as a second messaging bridge alongside WhatsApp.
 - **v4.4.0** — the **Self-Driving Task Loop**: a `Task.md` checklist becomes an unattended, multi-step run — planner/executor mode with plan approval, up to 3 parallel sub-agents (coder + analyzer/reviewer/test-runner), escalating retry, live in-chat activity; real tool-calling for the Claude and Gemini providers (previously entirely missing); a new Anthropic-compatible Custom provider type; an OpenAI-compatible Developer Gateway sibling; **gemini-sub** (Beta) — sign in with a personal Google account, reach Gemini on your own quota.
-- **v4.6.0 (on `main`, release notes written, `version` not yet bumped)** — Memo can **open apps** and **drive an isolated browser** shown live in a panel next to the chat (you can use it by hand too); long replies are ended by silence not length, with a live progress line; **Subscriptions** — sign in once with an Antigravity / Claude / Codex account, all its models appear in the new model-picker panel with remaining-allowance badges, a usage-limit card that continues by itself, and image generation/editing; one Flutter app for **Android and iOS**; a rebuilt **Memory** tab (see, edit, selectively delete); prompt-cache accounting in Usage Stats; the **Cline** provider; skills active per chat; a security pass; the AppImage on the same stable/beta download channels as the tar.gz. See [[External Providers]], [[Agent Mode]], [[Mobile App]].
-- **v4.5.0 (latest tagged)** — the **desktop mascot**; **Code Mode's Plan/Auto/Build sub-modes**; both Developer Gateway endpoints now key-enforced for non-loopback callers; imported skills no longer auto-activate; clearer Live Mode failure messages; a reliability pass across ~20 dead-end error screens; a fixed Model Store avatar 404 spam.
+- **v4.6.0** — Memo can **open apps** and **drive an isolated browser** shown live in a panel next to the chat (you can use it by hand too); long replies are ended by silence rather than a fixed timeout; **Subscriptions** (Antigravity / Claude / Codex through the bundled CLIProxyAPI sidecar); one Flutter app for Android and iOS; a rebuilt Memory tab; skills active per chat. Full list: `versinNote/v4.6.0.md`.
+- **v4.5.0** — the **desktop mascot**; **Code Mode's Plan/Auto/Build sub-modes**; both Developer Gateway endpoints key-enforced for non-loopback callers; imported skills no longer auto-activate.
+- **v4.7.0 (latest tagged)** — **[[In-App Updates]]**: signed updates from inside Memo with automatic rollback, plus separate engine updates; ChatGPT and claude.ai through a real browser window (Beta); a leaner Code Mode and cheaper repeated turns.
+- **v5.0 (on `main`, notes drafted)** — **[[Digital Twin and Mail]]** (Gmail/Outlook/IMAP, a 3-layer Gatekeeper, an injection shield, replies in your style, approval with an undo window), the **[[Daily Briefing]]**, the **[[Setup Wizard]]**, **[[Project Folders]]** with their own memory, **[[Chat Sub-agents]]**, one chat list with a live streaming agent, skills by name, faster local models, and the anonymous daily summary ([[Telemetry and Privacy]]).
 
 ---
 
@@ -26,6 +28,12 @@ Local-first · Privacy-first · Zero cloud dependency · Full offline capable
 - [[Features Catalog]] — Full current feature list
 - [[Agent Mode]] — Agent pipeline, tools, permissions, Code Mode's Plan/Auto/Build sub-modes
 - [[Self-Driving Task Loop]] — Unattended multi-step `Task.md` execution
+- [[Digital Twin and Mail]] — Mail, the Gatekeeper, the injection shield, replies in your style, approval and undo
+- [[Daily Briefing]] — The morning card: sections, custom items, channels, model
+- [[Setup Wizard]] — The guided first-run flow
+- [[Chat Sub-agents]] — Background sub-agents in a chat
+- [[In-App Updates]] — Signed updates with rollback, engine updates
+- [[Telemetry and Privacy]] — The anonymous daily summary and its off switch
 - [[Project Folders]] — `.memo/` in a project: working rules, notes, its own memory, project skills
 - [[Desktop Mascot]] — The always-on-top activity companion
 - [[WhatsApp Integration]] — Setup and features
@@ -33,16 +41,16 @@ Local-first · Privacy-first · Zero cloud dependency · Full offline capable
 - [[Orchestra Mode]] — Multi-model workflow
 - [[RAG and Semantic Memory]] — Vector store and retrieval
 - [[Proactive Learning and Calendar]] — Observer + intent extraction
-- [[External Providers]] — 16 provider types + fallback chain
+- [[External Providers]] — 18 provider types + fallback chain
 - [[Developer API Gateway]] — Point Claude Code, or anything OpenAI/Anthropic-compatible, at Memo
 - [[Multimodal Capabilities (Vision and Voice)]] — Live Mode v2, vision, local STT
 - [[Memo Swarm]] — Multi-PC large models (Beta)
 - [[Remote Access & Self-Hosting]] — Run just the server on a Pi/home server, four auth modes, multi-account permissions, SSH-only management
 - [[Cloud Sync]] — E2E encrypted Google Drive backup
-- [[API Documentation]] — 180+ REST endpoints
+- [[API Documentation]] — 260+ REST routes
 - [[Developer Setup Guide]] — Build from source
 - [[Contributing]] — How to contribute
 
 ---
 
-**Version**: v4.5.0 tagged, v4.6.0 in progress · **License**: AGPL v3 · **Tech**: Go 1.26 + Flutter 3.10
+**Version**: v4.7.0 latest tagged, v5.0 in progress · **License**: AGPL v3 · **Tech**: Go 1.26 + Flutter 3.10

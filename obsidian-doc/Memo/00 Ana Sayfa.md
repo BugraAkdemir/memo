@@ -1,20 +1,22 @@
-# Memo v4.6.0
+# Memo
 
 **Alışkanlıklarını öğrenen ve sen sormadan harekete geçen yapay zeka asistanı.**
 
-Yerel-öncelikli · Gizlilik-öncelikli · Sıfır bulut bağımlısı · Tamamen çevrimdışı
+Yerel-öncelikli · Gizlilik-öncelikli · Yerel modelle tamamen çevrimdışı
 
-> **Son etiketli sürüm: v4.5.0** (v4.6.0 `main`'de derleniyor; başlıca özellikleri aşağıdaki listede). Bu sürümün iki başlıca eklemesi: Memo'nun gerçekte ne yaptığını gerçek zamanlı gösteren küçük animasyonlu bir **masaüstü maskotu** (kendi her-zaman-üstte penceresi, iki seçilebilir cilt), ve **üç vitese bölünen Code Mode** — Plan / Auto / Build, Ctrl+Tab ile döngülenir, her birinin kendi düzenlenebilir sistem promptu. Bunların yanında: her iki Geliştirici Ağ Geçidi endpoint'i de (Anthropic- ve OpenAI-uyumlu) artık loopback-olmayan çağıranlar için API anahtarını zorunlu kılıyor, içe aktarılan skill'ler artık kendi kendine aktive olmuyor, Live Mode sessizce kendi sesini yankılamak yerine gerçek hata nedenlerini bildiriyor, ve bir güvenilirlik turu (önceden ölü ~20 hata ekranına yeniden-dene düğmesi, daha dostane hata çevirisi, düzeltilen bir HuggingFace avatar 404 seli). Değişiklik günlüğü: `versinNote/tr/v4.5.0.md`.
+> **Son etiketli sürüm: v4.7.0.** Bu kasa ayrıca **v5.0**'ın hazırlandığı `main`'i de anlatır: Memo artık [[Dijital İkiz ve Mail|mailini]] yönetebiliyor (varsayılan olarak kapalı), uygulamaya, Telegram'a, WhatsApp'a ya da maile bir [[Günlük Brifing]] gönderebiliyor ve sıfırdan yazılmış bir [[Kurulum Sihirbazı]]'yla yol gösteriyor; resmî derlemeler sen kapatmadıkça anonim bir günlük özet gönderiyor ([[Telemetri ve Gizlilik]]).
 
 ---
 
-## Bu döngüde yayınlananlar (v4.0.0 → v4.6.0)
+## Bu döngüde yayınlananlar (v4.0.0 → v5.0)
 
 - **v4.0.0** — sistem promptunda gerçek zaman farkındalığı ("son mesajdan bu yana ne kadar geçti"), WhatsApp üçüncü kişi sohbet devralma.
 - **v4.3.0** — **[[Multimodal Yetenekler (Görsel ve Ses)|Live Mode v2]]**: native audio-to-audio ses (Google Live / OpenAI Realtime), delegate/standalone modlar, barge-in, ElevenLabs + özel motorlar; WhatsApp'ın yanına ikinci bir mesajlaşma köprüsü olarak **[[Telegram Entegrasyonu|Telegram]]** eklendi.
 - **v4.4.0** — **Self-Driving Görev Döngüsü**: bir `Task.md` kontrol listesi gözetimsiz, çok-adımlı bir çalıştırmaya dönüşüyor — plan onaylı planlayıcı/uygulayıcı modu, en fazla 3 paralel alt-ajan (coder + analyzer/reviewer/test-runner), artan tekrar deneme, sohbet içi canlı aktivite; Claude ve Gemini sağlayıcıları için gerçek tool-calling (önceden tamamen eksikti); yeni bir Anthropic-uyumlu Custom sağlayıcı tipi; OpenAI-uyumlu bir Geliştirici Ağ Geçidi kardeşi; **gemini-sub** (Beta) — kişisel bir Google hesabıyla giriş yap, kendi kotanla Gemini'ye eriş.
-- **v4.6.0 (`main`'de, sürüm notları yazıldı, `version` henüz yükseltilmedi)** — Memo **uygulama açabiliyor** ve sohbetin yanındaki bir panelde canlı gösterilen **yalıtılmış bir tarayıcıyı sürebiliyor** (sen de elle kullanabilirsin); uzun cevaplar uzunlukla değil sessizlikle bitiyor, canlı ilerleme satırıyla; **Abonelikler** — Antigravity / Claude / Codex hesabıyla bir kez giriş, bütün modeller yeni model seçici panelinde, kalan hak rozetleri, kendi kendine devam eden kullanım-sınırı kartı ve resim üretme/düzenleme ile; **Android ve iOS** için tek Flutter uygulaması; baştan yapılan **Hafıza** sekmesi (gör, düzenle, seçerek sil); Kullanım İstatistikleri'nde prompt-önbelleği muhasebesi; **Cline** sağlayıcısı; sohbet başına skill; güvenlik turu; AppImage'ın tar.gz ile aynı kararlı/beta indirme kanallarında yayını. Bkz. [[Harici Sağlayıcılar]], [[Ajan Modu]], [[Mobil Uygulama]].
-- **v4.5.0 (son etiketli sürüm)** — **masaüstü maskotu**; **Code Mode'un Plan/Auto/Build alt-modları**; her iki Geliştirici Ağ Geçidi endpoint'i de artık loopback-olmayan çağıranlar için anahtar zorunlu kılıyor; içe aktarılan skill'ler artık kendi kendine aktive olmuyor; daha net Live Mode hata mesajları; ~20 ölü hata ekranı genelinde bir güvenilirlik turu; düzeltilen bir Model Mağazası avatar 404 seli.
+- **v4.6.0** — Memo **uygulama açabiliyor** ve sohbetin yanındaki bir panelde canlı gösterilen yalıtılmış bir **tarayıcıyı sürebiliyor** (elle de kullanabilirsin); uzun yanıtlar sabit bir zaman aşımıyla değil sessizlikle bitiriliyor; **Abonelikler** (gömülü CLIProxyAPI yardımcısı üzerinden Antigravity / Claude / Codex); Android ve iOS için tek Flutter uygulaması; yeniden yazılmış Hafıza sekmesi; sohbet başına skill'ler. Tam liste: `versinNote/tr/v4.6.0.md`.
+- **v4.5.0** — **masaüstü maskotu**; **Code Mode'un Plan/Auto/Build alt-modları**; her iki Geliştirici Ağ Geçidi endpoint'i loopback dışı çağıranlar için anahtar zorunlu; içe aktarılan skill'ler kendiliğinden etkinleşmiyor.
+- **v4.7.0 (son etiketli sürüm)** — **[[Uygulama İçi Güncelleme]]**: Memo'nun içinden otomatik geri almalı imzalı güncelleme, ayrıca ayrı motor güncellemeleri; gerçek bir tarayıcı penceresiyle ChatGPT ve claude.ai (Beta); daha yalın Code Mode ve daha ucuz tekrar eden turlar.
+- **v5.0 (`main`'de, notlar taslak)** — **[[Dijital İkiz ve Mail]]** (Gmail/Outlook/IMAP, 3 katmanlı Gatekeeper, injection kalkanı, senin üslubunla yanıtlar, geri alma süreli onay), **[[Günlük Brifing]]**, **[[Kurulum Sihirbazı]]**, kendi hafızası olan **[[Proje Klasörleri]]**, **[[Sohbet Alt Ajanları]]**, canlı akan bir ajanla tek sohbet listesi, adıyla skill'ler, daha hızlı yerel modeller ve anonim günlük özet ([[Telemetri ve Gizlilik]]).
 
 ---
 
@@ -26,6 +28,12 @@ Yerel-öncelikli · Gizlilik-öncelikli · Sıfır bulut bağımlısı · Tamame
 - [[Özellik Kataloğu]] — Güncel tam özellik listesi
 - [[Ajan Modu]] — Ajan pipeline'ı, araçlar, izinler, Code Mode'un Plan/Auto/Build alt-modları
 - [[Otonom Görev Döngüsü]] — Bir `Task.md`'den gözetimsiz çok-adımlı çalıştırma
+- [[Dijital İkiz ve Mail]] — Mail, Gatekeeper, injection kalkanı, senin üslubunla yanıtlar, onay ve geri alma
+- [[Günlük Brifing]] — Sabah kartı: bölümler, özel öğeler, kanallar, model
+- [[Kurulum Sihirbazı]] — Rehberli ilk kurulum akışı
+- [[Sohbet Alt Ajanları]] — Bir sohbette arka plan alt ajanları
+- [[Uygulama İçi Güncelleme]] — Geri almalı imzalı güncellemeler, motor güncellemeleri
+- [[Telemetri ve Gizlilik]] — Anonim günlük özet ve kapatma anahtarı
 - [[Proje Klasörleri]] — Projede `.memo/`: çalışma kuralları, notlar, kendi hafızası, proje skill'leri
 - [[Masaüstü Maskotu]] — Her-zaman-üstte aktivite yoldaşı
 - [[WhatsApp Entegrasyonu]] — Kurulum ve özellikler
@@ -33,16 +41,16 @@ Yerel-öncelikli · Gizlilik-öncelikli · Sıfır bulut bağımlısı · Tamame
 - [[Orkestra Modu]] — Çoklu model iş akışı
 - [[RAG ve Semantik Hafıza]] — Vektör deposu ve geri getirme
 - [[Proaktif Öğrenme ve Takvim]] — Gözlemci + niyet çıkarımı
-- [[Harici Sağlayıcılar]] — 16 sağlayıcı tipi + yedek zincir
+- [[Harici Sağlayıcılar]] — 18 sağlayıcı tipi + yedek zincir
 - [[Geliştirici API Ağ Geçidi]] — Claude Code'u (ya da Anthropic/OpenAI-uyumlu herhangi bir aracı) Memo'ya bağla
 - [[Multimodal Yetenekler (Görsel ve Ses)]] — Live Mode v2, görsel, yerel STT
 - [[Memo Swarm]] — Birkaç PC ile büyük model (Beta)
 - [[Uzaktan Erişim ve Self-Hosting]] — Sadece sunucuyu bir Pi/ev sunucusuna kur, dört auth modu, hesap bazlı izinler, tamamen SSH üzerinden yönetim
 - [[Bulut Senkronizasyonu]] — Uçtan uca şifreli Google Drive yedekleme
-- [[API Dökümantasyonu]] — 180+ REST endpoint'inin tamamı
+- [[API Dökümantasyonu]] — 260+ REST rotası
 - [[Geliştirici Kurulum Rehberi]] — Kaynaktan derleme
 - [[Katkıda Bulunma]] — Nasıl katkıda bulunulur
 
 ---
 
-**Sürüm**: v4.5.0 etiketli, v4.6.0 sürüyor · **Lisans**: AGPL v3 · **Teknoloji**: Go 1.26 + Flutter 3.10
+**Sürüm**: v4.7.0 son etiketli, v5.0 sürüyor · **Lisans**: AGPL v3 · **Teknoloji**: Go 1.26 + Flutter 3.10

@@ -109,3 +109,9 @@ Flutter client — Linux/Windows/macOS · Android/iOS · web
 10. **Code Mode sub-modes** — `Session.CodeSubMode` (Plan/Auto/Build) resolves which system prompt and tool auto-approve set an agent turn gets; Plan's output goes through the dedicated `save_code_plan` tool to `data/plans/`, never through the project-sandboxed `write_file`
 11. **Desktop Mascot** — every agent/task-loop/plain-chat turn updates one app-wide activity signal (`internal/app/activity.go`) → polled by the mascot's separate window (`mascot_main.dart`) and by the terminal REPL's spinner
 12. **Live Mode v2** — audio in/out streams natively through `internal/livemode`'s Google Live / OpenAI Realtime session, refreshing memory context mid-conversation, with the mascot animating along
+
+---
+
+## 🆕 v5.0 packages (on `main`)
+
+The backend now has **65** internal packages and **262** registered routes (each also served under `/api/v1/`). New since v4.5: `internal/mail/` (IMAP/SMTP, XOAUTH2, vault, Gatekeeper, watcher), `internal/twin/` (the Digital Twin store, briefings and the delivery ledger), `internal/autonomy/` (shield, decision engine, approval bridge, radar, briefer), `internal/project/`, `internal/subagents/`, `internal/updater/` + `internal/components/`, `internal/telemetry/` and `internal/webchat/`. See [[Digital Twin and Mail]], [[Daily Briefing]], [[Chat Sub-agents]], [[In-App Updates]], [[Telemetry and Privacy]], and `docs/PROJECT_MAP.md` for the file-by-file map.

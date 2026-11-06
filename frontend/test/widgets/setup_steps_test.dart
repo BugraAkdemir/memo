@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/core/theme.dart';
+import 'package:memo_flutter/widgets/setup/briefing_step.dart';
 import 'package:memo_flutter/widgets/setup/embedding_step.dart';
 import 'package:memo_flutter/widgets/setup/local_model_step.dart';
 import 'package:memo_flutter/widgets/setup/mail_model_step.dart';
 import 'package:memo_flutter/core/api_client.dart';
 import 'package:memo_flutter/models/provider_config.dart';
 import 'package:memo_flutter/models/twin.dart';
+import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/provider_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -32,6 +34,17 @@ class _TwinApi extends MemoApiClient {
     if (operation == 'preferences') prefs = Map.of(args);
     return {'ok': true};
   }
+}
+
+class _BriefApi extends _TwinApi {
+  @override
+  Future<Map<String, dynamic>> getTelegramStatus() async => {
+    'configured': true,
+    'connected': true,
+    'owner_linked': true,
+  };
+  @override
+  Future<Map<String, dynamic>> getWhatsAppStatus() async => {};
 }
 
 class _NoProviders extends ProviderListNotifier {
@@ -99,6 +112,142 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('briefing step: switching it on saves with the rest and opens '
+      'the editor; its choices are saved into the same briefing', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _BriefApi();
+    final changes = <bool>[];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          providerListProvider.overrideWith(_NoProviders.new),
+          authGateProvider.overrideWith(
+            (ref) => Stream.value(const AuthGateInfo(AuthGateState.ok)),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              // In the app the auth gate is long open by now; watching it from
+              // the start keeps the status providers from reading it mid-load.
+              child: Consumer(
+                builder: (context, ref, _) {
+                  ref.watch(authGateProvider);
+                  return SetupBriefingStep(
+                    color: MemoTheme.light,
+                    onChanged: changes.add,
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // Off by default: the editor is not shown yet.
+    expect(
+      find.byKey(const ValueKey('briefing-section-meetings')),
+      findsNothing,
+    );
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+    final saved = api.calls['preferences']!;
+    expect((saved['briefing'] as Map)['morning'], true);
+    expect((saved['briefing'] as Map)['morning_time'], '09:00');
+    // The other preferences were not lost.
+    expect(saved['timezone'], 'UTC');
+    expect((saved['autonomy'] as Map)['mode'], '');
+    expect(changes, [true]);
+    expect(
+      find.byKey(const ValueKey('briefing-section-meetings')),
+      findsOneWidget,
+    );
+    // A ready channel can be chosen; one that is not set up cannot.
+    await tester.tap(find.byKey(const ValueKey('briefing-channel-telegram')));
+    await tester.pumpAndSettle();
+    expect((api.calls['preferences']!['briefing'] as Map)['channels'], [
+      'telegram',
+    ]);
+    expect((api.calls['preferences']!['briefing'] as Map)['morning'], true);
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+            find.byKey(const ValueKey('briefing-channel-whatsapp')),
+          )
+          .onChanged,
+      isNull,
+    );
+    // The time zone is asked here too, for people who connect no mail.
+    await tester.tap(find.byKey(const ValueKey('setup_timezone_UTC')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Europe/Istanbul').last);
+    await tester.pumpAndSettle();
+    expect(api.calls['preferences']!['timezone'], 'Europe/Istanbul');
+    expect((api.calls['preferences']!['briefing'] as Map)['channels'], [
+      'telegram',
+    ]);
+    // Switching it off hides the editor and tells the wizard.
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('briefing-section-meetings')),
+      findsNothing,
+    );
+    expect(changes.last, false);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('briefing step: the morning time is chosen from the whole day', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _BriefApi()
+      ..prefs = {
+        'timezone': 'UTC',
+        'briefing': {'morning': true, 'morning_time': '08:00'},
+      };
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          providerListProvider.overrideWith(_NoProviders.new),
+          authGateProvider.overrideWith(
+            (ref) => Stream.value(const AuthGateInfo(AuthGateState.ok)),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: SetupBriefingStep(
+                color: MemoTheme.light,
+                onChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('setup_briefing_time_08:00')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('21:30', skipOffstage: false).last);
+    await tester.pumpAndSettle();
+    expect(
+      (api.calls['preferences']!['briefing'] as Map)['morning_time'],
+      '21:30',
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   for (final locale in MemoLocale.values) {
     group('step widgets in $locale', () {

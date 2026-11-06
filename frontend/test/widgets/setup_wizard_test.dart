@@ -471,6 +471,7 @@ void main() {
         ('setup_step_voice_image', 'stt_providers_title'),
         ('setup_step_voice_image', 'image_section_title'),
         ('setup_step_channels', 'setup_channels_tip'),
+        ('setup_step_briefing', 'setup_briefing_morning_title'),
         ('setup_step_permissions', 'setup_backup_title'),
       ]) {
         // Optional: no star on the label, and "next" stays available.
@@ -622,7 +623,8 @@ void main() {
           await next(); // decision skipped -> memory and learning
           await next(); // memory -> voice and images
           await next(); // voice and images skipped -> channels
-          await next(); // channels skipped -> privacy and backup
+          await next(); // channels skipped -> daily briefing
+          await next(); // briefing skipped -> privacy and backup
           await next(); // privacy skipped -> summary
           await next(); // finish
           expect(api.completed, true);

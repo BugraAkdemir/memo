@@ -17,6 +17,7 @@ enum SetupStepId {
   memory,
   voiceImage,
   channels,
+  briefing,
   permissions,
   summary,
 }
@@ -32,6 +33,7 @@ const setupStepOrder = <SetupStepId>[
   SetupStepId.memory,
   SetupStepId.voiceImage,
   SetupStepId.channels,
+  SetupStepId.briefing,
   SetupStepId.permissions,
   SetupStepId.summary,
 ];
@@ -44,12 +46,16 @@ class SetupSnapshot {
   final int mailAccounts;
   final bool mailReplyModelSet;
 
+  /// The morning briefing is switched on.
+  final bool briefingOn;
+
   const SetupSnapshot({
     this.hasActiveProvider = false,
     this.localChatModels = 0,
     this.hasEmbeddingModel = false,
     this.mailAccounts = 0,
     this.mailReplyModelSet = false,
+    this.briefingOn = false,
   });
 
   bool get hasModel => hasActiveProvider || localChatModels > 0;
@@ -85,6 +91,7 @@ bool _complete(SetupStepId id, SetupSnapshot s) => switch (id) {
   SetupStepId.embedding => s.hasEmbeddingModel,
   SetupStepId.mail => s.hasMail,
   SetupStepId.mailModel => s.hasMail && s.mailReplyModelSet,
+  SetupStepId.briefing => s.briefingOn,
   _ => false,
 };
 

@@ -96,6 +96,7 @@ void main() {
       SetupStepId.memory,
       SetupStepId.voiceImage,
       SetupStepId.channels,
+      SetupStepId.briefing,
       SetupStepId.permissions,
       SetupStepId.summary,
     ]);
@@ -114,4 +115,27 @@ void main() {
       reason: 'the reply model is asked right after connecting mail',
     );
   });
+
+  test(
+    'the briefing step is optional, always shown and done once it is on',
+    () {
+      const off = SetupSnapshot(hasActiveProvider: true);
+      const on = SetupSnapshot(hasActiveProvider: true, briefingOn: true);
+      expect(visibleSteps(off), contains(SetupStepId.briefing));
+      expect(requiredSteps(off), isNot(contains(SetupStepId.briefing)));
+      expect(stepState(SetupStepId.briefing, off), SetupStepState.optional);
+      expect(stepState(SetupStepId.briefing, on), SetupStepState.done);
+      expect(
+        canFinishSetup(off),
+        isTrue,
+        reason: 'a skipped briefing never blocks',
+      );
+      final order = visibleSteps(off);
+      expect(
+        order.indexOf(SetupStepId.briefing),
+        order.indexOf(SetupStepId.channels) + 1,
+        reason: 'asked right after WhatsApp and Telegram are connected',
+      );
+    },
+  );
 }

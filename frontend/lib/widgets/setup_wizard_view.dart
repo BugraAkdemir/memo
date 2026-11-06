@@ -16,6 +16,7 @@ import '../providers/provider_provider.dart';
 import '../providers/settings_provider.dart';
 import 'persona_picker.dart';
 import 'provider_config_dialog.dart';
+import 'setup/briefing_step.dart';
 import 'setup/channels_step.dart';
 import 'setup/decision_step.dart';
 import 'setup/embedding_step.dart';
@@ -96,6 +97,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   String? _activeProviderName;
   bool _hasEmbeddingModel = false;
   bool _replyModelSet = false;
+  bool _briefingOn = false;
 
   bool _memoryModelDownloading = false;
   String? _memoryModelDownloadError;
@@ -170,8 +172,11 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
           _replyModelSet =
               '${twin.replyModel['provider'] ?? ''}'.isNotEmpty &&
               '${twin.replyModel['model'] ?? ''}'.isNotEmpty;
+          final briefing = twin.preferences['briefing'];
+          _briefingOn = briefing is Map && briefing['morning'] == true;
         } catch (_) {
           _replyModelSet = false;
+          _briefingOn = false;
         }
       }
     } catch (_) {
@@ -345,6 +350,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     hasEmbeddingModel: _hasEmbeddingModel,
     mailAccounts: mailAccounts,
     mailReplyModelSet: _replyModelSet,
+    briefingOn: _briefingOn,
   );
 
   SetupSnapshot get _snapshot =>
@@ -363,6 +369,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     SetupStepId.memory,
     SetupStepId.voiceImage,
     SetupStepId.channels,
+    SetupStepId.briefing,
     SetupStepId.permissions,
     SetupStepId.summary,
   };
@@ -442,6 +449,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
             SetupStepId.decision => 'setup_step_decision',
             SetupStepId.voiceImage => 'setup_step_voice_image',
             SetupStepId.channels => 'setup_step_channels',
+            SetupStepId.briefing => 'setup_step_briefing',
             SetupStepId.permissions => 'setup_step_permissions',
             SetupStepId.memory => 'setup_step_preferences',
             _ => 'setup_step_check',
@@ -634,6 +642,15 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
               subtitle: L10n.t('setup_step_channels_desc'),
               color: c,
               child: SetupChannelsStep(color: c),
+            ),
+            SetupStepId.briefing: () => SetupPage(
+              title: L10n.t('setup_step_briefing'),
+              subtitle: L10n.t('setup_step_briefing_desc'),
+              color: c,
+              child: SetupBriefingStep(
+                color: c,
+                onChanged: (v) => setState(() => _briefingOn = v),
+              ),
             ),
             SetupStepId.permissions: () => SetupPage(
               title: L10n.t('setup_step_permissions'),

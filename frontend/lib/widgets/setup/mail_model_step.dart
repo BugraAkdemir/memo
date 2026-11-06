@@ -189,7 +189,12 @@ class _SetupMailModelStepState extends ConsumerState<SetupMailModelStep> {
           onChanged: _prefs == null || _savingDrafts ? null : _setDrafts,
         ),
         const SizedBox(height: 12),
-        _timezoneCard(c),
+        setupTimezoneCard(
+          color: c,
+          current: '${_prefs?['timezone'] ?? 'UTC'}',
+          enabled: _prefs != null && !_savingDrafts,
+          onChanged: _setTimezone,
+        ),
         if (_error != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -198,54 +203,58 @@ class _SetupMailModelStepState extends ConsumerState<SetupMailModelStep> {
       ],
     );
   }
+}
 
-  Widget _timezoneCard(ThemeColors c) {
-    final current = '${_prefs?['timezone'] ?? 'UTC'}';
-    final zones = {...setupTimezones, current}.toList();
-    final suggestion = suggestedTimezone();
-    return SetupCard(
-      color: c,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            L10n.t('setup_timezone_title'),
-            style: TextStyle(color: c.textMain, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            L10n.t('setup_timezone_desc'),
-            style: TextStyle(color: c.textDim, fontSize: 12, height: 1.5),
-          ),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            key: ValueKey('setup_timezone_$current'),
-            initialValue: current,
-            isExpanded: true,
-            items: [
-              for (final z in zones) DropdownMenuItem(value: z, child: Text(z)),
-            ],
-            onChanged: _prefs == null || _savingDrafts
-                ? null
-                : (v) {
-                    if (v != null && v != current) _setTimezone(v);
-                  },
-          ),
-          if (suggestion != null && suggestion != current) ...[
-            const SizedBox(height: 8),
-            TextButton.icon(
-              key: const Key('setup_timezone_suggest'),
-              onPressed: _prefs == null || _savingDrafts
-                  ? null
-                  : () => _setTimezone(suggestion),
-              icon: const Icon(Icons.schedule, size: 16),
-              label: Text(
-                L10n.t('setup_timezone_suggest', {'zone': suggestion}),
-              ),
-            ),
+/// The time zone card shared by the reply-model step and the briefing step:
+/// both read times in the owner's zone, and the device only exposes an offset,
+/// so a zone is suggested from it.
+Widget setupTimezoneCard({
+  required ThemeColors color,
+  required String current,
+  required bool enabled,
+  required ValueChanged<String> onChanged,
+}) {
+  final c = color;
+  final zones = {...setupTimezones, current}.toList();
+  final suggestion = suggestedTimezone();
+  return SetupCard(
+    color: c,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          L10n.t('setup_timezone_title'),
+          style: TextStyle(color: c.textMain, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          L10n.t('setup_timezone_desc'),
+          style: TextStyle(color: c.textDim, fontSize: 12, height: 1.5),
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String>(
+          key: ValueKey('setup_timezone_$current'),
+          initialValue: current,
+          isExpanded: true,
+          items: [
+            for (final z in zones) DropdownMenuItem(value: z, child: Text(z)),
           ],
+          onChanged: !enabled
+              ? null
+              : (v) {
+                  if (v != null && v != current) onChanged(v);
+                },
+        ),
+        if (suggestion != null && suggestion != current) ...[
+          const SizedBox(height: 8),
+          TextButton.icon(
+            key: const Key('setup_timezone_suggest'),
+            onPressed: !enabled ? null : () => onChanged(suggestion),
+            icon: const Icon(Icons.schedule, size: 16),
+            label: Text(L10n.t('setup_timezone_suggest', {'zone': suggestion})),
+          ),
         ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
 }

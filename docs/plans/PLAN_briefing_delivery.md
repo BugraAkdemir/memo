@@ -21,8 +21,8 @@ settings live in `twin.db` (`twin_preferences.briefing`). `config.yaml`
 
 ## Units
 
-- [ ] B1 `twin`: settings fields + validation + tests
-- [ ] B2 `autonomy`/`app`: section filter, custom items, optional model composition + tests
+- [x] B1 `twin`: settings fields + validation + tests
+- [x] B2 `autonomy`/`app`: section filter, custom items, optional model composition + tests
 - [ ] B3 `twin`/`app`: per-channel delivery with claim/retry, text rendering (tr/en) + tests
 - [ ] F1 Flutter: shared briefing editor, generalised model picker, Settings panel
 - [ ] F2 Flutter: wizard step after Channels, snapshot/summary, tests

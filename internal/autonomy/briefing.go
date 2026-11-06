@@ -31,7 +31,30 @@ type Briefer struct {
 	// Dev optionally lists unfinished code work, one line per project.
 	Dev func(context.Context) []string
 	Now func() time.Time
+	// Compose optionally lets the owner's briefing model write a short summary
+	// and answer the custom items. It is only called when a briefing model is
+	// chosen, and its failure never blocks the briefing.
+	Compose Composer
 }
+
+// ComposeInput is what the briefing model is given: the day's collected
+// sections (data, which may quote other people's mail) and the owner's own
+// custom instructions.
+type ComposeInput struct {
+	Title    string
+	Sections []twin.BriefingSection
+	Custom   []twin.BriefingCustom
+}
+
+// ComposeOutput is what the model returns: a short summary and one answer per
+// custom item, in the same order.
+type ComposeOutput struct {
+	Summary string
+	Custom  []string
+}
+
+// Composer writes the model-made part of a briefing.
+type Composer func(ctx context.Context, in ComposeInput) (ComposeOutput, error)
 
 const (
 	briefLines        = 5 // list lines per section in the morning briefing
@@ -100,7 +123,8 @@ func (b *Briefer) Morning(ctx context.Context) (*twin.Briefing, error) {
 		}
 	}
 
-	if b.Calendar != nil {
+	set := prefs.Briefing
+	if b.Calendar != nil && set.SectionEnabled("meetings") {
 		events, err := b.Calendar.List(ctx, dayStart, dayEnd)
 		if err != nil {
 			return nil, err
@@ -127,8 +151,12 @@ func (b *Briefer) Morning(ctx context.Context) (*twin.Briefing, error) {
 			drafts = append(drafts, join(a.Recipient, clip(a.Subject, 100)))
 		}
 	}
-	add(twin.BriefingSection{Heading: "overnight", Counts: counts})
-	add(twin.BriefingSection{Heading: "pending_drafts", Items: drafts})
+	if set.SectionEnabled("overnight") {
+		add(twin.BriefingSection{Heading: "overnight", Counts: counts})
+	}
+	if set.SectionEnabled("drafts") {
+		add(twin.BriefingSection{Heading: "pending_drafts", Items: drafts})
+	}
 
 	open, err := b.Store.Commitments(ctx)
 	if err != nil {
@@ -148,17 +176,22 @@ func (b *Briefer) Morning(ctx context.Context) (*twin.Briefing, error) {
 			}
 		}
 	}
-	add(twin.BriefingSection{Heading: "waiting_overdue", Items: waiting})
-	add(twin.BriefingSection{Heading: "promises_due", Items: promises})
+	if set.SectionEnabled("waiting") {
+		add(twin.BriefingSection{Heading: "waiting_overdue", Items: waiting})
+	}
+	if set.SectionEnabled("promises") {
+		add(twin.BriefingSection{Heading: "promises_due", Items: promises})
+	}
 
-	if b.Dev != nil {
+	if b.Dev != nil && set.SectionEnabled("code") {
 		lines := b.Dev(ctx)
 		if len(lines) > briefLines {
 			lines = lines[:briefLines]
 		}
 		add(twin.BriefingSection{Heading: "unfinished_code", Items: lines})
 	}
-	if len(out.Sections) == 0 {
+	b.addCustom(ctx, &out, set)
+	if len(out.Sections) == 0 && out.Summary == "" {
 		out.Sections = []twin.BriefingSection{{Heading: "all_clear", Items: []string{}}}
 	}
 	created, err := b.Store.SaveBriefing(ctx, out)
@@ -166,6 +199,31 @@ func (b *Briefer) Morning(ctx context.Context) (*twin.Briefing, error) {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// addCustom appends the owner's custom items and, when a briefing model is
+// chosen, lets it write the summary and answer them. Without a model, or when
+// the model fails, each item is shown as the owner wrote it, so a reminder is
+// never lost to a model outage.
+func (b *Briefer) addCustom(ctx context.Context, out *twin.Briefing, set twin.BriefingSettings) {
+	custom := set.Custom
+	answers := make([]string, len(custom))
+	for i, c := range custom {
+		answers[i] = c.Prompt
+	}
+	if b.Compose != nil && set.Model.Provider != "" && (len(custom) > 0 || len(out.Sections) > 0) {
+		if res, err := b.Compose(ctx, ComposeInput{Title: out.Title, Sections: out.Sections, Custom: custom}); err == nil {
+			out.Summary = strings.TrimSpace(res.Summary)
+			for i := range answers {
+				if i < len(res.Custom) && strings.TrimSpace(res.Custom[i]) != "" {
+					answers[i] = strings.TrimSpace(res.Custom[i])
+				}
+			}
+		}
+	}
+	for i, c := range custom {
+		out.Sections = append(out.Sections, twin.BriefingSection{Heading: "custom", Label: c.Title, Items: []string{answers[i]}})
+	}
 }
 
 // MeetingNotes returns a note for every meeting that starts within the

@@ -388,3 +388,121 @@ func TestPreMeetingNoteHasAtMostFiveContactLines(t *testing.T) {
 		t.Fatalf("promise missing from the top of the note: %+v", notes[0].Sections)
 	}
 }
+
+// setBriefing rewrites the briefing settings of a fixture, keeping the morning due.
+func setBriefing(t *testing.T, f *briefFixture, mutate func(*twin.BriefingSettings)) {
+	t.Helper()
+	ctx := context.Background()
+	p, _ := f.b.Store.Preferences(ctx)
+	mutate(&p.Briefing)
+	if err := f.b.Store.SavePreferences(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func pendingDraft(t *testing.T, f *briefFixture) {
+	t.Helper()
+	a := twin.Action{ID: "a1", Channel: "mail", Account: "acct", Recipient: "ali@example.com", Subject: "Teklif", Body: "x", State: "pending", Mode: "awaiting_approval", Reason: "drafted"}
+	if err := f.b.Store.SaveAction(context.Background(), a); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMorningBriefingHoldsOnlyTheChosenSections(t *testing.T) {
+	ctx := context.Background()
+	f := newBriefer(t, true, false)
+	pendingDraft(t, f)
+	setBriefing(t, f, func(b *twin.BriefingSettings) { b.Sections = []string{"drafts"} })
+	b, err := f.b.Morning(ctx)
+	if err != nil || b == nil {
+		t.Fatalf("b=%+v err=%v", b, err)
+	}
+	if len(b.Sections) != 1 || b.Sections[0].Heading != "pending_drafts" {
+		t.Fatalf("only the drafts section was chosen: %+v", b.Sections)
+	}
+}
+
+func TestMorningBriefingCustomItemsStandAloneWithoutAModel(t *testing.T) {
+	ctx := context.Background()
+	f := newBriefer(t, true, false)
+	setBriefing(t, f, func(b *twin.BriefingSettings) {
+		b.Sections = []string{}
+		b.Custom = []twin.BriefingCustom{{Title: "Water", Prompt: "Drink a glass of water"}}
+	})
+	b, err := f.b.Morning(ctx)
+	if err != nil || b == nil {
+		t.Fatalf("b=%+v err=%v", b, err)
+	}
+	sec := section(b, "custom")
+	if sec == nil || sec.Label != "Water" || len(sec.Items) != 1 || sec.Items[0] != "Drink a glass of water" {
+		t.Fatalf("a custom item must show as the owner wrote it: %+v", b.Sections)
+	}
+	if section(b, "all_clear") != nil {
+		t.Fatal("a briefing with a custom item is not 'all clear'")
+	}
+}
+
+func TestMorningBriefingModelWritesSummaryAndAnswersCustomItems(t *testing.T) {
+	ctx := context.Background()
+	f := newBriefer(t, true, false)
+	pendingDraft(t, f)
+	setBriefing(t, f, func(b *twin.BriefingSettings) {
+		b.Model = twin.BriefingModel{Provider: "p", Model: "m"}
+		b.Custom = []twin.BriefingCustom{{Title: "Focus", Prompt: "What is the one thing to do first?"}}
+	})
+	var got ComposeInput
+	f.b.Compose = func(_ context.Context, in ComposeInput) (ComposeOutput, error) {
+		got = in
+		return ComposeOutput{Summary: "A calm day.", Custom: []string{"Answer the offer."}}, nil
+	}
+	b, err := f.b.Morning(ctx)
+	if err != nil || b == nil {
+		t.Fatalf("b=%+v err=%v", b, err)
+	}
+	if b.Summary != "A calm day." {
+		t.Fatalf("summary: %q", b.Summary)
+	}
+	if sec := section(b, "custom"); sec == nil || sec.Items[0] != "Answer the offer." {
+		t.Fatalf("custom answer: %+v", b.Sections)
+	}
+	if len(got.Custom) != 1 || got.Custom[0].Prompt != "What is the one thing to do first?" || section(&twin.Briefing{Sections: got.Sections}, "pending_drafts") == nil {
+		t.Fatalf("the model must get the day's data and the owner's instructions: %+v", got)
+	}
+}
+
+func TestMorningBriefingDoesNotCallTheModelWhenNoneIsChosen(t *testing.T) {
+	ctx := context.Background()
+	f := newBriefer(t, true, false)
+	pendingDraft(t, f)
+	called := false
+	f.b.Compose = func(context.Context, ComposeInput) (ComposeOutput, error) { called = true; return ComposeOutput{}, nil }
+	if b, err := f.b.Morning(ctx); err != nil || b == nil {
+		t.Fatalf("b=%+v err=%v", b, err)
+	}
+	if called {
+		t.Fatal("no briefing model is chosen, so no model may be called")
+	}
+}
+
+func TestMorningBriefingSurvivesAFailingModel(t *testing.T) {
+	ctx := context.Background()
+	f := newBriefer(t, true, false)
+	pendingDraft(t, f)
+	setBriefing(t, f, func(b *twin.BriefingSettings) {
+		b.Model = twin.BriefingModel{Provider: "p", Model: "m"}
+		b.Custom = []twin.BriefingCustom{{Title: "Focus", Prompt: "Plan the day"}}
+	})
+	f.b.Compose = func(context.Context, ComposeInput) (ComposeOutput, error) {
+		return ComposeOutput{}, context.DeadlineExceeded
+	}
+	b, err := f.b.Morning(ctx)
+	if err != nil || b == nil {
+		t.Fatalf("a model outage must not cost the owner the briefing: b=%+v err=%v", b, err)
+	}
+	if b.Summary != "" || section(b, "pending_drafts") == nil {
+		t.Fatalf("plain card expected: %+v", b)
+	}
+	if sec := section(b, "custom"); sec == nil || sec.Items[0] != "Plan the day" {
+		t.Fatalf("the reminder must survive as written: %+v", b.Sections)
+	}
+}

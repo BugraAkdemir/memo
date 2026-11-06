@@ -6,12 +6,14 @@ import (
 	"time"
 
 	"memo/internal/autonomy"
+	"memo/internal/logx"
 )
 
 // runBriefings builds whatever briefing is due at now: the morning card once
 // the owner's local clock reaches the chosen time, and a note for each meeting
-// that starts within the lead time. Both are assembled from local data, no
-// model is called, and each is announced once.
+// that starts within the lead time. Both are assembled from local data and each
+// is announced once. A model is called only when the owner chose a briefing
+// model, and only to write the morning card's summary and custom items.
 func (a *App) runBriefings(ctx context.Context, now time.Time) (int, error) {
 	a.twinMu.RLock()
 	store := a.twinStore
@@ -30,6 +32,18 @@ func (a *App) runBriefings(ctx context.Context, now time.Time) (int, error) {
 	// Reading the working tree is the same permission as the Git tools.
 	if prefs.AllowProjectInspection {
 		b.Dev = func(ctx context.Context) []string { return autonomy.DevWatch(ctx, a.twinProjects()) }
+	}
+	// The owner's briefing model, when one is chosen. A failure only costs the
+	// prose: the plain card is still saved.
+	if m := prefs.Briefing.Model; m.Provider != "" && m.Model != "" {
+		compose := a.briefingComposer(m)
+		b.Compose = func(ctx context.Context, in autonomy.ComposeInput) (autonomy.ComposeOutput, error) {
+			out, err := compose(ctx, in)
+			if err != nil {
+				logx.Printf("briefing: model failed, using the plain card: %v", err)
+			}
+			return out, err
+		}
 	}
 	count := 0
 	announce := func(key, kind string) {

@@ -99,16 +99,21 @@ type BriefingSection struct {
 	Heading string         `json:"heading"`
 	Items   []string       `json:"items"`
 	Counts  map[string]int `json:"counts,omitempty"`
+	// Label is the owner's own title of a "custom" section; every other heading
+	// is a code the UI translates.
+	Label string `json:"label,omitempty"`
 }
 
 // Briefing is a generated card for the owner: kind "morning" or "meeting".
 type Briefing struct {
-	Key       string            `json:"key"`
-	Kind      string            `json:"kind"`
-	Title     string            `json:"title"`
-	CreatedAt time.Time         `json:"created_at"`
-	Read      bool              `json:"read"`
-	Sections  []BriefingSection `json:"sections"`
+	Key       string    `json:"key"`
+	Kind      string    `json:"kind"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"created_at"`
+	Read      bool      `json:"read"`
+	// Summary is the briefing model's short prose, empty when no model wrote it.
+	Summary  string            `json:"summary,omitempty"`
+	Sections []BriefingSection `json:"sections"`
 }
 
 const (
@@ -170,6 +175,7 @@ func validBriefingSettings(b *BriefingSettings) error {
 
 func clampBriefing(b Briefing) Briefing {
 	b.Title = truncateRunes(strings.TrimSpace(b.Title), 200)
+	b.Summary = truncateRunes(strings.TrimSpace(b.Summary), 2000)
 	secs := make([]BriefingSection, 0, briefingMaxLines)
 	for _, sec := range b.Sections {
 		if len(secs) >= briefingMaxLines {
@@ -182,7 +188,7 @@ func clampBriefing(b Briefing) Briefing {
 			}
 			items = append(items, truncateRunes(strings.TrimSpace(it), 400))
 		}
-		secs = append(secs, BriefingSection{Heading: truncateRunes(strings.TrimSpace(sec.Heading), 120), Items: items, Counts: sec.Counts})
+		secs = append(secs, BriefingSection{Heading: truncateRunes(strings.TrimSpace(sec.Heading), 120), Items: items, Counts: sec.Counts, Label: truncateRunes(strings.TrimSpace(sec.Label), 120)})
 	}
 	b.Sections = secs
 	return b

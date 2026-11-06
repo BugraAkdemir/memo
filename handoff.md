@@ -21,7 +21,7 @@
 - 27 Ekim: resmî derlemede günlük paylaşım sorusuz açık; sihirbaz/Gizlilik kapatır, kayıtlı hayır korunur. Kaynak kapalı. Veri klasörü başına kimliksiz `/v1/install`, paylaşım kapalıyken de gider; kaynak ve MEMO_TELEMETRY=off engeller. Varsayılanın ilk günü raporlanmaz.
 - **Sunucu dağıtımı doğrulanmadı:** `~/Documents/admin.memocpp.com`: `db/migrations/001_installs.sql` → `tel/` Pages → `admin/` Pages. Handoff'taki son duruma göre dağıtılmamıştı; `/v1/install` 404 yeniden denenir. Resmî sürümden önce doğrula. 30 sahte demo cihaz 27 Ekim'de silindi.
 - Kullanıcıda: Cloudflare belirtecini sil; DB/panel parolalarını değiştir; `.env.local` DB_PASSWORD/belirteç satırlarını temizle.
-- Eksik bağlantılar: Whisper başlatma/çıkış; Dart/motor çökmesi; offered/downloaded güncelleme; needs_newer_app/not_for_this_machine nedenleri; yerel paketleme betiklerinin official damgası; site gizlilik sayfası; v5.0.0 notları. Eski “telemetri yok” sürümünden varsayılan açık geçiş yayın notunda açık yazılmalı.
+- Eksik bağlantılar: Whisper başlatma/çıkış; Dart/motor çökmesi; offered/downloaded güncelleme; needs_newer_app/not_for_this_machine nedenleri; yerel paketleme betiklerinin official damgası; site gizlilik sayfası. (v5.0.0 notları 7 Kasım'da yazıldı: `versinNote/v5.0.0.md` + `versinNote/tr/`; tarih tag anında güncellenmeli, telemetri sunucusu dağıtımı yayından önce doğrulanmalı.) Eski “telemetri yok” sürümünden varsayılan açık geçiş yayın notunda açık yazılmalı.
 - Canlı tel gönderimi, native sihirbaz, Windows/macOS, tag official damgası, ertesi gün geçişi denenmedi. İzole ikili+sahte sunucuda kurulum/sayaç/preview PASS (27 Ekim).
 
 **Yerel hız / motorlar (26 Ekim, AGENTS.md “Local-model speed”)**

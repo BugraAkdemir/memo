@@ -40,10 +40,7 @@ const meeting = {
       'heading': 'meeting_when',
       'items': ['15:00–16:00'],
     },
-    {
-      'heading': 'meeting_unlinked',
-      'items': [],
-    },
+    {'heading': 'meeting_unlinked', 'items': []},
   ],
 };
 
@@ -274,5 +271,96 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text(L10n.t('briefing_title')), findsOneWidget);
+  });
+
+  testWidgets('saving a switch keeps the keys the editor below owns', (
+    tester,
+  ) async {
+    Map<String, dynamic>? saved;
+    await tester.pumpWidget(
+      host(
+        BriefingPanel(
+          settings: const {
+            'morning': true,
+            'morning_time': '07:30',
+            'channels': ['telegram'],
+            'sections': ['drafts'],
+            'model': {'provider': 'p', 'model': 'm'},
+          },
+          briefings: const [],
+          busy: false,
+          onSettings: (v) => saved = v,
+          onRead: (_) {},
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('briefing-meeting')));
+    await tester.pump();
+    expect(saved?['pre_meeting'], true);
+    expect(saved?['channels'], ['telegram']);
+    expect(saved?['sections'], ['drafts']);
+    expect(saved?['model'], {'provider': 'p', 'model': 'm'});
+    expect(saved?['morning_time'], '07:30');
+  });
+
+  testWidgets('a card shows the model summary and the owner\'s own items', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      host(
+        BriefingPanel(
+          settings: const {'morning': true},
+          briefings: const [
+            {
+              'key': 'morning:2026-11-07',
+              'kind': 'morning',
+              'title': '2026-11-07',
+              'read': true,
+              'summary': 'A calm day.',
+              'sections': [
+                {
+                  'heading': 'custom',
+                  'label': 'Water',
+                  'items': ['Drink a glass'],
+                },
+              ],
+            },
+          ],
+          busy: false,
+          onSettings: (_) {},
+          onRead: (_) {},
+        ),
+      ),
+    );
+    await tester.tap(find.byType(ExpansionTile));
+    await tester.pumpAndSettle();
+    expect(find.text('A calm day.'), findsOneWidget);
+    expect(find.text('Water'), findsOneWidget);
+    expect(find.text('Drink a glass'), findsOneWidget);
+  });
+
+  testWidgets('the morning time can be any half hour of the day', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        BriefingPanel(
+          settings: const {'morning': true, 'morning_time': '09:00'},
+          briefings: const [],
+          busy: false,
+          onSettings: (_) {},
+          onRead: (_) {},
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('briefing-time')));
+    await tester.pumpAndSettle();
+    // Early morning and evening are both on offer, not just 05:00-12:30.
+    expect(find.text('00:00', skipOffstage: false), findsWidgets);
+    expect(find.text('23:30', skipOffstage: false), findsWidgets);
   });
 }

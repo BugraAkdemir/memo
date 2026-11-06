@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/l10n.dart';
+import 'briefing_content_editor.dart';
 
 /// Morning briefing and pre-meeting note: two opt-in switches with their own
 /// time choices, and the newest briefing cards. Cards are built locally with no
@@ -13,6 +14,11 @@ class BriefingPanel extends StatelessWidget {
   final bool busy;
   final ValueChanged<Map<String, dynamic>> onSettings;
   final ValueChanged<String> onRead;
+
+  /// Shown under the morning time: what the briefing holds, where it goes and
+  /// which model writes it. The host supplies it because it needs the connected
+  /// channels; the panel itself stays free of providers.
+  final Widget? morningExtras;
   const BriefingPanel({
     super.key,
     required this.settings,
@@ -21,6 +27,7 @@ class BriefingPanel extends StatelessWidget {
     required this.busy,
     required this.onSettings,
     required this.onRead,
+    this.morningExtras,
   });
 
   String get _time {
@@ -33,7 +40,10 @@ class BriefingPanel extends StatelessWidget {
     return m is int && m > 0 ? m : 15;
   }
 
+  // Everything already in the settings is kept: the editor below owns more keys
+  // (sections, channels, model, ...) than this panel knows about.
   void _set(String key, Object value) => onSettings({
+    ...settings,
     'morning': settings['morning'] == true,
     'morning_time': _time,
     'pre_meeting': settings['pre_meeting'] == true,
@@ -45,13 +55,7 @@ class BriefingPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final times = {
-      for (var h = 5; h <= 12; h++) ...[
-        '${h.toString().padLeft(2, '0')}:00',
-        '${h.toString().padLeft(2, '0')}:30',
-      ],
-      _time,
-    }.toList()..sort();
+    final times = briefingTimeOptions(_time);
     final leads = {..._leads, _lead}.toList()..sort();
     return Material(
       color: colors.surfaceContainerHighest.withValues(alpha: .4),
@@ -109,6 +113,11 @@ class BriefingPanel extends StatelessWidget {
                   style: theme.textTheme.bodySmall,
                 ),
               ),
+            if (morningExtras != null) ...[
+              const SizedBox(height: 12),
+              morningExtras!,
+              const SizedBox(height: 8),
+            ],
             SwitchListTile(
               key: const ValueKey('briefing-meeting'),
               contentPadding: EdgeInsets.zero,
@@ -175,9 +184,15 @@ class BriefingPanel extends StatelessWidget {
         if (open && unread) onRead('${b['key']}');
       },
       children: [
+        if ('${b['summary'] ?? ''}'.isNotEmpty) ...[
+          Text('${b['summary']}'),
+          const SizedBox(height: 8),
+        ],
         for (final s in sections) ...[
           Text(
-            L10n.t('briefing_h_${s['heading']}'),
+            s['heading'] == 'custom'
+                ? '${s['label'] ?? ''}'
+                : L10n.t('briefing_h_${s['heading']}'),
             style: theme.textTheme.labelLarge,
           ),
           const SizedBox(height: 4),

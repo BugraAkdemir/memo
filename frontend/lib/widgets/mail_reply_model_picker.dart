@@ -22,11 +22,27 @@ class MailReplyModelPicker extends ConsumerStatefulWidget {
   /// status instead.
   final bool showSavedSnackBar;
 
+  /// Where the selection lives. By default it is the twin reply model; the
+  /// briefing model reuses this picker with its own load and save.
+  final Future<({String provider, String model})> Function()? loadSelection;
+  final Future<void> Function(String provider, String model)? saveSelection;
+
+  /// Label keys and the save button's key, so a second picker on the same screen
+  /// does not read "Reply model".
+  final String providerLabelKey;
+  final String modelLabelKey;
+  final Key saveKey;
+
   const MailReplyModelPicker({
     super.key,
     this.onSaved,
     this.extraActions = const [],
     this.showSavedSnackBar = true,
+    this.loadSelection,
+    this.saveSelection,
+    this.providerLabelKey = 'mail_reply_provider',
+    this.modelLabelKey = 'mail_reply_model',
+    this.saveKey = const Key('reply_model_save'),
   });
 
   @override
@@ -49,15 +65,22 @@ class _MailReplyModelPickerState extends ConsumerState<MailReplyModelPicker> {
 
   Future<void> _load() async {
     try {
-      final state = await ref.read(apiClientProvider).getTwinState();
+      final load = widget.loadSelection;
+      final chosen = load != null
+          ? await load()
+          : await ref.read(apiClientProvider).getTwinState().then((state) {
+              final m = state.replyModel;
+              return (
+                provider: m['provider'] is String
+                    ? m['provider'] as String
+                    : '',
+                model: m['model'] is String ? m['model'] as String : '',
+              );
+            });
       if (!mounted) return;
       setState(() {
-        _provider = state.replyModel['provider'] is String
-            ? state.replyModel['provider'] as String
-            : '';
-        _model = state.replyModel['model'] is String
-            ? state.replyModel['model'] as String
-            : '';
+        _provider = chosen.provider;
+        _model = chosen.model;
         _loading = false;
       });
       if (_provider.isNotEmpty) await _refreshModels();
@@ -104,10 +127,15 @@ class _MailReplyModelPickerState extends ConsumerState<MailReplyModelPicker> {
       _error = null;
     });
     try {
-      await ref.read(apiClientProvider).callTwin('reply_model', {
-        'provider': _provider,
-        'model': _model,
-      });
+      final save = widget.saveSelection;
+      if (save != null) {
+        await save(_provider, _model);
+      } else {
+        await ref.read(apiClientProvider).callTwin('reply_model', {
+          'provider': _provider,
+          'model': _model,
+        });
+      }
       if (mounted) {
         if (widget.showSavedSnackBar) {
           ScaffoldMessenger.of(
@@ -150,7 +178,9 @@ class _MailReplyModelPickerState extends ConsumerState<MailReplyModelPicker> {
           key: ValueKey('reply_provider_$_provider'),
           initialValue: selected == null ? '' : _provider,
           isExpanded: true,
-          decoration: InputDecoration(labelText: L10n.t('mail_reply_provider')),
+          decoration: InputDecoration(
+            labelText: L10n.t(widget.providerLabelKey),
+          ),
           items: [
             DropdownMenuItem(value: '', child: Text(L10n.t('mail_reply_none'))),
             for (final p in providers)
@@ -174,7 +204,7 @@ class _MailReplyModelPickerState extends ConsumerState<MailReplyModelPicker> {
           key: ValueKey('reply_model_${_provider}_$_model'),
           initialValue: models.contains(_model) ? _model : '',
           isExpanded: true,
-          decoration: InputDecoration(labelText: L10n.t('mail_reply_model')),
+          decoration: InputDecoration(labelText: L10n.t(widget.modelLabelKey)),
           items: [
             DropdownMenuItem(value: '', child: Text(L10n.t('mail_reply_none'))),
             for (final m in models)
@@ -208,7 +238,7 @@ class _MailReplyModelPickerState extends ConsumerState<MailReplyModelPicker> {
               child: Text(L10n.t('refresh')),
             ),
             FilledButton(
-              key: const Key('reply_model_save'),
+              key: widget.saveKey,
               onPressed:
                   _saving ||
                       (_provider.isNotEmpty &&

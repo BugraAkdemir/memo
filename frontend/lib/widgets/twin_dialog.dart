@@ -7,7 +7,11 @@ import '../core/l10n.dart';
 import '../models/twin.dart';
 import 'task_from_message_dialog.dart';
 import 'autonomy_panel.dart';
+import 'briefing_content_editor.dart';
 import '../providers/chat_provider.dart';
+import '../providers/mail_provider.dart';
+import '../providers/telegram_provider.dart';
+import '../providers/whatsapp_provider.dart';
 
 /// Owner-managed identity links and read-only evidence. This panel does not
 /// expose the owner's bot/self-chat history.
@@ -584,6 +588,26 @@ class _TwinDialogState extends ConsumerState<TwinDialog>
       });
       await _refresh();
     }),
+    briefingExtras: BriefingContentEditor(
+      settings: _state!.preferences['briefing'] is Map
+          ? Map<String, dynamic>.from(_state!.preferences['briefing'] as Map)
+          : {},
+      availability: BriefingChannelAvailability(
+        telegram:
+            ref.watch(telegramStatusProvider).valueOrNull?.ownerLinked ?? false,
+        whatsapp:
+            ref.watch(whatsAppStatusProvider).valueOrNull?.loggedIn ?? false,
+        mailAccounts: ref.watch(mailAccountsProvider).valueOrNull ?? const [],
+      ),
+      busy: _busy,
+      onChanged: (value) => _run(() async {
+        await ref.read(apiClientProvider).callTwin('preferences', {
+          ..._state!.preferences,
+          'briefing': value,
+        });
+        await _refresh();
+      }),
+    ),
     onBriefingRead: (key) => _run(() async {
       await ref.read(apiClientProvider).callTwin('briefing_read', {'key': key});
       await _refresh();

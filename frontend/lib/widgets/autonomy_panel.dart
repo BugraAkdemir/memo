@@ -25,6 +25,9 @@ class AutonomyPanel extends StatelessWidget {
   final List<Map<String, dynamic>> auditLog;
   final ValueChanged<Map<String, dynamic>>? onBriefing;
   final ValueChanged<String>? onBriefingRead;
+
+  /// The briefing's content, channel and model editor, supplied by the host.
+  final Widget? briefingExtras;
   final ValueChanged<Map<String, dynamic>>? onTask;
   const AutonomyPanel({
     super.key,
@@ -46,6 +49,7 @@ class AutonomyPanel extends StatelessWidget {
     this.auditLog = const [],
     this.onBriefing,
     this.onBriefingRead,
+    this.briefingExtras,
     this.onTask,
   });
 
@@ -317,6 +321,7 @@ class AutonomyPanel extends StatelessWidget {
             busy: busy,
             onSettings: onBriefing!,
             onRead: onBriefingRead!,
+            morningExtras: briefingExtras,
           ),
         ],
         const Divider(height: 32),

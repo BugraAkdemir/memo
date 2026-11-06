@@ -221,3 +221,122 @@ func TestBriefingDeliverySettingsAreValidated(t *testing.T) {
 		}
 	}
 }
+
+func saveMorning(t *testing.T, s *Store, key string) {
+	t.Helper()
+	if ok, err := s.SaveBriefing(context.Background(), Briefing{Key: key, Kind: "morning", Title: "d"}); err != nil || !ok {
+		t.Fatalf("save %s: ok=%v err=%v", key, ok, err)
+	}
+}
+
+func TestBriefingDeliveryIsClaimedOncePerChannelAndNeverRepeatedAfterSuccess(t *testing.T) {
+	ctx := context.Background()
+	s := newBriefingStore(t)
+	saveMorning(t, s, "morning:1")
+	now := time.Now()
+	if ok, err := s.ClaimBriefingDelivery(ctx, "morning:1", "telegram", now); err != nil || !ok {
+		t.Fatalf("first claim: ok=%v err=%v", ok, err)
+	}
+	if ok, _ := s.ClaimBriefingDelivery(ctx, "morning:1", "telegram", now); ok {
+		t.Fatal("a send in progress must not be claimed twice")
+	}
+	if ok, _ := s.ClaimBriefingDelivery(ctx, "morning:1", "mail", now); !ok {
+		t.Fatal("another channel is independent")
+	}
+	if err := s.FinishBriefingDelivery(ctx, "morning:1", "telegram", DeliverySent, now); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := s.ClaimBriefingDelivery(ctx, "morning:1", "telegram", now.Add(24*time.Hour)); ok {
+		t.Fatal("a delivered briefing must never be sent again")
+	}
+	got, _ := s.BriefingDeliveries(ctx, "morning:1")
+	if got["telegram"] != DeliverySent || got["mail"] != DeliverySending {
+		t.Fatalf("states: %v", got)
+	}
+}
+
+func TestBriefingDeliveryRetriesOnlyKnownFailuresWithBackoffAndALimit(t *testing.T) {
+	ctx := context.Background()
+	s := newBriefingStore(t)
+	saveMorning(t, s, "morning:1")
+	now := time.Now()
+	for attempt := 1; attempt <= deliveryMaxAttempts; attempt++ {
+		if ok, err := s.ClaimBriefingDelivery(ctx, "morning:1", "whatsapp", now); err != nil || !ok {
+			t.Fatalf("attempt %d: ok=%v err=%v", attempt, ok, err)
+		}
+		if err := s.FinishBriefingDelivery(ctx, "morning:1", "whatsapp", DeliveryFailed, now); err != nil {
+			t.Fatal(err)
+		}
+		if ok, _ := s.ClaimBriefingDelivery(ctx, "morning:1", "whatsapp", now.Add(time.Minute)); ok {
+			t.Fatalf("attempt %d was retried before the backoff", attempt)
+		}
+		now = now.Add(deliveryRetryAfter)
+	}
+	if ok, _ := s.ClaimBriefingDelivery(ctx, "morning:1", "whatsapp", now.Add(time.Hour)); ok {
+		t.Fatalf("more than %d attempts", deliveryMaxAttempts)
+	}
+}
+
+func TestBlockedBriefingDeliveryIsNotRetried(t *testing.T) {
+	ctx := context.Background()
+	s := newBriefingStore(t)
+	saveMorning(t, s, "morning:1")
+	now := time.Now()
+	s.ClaimBriefingDelivery(ctx, "morning:1", "mail", now)
+	s.FinishBriefingDelivery(ctx, "morning:1", "mail", DeliveryBlocked, now)
+	if ok, _ := s.ClaimBriefingDelivery(ctx, "morning:1", "mail", now.Add(time.Hour)); ok {
+		t.Fatal("content a guard refused must not be retried")
+	}
+}
+
+func TestBriefingDeliveryCutShortByARestartIsNotRepeated(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saveMorning(t, s, "morning:1")
+	now := time.Now()
+	if ok, _ := s.ClaimBriefingDelivery(ctx, "morning:1", "telegram", now); !ok {
+		t.Fatal("claim")
+	}
+	s.Close() // the process dies mid-send
+	s, err = NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	got, _ := s.BriefingDeliveries(ctx, "morning:1")
+	if got["telegram"] != DeliveryUncertain {
+		t.Fatalf("an interrupted send is unknown, not pending: %v", got)
+	}
+	if ok, _ := s.ClaimBriefingDelivery(ctx, "morning:1", "telegram", now.Add(time.Hour)); ok {
+		t.Fatal("an uncertain send must never be repeated")
+	}
+}
+
+func TestBriefingDeliveryRejectsUnknownChannelsAndStates(t *testing.T) {
+	ctx := context.Background()
+	s := newBriefingStore(t)
+	saveMorning(t, s, "morning:1")
+	if _, err := s.ClaimBriefingDelivery(ctx, "morning:1", "sms", time.Now()); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown channel: %v", err)
+	}
+	if err := s.FinishBriefingDelivery(ctx, "morning:1", "mail", "weird", time.Now()); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown state: %v", err)
+	}
+}
+
+func TestBriefingDeliveryRowsGoWhenTheirBriefingIsPruned(t *testing.T) {
+	ctx := context.Background()
+	s := newBriefingStore(t)
+	saveMorning(t, s, "morning:old")
+	s.ClaimBriefingDelivery(ctx, "morning:old", "mail", time.Now())
+	for i := 0; i < briefingKeep; i++ {
+		saveMorning(t, s, fmt.Sprintf("morning:new%02d", i))
+	}
+	if got, _ := s.BriefingDeliveries(ctx, "morning:old"); len(got) != 0 {
+		t.Fatalf("orphan delivery rows kept: %v", got)
+	}
+}

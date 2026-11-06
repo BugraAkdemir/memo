@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS twin_audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT, 
 CREATE TABLE IF NOT EXISTS contact_messages(channel TEXT NOT NULL, account TEXT NOT NULL, event_id TEXT NOT NULL, address TEXT NOT NULL, outgoing INTEGER NOT NULL, body TEXT NOT NULL, sent_at TEXT NOT NULL, PRIMARY KEY(channel,account,event_id,address));
 CREATE INDEX IF NOT EXISTS messages_alias ON contact_messages(channel,address,sent_at);
 CREATE TABLE IF NOT EXISTS briefings(key TEXT PRIMARY KEY, kind TEXT NOT NULL, created_at TEXT NOT NULL, payload TEXT NOT NULL, read INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS briefing_deliveries(key TEXT NOT NULL, channel TEXT NOT NULL, state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, PRIMARY KEY(key,channel));
 `
 
 type Store struct{ db *database.DB }
@@ -93,6 +94,11 @@ func NewStore(dir string) (*Store, error) {
 		}
 		if err := migrateCommitments(tx); err != nil {
 			return err
+		}
+		// A briefing send cut short by a restart may or may not have gone out: it is
+		// never repeated, like a mail send with an unknown result.
+		if _, e := tx.Exec("UPDATE briefing_deliveries SET state='uncertain' WHERE state='sending'"); e != nil {
+			return e
 		}
 		_, e := tx.Exec("UPDATE pending_autonomous_actions SET state='send_uncertain' WHERE state='sending'")
 		return e

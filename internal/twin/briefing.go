@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -223,10 +224,88 @@ func (s *Store) SaveBriefing(ctx context.Context, b Briefing) (bool, error) {
 		if !created {
 			return nil
 		}
-		_, err = tx.ExecContext(ctx, "DELETE FROM briefings WHERE key NOT IN (SELECT key FROM briefings ORDER BY created_at DESC, key DESC LIMIT ?)", briefingKeep)
+		if _, err = tx.ExecContext(ctx, "DELETE FROM briefings WHERE key NOT IN (SELECT key FROM briefings ORDER BY created_at DESC, key DESC LIMIT ?)", briefingKeep); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, "DELETE FROM briefing_deliveries WHERE key NOT IN (SELECT key FROM briefings)")
 		return err
 	})
 	return created, err
+}
+
+// Delivery states of one briefing on one channel. "sending" is claimed before
+// the send starts; "uncertain" is a send a restart cut short.
+const (
+	DeliverySending   = "sending"
+	DeliverySent      = "sent"
+	DeliveryFailed    = "failed"
+	DeliveryBlocked   = "blocked"
+	DeliveryUncertain = "uncertain"
+
+	deliveryMaxAttempts = 5
+	deliveryRetryAfter  = 5 * time.Minute
+)
+
+// ClaimBriefingDelivery reserves a send of a briefing on a channel and reports
+// whether the caller may send it now. It is claimed before the send, so a crash
+// can never cause a second copy: only a send that is known to have failed is
+// retried, at most deliveryMaxAttempts times and not sooner than
+// deliveryRetryAfter after the last attempt.
+func (s *Store) ClaimBriefingDelivery(ctx context.Context, key, channel string, now time.Time) (bool, error) {
+	if !oneOf(BriefingChannelIDs, channel) || strings.TrimSpace(key) == "" {
+		return false, ErrInvalid
+	}
+	won := false
+	err := s.db.Write(ctx, func(tx *sql.Tx) error {
+		var state, at string
+		var attempts int
+		err := tx.QueryRowContext(ctx, "SELECT state,attempts,updated_at FROM briefing_deliveries WHERE key=? AND channel=?", key, channel).Scan(&state, &attempts, &at)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			_, err = tx.ExecContext(ctx, "INSERT INTO briefing_deliveries(key,channel,state,attempts,updated_at) VALUES(?,?,?,1,?)", key, channel, DeliverySending, ts(now))
+			won = err == nil
+			return err
+		case err != nil:
+			return err
+		}
+		if state != DeliveryFailed || attempts >= deliveryMaxAttempts || now.Sub(parseTS(at)) < deliveryRetryAfter {
+			return nil
+		}
+		_, err = tx.ExecContext(ctx, "UPDATE briefing_deliveries SET state=?,attempts=attempts+1,updated_at=? WHERE key=? AND channel=?", DeliverySending, ts(now), key, channel)
+		won = err == nil
+		return err
+	})
+	return won, err
+}
+
+// FinishBriefingDelivery records how a claimed send ended: sent, failed (it may
+// be retried) or blocked (a guard refused the content, so it is not retried).
+func (s *Store) FinishBriefingDelivery(ctx context.Context, key, channel, state string, now time.Time) error {
+	if state != DeliverySent && state != DeliveryFailed && state != DeliveryBlocked {
+		return ErrInvalid
+	}
+	return s.db.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, "UPDATE briefing_deliveries SET state=?,updated_at=? WHERE key=? AND channel=? AND state=?", state, ts(now), key, channel, DeliverySending)
+		return err
+	})
+}
+
+// BriefingDeliveries maps each channel a briefing was sent on to its state.
+func (s *Store) BriefingDeliveries(ctx context.Context, key string) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT channel,state FROM briefing_deliveries WHERE key=?", key)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var ch, st string
+		if err := rows.Scan(&ch, &st); err != nil {
+			return nil, err
+		}
+		out[ch] = st
+	}
+	return out, rows.Err()
 }
 
 // HasBriefing tells whether a key was already briefed.

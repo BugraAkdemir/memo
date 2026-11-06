@@ -140,3 +140,84 @@ func TestBriefingTextIsBoundedBeforeStorage(t *testing.T) {
 		t.Fatalf("an unknown kind was accepted: %v", err)
 	}
 }
+
+func briefingPrefs(b BriefingSettings) Preferences {
+	return Preferences{Timezone: "UTC", WorkStart: "09:00", WorkEnd: "18:00", Briefing: b}
+}
+
+func TestBriefingDeliverySettingsRoundTripAndKeepTheOwnersOrder(t *testing.T) {
+	ctx := context.Background()
+	s := newBriefingStore(t)
+	in := BriefingSettings{
+		Morning:     true,
+		Sections:    []string{"drafts", "meetings", "drafts"},
+		Channels:    []string{"telegram", "mail", "telegram"},
+		MailAccount: " acc-1 ",
+		Model:       BriefingModel{Provider: " p ", Model: " m "},
+		Custom:      []BriefingCustom{{Title: " Water ", Prompt: " Remind me to drink "}, {}},
+	}
+	if err := s.SavePreferences(ctx, briefingPrefs(in)); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Preferences(ctx)
+	b := got.Briefing
+	if fmt.Sprint(b.Sections) != "[drafts meetings]" || fmt.Sprint(b.Channels) != "[telegram mail]" {
+		t.Fatalf("lists not cleaned: %+v", b)
+	}
+	if b.MailAccount != "acc-1" || b.Model != (BriefingModel{"p", "m"}) {
+		t.Fatalf("not trimmed: %+v", b)
+	}
+	if len(b.Custom) != 1 || b.Custom[0] != (BriefingCustom{"Water", "Remind me to drink"}) {
+		t.Fatalf("custom items: %+v", b.Custom)
+	}
+}
+
+func TestBriefingSectionsMissingMeansAllAndEmptyMeansNone(t *testing.T) {
+	ctx := context.Background()
+	s := newBriefingStore(t)
+	if err := s.SavePreferences(ctx, briefingPrefs(BriefingSettings{Morning: true})); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Preferences(ctx)
+	for _, id := range BriefingSectionIDs {
+		if !got.Briefing.SectionEnabled(id) {
+			t.Errorf("a briefing saved before sections existed must keep %s", id)
+		}
+	}
+	if err := s.SavePreferences(ctx, briefingPrefs(BriefingSettings{Morning: true, Sections: []string{}})); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.Preferences(ctx)
+	for _, id := range BriefingSectionIDs {
+		if got.Briefing.SectionEnabled(id) {
+			t.Errorf("an explicit empty list must switch %s off", id)
+		}
+	}
+}
+
+func TestBriefingDeliverySettingsAreValidated(t *testing.T) {
+	ctx := context.Background()
+	s := newBriefingStore(t)
+	for name, mutate := range map[string]func(*BriefingSettings){
+		"unknown section": func(b *BriefingSettings) { b.Sections = []string{"weather"} },
+		"unknown channel": func(b *BriefingSettings) { b.Channels = []string{"sms"} },
+		"six custom items": func(b *BriefingSettings) {
+			b.Custom = make([]BriefingCustom, 6)
+			for i := range b.Custom {
+				b.Custom[i] = BriefingCustom{"t", "p"}
+			}
+		},
+		"title only":       func(b *BriefingSettings) { b.Custom = []BriefingCustom{{Title: "t"}} },
+		"prompt only":      func(b *BriefingSettings) { b.Custom = []BriefingCustom{{Prompt: "p"}} },
+		"title too long":   func(b *BriefingSettings) { b.Custom = []BriefingCustom{{Title: fmt.Sprintf("%061d", 0), Prompt: "p"}} },
+		"provider only":    func(b *BriefingSettings) { b.Model = BriefingModel{Provider: "p"} },
+		"model only":       func(b *BriefingSettings) { b.Model = BriefingModel{Model: "m"} },
+		"account too long": func(b *BriefingSettings) { b.MailAccount = fmt.Sprintf("%0201d", 0) },
+	} {
+		b := BriefingSettings{Morning: true}
+		mutate(&b)
+		if err := s.SavePreferences(ctx, briefingPrefs(b)); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s accepted: %v", name, err)
+		}
+	}
+}

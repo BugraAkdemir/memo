@@ -16,6 +16,79 @@ type BriefingSettings struct {
 	MorningTime       string `json:"morning_time"`
 	PreMeeting        bool   `json:"pre_meeting"`
 	PreMeetingMinutes int    `json:"pre_meeting_minutes"`
+	// Sections lists the built-in sections of the morning briefing. A missing
+	// list (nil) means all of them, as before this field existed; an explicit
+	// empty list means none (custom items only).
+	Sections []string `json:"sections"`
+	// Custom are the owner's own items: a title and an instruction.
+	Custom []BriefingCustom `json:"custom"`
+	// Channels are the places, besides the app itself, the morning briefing is
+	// sent to: always the owner's own account on each.
+	Channels []string `json:"channels"`
+	// MailAccount is the connected mail account the briefing is mailed from, and
+	// to (the account's own address). Empty means the first connected account.
+	MailAccount string `json:"mail_account"`
+	// Model optionally writes the briefing. Empty means no model is called.
+	Model BriefingModel `json:"model"`
+}
+
+// BriefingCustom is one owner-defined briefing item.
+type BriefingCustom struct {
+	Title  string `json:"title"`
+	Prompt string `json:"prompt"`
+}
+
+// BriefingModel is the provider/model pair that writes the briefing.
+type BriefingModel struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+}
+
+// Built-in morning sections and delivery channels the owner can pick from.
+var (
+	BriefingSectionIDs = []string{"meetings", "overnight", "drafts", "waiting", "promises", "code"}
+	BriefingChannelIDs = []string{"telegram", "whatsapp", "mail"}
+)
+
+const (
+	briefingMaxCustom   = 5
+	briefingTitleRunes  = 60
+	briefingPromptRunes = 500
+)
+
+// SectionEnabled reports whether a built-in section belongs in the briefing.
+func (b BriefingSettings) SectionEnabled(id string) bool {
+	if b.Sections == nil {
+		return true
+	}
+	return oneOf(b.Sections, id)
+}
+
+func oneOf(list []string, v string) bool {
+	for _, s := range list {
+		if s == v {
+			return true
+		}
+	}
+	return false
+}
+
+// pickKnown validates ids against the allowed list and drops duplicates,
+// keeping the owner's order. A nil list stays nil.
+func pickKnown(in, allowed []string, what string) ([]string, error) {
+	if in == nil {
+		return nil, nil
+	}
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		if !oneOf(allowed, v) {
+			return nil, fmt.Errorf("%w: %s", ErrInvalid, what)
+		}
+		if !oneOf(out, v) {
+			out = append(out, v)
+		}
+	}
+	return out, nil
 }
 
 // BriefingSection is one headed list of short lines.
@@ -57,6 +130,40 @@ func validBriefingSettings(b *BriefingSettings) error {
 	}
 	if b.PreMeetingMinutes < 5 || b.PreMeetingMinutes > 120 {
 		return fmt.Errorf("%w: pre-meeting minutes", ErrInvalid)
+	}
+	var err error
+	if b.Sections, err = pickKnown(b.Sections, BriefingSectionIDs, "briefing section"); err != nil {
+		return err
+	}
+	if b.Channels, err = pickKnown(b.Channels, BriefingChannelIDs, "briefing channel"); err != nil {
+		return err
+	}
+	if len(b.Custom) > briefingMaxCustom {
+		return fmt.Errorf("%w: too many custom items", ErrInvalid)
+	}
+	custom := make([]BriefingCustom, 0, len(b.Custom))
+	for _, c := range b.Custom {
+		c.Title = strings.TrimSpace(c.Title)
+		c.Prompt = strings.TrimSpace(c.Prompt)
+		if c.Title == "" && c.Prompt == "" {
+			continue // an empty row the editor left behind
+		}
+		if c.Title == "" || c.Prompt == "" ||
+			len([]rune(c.Title)) > briefingTitleRunes || len([]rune(c.Prompt)) > briefingPromptRunes {
+			return fmt.Errorf("%w: custom item", ErrInvalid)
+		}
+		custom = append(custom, c)
+	}
+	b.Custom = custom
+	b.MailAccount = strings.TrimSpace(b.MailAccount)
+	if len(b.MailAccount) > 200 {
+		return fmt.Errorf("%w: mail account", ErrInvalid)
+	}
+	b.Model.Provider = strings.TrimSpace(b.Model.Provider)
+	b.Model.Model = strings.TrimSpace(b.Model.Model)
+	if (b.Model.Provider == "") != (b.Model.Model == "") ||
+		len(b.Model.Provider) > 200 || len(b.Model.Model) > 200 {
+		return fmt.Errorf("%w: briefing model", ErrInvalid)
 	}
 	return nil
 }

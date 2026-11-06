@@ -26,7 +26,21 @@ func (a *App) decisionSettings() config.LearningConfig {
 
 // The selected provider is called directly: the chat provider, fallback chain,
 // tools and global agent switch are never changed by a classification call.
+// Two limits on purpose. The chat path has a user waiting and a slow model only
+// means "keep the old behaviour", so it stays short. Background mail review is
+// fail-closed (no answer holds the mail), and on a shared slow provider the 5 s
+// limit was cancelled by the proxy under concurrent load and held ordinary mail
+// as review_unavailable (found live), so it gets a longer one.
+var (
+	decisionCallTimeout = 5 * time.Second
+	mailScorerTimeout   = 15 * time.Second
+)
+
 func (a *App) callDecisionModel(ctx context.Context, system, user string, maxTokens int) (string, error) {
+	return a.callDecisionModelWithin(ctx, decisionCallTimeout, system, user, maxTokens)
+}
+
+func (a *App) callDecisionModelWithin(ctx context.Context, timeout time.Duration, system, user string, maxTokens int) (string, error) {
 	cfg := a.decisionSettings()
 	if !cfg.DecisionEnabled && !cfg.VerificationEnabled {
 		return "", fmt.Errorf("decision model disabled")
@@ -39,7 +53,7 @@ func (a *App) callDecisionModel(ctx context.Context, system, user string, maxTok
 	if err != nil {
 		return "", err
 	}
-	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	// Bound classification input by runes so multilingual text remains valid.
 	input := []rune(user)

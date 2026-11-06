@@ -1,9 +1,10 @@
+import '../models/twin.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 import 'l10n.dart';
 import 'sse_stream.dart';
@@ -33,6 +34,7 @@ import '../models/tts_provider_config.dart';
 import '../models/stt_provider_config.dart';
 import '../models/tts_voice.dart';
 import '../models/usage_stats.dart';
+import '../models/mail.dart';
 
 /// Result of GET /api/setup/status — the unauthenticated first-run probe.
 class SetupStatus {
@@ -170,6 +172,17 @@ class MemoApiClient {
   /// same way between launches). A stale/rotated token still just 401s,
   /// exactly like before this fix — no worse, and self-corrects the next
   /// time getRemoteAccess()/setRemoteAccess() is called.
+  /// Native: a real TCP connect, so failing fast on an unreachable backend is
+  /// right. Web: dio's adapter aborts any request whose response HEADERS have
+  /// not arrived within this window and reports it as a connection timeout, so
+  /// a perfectly healthy but slow endpoint (IMAP inbox over Gmail takes 3-6 s)
+  /// showed "Internet connection issue" at 5 s (DT6-2). The browser reports a
+  /// refused connection immediately on its own; here the limit only has to
+  /// match how long a normal request may take.
+  @visibleForTesting
+  static Duration connectTimeoutFor({bool web = kIsWeb}) =>
+      web ? const Duration(seconds: 120) : const Duration(seconds: 5);
+
   MemoApiClient({
     required this.baseUrl,
     String? savedRemoteToken,
@@ -178,7 +191,7 @@ class MemoApiClient {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 5),
+        connectTimeout: connectTimeoutFor(),
         receiveTimeout: const Duration(seconds: 120),
         headers: {'Content-Type': 'application/json'},
       ),
@@ -3082,6 +3095,16 @@ class MemoApiClient {
     return [];
   }
 
+  /// Private reply change signals. Snapshots remain authoritative after reconnect.
+  Stream<void> twinChangeStream({CancelToken? cancelToken}) async* {
+    await for (final line in _sseLines(
+      path: '/api/twin/events', method: 'GET', cancelToken: cancelToken,
+      dioReceiveTimeout: const Duration(seconds: 300),
+    )) {
+      if (line.startsWith('data: ')) yield null;
+    }
+  }
+
   /// Passive change signals; reconnect and fetch a full snapshot on each one.
   Stream<void> calendarChangeStream({CancelToken? cancelToken}) async* {
     await for (final line in _sseLines(path: '/api/calendar/changes', method: 'GET',
@@ -3413,4 +3436,243 @@ class MemoApiClient {
       return 8090;
     }
   }
+
+  // ─── Mail & Digital Twin (/api/mail/*) ────────────────────────────────────
+
+  Future<List<MailAccount>> getMailAccounts() async {
+    final res = await _dio.get('/api/mail/accounts');
+    final data = res.data;
+    if (data is Map && data['accounts'] is List) {
+      return (data['accounts'] as List)
+          .whereType<Map>()
+          .map((m) => MailAccount.fromJson(Map<String, dynamic>.from(m)))
+          .toList();
+    }
+    return const [];
+  }
+
+  Future<void> removeMailAccount(String id) async {
+    await _dio.delete(
+      '/api/mail/accounts',
+      queryParameters: {'id': id},
+    );
+  }
+
+  Future<MailServerConfig> autodiscoverMail(String email) async {
+    final res = await _dio.get(
+      '/api/mail/autodiscover',
+      queryParameters: {'email': email},
+    );
+    return MailServerConfig.fromJson(
+      Map<String, dynamic>.from(_guard<Map>(res.data)),
+    );
+  }
+
+  Future<MailOAuthSession> startMailOAuth(
+    String provider, {
+    String email = '',
+  }) async {
+    final res = await _dio.post(
+      '/api/mail/oauth/start',
+      data: {'provider': provider, 'email': email},
+    );
+    return MailOAuthSession.fromJson(
+      Map<String, dynamic>.from(_guard<Map>(res.data)),
+    );
+  }
+
+  Future<MailOAuthSession> getMailOAuthStatus(String state) async {
+    final res = await _dio.get(
+      '/api/mail/oauth/status',
+      queryParameters: {'state': state},
+    );
+    return MailOAuthSession.fromJson(
+      Map<String, dynamic>.from(_guard<Map>(res.data)),
+    );
+  }
+
+  Future<MailAccount> completeManualMailOAuth(
+    String state,
+    String callbackUrl, {
+    String email = '',
+  }) async {
+    final res = await _dio.post(
+      '/api/mail/oauth/manual',
+      data: {
+        'state': state,
+        'callback_url': callbackUrl,
+        'email': email,
+      },
+    );
+    final data = Map<String, dynamic>.from(_guard<Map>(res.data));
+    final acctMap = data['account'] is Map
+        ? Map<String, dynamic>.from(data['account'] as Map)
+        : data;
+    return MailAccount.fromJson(acctMap);
+  }
+
+  Future<MailAccount> connectMailPassword({
+    required String email,
+    required String password,
+    String displayName = '',
+    String imapHost = '',
+    int imapPort = 993,
+    String smtpHost = '',
+    int smtpPort = 587,
+  }) async {
+    final res = await _dio.post(
+      '/api/mail/accounts/password',
+      data: {
+        'email': email,
+        'password': password,
+        'display_name': displayName,
+        'imap_host': imapHost,
+        'imap_port': imapPort,
+        'smtp_host': smtpHost,
+        'smtp_port': smtpPort,
+      },
+    );
+    final data = Map<String, dynamic>.from(_guard<Map>(res.data));
+    final acctMap = data['account'] is Map
+        ? Map<String, dynamic>.from(data['account'] as Map)
+        : data;
+    return MailAccount.fromJson(acctMap);
+  }
+
+  Future<({int total, List<MailMessageSummary> messages})> getMailInbox(
+    String accountId, {
+    int limit = 25,
+  }) async {
+    final res = await _dio.get(
+      '/api/mail/inbox',
+      queryParameters: {'account_id': accountId, 'limit': limit},
+    );
+    final data = Map<String, dynamic>.from(_guard<Map>(res.data));
+    final total = (data['total'] as num?)?.toInt() ?? 0;
+    final list = data['messages'] is List
+        ? (data['messages'] as List)
+              .whereType<Map>()
+              .map((m) => MailMessageSummary.fromJson(Map<String, dynamic>.from(m)))
+              .toList()
+        : const <MailMessageSummary>[];
+    return (total: total, messages: list);
+  }
+
+  Future<MailMessageDetail> getMailMessage(String accountId, int seqNum) async {
+    final res = await _dio.get(
+      '/api/mail/message',
+      queryParameters: {'account_id': accountId, 'seq_num': seqNum},
+    );
+    return MailMessageDetail.fromJson(
+      Map<String, dynamic>.from(_guard<Map>(res.data)),
+    );
+  }
+
+  Future<List<MailMessageSummary>> searchMail(
+    String accountId,
+    String query, {
+    int limit = 25,
+  }) async {
+    final res = await _dio.get(
+      '/api/mail/search',
+      queryParameters: {
+        'account_id': accountId,
+        'q': query,
+        'limit': limit,
+      },
+    );
+    final data = Map<String, dynamic>.from(_guard<Map>(res.data));
+    if (data['messages'] is List) {
+      return (data['messages'] as List)
+          .whereType<Map>()
+          .map((m) => MailMessageSummary.fromJson(Map<String, dynamic>.from(m)))
+          .toList();
+    }
+    return const [];
+  }
+
+  Future<void> sendMail({
+    required String accountId,
+    required List<String> to,
+    List<String> cc = const [],
+    required String subject,
+    required String body,
+    String inReplyTo = '',
+  }) async {
+    await _dio.post(
+      '/api/mail/send',
+      data: {
+        'account_id': accountId,
+        'to': to,
+        'cc': cc,
+        'subject': subject,
+        'body': body,
+        'in_reply_to': inReplyTo,
+      },
+    );
+  }
+
+  Future<String> saveMailDraft({
+    required String accountId,
+    required List<String> to,
+    List<String> cc = const [],
+    required String subject,
+    required String body,
+    String inReplyTo = '',
+  }) async {
+    final res = await _dio.post(
+      '/api/mail/draft',
+      data: {
+        'account_id': accountId,
+        'to': to,
+        'cc': cc,
+        'subject': subject,
+        'body': body,
+        'in_reply_to': inReplyTo,
+      },
+    );
+    final data = res.data;
+    if (data is Map && data['mailbox'] is String) {
+      return data['mailbox'] as String;
+    }
+    return 'Drafts';
+  }
+
+  Future<MailWatcherStats> syncMailNow() async {
+    final res = await _dio.post('/api/mail/sync');
+    final data = res.data;
+    if (data is Map && data['stats'] is Map) {
+      return MailWatcherStats.fromJson(
+        Map<String, dynamic>.from(data['stats'] as Map),
+      );
+    }
+    return const MailWatcherStats();
+  }
+
+  Future<MailSecurityReport> checkMailSecurity(String text) async {
+    final res = await _dio.post('/api/mail/security/check', data: {'text': text});
+    return MailSecurityReport.fromJson(Map<String,dynamic>.from(_guard<Map>(res.data)));
+  }
+
+  Future<MailWatcherStats> getMailStats() async {
+    final res = await _dio.get('/api/mail/stats');
+    return MailWatcherStats.fromJson(
+      Map<String, dynamic>.from(_guard<Map>(res.data)),
+    );
+  }
+  Future<Map<String, dynamic>> getTwinActivity() async {
+    final res = await _dio.get('/api/twin/activity');
+    return Map<String, dynamic>.from(_guard<Map>(res.data));
+  }
+
+  Future<TwinState> getTwinState() async {
+    final res = await _dio.get('/api/twin/state');
+    return TwinState.fromJson(Map<String, dynamic>.from(_guard<Map>(res.data)));
+  }
+
+  Future<dynamic> callTwin(String operation, Map<String, dynamic> args) async {
+    final res = await _dio.post('/api/twin/$operation', data: args);
+    return res.data;
+  }
+
 }

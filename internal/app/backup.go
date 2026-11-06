@@ -56,6 +56,9 @@ func (a *App) exportData(includeModels, portable bool) ([]byte, error) {
 		}
 	}
 	a.storeMu.RUnlock()
+	if err := a.checkpointTwin(context.Background()); err != nil {
+		return nil, fmt.Errorf("export: twin checkpoint: %w", err)
+	}
 	memoryDir := config.DataPath("memory")
 	a.cfgMu.RLock()
 	if a.cfg != nil && a.cfg.Memory.PersistDir != "" {
@@ -269,6 +272,9 @@ func (a *App) ImportData(data []byte) error {
 // pointers avoids racing background readers; operations return a closed DB
 // error instead of writing stale WAL pages into restored data.
 func (a *App) closeStoresForRestore() {
+	if err := a.closeTwin(); err != nil {
+		logx.Printf("restore: twin close: %v", err)
+	}
 	a.storeMu.Lock()
 	if a.store != nil {
 		if err := a.store.Close(); err != nil {
@@ -395,6 +401,9 @@ var wipePreserve = map[string]bool{
 // reset of personal state, not just memory.
 func (a *App) WipeAllData() error {
 	root := config.DataDir()
+	if err := a.closeTwin(); err != nil {
+		return fmt.Errorf("wipe: twin close: %w", err)
+	}
 
 	// Close every store that holds an open handle into a directory we're
 	// about to delete. On Linux, os.RemoveAll happily unlinks a file that's

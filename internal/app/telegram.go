@@ -111,13 +111,41 @@ func (a *App) runTelegramIntentLoop(ctx context.Context) {
 			if !ok {
 				return
 			}
+			if a.routeTelegramApproval(ctx, msg, true) {
+				continue
+			}
 			if a.routeTelegramPermissionAnswer(msg) {
 				continue
 			}
 			if !a.shouldReplyToTelegram(msg) {
 				continue
 			}
+			if a.routeTelegramApproval(ctx, msg, false) {
+				continue
+			}
 			goRecover("telegramMessageReply", func() {
+				if msg.Voice != nil {
+					if !a.autonomyVoiceEnabled(ctx) || time.Since(msg.Timestamp) > 6*time.Hour {
+						return
+					}
+					a.tgMu.Lock()
+					client := a.tgClient
+					a.tgMu.Unlock()
+					if client == nil {
+						return
+					}
+					data, err := client.DownloadFile(ctx, msg.Voice.FileID)
+					if err != nil {
+						a.emitEvent("autonomy:voice_failed", "")
+						return
+					}
+					text, err := a.transcribeExternalVoice(ctx, data)
+					if err != nil {
+						a.emitEvent("autonomy:voice_failed", "")
+						return
+					}
+					msg.Text = text
+				}
 				a.handleTelegramMessage(msg)
 			})
 		}

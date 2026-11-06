@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"memo/internal/agent/tools"
+	"memo/internal/api"
 	"memo/internal/logx"
 	"memo/internal/sessions"
 )
@@ -449,6 +451,28 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/telegram/stop", s.requirePermission(s.handleTelegramStop, hasTelegramPerm))
 	route("/api/telegram/disconnect", s.requirePermission(s.handleTelegramDisconnect, hasTelegramPerm))
 
+	// Mail subsystem
+	route("/api/twin/events", s.adminOnly(s.handleTwinEvents))
+	for _, op := range twinOperations {
+		route("/api/twin/"+op, s.adminOnly(s.handleTwin))
+	}
+	route("/api/mail/accounts", s.adminOnly(s.handleMailAccounts))
+	route("/api/mail/autodiscover", s.adminOnly(s.handleMailAutodiscover))
+	route("/api/mail/oauth/start", s.adminOnly(s.handleMailOAuthStart))
+	route("/api/mail/oauth/status", s.adminOnly(s.handleMailOAuthStatus))
+	route("/api/mail/oauth/manual", s.adminOnly(s.handleMailOAuthManual))
+	route("/api/mail/accounts/password", s.adminOnly(s.handleMailPasswordConnect))
+	route("/api/mail/inbox", s.adminOnly(s.handleMailInbox))
+	route("/api/mail/message", s.adminOnly(s.handleMailMessage))
+	route("/api/mail/attachment", s.adminOnly(s.handleMailAttachment))
+	route("/api/mail/search", s.adminOnly(s.handleMailSearch))
+	route("/api/mail/send", s.adminOnly(s.handleMailSend))
+	route("/api/mail/draft", s.adminOnly(s.handleMailDraft))
+	route("/api/mail/sync", s.adminOnly(s.handleMailSync))
+	route("/api/mail/stats", s.handleMailStats)
+	route("/api/mail/security/check", s.adminOnly(s.handleMailSecurityCheck))
+	route("/api/mail/settings", s.adminWrites(s.handleMailSettings))
+
 	route("/api/export", s.adminOnly(s.handleExport))
 
 	// Skills
@@ -674,7 +698,12 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "message is empty", http.StatusBadRequest) // see handleSendStream
 		return
 	}
-	reply := s.bridge.SendMessage(req.Message)
+	var reply string
+	if s.fullBridge != nil {
+		reply = collectChatReply(s.fullBridge.SendMessageStream(r.Context(), req.Message))
+	} else {
+		reply = s.bridge.SendMessage(req.Message)
+	}
 	writeJSON(w, map[string]string{"reply": reply})
 }
 
@@ -715,6 +744,10 @@ func (s *Server) handleSendFile(w http.ResponseWriter, r *http.Request) {
 	isImage := detectIsImageBytes(content, header.Filename)
 
 	if isImage {
+		if ds, ok := s.bridge.(imageDataStreamSender); ok {
+			writeJSON(w, map[string]string{"reply": collectChatReply(ds.SendMessageWithImageDataStream(r.Context(), msg, header.Filename, content))})
+			return
+		}
 		if ds, ok := s.bridge.(imageDataSender); ok {
 			writeJSON(w, map[string]string{"reply": ds.SendMessageWithImageData(msg, header.Filename, content)})
 			return
@@ -736,7 +769,13 @@ func (s *Server) handleSendFile(w http.ResponseWriter, r *http.Request) {
 	tmpFilePath := tmpFile.Name()
 
 	var reply string
-	if isImage {
+	if s.fullBridge != nil {
+		if isImage {
+			reply = collectChatReply(s.fullBridge.SendMessageWithImageStream(r.Context(), msg, tmpFilePath))
+		} else {
+			reply = collectChatReply(s.fullBridge.SendMessageWithFileStream(r.Context(), msg, tmpFilePath))
+		}
+	} else if isImage {
 		reply = s.bridge.SendMessageWithImage(msg, tmpFilePath)
 	} else {
 		reply = s.bridge.SendMessageWithFile(msg, tmpFilePath)
@@ -1275,6 +1314,7 @@ func (s *Server) remoteAuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "unauthorized: missing or invalid credential", http.StatusUnauthorized)
 			return
 		}
+		r = r.WithContext(tools.WithCommunicationAccess(r.Context(), s.callerIsAdmin(r)))
 		next.ServeHTTP(w, r)
 	})
 }
@@ -1422,4 +1462,21 @@ func getLocalIPs() []string {
 		}
 	}
 	return ips
+}
+
+func collectChatReply(stream <-chan api.StreamChunk) string {
+	var reply strings.Builder
+	var firstError string
+	for chunk := range stream {
+		if firstError == "" && chunk.Error != "" {
+			firstError = chunk.Error
+		}
+		if chunk.FinishReason == "" {
+			reply.WriteString(chunk.Content)
+		}
+	}
+	if firstError != "" {
+		return firstError
+	}
+	return reply.String()
 }

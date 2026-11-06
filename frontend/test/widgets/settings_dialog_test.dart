@@ -221,6 +221,20 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('mail autonomy has its own searchable owner settings tab', (tester) async {
+    await _pumpSettingsDialog(tester);
+    await tester.enterText(find.byType(TextField), L10n.t('mail_autonomy_tab'));
+    await tester.pump();
+    expect(find.descendant(of: _railList, matching:find.text(L10n.t('mail_autonomy_tab'))), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('mail reply settings are hidden from non-admin accounts', (tester) async {
+    await _pumpSettingsDialog(tester, initialPrefs: {'memo_session_role':'user'});
+    await tester.enterText(find.byType(TextField), L10n.t('mail_autonomy_tab'));
+    await tester.pump();
+    expect(find.descendant(of: _railList, matching:find.text(L10n.t('mail_autonomy_tab'))), findsNothing);
+  });
+
   // Subscriptions replaced the Beta-gated Gemini tab in the same rail slot: it
   // is a stable feature (CLIProxyAPI ships inside the app), so no Beta switch is
   // needed to see it — only the models permission, like Providers.

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"memo/internal/agent"
+	"memo/internal/agent/tools"
 	"memo/internal/api"
 	moodpkg "memo/internal/mood"
 	"memo/internal/taskloop"
@@ -275,6 +277,8 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 // global agent-mode toggle — set when sessionID is itself an agent chat
 // (see SendMessageStreamTo's doc comment).
 func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath, sessionID string, forceAgent bool) <-chan api.StreamChunk {
+	ctx = tools.WithCommunicationService(ctx, a)
+
 	// Active-skill instructions are baked into systemPrompt by
 	// buildMessagesForSession (helpers.go) itself now, before messages was
 	// even built — see that call site's comment for why re-injecting here
@@ -297,6 +301,9 @@ func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, user
 	// Code Mode suppresses every Memo-initiated side call and injection, the
 	// proactive nudge (and its LLM call) included.
 	code := codeModeActive(ctx)
+	if code {
+		ctx = tools.WithCommunicationAccess(ctx, false)
+	}
 
 	// Independent of memory/RAG (see proactive_ambient.go's package doc
 	// comment) — fired before the reply so a stale pending suggestion from
@@ -367,6 +374,17 @@ func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, user
 		agentActive = a.decisionAllows(ctx, agentDecisionPrompt, agentDecisionInput(messages, userMsg))
 	}
 
+	channelTools := a.communicationToolNames(ctx)
+	if !code && (agentActive || len(channelTools) > 0) {
+		for i, msg := range messages {
+			if msg.Role == "system" {
+				if content, ok := msg.Content.(string); ok {
+					messages[i].Content = content + "\n" + communicationSystemPrompt
+				}
+				break
+			}
+		}
+	}
 	if agentActive {
 		ctx = a.withDecisionReview(ctx, userMsg)
 		for i, msg := range messages {
@@ -389,6 +407,16 @@ func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, user
 	a.providerMu.RLock()
 	hasProvider := a.activeProviderName != ""
 	a.providerMu.RUnlock()
+
+	// Native messaging is available in ordinary chat without exposing a shell.
+	// Reuse the existing event/permission SSE path so frontend approvals work.
+	if !agentActive && !code && !imageOnlyModel && imagePath == "" && filePath == "" && len(channelTools) > 0 && a.agentExecutor != nil && (hasProvider || localModelRunning) {
+		channelTools = append(channelTools, "get_calendar_events")
+		if a.GetWebSearchEnabled() && !a.identity.GetMinimalMode() {
+			channelTools = append(channelTools, "web_search", "fetch_page")
+		}
+		return a.callAgentStream(agent.WithToolScope(ctx, channelTools), messages, userMsg, sessionID)
+	}
 
 	if agentActive && (hasProvider || localModelRunning) {
 		if orchestraEnabled {

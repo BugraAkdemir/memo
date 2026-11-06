@@ -21,6 +21,7 @@ type ChatMessage struct {
 	ImagePath   string        `json:"image_path,omitempty"`
 	FilePath    string        `json:"file_path,omitempty"`
 	Timestamp   string        `json:"timestamp"`
+	SentAt      string        `json:"sent_at,omitempty"` // RFC3339 source time; legacy HH:MM is not a date.
 	AgentEvents []interface{} `json:"agent_events,omitempty"`
 	// Thinking is the model's extended-thinking / reasoning text for this
 	// (assistant) message, set via SetLastMessageThinking right after
@@ -552,12 +553,14 @@ func (m *Manager) AddMessage(role, content, imagePath, filePath string, agentEve
 	if s == nil {
 		return
 	}
+	now := time.Now()
 	msg := ChatMessage{
+		SentAt:    now.Format(time.RFC3339),
 		Role:      role,
 		Content:   content,
 		ImagePath: imagePath,
 		FilePath:  filePath,
-		Timestamp: time.Now().Format("15:04"),
+		Timestamp: now.Format("15:04"),
 	}
 	if len(agentEvents) > 0 && len(agentEvents[0]) > 0 {
 		msg.AgentEvents = agentEvents[0]
@@ -603,7 +606,9 @@ func (m *Manager) updateMessageLocked(s *Session, index int, content string) err
 		return fmt.Errorf("message index %d out of range", index)
 	}
 	s.Messages[index].Content = content
-	s.Messages[index].Timestamp = time.Now().Format("15:04")
+	now := time.Now()
+	s.Messages[index].Timestamp = now.Format("15:04")
+	s.Messages[index].SentAt = now.Format(time.RFC3339)
 	m.touch(s)
 	return m.save(s)
 }
@@ -660,12 +665,14 @@ func (m *Manager) AddMessageToSession(sessionID, role, content, imagePath, fileP
 	if s == nil {
 		return
 	}
+	now := time.Now()
 	msg := ChatMessage{
+		SentAt:    now.Format(time.RFC3339),
 		Role:      role,
 		Content:   content,
 		ImagePath: imagePath,
 		FilePath:  filePath,
-		Timestamp: time.Now().Format("15:04"),
+		Timestamp: now.Format("15:04"),
 	}
 	if len(agentEvents) > 0 && len(agentEvents[0]) > 0 {
 		msg.AgentEvents = agentEvents[0]
@@ -1057,4 +1064,48 @@ func (m *Manager) SetLastMessageModelRoute(id, provider, model string) {
 	if err := m.save(s); err != nil {
 		logx.Printf("sessions: save model route %s: %v", id, err)
 	}
+}
+
+// GetDatedHistoryForAPIForSession anchors older messages in the model view.
+// Current-day rows rely on the fresh clock block; older prefixes belong to
+// each message and survive truncation without moving to a different message.
+// Stored/UI text is untouched; legacy HH:MM-only rows remain explicitly unknown.
+func (m *Manager) GetDatedHistoryForAPIForSession(sessionID string, maxTokens, maxMessages int, reference ...time.Time) []map[string]string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s := m.sessions[sessionID]
+	if s == nil {
+		return nil
+	}
+	msgs := s.Messages
+	if maxTokens <= 0 && maxMessages >= 0 && len(msgs) > maxMessages {
+		msgs = msgs[len(msgs)-maxMessages:]
+	}
+	now := time.Now()
+	if len(reference) > 0 {
+		now = reference[0]
+	}
+	dated := make([]truncate.Message, len(msgs))
+	for i, msg := range msgs {
+		stamp := "unknown"
+		if sent, err := time.Parse(time.RFC3339, msg.SentAt); err == nil {
+			stamp = sent.Format(time.RFC3339)
+		}
+		content := msg.Content
+		// The current day's date is already in the volatile clock block. Only
+		// past/other-zone/unknown sources need an anchor; don't bloat each fresh
+		// turn or continually invalidate long-history compaction caches.
+		if sent, err := time.Parse(time.RFC3339, stamp); err != nil || sent.Format("2006-01-02 -07:00") != now.Format("2006-01-02 -07:00") {
+			content = "[sent_at=" + stamp + "]\n" + content
+		}
+		dated[i] = truncate.Message{Role: msg.Role, Content: content}
+	}
+	if maxTokens > 0 {
+		dated = truncate.TruncateMessages(dated, maxTokens)
+	}
+	out := make([]map[string]string, len(dated))
+	for i, msg := range dated {
+		out[i] = map[string]string{"role": msg.Role, "content": msg.Content}
+	}
+	return out
 }

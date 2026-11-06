@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"memo/internal/twin"
 	"net/url"
 	"os"
 	"os/exec"
@@ -55,6 +56,10 @@ func (s *session) handleCommand(line string) bool {
 		s.cmdRemote()
 	case "/tasklist":
 		s.cmdTaskList(args)
+	case "/mail":
+		s.cmdMail(args)
+	case "/twin":
+		s.cmdTwin(args)
 	case "/update":
 		s.cmdUpdate()
 	case "/theme":
@@ -121,6 +126,10 @@ func (s *session) showCommandMenu() bool {
 		s.cmdRemote()
 	case "/tasklist":
 		s.cmdTaskListInteractive()
+	case "/mail":
+		s.cmdMail(nil)
+	case "/twin":
+		s.cmdTwin(nil)
 	case "/update":
 		s.cmdUpdate()
 	case "/theme":
@@ -1188,4 +1197,255 @@ func (s *session) setSkill(name string, on bool) {
 	} else {
 		fmt.Fprintln(s.out, green(fmt.Sprintf(t("skill_turned_off"), name)))
 	}
+}
+
+func (s *session) cmdMail(args []string) {
+	accts, err := s.client.MailAccounts(s.ctx)
+	if err != nil {
+		fmt.Fprintln(s.out, errorf(t("generic_error"), err))
+		return
+	}
+	if len(accts) == 0 {
+		fmt.Fprintln(s.out, dim(t("mail_no_accounts")))
+		return
+	}
+	acctID := accts[0].ID
+
+	sub := "inbox"
+	if len(args) > 0 {
+		sub = args[0]
+	}
+
+	switch sub {
+	case "inbox", "list":
+		fmt.Fprintf(s.out, "%s\n", bold(t("mail_accounts_header")))
+		for _, a := range accts {
+			fmt.Fprintf(s.out, "  • %s (%s)\n", bold(a.Email), dim(a.ID))
+		}
+		if stats, err := s.client.MailStats(s.ctx); err == nil && stats != nil {
+			fmt.Fprintf(s.out, dim(t("mail_stats_line"))+"\n", stats.TotalEvaluated, stats.DroppedMarketing, stats.IndexedInRAG, stats.SecurityBlocked)
+		}
+		inbox, err := s.client.MailInbox(s.ctx, acctID, 10)
+		if err != nil {
+			fmt.Fprintln(s.out, errorf(t("generic_error"), err))
+			return
+		}
+		if len(inbox.Messages) == 0 {
+			fmt.Fprintln(s.out, dim(t("mail_inbox_empty")))
+			return
+		}
+		fmt.Fprintf(s.out, t("mail_inbox_header")+"\n", bold(accts[0].Email), inbox.Total)
+		for _, m := range inbox.Messages {
+			unread := " "
+			if !m.Seen {
+				unread = yellow("●")
+			}
+			fmt.Fprintf(s.out, "  %s [%d] %s — %s (%s)\n", unread, m.SeqNum, bold(m.Subject), m.From, dim(m.Date))
+		}
+		fmt.Fprintln(s.out, dim(t("mail_usage_footer")))
+
+	case "read":
+		if len(args) < 2 {
+			fmt.Fprintln(s.out, yellow(t("mail_read_usage")))
+			return
+		}
+		seq, err := strconv.Atoi(args[1])
+		if err != nil || seq <= 0 {
+			fmt.Fprintln(s.out, yellow(t("mail_read_usage")))
+			return
+		}
+		msg, err := s.client.MailRead(s.ctx, acctID, seq)
+		if err != nil {
+			fmt.Fprintln(s.out, errorf(t("generic_error"), err))
+			return
+		}
+		fmt.Fprintf(s.out, "%s [%d] %s\n", bold(t("mail_subject_label")), msg.SeqNum, bold(msg.Subject))
+		fmt.Fprintf(s.out, "%s %s  ·  %s\n", dim(t("mail_from_label")), msg.From, dim(msg.Date))
+		if len(msg.Attachments) > 0 {
+			fmt.Fprintf(s.out, "%s (%d):\n", bold(t("mail_attachments_label")), len(msg.Attachments))
+			for _, att := range msg.Attachments {
+				fmt.Fprintf(s.out, "  📎 [%s] %s (%s, %d B)\n", att.PartID, att.Filename, att.ContentType, att.Size)
+			}
+		}
+		fmt.Fprintln(s.out, strings.Repeat("─", 48))
+		body := strings.TrimSpace(msg.TextBody)
+		if body == "" {
+			body = strings.TrimSpace(msg.HTMLBody)
+		}
+		fmt.Fprintln(s.out, body)
+
+	case "search":
+		if len(args) < 2 {
+			fmt.Fprintln(s.out, yellow(t("mail_search_usage")))
+			return
+		}
+		q := strings.Join(args[1:], " ")
+		msgs, err := s.client.MailSearch(s.ctx, acctID, q, 10)
+		if err != nil {
+			fmt.Fprintln(s.out, errorf(t("generic_error"), err))
+			return
+		}
+		if len(msgs) == 0 {
+			fmt.Fprintln(s.out, dim(t("mail_search_empty")))
+			return
+		}
+		for _, m := range msgs {
+			fmt.Fprintf(s.out, "  [%d] %s — %s (%s)\n", m.SeqNum, bold(m.Subject), m.From, dim(m.Date))
+		}
+
+	case "sync":
+		stats, err := s.client.MailSync(s.ctx)
+		if err != nil {
+			fmt.Fprintln(s.out, errorf(t("generic_error"), err))
+			return
+		}
+		fmt.Fprintf(s.out, green(t("mail_synced"))+"\n", stats.TotalEvaluated)
+
+	default:
+		fmt.Fprintln(s.out, yellow(t("mail_usage_footer")))
+	}
+}
+
+func (s *session) cmdTwin(args []string) {
+	st, err := s.client.TwinState(s.ctx)
+	if err != nil {
+		fmt.Fprintln(s.out, errorf(t("generic_error"), err))
+		return
+	}
+	sub := "status"
+	if len(args) > 0 {
+		sub = args[0]
+	}
+
+	switch sub {
+	case "status":
+		enabled := red(t("twin_state_off"))
+		if st.Preferences.Autonomy.Enabled {
+			enabled = green(t("twin_state_on"))
+		}
+		mode := st.Preferences.Autonomy.Mode
+		if mode == "" {
+			mode = "draft_only"
+		}
+		fmt.Fprintf(s.out, "%s %s  ·  %s: %s\n", bold(t("twin_header")), enabled, dim(t("twin_mode_label")), bold(mode))
+		fmt.Fprintf(s.out, t("twin_counts_line")+"\n", len(st.Contacts), len(st.Actions), len(st.Commitments), len(st.AuditLog))
+		if len(st.Actions) > 0 {
+			fmt.Fprintln(s.out, bold(t("twin_pending_header")))
+			for _, a := range st.Actions {
+				code := a.ID
+				if len(code) >= 8 {
+					code = code[:8]
+				}
+				if a.ApprovalCode > 0 {
+					code = fmt.Sprintf("#%d", a.ApprovalCode)
+				}
+				fmt.Fprintf(s.out, "  [%s] %s → %s (%s): %s\n", yellow(code), a.Channel, a.Recipient, a.State, a.Body)
+			}
+		}
+		fmt.Fprintln(s.out, dim(t("twin_usage_footer")))
+
+	case "contacts":
+		if len(st.Contacts) == 0 {
+			fmt.Fprintln(s.out, dim(t("twin_no_contacts")))
+			return
+		}
+		for _, c := range st.Contacts {
+			name := c.Name
+			if name == "" {
+				name = c.ID
+			}
+			fmt.Fprintf(s.out, "  • %s (%s) — %s\n", bold(name), dim(c.ID), c.AutonomyPolicy)
+		}
+
+	case "commitments":
+		if len(st.Commitments) == 0 {
+			fmt.Fprintln(s.out, dim(t("twin_no_commitments")))
+			return
+		}
+		for _, c := range st.Commitments {
+			label := c.Subject
+			if c.Summary != "" {
+				label = c.Summary
+			}
+			fmt.Fprintf(s.out, "  • [%s] %s — %s (%dh)\n", c.Kind, bold(c.ContactName), label, c.AgeHours)
+		}
+
+	case "audit":
+		if len(st.AuditLog) == 0 {
+			fmt.Fprintln(s.out, dim(t("twin_no_audit")))
+			return
+		}
+		for _, e := range st.AuditLog {
+			fmt.Fprintf(s.out, "  • %s [%s] %s\n", dim(e.At.Format("2006-01-02 15:04")), bold(e.Action), e.ContactID)
+		}
+
+	case "approve", "send":
+		if len(args) < 2 {
+			fmt.Fprintln(s.out, yellow(t("twin_approve_usage")))
+			return
+		}
+		idOrCode := s.resolveTwinActionID(st.Actions, args[1])
+		op := "approve_action"
+		if sub == "send" {
+			op = "send_action"
+		}
+		if err := s.client.TwinActionOp(s.ctx, op, idOrCode); err != nil {
+			fmt.Fprintln(s.out, errorf(t("generic_error"), err))
+			return
+		}
+		fmt.Fprintf(s.out, green(t("twin_action_approved"))+"\n", idOrCode)
+
+	case "cancel":
+		if len(args) < 2 {
+			fmt.Fprintln(s.out, yellow(t("twin_cancel_usage")))
+			return
+		}
+		idOrCode := s.resolveTwinActionID(st.Actions, args[1])
+		if err := s.client.TwinActionOp(s.ctx, "cancel_action", idOrCode); err != nil {
+			fmt.Fprintln(s.out, errorf(t("generic_error"), err))
+			return
+		}
+		fmt.Fprintf(s.out, green(t("twin_action_cancelled"))+"\n", idOrCode)
+
+	case "on", "off":
+		prefs := st.Preferences
+		prefs.Autonomy.Enabled = sub == "on"
+		if err := s.client.TwinSavePreferences(s.ctx, prefs); err != nil {
+			fmt.Fprintln(s.out, errorf(t("generic_error"), err))
+			return
+		}
+		if prefs.Autonomy.Enabled {
+			fmt.Fprintln(s.out, green(t("twin_turned_on")))
+		} else {
+			fmt.Fprintln(s.out, green(t("twin_turned_off")))
+		}
+
+	case "mode":
+		if len(args) < 2 {
+			fmt.Fprintln(s.out, yellow(t("twin_mode_usage")))
+			return
+		}
+		prefs := st.Preferences
+		prefs.Autonomy.Mode = args[1]
+		if err := s.client.TwinSavePreferences(s.ctx, prefs); err != nil {
+			fmt.Fprintln(s.out, errorf(t("generic_error"), err))
+			return
+		}
+		fmt.Fprintf(s.out, green(t("twin_mode_changed"))+"\n", prefs.Autonomy.Mode)
+
+	default:
+		fmt.Fprintln(s.out, yellow(t("twin_usage_footer")))
+	}
+}
+
+func (s *session) resolveTwinActionID(actions []twin.Action, query string) string {
+	q := strings.TrimSpace(query)
+	rawCode := strings.TrimPrefix(q, "#")
+	for _, a := range actions {
+		codeStr := fmt.Sprintf("%d", a.ApprovalCode)
+		if a.ID == q || (a.ApprovalCode > 0 && codeStr == rawCode) || strings.HasPrefix(a.ID, q) {
+			return a.ID
+		}
+	}
+	return q
 }

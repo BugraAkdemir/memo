@@ -1,0 +1,427 @@
+package mail
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"memo/internal/autonomy"
+	"memo/internal/fileutil"
+	netmail "net/mail"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+)
+
+// WatcherConfig tunes the background email polling and triage loop.
+type WatcherConfig struct {
+	Enabled         bool
+	PollInterval    time.Duration
+	MaxScanPerPoll  int
+	MaxAutonomyAge  time.Duration
+	AutoIndexMemory bool
+}
+
+// WatcherStats tracks cumulative triage metrics for UI display and morning briefings.
+type WatcherStats struct {
+	TotalEvaluated     int       `json:"total_evaluated"`
+	DroppedMarketing   int       `json:"dropped_marketing"`
+	IndexedInRAG       int       `json:"indexed_in_rag"`
+	PassedToAutonomy   int       `json:"passed_to_autonomy"`
+	CalendarExtracted  int       `json:"calendar_extracted"`
+	SecurityBlocked    int       `json:"security_blocked"`
+	LastSecurityReason string    `json:"last_security_reason,omitempty"`
+	ColdStarts         int       `json:"cold_starts"`
+	LastSyncAt         time.Time `json:"last_sync_at,omitempty"`
+}
+
+// MemoryIndexFunc indexes a non-bulk email into Memo's RAG vector store.
+type MemoryIndexFunc func(ctx context.Context, account Account, detail *MessageDetail, decision TriageDecision) error
+
+// MailEventHandler receives every newly arrived email alongside its Gatekeeper TriageDecision.
+type MailEventHandler func(ctx context.Context, account Account, detail *MessageDetail, decision TriageDecision)
+
+// Watcher polls connected email accounts in the background, enforces the
+// High-Water Mark cold-start flood guard, runs the 3-layer Gatekeeper, and
+// dispatches clean messages to RAG memory and the Digital Twin engine.
+type Watcher struct {
+	manager    *Manager
+	gatekeeper *Gatekeeper
+
+	mu              sync.RWMutex
+	cfg             WatcherConfig
+	statsPath       string
+	stats           WatcherStats
+	indexFn         MemoryIndexFunc
+	onEvent         MailEventHandler
+	onEventReliable func(context.Context, Account, *MessageDetail, TriageDecision) error
+	runCtx          context.Context
+	guard           func(context.Context, Account, *MessageDetail) autonomy.Verdict
+
+	triggerCh chan struct{}
+	pollMu    sync.Mutex
+}
+
+// NewWatcher creates a new background mail Watcher.
+func NewWatcher(manager *Manager, gatekeeper *Gatekeeper, cfg WatcherConfig) *Watcher {
+	if cfg.PollInterval <= 0 {
+		cfg.PollInterval = 60 * time.Second
+	}
+	if cfg.MaxScanPerPoll <= 0 {
+		cfg.MaxScanPerPoll = 25
+	}
+	if cfg.MaxAutonomyAge <= 0 {
+		cfg.MaxAutonomyAge = 6 * time.Hour
+	}
+	if gatekeeper == nil {
+		gatekeeper = NewGatekeeper(nil)
+	}
+	w := &Watcher{
+		manager:    manager,
+		gatekeeper: gatekeeper,
+		cfg:        cfg,
+		triggerCh:  make(chan struct{}, 1),
+	}
+	if manager != nil && manager.vault != nil && manager.vault.filePath != "" {
+		w.statsPath = filepath.Join(filepath.Dir(manager.vault.filePath), "watcher-stats.json")
+		data, err := os.ReadFile(w.statsPath)
+		if err == nil {
+			var restored WatcherStats
+			err = json.Unmarshal(data, &restored)
+			if err == nil {
+				w.stats = restored
+			}
+		}
+		if err != nil && !os.IsNotExist(err) {
+			slog.Warn("mail: cannot load cumulative stats", "error", err)
+		}
+	}
+	return w
+}
+
+// Called under mu: serialize snapshot + atomic replacement with every mutation,
+// including calendar callbacks outside the polling loop. No mail content is saved.
+func (w *Watcher) persistStatsLocked() {
+	if w.statsPath == "" {
+		return
+	}
+	data, err := json.Marshal(w.stats)
+	if err == nil {
+		err = os.MkdirAll(filepath.Dir(w.statsPath), 0700)
+	}
+	if err == nil {
+		err = fileutil.AtomicWrite(w.statsPath, data, 0600)
+	}
+	if err != nil {
+		slog.Warn("mail: cannot persist cumulative stats", "error", err)
+	}
+}
+
+// SetMemoryIndexer registers the callback that saves relevant emails into RAG memory.
+func (w *Watcher) SetMemoryIndexer(fn MemoryIndexFunc) {
+	w.mu.Lock()
+	w.indexFn = fn
+	w.mu.Unlock()
+}
+
+// SetEventHandler registers the callback invoked for each evaluated new message.
+func (w *Watcher) SetEventHandler(fn MailEventHandler) {
+	w.mu.Lock()
+	w.onEvent = fn
+	w.mu.Unlock()
+}
+
+// SetReliableEventHandler acknowledges a message only after downstream storage
+// and preparation have either completed or recorded a reviewable failure.
+func (w *Watcher) SetReliableEventHandler(fn func(context.Context, Account, *MessageDetail, TriageDecision) error) {
+	w.mu.Lock()
+	w.onEventReliable = fn
+	w.mu.Unlock()
+}
+
+// SetSecurityGuard installs the optional semantic review/OTP observer. A
+// deterministic guard still runs when no app-level callback is installed.
+func (w *Watcher) SetSecurityGuard(fn func(context.Context, Account, *MessageDetail) autonomy.Verdict) {
+	w.mu.Lock()
+	w.guard = fn
+	w.mu.Unlock()
+}
+
+// RecordSecurityBlocked records codes only, never the mail/secret itself.
+func (w *Watcher) RecordSecurityBlocked(code string) {
+	w.mu.Lock()
+	w.stats.SecurityBlocked++
+	w.stats.LastSecurityReason = code
+	w.persistStatsLocked()
+	w.mu.Unlock()
+}
+
+// UpdateConfig updates the live Watcher configuration.
+func (w *Watcher) UpdateConfig(cfg WatcherConfig) {
+	if cfg.PollInterval <= 0 {
+		cfg.PollInterval = 60 * time.Second
+	}
+	if cfg.MaxScanPerPoll <= 0 {
+		cfg.MaxScanPerPoll = 25
+	}
+	if cfg.MaxAutonomyAge <= 0 {
+		cfg.MaxAutonomyAge = 6 * time.Hour
+	}
+	w.mu.Lock()
+	w.cfg = cfg
+	w.mu.Unlock()
+}
+
+// Stats returns a snapshot of the Watcher's cumulative triage metrics.
+func (w *Watcher) Stats() WatcherStats {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.stats
+}
+
+// RecordCalendarAdded counts committed events, including plain-text intent extraction.
+func (w *Watcher) RecordCalendarAdded() {
+	w.mu.Lock()
+	w.stats.CalendarExtracted++
+	w.persistStatsLocked()
+	w.mu.Unlock()
+}
+
+// TriggerNow wakes the background poll loop immediately (non-blocking).
+func (w *Watcher) TriggerNow() {
+	select {
+	case w.triggerCh <- struct{}{}:
+	default:
+	}
+}
+
+// Start runs the background polling loop until ctx is cancelled.
+func (w *Watcher) Start(ctx context.Context) {
+	// Processing accepted mail belongs to the application, not a browser request.
+	w.mu.Lock()
+	w.runCtx = ctx
+	w.mu.Unlock()
+	// Initial sync pass shortly after startup
+	w.mu.RLock()
+	enabled := w.cfg.Enabled
+	interval := w.cfg.PollInterval
+	w.mu.RUnlock()
+
+	if enabled {
+		_ = w.SyncOnce(ctx)
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-w.triggerCh:
+			_ = w.SyncOnce(ctx)
+		case <-ticker.C:
+			w.mu.RLock()
+			en := w.cfg.Enabled
+			newInterval := w.cfg.PollInterval
+			w.mu.RUnlock()
+			if newInterval != interval && newInterval > 0 {
+				interval = newInterval
+				ticker.Reset(interval)
+			}
+			if en {
+				_ = w.SyncOnce(ctx)
+			}
+		}
+	}
+}
+
+// SyncOnce polls all connected accounts once and processes any messages with
+// UID > LastSeenUID through the 3-layer Gatekeeper.
+func (w *Watcher) SyncOnce(ctx context.Context) error {
+	w.pollMu.Lock()
+	defer w.pollMu.Unlock()
+
+	if w.manager == nil {
+		return nil
+	}
+
+	w.mu.RLock()
+	cfg := w.cfg
+	indexFn := w.indexFn
+	onEvent := w.onEvent
+	reliable := w.onEventReliable
+	runCtx := w.runCtx
+	guard := w.guard
+	w.mu.RUnlock()
+
+	accounts := w.manager.ListAccounts()
+	if len(accounts) == 0 {
+		return nil
+	}
+
+	var firstErr error
+	for _, acct := range accounts {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		_, coldStart, newMsgs, err := w.manager.scanAccountIncremental(ctx, acct.ID, cfg.MaxScanPerPoll, false)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+
+		w.mu.Lock()
+		w.stats.LastSyncAt = time.Now()
+		if coldStart {
+			w.stats.ColdStarts++
+		}
+		w.persistStatsLocked()
+		w.mu.Unlock()
+
+		if coldStart || len(newMsgs) == 0 {
+			continue
+		}
+
+		dispatch := func(ctx context.Context, account Account, detail *MessageDetail, decision TriageDecision) error {
+			if reliable != nil {
+				return reliable(ctx, account, detail, decision)
+			}
+			if onEvent != nil {
+				onEvent(ctx, account, detail, decision)
+			}
+			return ctx.Err()
+		}
+		for _, detail := range newMsgs {
+			if detail == nil {
+				continue
+			}
+			parent := runCtx
+			if parent == nil {
+				parent = ctx
+			}
+			// Bound individual work while preserving shutdown cancellation. A
+			// browser timeout cannot cancel accepted mail or the next batch item.
+			processCtx, cancel := context.WithTimeout(parent, 5*time.Minute)
+			err := func(ctx context.Context) error {
+				text, _ := FormatMailForMemory(acct, detail, TriageDecision{})
+				verdict := autonomy.DetectPromptInjection(ctx, text, nil)
+				if guard != nil {
+					// The app also observes parsed OTPs here, including in denied
+					// mail. Its review can never override a deterministic block.
+					reviewed := guard(ctx, acct, detail)
+					if !verdict.Blocked {
+						verdict = reviewed
+					}
+				}
+				if verdict.Blocked {
+					w.mu.Lock()
+					w.stats.TotalEvaluated++
+					w.persistStatsLocked()
+					w.mu.Unlock()
+					w.RecordSecurityBlocked(verdict.Code)
+					return dispatch(ctx, acct, detail, TriageDecision{SecurityBlocked: true, SecurityReason: verdict.Code, DropFromRAG: true})
+				}
+				decision := w.gatekeeper.Evaluate(ctx, detail)
+				// Protocol/group gates cannot be bypassed by a VIP classification.
+				recipients, _ := mailRecipients(detail.To, detail.Cc)
+				policy := autonomy.AutoReplyPolicy(autonomy.Envelope{Account: acct.ID, Sender: detail.From, ThreadID: detail.InReplyTo, Headers: detail.Headers, RecipientCount: recipients})
+				if policy.Blocked {
+					decision.AllowAutoReply = false
+				}
+
+				// Backfill Age Guard: never allow autonomous replies to messages older
+				// than MaxAutonomyAge (default 6 hours), even if UID > LastSeenUID
+				// (e.g. user moved an old email into INBOX).
+				if !detail.Timestamp.IsZero() && cfg.MaxAutonomyAge > 0 {
+					if time.Since(detail.Timestamp) > cfg.MaxAutonomyAge {
+						decision.AllowAutoReply = false
+					}
+				}
+
+				w.mu.Lock()
+				w.stats.TotalEvaluated++
+				if decision.DropFromRAG {
+					w.stats.DroppedMarketing++
+				}
+				if decision.AllowAutoReply {
+					w.stats.PassedToAutonomy++
+				}
+				w.persistStatsLocked()
+				w.mu.Unlock()
+
+				if !decision.DropFromRAG && decision.IndexInRAG && cfg.AutoIndexMemory && indexFn != nil {
+					if err := indexFn(ctx, acct, detail, decision); err == nil {
+						w.mu.Lock()
+						w.stats.IndexedInRAG++
+						w.persistStatsLocked()
+						w.mu.Unlock()
+					}
+				}
+
+				return dispatch(ctx, acct, detail, decision)
+			}(processCtx)
+			if err == nil {
+				err = processCtx.Err()
+			}
+			cancel()
+			if err == nil {
+				err = w.manager.UpdateLastSeenUID(acct.ID, detail.UID)
+			}
+			if err != nil {
+				// Stop this account at the first unacknowledged message; the
+				// next poll retries it before any later UID.
+				slog.Warn("mail: message processing incomplete", "uid", detail.UID, "error", err)
+				if firstErr == nil {
+					firstErr = err
+				}
+				break
+			}
+		}
+	}
+
+	return firstErr
+}
+
+// FormatMailForMemory keeps the entire mail on the user side of memory.
+// The second return value is empty: mail content is not an assistant reply.
+func FormatMailForMemory(account Account, detail *MessageDetail, decision TriageDecision) (userMsg, assistantMsg string) {
+	body := strings.TrimSpace(detail.TextBody)
+	if body == "" {
+		body = stripHTMLTags(detail.HTMLBody)
+	}
+	dateStr := detail.Date
+	if !detail.Timestamp.IsZero() {
+		dateStr = detail.Timestamp.Format(time.RFC3339)
+	}
+	userMsg = fmt.Sprintf("[Mail | Account: %s | Account-ID: %s | Folder: INBOX | UID: %d | Message-ID: %s | From: %s | Subject: %s | Date: %s | Category: %s]",
+		account.Email, account.ID, detail.UID, detail.MessageID, detail.From, detail.Subject, dateStr, decision.Category)
+	// Deliberately omit OTPCode: the Gatekeeper keeps OTP messages out of RAG.
+	structured := StructuredExtraction{CalendarInvites: detail.Structured.CalendarInvites, Flights: detail.Structured.Flights, Invoices: detail.Structured.Invoices}
+	if len(structured.CalendarInvites)+len(structured.Flights)+len(structured.Invoices) > 0 {
+		data, _ := json.Marshal(structured)
+		userMsg += "\nStructured: " + string(data)
+	}
+	userMsg += "\nBody:\n" + body
+	return userMsg, ""
+}
+
+// Count recipient addresses rather than commas inside quoted display names.
+func mailRecipients(to, cc string) (int, error) {
+	total := 0
+	for _, field := range []string{to, cc} {
+		if strings.TrimSpace(field) == "" {
+			continue
+		}
+		addrs, err := netmail.ParseAddressList(field)
+		if err != nil {
+			return 2, err
+		} // malformed envelopes require manual approval
+		total += len(addrs)
+	}
+	return total, nil
+}

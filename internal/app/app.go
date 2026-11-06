@@ -20,6 +20,7 @@ import (
 	"memo/internal/agent"
 	"memo/internal/agent/tools"
 	"memo/internal/api"
+	"memo/internal/autonomy"
 	"memo/internal/beta"
 	"memo/internal/browserengine"
 	"memo/internal/calendar"
@@ -31,6 +32,7 @@ import (
 	"memo/internal/intent"
 	"memo/internal/livemode"
 	"memo/internal/llama"
+	"memo/internal/mail"
 	"memo/internal/memory"
 	"memo/internal/modelstore"
 	moodpkg "memo/internal/mood"
@@ -40,6 +42,7 @@ import (
 	"memo/internal/proactive"
 	"memo/internal/provider"
 	"memo/internal/remoteauth"
+	"memo/internal/routecatalog"
 	"memo/internal/routine"
 	"memo/internal/sessions"
 	"memo/internal/skill"
@@ -53,6 +56,7 @@ import (
 	"memo/internal/telemetry"
 	"memo/internal/tts"
 	"memo/internal/tunnel"
+	"memo/internal/twin"
 	"memo/internal/websearch"
 	"memo/internal/webserver"
 	"memo/internal/whatsapp"
@@ -198,6 +202,17 @@ type App struct {
 	waMsgStore       *whatsapp.Store
 	tgClient         *telegram.Client
 	tgStore          *telegram.Store
+	twinMu           sync.RWMutex
+	twinStore        *twin.Store
+	approvalCancel   context.CancelFunc
+	approvalDone     chan struct{}
+	radarCancel      context.CancelFunc
+	radarDone        chan struct{}
+	mailMu           sync.RWMutex
+	mailManager      *mail.Manager
+	mailGatekeeper   *mail.Gatekeeper
+	mailWatcher      *mail.Watcher
+	mailShield       *autonomy.Shield
 	llamaServer      *llama.Server
 	llamaEmbedServer *llama.Server      // dedicated embedding model server
 	memoryStoreReady <-chan struct{}    // initial placeholder store has finished
@@ -659,6 +674,8 @@ func (a *App) Startup(ctx context.Context) {
 	goRecover("proactiveEngine.Start", func() { a.proactiveEngine.Start(a.lifecycleCtx) })
 
 	a.initLearning(ctx)
+	a.initTwin()
+	a.initMail(a.lifecycleCtx)
 	a.initRoutines(ctx)
 	a.initStats()
 	a.initTelemetry() // after initStats: it reads the usage store; sends nothing until the person agrees
@@ -741,12 +758,29 @@ func (a *App) Startup(ctx context.Context) {
 		a.initTelegram()
 	}
 	a.tgMu.Unlock()
+	a.startApprovalBridge()
+	a.startFollowUpRadar()
 
 	// Shared with reinitProviderAndOrchestra (providers.go), which ImportData
 	// and cloud restore call after replacing providers.json/orchestra.json on
 	// disk — keeping this as one code path means the two can't drift apart.
 	purgeLegacySubscriptionData()
 	a.reinitProviderAndOrchestra()
+	// The models.dev catalogue is the last source of a model's context window
+	// (provider.CachedContextWindow reads it without downloading); load it off
+	// the startup path. Ensure keeps the last good disk snapshot offline.
+	if n := a.cfg.Llama.MaxContextTokens; n > 0 {
+		logx.Printf("config: llama.max_context_tokens=%d overrides the context window of EVERY model (cloud ones too); set it to 0 for the models' real windows", n)
+	}
+	// MEMO_CATALOG_PRELOAD=off skips it (the e2e harness: its tests write their
+	// own catalogue snapshot and must stay offline).
+	if os.Getenv("MEMO_CATALOG_PRELOAD") != "off" {
+		goRecover("loadModelCatalog", func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			routecatalog.Shared().Ensure(ctx)
+		})
+	}
 	// Subscriptions: if a vendor account is already signed in, bring the
 	// bundled CLIProxyAPI sidecar up in the background and (re)register its
 	// provider with the sidecar's current port/key. Never blocks startup.
@@ -1107,6 +1141,7 @@ func (a *App) shutdownSync(ctx context.Context) {
 	if a.observerStore != nil {
 		stop("observer", a.observerStore.Close)
 	}
+	stop("twin", a.closeTwin)
 	if a.calendarStore != nil {
 		stop("calendar", a.calendarStore.Close)
 	}

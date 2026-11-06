@@ -620,11 +620,16 @@ class _MessageBubbleState extends State<_MessageBubble> {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  widget.message.timestamp,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: MemoTheme.of(context).textDim,
+                                Tooltip(
+                                  message: DateTime.tryParse(widget.message.sentAt) == null
+                                      ? ''
+                                      : L10n.t('message_sent_at', {'time': widget.message.sentAt}),
+                                  child: Text(
+                                    widget.message.timestamp,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: MemoTheme.of(context).textDim,
+                                    ),
                                   ),
                                 ),
                                 if (!isUser &&

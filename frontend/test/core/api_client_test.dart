@@ -83,6 +83,32 @@ void main() {
   // in-memory from a getRemoteAccess()/setRemoteAccess() response —
   // reset to nothing on every app launch, while the backend could already
   // be bound to 0.0.0.0 (token-gated) before any such call happened.
+  // DT6-2: on web dio aborts a request that has no response headers after
+  // connectTimeout, so a slow IMAP call (Gmail 3-6 s) became "Internet
+  // connection issue" at a 5 s connect timeout. Native keeps the real TCP
+  // connect timeout.
+  group('connect timeout (DT6-2)', () {
+    test('web waits as long as a normal request, native fails fast', () {
+      expect(
+        MemoApiClient.connectTimeoutFor(web: true),
+        const Duration(seconds: 120),
+      );
+      expect(
+        MemoApiClient.connectTimeoutFor(web: false),
+        const Duration(seconds: 5),
+      );
+    });
+
+    test('the client uses it', () {
+      final api = MemoApiClient(baseUrl: 'http://memo.test');
+      expect(api.dio.options.connectTimeout, MemoApiClient.connectTimeoutFor());
+      expect(
+        MemoApiClient.connectTimeoutFor(web: true),
+        api.dio.options.receiveTimeout,
+      );
+    });
+  });
+
   group('remote-access token persistence (BUG-L5)', () {
     test('savedRemoteToken seeds the X-Memo-Token header before any request', () {
       final client = MemoApiClient(

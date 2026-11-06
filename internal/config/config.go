@@ -131,6 +131,8 @@ type AppConfig struct {
 	TTS            TTSConfig          `yaml:"tts" json:"tts"`
 	Sync           SyncConfig         `yaml:"sync"`
 	WhatsApp       WhatsAppConfig     `yaml:"whatsapp"`
+	Mail           MailConfig         `yaml:"mail" json:"mail"`
+	Autonomy       AutonomyConfig     `yaml:"autonomy" json:"autonomy"`
 	Proactive      ProactiveConfig    `yaml:"proactive" json:"proactive"`
 	Learning       LearningConfig     `yaml:"learning" json:"learning"`
 	Calendar       CalendarConfig     `yaml:"calendar" json:"calendar"`
@@ -502,6 +504,45 @@ type WhatsAppConfig struct {
 	// Telegram side. Opt-in (default false): the safe default is asking,
 	// same reasoning as SelfChatAssistant itself.
 	AutoApprovePermissions bool `yaml:"auto_approve_permissions" json:"auto_approve_permissions"`
+}
+
+// MailConfig holds email integration and background watcher settings.
+type MailConfig struct {
+	Enabled             bool `yaml:"enabled" json:"enabled"`
+	PollIntervalSeconds int  `yaml:"poll_interval_seconds" json:"poll_interval_seconds"`
+	AutoIndexMemory     bool `yaml:"auto_index_memory" json:"auto_index_memory"`
+	MaxInitialSync      int  `yaml:"max_initial_sync" json:"max_initial_sync"`
+}
+
+// AutonomyChannelsConfig controls which communication channels feed into the
+// Digital Twin autonomous decision engine.
+type AutonomyChannelsConfig struct {
+	Mail     bool `yaml:"mail" json:"mail"`
+	WhatsApp bool `yaml:"whatsapp" json:"whatsapp"`
+	Telegram bool `yaml:"telegram" json:"telegram"`
+}
+
+// AutonomyBriefingConfig controls proactive morning briefings, pre-meeting
+// context packs, and the follow-up / promise radar.
+type AutonomyBriefingConfig struct {
+	MorningEnabled       bool   `yaml:"morning_enabled" json:"morning_enabled"`
+	MorningTime          string `yaml:"morning_time" json:"morning_time"`
+	PreMeetingMinutes    int    `yaml:"pre_meeting_minutes" json:"pre_meeting_minutes"`
+	FollowUpRadarEnabled bool   `yaml:"follow_up_radar_enabled" json:"follow_up_radar_enabled"`
+	FollowUpHours        int    `yaml:"follow_up_hours" json:"follow_up_hours"`
+}
+
+// AutonomyConfig controls the Digital Twin autonomous communication and
+// decision engine (see PLAN_mail_and_autonomous_system.md).
+type AutonomyConfig struct {
+	Enabled                     bool                   `yaml:"enabled" json:"enabled"`
+	Mode                        string                 `yaml:"mode" json:"mode"` // "full_auto" | "draft_only"
+	GracePeriodSeconds          int                    `yaml:"grace_period_seconds" json:"grace_period_seconds"`
+	AllowProjectInspection      bool                   `yaml:"allow_project_inspection" json:"allow_project_inspection"`
+	IgnoreGroupsAndCC           bool                   `yaml:"ignore_groups_and_cc" json:"ignore_groups_and_cc"`
+	MaxAutoRepliesPerContactHr  int                    `yaml:"max_auto_replies_per_contact_hour" json:"max_auto_replies_per_contact_hour"`
+	Channels                    AutonomyChannelsConfig `yaml:"channels" json:"channels"`
+	Briefing                    AutonomyBriefingConfig `yaml:"briefing" json:"briefing"`
 }
 
 // DevGatewayConfig controls the OpenAI/Anthropic-compatible local API
@@ -1022,6 +1063,32 @@ func Default() *AppConfig {
 			MaxHistoryDays:    7,
 			SelfChatAssistant: false,
 		},
+		Mail: MailConfig{
+			Enabled:             true,
+			PollIntervalSeconds: 60,
+			AutoIndexMemory:     true,
+			MaxInitialSync:      30,
+		},
+		Autonomy: AutonomyConfig{
+			Enabled:                    false,
+			Mode:                       "full_auto",
+			GracePeriodSeconds:         60,
+			AllowProjectInspection:     true,
+			IgnoreGroupsAndCC:          true,
+			MaxAutoRepliesPerContactHr: 1,
+			Channels: AutonomyChannelsConfig{
+				Mail:     true,
+				WhatsApp: true,
+				Telegram: true,
+			},
+			Briefing: AutonomyBriefingConfig{
+				MorningEnabled:       true,
+				MorningTime:          "09:00",
+				PreMeetingMinutes:    15,
+				FollowUpRadarEnabled: true,
+				FollowUpHours:        48,
+			},
+		},
 		Proactive: ProactiveConfig{
 			Enabled: true,
 			Level:   "subtle",
@@ -1488,6 +1555,38 @@ func (c *AppConfig) validate() []string {
 	if c.Calendar.ReminderLeadMinutes <= 0 {
 		c.Calendar.ReminderLeadMinutes = 30
 		fixes = append(fixes, "Calendar.ReminderLeadMinutes")
+	}
+	if c.Mail.PollIntervalSeconds <= 0 {
+		c.Mail.PollIntervalSeconds = 60
+		fixes = append(fixes, "Mail.PollIntervalSeconds")
+	}
+	if c.Mail.MaxInitialSync <= 0 {
+		c.Mail.MaxInitialSync = 30
+		fixes = append(fixes, "Mail.MaxInitialSync")
+	}
+	if c.Autonomy.Mode != "full_auto" && c.Autonomy.Mode != "draft_only" {
+		c.Autonomy.Mode = "full_auto"
+		fixes = append(fixes, "Autonomy.Mode")
+	}
+	if c.Autonomy.GracePeriodSeconds <= 0 {
+		c.Autonomy.GracePeriodSeconds = 60
+		fixes = append(fixes, "Autonomy.GracePeriodSeconds")
+	}
+	if c.Autonomy.MaxAutoRepliesPerContactHr <= 0 {
+		c.Autonomy.MaxAutoRepliesPerContactHr = 1
+		fixes = append(fixes, "Autonomy.MaxAutoRepliesPerContactHr")
+	}
+	if c.Autonomy.Briefing.MorningTime == "" {
+		c.Autonomy.Briefing.MorningTime = "09:00"
+		fixes = append(fixes, "Autonomy.Briefing.MorningTime")
+	}
+	if c.Autonomy.Briefing.PreMeetingMinutes <= 0 {
+		c.Autonomy.Briefing.PreMeetingMinutes = 15
+		fixes = append(fixes, "Autonomy.Briefing.PreMeetingMinutes")
+	}
+	if c.Autonomy.Briefing.FollowUpHours <= 0 {
+		c.Autonomy.Briefing.FollowUpHours = 48
+		fixes = append(fixes, "Autonomy.Briefing.FollowUpHours")
 	}
 
 	// Rebase process-relative "data/..." paths onto the resolved DataDir so that

@@ -1,6 +1,48 @@
+# Dijital İkiz — 2 Kasım 2026 canlı web kabulü (DT6-1/2/3 düzeltildi ve canlı doğrulandı)
+
+Gerçek hesap ve seçili gerçek modelle, `scripts/run_memo.sh` üzerinden
+`http://localhost:8090` Flutter web arayüzü kullanıldı. Test kodu yazılmadı.
+**Durum (2 Kasım gecesi):** DT6-1 ve DT6-3 `9db7bcaf`, DT6-2 `090a02d8` ile düzeltildi. DT6-2 ve DT6-3 gerçek arayüzde doğrulandı; DT6-1 testlerle ve canlı doğrulandı (UID17415, sync 1 sn'de kesildi, #14 hazırlandı, UID bitince ilerledi, kopya yok). Adım 6'nın canlı kabulü tamamlanmadı.
+DT6-2 kök neden: Dio web adaptörü, yanıt başlığı `connectTimeout` (5 sn) içinde gelmezse isteği iptal eder; IMAP inbox 3–6 sn sürüyordu. DT6-3 kök neden: iptal yalnız `state` sütununu değiştiriyordu, payload'da bayat `drafted` kalıyordu.
+Aşağıdaki bulgular ilk kayıt hâlidir.
+
+- **DT6-1 / P1 — Alınan normal mail için hazırlama kaydı oluşmadı.**
+  `MEMO ADIM6 CANLI ONAY`, UID17408: 22:26:26'da
+  `twin: record message failed: context canceled`; 22:26:32'de `mail:received`
+  geldi. Yanıt listesinde yeni aday yok, son kayıt iptal edilmiş #9; bekleyen2.
+  Aynı eşitlemede UID17409 güvenlik engeline girdi. Kod izi:
+  `handleMailSync` web isteğinin bağlamını `MailSyncNow` → `SyncOnce` yoluna
+  geçiriyor. `SyncAccountIncremental` mesajları teslim etmeden son UID'yi
+  ilerletiyor; `onIncomingMailEvent` aynı bağlamla kişi/otonomi işlemlerini
+  çağırıyor. `autonomyMail`, tercihler okunamazsa hazırlama açılmamış gibi
+  dönüyor. İptal edilmiş bağlam nedeniyle olayın kaçması bu iz ve canlı kayıtla
+  uyumlu; isteği hangi istemcinin/neden kestiği henüz belirlenmedi. Kalıcı olay
+  işleme/yeniden deneme garantisi ayrıca doğrulanmalı. Bu maili otomatik olarak
+  tekrar işlettik veya gönderildi diye saymayın.
+- **DT6-2 / P2 — Mail kutusunda tekrarlanan bağlantı hatası.** İlk giriş,
+  tam sayfa yenilemesi ve Inbox'a dönüşlerde `Mail error: Internet connection
+  issue — check your connection and try again.` görüldü. İlk Retry sonrası
+  gerçek kutu yüklendi; sonraki girişlerde hata tekrarlandı. Yanıt listesi ve
+  arka plan güvenlik olayı çalışıyordu. Kök neden henüz belirlenmedi.
+- **DT6-3 / P3 — İptal açıklaması yanlış.** Yeni #9 taslağı UI Cancel ile
+  22:22:32'de `cancelled` oldu; Refresh ve tam sayfa reload sonrası iptal
+  korundu. All activity kartı buna rağmen `Evidence or model unavailable;
+  manual review required.` açıklaması gösteriyor. Inbox özeti de Cancelled
+  altında `Reply prepared for review.` gösteriyor.
+
+**Bu koşuda geçenler:** UID17407 → gerçek yanıt modeli → doluluk yanıtı →
+Drafts → onay bekleme (#9); panelin kendiliğinden güncellenmesi; UI iptalinin
+sunucudan tekrar okuma ve sayfa yenilemesi sonrası korunması. UID17409'daki
+`MEMO ADIM6 GÜVENLİK`, `prompt_injection` ile engellendi, güvenlik sayacı1→2.
+SMTP gönderilmedi; alıcı kutusundaki yokluk/teslim ayrıca teyit edilmedi.
+Onaylı gönderim/tekrar engeli, otomatik geri al/teslim, CC/grup ve süreç restart
+kabulü yapılmadı. WhatsApp/Telegram bağlı değil; kurulmuş proje görünmüyor.
+
+---
+
 # Memo — Canlı (Kullanarak) Bug Taraması (2026-09-29)
 
-> **İstek:** kullanıcı uyurken: 2026-09-28 bulgularının (S3–S7) hepsini düzelt, sonra uygulamayı gerçekten **kullanarak** daha kapsamlı bir tarama yap; API gerekirse sahte bir sağlayıcı kur (ör. `:4959`); bulunanları da düzelt; AGENTS.md kurallarına uy; commit'leri unutma. İsteğin tam hâli: `PLAN_live_bug_scan.md`.
+> **İstek:** kullanıcı uyurken: 2026-09-28 bulgularının (S3–S7) hepsini düzelt, sonra uygulamayı gerçekten **kullanarak** daha kapsamlı bir tarama yap; API gerekirse sahte bir sağlayıcı kur (ör. `:4959`); bulunanları da düzelt; AGENTS.md kurallarına uy; commit'leri unutma. İsteğin tam hâli: `docs/plans/PLAN_live_bug_scan.md`.
 > **Yöntem:** Gerçek `memo` backend'i **izole bir veri dizininde** (`MEMO_DATA_DIR`, ayrı port 18090) çalıştırıldı ve **`cmd/fakeprovider`** (bu oturumda yazıldı, `:4959`) ile konuşturuldu. Sahte sağlayıcı OpenAI + Anthropic tel formatlarını konuşuyor, yanıtları mesajdaki direktiflerle (`[[tool …]]`, `[[error 429]]`, `[[cut]]`, `[[slow N]]`…) yönetiliyor ve gerçek API'lerin istek kurallarını (rol sırası, tool eşleşmesi, Opus 4.7+ sampling yasağı, thinking-bloğu geri gönderme) **uygulayıp** ihlalde 400 dönüyor. Backend REST (Python sürücüsü) ve **gerçek Flutter web arayüzü** (tarayıcı paneli) ile kullanıldı; çok hesaplı yetki testleri gerçek bir admin + izinsiz `user` hesabıyla yapıldı. Hiçbir gerçek sağlayıcıya istek atılmadı, kullanıcının gerçek verisine dokunulmadı.
 > **Sonuç:** 2026-09-28'in açık S3–S7'sinin hepsi + canlı kullanımda bulunan **15 bug** düzeltildi. Her biri regresyon testli ve testin eski koda karşı kırmızı yandığı doğrulandı (mekanizma yoksa derleme hatasıyla). Toplam 25 commit.
 

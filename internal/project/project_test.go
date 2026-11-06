@@ -328,3 +328,38 @@ func TestDeclinedIsRemembered(t *testing.T) {
 		t.Fatal("setting the folder up must clear the declined flag")
 	}
 }
+
+func TestRegisteredProjectsRequireCurrentIdentityAndRespectDecline(t *testing.T) {
+	g, home := fakeHome(t)
+	m := NewManager(g, filepath.Join(t.TempDir(), "projects.json"))
+	root := mkdir(t, home, "repo")
+	if _, err := m.Open(root); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Registered()) != 0 {
+		t.Fatal("pending project exposed")
+	}
+	r, err := m.Init(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := m.Registered()
+	if len(got) != 1 || got[0].ID != r.ID {
+		t.Fatal(got)
+	}
+	if err = m.SetDeclined(root, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Registered()) != 0 {
+		t.Fatal("declined project exposed")
+	}
+	if err = m.SetDeclined(root, false); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(filepath.Join(root, DirName, InfoFile)); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Registered()) != 0 {
+		t.Fatal("stale project identity exposed")
+	}
+}

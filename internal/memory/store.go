@@ -16,6 +16,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"memo/internal/autonomy"
 	"memo/internal/database"
 	"memo/internal/models"
 	"memo/internal/truncate"
@@ -591,6 +592,17 @@ func capForEmbedding(text string, maxTokens int) string {
 }
 
 func (s *Store) SaveInteraction(ctx context.Context, sc Scope, userMsg, assistantMsg string) error {
+	return s.saveInteraction(ctx, sc, userMsg, assistantMsg, "conversation")
+}
+
+// SaveMail stores an external record without conversational near-duplicate
+// suppression. Distinct mails can have identical embeddings (templates, repeated
+// invitations); their account/folder/UID identity is carried in userMsg.
+func (s *Store) SaveMail(ctx context.Context, sc Scope, userMsg string) error {
+	return s.saveInteraction(ctx, sc, userMsg, "", "mail")
+}
+
+func (s *Store) saveInteraction(ctx context.Context, sc Scope, userMsg, assistantMsg, source string) error {
 	if s.scopeUnavailable(sc) {
 		return nil
 	}
@@ -600,14 +612,14 @@ func (s *Store) SaveInteraction(ctx context.Context, sc Scope, userMsg, assistan
 	totalChunks := len(chunks)
 
 	for i, chunk := range chunks {
-		if err := s.saveChunk(ctx, projectID, chunk, assistantMsg, parentUUID, i, totalChunks); err != nil {
+		if err := s.saveChunk(ctx, projectID, chunk, assistantMsg, parentUUID, i, totalChunks, source); err != nil {
 			return fmt.Errorf("memory.SaveInteraction chunk[%d]: %w", i, err)
 		}
 	}
 	return nil
 }
 
-func (s *Store) saveChunk(ctx context.Context, projectID, userChunk, assistantMsg, parentUUID string, chunkIndex, totalChunks int) error {
+func (s *Store) saveChunk(ctx context.Context, projectID, userChunk, assistantMsg, parentUUID string, chunkIndex, totalChunks int, source string) error {
 	embedStart := time.Now()
 	embedText := userChunk
 	if assistantMsg != "" {
@@ -628,7 +640,7 @@ func (s *Store) saveChunk(ctx context.Context, projectID, userChunk, assistantMs
 	// consecutive chunks by design (chunkOverlapTokens) — treating those as
 	// duplicates of each other would silently drop pieces of a single long
 	// message instead of catching a genuinely repeated short turn.
-	if totalChunks == 1 {
+	if totalChunks == 1 && source == "conversation" {
 		if dupUUID, err := s.findDuplicateInteraction(ctx, embedding, ProjectScope(projectID)); err != nil {
 			logx.Printf("memory: duplicate check failed, saving anyway: %v", err)
 		} else if dupUUID != "" {
@@ -657,8 +669,8 @@ func (s *Store) saveChunk(ctx context.Context, projectID, userChunk, assistantMs
 			`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding,
 			                      chunk_index, parent_uuid, total_chunks,
 			                      session_id, importance, tags, source, retrieve_count)
-             VALUES (?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, '', 3, '', 'conversation', 0)`,
-			uuid, content, timestamp, userChunk, storedAssist, embedBlob, chunkIndex, parentUUID, totalChunks,
+             VALUES (?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, '', 3, '', ?, 0)`,
+			uuid, content, timestamp, userChunk, storedAssist, embedBlob, chunkIndex, parentUUID, totalChunks, source,
 		)
 		if err != nil {
 			return fmt.Errorf("insert memory: %w", err)
@@ -2044,8 +2056,10 @@ func formatMemoryAge(timestamp string) string {
 	}
 	d := time.Since(t)
 	switch {
+	case d < 0:
+		return "future timestamp"
 	case d < 24*time.Hour:
-		return "today"
+		return "less than 24 hours ago"
 	case d < 7*24*time.Hour:
 		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
 	case d < 30*24*time.Hour:
@@ -2076,6 +2090,7 @@ func FormatMemoriesForPrompt(memories []MemoryResult) string {
 	}
 	var sb strings.Builder
 	sb.WriteString("\n--- RELEVANT MEMORIES ---\n")
+	sb.WriteString("Relative days (tomorrow/yesterday/yarın/dün) refer to the source date, not today's clock. For mail use its Date/sent_at, not recorded_at (ingestion). Prefer current calendar event dates; if the source date is unknown, do not guess.\n")
 	for i, m := range memories {
 		age := formatMemoryAge(m.Timestamp)
 		imp := importanceLabel(m.Importance)
@@ -2084,10 +2099,19 @@ func FormatMemoriesForPrompt(memories []MemoryResult) string {
 			src = "conversation"
 		}
 		meta := fmt.Sprintf("relevance=%.0f%% | importance=%s | source=%s", m.Similarity*100, imp, src)
+		if stamp, err := time.Parse(time.RFC3339, m.Timestamp); err == nil {
+			meta += " | recorded_at=" + stamp.Format(time.RFC3339)
+		} else {
+			meta += " | recorded_at=unknown"
+		}
 		if age != "" {
 			meta += " | " + age
 		}
-		fmt.Fprintf(&sb, "[Memory %d | %s]\n%s\n\n", i+1, meta, m.Content)
+		content := m.Content
+		if m.Source == "mail" {
+			content = autonomy.WrapUntrustedExternalMessage("", "mail", content)
+		}
+		fmt.Fprintf(&sb, "[Memory %d | %s]\n%s\n\n", i+1, meta, content)
 	}
 	sb.WriteString("--- END MEMORIES ---\n")
 	return sb.String()
@@ -2099,6 +2123,7 @@ func FormatMemoriesUserOnly(memories []MemoryResult) string {
 	}
 	var sb strings.Builder
 	sb.WriteString("\n--- RELEVANT MEMORIES ---\n")
+	sb.WriteString("Relative days (tomorrow/yesterday/yarın/dün) refer to the source date, not today's clock. For mail use its Date/sent_at, not recorded_at (ingestion). Prefer current calendar event dates; if the source date is unknown, do not guess.\n")
 	for i, m := range memories {
 		age := formatMemoryAge(m.Timestamp)
 		imp := importanceLabel(m.Importance)
@@ -2107,6 +2132,11 @@ func FormatMemoriesUserOnly(memories []MemoryResult) string {
 			src = "conversation"
 		}
 		meta := fmt.Sprintf("relevance=%.0f%% | importance=%s | source=%s", m.Similarity*100, imp, src)
+		if stamp, err := time.Parse(time.RFC3339, m.Timestamp); err == nil {
+			meta += " | recorded_at=" + stamp.Format(time.RFC3339)
+		} else {
+			meta += " | recorded_at=unknown"
+		}
 		if age != "" {
 			meta += " | " + age
 		}
@@ -2118,6 +2148,9 @@ func FormatMemoriesUserOnly(memories []MemoryResult) string {
 		userText := m.UserMsg
 		if userText == "" {
 			userText = stripAssistantReply(m.Content)
+		}
+		if m.Source == "mail" {
+			userText = autonomy.WrapUntrustedExternalMessage("", "mail", userText)
 		}
 		fmt.Fprintf(&sb, "[Memory %d | %s]\n%s\n\n", i+1, meta, userText)
 	}
@@ -2457,6 +2490,8 @@ const (
 	dreamThreshold = 40
 )
 
+// Mail records are excluded too: merging would erase their external source
+// boundary and forward raw third-party content to a background model.
 // FindMergeCandidates returns up to limit pairs of memories whose embeddings
 // have cosine similarity ≥ 0.92. It samples the consolidateSampleSize most
 // recent non-deleted memories to keep the O(n²) scan fast.
@@ -2475,7 +2510,7 @@ func (s *Store) FindMergeCandidates(ctx context.Context, limit int) ([]MergeCand
 		FROM memories
 		WHERE embedding IS NOT NULL
 		  AND pending_deletion = 0
-		  AND source NOT IN ('merged', 'explicit')`+s.generalOnlySQL()+`
+		  AND source NOT IN ('merged', 'explicit', 'mail')`+s.generalOnlySQL()+`
 		ORDER BY timestamp DESC
 		LIMIT ?
 	`, consolidateSampleSize, limit)

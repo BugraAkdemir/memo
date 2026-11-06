@@ -1,65 +1,79 @@
 # Handoff — güncel durum
 
-> Hedef <10 KB. Ayrıntılar `handoff-archive.md`: yalnız hedefli ara. Açık işleri ve kalıcı uyarıları koru.
+> Eski ayrıntılar: `handoff-archive.md`; yalnız hedefli ara.
 
 ## Açık işler
 
+**Dijital İkiz / Mail**
+- **Günlük brifing (7 Kasım):** kod ve testler bitti, canlı kabul yok: gerçek Telegram/WhatsApp/mail teslimi, brifing modeli, sihirbaz/panel görünümü. Kullanıcı temiz veri klasörüyle gezip saati/kanalları denemeli. Ayrıntı aşağıda “Son oturum”.
+- Plan (`docs/plans/PLAN_mail_and_autonomous_system.md`) kod ve canlı doğrulama olarak bitti (Adım 9 dahil, `docs/DIGITAL_TWIN_AND_MAIL.md`; gerçek Gmail `akdemirbugra5` ↔ `akdemirbugra14` + Subscriptions). Açık olan yalnız kullanıcı kabulü: Adım 3–4 kutuları (`docs/DIGITAL_TWIN_DEVICE_ACCEPTANCE.md` A+B), WhatsApp/Telegram `#onay` ve ses (C+D); canlıda radar vade anı gözlenmedi.
+- Bilinen zayıflık: giriş incelemesi (LLM, eşik ≥0,5) doğal bir "bak ve söyle" cümlesini bir kez saldırı saydı. Ana Memo ayarlarında saat dilimi UTC (Istanbul önerilir; sihirbaz artık saat dilimi sorar, yalnız mail bağlıyken).
+- 3 Kasım gece E2E (gerçek Gmail 5↔14): Adım 1–7 canlı koşuldu, 8 gerçek hata düzeltildi (son: `e947bd67`); sonuçlar `docs/plans/PLAN_e2e_overnight.md`. Açık: WhatsApp/Telegram/ses ve `#onay` cihaz kabulü (skorlayıcı zaman aşımı 15 sn'ye çıkarıldı, `e16125d6`); ana Memo ayarları geri alındı.
+- a7324752 SMTP gönderildi/eski kayıt pending: TEKRAR GÖNDERME. Yeni akış geçmiş kontrolüyle engeller. 453da7f6 farklı gönderen pending/Drafts; SMTP yok, skor yok/onay gerekir.
+- Adım5 teknik ve gerçek IMAP/model/Drafts/eski manuel SMTP/teslim kullanıcı PASS: docs/DIGITAL_TWIN_AUTONOMY.md. Varsayılan kapalı; ayrı yanıt modeli, yerel Whisper/ffmpeg, Telegram sahip.
+- Adım6 teknik/CI PASS: docs/DIGITAL_TWIN_APPROVAL.md. Geri al/otomatik gönderim ve UI/WhatsApp/Telegram sahip onayı bağlı; eski adaylar açılmaz. Gerçek kanal/native/ses kabulü açık; cihaz test yönergesi aynı dokümanda. İptal uzak Drafts/takvimi silmez; belirsiz gönderim tekrarlanmaz.
+- Adım4 kişi/üslup/Git/doluluk ve Adım3 görünüm/charset/sayaç/göreli tarih cihaz kabulü açık: docs/DIGITAL_TWIN_CONTACTS.md + docs/MAIL_SECURITY.md. İsim eşleme/backfill yok; saldırı engeli kullanıcı PASS, izin aynı. Sonraki adım kullanıcı geri bildirimiyle.
+
 **Performans benchmark — kullanıcı duraklattı (29 Ekim)**
-- Devam noktası: `docs/PERFORMANCE_BENCHMARK_CHECKPOINT.md` ve `data/performance-benchmark/PAUSED.json`. Düzeltilmiş son koşuda yalnız aşama1 kayıtlı; data aşama2. Kalibrasyon/resume ve aşama2–3/rapor/doğrulama açık. Mevcut runner baştan siler; körlemesine çalıştırma.
+- docs/PERFORMANCE_BENCHMARK_CHECKPOINT.md + data/performance-benchmark/PAUSED.json: son koşuda yalnız aşama1 kayıtlı, data aşama2. Kalibrasyon/resume/aşama2–3/rapor/doğrulama açık. Runner baştan siler; körlemesine çalıştırma.
 
 **Telemetri / resmî sürüm öncesi (`docs/TELEMETRY.md`, `PLAN_telemetry.md`)**
-- 2026-10-27 sözleşmesi: resmî derlemede günlük paylaşım yeni kurulum/güncellemede sorusuz varsayılan açık; sihirbaz/Ayarlar › Gizlilik kapatır, kayıtlı hayır ezilmez. Kaynak derleme kapalı. Ayrıca veri klasörü başına kimliksiz `/v1/install` günlük paylaşım kapalıyken de gider; kaynak derleme ve `MEMO_TELEMETRY=off` engeller. İlk varsayılan günü raporlanmaz.
+- 27 Ekim: resmî derlemede günlük paylaşım sorusuz açık; sihirbaz/Gizlilik kapatır, kayıtlı hayır korunur. Kaynak kapalı. Veri klasörü başına kimliksiz `/v1/install`, paylaşım kapalıyken de gider; kaynak ve MEMO_TELEMETRY=off engeller. Varsayılanın ilk günü raporlanmaz.
 - **Sunucu dağıtımı doğrulanmadı:** `~/Documents/admin.memocpp.com`: `db/migrations/001_installs.sql` → `tel/` Pages → `admin/` Pages. Handoff'taki son duruma göre dağıtılmamıştı; `/v1/install` 404 yeniden denenir. Resmî sürümden önce doğrula. 30 sahte demo cihaz 27 Ekim'de silindi.
 - Kullanıcıda: Cloudflare belirtecini sil; DB/panel parolalarını değiştir; `.env.local` DB_PASSWORD/belirteç satırlarını temizle.
 - Eksik bağlantılar: Whisper başlatma/çıkış; Dart/motor çökmesi; offered/downloaded güncelleme; needs_newer_app/not_for_this_machine nedenleri; yerel paketleme betiklerinin official damgası; site gizlilik sayfası; v5.0.0 notları. Eski “telemetri yok” sürümünden varsayılan açık geçiş yayın notunda açık yazılmalı.
-- Gerçekte doğrulanmadı: tel.memocpp.com gönderimi, sihirbazın native görünümü, Windows/macOS davranışı, gerçek tag ile official damgası, gerçek ertesi gün geçişi. İzole gerçek ikili + sahte sunucuda kurulum/günlük sayaç/preview akışı doğrulandı (27 Ekim).
+- Canlı tel gönderimi, native sihirbaz, Windows/macOS, tag official damgası, ertesi gün geçişi denenmedi. İzole ikili+sahte sunucuda kurulum/sayaç/preview PASS (27 Ekim).
 
 **Yerel hız / motorlar (26 Ekim, AGENTS.md “Local-model speed”)**
 - `libggml-vulkan.so` yalnız yerel linux/cpu; R2 ve `~/.memo` güncellenmedi. Yayın: vendor_llama + rclone + publish_component; `--requires-app` yeni kodlu sürüm olmalı (eskide CPU tercihi/Whisper sessiz GPU'ya geçebilir).
-- Ölçülmedi: ayrık Vulkan tam offload, MoE `--n-cpu-moe`, gerçek araç üreten model+speklasyon, CUDA/ROCm spekülasyon, gerçek Whisper konuşması (`--no-gpu` kalır), Windows/macOS probe.
+- Ölçülmedi: ayrık Vulkan offload, MoE --n-cpu-moe, araç üreten model+speklasyon, CUDA/ROCm spekülasyon, gerçek Whisper konuşması (--no-gpu kalır), Windows/macOS probe.
 - Linux llama b11669 (nvidia b9441), cpu whisper 1.9.5. Whisper llama ggml arka uçlarını da yükler: yükseltmede tekrar dene. Statik Whisper eski CPU'da AVX2/FMA/F16C riski ölçülmedi; AMD ROCm 10 klasörü ~1,2 GB gerçek GPU'da denenmedi.
 
-**Alt ajan (`PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`)**
+**Alt ajan (`docs/plans/PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`)**
 - Web UI canlı kısa test PASS; uzun iş/native ölçülmedi. Gerçek Antigravity/Waydroid hız/kalite ve bildirilen 300 dk geçmişi yok (`docs/TASKLOOP_PERFORMANCE_REVIEW.md`).
-- Otomatik ana incelemede sidebar spinner var, bestecide Durdur yok; canlı kesinti/sonraki sonuç testi tamamlanamadı. Kesilmiş inceleme sonraki sonuçları tutmaz; Resume main review gerekir, ana ajanın resume aracı yok. Çocuk kayıt hatası context canceled olabilir.
+- Ana incelemede sidebar spinner var, Durdur yok; kesinti/sonraki sonuç testi eksik. Kesilmiş inceleme sonraki sonuçları tutmaz; Resume main review gerekir, ana ajanda resume yok. Çocuk kayıt hatası context canceled olabilir.
 
 **Proje / sohbet / skill**
-- `PLAN_project_folders.md` P0–P5 tamam; hafıza Code Mode'dan bağımsız, hafıza anahtarlarına bağlı. Açık: Flutter `/` yalnız global skill, proje skill backend `/ad` ile çalışır; proje izin arayüzü yok; provider_policy yalnız ayrılmış alan. Skill tasarımı kapsamı belirlenmedi.
+- `docs/plans/PLAN_project_folders.md` P0–P5 tamam; hafıza Code Mode'dan bağımsız, hafıza anahtarlarına bağlı. Açık: Flutter `/` yalnız global skill, proje skill backend `/ad` ile çalışır; proje izin arayüzü yok; provider_policy yalnız ayrılmış alan. Skill tasarımı kapsamı belirlenmedi.
 - Denenmedi: GitHub skill zip/kurulum onayı, modelin `.memo/AGENTS.md` ve izinlere uyması, kullanıcı DB göçü, Windows/macOS Guard. `data/backups/memory-pre-project-id-*` yerel kalır, otomatik silinmez.
 - Live Mode ev köklü arka planı normal sohbet; diğer ev köklü ajan hafıza almaz. Code Mode kapalı projede takvim/WhatsApp açık, kişisel hafıza/kimlik izole.
-- Birleşik sohbet listesi: webde ajan/klasör/ilk mesaj denendi; native/öneri/animasyon ölçülmedi, geçiş anlık. Eski ajan IndexedStack indeksi boş; ajan ProjectPath ile işaretli. Başlık ilk kelimelerden; LLM başlığı kullanıcı kararı ister. WelcomeView yalnız CLI. CLI'ye özel `/` popup değişmedi.
-- Skill `/` menüsü (cümle ortası/imleç/IME), stop sonrası görünüm ve modelin use_skill seçimi canlı doğrulanmadı. “gerekli skilleri kullan” model çağırmadan kelime eşleşmesiyle en çok 3 seçer. Ekli dosya/resimde skill tespiti yok; prompt'tan düşen skill için “kullanılıyor” kalabilir; hata/timeout kayıtlı skill_used kaybolabilir; stop sunucu işareti Türkçe. Masaüstünde aç/kapa arayüzü yok; /skill:on|off|add|remove ve REPL /skill durur.
+- Birleşik liste: web ajan/klasör/ilk mesaj denendi; native/öneri/animasyon ölçülmedi. IndexedStack eski ajan indeksi boş, ProjectPath ajan işareti. Başlık ilk kelimeler; LLM başlığı kullanıcı kararı ister. WelcomeView CLI; CLI `/` değişmedi.
+- Skill: `/` cümle ortası/imleç/IME, stop görünümü, use_skill canlı denenmedi. Adsız istek kelime eşleştirerek ≤3 seçer, model çağırmaz. Dosya/resim skill tespiti yok; prompt'tan düşen “kullanılıyor” kalabilir; hata/timeout skill_used kaybolabilir; stop Türkçe. Masaüstü toggle yok; /skill:on|off|add|remove ve REPL /skill var.
 
-**Akış / REPL (`PLAN_agent_streaming.md`, `PLAN_cli_coding.md`)**
+**Akış / REPL (`docs/plans/PLAN_agent_streaming.md`, `docs/plans/PLAN_cli_coding.md`)**
 - Gerçek sağlayıcı araç döngüsü, modelle REPL/skill, Windows/macOS terminali, Flutter timeline ve Claude Code/opencode kalite/maliyet ölçülmedi. Gemini thoughtSignature yok; CLI skill satırı seçimi denenmedi.
 - REPL hep kodlama; /agent yok; global memo agent on|off|auto var. -chat düz sohbet açabilir; /session proje sohbetleri.
 - Subscriptions/Gemini canlı streamed=true, cached_tok=0 (önce %85): raporlama mı maliyet mi bilinmiyor. Araç yanında anlatım/düşünce gelmedi, boş adım nudge etkisi açık. İstenen gemini-3.8-flash-high yerine flash-n sunuldu; neden bilinmiyor.
 
 **Güncelleme / saha**
-- 4.7.0 yayında (`PLAN_auto_update.md`, `docs/AUTO_UPDATE.md`). Gerçek Windows Setup.exe/ShellExecute, macOS, GPU/model motor sonrası restart ve Flutter penceresi denenmedi; macOS betik kurulumunda başlatıcı yok. Windows/macOS ENGINES işareti kanıtsız: eklenmeden güncelleme almaz.
+- 4.7.0 yayında (`docs/plans/PLAN_auto_update.md`, `docs/AUTO_UPDATE.md`). Gerçek Windows Setup.exe/ShellExecute, macOS, GPU/model motor sonrası restart ve Flutter penceresi denenmedi; macOS betik kurulumunda başlatıcı yok. Windows/macOS ENGINES işareti kanıtsız: eklenmeden güncelleme almaz.
 - issue #42–47 açık; indirme bitince kendiliğinden kapanır (yeniden başlat onayı yok); Docker daemon son denemede kapalıydı. İmza: `~/.config/memo-release/update-signing.key`, Actions MEMO_UPDATE_SIGNING_KEY; anahtar geçişi eski imzalı sürüm ister.
-- `PLAN_v4_6_completion.md`: canlı cihaz/OAuth/kota/model kalitesi testlerle kanıtlanmaz. Mobil gerçek cihaz/emülatör, MemoRoot sonrası provider yenileme, Android/iOS düz HTTP açık. Auto Route kalite/kota/GGUF soğuk yükleme, karar/doğrulama modeli kalite/hız/maliyet, sihirbaz ve abonelik giriş penceresi açık.
+- docs/plans/PLAN_v4_6_completion.md: cihaz/OAuth/kota/model kalitesi kanıtsız. Mobil cihaz/emülatör, MemoRoot provider yenileme, Android/iOS HTTP; Auto Route kalite/kota/GGUF soğuk yükleme, karar/doğrulama kalite/hız/maliyet, sihirbaz/abonelik giriş penceresi açık.
 - Web sohbet Beta yalnız signed-out/fake site; signed-in ChatGPT/Claude denenmedi. Uzak giriş token değişimi, HTTP clipboard fallback, Telegram/WhatsApp, görsel üretimi ve Flutter görsel/kota kartları canlı denenmedi. Antigravity flash-image hesapta 500; WhatsApp fake taşıması yok.
-- Windows/macOS/arm64 sidecar yalnız CI build. Claude login/quota kartı yok. Codex yalnız 30d bildirdi; 5s/7g penceresi denenmedi.
+- Windows/macOS/arm64 sidecar yalnız CI build; Claude login/quota yok. Codex yalnız30d; 5s/7g denenmedi.
 
-**Bilinen küçük noktalar / test ortamı**
-- Pi embedding yeni build/reboot denenmedi; eski embedding_auto_start:false ezilmez, elle açmak tercihi kaydeder. Eski origin token döndürme kullanıcıda; satılmış alan adındaki eski REPL indirmeleri kaldırılıp sürüm duyurulmalı.
+**Küçük noktalar / test ortamı**
+- Pi embedding build/reboot denenmedi; eski embedding_auto_start:false ezilmez, elle açmak tercihi kaydeder. Eski origin token döndürme kullanıcıda; satılmış alan adındaki eski REPL indirmeleri kaldırılıp sürüm duyurulmalı.
 - Yapıştırma kutusu Done'a dek açık; login.go s.tail erken okuma ölçülmedi. Minimal Mod auto-compact atlar; görsel modeli etiketsiz; ikinci model menüsü ortak listeyi kullanır.
 - MEMO_DATA_DIR testlerinde config.ResetForTests eksikleri dosya sızdırabilir. ngrok.TestFetchURL_NoServer yerel API yüzünden düşebilir, tünele dokunma. Yoğun derlemede wav_player stop testi 2s timeout görmüştü.
 - Açık kararsız testler: Tailscale RebindsFromLoopback eski8/150 yeni2/150; livemode SendAudioRoutesToCurrentInner; BootstrapTokenAuth temp temizliği; DuckDuckGo captcha; webchat PressingItAgainReplacesAWaitingAttempt. Yerel yük testi çalıştırma; kullanıcı sistemi dondurduğunu bildirdi. Yeşile dek koşma. TamperedDownloadChangesNothing 29 Ekim'de düzeltildi: eski36/150, yeni0/150.
 
 ## Kalıcı uyarılar
-- Kullanıcı talebi: yerel CPU dolduran busy loop/stres testi başlatma. Önceki döngüler sonlandırıldı. Ağır doğrulamayı uzak CI üzerinde yap.
+- Alt ajan çalıştırma; açık talep olmadan PR açma. Backend+frontend birlikte doğrulanır; kullanıcı gerçek senaryo testiyle geri bildirim verir. Sonraki adıma kendiliğinden geçme.
+- Yerel CPU dolduran busy loop/stres testi yasak; eski döngüler kapalı. Ağır doğrulama uzak CI’da.
 - `~/.config/Memo/image.key` olmadan yalnız data kopyası görselleri açamaz; taşınabilir/şifreli bulut yedeği anahtarı taşımadan aktarır, eski yedek kurtarabilir. Eski sürüm mühürlü görseli bozuk görür.
 - Kota sonrası otomatik devam yalnız Memo açıkken; CLI ajan/WhatsApp/Self-Driving kapsam dışı. Görsel niyeti anahtar sözcüklü: yanlış tetikte negatif test; `/image` zorlar.
 - Sidecar soğuk liste ~30s; kapasite/effort tam model id'sinden, offline son snapshot; bilinmeyen tahmin edilmez (`docs/SUBSCRIPTION_CAPABILITIES.md`).
 - Beta kapısı open_app + yedi browser_* araç/panel/session API'yi gizler; kapanınca oturum biter. fetch_page fallback/Chromium kurulumu kapısız. Native görünüm denenmedi; PROJECT_MAP/UI_FEATURES/ROADMAP EN/TR ve Obsidian eski satırları açık.
 - Mobil memo.apk/ipa (tag), memo-beta.apk/ipa (main); eski memo-android*/memo-ios* R2 adları güncellenmez. Masaüstü memo.AppImage/memo_beta.AppImage; memo.tar.gz/memo_beta.tar.gz; memo-mac.zip/memo-mac_beta.zip; memo.exe/memo-beta.exe; memo_arm.zip/memo_arm_beta.zip.
+- Linux Flutter derlemesi `tray_manager` yüzünden `ayatana-appindicator3-0.1` ya da `appindicator3-0.1` ister. Bu paket değişince (kurulum/kaldırma) `frontend/build/linux` CMake önbelleği bayatlar ve derleme “Imported target PkgConfig::APPINDICATOR includes non-existent path” ile düşer: `frontend/build/linux` silinip yeniden derlenir.
 - Go sürümü go.mod + 7 workflow GO_VERSION birlikte; Docker golang:1.26-bookworm kayandır. v* tag push her seferinde açık kullanıcı talebi ister.
 
 ---
 
-# Son oturum — 2026-10-30 — Dallar birleştirildi, ECC denetimi yapıldı ve 3 kod hatası düzeltildi
-- `codex/performance-longevity` (`e40695a8`) fast-forward ile `main`'e birleştirilip push edildi; merge edilmiş eski dallar (`codex/performance-longevity`, yerel/uzak `archive/feat/telemetry-client` `fb345a78`, `worktree-agent-aba4e15e39498ad15` `3219c80e` + worktree) silindi.
-- ECC denetiminde tespit edilen 3 kod hatası sırayla düzeltilip `main`'e push edildi: (1) `a48b308e`: `isReadOnlyCommand` kabuk zincirleme/yönlendirme/komut ikamesi ve `find -delete/-exec`, `git --output`, `go test -exec/-toolexec` bayraklarını engeller; (2) `701ee8aa`: `cliproxy.Manager.Start` içinde `waitHealthy` başarısız olduğunda `Stop()` çağrılır, `monitor()` yalnız sağlıklı başlangıçtan sonra başlatılır ve `Stop()` `monitor` çıkışını bekler (data race kapatıldı); (3) Minimal Mod açıkken `<memo-subagent-status>` bloğu kullanıcı mesajına eklenmez.
-- Doğrulama: `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race` (55/55 paket PASS), `python3 -m unittest` (`scripts/performance`, 2/2 PASS), `flutter analyze lib/` (yalnız mevcut 3 info, 0 warning/error), `flutter test` (848/848 PASS). Kullanıcının AGENTS/.claude-flow ve `data/telemetry_state.json` yerel değişiklikleri korundu.
+# Son oturum — 7 Kasım — Günlük brifing ayarları (kanal, içerik, model, sihirbaz)
+- `feat/digital-twin-mail`, **6 yerel commit, push edilmedi** (`93410785`…`a6eb64cc`). Plan: `docs/plans/PLAN_briefing_delivery.md` (B1–B3, F1–F2, D hepsi işaretli). Ayrıntı: `docs/DIGITAL_TWIN_AND_MAIL.md` son bölüm, `docs/SETUP_WIZARD.md`.
+- Yapılan: brifing ayarları `twin_preferences.briefing` altında genişledi (bölümler, en çok 5 özel öğe, kanallar, posta hesabı, ayrı brifing modeli); sabah brifingi Telegram/WhatsApp/mail'e kendi hesabınıza gider (`briefing_deliveries` tablosu, önce sahiplen, belirsiz gönderim tekrarlanmaz, DLP önce); sihirbazda Kanallar'dan sonra yeni isteğe bağlı adım + Ayarlar'daki panelde aynı düzenleyici.
+- Doğrulandı: Go `twin/autonomy/e2e` + `app` ilgili testleri `-race` yeşil, Flutter 1008/1008, analyze yalnız bilinen 3 info, L10n literal taraması temiz. **Doğrulanmadı:** gerçek Telegram/WhatsApp/mail teslimi (WhatsApp "kendine mesaj" dahil), gerçek sağlayıcıyla model kompozisyonu, sihirbaz/panelin görsel kabulü, tam `go test ./...` (CI'a bırakıldı).
+- `config.yaml` `autonomy.briefing.*` hâlâ ölü yapılandırma (kaldırılmadı, istenmedi). Toplantı notları dışarı gitmez (yalnız sabah brifingi). Kanal ayarları değişince o günün 6 saat içindeki kartı yeni kanala da gider.
+

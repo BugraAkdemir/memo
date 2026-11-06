@@ -109,18 +109,16 @@ func TestModelContextWindow(t *testing.T) {
 		t.Errorf("mismatched model: got %d, want 200000 (any-window fallback)", got)
 	}
 
-	typeFallback := provider.NewRouter([]provider.ProviderConfig{
-		{Type: provider.ProviderClaude, Name: "c", Model: "claude-y", Enabled: true, APIKey: "k"},
-	})
-	if got := modelContextWindow(typeFallback, "claude-y"); got != 200*1024 {
-		t.Errorf("claude type fallback: got %d, want 200K", got)
-	}
-
-	geminiFallback := provider.NewRouter([]provider.ProviderConfig{
-		{Type: provider.ProviderGemini, Name: "g", Model: "gem", Enabled: true, APIKey: "k"},
-	})
-	if got := modelContextWindow(geminiFallback, "gem"); got != 1024*1024 {
-		t.Errorf("gemini type fallback: got %d, want 1M", got)
+	// The provider type says nothing about a window (Claude is not "200K", Gemini
+	// is not "1M"): with nothing published the pipeline budgets against its own
+	// safety margin. Unreachable base URLs keep the test off the network.
+	for _, typ := range []provider.ProviderType{provider.ProviderClaude, provider.ProviderGemini} {
+		unpublished := provider.NewRouter([]provider.ProviderConfig{
+			{Type: typ, Name: "p", Model: "m", Enabled: true, APIKey: "k", BaseURL: "http://127.0.0.1:1/v1"},
+		})
+		if got := modelContextWindow(unpublished, "m"); got != 128*1024 {
+			t.Errorf("%s with nothing published: got %d, want the 128K safety budget", typ, got)
+		}
 	}
 }
 

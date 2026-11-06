@@ -70,7 +70,7 @@ func (a *App) initWhatsApp() {
 	a.waClient.SetStore(msgStore)
 
 	// Wire up WhatsApp client for agent tools (package-level global)
-	tools.WhatsAppClient = waToolAdapter{a.waClient}
+	tools.WhatsAppClient = waToolAdapter{a.waClient, a}
 
 	go func() {
 		defer recoverPanic("waClient.Start")
@@ -112,7 +112,31 @@ func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
 			if !ok {
 				return
 			}
+			if msg.Audio != nil {
+				if !a.autonomyVoiceEnabled(ctx) || time.Since(msg.Timestamp) > 6*time.Hour {
+					continue
+				}
+				data, err := a.waClient.DownloadAudio(ctx, msg)
+				if err != nil {
+					a.emitEvent("autonomy:voice_failed", "")
+					continue
+				}
+				text, err := a.transcribeExternalVoice(ctx, data)
+				if err != nil {
+					a.emitEvent("autonomy:voice_failed", "")
+					continue
+				}
+				msg.Text = text
+			}
+			if a.routeWhatsAppApproval(ctx, msg, true) {
+				continue
+			}
+			a.recordTwinWhatsApp(ctx, a.waClient, msg)
+			a.autonomyWhatsApp(ctx, msg)
 			if a.routeWhatsAppPermissionAnswer(msg) {
+				continue
+			}
+			if a.routeWhatsAppApproval(ctx, msg, false) {
 				continue
 			}
 			// Recovered per-message: a panic while recording one WhatsApp
@@ -121,7 +145,7 @@ func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
 			// silently stop reaching the observer/intent pipeline.
 			// A picture with no caption has no text for the observer or intent
 			// extraction to look at; it still reaches the self-chat reply below.
-			if strings.TrimSpace(msg.Text) != "" {
+			if strings.TrimSpace(msg.Text) != "" && !a.autonomyWhatsAppEnabled(ctx, msg) {
 				func() {
 					defer recoverPanic("runWhatsAppIntentLoop/RecordWhatsAppMessage")
 					// Record in observer regardless of intent.
@@ -702,7 +726,11 @@ func (a *App) WhatsAppSend(ctx context.Context, jid, text string) (string, error
 	if a.waClient == nil {
 		return "", fmt.Errorf("WhatsApp not initialized")
 	}
-	return a.waClient.SendMessage(ctx, jid, text)
+	id, err := a.waClient.SendMessage(ctx, jid, text)
+	if err == nil {
+		a.recordTwinWhatsApp(ctx, a.waClient, whatsapp.Message{ID: id, ChatJID: jid, Text: text, FromMe: true, Timestamp: time.Now()})
+	}
+	return id, err
 }
 
 // GetWhatsAppChatMode returns whether WhatsApp chat mode is active.
@@ -1031,10 +1059,14 @@ func (a *App) WhatsAppStats() (total, last24h int, err error) {
 
 // waToolAdapter wraps *whatsapp.Client to satisfy tools.WhatsAppClient.
 type waToolAdapter struct {
-	c *whatsapp.Client
+	c   *whatsapp.Client
+	app *App
 }
 
 func (a waToolAdapter) SendMessage(ctx context.Context, jid, text string) (string, error) {
+	if a.app != nil {
+		return a.app.WhatsAppSend(ctx, jid, text)
+	}
 	return a.c.SendMessage(ctx, jid, text)
 }
 

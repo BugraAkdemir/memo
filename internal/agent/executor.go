@@ -282,10 +282,15 @@ func (e *Executor) getRouter() *provider.Router {
 	return e.providerRouter
 }
 
-// modelContextWindow resolves modelName's context-window size (in tokens)
-// from the router's active provider configs, falling back to a conservative
-// per-type default and finally 128K. Mirrors app.contextBudgetFor but lives
-// here so the agent pipeline's intra-turn budget can track the real model
+// modelContextWindow resolves modelName's context-window size (in tokens) for
+// the agent pipeline's intra-turn budget: the user's per-provider ContextTokens,
+// else whatever the vendor (or the models.dev catalogue) published for that
+// model on the provider this router would actually use
+// (provider.CachedContextWindow — memory only, a lookup runs in the
+// background), else 128K as an internal safety budget. Only the selected
+// provider is ever asked: probing the others would send requests (and
+// credentials) to endpoints the user did not choose. It mirrors
+// app.contextBudgetFor but lives here so the pipeline tracks the real model
 // instead of a flat constant.
 func modelContextWindow(router *provider.Router, modelName string) int {
 	if router != nil {
@@ -300,28 +305,9 @@ func modelContextWindow(router *provider.Router, modelName string) int {
 				return p.ContextTokens
 			}
 		}
-		for _, p := range active {
-			switch p.Type {
-			case provider.ProviderGemini:
-				return 1024 * 1024
-			case provider.ProviderClaude, provider.ProviderCustomAnthropic:
-				return 200 * 1024
-			case provider.ProviderCustom:
-				if p.Name == "Subscriptions" {
-					if w := provider.SubscriptionContextWindow(p, modelName); w > 0 {
-						return w
-					}
-					return 128 * 1024
-				}
-				// An OpenAI-compatible gateway can front any family, so the
-				// type says nothing; the model id does (Claude 200K, Gemini 1M).
-				name := modelName
-				if name == "" {
-					name = p.Model
-				}
-				if w := provider.ContextWindowForModel(name); w > 0 {
-					return w
-				}
+		if p, ok := router.SelectedConfig(); ok {
+			if w, _ := provider.CachedContextWindow(p, modelName); w > 0 {
+				return w
 			}
 		}
 	}
@@ -409,7 +395,7 @@ func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Rou
 		maxTokens = seedPlus
 	}
 
-	pipeline := NewPipelineWithBudget(e.registry, e.permissions, sessionSandbox, router, e.backup, maxTokens)
+	pipeline := NewPipelineWithBudget(e.registry.scoped(ctx), e.permissions, sessionSandbox, router, e.backup, maxTokens)
 	if mi, mc := e.getLoopBounds(); mi > 0 || mc > 0 {
 		if mi > 0 {
 			pipeline.maxIters = mi

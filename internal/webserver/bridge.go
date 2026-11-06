@@ -11,6 +11,7 @@ import (
 	"memo/internal/config"
 	"memo/internal/livemode"
 	"memo/internal/llama"
+	"memo/internal/mail"
 	"memo/internal/memory"
 	"memo/internal/models"
 	"memo/internal/modelstore"
@@ -480,4 +481,28 @@ type FullBridge interface {
 	LeaveSwarm() error
 	JoinSwarmStatus() interface{}
 	SwarmStatusSnapshot() interface{}
+
+	// Mail subsystem (internal/app/mail.go)
+	MailBridge
+}
+
+// MailBridge defines the subset of App methods required by /api/mail/* handlers.
+type MailBridge interface {
+	MailListAccounts() []mail.Account
+	MailRemoveAccount(accountID string) error
+	MailAutodiscover(ctx context.Context, emailAddr string) mail.ServerConfig
+	MailStartOAuth(ctx context.Context, provider, emailAddr string) (mail.OAuthSession, error)
+	MailGetOAuthStatus(state string) (mail.OAuthSession, bool)
+	MailCompleteManualOAuth(ctx context.Context, state, callbackURL, emailAddr string) (*mail.Account, error)
+	MailConnectPassword(ctx context.Context, emailAddr, password, displayName, imapHost string, imapPort int, smtpHost string, smtpPort int) (*mail.Account, error)
+	MailFetchInbox(ctx context.Context, accountID string, limit int) (int, []mail.MessageSummary, error)
+	MailFetchMessage(ctx context.Context, accountID string, seqNum uint32) (*mail.MessageDetail, error)
+	MailFetchAttachment(ctx context.Context, accountID string, seqNum uint32, partOrName string) (*mail.AttachmentInfo, error)
+	MailSearch(ctx context.Context, accountID, query string, limit int) ([]mail.MessageSummary, error)
+	MailSend(ctx context.Context, req mail.SendRequest) error
+	MailSaveDraft(ctx context.Context, req mail.SendRequest) (string, error)
+	MailSyncNow(ctx context.Context) error
+	MailGetWatcherStats() mail.WatcherStats
+	GetMailConfig() config.MailConfig
+	UpdateMailConfig(cfg config.MailConfig) error
 }

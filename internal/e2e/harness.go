@@ -52,9 +52,13 @@ type Harness struct {
 // exercising those other subsystems, which would need their own real
 // dependencies (a real embedding model, a real WhatsApp pairing, etc.) to
 // test honestly rather than being incidentally half-started here.
-func NewHarness(t *testing.T) *Harness {
+func NewHarness(t *testing.T) *Harness { return newHarness(t, nil) }
+
+// setup prepares isolated subsystem fixtures before the real app starts.
+func newHarness(t *testing.T, setup func(*config.AppConfig)) *Harness {
 	t.Helper()
 	t.Setenv("MEMO_DATA_DIR", t.TempDir())
+	t.Setenv("MEMO_CATALOG_PRELOAD", "off") // tests write their own models.dev snapshot and stay offline
 	// The config package caches the resolved data dir, the loaded config and
 	// the path Save() writes to, all process-wide, so setting the env var is
 	// not by itself enough to isolate a test: without these resets every
@@ -80,6 +84,9 @@ func NewHarness(t *testing.T) *Harness {
 	cfg.WhatsApp.Enabled = false
 	cfg.Proactive.Enabled = false
 	cfg.Memory.DreamEnabled = false
+	if setup != nil {
+		setup(cfg)
+	}
 	if err := config.Save(cfg); err != nil {
 		t.Fatalf("write initial e2e config: %v", err)
 	}

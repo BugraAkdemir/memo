@@ -58,6 +58,7 @@ type Message struct {
 	// Image is set when the message carries a picture (a photo, or a file sent as
 	// an image document). Fetch its bytes with Client.DownloadFile.
 	Image *Media
+	Voice *Media
 }
 
 // Media points at a file held by Telegram.
@@ -304,7 +305,8 @@ func (c *Client) pollLoop() {
 				text = u.Message.Caption
 			}
 			image := imageOf(u.Message)
-			if strings.TrimSpace(text) == "" && image == nil {
+			voice := voiceOf(u.Message)
+			if strings.TrimSpace(text) == "" && image == nil && voice == nil {
 				continue
 			}
 			msg := Message{
@@ -316,6 +318,7 @@ func (c *Client) pollLoop() {
 				Text:      text,
 				Timestamp: time.Unix(u.Message.Date, 0),
 				Image:     image,
+				Voice:     voice,
 			}
 			select {
 			case c.msgCh <- msg:
@@ -644,6 +647,8 @@ type tgMessage struct {
 	Caption   string        `json:"caption"`
 	Photo     []tgPhotoSize `json:"photo"`
 	Document  *tgDocument   `json:"document"`
+	Voice     *tgDocument   `json:"voice"`
+	Audio     *tgDocument   `json:"audio"`
 }
 
 type tgPhotoSize struct {
@@ -663,6 +668,17 @@ type tgDocument struct {
 // imageOf returns the picture a message carries, if any: the largest size of a
 // photo, or a document whose type says it is an image (a picture sent "as a
 // file" to keep it uncompressed).
+func voiceOf(m *tgMessage) *Media {
+	v := m.Voice
+	if v == nil {
+		v = m.Audio
+	}
+	if v == nil {
+		return nil
+	}
+	return &Media{FileID: v.FileID, MimeType: v.MimeType, Size: v.FileSize}
+}
+
 func imageOf(m *tgMessage) *Media {
 	if len(m.Photo) > 0 {
 		best := m.Photo[0]

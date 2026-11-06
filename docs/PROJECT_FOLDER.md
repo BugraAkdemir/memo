@@ -2,7 +2,7 @@
 
 When you open a folder as a project (an agent chat), Memo can keep its own small
 folder in it: working rules, notes, project skills — and give that project a
-memory of its own. Design record: `PLAN_project_folders.md`.
+memory of its own. Design record: `docs/plans/PLAN_project_folders.md`.
 
 ## What the person sees
 

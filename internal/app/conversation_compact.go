@@ -148,7 +148,7 @@ func (a *App) summarizeHistorySlice(ctx context.Context, msgs []api.Message) str
 		fmt.Fprintf(&b, "%s: %s\n", role, m.GetTextContent())
 	}
 	req := []api.Message{
-		api.NewTextMessage("system", "Condense this earlier stretch of a conversation into a compact briefing for continuing it. Keep concrete facts, decisions, open questions, file/name/number details, and anything the user asked for that isn't done yet. Drop pleasantries and repetition. Write terse bullet points, no preamble."),
+		api.NewTextMessage("system", "Condense this earlier stretch of a conversation into a compact briefing for continuing it. Keep concrete facts, decisions, open questions, file/name/number details, and anything the user asked for that isn't done yet. Preserve source dates. Resolve relative days only against those dates; otherwise mark them unknown. Drop pleasantries and repetition. Write terse bullet points, no preamble."),
 		api.NewTextMessage("user", b.String()),
 	}
 	raw := a.callLLMForReviewWith(ctx, req, categoryCompaction, nil)

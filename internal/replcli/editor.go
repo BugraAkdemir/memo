@@ -31,6 +31,8 @@ func slashCommands() []commandSpec {
 		{"/clear", t("cmd_clear_hint")},
 		{"/session", t("cmd_session_hint")},
 		{"/tasklist", t("cmd_tasklist_hint")},
+		{"/mail", t("cmd_mail_hint")},
+		{"/twin", t("cmd_twin_hint")},
 		{"/remote", t("cmd_remote_hint")},
 		{"/update", t("cmd_update_hint")},
 		{"/theme", t("cmd_theme_hint")},

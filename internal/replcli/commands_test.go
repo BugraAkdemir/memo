@@ -842,3 +842,122 @@ func TestGuiSearchDirs_RootDoesNotRepeat(t *testing.T) {
 		t.Errorf("guiSearchDirs(%q) = %v, want [\"/\"]", "/memo", got)
 	}
 }
+
+func TestHandleCommand_MailAndTwin(tt *testing.T) {
+	var approvedID string
+	var savedMode string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/mail/accounts", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"accounts": []map[string]any{
+				{"id": "acct-1", "email": "owner@example.com"},
+			},
+		})
+	})
+	mux.HandleFunc("/api/mail/stats", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"total_evaluated": 5, "dropped_marketing": 1, "indexed_in_rag": 2, "security_blocked": 0})
+	})
+	mux.HandleFunc("/api/mail/inbox", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"total": 1,
+			"messages": []map[string]any{
+				{"seq_num": 12, "subject": "Proje Raporu", "from": "ali@example.com", "date": "2026-11-03", "seen": false},
+			},
+		})
+	})
+	mux.HandleFunc("/api/mail/message", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"seq_num":   12,
+			"subject":   "Proje Raporu",
+			"from":      "ali@example.com",
+			"date":      "2026-11-03",
+			"text_body": "Merhaba, rapor ektedir.",
+			"attachments": []map[string]any{
+				{"part_id": "2", "filename": "rapor.txt", "content_type": "text/plain", "size": 128},
+			},
+		})
+	})
+	mux.HandleFunc("/api/twin/state", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"contacts": []map[string]any{
+				{"id": "c1", "name": "Ali", "autonomy_policy": "draft_only"},
+			},
+			"actions": []map[string]any{
+				{"id": "act-99998888", "approval_code": 7, "channel": "mail", "recipient": "ali@example.com", "state": "pending", "body": "Teşekkürler, aldım."},
+			},
+			"commitments": []map[string]any{
+				{"id": "p1", "kind": "my_promise", "contact_name": "Ali", "summary": "Yarın dönüş yap", "age_hours": 4},
+			},
+			"audit_log": []map[string]any{
+				{"id": 1, "action": "draft_queued", "contact_id": "c1", "at": "2026-11-03T12:00:00Z"},
+			},
+			"preferences": map[string]any{
+				"timezone":   "UTC",
+				"work_start": "09:00",
+				"work_end":   "18:00",
+				"autonomy": map[string]any{
+					"enabled": true,
+					"mode":    "draft_only",
+				},
+			},
+		})
+	})
+	mux.HandleFunc("/api/twin/approve_action", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		json.NewDecoder(r.Body).Decode(&body)
+		approvedID = body["id"]
+		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	})
+	mux.HandleFunc("/api/twin/preferences", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if aut, ok := body["autonomy"].(map[string]any); ok {
+			savedMode, _ = aut["mode"].(string)
+		}
+		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	s, out := newTestSession(tt, srv)
+	s.handleCommand("/mail")
+	if !strings.Contains(out.String(), "owner@example.com") || !strings.Contains(out.String(), "Proje Raporu") {
+		tt.Fatalf("unexpected /mail output:\n%s", out.String())
+	}
+
+	out.Reset()
+	s.handleCommand("/mail read 12")
+	if !strings.Contains(out.String(), "Merhaba, rapor ektedir.") || !strings.Contains(out.String(), "rapor.txt") {
+		tt.Fatalf("unexpected /mail read output:\n%s", out.String())
+	}
+
+	out.Reset()
+	s.handleCommand("/twin")
+	if !strings.Contains(out.String(), "#7") || !strings.Contains(out.String(), "Teşekkürler, aldım.") {
+		tt.Fatalf("unexpected /twin output:\n%s", out.String())
+	}
+
+	out.Reset()
+	s.handleCommand("/twin commitments")
+	if !strings.Contains(out.String(), "Yarın dönüş yap") {
+		tt.Fatalf("unexpected /twin commitments output:\n%s", out.String())
+	}
+
+	out.Reset()
+	s.handleCommand("/twin audit")
+	if !strings.Contains(out.String(), "draft_queued") {
+		tt.Fatalf("unexpected /twin audit output:\n%s", out.String())
+	}
+
+	out.Reset()
+	s.handleCommand("/twin approve #7")
+	if approvedID != "act-99998888" {
+		tt.Fatalf("expected #7 to resolve to act-99998888, got %q (out: %s)", approvedID, out.String())
+	}
+
+	out.Reset()
+	s.handleCommand("/twin mode full_auto")
+	if savedMode != "full_auto" {
+		tt.Fatalf("expected savedMode=full_auto, got %q", savedMode)
+	}
+}

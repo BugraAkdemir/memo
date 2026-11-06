@@ -5,7 +5,7 @@ bakar; varsa sürümleri, indirme boyutunu ve kısa bir notu gösteren bir pence
 **Şimdi güncelle** tek tıkla işi bitirir. Motor dosyaları (llama.cpp, whisper.cpp,
 Abonelik bağlayıcısı) yeni bir Memo sürümü çıkmadan ayrıca yenilenebilir.
 
-Ayrıntılı (İngilizce) anlatım: [`../AUTO_UPDATE.md`](../AUTO_UPDATE.md). Tasarım kaydı: `PLAN_auto_update.md`.
+Ayrıntılı (İngilizce) anlatım: [`../AUTO_UPDATE.md`](../AUTO_UPDATE.md). Tasarım kaydı: `docs/plans/PLAN_auto_update.md`.
 
 ## Kullanıcı ne görür
 

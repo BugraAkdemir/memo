@@ -1,0 +1,468 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	netmail "net/mail"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"memo/internal/agent/tools"
+	"memo/internal/autonomy"
+	"memo/internal/config"
+	"memo/internal/logx"
+	"memo/internal/mail"
+	"memo/internal/twin"
+	"memo/internal/whatsapp"
+)
+
+func (a *App) initTwin() {
+	s, err := twin.NewStore(config.DataPath("twin"))
+	if err != nil {
+		logx.Printf("WARN: twin store: %v", err)
+		return
+	}
+	a.twinMu.Lock()
+	a.twinStore = s
+	a.twinMu.Unlock()
+}
+func (a *App) closeTwin() error {
+	a.stopFollowUpRadar()
+	a.stopApprovalBridge()
+	a.twinMu.Lock()
+	defer a.twinMu.Unlock()
+	if a.twinStore == nil {
+		return nil
+	}
+	err := a.twinStore.Close()
+	a.twinStore = nil
+	return err
+}
+func (a *App) twinProjects() []autonomy.RegisteredProject {
+	out := []autonomy.RegisteredProject{}
+	for _, p := range a.projectManager().Registered() {
+		name := filepath.Base(p.Root)
+		if p.Info != nil && p.Info.Name != "" {
+			name = p.Info.Name
+		}
+		out = append(out, autonomy.RegisteredProject{ID: p.ID, Name: name, Root: p.Root})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+func decodeTwin(raw json.RawMessage, dst any) error {
+	if len(raw) > 32*1024 {
+		return twin.ErrInvalid
+	}
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		return twin.ErrInvalid
+	}
+	var extra any
+	if dec.Decode(&extra) != io.EOF {
+		return twin.ErrInvalid
+	}
+	return nil
+}
+
+// CallTwin is the owner-only API surface. The autonomous ingress must use
+// ExternalAutonomousExecutor.Execute with an immutable source identity instead.
+func (a *App) CallTwin(ctx context.Context, operation string, raw json.RawMessage) (any, error) {
+	if !tools.CommunicationAllowed(ctx) {
+		return nil, autonomy.ErrContactScope
+	}
+	if operation == "approve_action" {
+		var input struct {
+			ID string `json:"id"`
+		}
+		if err := decodeTwin(raw, &input); err != nil {
+			return nil, err
+		}
+		return a.deliverTwinAction(ctx, input.ID, "", "", "bridge_approved", false)
+	}
+	if operation == "send_action" {
+		return a.sendTwinAction(ctx, raw)
+	}
+	a.twinMu.RLock()
+	defer a.twinMu.RUnlock()
+	s := a.twinStore
+	if s == nil {
+		return nil, fmt.Errorf("twin unavailable")
+	}
+	switch operation {
+	case "activity":
+		p, err := s.Preferences(ctx)
+		if err != nil {
+			return nil, err
+		}
+		actions, err := s.Actions(ctx)
+		if err != nil {
+			return nil, err
+		}
+		selection, err := s.ReplyModel(ctx)
+		if err != nil {
+			return nil, err
+		}
+		contacts, err := s.Contacts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		// Activity needs enough identity to explain a sender's effective policy,
+		// without exporting other-channel aliases, writing styles or timelines.
+		type mailContactPolicy struct {
+			ID        string   `json:"id"`
+			Name      string   `json:"name"`
+			Policy    string   `json:"policy"`
+			Addresses []string `json:"addresses"`
+		}
+		mailContacts := []mailContactPolicy{}
+		for _, contact := range contacts {
+			addresses := []string{}
+			for _, alias := range contact.Aliases {
+				if alias.Channel == "mail" {
+					addresses = append(addresses, alias.Address)
+				}
+			}
+			if len(addresses) > 0 {
+				mailContacts = append(mailContacts, mailContactPolicy{contact.ID, contact.Name, contact.AutonomyPolicy, addresses})
+			}
+		}
+		waiting, err := s.Commitments(ctx)
+		if err != nil {
+			return nil, err
+		}
+		commitments := waitingViews(waiting)
+		return map[string]any{"settings": p.Autonomy, "actions": actions, "reply_model": selection, "mail_contacts": mailContacts, "radar": p.Radar, "commitments": commitments}, nil
+	case "twin_contacts":
+		// The chat tool promises contacts, working hours and project ids. It must
+		// not be backed by the full state, which carries every prepared reply's
+		// text and recipient, the waiting list and the briefing cards (private
+		// meeting titles), none of which a chat model needs.
+		contacts, err := s.Contacts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		p, err := s.Preferences(ctx)
+		if err != nil {
+			return nil, err
+		}
+		type workHours struct {
+			Timezone               string `json:"timezone"`
+			WorkStart              string `json:"work_start"`
+			WorkEnd                string `json:"work_end"`
+			AllowProjectInspection bool   `json:"allow_project_inspection"`
+		}
+		return struct {
+			Contacts    []twin.Contact               `json:"contacts"`
+			Preferences workHours                    `json:"preferences"`
+			Projects    []autonomy.RegisteredProject `json:"projects"`
+		}{contacts, workHours{p.Timezone, p.WorkStart, p.WorkEnd, p.AllowProjectInspection}, a.twinProjects()}, nil
+	case "state":
+		contacts, err := s.Contacts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		p, err := s.Preferences(ctx)
+		if err != nil {
+			return nil, err
+		}
+		actions, err := s.Actions(ctx)
+		if err != nil {
+			return nil, err
+		}
+		selection, err := s.ReplyModel(ctx)
+		if err != nil {
+			return nil, err
+		}
+		waiting, err := s.Commitments(ctx)
+		if err != nil {
+			return nil, err
+		}
+		briefings, err := s.Briefings(ctx, 10)
+		if err != nil {
+			return nil, err
+		}
+		auditLog, err := s.AuditLog(ctx, 50)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			ReplyModel  twin.ReplyModel              `json:"reply_model"`
+			Actions     []twin.Action                `json:"actions"`
+			Contacts    []twin.Contact               `json:"contacts"`
+			Preferences twin.Preferences             `json:"preferences"`
+			Projects    []autonomy.RegisteredProject `json:"projects"`
+			Commitments []waitingView                `json:"commitments"`
+			Briefings   []twin.Briefing              `json:"briefings"`
+			AuditLog    []twin.AuditEntry            `json:"audit_log"`
+		}{selection, actions, contacts, p, a.twinProjects(), waitingViews(waiting), briefings, auditLog}, nil
+	case "twin_commitments":
+		var args struct {
+			ContactID string `json:"contact_id"`
+		}
+		if len(raw) > 0 && strings.TrimSpace(string(raw)) != "{}" {
+			if err := decodeTwin(raw, &args); err != nil {
+				return nil, err
+			}
+		}
+		waiting, err := s.Commitments(ctx)
+		if err != nil {
+			return nil, err
+		}
+		views := waitingViews(waiting)
+		if id := strings.TrimSpace(args.ContactID); id != "" {
+			filtered := make([]waitingView, 0, len(views))
+			for _, v := range views {
+				if v.ContactID == id {
+					filtered = append(filtered, v)
+				}
+			}
+			views = filtered
+		}
+		return views, nil
+	case "twin_pending_actions":
+		var empty struct{}
+		if len(raw) > 0 && strings.TrimSpace(string(raw)) != "{}" {
+			if err := decodeTwin(raw, &empty); err != nil {
+				return nil, err
+			}
+		}
+		actions, err := s.Actions(ctx)
+		if err != nil {
+			return nil, err
+		}
+		type pendingView struct {
+			ID        string    `json:"id"`
+			Channel   string    `json:"channel"`
+			Recipient string    `json:"recipient"`
+			Subject   string    `json:"subject"`
+			Mode      string    `json:"mode"` // awaiting_approval | grace_period_auto
+			Reason    string    `json:"reason"`
+			FollowUp  bool      `json:"follow_up,omitempty"`
+			Group     bool      `json:"group,omitempty"`
+			Conflict  bool      `json:"conflict,omitempty"`
+			CreatedAt time.Time `json:"created_at"`
+			SendsAt   time.Time `json:"sends_at,omitempty"` // only for grace_period_auto
+			Preview   string    `json:"preview"`
+		}
+		views := []pendingView{}
+		for _, v := range actions {
+			if v.State != "pending" || len(views) == 20 {
+				continue
+			}
+			p := pendingView{ID: v.ID, Channel: v.Channel, Recipient: v.Recipient, Subject: v.Subject, Mode: v.Mode, Reason: v.Reason, FollowUp: v.FollowUp, Group: v.Group, Conflict: v.Conflict, CreatedAt: v.CreatedAt}
+			if r := []rune(v.Body); len(r) > 160 {
+				p.Preview = string(r[:160]) + "…"
+			} else {
+				p.Preview = v.Body
+			}
+			if v.Mode == "grace_period_auto" && v.ExecuteAt != nil {
+				p.SendsAt = *v.ExecuteAt
+			}
+			views = append(views, p)
+		}
+		return views, nil
+	case "dev_status":
+		var empty struct{}
+		if len(raw) > 0 && strings.TrimSpace(string(raw)) != "{}" {
+			if err := decodeTwin(raw, &empty); err != nil {
+				return nil, err
+			}
+		}
+		p, err := s.Preferences(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !p.AllowProjectInspection {
+			return nil, autonomy.ErrAutonomousCommandForbidden
+		}
+		return map[string]any{"projects": autonomy.DevWatch(ctx, a.twinProjects())}, nil
+	case "reply_model":
+		var m twin.ReplyModel
+		if err := decodeTwin(raw, &m); err != nil {
+			return nil, err
+		}
+		if m.Provider != "" || m.Model != "" {
+			if _, err := a.autonomyReplyProvider(m); err != nil {
+				return nil, twin.ErrInvalid
+			}
+		}
+		err := s.SaveReplyModel(ctx, m)
+		return map[string]bool{"ok": err == nil}, err
+	case "task_from_action":
+		return a.taskFromAction(ctx, s, raw)
+	case "briefing_read":
+		var args struct {
+			Key string `json:"key"`
+		}
+		if err := decodeTwin(raw, &args); err != nil {
+			return nil, err
+		}
+		err := s.MarkBriefingRead(ctx, args.Key)
+		return map[string]bool{"ok": err == nil}, err
+	case "resolve_commitment":
+		var args struct {
+			ID string `json:"id"`
+		}
+		if err := decodeTwin(raw, &args); err != nil {
+			return nil, err
+		}
+		err := s.ResolveCommitment(ctx, args.ID)
+		return map[string]bool{"ok": err == nil}, err
+	case "cancel_action", "hold_action":
+		var args struct {
+			ID string `json:"id"`
+		}
+		if err := decodeTwin(raw, &args); err != nil {
+			return nil, err
+		}
+		var err error
+		if operation == "hold_action" {
+			err = s.HoldAutomatic(ctx, args.ID)
+		} else {
+			err = s.CancelAction(ctx, args.ID)
+			if err == nil {
+				if v, e := s.Action(ctx, args.ID); e == nil {
+					a.publishApprovalOnce(ctx, s, v, "executed")
+					a.queueApprovalNotification(v, "executed")
+				}
+			}
+		}
+		return map[string]bool{"ok": err == nil}, err
+	case "contact":
+		var c twin.Contact
+		if err := decodeTwin(raw, &c); err != nil {
+			return nil, err
+		}
+		id, err := s.SaveContact(ctx, c)
+		return map[string]string{"id": id}, err
+	case "merge":
+		var args struct {
+			Target string `json:"target_id"`
+			Source string `json:"source_id"`
+		}
+		if err := decodeTwin(raw, &args); err != nil {
+			return nil, err
+		}
+		err := s.Merge(ctx, args.Target, args.Source)
+		return map[string]bool{"ok": err == nil}, err
+	case "preferences":
+		var p twin.Preferences
+		if err := decodeTwin(raw, &p); err != nil {
+			return nil, err
+		}
+		err := s.SavePreferences(ctx, p)
+		return map[string]bool{"ok": err == nil}, err
+	case "contact_timeline", "check_availability", "git_project_status":
+		ex := autonomy.ExternalAutonomousExecutor{Store: s, Calendar: a.calendarStore, Projects: a.twinProjects}
+		return ex.ExecuteForOwner(ctx, operation, raw)
+	default:
+		return nil, autonomy.ErrAutonomousCommandForbidden
+	}
+}
+func (a *App) recordTwinMessage(ctx context.Context, m twin.Message, name string) error {
+	a.twinMu.RLock()
+	defer a.twinMu.RUnlock()
+	if a.twinStore == nil {
+		return nil
+	}
+	if err := a.twinStore.RecordMessage(ctx, m, name); err != nil {
+		logx.Printf("twin: record message failed: %v", err)
+		return err
+	}
+	return nil
+}
+func (a *App) recordTwinMail(ctx context.Context, account mail.Account, d *mail.MessageDetail) error {
+	if d.Timestamp.IsZero() {
+		return nil
+	} // unknown source date must not become "now"
+	from, err := netmail.ParseAddress(d.From)
+	if err != nil {
+		return nil
+	}
+	id := fmt.Sprintf("%d:%s", d.UID, d.MessageID)
+	return a.recordTwinMessage(ctx, twin.Message{Channel: "mail", Account: account.ID, Address: from.Address, EventID: id, SentAt: d.Timestamp, Body: d.Subject + "\n" + d.TextBody}, from.Name)
+}
+
+type noTrackKey struct{}
+
+// withNoTrack marks a send as a reminder: it is recorded as something the owner
+// said, but it must not start a new "waiting for a reply" record.
+func withNoTrack(ctx context.Context) context.Context {
+	return context.WithValue(ctx, noTrackKey{}, true)
+}
+
+func isNoTrack(ctx context.Context) bool { v, _ := ctx.Value(noTrackKey{}).(bool); return v }
+
+func (a *App) recordTwinSentMail(ctx context.Context, r mail.SendRequest) {
+	// Capture only after SMTP success; drafts and failed sends are not evidence
+	// of what the user actually said. Each send gets a distinct event id.
+	id := uuid.NewString()
+	at := time.Now()
+	recipients := append(append([]string{}, r.To...), r.Cc...)
+	// More than one recipient is a group thread: it is evidence of how the
+	// owner writes, but the follow-up radar never nudges a group.
+	group := len(recipients) > 1
+	first := ""
+	for _, to := range recipients {
+		addr, err := netmail.ParseAddress(to)
+		if err != nil {
+			continue
+		}
+		if first == "" {
+			first = addr.Address
+		}
+		a.recordTwinMessage(ctx, twin.Message{Channel: "mail", Account: r.AccountID, Address: addr.Address, EventID: id, Outgoing: true, SentAt: at, Body: r.Body, Subject: r.Subject, InReplyTo: r.InReplyTo, Group: group, NoTrack: isNoTrack(ctx)}, addr.Name)
+	}
+	// Reading the text for promises needs the reply model, so it never blocks
+	// or fails the send; the engine itself checks that the owner opted in.
+	if first != "" && a.lifecycleCtx != nil {
+		msg := twin.Message{Channel: "mail", Account: r.AccountID, Address: first, EventID: id, Outgoing: true, SentAt: at, Body: r.Body, Subject: r.Subject}
+		a.goBackground("twinPromises", func() {
+			if _, err := a.extractTwinPromises(a.lifecycleCtx, msg); err != nil {
+				logx.Printf("twin: promise read failed: %v", err)
+			}
+		})
+	}
+}
+func (a *App) recordTwinWhatsApp(ctx context.Context, c *whatsapp.Client, m whatsapp.Message) {
+	if !m.FromMe && autonomy.DetectPromptInjection(ctx, m.Text, nil).Blocked {
+		return
+	}
+	if c == nil || strings.TrimSpace(m.Text) == "" {
+		return
+	}
+	own := c.OwnJIDs()
+	if len(own) == 0 {
+		return
+	}
+	for _, jid := range own {
+		if jid == m.ChatJID {
+			return
+		}
+	} // never expose owner self-chat
+	alias, err := twin.NormalizeAlias(twin.Alias{Channel: "whatsapp", Address: m.ChatJID})
+	if err != nil {
+		return
+	} // excludes groups/broadcasts
+	name := m.SenderName
+	if m.FromMe {
+		name = ""
+	}
+	a.recordTwinMessage(ctx, twin.Message{Channel: "whatsapp", Account: own[0], Address: alias.Address, EventID: m.ID, Outgoing: m.FromMe, SentAt: m.Timestamp, Body: m.Text}, name)
+}
+
+func (a *App) checkpointTwin(ctx context.Context) error {
+	a.twinMu.RLock()
+	defer a.twinMu.RUnlock()
+	if a.twinStore == nil {
+		return nil
+	}
+	return a.twinStore.Checkpoint(ctx)
+}

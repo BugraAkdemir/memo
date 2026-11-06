@@ -6,6 +6,7 @@ go 1.26.10
 require (
 	github.com/BugraAkdemir/gosearch v0.2.0
 	github.com/BugraAkdemir/gosearch/browser v0.3.0
+	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc
 	github.com/chromedp/chromedp v0.15.1
 	github.com/coder/websocket v1.8.14
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -14,8 +15,10 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.45
 	go.mau.fi/whatsmeow v0.0.0-20260604205742-c6a4b703e48f
 	golang.org/x/crypto v0.58.0
+	golang.org/x/net v0.62.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/term v0.47.0
+	golang.org/x/text v0.43.0
 	google.golang.org/api v0.275.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
@@ -31,7 +34,6 @@ require (
 	github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa // indirect
 	github.com/beeper/argo-go v1.1.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/creachadair/msync v0.7.1 // indirect
 	github.com/dblohm7/wingoes v0.0.0-20240119213807-a09d6be7affa // indirect
@@ -55,7 +57,7 @@ require (
 	github.com/hdevalence/ed25519consensus v0.2.0 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/jsimonetti/rtnetlink v1.4.0 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mdlayher/netlink v1.7.3-0.20250113171957-fbb4dce95f42 // indirect
 	github.com/mdlayher/socket v0.5.0 // indirect
@@ -82,10 +84,8 @@ require (
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
-	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect

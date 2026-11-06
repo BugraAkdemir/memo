@@ -417,7 +417,7 @@ sequenceDiagram
     W->>S: new message (after the high-water mark only)
     S-->>W: blocked? kept in inbox, counted by reason code, no model reads it
     W->>G: Evaluate (contacts + structure, headers, model)
-    G-->>W: category; bulk and one-time-code mail is dropped from memory
+    G-->>W: category (bulk and one-time-code mail is dropped from memory)
     W->>T: record message under the linked contact
     W->>E: prepare (read-only research → draft in your style)
     E->>E: outbound DLP, independent score

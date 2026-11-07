@@ -23,11 +23,18 @@
 # so it no longer depends on the folder's libggml*. linux/nvidia stays on b9441
 # (the CUDA 12.2 builds it needs are no longer published). memo-lora-train is gone.
 #
+# Evidence (2026-11-07): linux/cpu, linux/amd and linux/cpu-arm64 now hold
+# llama.cpp b12110 (= the stable v0.9.0 release; `llama-server --version` prints
+# "version: 0.9.0-dev (build 12110, ...)"). linux/cpu was checked with the real
+# Phi-3 chat and nomic embedding models and a real whisper transcription from
+# inside the folder (whisper 1.9.5 static build unchanged); `--list-devices`
+# shows the Vulkan plugin. linux/nvidia stays on b9441.
+#
 # NOT listed on purpose: windows/* (ggml 0.13.1 like Linux b9441, but the llama
 # build was not proven) and darwin/* (ggml 0.15.3: a different, newer build whose
 # tag is not recorded anywhere). Add them when someone has confirmed the tag.
 #
 # component  version  folders...
-llama   b11669 linux/amd linux/cpu linux/cpu-arm64
+llama   b12110 linux/amd linux/cpu linux/cpu-arm64
 llama   b9441  linux/nvidia
 whisper 1.9.5  linux/cpu

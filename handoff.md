@@ -71,6 +71,12 @@
 
 ---
 
+# Son oturum — 7 Kasım (akşam) — Memo 5.0.0 yayımlandı
+- **Yayında:** tag `v5.0.0`; 6 CI (Linux/macOS/Windows/Android/iOS/Docker) yeşil, GitHub release prerelease değil, `verify_update_manifest.sh` 3 platform OK, R2 dosyaları taze. Beacon (`BugraAkdemir/version`) V5.0.0 + components llama b12110 / whisper 1.9.5 / cliproxy v8.0.59.
+- **Motorlar (R2):** CLIProxyAPI v8.0.43→v8.0.59 (4 klasör), llama.cpp b11669→b12110 (stabil v0.9.0; linux/cpu, amd, cpu-arm64; NVIDIA b9441'de kaldı), whisper 1.9.5 değişmedi ama `linux/cpu` bütünü yeniden yayımlandı. Yedekler R2'de: `binaries-backup-v8.0.43/`, `binaries-backup-b11669/`. Staging `r2-memo-push/binaries` yenilendi. Component'ler: `update/components/{cliproxy/v8.0.59,llama/b12110,whisper/1.9.5}` (llama/whisper `--requires-app 4.7.1`, cliproxy 4.7.0). upstream-notice #48–#66 kapatıldı.
+- **Test edildi:** gerçek cliproxy v8.0.59 `RealBinary` testi; staged llama-server Phi-3 sohbet + nomic embedding (768) gerçek modelle; whisper-server klasör içinden gerçek wav ("Front Right."); Vulkan0 görünüyor; `go test ./internal/components ./internal/app` yeşil.
+- **Doğrulanmadı:** Windows/macOS motor klasörleri (yalnız cliproxy güncellendi), amd/arm64 llama'nın gerçek donanımda çalışması, b12110 ile ayrık GPU/spekülasyon ölçümü, yeni tag'den uygulama içi güncelleme akışı, brifing/Telegram/WhatsApp canlı teslimi (önceki maddeler geçerli). Telemetri sunucusu dağıtımı hâlâ doğrulanmadı (yukarıdaki madde).
+
 # Son oturum — 7 Kasım — Günlük brifing ayarları (kanal, içerik, model, sihirbaz)
 - `feat/digital-twin-mail`, **6 yerel commit, push edilmedi** (`93410785`…`a6eb64cc`). Plan: `docs/plans/PLAN_briefing_delivery.md` (B1–B3, F1–F2, D hepsi işaretli). Ayrıntı: `docs/DIGITAL_TWIN_AND_MAIL.md` son bölüm, `docs/SETUP_WIZARD.md`.
 - Yapılan: brifing ayarları `twin_preferences.briefing` altında genişledi (bölümler, en çok 5 özel öğe, kanallar, posta hesabı, ayrı brifing modeli); sabah brifingi Telegram/WhatsApp/mail'e kendi hesabınıza gider (`briefing_deliveries` tablosu, önce sahiplen, belirsiz gönderim tekrarlanmaz, DLP önce); sihirbazda Kanallar'dan sonra yeni isteğe bağlı adım + Ayarlar'daki panelde aynı düzenleyici.

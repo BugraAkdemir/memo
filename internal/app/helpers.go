@@ -412,7 +412,10 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	}
 	if !minimal && !code {
 		volatileCtx += a.timeContextBlockForChat(chatID)
-		if !projectChat {
+		// Only when the message is about plans/schedule: the block used to ride
+		// on every turn, costing tokens and making the model bring up meetings
+		// nobody asked about.
+		if !projectChat && mentionsCalendar(userMsg) {
 			volatileCtx += a.upcomingCalendarContext(ctx, time.Now())
 		}
 	}
@@ -794,8 +797,32 @@ func copyFile(src, dst string) error {
 	return err
 }
 
+// calendarKeywords are lower-case fragments (Turkish and English) that mark a
+// message as being about the user's schedule. Fragments, not whole words, so
+// Turkish suffixes ("toplantım", "takvimde") match.
+var calendarKeywords = []string{
+	"takvim", "toplant", "randevu", "etkinlik", "program", "plan", "müsait", "musait",
+	"yarın", "yarin", "bugün", "bugun", "haftaya", "bu hafta", "hatırlat", "hatirlat",
+	"uçuş", "ucus", "fatura", "iptal", "ertele", "ne zaman",
+	"calendar", "meeting", "appointment", "schedule", "event", "agenda", "tomorrow",
+	"today", "this week", "next week", "remind", "free on", "available", "coming up",
+	"upcoming", "flight", "invoice", "cancel", "reschedule", "when is",
+}
+
+// mentionsCalendar reports whether msg talks about plans or the calendar.
+func mentionsCalendar(msg string) bool {
+	m := strings.ToLower(msg)
+	for _, k := range calendarKeywords {
+		if strings.Contains(m, k) {
+			return true
+		}
+	}
+	return false
+}
+
 // upcomingCalendarContext grounds ordinary chat without requiring agent tools.
 // Keep volatile dates on the current user message, preserving the system prefix.
+// Callers gate it with mentionsCalendar.
 func (a *App) upcomingCalendarContext(ctx context.Context, now time.Time) string {
 	if a.calendarStore == nil {
 		return ""
@@ -805,7 +832,7 @@ func (a *App) upcomingCalendarContext(ctx context.Context, now time.Time) string
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\n\n[Upcoming calendar events]\n")
+	b.WriteString("\n\n[Upcoming calendar events] (read-only; mention only what the user asked about)\n")
 	for _, event := range events {
 		fmt.Fprintf(&b, "- %s | %s", event.StartTime.In(now.Location()).Format("2006-01-02 15:04 MST"), event.Title)
 		if event.EndTime != nil {

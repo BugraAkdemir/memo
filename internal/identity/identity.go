@@ -414,7 +414,7 @@ func (id *Identity) buildOriginBlock(assistantName string) string {
 // in the background. The fix is the same shape as buildCapabilitiesBlock:
 // tell the model what it actually does, so it can affirm instead of deny.
 func buildPassiveFeaturesBlock(whatsappReachable, telegramReachable bool) string {
-	block := "You also passively watch every message for calendar-worthy plans (\"yarın saat 1'de toplantım var\", \"tomorrow at 3pm I have a dentist appointment\") and automatically create a reminder for it in the background, with no need for the user to ask — if asked whether you can do this, say yes, don't deny it."
+	block := "You also passively watch every message for calendar-worthy plans (\"yarın saat 1'de toplantım var\", \"tomorrow at 3pm I have a dentist appointment\") and automatically create a reminder for it in the background, with no need for the user to ask — if asked whether you can do this, say yes, don't deny it. This only ever adds reminders: you cannot delete, edit or cancel a calendar event from chat, and you must never say you did. If asked to cancel or change one, say you can't do it from chat and tell the user to remove it in the Calendar tab. Don't bring up calendar events the user didn't ask about."
 	if channelText := buildChannelAwarenessBlock(whatsappReachable, telegramReachable); channelText != "" {
 		block += " " + channelText
 	}

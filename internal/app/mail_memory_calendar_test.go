@@ -76,13 +76,27 @@ func TestPlainChatUpcomingCalendarContext(t *testing.T) {
 	if strings.Contains(msgs[0].GetTextContent(), "Tomorrow meeting") {
 		t.Fatal("calendar must not change system prefix")
 	}
+	// A message unrelated to plans must not carry the block (token waste, and the
+	// model used to volunteer meetings nobody asked about).
+	for _, unrelated := range []string{"saat kaç", "telemetri kodunu düzeltiyorum", "hello"} {
+		msgs = a.buildMessagesForSession(context.Background(), "", unrelated, nil, nil)
+		if strings.Contains(msgs[len(msgs)-1].GetTextContent(), "Tomorrow meeting") {
+			t.Errorf("calendar leaked into unrelated message %q", unrelated)
+		}
+	}
+	for _, related := range []string{"yarın toplantım var mı", "takvimde ne var"} {
+		msgs = a.buildMessagesForSession(context.Background(), "", related, nil, nil)
+		if !strings.Contains(msgs[len(msgs)-1].GetTextContent(), "Tomorrow meeting") {
+			t.Errorf("calendar missing for %q", related)
+		}
+	}
 	a.identity.SetMinimalMode(true)
-	msgs = a.buildMessagesForSession(context.Background(), "", "hello", nil, nil)
+	msgs = a.buildMessagesForSession(context.Background(), "", "what's on my calendar", nil, nil)
 	if strings.Contains(msgs[len(msgs)-1].GetTextContent(), "Tomorrow meeting") {
 		t.Fatal("minimal mode leaked calendar")
 	}
 	a.identity.SetMinimalMode(false)
-	msgs = a.buildMessagesForSession(withCodeMode(context.Background()), "", "hello", nil, nil)
+	msgs = a.buildMessagesForSession(withCodeMode(context.Background()), "", "what's on my calendar", nil, nil)
 	if strings.Contains(msgs[len(msgs)-1].GetTextContent(), "Tomorrow meeting") {
 		t.Fatal("code mode leaked calendar")
 	}

@@ -418,6 +418,15 @@ func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, user
 		return a.callAgentStream(agent.WithToolScope(ctx, channelTools), messages, userMsg, sessionID)
 	}
 
+	// A hosted-provider plain chat reads the calendar through a tool the model
+	// calls only when the message needs it, in any language. buildMessagesForSession
+	// skips its injected block under the same calendarViaTool test. An attached
+	// image/file or an image-only model never reaches here, so those turns see no
+	// calendar — rare enough not to carry the block for.
+	if !agentActive && !imageOnlyModel && imagePath == "" && filePath == "" && a.calendarViaTool(ctx, sessionID) {
+		return a.callAgentStream(agent.WithToolScope(ctx, []string{"get_calendar_events"}), messages, userMsg, sessionID)
+	}
+
 	if agentActive && (hasProvider || localModelRunning) {
 		if orchestraEnabled {
 			a.observerRecorder.RecordOrchestraRun(userMsg)

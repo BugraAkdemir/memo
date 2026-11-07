@@ -132,3 +132,23 @@ func TestMailCalendarCounterTracksCommittedStructuredAndTextEvents(t *testing.T)
 		t.Fatal("failed insert must not increment counter")
 	}
 }
+
+func TestMentionsCalendarMatchesWordStartsOnly(t *testing.T) {
+	for _, yes := range []string{"yarın toplantım var mı", "Takvimde ne var", "iptal o toplantı canım", "what's on my calendar", "remind me tomorrow", "bu hafta müsait miyim"} {
+		if !mentionsCalendar(yes) {
+			t.Errorf("want a calendar match for %q", yes)
+		}
+	}
+	for _, no := range []string{"this explanation is too long", "how to prevent a race condition", "saat kaç", "telemetri kodunu düzeltiyorum", "programlama dili öner", "eventually the build passes"} {
+		if mentionsCalendar(no) {
+			t.Errorf("unexpected calendar match for %q", no)
+		}
+	}
+}
+
+func TestCalendarViaToolNeedsAHostedProviderAndAStore(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{}, identity: identity.New("Test", "Memo", "casual", "", false)}
+	if a.calendarViaTool(context.Background(), "") {
+		t.Fatal("no calendar store / executor / provider must not enable the tool")
+	}
+}

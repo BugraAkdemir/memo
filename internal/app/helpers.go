@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"memo/internal/api"
 	"memo/internal/identity"
@@ -415,7 +417,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		// Only when the message is about plans/schedule: the block used to ride
 		// on every turn, costing tokens and making the model bring up meetings
 		// nobody asked about.
-		if !projectChat && mentionsCalendar(userMsg) {
+		if !projectChat && !a.calendarViaTool(ctx, chatID) && mentionsCalendar(userMsg) {
 			volatileCtx += a.upcomingCalendarContext(ctx, time.Now())
 		}
 	}
@@ -797,24 +799,72 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-// calendarKeywords are lower-case fragments (Turkish and English) that mark a
-// message as being about the user's schedule. Fragments, not whole words, so
-// Turkish suffixes ("toplantım", "takvimde") match.
+// calendarViaTool reports whether a plain (non-agent) chat turn gets the
+// calendar as a read-only tool instead of an injected block. The model then
+// decides, in any language, whether the user's message needs it — no keyword
+// list, and no tokens spent on turns that never touch the calendar.
+//
+// Only for a hosted provider that speaks the tool protocol. A local model keeps
+// the injected block (small models call tools unreliably) and so do the cases
+// that never reach the tool branch in routeStreamInner: web search mode (its own
+// single-tool executor), orchestra, browser-backed web chats (text only),
+// project chats, Minimal and Code Mode.
+func (a *App) calendarViaTool(ctx context.Context, chatID string) bool {
+	if a.calendarStore == nil || a.agentExecutor == nil || codeModeActive(ctx) || a.isProjectChat(chatID) {
+		return false
+	}
+	if a.identity.GetMinimalMode() || a.GetWebSearchEnabled() {
+		return false
+	}
+	if a.llamaServer != nil && a.llamaServer.IsRunning() {
+		return false
+	}
+	if subscriptionTextRouteFromCtx(ctx) == nil && a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled {
+		return false
+	}
+	a.providerMu.RLock()
+	active := a.activeProviderName
+	a.providerMu.RUnlock()
+	if active == "" {
+		return false
+	}
+	if cfg, ok := a.providerConfigByName(active); ok && (cfg.Type == provider.ProviderWebChatGPT || cfg.Type == provider.ProviderWebClaude) {
+		return false
+	}
+	return true
+}
+
+// calendarKeywords are lower-case word stems (Turkish and English) that mark a
+// message as being about the user's schedule. This is only the fallback for
+// turns that cannot use the calendar tool (see calendarViaTool): a local model.
+// A stem must start a word, so Turkish suffixes ("toplantım", "takvimde")
+// match while "explanation" or "prevent" do not.
 var calendarKeywords = []string{
-	"takvim", "toplant", "randevu", "etkinlik", "program", "plan", "müsait", "musait",
-	"yarın", "yarin", "bugün", "bugun", "haftaya", "bu hafta", "hatırlat", "hatirlat",
-	"uçuş", "ucus", "fatura", "iptal", "ertele", "ne zaman",
-	"calendar", "meeting", "appointment", "schedule", "event", "agenda", "tomorrow",
-	"today", "this week", "next week", "remind", "free on", "available", "coming up",
-	"upcoming", "flight", "invoice", "cancel", "reschedule", "when is",
+	"takvim", "toplant", "randevu", "etkinlik", "müsait", "musait", "yarın", "yarin",
+	"bugün", "bugun", "haftaya", "bu hafta", "hatırlat", "hatirlat", "uçuş", "ucus",
+	"iptal", "ertele", "ne zaman", "programım", "programim",
+	"calendar", "meeting", "appointment", "schedule", "agenda", "tomorrow", "today",
+	"this week", "next week", "remind", "coming up", "upcoming", "flight",
+	"cancel", "reschedule", "when is",
 }
 
 // mentionsCalendar reports whether msg talks about plans or the calendar.
 func mentionsCalendar(msg string) bool {
 	m := strings.ToLower(msg)
 	for _, k := range calendarKeywords {
-		if strings.Contains(m, k) {
-			return true
+		for from := 0; ; {
+			i := strings.Index(m[from:], k)
+			if i < 0 {
+				break
+			}
+			i += from
+			if i == 0 {
+				return true
+			}
+			if r, _ := utf8.DecodeLastRuneInString(m[:i]); !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+				return true
+			}
+			from = i + len(k)
 		}
 	}
 	return false

@@ -39,6 +39,12 @@
 
 <p><b><a href="READmeTR.md">🇹🇷 Türkçe için tıkla</a></b></p>
 
+<br/>
+
+<img src="docs/assets/memo-demo.gif" alt="Memo demo: tell it something once, open a brand-new chat and it still remembers, then it puts the plan on your calendar by itself" width="90%"/>
+
+<p><sub>A real recording with a real model, nothing staged · <a href="https://raw.githubusercontent.com/BugraAkdemir/memo/main/docs/assets/videos/memo-demo-en.mp4">▶ Watch with voice-over (61 s)</a></sub></p>
+
 </div>
 
 > [!NOTE]

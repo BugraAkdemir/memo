@@ -39,6 +39,12 @@
 
 <p><b><a href="README.md">🇬🇧 Click for English</a></b></p>
 
+<br/>
+
+<img src="docs/assets/memo-demo.gif" alt="Memo tanıtımı: bir şeyi bir kez söylüyorsun, yepyeni bir sohbette hâlâ hatırlıyor, sonra planı kendiliğinden takvimine ekliyor" width="90%"/>
+
+<p><sub>Gerçek kayıt, gerçek model, hiçbir sahne kurgu değil · <a href="https://raw.githubusercontent.com/BugraAkdemir/memo/main/docs/assets/videos/memo-demo-tr.mp4">▶ Türkçe seslendirmeli izle (61 sn)</a></sub></p>
+
 </div>
 
 > [!NOTE]

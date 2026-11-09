@@ -40,6 +40,19 @@ var universalDate = regexp.MustCompile(
 		`\b\d{1,2}\.\d{1,2}\.\d{2,4}\b`, // 16.06.2026
 )
 
+// monthDate matches a day number next to a month name, in Turkish or English:
+// "3 Aralık", "15 Ağustos'ta", "December 3rd", "3 Dec". universalDate only
+// knows numeric dates, so "annemin doğum günü 3 Aralık" never reached the
+// extractor at all. Matched against the lower-cased text; Go lower-cases a
+// dotless capital I to "i", so the Turkish letters accept both spellings.
+var monthDate = regexp.MustCompile(
+	`\b\d{1,2}(?:st|nd|rd|th|\.)?\s+(?:ocak|[şs]ubat|mart|nisan|may[ıi]s|haziran|temmuz|a[ğg]ustos|eyl[üu]l|ekim|kas[ıi]m|aral[ıi]k|` +
+		`january|february|march|april|may|june|july|august|september|october|november|december|` +
+		`jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)|` +
+		`\b(?:january|february|march|april|may|june|july|august|september|october|november|december|` +
+		`jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?\b`,
+)
+
 // relativeTime matches short relative-time phrases that appear in many
 // languages: "in 5 min", "next week", "within 2 hours".
 var relativeTime = regexp.MustCompile(`(?i)` +
@@ -105,7 +118,7 @@ func MightHaveIntent(text string) bool {
 	}
 
 	// Date patterns.
-	if universalDate.MatchString(s) {
+	if universalDate.MatchString(s) || monthDate.MatchString(strings.ToLower(s)) {
 		return true
 	}
 

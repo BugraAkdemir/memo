@@ -42,6 +42,11 @@ func TestMightHaveIntent(t *testing.T) {
 		{"long message with intent context", "kanka yarın öğlen buluşup şu projeyi konuşalım mı", true},
 		{"date iso format", "event on 2026-06-20 at 14:00", true},
 		{"cancellation turkish", "yarınki toplantım iptal oldu", true},
+		{"turkish month name date", "Annemin doğum günü 3 Aralık", true},
+		{"turkish month name with suffix", "15 Ağustos'ta tatile çıkıyoruz", true},
+		{"turkish month name capital I", "SINAVIM 12 ARALIK", true},
+		{"english month first", "my mom's birthday is December 3rd", true},
+		{"english short month", "dentist on 3 Dec", true},
 		// ── Should be false ─────────────────────────────────
 		{"plain chat short", "nasılsın", false},
 		{"plain chat two words", "nasılsın kanka", false},
@@ -53,6 +58,7 @@ func TestMightHaveIntent(t *testing.T) {
 		{"thanks", "teşekkürler", false},
 		{"single digit no context", "5 tane elma aldım", false},
 		{"no time no keyword", "wie geht es dir heute", false},
+		{"month name without a day", "aralık ayını çok severim", false},
 	}
 
 	for _, tc := range tests {

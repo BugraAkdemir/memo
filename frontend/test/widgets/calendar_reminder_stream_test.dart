@@ -12,6 +12,7 @@ import 'package:memo_flutter/core/notification_service.dart';
 import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
+import 'package:memo_flutter/screens/app_shell.dart' show activeTabProvider;
 import 'package:memo_flutter/screens/calendar_screen.dart';
 
 class _CalendarAdapter implements HttpClientAdapter {
@@ -170,5 +171,62 @@ void main() {
       api.dio.close();
     },
     variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
+
+  testWidgets(
+    'desktop calendar reloads when its tab is opened, not 20s later',
+    (tester) async {
+      // Linux has no change stream (notificationsSupported is phones only),
+      // so an event a chat added after app start used to stay hidden until
+      // the refresh timer's first tick.
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final adapter = _CalendarAdapter();
+      final api = MemoApiClient(baseUrl: 'http://memo.test');
+      api.dio.httpClientAdapter = adapter;
+      final container = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          prefsProvider.overrideWithValue(prefs),
+          authGateProvider.overrideWith(
+            (ref) => Stream.value(const AuthGateInfo(AuthGateState.ok)),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: CalendarScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(adapter.streams, isEmpty);
+      expect(find.text('added from a chat'), findsNothing);
+
+      final now = DateTime.now();
+      adapter.events = [
+        {
+          'id': 'chat-1',
+          'title': 'added from a chat',
+          'start_time': DateTime(
+            now.year,
+            now.month,
+            now.day,
+            12,
+          ).toUtc().toIso8601String(),
+        },
+      ];
+      container.read(activeTabProvider.notifier).state = 4;
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('added from a chat'), findsOneWidget);
+
+      container.read(activeTabProvider.notifier).state = 0;
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      api.dio.close();
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.linux),
   );
 }

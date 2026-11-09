@@ -317,6 +317,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   Widget build(BuildContext context) {
     ref.listen<int>(activeTabProvider, (prev, next) {
       if (next == 4) {
+        // The change stream only runs where notificationsSupported (phones),
+        // so on desktop and web the list is whatever the app loaded at start.
+        // Reload on entry, or an event Memo just added from a chat stays
+        // hidden until the 20s timer's first tick.
+        if (prev != 4) _load(silent: true);
         _startRefreshTimer();
       } else {
         _refreshTimer?.cancel();

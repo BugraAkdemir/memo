@@ -68,6 +68,11 @@ import '../core/app_restart.dart';
 /// typing to Memo are the same conversation, not two different screens.
 final activeTabProvider = StateProvider<int>((ref) => 0);
 
+/// CalendarScreen's slot in the IndexedStack below. CalendarScreen reads
+/// activeTabProvider to know when it is on screen; it used to compare with
+/// a literal 4 (Routines), so its refresh never ran while it was visible.
+const calendarTabIndex = 3;
+
 /// Main app shell — NavRail + content area.
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -587,8 +592,8 @@ class _AppShellState extends ConsumerState<AppShell> {
             icon: Icons.calendar_month_outlined,
             activeIcon: Icons.calendar_month,
             label: L10n.t('calendar_title'),
-            isActive: _currentIndex == 3,
-            onTap: () => _handleTabChange(3),
+            isActive: _currentIndex == calendarTabIndex,
+            onTap: () => _handleTabChange(calendarTabIndex),
           ),
 
           _NavRailButton(
@@ -776,8 +781,8 @@ class _AppShellState extends ConsumerState<AppShell> {
           icon: Icons.calendar_month_outlined,
           activeIcon: Icons.calendar_month,
           label: L10n.t('calendar_title'),
-          isActive: _currentIndex == 3,
-          onTap: () => _selectMobileTab(3),
+          isActive: _currentIndex == calendarTabIndex,
+          onTap: () => _selectMobileTab(calendarTabIndex),
         ),
         item(
           icon: Icons.mail_outline,
@@ -885,7 +890,7 @@ class _AppShellState extends ConsumerState<AppShell> {
           onNavigateCalendar: () {
             ref.read(launchpadSeenProvider.notifier).markSeen();
             setState(() => _showLaunchpad = false);
-            _handleTabChange(3);
+            _handleTabChange(calendarTabIndex);
             _maybeStartTour();
           },
           onNavigateModels: () {

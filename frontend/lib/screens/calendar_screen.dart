@@ -122,7 +122,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       _startChangeStream();
       // Start timer only if calendar tab is already active, then keep it
       // in sync with tab switches via ref.listen below.
-      if (ref.read(activeTabProvider) == 4) _startRefreshTimer();
+      if (ref.read(activeTabProvider) == calendarTabIndex) _startRefreshTimer();
     });
   }
 
@@ -316,12 +316,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     ref.listen<int>(activeTabProvider, (prev, next) {
-      if (next == 4) {
+      if (next == calendarTabIndex) {
         // The change stream only runs where notificationsSupported (phones),
         // so on desktop and web the list is whatever the app loaded at start.
         // Reload on entry, or an event Memo just added from a chat stays
         // hidden until the 20s timer's first tick.
-        if (prev != 4) _load(silent: true);
+        if (prev != calendarTabIndex) _load(silent: true);
         _startRefreshTimer();
       } else {
         _refreshTimer?.cancel();

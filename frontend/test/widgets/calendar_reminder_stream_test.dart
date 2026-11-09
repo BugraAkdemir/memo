@@ -12,7 +12,8 @@ import 'package:memo_flutter/core/notification_service.dart';
 import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
-import 'package:memo_flutter/screens/app_shell.dart' show activeTabProvider;
+import 'package:memo_flutter/screens/app_shell.dart'
+    show activeTabProvider, calendarTabIndex;
 import 'package:memo_flutter/screens/calendar_screen.dart';
 
 class _CalendarAdapter implements HttpClientAdapter {
@@ -217,7 +218,7 @@ void main() {
           ).toUtc().toIso8601String(),
         },
       ];
-      container.read(activeTabProvider.notifier).state = 4;
+      container.read(activeTabProvider.notifier).state = calendarTabIndex;
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('added from a chat'), findsOneWidget);

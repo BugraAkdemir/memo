@@ -1,0 +1,27 @@
+@font-face {
+  font-family: Manrope;
+  src: url("../public/art/fonts/manrope.woff2");
+  font-weight: 400 800;
+  font-display: block;
+}
+@font-face {
+  font-family: Bricolage;
+  src: url("../public/art/fonts/bricolage.woff2");
+  font-weight: 700 800;
+  font-display: block;
+}
+:root {
+  font-family: Manrope, "DejaVu Sans", sans-serif;
+  color: #f4f0e6;
+  background: #080d0e;
+  font-synthesis: none;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button {
+  font: inherit;
+}

@@ -1,0 +1,459 @@
+{
+  "voices": {
+    "narrator": "bGmbiluBMaeupKCFxoOk",
+    "classic": "bGmbiluBMaeupKCFxoOk",
+    "pixel": "cjVigY5qzO86Huf0OWal"
+  },
+  "beats": [
+    {
+      "id": "intro",
+      "scene": 0,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Yapay zekâ için Python öğreniyorsun. Sonra karşına Rust çıkıyor. Peki, yanlış dili mi öğreniyorsun? Yoksa aynı uygulamanın farklı parçaları için farklı araçlardan mı konuşuyoruz? Gel, bunu bir restoran, bir trafik sıkışıklığı ve küçük bir atölye üzerinden anlatalım.",
+      "highlight": "Python mu, Rust mı?",
+      "mode": "coldopen"
+    },
+    {
+      "id": "s00-p0",
+      "scene": 0,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Yapay zekâya girmek istiyorsun. Python öğrenmeye başladın. Sonra karşına Rust çıkıyor. Performans konuşuluyor, bellek güvenliği konuşuluyor, Rust ile model çalıştıran projeler görüyorsun. Bu sefer de insanın aklına şu geliyor: Ben yanlış dili mi öğreniyorum?",
+      "highlight": "Yanlış soru, yanlış karar",
+      "mode": "overview"
+    },
+    {
+      "id": "s00-p1",
+      "scene": 0,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Python'u bırakıp Rust'a mı geçmem gerekiyor?",
+      "highlight": "Yanlış soru, yanlış karar",
+      "mode": "detail"
+    },
+    {
+      "id": "s01-p0",
+      "scene": 1,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Bu videoda tam olarak bunu konuşacağız. Ama bir dili övüp diğerini gömmek yerine, aynı uygulamanın içine bakacağız. Modeli geliştiren kişiyle, o modeli binlerce isteğe cevap verecek bir ürüne koyan kişi aynı problemi mi çözüyor?",
+      "highlight": "Önce yaptığın işi ayır",
+      "mode": "overview"
+    },
+    {
+      "id": "s01-p1",
+      "scene": 1,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Videonun sonunda elinde bir dil sıralaması değil, kendi projen için kullanabileceğin birkaç karar sorusu olsun istiyorum. Çünkü yanlış soruya çok iyi bir cevap vermek de zaman kaybettiriyor.",
+      "highlight": "Önce yaptığın işi ayır",
+      "mode": "detail"
+    },
+    {
+      "id": "s02-example",
+      "scene": 2,
+      "part": 0,
+      "role": "classic",
+      "tr": "Bir restoran düşün. Garson siparişi alıyor, mutfak yemeği pişiriyor. Garsonu değiştirince fırının daha hızlı pişirmesini bekler misin? Burada da işleri ayrı düşünmek gerekiyor.",
+      "highlight": "Sipariş ≠ mutfak",
+      "mode": "example"
+    },
+    {
+      "id": "s02-p0",
+      "scene": 2,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Önce şu yapay zekâ geliştirmek meselesini üçe ayıralım. Birincisi, model üzerinde çalışmak. Veri hazırlamak, eğitim yapmak, yeni bir yaklaşım denemek. İkincisi, hazır bir modeli çalıştırmak; yani modele bir şey verip cevap almak.",
+      "highlight": "Sipariş ≠ mutfak",
+      "mode": "overview"
+    },
+    {
+      "id": "s03-p0",
+      "scene": 3,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Üçüncüsü ise bunun etrafındaki ürünü geliştirmek. Dosyaları okuyacak, kullanıcıları yönetecek, istekleri sıraya koyacak ve sonucu ekrana getirecek sistem. Mesela belgelerinle konuşabildiğin bir uygulama düşün. Belgeyi okumak başka iş, metni modelin anlayacağı biçime çevirmek başka iş, modelden cevap almak başka iş.",
+      "highlight": "Aynı ürün, farklı katmanlar",
+      "mode": "overview"
+    },
+    {
+      "id": "s04-p0",
+      "scene": 4,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Bunların hepsinin aynı dille yazılması şart değil. O yüzden biri Rust kullanıyor dediğinde ilk sorum şu olur: Tam olarak hangi parçayı Rust ile yazıyor? Modelin kendisini mi, veriyi hazırlayan bölümü mü, yoksa uygulamanın sunucusunu mu?",
+      "highlight": "Bir PDF’nin yolculuğu",
+      "mode": "overview"
+    },
+    {
+      "id": "s04-p1",
+      "scene": 4,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Bu ayrım olmadan karşılaştırma eksik kalıyor.",
+      "highlight": "Bir PDF’nin yolculuğu",
+      "mode": "detail"
+    },
+    {
+      "id": "s05-p0",
+      "scene": 5,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Burada çok kolay karışan bir şey var. Python ile yazılmış bir yapay zekâ uygulamasındaki bütün ağır hesaplamaların Python tarafından yapıldığını düşünebiliyoruz. Ama örneğin PyTorch'un Python arayüzü, hesaplama açısından pahalı işlemlerin büyük bölümünde C++ tarafına çağrı yapıyor.",
+      "highlight": "Direksiyon ≠ motor",
+      "mode": "overview"
+    },
+    {
+      "id": "s05-p1",
+      "scene": 5,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Sen üst tarafta daha rahat bir dille modeli kuruyorsun. Alt tarafta ise bu işi yapmak için hazırlanmış hesaplama altyapısı çalışıyor.",
+      "highlight": "Direksiyon ≠ motor",
+      "mode": "detail"
+    },
+    {
+      "id": "s06-p0",
+      "scene": 6,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Bu nedenle uygulamanın üst katmanını Rust'a çevirmek, aynı modelin aynı donanımda otomatik olarak çok daha hızlı cevap vereceği anlamına gelmiyor. Benim burada sormam gereken şey şu: Beklediğim süre nerede geçiyor?",
+      "highlight": "Ağır iş alt katmanda",
+      "mode": "overview"
+    },
+    {
+      "id": "s06-p1",
+      "scene": 6,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Kendi yazdığım döngüde mi, dosya okurken mi, ağda mı, model hesaplama yaparken mi? Sorunu bulmadan dili değiştirmek, sıkışan trafiği çözmek için arabanın rengini değiştirmeye benzeyebilir.",
+      "highlight": "Ağır iş alt katmanda",
+      "mode": "detail"
+    },
+    {
+      "id": "s07-p0",
+      "scene": 7,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Peki Rust'ın burada sunduğu şey ne? Belleğin nasıl kullanıldığı üzerinde kontrol ve belirli hata türlerini daha program çalışmadan yakalayabilmek. Rust'ın sahiplik ve ödünç alma kuralları, veriyi kimin kullandığını ve ne zaman değiştirebildiğini takip etmene yardım ediyor.",
+      "highlight": "Kontrol ve erken uyarı",
+      "mode": "overview"
+    },
+    {
+      "id": "s07-p1",
+      "scene": 7,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Bunun eşzamanlı çalışan kodda da karşılığı var.",
+      "highlight": "Kontrol ve erken uyarı",
+      "mode": "detail"
+    },
+    {
+      "id": "s08-example",
+      "scene": 8,
+      "part": 0,
+      "role": "pixel",
+      "tr": "Ben şimdi anahtar örneğini göstereyim. Aynı odayı iki kişi aynı anda değiştirmek istiyor. Kimin ne zaman içeri girebildiği belli değilse işler karışabilir. Rust burada bazı erişim kurallarını daha baştan kontrol ediyor. Bu, sahiplik ve ödünç alma için basitleştirilmiş bir benzetme.",
+      "highlight": "Değiştirme izni kimde?",
+      "mode": "example"
+    },
+    {
+      "id": "s08-p0",
+      "scene": 8,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Birden fazla iş aynı veriyle uğraşırken oluşabilecek birçok hata, derleme sırasında karşına çıkabiliyor. Tabii bu, Rust ile yazdığın uygulamada hiç hata olmayacak demek değil. Yanlış sonuç da üretebilirsin, kötü bir tasarım da yapabilirsin.",
+      "highlight": "Değiştirme izni kimde?",
+      "mode": "overview"
+    },
+    {
+      "id": "s09-p0",
+      "scene": 9,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Ama kontrol etmen gereken kaynaklar ve aynı anda yürüyen işler arttığında, dilin bu kuralları değerli olabilir. Yine de bunu yalnız Rust'ın çözebileceği bir problem gibi düşünmeyelim. Buradaki soru, senin işinde bu yaklaşımın maliyetine değecek bir fayda sağlayıp sağlamadığı.",
+      "highlight": "Hatasızlık garantisi yok",
+      "mode": "overview"
+    },
+    {
+      "id": "s10-p0",
+      "scene": 10,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Soyut konuşmayalım; gerçek bir örneğe bakalım. Hugging Face'in Tokenizers kütüphanesi Rust uygulamasına sahip. Görevi, metni modelin kullanabileceği token denen parçalara dönüştürmek. Yani burada konuştuğumuz şey doğrudan modelin zekâsı değil; modele giden metnin hazırlanması.",
+      "highlight": "Metin → token → model",
+      "mode": "overview"
+    },
+    {
+      "id": "s10-p1",
+      "scene": 10,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Kütüphanenin Python tarafından da kullanılabilmesi bence konunun en güzel kısmı. Sen Python ile uygulamanı yazarken, kullandığın bir parçanın içinde Rust çalışabiliyor.",
+      "highlight": "Metin → token → model",
+      "mode": "detail"
+    },
+    {
+      "id": "s11-p0",
+      "scene": 11,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Bunun için bütün uygulamanı taşıman gerekmiyor. Buradan herkes Python'u bırakıyor sonucunu çıkaramayız. Ama farklı dillerin aynı sistemde farklı görevler üstlenebildiğini görebiliriz. Bir araç seçerken sadece dışarıdan gördüğümüz dile bakmak yetmiyor; kullandığı parçaları da anlamak gerekiyor.",
+      "highlight": "Python’ın içinde Rust",
+      "mode": "overview"
+    },
+    {
+      "id": "s11-p1",
+      "scene": 11,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Bu da dil tartışmasını biraz daha gerçek bir zemine çekiyor.",
+      "highlight": "Python’ın içinde Rust",
+      "mode": "detail"
+    },
+    {
+      "id": "s12-p0",
+      "scene": 12,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Bir başka örnek de yine Hugging Face'in Candle projesi. Candle, Rust için geliştirilmiş bir makine öğrenmesi çatısı. Projede metin üretimi, ses tanıma ve görüntü işlemleri gibi alanlarda model çalıştırma örnekleri bulunuyor.",
+      "highlight": "Gerçek proje: Candle",
+      "mode": "overview"
+    },
+    {
+      "id": "s12-p1",
+      "scene": 12,
+      "part": 1,
+      "role": "narrator",
+      "tr": "GPU desteği de var. Bu, Rust ile yapay zekâ tarafında gerçek işler yapılabildiğini gösteriyor. Ama bir modelin bir yerde çalışabiliyor olması, benim projemin ihtiyaç duyduğu her özelliğin hazır olduğu anlamına gelmez.",
+      "highlight": "Gerçek proje: Candle",
+      "mode": "detail"
+    },
+    {
+      "id": "s12-p2",
+      "scene": 12,
+      "part": 2,
+      "role": "narrator",
+      "tr": "Seçeceğim model destekleniyor mu?",
+      "highlight": "Gerçek proje: Candle",
+      "mode": "detail"
+    },
+    {
+      "id": "s13-p0",
+      "scene": 13,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Donanımım uygun mu? İhtiyacım olan işlemler ve araçlar mevcut mu? Bunlara ayrıca bakmam gerekiyor. Mesela amacım yerel model kullanan bir masaüstü uygulamasıysa bu seçenekleri incelemek anlamlı olabilir.",
+      "highlight": "Model + donanım + özellik",
+      "mode": "overview"
+    },
+    {
+      "id": "s13-p1",
+      "scene": 13,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Ama sadece bir API'ye soru gönderip cevabını göstereceksem, model çalıştırma çatısı seçmek zaten başka bir problem. Yine dönüp ne yaptığımıza bakıyoruz.",
+      "highlight": "Model + donanım + özellik",
+      "mode": "detail"
+    },
+    {
+      "id": "s14-example",
+      "scene": 14,
+      "part": 0,
+      "role": "pixel",
+      "tr": "Bir de trafikte olduğunu düşün. Araban çok hızlı ama önünde tek şeritli dar bir köprü var. Daha güçlü bir motor, o köprünün kapasitesini artırmıyor. Önce beklemenin nedenini bulmalısın.",
+      "highlight": "Darboğazı bul",
+      "mode": "example"
+    },
+    {
+      "id": "s14-p0",
+      "scene": 14,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Şimdi belge asistanımıza geri dönelim. Kullanıcı dosyayı yükledi ve cevap bekliyor. Hangi parçanın zaman aldığını henüz ölçmedik. Belki dosya ayrıştırılıyor. Belki aynı belge her soruda yeniden işleniyor.",
+      "highlight": "Darboğazı bul",
+      "mode": "overview"
+    },
+    {
+      "id": "s15-p0",
+      "scene": 15,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Belki uzaktaki sağlayıcının cevabını bekliyoruz. Belki de donanımımız model için yetersiz. Bunlar farklı sorunlar ve çözümleri de farklı olabilir. Aynı işi tekrar tekrar yapıyorsan önce o tekrarı kaldırmayı düşünebilirsin.",
+      "highlight": "Bekleme nerede?",
+      "mode": "overview"
+    },
+    {
+      "id": "s15-p1",
+      "scene": 15,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Ağ cevabını bekliyorsan, istemciyi başka bir dille yazmak sağlayıcının cevap süresini ortadan kaldırmaz.",
+      "highlight": "Bekleme nerede?",
+      "mode": "detail"
+    },
+    {
+      "id": "s16-p0",
+      "scene": 16,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Dil değişikliği ancak gerçekten etkilediği bölümde işe yarayabilir. Bu videoda sana ölçmediğim bir hız çarpanı vermeyeceğim. Benim önerim şu: Önce bir başlangıç ölçümü al, sonra hangi parçayı değiştirdiğini belirle ve aynı koşullarda yeniden ölç.",
+      "highlight": "Önce ölç, sonra değiştir",
+      "mode": "overview"
+    },
+    {
+      "id": "s16-p1",
+      "scene": 16,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Hem çıkan sonuç anlamlı olur hem de yaptığın değişikliğin bedelini görebilirsin.",
+      "highlight": "Önce ölç, sonra değiştir",
+      "mode": "detail"
+    },
+    {
+      "id": "s17-p0",
+      "scene": 17,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Bir dili seçerken sadece uygulamanın çalışma maliyetini konuşmak eksik kalıyor. Onu geliştirmek için harcadığın zaman da bir maliyet. Rust öğrenirken sahiplik ve ödünç alma gibi kavramlarla uğraşacaksın.",
+      "highlight": "Senin zamanın da değerli",
+      "mode": "overview"
+    },
+    {
+      "id": "s17-p1",
+      "scene": 17,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Kullandığın kütüphaneleri tanıyacaksın. Mevcut bir projeyi taşıyorsan, daha önce çalışan davranışların korunup korunmadığını da kontrol edeceksin. Ben bunu Rust öğrenmeyin diye söylemiyorum. Tam tersine, öğrenmenin nedenini netleştirmek için söylüyorum.",
+      "highlight": "Senin zamanın da değerli",
+      "mode": "detail"
+    },
+    {
+      "id": "s18-example",
+      "scene": 18,
+      "part": 0,
+      "role": "classic",
+      "tr": "Şimdi küçük bir atölyedeyiz. Makine çalışıyor ama bir parça sorun çıkarıyor. İlk iş bütün makineyi sökmek mi olmalı? Belki sadece o parçayı denemek yeterli. Yazılımda da önce küçük bir alanı değiştirmek daha kontrollü bir deney sağlar.",
+      "highlight": "Önce tek parçayı dene",
+      "mode": "example"
+    },
+    {
+      "id": "s18-p0",
+      "scene": 18,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Yeni bir dil öğrenmek başlı başına güzel bir hedef olabilir. Ama çalışan ürünü taşımak başka bir karar. Küçük bir projede bir gün erken kullanıcıya ulaşmak daha değerli olabilir.",
+      "highlight": "Önce tek parçayı dene",
+      "mode": "overview"
+    },
+    {
+      "id": "s18-p1",
+      "scene": 18,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Başka bir projede ise kaynak kullanımı ve kontrol daha önemli olabilir. Bu iki durumda aynı seçimi yapmak zorunda değiliz. Benim bakacağım şey, kazandığım faydanın öğrenme ve bakım yükünü karşılayıp karşılamadığı.",
+      "highlight": "Önce tek parçayı dene",
+      "mode": "detail"
+    },
+    {
+      "id": "s19-example",
+      "scene": 19,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Bu köprünün bir tarafında Python uygulaman, diğer tarafında Rust ile yazdığın bir parça var. İkisini birbirine bağlayabiliyorsun. Ama köprüden veri geçirmenin de bir maliyeti olduğunu unutma.",
+      "highlight": "Python + Rust",
+      "mode": "example"
+    },
+    {
+      "id": "s19-p0",
+      "scene": 19,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Bir de çoğu dil tartışmasında arada kaybolan seçenek var: İkisini birlikte kullanmak. Bütün projeyi taşımak zorunda olmayabilirsin. Python tarafında uygulamanı koruyup, ölçümle sorunlu olduğunu gördüğün belirli bir bölüm için Rust kullanmayı değerlendirebilirsin.",
+      "highlight": "Python + Rust",
+      "mode": "overview"
+    },
+    {
+      "id": "s19-p1",
+      "scene": 19,
+      "part": 1,
+      "role": "narrator",
+      "tr": "PyO3 gibi araçlar Rust ile Python modülü yazmayı mümkün kılıyor. Böylece Python'dan çağırdığın bir işlevin uygulaması Rust tarafında olabiliyor. Tabii iki taraf arasında veri aktarmanın ve böyle bir paketi dağıtmanın da bir maliyeti var.",
+      "highlight": "Python + Rust",
+      "mode": "detail"
+    },
+    {
+      "id": "s20-p0",
+      "scene": 20,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Her küçük işlemi ayırmak otomatik olarak kazanç getirmez. Ama bu seçenek, kararın ya Python ya Rust olmak zorunda olmadığını gösteriyor. Önce dar bir alanda deneyebilirsin. Sonuç gerçekten işine yarıyorsa ilerlersin.",
+      "highlight": "Büyük göç yerine küçük deney",
+      "mode": "overview"
+    },
+    {
+      "id": "s20-p1",
+      "scene": 20,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Yaramıyorsa da bütün ürünü yeniden yazmış olmazsın. Bence öğrenmek için de daha somut bir başlangıç noktası bu.",
+      "highlight": "Büyük göç yerine küçük deney",
+      "mode": "detail"
+    },
+    {
+      "id": "s21-p0",
+      "scene": 21,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Peki sen ne yapmalısın? Ben yeni başlıyor ve amacım modelleri tanımak, veriyle çalışmak, eğitim örneklerini denemek olsaydı Python ile başlardım. Çünkü o aşamada önceliğim dil değiştirmek değil, yaptığım işin mantığını anlamak olurdu.",
+      "highlight": "Karar ihtiyacına bağlı",
+      "mode": "overview"
+    },
+    {
+      "id": "s21-p1",
+      "scene": 21,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Zaten çalışan bir uygulamam olsaydı, onu sadece Rust ilgimi çekti diye baştan yazmazdım. Önce yaşadığım sorunu belirler, ölçer ve küçük bir değişiklikle sınardım. Hatta dil değişmeden çözülebilen bir problem mi diye bakardım.",
+      "highlight": "Karar ihtiyacına bağlı",
+      "mode": "detail"
+    },
+    {
+      "id": "s21-p2",
+      "scene": 21,
+      "part": 2,
+      "role": "narrator",
+      "tr": "Ama ilgim sistem programlama, kaynak kontrolü veya bir ürüne yerel model gömmek olsaydı Rust'ı ciddi biçimde öğrenmek isterdim.",
+      "highlight": "Karar ihtiyacına bağlı",
+      "mode": "detail"
+    },
+    {
+      "id": "s22-p0",
+      "scene": 22,
+      "part": 0,
+      "role": "narrator",
+      "tr": "Bunlar benim karar önerilerim; her proje için geçerli tek bir reçete değil. Benim bu konudan çıkardığım şey şu: En iyi dil sorusundan önce hangi problemi çözüyorum sorusunu sormak gerekiyor.",
+      "highlight": "Hangi problemi çözüyorum?",
+      "mode": "overview"
+    },
+    {
+      "id": "s22-p1",
+      "scene": 22,
+      "part": 1,
+      "role": "narrator",
+      "tr": "Bir araç çok iyi olabilir; ama şu an benim ihtiyacım olan araç olmayabilir. Sen hangi taraftasın? Model denemeleri mi yapıyorsun, yoksa kullanıcıya sunduğun bir uygulama mı geliştiriyorsun?",
+      "highlight": "Hangi problemi çözüyorum?",
+      "mode": "detail"
+    },
+    {
+      "id": "s22-p2",
+      "scene": 22,
+      "part": 2,
+      "role": "narrator",
+      "tr": "Yorumlara yaptığın işi yaz. Python mu Rust mı tartışmasını bir de o gerçek problem üzerinden yapalım.",
+      "highlight": "Hangi problemi çözüyorum?",
+      "mode": "detail"
+    }
+  ]
+}

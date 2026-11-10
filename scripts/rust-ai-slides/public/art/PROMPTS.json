@@ -1,0 +1,10 @@
+{
+  "tool": "built-in image_gen",
+  "shared": "Premium editorial educational illustration; landscape 16:9; tactile cut-paper and clay miniature diorama; charcoal background #101719, teal blue, saffron and burnt orange; no text, logos, numbers, watermarks or mascots. Visual analogy, not a benchmark.",
+  "scenes": {
+    "restaurant": "A cutaway miniature restaurant illustrating coordination versus computation. At left a welcoming waiter receives one order ticket from a customer; center service counter passes a ticket; at right a beautifully detailed open kitchen with two chefs, oven, pot and fresh ingredients preparing food. Visually distinguish the order-taking front of house from cooking in the back. No labels.",
+    "traffic": "A dramatic isometric miniature road junction. Many small cars queue on a wide road before one very narrow bridge; beyond the bridge the road is clear. One striking saffron car and several teal and orange cars. The bottleneck is unmistakable. City objects sparse; show the full road and bridge; no signs or text.",
+    "workshop": "A miniature precision workshop workbench where a builder assembles a modular machine from large blue and orange interlocking blocks. A toolbox, precision caliper, small component trays and a simple conveyor belt on the bench. Emphasize swapping ONE orange component in an otherwise blue device, not destroying and rebuilding the whole machine. No letters or text.",
+    "bridge": "A beautiful sturdy modular footbridge connecting two small floating islands: one island contains elegant blue and yellow building blocks, the other orange industrial gears. A single glowing ivory parcel crosses the bridge. The two sides cooperate, equally attractive and balanced. Cinematic light, no flags or lettering."
+  }
+}

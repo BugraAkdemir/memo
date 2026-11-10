@@ -1,0 +1,252 @@
+{
+  "intro": {
+    "sec": 17.414966,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s00-p1": {
+    "sec": 2.321995,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s00-p0": {
+    "sec": 15.46449,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s01-p0": {
+    "sec": 13.885533,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s01-p1": {
+    "sec": 10.727619,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s02-example": {
+    "sec": 10.866939,
+    "ok": true,
+    "role": "classic"
+  },
+  "s02-p0": {
+    "sec": 13.699773,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s03-p0": {
+    "sec": 19.272562,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s04-p0": {
+    "sec": 13.514014,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s04-p1": {
+    "sec": 2.461315,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s05-p1": {
+    "sec": 8.034104,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s05-p0": {
+    "sec": 17.554286,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s06-p0": {
+    "sec": 12.585215,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s06-p1": {
+    "sec": 12.399456,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s07-p1": {
+    "sec": 2.693515,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s07-p0": {
+    "sec": 16.161088,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s08-example": {
+    "sec": 17.972245,
+    "ok": true,
+    "role": "pixel"
+  },
+  "s08-p0": {
+    "sec": 13.653333,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s09-p0": {
+    "sec": 15.836009,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s10-p0": {
+    "sec": 16.532608,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s10-p1": {
+    "sec": 9.473741,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s11-p0": {
+    "sec": 15.975329,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s11-p1": {
+    "sec": 3.157914,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s12-p0": {
+    "sec": 12.770975,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s12-p1": {
+    "sec": 12.585215,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s12-p2": {
+    "sec": 2.043356,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s13-p0": {
+    "sec": 12.399456,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s13-p1": {
+    "sec": 8.591383,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s14-example": {
+    "sec": 11.563537,
+    "ok": true,
+    "role": "pixel"
+  },
+  "s14-p0": {
+    "sec": 12.167256,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s15-p0": {
+    "sec": 13.653333,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s15-p1": {
+    "sec": 6.269388,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s16-p1": {
+    "sec": 4.411791,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s16-p0": {
+    "sec": 14.442812,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s17-p0": {
+    "sec": 12.260136,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s17-p1": {
+    "sec": 14.303492,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s18-example": {
+    "sec": 14.117732,
+    "ok": true,
+    "role": "classic"
+  },
+  "s18-p0": {
+    "sec": 9.938141,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s18-p1": {
+    "sec": 12.306576,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s19-example": {
+    "sec": 10.588299,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s19-p0": {
+    "sec": 15.836009,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s19-p1": {
+    "sec": 14.303492,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s20-p0": {
+    "sec": 12.631655,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s20-p1": {
+    "sec": 6.130068,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s21-p0": {
+    "sec": 14.257052,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s21-p1": {
+    "sec": 14.024853,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s21-p2": {
+    "sec": 7.430385,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s22-p0": {
+    "sec": 10.681179,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s22-p2": {
+    "sec": 5.526349,
+    "ok": true,
+    "role": "narrator"
+  },
+  "s22-p1": {
+    "sec": 10.30966,
+    "ok": true,
+    "role": "narrator"
+  }
+}

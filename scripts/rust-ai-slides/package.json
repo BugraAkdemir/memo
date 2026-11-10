@@ -1,0 +1,26 @@
+{
+  "name": "python-rust-ai-film",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "studio": "remotion studio src/index.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.542",
+    "@remotion/player": "4.0.542",
+    "remotion": "4.0.542",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "@remotion/media": "4.0.542",
+    "@remotion/transitions": "4.0.542",
+    "mediabunny": "1.64.0",
+    "@remotion/captions": "4.0.542"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1",
+    "typescript": "5.9.3",
+    "@types/react": "19.3.0"
+  }
+}

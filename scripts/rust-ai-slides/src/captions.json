@@ -1,0 +1,2319 @@
+[
+  {
+    "text": " Yapay zekâ için Python öğreniyorsun.",
+    "startMs": 0,
+    "endMs": 3010,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Sonra karşına Rust çıkıyor.",
+    "startMs": 3010,
+    "endMs": 4680,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Peki, yanlış dili mi öğreniyorsun?",
+    "startMs": 4680,
+    "endMs": 7140,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Yoksa aynı uygulamanın farklı",
+    "startMs": 7140,
+    "endMs": 9000,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " parçaları için farklı araçlardan",
+    "startMs": 9000,
+    "endMs": 10810,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " mı konuşuyoruz?",
+    "startMs": 10810,
+    "endMs": 11840,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Gel, bunu bir restoran, bir trafik",
+    "startMs": 11840,
+    "endMs": 14390,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " sıkışıklığı ve küçük bir atölye",
+    "startMs": 14390,
+    "endMs": 16270,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " üzerinden anlatalım.",
+    "startMs": 16270,
+    "endMs": 17640,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bu videoda tam olarak bunu",
+    "startMs": 17640,
+    "endMs": 19750,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " konuşacağız. Ama bir dili övüp",
+    "startMs": 19750,
+    "endMs": 21960,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " diğerini gömmek yerine, aynı uygulamanın",
+    "startMs": 21960,
+    "endMs": 24340,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " içine bakacağız.",
+    "startMs": 24340,
+    "endMs": 25280,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Modeli geliştiren kişiyle, o",
+    "startMs": 25280,
+    "endMs": 27070,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " modeli binlerce isteğe cevap",
+    "startMs": 27070,
+    "endMs": 28830,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " verecek bir ürüne koyan kişi",
+    "startMs": 28830,
+    "endMs": 30570,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " aynı problemi mi çözüyor?",
+    "startMs": 30570,
+    "endMs": 32480,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Videonun sonunda elinde bir dil",
+    "startMs": 32480,
+    "endMs": 34160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " sıralaması değil, kendi projen",
+    "startMs": 34160,
+    "endMs": 35800,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " için kullanabileceğin birkaç",
+    "startMs": 35800,
+    "endMs": 37510,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " karar sorusu olsun istiyorum.",
+    "startMs": 37510,
+    "endMs": 39200,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Çünkü yanlış soruya çok iyi bir",
+    "startMs": 39200,
+    "endMs": 41110,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " cevap vermek de zaman kaybettiriyor.",
+    "startMs": 41110,
+    "endMs": 43680,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bir restoran düşün. Garson siparişi",
+    "startMs": 43680,
+    "endMs": 46250,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " alıyor, mutfak yemeği pişiriyor.",
+    "startMs": 46250,
+    "endMs": 48640,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Garsonu değiştirince fırının",
+    "startMs": 48640,
+    "endMs": 50180,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " daha hızlı pişirmesini bekler",
+    "startMs": 50180,
+    "endMs": 51650,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " misin? Burada da işleri ayrı",
+    "startMs": 51650,
+    "endMs": 53670,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " düşünmek gerekiyor.",
+    "startMs": 53670,
+    "endMs": 54960,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Önce şu yapay zekâ geliştirmek",
+    "startMs": 54960,
+    "endMs": 56560,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " meselesini üçe ayıralım.",
+    "startMs": 56560,
+    "endMs": 58160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Birincisi, model üzerinde çalışmak.",
+    "startMs": 58160,
+    "endMs": 60270,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Veri hazırlamak, eğitim yapmak,",
+    "startMs": 60270,
+    "endMs": 62240,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yeni bir yaklaşım denemek.",
+    "startMs": 62240,
+    "endMs": 64000,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " İkincisi, hazır bir modeli çalıştırmak;",
+    "startMs": 64000,
+    "endMs": 66400,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yani modele bir şey verip cevap",
+    "startMs": 66400,
+    "endMs": 68070,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " almak.",
+    "startMs": 68070,
+    "endMs": 68800,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Üçüncüsü ise bunun etrafındaki",
+    "startMs": 68800,
+    "endMs": 71010,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " ürünü geliştirmek. Dosyaları okuyacak,",
+    "startMs": 71010,
+    "endMs": 74000,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " kullanıcıları yönetecek, istekleri",
+    "startMs": 74000,
+    "endMs": 76180,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " sıraya koyacak ve sonucu ekrana",
+    "startMs": 76180,
+    "endMs": 77790,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " getirecek sistem.",
+    "startMs": 77790,
+    "endMs": 79040,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Mesela belgelerinle konuşabildiğin",
+    "startMs": 79040,
+    "endMs": 80980,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bir uygulama düşün. Belgeyi okumak",
+    "startMs": 80980,
+    "endMs": 82890,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " başka iş, metni modelin anlayacağı",
+    "startMs": 82890,
+    "endMs": 84800,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " biçime çevirmek başka iş, modelden",
+    "startMs": 84800,
+    "endMs": 87070,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " cevap almak başka iş.",
+    "startMs": 87070,
+    "endMs": 88560,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bunların hepsinin aynı dille",
+    "startMs": 88560,
+    "endMs": 90380,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yazılması şart değil. O yüzden",
+    "startMs": 90380,
+    "endMs": 92410,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " biri Rust kullanıyor dediğinde",
+    "startMs": 92410,
+    "endMs": 94270,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " ilk sorum şu olur:",
+    "startMs": 94270,
+    "endMs": 95280,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Tam olarak hangi parçayı Rust",
+    "startMs": 95280,
+    "endMs": 96820,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " ile yazıyor? Modelin kendisini",
+    "startMs": 96820,
+    "endMs": 98650,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " mi, veriyi hazırlayan bölümü mü,",
+    "startMs": 98650,
+    "endMs": 100560,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yoksa uygulamanın sunucusunu",
+    "startMs": 100560,
+    "endMs": 102220,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " mu?",
+    "startMs": 102220,
+    "endMs": 102640,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bu ayrım olmadan karşılaştırma",
+    "startMs": 102640,
+    "endMs": 104640,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " eksik kalıyor.",
+    "startMs": 104640,
+    "endMs": 105600,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Burada çok kolay karışan bir",
+    "startMs": 105600,
+    "endMs": 108610,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " şey var. Python ile yazılmış",
+    "startMs": 108610,
+    "endMs": 110550,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bir yapay zekâ uygulamasındaki",
+    "startMs": 110550,
+    "endMs": 111730,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bütün ağır hesaplamaların",
+    "startMs": 111730,
+    "endMs": 112980,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Python tarafından yapıldığını",
+    "startMs": 112980,
+    "endMs": 114010,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " düşünebiliyoruz.",
+    "startMs": 114010,
+    "endMs": 115120,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ama örneğin PyTorch'un Python arayüzü,",
+    "startMs": 115120,
+    "endMs": 117390,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " hesaplama açısından pahalı",
+    "startMs": 117390,
+    "endMs": 119560,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " işlemlerin büyük bölümünde C++",
+    "startMs": 119560,
+    "endMs": 121670,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " tarafına çağrı yapıyor.",
+    "startMs": 121670,
+    "endMs": 123680,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Sen üst tarafta daha rahat bir",
+    "startMs": 123680,
+    "endMs": 125530,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " dille modeli kuruyorsun. Alt",
+    "startMs": 125530,
+    "endMs": 127540,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " tarafta ise bu işi yapmak için",
+    "startMs": 127540,
+    "endMs": 129390,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " hazırlanmış hesaplama altyapısı",
+    "startMs": 129390,
+    "endMs": 131160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " çalışıyor.",
+    "startMs": 131160,
+    "endMs": 132080,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bu nedenle uygulamanın üst katmanını",
+    "startMs": 132080,
+    "endMs": 134710,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Rust'a çevirmek, aynı modelin",
+    "startMs": 134710,
+    "endMs": 136750,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " aynı donanımda otomatik olarak",
+    "startMs": 136750,
+    "endMs": 138360,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " çok daha hızlı cevap vereceği",
+    "startMs": 138360,
+    "endMs": 139860,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " anlamına gelmiyor.",
+    "startMs": 139860,
+    "endMs": 141120,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Benim burada sormam gereken şey",
+    "startMs": 141120,
+    "endMs": 142920,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " şu: Beklediğim süre nerede geçiyor?",
+    "startMs": 142920,
+    "endMs": 145200,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Kendi yazdığım döngüde mi, dosya",
+    "startMs": 145200,
+    "endMs": 147600,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " okurken mi, ağda mı, model hesaplama",
+    "startMs": 147600,
+    "endMs": 150230,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yaparken mi? Sorunu bulmadan dili",
+    "startMs": 150230,
+    "endMs": 152580,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " değiştirmek, sıkışan trafiği çözmek",
+    "startMs": 152580,
+    "endMs": 155100,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " için arabanın rengini değiştirmeye",
+    "startMs": 155100,
+    "endMs": 157030,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " benzeyebilir.",
+    "startMs": 157030,
+    "endMs": 158000,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Peki Rust'ın burada sunduğu şey",
+    "startMs": 158000,
+    "endMs": 161300,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " ne? Belleğin nasıl kullanıldığı",
+    "startMs": 161300,
+    "endMs": 163400,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " üzerinde kontrol ve belirli hata",
+    "startMs": 163400,
+    "endMs": 164950,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " türlerini daha program çalışmadan",
+    "startMs": 164950,
+    "endMs": 166620,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yakalayabilmek.",
+    "startMs": 166620,
+    "endMs": 167520,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Rust'ın sahiplik ve ödünç alma",
+    "startMs": 167520,
+    "endMs": 169150,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " kuralları, veriyi kimin kullandığını",
+    "startMs": 169150,
+    "endMs": 171280,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " ve ne zaman değiştirebildiğini",
+    "startMs": 171280,
+    "endMs": 173230,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " takip etmene yardım ediyor.",
+    "startMs": 173230,
+    "endMs": 174960,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bunun eşzamanlı çalışan kodda",
+    "startMs": 174960,
+    "endMs": 176810,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " da karşılığı var.",
+    "startMs": 176810,
+    "endMs": 178000,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ben şimdi anahtar örneğini göstereyim.",
+    "startMs": 178000,
+    "endMs": 180630,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Aynı odayı iki kişi aynı anda",
+    "startMs": 180630,
+    "endMs": 182220,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " değiştirmek istiyor.",
+    "startMs": 182220,
+    "endMs": 183600,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Kimin ne zaman içeri girebildiği",
+    "startMs": 183600,
+    "endMs": 185710,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " belli değilse işler karışabilir.",
+    "startMs": 185710,
+    "endMs": 188160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Rust burada bazı erişim kurallarını",
+    "startMs": 188160,
+    "endMs": 190140,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " daha baştan kontrol ediyor.",
+    "startMs": 190140,
+    "endMs": 191920,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bu, sahiplik ve ödünç alma için",
+    "startMs": 191920,
+    "endMs": 194160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " basitleştirilmiş bir benzetme.",
+    "startMs": 194160,
+    "endMs": 196640,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Birden fazla iş aynı veriyle uğraşırken",
+    "startMs": 196640,
+    "endMs": 198630,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " oluşabilecek birçok hata, derleme",
+    "startMs": 198630,
+    "endMs": 200490,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " sırasında karşına çıkabiliyor.",
+    "startMs": 200490,
+    "endMs": 202480,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Tabii bu, Rust ile yazdığın uygulamada",
+    "startMs": 202480,
+    "endMs": 204560,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " hiç hata olmayacak demek değil.",
+    "startMs": 204560,
+    "endMs": 206560,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Yanlış sonuç da üretebilirsin,",
+    "startMs": 206560,
+    "endMs": 208420,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " kötü bir tasarım da yapabilirsin.",
+    "startMs": 208420,
+    "endMs": 210640,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ama kontrol etmen gereken kaynaklar",
+    "startMs": 210640,
+    "endMs": 212710,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " ve aynı anda yürüyen işler arttığında,",
+    "startMs": 212710,
+    "endMs": 214860,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " dilin bu kuralları değerli",
+    "startMs": 214860,
+    "endMs": 216350,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " olabilir.",
+    "startMs": 216350,
+    "endMs": 217280,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Yine de bunu yalnız Rust'ın çözebileceği",
+    "startMs": 217280,
+    "endMs": 219360,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bir problem gibi düşünmeyelim.",
+    "startMs": 219360,
+    "endMs": 221280,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Buradaki soru, senin işinde bu",
+    "startMs": 221280,
+    "endMs": 222920,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yaklaşımın maliyetine değecek",
+    "startMs": 222920,
+    "endMs": 224700,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bir fayda sağlayıp sağlamadığı.",
+    "startMs": 224700,
+    "endMs": 226800,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Soyut konuşmayalım; gerçek bir",
+    "startMs": 226800,
+    "endMs": 228880,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " örneğe bakalım.",
+    "startMs": 228880,
+    "endMs": 230160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Hugging Face'in Tokenizers kütüphanesi",
+    "startMs": 230160,
+    "endMs": 232530,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Rust uygulamasına sahip.",
+    "startMs": 232530,
+    "endMs": 234000,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Görevi, metni modelin kullanabileceği",
+    "startMs": 234000,
+    "endMs": 236170,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " token denen parçalara dönüştürmek.",
+    "startMs": 236170,
+    "endMs": 238240,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Yani burada konuştuğumuz şey",
+    "startMs": 238240,
+    "endMs": 239860,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " doğrudan modelin zekâsı değil;",
+    "startMs": 239860,
+    "endMs": 241790,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " modele giden metnin hazırlanması.",
+    "startMs": 241790,
+    "endMs": 243840,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Kütüphanenin Python tarafından",
+    "startMs": 243840,
+    "endMs": 245840,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " da kullanılabilmesi bence konunun",
+    "startMs": 245840,
+    "endMs": 248000,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " en güzel kısmı.",
+    "startMs": 248000,
+    "endMs": 248960,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Sen Python ile uygulamanı yazarken,",
+    "startMs": 248960,
+    "endMs": 250760,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " kullandığın bir parçanın içinde",
+    "startMs": 250760,
+    "endMs": 252500,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Rust çalışabiliyor.",
+    "startMs": 252500,
+    "endMs": 253760,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bunun için bütün uygulamanı taşıman",
+    "startMs": 253760,
+    "endMs": 255780,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " gerekmiyor.",
+    "startMs": 255780,
+    "endMs": 256720,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Buradan herkes Python'u bırakıyor",
+    "startMs": 256720,
+    "endMs": 258350,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " sonucunu çıkaramayız.",
+    "startMs": 258350,
+    "endMs": 259600,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ama farklı dillerin aynı sistemde",
+    "startMs": 259600,
+    "endMs": 261390,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " farklı görevler üstlenebildiğini",
+    "startMs": 261390,
+    "endMs": 263200,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " görebiliriz.",
+    "startMs": 263200,
+    "endMs": 264160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bir araç seçerken sadece dışarıdan",
+    "startMs": 264160,
+    "endMs": 266120,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " gördüğümüz dile bakmak yetmiyor;",
+    "startMs": 266120,
+    "endMs": 268190,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " kullandığı parçaları da anlamak",
+    "startMs": 268190,
+    "endMs": 269870,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " gerekiyor.",
+    "startMs": 269870,
+    "endMs": 270480,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bu da dil tartışmasını biraz",
+    "startMs": 270480,
+    "endMs": 272020,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " daha gerçek bir zemine çekiyor.",
+    "startMs": 272020,
+    "endMs": 273920,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bir başka örnek de yine Hugging Face'in",
+    "startMs": 273920,
+    "endMs": 276910,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Candle projesi.",
+    "startMs": 276910,
+    "endMs": 277520,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Candle, Rust için geliştirilmiş",
+    "startMs": 277520,
+    "endMs": 279410,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bir makine öğrenmesi çatısı.",
+    "startMs": 279410,
+    "endMs": 281120,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Projede metin üretimi, ses tanıma",
+    "startMs": 281120,
+    "endMs": 282920,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " ve görüntü işlemleri gibi alanlarda",
+    "startMs": 282920,
+    "endMs": 284810,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " model çalıştırma örnekleri bulunuyor.",
+    "startMs": 284810,
+    "endMs": 287200,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " GPU desteği de var.",
+    "startMs": 287200,
+    "endMs": 289200,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bu, Rust ile yapay zekâ tarafında",
+    "startMs": 289200,
+    "endMs": 290990,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " gerçek işler yapılabildiğini",
+    "startMs": 290990,
+    "endMs": 292750,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " gösteriyor.",
+    "startMs": 292750,
+    "endMs": 293520,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ama bir modelin bir yerde çalışabiliyor",
+    "startMs": 293520,
+    "endMs": 295730,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " olması, benim projemin ihtiyaç",
+    "startMs": 295730,
+    "endMs": 297360,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " duyduğu her özelliğin hazır",
+    "startMs": 297360,
+    "endMs": 298800,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " olduğu anlamına gelmez.",
+    "startMs": 298800,
+    "endMs": 300240,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Seçeceğim model destekleniyor",
+    "startMs": 300240,
+    "endMs": 302350,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " mu?",
+    "startMs": 302350,
+    "endMs": 302800,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Donanımım uygun mu? İhtiyacım",
+    "startMs": 302800,
+    "endMs": 305160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " olan işlemler ve araçlar mevcut",
+    "startMs": 305160,
+    "endMs": 306860,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " mu?",
+    "startMs": 306860,
+    "endMs": 307280,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bunlara ayrıca bakmam gerekiyor.",
+    "startMs": 307280,
+    "endMs": 309280,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Mesela amacım yerel model",
+    "startMs": 309280,
+    "endMs": 310820,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " kullanan bir masaüstü uygulamasıysa",
+    "startMs": 310820,
+    "endMs": 312830,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bu seçenekleri incelemek anlamlı",
+    "startMs": 312830,
+    "endMs": 314590,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " olabilir.",
+    "startMs": 314590,
+    "endMs": 315520,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ama sadece bir API'ye soru gönderip",
+    "startMs": 315520,
+    "endMs": 317800,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " cevabını göstereceksem, model",
+    "startMs": 317800,
+    "endMs": 319820,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " çalıştırma çatısı seçmek zaten",
+    "startMs": 319820,
+    "endMs": 321440,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " başka bir problem.",
+    "startMs": 321440,
+    "endMs": 322560,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Yine dönüp ne yaptığımıza bakıyoruz.",
+    "startMs": 322560,
+    "endMs": 324560,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bir de trafikte olduğunu düşün.",
+    "startMs": 324560,
+    "endMs": 327040,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Araban çok hızlı ama önünde tek",
+    "startMs": 327040,
+    "endMs": 328860,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " şeritli dar bir köprü var.",
+    "startMs": 328860,
+    "endMs": 330560,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Daha güçlü bir motor, o köprünün",
+    "startMs": 330560,
+    "endMs": 332620,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " kapasitesini artırmıyor.",
+    "startMs": 332620,
+    "endMs": 334240,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Önce beklemenin nedenini bulmalısın.",
+    "startMs": 334240,
+    "endMs": 336560,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Şimdi belge asistanımıza geri",
+    "startMs": 336560,
+    "endMs": 338380,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " dönelim.",
+    "startMs": 338380,
+    "endMs": 339040,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Kullanıcı dosyayı yükledi ve",
+    "startMs": 339040,
+    "endMs": 340590,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " cevap bekliyor.",
+    "startMs": 340590,
+    "endMs": 341680,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Hangi parçanın zaman aldığını",
+    "startMs": 341680,
+    "endMs": 343280,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " henüz ölçmedik.",
+    "startMs": 343280,
+    "endMs": 344320,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Belki dosya ayrıştırılıyor.",
+    "startMs": 344320,
+    "endMs": 346240,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Belki aynı belge her soruda yeniden",
+    "startMs": 346240,
+    "endMs": 348330,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " işleniyor.",
+    "startMs": 348330,
+    "endMs": 349280,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Belki uzaktaki sağlayıcının",
+    "startMs": 349280,
+    "endMs": 351170,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " cevabını bekliyoruz.",
+    "startMs": 351170,
+    "endMs": 352800,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Belki de donanımımız model için",
+    "startMs": 352800,
+    "endMs": 354920,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yetersiz.",
+    "startMs": 354920,
+    "endMs": 355840,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bunlar farklı sorunlar ve çözümleri",
+    "startMs": 355840,
+    "endMs": 357660,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " de farklı olabilir.",
+    "startMs": 357660,
+    "endMs": 358800,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Aynı işi tekrar tekrar yapıyorsan",
+    "startMs": 358800,
+    "endMs": 360750,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " önce o tekrarı kaldırmayı düşünebilirsin.",
+    "startMs": 360750,
+    "endMs": 363520,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ağ cevabını bekliyorsan, istemciyi",
+    "startMs": 363520,
+    "endMs": 365920,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " başka bir dille yazmak sağlayıcının",
+    "startMs": 365920,
+    "endMs": 368160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " cevap süresini ortadan kaldırmaz.",
+    "startMs": 368160,
+    "endMs": 370000,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Dil değişikliği ancak gerçekten",
+    "startMs": 370000,
+    "endMs": 371880,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " etkilediği bölümde işe yarayabilir.",
+    "startMs": 371880,
+    "endMs": 374320,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bu videoda sana ölçmediğim bir",
+    "startMs": 374320,
+    "endMs": 375980,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " hız çarpanı vermeyeceğim.",
+    "startMs": 375980,
+    "endMs": 377440,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Benim önerim şu: Önce bir başlangıç",
+    "startMs": 377440,
+    "endMs": 379850,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " ölçümü al, sonra hangi parçayı",
+    "startMs": 379850,
+    "endMs": 381600,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " değiştirdiğini belirle ve aynı",
+    "startMs": 381600,
+    "endMs": 383320,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " koşullarda yeniden ölç.",
+    "startMs": 383320,
+    "endMs": 385120,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Hem çıkan sonuç anlamlı olur",
+    "startMs": 385120,
+    "endMs": 387360,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " hem de yaptığın değişikliğin",
+    "startMs": 387360,
+    "endMs": 388820,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bedelini görebilirsin.",
+    "startMs": 388820,
+    "endMs": 390240,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bir dili seçerken sadece uygulamanın",
+    "startMs": 390240,
+    "endMs": 392350,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " çalışma maliyetini konuşmak eksik",
+    "startMs": 392350,
+    "endMs": 394400,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " kalıyor.",
+    "startMs": 394400,
+    "endMs": 395120,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Onu geliştirmek için harcadığın",
+    "startMs": 395120,
+    "endMs": 396930,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " zaman da bir maliyet.",
+    "startMs": 396930,
+    "endMs": 398320,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Rust öğrenirken sahiplik ve ödünç",
+    "startMs": 398320,
+    "endMs": 400350,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " alma gibi kavramlarla uğraşacaksın.",
+    "startMs": 400350,
+    "endMs": 402800,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Kullandığın kütüphaneleri tanıyacaksın.",
+    "startMs": 402800,
+    "endMs": 405360,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Mevcut bir projeyi taşıyorsan,",
+    "startMs": 405360,
+    "endMs": 406810,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " daha önce çalışan davranışların",
+    "startMs": 406810,
+    "endMs": 408410,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " korunup korunmadığını da kontrol",
+    "startMs": 408410,
+    "endMs": 410060,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " edeceksin.",
+    "startMs": 410060,
+    "endMs": 411040,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ben bunu Rust öğrenmeyin diye",
+    "startMs": 411040,
+    "endMs": 412580,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " söylemiyorum.",
+    "startMs": 412580,
+    "endMs": 413520,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Tam tersine, öğrenmenin nedenini",
+    "startMs": 413520,
+    "endMs": 415500,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " netleştirmek için söylüyorum.",
+    "startMs": 415500,
+    "endMs": 417520,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Şimdi küçük bir atölyedeyiz.",
+    "startMs": 417520,
+    "endMs": 419680,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Makine çalışıyor ama bir parça",
+    "startMs": 419680,
+    "endMs": 421680,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " sorun çıkarıyor.",
+    "startMs": 421680,
+    "endMs": 423040,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " İlk iş bütün makineyi sökmek mi",
+    "startMs": 423040,
+    "endMs": 424870,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " olmalı?",
+    "startMs": 424870,
+    "endMs": 425600,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Belki sadece o parçayı denemek",
+    "startMs": 425600,
+    "endMs": 427400,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yeterli.",
+    "startMs": 427400,
+    "endMs": 428080,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Yazılımda da önce küçük bir alanı",
+    "startMs": 428080,
+    "endMs": 429760,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " değiştirmek daha kontrollü bir",
+    "startMs": 429760,
+    "endMs": 431380,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " deney sağlar.",
+    "startMs": 431380,
+    "endMs": 432240,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Yeni bir dil öğrenmek başlı başına",
+    "startMs": 432240,
+    "endMs": 434160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " güzel bir hedef olabilir.",
+    "startMs": 434160,
+    "endMs": 435680,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ama çalışan ürünü taşımak başka",
+    "startMs": 435680,
+    "endMs": 437320,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bir karar.",
+    "startMs": 437320,
+    "endMs": 438080,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Küçük bir projede bir gün erken",
+    "startMs": 438080,
+    "endMs": 439730,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " kullanıcıya ulaşmak daha değerli",
+    "startMs": 439730,
+    "endMs": 441630,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " olabilir.",
+    "startMs": 441630,
+    "endMs": 442400,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Başka bir projede ise kaynak",
+    "startMs": 442400,
+    "endMs": 444190,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " kullanımı ve kontrol daha",
+    "startMs": 444190,
+    "endMs": 445760,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " önemli olabilir.",
+    "startMs": 445760,
+    "endMs": 447120,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bu iki durumda aynı seçimi yapmak",
+    "startMs": 447120,
+    "endMs": 448810,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " zorunda değiliz.",
+    "startMs": 448810,
+    "endMs": 449920,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Benim bakacağım şey, kazandığım",
+    "startMs": 449920,
+    "endMs": 451690,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " faydanın öğrenme ve bakım yükünü",
+    "startMs": 451690,
+    "endMs": 453370,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " karşılayıp karşılamadığı.",
+    "startMs": 453370,
+    "endMs": 455120,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bu köprünün bir tarafında",
+    "startMs": 455120,
+    "endMs": 457020,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Python uygulaman, diğer tarafında",
+    "startMs": 457020,
+    "endMs": 459290,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Rust ile yazdığın bir parça var.",
+    "startMs": 459290,
+    "endMs": 460960,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " İkisini birbirine bağlayabiliyorsun.",
+    "startMs": 460960,
+    "endMs": 462960,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ama köprüden veri geçirmenin de",
+    "startMs": 462960,
+    "endMs": 464580,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bir maliyeti olduğunu unutma.",
+    "startMs": 464580,
+    "endMs": 466320,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bir de çoğu dil tartışmasında",
+    "startMs": 466320,
+    "endMs": 468270,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " arada kaybolan seçenek var:",
+    "startMs": 468270,
+    "endMs": 470400,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " İkisini birlikte kullanmak.",
+    "startMs": 470400,
+    "endMs": 472320,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bütün projeyi taşımak zorunda",
+    "startMs": 472320,
+    "endMs": 473880,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " olmayabilirsin.",
+    "startMs": 473880,
+    "endMs": 474800,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Python tarafında uygulamanı koruyup,",
+    "startMs": 474800,
+    "endMs": 477280,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " ölçümle sorunlu olduğunu gördüğün",
+    "startMs": 477280,
+    "endMs": 478960,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " belirli bir bölüm için Rust",
+    "startMs": 478960,
+    "endMs": 480530,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " kullanmayı değerlendirebilirsin.",
+    "startMs": 480530,
+    "endMs": 482400,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " PyO3 gibi araçlar Rust ile",
+    "startMs": 482400,
+    "endMs": 484310,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Python modülü yazmayı mümkün kılıyor.",
+    "startMs": 484310,
+    "endMs": 487040,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Böylece Python'dan çağırdığın",
+    "startMs": 487040,
+    "endMs": 488710,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bir işlevin uygulaması Rust",
+    "startMs": 488710,
+    "endMs": 490190,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " tarafında olabiliyor.",
+    "startMs": 490190,
+    "endMs": 491680,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Tabii iki taraf arasında veri",
+    "startMs": 491680,
+    "endMs": 493360,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " aktarmanın ve böyle bir paketi",
+    "startMs": 493360,
+    "endMs": 495090,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " dağıtmanın da bir maliyeti var.",
+    "startMs": 495090,
+    "endMs": 497200,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Her küçük işlemi ayırmak otomatik",
+    "startMs": 497200,
+    "endMs": 499410,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " olarak kazanç getirmez.",
+    "startMs": 499410,
+    "endMs": 501040,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ama bu seçenek, kararın ya",
+    "startMs": 501040,
+    "endMs": 502420,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Python ya Rust olmak zorunda",
+    "startMs": 502420,
+    "endMs": 504050,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " olmadığını gösteriyor.",
+    "startMs": 504050,
+    "endMs": 505680,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Önce dar bir alanda deneyebilirsin.",
+    "startMs": 505680,
+    "endMs": 507840,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Sonuç gerçekten işine yarıyorsa",
+    "startMs": 507840,
+    "endMs": 509540,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " ilerlersin.",
+    "startMs": 509540,
+    "endMs": 510400,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Yaramıyorsa da bütün ürünü yeniden",
+    "startMs": 510400,
+    "endMs": 512540,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yazmış olmazsın.",
+    "startMs": 512540,
+    "endMs": 513680,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bence öğrenmek için de daha somut",
+    "startMs": 513680,
+    "endMs": 515360,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bir başlangıç noktası bu.",
+    "startMs": 515360,
+    "endMs": 516880,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Peki sen ne yapmalısın?",
+    "startMs": 516880,
+    "endMs": 518880,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ben yeni başlıyor ve amacım modelleri",
+    "startMs": 518880,
+    "endMs": 521280,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " tanımak, veriyle çalışmak, eğitim",
+    "startMs": 521280,
+    "endMs": 523360,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " örneklerini denemek olsaydı",
+    "startMs": 523360,
+    "endMs": 524890,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Python ile başlardım.",
+    "startMs": 524890,
+    "endMs": 526320,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Çünkü o aşamada önceliğim dil",
+    "startMs": 526320,
+    "endMs": 527980,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " değiştirmek değil, yaptığım işin",
+    "startMs": 527980,
+    "endMs": 529870,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " mantığını anlamak olurdu.",
+    "startMs": 529870,
+    "endMs": 531760,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Zaten çalışan bir uygulamam olsaydı,",
+    "startMs": 531760,
+    "endMs": 534160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " onu sadece Rust ilgimi çekti",
+    "startMs": 534160,
+    "endMs": 535920,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " diye baştan yazmazdım.",
+    "startMs": 535920,
+    "endMs": 537680,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Önce yaşadığım sorunu belirler,",
+    "startMs": 537680,
+    "endMs": 539720,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " ölçer ve küçük bir değişiklikle",
+    "startMs": 539720,
+    "endMs": 541700,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " sınardım.",
+    "startMs": 541700,
+    "endMs": 542400,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Hatta dil değişmeden çözülebilen",
+    "startMs": 542400,
+    "endMs": 544300,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bir problem mi diye bakardım.",
+    "startMs": 544300,
+    "endMs": 546160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Ama ilgim sistem programlama,",
+    "startMs": 546160,
+    "endMs": 548180,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " kaynak kontrolü veya bir ürüne",
+    "startMs": 548180,
+    "endMs": 550160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yerel model gömmek olsaydı Rust'ı",
+    "startMs": 550160,
+    "endMs": 552280,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " ciddi biçimde öğrenmek isterdim.",
+    "startMs": 552280,
+    "endMs": 554160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bunlar benim karar önerilerim;",
+    "startMs": 554160,
+    "endMs": 556160,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " her proje için geçerli tek bir",
+    "startMs": 556160,
+    "endMs": 557960,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " reçete değil.",
+    "startMs": 557960,
+    "endMs": 558960,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Benim bu konudan çıkardığım şey",
+    "startMs": 558960,
+    "endMs": 560990,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " şu: En iyi dil sorusundan önce",
+    "startMs": 560990,
+    "endMs": 562510,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " hangi problemi çözüyorum sorusunu",
+    "startMs": 562510,
+    "endMs": 564230,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " sormak gerekiyor.",
+    "startMs": 564230,
+    "endMs": 565120,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Bir araç çok iyi olabilir; ama",
+    "startMs": 565120,
+    "endMs": 566810,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " şu an benim ihtiyacım olan araç",
+    "startMs": 566810,
+    "endMs": 568670,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " olmayabilir.",
+    "startMs": 568670,
+    "endMs": 569760,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Sen hangi taraftasın?",
+    "startMs": 569760,
+    "endMs": 571360,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Model denemeleri mi yapıyorsun,",
+    "startMs": 571360,
+    "endMs": 572960,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yoksa kullanıcıya sunduğun bir",
+    "startMs": 572960,
+    "endMs": 574360,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " uygulama mı geliştiriyorsun?",
+    "startMs": 574360,
+    "endMs": 575920,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Yorumlara yaptığın işi yaz.",
+    "startMs": 575920,
+    "endMs": 577920,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " Python mu Rust mı tartışmasını",
+    "startMs": 577920,
+    "endMs": 579590,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " bir de o gerçek problem üzerinden",
+    "startMs": 579590,
+    "endMs": 581480,
+    "timestampMs": null,
+    "confidence": null
+  },
+  {
+    "text": " yapalım.",
+    "startMs": 581480,
+    "endMs": 581920,
+    "timestampMs": null,
+    "confidence": null
+  }
+]

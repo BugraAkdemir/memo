@@ -242,6 +242,13 @@ func (a *App) queueFactExtraction(ctx context.Context, userMsg string) {
 	if !auto {
 		return
 	}
+	// A small local model (compact_mode.go) has one inference slot; an
+	// extraction request there holds up the person's next message, minutes on
+	// a CPU. Skipped unless a separate decision model does the extraction.
+	// The turn itself is still saved to memory (embedding only, no LLM call).
+	if a.localCompactActive() && !a.decisionSettings().DecisionEnabled {
+		return
+	}
 	if everyN <= 1 {
 		goRecover("extractAndPinFacts", func() { a.extractAndPinFacts(ctx, userMsg, 1) })
 		return

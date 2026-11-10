@@ -350,9 +350,10 @@ func (a *App) generateChatTitleForSession(sessionID string) string {
 		ctx = context.Background()
 	}
 	var title string
-	if a.providerNameIsOptInOnly(a.GetActiveProvider()) {
-		// No helper call may reach a web chat (see callLLM); name the chat
-		// from the person's own first words instead.
+	if a.providerNameIsOptInOnly(a.GetActiveProvider()) || a.localCompactActive() {
+		// No helper call may reach a web chat (see callLLM), and a small local
+		// model has one slot, minutes per request on a CPU (compact_mode.go):
+		// name the chat from the person's own first words instead.
 		title = firstWordsTitle(msgs[0].Content)
 	} else {
 		title = strings.TrimSpace(a.callLLM(ctx, prompt, categoryTitle))

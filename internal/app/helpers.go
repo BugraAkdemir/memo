@@ -283,6 +283,19 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		toolTokens = a.agentToolTokens(chatID)
 	}
 
+	// Compact profile (compact_mode.go): a local model with a small window.
+	// Decided from the window alone, which only changes when a model is loaded,
+	// so the system prompt it selects stays byte-stable across the chat. A local
+	// server that is running while a cloud provider answers does not count.
+	compact := isCompactWindow(window) &&
+		((localPrompt && a.GetActiveProvider() == "") || (route != nil && route.auto && routeProvider(route) == "local"))
+	if compact {
+		tokenBudget -= compactReplyReserve(window)
+		if tokenBudget < 512 {
+			tokenBudget = 512
+		}
+	}
+
 	// Memory-block budget: a fraction of this turn's real tokenBudget on a
 	// local model, so memory can never alone consume a small model's whole
 	// window — capped at identity.MaxMemoryContextTokens (never grow memory
@@ -300,6 +313,9 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		if memoryBudget < 256 {
 			memoryBudget = 256
 		}
+		if compact && memoryBudget > compactMemoryShare(window) {
+			memoryBudget = max(compactMemoryShare(window), 256)
+		}
 	}
 
 	// Active-skill budget: same rationale as memoryBudget above, but for
@@ -315,6 +331,9 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	skillBudget := 0
 	if localBudget {
 		skillBudget = tokenBudget / 5
+		if compact {
+			skillBudget = compactSkillShare(window)
+		}
 		if skillBudget < 256 {
 			skillBudget = 256
 		}
@@ -360,11 +379,16 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		// cache (and the local server's KV cache) for the entire conversation
 		// after it. The block rides on the current user message below, next to
 		// the time block, so everything before it stays byte-identical.
-		if projectChat {
+		switch {
+		case compact && !minimal:
+			// Small local window: only what the turn cannot do without, and
+			// nothing personal (so the same prompt serves project chats too).
+			systemPrompt = a.identity.BuildCompactSystemPrompt(agentEnabled)
+		case projectChat:
 			// A project chat is not the person's personal assistant: no name, no
 			// learned style notes, no custom persona text that may carry them.
 			systemPrompt = a.identity.BuildProjectSystemPrompt(true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
-		} else {
+		default:
 			systemPrompt = a.identity.BuildSystemPrompt(nil, true, agentEnabled, webSearchEnabled, a.whatsappReachable(), a.telegramReachable())
 		}
 		systemPrompt += projectInstr
@@ -372,7 +396,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 			// Mood is fully opt-in. When the engine is disabled the model is driven
 			// solely by the configured system prompt: no directive, no neutral block,
 			// no self-interest text is injected.
-			if a.mood != nil && a.mood.Enabled() && !projectChat {
+			if a.mood != nil && a.mood.Enabled() && !projectChat && !compact {
 				systemPrompt += a.mood.BuildDirective()
 				systemPrompt += a.mood.BuildSelfInterestDirective()
 			}
@@ -417,16 +441,21 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		// Only when the message is about plans/schedule: the block used to ride
 		// on every turn, costing tokens and making the model bring up meetings
 		// nobody asked about.
-		if !projectChat && !a.calendarViaTool(ctx, chatID) && mentionsCalendar(userMsg) {
+		if !projectChat && !compact && !a.calendarViaTool(ctx, chatID) && mentionsCalendar(userMsg) {
 			volatileCtx += a.upcomingCalendarContext(ctx, time.Now())
 		}
 	}
 	if !minimal {
-		volatileCtx += a.renderWorkingSet(chatID)
-		// Live state of delegated sub-agents, fresh every turn: without it the model
-		// answers "how are they doing?" from stale earlier turns (it kept saying
-		// "running" about children that had already failed). Empty when none exist.
-		volatileCtx += a.subAgentStatusBlock(chatID)
+		if compact {
+			// No sub-agents on a compact window, and a shorter working set.
+			volatileCtx += clipToTokens(a.renderWorkingSet(chatID), compactWorkingSetTokens)
+		} else {
+			volatileCtx += a.renderWorkingSet(chatID)
+			// Live state of delegated sub-agents, fresh every turn: without it the model
+			// answers "how are they doing?" from stale earlier turns (it kept saying
+			// "running" about children that had already failed). Empty when none exist.
+			volatileCtx += a.subAgentStatusBlock(chatID)
+		}
 	}
 	effectiveUserMsg := userMsg
 	if volatileCtx != "" {
@@ -471,7 +500,9 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// extra LLM call only runs when the condensed region actually changes.
 	// Skipped under Minimal Mode — it is a Memo-initiated LLM call, exactly
 	// the kind of extra work Minimal Mode promises not to do.
-	if !minimal {
+	// Also skipped on a compact window: the summary is one more request on the
+	// single local slot (minutes on a CPU); the oldest turns drop instead.
+	if !minimal && !compact {
 		history = a.maybeCompactHistory(ctx, chatID, history, window, systemTokens+userTokens+toolTokens)
 	}
 	history = append([]api.Message{}, history...)

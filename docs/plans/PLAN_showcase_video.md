@@ -198,17 +198,17 @@ GIF çökmesinin sebebi buydu).
 - [x] Sihirbaz yalnız geçici boş klasörde
 - [x] Mail: memo-iso (akdemirbugra14) → data/ (akdemirbugra5), diğer mailler bulanık
 - [x] Telefon: kullanıcı çeker (§6)
-- [ ] Müzik: yok / ElevenLabs altyapı. Varsayılan: hafif altyapı denenir, anahtar izin vermezse müziksiz
+- [x] Müzik: ilk sürüm müziksiz (yalnız anlatım); istenirse sonradan eklenir
 
 ## 5. Adımlar
 
-- [ ] A. Kararlar netleşir; senaryo metni (TR + EN tam anlatım) yazılır, sen onaylarsın
-- [ ] B. Remotion projesi kurulur (scratchpad/`build_output`, repo dışı), boş kompozisyon render testi
-- [ ] C. Sahne kayıtları (prova → kayıt → kare kontrolü), sahne sahne
-- [ ] D. ElevenLabs anlatım + Whisper doğrulama + `.srt`
-- [ ] E. Remotion kurgu, TR render → kontak sayfası kontrolü → EN render
+- [x] A. Kararlar netleşir; senaryo metni (TR + EN tam anlatım) yazılır, sen onaylarsın (10 Kasım)
+- [x] B. Remotion projesi kuruldu: `build_output/showcase` (gitignore'lu), Remotion 4.0.542
+- [x] C. Masaüstü kayıtları iki dilde (site, sihirbaz, hafıza+takvim, mail gönderen/alıcı, ajan, Model Mağazası, yerel model + Gizli Mod). Telefon (§6) kullanıcıda
+- [x] D. ElevenLabs anlatım, 39 vuruş/dil (`script/voice.py`). Whisper doğrulaması ve `.srt` henüz yok
+- [x] E. Remotion kurgu (`src/`), still kontrolleri; TR + EN tam render
 - [ ] F. ffmpeg son işlem, kısa kesim; `build_output/marketing/` altına teslim
-- [ ] G. Temizlik: kayıtların `data/`'da bıraktığı sohbet/etkinlikler; handoff notu
+- [ ] G. Temizlik: `data/`'daki demo sohbet/etkinlik/hafıza ve masaüstü deneme klasörleri kullanıcı onayıyla; handoff notu yazıldı
 
 ## 6. Telefon çekim listesi (kullanıcı çeker)
 

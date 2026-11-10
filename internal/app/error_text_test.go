@@ -49,6 +49,10 @@ func TestFriendlyError_KnownFailures(t *testing.T) {
 		{"server error", "⚠️ [custom] status 500: Internal error encountered.", "problem on its side", "sunucu tarafında"},
 		{"bad gateway", "⚠️ all providers failed: [gemini] status 503: overloaded", "problem on its side", "sunucu tarafında"},
 		{"context", "⚠️ [claude] status 400: prompt is too long: 210000 tokens > 200000 maximum", "context window", "bağlam sınırına"},
+		// llama-server's own wording (internal/api/api_test.go), reported as a
+		// generic "provider rejected this request" before 2026-11-10.
+		{"local llama overflow", "⚠️ status 400: request (18147 tokens) exceeds the available context size (4096 tokens), try increasing it", "too small for this conversation", "bu konuşma için çok küçük"},
+		{"local llama overflow, no status", "⚠️ request (5120 tokens) exceeds the available context size (4096 tokens), try increasing it", "too small for this conversation", "bu konuşma için çok küçük"},
 		{"quota", "⚠️ [custom] status 429: You exceeded your current quota, please check your plan", "allowance has run out", "kullanım hakkı doldu"},
 		{"no network", "⚠️ Post \"https://api.x.ai/v1/chat/completions\": dial tcp: lookup api.x.ai: no such host", "Could not reach the provider", "ulaşılamadı"},
 		{"timeout", "⚠️ [custom] context deadline exceeded", "timed out", "zaman aşımına"},

@@ -124,6 +124,18 @@ func (a *App) classifyProviderError(text string) (msg string, known bool) {
 			"Bu modelin kullanım hakkı doldu. Hak yenilenince devam edebilirsin ya da şimdilik başka bir model seç."+tag,
 			"This model's usage allowance has run out. You can continue when it refills, or pick another model for now."+tag), true
 
+	// llama.cpp's own overflow ("request (18147 tokens) exceeds the available
+	// context size (4096 tokens), try increasing it", type
+	// exceed_context_size_error): the local model — or a llama-server behind a
+	// custom address — is too small for this chat. No promise of the automatic
+	// summary here: a small local window runs without it (compact_mode.go). The
+	// sentence avoids every wording below, so a second pass leaves it alone even
+	// without an "(HTTP n)" tag.
+	case containsAny(lower, "exceed_context_size", "available context size"):
+		return a.t(
+			"Bu sohbet model için fazla uzadı: model bu konuşma için çok küçük. Yeni bir sohbet başlat ya da daha geniş bağlamlı bir model seç."+tag,
+			"This chat has grown too long for the model: it is too small for this conversation. Start a new chat or pick a model that can hold more."+tag), true
+
 	// The conversation no longer fits the model's window.
 	case containsAny(lower, "context length", "context_length", "maximum context", "context window", "too many tokens",
 		"prompt is too long", "request too large", "reduce the length", "input is too long", "tokens exceeds"), status == 413:

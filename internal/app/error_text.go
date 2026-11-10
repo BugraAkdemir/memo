@@ -181,6 +181,15 @@ func (a *App) classifyProviderError(text string) (msg string, known bool) {
 			"Model ya da adres bulunamadı. Model adı yanlış olabilir ya da bu hesapta yok; model seçiciden başka bir model dene."+tag,
 			"The model or address was not found. The model name may be wrong or unavailable to this account — try another from the model picker."+tag), true
 
+	// The agent waited for a permission answer (60 s, agent.Executor) and got
+	// none: nothing to do with the provider, which the generic timeout below
+	// used to blame ("the provider did not answer in time"). Before that case,
+	// and worded so a second pass matches nothing.
+	case containsAny(lower, "permission timeout", "permission timed out"):
+		return a.t(
+			"Ajan bir adım için izin istedi ama 60 saniye içinde cevap gelmedi, bu yüzden durdu. Tekrar dene ve izin sorusunu onayla ya da reddet.",
+			"The agent asked for permission for a step and got no answer within 60 seconds, so it stopped. Try again and allow or reject the request."), true
+
 	case status == 408, containsAny(lower, "timeout", "timed out", "deadline exceeded", "context deadline"):
 		return a.t(
 			"İstek zaman aşımına uğradı; sağlayıcı zamanında yanıt vermedi. Biraz sonra tekrar dene."+tag,

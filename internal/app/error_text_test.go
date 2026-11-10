@@ -56,6 +56,9 @@ func TestFriendlyError_KnownFailures(t *testing.T) {
 		{"quota", "⚠️ [custom] status 429: You exceeded your current quota, please check your plan", "allowance has run out", "kullanım hakkı doldu"},
 		{"no network", "⚠️ Post \"https://api.x.ai/v1/chat/completions\": dial tcp: lookup api.x.ai: no such host", "Could not reach the provider", "ulaşılamadı"},
 		{"timeout", "⚠️ [custom] context deadline exceeded", "timed out", "zaman aşımına"},
+		// The pipeline's own words when nobody answered a permission prompt
+		// (agent/pipeline.go); it was shown as a provider timeout.
+		{"permission not answered", "⚠️ Agent execution cancelled (permission timeout)", "asked for permission", "izin istedi"},
 		{"other 4xx", "⚠️ [custom] status 422: unsupported parameter", "rejected this request", "kabul etmedi"},
 	}
 	for _, c := range cases {

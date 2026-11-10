@@ -10,6 +10,7 @@ import (
 	"memo/internal/config"
 	"memo/internal/llama"
 	"memo/internal/logx"
+	"memo/internal/procjob"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -168,6 +169,8 @@ func (s *Server) startLocked(binaryPath, modelPath, language string, port int) e
 		s.cmd = nil
 		return fmt.Errorf("whisper: start failed: %w", err)
 	}
+	// Windows: end with the backend however it ends (procjob); no-op elsewhere.
+	procjob.Bind(s.cmd.Process, "whisper-server")
 
 	s.portPid = s.cmd.Process.Pid
 	s.lastBinaryPath, s.lastModelPath, s.lastLanguage, s.lastPort = binaryPath, modelPath, language, port

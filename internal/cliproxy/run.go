@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"memo/internal/logx"
+	"memo/internal/procjob"
 )
 
 // process is one running sidecar. done closes when it has exited.
@@ -111,6 +112,8 @@ func (m *Manager) spawnLocked(bin string) (*process, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("cliproxy: start: %w", err)
 	}
+	// Windows: end with the backend however it ends (procjob); no-op elsewhere.
+	procjob.Bind(cmd.Process, "cli-proxy-api")
 	p := &process{cmd: cmd, done: make(chan struct{}), stopCh: make(chan struct{})}
 	m.proc = p
 	go func() { // reap — an unwaited child is a zombie

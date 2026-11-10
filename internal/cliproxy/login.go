@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"memo/internal/logx"
+	"memo/internal/procjob"
 )
 
 // loginFlag maps a provider to the sidecar's own login switch.
@@ -188,6 +189,7 @@ func (m *Manager) StartLogin(ctx context.Context, provider string) (string, erro
 		cancel()
 		return "", fmt.Errorf("cliproxy: start %s login: %w", provider, err)
 	}
+	procjob.Bind(cmd.Process, "cli-proxy-api login")
 	m.mu.Lock()
 	m.login = s
 	m.mu.Unlock()

@@ -7,6 +7,7 @@ import (
 	"memo/internal/config"
 	"memo/internal/gguf"
 	"memo/internal/logx"
+	"memo/internal/procjob"
 	"net/http"
 	"os"
 	"os/exec"
@@ -363,6 +364,8 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		s.cmd = nil
 		return fmt.Errorf("llama: start failed: %w", err)
 	}
+	// Windows: end with the backend however it ends (procjob); no-op elsewhere.
+	procjob.Bind(s.cmd.Process, "llama-server")
 
 	s.portPid = s.cmd.Process.Pid
 

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1119,8 +1119,10 @@ class StreamingEnabledNotifier extends StateNotifier<bool> {
 
 /// Whether closing the main window hides it to the system tray instead of
 /// quitting the app — LM-Studio-style "keeps running in the background".
-/// Off by default so the app's existing close-quits behavior is unchanged
-/// unless the user opts in from Settings. Desktop-only (see
+/// On by default on Windows, where people expect a background app to sit in
+/// the tray (reported: closing Memo there left no tray icon and its engines
+/// running without a window); off by default on Linux and macOS, whose
+/// behaviour is unchanged. A saved choice always wins. Desktop-only (see
 /// core/tray_controller.dart); reading/writing this pref on web is
 /// harmless, it's just never acted on there.
 final minimizeToTrayProvider =
@@ -1131,11 +1133,15 @@ final minimizeToTrayProvider =
   },
 );
 
+/// The minimize-to-tray default before the person has chosen (see
+/// [minimizeToTrayProvider]).
+bool get minimizeToTrayDefault => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
 class MinimizeToTrayNotifier extends StateNotifier<bool> {
   final SharedPreferences _prefs;
 
   MinimizeToTrayNotifier(this._prefs)
-      : super(_prefs.getBool('memo_minimize_to_tray') ?? false);
+      : super(_prefs.getBool('memo_minimize_to_tray') ?? minimizeToTrayDefault);
 
   Future<void> setEnabled(bool enabled) async {
     await _prefs.setBool('memo_minimize_to_tray', enabled);

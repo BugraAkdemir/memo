@@ -34,8 +34,13 @@ func killMemoProcesses() {
 		args  []string
 	}{
 		{"backend", "memo.exe", []string{"/FI", "PID ne " + self}},
+		// The desktop install's backend has its own name (launch.ps1 starts
+		// memo-backend.exe), and the Subscriptions sidecar is cli-proxy-api.exe
+		// (internal/cliproxy/locate.go); neither was stopped before.
+		{"backend (desktop)", "memo-backend.exe", nil},
 		{"llama-server", "llama-server.exe", nil},
 		{"whisper-server", "whisper-server.exe", nil},
+		{"Subscriptions sidecar", "cli-proxy-api.exe", nil},
 		{"masaüstü / desktop app", "memo_flutter.exe", nil},
 	}
 

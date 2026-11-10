@@ -22,6 +22,14 @@ import 'l10n.dart';
 bool get trayFeatureSupported =>
     !kIsWeb && (Platform.isLinux || Platform.isMacOS || Platform.isWindows);
 
+/// MaterialApp's navigator, so the tray controller (which wraps MaterialApp
+/// and so sits above any Navigator) can show the one-time "still running in
+/// the background" notice.
+final trayNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Set once the person has seen that notice (a device preference).
+const _trayHintShownKey = 'memo_tray_hint_shown';
+
 /// Wraps the whole app to add an LM-Studio-style system tray icon: a
 /// right-click menu showing whether a local model is running, "Open Memo"
 /// to refocus the window, and "Quit Memo" to actually exit. When the
@@ -62,11 +70,14 @@ class _TrayControllerState extends ConsumerState<TrayController>
     await windowManager.setPreventClose(true);
 
     trayManager.addListener(this);
-    // lib/icon/memo.png is already a declared Flutter asset (pubspec.yaml);
-    // tray_manager resolves this path against the compiled bundle's
-    // data/flutter_assets directory itself, so no manual file materialization
-    // is needed here.
-    await trayManager.setIcon('lib/icon/memo.png');
+    // lib/icon/ is a declared Flutter asset folder (pubspec.yaml); tray_manager
+    // resolves this path against the compiled bundle's data/flutter_assets
+    // directory itself. Windows loads the tray icon with LoadImage(IMAGE_ICON)
+    // (tray_manager's windows/tray_manager_plugin.cpp), which cannot read a
+    // PNG: with memo.png there was no Memo icon in the tray at all, so a
+    // hidden window could not be brought back. memo.ico is the app's own
+    // windows/runner/resources/app_icon.ico.
+    await trayManager.setIcon(Platform.isWindows ? 'lib/icon/memo.ico' : 'lib/icon/memo.png');
 
     if (!mounted) return;
     setState(() => _trayReady = true);
@@ -115,12 +126,42 @@ class _TrayControllerState extends ConsumerState<TrayController>
   @override
   void onWindowClose() async {
     if (ref.read(minimizeToTrayProvider)) {
+      if (await _tellOnceThatMemoKeepsRunning()) return;
       await windowManager.hide();
     } else {
       await _unregisterClient();
       await windowManager.setPreventClose(false);
       await windowManager.destroy();
     }
+  }
+
+  /// The first time the window is hidden instead of closed, say so — a window
+  /// that vanishes while the app keeps running is otherwise indistinguishable
+  /// from one that crashed. Returns true when the person chose to quit there
+  /// (the app is already closing); false to go on and hide the window.
+  Future<bool> _tellOnceThatMemoKeepsRunning() async {
+    final prefs = ref.read(prefsProvider);
+    if (prefs.getBool(_trayHintShownKey) ?? false) return false;
+    if (trayNavigatorKey.currentContext == null) return false;
+    await prefs.setBool(_trayHintShownKey, true);
+    final ctx = trayNavigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return false;
+    final quit = await showDialog<bool>(
+      context: ctx,
+      builder: (dctx) => AlertDialog(
+        title: Text(L10n.t('tray_hint_title')),
+        content: Text(L10n.t('tray_hint_body')),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dctx).pop(true), child: Text(L10n.t('tray_quit'))),
+          FilledButton(onPressed: () => Navigator.of(dctx).pop(false), child: Text(L10n.t('tray_hint_ok'))),
+        ],
+      ),
+    );
+    if (quit == true) {
+      await _quit();
+      return true;
+    }
+    return false;
   }
 
   /// Sends the graceful goodbye an on-demand backend (main.go's

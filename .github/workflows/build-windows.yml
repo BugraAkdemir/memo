@@ -198,13 +198,14 @@ jobs:
           powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/status' -Method GET -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop | Out-Null; exit 0 } catch { exit 1 }" >nul 2>&1
           if %ERRORLEVEL% EQU 0 set "BACKEND_ALREADY_RUNNING=1"
 
+          REM --auto-shutdown: the backend closes itself and every engine it
+          REM started once no app window is attached (see launch.ps1).
           if not defined BACKEND_ALREADY_RUNNING (
-              start "" /B "%APP_DIR%memo-backend.exe"
+              start "" /B "%APP_DIR%memo-backend.exe" --headless --auto-shutdown
           )
           start "" /WAIT "%APP_DIR%memo_flutter.exe"
           if not defined BACKEND_ALREADY_RUNNING (
-              taskkill /F /IM memo-backend.exe >nul 2>&1
-              taskkill /F /IM llama-server.exe >nul 2>&1
+              powershell -NoProfile -Command "try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 | Out-Null } catch {}; $p = Get-Process -Name 'memo-backend' -ErrorAction SilentlyContinue | Select-Object -First 1; if ($p -and -not $p.WaitForExit(120000)) { $p | Stop-Process -Force; Get-Process -Name 'llama-server','cli-proxy-api','whisper-server' -ErrorAction SilentlyContinue | Stop-Process -Force }" >nul 2>&1
           )
           endlocal
           '@
@@ -260,21 +261,32 @@ jobs:
               Start-Sleep -Seconds 1
               Get-Process -Name 'memo-backend' -ErrorAction SilentlyContinue | Stop-Process -Force
 
-              $backend = Start-Process -FilePath "$scriptDir\memo-backend.exe" -WorkingDirectory $env:MEMO_HOME -WindowStyle Hidden -PassThru
+              # --auto-shutdown ties the backend to the app window: once no window
+              # is attached (the app quit, or crashed and missed its heartbeats
+              # for ~90 s) it shuts down properly, stopping llama-server,
+              # cli-proxy-api and whisper-server itself. A backend someone runs
+              # as a service (plain `memo --headless`) never gets this flag and
+              # is attached to above, never stopped.
+              $backend = Start-Process -FilePath "$scriptDir\memo-backend.exe" -ArgumentList '--headless','--auto-shutdown' -WorkingDirectory $env:MEMO_HOME -WindowStyle Hidden -PassThru
               Start-Sleep -Seconds 2
           }
 
           $flutter = Start-Process -FilePath "$scriptDir\memo_flutter.exe" -WorkingDirectory $scriptDir -PassThru
           $flutter.WaitForExit()
 
-          # Only stop the backend if THIS script started it.
+          # Only stop the backend if THIS script started it. Ask, then wait for
+          # it: an --auto-shutdown backend ignores the request while the window
+          # still looks attached (a crashed window stays registered until it
+          # misses its heartbeats, ~90 s) and then closes itself. Killing it
+          # after 2 s, as this used to, skipped its shutdown and left
+          # llama-server, cli-proxy-api and whisper-server running with no
+          # window. The engines are killed by name only if it never exits.
           if ($backend) {
               try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 } catch {}
-              Start-Sleep -Seconds 2
-              if (-not $backend.HasExited) { Stop-Process -Id $backend.Id -Force }
-          }
-          if (-not $backendAlreadyRunning) {
-              Get-Process -Name 'llama-server' -ErrorAction SilentlyContinue | Stop-Process -Force
+              if (-not $backend.WaitForExit(120000)) {
+                  Stop-Process -Id $backend.Id -Force
+                  Get-Process -Name 'llama-server','cli-proxy-api','whisper-server' -ErrorAction SilentlyContinue | Stop-Process -Force
+              }
           }
           '@
           $ps1 | Out-File -Encoding ASCII "build_output\stage\${{ env.APP_NAME }}\launch.ps1"

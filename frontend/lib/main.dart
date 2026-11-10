@@ -122,6 +122,7 @@ class MemoApp extends ConsumerWidget {
       ),
       child: TrayController(
         child: MaterialApp(
+          navigatorKey: trayNavigatorKey,
           title: 'Memo',
           debugShowCheckedModeBanner: false,
           theme: MemoTheme.themeData,

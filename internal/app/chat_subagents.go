@@ -91,12 +91,23 @@ func (a *App) checkSubAgentChat(chatID string) error {
 	incognito := a.isIncognito
 	a.incognitoMu.RUnlock()
 	if incognito {
-		return errors.New("temporary sub-agent records are unavailable in incognito mode")
+		return errSubAgentsIncognito
 	}
 	return nil
 }
+
+// errSubAgentsIncognito: Incognito keeps no sub-agent records and cannot start
+// any (every action goes through checkSubAgentChat).
+var errSubAgentsIncognito = errors.New("temporary sub-agent records are unavailable in incognito mode")
+
 func (a *App) ListChatSubAgents(chatID string) ([]subagents.Job, error) {
 	if err := a.checkSubAgentChat(chatID); err != nil {
+		// The honest list in Incognito is empty, not an error: the error made
+		// every Incognito chat show "Alt ajanlar yüklenemedi" (seen live,
+		// 2026-11-10). Reading one record or acting on one is still refused.
+		if errors.Is(err, errSubAgentsIncognito) {
+			return []subagents.Job{}, nil
+		}
 		return nil, err
 	}
 	return a.chatSubAgents.List(chatID), nil

@@ -25,6 +25,8 @@ class DiscoverItem {
   final List<String> tags;
   final int? approxBytes;
   final bool isCurated;
+  /// The chat model Discover recommends for this machine (curatedForSystem).
+  final bool recommended;
 
   const DiscoverItem({
     required this.repoId,
@@ -42,12 +44,13 @@ class DiscoverItem {
     required this.tags,
     this.approxBytes,
     required this.isCurated,
+    this.recommended = false,
   });
 
   /// The author slug used to look up the avatar on HuggingFace.
   String get avatarAuthor => brandAuthor ?? author;
 
-  factory DiscoverItem.fromCurated(CuratedModel m) => DiscoverItem(
+  factory DiscoverItem.fromCurated(CuratedModel m, {bool recommended = false}) => DiscoverItem(
         repoId: m.repoId,
         author: m.repoId.contains('/') ? m.repoId.split('/').first : m.repoId,
         brandAuthor: m.brandAuthor,
@@ -62,6 +65,7 @@ class DiscoverItem {
         tags: const [],
         approxBytes: m.approxBytes,
         isCurated: true,
+        recommended: recommended,
       );
 
   factory DiscoverItem.fromHF(HFModelResult r) {

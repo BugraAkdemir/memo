@@ -20,6 +20,10 @@ class CuratedModel {
   /// Overrides the author extracted from [repoId] for avatar/logo lookup.
   /// Set when the uploader org differs from the original model creator.
   final String? brandAuthor;
+  /// The model's native context window in tokens (0 = not a chat model or
+  /// unknown). Below 8k a chat leaves little room, so such a model is only
+  /// recommended when nothing else fits (see [recommendedChatModel]).
+  final int contextTokens;
 
   const CuratedModel({
     required this.repoId,
@@ -30,6 +34,7 @@ class CuratedModel {
     required this.kind,
     this.supportsTools = false,
     this.brandAuthor,
+    this.contextTokens = 0,
   });
 
   String get desc => L10n.locale == MemoLocale.tr ? descTr : descEn;
@@ -61,32 +66,30 @@ const curatedModels = <CuratedModel>[
   // model that can never actually be downloaded is worse than not
   // recommending one at all.
   // ── Qwen / Alibaba — official GGUF releases ──────────────────────
+  // Sizes are the single-file Q4_K_M (or, where Qwen publishes only that,
+  // Q8_0) from each repo's own file listing, checked 2026-11-10. Qwen 2.5 7B
+  // and 14B were dropped then: their Q4_K_M is split into parts, which
+  // pickRecommendedFile skips, so 7B fell back to a q3 file and 14B had no
+  // downloadable file at all. Qwen 3 4B/8B/14B replace them.
+  CuratedModel(
+    repoId: 'Qwen/Qwen3-14B-GGUF',
+    name: 'Qwen 3 14B',
+    descTr: 'Güçlü donanım için büyük model · Akıl yürütme + araç desteği',
+    descEn: 'Large model for strong hardware · Reasoning + tool use',
+    approxBytes: 9001752960,
+    kind: ModelKind.chat,
+    supportsTools: true,
+    contextTokens: 32768,
+  ),
   CuratedModel(
     repoId: 'Qwen/Qwen3-8B-GGUF',
     name: 'Qwen 3 8B',
-    descTr: 'En yeni Qwen · Akıl yürütme + araç desteği',
-    descEn: 'Latest Qwen · Reasoning + tool use',
-    approxBytes: 5200000000,
+    descTr: 'Dengeli · Akıl yürütme + araç desteği',
+    descEn: 'Balanced · Reasoning + tool use',
+    approxBytes: 5027783488,
     kind: ModelKind.chat,
     supportsTools: true,
-  ),
-  CuratedModel(
-    repoId: 'Qwen/Qwen2.5-7B-Instruct-GGUF',
-    name: 'Qwen 2.5 7B Instruct',
-    descTr: 'Kod + sohbet, dengeli · Araç desteği',
-    descEn: 'Balanced code + chat · Tool use',
-    approxBytes: 4680000000,
-    kind: ModelKind.chat,
-    supportsTools: true,
-  ),
-  CuratedModel(
-    repoId: 'Qwen/Qwen2.5-14B-Instruct-GGUF',
-    name: 'Qwen 2.5 14B Instruct',
-    descTr: 'Büyük model · Kod + akıl yürütme',
-    descEn: 'Larger model · Code + reasoning',
-    approxBytes: 8730000000,
-    kind: ModelKind.chat,
-    supportsTools: true,
+    contextTokens: 32768,
   ),
   CuratedModel(
     repoId: 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF',
@@ -96,6 +99,17 @@ const curatedModels = <CuratedModel>[
     approxBytes: 4680000000,
     kind: ModelKind.chat,
     supportsTools: true,
+    contextTokens: 32768,
+  ),
+  CuratedModel(
+    repoId: 'Qwen/Qwen3-4B-GGUF',
+    name: 'Qwen 3 4B',
+    descTr: 'Orta donanım için hafif ve yetenekli · Araç desteği',
+    descEn: 'Light and capable for mid-range hardware · Tool use',
+    approxBytes: 2497280256,
+    kind: ModelKind.chat,
+    supportsTools: true,
+    contextTokens: 32768,
   ),
   CuratedModel(
     repoId: 'Qwen/Qwen2.5-3B-Instruct-GGUF',
@@ -105,16 +119,28 @@ const curatedModels = <CuratedModel>[
     approxBytes: 2104932768,
     kind: ModelKind.chat,
     supportsTools: true,
+    contextTokens: 32768,
+  ),
+  CuratedModel(
+    repoId: 'Qwen/Qwen3-1.7B-GGUF',
+    name: 'Qwen 3 1.7B',
+    descTr: 'Çok zayıf donanım için en küçük model · Araç desteği',
+    descEn: 'Smallest model for very modest hardware · Tool use',
+    approxBytes: 1834426016,
+    kind: ModelKind.chat,
+    supportsTools: true,
+    contextTokens: 32768,
   ),
   // ── Microsoft — official GGUF releases ──────────────────────────
   CuratedModel(
     repoId: 'microsoft/Phi-3-mini-4k-instruct-gguf',
     name: 'Phi-3 mini 4K Instruct',
-    descTr: 'Microsoft · Hafif ve hızlı · 3.8B',
-    descEn: 'Microsoft · Lightweight and fast · 3.8B',
+    descTr: 'Microsoft · Hafif ve hızlı · 3.8B · 4K bağlam',
+    descEn: 'Microsoft · Lightweight and fast · 3.8B · 4K context',
     approxBytes: 2390000000,
     kind: ModelKind.chat,
     supportsTools: true,
+    contextTokens: 4096,
   ),
   // ── OpenBMB — official GGUF release, non-gated (verified) ────────
   CuratedModel(
@@ -172,20 +198,63 @@ HardwareFit hardwareFit(int sizeBytes, GPUInfo gpu) {
   return HardwareFit(FitLevel.warn, L10n.t('fit_heavy'));
 }
 
-/// Picks the best curated chat model for the given hardware: the largest
-/// model that still gets a "good" fit, falling back to the largest with an
-/// "ok" fit, and finally the smallest model overall so there's always a
-/// usable recommendation even on weak hardware.
+/// A chat window below this is a poor default: the conversation has little
+/// room (Memo runs such models in its compact mode).
+const kRoomyContextTokens = 8192;
+
+/// Picks the best curated chat model for the given hardware: among models
+/// with a roomy context window ([kRoomyContextTokens]), the largest that gets
+/// a "good" fit, then the largest with an "ok" fit; only then the same over
+/// every chat model; finally the smallest model overall so there's always a
+/// usable recommendation even on weak hardware. The specialist coder model is
+/// never the general default.
 CuratedModel recommendedChatModel(GPUInfo gpu) {
-  final chatModels = curatedModels.where((m) => m.kind == ModelKind.chat).toList()
+  final chatModels = curatedModels
+      .where((m) => m.kind == ModelKind.chat && !m.repoId.contains('Coder'))
+      .toList()
     ..sort((a, b) => b.approxBytes.compareTo(a.approxBytes));
-  for (final m in chatModels) {
-    if (hardwareFit(m.approxBytes, gpu).level == FitLevel.good) return m;
-  }
-  for (final m in chatModels) {
-    if (hardwareFit(m.approxBytes, gpu).level == FitLevel.ok) return m;
+  final roomy = chatModels.where((m) => m.contextTokens >= kRoomyContextTokens).toList();
+  for (final pool in [roomy, chatModels]) {
+    for (final level in [FitLevel.good, FitLevel.ok]) {
+      for (final m in pool) {
+        if (hardwareFit(m.approxBytes, gpu).level == level) return m;
+      }
+    }
   }
   return chatModels.last;
+}
+
+/// Whether Memo knows enough about this machine to judge a model's fit.
+bool hardwareKnown(GPUInfo gpu) => (gpu.hasGpu && gpu.vramMb > 0) || gpu.ramTotalMb > 0;
+
+/// The Discover home list for this machine: only official models that fit it,
+/// the recommended chat model first. Models that would not run well here
+/// ([FitLevel.warn]) are left out — except the recommended one, so a weak
+/// machine still gets one suggestion. The memory model always stays. With the
+/// hardware unknown the full list comes back unchanged and nothing is marked.
+({List<CuratedModel> models, CuratedModel? recommended}) curatedForSystem(GPUInfo gpu) {
+  if (!hardwareKnown(gpu)) return (models: curatedModels, recommended: null);
+  final rec = recommendedChatModel(gpu);
+  int rank(CuratedModel m) => switch (m.kind) {
+        ModelKind.chat => 0,
+        ModelKind.vision => 1,
+        ModelKind.memory => 2,
+      };
+  final fits = curatedModels.where((m) {
+    if (m == rec || m.kind == ModelKind.memory) return true;
+    return hardwareFit(m.approxBytes, gpu).level != FitLevel.warn;
+  }).toList()
+    ..sort((a, b) {
+      if (a == rec) return -1;
+      if (b == rec) return 1;
+      final k = rank(a).compareTo(rank(b));
+      if (k != 0) return k;
+      final fa = hardwareFit(a.approxBytes, gpu).level.index;
+      final fb = hardwareFit(b.approxBytes, gpu).level.index;
+      if (fa != fb) return fa.compareTo(fb);
+      return b.approxBytes.compareTo(a.approxBytes);
+    });
+  return (models: fits, recommended: rec);
 }
 
 /// The curated embedding model backing RAG memory — recommended alongside a

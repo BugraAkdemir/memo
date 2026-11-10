@@ -892,7 +892,7 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
       );
     }
 
-    return Row(
+    final row = Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         button,
@@ -911,6 +911,17 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
                 color: fitColor),
           ),
         ),
+      ],
+    );
+    // Said before the download, not after the first two-minute wait: on a
+    // machine with no graphics card a model that fits still answers slowly.
+    if (!hardwareKnown(gpu) || gpu.hasGpu || fit.level == FitLevel.warn) return row;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        row,
+        const SizedBox(height: 6),
+        Text(L10n.t('cpu_only_speed_note'), style: TextStyle(fontSize: 11, color: c.textMuted)),
       ],
     );
   }

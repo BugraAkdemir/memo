@@ -490,23 +490,61 @@ void main() {
         'type': 'nvidia',
         'vram_mb': 24576, // 24 GB
       });
-      expect(recommendedChatModel(gpu).repoId, 'Qwen/Qwen2.5-14B-Instruct-GGUF');
+      expect(recommendedChatModel(gpu).repoId, 'Qwen/Qwen3-14B-GGUF');
     });
 
-    test('falls back to a mid-size model on modest CPU-only hardware', () {
-      final gpu = GPUInfo.fromJson({'ram_total_mb': 4096}); // 4 GB RAM, no GPU
-      expect(
-        recommendedChatModel(gpu).repoId,
-        'microsoft/Phi-3-mini-4k-instruct-gguf',
-      );
+    test('prefers a roomy-window model over Phi-3 4K on modest CPU-only hardware', () {
+      // 4 GB RAM, no GPU. Phi-3 mini 4K used to win here as the largest good
+      // fit, which put a 4k-window model with weak Turkish in front of people.
+      final gpu = GPUInfo.fromJson({'ram_total_mb': 4096});
+      final rec = recommendedChatModel(gpu);
+      expect(rec.repoId, 'Qwen/Qwen3-1.7B-GGUF');
+      expect(rec.contextTokens, greaterThanOrEqualTo(kRoomyContextTokens));
     });
 
     test('falls back to the smallest model when nothing fits well', () {
       final gpu = GPUInfo.fromJson({'ram_total_mb': 1024}); // 1 GB RAM, no GPU
-      expect(
-        recommendedChatModel(gpu).repoId,
-        'Qwen/Qwen2.5-3B-Instruct-GGUF',
-      );
+      expect(recommendedChatModel(gpu).repoId, 'Qwen/Qwen3-1.7B-GGUF');
+    });
+
+    test('never recommends the specialist coder model as the default', () {
+      for (final ram in [2048, 4096, 8192, 16384, 32768, 65536]) {
+        final gpu = GPUInfo.fromJson({'ram_total_mb': ram});
+        expect(recommendedChatModel(gpu).repoId, isNot(contains('Coder')), reason: '$ram MB');
+      }
+    });
+  });
+
+  group('curatedForSystem', () {
+    test('unknown hardware keeps the full list and marks nothing', () {
+      final sys = curatedForSystem(const GPUInfo());
+      expect(sys.recommended, isNull);
+      expect(sys.models.length, curatedModels.length);
+    });
+
+    test('shows only what fits, recommended first, memory model kept', () {
+      final gpu = GPUInfo.fromJson({'ram_total_mb': 8192}); // 8 GB, no GPU
+      final sys = curatedForSystem(gpu);
+      expect(sys.recommended, isNotNull);
+      expect(sys.models.first, sys.recommended);
+      expect(sys.models.where((m) => m.kind == ModelKind.memory), isNotEmpty);
+      for (final m in sys.models) {
+        if (m == sys.recommended || m.kind == ModelKind.memory) continue;
+        expect(hardwareFit(m.approxBytes, gpu).level, isNot(FitLevel.warn), reason: m.repoId);
+      }
+      expect(sys.models.map((m) => m.repoId), isNot(contains('Qwen/Qwen3-14B-GGUF')));
+    });
+
+    test('a weak machine still gets one chat suggestion', () {
+      final sys = curatedForSystem(GPUInfo.fromJson({'ram_total_mb': 1024}));
+      expect(sys.models.where((m) => m.kind == ModelKind.chat), isNotEmpty);
+    });
+
+    test('every curated repo is an official creator repo', () {
+      const official = {'Qwen', 'microsoft', 'openbmb', 'nomic-ai'};
+      for (final m in curatedModels) {
+        expect(official, contains(m.repoId.split('/').first), reason: m.repoId);
+      }
     });
   });
 

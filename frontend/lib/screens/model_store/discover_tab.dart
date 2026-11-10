@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../models/curated_models.dart';
+import '../../models/gpu_info.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/models_provider.dart';
 
@@ -126,8 +127,16 @@ class _DiscoverTabState extends ConsumerState<DiscoverTab> {
 
     final List<DiscoverItem> rawItems;
     final bool isLoading;
+    var forThisSystem = false;
     if (query.isEmpty) {
-      rawItems = curatedModels.map(DiscoverItem.fromCurated).toList();
+      // Official models that fit this machine, its recommended one first
+      // (curatedForSystem); the full list while the hardware is unknown.
+      final gpu = ref.watch(gpuInfoProvider).valueOrNull ?? const GPUInfo();
+      final sys = curatedForSystem(gpu);
+      forThisSystem = sys.recommended != null;
+      rawItems = sys.models
+          .map((m) => DiscoverItem.fromCurated(m, recommended: m == sys.recommended))
+          .toList();
       isLoading = false;
     } else {
       rawItems =
@@ -141,6 +150,7 @@ class _DiscoverTabState extends ConsumerState<DiscoverTab> {
       items: items,
       selected: _selected,
       isCurated: query.isEmpty,
+      forThisSystem: forThisSystem,
       isLoading: isLoading,
       searchController: _searchCtrl,
       activeFilters: _filters,
@@ -229,6 +239,7 @@ class _ModelListPanel extends ConsumerWidget {
   final List<DiscoverItem> items;
   final DiscoverItem? selected;
   final bool isCurated;
+  final bool forThisSystem;
   final bool isLoading;
   final TextEditingController searchController;
   final Set<String> activeFilters;
@@ -243,6 +254,7 @@ class _ModelListPanel extends ConsumerWidget {
     required this.items,
     required this.selected,
     required this.isCurated,
+    this.forThisSystem = false,
     required this.isLoading,
     required this.searchController,
     required this.activeFilters,
@@ -355,7 +367,7 @@ class _ModelListPanel extends ConsumerWidget {
               Expanded(
                 child: Text(
                   isCurated && activeFilters.isEmpty
-                      ? (L10n.t('featured_models'))
+                      ? L10n.t(forThisSystem ? 'featured_models_for_system' : 'featured_models')
                       : (L10n.t('length_results', {'length': '${items.length}'})),
                   style: TextStyle(
                     fontSize: 11,
@@ -657,6 +669,10 @@ class _ModelListRow extends ConsumerWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          if (item.recommended) ...[
+                            const SizedBox(width: 6),
+                            _SmallBadge(text: L10n.t('recommended_for_system'), color: MemoTheme.accent),
+                          ],
                           if (params != null) ...[
                             const SizedBox(width: 6),
                             _SmallBadge(text: params, color: c.textDim),

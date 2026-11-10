@@ -1,3 +1,11 @@
+# Son oturum — 10–11 Kasım — Rust/Python tanıtıcı film
+- Kullanıcı slaytı iptal etti: doğrudan seslendirmeli Remotion filmi. Kaynak: `scripts/rust-ai-slides` (dizin adı eski); kompozisyon `PythonRust`, dahili önizleme `http://127.0.0.1:4318/PythonRust`.
+- 48 ses bölümü, 4 özgün örnek illüstrasyonu, hareketli kart/akışlar; iki Memo maskotu kısa örnekleri anlatıyor. 331 Türkçe altyazı; YouTube/GitHub BugraAkdemir + Instagram bugra.code logolarla merkez dikey kesit güvenli alanında.
+- Çıktı: `build_output/marketing/python-rust-ai-tr-1080p.mp4` + aynı adlı `.srt`. Ölçülen MP4 582,2 sn, 1920×1080 / 30 fps. Kaynak commit `e7c15d8b`; push yapılmadı. Son kapanış başlığı düzeltildi; final 17.464 kare. Tam ffmpeg çözümleme exit 0 / hata günlüğü 0 bayt; doğrulama raporu `build_output/rust-ai-video/verification.json`.
+- TypeScript, 48/48 Mediabunny–ffprobe süre eşleşmesi, kesintisiz ses zaman çizelgesi, 331 altyazı/kırpma ve örnek kareler PASS. ASR kaynak eşleşmesi %96; 1.297 kaynak kelime korunuyor. Sonraki: kullanıcı film geri bildirimi. CK proje kayıtlı değil; kayıt değiştirilmedi. Anahtar depo dışındaki 0600 dosyada; ses dosyaları gitignore'lu.
+
+---
+
 # Son oturum — 10 Kasım — video paylaşım metinleri
 - İstek: EN/TR kısa videolar için Instagram açıklama/hashtag; EN/TR uzun videolar için YouTube başlık/açıklama/etiket. Metinler sohbette verildi; yayın/yükleme yapılmadı.
 - Kontrol: dört MP4 ffprobe PASS (reel EN 51,1 sn/TR 52,6 sn, 720×1280; showcase EN 285,3 sn/TR 279,1 sn, 1280×720), her birinden örnek kare + timeline/reel metinleri incelendi. Ürün bağlantıları README'den; etiket önemi YouTube Help'ten doğrulandı.

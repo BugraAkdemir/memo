@@ -1,3 +1,22 @@
+# Son oturum — 10 Kasım — video paylaşım metinleri
+- İstek: EN/TR kısa videolar için Instagram açıklama/hashtag; EN/TR uzun videolar için YouTube başlık/açıklama/etiket. Metinler sohbette verildi; yayın/yükleme yapılmadı.
+- Kontrol: dört MP4 ffprobe PASS (reel EN 51,1 sn/TR 52,6 sn, 720×1280; showcase EN 285,3 sn/TR 279,1 sn, 1280×720), her birinden örnek kare + timeline/reel metinleri incelendi. Ürün bağlantıları README'den; etiket önemi YouTube Help'ten doğrulandı.
+- Kod değişikliği/commit/test yok; yalnız handoff güncellendi. Mevcut çalışma ağacı değişikliklerine dokunulmadı. Sonraki: kullanıcının paylaşımı/geri bildirimi.
+
+- Kapak devamı: kullanıcı hafıza odağını reddetti; geniş yetenek odağında TR “BUNLARI DA MI YAPIYOR?” ve EN “IT DOES ALL THIS?” üretildi (yerleşik imagegen). `build_output/marketing/memo-youtube-thumbnail-{tr,en}.png`; mail/takvim/dosya/ses simgeleri. Görsel/metin ve dosya bütünlüğü kontrol edildi; yayın yapılmadı.
+
+- Rust/AI video kapağı: `build_output/marketing/python-rust-ai-youtube-thumbnail-tr.png`, “PYTHON YETMİYOR MU?”, Python/Rust simgeleri; yerleşik imagegen, görsel/metin ve dosya bütünlüğü kontrol edildi. Kod değişmedi/yayın yok.
+
+- Yeni aktif iş: bağımsız Rust/Python AI videosu, kullanıcı önce yalnız metin/senaryo istedi. `docs/plans/PLAN_python_rust_ai_video.md` taslak, 10 sahne; kullanıcı anlatacak, elle ilerleyen motion slayt sonra, ekran kaydı sonrası ffmpeg/Remotion kurgu; en az 6 dk. Teknik birincil kaynaklar kontrol edildi, hız deneyi yapılmadı. Slayt/kayıt/render henüz yok; metin kullanıcı incelemesinde. CK info: proje kayıtlı değil, CK yazımı yapılmadı. Taslak commit edilmedi.
+
+
+# Son oturum — 9–10 Kasım (gece) — pazarlama, demo video, tanıtım filmi
+- **Yapılan:** GitHub About + 2 konu değişti (`gh repo edit`); 61 sn demo + EN/TR ElevenLabs seslendirmeli sürümler; README'lere GIF (`28cee1a7`, push edildi). Takvim düzeltmeleri `09676bd4` + `201ec021` (sekme indeksi 4→3 ve girişte yenileme, push edildi). Gece: tanıtım filmi planı `docs/plans/PLAN_showcase_video.md` (`5a6f35ba`) ve ay adlı tarih ön süzgeci `e68c0482` ("3 Aralık" artık takvim çıkarıcısına ulaşıyor). **`5a6f35ba` ve `e68c0482` yerel, push edilmedi.**
+- **Film:** Remotion projesi `build_output/showcase` (gitignore'lu). Kayıtlar `public/rec/` (gerçek backend `data/`, Playwright), anlatım `public/voice/{tr,en}` (ElevenLabs, 39 vuruş/dil), zaman çizelgesi `script/build_timeline.py` → `src/data/timeline.json`. Çıktı `out/memo-showcase-{tr,en}-raw.mp4`. **Telefon bölümü (07) şimdilik çizim;** kullanıcı planın §6 listesindeki çekimleri verince değiştirilecek.
+- **`data/`'da bırakılanlar:** bekleyen taslaklar #73/#74/#75 (#74 telefondan `#onay 74` ile onaylanacak, #73 ve #75 iptal edilebilir); kayıt sohbetleri; takvimde 3 Aralık "Dinner with mom" ve 17 Kasım "Launch Memo on Hacker News"; hafızada demo bilgileri (annenin doğum günü, HN lansmanı); iki gelen kutusunda test mailleri. Masaüstünde `Karışık Fotoğraflar` ve `Messy Photos` (ajanın düzenlediği deneme klasörleri). Kişi akdemirbugra14 tekrar `full_auto`; `config.yaml` kayıt öncesiyle aynı.
+- **Bulunan, düzeltilmeyen hatalar:** (1) izin zaman aşımı kullanıcıya "sağlayıcı zamanında yanıt vermedi" diye gösteriliyor; (2) Phi-3 mini (4k bağlam) + ~3100 token sistem istemi → bağlam taşıp anlamsız çıktı (Gizli Mod'da düzgün); (3) Gizli Mod'da "Alt ajanlar yüklenemedi"; (4) plan hem otomatik yakalanıp hem açıkça istenince takvimde çift etkinlik; (5) Phi-3 Türkçede zayıf, TR kullanıcıya başka model önerilmeli; (6) boş veri klasöründe web istemcisi açılınca `onboarding.completed` true olmuştu, sihirbaz görünmedi (sebep doğrulanmadı).
+
+
 # Son oturum — 7 Kasım (akşam) — Memo 5.0.0 yayımlandı
 - **Yayında:** tag `v5.0.0`; 6 CI (Linux/macOS/Windows/Android/iOS/Docker) yeşil, GitHub release prerelease değil, `verify_update_manifest.sh` 3 platform OK, R2 dosyaları taze. Beacon (`BugraAkdemir/version`) V5.0.0 + components llama b12110 / whisper 1.9.5 / cliproxy v8.0.59.
 - **Motorlar (R2):** CLIProxyAPI v8.0.43→v8.0.59 (4 klasör), llama.cpp b11669→b12110 (stabil v0.9.0; linux/cpu, amd, cpu-arm64; NVIDIA b9441'de kaldı), whisper 1.9.5 değişmedi ama `linux/cpu` bütünü yeniden yayımlandı. Yedekler R2'de: `binaries-backup-v8.0.43/`, `binaries-backup-b11669/`. Staging `r2-memo-push/binaries` yenilendi. Component'ler: `update/components/{cliproxy/v8.0.59,llama/b12110,whisper/1.9.5}` (llama/whisper `--requires-app 4.7.1`, cliproxy 4.7.0). upstream-notice #48–#66 kapatıldı.

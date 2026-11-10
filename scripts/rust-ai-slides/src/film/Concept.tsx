@@ -376,7 +376,7 @@ export function Concept({ kind, part, mode }: Props) {
     return (
       <Backdrop accent={C.green}>
         <Pop style={{ position: "absolute", left: 105, top: 190 }}>
-          <Heading>HANGİ PROBLEMİ\nÇÖZÜYORUM?</Heading>
+          <Heading>{"HANGİ PROBLEMİ\nÇÖZÜYORUM?"}</Heading>
         </Pop>
         <Pop
           delay={0.5}

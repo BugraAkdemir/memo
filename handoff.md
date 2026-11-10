@@ -4,6 +4,11 @@
 
 ## Açık işler
 
+**Tanıtım filmi / önceki oturumdan kalanlar (10 Kasım)**
+- `5a6f35ba` (film planı) ve `e68c0482` (ay adlı tarih ön süzgeci) önceki handoff'ta yerel/push edilmemişti; bu oturumda push durumu kontrol edilmedi. Telefon bölümü çizim; gerçek kayıt kullanıcıda (plan §6). Whisper/SRT açık.
+- Demo verileri: taslaklar #73/#74/#75 (#74 `#onay 74`), demo sohbet/hafıza/takvim, iki kutuda test mailleri ve masaüstünde `Karışık Fotoğraflar`/`Messy Photos`; onaysız temizleme. Config önceki hâlinde, akdemirbugra14 full_auto (önceki oturum kaydı).
+- Önceki oturum hataları: izin timeout'u sağlayıcı hatası görünüyor; Phi-3 mini 4k bağlam taşıyor/Türkçesi zayıf; Gizli Mod alt ajan hatası; otomatik+açık istek çift takvim; boş veride onboarding completed nedeni belirsiz. Ayrıntılar arşivde.
+
 **Dijital İkiz / Mail**
 - **Günlük brifing (7 Kasım):** kod ve testler bitti, canlı kabul yok: gerçek Telegram/WhatsApp/mail teslimi, brifing modeli, sihirbaz/panel görünümü. Kullanıcı temiz veri klasörüyle gezip saati/kanalları denemeli. Ayrıntı aşağıda “Son oturum”.
 - Plan (`docs/plans/PLAN_mail_and_autonomous_system.md`) kod ve canlı doğrulama olarak bitti (Adım 9 dahil, `docs/DIGITAL_TWIN_AND_MAIL.md`; gerçek Gmail `akdemirbugra5` ↔ `akdemirbugra14` + Subscriptions). Açık olan yalnız kullanıcı kabulü: Adım 3–4 kutuları (`docs/DIGITAL_TWIN_DEVICE_ACCEPTANCE.md` A+B), WhatsApp/Telegram `#onay` ve ses (C+D); canlıda radar vade anı gözlenmedi.
@@ -71,8 +76,8 @@
 
 ---
 
-# Son oturum — 9–10 Kasım (gece) — pazarlama, demo video, tanıtım filmi
-- **Yapılan:** GitHub About + 2 konu değişti (`gh repo edit`); 61 sn demo + EN/TR ElevenLabs seslendirmeli sürümler; README'lere GIF (`28cee1a7`, push edildi). Takvim düzeltmeleri `09676bd4` + `201ec021` (sekme indeksi 4→3 ve girişte yenileme, push edildi). Gece: tanıtım filmi planı `docs/plans/PLAN_showcase_video.md` (`5a6f35ba`) ve ay adlı tarih ön süzgeci `e68c0482` ("3 Aralık" artık takvim çıkarıcısına ulaşıyor). **`5a6f35ba` ve `e68c0482` yerel, push edilmedi.**
-- **Film:** Remotion projesi `build_output/showcase` (gitignore'lu). Kayıtlar `public/rec/` (gerçek backend `data/`, Playwright), anlatım `public/voice/{tr,en}` (ElevenLabs, 39 vuruş/dil), zaman çizelgesi `script/build_timeline.py` → `src/data/timeline.json`. Çıktı `out/memo-showcase-{tr,en}-raw.mp4`. **Telefon bölümü (07) şimdilik çizim;** kullanıcı planın §6 listesindeki çekimleri verince değiştirilecek.
-- **`data/`'da bırakılanlar:** bekleyen taslaklar #73/#74/#75 (#74 telefondan `#onay 74` ile onaylanacak, #73 ve #75 iptal edilebilir); kayıt sohbetleri; takvimde 3 Aralık "Dinner with mom" ve 17 Kasım "Launch Memo on Hacker News"; hafızada demo bilgileri (annenin doğum günü, HN lansmanı); iki gelen kutusunda test mailleri. Masaüstünde `Karışık Fotoğraflar` ve `Messy Photos` (ajanın düzenlediği deneme klasörleri). Kişi akdemirbugra14 tekrar `full_auto`; `config.yaml` kayıt öncesiyle aynı.
-- **Bulunan, düzeltilmeyen hatalar:** (1) izin zaman aşımı kullanıcıya "sağlayıcı zamanında yanıt vermedi" diye gösteriliyor; (2) Phi-3 mini (4k bağlam) + ~3100 token sistem istemi → bağlam taşıp anlamsız çıktı (Gizli Mod'da düzgün); (3) Gizli Mod'da "Alt ajanlar yüklenemedi"; (4) plan hem otomatik yakalanıp hem açıkça istenince takvimde çift etkinlik; (5) Phi-3 Türkçede zayıf, TR kullanıcıya başka model önerilmeli; (6) boş veri klasöründe web istemcisi açılınca `onboarding.completed` true olmuştu, sihirbaz görünmedi (sebep doğrulanmadı).
+# Son oturum — 10–11 Kasım — Rust/Python tanıtıcı film
+- Kullanıcı slaytı iptal etti: doğrudan seslendirmeli Remotion filmi. Kaynak: `scripts/rust-ai-slides` (dizin adı eski); kompozisyon `PythonRust`, dahili önizleme `http://127.0.0.1:4318/PythonRust`.
+- 48 ses bölümü, 4 özgün örnek illüstrasyonu, hareketli kart/akışlar; iki Memo maskotu kısa örnekleri anlatıyor. 331 Türkçe altyazı; YouTube/GitHub BugraAkdemir + Instagram bugra.code logolarla merkez dikey kesit güvenli alanında.
+- Çıktı: `build_output/marketing/python-rust-ai-tr-1080p.mp4` + aynı adlı `.srt`. Ölçülen MP4 582,2 sn, 1920×1080 / 30 fps. Kaynak commit `e7c15d8b`; push yapılmadı. Son kapanış başlığı düzeltildi; final 17.464 kare. Tam ffmpeg çözümleme exit 0 / hata günlüğü 0 bayt; doğrulama raporu `build_output/rust-ai-video/verification.json`.
+- TypeScript, 48/48 Mediabunny–ffprobe süre eşleşmesi, kesintisiz ses zaman çizelgesi, 331 altyazı/kırpma ve örnek kareler PASS. ASR kaynak eşleşmesi %96; 1.297 kaynak kelime korunuyor. Sonraki: kullanıcı film geri bildirimi. CK proje kayıtlı değil; kayıt değiştirilmedi. Anahtar depo dışındaki 0600 dosyada; ses dosyaları gitignore'lu.

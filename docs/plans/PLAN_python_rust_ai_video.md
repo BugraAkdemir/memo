@@ -1,6 +1,6 @@
 # Python varken yapay zekâda Rust'a ne gerek var?
 
-Durum: SESLENDİRMELİ FİLM ÜRETİMİ — kullanıcı 10 Kasım’da slaytı iptal edip doğrudan video + ElevenLabs anlatım istedi.
+Durum: SESLENDİRMELİ FİLM TAMAMLANDI — kullanıcı 10 Kasım’da slaytı iptal edip doğrudan video + ElevenLabs anlatım istedi.
 
 ## Güncel kabul ölçütleri
 - En az 6 dakika, yatay 1920×1080 / 30 fps. Ölçülen zaman çizelgesi 582,133 sn (9:42), 48 ses parçası.
@@ -149,17 +149,20 @@ Benim bu konudan çıkardığım şey şu: En iyi dil sorusundan önce hangi pro
 
 Sen hangi taraftasın? Model denemeleri mi yapıyorsun, yoksa kullanıcıya sunduğun bir uygulama mı geliştiriyorsun? Yorumlara yaptığın işi yaz. Python mu Rust mı tartışmasını bir de o gerçek problem üzerinden yapalım.
 
-## Üretim sırası
-- [x] Birincil teknik kaynakları incele; senaryo ve hareket taslağını yaz.
-- [ ] Kullanıcı senaryoyu inceler; içerik ve ton revizyonu yapılır.
-- [ ] Onaylı taslağa göre elle ilerleyen hareketli slaytlar hazırlanır; tarayıcıda gerçek önizleme kontrol edilir.
-- [ ] Sesli prova ile süre ölçülür; 6 dakikanın altında kalan taslak yeniden genişletilir.
-- [ ] Kullanıcı slaytlar üzerinde kendi sesini/ekranını kaydeder.
-- [ ] Kayıt geldikten sonra gerçek ses zamanlarına göre kurgu yapılır: yanlış başlangıçlar/uzun boşluklar, gerektiği yerde vurgu ve yakınlaşma, ses dengesi, kaynak kartları.
-- [ ] Son video süresi en az 6 dakika olacak şekilde içerik ve ses anlaşılabilirliği doğrulanır; gereksiz hızlandırma uygulanmaz.
+## Üretim sırası (güncel kullanıcı yönlendirmesi)
+- [x] Birincil teknik kaynakları incele; senaryo ve örnekleri hazırla.
+- [x] Kullanıcı revizyonu: elle ilerleyen slaytı iptal et; doğrudan seslendirmeli film üret.
+- [x] ElevenLabs: 50/50 gerçek ses parçası; yinelenen iki açılış parçasını kurgudan çıkar.
+- [x] Mediabunny / ffprobe: kullanılan 48 ses süresi tutarlı; zaman çizelgesi 17.464 kare / 582,133 sn.
+- [x] Hareketli örnekler, veri akışları, kartlar ve iki maskotun kısa anlatımları.
+- [x] Türkçe altyazı: yerel Whisper zamanları + kaynak metinle yazım düzeltmesi; 331 parça, 1.297 kaynak kelime korunuyor.
+- [x] Hesap bilgileri ve altyazı için merkez 9:16 kesit kontrolü.
+- [x] Dahili tarayıcıda Remotion önizlemesi; TypeScript, örnek kare ve kısa video çözümleme kontrolleri.
+- [x] Tam 1080p render, ffmpeg ses normalizasyonu, son MP4 çözümleme ve süre kontrolü.
 
 ## Beceri / doğrulama notları
 - remotion-docs: Algolia ile Player belgeleri bulundu. Markdown isteği 403 döndü; resmî HTML belgesi okundu: https://www.remotion.dev/docs/player/player.
 - remotion-best-practices ve memo-video/SKILL.md + DESIGN_LANGUAGE.md okundu.
 - Context Keeper: beklenen ~/.claude/skills/ck/commands yolu yok; kurulu ECC paketindeki info.mjs çalıştırıldı. Sonuç: This directory is not registered. Run /ck:init to register it. CK kaydı/yazımı yapılmadı; context dosyaları elle düzenlenmedi.
-- Henüz çalışan sunum, benchmark, kayıt veya render yok. Zaman aralıkları editoryal hedef; gerçek kayıt süreleri değil.
+- Son MP4: 582,2 sn; H.264 1920×1080 / 30 fps, 17.464 kare + AAC. Tam ffmpeg görüntü/ses çözümleme exit 0, hata günlüğü 0 bayt; TypeScript exit 0. Normalizasyon: −15,88 LUFS, −2,18 dBTP. Kapanış satır kırımı görsel kontrolde düzeltildi; son bölüm yeniden render edildi, toplam kare/süre korundu. Rapor: build_output/rust-ai-video/verification.json. Senaryodaki zamanlar ilk editoryal hedeflerdir; kurgu gerçek seslerden hesaplandı. Benchmark iddiası yok.
+- Kullanılan ek beceriler: remotion-captions, remotion-multimedia (Mediabunny), remotion-render, ECC remotion-video-creation ve memo-video ffmpeg akışı. Remotion Maps incelendi; konu coğrafi veri gerektirmediği için harita eklenmedi.

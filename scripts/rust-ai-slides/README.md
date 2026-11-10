@@ -55,3 +55,22 @@ uyarlandı. Manrope ve Bricolage Grotesque font dosyaları ve OFL lisansları
 `public/art/fonts/` içinde; görsel üretim promptları `public/art/PROMPTS.json`.
 Remotion Maps becerisi incelendi; konu coğrafi veri içermediği için yapay bir
 harita eklenmedi. Trafik ve köprü sahneleri açıklayıcı illüstrasyonlardır.
+
+## Dikey Reels kesitleri
+
+`src/film/ReelBackground.tsx` ve `script/create_reels.py`, tamamlanmış filmin
+gerçek görüntü/sesinden dört 1080×1920 kesit üretir. Yeni ses sentezi yoktur.
+
+```bash
+python3 script/create_reels.py
+```
+
+Yalnız seçim/altyazı hazırlığı için `--prepare-only`, aynı kare seçimlerini
+yeniden kesmeden çerçeve/altyazı güncellemek için `--reuse-cuts`, tek bir
+kesit için `--index 0` kullanılabilir. Kesim aralıkları değiştiyse
+`--reuse-cuts` kullanma. Üçüncü kesit iki kaynak bölümden birleşir.
+
+Çıktı: `build_output/marketing/python-rust-reels/`. Her MP4 için SRT,
+kapak karesi, kaynak kare seçimleri ve doğrulama raporu tutulur.
+Altyazılar yalnız zamanla değil onaylı konuşmanın kelime aralıklarıyla
+da sınırlandırılır; komşu sahneden erken ASR metni sızmaz.

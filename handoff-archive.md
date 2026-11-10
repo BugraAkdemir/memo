@@ -1,3 +1,11 @@
+# Son oturum — 11 Kasım — global Remotion Explainer becerisi
+- Kullanıcının beğendiği Rust/Python film formatı, Memo bağımsız global `$remotion-explainer` becerisine dönüştürüldü. Asıl paket `/home/bugra/Documents/remotion-explainer`; `~/.codex/skills/remotion-explainer` ona symlink. Memo içine skill kurulmadı.
+- Türkçe kapsamlı README, 4 üretim/stil/vaka referansı, bağımsız Remotion starter (font lisansları dahil), 4 Python yardımcısı ve 20 sn sessiz demo. Memo maskotları/kişisel hesaplar varsayılan değil; ses/API anahtarı kopyalanmadı.
+- Doğrulama: skill-creator validator PASS; bağımsız npm kurulumu ve TypeScript exit 0; 600 kare/20 sn demo tam decode exit 0; 123 kare/4,1 sn test sesi+2 altyazı render/decode exit 0; eksik ses/yanlış boyut/bozuk medya/çakışan cue vb. beklenen hatalar reddedildi. 13 yerel doküman bağı ve global link PASS. Ayrıntı harici pakette VALIDATION.md.
+- Kaynak film tamam: `build_output/marketing/python-rust-ai-tr-1080p.mp4` + `.srt`, 582,2 sn, 1080p/30; önceki commitler e7c15d8b/51f81967. Yeni üretim yok, yeni ücretli ses çağrısı yok. Sonraki: beceriyi yeni konu isteğinde kullan. Push yok.
+
+---
+
 # Son oturum — 10–11 Kasım — Rust/Python tanıtıcı film
 - Kullanıcı slaytı iptal etti: doğrudan seslendirmeli Remotion filmi. Kaynak: `scripts/rust-ai-slides` (dizin adı eski); kompozisyon `PythonRust`, dahili önizleme `http://127.0.0.1:4318/PythonRust`.
 - 48 ses bölümü, 4 özgün örnek illüstrasyonu, hareketli kart/akışlar; iki Memo maskotu kısa örnekleri anlatıyor. 331 Türkçe altyazı; YouTube/GitHub BugraAkdemir + Instagram bugra.code logolarla merkez dikey kesit güvenli alanında.

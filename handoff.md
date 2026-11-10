@@ -76,8 +76,8 @@
 
 ---
 
-# Son oturum — 11 Kasım — global Remotion Explainer becerisi
-- Kullanıcının beğendiği Rust/Python film formatı, Memo bağımsız global `$remotion-explainer` becerisine dönüştürüldü. Asıl paket `/home/bugra/Documents/remotion-explainer`; `~/.codex/skills/remotion-explainer` ona symlink. Memo içine skill kurulmadı.
-- Türkçe kapsamlı README, 4 üretim/stil/vaka referansı, bağımsız Remotion starter (font lisansları dahil), 4 Python yardımcısı ve 20 sn sessiz demo. Memo maskotları/kişisel hesaplar varsayılan değil; ses/API anahtarı kopyalanmadı.
-- Doğrulama: skill-creator validator PASS; bağımsız npm kurulumu ve TypeScript exit 0; 600 kare/20 sn demo tam decode exit 0; 123 kare/4,1 sn test sesi+2 altyazı render/decode exit 0; eksik ses/yanlış boyut/bozuk medya/çakışan cue vb. beklenen hatalar reddedildi. 13 yerel doküman bağı ve global link PASS. Ayrıntı harici pakette VALIDATION.md.
-- Kaynak film tamam: `build_output/marketing/python-rust-ai-tr-1080p.mp4` + `.srt`, 582,2 sn, 1080p/30; önceki commitler e7c15d8b/51f81967. Yeni üretim yok, yeni ücretli ses çağrısı yok. Sonraki: beceriyi yeni konu isteğinde kullan. Push yok.
+# Son oturum — 11 Kasım — Python/Rust Instagram kesitleri
+- Kullanıcı mevcut filmden birkaç dikey Reels istedi; 4 kesit çıkarıldı. Kaynak orijinal ses/görüntü; yeni TTS/ücretli çağrı/yayınlama yok.
+- Çıktı `build_output/marketing/python-rust-reels/`: 4 MP4, 4 kapak, SRT'ler, paylaşım metinleri README ve toplu `python-rust-reels-paketi.zip`. Konular: Python altındaki C++, Python içindeki Rust, darboğaz, Rust öğrenme kararı. Süreler 52,17 / 46,73 / 38,17 / 47,97 sn.
+- Kaynaklar `scripts/rust-ai-slides/src/film/ReelBackground.tsx`, `script/create_reels.py`; Remotion çerçeve + FFmpeg gerçek kesim/birleştirme/ASS. 3. kesit iki aralıktan birleşir. Kelime aralığıyla komşu ASR cue sızıntısı engellendi; plan `docs/plans/PLAN_python_rust_reels.md`.
+- Doğrulama: TypeScript exit 0; 4/4 H.264/AAC 1080×1920/30 tam decode exit 0/hata 0 bayt; 103 cue/407 kelime korunuyor; altyazı sınırları ve ZIP 14 dosya CRC PASS. Son başlık/görüntü kareleri incelendi. Rapor aynı çıktı klasöründe `verification.json`. Push yok. Sonraki: kullanıcı kesit geri bildirimi.

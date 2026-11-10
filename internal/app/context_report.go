@@ -36,9 +36,11 @@ type contextSnap struct {
 	// summarized is how many of the chat's oldest messages the summary stands in
 	// for (0 = history went in verbatim).
 	summarized int
-	provider   string
-	model      string
-	at         time.Time
+	// compact: the turn ran in the small-window profile (compact_mode.go).
+	compact  bool
+	provider string
+	model    string
+	at       time.Time
 }
 
 func (s contextSnap) total() int {
@@ -261,6 +263,7 @@ func (a *App) ContextReport(chatID string) models.ContextReport {
 	case haveSnap:
 		est := snap.total()
 		rep.SummarizedMessages = snap.summarized
+		rep.Compact = snap.compact
 		scale := 1.0
 		if rep.UsedReal && est > 0 {
 			scale = float64(use.prompt) / float64(est)
@@ -384,8 +387,8 @@ func isCompactSummary(m api.Message) bool {
 // userTokens covers the current user message, of which the retrieved-memory
 // block (memoryTokens — it rides on that message, not in the system prompt, so
 // the system prompt stays cache-stable) is shown apart.
-func (a *App) noteContextSnap(chatID string, window int, history []api.Message, memoryTokens, systemTokens, skillTokens, toolTokens, userTokens int) {
-	s := contextSnap{window: window, tools: toolTokens, skills: skillTokens, memory: memoryTokens}
+func (a *App) noteContextSnap(chatID string, window int, history []api.Message, memoryTokens, systemTokens, skillTokens, toolTokens, userTokens int, compact bool) {
+	s := contextSnap{window: window, tools: toolTokens, skills: skillTokens, memory: memoryTokens, compact: compact}
 	s.current = max(userTokens-memoryTokens, 0)
 	s.provider, s.model = a.activeModelIdentity()
 	if len(history) > 0 && isCompactSummary(history[0]) {

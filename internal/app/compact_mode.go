@@ -1,6 +1,14 @@
 package app
 
-import "memo/internal/truncate"
+import (
+	"context"
+	"sort"
+	"sync"
+
+	"memo/internal/agent"
+	"memo/internal/provider"
+	"memo/internal/truncate"
+)
 
 // compactWindowLimit is the context window (tokens) below which a local model
 // runs in the compact profile: a short system prompt with nothing personal in
@@ -54,4 +62,93 @@ func (a *App) localCompactActive() bool {
 		return false
 	}
 	return isCompactWindow(a.localContextWindow())
+}
+
+// compactToolShare is the most the tool definitions may take on a compact
+// window (load_tools plus the groups it loaded).
+func compactToolShare(window int) int { return window / 5 }
+
+// compactTurnWindow is the window of a turn that runs in the compact profile,
+// or 0 when the turn is not one: the auto router's local route with a small
+// window, or no route at all and a small running local model with no cloud
+// provider in front of it (localCompactActive).
+func (a *App) compactTurnWindow(ctx context.Context) int {
+	if r := subscriptionTextRouteFromCtx(ctx); r != nil {
+		if r.auto && routeProvider(r) == "local" && isCompactWindow(routeWindow(r)) {
+			return routeWindow(r)
+		}
+		return 0
+	}
+	if a.localCompactActive() {
+		return a.localContextWindow()
+	}
+	return 0
+}
+
+// compactToolsFor is the on-demand tool state for chatID's agent turn, or nil
+// when the turn is not compact. Groups loaded in earlier turns stay loaded.
+func (a *App) compactToolsFor(ctx context.Context, chatID string) *agent.CompactTools {
+	window := a.compactTurnWindow(ctx)
+	if window == 0 {
+		return nil
+	}
+	return agent.NewCompactTools(compactToolShare(window), a.compactGroups.get(chatID), func(g string) {
+		a.compactGroups.add(chatID, g)
+	})
+}
+
+// compactGroupStore is chatID -> loaded tool groups. Lost on restart, which
+// costs one load_tools call, nothing more.
+type compactGroupStore struct {
+	mu     sync.Mutex
+	byChat map[string]map[string]bool
+}
+
+func (s *compactGroupStore) get(chatID string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, 0, len(s.byChat[chatID]))
+	for g := range s.byChat[chatID] {
+		out = append(out, g)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (s *compactGroupStore) add(chatID, group string) {
+	if chatID == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.byChat == nil {
+		s.byChat = map[string]map[string]bool{}
+	}
+	if s.byChat[chatID] == nil {
+		s.byChat[chatID] = map[string]bool{}
+	}
+	s.byChat[chatID][group] = true
+}
+
+// compactAgentToolTokens is what the tool definitions of chatID's next compact
+// agent turn cost: load_tools plus the loaded groups (0 with agent mode off).
+// Mirrors agentToolTokens and Pipeline.turnTools so the budget and the gauge
+// count what is really sent.
+func (a *App) compactAgentToolTokens(ctx context.Context, chatID string) int {
+	if !a.GetAgentEnabled() || a.agentExecutor == nil {
+		return 0
+	}
+	c := a.compactToolsFor(ctx, chatID)
+	if c == nil {
+		return a.agentToolTokens(chatID)
+	}
+	reg := a.agentExecutor.Registry()
+	defs := reg.ToOpenAITools(a.activeSkillSet(chatID))
+	if a.resolveCodeMode(chatID) {
+		defs = agent.ForCodeMode(defs)
+	}
+	return agent.DefinitionTokens(c.Filter(defs, func(d provider.ToolDefinition) bool {
+		td, ok := reg.Get(d.Function.Name)
+		return ok && td.SkillOwner != ""
+	}))
 }

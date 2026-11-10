@@ -84,7 +84,7 @@ func TestNoteContextSnap_SeparatesSummaryMemoryAndSkills(t *testing.T) {
 	a.convSummaries = map[string]*convSummary{"c1": {coveredCount: 12}}
 	// The memory block (100 tokens) rides on the current user message, not in
 	// the system prompt: userTokens = 20 of message + 100 of memory.
-	a.noteContextSnap("c1", 10000, hist, 100, 400, 50, 70, 120)
+	a.noteContextSnap("c1", 10000, hist, 100, 400, 50, 70, 120, false)
 
 	s := a.ctxState.snaps["c1"]
 	if s.summary == 0 || s.summarized != 12 {

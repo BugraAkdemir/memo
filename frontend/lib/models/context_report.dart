@@ -62,6 +62,11 @@ class ContextReport {
   final List<QuotaMeter> limits;
   final String limitsVendor;
 
+  /// The last turn ran in the small-window profile: a local model under 10k
+  /// tokens gets a short prompt, room kept for the reply and tools loaded on
+  /// demand.
+  final bool compact;
+
   const ContextReport({
     this.provider = '',
     this.model = '',
@@ -75,6 +80,7 @@ class ContextReport {
     this.summarizedMessages = 0,
     this.limits = const [],
     this.limitsVendor = '',
+    this.compact = false,
   });
 
   /// Tokens left before the window is full; 0 when the window is unknown.
@@ -105,6 +111,7 @@ class ContextReport {
       summarizedMessages: _int(j['summarized_messages'], 0),
       limits: list(j['limits'], QuotaMeter.fromJson),
       limitsVendor: _str(j['limits_vendor']),
+      compact: _bool(j['compact'], false),
     );
   }
 }

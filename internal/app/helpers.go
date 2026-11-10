@@ -290,6 +290,14 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	compact := isCompactWindow(window) &&
 		((localPrompt && a.GetActiveProvider() == "") || (route != nil && route.auto && routeProvider(route) == "local"))
 	if compact {
+		// Tools: load_tools plus the groups this chat loaded, not the full
+		// ~10k-token schema (compact_mode.go). The local path had the full
+		// schema taken off its budget above; give that back first.
+		compactTools := a.compactAgentToolTokens(ctx, chatID)
+		if localPrompt {
+			tokenBudget += toolTokens - compactTools
+		}
+		toolTokens = compactTools
 		tokenBudget -= compactReplyReserve(window)
 		if tokenBudget < 512 {
 			tokenBudget = 512
@@ -556,7 +564,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	for _, h := range history {
 		histUsed += truncate.EstimateTokens(h.GetTextContent())
 	}
-	a.noteContextSnap(chatID, window, history, truncate.EstimateTokens(memoryCtx), systemTokens, skillTokens, toolTokens, userTokens)
+	a.noteContextSnap(chatID, window, history, truncate.EstimateTokens(memoryCtx), systemTokens, skillTokens, toolTokens, userTokens, compact)
 	if route != nil && route.auto && chatID != "" {
 		a.ctxState.mu.Lock()
 		snap := a.ctxState.snaps[chatID]

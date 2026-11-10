@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"memo/internal/agent"
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/identity"
@@ -134,5 +135,49 @@ func TestBuildCompactSystemPrompt_AgentRuleOnlyWithAgent(t *testing.T) {
 	}
 	if !strings.Contains(id.BuildCompactSystemPrompt(true), identity.CompactAgentRule) {
 		t.Error("agent rule missing with agent mode on")
+	}
+}
+
+func TestBuildMessagesForSession_CompactAgentTurnBudgetsLoadToolsNotTheFullSchema(t *testing.T) {
+	a, _, chatID := newCompactTestApp(t)
+	a.agentEnabled = true
+	a.agentExecutor = agent.NewExecutor(t.TempDir(), nil, nil, nil)
+	full := a.agentToolTokens(chatID)
+
+	msgs := a.buildMessagesForSession(localRouteCtx(4096), chatID, "dosyaları listele", nil, nil)
+
+	a.ctxState.mu.Lock()
+	snap := a.ctxState.snaps[chatID]
+	a.ctxState.mu.Unlock()
+	if !snap.compact {
+		t.Error("the gauge snapshot does not say the turn was compact")
+	}
+	if snap.tools <= 0 || snap.tools > compactToolShare(4096) {
+		t.Errorf("compact turn counted ~%d tool tokens; want load_tools only, within %d (full schema is ~%d)", snap.tools, compactToolShare(4096), full)
+	}
+	total := snap.tools
+	for _, m := range msgs {
+		total += truncate.EstimateTokens(m.GetTextContent())
+	}
+	if limit := 4096 - compactReplyReserve(4096); total > limit {
+		t.Errorf("prompt + tools is ~%d tokens on a 4k window, want <= %d", total, limit)
+	}
+	if !strings.Contains(systemOf(t, msgs), identity.CompactAgentRule) {
+		t.Error("agent turn on a compact window is missing the tool rule")
+	}
+}
+
+func TestBuildMessagesForSession_LargeWindowAgentTurnKeepsFullSchema(t *testing.T) {
+	a, _, chatID := newCompactTestApp(t)
+	a.agentEnabled = true
+	a.agentExecutor = agent.NewExecutor(t.TempDir(), nil, nil, nil)
+
+	a.buildMessagesForSession(localRouteCtx(32768), chatID, "dosyaları listele", nil, nil)
+
+	a.ctxState.mu.Lock()
+	snap := a.ctxState.snaps[chatID]
+	a.ctxState.mu.Unlock()
+	if snap.compact || snap.tools != a.agentToolTokens(chatID) {
+		t.Errorf("32k window: compact=%v tools=%d, want false and the full %d", snap.compact, snap.tools, a.agentToolTokens(chatID))
 	}
 }

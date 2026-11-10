@@ -70,6 +70,9 @@ type Pipeline struct {
 	autoPermissionOverride *bool
 	// noWebTools hides web_search/fetch_page from this run (see ClientOptions).
 	noWebTools bool
+	// compactTools, when set, makes this a small-window run: the model starts
+	// with load_tools only and loads tool groups on demand (compact_tools.go).
+	compactTools *CompactTools
 
 	// effortLevel is the active provider's resolved EffortLevel for this
 	// run (see provider.ChatRequest.EffortLevel's doc comment) — set by the
@@ -107,6 +110,16 @@ func NewPipeline(registry *ToolRegistry, permissions *PermissionManager, sandbox
 // turnTools is the tool list for this turn: the registry's, minus what a Code
 // Mode turn (codeSubMode != "") does not need.
 func (p *Pipeline) turnTools() []provider.ToolDefinition {
+	defs := p.fullTurnTools()
+	if p.compactTools != nil {
+		defs = p.compactTools.Filter(defs, p.skillOwnedTool)
+	}
+	return defs
+}
+
+// fullTurnTools is the turn's tool list before the small-window filter — what
+// load_tools may load from.
+func (p *Pipeline) fullTurnTools() []provider.ToolDefinition {
 	defs := p.registry.ToOpenAITools(p.activeSkills)
 	if !p.chatSubAgentsEnabled {
 		kept := defs[:0]
@@ -132,6 +145,14 @@ func (p *Pipeline) turnTools() []provider.ToolDefinition {
 		defs = kept
 	}
 	return defs
+}
+
+// skillOwnedTool keeps a skill's own tools on a compact run: the person
+// switched the skill on by calling it, so its tools are not hidden behind
+// load_tools (they are already limited to this chat's active skills).
+func (p *Pipeline) skillOwnedTool(d provider.ToolDefinition) bool {
+	td, ok := p.registry.Get(d.Function.Name)
+	return ok && td.SkillOwner != ""
 }
 
 // NewPipelineWithBudget creates a pipeline with a context token budget.
@@ -448,6 +469,26 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 
 				// Fix double-encoded JSON args (some LLMs return string inside string)
 				args = fixJSONArgs(args)
+
+				// Small-window run: load_tools is answered here (it is not a
+				// registry tool), and a tool that was not loaded is refused with
+				// the group to load, even if the model knows its name.
+				if p.compactTools != nil {
+					if toolName == LoadToolsName {
+						onEvent(AgentEvent{Type: EventToolExecuting, ToolName: toolName, Args: args, DangerLevel: Safe})
+						result := p.compactTools.Load(args, p.fullTurnTools(), p.skillOwnedTool)
+						onEvent(AgentEvent{Type: EventToolResult, ToolName: toolName, Args: args, Result: result})
+						currentMessages = append(currentMessages, provider.Message{Role: "tool", ToolCallID: tc.ID, Content: result})
+						continue
+					}
+					// Unknown names fall through to the "Unknown tool" answer below.
+					if td, ok := p.registry.Get(toolName); ok && td.SkillOwner == "" && !p.compactTools.offers(toolName) {
+						errMsg := NotLoadedError(toolName)
+						onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: errMsg})
+						currentMessages = append(currentMessages, provider.Message{Role: "tool", ToolCallID: tc.ID, Content: "Error: " + errMsg})
+						continue
+					}
+				}
 
 				// A tool this run hides is refused too: a model that saw it earlier
 				// in the conversation could still name it.

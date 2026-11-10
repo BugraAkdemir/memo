@@ -461,6 +461,13 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			// An interactive turn shows the model's text as it is written.
 			turnCtx = agent.WithLiveNarration(turnCtx)
 		}
+		// A small local window starts with load_tools only and loads tool
+		// groups on demand (compact_mode.go); every other turn is unchanged.
+		if taskListID == "" {
+			if c := a.compactToolsFor(ctx, sessionID); c != nil {
+				turnCtx = agent.WithCompactTools(turnCtx, c)
+			}
+		}
 
 		// Code Mode raises the loop ceilings (coding tasks are long, and the
 		// turn has no chat cruft eating the budget), and the sub-mode

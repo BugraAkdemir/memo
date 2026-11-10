@@ -31,4 +31,4 @@ func (id *Identity) BuildCompactSystemPrompt(agentEnabled bool) string {
 
 // CompactAgentRule is the one line about tools the compact prompt carries when
 // agent mode is on.
-const CompactAgentRule = "When a task needs a tool, use the tools you are given. Never claim a tool result you did not receive."
+const CompactAgentRule = "When a task needs a tool, load its group with load_tools, then call it. Never claim a tool result you did not receive."

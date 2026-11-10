@@ -55,4 +55,8 @@ type ContextReport struct {
 	// LimitsVendor names whose allowance Limits describes ("antigravity",
 	// "openai", "anthropic").
 	LimitsVendor string `json:"limits_vendor,omitempty"`
+	// Compact is true when the last turn ran in the small-window profile: a
+	// local model under 10k tokens gets a short prompt, a reserved share for
+	// the reply and tools loaded on demand (app/compact_mode.go).
+	Compact bool `json:"compact"`
 }

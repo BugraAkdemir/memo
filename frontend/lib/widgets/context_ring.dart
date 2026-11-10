@@ -335,6 +335,11 @@ class ContextReportView extends StatelessWidget {
           if (r.compactBuffer > 0) row(c.borderSoft, L10n.t('ctx_buffer'), r.compactBuffer, dim: true),
         ],
         const SizedBox(height: 6),
+        if (r.compact)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(L10n.t('ctx_compact'), style: TextStyle(fontSize: 11.5, color: c.textMuted)),
+          ),
         if (r.summarizedMessages > 0)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),

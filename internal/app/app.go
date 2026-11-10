@@ -256,6 +256,10 @@ type App struct {
 	// last prompt was made up and what the provider reported for the last turn.
 	ctxState contextState
 
+	// compactGroups remembers, per chat, which tool groups a small-window
+	// model loaded with load_tools (compact_mode.go); in memory only.
+	compactGroups compactGroupStore
+
 	providerCfgMgr     *provider.ConfigManager
 	providerRouter     *provider.Router
 	activeProviderName string // which provider is currently active (by Name)
